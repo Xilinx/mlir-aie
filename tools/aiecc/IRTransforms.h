@@ -2001,8 +2001,13 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 inline std::unique_ptr<mlir::PassManager>
 getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  std::string expandPipeline = std::string("aie-expand-load-pdi{ctrl-pkt=") +
-                               (ctrlPkt ? "true" : "false") + "}";
+  auto flag = [](bool b) { return b ? "true" : "false"; };
+  std::string expandPipeline =
+      llvm::formatv("aie-expand-load-pdi{{ctrl-pkt={0} teardown={1} "
+                    "init-entry={2}}",
+                    flag(ctrlPkt), flag(cli::reconfigTeardown),
+                    flag(cli::reconfigInitEntry))
+          .str();
   if (mlir::failed(mlir::parsePassPipeline(expandPipeline, *pm))) {
     return nullptr;
   }

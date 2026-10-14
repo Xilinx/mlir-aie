@@ -899,6 +899,15 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
            d.getSymName().starts_with("empty_");
   };
 
+  auto matchesSequenceFilter =
+      [seqFilter = sequenceName.getValue()](RuntimeSequenceOp s) {
+        // The init entry is kept whatever --sequence-name says, since the other
+        // entries rely on it.
+        return seqFilter.empty() || s.getSymName() == seqFilter ||
+               (reconfigInitEntry &&
+                s.getSymName() == xilinx::AIEX::initEntrySequenceName);
+      };
+
   // Split a whole-module edge into one item per DeviceOp (keyed by bare device
   // name), then drop devices that don't match --device-name.
   auto splitPerDevice = [&matchesDeviceFilter](EdgeWithTypedOutput<ModRef> &src,
@@ -2121,15 +2130,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                  s.getSymName());
               }))
           .filter(
-              "perSeqMatching",
-              [matchesDeviceFilter, seqFilter = sequenceName.getValue()](
-                  const OpInModule<RuntimeSequenceOp> &x) {
+              "perSeqMatching", [matchesDeviceFilter, matchesSequenceFilter](
+                                    const OpInModule<RuntimeSequenceOp> &x) {
                 RuntimeSequenceOp seq = x.op;
                 if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>())) {
                   return false;
                 }
                 // --sequence-name: keep only the named runtime sequence.
-                return seqFilter.empty() || seq.getSymName() == seqFilter;
+                return matchesSequenceFilter(seq);
               });
 
   // The C++ target consumes (and replaces) its module. Keep the shared lowered
@@ -2270,14 +2278,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                  ctrlPktExpandedPerSeq)
            : static_cast<EdgeWithTypedOutput<OpInModule<RuntimeSequenceOp>> &>(
                  noCtrlPktSeqs))
-          .filter("ctrlPktSeqs", [matchesDeviceFilter,
-                                  seqFilter = sequenceName.getValue()](
+          .filter("ctrlPktSeqs", [matchesDeviceFilter, matchesSequenceFilter](
                                      const OpInModule<RuntimeSequenceOp> &x) {
             RuntimeSequenceOp seq = x.op;
             if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>())) {
               return false;
             }
-            return seqFilter.empty() || seq.getSymName() == seqFilter;
+            return matchesSequenceFilter(seq);
           });
 
   // Per-sequence control-packet binary, dropping empties so the config only
@@ -2699,7 +2706,7 @@ int main(int argc, char **argv) {
   // selection (xchesscc/xbridge), the --get-aiesim implication, and the
   // resolved-option globals (wantAiesim, doUnified, doCompileHost). See
   // CommandLineOptions.h.
-  if (!cli::resolveOptions()) {
+  if (!cli::resolveOptions(resume.active)) {
     return 1;
   }
   verifyEachPass = verifyEach;
@@ -2726,33 +2733,6 @@ int main(int argc, char **argv) {
                       "use --get-npu-cpp\n";
       return 1;
     }
-  }
-
-  // --expand-load-pdis reconfigures via PDI swaps and routes the config branch
-  // through the NPU-lowered module; control-packet generation currently
-  // assumes it runs on the *pre*-NPU-lowering module. The two are incompatible
-  // as implemented.
-  if (expandLoadPdis && generateCtrlpkt) {
-    llvm::errs() << "aiecc: --expand-load-pdis and --get-ctrlpkt are "
-                    "mutually exclusive\n";
-    return 1;
-  }
-
-  // --expand-load-pdis and --load-pdi-to-ctrl-pkt are two different reconfigure
-  // strategies for the same `load_pdi` ops (explicit write sequences vs.
-  // streamed control packets); at most one may apply.
-  if (expandLoadPdis && loadPdiToCtrlPkt) {
-    llvm::errs() << "aiecc: --expand-load-pdis and --load-pdi-to-ctrl-pkt are "
-                    "mutually exclusive\n";
-    return 1;
-  }
-
-  // Disambiguate the full-ELF control packet flow and the standalone
-  // artifact flows.
-  if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
-    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
-                    "together also requires --load-pdi-to-ctrl-pkt\n";
-    return 1;
   }
 
   // --cut only makes sense as a checkpoint frontier: it stops the build at the
