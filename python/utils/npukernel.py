@@ -26,6 +26,7 @@ class NPUKernel:
         elf_path=None,
         dispatch_params: list[str] | None = None,
         dispatch_lib_path=None,
+        init_entry: bool = False,
     ):
         """Initialize the NPUKernel.
 
@@ -63,6 +64,10 @@ class NPUKernel:
                 compiled dispatch bridge (``dispatch.so``) for a
                 DispatchTime[T] design. Required (non-None) whenever
                 ``dispatch_params`` is non-empty.
+            init_entry (bool, optional): Whether the full ELF has the
+                ``"<device>:reconfig_init"`` entry aiecc's
+                ``--reconfig-init-entry`` builds, which the host runtime runs on
+                each new hardware context before this kernel. Defaults to False.
         """
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
@@ -74,6 +79,7 @@ class NPUKernel:
         self._dispatch_params = list(dispatch_params) if dispatch_params else []
         self._dispatch_lib_path = dispatch_lib_path
         self._dispatch_bridge = None
+        self._init_entry = init_entry
 
     @property
     def trace_config(self) -> TraceConfig | None:
@@ -110,6 +116,18 @@ class NPUKernel:
             str | Path | None: The full-ELF path.
         """
         return self._elf_path
+
+    @property
+    def init_kernel_name(self) -> str | None:
+        """Get the full ELF's init entry, or ``None``.
+
+        Returns:
+            str | None: The ``"<device>:reconfig_init"`` entry the host runtime
+            runs on each new hardware context before this kernel.
+        """
+        if not self._init_entry:
+            return None
+        return f"{self.kernel_name.partition(':')[0]}:reconfig_init"
 
     @property
     def kernel_name(self):
