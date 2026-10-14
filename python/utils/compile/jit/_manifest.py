@@ -174,9 +174,9 @@ def record(
     """
     kernel_dir = Path(kernel_dir)
     compiled = [
-        f
+        f.object_file._source
         for f in external_kernels
-        if getattr(f, "_source_file", None) or getattr(f, "_source_string", None)
+        if f.object_file._source is not None
     ]
     depfiles = list(kernel_dir.glob("*.d"))
     if used_chess or (compiled and not depfiles):
@@ -228,9 +228,9 @@ def record(
     # the cache key, so it is left out rather than making the set incomplete.
     cwd = Path.cwd()
     declared = [
-        _absolute(cwd, Path(f._source_file))
-        for f in compiled
-        if getattr(f, "_source_file", None)
+        _absolute(cwd, Path(recipe.source_file))
+        for recipe in compiled
+        if recipe.source_file
     ]
     declared += [_absolute(cwd, Path(sf)) for sf in source_files]
     for path in declared:

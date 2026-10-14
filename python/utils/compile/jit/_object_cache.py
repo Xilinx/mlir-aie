@@ -83,7 +83,7 @@ class KernelObjectCache:
     @staticmethod
     def accepts(func) -> bool:
         """Whether the cache holds ``func``: not a Chess kernel, nor one with no source recipe."""
-        recipe = getattr(getattr(func, "object_file", None), "_source", None)
+        recipe = func.object_file._source
         return recipe is not None and not recipe.use_chess
 
     def fetch(self, func, kernel_dir, target_arch, include_dirs, embed_bitcode) -> bool:

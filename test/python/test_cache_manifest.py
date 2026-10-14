@@ -14,15 +14,8 @@ import time
 
 import pytest
 
+from aie.iron import ExternalFunction
 from aie.utils.compile.jit import _manifest
-
-
-class _Kernel:
-    """Minimal stand-in for an ExternalFunction, which needs an MLIR context."""
-
-    def __init__(self, source_file=None, source_string=None):
-        self._source_file = source_file
-        self._source_string = source_string
 
 
 def _depfile(kernel_dir, obj, deps):
@@ -148,7 +141,7 @@ def test_record_captures_depfile_contents(tmp_path):
     shim.write_text('#include "body.cc"\n')
     _depfile(tmp_path, "k.o", [shim, body])
 
-    _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_file=str(shim))], ())
     recorded = {
         i["path"]
         for i in json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())["inputs"]
@@ -179,7 +172,9 @@ def test_header_shared_by_two_kernels_is_digested_once_per_build(tmp_path):
     for entry in entries:
         entry.mkdir()
         _depfile(entry, "k.o", [header])
-        _manifest.record(entry, [_Kernel(source_string="// k")], (), digests=digests)
+        _manifest.record(
+            entry, [ExternalFunction("k", source_string="// k")], (), digests=digests
+        )
     expected = {str(header): hashlib.sha256(b"// h").hexdigest()}
     assert [_recorded_digests(e) for e in entries] == [expected, expected]
     assert digests == expected
@@ -196,7 +191,9 @@ def test_later_build_records_a_same_size_edit_with_its_mtime_restored(tmp_path):
     first, second = tmp_path / "first", tmp_path / "second"
     first.mkdir()
     _depfile(first, "k.o", [header])
-    _manifest.record(first, [_Kernel(source_string="// k")], (), digests={})
+    _manifest.record(
+        first, [ExternalFunction("k", source_string="// k")], (), digests={}
+    )
 
     before = header.stat()
     time.sleep(0.01)
@@ -204,7 +201,9 @@ def test_later_build_records_a_same_size_edit_with_its_mtime_restored(tmp_path):
     os.utime(header, ns=(before.st_atime_ns, before.st_mtime_ns))
     second.mkdir()
     _depfile(second, "k.o", [header])
-    _manifest.record(second, [_Kernel(source_string="// k")], (), digests={})
+    _manifest.record(
+        second, [ExternalFunction("k", source_string="// k")], (), digests={}
+    )
 
     assert _recorded_digests(second) == {
         str(header): hashlib.sha256(b"bbbb").hexdigest()
@@ -220,7 +219,9 @@ def test_chess_build_records_an_incomplete_manifest(tmp_path):
     """
     shim = tmp_path / "shim.cc"
     shim.write_text("// k")
-    _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], (), used_chess=True)
+    _manifest.record(
+        tmp_path, [ExternalFunction("k", source_file=str(shim))], (), used_chess=True
+    )
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert payload["complete"] is False
@@ -238,7 +239,7 @@ def test_kernel_without_a_depfile_records_an_incomplete_manifest(tmp_path):
     """A kernel compiled by some other route leaves the set unknowable."""
     shim = tmp_path / "shim.cc"
     shim.write_text("// k")
-    _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_file=str(shim))], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert payload["complete"] is False
@@ -260,7 +261,9 @@ def test_incomplete_is_not_the_same_as_no_inputs(tmp_path):
     unknowable.mkdir()
     shim = unknowable / "shim.cc"
     shim.write_text("// k")
-    _manifest.record(unknowable, [_Kernel(source_file=str(shim))], (), used_chess=True)
+    _manifest.record(
+        unknowable, [ExternalFunction("k", source_file=str(shim))], (), used_chess=True
+    )
     payload = json.loads((unknowable / _manifest.MANIFEST_NAME).read_text())
     assert payload["complete"] is False
     assert payload["inputs"] == []
@@ -294,7 +297,7 @@ def test_unreadable_depfile_records_an_incomplete_manifest(tmp_path):
     depfile.unlink()
     depfile.mkdir()
 
-    _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_file=str(shim))], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert payload["complete"] is False
@@ -316,7 +319,7 @@ def test_unreadable_input_records_an_incomplete_manifest(tmp_path):
     shim.write_text("// k")
     _depfile(tmp_path, "k.o", [shim, "/proc/self/mem"])
 
-    _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_file=str(shim))], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert payload["complete"] is False
@@ -366,7 +369,9 @@ def test_relative_kernel_source_is_recorded_absolutely(tmp_path, monkeypatch):
     src.write_text("// v1")
 
     monkeypatch.chdir(project)
-    _manifest.record(kernel_dir, [_Kernel(source_file="k.cc")], (), used_chess=True)
+    _manifest.record(
+        kernel_dir, [ExternalFunction("k", source_file="k.cc")], (), used_chess=True
+    )
     _manifest.record(kernel_dir, [], ("k.cc",))
 
     monkeypatch.chdir(tmp_path)
@@ -383,7 +388,7 @@ def test_relative_depfile_entry_resolves_against_the_compile_directory(tmp_path)
     header.write_text("// h")
     (tmp_path / "k.o.d").write_text(f"{tmp_path / 'k.o'}: hdr.h\n")
 
-    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_string="// k")], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert [i["path"] for i in payload["inputs"]] == [str(header)]
@@ -407,7 +412,7 @@ def test_depfile_entry_with_an_escaped_space_is_recorded(tmp_path):
         f"{tmp_path / 'k.o'}: {str(header).replace(' ', chr(92) + ' ')}\n"
     )
 
-    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_string="// k")], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert [i["path"] for i in payload["inputs"]] == [str(header)]
@@ -427,7 +432,7 @@ def test_depfile_escapes_are_undone(tmp_path):
         f"{tmp_path / 'k.o'}: ha\\#sh.h dol$$lar.h \\\n  co:lon.h\n"
     )
 
-    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_string="// k")], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert [i["path"] for i in payload["inputs"]] == sorted(
@@ -443,7 +448,7 @@ def test_depfile_targets_are_not_inputs(tmp_path):
     (tmp_path / "hdr.h").write_text("// h")
     (tmp_path / "k.o.d").write_text(f"{tmp_path / 'k.o'} {tmp_path}/o:k.o: hdr.h\n")
 
-    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_string="// k")], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert [i["path"] for i in payload["inputs"]] == [str(tmp_path / "hdr.h")]
@@ -461,7 +466,7 @@ def test_depfile_naming_a_missing_input_records_an_incomplete_manifest(tmp_path)
     header.write_text("// h")
     (tmp_path / "k.o.d").write_text(f"{tmp_path / 'k.o'}: a/b.h\n")
 
-    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_string="// k")], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert payload["complete"] is False
@@ -483,7 +488,7 @@ def test_depfile_dotdot_is_taken_after_following_a_symlink(tmp_path):
     (tmp_path / "link").symlink_to(tmp_path / "real" / "sub")
     (tmp_path / "k.o.d").write_text(f"{tmp_path / 'k.o'}: link/../h.h\n")
 
-    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+    _manifest.record(tmp_path, [ExternalFunction("k", source_string="// k")], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert [i["path"] for i in payload["inputs"]] == [
