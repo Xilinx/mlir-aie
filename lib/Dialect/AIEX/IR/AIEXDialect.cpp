@@ -1889,7 +1889,15 @@ AIEX::NpuWriteConfigOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   auto empty = resetRef ? dyn_cast_or_null<AIE::DeviceOp>(
                               symbolTable.lookupSymbolIn(scope, resetRef))
                         : nullptr;
-  if (reset && (!empty || !empty.getBody()->without_terminator().empty()))
+  // The transaction conversion gives every device a `@configure` sequence; an
+  // empty one still configures nothing.
+  if (reset &&
+      (!empty ||
+       !llvm::all_of(empty.getBody()->without_terminator(), [](Operation &op) {
+         return isa<AIE::RuntimeSequenceOp>(op) &&
+                llvm::all_of(op.getRegion(0),
+                             [](Block &block) { return block.empty(); });
+       })))
     return emitOpError("must follow a load_pdi of an empty device, which "
                        "resets the array");
   return success();

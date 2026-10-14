@@ -28,9 +28,39 @@
 // RUN: aie-opt --convert-aiex-to-emitc %t.inline.mlir -o %t.inline.cpp.mlir
 // RUN: diff %t.lazy.cpp.mlir %t.inline.cpp.mlir
 
+// The transaction conversion leaves each reset device an empty @configure.
+// Through page legalization to assembly, every reload still writes its
+// configuration.
+// RUN: aie-opt --convert-aie-to-transaction %t.lazy.mlir | aie-opt --aie-npu-to-cert | aie-opt --cert-legalize-pages | aie-translate --aie-cert-to-asm -o %t.lazy.asm
+// RUN: aie-opt --convert-aie-to-transaction %t.inline.mlir | aie-opt --aie-npu-to-cert | aie-opt --cert-legalize-pages | aie-translate --aie-cert-to-asm -o %t.inline.asm
+// RUN: cmp %t.lazy.asm %t.inline.asm
+// RUN: FileCheck %s --check-prefix=ASM < %t.lazy.asm
+
 // CERT-NOT: write_config
 // CERT: aiex.cert.
 // CERT-NOT: write_config
+
+// ASM: LOAD_PDI {{.*}}@empty_0
+// ASM: WRITE_32 {{ *}}0x0021f000, 0x00000001
+// ASM-NEXT: uC_DMA_WRITE_DES_SYNC {{ *}}@[[C0:chain_[0-9]+]]
+// ASM: LOAD_PDI {{.*}}@empty_1
+// ASM: WRITE_32 {{ *}}0x0021f000, 0x00000001
+// ASM-NEXT: uC_DMA_WRITE_DES_SYNC {{ *}}@[[C1:chain_[0-9]+]]
+// ASM: LOAD_PDI {{.*}}@empty_0
+// ASM: WRITE_32 {{ *}}0x0021f000, 0x00000001
+// ASM-NEXT: uC_DMA_WRITE_DES_SYNC {{ *}}@[[C2:chain_[0-9]+]]
+// ASM: LOAD_PDI {{.*}}@empty_1
+// ASM: [[C0]]:
+// ASM-NEXT: UC_DMA_BD {{ *}}0, 0x00200400, @[[DATA:[a-z_0-9]+]], 4,
+// ASM: [[C1]]:
+// ASM-NEXT: UC_DMA_BD {{ *}}0, 0x00200400, @[[DATA]], 4,
+// ASM: [[C2]]:
+// ASM-NEXT: UC_DMA_BD {{ *}}0, 0x00200400, @[[DATA]], 4,
+// ASM: [[DATA]]:
+// ASM-NEXT: .long {{ *}}0x00000001
+// ASM-NEXT: .long {{ *}}0x00000002
+// ASM-NEXT: .long {{ *}}0x00000003
+// ASM-NEXT: .long {{ *}}0x00000004
 
 // CHECK-LABEL: aie.runtime_sequence @first
 // CHECK-NEXT: aiex.npu.load_pdi {device_ref = @empty_0

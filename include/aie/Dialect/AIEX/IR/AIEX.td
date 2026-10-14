@@ -1339,7 +1339,9 @@ def AIE_NpuWriteConfigOp
     that PDI is the one it loaded last. So the `load_pdi` before this op must
     be of an empty device, and differ from the `load_pdi` before it. For the
     sequence's first `load_pdi`, that is its last one: the host runs the
-    sequence again on each dispatch.
+    sequence again on each dispatch. An empty device may hold runtime sequences
+    with no ops, such as the `@configure` that `convert-aie-to-transaction`
+    adds.
 
     Example:
     ```

@@ -42,6 +42,31 @@ module {
 
 // -----
 
+// A reset device may hold only empty sequences, as the transaction conversion
+// leaves; one that writes configures the array.
+module {
+  aie.device(npu2_1col) @init {
+    %t = aie.tile(0, 2)
+  }
+  aie.device(npu2_1col) @empty_0 {
+    aie.runtime_sequence @configure() {
+      %a = arith.constant 2224128 : i32
+      %v = arith.constant 1 : i32
+      aiex.npu.write32(%a, %v) : i32, i32
+    }
+  }
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence() {
+      aiex.npu.load_pdi {device_ref = @empty_0}
+      // expected-error @+1 {{must follow a load_pdi of an empty device}}
+      aiex.npu.write_config @init
+      aiex.npu.load_pdi {device_ref = @main}
+    }
+  }
+}
+
+// -----
+
 module {
   aie.device(npu2_1col) @empty_0 {
   }
