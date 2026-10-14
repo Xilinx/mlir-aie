@@ -1286,11 +1286,9 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
 }
 
 llvm::Error Pathfinder::cutOverflow() const {
-  // A circuit flow from one side of a boundary to a destination on the other
-  // takes a channel across it of its own, and the packet flows crossing take
-  // at least one more between them. The channels a fixed connection holds
-  // are left in, so this only finds what no routing can fit. A channel counts
-  // only if its tile's crossbar can drive it.
+  // Each circuit tree crossing a boundary needs a channel of its own, and the
+  // packet flows one more. Fixed connections' channels still count, so this
+  // never rejects a routable design.
   auto onDevice = [&](TileID t) { return t.col < columns && t.row < rows; };
   std::map<std::tuple<bool, int, bool>, size_t> channels;
   for (const auto &[ends, sb] : graph) {
@@ -2558,11 +2556,9 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       }
     }
 
-    // Once the overuse stops shrinking, a circuit tree that took an overused
-    // channel only circuit trees take goes first next time, so the trees
-    // routed later fit around it rather than the same one losing each time.
-    // A routing still converging keeps its order, and overuse a packet stream
-    // shares is left to the packet steering, whose order this would upset.
+    // Once the overuse stalls, circuit trees that overuse a circuit-only
+    // channel route first, so the same tree stops losing it. Packet-shared
+    // overuse is left to the packet steering.
     if (illegalEdges < fewestIllegal) {
       fewestIllegal = illegalEdges;
       sinceFewest = reorderedStall = 0;

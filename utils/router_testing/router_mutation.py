@@ -1567,10 +1567,7 @@ def main():
         )
     if args.shrink:
         done = set()
-        # One shared deadline for every failure shrunk in this run, not a
-        # fresh --shrink-budget-s per failure: a regression that introduces
-        # several distinct failure kinds at once must not multiply the
-        # shrink phase's wall-clock by how many of them there are.
+        # One deadline for the whole shrink phase, not one per failure.
         shrink_deadline = time.monotonic() + args.shrink_budget_s
         for seed, kind, outcome, name, detail, payload in failures:
             if (

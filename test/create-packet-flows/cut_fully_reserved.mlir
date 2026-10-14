@@ -9,11 +9,8 @@
 
 // CHECK: error: Unable to find a legal routing: the circuit flows from (0, 1) DMA:0 cross from row 2 to row 3, which takes 1 channel across, and it has 0 channels.
 
-// Six fixed connects at (0, 2) drive every one of its six North outputs, so
-// no channel is left across the row 2/3 boundary at all: cutOverflow's map
-// must still carry an entry for a boundary with zero available channels, or
-// a flow that needs to cross it falls through to the slow relax loop instead
-// of failing at once.
+// Fixed connects take all six North outputs of (0, 2), so the boundary above
+// it has no channel left; that still fails at once.
 
 module {
   aie.device(npu1_1col) {

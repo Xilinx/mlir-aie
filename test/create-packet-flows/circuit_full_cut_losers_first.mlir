@@ -10,13 +10,9 @@
 
 // NOERR-NOT: {{warning|error}}
 
-// Circuit trees fill the channels up from row 1 to row 2 but for the packet
-// flow's, so the router's overuse settles at one channel, moving from column
-// to column. Once it stops shrinking, the circuit trees that took an overused
-// channel route first, and the overused channels accrue history faster, so
-// the trees spread across the columns before they cross. Without that, every
-// one of the 1000 iterations ended one channel short. Reduced from
-// router_mutation.py npu2 seed 207400143 (port-cap).
+// Circuit trees fill the channels from row 1 to row 2; without routing the
+// losers first once the overuse stalls, every iteration ends one short.
+// Reduced from router_mutation.py npu2 seed 207400143 (port-cap).
 
 module {
   aie.device(npu2) {

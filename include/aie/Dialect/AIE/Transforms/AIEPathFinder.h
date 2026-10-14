@@ -260,10 +260,8 @@ struct RoutingFaults {
   // in a hold cycle, so their trees should meet: each routes the ids the
   // other does not send as a part of their own from then on.
   std::vector<std::pair<PathEndPoint, PathEndPoint>> together;
-  // Sources whose tree passes a switchbox twice and waits there on an arbiter
-  // it holds itself, in a hold cycle; each stops reaching the destinations it
-  // shares with another tree by one master port out of its source switchbox
-  // (see RouteState::trunked).
+  // Sources whose tree waits on an arbiter it holds itself; they stop
+  // trunking (see RouteState::trunked).
   std::vector<PathEndPoint> untrunk;
   // Whether the connections all break the overlay's master sets; see
   // RouteState::overlayMasters.

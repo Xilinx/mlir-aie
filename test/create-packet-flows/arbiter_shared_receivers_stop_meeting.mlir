@@ -8,14 +8,10 @@
 // RUN: not aie-opt --split-input-file --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=ERR
 // RUN: aie-opt --split-input-file --aie-create-pathfinder-flows="allow-deadlock-prone=true" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
 
-// Trees sending packets to two receivers they share meet once on the way, so
-// one holds the other off before either branches. Where no meeting fits, the
-// last relax step routes them without one: what is left is a hold cycle
-// through those receivers, which allow-deadlock-prone warns of. Each design
-// failed to route either way before, with another reason.
+// Trees that cannot meet route without meeting, leaving a hold cycle through
+// the receivers they share: an error, or a warning with allow-deadlock-prone.
 
-// Ids 29, 28 and 11 each go to (0, 0) DMA:1 and (0, 5) DMA:1. Meeting put ids
-// 28 and 29 on one arbiter at (0, 4), in a cycle with the receivers' drains.
+// Meeting put ids 28 and 29 on one arbiter at (0, 4), in a hold cycle.
 // Reduced from router_mutation.py npu1 seed 207360280 (move-endpoint).
 
 // ERR: error: Unable to find a legal routing: Packet flows into receivers they share can deadlock holding arbiters across switchboxes, and no routing found avoids it: packet flow (0, 3) Core:0 -> (0, 0) DMA:1 (id 28)
@@ -36,11 +32,9 @@ module {
 
 // -----
 
-// (0, 3) DMA:1 sends id 3 up to (0, 5) and down to (0, 1), with ids 4 and 20,
-// and (0, 0) DMA:0 sends id 3 to both too. Joining (0, 0)'s tree at (0, 3)
-// ties ids 4 and 20 to its arbiter there, which they must keep off; splitting
-// them apart instead took more channels down from (0, 3) than it has. The
-// routing check undoes the join rather than split the ids.
+// Joining (0, 0)'s id 3 tree at (0, 3) ties (0, 3) DMA:1's ids 4 and 20 to its
+// arbiter; the check undoes the join rather than split them across channels
+// (0, 3) does not have.
 // Reduced from router_mutation.py npu1 seed 207380308 (multi-source).
 
 // ERR: error: Unable to find a legal routing: Packet flows into receivers they share can deadlock holding arbiters across switchboxes, and no routing found avoids it: packet flow (0, 0) DMA:0 -> (0, 1) DMA:4 (id 3)
