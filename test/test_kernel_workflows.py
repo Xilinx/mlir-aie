@@ -401,6 +401,20 @@ def test_model_based_tests_publish_only_an_unfiltered_run_on_main(event, ref, gi
     )
 
 
+def test_model_based_tests_collect_every_router_leg_and_no_other():
+    jobs = workflow("modelBasedTests.yml")["jobs"]
+    matrix = jobs["router"]["strategy"]["matrix"]
+    leg = next(s for s in jobs["router"]["steps"] if s.get("env", {}).get("RUN"))
+    assert 'report="results/router/reports/$DEVICE-$RUN.json"' in leg["run"]
+    collect = next(s["run"] for s in jobs["collect"]["steps"] if "run" in s)
+    devices = re.search(r"for device in ([^;]+); do", collect).group(1).split()
+    runs = re.search(r"for run in ([^;]+); do", collect).group(1).split()
+    assert devices == matrix["device"]
+    assert runs == matrix["run"]
+    assert set(jobs["collect"]["needs"]) == {"build", "router"}
+    assert jobs["collect"]["if"] == "always()"
+
+
 def test_model_based_tests_publish_both_checks_and_the_page(tmp_path):
     """modelBasedTests.yml's Publish step, on a local repository, with what
     model_based.py makes of the scripts' reports."""
