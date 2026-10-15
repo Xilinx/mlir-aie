@@ -229,11 +229,12 @@ class DmaEndpoint:
         npu_sync(tile.col, tile.row, self.direction.value, self.channel)
 
     def _operand(self) -> int | str:
-        """Return the channel operand: its index if given, else the endpoint symbol."""
-        if self.channel is not None:
-            return self.channel
-        assert self.symbol is not None
-        return self.symbol
+        """Return the channel operand: the endpoint symbol where this end lowers
+        to one, pinned or not, else its index."""
+        if self.symbol is not None:
+            return self.symbol
+        assert self.channel is not None
+        return self.channel
 
     def _check_on(self, tile: Tile, direction: DMAChannelDir) -> None:
         if self.tile != tile:
@@ -326,7 +327,8 @@ class DmaEndpoint:
             repeat = dict(repeat_count=int(runs) - 1)
         else:
             repeat = dict(repeat_count_val=runs - 1)
-        operand = self._operand()
+        # aiex.dma_configure_task_for has no out_of_order.
+        operand = self.channel if out_of_order else self._operand()
         if isinstance(operand, str):
             op = dma_configure_task_for(operand, issue_token=wait, **repeat)
         else:
