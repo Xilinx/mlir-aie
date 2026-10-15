@@ -5,6 +5,7 @@
 #
 """Packed quantization kernel factories and byte-exact host references."""
 
+import math
 from functools import partial
 
 import numpy as np
@@ -58,19 +59,60 @@ def _bf16_floor(x):
     return (upper << 16).view(np.float32)
 
 
-def q4nx_dequant_ref(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8):
-    """Dequantize packed q4nx to the kernel's bfp16ebs8 output bytes.
+def q4nx_unpack(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8):
+    """Unpack packed q4nx to its codes, scales and minima.
 
     Input has shape ``(..., m_tile*k_tile//2 + 4*m_tile*k_tile//group)``.
     It contains little-endian bf16 scales, then bf16 minima, both indexed
     ``[k_group, n]``, followed by unsigned nibbles (low nibble first) indexed
-    ``[n//16, k, n%16]``. Values are ``min + scale * nibble``.
+    ``[n//16, k, n%16]``. The weight at ``[..., k, n]`` is
+    ``mins[..., k // group, n] + scales[..., k // group, n] * codes[..., k, n]``.
+    Finite scales and minima are required.
+
+    Returns:
+        ``(codes, scales, mins)``, with the same leading dimensions as
+        ``payload``: ``codes`` is ``uint8`` with shape ``(..., k_tile,
+        m_tile)``; ``scales`` and ``mins`` are ``float32`` with shape
+        ``(..., k_tile // group, m_tile)``.
+    """
+    geometry = _geometry(m_tile, k_tile, group, ct_k, s, t)
+    m_tile, k_tile, group, ct_k, s, t = geometry.values()
+    scales_count = m_tile * k_tile // group
+    input_bytes = m_tile * k_tile // 2 + 4 * scales_count
+    payload = np.asarray(payload, dtype=np.uint8)
+    if payload.ndim == 0 or payload.shape[-1] != input_bytes:
+        raise ValueError(f"q4nx_unpack: expected {input_bytes} bytes per tile")
+    lead = payload.shape[:-1]
+    data = payload.reshape(-1, input_bytes)
+    if not len(data):
+        codes = np.empty((*lead, k_tile, m_tile), dtype=np.uint8)
+        params = np.empty((*lead, k_tile // group, m_tile), dtype=np.float32)
+        return codes, params, params.copy()
+    params = np.ascontiguousarray(data[:, : 4 * scales_count]).view("<u2")
+    params = (params.astype(np.uint32) << 16).view(np.float32)
+    if not np.isfinite(params).all():
+        raise ValueError("q4nx_unpack: scales and minima must be finite")
+    scales, mins = params.reshape(-1, 2, k_tile // group, m_tile).transpose(1, 0, 2, 3)
+    packed = data[:, 4 * scales_count :]
+    q = np.empty((len(data), m_tile * k_tile), dtype=np.uint8)
+    q[:, 0::2], q[:, 1::2] = packed & 15, packed >> 4
+    q = q.reshape(-1, m_tile // 16, k_tile, 16).transpose(0, 2, 1, 3)
+    q = q.reshape(*lead, k_tile, m_tile)
+    scales = scales.reshape(*lead, k_tile // group, m_tile)
+    mins = mins.reshape(*lead, k_tile // group, m_tile)
+    return q, scales, mins
+
+
+def q4nx_dequant_ref(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8):
+    """Dequantize packed q4nx to the kernel's bfp16ebs8 output bytes.
+
+    See ``q4nx_unpack`` for the packed input layout.
 
     Accumulator results narrow to bf16 with floor rounding before BFP
     conversion. Output is uint8 with the same leading dimensions, indexed
     ``[k//ct_k, n//8, (k%ct_k)//8, n%8, 9]``: each nine-byte block is an
     exponent followed by eight signed mantissas for consecutive k values.
-    Finite scales/minima and finite dequantized bf16 results are required.
+    Finite dequantized bf16 results are required.
     """
     geometry = _geometry(m_tile, k_tile, group, ct_k, s, t)
     m_tile, k_tile, group, ct_k, s, t = geometry.values()
@@ -80,19 +122,12 @@ def q4nx_dequant_ref(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8,
     if payload.ndim == 0 or payload.shape[-1] != input_bytes:
         raise ValueError(f"q4nx_dequant_ref: expected {input_bytes} bytes per tile")
     lead = payload.shape[:-1]
-    data = payload.reshape(-1, input_bytes)
-    if not len(data):
+    if not math.prod(lead):
         return np.empty((*lead, m_tile * k_tile * 9 // 8), dtype=np.uint8)
-    params = np.ascontiguousarray(data[:, : 4 * scales_count]).view("<u2")
-    params = (params.astype(np.uint32) << 16).view(np.float32)
-    if not np.isfinite(params).all():
-        raise ValueError("q4nx_dequant_ref: scales and minima must be finite")
-    scales, mins = params.reshape(-1, 2, k_tile // group, m_tile).transpose(1, 0, 2, 3)
-    packed = data[:, 4 * scales_count :]
-    q = np.empty((len(data), m_tile * k_tile), dtype=np.uint8)
-    q[:, 0::2], q[:, 1::2] = packed & 15, packed >> 4
-    q = q.reshape(-1, m_tile // 16, k_tile, 16).transpose(0, 2, 1, 3)
+    q, scales, mins = q4nx_unpack(payload, **geometry)
     q = q.reshape(-1, k_tile, m_tile)
+    scales = scales.reshape(-1, k_tile // group, m_tile)
+    mins = mins.reshape(-1, k_tile // group, m_tile)
     # A bf16 scale times a four-bit integer is exact in float32. Float64
     # models the fused addition before its single float32 accumulator rounding.
     with np.errstate(over="ignore", invalid="ignore"):
@@ -105,7 +140,7 @@ def q4nx_dequant_ref(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8,
         raise ValueError("q4nx_dequant_ref: dequantized bf16 values must be finite")
     values = values.reshape(-1, k_tile // ct_k, ct_k // s, s, m_tile // t, t)
     values = values.transpose(0, 1, 4, 2, 5, 3)
-    encoded = bfp.encode(values.reshape(len(data), -1))
+    encoded = bfp.encode(values.reshape(math.prod(lead), -1))
     return encoded.reshape(*lead, m_tile * k_tile * 9 // 8)
 
 
