@@ -4819,7 +4819,7 @@ INTERNALS = (
     "iterations:2",
     "iterations:3-9",
     "iterations:10+",
-    "max-iterations",
+    "gave-up",
     "overcapacity",
     "illegal-edges",
     "hold-cycle",
@@ -5089,8 +5089,8 @@ def internals(debug):
     iters = [int(n) for n in re.findall(r"End findPaths iteration #(\d+)", debug)]
     if iters:
         out.add(f"iterations:{bucket(max(iters) + 1, (1, 2, 9))}")
-    if "maxIterations has been exceeded" in debug:
-        out.add("max-iterations")
+    if "Pathfinder: giving up after" in debug:
+        out.add("gave-up")
     if "Too much capacity" in debug:
         out.add("overcapacity")
     if re.search(r"illegal edges count = [1-9]", debug):

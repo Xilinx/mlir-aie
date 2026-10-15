@@ -2316,6 +2316,11 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     } else if (st.splitsOf[flow]
                    .insert({split.at, split.a, split.b, apart})
                    .second) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Split ids " << split.a << " and " << split.b << " from "
+                 << describeTilePort(split.src.coords, split.src.port)
+                 << " at tile (" << split.at.col << ", " << split.at.row
+                 << ")\n");
       illegalEdges++;
     }
   }
@@ -2472,9 +2477,13 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
         (fewestIllegal > 0 && sinceFewest >= maxOverusedStall) ||
         reorderedStall >= maxReorderedStall) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "\t\tPathfinder: maxIterations has been exceeded ("
-                 << maxIterations
-                 << " iterations)...unable to find routing for flows.\n");
+                 << "\t\tPathfinder: giving up after " << iterationCount
+                 << " iterations ("
+                 << (iterationCount >= maxIterations ? "the iteration limit"
+                     : reorderedStall >= maxReorderedStall
+                         ? "circuit trees routed first stopped helping"
+                         : "the overuse stalled")
+                 << ")...unable to find routing for flows.\n");
       packetsFailed =
           !checkReason.empty() || llvm::any_of(graph, [](const auto &entry) {
             ArrayRef<SwitchboxConnect::Cell> cells = entry.second.cells;
@@ -2602,9 +2611,12 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     // Each stall period without a legal routing, the packet trees drop their
     // id splits: the routing that faulted them may be gone, and the routing
     // check adds back any still needed.
-    if (sinceFewest >= stallIterations && sinceFewest % stallIterations == 0)
+    if (sinceFewest >= stallIterations && sinceFewest % stallIterations == 0) {
+      LLVM_DEBUG(llvm::dbgs() << "Drop the id splits after " << sinceFewest
+                              << " stalled iterations\n");
       for (auto &splits : st.splitsOf)
         splits.clear();
+    }
 
     // A routing that fits the fabric can still be one the caller cannot use;
     // steer away from the connections it names as if they were overused. One
