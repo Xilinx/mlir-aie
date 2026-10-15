@@ -505,7 +505,7 @@ class Design:
                     if keep is not None:
                         attrs.append(f"keep_pkt_header = {str(keep).lower()}")
                     if ctrl:
-                        attrs.append("is_ctrl_pkt_overlay")
+                        attrs.append("aie.is_ctrl_pkt_overlay")
                     out.append(
                         f"      %m_{BUNDLES[port[0]]}_{port[1]} = aie.masterset("
                         f"{BUNDLES[port[0]]} : {port[1]}, "
@@ -522,9 +522,11 @@ class Design:
                     for (mask, value, name), tag in zip(rules, tagged):
                         out.append(
                             f"        aie.rule({mask}, {value}, %{name})"
-                            + (" {is_ctrl_pkt_overlay}" if tag else "")
+                            + (" {aie.is_ctrl_pkt_overlay}" if tag else "")
                         )
-                    out.append("      }" + (" {is_ctrl_pkt_overlay}" if ctrl else ""))
+                    out.append(
+                        "      }" + (" {aie.is_ctrl_pkt_overlay}" if ctrl else "")
+                    )
             out.append("    }")
         for (c, r), conns in sorted(self.muxes.items()):
             out.append(f"    %mux_{c}_{r} = aie.shim_mux(%t_{c}_{r}) {{")
@@ -878,7 +880,7 @@ def load_design(text):
                                 if "keep_pkt_header" in a
                                 else None
                             ),
-                            "is_ctrl_pkt_overlay" in a,
+                            "aie.is_ctrl_pkt_overlay" in a,
                         )
                     )
                 elif x.name == "aie.packet_rules":
@@ -893,13 +895,13 @@ def load_design(text):
                                     names.get(value_key(y.operands[0])),
                                 )
                             )
-                            tagged.append("is_ctrl_pkt_overlay" in ya)
+                            tagged.append("aie.is_ctrl_pkt_overlay" in ya)
                     out.append(
                         (
                             "rules",
                             (_int(a["source_bundle"]), _int(a["source_channel"])),
                             rules,
-                            "is_ctrl_pkt_overlay" in a,
+                            "aie.is_ctrl_pkt_overlay" in a,
                             tagged,
                         )
                     )
@@ -3734,19 +3736,20 @@ def verify(d, an, text, hops_on):
 
     keeps = last_keep(d)
     mixed_ctrl, low_priority, ctrl_used = set(), set(), set()
-    # Without a control-packet reload, a routing that cannot keep the overlay
-    # routes the prioritized flows as the others.
-    prioritized = d.reload or any(
-        op[4] for ops in out.boxes.values() for op in box_view(ops)[2].values()
-    )
-    # A source's packets with a priority flow's id route as that flow does.
-    prio_sent = {
-        (src, f["id"])
+
+    # The router marks a prioritized flow's hops as the control overlay's,
+    # whether or not it could route it first, but a control-packet reload
+    # configures one with no TileControl end with the rest of the design.
+    marked = [
+        bool(f["priority"])
+        and (not d.reload or any(e[2] == CTRL for e in f["srcs"] + f["dsts"]))
         for f in d.packet_flows
-        if f["priority"] and prioritized
-        for src in f["srcs"]
+    ]
+    # A source's packets with a marked flow's id route as that flow does.
+    prio_sent = {
+        (src, f["id"]) for f, m in zip(d.packet_flows, marked) if m for src in f["srcs"]
     }
-    for f in d.packet_flows:
+    for f, f_marked in zip(d.packet_flows, marked):
         for dst in f["dsts"]:
             for src in f["srcs"]:
                 hops = paths.get((src, dst, f["id"]))
@@ -3770,7 +3773,7 @@ def verify(d, an, text, hops_on):
                         )
                     if (src, f["id"]) in prio_sent:
                         ctrl_used.add((tile, m))
-                    if not (f["priority"] and prioritized):
+                    if not f_marked:
                         if ctrl:
                             mixed_ctrl.add((tile, m))
                         continue
@@ -4816,7 +4819,7 @@ INTERNALS = (
     "iterations:2",
     "iterations:3-9",
     "iterations:10+",
-    "max-iterations",
+    "gave-up",
     "overcapacity",
     "illegal-edges",
     "hold-cycle",
@@ -5086,8 +5089,8 @@ def internals(debug):
     iters = [int(n) for n in re.findall(r"End findPaths iteration #(\d+)", debug)]
     if iters:
         out.add(f"iterations:{bucket(max(iters) + 1, (1, 2, 9))}")
-    if "maxIterations has been exceeded" in debug:
-        out.add("max-iterations")
+    if "Pathfinder: giving up after" in debug:
+        out.add("gave-up")
     if "Too much capacity" in debug:
         out.add("overcapacity")
     if re.search(r"illegal edges count = [1-9]", debug):
@@ -5665,6 +5668,9 @@ def main(argv=None):
     cli.add_argument(
         "--space-out", type=Path, default=None, help="write route spaces (JSON)"
     )
+    cli.add_argument(
+        "--report", type=Path, default=None, help="write the properties and counts"
+    )
     args = cli.parse_args(argv)
     for kv in args.param:
         k, v = kv.split("=", 1)
@@ -5678,9 +5684,11 @@ def main(argv=None):
     first = args.first_seed
 
     regressions = []
+    properties = []
 
     def report(label, ok, detail):
         print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
+        properties.append({"name": label, "ok": bool(ok), "detail": detail})
         if not ok:
             regressions.append(label)
 
@@ -6106,6 +6114,29 @@ def main(argv=None):
         f"{per_design:.1f} ms per design (max {max_ms})",
     )
     print(f"total: {time.monotonic() - t_start:.1f}s")
+    if args.report:
+        counts = {
+            "routings": runs,
+            "unrouted": len(failed),
+            "illegal": len(illegal) + len(unknown_illegal),
+            "unstable": nondet,
+            "hop_ratio": round(ratio, 4),
+            "amsels_per_design": round(totals["amsels"] / n, 3),
+            "ms_per_design": round(per_design, 2),
+            "wall_s": round(time.monotonic() - t_start, 1),
+        }
+        args.report.write_text(
+            json.dumps(
+                {
+                    "device": args.device,
+                    "first_seed": first,
+                    "seeds": PARAMS["routable"],
+                    "properties": properties,
+                    "counts": counts,
+                },
+                indent=1,
+            )
+        )
     return 1 if regressions else 0
 
 

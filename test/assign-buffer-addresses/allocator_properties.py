@@ -3,7 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %python %s | FileCheck %s
+# RUN: %python %s --report %t.json | FileCheck %s
+# RUN: %python %S/../../utils/component_checks/model_based.py allocator --report %t.json --out %t.perf.json --meta %t.meta.json
+# RUN: FileCheck --check-prefix=PERF %s < %t.perf.json
 
 # Property-based test for --aie-assign-buffer-addresses.
 #
@@ -22,6 +24,7 @@
 # below them is a regression.
 
 import argparse
+import json
 import random
 import re
 import subprocess
@@ -969,6 +972,7 @@ def main(argv=None):
     # MIN_SEARCHED_TILES still holds.
     cli.add_argument("--bankres-seeds", type=int, default=BANKRES_SEEDS)
     cli.add_argument("--jobs", type=int, default=4, help="parallel aie-opt runs")
+    cli.add_argument("--report", help="write the properties and counts here (JSON)")
     args = cli.parse_args(argv)
     if args.seeds < SEEDS:
         cli.error(f"--seeds must be at least {SEEDS} to preserve quality ratchets")
@@ -979,6 +983,7 @@ def main(argv=None):
         )
     if args.jobs < 1:
         cli.error("--jobs must be at least 1")
+    t_start = time.monotonic()
     pool = ThreadPoolExecutor(args.jobs)
 
     designs = []
@@ -1061,9 +1066,11 @@ def main(argv=None):
         print("ILLEGAL:", line)
 
     regressions = []
+    properties = []
 
     def report(label, ok, detail):
         print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}")
+        properties.append({"name": label, "ok": bool(ok), "detail": detail})
         if not ok:
             regressions.append(label)
 
@@ -1136,6 +1143,28 @@ def main(argv=None):
         f"{len(stress_placed) if stress_placed else 0}/{STRESS_BUFFERS} placed "
         f"in {stress_elapsed:.1f}s (max {STRESS_MAX_SECONDS}s)",
     )
+    if args.report:
+        counts = {
+            "designs": total + bankres_total,
+            "unsolved": len(unsolved) + len(bankres_unsolved),
+            "illegal": len(illegal) + len(bankres_illegal),
+            "unstable": nondet,
+            "avoidable_crossings": needless,
+            "bank_pair_sharing": round(mean_share, 4),
+            "backtracked_tiles": bankres_searched,
+            "wall_s": round(time.monotonic() - t_start, 1),
+        }
+        with open(args.report, "w") as f:
+            json.dump(
+                {
+                    "seeds": args.seeds,
+                    "bankres_seeds": args.bankres_seeds,
+                    "properties": properties,
+                    "counts": counts,
+                },
+                f,
+                indent=1,
+            )
     return 1 if regressions else 0
 
 
@@ -1151,6 +1180,17 @@ def main(argv=None):
 # CHECK: forced-regressions: {{.*}} : OK
 # CHECK: stress: {{.*}} : OK
 # CHECK-NOT: REGRESSION
+
+# The report, as the nightly publishes it.
+# PERF: "name": "allocator/failed_properties",
+# PERF-NEXT: "unit": "properties",
+# PERF-NEXT: "value": 0
+# PERF: "name": "allocator/unsolved",
+# PERF-NEXT: "unit": "designs",
+# PERF-NEXT: "value": 0
+# PERF: "name": "allocator/illegal",
+# PERF-NEXT: "unit": "designs",
+# PERF-NEXT: "value": 0
 
 if __name__ == "__main__":
     sys.exit(main())

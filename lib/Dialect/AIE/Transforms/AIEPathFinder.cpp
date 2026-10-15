@@ -63,6 +63,19 @@ constexpr int packetFanoutCap = 2;
 constexpr double treeSeedFactor = 0.9;
 // A destination's branch is rerouted only when that saves more than this.
 constexpr double rerouteMinSaving = 1e-6;
+// Iterations without fewer overused channels before the circuit trees that
+// overuse one route first (see findPaths).
+constexpr int stallIterations = 50;
+// Iterations of a stall that route the losing circuit trees first, without
+// fewer overused channels, before the attempt gives up.
+constexpr int maxReorderedStall = 300;
+// Iterations without fewer overused channels before an attempt that has never
+// fit the fabric gives up. In the nightly's designs, none that routed took
+// over 275.
+constexpr int maxOverusedStall = 400;
+// How much faster a stalled routing's overused channels that only circuit
+// trees take accrue history, so the trees spread out sooner.
+constexpr int stallHistory = 4;
 } // namespace
 
 void SwitchboxConnect::updateDemand() {
@@ -269,17 +282,21 @@ void Pathfinder::initialize(int maxCol, int maxRow,
                             const AIETargetModel &targetModel) {
   // Reset the graph and flows so a Pathfinder can be reused across analyses
   // and devices; the dense-graph cache must be rebuilt for the new topology.
-  // The relax state (shareChannels, idsApart, relaxStep, cappedTiles,
-  // crowdedTiles) survives, so the ladder advances across attempts.
+  // The relax state (shareChannels, idsApart, meetApart, relaxStep,
+  // cappedTiles, crowdedTiles) survives, so the ladder advances across
+  // attempts.
   graph.clear();
   flows.clear();
   packetIdsTo.clear();
   priorityIds.clear();
   flowLocs.clear();
   graphBuilt = false;
+  columns = maxCol;
+  rows = maxRow;
   nodeIds.clear();
   nodes.clear();
   adjacency.clear();
+  wireEdgesBegin.clear();
   distance.clear();
   indexInHeap.clear();
   colors.clear();
@@ -467,18 +484,34 @@ bool Pathfinder::splitSharedIds() {
   return false;
 }
 
+// The steps before it bent the routing around the meetings, so the ladder
+// starts over without them.
+bool Pathfinder::stopMeeting() {
+  if (meetApart || !treesMet)
+    return false;
+  meetApart = true;
+  shareChannels = idsApart = splitShared = false;
+  cappedTiles.clear();
+  relaxStep = 0;
+  return true;
+}
+
 namespace {
 enum class RelaxStep {
   ShareChannels,
   CapCrowdedTiles,
   RouteIdsApart,
-  SplitSharedIds
+  SplitSharedIds,
+  StopMeeting
 };
+// Stopping meetings comes last, and runs the ladder once more: what it routes
+// can hold arbiters in a cycle through the receivers trees share.
 constexpr RelaxStep relaxLadder[] = {
     RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles,
     RelaxStep::RouteIdsApart,   RelaxStep::ShareChannels,
     RelaxStep::CapCrowdedTiles, RelaxStep::SplitSharedIds,
-    RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles};
+    RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles,
+    RelaxStep::StopMeeting};
 } // namespace
 
 bool Pathfinder::relax() {
@@ -505,16 +538,22 @@ bool Pathfinder::relax() {
         LLVM_DEBUG(llvm::dbgs() << "Relax: route ids apart\n");
         return true;
       }
-      // With one id per source, the steps after it would only repeat.
-      relaxStep = std::size(relaxLadder);
-      return false;
+      // With one id per source, the steps up to the last would only repeat.
+      relaxStep = std::size(relaxLadder) - 1;
+      break;
     case RelaxStep::SplitSharedIds:
       if (splitSharedIds()) {
         LLVM_DEBUG(llvm::dbgs() << "Relax: split shared ids\n");
         return true;
       }
-      relaxStep = std::size(relaxLadder);
-      return false;
+      relaxStep = std::size(relaxLadder) - 1;
+      break;
+    case RelaxStep::StopMeeting:
+      if (stopMeeting()) {
+        LLVM_DEBUG(llvm::dbgs() << "Relax: stop meeting\n");
+        return true;
+      }
+      break;
     }
   }
   return false;
@@ -697,8 +736,9 @@ int Pathfinder::getOrAddNodeId(const PathEndPoint &pep) {
 // Build the dense integer node numbering and per-node adjacency once. The graph
 // topology is fixed across congestion iterations (only the demand weights
 // change), so this is computed a single time and the edges carry live pointers
-// into `graph` for demand lookups. A node's edges are sorted by the
-// PathEndPoint they reach, so Dijkstra breaks ties the same way every run.
+// into `graph` for demand lookups. A node's crossbar edges come first, then its
+// wire edges, each sorted by the PathEndPoint they reach, so Dijkstra breaks
+// ties the same way every run.
 void Pathfinder::buildRoutingGraph() {
   // Seed the dense node set with all flow endpoints (the only nodes Dijkstra is
   // ever started from or traced back to). Remaining nodes are discovered as
@@ -752,6 +792,13 @@ void Pathfinder::buildRoutingGraph() {
       int destId = getOrAddNodeId(dest);
       edges.push_back(Edge{destId, &sb, i, j});
     }
+    auto wires =
+        std::stable_partition(edges.begin(), edges.end(), [](const Edge &e) {
+          return e.sb->srcCoords == e.sb->dstCoords;
+        });
+    if (wireEdgesBegin.size() < nodes.size())
+      wireEdgesBegin.resize(nodes.size());
+    wireEdgesBegin[id] = wires - edges.begin();
     // getOrAddNodeId above may have reallocated `adjacency` via index growth in
     // later iterations, but we only assign this node's edges now.
     if (adjacency.size() < nodes.size())
@@ -761,6 +808,7 @@ void Pathfinder::buildRoutingGraph() {
   size_t n = nodes.size();
   if (adjacency.size() < n)
     adjacency.resize(n);
+  wireEdgesBegin.resize(n);
 
   // Size the reusable Dijkstra scratch buffers. These are indexed by state id,
   // i.e. two entries per node -- one per side of the port.
@@ -838,17 +886,19 @@ void Pathfinder::dijkstraShortestPaths(
     if (branchAvoid)
       if (auto it = branchAvoid->find(s); it != branchAvoid->end())
         avoidBranch = &it->second;
-    for (Edge &e : adjacency[stateNode(s)]) {
-      const bool isIntra = e.sb->srcCoords == e.sb->dstCoords;
-      if (sIsOut == isIntra ||
-          (isIntra && !packetId && e.sb->packetOnlySrc[e.i]) ||
+    ArrayRef<Edge> out = adjacency[stateNode(s)];
+    size_t wires = wireEdgesBegin[stateNode(s)];
+    const bool isIntra = !sIsOut;
+    for (const Edge &e :
+         sIsOut ? out.drop_front(wires) : out.take_front(wires)) {
+      if ((isIntra && !packetId && e.sb->packetOnlySrc[e.i]) ||
           (isIntra && packetId && e.sb->circuitOnlyDst[e.j]))
         continue;
       int dst = stateId(e.dst, isIntra ? Out : In);
-      if (isIntra && mayCross && !mayCross(s, dst))
+      if (colors[dst] == BLACK || (isIntra && mayCross && !mayCross(s, dst)))
         continue;
       double w = edgeWeight(e, packetId, avoid, avoidBranch);
-      if (colors[dst] == BLACK || distance[s] + w >= distance[dst])
+      if (distance[s] + w >= distance[dst])
         continue;
       distance[dst] = distance[s] + w;
       preds[dst] = s;
@@ -897,6 +947,9 @@ struct Pathfinder::RouteState {
   // Each packet flow's tree as routed so far this iteration: the state each
   // hop reaches, from which state and by which edge; and its destinations.
   std::vector<llvm::DenseMap<int, std::pair<int, Edge>>> treeOf;
+  // Each circuit flow's hops this iteration, which treeOf keeps for packet
+  // flows only.
+  std::vector<SmallVector<Edge, 8>> circuitHops;
   std::vector<SmallVector<int, 4>> treeDsts;
   // The hops each flow takes only by joining another flow's tree, by the flow
   // it joined. A join the routing check faults is not made again.
@@ -927,6 +980,9 @@ struct Pathfinder::RouteState {
   // no slave port there to meet it by. Each of an unmet pair then reaches the
   // destinations it shares with the other by one master port out of it.
   std::set<std::pair<int, int>> trunked;
+  // Sources whose trunk took their tree back through a switchbox it holds an
+  // arbiter in (RoutingFaults::untrunk), which branch freely from then on.
+  std::set<PathEndPoint> untrunked;
   // The flows that met a tree this iteration, by its flow, and how often the
   // routing check faulted a meeting of each pair.
   std::set<std::pair<int, int>> met;
@@ -946,8 +1002,8 @@ struct Pathfinder::RouteState {
 Pathfinder::RouteState::RouteState(const Pathfinder &pf)
     : pf(pf), processedStamp(2 * pf.nodes.size(), 0), parts(pf.flows),
       conflicting(parts.size(), llvm::BitVector(parts.size())),
-      flowIds(parts.size()), treeOf(parts.size()), treeDsts(parts.size()),
-      joinedHops(parts.size()), splitsOf(parts.size()),
+      flowIds(parts.size()), treeOf(parts.size()), circuitHops(parts.size()),
+      treeDsts(parts.size()), joinedHops(parts.size()), splitsOf(parts.size()),
       partSplits(parts.size()) {
   for (auto [k, f] : llvm::enumerate(parts))
     partsOf[f.src].push_back(k);
@@ -1100,6 +1156,7 @@ int Pathfinder::RouteState::splitPart(int flow, const std::set<int> &ids) {
   groupedFlows[groupOf(f)].push_back(part);
   relateParts();
   treeOf.emplace_back();
+  circuitHops.emplace_back();
   treeDsts.emplace_back();
   joinedHops.emplace_back();
   for (auto [a, b] : std::set<std::pair<int, int>>(noJoin))
@@ -1244,6 +1301,83 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
       ", and the router found no routing that fits them.");
 }
 
+llvm::Error Pathfinder::cutOverflow() const {
+  // Each circuit tree crossing a boundary needs a channel of its own, and the
+  // packet flows one more, or one each for streams no two of which may share
+  // an arbiter, since a channel's master port has one. Channels fixed
+  // connections hold are not the router's to use, so this rejects only what
+  // it could not route anyway.
+  auto onDevice = [&](TileID t) { return t.col < columns && t.row < rows; };
+  std::map<std::tuple<bool, int, bool>, size_t> channels;
+  for (const auto &[ends, sb] : graph) {
+    const auto &[a, b] = ends;
+    auto xbar = graph.find({a, a});
+    if (a == b || !onDevice(a) || !onDevice(b) || xbar == graph.end())
+      continue;
+    bool rows = a.col == b.col;
+    int below = rows ? std::min(a.row, b.row) : std::min(a.col, b.col);
+    bool up = rows ? b.row > a.row : b.col > a.col;
+    const SwitchboxConnect &x = xbar->second;
+    // A boundary with no available channel at all (every one is a fixed
+    // connection's) still needs an entry, so flows that must cross it are
+    // not skipped as if the boundary did not exist.
+    channels[{rows, below, up}] += 0;
+    for (Port port : sb.srcPorts) {
+      int k = x.dstIndex(port);
+      if (k >= 0 &&
+          llvm::any_of(llvm::seq<size_t>(0, x.srcPorts.size()),
+                       [&](size_t i) { return x.at(i, k).available; }))
+        channels[{rows, below, up}]++;
+    }
+  }
+  for (const auto &[cut, available] : channels) {
+    bool rows = std::get<0>(cut), up = std::get<2>(cut);
+    int below = std::get<1>(cut);
+    auto low = [&](TileID t) { return (rows ? t.row : t.col) <= below; };
+    std::vector<std::string> circuits;
+    bool packets = false;
+    for (const Flow &f : flows) {
+      if (low(f.src.coords) != up ||
+          llvm::none_of(f.dsts, [&](const PathEndPoint &d) {
+            return low(d.coords) != up;
+          }))
+        continue;
+      if (f.packetId)
+        packets = true;
+      else
+        circuits.push_back(describeTilePort(f.src.coords, f.src.port));
+    }
+    PacketsApart apart;
+    if (packets && constraints.apartAcross && available > circuits.size())
+      apart = constraints.apartAcross(low, up, available - circuits.size());
+    size_t needed =
+        circuits.size() + std::max<size_t>(packets, apart.flows.size());
+    LLVM_DEBUG(llvm::dbgs() << "Cut " << (rows ? "row " : "column ") << below
+                            << (up ? " up" : " down") << ": " << needed
+                            << " of " << available << " channels\n");
+    if (needed <= available)
+      continue;
+    int from = up ? below : below + 1, to = up ? below + 1 : below;
+    auto channel = [](size_t n) { return n == 1 ? "channel" : "channels"; };
+    std::string who =
+        circuits.empty() ? "" : "the circuit flows from " + joinNames(circuits);
+    if (apart.flows.size() > 1)
+      who += (who.empty() ? "" : ", and ") + joinNames(apart.flows) +
+             ", no two of which can share an arbiter,";
+    else if (packets)
+      who =
+          circuits.empty() ? "the packet flows" : who + ", with packet flows,";
+    std::string why =
+        apart.flows.size() > 1 ? " For example, " + apart.why : "";
+    return llvm::make_error<RoutingFailure>(llvm::formatv(
+        "{0} cross from {1} {2} to {1} {3}, which takes {4} {5} across, and "
+        "it has {6} {7}.{8}",
+        who, rows ? "row" : "column", from, to, needed, channel(needed),
+        available, channel(available), why));
+  }
+  return llvm::Error::success();
+}
+
 // One flow's tree, grown by routePart.
 struct Pathfinder::TreeBuilder {
   TreeBuilder(Pathfinder &pf, RouteState &st, int flow);
@@ -1353,7 +1487,9 @@ Pathfinder::TreeBuilder::TreeBuilder(Pathfinder &pf, RouteState &st, int flow)
   }
   findJoins();
   for (auto it = st.trunked.lower_bound({flow, 0});
-       it != st.trunked.end() && it->first == flow; ++it) {
+       !st.untrunked.count(part.src) && it != st.trunked.end() &&
+       it->first == flow;
+       ++it) {
     SmallVector<int, 4> shared;
     for (const PathEndPoint &dst : st.parts[it->second].dsts)
       if (llvm::is_contained(part.dsts, dst))
@@ -1475,6 +1611,8 @@ void Pathfinder::TreeBuilder::findJoins() {
 // the other, so two trees meet only when each sends some id to two shared
 // destinations.
 void Pathfinder::TreeBuilder::meet() {
+  if (pf.meetApart)
+    return;
   auto spans = [&](int k, ArrayRef<int> dsts) {
     return llvm::any_of(st.flowIds[k], [&](int id) {
       return llvm::count_if(dsts, [&](int dst) {
@@ -1501,6 +1639,7 @@ void Pathfinder::TreeBuilder::meet() {
 
 void Pathfinder::TreeBuilder::meet(int owner) {
   st.unmet.insert({flow, owner});
+  pf.treesMet = true;
   bool other = foreign.count(owner);
   const auto &t = st.treeOf[owner];
   const Flow &o = st.parts[owner];
@@ -1968,6 +2107,8 @@ void Pathfinder::TreeBuilder::claim() {
     SwitchboxConnect::Cell &cell = sb.at(i, j);
     if (packetId)
       st.treeOf[flow].try_emplace(currId, predId, e);
+    else
+      st.circuitHops[flow].push_back(e);
     cell.isPriority |= part.isPriorityFlow;
     // Two trees with the same id may merge onto one only where nothing fans out
     // after, or where both take the id to the same destinations, so a merged id
@@ -2186,6 +2327,11 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     } else if (st.splitsOf[flow]
                    .insert({split.at, split.a, split.b, apart})
                    .second) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Split ids " << split.a << " and " << split.b << " from "
+                 << describeTilePort(split.src.coords, split.src.port)
+                 << " at tile (" << split.at.col << ", " << split.at.row
+                 << ")\n");
       illegalEdges++;
     }
   }
@@ -2242,6 +2388,13 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     illegalEdges++;
     st.relateParts();
   }
+  for (const PathEndPoint &src : faults.untrunk)
+    if (st.untrunked.insert(src).second) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Untrunk: " << describeTilePort(src.coords, src.port)
+                 << "\n");
+      illegalEdges++;
+    }
   std::set<std::pair<int, int>> faulted;
   bool unjoined = false;
   for (const auto &[tile, conn] : faults.connections) {
@@ -2293,6 +2446,10 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   // iterations.
   if (!graphBuilt)
     buildRoutingGraph();
+  if (llvm::Error err = cutOverflow()) {
+    packetsFailed = false;
+    return std::move(err);
+  }
   crowdedTiles.clear();
   // initialize all Channel histories to 0
   for (auto &[_, sb] : graph) {
@@ -2314,6 +2471,9 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   int illegalEdges = 0;
   std::optional<Routing> usable;
   int usableAt = 0;
+  int fewestIllegal = std::numeric_limits<int>::max(), sinceFewest = 0;
+  // Iterations of the current stall that moved circuit trees first.
+  int reorderedStall = 0;
   int overlayFaults = 0;
   do {
     if (usable && (iterationCount + 1 >= maxIterations ||
@@ -2321,12 +2481,20 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       LLVM_DEBUG(llvm::dbgs() << "\t\tKeeping the usable routing\n");
       return std::move(*usable);
     }
-    // if reach maxIterations, throw an error since no routing can be found
-    if (++iterationCount >= maxIterations) {
+    // if reach maxIterations, throw an error since no routing can be found;
+    // so too once the overuse stalls for good, or routing the losing circuit
+    // trees first has stopped helping
+    if (++iterationCount >= maxIterations ||
+        (fewestIllegal > 0 && sinceFewest >= maxOverusedStall) ||
+        reorderedStall >= maxReorderedStall) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "\t\tPathfinder: maxIterations has been exceeded ("
-                 << maxIterations
-                 << " iterations)...unable to find routing for flows.\n");
+                 << "\t\tPathfinder: giving up after " << iterationCount
+                 << " iterations ("
+                 << (iterationCount >= maxIterations ? "the iteration limit"
+                     : reorderedStall >= maxReorderedStall
+                         ? "circuit trees routed first stopped helping"
+                         : "the overuse stalled")
+                 << ")...unable to find routing for flows.\n");
       packetsFailed =
           !checkReason.empty() || llvm::any_of(graph, [](const auto &entry) {
             ArrayRef<SwitchboxConnect::Cell> cells = entry.second.cells;
@@ -2362,6 +2530,8 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     }
     for (auto &tree : st.treeOf)
       tree.clear();
+    for (auto &hops : st.circuitHops)
+      hops.clear();
     for (auto &dsts : st.treeDsts)
       dsts.clear();
     for (auto &hops : st.joinedHops)
@@ -2405,7 +2575,10 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
           SwitchboxConnect::Cell &c = sb.at(i, j);
           // check that every channel does not exceed max capacity
           if (c.usedCapacity > maxCircuitStreamCapacity) {
-            c.overCapacity++;
+            c.overCapacity +=
+                sinceFewest >= stallIterations && c.packetGroupId < 0
+                    ? stallHistory
+                    : 1;
             illegalEdges++;
             LLVM_DEBUG(llvm::dbgs()
                        << "\t\t\tToo much capacity on (" << sb.srcCoords.col
@@ -2419,6 +2592,41 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
           }
         }
       }
+    }
+
+    // Once the overuse stalls, circuit trees that overuse a circuit-only
+    // channel route first, so the same tree stops losing it. Packet-shared
+    // overuse is left to the packet steering.
+    if (illegalEdges < fewestIllegal) {
+      fewestIllegal = illegalEdges;
+      sinceFewest = reorderedStall = 0;
+    } else {
+      sinceFewest++;
+    }
+    if (illegalEdges && sinceFewest >= stallIterations) {
+      auto losing = [&](int flow) {
+        return !st.parts[flow].packetId &&
+               llvm::any_of(st.circuitHops[flow], [](const Edge &e) {
+                 const SwitchboxConnect::Cell &c = e.sb->at(e.i, e.j);
+                 return c.usedCapacity > maxCircuitStreamCapacity &&
+                        c.packetGroupId < 0;
+               });
+      };
+      bool moved = false;
+      for (auto &[_, group] : st.groupedFlows) {
+        moved |= llvm::any_of(group, losing);
+        std::stable_partition(group.begin(), group.end(), losing);
+      }
+      reorderedStall += moved;
+    }
+    // Each stall period without a legal routing, the packet trees drop their
+    // id splits: the routing that faulted them may be gone, and the routing
+    // check adds back any still needed.
+    if (sinceFewest >= stallIterations && sinceFewest % stallIterations == 0) {
+      LLVM_DEBUG(llvm::dbgs() << "Drop the id splits after " << sinceFewest
+                              << " stalled iterations\n");
+      for (auto &splits : st.splitsOf)
+        splits.clear();
     }
 
     // A routing that fits the fabric can still be one the caller cannot use;

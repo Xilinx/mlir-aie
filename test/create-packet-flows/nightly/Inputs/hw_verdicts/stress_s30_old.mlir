@@ -435,7 +435,7 @@ module {
       %6 = aie.amsel<5> (3)
       %7 = aie.masterset(DMA : 1, %1)
       %8 = aie.masterset(DMA : 3, %3, %5)
-      %9 = aie.masterset(DMA : 4, %6) {is_ctrl_pkt_overlay}
+      %9 = aie.masterset(DMA : 4, %6) {aie.is_ctrl_pkt_overlay}
       %10 = aie.masterset(DMA : 5, %1, %4)
       %11 = aie.masterset(North : 2, %0, %3)
       %12 = aie.masterset(North : 3, %2)
@@ -444,7 +444,7 @@ module {
       }
       aie.packet_rules(North : 2) {
         aie.rule(31, 18, %6)
-      } {is_ctrl_pkt_overlay}
+      } {aie.is_ctrl_pkt_overlay}
       aie.packet_rules(South : 5) {
         aie.rule(31, 23, %5)
         aie.rule(31, 29, %1)
@@ -469,7 +469,7 @@ module {
       %5 = aie.amsel<5> (3)
       %6 = aie.masterset(South : 0, %3)
       %7 = aie.masterset(South : 1, %2)
-      %8 = aie.masterset(South : 2, %5) {is_ctrl_pkt_overlay}
+      %8 = aie.masterset(South : 2, %5) {aie.is_ctrl_pkt_overlay}
       %9 = aie.masterset(South : 3, %4)
       %10 = aie.masterset(North : 3, %0)
       %11 = aie.masterset(North : 5, %1)
@@ -478,7 +478,7 @@ module {
       }
       aie.packet_rules(West : 1) {
         aie.rule(31, 18, %5)
-      } {is_ctrl_pkt_overlay}
+      } {aie.is_ctrl_pkt_overlay}
       aie.packet_rules(South : 2) {
         aie.rule(8, 8, %0)
       }
@@ -582,10 +582,10 @@ module {
       %7 = aie.masterset(DMA : 2, %1)
       %8 = aie.masterset(DMA : 5, %4) {keep_pkt_header = true}
       %9 = aie.masterset(South : 1, %0)
-      %10 = aie.masterset(North : 1, %5) {is_ctrl_pkt_overlay}
+      %10 = aie.masterset(North : 1, %5) {aie.is_ctrl_pkt_overlay}
       %11 = aie.masterset(North : 3, %2)
       aie.packet_rules(DMA : 5) {
-        aie.rule(31, 18, %5) {is_ctrl_pkt_overlay, priority_route}
+        aie.rule(31, 18, %5) {aie.is_ctrl_pkt_overlay, aie.priority_route}
         aie.rule(21, 21, %0)
       }
       aie.packet_rules(South : 1) {
@@ -615,7 +615,7 @@ module {
       %8 = aie.masterset(North : 0, %0)
       %9 = aie.masterset(North : 5, %1, %4)
       %10 = aie.masterset(East : 0, %1)
-      %11 = aie.masterset(East : 1, %5) {is_ctrl_pkt_overlay}
+      %11 = aie.masterset(East : 1, %5) {aie.is_ctrl_pkt_overlay}
       aie.packet_rules(DMA : 0) {
         aie.rule(31, 7, %4)
         aie.rule(31, 3, %1)
@@ -623,7 +623,7 @@ module {
       }
       aie.packet_rules(South : 1) {
         aie.rule(31, 18, %5)
-      } {is_ctrl_pkt_overlay}
+      } {aie.is_ctrl_pkt_overlay}
       aie.packet_rules(South : 3) {
         aie.rule(31, 24, %2)
       }
