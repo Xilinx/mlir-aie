@@ -8,16 +8,22 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "mlir/Interfaces/MemorySlotInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Mem2Reg.h"
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -153,6 +159,23 @@ static int64_t countRuntimeLockValues(Operation *op) {
   return count;
 }
 
+// Number of memrefs in `op` that are picked at run time: block arguments and
+// the results of region ops and selects.
+static int64_t countRuntimeMemrefs(Operation *op) {
+  int64_t count = 0;
+  auto isMemref = llvm::IsaPred<BaseMemRefType>;
+  op->walk([&](Block *block) {
+    count += llvm::count_if(block->getArgumentTypes(), isMemref);
+  });
+  op->walk([&](Operation *nested) {
+    if (nested != op &&
+        (nested->getNumRegions() > 0 || isa<arith::SelectOp>(nested))) {
+      count += llvm::count_if(nested->getResultTypes(), isMemref);
+    }
+  });
+  return count;
+}
+
 // Canonicalize, SCCP, canonicalize. The fold needs the folding patterns only:
 // region simplification walks every region of the device, runtime sequences
 // included, and the canonicalizes after this pass still run it.
@@ -261,6 +284,111 @@ struct AIEObjectFifoUnrollPass
     return success();
   }
 
+  /// Run `foldPipeline`, first promoting the object slots collected above to
+  /// SSA on every core where that folds each object to its buffer; elsewhere
+  /// they are left in memory.
+  ///
+  /// A promoted object still picked at run time is a memref descriptor carried
+  /// through control flow, which LLVM's alias analysis cannot tell apart from
+  /// the others; left in memory, SROA reduces it to a pointer. As with peeling,
+  /// each core is promoted for real against a detached clone. Unless the
+  /// promoted core picks no memref at run time, the clone is swapped in and
+  /// folded too, and the promoted core returns only if it picks no more: with
+  /// both sides folded, unrelated folding cannot tip the comparison.
+  LogicalResult foldPromotingObjectSlots(DeviceOp device,
+                                         ArrayRef<memref::AllocaOp> slots,
+                                         OpPassManager &foldPipeline) {
+    if (slots.empty()) {
+      return runPipeline(foldPipeline, device);
+    }
+    struct Trial {
+      CoreOp core;
+      Operation *unpromoted;
+    };
+    SmallVector<Trial> trials;
+    llvm::SmallPtrSet<Operation *, 8> seen;
+    SmallVector<PromotableAllocationOpInterface> allocators;
+    for (memref::AllocaOp slot : slots) {
+      auto core = slot->getParentOfType<CoreOp>();
+      if (seen.insert(core).second) {
+        trials.push_back({core, core->clone()});
+      }
+      allocators.push_back(
+          cast<PromotableAllocationOpInterface>(slot.getOperation()));
+    }
+    DataLayout dataLayout = DataLayout::closest(device);
+    DominanceInfo dominance(device);
+    OpBuilder builder(device.getContext());
+    (void)tryToPromoteMemorySlots(allocators, builder, dataLayout, dominance);
+
+    if (failed(runPipeline(foldPipeline, device))) {
+      for (Trial &trial : trials) {
+        trial.unpromoted->erase();
+      }
+      return failure();
+    }
+
+    IRRewriter rewriter(device.getContext());
+    // Puts `in` in place of `out` and detaches `out`.
+    auto swap = [&](Operation *out, Operation *in) {
+      rewriter.setInsertionPoint(out);
+      rewriter.insert(in);
+      rewriter.replaceAllOpUsesWith(out, in->getResults());
+      out->remove();
+    };
+    struct Contest {
+      Operation *promoted;
+      Operation *unpromoted;
+      int64_t promotedRuntimeMemrefs;
+    };
+    SmallVector<Contest> contests;
+    bool restoredAny = false;
+    for (Trial &trial : trials) {
+      // mem2reg may also have left a slot in place.
+      WalkResult leftover = trial.core.walk([&](memref::AllocaOp allocaOp) {
+        return allocaOp->hasAttr(kObjectFifoObjectSlotAttrName)
+                   ? WalkResult::interrupt()
+                   : WalkResult::advance();
+      });
+      int64_t runtimeMemrefs = countRuntimeMemrefs(trial.core);
+      if (!leftover.wasInterrupted() && runtimeMemrefs == 0) {
+        trial.unpromoted->erase();
+        continue;
+      }
+      swap(trial.core, trial.unpromoted);
+      trial.unpromoted->walk([&](memref::AllocaOp allocaOp) {
+        allocaOp->removeAttr(kObjectFifoObjectSlotAttrName);
+      });
+      if (leftover.wasInterrupted()) {
+        trial.core->erase();
+      } else {
+        contests.push_back({trial.core, trial.unpromoted, runtimeMemrefs});
+      }
+      restoredAny = true;
+    }
+    if (!restoredAny) {
+      return success();
+    }
+
+    // The restored cores have not been folded yet.
+    if (failed(runPipeline(foldPipeline, device))) {
+      for (Contest &contest : contests) {
+        contest.promoted->erase();
+      }
+      return failure();
+    }
+    for (Contest &contest : contests) {
+      if (contest.promotedRuntimeMemrefs <=
+          countRuntimeMemrefs(contest.unpromoted)) {
+        swap(contest.unpromoted, contest.promoted);
+        contest.unpromoted->erase();
+      } else {
+        contest.promoted->erase();
+      }
+    }
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -275,18 +403,39 @@ struct AIEObjectFifoUnrollPass
       return signalPassFailure();
     }
 
+    SmallVector<memref::AllocaOp> objectSlots;
     for (auto coreOp : device.getOps<CoreOp>()) {
       // `default-dynamic` picks the lowering for cores that do not pin their
       // own choice; a core's `dynamic_objfifo_lowering` attribute overrides it
       // in either direction. Dynamic cores keep their loops rolled (drop the
-      // hints, skip unrolling); their runtime bookkeeping is tidied by the
-      // shared fold/cleanup pipeline below.
+      // hints, skip unrolling) and keep in memory the objects they reach from
+      // anywhere but straight-line code; their runtime bookkeeping is tidied by
+      // the shared fold/cleanup pipeline below.
       if (coreOp.getDynamicObjfifoLowering().value_or(clDefaultDynamic)) {
         coreOp.walk([&](Operation *op) {
           op->removeAttr(kObjectFifoUnrollHintAttrName);
         });
+        bool straightLine = coreOp.getBody().hasOneBlock();
+        coreOp.walk([&](memref::AllocaOp allocaOp) {
+          if (!allocaOp->hasAttr(kObjectFifoObjectSlotAttrName)) {
+            return;
+          }
+          if (straightLine &&
+              llvm::all_of(allocaOp->getUsers(), [&](Operation *user) {
+                return user->getParentOp() == coreOp.getOperation();
+              })) {
+            objectSlots.push_back(allocaOp);
+          } else {
+            allocaOp->removeAttr(kObjectFifoObjectSlotAttrName);
+          }
+        });
         continue;
       }
+      coreOp.walk([&](memref::AllocaOp allocaOp) {
+        if (allocaOp->hasAttr(kObjectFifoObjectSlotAttrName)) {
+          objectSlots.push_back(allocaOp);
+        }
+      });
       SmallVector<Operation *> loops;
       coreOp.walk([&](Operation *op) {
         if (isObjectFifoLoop(op)) {
@@ -359,16 +508,16 @@ struct AIEObjectFifoUnrollPass
       });
     }
 
-    // --aie-objectfifo-lower-cores promotes the buffer-selection and lock
-    // bookkeeping counters to loop-carried SSA values. Once the loops have been
-    // unrolled by their rotation period those counters become loop-invariant,
-    // so every buffer selection (scf.index_switch) and lock value collapses to
-    // a constant. Run that fold here as a scoped sub-pipeline: canonicalize
-    // exposes the constants, SCCP propagates them across any remainder loop
-    // that survives a partial unroll, and a final canonicalize deletes the
-    // now-dead counter arithmetic and iter_args.
+    // --aie-objectfifo-lower-cores promotes the lock bookkeeping counters to
+    // loop-carried SSA values, and the objects are promoted here where they
+    // fold. Once the loops have been unrolled by their rotation period, the
+    // objects and counters become loop-invariant, so every object and lock
+    // value collapses to a constant. Run that fold here as a scoped
+    // sub-pipeline: canonicalize exposes the constants, SCCP propagates them
+    // across any remainder loop that survives a partial unroll, and a final
+    // canonicalize deletes the now-dead counter arithmetic and iter_args.
     OpPassManager foldPipeline = buildFoldPipeline();
-    if (failed(runPipeline(foldPipeline, device))) {
+    if (failed(foldPromotingObjectSlots(device, objectSlots, foldPipeline))) {
       return signalPassFailure();
     }
 

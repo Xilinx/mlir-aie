@@ -24,6 +24,9 @@ module {
     aie.objectfifo.core_endpoint @half(%t) fills @p {segments = [@s1]}
     %c = aie.core(%t) {
       %e = aie.objectfifo.acquire @half (1) : memref<16xi32, strided<[1], offset: 16>>
+      %i = arith.constant 0 : index
+      %v = arith.constant 1 : i32
+      memref.store %v, %e[%i] : memref<16xi32, strided<[1], offset: 16>>
       aie.objectfifo.release @half (1)
       aie.end
     }
@@ -33,6 +36,9 @@ module {
 // CHECK-LABEL: aie.core
 // CHECK:   %[[V0:.*]] = memref.subview %b0[16] [16] [1] : memref<32xi32> to memref<16xi32, strided<[1], offset: 16>>
 // CHECK:   %[[V1:.*]] = memref.subview %b1[16] [16] [1] : memref<32xi32> to memref<16xi32, strided<[1], offset: 16>>
-// CHECK:   scf.index_switch
-// CHECK:     scf.yield %[[V0]]
-// CHECK:     scf.yield %[[V1]]
+// CHECK:   %[[FRONT:.*]] = memref.alloca() {aie.objectfifo.object_slot} : memref<memref<16xi32, strided<[1], offset: 16>>>
+// CHECK:   memref.store %[[V0]], %[[FRONT]][]
+// CHECK:   %[[BACK:.*]] = memref.alloca() {aie.objectfifo.object_slot}
+// CHECK:   memref.store %[[V1]], %[[BACK]][]
+// CHECK:   %[[OBJ:.*]] = memref.load %[[FRONT]][]
+// CHECK:   memref.store %{{.*}}, %[[OBJ]][%{{.*}}]
