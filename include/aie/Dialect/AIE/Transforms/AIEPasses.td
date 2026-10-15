@@ -788,6 +788,10 @@ def AIEGenerateColumnControlOverlay
   let description = [{
     For each column of AIE tiles being employed in the design, spawn a network of control packet
     streaming interconnects which overlay on top of the design.
+
+    With route-shim-to-tile-ctrl, each covered column's control packets enter
+    through one shim MM2S DMA channel, the lowest one no device of the module
+    moves data through, and reach every row of the column.
   }];
 
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
@@ -809,6 +813,10 @@ def AIEGenerateColumnControlOverlay
               "Emit a standalone @ctrl_pkt_overlay device (and tag source "
               "devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When "
               "false, the pass applies the overlay in place only.">,
+       ListOption<"clCoverColumns", "cover-columns", "int",
+                  "With route-shim-to-tile-ctrl, also cover these columns. "
+                  "aiecc adds each column outside the occupied range that the "
+                  "design's routes need.">,
   ];
 }
 

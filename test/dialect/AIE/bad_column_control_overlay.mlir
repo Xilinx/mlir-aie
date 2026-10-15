@@ -7,7 +7,10 @@
 
 // RUN: not aie-opt %s -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" 2>&1 | FileCheck %s
 
-// CHECK: error: 'aie.device' op failed to generate column control overlay from shim dma to tile ctrl ports, because some shim mm2s dma channels were reserved from routing control packets.
+// Column 1's two shim MM2S channels both move data, so none is left for its
+// control packets.
+
+// CHECK: error: 'aie.device' op failed to generate column control overlay: every shim mm2s dma channel of column 1 moves data, so none is left for its control packets
 
 aie.device(npu1_2col) {
   %tile_0_0 = aie.tile(0, 0)
@@ -15,4 +18,8 @@ aie.device(npu1_2col) {
   %tile_1_0 = aie.tile(1, 0)
   %tile_1_1 = aie.tile(1, 1)
   aie.flow(%tile_1_0, DMA : 0, %tile_1_1, DMA : 0)
+  aie.packet_flow(1) {
+    aie.packet_source<%tile_1_0, DMA : 1>
+    aie.packet_dest<%tile_1_1, DMA : 1>
+  }
 }

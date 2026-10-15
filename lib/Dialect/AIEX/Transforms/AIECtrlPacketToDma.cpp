@@ -148,17 +148,18 @@ struct AIECtrlPacketToDmaPass
           batches.back().totalSize += ctrlPktSize;
         } else {
           // Start new batch
-          auto rowToShimChanMap =
-              getRowToShimChanMap(targetModel, WireBundle::DMA);
-          int shimChan = rowToShimChanMap[row];
-
-          std::string shimDmaAllocName = "ctrlpkt";
-          shimDmaAllocName += "_col" + std::to_string(col);
-          shimDmaAllocName += "_mm2s";
-          shimDmaAllocName += "_chan" + std::to_string(shimChan);
-
+          ShimDMAAllocationOp alloc = getCtrlPktShimAlloc(device, col);
+          if (!alloc) {
+            ctrlPktOp.emitOpError("column ")
+                << col
+                << " has no control packet shim DMA allocation; run "
+                   "-aie-generate-column-control-overlay with "
+                   "route-shim-to-tile-ctrl=true first";
+            return signalPassFailure();
+          }
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
-                             shimDmaAllocName, shimChan, &o});
+                             alloc.getSymName().str(),
+                             static_cast<int>(alloc.getChannelIndex()), &o});
           new_batch = false;
         }
         ddrOffset += ctrlPktSize;

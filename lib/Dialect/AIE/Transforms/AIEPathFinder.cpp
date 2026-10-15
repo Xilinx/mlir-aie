@@ -399,8 +399,12 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort, std::optional<int> packetId,
                          bool isPriorityFlow,
                          std::optional<mlir::Location> loc) {
-  isPriorityFlow &= constraints.prioritize ||
-                    constraints.pinned.count({srcCoords, srcPort}) > 0;
+  auto pinnedIds = constraints.pinnedIds.find({srcCoords, srcPort});
+  if (constraints.pinned.count({srcCoords, srcPort}))
+    isPriorityFlow &= packetId && pinnedIds != constraints.pinnedIds.end() &&
+                      pinnedIds->second.count(*packetId);
+  else
+    isPriorityFlow &= constraints.prioritize;
   if (loc)
     flowLocs[{srcCoords, srcPort}].try_emplace({dstCoords, dstPort}, *loc);
   if (packetId) {

@@ -62,6 +62,8 @@ static bool reloadConfigures(PacketFlowOp flow) {
 /// What the prioritized flows take routed alone (see has_ctrl_pkt_overlay).
 struct PinnedOverlay {
   PacketTrees trees;
+  // The packet ids each tree carries.
+  std::map<PathEndPoint, std::set<int>> ids;
   OverlayRules rules;
 };
 
@@ -3046,6 +3048,7 @@ llvm::Expected<PacketPlan> AIEPathfinderPass::route(
   std::map<PathEndPoint, SmallVector<size_t, 4>> streamsFrom;
   PacketConstraints constraints;
   constraints.pinned = pinned.trees;
+  constraints.pinnedIds = pinned.ids;
   constraints.prioritize = prioritize;
   if (clRoutePacket && !d.getOps<PacketFlowOp>().empty()) {
     const AIETargetModel &targetModel = d.getTargetModel();
@@ -3231,12 +3234,16 @@ void AIEPathfinderPass::runOnOperation() {
   // The prioritized flows routed without the rest of the design. A reload
   // installs them as @ctrl_pkt_overlay first, so they keep that route;
   // otherwise they keep it, if they have one, where the other flows route
-  // around it.
+  // around it. A prioritized flow outside the control overlay is one of the
+  // rest.
+  auto routesAlone = [&](PacketFlowOp flow) {
+    return isPrioritized(flow) && !reloadConfigures(flow);
+  };
   bool pinned = false;
   PinnedOverlay overlay;
   if (clRoutePacket && !prioritized.empty() &&
       (!d.getOps<FlowOp>().empty() ||
-       !llvm::all_of(d.getOps<PacketFlowOp>(), isPrioritized))) {
+       !llvm::all_of(d.getOps<PacketFlowOp>(), routesAlone))) {
     OwningOpRef<ModuleOp> scratch;
     // @ctrl_pkt_overlay holds the overlay's flows and the tiles alone, without
     // the design's own switchboxes. Otherwise the prioritized flows route
@@ -3245,7 +3252,7 @@ void AIEPathfinderPass::runOnOperation() {
     SmallVector<Operation *> others;
     for (Operation &op : alone.getBody()->without_terminator()) {
       auto flow = dyn_cast<PacketFlowOp>(op);
-      if (flow ? !isPrioritized(flow) || reloadConfigures(flow)
+      if (flow ? !routesAlone(flow)
                : isa<FlowOp>(op) || (reload && !isa<TileOp>(op)))
         others.push_back(&op);
     }
@@ -3253,6 +3260,13 @@ void AIEPathfinderPass::runOnOperation() {
       op->dropAllReferences();
     for (Operation *op : others)
       op->erase();
+    std::map<PathEndPoint, std::set<int>> aloneIds;
+    for (PacketFlowOp flow : alone.getOps<PacketFlowOp>())
+      for (auto src : flow.getPorts().getOps<PacketSourceOp>()) {
+        auto tile = cast<TileOp>(src.getTile().getDefiningOp());
+        aloneIds[{{tile.colIndex(), tile.rowIndex()}, src.port()}].insert(
+            flow.IDInt());
+      }
     DynamicTileAnalysis aloneAnalyzer;
     StreamConflicts aloneConflicts(alone);
     llvm::Expected<PacketPlan> alonePlan =
@@ -3278,8 +3292,8 @@ void AIEPathfinderPass::runOnOperation() {
       if (failed(runOnPacketFlow(alone, aloneBuilder, aloneAnalyzer,
                                  aloneConflicts, *alonePlan, /*warn=*/false)))
         return signalPassFailure();
-      overlay =
-          PinnedOverlay{aloneAnalyzer.routing.packetTrees, overlayRules(alone)};
+      overlay = PinnedOverlay{aloneAnalyzer.routing.packetTrees,
+                              std::move(aloneIds), overlayRules(alone)};
       pinned = true;
     }
   }
