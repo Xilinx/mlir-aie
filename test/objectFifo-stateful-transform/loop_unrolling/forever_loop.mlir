@@ -58,11 +58,12 @@ module {
     }
 
     // CHECK-LABEL: aie.core(%{{.*}}tile_0_3)
+    // CHECK:         %[[SLOT:.*]] = memref.alloca() : memref<memref<16xi32>>
     // CHECK:         scf.while
     // CHECK:           %[[MORE:.*]] = func.call @more()
     // CHECK:           scf.condition(%[[MORE]])
     // CHECK:         } do {
-    // CHECK:           %[[BUF:.*]] = scf.index_switch
+    // CHECK:           %[[BUF:.*]] = memref.load %[[SLOT]][] : memref<memref<16xi32>>
     // CHECK:           func.call @use(%[[BUF]])
     // CHECK-NOT:       func.call
     // CHECK:           scf.yield
