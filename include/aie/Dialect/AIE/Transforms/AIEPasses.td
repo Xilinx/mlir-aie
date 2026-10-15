@@ -784,6 +784,34 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
   ];
 }
 
+def AIEAutoPacketizeShimInput
+    : Pass<"aie-auto-packetize-shim-input", "mlir::ModuleOp"> {
+  let summary = "Share a shim MM2S channel between data and control packets";
+  let description = [{
+    Gives control packets a shim MM2S channel in every column whose objectFIFO
+    inputs leave none free across the module's devices. The control channel is
+    the lowest one no device holds with circuit-switched data. In each device an
+    objectFIFO input already packet-switched there is pinned to it; otherwise
+    the input with the fewest consumers is made packet-switched and pinned to
+    it. The other inputs are pinned to the other channels. An input this pass
+    makes packet-switched that went straight to a compute tile is relayed by the
+    column's memory tile, so past the shim the data stays circuit-switched. The
+    channel is recorded on the column's shim tiles (`ctrl_pkt_shim_chan`) for
+    aie-generate-column-control-overlay. Runs before objectFIFO lowering.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAutoPacketizeShimInputPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+  let options = [ListOption<"clControlChannels", "control-channels",
+                            "std::string",
+                            "<column>:<channel> entries choosing the control "
+                            "channel of a column "
+                            "this pass acts on. aiecc retries a column on its "
+                            "other channels when "
+                            "the design does not route.">,
+  ];
+}
+
 def AIEGenerateColumnControlOverlay
     : Pass<"aie-generate-column-control-overlay", "mlir::ModuleOp"> {
   let summary = "Spawns streaming interconnect network for column control";
@@ -793,7 +821,8 @@ def AIEGenerateColumnControlOverlay
 
     With route-shim-to-tile-ctrl, each covered column's control packets enter
     through one shim MM2S DMA channel, the lowest one no device of the module
-    moves data through, and reach every row of the column.
+    moves data through (or the one aie-auto-packetize-shim-input recorded
+    on the column's shim tile), and reach every row of the column.
   }];
 
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";

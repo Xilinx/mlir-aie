@@ -178,6 +178,12 @@ inline cl::opt<bool> reconfigInitEntry(
              "<device>:reconfig_init entry, "
              "which the host runs once per hardware context before the other "
              "entries (requires --reconfig-teardown)"));
+inline cl::opt<bool> ctrlpktAutoPacketize(
+    "ctrlpkt-auto-packetize",
+    cl::desc("Where a column's objectFIFO inputs hold every shim MM2S channel, "
+             "packet-switch one input's shim hop so the control packets can "
+             "share its channel (requires --load-pdi-to-ctrl-pkt; on by "
+             "default under it)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -700,6 +706,8 @@ inline bool resolveOptions(bool resuming = false) {
   bool fullElf = wantFullElf || resuming;
   if (!reconfigTeardown.getNumOccurrences())
     reconfigTeardown = loadPdiToCtrlPkt && wantFullElf;
+  if (!ctrlpktAutoPacketize.getNumOccurrences())
+    ctrlpktAutoPacketize = loadPdiToCtrlPkt;
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -711,7 +719,9 @@ inline bool resolveOptions(bool resuming = false) {
              reconfigTeardown, !ctrlPktOverlay || loadPdiToCtrlPkt,
              "that --generate-ctrl-pkt-overlay is not set") &&
          resolveDependentOption(reconfigInitEntry, reconfigTeardown,
-                                "--reconfig-teardown");
+                                "--reconfig-teardown") &&
+         resolveDependentOption(ctrlpktAutoPacketize, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt");
 }
 
 //===----------------------------------------------------------------------===//

@@ -66,6 +66,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1383,7 +1384,8 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
     bool skipObjectFifoVerify = false, bool assignAddresses = true,
-    llvm::ArrayRef<int> coverColumns = {}) {
+    llvm::ArrayRef<int> coverColumns = {}, bool autoPacketize = false,
+    const std::map<int, int> &controlChannels = {}) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1409,6 +1411,19 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // buffers need addresses). params.txt is materialized as a separate graph
   // edge, so no `outputParamsFile` is set here.
   pm->addPass(X::createAIELowerScratchpadParametersPass());
+  // Before objectFIFO lowering, which assigns the shim channels it pins.
+  if (autoPacketize) {
+    std::string controlChanOption;
+    for (auto [col, chan] : controlChannels)
+      controlChanOption += llvm::formatv(
+          "{0}{1}:{2}", controlChanOption.empty() ? "{control-channels=" : ",",
+          col, chan);
+    if (!controlChanOption.empty())
+      controlChanOption += "}";
+    if (mlir::failed(mlir::parsePassPipeline(
+            "aie-auto-packetize-shim-input" + controlChanOption, *pm)))
+      return nullptr;
+  }
 
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
   // The stateful transform always emits the dynamic (runtime) buffer addressing

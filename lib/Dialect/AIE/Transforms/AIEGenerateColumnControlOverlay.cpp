@@ -233,6 +233,10 @@ struct AIEGenerateColumnControlOverlayPass
              mux.getConnections().front().getOps<AIE::ConnectOp>())
           if (connect.getSourceBundle() == WireBundle::DMA)
             dataChans[mux.getTileOp().colIndex()].insert(connect.sourceIndex());
+      // The channel aie-auto-packetize-shim-input made room on.
+      for (auto tile : device.getOps<TileOp>())
+        if (auto chan = tile->getAttrOfType<IntegerAttr>("ctrl_pkt_shim_chan"))
+          declaredCtrlChans[tile.colIndex()].insert(chan.getInt());
     }
   }
 
