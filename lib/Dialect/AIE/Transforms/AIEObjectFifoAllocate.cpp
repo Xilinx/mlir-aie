@@ -62,6 +62,9 @@ struct AIEObjectFifoAllocatePass
   DenseMap<std::tuple<int, int, int>, int64_t> fixedBDs;
   /// The same, with every channel the last assignment handed out added.
   DenseMap<std::tuple<int, int, int>, int64_t> channelDemand;
+  /// Where each tile, pool, endpoint and route falls in an order taken from
+  /// the design's structure alone, which settles the choices op order would.
+  DenseMap<Operation *, unsigned> structuralRank;
   RouteEndpoint channelFailure;
   /// The pool the buffer search could not place with the fewest left
   /// unplaced, i.e. where it got furthest.
@@ -426,13 +429,21 @@ struct AIEObjectFifoAllocatePass
     for (auto lock : device.getOps<LockOp>())
       if (failed(reserve(lock.getTile(), 1)))
         return failure();
+    // Neighbors created to weigh a spill have no rank and come last.
+    SmallVector<TileLike> tiles(device.getOps<TileLike>());
+    llvm::stable_sort(tiles, [&](TileLike a, TileLike b) {
+      auto aRank = structuralRank.find(a), bRank = structuralRank.find(b);
+      if ((aRank == structuralRank.end()) != (bRank == structuralRank.end()))
+        return bRank == structuralRank.end();
+      return aRank != structuralRank.end() && aRank->second < bRank->second;
+    });
     auto place = [&](ObjectFifoPoolOp pool, Operation *group, int count) {
       SmallVector<Value> candidates{lockPlacement(pool, group)};
       if (!localPools.contains(pool)) {
         llvm::append_range(candidates, bufferPlacements[pool]);
         for (Operation *user : lockUsers[group])
           candidates.push_back(user->getOperand(0));
-        for (auto tile : device.getOps<TileLike>())
+        for (auto tile : tiles)
           candidates.push_back(tile->getResult(0));
       }
       bool reachable = false;
@@ -723,6 +734,119 @@ struct AIEObjectFifoAllocatePass
       fixedBDs[at] += bds;
   }
 
+  /// Rank tiles, pools, endpoints and routes by their attributes and then, a
+  /// round at a time until no class splits, by the ranks of what they connect
+  /// to. Symbol names and op order play no part, so a permuted or renamed
+  /// design ranks alike, and ops still tied cannot be told apart.
+  void rankStructurally() {
+    SmallVector<Operation *> nodes;
+    DenseMap<Operation *, std::string> features;
+    DenseMap<Operation *, SmallVector<std::pair<int, Operation *>>> links;
+    auto add = [&](Operation *op) -> std::string & {
+      nodes.push_back(op);
+      llvm::raw_string_ostream os(features[op]);
+      os << op->getName();
+      for (NamedAttribute attr : op->getAttrs()) {
+        auto array = dyn_cast<ArrayAttr>(attr.getValue());
+        if (isa<SymbolRefAttr>(attr.getValue()) ||
+            (array && llvm::all_of(array, llvm::IsaPred<SymbolRefAttr>)) ||
+            attr.getName() == SymbolTable::getSymbolAttrName())
+          continue;
+        os << ' ' << attr.getName();
+        if (attr.getName() != "fifoName")
+          os << '=' << attr.getValue();
+      }
+      return features[op];
+    };
+    // A placed tile is one node however many ops name it.
+    DenseMap<std::pair<int, int>, Operation *> placed;
+    DenseMap<Operation *, Operation *> tileNode;
+    for (auto tile : device.getOps<TileLike>()) {
+      auto col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (!col || !row) {
+        add(tileNode[tile] = tile);
+        continue;
+      }
+      auto [it, first] = placed.try_emplace({*col, *row}, tile);
+      tileNode[tile] = it->second;
+      if (first) {
+        nodes.push_back(tile);
+        llvm::raw_string_ostream(features[tile])
+            << "tile " << *col << ' ' << *row << ' '
+            << stringifyAIETileType(tile.getTileType());
+      }
+    }
+    auto link = [&](Operation *a, Operation *b, int kind) {
+      if (Operation *tile = tileNode.lookup(b))
+        b = tile;
+      links[a].push_back({kind, b});
+      links[b].push_back({kind + 1, a});
+    };
+    for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
+      llvm::raw_string_ostream os(add(pool));
+      for (auto segment : pool.getSegmentOps())
+        os << " [" << segment.getOffset() << ", " << segment.getSize() << "]";
+      link(pool, pool.getTile().getDefiningOp(), 0);
+    }
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      llvm::raw_string_ostream os(add(endpoint));
+      for (auto segment : endpoint.getSelectedSegments())
+        os << " @" << segment.getOffset();
+      link(endpoint, endpoint.getTile().getDefiningOp(), 0);
+      link(endpoint, endpoint.getPoolOp(), 2);
+    }
+    for (auto endpoint : device.getOps<RouteEndpoint>()) {
+      llvm::raw_string_ostream os(add(endpoint));
+      if (auto dma =
+              dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation())) {
+        for (auto segment : dma.getSelectedSegments())
+          os << " @" << segment.getOffset();
+        link(endpoint, dma.getPoolOp(), 2);
+      }
+      link(endpoint, endpoint.getTile().getDefiningOp(), 0);
+    }
+    for (auto route : device.getOps<RouteOp>()) {
+      add(route);
+      link(route, lookupEndpoint(route.getSourceAttr()), 4);
+      for (auto dest : route.getDestinations().getAsRange<FlatSymbolRefAttr>())
+        link(route, lookupEndpoint(dest), 6);
+    }
+
+    DenseMap<Operation *, unsigned> rank;
+    unsigned classes = 0;
+    auto rerank = [&](auto &signature) {
+      SmallVector<Operation *> order(nodes);
+      llvm::stable_sort(order, [&](Operation *a, Operation *b) {
+        return signature[a] < signature[b];
+      });
+      classes = 0;
+      for (auto [index, op] : llvm::enumerate(order)) {
+        if (index && signature[order[index - 1]] < signature[op])
+          ++classes;
+        rank[op] = classes;
+      }
+      ++classes;
+    };
+    rerank(features);
+    for (unsigned previous = 0; classes != previous;) {
+      previous = classes;
+      DenseMap<Operation *,
+               std::pair<unsigned, SmallVector<std::pair<int, unsigned>>>>
+          signature;
+      for (Operation *op : nodes) {
+        auto &[own, around] = signature[op];
+        own = rank[op];
+        for (auto [kind, other] : links[op])
+          around.push_back({kind, rank[other]});
+        llvm::sort(around);
+      }
+      rerank(signature);
+    }
+    for (auto [tile, node] : tileNode)
+      rank[tile] = rank[node];
+    structuralRank = std::move(rank);
+  }
+
   /// BDs `channel` of the tile at (`col`, `row`) can use that `demand` leaves
   /// over, counting every channel whose BD ids overlap its own. Negative when
   /// overcommitted.
@@ -884,7 +1008,8 @@ struct AIEObjectFifoAllocatePass
     // Endpoints reaching a spilled buffer draw from a restricted channel
     // range, so they are served before the unrestricted ones. Channels the
     // design programs itself come after the objectFIFOs', whose BDs they are
-    // then chosen around, the most demanding first.
+    // then chosen around, the most demanding first. The structural rank
+    // settles the rest, so the order ops were written in never does.
     DenseMap<Operation *, int64_t> programBDs;
     for (auto endpoint : pending)
       if (isProgramOwned(endpoint))
@@ -898,8 +1023,12 @@ struct AIEObjectFifoAllocatePass
       bool aProgram = isProgramOwned(a), bProgram = isProgramOwned(b);
       if (aProgram != bProgram)
         return bProgram;
-      return aProgram && programBDs.lookup(a.getOperation()) >
-                             programBDs.lookup(b.getOperation());
+      int64_t aBDs = programBDs.lookup(a.getOperation());
+      int64_t bBDs = programBDs.lookup(b.getOperation());
+      if (aBDs != bBDs)
+        return aBDs > bBDs;
+      return structuralRank.lookup(a.getOperation()) <
+             structuralRank.lookup(b.getOperation());
     });
 
     for (auto endpoint : pending) {
@@ -1013,12 +1142,14 @@ struct AIEObjectFifoAllocatePass
         continue;
       candidates.push_back(pool);
     }
-    llvm::stable_sort(candidates, [](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+    llvm::stable_sort(candidates, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
       int64_t aBytes =
           a.getBuffers() ? 0 : a.getObjectSizeInBytes() * a.getDepth();
       int64_t bBytes =
           b.getBuffers() ? 0 : b.getObjectSizeInBytes() * b.getDepth();
-      return aBytes < bBytes;
+      if (aBytes != bBytes)
+        return aBytes < bBytes;
+      return structuralRank.lookup(a) < structuralRank.lookup(b);
     });
     for (auto pool : candidates) {
       localPools[pool] = localTile;
@@ -1095,7 +1226,11 @@ struct AIEObjectFifoAllocatePass
         static_cast<int>(device.getTargetModel().getMaxPacketId());
     llvm::SmallDenseSet<int> taken = takenPacketIDs();
     int nextFree = 0;
-    for (auto flow : device.getOps<RouteOp>()) {
+    SmallVector<RouteOp> flows(device.getOps<RouteOp>());
+    llvm::stable_sort(flows, [&](RouteOp a, RouteOp b) {
+      return structuralRank.lookup(a) < structuralRank.lookup(b);
+    });
+    for (auto flow : flows) {
       auto source = lookupEndpoint(flow.getSourceAttr());
       loweredFlows.push_back(flow);
 
@@ -1400,10 +1535,14 @@ struct AIEObjectFifoAllocatePass
     if (failed(collectFixedMemory()) || failed(checkStreamPorts()))
       return signalPassFailure();
     collectChannelPrograms();
+    rankStructurally();
 
     // Preserve successful largest-first allocations, including their locality
     // repairs. Only try demand ordering when that search fails.
     SmallVector<ObjectFifoPoolOp> pools(device.getOps<ObjectFifoPoolOp>());
+    llvm::stable_sort(pools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+      return structuralRank.lookup(a) < structuralRank.lookup(b);
+    });
     SmallVector<size_t> memTileSlots;
     SmallVector<ObjectFifoPoolOp> memTilePools;
     for (auto [index, pool] : llvm::enumerate(pools)) {
@@ -1434,6 +1573,10 @@ struct AIEObjectFifoAllocatePass
         filledPools.insert(endpoint.getPoolOp());
       }
     }
+    for (auto &[group, users] : lockUsers)
+      llvm::stable_sort(users, [&](Operation *a, Operation *b) {
+        return structuralRank.lookup(a) < structuralRank.lookup(b);
+      });
 
     std::set<std::vector<unsigned>> tried;
     LogicalResult allocated = planAllocation(pools, tried);

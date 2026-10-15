@@ -22,7 +22,7 @@ too_big = np.ndarray[(12288,), np.dtype[np.int32]]
 
 def design():
     of_in = ObjectFifo(too_big, depth=2, name="in")  # two 48 KiB buffers
-    of_out = ObjectFifo(too_big, depth=2, name="out")
+    of_out = ObjectFifo(too_big, depth=2, name="out")  # two 48 KiB buffers
 
     def core_fn(a, b):
         elem_out = b.acquire(1)

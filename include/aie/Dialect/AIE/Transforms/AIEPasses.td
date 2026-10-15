@@ -583,6 +583,13 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     `aiex.dma_configure_task_for` naming it becomes an
     `aiex.dma_configure_task` on the endpoint's tile and channel.
 
+    Where these rules leave a choice (which of two endpoints takes a tile's
+    first free channel, which pool is packed first, which route gets the next
+    packet ID), it is settled by the design's structure: what each op is and,
+    in turn, what it connects to. Op order and symbol names never decide, so a
+    design declared in another order or under other names gets the same
+    allocation.
+
     MemTile memory checks count each fixed buffer once (including aliased tile
     coordinates), even without new allocations. Pool sizes use BufferOp's
     DataLayout byte sizing, including BFP. Planning shares the basic sequential
@@ -623,7 +630,8 @@ def AIEObjectFifoLowerDMAs : Pass<"aie-objectfifo-lower-dmas", "DeviceOp"> {
   let description = [{
     Program each DMA endpoint's channel: for every object in its pool, for
     every segment it is responsible for, a buffer descriptor guarded by that
-    segment's locks.
+    segment's locks. A tile's chains are laid out by direction, then channel,
+    so the BD ids they are later given do not follow the endpoints' op order.
 
     Consumes `aie.objectfifo.dma_endpoint`.
   }];

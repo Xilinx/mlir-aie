@@ -266,12 +266,25 @@ struct AIEObjectFifoLowerDMAsPass
     SmallVector<ObjectFifoDmaEndpointOp> endpoints(
         device.getOps<ObjectFifoDmaEndpointOp>());
     for (ObjectFifoDmaEndpointOp endpoint : endpoints) {
-      std::optional<int> channel = endpoint.getChannelIndex();
-      if (!channel) {
+      if (!endpoint.getChannelIndex()) {
         endpoint.emitOpError("has no channel; run --aie-objectfifo-allocate");
         return signalPassFailure();
       }
-      if (failed(lowerEndpoint(endpoint, *channel)))
+    }
+    // A tile's chains, and so the BD ids they get, follow its channels rather
+    // than the order the endpoints were written in.
+    DenseMap<Value, size_t> tileOrder;
+    for (ObjectFifoDmaEndpointOp endpoint : endpoints)
+      tileOrder.try_emplace(endpoint.getTile(), tileOrder.size());
+    llvm::stable_sort(
+        endpoints, [&](ObjectFifoDmaEndpointOp a, ObjectFifoDmaEndpointOp b) {
+          return std::make_tuple(tileOrder.lookup(a.getTile()),
+                                 a.getRouteDirection(), *a.getChannelIndex()) <
+                 std::make_tuple(tileOrder.lookup(b.getTile()),
+                                 b.getRouteDirection(), *b.getChannelIndex());
+        });
+    for (ObjectFifoDmaEndpointOp endpoint : endpoints) {
+      if (failed(lowerEndpoint(endpoint, *endpoint.getChannelIndex())))
         return signalPassFailure();
       endpoint.erase();
     }

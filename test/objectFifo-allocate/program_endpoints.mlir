@@ -101,7 +101,7 @@ module @programs_and_tasks {
     }
     aie.route_endpoint @heavy_shim(%shim1) DMA {fifoName = "heavy"}
     aie.objectfifo.dma_endpoint @heavy_in(%mt) fills @heavy_pool {channelIndex = 1 : i32}
-    aie.objectfifo.dma_endpoint @heavy_out(%mt) drains @heavy_pool
+    aie.objectfifo.dma_endpoint @heavy_out(%mt) drains @heavy_pool {channelIndex = 0 : i32}
     aie.route_endpoint @heavy_sink(%shim1) DMA {fifoName = "heavy_out"}
     aie.route from @heavy_shim to [@heavy_in]
     aie.route from @heavy_out to [@heavy_sink]
