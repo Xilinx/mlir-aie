@@ -694,11 +694,14 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     (i.e., after `aiex.configure` ops have been turned into
     `aiex.npu.load_pdi`).
 
-    With `teardown = true`, an `aiex.npu.write_teardown @device` before the
-    next `load_pdi`, or at the sequence's end, undoes what each configuration
-    enabled, so only a sequence's first configuration keeps its reset. With
-    `init-entry = true` as well, that reset moves into an argument-free
-    `reconfig_init` runtime sequence, which the host runs once before the
+    With `teardown = true`, each configuration undoes what it enabled before
+    the next `load_pdi`, or at the sequence's end: with an
+    `aiex.npu.write_teardown @device`, or with control packets for a control
+    packet configuration. Only a sequence's first configuration, or one after a
+    configuration of the other kind, keeps its reset or overlay load. With
+    `init-entry = true` as well, a device whose sequences all end on
+    configurations of one kind gets an argument-free `reconfig_init` runtime
+    sequence holding that kind's preload, which the host runs before the
     others.
 
     A sequence whose first and last reset (or overlay load) name the same PDI

@@ -20,13 +20,25 @@
 // TEARDOWN-FULL-ELF: aiecc: --reconfig-teardown requires full-ELF output
 
 // RUN: not %aiecc --get-full-elf --reconfig-teardown %s 2>&1 | FileCheck %s --check-prefix=TEARDOWN-EXPAND
-// TEARDOWN-EXPAND: aiecc: --reconfig-teardown requires --expand-load-pdis
+// TEARDOWN-EXPAND: aiecc: --reconfig-teardown requires --expand-load-pdis or --load-pdi-to-ctrl-pkt
 
 // RUN: not %aiecc --get-full-elf --expand-load-pdis --generate-ctrl-pkt-overlay --reconfig-teardown %s 2>&1 | FileCheck %s --check-prefix=TEARDOWN-OVERLAY
 // TEARDOWN-OVERLAY: aiecc: --reconfig-teardown requires that --generate-ctrl-pkt-overlay is not set
 
 // RUN: not %aiecc --get-full-elf --expand-load-pdis --reconfig-init-entry %s 2>&1 | FileCheck %s --check-prefix=INIT-TEARDOWN
 // INIT-TEARDOWN: aiecc: --reconfig-init-entry requires --reconfig-teardown
+
+// Under --load-pdi-to-ctrl-pkt the teardown is on by default with full-ELF
+// output, and off without it.
+// RUN: %aiecc -n --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-init-entry %s
+// RUN: not %aiecc --load-pdi-to-ctrl-pkt --reconfig-init-entry %s 2>&1 | FileCheck %s --check-prefix=INIT-TEARDOWN
+// RUN: not %aiecc --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-teardown=false --reconfig-init-entry %s 2>&1 | FileCheck %s --check-prefix=INIT-TEARDOWN
+
+// A checkpoint records that default, since a resume may select other outputs.
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %aiecc --get=aie.elf --load-pdi-to-ctrl-pkt --tmpdir=%t/prj --cut=input_with_symbols.mlir --checkpoint=%t/ckpt %s
+// RUN: FileCheck %s --check-prefix=CHECKPOINT < %t/ckpt/manifest.json
+// CHECKPOINT: "--reconfig-teardown=true"
 
 // The full ELF can also be requested by its output name.
 // RUN: %aiecc -n --get=aie.elf --expand-load-pdis --reconfig-teardown --reconfig-init-entry %s
