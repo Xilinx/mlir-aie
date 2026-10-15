@@ -246,6 +246,8 @@ def _tile_layout(shape, dims=None, *, axes=None, inverse=False, block=None):
         unpack=lambda x: x[:, undo].reshape(len(x), *shape),
         stream=dims,
         block=block,
+        axes=None if axes is None else tuple(axes),
+        inverse=inverse,
     )
 
 

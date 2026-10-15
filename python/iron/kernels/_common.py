@@ -51,8 +51,11 @@ class TensorLayout:
     to the kernel or drains it, ``None`` when the operand streams as stored;
     ``block`` is the micro-tile the kernel consumes or produces, ``(r, s)``
     for an MMUL operand. The codec is built from the same two facts, so the
-    host and the design agree by construction. None of this is an algorithm
-    or a whole-problem iteration schedule.
+    host and the design agree by construction. ``axes`` is the transpose
+    applied to the logical tile before streaming (``None``: none), and
+    ``inverse`` says ``stream`` drains the kernel's buffer rather than
+    filling it, so tools can rebuild the codec from these fields. None of
+    this is an algorithm or a whole-problem iteration schedule.
     """
 
     shape: tuple[int, ...]
@@ -60,6 +63,8 @@ class TensorLayout:
     unpack: Callable | None = None
     stream: TensorAccessPattern | None = None
     block: tuple[int, ...] | None = None
+    axes: tuple[int, ...] | None = None
+    inverse: bool = False
 
     def encode(self, values):
         values = np.asarray(values).reshape(-1, *self.shape)
