@@ -22,6 +22,7 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Param,
+    SaturationMode,
     Trace,
     _conv_act_dtype_info,
     _detect_arch,
@@ -536,6 +537,8 @@ def conv2dk1(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             alignments=_vector_args(0, 1, 2),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, Param, Param, Param, Param),
@@ -604,6 +607,8 @@ def conv2dk3(
         + _conv_dimensions(input_width, input_channels, output_channels)
         + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
@@ -661,6 +666,8 @@ def conv2dk1_skip(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
@@ -701,6 +708,8 @@ def conv2dk1_i8(
         compile_flags=["-DINT8_ACT"]
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             trace=Trace.whole_call(),
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_i8_ref,
@@ -757,6 +766,8 @@ def conv2dk14(
         compile_flags=_conv_dimensions(input_width, input_channels, output_channels)
         + [f"-DCONV_KERNEL_WIDTH={kernel_width}"],
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             alignments=_vector_args(0, 1, 2),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, *((Param,) * 5)),
@@ -842,6 +853,8 @@ def conv2dk1_skip_init(
         + _conv_dimensions(input_width, input_channels, output_channels)
         + [f"-DCONV_SKIP_INPUT_CHANNELS={skip_input_channels}"],
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
             roles=(In, In, Param, Out, In, *((Param,) * 7)),
@@ -1147,6 +1160,8 @@ def bn_conv2dk1_relu(
         compile_flags=["-DREGULAR", "-DINT8_ACT"]
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, Param, Param, Param, Param),
@@ -1193,6 +1208,8 @@ def bn_conv2dk3(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=_conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             alignments=_vector_loads(0, 1, 2, 3) + _vector_32b(4),
@@ -1230,6 +1247,8 @@ def bn_conv2dk1_i8(
         compile_flags=["-DREGULAR", "-DSCALAR"]
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, Param, Param, Param, Param),
@@ -1286,6 +1305,8 @@ def bn_conv2dk1_skip(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, In, *((Param,) * 5)),
@@ -1337,6 +1358,8 @@ def bn_conv2dk3_dw(
         compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"]
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             # The weights are read unaligned.
@@ -1394,6 +1417,11 @@ def bn_conv2dk1_relu_xy_pool_padded(
         [in_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
         contract=KernelContract(
+            # Only aie2's k1_xy_pool_vector sets saturate, and it never restores it.
+            saturation=SaturationMode.SATURATE if _detect_arch() == "aie2" else None,
+            leaves_saturation=(
+                SaturationMode.SATURATE if _detect_arch() == "aie2" else None
+            ),
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, InOut, *((Param,) * 8)),
@@ -1574,6 +1602,8 @@ def bn_conv2dk3_dw_out_split(
         compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"]
         + _conv_dimensions(input_width, input_channels, input_channels),
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, Out, *((Param,) * 8)),
             alignments=_vector_32b(0, 1, 2, 4, 5),
@@ -1716,6 +1746,8 @@ def bn_fc_relu_ui16_pad(
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         compile_flags=["-DSCALAR", "-DPOSTL2_PAD", "-DUINT16_ACT"],
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, *((Param,) * 5)),

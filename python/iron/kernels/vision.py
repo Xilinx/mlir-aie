@@ -21,6 +21,7 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Param,
+    SaturationMode,
     Trace,
     _dtype_to_bit_width,
     _kernel_source,
@@ -221,6 +222,8 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
         [line_ty, line_ty, line_ty, line_ty, np.int32, kernel_ty],
         use_chess=use_chess,
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             trace=Trace.whole_call(),
             roles=(In, In, In, Out, Param, Param),
             parameter_bindings=((4, line_width),),
@@ -276,6 +279,8 @@ def add_weighted(
         ],
         use_chess=use_chess,
         contract=KernelContract(
+            saturation=SaturationMode.SATURATE,
+            leaves_saturation=SaturationMode.SATURATE,
             trace=Trace.whole_call(),
             roles=(In, In, Out, Param, Param, Param, Param),
             parameter_bindings=((3, line_width),),
@@ -508,6 +513,8 @@ def resize(
             f"-DCORES={cores}",
         ],
         contract=KernelContract(
+            # resize.cc's Srs guard saturates the srs and restores the mode.
+            saturation=SaturationMode.SATURATE,
             trace=Trace.whole_call(),
             roles=(In, In),
             unsupported=(
