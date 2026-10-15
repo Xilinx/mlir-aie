@@ -103,6 +103,7 @@ _MULTI_CONFIGURATION_OUTPUTS = (
 # attribute, passed as ``--<name with dashes>=true|false``.
 _RECONFIGURATION_OPTIONS = (
     "expand_load_pdis",
+    "load_pdi_to_ctrl_pkt",
     "reconfig_teardown",
     "reconfig_init_entry",
 )

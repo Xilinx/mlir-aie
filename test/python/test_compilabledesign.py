@@ -2308,6 +2308,7 @@ def test_program_reconfiguration_options_reach_aiecc(tmp_path):
         module = Program.compose(
             [DeviceConfiguration(NPU2Col1(), runtimes=[runtime])],
             entry=runtime,
+            load_pdi_to_ctrl_pkt=False,
             reconfig_teardown=True,
             reconfig_init_entry=False,
         ).resolve_program()
@@ -2316,6 +2317,7 @@ def test_program_reconfiguration_options_reach_aiecc(tmp_path):
     design = CompilableDesign(mlir_path)
 
     assert design._generated_for(full_elf=True).aiecc_options == [
+        "--load-pdi-to-ctrl-pkt=false",
         "--reconfig-teardown=true",
         "--reconfig-init-entry=false",
     ]
@@ -2326,10 +2328,12 @@ def test_single_configuration_program_reconfiguration_options():
         module = Program(
             NPU2Col1(),
             Runtime(lambda: None, []),
+            load_pdi_to_ctrl_pkt=True,
             reconfig_teardown=False,
             reconfig_init_entry=True,
         ).resolve_program()
         attributes = module.operation.attributes
+        assert attributes["iron.load_pdi_to_ctrl_pkt"].value is True
         assert attributes["iron.reconfig_teardown"].value is False
         assert attributes["iron.reconfig_init_entry"].value is True
 
@@ -2340,6 +2344,7 @@ def test_single_configuration_program_reconfiguration_options():
         (None, False),
         ("iron.reconfig_teardown = false", False),
         ("iron.expand_load_pdis = true", False),
+        ("iron.load_pdi_to_ctrl_pkt = true", False),
         ("iron.reconfig_teardown = true", True),
         ("iron.reconfig_init_entry = true", True),
     ],

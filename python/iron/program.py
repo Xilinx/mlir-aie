@@ -37,6 +37,7 @@ class Program:
         workers: "list | None" = None,
         *,
         expand_load_pdis: bool | None = None,
+        load_pdi_to_ctrl_pkt: bool | None = None,
         reconfig_teardown: bool | None = None,
         reconfig_init_entry: bool | None = None,
     ):
@@ -57,6 +58,9 @@ class Program:
                 explicitly rather than started from within the runtime sequence.
             expand_load_pdis: The value passed to aiecc's
                 ``--expand-load-pdis`` option during full-ELF compilation.
+                ``None`` omits the option.
+            load_pdi_to_ctrl_pkt: The value passed to aiecc's
+                ``--load-pdi-to-ctrl-pkt`` option during full-ELF compilation.
                 ``None`` omits the option.
             reconfig_teardown: The value passed to aiecc's
                 ``--reconfig-teardown`` option. ``None`` omits the option.
@@ -80,6 +84,7 @@ class Program:
         self._implicit_configuration = True
         self._reconfiguration_options = {
             "expand_load_pdis": expand_load_pdis,
+            "load_pdi_to_ctrl_pkt": load_pdi_to_ctrl_pkt,
             "reconfig_teardown": reconfig_teardown,
             "reconfig_init_entry": reconfig_init_entry,
         }
@@ -93,6 +98,7 @@ class Program:
         *,
         entry: Runtime,
         expand_load_pdis: bool | None = None,
+        load_pdi_to_ctrl_pkt: bool | None = None,
         reconfig_teardown: bool | None = None,
         reconfig_init_entry: bool | None = None,
     ) -> "Program":
@@ -103,6 +109,8 @@ class Program:
             entry: The runtime that orchestrates one run.
             expand_load_pdis: The value passed to aiecc's
                 ``--expand-load-pdis`` option. ``None`` omits the option.
+            load_pdi_to_ctrl_pkt: The value passed to aiecc's
+                ``--load-pdi-to-ctrl-pkt`` option. ``None`` omits the option.
             reconfig_teardown: The value passed to aiecc's
                 ``--reconfig-teardown`` option. ``None`` omits the option.
             reconfig_init_entry: The value passed to aiecc's
@@ -114,6 +122,7 @@ class Program:
         program._implicit_configuration = False
         program._reconfiguration_options = {
             "expand_load_pdis": expand_load_pdis,
+            "load_pdi_to_ctrl_pkt": load_pdi_to_ctrl_pkt,
             "reconfig_teardown": reconfig_teardown,
             "reconfig_init_entry": reconfig_init_entry,
         }
