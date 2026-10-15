@@ -5,13 +5,16 @@
 # RUN: %run_on_npu2% %pytest %s
 
 # The reconfigure_loadpdi_iron program with teardown and an init entry. The host
-# runtime runs main:reconfig_init on each hardware context it creates.
+# runtime runs main:reconfig_init on each hardware context it creates. Under
+# control packet reconfiguration, main:reconfig_init installs the control
+# overlay.
 
 import aie.iron as iron
 import numpy as np
 import pyxrt
 import pytest
 from aie.iron import (
+    CompileTime,
     DeviceConfiguration,
     InOut,
     ObjectFifo,
@@ -60,7 +63,7 @@ def add_configuration(name, value):
 
 
 @iron.jit
-def reconfigure_add(data: InOut):
+def reconfigure_add(data: InOut, *, ctrl_pkt: CompileTime[bool]):
     add_two, add_two_sequence = add_configuration("add_two", 2)
     add_three, add_three_sequence = add_configuration("add_three", 3)
 
@@ -75,7 +78,8 @@ def reconfigure_add(data: InOut):
     return Program.compose(
         [main, add_two, add_three],
         entry=entry,
-        expand_load_pdis=True,
+        expand_load_pdis=None if ctrl_pkt else True,
+        load_pdi_to_ctrl_pkt=True if ctrl_pkt else None,
         reconfig_teardown=True,
         reconfig_init_entry=True,
     ).resolve_program()
@@ -106,10 +110,11 @@ def looked_up(monkeypatch):
     return names
 
 
-def test_init_entry_runs_on_each_new_context(looked_up):
+@pytest.mark.parametrize("ctrl_pkt", [False, True])
+def test_init_entry_runs_on_each_new_context(looked_up, ctrl_pkt):
     for _ in range(2):
         data = iron.arange(8, dtype=np.int32, device="npu")
-        reconfigure_add(data)
+        reconfigure_add(data, ctrl_pkt=ctrl_pkt)
         data.to("cpu")
         np.testing.assert_array_equal(data.numpy(), expected())
     assert looked_up == ["main:sequence", "main:reconfig_init"]
@@ -117,7 +122,7 @@ def test_init_entry_runs_on_each_new_context(looked_up):
     # A new context, as after an IOCTL EINVAL, runs main:reconfig_init again.
     DefaultNPURuntime.cleanup()
     data = iron.arange(8, dtype=np.int32, device="npu")
-    reconfigure_add(data)
+    reconfigure_add(data, ctrl_pkt=ctrl_pkt)
     data.to("cpu")
     np.testing.assert_array_equal(data.numpy(), expected())
     assert looked_up == ["main:sequence", "main:reconfig_init"] * 2
