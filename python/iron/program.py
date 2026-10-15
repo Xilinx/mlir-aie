@@ -94,6 +94,16 @@ class Program:
         program._validate_composition()
         return program
 
+    @property
+    def configurations(self) -> "list[DeviceConfiguration]":
+        """The device configurations this Program composes."""
+        return list(self._configurations)
+
+    @property
+    def entry(self) -> Runtime:
+        """The Runtime that orchestrates one run."""
+        return self._entry
+
     def _assign_names(self) -> None:
         def assign(items, base: str) -> None:
             taken = {item.name for item in items if item.name is not None}
@@ -281,6 +291,8 @@ class Program:
                 )
 
             self._print_verify(ctx)
+            # The resolved objects reference ops in this module; keep it alive with them.
+            self._module = ctx.module
             return ctx.module
 
     @staticmethod

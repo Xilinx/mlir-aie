@@ -9,8 +9,9 @@ import operator
 import numpy as np
 import pytest
 from aie.helpers.util import np_ndarray_type_to_memref_type
-from aie.ir import BlockArgument, IntegerAttr
-from aie.iron import Program, Runtime, Worker
+from aie.ir import BlockArgument, IntegerAttr, Value
+from aie.helpers.taplib import TensorAccessPattern
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2Col1
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.jit.markers import DispatchTime
@@ -227,3 +228,41 @@ def test_specialization_allows_compile_time_use(npu2_device):
         return Program(NPU2Col1(), Runtime(lambda: None)).resolve_program()
 
     assert CompilableDesign(gen).specialize(count=3).generate_mlir().operation.verify()
+
+
+def test_returned_program_exposes_live_objects(npu2_device):
+    tensor_type = np.ndarray[(64,), np.dtype[np.int32]]
+    tile_type = np.ndarray[(16,), np.dtype[np.int32]]
+
+    def gen(*, rows: DispatchTime[np.int32]):
+        of_in = ObjectFifo(tile_type, name="in")
+        of_out = of_in.cons().forward(name="out")
+
+        def seq(a, b, rows_value, inp, out):
+            tap = TensorAccessPattern.full((rows_value, 16))
+            inp.fill(a, tap=tap)
+            out.drain(b, tap=tap, wait=True)
+
+        rt = Runtime(seq, [tensor_type, tensor_type, rows, of_in.prod(), of_out.cons()])
+        return Program(NPU2Col1(), rt)
+
+    program = CompilableDesign(gen).program
+    rows = Value(program.entry.dispatch_values["rows"])
+    assert (
+        BlockArgument(rows).owner.owner.operation == program.entry.sequence_op.operation
+    )
+    transfers = program.entry.transfers
+    assert [t.alloc for t in transfers] == ["in", "out"]
+    assert [t.will_wait() for t in transfers] == [False, True]
+    for t in transfers:
+        assert t.task.operation.name == "aiex.dma_configure_task_for"
+        assert Value(Value(t.tap.tensor_dims[0]).owner.operands[0]) == rows
+    assert BlockArgument(transfers[0].rt_data.op).arg_number == 0
+
+
+def test_returned_module_has_no_program(npu2_device):
+    def gen():
+        return Program(NPU2Col1(), Runtime(lambda: None)).resolve_program()
+
+    with pytest.raises(TypeError, match="returns a module"):
+        CompilableDesign(gen).program

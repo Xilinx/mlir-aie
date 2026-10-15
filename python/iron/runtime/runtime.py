@@ -44,7 +44,7 @@ from ...helpers.util import (
 from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
 from ..dataflow.objectfifo import ObjectFifoHandle
-from ..resolvable import DeviceResources, Resolvable
+from ..resolvable import DeviceResources, NotResolvedError, Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_configuration, active_sequence, active_sequence_scope
 from .data import RuntimeData
@@ -311,6 +311,8 @@ class Runtime(DeviceResources, Resolvable):
                     )
                 self._block_data.append(data)
         self._fifos: dict[ObjectFifoHandle, None] = {}
+        self._transfers: list[DMATask] = []
+        self._seq_op: RuntimeSequenceOp | None = None
         self._register_fn_args()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
@@ -418,6 +420,31 @@ class Runtime(DeviceResources, Resolvable):
         """The ObjectFifoHandles driven from the runtime by fill()/drain()."""
         return list(self._fifos)
 
+    @property
+    def transfers(self) -> list[DMATask]:
+        """The shim DMA transfers the sequence body emitted, in emission order."""
+        return list(self._transfers)
+
+    @property
+    def sequence_op(self) -> RuntimeSequenceOp:
+        """The ``runtime_sequence`` op `resolve` built.
+
+        Raises:
+            NotResolvedError: If the Runtime has not been resolved.
+        """
+        if self._seq_op is None:
+            raise NotResolvedError()
+        return self._seq_op
+
+    @property
+    def dispatch_values(self) -> dict[str, ir.Value]:
+        """Each DispatchTime parameter's name and its ``runtime_sequence`` block argument."""
+        return {
+            arg.name: data.op
+            for arg, data in zip(self._fn_args, self._rt_data)
+            if isinstance(arg, _DispatchParameter) and data is not None
+        }
+
     def register_parameter(self, param: ScratchpadParameter | str | None) -> str | None:
         """Record a ScratchpadParameter a transfer uses, for the Program to declare.
 
@@ -484,6 +511,7 @@ class Runtime(DeviceResources, Resolvable):
         ]
         loc = loc or self._site.location()
         seq_op = RuntimeSequenceOp(sym_name=self._name, loc=loc, ip=ip)
+        self._seq_op = seq_op
         active = ActiveSequence(self, seq_op, device)
         entry_block = seq_op.body.blocks.append(
             *rt_dtypes, arg_locs=[loc] * len(rt_dtypes)
