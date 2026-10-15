@@ -159,12 +159,13 @@ module @programs_and_tasks {
 
 // -----
 
-// The BDs of a runtime task count against its channel's half just as a static
-// program's do: the pinned task on S2MM 2 takes three of the even half's BDs,
-// so the program takes the odd S2MM 1 over the first free channel, S2MM 0.
+// A runtime task's BDs do not steer the choice, so the device image does not
+// depend on the runtime sequence: an instruction stream built for another
+// sequence runs on it. The task pinned to S2MM 2 leaves the program the
+// lowest free channel, S2MM 0.
 
 // CHECK-LABEL: @pinned_task_demand
-// CHECK: aie.route_endpoint @prog(%{{.*}}) DMA {channelIndex = 1 : i32}
+// CHECK: aie.route_endpoint @prog(%{{.*}}) DMA {channelIndex = 0 : i32}
 module @pinned_task_demand {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
@@ -288,6 +289,160 @@ module @adjacent_program {
       aie.next_bd ^bd3
     ^end:
       aie.end
+    }
+  }
+}
+
+// -----
+
+// The same image whatever the runtime sequence: the even half holds the heavy
+// pool's twelve BDs, so @b_in and @b_out take the odd channels 3 whether their
+// runtime tasks have one BD or eight. When the tasks steered the choice, eight
+// BDs each moved @b_out to MM2S 2, and an image built with one-BD tasks no
+// longer matched an instruction stream built with eight-BD ones.
+
+// CHECK-LABEL: @task_size_one
+// CHECK-DAG: aie.route_endpoint @b_in(%{{.*}}) DMA {channelIndex = 3 : i32}
+// CHECK-DAG: aie.route_endpoint @b_out(%{{.*}}) DMA {channelIndex = 3 : i32}
+module @task_size_one {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo.pool @heavy_pool(%mt) {depth = 6 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @hs {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.pool @light_pool(%mt) {depth = 2 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @ls {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.dma_endpoint @heavy_in(%mt) fills @heavy_pool {channelIndex = 0 : i32}
+    aie.objectfifo.dma_endpoint @heavy_out(%mt) drains @heavy_pool {channelIndex = 0 : i32}
+    aie.objectfifo.dma_endpoint @light_in(%mt) fills @light_pool {channelIndex = 1 : i32}
+    aie.objectfifo.dma_endpoint @light_out(%mt) drains @light_pool {channelIndex = 1 : i32}
+    aie.route_endpoint @heavy_src(%shim) DMA {fifoName = "heavy"}
+    aie.route_endpoint @heavy_dst(%shim) DMA {fifoName = "heavy_out"}
+    aie.route_endpoint @light_src(%shim) DMA {fifoName = "light"}
+    aie.route_endpoint @light_dst(%core) DMA
+    aie.route from @heavy_src to [@heavy_in]
+    aie.route from @heavy_out to [@heavy_dst]
+    aie.route from @light_src to [@light_in]
+    aie.route from @light_out to [@light_dst]
+    %b = aie.buffer(%mt) {sym_name = "b"} : memref<256xi32>
+    aie.route_endpoint @b_shim(%shim1) DMA {fifoName = "b"}
+    aie.route_endpoint @b_in(%mt) DMA
+    aie.route_endpoint @b_out(%mt) DMA
+    aie.route_endpoint @b_sink(%shim1) DMA {fifoName = "b_sink"}
+    aie.route from @b_shim to [@b_in]
+    aie.route from @b_out to [@b_sink]
+    aie.runtime_sequence(%arg0: memref<256xi32>) {
+      %b_in = aiex.dma_configure_task_for @b_in {
+        aie.dma_bd(%b : memref<256xi32> offset = 0 len = 16)
+        aie.end
+      }
+      aiex.dma_start_task(%b_in)
+      aiex.dma_free_task(%b_in)
+      %b_out = aiex.dma_configure_task_for @b_out {
+        aie.dma_bd(%b : memref<256xi32> offset = 0 len = 16)
+        aie.end
+      }
+      aiex.dma_start_task(%b_out)
+      aiex.dma_free_task(%b_out)
+    }
+  }
+}
+
+// -----
+
+// CHECK-LABEL: @task_size_eight
+// CHECK-DAG: aie.route_endpoint @b_in(%{{.*}}) DMA {channelIndex = 3 : i32}
+// CHECK-DAG: aie.route_endpoint @b_out(%{{.*}}) DMA {channelIndex = 3 : i32}
+module @task_size_eight {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo.pool @heavy_pool(%mt) {depth = 6 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @hs {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.pool @light_pool(%mt) {depth = 2 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @ls {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.dma_endpoint @heavy_in(%mt) fills @heavy_pool {channelIndex = 0 : i32}
+    aie.objectfifo.dma_endpoint @heavy_out(%mt) drains @heavy_pool {channelIndex = 0 : i32}
+    aie.objectfifo.dma_endpoint @light_in(%mt) fills @light_pool {channelIndex = 1 : i32}
+    aie.objectfifo.dma_endpoint @light_out(%mt) drains @light_pool {channelIndex = 1 : i32}
+    aie.route_endpoint @heavy_src(%shim) DMA {fifoName = "heavy"}
+    aie.route_endpoint @heavy_dst(%shim) DMA {fifoName = "heavy_out"}
+    aie.route_endpoint @light_src(%shim) DMA {fifoName = "light"}
+    aie.route_endpoint @light_dst(%core) DMA
+    aie.route from @heavy_src to [@heavy_in]
+    aie.route from @heavy_out to [@heavy_dst]
+    aie.route from @light_src to [@light_in]
+    aie.route from @light_out to [@light_dst]
+    %b = aie.buffer(%mt) {sym_name = "b"} : memref<256xi32>
+    aie.route_endpoint @b_shim(%shim1) DMA {fifoName = "b"}
+    aie.route_endpoint @b_in(%mt) DMA
+    aie.route_endpoint @b_out(%mt) DMA
+    aie.route_endpoint @b_sink(%shim1) DMA {fifoName = "b_sink"}
+    aie.route from @b_shim to [@b_in]
+    aie.route from @b_out to [@b_sink]
+    aie.runtime_sequence(%arg0: memref<256xi32>) {
+      %b_in = aiex.dma_configure_task_for @b_in {
+        aie.dma_bd(%b : memref<256xi32> offset = 0 len = 16)
+        aie.next_bd ^bd1
+      ^bd1:
+        aie.dma_bd(%b : memref<256xi32> offset = 16 len = 16)
+        aie.next_bd ^bd2
+      ^bd2:
+        aie.dma_bd(%b : memref<256xi32> offset = 32 len = 16)
+        aie.next_bd ^bd3
+      ^bd3:
+        aie.dma_bd(%b : memref<256xi32> offset = 48 len = 16)
+        aie.next_bd ^bd4
+      ^bd4:
+        aie.dma_bd(%b : memref<256xi32> offset = 64 len = 16)
+        aie.next_bd ^bd5
+      ^bd5:
+        aie.dma_bd(%b : memref<256xi32> offset = 80 len = 16)
+        aie.next_bd ^bd6
+      ^bd6:
+        aie.dma_bd(%b : memref<256xi32> offset = 96 len = 16)
+        aie.next_bd ^bd7
+      ^bd7:
+        aie.dma_bd(%b : memref<256xi32> offset = 112 len = 16)
+        aie.end
+      }
+      aiex.dma_start_task(%b_in)
+      aiex.dma_free_task(%b_in)
+      %b_out = aiex.dma_configure_task_for @b_out {
+        aie.dma_bd(%b : memref<256xi32> offset = 0 len = 16)
+        aie.next_bd ^bd1
+      ^bd1:
+        aie.dma_bd(%b : memref<256xi32> offset = 16 len = 16)
+        aie.next_bd ^bd2
+      ^bd2:
+        aie.dma_bd(%b : memref<256xi32> offset = 32 len = 16)
+        aie.next_bd ^bd3
+      ^bd3:
+        aie.dma_bd(%b : memref<256xi32> offset = 48 len = 16)
+        aie.next_bd ^bd4
+      ^bd4:
+        aie.dma_bd(%b : memref<256xi32> offset = 64 len = 16)
+        aie.next_bd ^bd5
+      ^bd5:
+        aie.dma_bd(%b : memref<256xi32> offset = 80 len = 16)
+        aie.next_bd ^bd6
+      ^bd6:
+        aie.dma_bd(%b : memref<256xi32> offset = 96 len = 16)
+        aie.next_bd ^bd7
+      ^bd7:
+        aie.dma_bd(%b : memref<256xi32> offset = 112 len = 16)
+        aie.end
+      }
+      aiex.dma_start_task(%b_out)
+      aiex.dma_free_task(%b_out)
     }
   }
 }

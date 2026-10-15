@@ -57,11 +57,16 @@ struct AIEObjectFifoAllocatePass
   /// tasks the runtime sequence configures for it.
   DenseMap<Operation *, SmallVector<DMAStartOp>> endpointStarts;
   DenseMap<Operation *, SmallVector<AIEX::DMAConfigureTaskForOp>> endpointTasks;
-  /// BDs spoken for on each channel of a placed tile, by (col, row, channel):
-  /// the chains DMA programs start on it by index, plus the largest task the
-  /// runtime sequence configures on it by index.
+  /// BDs the chains DMA programs start by index hold on each channel of a
+  /// placed tile, by (col, row, channel). Channels are chosen from these and
+  /// the endpoints' own chains alone, so an image built for one runtime
+  /// sequence serves another's instruction stream.
   DenseMap<std::tuple<int, int, int>, int64_t> fixedBDs;
-  /// The same, with every channel the last assignment handed out added.
+  /// The largest task the runtime sequence configures on each channel by
+  /// index, by (col, row, channel).
+  DenseMap<std::tuple<int, int, int>, int64_t> taskBDs;
+  /// The BDs every channel the last assignment handed out needs at once,
+  /// runtime tasks included.
   DenseMap<std::tuple<int, int, int>, int64_t> channelDemand;
   /// Where each tile, pool, endpoint and route falls in an order taken from
   /// the design's structure alone, which settles the choices op order would.
@@ -651,15 +656,20 @@ struct AIEObjectFifoAllocatePass
     return bds;
   }
 
-  /// BDs a program-owned endpoint's channel needs at once: its static chains,
-  /// which stay configured, and the largest of its runtime tasks.
+  /// BDs a program-owned endpoint's static chains hold; they stay configured.
   int64_t endpointBDs(Operation *endpoint) {
-    int64_t bds = 0, largestTask = 0;
+    int64_t bds = 0;
     for (DMAStartOp start : endpointStarts.lookup(endpoint))
       bds += countBDs(start);
+    return bds;
+  }
+
+  /// BDs the largest runtime task on a program-owned endpoint needs.
+  int64_t endpointTaskBDs(Operation *endpoint) {
+    int64_t largest = 0;
     for (auto task : endpointTasks.lookup(endpoint))
-      largestTask = std::max(largestTask, countBDs(task.getBody()));
-    return bds + largestTask;
+      largest = std::max(largest, countBDs(task.getBody()));
+    return largest;
   }
 
   /// Whether a program-owned MemTile channel's BDs touch a neighbor's buffers
@@ -699,7 +709,7 @@ struct AIEObjectFifoAllocatePass
     endpointStarts.clear();
     endpointTasks.clear();
     fixedBDs.clear();
-    DenseMap<std::tuple<int, int, int>, int64_t> largestTask;
+    taskBDs.clear();
     auto key = [](Value tile,
                   int channel) -> std::optional<std::tuple<int, int, int>> {
       auto placed = cast<TileLike>(tile.getDefiningOp());
@@ -726,13 +736,11 @@ struct AIEObjectFifoAllocatePass
           endpointTasks[endpoint].push_back(task);
       } else if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
         if (auto at = key(task.getTile(), task.getChannel())) {
-          int64_t &largest = largestTask[*at];
+          int64_t &largest = taskBDs[*at];
           largest = std::max(largest, countBDs(task.getBody()));
         }
       }
     });
-    for (auto &[at, bds] : largestTask)
-      fixedBDs[at] += bds;
   }
 
   /// Rank tiles, pools, endpoints and routes by their attributes and then, a
@@ -1018,6 +1026,21 @@ struct AIEObjectFifoAllocatePass
       }
       channelAssignments[endpoint.getOperation()] = channel;
       noteDemand(endpoint, channel);
+    }
+    // Runtime tasks did not steer the choice, but they hold BDs while they
+    // run, which the overcommit warning counts.
+    for (auto &[at, bds] : taskBDs)
+      demand[at] += bds;
+    for (auto endpoint : device.getOps<RouteEndpoint>()) {
+      TileLike tile = tileOf(endpoint);
+      std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+      std::optional<int> channel = endpoint.getRouteChannel();
+      if (auto it = channelAssignments.find(endpoint.getOperation());
+          it != channelAssignments.end())
+        channel = it->second;
+      if (isProgramOwned(endpoint) && channel && col && row)
+        demand[{*col, *row, *channel}] +=
+            endpointTaskBDs(endpoint.getOperation());
     }
     channelDemand = std::move(demand);
     return success();

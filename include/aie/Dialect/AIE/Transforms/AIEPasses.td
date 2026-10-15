@@ -585,7 +585,10 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     Existing buffers, locks and pinned channels stay fixed.
 
     A route endpoint that a DMA program or runtime task names is given its
-    channel after the objectFIFOs' endpoints, by the BDs its chains need. Each
+    channel after the objectFIFOs' endpoints, by the BDs its static chains
+    need. Runtime tasks do not steer the choice, so the device image is the
+    same whatever runtime sequence it is built with, and an instruction
+    stream built for another sequence runs on it. Each
     `aie.dma_start` naming it then takes that channel's index, and each
     `aiex.dma_configure_task_for` naming it becomes an
     `aiex.dma_configure_task` on the endpoint's tile and channel.
