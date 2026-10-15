@@ -7,6 +7,9 @@ namespace IronVerify.Designs.WholeArrayC2
 
 open IronVerify
 
+-- Wide designs nest their runtime sequence deeper than Lean's default limit.
+set_option maxRecDepth 20000
+
 def params : List String := ["M", "K", "N"]
 
 def net : Net where

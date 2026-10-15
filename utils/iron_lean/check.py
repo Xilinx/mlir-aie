@@ -29,6 +29,7 @@ DESIGNS = {
     ),
     "WholeArrayC2": (2, ["256x64x64", "768x128x128", "1280x64x192"]),
     "WholeArrayC4": (4, ["256x64x128", "512x128x256", "1280x64x128"]),
+    "WholeArrayC8": (8, ["256x64x256", "512x128x512", "1280x64x256"]),
 }
 
 # Lean 4 compiles `native_decide` to an auxiliary axiom, so allow-list rather than

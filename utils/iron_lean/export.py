@@ -227,6 +227,9 @@ namespace IronVerify.Designs.{namespace}
 
 open IronVerify
 
+-- Wide designs nest their runtime sequence deeper than Lean's default limit.
+set_option maxRecDepth 20000
+
 def params : List String := [{", ".join(f'"{p}"' for p in params)}]
 
 def net : Net where
