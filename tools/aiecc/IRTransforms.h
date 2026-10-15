@@ -1708,11 +1708,14 @@ getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
 inline std::unique_ptr<mlir::PassManager>
 getRoutingPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  mlir::OpPassManager &dpm = pm->nest<xilinx::AIE::DeviceOp>();
-  dpm.addPass(xilinx::AIE::createAIESplitFlowViasPass());
+  pm->nest<xilinx::AIE::DeviceOp>().addPass(
+      xilinx::AIE::createAIESplitFlowViasPass());
+  if (cli::ctrlpktAdaptivePin)
+    pm->addPass(xilinx::AIE::createAIEControlOverlayAvoidDataPass());
   xilinx::AIE::AIERoutePathfinderFlowsOptions options;
   options.clAllowDeadlockProne = cli::allowDeadlockProneRouting;
-  dpm.addPass(xilinx::AIE::createAIEPathfinderPass(options));
+  pm->nest<xilinx::AIE::DeviceOp>().addPass(
+      xilinx::AIE::createAIEPathfinderPass(options));
   return pm;
 }
 

@@ -43,6 +43,7 @@ add_mlir_dialect_library(
   AIELowerCascadeFlows.cpp
   AIEAutoPacketizeShimInput.cpp
   AIEGenerateColumnControlOverlay.cpp
+  AIEControlOverlayAvoidData.cpp
   AIETraceToConfig.cpp
   AIEInsertTraceFlows.cpp
   ADDITIONAL_HEADER_DIRS

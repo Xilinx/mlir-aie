@@ -61,6 +61,8 @@ struct SwitchboxConnect {
     llvm::SmallDenseMap<int, int, 2> packetIds;
     // whether a prioritized flow uses the connection
     bool isPriority = false;
+    // added to the demand, so routes keep off the connection where they can
+    double avoidance = 0;
   };
 
   SwitchboxConnect() = default;
@@ -373,6 +375,8 @@ public:
   mlir::LogicalResult addFixedConnection(SwitchboxOp switchboxOp);
   // Keeps routes out of the switchbox at `coords`.
   void excludeTile(TileID coords);
+  // Keeps routes off an output port of a switchbox where another is free.
+  void avoidPort(TileID coords, Port port);
   // A RoutingFailure if no legal routing is found in `maxIterations`.
   llvm::Expected<Routing> findPaths(int maxIterations);
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
@@ -540,6 +544,8 @@ public:
   }
 
   Pathfinder pathfinder;
+  // Passed to Pathfinder::avoidPort.
+  std::vector<std::pair<TileID, Port>> avoidedPorts;
   // The routing runAnalysis found.
   Routing routing;
   // The sources of the circuit flows lowered so far.
@@ -554,6 +560,8 @@ private:
   llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
   llvm::DenseMap<TileID, ShimMuxOp> coordToShimMux;
 };
+
+bool touchesTileControl(PacketFlowOp flow);
 
 } // namespace xilinx::AIE
 
