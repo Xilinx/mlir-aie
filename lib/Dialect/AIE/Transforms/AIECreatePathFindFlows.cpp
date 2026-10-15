@@ -3060,6 +3060,32 @@ llvm::Expected<PacketPlan> AIEPathfinderPass::route(
     for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams()))
       if (s.packetID)
         streamsFrom[{s.src.tile, s.src.port}].push_back(i);
+    constraints.apartAcross = [&](llvm::function_ref<bool(TileID)> low, bool up,
+                                  size_t limit) {
+      ArrayRef<RoutedStream> streams = conflicts.getStreams();
+      SmallVector<size_t, 16> crossing;
+      std::set<std::pair<TileID, Port>> srcs, dsts;
+      for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams()))
+        if (s.packetID && low(s.src.tile) == up && low(s.dst.tile) != up) {
+          crossing.push_back(i);
+          srcs.insert({s.src.tile, s.src.port});
+          dsts.insert({s.dst.tile, s.dst.port});
+        }
+      PacketsApart apart;
+      // Streams kept apart have distinct sources and destinations.
+      size_t most = std::min(srcs.size(), dsts.size());
+      SmallVector<size_t, 8> best =
+          most > limit
+              ? largestApartSet(conflicts, crossing, limit)
+              : SmallVector<size_t, 8>(
+                    crossing.begin(),
+                    crossing.begin() + std::min<size_t>(1, crossing.size()));
+      for (size_t s : best)
+        apart.flows.push_back(describeStream(streams[s]));
+      if (best.size() > 1)
+        apart.why = conflicts.explain(best[0], best[1]);
+      return apart;
+    };
     constraints.conflict = [&](const PathEndPoint &a, const std::set<int> &aIds,
                                const PathEndPoint &b,
                                const std::set<int> &bIds) {

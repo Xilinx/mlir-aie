@@ -231,6 +231,17 @@ using PacketConflict =
     std::function<bool(const PathEndPoint &, const std::set<int> &,
                        const PathEndPoint &, const std::set<int> &)>;
 
+// Described packet streams, and why the first two conflict.
+struct PacketsApart {
+  std::vector<std::string> flows;
+  std::string why;
+};
+// The most pairwise-conflicting packet streams found crossing from the tiles
+// `low` holds to the others if `up` (else back), searching no further than
+// `limit` + 1; see Pathfinder::cutOverflow.
+using PacketsApartAcross = std::function<PacketsApart(
+    llvm::function_ref<bool(TileID)> low, bool up, size_t limit)>;
+
 // Packets `src` sends with ids `a` and `b` share a master port they leave
 // tile `at` by, which puts them on one arbiter. If `apart` is set, the
 // packets with id `b` for that destination on the tile reach it by a slave
@@ -333,6 +344,7 @@ struct PacketConstraints {
   // Packet flows that conflict are steered off each other's master ports; see
   // edgeWeight.
   PacketConflict conflict;
+  PacketsApartAcross apartAcross;
   // The prioritized packet flows from these sources take these trees
   // instead of being routed.
   PacketTrees pinned;

@@ -1303,8 +1303,10 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
 
 llvm::Error Pathfinder::cutOverflow() const {
   // Each circuit tree crossing a boundary needs a channel of its own, and the
-  // packet flows one more. Channels fixed connections hold are not the
-  // router's to use, so this rejects only what it could not route anyway.
+  // packet flows one more, or one each for streams no two of which may share
+  // an arbiter, since a channel's master port has one. Channels fixed
+  // connections hold are not the router's to use, so this rejects only what
+  // it could not route anyway.
   auto onDevice = [&](TileID t) { return t.col < columns && t.row < rows; };
   std::map<std::tuple<bool, int, bool>, size_t> channels;
   for (const auto &[ends, sb] : graph) {
@@ -1345,7 +1347,11 @@ llvm::Error Pathfinder::cutOverflow() const {
       else
         circuits.push_back(describeTilePort(f.src.coords, f.src.port));
     }
-    size_t needed = circuits.size() + packets;
+    PacketsApart apart;
+    if (packets && constraints.apartAcross && available > circuits.size())
+      apart = constraints.apartAcross(low, up, available - circuits.size());
+    size_t needed =
+        circuits.size() + std::max<size_t>(packets, apart.flows.size());
     LLVM_DEBUG(llvm::dbgs() << "Cut " << (rows ? "row " : "column ") << below
                             << (up ? " up" : " down") << ": " << needed
                             << " of " << available << " channels\n");
@@ -1353,16 +1359,21 @@ llvm::Error Pathfinder::cutOverflow() const {
       continue;
     int from = up ? below : below + 1, to = up ? below + 1 : below;
     auto channel = [](size_t n) { return n == 1 ? "channel" : "channels"; };
-    std::string who = circuits.empty()
-                          ? "the packet flows"
-                          : "the circuit flows from " + joinNames(circuits);
-    if (packets && !circuits.empty())
-      who += ", with packet flows,";
+    std::string who =
+        circuits.empty() ? "" : "the circuit flows from " + joinNames(circuits);
+    if (apart.flows.size() > 1)
+      who += (who.empty() ? "" : ", and ") + joinNames(apart.flows) +
+             ", no two of which can share an arbiter,";
+    else if (packets)
+      who =
+          circuits.empty() ? "the packet flows" : who + ", with packet flows,";
+    std::string why =
+        apart.flows.size() > 1 ? " For example, " + apart.why : "";
     return llvm::make_error<RoutingFailure>(llvm::formatv(
         "{0} cross from {1} {2} to {1} {3}, which takes {4} {5} across, and "
-        "it has {6} {7}.",
+        "it has {6} {7}.{8}",
         who, rows ? "row" : "column", from, to, needed, channel(needed),
-        available, channel(available)));
+        available, channel(available), why));
   }
   return llvm::Error::success();
 }
