@@ -632,6 +632,10 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
       [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
               /*default=*/"false",
               "Flag to enable aie.packetflow lowering from objectfifos.">,
+       Option<"clReserveControllerPacketIds", "reserve-controller-packet-ids",
+              "bool", /*default=*/"false",
+              "Give no packet flow a tile controller's packet ID, for a "
+              "design whose column control overlay is added afterwards.">,
   ];
 }
 

@@ -1141,13 +1141,20 @@ struct AIEObjectFifoAllocatePass
   /// pass's analysis.
   ///
   /// Packet IDs already spoken for, by an existing packet flow or by a flow
-  /// that pinned one.
+  /// that pinned one, and with reserve-controller-packet-ids, the controller
+  /// IDs the column control overlay will route control packets on.
   llvm::SmallDenseSet<int> takenPacketIDs() {
     llvm::SmallDenseSet<int> taken;
     device.walk([&](PacketFlowOp flow) { taken.insert(flow.IDInt()); });
     for (auto flow : device.getOps<RouteOp>()) {
       if (auto pinned = flow.getPacketId()) {
         taken.insert(*pinned);
+      }
+    }
+    if (clReserveControllerPacketIds) {
+      for (auto [tile, id] :
+           device.getTargetModel().getTileToControllerIdMap(true)) {
+        taken.insert(id);
       }
     }
     return taken;
@@ -1620,8 +1627,10 @@ xilinx::AIE::createAIEObjectFifoAllocatePass() {
 }
 
 std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched) {
+xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched,
+                                             bool reserveControllerPacketIds) {
   AIEObjectFifoAllocateOptions options;
   options.clPacketSwObjectFifos = packetSwitched;
+  options.clReserveControllerPacketIds = reserveControllerPacketIds;
   return std::make_unique<AIEObjectFifoAllocatePass>(options);
 }
