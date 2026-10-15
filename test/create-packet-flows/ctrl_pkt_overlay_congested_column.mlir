@@ -9,47 +9,46 @@
 // the same way the standalone overlay does, or loading it reprograms the
 // switches its own control packets travel through (#3837). Here the design's
 // circuit flows crowd the memtile's north ports, so one detours through
-// column 1, whose tiles the design declares for the overlay to cover them. The
-// overlay keeps the master ports, msels and rules it has on its own.
+// column 1, which the overlay covers at every row. The overlay keeps the
+// master ports, msels and rules it has on its own. The design moves data
+// through column 0's shim MM2S channel 0, so the column's control packets
+// take channel 1.
 
 // RUN: aie-opt --pass-pipeline="builtin.module(aie-generate-column-control-overlay{route-shim-to-tile-ctrl=true emit-standalone-overlay=true},aie.device(aie-create-pathfinder-flows))" %s -o %t
 // RUN: sed -n '/@design {/,/^  }/p' %t | FileCheck %s
 // RUN: sed -n '/@ctrl_pkt_overlay {/,/^  }/p' %t | FileCheck %s
+// RUN: sed -n '/@design {/,/^  }/p' %t | FileCheck %s --check-prefix=DETOUR
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0) {
-// CHECK-DAG:     %[[A50:.+]] = aie.amsel<5> (0)
 // CHECK-DAG:     %[[A51:.+]] = aie.amsel<5> (1)
 // CHECK-DAG:     %[[A52:.+]] = aie.amsel<5> (2)
 // CHECK-DAG:     %[[A53:.+]] = aie.amsel<5> (3)
 // CHECK-DAG:     aie.masterset(South : 0, %[[A53]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
-// CHECK-DAG:     aie.masterset(North : 1, %[[A52]]) {aie.is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(North : 3, %[[A51]]) {aie.is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A50]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
+// CHECK-DAG:     aie.masterset(North : 3, %[[A52]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A51]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
 // CHECK:         aie.packet_rules(South : 7) {
-// CHECK-NEXT:      aie.rule(28, 28, %[[A52]]) {aie.priority_route}
-// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
-// CHECK:         aie.packet_rules(South : 3) {
-// CHECK-NEXT:      aie.rule(30, 26, %[[A51]]) {aie.priority_route}
-// CHECK-NEXT:      aie.rule(31, 15, %[[A50]]) {aie.priority_route}
+// CHECK-NEXT:      aie.rule(24, 24, %[[A52]]) {aie.priority_route}
+// CHECK-NEXT:      aie.rule(31, 15, %[[A51]]) {aie.priority_route}
 // CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(TileControl : 0) {
 // CHECK-NEXT:      aie.rule(31, 15, %[[A53]]) {aie.priority_route}
 // CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1) {
-// CHECK-DAG:     %[[A51:.+]] = aie.amsel<5> (1)
 // CHECK-DAG:     %[[A52:.+]] = aie.amsel<5> (2)
 // CHECK-DAG:     %[[A53:.+]] = aie.amsel<5> (3)
-// CHECK-DAG:     aie.masterset(North : 1, %[[A53]]) {aie.is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(North : 3, %[[A52]]) {aie.is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A51]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
-// CHECK:         aie.packet_rules(South : 1) {
-// CHECK-NEXT:      aie.rule(28, 28, %[[A53]])
-// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(North : 3, %[[A53]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A52]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
 // CHECK:         aie.packet_rules(South : 3) {
-// CHECK-NEXT:      aie.rule(31, 27, %[[A52]])
-// CHECK-NEXT:      aie.rule(31, 26, %[[A51]])
+// CHECK-NEXT:      aie.rule(25, 25, %[[A53]])
+// CHECK-NEXT:      aie.rule(31, 30, %[[A53]])
+// CHECK-NEXT:      aie.rule(31, 26, %[[A52]])
 // CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
+
+// DETOUR-LABEL: aie.switchbox(%mem_tile_1_1) {
+// DETOUR:         aie.connect<South : {{[0-9]+}}, North : {{[0-9]+}}>
+// DETOUR-LABEL: aie.switchbox(%tile_1_2) {
+// DETOUR:         aie.connect<South : {{[0-9]+}}, West : {{[0-9]+}}>
 
 module {
   aie.device(npu2) @design {
@@ -73,5 +72,6 @@ module {
     aie.flow(%mem_tile_0_1, DMA : 4, %tile_0_5, DMA : 0)
     aie.flow(%tile_0_5, DMA : 0, %mem_tile_0_1, DMA : 4)
     aie.flow(%mem_tile_0_1, DMA : 5, %tile_0_2, DMA : 1)
+    aie.flow(%shim_noc_tile_0_0, DMA : 0, %tile_0_3, DMA : 1)
   }
 }

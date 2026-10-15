@@ -6,8 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 // The response and the requests to the shim and mem tile are routed, but the
-// request to the compute tile is not. Only that request is generated, and the
-// shim DMA allocation is not repeated.
+// requests to the compute tile and the rows above it are not. Only those
+// requests are generated, on the channel the routed ones use, and the shim DMA
+// allocation is not repeated.
 
 // RUN: aie-opt %s -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" | FileCheck %s
 
@@ -18,6 +19,15 @@
 // CHECK:      aie.packet_flow(27) {
 // CHECK-NEXT: aie.packet_source<%[[SHIM]], DMA : 0>
 // CHECK-NEXT: aie.packet_dest<%[[COMPUTE]], TileControl : 0>
+// CHECK:      aie.packet_flow(29) {
+// CHECK-NEXT: aie.packet_source<%[[SHIM]], DMA : 0>
+// CHECK-NEXT: aie.packet_dest<%tile_0_3, TileControl : 0>
+// CHECK:      aie.packet_flow(30) {
+// CHECK-NEXT: aie.packet_source<%[[SHIM]], DMA : 0>
+// CHECK-NEXT: aie.packet_dest<%tile_0_4, TileControl : 0>
+// CHECK:      aie.packet_flow(31) {
+// CHECK-NEXT: aie.packet_source<%[[SHIM]], DMA : 0>
+// CHECK-NEXT: aie.packet_dest<%tile_0_5, TileControl : 0>
 // CHECK-NOT: aie.packet_flow
 // CHECK-NOT: aie.shim_dma_allocation
 

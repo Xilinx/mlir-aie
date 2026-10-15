@@ -1404,7 +1404,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
     bool skipObjectFifoVerify = false, bool assignAddresses = true,
-    bool checkQueueSpace = true) {
+    llvm::ArrayRef<int> coverColumns = {}, bool checkQueueSpace = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1426,7 +1426,8 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // params.txt is materialized as a separate graph edge, so the scratchpad
   // lowering in this stage writes no `outputParamsFile`.
   X::addLoweringStage(*pm, dynamicObjFifos, packetSwObjFifos, ctrlPktOverlay,
-                      loadPdiToCtrlPkt, skipObjectFifoVerify, checkQueueSpace);
+                      loadPdiToCtrlPkt, skipObjectFifoVerify, coverColumns,
+                      checkQueueSpace);
 
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   if (assignAddresses) {
