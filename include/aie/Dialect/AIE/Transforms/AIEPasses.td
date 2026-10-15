@@ -655,6 +655,9 @@ def AIEAssignPacketIds : Pass<"aie-assign-packet-ids", "DeviceOp"> {
       [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
               /*default=*/"false",
               "Make every route packet-switched, whether or not it asked.">,
+       Option<"clReserveControllerPacketIds", "reserve-controller-packet-ids",
+              "bool", /*default=*/"false",
+              "Reserve controller packet IDs for configuration traffic.">,
   ];
 }
 

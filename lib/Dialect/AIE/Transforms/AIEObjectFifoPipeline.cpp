@@ -22,6 +22,10 @@ struct ObjectFifoLoweringOptions
       llvm::cl::desc(
           "Flag to enable aie.packetflow lowering from objectfifos."),
       llvm::cl::init(false)};
+  Option<bool> reserveControllerPacketIds{
+      *this, "reserve-controller-packet-ids",
+      llvm::cl::desc("Reserve the tile controllers' packet IDs."),
+      llvm::cl::init(false)};
   Option<bool> skipVerify{
       *this, "skip-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR."),
@@ -37,12 +41,13 @@ struct ObjectFifoLoweringOptions
 void xilinx::AIE::addObjectFifoLoweringPasses(OpPassManager &pm,
                                               bool packetSwitched,
                                               bool skipVerify,
+                                              bool reserveControllerPacketIds,
                                               bool checkQueueSpace) {
   pm.addPass(createAIEObjectFifoSplitPass());
   if (!skipVerify) {
     pm.addPass(createAIEObjectFifoVerifyPass());
   }
-  pm.addPass(createAIEAssignPacketIdsPass(packetSwitched));
+  pm.addPass(createAIEAssignPacketIdsPass(packetSwitched, reserveControllerPacketIds));
   pm.addPass(createAIEObjectFifoAllocatePass());
   AIEObjectFifoInsertCoreQueuePushesOptions pushOptions;
   pushOptions.checkQueueSpace = checkQueueSpace;
@@ -58,7 +63,7 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
       "Lower aie.objectfifo to buffers, locks, flows and DMA programs",
       [](OpPassManager &pm, const ObjectFifoLoweringOptions &options) {
         addObjectFifoLoweringPasses(pm, options.packetSwitched,
-                                    options.skipVerify,
+                                    options.skipVerify, options.reserveControllerPacketIds,
                                     options.checkQueueSpace);
       });
 }

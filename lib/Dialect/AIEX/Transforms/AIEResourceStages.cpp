@@ -43,7 +43,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
 
   OpPassManager &dpm = pm.nest<DeviceOp>();
   addObjectFifoLoweringPasses(dpm, packetSwObjFifos, skipObjectFifoVerify,
-                              checkQueueSpace);
+                             ctrlPktOverlay, checkQueueSpace);
   AIEObjectFifoUnrollOptions unroll;
   unroll.clDefaultDynamic = dynamicObjFifos;
   dpm.addPass(createAIEObjectFifoUnrollPass(unroll));
