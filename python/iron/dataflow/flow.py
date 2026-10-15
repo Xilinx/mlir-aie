@@ -20,7 +20,6 @@ lower-level "just declare the route" primitives, paired with explicit
 [`Lock`][iron.Lock] shared state) for designs that need direct control.
 """
 
-import itertools
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -65,7 +64,7 @@ class _Route(PerDeviceConfigurationResolvable):
     _broadcast = False
     _src: Tile
     _dsts: list[Tile]
-    _name: str
+    _name: str | None
     _op: Any
     _shim_symbol: str | None
     _shim_ends: set[int]
@@ -80,8 +79,11 @@ class _Route(PerDeviceConfigurationResolvable):
         return self._endpoint_tiles()
 
     @property
-    def name(self) -> str:
-        """The name the route's end symbols are built from."""
+    def name(self) -> str | None:
+        """The name the route's end symbols are built from.
+
+        None for a route left unnamed until its configuration resolves.
+        """
         return self._name
 
     @property
@@ -127,6 +129,12 @@ class _Route(PerDeviceConfigurationResolvable):
     def _end_symbol(self, end: int) -> str:
         if end == self._shim_end() and self._shim_symbol is not None:
             return self._shim_symbol
+        if self._name is None:
+            raise ValueError(
+                f"This {type(self).__name__} has no name yet: an unnamed route "
+                "is named by the configuration it is registered with "
+                "(rt.add_flow) when that resolves."
+            )
         if end == 0:
             return f"{self._name}_src"
         return f"{self._name}_dst{end - 1}" if self._broadcast else f"{self._name}_dst"
@@ -262,7 +270,7 @@ class FlowEndpoint(DmaEndpoint):
         return self._flow._end_symbol(self._end) if self._flow._routed else None
 
     def __str__(self) -> str:
-        if self.channel is None:
+        if self.channel is None and self._flow.name is not None:
             return f"@{self.symbol}"
         return super().__str__()
 
@@ -281,8 +289,6 @@ class Flow(_Route):
     [`endpoint`][iron.dataflow.flow.Flow.endpoint] rather than an index. That is
     also how a list of destinations (a circuit-switched broadcast) lowers.
     """
-
-    _flow_index = itertools.count()
 
     def __init__(
         self,
@@ -327,8 +333,9 @@ class Flow(_Route):
                 names the source; a drain at the destination uses
                 ``{name}_dst``.
             name (str | None): Base of the end symbols, ``{name}_src`` and
-                ``{name}_dst`` (``{name}_dst{i}`` for a broadcast). A unique name
-                is generated if not provided.
+                ``{name}_dst`` (``{name}_dst{i}`` for a broadcast). Left
+                ``None``, the configuration the Flow is registered with names
+                it ``flow{n}`` when it resolves, counting in registration order.
         """
         self._site = SourceSite.capture()
         self._broadcast = not isinstance(dst, Tile)
@@ -358,7 +365,7 @@ class Flow(_Route):
         self._channels = [src_channel] + [dst_channel] * len(self._dsts)
         self._shim_symbol = shim_symbol
         self._shim_ends: set[int] = set()
-        self._name = name if name is not None else f"flow{next(Flow._flow_index)}"
+        self._name = name
         self._endpoints: dict[int, FlowEndpoint] = {}
         self._op = None
 
@@ -492,8 +499,6 @@ class PacketFlow(_Route):
     to a [`Flow`][iron.Flow].
     """
 
-    _flow_index = itertools.count()
-
     def __init__(
         self,
         pkt_id: int,
@@ -530,7 +535,8 @@ class PacketFlow(_Route):
             shim_symbol: Same meaning as on [`Flow`][iron.Flow] — emit a
                 matching `aie.shim_dma_allocation` of that name at the shim
                 source, else at the one shim destination.
-            name: Same meaning as on [`Flow`][iron.Flow].
+            name: Same meaning as on [`Flow`][iron.Flow]; left ``None``, it is
+                named ``packetflow{n}``.
         """
         self._site = SourceSite.capture()
         self._pkt_id = pkt_id
@@ -544,9 +550,7 @@ class PacketFlow(_Route):
         self._keep_pkt_header = keep_pkt_header
         self._shim_symbol = shim_symbol
         self._shim_ends: set[int] = set()
-        self._name = (
-            name if name is not None else f"packetflow{next(PacketFlow._flow_index)}"
-        )
+        self._name = name
         self._op = None
 
     @property

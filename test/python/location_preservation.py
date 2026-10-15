@@ -126,7 +126,7 @@ def iron_locations():
                     t.op = tile(t.col, t.row)
                 objects = [
                     (
-                        Flow(src, dst, shim_symbol="input"),
+                        Flow(src, dst, shim_symbol="input", name="input"),
                         ["aie.route_endpoint", "aie.route_endpoint", "aie.route"],
                     ),
                     (

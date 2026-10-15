@@ -17,6 +17,7 @@ from ..helpers.dialects.func import FuncBase
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
 from .dataflow.endpoint import ObjectFifoEndpoint
+from .dataflow.flow import PacketFlow
 from .dataflow.objectfifo import ObjectFifoLink
 from .device import Device
 from .kernel import Kernel
@@ -226,6 +227,7 @@ class DeviceConfiguration(DeviceResources):
                 )
             claimed[name] = kind
         taken = set(claimed)
+        taken.update(flow.name for flow in self._flows if flow.name is not None)
 
         def fresh(prefix):
             name = next(
@@ -242,6 +244,11 @@ class DeviceConfiguration(DeviceResources):
         for buffer in rtps:
             if buffer._name is None:
                 buffer._name = fresh("rtp")
+        for flow in self._flows:
+            if flow.name is None:
+                flow._name = fresh(
+                    "packetflow" if isinstance(flow, PacketFlow) else "flow"
+                )
 
     def resolve(
         self,
