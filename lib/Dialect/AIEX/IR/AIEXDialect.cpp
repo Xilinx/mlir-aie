@@ -1395,6 +1395,62 @@ LogicalResult AIEX::DMAStartTaskOp::verify() {
   return success();
 }
 
+// The far end of a shim transfer on an objectFIFO receives (or sends) whole
+// objects through a BD sized by the object type, so a transfer ending
+// mid-object never completes that BD and the fifo hangs. Checked only when
+// every extent is static.
+static LogicalResult
+verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
+                             AIE::ObjectFifoCreateOp fifo) {
+  if (fifo.getPadDimensions() || fifo.getAieStream())
+    return success();
+  auto producer =
+      dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
+  if (!producer)
+    return success();
+  Type farObject = producer.isShimTile() ? fifo.getConsumerElemTypeOrDefault()
+                                         : fifo.getElemType();
+  auto object = cast<AIE::AIEObjectFifoType>(farObject).getElementType();
+  if (!object.hasStaticShape())
+    return success();
+  int64_t objectBytes =
+      object.getNumElements() *
+      static_cast<int64_t>(
+          DataLayout::closest(task).getTypeSize(object.getElementType()));
+  if (objectBytes <= 0)
+    return success();
+
+  std::optional<int64_t> repeat =
+      getConstantIntValue(task.getRepeatCountValue());
+  if (!repeat)
+    return success();
+  for (Operation *user : task.getResult().getUsers())
+    if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
+        start && (start.getRepeatCountAttr() || start.getRepeatCountVal() ||
+                  start.hasRepeatParameter()))
+      return success();
+
+  int64_t moved = 0;
+  WalkResult walk = task.getBody().walk([&](AIE::DMABDOp bd) {
+    std::optional<int32_t> len = bd.getConstantLen();
+    if (!len || bd.getIteration())
+      return WalkResult::interrupt();
+    moved += static_cast<int64_t>(*len) * bd.getBufferElementTypeWidthInBytes();
+    return WalkResult::advance();
+  });
+  if (walk.wasInterrupted() || moved == 0)
+    return success();
+  moved *= *repeat + 1;
+  if (moved % objectBytes == 0)
+    return success();
+  return task.emitOpError()
+         << "moves " << moved << " bytes through objectFIFO @"
+         << fifo.getSymName() << ", which is not a whole number of its "
+         << objectBytes
+         << "-byte objects; the far end's buffer descriptor is sized by the "
+            "object, so a partial one never completes";
+}
+
 // Resolving the allocation symbol through the collection keeps the lookup off
 // the device's linear symbol scan, which a per-op verifier repeats after every
 // pass.
@@ -1426,7 +1482,9 @@ LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
                                  << stringifyWireBundle(endpoint.getBundle())
                                  << " port, not a DMA channel";
           })
-          .Case([](AIE::ObjectFifoCreateOp) { return success(); })
+          .Case([&](AIE::ObjectFifoCreateOp fifo) {
+            return verifyTaskCoversWholeObjects(*this, fifo);
+          })
           .Default([&](Operation *) -> LogicalResult {
             return emitOpError() << getAlloc()
                                  << " must name an aie.shim_dma_allocation, an "
