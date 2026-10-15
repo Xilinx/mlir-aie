@@ -400,8 +400,9 @@ private:
 
   // Build the dense integer node numbering and per-node adjacency from `graph`
   // and `flows`. Topology is fixed across congestion iterations, so this runs
-  // once. A node's edges are in the order of the PathEndPoints they reach, so
-  // Dijkstra breaks ties the same way every run.
+  // once. A node's crossbar edges come before its wire edges, each in the order
+  // of the PathEndPoints they reach, so Dijkstra breaks ties the same way every
+  // run.
   void buildRoutingGraph();
 
   // The cost of taking `e`, as dijkstraShortestPaths weighs it.
@@ -468,6 +469,7 @@ private:
   std::map<PathEndPoint, int> nodeIds;      // PathEndPoint -> dense id
   std::vector<PathEndPoint> nodes;          // dense id -> PathEndPoint
   std::vector<std::vector<Edge>> adjacency; // dense id -> out-edges
+  std::vector<size_t> wireEdgesBegin;       // dense id -> first wire edge
 
   // Dijkstra scratch, indexed by state id (2 * nodes.size()) and reused across
   // calls.

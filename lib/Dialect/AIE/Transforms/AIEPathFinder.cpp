@@ -296,6 +296,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   nodeIds.clear();
   nodes.clear();
   adjacency.clear();
+  wireEdgesBegin.clear();
   distance.clear();
   indexInHeap.clear();
   colors.clear();
@@ -735,8 +736,9 @@ int Pathfinder::getOrAddNodeId(const PathEndPoint &pep) {
 // Build the dense integer node numbering and per-node adjacency once. The graph
 // topology is fixed across congestion iterations (only the demand weights
 // change), so this is computed a single time and the edges carry live pointers
-// into `graph` for demand lookups. A node's edges are sorted by the
-// PathEndPoint they reach, so Dijkstra breaks ties the same way every run.
+// into `graph` for demand lookups. A node's crossbar edges come first, then its
+// wire edges, each sorted by the PathEndPoint they reach, so Dijkstra breaks
+// ties the same way every run.
 void Pathfinder::buildRoutingGraph() {
   // Seed the dense node set with all flow endpoints (the only nodes Dijkstra is
   // ever started from or traced back to). Remaining nodes are discovered as
@@ -790,6 +792,13 @@ void Pathfinder::buildRoutingGraph() {
       int destId = getOrAddNodeId(dest);
       edges.push_back(Edge{destId, &sb, i, j});
     }
+    auto wires =
+        std::stable_partition(edges.begin(), edges.end(), [](const Edge &e) {
+          return e.sb->srcCoords == e.sb->dstCoords;
+        });
+    if (wireEdgesBegin.size() < nodes.size())
+      wireEdgesBegin.resize(nodes.size());
+    wireEdgesBegin[id] = wires - edges.begin();
     // getOrAddNodeId above may have reallocated `adjacency` via index growth in
     // later iterations, but we only assign this node's edges now.
     if (adjacency.size() < nodes.size())
@@ -799,6 +808,7 @@ void Pathfinder::buildRoutingGraph() {
   size_t n = nodes.size();
   if (adjacency.size() < n)
     adjacency.resize(n);
+  wireEdgesBegin.resize(n);
 
   // Size the reusable Dijkstra scratch buffers. These are indexed by state id,
   // i.e. two entries per node -- one per side of the port.
@@ -876,17 +886,19 @@ void Pathfinder::dijkstraShortestPaths(
     if (branchAvoid)
       if (auto it = branchAvoid->find(s); it != branchAvoid->end())
         avoidBranch = &it->second;
-    for (Edge &e : adjacency[stateNode(s)]) {
-      const bool isIntra = e.sb->srcCoords == e.sb->dstCoords;
-      if (sIsOut == isIntra ||
-          (isIntra && !packetId && e.sb->packetOnlySrc[e.i]) ||
+    ArrayRef<Edge> out = adjacency[stateNode(s)];
+    size_t wires = wireEdgesBegin[stateNode(s)];
+    const bool isIntra = !sIsOut;
+    for (const Edge &e :
+         sIsOut ? out.drop_front(wires) : out.take_front(wires)) {
+      if ((isIntra && !packetId && e.sb->packetOnlySrc[e.i]) ||
           (isIntra && packetId && e.sb->circuitOnlyDst[e.j]))
         continue;
       int dst = stateId(e.dst, isIntra ? Out : In);
-      if (isIntra && mayCross && !mayCross(s, dst))
+      if (colors[dst] == BLACK || (isIntra && mayCross && !mayCross(s, dst)))
         continue;
       double w = edgeWeight(e, packetId, avoid, avoidBranch);
-      if (colors[dst] == BLACK || distance[s] + w >= distance[dst])
+      if (distance[s] + w >= distance[dst])
         continue;
       distance[dst] = distance[s] + w;
       preds[dst] = s;
