@@ -94,7 +94,8 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoVerifyPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoAllocatePass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
-createAIEObjectFifoAllocatePass(bool packetSwitched);
+createAIEObjectFifoAllocatePass(bool packetSwitched,
+                                bool reserveControllerPacketIds = false);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLowerDMAsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

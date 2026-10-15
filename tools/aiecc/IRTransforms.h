@@ -1447,8 +1447,8 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   if (mlir::failed(mlir::parsePassPipeline(
           llvm::formatv(
               "aie-objectFifo-stateful-transform{{packet-sw-objFifos={0} "
-              "skip-verify={1}}",
-              packetSwObjFifos, skipObjectFifoVerify)
+              "skip-verify={1} reserve-controller-packet-ids={2}}",
+              packetSwObjFifos, skipObjectFifoVerify, ctrlPktOverlay)
               .str(),
           dpm))) {
     return nullptr;
