@@ -7,9 +7,9 @@
 //
 // The columns a control packet overlay covers. The router refuses a detour
 // through a column the overlay misses, so on a routing failure OverlayCoverage
-// routes again without the overlay, covers each column that routing
-// configures, and reruns the edge. It keeps the routed result for
-// CachedRouting, so a design that routes first time is routed once.
+// covers the columns the design routes through without the overlay and reruns
+// the edge, then retries auto-packetize's other channels. CachedRouting reuses
+// its routed result.
 //
 //===----------------------------------------------------------------------===//
 
@@ -145,9 +145,11 @@ struct RoutedCache {
 };
 
 struct OverlayCoverage {
-  // Builds the edge's pipeline with the given cover-columns.
+  // Builds the edge's pipeline with the given cover-columns and the control
+  // channels aie-auto-packetize-shim-input is told to use.
   using Build = std::function<std::unique_ptr<mlir::PassManager>(
-      mlir::MLIRContext *, mlir::ModuleOp, llvm::ArrayRef<int>)>;
+      mlir::MLIRContext *, mlir::ModuleOp, llvm::ArrayRef<int>,
+      const std::map<int, int> &)>;
   mlir::MLIRContext *ctx;
   Build build;
   std::shared_ptr<RoutedCache> cache;
@@ -188,6 +190,48 @@ struct OverlayCoverage {
     return cols;
   }
 
+  // Per column auto-packetize chose a control channel in (its marked
+  // `ctrlpkt_*` allocation's channel also carries data packets), that channel
+  // and the column's other shim MM2S channels.
+  static std::map<int, std::pair<int, std::vector<int>>>
+  controlChannelAlternatives(mlir::ModuleOp mod) {
+    namespace AIE = xilinx::AIE;
+    std::map<int, std::pair<int, std::vector<int>>> cols;
+    for (auto device : mod.getOps<AIE::DeviceOp>()) {
+      std::set<std::pair<int, int>> dataChans;
+      for (auto flow : device.getOps<AIE::PacketFlowOp>()) {
+        if (llvm::all_of(
+                flow.getOps<AIE::PacketDestOp>(), [](AIE::PacketDestOp dest) {
+                  return dest.getBundle() == AIE::WireBundle::TileControl;
+                }))
+          continue;
+        for (auto src : flow.getOps<AIE::PacketSourceOp>())
+          if (src.getBundle() == AIE::WireBundle::DMA)
+            if (auto tile = llvm::dyn_cast_or_null<AIE::TileOp>(
+                    src.getTile().getDefiningOp()))
+              if (tile.isShimNOCorPLTile())
+                dataChans.insert({tile.colIndex(), src.channelIndex()});
+      }
+      AIE::AIEDialect::IsCtrlPktOverlayAttrHelper overlay(mod.getContext());
+      for (auto alloc : device.getOps<AIE::ShimDMAAllocationOp>()) {
+        int col = alloc.getTileOp().colIndex();
+        int chan = static_cast<int>(alloc.getChannelIndex());
+        if (!overlay.isAttrPresent(alloc) ||
+            alloc.getChannelDir() != AIE::DMAChannelDir::MM2S ||
+            !dataChans.count({col, chan}) || cols.count(col))
+          continue;
+        int numChans = device.getTargetModel().getNumSourceShimMuxConnections(
+            col, 0, AIE::WireBundle::DMA);
+        auto &[controlChan, others] = cols[col];
+        controlChan = chan;
+        for (int other = 0; other < numChans; ++other)
+          if (other != controlChan)
+            others.push_back(other);
+      }
+    }
+    return cols;
+  }
+
   static mlir::Location columnLocation(mlir::ModuleOp mod, int col) {
     mlir::Location loc = mod.getLoc();
     mod.walk([&](xilinx::AIE::TileOp tile) {
@@ -199,19 +243,101 @@ struct OverlayCoverage {
     return loc;
   }
 
-  // Runs the edge's pipeline on a copy of `base`; null on failure, with the
-  // pipeline's diagnostics emitted.
-  mlir::OwningOpRef<mlir::ModuleOp>
-  runPipeline(mlir::ModuleOp base, llvm::ArrayRef<int> cover) const {
-    mlir::OwningOpRef<mlir::ModuleOp> mod(base.clone());
-    auto pm = build(ctx, *mod, cover);
-    if (!pm) {
-      llvm::errs() << "aiecc: PassPipeline builder returned null\n";
-      return {};
+  // One choice of control channels, with the columns the overlay covers for it
+  // and the diagnostics of the pipeline run it came from. It is the trial that
+  // routes, else the first that does not (or none, when the pipeline failed).
+  struct Attempt {
+    bool routes = false;
+    bool pipelineFailed = false;
+    mlir::OwningOpRef<mlir::ModuleOp> module;
+    std::vector<CapturedDiagnostics::Diag> diags;
+    Configured added;
+  };
+
+  // Runs in a trial context, and returns its module and diagnostics in the
+  // shared one.
+  Attempt attempt(mlir::ModuleOp base,
+                  const std::map<int, int> &controlChans) const {
+    Attempt result;
+    std::vector<int> cover;
+    TrialContext trialCtx(ctx);
+    mlir::MLIRContext *tctx = &trialCtx.ctx;
+    mlir::OwningOpRef<mlir::ModuleOp> trialBase = copyInto(base, tctx);
+    if (!trialBase) {
+      result.pipelineFailed = true;
+      return result;
     }
-    if (mlir::failed(runPasses(*pm, *mod)))
-      return {};
-    return mod;
+    for (;;) {
+      mlir::OwningOpRef<mlir::ModuleOp> trial(trialBase->clone());
+      std::vector<CapturedDiagnostics::Diag> pipelineDiags;
+      {
+        CapturedDiagnostics pipeline(tctx, ctx);
+        auto pm = build(tctx, *trial, cover, controlChans);
+        if (!pm || mlir::failed(runPasses(*pm, *trial)))
+          trial = {};
+        pipelineDiags = std::move(pipeline.diags);
+      }
+      if (!trial) {
+        result.pipelineFailed = true;
+        result.diags = std::move(pipelineDiags);
+        return result;
+      }
+
+      mlir::OwningOpRef<mlir::ModuleOp> routed(trial->clone());
+      std::vector<CapturedDiagnostics::Diag> routingDiags;
+      bool routes;
+      {
+        CapturedDiagnostics routing(tctx, ctx);
+        routes = mlir::succeeded(runPasses(*getRoutingPipeline(tctx), *routed));
+        routingDiags = std::move(routing.diags);
+      }
+      if (routes) {
+        mlir::OwningOpRef<mlir::ModuleOp> chosen = copyInto(*trial, ctx);
+        mlir::OwningOpRef<mlir::ModuleOp> routedHere = copyInto(*routed, ctx);
+        if (chosen && routedHere) {
+          uint64_t key = RoutedCache::fingerprint(*chosen);
+          {
+            std::lock_guard<std::mutex> lock(cache->mu);
+            cache->byFingerprint.insert_or_assign(
+                key, RoutedCache::Entry{std::move(routedHere),
+                                        std::move(routingDiags)});
+          }
+          result.routes = true;
+          result.module = std::move(chosen);
+          result.diags = std::move(pipelineDiags);
+          return result;
+        }
+      }
+      if (!result.module) {
+        result.module = copyInto(*trial, ctx);
+        result.diags = std::move(pipelineDiags);
+      }
+
+      // Where the design routes when the overlay leaves every tile free.
+      mlir::OwningOpRef<mlir::ModuleOp> free(trial->clone());
+      free->walk([](xilinx::AIE::DeviceOp device) {
+        device->removeAttr("has_ctrl_pkt_overlay");
+      });
+      bool freeRoutes;
+      {
+        CapturedDiagnostics quiet(tctx, ctx);
+        freeRoutes =
+            mlir::succeeded(runPasses(*getRoutingPipeline(tctx), *free));
+      }
+      bool grew = false;
+      if (freeRoutes) {
+        std::set<int> covered = coveredColumns(*trial);
+        for (const auto &[col, why] : configuredColumns(*free))
+          if (!covered.count(col) && !llvm::is_contained(cover, col)) {
+            cover.push_back(col);
+            result.added.try_emplace(col, why);
+            grew = true;
+          }
+      }
+      if (!grew)
+        return result;
+      llvm::sort(cover);
+    }
   }
 
   template <typename T>
@@ -223,82 +349,41 @@ struct OverlayCoverage {
       llvm::errs() << "aiecc: OverlayCoverage could not obtain input module\n";
       return mlir::failure();
     }
-    std::vector<int> cover;
-    Configured added;
-    mlir::OwningOpRef<mlir::ModuleOp> first;
-    for (;;) {
-      mlir::OwningOpRef<mlir::ModuleOp> trial = runPipeline(*base, cover);
-      if (!trial)
-        return mlir::failure();
-
-      mlir::OwningOpRef<mlir::ModuleOp> routed;
-      std::vector<CapturedDiagnostics::Diag> routingDiags;
-      bool routes;
-      {
-        TrialContext trialCtx(ctx);
-        mlir::OwningOpRef<mlir::ModuleOp> mod = copyInto(*trial, &trialCtx.ctx);
-        {
-          CapturedDiagnostics routing(&trialCtx.ctx, ctx);
-          routes = mod && mlir::succeeded(runPasses(
-                              *getRoutingPipeline(&trialCtx.ctx), *mod));
-          routingDiags = std::move(routing.diags);
-        }
-        if (routes)
-          routed = copyInto(*mod, ctx);
-        routes = routes && routed;
-      }
-      if (routes) {
-        for (const auto &[col, why] : added)
-          ctx->getDiagEngine().emit(columnLocation(*trial, col),
+    Attempt chosen = attempt(*base, {});
+    // When the design does not route, a column auto-packetize made room in
+    // may route with control on another of its channels; one column at a
+    // time, in column order.
+    if (!chosen.routes && !chosen.pipelineFailed)
+      for (const auto &[col, choice] :
+           controlChannelAlternatives(*chosen.module)) {
+        for (int other : choice.second) {
+          Attempt alt = attempt(*base, {{col, other}});
+          if (!alt.routes)
+            continue;
+          ctx->getDiagEngine().emit(columnLocation(*alt.module, col),
                                     mlir::DiagnosticSeverity::Remark)
-              << "control overlay: column " << col << " covered: the router "
-              << "configures it (" << why.second << " in @" << why.first
-              << ") outside the columns the design occupies";
-        uint64_t key = RoutedCache::fingerprint(*trial);
-        {
-          std::lock_guard<std::mutex> lock(cache->mu);
-          cache->byFingerprint.insert_or_assign(
-              key,
-              RoutedCache::Entry{std::move(routed), std::move(routingDiags)});
+              << "auto-packetize: column " << col << " takes control packets "
+              << "on shim MM2S channel " << other << ": on channel "
+              << choice.first << " the design does not route";
+          chosen = std::move(alt);
+          break;
         }
-        out.value = std::move(trial);
-        return mlir::success();
+        if (chosen.routes)
+          break;
       }
-      if (!first)
-        first = trial->clone();
-
-      // Where the design routes when the overlay leaves every tile free.
-      bool grew = false;
-      {
-        TrialContext trialCtx(ctx);
-        mlir::OwningOpRef<mlir::ModuleOp> free =
-            copyInto(*trial, &trialCtx.ctx);
-        bool freeRoutes = false;
-        if (free) {
-          free->walk([](xilinx::AIE::DeviceOp device) {
-            device->removeAttr("has_ctrl_pkt_overlay");
-          });
-          CapturedDiagnostics quiet(&trialCtx.ctx, ctx);
-          freeRoutes = mlir::succeeded(
-              runPasses(*getRoutingPipeline(&trialCtx.ctx), *free));
-        }
-        if (freeRoutes) {
-          std::set<int> covered = coveredColumns(*trial);
-          for (const auto &[col, why] : configuredColumns(*free))
-            if (!covered.count(col) && !llvm::is_contained(cover, col)) {
-              cover.push_back(col);
-              added.try_emplace(col, why);
-              grew = true;
-            }
-        }
-      }
-      if (!grew) {
-        // No column answers the failure, and the routing edge reports it.
-        out.value = std::move(first);
-        return mlir::success();
-      }
-      llvm::sort(cover);
-    }
+    CapturedDiagnostics::replay(ctx, chosen.diags);
+    if (chosen.pipelineFailed)
+      return mlir::failure();
+    if (chosen.routes)
+      for (const auto &[col, why] : chosen.added)
+        ctx->getDiagEngine().emit(columnLocation(*chosen.module, col),
+                                  mlir::DiagnosticSeverity::Remark)
+            << "control overlay: column " << col << " covered: the router "
+            << "configures it (" << why.second << " in @" << why.first
+            << ") outside the columns the design occupies";
+    // Otherwise no choice answers the failure, and the routing edge reports it.
+    out.value = std::move(chosen.module);
+    return mlir::success();
   }
 };
 

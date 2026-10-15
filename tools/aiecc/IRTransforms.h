@@ -66,6 +66,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1404,7 +1405,9 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
     bool skipObjectFifoVerify = false, bool assignAddresses = true,
-    llvm::ArrayRef<int> coverColumns = {}, bool checkQueueSpace = true) {
+    llvm::ArrayRef<int> coverColumns = {}, bool autoPacketize = false,
+    const std::map<int, int> &controlChannels = {},
+    bool checkQueueSpace = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);

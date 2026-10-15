@@ -100,11 +100,13 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   }
 
   // Shim allocations reserve channels outside the DMA bodies above.
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    usedChannels.try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
-                                             allocOp.getChannelDir(),
-                                             (int)allocOp.getChannelIndex()),
-                             allocOp.getOperation());
+    (overlay.isAttrPresent(allocOp) ? controlChannels : usedChannels)
+        .try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
+                                     allocOp.getChannelDir(),
+                                     (int)allocOp.getChannelIndex()),
+                     allocOp.getOperation());
   }
 }
 
@@ -160,7 +162,8 @@ int DMAChannelAnalysis::getDMAChannelIndex(
 bool DMAChannelAnalysis::isChannelFree(TileLike tile, DMAChannelDir dir,
                                        int channel) {
   auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
-  return !usedChannels.contains(key) && !streamedChannels.contains(key);
+  return !usedChannels.contains(key) && !streamedChannels.contains(key) &&
+         !controlChannels.contains(key);
 }
 
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
@@ -171,6 +174,8 @@ int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
     return -1;
   }
   auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
+  if (!shareable && controlChannels.contains(key))
+    return -1;
   if (usedChannels.try_emplace(key, owner).second) {
     if (shareable)
       sharedChannels.insert(key);
@@ -189,7 +194,9 @@ Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
   auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
   if (Operation *owner = usedChannels.lookup(key))
     return owner;
-  return streamedChannels.lookup(key);
+  if (Operation *owner = streamedChannels.lookup(key))
+    return owner;
+  return controlChannels.lookup(key);
 }
 
 LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,

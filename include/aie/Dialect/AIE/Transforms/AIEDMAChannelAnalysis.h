@@ -33,6 +33,10 @@ class DMAChannelAnalysis {
   /// Channels whose claimants all share them. Several packet-switched sources
   /// coexist on one; a circuit claim is exclusive.
   mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> sharedChannels;
+  /// Channels of shim DMA allocations marked is_ctrl_pkt_overlay. A
+  /// packet-switched transfer may share one; nothing else may.
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
+      controlChannels;
   /// The first claimant of a core stream port, and whether only packets use
   /// it; circuit occupancy is exclusive.
   struct StreamClaim {
@@ -69,8 +73,8 @@ public:
                            mlir::Operation *owner = nullptr,
                            bool shareable = false);
 
-  /// Operation reserving this channel, or else the flow routing it; null if
-  /// neither.
+  /// Operation reserving this channel, or else the flow routing it, or else its
+  /// control allocation; null if none.
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
 

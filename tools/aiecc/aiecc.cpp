@@ -1047,12 +1047,15 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
        ctrl = ctrlOverlay, ldpdi = loadPdiToCtrlPkt.getValue(),
        bf16 = bf16Emulation.getValue(),
-       skipVerify = skipObjectFifoVerify.getValue(),
-       queueSpace = checkQueueSpace.getValue(), opt = optLevel.getValue()](mlir::MLIRContext *ctx, mlir::ModuleOp mod,
-                                  llvm::ArrayRef<int> coverColumns) {
+       skipVerify = skipObjectFifoVerify.getValue(), opt = optLevel.getValue(),
+       queueSpace = checkQueueSpace.getValue(), autoPacketize = ctrlpktAutoPacketize.getValue()](
+          mlir::MLIRContext *ctx, mlir::ModuleOp mod,
+          llvm::ArrayRef<int> coverColumns,
+          const std::map<int, int> &controlChannels) {
         return getInputWithAddressesPipeline(
             ctx, mod, dyn, pkt, ctrl, bf16, opt, ldpdi, skipVerify,
-            /*assignAddresses=*/false, coverColumns, queueSpace);
+            /*assignAddresses=*/false, coverColumns, autoPacketize,
+            controlChannels, queueSpace);
       };
   auto routedCache = std::make_shared<RoutedCache>();
   using ModEdge = EdgeWithTypedOutput<ModRef>;
@@ -1066,7 +1069,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 PassPipeline{&context,
                              [withSymbolsPipeline](mlir::MLIRContext *ctx,
                                                    mlir::ModuleOp mod) {
-                               return withSymbolsPipeline(ctx, mod, {});
+                               return withSymbolsPipeline(ctx, mod, {}, {});
                              }}));
 
   // Scratchpad run-time parameters sidecar file
