@@ -5,9 +5,9 @@
 # RUN: %run_on_npu2% %pytest %s
 
 # The reconfigure_loadpdi_iron program with teardown and an init entry. The host
-# runtime runs main:reconfig_init on each hardware context it creates. Under
-# control packet reconfiguration, main:reconfig_init installs the control
-# overlay.
+# runtime runs main:reconfig_init before a context's first dispatch and after
+# another context's. Under control packet reconfiguration, main:reconfig_init
+# installs the control overlay.
 
 import aie.iron as iron
 import numpy as np
@@ -126,3 +126,18 @@ def test_init_entry_runs_on_each_new_context(looked_up, ctrl_pkt):
     data.to("cpu")
     np.testing.assert_array_equal(data.numpy(), expected())
     assert looked_up == ["main:sequence", "main:reconfig_init"] * 2
+
+
+def test_init_entry_runs_after_another_context(looked_up):
+    # The expand build is another full ELF, so another context; its dispatch
+    # resets the array and removes the control packet build's overlay.
+    for ctrl_pkt in (True, False, True):
+        data = iron.arange(8, dtype=np.int32, device="npu")
+        reconfigure_add(data, ctrl_pkt=ctrl_pkt)
+        data.to("cpu")
+        np.testing.assert_array_equal(data.numpy(), expected())
+    # The third dispatch reuses the first's kernel, so it looks up only the
+    # init entry.
+    assert looked_up == ["main:sequence", "main:reconfig_init"] * 2 + [
+        "main:reconfig_init"
+    ]
