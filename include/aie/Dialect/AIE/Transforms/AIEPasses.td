@@ -635,6 +635,30 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
   ];
 }
 
+def AIECheckAgainstImage : Pass<"aie-check-against-image", "mlir::ModuleOp"> {
+  let summary =
+      "Check an instruction stream's static design against its image's";
+  let description = [{
+    An instruction stream built for an image compiled elsewhere programs the
+    resources the image allocated. Run on the stream's resolved module (its
+    input_with_addresses.mlir), this pass compares the stream's static
+    allocation with the image's, given as `image`: each shim end, DMA chain
+    and runtime task channel, the tile holding each buffer, buffer addresses,
+    lock ids, BD ids and switchbox connections, each under a name that does
+    not depend on where it was put. Where they differ, it fails, listing each
+    differing resource and what to pin to keep it stable across shapes.
+  }];
+
+  let options =
+      [Option<"clImage", "image", "std::string", /*default=*/"\"\"",
+              "The image's resolved module (its input_with_addresses.mlir)">,
+  ];
+
+  let constructor = "xilinx::AIE::createAIECheckAgainstImagePass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+}
+
 def AIEObjectFifoLowerDMAs : Pass<"aie-objectfifo-lower-dmas", "DeviceOp"> {
   let summary = "Turn DMA endpoints into buffer descriptor chains";
   let description = [{

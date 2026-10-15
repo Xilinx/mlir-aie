@@ -29,6 +29,7 @@ current target.
 from __future__ import annotations
 
 import functools
+import hashlib
 import inspect
 import json
 import logging
@@ -531,6 +532,7 @@ class CompilableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
+        image: "CompilableDesign | Path | str | None" = None,
     ) -> tuple[Path | None, Path | None]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
@@ -574,7 +576,14 @@ class CompilableDesign:
         static designs). In default cache mode aiecc still emits a ``main.pdi``
         into the cache directory — use `get_pdi_path` to locate it.
 
-        Instructions-only designs return ``(None, inst_path)``.
+        Instructions-only designs return ``(None, inst_path)``. ``image`` is
+        the image such a stream will run on: a design compiled for it, or
+        that build's resolved module (its ``input_with_addresses.mlir``).
+        The stream's static design is then checked against the image's
+        (``aiecc --check-against-image``), and where they differ the compile
+        fails, listing each differing resource and what to pin, rather than
+        producing a stream that would program resources the image does not
+        have.
         """
         has_dispatch = bool(self.dispatch_params)
 
@@ -617,13 +626,31 @@ class CompilableDesign:
             )
         if full_elf:
             return self._compile_full_elf(full_elf_path)
+        if image is not None and not self.insts_only:
+            raise ValueError(
+                "compile(): image= is the image an insts_only design's stream "
+                "runs on; this design builds its own."
+            )
         if self.insts_only:
             if xclbin_path is not None or elf_path is not None or pdi_path is not None:
                 raise ValueError(
                     "compile(): an insts_only design takes inst_path alone "
                     "(or nothing, for the JIT cache); it builds no image."
                 )
-            return self._compile_insts_only(inst_path)
+            if isinstance(image, CompilableDesign):
+                if image.get_cache_entry() is None:
+                    image.compile()
+                entry = image.get_cache_entry()
+                assert entry is not None
+                if entry.lowered_mlir is None:
+                    raise ValueError(
+                        f"compile(): the image's build left no resolved module "
+                        f"in {entry.directory} to check this stream against."
+                    )
+                image = entry.lowered_mlir
+            return self._compile_insts_only(
+                inst_path, None if image is None else Path(image).resolve()
+            )
 
         if not has_dispatch and (xclbin_path is None) != (inst_path is None):
             raise ValueError(
@@ -1036,15 +1063,29 @@ class CompilableDesign:
         )
         return elf_path, None
 
-    def _compile_insts_only(self, inst_path: Path | str | None) -> tuple[None, Path]:
+    def _compile_insts_only(
+        self, inst_path: Path | str | None, image: Path | None = None
+    ) -> tuple[None, Path]:
         """Lower the runtime sequence alone to an instruction stream.
 
         With ``inst_path`` the stream is written there, and rebuilt only when
         out of date (the work directory beside it); otherwise it lands in the JIT cache as
         ``<hash>/insts.bin``. Returns ``(None, inst_path)``: there is no image.
+        With ``image``, the resolved module of the image the stream runs on,
+        the stream is checked against it, and its content is part of the key.
         """
         if not isinstance(self.mlir_generator, Path):
             self._bind_generation_device()
+
+        check = [] if image is None else [f"--check-against-image={image}"]
+        image_digest = (
+            "" if image is None else hashlib.sha256(image.read_bytes()).hexdigest()
+        )
+
+        def keyed(key: str) -> str:
+            if not image_digest:
+                return key
+            return hashlib.sha256((key + image_digest).encode()).hexdigest()[: len(key)]
 
         explicit_path = inst_path is not None
         cache_hash = None
@@ -1053,7 +1094,7 @@ class CompilableDesign:
             inst_path = Path(inst_path).resolve()
             kernel_dir = inst_path.parent / f"{inst_path.stem}.prj"
         else:
-            cache_hash = self._compute_cache_hash()
+            cache_hash = keyed(self._compute_cache_hash())
             kernel_dir = NPU_CACHE_HOME / cache_hash
             inst_path = kernel_dir / "insts.bin"
         lock_file_path = kernel_dir / ".lock"
@@ -1062,8 +1103,8 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
-                build_key = self._compute_cache_hash(
-                    full_elf=False, work_dir=kernel_dir
+                build_key = keyed(
+                    self._compute_cache_hash(full_elf=False, work_dir=kernel_dir)
                 )
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"insts": inst_path}
@@ -1105,7 +1146,7 @@ class CompilableDesign:
                     insts_path=inst_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
-                    options=list(self.aiecc_flags) if self.aiecc_flags else None,
+                    options=[*self.aiecc_flags, *check] or None,
                     device_cache_dir=self._device_cache_dir(),
                     # The stream addresses the buffers where the image's build
                     # placed them, and that placement reserves each bank's

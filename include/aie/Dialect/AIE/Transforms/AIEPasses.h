@@ -88,6 +88,10 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoAllocatePass(bool packetSwitched);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLowerDMAsPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECheckAgainstImagePass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECheckAgainstImagePass(const AIECheckAgainstImageOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLowerCoresPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>

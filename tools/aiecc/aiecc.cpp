@@ -43,6 +43,7 @@
 #include "Utils.h"
 
 #include "aie/Conversion/Passes.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
 #include "aie/InitialAllDialect.h"
@@ -56,6 +57,7 @@
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
@@ -1268,6 +1270,24 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                              : placeCompiled();
               });
 
+  // An instruction stream runs on an image compiled elsewhere, so its static
+  // design must be that image's; say what differs, and what to pin, instead
+  // of emitting a stream that hangs.
+  auto &imageCheck = physical.map<std::string>(
+      "image_check.txt",
+      [&context](const Item<ModRef> &in,
+                 Item<std::string> &out) -> mlir::LogicalResult {
+        ModRef copy(in.get().get().clone());
+        mlir::PassManager pm(&context);
+        xilinx::AIE::AIECheckAgainstImageOptions options;
+        options.clImage = checkAgainstImage.getValue();
+        pm.addPass(xilinx::AIE::createAIECheckAgainstImagePass(options));
+        if (mlir::failed(pm.run(copy.get())))
+          return mlir::failure();
+        out.value = "matches " + checkAgainstImage.getValue() + "\n";
+        return mlir::success();
+      });
+
   // Per-core view of the placed module, for anything that needs addresses.
   auto &placedCores =
       physical
@@ -2423,6 +2443,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   if (generateInputWithAddresses) {
     outputs.push_back(&physical);
+  }
+  if (!checkAgainstImage.empty()) {
+    checkEdges.push_back(&imageCheck);
   }
   if (generateInputWithSymbols) {
     outputs.push_back(&withSymbols);
