@@ -10756,7 +10756,7 @@ attribute is ignored. Defaults to None.</p>
 <a id="__codelineno-0-145" name="__codelineno-0-145"></a>    <span class="k">if</span> <span class="n">core_fn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-146" name="__codelineno-0-146"></a>
 <a id="__codelineno-0-147" name="__codelineno-0-147"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">do_nothing_core_fun</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-148" name="__codelineno-0-148"></a>            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">range_</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">maxsize</span><span class="p">):</span>
+<a id="__codelineno-0-148" name="__codelineno-0-148"></a>            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">forever_</span><span class="p">():</span>
 <a id="__codelineno-0-149" name="__codelineno-0-149"></a>                <span class="k">pass</span>
 <a id="__codelineno-0-150" name="__codelineno-0-150"></a>
 <a id="__codelineno-0-151" name="__codelineno-0-151"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">core_fn</span> <span class="o">=</span> <span class="n">do_nothing_core_fun</span>
@@ -11253,21 +11253,21 @@ setup kernels the Worker runs for its kernels' contracts come last.</p>
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>python/iron/worker.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-331">331</a></span>
-<span class="normal"><a href="#__codelineno-0-332">332</a></span>
-<span class="normal"><a href="#__codelineno-0-333">333</a></span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-333">333</a></span>
 <span class="normal"><a href="#__codelineno-0-334">334</a></span>
 <span class="normal"><a href="#__codelineno-0-335">335</a></span>
 <span class="normal"><a href="#__codelineno-0-336">336</a></span>
 <span class="normal"><a href="#__codelineno-0-337">337</a></span>
-<span class="normal"><a href="#__codelineno-0-338">338</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize a WorkerRuntimeBarrier.</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        initial_value (int, optional): The initial lock value. Defaults to 0.</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">initial_value</span> <span class="o">=</span> <span class="n">initial_value</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="normal"><a href="#__codelineno-0-338">338</a></span>
+<span class="normal"><a href="#__codelineno-0-339">339</a></span>
+<span class="normal"><a href="#__codelineno-0-340">340</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize a WorkerRuntimeBarrier.</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">        initial_value (int, optional): The initial lock value. Defaults to 0.</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">initial_value</span> <span class="o">=</span> <span class="n">initial_value</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span> <span class="o">=</span> <span class="p">[]</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -11353,9 +11353,7 @@ next iteration waits for the next <code>set</code>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/worker.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-340">340</a></span>
-<span class="normal"><a href="#__codelineno-0-341">341</a></span>
-<span class="normal"><a href="#__codelineno-0-342">342</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-342">342</a></span>
 <span class="normal"><a href="#__codelineno-0-343">343</a></span>
 <span class="normal"><a href="#__codelineno-0-344">344</a></span>
 <span class="normal"><a href="#__codelineno-0-345">345</a></span>
@@ -11373,27 +11371,29 @@ next iteration waits for the next <code>set</code>.</p>
 <span class="normal"><a href="#__codelineno-0-357">357</a></span>
 <span class="normal"><a href="#__codelineno-0-358">358</a></span>
 <span class="normal"><a href="#__codelineno-0-359">359</a></span>
-<span class="normal"><a href="#__codelineno-0-360">360</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="k">def</span><span class="w"> </span><span class="nf">wait_for_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">greater_equal</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wait for the barrier to be set to `value`.</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">    Should be called from inside a core function. The wait leaves the</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">    barrier at ``value``; a worker that loops over dispatches calls</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a><span class="sd">    ``release_with_value`` after reading its runtime parameters so the</span>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">    next iteration waits for the next ``set``.</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">        value (int): The value to wait for.</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">        greater_equal (bool): Use a consuming greater-than-or-equal lock wait.</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a>    <span class="c1"># Here this is assuming that the we are currently placing the last added lock</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>    <span class="c1"># And therefore that wait_for_value operations are placed just after their corresponding Worker...</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="c1"># This is a pretty bad assumption, think about an alternative way to solve this</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a>            <span class="s2">&quot;No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker.&quot;</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a>        <span class="p">)</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="n">action</span> <span class="o">=</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">AcquireGreaterEqual</span> <span class="k">if</span> <span class="n">greater_equal</span> <span class="k">else</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">Acquire</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>    <span class="n">use_lock</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">action</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">value</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-360">360</a></span>
+<span class="normal"><a href="#__codelineno-0-361">361</a></span>
+<span class="normal"><a href="#__codelineno-0-362">362</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="k">def</span><span class="w"> </span><span class="nf">wait_for_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">greater_equal</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wait for the barrier to be set to `value`.</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a><span class="sd">    Should be called from inside a core function. The wait leaves the</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">    barrier at ``value``; a worker that loops over dispatches calls</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">    ``release_with_value`` after reading its runtime parameters so the</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a><span class="sd">    next iteration waits for the next ``set``.</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="sd">        value (int): The value to wait for.</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">        greater_equal (bool): Use a consuming greater-than-or-equal lock wait.</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="c1"># Here this is assuming that the we are currently placing the last added lock</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="c1"># And therefore that wait_for_value operations are placed just after their corresponding Worker...</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a>    <span class="c1"># This is a pretty bad assumption, think about an alternative way to solve this</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>            <span class="s2">&quot;No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker.&quot;</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>        <span class="p">)</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>    <span class="n">action</span> <span class="o">=</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">AcquireGreaterEqual</span> <span class="k">if</span> <span class="n">greater_equal</span> <span class="k">else</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">Acquire</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>    <span class="n">use_lock</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">action</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">value</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -11449,19 +11449,19 @@ next iteration waits for the next <code>set</code>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/worker.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-362">362</a></span>
-<span class="normal"><a href="#__codelineno-0-363">363</a></span>
-<span class="normal"><a href="#__codelineno-0-364">364</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-364">364</a></span>
 <span class="normal"><a href="#__codelineno-0-365">365</a></span>
 <span class="normal"><a href="#__codelineno-0-366">366</a></span>
 <span class="normal"><a href="#__codelineno-0-367">367</a></span>
-<span class="normal"><a href="#__codelineno-0-368">368</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the barrier to ``value`` from within a runtime sequence body.</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">        value (int): The value to set the barrier to.</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>    <span class="n">_BarrierSetOp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+<span class="normal"><a href="#__codelineno-0-368">368</a></span>
+<span class="normal"><a href="#__codelineno-0-369">369</a></span>
+<span class="normal"><a href="#__codelineno-0-370">370</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-364" name="__codelineno-0-364"></a><span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the barrier to ``value`` from within a runtime sequence body.</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a><span class="sd">        value (int): The value to set the barrier to.</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>    <span class="n">_BarrierSetOp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -11517,9 +11517,7 @@ next iteration waits for the next <code>set</code>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/worker.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-375">375</a></span>
-<span class="normal"><a href="#__codelineno-0-376">376</a></span>
-<span class="normal"><a href="#__codelineno-0-377">377</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-377">377</a></span>
 <span class="normal"><a href="#__codelineno-0-378">378</a></span>
 <span class="normal"><a href="#__codelineno-0-379">379</a></span>
 <span class="normal"><a href="#__codelineno-0-380">380</a></span>
@@ -11527,17 +11525,19 @@ next iteration waits for the next <code>set</code>.</p>
 <span class="normal"><a href="#__codelineno-0-382">382</a></span>
 <span class="normal"><a href="#__codelineno-0-383">383</a></span>
 <span class="normal"><a href="#__codelineno-0-384">384</a></span>
-<span class="normal"><a href="#__codelineno-0-385">385</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-375" name="__codelineno-0-375"></a><span class="k">def</span><span class="w"> </span><span class="nf">release_with_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-<a id="__codelineno-0-376" name="__codelineno-0-376"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Release the barrier, adding ``value`` to it, inside the core.</span>
-<a id="__codelineno-0-377" name="__codelineno-0-377"></a>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-379" name="__codelineno-0-379"></a><span class="sd">        value (int): The value to add.</span>
-<a id="__codelineno-0-380" name="__codelineno-0-380"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-383" name="__codelineno-0-383"></a>            <span class="s2">&quot;No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker.&quot;</span>
-<a id="__codelineno-0-384" name="__codelineno-0-384"></a>        <span class="p">)</span>
-<a id="__codelineno-0-385" name="__codelineno-0-385"></a>    <span class="n">use_lock</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">Release</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">value</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-385">385</a></span>
+<span class="normal"><a href="#__codelineno-0-386">386</a></span>
+<span class="normal"><a href="#__codelineno-0-387">387</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-377" name="__codelineno-0-377"></a><span class="k">def</span><span class="w"> </span><span class="nf">release_with_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Release the barrier, adding ``value`` to it, inside the core.</span>
+<a id="__codelineno-0-379" name="__codelineno-0-379"></a>
+<a id="__codelineno-0-380" name="__codelineno-0-380"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="sd">        value (int): The value to add.</span>
+<a id="__codelineno-0-382" name="__codelineno-0-382"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-383" name="__codelineno-0-383"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-384" name="__codelineno-0-384"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-385" name="__codelineno-0-385"></a>            <span class="s2">&quot;No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker.&quot;</span>
+<a id="__codelineno-0-386" name="__codelineno-0-386"></a>        <span class="p">)</span>
+<a id="__codelineno-0-387" name="__codelineno-0-387"></a>    <span class="n">use_lock</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">Release</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">value</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
