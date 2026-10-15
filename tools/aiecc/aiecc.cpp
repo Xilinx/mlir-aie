@@ -2813,6 +2813,14 @@ int main(int argc, char **argv) {
   if (!cli::resolveOptions(resume.active)) {
     return 1;
   }
+  // --reconfig-teardown's default under --load-pdi-to-ctrl-pkt depends on the
+  // outputs, which a resume may select differently, so a checkpoint records
+  // the resolved value.
+  if (!resume.active && cli::loadPdiToCtrlPkt &&
+      !cli::reconfigTeardown.getNumOccurrences())
+    graphArgv.insert(llvm::find(graphArgv, "--"),
+                     cli::reconfigTeardown ? "--reconfig-teardown=true"
+                                           : "--reconfig-teardown=false");
   verifyEachPass = verifyEach;
 
   if (checkLutBanks && (xchesscc || xbridge)) {

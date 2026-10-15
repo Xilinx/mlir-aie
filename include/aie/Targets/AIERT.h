@@ -63,7 +63,8 @@ struct AIERTControl {
                                         bool skipCtrlPktOverlay = false);
   mlir::LogicalResult addInitConfig(DeviceOp &targetOp,
                                     bool skipCtrlPktOverlay = false);
-  mlir::LogicalResult teardownSwitches(DeviceOp &targetOp);
+  mlir::LogicalResult teardownSwitches(DeviceOp &targetOp,
+                                       bool skipCtrlPktOverlay = false);
   mlir::LogicalResult disableCores(DeviceOp &targetOp);
   mlir::LogicalResult resetDmaChannels(DeviceOp &targetOp);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);
