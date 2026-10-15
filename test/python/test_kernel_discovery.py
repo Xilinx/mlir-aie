@@ -92,16 +92,12 @@ def _generate(case):
 
 @pytest.fixture(scope="module")
 def corpus():
-    previous = get_current_device(probe_runtime=False)
     designs = {}
-    try:
-        for name, device in _DEVICES.items():
-            set_current_device(device())
+    for name, device in _DEVICES.items():
+        with set_current_device(device()):
             for case in CASES:
                 if not case.devices or name in case.devices:
                     designs[_label(name, case)] = _generate(case)
-    finally:
-        set_current_device(previous)
     return designs
 
 

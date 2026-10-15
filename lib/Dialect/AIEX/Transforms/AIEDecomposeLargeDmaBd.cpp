@@ -19,6 +19,7 @@
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
@@ -42,79 +43,21 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-static bool allConstant(NpuDmaMemcpyNdOp op) {
-  return llvm::all_of(op.getMixedSizes(),
-                      [](OpFoldResult s) {
-                        return getConstantIntValue(s).has_value();
-                      }) &&
-         llvm::all_of(op.getMixedStrides(),
-                      [](OpFoldResult s) {
-                        return getConstantIntValue(s).has_value();
-                      }) &&
-         llvm::all_of(op.getMixedOffsets(), [](OpFoldResult s) {
-           return getConstantIntValue(s).has_value();
-         });
-}
-
-static bool allConstant(AIE::DMABDOp op) {
-  if (op.getPadDimensions().has_value())
-    return false;
-  if (op.getOffset() && !op.getConstantOffset())
-    return false;
-  if (op.getLen() && !op.getConstantLen())
-    return false;
-  if (op.getMixedSizes().empty())
-    return false;
-  return llvm::all_of(op.getMixedSizes(),
-                      [](OpFoldResult s) {
-                        return getConstantIntValue(s).has_value();
-                      }) &&
-         llvm::all_of(op.getMixedStrides(), [](OpFoldResult s) {
-           return getConstantIntValue(s).has_value();
-         });
-}
-
-static NdDmaPattern patternFromOp(NpuDmaMemcpyNdOp op) {
+// `op`'s pattern, innermost first, when its offsets, sizes and strides are
+// constant.
+static std::optional<NdDmaPattern> constantPattern(NpuDmaMemcpyNdOp op) {
+  std::optional<SmallVector<int64_t>> offsets =
+      getConstantIntValues(op.getMixedOffsets());
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<SmallVector<int64_t>> strides =
+      getConstantIntValues(op.getMixedStrides());
+  if (!offsets || !sizes || !strides)
+    return std::nullopt;
   NdDmaPattern pattern;
-  pattern.offsets = llvm::map_to_vector(
-      llvm::reverse(op.getMixedOffsets()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-  pattern.sizes = llvm::map_to_vector(
-      llvm::reverse(op.getMixedSizes()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-  pattern.strides = llvm::map_to_vector(
-      llvm::reverse(op.getMixedStrides()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-  return pattern;
-}
-
-// Only called after allConstant(op) confirmed every size/stride resolves to
-// a constant, so the has_value() checks below are redundant in practice --
-// asserted rather than re-verified to keep that invariant visible here too.
-static NdDmaPattern patternFromDmaBd(AIE::DMABDOp op) {
-  SmallVector<int64_t, kNdDmaDims> outerSizes;
-  SmallVector<int64_t, kNdDmaDims> outerStrides;
-  for (OpFoldResult s : op.getMixedSizes()) {
-    auto c = getConstantIntValue(s);
-    assert(c && "size must be constant (already checked by allConstant)");
-    outerSizes.push_back(*c);
-  }
-  for (OpFoldResult s : op.getMixedStrides()) {
-    auto c = getConstantIntValue(s);
-    assert(c && "stride must be constant (already checked by allConstant)");
-    outerStrides.push_back(*c);
-  }
-  while (outerSizes.size() < kNdDmaDims) {
-    outerSizes.insert(outerSizes.begin(), 1);
-    outerStrides.insert(outerStrides.begin(), 0);
-  }
-
-  NdDmaPattern pattern;
-  pattern.offsets.assign(outerSizes.size(), 0);
-  pattern.sizes = llvm::map_to_vector(llvm::reverse(outerSizes),
-                                      [](int64_t v) { return v; });
-  pattern.strides = llvm::map_to_vector(llvm::reverse(outerStrides),
-                                        [](int64_t v) { return v; });
+  pattern.offsets.assign(offsets->rbegin(), offsets->rend());
+  pattern.sizes.assign(sizes->rbegin(), sizes->rend());
+  pattern.strides.assign(strides->rbegin(), strides->rend());
   return pattern;
 }
 
@@ -548,13 +491,14 @@ static void orderSlices(Block &block, Slices &state) {
 }
 
 static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
-  if (!allConstant(op))
+  std::optional<NdDmaPattern> constant = constantPattern(op);
+  if (!constant)
     return;
   // A runtime length stays whole; see DMABDOp::verify.
   if (op.getLengthParameterAttr() || op.getLengthStateTableIdxAttr())
     return;
 
-  NdDmaPattern pattern = patternFromOp(op);
+  const NdDmaPattern &pattern = *constant;
   if (isContiguousTransfer(pattern.sizes, pattern.strides))
     return;
 
@@ -643,7 +587,12 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
            << " dimensions, and a buffer descriptor holds " << kNdDmaDims
            << "; the extra ones can only be split off ";
   };
-  if (!allConstant(op)) {
+  int col = tile.getCol();
+  int row = tile.getRow();
+  const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
+  FailureOr<TaskBdDecomposition> plan =
+      decomposeTaskBdPattern(op, targetModel, col, row);
+  if (failed(plan)) {
     if (tooManyDims)
       return cannotReduce()
              << "a descriptor whose offset, length, sizes and strides are "
@@ -668,22 +617,7 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
   if (op.getLengthParameterAttr() || op.getLengthStateTableIdxAttr())
     return success();
 
-  int col = tile.getCol();
-  int row = tile.getRow();
-  const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
-  auto bufferType = cast<BaseMemRefType>(op.getBuffer().getType());
-  // See contiguousAndFits for why only d3 can make one too long.
-  int64_t maxIterations = 1LL << targetModel.getDmaBdIterBits(col, row);
-  auto lowerable = [&](const NdDmaPattern &p) {
-    if (p.sizes.size() != kNdDmaDims)
-      return false;
-    if (isContiguousTransfer(p.sizes, p.strides))
-      return p.sizes[3] <= maxIterations;
-    return patternPassesVerification(op, bufferType, targetModel, col, row, p);
-  };
-
-  NdDmaPattern pattern = patternFromDmaBd(op);
-  if (lowerable(pattern))
+  if (plan->legal) // NOLINT(bugprone-unchecked-optional-access)
     return success();
 
   // Iteration uses the outermost ND slot, so there is no free dimension to
@@ -693,29 +627,14 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
            << "buffer descriptor with the iteration attribute is too large "
               "to lower and cannot be decomposed";
 
-  // Outer iteration dimensions that re-read the same data only repeat what
-  // is inside them, as the task's repeat count does. They go, and a pass
-  // shrinks to what they repeat: where that is all the pattern needs it
-  // lowers as it is, and otherwise the pieces it splits into are restarted
-  // rather than configured once per repeat.
-  NdDmaPattern unrepeated = pattern;
-  for (unsigned d = unrepeated.sizes.size();
-       d-- > 3 && (unrepeated.sizes[d] == 1 || unrepeated.strides[d] == 0);)
-    unrepeated.sizes[d] = 1;
-  bool dropRepeats = lowerable(unrepeated);
-  pattern = unrepeated;
   // One pass over the pattern, in executions of the descriptor.
-  int64_t iterations = iterationCount(pattern);
-
-  auto decomposed = dropRepeats ? FailureOr<SmallVector<NdDmaPattern>>(
-                                      SmallVector<NdDmaPattern>{pattern})
-                                : decomposeNdDmaPattern(op, bufferType, pattern,
-                                                        targetModel, col, row);
-  // failed() already guards both dereferences below via short-circuit /
-  // prior control flow; the checker just doesn't associate FailureOr's
-  // failed()/succeeded() idiom with the std::optional base it derives from.
-  if (failed(decomposed) ||
-      decomposed->empty()) { // NOLINT(bugprone-unchecked-optional-access)
+  int64_t iterations =
+      iterationCount(plan->pass); // NOLINT(bugprone-unchecked-optional-access)
+  // Bind a plain reference now that plan is known non-failed, so nothing past
+  // this point looks like an optional access.
+  SmallVector<NdDmaPattern> &bds =
+      plan->pieces; // NOLINT(bugprone-unchecked-optional-access)
+  if (bds.empty()) {
     if (tooManyDims)
       return op.emitOpError()
              << "has " << op.getMixedSizes().size()
@@ -723,10 +642,6 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
              << " descriptors of " << kNdDmaDims << " fits this tile";
     return success();
   }
-  // Bind a plain reference now that decomposed is known non-failed and
-  // non-empty, so nothing past this point looks like an optional access.
-  SmallVector<NdDmaPattern> &bds =
-      *decomposed; // NOLINT(bugprone-unchecked-optional-access)
 
   int64_t baseFlatOffset = op.getConstantOffset().value_or(0);
 

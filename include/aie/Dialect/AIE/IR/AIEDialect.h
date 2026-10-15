@@ -409,6 +409,14 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
+// The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
+// dimensions (outermost first) and its length in elements: none when it
+// becomes one linear transfer, else its size-1 dimensions dropped. nullopt
+// when it stays as written: no size-1 dimension, or a length that is not the
+// dimensions' product (a leading repeat outside the length).
+std::optional<llvm::SmallVector<BDDimLayoutAttr>>
+normalizedBDDims(llvm::ArrayRef<BDDimLayoutAttr> dims, int64_t len);
+
 // The byte size of `lengthUnit` elements of `buffer`, checked to be a multiple
 // of 16 bytes whose word count fits a 32-bit BD length.
 mlir::FailureOr<int64_t> getLengthUnitBytes(mlir::Operation *op,

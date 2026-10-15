@@ -211,6 +211,7 @@ repos:
           lib/Dialect/AIE/Transforms/AIEPlaceTiles\.cpp|
           lib/Dialect/AIE/Transforms/AIESAPlacer\.cpp|
           lib/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis\.cpp|
+          lib/Dialect/AIE/Transforms/AIEStructuralRank\.cpp|
           lib/Dialect/AIE/Transforms/AIETraceToConfig\.cpp|
           lib/Dialect/AIE/Transforms/AIEVectorToPointerLoops\.cpp|
           lib/Dialect/AIE/Transforms/AIEVectorTransferLowering\.cpp|

@@ -47,4 +47,29 @@ split3(aie::accum<accfloat, N> a, aie::vector<bfloat16, N> &hi,
   lo = aie::msc(r, mid, one).template to_vector<bfloat16>();
 }
 
+template <unsigned N>
+struct Limbs {
+  aie::vector<bfloat16, N> hi, mid, lo;
+};
+
+template <unsigned N>
+static inline __attribute__((always_inline)) Limbs<N>
+bf16_limbs(aie::accum<accfloat, N> x) {
+  Limbs<N> l;
+  split3(x, l.hi, l.mid, l.lo, aie::broadcast<bfloat16, N>(1.0f));
+  return l;
+}
+
+// acc + x * c from three-limb x and c, largest products first.
+template <unsigned N>
+static inline __attribute__((always_inline)) aie::accum<accfloat, N>
+mac_limbs(aie::accum<accfloat, N> acc, const Limbs<N> &x, const Limbs<N> &c) {
+  acc = aie::mac(acc, x.hi, c.hi);
+  acc = aie::mac(acc, x.hi, c.mid);
+  acc = aie::mac(acc, x.mid, c.hi);
+  acc = aie::mac(acc, x.hi, c.lo);
+  acc = aie::mac(acc, x.mid, c.mid);
+  return aie::mac(acc, x.lo, c.hi);
+}
+
 #endif

@@ -7,6 +7,8 @@
 # RUN: %pytest %s
 """Unit tests for aie.utils.benchmark robust statistics (no NPU required)."""
 
+import math
+
 import pytest
 from aie.utils.benchmark import BenchmarkResult, Stats, print_benchmark, run_iters
 
@@ -22,6 +24,15 @@ def test_single_sample_has_zero_spread():
     # stdev is undefined for n == 1; CoV must degrade to 0 rather than raise.
     assert s.cov == 0.0
     assert s.n == 1
+
+
+def test_the_medians_standard_error_is_sqrt_half_pi_times_the_means():
+    s = Stats.from_samples([1.0, 2.0, 3.0, 4.0, 5.0])
+    # stdev sqrt(2.5) over sqrt(5) samples
+    assert s.median_se_us == pytest.approx(
+        math.sqrt(math.pi / 2) * math.sqrt(2.5) / math.sqrt(5)
+    )
+    assert Stats.from_samples([7.0]).median_se_us == 0.0
 
 
 def test_median_is_robust_to_an_outlier():

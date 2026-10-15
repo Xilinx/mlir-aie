@@ -59,9 +59,9 @@ def design():
 
 @pytest.fixture(autouse=True)
 def _device():
-    set_current_device(NPU2Col1())
     ExternalFunction._instances.clear()
-    yield
+    with set_current_device(NPU2Col1()):
+        yield
     ExternalFunction._instances.clear()
 
 

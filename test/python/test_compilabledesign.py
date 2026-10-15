@@ -17,11 +17,10 @@ import json
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from types import CodeType
 
-import aie.utils.config as config
-import aie.utils.configure as configure
 import numpy as np
 import pytest
 from aie.extras.context import mlir_mod_ctx
@@ -33,7 +32,7 @@ from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.jit import jit
 from aie.utils.compile.jit import _hash as _hash_mod
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
-from aie.utils.compile.jit._hash import _compute_artifact_hash, _compute_recipe_hash
+from aie.utils.compile.jit._hash import _compute_recipe_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
@@ -85,6 +84,35 @@ def _variadic_gen():
         pass
 
     return stream
+
+
+def _in_process(script, **env):
+    """Run `script` in a new interpreter and return the JSON it prints last.
+
+    The toolchain is configured through the environment, so a test of how
+    it is found starts a process with that environment rather than editing
+    this one. `env` is applied on top of this process's; None unsets a name.
+    The script can import this file's generator factories.
+    """
+    environment = dict(os.environ)
+    for name, value in env.items():
+        if value is None:
+            environment.pop(name, None)
+        else:
+            environment[name] = value
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import json, sys\nsys.path.insert(0, {str(Path(__file__).parent)!r})\n"
+            + textwrap.dedent(script),
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout.splitlines()[-1])
 
 
 # ---------------------------------------------------------------------------
@@ -492,26 +520,39 @@ def test_hash_differs_for_different_generators():
     assert hash(d1) != hash(d2)
 
 
-def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
+def test_hash_works_without_a_peano_compiler(tmp_path):
     """``hash(design)`` must not require Peano to be installed.
 
     The CI "Build and Test (Release, ...)" matrix doesn't install Peano,
     yet pytest still imports CompilableDesign and hashes designs as part
     of its membership / equality checks.  ``_compute_hash`` must fall back
     to the "absent" sentinel rather than letting the ``RuntimeError`` raised
-    by ``peano_cxx_path`` / ``peano_install_dir`` escape.
+    by ``peano_cxx_path`` escape. A Peano directory with no compiler in it
+    stands in for the missing install.
     """
-    monkeypatch.setattr(configure, "peano_install_dir", "peano_not_found")
+    hashes = _in_process(
+        """
+        from aie.utils import config
+        from aie.utils.compile.jit.compilabledesign import CompilableDesign
+        from test_compilabledesign import _gemm_gen
 
-    gen = _gemm_gen()
-    d1 = CompilableDesign(gen, compile_kwargs={"M": 512})
-    d2 = CompilableDesign(gen, compile_kwargs={"M": 512})
-    d3 = CompilableDesign(gen, compile_kwargs={"M": 1024})
+        try:
+            config.peano_cxx_path()
+        except RuntimeError as e:
+            assert "Peano compiler not found" in str(e), e
+        else:
+            raise AssertionError("Peano's compiler was found")
+        gen = _gemm_gen()
+        print(json.dumps([
+            hash(CompilableDesign(gen, compile_kwargs={"M": m}))
+            for m in (512, 512, 1024)
+        ]))
+        """,
+        PEANO_INSTALL_DIR=str(tmp_path),
+    )
 
-    # Neither call should raise; equal-keyed designs must still match,
-    # different-keyed designs must still differ.
-    assert hash(d1) == hash(d2)
-    assert hash(d1) != hash(d3)
+    # Equal-keyed designs must still match, different-keyed designs differ.
+    assert hashes[0] == hashes[1] != hashes[2]
 
 
 def test_dispatch_defaults_do_not_change_recipe():
@@ -674,20 +715,43 @@ def test_dispatch_keyword_only_specialization_generates_constant():
     assert design.split_runtime_args(("tensor",), {}) == (["tensor"], {})
 
 
-def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch, tmp_path):
+def test_hash_works_when_dispatch_toolchain_is_missing(tmp_path):
     """``hash(design)`` must not require the dispatch toolchain to be installed.
 
     A host C++ compiler is needed to *compile* a DispatchTime[T] design, but
     hashing it must still work without one.
     """
-    monkeypatch.setenv("CXX", str(tmp_path / "missing-c++"))
-    with pytest.raises(RuntimeError, match="CXX is set"):
-        config.host_cxx_path()
+    hashes = _in_process(
+        """
+        from aie.utils import config
+        from aie.utils.compile.jit.compilabledesign import CompilableDesign
+        from test_compilabledesign import _dispatch_gen
 
-    gen = _dispatch_gen()
-    d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
-    d2 = CompilableDesign(gen, compile_kwargs={"N": 512})
-    assert hash(d1) == hash(d2)
+        try:
+            config.host_cxx_path()
+        except RuntimeError as e:
+            assert "CXX is set" in str(e), e
+        else:
+            raise AssertionError("a host compiler was found")
+        gen = _dispatch_gen()
+        print(json.dumps([
+            hash(CompilableDesign(gen, compile_kwargs={"N": 512})) for _ in range(2)
+        ]))
+        """,
+        CXX=str(tmp_path / "missing-c++"),
+    )
+    assert hashes[0] == hashes[1]
+
+
+_ARTIFACT_HASH = """
+from pathlib import Path
+from aie.utils import config
+from aie.utils.compile.jit._hash import _compute_artifact_hash
+from test_compilabledesign import _gemm_gen
+
+generator = {generator}
+dynamic = {dynamic}
+"""
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
@@ -695,39 +759,41 @@ def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch, tmp_path):
 @pytest.mark.parametrize("tool", ["aiecc", "peano_cxx", "host_cxx"])
 @pytest.mark.parametrize("change", ["mtime", "size", "path"])
 def test_artifact_hash_tracks_active_compilers(
-    monkeypatch, tmp_path, dynamic, generator_kind, tool, change
+    tmp_path, dynamic, generator_kind, tool, change
 ):
     exe = ".exe" if os.name == "nt" else ""
     name = {"aiecc": "aiecc", "peano_cxx": "clang++", "host_cxx": "c++"}[tool]
+    resolve = {
+        "aiecc": "aiecc_path",
+        "peano_cxx": "peano_cxx_path",
+        "host_cxx": "host_cxx_path",
+    }[tool]
+    if generator_kind == "callable":
+        generator = "_gemm_gen()"
+    else:
+        (tmp_path / "design.mlir").write_text("module {}")
+        generator = f"Path({str(tmp_path / 'design.mlir')!r})"
 
-    def use(compiler):
-        if tool == "aiecc":
-            monkeypatch.setenv("AIECC_PATH", str(compiler))
-        elif tool == "host_cxx":
-            monkeypatch.setenv("CXX", str(compiler))
-        else:
-            monkeypatch.setattr(
-                configure, "peano_install_dir", str(compiler.parents[1])
-            )
-        resolve = {
-            "aiecc": config.aiecc_path,
-            "peano_cxx": config.peano_cxx_path,
-            "host_cxx": config.host_cxx_path,
+    def hash_with(compiler):
+        # The compiler is found as compilation finds it: aiecc and the host
+        # compiler through their variables, Peano's through its install.
+        variable, value = {
+            "aiecc": ("AIECC_PATH", str(compiler)),
+            "host_cxx": ("CXX", str(compiler)),
+            "peano_cxx": ("PEANO_INSTALL_DIR", str(compiler.parents[1])),
         }[tool]
-        assert resolve() == str(compiler)
+        return _in_process(
+            _ARTIFACT_HASH.format(generator=generator, dynamic=dynamic)
+            + f"assert config.{resolve}() == {str(compiler)!r}\n"
+            + "print(json.dumps(_compute_artifact_hash(generator, [], [], True, dynamic)))\n",
+            **{variable: value},
+        )
 
     compiler = tmp_path / "first" / "bin" / f"{name}{exe}"
     compiler.parent.mkdir(parents=True)
     compiler.write_text("compiler")
     compiler.chmod(0o755)
-    use(compiler)
-    generator = (
-        _gemm_gen() if generator_kind == "callable" else tmp_path / "design.mlir"
-    )
-    if isinstance(generator, Path):
-        generator.write_text("module {}")
-
-    before = _compute_artifact_hash(generator, [], [], True, dynamic)
+    before = hash_with(compiler)
     stat = compiler.stat()
     if change == "mtime":
         # NTFS timestamps have 100 ns resolution.
@@ -741,37 +807,38 @@ def test_artifact_hash_tracks_active_compilers(
         replacement.write_bytes(compiler.read_bytes())
         replacement.chmod(0o755)
         os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        use(replacement)
-    after = _compute_artifact_hash(generator, [], [], True, dynamic)
+        compiler = replacement
+    after = hash_with(compiler)
 
     assert (before != after) == (
         tool != "host_cxx" or (dynamic and generator_kind == "callable")
     )
 
 
-def test_artifact_hash_names_the_kernel_source_tree(monkeypatch):
-    # A before/after run compiles one design against two kernel trees in one
-    # process; the factories read the tree only once the generator runs.
-    generator = _gemm_gen()
-    monkeypatch.delenv("MLIR_AIE_KERNEL_SOURCES", raising=False)
-    installed = _compute_artifact_hash(generator, [], [], True)
-    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", "/trees/base")
-    base = _compute_artifact_hash(generator, [], [], True)
-    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", "/trees/change")
-    change = _compute_artifact_hash(generator, [], [], True)
-    assert len({installed, base, change}) == 3
+def test_artifact_hash_names_the_kernel_source_tree():
+    # A before/after run compiles one design against two kernel trees; the
+    # factories read the tree only once the generator runs.
+    script = _ARTIFACT_HASH.format(generator="_gemm_gen()", dynamic=False) + (
+        "print(json.dumps(_compute_artifact_hash(generator, [], [], True)))\n"
+    )
+    hashes = {
+        _in_process(script, MLIR_AIE_KERNEL_SOURCES=tree)
+        for tree in (None, "/trees/base", "/trees/change")
+    }
+    assert len(hashes) == 3
 
 
-def test_artifact_hash_reads_the_kernel_source_tree(monkeypatch, tmp_path):
+def test_artifact_hash_reads_the_kernel_source_tree(tmp_path):
     # A candidate edited in place under one tree must not reuse its old build.
-    generator = _gemm_gen()
+    script = _ARTIFACT_HASH.format(generator="_gemm_gen()", dynamic=False) + (
+        "print(json.dumps(_compute_artifact_hash(generator, [], [], True)))\n"
+    )
     source = tmp_path / "aie_kernels" / "k.cc"
     source.parent.mkdir()
     source.write_text("int k;")
-    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(tmp_path))
-    before = _compute_artifact_hash(generator, [], [], True)
+    before = _in_process(script, MLIR_AIE_KERNEL_SOURCES=str(tmp_path))
     source.write_text("int k2;")
-    assert _compute_artifact_hash(generator, [], [], True) != before
+    assert _in_process(script, MLIR_AIE_KERNEL_SOURCES=str(tmp_path)) != before
 
 
 def test_hash_for_path_generator_uses_path_string():
@@ -894,14 +961,19 @@ def test_hash_changes_when_content_changes_under_a_preserved_mtime(tmp_path):
     assert hash(CompilableDesign(_gemm_gen(), source_files=[src])) != h1
 
 
-def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch, tmp_path):
+def test_hash_keys_on_the_aiecc_the_compile_uses(tmp_path):
     """aiecc must be resolved as compilation resolves it, not via PATH."""
+    script = """
+        from aie.utils.compile.jit.compilabledesign import CompilableDesign
+        from test_compilabledesign import _gemm_gen
+
+        print(json.dumps(CompilableDesign(_gemm_gen())._compute_cache_hash()))
+        """
     hashes = []
     for build in ("first", "second"):
         aiecc = tmp_path / build
         aiecc.write_text(build)
-        monkeypatch.setenv("AIECC_PATH", str(aiecc))
-        hashes.append(CompilableDesign(_gemm_gen())._compute_cache_hash())
+        hashes.append(_in_process(script, AIECC_PATH=str(aiecc)))
     assert hashes[0] != hashes[1]
 
 
