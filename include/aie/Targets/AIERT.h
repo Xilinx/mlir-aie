@@ -63,7 +63,11 @@ struct AIERTControl {
                                         bool skipCtrlPktOverlay = false);
   mlir::LogicalResult addInitConfig(DeviceOp &targetOp,
                                     bool skipCtrlPktOverlay = false);
-  mlir::LogicalResult teardownSwitches(DeviceOp &targetOp);
+  // With `skipCtrlPktOverlay`, what configureSwitches skips stays set, so a
+  // slave port the overlay shares keeps its overlay rules and only its other
+  // rules' slots are disabled.
+  mlir::LogicalResult teardownSwitches(DeviceOp &targetOp,
+                                       bool skipCtrlPktOverlay = false);
   mlir::LogicalResult disableCores(DeviceOp &targetOp);
   mlir::LogicalResult resetDmaChannels(DeviceOp &targetOp);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);

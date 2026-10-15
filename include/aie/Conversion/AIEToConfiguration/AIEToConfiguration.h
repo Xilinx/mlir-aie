@@ -65,13 +65,15 @@ mlir::LogicalResult insertConfigOps(
 mlir::LogicalResult inlineWriteConfigs(mlir::ModuleOp module);
 
 // Insert operations that disable the stream-switch circuits, packet ports and
-// cores `device`'s configuration enabled and reset its DMA channels.
+// cores `device`'s configuration enabled and reset its DMA channels. With
+// `skipCtrlPktOverlay` the overlay's settings stay.
 mlir::LogicalResult
 generateAndInsertTeardownOps(mlir::OpBuilder &builder,
                              xilinx::AIE::DeviceOp device,
                              xilinx::AIEX::BlockwriteData &blockwriteData,
                              AIEToConfigurationOutputType outputType =
-                                 AIEToConfigurationOutputType::Transaction);
+                                 AIEToConfigurationOutputType::Transaction,
+                             bool skipCtrlPktOverlay = false);
 
 // --------------------------------------------------------------------------
 // Device reset
