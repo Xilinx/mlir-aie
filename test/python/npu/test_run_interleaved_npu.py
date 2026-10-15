@@ -69,6 +69,30 @@ def test_a_copy_four_times_as_long_takes_longer_but_at_most_four_times():
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="completion cores are Linux-only")
+def test_only_the_cores_the_process_may_run_on_are_held():
+    # As in a container whose cpuset leaves out the cores the completions
+    # interrupt.
+    ((run, a, b),) = copies(N)
+    before = CompletionCores.interrupts()
+    run()
+    interrupted = CompletionCores(before).cpus
+    assert interrupted
+    affinity = os.sched_getaffinity(0)
+    others = affinity - interrupted
+    if not others:
+        pytest.skip("every CPU this process may run on takes completions")
+    os.sched_setaffinity(0, others)
+    try:
+        held = CompletionCores(before)
+        assert not held.cpus and held.siblings <= others, (held.cpus, held.siblings)
+        with held:
+            assert os.sched_getaffinity(0) == others
+    finally:
+        os.sched_setaffinity(0, affinity)
+    np.testing.assert_array_equal(b.numpy(), a.numpy())
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="completion cores are Linux-only")
 def test_the_timing_thread_is_held_on_the_completion_cores():
     ((run, a, b),) = copies(N)
     seen = []
