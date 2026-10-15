@@ -5117,9 +5117,10 @@ not claim to catch other deadlock classes.</p>
 <h3 id="-aie-objectfifo-lower-cores"><code>-aie-objectfifo-lower-cores</code><a class="headerlink" href="#-aie-objectfifo-lower-cores" title="Permanent link">&para;</a></h3>
 <p><em>Turn core acquires and releases into lock operations</em></p>
 <p>Replace each core's <code>aie.objectfifo.acquire</code> and <code>aie.objectfifo.release</code>
-with the locks its endpoint guards and the objects its rotating index
-selects. Loops carrying accesses are annotated with the unroll factor that
-folds those indices to constants.</p>
+with the locks its endpoint guards and the objects at the front of its
+rotation, kept in rank-0 slots that each release rotates. Loops carrying
+accesses are annotated with the unroll factor over which those rotations
+fold to constants.</p>
 <p>Consumes <code>aie.objectfifo.core_endpoint</code>.</p>
 <h3 id="-aie-objectfifo-lower-dmas"><code>-aie-objectfifo-lower-dmas</code><a class="headerlink" href="#-aie-objectfifo-lower-dmas" title="Permanent link">&para;</a></h3>
 <p><em>Turn DMA endpoints into buffer descriptor chains</em></p>

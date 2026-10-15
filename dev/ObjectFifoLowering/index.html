@@ -4641,15 +4641,28 @@ buffer-major and segment-minor:</p>
 </code></pre></div>
 <h3 id="5---aie-objectfifo-lower-cores">5. <code>--aie-objectfifo-lower-cores</code><a class="headerlink" href="#5---aie-objectfifo-lower-cores" title="Permanent link">&para;</a></h3>
 <p>Turns <code>acquire</code> and <code>release</code> operations in AIE core code into <code>use_lock</code>
-and a rotating buffer selection.</p>
+and a rotation of the pool's objects. The core keeps its objects in rotation
+order in rank-0 slots: an acquire reads the front ones, and a release rotates
+the released objects to the back.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>%0 = arith.subi %c1_i32, %c0_i32 : i32   // acquire(N) is absolute:
 <a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>%1 = arith.maxsi %0, %c0_i32_0 : i32     // delta = max(N - held, 0)
 <a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>aie.use_lock(%of1_prod_lock_0, AcquireGreaterEqual, %1)
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>%4 = scf.index_switch %3 -&gt; memref&lt;16xi32&gt;
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>case 0 { scf.yield %of1_buff_0 : memref&lt;16xi32&gt; }
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>case 1 { scf.yield %of1_buff_1 : memref&lt;16xi32&gt; }
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>%obj = memref.load %front[] : memref&lt;memref&lt;16xi32&gt;&gt;
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>...
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>aie.use_lock(%of1_cons_lock_0, Release, %c1_i32)
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>%a = memref.load %front[] : memref&lt;memref&lt;16xi32&gt;&gt;   // release(1) rotates
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>%b = memref.load %back[] : memref&lt;memref&lt;16xi32&gt;&gt;    // the objects by one
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>memref.store %b, %front[] : memref&lt;memref&lt;16xi32&gt;&gt;
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>memref.store %a, %back[] : memref&lt;memref&lt;16xi32&gt;&gt;
 </code></pre></div>
-<p>The <code>index_switch</code> folds to a concrete buffer once the loops unroll.</p>
+<p><code>--aie-objectFifo-unroll</code> promotes the slots to SSA wherever each object then
+folds to a concrete buffer: on the cores it unrolls, and on dynamic cores that
+reach the slots only from straight-line code. A core whose objects would still
+be picked at run time, such as a dynamic core's loop or an unrolled loop whose
+trip count is not a multiple of the depth, keeps them in memory instead, where
+LLVM's SROA turns them into loop-carried buffer pointers. A pool with a single
+object hands that object out directly. AIE1 binary locks travel with their
+objects, so they are still selected by a rotating index.</p>
 <h3 id="6---aie-objectfifo-erase-pools">6. <code>--aie-objectfifo-erase-pools</code><a class="headerlink" href="#6---aie-objectfifo-erase-pools" title="Permanent link">&para;</a></h3>
 <p>Drops pool metadata once nothing refers to it. A pool still named by something
 else, such as a re-arm binding in a runtime sequence, stays.</p>
