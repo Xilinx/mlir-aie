@@ -198,6 +198,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "38695135542",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38695135542",
+   "date": "2026-10-15T06:53:10+00:00",
+   "commit": {
+    "id": "e7048fadf1975db3190accac9e7153f59a5e45b1",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e7048fadf1975db3190accac9e7153f59a5e45b1",
+    "message": "Rotate objectFifo objects instead of selecting buffers by index (#3896)",
+    "timestamp": "2026-10-15T02:43:33Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "e7048fadf1",
+    "fixtures": "3aa7139253a0"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

@@ -1,28 +1,28 @@
 {
  "schema": 1,
  "target": "sa-placer-hw",
- "id": "38524846313",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38524846313",
- "date": "2026-10-14T06:53:03+00:00",
+ "id": "38695135542",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38695135542",
+ "date": "2026-10-15T06:53:10+00:00",
  "commit": {
-  "id": "da0398dc072e4e3f563eeee5c92827ff907e24df",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/da0398dc072e4e3f563eeee5c92827ff907e24df",
-  "message": "[python] Reuse a precompiled header for the injected AIE intrinsics [MED] (#3684)",
-  "timestamp": "2026-10-14T04:35:12Z"
+  "id": "e7048fadf1975db3190accac9e7153f59a5e45b1",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/e7048fadf1975db3190accac9e7153f59a5e45b1",
+  "message": "Rotate objectFifo objects instead of selecting buffers by index (#3896)",
+  "timestamp": "2026-10-15T02:43:33Z"
  },
  "event": "schedule",
  "pmode": "turbo",
- "device": "Strix",
- "device_raw": "NPU Strix",
+ "device": "Krackan",
+ "device_raw": "NPU Krackan 1",
  "provenance": {
-  "commit": "da0398dc07",
+  "commit": "e7048fadf1",
   "peano": "22.0.0+83ba9ea9",
   "kernels": "851b5051e7b9",
   "runtime": "CachedXRTRuntime",
-  "xdna": "2.26.0_20261008",
-  "xrt": "2.26.0",
-  "host": "aie9",
-  "device": "NPU Strix",
+  "xdna": "2.25.0_20260902",
+  "xrt": "2.25.0",
+  "host": "aie8",
+  "device": "NPU Krackan 1",
   "pmode": "turbo"
  },
  "sane": true,
@@ -61,238 +61,238 @@
   },
   "mobilenet/seed=3/batch=1": {
    "us_per_image": {
-    "value": 289.5,
+    "value": 293.3,
     "unit": "us",
-    "range": "median 301.90, MAD 3.10, p95 306.90"
+    "range": "median 302.10, MAD 0.20, p95 305.70"
    },
    "e2e_us_per_image": {
-    "value": 347.4,
+    "value": 354.8,
     "unit": "us",
-    "range": "median 357.30, MAD 3.40, p95 365.80"
+    "range": "median 360.20, MAD 0.90, p95 365.20"
    },
    "compile_s": {
-    "value": 39.7,
+    "value": 30.1,
     "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=4": {
    "us_per_image": {
-    "value": 122.55,
+    "value": 123.22,
     "unit": "us",
-    "range": "median 123.08, MAD 0.45, p95 124.92"
+    "range": "median 126.97, MAD 0.25, p95 127.42"
    },
    "streaming_us": {
-    "value": 66.9,
+    "value": 66.53,
     "unit": "us",
-    "range": "from b1 289.5 and b4 490.2"
+    "range": "from b1 293.3 and b4 492.9"
    },
    "e2e_us_per_image": {
-    "value": 136.22,
+    "value": 138.45,
     "unit": "us",
-    "range": "median 137.20, MAD 0.45, p95 139.07"
+    "range": "median 142.88, MAD 0.55, p95 144.18"
    },
    "compile_s": {
-    "value": 40.7,
+    "value": 28.5,
     "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=16": {
    "us_per_image": {
-    "value": 79.31,
+    "value": 80.26,
     "unit": "us",
-    "range": "median 79.62, MAD 0.24, p95 80.64"
+    "range": "median 81.57, MAD 0.94, p95 84.09"
    },
    "streaming_us": {
-    "value": 65.3,
+    "value": 66.05,
     "unit": "us",
-    "range": "from b1 289.5 and b16 1269"
+    "range": "from b1 293.3 and b16 1284.1"
    },
    "e2e_us_per_image": {
-    "value": 82.91,
+    "value": 84.52,
     "unit": "us",
-    "range": "median 83.36, MAD 0.31, p95 89.32"
+    "range": "median 90.62, MAD 4.67, p95 107.06"
    },
    "compile_s": {
-    "value": 39.9,
+    "value": 28.6,
     "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=64": {
    "us_per_image": {
-    "value": 68.81,
+    "value": 72.16,
     "unit": "us",
-    "range": "median 68.84, MAD 0.01, p95 68.85"
+    "range": "median 73.01, MAD 0.79, p95 78.34"
    },
    "streaming_us": {
-    "value": 65.31,
+    "value": 68.65,
     "unit": "us",
-    "range": "from b1 289.5 and b64 4403.9"
+    "range": "from b1 293.3 and b64 4618"
    },
    "e2e_us_per_image": {
-    "value": 71.08,
+    "value": 81.42,
     "unit": "us",
-    "range": "median 71.15, MAD 0.05, p95 71.25"
+    "range": "median 82.40, MAD 0.62, p95 87.91"
    },
    "compile_s": {
-    "value": 41.0,
+    "value": 28.6,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=1": {
    "us_per_image": {
-    "value": 294.8,
+    "value": 291.1,
     "unit": "us",
-    "range": "median 296.60, MAD 1.50, p95 301.00"
+    "range": "median 300.00, MAD 0.20, p95 301.60"
    },
    "e2e_us_per_image": {
-    "value": 348.8,
+    "value": 350.9,
     "unit": "us",
-    "range": "median 353.90, MAD 1.90, p95 357.70"
+    "range": "median 357.50, MAD 0.70, p95 359.20"
    },
    "compile_s": {
-    "value": 40.3,
+    "value": 30.8,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=4": {
    "us_per_image": {
-    "value": 121.1,
+    "value": 122.45,
     "unit": "us",
-    "range": "median 123.88, MAD 0.80, p95 125.47"
+    "range": "median 125.75, MAD 0.20, p95 126.12"
    },
    "streaming_us": {
-    "value": 63.2,
+    "value": 66.23,
     "unit": "us",
-    "range": "from b1 294.8 and b4 484.4"
+    "range": "from b1 291.1 and b4 489.8"
    },
    "e2e_us_per_image": {
-    "value": 136.6,
+    "value": 138.57,
     "unit": "us",
-    "range": "median 137.85, MAD 0.68, p95 140.28"
+    "range": "median 141.55, MAD 0.57, p95 142.35"
    },
    "compile_s": {
-    "value": 40.9,
+    "value": 29.7,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=16": {
    "us_per_image": {
-    "value": 78.86,
+    "value": 82.97,
     "unit": "us",
-    "range": "median 79.64, MAD 0.31, p95 80.08"
+    "range": "median 83.53, MAD 0.11, p95 83.67"
    },
    "streaming_us": {
-    "value": 64.46,
+    "value": 69.1,
     "unit": "us",
-    "range": "from b1 294.8 and b16 1261.7"
+    "range": "from b1 291.1 and b16 1327.6"
    },
    "e2e_us_per_image": {
-    "value": 82.72,
+    "value": 103.03,
     "unit": "us",
-    "range": "median 83.29, MAD 0.34, p95 83.78"
+    "range": "median 103.61, MAD 0.17, p95 103.90"
    },
    "compile_s": {
-    "value": 40.6,
+    "value": 30.3,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=64": {
    "us_per_image": {
-    "value": 68.85,
+    "value": 72.36,
     "unit": "us",
-    "range": "median 68.88, MAD 0.01, p95 68.97"
+    "range": "median 73.16, MAD 0.42, p95 78.68"
    },
    "streaming_us": {
-    "value": 65.26,
+    "value": 68.89,
     "unit": "us",
-    "range": "from b1 294.8 and b64 4406.3"
+    "range": "from b1 291.1 and b64 4631"
    },
    "e2e_us_per_image": {
-    "value": 71.12,
+    "value": 78.57,
     "unit": "us",
-    "range": "median 71.19, MAD 0.04, p95 71.29"
+    "range": "median 82.44, MAD 0.50, p95 89.83"
    },
    "compile_s": {
-    "value": 39.4,
+    "value": 29.7,
     "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=1": {
    "us_per_image": {
-    "value": 291.9,
+    "value": 301.6,
     "unit": "us",
-    "range": "median 300.90, MAD 0.20, p95 303.30"
+    "range": "median 303.90, MAD 0.60, p95 306.50"
    },
    "e2e_us_per_image": {
-    "value": 348.9,
+    "value": 360.9,
     "unit": "us",
-    "range": "median 357.10, MAD 0.40, p95 359.00"
+    "range": "median 365.90, MAD 1.50, p95 369.60"
    },
    "compile_s": {
-    "value": 39.5,
+    "value": 28.2,
     "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=4": {
    "us_per_image": {
-    "value": 119.85,
+    "value": 123.85,
     "unit": "us",
-    "range": "median 122.12, MAD 0.25, p95 123.42"
+    "range": "median 126.53, MAD 0.17, p95 126.75"
    },
    "streaming_us": {
-    "value": 62.5,
+    "value": 64.6,
     "unit": "us",
-    "range": "from b1 291.9 and b4 479.4"
+    "range": "from b1 301.6 and b4 495.4"
    },
    "e2e_us_per_image": {
-    "value": 134.53,
+    "value": 139.43,
     "unit": "us",
-    "range": "median 136.35, MAD 0.45, p95 137.93"
+    "range": "median 141.95, MAD 0.50, p95 142.50"
    },
    "compile_s": {
-    "value": 39.5,
+    "value": 29.8,
     "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=16": {
    "us_per_image": {
-    "value": 79.47,
+    "value": 78.97,
     "unit": "us",
-    "range": "median 80.14, MAD 0.28, p95 81.00"
+    "range": "median 79.75, MAD 0.11, p95 80.61"
    },
    "streaming_us": {
-    "value": 65.31,
+    "value": 64.13,
     "unit": "us",
-    "range": "from b1 291.9 and b16 1271.6"
+    "range": "from b1 301.6 and b16 1263.6"
    },
    "e2e_us_per_image": {
-    "value": 83.36,
+    "value": 83.09,
     "unit": "us",
-    "range": "median 83.91, MAD 0.33, p95 89.92"
+    "range": "median 83.72, MAD 0.14, p95 88.04"
    },
    "compile_s": {
-    "value": 39.8,
+    "value": 28.6,
     "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=64": {
    "us_per_image": {
-    "value": 68.8,
+    "value": 72.13,
     "unit": "us",
-    "range": "median 68.99, MAD 0.02, p95 69.03"
+    "range": "median 72.99, MAD 0.26, p95 78.33"
    },
    "streaming_us": {
-    "value": 65.26,
+    "value": 68.49,
     "unit": "us",
-    "range": "from b1 291.9 and b64 4403.5"
+    "range": "from b1 301.6 and b64 4616.2"
    },
    "e2e_us_per_image": {
-    "value": 71.23,
+    "value": 79.13,
     "unit": "us",
-    "range": "median 71.34, MAD 0.03, p95 71.65"
+    "range": "median 82.44, MAD 0.63, p95 87.62"
    },
    "compile_s": {
-    "value": 39.8,
+    "value": 29.4,
     "unit": "s"
    }
   }
@@ -302,108 +302,108 @@
    "seed": 3,
    "batch": 1,
    "passed": true,
-   "us_per_image": 289.5,
-   "e2e_us_per_image": 347.4,
-   "compile_s": 39.7,
+   "us_per_image": 293.3,
+   "e2e_us_per_image": 354.8,
+   "compile_s": 30.1,
    "placement": "b71aac1b8820"
   },
   {
    "seed": 3,
    "batch": 4,
    "passed": true,
-   "us_per_image": 122.55,
-   "e2e_us_per_image": 136.22,
-   "compile_s": 40.7,
+   "us_per_image": 123.22,
+   "e2e_us_per_image": 138.45,
+   "compile_s": 28.5,
    "placement": "b71aac1b8820"
   },
   {
    "seed": 3,
    "batch": 16,
    "passed": true,
-   "us_per_image": 79.31,
-   "e2e_us_per_image": 82.91,
-   "compile_s": 39.9,
+   "us_per_image": 80.26,
+   "e2e_us_per_image": 84.52,
+   "compile_s": 28.6,
    "placement": "b71aac1b8820"
   },
   {
    "seed": 3,
    "batch": 64,
    "passed": true,
-   "us_per_image": 68.81,
-   "e2e_us_per_image": 71.08,
-   "compile_s": 41.0,
+   "us_per_image": 72.16,
+   "e2e_us_per_image": 81.42,
+   "compile_s": 28.6,
    "placement": "b71aac1b8820"
   },
   {
    "seed": 2,
    "batch": 1,
    "passed": true,
-   "us_per_image": 294.8,
-   "e2e_us_per_image": 348.8,
-   "compile_s": 40.3,
+   "us_per_image": 291.1,
+   "e2e_us_per_image": 350.9,
+   "compile_s": 30.8,
    "placement": "36c2b91a501f"
   },
   {
    "seed": 2,
    "batch": 4,
    "passed": true,
-   "us_per_image": 121.1,
-   "e2e_us_per_image": 136.6,
-   "compile_s": 40.9,
+   "us_per_image": 122.45,
+   "e2e_us_per_image": 138.57,
+   "compile_s": 29.7,
    "placement": "36c2b91a501f"
   },
   {
    "seed": 2,
    "batch": 16,
    "passed": true,
-   "us_per_image": 78.86,
-   "e2e_us_per_image": 82.72,
-   "compile_s": 40.6,
+   "us_per_image": 82.97,
+   "e2e_us_per_image": 103.03,
+   "compile_s": 30.3,
    "placement": "36c2b91a501f"
   },
   {
    "seed": 2,
    "batch": 64,
    "passed": true,
-   "us_per_image": 68.85,
-   "e2e_us_per_image": 71.12,
-   "compile_s": 39.4,
+   "us_per_image": 72.36,
+   "e2e_us_per_image": 78.57,
+   "compile_s": 29.7,
    "placement": "36c2b91a501f"
   },
   {
    "seed": 7,
    "batch": 1,
    "passed": true,
-   "us_per_image": 291.9,
-   "e2e_us_per_image": 348.9,
-   "compile_s": 39.5,
+   "us_per_image": 301.6,
+   "e2e_us_per_image": 360.9,
+   "compile_s": 28.2,
    "placement": "07a89ab8a4ee"
   },
   {
    "seed": 7,
    "batch": 4,
    "passed": true,
-   "us_per_image": 119.85,
-   "e2e_us_per_image": 134.53,
-   "compile_s": 39.5,
+   "us_per_image": 123.85,
+   "e2e_us_per_image": 139.43,
+   "compile_s": 29.8,
    "placement": "07a89ab8a4ee"
   },
   {
    "seed": 7,
    "batch": 16,
    "passed": true,
-   "us_per_image": 79.47,
-   "e2e_us_per_image": 83.36,
-   "compile_s": 39.8,
+   "us_per_image": 78.97,
+   "e2e_us_per_image": 83.09,
+   "compile_s": 28.6,
    "placement": "07a89ab8a4ee"
   },
   {
    "seed": 7,
    "batch": 64,
    "passed": true,
-   "us_per_image": 68.8,
-   "e2e_us_per_image": 71.23,
-   "compile_s": 39.8,
+   "us_per_image": 72.13,
+   "e2e_us_per_image": 79.13,
+   "compile_s": 29.4,
    "placement": "07a89ab8a4ee"
   }
  ]

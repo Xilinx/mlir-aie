@@ -213,6 +213,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "38695135542",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38695135542",
+   "date": "2026-10-15T06:53:10+00:00",
+   "commit": {
+    "id": "e7048fadf1975db3190accac9e7153f59a5e45b1",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e7048fadf1975db3190accac9e7153f59a5e45b1",
+    "message": "Rotate objectFifo objects instead of selecting buffers by index (#3896)",
+    "timestamp": "2026-10-15T02:43:33Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "e7048fadf1",
+    "peano": "22.0.0+83ba9ea9",
+    "kernels": "851b5051e7b9",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 49,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
