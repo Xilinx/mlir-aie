@@ -812,6 +812,23 @@ def AIEAutoPacketizeShimInput
   ];
 }
 
+def AIEControlOverlayAvoidData
+    : Pass<"aie-control-overlay-avoid-data", "mlir::ModuleOp"> {
+  let summary = "Record the switch ports the configurations' data takes, for "
+                "the control overlay to avoid";
+  let description = [{
+    Routes each configuration's data without the control overlay and records the
+    switchbox output ports it takes, across all configurations, as
+    `ctrl_pkt_avoid` on @ctrl_pkt_overlay and on each configuration.
+    aie-create-pathfinder-flows then routes the overlay off those ports where it
+    can, the same way in every device. Runs before routing; does nothing without
+    @ctrl_pkt_overlay.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEControlOverlayAvoidDataPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+}
+
 def AIEGenerateColumnControlOverlay
     : Pass<"aie-generate-column-control-overlay", "mlir::ModuleOp"> {
   let summary = "Spawns streaming interconnect network for column control";

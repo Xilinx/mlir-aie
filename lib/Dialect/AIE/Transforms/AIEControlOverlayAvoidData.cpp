@@ -1,0 +1,109 @@
+//===- AIEControlOverlayAvoidData.cpp ---------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
+
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Pass/Pass.h"
+
+using namespace mlir;
+using namespace xilinx;
+using namespace xilinx::AIE;
+
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIECONTROLOVERLAYAVOIDDATA
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+namespace {
+
+// Whether the router routes `flow` alone, as it does the overlay's flows.
+static bool isControl(PacketFlowOp flow) {
+  return flow.getPriorityRoute().value_or(false) && touchesTileControl(flow);
+}
+
+struct AIEControlOverlayAvoidDataPass
+    : xilinx::AIE::impl::AIEControlOverlayAvoidDataBase<
+          AIEControlOverlayAvoidDataPass> {
+  // Adds the output ports the data of `device` takes, routed without the
+  // control overlay, to `ports`.
+  static LogicalResult
+  collectDataPorts(DeviceOp device, std::set<std::pair<TileID, Port>> &ports) {
+    OwningOpRef<ModuleOp> scratch = ModuleOp::create(device.getLoc());
+    DeviceOp data = device.clone();
+    scratch->push_back(data);
+    for (PacketFlowOp flow :
+         llvm::make_early_inc_range(data.getOps<PacketFlowOp>()))
+      if (isControl(flow))
+        flow.erase();
+    DynamicTileAnalysis analyzer;
+    llvm::Error routed = analyzer.runAnalysis(data);
+    while (routed && analyzer.pathfinder.relax()) {
+      llvm::consumeError(std::move(routed));
+      routed = analyzer.runAnalysis(data);
+    }
+    if (routed) {
+      llvm::handleAllErrors(std::move(routed), [&](RoutingFailure &f) {
+        device.emitError() << "the control overlay cannot route around this "
+                              "configuration's data, which does not route "
+                              "without it: "
+                           << f.message();
+      });
+      return failure();
+    }
+    auto add = [&](const SwitchSettings &settings) {
+      for (const auto &[coords, setting] : settings)
+        for (Port dst : setting.dsts)
+          ports.insert({coords, dst});
+    };
+    for (const auto &[_, settings] : analyzer.routing.settings)
+      add(settings);
+    for (const auto &[_, settings] : analyzer.routing.idSettings)
+      add(settings);
+    // Connections the design makes itself.
+    for (SwitchboxOp box : device.getOps<SwitchboxOp>()) {
+      TileID coords = box.getTileOp().getTileID();
+      for (ConnectOp connect : box.getOps<ConnectOp>())
+        ports.insert({coords, connect.destPort()});
+      for (MasterSetOp master : box.getOps<MasterSetOp>())
+        ports.insert({coords, master.destPort()});
+    }
+    return success();
+  }
+
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    auto overlay = module.lookupSymbol<DeviceOp>("ctrl_pkt_overlay");
+    if (!overlay)
+      return;
+    SmallVector<DeviceOp> devices;
+    std::set<std::pair<TileID, Port>> ports;
+    for (DeviceOp device : module.getOps<DeviceOp>()) {
+      if (device == overlay ||
+          llvm::none_of(device.getOps<PacketFlowOp>(), isControl))
+        continue;
+      if (failed(collectDataPorts(device, ports)))
+        return signalPassFailure();
+      devices.push_back(device);
+    }
+    // Every device routes the overlay alone around the same ports, so all
+    // take the route @ctrl_pkt_overlay installs.
+    devices.push_back(overlay);
+    Attribute avoided = encodeAvoidedPorts(module.getContext(), ports);
+    for (DeviceOp device : devices)
+      device->setAttr(ctrlPktAvoidAttrName, avoided);
+  }
+};
+
+} // namespace
+
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIEControlOverlayAvoidDataPass() {
+  return std::make_unique<AIEControlOverlayAvoidDataPass>();
+}

@@ -61,6 +61,8 @@ struct SwitchboxConnect {
     llvm::SmallDenseMap<int, int, 2> packetIds;
     // whether a prioritized flow uses the connection
     bool isPriority = false;
+    // added to the demand, so routes keep off the connection where they can
+    double avoidance = 0;
   };
 
   SwitchboxConnect() = default;
@@ -370,6 +372,9 @@ public:
   mlir::LogicalResult addFixedConnection(SwitchboxOp switchboxOp);
   // Keeps routes out of the switchbox at `coords`.
   void excludeTile(TileID coords);
+  // Makes the connections into output `port` of the switchbox at `coords`
+  // costlier, so routes keep off that port where another is free.
+  void avoidPort(TileID coords, Port port);
   // A RoutingFailure if no legal routing is found in `maxIterations`.
   llvm::Expected<Routing> findPaths(int maxIterations);
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
@@ -537,6 +542,8 @@ public:
   }
 
   Pathfinder pathfinder;
+  // The switchbox output ports routes keep off where another is free.
+  std::vector<std::pair<TileID, Port>> avoidedPorts;
   // The routing runAnalysis found.
   Routing routing;
   // The sources of the circuit flows lowered so far.
@@ -551,6 +558,21 @@ private:
   llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
   llvm::DenseMap<TileID, ShimMuxOp> coordToShimMux;
 };
+
+// The switchbox output ports the configurations' data takes, as a flat i32
+// array of (col, row, bundle, channel). aie-control-overlay-avoid-data sets it,
+// and the router keeps the overlay off those ports.
+constexpr llvm::StringLiteral ctrlPktAvoidAttrName = "ctrl_pkt_avoid";
+mlir::Attribute
+encodeAvoidedPorts(mlir::MLIRContext *ctx,
+                   const std::set<std::pair<TileID, Port>> &ports);
+// std::nullopt if `attr` is not such an array.
+std::optional<std::vector<std::pair<TileID, Port>>>
+decodeAvoidedPorts(mlir::Attribute attr);
+
+// Whether `flow` starts or ends at a TileControl port, as the control
+// overlay's flows do.
+bool touchesTileControl(PacketFlowOp flow);
 
 } // namespace xilinx::AIE
 

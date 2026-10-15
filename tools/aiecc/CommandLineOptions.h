@@ -184,6 +184,10 @@ inline cl::opt<bool> ctrlpktAutoPacketize(
              "packet-switch one input's shim hop so the control packets can "
              "share its channel (requires --load-pdi-to-ctrl-pkt; on by "
              "default under it)"));
+inline cl::opt<bool> ctrlpktAdaptivePin(
+    "ctrlpkt-adaptive-pin",
+    cl::desc("Route the control overlay around the switch ports the "
+             "configurations' data takes (requires --load-pdi-to-ctrl-pkt)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -721,6 +725,8 @@ inline bool resolveOptions(bool resuming = false) {
          resolveDependentOption(reconfigInitEntry, reconfigTeardown,
                                 "--reconfig-teardown") &&
          resolveDependentOption(ctrlpktAutoPacketize, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktAdaptivePin, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt");
 }
 
