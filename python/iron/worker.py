@@ -5,7 +5,6 @@
 #
 """Worker and WorkerRuntimeBarrier: compute-core tasks and runtime synchronization primitives."""
 
-import sys
 from typing import Callable
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
@@ -22,6 +21,7 @@ from ..dialects.aiex import (
     set_lock_value,
 )
 from ..helpers.dialects.scf import _for as range_
+from ..helpers.dialects.scf import forever_
 from ..helpers.sourceloc import SourceSite, traced_body
 from ..helpers.util import flatten_fn_args
 from ..utils.compile.jit.markers import _DispatchParameter
@@ -145,7 +145,7 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         if core_fn is None:
 
             def do_nothing_core_fun(*args) -> None:
-                for _ in range_(sys.maxsize):
+                for _ in forever_():
                     pass
 
             self.core_fn = do_nothing_core_fun
@@ -313,14 +313,16 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
                 dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
             )
             def core_body():
-                # Always wrap in an scf.for so the lowered MLIR matches expectations
-                # downstream (the lower-level aie dialect uses the same pattern with
-                # bound=1 for single-shot workers). Using Python range(1) here would
-                # emit the body inline with no scf.for wrapper, which the dataflow
-                # lowerer treats differently and can cause runtime hangs.
+                # A Worker that runs until reconfiguration loops with no counter.
+                # A single-shot Worker still wraps its body in an scf.for with
+                # bound 1 so the lowered MLIR matches expectations downstream (the
+                # lower-level aie dialect uses the same pattern). Using Python
+                # range(1) here would emit the body inline with no scf.for wrapper,
+                # which the dataflow lowerer treats differently and can cause
+                # runtime hangs.
                 for setup in self._setup_kernels:
                     setup()
-                for _ in range_(sys.maxsize if self._while_true else 1):
+                for _ in forever_() if self._while_true else range_(1):
                     with traced_body(self.core_fn):
                         self.core_fn(*self.fn_args)
 
