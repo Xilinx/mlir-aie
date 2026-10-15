@@ -41,6 +41,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from collections import Counter
@@ -59,6 +60,11 @@ from hw_case import HwCase, Variant
 
 ROUTING_OPS = ("aie.tile", "aie.switchbox", "aie.shim_mux", "aie.end")
 
+# Repro commands are pasted into the platform's shell: cmd.exe on Windows,
+# which does not take POSIX quoting, nor a bare cd to another drive.
+SHELL_JOIN = subprocess.list2cmdline if os.name == "nt" else shlex.join
+CD = "cd /d" if os.name == "nt" else "cd"
+
 
 def load_case(path: Path) -> HwCase:
     spec = importlib.util.spec_from_file_location(path.stem, path)
@@ -74,7 +80,7 @@ def route(variant: Variant, out: Path, timeout_s: float) -> tuple[str, str]:
     # input and the exact command that reproduces it, not just a message.
     (out / "input.mlir").write_text(text)
     opt = f"--aie-create-pathfinder-flows={variant.options}"
-    repro = f"aie-opt '{opt}' {out / 'input.mlir'}"
+    repro = SHELL_JOIN(["aie-opt", opt, str(out / "input.mlir")])
     try:
         p = subprocess.run(
             ["aie-opt", opt, "-"],
@@ -118,7 +124,7 @@ def compile_variant(out: Path, peano: str, timeout_s: float) -> None:
         "--npu-insts-name=insts.bin",
         "routed.mlir",
     ]
-    repro = f"cd {out} && {' '.join(args)}"
+    repro = f"{CD} {SHELL_JOIN([str(out)])} && {SHELL_JOIN(args)}"
     try:
         p = subprocess.run(
             args, cwd=out, capture_output=True, text=True, timeout=timeout_s

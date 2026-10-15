@@ -235,10 +235,11 @@ def test_a_router_failure_leaves_the_input_and_a_command_to_reproduce_it(
         options="",
         note="",
     )
-    with pytest.raises(RuntimeError, match=r"aie-opt .*/input\.mlir") as excinfo:
+    with pytest.raises(RuntimeError, match=r"the router failed") as excinfo:
         router_hw.route(variant, out, timeout_s=60)
     assert (out / "input.mlir").read_text() == OVER_CUT
     repro = str(excinfo.value).splitlines()[-1]
+    assert repro.startswith("aie-opt ") and str(out / "input.mlir") in repro
     result = subprocess.run(repro, shell=True, capture_output=True, text=True)
     assert result.returncode != 0
     assert "cross from row 2 to row 3" in result.stderr
