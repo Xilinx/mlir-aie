@@ -89,17 +89,40 @@ using namespace xilinx::aiecc::cli;
 
 namespace {
 
+// A remark says what the compiler chose (a poll it inserted, an allocation
+// order it fell back to): worth reading when tuning or when a compile fails,
+// noise otherwise. So remarks print with --verbose, or once a compile fails.
 class SynchronizedSourceMgrDiagnosticHandler
     : public mlir::SourceMgrDiagnosticHandler {
 public:
   SynchronizedSourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
-                                         mlir::MLIRContext *ctx)
+                                         mlir::MLIRContext *ctx,
+                                         bool showRemarks)
       : mlir::SourceMgrDiagnosticHandler(mgr, ctx) {
-    setHandler([this](mlir::Diagnostic &diag) {
+    setHandler([this, showRemarks](mlir::Diagnostic &diag) {
+      if (diag.getSeverity() == mlir::DiagnosticSeverity::Remark &&
+          !showRemarks) {
+        std::lock_guard<std::mutex> lock(heldMutex);
+        held.push_back(std::move(diag));
+        return;
+      }
       auto log = endProgressLine();
       emitDiagnostic(diag);
     });
   }
+
+  /// Print the remarks held back so far.
+  void releaseRemarks() {
+    std::lock_guard<std::mutex> lock(heldMutex);
+    auto log = endProgressLine();
+    for (mlir::Diagnostic &diag : held)
+      emitDiagnostic(diag);
+    held.clear();
+  }
+
+private:
+  std::mutex heldMutex;
+  std::vector<mlir::Diagnostic> held;
 };
 
 // Defined here rather than in CommandLineOptions.h: __DATE__/__TIME__ need
@@ -2762,7 +2785,8 @@ int main(int argc, char **argv) {
     inputBufferId =
         sourceMgr.AddNewSourceBuffer(std::move(inputBuf), llvm::SMLoc());
   }
-  SynchronizedSourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
+  SynchronizedSourceMgrDiagnosticHandler diagHandler(sourceMgr, &context,
+                                                     verbose);
   if (!ShellCommand::addInstallPrefix("peano", peanoInstallDir)) {
     return 1;
   }
@@ -2948,6 +2972,7 @@ int main(int argc, char **argv) {
       llvm::errs() << "aiecc: To reproduce, run: aiecc --resume=" << dir
                    << "/manifest.json\n";
     }
+    diagHandler.releaseRemarks();
     llvm::errs() << "aiecc: pipeline failed\n";
     return 1;
   }
