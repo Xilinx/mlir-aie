@@ -43,6 +43,7 @@ path = [
     # Build / project files without a usable comment header
     "**/Makefile",
     "**/Doxyfile",
+    "utils/iron_lean/IronVerify/lean-toolchain",
     ".github/CODEOWNERS",
     # Petalinux generated config files (no extension)
     "platforms/vck190_bare_es/petalinux/.petalinux/metadata",
