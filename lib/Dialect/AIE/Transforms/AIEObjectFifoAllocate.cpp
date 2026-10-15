@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Attributes.h"
@@ -739,109 +740,60 @@ struct AIEObjectFifoAllocatePass
   /// to. Symbol names and op order play no part, so a permuted or renamed
   /// design ranks alike, and ops still tied cannot be told apart.
   void rankStructurally() {
-    SmallVector<Operation *> nodes;
-    DenseMap<Operation *, std::string> features;
-    DenseMap<Operation *, SmallVector<std::pair<int, Operation *>>> links;
-    auto add = [&](Operation *op) -> std::string & {
-      nodes.push_back(op);
-      llvm::raw_string_ostream os(features[op]);
-      os << op->getName();
-      for (NamedAttribute attr : op->getAttrs()) {
-        auto array = dyn_cast<ArrayAttr>(attr.getValue());
-        if (isa<SymbolRefAttr>(attr.getValue()) ||
-            (array && llvm::all_of(array, llvm::IsaPred<SymbolRefAttr>)) ||
-            attr.getName() == SymbolTable::getSymbolAttrName())
-          continue;
-        os << ' ' << attr.getName();
-        if (attr.getName() != "fifoName")
-          os << '=' << attr.getValue();
-      }
-      return features[op];
-    };
+    StructuralGraph graph;
     // A placed tile is one node however many ops name it.
     DenseMap<std::pair<int, int>, Operation *> placed;
     DenseMap<Operation *, Operation *> tileNode;
     for (auto tile : device.getOps<TileLike>()) {
       auto col = tile.tryGetCol(), row = tile.tryGetRow();
       if (!col || !row) {
-        add(tileNode[tile] = tile);
+        graph.add(tileNode[tile] = tile);
         continue;
       }
       auto [it, first] = placed.try_emplace({*col, *row}, tile);
       tileNode[tile] = it->second;
       if (first) {
-        nodes.push_back(tile);
-        llvm::raw_string_ostream(features[tile])
+        graph.nodes.push_back(tile);
+        llvm::raw_string_ostream(graph.features[tile])
             << "tile " << *col << ' ' << *row << ' '
             << stringifyAIETileType(tile.getTileType());
       }
     }
-    auto link = [&](Operation *a, Operation *b, int kind) {
-      if (Operation *tile = tileNode.lookup(b))
-        b = tile;
-      links[a].push_back({kind, b});
-      links[b].push_back({kind + 1, a});
+    auto link = [&](Operation *from, Operation *to, StringRef label) {
+      if (Operation *tile = tileNode.lookup(to))
+        to = tile;
+      graph.link(from, to, label);
     };
     for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
-      llvm::raw_string_ostream os(add(pool));
+      llvm::raw_string_ostream os(graph.add(pool));
       for (auto segment : pool.getSegmentOps())
         os << " [" << segment.getOffset() << ", " << segment.getSize() << "]";
-      link(pool, pool.getTile().getDefiningOp(), 0);
+      link(pool, pool.getTile().getDefiningOp(), "tile");
     }
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
-      llvm::raw_string_ostream os(add(endpoint));
+      llvm::raw_string_ostream os(graph.add(endpoint));
       for (auto segment : endpoint.getSelectedSegments())
         os << " @" << segment.getOffset();
-      link(endpoint, endpoint.getTile().getDefiningOp(), 0);
-      link(endpoint, endpoint.getPoolOp(), 2);
+      link(endpoint, endpoint.getTile().getDefiningOp(), "tile");
+      link(endpoint, endpoint.getPoolOp(), "pool");
     }
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
-      llvm::raw_string_ostream os(add(endpoint));
+      llvm::raw_string_ostream os(graph.add(endpoint));
       if (auto dma =
               dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation())) {
         for (auto segment : dma.getSelectedSegments())
           os << " @" << segment.getOffset();
-        link(endpoint, dma.getPoolOp(), 2);
+        link(endpoint, dma.getPoolOp(), "pool");
       }
-      link(endpoint, endpoint.getTile().getDefiningOp(), 0);
+      link(endpoint, endpoint.getTile().getDefiningOp(), "tile");
     }
     for (auto route : device.getOps<RouteOp>()) {
-      add(route);
-      link(route, lookupEndpoint(route.getSourceAttr()), 4);
+      graph.add(route);
+      link(route, lookupEndpoint(route.getSourceAttr()), "source");
       for (auto dest : route.getDestinations().getAsRange<FlatSymbolRefAttr>())
-        link(route, lookupEndpoint(dest), 6);
+        link(route, lookupEndpoint(dest), "dest");
     }
-
-    DenseMap<Operation *, unsigned> rank;
-    unsigned classes = 0;
-    auto rerank = [&](auto &signature) {
-      SmallVector<Operation *> order(nodes);
-      llvm::stable_sort(order, [&](Operation *a, Operation *b) {
-        return signature[a] < signature[b];
-      });
-      classes = 0;
-      for (auto [index, op] : llvm::enumerate(order)) {
-        if (index && signature[order[index - 1]] < signature[op])
-          ++classes;
-        rank[op] = classes;
-      }
-      ++classes;
-    };
-    rerank(features);
-    for (unsigned previous = 0; classes != previous;) {
-      previous = classes;
-      DenseMap<Operation *,
-               std::pair<unsigned, SmallVector<std::pair<int, unsigned>>>>
-          signature;
-      for (Operation *op : nodes) {
-        auto &[own, around] = signature[op];
-        own = rank[op];
-        for (auto [kind, other] : links[op])
-          around.push_back({kind, rank[other]});
-        llvm::sort(around);
-      }
-      rerank(signature);
-    }
+    DenseMap<Operation *, unsigned> rank = graph.rank();
     for (auto [tile, node] : tileNode)
       rank[tile] = rank[node];
     structuralRank = std::move(rank);

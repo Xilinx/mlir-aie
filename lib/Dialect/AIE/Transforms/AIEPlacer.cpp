@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
@@ -81,6 +82,15 @@ Placer::CollectedOps Placer::collectOperations(DeviceOp device) {
         .Case<FlowOp>([&](auto f) { ops.flows.push_back(f); })
         .Case<PacketFlowOp>([&](auto pf) { ops.pktFlows.push_back(pf); })
         .Case<RouteOp>([&](auto route) { ops.routes.push_back(route); });
+  });
+  // Every later tie between logical tiles falls back on this order, so it is
+  // the design's structure rather than the order the tiles were written in:
+  // shim tiles, which have the fewest places to go, then MemTiles, then cores.
+  DenseMap<Operation *, unsigned> rank = StructuralGraph::of(device).rank();
+  llvm::stable_sort(ops.logicalTiles, [&](LogicalTileOp a, LogicalTileOp b) {
+    if (a.getTileType() != b.getTileType())
+      return a.getTileType() > b.getTileType();
+    return rank.lookup(a) < rank.lookup(b);
   });
   return ops;
 }

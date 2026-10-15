@@ -64,8 +64,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     checked by `aie-objectfifo-allocate` after splitting. Allocation failures
     do not trigger re-placement or undo merges.
 
-    Logical tiles whose flows name the same DMA channel by index never share
-    a physical tile.
+    Logical tiles are taken shims first, then MemTiles, then cores, and
+    within those in an order set by the design's structure (what each tile's
+    ops are and connect to) rather than op order or symbol names, so a design
+    declared in another order or under other names is placed alike. Logical
+    tiles whose flows name the same DMA channel by index never share a
+    physical tile.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
