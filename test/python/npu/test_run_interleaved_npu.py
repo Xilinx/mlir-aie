@@ -68,6 +68,7 @@ def test_a_copy_four_times_as_long_takes_longer_but_at_most_four_times():
     assert 1 < t4.median_us / t1.median_us <= 4, (t1.median_us, t4.median_us)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="completion cores are Linux-only")
 def test_the_timing_thread_is_held_on_the_completion_cores():
     ((run, a, b),) = copies(N)
     seen = []
@@ -103,6 +104,7 @@ while True:
 """
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="completion cores are Linux-only")
 def test_a_figure_taken_beside_another_process_on_the_completion_cores_is_refused():
     # Another session's build on the cores the completions interrupt holds
     # the woken timing thread off them until the core's next tick.
