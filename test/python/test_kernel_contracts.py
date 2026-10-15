@@ -33,12 +33,18 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import BUILDS, KernelContract, Param
 from aie.iron.kernels._common import ARCH_TRAITS
-from aie.iron.kernels.activation import softmax_f32_bound
+from aie.iron.kernels.activation import (
+    softmax_banded_bound,
+    softmax_banded_mask,
+    softmax_banded_ref,
+    softmax_banded_sample,
+    softmax_f32_bound,
+)
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
 from aie.utils.accuracy import round_to
 from aie.utils.verify import Tolerance, compare
-from ml_dtypes import bfloat16
+from ml_dtypes import bfloat16, finfo
 
 # One table for every tier: the host checks below walk the same cases the
 # device test runs (test/python/npu/kernel_cases.py), so a kernel is either
@@ -1816,6 +1822,106 @@ def test_softmax_f32_sample_reaches_32_overflow_saturation_and_masked_tails():
     dropped = mask.astype(np.float32) < -1e30
     assert not dropped[:, 0].any() and dropped[:, -1].sum() >= 1
     assert np.isinf(mask.astype(np.float32)).any()
+
+
+def test_softmax_banded_takes_its_rows_in_order():
+    # (x, addend, y, rows, row_len, window, period, row_offset): rows,
+    # row_len, window and period bound; row_offset the one free scalar.
+    fn = kernels.softmax(
+        32, input_dtype=np.float32, soft_cap=50.0, window=12, period=768
+    )
+    assert fn.name.endswith("softmax_rows_banded_f32_bf16")
+    dtypes = [kd.shape_dtype(t)[1] for t in fn.arg_types()[:3]]
+    assert dtypes == [np.dtype(np.float32), np.dtype(np.float32), np.dtype(bfloat16)]
+    assert fn.contract.roles == (In, In, Out, Param, Param, Param, Param, Param)
+    assert fn.contract.parameter_bindings == ((3, 1), (4, 32), (5, 12), (6, 768))
+    params = inspect.signature(fn.contract.reference).parameters
+    assert list(params) == ["x", "addend", "row_offset"]
+    flags = set(fn.compile_flags)
+    assert {"-DSOFTMAX_F32_INPUT", "-DEXP2_BF16_ACCURATE=1"} <= flags
+    assert "-DSOFTMAX_SOFT_CAP=50.0f" in flags
+    assert "-DSOFTMAX_ADDEND" not in flags and "-DSOFTMAX_MASKED" not in flags
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(window=12),
+        dict(period=768),
+        dict(window=12, period=768, masked=True),
+        dict(input_dtype=bfloat16, window=12, period=768),
+    ],
+)
+def test_softmax_rejects_banded_options_it_cannot_build(kwargs):
+    with pytest.raises(ValueError):
+        kernels.softmax(32, **{**dict(input_dtype=np.float32), **kwargs})
+
+
+def test_softmax_banded_mask_matches_the_kernels_own_derivation():
+    # EG2's own band: j >= max(q % 2, window - 1 - q + q % 2), j < window +
+    # q % 2, q = row_offset % period (audio.py's d = j - q % 2 restated).
+    window, period, tile_size = 12, 16, 32
+    row_offset = np.arange(period)
+    mask = softmax_banded_mask(
+        row_offset, window=window, period=period, tile_size=tile_size
+    )
+    q, j = row_offset[:, None] % period, np.arange(tile_size)[None, :]
+    d = j - q % 2
+    want = np.where(
+        (d >= 0) & (d < window) & (q - (window - 1) + d >= 0),
+        0.0,
+        float(finfo(bfloat16).min),
+    )
+    assert (mask.astype(np.float32) == want.astype(bfloat16).astype(np.float32)).all()
+    assert (mask[:, 0] == bfloat16(0.0)).any()  # a row keeps at least one
+
+
+def test_softmax_banded_ref_and_bound_agree_with_the_masked_path():
+    # softmax_banded_ref/bound restate softmax_ref/softmax_f32_bound with
+    # the band as their explicit mask: equal where the mask itself is.
+    window, period, tile_size = 12, 16, 32
+    rng = np.random.default_rng(0)
+    x = rng.uniform(-40, 40, (period, tile_size)).astype(np.float32)
+    addend = rng.uniform(-8, 8, (period, tile_size)).astype(np.float32)
+    row_offset = np.arange(period).astype(np.int32)
+    mask = softmax_banded_mask(
+        row_offset, window=window, period=period, tile_size=tile_size
+    )
+    ref = softmax_banded_ref(
+        x,
+        addend,
+        row_offset,
+        tile_size=tile_size,
+        window=window,
+        period=period,
+        soft_cap=50.0,
+    )
+    bound = softmax_banded_bound(
+        x,
+        addend,
+        row_offset,
+        tile_size=tile_size,
+        window=window,
+        period=period,
+        soft_cap=50.0,
+    )
+    want_ref = kernels.softmax_ref(x, addend, mask, tile_size=tile_size, soft_cap=50.0)
+    want_bound = softmax_f32_bound(x, addend, mask, tile_size=tile_size, soft_cap=50.0)
+    assert (ref == want_ref).all()
+    assert (bound == want_bound).all()
+    # A row keeps at least one: never an all-dropped, all-zero output.
+    assert (ref.sum(axis=-1) > 0).all()
+
+
+def test_softmax_banded_sample_covers_the_sequence_start_and_a_wrap():
+    rng = np.random.default_rng(0)
+    window, period = 12, 16
+    x, addend, row_offset = softmax_banded_sample(
+        rng, 40, tile_size=32, window=window, period=period, soft_cap=50.0
+    )
+    assert x.dtype == addend.dtype == np.float32 and row_offset.dtype == np.int32
+    assert (row_offset[:period] == np.arange(period)).all()
+    assert row_offset[period:].max() >= period  # past one wrap
 
 
 def test_exp2f_vec_reference_clamps_like_the_kernel():

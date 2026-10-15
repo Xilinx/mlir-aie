@@ -427,13 +427,19 @@ def softmax(
     soft_cap: float | None = None,
     masked: bool = False,
     addend: bool = False,
+    window: int | None = None,
+    period: int | None = None,
 ) -> ExternalFunction:
     """Softmax over a row of ``tile_size`` elements, into bf16.
 
     With bf16 input this is ``softmax_bf16(x, y, n)``. With float32 input it
     is ``softmax_f32_bf16(x, [addend], [mask], y, n)``, which computes
     ``softmax(cap * tanh((x + addend) / cap) + mask)`` with the logits in
-    float32 and overwrites ``x``.
+    float32 and overwrites ``x``. With ``window`` and ``period`` it is
+    instead ``softmax_rows_banded_f32_bf16(x, addend, y, 1, n, window,
+    period, row_offset)``, one row a call: the mask is a band the kernel
+    computes from ``window`` and the row's own query position
+    (``row_offset``, wrapped every ``period`` rows), not read from memory.
 
     Args:
         tile_size: Number of elements per tile, passed at run time; a
@@ -450,8 +456,17 @@ def softmax(
             [2^-100, 2^10].
         masked: Float input only: a bf16 row added to the capped logits;
             lowest or -inf drops an element. A row keeps at least one.
+            Exclusive with ``window``/``period``.
         addend: Float input only: a float32 row added to ``x`` before the
-            cap, such as relative-position logits.
+            cap, such as relative-position logits. Always on with
+            ``window``/``period``, whose caller (EG2's audio attention)
+            always has one.
+        window: Float input only, with ``period``: the band's width: a row's
+            query position ``q = row_offset % period`` keeps column ``j``
+            where ``j >= max(q % 2, window - 1 - q + q % 2)`` and
+            ``j < window + q % 2``.
+        period: Float input only, with ``window``: the band wraps every
+            ``period`` rows (EG2 tiles one band over every attention head).
 
     Returns:
         ExternalFunction configured for the softmax kernel.
@@ -459,20 +474,33 @@ def softmax(
     Raises:
         ValueError: A ``tile_size`` that is not a positive multiple of 32, an
             ``input_dtype`` other than the two, a float-only option with bf16
-            input, or a ``soft_cap`` outside [2^-100, 2^10].
+            input, a ``soft_cap`` outside [2^-100, 2^10], ``window`` or
+            ``period`` without the other, or either with ``masked``.
     """
     _require_vector_alignment("softmax", tile_size, _RUNTIME_VECTOR_WIDTH)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     if np.dtype(input_dtype) == np.dtype(np.float32):
+        if window is not None or period is not None:
+            if masked:
+                raise ValueError(
+                    "softmax: window/period and masked are different bands; " "give one"
+                )
+            return _softmax_f32_banded(tile_size, soft_cap, window, period)
         return _softmax_f32(tile_size, soft_cap, masked, addend)
     if np.dtype(input_dtype) != np.dtype(bfloat16):
         raise ValueError(
             f"softmax: input_dtype must be bfloat16 or float32, got {input_dtype}"
         )
-    if soft_cap is not None or masked or addend:
+    if (
+        soft_cap is not None
+        or masked
+        or addend
+        or window is not None
+        or period is not None
+    ):
         raise ValueError(
-            "softmax: soft_cap, masked and addend are options of the float32 "
-            "input path; pass input_dtype=np.float32"
+            "softmax: soft_cap, masked, addend, window and period are "
+            "options of the float32 input path; pass input_dtype=np.float32"
         )
     return _create_lut_kernel(
         "softmax_bf16",
@@ -564,6 +592,78 @@ def _softmax_f32(
                 soft_cap=soft_cap,
                 masked=masked,
                 addend=addend,
+            ),
+            acc_dtype=np.float32,
+        ),
+    )
+
+
+def _softmax_f32_banded(
+    tile_size: int, soft_cap: float | None, window: int | None, period: int | None
+) -> ExternalFunction:
+    """[`softmax`][iron.kernels.activation.softmax]'s banded float32 path.
+
+    ``softmax_rows_banded_f32_bf16(x, addend, y, 1, n, window, period,
+    row_offset)``, one row a call, ``row_offset`` its only unbound scalar.
+    """
+    if window is None or period is None:
+        raise ValueError("softmax: window and period are given together")
+    if soft_cap is not None and not 2.0**-100 <= soft_cap <= 2.0**10:
+        raise ValueError(f"softmax: soft_cap must be in [2^-100, 2^10], got {soft_cap}")
+    f32_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
+    bf16_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    flags = ["-DSOFTMAX_F32_INPUT", "-DEXP2_BF16_ACCURATE=1"]
+    if soft_cap is not None:
+        flags.append(f"-DSOFTMAX_SOFT_CAP={float(soft_cap)!r}f")
+    arg_types = [
+        f32_ty,
+        f32_ty,
+        bf16_ty,
+        np.int32,
+        np.int32,
+        np.int32,
+        np.int32,
+        np.int32,
+    ]
+    return _create_lut_kernel(
+        "softmax_rows_banded_f32_bf16",
+        "softmax.cc",
+        arg_types,
+        compile_flags=flags,
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out, Param, Param, Param, Param, Param),
+            parameter_bindings=((3, 1), (4, tile_size), (5, window), (6, period)),
+            reference=lambda x, addend, row_offset: softmax_banded_ref(
+                x,
+                addend,
+                row_offset,
+                tile_size=tile_size,
+                window=window,
+                period=period,
+                soft_cap=soft_cap,
+            ),
+            tolerance=Tolerance.bounded(
+                lambda x, addend, row_offset: softmax_banded_bound(
+                    x,
+                    addend,
+                    row_offset,
+                    tile_size=tile_size,
+                    window=window,
+                    period=period,
+                    soft_cap=soft_cap,
+                ),
+                note="softmax_f32_bound's own bound, the band restated as "
+                "the explicit mask it derives (window, period, row_offset), "
+                "not an operand",
+            ),
+            sample=lambda rng, calls: softmax_banded_sample(
+                rng,
+                calls,
+                tile_size=tile_size,
+                window=window,
+                period=period,
+                soft_cap=soft_cap,
             ),
             acc_dtype=np.float32,
         ),
@@ -1450,3 +1550,67 @@ def softmax_f32_sample(
             m[3] = -(2.0**127)
         inputs.append(m.astype(bfloat16))
     return inputs
+
+
+def softmax_banded_mask(row_offset, *, window: int, period: int, tile_size: int):
+    """``softmax_rows_banded_f32_bf16``'s band, one call a row.
+
+    Restated as [`softmax_ref`][iron.kernels.activation.softmax_ref]'s
+    explicit bf16 mask: query position ``q = row_offset % period`` keeps
+    column ``j`` where ``j >= max(q % 2, window - 1 - q + q % 2)`` and
+    ``j < window + q % 2`` (an odd query's band starts a column later).
+    """
+    q = np.asarray(row_offset) % period
+    parity = q % 2
+    lo = np.maximum(parity, window - 1 - q + parity)
+    hi = window + parity
+    j = np.arange(tile_size)[None, :]
+    band = (j >= lo[:, None]) & (j < hi[:, None])
+    lowest = float(finfo(bfloat16).min)
+    return np.where(band, 0.0, lowest).astype(bfloat16)
+
+
+def softmax_banded_ref(
+    x, addend, row_offset, *, tile_size: int, window: int, period: int, soft_cap
+):
+    """Numpy reference for ``softmax``'s banded path.
+
+    ``softmax_ref`` with the band computed by
+    [`softmax_banded_mask`][iron.kernels.activation.softmax_banded_mask].
+    """
+    mask = softmax_banded_mask(
+        row_offset, window=window, period=period, tile_size=tile_size
+    )
+    return softmax_ref(x, addend, mask, tile_size=tile_size, soft_cap=soft_cap)
+
+
+def softmax_banded_bound(
+    x, addend, row_offset, *, tile_size: int, window: int, period: int, soft_cap
+):
+    """[`softmax_f32_bound`][iron.kernels.activation.softmax_f32_bound].
+
+    Takes the same band ``softmax_banded_ref`` does.
+    """
+    mask = softmax_banded_mask(
+        row_offset, window=window, period=period, tile_size=tile_size
+    )
+    return softmax_f32_bound(x, addend, mask, tile_size=tile_size, soft_cap=soft_cap)
+
+
+def softmax_banded_sample(
+    rng, calls: int, *, tile_size: int, window: int, period: int, soft_cap
+) -> list:
+    """Float path inputs, with a ``row_offset`` a call.
+
+    ``softmax_f32_sample``'s ``x``/``addend`` (``masked=False``, since the
+    band replaces a data mask), plus ``row_offset``: the sequence's own
+    start (the band's boundary effect), then positions spanning past one
+    ``period``, so the wrap is covered too.
+    """
+    x, addend = softmax_f32_sample(
+        rng, calls, tile_size=tile_size, soft_cap=soft_cap, masked=False, addend=True
+    )
+    start = np.arange(min(calls, period))
+    rest = rng.integers(0, 4 * period, max(0, calls - period))
+    row_offset = np.concatenate([start, rest])[:calls].astype(np.int32)
+    return [x, addend, row_offset]
