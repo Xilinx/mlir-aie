@@ -213,9 +213,10 @@ class DmaEndpoint:
         return None
 
     def sync(self) -> None:
-        """Wait, in a [`Runtime`][iron.Runtime] sequence body, until this
-        channel's tasks have issued their completion tokens: ``aiex.npu_sync``
-        on its tile and channel.
+        """Wait until this channel's tasks have issued their completion tokens.
+
+        Called in a [`Runtime`][iron.Runtime] sequence body, it emits
+        ``aiex.npu_sync`` on its tile and channel.
 
         Raises:
             ValueError: The tile is not placed or the channel is not given.

@@ -227,8 +227,10 @@ class FlowEndpoint(DmaEndpoint):
         self._end = end
 
     def sync(self) -> None:
-        """Wait, in a [`Runtime`][iron.Runtime] sequence body, until this end's
-        tasks have issued their completion tokens (``DmaEndpoint.sync``).
+        """Wait until this end's tasks have issued their completion tokens.
+
+        Called in a [`Runtime`][iron.Runtime] sequence body, as
+        ``DmaEndpoint.sync`` is.
 
         A shim end the sequence waits on is driven at run time, so it gets its
         ``aie.shim_dma_allocation``, as an end a ``fill`` or ``drain`` uses
