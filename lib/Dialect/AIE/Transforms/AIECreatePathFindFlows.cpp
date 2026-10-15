@@ -2106,16 +2106,15 @@ void PacketFlowRouting::splitFlow(TileID tileId, FlowKey key,
     std::set<Port> partnerUnit = tied(partner, true);
     if (sharesMaster(self->second, partnerUnit))
       continue;
-    // A sibling joining the partner's tree on a routing port ties `key` to
-    // its arbiter; leaving that port undoes the tie, so unjoin before split.
+    // A sibling sharing a routing port with the partner's tree ties `key` to
+    // its arbiter; leaving that port undoes the tie, so move off before split.
     bool unjoined = false;
     for (FlowKey other : siblings)
-      if (other.second == partner.second)
-        for (Port m : flows->second.find(other)->second.masters)
-          if (partnerUnit.count(m) && isDirectional(m.bundle)) {
-            hazardConnections.insert({tileId, {other.first, m}});
-            unjoined = true;
-          }
+      for (Port m : flows->second.find(other)->second.masters)
+        if (partnerUnit.count(m) && isDirectional(m.bundle)) {
+          hazardConnections.insert({tileId, {other.first, m}});
+          unjoined = true;
+        }
     if (unjoined)
       continue;
     std::set<Port> unit = tied(partner, false);
