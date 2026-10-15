@@ -76,8 +76,11 @@ requires a full ELF:
   sequence then keeps only its first reset. A device that starts a shim DMA
   channel itself is refused, since shim channels have no reset.
 - `--reconfig-init-entry` (with `--reconfig-teardown`): the reset moves into an
-  argument-free `<device>:reconfig_init` entry. The host runs it once on each new
-  hardware context, before any other entry; IRON's host runtime does so itself.
+  argument-free `<device>:reconfig_init` entry; under `--load-pdi-to-ctrl-pkt` it
+  also installs the control overlay. The host runs it before the first entry on a
+  hardware context, and again whenever another context ran in between, since
+  that may have reset the array. IRON's host runtime does so itself; a host
+  that shares the NPU with another process runs it before each entry.
 
 For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 
