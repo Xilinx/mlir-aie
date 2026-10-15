@@ -10,6 +10,7 @@ import importlib.util
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ROUTER_TESTING = ROOT / "utils/router_testing"
 sys.path.insert(0, str(ROOT / "test/create-packet-flows/nightly"))
 sys.path.insert(0, str(ROUTER_TESTING))
+import router_mutation  # noqa: E402
 import router_properties as rp  # noqa: E402  (paths set just above)
 import router_shrink  # noqa: E402
 
@@ -131,6 +133,27 @@ def test_a_spent_shrink_budget_keeps_the_design_as_it_is():
     assert not finished
     assert holds.calls[0] == 1
     assert router_shrink.size(small) == router_shrink.size(d)
+
+
+# With no aie-opt to run, any judgement raises, so these see whether
+# shrink_failure routes the design at all.
+def test_a_spent_shared_budget_routes_nothing_before_shrinking(monkeypatch, tmp_path):
+    d = rp.load_design(OVER_CUT)
+    monkeypatch.setenv("AIE_OPT", str(tmp_path / "no-aie-opt"))
+    small, finished = router_mutation.shrink_failure(
+        "mutator", "port-cap", (d, "route"), True, 0, False, time.monotonic()
+    )
+    assert not finished
+    assert small is d
+
+
+def test_a_live_shared_budget_judges_before_shrinking(monkeypatch, tmp_path):
+    d = rp.load_design(OVER_CUT)
+    monkeypatch.setenv("AIE_OPT", str(tmp_path / "no-aie-opt"))
+    with pytest.raises(FileNotFoundError):
+        router_mutation.shrink_failure(
+            "mutator", "port-cap", (d, "route"), True, 0, False, time.monotonic() + 60
+        )
 
 
 def test_an_unbounded_shrink_finishes_on_what_fails():

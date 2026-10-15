@@ -1452,17 +1452,23 @@ def run_seed(seed, args):
     return rows
 
 
-def shrink_failure(kind, name, payload, hops_on, seed, verbose, budget_s):
+def shrink_failure(kind, name, payload, hops_on, seed, verbose, deadline):
     """The smallest design that still fails the same way, and whether
-    shrinking finished within `budget_s`."""
+    shrinking finished by `deadline` (a time.monotonic() value)."""
     if kind == "mutator":
         e, expect = payload
+        # Every judgement routes the design, so none starts once the budget
+        # is spent.
+        if time.monotonic() >= deadline:
+            return e, False
         # "route" rests on the router routing the unmutated design, which a
         # smaller design no longer has, so only the model can vouch for it.
         if expect == "route":
             expect = "model"
             if judge(e, expect, hops_on, seed)[0] == "ok":
                 return e, True
+            if time.monotonic() >= deadline:
+                return e, False
         first, _ = judge(e, expect, hops_on, seed)
 
         def holds(x):
@@ -1471,7 +1477,11 @@ def shrink_failure(kind, name, payload, hops_on, seed, verbose, budget_s):
             except Exception:
                 return False
 
-        return shrinker.shrink(rp.canonical(e), holds, budget_s=budget_s)
+        return shrinker.shrink(
+            rp.canonical(e),
+            holds,
+            budget_s=max(0.0, deadline - time.monotonic()),
+        )
     return payload, True
 
 
@@ -1577,7 +1587,6 @@ def main():
             ):
                 continue
             done.add((name, outcome))
-            remaining = max(0.0, shrink_deadline - time.monotonic())
             small, finished = shrink_failure(
                 kind,
                 name,
@@ -1585,7 +1594,7 @@ def main():
                 not args.hops_off,
                 seed,
                 args.v,
-                remaining,
+                shrink_deadline,
             )
             args.repros.mkdir(parents=True, exist_ok=True)
             path = args.repros / f"{name}-{outcome}-{seed}.mlir"
