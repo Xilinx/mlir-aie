@@ -11,7 +11,9 @@
 // is forbidden.
 //
 // With merging enabled (default), the same module places successfully —
-// LTOs collapse onto fewer physical tiles within the channel budget.
+// LTOs collapse onto fewer physical tiles within the channel budget. %s4
+// sends on DMA 1, since two logical shims that both send on DMA 0 cannot
+// share a physical one.
 
 // RUN: not aie-opt --aie-place-tiles='merge-logical-tiles=false' %s 2>&1 \
 // RUN:   | FileCheck %s --check-prefix=NOMERGE-OOC
@@ -40,6 +42,6 @@ module @nomerge_overflow {
     aie.flow(%s1, DMA : 0, %c1, DMA : 0)
     aie.flow(%s2, DMA : 0, %c2, DMA : 0)
     aie.flow(%s3, DMA : 0, %c3, DMA : 0)
-    aie.flow(%s4, DMA : 0, %c0, DMA : 1)
+    aie.flow(%s4, DMA : 1, %c0, DMA : 1)
   }
 }

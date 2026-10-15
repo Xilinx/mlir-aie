@@ -67,6 +67,9 @@ struct TileAvailability {
   // Live runtime-sequence BDs after each task event, as in
   // SequentialPlacer::runtimeBdProfiles.
   llvm::DenseMap<TileID, llvm::SmallVector<int>> runtimeBdsUsed;
+  // DMA channels, as (output, index), that flows of the logical tiles placed
+  // here name by index.
+  llvm::DenseMap<TileID, llvm::DenseSet<std::pair<int, int>>> namedChannelsUsed;
 
   void removeTile(TileID tile, AIETileType type);
 };
@@ -304,12 +307,19 @@ private:
   // Live runtime-sequence BDs of each ShimNOCTile LTO after every task event,
   // counting each descriptor as aie-decompose-large-dma-bd splits it.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<int>> runtimeBdProfiles;
+
+  // DMA channels, as (output, index), that each logical tile's flows name by
+  // index. Two logical tiles naming the same one cannot share a physical tile.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
+      namedChannels;
   void buildRuntimeBdProfiles(DeviceOp device,
                               llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
   // True if `tile`'s stream ports and BDs still fit `logicalTile`'s demand on
   // top of what earlier placements use.
   bool fitsStreamAndBdBudgets(mlir::Operation *logicalTile, TileID tile) const;
+  // Records the streams, BDs and named DMA channels `logicalTile` takes on
+  // `tile`.
   void recordStreamAndBdUsage(mlir::Operation *logicalTile, TileID tile);
 
   bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels);

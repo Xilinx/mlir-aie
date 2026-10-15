@@ -1172,6 +1172,7 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements) {
 
   llvm::DenseSet<std::tuple<Operation *, int>> seenSrc, seenDst;
+  namedChannels.clear();
 
   auto incIfDMA = [&](Operation *tileOp, WireBundle bundle,
                       std::optional<int> channel, bool isOutput) {
@@ -1182,6 +1183,8 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     auto &seen = isOutput ? seenSrc : seenDst;
     if (channel && !seen.insert({tileOp, *channel}).second)
       return;
+    if (channel)
+      namedChannels[tileOp].push_back({isOutput, *channel});
     if (isOutput)
       channelRequirements[tileOp].second++;
     else
@@ -1515,6 +1518,10 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
       continue;
     if (withinBudgets && !fitsStreamAndBdBudgets(logicalTile, tile))
       continue;
+    if (llvm::any_of(namedChannels.lookup(logicalTile), [&](auto named) {
+          return availability.namedChannelsUsed[tile].contains(named);
+        }))
+      continue;
     int dist = targetCol ? std::abs(tile.col - *targetCol) : 0;
     int load;
     if (targetCol ||
@@ -1733,6 +1740,8 @@ bool SequentialPlacer::fitsStreamAndBdBudgets(Operation *logicalTile,
 
 void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
                                               TileID tile) {
+  for (auto named : namedChannels.lookup(logicalTile))
+    availability.namedChannelsUsed[tile].insert(named);
   if (auto it = streamDemand.find(logicalTile); it != streamDemand.end())
     availability.streamsUsed[tile] += it->second;
   auto profile = runtimeBdProfiles.find(logicalTile);

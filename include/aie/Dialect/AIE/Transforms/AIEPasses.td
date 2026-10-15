@@ -63,6 +63,9 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     live at once. Memory, locks and spill-dependent channel eligibility are
     checked by `aie-objectfifo-allocate` after splitting. Allocation failures
     do not trigger re-placement or undo merges.
+
+    Logical tiles whose flows name the same DMA channel by index never share
+    a physical tile.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";

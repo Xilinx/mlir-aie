@@ -96,3 +96,46 @@ module @anchored_is_unaffected {
     aie.flow(%mem, DMA : 0, %core, DMA : 0)
   }
 }
+
+// -----
+
+// The same four chains with both channel-0 chains first. Placement still
+// does not renumber a declared channel, so it keeps two logical tiles that
+// name the same DMA channel off one physical tile rather than pile them into
+// one flow twice over.
+
+// PILE-LABEL:     @named_channels_stay_apart
+// PILE-DAG:       aie.tile(0, 0)
+// PILE-DAG:       aie.tile(0, 1)
+// PILE-DAG:       aie.tile(1, 0)
+// PILE-DAG:       aie.tile(1, 1)
+
+// SPREAD-LABEL:   @named_channels_stay_apart
+// SPREAD-DAG:     aie.tile(0, 0)
+// SPREAD-DAG:     aie.tile(1, 0)
+// SPREAD-DAG:     aie.tile(2, 0)
+// SPREAD-DAG:     aie.tile(3, 0)
+// SPREAD-DAG:     aie.tile(0, 1)
+// SPREAD-DAG:     aie.tile(1, 1)
+// SPREAD-DAG:     aie.tile(2, 1)
+// SPREAD-DAG:     aie.tile(3, 1)
+module @named_channels_stay_apart {
+  aie.device(npu1) {
+    %shim0 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %mem0 = aie.logical_tile<MemTile>(?, ?)
+    %shim1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %mem1 = aie.logical_tile<MemTile>(?, ?)
+    %shim2 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %mem2 = aie.logical_tile<MemTile>(?, ?)
+    %shim3 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %mem3 = aie.logical_tile<MemTile>(?, ?)
+    aie.flow(%shim0, DMA : 0, %mem0, DMA : 0)
+    aie.flow(%mem0, DMA : 0, %shim0, DMA : 0)
+    aie.flow(%shim1, DMA : 0, %mem1, DMA : 0)
+    aie.flow(%mem1, DMA : 0, %shim1, DMA : 0)
+    aie.flow(%shim2, DMA : 1, %mem2, DMA : 1)
+    aie.flow(%mem2, DMA : 1, %shim2, DMA : 1)
+    aie.flow(%shim3, DMA : 1, %mem3, DMA : 1)
+    aie.flow(%mem3, DMA : 1, %shim3, DMA : 1)
+  }
+}
