@@ -8,8 +8,8 @@
 // RUN: aie-opt --aie-create-pathfinder-flows="allow-deadlock-prone=true" %s 2>&1 >/dev/null | FileCheck %s
 
 // Id splits a hold cycle in an early routing asked of (0,3) DMA:0's tree take
-// a channel down from (0,3) it does not have. A capacity stall drops them, and
-// the design routes.
+// a channel down from (0,3) it does not have. A stall drops them, and the
+// design routes.
 // Reduced from router_mutation.py npu1 seed 207370212 (pin-config).
 
 // CHECK-NOT: error

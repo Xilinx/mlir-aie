@@ -2598,22 +2598,13 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
         std::stable_partition(group.begin(), group.end(), losing);
       }
       reorderedStall += moved;
-      // Each stall period, the packet trees on an overused channel drop their
-      // id splits: the routing that faulted them may be gone, and the routing
-      // check adds back any still needed.
-      if (sinceFewest % stallIterations == 0)
-        for (auto [k, splits] : llvm::enumerate(st.splitsOf))
-          if (!splits.empty() &&
-              llvm::any_of(st.treeOf[k], [](const auto &hop) {
-                const Edge &e = hop.second.second;
-                return e.sb->at(e.i, e.j).usedCapacity >
-                       maxCircuitStreamCapacity;
-              })) {
-            LLVM_DEBUG(llvm::dbgs()
-                       << "Retract the splits of part " << k << '\n');
-            splits.clear();
-          }
     }
+    // Each stall period without a legal routing, the packet trees drop their
+    // id splits: the routing that faulted them may be gone, and the routing
+    // check adds back any still needed.
+    if (sinceFewest >= stallIterations && sinceFewest % stallIterations == 0)
+      for (auto &splits : st.splitsOf)
+        splits.clear();
 
     // A routing that fits the fabric can still be one the caller cannot use;
     // steer away from the connections it names as if they were overused. One
