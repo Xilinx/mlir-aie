@@ -225,6 +225,14 @@ design carries `has_ctrl_pkt_overlay` on its `aie.device`. The router keeps
 the overlay's flows (those to or from a `TileControl` port) on the routes
 they take alone, and fails if the design's flows don't fit around them.
 
+Those routes don't consider the design's flows, so a design flow may have to
+detour around the overlay. With `aiecc --ctrlpkt-adaptive-pin`, the
+`aie-control-overlay-avoid-data` pass first routes each configuration without
+the overlay and records the switchbox output ports its flows take. The overlay
+then routes alone around all of those ports, taking one only where no other
+port is free. Every configuration avoids the same ports, so all of them keep
+the overlay's routes.
+
 ## Options
 
 | Pass option | Default | Effect |
