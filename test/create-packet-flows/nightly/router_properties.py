@@ -2690,6 +2690,32 @@ def free_arbiters(reserved, wholly=False):
     )
 
 
+def largest_apart_set(an, cands, limit):
+    """largestApartSet: the largest set of `cands` that must be kept apart
+    pairwise, the search stopping once it finds one larger than `limit` or
+    spends its budget."""
+    clique, best, steps = [], [], [0]
+
+    def grow(cs):
+        if len(clique) > len(best):
+            best[:] = clique
+        for k, s in enumerate(cs):
+            if len(best) > limit:
+                return
+            steps[0] += 1
+            if steps[0] > PARAMS["clique_budget"] or len(clique) + len(cs) - k <= len(
+                best
+            ):
+                return
+            nxt = [t for t in cs[k + 1 :] if an.must_separate(s, t)]
+            clique.append(s)
+            grow(nxt)
+            clique.pop()
+
+    grow(list(cands))
+    return best
+
+
 def unroutable_arbiters(d, an, pins_hops):
     """unroutableArbiters: the reason no routing can plan its arbiters, found
     before routing, or None."""
@@ -2718,25 +2744,7 @@ def unroutable_arbiters(d, an, pins_hops):
         dsts = {an.streams[s].dst for s in cands}
         if min(len(srcs), len(dsts)) <= free:
             continue
-        clique, best, steps = [], [], [0]
-
-        def grow(cs):
-            if len(clique) > len(best):
-                best[:] = clique
-            for k, s in enumerate(cs):
-                if len(best) > free:
-                    return
-                steps[0] += 1
-                if steps[0] > PARAMS["clique_budget"] or len(clique) + len(
-                    cs
-                ) - k <= len(best):
-                    return
-                nxt = [t for t in cs[k + 1 :] if an.must_separate(s, t)]
-                clique.append(s)
-                grow(nxt)
-                clique.pop()
-
-        grow(cands)
+        best = largest_apart_set(an, cands, free)
         if len(best) <= free:
             continue
         an.clique = list(best)
