@@ -25,19 +25,19 @@ structure FifoD where
   repeatCount : Nat
   prod : End
   cons : List (End × Option Walk)
-  deriving Repr
+  deriving Repr, DecidableEq
 
 structure LinkD where
   srcs : List String
   dsts : List String
   srcOffsets : List Nat
   dstOffsets : List Nat
-  deriving Repr
+  deriving Repr, DecidableEq
 
 structure Net where
   fifos : List FifoD
   links : List LinkD
-  deriving Repr
+  deriving Repr, DecidableEq
 
 namespace FifoD
 

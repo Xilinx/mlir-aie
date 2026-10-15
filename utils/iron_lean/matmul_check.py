@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Concrete end-to-end check: the oracle's data movement plus the matmul kernel contract compute A @ B.
 
-The kernel contract is the one ``mm_stream_dims`` documents: the core's A, B and C
-buffers hold ``(r, s)``, ``(s, t)`` and ``(r, t)`` blocks in row-major block order,
-and the core runs ``C_tile = sum_kk A_tile(kk) @ B_tile(kk)`` for each output tile,
-as whole_array's ``core_fn`` does.
+Each core's operand layouts come from its matmul kernel's own ``KernelContract``: the
+``TensorLayout`` codecs say how the A, B and C buffers hold the logical tiles. The core runs
+``C_tile = sum_kk A_tile(kk) @ B_tile(kk)`` for each output tile, as whole_array's ``core_fn``
+does. With ``b_col_maj`` (``c_col_maj``) the host holds B (C) transposed, as whole_array's taps
+assume.
 """
 
 import numpy as np
 from aie.iron import Program
+from aie.iron.kernels.linalg import MatrixKernel
 from aie.iron.runtime.endpoint import RuntimeEndpoint
 
 from sim import HOST, Simulation
@@ -24,38 +26,39 @@ class MatmulCheck:
         M: int,
         K: int,
         N: int,
-        m: int,
-        k: int,
-        n: int,
-        mac_dims: tuple[int, int, int],
+        b_col_maj: bool = False,
+        c_col_maj: bool = False,
         seed: int = 0,
     ):
         self.sim = Simulation(program)
-        self.M, self.K, self.N, self.m, self.k, self.n = M, K, N, m, k, n
-        self.r, self.s, self.t = mac_dims
+        self.M, self.K, self.N = M, K, N
+        self.c_col_maj = c_col_maj
         rng = np.random.default_rng(seed)
         self.A = rng.integers(-8, 8, (M, K), dtype=np.int64)
         self.B = rng.integers(-8, 8, (K, N), dtype=np.int64)
+        self.host_B = (self.B.T if b_col_maj else self.B).reshape(-1)
         self.errors: list[str] = []
 
     def host_values(self, ids: np.ndarray) -> np.ndarray:
         """The A or B values the oracle's element ids name."""
         buf, idx = (ids >> 48) & 0xFF, ids & ((1 << 48) - 1)
         is_a = ((ids & HOST) != 0) & (buf == 0) & (idx < self.A.size)
-        is_b = ((ids & HOST) != 0) & (buf == 1) & (idx < self.B.size)
+        is_b = ((ids & HOST) != 0) & (buf == 1) & (idx < self.host_B.size)
         if not (is_a | is_b).all():
             bad = ids[~(is_a | is_b)][0]
             raise ValueError(f"core operand element from {self.sim.decode(bad)}")
         return np.where(
             is_a,
             self.A.flat[np.where(is_a, idx, 0)],
-            self.B.flat[np.where(is_b, idx, 0)],
+            self.host_B[np.where(is_b, idx, 0)],
         )
 
     def core_tiles(self, w: int) -> list[np.ndarray]:
-        """Worker `w`'s output tiles, in its C buffer's blocked layout."""
-        m, k, n, r, s, t = self.m, self.k, self.n, self.r, self.s, self.t
+        """Worker `w`'s output tiles, in its C buffer's layout."""
         worker = self.sim.workers[w]
+        kernel = next(a for a in worker.flat_fn_args if isinstance(a, MatrixKernel))
+        layout_a, layout_b, layout_c = kernel.contract.layouts
+        (m, k), n = layout_a.shape, layout_b.shape[1]
         operands = {}
         for h in worker.fifos:
             if not h.is_prod:
@@ -75,12 +78,10 @@ class MatmulCheck:
                 j = tau * k_iters + kk
                 if j >= min(len(operands["A"]), len(operands["B"])):
                     break
-                a = operands["A"][j].reshape(m // r, k // s, r, s).transpose(0, 2, 1, 3)
-                b = operands["B"][j].reshape(k // s, n // t, s, t).transpose(0, 2, 1, 3)
-                acc += a.reshape(m, k) @ b.reshape(k, n)
-            out.append(
-                acc.reshape(m // r, r, n // t, t).transpose(0, 2, 1, 3).reshape(-1)
-            )
+                a = layout_a.decode(operands["A"][j])[0]
+                b = layout_b.decode(operands["B"][j])[0]
+                acc += a @ b
+            out.append(layout_c.encode(acc)[0])
         return out
 
     def run(self) -> list[str]:
@@ -111,7 +112,8 @@ class MatmulCheck:
         if (writes != 1).any():
             twice, never = int((writes > 1).sum()), int((writes == 0).sum())
             self.errors.append(f"C elements written twice: {twice}, never: {never}")
-        wrong = int((C != (self.A @ self.B).reshape(-1)).sum())
+        want = self.A @ self.B
+        wrong = int((C != (want.T if self.c_col_maj else want).reshape(-1)).sum())
         if wrong:
             self.errors.append(f"{wrong} of {C.size} C elements differ from A @ B")
         return self.errors

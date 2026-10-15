@@ -21,8 +21,11 @@ def compare(
     n: int,
     n_aie_cols: int,
     device: str = "npu2",
+    **options,
 ) -> bool:
     """Evaluate Lean design `name` at each shape and compare it with the oracle on `source`.
+
+    `options` (dtypes, column-major switches) go to `whole_array_program` unchanged.
 
     Returns:
         Whether every shape agrees line for line and the Lean sequence's guards hold.
@@ -30,7 +33,9 @@ def compare(
     lean_eval = lean_root / ".lake/build/bin/ironeval"
     passed = True
     for shape in shapes:
-        program = whole_array_program(source, shape, m, k, n, n_aie_cols, device)
+        program = whole_array_program(
+            source, shape, m, k, n, n_aie_cols, device, **options
+        )
         want = Simulation(program).lines()
         got = subprocess.run(
             [lean_eval, "design", name, *shape.split("x")],
@@ -59,7 +64,7 @@ def main():
     p.add_argument("--source", type=Path, default=WHOLE_ARRAY)
     p.add_argument("--lean-root", type=Path, default=LEAN_ROOT)
     p.add_argument("--device", choices=["npu1", "npu2"], default="npu2")
-    p.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4, 8], default=1)
+    p.add_argument("--n-aie-cols", type=int, choices=range(1, 9), default=1)
     p.add_argument("--m", type=int, default=64)
     p.add_argument("--k", type=int, default=64)
     p.add_argument("--n", type=int, default=32)

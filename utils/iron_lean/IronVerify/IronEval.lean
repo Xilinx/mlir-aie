@@ -5,6 +5,8 @@ import IronVerify.Walk
 import IronVerify.Seq
 import IronVerify.Net
 import IronVerify.Designs
+import IronVerify.Schema.WholeArray
+import IronVerify.Kernel
 
 open IronVerify
 
@@ -28,6 +30,26 @@ partial def walkLoop (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit :=
   | some w => stdout.putStrLn (" ".intercalate (w.toList.map toString))
   stdout.flush
   walkLoop stdin stdout
+
+/-- Each stdin line is `rows cols transposed inverse [offset s0 t0 ...]` (no walk: stored as is);
+prints the logical element every buffer slot holds. -/
+partial def layoutLoop (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit := do
+  let line ← stdin.getLine
+  if line.isEmpty then return
+  let fields := line.trimAsciiEnd.toString.splitOn " " |>.filter (· ≠ "")
+  match fields with
+  | rows :: cols :: tr :: inv :: walk =>
+    let stream := if walk.isEmpty then none else parseWalk (" ".intercalate walk)
+    let L : Layout := { rows := rows.toNat!, cols := cols.toNat!, transposed := tr == "1",
+                        stream, inverse := inv == "1" }
+    let out := (List.range (L.rows * L.cols)).map fun q =>
+      match L.slotElem q with
+      | some e => toString e
+      | none => "none"
+    stdout.putStrLn (" ".intercalate out)
+  | _ => throw <| IO.userError s!"bad layout line: {line}"
+  stdout.flush
+  layoutLoop stdin stdout
 
 def showSrc : Option Src → String
   | some (.host b i) => s!"h{b}:{i}"
@@ -60,6 +82,7 @@ def main (args : List String) : IO UInt32 := do
   let stdout ← IO.getStdout
   match args with
   | ["walks"] => walkLoop (← IO.getStdin) stdout; return 0
+  | ["layouts"] => layoutLoop (← IO.getStdin) stdout; return 0
   | "design" :: name :: params =>
     let some (_, net, seqOf) := Designs.registry.find? (·.1 = name)
       | throw <| IO.userError s!"unknown design {name}"
@@ -67,4 +90,14 @@ def main (args : List String) : IO UInt32 := do
       | throw <| IO.userError s!"bad parameters {params}"
     evalDesign net seq stdout
     return 0
-  | _ => throw <| IO.userError "usage: ironeval walks | ironeval design NAME MxKxN (or M K N)"
+  | "schema" :: params =>
+    match (params.flatMap (·.splitOn "x")).filterMap String.toNat? with
+    | [rows, cols, m, k, n, r, s, t, bc, cc, M, K, N] =>
+      let p : Schema.WholeArray.Params :=
+        { rows, cols, m, k, n, r, s, t, bColMaj := bc == 1, cColMaj := cc == 1 }
+      evalDesign (Schema.WholeArray.wnet p) (Schema.WholeArray.wseq p M K N) stdout
+      return 0
+    | _ => throw <| IO.userError s!"bad schema parameters {params}"
+  | _ => throw <| IO.userError (
+      "usage: ironeval walks | design NAME MxKxN | " ++
+      "schema ROWS COLS M K N R S T BCOL CCOL MxKxN")
