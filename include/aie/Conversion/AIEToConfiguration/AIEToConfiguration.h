@@ -70,7 +70,8 @@ generateAndInsertTeardownOps(mlir::OpBuilder &builder,
                              xilinx::AIE::DeviceOp device,
                              xilinx::AIEX::BlockwriteData &blockwriteData,
                              AIEToConfigurationOutputType outputType =
-                                 AIEToConfigurationOutputType::Transaction);
+                                 AIEToConfigurationOutputType::Transaction,
+                             bool skipCtrlPktOverlay = false);
 
 // --------------------------------------------------------------------------
 // Device reset
