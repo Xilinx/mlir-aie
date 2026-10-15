@@ -20,7 +20,7 @@ import numpy as np
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.scf import _for as range_, forever_
 
 def design():
     @device(AIEDevice.npu2)              # or AIEDevice.npu1
@@ -37,7 +37,7 @@ def design():
 
         @core(ComputeTile)
         def core_body():
-            for _ in range_(0xFFFFFFFF):                       # "forever" loop
+            for _ in forever_():                               # while (true)
                 e_in  = of_in.acquire(ObjectFifoPort.Consume, 1)
                 e_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                 for i in range_(1024):

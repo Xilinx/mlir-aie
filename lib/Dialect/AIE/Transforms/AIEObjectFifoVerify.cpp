@@ -94,16 +94,19 @@ struct AIEObjectFifoVerifyPass
   /// loop-carried lock values, which no scan can decide.
   LogicalResult verifyOverRelease(DeviceOp device) {
     for (auto coreOp : device.getOps<CoreOp>()) {
-      WalkResult result = coreOp.walk([&](scf::ForOp forOp) {
+      WalkResult result = coreOp.walk([&](Operation *loop) {
+        if (!isObjectFifoLoop(loop)) {
+          return WalkResult::advance();
+        }
         auto directlyIn = [&](Operation *op) {
-          return op->getParentOfType<scf::ForOp>() == forOp;
+          return getObjectFifoLoopParent(op) == loop;
         };
         DenseMap<StringRef, int64_t> acquired;
         DenseMap<StringRef, int64_t> released;
         DenseMap<StringRef, Operation *> blame;
         DenseSet<StringRef> spansNestedLoop;
 
-        forOp.getBody()->walk([&](ObjectFifoAcquireOp a) {
+        loop->walk([&](ObjectFifoAcquireOp a) {
           StringRef key = a.getObjFifoName();
           if (!directlyIn(a)) {
             spansNestedLoop.insert(key);
@@ -112,7 +115,7 @@ struct AIEObjectFifoVerifyPass
             blame.try_emplace(key, a);
           }
         });
-        forOp.getBody()->walk([&](ObjectFifoReleaseOp r) {
+        loop->walk([&](ObjectFifoReleaseOp r) {
           StringRef key = r.getObjFifoName();
           if (!directlyIn(r)) {
             spansNestedLoop.insert(key);

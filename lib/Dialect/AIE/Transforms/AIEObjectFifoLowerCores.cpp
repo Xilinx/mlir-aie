@@ -397,11 +397,14 @@ struct AIEObjectFifoLowerCoresPass
   void annotateUnrollHints(DeviceOp device, LoweringContext &ctx,
                            OpBuilder &builder) {
     for (auto coreOp : device.getOps<CoreOp>()) {
-      coreOp.walk([&](scf::ForOp forOp) {
+      coreOp.walk([&](Operation *loop) {
+        if (!isObjectFifoLoop(loop)) {
+          return;
+        }
         int64_t period = 1;
         bool touched = false;
         auto account = [&](Operation *op, StringRef name) {
-          if (op->getParentOfType<scf::ForOp>() != forOp) {
+          if (getObjectFifoLoopParent(op) != loop) {
             return;
           }
           auto endpoint = ctx.endpointOf(op, name);
@@ -411,13 +414,13 @@ struct AIEObjectFifoLowerCoresPass
           touched = true;
           period = std::lcm(period, (int64_t)endpoint.getPoolOp().getDepth());
         };
-        forOp.getBody()->walk(
+        loop->walk(
             [&](ObjectFifoAcquireOp a) { account(a, a.getObjFifoName()); });
-        forOp.getBody()->walk(
+        loop->walk(
             [&](ObjectFifoReleaseOp r) { account(r, r.getObjFifoName()); });
         if (touched) {
-          forOp->setAttr(kObjectFifoUnrollHintAttrName,
-                         builder.getI64IntegerAttr(period));
+          loop->setAttr(kObjectFifoUnrollHintAttrName,
+                        builder.getI64IntegerAttr(period));
         }
       });
     }

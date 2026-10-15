@@ -147,7 +147,7 @@ The placement kwarg is **`tile=`** (not `placement=`), and it defaults to `AnyCo
 which leaves the choice to the `--aie-place-tiles` pass. Passing a non-compute tile raises
 `ValueError` at construction.
 
-`while_true` (default `True`) wraps `core_body` in a `while(true)` loop so the core keeps servicing the fifo until reconfiguration; pass `False` for a core that should run exactly once (rare — most designs want the default forever-loop).
+`while_true` (default `True`) wraps `core_body` in a `while(true)` loop so the core keeps servicing the fifo until reconfiguration; pass `False` for a core that should run exactly once (rare — most designs want the default forever-loop). To run setup once and then loop, pass `False` and write `for _ in forever_():` (`aie.iron.controlflow`) in the body; don't fake it with `range_(sys.maxsize)`.
 
 `stack_size` defaults to the target model's `getDefaultCoreStackSize()` (currently 1024 bytes) — bump it if a core overflows its stack. `dynamic_objfifo_lowering` is a per-core override of the ObjectFifo lowering strategy and is only honored when the global `--dynamic-objFifos` flag is false; leave it `None` unless you're specifically working around a lowering issue.
 
