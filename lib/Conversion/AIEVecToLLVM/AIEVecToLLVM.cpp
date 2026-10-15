@@ -5519,7 +5519,8 @@ public:
 };
 
 // Convert aievec.tanh to xllvm.tanh intrinsic for AIE2P
-// Supports both lane-16 and lane-32 bf16 vectors
+// Supports lane-16 and lane-32 bf16 and f32 vectors. The intrinsic takes
+// accfloat and returns bf16, so an f32 result is widened back.
 class TanhOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::TanhOp> {
 public:
@@ -5533,47 +5534,55 @@ public:
     auto srcElemType = srcType.getElementType();
     unsigned laneSize = getVectorLaneSize(srcType);
 
-    // Support v16bfloat16 and v32bfloat16
-    if ((laneSize != 16 && laneSize != 32) || !srcElemType.isBF16())
+    // Support v16 and v32 of bfloat16 or float
+    if ((laneSize != 16 && laneSize != 32) ||
+        (!srcElemType.isBF16() && !srcElemType.isF32()))
       return tanhOp.emitWarning()
-             << "aievec.tanh conversion only supports v16bfloat16 and "
-                "v32bfloat16.\n";
+             << "aievec.tanh conversion only supports v16 and v32 of "
+                "bfloat16 or float.\n";
 
-    // Step 1: Convert bf16 input to f32 using the dedicated UPS intrinsic
+    bool isF32 = srcElemType.isF32();
     auto v16bf16Ty = VectorType::get({16}, rewriter.getBF16Type());
     auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
 
-    // Step 2: Call tanh intrinsic based on lane size
+    auto toF32 = [&](Value v16bf16) -> Value {
+      return xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
+          rewriter, loc, v16f32Ty, v16bf16);
+    };
+
     Value tanhResult;
 
     if (laneSize == 16) {
-      // Lane-16: Convert bf16->f32 then call tanh
-      auto inputF32 = xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v16f32Ty, adaptor.getSource());
+      // Lane-16: Convert bf16->f32 if needed, then call tanh
+      Value inputF32 = isF32 ? adaptor.getSource() : toF32(adaptor.getSource());
       tanhResult =
           xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, inputF32);
+      if (isF32)
+        tanhResult = toF32(tanhResult);
     } else {
-      // Lane-32: Split into two v16bf16, convert each, tanh each, recombine
+      // Lane-32: Split into two 16-lane halves, tanh each, recombine
       SmallVector<int64_t> lowerMask, upperMask;
       for (int i = 0; i < 16; ++i) {
         lowerMask.push_back(i);
         upperMask.push_back(16 + i);
       }
 
-      auto lowerBf16 = vector::ShuffleOp::create(
+      Value lowerHalf = vector::ShuffleOp::create(
           rewriter, loc, adaptor.getSource(), adaptor.getSource(), lowerMask);
-      auto upperBf16 = vector::ShuffleOp::create(
+      Value upperHalf = vector::ShuffleOp::create(
           rewriter, loc, adaptor.getSource(), adaptor.getSource(), upperMask);
 
-      auto lowerF32 = xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v16f32Ty, lowerBf16);
-      auto upperF32 = xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v16f32Ty, upperBf16);
+      Value lowerF32 = isF32 ? lowerHalf : toF32(lowerHalf);
+      Value upperF32 = isF32 ? upperHalf : toF32(upperHalf);
 
-      auto tanhLower =
+      Value tanhLower =
           xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, lowerF32);
-      auto tanhUpper =
+      Value tanhUpper =
           xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, upperF32);
+      if (isF32) {
+        tanhLower = toF32(tanhLower);
+        tanhUpper = toF32(tanhUpper);
+      }
 
       SmallVector<int64_t> combineMask;
       for (int i = 0; i < 32; ++i)
@@ -5637,6 +5646,57 @@ public:
     }
 
     rewriter.replaceOp(rsqrtOp, result);
+    return success();
+  }
+};
+
+// A one-element vector built from a scalar is lowered to llvm.bitcast. As an
+// insertelement, LLVM folds it with the extract of a lane into a shufflevector
+// with a one-element result, which Peano's AIE combines do not handle.
+static bool isOneLaneVectorOfScalar(Type resultType, Type sourceType) {
+  auto vecType = dyn_cast<VectorType>(resultType);
+  return vecType && !vecType.isScalable() && vecType.getRank() == 1 &&
+         vecType.getNumElements() == 1 && !isa<VectorType>(sourceType);
+}
+
+static bool isOneLaneBroadcastOfScalar(vector::BroadcastOp op) {
+  return isOneLaneVectorOfScalar(op.getType(), op.getSourceType());
+}
+
+static bool isOneLaneInsertOfScalar(vector::InsertOp op) {
+  return isOneLaneVectorOfScalar(op.getType(),
+                                 op.getValueToStore().getType()) &&
+         !op.hasDynamicPosition();
+}
+
+class OneLaneBroadcastOpConversion
+    : public mlir::ConvertOpToLLVMPattern<vector::BroadcastOp> {
+public:
+  using ConvertOpToLLVMPattern<vector::BroadcastOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!isOneLaneBroadcastOfScalar(bcastOp))
+      return failure();
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(bcastOp, bcastOp.getType(),
+                                                 adaptor.getSource());
+    return success();
+  }
+};
+
+class OneLaneInsertOpConversion
+    : public mlir::ConvertOpToLLVMPattern<vector::InsertOp> {
+public:
+  using ConvertOpToLLVMPattern<vector::InsertOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::InsertOp insertOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!isOneLaneInsertOfScalar(insertOp))
+      return failure();
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(insertOp, insertOp.getType(),
+                                                 adaptor.getValueToStore());
     return success();
   }
 };
@@ -5762,6 +5822,8 @@ static void populateAIEVecToLLVMAIE2ConversionPatterns(
   patterns.add<FMAElemOpConversion>(converter);
   patterns.add<FoldAIECastOps>(converter);
   patterns.add<FdivOpConversion>(converter, "aie2");
+  patterns.add<OneLaneBroadcastOpConversion, OneLaneInsertOpConversion>(
+      converter);
 }
 
 // AIE2p version of ExtractElemOp conversion using LLVM extractelement
@@ -5871,6 +5933,8 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<RsqrtOpAIE2pConversion>(converter);
   patterns.add<FdivOpConversion>(converter, "aie2p");
   patterns.add<FoldAIECastOpsAIE2p>(converter);
+  patterns.add<OneLaneBroadcastOpConversion, OneLaneInsertOpConversion>(
+      converter);
 }
 
 void populateAIEVecToLLVMConversionPatterns(
@@ -5897,6 +5961,12 @@ static void configureAIEVecToLLVMLegalizations(LLVMConversionTarget &target) {
     // Scalar divf is legal
     return true;
   });
+
+  // One-element vectors built from a scalar are illegal (lowered to bitcast)
+  target.addDynamicallyLegalOp<vector::BroadcastOp>(
+      [](vector::BroadcastOp op) { return !isOneLaneBroadcastOfScalar(op); });
+  target.addDynamicallyLegalOp<vector::InsertOp>(
+      [](vector::InsertOp op) { return !isOneLaneInsertOfScalar(op); });
 }
 
 struct ConvertAIEVecToLLVMPass
