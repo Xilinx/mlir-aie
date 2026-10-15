@@ -1616,7 +1616,7 @@ getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
 inline std::unique_ptr<mlir::PassManager>
 getRoutingPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  xilinx::AIEX::addRoutingStage(*pm, cli::allowDeadlockProneRouting);
+  xilinx::AIEX::addRoutingStage(*pm, cli::allowDeadlockProneRouting, cli::ctrlpktAdaptivePin);
   return pm;
 }
 

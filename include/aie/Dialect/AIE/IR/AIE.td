@@ -32,10 +32,14 @@ def AIE_Dialect : Dialect {
   // The op assembly formats still print inherent attributes in `attr-dict`;
   // opt out of upstream's strict-properties default until they migrate.
   let useStrictPropertiesInAssemblyFormat = 0;
-  // Marks on switchbox ops: is_ctrl_pkt_overlay for the control-packet
-  // overlay's, priority_route for rules that carry a prioritized flow.
+  // is_ctrl_pkt_overlay marks the control-packet overlay's switchbox ops and
+  // the shim DMA allocations its control packets go through, priority_route
+  // the rules that carry a prioritized flow. On a device,
+  // ctrl_pkt_overlay_avoid lists the #aie.switch_port outputs the
+  // configurations' data takes, which the overlay is routed off.
   let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_pkt_overlay,
-      "::mlir::UnitAttr":$priority_route);
+      "::mlir::UnitAttr":$priority_route,
+      "::mlir::ArrayAttr":$ctrl_pkt_overlay_avoid);
 }
 
 #endif // AIE_BASE

@@ -204,6 +204,10 @@ inline cl::opt<bool> ctrlpktAutoPacketize(
     cl::desc("Packet-switch an objectFIFO input where a column's inputs take "
              "every shim MM2S channel, to share it with the control packets "
              "(default: on)"));
+inline cl::opt<bool> ctrlpktAdaptivePin(
+    "ctrlpkt-adaptive-pin",
+    cl::desc("Route the control overlay around the switch ports the "
+             "configurations' data takes (default: off)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -746,6 +750,8 @@ inline bool resolveOptions(bool resuming = false) {
          resolveDependentOption(reconfigInitEntry, reconfigTeardown,
                                 "--reconfig-teardown") &&
          resolveDependentOption(ctrlpktAutoPacketize, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktAdaptivePin, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt");
 }
 

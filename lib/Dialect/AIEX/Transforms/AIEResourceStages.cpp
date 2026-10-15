@@ -73,9 +73,11 @@ void AIEX::addBufferAddressStage(OpPassManager &pm, int64_t placementBudget) {
   pm.nest<DeviceOp>().addPass(createAIEAssignBufferAddressesPass(options));
 }
 
-void AIEX::addRoutingStage(OpPassManager &pm, bool allowDeadlockProne) {
+void AIEX::addRoutingStage(OpPassManager &pm, bool allowDeadlockProne, bool adaptiveOverlay) {
+  pm.nest<DeviceOp>().addPass(createAIESplitFlowViasPass());
+  if (adaptiveOverlay)
+    pm.addPass(createAIEControlOverlayAvoidDataPass());
   OpPassManager &dpm = pm.nest<DeviceOp>();
-  dpm.addPass(createAIESplitFlowViasPass());
   AIERoutePathfinderFlowsOptions options;
   options.clAllowDeadlockProne = allowDeadlockProne;
   dpm.addPass(createAIEPathfinderPass(options));
