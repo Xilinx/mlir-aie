@@ -229,8 +229,11 @@ class DmaEndpoint:
         npu_sync(tile.col, tile.row, self.direction.value, self.channel)
 
     def _operand(self) -> int | str:
-        """Return the channel operand: the endpoint symbol where this end lowers
-        to one, pinned or not, else its index."""
+        """Return the channel operand, a symbol or an index.
+
+        The endpoint symbol where this end lowers to one, pinned or not, else
+        the channel index.
+        """
         if self.symbol is not None:
             return self.symbol
         assert self.channel is not None
