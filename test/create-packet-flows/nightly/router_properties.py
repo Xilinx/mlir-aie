@@ -57,7 +57,10 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import numpy as np
 from aie.ir import Context, Location, Module
+from scipy.optimize import Bounds, LinearConstraint, milp
+from scipy.sparse import coo_array
 import aie.dialects.aie  # noqa: F401
 import aie.dialects.aiex  # noqa: F401
 from aie.dialects.aie import AIEDevice, WireBundle, get_target_model
@@ -95,6 +98,10 @@ PARAMS = dict(
     # configuration, and parallel aie-opt runs.
     fixed_rate=0.25,
     jobs=4,
+    # Seconds LinkProgram may take to decide a design the witness search
+    # left undecided, and witness-built designs it checks per run.
+    ilp_time_limit_s=60.0,
+    ilp_validation=100,
 )
 # Ratchet on the route space the test reaches: values hit per dimension
 # (route_space, space_domain). Raise as the generator reaches more.
@@ -4722,6 +4729,134 @@ def generate(seed, params=None, device="npu2", tier="routable"):
     }[tier](seed, device)
 
 
+class LinkProgram:
+    """The flows over the links between tiles, as an integer program. Each
+    circuit tree takes whole channels on the links it crosses; packet streams
+    take channels set aside for packets, where two that must not share an
+    arbiter need two, a channel's master port having one. A link has the
+    channels whose master and slave ports no pre-placed connect, nor
+    masterset, holds. Ports inside a switchbox, arbiters, msels and ids are
+    left out: the program relaxes what any routing satisfies, so infeasible
+    means no routing exists."""
+
+    def __init__(self, d, an):
+        t = d.target
+        held_masters, held_slaves = set(), set()
+        for tile, ops in d.boxes.items():
+            for op in ops:
+                if op[0] == "connect":
+                    held_slaves.add((tile, op[1]))
+                    held_masters.add((tile, op[2]))
+                elif op[0] == "masterset":
+                    held_masters.add((tile, op[1]))
+        self.links, cap = [], []
+        for c in range(t.cols):
+            for r in range(t.rows):
+                for master, (dc, dr, slave) in STEP.items():
+                    o = (c + dc, r + dr)
+                    if not (0 <= o[0] < t.cols and 0 <= o[1] < t.rows):
+                        continue
+                    n = min(t.masters[(c, r)][master], t.slaves[o][slave])
+                    free = sum(
+                        1
+                        for i in range(n)
+                        if ((c, r), (master, i)) not in held_masters
+                        and (o, (slave, i)) not in held_slaves
+                    )
+                    if free:
+                        self.links.append(((c, r), o))
+                        cap.append(free)
+        tiles = [(c, r) for c in range(t.cols) for r in range(t.rows)]
+        leaving, entering = defaultdict(list), defaultdict(list)
+        for k, (a, b) in enumerate(self.links):
+            leaving[a].append(k)
+            entering[b].append(k)
+        n = len(self.links)
+        self.cols, self.integral = 0, []
+        self.rows, self.lo, self.hi, self.upper = [], [], [], []
+        taken = defaultdict(list)  # link -> columns using its channels
+
+        def columns(upper):
+            first = self.cols
+            self.cols += n
+            self.integral += [1] * n
+            self.upper += upper
+            return first
+
+        def row(terms, lo, hi):
+            self.rows.append(terms)
+            self.lo.append(lo)
+            self.hi.append(hi)
+
+        def path(first, src, dst):
+            for tile in tiles:
+                b = (tile == src) - (tile == dst)
+                row(
+                    [(first + k, 1) for k in leaving[tile]]
+                    + [(first + k, -1) for k in entering[tile]],
+                    b,
+                    b,
+                )
+
+        trees = defaultdict(set)
+        for s, x in d.flows:
+            trees[s].add(x[:2])
+        for s, dsts in sorted(trees.items()):
+            far = sorted(dsts - {s[:2]})
+            if not far:
+                continue
+            tree = columns(cap)
+            for k in range(n):
+                taken[k].append(tree + k)
+            # A unit flow to each destination tile, on the tree's links.
+            for dst in far:
+                flow = columns([1] * n)
+                path(flow, s[:2], dst)
+                for k in range(n):
+                    row([(flow + k, 1), (tree + k, -1)], -np.inf, 0)
+        packets = columns(cap)
+        for k in range(n):
+            taken[k].append(packets + k)
+        streams = [
+            i
+            for i, s in enumerate(an.streams[: an.num_requested])
+            if s.pid is not None and s.src[:2] != s.dst[:2]
+        ]
+        stream = {}
+        for i in streams:
+            stream[i] = columns([1] * n)
+            path(stream[i], an.streams[i].src[:2], an.streams[i].dst[:2])
+            for k in range(n):
+                row([(stream[i] + k, 1), (packets + k, -1)], -np.inf, 0)
+        for a, i in enumerate(streams):
+            for j in streams[a + 1 :]:
+                if an.must_separate(i, j):
+                    for k in range(n):
+                        row(
+                            [(stream[i] + k, 1), (stream[j] + k, 1), (packets + k, -1)],
+                            -np.inf,
+                            0,
+                        )
+        for k in range(n):
+            row([(c, 1) for c in taken[k]], -np.inf, cap[k])
+
+    def unroutable(self, time_limit):
+        """Whether the program is proved infeasible within `time_limit`
+        seconds; a timeout leaves it undecided, so False."""
+        rows = [r for r, terms in enumerate(self.rows) for _ in terms]
+        cols = [c for terms in self.rows for c, _ in terms]
+        vals = [v for terms in self.rows for _, v in terms]
+        a = coo_array((vals, (rows, cols)), shape=(len(self.rows), self.cols))
+        res = milp(
+            c=np.zeros(self.cols),
+            constraints=LinearConstraint(a.tocsr(), self.lo, self.hi),
+            integrality=np.array(self.integral),
+            bounds=Bounds(0, np.array(self.upper, dtype=float)),
+            options={"time_limit": time_limit},
+        )
+        return res.status == 2
+
+
 def verdict(d, hops_on=True, seed=0):
     """What the model says about routing `d`: routable True (the generator
     found a witness), False (the router's pre-routing check rejects it, with
@@ -4751,6 +4886,9 @@ def verdict(d, hops_on=True, seed=0):
     if built is not None and design_signature(c) == before:
         out["routable"] = True
         out["witness"] = built[0].solution()
+    elif LinkProgram(d, an).unroutable(PARAMS["ilp_time_limit_s"]):
+        out["routable"] = False
+        out["reason"] = "the flows do not fit the links between tiles (LinkProgram)"
     return out
 
 
@@ -6005,6 +6143,9 @@ def main(argv=None):
 
     outcomes = defaultdict(lambda: [0, 0])
     unknown_illegal = []
+    # Unknown designs the router fails on that LinkProgram proves unroutable,
+    # and those it routes legally, which have a routing to check it against.
+    proven, routed = Counter(), []
     for c, f in zip(kcases, kpending):
         p = f.result()
         outcomes[c["shape"]][p.returncode != 0] += 1
@@ -6022,19 +6163,44 @@ def main(argv=None):
             elif problems:
                 unknown_illegal.append(f"{tag}: {problems[0]}")
                 save(c, "illegal", c["design"].emit())
+            else:
+                routed.append(c)
+        elif LinkProgram(c["design"], c["analysis"]).unroutable(
+            PARAMS["ilp_time_limit_s"]
+        ):
+            proven[c["shape"]] += 1
     pool.shutdown()
     for line in unknown_illegal[:10]:
         print("ILLEGAL:", line)
     print(
         "unknown: "
         + ", ".join(
-            f"{k} {v[0]} routed {v[1]} failed" for k, v in sorted(outcomes.items())
+            f"{k} {v[0]} routed {v[1]} failed ({proven[k]} proven unroutable)"
+            for k, v in sorted(outcomes.items())
         )
     )
     report(
         "unknown-legality",
         not unknown_illegal,
         f"{len(unknown_illegal)} illegal or crashed of {len(kcases)}",
+    )
+    # LinkProgram must never prove unroutable a design with a known routing:
+    # a witness-built one, or one the router routed legally.
+    witnessed = cases[: PARAMS["ilp_validation"]] + routed
+    ilp_wrong = [
+        f"seed {c['seed']} ({c['shape']})"
+        for c in witnessed
+        if LinkProgram(c["design"], c["analysis"]).unroutable(
+            PARAMS["ilp_time_limit_s"]
+        )
+    ]
+    for line in ilp_wrong[:10]:
+        print("LINKPROGRAM PROVES A ROUTED DESIGN UNROUTABLE:", line)
+    report(
+        "ilp-validation",
+        not ilp_wrong,
+        f"{len(ilp_wrong)} of {len(witnessed)} designs with a known routing "
+        "proved unroutable",
     )
     for line in inherent_wrong[:10]:
         print("WRONG WARNING:", line)
@@ -6157,6 +6323,7 @@ def main(argv=None):
 # CHECK: overlay: {{.*}} : OK
 # CHECK: unroutable: {{.*}} : OK
 # CHECK: unknown-legality: {{.*}} : OK
+# CHECK: ilp-validation: {{.*}} : OK
 # CHECK: hops: {{.*}} : OK
 # CHECK: arbiters: {{.*}} : OK
 # CHECK: priority: {{.*}} : OK
