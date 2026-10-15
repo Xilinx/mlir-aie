@@ -46,5 +46,8 @@ pytest
 pytest-rerunfailures
 pytest-xdist
 pyyaml
+# The router harness's exact checks (test/create-packet-flows/nightly/router_ilp.py)
+# solve integer programs with scipy.optimize.milp (HiGHS).
+scipy
 cloudpickle # required by eudsl when it is vendored instead of installed
 reuse[charset-normalizer]==6.2.0
