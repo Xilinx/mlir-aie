@@ -70,28 +70,38 @@ from aie.utils.verify import assert_close_with_benchmark
 class Tilings(NamedTuple):
     """The A, B and C tilings the runtime sequence fills and drains."""
 
-    A: TensorAccessPattern
+    A: list[TensorAccessPattern]
     B: TensorAccessPattern
     C: TensorAccessPattern
+
+
+def a_shim_rows(n_aie_cols: int, n_aie_rows: int = 4) -> list[tuple[int, int]]:
+    """Return ``(first_row, rows)`` of the core rows each A shim feeds.
+
+    ``min(n_aie_rows, n_aie_cols)`` shims split the rows into contiguous runs;
+    when they do not divide evenly the first shims take one row more.
+    """
+    shims = min(n_aie_rows, n_aie_cols)
+    rows = [n_aie_rows // shims + int(i < n_aie_rows % shims) for i in range(shims)]
+    return [(sum(rows[:i]), r) for i, r in enumerate(rows)]
 
 
 def tile_matrices(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj) -> Tilings:
     """Tile A, B and C for the runtime sequence.
 
-    ``A[i]`` is the i-th row of A tiles, walked ``N // n // n_aie_cols`` times;
-    ``B[j]`` is the j-th column of B tiles; ``C[i, j]`` is the C tile at row
-    block ``i`` and column ``j``. ``M``, ``K`` and ``N`` may be ints or
-    dispatch-time scalars.
+    ``A[s][i]`` is A shim ``s``'s rows of row block ``i``, walked
+    ``N // n // n_aie_cols`` times; ``B[j]`` is the j-th column of B tiles;
+    ``C[i, j]`` is the C tile at row block ``i`` and column ``j``. ``M``, ``K``
+    and ``N`` may be ints or dispatch-time scalars.
     """
     n_aie_rows = 4
-    n_A_tiles_per_shim = max(1, n_aie_rows // n_aie_cols)
-
-    A_tiles = (
-        TensorAccessPattern.full((M, K))
-        .tile((m * n_A_tiles_per_shim, k))
+    A_blocks = TensorAccessPattern.full((M, K)).tile((m * n_aie_rows, k))
+    A_tiles = [
+        A_blocks[:, :, first * m : (first + rows) * m]
         .repeat(N // n // n_aie_cols)
         .permute((1, 0, 2, 3, 4))
-    )
+        for first, rows in a_shim_rows(n_aie_cols, n_aie_rows)
+    ]
     if b_col_maj:
         B_tiles = TensorAccessPattern.full((N, K)).tile((n, k))
     else:
@@ -116,12 +126,11 @@ def step_transfers(tilings: Tilings, row, n_aie_cols: int) -> list:
     ``"A"`` or ``"B"``, or drains ``"C"``, with the access pattern ``tap``.
     ``row`` may be a dispatch-time scalar.
     """
-    n_shim_mem_A = min(4, n_aie_cols)
     transfers = []
     for col in range(n_aie_cols):
         transfers.append(("C", col, tilings.C[row, col::n_aie_cols]))
-        if col < n_shim_mem_A:
-            transfers.append(("A", col, tilings.A[row * n_shim_mem_A + col]))
+        if col < len(tilings.A):
+            transfers.append(("A", col, tilings.A[col][row]))
         transfers.append(("B", col, tilings.B[col::n_aie_cols]))
     return transfers
 
@@ -148,8 +157,6 @@ def whole_array(
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
     fifo_depth = 2
-    n_shim_mem_A = min(n_aie_rows, n_aie_cols)
-    n_A_tiles_per_shim = max(1, n_aie_rows // n_aie_cols)
 
     dtype_in = np_ndarray_type_get_dtype(A)
     dtype_out = np_ndarray_type_get_dtype(C)
@@ -191,7 +198,6 @@ def whole_array(
         if not np.prod(np_ndarray_type_get_shape(ty)) < 2**31:
             raise ValueError(f"{name} must hold fewer than 2**31 elements")
 
-    A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
     B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
     C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
     A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
@@ -207,17 +213,16 @@ def whole_array(
     C_l1l2_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
     C_l2l3_fifos: list[ObjectFifo] = []
 
-    for i in range(n_shim_mem_A):
+    for i, (first_row, rows) in enumerate(a_shim_rows(n_aie_cols, n_aie_rows)):
+        A_l2_ty = np.ndarray[(m * k * rows,), np.dtype[dtype_in]]
         a_l3l2 = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
         A_l3l2_fifos.append(a_l3l2)
-        start_row = i * n_A_tiles_per_shim
-        stop_row = start_row + n_A_tiles_per_shim
         A_l2l1_fifos.extend(
             a_l3l2.cons().split(
-                [m * k * j for j in range(stop_row - start_row)],
-                obj_types=[A_l1_ty] * (stop_row - start_row),
-                names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-                to_stream=[dims.A] * (stop_row - start_row),
+                [m * k * j for j in range(rows)],
+                obj_types=[A_l1_ty] * rows,
+                names=[f"A_L2L1_{row}" for row in range(first_row, first_row + rows)],
+                to_stream=[dims.A] * rows,
             )
         )
 
@@ -345,7 +350,7 @@ def _make_argparser():
     p.add_argument("-m", type=int, default=64)
     p.add_argument("-k", type=int, default=64)
     p.add_argument("-n", type=int, default=32)
-    p.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4, 8], default=4)
+    p.add_argument("--n-aie-cols", type=int, choices=range(1, 9), default=4)
     p.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
     p.add_argument("--c-col-maj", type=int, choices=[0, 1], default=0)
     p.add_argument(
