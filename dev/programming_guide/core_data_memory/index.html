@@ -3932,7 +3932,10 @@
 
 <h1 id="core-data-memory">Core Data Memory<a class="headerlink" href="#core-data-memory" title="Permanent link">&para;</a></h1>
 <p>Every AIE compute tile has one small block of local data memory, 64 kB on npu2
-for example; IRON reads the size as <code>dev.core_memory_bytes</code>. Three things share that block:</p>
+for example; IRON reads the size as <code>dev.core_memory_bytes</code>, and the banks the
+buffer allocator places in as <code>dev.core_memory_banks</code> of
+<code>dev.core_memory_bank_bytes</code> each: four of 16 kB on AIE2 and AIE2P, each two
+hardware banks interleaved. Three things share that block:</p>
 <ul>
 <li>the <strong>stack</strong>, at offset zero by default;</li>
 <li>the <strong><code>aie.buffer</code>s</strong> that the buffer allocator places on the tile: the L1
