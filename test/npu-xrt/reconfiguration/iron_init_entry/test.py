@@ -133,6 +133,19 @@ def test_init_entry_runs_on_each_new_context(looked_up, ctrl_pkt):
     assert looked_up == NEW_CONTEXT * 2
 
 
+def test_init_entry_runs_after_another_context(looked_up):
+    # The expand build is another full ELF, so another context; its dispatch
+    # resets the array and removes the control packet build's overlay.
+    for ctrl_pkt in (True, False, True):
+        data = iron.arange(8, dtype=np.int32, device="npu")
+        reconfigure_add(data, ctrl_pkt=ctrl_pkt)
+        data.to("cpu")
+        np.testing.assert_array_equal(data.numpy(), expected())
+    # The third dispatch reuses the first's kernel, so it looks up only the
+    # init entry.
+    assert looked_up == NEW_CONTEXT * 2 + ["main:reconfig_init"]
+
+
 class FailedRun:
     def start(self):
         pass
