@@ -28,7 +28,7 @@ using namespace xilinx::AIE;
 namespace {
 // A connection's demand, the cost Dijkstra weighs it by, is
 // (demandBase + overCapacityCoeff * iterations it was over capacity) *
-// (demandBase + usedCapacityCoeff * streams using it).
+// (demandBase + usedCapacityCoeff * streams using it), plus its avoidance.
 constexpr double overCapacityCoeff = 0.1;
 constexpr double usedCapacityCoeff = 0.02;
 constexpr double demandBase = 1.0;
@@ -39,6 +39,9 @@ constexpr double priorityDemandCoeff =
     static_cast<double>(std::numeric_limits<int>::max());
 constexpr int maxCircuitStreamCapacity = 1;
 constexpr int maxPacketStreamCapacity = 32;
+// Demand added to a connection into an avoided port. It exceeds what a long
+// detour costs, so a route takes the port only when every other is taken.
+constexpr double avoidedPortDemand = 100.0;
 // History added to a connection each time the routing check rejects it.
 constexpr int routingCheckPenalty = 5;
 // Iterations spent steering away from a usable routing the check rejects.
@@ -81,7 +84,8 @@ constexpr int stallHistory = 4;
 void SwitchboxConnect::updateDemand() {
   for (Cell &c : cells)
     c.demand = (demandBase + overCapacityCoeff * c.overCapacity) *
-               (demandBase + usedCapacityCoeff * c.usedCapacity);
+                   (demandBase + usedCapacityCoeff * c.usedCapacity) +
+               c.avoidance;
 }
 
 void SwitchboxConnect::bumpDemand(Cell &c) {
@@ -99,6 +103,14 @@ void RoutingFailure::log(llvm::raw_ostream &os) const {
     os << ": " << reason;
 }
 
+bool xilinx::AIE::touchesTileControl(PacketFlowOp flow) {
+  auto control = [](auto end) {
+    return end.getBundle() == WireBundle::TileControl;
+  };
+  return llvm::any_of(flow.getPorts().getOps<PacketSourceOp>(), control) ||
+         llvm::any_of(flow.getPorts().getOps<PacketDestOp>(), control);
+}
+
 llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow
@@ -106,6 +118,8 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   maxRow = device.getTargetModel().rows();
 
   pathfinder.initialize(maxCol, maxRow, device.getTargetModel());
+  for (const auto &[coords, port] : avoidedPorts)
+    pathfinder.avoidPort(coords, port);
 
   // For each flow (circuit + packet) in the device, add it to pathfinder. Each
   // source can map to multiple different destinations (fanout). Control packet
@@ -719,6 +733,18 @@ void Pathfinder::excludeTile(TileID coords) {
   for (size_t i = 0; i < sb.srcPorts.size(); i++)
     for (size_t j = 0; j < sb.dstPorts.size(); j++)
       sb.at(i, j).available = false;
+}
+
+void Pathfinder::avoidPort(TileID coords, Port port) {
+  auto it = graph.find({coords, coords});
+  if (it == graph.end())
+    return;
+  SwitchboxConnect &sb = it->second;
+  int j = sb.dstIndex(port);
+  if (j < 0)
+    return;
+  for (size_t i = 0; i < sb.srcPorts.size(); i++)
+    sb.at(i, j).avoidance = avoidedPortDemand;
 }
 
 static constexpr double INF = std::numeric_limits<double>::max();

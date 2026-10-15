@@ -113,7 +113,7 @@ void addLoweringStage(mlir::OpPassManager &pm, bool dynamicObjFifos,
                       llvm::ArrayRef<int> coverColumns = {},
                       bool checkQueueSpace = true);
 void addBufferAddressStage(mlir::OpPassManager &pm, int64_t placementBudget);
-void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne);
+void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne, bool adaptiveOverlay = false);
 
 /// Options of `aie-resource-stages`, named and defaulted as aiecc's flags.
 struct AIEResourceStagesOptions
