@@ -3231,12 +3231,16 @@ void AIEPathfinderPass::runOnOperation() {
   // The prioritized flows routed without the rest of the design. A reload
   // installs them as @ctrl_pkt_overlay first, so they keep that route;
   // otherwise they keep it, if they have one, where the other flows route
-  // around it.
+  // around it. A prioritized flow outside the control overlay is one of the
+  // rest.
+  auto routesAlone = [&](PacketFlowOp flow) {
+    return isPrioritized(flow) && !reloadConfigures(flow);
+  };
   bool pinned = false;
   PinnedOverlay overlay;
   if (clRoutePacket && !prioritized.empty() &&
       (!d.getOps<FlowOp>().empty() ||
-       !llvm::all_of(d.getOps<PacketFlowOp>(), isPrioritized))) {
+       !llvm::all_of(d.getOps<PacketFlowOp>(), routesAlone))) {
     OwningOpRef<ModuleOp> scratch;
     // @ctrl_pkt_overlay holds the overlay's flows and the tiles alone, without
     // the design's own switchboxes. Otherwise the prioritized flows route
@@ -3245,7 +3249,7 @@ void AIEPathfinderPass::runOnOperation() {
     SmallVector<Operation *> others;
     for (Operation &op : alone.getBody()->without_terminator()) {
       auto flow = dyn_cast<PacketFlowOp>(op);
-      if (flow ? !isPrioritized(flow) || reloadConfigures(flow)
+      if (flow ? !routesAlone(flow)
                : isa<FlowOp>(op) || (reload && !isa<TileOp>(op)))
         others.push_back(&op);
     }

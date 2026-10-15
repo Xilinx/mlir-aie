@@ -14,22 +14,29 @@
 // RUN: sed -n '/@design {/,/^  }/p' %t | FileCheck %s
 // RUN: aie-opt --pass-pipeline="builtin.module(aie-materialize-runtime-sequences,aie-expand-load-pdi{ctrl-pkt=true})" %t | FileCheck %s --check-prefix=RELOAD
 
+// The user's flow leaves the shim through DMA 0, so the overlay's requests
+// take DMA 1 and the two share no slave port.
+
 // CHECK:      aie.switchbox(%mem_tile_0_1) {
 // CHECK:        aie.packet_rules(South : 3) {
-// CHECK-NEXT:     aie.rule(31, 27, %[[M1:.+]]) {aie.is_ctrl_pkt_overlay}
-// CHECK-NEXT:     aie.rule(31, 26, %{{.+}}) {aie.is_ctrl_pkt_overlay}
-// CHECK-NEXT:     aie.rule(31, 5, %[[M1]]){{$}}
+// CHECK:        } {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:   aie.packet_rules(South : 5) {
+// CHECK-NEXT:     aie.rule(31, 5, %{{.+}}){{$}}
+// CHECK-NEXT:   }{{$}}
 // CHECK:      aie.switchbox(%shim_noc_tile_0_0) {
+// CHECK:        aie.packet_rules(South : 7) {
+// CHECK:        } {aie.is_ctrl_pkt_overlay}
 // CHECK:        aie.packet_rules(South : 3) {
-// CHECK-NEXT:     aie.rule(30, 26, %[[S0:.+]]) {aie.is_ctrl_pkt_overlay, aie.priority_route}
-// CHECK-NEXT:     aie.rule(31, 15, %{{.+}}) {aie.is_ctrl_pkt_overlay, aie.priority_route}
-// CHECK-NEXT:     aie.rule(31, 5, %[[S0]]) {aie.priority_route}
+// CHECK-NEXT:     aie.rule(31, 5, %{{.+}}) {aie.priority_route}
+// CHECK-NEXT:   }{{$}}
 // CHECK:      aie.switchbox(%tile_0_2) {
 // CHECK-NEXT:   %[[DMA:.+]] = aie.amsel<0> (0)
 // CHECK:        aie.masterset(DMA : 0, %[[DMA]]){{$}}
 // CHECK:        aie.packet_rules(South : 3) {
-// CHECK-NEXT:     aie.rule(31, 27, %{{.+}}) {aie.is_ctrl_pkt_overlay}
+// CHECK:        } {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:   aie.packet_rules(South : 5) {
 // CHECK-NEXT:     aie.rule(31, 5, %[[DMA]]){{$}}
+// CHECK-NEXT:   }{{$}}
 
 // RELOAD: aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay
 
