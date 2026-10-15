@@ -199,6 +199,7 @@ def reconfigure(
         configurations,
         entry=entry,
         expand_load_pdis=True if mode.startswith("expand-load-pdis") else None,
+        load_pdi_to_ctrl_pkt=True if mode == "control-packets" else None,
         reconfig_teardown=True if mode == "expand-load-pdis-teardown" else None,
     ).resolve_program()
 
@@ -224,9 +225,6 @@ def main():
     output = iron.zeros(args.cols * args.rows, dtype=np.int32, device="npu")
     design = reconfigure.specialize(
         full_elf=args.mode != "separate-dispatch",
-        aiecc_flags=(
-            ["--load-pdi-to-ctrl-pkt"] if args.mode == "control-packets" else []
-        ),
         mode=args.mode,
         cols=args.cols,
         rows=args.rows,
