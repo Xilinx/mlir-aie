@@ -348,6 +348,9 @@ struct PacketConstraints {
   // The prioritized packet flows from these sources take these trees
   // instead of being routed.
   PacketTrees pinned;
+  // The packet ids each pinned tree carries. A pinned source's other flows
+  // route with the rest of the design, prioritized or not.
+  std::map<PathEndPoint, std::set<int>> pinnedIds;
   // Whether prioritized packet flows not pinned route first, keeping
   // other flows off their channels; otherwise they route like the others.
   bool prioritize = true;

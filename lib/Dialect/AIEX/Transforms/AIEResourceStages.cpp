@@ -33,20 +33,12 @@ void AIEX::addTraceStage(OpPassManager &pm) {
 
 void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
                             bool packetSwObjFifos, bool ctrlPktOverlay,
-                            bool loadPdiToCtrlPkt, bool skipObjectFifoVerify) {
+                            bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
+                            llvm::ArrayRef<int> coverColumns) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(createAIECanonicalizeDevicePass());
   // Before lock IDs and buffer addresses, which its new locks and buffers need.
   pm.addPass(createAIELowerScratchpadParametersPass());
-
-  // With the overlay requested, it claims its shim DMA channels before
-  // objectFIFO lowering works around them; otherwise it runs after tile
-  // control IDs are assigned.
-  AIEGenerateColumnControlOverlayOptions overlay;
-  overlay.clRouteShimDmaToTileCTRL = ctrlPktOverlay;
-  overlay.clEmitStandaloneOverlay = ctrlPktOverlay && loadPdiToCtrlPkt;
-  if (ctrlPktOverlay)
-    pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
 
   OpPassManager &dpm = pm.nest<DeviceOp>();
   addObjectFifoLoweringPasses(dpm, packetSwObjFifos, skipObjectFifoVerify);
@@ -60,7 +52,13 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(createAIEBroadcastPacketPass());
   dpm.addPass(createAIELowerMulticastPass());
-  dpm.addPass(createAIEAssignTileCtrlIDsPass());
+  AIEGenerateColumnControlOverlayOptions overlay;
+  overlay.clRouteShimDmaToTileCTRL = ctrlPktOverlay;
+  overlay.clEmitStandaloneOverlay = ctrlPktOverlay && loadPdiToCtrlPkt;
+  overlay.clCoverColumns = llvm::to_vector(coverColumns);
+  if (ctrlPktOverlay)
+    pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
+  pm.nest<DeviceOp>().addPass(createAIEAssignTileCtrlIDsPass());
 
   if (!ctrlPktOverlay)
     pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
