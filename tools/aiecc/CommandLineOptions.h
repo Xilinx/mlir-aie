@@ -174,7 +174,8 @@ inline cl::opt<bool> loadPdiToCtrlPkt(
     cl::desc("Rewrite `load_pdi { device_ref }` ops into DMA tasks that stream "
              "the device configuration as control packets (requires a control "
              "overlay; implies --generate-ctrl-pkt-overlay; mutually exclusive "
-             "with --expand-load-pdis)"));
+             "with --expand-load-pdis); the --ctrlpkt-* options adjust it and "
+             "require it"));
 inline cl::opt<bool> reconfigTeardown(
     "reconfig-teardown",
     cl::desc("Undo each configuration once it is done, in place of the reset "
@@ -188,6 +189,11 @@ inline cl::opt<bool> reconfigInitEntry(
              "<device>:reconfig_init entry, which the host runs once per "
              "hardware context before the other entries (requires "
              "--reconfig-teardown)"));
+inline cl::opt<bool> ctrlpktAutoPacketize(
+    "ctrlpkt-auto-packetize",
+    cl::desc("Packet-switch an objectFIFO input where a column's inputs take "
+             "every shim MM2S channel, to share it with the control packets "
+             "(default: on)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -715,6 +721,8 @@ inline bool resolveOptions(bool resuming = false) {
   bool fullElf = wantFullElf || resuming;
   if (!reconfigTeardown.getNumOccurrences())
     reconfigTeardown = loadPdiToCtrlPkt && wantFullElf;
+  if (!ctrlpktAutoPacketize.getNumOccurrences())
+    ctrlpktAutoPacketize = loadPdiToCtrlPkt;
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -726,7 +734,9 @@ inline bool resolveOptions(bool resuming = false) {
              reconfigTeardown, !ctrlPktOverlay || loadPdiToCtrlPkt,
              "that --generate-ctrl-pkt-overlay is not set") &&
          resolveDependentOption(reconfigInitEntry, reconfigTeardown,
-                                "--reconfig-teardown");
+                                "--reconfig-teardown") &&
+         resolveDependentOption(ctrlpktAutoPacketize, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt");
 }
 
 //===----------------------------------------------------------------------===//

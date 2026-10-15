@@ -30,6 +30,10 @@ class DMAChannelAnalysis {
   /// a pinned request may still claim one.
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
       streamedChannels;
+  /// Channels of shim DMA allocations marked is_ctrl_pkt_overlay. A
+  /// packet-switched transfer may share one; nothing else may.
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
+      controlChannels;
   /// The first claimant of a core stream port, and whether only packets use
   /// it; circuit occupancy is exclusive.
   struct StreamClaim {
@@ -62,10 +66,11 @@ public:
   /// it. Returns the channel, or -1 when it is out of range or already
   /// claimed; the caller reports, since it knows which endpoint asked.
   int reservePinnedChannel(TileLike tile, DMAChannelDir dir, int channel,
-                           mlir::Operation *owner = nullptr);
+                           mlir::Operation *owner = nullptr,
+                           bool packet = false);
 
-  /// Operation reserving this channel, or else the flow routing it; null if
-  /// neither.
+  /// Operation reserving this channel, or else the flow routing it, or else its
+  /// control allocation; null if none.
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
 
