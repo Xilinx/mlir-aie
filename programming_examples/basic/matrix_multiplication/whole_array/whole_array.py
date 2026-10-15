@@ -325,7 +325,7 @@ def whole_array(
                     B_hs[col].fill(B, tap=tap, group=tg)
 
     rt = Runtime(sequence, [A, B, C, M, K, N, A_prods, B_prods, C_conses])
-    return Program(dev, rt, workers=flat_workers).resolve_program()
+    return Program(dev, rt, workers=flat_workers)
 
 
 def _make_argparser():
