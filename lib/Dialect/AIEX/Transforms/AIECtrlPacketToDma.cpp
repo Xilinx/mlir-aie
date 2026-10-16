@@ -60,6 +60,8 @@ struct AIECtrlPacketInferTilesPass
 
 struct AIECtrlPacketToDmaPass
     : xilinx::AIEX::impl::AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
+  using Base::Base;
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
     const auto &targetModel = device.getTargetModel();
@@ -111,6 +113,7 @@ struct AIECtrlPacketToDmaPass
         std::string shimDmaAllocName;
         int shimChan;
         Operation *first;
+        int run; // batches of one run have no other op between them
       };
       std::vector<BatchInfo> batches;
 
@@ -119,11 +122,14 @@ struct AIECtrlPacketToDmaPass
 
       // First pass: collect and batch control packet operations
       bool new_batch = true;
+      int run = 0;
       for (Operation &o : entry) {
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
 
-        // A non-control_packet op ends the current batch
+        // A non-control_packet op ends the current batch and run
         if (!ctrlPktOp) {
+          if (!new_batch)
+            ++run;
           new_batch = true;
           continue;
         }
@@ -159,7 +165,7 @@ struct AIECtrlPacketToDmaPass
           }
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                              getCtrlPktAllocName(col, true, *shimChan),
-                             *shimChan, &o});
+                             *shimChan, &o, run});
           new_batch = false;
         }
         ddrOffset += ctrlPktSize;
@@ -184,6 +190,44 @@ struct AIECtrlPacketToDmaPass
           continue;
 
         int col = ctrlPktOp.getColumnFromAddr();
+
+        if (chainBds) {
+          // The batches that follow on the same channel in the same run,
+          // up to the shim tile's buffer descriptor count.
+          uint32_t maxBds = targetModel.getNumBDs(col, 0);
+          auto chainEnd = std::next(batchIt);
+          while (chainEnd != batches.end() &&
+                 static_cast<uint32_t>(chainEnd - batchIt) < maxBds &&
+                 chainEnd->run == batchIt->run &&
+                 chainEnd->shimDmaAllocName == batchIt->shimDmaAllocName)
+            ++chainEnd;
+
+          auto task = DMAConfigureTaskForOp::create(
+              builder, loc, builder.getIndexType(),
+              SymbolRefAttr::get(ctx, batchIt->shimDmaAllocName),
+              /*issue_token=*/true, /*repeat_count=*/0,
+              /*repeat_count_val=*/Value());
+          OpBuilder::InsertionGuard guard(builder);
+          Region &body = task.getBody();
+          for (auto it = batchIt; it != chainEnd; ++it)
+            builder.createBlock(&body, body.end());
+          for (auto [block, it] :
+               llvm::zip(body, llvm::make_range(batchIt, chainEnd))) {
+            builder.setInsertionPointToEnd(&block);
+            AIE::DMABDOp::create(builder, loc, newBlockArg,
+                                 static_cast<int>(it.startOffset),
+                                 static_cast<int>(it.totalSize));
+            if (block.getNextNode())
+              AIE::NextBDOp::create(builder, loc, block.getNextNode());
+            else
+              AIE::EndOp::create(builder, loc);
+          }
+          builder.setInsertionPointAfter(task);
+          DMAStartTaskOp::create(builder, loc, task);
+          DMAAwaitTaskOp::create(builder, loc, task);
+          batchIt = chainEnd;
+          continue;
+        }
 
         // Emit the batched DMA operation for this (col, row) pair
         const std::vector<int64_t> staticOffsets = {0, 0, 0,
@@ -222,4 +266,8 @@ AIEX::createAIECtrlPacketInferTilesPass() {
 }
 std::unique_ptr<OperationPass<DeviceOp>> AIEX::createAIECtrlPacketToDmaPass() {
   return std::make_unique<AIECtrlPacketToDmaPass>();
+}
+std::unique_ptr<OperationPass<DeviceOp>>
+AIEX::createAIECtrlPacketToDmaPass(const AIECtrlPacketToDmaOptions &options) {
+  return std::make_unique<AIECtrlPacketToDmaPass>(options);
 }

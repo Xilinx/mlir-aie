@@ -65,6 +65,8 @@ createAIESubstituteShimDMAAllocationsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIECtrlPacketToDmaPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIECtrlPacketToDmaPass(const AIECtrlPacketToDmaOptions &options);
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIECtrlPacketInferTilesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerSetLockPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>

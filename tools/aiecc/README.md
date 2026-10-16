@@ -94,6 +94,8 @@ the same routes. These options adjust it; each requires it:
 - `--ctrlpkt-reorder-by-tile` (on by default): each tile's control packets go
   in one transfer, and channel starts and core enables go last
   (`aie-reorder-control-packets-by-tile`).
+- `--ctrlpkt-chain-bds` (on by default): each run of transfers on one shim
+  channel is one chain of buffer descriptors with one await.
 
 ### Parameterized C++ transaction builders
 

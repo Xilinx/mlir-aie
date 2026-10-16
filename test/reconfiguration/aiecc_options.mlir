@@ -37,6 +37,9 @@
 // RUN: not %aiecc --ctrlpkt-reorder-by-tile %s 2>&1 | FileCheck %s --check-prefix=REORDER-LDPDI-CTRLPKT
 // REORDER-LDPDI-CTRLPKT: aiecc: --ctrlpkt-reorder-by-tile requires --load-pdi-to-ctrl-pkt
 
+// RUN: not %aiecc --ctrlpkt-chain-bds %s 2>&1 | FileCheck %s --check-prefix=CHAIN-LDPDI-CTRLPKT
+// CHAIN-LDPDI-CTRLPKT: aiecc: --ctrlpkt-chain-bds requires --load-pdi-to-ctrl-pkt
+
 // Under --load-pdi-to-ctrl-pkt the teardown is on by default with full-ELF
 // output, and off without it.
 // RUN: %aiecc -n --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-init-entry %s
@@ -53,7 +56,7 @@
 // RUN: %aiecc -n --get=aie.elf --expand-load-pdis --reconfig-teardown --reconfig-init-entry %s
 
 // Turning an option off explicitly is never an error.
-// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-auto-packetize=false --ctrlpkt-adaptive-pin=false --ctrlpkt-reorder-by-tile=false %s
+// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-auto-packetize=false --ctrlpkt-adaptive-pin=false --ctrlpkt-reorder-by-tile=false --ctrlpkt-chain-bds=false %s
 
 module {
   aie.device(npu2) @main {

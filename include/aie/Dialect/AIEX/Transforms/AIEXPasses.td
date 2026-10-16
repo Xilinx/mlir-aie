@@ -489,6 +489,24 @@ def AIESubstituteShimDMAAllocations
 
 def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
   let summary = "Lowers npu.control_packet op to npu.dma_memcpy_nd op";
+  let description = [{
+    Streams each runtime sequence's control packets through their column's
+    control channel. Consecutive packets to one tile go in one transfer where
+    the target supports it. Each transfer gets its own buffer descriptor, since
+    a descriptor ends its stream packet and the switches route each to its
+    tile.
+
+    By default each transfer is an `aiex.npu.dma_memcpy_nd` and an
+    `aiex.npu.sync`. With `chain-bds`, consecutive transfers on one channel with
+    no op between them are one `aiex.dma_configure_task_for` with chained
+    descriptors and one await, split into several chains when longer than the
+    shim tile's descriptor count.
+  }];
+
+  let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
+                        "Chain each run of transfers on one shim channel into "
+                        "one task with one await">,
+  ];
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",

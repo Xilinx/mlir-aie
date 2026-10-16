@@ -193,6 +193,11 @@ inline cl::opt<bool> ctrlpktReorderByTile(
     cl::desc("Send each tile's control packets in one transfer, channel starts "
              "and core enables last (requires --load-pdi-to-ctrl-pkt; on by "
              "default under it)"));
+inline cl::opt<bool> ctrlpktChainBds(
+    "ctrlpkt-chain-bds",
+    cl::desc("Send each run of control packet transfers on one shim channel as "
+             "one buffer descriptor chain with one await (requires "
+             "--load-pdi-to-ctrl-pkt; on by default under it)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -719,6 +724,8 @@ inline bool resolveOptions(bool resuming = false) {
     ctrlpktAutoPacketize = loadPdiToCtrlPkt;
   if (!ctrlpktReorderByTile.getNumOccurrences())
     ctrlpktReorderByTile = loadPdiToCtrlPkt;
+  if (!ctrlpktChainBds.getNumOccurrences())
+    ctrlpktChainBds = loadPdiToCtrlPkt;
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -736,6 +743,8 @@ inline bool resolveOptions(bool resuming = false) {
          resolveDependentOption(ctrlpktAdaptivePin, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktReorderByTile, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktChainBds, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt");
 }
 

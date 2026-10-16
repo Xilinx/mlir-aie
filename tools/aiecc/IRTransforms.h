@@ -2080,11 +2080,14 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 
 // Convert legalized control-packet ops into DMA task ops (device-nested). The
 // subsequent DMA→NPU lowering is done by getPerDeviceDmaLoweringPipeline.
+// --ctrlpkt-chain-bds sets the pass's chain-bds option.
 inline std::unique_ptr<mlir::PassManager>
 getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
+  xilinx::AIEX::AIECtrlPacketToDmaOptions opts;
+  opts.chainBds = cli::ctrlpktChainBds;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
-      xilinx::AIEX::createAIECtrlPacketToDmaPass());
+      xilinx::AIEX::createAIECtrlPacketToDmaPass(opts));
   return pm;
 }
 
