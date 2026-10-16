@@ -9,8 +9,8 @@
 
 extern "C" void bf16_proj_block_core(bf16 *w, bf16 *x, float *y) {
   event0();
-  // The accumulator lives in this frame, as in linear_proj, so the inlined
-  // _mvm_bf16_bf16 hits the loop the Peano fix of decode_bf16_proj.h is about.
+  // The accumulator must share a frame with the inlined MVM for the Peano
+  // loop-back-edge fix described in decode_bf16_proj.h.
   alignas(aie::vector_decl_align) float y_acc[BF16_PROJ_M_BLOCK];
   zero_256<float, BF16_PROJ_M_BLOCK>(y_acc);
   _mvm_bf16_bf16<BF16_PROJ_M_BLOCK, BF16_PROJ_K_BLOCK>(w, x, y_acc);

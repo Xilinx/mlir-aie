@@ -37,30 +37,23 @@ void _mvm_bf16_bf16(bf16 *w, bf16 *x, float *y_acc) {
   aie::store_v(y_acc, acc.template to_vector<float>());
 }
 
-template <int M, int K>
-void linear_proj(bf16 *y, bf16 *w_ping, bf16 *w_pong, bf16 *x, float *y_acc,
-                 PingPong &w_pingpong, const int w_prod_lock_id,
-                 const int w_cons_lock_id) {
+extern "C" void bf16_proj_zero(float *y_acc) {
+  zero_256<float, BF16_PROJ_M_BLOCK>(y_acc);
+}
 
-  constexpr int m = BF16_PROJ_M_BLOCK;
-  constexpr int k = BF16_PROJ_K_BLOCK;
+extern "C" void bf16_proj_mvm(bf16 *w, bf16 *x, float *y_acc, int j,
+                              int x_offset) {
+  _mvm_bf16_bf16<BF16_PROJ_M_BLOCK, BF16_PROJ_K_BLOCK>(
+      w, x + x_offset + j * BF16_PROJ_K_BLOCK, y_acc);
+}
 
-  for (int i = 0; i < M / m; i++) {
-    zero_256<float, m>(y_acc);
-    for (int j = 0; j < K / k; j++) {
-      bf16 *w_using = w_pingpong.next(w_ping, w_pong);
-      bf16 *x_using = x + j * k;
-      _lock_acquire(w_cons_lock_id);
-      _mvm_bf16_bf16<m, k>(w_using, x_using, y_acc);
-      _lock_release(w_prod_lock_id);
-    }
-
-    bf16 *y_using = y + i * m;
-    aie::vector<float, m> y_acc_vec = aie::load_v<m>(y_acc);
-    aie::accum<accfloat, m> c_acc;
-    c_acc.from_vector(y_acc_vec);
-    aie::vector<bf16, m> y_vec = c_acc.template to_vector<bf16>();
-    aie::store_v(y_using, y_vec);
-  }
+extern "C" void bf16_proj_store(bf16 *y, float *y_acc, int i, int y_offset) {
+  bf16 *y_using = y + y_offset + i * BF16_PROJ_M_BLOCK;
+  aie::vector<float, BF16_PROJ_M_BLOCK> y_acc_vec =
+      aie::load_v<BF16_PROJ_M_BLOCK>(y_acc);
+  aie::accum<accfloat, BF16_PROJ_M_BLOCK> c_acc;
+  c_acc.from_vector(y_acc_vec);
+  aie::vector<bf16, BF16_PROJ_M_BLOCK> y_vec = c_acc.template to_vector<bf16>();
+  aie::store_v(y_using, y_vec);
 }
 #endif // AIE_KERNELS_FLM_GEMMA4_DECODE_BF16_PROJ_H

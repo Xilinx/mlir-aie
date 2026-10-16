@@ -22,20 +22,9 @@ void _activate(bf16 *x) {
 
 extern "C" {
 
-void gate_layer_embedding(bf16 *x, bf16 *proj_w_ping, bf16 *proj_w_pong,
-                          bf16 *y) {
-  constexpr int proj_w_prod_lock =
-      FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_PROJ_W_PROD_LOCK;
-  constexpr int proj_w_cons_lock =
-      FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_PROJ_W_CONS_LOCK;
-
-  static PingPong proj_w_pingpong;
-  alignas(aie::vector_decl_align) float y_acc[BF16_PROJ_M_BLOCK];
-
+void gate_layer_embedding_begin(bf16 *x, bf16 *y) {
   copy_vectorized<bf16, MODEL_DIM>(y, x);
-  linear_proj<PLI_D, MODEL_DIM>(y + MODEL_DIM, proj_w_ping, proj_w_pong, y,
-                                y_acc, proj_w_pingpong, proj_w_prod_lock,
-                                proj_w_cons_lock);
-  _activate(y + MODEL_DIM);
 }
+
+void gate_layer_embedding_finish(bf16 *y) { _activate(y + MODEL_DIM); }
 }
