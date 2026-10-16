@@ -1,0 +1,3892 @@
+{
+ "schema": 1,
+ "target": "npu1",
+ "id": "38860412134",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38860412134",
+ "date": "2026-10-16T06:17:53+00:00",
+ "commit": {
+  "id": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+  "message": "IRON/mlir-aie Infrastructure Deduplication for iron-next (#3921)",
+  "timestamp": "2026-10-15T20:09:31Z"
+ },
+ "event": "schedule",
+ "pmode": "turbo",
+ "device": "Phoenix",
+ "device_raw": "RyzenAI-npu1",
+ "provenance": {
+  "commit": "cb6f2d14a0",
+  "peano": "22.0.0+83ba9ea9",
+  "kernels": "8ee515753dca",
+  "runtime": "CachedXRTRuntime",
+  "xdna": "2.25.0_20260902",
+  "xrt": "2.25.0",
+  "host": "aie2",
+  "device": "RyzenAI-npu1",
+  "pmode": "turbo"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 765,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "passthrough/2048x16/int32": {
+   "cycles": {
+    "value": 264,
+    "unit": "cycles",
+    "range": "median 264 max 264 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 128.906,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 188.95,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 171.9 max 199.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1884,
+    "unit": "bytes"
+   }
+  },
+  "zero/4096x4/int32": {
+   "cycles": {
+    "value": 518,
+    "unit": "cycles",
+    "range": "median 518 max 518 n=4"
+   },
+   "npu_us": {
+    "value": 169.64,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 160.9 max 179.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3004,
+    "unit": "bytes"
+   }
+  },
+  "passthrough/2048x256/int32": {
+   "cycles": {
+    "value": 264,
+    "unit": "cycles",
+    "range": "median 264 max 264 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 128.906,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 689.26,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 669.5 max 705.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1884,
+    "unit": "bytes"
+   }
+  },
+  "passthrough/4096x16/int16": {
+   "cycles": {
+    "value": 264,
+    "unit": "cycles",
+    "range": "median 264 max 264 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 64.453,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 189.59,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 183.9 max 268.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1884,
+    "unit": "bytes"
+   }
+  },
+  "passthrough/4096x16/uint8": {
+   "cycles": {
+    "value": 136,
+    "unit": "cycles",
+    "range": "median 136 max 136 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 33.203,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 173.67,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 167.5 max 256.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1884,
+    "unit": "bytes"
+   }
+  },
+  "passthrough/1024x16/int16": {
+   "cycles": {
+    "value": 72,
+    "unit": "cycles",
+    "range": "median 72 max 72 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 70.312,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 160.48,
+    "unit": "us",
+    "range": "\u00b1 0.5; min 151.8 max 169.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1884,
+    "unit": "bytes"
+   }
+  },
+  "scale/1024x16/int16": {
+   "cycles": {
+    "value": 78,
+    "unit": "cycles",
+    "range": "median 78 max 78 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 76.172,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 163.06,
+    "unit": "us",
+    "range": "\u00b1 1.5; min 158.8 max 241.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2600,
+    "unit": "bytes"
+   }
+  },
+  "scale/1024x256/int16": {
+   "cycles": {
+    "value": 78,
+    "unit": "cycles",
+    "range": "median 78 max 78 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 76.172,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 288.56,
+    "unit": "us",
+    "range": "\u00b1 2.9; min 282.1 max 310.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2600,
+    "unit": "bytes"
+   }
+  },
+  "scale/1024x16/int32": {
+   "cycles": {
+    "value": 275,
+    "unit": "cycles",
+    "range": "median 275 max 275 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 268.555,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 173.2,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 165.7 max 254.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2760,
+    "unit": "bytes"
+   }
+  },
+  "add/1024x16/bfloat16": {
+   "cycles": {
+    "value": 78,
+    "unit": "cycles",
+    "range": "median 84 max 131 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 76.172,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 171.04,
+    "unit": "us",
+    "range": "\u00b1 1.7; min 157.4 max 257.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3304,
+    "unit": "bytes"
+   }
+  },
+  "add/1024x256/bfloat16": {
+   "cycles": {
+    "value": 78,
+    "unit": "cycles",
+    "range": "median 84 max 131 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 76.172,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 448.31,
+    "unit": "us",
+    "range": "\u00b1 16.2; min 428.7 max 567.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3304,
+    "unit": "bytes"
+   }
+  },
+  "mul/1024x16/bfloat16": {
+   "cycles": {
+    "value": 78,
+    "unit": "cycles",
+    "range": "median 85 max 129 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 76.172,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 172.81,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 168.7 max 252.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3488,
+    "unit": "bytes"
+   }
+  },
+  "mul/1024x256/bfloat16": {
+   "cycles": {
+    "value": 78,
+    "unit": "cycles",
+    "range": "median 84 max 129 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 76.172,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1074.14,
+    "unit": "us",
+    "range": "\u00b1 81.3; min 556.3 max 1415.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3488,
+    "unit": "bytes"
+   }
+  },
+  "relu/1024x16/bfloat16": {
+   "cycles": {
+    "value": 75,
+    "unit": "cycles",
+    "range": "median 75 max 75 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 73.242,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 164.27,
+    "unit": "us",
+    "range": "\u00b1 2.8; min 158.3 max 254.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2400,
+    "unit": "bytes"
+   }
+  },
+  "relu/1024x256/bfloat16": {
+   "cycles": {
+    "value": 75,
+    "unit": "cycles",
+    "range": "median 75 max 75 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 73.242,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 313.38,
+    "unit": "us",
+    "range": "\u00b1 27.3; min 280.3 max 1393.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2400,
+    "unit": "bytes"
+   }
+  },
+  "clamp/1024x16/bfloat16": {
+   "cycles": {
+    "value": 76,
+    "unit": "cycles",
+    "range": "median 76 max 76 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 74.219,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 161.56,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 154.4 max 169.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1196,
+    "unit": "bytes"
+   }
+  },
+  "clamp/1024x256/bfloat16": {
+   "cycles": {
+    "value": 76,
+    "unit": "cycles",
+    "range": "median 76 max 76 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 74.219,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 290.88,
+    "unit": "us",
+    "range": "\u00b1 4.1; min 276.8 max 381.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1196,
+    "unit": "bytes"
+   }
+  },
+  "reduce_add/1024x16/int32": {
+   "cycles": {
+    "value": 147,
+    "unit": "cycles",
+    "range": "median 147 max 147 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 143.555,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 171.65,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 163.1 max 258.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3300,
+    "unit": "bytes"
+   }
+  },
+  "reduce_add/1024x256/int32": {
+   "cycles": {
+    "value": 147,
+    "unit": "cycles",
+    "range": "median 147 max 147 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 143.555,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 433.13,
+    "unit": "us",
+    "range": "\u00b1 7.5; min 414.0 max 496.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3300,
+    "unit": "bytes"
+   }
+  },
+  "reduce_add/1024x16/bfloat16": {
+   "cycles": {
+    "value": 194,
+    "unit": "cycles",
+    "range": "median 194 max 194 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 189.453,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 167.63,
+    "unit": "us",
+    "range": "\u00b1 2.1; min 161.7 max 250.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3300,
+    "unit": "bytes"
+   }
+  },
+  "reduce_add/1024x256/bfloat16": {
+   "cycles": {
+    "value": 194,
+    "unit": "cycles",
+    "range": "median 194 max 194 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 189.453,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 290.64,
+    "unit": "us",
+    "range": "\u00b1 5.8; min 278.9 max 384.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3300,
+    "unit": "bytes"
+   }
+  },
+  "reduce_min/1024x16/int32": {
+   "cycles": {
+    "value": 147,
+    "unit": "cycles",
+    "range": "median 147 max 147 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 143.555,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 171.59,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 165.7 max 268.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 4432,
+    "unit": "bytes"
+   }
+  },
+  "reduce_min/1024x256/int32": {
+   "cycles": {
+    "value": 147,
+    "unit": "cycles",
+    "range": "median 147 max 147 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 143.555,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 429.27,
+    "unit": "us",
+    "range": "\u00b1 3.6; min 408.5 max 482.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 4432,
+    "unit": "bytes"
+   }
+  },
+  "reduce_min/1024x16/bfloat16": {
+   "cycles": {
+    "value": 80,
+    "unit": "cycles",
+    "range": "median 80 max 80 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 78.125,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 161.67,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 152.8 max 257.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 4432,
+    "unit": "bytes"
+   }
+  },
+  "reduce_min/1024x256/bfloat16": {
+   "cycles": {
+    "value": 80,
+    "unit": "cycles",
+    "range": "median 80 max 80 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 78.125,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 296.33,
+    "unit": "us",
+    "range": "\u00b1 6.7; min 280.3 max 349.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 4432,
+    "unit": "bytes"
+   }
+  },
+  "reduce_max/1024x16/int32": {
+   "cycles": {
+    "value": 155,
+    "unit": "cycles",
+    "range": "median 155 max 155 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 151.367,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 171.57,
+    "unit": "us",
+    "range": "\u00b1 0.7; min 168.4 max 285.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3832,
+    "unit": "bytes"
+   }
+  },
+  "reduce_max/1024x256/int32": {
+   "cycles": {
+    "value": 155,
+    "unit": "cycles",
+    "range": "median 155 max 155 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 151.367,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 429.43,
+    "unit": "us",
+    "range": "\u00b1 3.9; min 412.0 max 490.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3832,
+    "unit": "bytes"
+   }
+  },
+  "reduce_max/1024x16/bfloat16": {
+   "cycles": {
+    "value": 90,
+    "unit": "cycles",
+    "range": "median 90 max 90 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 87.891,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 161.35,
+    "unit": "us",
+    "range": "\u00b1 0.6; min 154.4 max 168.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3832,
+    "unit": "bytes"
+   }
+  },
+  "reduce_max/1024x256/bfloat16": {
+   "cycles": {
+    "value": 90,
+    "unit": "cycles",
+    "range": "median 90 max 90 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 87.891,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 288.8,
+    "unit": "us",
+    "range": "\u00b1 5.2; min 282.8 max 396.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3832,
+    "unit": "bytes"
+   }
+  },
+  "argmax/1024x16/int32": {
+   "cycles": {
+    "value": 477,
+    "unit": "cycles",
+    "range": "median 477 max 478 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 465.82,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 173.39,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 167.0 max 259.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 7044,
+    "unit": "bytes"
+   }
+  },
+  "argmax/1024x256/int32": {
+   "cycles": {
+    "value": 477,
+    "unit": "cycles",
+    "range": "median 477 max 477 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 465.82,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 427.63,
+    "unit": "us",
+    "range": "\u00b1 4.5; min 410.4 max 506.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 7044,
+    "unit": "bytes"
+   }
+  },
+  "argmax/1024x16/bfloat16_int32": {
+   "cycles": {
+    "value": 515,
+    "unit": "cycles",
+    "range": "median 515 max 515 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 502.93,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 166.27,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 159.6 max 255.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 7044,
+    "unit": "bytes"
+   }
+  },
+  "argmax/1024x256/bfloat16_int32": {
+   "cycles": {
+    "value": 515,
+    "unit": "cycles",
+    "range": "median 515 max 515 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 502.93,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 309.95,
+    "unit": "us",
+    "range": "\u00b1 5.2; min 296.3 max 322.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 7044,
+    "unit": "bytes"
+   }
+  },
+  "argmax_combine/2x16/int32": {
+   "cycles": {
+    "value": 135,
+    "unit": "cycles",
+    "range": "median 142 max 159 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 135000.0,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 158.78,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 151.1 max 168.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 8420,
+    "unit": "bytes"
+   }
+  },
+  "argmax_combine/2x16/int32/bfloat16-values": {
+   "cycles": {
+    "value": 157,
+    "unit": "cycles",
+    "range": "median 188 max 205 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 157000.0,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 161.49,
+    "unit": "us",
+    "range": "\u00b1 2.9; min 156.3 max 175.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 8420,
+    "unit": "bytes"
+   }
+  },
+  "gelu/1024x16/bfloat16": {
+   "cycles": {
+    "value": 1796,
+    "unit": "cycles",
+    "range": "median 1808 max 1826 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 1753.906,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 186.35,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 180.0 max 311.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 23952,
+    "unit": "bytes"
+   }
+  },
+  "gelu/1024x256/bfloat16": {
+   "cycles": {
+    "value": 1794,
+    "unit": "cycles",
+    "range": "median 1809 max 1826 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 1751.953,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1309.04,
+    "unit": "us",
+    "range": "\u00b1 139.6; min 782.8 max 1656.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 23952,
+    "unit": "bytes"
+   }
+  },
+  "silu/1024x16/bfloat16": {
+   "cycles": {
+    "value": 1170,
+    "unit": "cycles",
+    "range": "median 1199 max 1220 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 1142.578,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 175.13,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 168.1 max 269.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 25472,
+    "unit": "bytes"
+   }
+  },
+  "silu/1024x256/bfloat16": {
+   "cycles": {
+    "value": 1170,
+    "unit": "cycles",
+    "range": "median 1199 max 1221 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 1142.578,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1237.8,
+    "unit": "us",
+    "range": "\u00b1 252.3; min 470.7 max 1495.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 25472,
+    "unit": "bytes"
+   }
+  },
+  "bf16_exp/1024x16/bfloat16": {
+   "cycles": {
+    "value": 1068,
+    "unit": "cycles",
+    "range": "median 1073 max 1106 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 1042.969,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 179.35,
+    "unit": "us",
+    "range": "\u00b1 1.9; min 171.8 max 301.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 19252,
+    "unit": "bytes"
+   }
+  },
+  "bf16_exp/1024x256/bfloat16": {
+   "cycles": {
+    "value": 1068,
+    "unit": "cycles",
+    "range": "median 1073 max 1106 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 1042.969,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 752.57,
+    "unit": "us",
+    "range": "\u00b1 315.7; min 432.8 max 1393.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 19252,
+    "unit": "bytes"
+   }
+  },
+  "tanh/1024x16/bfloat16": {
+   "cycles": {
+    "value": 729,
+    "unit": "cycles",
+    "range": "median 761 max 763 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 711.914,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 169.82,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 164.6 max 178.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 25180,
+    "unit": "bytes"
+   }
+  },
+  "tanh/1024x256/bfloat16": {
+   "cycles": {
+    "value": 729,
+    "unit": "cycles",
+    "range": "median 761 max 762 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 711.914,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 567.84,
+    "unit": "us",
+    "range": "\u00b1 209.8; min 351.9 max 1454.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 25180,
+    "unit": "bytes"
+   }
+  },
+  "sigmoid/1024x16/bfloat16": {
+   "cycles": {
+    "value": 952,
+    "unit": "cycles",
+    "range": "median 973 max 975 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 929.688,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 172.94,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 165.5 max 252.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 28900,
+    "unit": "bytes"
+   }
+  },
+  "sigmoid/1024x256/bfloat16": {
+   "cycles": {
+    "value": 952,
+    "unit": "cycles",
+    "range": "median 972 max 974 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 929.688,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 426.71,
+    "unit": "us",
+    "range": "\u00b1 11.2; min 411.6 max 1438.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 28900,
+    "unit": "bytes"
+   }
+  },
+  "softmax/1024x16/bfloat16": {
+   "cycles": {
+    "value": 1845,
+    "unit": "cycles",
+    "range": "median 1869 max 1878 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 1801.758,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 185.84,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 180.0 max 270.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 46688,
+    "unit": "bytes"
+   }
+  },
+  "softmax/1024x256/bfloat16": {
+   "cycles": {
+    "value": 1845,
+    "unit": "cycles",
+    "range": "median 1870 max 1876 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 1801.758,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 662.16,
+    "unit": "us",
+    "range": "\u00b1 3.7; min 641.5 max 740.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 46688,
+    "unit": "bytes"
+   }
+  },
+  "softmax/1024x16/bfloat16/accurate_exp2=True/accurate": {
+   "cycles": {
+    "value": 6007,
+    "unit": "cycles",
+    "range": "median 6013 max 6027 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 5866.211,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 261.01,
+    "unit": "us",
+    "range": "\u00b1 9.2; min 250.7 max 357.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 55476,
+    "unit": "bytes"
+   }
+  },
+  "leaky_relu/1024x16/bfloat16": {
+   "cycles": {
+    "value": 188,
+    "unit": "cycles",
+    "range": "median 188 max 188 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 183.594,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 161.63,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 151.0 max 171.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 7880,
+    "unit": "bytes"
+   }
+  },
+  "leaky_relu/1024x256/bfloat16": {
+   "cycles": {
+    "value": 188,
+    "unit": "cycles",
+    "range": "median 188 max 188 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 183.594,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 297.4,
+    "unit": "us",
+    "range": "\u00b1 10.4; min 279.2 max 1268.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 7880,
+    "unit": "bytes"
+   }
+  },
+  "exp2f_vec/1024x16/float32": {
+   "cycles": {
+    "value": 3853,
+    "unit": "cycles",
+    "range": "median 3853 max 3853 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 3762.695,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 218.92,
+    "unit": "us",
+    "range": "\u00b1 2.1; min 208.9 max 310.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2452,
+    "unit": "bytes"
+   }
+  },
+  "exp2f_vec/1024x256/float32": {
+   "cycles": {
+    "value": 3853,
+    "unit": "cycles",
+    "range": "median 3853 max 3853 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 3762.695,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1622.22,
+    "unit": "us",
+    "range": "\u00b1 37.3; min 1326.3 max 1863.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2452,
+    "unit": "bytes"
+   }
+  },
+  "relu_sized/1024x16/bfloat16": {
+   "cycles": {
+    "value": 75,
+    "unit": "cycles",
+    "range": "median 75 max 75 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 73.242,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 160.15,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 153.4 max 251.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2400,
+    "unit": "bytes"
+   }
+  },
+  "gelu_sized/1024x16/bfloat16": {
+   "cycles": {
+    "value": 1797,
+    "unit": "cycles",
+    "range": "median 1809 max 1826 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 1754.883,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 185.67,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 175.9 max 315.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 23952,
+    "unit": "bytes"
+   }
+  },
+  "axpy/1024x16/bfloat16": {
+   "cycles": {
+    "value": 87,
+    "unit": "cycles",
+    "range": "median 94 max 140 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 42.48,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 173.52,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 167.3 max 256.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2356,
+    "unit": "bytes"
+   }
+  },
+  "axpy/1024x256/bfloat16": {
+   "cycles": {
+    "value": 87,
+    "unit": "cycles",
+    "range": "median 94 max 140 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 42.48,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 429.16,
+    "unit": "us",
+    "range": "\u00b1 10.8; min 412.9 max 518.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2356,
+    "unit": "bytes"
+   }
+  },
+  "convert_copy/1024x16/float32_bfloat16": {
+   "cycles": {
+    "value": 144,
+    "unit": "cycles",
+    "range": "median 144 max 144 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 140.625,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 172.13,
+    "unit": "us",
+    "range": "\u00b1 0.6; min 167.8 max 179.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1520,
+    "unit": "bytes"
+   }
+  },
+  "convert_copy/1024x256/float32_bfloat16": {
+   "cycles": {
+    "value": 144,
+    "unit": "cycles",
+    "range": "median 144 max 144 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 140.625,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 435.26,
+    "unit": "us",
+    "range": "\u00b1 4.9; min 428.9 max 1381.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1520,
+    "unit": "bytes"
+   }
+  },
+  "limbs_f32/320x16/float32_bfloat16": {
+   "cycles": {
+    "value": 216,
+    "unit": "cycles",
+    "range": "median 216 max 216 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 675.0,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 172.66,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 166.5 max 263.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1436,
+    "unit": "bytes"
+   }
+  },
+  "limbs_f32/320x256/float32_bfloat16": {
+   "cycles": {
+    "value": 216,
+    "unit": "cycles",
+    "range": "median 216 max 216 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 675.0,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1274.92,
+    "unit": "us",
+    "range": "\u00b1 61.7; min 507.6 max 1457.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1436,
+    "unit": "bytes"
+   }
+  },
+  "limbs_f32/160x16/float32_bfloat16": {
+   "cycles": {
+    "value": 116,
+    "unit": "cycles",
+    "range": "median 116 max 116 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 725.0,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 161.11,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 155.9 max 228.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1420,
+    "unit": "bytes"
+   }
+  },
+  "log_f32/1024x16/float32_bfloat16": {
+   "cycles": {
+    "value": 18526,
+    "unit": "cycles",
+    "range": "median 18526 max 18557 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 18091.797,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 466.83,
+    "unit": "us",
+    "range": "\u00b1 3.7; min 447.8 max 532.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3776,
+    "unit": "bytes"
+   }
+  },
+  "log_f32/1024x256/float32_bfloat16": {
+   "cycles": {
+    "value": 18526,
+    "unit": "cycles",
+    "range": "median 18526 max 18560 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 18091.797,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 5212.06,
+    "unit": "us",
+    "range": "\u00b1 23.0; min 5102.0 max 5502.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3776,
+    "unit": "bytes"
+   }
+  },
+  "magnitude_f32/640x16/float32": {
+   "cycles": {
+    "value": 3223,
+    "unit": "cycles",
+    "range": "median 3223 max 3236 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 10071.875,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 208.2,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 203.9 max 280.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2440,
+    "unit": "bytes"
+   }
+  },
+  "magnitude_f32/640x256/float32": {
+   "cycles": {
+    "value": 3223,
+    "unit": "cycles",
+    "range": "median 3223 max 3236 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 10071.875,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1009.8,
+    "unit": "us",
+    "range": "\u00b1 25.6; min 981.4 max 1062.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2440,
+    "unit": "bytes"
+   }
+  },
+  "affine_cast/3072x16/float32_bfloat16": {
+   "cycles": {
+    "value": 14489,
+    "unit": "cycles",
+    "range": "median 14489 max 14490 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 2358.236,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 425.84,
+    "unit": "us",
+    "range": "\u00b1 28.3; min 387.1 max 556.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1456,
+    "unit": "bytes"
+   }
+  },
+  "expand/576x16/uint8_bfloat16": {
+   "cycles": {
+    "value": 161,
+    "unit": "cycles",
+    "range": "median 161 max 161 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 157.227,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 163.62,
+    "unit": "us",
+    "range": "\u00b1 1.8; min 160.1 max 256.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1272,
+    "unit": "bytes"
+   }
+  },
+  "expand/576x256/uint8_bfloat16": {
+   "cycles": {
+    "value": 161,
+    "unit": "cycles",
+    "range": "median 161 max 161 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 157.227,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1063.96,
+    "unit": "us",
+    "range": "\u00b1 185.6; min 414.0 max 1359.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1272,
+    "unit": "bytes"
+   }
+  },
+  "row_addresses/1x16/int32_uint32/row_bytes=4096/rows=1/table_rows=128256": {
+   "cycles": {
+    "value": 27,
+    "unit": "cycles",
+    "range": "median 27 max 27 n=16"
+   },
+   "npu_us": {
+    "value": 153.27,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 145.1 max 233.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 948,
+    "unit": "bytes"
+   }
+  },
+  "row_addresses/64x16/int32_uint32/row_bytes=260/rows=64/table_rows=1000": {
+   "cycles": {
+    "value": 1649,
+    "unit": "cycles",
+    "range": "median 1649 max 1649 n=16"
+   },
+   "npu_us": {
+    "value": 181.94,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 177.2 max 265.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1448,
+    "unit": "bytes"
+   }
+  },
+  "merge_rows/64x32/int32/audio_at=2048/audio_token=258881/image_token=258880/vision_at=2560": {
+   "cycles": {
+    "value": 1907,
+    "unit": "cycles",
+    "range": "median 1934 max 1994 n=32"
+   },
+   "npu_us": {
+    "value": 217.51,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 209.8 max 327.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2444,
+    "unit": "bytes"
+   }
+  },
+  "merge_rows/32x6/int32/audio_at=2048/audio_token=258881/block=32/image_token=258880/vision_at=2560": {
+   "cycles": {
+    "value": 967,
+    "unit": "cycles",
+    "range": "median 980 max 1006 n=6"
+   },
+   "npu_us": {
+    "value": 162.21,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 155.2 max 177.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2444,
+    "unit": "bytes"
+   }
+  },
+  "patch_positions/1280x10/int32": {
+   "cycles": {
+    "value": 7232,
+    "unit": "cycles",
+    "range": "median 10148 max 10314 n=10"
+   },
+   "npu_us": {
+    "value": 232.82,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 227.1 max 324.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3708,
+    "unit": "bytes"
+   }
+  },
+  "patch_positions/1280x8/int32/cores=8": {
+   "cycles": {
+    "value": 8957,
+    "unit": "cycles",
+    "range": "median 10148 max 10314 n=8"
+   },
+   "npu_us": {
+    "value": 215.89,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 205.5 max 308.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3708,
+    "unit": "bytes"
+   }
+  },
+  "patch_positions/160x4/int32/block=32": {
+   "cycles": {
+    "value": 726,
+    "unit": "cycles",
+    "range": "median 726 max 1211 n=4"
+   },
+   "npu_us": {
+    "value": 160.78,
+    "unit": "us",
+    "range": "\u00b1 5.2; min 146.1 max 247.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3660,
+    "unit": "bytes"
+   }
+  },
+  "transpose/1024x16/bfloat16/subtile=4": {
+   "cycles": {
+    "value": 115,
+    "unit": "cycles",
+    "range": "median 115 max 115 n=16"
+   },
+   "npu_us": {
+    "value": 161.92,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 155.8 max 228.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2612,
+    "unit": "bytes"
+   }
+  },
+  "transpose/1024x16/bfloat16/subtile=8": {
+   "cycles": {
+    "value": 156,
+    "unit": "cycles",
+    "range": "median 156 max 156 n=16"
+   },
+   "npu_us": {
+    "value": 163.44,
+    "unit": "us",
+    "range": "\u00b1 2.8; min 156.8 max 253.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2612,
+    "unit": "bytes"
+   }
+  },
+  "transpose/1024x16/uint8/subtile=4": {
+   "cycles": {
+    "value": 63,
+    "unit": "cycles",
+    "range": "median 63 max 63 n=16"
+   },
+   "npu_us": {
+    "value": 160.52,
+    "unit": "us",
+    "range": "\u00b1 2.9; min 151.9 max 245.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2756,
+    "unit": "bytes"
+   }
+  },
+  "transpose/1024x16/uint32/subtile=8": {
+   "cycles": {
+    "value": 239,
+    "unit": "cycles",
+    "range": "median 239 max 239 n=16"
+   },
+   "npu_us": {
+    "value": 173.82,
+    "unit": "us",
+    "range": "\u00b1 1.7; min 166.8 max 270.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3092,
+    "unit": "bytes"
+   }
+  },
+  "mm/64x32x64x16/bfloat16_float32": {
+   "cycles": {
+    "value": 1881,
+    "unit": "cycles",
+    "range": "median 1961 max 1974 n=16; init[2] min 518"
+   },
+   "cycles_per_kop": {
+    "value": 7.175,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 229.08,
+    "unit": "us",
+    "range": "\u00b1 5.0; min 219.5 max 301.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 6268,
+    "unit": "bytes"
+   }
+  },
+  "mm/64x32x64x256/bfloat16_float32": {
+   "cycles": {
+    "value": 1881,
+    "unit": "cycles",
+    "range": "median 1961 max 1977 n=256; init[2] min 518"
+   },
+   "cycles_per_kop": {
+    "value": 7.175,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1568.38,
+    "unit": "us",
+    "range": "\u00b1 68.3; min 1349.4 max 1734.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 6268,
+    "unit": "bytes"
+   }
+  },
+  "mm/64x64x64x16/bfloat16_float32/b_col_maj=True": {
+   "cycles": {
+    "value": 2969,
+    "unit": "cycles",
+    "range": "median 3081 max 3113 n=16; init[2] min 518"
+   },
+   "cycles_per_kop": {
+    "value": 5.663,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 299.96,
+    "unit": "us",
+    "range": "\u00b1 10.8; min 286.8 max 1264.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 6812,
+    "unit": "bytes"
+   }
+  },
+  "mm/64x32x64x16/int16_int32": {
+   "cycles": {
+    "value": 3213,
+    "unit": "cycles",
+    "range": "median 3280 max 3483 n=16; init[2] min 518"
+   },
+   "cycles_per_kop": {
+    "value": 12.257,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 237.68,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 230.4 max 330.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5604,
+    "unit": "bytes"
+   }
+  },
+  "mm/64x32x64x16/int8_int32": {
+   "cycles": {
+    "value": 1449,
+    "unit": "cycles",
+    "range": "median 1481 max 1513 n=16; init[2] min 518"
+   },
+   "cycles_per_kop": {
+    "value": 5.527,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 224.15,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 217.4 max 307.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5936,
+    "unit": "bytes"
+   }
+  },
+  "fused_mm/32x32x16x4/bfloat16": {
+   "cycles": {
+    "value": 664,
+    "unit": "cycles",
+    "range": "median 704 max 735 n=4"
+   },
+   "cycles_per_kop": {
+    "value": 20.264,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 162.46,
+    "unit": "us",
+    "range": "\u00b1 1.5; min 156.4 max 297.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5552,
+    "unit": "bytes"
+   }
+  },
+  "fused_mm/64x128x16x4/bfloat16/band_m=64/chunk_k=16/mmul_shape=(8, 8, 8)/out_chunk=512": {
+   "cycles": {
+    "value": 4254,
+    "unit": "cycles",
+    "range": "median 4338 max 4402 n=4"
+   },
+   "cycles_per_kop": {
+    "value": 16.228,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 179.3,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 172.3 max 270.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 6788,
+    "unit": "bytes"
+   }
+  },
+  "fused_mm/64x128x32x4/bfloat16/band_m=64/chunk_k=32/mmul_shape=(8, 8, 8)/out_chunk=512": {
+   "cycles": {
+    "value": 6414,
+    "unit": "cycles",
+    "range": "median 6414 max 6414 n=4"
+   },
+   "cycles_per_kop": {
+    "value": 12.234,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 199.79,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 195.0 max 276.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 8060,
+    "unit": "bytes"
+   }
+  },
+  "fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/mmul_shape=(8, 8, 8)/out_chunk=512": {
+   "cycles": {
+    "value": 1790,
+    "unit": "cycles",
+    "range": "median 1798 max 1806 n=4"
+   },
+   "cycles_per_kop": {
+    "value": 6.828,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 176.48,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 169.3 max 185.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5780,
+    "unit": "bytes"
+   }
+  },
+  "fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/epilogue=silu/mmul_shape=(8, 8, 8)/out_chunk=512": {
+   "cycles": {
+    "value": 4074,
+    "unit": "cycles",
+    "range": "median 4098 max 4158 n=4"
+   },
+   "cycles_per_kop": {
+    "value": 15.541,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 179.97,
+    "unit": "us",
+    "range": "\u00b1 2.1; min 169.4 max 302.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 37352,
+    "unit": "bytes"
+   }
+  },
+  "fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/epilogue=gelu/mmul_shape=(8, 8, 8)/out_chunk=512": {
+   "cycles": {
+    "value": 4808,
+    "unit": "cycles",
+    "range": "median 4832 max 4892 n=4"
+   },
+   "cycles_per_kop": {
+    "value": 18.341,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 181.08,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 176.5 max 282.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 38448,
+    "unit": "bytes"
+   }
+  },
+  "mv/32x32x16/int16_int32": {
+   "cycles": {
+    "value": 95,
+    "unit": "cycles",
+    "range": "median 95 max 95 n=16; init[2] min 4"
+   },
+   "cycles_per_kop": {
+    "value": 46.387,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 163.19,
+    "unit": "us",
+    "range": "\u00b1 0.7; min 157.7 max 252.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2612,
+    "unit": "bytes"
+   }
+  },
+  "mv/32x256x16/bfloat16": {
+   "cycles": {
+    "value": 1264,
+    "unit": "cycles",
+    "range": "median 1264 max 1264 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 77.148,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 228.69,
+    "unit": "us",
+    "range": "\u00b1 5.8; min 220.4 max 386.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 6816,
+    "unit": "bytes"
+   }
+  },
+  "mv/4x64x16/bfloat16/vec_size=32": {
+   "cycles": {
+    "value": 117,
+    "unit": "cycles",
+    "range": "median 117 max 117 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 228.516,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 160.87,
+    "unit": "us",
+    "range": "\u00b1 3.9; min 147.7 max 275.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5144,
+    "unit": "bytes"
+   }
+  },
+  "mv/4x2048x16/bfloat16/vec_size=64": {
+   "cycles": {
+    "value": 694,
+    "unit": "cycles",
+    "range": "median 694 max 694 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 42.358,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 221.15,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 209.2 max 230.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 6140,
+    "unit": "bytes"
+   }
+  },
+  "mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down": {
+   "cycles": {
+    "value": 857,
+    "unit": "cycles",
+    "range": "median 857 max 857 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 52.307,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1205.07,
+    "unit": "us",
+    "range": "\u00b1 2.6; min 1196.4 max 1264.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 6140,
+    "unit": "bytes"
+   }
+  },
+  "mv/8192x4/bfloat16/a_col_maj=True/vec_size=64": {
+   "cycles": {
+    "value": 4063,
+    "unit": "cycles",
+    "range": "median 4063 max 4063 n=4"
+   },
+   "cycles_per_kop": {
+    "value": 247.986,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 182.11,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 173.7 max 309.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3308,
+    "unit": "bytes"
+   }
+  },
+  "compute_max/1x16/int32": {
+   "cycles": {
+    "value": 11,
+    "unit": "cycles",
+    "range": "median 11 max 11 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 11000.0,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 151.29,
+    "unit": "us",
+    "range": "\u00b1 0.7; min 141.4 max 237.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3672,
+    "unit": "bytes"
+   }
+  },
+  "compute_max/2x16/bfloat16": {
+   "cycles": {
+    "value": 14,
+    "unit": "cycles",
+    "range": "median 14 max 14 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 14000.0,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 151.21,
+    "unit": "us",
+    "range": "\u00b1 0.5; min 142.9 max 242.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3672,
+    "unit": "bytes"
+   }
+  },
+  "swiglu/1024x16/bfloat16": {
+   "cycles": {
+    "value": 2056,
+    "unit": "cycles",
+    "range": "median 2086 max 2095 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 334.635,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 206.02,
+    "unit": "us",
+    "range": "\u00b1 1.6; min 196.5 max 308.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 25184,
+    "unit": "bytes"
+   }
+  },
+  "swiglu/1024x256/bfloat16": {
+   "cycles": {
+    "value": 2056,
+    "unit": "cycles",
+    "range": "median 2086 max 2095 n=256"
+   },
+   "cycles_per_kop": {
+    "value": 334.635,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 1462.6,
+    "unit": "us",
+    "range": "\u00b1 67.8; min 1162.8 max 1992.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 25184,
+    "unit": "bytes"
+   }
+  },
+  "gray2rgba/1920x16/uint8": {
+   "cycles": {
+    "value": 273,
+    "unit": "cycles",
+    "range": "median 273 max 273 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 35.547,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 185.65,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 175.0 max 196.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 6160,
+    "unit": "bytes"
+   }
+  },
+  "rgba2gray/7680x16/uint8": {
+   "cycles": {
+    "value": 337,
+    "unit": "cycles",
+    "range": "median 337 max 337 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 175.521,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 184.27,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 175.5 max 279.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3592,
+    "unit": "bytes"
+   }
+  },
+  "threshold/1920x16/uint8": {
+   "cycles": {
+    "value": 132,
+    "unit": "cycles",
+    "range": "median 132 max 132 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 68.75,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 161.91,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 152.9 max 170.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 8244,
+    "unit": "bytes"
+   }
+  },
+  "threshold/1920x16/int16": {
+   "cycles": {
+    "value": 164,
+    "unit": "cycles",
+    "range": "median 164 max 165 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 85.417,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 171.78,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 162.2 max 255.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 4756,
+    "unit": "bytes"
+   }
+  },
+  "bitwise_or/1920x16/uint8": {
+   "cycles": {
+    "value": 101,
+    "unit": "cycles",
+    "range": "median 103 max 128 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 52.604,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 171.56,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 165.0 max 263.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1784,
+    "unit": "bytes"
+   }
+  },
+  "bitwise_and/1920x16/uint8": {
+   "cycles": {
+    "value": 101,
+    "unit": "cycles",
+    "range": "median 103 max 128 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 52.604,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 170.23,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 160.8 max 175.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1788,
+    "unit": "bytes"
+   }
+  },
+  "add_weighted/1920x16/uint8": {
+   "cycles": {
+    "value": 137,
+    "unit": "cycles",
+    "range": "median 137 max 163 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 23.785,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 172.84,
+    "unit": "us",
+    "range": "\u00b1 1.6; min 165.5 max 263.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2244,
+    "unit": "bytes"
+   }
+  },
+  "filter2d/1920x16/uint8": {
+   "cycles": {
+    "value": 444,
+    "unit": "cycles",
+    "range": "median 472 max 500 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 12.847,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 179.95,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 174.0 max 300.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2448,
+    "unit": "bytes"
+   }
+  },
+  "rgba2hue/7680x16/uint8": {
+   "cycles": {
+    "value": 2909,
+    "unit": "cycles",
+    "range": "median 2960 max 2961 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 1515.104,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 203.83,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 195.8 max 292.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 23004,
+    "unit": "bytes"
+   }
+  },
+  "resample_peak/2x2/int32": {
+   "cycles": {
+    "value": 2605242,
+    "unit": "cycles",
+    "range": "median 2605242 max 2605242 n=2"
+   },
+   "npu_us": {
+    "value": 4577.12,
+    "unit": "us",
+    "range": "\u00b1 40.5; min 4429.6 max 4740.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5584,
+    "unit": "bytes"
+   }
+  },
+  "resample_peak/2x2/int32/cores=1": {
+   "cycles": {
+    "value": 90635626,
+    "unit": "cycles",
+    "range": "median 90635626 max 90635626 n=2"
+   },
+   "npu_us": {
+    "value": 175404.56,
+    "unit": "us",
+    "range": "\u00b1 74.9; min 174955.3 max 175775.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5568,
+    "unit": "bytes"
+   }
+  },
+  "resample_peak/2x1/int32/slots=16/words=356": {
+   "cycles": {
+    "value": 2519723,
+    "unit": "cycles",
+    "range": "median 2519723 max 2519723 n=1"
+   },
+   "npu_us": {
+    "value": 2068.72,
+    "unit": "us",
+    "range": "\u00b1 163.7; min 1783.5 max 2433.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5568,
+    "unit": "bytes"
+   }
+  },
+  "resample_quantize/2x4/int32": {
+   "cycles": {
+    "value": 14643,
+    "unit": "cycles",
+    "range": "median 1071800 max 1524290 n=4"
+   },
+   "npu_us": {
+    "value": 4099.33,
+    "unit": "us",
+    "range": "\u00b1 112.1; min 3948.8 max 4635.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 8988,
+    "unit": "bytes"
+   }
+  },
+  "resample_quantize/2x80/int32/cores=1": {
+   "cycles": {
+    "value": 11238,
+    "unit": "cycles",
+    "range": "median 1735467 max 1743502 n=80"
+   },
+   "npu_us": {
+    "value": 126751.71,
+    "unit": "us",
+    "range": "\u00b1 34.3; min 126557.6 max 126898.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 9004,
+    "unit": "bytes"
+   }
+  },
+  "resample_quantize/2x3/int32/slots=16/words=356": {
+   "cycles": {
+    "value": 1181181,
+    "unit": "cycles",
+    "range": "median 1185219 max 1185893 n=3"
+   },
+   "npu_us": {
+    "value": 4024.25,
+    "unit": "us",
+    "range": "\u00b1 93.9; min 3879.7 max 4619.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 9004,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk1/2048x8/int8_uint8": {
+   "cycles": {
+    "value": 905,
+    "unit": "cycles",
+    "range": "median 919 max 941 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 3.452,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 162.03,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 154.6 max 251.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1412,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk1_i8/2048x8/int8": {
+   "cycles": {
+    "value": 930,
+    "unit": "cycles",
+    "range": "median 1041 max 1145 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 3.548,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 165.35,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 159.6 max 253.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2308,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64": {
+   "cycles": {
+    "value": 1331,
+    "unit": "cycles",
+    "range": "median 1374 max 1583 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 2.529,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 176.5,
+    "unit": "us",
+    "range": "\u00b1 1.5; min 166.8 max 239.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1824,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/int8_skip": {
+   "cycles": {
+    "value": 1331,
+    "unit": "cycles",
+    "range": "median 1331 max 1335 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 2.529,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 173.07,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 163.4 max 260.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1820,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32": {
+   "cycles": {
+    "value": 1365,
+    "unit": "cycles",
+    "range": "median 1395 max 1423 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 3.471,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 172.99,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 167.2 max 259.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3780,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip": {
+   "cycles": {
+    "value": 1359,
+    "unit": "cycles",
+    "range": "median 1387 max 1406 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 3.456,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 172.22,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 162.7 max 261.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3796,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk14/12544x4/uint8_int8": {
+   "cycles": {
+    "value": 990,
+    "unit": "cycles",
+    "range": "median 990 max 990 n=4"
+   },
+   "cycles_per_kop": {
+    "value": 2.466,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 168.79,
+    "unit": "us",
+    "range": "\u00b1 0.5; min 166.6 max 260.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2020,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk1/2048x8/uint8": {
+   "cycles": {
+    "value": 930,
+    "unit": "cycles",
+    "range": "median 1041 max 1145 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 3.548,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 164.57,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 155.6 max 239.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1416,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk3/2048x8/int8_uint8": {
+   "cycles": {
+    "value": 6973,
+    "unit": "cycles",
+    "range": "median 6985 max 6993 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 2.956,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 225.65,
+    "unit": "us",
+    "range": "\u00b1 1.5; min 217.8 max 447.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1784,
+    "unit": "bytes"
+   }
+  },
+  "conv2dk3/2048x8/uint8": {
+   "cycles": {
+    "value": 6966,
+    "unit": "cycles",
+    "range": "median 6976 max 6986 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 2.953,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 671.43,
+    "unit": "us",
+    "range": "\u00b1 275.7; min 346.6 max 1356.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 1788,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=120": {
+   "cycles": {
+    "value": 1964,
+    "unit": "cycles",
+    "range": "median 2055 max 2143 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 7.307,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 173.85,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 167.6 max 262.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 10196,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu/1792x8/int8_uint8/input_channels=16/input_width=112/output_channels=64": {
+   "cycles": {
+    "value": 1658,
+    "unit": "cycles",
+    "range": "median 1660 max 1663 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 7.228,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 169.18,
+    "unit": "us",
+    "range": "\u00b1 0.6; min 160.0 max 255.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 10196,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_channels=184": {
+   "cycles": {
+    "value": 3582,
+    "unit": "cycles",
+    "range": "median 3594 max 3610 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 8.691,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 186.05,
+    "unit": "us",
+    "range": "\u00b1 1.5; min 176.3 max 277.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 11564,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu/560x8/int8_uint8/input_channels=80/input_width=7/output_channels=120": {
+   "cycles": {
+    "value": 1803,
+    "unit": "cycles",
+    "range": "median 1840 max 1876 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 13.415,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 170.08,
+    "unit": "us",
+    "range": "\u00b1 0.5; min 161.6 max 253.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 11416,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu/1568x8/int8_uint8/input_channels=112/input_width=14/output_channels=336": {
+   "cycles": {
+    "value": 7695,
+    "unit": "cycles",
+    "range": "median 7695 max 7695 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 7.303,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 224.04,
+    "unit": "us",
+    "range": "\u00b1 2.6; min 212.7 max 298.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 11564,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=240": {
+   "cycles": {
+    "value": 3869,
+    "unit": "cycles",
+    "range": "median 4049 max 4228 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 7.197,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 190.57,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 182.5 max 200.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 10196,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu/1344x8/int8_uint8/input_channels=24/input_width=56/output_channels=72": {
+   "cycles": {
+    "value": 1590,
+    "unit": "cycles",
+    "range": "median 1604 max 1621 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 8.216,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 170.61,
+    "unit": "us",
+    "range": "\u00b1 1.6; min 164.8 max 240.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 10196,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_channels=200": {
+   "cycles": {
+    "value": 3890,
+    "unit": "cycles",
+    "range": "median 3903 max 3917 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 8.683,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 190.16,
+    "unit": "us",
+    "range": "\u00b1 2.1; min 184.2 max 266.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 11564,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_i8/2016x8/uint8_int8/input_channels=72/input_width=28/output_channels=40": {
+   "cycles": {
+    "value": 1046,
+    "unit": "cycles",
+    "range": "median 1046 max 1049 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 6.486,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 164.27,
+    "unit": "us",
+    "range": "\u00b1 1.7; min 158.8 max 174.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 10764,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40": {
+   "cycles": {
+    "value": 1466,
+    "unit": "cycles",
+    "range": "median 1466 max 1469 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 5.454,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 167.75,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 158.6 max 264.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 10764,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_i8/3584x8/uint8_int8/input_channels=64/input_width=56/output_channels=24": {
+   "cycles": {
+    "value": 1033,
+    "unit": "cycles",
+    "range": "median 1037 max 1056 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 6.005,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 164.26,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 159.0 max 253.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 10764,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=240/input_width=14/output_channels=80": {
+   "cycles": {
+    "value": 2985,
+    "unit": "cycles",
+    "range": "median 2986 max 3001 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 5.552,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 186.47,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 180.0 max 193.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 12120,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80": {
+   "cycles": {
+    "value": 2424,
+    "unit": "cycles",
+    "range": "median 2467 max 2513 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 6.441,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 177.09,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 173.5 max 262.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 12020,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40": {
+   "cycles": {
+    "value": 1588,
+    "unit": "cycles",
+    "range": "median 1592 max 1594 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 5.883,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 176.61,
+    "unit": "us",
+    "range": "\u00b1 3.1; min 166.6 max 258.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 12148,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8": {
+   "cycles": {
+    "value": 1556,
+    "unit": "cycles",
+    "range": "median 1556 max 1560 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 5.765,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 170.94,
+    "unit": "us",
+    "range": "\u00b1 0.6; min 165.5 max 259.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 11508,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_skip/4032x8/uint8_int8/input_channels=72/input_width=56/output_channels=24": {
+   "cycles": {
+    "value": 1247,
+    "unit": "cycles",
+    "range": "median 1266 max 1269 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 6.399,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 168.81,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 164.2 max 239.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 12148,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40": {
+   "cycles": {
+    "value": 1111,
+    "unit": "cycles",
+    "range": "median 1111 max 1111 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 8.249,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 165.97,
+    "unit": "us",
+    "range": "\u00b1 2.1; min 159.2 max 235.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 13524,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8": {
+   "cycles": {
+    "value": 3031,
+    "unit": "cycles",
+    "range": "median 3046 max 3049 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 7.334,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 188.38,
+    "unit": "us",
+    "range": "\u00b1 1.9; min 180.5 max 287.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 13080,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8/skip-scale-0": {
+   "cycles": {
+    "value": 1556,
+    "unit": "cycles",
+    "range": "median 1556 max 1560 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 5.765,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 172.17,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 161.5 max 180.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 11508,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_skip/2800x8/uint8_int8/input_channels=200/input_width=14/output_channels=80/skip_dtype=int8/skip-scale-0": {
+   "cycles": {
+    "value": 3171,
+    "unit": "cycles",
+    "range": "median 3185 max 3190 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 7.06,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 184.29,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 177.6 max 272.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 13080,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8/skip-scale-0": {
+   "cycles": {
+    "value": 3031,
+    "unit": "cycles",
+    "range": "median 3046 max 3048 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 7.334,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 183.24,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 177.4 max 270.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 13080,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16": {
+   "cycles": {
+    "value": 1607,
+    "unit": "cycles",
+    "range": "median 1663 max 1691 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 6.228,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 175.92,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 168.0 max 273.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 10212,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3/3584x8/int8_uint8/input_channels=32/input_width=112/output_channels=16": {
+   "cycles": {
+    "value": 11012,
+    "unit": "cycles",
+    "range": "median 11012 max 11021 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 21.337,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 263.87,
+    "unit": "us",
+    "range": "\u00b1 5.9; min 253.8 max 356.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 10212,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120": {
+   "cycles": {
+    "value": 4081,
+    "unit": "cycles",
+    "range": "median 4081 max 4096 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 67.477,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 208.78,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 203.7 max 216.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5636,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2": {
+   "cycles": {
+    "value": 3105,
+    "unit": "cycles",
+    "range": "median 3105 max 3108 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 85.565,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 196.69,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 190.0 max 296.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5012,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3_dw/4704x8/uint8/input_channels=336/input_width=14/output_channels=336/stride=2": {
+   "cycles": {
+    "value": 8415,
+    "unit": "cycles",
+    "range": "median 8416 max 8419 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 198.767,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 244.41,
+    "unit": "us",
+    "range": "\u00b1 3.0; min 237.2 max 338.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5012,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72": {
+   "cycles": {
+    "value": 4351,
+    "unit": "cycles",
+    "range": "median 4351 max 4360 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 59.951,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 212.93,
+    "unit": "us",
+    "range": "\u00b1 3.1; min 206.0 max 290.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5636,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3_dw/6720x8/uint8/input_channels=240/input_width=28/output_channels=240/stride=2": {
+   "cycles": {
+    "value": 9546,
+    "unit": "cycles",
+    "range": "median 9546 max 9552 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 157.837,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 265.74,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 256.3 max 329.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5012,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3_dw/7168x8/uint8/input_channels=64/input_width=112/output_channels=64/stride=2": {
+   "cycles": {
+    "value": 4892,
+    "unit": "cycles",
+    "range": "median 4892 max 4895 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 75.831,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 226.95,
+    "unit": "us",
+    "range": "\u00b1 1.9; min 221.1 max 317.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5012,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3_dw/2576x8/uint8/input_channels=184/input_width=14/output_channels=184": {
+   "cycles": {
+    "value": 7400,
+    "unit": "cycles",
+    "range": "median 7400 max 7405 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 159.593,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 225.32,
+    "unit": "us",
+    "range": "\u00b1 1.9; min 218.5 max 313.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5636,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240": {
+   "cycles": {
+    "value": 10675,
+    "unit": "cycles",
+    "range": "median 10675 max 10681 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 176.505,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 262.35,
+    "unit": "us",
+    "range": "\u00b1 5.7; min 253.1 max 348.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 6216,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk3_dw/1792x8/uint8/input_channels=16/input_width=112/output_channels=16": {
+   "cycles": {
+    "value": 1831,
+    "unit": "cycles",
+    "range": "median 1831 max 1833 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 56.765,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 179.5,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 173.6 max 186.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 5636,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120": {
+   "cycles": {
+    "value": 3458,
+    "unit": "cycles",
+    "range": "median 3458 max 3458 n=8; init[2] min 9"
+   },
+   "cycles_per_kop": {
+    "value": 25.729,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 185.68,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 179.9 max 272.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 14872,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/mid-row": {
+   "cycles": {
+    "value": 2948,
+    "unit": "cycles",
+    "range": "median 2948 max 2948 n=8; init[2] min 9"
+   },
+   "cycles_per_kop": {
+    "value": 21.935,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 181.6,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 176.3 max 254.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 14872,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=1280/weight_chunk_count=9600/mobilenet-mid-row": {
+   "cycles": {
+    "value": 3056,
+    "unit": "cycles",
+    "range": "median 3116 max 3176 n=8; init[2] min 86"
+   },
+   "cycles_per_kop": {
+    "value": 2.132,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 182.6,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 177.1 max 191.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 14872,
+    "unit": "bytes"
+   }
+  },
+  "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=1280/weight_chunk_count=9600/mobilenet-last-row": {
+   "cycles": {
+    "value": 3566,
+    "unit": "cycles",
+    "range": "median 3626 max 3686 n=8; init[2] min 86"
+   },
+   "cycles_per_kop": {
+    "value": 2.487,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 187.41,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 181.8 max 277.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 14872,
+    "unit": "bytes"
+   }
+  },
+  "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8": {
+   "cycles": {
+    "value": 459,
+    "unit": "cycles",
+    "range": "median 459 max 459 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 22.412,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 167.9,
+    "unit": "us",
+    "range": "\u00b1 2.8; min 158.7 max 176.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2948,
+    "unit": "bytes"
+   }
+  },
+  "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/fc1": {
+   "cycles": {
+    "value": 359,
+    "unit": "cycles",
+    "range": "median 359 max 359 n=8"
+   },
+   "cycles_per_kop": {
+    "value": 17.529,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 162.39,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 155.8 max 245.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2948,
+    "unit": "bytes"
+   }
+  },
+  "mul_add/1024x16/bfloat16": {
+   "cycles": {
+    "value": 85,
+    "unit": "cycles",
+    "range": "median 92 max 136 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 83.008,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 173.61,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 162.4 max 259.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3208,
+    "unit": "bytes"
+   }
+  },
+  "mul_add/1024x16/bfloat16/add": {
+   "cycles": {
+    "value": 85,
+    "unit": "cycles",
+    "range": "median 92 max 138 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 83.008,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 174.06,
+    "unit": "us",
+    "range": "\u00b1 1.5; min 167.9 max 267.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3208,
+    "unit": "bytes"
+   }
+  },
+  "rms_norm/1024x16/bfloat16/cols=1024": {
+   "cycles": {
+    "value": 429,
+    "unit": "cycles",
+    "range": "median 429 max 430 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 104.736,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 163.3,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 159.2 max 249.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 4564,
+    "unit": "bytes"
+   }
+  },
+  "rms_norm_eps/1024x16/bfloat16/cols=1024": {
+   "cycles": {
+    "value": 429,
+    "unit": "cycles",
+    "range": "median 429 max 429 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 104.736,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 161.86,
+    "unit": "us",
+    "range": "\u00b1 0.6; min 153.1 max 172.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 4564,
+    "unit": "bytes"
+   }
+  },
+  "layer_norm/1024x16/bfloat16/cols=1024": {
+   "cycles": {
+    "value": 508,
+    "unit": "cycles",
+    "range": "median 508 max 508 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 82.682,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 165.51,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 159.2 max 173.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 4292,
+    "unit": "bytes"
+   }
+  },
+  "layer_norm_f32/1024x16/float32/cols=1024": {
+   "cycles": {
+    "value": 1606,
+    "unit": "cycles",
+    "range": "median 1606 max 1606 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 261.393,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 184.38,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 176.5 max 196.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 9884,
+    "unit": "bytes"
+   }
+  },
+  "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024": {
+   "cycles": {
+    "value": 2757,
+    "unit": "cycles",
+    "range": "median 2757 max 2757 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 336.548,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 198.46,
+    "unit": "us",
+    "range": "\u00b1 0.5; min 193.7 max 276.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 9884,
+    "unit": "bytes"
+   }
+  },
+  "rope/1024x16/bfloat16/cols=1024": {
+   "cycles": {
+    "value": 261,
+    "unit": "cycles",
+    "range": "median 261 max 266 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 84.961,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 177.42,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 167.7 max 254.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2932,
+    "unit": "bytes"
+   }
+  },
+  "mm_activation_epilogue/1024x16/float32/identity": {
+   "cycles": {
+    "value": 337,
+    "unit": "cycles",
+    "range": "median 337 max 337 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 41.138,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 174.19,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 168.4 max 260.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 30076,
+    "unit": "bytes"
+   }
+  },
+  "mm_activation_epilogue/1024x16/float32/silu": {
+   "cycles": {
+    "value": 2429,
+    "unit": "cycles",
+    "range": "median 2445 max 2454 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 296.509,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 202.29,
+    "unit": "us",
+    "range": "\u00b1 2.4; min 194.5 max 290.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 30076,
+    "unit": "bytes"
+   }
+  },
+  "mm_activation_epilogue/1024x16/float32/gelu": {
+   "cycles": {
+    "value": 3759,
+    "unit": "cycles",
+    "range": "median 3769 max 3774 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 458.862,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 221.63,
+    "unit": "us",
+    "range": "\u00b1 1.6; min 214.6 max 311.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 30076,
+    "unit": "bytes"
+   }
+  },
+  "mm_activation_epilogue/1024x16/float32/relu": {
+   "cycles": {
+    "value": 337,
+    "unit": "cycles",
+    "range": "median 337 max 337 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 41.138,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 173.05,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 167.3 max 254.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 30076,
+    "unit": "bytes"
+   }
+  },
+  "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024": {
+   "cycles": {
+    "value": 666,
+    "unit": "cycles",
+    "range": "median 666 max 666 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 36.133,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 170.54,
+    "unit": "us",
+    "range": "\u00b1 2.1; min 161.6 max 271.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3088,
+    "unit": "bytes"
+   }
+  },
+  "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024": {
+   "cycles": {
+    "value": 666,
+    "unit": "cycles",
+    "range": "median 666 max 666 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 36.133,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 169.1,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 160.1 max 184.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 3088,
+    "unit": "bytes"
+   }
+  },
+  "dwconv1d_channels_last/256x16/bfloat16/channels=256": {
+   "cycles": {
+    "value": 127,
+    "unit": "cycles",
+    "range": "median 135 max 140 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 49.609,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 176.24,
+    "unit": "us",
+    "range": "\u00b1 1.8; min 165.7 max 265.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2080,
+    "unit": "bytes"
+   }
+  },
+  "silu_sized/4096x16/bfloat16/llama-prefill": {
+   "cycles": {
+    "value": 4562,
+    "unit": "cycles",
+    "range": "median 4696 max 4792 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 1113.77,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 410.1,
+    "unit": "us",
+    "range": "\u00b1 124.3; min 254.4 max 1484.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 25476,
+    "unit": "bytes"
+   }
+  },
+  "silu_sized/1024x16/bfloat16/llama-decode": {
+   "cycles": {
+    "value": 1170,
+    "unit": "cycles",
+    "range": "median 1200 max 1220 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 1142.578,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 181.22,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 175.2 max 197.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 25472,
+    "unit": "bytes"
+   }
+  },
+  "mul_sized/4096x16/bfloat16/llama-prefill-ffn": {
+   "cycles": {
+    "value": 270,
+    "unit": "cycles",
+    "range": "median 270 max 513 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 65.918,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 221.1,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 211.2 max 236.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2880,
+    "unit": "bytes"
+   }
+  },
+  "mul_sized/2048x16/bfloat16/llama-prefill-attn-scale": {
+   "cycles": {
+    "value": 142,
+    "unit": "cycles",
+    "range": "median 156 max 257 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 69.336,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 188.74,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 182.5 max 198.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2880,
+    "unit": "bytes"
+   }
+  },
+  "mul_sized/1024x16/bfloat16/llama-decode-ffn": {
+   "cycles": {
+    "value": 78,
+    "unit": "cycles",
+    "range": "median 84 max 129 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 76.172,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 173.5,
+    "unit": "us",
+    "range": "\u00b1 1.5; min 164.7 max 258.9 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2880,
+    "unit": "bytes"
+   }
+  },
+  "mul_sized/256x16/bfloat16/llama-decode-attn-scale": {
+   "cycles": {
+    "value": 30,
+    "unit": "cycles",
+    "range": "median 31 max 33 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 117.188,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 159.54,
+    "unit": "us",
+    "range": "\u00b1 1.0; min 157.2 max 247.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2880,
+    "unit": "bytes"
+   }
+  },
+  "add_sized/2048x16/bfloat16/llama-prefill": {
+   "cycles": {
+    "value": 142,
+    "unit": "cycles",
+    "range": "median 156 max 259 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 69.336,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 188.05,
+    "unit": "us",
+    "range": "\u00b1 0.8; min 181.6 max 196.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2716,
+    "unit": "bytes"
+   }
+  },
+  "add_sized/256x16/bfloat16/llama-decode": {
+   "cycles": {
+    "value": 30,
+    "unit": "cycles",
+    "range": "median 31 max 35 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 117.188,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 164.56,
+    "unit": "us",
+    "range": "\u00b1 1.4; min 150.5 max 258.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2716,
+    "unit": "bytes"
+   }
+  },
+  "softmax/2048x16/bfloat16/llama-prefill": {
+   "cycles": {
+    "value": 3253,
+    "unit": "cycles",
+    "range": "median 3307 max 3329 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 1588.379,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 209.36,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 202.2 max 296.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 46688,
+    "unit": "bytes"
+   }
+  },
+  "rope/64x16/bfloat16/cols=64/two_halves=True/llama": {
+   "cycles": {
+    "value": 68,
+    "unit": "cycles",
+    "range": "median 68 max 68 n=16"
+   },
+   "cycles_per_kop": {
+    "value": 354.167,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 159.32,
+    "unit": "us",
+    "range": "\u00b1 1.3; min 152.9 max 249.7 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2932,
+    "unit": "bytes"
+   }
+  },
+  "transpose/8192x16/bfloat16/subtile=8/llama-decode": {
+   "cycles": {
+    "value": 1165,
+    "unit": "cycles",
+    "range": "median 1165 max 1165 n=16"
+   },
+   "npu_us": {
+    "value": 241.84,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 233.1 max 323.1 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2756,
+    "unit": "bytes"
+   }
+  },
+  "mha/64x64x64x4/bfloat16": {
+   "cycles": {
+    "value": 5138,
+    "unit": "cycles",
+    "range": "median 5201 max 5663 n=4; init[2] min 262"
+   },
+   "cycles_per_kop": {
+    "value": 9.8,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 189.89,
+    "unit": "us",
+    "range": "\u00b1 0.9; min 183.1 max 196.2 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 38832,
+    "unit": "bytes"
+   }
+  },
+  "mha/64x64x64x4/bfloat16/pv=True": {
+   "cycles": {
+    "value": 5153,
+    "unit": "cycles",
+    "range": "median 5153 max 5153 n=4; init[2] min 262"
+   },
+   "cycles_per_kop": {
+    "value": 9.829,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 188.42,
+    "unit": "us",
+    "range": "\u00b1 1.1; min 184.5 max 281.5 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 38832,
+    "unit": "bytes"
+   }
+  },
+  "mha_softmax/4096x4/bfloat16_bfloat16+float32": {
+   "cycles": {
+    "value": 4884,
+    "unit": "cycles",
+    "range": "median 4886 max 4894 n=4; init[2] min 32"
+   },
+   "cycles_per_kop": {
+    "value": 1122.243,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 182.1,
+    "unit": "us",
+    "range": "\u00b1 2.5; min 171.2 max 281.0 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 49268,
+    "unit": "bytes"
+   }
+  },
+  "mha_softmax/4096x4/bfloat16_bfloat16+float32/diagonal": {
+   "cycles": {
+    "value": 5415,
+    "unit": "cycles",
+    "range": "median 5421 max 5421 n=4; init[2] min 32"
+   },
+   "cycles_per_kop": {
+    "value": 1244.256,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 182.75,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 176.0 max 269.4 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 49268,
+    "unit": "bytes"
+   }
+  },
+  "mha_softmax/4096x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate": {
+   "cycles": {
+    "value": 19704,
+    "unit": "cycles",
+    "range": "median 19755 max 19806 n=4; init[2] min 32"
+   },
+   "cycles_per_kop": {
+    "value": 4527.574,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 239.12,
+    "unit": "us",
+    "range": "\u00b1 1.6; min 233.8 max 330.8 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 47396,
+    "unit": "bytes"
+   }
+  },
+  "prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512": {
+   "cycles": {
+    "value": 1462,
+    "unit": "cycles",
+    "range": "median 1464 max 1466 n=4; init[0] min 518"
+   },
+   "cycles_per_kop": {
+    "value": 22.308,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 178.85,
+    "unit": "us",
+    "range": "\u00b1 1.2; min 172.6 max 298.3 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 13440,
+    "unit": "bytes"
+   }
+  },
+  "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256": {
+   "cycles": {
+    "value": 3077,
+    "unit": "cycles",
+    "range": "median 3111 max 3141 n=4; init[0] min 518"
+   },
+   "cycles_per_kop": {
+    "value": 23.476,
+    "unit": "cycles/1k-ops"
+   },
+   "npu_us": {
+    "value": 181.44,
+    "unit": "us",
+    "range": "\u00b1 1.8; min 171.9 max 285.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 15968,
+    "unit": "bytes"
+   }
+  }
+ },
+ "cases": {
+  "passed": 505,
+  "failed": 0,
+  "timed": 196,
+  "timing_failed": 0,
+  "untimed": 309,
+  "flaky": 0
+ },
+ "kernels": {
+  "offered": 90,
+  "checked": 86
+ }
+}

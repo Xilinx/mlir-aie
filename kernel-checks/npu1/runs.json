@@ -2621,6 +2621,52 @@
     "offered": 90,
     "checked": 86
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "38860412134",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38860412134",
+   "date": "2026-10-16T06:17:53+00:00",
+   "commit": {
+    "id": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "message": "IRON/mlir-aie Infrastructure Deduplication for iron-next (#3921)",
+    "timestamp": "2026-10-15T20:09:31Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "cb6f2d14a0",
+    "peano": "22.0.0+83ba9ea9",
+    "kernels": "8ee515753dca",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie2",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 765,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 505,
+    "failed": 0,
+    "timed": 196,
+    "timing_failed": 0,
+    "untimed": 309,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 90,
+    "checked": 86
+   }
   }
  ]
 }
