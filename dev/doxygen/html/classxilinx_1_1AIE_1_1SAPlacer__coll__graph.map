@@ -1,0 +1,25 @@
+<map id="xilinx::AIE::SAPlacer" name="xilinx::AIE::SAPlacer">
+<area shape="rect" id="Node000001" title=" " alt="" coords="908,95,1061,121"/>
+<area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1Placer.html" title=" " alt="" coords="724,95,859,121"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="872,105,907,105,907,111,872,111"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="386,5,590,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="600,46,701,72,760,93,758,98,699,77,599,51"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="384,70,592,95"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="606,90,724,100,724,105,606,95"/>
+<area shape="rect" id="Node000005" href="$classxilinx_1_1AIE_1_1AIETargetModel.html" title=" " alt="" coords="390,119,586,145"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="600,130,700,124,736,118,737,123,700,129,600,136"/>
+<area shape="rect" id="Node000006" href="$structxilinx_1_1AIE_1_1TileAvailability.html" title=" " alt="" coords="392,169,584,194"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="597,171,649,163,699,151,737,136,768,118,771,123,739,140,701,156,650,168,598,177"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="34,35,165,61"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="179,35,224,35,272,41,320,55,362,81,374,99,375,119,376,137,386,154,404,166,401,171,382,158,371,139,370,119,369,101,358,85,318,60,271,46,224,41,179,41"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="23,85,175,110"/>
+<area shape="poly" id="edge7_Node000006_Node000008" title=" " alt="" coords="189,98,288,106,331,114,361,124,370,132,375,140,378,147,386,154,412,166,410,171,382,158,374,150,370,142,366,135,359,129,329,119,287,112,189,103"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="7,134,191,159"/>
+<area shape="poly" id="edge8_Node000006_Node000009" title=" " alt="" coords="205,153,392,170,392,175,205,159"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="5,184,193,224"/>
+<area shape="poly" id="edge9_Node000006_Node000010" title=" " alt="" coords="207,204,360,199,418,191,418,197,360,204,208,209"/>
+<area shape="rect" id="Node000011" title=" " alt="" coords="9,248,190,288"/>
+<area shape="poly" id="edge10_Node000006_Node000011" title=" " alt="" coords="203,253,280,241,359,224,455,192,457,197,361,229,281,246,204,259"/>
+<area shape="rect" id="Node000012" title=" " alt="" coords="9,313,190,367"/>
+<area shape="poly" id="edge11_Node000006_Node000012" title=" " alt="" coords="203,321,281,301,359,272,392,254,424,232,471,192,475,196,427,236,395,258,361,277,282,307,204,326"/>
+</map>
