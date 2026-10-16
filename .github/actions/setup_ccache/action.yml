@@ -31,6 +31,11 @@ runs:
         key: ${{ inputs.MATRIX_OS }}-${{ inputs.MATRIX_ARCH }}-${{ inputs.EXTRA_KEY }}
         max-size: "1G"
         verbose: 2
+        # Restore always; save only off a PR. A cache written on
+        # refs/pull/N/merge is readable by that PR alone, so saving from a PR
+        # spends the repo-wide 10 GB budget on entries no other PR can use, and
+        # evicts the refs/heads/main entries that every PR does restore from.
+        save: ${{ github.event_name != 'pull_request' }}
 
     - name: Configure ccache dir on host ubuntu
       if: contains(inputs.MATRIX_OS, 'ubuntu')
