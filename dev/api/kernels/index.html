@@ -3498,6 +3498,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#iron.kernels.quant.q4nx_unpack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        q4nx_unpack
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#iron.kernels.quant.q4nx_dequant_ref" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -8239,6 +8250,17 @@
     <span class="md-ellipsis">
       
         quant
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.quant.q4nx_unpack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        q4nx_unpack
       
     </span>
   </a>
@@ -17602,12 +17624,12 @@ them from starts of every alignment.</p>
 <div class="doc doc-object doc-function">
 
 
-<h2 id="iron.kernels.quant.q4nx_dequant_ref" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">q4nx_dequant_ref</span>
+<h2 id="iron.kernels.quant.q4nx_unpack" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">q4nx_unpack</span>
 
 
-<a href="#iron.kernels.quant.q4nx_dequant_ref" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">q4nx_dequant_ref</span><span class="p">(</span>
+<a href="#iron.kernels.quant.q4nx_unpack" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">q4nx_unpack</span><span class="p">(</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">payload</span><span class="p">,</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="o">*</span><span class="p">,</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">m_tile</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span>
@@ -17616,27 +17638,50 @@ them from starts of every alignment.</p>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">ct_k</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">s</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">t</span><span class="o">=</span><span class="mi">8</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">)</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span> <span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span> <span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Dequantize packed q4nx to the kernel's bfp16ebs8 output bytes.</p>
+        <p>Unpack packed q4nx to its codes, scales and minima.</p>
 <p>Input has shape <code>(..., m_tile*k_tile//2 + 4*m_tile*k_tile//group)</code>.
 It contains little-endian bf16 scales, then bf16 minima, both indexed
 <code>[k_group, n]</code>, followed by unsigned nibbles (low nibble first) indexed
-<code>[n//16, k, n%16]</code>. Values are <code>min + scale * nibble</code>.</p>
-<p>Accumulator results narrow to bf16 with floor rounding before BFP
-conversion. Output is uint8 with the same leading dimensions, indexed
-<code>[k//ct_k, n//8, (k%ct_k)//8, n%8, 9]</code>: each nine-byte block is an
-exponent followed by eight signed mantissas for consecutive k values.
-Finite scales/minima and finite dequantized bf16 results are required.</p>
+<code>[n//16, k, n%16]</code>. The weight at <code>[..., k, n]</code> is
+<code>mins[..., k // group, n] + scales[..., k // group, n] * codes[..., k, n]</code>.
+Finite scales and minima are required.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="tuple">tuple</span>[<span title="numpy.ndarray">ndarray</span>, <span title="numpy.ndarray">ndarray</span>, <span title="numpy.ndarray">ndarray</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>tuple[np.ndarray, np.ndarray, np.ndarray]: <code>(codes, scales, mins)</code>,
+with the same leading dimensions as <code>payload</code>. <code>codes</code> is
+<code>uint8</code> with shape <code>(..., k_tile, m_tile)</code>; <code>scales</code> and
+<code>mins</code> are <code>float32</code> with shape <code>(..., k_tile // group,
+m_tile)</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
 
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/quant.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-61"> 61</a></span>
-<span class="normal"><a href="#__codelineno-0-62"> 62</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-62"> 62</a></span>
 <span class="normal"><a href="#__codelineno-0-63"> 63</a></span>
 <span class="normal"><a href="#__codelineno-0-64"> 64</a></span>
 <span class="normal"><a href="#__codelineno-0-65"> 65</a></span>
@@ -17680,58 +17725,167 @@ Finite scales/minima and finite dequantized bf16 results are required.</p>
 <span class="normal"><a href="#__codelineno-0-103">103</a></span>
 <span class="normal"><a href="#__codelineno-0-104">104</a></span>
 <span class="normal"><a href="#__codelineno-0-105">105</a></span>
-<span class="normal"><a href="#__codelineno-0-106">106</a></span>
-<span class="normal"><a href="#__codelineno-0-107">107</a></span>
-<span class="normal"><a href="#__codelineno-0-108">108</a></span>
-<span class="normal"><a href="#__codelineno-0-109">109</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="k">def</span><span class="w"> </span><span class="nf">q4nx_dequant_ref</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">m_tile</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">k_tile</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">ct_k</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">t</span><span class="o">=</span><span class="mi">8</span><span class="p">):</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Dequantize packed q4nx to the kernel&#39;s bfp16ebs8 output bytes.</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    Input has shape ``(..., m_tile*k_tile//2 + 4*m_tile*k_tile//group)``.</span>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    It contains little-endian bf16 scales, then bf16 minima, both indexed</span>
-<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">    ``[k_group, n]``, followed by unsigned nibbles (low nibble first) indexed</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">    ``[n//16, k, n%16]``. Values are ``min + scale * nibble``.</span>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">    Accumulator results narrow to bf16 with floor rounding before BFP</span>
-<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    conversion. Output is uint8 with the same leading dimensions, indexed</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">    ``[k//ct_k, n//8, (k%ct_k)//8, n%8, 9]``: each nine-byte block is an</span>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">    exponent followed by eight signed mantissas for consecutive k values.</span>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">    Finite scales/minima and finite dequantized bf16 results are required.</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a>    <span class="n">geometry</span> <span class="o">=</span> <span class="n">_geometry</span><span class="p">(</span><span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a>    <span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">geometry</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a>    <span class="n">scales_count</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a>    <span class="n">input_bytes</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">scales_count</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a>    <span class="n">payload</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a>    <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">payload</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">input_bytes</span><span class="p">:</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;q4nx_dequant_ref: expected </span><span class="si">{</span><span class="n">input_bytes</span><span class="si">}</span><span class="s2"> bytes per tile&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="n">lead</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a>    <span class="n">data</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">input_bytes</span><span class="p">)</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a>        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="o">*</span><span class="n">lead</span><span class="p">,</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">*</span> <span class="mi">9</span> <span class="o">//</span> <span class="mi">8</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a>    <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">data</span><span class="p">[:,</span> <span class="p">:</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">scales_count</span><span class="p">])</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="s2">&quot;&lt;u2&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a>    <span class="n">params</span> <span class="o">=</span> <span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="mi">16</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;q4nx_dequant_ref: scales and minima must be finite&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="n">scales</span><span class="p">,</span> <span class="n">mins</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a>    <span class="n">packed</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:,</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">scales_count</span> <span class="p">:]</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a>    <span class="n">q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a>    <span class="n">q</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">::</span><span class="mi">2</span><span class="p">],</span> <span class="n">q</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">packed</span> <span class="o">&amp;</span> <span class="mi">15</span><span class="p">,</span> <span class="n">packed</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a>    <span class="n">q</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">m_tile</span> <span class="o">//</span> <span class="mi">16</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="mi">16</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a>    <span class="n">q</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">)</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a>    <span class="c1"># A bf16 scale times a four-bit integer is exact in float32. Float64</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a>    <span class="c1"># models the fused addition before its single float32 accumulator rounding.</span>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a>    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="s2">&quot;ignore&quot;</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s2">&quot;ignore&quot;</span><span class="p">):</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a>        <span class="n">values</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a>            <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">scales</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="o">*</span> <span class="n">q</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a>            <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">mins</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>        <span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>        <span class="n">values</span> <span class="o">=</span> <span class="n">_bf16_floor</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">values</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;q4nx_dequant_ref: dequantized bf16 values must be finite&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a>    <span class="n">values</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">ct_k</span> <span class="o">//</span> <span class="n">s</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">m_tile</span> <span class="o">//</span> <span class="n">t</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
-<a id="__codelineno-0-107" name="__codelineno-0-107"></a>    <span class="n">values</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
-<a id="__codelineno-0-108" name="__codelineno-0-108"></a>    <span class="n">encoded</span> <span class="o">=</span> <span class="n">bfp</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
-<a id="__codelineno-0-109" name="__codelineno-0-109"></a>    <span class="k">return</span> <span class="n">encoded</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">*</span><span class="n">lead</span><span class="p">,</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">*</span> <span class="mi">9</span> <span class="o">//</span> <span class="mi">8</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-106">106</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="k">def</span><span class="w"> </span><span class="nf">q4nx_unpack</span><span class="p">(</span>
+<a id="__codelineno-0-63" name="__codelineno-0-63"></a>    <span class="n">payload</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">m_tile</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">k_tile</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">ct_k</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">t</span><span class="o">=</span><span class="mi">8</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Unpack packed q4nx to its codes, scales and minima.</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66"></a>
+<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">    Input has shape ``(..., m_tile*k_tile//2 + 4*m_tile*k_tile//group)``.</span>
+<a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">    It contains little-endian bf16 scales, then bf16 minima, both indexed</span>
+<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">    ``[k_group, n]``, followed by unsigned nibbles (low nibble first) indexed</span>
+<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    ``[n//16, k, n%16]``. The weight at ``[..., k, n]`` is</span>
+<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">    ``mins[..., k // group, n] + scales[..., k // group, n] * codes[..., k, n]``.</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">    Finite scales and minima are required.</span>
+<a id="__codelineno-0-73" name="__codelineno-0-73"></a>
+<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">        tuple[np.ndarray, np.ndarray, np.ndarray]: ``(codes, scales, mins)``,</span>
+<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">            with the same leading dimensions as ``payload``. ``codes`` is</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">            ``uint8`` with shape ``(..., k_tile, m_tile)``; ``scales`` and</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">            ``mins`` are ``float32`` with shape ``(..., k_tile // group,</span>
+<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">            m_tile)``.</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a>    <span class="n">geometry</span> <span class="o">=</span> <span class="n">_geometry</span><span class="p">(</span><span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">geometry</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a>    <span class="n">scales_count</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84"></a>    <span class="n">input_bytes</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">scales_count</span>
+<a id="__codelineno-0-85" name="__codelineno-0-85"></a>    <span class="n">payload</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a>    <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">payload</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">input_bytes</span><span class="p">:</span>
+<a id="__codelineno-0-87" name="__codelineno-0-87"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;q4nx_unpack: expected </span><span class="si">{</span><span class="n">input_bytes</span><span class="si">}</span><span class="s2"> bytes per tile&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="n">lead</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<a id="__codelineno-0-89" name="__codelineno-0-89"></a>    <span class="n">data</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">input_bytes</span><span class="p">)</span>
+<a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+<a id="__codelineno-0-91" name="__codelineno-0-91"></a>        <span class="n">codes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="o">*</span><span class="n">lead</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+<a id="__codelineno-0-92" name="__codelineno-0-92"></a>        <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="o">*</span><span class="n">lead</span><span class="p">,</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<a id="__codelineno-0-93" name="__codelineno-0-93"></a>        <span class="k">return</span> <span class="n">codes</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">params</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<a id="__codelineno-0-94" name="__codelineno-0-94"></a>    <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">data</span><span class="p">[:,</span> <span class="p">:</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">scales_count</span><span class="p">])</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="s2">&quot;&lt;u2&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-95" name="__codelineno-0-95"></a>    <span class="n">params</span> <span class="o">=</span> <span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="mi">16</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<a id="__codelineno-0-96" name="__codelineno-0-96"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+<a id="__codelineno-0-97" name="__codelineno-0-97"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;q4nx_unpack: scales and minima must be finite&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-98" name="__codelineno-0-98"></a>    <span class="n">scales</span><span class="p">,</span> <span class="n">mins</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-0-99" name="__codelineno-0-99"></a>    <span class="n">packed</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:,</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">scales_count</span> <span class="p">:]</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="n">q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+<a id="__codelineno-0-101" name="__codelineno-0-101"></a>    <span class="n">q</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">::</span><span class="mi">2</span><span class="p">],</span> <span class="n">q</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">packed</span> <span class="o">&amp;</span> <span class="mi">15</span><span class="p">,</span> <span class="n">packed</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span>
+<a id="__codelineno-0-102" name="__codelineno-0-102"></a>    <span class="n">q</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">m_tile</span> <span class="o">//</span> <span class="mi">16</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="mi">16</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-0-103" name="__codelineno-0-103"></a>    <span class="n">q</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">*</span><span class="n">lead</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">)</span>
+<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="n">scales</span> <span class="o">=</span> <span class="n">scales</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">*</span><span class="n">lead</span><span class="p">,</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">)</span>
+<a id="__codelineno-0-105" name="__codelineno-0-105"></a>    <span class="n">mins</span> <span class="o">=</span> <span class="n">mins</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">*</span><span class="n">lead</span><span class="p">,</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">)</span>
+<a id="__codelineno-0-106" name="__codelineno-0-106"></a>    <span class="k">return</span> <span class="n">q</span><span class="p">,</span> <span class="n">scales</span><span class="p">,</span> <span class="n">mins</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="iron.kernels.quant.q4nx_dequant_ref" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">q4nx_dequant_ref</span>
+
+
+<a href="#iron.kernels.quant.q4nx_dequant_ref" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">q4nx_dequant_ref</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">payload</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">m_tile</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">k_tile</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">group</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">ct_k</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">s</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">t</span><span class="o">=</span><span class="mi">8</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Dequantize packed q4nx to the kernel's bfp16ebs8 output bytes.</p>
+<p>See <code>q4nx_unpack</code> for the packed input layout.</p>
+<p>Accumulator results narrow to bf16 with floor rounding before BFP
+conversion. Output is uint8 with the same leading dimensions, indexed
+<code>[k//ct_k, n//8, (k%ct_k)//8, n%8, 9]</code>: each nine-byte block is an
+exponent followed by eight signed mantissas for consecutive k values.
+Finite dequantized bf16 results are required.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>python/iron/kernels/quant.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-109">109</a></span>
+<span class="normal"><a href="#__codelineno-0-110">110</a></span>
+<span class="normal"><a href="#__codelineno-0-111">111</a></span>
+<span class="normal"><a href="#__codelineno-0-112">112</a></span>
+<span class="normal"><a href="#__codelineno-0-113">113</a></span>
+<span class="normal"><a href="#__codelineno-0-114">114</a></span>
+<span class="normal"><a href="#__codelineno-0-115">115</a></span>
+<span class="normal"><a href="#__codelineno-0-116">116</a></span>
+<span class="normal"><a href="#__codelineno-0-117">117</a></span>
+<span class="normal"><a href="#__codelineno-0-118">118</a></span>
+<span class="normal"><a href="#__codelineno-0-119">119</a></span>
+<span class="normal"><a href="#__codelineno-0-120">120</a></span>
+<span class="normal"><a href="#__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#__codelineno-0-126">126</a></span>
+<span class="normal"><a href="#__codelineno-0-127">127</a></span>
+<span class="normal"><a href="#__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#__codelineno-0-130">130</a></span>
+<span class="normal"><a href="#__codelineno-0-131">131</a></span>
+<span class="normal"><a href="#__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#__codelineno-0-137">137</a></span>
+<span class="normal"><a href="#__codelineno-0-138">138</a></span>
+<span class="normal"><a href="#__codelineno-0-139">139</a></span>
+<span class="normal"><a href="#__codelineno-0-140">140</a></span>
+<span class="normal"><a href="#__codelineno-0-141">141</a></span>
+<span class="normal"><a href="#__codelineno-0-142">142</a></span>
+<span class="normal"><a href="#__codelineno-0-143">143</a></span>
+<span class="normal"><a href="#__codelineno-0-144">144</a></span>
+<span class="normal"><a href="#__codelineno-0-145">145</a></span>
+<span class="normal"><a href="#__codelineno-0-146">146</a></span>
+<span class="normal"><a href="#__codelineno-0-147">147</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-109" name="__codelineno-0-109"></a><span class="k">def</span><span class="w"> </span><span class="nf">q4nx_dequant_ref</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">m_tile</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">k_tile</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">ct_k</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">t</span><span class="o">=</span><span class="mi">8</span><span class="p">):</span>
+<a id="__codelineno-0-110" name="__codelineno-0-110"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Dequantize packed q4nx to the kernel&#39;s bfp16ebs8 output bytes.</span>
+<a id="__codelineno-0-111" name="__codelineno-0-111"></a>
+<a id="__codelineno-0-112" name="__codelineno-0-112"></a><span class="sd">    See ``q4nx_unpack`` for the packed input layout.</span>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a>
+<a id="__codelineno-0-114" name="__codelineno-0-114"></a><span class="sd">    Accumulator results narrow to bf16 with floor rounding before BFP</span>
+<a id="__codelineno-0-115" name="__codelineno-0-115"></a><span class="sd">    conversion. Output is uint8 with the same leading dimensions, indexed</span>
+<a id="__codelineno-0-116" name="__codelineno-0-116"></a><span class="sd">    ``[k//ct_k, n//8, (k%ct_k)//8, n%8, 9]``: each nine-byte block is an</span>
+<a id="__codelineno-0-117" name="__codelineno-0-117"></a><span class="sd">    exponent followed by eight signed mantissas for consecutive k values.</span>
+<a id="__codelineno-0-118" name="__codelineno-0-118"></a><span class="sd">    Finite dequantized bf16 results are required.</span>
+<a id="__codelineno-0-119" name="__codelineno-0-119"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-120" name="__codelineno-0-120"></a>    <span class="n">geometry</span> <span class="o">=</span> <span class="n">_geometry</span><span class="p">(</span><span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<a id="__codelineno-0-121" name="__codelineno-0-121"></a>    <span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">geometry</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a>    <span class="n">scales_count</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a>    <span class="n">input_bytes</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">scales_count</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a>    <span class="n">payload</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a>    <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">payload</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">input_bytes</span><span class="p">:</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;q4nx_dequant_ref: expected </span><span class="si">{</span><span class="n">input_bytes</span><span class="si">}</span><span class="s2"> bytes per tile&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-127" name="__codelineno-0-127"></a>    <span class="n">lead</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">lead</span><span class="p">):</span>
+<a id="__codelineno-0-129" name="__codelineno-0-129"></a>        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="o">*</span><span class="n">lead</span><span class="p">,</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">*</span> <span class="mi">9</span> <span class="o">//</span> <span class="mi">8</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+<a id="__codelineno-0-130" name="__codelineno-0-130"></a>    <span class="n">q</span><span class="p">,</span> <span class="n">scales</span><span class="p">,</span> <span class="n">mins</span> <span class="o">=</span> <span class="n">q4nx_unpack</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="o">**</span><span class="n">geometry</span><span class="p">)</span>
+<a id="__codelineno-0-131" name="__codelineno-0-131"></a>    <span class="n">q</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">)</span>
+<a id="__codelineno-0-132" name="__codelineno-0-132"></a>    <span class="n">scales</span> <span class="o">=</span> <span class="n">scales</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">)</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a>    <span class="n">mins</span> <span class="o">=</span> <span class="n">mins</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span><span class="p">,</span> <span class="n">m_tile</span><span class="p">)</span>
+<a id="__codelineno-0-134" name="__codelineno-0-134"></a>    <span class="c1"># A bf16 scale times a four-bit integer is exact in float32. Float64</span>
+<a id="__codelineno-0-135" name="__codelineno-0-135"></a>    <span class="c1"># models the fused addition before its single float32 accumulator rounding.</span>
+<a id="__codelineno-0-136" name="__codelineno-0-136"></a>    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="s2">&quot;ignore&quot;</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s2">&quot;ignore&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-137" name="__codelineno-0-137"></a>        <span class="n">values</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-138" name="__codelineno-0-138"></a>            <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">scales</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="o">*</span> <span class="n">q</span>
+<a id="__codelineno-0-139" name="__codelineno-0-139"></a>            <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">mins</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+<a id="__codelineno-0-140" name="__codelineno-0-140"></a>        <span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<a id="__codelineno-0-141" name="__codelineno-0-141"></a>        <span class="n">values</span> <span class="o">=</span> <span class="n">_bf16_floor</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+<a id="__codelineno-0-142" name="__codelineno-0-142"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">values</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+<a id="__codelineno-0-143" name="__codelineno-0-143"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;q4nx_dequant_ref: dequantized bf16 values must be finite&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-144" name="__codelineno-0-144"></a>    <span class="n">values</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">ct_k</span> <span class="o">//</span> <span class="n">s</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">m_tile</span> <span class="o">//</span> <span class="n">t</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<a id="__codelineno-0-145" name="__codelineno-0-145"></a>    <span class="n">values</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-0-146" name="__codelineno-0-146"></a>    <span class="n">encoded</span> <span class="o">=</span> <span class="n">bfp</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">lead</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-147" name="__codelineno-0-147"></a>    <span class="k">return</span> <span class="n">encoded</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">*</span><span class="n">lead</span><span class="p">,</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">*</span> <span class="mi">9</span> <span class="o">//</span> <span class="mi">8</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -17766,45 +17920,7 @@ selects and restores floor rounding itself; no setup kernel is needed.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/quant.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-122">122</a></span>
-<span class="normal"><a href="#__codelineno-0-123">123</a></span>
-<span class="normal"><a href="#__codelineno-0-124">124</a></span>
-<span class="normal"><a href="#__codelineno-0-125">125</a></span>
-<span class="normal"><a href="#__codelineno-0-126">126</a></span>
-<span class="normal"><a href="#__codelineno-0-127">127</a></span>
-<span class="normal"><a href="#__codelineno-0-128">128</a></span>
-<span class="normal"><a href="#__codelineno-0-129">129</a></span>
-<span class="normal"><a href="#__codelineno-0-130">130</a></span>
-<span class="normal"><a href="#__codelineno-0-131">131</a></span>
-<span class="normal"><a href="#__codelineno-0-132">132</a></span>
-<span class="normal"><a href="#__codelineno-0-133">133</a></span>
-<span class="normal"><a href="#__codelineno-0-134">134</a></span>
-<span class="normal"><a href="#__codelineno-0-135">135</a></span>
-<span class="normal"><a href="#__codelineno-0-136">136</a></span>
-<span class="normal"><a href="#__codelineno-0-137">137</a></span>
-<span class="normal"><a href="#__codelineno-0-138">138</a></span>
-<span class="normal"><a href="#__codelineno-0-139">139</a></span>
-<span class="normal"><a href="#__codelineno-0-140">140</a></span>
-<span class="normal"><a href="#__codelineno-0-141">141</a></span>
-<span class="normal"><a href="#__codelineno-0-142">142</a></span>
-<span class="normal"><a href="#__codelineno-0-143">143</a></span>
-<span class="normal"><a href="#__codelineno-0-144">144</a></span>
-<span class="normal"><a href="#__codelineno-0-145">145</a></span>
-<span class="normal"><a href="#__codelineno-0-146">146</a></span>
-<span class="normal"><a href="#__codelineno-0-147">147</a></span>
-<span class="normal"><a href="#__codelineno-0-148">148</a></span>
-<span class="normal"><a href="#__codelineno-0-149">149</a></span>
-<span class="normal"><a href="#__codelineno-0-150">150</a></span>
-<span class="normal"><a href="#__codelineno-0-151">151</a></span>
-<span class="normal"><a href="#__codelineno-0-152">152</a></span>
-<span class="normal"><a href="#__codelineno-0-153">153</a></span>
-<span class="normal"><a href="#__codelineno-0-154">154</a></span>
-<span class="normal"><a href="#__codelineno-0-155">155</a></span>
-<span class="normal"><a href="#__codelineno-0-156">156</a></span>
-<span class="normal"><a href="#__codelineno-0-157">157</a></span>
-<span class="normal"><a href="#__codelineno-0-158">158</a></span>
-<span class="normal"><a href="#__codelineno-0-159">159</a></span>
-<span class="normal"><a href="#__codelineno-0-160">160</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-160">160</a></span>
 <span class="normal"><a href="#__codelineno-0-161">161</a></span>
 <span class="normal"><a href="#__codelineno-0-162">162</a></span>
 <span class="normal"><a href="#__codelineno-0-163">163</a></span>
@@ -17812,53 +17928,91 @@ selects and restores floor rounding itself; no setup kernel is needed.</p>
 <span class="normal"><a href="#__codelineno-0-165">165</a></span>
 <span class="normal"><a href="#__codelineno-0-166">166</a></span>
 <span class="normal"><a href="#__codelineno-0-167">167</a></span>
-<span class="normal"><a href="#__codelineno-0-168">168</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="k">def</span><span class="w"> </span><span class="nf">q4nx_dequant</span><span class="p">(</span>
-<a id="__codelineno-0-123" name="__codelineno-0-123"></a>    <span class="o">*</span><span class="p">,</span> <span class="n">m_tile</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">k_tile</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">ct_k</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">t</span><span class="o">=</span><span class="mi">8</span>
-<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
-<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;AIE2P-only q4nx dequantization into GEMM B-operand BFP storage.</span>
-<a id="__codelineno-0-126" name="__codelineno-0-126"></a>
-<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">    ``m_tile`` counts n rows (a multiple of 16); ``k_tile`` must be divisible</span>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">    by both ``group`` and ``ct_k``. The latter two are positive multiples of</span>
-<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">    eight; ``s`` and ``t`` must be eight. Groups need not divide k slices.</span>
-<a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">    See ``q4nx_dequant_ref`` for the packed input and output layouts.</span>
-<a id="__codelineno-0-131" name="__codelineno-0-131"></a>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">    Both arguments are uint8 byte buffers, including the bfp16ebs8 output,</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="sd">    so the generic harness compares the complete encoded result byte for</span>
-<a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">    byte rather than decoding or quantizing it again. The kernel saves,</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">    selects and restores floor rounding itself; no setup kernel is needed.</span>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a>    <span class="n">geometry</span> <span class="o">=</span> <span class="n">_geometry</span><span class="p">(</span><span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
-<a id="__codelineno-0-138" name="__codelineno-0-138"></a>    <span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">geometry</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">_arch_traits</span><span class="p">()</span><span class="o">.</span><span class="n">bfp16</span><span class="p">:</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a>        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;q4nx_dequant() is only available on aie2p.&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a>    <span class="n">input_bytes</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>    <span class="n">output_bytes</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">*</span> <span class="mi">9</span> <span class="o">//</span> <span class="mi">8</span>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a>    <span class="k">return</span> <span class="n">_make_extern</span><span class="p">(</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a>        <span class="s2">&quot;q4nx_dequant_bfp&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>        <span class="n">_kernel_source</span><span class="p">(</span><span class="s2">&quot;quant/q4nx_dequant.cc&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a>        <span class="p">[</span>
-<a id="__codelineno-0-147" name="__codelineno-0-147"></a>            <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">input_bytes</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">]],</span>
-<a id="__codelineno-0-148" name="__codelineno-0-148"></a>            <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">output_bytes</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">]],</span>
-<a id="__codelineno-0-149" name="__codelineno-0-149"></a>        <span class="p">],</span>
-<a id="__codelineno-0-150" name="__codelineno-0-150"></a>        <span class="c1"># The inner loop is one long latency chain, so it is allowed five</span>
-<a id="__codelineno-0-151" name="__codelineno-0-151"></a>        <span class="c1"># pipeline stages instead of the default three.</span>
-<a id="__codelineno-0-152" name="__codelineno-0-152"></a>        <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span>
-<a id="__codelineno-0-153" name="__codelineno-0-153"></a>            <span class="sa">f</span><span class="s2">&quot;-DQ4NX_</span><span class="si">{</span><span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="si">}</span><span class="s2">=</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">geometry</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a>        <span class="p">]</span>
-<a id="__codelineno-0-155" name="__codelineno-0-155"></a>        <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;-mllvm&quot;</span><span class="p">,</span> <span class="s2">&quot;--aie-pipeliner-max-stagecount=5&quot;</span><span class="p">],</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>        <span class="n">contract</span><span class="o">=</span><span class="n">KernelContract</span><span class="p">(</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>            <span class="n">trace</span><span class="o">=</span><span class="n">Trace</span><span class="o">.</span><span class="n">whole_call</span><span class="p">(),</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a>            <span class="n">roles</span><span class="o">=</span><span class="p">(</span><span class="n">In</span><span class="p">,</span> <span class="n">Out</span><span class="p">),</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a>            <span class="n">reference</span><span class="o">=</span><span class="n">partial</span><span class="p">(</span><span class="n">q4nx_dequant_ref</span><span class="p">,</span> <span class="o">**</span><span class="n">geometry</span><span class="p">),</span>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a>            <span class="n">sample</span><span class="o">=</span><span class="n">partial</span><span class="p">(</span><span class="n">_q4nx_sample</span><span class="p">,</span> <span class="o">**</span><span class="n">geometry</span><span class="p">),</span>
-<a id="__codelineno-0-161" name="__codelineno-0-161"></a>            <span class="n">tolerance</span><span class="o">=</span><span class="n">Tolerance</span><span class="o">.</span><span class="n">exact</span><span class="p">(</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a>                <span class="n">note</span><span class="o">=</span><span class="s2">&quot;floor bf16 narrowing and bfp16ebs8 conversion, byte for byte&quot;</span>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a>            <span class="p">),</span>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a>            <span class="n">ops_per_call</span><span class="o">=</span><span class="mi">2</span> <span class="o">*</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span><span class="p">,</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a>            <span class="n">acc_dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a>            <span class="n">reduction</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a>        <span class="p">),</span>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="k">def</span><span class="w"> </span><span class="nf">q4nx_dequant</span><span class="p">(</span>
+<a id="__codelineno-0-161" name="__codelineno-0-161"></a>    <span class="o">*</span><span class="p">,</span> <span class="n">m_tile</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">k_tile</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">ct_k</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">t</span><span class="o">=</span><span class="mi">8</span>
+<a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;AIE2P-only q4nx dequantization into GEMM B-operand BFP storage.</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">    ``m_tile`` counts n rows (a multiple of 16); ``k_tile`` must be divisible</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">    by both ``group`` and ``ct_k``. The latter two are positive multiples of</span>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">    eight; ``s`` and ``t`` must be eight. Groups need not divide k slices.</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">    See ``q4nx_dequant_ref`` for the packed input and output layouts.</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">    Both arguments are uint8 byte buffers, including the bfp16ebs8 output,</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">    so the generic harness compares the complete encoded result byte for</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">    byte rather than decoding or quantizing it again. The kernel saves,</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">    selects and restores floor rounding itself; no setup kernel is needed.</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a>    <span class="n">geometry</span> <span class="o">=</span> <span class="n">_geometry</span><span class="p">(</span><span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a>    <span class="n">m_tile</span><span class="p">,</span> <span class="n">k_tile</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">ct_k</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">geometry</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">_arch_traits</span><span class="p">()</span><span class="o">.</span><span class="n">bfp16</span><span class="p">:</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a>        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;q4nx_dequant() is only available on aie2p.&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a>    <span class="n">input_bytes</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">//</span> <span class="n">group</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a>    <span class="n">output_bytes</span> <span class="o">=</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span> <span class="o">*</span> <span class="mi">9</span> <span class="o">//</span> <span class="mi">8</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a>    <span class="k">return</span> <span class="n">_make_extern</span><span class="p">(</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a>        <span class="s2">&quot;q4nx_dequant_bfp&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a>        <span class="n">_kernel_source</span><span class="p">(</span><span class="s2">&quot;quant/q4nx_dequant.cc&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>        <span class="p">[</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a>            <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">input_bytes</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">]],</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a>            <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">output_bytes</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">]],</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a>        <span class="p">],</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a>        <span class="c1"># The inner loop is one long latency chain, so it is allowed five</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a>        <span class="c1"># pipeline stages instead of the default three.</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>            <span class="sa">f</span><span class="s2">&quot;-DQ4NX_</span><span class="si">{</span><span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="si">}</span><span class="s2">=</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">geometry</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>        <span class="p">]</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>        <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;-mllvm&quot;</span><span class="p">,</span> <span class="s2">&quot;--aie-pipeliner-max-stagecount=5&quot;</span><span class="p">],</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>        <span class="n">contract</span><span class="o">=</span><span class="n">KernelContract</span><span class="p">(</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>            <span class="n">trace</span><span class="o">=</span><span class="n">Trace</span><span class="o">.</span><span class="n">whole_call</span><span class="p">(),</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>            <span class="n">roles</span><span class="o">=</span><span class="p">(</span><span class="n">In</span><span class="p">,</span> <span class="n">Out</span><span class="p">),</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>            <span class="n">reference</span><span class="o">=</span><span class="n">partial</span><span class="p">(</span><span class="n">q4nx_dequant_ref</span><span class="p">,</span> <span class="o">**</span><span class="n">geometry</span><span class="p">),</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>            <span class="n">sample</span><span class="o">=</span><span class="n">partial</span><span class="p">(</span><span class="n">_q4nx_sample</span><span class="p">,</span> <span class="o">**</span><span class="n">geometry</span><span class="p">),</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>            <span class="n">tolerance</span><span class="o">=</span><span class="n">Tolerance</span><span class="o">.</span><span class="n">exact</span><span class="p">(</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>                <span class="n">note</span><span class="o">=</span><span class="s2">&quot;floor bf16 narrowing and bfp16ebs8 conversion, byte for byte&quot;</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>            <span class="p">),</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>            <span class="n">ops_per_call</span><span class="o">=</span><span class="mi">2</span> <span class="o">*</span> <span class="n">m_tile</span> <span class="o">*</span> <span class="n">k_tile</span><span class="p">,</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>            <span class="n">acc_dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>            <span class="n">reduction</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>        <span class="p">),</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -41972,19 +42126,27 @@ completions choose the CPUs.</p>
 <span class="normal"><a href="#__codelineno-0-210">210</a></span>
 <span class="normal"><a href="#__codelineno-0-211">211</a></span>
 <span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">before</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]):</span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">before</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]):</span>
 <a id="__codelineno-0-202" name="__codelineno-0-202"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">cpus</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
 <a id="__codelineno-0-203" name="__codelineno-0-203"></a>    <span class="k">for</span> <span class="n">irq</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">interrupts</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
 <a id="__codelineno-0-204" name="__codelineno-0-204"></a>        <span class="k">if</span> <span class="n">count</span> <span class="o">&gt;</span> <span class="n">before</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">irq</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
 <a id="__codelineno-0-205" name="__codelineno-0-205"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">cpus</span> <span class="o">|=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cpus</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/proc/irq/</span><span class="si">{</span><span class="n">irq</span><span class="si">}</span><span class="s2">/effective_affinity_list&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">siblings</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="k">for</span> <span class="n">cpu</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cpus</span><span class="p">:</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">siblings</span> <span class="o">|=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cpus</span><span class="p">(</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>            <span class="sa">f</span><span class="s2">&quot;/sys/devices/system/cpu/cpu</span><span class="si">{</span><span class="n">cpu</span><span class="si">}</span><span class="s2">/topology/thread_siblings_list&quot;</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="p">)</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">siblings</span> <span class="o">-=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cpus</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_affinity</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_spinners</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="c1"># A container&#39;s cpuset may leave out the cores the completions</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="c1"># interrupt: only the ones the process may run on can be held.</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="n">allowed</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">sched_getaffinity</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cpus</span> <span class="k">else</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">cpus</span> <span class="o">&amp;=</span> <span class="n">allowed</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">siblings</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>    <span class="k">for</span> <span class="n">cpu</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cpus</span><span class="p">:</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">siblings</span> <span class="o">|=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cpus</span><span class="p">(</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>            <span class="sa">f</span><span class="s2">&quot;/sys/devices/system/cpu/cpu</span><span class="si">{</span><span class="n">cpu</span><span class="si">}</span><span class="s2">/topology/thread_siblings_list&quot;</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>        <span class="p">)</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">siblings</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">siblings</span> <span class="o">&amp;</span> <span class="n">allowed</span><span class="p">)</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">cpus</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_affinity</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_spinners</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -42046,11 +42208,7 @@ completions choose the CPUs.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/utils/benchmark.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-215">215</a></span>
-<span class="normal"><a href="#__codelineno-0-216">216</a></span>
-<span class="normal"><a href="#__codelineno-0-217">217</a></span>
-<span class="normal"><a href="#__codelineno-0-218">218</a></span>
-<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-219">219</a></span>
 <span class="normal"><a href="#__codelineno-0-220">220</a></span>
 <span class="normal"><a href="#__codelineno-0-221">221</a></span>
 <span class="normal"><a href="#__codelineno-0-222">222</a></span>
@@ -42063,24 +42221,28 @@ completions choose the CPUs.</p>
 <span class="normal"><a href="#__codelineno-0-229">229</a></span>
 <span class="normal"><a href="#__codelineno-0-230">230</a></span>
 <span class="normal"><a href="#__codelineno-0-231">231</a></span>
-<span class="normal"><a href="#__codelineno-0-232">232</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="k">def</span><span class="w"> </span><span class="nf">interrupts</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Each NPU completion interrupt&#39;s count over every CPU, by IRQ number.</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">        dict[str, int]: Empty where ``/proc/interrupts`` does not exist.</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/proc/interrupts&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>        <span class="k">return</span> <span class="p">{}</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="n">counts</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="k">if</span> <span class="n">fields</span> <span class="ow">and</span> <span class="n">fields</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="bp">cls</span><span class="o">.</span><span class="n">IRQ</span><span class="p">:</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>            <span class="n">counts</span><span class="p">[</span><span class="n">fields</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)]</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>                <span class="nb">int</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">isdigit</span><span class="p">()</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>            <span class="p">)</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>    <span class="k">return</span> <span class="n">counts</span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="k">def</span><span class="w"> </span><span class="nf">interrupts</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Each NPU completion interrupt&#39;s count over every CPU, by IRQ number.</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">        dict[str, int]: Empty where ``/proc/interrupts`` does not exist.</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/proc/interrupts&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="k">return</span> <span class="p">{}</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>    <span class="n">counts</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="k">if</span> <span class="n">fields</span> <span class="ow">and</span> <span class="n">fields</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="bp">cls</span><span class="o">.</span><span class="n">IRQ</span><span class="p">:</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>            <span class="n">counts</span><span class="p">[</span><span class="n">fields</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)]</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>                <span class="nb">int</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">isdigit</span><span class="p">()</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>            <span class="p">)</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="k">return</span> <span class="n">counts</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -42507,11 +42669,7 @@ per callable.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/utils/benchmark.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-267">267</a></span>
-<span class="normal"><a href="#__codelineno-0-268">268</a></span>
-<span class="normal"><a href="#__codelineno-0-269">269</a></span>
-<span class="normal"><a href="#__codelineno-0-270">270</a></span>
-<span class="normal"><a href="#__codelineno-0-271">271</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-271">271</a></span>
 <span class="normal"><a href="#__codelineno-0-272">272</a></span>
 <span class="normal"><a href="#__codelineno-0-273">273</a></span>
 <span class="normal"><a href="#__codelineno-0-274">274</a></span>
@@ -42600,100 +42758,104 @@ per callable.</p>
 <span class="normal"><a href="#__codelineno-0-357">357</a></span>
 <span class="normal"><a href="#__codelineno-0-358">358</a></span>
 <span class="normal"><a href="#__codelineno-0-359">359</a></span>
-<span class="normal"><a href="#__codelineno-0-360">360</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_interleaved</span><span class="p">(</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a>    <span class="n">fns</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">object</span><span class="p">]],</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a>    <span class="n">rounds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">8</span><span class="p">,</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a>    <span class="n">calls</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a>    <span class="n">settle</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a>    <span class="n">cutoff</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.5</span><span class="p">,</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a>    <span class="n">groups</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Hashable</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a>    <span class="n">fastest_us</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>    <span class="n">completion_cores</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>    <span class="n">max_cpu_wait_us</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">CPU_WAIT_US</span><span class="p">,</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Stats</span><span class="p">]:</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Time callables against each other in interleaved rounds.</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    Each round runs every callable still timed ``calls`` times in turn and</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    keeps each one&#39;s median call. A call&#39;s time is the ``npu_time`` its</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">    return value carries (``run_iters``&#39;s rule), else the time around it.</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">    Each callable is called twice first, untimed, so first-run setup lands on</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    nobody&#39;s figure.</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">        fns: The callables, each taking no arguments.</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">        rounds: Rounds to time.</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">        calls: Calls per callable per round.</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        settle: Rounds after which `cutoff` applies.</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        cutoff: With `groups`, a group whose slowest callable takes more than</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">            `cutoff` times the fastest group&#39;s is timed no further; its</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">            figure is from the rounds it had.</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        groups: Per callable, the setting it measures (callables of one group</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">            are stopped together), or None for one never stopped. Every</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">            callable is timed every round if not given.</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">        fastest_us: The fastest group&#39;s slowest median from callables timed</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">            before these, which `cutoff` also measures against.</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">        completion_cores: Hold the timing thread on the CPUs the callables&#39;</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">            NPU completions interrupt (`CompletionCores`), for callables that</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">            dispatch to the NPU.</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        max_cpu_wait_us: The most a callable&#39;s median call may wait for a CPU</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">            in its median round before the figures are refused; ``math.inf``</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">            accepts figures from a busy host.</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">        list[Stats]: Per callable, the statistics of its per-round medians.</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">        RuntimeError: A callable&#39;s median call waited for a CPU past</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">            `max_cpu_wait_us` (`cpu_wait_us`) in its median round: the host was</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="sd">            busy enough to hold the timing thread off its core, so the</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">            figures are refused. Measure with the host otherwise idle.</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">        ValueError: `rounds` or `calls` is below one, or `groups` is not one</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">            per callable.</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="k">if</span> <span class="n">rounds</span> <span class="o">&lt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">calls</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">rounds</span><span class="si">}</span><span class="s2"> rounds of </span><span class="si">{</span><span class="n">calls</span><span class="si">}</span><span class="s2"> calls: both must be positive&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="k">if</span> <span class="n">groups</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fns</span><span class="p">):</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span><span class="si">}</span><span class="s2"> groups for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">fns</span><span class="p">)</span><span class="si">}</span><span class="s2"> callables&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="k">for</span> <span class="n">fn</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">:</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="n">fn</span><span class="p">()</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>    <span class="n">before</span> <span class="o">=</span> <span class="n">CompletionCores</span><span class="o">.</span><span class="n">interrupts</span><span class="p">()</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="k">for</span> <span class="n">fn</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">:</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>        <span class="n">fn</span><span class="p">()</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="n">medians</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">]</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="n">waited</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">]</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="n">live</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">fns</span><span class="p">)))</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="k">with</span> <span class="n">CompletionCores</span><span class="p">(</span><span class="n">before</span><span class="p">)</span> <span class="k">if</span> <span class="n">completion_cores</span> <span class="k">else</span> <span class="n">nullcontext</span><span class="p">():</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a>        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">rounds</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">live</span><span class="p">):</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>                <span class="n">times</span><span class="p">,</span> <span class="n">waits</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>                <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">calls</span><span class="p">):</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a>                    <span class="n">wait</span> <span class="o">=</span> <span class="n">cpu_wait_us</span><span class="p">()</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a>                    <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a>                    <span class="n">ret</span> <span class="o">=</span> <span class="n">fns</span><span class="p">[</span><span class="n">i</span><span class="p">]()</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>                    <span class="n">elapsed_us</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1e6</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>                    <span class="n">waited_after</span> <span class="o">=</span> <span class="n">cpu_wait_us</span><span class="p">()</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>                    <span class="k">if</span> <span class="n">wait</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">waited_after</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a>                        <span class="n">waits</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">waited_after</span> <span class="o">-</span> <span class="n">wait</span><span class="p">)</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a>                    <span class="n">npu_ns</span> <span class="o">=</span> <span class="n">_extract_npu_time_ns</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>                    <span class="n">times</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">elapsed_us</span> <span class="k">if</span> <span class="n">npu_ns</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">npu_ns</span> <span class="o">/</span> <span class="mf">1e3</span><span class="p">)</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>                <span class="n">medians</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">times</span><span class="p">)))</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>                <span class="n">waited</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">waits</span><span class="p">))</span> <span class="k">if</span> <span class="n">waits</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">)</span>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a>            <span class="k">if</span> <span class="n">groups</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">r</span> <span class="o">&lt;</span> <span class="n">settle</span><span class="p">:</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>            <span class="n">slowest</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="n">Hashable</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a>            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">live</span><span class="p">:</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a>                <span class="n">us</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">medians</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a>                <span class="n">slowest</span><span class="p">[</span><span class="n">groups</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">slowest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">groups</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">),</span> <span class="n">us</span><span class="p">)</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a>            <span class="n">bar</span> <span class="o">=</span> <span class="n">cutoff</span> <span class="o">*</span> <span class="nb">min</span><span class="p">([</span><span class="n">fastest_us</span><span class="p">,</span> <span class="o">*</span><span class="n">slowest</span><span class="o">.</span><span class="n">values</span><span class="p">()])</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>            <span class="n">live</span> <span class="o">=</span> <span class="p">{</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">live</span> <span class="k">if</span> <span class="n">groups</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">slowest</span><span class="p">[</span><span class="n">groups</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">&lt;=</span> <span class="n">bar</span><span class="p">}</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="n">late</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">w</span><span class="p">))</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">waited</span><span class="p">)</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="k">if</span> <span class="n">late</span> <span class="o">&gt;</span> <span class="n">max_cpu_wait_us</span><span class="p">:</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a>            <span class="sa">f</span><span class="s2">&quot;a callable&#39;s median call waited </span><span class="si">{</span><span class="n">late</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> us for a CPU in its &quot;</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a>            <span class="s2">&quot;median round; time with the host otherwise idle&quot;</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>        <span class="p">)</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Stats</span><span class="o">.</span><span class="n">from_samples</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">medians</span><span class="p">]</span>
+<span class="normal"><a href="#__codelineno-0-360">360</a></span>
+<span class="normal"><a href="#__codelineno-0-361">361</a></span>
+<span class="normal"><a href="#__codelineno-0-362">362</a></span>
+<span class="normal"><a href="#__codelineno-0-363">363</a></span>
+<span class="normal"><a href="#__codelineno-0-364">364</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_interleaved</span><span class="p">(</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a>    <span class="n">fns</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">object</span><span class="p">]],</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a>    <span class="n">rounds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>    <span class="n">calls</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>    <span class="n">settle</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>    <span class="n">cutoff</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.5</span><span class="p">,</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a>    <span class="n">groups</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Hashable</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="n">fastest_us</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>    <span class="n">completion_cores</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>    <span class="n">max_cpu_wait_us</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">CPU_WAIT_US</span><span class="p">,</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Stats</span><span class="p">]:</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Time callables against each other in interleaved rounds.</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    Each round runs every callable still timed ``calls`` times in turn and</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">    keeps each one&#39;s median call. A call&#39;s time is the ``npu_time`` its</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">    return value carries (``run_iters``&#39;s rule), else the time around it.</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">    Each callable is called twice first, untimed, so first-run setup lands on</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">    nobody&#39;s figure.</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        fns: The callables, each taking no arguments.</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        rounds: Rounds to time.</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">        calls: Calls per callable per round.</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        settle: Rounds after which `cutoff` applies.</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">        cutoff: With `groups`, a group whose slowest callable takes more than</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">            `cutoff` times the fastest group&#39;s is timed no further; its</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">            figure is from the rounds it had.</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">        groups: Per callable, the setting it measures (callables of one group</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">            are stopped together), or None for one never stopped. Every</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">            callable is timed every round if not given.</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">        fastest_us: The fastest group&#39;s slowest median from callables timed</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">            before these, which `cutoff` also measures against.</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">        completion_cores: Hold the timing thread on the CPUs the callables&#39;</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">            NPU completions interrupt (`CompletionCores`), for callables that</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">            dispatch to the NPU.</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">        max_cpu_wait_us: The most a callable&#39;s median call may wait for a CPU</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">            in its median round before the figures are refused; ``math.inf``</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">            accepts figures from a busy host.</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">        list[Stats]: Per callable, the statistics of its per-round medians.</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">        RuntimeError: A callable&#39;s median call waited for a CPU past</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">            `max_cpu_wait_us` (`cpu_wait_us`) in its median round: the host was</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">            busy enough to hold the timing thread off its core, so the</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">            figures are refused. Measure with the host otherwise idle.</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">        ValueError: `rounds` or `calls` is below one, or `groups` is not one</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">            per callable.</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="k">if</span> <span class="n">rounds</span> <span class="o">&lt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">calls</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">rounds</span><span class="si">}</span><span class="s2"> rounds of </span><span class="si">{</span><span class="n">calls</span><span class="si">}</span><span class="s2"> calls: both must be positive&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>    <span class="k">if</span> <span class="n">groups</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fns</span><span class="p">):</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span><span class="si">}</span><span class="s2"> groups for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">fns</span><span class="p">)</span><span class="si">}</span><span class="s2"> callables&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a>    <span class="k">for</span> <span class="n">fn</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">:</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>        <span class="n">fn</span><span class="p">()</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="n">before</span> <span class="o">=</span> <span class="n">CompletionCores</span><span class="o">.</span><span class="n">interrupts</span><span class="p">()</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="k">for</span> <span class="n">fn</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">:</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>        <span class="n">fn</span><span class="p">()</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="n">medians</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">]</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="n">waited</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">]</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="n">live</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">fns</span><span class="p">)))</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="k">with</span> <span class="n">CompletionCores</span><span class="p">(</span><span class="n">before</span><span class="p">)</span> <span class="k">if</span> <span class="n">completion_cores</span> <span class="k">else</span> <span class="n">nullcontext</span><span class="p">():</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a>        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">rounds</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a>            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">live</span><span class="p">):</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a>                <span class="n">times</span><span class="p">,</span> <span class="n">waits</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>                <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">calls</span><span class="p">):</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>                    <span class="n">wait</span> <span class="o">=</span> <span class="n">cpu_wait_us</span><span class="p">()</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a>                    <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>                    <span class="n">ret</span> <span class="o">=</span> <span class="n">fns</span><span class="p">[</span><span class="n">i</span><span class="p">]()</span>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a>                    <span class="n">elapsed_us</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1e6</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a>                    <span class="n">waited_after</span> <span class="o">=</span> <span class="n">cpu_wait_us</span><span class="p">()</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a>                    <span class="k">if</span> <span class="n">wait</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">waited_after</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>                        <span class="n">waits</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">waited_after</span> <span class="o">-</span> <span class="n">wait</span><span class="p">)</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a>                    <span class="n">npu_ns</span> <span class="o">=</span> <span class="n">_extract_npu_time_ns</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>                    <span class="n">times</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">elapsed_us</span> <span class="k">if</span> <span class="n">npu_ns</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">npu_ns</span> <span class="o">/</span> <span class="mf">1e3</span><span class="p">)</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>                <span class="n">medians</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">times</span><span class="p">)))</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a>                <span class="n">waited</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">waits</span><span class="p">))</span> <span class="k">if</span> <span class="n">waits</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">)</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>            <span class="k">if</span> <span class="n">groups</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">r</span> <span class="o">&lt;</span> <span class="n">settle</span><span class="p">:</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>            <span class="n">slowest</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="n">Hashable</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">live</span><span class="p">:</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>                <span class="n">us</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">medians</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>                <span class="n">slowest</span><span class="p">[</span><span class="n">groups</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">slowest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">groups</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">),</span> <span class="n">us</span><span class="p">)</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a>            <span class="n">bar</span> <span class="o">=</span> <span class="n">cutoff</span> <span class="o">*</span> <span class="nb">min</span><span class="p">([</span><span class="n">fastest_us</span><span class="p">,</span> <span class="o">*</span><span class="n">slowest</span><span class="o">.</span><span class="n">values</span><span class="p">()])</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a>            <span class="n">live</span> <span class="o">=</span> <span class="p">{</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">live</span> <span class="k">if</span> <span class="n">groups</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">slowest</span><span class="p">[</span><span class="n">groups</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">&lt;=</span> <span class="n">bar</span><span class="p">}</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a>    <span class="n">late</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">w</span><span class="p">))</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">waited</span><span class="p">)</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="k">if</span> <span class="n">late</span> <span class="o">&gt;</span> <span class="n">max_cpu_wait_us</span><span class="p">:</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>            <span class="sa">f</span><span class="s2">&quot;a callable&#39;s median call waited </span><span class="si">{</span><span class="n">late</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> us for a CPU in its &quot;</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>            <span class="s2">&quot;median round; time with the host otherwise idle&quot;</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a>        <span class="p">)</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Stats</span><span class="o">.</span><span class="n">from_samples</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">medians</span><span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -42806,11 +42968,7 @@ per callable.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/utils/benchmark.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-489">489</a></span>
-<span class="normal"><a href="#__codelineno-0-490">490</a></span>
-<span class="normal"><a href="#__codelineno-0-491">491</a></span>
-<span class="normal"><a href="#__codelineno-0-492">492</a></span>
-<span class="normal"><a href="#__codelineno-0-493">493</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-493">493</a></span>
 <span class="normal"><a href="#__codelineno-0-494">494</a></span>
 <span class="normal"><a href="#__codelineno-0-495">495</a></span>
 <span class="normal"><a href="#__codelineno-0-496">496</a></span>
@@ -42821,22 +42979,26 @@ per callable.</p>
 <span class="normal"><a href="#__codelineno-0-501">501</a></span>
 <span class="normal"><a href="#__codelineno-0-502">502</a></span>
 <span class="normal"><a href="#__codelineno-0-503">503</a></span>
-<span class="normal"><a href="#__codelineno-0-504">504</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-489" name="__codelineno-0-489"></a><span class="k">def</span><span class="w"> </span><span class="nf">preflight</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Preflight</span><span class="p">:</span>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Describe the device through the host runtime (any backend).&quot;&quot;&quot;</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">aie.utils</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">aie_utils</span>
-<a id="__codelineno-0-492" name="__codelineno-0-492"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">aie.utils.compile.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_target_arch</span>
-<a id="__codelineno-0-493" name="__codelineno-0-493"></a>
-<a id="__codelineno-0-494" name="__codelineno-0-494"></a>    <span class="n">runtime</span> <span class="o">=</span> <span class="n">aie_utils</span><span class="o">.</span><span class="n">DefaultNPURuntime</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a>    <span class="k">if</span> <span class="n">runtime</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-496" name="__codelineno-0-496"></a>        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;no NPU runtime is available (XRT, HRX or HSA)&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-497" name="__codelineno-0-497"></a>    <span class="n">device</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">device</span><span class="p">()</span>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a>    <span class="n">arch</span> <span class="o">=</span> <span class="n">resolve_target_arch</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a>    <span class="k">return</span> <span class="n">Preflight</span><span class="p">(</span>
-<a id="__codelineno-0-500" name="__codelineno-0-500"></a>        <span class="n">npu</span><span class="o">=</span><span class="s2">&quot;npu2&quot;</span> <span class="k">if</span> <span class="n">arch</span> <span class="o">==</span> <span class="s2">&quot;aie2p&quot;</span> <span class="k">else</span> <span class="s2">&quot;npu1&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-501" name="__codelineno-0-501"></a>        <span class="n">arch</span><span class="o">=</span><span class="n">arch</span><span class="p">,</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a>        <span class="n">device</span><span class="o">=</span><span class="n">runtime</span><span class="o">.</span><span class="n">device_name</span><span class="p">()</span> <span class="ow">or</span> <span class="nb">type</span><span class="p">(</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-503" name="__codelineno-0-503"></a>        <span class="n">pmode</span><span class="o">=</span><span class="n">runtime</span><span class="o">.</span><span class="n">power_mode</span><span class="p">(),</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-504">504</a></span>
+<span class="normal"><a href="#__codelineno-0-505">505</a></span>
+<span class="normal"><a href="#__codelineno-0-506">506</a></span>
+<span class="normal"><a href="#__codelineno-0-507">507</a></span>
+<span class="normal"><a href="#__codelineno-0-508">508</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-493" name="__codelineno-0-493"></a><span class="k">def</span><span class="w"> </span><span class="nf">preflight</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Preflight</span><span class="p">:</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Describe the device through the host runtime (any backend).&quot;&quot;&quot;</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">aie.utils</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">aie_utils</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">aie.utils.compile.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_target_arch</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>    <span class="n">runtime</span> <span class="o">=</span> <span class="n">aie_utils</span><span class="o">.</span><span class="n">DefaultNPURuntime</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a>    <span class="k">if</span> <span class="n">runtime</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-500" name="__codelineno-0-500"></a>        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;no NPU runtime is available (XRT, HRX or HSA)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a>    <span class="n">device</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">device</span><span class="p">()</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>    <span class="n">arch</span> <span class="o">=</span> <span class="n">resolve_target_arch</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a>    <span class="k">return</span> <span class="n">Preflight</span><span class="p">(</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="n">npu</span><span class="o">=</span><span class="s2">&quot;npu2&quot;</span> <span class="k">if</span> <span class="n">arch</span> <span class="o">==</span> <span class="s2">&quot;aie2p&quot;</span> <span class="k">else</span> <span class="s2">&quot;npu1&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="n">arch</span><span class="o">=</span><span class="n">arch</span><span class="p">,</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="n">device</span><span class="o">=</span><span class="n">runtime</span><span class="o">.</span><span class="n">device_name</span><span class="p">()</span> <span class="ow">or</span> <span class="nb">type</span><span class="p">(</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>        <span class="n">pmode</span><span class="o">=</span><span class="n">runtime</span><span class="o">.</span><span class="n">power_mode</span><span class="p">(),</span>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -42877,11 +43039,7 @@ commit already identifies that build.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/utils/benchmark.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-422">422</a></span>
-<span class="normal"><a href="#__codelineno-0-423">423</a></span>
-<span class="normal"><a href="#__codelineno-0-424">424</a></span>
-<span class="normal"><a href="#__codelineno-0-425">425</a></span>
-<span class="normal"><a href="#__codelineno-0-426">426</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-426">426</a></span>
 <span class="normal"><a href="#__codelineno-0-427">427</a></span>
 <span class="normal"><a href="#__codelineno-0-428">428</a></span>
 <span class="normal"><a href="#__codelineno-0-429">429</a></span>
@@ -42931,61 +43089,65 @@ commit already identifies that build.</p>
 <span class="normal"><a href="#__codelineno-0-473">473</a></span>
 <span class="normal"><a href="#__codelineno-0-474">474</a></span>
 <span class="normal"><a href="#__codelineno-0-475">475</a></span>
-<span class="normal"><a href="#__codelineno-0-476">476</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="k">def</span><span class="w"> </span><span class="nf">provenance</span><span class="p">(</span><span class="o">**</span><span class="n">extra</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a one-line description of what produced a measurement.</span>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>
-<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">    The git commit (``GITHUB_SHA`` or ``git rev-parse HEAD``), the Peano that</span>
-<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">    compiles the kernels (``peano_version()``), the installed ``mlir_aie``</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    version, the kernel tree</span>
-<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">    (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),</span>
-<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">    the selected runtime&#39;s provenance, the runner the job ran</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">    on (``RUNNER_NAME``, under GitHub Actions: nightly runs move between</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">    hosts of a generation, and a host swap moves ``npu_us`` as a regression</span>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">    would), and any ``extra`` fields (``device=&quot;NPU Strix&quot;``,</span>
-<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">    ``pmode=&quot;performance&quot;``) as ``key value`` pairs. A benchmark row records</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">    it so a number can be traced to a toolchain, the kernel sources and</span>
-<a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">    the machine.</span>
-<a id="__codelineno-0-436" name="__codelineno-0-436"></a>
-<a id="__codelineno-0-437" name="__codelineno-0-437"></a><span class="sd">    A package that is not installed is left out rather than recorded as</span>
-<a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="sd">    unknown. CI builds ``mlir_aie`` from source and puts it on ``PYTHONPATH``,</span>
-<a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="sd">    so there is no distribution to read a version from, and every published</span>
-<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">    row would otherwise carry a word that reads like a lookup failure. The</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="sd">    commit already identifies that build.</span>
-<a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-443" name="__codelineno-0-443"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">aie.utils</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">aie_utils</span>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">pkg</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-446" name="__codelineno-0-446"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-447" name="__codelineno-0-447"></a>            <span class="k">return</span> <span class="n">_pkg_version</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-0-448" name="__codelineno-0-448"></a>        <span class="k">except</span> <span class="n">PackageNotFoundError</span><span class="p">:</span>
-<a id="__codelineno-0-449" name="__codelineno-0-449"></a>            <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-450" name="__codelineno-0-450"></a>
-<a id="__codelineno-0-451" name="__codelineno-0-451"></a>    <span class="n">commit</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GITHUB_SHA&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">commit</span><span class="p">:</span>
-<a id="__codelineno-0-453" name="__codelineno-0-453"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-454" name="__codelineno-0-454"></a>            <span class="n">commit</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a>                <span class="p">[</span><span class="s2">&quot;git&quot;</span><span class="p">,</span> <span class="s2">&quot;rev-parse&quot;</span><span class="p">,</span> <span class="s2">&quot;HEAD&quot;</span><span class="p">],</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">check</span><span class="o">=</span><span class="kc">True</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>            <span class="p">)</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
-<a id="__codelineno-0-457" name="__codelineno-0-457"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span><span class="p">):</span>
-<a id="__codelineno-0-458" name="__codelineno-0-458"></a>            <span class="n">commit</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span>
-<a id="__codelineno-0-459" name="__codelineno-0-459"></a>    <span class="n">runtime_fields</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-460" name="__codelineno-0-460"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="n">runtime</span> <span class="o">=</span> <span class="n">aie_utils</span><span class="o">.</span><span class="n">DefaultNPURuntime</span>
-<a id="__codelineno-0-462" name="__codelineno-0-462"></a>        <span class="k">if</span> <span class="n">runtime</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-463" name="__codelineno-0-463"></a>            <span class="n">runtime_fields</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">provenance</span><span class="p">()</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 - optional metadata must not fail a measurement</span>
-<a id="__codelineno-0-465" name="__codelineno-0-465"></a>        <span class="k">pass</span>
-<a id="__codelineno-0-466" name="__codelineno-0-466"></a>    <span class="n">fields</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-467" name="__codelineno-0-467"></a>        <span class="s2">&quot;commit&quot;</span><span class="p">:</span> <span class="n">commit</span><span class="p">[:</span><span class="mi">10</span><span class="p">],</span>
-<a id="__codelineno-0-468" name="__codelineno-0-468"></a>        <span class="s2">&quot;peano&quot;</span><span class="p">:</span> <span class="n">peano_version</span><span class="p">(),</span>
-<a id="__codelineno-0-469" name="__codelineno-0-469"></a>        <span class="s2">&quot;mlir_aie&quot;</span><span class="p">:</span> <span class="n">pkg</span><span class="p">(</span><span class="s2">&quot;mlir_aie&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>        <span class="s2">&quot;kernel_sources&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;MLIR_AIE_KERNEL_SOURCES&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-471" name="__codelineno-0-471"></a>        <span class="s2">&quot;kernels&quot;</span><span class="p">:</span> <span class="n">kernel_tree_digest</span><span class="p">(),</span>
-<a id="__codelineno-0-472" name="__codelineno-0-472"></a>        <span class="o">**</span><span class="n">runtime_fields</span><span class="p">,</span>
-<a id="__codelineno-0-473" name="__codelineno-0-473"></a>        <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RUNNER_NAME&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="o">**</span><span class="n">extra</span><span class="p">,</span>
-<a id="__codelineno-0-475" name="__codelineno-0-475"></a>    <span class="p">}</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>    <span class="k">return</span> <span class="s2">&quot; | &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-476">476</a></span>
+<span class="normal"><a href="#__codelineno-0-477">477</a></span>
+<span class="normal"><a href="#__codelineno-0-478">478</a></span>
+<span class="normal"><a href="#__codelineno-0-479">479</a></span>
+<span class="normal"><a href="#__codelineno-0-480">480</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="k">def</span><span class="w"> </span><span class="nf">provenance</span><span class="p">(</span><span class="o">**</span><span class="n">extra</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a one-line description of what produced a measurement.</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">    The git commit (``GITHUB_SHA`` or ``git rev-parse HEAD``), the Peano that</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">    compiles the kernels (``peano_version()``), the installed ``mlir_aie``</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">    version, the kernel tree</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">    (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">    the selected runtime&#39;s provenance, the runner the job ran</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">    on (``RUNNER_NAME``, under GitHub Actions: nightly runs move between</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">    hosts of a generation, and a host swap moves ``npu_us`` as a regression</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a><span class="sd">    would), and any ``extra`` fields (``device=&quot;NPU Strix&quot;``,</span>
+<a id="__codelineno-0-437" name="__codelineno-0-437"></a><span class="sd">    ``pmode=&quot;performance&quot;``) as ``key value`` pairs. A benchmark row records</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="sd">    it so a number can be traced to a toolchain, the kernel sources and</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="sd">    the machine.</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="sd">    A package that is not installed is left out rather than recorded as</span>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">    unknown. CI builds ``mlir_aie`` from source and puts it on ``PYTHONPATH``,</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">    so there is no distribution to read a version from, and every published</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">    row would otherwise carry a word that reads like a lookup failure. The</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">    commit already identifies that build.</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">aie.utils</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">aie_utils</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">pkg</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>            <span class="k">return</span> <span class="n">_pkg_version</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>        <span class="k">except</span> <span class="n">PackageNotFoundError</span><span class="p">:</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>            <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>    <span class="n">commit</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GITHUB_SHA&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">commit</span><span class="p">:</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a>            <span class="n">commit</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a>                <span class="p">[</span><span class="s2">&quot;git&quot;</span><span class="p">,</span> <span class="s2">&quot;rev-parse&quot;</span><span class="p">,</span> <span class="s2">&quot;HEAD&quot;</span><span class="p">],</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">check</span><span class="o">=</span><span class="kc">True</span>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a>            <span class="p">)</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span><span class="p">):</span>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a>            <span class="n">commit</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a>    <span class="n">runtime_fields</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a>        <span class="n">runtime</span> <span class="o">=</span> <span class="n">aie_utils</span><span class="o">.</span><span class="n">DefaultNPURuntime</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>        <span class="k">if</span> <span class="n">runtime</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-467" name="__codelineno-0-467"></a>            <span class="n">runtime_fields</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">provenance</span><span class="p">()</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 - optional metadata must not fail a measurement</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>        <span class="k">pass</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>    <span class="n">fields</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>        <span class="s2">&quot;commit&quot;</span><span class="p">:</span> <span class="n">commit</span><span class="p">[:</span><span class="mi">10</span><span class="p">],</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a>        <span class="s2">&quot;peano&quot;</span><span class="p">:</span> <span class="n">peano_version</span><span class="p">(),</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a>        <span class="s2">&quot;mlir_aie&quot;</span><span class="p">:</span> <span class="n">pkg</span><span class="p">(</span><span class="s2">&quot;mlir_aie&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="s2">&quot;kernel_sources&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;MLIR_AIE_KERNEL_SOURCES&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>        <span class="s2">&quot;kernels&quot;</span><span class="p">:</span> <span class="n">kernel_tree_digest</span><span class="p">(),</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="o">**</span><span class="n">runtime_fields</span><span class="p">,</span>
+<a id="__codelineno-0-477" name="__codelineno-0-477"></a>        <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RUNNER_NAME&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a>        <span class="o">**</span><span class="n">extra</span><span class="p">,</span>
+<a id="__codelineno-0-479" name="__codelineno-0-479"></a>    <span class="p">}</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>    <span class="k">return</span> <span class="s2">&quot; | &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -43014,11 +43176,7 @@ can carry uncommitted edits. <code>None</code> when neither directory exists.</p
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/utils/benchmark.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-401">401</a></span>
-<span class="normal"><a href="#__codelineno-0-402">402</a></span>
-<span class="normal"><a href="#__codelineno-0-403">403</a></span>
-<span class="normal"><a href="#__codelineno-0-404">404</a></span>
-<span class="normal"><a href="#__codelineno-0-405">405</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-405">405</a></span>
 <span class="normal"><a href="#__codelineno-0-406">406</a></span>
 <span class="normal"><a href="#__codelineno-0-407">407</a></span>
 <span class="normal"><a href="#__codelineno-0-408">408</a></span>
@@ -43032,25 +43190,29 @@ can carry uncommitted edits. <code>None</code> when neither directory exists.</p
 <span class="normal"><a href="#__codelineno-0-416">416</a></span>
 <span class="normal"><a href="#__codelineno-0-417">417</a></span>
 <span class="normal"><a href="#__codelineno-0-418">418</a></span>
-<span class="normal"><a href="#__codelineno-0-419">419</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="k">def</span><span class="w"> </span><span class="nf">kernel_tree_digest</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a 12-hex digest of the kernel sources the library factories compile.</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">    Every file under ``aie_kernels_dir()`` and ``aie_runtime_lib_dir()``, by</span>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">    relative path and content. The commit alone cannot say which kernels</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">    ran: ``MLIR_AIE_KERNEL_SOURCES`` can name another tree, and a checkout</span>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">    can carry uncommitted edits. ``None`` when neither directory exists.</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a>    <span class="n">h</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">()</span>
-<a id="__codelineno-0-410" name="__codelineno-0-410"></a>    <span class="n">found</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a>    <span class="k">for</span> <span class="n">top</span> <span class="ow">in</span> <span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">aie_kernels_dir</span><span class="p">(),</span> <span class="n">config</span><span class="o">.</span><span class="n">aie_runtime_lib_dir</span><span class="p">()):</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a>        <span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">top</span><span class="p">)</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">root</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>        <span class="n">found</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a>        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">root</span><span class="o">.</span><span class="n">rglob</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">is_file</span><span class="p">()):</span>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a>            <span class="n">h</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">root</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">root</span><span class="p">)</span><span class="si">}</span><span class="se">\0</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a>            <span class="n">h</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">())</span>
-<a id="__codelineno-0-419" name="__codelineno-0-419"></a>    <span class="k">return</span> <span class="n">h</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">12</span><span class="p">]</span> <span class="k">if</span> <span class="n">found</span> <span class="k">else</span> <span class="kc">None</span>
+<span class="normal"><a href="#__codelineno-0-419">419</a></span>
+<span class="normal"><a href="#__codelineno-0-420">420</a></span>
+<span class="normal"><a href="#__codelineno-0-421">421</a></span>
+<span class="normal"><a href="#__codelineno-0-422">422</a></span>
+<span class="normal"><a href="#__codelineno-0-423">423</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="k">def</span><span class="w"> </span><span class="nf">kernel_tree_digest</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a 12-hex digest of the kernel sources the library factories compile.</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">    Every file under ``aie_kernels_dir()`` and ``aie_runtime_lib_dir()``, by</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">    relative path and content. The commit alone cannot say which kernels</span>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">    ran: ``MLIR_AIE_KERNEL_SOURCES`` can name another tree, and a checkout</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">    can carry uncommitted edits. ``None`` when neither directory exists.</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a>    <span class="n">h</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">()</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>    <span class="n">found</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a>    <span class="k">for</span> <span class="n">top</span> <span class="ow">in</span> <span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">aie_kernels_dir</span><span class="p">(),</span> <span class="n">config</span><span class="o">.</span><span class="n">aie_runtime_lib_dir</span><span class="p">()):</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a>        <span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">top</span><span class="p">)</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">root</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a>        <span class="n">found</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a>        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">root</span><span class="o">.</span><span class="n">rglob</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">is_file</span><span class="p">()):</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a>            <span class="n">h</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">root</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">root</span><span class="p">)</span><span class="si">}</span><span class="se">\0</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a>            <span class="n">h</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">())</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a>    <span class="k">return</span> <span class="n">h</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">12</span><span class="p">]</span> <span class="k">if</span> <span class="n">found</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
