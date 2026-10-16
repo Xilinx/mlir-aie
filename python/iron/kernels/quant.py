@@ -59,7 +59,9 @@ def _bf16_floor(x):
     return (upper << 16).view(np.float32)
 
 
-def q4nx_unpack(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8):
+def q4nx_unpack(
+    payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Unpack packed q4nx to its codes, scales and minima.
 
     Input has shape ``(..., m_tile*k_tile//2 + 4*m_tile*k_tile//group)``.
@@ -70,10 +72,11 @@ def q4nx_unpack(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8)
     Finite scales and minima are required.
 
     Returns:
-        ``(codes, scales, mins)``, with the same leading dimensions as
-        ``payload``: ``codes`` is ``uint8`` with shape ``(..., k_tile,
-        m_tile)``; ``scales`` and ``mins`` are ``float32`` with shape
-        ``(..., k_tile // group, m_tile)``.
+        tuple[np.ndarray, np.ndarray, np.ndarray]: ``(codes, scales, mins)``,
+            with the same leading dimensions as ``payload``. ``codes`` is
+            ``uint8`` with shape ``(..., k_tile, m_tile)``; ``scales`` and
+            ``mins`` are ``float32`` with shape ``(..., k_tile // group,
+            m_tile)``.
     """
     geometry = _geometry(m_tile, k_tile, group, ct_k, s, t)
     m_tile, k_tile, group, ct_k, s, t = geometry.values()
