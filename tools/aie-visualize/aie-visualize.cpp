@@ -29,7 +29,6 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -51,38 +50,17 @@ static cl::opt<std::string> fileName(cl::Positional, cl::desc("<input mlir>"),
                                      cl::Required);
 static cl::opt<bool> emitDot("emit-dot",
                              cl::desc("Emit a DOT route visualization"));
-static cl::opt<std::string> emitDotPerFlow(
-    "emit-dot-per-flow",
-    cl::desc("Emit one DOT file per flow into the given directory"),
-    cl::value_desc("directory"));
 static cl::opt<std::string> outputFilename("o", cl::desc("Output filename"),
                                            cl::value_desc("filename"),
                                            cl::init("-"));
 static cl::list<unsigned>
-    highlightedFlows("highlight-flow",
-                     cl::desc("Highlight a flow by its numeric ID"),
-                     cl::CommaSeparated, cl::ZeroOrMore);
-static cl::list<unsigned>
     onlyFlows("only-flow", cl::desc("Emit only a flow with this numeric ID"),
               cl::CommaSeparated, cl::ZeroOrMore);
-static cl::opt<bool> hideBuffers(
-    "hide-buffers",
-    cl::desc("Hide tile buffers and their DMA channel connections"));
-static cl::opt<bool>
-    hideCalls("hide-calls",
-              cl::desc("Hide external kernel calls and traceable buffer uses"));
-static cl::opt<bool> hidePacketIDs(
-    "hide-packet-ids",
-    cl::desc("Hide flow IDs and packet IDs on routed connections"));
-static cl::opt<bool> hideArbitration(
-    "hide-arbitration",
-    cl::desc("Hide packet rules, arbiter selections, and master settings"));
-static cl::opt<bool>
-    hideVias("hide-vias",
-             cl::desc("Hide switchbox ports along routed connections"));
-static cl::opt<bool>
-    topologyOnly("topology-only",
-                 cl::desc("Show endpoint topology without route vias"));
+static cl::list<std::string> contractedNodeKinds(
+    "contract",
+    cl::desc("Contract semantic node kinds: tile, port, buffer, "
+             "runtime-argument, call"),
+    cl::value_desc("kind"), cl::CommaSeparated, cl::ZeroOrMore);
 static cl::opt<bool> noFollowBuffers(
     "no-follow-buffers",
     cl::desc("Do not group flows through buffers or shared endpoints"));
@@ -387,7 +365,7 @@ static FailureOr<std::vector<FlowRoute>> collectRoutes(AIE::DeviceOp device) {
       if (!dest)
         return failure();
       route.points.push_back(*source);
-      if (!topologyOnly && failed(appendVias(flow, route.points)))
+      if (contractedNodeKinds.empty() && failed(appendVias(flow, route.points)))
         return failure();
       route.points.push_back(*dest);
       routes.push_back(std::move(route));
@@ -423,7 +401,8 @@ static FailureOr<std::vector<FlowRoute>> collectRoutes(AIE::DeviceOp device) {
     if (!dest)
       return failure();
     route.points.push_back(*source);
-    if (!topologyOnly && failed(appendVias(packetFlow, route.points)))
+    if (contractedNodeKinds.empty() &&
+        failed(appendVias(packetFlow, route.points)))
       return failure();
     route.points.push_back(*dest);
     routes.push_back(std::move(route));
@@ -1026,31 +1005,23 @@ static std::string shortPortName(const PortNode &port) {
   }
 }
 
-static LogicalResult
-emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
-             AIE::RuntimeSequenceOp runtimeSequence,
-             std::optional<unsigned> selectedFlow = std::nullopt) {
+static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
+                                  AIE::RuntimeSequenceOp runtimeSequence) {
   FailureOr<std::vector<FlowRoute>> routes = collectRoutes(device);
   if (failed(routes))
     return failure();
   std::vector<ArbitrationRule> arbitrationRules =
-      hideArbitration || hideVias ? std::vector<ArbitrationRule>{}
-                                  : collectArbitrationRules(device);
+      collectArbitrationRules(device);
   FailureOr<std::vector<BufferInfo>> buffers = collectBuffers(device);
   if (failed(buffers))
     return failure();
   DMAChannelBuffers channelBuffers = collectDMAChannelBuffers(device);
   std::vector<RuntimeBufferUse> runtimeBufferUses =
       collectRuntimeBufferUses(device, runtimeSequence);
-  std::vector<CallInfo> calls =
-      hideCalls ? std::vector<CallInfo>{} : collectCalls(device);
+  std::vector<CallInfo> calls = collectCalls(device);
   FlowGroups groups = collectFlowGroups(*routes, channelBuffers);
 
-  std::set<unsigned> highlights(highlightedFlows.begin(),
-                                highlightedFlows.end());
   std::set<unsigned> only(onlyFlows.begin(), onlyFlows.end());
-  if (selectedFlow)
-    only = {*selectedFlow};
   auto validateIDs = [&](const std::set<unsigned> &ids,
                          StringRef option) -> LogicalResult {
     for (unsigned id : ids) {
@@ -1063,16 +1034,31 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     }
     return success();
   };
-  if (failed(validateIDs(highlights, "--highlight-flow")) ||
-      failed(validateIDs(only, "--only-flow")))
+  if (failed(validateIDs(only, "--only-flow")))
     return failure();
   auto isVisible = [&](unsigned id) { return only.empty() || only.count(id); };
-  auto isHighlighted = [&](unsigned id) {
-    return highlights.empty() || highlights.count(id);
-  };
+
+  std::set<SemanticNodeKind> contractKinds;
+  for (StringRef kind : contractedNodeKinds) {
+    if (kind == "tile")
+      contractKinds.insert(SemanticNodeKind::Tile);
+    else if (kind == "port")
+      contractKinds.insert(SemanticNodeKind::Port);
+    else if (kind == "buffer")
+      contractKinds.insert(SemanticNodeKind::Buffer);
+    else if (kind == "runtime-argument")
+      contractKinds.insert(SemanticNodeKind::RuntimeArgument);
+    else if (kind == "call")
+      contractKinds.insert(SemanticNodeKind::Call);
+    else {
+      device.emitOpError() << "--contract references unknown node kind '"
+                           << kind << "'";
+      return failure();
+    }
+  }
+  bool semanticView = !contractKinds.empty();
 
   std::set<PortNode> ports;
-  std::set<PortNode> guidePorts;
   std::set<std::pair<int, int>> topologyTiles;
   std::map<Segment, std::vector<const FlowRoute *>> segments;
   std::map<BufferSegment, std::vector<const FlowRoute *>> bufferSegments;
@@ -1087,23 +1073,14 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     unsigned groupID = groups.routeGroups[route.id];
     if (!isVisible(groupID))
       continue;
-    if (topologyOnly) {
+    if (semanticView) {
       ports.insert(route.points.front());
       ports.insert(route.points.back());
       topologyTiles.insert(
           {route.points.front().col, route.points.front().row});
       topologyTiles.insert({route.points.back().col, route.points.back().row});
-    } else if (!hideVias) {
-      ports.insert(route.points.begin(), route.points.end());
     } else {
-      for (const PortNode &port : route.points) {
-        portFlowGroups[port].insert(groupID);
-        if (port.bundle == AIE::WireBundle::Core ||
-            port.bundle == AIE::WireBundle::DMA)
-          ports.insert(port);
-        else
-          guidePorts.insert(port);
-      }
+      ports.insert(route.points.begin(), route.points.end());
     }
     std::vector<Segment> routeSegments;
     std::vector<Segment> physicalLinks;
@@ -1127,8 +1104,6 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
         (route.points.back().bundle == AIE::WireBundle::Core ||
          route.points.back().bundle == AIE::WireBundle::DMA))
       arrowSegments.insert(routeSegments.back());
-    if (hideBuffers && noFollowBuffers)
-      continue;
     const PortNode &source = route.points.front();
     if (source.bundle == AIE::WireBundle::DMA) {
       DMAChannelKey key{source.col, source.row, AIE::DMAChannelDir::MM2S,
@@ -1167,10 +1142,9 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   std::map<std::pair<int, int>, unsigned> localCounts;
   std::map<Operation *, unsigned> bufferLocalIndices;
   for (const BufferInfo &buffer : *buffers) {
-    if (topologyOnly)
+    if (semanticView)
       continue;
-    if ((hideBuffers && !visibleBuffers.count(buffer.op)) ||
-        (!only.empty() && !visibleBuffers.count(buffer.op)))
+    if (!only.empty() && !visibleBuffers.count(buffer.op))
       continue;
     std::pair<int, int> coordinate{buffer.col, buffer.row};
     bufferLocalIndices[buffer.op] = localCounts[coordinate]++;
@@ -1209,13 +1183,12 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
   SemanticGraph semanticGraph;
   std::set<SemanticEdge> topologyEdges;
   std::set<std::string> topologyNodes;
-  if (topologyOnly) {
+  if (semanticView) {
     semanticGraph =
         buildSemanticGraph(*routes, groups, channelBuffers, channelFlowGroups,
                            *buffers, runtimeArguments, calls,
                            bufferSourceFlowGroups, bufferDestFlowGroups, only);
-    topologyEdges = semanticGraph.contract(
-        {SemanticNodeKind::Port, SemanticNodeKind::Buffer});
+    topologyEdges = semanticGraph.contract(contractKinds);
     topologyTiles.clear();
     for (const SemanticEdge &edge : topologyEdges) {
       for (StringRef nodeID : {StringRef(edge.source), StringRef(edge.dest)}) {
@@ -1255,14 +1228,14 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
 
   output << "digraph aie_routes {\n"
          << "  graph [layout=neato, overlap=true"
-         << (topologyOnly ? ", splines=curved" : "")
+         << (semanticView ? ", splines=curved" : "")
          << ", outputorder=nodesfirst, bgcolor=\"white\", pad=\"0.45\"];\n"
          << "  node [fontname=\"Helvetica\"];\n"
          << "  edge [fontname=\"Helvetica\", fontsize=9, arrowsize=0.65];\n";
   for (int col = 0; col < model.columns(); ++col) {
     for (int row = 0; row < model.rows(); ++row) {
       if (!designTiles.count({col, row}) ||
-          (topologyOnly && !topologyTiles.count({col, row})))
+          (semanticView && !topologyTiles.count({col, row})))
         continue;
       StringRef fill = model.isCoreTile(col, row)      ? "#eef7ee"
                        : model.isMemTile(col, row)     ? "#fff2df"
@@ -1278,7 +1251,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
              << "\", color=\"#b8b8b8\", fontcolor=\"#555555\"];\n";
     }
   }
-  if (!topologyOnly) {
+  if (!semanticView) {
     for (const PortNode &port : ports) {
       auto [x, y] = portPosition(port, layout);
       output << "  " << portNodeID(port);
@@ -1300,15 +1273,6 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
                << "\", class=\"" << flowClasses(portFlowGroups[port], kind)
                << "\"];\n";
       }
-    }
-    for (const PortNode &port : guidePorts) {
-      if (ports.count(port))
-        continue;
-      auto [x, y] = portPosition(port, layout);
-      output << "  " << portNodeID(port)
-             << " [shape=point, width=0, height=0, pos=\"" << dotCoordinate(x)
-             << ',' << dotCoordinate(y) << R"(!", label="", class=")"
-             << flowClasses(portFlowGroups[port], "guide-port") << "\"];\n";
     }
     unsigned annotationID = 0;
     std::map<Segment, unsigned> segmentAnnotationCounts;
@@ -1402,25 +1366,22 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     }
   }
   std::map<Operation *, unsigned> bufferIDs;
-  if (!hideBuffers || topologyOnly) {
-    for (const BufferInfo &buffer : *buffers) {
-      auto localIndex = bufferLocalIndices.find(buffer.op);
-      if (localIndex == bufferLocalIndices.end())
-        continue;
-      bufferIDs[buffer.op] = buffer.id;
-      double x = layout.tileCenterX(buffer.col);
-      double y = localNodeY(buffer.row, localIndex->second);
-      output << "  " << bufferNodeID(buffer.id)
-             << " [shape=box, fixedsize=true, width="
-             << dotCoordinate(localNodeWidth) << ", height=0.34, pos=\""
-             << dotCoordinate(x) << ',' << dotCoordinate(y) << "!\"";
-      output << ", label=\"" << bufferLabel(buffer.op, buffer.id)
-             << "\", class=\""
-             << flowClasses(bufferFlowGroups[buffer.op],
-                            "buffer detail-buffers")
-             << "\", fontsize=8, style=filled, fillcolor=\"#ffffff\", "
-                "color=\"#666666\"];\n";
-    }
+  for (const BufferInfo &buffer : *buffers) {
+    auto localIndex = bufferLocalIndices.find(buffer.op);
+    if (localIndex == bufferLocalIndices.end())
+      continue;
+    bufferIDs[buffer.op] = buffer.id;
+    double x = layout.tileCenterX(buffer.col);
+    double y = localNodeY(buffer.row, localIndex->second);
+    output << "  " << bufferNodeID(buffer.id)
+           << " [shape=box, fixedsize=true, width="
+           << dotCoordinate(localNodeWidth) << ", height=0.34, pos=\""
+           << dotCoordinate(x) << ',' << dotCoordinate(y) << "!\"";
+    output << ", label=\"" << bufferLabel(buffer.op, buffer.id)
+           << "\", class=\""
+           << flowClasses(bufferFlowGroups[buffer.op], "buffer detail-buffers")
+           << "\", fontsize=8, style=filled, fillcolor=\"#ffffff\", "
+              "color=\"#666666\"];\n";
   }
   if (!runtimeArguments.empty()) {
     std::set<int> designColumns;
@@ -1449,7 +1410,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
              << "\", fontsize=8, style=filled, fillcolor=\"#fff7d6\", "
                 "color=\"#8f7c32\"];\n";
     }
-    if (!topologyOnly) {
+    if (!semanticView) {
       for (const RuntimeArgumentInfo &argument : runtimeArguments) {
         for (const DMAChannelKey &key : argument.channels) {
           auto [col, row, direction, channel] = key;
@@ -1465,7 +1426,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       }
     }
   }
-  if (!topologyOnly || !calls.empty()) {
+  if (!semanticView || !calls.empty()) {
     for (const CallInfo &call : calls) {
       auto localIndex = callLocalIndices.find(call.id);
       if (localIndex == callLocalIndices.end())
@@ -1480,7 +1441,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
              << flowClasses(callFlowGroups[call.id], "call detail-calls")
              << "\", fontsize=8, style=filled, fillcolor=\"#f7f7f7\", "
                 "color=\"#555555\"];\n";
-      if (topologyOnly)
+      if (semanticView)
         continue;
       for (AIE::BufferOp buffer : call.buffers) {
         auto bufferID = bufferIDs.find(buffer);
@@ -1494,7 +1455,6 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     }
   }
   auto writeColors = [&](ArrayRef<const FlowRoute *> edgeRoutes) {
-    bool anyHighlighted = false;
     bool first = true;
     std::set<unsigned> writtenGroups;
     for (const FlowRoute *route : edgeRoutes) {
@@ -1503,22 +1463,15 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
         continue;
       if (!first)
         output << ':';
-      if (isHighlighted(groupID)) {
-        output << flowColor(groupID);
-        anyHighlighted = true;
-      } else {
-        output << "#c2c2c2";
-      }
+      output << flowColor(groupID);
       first = false;
     }
     if (first)
       output << "#c2c2c2";
-    return anyHighlighted;
   };
   auto writeLabel = [&](const FlowRoute &route) {
     unsigned groupID = groups.routeGroups[route.id];
-    std::string color = isHighlighted(groupID) ? flowColor(groupID) : "#c2c2c2";
-    output << "<FONT COLOR=\"" << color << "\">F" << groupID;
+    output << "<FONT COLOR=\"" << flowColor(groupID) << "\">F" << groupID;
     if (route.packetID) {
       output << " pkt=" << *route.packetID;
       if (route.packetMask)
@@ -1530,7 +1483,7 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     }
     output << "</FONT>";
   };
-  if (topologyOnly) {
+  if (semanticView) {
     std::vector<std::vector<const FlowRoute *>> groupRoutes(groups.count);
     for (const FlowRoute &route : *routes) {
       unsigned groupID = groups.routeGroups[route.id];
@@ -1597,10 +1550,10 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
         kind += " detail-calls";
       output << "  " << endpoints.first << " -> " << endpoints.second
              << " [color=\"";
-      bool anyHighlighted = writeColors(edgeRoutes);
+      writeColors(edgeRoutes);
       output << "\", class=\"" << flowClasses(edgeRoutes, groups, kind)
-             << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2") << '\"';
-      bool writeRouteLabels = !hidePacketIDs && !labelRoutes.empty();
+             << R"(", penwidth="2.4")";
+      bool writeRouteLabels = !labelRoutes.empty();
       bool writeCount = edgeCounts[endpoints] > 1;
       if (writeRouteLabels || writeCount) {
         output << ", label=<";
@@ -1631,18 +1584,15 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
         continue;
       labels.push_back(route);
     }
-    auto nodeID = [&](const PortNode &port) {
-      return topologyOnly ? tileNodeID(port.col, port.row) : portNodeID(port);
-    };
-    output << "  " << nodeID(segment.source) << " -> " << nodeID(segment.dest)
-           << " [color=\"";
-    bool anyHighlighted = writeColors(segmentRoutes);
+    output << "  " << portNodeID(segment.source) << " -> "
+           << portNodeID(segment.dest) << " [color=\"";
+    writeColors(segmentRoutes);
     std::string kind = labels.empty() ? "route" : "route detail-packet-ids";
     if (!arrowSegments.count(segment))
       kind += " detail-vias";
     output << "\", class=\"" << flowClasses(segmentRoutes, groups, kind)
-           << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2") << '\"';
-    if (!hidePacketIDs && !labels.empty()) {
+           << R"(", penwidth="2.4")";
+    if (!labels.empty()) {
       output << ", label=<";
       for (auto [index, route] : llvm::enumerate(labels)) {
         if (index)
@@ -1651,27 +1601,22 @@ emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       }
       output << '>';
     }
-    if (!topologyOnly && hideVias && !arrowSegments.count(segment))
-      output << ", arrowhead=none";
     output << "];\n";
   }
   for (const auto &[segment, segmentRoutes] : bufferSegments) {
     auto bufferID = bufferIDs.find(segment.buffer);
     if (bufferID == bufferIDs.end())
       continue;
-    std::string portID = topologyOnly
-                             ? tileNodeID(segment.port.col, segment.port.row)
-                             : portNodeID(segment.port);
+    std::string portID = portNodeID(segment.port);
     std::string source =
         segment.intoBuffer ? portID : bufferNodeID(bufferID->second);
     std::string dest =
         segment.intoBuffer ? bufferNodeID(bufferID->second) : portID;
     output << "  " << source << " -> " << dest << " [color=\"";
-    bool anyHighlighted = writeColors(segmentRoutes);
+    writeColors(segmentRoutes);
     output << "\", class=\""
            << flowClasses(segmentRoutes, groups, "buffer-link detail-buffers")
-           << "\", penwidth=\"" << (anyHighlighted ? "2.4" : "1.2")
-           << "\", style=dashed];\n";
+           << "\", penwidth=\"2.4\", style=dashed];\n";
   }
   output << "}\n";
   return success();
@@ -1733,11 +1678,6 @@ int main(int argc, char *argv[]) {
 
   model.validate();
 
-  if (emitDot && !emitDotPerFlow.empty()) {
-    errs() << "--emit-dot and --emit-dot-per-flow are mutually exclusive\n";
-    return 3;
-  }
-
   if (skipRuntime && !runtimeSequenceName.empty()) {
     errs() << "--skip-runtime and --runtime-sequence are mutually exclusive\n";
     return 3;
@@ -1773,39 +1713,6 @@ int main(int argc, char *argv[]) {
     if (failed(emitRouteDot(deviceOp, output.os(), runtimeSequence)))
       return 4;
     output.keep();
-    return 0;
-  }
-
-  if (!emitDotPerFlow.empty()) {
-    if (!onlyFlows.empty() || !highlightedFlows.empty() ||
-        outputFilename.getNumOccurrences()) {
-      errs() << "--emit-dot-per-flow cannot be combined with --only-flow, "
-                "--highlight-flow, or -o\n";
-      return 3;
-    }
-    std::optional<std::vector<FlowRoute>> routes = collectRoutes(deviceOp);
-    if (!routes)
-      return 4;
-    std::vector<FlowRoute> &routeList = *routes;
-    DMAChannelBuffers channelBuffers = collectDMAChannelBuffers(deviceOp);
-    FlowGroups groups = collectFlowGroups(routeList, channelBuffers);
-    std::error_code error = sys::fs::create_directories(emitDotPerFlow);
-    if (error) {
-      errs() << error.message() << '\n';
-      return 3;
-    }
-    for (unsigned groupID = 0; groupID < groups.count; ++groupID) {
-      SmallString<256> path(emitDotPerFlow);
-      sys::path::append(path, "flow-" + std::to_string(groupID) + ".dot");
-      ToolOutputFile output(path, error, sys::fs::OF_Text);
-      if (error) {
-        errs() << error.message() << '\n';
-        return 3;
-      }
-      if (failed(emitRouteDot(deviceOp, output.os(), runtimeSequence, groupID)))
-        return 4;
-      output.keep();
-    }
     return 0;
   }
 

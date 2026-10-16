@@ -5,9 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+// The HTML viewer loads generated SVGs and controls details and flow selection.
+
 // REQUIRES: aie-visualize
 // RUN: FileCheck %s < %S/../../build/bin/aie-visualize.html
-// RUN: aie-visualize --emit-dot --topology-only %S/requires-vias.mlir -o %t.dot
+// RUN: aie-visualize --emit-dot --contract=port,buffer %S/requires-vias.mlir -o %t.dot
 // RUN: dot -Tsvg %t.dot -o %t-topology.svg
 
 // CHECK: <meta name="aie-visualize-svg" content="">

@@ -5,19 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Flow grouping crosses serial buffers but retains buffer fan-out and join nodes.
+
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=ALL
 // RUN: aie-visualize --emit-dot --only-flow=0 %s | FileCheck %s --check-prefix=GROUP
-// RUN: aie-visualize --emit-dot --only-flow=0 --hide-buffers %s | FileCheck %s --check-prefix=HIDDEN
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t %s
-// RUN: ls %t/flow-*.dot | count 4
-// RUN: FileCheck %s --check-prefix=GROUP < %t/flow-0.dot
-// RUN: FileCheck %s --check-prefix=OTHER < %t/flow-1.dot
-// RUN: FileCheck %s --check-prefix=FANOUT < %t/flow-2.dot
-// RUN: FileCheck %s --check-prefix=JOIN < %t/flow-3.dot
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --no-follow-buffers %s
-// RUN: ls %t/flow-*.dot | count 9
-// RUN: aie-visualize --emit-dot --topology-only %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=OTHER
+// RUN: aie-visualize --emit-dot --only-flow=2 %s | FileCheck %s --check-prefix=FANOUT
+// RUN: aie-visualize --emit-dot --only-flow=3 %s | FileCheck %s --check-prefix=JOIN
+// RUN: aie-visualize --emit-dot --no-follow-buffers --only-flow=8 %s | FileCheck %s --check-prefix=UNGROUPED
+// RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
 
 // ALL: p_0_2_1_0_m -> p_0_2_5_0 [color="#d73027"
 // ALL: p_0_2_5_0 -> p_0_3_3_0 {{.*}} label=<<FONT COLOR="#d73027">F0</FONT>>
@@ -44,9 +41,6 @@
 // GROUP-NOT: MM2S
 // GROUP-NOT: p_0_4_0_1
 
-// HIDDEN-NOT: buffer_0
-// HIDDEN-NOT: label="bridge"
-
 // OTHER-NOT: label="bridge"
 // OTHER: p_0_4_1_1_m -> p_0_4_5_0
 // OTHER: p_0_4_5_0 -> p_0_5_3_0 {{.*}} label=<<FONT COLOR="#4575b4">F1</FONT>>
@@ -58,6 +52,8 @@
 // JOIN: label="join"
 // JOIN: p_0_2_1_0_s -> buffer_2 {{.*}}style=dashed];
 // JOIN: p_0_2_1_1_s -> buffer_2 {{.*}}style=dashed];
+
+// UNGROUPED: F8
 
 // TOPOLOGY-DAG: buffer_0 {{.*}}label="bridge"{{.*}}class="buffer detail-buffers flow flow-0"
 // TOPOLOGY-DAG: buffer_1 {{.*}}label="fanout"{{.*}}class="buffer detail-buffers flow flow-2"

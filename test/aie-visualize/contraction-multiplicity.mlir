@@ -5,8 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Contraction combines equivalent buffer paths and records their multiplicity.
+
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot --topology-only %s | FileCheck %s
+// RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s
 
 // CHECK-NOT: buffer_
 // CHECK: call_0 {{.*}}label="consume"
