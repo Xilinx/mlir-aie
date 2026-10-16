@@ -148,16 +148,8 @@ struct AIEDedupCtrlPacketMulticastPass
     return success();
   }
 
-  // The leading packets every tile of the group has at the same position are
-  // sent once, from the lowest tile; each tile still applies the same writes
-  // in order. Every tile must have packets, since the multicast reaches all.
-  //
-  // Across columns the shared packets go on the lowest tile's shim channel,
-  // which parallel shims do not order against the others. If another packet
-  // of the run on a group tile writes a register they write, starts a DMA
-  // channel or enables the core, the shared packets are stamped
-  // aiex.ctrl_pkt_base_phase and sent first; without drain-merge they always
-  // are.
+  // Sends the leading packets every tile of the group has in common once, from
+  // the lowest tile, in a base phase where the pass description says.
   LogicalResult
   dedupGroup(ArrayRef<NpuControlPacketOp> run,
              std::map<TileKey, SmallVector<NpuControlPacketOp>> &members,
@@ -188,13 +180,12 @@ struct AIEDedupCtrlPacketMulticastPass
         members.begin()->first.first != std::prev(members.end())->first.first;
     bool ordered = false;
     if (spansColumns) {
-      llvm::DenseSet<uint32_t> shared;
+      SmallVector<Classified> shared;
       for (size_t i = 0; i < baseLen; ++i) {
-        auto data = first[i].getData();
-        size_t words = data ? data->size() : 1;
-        uint32_t offset = first[i].getAddress() & ((1u << rowShift) - 1);
-        for (size_t w = 0; w < words; ++w)
-          shared.insert(offset + 4 * w);
+        FailureOr<Classified> c = classifier.classify(first[i]);
+        if (failed(c))
+          return failure();
+        shared.push_back(std::move(*c));
       }
       llvm::DenseSet<Operation *> baseOps;
       for (auto *packets : tiles)
@@ -213,12 +204,8 @@ struct AIEDedupCtrlPacketMulticastPass
         FailureOr<Classified> c = classifier.classify(packet);
         if (failed(c))
           return failure();
-        ordered = c->startsSomething;
-        auto data = packet.getData();
-        size_t words = data ? data->size() : 1;
-        uint32_t offset = packet.getAddress() & ((1u << rowShift) - 1);
-        for (size_t w = 0; w < words && !ordered; ++w)
-          ordered = shared.contains(offset + 4 * w);
+        ordered = llvm::any_of(
+            shared, [&](const Classified &s) { return !s.commutesWith(*c); });
       }
     }
     AIEXDialect::CtrlPktBasePhaseAttrHelper basePhaseStamp(&getContext());

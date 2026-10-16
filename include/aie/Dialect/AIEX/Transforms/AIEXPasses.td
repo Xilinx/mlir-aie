@@ -727,10 +727,11 @@ def AIEDedupCtrlPacketMulticast
     A group spanning columns gets its base from its lowest tile's shim channel,
     which `aie-ctrl-packet-to-dma` with `parallel-shims` does not order against
     the other columns. When another packet of the same phase on a group tile
-    writes a register the base writes, starts a DMA channel or enables the core,
-    the base is stamped `aiex.ctrl_pkt_base_phase`, which that lowering sends
-    first. With `drain-merge=false` the base is stamped whenever the group spans
-    columns.
+    does not commute with the base, the base is stamped
+    `aiex.ctrl_pkt_base_phase`, which that lowering sends first. Two packets do
+    not commute when they write a common register or one starts a DMA channel or
+    enables the core. With `drain-merge=false` the base is stamped whenever the
+    group spans columns.
   }];
 
   let options = [Option<
@@ -741,6 +742,39 @@ def AIEDedupCtrlPacketMulticast
   ];
 
   let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECheckCtrlPacketDelivery
+    : Pass<"aie-check-ctrl-packet-delivery", "mlir::ModuleOp"> {
+  let summary = "Check the order control packets land in";
+  let description = [{
+    Checks the control packets of every runtime sequence against the order
+    `aie-ctrl-packet-to-dma` delivers them in. Other ops separate runs and wait
+    for them. Within a run delivery is serial, or with `parallel-shims` phase by
+    phase, each shim channel in order within a phase.
+
+    It checks two rules. First, the packets that reach a tile (its own and those
+    on a multicast id its configured device stamps it with) land in program
+    order, except that two packets may swap when they share no address and
+    neither starts a DMA channel or enables the core.
+
+    Second, a packet that starts an MM2S channel not proved gated may send a
+    stream that stalls at a receiver nothing has started yet, holding the switch
+    arbiters on its way until its last word, so no control packet that may land
+    after it may take one of those arbiters.
+
+    An error names the packet that breaks a rule.
+  }];
+
+  let options = [Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false",
+                        "Check against parallel-shims delivery">,
+  ];
+
+  let constructor = "xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];

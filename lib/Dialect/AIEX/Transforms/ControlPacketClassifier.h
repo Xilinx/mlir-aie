@@ -30,10 +30,21 @@ struct Classified {
   Part part;
   // The MM2S channel a Part::ChannelStart packet starts.
   int channel = -1;
-  // Whether the packet writes a DMA channel's start queue (MM2S or S2MM) or the
-  // core's control register. The tile's other writes have to land before such a
-  // write, whatever their address.
+  // Whether the packet writes a DMA channel's start queue (MM2S or S2MM) or
+  // sets the core's enable bit. Such a write has to keep its place among the
+  // tile's other writes, whatever their address.
   bool startsSomething = false;
+  // The tile-local word addresses the packet writes.
+  llvm::SmallVector<uint32_t, 4> words;
+
+  // True when two writes to one tile share no address and neither starts
+  // something, so either order gives the same result.
+  bool commutesWith(const Classified &other) const {
+    return !startsSomething && !other.startsSomething &&
+           llvm::none_of(words, [&](uint32_t w) {
+             return llvm::is_contained(other.words, w);
+           });
+  }
 };
 
 // Classifies control packets by the register they write, from the target's
@@ -44,19 +55,24 @@ public:
 
   mlir::FailureOr<Classified> classify(NpuControlPacketOp op) {
     auto data = op.getData();
-    if (op.getOpcode() != 0 || !data)
-      return Classified{Part::Other};
+    uint32_t base = op.getAddress() & ((1u << tm.getRowShift()) - 1);
+    if (op.getOpcode() != 0 || !data) {
+      Classified c{Part::Other};
+      c.words.push_back(base);
+      return c;
+    }
     AIE::TileID tile{static_cast<int>(op.getColumnFromAddr()),
                      static_cast<int>(op.getRowFromAddr())};
     const TileRegisters *regs = getRegisters(op, tile);
     if (!regs)
       return mlir::failure();
-    uint32_t base = op.getAddress() & ((1u << tm.getRowShift()) - 1);
     Classified c{Part::Other};
     for (auto [i, word] : llvm::enumerate(*data)) {
       uint32_t offset = base + 4 * i;
+      c.words.push_back(offset);
       if (regs->queues.contains(offset) ||
-          (regs->coreControl && offset == *regs->coreControl))
+          (regs->coreControl && offset == *regs->coreControl &&
+           (word & regs->coreEnableMask)))
         c.startsSomething = true;
       if (auto it = regs->mm2sQueues.find(offset);
           it != regs->mm2sQueues.end() && c.part != Part::ChannelStart) {

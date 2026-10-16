@@ -35,6 +35,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIEReorderControlPacketsByTile.cpp
   AIECheckCoreStartGating.cpp
   AIEDedupCtrlPacketMulticast.cpp
+  AIECheckCtrlPacketDelivery.cpp
   AIEExpandLoadPdi.cpp
   AIEInlineTraceConfig.cpp
   AIEFuseTraceBuffers.cpp

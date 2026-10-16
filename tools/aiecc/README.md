@@ -107,6 +107,8 @@ the same routes. These options adjust it; each requires it:
   group of w columns share go once, on a control multicast
   (`aie-dedup-ctrl-packet-multicast`).
 
+`aie-check-ctrl-packet-delivery` checks every delivery order these produce.
+
 ### Parameterized C++ transaction builders
 
 ```bash

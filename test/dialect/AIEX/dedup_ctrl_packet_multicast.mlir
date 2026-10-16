@@ -7,6 +7,8 @@
 
 // RUN: aie-opt %s -aie-dedup-ctrl-packet-multicast --split-input-file | FileCheck %s
 // RUN: aie-opt %s -aie-dedup-ctrl-packet-multicast=drain-merge=false --split-input-file | FileCheck %s --check-prefix=NOMERGE
+// What the dedup emits lands in order under parallel shims.
+// RUN: aie-opt %s -aie-dedup-ctrl-packet-multicast --split-input-file -aie-check-ctrl-packet-delivery=parallel-shims=true -o /dev/null
 
 // Tiles (0, 2), (0, 3) and (0, 5) of @cfg share multicast id 25. Each tile's
 // first two writes (a core reset and a program word) are the same apart from

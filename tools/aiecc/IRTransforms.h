@@ -2045,6 +2045,11 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     }
     if (cli::ctrlpktMulticastSpan)
       pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());
+    if (cli::ctrlpktReorderByTile || cli::ctrlpktParallelShims) {
+      xilinx::AIEX::AIECheckCtrlPacketDeliveryOptions check;
+      check.parallelShims = cli::ctrlpktParallelShims;
+      pm->addPass(xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass(check));
+    }
   }
   return pm;
 }
