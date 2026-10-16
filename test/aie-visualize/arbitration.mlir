@@ -5,6 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Packet-flow labels include the matching arbitration rule and packet metadata.
+
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot --no-follow-buffers %s | FileCheck %s
 

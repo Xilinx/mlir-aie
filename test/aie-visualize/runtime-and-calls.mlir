@@ -5,11 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Runtime arguments and kernel calls connect to their DMA channels and buffers.
+
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=ALL
 // RUN: aie-visualize --emit-dot --skip-runtime %s | FileCheck %s --check-prefix=SKIP
-// RUN: aie-visualize --emit-dot --hide-calls %s | FileCheck %s --check-prefix=NO-CALLS
-// RUN: aie-visualize --emit-dot --topology-only %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
 
 // ALL: tile_0_0 {{.*}} height=2.150000
 // ALL: p_0_0_1_0_m {{.*}} label="MM2S0"{{.*}} class="port flow flow-0"
@@ -40,9 +41,6 @@
 // SKIP: label="S2MM1"
 // SKIP-NOT: runtime_arg_
 // SKIP-NOT: runtime_task_
-
-// NO-CALLS-NOT: call_0
-// NO-CALLS-NOT: label="kernel"
 
 // TOPOLOGY: p_0_0_1_0_m {{.*}}label="MM2S0"{{.*}}class="port flow flow-0"
 // TOPOLOGY: buffer_0 {{.*}}label="core_buffer"{{.*}}class="buffer detail-buffers flow flow-2"

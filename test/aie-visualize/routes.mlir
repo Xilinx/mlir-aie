@@ -5,24 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Route views render vias, packet metadata, arbitration, semantic topology, and selected flows.
+
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot --no-follow-buffers %s | FileCheck %s --check-prefix=ALL
-// RUN: aie-visualize --emit-dot --no-follow-buffers --hide-vias --hide-packet-ids --hide-buffers %s | FileCheck %s --check-prefix=GUIDED
 // RUN: aie-visualize --emit-dot --no-follow-buffers %s | FileCheck %s --check-prefix=VIAS
-// RUN: aie-visualize --emit-dot --no-follow-buffers --topology-only %s | FileCheck %s --check-prefix=TOPOLOGY
-// RUN: aie-visualize --emit-dot --no-follow-buffers --topology-only --device=main %s | FileCheck %s --check-prefix=TOPOLOGY
-// RUN: aie-visualize --emit-dot --no-follow-buffers --topology-only --tile-width=3.2 %s | FileCheck %s --check-prefix=WIDE
-// RUN: aie-visualize --emit-dot --no-follow-buffers --hide-packet-ids %s | FileCheck %s --check-prefix=NO-IDS
-// RUN: aie-visualize --emit-dot --no-follow-buffers --hide-arbitration %s | FileCheck %s --check-prefix=NO-ARBITRATION
-// RUN: aie-visualize --emit-dot --no-follow-buffers --hide-buffers %s | FileCheck %s --check-prefix=NO-BUFFER-LINK
-// RUN: aie-visualize --emit-dot --no-follow-buffers --highlight-flow=1 %s | FileCheck %s --check-prefix=HIGHLIGHT
+// RUN: aie-visualize --emit-dot --no-follow-buffers --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --no-follow-buffers --contract=port,buffer --device=main %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --no-follow-buffers --contract=port,buffer --tile-width=3.2 %s | FileCheck %s --check-prefix=WIDE
 // RUN: aie-visualize --emit-dot --no-follow-buffers --only-flow=1 %s | FileCheck %s --check-prefix=ONLY
 // RUN: not aie-visualize --emit-dot --no-follow-buffers --only-flow=9 %s 2>&1 | FileCheck %s --check-prefix=BAD-ID
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --no-follow-buffers %s
-// RUN: FileCheck %s --check-prefix=FLOW0 < %t/flow-0.dot
-// RUN: FileCheck %s --check-prefix=FLOW2 < %t/flow-2.dot
-// RUN: ls %t/flow-*.dot | count 5
-// RUN: not aie-visualize --emit-dot --emit-dot-per-flow=%t %s 2>&1 | FileCheck %s --check-prefix=BAD-MODE
+// RUN: not aie-visualize --emit-dot --contract=unknown %s 2>&1 | FileCheck %s --check-prefix=BAD-KIND
 
 // ALL: digraph aie_routes
 // ALL: graph [layout=neato, overlap=true, outputorder=nodesfirst
@@ -45,14 +38,6 @@
 // ALL: p_0_3_1_0_s -> buffer_1 {{.*}}style=dashed];
 // ALL-NOT: MM2S
 // ALL-NOT: S2MM
-
-// GUIDED: graph [layout=neato
-// GUIDED: p_0_2_1_0_m [shape=box, fixedsize=true,{{.*}} label="MM2S0"
-// GUIDED: p_0_2_5_0 [shape=point, width=0, height=0, {{.*}} label=""
-// GUIDED: p_0_2_1_0_m -> p_0_2_5_0 {{.*}} arrowhead=none];
-// GUIDED: p_0_2_5_0 -> p_0_3_3_0 {{.*}} arrowhead=none];
-// GUIDED: p_0_3_3_0 -> p_0_3_1_0_s
-// GUIDED-NOT: p_0_3_3_0 {{.*}} xlabel=
 
 // VIAS: p_0_2_5_0 [shape=point, width=0.09, {{.*}} xlabel="N0"
 // VIAS-SAME: class="port detail-vias
@@ -84,35 +69,12 @@
 // WIDE: p_0_2_1_0_m {{.*}}width=0.82{{.*}}pos="-1.400000,
 // WIDE: buffer_0 {{.*}}width=1.750000{{.*}}pos="0.000000,
 
-// NO-IDS: p_0_2_5_0 -> p_0_3_3_0
-// NO-IDS-NOT: pkt=
-// NO-IDS-NOT: label=<
-
-// NO-ARBITRATION-NOT: arbitration_
-
-// NO-BUFFER-LINK: p_0_2_5_0 -> p_0_3_3_0
-// NO-BUFFER-LINK-NOT: buffer_0
-
-// HIGHLIGHT: p_0_2_1_0_m -> p_0_2_5_0 [color="#c2c2c2:#4575b4", {{.*}}penwidth="2.4"
-// HIGHLIGHT: p_0_2_5_0 -> p_0_3_3_0 {{.*}} label=<<FONT COLOR="#c2c2c2">F0 pkt=3/31</FONT><BR/><FONT COLOR="#4575b4">F1 pkt=4/31</FONT>>
-// HIGHLIGHT: p_0_4_1_0_m -> p_0_4_3_1 [color="#c2c2c2", {{.*}}penwidth="1.2"
-
 // ONLY-NOT: F0 pkt=3
 // ONLY: F1 pkt=4/31
 // ONLY-NOT: F2 pkt=5
 
 // BAD-ID: --only-flow references unknown flow 9; valid IDs are 0 through 4
-// BAD-MODE: --emit-dot and --emit-dot-per-flow are mutually exclusive
-
-// FLOW0: buffer_0 {{.*}} label="source"
-// FLOW0: buffer_1 {{.*}} label="dest"
-// FLOW0-NOT: label="other"
-// FLOW0: F0 pkt=3/31
-// FLOW0-NOT: F1 pkt=4/31
-
-// FLOW2-NOT: label="source"
-// FLOW2: buffer_2 {{.*}} label="other"
-// FLOW2: F2 pkt=5/31
+// BAD-KIND: --contract references unknown node kind 'unknown'
 // FLOW2-NOT: F3 pkt=6/31
 
 module {

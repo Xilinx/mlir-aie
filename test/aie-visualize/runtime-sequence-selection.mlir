@@ -5,6 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Runtime sequence selection limits DMA annotations to the named sequence.
+
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=DEFAULT
 // RUN: aie-visualize --emit-dot --runtime-sequence=second %s | FileCheck %s --check-prefix=SECOND

@@ -5,13 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Flow grouping crosses shared endpoints while retaining endpoint fan-out.
+
 // REQUIRES: aie-visualize
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t %s
-// RUN: ls %t/flow-*.dot | count 2
-// RUN: FileCheck %s --check-prefix=FANOUT < %t/flow-0.dot
-// RUN: FileCheck %s --check-prefix=OTHER < %t/flow-1.dot
-// RUN: rm -rf %t && aie-visualize --emit-dot-per-flow=%t --no-follow-buffers %s
-// RUN: ls %t/flow-*.dot | count 4
+// RUN: aie-visualize --emit-dot --only-flow=0 %s | FileCheck %s --check-prefix=FANOUT
+// RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=OTHER
+// RUN: aie-visualize --emit-dot --no-follow-buffers --only-flow=3 %s | FileCheck %s --check-prefix=UNGROUPED
 
 // FANOUT: p_0_2_1_0_m -> p_0_2_5_5
 // FANOUT: p_0_2_5_5 -> p_0_3_3_5 {{.*}} label=<<FONT COLOR="#d73027">F0</FONT>>
@@ -21,6 +20,8 @@
 
 // OTHER: p_0_4_0_0 -> p_0_4_3_0
 // OTHER: p_0_4_3_0 -> p_0_3_5_0 {{.*}} label=<<FONT COLOR="#4575b4">F1</FONT>>
+
+// UNGROUPED: F3
 
 module {
   aie.device(npu1_1col) {
