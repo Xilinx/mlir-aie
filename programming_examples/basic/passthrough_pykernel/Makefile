@@ -29,10 +29,13 @@ all: ${xclbin_target} ${insts_target}
 
 $(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
 
+# -DAIE_BUILD_DESIGN=OFF: the CMakeLists can also JIT the design and register
+# the ctests (that is what run_cmake.lit uses). Here we only want the host
+# binary -- ${xclbin_target} above already built the design.
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DPASSTHROUGH_SIZE=${data_size}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DPASSTHROUGH_SIZE=${data_size} -DAIE_BUILD_DESIGN=OFF
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

@@ -1,0 +1,17 @@
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Build+run via CMake + ctest (no make; works on Windows). Mirrors run.lit,
+// which sweeps two axes: device and fuse_relu. %aie_cmake_device% covers the
+// first, so only fuse_relu is spelled out, as two configures.
+// add_aie_run_test's ctest already wraps run_on_npu.py, so ctest runs directly.
+//
+// REQUIRES: ryzen_ai, peano, torch, cmake_examples
+//
+// RUN: cmake -G Ninja -S %S -B %t.plain -DAIE_DEVICE=%aie_cmake_device% -DPython3_EXECUTABLE=%python
+// RUN: cmake --build %t.plain
+// RUN: ctest --test-dir %t.plain --output-on-failure --no-tests=error
+//
+// RUN: cmake -G Ninja -S %S -B %t.relu -DAIE_DEVICE=%aie_cmake_device% -DFUSE_RELU=ON -DPython3_EXECUTABLE=%python
+// RUN: cmake --build %t.relu
+// RUN: ctest --test-dir %t.relu --output-on-failure --no-tests=error

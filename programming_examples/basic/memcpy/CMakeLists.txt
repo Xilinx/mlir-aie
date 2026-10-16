@@ -29,3 +29,13 @@ target_link_libraries(${currentTarget} PUBLIC
 )
 
 target_link_test_utils(${currentTarget})
+
+# Build the design and register the NPU run; -DAIE_DEVICE=npu2 targets Strix.
+set(AIE_DEVICE npu CACHE STRING "NPU device family for the example (npu|npu2)")
+set(LENGTH 16384 CACHE STRING "Transfer length")
+set(COLS 1 CACHE STRING "Number of columns")
+set(CHANS 1 CACHE STRING "Number of channels")
+set(BYPASS True CACHE STRING "Bypass the compute tile")
+add_aie_design(TARGET ${currentTarget} PY memcpy.py DEVICE ${AIE_DEVICE} ELF ARGS -l ${LENGTH} -co ${COLS} -ch ${CHANS} -b ${BYPASS})
+add_dependencies(${currentTarget} ${currentTarget}_xclbin)
+add_aie_run_test(NAME ${currentTarget} DEVICE ${AIE_DEVICE} EXE ${currentTarget} USE_ELF RUN_ARGS -l ${LENGTH})
