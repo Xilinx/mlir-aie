@@ -237,6 +237,21 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         return self._to_stream
 
     @property
+    def repeat_count(self) -> int | None:
+        """How many times the sending end replicates each object; None for once."""
+        return self._repeat_count
+
+    @property
+    def producer(self) -> ObjectFifoHandle | None:
+        """The producer handle, or None before `prod()` is called."""
+        return self._prod
+
+    @property
+    def consumers(self) -> list[ObjectFifoHandle]:
+        """The consumer handles, in `cons()` order."""
+        return list(self._cons)
+
+    @property
     def op(self) -> ObjectFifoCreateOp:
         if self._op is None:
             raise NotResolvedError()
@@ -681,6 +696,16 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     def _derived_name(self, suffix: str) -> str | None:
         name = self._object_fifo.name
         return None if name is None else name + suffix
+
+    @property
+    def object_fifo(self) -> ObjectFifo:
+        """The ObjectFifo this handle belongs to."""
+        return self._object_fifo
+
+    @property
+    def is_prod(self) -> bool:
+        """Whether this is the producer handle."""
+        return self._is_prod
 
     @property
     def channel(self) -> int | None:
@@ -1223,6 +1248,26 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
         if tile.tile_type is None and not placed:
             tile.tile_type = AIETileType.MemTile
         ObjectFifoEndpoint.__init__(self, tile)
+
+    @property
+    def srcs(self) -> list[ObjectFifoHandle]:
+        """The consumer handles the link reads from."""
+        return list(self._srcs)
+
+    @property
+    def dsts(self) -> list[ObjectFifoHandle]:
+        """The producer handles the link writes to."""
+        return list(self._dsts)
+
+    @property
+    def src_offsets(self) -> list[int]:
+        """Each source's element offset into the shared object of a join; empty otherwise."""
+        return list(self._src_offsets)
+
+    @property
+    def dst_offsets(self) -> list[int]:
+        """Each destination's element offset into the shared object of a distribute; empty otherwise."""
+        return list(self._dst_offsets)
 
     def _transfer_sizes(self, of: ObjectFifo) -> list[int]:
         """Return the elements each transfer of `of`'s end of the link moves, per segment it walks.

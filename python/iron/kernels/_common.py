@@ -8,6 +8,7 @@
 import hashlib
 import os
 from dataclasses import dataclass, replace
+from enum import Enum
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
 
@@ -51,8 +52,11 @@ class TensorLayout:
     to the kernel or drains it, ``None`` when the operand streams as stored;
     ``block`` is the micro-tile the kernel consumes or produces, ``(r, s)``
     for an MMUL operand. The codec is built from the same two facts, so the
-    host and the design agree by construction. None of this is an algorithm
-    or a whole-problem iteration schedule.
+    host and the design agree by construction. ``axes`` is the transpose
+    applied to the logical tile before streaming (``None``: none), and
+    ``inverse`` says ``stream`` drains the kernel's buffer rather than
+    filling it, so tools can rebuild the codec from these fields. None of
+    this is an algorithm or a whole-problem iteration schedule.
     """
 
     shape: tuple[int, ...]
@@ -60,6 +64,8 @@ class TensorLayout:
     unpack: Callable | None = None
     stream: TensorAccessPattern | None = None
     block: tuple[int, ...] | None = None
+    axes: tuple[int, ...] | None = None
+    inverse: bool = False
 
     def encode(self, values):
         values = np.asarray(values).reshape(-1, *self.shape)
@@ -126,6 +132,17 @@ class Build:
         return "portable" if self.portable else self.arch
 
 
+class SaturationMode(str, Enum):
+    """An ``aie::saturation_mode``, named as the C++ enumerator is."""
+
+    NONE = "none"
+    SATURATE = "saturate"
+    SYMMETRIC = "symmetric"
+
+    def __str__(self):
+        return self.value
+
+
 @dataclass(frozen=True)
 class KernelContract:
     """What a kernel computes, declared next to the factory that builds it.
@@ -170,6 +187,13 @@ class KernelContract:
             the rounding mode a bf16 store needs); ``None`` when the source
             sets its own mode or narrows nothing. A Worker handed the kernel
             calls it before its loop.
+        saturation: The core saturation mode the kernel narrows integer
+            results in, when it sets that mode itself; ``None`` when its
+            stores follow whatever mode the core holds on entry (a fresh
+            core holds ``NONE``, so they wrap).
+        leaves_saturation: The mode the kernel leaves set on the core, when
+            it changes the mode without restoring it; later kernels on that
+            core inherit it. ``None`` when the core keeps the mode it had.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
             kernel with no output argument (a cascade PUT half) says so here.
         layouts: A ``TensorLayout`` per argument; ``None`` is identity.
@@ -201,6 +225,8 @@ class KernelContract:
 
     Overflow, rounding and NaN handling are not declared twice: the
     reference is the arithmetic model and the tolerance the slack against it.
+    The saturation fields are core state rather than arithmetic: the mode a
+    call narrows in, and the mode it leaves for the next call on its core.
     """
 
     roles: tuple[type, ...]
@@ -212,6 +238,8 @@ class KernelContract:
     acc_dtype: type | None = None
     reduction: int | None = None
     setup: Callable[[], object] | None = None
+    saturation: SaturationMode | None = None
+    leaves_saturation: SaturationMode | None = None
     unsupported: str | None = None
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()

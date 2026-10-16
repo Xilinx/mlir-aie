@@ -31,7 +31,7 @@ from aie.iron import In, InOut, Out, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
-from aie.iron.kernels import BUILDS, KernelContract, Param
+from aie.iron.kernels import BUILDS, KernelContract, Param, SaturationMode
 from aie.iron.kernels._common import ARCH_TRAITS
 from aie.iron.kernels.activation import (
     softmax_banded_bound,
@@ -479,6 +479,37 @@ def test_factory_contract_follows_device_switch():
     )
     set_current_device(NPU2Col1())
     assert kernels.mha_softmax() == npu2
+
+
+@pytest.mark.parametrize(
+    "device,factory,saturation,leaves",
+    [
+        # mm stores in whatever mode the core holds, and leaves it alone.
+        (NPU1Col1, kernels.mm, None, None),
+        (NPU2Col1, kernels.mm, None, None),
+        # filter2d.cc calls set_sat() and never restores it.
+        (NPU1Col1, kernels.filter2d, SaturationMode.SATURATE, SaturationMode.SATURATE),
+        (NPU2Col1, kernels.filter2d, SaturationMode.SATURATE, SaturationMode.SATURATE),
+        # mha.cc swaps to saturate only in aie2's fast exp2, and restores it.
+        (NPU1Col1, kernels.mha_softmax, SaturationMode.SATURATE, None),
+        (NPU2Col1, kernels.mha_softmax, None, None),
+        (NPU1Col1, kernels.mha, None, None),
+        (NPU2Col1, kernels.mha, None, None),
+    ],
+)
+def test_saturation_fields_record_what_the_kernel_does(
+    device, factory, saturation, leaves
+):
+    set_current_device(device())
+    contract = factory().contract
+    assert contract.saturation is saturation
+    assert contract.leaves_saturation is leaves
+
+
+def test_saturation_fields_default_to_leaving_the_core_mode_alone():
+    contract = KernelContract(roles=(In, Out))
+    assert contract.saturation is None
+    assert contract.leaves_saturation is None
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
