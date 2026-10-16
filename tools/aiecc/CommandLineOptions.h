@@ -87,7 +87,9 @@ inline cl::opt<bool> verifyEach(
     cl::desc("Verify the IR after every pass, not once per pass pipeline "
              "(slower; names the pass that produced invalid IR)"));
 
-inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
+inline cl::opt<bool>
+    verbose("verbose",
+            cl::desc("Verbose execution, with the compiler's remarks"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose));
 inline cl::opt<bool>
