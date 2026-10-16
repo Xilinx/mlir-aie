@@ -109,7 +109,7 @@ selects. That domain is not chosen by hand: `domain_3col` proves, by `decide`
 on the exported contracts, that it is 16-bit wraparound. `matmul_8col` says
 the same for 8 columns.
 
-`check.py` audits every theorem. 334 schema theorems and the 92 instance proofs
+`check.py` audits every theorem. 337 schema theorems and the 92 instance proofs
 use only Lean's standard `propext`, `Classical.choice` and `Quot.sound`. So
 there's no `sorry` and no `native_decide` anywhere.
 
@@ -249,6 +249,90 @@ Each mutant is one real bug in a copy of `whole_array.py`.
   about 1.5 · 2³² bytes. The compiler carries it in i64 and accepts it.
   Whether the firmware honours offsets above 4 GiB is untested.
 
+## What we learned
+
+### What it cost
+
+| | Lines | Reusable beyond whole_array? |
+|---|---|---|
+| Lean semantics (`Walk`, `Seq`, `Net`, `Kernel`) and generic lemmas | ~600 | yes |
+| Lean instance machinery (`Instance`, `wa_stream`, `close_ok`, walk normalization) | ~890 | mostly |
+| Lean whole_array schema, statements and spec | ~800 | no |
+| Lean whole_array proof layers (`Schema/Proofs/`) | ~3,050 | partly: names, per-hop semantics and mixed-radix arithmetic are reusable patterns |
+| Lean export corollaries (`Exports`, `Examples`) | ~380 | as a pattern |
+| Python: exporter, oracle, difftests, mutations, driver | ~2,800 | mostly; the exporter and oracle are design-agnostic |
+| In-tree IRON hooks and their tests | ~320 | yes |
+| **Generated** instance proofs (92 configurations) | ~79,000 | produced by `instances.py` |
+
+Checking is cheap: the schema proofs build in about 2 minutes, and all 92
+instances with their width proofs in about 4, on a 32-core workstation. The
+full `check.py` takes about 30 minutes from a fresh clone, half of it the
+numpy-side sweep.
+
+### What was automated, and what wasn't
+
+- **Automated:** tying each configuration to the proof. A new configuration is
+  one entry in `instances.py`: it exports the design from the live objects and
+  generates the instance and width proofs, and two tactics close them
+  (`wa_stream` per channel, `close_ok` per runtime sequence).
+- **Automated:** validating statements before proving them. The schema was
+  evaluated against the live design on 1920 configurations, and every theorem
+  statement at 3,220 concrete points, before any proof was written. No proof
+  effort went into a statement that turned out false.
+- **Not automated:** the parametric proof itself. Its ~3,000 lines were written
+  (by AI agents working in parallel, one proof layer each, against statements
+  fixed up front) and are specific to whole_array's structure. This is the
+  part each new design family would pay for again.
+
+### Lessons
+
+1. **Read live objects, not source.** A few read-only accessors on IRON's
+   `Program` gave the exporter everything: fifos, taps, transfers, kernel
+   contracts. Nothing parses Python, and symbolic sizes come out as `arith`
+   terms for free.
+2. **Validate the semantics independently.** The proofs are only as good as the
+   model. The numpy oracle caught a real misreading of join semantics before
+   any proof depended on it, and the mutation suite checks that the proofs fail
+   when the design is wrong.
+3. **Per-configuration proofs don't scale; a parametric schema does.** The first
+   version proved each column count separately, and one small design fix broke
+   all of them. One schema proof plus automated instance checks covers every
+   configuration, and survives design edits as long as the structure holds.
+4. **Proof automation needs engineering like any other code.** The first
+   generated width proofs ran an expensive search tactic on every leaf goal:
+   about 200 s and 8 GB per file, and Lake's unbounded parallelism got them
+   OOM-killed. Structure-directed tactics (visit each node once, close leaves
+   with normalization plus a decision procedure) cut that to 51 s.
+5. **Formalizing finds bugs before the proof is finished.** Generalizing over
+   columns found the 3-column crash. The width obligations found the i32 wrap.
+   Deriving the value domain from kernel contracts found kernels that leave
+   saturation on.
+
+### Applying Lean elsewhere in mlir-aie
+
+Ranked by value for effort:
+
+1. **taplib's algebra.** Prove `tile`, `permute`, `split`, `partition`,
+   `coalesce` and `inverse` correct once against `Walk`. They are small and
+   every design uses them, so the proofs would shrink every later design proof.
+2. **DMA BD encoding and its canonicalizers.** Linearization, large-dim
+   decomposition, iteration and repeat encoding are pure index arithmetic, and
+   they have had silent miscompiles before. Proving that they preserve the
+   address sequence, for all sizes, fits this toolkit directly.
+3. **Other IRON designs.** The semantics, exporter, oracle and instance
+   machinery carry over. Each design family needs its own schema and proof
+   layers; simple data-movement designs (passthrough, elementwise, transposes)
+   should cost a small fraction of whole_array.
+4. **The objectfifo lowering, as translation validation.** Check per
+   compilation that the BD chains and locks implement the exported `Net`,
+   which shrinks the trusted base from "IRON's resolve and below" to the
+   hardware.
+5. **Deadlock freedom.** The planned exact deadlock model could emit
+   certificates for Lean to check, rather than proving the engine itself.
+
+Kernel arithmetic (C++ through Peano) is a poor fit for this approach; contracts
+checked numerically, as here, remain the practical boundary.
+
 ## Reproduce
 
 You need an mlir-aie environment built from this branch, where
@@ -269,28 +353,28 @@ The steps, in order (`--steps` runs a subset):
 | Step | What it does | Time |
 |---|---|---|
 | `export` | re-exports the difftest designs from the live objects, fails if stale | seconds |
-| `difftest` | walks and 26 design shapes against the oracle | ~30 s |
+| `difftest` | walks and 26 design shapes against the oracle | ~20 s |
 | `kernels` | layout codec and matmul arithmetic against the contract | ~5 min |
-| `sweep` | `schema p` against the oracle on 1920 configurations | ~16 min |
+| `sweep` | `schema p` against the oracle on 1920 configurations | ~15 min |
 | `proofs` | builds the schema theorems, audits every axiom | ~2 min cold |
-| `instances` | exports the 92 configurations from their live objects, builds their `Instance` and width proofs and the worked examples | ~3 min cold on 32 cores, peak ~45 GB |
-| `mutations` | the injected-bug suite | ~2.5 min |
+| `instances` | exports the 92 configurations from their live objects, builds their `Instance` and width proofs and the worked examples | ~4 min cold on 32 cores, peak ~45 GB |
+| `mutations` | the injected-bug suite | ~6 min |
 
 Expected tail:
 
 ```
 === summary ===
 PASS export (2 s)
-PASS difftest (24 s)
-PASS kernels (305 s)
-PASS sweep (941 s)
+PASS difftest (22 s)
+PASS kernels (298 s)
+PASS sweep (927 s)
 PASS proofs (6 s)
-PASS instances (11 s)
-PASS mutations (150 s)
+PASS instances (253 s)
+PASS mutations (338 s)
 ```
 
-(`proofs` and `instances` are seconds once built; about 2 and 1.5 minutes cold
-on 32 cores.)
+That is a fresh clone after `setup.sh`, which already builds the schema
+proofs; `instances` is a cold build. Run again, `instances` takes seconds.
 
 ## Experiment
 
