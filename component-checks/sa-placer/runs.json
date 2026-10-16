@@ -225,6 +225,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "38863737113",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38863737113",
+   "date": "2026-10-16T06:52:54+00:00",
+   "commit": {
+    "id": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "message": "IRON/mlir-aie Infrastructure Deduplication for iron-next (#3921)",
+    "timestamp": "2026-10-15T20:09:31Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "cb6f2d14a0",
+    "fixtures": "3aa7139253a0"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
