@@ -373,11 +373,39 @@ theorem step_ok (M K N rb : Int) : (step p M K N rb).ok = true := by
     · simp at hx
   · rfl
 
+/-- The runtime-parameter guard on a whole-tile shape: `M / m ≤ (2^31 - 1) / (N / n)` says the
+i32 product `(M / m) · (N / n)` fits. -/
+theorem rtp_bound_iff (Mt Nt : Nat) (hNt : 0 < Nt) :
+    ((p.rows * p.m * Mt : Nat) : Int) / (p.m : Nat) ≤
+        (2 ^ 31 - 1) / (((p.n * p.cols * Nt : Nat) : Int) / (p.n : Nat)) ↔
+      p.rows * Mt * (p.cols * Nt) < 2 ^ 31 := by
+  have hm : (0 : Int) < (p.m : Nat) := by have := hp.m_pos; positivity
+  have hn : (0 : Int) < (p.n : Nat) := by have := hp.n_pos; positivity
+  have hM : ((p.rows * p.m * Mt : Nat) : Int) / (p.m : Nat) = ((p.rows * Mt : Nat) : Int) := by
+    rw [show ((p.rows * p.m * Mt : Nat) : Int) = (p.m : Nat) * ((p.rows * Mt : Nat) : Int) by
+      push_cast; ring]
+    exact Int.mul_ediv_cancel_left _ hm.ne'
+  have hN : ((p.n * p.cols * Nt : Nat) : Int) / (p.n : Nat) = ((p.cols * Nt : Nat) : Int) := by
+    rw [show ((p.n * p.cols * Nt : Nat) : Int) = (p.n : Nat) * ((p.cols * Nt : Nat) : Int) by
+      push_cast; ring]
+    exact Int.mul_ediv_cancel_left _ hn.ne'
+  have hcN : (0 : Int) < ((p.cols * Nt : Nat) : Int) := by
+    have := hp.cols_pos; positivity
+  rw [hM, hN, Int.le_ediv_iff_mul_le hcN]
+  constructor
+  · intro h; have : ((p.rows * Mt * (p.cols * Nt) : Nat) : Int) ≤ 2 ^ 31 - 1 := by
+      push_cast at h ⊢; linarith
+    omega
+  · intro h; have : ((p.rows * Mt * (p.cols * Nt) : Nat) : Int) < 2 ^ 31 := by exact_mod_cast h
+    push_cast at this ⊢; linarith
+
 /-- The design's guards accept exactly the shapes `dims p Mt Kt Nt` with every count positive
-(the same statement as `Theorems.guards_iff`). -/
+whose runtime-parameter product `(rows·Mt)·(cols·Nt)` fits `i32` (the same statement as
+`Theorems.guards_iff`). -/
 theorem guards_iff (M K N : Int) :
     (wseq p M K N).ok = true ↔
-      ∃ Mt Kt Nt : Nat, 0 < Mt ∧ 0 < Kt ∧ 0 < Nt ∧ (M, K, N) = p.dims Mt Kt Nt := by
+      ∃ Mt Kt Nt : Nat, 0 < Mt ∧ 0 < Kt ∧ 0 < Nt ∧ (M, K, N) = p.dims Mt Kt Nt ∧
+        p.rows * Mt * (p.cols * Nt) < 2 ^ 31 := by
   have hrm : (0 : Int) < ((p.rows * p.m : Nat) : Int) := by
     have := hp.rows_pos; have := hp.m_pos; positivity
   have hk : (0 : Int) < ((p.k : Nat) : Int) := by have := hp.k_pos; positivity
@@ -388,23 +416,28 @@ theorem guards_iff (M K N : Int) :
   simp only [wseq, ok_ofList, List.all_cons, List.all_nil, Seq.ok, Bool.and_true,
     Bool.and_eq_true, decide_eq_true_eq, hloop]
   constructor
-  · rintro ⟨hM, hK, hN, hMd, hKd, hNd⟩
+  · rintro ⟨hM, hK, hN, hMd, hKd, hNd, hB⟩
     obtain ⟨a, ha⟩ := Int.dvd_of_emod_eq_zero hMd
     obtain ⟨b, hb⟩ := Int.dvd_of_emod_eq_zero hKd
     obtain ⟨c, hc⟩ := Int.dvd_of_emod_eq_zero hNd
     have ha0 : 0 < a := by rw [ha] at hM; exact pos_of_mul_pos_right hM hrm.le
     have hb0 : 0 < b := by rw [hb] at hK; exact pos_of_mul_pos_right hK hk.le
     have hc0 : 0 < c := by rw [hc] at hN; exact pos_of_mul_pos_right hN hnc.le
-    refine ⟨a.toNat, b.toNat, c.toNat, by omega, by omega, by omega, ?_⟩
-    simp only [Params.dims, Params.Mn, Params.Kn, Params.Nn, Prod.mk.injEq]
-    refine ⟨?_, ?_, ?_⟩
-    · rw [ha]; push_cast [Int.toNat_of_nonneg ha0.le]; ring
-    · rw [hb]; push_cast [Int.toNat_of_nonneg hb0.le]; ring
-    · rw [hc]; push_cast [Int.toNat_of_nonneg hc0.le]; ring
-  · rintro ⟨Mt, Kt, Nt, hMt, hKt, hNt, h⟩
+    have hMe : M = ((p.rows * p.m * a.toNat : Nat) : Int) := by
+      rw [ha]; push_cast [Int.toNat_of_nonneg ha0.le]; ring
+    have hKe : K = ((p.k * b.toNat : Nat) : Int) := by
+      rw [hb]; push_cast [Int.toNat_of_nonneg hb0.le]; ring
+    have hNe : N = ((p.n * p.cols * c.toNat : Nat) : Int) := by
+      rw [hc]; push_cast [Int.toNat_of_nonneg hc0.le]; ring
+    refine ⟨a.toNat, b.toNat, c.toNat, by omega, by omega, by omega, ?_, ?_⟩
+    · simp only [Params.dims, Params.Mn, Params.Kn, Params.Nn, Prod.mk.injEq]
+      exact ⟨hMe, hKe, hNe⟩
+    · rw [hMe, hNe] at hB
+      exact (rtp_bound_iff hp _ _ (by omega)).mp hB
+  · rintro ⟨Mt, Kt, Nt, hMt, hKt, hNt, h, hB⟩
     simp only [Params.dims, Params.Mn, Params.Kn, Params.Nn, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
-    refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, (rtp_bound_iff hp _ _ hNt).mpr hB⟩
     · exact_mod_cast Nat.mul_pos (Nat.mul_pos hp.rows_pos hp.m_pos) hMt
     · exact_mod_cast Nat.mul_pos hp.k_pos hKt
     · exact_mod_cast Nat.mul_pos (Nat.mul_pos hp.n_pos hp.cols_pos) hNt

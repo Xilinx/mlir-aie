@@ -257,6 +257,27 @@ theorem tMM_wrap (w : Nat) (hA hB : Nat → ℤ) {M K N : Int} (hok : (d.seq (M,
   push_cast
   rfl
 
+/-- Integers with saturating stores: if no partial sum over the first `kk` k-blocks leaves
+`[lo, up]`, the clamps never fire and the stored C is the exact integer product. -/
+theorem tMM_sat (lo up : ℤ) (hlo : lo ≤ 0) (hup : 0 ≤ up) (hA hB : Nat → ℤ) {M K N : Int}
+    (hok : (d.seq (M, K, N)).ok = true) {i j c q : Nat} (hiM : i < M.toNat) (hjN : j < N.toNat)
+    (hc : c < p.cols)
+    (hq : (d.host (M, K, N) (cL3 c))[q]? = some (2, ((p.cIdx M.toNat N.toNat i j : Nat) : Int)))
+    (hpart : ∀ kk ≤ tilesK p K, lo ≤ ∑ x ∈ Finset.range (kk * p.k),
+        hA (p.aIdx K.toNat i x) * hB (p.bIdx K.toNat N.toNat x j) ∧
+      ∑ x ∈ Finset.range (kk * p.k),
+        hA (p.aIdx K.toNat i x) * hB (p.bIdx K.toNat N.toNat x j) ≤ up) :
+    drainVal d p hA hB (M, K, N) (p.matmulSat lo up) (fun _ _ => 0) c q =
+      ∑ x ∈ Finset.range K.toNat, hA (p.aIdx K.toNat i x) * hB (p.bIdx K.toNat N.toNat x j) := by
+  rw [drainVal_eq hi hp hA hB _ _ hok hiM hjN hc hq]
+  obtain ⟨eM, eK, eN⟩ := toNats hi hp hok
+  rw [eM] at hiM
+  rw [eM, eN] at hq
+  rw [eN] at hjN
+  rw [host_eq hi hp hok] at hq
+  rw [eK, eN] at hpart ⊢
+  exact WholeArray.tMM_sat p hp lo up hlo hup hA hB _ _ _ i j c q hiM hjN hc hq hpart
+
 /-- Ordered accumulation for any kernel (any dtype, any rounding): the export's drain writes the
 kernel folded over `kk = 0 … Kt - 1` on exactly the A row block and B column block of `(i, j)`. -/
 theorem orderedAcc {R : Type*} [Zero R] (hA hB : Nat → R) (call : KernelCall R)

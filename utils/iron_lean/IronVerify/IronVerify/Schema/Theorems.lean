@@ -16,7 +16,8 @@ and column-major switch) and every shape the guards accept. Each is proved in `S
 `Schema/Instances` transfers them to each export.
 
 `dims p Mt Kt Nt` is the shape `M = rows·m·Mt`, `K = k·Kt`, `N = n·cols·Nt`; `guards_iff` says
-these are exactly the shapes whose `require(...)` checks pass.
+these, with the runtime-parameter product `(rows·Mt)·(cols·Nt)` inside `i32`, are exactly the
+shapes whose `require(...)` checks pass.
 -/
 
 namespace IronVerify.Schema.WholeArray
@@ -32,7 +33,8 @@ include hp
 
 theorem guards_iff (M K N : Int) :
     (wseq p M K N).ok = true ↔
-      ∃ Mt Kt Nt : Nat, 0 < Mt ∧ 0 < Kt ∧ 0 < Nt ∧ (M, K, N) = p.dims Mt Kt Nt := by exact Streams.guards_iff (hp := hp) M K N
+      ∃ Mt Kt Nt : Nat, 0 < Mt ∧ 0 < Kt ∧ 0 < Nt ∧ (M, K, N) = p.dims Mt Kt Nt ∧
+        p.rows * Mt * (p.cols * Nt) < 2 ^ 31 := by exact Streams.guards_iff (hp := hp) M K N
 
 /-! ### Fifo lookups (the only place fifo names are compared) -/
 

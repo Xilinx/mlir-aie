@@ -423,6 +423,16 @@ class WrapChecks:
         )
 
 
+def with_wraps(text: str, exporter: "DesignExporter", namespace: str) -> str:
+    """Add the `wraps` width obligations to an exported design's Lean `text`."""
+    end = f"end {namespace}\n"
+    return text.replace(
+        "import IronVerify.Net\n",
+        "import IronVerify.Net\nimport IronVerify.Schema.Overflow\n",
+        1,
+    ).replace(end, WrapChecks(exporter).lean(exporter) + "\n" + end)
+
+
 def natural_key(name: str) -> tuple:
     """Sort key ordering embedded numbers numerically: ``A_L2L1_2`` before ``A_L2L1_10``."""
     return tuple(int(x) if x.isdigit() else x for x in re.split(r"(\d+)", name))
@@ -486,12 +496,7 @@ def write_design(
     exporter = DesignExporter(program, canonical, contracts)
     text = exporter.lean(name)
     if wraps:
-        end = f"end IronVerify.Designs.{name}\n"
-        text = text.replace(
-            "import IronVerify.Net\n",
-            "import IronVerify.Net\nimport IronVerify.Schema.Overflow\n",
-            1,
-        ).replace(end, WrapChecks(exporter).lean(exporter) + "\n" + end)
+        text = with_wraps(text, exporter, f"IronVerify.Designs.{name}")
     out.write_text(text)
     names = sorted(f.stem for f in out.parent.glob("*.lean"))
     imports = "".join(f"import IronVerify.Designs.{n}\n" for n in names)

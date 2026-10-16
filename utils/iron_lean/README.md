@@ -56,13 +56,13 @@ structure Params where
 
 | | In words | Lean |
 |---|---|---|
-| Guards | The design's `require`s accept exactly `M = rows·m·Mt`, `K = k·Kt`, `N = n·cols·Nt` | `guards_iff` |
+| Guards | The design's `require`s accept exactly `M = rows·m·Mt`, `K = k·Kt`, `N = n·cols·Nt` with the runtime-parameter product `(rows·Mt)·(cols·Nt)` inside `i32` | `guards_iff` |
 | T-A, T-B | Core `(row, col)`'s `j`-th A (B) object is the right tile, each element in the micro-tile slot the kernel reads, across both B layouts and the uneven shim split; each core receives exactly `tiles · K/k` objects | `tA`, `tB`, `countA`, `countB` |
 | T-C | Every `C[i, j]` has exactly one writer across all `cols` drains: the core whose T-A/T-B tiles cover row `i` and column `j`. No write lands out of bounds | `tC`, `tC_writes` |
 | C = A @ B | The drained value equals `Σ_k A[i, k] · B[k, j]` over any commutative semiring | `tMM` |
 | Integer dtypes | Exact in `ZMod 2^w` when stores wrap; exact over ℤ if no partial sum leaves the output range when they saturate | `tMM_wrap`, `tMM_sat` |
 | Floats | The value is the `kk`-ordered accumulation of the kernel calls (rounding left abstract) | `orderedAcc` |
-| Overflow | The compiler's host-buffer guard accepts every transfer exactly when `M·K`, `K·N`, `M·N` fit the buffers; under it no index arithmetic wraps i64 | `hostFits_iff`, `noWrap64` |
+| Overflow | The compiler's host-buffer guard accepts every transfer exactly when `M·K`, `K·N`, `M·N` fit the buffers; no index arithmetic wraps i64 for `i32` dispatch values | `hostFits_iff`, `noWrap64` |
 
 ### Tied to the real designs
 
@@ -78,9 +78,14 @@ designs. Each one comes with a Lean proof that it is an `Instance` of
   shape.
 - **Guards:** the export's guards accept only those shapes.
 - **Kernel layouts:** the kernel layouts match.
+- **Widths:** every integer `arith` result of the export's runtime sequence
+  fits its type (`i32`, `i64` or `index`), for every shape its guards accept
+  and every `i32` dispatch value (`wraps_ok`, from `export.py --wraps`). So
+  the exact integer terms the model uses are what the machine computes.
 
 [`Schema/Exports.lean`](IronVerify/IronVerify/Schema/Exports.lean) then
-restates T-A, T-B, T-C and C = A @ B for **any** instance. They are
+restates T-A, T-B, T-C and C = A @ B (`tMM`, `tMM_wrap`, `tMM_sat`,
+`orderedAcc`) for **any** instance. They are
 quantified over `M K N : Int`, and the only hypothesis is "the export's own
 `cf.assert`s pass". Two worked corollaries in
 [`Schema/Examples.lean`](IronVerify/IronVerify/Schema/Examples.lean) are about
@@ -91,13 +96,18 @@ theorem matmul_3col (hA hB : Nat → ℤ) {M K N : Int}
     (hok : (Instances.npu2_i16_i16_64x64x32_3col.design.seq (M, K, N)).ok = true)
     {i j c q : Nat} (hiM : i < M.toNat) (hjN : j < N.toNat) (hc : c < 3)
     (hq : (… design.host (M, K, N) (cL3 c))[q]? = some (2, ((i * N.toNat + j : Nat) : Int))) :
-    drainVal … (M, K, N) … c q =
-      ((∑ x ∈ Finset.range K.toNat, hA (i * K.toNat + x) * hB (x * N.toNat + j) : ℤ) : Wrap 16)
+    ∃ w, (∀ e ∈ Instances.npu2_i16_i16_64x64x32_3col.kernels, accDomain? e.2 = some (.wrap w)) ∧
+      ((ValueDomain.read (.wrap w)
+          (∑ x ∈ Finset.range K.toNat, hA (i * K.toNat + x) * hB (x * N.toNat + j)) : ℤ) : Wrap w) =
+        drainVal … (M, K, N) … c q
 ```
 
 In words: for the 3-column i16 design IRON generates, and every M, K, N it
-accepts, the value drained into `C[i, j]` is the i16 dot product of row `i` of
-A and column `j` of B. `matmul_8col` says the same for 8 columns.
+accepts, the value drained into `C[i, j]` is the dot product of row `i` of A
+and column `j` of B, read in the value domain every core's kernel contract
+selects. That domain is not chosen by hand: `domain_3col` proves, by `decide`
+on the exported contracts, that it is 16-bit wraparound. `matmul_8col` says
+the same for 8 columns.
 
 `check.py` audits every theorem. 334 schema theorems and the 92 instance proofs
 use only Lean's standard `propext`, `Classical.choice` and `Quot.sound`. So
@@ -212,9 +222,10 @@ Each mutant is one real bug in a copy of `whole_array.py`.
   over its `K/k` objects in delivery order. It lives in the worker body, which
   isn't exported yet.
 - **Per-channel FIFO order:** shim tasks on one channel run in issue order.
-- **Host-side checks** are hypotheses, not cf.asserts:
+- **Host-side facts** are hypotheses, not cf.asserts:
   - the buffer sizes behind `hostFits_iff`;
-  - i32 dispatch values behind `noWrap64`.
+  - the dispatch values being `i32` (the host ABI) behind `noWrap64` and the
+    per-instance `wraps_ok`.
 - **Not covered:** deadlock freedom, timing, padding, packet flows. The
   theorem for a parameter value is about `schema p`. It is tied to IRON for the
   92 configurations proved to be instances.
@@ -226,10 +237,11 @@ Each mutant is one real bug in a copy of `whole_array.py`.
   - 3, 5, 6 and 7 columns now work and are NPU-checked.
   - At 1, 2, 4 and 8 columns the data movement is unchanged, element for
     element.
-- **The runtime-parameter write `(M/m)·(N/n)` can wrap i32** for shapes the
-  guards accept (e.g. M = 2147483392, N = 2147483616). Today only the
-  compiler's dispatch-time host-buffer check prevents it. A `require` in
-  whole_array would make the design self-sufficient.
+- **The runtime-parameter write `(M/m)·(N/n)` could wrap i32** for shapes
+  the guards accepted (e.g. M = 2147483392, N = 2147483616). Before this PR
+  only the compiler's dispatch-time host-buffer check prevented it. whole_array
+  now has its own `require` (a division, so the check itself cannot wrap). The
+  per-instance width proofs then follow from the design's guards alone.
 - **Several kernels leave saturation on the core:** filter2d, add_weighted
   and the conv/bn kernels set it and never restore it, so later kernels on that
   core inherit it. Their contracts now say so (`leaves_saturation`).
@@ -261,7 +273,7 @@ The steps, in order (`--steps` runs a subset):
 | `kernels` | layout codec and matmul arithmetic against the contract | ~5 min |
 | `sweep` | `schema p` against the oracle on 1920 configurations | ~16 min |
 | `proofs` | builds the schema theorems, audits every axiom | ~2 min cold |
-| `instances` | exports the 92 configurations from their live objects, builds their `Instance` proofs and the worked examples | ~1.5 min on 32 cores |
+| `instances` | exports the 92 configurations from their live objects, builds their `Instance` and width proofs and the worked examples | ~3 min cold on 32 cores, peak ~45 GB |
 | `mutations` | the injected-bug suite | ~2.5 min |
 
 Expected tail:
@@ -314,8 +326,8 @@ open `IronVerify/` in VS Code with the Lean 4 extension (after
 | `IronVerify/IronVerify/{Walk,Seq,Net,Kernel}.lean` | semantics |
 | `IronVerify/IronVerify/Schema/WholeArray.lean`, `Spec.lean`, `Defs.lean` | the parametric design and its spec |
 | `IronVerify/IronVerify/Schema/Theorems.lean` | the theorems |
-| `IronVerify/IronVerify/Schema/Proofs/` | their proofs, one layer per file |
-| `IronVerify/IronVerify/Schema/Inst/`, `Normalize.lean` | instance checking: `Instance`, `wa_stream`, walk normalization |
+| `IronVerify/IronVerify/Schema/Proofs/` | their proofs, one layer per file; `Domain.lean` picks each core's value domain from its exported contract |
+| `IronVerify/IronVerify/Schema/Inst/`, `Normalize.lean` | instance checking: `Instance`, `wa_stream`, walk normalization, the width obligations (`Wraps.lean`) |
 | `IronVerify/IronVerify/Schema/Instances/` | instance proofs, generated by `check.py --steps instances` (not committed) |
 | `IronVerify/IronVerify/Schema/Exports.lean`, `Examples.lean` | the theorems for any instance; the 3- and 8-column corollaries (built after generation) |
 | `IronVerify/IronVerify/Designs/` | generated exports the difftests evaluate (do not edit) |

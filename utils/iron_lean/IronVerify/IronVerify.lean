@@ -9,3 +9,4 @@ import IronVerify.Kernel
 import IronVerify.Schema.Theorems
 import IronVerify.Schema.Proofs.Kernel
 import IronVerify.Schema.Exports
+import IronVerify.Schema.Proofs.Domain

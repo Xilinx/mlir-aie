@@ -74,7 +74,7 @@ theorem wseq_every (p : Params) (M K N : Int) :
   apply chanEvery_ofList
   intro x hx
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
-  rcases hx with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> try trivial
+  rcases hx with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> try trivial
   intro i _
   apply chanEvery_ofList
   intro x hx

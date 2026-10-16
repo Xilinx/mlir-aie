@@ -26,6 +26,7 @@ PROOF_MODULES = (
     "IronVerify.Schema.Theorems",
     "IronVerify.Schema.Proofs.Kernel",
     "IronVerify.Schema.Exports",
+    "IronVerify.Schema.Proofs.Domain",
 )
 
 # name: (n_aie_cols, MxKxN shapes); m, k, n stay at whole_array's defaults (64, 64, 32).

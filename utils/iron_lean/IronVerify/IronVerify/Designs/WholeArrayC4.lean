@@ -71,6 +71,7 @@ def seq (M : Int) (K : Int) (N : Int) : Seq :=
   (.seq (.check (decide ((Int.tmod M (256 : Int)) = (0 : Int))))
   (.seq (.check (decide ((Int.tmod K (64 : Int)) = (0 : Int))))
   (.seq (.check (decide ((Int.tmod N (128 : Int)) = (0 : Int))))
+  (.seq (.check (decide ((Int.fdiv M (64 : Int)) ≤ (Int.fdiv (2147483647 : Int) (Int.fdiv N (32 : Int))))))
   (.seq (.check (decide (M ≥ (1 : Int))))
   (.seq (.check (decide (K ≥ (1 : Int))))
   (.seq (.check (decide ((M * K) > (0 : Int))))
@@ -257,7 +258,7 @@ def seq (M : Int) (K : Int) (N : Int) : Seq :=
           (.xfer "B_L3L2_3" 1 { offset := (96 : Int), dims := [(((Int.fdiv (((Int.fdiv N (32 : Int)) - (3 : Int)) - (1 : Int)) (4 : Int)) + (1 : Int)), (128 : Int)), ((Int.fdiv K (64 : Int)), (((1 : Int) * N) * (64 : Int))), ((64 : Int), ((1 : Int) * N)), ((32 : Int), (1 : Int))] })))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
         .skip)))))))))))))))))))))))))))))))))))))
       .skip)))))))))))))))))))))))))))))))))))))
-    .skip)))))))))))))))))))))))))))))))))))
+    .skip))))))))))))))))))))))))))))))))))))
 
 def design : Design (Int × Int × Int) where
   net := net

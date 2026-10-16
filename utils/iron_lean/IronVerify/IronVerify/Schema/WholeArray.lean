@@ -226,6 +226,7 @@ def wseq : Seq :=
     .check (decide (M > 0)), .check (decide (K > 0)), .check (decide (N > 0)),
     .check (decide (M % (p.rows * p.m : Nat) = 0)), .check (decide (K % (p.k : Nat) = 0)),
     .check (decide (N % (p.n * p.cols : Nat) = 0)),
+    .check (decide (M / (p.m : Nat) ≤ (2 ^ 31 - 1) / (N / (p.n : Nat)))),
     .loop 0 (M / (p.rows * p.m : Nat)) (step p M K N)]
 
 end Seq

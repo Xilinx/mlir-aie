@@ -36,6 +36,7 @@ from instances import (
     check_module,
     export_instance,
     streams_module,
+    wraps_module,
 )
 from matmul_check import MatmulCheck
 
@@ -117,6 +118,7 @@ PARTS = {
     "chans_eq": "channels",
     "every": "channels",
     "inst": "walk sizes",
+    "wraps_ok": "widths",
 }
 
 
@@ -174,9 +176,17 @@ class MutantLake:
         module = "IronVerify.Schema.Instances." + inst.name
         streams = streams_module(inst)
         check = check_module(inst, inst)
+        wraps = wraps_module(inst)
         (gen / f"{inst.name}.lean").write_text(inst.export)
         (gen / f"{inst.name}Streams.lean").write_text(streams)
+        (gen / f"{inst.name}Wraps.lean").write_text(wraps)
         failed_streams = self.failing(f"{module}Streams", streams) or []
+        failed_wraps = self.failing(f"{module}Wraps", wraps) or []
+        if failed_wraps:
+            check = re.sub(r"(?ms)^theorem wraps_ok\b.*?(?=^theorem inst\b)", "", check)
+            check = check.replace(
+                f"import IronVerify.Schema.Instances.{inst.name}Wraps\n", ""
+            )
         if failed_streams:
             # Without the channel proofs, check the rest on its own.
             check = re.sub(
@@ -194,7 +204,7 @@ class MutantLake:
             for name in failed_streams
             if name.startswith("ch_")
         ] + [n for n in failed_streams if not n.startswith("ch_")]
-        parts += [PARTS.get(name, name) for name in failed]
+        parts += [PARTS.get(name, name) for name in failed_wraps + failed]
         if not parts:
             return "instance"
         return "fails: " + ", ".join(dict.fromkeys(parts))

@@ -16,7 +16,14 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from export import LEAN_ROOT, SPDX, WHOLE_ARRAY, DesignExporter, whole_array_program
+from export import (
+    LEAN_ROOT,
+    SPDX,
+    WHOLE_ARRAY,
+    DesignExporter,
+    whole_array_program,
+    with_wraps,
+)
 from schema_check import MAX_COLS, ROWS, mac_dims
 
 INSTANCES = Path("IronVerify/Schema/Instances")
@@ -157,12 +164,110 @@ def export_instance(
         config.emulate,
     )
     name = name or config.name(cols)
-    text = DesignExporter(program, canonical=True, contracts=True).lean(
-        name, prefix="IronVerify.Instances"
+    exporter = DesignExporter(program, canonical=True, contracts=True)
+    text = with_wraps(
+        exporter.lean(name, prefix="IronVerify.Instances"),
+        exporter,
+        f"IronVerify.Instances.{name}",
     )
     text = text.replace(SPDX, f"{SPDX}\n{GENERATED}\n-- {config.source}", 1)
     seq = text[text.index("def seq") : text.index("def design")]
     return Instance(config, cols, name, text, seq)
+
+
+def wraps_theorem(rep: Instance) -> str:
+    """`wraps_ok`: every `arith` result of `rep`'s runtime sequence fits its width, for every shape
+    its guards accept and every `i32` dispatch value."""
+    c, cols, rows = rep.config, rep.cols, ROWS
+    R, NC, cores = rows * c.m, c.n * cols, rows * cols
+    ncols = "(Nt : Int)" if cols == 1 else f"({cols} * (Nt : Int))"
+    facts = [
+        ("dMm", f"({R} * (Mt : Int)).fdiv {c.m} = {rows} * Mt"),
+        ("dNn", f"({NC} * (Nt : Int)).fdiv {c.n} = {ncols}"),
+        ("dKk", f"({c.k} * (Kt : Int)).fdiv {c.k} = Kt"),
+        ("dMr", f"({rows} * (Mt : Int)).fdiv {rows} = Mt"),
+        ("dNc", f"({ncols}).fdiv {cols} = Nt"),
+    ]
+    haves = "".join(
+        f"  have {n} : {f} := by rw [Int.fdiv_eq_ediv]; omega\n" for n, f in facts
+    )
+    names = ", ".join(n for n, _ in facts)
+    return f"""
+set_option maxRecDepth 100000 in
+set_option maxHeartbeats 16000000 in
+/-- Every integer `arith` result of the runtime sequence fits its width, for every shape the
+guards accept and every `i32` dispatch value. -/
+theorem wraps_ok (M K N : Int) (hM : fitsS 32 M = true) (hK : fitsS 32 K = true)
+    (hN : fitsS 32 N = true) (hok : (Instances.{rep.name}.design.seq (M, K, N)).ok = true) :
+    (Instances.{rep.name}.wraps M K N).ok = true := by
+  obtain ⟨Mt, Kt, Nt, hMt, hKt, hNt, hP, hB⟩ :=
+    shape_of_prefix p valid {R} {c.k} {NC} {c.m} {c.n} rfl rfl rfl rfl rfl
+      (fun M K N => ⟨_, rfl⟩) (M, K, N) hok
+  simp only [Params.shapeOf, p, Prod.mk.injEq] at hP hB
+  obtain ⟨rfl, rfl, rfl⟩ := hP
+  clear hok
+  have hM1 := bounds_of_fits hM
+  have hK1 := bounds_of_fits hK
+  have hN1 := bounds_of_fits hN
+  clear hM hK hN
+  have hB1 : (({rows} * Mt * ({cols} * Nt) : Nat) : Int) < 2 ^ 31 := by exact_mod_cast hB
+  push_cast at hM1 hK1 hN1 hB1
+  norm_num at hM1 hK1 hN1 hB1
+{haves}  have dP : ({rows} * (Mt : Int) * {ncols}).fdiv {cores} = Mt * Nt := by
+    rw [Int.fdiv_eq_ediv, show ({rows} : Int) * Mt * {ncols} = {cores} * (Mt * Nt) by ring]
+    simp
+  have hQ := fdiv_max_bounds {ncols} (by omega)
+  have h0 : (0 : Int) ≤ Mt * Kt ∧ (0 : Int) ≤ Kt * Nt ∧ (0 : Int) ≤ Mt * Nt := by
+    refine ⟨?_, ?_, ?_⟩ <;> positivity
+  have hMK : ({R} * (Mt : Int)) * ({c.k} * Kt) < 2 ^ 62 := by nlinarith
+  have hKN : ({c.k} * (Kt : Int)) * ({NC} * Nt) < 2 ^ 62 := by nlinarith
+  have hMN : ({R} * (Mt : Int)) * ({NC} * Nt) < 2 ^ 62 := by nlinarith
+  unfold Instances.{rep.name}.wraps
+  close_ok
+  all_goals (try push_cast)
+  all_goals (try simp only [{names}, dP])
+  all_goals (try (push_cast at hi; simp only [dMm, dMr] at hi))
+  all_goals (try have hiM : ((i : Nat) : Int) + 3 < (Mt : Int) := by omega)
+  all_goals (try have hiK : (((i : Nat) : Int) + 3) * Kt ≤ Mt * Kt :=
+    Int.mul_le_mul_of_nonneg_right (by omega) (by positivity))
+  all_goals (try have hiN : (((i : Nat) : Int) + 3) * Nt ≤ Mt * Nt :=
+    Int.mul_le_mul_of_nonneg_right (by omega) (by positivity))
+  all_goals (try have hi0 : (0 : Int) ≤ ((i : Nat) : Int) * Kt ∧ (0 : Int) ≤ ((i : Nat) : Int) * Nt :=
+    ⟨by positivity, by positivity⟩)
+  all_goals first
+    | (apply fits_of <;> norm_num [Int.fdiv_eq_ediv, Int.tmod_eq_emod] <;> omega)
+    | (apply fits_of <;> (try ring_nf at *) <;> omega)
+    | (apply fits_of <;> norm_num [Int.fdiv_eq_ediv, Int.tmod_eq_emod] <;> nlinarith)
+    | (apply fits_of <;> norm_num <;> linarith)
+    | (apply fits_of <;> norm_num <;> nlinarith)
+"""
+
+
+def wraps_module(rep: Instance) -> str:
+    return f"""{SPDX}
+{GENERATED}
+
+import IronVerify.Schema.Inst.Wraps
+import IronVerify.Schema.Instances.{rep.name}
+
+/-! The width obligations of `{rep.name}` hold for every shape its guards accept. Shared by the
+configurations whose runtime sequence is the same text. -/
+
+namespace IronVerify.Instances.{rep.name}Wraps
+
+open IronVerify Schema.WholeArray
+
+set_option linter.unusedSimpArgs false
+set_option linter.unusedVariables false
+set_option linter.unusedTactic false
+set_option linter.unreachableTactic false
+
+def p : Params := {rep.params()}
+
+theorem valid : p.Valid := by constructor <;> decide
+{wraps_theorem(rep)}
+end IronVerify.Instances.{rep.name}Wraps
+"""
 
 
 def streams_module(rep: Instance) -> str:
@@ -206,7 +311,10 @@ def check_module(inst: Instance, rep: Instance) -> str:
         f"  · exact Instances.{rep.name}Streams.ch_{ch} Mt Kt Nt hM hK hN\n"
         for ch in inst.channels()
     )
-    streams_import = f"import IronVerify.Schema.Instances.{rep.name}Streams\n"
+    streams_import = (
+        f"import IronVerify.Schema.Instances.{rep.name}Streams\n"
+        f"import IronVerify.Schema.Instances.{rep.name}Wraps\n"
+    )
     return f"""{SPDX}
 {GENERATED}
 
@@ -246,6 +354,11 @@ theorem guard : ∀ P : Int × Int × Int, (Instances.{inst.name}.design.seq P).
     ∃ Mt Kt Nt : Nat, 0 < Mt ∧ 0 < Kt ∧ 0 < Nt ∧ P = p.shapeOf Mt Kt Nt :=
   guard_of_prefix p {ROWS * c.m} {c.k} {c.n * cols} (by decide) (by decide) (by decide)
     (by decide) (by decide) (by decide) (fun _ _ _ => ⟨_, rfl⟩)
+
+theorem wraps_ok (M K N : Int) (hM : fitsS 32 M = true) (hK : fitsS 32 K = true)
+    (hN : fitsS 32 N = true) (hok : (Instances.{inst.name}.design.seq (M, K, N)).ok = true) :
+    (Instances.{inst.name}.wraps M K N).ok = true :=
+  Instances.{rep.name}Wraps.wraps_ok M K N hM hK hN hok
 
 theorem inst : Instance Instances.{inst.name}.design p :=
   ⟨net_eq, Net.pos_of_posB (by decide), Net.pos_of_posB (by decide),
@@ -289,6 +402,7 @@ def generate(configs: list[Config], max_cols: int | None) -> dict[Path, str]:
         files[INSTANCES / f"{inst.name}.lean"] = inst.export
         if rep is inst:
             files[INSTANCES / f"{inst.name}Streams.lean"] = streams_module(inst)
+            files[INSTANCES / f"{inst.name}Wraps.lean"] = wraps_module(inst)
         files[INSTANCES / f"{inst.name}Check.lean"] = check_module(inst, rep)
     files[INDEX] = index_module(instances)
     print(
