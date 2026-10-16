@@ -310,6 +310,11 @@ def whole_array(
         require(M % (m * n_aie_rows) == 0, "M must be a multiple of m * n_aie_rows")
         require(K % k == 0, "K must be a multiple of k")
         require(N % (n * n_aie_cols) == 0, "N must be a multiple of n * n_aie_cols")
+        # Divide rather than multiply: the check itself is i32 arithmetic.
+        require(
+            M // m <= (2**31 - 1) // (N // n),
+            "(M // m) * (N // n) must fit in 32 bits",
+        )
 
         for row in range(n_aie_rows):
             for col in range(n_aie_cols):
