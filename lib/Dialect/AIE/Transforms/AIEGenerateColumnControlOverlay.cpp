@@ -184,32 +184,42 @@ struct AIEGenerateColumnControlOverlayPass
     }
   }
 
-  // With multicast-span=1, the rows of each column's core tiles, when there are
-  // at least two, and the packet id their multicast uses.
-  std::map<int, SmallVector<int>> multicastRows;
-  int multicastID = -1;
+  // A control multicast on packet id `id`, entering by the control channel of
+  // `srcCol` (its lowest member's column) and reaching the core tiles in
+  // `members`.
+  struct MulticastGroup {
+    int id;
+    int srcCol;
+    SmallVector<TileID> members;
+  };
+  SmallVector<MulticastGroup> multicastGroups;
 
   // The multicast groups, read from every overlaid device so the overlay has
-  // one shape.
+  // one shape. From the lowest core column, the columns are cut into groups of
+  // w; a group with at least two core tiles reaches them on a spare id of its
+  // own.
   LogicalResult planMulticast(ModuleOp module, ArrayRef<DeviceOp> overlaid) {
-    multicastRows.clear();
-    multicastID = -1;
-    if (clMulticastSpan == 0 || !clRouteShimDmaToTileCTRL || overlaid.empty())
+    multicastGroups.clear();
+    int width = clMulticastSpan;
+    if (width == 0 || !clRouteShimDmaToTileCTRL || overlaid.empty())
       return success();
-    if (clMulticastSpan != 1)
+    if (width < 0)
       return module.emitError("aie-generate-column-control-overlay: "
                               "multicast-span ")
-             << clMulticastSpan.getValue() << " is not 0 or 1";
-    std::map<int, std::set<int>> rows;
-    llvm::SmallSet<int, 32> used;
-    // An earlier run over the same input already picked the id.
+             << width << " is negative";
+    // An earlier run over the same input already picked the ids.
     AIEDialect::CtrlPktMulticastIdAttrHelper stamp(module.getContext());
-    int stamped = -1;
+    std::map<TileID, int> stamped;
+    llvm::SmallSet<int, 8> stampedIDs;
     for (DeviceOp dev : overlaid)
       dev.walk([&](TileOp t) {
-        if (auto id = stamp.getAttr(t))
-          stamped = id.getInt();
+        if (auto id = stamp.getAttr(t)) {
+          stamped[{t.colIndex(), t.rowIndex()}] = id.getInt();
+          stampedIDs.insert(id.getInt());
+        }
       });
+    std::set<TileID> cores;
+    llvm::SmallSet<int, 32> used;
     for (DeviceOp dev : overlaid) {
       auto tileIDMap = getTileToControllerIdMap(true, dev.getTargetModel());
       for (auto &[tile, id] : tileIDMap)
@@ -219,71 +229,99 @@ struct AIEGenerateColumnControlOverlayPass
           used.insert(id.getPktId());
       });
       dev.walk([&](AIE::PacketFlowOp f) {
-        if (f.IDInt() != stamped)
+        if (!stampedIDs.count(f.IDInt()))
           used.insert(f.IDInt());
       });
       dev.walk([&](CoreOp core) {
         TileOp t = core.getTileOp();
-        rows[t.colIndex()].insert(t.rowIndex());
+        cores.insert({t.colIndex(), t.rowIndex()});
       });
     }
-    for (auto &[col, r] : rows)
-      if (r.size() >= 2)
-        multicastRows[col].assign(r.begin(), r.end());
-    if (multicastRows.empty())
+    if (cores.empty())
       return success();
-    if (stamped >= 0 && !used.count(stamped)) {
-      multicastID = stamped;
-      return success();
+    int base = cores.begin()->col;
+    std::map<int, SmallVector<TileID>> byGroup;
+    for (TileID t : cores)
+      byGroup[(t.col - base) / width].push_back(t);
+    for (auto &[g, members] : byGroup) {
+      if (members.size() < 2) {
+        if (width >= 2)
+          module.emitRemark()
+              << "control multicast: columns " << base + g * width << "-"
+              << base + (g + 1) * width - 1
+              << " have one core tile, which gets its own control packets";
+        continue;
+      }
+      multicastGroups.push_back({-1, members.front().col, members});
     }
-    // The highest free id, no lower than 7. Every controller id is 7 or more,
+    // A group whose members all carry one stamped id keeps it; the others get
+    // the highest free id, no lower than 7. Every controller id is 7 or more,
     // and the router folds the ids headed for one arbiter into mask/value
     // rules, so an id among them keeps those masks narrow.
+    for (MulticastGroup &group : multicastGroups) {
+      auto it = stamped.find(group.members.front());
+      if (it != stamped.end() && !used.count(it->second) &&
+          llvm::all_of(group.members, [&](TileID t) {
+            auto s = stamped.find(t);
+            return s != stamped.end() && s->second == it->second;
+          })) {
+        group.id = it->second;
+        used.insert(group.id);
+      }
+    }
     DeviceOp first = overlaid.front();
     int maxID = first.getTargetModel().getMaxPacketId();
-    for (int id = maxID; id >= 7 && multicastID < 0; --id)
-      if (!used.count(id))
-        multicastID = id;
-    if (multicastID < 0)
-      return module.emitError("aie-generate-column-control-overlay: no packet "
-                              "id is free for the control multicast");
+    for (MulticastGroup &group : multicastGroups) {
+      for (int id = maxID; id >= 7 && group.id < 0; --id)
+        if (!used.count(id))
+          group.id = id;
+      if (group.id < 0)
+        return module.emitError("aie-generate-column-control-overlay: no "
+                                "packet id is free for the control multicast "
+                                "from column ")
+               << group.srcCol;
+      used.insert(group.id);
+    }
     return success();
   }
 
-  // The column's control multicast, from its control channel to the
-  // TileControl port of each of its core tiles, which are stamped with its id.
+  // The control multicasts that enter by this column's control channel, each
+  // to the TileControl port of its core tiles, which are stamped with its id.
   void generateMulticastForControl(OpBuilder &builder, DeviceOp device,
                                    TileOp shimTile, int shimChan) {
-    auto it = multicastRows.find(shimTile.colIndex());
-    if (it == multicastRows.end())
-      return;
-    SmallVector<TileOp> members;
-    for (int row : it->second)
-      members.push_back(
-          TileOp::getOrCreate(builder, device, shimTile.colIndex(), row));
     AIEDialect::CtrlPktMulticastIdAttrHelper stamp(device.getContext());
-    for (TileOp t : members)
-      stamp.setAttr(t, builder.getI32IntegerAttr(multicastID));
-    // An earlier run over the same input already laid it down.
-    for (auto flow : device.getOps<AIE::PacketFlowOp>())
-      if (flow.IDInt() == multicastID)
-        for (auto src : flow.getOps<AIE::PacketSourceOp>())
-          if (src.getTile() == shimTile.getResult() &&
-              src.getBundle() == WireBundle::DMA &&
-              src.channelIndex() == shimChan)
-            return;
-    OpBuilder::InsertionGuard guard(builder);
-    builder.setInsertionPoint(device.getBody()->getTerminator());
-    Location loc = shimTile.getLoc();
-    auto flow = AIE::PacketFlowOp::create(builder, loc, multicastID,
-                                          builder.getBoolAttr(true),
-                                          builder.getBoolAttr(true));
-    builder.createBlock(&flow.getPorts());
-    AIE::PacketSourceOp::create(builder, loc, shimTile, WireBundle::DMA,
-                                shimChan);
-    for (TileOp t : members)
-      AIE::PacketDestOp::create(builder, loc, t, WireBundle::TileControl, 0);
-    AIE::EndOp::create(builder, loc);
+    for (const MulticastGroup &group : multicastGroups) {
+      if (group.srcCol != shimTile.colIndex())
+        continue;
+      SmallVector<TileOp> members;
+      for (TileID t : group.members)
+        members.push_back(TileOp::getOrCreate(builder, device, t.col, t.row));
+      for (TileOp t : members)
+        stamp.setAttr(t, builder.getI32IntegerAttr(group.id));
+      // An earlier run over the same input already laid it down.
+      bool exists = llvm::any_of(
+          device.getOps<AIE::PacketFlowOp>(), [&](AIE::PacketFlowOp flow) {
+            return flow.IDInt() == group.id &&
+                   llvm::any_of(flow.getOps<AIE::PacketSourceOp>(),
+                                [&](AIE::PacketSourceOp src) {
+                                  return src.getTile() == shimTile.getResult();
+                                });
+          });
+      if (exists)
+        continue;
+      OpBuilder::InsertionGuard guard(builder);
+      builder.setInsertionPoint(device.getBody()->getTerminator());
+      Location loc = shimTile.getLoc();
+      auto flow = AIE::PacketFlowOp::create(builder, loc, group.id,
+                                            builder.getBoolAttr(true),
+                                            builder.getBoolAttr(true));
+      builder.createBlock(&flow.getPorts());
+      AIE::PacketSourceOp::create(builder, loc, shimTile, WireBundle::DMA,
+                                  shimChan);
+      for (TileOp t : members)
+        AIE::PacketDestOp::create(builder, loc, t, WireBundle::TileControl, 0);
+      AIE::EndOp::create(builder, loc);
+    }
   }
 
   // Per column, the shim MM2S channels the designs move data through, and the

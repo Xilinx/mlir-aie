@@ -14,9 +14,12 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "ControlPacketClassifier.h"
+
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 
 #include <map>
 #include <tuple>
@@ -49,9 +52,12 @@ static Write appliedWrite(NpuControlPacketOp op, uint32_t rowShift) {
 struct AIEDedupCtrlPacketMulticastPass
     : xilinx::AIEX::impl::AIEDedupCtrlPacketMulticastBase<
           AIEDedupCtrlPacketMulticastPass> {
-  // A multicast group, as the device whose configuration the packets carry, the
-  // column, and the multicast id.
-  using GroupKey = std::tuple<StringRef, int, int64_t>;
+  using Base::Base;
+
+  // A multicast group, as the device whose configuration the packets carry and
+  // the group's multicast id.
+  using GroupKey = std::pair<StringRef, int64_t>;
+  using TileKey = std::pair<int, int>;
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -76,19 +82,20 @@ struct AIEDedupCtrlPacketMulticastPass
           });
         it = ids.try_emplace(device.getAttr(), std::move(tiles)).first;
       }
-      int col = packet.getColumnFromAddr();
-      auto tile =
-          it->second.find({col, static_cast<int>(packet.getRowFromAddr())});
+      auto tile = it->second.find({static_cast<int>(packet.getColumnFromAddr()),
+                                   static_cast<int>(packet.getRowFromAddr())});
       if (tile == it->second.end())
         return std::nullopt;
       size_t size = llvm::count_if(it->second, [&](const auto &entry) {
-        return entry.first.first == col && entry.second == tile->second;
+        return entry.second == tile->second;
       });
       return std::make_pair(tile->second, size);
     };
 
     for (auto device : module.getOps<AIE::DeviceOp>()) {
       uint32_t rowShift = device.getTargetModel().getRowShift();
+      PacketClassifier classifier(device.getTargetModel());
+      bool failed = false;
       for (auto seq : device.getOps<AIE::RuntimeSequenceOp>())
         seq.walk([&](Block *block) {
           SmallVector<NpuControlPacketOp> run;
@@ -97,50 +104,70 @@ struct AIEDedupCtrlPacketMulticastPass
               run.push_back(packet);
               continue;
             }
-            dedupRun(run, idOf, rowShift);
+            failed |= mlir::failed(dedupRun(run, idOf, rowShift, classifier));
             run.clear();
           }
-          dedupRun(run, idOf, rowShift);
+          failed |= mlir::failed(dedupRun(run, idOf, rowShift, classifier));
         });
+      if (failed)
+        return signalPassFailure();
     }
   }
 
   // Dedups each group within one run, the enable phase apart from the rest.
   template <typename IdOf>
-  void dedupRun(ArrayRef<NpuControlPacketOp> run, IdOf &idOf,
-                uint32_t rowShift) {
+  LogicalResult dedupRun(ArrayRef<NpuControlPacketOp> run, IdOf &idOf,
+                         uint32_t rowShift, PacketClassifier &classifier) {
     AIEXDialect::CtrlPktDeviceAttrHelper deviceStamp(&getContext());
     AIEXDialect::CtrlPktEnablePhaseAttrHelper enablePhase(&getContext());
-    // (group, enable phase) -> row -> the row's packets in order.
+    // (group, enable phase) -> tile -> the tile's packets in order.
     std::map<std::pair<GroupKey, bool>,
-             std::map<int, SmallVector<NpuControlPacketOp>>>
+             std::map<TileKey, SmallVector<NpuControlPacketOp>>>
         members;
     std::map<GroupKey, size_t> sizes;
     for (NpuControlPacketOp packet : run) {
       auto id = idOf(packet);
       if (!id)
         continue;
-      GroupKey key{deviceStamp.getAttr(packet).getValue(),
-                   static_cast<int>(packet.getColumnFromAddr()), id->first};
+      GroupKey key{deviceStamp.getAttr(packet).getValue(), id->first};
       sizes[key] = id->second;
       members[{key, enablePhase.isAttrPresent(packet)}]
-             [static_cast<int>(packet.getRowFromAddr())]
+             [{static_cast<int>(packet.getColumnFromAddr()),
+               static_cast<int>(packet.getRowFromAddr())}]
                  .push_back(packet);
     }
-    for (auto &[key, rows] : members)
-      if (rows.size() == sizes[key.first])
-        dedupGroup(rows, std::get<2>(key.first), rowShift);
+    // The copies go after every group is done, since each reads the run.
+    SmallVector<Operation *> copies;
+    for (auto &[key, tiles] : members)
+      if (tiles.size() == sizes[key.first] &&
+          failed(dedupGroup(run, tiles, key.first.second, key.second, rowShift,
+                            classifier, copies)))
+        return failure();
+    for (Operation *op : copies)
+      op->erase();
+    return success();
   }
 
   // The leading packets every tile of the group has at the same position are
   // sent once, from the lowest tile; each tile still applies the same writes
   // in order. Every tile must have packets, since the multicast reaches all.
-  void dedupGroup(std::map<int, SmallVector<NpuControlPacketOp>> &rows,
-                  int64_t id, uint32_t rowShift) {
-    if (rows.size() < 2)
-      return;
+  //
+  // Across columns the shared packets go on the lowest tile's shim channel,
+  // which parallel shims do not order against the others. If another packet
+  // of the run on a group tile writes a register they write, starts a DMA
+  // channel or enables the core, the shared packets are stamped
+  // aiex.ctrl_pkt_base_phase and sent first; without drain-merge they always
+  // are.
+  LogicalResult
+  dedupGroup(ArrayRef<NpuControlPacketOp> run,
+             std::map<TileKey, SmallVector<NpuControlPacketOp>> &members,
+             int64_t id, bool inEnablePhase, uint32_t rowShift,
+             PacketClassifier &classifier,
+             SmallVectorImpl<Operation *> &copies) {
+    if (members.size() < 2)
+      return success();
     SmallVector<SmallVector<NpuControlPacketOp> *> tiles;
-    for (auto &[row, packets] : rows)
+    for (auto &[tile, packets] : members)
       tiles.push_back(&packets);
     SmallVector<NpuControlPacketOp> &first = *tiles.front();
     AIEXDialect::CtrlPktMulticastIdAttrHelper stamp(&getContext());
@@ -155,12 +182,55 @@ struct AIEDedupCtrlPacketMulticastPass
       if (!common)
         break;
     }
+    if (baseLen == 0)
+      return success();
+    bool spansColumns =
+        members.begin()->first.first != std::prev(members.end())->first.first;
+    bool ordered = false;
+    if (spansColumns) {
+      llvm::DenseSet<uint32_t> shared;
+      for (size_t i = 0; i < baseLen; ++i) {
+        auto data = first[i].getData();
+        size_t words = data ? data->size() : 1;
+        uint32_t offset = first[i].getAddress() & ((1u << rowShift) - 1);
+        for (size_t w = 0; w < words; ++w)
+          shared.insert(offset + 4 * w);
+      }
+      llvm::DenseSet<Operation *> baseOps;
+      for (auto *packets : tiles)
+        for (size_t i = 0; i < baseLen; ++i)
+          baseOps.insert((*packets)[i]);
+      AIEXDialect::CtrlPktEnablePhaseAttrHelper enablePhase(&getContext());
+      ordered = !drainMerge;
+      for (NpuControlPacketOp packet : run) {
+        if (ordered)
+          break;
+        if (baseOps.contains(packet) ||
+            enablePhase.isAttrPresent(packet) != inEnablePhase ||
+            !members.count({static_cast<int>(packet.getColumnFromAddr()),
+                            static_cast<int>(packet.getRowFromAddr())}))
+          continue;
+        FailureOr<Classified> c = classifier.classify(packet);
+        if (failed(c))
+          return failure();
+        ordered = c->startsSomething;
+        auto data = packet.getData();
+        size_t words = data ? data->size() : 1;
+        uint32_t offset = packet.getAddress() & ((1u << rowShift) - 1);
+        for (size_t w = 0; w < words && !ordered; ++w)
+          ordered = shared.contains(offset + 4 * w);
+      }
+    }
+    AIEXDialect::CtrlPktBasePhaseAttrHelper basePhaseStamp(&getContext());
     for (size_t i = 0; i < baseLen; ++i) {
       stamp.setAttr(first[i],
                     IntegerAttr::get(IntegerType::get(&getContext(), 32), id));
+      if (ordered)
+        basePhaseStamp.setAttr(first[i], UnitAttr::get(&getContext()));
       for (auto *packets : llvm::drop_begin(tiles))
-        (*packets)[i]->erase();
+        copies.push_back((*packets)[i]);
     }
+    return success();
   }
 };
 
@@ -169,4 +239,10 @@ struct AIEDedupCtrlPacketMulticastPass
 std::unique_ptr<OperationPass<ModuleOp>>
 xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass() {
   return std::make_unique<AIEDedupCtrlPacketMulticastPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass(
+    const AIEDedupCtrlPacketMulticastOptions &options) {
+  return std::make_unique<AIEDedupCtrlPacketMulticastPass>(options);
 }

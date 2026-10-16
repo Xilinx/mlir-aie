@@ -54,8 +54,9 @@
 // SPAN-LDPDI-CTRLPKT: aiecc: --ctrlpkt-multicast-span=1 requires --load-pdi-to-ctrl-pkt
 // RUN: not %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-reorder-by-tile=false --ctrlpkt-multicast-span=1 %s 2>&1 | FileCheck %s --check-prefix=SPAN-REORDER
 // SPAN-REORDER: aiecc: --ctrlpkt-multicast-span=1 requires --ctrlpkt-reorder-by-tile
-// RUN: not %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-multicast-span=2 %s 2>&1 | FileCheck %s --check-prefix=SPAN-WIDTH
-// SPAN-WIDTH: aiecc: --ctrlpkt-multicast-span must be 0 or 1
+// RUN: not %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-multicast-span=-1 %s 2>&1 | FileCheck %s --check-prefix=SPAN-WIDTH
+// SPAN-WIDTH: aiecc: --ctrlpkt-multicast-span must not be negative
+// RUN: %aiecc -n --load-pdi-to-ctrl-pkt --ctrlpkt-multicast-span=2 --ctrlpkt-chain-bds=false %s
 // Without the reorder the multicast turns off by default.
 // RUN: %aiecc -n --load-pdi-to-ctrl-pkt --ctrlpkt-reorder-by-tile=false %s
 

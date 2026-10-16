@@ -502,11 +502,11 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     descriptors and one await, split into several chains when longer than the
     shim tile's descriptor count.
 
-    With `parallel-shims`, a run's channels send at once, the configuration in a
-    first phase and the packets stamped `aiex.ctrl_pkt_enable_phase` in a
-    second. A phase starts every channel's transfers before awaiting any. Each
-    channel keeps at most one chain, or as many single transfers as its task
-    queue holds, outstanding.
+    With `parallel-shims`, a run's channels send at once, phase by phase: the
+    packets stamped `aiex.ctrl_pkt_base_phase`, the rest, then the same two
+    among those stamped `aiex.ctrl_pkt_enable_phase`. A phase starts every
+    channel's transfers before awaiting any. Each channel keeps at most one
+    chain, or as many single transfers as its task queue holds, outstanding.
   }];
 
   let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
@@ -723,7 +723,22 @@ def AIEDedupCtrlPacketMulticast
     `aiex.ctrl_pkt_multicast_id`; the other tiles' copies go. A group with a tile
     that has no packets in the run is left alone. Run it after
     `aie-reorder-control-packets-by-tile`.
+
+    A group spanning columns gets its base from its lowest tile's shim channel,
+    which `aie-ctrl-packet-to-dma` with `parallel-shims` does not order against
+    the other columns. When another packet of the same phase on a group tile
+    writes a register the base writes, starts a DMA channel or enables the core,
+    the base is stamped `aiex.ctrl_pkt_base_phase`, which that lowering sends
+    first. With `drain-merge=false` the base is stamped whenever the group spans
+    columns.
   }];
+
+  let options = [Option<
+                     "drainMerge", "drain-merge", "bool",
+                     /*default=*/"true",
+                     "Leave a cross-column group's base in its phase when no "
+                     "other packet writes its registers">,
+  ];
 
   let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",

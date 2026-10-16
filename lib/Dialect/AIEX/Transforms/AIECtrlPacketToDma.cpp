@@ -117,11 +117,10 @@ struct AIECtrlPacketToDmaPass
         std::string shimDmaAllocName;
         int shimChan;
         Operation *first;
-        int run;          // batches of one run have no other op between them
-        bool enablePhase; // sent after the rest of the run
-                          // (ctrl_pkt_enable_phase)
-        // The multicast group the packets go to (aiex.ctrl_pkt_multicast_id).
-        std::optional<int64_t> multicast;
+        int run; // batches of one run have no other op between them
+        bool enablePhase;
+        std::optional<int64_t> multicast; // aiex.ctrl_pkt_multicast_id
+        bool basePhase;
       };
       std::vector<BatchInfo> batches;
 
@@ -130,6 +129,7 @@ struct AIECtrlPacketToDmaPass
 
       AIEXDialect::CtrlPktEnablePhaseAttrHelper enablePhaseStamp(ctx);
       AIEXDialect::CtrlPktMulticastIdAttrHelper multicastStamp(ctx);
+      AIEXDialect::CtrlPktBasePhaseAttrHelper basePhaseStamp(ctx);
 
       // First pass: collect and batch control packet operations
       bool new_batch = true;
@@ -165,10 +165,12 @@ struct AIECtrlPacketToDmaPass
         std::optional<int64_t> multicast;
         if (auto id = multicastStamp.getAttr(ctrlPktOp))
           multicast = id.getInt();
+        bool basePhase = basePhaseStamp.isAttrPresent(ctrlPktOp);
         if (targetModel.getTargetArch() == AIEArch::AIE2p && !new_batch &&
             batches.back().tileId == TileID{col, row} &&
             batches.back().enablePhase == enablePhase &&
-            batches.back().multicast == multicast) {
+            batches.back().multicast == multicast &&
+            batches.back().basePhase == basePhase) {
           // Add to existing batch
           batches.back().totalSize += ctrlPktSize;
         } else {
@@ -184,7 +186,8 @@ struct AIECtrlPacketToDmaPass
           }
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                              getCtrlPktAllocName(col, true, *shimChan),
-                             *shimChan, &o, run, enablePhase, multicast});
+                             *shimChan, &o, run, enablePhase, multicast,
+                             basePhase});
           new_batch = false;
         }
         ddrOffset += ctrlPktSize;
@@ -218,17 +221,22 @@ struct AIECtrlPacketToDmaPass
       };
 
       // A run's shim channels send at once, in phases each awaited in full: the
-      // configuration, then the enable phase. In a phase each channel keeps its
-      // batches' order and at most `window` tasks outstanding, one chain or as
-      // many single tasks as its queue holds.
+      // base phase, the rest of the configuration, then the same two of the
+      // enable phase. In a phase each channel keeps its batches' order and at
+      // most `window` tasks outstanding, one chain or as many single tasks as
+      // its queue holds.
       auto emitParallelRun = [&](OpBuilder &builder, auto run) {
-        for (bool enablePhase : {false, true}) {
+        for (auto [enablePhase, basePhase] : {std::pair{false, true},
+                                              {false, false},
+                                              {true, true},
+                                              {true, false}}) {
           llvm::MapVector<StringRef,
                           SmallVector<SmallVector<const BatchInfo *>>>
               tasks;
           llvm::StringMap<size_t> window;
           for (const BatchInfo &batch : run) {
-            if (batch.enablePhase != enablePhase)
+            if (batch.enablePhase != enablePhase ||
+                batch.basePhase != basePhase)
               continue;
             int col = batch.tileId.col;
             uint32_t numBds = targetModel.getNumBDs(col, 0);

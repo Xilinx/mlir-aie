@@ -9,6 +9,8 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "ControlPacketClassifier.h"
+
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -29,96 +31,6 @@ using namespace xilinx;
 using namespace xilinx::AIEX;
 
 namespace {
-
-enum class Part { Other, ChannelStart, CoreEnable };
-
-struct Classified {
-  Part part;
-  // The MM2S channel a Part::ChannelStart packet starts.
-  int channel = -1;
-};
-
-// Classifies control packets by the register they write, from the target's
-// register database.
-class PacketClassifier {
-public:
-  explicit PacketClassifier(const AIE::AIETargetModel &tm) : tm(tm) {}
-
-  FailureOr<Classified> classify(NpuControlPacketOp op) {
-    auto data = op.getData();
-    if (op.getOpcode() != 0 || !data)
-      return Classified{Part::Other};
-    AIE::TileID tile{static_cast<int>(op.getColumnFromAddr()),
-                     static_cast<int>(op.getRowFromAddr())};
-    const TileRegisters *regs = getRegisters(op, tile);
-    if (!regs)
-      return failure();
-    uint32_t base = op.getAddress() & ((1u << tm.getRowShift()) - 1);
-    Part part = Part::Other;
-    for (auto [i, word] : llvm::enumerate(*data)) {
-      uint32_t offset = base + 4 * i;
-      if (auto it = regs->mm2sQueues.find(offset); it != regs->mm2sQueues.end())
-        return Classified{Part::ChannelStart, it->second};
-      if (regs->coreControl && offset == *regs->coreControl &&
-          (word & regs->coreEnableMask))
-        part = Part::CoreEnable;
-    }
-    return Classified{part};
-  }
-
-private:
-  struct TileRegisters {
-    // Queue register offset -> MM2S channel.
-    llvm::DenseMap<uint32_t, int> mm2sQueues;
-    std::optional<uint32_t> coreControl;
-    uint32_t coreEnableMask = 0;
-  };
-
-  const TileRegisters *getRegisters(NpuControlPacketOp op, AIE::TileID tile) {
-    auto it = registers.find(tile);
-    if (it != registers.end())
-      return &it->second;
-    TileRegisters regs;
-    if (tm.isCoreTile(tile.col, tile.row) || tm.isMemTile(tile.col, tile.row) ||
-        tm.isShimNOCTile(tile.col, tile.row)) {
-      // A shim tile's MM2S channels are started through a task queue, the
-      // others' through a start queue.
-      const char *queue =
-          tm.isShimNOCTile(tile.col, tile.row) ? "_Task_Queue" : "_Start_Queue";
-      for (int channel = 0;; ++channel) {
-        std::string name = "DMA_MM2S_" + std::to_string(channel) + queue;
-        const AIE::RegisterInfo *reg =
-            tm.lookupRegister(name, tile, /*isMem=*/true);
-        if (!reg) {
-          if (channel > 0)
-            break;
-          op.emitOpError("cannot reorder control packets: the register "
-                         "database has no ")
-              << name << " register";
-          return nullptr;
-        }
-        regs.mm2sQueues[reg->offset] = channel;
-      }
-    }
-    if (tm.isCoreTile(tile.col, tile.row)) {
-      const AIE::RegisterInfo *reg = tm.lookupRegister("Core_Control", tile);
-      const AIE::BitFieldInfo *enable = reg ? reg->getField("Enable") : nullptr;
-      std::optional<uint32_t> mask =
-          enable ? tm.getFieldMask(*enable) : std::nullopt;
-      if (!mask) {
-        op.emitOpError("cannot reorder control packets: the register "
-                       "database has no Core_Control Enable field");
-        return nullptr;
-      }
-      regs.coreControl = reg->offset;
-      regs.coreEnableMask = *mask;
-    }
-    return &registers.try_emplace(tile, std::move(regs)).first->second;
-  }
-
-  const AIE::AIETargetModel &tm;
-  llvm::DenseMap<AIE::TileID, TileRegisters> registers;
-};
 
 // The MM2S channels (channel >= 0) and cores (channel -1)
 // aie-check-core-start-gating proved gated, per device.

@@ -209,11 +209,11 @@ inline cl::opt<bool> ctrlpktGatedEnable(
              "default under them)"));
 inline cl::opt<int> ctrlpktMulticastSpan(
     "ctrlpkt-multicast-span",
-    cl::desc("Control-packet multicast: 1 sends the control packets the core "
-             "tiles of a column have in common once, on a multicast the "
-             "overlay adds per column; 0 sends every tile its own (requires "
-             "--load-pdi-to-ctrl-pkt and --ctrlpkt-reorder-by-tile; 1 by "
-             "default under them)"),
+    cl::desc(
+        "Send the control packets the core tiles of each group of <w> "
+        "columns share once, on a control multicast; 0 sends each tile its "
+        "own (requires --load-pdi-to-ctrl-pkt and "
+        "--ctrlpkt-reorder-by-tile; 1 by default under them)"),
     cl::init(0));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
@@ -680,11 +680,11 @@ inline bool resolveDependentOption(cl::opt<bool> &option, bool met,
   return true;
 }
 
-// --ctrlpkt-multicast-span is 0 or 1, and 1 requires --load-pdi-to-ctrl-pkt and
+// A --ctrlpkt-multicast-span width >= 1 requires --load-pdi-to-ctrl-pkt and
 // --ctrlpkt-reorder-by-tile (an explicit 0 never fails).
 inline bool resolveMulticastSpan() {
-  if (ctrlpktMulticastSpan < 0 || ctrlpktMulticastSpan > 1) {
-    llvm::errs() << "aiecc: --ctrlpkt-multicast-span must be 0 or 1\n";
+  if (ctrlpktMulticastSpan < 0) {
+    llvm::errs() << "aiecc: --ctrlpkt-multicast-span must not be negative\n";
     return false;
   }
   for (auto [met, requirement] :

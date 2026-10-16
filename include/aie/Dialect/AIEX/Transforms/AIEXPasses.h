@@ -91,6 +91,9 @@ createAIECheckCoreStartGatingPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEDedupCtrlPacketMulticastPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEDedupCtrlPacketMulticastPass(
+    const AIEDedupCtrlPacketMulticastOptions &options);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEXInlineTraceConfigPass();

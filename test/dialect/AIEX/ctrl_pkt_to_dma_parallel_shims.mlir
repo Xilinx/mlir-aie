@@ -179,3 +179,37 @@ module {
     }
   }
 }
+
+// -----
+
+// Within each of the two phases, the batches stamped aiex.ctrl_pkt_base_phase (a
+// cross-column multicast group's shared packets) go in a phase of their own,
+// awaited before the rest.
+
+// CHECK-LABEL: @base_phase
+// CHECK:       aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
+// CHECK:       aiex.dma_start_task
+// CHECK-NEXT:  aiex.dma_await_task
+// CHECK-NEXT:  aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK-NEXT:    aie.dma_bd({{.*}} offset = 3 len = 3)
+// CHECK:       aiex.dma_configure_task_for @ctrlpkt_col1_mm2s_chan0 {
+// CHECK-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
+// CHECK:       aiex.dma_await_task
+// CHECK-NEXT:  aiex.dma_await_task
+// CHECK-NOT:   aiex.dma_start_task
+module {
+  aie.device(npu2_2col) {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_1_0 = aie.tile(1, 0)
+    %tile_0_2 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+    %tile_1_2 = aie.tile(1, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0 (%tile_1_0, MM2S, 0)
+    aie.runtime_sequence @base_phase() {
+      aiex.control_packet {address = 2301952 : ui32, aiex.ctrl_pkt_multicast_id = 25 : i32, aiex.ctrl_pkt_base_phase, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2355204 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35856384 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+  }
+}

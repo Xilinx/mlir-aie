@@ -841,9 +841,10 @@ def AIEGenerateColumnControlOverlay
     moves data through (or the one aie-auto-packetize-shim-input recorded
     on the column's shim tile), and reach every row of the column.
 
-    With `multicast-span=1`, each column with two or more core tiles also gets a
-    control multicast: one packet flow from that channel to all of their
-    TileControl ports, on a packet ID nothing else uses. Those tiles are stamped
+    With `multicast-span=w` (w >= 1), each group of w columns with two or more
+    core tiles gets a control multicast: one packet flow from the control
+    channel of the group's lowest core column to all of their TileControl
+    ports, on a packet ID nothing else uses. The group's core tiles are stamped
     `aie.ctrl_pkt_multicast_id` with that ID.
   }];
 
@@ -871,8 +872,8 @@ def AIEGenerateColumnControlOverlay
                   "aiecc adds each column outside the occupied range that the "
                   "design's routes need.">,
        Option<"clMulticastSpan", "multicast-span", "int", /*default=*/"0",
-              "With route-shim-to-tile-ctrl, 1 adds a control multicast per "
-              "column to its core tiles; 0 adds none">,
+              "With route-shim-to-tile-ctrl, w >= 1 adds a control multicast "
+              "to the core tiles of each group of w columns; 0 adds none">,
   ];
 }
 
