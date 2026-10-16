@@ -18,10 +18,10 @@ from aie.iron.scratchpad_parameter import ScratchpadParameter
 
 # CHECK-LABEL: test_fill_repeat_parameter
 # CHECK: %[[IN:.*]] = aiex.dma_configure_task_for @of_in {
-# CHECK: aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 64 sizes = [16, 1, 1, 64] strides = [64, 0, 0, 1])
+# CHECK: aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 64 sizes = [1, 1, 64] strides = [0, 0, 1]) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
 # CHECK: } {repeat_count = 15 : i32}
 # CHECK: aiex.dma_start_task(%[[IN]]) {repeat_parameter = @reps}
-# CHECK: aie.dma_bd(%arg1 : memref<1024xi32> offset = 0 len = 0 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1]) {length_parameter = @tiles, length_unit = 64 : i32}
+# CHECK: aie.dma_bd(%arg1 : memref<1024xi32> offset = 0 len = 0 sizes = [1, 1, 64] strides = [0, 0, 1]) {length_parameter = @tiles, length_unit = 64 : i32}
 # CHECK: aiex.scratchpad_parameter @reps : i32
 # CHECK: aiex.scratchpad_parameter @tiles : i32
 def test_fill_repeat_parameter():
@@ -46,9 +46,9 @@ def test_fill_repeat_parameter():
 
 
 # CHECK-LABEL: test_drain_repeat_parameter
-# CHECK: aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 0 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1]) {length_parameter = @tiles, length_unit = 64 : i32}
+# CHECK: aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 0 sizes = [1, 1, 64] strides = [0, 0, 1]) {length_parameter = @tiles, length_unit = 64 : i32}
 # CHECK: %[[OUT:.*]] = aiex.dma_configure_task_for @of_out {
-# CHECK: aie.dma_bd(%arg1 : memref<1024xi32> offset = 0 len = 64 sizes = [16, 1, 1, 64] strides = [64, 0, 0, 1])
+# CHECK: aie.dma_bd(%arg1 : memref<1024xi32> offset = 0 len = 64 sizes = [1, 1, 64] strides = [0, 0, 1]) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
 # CHECK: } {issue_token = true, repeat_count = 15 : i32}
 # CHECK: aiex.dma_start_task(%[[OUT]]) {repeat_parameter = @reps}
 # CHECK: aiex.dma_await_task(%[[OUT]])
