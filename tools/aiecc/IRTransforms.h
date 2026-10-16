@@ -2032,8 +2032,10 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     return nullptr;
   }
   if (ctrlPkt) {
-    pm->nest<xilinx::AIE::DeviceOp>().addPass(
-        xilinx::AIEX::createAIELegalizeControlPacketPass());
+    auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+    dpm.addPass(xilinx::AIEX::createAIELegalizeControlPacketPass());
+    if (cli::ctrlpktReorderByTile)
+      dpm.addPass(xilinx::AIEX::createAIEReorderControlPacketsByTilePass());
   }
   return pm;
 }

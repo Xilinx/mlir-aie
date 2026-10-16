@@ -188,6 +188,11 @@ inline cl::opt<bool> ctrlpktAdaptivePin(
     "ctrlpkt-adaptive-pin",
     cl::desc("Route the control overlay around the switch ports the "
              "configurations' data takes (requires --load-pdi-to-ctrl-pkt)"));
+inline cl::opt<bool> ctrlpktReorderByTile(
+    "ctrlpkt-reorder-by-tile",
+    cl::desc("Send each tile's control packets in one transfer, channel starts "
+             "and core enables last (requires --load-pdi-to-ctrl-pkt; on by "
+             "default under it)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -712,6 +717,8 @@ inline bool resolveOptions(bool resuming = false) {
     reconfigTeardown = loadPdiToCtrlPkt && wantFullElf;
   if (!ctrlpktAutoPacketize.getNumOccurrences())
     ctrlpktAutoPacketize = loadPdiToCtrlPkt;
+  if (!ctrlpktReorderByTile.getNumOccurrences())
+    ctrlpktReorderByTile = loadPdiToCtrlPkt;
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -727,6 +734,8 @@ inline bool resolveOptions(bool resuming = false) {
          resolveDependentOption(ctrlpktAutoPacketize, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktAdaptivePin, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktReorderByTile, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt");
 }
 

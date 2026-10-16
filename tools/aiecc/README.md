@@ -81,15 +81,19 @@ For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 
 ### Control packet reconfiguration
 
-`--load-pdi-to-ctrl-pkt` loads each configuration as control packets sent
-through the control overlay (`@ctrl_pkt_overlay`), which every configuration
-keeps on the same routes. Two options adjust it; each requires it:
+`--load-pdi-to-ctrl-pkt` sends each configuration as control packets through
+the control overlay (`@ctrl_pkt_overlay`), which every configuration keeps on
+the same routes. These options adjust it; each requires it:
 
 - `--ctrlpkt-auto-packetize` (on by default): where a column's objectFIFO
   inputs take every shim MM2S channel, one input becomes packet-switched and
   shares its channel with the control packets (`aie-auto-packetize-shim-input`).
 - `--ctrlpkt-adaptive-pin` (off by default): the overlay routes around the
-  switchbox ports the configurations' data takes. See [routing](../../programming_guide/routing.md#priority-routes-and-the-control-overlay).
+  switch ports the configurations' data takes
+  (`aie-control-overlay-avoid-data`; see [routing](../../programming_guide/routing.md#priority-routes-and-the-control-overlay)).
+- `--ctrlpkt-reorder-by-tile` (on by default): each tile's control packets go
+  in one transfer, and channel starts and core enables go last
+  (`aie-reorder-control-packets-by-tile`).
 
 ### Parameterized C++ transaction builders
 
