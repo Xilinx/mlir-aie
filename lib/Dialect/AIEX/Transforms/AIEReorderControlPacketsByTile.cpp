@@ -15,6 +15,7 @@
 #include "llvm/ADT/DenseSet.h"
 
 #include <algorithm>
+#include <limits>
 #include <set>
 #include <tuple>
 
@@ -119,7 +120,8 @@ private:
   llvm::DenseMap<AIE::TileID, TileRegisters> registers;
 };
 
-// The MM2S channels aie-check-core-start-gating proved gated, per device.
+// The MM2S channels (channel >= 0) and cores (channel -1)
+// aie-check-core-start-gating proved gated, per device.
 class GatedChannels {
 public:
   explicit GatedChannels(ModuleOp module) : module(module) {}
@@ -140,6 +142,12 @@ public:
               start->getParentOp()->getOperand(0).getDefiningOp());
           channels.insert(
               {t.getCol(), t.getRow(), static_cast<int>(index.getInt())});
+        });
+      if (auto d = module.lookupSymbol<AIE::DeviceOp>(device))
+        d.walk([&](AIE::CoreOp core) {
+          if (stamp.isAttrPresent(core))
+            channels.insert(
+                {core.getTileOp().getCol(), core.getTileOp().getRow(), -1});
         });
       it = gated.try_emplace(device.getAttr(), std::move(channels)).first;
     }
@@ -200,16 +208,24 @@ struct AIEReorderControlPacketsByTilePass
       AIE::TileID tile{static_cast<int>(packet.getColumnFromAddr()),
                        static_cast<int>(packet.getRowFromAddr())};
       Part part = c->part;
+      // With gated-enable, a proved core's enable goes last among its
+      // column's other writes.
+      uint32_t row = tile.row;
       if (part == Part::ChannelStart &&
           gated.contains(deviceStamp.getAttr(packet), tile, c->channel))
         part = Part::Other;
+      else if (part == Part::CoreEnable && gatedEnable &&
+               gated.contains(deviceStamp.getAttr(packet), tile, -1)) {
+        part = Part::Other;
+        row = std::numeric_limits<uint32_t>::max();
+      }
       if (part != Part::Other)
         enablePhase.setAttr(packet, UnitAttr::get(&getContext()));
       else if (enablePhase.isAttrPresent(packet))
         enablePhase.removeAttr(packet);
       Key key{part, 0, 0};
       if (byTile)
-        key = {part, tile.col, tile.row};
+        key = {part, tile.col, row};
       keyed.push_back({key, packet});
     }
     std::stable_sort(

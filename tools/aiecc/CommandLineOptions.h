@@ -202,6 +202,11 @@ inline cl::opt<bool> ctrlpktParallelShims(
     "ctrlpkt-parallel-shims",
     cl::desc("Send every column's control packets at once (requires "
              "--load-pdi-to-ctrl-pkt; on by default under it)"));
+inline cl::opt<bool> ctrlpktGatedEnable(
+    "ctrlpkt-gated-enable",
+    cl::desc("Enable each core proved gated with its column's control packets "
+             "(requires --load-pdi-to-ctrl-pkt and --ctrlpkt-chain-bds; on by "
+             "default under them)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -732,6 +737,8 @@ inline bool resolveOptions(bool resuming = false) {
     ctrlpktChainBds = loadPdiToCtrlPkt;
   if (!ctrlpktParallelShims.getNumOccurrences())
     ctrlpktParallelShims = loadPdiToCtrlPkt;
+  if (!ctrlpktGatedEnable.getNumOccurrences())
+    ctrlpktGatedEnable = loadPdiToCtrlPkt;
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -753,7 +760,11 @@ inline bool resolveOptions(bool resuming = false) {
          resolveDependentOption(ctrlpktChainBds, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktParallelShims, loadPdiToCtrlPkt,
-                                "--load-pdi-to-ctrl-pkt");
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktGatedEnable, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktGatedEnable, ctrlpktChainBds,
+                                "--ctrlpkt-chain-bds");
 }
 
 //===----------------------------------------------------------------------===//

@@ -688,12 +688,18 @@ def AIEReorderControlPacketsByTile
     A push stays in the configuration when its channel's `aie.dma_start`, in the
     device the packet's `aiex.ctrl_pkt_device` names, carries
     `aiex.ctrl_pkt_gated` (see `aie-check-core-start-gating`). With
-    `by-tile=false` the enable phase still moves behind the configuration, but
-    nothing is sorted by tile. The pass needs the target's register database.
+    `gated-enable`, so does the enable of a core whose `aie.core` carries it,
+    last among its column's packets. With `by-tile=false` the enable phase still
+    moves behind the configuration, but nothing is sorted by tile. The pass
+    needs the target's register database.
   }];
 
   let options = [Option<"byTile", "by-tile", "bool", /*default=*/"true",
                         "Sort each part of a run by tile">,
+                 Option<"gatedEnable", "gated-enable", "bool",
+                        /*default=*/"false",
+                        "Send the enables of proved cores with their column's "
+                        "configuration">,
   ];
 
   let constructor = "xilinx::AIEX::createAIEReorderControlPacketsByTilePass()";
@@ -709,9 +715,10 @@ def AIECheckCoreStartGating
   let description = [{
     `aie-ctrl-packet-to-dma` with `parallel-shims` sends every column's
     configuration at once, so an MM2S channel that streams as soon as its queue
-    push lands could send data before another column's switches are configured.
-    This pass stamps `aiex.ctrl_pkt_gated` on the `aie.dma_start` of each channel
-    that cannot, and remarks on the others with the reason.
+    push lands could send data before another column's switches are configured. This pass stamps `aiex.ctrl_pkt_gated` on the
+    `aie.dma_start` of each channel that cannot, and on each core that cannot
+    act before the rest of its configuration lands, and remarks on the others
+    with the reason.
 
     An MM2S channel is proved gated when its first buffer descriptor waits (a
     blocking acquire, on a lock of its own tile, at a value the lock's initial
@@ -720,6 +727,13 @@ def AIECheckCoreStartGating
     known nonzero length) fed only by proved channels, cores, or shim channels
     only the runtime sequence starts. Neither cores nor the host run during a
     configuration; cores are enabled after it and the host's writes follow it.
+
+    A core is proved gated when, until it passes an acquire that cannot succeed
+    early (blocking, on an own-tile lock, at a value the initial value does not
+    reach, released only as above), it releases no lock, runs no loop that may
+    not run, touches only its own tile's buffers that only idle descriptors
+    otherwise use, and calls external functions only when it sends on no stream
+    or cascade. A core given as `elf_file` is not proved.
   }];
 
   let constructor = "xilinx::AIEX::createAIECheckCoreStartGatingPass()";

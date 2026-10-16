@@ -1674,7 +1674,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 // aie-check-core-start-gating needs the cores' bodies, so it
                 // runs here; its stamps survive the patch.
                 mlir::OwningOpRef<mlir::ModuleOp> checked;
-                if (loadPdiToCtrlPkt && ctrlpktParallelShims) {
+                if (loadPdiToCtrlPkt &&
+                    (ctrlpktParallelShims || ctrlpktGatedEnable)) {
                   checked = physicalMod.clone();
                   mlir::PassManager pm(&context);
                   pm.addPass(xilinx::AIEX::createAIECheckCoreStartGatingPass());

@@ -129,6 +129,7 @@ module {
     aie.flow(%t01, DMA : 1, %t03, DMA : 0)
     %cbuf = aie.buffer(%t02) : memref<16xi32>
     %cl = aie.lock(%t02, 0)
+    // expected-remark @+1 {{core (0, 2) not proved gated: a release before the gating acquire}}
     %core = aie.core(%t02) {
       %v7 = arith.constant 1 : i32
       aie.use_lock(%cl, Release, %v7)
@@ -179,6 +180,7 @@ module {
     }
     %dbuf = aie.buffer(%t03) : memref<16xi32>
     %dl = aie.lock(%t03, 0)
+    // expected-remark @+1 {{core (0, 3) not proved gated: no gating acquire}}
     %core3 = aie.core(%t03) {
       aie.end
     }
@@ -264,6 +266,179 @@ module {
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^end
     ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// (0, 2) writes its own scratch buffer, then waits on a lock only an S2MM
+// descriptor fed by the host's shim channel releases, so it is proved. (0, 3)
+// writes (0, 2)'s buffer before its gate. (0, 4) waits on a lock fed from a
+// self-starting memory tile channel. (0, 5) is given as an ELF. (1, 2) calls a
+// kernel before its gate and sends on a stream.
+
+// CHECK-LABEL: @cores
+// CHECK:       aie.core(%{{.*}}) {
+// CHECK:       } {aiex.ctrl_pkt_gated}
+// CHECK-NOT:   aiex.ctrl_pkt_gated
+module {
+  aie.device(npu2) @cores {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    %t04 = aie.tile(0, 4)
+    %t05 = aie.tile(0, 5)
+    %t12 = aie.tile(1, 2)
+    aie.flow(%t00, DMA : 0, %t02, DMA : 0)
+    aie.flow(%t01, DMA : 0, %t04, DMA : 0)
+    aie.flow(%t12, Core : 0, %t02, DMA : 1)
+    func.func private @kernel(memref<16xi32>)
+
+    %in = aie.buffer(%t02) : memref<16xi32>
+    %scratch = aie.buffer(%t02) : memref<16xi32>
+    %full = aie.lock(%t02, 0)
+    %core02 = aie.core(%t02) {
+      %c0 = arith.constant 0 : index
+      %c7 = arith.constant 7 : i32
+      memref.store %c7, %scratch[%c0] : memref<16xi32>
+      %v1 = arith.constant 1 : i32
+      aie.use_lock(%full, AcquireGreaterEqual, %v1)
+      aie.end
+    }
+    %mem02 = aie.mem(%t02) {
+      %0 = aie.dma_start(S2MM, 0, ^in, ^end)
+    ^in:
+      aie.dma_bd(%in : memref<16xi32> offset = 0 len = 16)
+      %v1 = arith.constant 1 : i32
+      aie.use_lock(%full, Release, %v1)
+      aie.next_bd ^in
+    ^end:
+      aie.end
+    }
+
+    %nb = aie.buffer(%t02) : memref<16xi32>
+    %l3 = aie.lock(%t03, 0)
+    // expected-remark @+1 {{core (0, 3) not proved gated: an access to another tile's buffer before the gating acquire}}
+    %core03 = aie.core(%t03) {
+      %c0 = arith.constant 0 : index
+      %c7 = arith.constant 7 : i32
+      memref.store %c7, %nb[%c0] : memref<16xi32>
+      %v1 = arith.constant 1 : i32
+      aie.use_lock(%l3, AcquireGreaterEqual, %v1)
+      aie.end
+    }
+
+    %src = aie.buffer(%t01) : memref<16xi32>
+    %go = aie.lock(%t01, 0) {init = 1 : i32}
+    %dma01 = aie.memtile_dma(%t01) {
+      // expected-remark @+1 {{MM2S channel 0 of tile (0, 1) not proved gated: the lock's initial value satisfies its first buffer descriptor's acquire}}
+      %0 = aie.dma_start(MM2S, 0, ^bd, ^end)
+    ^bd:
+      %v1 = arith.constant 1 : i32
+      aie.use_lock(%go, AcquireGreaterEqual, %v1)
+      aie.dma_bd(%src : memref<16xi32> offset = 0 len = 16)
+      aie.next_bd ^end
+    ^end:
+      aie.end
+    }
+    %b4 = aie.buffer(%t04) : memref<16xi32>
+    %l4 = aie.lock(%t04, 0)
+    // expected-remark @+1 {{core (0, 4) not proved gated: the lock's initial value satisfies its first buffer descriptor's acquire}}
+    %core04 = aie.core(%t04) {
+      %v1 = arith.constant 1 : i32
+      aie.use_lock(%l4, AcquireGreaterEqual, %v1)
+      aie.end
+    }
+    %mem04 = aie.mem(%t04) {
+      %0 = aie.dma_start(S2MM, 0, ^in, ^end)
+    ^in:
+      aie.dma_bd(%b4 : memref<16xi32> offset = 0 len = 16)
+      %v1 = arith.constant 1 : i32
+      aie.use_lock(%l4, Release, %v1)
+      aie.next_bd ^in
+    ^end:
+      aie.end
+    }
+
+    // expected-remark @+1 {{core (0, 5) not proved gated: a core given as elf_file}}
+    %core05 = aie.core(%t05) {
+      aie.end
+    } {elf_file = "core_0_5.elf"}
+
+    %b12 = aie.buffer(%t12) : memref<16xi32>
+    %l12 = aie.lock(%t12, 0)
+    // expected-remark @+1 {{core (1, 2) not proved gated: a call before the gating acquire on a core that sends on a stream or cascade}}
+    %core12 = aie.core(%t12) {
+      func.call @kernel(%b12) : (memref<16xi32>) -> ()
+      %v1 = arith.constant 1 : i32
+      aie.use_lock(%l12, AcquireGreaterEqual, %v1)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A loop lowered to branches. The walk follows a branch whose condition the
+// values on the path decide (the loop's first test), so (0, 2) is proved; (0,
+// 3)'s bound is loaded from memory, so its loop may not run.
+
+// CHECK-LABEL: @lowered_loop
+// CHECK:       %{{.*}} = aie.core(%{{.*}}) {
+// CHECK:       } {aiex.ctrl_pkt_gated}
+// CHECK-NOT:   aiex.ctrl_pkt_gated
+module {
+  aie.device(npu2) @lowered_loop {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    aie.flow(%t00, DMA : 0, %t02, DMA : 0)
+    %in = aie.buffer(%t02) : memref<16xi32>
+    %full = aie.lock(%t02, 0)
+    %core02 = aie.core(%t02) {
+      %c0 = arith.constant 0 : i32
+      %c8 = arith.constant 8 : i32
+      %c1 = arith.constant 1 : i32
+      cf.br ^head(%c0 : i32)
+    ^head(%i: i32):
+      %go = arith.cmpi slt, %i, %c8 : i32
+      cf.cond_br %go, ^body, ^exit
+    ^body:
+      aie.use_lock(%full, AcquireGreaterEqual, %c1)
+      %n = arith.addi %i, %c1 : i32
+      cf.br ^head(%n : i32)
+    ^exit:
+      aie.end
+    }
+    %mem02 = aie.mem(%t02) {
+      %0 = aie.dma_start(S2MM, 0, ^in, ^end)
+    ^in:
+      aie.dma_bd(%in : memref<16xi32> offset = 0 len = 16)
+      %v1 = arith.constant 1 : i32
+      aie.use_lock(%full, Release, %v1)
+      aie.next_bd ^in
+    ^end:
+      aie.end
+    }
+    %bound = aie.buffer(%t03) : memref<1xi32>
+    %l3 = aie.lock(%t03, 0)
+    // expected-remark @+1 {{core (0, 3) not proved gated: a branch that may not be taken before the gating acquire}}
+    %core03 = aie.core(%t03) {
+      %c0 = arith.constant 0 : i32
+      %c1 = arith.constant 1 : i32
+      %z = arith.constant 0 : index
+      %n = memref.load %bound[%z] : memref<1xi32>
+      cf.br ^head(%c0 : i32)
+    ^head(%i: i32):
+      %go = arith.cmpi slt, %i, %n : i32
+      cf.cond_br %go, ^body, ^exit
+    ^body:
+      aie.use_lock(%l3, AcquireGreaterEqual, %c1)
+      cf.br ^exit
+    ^exit:
       aie.end
     }
   }

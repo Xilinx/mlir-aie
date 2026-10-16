@@ -43,6 +43,13 @@
 // RUN: not %aiecc --ctrlpkt-parallel-shims %s 2>&1 | FileCheck %s --check-prefix=PARALLEL-LDPDI-CTRLPKT
 // PARALLEL-LDPDI-CTRLPKT: aiecc: --ctrlpkt-parallel-shims requires --load-pdi-to-ctrl-pkt
 
+// RUN: not %aiecc --ctrlpkt-gated-enable %s 2>&1 | FileCheck %s --check-prefix=GATED-LDPDI-CTRLPKT
+// GATED-LDPDI-CTRLPKT: aiecc: --ctrlpkt-gated-enable requires --load-pdi-to-ctrl-pkt
+// RUN: not %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-chain-bds=false --ctrlpkt-gated-enable %s 2>&1 | FileCheck %s --check-prefix=GATED-CHAIN
+// GATED-CHAIN: aiecc: --ctrlpkt-gated-enable requires --ctrlpkt-chain-bds
+// Without chains the gated enable turns off by default.
+// RUN: %aiecc -n --load-pdi-to-ctrl-pkt --ctrlpkt-chain-bds=false %s
+
 // Under --load-pdi-to-ctrl-pkt the teardown is on by default with full-ELF
 // output, and off without it.
 // RUN: %aiecc -n --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-init-entry %s
@@ -59,7 +66,7 @@
 // RUN: %aiecc -n --get=aie.elf --expand-load-pdis --reconfig-teardown --reconfig-init-entry %s
 
 // Turning an option off explicitly is never an error.
-// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-auto-packetize=false --ctrlpkt-adaptive-pin=false --ctrlpkt-reorder-by-tile=false --ctrlpkt-chain-bds=false --ctrlpkt-parallel-shims=false %s
+// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-auto-packetize=false --ctrlpkt-adaptive-pin=false --ctrlpkt-reorder-by-tile=false --ctrlpkt-chain-bds=false --ctrlpkt-parallel-shims=false --ctrlpkt-gated-enable=false %s
 
 module {
   aie.device(npu2) @main {

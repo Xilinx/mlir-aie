@@ -2039,6 +2039,7 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     if (cli::ctrlpktReorderByTile || cli::ctrlpktParallelShims) {
       xilinx::AIEX::AIEReorderControlPacketsByTileOptions opts;
       opts.byTile = cli::ctrlpktReorderByTile;
+      opts.gatedEnable = cli::ctrlpktGatedEnable;
       pm->addPass(xilinx::AIEX::createAIEReorderControlPacketsByTilePass(opts));
     }
   }

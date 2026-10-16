@@ -17,6 +17,12 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -42,11 +48,11 @@ namespace {
 // std::nullopt when proved, otherwise the reason it is not.
 using Verdict = std::optional<std::string>;
 
-// Whether a device's agents can act before its configuration is delivered.
-// Cores and the host cannot, since cores are enabled after the configuration
-// and the host's own writes follow it in the runtime sequence. An MM2S channel
-// whose first buffer descriptor does not wait can, and so can whatever the data
-// it sends sets off.
+// Whether a device's agents can act before its configuration is delivered. The
+// host cannot, since its writes follow the configuration, and neither can a
+// core, which is enabled after it unless proved quiet. An MM2S channel whose
+// first buffer descriptor does not wait can, and so can whatever its data sets
+// off.
 struct Checker {
   explicit Checker(DeviceOp device) : device(device) {}
 
@@ -66,6 +72,9 @@ struct Checker {
   // (tile, S2MM channel) -> the sources streams come from; a null tile is
   // one the device does not declare.
   std::map<std::pair<Operation *, int>, SmallVector<Source>> sources;
+
+  // Tiles whose core sends on a stream or a cascade.
+  DenseSet<Operation *> coreSends;
 
   DenseMap<Value, Verdict> lockMemo;
   DenseSet<Value> lockBusy;
@@ -103,6 +112,9 @@ struct Checker {
     DenseMap<TileID, Operation *> tiles;
     device.walk([&](TileOp t) { tiles[{t.colIndex(), t.rowIndex()}] = t; });
     auto addStream = [&](const RoutedStream &s) {
+      if (s.src.port.bundle == WireBundle::Core)
+        if (Operation *src = tiles.lookup(s.src.tile))
+          coreSends.insert(src);
       Operation *dst = tiles.lookup(s.dst.tile);
       if (s.dst.port.bundle != WireBundle::DMA || !dst)
         return;
@@ -113,6 +125,12 @@ struct Checker {
       addStream(s);
     for (const RoutedStream &s : traceRoutedStreams(device))
       addStream(s);
+    device.walk([&](CascadeFlowOp c) {
+      coreSends.insert(c.getSourceTile().getDefiningOp());
+    });
+    device.walk([&](ConfigureCascadeOp c) {
+      coreSends.insert(c.getTile().getDefiningOp());
+    });
   }
 
   // Whether an acquire cannot succeed on the lock's initial value; nullopt if
@@ -179,7 +197,8 @@ struct Checker {
   }
 
   // Every release of the lock waits for something that starts only after the
-  // configuration.
+  // configuration. A core releases nothing early, since it is enabled after the
+  // configuration or proved by coreProved to wait until then.
   Verdict lockQuietImpl(Value lock) {
     for (UseLockOp r : releases.lookup(lock)) {
       if (r->getParentOfType<CoreOp>())
@@ -236,6 +255,247 @@ struct Checker {
     }
     return std::nullopt;
   }
+
+  // Whether the DMA buffer descriptor in `b` stays idle until the
+  // configuration is delivered.
+  Verdict bdQuiet(Block *b) {
+    auto it = blockChannel.find(b);
+    if (it == blockChannel.end())
+      return std::string("a buffer descriptor outside a chain");
+    auto [tile, mm2s, channel] = it->second;
+    return mm2s ? channelGated(tile, channel) : s2mmQuiet(b, tile, channel);
+  }
+
+  // A core may be enabled before the rest of the configuration is delivered if,
+  // until it passes an acquire that cannot succeed early, it touches only its
+  // own tile's buffers, which nothing else touches early either, and sends on
+  // no stream.
+  Verdict coreProved(CoreOp core) {
+    if (core.getElfFile())
+      return std::string("a core given as elf_file");
+    UseLockOp gate;
+    DenseMap<Value, int64_t> known;
+    DenseSet<Block *> visited;
+    if (Verdict v = walk(core.getBody().front(), core, gate, known, visited))
+      return v;
+    return lockQuiet(gate.getLock());
+  }
+
+  // The integer value `v` has on the path walked so far, if known.
+  static std::optional<int64_t> valueOf(Value v,
+                                        const DenseMap<Value, int64_t> &known) {
+    if (auto it = known.find(v); it != known.end())
+      return it->second;
+    if (auto c = v.getDefiningOp<arith::ConstantOp>())
+      if (auto i = dyn_cast<IntegerAttr>(c.getValue()))
+        return i.getInt();
+    return std::nullopt;
+  }
+
+  // Whether a branch condition holds on the path walked so far, for a
+  // comparison of known values (a lowered loop's first test).
+  static std::optional<bool>
+  conditionOf(Value cond, const DenseMap<Value, int64_t> &known) {
+    if (std::optional<int64_t> c = valueOf(cond, known))
+      return *c != 0;
+    auto cmp = cond.getDefiningOp<arith::CmpIOp>();
+    if (!cmp)
+      return std::nullopt;
+    std::optional<int64_t> l = valueOf(cmp.getLhs(), known);
+    std::optional<int64_t> r = valueOf(cmp.getRhs(), known);
+    if (!l || !r)
+      return std::nullopt;
+    Type type = cmp.getLhs().getType();
+    unsigned width = type.isIndex() ? 64 : type.getIntOrFloatBitWidth();
+    return arith::applyCmpPredicate(cmp.getPredicate(), APInt(width, *l, true),
+                                    APInt(width, *r, true));
+  }
+
+  // Walk the core's program from `b` in program order until the gating
+  // acquire (sets `gate`), following branches whose direction is known.
+  Verdict walk(Block &b, CoreOp core, UseLockOp &gate,
+               DenseMap<Value, int64_t> &known, DenseSet<Block *> &visited) {
+    if (!visited.insert(&b).second)
+      return std::string("no gating acquire");
+    Operation *tile = core.getTileOp().getOperation();
+    for (Operation &op : b) {
+      if (auto u = dyn_cast<UseLockOp>(op)) {
+        if (u.release())
+          return std::string("a release before the gating acquire");
+        LockOp l = lockOf(u.getLock());
+        if (!l)
+          return std::string("a lock not resolved to aie.lock");
+        if (l.getTileOp().getOperation() != tile)
+          return std::string("an acquire of another tile's lock");
+        if (u.getBlocking() && *u.getBlocking() == LockBlocking::NonBlocking)
+          return std::string("a non-blocking acquire");
+        std::optional<bool> g = gates(u);
+        if (!g)
+          return std::string(
+              "a lock value or initial value that is not a constant");
+        if (*g) {
+          gate = u;
+          return std::nullopt;
+        }
+        continue; // an acquire the lock's initial value satisfies
+      }
+      if (auto f = dyn_cast<scf::ForOp>(op)) {
+        std::optional<int64_t> lb = getConstantIntValue(f.getLowerBound());
+        std::optional<int64_t> ub = getConstantIntValue(f.getUpperBound());
+        bool runs =
+            lb && ub &&
+            (f.getUnsignedCmp() ? (uint64_t)*lb < (uint64_t)*ub : *lb < *ub);
+        if (!runs)
+          return std::string(
+              "a loop that may not run before the gating acquire");
+        return walk(*f.getBody(), core, gate, known, visited);
+      }
+      if (auto br = dyn_cast<cf::BranchOp>(op))
+        return follow(br.getDest(), br.getDestOperands(), core, gate, known,
+                      visited);
+      if (auto br = dyn_cast<cf::CondBranchOp>(op)) {
+        std::optional<bool> taken = conditionOf(br.getCondition(), known);
+        if (!taken)
+          return std::string(
+              "a branch that may not be taken before the gating acquire");
+        return *taken ? follow(br.getTrueDest(), br.getTrueDestOperands(), core,
+                               gate, known, visited)
+                      : follow(br.getFalseDest(), br.getFalseDestOperands(),
+                               core, gate, known, visited);
+      }
+      if (op.hasTrait<OpTrait::IsTerminator>())
+        break;
+      if (Verdict v = preGate(op, core))
+        return v;
+    }
+    return std::string("no gating acquire");
+  }
+
+  Verdict follow(Block *dest, OperandRange operands, CoreOp core,
+                 UseLockOp &gate, DenseMap<Value, int64_t> &known,
+                 DenseSet<Block *> &visited) {
+    for (auto [arg, v] : llvm::zip(dest->getArguments(), operands)) {
+      if (std::optional<int64_t> c = valueOf(v, known))
+        known[arg] = *c;
+      else
+        known.erase(arg);
+    }
+    return walk(*dest, core, gate, known, visited);
+  }
+
+  // One op before the gating acquire. Effect-free ops pass; an op that touches
+  // memory passes when every memref it touches is guarded; a call to an
+  // external function passes when every memref it is given is guarded and the
+  // core sends on no stream or cascade, since a kernel reaches the array only
+  // through its arguments, the core's routed ports and lock intrinsics.
+  Verdict preGate(Operation &op, CoreOp core) {
+    if (isa<UseLockOp>(op))
+      return std::string("a lock op inside a region before the gating acquire");
+    if (auto call = dyn_cast<func::CallOp>(op)) {
+      auto callee = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+          call, call.getCalleeAttr());
+      if (!callee || !callee.isExternal())
+        return std::string(
+            "a call to a function with a body before the gating acquire");
+      if (coreSends.contains(core.getTileOp().getOperation()))
+        return std::string("a call before the gating acquire on a core that "
+                           "sends on a stream or cascade");
+      for (Value v : call.getOperands())
+        if (isa<BaseMemRefType>(v.getType()))
+          if (Verdict r = guardedMemref(v, core))
+            return r;
+      return std::nullopt;
+    }
+    if (op.getNumRegions()) {
+      if (!op.hasTrait<OpTrait::HasRecursiveMemoryEffects>())
+        return llvm::formatv("a region op before the gating acquire: {0}",
+                             op.getName().getStringRef())
+            .str();
+      for (Region &r : op.getRegions())
+        for (Block &blk : r)
+          for (Operation &in : blk)
+            if (!in.hasTrait<OpTrait::IsTerminator>() || in.getNumRegions())
+              if (Verdict v = preGate(in, core))
+                return v;
+      return std::nullopt;
+    }
+    if (isMemoryEffectFree(&op)) {
+      // An op declared Pure can still read memory through a memref operand
+      // (aievec.upd); a view only computes an address, and any access through
+      // it is checked on its own.
+      if (isa<ViewLikeOpInterface>(op))
+        return std::nullopt;
+      for (Value v : op.getOperands())
+        if (isa<BaseMemRefType>(v.getType()))
+          if (Verdict r = guardedMemref(v, core))
+            return r;
+      return std::nullopt;
+    }
+    auto effecting = dyn_cast<MemoryEffectOpInterface>(op);
+    SmallVector<MemoryEffects::EffectInstance> effects;
+    if (effecting)
+      effecting.getEffects(effects);
+    if (!effecting || effects.empty())
+      return llvm::formatv("a side effect before the gating acquire: {0}",
+                           op.getName().getStringRef())
+          .str();
+    for (const MemoryEffects::EffectInstance &e : effects) {
+      Value v = e.getValue();
+      if (!v || !isa<BaseMemRefType>(v.getType()))
+        return llvm::formatv("a side effect before the gating acquire: {0}",
+                             op.getName().getStringRef())
+            .str();
+      if (Verdict r = guardedMemref(v, core))
+        return r;
+    }
+    return std::nullopt;
+  }
+
+  // Whether a memref value is a view or a select of guarded buffers.
+  Verdict guardedMemref(Value v, CoreOp core) {
+    if (auto b = v.getDefiningOp<BufferOp>())
+      return guardedBuffer(b, core);
+    Operation *def = v.getDefiningOp();
+    if (auto view = dyn_cast_or_null<ViewLikeOpInterface>(def))
+      return guardedMemref(view.getViewSource(), core);
+    if (auto sel = dyn_cast_or_null<arith::SelectOp>(def)) {
+      if (Verdict r = guardedMemref(sel.getTrueValue(), core))
+        return r;
+      return guardedMemref(sel.getFalseValue(), core);
+    }
+    if (def && isa<scf::IndexSwitchOp, scf::IfOp>(def)) {
+      unsigned i = cast<OpResult>(v).getResultNumber();
+      for (Region &r : def->getRegions())
+        for (Block &blk : r)
+          if (Verdict rv =
+                  guardedMemref(blk.getTerminator()->getOperand(i), core))
+            return rv;
+      return std::nullopt;
+    }
+    return std::string("a memref not resolved to an aie.buffer before the "
+                       "gating acquire");
+  }
+
+  // A buffer is guarded when it is on the core's tile, whose writes land
+  // before the enable, and otherwise only buffer descriptors that stay idle
+  // until the configuration is delivered touch it.
+  Verdict guardedBuffer(BufferOp b, CoreOp core) {
+    if (b.getTileOp() != core.getTileOp())
+      return std::string("an access to another tile's buffer before the "
+                         "gating acquire");
+    for (Operation *user : b->getUsers()) {
+      if (core->isAncestor(user))
+        continue;
+      if (!isa<DMABDOp>(user))
+        return llvm::formatv("a buffer accessed before the gating acquire is "
+                             "also used by {0}",
+                             user->getName().getStringRef())
+            .str();
+      if (Verdict v = bdQuiet(user->getBlock()))
+        return v;
+    }
+    return std::nullopt;
+  }
 };
 
 struct AIECheckCoreStartGatingPass
@@ -261,6 +521,17 @@ struct AIECheckCoreStartGatingPass
               << ", " << t.getRow() << ") not proved gated: " << *v;
         } else {
           gated.setAttr(start, UnitAttr::get(&getContext()));
+        }
+      });
+      device.walk([&](CoreOp core) {
+        TileOp t = core.getTileOp();
+        if (Verdict v = checker.coreProved(core)) {
+          if (gated.isAttrPresent(core))
+            gated.removeAttr(core);
+          core.emitRemark() << "core (" << t.getCol() << ", " << t.getRow()
+                            << ") not proved gated: " << *v;
+        } else {
+          gated.setAttr(core, UnitAttr::get(&getContext()));
         }
       });
     });
