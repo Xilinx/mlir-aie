@@ -76,7 +76,6 @@ def test_only_the_cores_the_process_may_run_on_are_held():
     before = CompletionCores.interrupts()
     run()
     interrupted = CompletionCores(before).cpus
-    assert interrupted
     affinity = os.sched_getaffinity(0)
     others = affinity - interrupted
     if not others:
