@@ -2234,43 +2234,47 @@ def flm_gemma4_decode_per_layer_up(
 ) -> ExternalFunction:
     """Build the per-layer-input up projection, from ``flm_gemma4/decode_per_layer_up.cc``.
 
-    ``per_layer_up(x, proj_w_ping, proj_w_pong, y)``: gates the layer's
-    per-layer input, projects it from ``pli_d`` up to ``model_dim`` with bf16
-    weight blocks (32 by 256 each) streamed through the ``proj_w`` ping-pong
-    pair, RMS-normalizes the result, adds the residual and scales it by the
-    layer scale into ``y`` (``model_dim`` bf16). ``x`` is
+    ``per_layer_up_begin(x)`` gates the layer's per-layer input.
+    ``bf16_proj_zero``, ``bf16_proj_mvm`` and ``bf16_proj_store`` implement
+    the projection from ``pli_d`` up to ``model_dim``. The design streams its
+    32 by 256 bf16 weight blocks. ``per_layer_up_finish(x, y)`` RMS-normalizes
+    the result, adds the residual and scales it by the layer scale. ``x`` is
     ``2 * (pli_d + model_dim) + 32`` bf16: the norm weight, the layer scale
-    padded to 32, the per-layer input, the residual and the gate. The kernel
-    gates the per-layer input in place.
+    padded to 32, the per-layer input, the residual and the gate. ``y`` is
+    ``model_dim`` bf16. The begin entry point gates the per-layer input in place.
 
     ``y`` needs a 64-byte-aligned base pointer.
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults ``x_prod_lock=0``,
-            ``x_cons_lock=1``, ``proj_w_prod_lock=2``, ``proj_w_cons_lock=3``,
-            ``y_prod_lock=4`` and ``y_cons_lock=5``.
+        **locks: No lock arguments are accepted.
     """
     bf16 = np.dtype[bfloat16]
     d, pli = geometry.model_dim, geometry.pli_d
     w_ty = np.ndarray[(_DECODE_BF16_BLOCK,), bf16]
-    return _decode_kernel(
+    x_ty = np.ndarray[(2 * (pli + d) + 32,), bf16]
+    y_ty = np.ndarray[(d,), bf16]
+    fn = _decode_kernel(
         "per_layer_up",
-        "per_layer_up",
-        [
-            np.ndarray[(2 * (pli + d) + 32,), bf16],
-            w_ty,
-            w_ty,
-            np.ndarray[(d,), bf16],
-        ],
-        (InOut, In, In, Out),
-        dict(
-            proj_w_prod_lock=2,
-            proj_w_cons_lock=3,
-        ),
+        "per_layer_up_begin",
+        [x_ty],
+        (InOut,),
+        {},
         locks,
         geometry,
     )
+    bind = fn.object_file.bind
+    fn.per_layer_up_finish = bind("per_layer_up_finish", [x_ty, y_ty])
+    fn.bf16_proj_zero = bind("bf16_proj_zero", [np.ndarray[(_BF16_PROJ_M,), _F32]])
+    fn.bf16_proj_mvm = bind(
+        "bf16_proj_mvm",
+        [w_ty, x_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
+    )
+    fn.bf16_proj_store = bind(
+        "bf16_proj_store",
+        [y_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
+    )
+    return fn
 
 
 _BF16_PROJ_M, _BF16_PROJ_K = 32, 256
@@ -2338,50 +2342,48 @@ def flm_gemma4_decode_proj_layer_embedding(
 ) -> ExternalFunction:
     """Build the per-layer-input embedding projection, from ``flm_gemma4/decode_proj_layer_embedding.cc``.
 
-    ``proj_layer_embedding(norm_w, x0_per_layer, x0, x_proj, y, proj_w_ping, proj_w_pong)``:
-    projects the layer input ``x0`` (``model_dim`` bf16) down to ``pli_d``
-    with bf16 weight blocks (32 by 256 each) streamed through the ``proj_w``
-    ping-pong pair, scales, RMS-normalizes and adds the token's per-layer
-    embedding ``x0_per_layer`` (``pli_d``), and scales again, in the scratch
-    ``x_proj`` (``pli_d``). ``norm_w`` (``pli_d + model_dim + 32`` bf16)
-    holds the norm weight, then ``model_dim + 32`` values the kernel copies
-    to the start of ``y`` (same size) for the up projection; the result
-    follows them.
+    ``bf16_proj_zero``, ``bf16_proj_mvm`` and ``bf16_proj_store`` project the
+    layer input ``x0`` (``model_dim`` bf16) down to ``pli_d``. The design
+    streams its 32 by 256 bf16 weight blocks. Then
+    ``proj_layer_embedding_finish(norm_w, x0_per_layer, x_proj, y)`` scales,
+    RMS-normalizes and adds the token's per-layer embedding ``x0_per_layer``
+    (``pli_d``), and scales again, in the scratch ``x_proj`` (``pli_d``).
+    ``norm_w`` (``pli_d + model_dim + 32`` bf16) holds the norm weight, then
+    ``model_dim + 32`` values the finish entry point copies to the start of
+    ``y`` (same size) for the up projection. The result follows them.
 
     ``x_proj`` needs a 64-byte-aligned base pointer.
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults
-            ``x0_per_layer_prod_lock=1``,
-            ``xw_cons_lock=3``, ``proj_w_prod_lock=4``,
-            ``proj_w_cons_lock=5``, ``y_prod_lock=6`` and ``y_cons_lock=7``.
+        **locks: No lock arguments are accepted.
     """
     bf16 = np.dtype[bfloat16]
     d, pli = geometry.model_dim, geometry.pli_d
     pli_ty = np.ndarray[(pli,), bf16]
     y_ty = np.ndarray[(pli + d + 32,), bf16]
     w_ty = np.ndarray[(_DECODE_BF16_BLOCK,), bf16]
-    return _decode_kernel(
+    x_ty = np.ndarray[(d,), bf16]
+    fn = _decode_kernel(
         "proj_layer_embedding",
-        "proj_layer_embedding",
-        [
-            y_ty,
-            pli_ty,
-            np.ndarray[(d,), bf16],
-            pli_ty,
-            y_ty,
-            w_ty,
-            w_ty,
-        ],
-        (In, In, In, Out, Out, In, In),
-        dict(
-            proj_w_prod_lock=4,
-            proj_w_cons_lock=5,
-        ),
+        "proj_layer_embedding_finish",
+        [y_ty, pli_ty, pli_ty, y_ty],
+        (In, In, InOut, Out),
+        {},
         locks,
         geometry,
     )
+    bind = fn.object_file.bind
+    fn.bf16_proj_zero = bind("bf16_proj_zero", [np.ndarray[(_BF16_PROJ_M,), _F32]])
+    fn.bf16_proj_mvm = bind(
+        "bf16_proj_mvm",
+        [w_ty, x_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
+    )
+    fn.bf16_proj_store = bind(
+        "bf16_proj_store",
+        [pli_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
+    )
+    return fn
 
 
 @dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
@@ -2390,41 +2392,47 @@ def flm_gemma4_decode_gate_layer_embedding(
 ) -> ExternalFunction:
     """Build the per-layer-input gate, from ``flm_gemma4/decode_gate_layer_embedding.cc``.
 
-    ``gate_layer_embedding(x, proj_w_ping, proj_w_pong, y)``: copies the
-    layer output ``x`` (``model_dim`` bf16, a buffer of the tile to the left)
-    into ``y``, projects it to ``pli_d`` with bf16 weight blocks (32 by 256
-    each) streamed through the ``proj_w`` ping-pong pair, and applies the
-    activation into ``y + model_dim``. ``y`` is ``model_dim + pli_d`` bf16.
+    ``gate_layer_embedding_begin(x, y)`` copies the layer output ``x``
+    (``model_dim`` bf16, a buffer of the tile to the left) into ``y``.
+    ``bf16_proj_zero``, ``bf16_proj_mvm`` and ``bf16_proj_store`` project it
+    to ``pli_d``. The design streams its 32 by 256 bf16 weight blocks.
+    ``gate_layer_embedding_finish(y)`` applies the activation into
+    ``y + model_dim``. ``y`` is ``model_dim + pli_d`` bf16.
 
     ``y`` needs a 64-byte-aligned base pointer; the kernel also stores
     512 bits at a time at ``y + model_dim``.
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults ``proj_w_prod_lock=2``
-            and ``proj_w_cons_lock=3``.
+        **locks: No lock arguments are accepted.
     """
     bf16 = np.dtype[bfloat16]
     d = geometry.model_dim
     w_ty = np.ndarray[(_DECODE_BF16_BLOCK,), bf16]
-    return _decode_kernel(
+    x_ty = np.ndarray[(d,), bf16]
+    y_ty = np.ndarray[(d + geometry.pli_d,), bf16]
+    fn = _decode_kernel(
         "gate_layer_embedding",
-        "gate_layer_embedding",
-        [
-            np.ndarray[(d,), bf16],
-            w_ty,
-            w_ty,
-            np.ndarray[(d + geometry.pli_d,), bf16],
-        ],
-        (In, In, In, Out),
-        dict(
-            proj_w_prod_lock=2,
-            proj_w_cons_lock=3,
-        ),
+        "gate_layer_embedding_begin",
+        [x_ty, y_ty],
+        (In, Out),
+        {},
         locks,
         geometry,
         lut=True,
     )
+    bind = fn.object_file.bind
+    fn.gate_layer_embedding_finish = bind("gate_layer_embedding_finish", [y_ty])
+    fn.bf16_proj_zero = bind("bf16_proj_zero", [np.ndarray[(_BF16_PROJ_M,), _F32]])
+    fn.bf16_proj_mvm = bind(
+        "bf16_proj_mvm",
+        [w_ty, y_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
+    )
+    fn.bf16_proj_store = bind(
+        "bf16_proj_store",
+        [y_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
+    )
+    return fn
 
 
 def flm_gemma4_pli_gelu_core_ref(x):
