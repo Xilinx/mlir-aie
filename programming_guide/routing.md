@@ -233,6 +233,11 @@ then routes alone around all of those ports, taking one only where no other
 port is free. Every configuration avoids the same ports, so all of them keep
 the overlay's routes.
 
+With `aiecc --ctrlpkt-multicast-span=<w>`, the overlay also carries a control
+multicast per group of w columns (see `aie-generate-column-control-overlay`).
+Like the other overlay flows, these take their routes alone, and every
+configuration keeps them.
+
 ## Options
 
 | Pass option | Default | Effect |
