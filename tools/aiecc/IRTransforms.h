@@ -2017,7 +2017,9 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 // With `ctrlPkt=false` the referenced device's configuration is emitted as
 // `write32`/`blockwrite` ops; with `ctrlPkt=true` it is emitted as
 // `aiex.npu.control_packet` ops (which a later ctrl-packet-to-dma pass streams
-// in), preceded by a `load_pdi @ctrl_pkt_overlay`.
+// in), preceded by a `load_pdi @ctrl_pkt_overlay`. Without
+// --ctrlpkt-reorder-by-tile, --ctrlpkt-parallel-shims still runs the reorder
+// pass, with by-tile=false.
 inline std::unique_ptr<mlir::PassManager>
 getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -2032,10 +2034,13 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     return nullptr;
   }
   if (ctrlPkt) {
-    auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
-    dpm.addPass(xilinx::AIEX::createAIELegalizeControlPacketPass());
-    if (cli::ctrlpktReorderByTile)
-      dpm.addPass(xilinx::AIEX::createAIEReorderControlPacketsByTilePass());
+    pm->nest<xilinx::AIE::DeviceOp>().addPass(
+        xilinx::AIEX::createAIELegalizeControlPacketPass());
+    if (cli::ctrlpktReorderByTile || cli::ctrlpktParallelShims) {
+      xilinx::AIEX::AIEReorderControlPacketsByTileOptions opts;
+      opts.byTile = cli::ctrlpktReorderByTile;
+      pm->addPass(xilinx::AIEX::createAIEReorderControlPacketsByTilePass(opts));
+    }
   }
   return pm;
 }
@@ -2080,12 +2085,12 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 
 // Convert legalized control-packet ops into DMA task ops (device-nested). The
 // subsequent DMA→NPU lowering is done by getPerDeviceDmaLoweringPipeline.
-// --ctrlpkt-chain-bds sets the pass's chain-bds option.
 inline std::unique_ptr<mlir::PassManager>
 getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIEX::AIECtrlPacketToDmaOptions opts;
   opts.chainBds = cli::ctrlpktChainBds;
+  opts.parallelShims = cli::ctrlpktParallelShims;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
       xilinx::AIEX::createAIECtrlPacketToDmaPass(opts));
   return pm;

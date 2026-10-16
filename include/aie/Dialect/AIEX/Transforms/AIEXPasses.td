@@ -501,11 +501,20 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     no op between them are one `aiex.dma_configure_task_for` with chained
     descriptors and one await, split into several chains when longer than the
     shim tile's descriptor count.
+
+    With `parallel-shims`, a run's channels send at once, the configuration in a
+    first phase and the packets stamped `aiex.ctrl_pkt_enable_phase` in a
+    second. A phase starts every channel's transfers before awaiting any. Each
+    channel keeps at most one chain, or as many single transfers as its task
+    queue holds, outstanding.
   }];
 
   let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
                         "Chain each run of transfers on one shim channel into "
                         "one task with one await">,
+                 Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false",
+                        "Send a run's shim channels at once, phase by phase">,
   ];
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";
@@ -659,7 +668,7 @@ def AIELegalizeControlPacket
 }
 
 def AIEReorderControlPacketsByTile
-    : Pass<"aie-reorder-control-packets-by-tile", "AIE::DeviceOp"> {
+    : Pass<"aie-reorder-control-packets-by-tile", "mlir::ModuleOp"> {
   let summary = "Group each run of control packets by destination tile";
   let description = [{
     In every runtime sequence, reorders each maximal run of consecutive
@@ -668,16 +677,52 @@ def AIEReorderControlPacketsByTile
     one transfer.
 
     A run splits into the configuration and the enable phase, each stably sorted
-    by tile (column, then row). The enable phase holds the pushes to an MM2S
-    channel's start (task) queue and then the core enables (writes setting
-    `Core_Control`'s enable bit). A push starts its channel, which streams at
-    once if its lock allows, so its route has to be configured first; cores
-    start last. A channel's control register (its reset and enable) stays in
-    place, and the push, written before the enable, still starts the channel.
-    The pass needs the target's register database.
+    by tile (column, then row). The enable phase, stamped
+    `aiex.ctrl_pkt_enable_phase`, holds the pushes to an MM2S channel's start
+    (task) queue and then the core enables (writes setting `Core_Control`'s
+    enable bit). A push starts its channel, which streams at once if its lock
+    allows, so its route has to be configured first; cores start last. A
+    channel's control register (its reset and enable) stays in place, and the
+    push, written before the enable, still starts the channel.
+
+    A push stays in the configuration when its channel's `aie.dma_start`, in the
+    device the packet's `aiex.ctrl_pkt_device` names, carries
+    `aiex.ctrl_pkt_gated` (see `aie-check-core-start-gating`). With
+    `by-tile=false` the enable phase still moves behind the configuration, but
+    nothing is sorted by tile. The pass needs the target's register database.
   }];
 
+  let options = [Option<"byTile", "by-tile", "bool", /*default=*/"true",
+                        "Sort each part of a run by tile">,
+  ];
+
   let constructor = "xilinx::AIEX::createAIEReorderControlPacketsByTilePass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECheckCoreStartGating
+    : Pass<"aie-check-core-start-gating", "mlir::ModuleOp"> {
+  let summary = "Prove which DMA channels cannot start moving data during "
+                "their configuration";
+  let description = [{
+    `aie-ctrl-packet-to-dma` with `parallel-shims` sends every column's
+    configuration at once, so an MM2S channel that streams as soon as its queue
+    push lands could send data before another column's switches are configured.
+    This pass stamps `aiex.ctrl_pkt_gated` on the `aie.dma_start` of each channel
+    that cannot, and remarks on the others with the reason.
+
+    An MM2S channel is proved gated when its first buffer descriptor waits (a
+    blocking acquire, on a lock of its own tile, at a value the lock's initial
+    value does not reach) and every buffer descriptor that releases that lock is
+    an MM2S descriptor of a proved channel, or a stream-to-memory descriptor (of
+    known nonzero length) fed only by proved channels, cores, or shim channels
+    only the runtime sequence starts. Neither cores nor the host run during a
+    configuration; cores are enabled after it and the host's writes follow it.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIECheckCoreStartGatingPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];

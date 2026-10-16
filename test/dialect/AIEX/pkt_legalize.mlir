@@ -23,5 +23,10 @@ aie.device(npu2) {
     // CHECK: aiex.control_packet {address = 88 : ui32, data = array<i32: 23>, opcode = 0 : i32, stream_id = 3 : i32}
     aiex.control_packet {address = 40 : ui32, data = array<i32: 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23>, opcode = 0 : i32, stream_id = 3 : i32}
 
+    // The pieces keep the packet's stamps.
+    // CHECK: aiex.control_packet {address = 112 : ui32, aiex.ctrl_pkt_device = @cfg, aiex.ctrl_pkt_enable_phase, data = array<i32: 24, 25, 26, 27>, opcode = 0 : i32, stream_id = 4 : i32}
+    // CHECK: aiex.control_packet {address = 128 : ui32, aiex.ctrl_pkt_device = @cfg, aiex.ctrl_pkt_enable_phase, data = array<i32: 28>, opcode = 0 : i32, stream_id = 4 : i32}
+    aiex.control_packet {address = 112 : ui32, aiex.ctrl_pkt_device = @cfg, aiex.ctrl_pkt_enable_phase, data = array<i32: 24, 25, 26, 27, 28>, opcode = 0 : i32, stream_id = 4 : i32}
+
   }
 }

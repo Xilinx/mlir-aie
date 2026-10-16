@@ -33,6 +33,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIETransformBfpTypes.cpp
   AIETxnToControlPacket.cpp
   AIEReorderControlPacketsByTile.cpp
+  AIECheckCoreStartGating.cpp
   AIEExpandLoadPdi.cpp
   AIEInlineTraceConfig.cpp
   AIEFuseTraceBuffers.cpp

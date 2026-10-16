@@ -286,6 +286,25 @@ struct CtrlPktReload {
   AIE::DeviceOp overlay;
 };
 
+// The ops after `before` up to `end`, in `end`'s block; from its start if
+// `before` is null.
+static iterator_range<Block::iterator> opsBetween(Operation *before,
+                                                  Operation *end) {
+  return llvm::make_range(before ? std::next(before->getIterator())
+                                 : end->getBlock()->begin(),
+                          end->getIterator());
+}
+
+// Stamps each control packet in `ops` with the device it configures, for the
+// passes that read that device's analyses.
+static void stampDevice(iterator_range<Block::iterator> ops,
+                        AIE::DeviceOp device) {
+  AIEXDialect::CtrlPktDeviceAttrHelper deviceStamp(device.getContext());
+  for (Operation &op : ops)
+    if (isa<NpuControlPacketOp>(op))
+      deviceStamp.setAttr(&op, FlatSymbolRefAttr::get(device.getSymNameAttr()));
+}
+
 // Set `builder` after the last wait before the next load_pdi, or at that
 // load_pdi (or the block's end) if there is none.
 static void setInsertionPointToSegmentEnd(OpBuilder &builder,
@@ -402,12 +421,13 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
       loadPdiOp.emitError("Failed to generate configuration operations");
       return failure();
     }
-    if (ctrlPkt && failed(verifyOverlayReachesTiles(
-                       loadPdiOp, overlays.front(),
-                       {beforeConfig ? std::next(beforeConfig->getIterator())
-                                     : loadPdiOp->getBlock()->begin(),
-                        loadPdiOp->getIterator()})))
-      return failure();
+    auto config = opsBetween(beforeConfig, loadPdiOp);
+    if (ctrlPkt) {
+      if (failed(
+              verifyOverlayReachesTiles(loadPdiOp, overlays.front(), config)))
+        return failure();
+      stampDevice(config, referencedDevice);
+    }
   }
 
   // Erase the load_pdi before inserting the teardown, so the teardown's masked
@@ -416,13 +436,28 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
   if (teardownData)
     setInsertionPointToSegmentEnd(builder, loadPdiOp);
   loadPdiOp.erase();
+  if (!teardownData)
+    return success();
 
-  if (teardownData && failed(xilinx::AIE::generateAndInsertTeardownOps(
-                          builder, referencedDevice, *teardownData, outputType,
-                          /*skipCtrlPktOverlay=*/ctrlPkt))) {
+  Block *block = builder.getInsertionBlock();
+  Operation *end = builder.getInsertionPoint() == block->end()
+                       ? nullptr
+                       : &*builder.getInsertionPoint();
+  Operation *beforeTeardown = end              ? end->getPrevNode()
+                              : block->empty() ? nullptr
+                                               : &block->back();
+  if (failed(xilinx::AIE::generateAndInsertTeardownOps(
+          builder, referencedDevice, *teardownData, outputType,
+          /*skipCtrlPktOverlay=*/ctrlPkt))) {
     emitError(loc, "Failed to generate teardown operations");
     return failure();
   }
+  if (ctrlPkt)
+    stampDevice(llvm::make_range(beforeTeardown
+                                     ? std::next(beforeTeardown->getIterator())
+                                     : block->begin(),
+                                 end ? end->getIterator() : block->end()),
+                referencedDevice);
   return success();
 }
 
@@ -588,13 +623,13 @@ struct AIEExpandLoadPdiPass
       return;
     }
     for (CtrlPktReload &reload : ctrlPktReloads) {
-      if (failed(verifyOverlayReachesTiles(
-              reload.load, reload.overlay,
-              {std::next(reload.preload->getIterator()),
-               reload.load->getIterator()}))) {
+      auto config = opsBetween(reload.preload, reload.load);
+      if (failed(
+              verifyOverlayReachesTiles(reload.load, reload.overlay, config))) {
         signalPassFailure();
         return;
       }
+      stampDevice(config, reload.device);
       reload.load.erase();
     }
 

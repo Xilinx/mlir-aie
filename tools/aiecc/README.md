@@ -96,6 +96,11 @@ the same routes. These options adjust it; each requires it:
   (`aie-reorder-control-packets-by-tile`).
 - `--ctrlpkt-chain-bds` (on by default): each run of transfers on one shim
   channel is one chain of buffer descriptors with one await.
+- `--ctrlpkt-parallel-shims` (on by default): every column's shim channel
+  sends at once, first everything but the channel starts and core enables,
+  then those. A channel start stays in the first phase when
+  `aie-check-core-start-gating` proves the channel cannot move data before its
+  configuration lands; the pass remarks on every other MM2S channel.
 
 ### Parameterized C++ transaction builders
 

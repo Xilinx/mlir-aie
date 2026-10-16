@@ -112,9 +112,11 @@ struct ControlPacketSplitPattern
       auto incrementedAddress = rewriter.getUI32IntegerAttr(
           op.getAddress() + (i * 4 * sizeof(uint32_t)));
 
-      AIEX::NpuControlPacketOp::create(
+      auto chunk = AIEX::NpuControlPacketOp::create(
           rewriter, loc, incrementedAddress, nullptr, op.getOpcodeAttr(),
           op.getStreamIdAttr(), DenseI32ArrayAttr::get(context, chunkData));
+      // Each piece keeps the stamps of the packet it was split from.
+      chunk->setDiscardableAttrs(op->getDiscardableAttrDictionary());
     }
 
     rewriter.eraseOp(op);

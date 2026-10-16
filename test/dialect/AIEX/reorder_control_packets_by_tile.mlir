@@ -10,9 +10,10 @@
 // Each run of control packets is grouped by tile (column, then row), each
 // tile's packets in their order. MM2S queue pushes (core tile 0x1DE14, memory
 // tile 0xA0634) follow every other packet of the run, and core enables
-// (Core_Control 0x32000 with bit 0 set) come last. A channel's control
-// register (0x1DE10), a core disable and a core reset stay with the tile's
-// other writes. A non-packet op ends a run.
+// (Core_Control 0x32000 with bit 0 set) come last; both are stamped
+// aiex.ctrl_pkt_enable_phase. These packets name no device, so no channel is proved
+// gated. A channel's control register (0x1DE10), a core disable and a core
+// reset stay with the tile's other writes. A non-packet op ends a run.
 
 // CHECK-LABEL: aie.runtime_sequence
 // Tile (0, 1) gets its switch, then its lock.
@@ -27,11 +28,11 @@
 // Tile (1, 2) gets its switch.
 // CHECK-NEXT: address = 35909636 : ui32, data = array<i32: 31>
 // Queue pushes, by tile.
-// CHECK-NEXT: address = 1705524 : ui32, data = array<i32: 1>
-// CHECK-NEXT: address = 2219540 : ui32, data = array<i32: 1>
+// CHECK-NEXT: address = 1705524 : ui32, aiex.ctrl_pkt_enable_phase, data = array<i32: 1>
+// CHECK-NEXT: address = 2219540 : ui32, aiex.ctrl_pkt_enable_phase, data = array<i32: 1>
 // Core enables, by tile.
-// CHECK-NEXT: address = 2301952 : ui32, data = array<i32: 1>
-// CHECK-NEXT: address = 35856384 : ui32, data = array<i32: 1>
+// CHECK-NEXT: address = 2301952 : ui32, aiex.ctrl_pkt_enable_phase, data = array<i32: 1>
+// CHECK-NEXT: address = 35856384 : ui32, aiex.ctrl_pkt_enable_phase, data = array<i32: 1>
 // The next run is reordered on its own.
 // CHECK-NEXT: aiex.npu.load_pdi
 // CHECK-NEXT: address = 2355204 : ui32, data = array<i32: 0>

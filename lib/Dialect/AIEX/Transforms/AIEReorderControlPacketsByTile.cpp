@@ -15,6 +15,8 @@
 #include "llvm/ADT/DenseSet.h"
 
 #include <algorithm>
+#include <set>
+#include <tuple>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEREORDERCONTROLPACKETSBYTILE
@@ -29,16 +31,22 @@ namespace {
 
 enum class Part { Other, ChannelStart, CoreEnable };
 
+struct Classified {
+  Part part;
+  // The MM2S channel a Part::ChannelStart packet starts.
+  int channel = -1;
+};
+
 // Classifies control packets by the register they write, from the target's
 // register database.
 class PacketClassifier {
 public:
   explicit PacketClassifier(const AIE::AIETargetModel &tm) : tm(tm) {}
 
-  FailureOr<Part> classify(NpuControlPacketOp op) {
+  FailureOr<Classified> classify(NpuControlPacketOp op) {
     auto data = op.getData();
     if (op.getOpcode() != 0 || !data)
-      return Part::Other;
+      return Classified{Part::Other};
     AIE::TileID tile{static_cast<int>(op.getColumnFromAddr()),
                      static_cast<int>(op.getRowFromAddr())};
     const TileRegisters *regs = getRegisters(op, tile);
@@ -48,18 +56,19 @@ public:
     Part part = Part::Other;
     for (auto [i, word] : llvm::enumerate(*data)) {
       uint32_t offset = base + 4 * i;
-      if (regs->mm2sQueues.contains(offset))
-        return Part::ChannelStart;
+      if (auto it = regs->mm2sQueues.find(offset); it != regs->mm2sQueues.end())
+        return Classified{Part::ChannelStart, it->second};
       if (regs->coreControl && offset == *regs->coreControl &&
           (word & regs->coreEnableMask))
         part = Part::CoreEnable;
     }
-    return part;
+    return Classified{part};
   }
 
 private:
   struct TileRegisters {
-    llvm::DenseSet<uint32_t> mm2sQueues;
+    // Queue register offset -> MM2S channel.
+    llvm::DenseMap<uint32_t, int> mm2sQueues;
     std::optional<uint32_t> coreControl;
     uint32_t coreEnableMask = 0;
   };
@@ -87,7 +96,7 @@ private:
               << name << " register";
           return nullptr;
         }
-        regs.mm2sQueues.insert(reg->offset);
+        regs.mm2sQueues[reg->offset] = channel;
       }
     }
     if (tm.isCoreTile(tile.col, tile.row)) {
@@ -110,49 +119,98 @@ private:
   llvm::DenseMap<AIE::TileID, TileRegisters> registers;
 };
 
+// The MM2S channels aie-check-core-start-gating proved gated, per device.
+class GatedChannels {
+public:
+  explicit GatedChannels(ModuleOp module) : module(module) {}
+
+  bool contains(FlatSymbolRefAttr device, AIE::TileID tile, int channel) {
+    if (!device)
+      return false;
+    auto it = gated.find(device.getAttr());
+    if (it == gated.end()) {
+      std::set<std::tuple<int, int, int>> channels;
+      AIEXDialect::CtrlPktGatedAttrHelper stamp(module.getContext());
+      if (auto d = module.lookupSymbol<AIE::DeviceOp>(device))
+        d.walk([&](AIE::DMAStartOp start) {
+          auto index = dyn_cast<IntegerAttr>(start.getChannel());
+          if (!start.isSend() || !index || !stamp.isAttrPresent(start))
+            return;
+          auto t = cast<AIE::TileOp>(
+              start->getParentOp()->getOperand(0).getDefiningOp());
+          channels.insert(
+              {t.getCol(), t.getRow(), static_cast<int>(index.getInt())});
+        });
+      it = gated.try_emplace(device.getAttr(), std::move(channels)).first;
+    }
+    return it->second.count({tile.col, tile.row, channel});
+  }
+
+private:
+  ModuleOp module;
+  llvm::DenseMap<StringAttr, std::set<std::tuple<int, int, int>>> gated;
+};
+
 struct AIEReorderControlPacketsByTilePass
     : xilinx::AIEX::impl::AIEReorderControlPacketsByTileBase<
           AIEReorderControlPacketsByTilePass> {
+  using Base::Base;
+
   void runOnOperation() override {
-    AIE::DeviceOp device = getOperation();
-    PacketClassifier classifier(device.getTargetModel());
-
-    SmallVector<SmallVector<NpuControlPacketOp>> runs;
-    for (auto seq : device.getOps<AIE::RuntimeSequenceOp>()) {
-      seq.walk([&](Block *block) {
-        SmallVector<NpuControlPacketOp> run;
-        for (Operation &op : *block) {
-          if (auto packet = dyn_cast<NpuControlPacketOp>(op)) {
-            run.push_back(packet);
-            continue;
+    ModuleOp module = getOperation();
+    GatedChannels gated(module);
+    for (auto device : module.getOps<AIE::DeviceOp>()) {
+      PacketClassifier classifier(device.getTargetModel());
+      SmallVector<SmallVector<NpuControlPacketOp>> runs;
+      for (auto seq : device.getOps<AIE::RuntimeSequenceOp>()) {
+        seq.walk([&](Block *block) {
+          SmallVector<NpuControlPacketOp> run;
+          for (Operation &op : *block) {
+            if (auto packet = dyn_cast<NpuControlPacketOp>(op)) {
+              run.push_back(packet);
+              continue;
+            }
+            if (!run.empty())
+              runs.push_back(std::move(run));
+            run.clear();
           }
-          if (run.size() > 1)
+          if (!run.empty())
             runs.push_back(std::move(run));
-          run.clear();
-        }
-        if (run.size() > 1)
-          runs.push_back(std::move(run));
-      });
-    }
+        });
+      }
 
-    for (SmallVector<NpuControlPacketOp> &run : runs)
-      if (failed(reorder(run, classifier)))
-        return signalPassFailure();
+      for (SmallVector<NpuControlPacketOp> &run : runs)
+        if (failed(reorder(run, classifier, gated)))
+          return signalPassFailure();
+    }
   }
 
-  static LogicalResult reorder(SmallVector<NpuControlPacketOp> &run,
-                               PacketClassifier &classifier) {
-    // Part, then column, then row; each tile's packets of one part keep their
-    // order.
+  LogicalResult reorder(SmallVector<NpuControlPacketOp> &run,
+                        PacketClassifier &classifier, GatedChannels &gated) {
+    AIEXDialect::CtrlPktDeviceAttrHelper deviceStamp(&getContext());
+    AIEXDialect::CtrlPktEnablePhaseAttrHelper enablePhase(&getContext());
+    // Part, then column, then row (by-tile only); each tile's packets of one
+    // part keep their order.
     using Key = std::tuple<Part, uint32_t, uint32_t>;
     SmallVector<std::pair<Key, NpuControlPacketOp>> keyed;
     for (NpuControlPacketOp packet : run) {
-      FailureOr<Part> part = classifier.classify(packet);
-      if (failed(part))
+      FailureOr<Classified> c = classifier.classify(packet);
+      if (failed(c))
         return failure();
-      keyed.push_back(
-          {{*part, packet.getColumnFromAddr(), packet.getRowFromAddr()},
-           packet});
+      AIE::TileID tile{static_cast<int>(packet.getColumnFromAddr()),
+                       static_cast<int>(packet.getRowFromAddr())};
+      Part part = c->part;
+      if (part == Part::ChannelStart &&
+          gated.contains(deviceStamp.getAttr(packet), tile, c->channel))
+        part = Part::Other;
+      if (part != Part::Other)
+        enablePhase.setAttr(packet, UnitAttr::get(&getContext()));
+      else if (enablePhase.isAttrPresent(packet))
+        enablePhase.removeAttr(packet);
+      Key key{part, 0, 0};
+      if (byTile)
+        key = {part, tile.col, tile.row};
+      keyed.push_back({key, packet});
     }
     std::stable_sort(
         keyed.begin(), keyed.end(),
@@ -171,7 +229,13 @@ struct AIEReorderControlPacketsByTilePass
 
 } // namespace
 
-std::unique_ptr<OperationPass<AIE::DeviceOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 xilinx::AIEX::createAIEReorderControlPacketsByTilePass() {
   return std::make_unique<AIEReorderControlPacketsByTilePass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIEX::createAIEReorderControlPacketsByTilePass(
+    const AIEReorderControlPacketsByTileOptions &options) {
+  return std::make_unique<AIEReorderControlPacketsByTilePass>(options);
 }

@@ -15,7 +15,11 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/TypeSwitch.h"
+
+#include <deque>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIECTRLPACKETTODMA
@@ -113,12 +117,16 @@ struct AIECtrlPacketToDmaPass
         std::string shimDmaAllocName;
         int shimChan;
         Operation *first;
-        int run; // batches of one run have no other op between them
+        int run;          // batches of one run have no other op between them
+        bool enablePhase; // sent after the rest of the run
+                          // (ctrl_pkt_enable_phase)
       };
       std::vector<BatchInfo> batches;
 
       int64_t ddrOffset = 0;
       Block &entry = f.getBody().front();
+
+      AIEXDialect::CtrlPktEnablePhaseAttrHelper enablePhaseStamp(ctx);
 
       // First pass: collect and batch control packet operations
       bool new_batch = true;
@@ -148,8 +156,10 @@ struct AIECtrlPacketToDmaPass
         ctrlPktSize++; // Packet header
 
         // Check if we can batch with the previous packet
+        bool enablePhase = enablePhaseStamp.isAttrPresent(ctrlPktOp);
         if (targetModel.getTargetArch() == AIEArch::AIE2p && !new_batch &&
-            batches.back().tileId == TileID{col, row}) {
+            batches.back().tileId == TileID{col, row} &&
+            batches.back().enablePhase == enablePhase) {
           // Add to existing batch
           batches.back().totalSize += ctrlPktSize;
         } else {
@@ -165,11 +175,87 @@ struct AIECtrlPacketToDmaPass
           }
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                              getCtrlPktAllocName(col, true, *shimChan),
-                             *shimChan, &o, run});
+                             *shimChan, &o, run, enablePhase});
           new_batch = false;
         }
         ddrOffset += ctrlPktSize;
       }
+
+      // One task over `chain`'s batches, each one buffer descriptor, linked in
+      // order.
+      auto emitTask = [&](OpBuilder &builder,
+                          ArrayRef<const BatchInfo *> chain) {
+        auto task = DMAConfigureTaskForOp::create(
+            builder, loc, builder.getIndexType(),
+            SymbolRefAttr::get(ctx, chain.front()->shimDmaAllocName),
+            /*issue_token=*/true, /*repeat_count=*/0,
+            /*repeat_count_val=*/Value());
+        OpBuilder::InsertionGuard guard(builder);
+        Region &body = task.getBody();
+        for (size_t i = 0; i < chain.size(); ++i)
+          builder.createBlock(&body, body.end());
+        for (auto [block, batch] : llvm::zip(body, chain)) {
+          builder.setInsertionPointToEnd(&block);
+          AIE::DMABDOp::create(builder, loc, newBlockArg,
+                               static_cast<int>(batch->startOffset),
+                               static_cast<int>(batch->totalSize));
+          if (block.getNextNode())
+            AIE::NextBDOp::create(builder, loc, block.getNextNode());
+          else
+            AIE::EndOp::create(builder, loc);
+        }
+        builder.setInsertionPointAfter(task);
+        return task;
+      };
+
+      // A run's shim channels send at once, in phases each awaited in full: the
+      // configuration, then the enable phase. In a phase each channel keeps its
+      // batches' order and at most `window` tasks outstanding, one chain or as
+      // many single tasks as its queue holds.
+      auto emitParallelRun = [&](OpBuilder &builder, auto run) {
+        for (bool enablePhase : {false, true}) {
+          llvm::MapVector<StringRef,
+                          SmallVector<SmallVector<const BatchInfo *>>>
+              tasks;
+          llvm::StringMap<size_t> window;
+          for (const BatchInfo &batch : run) {
+            if (batch.enablePhase != enablePhase)
+              continue;
+            int col = batch.tileId.col;
+            uint32_t numBds = targetModel.getNumBDs(col, 0);
+            auto &list = tasks[batch.shimDmaAllocName];
+            if (list.empty() || !chainBds || list.back().size() >= numBds)
+              list.emplace_back();
+            list.back().push_back(&batch);
+            uint32_t depth = targetModel.getDmaTaskQueueDepth(
+                col, 0, batch.shimChan, DMAChannelDir::MM2S);
+            window[batch.shimDmaAllocName] =
+                chainBds ? 1 : (depth ? std::min(depth, numBds) : numBds);
+          }
+          size_t rounds = 0;
+          for (auto &[name, list] : tasks)
+            rounds = std::max(rounds, list.size());
+          SmallVector<std::deque<DMAConfigureTaskForOp>> outstanding(
+              tasks.size());
+          for (size_t r = 0; r < rounds; ++r) {
+            for (auto [i, entry] : llvm::enumerate(tasks)) {
+              auto &[name, list] = entry;
+              if (r >= list.size())
+                continue;
+              if (outstanding[i].size() >= window[name]) {
+                DMAAwaitTaskOp::create(builder, loc, outstanding[i].front());
+                outstanding[i].pop_front();
+              }
+              DMAConfigureTaskForOp task = emitTask(builder, list[r]);
+              DMAStartTaskOp::create(builder, loc, task);
+              outstanding[i].push_back(task);
+            }
+          }
+          for (auto &queue : outstanding)
+            for (DMAConfigureTaskForOp task : queue)
+              DMAAwaitTaskOp::create(builder, loc, task);
+        }
+      };
 
       // Second pass: emit batched operations in original order
       auto batchIt = batches.begin();
@@ -191,6 +277,15 @@ struct AIECtrlPacketToDmaPass
 
         int col = ctrlPktOp.getColumnFromAddr();
 
+        if (parallelShims) {
+          auto runEnd = batchIt;
+          while (runEnd != batches.end() && runEnd->run == batchIt->run)
+            ++runEnd;
+          emitParallelRun(builder, llvm::make_range(batchIt, runEnd));
+          batchIt = runEnd;
+          continue;
+        }
+
         if (chainBds) {
           // The batches that follow on the same channel in the same run,
           // up to the shim tile's buffer descriptor count.
@@ -202,27 +297,10 @@ struct AIECtrlPacketToDmaPass
                  chainEnd->shimDmaAllocName == batchIt->shimDmaAllocName)
             ++chainEnd;
 
-          auto task = DMAConfigureTaskForOp::create(
-              builder, loc, builder.getIndexType(),
-              SymbolRefAttr::get(ctx, batchIt->shimDmaAllocName),
-              /*issue_token=*/true, /*repeat_count=*/0,
-              /*repeat_count_val=*/Value());
-          OpBuilder::InsertionGuard guard(builder);
-          Region &body = task.getBody();
+          SmallVector<const BatchInfo *> chain;
           for (auto it = batchIt; it != chainEnd; ++it)
-            builder.createBlock(&body, body.end());
-          for (auto [block, it] :
-               llvm::zip(body, llvm::make_range(batchIt, chainEnd))) {
-            builder.setInsertionPointToEnd(&block);
-            AIE::DMABDOp::create(builder, loc, newBlockArg,
-                                 static_cast<int>(it.startOffset),
-                                 static_cast<int>(it.totalSize));
-            if (block.getNextNode())
-              AIE::NextBDOp::create(builder, loc, block.getNextNode());
-            else
-              AIE::EndOp::create(builder, loc);
-          }
-          builder.setInsertionPointAfter(task);
+            chain.push_back(&*it);
+          DMAConfigureTaskForOp task = emitTask(builder, chain);
           DMAStartTaskOp::create(builder, loc, task);
           DMAAwaitTaskOp::create(builder, loc, task);
           batchIt = chainEnd;
