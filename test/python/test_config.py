@@ -121,6 +121,34 @@ def test_host_shared_library_link_flags(monkeypatch, tmp_path, suffix, target, f
         assert not calls
 
 
+@pytest.mark.parametrize("compiler", ["clang-cl.exe", "cl.exe"])
+def test_msvc_style_dispatch_command(monkeypatch, tmp_path, compiler):
+    from aie.utils.compile import utils as compile_utils
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError(args)
+
+    monkeypatch.setattr(config, "host_cxx_path", lambda: rf"C:\LLVM\bin\{compiler}")
+    monkeypatch.setattr(compile_utils.subprocess, "run", fail_if_called)
+    out = tmp_path / "dispatch.dll"
+    command = compile_utils.host_shared_lib_cmd(
+        tmp_path / "source.cpp",
+        out,
+        opt="-O2",
+        includes=[tmp_path / "include"],
+    )
+    assert command[0].endswith(compiler)
+    assert "/LD" in command
+    assert "/O2" in command
+    assert "/std:c++17" in command
+    assert f"/I{tmp_path / 'include'}" in command
+    assert f"/Fe:{out}" in command
+    assert command[-2:] == ["/link", "/Brepro"]
+    assert "-shared" not in command
+    assert "-std=c++17" not in command
+    assert not any(arg.startswith("-Wl,") or arg.startswith("-W") for arg in command)
+
+
 def _write_tool(directory, name, exit_code=0):
     """Create a real executable that reports a version and exits `exit_code`."""
     directory.mkdir(parents=True, exist_ok=True)
