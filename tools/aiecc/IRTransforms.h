@@ -1472,8 +1472,9 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     if (mlir::failed(mlir::parsePassPipeline(
             llvm::formatv(
                 "aie-generate-column-control-overlay{{route-shim-to-tile-ctrl="
-                "true emit-standalone-overlay={0}{1}}",
-                loadPdiToCtrlPkt, cover)
+                "true emit-standalone-overlay={0}{1} multicast-span={2}}",
+                loadPdiToCtrlPkt, cover,
+                loadPdiToCtrlPkt ? cli::ctrlpktMulticastSpan.getValue() : 0)
                 .str(),
             *pm))) {
       return nullptr;
@@ -2042,6 +2043,8 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
       opts.gatedEnable = cli::ctrlpktGatedEnable;
       pm->addPass(xilinx::AIEX::createAIEReorderControlPacketsByTilePass(opts));
     }
+    if (cli::ctrlpktMulticastSpan)
+      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());
   }
   return pm;
 }

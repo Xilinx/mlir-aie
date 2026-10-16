@@ -50,6 +50,15 @@
 // Without chains the gated enable turns off by default.
 // RUN: %aiecc -n --load-pdi-to-ctrl-pkt --ctrlpkt-chain-bds=false %s
 
+// RUN: not %aiecc --ctrlpkt-multicast-span=1 %s 2>&1 | FileCheck %s --check-prefix=SPAN-LDPDI-CTRLPKT
+// SPAN-LDPDI-CTRLPKT: aiecc: --ctrlpkt-multicast-span=1 requires --load-pdi-to-ctrl-pkt
+// RUN: not %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-reorder-by-tile=false --ctrlpkt-multicast-span=1 %s 2>&1 | FileCheck %s --check-prefix=SPAN-REORDER
+// SPAN-REORDER: aiecc: --ctrlpkt-multicast-span=1 requires --ctrlpkt-reorder-by-tile
+// RUN: not %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-multicast-span=2 %s 2>&1 | FileCheck %s --check-prefix=SPAN-WIDTH
+// SPAN-WIDTH: aiecc: --ctrlpkt-multicast-span must be 0 or 1
+// Without the reorder the multicast turns off by default.
+// RUN: %aiecc -n --load-pdi-to-ctrl-pkt --ctrlpkt-reorder-by-tile=false %s
+
 // Under --load-pdi-to-ctrl-pkt the teardown is on by default with full-ELF
 // output, and off without it.
 // RUN: %aiecc -n --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-init-entry %s
@@ -66,7 +75,7 @@
 // RUN: %aiecc -n --get=aie.elf --expand-load-pdis --reconfig-teardown --reconfig-init-entry %s
 
 // Turning an option off explicitly is never an error.
-// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-auto-packetize=false --ctrlpkt-adaptive-pin=false --ctrlpkt-reorder-by-tile=false --ctrlpkt-chain-bds=false --ctrlpkt-parallel-shims=false --ctrlpkt-gated-enable=false %s
+// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-auto-packetize=false --ctrlpkt-adaptive-pin=false --ctrlpkt-reorder-by-tile=false --ctrlpkt-chain-bds=false --ctrlpkt-parallel-shims=false --ctrlpkt-gated-enable=false --ctrlpkt-multicast-span=0 %s
 
 module {
   aie.device(npu2) @main {

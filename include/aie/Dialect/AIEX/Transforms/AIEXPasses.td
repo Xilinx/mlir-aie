@@ -708,6 +708,29 @@ def AIEReorderControlPacketsByTile
   ];
 }
 
+def AIEDedupCtrlPacketMulticast
+    : Pass<"aie-dedup-ctrl-packet-multicast", "mlir::ModuleOp"> {
+  let summary = "Send the control packets a multicast group's tiles share "
+                "once";
+  let description = [{
+    For each run of control packets and each multicast group (the core tiles
+    `aie-generate-column-control-overlay` stamps with one
+    `aie.ctrl_pkt_multicast_id`) in the device a packet's `aiex.ctrl_pkt_device`
+    names, compares the group's tiles' packets position by position, the enable
+    phase apart from the rest. The leading packets that make the same write on
+    every tile (apart from the address's column and row bits) and come first on
+    the lowest tile, the base, stay only there, stamped
+    `aiex.ctrl_pkt_multicast_id`; the other tiles' copies go. A group with a tile
+    that has no packets in the run is left alone. Run it after
+    `aie-reorder-control-packets-by-tile`.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIECheckCoreStartGating
     : Pass<"aie-check-core-start-gating", "mlir::ModuleOp"> {
   let summary = "Prove which DMA channels cannot start moving data during "

@@ -102,6 +102,10 @@ the same routes. These options adjust it; each requires it:
 - `--ctrlpkt-gated-enable` (on by default; requires `--ctrlpkt-chain-bds`): a
   core proved gated is enabled with its column's control packets
   (`aie-reorder-control-packets-by-tile`).
+- `--ctrlpkt-multicast-span=<w>` (1 by default, 0 off; requires
+  `--ctrlpkt-reorder-by-tile`): the control packets the core tiles of each
+  group of w columns share go once, on a control multicast
+  (`aie-dedup-ctrl-packet-multicast`).
 
 ### Parameterized C++ transaction builders
 

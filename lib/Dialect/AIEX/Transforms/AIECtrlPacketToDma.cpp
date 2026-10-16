@@ -120,6 +120,8 @@ struct AIECtrlPacketToDmaPass
         int run;          // batches of one run have no other op between them
         bool enablePhase; // sent after the rest of the run
                           // (ctrl_pkt_enable_phase)
+        // The multicast group the packets go to (aiex.ctrl_pkt_multicast_id).
+        std::optional<int64_t> multicast;
       };
       std::vector<BatchInfo> batches;
 
@@ -127,6 +129,7 @@ struct AIECtrlPacketToDmaPass
       Block &entry = f.getBody().front();
 
       AIEXDialect::CtrlPktEnablePhaseAttrHelper enablePhaseStamp(ctx);
+      AIEXDialect::CtrlPktMulticastIdAttrHelper multicastStamp(ctx);
 
       // First pass: collect and batch control packet operations
       bool new_batch = true;
@@ -156,10 +159,16 @@ struct AIECtrlPacketToDmaPass
         ctrlPktSize++; // Packet header
 
         // Check if we can batch with the previous packet
+        // A batch is one stream packet, routed by its first header, so its
+        // packets share their destination.
         bool enablePhase = enablePhaseStamp.isAttrPresent(ctrlPktOp);
+        std::optional<int64_t> multicast;
+        if (auto id = multicastStamp.getAttr(ctrlPktOp))
+          multicast = id.getInt();
         if (targetModel.getTargetArch() == AIEArch::AIE2p && !new_batch &&
             batches.back().tileId == TileID{col, row} &&
-            batches.back().enablePhase == enablePhase) {
+            batches.back().enablePhase == enablePhase &&
+            batches.back().multicast == multicast) {
           // Add to existing batch
           batches.back().totalSize += ctrlPktSize;
         } else {
@@ -175,7 +184,7 @@ struct AIECtrlPacketToDmaPass
           }
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                              getCtrlPktAllocName(col, true, *shimChan),
-                             *shimChan, &o, run, enablePhase});
+                             *shimChan, &o, run, enablePhase, multicast});
           new_batch = false;
         }
         ddrOffset += ctrlPktSize;

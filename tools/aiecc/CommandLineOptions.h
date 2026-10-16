@@ -207,6 +207,14 @@ inline cl::opt<bool> ctrlpktGatedEnable(
     cl::desc("Enable each core proved gated with its column's control packets "
              "(requires --load-pdi-to-ctrl-pkt and --ctrlpkt-chain-bds; on by "
              "default under them)"));
+inline cl::opt<int> ctrlpktMulticastSpan(
+    "ctrlpkt-multicast-span",
+    cl::desc("Control-packet multicast: 1 sends the control packets the core "
+             "tiles of a column have in common once, on a multicast the "
+             "overlay adds per column; 0 sends every tile its own (requires "
+             "--load-pdi-to-ctrl-pkt and --ctrlpkt-reorder-by-tile; 1 by "
+             "default under them)"),
+    cl::init(0));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -672,6 +680,25 @@ inline bool resolveDependentOption(cl::opt<bool> &option, bool met,
   return true;
 }
 
+// --ctrlpkt-multicast-span is 0 or 1, and 1 requires --load-pdi-to-ctrl-pkt and
+// --ctrlpkt-reorder-by-tile (an explicit 0 never fails).
+inline bool resolveMulticastSpan() {
+  if (ctrlpktMulticastSpan < 0 || ctrlpktMulticastSpan > 1) {
+    llvm::errs() << "aiecc: --ctrlpkt-multicast-span must be 0 or 1\n";
+    return false;
+  }
+  for (auto [met, requirement] :
+       {std::pair<bool, const char *>{loadPdiToCtrlPkt,
+                                      "--load-pdi-to-ctrl-pkt"},
+        {ctrlpktReorderByTile, "--ctrlpkt-reorder-by-tile"}})
+    if (ctrlpktMulticastSpan && !met) {
+      llvm::errs() << "aiecc: --ctrlpkt-multicast-span=" << ctrlpktMulticastSpan
+                   << " requires " << requirement << "\n";
+      return false;
+    }
+  return true;
+}
+
 // Resolve inter-option coupling and populate the resolved-option globals above.
 // `resuming` exempts the output-dependent requirements, since a --resume may
 // select other outputs than the build it continues.
@@ -739,6 +766,8 @@ inline bool resolveOptions(bool resuming = false) {
     ctrlpktParallelShims = loadPdiToCtrlPkt;
   if (!ctrlpktGatedEnable.getNumOccurrences())
     ctrlpktGatedEnable = loadPdiToCtrlPkt;
+  if (!ctrlpktMulticastSpan.getNumOccurrences())
+    ctrlpktMulticastSpan = loadPdiToCtrlPkt && ctrlpktReorderByTile ? 1 : 0;
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -764,7 +793,8 @@ inline bool resolveOptions(bool resuming = false) {
          resolveDependentOption(ctrlpktGatedEnable, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktGatedEnable, ctrlpktChainBds,
-                                "--ctrlpkt-chain-bds");
+                                "--ctrlpkt-chain-bds") &&
+         resolveMulticastSpan();
 }
 
 //===----------------------------------------------------------------------===//

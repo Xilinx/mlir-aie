@@ -227,13 +227,15 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
   // The op assembly formats still print inherent attributes in `attr-dict`;
   // opt out of upstream's strict-properties default until they migrate.
   let useStrictPropertiesInAssemblyFormat = 0;
-  // ctrl_pkt_device names the device a control packet configures, and
+  // ctrl_pkt_device names the device a control packet configures,
+  // ctrl_pkt_multicast_id the multicast group it goes to, and
   // ctrl_pkt_enable_phase marks packets parallel shims send after the rest of
   // their run. ctrl_pkt_gated marks an aie.dma_start or aie.core proved unable
   // to act during its configuration.
   let discardableAttrs = (ins "::mlir::FlatSymbolRefAttr":$ctrl_pkt_device,
       "::mlir::UnitAttr":$ctrl_pkt_enable_phase,
-      "::mlir::UnitAttr":$ctrl_pkt_gated);
+      "::mlir::UnitAttr":$ctrl_pkt_gated,
+      "::mlir::IntegerAttr":$ctrl_pkt_multicast_id);
 }
 
 //===----------------------------------------------------------------------===//

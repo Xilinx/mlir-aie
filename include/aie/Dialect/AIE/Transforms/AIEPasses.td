@@ -840,6 +840,11 @@ def AIEGenerateColumnControlOverlay
     through one shim MM2S DMA channel, the lowest one no device of the module
     moves data through (or the one aie-auto-packetize-shim-input recorded
     on the column's shim tile), and reach every row of the column.
+
+    With `multicast-span=1`, each column with two or more core tiles also gets a
+    control multicast: one packet flow from that channel to all of their
+    TileControl ports, on a packet ID nothing else uses. Those tiles are stamped
+    `aie.ctrl_pkt_multicast_id` with that ID.
   }];
 
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
@@ -865,6 +870,9 @@ def AIEGenerateColumnControlOverlay
                   "With route-shim-to-tile-ctrl, also cover these columns. "
                   "aiecc adds each column outside the occupied range that the "
                   "design's routes need.">,
+       Option<"clMulticastSpan", "multicast-span", "int", /*default=*/"0",
+              "With route-shim-to-tile-ctrl, 1 adds a control multicast per "
+              "column to its core tiles; 0 adds none">,
   ];
 }
 
