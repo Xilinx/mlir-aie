@@ -1,0 +1,106 @@
+{
+ "schema": 1,
+ "target": "allocator",
+ "id": "38845819156",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38845819156",
+ "date": "2026-10-16T03:30:04+00:00",
+ "commit": {
+  "id": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+  "message": "IRON/mlir-aie Infrastructure Deduplication for iron-next (#3921)",
+  "timestamp": "2026-10-15T20:09:31Z"
+ },
+ "event": "schedule",
+ "pmode": null,
+ "device": null,
+ "device_raw": null,
+ "provenance": {
+  "commit": "cb6f2d14a0"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 6,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "allocator": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unsolved": {
+    "value": 0,
+    "unit": "designs"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "designs"
+   },
+   "avoidable_crossings": {
+    "value": 0,
+    "unit": "crossings"
+   },
+   "bank_pair_sharing": {
+    "value": 0.2434,
+    "unit": "pairs"
+   },
+   "wall_s": {
+    "value": 175.4,
+    "unit": "s"
+   }
+  }
+ },
+ "detail": [
+  {
+   "name": "metric-validation",
+   "ok": true,
+   "detail": "0 wrong answer(s)"
+  },
+  {
+   "name": "legality",
+   "ok": true,
+   "detail": "0 illegal of 5000 placed"
+  },
+  {
+   "name": "determinism",
+   "ok": true,
+   "detail": "0 unstable"
+  },
+  {
+   "name": "completeness",
+   "ok": true,
+   "detail": "5000/5000 solved"
+  },
+  {
+   "name": "bank-reservations",
+   "ok": true,
+   "detail": "185217/185217 solved (100.0%, min 100%), 0 illegal, 0 unsolvable-by-construction"
+  },
+  {
+   "name": "search-exercised",
+   "ok": true,
+   "detail": "3122 tile(s) needed backtracking (min 231)"
+  },
+  {
+   "name": "bank-crossings",
+   "ok": true,
+   "detail": "0 avoidable (max 0)"
+  },
+  {
+   "name": "bank-sharing",
+   "ok": true,
+   "detail": "mean shared pairs 0.243 (max 0.27)"
+  },
+  {
+   "name": "forced-regressions",
+   "ok": true,
+   "detail": "0 problem(s)"
+  },
+  {
+   "name": "stress",
+   "ok": true,
+   "detail": "300/300 placed in 0.0s (max 30s)"
+  }
+ ]
+}

@@ -1,0 +1,42 @@
+{
+ "schema": 1,
+ "target": "router",
+ "metrics": [
+  "amsels_per_design",
+  "failed_mutations",
+  "failed_properties",
+  "hop_ratio",
+  "illegal",
+  "ms_per_design",
+  "survived_corruptions",
+  "unrouted"
+ ],
+ "runs": [
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "38845819156",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38845819156",
+   "date": "2026-10-16T03:30:04+00:00",
+   "commit": {
+    "id": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "message": "IRON/mlir-aie Infrastructure Deduplication for iron-next (#3921)",
+    "timestamp": "2026-10-15T20:09:31Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "cb6f2d14a0"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
+  }
+ ]
+}
