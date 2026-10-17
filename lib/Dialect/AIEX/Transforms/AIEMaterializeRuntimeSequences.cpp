@@ -588,13 +588,20 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 /// Placing this validation in RunOp::verify() is unsafe: MLIR's pass manager
 /// may invoke op verifiers concurrently on sibling DeviceOps, causing a data
 /// race on the referenced device's symbol table.
-static LogicalResult verifyRunOpsInConfigureOp(ConfigureOp configureOp,
-                                               AIE::DeviceOp referencedDev) {
+static LogicalResult verifyRunOpsInConfigureOp(
+    ConfigureOp configureOp, AIE::DeviceOp referencedDev,
+    llvm::DenseMap<Operation *, AIE::NamedOpTable> &referencedDevNames) {
   if (configureOp.getBody().empty())
     return success();
+  // A device named by many aiex.configure ops (e.g. one callee reused across
+  // model layers) would otherwise rescan its whole symbol table per aiex.run.
+  AIE::NamedOpTable &devNames =
+      referencedDevNames.try_emplace(referencedDev, referencedDev)
+          .first->second;
   for (RunOp runOp : configureOp.getBody().front().getOps<RunOp>()) {
     auto seqName = runOp.getRuntimeSequenceSymbol();
-    Operation *maybeSeq = SymbolTable::lookupSymbolIn(referencedDev, seqName);
+    Operation *maybeSeq =
+        devNames.lookup(runOp.getRuntimeSequenceSymbolAttr().getAttr());
     if (!maybeSeq) {
       auto err = runOp.emitError()
                  << "No such runtime sequence for device '"
@@ -670,6 +677,12 @@ struct AIEMaterializeRuntimeSequencesPass
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
+    // Shared across every device's verification below: a referenced device
+    // (e.g. a callee reused across model layers) is named by many
+    // aiex.configure ops, so its NamedOpTable is built once, not once per
+    // aiex.run.
+    llvm::DenseMap<Operation *, AIE::NamedOpTable> referencedDevNames;
+
     // Process each device in the module
     for (AIE::DeviceOp deviceOp : moduleOp.getOps<AIE::DeviceOp>()) {
 
@@ -694,7 +707,8 @@ struct AIEMaterializeRuntimeSequencesPass
             // this is a safety net if verification was disabled.
             return signalPassFailure();
           }
-          if (failed(verifyRunOpsInConfigureOp(configureOp, referencedDev)))
+          if (failed(verifyRunOpsInConfigureOp(configureOp, referencedDev,
+                                               referencedDevNames)))
             return signalPassFailure();
         }
       }
