@@ -1142,9 +1142,9 @@ def mha(
             no window.
         f32_scores: Keep the ``QK^T`` scores in float32 (``-DMHA_F32_SCORES``):
             ``matmul_bf16_bf16_wrapper`` writes, and ``partial_softmax``
-            reads, a float32 tile, held to float32 summation order. AIE2P
-            only, and not with ``emulate_bf16_mmul_with_bfp16``. At 64-key
-            blocks a design places only with ``P V`` split over two cores.
+            reads, a float32 tile, held to float32 summation order. Not
+            with ``emulate_bf16_mmul_with_bfp16``. At 64-key blocks a
+            design places only with ``P V`` split over two cores.
         relative: Add a relative-position term within the window
             (``-DMHA_RELATIVE``): ``partial_softmax`` takes a last argument
             ``QR``, ``dim_m`` rows of ``mha.relative_width(window, causal)``
@@ -1182,8 +1182,6 @@ def mha(
             raise ValueError(
                 f"mha: {name} must be a positive multiple of {mult}, got {v}"
             )
-    if f32_scores and _arch_traits().name == "aie2":
-        raise NotImplementedError("mha: f32_scores is written for AIE2P only")
     if f32_scores and emulate_bf16_mmul_with_bfp16:
         raise ValueError(
             "mha: f32_scores keeps the scores to float32 summation order, which "

@@ -28,9 +28,6 @@
 // steps by 2^-8 of its magnitude, which past |A| = 2^15 or so is coarser than
 // the softmax can take.
 #ifdef MHA_F32_SCORES
-#if AIE_ARCH_AIE2
-#error "MHA_F32_SCORES: the float32 score path is written for AIE2P only"
-#endif
 using score_t = float;
 #else
 using score_t = bfloat16;

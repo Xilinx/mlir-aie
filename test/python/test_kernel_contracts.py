@@ -1291,6 +1291,17 @@ def test_mha_relative_and_soft_cap_reach_the_kernel():
         "-DMHA_SCALE=0.125f",
         "-DMHA_WINDOW=11",
     } <= set(flags)
+    set_current_device(NPU1Col1())
+    aie2 = kernels.mha(
+        f32_scores=True,
+        accurate_exp2=True,
+        window=11,
+        relative=True,
+        soft_cap=50.0,
+        scale=0.125,
+    )
+    set_current_device(NPU2Col1())
+    assert aie2.compile_flags == flags
     assert kernels.mha.relative_width(11) == 16
     assert kernels.mha.relative_width(11, causal=False) == 32
     for bad in (
