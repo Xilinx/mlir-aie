@@ -669,6 +669,7 @@ def rope(
     two_halves: bool = False,
     *,
     axial: bool = False,
+    rotary_dim: int | None = None,
     cols: int | None = None,
 ) -> ExternalFunction:
     """RoPE positional rotation over bf16 tiles; ``dims`` read at runtime.
@@ -678,31 +679,52 @@ def rope(
     ``rope``; ``axial`` with it selects ``rope_axial``, which turns each half
     of the row by its own half of the LUT row (a 2D position's x, then its
     y). ``cols`` aliases ``tile_size``. Both architectures use the generic
-    source; rows must be positive multiples of 16 (interleaved), 32
-    (two halves, keeping each half 32-byte aligned) or 64 (axial). Each input
-    row has its own streamed (cos, sin) LUT.
+    source. Each input row has its own streamed (cos, sin) LUT.
+
+    Args:
+        tile_size: The row, a positive multiple of 16.
+        two_halves: Rotate the two halves against each other.
+        axial: With ``two_halves``, each half of the rotated columns its own
+            two-halves rotation.
+        rotary_dim: Rotate only the first ``rotary_dim`` columns
+            (``-DROPE_ROTARY_DIM``) and copy the rest; the LUT row is then
+            ``rotary_dim`` long. A multiple of 16 (interleaved), 32 (two
+            halves, keeping each half 32-byte aligned) or 64 (axial).
+            ``None`` rotates the whole row, which must then be one.
+        cols: Alias of ``tile_size``.
 
     Raises:
-        ValueError: ``axial`` without ``two_halves``, or a row that is not a
-            positive multiple of its layout's width.
+        ValueError: ``axial`` without ``two_halves``, a ``rotary_dim`` past
+            the row, or a rotated width that is not a positive multiple of
+            its layout's.
     """
     if axial and not two_halves:
         raise ValueError("rope: axial rotates two halves per axis; pass two_halves")
     width = 64 if axial else 32 if two_halves else 16
-    tile_size = _row_size("rope", tile_size, cols, width)
+    tile_size = _row_size("rope", tile_size, cols, width if rotary_dim is None else 16)
+    turned = tile_size if rotary_dim is None else rotary_dim
+    if not (0 < turned <= tile_size and turned % width == 0):
+        raise ValueError(
+            f"rope: the rotated columns must be a positive multiple of {width} "
+            f"within the row, got {turned} of {tile_size}"
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    lut_ty = np.ndarray[(turned,), np.dtype[bfloat16]]
     func = "rope_axial" if axial else "rope_two_halves" if two_halves else "rope"
     return _make_extern(
         func,
         _kernel_source("datamovement/rope.cc"),
-        [tile_ty, tile_ty, tile_ty, np.int32],
+        [tile_ty, lut_ty, tile_ty, np.int32],
+        compile_flags=(
+            None if rotary_dim is None else [f"-DROPE_ROTARY_DIM={rotary_dim}"]
+        ),
         contract=KernelContract(
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, Out, Param),
             parameter_bindings=((3, tile_size),),
             reference=lambda x, lut: rope_ref(
-                x, lut, two_halves=two_halves, axial=axial
+                x, lut, two_halves=two_halves, axial=axial, rotary_dim=rotary_dim
             ),
             acc_dtype=np.float32,
             reduction=2,
@@ -714,7 +736,7 @@ def rope(
                     "products summed in the f32 accumulator as the reference "
                     "sums them; the floor is the device's subnormal flush",
                 )
-                if axial
+                if axial or rotary_dim is not None
                 else Tolerance.relative(
                     0.128, note="programming_examples/ml/rope: default bf16 rtol"
                 )
@@ -724,12 +746,23 @@ def rope(
     )
 
 
-def rope_ref(x, lut, *, two_halves: bool = False, axial: bool = False):
+def rope_ref(
+    x,
+    lut,
+    *,
+    two_halves: bool = False,
+    axial: bool = False,
+    rotary_dim: int | None = None,
+):
     """Rotate bf16 pairs by an interleaved (cos, sin) LUT, in either RoPE layout.
 
     With ``axial``, each half of a row is a two-halves rotation by its own
-    half of the LUT row.
+    half of the LUT row. With ``rotary_dim``, only the first ``rotary_dim``
+    columns turn, by a LUT row that long, and the rest are copied.
     """
+    if rotary_dim is not None:
+        turned = rope_ref(x[..., :rotary_dim], lut, two_halves=two_halves, axial=axial)
+        return np.concatenate([turned, x[..., rotary_dim:]], axis=-1)
     if axial:
         return np.concatenate(
             [

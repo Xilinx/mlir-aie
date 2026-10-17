@@ -13,6 +13,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Under ROPE_ROTARY_DIM a row turns its first ROPE_ROTARY_DIM columns, whose
+// angles are the whole LUT row, and copies the rest.
+static inline int32_t rope_turned(int32_t dims) {
+#ifdef ROPE_ROTARY_DIM
+  return ROPE_ROTARY_DIM;
+#else
+  return dims;
+#endif
+}
+
+template <typename T>
+static inline void rope_pass_rest(const T *restrict input, T *restrict output,
+                                  int32_t dims) {
+#ifdef ROPE_ROTARY_DIM
+  for (int32_t c = ROPE_ROTARY_DIM; c < dims; c += 16)
+    ::aie::store_v(output + c, ::aie::load_v<16>(input + c));
+#endif
+}
+
 // One interleaved-RoPE step over N elements.
 template <typename T, int N>
 static inline void rope_step(const T *restrict input, const T *restrict lut,
@@ -49,8 +68,8 @@ void rope_kernel(const T *restrict input, const T *restrict lut,
   // A row runs in 4N-element steps and closes with at most three N-element
   // ones. Both divisors are unsigned so they stay shifts.
   constexpr int W = 4 * N;
-  const int wide = (uint32_t)dims / W;
-  const int tail = ((uint32_t)dims % W) / N;
+  const int wide = (uint32_t)rope_turned(dims) / W;
+  const int tail = ((uint32_t)rope_turned(dims) % W) / N;
   // Walking cursors rather than three addresses recomputed from one index.
   const T *restrict pi = input;
   const T *restrict pl = lut;
@@ -75,6 +94,7 @@ void rope_kernel(const T *restrict input, const T *restrict lut,
       rope_step<T, N>(pi, pl, po);
     }
   }
+  rope_pass_rest(input, output, dims);
   event1();
 }
 
@@ -161,7 +181,8 @@ template <typename T, int N>
 void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
                             T *restrict output, int32_t dims) {
   event0();
-  rope_two_halves_row<T, N>(input, lut, output, dims);
+  rope_two_halves_row<T, N>(input, lut, output, rope_turned(dims));
+  rope_pass_rest(input, output, dims);
   event1();
 }
 
@@ -171,9 +192,10 @@ template <typename T, int N>
 void rope_kernel_axial(const T *restrict input, const T *restrict lut,
                        T *restrict output, int32_t dims) {
   event0();
-  const int part = (uint32_t)dims / 2;
+  const int part = (uint32_t)rope_turned(dims) / 2;
   rope_two_halves_row<T, N>(input, lut, output, part);
   rope_two_halves_row<T, N>(input + part, lut + part, output + part, part);
+  rope_pass_rest(input, output, dims);
   event1();
 }
 
@@ -214,7 +236,7 @@ static void rope_aie2(const bfloat16 *restrict input,
                       int32_t dims) {
   event0();
   constexpr unsigned MIN_STEPS = 4;
-  const unsigned steps = (uint32_t)dims / 32;
+  const unsigned steps = (uint32_t)rope_turned(dims) / 32;
   const bfloat16 *restrict pi = input;
   const bfloat16 *restrict pl = lut;
   bfloat16 *restrict po = output;
@@ -227,8 +249,9 @@ static void rope_aie2(const bfloat16 *restrict input,
     for (unsigned k = 0; k < steps; ++k, pi += 32, pl += 32, po += 32)
       rope_step_aie2(pi, pl, po);
   }
-  if ((uint32_t)dims & 16)
+  if ((uint32_t)rope_turned(dims) & 16)
     rope_step<bfloat16, 16>(pi, pl, po);
+  rope_pass_rest(input, output, dims);
   event1();
 }
 
@@ -272,7 +295,8 @@ static void rope_two_halves_aie2(const bfloat16 *restrict input,
                                  const bfloat16 *restrict lut,
                                  bfloat16 *restrict output, int32_t dims) {
   event0();
-  rope_two_halves_row_aie2(input, lut, output, dims);
+  rope_two_halves_row_aie2(input, lut, output, rope_turned(dims));
+  rope_pass_rest(input, output, dims);
   event1();
 }
 
@@ -280,9 +304,10 @@ static void rope_axial_aie2(const bfloat16 *restrict input,
                             const bfloat16 *restrict lut,
                             bfloat16 *restrict output, int32_t dims) {
   event0();
-  const int32_t part = (uint32_t)dims / 2;
+  const int32_t part = (uint32_t)rope_turned(dims) / 2;
   rope_two_halves_row_aie2(input, lut, output, part);
   rope_two_halves_row_aie2(input + part, lut + part, output + part, part);
+  rope_pass_rest(input, output, dims);
   event1();
 }
 #endif

@@ -1929,6 +1929,23 @@ CASES: list[Case] = [
         tag="row-tail",
         smoke=True,
     ),
+    # A rotated prefix, the rest copied: Phi-4-mini's 96 of 128 two halves,
+    # and the interleaved and axial layouts over half a row.
+    check(
+        "rope",
+        dict(cols=128, two_halves=True, rotary_dim=96),
+        calls=16,
+        tag="partial",
+        smoke=True,
+    ),
+    check("rope", dict(cols=128, rotary_dim=64), calls=16, tag="partial", smoke=True),
+    check(
+        "rope",
+        dict(cols=128, two_halves=True, axial=True, rotary_dim=64),
+        calls=16,
+        tag="partial",
+        smoke=True,
+    ),
     Case(
         "mm_activation_epilogue",
         calls=16,

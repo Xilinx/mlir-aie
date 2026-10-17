@@ -968,6 +968,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         invalid_kwargs=[
             (dict(axial=True), "pass two_halves"),
             (dict(tile_size=96, two_halves=True, axial=True), "multiple of 64"),
+            (dict(tile_size=128, two_halves=True, rotary_dim=80), "multiple of 32"),
+            (dict(tile_size=128, rotary_dim=144), "within the row"),
         ],
         shape_checks=[(dict(tile_size=96, two_halves=True), 0, (96,))],
     ),
@@ -1293,6 +1295,25 @@ def test_rope_layout_contract_and_vector_constraints(
         expected[0::2] = -x[1::2]
         expected[1::2] = x[0::2]
     np.testing.assert_array_equal(fn.contract.reference(x, lut), expected)
+
+
+@pytest.mark.parametrize(
+    "two_halves,axial", [(False, False), (True, False), (True, True)]
+)
+def test_rope_rotary_dim_turns_a_prefix_and_copies_the_rest(
+    kernel_arch, two_halves, axial
+):
+    fn = kernels.rope(cols=128, two_halves=two_halves, axial=axial, rotary_dim=64)
+    assert "-DROPE_ROTARY_DIM=64" in fn.compile_flags
+    assert fn.arg_shape(1) == (64,)
+    rng = np.random.default_rng(0)
+    x = rng.uniform(-4, 4, 128).astype(bfloat16)
+    lut = rng.uniform(-1, 1, 64).astype(bfloat16)
+    got = fn.contract.reference(x, lut)
+    whole = kernels.rope_ref(x[:64], lut, two_halves=two_halves, axial=axial)
+    np.testing.assert_array_equal(got[:64], whole)
+    np.testing.assert_array_equal(got[64:], x[64:])
+    assert not any("ROPE_" in f for f in kernels.rope(cols=128).compile_flags)
 
 
 def test_rope_axial_turns_each_half_by_its_own_angles(kernel_arch):
