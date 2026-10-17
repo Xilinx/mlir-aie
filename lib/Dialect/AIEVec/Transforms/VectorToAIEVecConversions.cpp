@@ -5194,10 +5194,9 @@ struct LowerReplicatingShuffleAIE2pPattern
     int64_t n = srcTy.getNumElements(), m = dstTy.getNumElements();
     if (n * bw != 128 || (m * bw != 512 && m * bw != 1024))
       return false;
-    for (auto [i, idx] : llvm::enumerate(op.getMask()))
-      if (idx != (int64_t)i % n)
-        return false;
-    return true;
+    return llvm::all_of(llvm::enumerate(op.getMask()), [&](auto it) {
+      return it.value() == (int64_t)it.index() % n;
+    });
   }
 
   LogicalResult
