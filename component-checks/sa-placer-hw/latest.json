@@ -1,28 +1,28 @@
 {
  "schema": 1,
  "target": "sa-placer-hw",
- "id": "38863737113",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38863737113",
- "date": "2026-10-16T06:52:54+00:00",
+ "id": "39011200188",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39011200188",
+ "date": "2026-10-17T06:47:17+00:00",
  "commit": {
-  "id": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/cb6f2d14a081ae09386eea05865c755dc0c4a86f",
-  "message": "IRON/mlir-aie Infrastructure Deduplication for iron-next (#3921)",
-  "timestamp": "2026-10-15T20:09:31Z"
+  "id": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/0094b28c3470f7774ff690e5ccc85e54159bfca8",
+  "message": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in a cpuset (#3926)",
+  "timestamp": "2026-10-16T19:35:01Z"
  },
  "event": "schedule",
  "pmode": "turbo",
- "device": "Krackan",
- "device_raw": "NPU Krackan 1",
+ "device": "Strix",
+ "device_raw": "NPU Strix",
  "provenance": {
-  "commit": "cb6f2d14a0",
+  "commit": "0094b28c34",
   "peano": "22.0.0+83ba9ea9",
   "kernels": "8ee515753dca",
   "runtime": "CachedXRTRuntime",
-  "xdna": "2.25.0_20260902",
-  "xrt": "2.25.0",
-  "host": "aie8",
-  "device": "NPU Krackan 1",
+  "xdna": "2.26.0_20261008",
+  "xrt": "2.26.0",
+  "host": "aie9",
+  "device": "NPU Strix",
   "pmode": "turbo"
  },
  "sane": true,
@@ -61,238 +61,238 @@
   },
   "mobilenet/seed=3/batch=1": {
    "us_per_image": {
-    "value": 299.6,
+    "value": 294.8,
     "unit": "us",
-    "range": "median 310.90, MAD 0.30, p95 311.60"
+    "range": "median 308.50, MAD 0.80, p95 311.70"
    },
    "e2e_us_per_image": {
-    "value": 362.8,
+    "value": 353.7,
     "unit": "us",
-    "range": "median 373.20, MAD 0.50, p95 373.90"
+    "range": "median 366.60, MAD 1.40, p95 370.80"
    },
    "compile_s": {
-    "value": 27.7,
+    "value": 26.5,
     "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=4": {
    "us_per_image": {
-    "value": 130.2,
+    "value": 126.92,
     "unit": "us",
-    "range": "median 131.70, MAD 0.17, p95 132.90"
+    "range": "median 129.30, MAD 0.28, p95 130.07"
    },
    "streaming_us": {
-    "value": 73.73,
+    "value": 70.97,
     "unit": "us",
-    "range": "from b1 299.6 and b4 520.8"
+    "range": "from b1 294.8 and b4 507.7"
    },
    "e2e_us_per_image": {
-    "value": 146.45,
+    "value": 142.88,
     "unit": "us",
-    "range": "median 147.53, MAD 0.30, p95 149.10"
+    "range": "median 144.45, MAD 0.40, p95 145.18"
    },
    "compile_s": {
-    "value": 28.8,
+    "value": 27.1,
     "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=16": {
    "us_per_image": {
-    "value": 85.71,
+    "value": 84.39,
     "unit": "us",
-    "range": "median 89.02, MAD 0.59, p95 90.04"
+    "range": "median 84.93, MAD 0.44, p95 85.66"
    },
    "streaming_us": {
-    "value": 71.45,
+    "value": 70.37,
     "unit": "us",
-    "range": "from b1 299.6 and b16 1371.3"
+    "range": "from b1 294.8 and b16 1350.3"
    },
    "e2e_us_per_image": {
-    "value": 89.94,
+    "value": 88.01,
     "unit": "us",
-    "range": "median 109.94, MAD 0.64, p95 111.45"
+    "range": "median 88.84, MAD 0.66, p95 94.57"
    },
    "compile_s": {
-    "value": 29.0,
+    "value": 27.9,
     "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=64": {
    "us_per_image": {
-    "value": 83.17,
+    "value": 73.67,
     "unit": "us",
-    "range": "median 84.37, MAD 0.27, p95 84.67"
+    "range": "median 73.89, MAD 0.02, p95 73.97"
    },
    "streaming_us": {
-    "value": 79.74,
+    "value": 70.16,
     "unit": "us",
-    "range": "from b1 299.6 and b64 5323.1"
+    "range": "from b1 294.8 and b64 4715"
    },
    "e2e_us_per_image": {
-    "value": 93.14,
+    "value": 74.75,
     "unit": "us",
-    "range": "median 93.60, MAD 0.28, p95 93.93"
+    "range": "median 76.33, MAD 0.06, p95 76.79"
    },
    "compile_s": {
-    "value": 28.6,
+    "value": 27.4,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=1": {
    "us_per_image": {
-    "value": 293.4,
+    "value": 291.5,
     "unit": "us",
-    "range": "median 297.60, MAD 0.60, p95 299.20"
+    "range": "median 295.10, MAD 2.10, p95 301.20"
    },
    "e2e_us_per_image": {
-    "value": 352.4,
+    "value": 348.5,
     "unit": "us",
-    "range": "median 355.60, MAD 0.90, p95 358.70"
+    "range": "median 353.00, MAD 3.00, p95 359.90"
    },
    "compile_s": {
-    "value": 31.3,
+    "value": 30.2,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=4": {
    "us_per_image": {
-    "value": 121.25,
+    "value": 118.85,
     "unit": "us",
-    "range": "median 125.42, MAD 0.38, p95 125.97"
+    "range": "median 122.15, MAD 0.72, p95 123.33"
    },
    "streaming_us": {
-    "value": 63.87,
+    "value": 61.3,
     "unit": "us",
-    "range": "from b1 293.4 and b4 485"
+    "range": "from b1 291.5 and b4 475.4"
    },
    "e2e_us_per_image": {
-    "value": 138.03,
+    "value": 133.8,
     "unit": "us",
-    "range": "median 140.45, MAD 0.88, p95 141.90"
+    "range": "median 136.72, MAD 0.62, p95 138.30"
    },
    "compile_s": {
-    "value": 31.2,
+    "value": 30.2,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=16": {
    "us_per_image": {
-    "value": 79.32,
+    "value": 78.85,
     "unit": "us",
-    "range": "median 82.61, MAD 0.94, p95 83.69"
+    "range": "median 79.44, MAD 0.13, p95 79.67"
    },
    "streaming_us": {
-    "value": 65.05,
+    "value": 64.67,
     "unit": "us",
-    "range": "from b1 293.4 and b16 1269.1"
+    "range": "from b1 291.5 and b16 1261.6"
    },
    "e2e_us_per_image": {
-    "value": 83.27,
+    "value": 82.52,
     "unit": "us",
-    "range": "median 103.38, MAD 1.27, p95 104.66"
+    "range": "median 83.19, MAD 0.16, p95 83.47"
    },
    "compile_s": {
-    "value": 31.1,
+    "value": 29.9,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=64": {
    "us_per_image": {
-    "value": 71.78,
+    "value": 68.57,
     "unit": "us",
-    "range": "median 72.82, MAD 0.45, p95 77.76"
+    "range": "median 68.77, MAD 0.01, p95 68.85"
    },
    "streaming_us": {
-    "value": 68.26,
+    "value": 65.03,
     "unit": "us",
-    "range": "from b1 293.4 and b64 4593.6"
+    "range": "from b1 291.5 and b64 4388.2"
    },
    "e2e_us_per_image": {
-    "value": 78.53,
+    "value": 69.83,
     "unit": "us",
-    "range": "median 82.08, MAD 0.84, p95 87.17"
-   },
-   "compile_s": {
-    "value": 31.4,
-    "unit": "s"
-   }
-  },
-  "mobilenet/seed=7/batch=1": {
-   "us_per_image": {
-    "value": 289.4,
-    "unit": "us",
-    "range": "median 300.40, MAD 1.10, p95 301.60"
-   },
-   "e2e_us_per_image": {
-    "value": 356.8,
-    "unit": "us",
-    "range": "median 364.50, MAD 3.90, p95 369.00"
-   },
-   "compile_s": {
-    "value": 32.1,
-    "unit": "s"
-   }
-  },
-  "mobilenet/seed=7/batch=4": {
-   "us_per_image": {
-    "value": 122.58,
-    "unit": "us",
-    "range": "median 124.70, MAD 0.50, p95 125.25"
-   },
-   "streaming_us": {
-    "value": 66.97,
-    "unit": "us",
-    "range": "from b1 289.4 and b4 490.3"
-   },
-   "e2e_us_per_image": {
-    "value": 138.1,
-    "unit": "us",
-    "range": "median 140.28, MAD 0.85, p95 141.20"
+    "range": "median 71.13, MAD 0.05, p95 71.25"
    },
    "compile_s": {
     "value": 30.6,
     "unit": "s"
    }
   },
-  "mobilenet/seed=7/batch=16": {
+  "mobilenet/seed=7/batch=1": {
    "us_per_image": {
-    "value": 78.46,
+    "value": 290.7,
     "unit": "us",
-    "range": "median 79.43, MAD 0.03, p95 79.54"
-   },
-   "streaming_us": {
-    "value": 64.39,
-    "unit": "us",
-    "range": "from b1 289.4 and b16 1255.3"
+    "range": "median 299.30, MAD 2.70, p95 303.40"
    },
    "e2e_us_per_image": {
-    "value": 82.71,
+    "value": 347.5,
     "unit": "us",
-    "range": "median 83.47, MAD 0.05, p95 84.38"
+    "range": "median 358.90, MAD 3.20, p95 363.50"
    },
    "compile_s": {
-    "value": 30.1,
+    "value": 29.0,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=4": {
+   "us_per_image": {
+    "value": 121.47,
+    "unit": "us",
+    "range": "median 122.78, MAD 0.93, p95 124.60"
+   },
+   "streaming_us": {
+    "value": 65.07,
+    "unit": "us",
+    "range": "from b1 290.7 and b4 485.9"
+   },
+   "e2e_us_per_image": {
+    "value": 135.32,
+    "unit": "us",
+    "range": "median 137.57, MAD 1.10, p95 139.28"
+   },
+   "compile_s": {
+    "value": 30.5,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=16": {
+   "us_per_image": {
+    "value": 78.79,
+    "unit": "us",
+    "range": "median 79.72, MAD 0.18, p95 80.03"
+   },
+   "streaming_us": {
+    "value": 64.66,
+    "unit": "us",
+    "range": "from b1 290.7 and b16 1260.6"
+   },
+   "e2e_us_per_image": {
+    "value": 82.72,
+    "unit": "us",
+    "range": "median 83.48, MAD 0.19, p95 83.73"
+   },
+   "compile_s": {
+    "value": 30.3,
     "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=64": {
    "us_per_image": {
-    "value": 71.43,
+    "value": 68.54,
     "unit": "us",
-    "range": "median 73.23, MAD 0.47, p95 78.91"
+    "range": "median 68.75, MAD 0.02, p95 68.77"
    },
    "streaming_us": {
-    "value": 67.97,
+    "value": 65.01,
     "unit": "us",
-    "range": "from b1 289.4 and b64 4571.8"
+    "range": "from b1 290.7 and b64 4386.5"
    },
    "e2e_us_per_image": {
-    "value": 77.27,
+    "value": 71.03,
     "unit": "us",
-    "range": "median 83.01, MAD 0.82, p95 88.60"
+    "range": "median 71.10, MAD 0.04, p95 71.24"
    },
    "compile_s": {
-    "value": 30.0,
+    "value": 29.9,
     "unit": "s"
    }
   }
@@ -302,108 +302,108 @@
    "seed": 3,
    "batch": 1,
    "passed": true,
-   "us_per_image": 299.6,
-   "e2e_us_per_image": 362.8,
-   "compile_s": 27.7,
+   "us_per_image": 294.8,
+   "e2e_us_per_image": 353.7,
+   "compile_s": 26.5,
    "placement": "79a41f43d136"
   },
   {
    "seed": 3,
    "batch": 4,
    "passed": true,
-   "us_per_image": 130.2,
-   "e2e_us_per_image": 146.45,
-   "compile_s": 28.8,
+   "us_per_image": 126.92,
+   "e2e_us_per_image": 142.88,
+   "compile_s": 27.1,
    "placement": "79a41f43d136"
   },
   {
    "seed": 3,
    "batch": 16,
    "passed": true,
-   "us_per_image": 85.71,
-   "e2e_us_per_image": 89.94,
-   "compile_s": 29.0,
+   "us_per_image": 84.39,
+   "e2e_us_per_image": 88.01,
+   "compile_s": 27.9,
    "placement": "79a41f43d136"
   },
   {
    "seed": 3,
    "batch": 64,
    "passed": true,
-   "us_per_image": 83.17,
-   "e2e_us_per_image": 93.14,
-   "compile_s": 28.6,
+   "us_per_image": 73.67,
+   "e2e_us_per_image": 74.75,
+   "compile_s": 27.4,
    "placement": "79a41f43d136"
   },
   {
    "seed": 2,
    "batch": 1,
    "passed": true,
-   "us_per_image": 293.4,
-   "e2e_us_per_image": 352.4,
-   "compile_s": 31.3,
+   "us_per_image": 291.5,
+   "e2e_us_per_image": 348.5,
+   "compile_s": 30.2,
    "placement": "510881b1cc56"
   },
   {
    "seed": 2,
    "batch": 4,
    "passed": true,
-   "us_per_image": 121.25,
-   "e2e_us_per_image": 138.03,
-   "compile_s": 31.2,
+   "us_per_image": 118.85,
+   "e2e_us_per_image": 133.8,
+   "compile_s": 30.2,
    "placement": "510881b1cc56"
   },
   {
    "seed": 2,
    "batch": 16,
    "passed": true,
-   "us_per_image": 79.32,
-   "e2e_us_per_image": 83.27,
-   "compile_s": 31.1,
+   "us_per_image": 78.85,
+   "e2e_us_per_image": 82.52,
+   "compile_s": 29.9,
    "placement": "510881b1cc56"
   },
   {
    "seed": 2,
    "batch": 64,
    "passed": true,
-   "us_per_image": 71.78,
-   "e2e_us_per_image": 78.53,
-   "compile_s": 31.4,
-   "placement": "510881b1cc56"
-  },
-  {
-   "seed": 7,
-   "batch": 1,
-   "passed": true,
-   "us_per_image": 289.4,
-   "e2e_us_per_image": 356.8,
-   "compile_s": 32.1,
-   "placement": "43a6222d608e"
-  },
-  {
-   "seed": 7,
-   "batch": 4,
-   "passed": true,
-   "us_per_image": 122.58,
-   "e2e_us_per_image": 138.1,
+   "us_per_image": 68.57,
+   "e2e_us_per_image": 69.83,
    "compile_s": 30.6,
+   "placement": "510881b1cc56"
+  },
+  {
+   "seed": 7,
+   "batch": 1,
+   "passed": true,
+   "us_per_image": 290.7,
+   "e2e_us_per_image": 347.5,
+   "compile_s": 29.0,
+   "placement": "43a6222d608e"
+  },
+  {
+   "seed": 7,
+   "batch": 4,
+   "passed": true,
+   "us_per_image": 121.47,
+   "e2e_us_per_image": 135.32,
+   "compile_s": 30.5,
    "placement": "43a6222d608e"
   },
   {
    "seed": 7,
    "batch": 16,
    "passed": true,
-   "us_per_image": 78.46,
-   "e2e_us_per_image": 82.71,
-   "compile_s": 30.1,
+   "us_per_image": 78.79,
+   "e2e_us_per_image": 82.72,
+   "compile_s": 30.3,
    "placement": "43a6222d608e"
   },
   {
    "seed": 7,
    "batch": 64,
    "passed": true,
-   "us_per_image": 71.43,
-   "e2e_us_per_image": 77.27,
-   "compile_s": 30.0,
+   "us_per_image": 68.54,
+   "e2e_us_per_image": 71.03,
+   "compile_s": 29.9,
    "placement": "43a6222d608e"
   }
  ]

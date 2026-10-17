@@ -252,6 +252,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "39011200188",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39011200188",
+   "date": "2026-10-17T06:47:17+00:00",
+   "commit": {
+    "id": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "message": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in a cpuset (#3926)",
+    "timestamp": "2026-10-16T19:35:01Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "0094b28c34",
+    "fixtures": "3aa7139253a0"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
