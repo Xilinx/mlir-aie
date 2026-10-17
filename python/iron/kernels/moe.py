@@ -16,14 +16,20 @@ their values alone. That softmax is the weighting of routers that normalize
 over the selected experts (Granite-MoE, Mixtral, ``norm_topk_prob=True``);
 ``normalize=False`` instead gives each chosen expert its share of a softmax
 over the whole row (Qwen-MoE's ``norm_topk_prob=False``).
+
+``moe_group`` lays out a prompt chunk's routed rows by expert for a sparse
+mixture of experts: each expert's assignments a run of whole blocks, so a
+GEMM over the grouped rows reads one expert's weights a row block.
 """
 
+import math
+
 import numpy as np
-from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, Out
+from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.compile.jit.markers import In, InOut, Out
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, Trace, _kernel_source, _make_extern
+from ._common import KernelContract, Param, Trace, _kernel_source, _make_extern
 from .sample import _check_slice, _positive, exp64_ref, order_keys, summary_words
 
 _STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
@@ -128,3 +134,122 @@ def router_top_k_ref(
     weights = np.zeros(2 * top_k, dtype=bfloat16)
     weights[0::2] = chosen
     return ids, weights
+
+
+class _GroupKernel(ExternalFunction):
+    blocks: Kernel
+    where: Kernel
+
+
+def moe_group_blocks(*, rows: int, top_k: int, experts: int, tile: int) -> int:
+    """Return the most blocks ``moe_group`` lays ``rows`` routed rows out in.
+
+    Each expert routed to takes ``ceil(count / tile)`` blocks, so the
+    ``rows * top_k`` assignments take at most ``ceil(rows * top_k / tile)``
+    plus one per expert routed to, ``min(experts, rows * top_k)``.
+    """
+    assigned = rows * top_k
+    return math.ceil(assigned / tile) + min(experts, assigned)
+
+
+def moe_group(
+    *,
+    rows: int = 2048,
+    call_rows: int = 64,
+    top_k: int = 8,
+    experts: int = 32,
+    tile: int = 64,
+) -> _GroupKernel:
+    """Group a chunk's routed rows by expert, in two passes over its ids.
+
+    One core holds the state, ``2 * experts`` int32 (the counts, then the
+    cursors), and makes three calls:
+
+    - ``moe_group_count(ids, state, first, valid)``, once per ``call_rows``
+      rows of ``top_k`` int32 expert ids from chunk row ``first``, counts
+      each expert's assignments among the first ``valid`` rows; the call
+      whose ``first`` is 0 clears the state.
+    - ``fn.blocks(state, blocks)`` writes ``moe_group_blocks(...)`` int32,
+      each ``tile``-slot block's expert: every expert's blocks in expert
+      order, those past the last the last expert's.
+    - ``fn.where(ids, state, where, first, valid)``, the ids again in the
+      same calls, writes each assignment's slot, an expert's assignments in
+      row order and its first at its first block; 0 past ``valid``.
+
+    An id is clipped into ``[-experts, experts)`` and a negative one counts
+    from the end, so every assignment has a slot.
+
+    Args:
+        rows: The rows of a chunk.
+        call_rows: The rows a count or where call takes; divides ``rows``.
+        top_k: The experts each row is routed to.
+        experts: The experts.
+        tile: The slots a block holds.
+
+    Raises:
+        ValueError: A size is not a positive integer, or ``call_rows`` does
+            not divide ``rows``.
+    """
+    _positive(
+        "moe_group",
+        rows=rows,
+        call_rows=call_rows,
+        top_k=top_k,
+        experts=experts,
+        tile=tile,
+    )
+    if rows % call_rows:
+        raise ValueError(
+            f"moe_group: call_rows ({call_rows}) must divide rows ({rows})"
+        )
+    blocks = moe_group_blocks(rows=rows, top_k=top_k, experts=experts, tile=tile)
+    ids = np.ndarray[(call_rows * top_k,), np.dtype[np.int32]]
+    state = np.ndarray[(2 * experts,), np.dtype[np.int32]]
+    fn = _make_extern(
+        "moe_group_count",
+        _kernel_source("moe/moe_group.cc"),
+        [ids, state, np.int32, np.int32],
+        compile_flags=[
+            f"-DGROUP_ROWS={call_rows}",
+            f"-DGROUP_TOP_K={top_k}",
+            f"-DGROUP_EXPERTS={experts}",
+            f"-DGROUP_TILE={tile}",
+            f"-DGROUP_BLOCKS={blocks}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, InOut, Param, Param),
+        ),
+        cls=_GroupKernel,
+    )
+    fn.blocks = fn.object_file.bind(
+        "moe_group_blocks", [state, np.ndarray[(blocks,), np.dtype[np.int32]]]
+    )
+    fn.where = fn.object_file.bind(
+        "moe_group_where", [ids, state, ids, np.int32, np.int32]
+    )
+    return fn
+
+
+def moe_group_ref(
+    ids, valid: int, *, experts: int, tile: int, blocks: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(where, blocks)`` as ``moe_group`` writes them.
+
+    ``ids`` is a chunk's ``(rows, top_k)`` expert ids, of which the first
+    ``valid`` rows are routed.
+    """
+    ids = np.asarray(ids, dtype=np.int64)
+    chosen = np.clip(ids[:valid], -experts, experts - 1) % experts
+    counts = np.bincount(chosen.reshape(-1), minlength=experts)
+    taken = -(-counts // tile)
+    first = np.concatenate([[0], np.cumsum(taken)[:-1]]) * tile
+    routed = np.flatnonzero(taken)
+    layout = np.full(blocks, routed[-1] if routed.size else 0, dtype=np.int32)
+    layout[: taken.sum()] = np.repeat(np.arange(experts), taken)
+    where = np.zeros(ids.shape, dtype=np.int32)
+    cursor = first.copy()
+    for a, e in enumerate(chosen.reshape(-1)):
+        where.reshape(-1)[a] = cursor[e]
+        cursor[e] += 1
+    return where, layout
