@@ -508,7 +508,9 @@ def AIECoreIntRangeNarrowing
     each `func.func` in the device. Where integer range analysis proves the
     values fit, `scf.for` bounds, steps and induction variables become `i32`
     and `index` arithmetic is done in `i32`, with casts back to `index` where
-    an op needs one (such as a `memref.load` index).
+    an op needs one (such as a `memref.load` index). A bound read at run time
+    fits too when its type does: an `i32` loaded from one of the core's
+    buffers and cast to `index`, as in IRON's `range_(buf[i])`.
 
     Only provably safe rewrites are made. A loop whose bounds do not fit, such
     as a `0` to `INT64_MAX` "forever" loop, or whose bounds are unknown, keeps
