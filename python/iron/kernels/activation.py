@@ -23,7 +23,6 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _arch_traits,
     _detect_arch,
     _include_dirs,
     _kernel_source,
@@ -120,40 +119,6 @@ _TANH_LUT_OFFSET = (
     1.0,
 )
 
-# The LUT build is judged against the model above, which reproduces the
-# kernel's arithmetic step for step; only the final accumulator-to-bf16 store
-# can differ, and only by a rounding.
-_LUT_MODEL_TOLERANCE = Tolerance.bf16_ulps(
-    1,
-    note="exact model of getTanhBf16; measured bit-exact on npu2 over 4096 "
-    "values, one ulp left for the accfloat->bf16 store's rounding mode; npu1: "
-    "unmeasured",
-)
-
-# vtanh has no published spec, so a model reverse-engineered from the device
-# would pass by construction. It keeps the true-function reference instead,
-# bounded by what vtanh costs: worst at x = 0.5, where it still returns its
-# argument.
-_VTANH_TOLERANCE = Tolerance.relative(
-    0.05,
-    0.001,
-    note="AIE2P vtanh approximation, measured on npu2: 3.79e-2 abs worst at "
-    "x=0.5 (0.0394 rel). Use tanh(use_lut=True) for 7.5x tighter",
-)
-
-
-# Kernels that reach vtanh through the sigmoid identity (1+tanh(x/2))/2, which
-# roughly doubles vtanh's 0.0392 relative to 0.0787: it halves the absolute
-# error but divides by a value that shrinks faster. silu and swiglu inherit
-# that figure, their further steps being bf16 multiplies. swiglu's output
-# xw1 * silu(xw2) is the one that goes to zero while its error does not.
-_VTANH_FAMILY_BOUNDS = {
-    "sigmoid": (0.08, 0.025),  # measured 0.0787 rel, 1.95e-2 abs (output <= 1)
-    "silu": (0.08, 0.035),  # measured 0.0784 rel, 3.12e-2 abs
-    "swiglu": (0.08, 0.350),  # measured 0.25 abs at a near-zero expected value
-}
-
-
 # aie2p's bf16_exp.cc evaluates a range-reduced polynomial rather than reading
 # getExpBf16's tables, so the LUT model does not describe it.
 _EXP_POLY_TOLERANCE = Tolerance.relative(
@@ -201,37 +166,6 @@ def _vtanh_error(u):
     return np.where(a >= _VTANH_SATURATES, 1.0 - t, band + ulps * _bf16_ulp(t))
 
 
-def _gelu_vtanh_bound(x):
-    """Bound on AIE2P gelu.cc's error at ``x``, against bf16 of the true gelu.
-
-    The kernel's tanh argument ``u`` is off by sqrt(2/pi) stored in bf16 and
-    by the bf16 roundings of ``x*x`` and ``x*s_beta``; tanh's slope
-    ``1 - t*t`` carries that through. vtanh adds its own error, and
-    ``x/2 * (1 + t)`` scales the sum by ``|x|/2``. One output ulp covers the
-    final store, and the smallest normal covers a subnormal flushed to zero.
-    The kernel clamps -inf, so it is bounded as the most negative f32.
-    """
-    x = np.maximum(np.asarray(x, np.float64), -np.finfo(np.float32).max)
-    s = math.sqrt(2 / math.pi)
-    with np.errstate(over="ignore", invalid="ignore"):
-        cubic = 0.044715 * x**3
-        u = s * (x + cubic)
-        du = abs(s - float(bfloat16(s))) / s * np.abs(u) + 2.0**-7 * s * np.abs(cubic)
-        t = np.tanh(u)
-        et = _vtanh_error(u) + (1 - t * t) * du
-        return 0.5 * np.abs(x) * et + _bf16_ulp(0.5 * x * (1 + t)) + 2.0**-126
-
-
-# On AIE2P the per-input bound fails a 1.5% change to sqrt(2/pi), which no
-# single rtol/atol does while passing the kernel: at x = -0.6 vtanh's
-# identity band is 11 ulps off, more than the mutation moves anything.
-_GELU_VTANH_TOLERANCE = Tolerance.bounded(
-    _gelu_vtanh_bound,
-    note="gelu.cc's bf16 roundings plus vtanh's error, measured over every "
-    "finite bf16 input on npu2; fails a 1.5% change to sqrt(2/pi)",
-)
-
-
 _LOG_F32_TIE_RTOL = 2.0**-21
 
 
@@ -258,17 +192,6 @@ _LOG_F32_TOLERANCE = Tolerance.bounded(
 )
 
 
-def _vtanh_family_tolerance(name: str) -> Tolerance:
-    """Return the measured vtanh bound for a kernel reaching tanh via sigmoid."""
-    rtol, atol = _VTANH_FAMILY_BOUNDS[name]
-    return Tolerance.relative(
-        rtol,
-        atol,
-        note=f"AIE2P vtanh via sigmoid identity, measured on npu2 for {name}; "
-        f"use {name}(use_lut=True) to be judged against an exact model instead",
-    )
-
-
 def _unary_lut_contract(
     ref,
     *,
@@ -278,7 +201,7 @@ def _unary_lut_contract(
     use_lut: bool = False,
     elementwise: Callable | None = None,
     branch_models: dict[str, Callable] | None = None,
-    lut_tolerance: Tolerance = _LUT_MODEL_TOLERANCE,
+    lut_tolerance: Tolerance | None = None,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
 
@@ -337,12 +260,8 @@ def _create_lut_kernel(
     arg_types: list,
     compile_flags: list[str] | None = None,
     contract: KernelContract | None = None,
-    use_lut_tanh: bool = False,
 ) -> ExternalFunction:
     """Create an ExternalFunction for a LUT-dependent kernel.
-
-    ``use_lut_tanh`` asks for getTanhBf16 over the vtanh instruction. It is
-    moot on aie2, which has no tanh instruction and always reads the tables.
 
     A build that reads a table is compiled inside common/lut_kernel.cc, which is
     what pulls lut_based_ops.cpp -- and therefore the tables -- into the
@@ -363,10 +282,7 @@ def _create_lut_kernel(
     include.append(str(runtime_dir))
 
     flags = list(compile_flags or [])
-    if use_lut_tanh and ARCH_TRAITS[arch].native_tanh:
-        flags.append("-DACTIVATIONS_TANH_LUT=1")
-
-    if use_lut_tanh or not ARCH_TRAITS[arch].native_tanh:
+    if not ARCH_TRAITS[arch].native_tanh:
         flags.append(f'-DAIE_LUT_KERNEL_SOURCE="{kernel_path}"')
         kernel_path = _kernel_source("common/lut_kernel.cc")
     return _make_extern(
@@ -386,7 +302,6 @@ def _bf16_lut_factory(
     tile_size: int,
     arg_arity: int,
     contract: KernelContract | None = None,
-    use_lut_tanh: bool = False,
     compile_flags: list[str] | None = None,
 ) -> ExternalFunction:
     """Build a LUT-backed bf16 kernel whose arg list is N copies of the same tile type."""
@@ -398,7 +313,6 @@ def _bf16_lut_factory(
         [tile_ty] * arg_arity,
         compile_flags=compile_flags,
         contract=contract,
-        use_lut_tanh=use_lut_tanh,
     )
 
 
@@ -427,14 +341,46 @@ _TANH_F32_REL = 2.0**-15
 def _rounded_once_bound(exact):
     """Bound on bf16 of an f32 result within ``_TANH_F32_REL`` of float64 ``exact``, against ``exact`` rounded.
 
-    One ulp where ``exact`` lies that close to a rounding midpoint, else 0, plus
-    2^-126 for the device's flush of a result below the smallest normal.
+    The spacing at a rounding midpoint where ``exact`` lies that close to one,
+    else 0, plus 2^-126 for the device's flush of a result below the smallest
+    normal.
     """
     b = _f64(round_to(exact, bfloat16))
+    ulp = _bf16_ulp(exact)
     with np.errstate(invalid="ignore"):
-        tie = np.abs(0.5 * _bf16_ulp(exact) - np.abs(exact - b))
-        slack = np.where(tie <= _TANH_F32_REL * np.abs(exact), _bf16_ulp(b), 0.0)
+        tie = np.abs(0.5 * ulp - np.abs(exact - b))
+        slack = np.where(tie <= _TANH_F32_REL * np.abs(exact), ulp, 0.0)
     return slack + 2.0**-126
+
+
+def _rounded_once(exact: Callable) -> Tolerance:
+    """Tolerance of a kernel whose f32 result, within ``_TANH_F32_REL`` of float64 ``exact(*args)``, rounds once."""
+    return Tolerance.bounded(
+        lambda *args: _rounded_once_bound(exact(*args)),
+        note="correctly rounded except within 2^-15 of a bf16 tie (tanh_f32.h's "
+        "2.85e-5 on its model, and the f32 products); 2^-126 for the subnormal "
+        "flush",
+    )
+
+
+def _f32_activation(
+    func: str, source: str, tile_size: int, exact: Callable, ref: Callable, count: bool
+) -> ExternalFunction:
+    """Build a one-in, one-out bf16 kernel on tanh_f32.h, ``-D<SOURCE>_ELEMS`` the tile; ``(in, out[, size])``."""
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        func,
+        _kernel_source(f"activation/{source}.cc"),
+        [tile_ty, tile_ty, *([np.int32] if count else [])],
+        compile_flags=[f"-D{source.upper()}_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param) if count else (In, Out),
+            parameter_bindings=((2, tile_size),) if count else (),
+            reference=ref,
+            tolerance=_rounded_once(exact),
+        ),
+    )
 
 
 DTYPES["softmax"] = tuple(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
@@ -691,37 +637,17 @@ def _softmax_f32_banded(
     )
 
 
-def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """GELU (tanh approximation) for bf16 tiles, with a compiled-in element count.
+def gelu(tile_size: int = 1024) -> ExternalFunction:
+    """GELU's tanh form, ``0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3)))``, over bf16 tiles; ``(in, out, size)``.
 
-    The ABI keeps ``(in, out, size)``. Positive whole vectors only: multiples
-    of 16 on aie2 or 32 on aie2p.
+    ``x sigmoid(2u)`` on tanh_f32.h's f32 sigmoid, rounded once to bf16, on either architecture.
 
     Args:
-        tile_size: Elements per call.
-        use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
-            vtanh instruction, which returns its argument up to 0.5, and be
-            judged against an exact model of the kernel,
-            [`gelu_lut_ref`][iron.kernels.activation.gelu_lut_ref]. Moot on
-            aie2, which always takes the LUT and is judged against
-            [`gelu_aie2_lut_ref`][iron.kernels.activation.gelu_aie2_lut_ref].
+        tile_size: Elements per call, a positive multiple of 32.
     """
-    _require_vector_alignment("gelu", tile_size, _arch_traits().bf16_lanes)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "gelu_bf16_size",
-        "gelu.cc",
-        [tile_ty, tile_ty, np.int32],
-        compile_flags=[f"-DGELU_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(
-            gelu_ref,
-            count=tile_size,
-            tolerance=_GELU_VTANH_TOLERANCE,
-            use_lut=use_lut,
-            elementwise=gelu_lut_ref,
-            branch_models={"aie2": gelu_aie2_lut_ref},
-        ),
-        use_lut_tanh=use_lut,
+    _require_vector_alignment("gelu", tile_size, 32)
+    return _f32_activation(
+        "gelu_bf16_size", "gelu", tile_size, _gelu_exact, gelu_ref, count=True
     )
 
 
@@ -762,66 +688,38 @@ def gelu_erf(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
-
-    The ABI keeps ``(in, out, size)``. Positive whole vectors only: multiples
-    of 16 on aie2 or 32 on aie2p.
+def silu(tile_size: int = 1024) -> ExternalFunction:
+    """SiLU, ``x sigmoid(x)``, over bf16 tiles, rounded once from tanh_f32.h's f32; ``(in, out, size)``.
 
     Args:
-        tile_size: Elements per call.
-        use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
-            vtanh instruction, which makes this 7.5x closer to the true
-            function and judged against an exact model of it. Moot on aie2.
+        tile_size: Elements per call, a positive multiple of 32.
     """
-    _require_vector_alignment("silu", tile_size, _arch_traits().bf16_lanes)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "silu_bf16_size",
-        "silu.cc",
-        [tile_ty, tile_ty, np.int32],
-        compile_flags=[f"-DSILU_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(
-            silu_ref,
-            count=tile_size,
-            use_lut=use_lut,
-            elementwise=silu_table_ref,
-            tolerance=_vtanh_family_tolerance("silu"),
-        ),
-        use_lut_tanh=use_lut,
+    _require_vector_alignment("silu", tile_size, 32)
+    return _f32_activation(
+        "silu_bf16_size", "silu", tile_size, _silu_exact, silu_ref, count=True
     )
 
 
-def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """SwiGLU gated activation kernel for bf16 tiles (must be 1024).
+def swiglu(tile_size: int = 1024) -> ExternalFunction:
+    """SwiGLU, ``(x * w1) * silu(x * w2)``, over 1024-element bf16 tiles; ``(x, w1, w2, out)``.
 
-    ``out = (x * w1) * silu(x * w2)``; see [`swiglu_ref`][iron.kernels.activation.swiglu_ref].
+    The two products round to bf16, as [`swiglu_ref`][iron.kernels.activation.swiglu_ref]'s do; the rest is f32 on
+    tanh_f32.h's sigmoid, rounded once.
     """
-    return _bf16_lut_factory(
-        "swiglu",
+    _require_fixed_tile_size("swiglu", tile_size, _LUT_FIXED_TILE)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
         "swiglu_bf16",
-        "swiglu.cc",
-        tile_size,
-        arg_arity=4,
+        _kernel_source("activation/swiglu.cc"),
+        [tile_ty] * 4,
         compile_flags=[f"-DSWIGLU_ELEMS={tile_size}"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            setup=conv_even,
             roles=(In, In, In, Out),
-            true_function=swiglu_ref,
-            per_build=tuple(
-                (
-                    (build, swiglu_table_ref, _LUT_MODEL_TOLERANCE)
-                    if use_lut or not ARCH_TRAITS[build.arch].native_tanh
-                    else (build, swiglu_ref, _vtanh_family_tolerance("swiglu"))
-                )
-                for build in BUILDS
-            ),
-            acc_dtype=bfloat16,
+            reference=swiglu_ref,
+            tolerance=_rounded_once(_swiglu_exact),
             ops_per_call=6 * tile_size,
-            uses_lut=True,
         ),
-        use_lut_tanh=use_lut,
     )
 
 
@@ -1022,37 +920,11 @@ def log10_clamp_f32(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-def tanh(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """Tanh for bf16 tiles of a positive multiple of 32 elements.
-
-    The count is compiled in; retain
-    ``tile_size`` as a trailing ``int`` argument (e.g. via
-    ``transform_parallel(pass_size_to_kernel=True)``).
-
-    Args:
-        tile_size: Elements per call (a positive multiple of 32).
-        use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
-            vtanh instruction. Moot on aie2, which only has the LUT. See
-            [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref] for what
-            the LUT computes and why it is the more accurate of the two.
-    """
+def tanh(tile_size: int = 1024) -> ExternalFunction:
+    """Tanh over bf16 tiles of a multiple of 32 elements, rounded once from tanh_f32.h's f32; ``(in, out, size)``."""
     _require_vector_alignment("tanh", tile_size, _RUNTIME_VECTOR_WIDTH)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "tanh_bf16",
-        "tanh.cc",
-        [tile_ty, tile_ty, np.int32],
-        compile_flags=[f"-DTANH_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(
-            tanh_ref,
-            count=tile_size,
-            use_lut=use_lut,
-            elementwise=tanh_lut_ref,
-            # aie2 never reaches this: _unary_lut_contract swaps in the
-            # model tolerance there, since the LUT is its only tanh.
-            tolerance=_VTANH_TOLERANCE,
-        ),
-        use_lut_tanh=use_lut,
+    return _f32_activation(
+        "tanh_bf16", "tanh", tile_size, lambda x: np.tanh(_f64(x)), tanh_ref, count=True
     )
 
 
@@ -1097,26 +969,11 @@ def soft_cap_bound(x, *, cap: float):
     return _rounded_once_bound(cap * np.tanh(_f64(x) / cap))
 
 
-def sigmoid(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """Sigmoid for bf16 tiles of a positive multiple of 32 elements.
-
-    The count is compiled in; retain ``tile_size`` as a trailing ABI argument.
-    """
+def sigmoid(tile_size: int = 1024) -> ExternalFunction:
+    """Sigmoid over bf16 tiles of a multiple of 32 elements, rounded once from tanh_f32.h's f32; ``(in, out, size)``."""
     _require_vector_alignment("sigmoid", tile_size, _RUNTIME_VECTOR_WIDTH)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "sigmoid_bf16",
-        "sigmoid.cc",
-        [tile_ty, tile_ty, np.int32],
-        compile_flags=[f"-DSIGMOID_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(
-            sigmoid_ref,
-            count=tile_size,
-            use_lut=use_lut,
-            elementwise=sigmoid_table_ref,
-            tolerance=_vtanh_family_tolerance("sigmoid"),
-        ),
-        use_lut_tanh=use_lut,
+    return _f32_activation(
+        "sigmoid_bf16", "sigmoid", tile_size, _sigmoid_exact, sigmoid_ref, count=True
     )
 
 
@@ -1198,29 +1055,33 @@ def relu_ref(x):
     return np.maximum(x.astype(np.float32), 0.0).astype(x.dtype)
 
 
-def silu_ref(x):
-    """Numpy reference for [`silu`][iron.kernels.activation.silu] (Swish) — ``x * sigmoid(x)``.
+def _sigmoid_exact(x):
+    with np.errstate(over="ignore"):
+        return 1.0 / (1.0 + np.exp(-_f64(x)))
 
-    LUT-approximation territory; pair with ``rtol=0.128`` (the default
-    in `count_mismatches`) when verifying.
-    """
+
+def _silu_exact(x):
     xf = _no_neg_inf(_f64(x))
     with np.errstate(over="ignore"):
-        return _rounded(xf / (1.0 + np.exp(-xf)), x)
+        return xf / (1.0 + np.exp(-xf))
+
+
+def _gelu_exact(x):
+    """GELU's tanh form as ``x sigmoid(2u)``: ``1 + tanh(u)`` cancels in float64 too, from x = -5 down."""
+    xf = _no_neg_inf(_f64(x))
+    with np.errstate(over="ignore", invalid="ignore"):
+        u = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
+        return xf / (1.0 + np.exp(-2.0 * u))
+
+
+def silu_ref(x):
+    """Numpy reference for [`silu`][iron.kernels.activation.silu] (Swish): ``x * sigmoid(x)``, correctly rounded."""
+    return _rounded(_silu_exact(x), x)
 
 
 def gelu_ref(x):
-    """Numpy reference for [`gelu`][iron.kernels.activation.gelu].
-
-    Tanh approximation ``0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))``.
-    Matches the C++ kernel's tanh-GELU formula. It is evaluated in float64:
-    in float32, ``1 + tanh`` cancels for x below about -4.5 and leaves
-    values over ten times too large.
-    """
-    xf = _no_neg_inf(x.astype(np.float64))
-    with np.errstate(over="ignore"):
-        inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
-    return (0.5 * xf * (1.0 + np.tanh(inner))).astype(x.dtype)
+    """Numpy reference for [`gelu`][iron.kernels.activation.gelu]: the tanh form, correctly rounded."""
+    return _rounded(_gelu_exact(x), x)
 
 
 _erfc = np.frompyfunc(math.erfc, 1, 1)
@@ -1234,50 +1095,6 @@ def gelu_erf_ref(x):
     xf = _no_neg_inf(_f64(x))
     erfc = np.asarray(_erfc(-xf / math.sqrt(2.0)), dtype=np.float64)
     return _rounded(0.5 * xf * erfc, x)
-
-
-def gelu_lut_ref(x):
-    """Model of AIE2P's [`gelu`][iron.kernels.activation.gelu] built with ``use_lut=True``.
-
-    gelu_aie2p.h step for step: ``x*x`` and ``x*s_beta`` are stored to bf16,
-    the tanh argument ``x*s + s_beta*x*x^2`` is summed in f32 and narrowed to
-    bf16 for [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref], and
-    ``x/2 + t * x/2`` is one f32 mac, rounded once to bf16 with a subnormal
-    flushed to zero. ``x/2`` takes x clamped at -8, where ``1 + t`` is
-    already 0, so -inf gives 0.
-    """
-    xf = np.asarray(x).astype(np.float32)
-    s = np.float32(bfloat16(math.sqrt(2.0 / math.pi)))
-    s_beta = np.float32(bfloat16(s * np.float32(0.044715)))
-    with np.errstate(over="ignore", invalid="ignore"):
-        x2 = _bf16_ftz(xf * xf)
-        sbeta_x = _bf16_ftz(xf * s_beta)
-        t = np.asarray(tanh_lut_ref(_bf16(xf * s + sbeta_x * x2)), np.float32)
-    half_x = np.maximum(xf, -8.0) * np.float32(0.5)
-    return _bf16_ftz(half_x + t * half_x).astype(np.asarray(x).dtype)
-
-
-def gelu_aie2_lut_ref(x):
-    """Model of AIE2's [`gelu`][iron.kernels.activation.gelu].
-
-    gelu_aie2.h step for step: x is clamped at -8 first, where ``1 + t`` is
-    already 0, then ``x*x``, ``c + d*x^2`` (one f32 mac with c in f32) and
-    ``x * (c + d*x^2)`` are each stored to bf16, and the last is the
-    argument of [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref].
-    ``x/2 + t * bf16(x/2)`` is one f32 mac, rounded once to bf16. Each store
-    flushes a subnormal to zero, and a zero result is +0, as on npu1, even
-    for x = -0.
-    """
-    xl = np.maximum(np.asarray(x).astype(np.float32), np.float32(-8.0))
-    c = np.float32(0.79788456)
-    d = np.float32(bfloat16(c * np.float32(0.044715)))
-    with np.errstate(over="ignore", invalid="ignore"):
-        x2 = _bf16_ftz(xl * xl)
-        p = _bf16_ftz(c + x2 * d)
-        t = np.asarray(tanh_lut_ref(_bf16_ftz(xl * p)), np.float32)
-        half_x = xl * np.float32(0.5)
-        out = _bf16_ftz(half_x + t * _bf16_ftz(half_x)) + np.float32(0)
-    return out.astype(np.asarray(x).dtype)
 
 
 def bf16_exp_lut_ref(x):
@@ -1313,72 +1130,6 @@ def _bf16(v):
     return np.asarray(v, np.float32).astype(bfloat16).astype(np.float32)
 
 
-def _bf16_ftz(v):
-    """Round an f32 product to bf16 as an accumulator store does.
-
-    A subnormal product is flushed to zero first, keeping its sign, so it
-    does not round to a subnormal bf16 or up to 2**-126.
-    """
-    v = np.asarray(v, np.float32)
-    return _bf16(np.where(np.abs(v) < 2.0**-126, np.copysign(np.float32(0), v), v))
-
-
-def sigmoid_table_ref(x):
-    """Model of [`sigmoid`][iron.kernels.activation.sigmoid]'s LUT build.
-
-    activation/sigmoid.cc reads its own table: getTanhBf16's segments
-    rewritten for ``0.5 + 0.5 * tanh(x/2)``, so segment ``e`` has slope
-    ``slope[e] / 4`` and offset ``0.5 + 0.5 * offset[e]`` and covers 0.5 of x.
-    x is clamped to ``[-8, 8 - 1/32]``; the one rounding is the store to bf16,
-    as in [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref].
-    """
-    xf = np.clip(np.asarray(x).astype(np.float32), -8.0, 8.0 - 1.0 / 32)
-    e = np.clip(np.floor(xf * 2.0).astype(np.int64), -16, 15) + 16
-    slope = np.asarray(_TANH_LUT_SLOPE, np.float32)[e] / 4
-    offset = 0.5 + 0.5 * np.asarray(_TANH_LUT_OFFSET, np.float32)[e]
-    return (slope * xf + offset).astype(bfloat16).astype(np.asarray(x).dtype)
-
-
-def silu_table_ref(x):
-    """Model of [`silu`][iron.kernels.activation.silu]'s LUT build.
-
-    activation/silu.cc multiplies x by the bf16 sigmoid of
-    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], so that
-    rounding is modelled too, not folded away. The sigmoid is exactly 0 from
-    x = -8 down, and x is clamped there before the multiply, so -inf gives 0
-    rather than NaN. A subnormal product is flushed to zero.
-    """
-    xf = np.asarray(x).astype(np.float32)
-    sig = np.asarray(sigmoid_table_ref(xf), np.float32)
-    return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
-
-
-def swiglu_table_ref(x, w1, w2):
-    """Model of [`swiglu`][iron.kernels.activation.swiglu]'s LUT build.
-
-    activation/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
-    sigmoid factor of
-    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref] and the
-    silu product each land in a bf16 register before the next step -- which
-    is what this reproduces. ``x*w2`` is clamped at -8 before its multiply, as
-    in silu_table_ref, and where the silu product is 0 the output is 0, so an
-    overflowed ``x*w1`` does not make ``inf * 0``. Each subnormal product is
-    flushed to zero, so a subnormal ``x*w2`` zeroes the output through the
-    gate.
-    """
-    return _swiglu_model(x, w1, w2, sigmoid_table_ref)
-
-
-def _swiglu_model(x, w1, w2, sigmoid):
-    with np.errstate(over="ignore", invalid="ignore"):
-        xw1 = _bf16_ftz(np.asarray(x, np.float32) * np.asarray(w1, np.float32))
-        xw2 = _bf16_ftz(np.asarray(x, np.float32) * np.asarray(w2, np.float32))
-        sig = np.asarray(sigmoid(xw2), np.float32)
-        silu_out = _bf16_ftz(np.maximum(xw2, -8.0) * sig)
-        out = np.where(silu_out == 0, np.float32(0.0), _bf16_ftz(xw1 * silu_out))
-    return out.astype(np.asarray(x).dtype)
-
-
 def tanh_lut_ref(x):
     """Numpy model of ``getTanhBf16``, the interpolated-LUT tanh.
 
@@ -1391,11 +1142,8 @@ def tanh_lut_ref(x):
     which is why the build using this is judged at one ulp rather than a
     percentage.
 
-    This is what [`tanh`][iron.kernels.activation.tanh] computes with
-    ``use_lut=True``, and what it always computes on aie2. The default aie2p
-    build uses the ``vtanh`` instruction instead, which is a coarser
-    approximation with no published spec, so it is judged against
-    [`tanh_ref`][iron.kernels.activation.tanh_ref] and a measured bound.
+    The fused GEMM epilogues' tanh reads this table on aie2, and on aie2p
+    when built with ``ACTIVATIONS_TANH_LUT``.
     """
     xf = np.clip(np.asarray(x).astype(np.float32), -4.0, 4.0 - 1.0 / 64)
     e = np.clip(np.floor(xf * 4.0).astype(np.int64), -16, 15) + 16
@@ -1405,20 +1153,13 @@ def tanh_lut_ref(x):
 
 
 def tanh_ref(x):
-    """Numpy reference for [`tanh`][iron.kernels.activation.tanh] — element-wise ``tanh(x)``.
-
-    LUT/native-approximation territory; pair with ``rtol=0.128`` when verifying.
-    """
+    """Numpy reference for [`tanh`][iron.kernels.activation.tanh], correctly rounded."""
     return _rounded(np.tanh(_f64(x)), x)
 
 
 def sigmoid_ref(x):
-    """Numpy reference for [`sigmoid`][iron.kernels.activation.sigmoid] — ``1 / (1 + exp(-x))``.
-
-    LUT-approximation territory; pair with ``rtol=0.128`` when verifying.
-    """
-    with np.errstate(over="ignore"):
-        return _rounded(1.0 / (1.0 + np.exp(-_f64(x))), x)
+    """Numpy reference for [`sigmoid`][iron.kernels.activation.sigmoid], ``1 / (1 + exp(-x))`` correctly rounded."""
+    return _rounded(_sigmoid_exact(x), x)
 
 
 def leaky_relu_ref(x, alpha=0.01):
@@ -1434,25 +1175,24 @@ def leaky_relu_ref(x, alpha=0.01):
     return np.where(xf > 0.0, xf, alpha * xf).astype(x.dtype)
 
 
-def swiglu_ref(x, w1, w2):
-    """Numpy reference for [`swiglu`][iron.kernels.activation.swiglu]: ``(x * w1) * silu(x * w2)``.
-
-    ``swiglu.cc`` forms the two products in bf16, then ``silu`` of the second
-    through the tanh LUT (``0.5 * (1 + tanh(z / 2))``). The reference rounds
-    the two products to bf16 as the kernel does and computes the rest in
-    float64; LUT-approximation territory, pair with ``rtol=0.128``.
-
-    Where silu is 0 (``x * w2`` is -inf, or low enough to underflow) the
-    output is 0, as swiglu_table_ref's is, even where ``x * w1`` overflowed:
-    0 is the limit as x goes to -inf, and ``inf * 0`` would be NaN.
-    """
+def _swiglu_exact(x, w1, w2):
     xf = _f64(x)
     xw1 = _f64(round_to(xf * _f64(w1), bfloat16))
     xw2 = _no_neg_inf(_f64(round_to(xf * _f64(w2), bfloat16)))
     with np.errstate(over="ignore", invalid="ignore"):
         silu = xw2 / (1.0 + np.exp(-xw2))
-        out = np.where(silu == 0, np.copysign(0.0, xw1) * silu, xw1 * silu)
-    return _rounded(out, x)
+        return np.where(silu == 0, np.copysign(0.0, xw1) * silu, xw1 * silu)
+
+
+def swiglu_ref(x, w1, w2):
+    """Numpy reference for [`swiglu`][iron.kernels.activation.swiglu]: ``(x * w1) * silu(x * w2)``.
+
+    The two products round to bf16 as the kernel's do; the rest is float64,
+    correctly rounded. Where silu is 0 (``x * w2`` is 0, -inf, or low enough
+    to underflow) the output is 0, even where ``x * w1`` overflowed: 0 is the
+    limit as x goes to -inf, and ``inf * 0`` would be NaN.
+    """
+    return _rounded(_swiglu_exact(x, w1, w2), x)
 
 
 def bf16_exp_ref(x):

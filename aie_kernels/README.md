@@ -28,12 +28,12 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
 | [leaky_relu.cc](./activation/leaky_relu.cc) | AIE API | Leaky ReLU activation | `bfloat16` |
-| [gelu.cc](./activation/gelu.cc) | AIE API | GELU activation (tanh approx). The per-arch headers differ in tuning: the AIE2P one is MAC-fused with an `s*beta` precompute and post-RA pipelining | `bfloat16` |
+| [gelu.cc](./activation/gelu.cc) | AIE API | GELU, tanh form, as `x sigmoid(2u)` on `common/tanh_f32.h`, rounded once | `bfloat16` |
 | [gelu_erf.cc](./activation/gelu_erf.cc) | AIE API | Exact GELU, `x * Phi(x)` (erfc in f32 limbs, rounded once): correctly rounded wherever GELU is a normal bf16 (measured on npu2; npu1 unmeasured), subnormal results flushed to 0 | `bfloat16` |
-| [silu.cc](./activation/silu.cc) | AIE API | SiLU / Swish activation (tanh path from `activations.h`) | `bfloat16` |
-| [swiglu.cc](./activation/swiglu.cc) | AIE API | SwiGLU gated activation (tanh path from `activations.h`) | `bfloat16` |
-| [tanh.cc](./activation/tanh.cc) | AIE API | Tanh activation (tanh path from `activations.h`: native on AIE2P, LUT on AIE2) | `bfloat16` |
-| [sigmoid.cc](./activation/sigmoid.cc) | AIE API | Sigmoid activation (tanh path from `activations.h`) | `bfloat16` |
+| [silu.cc](./activation/silu.cc) | AIE API | SiLU / Swish on `common/tanh_f32.h`, rounded once | `bfloat16` |
+| [swiglu.cc](./activation/swiglu.cc) | AIE API | SwiGLU gated activation on `common/tanh_f32.h`, rounded once | `bfloat16` |
+| [tanh.cc](./activation/tanh.cc) | AIE API | Tanh, `common/tanh_f32.h`'s, rounded once | `bfloat16` |
+| [sigmoid.cc](./activation/sigmoid.cc) | AIE API | Sigmoid, `common/tanh_f32.h`'s, rounded once | `bfloat16` |
 | [softmax.cc](./activation/softmax.cc) | AIE API | Softmax; on AIE2P also `softmax_rows` (optionally causal), `partial_softmax` (flash-attn) and `mask` | `bfloat16` |
 | [soft_cap.cc](./activation/soft_cap.cc) | AIE API | Soft cap `cap * tanh(x / cap)`, the tanh in float32 (`common/tanh_f32.h`), rounded once | `bfloat16` |
 | [bf16_exp.cc](./activation/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |

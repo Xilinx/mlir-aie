@@ -408,7 +408,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="gelu_bf16_size",
-        lut_source="gelu.cc",
     ),
     KernelSpec(
         name="gelu_erf",
@@ -424,7 +423,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="silu_bf16_size",
-        lut_source="silu.cc",
     ),
     KernelSpec(
         name="swiglu",
@@ -432,7 +430,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=4,
         expected_name="swiglu_bf16",
-        lut_source="swiglu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -450,7 +447,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,
         expected_name="tanh_bf16",
-        lut_source="tanh.cc",
         invalid_kwargs=[
             (dict(tile_size=0), "must be positive"),
             (dict(tile_size=1000), "not a multiple of"),
@@ -463,7 +459,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,
         expected_name="sigmoid_bf16",
-        lut_source="sigmoid.cc",
         invalid_kwargs=[
             (dict(tile_size=0), "must be positive"),
             (dict(tile_size=1000), "not a multiple of"),
@@ -1433,8 +1428,6 @@ def test_sized_factory_contracts(name, kernel_arch):
     assert fn.contract_for().tolerance.note
     inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
     reference_name = name.removesuffix("_sized") + "_ref"
-    if name == "silu" and kernel_arch == "aie2":
-        reference_name = "silu_table_ref"
     expected = getattr(kernels, reference_name)(*inputs)
     np.testing.assert_array_equal(fn.contract_for().reference(*inputs), expected)
     with pytest.raises(ValueError):
@@ -1449,11 +1442,7 @@ def test_sized_factory_contracts(name, kernel_arch):
 @pytest.mark.parametrize("name", ["add_sized", "mul_sized", "relu", "silu", "gelu"])
 def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
     factory = getattr(kernels, name)
-    width = (
-        1
-        if name in ("add_sized", "mul_sized")
-        else 32 if name == "relu" or kernel_arch == "aie2p" else 16
-    )
+    width = 1 if name in ("add_sized", "mul_sized") else 32
     macro = name.removesuffix("_sized").upper() + "_ELEMS"
     tiny = factory(tile_size=width)
     other = factory(tile_size=width * 4)

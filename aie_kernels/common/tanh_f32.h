@@ -63,48 +63,78 @@ scaled_tanh_f32(aie::accum<accfloat, f32_lanes> s,
       negative));
 }
 
-// sigmoid(x) = 1 / (1 + 2^(-x log2(e))) for f32 x, within about 2e-5 of it,
-// relatively, over the whole range: exp2_f32_32's 2^x, then 1 / d from d's
-// mantissa in [1, 2) (inv_1_2) and its exponent. Below the smallest normal it
-// flushes to 0; NaN passes through. x is held at +-200, where sigmoid is
-// already 1 or 0, so infinities split into finite limbs.
+// f sigmoid(x) 2^e for f32 x and f, f 1 and e 0 if omitted, within about 2e-5
+// of it, relatively, wherever it is normal: 1 / d with d = 1 + 2^a,
+// a = -x log2(e), from d's mantissa in [1, 2) (inv_1_2), times f, then scaled
+// by 2^-k, k d's exponent less e, so the one underflow or overflow is the
+// result's own. Past a = 64, 1 + 2^a is 2^a in f32: d is 2^(a - s), s the
+// multiple of 64 below a, and s joins k. x is held at +-184, where sigmoid is
+// 1 in f32, or f sigmoid is below the smallest normal for any |f| < 2^136.
+// NaN x passes through.
 static inline __attribute__((always_inline)) aie::accum<accfloat, f32_lanes>
-sigmoid_f32(aie::accum<accfloat, f32_lanes> x) {
+sigmoid_f32(
+    aie::accum<accfloat, f32_lanes> x,
+    const Limbs<f32_lanes> &f =
+        Limbs<f32_lanes>{aie::broadcast<bfloat16, f32_lanes>(1.0f),
+                         aie::zeros<bfloat16, f32_lanes>(),
+                         aie::zeros<bfloat16, f32_lanes>()},
+    aie::vector<int32_t, f32_lanes> e = aie::zeros<int32_t, f32_lanes>()) {
   using Acc = aie::accum<accfloat, f32_lanes>;
   using Int = aie::vector<int32_t, f32_lanes>;
   auto splat = [](float c) { return Acc(aie::broadcast<float, f32_lanes>(c)); };
-  const auto xi = x.to_vector<float>().cast_to<int32_t>();
-  const Int abs_bits =
-      aie::bit_and(xi, aie::broadcast<int32_t, f32_lanes>(0x7fffffff));
+  auto bits = [](int32_t c) { return aie::broadcast<int32_t, f32_lanes>(c); };
+  const auto zero_f = aie::zeros<float, f32_lanes>();
+  const auto zero_i = aie::zeros<int32_t, f32_lanes>();
+  const Int xi = x.to_vector<float>().cast_to<int32_t>();
+  const Int abs_bits = aie::bit_and(xi, bits(0x7fffffff));
+  const auto nan = aie::gt(abs_bits, bits(0x7f800000));
   const auto hold =
-      aie::gt(abs_bits, aie::broadcast<int32_t, f32_lanes>(0x43480000)) &
-      aie::le(abs_bits, aie::broadcast<int32_t, f32_lanes>(0x7f800000));
-  const Int bound = aie::select(
-      aie::broadcast<int32_t, f32_lanes>(0x43480000),
-      aie::broadcast<int32_t, f32_lanes>(static_cast<int32_t>(0xc3480000u)),
-      aie::lt(xi, aie::zeros<int32_t, f32_lanes>()));
+      aie::gt(abs_bits, bits(0x43380000)) & aie::le(abs_bits, bits(0x7f800000));
+  const Int bound =
+      aie::select(bits(0x43380000), bits(static_cast<int32_t>(0xc3380000u)),
+                  aie::lt(xi, zero_i));
   const Acc held(aie::select(xi, bound, hold).template cast_to<float>());
   const Limbs<f32_lanes> neg_log2e = bf16_limbs(splat(-1.44269504088896341f));
-  const Exp2F32 e = exp2_f32_32(
-      mac_limbs(aie::zeros<accfloat, f32_lanes>(), bf16_limbs(held), neg_log2e)
-          .to_vector<float>());
-  const Acc d = aie::add(splat(1.0f),
-                         aie::select(e.bits.cast_to<float>(),
-                                     aie::zeros<float, f32_lanes>(), e.below));
-  const Int dbits = d.to_vector<float>().cast_to<int32_t>();
-  const Int k = aie::bit_and(
-      aie::sub(dbits, aie::broadcast<int32_t, f32_lanes>(0x3f800000)),
-      aie::broadcast<int32_t, f32_lanes>(0x7f800000));
-  const Int r =
-      aie::sub(inv_1_2(Acc(aie::sub(dbits, k).template cast_to<float>()))
-                   .to_vector<float>()
-                   .cast_to<int32_t>(),
-               k);
-  const auto flush =
-      e.overflow | aie::ge(k, aie::broadcast<int32_t, f32_lanes>(126 << 23));
-  const auto out =
-      aie::select(r.cast_to<float>(), aie::zeros<float, f32_lanes>(), flush);
-  return Acc(aie::select(out, x.to_vector<float>(), e.is_nan));
+  Acc a =
+      mac_limbs(aie::zeros<accfloat, f32_lanes>(), bf16_limbs(held), neg_log2e);
+  const Int ai = a.to_vector<float>().cast_to<int32_t>();
+  const auto big = aie::gt(ai, bits(0x42800000));
+  const auto s128 = aie::gt(ai, bits(0x43000000));
+  const auto s192 = aie::gt(ai, bits(0x43400000));
+  const auto sixty_four = aie::broadcast<float, f32_lanes>(64.0f);
+  a = aie::sub(a, aie::select(zero_f, sixty_four, big));
+  a = aie::sub(a, aie::select(zero_f, sixty_four, s128));
+  a = aie::sub(a, aie::select(zero_f, sixty_four, s192));
+  const Exp2F32 e2 = exp2_f32_32(a.to_vector<float>());
+  const auto ev = e2.bits.cast_to<float>();
+  const auto d =
+      aie::select(aie::add(splat(1.0f), aie::select(ev, zero_f, e2.below))
+                      .to_vector<float>(),
+                  ev, big);
+  const Int dbits = d.cast_to<int32_t>();
+  const Int kd =
+      aie::bit_and(aie::sub(dbits, bits(0x3f800000)), bits(0x7f800000));
+  const Limbs<f32_lanes> rl =
+      bf16_limbs(inv_1_2(Acc(aie::sub(dbits, kd).template cast_to<float>())));
+  Int k = aie::sub(aie::downshift(kd, 23), e);
+  k = aie::add(k, aie::select(zero_i, bits(64), big));
+  k = aie::add(k, aie::select(zero_i, bits(64), s128));
+  k = aie::add(k, aie::select(zero_i, bits(64), s192));
+  const Int p = mac_limbs(aie::zeros<accfloat, f32_lanes>(), f, rl)
+                    .template to_vector<float>()
+                    .template cast_to<int32_t>();
+  const Int exponent = aie::bit_and(aie::downshift(p, 23), bits(0xff));
+  const auto under = aie::le(exponent, k);
+  const auto over = aie::ge(aie::sub(exponent, k), bits(255));
+  const Int shift = aie::upshift(aie::select(k, zero_i, under | over), 23);
+  auto out = aie::select(aie::sub(p, shift), zero_i, under);
+  out = aie::select(out,
+                    aie::select(bits(0x7f800000),
+                                bits(static_cast<int32_t>(0xff800000u)),
+                                aie::lt(p, zero_i)),
+                    over);
+  return Acc(
+      aie::select(out.template cast_to<float>(), x.to_vector<float>(), nan));
 }
 
 // tanh(t) for f32 t, within about 3e-5 of it, relatively: below |t| = 1/16

@@ -253,49 +253,22 @@ CASES: list[Case] = [
     Case("argmax_combine", _bf16, calls=16, tag="bfloat16-values", smoke=True),
     # activation
     Case("gelu", calls=16, smoke=True),
-    Case("gelu", calls=256),
-    Case(
-        "gelu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
-    ),
+    Case("gelu", calls=256, data_cases=IEEE_FLOAT),
     # test_kernels_specs checks a tanh GELU fails on this case's inputs.
     Case("gelu_erf", calls=16, smoke=True),
     check("gelu_erf", dict(tile_size=32), tag="edge-one-vector"),
     check("gelu_erf", dict(tile_size=96), tag="unroll-tail"),
     check("gelu_erf", calls=64, data_cases=("all_bf16",), tag="all-bf16"),
     Case("silu", calls=16, smoke=True),
-    Case(
-        "silu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
-    ),
-    Case("silu", calls=256),
+    Case("silu", calls=256, data_cases=IEEE_FLOAT),
     Case("bf16_exp", calls=16, smoke=True),
     Case("bf16_exp", calls=256),
     Case("tanh", calls=16, smoke=True),
-    Case("tanh", calls=256),
-    # AIE2 tanh takes 64 elements per trip, so 1056 leaves a 32-element tail.
+    Case("tanh", calls=256, data_cases=IEEE_FLOAT),
+    # An odd trip count: 33 trips of 32.
     check("tanh", dict(tile_size=1056), tag="tail", smoke=True),
-    # The LUT tanh, which on aie2p is the alternative to the vtanh instruction
-    # and 7.5x closer to the true function. It is judged against an exact model
-    # of the table rather than against tanh itself, so this case is the tight
-    # one: one bf16 ulp, where the vtanh build needs 5% relative.
-    Case(
-        "tanh",
-        dict(use_lut=True),
-        calls=16,
-        tag="lut",
-        devices=("npu2",),
-        smoke=True,
-    ),
     Case("sigmoid", calls=16, smoke=True),
-    Case(
-        "sigmoid",
-        dict(use_lut=True),
-        calls=16,
-        tag="lut",
-        devices=("npu2",),
-        smoke=True,
-    ),
-    Case("sigmoid", calls=256),
-    # As tanh above.
+    Case("sigmoid", calls=256, data_cases=IEEE_FLOAT),
     check("sigmoid", dict(tile_size=1056), tag="tail", smoke=True),
     # Caps of 30 and 50, as models use, and 0.5, which puts unit-scale data on
     # every branch of the tanh.
@@ -364,33 +337,11 @@ CASES: list[Case] = [
     # Sized kernels retaining their runtime-count ABI.
     check("add_sized", calls=16, smoke=True),
     check("mul_sized", calls=16, smoke=True),
-    # Same remainder pass as the leaky_relu case above on aie2p: 160 steps the
-    # 32-lane loop five times, where its unrolled body consumes four. On aie2,
-    # 160 is two 64-element trips and a 32-element remainder.
+    # Odd trip counts: five and three trips of 32.
     check("silu", dict(tile_size=160), tag="unroll-tail", smoke=True),
-    # AIE2 silu runs the same 64-element trips as gelu below.
     check("silu", dict(tile_size=96), tag="short-trip", smoke=True),
-    check(
-        "silu",
-        dict(tile_size=160, use_lut=True),
-        tag="lut-unroll-tail",
-        devices=("npu2",),
-        smoke=True,
-    ),
-    # On aie2p gelu's 32-lane loop is unrolled four ways too, so it has the
-    # same remainder pass and the same need for a size that is not a multiple
-    # of it. On aie2, as for silu, 160 leaves a remainder after two trips.
     check("gelu", dict(tile_size=160), tag="unroll-tail", smoke=True),
-    # AIE2 gelu takes 64 elements per trip and loads the next trip's input
-    # ahead: 96 runs a single trip, reloading its own input, then the remainder.
     check("gelu", dict(tile_size=96), tag="short-trip", smoke=True),
-    check(
-        "gelu",
-        dict(tile_size=160, use_lut=True),
-        tag="lut-unroll-tail",
-        devices=("npu2",),
-        smoke=True,
-    ),
     *[
         check(name, dict(tile_size=32), tag="edge-tiny", smoke=True)
         for name in ("add_sized", "mul_sized", "relu", "silu", "gelu")
@@ -1298,10 +1249,7 @@ CASES: list[Case] = [
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
     Case("swiglu", calls=16, smoke=True),
-    Case(
-        "swiglu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
-    ),
-    Case("swiglu", calls=256),
+    Case("swiglu", calls=256, data_cases=IEEE_FLOAT),
     # vision: uint8 lines of 1920 pixels
     Case("gray2rgba", calls=16, smoke=True),
     # AIE2 steps 32 pixels at a time, pipelined from 4 steps, then 16 at a
@@ -2632,13 +2580,6 @@ CASES: list[Case] = [
     ),
     # ffn gate activation
     Case("silu", dict(tile_size=4096), calls=16, tag="llama-prefill"),
-    Case(
-        "silu",
-        dict(tile_size=4096, use_lut=True),
-        calls=16,
-        tag="llama-prefill-lut",
-        devices=("npu2",),
-    ),
     Case("silu", dict(tile_size=1024), calls=16, tag="llama-decode"),
     # ffn gate product and attention-score scaling
     Case("mul_sized", dict(tile_size=4096), calls=16, tag="llama-prefill-ffn"),
