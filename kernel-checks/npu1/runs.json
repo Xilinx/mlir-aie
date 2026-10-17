@@ -2667,6 +2667,52 @@
     "offered": 90,
     "checked": 86
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "39009258924",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39009258924",
+   "date": "2026-10-17T06:15:50+00:00",
+   "commit": {
+    "id": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "message": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in a cpuset (#3926)",
+    "timestamp": "2026-10-16T19:35:01Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "0094b28c34",
+    "peano": "22.0.0+83ba9ea9",
+    "kernels": "8ee515753dca",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie2",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 765,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 505,
+    "failed": 0,
+    "timed": 196,
+    "timing_failed": 0,
+    "untimed": 309,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 90,
+    "checked": 86
+   }
   }
  ]
 }

@@ -1474,6 +1474,52 @@
     "offered": 130,
     "checked": 114
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "39009258924",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39009258924",
+   "date": "2026-10-17T06:15:50+00:00",
+   "commit": {
+    "id": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "message": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in a cpuset (#3926)",
+    "timestamp": "2026-10-16T19:35:01Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Strix",
+   "device_raw": "NPU Strix",
+   "provenance": {
+    "commit": "0094b28c34",
+    "peano": "22.0.0+83ba9ea9",
+    "kernels": "8ee515753dca",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.26.0_20261008",
+    "xrt": "2.26.0",
+    "host": "aie9",
+    "device": "NPU Strix",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 951,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 628,
+    "failed": 0,
+    "timed": 244,
+    "timing_failed": 0,
+    "untimed": 384,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 130,
+    "checked": 114
+   }
   }
  ]
 }
