@@ -756,7 +756,9 @@ def silu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction
     )
 
 
-def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
+def gelu_sized(
+    tile_size: int = 1024, use_lut: bool = False, *, exact: bool = False
+) -> ExternalFunction:
     """GELU (tanh approx) for bf16 tiles, with a compiled-in element count.
 
     Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
@@ -766,7 +768,40 @@ def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction
     Args:
         tile_size: Elements per call.
         use_lut: As for [`gelu`][iron.kernels.activation.gelu].
+        exact: The exact GELU, ``0.5 * x * (1 + erf(x / sqrt(2)))``, in
+            place of the tanh approximation: ``gelu_erf.cc``'s f32 erfc,
+            rounded once to bf16, on either architecture. A multiple of 32.
+
+    Raises:
+        ValueError: A ``tile_size`` that is not whole vectors, or ``exact``
+            with ``use_lut``.
     """
+    if exact:
+        if use_lut:
+            raise ValueError("gelu_sized: the exact GELU has no LUT; drop use_lut")
+        _require_vector_alignment("gelu_sized", tile_size, 32)
+        tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+        return _make_extern(
+            "gelu_erf_bf16",
+            _kernel_source("activation/gelu_erf.cc"),
+            [tile_ty, tile_ty, np.int32],
+            compile_flags=[f"-DGELU_ERF_ELEMS={tile_size}"],
+            contract=KernelContract(
+                trace=Trace.whole_call(),
+                roles=(In, Out, Param),
+                parameter_bindings=((2, tile_size),),
+                reference=gelu_erf_ref,
+                tolerance=Tolerance.bf16_ulps(
+                    1,
+                    atol=2.0**-125,
+                    note="one rounding of an f32 result within 2e-4 of it "
+                    "(erfc's fit 1.2e-7, its two-limb Horner steps 1e-4); "
+                    "the floor is exp2's flush below 2^-125.5, times a t / 2 "
+                    "< 2^0.25 there, and the device's subnormal flush",
+                ),
+                ops_per_call=tile_size,
+            ),
+        )
     _require_vector_alignment("gelu_sized", tile_size, _arch_traits().bf16_lanes)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
@@ -1111,6 +1146,21 @@ def gelu_ref(x):
     with np.errstate(over="ignore"):
         inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
     return (0.5 * xf * (1.0 + np.tanh(inner))).astype(x.dtype)
+
+
+def gelu_erf_ref(x):
+    """Numpy reference for [`gelu_sized`][iron.kernels.activation.gelu_sized] with ``exact``.
+
+    ``x * Phi(x)`` in float64, as ``x - e`` for ``x >= 0`` and ``-e`` below,
+    ``e = 0.5 * |x| * erfc(|x| / sqrt(2))``, so the tail keeps its relative
+    accuracy. NaN passes through.
+    """
+    with np.errstate(invalid="ignore"):
+        xf = np.asarray(x, np.float64)
+        held = np.minimum(np.abs(xf), 16)
+        erfc = np.frompyfunc(math.erfc, 1, 1)(held / math.sqrt(2)).astype(np.float64)
+        y = np.where(xf >= 0, xf - 0.5 * held * erfc, -0.5 * held * erfc)
+    return np.where(np.isnan(xf), xf, y).astype(x.dtype)
 
 
 def gelu_lut_ref(x):

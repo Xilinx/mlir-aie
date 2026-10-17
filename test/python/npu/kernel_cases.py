@@ -316,6 +316,9 @@ CASES: list[Case] = [
         check(name, dict(tile_size=32), tag="edge-tiny", smoke=True)
         for name in ("add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized")
     ],
+    # The exact (erf) GELU: one 32-lane step, and a timed row.
+    Case("gelu_sized", dict(exact=True), calls=16, smoke=True),
+    check("gelu_sized", dict(tile_size=32, exact=True), tag="edge-tiny", smoke=True),
     # datamovement
     Case("axpy", calls=16, scalars=(2.5,), smoke=True),
     Case("axpy", calls=256, scalars=(2.5,), data_cases=IEEE_FLOAT),
