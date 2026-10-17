@@ -15,6 +15,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
+#include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"
 #include "mlir/Analysis/DataFlow/IntegerRangeAnalysis.h"
 #include "mlir/Analysis/DataFlow/Utils.h"
 #include "mlir/Analysis/DataFlowFramework.h"
@@ -23,6 +24,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/RegionUtils.h"
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIECOREINTRANGENARROWING
@@ -84,6 +86,19 @@ struct AIECoreIntRangeNarrowingPass
     DataFlowSolver solver;
     dataflow::loadBaselineAnalyses(solver);
     solver.load<dataflow::IntegerRangeAnalysis>();
+    // A solver run on the core never visits the values defined above it (its
+    // buffers, locks and tiles). Left uninitialized, they make any control
+    // flow that depends on them look dead, such as a loop bounded by a buffer
+    // load. Start them pessimistic, like entry block arguments.
+    SetVector<Value> captured;
+    getUsedValuesDefinedAbove(body->getRegions(), captured);
+    for (Value v : captured) {
+      (void)solver
+          .getOrCreateState<dataflow::Lattice<dataflow::ConstantValue>>(v)
+          ->join(dataflow::ConstantValue::getUnknownConstant());
+      (void)solver.getOrCreateState<dataflow::IntegerValueRangeLattice>(v)
+          ->join(IntegerValueRange::getMaxRange(v));
+    }
     if (failed(solver.initializeAndRun(body)))
       return failure();
 
