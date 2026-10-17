@@ -280,55 +280,45 @@ def _assert_gelu_saturates(got, tile):
     np.testing.assert_array_equal(got[: len(_HUGE)].astype(np.float32), _relu(edge))
 
 
-# aie2 has only the LUT build, so use_lut=True is npu2's other one.
-def _lut_on_npu2(*args):
-    return pytest.param(
-        *args, dict(use_lut=True), marks=pytest.mark.supported_devices("npu2")
-    )
-
-
 @pytest.mark.parametrize(
-    "factory,limit,kwargs",
+    "factory,limit",
     [
-        ("tanh", np.sign, {}),
-        _lut_on_npu2("tanh", np.sign),
-        ("sigmoid", _step, {}),
-        _lut_on_npu2("sigmoid", _step),
-        ("silu", _relu, {}),
-        _lut_on_npu2("silu", _relu),
-        ("silu_sized", _relu, {}),
-        ("gelu", _relu, {}),
-        ("gelu_sized", _relu, {}),
+        ("tanh", np.sign),
+        ("sigmoid", _step),
+        ("silu", _relu),
+        ("silu_sized", _relu),
+        ("gelu", _relu),
+        ("gelu_sized", _relu),
     ],
-    ids=lambda v: (
-        ("lut" if v.get("use_lut") else "default") if isinstance(v, dict) else None
-    ),
 )
-def test_activation_saturates_for_huge_inputs(factory, limit, kwargs):
-    """Each activation takes its limit for large and infinite inputs."""
-    fn = getattr(kernels, factory)(**kwargs)
+def test_activation_saturates_for_huge_inputs(factory, limit):
+    """Each activation takes its limit, in bf16, from 1e4 out and at infinity."""
+    fn = getattr(kernels, factory)()
     tile = _huge_tile(bfloat16)
-    design = kd.design(getattr(kernels, factory), calls=1, **kwargs)
+    design = kd.design(getattr(kernels, factory), calls=1)
     got = _run(design, fn, [tile], 1024, np.dtype(bfloat16))
     edge = tile.ravel()[: len(_HUGE)].astype(np.float32)
-    np.testing.assert_array_equal(got[: len(_HUGE)].astype(np.float32), limit(edge))
+    far = np.abs(edge) >= 1e4
+    np.testing.assert_array_equal(
+        got[: len(_HUGE)].astype(np.float32)[far], limit(edge)[far]
+    )
     verdict = fn.judge(got, fn.expected([tile]), calls=1, inputs=[tile])
     assert verdict, verdict.detail
 
 
-@pytest.mark.parametrize("kwargs", [{}, _lut_on_npu2()], ids=["default", "lut"])
-def test_swiglu_zero_gate_hides_overflow(kwargs):
+def test_swiglu_zero_gate_hides_overflow():
     """An x * w1 overflowing to inf, times a silu of exactly 0, gives 0, not NaN."""
-    fn = kernels.swiglu(**kwargs)
+    fn = kernels.swiglu()
     x = _huge_tile(bfloat16, [1e20, 1e20, 1e20, 2, 1, 1])
     w1 = _huge_tile(bfloat16, [1e20, 1e20, -1e20, np.inf, 1, 1])
     w2 = _huge_tile(bfloat16, [-1e20, 1e20, 1e20, -1e3, np.inf, -np.inf])
-    design = kd.design(kernels.swiglu, calls=1, **kwargs)
+    design = kd.design(kernels.swiglu, calls=1)
     got = _run(design, fn, [x, w1, w2], 1024, np.dtype(bfloat16))
     np.testing.assert_array_equal(
         got[:6].astype(np.float32), [0, np.inf, -np.inf, 0, np.inf, 0]
     )
-    verdict = fn.judge(got, fn.expected([x, w1, w2]), calls=1)
+    inputs = [x, w1, w2]
+    verdict = fn.judge(got, fn.expected(inputs), calls=1, inputs=inputs)
     assert verdict, verdict.detail
 
 

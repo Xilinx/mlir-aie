@@ -271,11 +271,9 @@ fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/out_chunk=512
 fused_mm/64x32x128x4/bfloat16/b_col_maj=True/band_m=64/chunk_k=32/emulate_bf16_mmul_with_bfp16=True/out_chunk=512
 fused_mm/64x32x128x4/bfloat16/band_m=64/bfp16_b=True/chunk_k=32/out_chunk=512
 gelu/1024x16/bfloat16
-gelu/1024x16/bfloat16/use_lut=True/lut
 gelu/1024x256/bfloat16
 gelu_sized/1024x16/bfloat16
 gelu_sized/1024x16/bfloat16/exact=True
-gelu_sized/160x4/bfloat16/use_lut=True/lut-unroll-tail
 gelu_sized/160x4/bfloat16/unroll-tail
 gelu_sized/32x4/bfloat16/edge-tiny
 gelu_sized/32x4/bfloat16/exact=True/edge-tiny
@@ -504,11 +502,9 @@ scale/32x4/int16/edge-one-vector
 scale/48x4/int32/edge-tail
 scale/64x4/int32/edge-tiny
 sigmoid/1024x16/bfloat16
-sigmoid/1024x16/bfloat16/use_lut=True/lut
 sigmoid/1024x256/bfloat16
 sigmoid/1056x4/bfloat16/tail
 silu/1024x16/bfloat16
-silu/1024x16/bfloat16/use_lut=True/lut
 silu/1024x256/bfloat16
 silu_sized/1024x16/bfloat16
 silu_sized/1024x16/bfloat16/llama-decode
@@ -529,10 +525,8 @@ softmax/2048x16/bfloat16/llama-prefill
 softmax/32x4/bfloat16/accurate_exp2=True/accurate-short
 softmax/32x4/bfloat16/short-trip
 swiglu/1024x16/bfloat16
-swiglu/1024x16/bfloat16/use_lut=True/lut
 swiglu/1024x256/bfloat16
 tanh/1024x16/bfloat16
-tanh/1024x16/bfloat16/use_lut=True/lut
 tanh/1024x256/bfloat16
 tanh/1056x4/bfloat16/tail
 threshold/1920x16/int16

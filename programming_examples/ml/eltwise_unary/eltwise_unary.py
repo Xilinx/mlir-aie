@@ -27,9 +27,9 @@ from ml_dtypes import bfloat16
 
 _KERNEL_FACTORIES = {"relu": kernels.relu, "silu": kernels.silu, "gelu": kernels.gelu}
 
-# Reference numpy implementations + the AIE-kernel-appropriate tolerance for
-# each op live alongside the kernel factories in aie.iron.kernels (relu is
-# exact, silu/gelu are LUT approximations).
+# Reference numpy implementations live alongside the kernel factories in
+# aie.iron.kernels. relu is exact; silu and gelu round an f32 result once, so
+# each output is within a bf16 ulp of the correctly rounded one.
 _VERIFY_CFG = {
     "relu": (
         kernels.relu_ref,
@@ -37,11 +37,11 @@ _VERIFY_CFG = {
     ),
     "silu": (
         kernels.silu_ref,
-        dict(rtol=0.128, fail_msg="silu output outside LUT tolerance"),
+        dict(rtol=2**-7, atol=2**-126, fail_msg="silu output more than an ulp off"),
     ),
     "gelu": (
         kernels.gelu_ref,
-        dict(rtol=0.128, atol=0.05, fail_msg="gelu output outside LUT tolerance"),
+        dict(rtol=2**-7, atol=2**-126, fail_msg="gelu output more than an ulp off"),
     ),
 }
 

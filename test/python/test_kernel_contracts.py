@@ -440,7 +440,7 @@ def test_rounding_setup_is_merged_alwaysinline_ir():
     assert setter._symbol_prefix is None
     assert setter == kernels.conv_even()
     assert setter.name != kernels.set_rounding(kernels.RoundingMode.FLOOR).name
-    mlir = str(kd.design(kernels.gelu).as_mlir())
+    mlir = str(kd.design(kernels.add).as_mlir())
     assert 'link_with_mode = "merge"' in mlir
     assert setter.object_file_name in mlir
 
@@ -459,13 +459,10 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
         assert tolerance.atol == 2.0**-126
 
 
-@pytest.mark.parametrize(
-    "device,reference",
-    [(NPU1Col1, kernels.swiglu_table_ref), (NPU2Col1, kernels.swiglu_ref)],
-)
-def test_swiglu_default_reference_matches_architecture(device, reference):
+@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
+def test_swiglu_is_judged_against_swiglu_ref_on_either_architecture(device):
     set_current_device(device())
-    assert kernels.swiglu().contract_for().reference is reference
+    assert kernels.swiglu().contract_for().reference is kernels.swiglu_ref
 
 
 def test_factory_contract_follows_device_switch():

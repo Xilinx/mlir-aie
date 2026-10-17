@@ -50,8 +50,8 @@
 // not the pointers: a table pointer offset from the array loses the reads'
 // memory operands, and every load and store around them is then kept in order.
 //
-// Any table laid out as tanh_lut_ab/cd reads the same way (sigmoid_lut.h's
-// too); shift sets the segment width 2^(4 - shift), range +-2^(8 - shift).
+// Any table laid out as tanh_lut_ab/cd reads the same way; shift sets the
+// segment width 2^(4 - shift), range +-2^(8 - shift).
 template <int shift>
 __attribute__((always_inline)) inline aie::accum<accfloat, 16>
 lut_segments_acc(const float *ab, const float *cd,
@@ -133,33 +133,12 @@ tanh_lut_bf16(aie::vector<bfloat16, 16> x) {
 #endif
 }
 
-#if AIE_TUNED_AIE2P
-// tanh from in to out, which may be the same buffer, 32 lanes a trip, n a
-// multiple of 32. A loop holding only the table reads pipelines best, so
-// callers put their arithmetic in separate passes before and after this one
-// (sigmoid's multiply inside it: II 30, against 1 + 22 + 1 split). The pre-RA
-// pipeliner keeps each store ahead of the next trip's table reads (recurrence
-// 18) and settles on II 27; asked for 16, it gives up, and the post-RA
-// pipeliner reaches 22-23.
-__attribute__((always_inline)) inline void tanh_lut_map(const bfloat16 *in,
-                                                        bfloat16 *out, int n) {
-  auto it_in = aie::begin_vector<32>(in);
-  auto it_out = aie::begin_vector<32>(out);
-#pragma clang loop pipeline_initiation_interval(16)
-  for (int i = 0; i < n; i += 32) {
-    const aie::vector<bfloat16, 32> x = *it_in++;
-    *it_out++ = aie::concat(tanh_lut_bf16(x.extract<16>(0)),
-                            tanh_lut_bf16(x.extract<16>(1)));
-  }
-}
-#endif
 #endif
 
-// tanh of 16 bf16 lanes, on whichever path this architecture has. This is the
-// whole of what separates the standalone bf16 activation kernels
-// (tanh/sigmoid/silu/swiglu/gelu.cc) between the two architectures, so they
-// share this rather than each carrying its own #if. 16 lanes because that is
-// what AIE2's LUT is fixed at; a 32-wide kernel splits and concatenates.
+// tanh of 16 bf16 lanes, on whichever path this architecture has: the one
+// step of the epilogues that differs between the two architectures. 16 lanes
+// because that is what AIE2's LUT is fixed at; a 32-wide caller splits and
+// concatenates.
 //
 // The accumulator overload is the primitive: a caller that has just multiplied
 // holds one, and where it narrows to bf16 is exactly what differs. AIE2P feeds
@@ -177,7 +156,7 @@ tanh_bf16_v16(aie::accum<accfloat, 16> x) {
 // For a caller whose input is already bf16 and has no accumulator to hand.
 // Carries its own #if rather than widening into the overload above: on AIE2
 // the LUT takes bf16 directly, and the bf16 -> accum -> bf16 round trip does
-// not fold away, costing three instructions per call in tanh.cc.
+// not fold away, costing three instructions per call.
 __attribute__((always_inline)) inline aie::vector<bfloat16, 16>
 tanh_bf16_v16(aie::vector<bfloat16, 16> x) {
 #if ACTIVATIONS_NATIVE_TANH

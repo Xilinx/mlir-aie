@@ -28,11 +28,6 @@ from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import BUILDS, Build, KernelContract
-from aie.iron.kernels.activation import (
-    _GELU_VTANH_TOLERANCE,
-    _LUT_MODEL_TOLERANCE,
-    _vtanh_family_tolerance,
-)
 from aie.iron.kernels.fused import fused_mm
 from aie.iron.kernels.norm import (
     _LAYER_NORM_BF16_AIE2,
@@ -52,7 +47,6 @@ from aie.iron.kernels.transformer import (
 from aie.utils import config
 from aie.utils.compile.utils import compile_external_kernels
 from aie.utils.hostruntime import set_current_device
-from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
 
 # Every finite bf16, as 64 calls of 1024 (the last 256 lanes repeat zero).
@@ -118,41 +112,30 @@ def test_a_kernel_built_bound_compiles_for_its_arch(npu2_device, tmp_path):
     assert (tmp_path / exp.object_file_name).is_file()
 
 
-@pytest.mark.parametrize("factory", [kernels.gelu, kernels.gelu_sized])
-def test_a_lut_gelu_built_unbound_is_judged_as_the_npu2_build(no_device, factory):
-    fn = factory(tile_size=1024, use_lut=True)
-    set_current_device(NPU2Col1())
-    c = fn.contract_for()
-    assert c.reference is kernels.gelu_lut_ref
-    assert c.tolerance is _LUT_MODEL_TOLERANCE
-    expected = fn.expected([_FINITE_BF16])
-    npu2 = kernels.gelu_lut_ref(_FINITE_BF16)
-    verdict = fn.judge(npu2.ravel(), expected, calls=64)
-    assert verdict, verdict.detail
-    # One ulp of the npu2 model, not of whichever model would pass.
-    npu1 = kernels.gelu_aie2_lut_ref(_FINITE_BF16)
-    assert not fn.judge(npu1.ravel(), expected, calls=64)
-
-
-def test_a_gelu_built_unbound_takes_reference_and_tolerance_from_one_row(no_device):
-    fn = kernels.gelu_sized(tile_size=2048)
-    set_current_device(NPU2Col1())
-    c = fn.contract_for()
-    assert (c.reference, c.tolerance) == (kernels.gelu_ref, _GELU_VTANH_TOLERANCE)
-    set_current_device(NPU1Col1())
-    c = fn.contract_for()
-    assert (c.reference, c.tolerance) == (
-        kernels.gelu_aie2_lut_ref,
-        _LUT_MODEL_TOLERANCE,
-    )
-
-
-def test_an_unbound_swiglu_is_judged_as_the_build_that_ran(no_device):
-    fn = kernels.swiglu()
-    set_current_device(NPU1Col1())
-    assert fn.contract_for().reference is kernels.swiglu_table_ref
-    set_current_device(NPU2Col1())
-    assert fn.contract_for().reference is kernels.swiglu_ref
+@pytest.mark.parametrize(
+    "factory, ref",
+    [
+        (kernels.gelu_sized, kernels.gelu_ref),
+        (kernels.silu_sized, kernels.silu_ref),
+        (kernels.tanh, kernels.tanh_ref),
+        (kernels.sigmoid, kernels.sigmoid_ref),
+    ],
+    ids=["gelu", "silu", "tanh", "sigmoid"],
+)
+def test_an_f32_activation_built_unbound_is_judged_alike_everywhere(
+    no_device, factory, ref
+):
+    fn = factory(tile_size=1024)
+    for device in (NPU1Col1(), NPU2Col1()):
+        set_current_device(device)
+        c = fn.contract_for()
+        assert c.reference is ref and c.tolerance.kind == "bound"
+        inputs = [_FINITE_BF16]
+        expected = fn.expected(inputs)
+        assert fn.judge(ref(_FINITE_BF16).ravel(), expected, calls=64, inputs=inputs)
+        # The bound grants an ulp only near a tie.
+        nudged = _nudged(expected, 1).ravel()
+        assert not fn.judge(nudged, expected, calls=64, inputs=inputs)
 
 
 def _nudged(ref, ulps):
@@ -268,9 +251,6 @@ def test_a_portable_build_is_judged_by_its_untuned_branch(no_device, portable, d
     assert c.reference is kernels.mm_activation_epilogue_ref
     assert c.tolerance is _EPILOGUE_TOLERANCE
     assert kernels.bf16_exp().contract_for().reference is kernels.bf16_exp_ref
-    # gelu.cc compiles gelu_aie2p.h unless AIE2's tuned branch is on.
-    gelu = kernels.gelu(use_lut=True).contract_for()
-    assert gelu.reference is kernels.gelu_lut_ref
 
 
 def test_the_portable_flag_comes_from_the_kernel_not_the_environment(
@@ -317,29 +297,3 @@ def test_attention_and_fused_matmul_built_unbound_are_judged_where_they_ran(
     assert npu1_softmax.rtol < npu2_softmax.rtol
     assert fv.contract_for().tolerance.kind == "relative"
     assert fused.contract_for().tolerance.kind == "bound"
-
-
-@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
-def test_a_lut_silu_sized_is_judged_by_its_table_model(npu2_device, tmp_path):
-    if not (Path(config.aie_runtime_lib_dir()) / "AIE2P").is_dir():
-        pytest.skip("this build has no aie_runtime_lib/AIE2P")
-    vtanh = kernels.silu_sized(tile_size=1024)
-    lut = kernels.silu_sized(tile_size=1024, use_lut=True)
-    assert "-DACTIVATIONS_TANH_LUT=1" in lut.compile_flags
-    assert vtanh.contract_for().reference is kernels.silu_ref
-    c = lut.contract_for()
-    assert (c.reference, c.tolerance) == (kernels.silu_table_ref, _LUT_MODEL_TOLERANCE)
-    compile_external_kernels([vtanh, lut], str(tmp_path), "aie2p")
-    assert (tmp_path / lut.object_file_name).read_bytes() != (
-        tmp_path / vtanh.object_file_name
-    ).read_bytes()
-    # The table build against the true function, every finite bf16, is held
-    # to an eighth of the relative error measured for vtanh's on npu2.
-    x = _FINITE_BF16.astype(np.float64)
-    with np.errstate(over="ignore"):
-        silu = np.nan_to_num(x / (1 + np.exp(-x)))
-    table = kernels.silu_table_ref(_FINITE_BF16).astype(np.float32)
-    lut_bound = Tolerance.relative(0.01, 0.02)
-    verdict = compare(table, silu.astype(np.float32), lut_bound)
-    assert verdict, verdict.detail
-    assert _vtanh_family_tolerance("silu").rtol >= 8 * lut_bound.rtol

@@ -9,7 +9,7 @@
 
 This design implements a `bfloat16` element-wise unary op (ReLU, SiLU, or GELU), parallelized across both shim DMA channels per column (`num_channels=2`). The op is selected at compile time via the `op` parameter; the structural design and host harness are shared.
 
-ReLU is exact; SiLU and GELU use LUT-backed kernels and have per-op verification tolerances.
+ReLU is exact; SiLU and GELU round an f32 result once and are checked to within a bf16 ulp.
 
 
 ## Source Files Overview
