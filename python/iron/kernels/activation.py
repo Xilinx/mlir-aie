@@ -5,6 +5,7 @@
 #
 """Activation kernel factories and NumPy reference implementations."""
 
+import functools
 import math
 from pathlib import Path
 from typing import Callable
@@ -418,6 +419,22 @@ _SOFTMAX_F32_REL = 4 * 2.0**-8 + 2 * 1e-5 + 2.0**-20
 # The soft cap's error per logit, over the cap: half of 2^x's 1e-5 (tanh's
 # derivative in 2^x is at most a half), plus the reciprocal and f32 sums.
 _SOFT_CAP_ERR = 1e-5 / 2 + 2.0**-20
+# tanh_f32.h's functions, relative: at most 2.85e-5 (tanh, over every f32
+# from 2^-20 to 16), plus the f32 products around them.
+_TANH_F32_REL = 2.0**-15
+
+
+def _rounded_once_bound(exact):
+    """Bound on bf16 of an f32 result within ``_TANH_F32_REL`` of float64 ``exact``, against ``exact`` rounded.
+
+    One ulp where ``exact`` lies that close to a rounding midpoint, else 0, plus
+    2^-126 for the device's flush of a result below the smallest normal.
+    """
+    b = _f64(round_to(exact, bfloat16))
+    with np.errstate(invalid="ignore"):
+        tie = np.abs(0.5 * _bf16_ulp(exact) - np.abs(exact - b))
+        slack = np.where(tie <= _TANH_F32_REL * np.abs(exact), _bf16_ulp(b), 0.0)
+    return slack + 2.0**-126
 
 
 DTYPES["softmax"] = tuple(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
@@ -1037,6 +1054,47 @@ def tanh(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
         ),
         use_lut_tanh=use_lut,
     )
+
+
+def soft_cap(tile_size: int = 1024, *, cap: float) -> ExternalFunction:
+    """``cap * tanh(x / cap)`` over bf16 tiles, from ``soft_cap.cc``; ``(in, out, size)``.
+
+    The tanh is ``tanh_f32.h``'s, in f32, rounded once to bf16 on either architecture. ``cap`` is in [2^-100, 2^10].
+    """
+    _require_vector_alignment("soft_cap", tile_size, 32)
+    # Below, 1 / cap's bf16 limbs leave the normal floats; above, the held
+    # input, 64 cap, leaves bf16's range.
+    if not 2.0**-100 <= cap <= 2.0**10:
+        raise ValueError(f"soft_cap: cap must be in [2^-100, 2^10], got {cap}")
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "soft_cap_bf16",
+        _kernel_source("activation/soft_cap.cc"),
+        [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DSOFT_CAP={float(cap)!r}f", f"-DSOFT_CAP_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=functools.partial(soft_cap_ref, cap=cap),
+            tolerance=Tolerance.bounded(
+                functools.partial(soft_cap_bound, cap=cap),
+                note="correctly rounded except within the f32 tanh's error, "
+                "2.85e-5 relative on its model, of a bf16 tie",
+            ),
+            ops_per_call=tile_size,
+        ),
+    )
+
+
+def soft_cap_ref(x, *, cap: float):
+    """Numpy reference for [`soft_cap`][iron.kernels.activation.soft_cap], correctly rounded."""
+    return _rounded(cap * np.tanh(_f64(x) / cap), x)
+
+
+def soft_cap_bound(x, *, cap: float):
+    """How far [`soft_cap`][iron.kernels.activation.soft_cap] may be from ``soft_cap_ref``, per element."""
+    return _rounded_once_bound(cap * np.tanh(_f64(x) / cap))
 
 
 def sigmoid(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:

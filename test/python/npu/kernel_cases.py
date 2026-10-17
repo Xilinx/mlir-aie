@@ -297,6 +297,13 @@ CASES: list[Case] = [
     Case("sigmoid", calls=256),
     # As tanh above.
     check("sigmoid", dict(tile_size=1056), tag="tail", smoke=True),
+    # Gemma's caps, 30 and 50, and 0.5, which puts unit-scale data on every
+    # branch of the tanh.
+    Case("soft_cap", dict(cap=30.0), calls=16, smoke=True),
+    Case("soft_cap", dict(cap=30.0), calls=256, data_cases=IEEE_FLOAT),
+    check("soft_cap", dict(cap=50.0), smoke=True),
+    check("soft_cap", dict(tile_size=32, cap=0.5), smoke=True),
+    check("soft_cap", dict(cap=0.5), data_cases=IEEE_FLOAT),
     Case("softmax", calls=16, smoke=True),
     Case("softmax", calls=256),
     # The AIE2 exp loop is rotated by one and pipelined only from 144 elements
