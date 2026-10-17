@@ -5177,6 +5177,64 @@ struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
 // Pattern collection
 //===----------------------------------------------------------------------===//
 
+// A shuffle that repeats a 128-bit vector to fill 512 or 1024 bits (mask
+// [i % n]), such as a broadcast of a small vector across a wide one. The
+// vector is doubled to 256 bits, repeated to 512 bits by a t256_2x2_lo
+// shuffle, and concatenated with itself for 1024 bits.
+struct LowerReplicatingShuffleAIE2pPattern
+    : OpConversionPattern<vector::ShuffleOp> {
+  using OpConversionPattern<vector::ShuffleOp>::OpConversionPattern;
+
+  static bool matches(vector::ShuffleOp op) {
+    auto srcTy = op.getV1VectorType();
+    auto dstTy = op.getResultVectorType();
+    if (srcTy.getRank() != 1 || dstTy.getRank() != 1)
+      return false;
+    unsigned bw = srcTy.getElementTypeBitWidth();
+    int64_t n = srcTy.getNumElements(), m = dstTy.getNumElements();
+    if (n * bw != 128 || (m * bw != 512 && m * bw != 1024))
+      return false;
+    for (auto [i, idx] : llvm::enumerate(op.getMask()))
+      if (idx != (int64_t)i % n)
+        return false;
+    return true;
+  }
+
+  LogicalResult
+  matchAndRewrite(vector::ShuffleOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!matches(op))
+      return failure();
+    Location loc = op.getLoc();
+    auto srcTy = op.getV1VectorType();
+    auto dstTy = op.getResultVectorType();
+    int64_t n = srcTy.getNumElements();
+    SmallVector<int64_t> twice;
+    for (int64_t i = 0; i < 2 * n; ++i)
+      twice.push_back(i % n);
+    Value v = adaptor.getV1();
+    Value v256 = vector::ShuffleOp::create(rewriter, loc, v, v, twice);
+    // The step to 512 bits is an aievec.shuffle rather than a second
+    // vector.shuffle: LLVM would fold two plain shuffles back into the one
+    // wide shuffle this pattern replaces.
+    auto pad = llvm::to_vector(llvm::seq<int64_t>(0, 2 * n));
+    pad.append(2 * n, vector::ShuffleOp::kPoisonIndex);
+    Value v512 = vector::ShuffleOp::create(rewriter, loc, v256, v256, pad);
+    auto mode = aievec::ShuffleModeAttr::get(rewriter.getContext(),
+                                             aievec::ShuffleMode::T256_2X2_LO);
+    auto v2xi256 = VectorType::get({2}, rewriter.getIntegerType(256));
+    Value w = vector::BitCastOp::create(rewriter, loc, v2xi256, v512);
+    w = aievec::ShuffleOp::create(rewriter, loc, v2xi256, w, w, mode);
+    Value r = vector::BitCastOp::create(rewriter, loc, v512.getType(), w);
+    if (dstTy.getNumElements() == 4 * n)
+      rewriter.replaceOp(op, r);
+    else
+      rewriter.replaceOpWithNewOp<aievec::ConcatOp>(op, dstTy,
+                                                    SmallVector<Value>({r, r}));
+    return success();
+  }
+};
+
 static void
 populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns) {
   // clang-format off
@@ -5418,6 +5476,8 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
                                                          /*benefit=*/2);
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
+  patterns.add<LowerReplicatingShuffleAIE2pPattern>(patterns.getContext(),
+                                                    /*benefit=*/3);
   patterns.add<LowerVectorReductionAddBfloat16OpAIE2P>(patterns.getContext());
   // For AIE2P with LLVMIR backend, use aievec.exp and aievec.inv
   // math.rsqrt is kept legal and will be lowered in AIEVecToLLVM pass
@@ -6087,8 +6147,11 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
   // pattern's replacement IR survives partial conversion. Rank-1
   // arith.sitofp is already marked illegal by the common legality config
   // (LLVMIR backend), so LowerVectorSIToFPI16BF16AIE2pPattern is tried
-  // ahead of the per-lane scalarize fallback by pattern benefit.
-  target.addLegalOp<vector::ShuffleOp>();
+  // ahead of the per-lane scalarize fallback by pattern benefit. Shuffles
+  // that repeat a 128-bit vector to 512 or 1024 bits are converted.
+  target.addDynamicallyLegalOp<vector::ShuffleOp>([](vector::ShuffleOp op) {
+    return !LowerReplicatingShuffleAIE2pPattern::matches(op);
+  });
 }
 
 static void configureAIEVecV2Legalizations(ConversionTarget &target) {
