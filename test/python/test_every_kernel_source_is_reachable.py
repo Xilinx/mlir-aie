@@ -40,7 +40,14 @@ def _built_by_a_factory() -> set[Path]:
                 factory = getattr(kernels, name)
                 if not inspect.isfunction(factory) or name.endswith("_ref"):
                     continue
-                for combo in [{}] + [dict(c) for c in getattr(factory, "dtypes", ())]:
+                # A keyword flag can select another source (gelu_sized's exact).
+                flags = [
+                    {p.name: True}
+                    for p in inspect.signature(factory).parameters.values()
+                    if p.default is False
+                ]
+                dtypes = [dict(c) for c in getattr(factory, "dtypes", ())]
+                for combo in [{}, *dtypes, *flags]:
                     try:
                         fn = factory(**combo)
                     except Exception:  # noqa: BLE001 - needs kwargs, or wrong arch
