@@ -9,14 +9,16 @@ Provides the AIEAddressDecoder class for decoding AIE array addresses,
 and MLIRModuleAnnotator for annotating MLIR files with register information.
 
 Usage:
+    from aie.dialects.aie import AIEDevice
     from aie.utils.regdb import AIEAddressDecoder
 
-    decoder = AIEAddressDecoder()
+    decoder = AIEAddressDecoder(AIEDevice.npu2)
     info = decoder.parse_address(0x1D200)
 
 CLI Usage:
     # Decode an address
     python -m aie.utils.regdb 0x100010
+    python -m aie.utils.regdb --device npu2 0x100010
 
     # Annotate an MLIR file
     python -m aie.utils.regdb -a input.mlir -o output.mlir
@@ -53,14 +55,29 @@ class AIEAddressDecoder:
         ],
     }
 
-    def __init__(self):
-        """Initialize decoder with register database."""
-        self.database: dict = {}
-        self.load_database()
+    def __init__(self, device):
+        """Load the register database of ``device``'s architecture.
 
-    def load_database(self):
-        """Load the register database from JSON file."""
-        db_path = Path(root_path()) / "lib" / "regdb" / "aie_registers_aie2.json"
+        Args:
+            device: The ``AIEDevice`` whose tiles and registers addresses name.
+
+        Raises:
+            ValueError: ``device``'s architecture has no register database.
+        """
+        import aie.dialects.aie as aiedialect
+
+        AIEArch = getattr(aiedialect, "AIEArch")
+        self.target_model = aiedialect.get_target_model(device)
+        arch = self.target_model.get_target_arch()
+        databases = {AIEArch.AIE2: "aie2", AIEArch.AIE2p: "aie2p"}
+        if arch not in databases:
+            raise ValueError(f"no register database for {arch}")
+        self.database: dict = {}
+        self.load_database(databases[arch])
+
+    def load_database(self, arch: str):
+        """Load the register database of ``arch`` (``aie2``, ``aie2p``) from its JSON file."""
+        db_path = Path(root_path()) / "lib" / "regdb" / f"aie_registers_{arch}.json"
 
         try:
             with open(db_path, "r") as f:
@@ -90,11 +107,7 @@ class AIEAddressDecoder:
           - row 1: memtile (memory_tile module)
           - row 2+: core tile (core, memory modules)
         """
-        import aie.dialects.aie as aiedialect
-
-        # Get target model from npu1 device
-        device = getattr(aiedialect, "AIEDevice").npu1
-        target_model = aiedialect.get_target_model(device)
+        target_model = self.target_model
 
         # Extract col, row, and offset using target model
         col = (address >> target_model.get_column_shift()) & 0x7F
@@ -233,11 +246,7 @@ class AIEAddressDecoder:
             register_name: Name of the register
             module_name: Optional module name to search in
         """
-        import aie.dialects.aie as aiedialect
-
-        # Get target model from npu1 device
-        device = getattr(aiedialect, "AIEDevice").npu1
-        target_model = aiedialect.get_target_model(device)
+        target_model = self.target_model
 
         # Find the register
         register_info = None
@@ -372,8 +381,8 @@ class MLIRModuleAnnotator:
     """Annotates MLIR modules with register information using Python bindings."""
 
     def __init__(self):
-        """Initialize with AIE decoder."""
-        self.decoder = AIEAddressDecoder()
+        """Initialize; the decoder follows each annotated module's device."""
+        self.decoder: Optional[AIEAddressDecoder] = None
 
     def decode_bit_field_value(self, value: int, bit_range: str) -> int:
         """Extract bits from value based on bit range.
@@ -665,7 +674,8 @@ class MLIRModuleAnnotator:
         else:
             device = AIEDevice(int(devices[0].device))
 
-        target_model = aiedialect.get_target_model(device)
+        self.decoder = AIEAddressDecoder(device)
+        target_model = self.decoder.target_model
 
         # Find and annotate write32 operations
         write32_ops = find_ops(
@@ -821,6 +831,12 @@ Examples:
     parser.add_argument("--register", "-r", help="Register name (for reverse lookup)")
     parser.add_argument("--module", "-m", help="Module name (for reverse lookup)")
     parser.add_argument(
+        "--device",
+        default="npu1",
+        choices=["npu1", "npu2"],
+        help="Device whose addresses to decode (default: npu1); -a takes the module's",
+    )
+    parser.add_argument(
         "--memory-tile-rows",
         type=int,
         default=1,
@@ -878,7 +894,9 @@ Examples:
         return 0
 
     # Initialize decoder for address operations
-    decoder = AIEAddressDecoder()
+    import aie.dialects.aie as aiedialect
+
+    decoder = AIEAddressDecoder(getattr(aiedialect.AIEDevice, args.device))
 
     # Reverse lookup mode
     if args.col is not None and args.row is not None and args.register:

@@ -18,6 +18,7 @@ Tests cover:
 import sys
 
 # Try to import from installed package, or use a workaround message
+from aie.dialects.aie import AIEDevice
 from aie.utils.regdb import AIEAddressDecoder, MLIRModuleAnnotator
 
 # =============================================================================
@@ -28,7 +29,7 @@ print("=" * 70)
 print("Testing AIEAddressDecoder.parse_address")
 print("=" * 70)
 
-decoder = AIEAddressDecoder()
+decoder = AIEAddressDecoder(AIEDevice.npu1)
 
 # -----------------------------------------------------------------------------
 # Test 1: Core tile register (Core_Control at 0x32000)
@@ -335,6 +336,70 @@ with Context() as ctx, Location.unknown():
     module_str = str(module)
     has_comment = 'comment = "Tile(0, 2)' in module_str
     print(f"  has_comment_attribute: {has_comment}")
+
+# =============================================================================
+# Test both devices' databases
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Test 17: the shim DMA registers a gather writes, on npu1 and npu2: BD
+# words 0x1D000 + 0x20 * bd, MM2S channel 1's Ctrl and Task_Queue.
+# -----------------------------------------------------------------------------
+# CHECK-LABEL: Test 17: shim DMA registers
+# CHECK: npu1 0x1d000 0x1d0a0 0x1d1e0 0x1d218 0x1d21c
+# CHECK: npu2 0x1d000 0x1d0a0 0x1d1e0 0x1d218 0x1d21c
+# CHECK: npu2 Tile(3, 0) DMA_MM2S_1_Ctrl 0x601d218 Controller_ID 15:8
+print("\nTest 17: shim DMA registers")
+for device in (AIEDevice.npu1, AIEDevice.npu2):
+    shim = AIEAddressDecoder(device)
+    addresses = []
+    for name in (
+        "DMA_BD0_0",
+        "DMA_BD5_0",
+        "DMA_BD15_0",
+        "DMA_MM2S_1_Ctrl",
+        "DMA_MM2S_1_Task_Queue",
+    ):
+        address = shim.encode_address(col=0, row=0, register_name=name)
+        assert shim.parse_address(address)["register"] == name
+        addresses.append(hex(address))
+    print(f"  {device} {' '.join(addresses)}")
+npu2 = AIEAddressDecoder(AIEDevice.npu2)
+ctrl = npu2.parse_address(npu2.encode_address(3, 0, "DMA_MM2S_1_Ctrl"))
+field = ctrl["bit_fields"][0]
+print(
+    f"  npu2 Tile({ctrl['col']}, {ctrl['row']}) {ctrl['register']} "
+    f"{ctrl['address']} {field['name']} {field['bits']}"
+)
+
+# -----------------------------------------------------------------------------
+# Test 18: a module is annotated from its own device's database
+# PL_INTERFACE_DOWNSIZER_BYPASS (0x3300C) is a shim register of AIE2P alone.
+# -----------------------------------------------------------------------------
+# CHECK-LABEL: Test 18: annotate per device
+# CHECK: npu1 names PL_INTERFACE_DOWNSIZER_BYPASS: False
+# CHECK: npu2 names PL_INTERFACE_DOWNSIZER_BYPASS: True
+print("\nTest 18: annotate per device")
+for device in ("npu1", "npu2"):
+    source = f"""
+module {{
+    aie.device({device}) {{
+    %tile_0_0 = aie.tile(0, 0)
+    aie.runtime_sequence() {{
+        %addr = arith.constant 0x3300C : i32
+        %val = arith.constant 1 : i32
+        aiex.npu.write32(%addr, %val) {{column = 0 : i32, row = 0 : i32}} : i32, i32
+    }}
+    }}
+}}
+"""
+    with Context() as ctx, Location.unknown():
+        ctx.append_dialect_registry(get_dialect_registry())
+        ctx.load_all_available_dialects()
+        module = Module.parse(source)
+        MLIRModuleAnnotator().annotate_module(module)
+        named = "PL_INTERFACE_DOWNSIZER_BYPASS" in str(module)
+    print(f"  {device} names PL_INTERFACE_DOWNSIZER_BYPASS: {named}")
 
 # =============================================================================
 # Summary
