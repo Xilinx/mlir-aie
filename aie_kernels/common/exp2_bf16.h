@@ -150,6 +150,8 @@ static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
 // exp2_f32_32's constants, a vector each, loaded where they are used: held,
 // they take the accumulator registers the chain needs.
 alignas(64) static const float exp2_magic[64] = EXP2_SPLAT64(12582912.0f);
+// xm less this is k + 1.5 * 2^16, whose low 16 bits are k * 128.
+alignas(64) static const float exp2_magic_k7[64] = EXP2_SPLAT64(12484608.0f);
 alignas(64) static const float exp2_c3[64] = EXP2_SPLAT64(0.0559063815f);
 alignas(64) static const float exp2_c2[64] = EXP2_SPLAT64(0.240241051f);
 alignas(64) static const float exp2_c1[64] = EXP2_SPLAT64(0.693124175f);
@@ -169,9 +171,10 @@ constexpr unsigned EXP2_NONPOS_LANES = 32;
 
 // exp2_bf16_32 of x <= 0, finite or -inf, as the online softmax takes it: no
 // such x reaches its overflow or NaN select, so only the flush below -125.5
-// stays. exp2_f32_32's operations in its order, lane for lane, at L lanes;
-// k << 23 is taken as soon as k is, and the flush applied to the f32 bits,
-// so the one rounding to bf16 is the store's.
+// stays. exp2_f32_32's operations in its order, lane for lane, at L lanes,
+// except that p is rounded to bf16 before 2^k scales it, as k * 128 added to
+// its bits: the result is normal above -125.5, where rounding commutes with
+// the scaling.
 template <unsigned L>
 static inline __attribute__((always_inline)) aie::vector<bfloat16, L>
 exp2_nonpos_lanes(aie::vector<float, L> x) {
@@ -184,7 +187,8 @@ exp2_nonpos_lanes(aie::vector<float, L> x) {
   const auto below =
       aie::gt(x.template cast_to<uint32_t>(), aie::load_v<L>(exp2_floor));
   const aie::vector<float, L> xm = aie::add(x, ld(exp2_magic));
-  const auto k23 = aie::upshift(xm.template cast_to<int32_t>(), 23);
+  const auto k7 = aie::filter_even(
+      aie::sub(xm, ld(exp2_magic_k7)).template cast_to<int16_t>());
   const bf_t k =
       acc_t(aie::sub(xm, ld(exp2_magic))).template to_vector<bfloat16>();
   const acc_t f = aie::msc(acc_t(x), k, bf(exp2_one));
@@ -205,11 +209,10 @@ exp2_nonpos_lanes(aie::vector<float, L> x) {
   step(exp2_c1);
   step(exp2_c0);
 
-  const auto y =
-      aie::add(p.template to_vector<float>().template cast_to<int32_t>(), k23);
-  return acc_t(aie::select(y, aie::zeros<int32_t, L>(), below)
-                   .template cast_to<float>())
-      .template to_vector<bfloat16>();
+  const auto y = aie::add(
+      p.template to_vector<bfloat16>().template cast_to<int16_t>(), k7);
+  return aie::select(y, aie::zeros<int16_t, L>(), below)
+      .template cast_to<bfloat16>();
 }
 
 template <unsigned N>
