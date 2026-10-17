@@ -52,6 +52,28 @@ static constexpr bool BAND_AHEAD = MHA_CAUSAL || MHA_WINDOW > 0;
 static constexpr int32_t AHEAD = MHA_CAUSAL ? 0 : MHA_WINDOW;
 static constexpr bool BAND_BEHIND = MHA_WINDOW > 0;
 
+// Under MHA_RELATIVE the score of the key c - MHA_WINDOW positions from its
+// query gains q . R[c], c < REL_KEYS: partial_softmax reads those products
+// from QR, REL_STRIDE floats a query row.
+#ifdef MHA_RELATIVE
+#if !defined(MHA_F32_SCORES) || MHA_WINDOW == 0
+#error "MHA_RELATIVE: the relative terms are float32 scores within a window"
+#endif
+static constexpr int32_t REL_KEYS = MHA_WINDOW + AHEAD + 1;
+static constexpr int32_t REL_STRIDE = (REL_KEYS + 15) & ~15;
+#endif
+
+// Under MHA_SOFT_CAP partial_softmax takes the scores to log2-domain logits,
+// cap * tanh(MHA_SCALE * A / cap) * log2(e), so its scale is then 1.
+#ifdef MHA_SOFT_CAP
+#if !defined(MHA_F32_SCORES) || !defined(EXP2_BF16_ACCURATE)
+#error "MHA_SOFT_CAP: the soft cap is on float32 scores, with the accurate exp2"
+#endif
+#ifndef MHA_SCALE
+#define MHA_SCALE 1.0f
+#endif
+#endif
+
 // Whether a query block keeps any key of a key block, diagonal being the
 // position of the query block's first row less that of the key block's.
 static inline __attribute__((always_inline)) bool
@@ -576,6 +598,48 @@ static inline void invert_sums_w(float *scale_buffer, int32_t B_q) {
   }
 }
 
+#ifdef MHA_RELATIVE
+// row[j] += qr[j - first] where 0 <= j - first < REL_KEYS, a vector at a time:
+// each lane takes its product from the two aligned QR vectors it falls
+// between. Lanes past the band take whatever they take; the band mask drops
+// them.
+static void add_relative_row(float *__restrict row, const float *__restrict qr,
+                             int32_t first, int32_t n) {
+  constexpr int32_t L = SM_LANES;
+  auto part = [qr](int32_t k) {
+    return k >= 0 && k < REL_STRIDE / L ? aie::load_v<L>(qr + k * L)
+                                        : aie::zeros<float, L>();
+  };
+  const int32_t end = first + REL_KEYS < n ? first + REL_KEYS : n;
+  for (int32_t h = first < 0 ? 0 : first & ~(L - 1); h < end; h += L) {
+    const int32_t at = h - first;
+    const int32_t k = at >= 0 ? at / L : -1;
+    const auto terms = aie::shuffle_down_fill(part(k), part(k + 1), at - k * L);
+    aie::store_v(row + h, aie::add(aie::accum<accfloat, L>(terms),
+                                   aie::load_v<L>(row + h))
+                              .to_vector<float>());
+  }
+}
+#endif
+
+#ifdef MHA_SOFT_CAP
+// The first n scores to soft-capped log2-domain logits, in place.
+static void soft_cap_scores(float *A, int32_t n) {
+  using Acc = aie::accum<accfloat, SM_VEC_LEN>;
+  constexpr float k0 = MHA_SOFT_CAP * 1.44269504088896341f;
+  const Limbs<SM_VEC_LEN> a_limbs =
+      bf16_limbs(Acc(aie::broadcast<float, SM_VEC_LEN>(
+          2.88539008177792682f * MHA_SCALE / MHA_SOFT_CAP)));
+  const Limbs<SM_VEC_LEN> k1_limbs =
+      bf16_limbs(Acc(aie::broadcast<float, SM_VEC_LEN>(2.0f * k0)));
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  for (int32_t c = 0; c < n; c += SM_VEC_LEN)
+    aie::store_v(A + c, soft_cap_log2(Acc(aie::load_v<SM_VEC_LEN>(A + c)),
+                                      a_limbs, k0, k1_limbs)
+                            .to_vector<float>());
+}
+#endif
+
 extern "C" {
 void partial_softmax_bf16(bfloat16 *input, bfloat16 *output,
                           float *scale_buffer, const int32_t input_size,
@@ -680,7 +744,12 @@ void rescale_O(float *O, bfloat16 *out, float *scale_buffer, int32_t B_q,
 
 void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
                      int32_t *idx_buffer, bfloat16 inv_scale, int32_t B_q,
-                     int32_t B_kv, int32_t S_q_eff, int32_t S_kv_eff) {
+                     int32_t B_kv, int32_t S_q_eff, int32_t S_kv_eff
+#ifdef MHA_RELATIVE
+                     ,
+                     const float *QR
+#endif
+) {
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   // Block indices
@@ -729,6 +798,15 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
                                                      : SM_LANES;
   const auto lowest = aie::broadcast<score_t, MW>(
       (score_t)std::numeric_limits<bfloat16>::lowest());
+
+#ifdef MHA_RELATIVE
+  for (int32_t i = 0; i < valid_q_rows; i++)
+    add_relative_row(A + i * B_kv, QR + i * REL_STRIDE,
+                     i + diagonal - MHA_WINDOW, B_kv);
+#endif
+#ifdef MHA_SOFT_CAP
+  soft_cap_scores(A, valid_q_rows * B_kv);
+#endif
 
   // Tail mask: invalidate padded Q rows.  They are the end of A, so the walk
   // over (row, vector) is one linear fill.

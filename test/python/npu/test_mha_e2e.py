@@ -396,23 +396,22 @@ def test_rescale_o_divides_rows_by_their_sums(l_lo, l_hi):
     np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
 
-@jit
-def mha_round(
-    s_in: In,
-    v_in: In,
-    o_out: Out,
+def _round_program(
     *,
-    q_block: CompileTime[int] = 0,
-    n_kv: CompileTime[int] = 1,
-    s_q_eff: CompileTime[int] = _B,
-    s_kv_eff: CompileTime[int] = _B,
-    b_q: CompileTime[int] = _B,
-    b_kv: CompileTime[int] = _B,
-    d: CompileTime[int] = _B,
-    causal: CompileTime[bool] = True,
-    window: CompileTime[int] = 0,
-    accurate_exp2: CompileTime[bool] = False,
-    f32_scores: CompileTime[bool] = False,
+    q_block,
+    n_kv,
+    s_q_eff,
+    s_kv_eff,
+    b_q,
+    b_kv,
+    d,
+    causal,
+    window,
+    accurate_exp2,
+    f32_scores,
+    relative=False,
+    soft_cap=None,
+    scale=1.0,
 ):
     """One round of mha.cc's steps from the mask on, over two cores.
 
@@ -421,7 +420,10 @@ def mha_round(
     its running state with each ``P``, and the other accumulates ``P V``. P
     is reblocked through a memtile on its way to ``matmul_PV``. The query
     block is ``b_q`` rows against a ``b_kv``-row key block, over a head
-    dimension ``d``. With ``f32_scores`` the scores are float32.
+    dimension ``d``. With ``f32_scores`` the scores are float32. With
+    ``relative`` the softmax core also takes the query block's ``QR`` and
+    holds it over every key block; with ``soft_cap`` the kernel caps the
+    scores, ``scale`` first, and its own scalar is 1.
     """
     s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
     p_ty = np.ndarray[(b_q * b_kv,), BF]
@@ -430,7 +432,10 @@ def mha_round(
     acc_ty = np.ndarray[(b_q * d,), F32]
     scale_ty = np.ndarray[(4 * b_q,), F32]
     idx_ty = np.ndarray[(2,), I32]
-    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+    qr_ty = np.ndarray[(b_q * kernels.mha.relative_width(window, causal),), F32]
+    inv_scale = (
+        1.0 if soft_cap is not None else float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+    )
 
     qkt = kernels.mha(
         dim_m=b_q,
@@ -440,11 +445,22 @@ def mha_round(
         causal=causal,
         window=window,
         f32_scores=f32_scores,
+        relative=relative,
+        soft_cap=soft_cap,
+        scale=scale,
     )
     obj = qkt.object_file
     softmax = obj.bind(
         "partial_softmax",
-        [s_ty, p_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)],
+        [
+            s_ty,
+            p_ty,
+            scale_ty,
+            idx_ty,
+            bfloat16,
+            *([np.int32] * 4),
+            *([qr_ty] if relative else []),
+        ],
     )
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
     pv = obj.bind(
@@ -457,6 +473,7 @@ def mha_round(
     )
 
     of_s = ObjectFifo(s_ty, name="s", depth=2)
+    of_qr = ObjectFifo(qr_ty, name="qr", depth=1)
     # Past d = 64, V, O and the accumulator fill the PV core's L1 alone.
     of_v = ObjectFifo(v_ty, name="v", depth=2 if d == _B else 1)
     of_o = ObjectFifo(o_ty, name="o", depth=1)
@@ -479,8 +496,11 @@ def mha_round(
         for core in ("softmax", "pv")
     }
 
-    def softmax_core(of_s, of_p, of_scale, softmax, init, copy_scale, scale, *idx):
+    # The QR fifo, when there is one, follows the index buffers.
+    def softmax_core(of_s, of_p, of_scale, softmax, init, copy_scale, scale, *rest):
+        idx, of_qr = rest[:n_kv], rest[n_kv:]
         init(scale, b_q)
+        qr = [of.acquire(1) for of in of_qr]
         for k in range(n_kv):
             p = of_p.acquire(1)
             sent = of_scale.acquire(1)
@@ -494,11 +514,14 @@ def mha_round(
                 b_kv,
                 s_q_eff,
                 s_kv_eff,
+                *qr,
             )
             copy_scale(scale, sent, 4 * b_q)
             of_s.release(1)
             of_p.release(1)
             of_scale.release(1)
+        for of in of_qr:
+            of.release(1)
 
     def pv_core(of_pb, of_v, of_scale, of_o, pv, rescale, acc, *idx):
         for k in range(n_kv):
@@ -533,6 +556,7 @@ def mha_round(
                 copy_scale,
                 Buffer(scale_ty, name="scale"),
                 *idx_bufs["softmax"],
+                *([of_qr.cons()] if relative else []),
             ],
         ),
         Worker(
@@ -550,18 +574,102 @@ def mha_round(
         ),
     ]
 
-    def sequence(s_h, v_h, o_h, sf, vf, of):
-        sf.fill(s_h)
-        vf.fill(v_h)
-        of.drain(o_h, wait=True)
+    s_host = np.ndarray[(n_kv * b_q * b_kv,), F32 if f32_scores else BF]
+    v_host = np.ndarray[(n_kv * b_kv * d,), BF]
+    if relative:
 
-    host = [
-        np.ndarray[(n_kv * b_q * b_kv,), F32 if f32_scores else BF],
-        np.ndarray[(n_kv * b_kv * d,), BF],
-        o_ty,
-    ]
-    rt = Runtime(sequence, [*host, of_s.prod(), of_v.prod(), of_o.cons()])
+        def sequence(s_h, qr_h, v_h, o_h, sf, qrf, vf, of):
+            sf.fill(s_h)
+            qrf.fill(qr_h)
+            vf.fill(v_h)
+            of.drain(o_h, wait=True)
+
+        host = [s_host, qr_ty, v_host, o_ty, of_s.prod(), of_qr.prod()]
+    else:
+
+        def sequence(s_h, v_h, o_h, sf, vf, of):
+            sf.fill(s_h)
+            vf.fill(v_h)
+            of.drain(o_h, wait=True)
+
+        host = [s_host, v_host, o_ty, of_s.prod()]
+    rt = Runtime(sequence, [*host, of_v.prod(), of_o.cons()])
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+
+
+@jit
+def mha_round(
+    s_in: In,
+    v_in: In,
+    o_out: Out,
+    *,
+    q_block: CompileTime[int] = 0,
+    n_kv: CompileTime[int] = 1,
+    s_q_eff: CompileTime[int] = _B,
+    s_kv_eff: CompileTime[int] = _B,
+    b_q: CompileTime[int] = _B,
+    b_kv: CompileTime[int] = _B,
+    d: CompileTime[int] = _B,
+    causal: CompileTime[bool] = True,
+    window: CompileTime[int] = 0,
+    accurate_exp2: CompileTime[bool] = False,
+    f32_scores: CompileTime[bool] = False,
+    soft_cap: CompileTime[float] = 0.0,
+    scale: CompileTime[float] = 1.0,
+):
+    """``_round_program`` from host scores and V; a ``soft_cap`` of 0 is none."""
+    return _round_program(
+        q_block=q_block,
+        n_kv=n_kv,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        d=d,
+        causal=causal,
+        window=window,
+        accurate_exp2=accurate_exp2,
+        f32_scores=f32_scores,
+        soft_cap=soft_cap or None,
+        scale=scale,
+    )
+
+
+@jit
+def mha_round_relative(
+    s_in: In,
+    qr_in: In,
+    v_in: In,
+    o_out: Out,
+    *,
+    q_block: CompileTime[int] = 0,
+    n_kv: CompileTime[int] = 1,
+    s_eff: CompileTime[int] = _B,
+    b_q: CompileTime[int] = _B,
+    b_kv: CompileTime[int] = _B,
+    d: CompileTime[int] = _B,
+    causal: CompileTime[bool] = True,
+    window: CompileTime[int] = 11,
+    soft_cap: CompileTime[float] = 0.0,
+    scale: CompileTime[float] = 1.0,
+):
+    """``_round_program`` with a relative term, from host scores, QR and V."""
+    return _round_program(
+        q_block=q_block,
+        n_kv=n_kv,
+        s_q_eff=s_eff,
+        s_kv_eff=s_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        d=d,
+        causal=causal,
+        window=window,
+        accurate_exp2=True,
+        f32_scores=True,
+        relative=True,
+        soft_cap=soft_cap or None,
+        scale=scale,
+    )
 
 
 def _round_case_data(
@@ -817,6 +925,192 @@ def test_mha_round_f32_scores_resolve_near_ties(b_q, b_kv, accurate_exp2):
     ref = _attention(scores, v, keep, inv_scale=_INV_SCALE).astype(np.float32)
     ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
     np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
+
+
+def _relative_attention(scores, qr, v, keep, *, rows, window, soft_cap, scale, d):
+    """Attention over the band in float64, each score plus its relative term.
+
+    Query ``rows[r]`` and key ``j`` take ``qr[r, j - rows[r] + window]``.
+    Capped, the logits are ``soft_cap * tanh(scale * x / soft_cap)`` under
+    a natural exp; uncapped, the kernel's own bf16 log2-domain scale.
+    """
+    cols = np.arange(scores.shape[1])
+    c = np.clip(cols[None, :] - rows[:, None] + window, 0, qr.shape[1] - 1)
+    x = scores.astype(np.float64) + np.take_along_axis(qr.astype(np.float64), c, 1)
+    if soft_cap:
+        z = soft_cap * np.tanh(scale * x / soft_cap)
+    else:
+        z = x * float(bfloat16(np.log2(np.e) / np.sqrt(d))) * np.log(2)
+    z = np.where(keep, z, -np.inf)
+    live = keep.any(axis=1)
+    p = np.exp(z - np.where(live, z.max(axis=1), 0)[:, None])
+    p /= np.where(live, p.sum(axis=1), 1)[:, None]
+    return p @ v.astype(np.float64)
+
+
+@pytest.mark.parametrize(
+    "q_block,n_kv,s_eff,shape",
+    [
+        # EG2's audio attention: the row-group path, the band crossing into
+        # the key block before, d = 128 (32 query rows, so the PV core's L1
+        # holds it), and the cap of 50.
+        (2, 2, 96, dict(b_q=32, d=128, soft_cap=50.0)),
+        # Its sequence start, with a query and key tail.
+        (0, 1, 20, dict(b_q=32, d=128, soft_cap=50.0)),
+        # The per-row path, the band on both sides, a scale before the cap.
+        (2, 4, 100, dict(b_q=32, b_kv=32, causal=False, soft_cap=50.0, scale=0.125)),
+        # Uncapped: the kernel's own bf16 scale.
+        (1, 2, 2 * _B, dict()),
+        (5, 3, 90, dict(b_q=16, b_kv=32, causal=False)),
+    ],
+)
+def test_mha_round_adds_relative_terms_and_caps(q_block, n_kv, s_eff, shape):
+    """Each kept score gains q . R at its key's offset, then the soft cap."""
+    _skip_f32_off_aie2p(True)
+    b_q, b_kv = shape.get("b_q", _B), shape.get("b_kv", _B)
+    d, causal = shape.get("d", _B), shape.get("causal", True)
+    soft_cap, scale = shape.get("soft_cap", 0.0), shape.get("scale", 1.0)
+    window = 11
+    keys = window + 1 + (0 if causal else window)
+    width = kernels.mha.relative_width(window, causal)
+    rng = np.random.default_rng(20261017 + 97 * q_block + s_eff + d)
+    # Logits to about +-60, so the cap bends them and saturates the top.
+    q = _dyadic(rng, (b_q, d), 0.5, mag=4)
+    k = _dyadic(rng, (n_kv * b_kv, d), 0.5, mag=4)
+    r = _dyadic(rng, (keys, d), 0.5, mag=4)
+    v = _dyadic(rng, (n_kv * b_kv, d), 0.25, mag=2)
+    scores = q.astype(np.float32) @ k.astype(np.float32).T
+    qr = np.zeros((b_q, width), np.float32)
+    qr[:, :keys] = q.astype(np.float32) @ r.astype(np.float32).T
+    keep = np.concatenate(
+        [
+            _keep(q_block, kv, s_eff, s_eff, b_q, b_kv, causal, window)
+            for kv in range(n_kv)
+        ],
+        axis=1,
+    )
+    # Keys from s_eff on do not exist; their V rows hold NaN, which must not
+    # reach O.
+    stale = v.copy()
+    stale[s_eff:] = np.nan
+    s_host = np.concatenate(
+        [scores[:, b * b_kv : (b + 1) * b_kv].reshape(-1) for b in range(n_kv)]
+    )
+    v_host = np.concatenate(
+        [
+            TensorAccessPattern.full((b_kv, d))
+            .tile((8, 8))
+            .gather(stale[b * b_kv : (b + 1) * b_kv])
+            for b in range(n_kv)
+        ]
+    )
+
+    o_t = iron.zeros((b_q * d,), dtype=bfloat16)
+    mha_round_relative(
+        iron.tensor(s_host, dtype=np.float32),
+        iron.tensor(qr.reshape(-1), dtype=np.float32),
+        iron.tensor(v_host, dtype=bfloat16),
+        o_t,
+        q_block=q_block,
+        n_kv=n_kv,
+        s_eff=s_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        d=d,
+        causal=causal,
+        window=window,
+        soft_cap=soft_cap,
+        scale=scale,
+    )
+    got = _unblock(o_t.numpy(), b_q, d).astype(np.float32)
+
+    rows = q_block * b_q + np.arange(b_q)
+    ref = _relative_attention(
+        scores,
+        qr,
+        v,
+        keep,
+        rows=rows,
+        window=window,
+        soft_cap=soft_cap,
+        scale=scale,
+        d=d,
+    )
+    live = keep.any(axis=1)
+    # Each stored weight's bf16 rounding moves the normalized weights by 2^-8
+    # in sum, and the output's own rounding adds 2^-9 of max|v|. The cap's
+    # tanh is within 6e-6 * cap of each logit, which moves them by twice that,
+    # and 2^x is within 1e-5 twice.
+    bound = (3 * 2.0**-9 + 2 * 6e-6 * soft_cap + 2e-5) * np.abs(
+        v.astype(np.float32)
+    ).max()
+    np.testing.assert_allclose(got[live], ref[live], rtol=0, atol=bound)
+    np.testing.assert_array_equal(got[~live], 0)
+
+
+@pytest.mark.parametrize(
+    "b_q,b_kv", [(_B, _B), (32, 32)], ids=["row_groups", "per_row"]
+)
+def test_mha_round_soft_caps_without_relative_terms(b_q, b_kv):
+    """The cap alone, causal and windowless, after a scale of 1/8."""
+    _skip_f32_off_aie2p(True)
+    q_block, n_kv, s_eff, soft_cap, scale = 1, 2 * _B // b_kv, 2 * b_q, 30.0, 0.125
+    rng = np.random.default_rng(20261018 + b_q)
+    q = _dyadic(rng, (b_q, _B), 0.5, mag=4)
+    k = _dyadic(rng, (n_kv * b_kv, _B), 0.5, mag=4)
+    v = _dyadic(rng, (n_kv * b_kv, _B), 0.25, mag=2)
+    # Up to about 8 * 40 before the scale: the cap of 30 takes the top.
+    scores = 8 * (q.astype(np.float32) @ k.astype(np.float32).T)
+    keep = np.concatenate(
+        [_keep(q_block, kv, s_eff, s_eff, b_q, b_kv) for kv in range(n_kv)], axis=1
+    )
+    s_host = np.concatenate(
+        [scores[:, b * b_kv : (b + 1) * b_kv].reshape(-1) for b in range(n_kv)]
+    )
+    v_host = np.concatenate(
+        [
+            TensorAccessPattern.full((b_kv, _B))
+            .tile((8, 8))
+            .gather(v[b * b_kv : (b + 1) * b_kv])
+            for b in range(n_kv)
+        ]
+    )
+
+    o_t = iron.zeros((b_q * _B,), dtype=bfloat16)
+    mha_round(
+        iron.tensor(s_host, dtype=np.float32),
+        iron.tensor(v_host, dtype=bfloat16),
+        o_t,
+        q_block=q_block,
+        n_kv=n_kv,
+        s_q_eff=s_eff,
+        s_kv_eff=s_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        accurate_exp2=True,
+        f32_scores=True,
+        soft_cap=soft_cap,
+        scale=scale,
+    )
+    got = _unblock(o_t.numpy(), b_q, _B).astype(np.float32)
+
+    rows = q_block * b_q + np.arange(b_q)
+    ref = _relative_attention(
+        scores,
+        np.zeros((b_q, 1), np.float32),
+        v,
+        keep,
+        rows=rows,
+        window=0,
+        soft_cap=soft_cap,
+        scale=scale,
+        d=_B,
+    )
+    # As test_mha_round_adds_relative_terms_and_caps.
+    bound = (3 * 2.0**-9 + 2 * 6e-6 * soft_cap + 2e-5) * np.abs(
+        v.astype(np.float32)
+    ).max()
+    np.testing.assert_allclose(got, ref, rtol=0, atol=bound)
 
 
 @jit

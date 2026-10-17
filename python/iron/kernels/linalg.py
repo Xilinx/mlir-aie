@@ -495,6 +495,15 @@ class _MhaFactory:
             return _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
         return _MM_MAC_DIMS["aie2p"][key]
 
+    @staticmethod
+    def relative_width(window: int, causal: bool = True) -> int:
+        """Return the floats a query row of ``partial_softmax``'s ``QR`` holds.
+
+        A product per key of the band, ``window + 1`` keys causal and
+        ``2 * window + 1`` not, rounded up to a 16-float vector.
+        """
+        return -(-(window + 1 + (0 if causal else window)) // 16) * 16
+
 
 @dtypes(
     tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
@@ -1080,6 +1089,9 @@ def mha(
     causal: bool = True,
     window: int = 0,
     f32_scores: bool = False,
+    relative: bool = False,
+    soft_cap: float | None = None,
+    scale: float = 1.0,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1133,14 +1145,33 @@ def mha(
             reads, a float32 tile, held to float32 summation order. AIE2P
             only, and not with ``emulate_bf16_mmul_with_bfp16``. At 64-key
             blocks a design places only with ``P V`` split over two cores.
+        relative: Add a relative-position term within the window
+            (``-DMHA_RELATIVE``): ``partial_softmax`` takes a last argument
+            ``QR``, ``dim_m`` rows of ``mha.relative_width(window, causal)``
+            float32s, and adds ``QR[r, j - i + window]`` to the score of
+            query ``i`` (row ``r``) and key ``j`` on the band. Row ``r``
+            is ``q_r . R[c]`` for the query block's rows, ``R[c]`` the term
+            of the key ``c - window`` from its query, so the caller holds
+            one ``QR`` over a query block's key blocks. Needs
+            ``f32_scores`` and a window.
+        soft_cap: Cap the scores, ``scale`` first (``-DMHA_SOFT_CAP``):
+            ``partial_softmax`` turns them into ``soft_cap * tanh(scale *
+            A / soft_cap) * log2(e)``, the f32 tanh of ``softmax``'s soft
+            cap, after the relative term. Those are already its exponents,
+            so its own scalar is then 1. Needs ``f32_scores`` and
+            ``accurate_exp2``.
+        scale: With ``soft_cap``: the scores' scale, applied before the cap
+            in float32 (``-DMHA_SCALE``), so it need not be a bf16.
 
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, or with ``pv``
         ``matmul_bf16_bf16_rowmaj``.
 
     Raises:
-        ValueError: A tile dimension that is not a positive multiple, or a
-            negative window.
+        ValueError: A tile dimension that is not a positive multiple, a
+            negative window, ``relative`` or ``soft_cap`` without what it
+            needs, a ``scale`` without ``soft_cap``, or a ``soft_cap`` over
+            ``scale`` outside [2^-100, 2^10].
     """
     for name, v, mult in (
         ("dim_m", dim_m, 16),
@@ -1158,6 +1189,19 @@ def mha(
             "mha: f32_scores keeps the scores to float32 summation order, which "
             "a bfp16-emulated product gives up"
         )
+    if relative and not (f32_scores and window):
+        raise ValueError("mha: relative needs f32_scores and a window")
+    if soft_cap is None and scale != 1.0:
+        raise ValueError("mha: scale is the soft cap's; partial_softmax takes its own")
+    if soft_cap is not None:
+        if not (f32_scores and accurate_exp2):
+            raise ValueError("mha: soft_cap needs f32_scores and accurate_exp2")
+        # As softmax's soft cap: the limbs of 2 log2(e) scale / cap stay normal.
+        if not (0 < scale < np.inf and 2.0**-100 <= soft_cap / scale <= 2.0**10):
+            raise ValueError(
+                f"mha: soft_cap / scale must be in [2^-100, 2^10], got "
+                f"{soft_cap} / {scale}"
+            )
     score = np.float32 if f32_scores and not pv else bfloat16
     tile = np.ndarray[(dim_m * dim_n,), np.dtype[score]]
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
@@ -1179,6 +1223,13 @@ def mha(
     if accurate_exp2:
         flags.append("-DEXP2_BF16_ACCURATE=1")
     flags += _mha_band_flags("mha", causal, window)
+    if relative:
+        flags.append("-DMHA_RELATIVE")
+    if soft_cap is not None:
+        flags += [
+            f"-DMHA_SOFT_CAP={float(soft_cap)!r}f",
+            f"-DMHA_SCALE={float(scale)!r}f",
+        ]
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
@@ -1231,6 +1282,7 @@ def mha(
 
 
 mha.mac_dims = _MhaFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
+mha.relative_width = _MhaFactory.relative_width  # pyright: ignore
 
 
 def _mha_band_flags(name, causal, window):

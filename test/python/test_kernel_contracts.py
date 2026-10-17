@@ -1275,6 +1275,37 @@ def test_mha_binds_its_translation_unit_as_one_object():
         kernels.mha(dim_m=17)
 
 
+def test_mha_relative_and_soft_cap_reach_the_kernel():
+    """relative and soft_cap are -D flags, refused without what they need."""
+    flags = kernels.mha(
+        f32_scores=True,
+        accurate_exp2=True,
+        window=11,
+        relative=True,
+        soft_cap=50.0,
+        scale=0.125,
+    ).compile_flags
+    assert {
+        "-DMHA_RELATIVE",
+        "-DMHA_SOFT_CAP=50.0f",
+        "-DMHA_SCALE=0.125f",
+        "-DMHA_WINDOW=11",
+    } <= set(flags)
+    assert kernels.mha.relative_width(11) == 16
+    assert kernels.mha.relative_width(11, causal=False) == 32
+    for bad in (
+        dict(window=11, relative=True),
+        dict(f32_scores=True, relative=True),
+        dict(f32_scores=True, soft_cap=50.0),
+        dict(accurate_exp2=True, soft_cap=50.0),
+        dict(scale=0.5),
+        dict(f32_scores=True, accurate_exp2=True, soft_cap=2.0**11),
+        dict(f32_scores=True, accurate_exp2=True, soft_cap=50.0, scale=0.0),
+    ):
+        with pytest.raises(ValueError):
+            kernels.mha(**bad)
+
+
 def test_mha_band_reaches_the_kernel_and_its_reference():
     """causal and window are -D flags only off their defaults, and mha_softmax_ref keeps the band."""
     assert not any("MHA_" in f for f in kernels.mha().compile_flags)
