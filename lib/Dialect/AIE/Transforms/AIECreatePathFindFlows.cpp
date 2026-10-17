@@ -218,7 +218,10 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       bool isShim = analyzer.getTile(rewriter, tileId).isShimNOCorPLTile();
 
       // TODO: must reserve N3, N7, S2, S3 for DMA connections
-      if (isShim && tileId == srcSbId) {
+      bool srcUsesShimMux = srcBundle == WireBundle::DMA ||
+                            srcBundle == WireBundle::PLIO ||
+                            srcBundle == WireBundle::NOC;
+      if (isShim && tileId == srcSbId && srcUsesShimMux) {
 
         shimCh = shimMuxChannelFrom(srcPort);
         ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, col);
@@ -231,7 +234,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         Port dest = setting.dsts[i];
 
         // A flow can start and end at one shim (see shimMuxChannelFrom).
-        if (isShim && tileId == srcSbId && src == srcPort)
+        if (isShim && tileId == srcSbId && srcUsesShimMux && src == srcPort)
           src = {WireBundle::South, shimCh};
         if (isShim && (dest.bundle == WireBundle::DMA ||
                        dest.bundle == WireBundle::PLIO ||
@@ -248,8 +251,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                       src.bundle, src.channel, dest.bundle, dest.channel);
       }
 
-      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | "
-                              << "\n");
+      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | " << "\n");
     }
 
     LLVM_DEBUG(llvm::dbgs()
@@ -1479,6 +1481,7 @@ struct PacketFlowRouting : PacketPlan {
   std::set<TreeSplit> hazardSplits;
   std::set<std::pair<PathEndPoint, PathEndPoint>> hazardApart;
   std::set<std::pair<PathEndPoint, PathEndPoint>> hazardTogether;
+  std::set<PathEndPoint> hazardUntrunk;
   std::set<TileID> crowdedTiles;
   std::optional<std::string> planFailure;
   // Whether planFailure blames the overlay a reload keeps.
@@ -2103,6 +2106,17 @@ void PacketFlowRouting::splitFlow(TileID tileId, FlowKey key,
     std::set<Port> partnerUnit = tied(partner, true);
     if (sharesMaster(self->second, partnerUnit))
       continue;
+    // A sibling sharing a routing port with the partner's tree ties `key` to
+    // its arbiter; leaving that port undoes the tie, so move off before split.
+    bool unjoined = false;
+    for (FlowKey other : siblings)
+      for (Port m : flows->second.find(other)->second.masters)
+        if (partnerUnit.count(m) && isDirectional(m.bundle)) {
+          hazardConnections.insert({tileId, {other.first, m}});
+          unjoined = true;
+        }
+    if (unjoined)
+      continue;
     std::set<Port> unit = tied(partner, false);
     for (FlowKey other : siblings) {
       const SlaveFlow &f = flows->second.find(other)->second;
@@ -2153,9 +2167,10 @@ RoutingFaults PacketFlowRouting::faults() const {
   faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
   faults.apart.assign(hazardApart.begin(), hazardApart.end());
   faults.together.assign(hazardTogether.begin(), hazardTogether.end());
+  faults.untrunk.assign(hazardUntrunk.begin(), hazardUntrunk.end());
   faults.onlyOverlayMasters = !overlayConnections.empty() &&
                               hazardSplits.empty() && crowdedTiles.empty() &&
-                              hazardApart.empty() &&
+                              hazardApart.empty() && hazardUntrunk.empty() &&
                               hazardConnections == overlayConnections;
   return faults;
 }
@@ -2591,14 +2606,19 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
             moveUnit(step.tile, key);
             splitFlow(step.tile, key, keys);
           }
-          if (step.sharer >= numRequested || step.holding >= numRequested ||
-              !streams[step.sharer].packetID || !streams[step.holding].packetID)
+          // On a link, `waiting` queues behind `holding` itself.
+          size_t behind =
+              step.wait == HoldCycle::Wait::Link ? step.waiting : step.sharer;
+          if (behind >= numRequested || step.holding >= numRequested ||
+              !streams[behind].packetID || !streams[step.holding].packetID)
             continue;
-          PathEndPoint a{streams[step.sharer].src.tile,
-                         streams[step.sharer].src.port},
+          PathEndPoint a{streams[behind].src.tile, streams[behind].src.port},
               b{streams[step.holding].src.tile, streams[step.holding].src.port};
+          // holdCycle relates one source's trees only to themselves.
           if (!(a == b))
             hazardApart.insert(std::minmax(a, b));
+          else if (step.wait == HoldCycle::Wait::Arbiter)
+            hazardUntrunk.insert(a);
         }
       }
   };
@@ -3040,6 +3060,32 @@ llvm::Expected<PacketPlan> AIEPathfinderPass::route(
     for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams()))
       if (s.packetID)
         streamsFrom[{s.src.tile, s.src.port}].push_back(i);
+    constraints.apartAcross = [&](llvm::function_ref<bool(TileID)> low, bool up,
+                                  size_t limit) {
+      ArrayRef<RoutedStream> streams = conflicts.getStreams();
+      SmallVector<size_t, 16> crossing;
+      std::set<std::pair<TileID, Port>> srcs, dsts;
+      for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams()))
+        if (s.packetID && low(s.src.tile) == up && low(s.dst.tile) != up) {
+          crossing.push_back(i);
+          srcs.insert({s.src.tile, s.src.port});
+          dsts.insert({s.dst.tile, s.dst.port});
+        }
+      PacketsApart apart;
+      // Streams kept apart have distinct sources and destinations.
+      size_t most = std::min(srcs.size(), dsts.size());
+      SmallVector<size_t, 8> best =
+          most > limit
+              ? largestApartSet(conflicts, crossing, limit)
+              : SmallVector<size_t, 8>(
+                    crossing.begin(),
+                    crossing.begin() + std::min<size_t>(1, crossing.size()));
+      for (size_t s : best)
+        apart.flows.push_back(describeStream(streams[s]));
+      if (best.size() > 1)
+        apart.why = conflicts.explain(best[0], best[1]);
+      return apart;
+    };
     constraints.conflict = [&](const PathEndPoint &a, const std::set<int> &aIds,
                                const PathEndPoint &b,
                                const std::set<int> &bIds) {
@@ -3318,6 +3364,24 @@ void AIEPathfinderPass::runOnOperation() {
     });
     signalPassFailure();
     return;
+  }
+  for (auto flowOp : d.getOps<FlowOp>()) {
+    if (!flowOp.getVias().empty()) {
+      flowOp.emitOpError("cannot be routed while it carries via waypoints; run "
+                         "--aie-split-flow-vias first to lower the vias into "
+                         "switchbox connections");
+      signalPassFailure();
+      return;
+    }
+  }
+  for (auto flowOp : d.getOps<PacketFlowOp>()) {
+    if (!flowOp.getVias().empty()) {
+      flowOp.emitOpError("cannot be routed while it carries via waypoints; run "
+                         "--aie-split-flow-vias first to lower the vias into "
+                         "switchbox connections");
+      signalPassFailure();
+      return;
+    }
   }
 
   if (clRouteCircuit && failed(runOnFlow(d, analyzer))) {

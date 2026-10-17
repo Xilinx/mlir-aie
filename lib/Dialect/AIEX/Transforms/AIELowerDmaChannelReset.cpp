@@ -154,7 +154,8 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
                              builder.getI32IntegerAttr(ep.row),
                              DMAChannelDirAttr::get(ctx, ep.dir),
                              builder.getI32IntegerAttr(ep.channel),
-                             builder.getBoolAttr(issueToken), repeatVal, bdVal);
+                             builder.getBoolAttr(issueToken), repeatVal, bdVal,
+                             /*repeat_state_table_idx=*/nullptr);
     }
 
     toErase.push_back(op);
@@ -273,7 +274,9 @@ struct AIELowerDmaChannelResetPass
     RewritePatternSet patterns(&getContext());
     patterns.add<DmaChannelResetToMaskWrite32Pattern>(&getContext());
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns))))
+    SmallVector<Operation *> roots;
+    device.walk([&](DmaChannelResetOp op) { roots.push_back(op); });
+    if (failed(applyPartialConversion(roots, target, std::move(patterns))))
       signalPassFailure();
   }
 };

@@ -29,6 +29,7 @@ from array import array
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._aie import (
     ObjectFifoType,
+    dma_bd_fits,
     get_target_model,
     aie_llvm_link,
     generate_bcf,
@@ -52,10 +53,9 @@ from ..extras.util import (
     _get_sym_name,
     find_ops,
     find_parent_of_type,
-    get_user_code_loc,
     region_adder,
 )
-from ..helpers.sourceloc import AIE_ROOT
+from ..helpers.sourceloc import AIE_ROOT, user_code_location
 from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
@@ -308,11 +308,35 @@ def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     )
 
 
+@dataclass
+class BdIteration:
+    """Iteration state of a buffer descriptor for aie.dma_bd.
+
+    Lets one BD cover ``size`` sub-buffers over ``size`` executions instead of an
+    N-deep chain. Values are true/element: the base advances by ``stride``
+    elements each execution and wraps after ``size`` executions; ``current`` is
+    the starting step (default 0). The lowering applies the hardware ``-1`` bias
+    and element->word scaling. NOTE: the identically-named ``iteration_*`` family
+    on the runtime-sequence path uses RAW register values instead -- do not copy
+    numbers between them.
+    """
+
+    size: int
+    stride: int
+    current: int = 0
+
+
 @register_attribute_builder("BDIterationAttr")
-def bd_iteration_attr_builder(tup: Tuple[int] | List[int], context=None):
-    assert (isinstance(tup, list) or isinstance(tup, tuple)) and len(tup) == 3
+def bd_iteration_attr_builder(
+    value: BdIteration | Tuple[int] | List[int], context=None
+):
+    if isinstance(value, BdIteration):
+        size, stride, current = value.size, value.stride, value.current
+    else:
+        assert (isinstance(value, list) or isinstance(value, tuple)) and len(value) == 3
+        size, stride, current = value
     return Attribute.parse(
-        f"#aie.bd_iteration<size = {tup[0]}, stride = {tup[1]}, current = {tup[2]}>",
+        f"#aie.bd_iteration<size = {size}, stride = {stride}, current = {current}>",
         context=context,
     )
 
@@ -543,7 +567,7 @@ class buffer(BufferOp):
         return self.result.owner
 
     def __getitem__(self, idx: tuple | ScalarValue) -> MemRefValue:
-        loc = get_user_code_loc()
+        loc = user_code_location()
 
         if not self.has_rank():
             raise ValueError("only ranked memref slicing/indexing supported")
@@ -568,7 +592,7 @@ class buffer(BufferOp):
             raise ValueError("Buffer slicing not supported, only indexing supported")
 
     def __setitem__(self, idx, source):
-        loc = get_user_code_loc()
+        loc = user_code_location()
 
         if not self.has_rank():
             raise ValueError("only ranked memref slicing/indexing supported")
@@ -806,6 +830,21 @@ class object_fifo_link(ObjectFifoLinkOp):
 
 
 # Create a packet flow between source and destination tile ports.
+def _unpack_vias(vias):
+    if not vias:
+        return [], [], [], [], []
+    tiles, ingress_bundles, ingress_channels, egress_bundles, egress_channels = zip(
+        *vias
+    )
+    return (
+        list(tiles),
+        list(ingress_bundles),
+        list(ingress_channels),
+        list(egress_bundles),
+        list(egress_channels),
+    )
+
+
 class packetflow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
 
@@ -818,14 +857,23 @@ class packetflow(PacketFlowOp):
         dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
         priority_route: bool | None = None,
+        vias=None,
         *,
         loc=None,
         ip=None,
     ):
+        via_tiles, in_bundles, in_channels, out_bundles, out_channels = _unpack_vias(
+            vias
+        )
         super().__init__(
             ID=pkt_id,
             keep_pkt_header=keep_pkt_header,
             priority_route=priority_route,
+            vias=via_tiles,
+            via_ingress_bundles=in_bundles,
+            via_ingress_channels=in_channels,
+            via_egress_bundles=out_bundles,
+            via_egress_channels=out_channels,
             loc=loc,
             ip=ip,
         )
@@ -1092,7 +1140,7 @@ class NextBDOp(NextBDOp):
         if dest is None:
             dest = InsertionPoint.current.block
         if loc is None:
-            loc = get_user_code_loc()
+            loc = user_code_location()
         super().__init__(dest, loc=loc, ip=ip)
 
     @property
@@ -1144,6 +1192,7 @@ def flow(
     dest=None,
     dest_bundle=None,
     dest_channel=None,
+    vias=None,
     *,
     loc=None,
     ip=None,
@@ -1157,6 +1206,7 @@ def flow(
         dest_bundle = WireBundle.DMA
     if dest_channel is None:
         dest_channel = 0
+    via_tiles, in_bundles, in_channels, out_bundles, out_channels = _unpack_vias(vias)
     return FlowOp(
         source,
         source_bundle,
@@ -1164,6 +1214,11 @@ def flow(
         dest,
         dest_bundle,
         dest_channel,
+        vias=via_tiles,
+        via_ingress_bundles=in_bundles,
+        via_ingress_channels=in_channels,
+        via_egress_bundles=out_bundles,
+        via_egress_channels=out_channels,
         loc=loc,
         ip=ip,
     )

@@ -187,6 +187,7 @@ carries values from host memory through the command processor into the array.
 | `aiex.npu.rtp_write` | Write `value` at `index` into an `aie.buffer` used to hold runtime parameters. | a buffer used for runtime parameters | `aiex.npu.rtp_write(@rtp_buf, 0, %val) : i32` |
 | `aiex.npu.create_scratchpad` | Allocate a control-code scratchpad of `size` bytes on the host and copy it into the command processor's memory. Values are read from it by `update_from_scratchpad`. | NPU command processor | `aiex.npu.create_scratchpad {size = 128 : ui32}` |
 | `aiex.npu.update_from_scratchpad` | Compute a value from a scratchpad `StateTable` entry (`mul` / `incr` / `decr` by `func_arg`) and add it to an 8-byte location at a resolved address. Always additive; writes both registers of the pair. | resolved address (shim BD address pairs) | `aiex.npu.update_from_scratchpad<incr> {state_table_idx = 0 : ui8, address = 0 : ui32}` |
+| `aiex.dma_start_task {repeat_parameter = @foo}` | Start a task with the repeat count the host writes to `@foo` for each run (at most the task's own repeat count); see `aiex.dma_start_task`. | shim NOC tile channel (AIE2, AIE2P) | `aiex.dma_start_task(%t) {repeat_parameter = @runs}` |
 | `aiex.scratchpad_parameter` | Declare a named scratchpad runtime parameter. Declared at **module scope** (outside `aie.device`), not inside the sequence; shared by all PDIs in the module. | module scope (declaration) | `aiex.scratchpad_parameter @foo : i32` |
 | `aiex.read_scratchpad_parameter` | Read a declared scratchpad parameter on a core. Used inside an `aie.core`, not inside the sequence. | core scope (read site) | `%v = aiex.read_scratchpad_parameter @foo : i32` |
 | `aiex.sync_scratchpad_parameters_from_host` | Marker in the sequence for where the host-to-core scratchpad parameter sync should be materialized (expands to create_scratchpad + per-parameter writes + lock releases). | in-sequence marker | `aiex.sync_scratchpad_parameters_from_host` |
@@ -825,7 +826,8 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
   let summary = "bd queue push operator";
   let arguments = (ins I32Attr:$column, I32Attr:$row, DMAChannelDir:$direction,
       I32Attr:$channel, BoolAttr:$issue_token,
-      AnySignlessIntegerOrIndex:$repeat_count, I32:$bd_id);
+      AnySignlessIntegerOrIndex:$repeat_count, I32:$bd_id,
+      OptionalAttr<UI8Attr>:$repeat_state_table_idx);
   let results = (outs);
   let assemblyFormat = [{
     `(` $column `,` $row `,` $direction `:` $channel `)`
@@ -839,6 +841,22 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
     (outer-dimension repeat for the launch) are SSA operands; use arith.constant
     for compile-time-known values or pass runtime sequence values to select the
     BD / repeat count at runtime.
+
+    With 'repeat_state_table_idx', the repeat count is the scratchpad
+    StateTable entry at that index instead (a `repeat` parameter, which the
+    host writes already shifted into the queue word's repeat field), and
+    'repeat_count' must be 0. The push lowers to an
+    `aiex.npu.update_from_scratchpad<incr>` of the task queue register adding
+    the entry to `bd_id | issue_token << 31`. That update clears the low two
+    bits of the word it writes, so 'bd_id' must be a constant multiple of 4;
+    the runtime-sequence BD allocator gives such an id to the head of a task
+    started with a repeat parameter. It also writes back the register after
+    the queue with the value it reads. After MM2S 0's queue and the two S2MM
+    queues that is a channel's control register, which nothing else writes.
+    After MM2S 1's queue it is `DMA_S2MM_Status_0`, whose sticky error bits
+    (16 to 18: AXI decode error, AXI slave error, task queue overflow) are
+    write-1-to-clear: a push on MM2S 1 clears any S2MM 0 error of its tile
+    that is pending. The data moved is unaffected.
   }];
 }
 
@@ -868,7 +886,8 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -901,7 +920,8 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -930,7 +950,8 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -954,7 +975,9 @@ def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", []> {
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
   let extraClassDeclaration = [{
-    std::optional<uint32_t> getAbsoluteAddress();
+    // `names` resolves a referenced buffer without a scan of the device.
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
     mlir::DenseIntElementsAttr getDataWords();
   }];
 }
@@ -1200,7 +1223,9 @@ def AIE_NpuUpdateFromScratchpadOp : AIEX_Op<"npu.update_from_scratchpad", []> {
 
   }];
   let extraClassDeclaration = [{
-    std::optional<uint32_t> getAbsoluteAddress();
+    // `names` resolves a referenced buffer without a scan of the device.
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
   let hasVerifier = 1;
 }
@@ -1290,6 +1315,43 @@ def AIE_NpuLoadPdiOp : AIEX_Op<"npu.load_pdi", []> {
     The easiest workaround is to create an empty `aie.device(npu2) @empty {}` and load that before the main device load.
   }];
   let hasCanonicalizeMethod = 1;
+}
+
+def AIE_NpuWriteConfigOp
+    : AIEX_Op<"npu.write_config", [HasParent<"AIE::RuntimeSequenceOp">,
+                                   DeclareOpInterfaceMethods<
+                                       SymbolUserOpInterface>]> {
+  let summary = "Write a device's configuration as register writes";
+  let description = [{
+    Writes the configuration of `device_ref` (its cores' programs and its
+    switch, lock and DMA settings) as the register writes that load it, without
+    resetting the array first. The NPU translation emits the writes, generating
+    them once per device however many times the sequence writes it.
+    `aie-expand-load-pdi` places one after the reset it inserts for each
+    `load_pdi` it expands to writes.
+
+    The writes are generated when the sequence is translated, from
+    `device_ref` as it is then, so the core ELF files its cores name must still
+    be on disk. With `inline-config=true`, `aie-expand-load-pdi` writes them
+    into the sequence instead, and the IR no longer depends on those files.
+
+    The firmware resets the array when it loads an empty device's PDI, unless
+    that PDI is the one it loaded last. So the `load_pdi` before this op must
+    be of an empty device, and differ from the `load_pdi` before it. For the
+    sequence's first `load_pdi`, that is its last one: the host runs the
+    sequence again on each dispatch. An empty device may hold runtime sequences
+    with no ops, such as the `@configure` that `convert-aie-to-transaction`
+    adds.
+
+    Example:
+    ```
+      aiex.npu.load_pdi {device_ref = @empty_0}
+      aiex.npu.write_config @dev
+    ```
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$device_ref);
+  let assemblyFormat = [{ $device_ref attr-dict }];
+  let hasVerifier = 1;
 }
 
 def AIE_DMAConfigureTaskOp
@@ -1455,11 +1517,38 @@ def AIE_DMAStartTaskOp
     replaces the task's repeat count and `no_token` withholds its token. A
     constant repeat count past the target's maximum is split into several
     pushes by `aie-split-long-repeats`; a runtime one must fit one push.
+
+    With `repeat_parameter = @n`, the push's repeat count is the value the
+    host writes to the `aiex.scratchpad_parameter` `@n` for each run, so a
+    full ELF, whose sequence is fixed at build time, can set it per call. The
+    task's own repeat count is its maximum: `@n` is bounded to
+    `[0, repeat_count]`, which must fit one push, and an iteration dimension
+    the task's buffer descriptor steps through stops after `@n + 1` runs.
+    `--aie-lower-scratchpad-parameters` rewrites `repeat_parameter` to
+    `repeat_state_table_idx`, and the push becomes an
+    `aiex.npu.update_from_scratchpad` of the channel's task queue register
+    (see `aiex.npu.push_queue`). On shim MM2S 1 that update also clears the
+    tile's pending S2MM 0 sticky error bits.
+
+    Example:
+    ```mlir
+    aiex.scratchpad_parameter @runs : i32
+    ...
+      %t = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64)
+        aie.end
+      } {repeat_count = 15 : i32}
+      aiex.dma_start_task(%t) {repeat_parameter = @runs}
+    ```
   }];
 
   let arguments = (ins Index:$task, OptionalAttr<I32Attr>:$repeat_count,
-      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
-      UnitAttr:$no_token);
+      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val, UnitAttr:$no_token,
+      // If set, the aiex.scratchpad_parameter holding this push's repeat count.
+      OptionalAttr<FlatSymbolRefAttr>:$repeat_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $repeat_parameter: the
+      // scratchpad state-table index of the repeat count.
+      OptionalAttr<UI8Attr>:$repeat_state_table_idx);
 
   let assemblyFormat = [{
     `(` $task `)` (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
@@ -1468,11 +1557,17 @@ def AIE_DMAStartTaskOp
 
   let builders = [OpBuilder<(ins "mlir::Value":$task), [{
     build($_builder, $_state, task, /*repeat_count=*/nullptr,
-          /*repeat_count_val=*/nullptr, /*no_token=*/nullptr);
+          /*repeat_count_val=*/nullptr, /*no_token=*/nullptr,
+          /*repeat_parameter=*/nullptr, /*repeat_state_table_idx=*/nullptr);
   }]>];
 
   let extraClassDeclaration = [{
     DMAConfigureTaskOp getTaskOp();
+    // Whether the host sets this push's repeat count, before or after
+    // --aie-lower-scratchpad-parameters.
+    bool hasRepeatParameter() {
+      return getRepeatParameterAttr() || getRepeatStateTableIdxAttr();
+    }
     // The repeat count this push carries: the start's override if present,
     // else the task's (a runtime operand or the compile-time attribute).
     mlir::OpFoldResult getPushRepeatCount(DMAConfigureTaskOp task);
@@ -1878,6 +1973,9 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     For `kind == core`, the encoding uses a 30-bit value range because the firmware masks
     the lower 2 bits of the scratchpad register (see `aiex.read_scratchpad_parameter`
     for details on how values are shifted to work around this).
+    A parameter used as an `aiex.dma_start_task`'s `repeat_parameter` is `kind == repeat`,
+    must have type `i32` and may have no other use; the host library writes it shifted left
+    by 16, into the task queue's repeat field.
 
     You can manually specify the parameter synchronization point inside the runtime sequence using the `aiex.sync_scratchpad_parameters_from_host` op.
 

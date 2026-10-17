@@ -10,6 +10,7 @@ updates:
     # was kept current. Add a line here when a new composite action lands.
     directories:
       - "/"
+      - "/.github/actions/run_x86_container"
       - "/.github/actions/setup_base"
       - "/.github/actions/setup_ccache"
     schedule:

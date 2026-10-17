@@ -158,6 +158,9 @@ and cycles in `--perf-meta`. The timing helpers live here:
         - BenchmarkResult
         - Preflight
         - run_iters
+        - run_interleaved
+        - CompletionCores
+        - cpu_wait_us
         - preflight
         - provenance
         - kernel_tree_digest
@@ -182,12 +185,17 @@ lit on every PR, through `trace_markers` below.
         - compile_command
         - analyze
         - kernel_builds
-        - Linked
-        - linked
-        - parse_readobj
         - trace_markers
         - trace_shape
         - entry_symbol
+
+::: utils.compile.readobj
+    options:
+      show_root_heading: false
+      members:
+        - Linked
+        - linked
+        - parse_readobj
 
 ## Host-side helpers
 
@@ -223,6 +231,16 @@ k, and one `sample_combine` core draws from those summaries. `sample_ref` is
 the bit-exact host reference.
 
 ::: iron.kernels.sample
+    options:
+      show_root_heading: false
+
+## Mixture of experts
+
+`router_top_k` turns one `sample_select` summary into a router's `top_k`
+expert ids and their softmax weights, deterministically. `router_top_k_ref`
+is the bit-exact host reference.
+
+::: iron.kernels.moe
     options:
       show_root_heading: false
 

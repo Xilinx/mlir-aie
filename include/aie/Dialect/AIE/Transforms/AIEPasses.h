@@ -19,11 +19,34 @@
 namespace xilinx::AIE {
 
 /// Discardable attribute set by `--aie-objectfifo-lower-cores` on `scf.for`
-/// loops containing ObjectFifo accesses -- the loop unroll factor (the least
-/// common multiple of the depths of the objectFifos accessed within the
-/// loop) consumed by the `AIEObjectFifoUnroll` pass.
+/// and forever `scf.while` loops containing ObjectFifo accesses -- the loop
+/// unroll factor (the least common multiple of the depths of the objectFifos
+/// accessed within the loop) consumed by the `AIEObjectFifoUnroll` pass.
 inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
     "aie.unroll_hint";
+
+/// Discardable attribute set by `--aie-objectfifo-lower-cores` on the rank-0
+/// `memref.alloca`s that hold a core's objects of an objectFifo in rotation
+/// order. The `AIEObjectFifoUnroll` pass promotes them to SSA on each core
+/// where every object then folds to its buffer. Otherwise they stay in memory,
+/// so that LLVM's SROA carries only the buffer pointer around the loop rather
+/// than the whole memref descriptor.
+inline constexpr llvm::StringLiteral kObjectFifoObjectSlotAttrName =
+    "aie.objectfifo.object_slot";
+
+/// Whether `whileOp` repeats forever: its condition is a constant true, and its
+/// condition region does nothing but forward its arguments to the body. This is
+/// how IRON's `Worker` writes a core that runs until reconfiguration. Such a
+/// loop can be unrolled by repeating its body.
+bool isForeverLoop(mlir::scf::WhileOp whileOp);
+
+/// Whether `op` is a loop that objectFifo lowering unrolls by the rotation
+/// period of the objectFifos accessed in it: an `scf.for`, or an `scf.while`
+/// that repeats forever.
+bool isObjectFifoLoop(mlir::Operation *op);
+
+/// The innermost loop around `op` that `isObjectFifoLoop` accepts, or null.
+mlir::Operation *getObjectFifoLoopParent(mlir::Operation *op);
 
 #define GEN_PASS_DECL
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -49,6 +72,7 @@ createAIECoreToStandardPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECoreToStandardPass(const AIECoreToStandardOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEFindFlowsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIESplitFlowViasPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELocalizeLocksPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIENormalizeAddressSpacesPass();
@@ -73,6 +97,10 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoAllocatePass(bool packetSwitched);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLowerDMAsPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECheckAgainstImagePass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECheckAgainstImagePass(const AIECheckAgainstImageOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLowerCoresPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>

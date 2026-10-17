@@ -118,17 +118,17 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
 // to `out.filePath`. Only compiled when the linked aiebu has that API;
 // otherwise a declarative `aiebu-asm` ShellCommand edge is used (see the
 // `fullElf` edge).
-inline mlir::LogicalResult assembleFullElf(
-    const std::string &configJson,
-    const std::vector<std::pair<std::string, std::vector<char>>> &files,
-    Item<File> &out, bool verbose) {
+inline mlir::LogicalResult
+assembleFullElf(const std::string &configJson,
+                std::vector<std::pair<std::string, std::vector<char>>> &&files,
+                Item<File> &out, bool verbose) {
   std::vector<char> elf;
   std::string error;
   std::string captured;
   {
     // Same chatter capture as assembleElf.
     CaptureStdio cap(!verbose, captured);
-    error = assembleAie2ConfigElf(configJson, files, elf);
+    error = assembleAie2ConfigElf(configJson, std::move(files), elf);
   }
   if (error.empty() && elf.empty())
     error = "empty ELF";

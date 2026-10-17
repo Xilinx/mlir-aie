@@ -144,6 +144,24 @@ OpTy lookupNamedOp(mlir::Operation *from, NameT name) {
   return llvm::dyn_cast_if_present<OpTy>(lookupNamedOp(from, name));
 }
 
+// `lookupNamedOpIn` indexed once, for resolving many names in a symbol table
+// whose named ops do not change meanwhile.
+class NamedOpTable {
+public:
+  explicit NamedOpTable(mlir::Operation *symbolTableOp);
+
+  mlir::Operation *lookup(mlir::StringAttr name) const {
+    return ops.lookup(name);
+  }
+  template <typename OpTy>
+  OpTy lookup(mlir::StringAttr name) const {
+    return llvm::dyn_cast_if_present<OpTy>(lookup(name));
+  }
+
+private:
+  llvm::DenseMap<mlir::StringAttr, mlir::Operation *> ops;
+};
+
 // Generate a symbol name guaranteed to be unique within the symbol table of
 // `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
 // counter is advanced past the chosen value so repeated calls with the same
@@ -262,6 +280,10 @@ using Port = struct Port {
   }
 };
 
+std::optional<std::pair<TileID, Port>>
+getConnectingWireEndpoint(const AIETargetModel &targetModel, TileID tile,
+                          Port port);
+
 using Connect = struct Connect {
   Port src;
   Port dst;
@@ -333,6 +355,21 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
                                   BDDimLayoutArrayArrayAttr dimsPerTileAttr);
 
+mlir::ParseResult
+parseFlowVias(mlir::OpAsmParser &parser,
+              llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &vias,
+              mlir::DenseI32ArrayAttr &ingressBundles,
+              mlir::DenseI32ArrayAttr &ingressChannels,
+              mlir::DenseI32ArrayAttr &egressBundles,
+              mlir::DenseI32ArrayAttr &egressChannels);
+
+void printFlowVias(mlir::OpAsmPrinter &printer, mlir::Operation *op,
+                   mlir::OperandRange vias,
+                   mlir::DenseI32ArrayAttr ingressBundles,
+                   mlir::DenseI32ArrayAttr ingressChannels,
+                   mlir::DenseI32ArrayAttr egressBundles,
+                   mlir::DenseI32ArrayAttr egressChannels);
+
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
 // Trace Event Value Parsing/Printing (handles both string and typed enums)
@@ -371,6 +408,14 @@ void collectBuffers(
 // canonicalization to allow natural ND forms on shim tiles that will be
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
+
+// The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
+// dimensions (outermost first) and its length in elements: none when it
+// becomes one linear transfer, else its size-1 dimensions dropped. nullopt
+// when it stays as written: no size-1 dimension, or a length that is not the
+// dimensions' product (a leading repeat outside the length).
+std::optional<llvm::SmallVector<BDDimLayoutAttr>>
+normalizedBDDims(llvm::ArrayRef<BDDimLayoutAttr> dims, int64_t len);
 
 // The byte size of `lengthUnit` elements of `buffer`, checked to be a multiple
 // of 16 bytes whose word count fits a 32-bit BD length.

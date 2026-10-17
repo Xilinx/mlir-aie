@@ -4,7 +4,6 @@
 #ifndef AIE_KERNELS_COMMON_EXP2_POLY_H
 #define AIE_KERNELS_COMMON_EXP2_POLY_H
 
-#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -32,25 +31,6 @@ static inline aie::vector<float, N> exp2_poly(aie::vector<float, N> x,
   const auto f =
       aie::sub(x, aie::sub(r, aie::select(aie::zeros<float, N>(),
                                           aie::broadcast<float, N>(1.0f), up)));
-#if AIE_TUNED_AIE2
-  // Estrin, (c0 + c1 f) + f^2 (c2 + c3 f) + f^4 (c4 + c5 f), chains three
-  // emulated f32 multiplies where Horner chains five.
-  auto fma = [](aie::vector<float, N> a, aie::vector<float, N> b,
-                aie::vector<float, N> c) {
-    aie::accum<accfloat, N> acc;
-    acc.from_vector(c);
-    return aie::mac(acc, a, b).template to_vector<float>();
-  };
-  auto lin = [&](float c1, float c0) {
-    return fma(f, aie::broadcast<float, N>(c1), aie::broadcast<float, N>(c0));
-  };
-  const auto f2 = aie::mul(f, f).template to_vector<float>();
-  const auto lo = lin(0.6931471805f, 1.0f);
-  const auto mid = lin(0.0555041087f, 0.2402265069f);
-  const auto hi = lin(0.0013333558f, 0.0096181291f);
-  const auto f4 = aie::mul(f2, f2).template to_vector<float>();
-  return fma(f4, hi, fma(f2, mid, lo));
-#else
   auto p = aie::broadcast<float, N>(0.0013333558f);
   p = aie::add(aie::mul(p, f).template to_vector<float>(),
                aie::broadcast<float, N>(0.0096181291f));
@@ -63,7 +43,6 @@ static inline aie::vector<float, N> exp2_poly(aie::vector<float, N> x,
   p = aie::add(aie::mul(p, f).template to_vector<float>(),
                aie::broadcast<float, N>(1.0f));
   return p;
-#endif
 }
 
 #endif

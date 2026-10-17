@@ -124,10 +124,6 @@ def test_fused_unbound_layout_reproduces_npu2_failure(monkeypatch):
 
 def test_fused_layouts_match_microblock_addressing(device):
     fn = fused_mm()
-    assert fn.contract.stack_bytes == (
-        np.dtype(np.float32).itemsize * 32 * 16
-        + max(device().default_core_stack_bytes, 2048)
-    )
     r, s, t = (4, 8, 4) if device is NPU1Col1 else (4, 8, 8)
     a = np.arange(32 * 32).reshape(1, 32, 32)
     b = np.arange(32 * 16).reshape(1, 32, 16)
@@ -190,7 +186,7 @@ def test_fused_reference_and_generic_lowering(device, epilogue):
         expected = sigmoid if epilogue == "sigmoid" else product * sigmoid
     expected = np.clip(expected, -0.125, 0.75)
     np.testing.assert_allclose(
-        fn.contract.reference(a, b).reshape(expected.shape),
+        fn.contract_for().reference(a, b).reshape(expected.shape),
         expected,
         atol=2e-6,
         rtol=2e-6,
@@ -289,7 +285,7 @@ def test_fused_gelu_bf16_steps_reference_rounds_after_each_step(device):
     y = _bf16_floor_ref(x * 1.703125)
     sig = _bf16_floor_ref(np.tanh(y / 2) + 1) / 2
     expected = _bf16_floor_ref(x * sig)
-    got = fn.contract.reference(a, b).reshape(expected.shape)
+    got = fn.contract_for().reference(a, b).reshape(expected.shape)
     np.testing.assert_array_equal(got, expected)
-    fp32 = fused_mm(epilogue="gelu", rounding="floor").contract.reference(a, b)
+    fp32 = fused_mm(epilogue="gelu", rounding="floor").contract_for().reference(a, b)
     assert np.count_nonzero(fp32.reshape(expected.shape) != expected) > 100

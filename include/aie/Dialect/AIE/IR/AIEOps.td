@@ -75,6 +75,18 @@ def AIE_DeviceOp
     static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
     static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
     static llvm::StringRef getDefaultDeviceName() { return "main"; }
+    // Visits each OpT the device holds outside its runtime sequences, which
+    // hold host-side ops alone.
+    template <typename OpT, typename FnT>
+    void walkOutsideRuntimeSequences(FnT &&fn) {
+      (*this)->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+        if (llvm::isa<xilinx::AIE::RuntimeSequenceOp>(op))
+          return mlir::WalkResult::skip();
+        if (auto typed = llvm::dyn_cast<OpT>(op))
+          fn(typed);
+        return mlir::WalkResult::advance();
+      });
+    }
   }];
   let hasVerifier = 1;
 }
@@ -345,14 +357,15 @@ def AIE_ShimDMAOp
 }
 
 def AIE_CoreOp
-    : AIE_Op<"core", [IsFlowEndPoint, IsCoreTile, TileElement,
+    : AIE_Op<"core", [ParentOneOf<["DeviceOp", "::mlir::ModuleOp"]>,
+                      IsFlowEndPoint, IsCoreTile, TileElement,
                       AutomaticAllocationScope,
                       DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
       Results<(outs Index)> {
   let arguments =
       (ins Index:$tile,
-          // Absent means "use this target's default"; read
-          // getEffectiveStackSize().
+          // Absent means "size it from measured_stack_size, or use this
+          // target's default"; read getEffectiveStackSize().
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
           // Where the stack starts, tile-relative. Absent means 0 unless
           // stack_bank requires the allocator to resolve it. The stack grows
@@ -366,8 +379,9 @@ def AIE_CoreOp
           // an address inside it and writes `stack_address`, the way it does
           // for a `mem_bank`-only aie.buffer.
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_bank,
-          // Written by aiecc from the compiled core object and the call graph.
-          // Absent when aiecc cannot measure the core.
+          // Written by aiecc from the call graph of the core's probe link,
+          // before placement, or else from its final link. Absent when aiecc
+          // cannot measure the core exactly.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
           // Bytes to set aside for the core's own .data, .rodata and .bss.
@@ -375,7 +389,7 @@ def AIE_CoreOp
           // run after placing all buffers.
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$data_size,
           // Written by aiecc from the linked ELF. Absent when aiecc cannot
-          // measure the core.
+          // measure the core; aiecc drops any value its input carries.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_data_size,
           // Bytes this core's own sections need in each bank, indexed by bank
@@ -383,6 +397,8 @@ def AIE_CoreOp
           // aiecc from a probe link, so that placement can leave the room the
           // real link will need. Absent when there is nothing to probe or the
           // probe could not run, in which case placement proceeds as before.
+          // Like every measured_* attribute, aiecc drops any value its input
+          // carries.
           OptionalAttr<DenseI32ArrayAttr>:$measured_bank_sizes,
           OptionalAttr<DenseI32ArrayAttr>:$measured_data_ranges,
           // Deprecated: attach link_with to func.func declarations instead and
@@ -428,8 +444,10 @@ def AIE_CoreOp
     file.
 
     This op has an optional `stack_size` attribute, to control the amount of memory (in bytes)
-    reserved for the stack.  When absent the target's default is used
-    (`AIETargetModel::getDefaultCoreStackSize()`).  The stack (and other data allocations)
+    reserved for the stack.  When absent the reservation is the larger of the
+    target's default (`AIETargetModel::getDefaultCoreStackSize()`) and
+    `measured_stack_size` rounded up to the stack ABI alignment, or the default
+    alone when `measured_stack_size` is absent.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data
     allocations in other cores.
 
@@ -451,14 +469,17 @@ def AIE_CoreOp
 
     By default the stack sits directly below the buffers with no clearance, so a
     `stack_size` below the core's use overwrites those buffers. `aiecc` measures
-    the stack this core needs, writes it to the `measured_stack_size` attribute,
-    and fails the build
-    when `stack_size` is smaller. `aiecc` measures the whole live call chain. That
+    the stack this core needs from a probe link before placing buffers, and
+    writes it to the `measured_stack_size` attribute, so a core that leaves
+    `stack_size` absent gets the stack it needs. After the final link it
+    measures again, and fails the build when the reservation is smaller than
+    the requirement. `aiecc` measures the whole live call chain. That
     chain starts above the core body: the runtime enters at `__start` (crt0), which
     calls `_main_init` (crt1), which calls the core body, which calls its kernels.
     `_main_init` holds a frame that stays live across the whole chain. `aiecc`
     measures the linked core, so the chain covers crt0 and crt1 too.
-    `measured_stack_size` stays absent when `aiecc` cannot measure the core. The
+    `aiecc` drops any `measured_stack_size` its input carries, so the attribute
+    stays absent when `aiecc` cannot measure the core. The
     measurement reads the relocations of the linked core, which the Peano link
     keeps and the chess/BCF link drops, so a `--xbridge` build leaves every core
     unmeasured. See `programming_guide/core_data_memory.md` for the mechanism, the
@@ -530,7 +551,7 @@ def AIE_CoreOp
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
     /// The stack reservation in bytes: the `stack_size` attribute when set,
-    /// otherwise this target's default.
+    /// otherwise this target's default grown to cover `measured_stack_size`.
     uint32_t getEffectiveStackSize();
     /// Where the stack sits in this tile's data memory. Absent `stack_address`
     /// means offset 0, which is where every core put it before the attribute
@@ -607,11 +628,17 @@ def AIE_ConnectOp
   }];
 }
 
-def AIE_FlowOp : AIE_Op<"flow", []> {
+def AIE_FlowOp
+    : AIE_Op<"flow", [ParentOneOf<["DeviceOp", "::mlir::ModuleOp"]>]> {
   let arguments = (ins Index:$source, WireBundle:$source_bundle,
       ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel, Index:$dest,
       WireBundle:$dest_bundle,
-      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel);
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
+      Variadic<Index>:$vias,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_channels,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels);
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
     The `aie.flow` operation represents a circuit switched connection between two endpoints, usually
@@ -619,18 +646,41 @@ def AIE_FlowOp : AIE_Op<"flow", []> {
     the programmed connections inside a switchbox, along with `aie.wire` operations which represent
     physical connections between switchboxes and other components.
 
+    An optional `via` list pins the exact tiles and stream-switch ports the flow
+    must route through.  Each via is a tuple of a tile value together with the
+    ingress and egress port (bundle and channel) the stream uses at that tile,
+    so the intermediate switchbox configuration follows from the flow itself.  A
+    flow with vias is equivalent to the disaggregated flows that meet on the via
+    ports, and `--aie-split-flow-vias` rewrites it into those segments plus a
+    local flow for each pinned switchbox hop.
+
     Example:
     ```
       %00 = aie.tile(0, 0)
       %11 = aie.tile(1, 1)
       %01 = aie.tile(0, 1)
       aie.flow(%00, "DMA" : 0, %11, "Core" : 1)
+      aie.flow(%00, "DMA" : 0, %11, "Core" : 1) via (%01 : South : 0 -> North : 0)
     ```
   }];
 
   let assemblyFormat = [{
-    `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)` attr-dict
+    `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)`
+    custom<FlowVias>($vias, $via_ingress_bundles, $via_ingress_channels, $via_egress_bundles, $via_egress_channels)
+    attr-dict
   }];
+
+  let hasVerifier = 1;
+
+  let builders = [OpBuilder<
+      (ins "mlir::Value":$source, "xilinx::AIE::WireBundle":$source_bundle,
+          "int":$source_channel, "mlir::Value":$dest,
+          "xilinx::AIE::WireBundle":$dest_bundle, "int":$dest_channel),
+      [{
+      build($_builder, $_state, source, source_bundle, source_channel, dest,
+            dest_bundle, dest_channel, mlir::ValueRange{}, nullptr, nullptr,
+            nullptr, nullptr);
+    }]>];
 
   let extraClassDeclaration = [{
     int sourceIndex() { return getSourceChannel(); }
@@ -817,7 +867,8 @@ def AIE_PacketRuleOp : AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
 }
 
 def AIE_PacketFlowOp
-    : AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
+    : AIE_Op<"packet_flow", [ParentOneOf<["DeviceOp", "::mlir::ModuleOp"]>,
+                             SingleBlockImplicitTerminator<"EndOp">]> {
   let summary = "Packet switched flow";
   let description = [{
     A logical packet-switched flow between tiles.  During place and
@@ -840,13 +891,14 @@ def AIE_PacketFlowOp
     from other routes. The ID must have no bit outside the mask, or no packet
     can match.
 
+    A packet flow with via waypoints represents one linear route section and
+    must have exactly one source and one destination. Packet broadcasts and
+    merges use separate linear sections around materialized switchbox
+    configuration.
+
     Example:
     ```
       %01 = aie.tile(0, 1)
-      aie.packet_flow(0x10) {
-        aie.packet_source<%01, "Core" : 0>
-        aie.packet_dest<%01, "Core" : 0>
-      }
       // Claims 0x10 through 0x13: the mask ignores the low two bits.
       aie.packet_flow(0x10, mask = 0x1c) {
         aie.packet_source<%01, "Core" : 0>
@@ -857,11 +909,17 @@ def AIE_PacketFlowOp
 
   let arguments = (ins AIEI8Attr:$ID, OptionalAttr<AIEI8Attr>:$mask,
       OptionalAttr<BoolAttr>:$keep_pkt_header,
-      OptionalAttr<BoolAttr>:$priority_route);
+      OptionalAttr<BoolAttr>:$priority_route, Variadic<Index>:$vias,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_channels,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels);
   let regions = (region AnyRegion:$ports);
 
   let assemblyFormat = [{
-    `(` $ID (`,` `mask` `=` $mask^)? `)` regions attr-dict
+    `(` $ID (`,` `mask` `=` $mask^)? `)` regions
+    custom<FlowVias>($vias, $via_ingress_bundles, $via_ingress_channels, $via_egress_bundles, $via_egress_channels)
+    attr-dict
   }];
   let hasVerifier = 1;
 
@@ -869,13 +927,15 @@ def AIE_PacketFlowOp
                                 "mlir::BoolAttr":$keep_pkt_header,
                                 "mlir::BoolAttr":$priority_route),
                             [{
-      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route);
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr);
     }]>,
                   OpBuilder<(ins "mlir::IntegerAttr":$ID,
                                 "mlir::BoolAttr":$keep_pkt_header,
                                 "mlir::BoolAttr":$priority_route),
                             [{
-      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route);
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr);
     }]>];
 
   let extraClassDeclaration = [{

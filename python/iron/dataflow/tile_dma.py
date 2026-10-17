@@ -36,6 +36,7 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     LockAction,
 )
 from ...dialects.aie import (
+    BdIteration,  # pyright: ignore[reportAttributeAccessIssue]
     EndOp,  # pyright: ignore[reportAttributeAccessIssue]
     dma_bd,  # pyright: ignore[reportAttributeAccessIssue]
     dma_start,
@@ -46,7 +47,7 @@ from ...dialects.aie import (
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...dialects.aie import bds as bd_blocks
-from ...dialects.aiex import dma_configure_task, dma_configure_task_for
+from ...dialects.aiex import dma_configure_task, dma_configure_task_for, npu_sync
 from ...helpers.npdtypes import pack_pad_value
 from ...helpers.sourceloc import SourceSite
 from ...helpers.taplib import TensorAccessPattern
@@ -54,7 +55,7 @@ from ...helpers.taplib._symbolic import is_sym, si32, sprod, sym_any
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
-from ..resolvable import Resolvable
+from ..resolvable import PerDeviceConfigurationResolvable
 from ..runtime._context import active_sequence
 from ..runtime.dmataskhandle import Task
 
@@ -93,24 +94,6 @@ class Release:
 
     def emit(self) -> None:
         use_lock(self.lock.op, LockAction.Release, value=si32(self.value))
-
-
-@dataclass
-class BdIteration:
-    """Iteration state of a buffer descriptor for aie.dma_bd.
-
-    Lets one BD cover ``size`` sub-buffers over ``size`` executions instead of an
-    N-deep chain. Values are true/element: the base advances by ``stride``
-    elements each execution and wraps after ``size`` executions; ``current`` is
-    the starting step (default 0). The lowering applies the hardware ``-1`` bias
-    and element->word scaling. NOTE: the identically-named ``iteration_*`` family
-    on the runtime-sequence path uses RAW register values instead -- do not copy
-    numbers between them.
-    """
-
-    size: int
-    stride: int
-    current: int = 0
 
 
 @dataclass
@@ -177,8 +160,7 @@ class Bd:
             if "sizes" not in bd_kwargs or not sym_any(tap.padded_sizes):
                 bd_kwargs["transfer_len"] = sprod(tap.padded_sizes)
         if self.iteration is not None:
-            it = self.iteration
-            bd_kwargs["iteration"] = (it.size, it.stride, it.current)
+            bd_kwargs["iteration"] = self.iteration
         if bd_id is not None:
             bd_kwargs["bd_id"] = bd_id
         if self.out_of_order_id is not None:
@@ -230,12 +212,32 @@ class DmaEndpoint:
         """
         return None
 
+    def sync(self) -> None:
+        """Wait until this channel's tasks have issued their completion tokens.
+
+        Called in a [`Runtime`][iron.Runtime] sequence body, it emits
+        ``aiex.npu_sync`` on its tile and channel.
+
+        Raises:
+            ValueError: The tile is not placed or the channel is not given.
+        """
+        tile = self.tile
+        if tile.col is None or tile.row is None or self.channel is None:
+            raise ValueError(
+                f"sync() waits on a placed tile's channel by index; {self} is not one."
+            )
+        npu_sync(tile.col, tile.row, self.direction.value, self.channel)
+
     def _operand(self) -> int | str:
-        """Return the channel operand: its index if given, else the endpoint symbol."""
-        if self.channel is not None:
-            return self.channel
-        assert self.symbol is not None
-        return self.symbol
+        """Return the channel operand, a symbol or an index.
+
+        The endpoint symbol where this end lowers to one, pinned or not, else
+        the channel index.
+        """
+        if self.symbol is not None:
+            return self.symbol
+        assert self.channel is not None
+        return self.channel
 
     def _check_on(self, tile: Tile, direction: DMAChannelDir) -> None:
         if self.tile != tile:
@@ -328,7 +330,8 @@ class DmaEndpoint:
             repeat = dict(repeat_count=int(runs) - 1)
         else:
             repeat = dict(repeat_count_val=runs - 1)
-        operand = self._operand()
+        # aiex.dma_configure_task_for has no out_of_order.
+        operand = self.channel if out_of_order else self._operand()
         if isinstance(operand, str):
             op = dma_configure_task_for(operand, issue_token=wait, **repeat)
         else:
@@ -497,7 +500,7 @@ class DmaChannel:
         )
 
 
-class TileDma(Resolvable):
+class TileDma(PerDeviceConfigurationResolvable):
     """Per-tile DMA program.
 
     Lowers to an `aie.mem` (compute tile), `aie.memtile_dma` (memtile), or

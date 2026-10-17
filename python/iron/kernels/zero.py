@@ -15,6 +15,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
+    Param,
     TensorLayout,
     Trace,
     _arch_traits,
@@ -41,6 +42,7 @@ def zero(
     dtype: type | np.dtype = np.int32,
     *,
     vectorized: bool = True,
+    window: int | None = None,
     use_chess: bool = False,
 ) -> ExternalFunction:
     """Fill one tile with zeros, independently of any compute kernel.
@@ -49,6 +51,10 @@ def zero(
     counts eight-value blocks, matching the ndarray ABI; all nine bytes
     of every block (exponent and mantissas) are cleared. Vector stores
     use the target's native width, with a scalar tail for smaller tiles.
+
+    With ``window``, each call zeroes ``window`` elements of the one tile
+    at a runtime offset, ``call * window``, so the calls fill it between
+    them from starts of every alignment.
     """
     try:
         shape = (
@@ -85,16 +91,29 @@ def zero(
     flags = [f"-DZERO_TYPE={ctype}", f"-DTILE_SIZE={count}"]
     if not vectorized:
         flags.append("-DZERO_SCALAR")
+    arg_types = [np.ndarray[shape, np.dtype[dtype]]]
+    roles, layouts, bindings, out_offset = (Out,), (layout,), (), None
+    if window is not None:
+        if block or not vectorized:
+            raise ValueError("zero: window needs a plain dtype and vectorized=True")
+        if window <= 0 or size % window:
+            raise ValueError(f"zero: window {window} must divide tile_size {size}")
+        arg_types += [np.int32, np.int32]
+        layout = TensorLayout((window,))
+        roles, layouts = (Out, Param, Param), (layout, None, None)
+        bindings, out_offset = ((1, 0), (2, window)), (1, window)
     return _make_extern(
-        "zero",
+        "zero" if window is None else "zero_window",
         _kernel_source("zero/zero.cc"),
-        [np.ndarray[shape, np.dtype[dtype]]],
+        arg_types,
         compile_flags=flags,
         use_chess=use_chess,
         contract=KernelContract(
             trace=Trace.whole_call(),
-            roles=(Out,),
-            layouts=(layout,),
+            roles=roles,
+            layouts=layouts,
+            parameter_bindings=bindings,
+            out_offset=out_offset,
             reference=lambda: np.zeros((1, *layout.shape), dtype=reference_dtype),
             tolerance=Tolerance.exact(note="zero fill"),
             ops_per_call=0,

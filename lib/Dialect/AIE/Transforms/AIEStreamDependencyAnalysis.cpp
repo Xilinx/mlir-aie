@@ -556,7 +556,8 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
             continue;
           // Any other user, such as an scf.yield or an scf.for init, can
           // forward the task to starts this does not count.
-          if (!isa<AIEX::DMAStartTaskOp>(user))
+          auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
+          if (!start || start.hasRepeatParameter())
             return std::nullopt;
           if (user->getParentOfType<LoopLikeOpInterface>())
             return std::nullopt;
@@ -969,8 +970,8 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
               static_cast<int>(push.getRow())},
              push.getDirection(),
              static_cast<int>(push.getChannel())}};
-      if (isa<AIEX::NpuWrite32Op, AIEX::NpuMaskWrite32Op,
-              AIEX::NpuBlockWriteOp>(op))
+      if (isa<AIEX::NpuWrite32Op, AIEX::NpuMaskWrite32Op, AIEX::NpuBlockWriteOp,
+              AIEX::NpuWriteConfigOp>(op))
         return SmallVector<TileDMAChannel>{};
       return std::nullopt;
     };

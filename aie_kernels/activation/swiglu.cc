@@ -87,19 +87,11 @@ static inline void swiglu_aie2(const bfloat16 *restrict x,
   constexpr int trips = n / (16 * K);
   static_assert(trips > 0 && n % (16 * K) == 0, "swiglu tiles are 1024");
   using V = aie::vector<bfloat16, 16>;
-  V register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
-  aie::accum<accfloat, 16> half;
-  half.from_vector(register_0_5);
-  auto f = [&](V in, V wt_1, V wt_2) {
+  auto f = [](V in, V wt_1, V wt_2) {
     V mul_input_weight_1 = aie::mul(in, wt_1);
     V mul_input_weight_2 = aie::mul(in, wt_2);
-    V sigmoid_approx =
-        aie::mac(half,
-                 tanh_bf16_v16(aie::mul(mul_input_weight_2, register_0_5)),
-                 register_0_5)
-            .to_vector<bfloat16>();
-    V silu_output =
-        aie::mul(aie::max(mul_input_weight_2, bfloat16(-8.0f)), sigmoid_approx);
+    V silu_output = aie::mul(aie::max(mul_input_weight_2, bfloat16(-8.0f)),
+                             sigmoid_lut_bf16(mul_input_weight_2));
     V y = aie::mul(mul_input_weight_1, silu_output).to_vector<bfloat16>();
     return aie::select(y, aie::zeros<bfloat16, 16>(),
                        aie::eq(silu_output.cast_to<int16_t>(), int16_t(0)));
@@ -169,8 +161,11 @@ static inline void swiglu_aie2p(bfloat16 *restrict input_vector,
 
   auto it_y_in = aie::begin_vector<32>(output_vector);
   auto it_sig = aie::begin_vector<32>(output_vector);
-  for (int i = 0; i < num_elems; i += 32)
-    *it_sig++ = sigmoid_lut_bf16(*it_y_in++);
+  for (int i = 0; i < num_elems; i += 32) {
+    const aie::vector<bfloat16, 32> y = *it_y_in++;
+    *it_sig++ = aie::concat(sigmoid_lut_bf16(y.extract<16>(0)),
+                            sigmoid_lut_bf16(y.extract<16>(1)));
+  }
 #endif
 
   aie::accum<accfloat, 32> half;

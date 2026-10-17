@@ -62,14 +62,28 @@ def _key(func, target_arch, include_dirs, embed_bitcode) -> str:
 class KernelObjectCache:
     """Content-addressed store of compiled kernel objects under ``root``."""
 
-    def __init__(self, root: Path, lock_timeout_seconds: int):
+    def __init__(
+        self,
+        root: Path,
+        lock_timeout_seconds: int,
+        digests: dict[str, str] | None = None,
+    ):
+        """Open the store at ``root`` for one build.
+
+        Args:
+            root: The store's directory.
+            lock_timeout_seconds: How long to wait for an entry another build holds.
+            digests: The build's input digests (see ``_manifest.record``), shared
+                with its design manifest; a new record when None.
+        """
         self.root = Path(root).absolute()
         self.lock_timeout_seconds = lock_timeout_seconds
+        self.digests = {} if digests is None else digests
 
     @staticmethod
     def accepts(func) -> bool:
         """Whether the cache holds ``func``: not a Chess kernel, nor one with no source recipe."""
-        recipe = getattr(getattr(func, "object_file", None), "_source", None)
+        recipe = func.object_file._source
         return recipe is not None and not recipe.use_chess
 
     def fetch(self, func, kernel_dir, target_arch, include_dirs, embed_bitcode) -> bool:
@@ -92,7 +106,7 @@ class KernelObjectCache:
                     _compile_external_kernel(
                         func, str(entry), target_arch, include_dirs, embed_bitcode
                     )
-                    _manifest.record(entry, [func], [])
+                    _manifest.record(entry, [func], [], digests=self.digests)
                 except BaseException:
                     _cleanup_failed_compilation(entry)
                     raise

@@ -48,8 +48,8 @@ module {
         memref.store %1, %input_buffer[%arg1] : memref<8xi32>
         memref.store %c1_i32, %other_buffer[%arg1] : memref<8xi32>
       }
-      %c4294967295 = arith.constant 4294967295 : index
-      scf.for %arg0 = %c0 to %c4294967295 step %c1 {
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c1_ul1 = arith.constant 1 : i32
         aie.use_lock(%input_lock0, AcquireGreaterEqual, %c1_ul1)
         scf.for %arg1 = %c0 to %c8 step %c1 {

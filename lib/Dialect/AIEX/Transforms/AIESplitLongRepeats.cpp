@@ -46,6 +46,19 @@ struct AIESplitLongRepeatsPass
       // A start's own count needs no configure. Otherwise the count is the
       // task's, read through any control flow that carries the task.
       std::optional<int64_t> rc;
+      if (start.hasRepeatParameter()) {
+        // The task's count is the parameter's maximum, and the host's value
+        // reaches the queue as one push.
+        DMAConfigureTaskOp cfg = start.getTaskOp();
+        if (cfg && cfg.getRepeatCount() > maxRepeat) {
+          start.emitOpError("takes its repeat count from a scratchpad "
+                            "parameter, which reaches one queue push, but its "
+                            "task's repeat count, the parameter's maximum, is ")
+              << cfg.getRepeatCount() << ", past the target's " << maxRepeat;
+          return signalPassFailure();
+        }
+        continue;
+      }
       if (std::optional<uint32_t> own = start.getRepeatCount()) {
         rc = *own;
       } else if (Value ownVal = start.getRepeatCountVal()) {
@@ -83,7 +96,9 @@ struct AIESplitLongRepeatsPass
         DMAStartTaskOp::create(b, start.getLoc(), start.getTask(),
                                b.getI32IntegerAttr(maxRepeat),
                                /*repeat_count_val=*/nullptr,
-                               /*no_token=*/b.getUnitAttr());
+                               /*no_token=*/b.getUnitAttr(),
+                               /*repeat_parameter=*/nullptr,
+                               /*repeat_state_table_idx=*/nullptr);
       start.setRepeatCountAttr(b.getI32IntegerAttr(runs - 1));
       start.getRepeatCountValMutable().clear();
     }

@@ -87,7 +87,9 @@ inline cl::opt<bool> verifyEach(
     cl::desc("Verify the IR after every pass, not once per pass pipeline "
              "(slower; names the pass that produced invalid IR)"));
 
-inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
+inline cl::opt<bool>
+    verbose("verbose",
+            cl::desc("Verbose execution, with the compiler's remarks"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose));
 inline cl::opt<bool>
@@ -221,6 +223,14 @@ inline cl::opt<int> defaultStackSize(
 inline cl::opt<std::string>
     sequenceName("sequence-name",
                  cl::desc("Runtime sequence name to compile (default: all)"));
+
+// The resolved module (input_with_addresses.mlir) of the image an instruction
+// stream will run on: the stream's static design must be that image's
+// (aie-check-against-image).
+inline cl::opt<std::string> checkAgainstImage(
+    "check-against-image",
+    cl::desc("Fail unless the static design matches that of the image "
+             "compiled to this resolved module, naming what to pin"));
 
 // Skip the aie-materialize-runtime-sequences pass in NPU lowering.
 inline cl::opt<bool> noMaterialize(
@@ -544,6 +554,15 @@ inline cl::opt<std::string> deviceCacheDir(
              "earlier build stored in this dir, and store the ones this build "
              "compiles (Peano only)"),
     cl::value_desc("dir"), cl::init(""));
+inline cl::opt<bool> noShareCoreObjects(
+    "no-share-core-objects",
+    cl::desc("Compile each core's program on its own, even where other cores "
+             "run the same program over their own buffers"));
+inline cl::opt<bool> awaitLinkFiles(
+    "await-link-files",
+    cl::desc("Lower the design, but read no file a core links (link_with, "
+             "link_files) until a line arrives on stdin, so a caller can build "
+             "them meanwhile; stdin closing first fails the build"));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
 // selected by `--cut` plus a `manifest.json` describing them into <dir> after a
 // successful run — a "prefix" of the build. `--resume=<manifest.json>` rebuilds

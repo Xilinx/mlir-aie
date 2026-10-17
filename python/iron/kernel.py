@@ -20,6 +20,7 @@ from ..helpers.dialects.func import call
 from ..helpers.npdtypes import is_block_float
 from ..helpers.sourceloc import SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
+from ..utils.compile.jit.context import get_compile_arg
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -336,8 +337,8 @@ class Kernel(Resolvable):
         symbol name is rejected.
         """
         if self.object_file._source is not None:
-            # JIT clears its discovery registry before generating a design.
-            # Re-register the artifact even when only a sibling binding survives.
+            # A generation collects kernels in a registry of its own, so one made
+            # before it registers again here, as does one only a sibling binds.
             ExternalFunction._register_object(self)
         point = ip if ip is not None else ir.InsertionPoint.current
         table = _enclosing_symbol_table(point)
@@ -559,11 +560,11 @@ class Kernel(Resolvable):
 class ExternalFunction(Kernel):
     """An AIE core function compiled from C/C++ source at JIT time.
 
-    Each instance is registered in `_instances` at construction time so that
-    the `@jit` decorator can discover and compile all source files before
-    invoking the MLIR compilation pipeline. `_instances` is cleared at the
-    start of each `@jit` call to prevent stale registrations from a previous
-    (possibly failed) run.
+    Each instance is registered at construction time so that the `@jit`
+    decorator can discover and compile all source files before invoking the
+    MLIR compilation pipeline. A generation in progress registers into its own
+    set, so registrations from a previous (possibly failed) run stay out of it;
+    outside one, instances go to the process-wide `_instances`.
 
     Use the base [`Kernel`][iron.Kernel] class instead when you have a
     pre-built object file.
@@ -573,10 +574,11 @@ class ExternalFunction(Kernel):
 
     @classmethod
     def _register_object(cls, kernel: Kernel) -> None:
+        registry = get_compile_arg("_iron_kernel_registry", cls._instances)
         if isinstance(kernel, cls):
-            cls._instances.add(kernel)
+            registry.add(kernel)
             return
-        if any(f.object_file is kernel.object_file for f in cls._instances):
+        if any(f.object_file is kernel.object_file for f in registry):
             return
         # A discovery binding references the existing owner; it does not rebuild
         # the recipe or retain the ExternalFunction that originally created it.
@@ -590,7 +592,7 @@ class ExternalFunction(Kernel):
             prefix
         )
         binding._cached_digest = None
-        cls._instances.add(binding)
+        registry.add(binding)
 
     @property
     def built_for_arch(self) -> str | None:
@@ -629,6 +631,31 @@ class ExternalFunction(Kernel):
                 "iron.set_current_device()"
             )
 
+    def build_for(self, arch: str | None = None):
+        """Return the ``Build`` of this kernel that ran on ``arch``.
+
+        The arch is the device's, by default the bound one's, not the one this
+        kernel's factory saw: a kernel returned before any device was bound
+        describes the kernel a design built for the device it then ran on. The
+        compile flags say whether it was built portable.
+
+        Args:
+            arch: The architecture the output came from.
+
+        Raises:
+            ValueError: When ``arch`` is None and no device is bound.
+        """
+        # kernels._common imports this module.
+        from .kernels._common import Build, _bound_arch
+
+        arch = arch or _bound_arch()
+        if arch is None:
+            raise ValueError(
+                f"kernel '{self.name}' is judged by the build that produced its "
+                "output; bind the device it ran on, or pass arch="
+            )
+        return Build(arch, "-DAIE_KERNELS_PORTABLE" in self.compile_flags)
+
     def _require_contract(self):
         if self.contract is None:
             raise ValueError(
@@ -637,6 +664,23 @@ class ExternalFunction(Kernel):
                 "built and checked"
             )
         return self.contract
+
+    def contract_for(self, arch: str | None = None):
+        """Return the contract as it judges this kernel's output from ``arch``.
+
+        A contract with ``per_build`` rows is resolved for the build that
+        produced the output: ``arch``, by default the bound device's, and this
+        kernel's own portable flag. Any other contract is returned as is.
+
+        Args:
+            arch: The architecture the output came from.
+
+        Raises:
+            ValueError: When the kernel has no contract, or its contract is
+                per build and neither ``arch`` nor a bound device names one.
+        """
+        c = self._require_contract()
+        return c.for_build(self.build_for(arch)) if c.per_build else c
 
     def param_values(self, inputs: list) -> list:
         """Pick the ``Param`` arrays out of one logical input list.
@@ -708,9 +752,13 @@ class ExternalFunction(Kernel):
         tensors, s = iter(inputs), iter(scalars)
         return [next(tensors) if tensor else next(s) for tensor in is_tensor]
 
-    def expected(self, inputs: list, *, scalars: tuple = ()):
-        """Return reference output(s), cast to each output argument's dtype."""
-        c = self._require_contract()
+    def expected(self, inputs: list, *, scalars: tuple = (), arch: str | None = None):
+        """Return reference output(s), cast to each output argument's dtype.
+
+        ``arch`` names the architecture the output to judge came from; see
+        [`contract_for`][iron.kernel.ExternalFunction.contract_for].
+        """
+        c = self.contract_for(arch)
         if c.reference is None:
             raise ValueError(f"{self.name}: contract has no reference")
         result = c.reference(*self._reference_args(inputs, scalars))
@@ -762,6 +810,7 @@ class ExternalFunction(Kernel):
         tolerance=None,
         inputs: list | None = None,
         scalars: tuple = (),
+        arch: str | None = None,
     ):
         """Compare a flat device output against a reference under the contract.
 
@@ -771,7 +820,9 @@ class ExternalFunction(Kernel):
         Without streamed inputs, a complete one-call reference may be repeated.
         With no streamed inputs, a one-tile reference is repeated across calls.
         A tolerance that is a function of the inputs needs the ``inputs`` and
-        ``scalars`` the reference was given.
+        ``scalars`` the reference was given. Without ``tolerance``, the
+        contract's is that of the build ``arch`` names; see
+        [`contract_for`][iron.kernel.ExternalFunction.contract_for].
         """
         from aie.utils.compile.jit.markers import In
         from aie.utils.verify import Tolerance, Verdict, compare
@@ -786,7 +837,7 @@ class ExternalFunction(Kernel):
             or len(references) != len(c.out_indices)
         ):
             raise ValueError("provide one actual and reference array per output")
-        tol = tolerance or c.tolerance
+        tol = tolerance or self.contract_for(arch).tolerance
         bounds = (None,) * len(c.out_indices)
         if tol is not None and tol.kind == "bound":
             if inputs is None:
@@ -977,7 +1028,8 @@ class ExternalFunction(Kernel):
         # A translation unit may export several symbols, but an output path
         # must have only one recipe. Auto-suffix default names on conflict;
         # explicit names are never silently changed.
-        for existing in ExternalFunction._instances:
+        registry = get_compile_arg("_iron_kernel_registry", ExternalFunction._instances)
+        for existing in registry:
             if (
                 existing.object_file_name == object_file_name
                 and existing.object_file._source != self.object_file._source
@@ -1000,7 +1052,7 @@ class ExternalFunction(Kernel):
                 self._object_file = replace(self.object_file, name=object_file_name)
                 self._cached_digest = None
                 break
-        for existing in ExternalFunction._instances:
+        for existing in registry:
             if existing.object_file_name == self.object_file_name:
                 if existing.object_file._source != self.object_file._source:
                     raise ValueError(
@@ -1008,7 +1060,7 @@ class ExternalFunction(Kernel):
                     )
                 self._object_file = existing.object_file
                 break
-        ExternalFunction._instances.add(self)
+        registry.add(self)
 
     # Read-only views of the compile recipe. Tooling that inspects or
     # recompiles a kernel outside the JIT path (a static check, say) reads

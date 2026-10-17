@@ -18,7 +18,7 @@ where it happens.
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.iron import Flow, Program, Runtime, Worker
-from aie.iron.device import NPU2Col1, Tile
+from aie.iron.device import NPU2, NPU2Col1, Tile
 
 devmem_ty = np.ndarray[(16, 16, 512), np.dtype[np.int8]]
 back_ty = np.ndarray[(8, 8, 512), np.dtype[np.int8]]
@@ -94,27 +94,79 @@ else:
 # CHECK: wrong direction: drain() reads results back out of the array
 
 
-print("\nTEST: rejects_shim_to_shim_transfers")
-for symbol in (None, "explicit_shim"):
-    for verb in ("fill", "drain"):
-        shim = Tile(0, 0)
-        flow = Flow(shim, shim, src_channel=0, dst_channel=1, shim_symbol=symbol)
+print("\nTEST: fills_and_drains_shim_to_shim")
 
-        def sequence(a):
-            getattr(flow, verb)(a, tap=a[...])
 
-        rt = Runtime(sequence, [back_ty])
-        rt.add_flow(flow)
-        try:
-            Program(NPU2Col1(), rt).resolve_program()
-        except ValueError as e:
-            assert "require exactly one shim endpoint" in str(e)
-        else:
-            raise AssertionError(f"Expected shim-to-shim {verb}() to fail")
-print("rejected fill and drain with automatic and explicit symbols")
+def shim_to_shim(verbs, channels=(1, 0), symbol=None, sync=False):
+    # Two shim tiles, as a gather's feed and drain: fill() is MM2S at the
+    # source, drain() S2MM at the destination, each with its own allocation.
+    feed, drain = Tile(0, 0), Tile(1, 0)
+    flow = Flow(
+        feed,
+        drain,
+        src_channel=channels[0],
+        dst_channel=channels[1],
+        shim_symbol=symbol,
+        name="loop",
+    )
 
-# CHECK-LABEL: rejects_shim_to_shim_transfers
-# CHECK: rejected fill and drain with automatic and explicit symbols
+    def sequence(a, c):
+        for verb, buffer in zip(verbs, (a, c)):
+            getattr(flow, verb)(buffer, tap=buffer[...], wait=verb == "drain")
+        if sync:
+            flow.endpoint(feed).sync()
+
+    rt = Runtime(sequence, [back_ty, back_ty])
+    rt.add_flow(flow)
+    module = Program(NPU2(), rt).resolve_program()
+    assert module.operation.verify()
+    return module
+
+
+print(shim_to_shim(("fill", "drain")))
+
+# CHECK-LABEL: fills_and_drains_shim_to_shim
+# CHECK: aiex.dma_configure_task_for @loop_src
+# CHECK: aiex.dma_configure_task_for @loop_dst
+# CHECK: aie.flow(%[[FEED:[a-z_0-9]+]], DMA : 1, %[[DRAIN:[a-z_0-9]+]], DMA : 0)
+# CHECK: aie.shim_dma_allocation @loop_src(%[[FEED]], MM2S, 1)
+# CHECK: aie.shim_dma_allocation @loop_dst(%[[DRAIN]], S2MM, 0)
+
+print("\nTEST: drains_shim_to_shim_with_a_named_source")
+print(shim_to_shim(("drain",), symbol="explicit_shim"))
+
+# shim_symbol names the source, which gets its allocation as before; the
+# drain takes the destination's own symbol.
+# CHECK-LABEL: drains_shim_to_shim_with_a_named_source
+# CHECK: aiex.dma_configure_task_for @loop_dst
+# CHECK: aie.shim_dma_allocation @explicit_shim(%{{.*}}, MM2S, 1)
+# CHECK: aie.shim_dma_allocation @loop_dst(%{{.*}}, S2MM, 0)
+
+print("\nTEST: syncs_on_a_shim_end_it_never_fills")
+print(shim_to_shim(("drain",), sync=True))
+unsynced = str(shim_to_shim(("drain",)))
+assert "@loop_src" not in unsynced and unsynced.count("aie.shim_dma_allocation ") == 1
+print("an end nothing fills or syncs on gets no allocation")
+
+# The sequence waits on the source, which the runtime drives by other means
+# (a gather's descriptors pushed by control packets): it is allocated, so no
+# fifo is given the channel, beside the drain's own.
+# CHECK-LABEL: syncs_on_a_shim_end_it_never_fills
+# CHECK: aiex.dma_configure_task_for @loop_dst
+# CHECK: aiex.npu.sync
+# CHECK: aie.shim_dma_allocation @loop_src(%{{.*}}, MM2S, 1)
+# CHECK: aie.shim_dma_allocation @loop_dst(%{{.*}}, S2MM, 0)
+# CHECK: an end nothing fills or syncs on gets no allocation
+
+print("\nTEST: routes_shim_to_shim")
+print(shim_to_shim(("fill", "drain"), channels=(None, None)))
+
+# Unassigned channels lower to route endpoints, each shim end a transfer
+# uses carrying the fifoName that allocates its channel.
+# CHECK-LABEL: routes_shim_to_shim
+# CHECK: aie.route_endpoint @loop_src(%{{.*}}) DMA {fifoName = "loop_src"}
+# CHECK: aie.route_endpoint @loop_dst(%{{.*}}) DMA {fifoName = "loop_dst"}
+# CHECK: aie.route from @loop_src to [@loop_dst]
 
 
 print("\nTEST: one_allocation_per_flow")
