@@ -76,8 +76,8 @@ def router_top_k_ref(logits, top_k: int) -> tuple[np.ndarray, np.ndarray]:
     a soft-float IEEE float32 subtraction against the row's max (what
     ``__subsf3`` gives the device, where Peano's native ``-`` would not),
     ``exp64`` (``sample.py``'s bit-exact float64 exponential, the same
-    primitive ``sample_combine`` uses) and a plain float64 sum and divide,
-    rounded once to bf16.
+    primitive ``sample_combine`` uses) and a float64 sum, in ``ids``'s order,
+    and divide, rounded once to bf16.
     """
     row = np.ascontiguousarray(logits, dtype=bfloat16).reshape(-1)
     keys = order_keys(row).astype(np.int64)
@@ -93,7 +93,8 @@ def router_top_k_ref(logits, top_k: int) -> tuple[np.ndarray, np.ndarray]:
     values = row[ids].astype(np.float32)
     shifted = (values - max_value).astype(np.float32)
     w = exp64_ref(shifted.astype(np.float64))
-    packed = (w / w.sum()).astype(np.float32).astype(bfloat16)
+    # In the kernel's order: numpy's sum pairs partial sums from 8 terms on.
+    packed = (w / np.add.accumulate(w)[-1]).astype(np.float32).astype(bfloat16)
     weights = np.zeros(2 * top_k, dtype=bfloat16)
     weights[0::2] = packed
     return ids, weights
