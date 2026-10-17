@@ -2729,6 +2729,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const AXIS_TITLES = {
       us_per_image: 'Time per image (µs)', streaming_us: 'Streaming time per image (µs)',
       e2e_us_per_image: 'End-to-end time per image (µs)', compile_s: 'Compile time (s)',
+      compile_peak_rss_mb: 'Compile peak memory (MB)',
     };
 
     // The hardware check's chart: a line per batch, each nightly's mean over

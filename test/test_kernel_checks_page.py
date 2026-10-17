@@ -1049,6 +1049,7 @@ const hwRecord = (id, date, b16, extra) => {
         us_per_image: { value: us, unit: 'us', range: `median ${us + 1}, MAD 0.20, p95 ${us + 2}` },
         e2e_us_per_image: { value: us + 100, unit: 'us' },
         compile_s: { value: 40, unit: 's' },
+        compile_peak_rss_mb: { value: 850, unit: 'MB' },
         ...(batch > 1 ? { streaming_us: { value: (us * 16 - 295.7) / 15, unit: 'us' } } : {}),
       };
     }
@@ -1112,6 +1113,7 @@ assert.deepEqual(perImage.children.slice(1, 3).map(r => r.children[0].className)
 assert.deepEqual(all(perImage, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg flat', 'chg worse']);
 assert.equal(grid.children[1].children.length, 3);
 assert.equal(grid.children[3].text, 'Compile timeb140 s 0.0%b1640 s 0.0%');
+assert.equal(grid.children[4].text, 'Compile peak memoryb1850 MB 0.0%b16850 MB 0.0%');
 assert.equal(perImage.href, '#view=performance&metric=us_per_image');
 // The trend lines, a line per batch.
 fillSparks(card.cards, collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter])));
@@ -1710,11 +1712,14 @@ assert.equal(commitLine({ id: '0123456789abcdef', message: 'x'.repeat(100) + '\\
 // Compile time, seconds, on a plain axis.
 assert.equal(seedTrendConfig(data, 'compile_s').options.scales.y.type, 'linear');
 assert.equal(seedTrendConfig(data, 'compile_s').options.scales.y.title.text, 'Compile time (s)');
+// Compile peak memory, MB, also on a plain axis.
+assert.equal(seedTrendConfig(data, 'compile_peak_rss_mb').options.scales.y.type, 'linear');
+assert.equal(seedTrendConfig(data, 'compile_peak_rss_mb').options.scales.y.title.text, 'Compile peak memory (MB)');
 // The box: a switch for the measure, drawn once on screen, redrawn on a switch.
 const box = seedTrendBox(data, 'compile_s');
 assert.equal(box.metric(), 'compile_s');
 const seg = box.children[0].children[0];
-assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s']);
+assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb']);
 assert.equal(chart.options.scales.y.type, 'linear');
 seg.children[0].on.click();
 assert.equal(box.metric(), 'us_per_image');
