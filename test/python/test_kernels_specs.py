@@ -364,6 +364,18 @@ KERNEL_SPECS: list[KernelSpec] = [
         invalid_kwargs=[(dict(tile_size=1000), "not a multiple")],
     ),
     KernelSpec(
+        name="soft_cap",
+        factory=kernels.soft_cap,
+        kwargs=dict(tile_size=1024, cap=30.0),
+        arg_count=3,
+        expected_name="soft_cap_bf16",
+        invalid_kwargs=[
+            (dict(tile_size=1000, cap=30.0), "32-element vector step"),
+            (dict(cap=2048.0), "cap must be in"),
+            (dict(cap=2.0**-101), "cap must be in"),
+        ],
+    ),
+    KernelSpec(
         name="gelu",
         factory=kernels.gelu,
         kwargs=dict(tile_size=1024),

@@ -34,6 +34,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [tanh.cc](./activation/tanh.cc) | AIE API | Tanh activation (tanh path from `activations.h`: native on AIE2P, LUT on AIE2) | `bfloat16` |
 | [sigmoid.cc](./activation/sigmoid.cc) | AIE API | Sigmoid activation (tanh path from `activations.h`) | `bfloat16` |
 | [softmax.cc](./activation/softmax.cc) | AIE API | Softmax; on AIE2P also `softmax_rows` (optionally causal), `partial_softmax` (flash-attn) and `mask` | `bfloat16` |
+| [soft_cap.cc](./activation/soft_cap.cc) | AIE API | Soft cap `cap * tanh(x / cap)`, the tanh in float32 (`common/tanh_f32.h`), rounded once | `bfloat16` |
 | [bf16_exp.cc](./activation/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
 | [exp2f_vec.cc](./activation/exp2f_vec.cc) | AIE API | Element-wise `2^x` (software polynomial; higher accuracy on negatives) | `float32` |
 | [log_f32.cc](./activation/log_f32.cc) | AIE API | `log(x + offset)`, float32-accurate from bf16 limb products, rounded once (a log-mel floor) | `float32`→`bfloat16` |

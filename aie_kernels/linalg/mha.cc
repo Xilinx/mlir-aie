@@ -634,8 +634,8 @@ static void soft_cap_scores(float *A, int32_t n) {
       bf16_limbs(Acc(aie::broadcast<float, SM_VEC_LEN>(2.0f * k0)));
   AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int32_t c = 0; c < n; c += SM_VEC_LEN)
-    aie::store_v(A + c, soft_cap_log2(Acc(aie::load_v<SM_VEC_LEN>(A + c)),
-                                      a_limbs, k0, k1_limbs)
+    aie::store_v(A + c, scaled_tanh_f32(Acc(aie::load_v<SM_VEC_LEN>(A + c)),
+                                        a_limbs, k0, k1_limbs)
                             .to_vector<float>());
 }
 #endif

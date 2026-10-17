@@ -19,6 +19,7 @@ import ml_dtypes
 import numpy as np
 import pytest
 from aie.iron import kernels
+from aie.iron.kernels.activation import soft_cap_bound
 from aie.utils.accuracy import all_bf16, round_to
 from ml_dtypes import bfloat16
 
@@ -205,3 +206,19 @@ def test_softmax_ref_soft_cap_saturates():
     x[0] = 1e4
     got = kernels.softmax_ref(x, tile_size=32, soft_cap=30.0).astype(np.float64)
     assert np.isclose(got[0] / got[1], np.exp(60.0), rtol=1e-6)
+
+
+@pytest.mark.parametrize("cap", [0.5, 30.0, 50.0])
+def test_soft_cap_bound_is_one_ulp_only_near_ties(cap):
+    x = all_bf16(nan=False, inf=False)
+    ref = kernels.soft_cap_ref(x, cap=cap).astype(np.float64)
+    bound = soft_cap_bound(x, cap=cap)
+    slack = bound > 2.0**-126
+    assert (
+        bound[slack] <= np.exp2(np.floor(np.log2(np.abs(ref[slack]))) - 7) + 2.0**-126
+    ).all()
+    assert slack.mean() < 0.02
+    assert kernels.soft_cap_ref(np.array([np.inf, -np.inf]), cap=cap).tolist() == [
+        cap,
+        -cap,
+    ]
