@@ -142,26 +142,89 @@ static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
   }
 }
 
+#define EXP2_SPLAT64(v)                                                        \
+  {v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v,           \
+   v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v,           \
+   v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v, v}
+
+// exp2_f32_32's constants, a vector each, loaded where they are used: held,
+// they take the accumulator registers the chain needs.
+alignas(64) static const float exp2_magic[64] = EXP2_SPLAT64(12582912.0f);
+alignas(64) static const float exp2_c3[64] = EXP2_SPLAT64(0.0559063815f);
+alignas(64) static const float exp2_c2[64] = EXP2_SPLAT64(0.240241051f);
+alignas(64) static const float exp2_c1[64] = EXP2_SPLAT64(0.693124175f);
+alignas(64) static const float exp2_c0[64] = EXP2_SPLAT64(1.0f);
+// -125.5's bits: an x <= 0 is below it when its bits are above them.
+alignas(64) static const uint32_t exp2_floor[64] = EXP2_SPLAT64(0xc2fb0000u);
+alignas(64) static const uint16_t exp2_one[64] = EXP2_SPLAT64(0x3f80);
+alignas(64) static const uint16_t exp2_c4[64] = EXP2_SPLAT64(0x3c1d);
+
+// The lanes exp2_nonpos_bf16 takes at once where a row allows: AIE2P's
+// 64-lane accumulators.
+#if AIE_ARCH_AIE2P
+constexpr unsigned EXP2_NONPOS_LANES = 64;
+#else
+constexpr unsigned EXP2_NONPOS_LANES = 32;
+#endif
+
 // exp2_bf16_32 of x <= 0, finite or -inf, as the online softmax takes it: no
 // such x reaches its overflow or NaN select, so only the flush below -125.5
-// stays.
-static inline aie::vector<bfloat16, 32>
-exp2_nonpos_bf16_32(aie::vector<float, 32> x) {
-  using acc_t = aie::accum<accfloat, 32>;
-  const Exp2F32 e = exp2_f32_32(x);
-  return aie::select(acc_t(e.bits.cast_to<float>()).to_vector<bfloat16>(),
-                     aie::zeros<bfloat16, 32>(), e.below);
+// stays. exp2_f32_32's operations in its order, lane for lane, at L lanes;
+// k << 23 is taken as soon as k is, and the flush applied to the f32 bits,
+// so the one rounding to bf16 is the store's.
+template <unsigned L>
+static inline __attribute__((always_inline)) aie::vector<bfloat16, L>
+exp2_nonpos_lanes(aie::vector<float, L> x) {
+  using acc_t = aie::accum<accfloat, L>;
+  using bf_t = aie::vector<bfloat16, L>;
+  auto ld = [](const float *c) { return aie::load_v<L>(c); };
+  auto bf = [](const uint16_t *c) {
+    return aie::load_v<L>(c).template cast_to<bfloat16>();
+  };
+  const auto below =
+      aie::gt(x.template cast_to<uint32_t>(), aie::load_v<L>(exp2_floor));
+  const aie::vector<float, L> xm = aie::add(x, ld(exp2_magic));
+  const auto k23 = aie::upshift(xm.template cast_to<int32_t>(), 23);
+  const bf_t k =
+      acc_t(aie::sub(xm, ld(exp2_magic))).template to_vector<bfloat16>();
+  const acc_t f = aie::msc(acc_t(x), k, bf(exp2_one));
+  const bf_t f_hi = f.template to_vector<bfloat16>();
+  const bf_t f_lo =
+      aie::msc(f, f_hi, bf(exp2_one)).template to_vector<bfloat16>();
+
+  acc_t p = aie::mac(acc_t(ld(exp2_c3)), f_hi, bf(exp2_c4));
+  auto step = [&](const float *c) {
+    const bf_t hi = p.template to_vector<bfloat16>();
+    const bf_t lo =
+        aie::msc(p, hi, bf(exp2_one)).template to_vector<bfloat16>();
+    acc_t q = aie::mac(acc_t(ld(c)), hi, f_hi);
+    q = aie::mac(q, hi, f_lo);
+    p = aie::mac(q, lo, f_hi);
+  };
+  step(exp2_c2);
+  step(exp2_c1);
+  step(exp2_c0);
+
+  const auto y =
+      aie::add(p.template to_vector<float>().template cast_to<int32_t>(), k23);
+  return acc_t(aie::select(y, aie::zeros<int32_t, L>(), below)
+                   .template cast_to<float>())
+      .template to_vector<bfloat16>();
 }
 
 template <unsigned N>
 static inline aie::vector<bfloat16, N>
 exp2_nonpos_bf16(aie::vector<float, N> x) {
+  constexpr unsigned L = N % EXP2_NONPOS_LANES == 0 ? EXP2_NONPOS_LANES : 32;
   if constexpr (N < 32) {
-    return exp2_nonpos_bf16_32(x.template grow<32>()).template extract<N>(0);
+    return exp2_nonpos_lanes<32>(x.template grow<32>()).template extract<N>(0);
+  } else if constexpr (N == L) {
+    return exp2_nonpos_lanes<L>(x);
   } else {
     aie::vector<bfloat16, N> out;
-    for (unsigned i = 0; i < N / 32; i++)
-      out.insert(i, exp2_nonpos_bf16_32(x.template extract<32>(i)));
+#pragma unroll
+    for (unsigned i = 0; i < N / L; i++)
+      out.insert(i, exp2_nonpos_lanes<L>(x.template extract<L>(i)));
     return out;
   }
 }
@@ -174,6 +237,8 @@ static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
 
 // Without the accurate exp2, exp2_bf16 itself.
 #ifndef EXP2_BF16_ACCURATE
+constexpr unsigned EXP2_NONPOS_LANES = 32;
+
 template <unsigned N>
 static inline aie::vector<bfloat16, N>
 exp2_nonpos_bf16(aie::vector<float, N> x) {

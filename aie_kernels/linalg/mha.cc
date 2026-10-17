@@ -378,17 +378,19 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
   bfloat16 *__restrict p = P;
   if constexpr (std::is_same_v<T, float>) {
     // A float32 max leaves A - m exact in the accumulator, so (A - m) * s is
-    // taken as three bf16 limbs, each times s.
-    const auto s = aie::broadcast<bfloat16, SM_VEC_LEN>(scale);
+    // taken as three bf16 limbs, each times s, as many lanes at once as the
+    // exp2 takes.
+    constexpr unsigned W = EXP2_NONPOS_LANES;
+    const auto s = aie::broadcast<bfloat16, W>(scale);
     a = A;
     AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
     for (int32_t i = 0; i < group_rows; i++) {
-      const auto m_vec = aie::broadcast<float, SM_VEC_LEN>(m_rows[i]);
-      for (int32_t h = 0; h < VECTOR_LENGTH; h += SM_VEC_LEN) {
-        aie::accum<accfloat, SM_VEC_LEN> d;
-        d.from_vector(aie::load_v<SM_VEC_LEN>(a + h));
-        const Limbs<SM_VEC_LEN> dl = bf16_limbs(aie::sub(d, m_vec));
-        aie::accum<accfloat, SM_VEC_LEN> x = aie::mul(dl.hi, s);
+      const auto m_vec = aie::broadcast<float, W>(m_rows[i]);
+      for (int32_t h = 0; h < VECTOR_LENGTH; h += W) {
+        aie::accum<accfloat, W> d;
+        d.from_vector(aie::load_v<W>(a + h));
+        const Limbs<W> dl = bf16_limbs(aie::sub(d, m_vec));
+        aie::accum<accfloat, W> x = aie::mul(dl.hi, s);
         x = aie::mac(x, dl.mid, s);
         x = aie::mac(x, dl.lo, s);
         aie::store_v(p + h, exp2_nonpos_bf16(x.to_vector<float>()));
