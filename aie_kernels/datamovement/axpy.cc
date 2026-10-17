@@ -18,65 +18,60 @@
 
 #include <aie_api/aie.hpp>
 
-// 64 / AIE_BF16_LANES, as a literal for the loop pragma.
-#if AIE_TUNED_AIE2P
-#define AXPY_BLOCK_VECTORS 2
-#else
-#define AXPY_BLOCK_VECTORS 4
-#endif
+// x * a + y with an f32 a: a is split, toward zero, into bf16 limbs that sum
+// to it exactly and share its sign, and the nonzero ones are macced into y,
+// smallest first. Each product is exact, so only the f32 sums round. A zero
+// limb is left out, as its product with an infinite x would be NaN.
+template <int N, int L>
+static inline void saxpy_limbs(const bfloat16 *restrict x,
+                               const bfloat16 *restrict y, bfloat16 *restrict z,
+                               const uint16_t (&limb)[3], int steps) {
+  ::aie::vector<bfloat16, L> aL[N];
+  for (int i = 0; i < N; ++i)
+    aL[i] = ::aie::broadcast<bfloat16, L>(
+        __builtin_bit_cast(bfloat16, limb[N - 1 - i]));
+  auto px = ::aie::begin_restrict_vector<L>(x);
+  auto py = ::aie::begin_restrict_vector<L>(y);
+  auto pz = ::aie::begin_restrict_vector<L>(z);
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  AIE_LOOP_NO_UNROLL
+  for (int k = 0; k < steps; ++k) {
+    ::aie::accum<accfloat, L> acc;
+    acc.from_vector(*py++);
+    const ::aie::vector<bfloat16, L> xv = *px++;
+    for (int i = 0; i < N; ++i)
+      acc = ::aie::mac(acc, xv, aL[i]);
+    *pz++ = acc.template to_vector<bfloat16>();
+  }
+}
 
 extern "C" {
 void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, const float a,
            bfloat16 *restrict z, const int32_t vector_size) {
   event0();
+  // a's top 8 significant bits, the next 8, then the rest: truncating each
+  // keeps every remainder exact and of a's sign, and a limb is zero only once
+  // the remainder is.
+  uint16_t limb[3];
+  float rest = a;
+  for (int i = 0; i < 3; ++i) {
+    const uint32_t bits = __builtin_bit_cast(uint32_t, rest) & 0xffff0000u;
+    limb[i] = (uint16_t)(bits >> 16);
+    rest = rest - __builtin_bit_cast(float, bits);
+  }
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  // y loads straight into the accumulator (vlda.conv, a port) and x on the b
-  // port, so each vector is one mac and one converting store. The deep
-  // pipelined schedule needs the promised 16 trips; a shorter tile takes a loop
-  // that promises one 64-element block.
   constexpr int L = AIE_BF16_LANES;
-  ::aie::vector<bfloat16, L> aL = ::aie::broadcast<bfloat16, L>(bfloat16(a));
-  auto px = ::aie::begin_restrict_vector<L>(x);
-  auto py = ::aie::begin_restrict_vector<L>(y);
-  auto pz = ::aie::begin_restrict_vector<L>(z);
-  const int steps = (uint32_t)vector_size / 64 * (64 / L);
-  if (steps >= 16) {
-    AIE_LOOP_MIN_ITERATION_COUNT(16)
-    AIE_LOOP_NO_UNROLL
-    for (int k = 0; k < steps; ++k) {
-      ::aie::accum<accfloat, L> acc;
-      acc.from_vector(*py++);
-      *pz++ = ::aie::mac(acc, *px++, aL).template to_vector<bfloat16>();
-    }
-  } else if (steps > 0) {
-    AIE_LOOP_MIN_ITERATION_COUNT(AXPY_BLOCK_VECTORS)
-    AIE_LOOP_NO_UNROLL
-    for (int k = 0; k < steps; ++k) {
-      ::aie::accum<accfloat, L> acc;
-      acc.from_vector(*py++);
-      *pz++ = ::aie::mac(acc, *px++, aL).template to_vector<bfloat16>();
-    }
-  }
 #else
-  ::aie::vector<bfloat16, 64> a_v = ::aie::broadcast<bfloat16, 64>(bfloat16(a));
-  // IRON only accepts a tile that is a multiple of 64; unsigned, the divide is
-  // a shift.
-  const int steps = (uint32_t)vector_size / 64;
-  if (steps > 0) {
-    AIE_LOOP_MIN_ITERATION_COUNT(1)
-    for (int k = 0; k < steps; ++k) {
-      ::aie::vector<bfloat16, 64> x_v = ::aie::load_v<64>(x);
-      x += 64;
-      ::aie::vector<bfloat16, 64> y_v = ::aie::load_v<64>(y);
-      y += 64;
-      ::aie::accum<accfloat, 64> ax_v = ::aie::mul(x_v, a_v);
-      ::aie::accum<accfloat, 64> z_v = ::aie::add(ax_v, y_v);
-      ::aie::vector<bfloat16, 64> z_v_converted = z_v.to_vector<bfloat16>();
-      ::aie::store_v(z, z_v_converted);
-      z += 64;
-    }
-  }
+  constexpr int L = 64;
 #endif
+  // IRON only accepts a tile that is a multiple of 64.
+  const int steps = (uint32_t)vector_size / L;
+  if (limb[2] & 0x7fff)
+    saxpy_limbs<3, L>(x, y, z, limb, steps);
+  else if (limb[1] & 0x7fff)
+    saxpy_limbs<2, L>(x, y, z, limb, steps);
+  else
+    saxpy_limbs<1, L>(x, y, z, limb, steps);
   event1();
 }
 
