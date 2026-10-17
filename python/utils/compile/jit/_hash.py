@@ -21,10 +21,10 @@ identity stays on mtime, which is cheap and moves whenever the toolchain is
 rebuilt or reinstalled.
 
 The Python a generator reaches is identified by what is running, which is
-not always what is on disk, and cheaply, since the key is taken on every
-call. A module imported from a file is named by its source's mtime and size
-when the key first reaches that import; a reload looks again. Code with no
-file behind it (a notebook cell, the REPL) and the script being run are
+not always what is on disk. A module imported from a file is named by its
+source's content when the key first reaches that import, digested once per
+import since the key is taken on every call; a reload looks again. Code with
+no file behind it (a notebook cell, the REPL) and the script being run are
 identified by their code and the plain constants they read, since those can
 change without any file changing.
 
@@ -220,19 +220,15 @@ def _stamped_module(value) -> ModuleType | None:
 
 
 # Per import of a file-backed module: the spec it was imported under, its
-# source's "mtime_ns:size" when the key first reached it, and the modules its
-# globals reach. A reload brings a new spec, so the module is looked at again.
+# source's digest when the key first reached it, and the modules its globals
+# reach. A reload brings a new spec, so the module is looked at again.
 _IMPORTS: dict[str, tuple[Any, str, tuple[str, ...]]] = {}
 
 
 def _import_identity(module: ModuleType) -> tuple[str, tuple[str, ...]]:
     entry = _IMPORTS.get(module.__name__)
     if entry is None or entry[0] is not module.__spec__:
-        try:
-            stat = os.stat(module.__file__ or "")
-            stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
-        except OSError as exc:
-            stamp = f"<unreadable:{type(exc).__name__}>"
+        stamp = _content_digest(module.__file__ or "")
         # Importing a submodule binds it on its package, so a package's
         # namespace grows with whatever else the process imports. Its
         # submodules are reached through what they define, or by the code that
@@ -259,7 +255,7 @@ def _python_identity(roots) -> bytes:
     follows globals, closure cells and attributes of modules. Functions and
     classes with no file behind them, or in the script being run, are
     identified by their code and the plain constants they read; a module
-    imported from a file by its source's stamp (see ``_import_identity``),
+    imported from a file by its source's content (see ``_import_identity``),
     and every module its globals reach in turn. Installed third-party code is
     not followed. No design is generated to find any of it.
 

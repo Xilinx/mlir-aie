@@ -1445,6 +1445,40 @@ def test_the_key_follows_an_instance_bound_at_import(tmp_path):
             sys.modules.pop(name, None)
 
 
+def test_the_key_names_a_reached_module_by_its_content(tmp_path):
+    """A module the design reaches is named by its source's bytes.
+
+    A checkout, a copy or a touch restamps a file without changing a byte,
+    and keyed on its mtime and size every such file recompiled whatever
+    reached it, while an edit that kept its size under a restored mtime
+    reused the stale build.
+    """
+    for name, text in _SETTINGS_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+
+    def key():
+        for name in _SETTINGS_FILES:
+            sys.modules.pop(name, None)
+        gen = importlib.import_module("eager_design").design
+        return _compute_recipe_hash(gen, {"N": 1}, (), ())
+
+    settings = tmp_path / "eager_settings.py"
+    try:
+        before = key()
+        st = settings.stat()
+        os.utime(settings, ns=(st.st_atime_ns, st.st_mtime_ns + 10**10))
+        assert key() == before
+        settings.write_text(settings.read_text().replace("depth = 2", "depth = 3"))
+        os.utime(settings, ns=(st.st_atime_ns, st.st_mtime_ns))
+        assert settings.stat().st_size == st.st_size
+        assert key() != before
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _SETTINGS_FILES:
+            sys.modules.pop(name, None)
+
+
 def test_hash_is_24_hex_chars():
     d = CompilableDesign(_gemm_gen())
     hex_str = d._compute_cache_hash()
