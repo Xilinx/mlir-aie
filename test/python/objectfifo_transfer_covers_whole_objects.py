@@ -43,9 +43,33 @@ def build(fifo_dtype, name, line=LINE, in_ty=None, out_ty=None, in_tap=None):
     return str(Program(iron.get_current_device(), rt).resolve_program())
 
 
-def rejected(**kwargs):
+def build_concat(first, second, name):
+    """Fill one fifo from two host buffers of `first` and `second` f32."""
+    line_ty = np.ndarray[(LINE,), np.dtype[np.float32]]
+    of_in = ObjectFifo(line_ty, name=f"in_{name}")
+    of_out = of_in.cons().forward(name=f"out_{name}")
+
+    def sequence(x, y, c, in_h, out_h):
+        in_h.fill(x)
+        in_h.fill(y)
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [
+            np.ndarray[(first,), np.dtype[np.float32]],
+            np.ndarray[(second,), np.dtype[np.float32]],
+            np.ndarray[(first + second,), np.dtype[np.float32]],
+            of_in.prod(tile=AnyShimTile),
+            of_out.cons(tile=AnyShimTile),
+        ],
+    )
+    return str(Program(iron.get_current_device(), rt).resolve_program())
+
+
+def rejected(builder=build, **kwargs):
     try:
-        build(**kwargs)
+        builder(**kwargs)
     except MLIRError as e:
         return str(e)
     raise AssertionError("expected a partial-object transfer to be rejected")
@@ -131,3 +155,22 @@ print(
         in_tap=TensorAccessPattern((N,), 0, [4, 1, 1, 255], [256, 0, 0, 1]),
     )
 )
+
+# Transfers may share an object: 128 + 896 f32 straddle an object boundary
+# but are 4 whole objects together.
+# CHECK-LABEL: TEST: fills_that_share_an_object_are_allowed
+# CHECK: aie.dma_bd(%{{.*}} : memref<128xf32> offset = 0 len = 128
+# CHECK: aie.dma_bd(%{{.*}} : memref<896xf32> offset = 0 len = 896
+print("TEST: fills_that_share_an_object_are_allowed")
+print(build_concat(first=128, second=896, name="concat"))
+
+# 128 + 1024 f32 leave the last object half full; the first fill reports it.
+# CHECK-LABEL: TEST: fills_that_leave_an_object_partial_are_rejected
+# CHECK: fill_line=[[LINE:[0-9]+]]
+# CHECK: objectfifo_transfer_covers_whole_objects.py":[[LINE]]:{{.*}}moves 512 bytes through objectFIFO @in_concatbad, which, with this runtime sequence's other transfers through it (4608 bytes in all), is not a whole number of its 1024-byte objects
+print("TEST: fills_that_leave_an_object_partial_are_rejected")
+lines, first = inspect.getsourcelines(build_concat)
+print(
+    f"fill_line={first + next(i for i, l in enumerate(lines) if 'in_h.fill(x)' in l)}"
+)
+print(rejected(build_concat, first=128, second=1024, name="concatbad"))

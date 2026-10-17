@@ -1401,10 +1401,46 @@ LogicalResult AIEX::DMAStartTaskOp::verify() {
   return success();
 }
 
+// Bytes a task streams per dispatch, or nullopt when any extent, repeat or
+// start count is not static.
+static std::optional<int64_t>
+staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
+  std::optional<int64_t> repeat =
+      getConstantIntValue(task.getRepeatCountValue());
+  if (!repeat)
+    return std::nullopt;
+  int64_t starts = 0;
+  for (Operation *user : task.getResult().getUsers()) {
+    auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
+    if (!start)
+      continue;
+    if (start.getRepeatCountAttr() || start.getRepeatCountVal() ||
+        start.hasRepeatParameter())
+      return std::nullopt;
+    ++starts;
+  }
+  if (starts == 0)
+    return std::nullopt;
+
+  int64_t moved = 0;
+  WalkResult walk = task.getBody().walk([&](AIE::DMABDOp bd) {
+    std::optional<int32_t> len = bd.getConstantLen();
+    if (!len || bd.getIteration())
+      return WalkResult::interrupt();
+    moved += static_cast<int64_t>(*len) * bd.getBufferElementTypeWidthInBytes();
+    return WalkResult::advance();
+  });
+  if (walk.wasInterrupted())
+    return std::nullopt;
+  return moved * (*repeat + 1) * starts;
+}
+
 // The far end of a shim transfer on an objectFIFO receives (or sends) whole
-// objects through a BD sized by the object type, so a transfer ending
-// mid-object never completes that BD and the fifo hangs. Checked only when
-// every extent is static.
+// objects through a BD sized by the object type, so transfers ending
+// mid-object never complete that BD and the fifo hangs. Several transfers may
+// share an object (concatenating host buffers into it, or splitting it across
+// them), so a partial transfer is an error only when its runtime sequence's
+// static total through the fifo is not whole objects either.
 static LogicalResult
 verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                              AIE::ObjectFifoCreateOp fifo) {
@@ -1426,35 +1462,42 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   if (objectBytes <= 0)
     return success();
 
-  std::optional<int64_t> repeat =
-      getConstantIntValue(task.getRepeatCountValue());
-  if (!repeat)
+  std::optional<int64_t> moved = staticBytesStreamed(task);
+  if (!moved || *moved % objectBytes == 0)
     return success();
-  for (Operation *user : task.getResult().getUsers())
-    if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
-        start && (start.getRepeatCountAttr() || start.getRepeatCountVal() ||
-                  start.hasRepeatParameter()))
-      return success();
 
-  int64_t moved = 0;
-  WalkResult walk = task.getBody().walk([&](AIE::DMABDOp bd) {
-    std::optional<int32_t> len = bd.getConstantLen();
-    if (!len || bd.getIteration())
+  // Transfers in a loop or branch have no static count to sum.
+  auto sequence = task->getParentOfType<AIE::RuntimeSequenceOp>();
+  if (!sequence || task->getBlock() != &sequence.getBody().front())
+    return success();
+  int64_t total = 0;
+  int64_t sharing = 0;
+  bool reportedEarlier = false;
+  WalkResult walk = sequence.walk([&](AIEX::DMAConfigureTaskForOp other) {
+    if (other.getAlloc() != task.getAlloc())
+      return WalkResult::advance();
+    std::optional<int64_t> bytes = staticBytesStreamed(other);
+    if (!bytes || other->getBlock() != task->getBlock())
       return WalkResult::interrupt();
-    moved += static_cast<int64_t>(*len) * bd.getBufferElementTypeWidthInBytes();
+    // The first partial transfer reports, so the error is raised once.
+    if (*bytes % objectBytes != 0 && other->isBeforeInBlock(task))
+      reportedEarlier = true;
+    total += *bytes;
+    ++sharing;
     return WalkResult::advance();
   });
-  if (walk.wasInterrupted() || moved == 0)
+  if (walk.wasInterrupted() || reportedEarlier || total % objectBytes == 0)
     return success();
-  moved *= *repeat + 1;
-  if (moved % objectBytes == 0)
-    return success();
-  return task.emitOpError()
-         << "moves " << moved << " bytes through objectFIFO @"
-         << fifo.getSymName() << ", which is not a whole number of its "
-         << objectBytes
-         << "-byte objects; the far end's buffer descriptor is sized by the "
-            "object, so a partial one never completes";
+
+  InFlightDiagnostic error =
+      task.emitOpError() << "moves " << *moved << " bytes through objectFIFO @"
+                         << fifo.getSymName() << ", which";
+  if (sharing > 1)
+    error << ", with this runtime sequence's other transfers through it ("
+          << total << " bytes in all),";
+  return error << " is not a whole number of its " << objectBytes
+               << "-byte objects; the far end's buffer descriptor is sized by "
+                  "the object, so a partial one never completes";
 }
 
 // Resolving the allocation symbol through the collection keeps the lookup off

@@ -192,3 +192,98 @@ module {
     }
   }
 }
+
+// -----
+
+// Two fills of half an object, from two host buffers, concatenate into one.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>, %arg1: memref<32xi32>) {
+      %t0 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+      %t1 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg1 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t1)
+    }
+  }
+}
+
+// -----
+
+// Two drains of half an object split it across two host buffers.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t02, {%t00}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>, %arg1: memref<32xi32>) {
+      %t0 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+      %t1 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg1 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t1)
+      aiex.dma_await_task(%t1)
+    }
+  }
+}
+
+// -----
+
+// Half an object then a whole one leaves the second object half full. The
+// first partial transfer reports, once.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>, %arg1: memref<64xi32>) {
+      // expected-error@+1 {{moves 128 bytes through objectFIFO @of, which, with this runtime sequence's other transfers through it (384 bytes in all), is not a whole number of its 256-byte objects}}
+      %t0 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+      %t1 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg1 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t1)
+    }
+  }
+}
+
+// -----
+
+// A transfer in a loop has no static count to sum, so it is not checked.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      scf.for %i = %c0 to %c2 step %c1 {
+        %t = aiex.dma_configure_task_for @of {
+          aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+          aie.end
+        }
+        aiex.dma_start_task(%t)
+      }
+    }
+  }
+}
