@@ -22,6 +22,7 @@
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/TypeSize.h"
 
@@ -1819,6 +1820,24 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
   }
 
   return runtimeSequence;
+}
+
+AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp(
+    llvm::DenseMap<Operation *, AIE::NamedOpTable> &cache) {
+  AIEX::ConfigureOp configureOp =
+      getOperation()->getParentOfType<AIEX::ConfigureOp>();
+  if (!configureOp) {
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
+  if (!referencedDevice) {
+    return nullptr;
+  }
+
+  AIE::NamedOpTable &names =
+      cache.try_emplace(referencedDevice, referencedDevice).first->second;
+  return names.lookup<AIE::RuntimeSequenceOp>(
+      getRuntimeSequenceSymbolAttr().getAttr());
 }
 
 //===----------------------------------------------------------------------===//

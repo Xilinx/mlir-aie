@@ -545,6 +545,12 @@ def AIE_RunOp : AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
   let extraClassDeclaration = [{
     AIE::DeviceOp getCalleeDeviceOp();
     AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp();
+    // Same, against a cache of each referenced device's NamedOpTable the
+    // caller builds once: a device named by many aiex.run ops (e.g. a callee
+    // reused across model layers) would otherwise have its symbol table
+    // rescanned per call.
+    AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp(
+        ::llvm::DenseMap<::mlir::Operation *, ::xilinx::AIE::NamedOpTable> &cache);
   }];
 
   let summary = "Execute a runtime sequence";

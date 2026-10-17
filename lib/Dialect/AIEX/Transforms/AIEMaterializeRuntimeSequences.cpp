@@ -56,6 +56,10 @@ struct RuntimeCallGraphCyclicityAnalysis {
     // A cycle exists if we encounter a sequence already on the current path
     llvm::DenseSet<AIE::RuntimeSequenceOp> callStack;
     llvm::DenseSet<AIE::RuntimeSequenceOp> visited;
+    // A device named by many aiex.run ops across this walk (e.g. a callee
+    // reused across model layers) would otherwise have its symbol table
+    // rescanned per call.
+    llvm::DenseMap<Operation *, AIE::NamedOpTable> calleeNames;
 
     std::function<bool(AIE::RuntimeSequenceOp)> hasCycle =
         [&](AIE::RuntimeSequenceOp seq) -> bool {
@@ -73,7 +77,7 @@ struct RuntimeCallGraphCyclicityAnalysis {
       bool foundCycle = false;
       seq.walk([&](RunOp runOp) {
         if (AIE::RuntimeSequenceOp callee =
-                runOp.getCalleeRuntimeSequenceOp()) {
+                runOp.getCalleeRuntimeSequenceOp(calleeNames)) {
           if (hasCycle(callee)) {
             foundCycle = true;
             return WalkResult::interrupt();
@@ -474,7 +478,7 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 
     AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
     AIE::RuntimeSequenceOp calleeRuntimeSequence =
-        runOp.getCalleeRuntimeSequenceOp();
+        runOp.getCalleeRuntimeSequenceOp(calleeNames);
     if (!calleeDevice || !calleeRuntimeSequence) {
       return failure();
     }
