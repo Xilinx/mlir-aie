@@ -1919,6 +1919,16 @@ CASES: list[Case] = [
     check("rope", dict(cols=96, two_halves=True), calls=16, tag="row-tail", smoke=True),
     # On aie2, 112 is too short for the pipelined interleaved loop.
     check("rope", dict(cols=112), calls=16, tag="row-tail"),
+    # Axial: 512 gives each axis the pipelined whole-vector loop, 64 (a
+    # 64-wide vision head) each axis's half-width close-out step alone.
+    check("rope", dict(cols=512, two_halves=True, axial=True), calls=16, smoke=True),
+    check(
+        "rope",
+        dict(cols=64, two_halves=True, axial=True),
+        calls=16,
+        tag="row-tail",
+        smoke=True,
+    ),
     Case(
         "mm_activation_epilogue",
         calls=16,

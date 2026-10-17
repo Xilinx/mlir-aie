@@ -961,7 +961,14 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=4,  # in, lut, out, dims
         expected_name="rope",
-        name_variants=[(dict(two_halves=True), "rope_two_halves")],
+        name_variants=[
+            (dict(two_halves=True), "rope_two_halves"),
+            (dict(two_halves=True, axial=True), "rope_axial"),
+        ],
+        invalid_kwargs=[
+            (dict(axial=True), "pass two_halves"),
+            (dict(tile_size=96, two_halves=True, axial=True), "multiple of 64"),
+        ],
         shape_checks=[(dict(tile_size=96, two_halves=True), 0, (96,))],
     ),
     # ----- norm (kernels.norm) -----
@@ -1285,6 +1292,20 @@ def test_rope_layout_contract_and_vector_constraints(
     else:
         expected[0::2] = -x[1::2]
         expected[1::2] = x[0::2]
+    np.testing.assert_array_equal(fn.contract.reference(x, lut), expected)
+
+
+def test_rope_axial_turns_each_half_by_its_own_angles(kernel_arch):
+    fn = kernels.rope(cols=128, two_halves=True, axial=True)
+    assert fn._original_name == "rope_axial"
+    x = np.arange(128, dtype=np.float32).astype(bfloat16)
+    # x's half turned by 0, y's by pi/2: the first half unchanged, the
+    # second's halves (64:96, 96:128) to (-x[96:128], x[64:96]).
+    lut = np.zeros(128, dtype=bfloat16)
+    lut[0:64:2] = 1
+    lut[65::2] = 1
+    expected = x.copy()
+    expected[64:96], expected[96:] = -x[96:], x[64:96]
     np.testing.assert_array_equal(fn.contract.reference(x, lut), expected)
 
 

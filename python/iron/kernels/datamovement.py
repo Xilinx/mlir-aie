@@ -665,20 +665,33 @@ def patch_positions(
 
 
 def rope(
-    tile_size: int = 1024, two_halves: bool = False, *, cols: int | None = None
+    tile_size: int = 1024,
+    two_halves: bool = False,
+    *,
+    axial: bool = False,
+    cols: int | None = None,
 ) -> ExternalFunction:
     """RoPE positional rotation over bf16 tiles; ``dims`` read at runtime.
 
     Design passes ``(in, lut, out, dims)``.  ``two_halves`` selects the
     HuggingFace-style ``rope_two_halves`` over the Llama-paper interleave
-    ``rope``. ``cols`` aliases ``tile_size``. Both architectures use the generic
-    source; rows must be positive multiples of 16 (interleaved) or 32
-    (two halves, keeping each half 32-byte aligned). Each input row has its own
-    streamed (cos, sin) LUT.
+    ``rope``; ``axial`` with it selects ``rope_axial``, which turns each half
+    of the row by its own half of the LUT row (a 2D position's x, then its
+    y). ``cols`` aliases ``tile_size``. Both architectures use the generic
+    source; rows must be positive multiples of 16 (interleaved), 32
+    (two halves, keeping each half 32-byte aligned) or 64 (axial). Each input
+    row has its own streamed (cos, sin) LUT.
+
+    Raises:
+        ValueError: ``axial`` without ``two_halves``, or a row that is not a
+            positive multiple of its layout's width.
     """
-    tile_size = _row_size("rope", tile_size, cols, 32 if two_halves else 16)
+    if axial and not two_halves:
+        raise ValueError("rope: axial rotates two halves per axis; pass two_halves")
+    width = 64 if axial else 32 if two_halves else 16
+    tile_size = _row_size("rope", tile_size, cols, width)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    func = "rope_two_halves" if two_halves else "rope"
+    func = "rope_axial" if axial else "rope_two_halves" if two_halves else "rope"
     return _make_extern(
         func,
         _kernel_source("datamovement/rope.cc"),
@@ -688,19 +701,43 @@ def rope(
             setup=conv_even,
             roles=(In, In, Out, Param),
             parameter_bindings=((3, tile_size),),
-            reference=lambda x, lut: rope_ref(x, lut, two_halves=two_halves),
+            reference=lambda x, lut: rope_ref(
+                x, lut, two_halves=two_halves, axial=axial
+            ),
             acc_dtype=np.float32,
             reduction=2,
-            tolerance=Tolerance.relative(
-                0.128, note="programming_examples/ml/rope: default bf16 rtol"
+            tolerance=(
+                Tolerance.bf16_ulps(
+                    1,
+                    atol=2.0**-126,
+                    note="each output one rounding of x1 cos - x2 sin, exact "
+                    "products summed in the f32 accumulator as the reference "
+                    "sums them; the floor is the device's subnormal flush",
+                )
+                if axial
+                else Tolerance.relative(
+                    0.128, note="programming_examples/ml/rope: default bf16 rtol"
+                )
             ),
             ops_per_call=3 * tile_size,
         ),
     )
 
 
-def rope_ref(x, lut, *, two_halves: bool = False):
-    """Rotate bf16 pairs by an interleaved (cos, sin) LUT, in either RoPE layout."""
+def rope_ref(x, lut, *, two_halves: bool = False, axial: bool = False):
+    """Rotate bf16 pairs by an interleaved (cos, sin) LUT, in either RoPE layout.
+
+    With ``axial``, each half of a row is a two-halves rotation by its own
+    half of the LUT row.
+    """
+    if axial:
+        return np.concatenate(
+            [
+                rope_ref(xa, la, two_halves=True)
+                for xa, la in zip(np.split(x, 2, axis=-1), np.split(lut, 2, axis=-1))
+            ],
+            axis=-1,
+        )
     x32, l32 = x.astype(np.float32), lut.astype(np.float32)
     cos_v, sin_v = l32[..., 0::2], l32[..., 1::2]
     if two_halves:

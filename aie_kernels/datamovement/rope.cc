@@ -116,9 +116,9 @@ static inline void rope_halves_step(const T *restrict input,
 // even/odd interleave of the Llama-paper method in rope_kernel above.  Ported
 // from IRON so designs targeting HF-style weights have a matching kernel.
 template <typename T, int N>
-void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
-                            T *restrict output, int32_t dims) {
-  event0();
+static inline void rope_two_halves_row(const T *restrict input,
+                                       const T *restrict lut,
+                                       T *restrict output, int32_t dims) {
   const int dims_half = (uint32_t)dims / 2;
   const int wide = (uint32_t)dims_half / N;
   // Walking cursors, as in rope_kernel.
@@ -140,7 +140,6 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
         rope_halves_step<T, N, true>(pi, pl, po, dims_half);
       }
     }
-    event1();
     return;
   }
 #endif
@@ -156,6 +155,25 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
   if (wide * N < dims_half) {
     rope_halves_step<T, N / 2>(pi, pl, po, dims_half);
   }
+}
+
+template <typename T, int N>
+void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
+                            T *restrict output, int32_t dims) {
+  event0();
+  rope_two_halves_row<T, N>(input, lut, output, dims);
+  event1();
+}
+
+// Axial RoPE: each half of the row is a two-halves rotation of its own, by its
+// own half of the LUT row (x's angles, then y's).
+template <typename T, int N>
+void rope_kernel_axial(const T *restrict input, const T *restrict lut,
+                       T *restrict output, int32_t dims) {
+  event0();
+  const int part = (uint32_t)dims / 2;
+  rope_two_halves_row<T, N>(input, lut, output, part);
+  rope_two_halves_row<T, N>(input + part, lut + part, output + part, part);
   event1();
 }
 
@@ -229,10 +247,10 @@ static inline void rope_halves_step_aie2(const bfloat16 *restrict input,
 }
 
 // A two-halves row is a multiple of 32, so each half is whole 16-element steps.
-static void rope_two_halves_aie2(const bfloat16 *restrict input,
-                                 const bfloat16 *restrict lut,
-                                 bfloat16 *restrict output, int32_t dims) {
-  event0();
+static inline void rope_two_halves_row_aie2(const bfloat16 *restrict input,
+                                            const bfloat16 *restrict lut,
+                                            bfloat16 *restrict output,
+                                            int32_t dims) {
   constexpr unsigned MIN_STEPS = 4;
   const unsigned dims_half = (uint32_t)dims / 2;
   const unsigned steps = dims_half / 16;
@@ -248,6 +266,23 @@ static void rope_two_halves_aie2(const bfloat16 *restrict input,
     for (unsigned k = 0; k < steps; ++k, pi += 16, pl += 32, po += 16)
       rope_halves_step_aie2(pi, pl, po, dims_half);
   }
+}
+
+static void rope_two_halves_aie2(const bfloat16 *restrict input,
+                                 const bfloat16 *restrict lut,
+                                 bfloat16 *restrict output, int32_t dims) {
+  event0();
+  rope_two_halves_row_aie2(input, lut, output, dims);
+  event1();
+}
+
+static void rope_axial_aie2(const bfloat16 *restrict input,
+                            const bfloat16 *restrict lut,
+                            bfloat16 *restrict output, int32_t dims) {
+  event0();
+  const int32_t part = (uint32_t)dims / 2;
+  rope_two_halves_row_aie2(input, lut, output, part);
+  rope_two_halves_row_aie2(input + part, lut + part, output + part, part);
   event1();
 }
 #endif
@@ -269,6 +304,16 @@ void rope_two_halves(bfloat16 *input, bfloat16 *lut, bfloat16 *output,
   rope_two_halves_aie2(input, lut, output, dims);
 #else
   rope_kernel_two_halves<bfloat16, 32>(input, lut, output, dims);
+#endif
+}
+
+// Axial two-halves RoPE (a 2D position's x, then its y).
+void rope_axial(bfloat16 *input, bfloat16 *lut, bfloat16 *output,
+                int32_t dims) {
+#if AIE_TUNED_AIE2
+  rope_axial_aie2(input, lut, output, dims);
+#else
+  rope_kernel_axial<bfloat16, 32>(input, lut, output, dims);
 #endif
 }
 }
