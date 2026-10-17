@@ -20,7 +20,7 @@ A single [`@iron.jit`](./transposes.py) design exposing five distinct on-device 
 <sup>1</sup> Shim DMA stride-1 must be ≥ 4 bytes, so 1- and 2-byte elements would lower to `aie.dma_bd` with stride < 4 bytes and be rejected.
 <sup>2</sup> The `shuffle_16x16.cc` kernel is hand-written for `uint8 16x16`; supporting other dtypes / sizes would require new kernels.
 <sup>3</sup> Plus an empirical lower bound — `s = 8` needs `m, n ≥ 32` for the underlying `transpose_8x8` VECTOR_SIZE arithmetic to do the right block interleave.
-<sup>4</sup> `mb`/`nb` are ordinary `int32` kernel arguments, not `-DDIM_m`/`-DDIM_n` macros, and `M`/`K` are dispatch-time, so `dyn` has no divisibility or minimum-size constraint the way `combined`/`shuffle` do and needs no recompile per shape; the whole `M x K` tile is moved and transposed in one core call, so it has to fit in the core's 64 KB L1 alongside the objectFIFO's ping-pong buffers.
+<sup>4</sup> `mb`/`nb` are ordinary `int32` kernel arguments, not `-DDIM_m`/`-DDIM_n` macros, and `M`/`K` are dispatch-time, so `dyn` has no divisibility or minimum-size constraint the way `combined`/`shuffle` do and needs no recompile per shape; the whole `M x K` tile is moved and transposed in one core call, so it has to fit in the core's 64 KB L1 alongside the objectFIFO's ping-pong buffers, the core's stack and its runtime parameters; the compiler's buffer placement rejects a buffer that doesn't.
 
 Each `@iron.jit` function in [`transposes.py`](./transposes.py) raises `ValueError` if asked for a combo outside its support envelope.
 

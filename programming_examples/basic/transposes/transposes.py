@@ -81,11 +81,6 @@ _COMBINED_SRC = str(_KERNELS_DIR / "transpose.cc")
 _DYN_SRC = str(_KERNELS_DIR / "transpose_dyn.cc")
 
 _BYTES_TO_DTYPE = {1: np.uint8, 2: np.uint16, 4: np.uint32}
-
-# Core data memory on both npu1 and npu2 (AIETargetModel::getLocalMemorySize),
-# and the ObjectFifo constructor's default depth.
-_CORE_L1_BYTES = 64 * 1024
-_FIFO_DEPTH = 2
 _COMBINED_DTYPE_MACRO = {1: "DTYPE_i8", 2: "DTYPE_i16", 4: "DTYPE_i32"}
 
 
@@ -306,16 +301,6 @@ def _transpose_dyn(
         )
     # A's compiled buffer bounds every dispatch's M * K.
     max_elems = int(np.prod(np_ndarray_type_get_shape(A)))
-    # dyn moves the whole tile into L1 in one DMA, so both fifos' buffers have
-    # to sit there at once: 2 fifos x depth 2 x the tile.  Checked here because
-    # overflowing it otherwise surfaces as a placement failure from aiecc.
-    l1_bytes = 2 * _FIFO_DEPTH * max_elems * dtype_bytes
-    if l1_bytes > _CORE_L1_BYTES:
-        raise ValueError(
-            f"--strategy=dyn needs {l1_bytes} B of L1 for a {max_elems}-element "
-            f"tile of {dtype_bytes}-byte elements (2 fifos x depth "
-            f"{_FIFO_DEPTH}), over the core's {_CORE_L1_BYTES} B."
-        )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     flat_ty = np.ndarray[(max_elems,), np.dtype[dtype]]
 
@@ -356,6 +341,9 @@ def _transpose_dyn(
     def sequence(a, c, M, K, in_h, out_h):
         require(M > 0, "M must be positive")
         require(K > 0, "K must be positive")
+        # Bounding each side first keeps the i32 product M * K from wrapping.
+        require(M <= max_elems, f"M must fit the compiled buffer ({max_elems})")
+        require(K <= max_elems, f"K must fit the compiled buffer ({max_elems})")
         require(
             M * K <= max_elems,
             f"M*K must fit the compiled buffer ({max_elems} elements)",
