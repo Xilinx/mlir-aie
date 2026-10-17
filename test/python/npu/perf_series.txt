@@ -274,9 +274,11 @@ gelu/1024x16/bfloat16
 gelu/1024x16/bfloat16/use_lut=True/lut
 gelu/1024x256/bfloat16
 gelu_sized/1024x16/bfloat16
+gelu_sized/1024x16/bfloat16/exact=True
 gelu_sized/160x4/bfloat16/use_lut=True/lut-unroll-tail
 gelu_sized/160x4/bfloat16/unroll-tail
 gelu_sized/32x4/bfloat16/edge-tiny
+gelu_sized/32x4/bfloat16/exact=True/edge-tiny
 gelu_sized/96x4/bfloat16/short-trip
 gray2rgba/112x4/uint8/line_width=112/short-row
 gray2rgba/144x4/uint8/line_width=144/tail
@@ -288,6 +290,8 @@ layer_norm/208x16/bfloat16/cols=208/row-tail
 layer_norm_affine_cast/1008x16/float32_bfloat16/cols=1008/row-tail
 layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024
 layer_norm_affine_cast/112x16/float32_bfloat16/cols=112/row-tail
+layer_norm_eps/1024x16/bfloat16/cols=1024
+layer_norm_eps/208x16/bfloat16/cols=208/row-tail
 layer_norm_f32/1008x16/float32/cols=1008/row-tail
 layer_norm_f32/1024x16/float32/cols=1024
 layer_norm_f32/112x16/float32/cols=112/row-tail
@@ -478,6 +482,11 @@ rope/1008x16/bfloat16/cols=1008/row-tail
 rope/1024x16/bfloat16/cols=1024
 rope/1024x16/bfloat16/cols=1024/two_halves=True
 rope/112x16/bfloat16/cols=112/row-tail
+rope/128x16/bfloat16/axial=True/cols=128/rotary_dim=64/two_halves=True/partial
+rope/128x16/bfloat16/cols=128/rotary_dim=64/partial
+rope/128x16/bfloat16/cols=128/rotary_dim=96/two_halves=True/partial
+rope/512x16/bfloat16/axial=True/cols=512/two_halves=True
+rope/64x16/bfloat16/axial=True/cols=64/two_halves=True/row-tail
 rope/64x16/bfloat16/cols=64/two_halves=True/llama
 rope/96x16/bfloat16/cols=96/two_halves=True/row-tail
 row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/bit-48
