@@ -391,8 +391,12 @@ CASES: list[Case] = [
     # datamovement
     Case("axpy", calls=16, scalars=(2.5,), smoke=True),
     Case("axpy", calls=256, scalars=(2.5,), data_cases=IEEE_FLOAT),
-    # The kernel rounds a to bf16; 1.003 is not a bf16, so the reference must too.
+    # 1.003 is not a bf16: a takes more than one limb.
     check("axpy", scalars=(1.003,), tag="inexact-a", smoke=True),
+    # sqrt(1536), an embedding scale no bf16 holds: all three limbs, and
+    # negative, so their products all subtract.
+    check("axpy", scalars=(39.191835884530846,), tag="f32-a", smoke=True),
+    check("axpy", scalars=(-39.191835884530846,), tag="f32-a-negative"),
     Case("convert_copy", calls=16, smoke=True),
     Case("convert_copy", calls=256),
     # 272 is a multiple of the kernel's 16-element step but not of the 128 its
