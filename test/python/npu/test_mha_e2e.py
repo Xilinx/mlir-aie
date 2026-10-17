@@ -691,6 +691,10 @@ def test_mha_round_matches_masked_attention(
         (2, 3, 3 * _B, dict(window=_B)),
         # 16-key blocks, a row one 16-lane vector.
         (3, 6, 90, dict(b_q=16, b_kv=16, causal=False, window=16)),
+        # Windows of part of a block: rows past the window's reach keep no
+        # key of a block the rows above them keep, and none before it.
+        (1, 2, 2 * _B, dict(window=11)),
+        (3, 4, 90, dict(b_q=16, b_kv=16, causal=False, window=11)),
     ],
 )
 @pytest.mark.parametrize("accurate_exp2", [False, True])

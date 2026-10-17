@@ -1284,14 +1284,14 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
     fn = kernels.mha_softmax(dim_m=16, dim_n=32, causal=False, window=32)
     assert [v for i, v in fn.contract.parameter_bindings if i in (5, 6)] == [16, 32]
     for bad in (
-        dict(window=48),
-        dict(dim_m=32, dim_n=16, window=64),
         dict(window=-64),
         dict(scale=0.0),
         dict(dim_n=24),
     ):
         with pytest.raises(ValueError):
             kernels.mha_softmax(**bad)
+    # A window need not be whole query blocks.
+    assert "-DMHA_WINDOW=11" in kernels.mha_softmax(window=11).compile_flags
 
     # A zero score gives a kept key the weight 1 against m = 0, a masked one 0.
     for causal, window in ((True, 0), (False, 0), (True, 32), (False, 32)):
