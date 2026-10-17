@@ -5,6 +5,7 @@
 #
 """Host runtime utilities: device selection, tensor allocation, and numerical helpers."""
 
+from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -19,17 +20,41 @@ if TYPE_CHECKING:
 _CURRENT_DEVICE = None
 
 
-def set_current_device(device: "Device | None"):
+class DeviceSelection(AbstractContextManager):
+    """A selection made by `set_current_device`; leaving its `with` block undoes it.
+
+    Args:
+        previous (Device | None): The device that was current before the selection.
+    """
+
+    def __init__(self, previous: "Device | None"):
+        self.previous = previous
+
+    def __exit__(self, *exc_info) -> None:
+        global _CURRENT_DEVICE
+        _CURRENT_DEVICE = self.previous
+
+
+def set_current_device(device: "Device | None") -> DeviceSelection:
     """Set (or clear) the current device.
+
+    The selection takes effect at once. Used as a context manager,
+    ``with set_current_device(device):`` restores the previous device on exit,
+    also when the block raises.
 
     Args:
         device (Device | None): The device to set as current. Passing ``None``
             clears the current selection (used by test teardown and to reset
             between designs), so a ``Device | None`` from a resolver can be
             forwarded here directly.
+
+    Returns:
+        DeviceSelection: The selection, whose exit restores the previous device.
     """
     global _CURRENT_DEVICE
+    selection = DeviceSelection(_CURRENT_DEVICE)
     _CURRENT_DEVICE = device
+    return selection
 
 
 def bfloat16_safe_allclose(dtype, arr1, arr2):

@@ -147,7 +147,7 @@ def vector_vector_add(
     )
 
     def core_body(in1, in2, out, in1_p, in1_c, in2_p, in2_c, out_p, out_c):
-        # Worker wraps this in `for _ in range_(sys.maxsize)` by default
+        # Worker wraps this in a `while True` loop by default
         # (while_true=True).  Locks + buffers are shared by reference with
         # compute_dma above.
         in2_c.acquire()

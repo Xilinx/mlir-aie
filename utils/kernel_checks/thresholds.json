@@ -17,7 +17,12 @@
     "end-to-end time by 6.4% and its compile time by 3.7%. In three sweeps, every",
     "seed's placement cost was identical, the mean CPU time moved by 1.6%, the",
     "slowest seed's by 18%, and peak memory by under 1%; the sweep runs on shared",
-    "hosted runners, so CPU time has room."
+    "hosted runners, so CPU time has room. The allocator's corpus is fixed, and two",
+    "full runs gave identical bank sharing. The router's corpus is new each night:",
+    "over three nightly seed ranges per device, hops over the constructed routing",
+    "moved by at most 0.2% and msels per design by 4.6%. The allocator's wall time",
+    "moved by 36% and the router's time per design by 41% with the machine's load.",
+    "Failure counts keep the default: any change from zero counts."
   ],
   "cycles": {"pct": 2, "gated": true},
   "cycles_per_kop": {"pct": 2, "derived": "cycles"},
@@ -32,5 +37,10 @@
   "final_cost_max": {"pct": 1},
   "cpu_ms_mean": {"pct": 25},
   "cpu_ms_max": {"pct": 40},
-  "peak_rss_mb_max": {"pct": 10}
+  "peak_rss_mb_max": {"pct": 10},
+  "bank_pair_sharing": {"pct": 1},
+  "wall_s": {"pct": 50},
+  "hop_ratio": {"pct": 1},
+  "amsels_per_design": {"pct": 10},
+  "ms_per_design": {"pct": 50}
 }

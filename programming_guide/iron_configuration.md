@@ -37,6 +37,13 @@ If the IRON device is not set, many designs fetch it on demand from the [`Defaul
 <abc.NPU1 object at 0x722a65903a10>
 ```
 
+Used as a context manager, it selects the device for the block and restores
+the previous selection on exit, also when the block raises:
+```python
+with iron.set_current_device(iron.device.NPU2Col1()):
+    my_design.compile()
+```
+
 ### Cross-compiling for a different NPU
 
 The target architecture (`aie2` / `aie2p`) is part of the per-design
@@ -53,8 +60,8 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 
 # Same generator, two arches → two distinct cache dirs.
 for dev_cls in (NPU1Col1, NPU2Col1):
-    iron.set_current_device(dev_cls())
-    my_design.specialize(N=4096).compile()
+    with iron.set_current_device(dev_cls()):
+        my_design.specialize(N=4096).compile()
 ```
 
 Useful for building Strix binaries on Phoenix-only CI hosts (or vice

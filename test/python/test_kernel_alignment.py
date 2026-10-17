@@ -13,7 +13,6 @@ from aie.extras.dialects.memref import view as memref_view
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker, kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
-from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
 
 _W, _IC, _OC = 8, 16, 16
@@ -21,9 +20,7 @@ _WTS = _IC * _OC
 
 
 def _design(device, factory, shift):
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(device)
-    try:
+    with set_current_device(device):
         kernel = getattr(kernels, factory)(
             input_width=_W, input_channels=_IC, output_channels=_OC
         )
@@ -59,8 +56,6 @@ def _design(device, factory, shift):
 
         rt = Runtime(sequence, [in_ty, out_ty, of_in.prod(), of_out.cons()])
         return Program(device, rt, workers=[worker]).resolve_program()
-    finally:
-        set_current_device(previous)
 
 
 @pytest.mark.parametrize("factory", ["bn_conv2dk1_i8", "bn_conv2dk1_relu"])
@@ -87,9 +82,7 @@ def test_aligned_view_builds(device, factory, shift):
 
 def _views_design(device, factory, kwargs, index, shift):
     """Every array argument is a view of its own buffer; ``index``'s is shifted."""
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(device)
-    try:
+    with set_current_device(device):
         kernel = getattr(kernels, factory)(**kwargs)
         arrays = {}
         for i, ty in enumerate(kernel.arg_types()):
@@ -128,8 +121,6 @@ def _views_design(device, factory, kwargs, index, shift):
 
         rt = Runtime(sequence, [in_ty, of_in.prod()])
         return Program(device, rt, workers=[worker]).resolve_program()
-    finally:
-        set_current_device(previous)
 
 
 _CONV_VECTOR_ARGS = [

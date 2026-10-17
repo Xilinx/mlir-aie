@@ -47,7 +47,7 @@ from ...dialects.aie import (
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...dialects.aie import bds as bd_blocks
-from ...dialects.aiex import dma_configure_task, dma_configure_task_for
+from ...dialects.aiex import dma_configure_task, dma_configure_task_for, npu_sync
 from ...helpers.npdtypes import pack_pad_value
 from ...helpers.sourceloc import SourceSite
 from ...helpers.taplib import TensorAccessPattern
@@ -212,12 +212,32 @@ class DmaEndpoint:
         """
         return None
 
+    def sync(self) -> None:
+        """Wait until this channel's tasks have issued their completion tokens.
+
+        Called in a [`Runtime`][iron.Runtime] sequence body, it emits
+        ``aiex.npu_sync`` on its tile and channel.
+
+        Raises:
+            ValueError: The tile is not placed or the channel is not given.
+        """
+        tile = self.tile
+        if tile.col is None or tile.row is None or self.channel is None:
+            raise ValueError(
+                f"sync() waits on a placed tile's channel by index; {self} is not one."
+            )
+        npu_sync(tile.col, tile.row, self.direction.value, self.channel)
+
     def _operand(self) -> int | str:
-        """Return the channel operand: its index if given, else the endpoint symbol."""
-        if self.channel is not None:
-            return self.channel
-        assert self.symbol is not None
-        return self.symbol
+        """Return the channel operand, a symbol or an index.
+
+        The endpoint symbol where this end lowers to one, pinned or not, else
+        the channel index.
+        """
+        if self.symbol is not None:
+            return self.symbol
+        assert self.channel is not None
+        return self.channel
 
     def _check_on(self, tile: Tile, direction: DMAChannelDir) -> None:
         if self.tile != tile:
@@ -310,7 +330,8 @@ class DmaEndpoint:
             repeat = dict(repeat_count=int(runs) - 1)
         else:
             repeat = dict(repeat_count_val=runs - 1)
-        operand = self._operand()
+        # aiex.dma_configure_task_for has no out_of_order.
+        operand = self.channel if out_of_order else self._operand()
         if isinstance(operand, str):
             op = dma_configure_task_for(operand, issue_token=wait, **repeat)
         else:

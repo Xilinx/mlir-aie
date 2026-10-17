@@ -242,6 +242,29 @@ CASES: list[Case] = [
         tag="accurate-short",
         smoke=True,
     ),
+    # The float32 input path: each option, a soft-capped attention row (cap
+    # 50, masked, with an addend), and the ends of the cap's range.
+    *[
+        check(
+            "softmax",
+            dict(tile_size=n, input_dtype=np.float32, **kw),
+            calls=8,
+            tag="f32",
+            smoke=smoke,
+        )
+        for n, kw, smoke in (
+            (32, {}, True),
+            (1024, {}, False),
+            (32, dict(soft_cap=50.0), False),
+            (1024, dict(soft_cap=50.0), False),
+            (32, dict(masked=True), False),
+            (160, dict(addend=True), False),
+            (32, dict(soft_cap=50.0, masked=True, addend=True), True),
+            (1024, dict(soft_cap=30.0, masked=True, addend=True), False),
+            (32, dict(soft_cap=2.0**-100, masked=True), False),
+            (1024, dict(soft_cap=2.0**10, addend=True), False),
+        )
+    ],
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     # 160 is a multiple of the kernel's 32-element step but not of the 128 its

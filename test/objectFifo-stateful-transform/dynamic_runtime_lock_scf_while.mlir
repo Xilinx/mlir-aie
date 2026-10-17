@@ -35,24 +35,20 @@
 // CHECK:             %[[C0I:.*]] = arith.constant 0 : i32
 // CHECK:             %[[C3I:.*]] = arith.constant 3 : i32
 // CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
-// CHECK:             %[[C4I:.*]] = arith.constant 4 : i32
 // CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
-// CHECK:             %[[W:.*]]:3 = scf.while (%[[A0:.*]] = %[[C0]], %[[A1:.*]] = %[[C0I]], %[[A2:.*]] = %[[C0I]]) : (index, i32, i32) -> (index, i32, i32) {
+// CHECK:             %[[W:.*]]:2 = scf.while (%[[A0:.*]] = %[[C0]], %[[A1:.*]] = %[[C0I]]) : (index, i32) -> (index, i32) {
 // CHECK:               %[[CND:.*]] = arith.cmpi slt, %[[A0]], %[[C14]] : index
-// CHECK:               scf.condition(%[[CND]]) %[[A0]], %[[A1]], %[[A2]] : index, i32, i32
+// CHECK:               scf.condition(%[[CND]]) %[[A0]], %[[A1]] : index, i32
 // CHECK:             } do {
-// CHECK:             ^bb0(%[[BA0:.*]]: index, %[[BA1:.*]]: i32, %[[BA2:.*]]: i32):
-// CHECK:               %[[SUB:.*]] = arith.subi %[[C3I]], %[[BA2]] : i32
+// CHECK:             ^bb0(%[[BA0:.*]]: index, %[[BA1:.*]]: i32):
+// CHECK:               %[[SUB:.*]] = arith.subi %[[C3I]], %[[BA1]] : i32
 // CHECK:               %[[DELTA:.*]] = arith.maxsi %[[SUB]], %[[C0I]] : i32
 // CHECK:               aie.use_lock(%[[CCONS]], AcquireGreaterEqual, %[[DELTA]])
-// CHECK:               %[[NH:.*]] = arith.addi %[[BA2]], %[[DELTA]] : i32
+// CHECK:               %[[NH:.*]] = arith.addi %[[BA1]], %[[DELTA]] : i32
 // CHECK:               aie.use_lock(%[[CPROD]], Release, %[[C1I]])
 // CHECK:               %[[RH:.*]] = arith.subi %[[NH]], %[[C1I]] : i32
-// CHECK:               %[[NX:.*]] = arith.addi %[[BA1]], %[[C1I]] : i32
-// CHECK:               %[[CMP:.*]] = arith.cmpi sge, %[[NX]], %[[C4I]] : i32
-// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[C0I]], %[[NX]] : i32
 // CHECK:               %[[INC:.*]] = arith.addi %[[BA0]], %[[C1]] : index
-// CHECK:               scf.yield %[[INC]], %[[SEL]], %[[RH]] : index, i32, i32
+// CHECK:               scf.yield %[[INC]], %[[RH]] : index, i32
 // CHECK:             }
 // CHECK:             memref.store %[[W]]#0, %[[BUF]]{{\[}}%[[C0]]] : memref<1xindex>
 // CHECK:             aie.use_lock(%[[CPROD]], Release, %[[C2I]])

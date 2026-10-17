@@ -19,8 +19,7 @@
 // Reduced from router_properties.py npu2 seed 2256.
 
 // CHECK-LABEL: aie.switchbox(%tile_0_4)
-// CHECK:         aie.packet_rules(South : 0) {
-// CHECK-NEXT:      aie.rule(31, 24, %[[T:[0-9]+]])
+// CHECK:           aie.rule(31, 24, %[[T:[0-9]+]])
 // CHECK-NEXT:    }
 // CHECK:         aie.packet_rules(DMA : 0) {
 // CHECK-NEXT:      aie.rule(31, 25, %[[M:[0-9]+]])

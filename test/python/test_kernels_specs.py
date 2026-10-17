@@ -32,7 +32,6 @@ import pytest
 from aie.iron import kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
-from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -1045,9 +1044,7 @@ def test_source_locatable(spec: KernelSpec):
     ids=lambda s: s.name,
 )
 def test_lut_source_selection(spec: KernelSpec, device, arch):
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(device())
-    try:
+    with set_current_device(device()):
         ef = spec.factory(**spec.kwargs)
         assert ef.source_string is None
         assert Path(ef.source_file).is_file()
@@ -1065,8 +1062,6 @@ def test_lut_source_selection(spec: KernelSpec, device, arch):
         else:
             assert not selectors
             assert Path(ef.source_file).name == spec.lut_source
-    finally:
-        set_current_device(previous)
 
 
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
@@ -1211,12 +1206,8 @@ def test_arg_dtype_out_of_range_raises():
 
 @pytest.fixture(params=["aie2", "aie2p"])
 def kernel_arch(request):
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU1Col1() if request.param == "aie2" else NPU2Col1())
-    try:
+    with set_current_device(NPU1Col1() if request.param == "aie2" else NPU2Col1()):
         yield request.param
-    finally:
-        set_current_device(previous)
 
 
 @pytest.mark.parametrize("name", ["rms_norm", "rms_norm_eps", "layer_norm", "rope"])

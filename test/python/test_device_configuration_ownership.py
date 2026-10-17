@@ -399,3 +399,69 @@ def test_distinct_cascade_flows_can_belong_to_distinct_configurations():
     text = str(resolve_two([producer_a, consumer_a], [producer_b, consumer_b]))
 
     assert text.count("aie.cascade_flow") == 2
+
+
+Line = np.ndarray[(256,), np.dtype[np.int32]]
+
+
+def member(fifo_name=None, rtp_name=None):
+    """A Worker draining a fifo its Runtime fills, with an RTP buffer."""
+    of = ObjectFifo(Line, name=fifo_name)
+    rtp = Buffer(Tensor, name=rtp_name, use_write_rtp=True)
+
+    def core(c, _rtp):
+        c.acquire(1)
+        c.release(1)
+
+    def sequence(a, p):
+        p.fill(a)
+
+    return Worker(core, [of.cons(), rtp]), Runtime(sequence, [Line, of.prod()])
+
+
+def pack(*members):
+    workers, runtimes = zip(*members)
+    config = DeviceConfiguration("pack", NPU2Col1(), workers=workers, runtimes=runtimes)
+    return Program.compose([config], entry=runtimes[0]).resolve_program()
+
+
+@pytest.mark.parametrize(
+    "first,second,kinds",
+    [
+        (dict(fifo_name="in"), dict(fifo_name="in"), "two ObjectFifos"),
+        (dict(rtp_name="rtp"), dict(rtp_name="rtp"), "two Buffers"),
+        (dict(fifo_name="x"), dict(rtp_name="x"), "an ObjectFifo and a Buffer"),
+    ],
+)
+def test_one_configuration_refuses_a_symbol_named_twice(first, second, kinds):
+    # Two members built by one function name their fifos alike; the verifier
+    # used to report the second's consumer port on the first's tile.
+    name = first.get("fifo_name") or first["rtp_name"]
+    with pytest.raises(
+        ValueError,
+        match=rf"configuration 'pack' names symbol '{name}' twice \({kinds}\); "
+        "leave one unnamed or rename it",
+    ):
+        pack(member(**first), member(**second))
+
+
+def test_unnamed_symbols_in_one_configuration_take_fresh_names():
+    module = pack(member(), member(fifo_name="of0", rtp_name="rtp0"))
+    module.operation.verify()
+    text = str(module)
+    for symbol in (
+        "aie.objectfifo @of0(",
+        "aie.objectfifo @of1(",
+        'sym_name = "rtp0"',
+        'sym_name = "rtp1"',
+    ):
+        assert text.count(symbol) == 1, symbol
+
+
+def test_two_configurations_may_name_a_symbol_alike():
+    (w_a, rt_a), (w_b, rt_b) = member(fifo_name="in"), member(fifo_name="in")
+    config_a = DeviceConfiguration("dev_a", NPU2Col1(), workers=[w_a], runtimes=[rt_a])
+    config_b = DeviceConfiguration("dev_b", NPU2Col1(), workers=[w_b], runtimes=[rt_b])
+    Program.compose(
+        [config_a, config_b], entry=rt_a
+    ).resolve_program().operation.verify()

@@ -14,7 +14,6 @@ to size asymmetric BDs so neither side hangs on a length mismatch.
 """
 
 import os
-import sys
 from dataclasses import dataclass
 
 import aie.iron as iron
@@ -43,7 +42,7 @@ from aie.iron import (
     TileDma,
     Worker,
 )
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 from aie.iron.device import Tile
 
 N = 4096
@@ -413,10 +412,10 @@ def dma_compression(
         def core_body(*enable_fns):
             for fn in enable_fns:
                 fn()
-            for _ in range_(sys.maxsize):
+            for _ in forever_():
                 pass
 
-        core_worker = Worker(core_body, list(enables), tile=link_tile)
+        core_worker = Worker(core_body, list(enables), tile=link_tile, while_true=False)
 
     # Strip "core_"/"memtile_" prefix to get the cmp/dcmp/both suffix.
     suffix = (
