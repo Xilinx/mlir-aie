@@ -14,6 +14,8 @@ Submodules:
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, log_f32, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm, layer_norm_eps
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
+- `ssm` — ssd_cb, ssd_decay, ssd_out, ssd_state, ssm_state_update (Mamba-2's
+  selective state space scan: a prompt chunk's blocks and a decode step)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
 - `moe` — router_top_k (a mixture-of-experts router's top-k ids and softmax
   weights, deterministic, from a `sample_select` summary), moe_group (a
@@ -289,6 +291,17 @@ from .reduce import (
     reduce_min_ref,
 )
 from .sample import exp64_ref, sample_combine, sample_ref, sample_select
+from .ssm import (
+    ssd_cb,
+    ssd_cb_ref,
+    ssd_decay,
+    ssd_out,
+    ssd_out_ref,
+    ssd_state,
+    ssd_state_ref,
+    ssm_state_update,
+    ssm_state_update_ref,
+)
 from .transformer import (
     layer_norm_affine_cast,
     layer_norm_affine_cast_ref,
@@ -336,6 +349,15 @@ __all__ = [
     "conv_even",
     "set_rounding",
     "zero",
+    "ssd_cb",
+    "ssd_cb_ref",
+    "ssd_decay",
+    "ssd_out",
+    "ssd_out_ref",
+    "ssd_state",
+    "ssd_state_ref",
+    "ssm_state_update",
+    "ssm_state_update_ref",
     "passthrough",
     "scale",
     "add",

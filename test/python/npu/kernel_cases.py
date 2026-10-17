@@ -2126,6 +2126,32 @@ CASES: list[Case] = [
         calls=16,
         tag="taps6-bias",
     ),
+    # Mamba-2's selective state space scan at Granite 4.0-H's shapes: a
+    # 128-wide state, a head's dt and per-head arrays as a pair of columns
+    # (the 4-byte DMA unit), a quarter of a 64-wide head a unit; and a full
+    # row of 64 heads read at an odd column.
+    Case("ssd_cb", dict(n=128), calls=4, smoke=True),
+    check("ssd_decay", dict(dt_cols=2), scalars=(1, 32), smoke=True),
+    check("ssd_decay", dict(dt_cols=2), scalars=(0, 13), tag="partial-block"),
+    check("ssd_decay", dict(dt_cols=64), scalars=(37, 32), tag="row"),
+    Case("ssd_out", dict(p=16, n=128, dt_cols=2), calls=2, scalars=(1,), smoke=True),
+    check("ssd_out", dict(p=32, n=64, dt_cols=64), calls=2, scalars=(37,), tag="row"),
+    Case("ssd_state", dict(p=16, n=128), calls=2, smoke=True),
+    check("ssd_state", dict(p=32, n=64), calls=2),
+    Case(
+        "ssm_state_update",
+        dict(p=16, n=128, dt_cols=2),
+        calls=4,
+        scalars=(1,),
+        smoke=True,
+    ),
+    check(
+        "ssm_state_update",
+        dict(p=32, n=64, dt_cols=64),
+        calls=4,
+        scalars=(37,),
+        tag="row",
+    ),
     # amd/IRON model shapes: Llama 3.2 1B. Each is one core's per-call tile as
     # IRON instantiates the model at a 2048-token context. The decode GEMVs over
     # 2048 and 64 columns are the mv cases above. The one-row ffn down GEMV is
