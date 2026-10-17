@@ -2091,6 +2091,41 @@ CASES: list[Case] = [
         calls=16,
         tag="two-chunks",
     ),
+    # other tap counts and a bias plane: Granite 4.0-H's Mamba-2 convolution
+    # (4 taps and a bias), LFM2's short convolution (3 taps), and the ends
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=544, taps=4, bias=True, clamp=False),
+        calls=16,
+        tag="taps4-bias",
+    ),
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=256, taps=3, clamp=False),
+        calls=16,
+        tag="taps3",
+    ),
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=96, taps=2),
+        calls=16,
+        tag="taps2",
+    ),
+    # The harness streams the planes through one fifo a plane deep, so 8 taps
+    # (16 planes) pass a channel's 16 buffer descriptors: the 7-tap build is
+    # the widest it runs.
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=320, taps=7),
+        calls=16,
+        tag="taps7",
+    ),
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=320, taps=6, bias=True),
+        calls=16,
+        tag="taps6-bias",
+    ),
     # amd/IRON model shapes: Llama 3.2 1B. Each is one core's per-call tile as
     # IRON instantiates the model at a 2048-token context. The decode GEMVs over
     # 2048 and 64 columns are the mv cases above. The one-row ffn down GEMV is

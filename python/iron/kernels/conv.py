@@ -11,6 +11,7 @@ remain in the ABI and must match the factory dimensions; scales, region checks
 and channel offsets remain runtime values.
 """
 
+import inspect
 from functools import partial
 
 import numpy as np
@@ -404,22 +405,24 @@ def dwconv1d_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bool):
 _CLAMP_LIMIT = 6.0
 
 
-def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalFunction:
-    """Depthwise 1-D conv over a channels-last layout, 5 taps.
+def dwconv1d_channels_last(
+    channels: int = 256, clamp: bool = True, taps: int = 5, bias: bool = False
+) -> ExternalFunction:
+    """Depthwise 1-D conv over a channels-last layout, 2 to 8 taps.
 
-    ``y[c] = clamp(sum_{t=0..4} w_t[c] * x_t[c], lo, hi)`` for ``c < channels``:
-    one output timestep across every channel, with per-channel taps. The five
-    taps arrive as five separate base pointers, oldest first, so a depth-5
-    ObjectFifo is itself the sliding window.
+    ``y[c] = clamp(sum_{t<taps} w_t[c] * x_t[c] + b[c], lo, hi)`` for
+    ``c < channels``: one output timestep across every channel, with
+    per-channel taps. The taps arrive as separate base pointers, oldest
+    first, so a ``taps``-deep ObjectFifo is itself the sliding window.
 
     Counterpart to
     [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first];
     layout picks the vectorization axis, so neither subsumes the other. See
     the "Choosing a depthwise conv1d" section of ``aie_kernels/README.md``.
 
-    The five weight planes are five independent arguments, like the taps, so
-    where they live is the design's business: they need not be one buffer, or
-    evenly spaced.
+    The weight planes are independent arguments, like the taps, so where they
+    live is the design's business: they need not be one buffer, or evenly
+    spaced. The bias, with ``bias``, is one more plane after the taps.
 
     ``lo``/``hi`` are runtime buffers the design writes, bound here to
     ``+/-_CLAMP_LIMIT`` so the kernel is judged against a reference clamping to
@@ -428,75 +431,109 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
     Args:
         channels: Channels per call (multiple of 32).
         clamp: Clamp the result to the runtime ``lo``/``hi`` buffers.
+        taps: The taps, each its own entry point's argument count.
+        bias: Add a per-channel bias plane before the narrowing.
     """
     if channels <= 0 or channels % 32:
         raise ValueError(
             "dwconv1d_channels_last: channels must be a positive multiple of the "
             f"32-lane store, got {channels}"
         )
-    _TAPS = 5
+    if not 2 <= taps <= 8:
+        raise ValueError(f"dwconv1d_channels_last: taps must be 2 to 8, got {taps}")
+    planes = 2 * taps + bias
     plane_ty = np.ndarray[(channels,), np.dtype[bfloat16]]
     lim_ty = np.ndarray[(1,), np.dtype[np.float32]]
+    # The 5-tap, unbiased build keeps its own flags, so it compiles as before.
+    flags = [f"-DDWCONV1D_CL_C={channels}", f"-DDWCONV1D_CL_CLAMP={int(clamp)}"]
+    if taps != 5 or bias:
+        flags += [f"-DDWCONV1D_CL_TAPS={taps}", f"-DDWCONV1D_CL_BIAS={int(bias)}"]
     return _make_extern(
-        "dwconv1d_channels_last_k5_bf16",
+        f"dwconv1d_channels_last_k{taps}{'_bias' if bias else ''}_bf16",
         _kernel_source("conv/dwconv1d_channels_last.cc"),
-        [*([plane_ty] * 2 * _TAPS), plane_ty, lim_ty, lim_ty],
-        compile_flags=[
-            f"-DDWCONV1D_CL_C={channels}",
-            f"-DDWCONV1D_CL_CLAMP={int(clamp)}",
-        ],
+        [*([plane_ty] * planes), plane_ty, lim_ty, lim_ty],
+        compile_flags=flags,
         contract=KernelContract(
-            alignments=_vector_args(*range(2 * _TAPS + 1)),
+            alignments=_vector_args(*range(planes + 1)),
             trace=Trace.whole_call(),
             setup=conv_even,
             # lo/hi are buffers the design writes, so they are Param like
             # mha's idx gate: bound here rather than sampled, which also keeps
             # lo <= hi (aie::clamp does not define the inverted pair).
-            roles=(*((In,) * 2 * _TAPS), Out, Param, Param),
+            roles=(*((In,) * planes), Out, Param, Param),
             parameter_bindings=(
-                (11, np.array([-_CLAMP_LIMIT], np.float32)),
-                (12, np.array([_CLAMP_LIMIT], np.float32)),
+                (planes + 1, np.array([-_CLAMP_LIMIT], np.float32)),
+                (planes + 2, np.array([_CLAMP_LIMIT], np.float32)),
             ),
-            reference=partial(
-                dwconv1d_channels_last_ref,
-                lo=-_CLAMP_LIMIT,
-                hi=_CLAMP_LIMIT,
-                clamp=clamp,
-            ),
+            reference=_planes_reference(taps, bias, clamp),
             acc_dtype=np.float32,
-            reduction=_TAPS,
-            # Derived: the five products are exact in f32 (bf16 carries 8
-            # mantissa bits, 8 + 8 < 24) and the sum rounds at most 5 * 2**-24
-            # before one bf16 narrowing on store, which is 2**-9 relative. The
-            # narrowing dominates by four orders of magnitude, so the bound is
-            # one bf16 ulp with no room to spare for a real error.
+            reduction=taps + bias,
+            # Derived: the products are exact in f32 (bf16 carries 8 mantissa
+            # bits, 8 + 8 < 24), as is the bias times one, and the sum rounds
+            # at most (taps + bias) * 2**-24 before one bf16 narrowing on
+            # store, which is 2**-9 relative. The narrowing dominates by four
+            # orders of magnitude, so the bound is one bf16 ulp.
             tolerance=Tolerance.relative(
                 2**-8,
                 0.0,
                 note="one bf16 ulp from the single narrowing store; the f32 "
-                "5-term sum contributes 5 * 2**-24. Verified on npu2",
+                "sum of at most 9 terms contributes 9 * 2**-24. Verified on npu2",
             ),
-            ops_per_call=2 * _TAPS * channels,
+            ops_per_call=(2 * taps + bias) * channels,
         ),
     )
 
 
+def _planes_reference(taps: int, bias: bool, clamp: bool):
+    """``dwconv1d_channels_last_ref`` at the factory's clamp limits.
+
+    Its signature names each plane the contract hands it.
+    """
+
+    def reference(*planes):
+        return dwconv1d_channels_last_ref(
+            *planes,
+            lo=-_CLAMP_LIMIT,
+            hi=_CLAMP_LIMIT,
+            clamp=clamp,
+            taps=taps,
+            bias=bias,
+        )
+
+    names = [f"w_{t}" for t in range(taps)] + [f"x_{t}" for t in range(taps)]
+    reference.__signature__ = inspect.Signature(
+        [
+            inspect.Parameter(name, inspect.Parameter.POSITIONAL_ONLY)
+            for name in names + (["b"] if bias else [])
+        ]
+    )
+    return reference
+
+
 def dwconv1d_channels_last_ref(
-    w_0, w_1, w_2, w_3, w_4, x_0, x_1, x_2, x_3, x_4, *, lo, hi, clamp: bool
+    *planes, lo, hi, clamp: bool, taps: int = 5, bias: bool = False
 ):
     """Numpy reference for [`dwconv1d_channels_last`][iron.kernels.conv.dwconv1d_channels_last]: one timestep over all channels.
 
-    Each tap is an independent plane, so this is a plain ``sum_t w_t * x_t``.
-    Accumulated in float32, which is what the kernel's ``accfloat`` is, then
-    narrowed once on store; ``clamp`` applies after the narrowing, as the
-    kernel's ``aie::clamp`` does on the already-bf16 vector.
+    ``planes`` are the ``taps`` weight planes, the ``taps`` input planes and,
+    with ``bias``, the bias plane. Each tap is an independent plane, so this
+    is a plain ``sum_t w_t * x_t`` plus the bias, accumulated in float32,
+    which is what the kernel's ``accfloat`` is, then narrowed once on store;
+    ``clamp`` applies after the narrowing, as the kernel's ``aie::clamp``
+    does on the already-bf16 vector.
     """
-    ws = [np.asarray(v).astype(np.float32) for v in (w_0, w_1, w_2, w_3, w_4)]
-    xs = [np.asarray(v).astype(np.float32) for v in (x_0, x_1, x_2, x_3, x_4)]
-    acc = np.zeros(xs[0].shape, dtype=np.float32)
-    for wt, xt in zip(ws, xs):
+    if len(planes) != 2 * taps + bias:
+        raise TypeError(
+            f"dwconv1d_channels_last_ref: {len(planes)} planes, not "
+            f"{2 * taps + bias}"
+        )
+    f32 = [np.asarray(v).astype(np.float32) for v in planes]
+    acc = np.zeros(f32[0].shape, dtype=np.float32)
+    for wt, xt in zip(f32[:taps], f32[taps : 2 * taps]):
         acc += wt * xt
-    out = acc.astype(np.asarray(x_0).dtype)
+    if bias:
+        acc += f32[-1]
+    out = acc.astype(np.asarray(planes[taps]).dtype)
     if clamp:
         out = np.clip(out, np.asarray(lo, out.dtype), np.asarray(hi, out.dtype))
     return out
