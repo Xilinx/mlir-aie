@@ -141,10 +141,43 @@ static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
     return out;
   }
 }
+
+// exp2_bf16_32 of x <= 0, finite or -inf, as the online softmax takes it: no
+// such x reaches its overflow or NaN select, so only the flush below -125.5
+// stays.
+static inline aie::vector<bfloat16, 32>
+exp2_nonpos_bf16_32(aie::vector<float, 32> x) {
+  using acc_t = aie::accum<accfloat, 32>;
+  const Exp2F32 e = exp2_f32_32(x);
+  return aie::select(acc_t(e.bits.cast_to<float>()).to_vector<bfloat16>(),
+                     aie::zeros<bfloat16, 32>(), e.below);
+}
+
+template <unsigned N>
+static inline aie::vector<bfloat16, N>
+exp2_nonpos_bf16(aie::vector<float, N> x) {
+  if constexpr (N < 32) {
+    return exp2_nonpos_bf16_32(x.template grow<32>()).template extract<N>(0);
+  } else {
+    aie::vector<bfloat16, N> out;
+    for (unsigned i = 0; i < N / 32; i++)
+      out.insert(i, exp2_nonpos_bf16_32(x.template extract<32>(i)));
+    return out;
+  }
+}
 #else
 template <unsigned N>
 static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
   return aie::exp2<bfloat16>(x);
+}
+#endif
+
+// Without the accurate exp2, exp2_bf16 itself.
+#ifndef EXP2_BF16_ACCURATE
+template <unsigned N>
+static inline aie::vector<bfloat16, N>
+exp2_nonpos_bf16(aie::vector<float, N> x) {
+  return exp2_bf16(x);
 }
 #endif
 

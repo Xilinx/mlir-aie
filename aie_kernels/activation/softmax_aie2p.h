@@ -186,7 +186,7 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
     input_bf16 = *it_exp_in++;
     scaled_accum = aie::mul(input_bf16, log2e_vec);
     exp_in_accum = aie::msc(scaled_accum, max_val_vec, log2e_vec);
-    exp_val = exp2_bf16(exp_in_accum.template to_vector<float>());
+    exp_val = exp2_nonpos_bf16(exp_in_accum.template to_vector<float>());
     exp_val_accum = add(exp_val_accum, exp_val);
     *it_exp_out++ = exp_val;
   }
@@ -229,7 +229,8 @@ partial_softmax_row_f32(const float *__restrict A, bfloat16 *__restrict P,
     aie::accum<accfloat, W> x = aie::mul(dl.hi, s);
     x = aie::mac(x, dl.mid, s);
     x = aie::mac(x, dl.lo, s);
-    const aie::vector<bfloat16, W> p = exp2_bf16(x.template to_vector<float>());
+    const aie::vector<bfloat16, W> p =
+        exp2_nonpos_bf16(x.template to_vector<float>());
     sum = aie::add(sum, p);
     aie::store_v(P + c, p);
   }

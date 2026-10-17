@@ -391,7 +391,7 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
         aie::accum<accfloat, SM_VEC_LEN> x = aie::mul(dl.hi, s);
         x = aie::mac(x, dl.mid, s);
         x = aie::mac(x, dl.lo, s);
-        aie::store_v(p + h, exp2_bf16(x.to_vector<float>()));
+        aie::store_v(p + h, exp2_nonpos_bf16(x.to_vector<float>()));
       }
       a += VECTOR_LENGTH;
       p += VECTOR_LENGTH;
@@ -438,7 +438,7 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
       aie::accum<accfloat, VECTOR_LENGTH> exp_in =
           aie::msc(aie::mul(aie::load_v<VECTOR_LENGTH>(a), scale_vec),
                    aie::broadcast<bfloat16, VECTOR_LENGTH>(*m++), scale_vec);
-      aie::store_v(p, exp2_bf16(exp_in.to_vector<float>()));
+      aie::store_v(p, exp2_nonpos_bf16(exp_in.to_vector<float>()));
       a += VECTOR_LENGTH;
       p += VECTOR_LENGTH;
     }
@@ -547,7 +547,8 @@ static inline void advance_state_w(float *scale_buffer, int32_t B_q,
         aie::msc(aie::mul(prev.template to_vector<bfloat16>(), s),
                  cur.template to_vector<bfloat16>(), s);
 #endif
-    const auto max_diff_exp = exp2_bf16(diff.template to_vector<float>());
+    const auto max_diff_exp =
+        exp2_nonpos_bf16(diff.template to_vector<float>());
 
     aie::store_v(
         scale_buffer + 3 * B_q + i,
