@@ -294,12 +294,12 @@ def main():
     opts = _make_argparser().parse_args()
     design = mobilenet_iron
     if opts.sa_seed is not None or opts.sa_effort is not None:
-        design = design.specialize(
-            aiecc_flags=sa_placer_flags(
-                opts.sa_seed if opts.sa_seed is not None else 3,
-                opts.sa_effort if opts.sa_effort is not None else 1.0,
-            )
-        )
+        overrides = {}
+        if opts.sa_seed is not None:
+            overrides["seed"] = opts.sa_seed
+        if opts.sa_effort is not None:
+            overrides["effort"] = opts.sa_effort
+        design = design.specialize(aiecc_flags=sa_placer_flags(**overrides))
     if opts.batch > 1:
         design = design.specialize(batch=opts.batch)
     run_design_cli(

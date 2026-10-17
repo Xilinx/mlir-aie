@@ -11,22 +11,30 @@ new Python API) from programming_examples/ml, one fresh NPU_CACHE_HOME per
 run so runs don't share a JIT cache (test/python/npu's isolation
 convention).
 
-Each seed runs at each batch size, every image of a batch verified. Per run
-it records the compile's wall time and peak RSS (the CLI's compile-only mode,
-always a cold NPU_CACHE_HOME per run, so always a cold compile -- see above)
-and, per image, the minimum NPU time of a launch and of the host's
-end-to-end call.
+Each seed runs at each batch size at both of _EFFORTS (the design's real
+default, and full effort as a placement-quality baseline -- see
+mobilenet.bottleneck._common.sa_placer_flags, which the default must keep
+matching). Per run it compiles twice in the same fresh NPU_CACHE_HOME (the
+CLI's compile-only mode): once cold (kernel objects built from scratch, same
+as any first-time compile) and immediately again, warm (the same cache_dir,
+so it reuses the cold compile's kernel objects) -- kernel compilation, not
+placement, is almost all of a cold compile's time (measured: ~19.5s of
+MobileNet's ~20-27s), so the warm number is what an incremental compile
+actually costs. Both record wall time and peak RSS. Per run it also records,
+per image, the minimum NPU time of a launch and of the host's end-to-end
+call.
 From a seed's batch 1 and batch N it records the streaming time: what one
 more image in a launch costs, (T(N) - T(1)) / (N - 1), with the launch's
-fixed cost taken out. Per seed it records the placement: aiecc's placed tiles
-as a digest, and its SA cost, from replaying the placement with aie-opt on
-the design's MLIR (aiecc does not report it). Writes rows and a meta file in
-the kernel checks' format (utils/kernel_checks/publish.py), with the
-device's power mode and the toolchain; ``--pmode`` refuses to measure in any
-other mode. Exits 1 when a run fails or the check refuses, after writing
-both. One run is reproduced, from programming_examples/ml, with
+fixed cost taken out. Per seed, per effort, it records the placement:
+aiecc's placed tiles as a digest, and its SA cost, from replaying the
+placement with aie-opt on the design's MLIR (aiecc does not report it).
+Writes rows and a meta file in the kernel checks' format
+(utils/kernel_checks/publish.py), with the device's power mode and the
+toolchain; ``--pmode`` refuses to measure in any other mode. Exits 1 when a
+run fails or the check refuses, after writing both. One run is reproduced,
+from programming_examples/ml, with
 
-    python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0 --batch B
+    python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort E --batch B
 """
 
 import argparse
@@ -50,7 +58,11 @@ _NPU_TIME_RE = re.compile(r"NPU time" + _TIME_RE)
 _E2E_TIME_RE = re.compile(r"End-to-end" + _TIME_RE)
 _COST_RE = re.compile(r"\(S\)\s+(\d+)\s+sa-final-cost")
 _TILE_RE = re.compile(r"aie\.tile\(\d+, \d+\)")
-_EFFORT = 1.0
+# "default" must keep matching mobilenet.bottleneck._common.sa_placer_flags'
+# own default -- not imported from there since this check otherwise only
+# shells out to the CLI (see the module docstring); a change to either is a
+# prompt to check the other.
+_EFFORTS = {"default": 0.05, "full": 1.0}
 
 _ML_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "programming_examples", "ml"
@@ -101,13 +113,13 @@ def placement_of(mlir: str) -> str | None:
 
 
 def replay_placement(
-    aie_opt: str, design: str, seed: int
+    aie_opt: str, design: str, seed: int, effort: float
 ) -> tuple[str | None, int | None]:
-    """Place ``design`` as aiecc does for ``seed``: (placement digest, SA cost)."""
+    """Place ``design`` as aiecc does for ``seed``/``effort``: (digest, SA cost)."""
     proc = subprocess.run(
         [
             aie_opt,
-            f"--aie-place-tiles=placer=sa_placer sa-seed={seed} sa-effort={_EFFORT}",
+            f"--aie-place-tiles=placer=sa_placer sa-seed={seed} sa-effort={effort}",
             "--mlir-pass-statistics",
             design,
         ],
@@ -149,23 +161,36 @@ def parse_run(out: str, returncode: int, batch: int) -> dict:
     }
 
 
-def run_one(seed: int, batch: int, warmup: int, iters: int) -> dict:
-    """Compile and run mobilenet for one SA seed at one batch size."""
-    cache_dir = tempfile.mkdtemp(prefix=f"component-checks-sa{seed}-b{batch}-")
+def run_one(seed: int, batch: int, warmup: int, iters: int, effort_label: str) -> dict:
+    """Compile and run mobilenet for one SA seed at one batch size and effort."""
+    effort = _EFFORTS[effort_label]
+    cache_dir = tempfile.mkdtemp(
+        prefix=f"component-checks-sa{seed}-b{batch}-{effort_label}-"
+    )
     env = dict(os.environ, NPU_CACHE_HOME=cache_dir)
-    flags = ["--sa-seed", str(seed), "--sa-effort", str(_EFFORT)]
+    flags = ["--sa-seed", str(seed), "--sa-effort", str(effort)]
     flags += ["--batch", str(batch)]
+    compile_args = (
+        *flags,
+        "--xclbin-path",
+        os.path.join(cache_dir, "final.xclbin"),
+        "--insts-path",
+        os.path.join(cache_dir, "insts.bin"),
+    )
     try:
+        # Cold: a fresh cache_dir, so kernel objects are compiled from
+        # scratch, same as any first-time compile.
         start = time.perf_counter()
-        built, compile_peak_rss_mb = _mobilenet_rss(
-            *flags,
-            "--xclbin-path",
-            os.path.join(cache_dir, "final.xclbin"),
-            "--insts-path",
-            os.path.join(cache_dir, "insts.bin"),
-            env=env,
-        )
+        built, compile_peak_rss_mb = _mobilenet_rss(*compile_args, env=env)
         compile_s = time.perf_counter() - start
+        # Warm: immediately after, same cache_dir, so this one reuses the
+        # kernel objects the cold compile just produced. Kernel compilation
+        # -- not placement -- is almost all of a cold compile's time
+        # (measured: ~19.5s of MobileNet's ~20-27s), so this is the number
+        # that actually reflects repeat/incremental compiles.
+        start = time.perf_counter()
+        built_warm, compile_peak_rss_mb_warm = _mobilenet_rss(*compile_args, env=env)
+        compile_s_warm = time.perf_counter() - start
         placed = sorted(
             glob.glob(os.path.join(cache_dir, "devices", "*", "placed.mlir"))
         )
@@ -178,38 +203,62 @@ def run_one(seed: int, batch: int, warmup: int, iters: int) -> dict:
         shutil.rmtree(cache_dir, ignore_errors=True)
 
     result = parse_run(ran.stdout + ran.stderr, ran.returncode, batch)
-    result["passed"] = result["passed"] and built.returncode == 0
+    result["passed"] = (
+        result["passed"] and built.returncode == 0 and built_warm.returncode == 0
+    )
     return {
         "seed": seed,
         "batch": batch,
+        "effort_label": effort_label,
         **result,
         "compile_s": round(compile_s, 1) if built.returncode == 0 else None,
         "compile_peak_rss_mb": (
             round(compile_peak_rss_mb, 1) if built.returncode == 0 else None
         ),
+        "compile_s_warm": (
+            round(compile_s_warm, 1) if built_warm.returncode == 0 else None
+        ),
+        "compile_peak_rss_mb_warm": (
+            round(compile_peak_rss_mb_warm, 1) if built_warm.returncode == 0 else None
+        ),
         "placement": compiled,
-        "log": built.stdout + built.stderr + ran.stdout + ran.stderr,
+        "log": built.stdout
+        + built.stderr
+        + built_warm.stdout
+        + built_warm.stderr
+        + ran.stdout
+        + ran.stderr,
     }
 
 
-def place_seed(runs: list[dict], aie_opt: str, design: str) -> dict:
-    """Replay one seed's placement: its digest, SA cost, and the batches placed apart."""
+def place_seed(runs: list[dict], aie_opt: str, design: str) -> list[dict]:
+    """Replay one seed's placement at each effort: digest, SA cost, batches placed apart."""
     seed = runs[0]["seed"]
-    replayed, cost = replay_placement(aie_opt, design, seed)
-    compiled = [r["placement"] for r in runs if r["placement"]]
-    first = compiled[0] if compiled else replayed
-    return {
-        "seed": seed,
-        "placement": first,
-        # The cost is only the compile's if the replay placed the design the same.
-        "placement_cost": cost if first == replayed else None,
-        "replay_matches": first == replayed,
-        # The runtime sequence is all a batch changes, and the placer should
-        # not see it; a batch placed apart from the first says it did.
-        "placed_apart": [
-            r["batch"] for r in runs if r["placement"] not in (None, first)
-        ],
-    }
+    out = []
+    for effort_label in _EFFORTS:
+        mine = [r for r in runs if r["effort_label"] == effort_label]
+        replayed, cost = replay_placement(aie_opt, design, seed, _EFFORTS[effort_label])
+        compiled = [r["placement"] for r in mine if r["placement"]]
+        first = compiled[0] if compiled else replayed
+        out.append(
+            {
+                "seed": seed,
+                "effort_label": effort_label,
+                "placement": first,
+                # The cost is only the compile's if the replay placed the
+                # design the same.
+                "placement_cost": cost if first == replayed else None,
+                "replay_matches": first == replayed,
+                # The runtime sequence is all a batch changes, and the placer
+                # should not see it; a batch placed apart from the first says
+                # it did. Compared only within this effort: different efforts
+                # are expected to place differently.
+                "placed_apart": [
+                    r["batch"] for r in mine if r["placement"] not in (None, first)
+                ],
+            }
+        )
+    return out
 
 
 def streaming_us(one: dict, many: dict) -> float:
@@ -226,7 +275,8 @@ def aggregate(runs: list[dict], placements: list[dict]) -> list[dict]:
         if p["placement_cost"] is not None:
             out.append(
                 {
-                    "name": f"mobilenet/seed={p['seed']}/placement_cost",
+                    "name": f"mobilenet/seed={p['seed']}/effort={p['effort_label']}"
+                    "/placement_cost",
                     "unit": "cost",
                     "value": p["placement_cost"],
                     "range": f"placement {p['placement']}",
@@ -234,12 +284,19 @@ def aggregate(runs: list[dict], placements: list[dict]) -> list[dict]:
             )
     # A failed run's times (say, a run that printed timing but produced the
     # wrong answer) are not a measurement of the design, so only passing runs
-    # contribute a time point; the failure shows up in the count.
+    # contribute a time point; the failure shows up in the count. Keyed by
+    # effort too: streaming_us must compare within the same effort, since
+    # different efforts are expected to place (and so time) differently.
     one = {
-        r["seed"]: r for r in runs if r["batch"] == 1 and r["passed"] and r["launch_us"]
+        (r["seed"], r["effort_label"]): r
+        for r in runs
+        if r["batch"] == 1 and r["passed"] and r["launch_us"]
     }
     for r in runs:
-        case = f"mobilenet/seed={r['seed']}/batch={r['batch']}"
+        case = (
+            f"mobilenet/seed={r['seed']}/batch={r['batch']}"
+            f"/effort={r['effort_label']}"
+        )
         if r["passed"] and r["us_per_image"] is not None:
             out.append(
                 {
@@ -249,8 +306,9 @@ def aggregate(runs: list[dict], placements: list[dict]) -> list[dict]:
                     "range": r["us_per_image_range"],
                 }
             )
-            if r["batch"] > 1 and r["seed"] in one:
-                b1 = one[r["seed"]]
+            key = (r["seed"], r["effort_label"])
+            if r["batch"] > 1 and key in one:
+                b1 = one[key]
                 out.append(
                     {
                         "name": f"{case}/streaming_us",
@@ -281,27 +339,49 @@ def aggregate(runs: list[dict], placements: list[dict]) -> list[dict]:
                     "value": r["compile_peak_rss_mb"],
                 }
             )
+        if r["compile_s_warm"] is not None:
+            out.append(
+                {
+                    "name": f"{case}/compile_s_warm",
+                    "unit": "s",
+                    "value": r["compile_s_warm"],
+                }
+            )
+        if r["compile_peak_rss_mb_warm"] is not None:
+            out.append(
+                {
+                    "name": f"{case}/compile_peak_rss_mb_warm",
+                    "unit": "MB",
+                    "value": r["compile_peak_rss_mb_warm"],
+                }
+            )
     return out
 
 
 def print_table(runs: list[dict], placements: list[dict]) -> None:
     print(
-        f"{'seed':>4} {'batch':>5}  {'pass':>4}  {'us/image':>9}  "
-        f"{'streaming':>9}  {'e2e/image':>9}  {'compile_s':>9}  {'peak_rss_mb':>11}"
+        f"{'seed':>4} {'batch':>5} {'effort':>7}  {'pass':>4}  {'us/image':>9}  "
+        f"{'streaming':>9}  {'e2e/image':>9}  {'compile_s':>9}  {'peak_rss_mb':>11}  "
+        f"{'warm_s':>7}  {'warm_rss_mb':>11}"
     )
     rows = {r["name"]: r["value"] for r in aggregate(runs, placements)}
     for r in runs:
-        case = f"mobilenet/seed={r['seed']}/batch={r['batch']}"
+        case = (
+            f"mobilenet/seed={r['seed']}/batch={r['batch']}"
+            f"/effort={r['effort_label']}"
+        )
 
         def cell(metric):
             value = rows.get(f"{case}/{metric}")
             return "-" if value is None else f"{value:.1f}"
 
         print(
-            f"{r['seed']:>4} {r['batch']:>5}  {'yes' if r['passed'] else 'NO':>4}  "
+            f"{r['seed']:>4} {r['batch']:>5} {r['effort_label']:>7}  "
+            f"{'yes' if r['passed'] else 'NO':>4}  "
             f"{cell('us_per_image'):>9}  {cell('streaming_us'):>9}  "
             f"{cell('e2e_us_per_image'):>9}  {cell('compile_s'):>9}  "
-            f"{cell('compile_peak_rss_mb'):>11}"
+            f"{cell('compile_peak_rss_mb'):>11}  {cell('compile_s_warm'):>7}  "
+            f"{cell('compile_peak_rss_mb_warm'):>11}"
         )
         if not r["passed"]:
             if r["launch_us"] is None:
@@ -309,7 +389,8 @@ def print_table(runs: list[dict], placements: list[dict]) -> None:
             print(r["log"])
     for p in placements:
         print(
-            f"seed {p['seed']}: placement {p['placement']} cost {p['placement_cost']}"
+            f"seed {p['seed']} effort {p['effort_label']}: "
+            f"placement {p['placement']} cost {p['placement_cost']}"
         )
         if not p["replay_matches"]:
             print("aie-opt placed the design differently from aiecc; no cost recorded")
@@ -380,7 +461,7 @@ def main(argv=None) -> int:
     meta = {
         "preflight": dict(vars(pre)),
         "provenance": provenance(device=pre.device, pmode=pre.pmode),
-        "effort": _EFFORT,
+        "efforts": _EFFORTS,
         "iters": args.iters,
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
@@ -398,13 +479,17 @@ def main(argv=None) -> int:
         emit_design(design)
         runs, placements = [], []
         for seed in args.seeds:
-            mine = [run_one(seed, b, args.warmup, args.iters) for b in batches]
+            mine = [
+                run_one(seed, b, args.warmup, args.iters, effort_label)
+                for b in batches
+                for effort_label in _EFFORTS
+            ]
             runs += mine
-            placements.append(place_seed(mine, args.aie_opt, design))
+            placements += place_seed(mine, args.aie_opt, design)
     print_table(runs, placements)
 
     failed = [
-        f"mobilenet/seed={r['seed']}/batch={r['batch']}"
+        f"mobilenet/seed={r['seed']}/batch={r['batch']}/effort={r['effort_label']}"
         for r in runs
         if not r["passed"]
     ]
@@ -415,11 +500,14 @@ def main(argv=None) -> int:
             for k in (
                 "seed",
                 "batch",
+                "effort_label",
                 "passed",
                 "us_per_image",
                 "e2e_us_per_image",
                 "compile_s",
                 "compile_peak_rss_mb",
+                "compile_s_warm",
+                "compile_peak_rss_mb_warm",
                 "placement",
             )
         }
