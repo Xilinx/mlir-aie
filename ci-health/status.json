@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-17T12:53:35+00:00",
+ "generated_at": "2026-10-17T18:51:27+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 385,
+   "runs": 377,
    "main": {
     "passed": 12,
     "failed": 0,
@@ -245,22 +245,22 @@
     }
    ],
    "pull_requests": {
-    "passed": 103,
-    "failed": 56,
-    "rate": 0.648
+    "passed": 99,
+    "failed": 55,
+    "rate": 0.643
    },
    "merge_queue": {
-    "passed": 55,
+    "passed": 54,
     "failed": 14,
-    "rate": 0.797
+    "rate": 0.794
    },
    "flaky": {
-    "commits": 369,
+    "commits": 361,
     "flaky": 28,
-    "rate": 0.076
+    "rate": 0.078
    },
-   "minutes_median": 56.7,
-   "minutes_p90": 162.0,
+   "minutes_median": 61.3,
+   "minutes_p90": 162.7,
    "queued_median": 0.0
   },
   {
@@ -269,7 +269,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 385,
+   "runs": 377,
    "main": {
     "passed": 11,
     "failed": 3,
@@ -480,21 +480,21 @@
     }
    ],
    "pull_requests": {
-    "passed": 106,
-    "failed": 69,
-    "rate": 0.606
+    "passed": 105,
+    "failed": 65,
+    "rate": 0.618
    },
    "merge_queue": {
     "passed": 55,
-    "failed": 15,
-    "rate": 0.786
+    "failed": 14,
+    "rate": 0.797
    },
    "flaky": {
-    "commits": 369,
+    "commits": 361,
     "flaky": 19,
-    "rate": 0.051
+    "rate": 0.053
    },
-   "minutes_median": 64.3,
+   "minutes_median": 64.4,
    "minutes_p90": 103.2,
    "queued_median": 0.0
   },
@@ -504,9 +504,9 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 442,
+   "runs": 433,
    "main": {
-    "passed": 69,
+    "passed": 68,
     "failed": 1,
     "rate": 0.986
    },
@@ -1018,19 +1018,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 199,
+    "passed": 194,
     "failed": 35,
-    "rate": 0.85
+    "rate": 0.847
    },
    "merge_queue": {
-    "passed": 67,
+    "passed": 66,
     "failed": 2,
     "rate": 0.971
    },
    "flaky": {
-    "commits": 369,
+    "commits": 361,
     "flaky": 31,
-    "rate": 0.084
+    "rate": 0.086
    },
    "minutes_median": 9.6,
    "minutes_p90": 22.9,
@@ -1042,9 +1042,9 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 442,
+   "runs": 200,
    "main": {
-    "passed": 71,
+    "passed": 38,
     "failed": 0,
     "rate": 1.0
    },
@@ -1529,49 +1529,25 @@
      "head_sha": "d404d452c759e2c3c85445dbfdc1e6b67ec33312",
      "title": "[AIEVec] bf16-emulation: round only multiply inputs, keep sums in f32\u2026",
      "attempt": 1
-    },
-    {
-     "id": 37873920548,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37873920548",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-09T02:18:09Z",
-     "run_started_at": "2026-10-09T02:18:09Z",
-     "updated_at": "2026-10-09T02:29:31Z",
-     "head_sha": "943b1718da69e2f9db1861147e4e92ec5c611bb8",
-     "title": "[AIE] Narrow core loops and index math to i32 where provably safe (#3\u2026",
-     "attempt": 1
-    },
-    {
-     "id": 37863571430,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37863571430",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-09T00:12:24Z",
-     "run_started_at": "2026-10-09T00:12:24Z",
-     "updated_at": "2026-10-09T00:30:07Z",
-     "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
-     "title": "Build and Test across Python versions",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 208,
-    "failed": 36,
-    "rate": 0.852
+    "passed": 94,
+    "failed": 13,
+    "rate": 0.879
    },
    "merge_queue": {
-    "passed": 69,
-    "failed": 1,
-    "rate": 0.986
+    "passed": 32,
+    "failed": 0,
+    "rate": 1.0
    },
    "flaky": {
-    "commits": 369,
-    "flaky": 32,
-    "rate": 0.087
+    "commits": 162,
+    "flaky": 14,
+    "rate": 0.086
    },
-   "minutes_median": 9.1,
-   "minutes_p90": 17.6,
+   "minutes_median": 8.7,
+   "minutes_p90": 18.5,
    "queued_median": 0.0
   },
   {
@@ -1580,62 +1556,38 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 385,
+   "runs": 377,
    "main": {
-    "passed": 14,
+    "passed": 15,
     "failed": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 38985069247,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985069247",
+    "id": 38658459040,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38658459040",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-17T00:09:48Z",
-    "run_started_at": "2026-10-17T00:09:48Z",
-    "updated_at": "2026-10-17T00:12:45Z",
-    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "created_at": "2026-10-15T00:10:11Z",
+    "run_started_at": "2026-10-15T00:10:11Z",
+    "updated_at": "2026-10-15T00:13:04Z",
+    "head_sha": "c04e91618986e22f40a4d395a00be4e4e01c5bbc",
     "title": "Lint and Format",
     "attempt": 1
    },
    "newest_main": {
-    "id": 38985069247,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985069247",
+    "id": 38658459040,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38658459040",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-17T00:09:48Z",
-    "run_started_at": "2026-10-17T00:09:48Z",
-    "updated_at": "2026-10-17T00:12:45Z",
-    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "created_at": "2026-10-15T00:10:11Z",
+    "run_started_at": "2026-10-15T00:10:11Z",
+    "updated_at": "2026-10-15T00:13:04Z",
+    "head_sha": "c04e91618986e22f40a4d395a00be4e4e01c5bbc",
     "title": "Lint and Format",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
-    {
-     "id": 38985069247,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985069247",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-17T00:09:48Z",
-     "run_started_at": "2026-10-17T00:09:48Z",
-     "updated_at": "2026-10-17T00:12:45Z",
-     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
-     "title": "Lint and Format",
-     "attempt": 1
-    },
-    {
-     "id": 38827861079,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38827861079",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-16T00:09:30Z",
-     "run_started_at": "2026-10-16T00:09:30Z",
-     "updated_at": "2026-10-16T00:12:37Z",
-     "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
-     "title": "Lint and Format",
-     "attempt": 1
-    },
     {
      "id": 38658459040,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38658459040",
@@ -1657,6 +1609,42 @@
      "run_started_at": "2026-10-14T00:10:15Z",
      "updated_at": "2026-10-14T00:12:57Z",
      "head_sha": "e04ad858a0a9e3dfece25089044ae6a44e262683",
+     "title": "Lint and Format",
+     "attempt": 1
+    },
+    {
+     "id": 38326088778,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38326088778",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-13T00:12:26Z",
+     "run_started_at": "2026-10-13T00:12:26Z",
+     "updated_at": "2026-10-13T00:15:13Z",
+     "head_sha": "6e53e4f4e35cf953bd9d658d13e7818ee1c3d1ec",
+     "title": "Lint and Format",
+     "attempt": 1
+    },
+    {
+     "id": 38187177953,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38187177953",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-12T00:13:22Z",
+     "run_started_at": "2026-10-12T00:13:22Z",
+     "updated_at": "2026-10-12T00:16:08Z",
+     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+     "title": "Lint and Format",
+     "attempt": 1
+    },
+    {
+     "id": 38097678376,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38097678376",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-11T00:13:11Z",
+     "run_started_at": "2026-10-11T00:13:11Z",
+     "updated_at": "2026-10-11T00:15:51Z",
+     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Lint and Format",
      "attempt": 1
     },
@@ -1782,32 +1770,32 @@
     }
    ],
    "pull_requests": {
-    "passed": 197,
-    "failed": 68,
-    "rate": 0.743
+    "passed": 188,
+    "failed": 66,
+    "rate": 0.74
    },
    "merge_queue": {
-    "passed": 69,
+    "passed": 72,
     "failed": 1,
     "rate": 0.986
    },
    "flaky": {
-    "commits": 369,
+    "commits": 332,
     "flaky": 32,
-    "rate": 0.087
+    "rate": 0.096
    },
-   "minutes_median": 3.9,
-   "minutes_p90": 7.1,
+   "minutes_median": 3.8,
+   "minutes_p90": 6.9,
    "queued_median": 0.0
   }
  ],
  "merge_time": {
-  "merged": 58,
-  "hours_median": 33.1,
+  "merged": 57,
+  "hours_median": 39.2,
   "hours_p90": 896.0,
   "open": 64,
   "open_drafts": 24,
-  "open_over_30_days": 43
+  "open_over_30_days": 45
  },
  "workflows": [
   {
@@ -2713,13 +2701,25 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
-     "id": 39032113166,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39032113166",
+     "id": 39048559632,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39048559632",
      "status": "in_progress",
      "conclusion": null,
+     "created_at": "2026-10-17T16:14:45Z",
+     "run_started_at": "2026-10-17T16:14:45Z",
+     "updated_at": "2026-10-17T16:15:24Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 39032113166,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39032113166",
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-17T12:20:12Z",
      "run_started_at": "2026-10-17T12:20:12Z",
-     "updated_at": "2026-10-17T12:21:08Z",
+     "updated_at": "2026-10-17T13:11:46Z",
      "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
      "title": "MLIR Distro",
      "attempt": 1
@@ -2840,18 +2840,6 @@
      "created_at": "2026-10-15T20:14:05Z",
      "run_started_at": "2026-10-15T20:14:05Z",
      "updated_at": "2026-10-15T22:56:57Z",
-     "head_sha": "e7048fadf1975db3190accac9e7153f59a5e45b1",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 38767675358,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38767675358",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-15T16:17:00Z",
-     "run_started_at": "2026-10-15T16:17:00Z",
-     "updated_at": "2026-10-15T16:45:31Z",
      "head_sha": "e7048fadf1975db3190accac9e7153f59a5e45b1",
      "title": "MLIR Distro",
      "attempt": 1
