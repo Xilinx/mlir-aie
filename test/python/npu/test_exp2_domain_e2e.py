@@ -47,16 +47,19 @@ extern "C" void exp2_domain_mismatches(int32_t *base, int32_t *count,
   const auto lanes = aie::load_v<32>(lane).cast_to<uint32_t>();
   const auto top = aie::broadcast<uint32_t, 32>(0xff800000u);
   uint32_t first = (uint32_t)base[0];
-  int32_t bad = 0;
+  // Summed a lane at a time: mask::count() is a popcount AIE2 cannot lower.
+  const auto ones = aie::broadcast<int32_t, 32>(1);
+  aie::vector<int32_t, 32> bad = aie::zeros<int32_t, 32>();
   for (int32_t i = 0; i < steps; i++) {
     const auto bits = aie::add(lanes, aie::broadcast<uint32_t, 32>(first));
     const auto x = bits.cast_to<float>();
     const auto was = exp2_bf16_32(x).cast_to<uint16_t>();
     const auto now = exp2_nonpos_bf16<32>(x).cast_to<uint16_t>();
-    bad += (aie::neq(was, now) & aie::le(bits, top)).count();
+    bad = aie::add(bad, aie::select(aie::zeros<int32_t, 32>(), ones,
+                                    aie::neq(was, now) & aie::le(bits, top)));
     first += 32;
   }
-  count[0] = bad;
+  count[0] = aie::reduce_add(bad);
   aie::set_rounding(saved);
 }
 """
