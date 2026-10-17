@@ -805,6 +805,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       streaming_us: 'the time each image past the first adds, (T(N) − T(1)) ÷ (N − 1) from the fastest batch-1 and batch-N calls: the dispatch left out',
       e2e_us_per_image: 'host time of one call, from Python, the fastest of 20, over the images in its batch',
       compile_s: 'wall time of the whole compile, from Python to xclbin',
+      compile_peak_rss_mb: 'peak memory of the whole compile (always a cold NPU_CACHE_HOME), from Python to xclbin',
       placement_cost: 'the SA cost of the placement aiecc chose, replayed with aie-opt; the tooltip names the placement',
       failed_properties: 'properties of the model-based test that did not hold',
       unsolved: 'generated designs, each known to fit, that the allocator left unplaced',
@@ -823,7 +824,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', npu_us: 'Host time',
       failed_seeds: 'Failed seeds', final_cost_mean: 'Cost (mean)', final_cost_max: 'Cost (worst)', cpu_ms_mean: 'CPU time (mean)',
       cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', us_per_image: 'Per image', streaming_us: 'Streaming',
-      e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time', placement_cost: 'Placement cost',
+      e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time', compile_peak_rss_mb: 'Compile peak memory', placement_cost: 'Placement cost',
       failed_properties: 'Failed properties', unsolved: 'Unplaced', illegal: 'Illegal', avoidable_crossings: 'Avoidable crossings',
       bank_pair_sharing: 'Bank sharing', wall_s: 'Wall time', unrouted: 'Unrouted', hop_ratio: 'Hops ÷ constructed',
       amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
@@ -839,8 +840,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // the ones their Trends offer, in order. One with no bands in BANDS says
     // it has no checks yet.
     const SECTIONS = {
-      performance: { title: 'Performance', about: 'MobileNet compiled, run and verified on an NPU2: time per image, streaming and compile time.',
-                     metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s'] },
+      performance: { title: 'Performance', about: 'MobileNet compiled, run and verified on an NPU2: time per image, streaming, compile time and compile memory.',
+                     metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb'] },
       routing: { title: 'Routing', about: 'The packet router against its model on npu1, npu2 and xcvc1902: legal routes, their cost, and mutation testing.',
                  metrics: ['failed_properties', 'unrouted', 'illegal', 'failed_mutations', 'survived_corruptions', 'hop_ratio', 'amsels_per_design', 'ms_per_design'] },
       placement: { title: 'Placement', about: 'The SA placer: every seed placed, the placements\' cost, CPU time and memory. The buffer allocator against its model.',
@@ -917,7 +918,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
@@ -2634,9 +2635,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     // The hardware check's cards, one per seed: its batches are the lanes of
-    // per image, streaming, end-to-end and compile time. The header names the
-    // placement (its cost is under Placement), and any batch whose compile
-    // placed differently.
+    // per image, streaming, end-to-end, compile time and compile memory. The
+    // header names the placement (its cost is under Placement), and any
+    // batch whose compile placed differently.
     function seedCards(record, cases, target) {
       const { seeds, failed, every } = hardwareRuns(record);
       return [...seeds].map(([seed, batches]) => {
@@ -2672,6 +2673,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           componentCell('streaming_us', label('streaming_us'), lanes('streaming_us')),
           componentCell('e2e_us_per_image', label('e2e_us_per_image'), lanes('e2e_us_per_image')),
           componentCell('compile_s', label('compile_s'), lanes('compile_s')),
+          componentCell('compile_peak_rss_mb', label('compile_peak_rss_mb'), lanes('compile_peak_rss_mb')),
         ]);
         card.kase = `mobilenet/seed=${seed}`;
         return card;

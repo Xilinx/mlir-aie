@@ -12,8 +12,10 @@ run so runs don't share a JIT cache (test/python/npu's isolation
 convention).
 
 Each seed runs at each batch size, every image of a batch verified. Per run
-it records the compile's wall time (the CLI's compile-only mode) and, per
-image, the minimum NPU time of a launch and of the host's end-to-end call.
+it records the compile's wall time and peak RSS (the CLI's compile-only mode,
+always a cold NPU_CACHE_HOME per run, so always a cold compile -- see above)
+and, per image, the minimum NPU time of a launch and of the host's
+end-to-end call.
 From a seed's batch 1 and batch N it records the streaming time: what one
 more image in a launch costs, (T(N) - T(1)) / (N - 1), with the launch's
 fixed cost taken out. Per seed it records the placement: aiecc's placed tiles
@@ -63,6 +65,33 @@ def _mobilenet(*args: str, env: dict | None = None) -> subprocess.CompletedProce
         capture_output=True,
         text=True,
     )
+
+
+def _mobilenet_rss(
+    *args: str, env: dict | None = None
+) -> tuple[subprocess.CompletedProcess, float]:
+    """Like ``_mobilenet``, plus the process's own peak RSS in MB.
+
+    Uses os.wait4 (not resource.getrusage(RUSAGE_CHILDREN), which is a running
+    max across every reaped child -- see sa_placer.py's run_seed), so this
+    call's peak RSS is its own, not a stale max from an earlier, bigger case.
+    stdout and stderr are merged (rather than piped separately and read with
+    two blocking .read() calls, which can deadlock once either pipe fills).
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "mobilenet.aie2_mobilenet_iron", *args],
+        cwd=_ML_DIR,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    out = proc.stdout.read() if proc.stdout else ""
+    _, status, ru = os.wait4(proc.pid, 0)
+    result = subprocess.CompletedProcess(
+        proc.args, os.waitstatus_to_exitcode(status), out, ""
+    )
+    return result, ru.ru_maxrss / 1024.0
 
 
 def placement_of(mlir: str) -> str | None:
@@ -128,7 +157,7 @@ def run_one(seed: int, batch: int, warmup: int, iters: int) -> dict:
     flags += ["--batch", str(batch)]
     try:
         start = time.perf_counter()
-        built = _mobilenet(
+        built, compile_peak_rss_mb = _mobilenet_rss(
             *flags,
             "--xclbin-path",
             os.path.join(cache_dir, "final.xclbin"),
@@ -155,6 +184,9 @@ def run_one(seed: int, batch: int, warmup: int, iters: int) -> dict:
         "batch": batch,
         **result,
         "compile_s": round(compile_s, 1) if built.returncode == 0 else None,
+        "compile_peak_rss_mb": (
+            round(compile_peak_rss_mb, 1) if built.returncode == 0 else None
+        ),
         "placement": compiled,
         "log": built.stdout + built.stderr + ran.stdout + ran.stderr,
     }
@@ -241,13 +273,21 @@ def aggregate(runs: list[dict], placements: list[dict]) -> list[dict]:
             out.append(
                 {"name": f"{case}/compile_s", "unit": "s", "value": r["compile_s"]}
             )
+        if r["compile_peak_rss_mb"] is not None:
+            out.append(
+                {
+                    "name": f"{case}/compile_peak_rss_mb",
+                    "unit": "MB",
+                    "value": r["compile_peak_rss_mb"],
+                }
+            )
     return out
 
 
 def print_table(runs: list[dict], placements: list[dict]) -> None:
     print(
         f"{'seed':>4} {'batch':>5}  {'pass':>4}  {'us/image':>9}  "
-        f"{'streaming':>9}  {'e2e/image':>9}  {'compile_s':>9}"
+        f"{'streaming':>9}  {'e2e/image':>9}  {'compile_s':>9}  {'peak_rss_mb':>11}"
     )
     rows = {r["name"]: r["value"] for r in aggregate(runs, placements)}
     for r in runs:
@@ -260,7 +300,8 @@ def print_table(runs: list[dict], placements: list[dict]) -> None:
         print(
             f"{r['seed']:>4} {r['batch']:>5}  {'yes' if r['passed'] else 'NO':>4}  "
             f"{cell('us_per_image'):>9}  {cell('streaming_us'):>9}  "
-            f"{cell('e2e_us_per_image'):>9}  {cell('compile_s'):>9}"
+            f"{cell('e2e_us_per_image'):>9}  {cell('compile_s'):>9}  "
+            f"{cell('compile_peak_rss_mb'):>11}"
         )
         if not r["passed"]:
             if r["launch_us"] is None:
@@ -378,6 +419,7 @@ def main(argv=None) -> int:
                 "us_per_image",
                 "e2e_us_per_image",
                 "compile_s",
+                "compile_peak_rss_mb",
                 "placement",
             )
         }

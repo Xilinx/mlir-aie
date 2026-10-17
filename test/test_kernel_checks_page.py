@@ -1104,7 +1104,7 @@ assert.equal(header.children[0].text, "seed 3the design's default");
 assert.equal(header.children[1].text, 'placement 0123456789ab');
 assert.equal(header.children[1].href, '#view=placement&metric=placement_cost');
 assert.equal(header.children.at(-1).text, 'b16 ÷ b1 per image 0.35×');
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Per image', 'Streaming', 'End-to-end / image', 'Compile time']);
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Per image', 'Streaming', 'End-to-end / image', 'Compile time', 'Compile peak memory']);
 // A lane per batch, colored past the threshold only; streaming has no b1.
 const perImage = grid.children[0];
 assert.equal(perImage.text, 'Per imageb1295.7 µs 0.0%b16104.9 µs +7.0%');
