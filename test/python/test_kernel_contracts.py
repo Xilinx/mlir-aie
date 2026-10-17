@@ -2041,6 +2041,18 @@ def test_compute_max_reference_uses_element_zero_only():
     assert kernels.compute_max_ref(a, b).tolist() == [[4], [5]]
 
 
+def test_reduce_max_reference_orders_floats_by_their_bits():
+    below_one = np.nextafter(np.float32(1), np.float32(0))
+    x = np.array(
+        [[below_one, 1.0, -2.0], [-0.0, 0.0, -1.0], [-1.0, -below_one, -2.0]],
+        np.float32,
+    )
+    top = kernels.reduce_max_ref(x)
+    assert top.dtype == np.float32
+    assert top.ravel().tolist() == [1.0, 0.0, -below_one]
+    assert not np.signbit(top[1, 0])
+
+
 def test_transformer_references_match_the_example_formulas():
     rng = np.random.default_rng(0)
     x = rng.uniform(-1, 1, size=(3, 64)).astype(bfloat16)

@@ -275,11 +275,19 @@ KERNEL_SPECS: list[KernelSpec] = [
                 "reduce_max_scalar_bfloat16",
             ),
             (dict(tile_size=1024, dtype=bfloat16), "reduce_max_vector_bfloat16"),
+            (
+                dict(tile_size=1024, dtype=np.float32, vectorized=True),
+                "reduce_max_vector_float",
+            ),
+            (
+                dict(tile_size=1024, dtype=np.float32, vectorized=False),
+                "reduce_max_scalar_float",
+            ),
         ],
         invalid_kwargs=[
             (
-                dict(tile_size=1024, dtype=np.float32),
-                "dtype must be np.int32 or bfloat16",
+                dict(tile_size=1024, dtype=np.float16),
+                "dtype must be np.int32, bfloat16 or np.float32",
             ),
         ],
         shape_checks=[

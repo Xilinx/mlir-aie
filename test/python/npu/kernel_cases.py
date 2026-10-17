@@ -26,6 +26,7 @@ from cases import FLOAT_BASE, Case
 from ml_dtypes import bfloat16
 
 _bf16 = dict(dtype=bfloat16)
+_f32 = dict(dtype=np.float32)
 _mm = dict(dim_m=64, dim_k=32, dim_n=64)
 _mm_bf16 = dict(**_mm, input_dtype=bfloat16, output_dtype=np.float32)
 _mm_bfp = dict(dim_m=64, dim_k=64, dim_n=64)  # the block_datatypes examples' tile
@@ -149,6 +150,11 @@ CASES: list[Case] = [
     Case("reduce_max", _bf16, calls=256),
     check("reduce_max", dict(tile_size=16), tag="edge-one-vector"),
     check("reduce_max", dict(tile_size=32, dtype=bfloat16), tag="edge-one-vector"),
+    # float32 tiles plant a power of two beside the float just below it.
+    Case("reduce_max", _f32, calls=16, smoke=True),
+    Case("reduce_max", _f32, calls=256),
+    check("reduce_max", dict(_f32, vectorized=False), calls=16, tag="scalar"),
+    check("reduce_max", dict(_f32, tile_size=16), calls=8, tag="edge-one-vector"),
     Case("argmax", calls=16, scalars=(0,), smoke=True),
     Case("argmax", calls=256, scalars=(0,)),
     Case(
@@ -1038,6 +1044,7 @@ CASES: list[Case] = [
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
+    Case("compute_max", _f32, calls=16, smoke=True),
     Case("swiglu", calls=16, smoke=True),
     Case(
         "swiglu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True

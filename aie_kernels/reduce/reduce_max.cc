@@ -79,6 +79,54 @@ void _reduce_max_scalar(T *restrict in, T *restrict out,
   return;
 }
 
+// A float's bits as an int32 that orders as the floats do (IEEE totalOrder:
+// -0 below +0, NaNs at the ends); the map is its own inverse. AIE2P compares
+// floats by a subtraction rounded to the larger operand's ulp, which can tie
+// two different floats.
+static inline int32_t float_order(int32_t bits) {
+  return bits ^ ((bits >> 31) & 0x7fffffff);
+}
+
+template <unsigned N>
+static inline aie::vector<int32_t, N>
+float_order(aie::vector<int32_t, N> bits) {
+  return aie::bit_xor(bits,
+                      aie::bit_and(aie::downshift(bits, 31),
+                                   aie::broadcast<int32_t, N>(0x7fffffff)));
+}
+
+static void _reduce_max_vector_float(float *restrict in, float *restrict out,
+                                     const int32_t input_size) {
+  event0();
+  using V = aie::vector<int32_t>;
+  constexpr int32_t VECTOR_SIZE = V::size();
+  V running_max = aie::broadcast<int32_t, VECTOR_SIZE>(
+      std::numeric_limits<int32_t>::lowest());
+  const int32_t *p = (const int32_t *)in;
+  AIE_LOOP_NO_UNROLL
+  for (int32_t i = 0; i < REDUCE_MAX_ELEMS; i += VECTOR_SIZE) {
+    running_max =
+        aie::max(running_max, float_order(aie::load_v<VECTOR_SIZE>(p)));
+    p += VECTOR_SIZE;
+  }
+  *(int32_t *)out = float_order(aie::reduce_max(running_max));
+  event1();
+}
+
+static void _reduce_max_scalar_float(float *restrict in, float *restrict out,
+                                     const int32_t input_size) {
+  event0();
+  const int32_t *p = (const int32_t *)in;
+  int32_t running_max = std::numeric_limits<int32_t>::lowest();
+  for (int32_t i = 0; i < REDUCE_MAX_ELEMS; i++) {
+    const int32_t key = float_order(p[i]);
+    if (key > running_max)
+      running_max = key;
+  }
+  *(int32_t *)out = float_order(running_max);
+  event1();
+}
+
 template <typename T>
 void _compute_max(T *restrict in1, T *restrict in2, T *restrict out) {
   event0();
@@ -102,6 +150,22 @@ void reduce_max_scalar_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
 
 void compute_max_bfloat16(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
   _compute_max<bfloat16>(a_in, b_in, c_out);
+}
+
+void reduce_max_vector_float(float *a_in, float *c_out, int32_t input_size) {
+  _reduce_max_vector_float(a_in, c_out, input_size);
+}
+
+void reduce_max_scalar_float(float *a_in, float *c_out, int32_t input_size) {
+  _reduce_max_scalar_float(a_in, c_out, input_size);
+}
+
+void compute_max_float(float *a_in, float *b_in, float *c_out) {
+  event0();
+  const int32_t a = float_order(*(int32_t *)a_in);
+  const int32_t b = float_order(*(int32_t *)b_in);
+  *(int32_t *)c_out = float_order(a > b ? a : b);
+  event1();
 }
 
 void reduce_max_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {

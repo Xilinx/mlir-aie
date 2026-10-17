@@ -74,15 +74,53 @@ def reduce_min_ref(x):
 
 
 def reduce_max_ref(x):
-    """Numpy reference for [`reduce_max`][iron.kernels.reduce.reduce_max]: per-tile maximum."""
-    return x.max(axis=-1, keepdims=True)
+    """Numpy reference for [`reduce_max`][iron.kernels.reduce.reduce_max]: per-tile maximum.
+
+    Floats are ordered by IEEE totalOrder, as the float32 kernel compares
+    them: -0 below +0, and a NaN by its sign.
+    """
+    x = np.asarray(x)
+    if np.issubdtype(x.dtype, np.integer):
+        return x.max(axis=-1, keepdims=True)
+    wide = x.astype(np.float64).view(np.int64)
+    key = wide ^ ((wide >> 63) & np.int64(0x7FFFFFFFFFFFFFFF))
+    top = key.max(axis=-1, keepdims=True)
+    top ^= (top >> 63) & np.int64(0x7FFFFFFFFFFFFFFF)
+    return top.view(np.float64).astype(x.dtype)
 
 
 _REDUCE_REFS = {"add": reduce_add_ref, "min": reduce_min_ref, "max": reduce_max_ref}
 
 
+def reduce_max_f32_sample(rng, calls: int, *, tile_size: int) -> list:
+    """float32 tiles whose top two are a power of two and the float just below it.
+
+    Every fourth tile is negated; the first two also hold signed zeros, a
+    subnormal and infinities.
+    """
+    scale = np.exp2(rng.integers(-60, 60, (calls, 1)))
+    x = np.abs(rng.standard_normal((calls, tile_size)) * scale).astype(np.float32)
+    for c in range(calls):
+        negate = c % 4 == 3
+        e = (
+            np.floor(np.log2(x[c].min()))
+            if negate
+            else np.floor(np.log2(x[c].max())) + 1
+        )
+        pair = np.float32(np.exp2(e))
+        i, j = rng.choice(tile_size, 2, replace=False)
+        x[c, i], x[c, j] = pair, np.nextafter(pair, np.float32(0))
+        if negate:
+            x[c] = -x[c]
+    if tile_size >= 6:
+        x[0, -4:] = [-0.0, 0.0, 1e-40, -np.inf]
+    if calls >= 2:
+        x[1, -1] = np.inf
+    return [x]
+
+
 def _reduce_contract(
-    op: str, tile_size: int, dtype: npt.DTypeLike = np.int32
+    op: str, tile_size: int, dtype: npt.DTypeLike = np.int32, sample=None
 ) -> KernelContract:
     # A reduction writes one value into a DMA-aligned output tile (the rest
     # is padding), so only element 0 of each output tile is compared. Every
@@ -109,6 +147,7 @@ def _reduce_contract(
         tolerance=tolerance,
         ops_per_call=tile_size,
         out_valid=1,
+        sample=sample,
     )
 
 
@@ -186,31 +225,33 @@ def reduce_min(
     return _reduce_kernel("min", tile_size, dtype, vectorized)
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}, {"dtype": np.float32}))
 def reduce_max(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
-    """Reduction kernel: finds the maximum element of a tile (int32 or bfloat16).
+    """Reduction kernel: finds the maximum element of a tile (int32, bfloat16 or float32).
+
+    Exact for every dtype: a float32 tile is compared by IEEE totalOrder.
 
     Args:
         tile_size: Number of elements in the input tile.
-        dtype: Element data type (``np.int32`` or ``bfloat16``).
+        dtype: Element data type (``np.int32``, ``bfloat16`` or ``np.float32``).
         vectorized: If ``True`` use vectorized path; ``False`` selects scalar.
 
     Returns:
         ExternalFunction configured for the reduce_max kernel.
 
     Raises:
-        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.
+        ValueError: When ``dtype`` is not ``np.int32``, ``bfloat16`` or ``np.float32``.
     """
     is_bf16 = np.dtype(dtype) == np.dtype(bfloat16)
-    is_int32 = np.dtype(dtype) == np.dtype(np.int32)
-    if not is_bf16 and not is_int32:
+    is_f32 = np.dtype(dtype) == np.dtype(np.float32)
+    if not is_bf16 and not is_f32 and np.dtype(dtype) != np.dtype(np.int32):
         raise ValueError(
-            f"reduce_max() dtype must be np.int32 or bfloat16, got {dtype}"
+            f"reduce_max() dtype must be np.int32, bfloat16 or np.float32, got {dtype}"
         )
 
-    actual_dtype = bfloat16 if is_bf16 else np.int32
+    actual_dtype = bfloat16 if is_bf16 else np.float32 if is_f32 else np.int32
     if vectorized:
         _require_vector_alignment(
             "reduce_max",
@@ -224,17 +265,24 @@ def reduce_max(
     out_ty = np.ndarray[(_min_dma_aligned_elems(actual_dtype),), np.dtype[actual_dtype]]
 
     func_variant = "vector" if vectorized else "scalar"
-    suffix = "_bfloat16" if is_bf16 else ""
+    suffix = "_bfloat16" if is_bf16 else "_float" if is_f32 else ""
     return _make_extern(
         f"reduce_max_{func_variant}{suffix}",
         _kernel_source("reduce/reduce_max.cc"),
         [in_ty, out_ty, np.int32],
         compile_flags=[f"-DREDUCE_MAX_ELEMS={tile_size}"],
-        contract=_reduce_contract("max", tile_size),
+        contract=_reduce_contract(
+            "max",
+            tile_size,
+            actual_dtype,
+            sample=(
+                partial(reduce_max_f32_sample, tile_size=tile_size) if is_f32 else None
+            ),
+        ),
     )
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}, {"dtype": np.float32}))
 def compute_max(dtype: type = np.int32) -> ExternalFunction:
     """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max].
 
@@ -245,7 +293,7 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
     but uses an unspecialized object independent of reduction tile sizes.
 
     Args:
-        dtype: Element data type (``np.int32`` or ``bfloat16``).
+        dtype: Element data type (``np.int32``, ``bfloat16`` or ``np.float32``).
 
     Returns:
         ExternalFunction configured for the ``compute_max`` kernel; signature
@@ -253,18 +301,18 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
         (DMA-aligned) tile of ``dtype``.
 
     Raises:
-        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.
+        ValueError: When ``dtype`` is not ``np.int32``, ``bfloat16`` or ``np.float32``.
     """
     is_bf16 = np.dtype(dtype) == np.dtype(bfloat16)
-    is_int32 = np.dtype(dtype) == np.dtype(np.int32)
-    if not is_bf16 and not is_int32:
+    is_f32 = np.dtype(dtype) == np.dtype(np.float32)
+    if not is_bf16 and not is_f32 and np.dtype(dtype) != np.dtype(np.int32):
         raise ValueError(
-            f"compute_max() dtype must be np.int32 or bfloat16, got {dtype}"
+            f"compute_max() dtype must be np.int32, bfloat16 or np.float32, got {dtype}"
         )
-    actual_dtype = bfloat16 if is_bf16 else np.int32
+    actual_dtype = bfloat16 if is_bf16 else np.float32 if is_f32 else np.int32
     out_ty = np.ndarray[(_min_dma_aligned_elems(actual_dtype),), np.dtype[actual_dtype]]
 
-    suffix = "_bfloat16" if is_bf16 else ""
+    suffix = "_bfloat16" if is_bf16 else "_float" if is_f32 else ""
     return _make_extern(
         f"compute_max{suffix}",
         _kernel_source("reduce/reduce_max.cc"),
@@ -274,6 +322,7 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
             trace=Trace.whole_call(),
             roles=(In, In, Out),
             reference=compute_max_ref,
+            sample=compute_max_f32_sample if is_f32 else None,
             tolerance=Tolerance.exact(note="selection"),
             ops_per_call=1,
             out_valid=1,
@@ -281,14 +330,29 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
     )
 
 
+def compute_max_f32_sample(rng, calls: int) -> list:
+    """float32 pairs: a power of two and the float just below it, either way round, or signed zeros."""
+    top = np.exp2(rng.integers(-120, 120, calls)).astype(np.float32)
+    pair = np.stack([top, np.nextafter(top, np.float32(0))], axis=1)
+    pair[1::2] = -pair[1::2]
+    swap = rng.random(calls) < 0.5
+    pair[swap] = pair[swap, ::-1]
+    pair[:2] = [[-0.0, 0.0], [0.0, -0.0]][:calls]
+    pad = _min_dma_aligned_elems(np.float32) - 1
+    return [np.pad(pair[:, k : k + 1], ((0, 0), (0, pad))) for k in (0, 1)]
+
+
 def compute_max_ref(a, b):
     """Numpy reference for [`compute_max`][iron.kernels.reduce.compute_max].
 
     The kernel compares only element 0 of each (DMA-padded) input tile and
     writes element 0 of the output; the reference does the same, returning
-    ``max(a[..., 0], b[..., 0])`` with a trailing axis of length 1.
+    ``max(a[..., 0], b[..., 0])``, as [`reduce_max_ref`][iron.kernels.reduce.reduce_max_ref]
+    orders it, with a trailing axis of length 1.
     """
-    return np.maximum(np.asarray(a)[..., :1], np.asarray(b)[..., :1])
+    return reduce_max_ref(
+        np.concatenate([np.asarray(a)[..., :1], np.asarray(b)[..., :1]], axis=-1)
+    )
 
 
 def argmax_ref(x, index_offset: int = 0):
