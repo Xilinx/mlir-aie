@@ -1039,7 +1039,7 @@ def tanh(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-def soft_cap(tile_size: int = 1024, *, cap: float) -> ExternalFunction:
+def soft_cap(tile_size: int = 1024, *, cap: float = 30.0) -> ExternalFunction:
     """``cap * tanh(x / cap)`` over bf16 tiles, from ``soft_cap.cc``; ``(in, out, size)``.
 
     The tanh is ``tanh_f32.h``'s, in f32, rounded once to bf16 on either architecture. ``cap`` is in [2^-100, 2^10].

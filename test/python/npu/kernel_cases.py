@@ -228,8 +228,8 @@ CASES: list[Case] = [
     Case("sigmoid", calls=256),
     # As tanh above.
     check("sigmoid", dict(tile_size=1056), tag="tail", smoke=True),
-    # Gemma's caps, 30 and 50, and 0.5, which puts unit-scale data on every
-    # branch of the tanh.
+    # Caps of 30 and 50, as models use, and 0.5, which puts unit-scale data on
+    # every branch of the tanh.
     Case("soft_cap", dict(cap=30.0), calls=16, smoke=True),
     Case("soft_cap", dict(cap=30.0), calls=256, data_cases=IEEE_FLOAT),
     check("soft_cap", dict(cap=50.0), smoke=True),

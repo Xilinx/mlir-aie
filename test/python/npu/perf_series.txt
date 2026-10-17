@@ -36,6 +36,8 @@ argmax_combine/2x16/int32
 argmax_combine/2x16/int32/bfloat16-values
 axpy/1024x16/bfloat16
 axpy/1024x256/bfloat16
+axpy/1024x4/bfloat16/f32-a
+axpy/1024x4/bfloat16/f32-a-negative
 axpy/1024x4/bfloat16/inexact-a
 axpy/64x4/bfloat16/short-row
 bf16_exp/1024x16/bfloat16
@@ -505,6 +507,11 @@ silu_sized/160x4/bfloat16/unroll-tail
 silu_sized/32x4/bfloat16/edge-tiny
 silu_sized/4096x16/bfloat16/llama-prefill
 silu_sized/96x4/bfloat16/short-trip
+soft_cap/1024x16/bfloat16/cap=30.0
+soft_cap/1024x256/bfloat16/cap=30.0
+soft_cap/1024x4/bfloat16/cap=0.5
+soft_cap/1024x4/bfloat16/cap=50.0
+soft_cap/32x4/bfloat16/cap=0.5
 softmax/1024x16/bfloat16
 softmax/1024x16/bfloat16/accurate_exp2=True/accurate
 softmax/1024x256/bfloat16
