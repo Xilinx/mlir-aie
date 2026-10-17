@@ -8,6 +8,7 @@
 from functools import partial
 from typing import NamedTuple, get_args
 
+import ml_dtypes
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorAccessPattern
@@ -1281,6 +1282,123 @@ def mha(
 
 mha.mac_dims = _MhaFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
 mha.relative_width = _MhaFactory.relative_width  # pyright: ignore
+
+
+def attention_merge(rows: int = 32, dim: int = 64) -> ExternalFunction:
+    """Merge attention over windows of keys, a window per call, into bf16.
+
+    Takes ``(o, state, out, window, scale)``: window ``window``'s normalized
+    output ``o``, ``(rows, dim)`` bf16; its ``state``, ``rows`` running maxima
+    ``m`` (unscaled scores) then ``rows`` sums ``l`` in float32, as
+    ``mha.cc``'s online softmax leaves them; and ``scale``, the exponents' bf16
+    scale (``mha.cc``'s). Writes ``out``, the merge of windows 0 to
+    ``window``: ``sum_j w_j o_j / sum_j w_j`` with
+    ``w_j = l_j 2^((m_j - max_j m_j) scale)``, 0 for a row no window kept.
+    The running state carries in the core from one call to the next and
+    restarts at window 0, so one core merges a tile's windows in order.
+
+    Args:
+        rows: Rows per call, a multiple of 32.
+        dim: A row's width, a multiple of 32.
+
+    Raises:
+        ValueError: ``rows`` or ``dim`` not a positive multiple of 32.
+    """
+    for name, v in (("rows", rows), ("dim", dim)):
+        if v <= 0 or v % 32:
+            raise ValueError(
+                f"attention_merge: {name} must be a positive multiple of 32, got {v}"
+            )
+    shape = dict(rows=rows, dim=dim)
+    return _make_extern(
+        "attention_merge_bf16",
+        _kernel_source("linalg/attention_merge.cc"),
+        [
+            np.ndarray[(rows * dim,), np.dtype[bfloat16]],
+            np.ndarray[(2 * rows,), np.dtype[np.float32]],
+            np.ndarray[(rows * dim,), np.dtype[bfloat16]],
+            np.int32,
+            bfloat16,
+        ],
+        compile_flags=[f"-DMERGE_ROWS={rows}", f"-DMERGE_DIM={dim}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out, Param, Param),
+            parameter_bindings=((3, 0),),
+            call_index=3,
+            reference=partial(attention_merge_ref, **shape),
+            sample=partial(attention_merge_sample, **shape),
+            tolerance=Tolerance.bounded(
+                partial(attention_merge_bound, **shape),
+                note="derived: exp2f's measured 9.2e-6 on each weight and "
+                "rescale, float32 limb products and sums, and the output's "
+                "bf16 rounding",
+            ),
+            ops_per_call=rows * (15 * dim + 60),
+        ),
+    )
+
+
+def _merge(o, state, scale, *, rows, dim):
+    """Each call's merge of the windows up to it in float64, the sum of its
+    terms' magnitudes, and the windows merged.
+    """
+    o = np.asarray(o, np.float64).reshape(-1, rows, dim)
+    state = np.asarray(state, np.float64).reshape(-1, 2, rows)
+    m, l = state[:, 0], state[:, 1]
+    s = float(bfloat16(scale))
+    out, terms = np.zeros_like(o), np.zeros_like(o)
+    for j in range(len(o)):
+        top = m[: j + 1].max(axis=0)
+        # exp2f clamps its argument at -111.
+        w = l[: j + 1] * np.exp2(np.maximum((m[: j + 1] - top) * s, -111.0))
+        total = w.sum(axis=0)[:, None]
+        kept = total > 0
+        safe = np.where(kept, total, 1.0)
+        out[j] = np.where(kept, np.einsum("wr,wrd->rd", w, o[: j + 1]) / safe, 0)
+        terms[j] = np.where(
+            kept, np.einsum("wr,wrd->rd", w, np.abs(o[: j + 1])) / safe, 0
+        )
+    windows = np.arange(1, len(o) + 1)[:, None, None]
+    return out.reshape(len(o), -1), terms.reshape(len(o), -1), windows
+
+
+def attention_merge_ref(o, state, scale, *, rows, dim):
+    """Numpy reference for [`attention_merge`][iron.kernels.linalg.attention_merge], in float64."""
+    return _merge(o, state, scale, rows=rows, dim=dim)[0]
+
+
+def attention_merge_bound(o, state, scale, *, rows, dim):
+    """[`attention_merge`][iron.kernels.linalg.attention_merge]'s error bound.
+
+    Each window's weight and each rescale of the running state within 1e-5
+    (exp2f), the three-limb products and float32 sums of every window so
+    far, and the three-limb scale by ``1 / sum``; then half a bf16 ulp of the
+    output.
+    """
+    out, terms, windows = _merge(o, state, scale, rows=rows, dim=dim)
+    rel = (2 * windows * 1e-5 + (3 * windows + 8) * 2.0**-22).reshape(-1, 1)
+    arith = rel * terms
+    near = np.abs(out) + arith
+    ulp = np.ldexp(1.0, np.frexp(np.maximum(near, 2.0**-126))[1] - 8)
+    return arith + ulp / 2
+
+
+def attention_merge_sample(rng, calls: int, *, rows, dim):
+    """Draw each window's output and state as MHA leaves them, a window a call.
+
+    Outputs within [-2, 2); maxima bf16 scores a few units apart, so the
+    weights span many binades; sums from 1 to 4096; and some rows empty in
+    some windows (``m`` bf16's lowest, ``l`` 0), the last row in every one.
+    """
+    o = rng.uniform(-2, 2, (calls, rows * dim)).astype(bfloat16)
+    m = (rng.standard_normal((calls, rows)) * 8).astype(bfloat16).astype(np.float32)
+    l = rng.uniform(1, 4096, (calls, rows)).astype(np.float32)
+    empty = rng.random((calls, rows)) < 0.1
+    empty[:, -1] = True
+    m = np.where(empty, float(ml_dtypes.finfo(bfloat16).min), m)
+    l = np.where(empty, 0.0, l)
+    return [o, np.concatenate([m, l], axis=1).astype(np.float32)]
 
 
 def _mha_band_flags(name, causal, window):

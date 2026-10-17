@@ -27,7 +27,8 @@ Submodules:
   intended for other models.
 - `linalg` — mm, mv, cascade_mm, mm_bfp (a ``MatrixKernel``: ``.mac_dims``
   and ``.stream_dims`` read the blocking and DMA transforms off the
-  contract's operand layouts)
+  contract's operand layouts); attention_merge (attention over windows of
+  keys merged by each window's softmax state)
 - `mm(...).zero` and `mv(...).zero` construct companion zero-fill kernels;
   `mm.mac_dims(...)`, `cascade_mm.mac_dims(...)` and `mha.mac_dims(...)` query
   micro-kernel geometry without constructing a kernel.
@@ -240,6 +241,8 @@ from .linalg import (
     MV_COL_MAJ_FIRST,
     MV_COL_MAJ_LAST,
     MatrixKernel,
+    attention_merge,
+    attention_merge_ref,
     cascade_mm,
     cascade_mm_put,
     mha,
@@ -564,6 +567,8 @@ __all__ = [
     "mha",
     "mha_softmax",
     "mha_softmax_ref",
+    "attention_merge",
+    "attention_merge_ref",
     "prefill_fv",
     "prefill_fv_ref",
     "mm_bfp",

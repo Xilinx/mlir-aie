@@ -2279,6 +2279,17 @@ CASES += [
     # different micro-tile and so a different blocked operand order, which is
     # the part a shared case could not check.
     Case("mha", dict(pv=True), calls=4, smoke=True),
+    # Attention over windows of keys, merged a window a call (the call is the
+    # window): scalars is the exponents' scale, bf16(log2(e) / sqrt(dim)).
+    Case("attention_merge", calls=8, scalars=(0.1806640625,), smoke=True),
+    check("attention_merge", calls=1, scalars=(0.1806640625,), tag="one-window"),
+    check(
+        "attention_merge",
+        dict(rows=32, dim=128),
+        calls=4,
+        scalars=(0.1279296875,),
+        tag="d128",
+    ),
     # The toolkit's online softmax over one key block: params is (key block,
     # query block), scalars the two sequence lengths. The padded diagonal
     # block takes every branch the full one skips (the causal mask, masked
