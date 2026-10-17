@@ -25,8 +25,9 @@ not always what is on disk, and cheaply, since the key is taken on every
 call. A module imported from a file is named by its source's mtime and size
 when the key first reaches that import; a reload looks again. Code with no
 file behind it (a notebook cell, the REPL) and the script being run are
-identified by their code and the plain constants they read, since those can
-change without any file changing.
+identified by their code and the plain constants they read -- through the
+mutable containers holding them as well, which are digested member by
+member -- since those can change without any file changing.
 
 `_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
@@ -131,6 +132,10 @@ def _code_identity(code: CodeType) -> bytes:
 
 
 _PLAIN = (int, float, complex, str, bytes, bool, type(None))
+
+# Mutable containers a generator can read compile inputs through (a
+# module-level list of kernel flags, say).
+_CONTAINER = (list, tuple, dict, set, frozenset)
 
 
 def _plain(value) -> bool:
@@ -258,7 +263,9 @@ def _python_identity(roots) -> bytes:
     A generator's bytecode names a helper but does not contain it, so the key
     follows globals, closure cells and attributes of modules. Functions and
     classes with no file behind them, or in the script being run, are
-    identified by their code and the plain constants they read; a module
+    identified by their code and the plain constants they read, directly or
+    through a mutable container (a list of kernel compile flags on the
+    module, say), which is digested member by member; a module
     imported from a file by its source's stamp (see ``_import_identity``),
     and every module its globals reach in turn. Installed third-party code is
     not followed. No design is generated to find any of it.
@@ -283,6 +290,20 @@ def _python_identity(roots) -> bytes:
                 visit(f, where)
         elif _plain(value) or isinstance(value, ExternalFunction):
             records.add(f"{where}={value!r}".encode())
+        elif isinstance(value, _CONTAINER) and id(value) not in seen:
+            # A container the code reads is an input like a plain constant
+            # is (a module-level list of kernel flags, say): digest it
+            # member by member — sequences ordered, mappings/sets not.
+            seen.add(id(value))
+            if isinstance(value, dict):
+                for item in value.items():
+                    visit(item, f"{where}.item")
+            elif isinstance(value, (set, frozenset)):
+                for member in value:
+                    visit(member, f"{where}.item")
+            else:
+                for index, member in enumerate(value):
+                    visit(member, f"{where}[{index}]")
         elif (module := _stamped_module(value)) is not None:
             modules.append(module)
         elif isinstance(value, (FunctionType, type)) and id(value) not in seen:
