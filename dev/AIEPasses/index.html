@@ -4938,7 +4938,9 @@ add or compare a multi-instruction sequence. This pass runs the upstream
 each <code>func.func</code> in the device. Where integer range analysis proves the
 values fit, <code>scf.for</code> bounds, steps and induction variables become <code>i32</code>
 and <code>index</code> arithmetic is done in <code>i32</code>, with casts back to <code>index</code> where
-an op needs one (such as a <code>memref.load</code> index).</p>
+an op needs one (such as a <code>memref.load</code> index). A bound read at run time
+fits too when its type does: an <code>i32</code> loaded from one of the core's
+buffers and cast to <code>index</code>, as in IRON's <code>range_(buf[i])</code>.</p>
 <p>Only provably safe rewrites are made. A loop whose bounds do not fit, such
 as a <code>0</code> to <code>INT64_MAX</code> "forever" loop, or whose bounds are unknown, keeps
 its <code>index</code> counter.</p>
