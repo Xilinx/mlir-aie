@@ -995,6 +995,14 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,  # in, out, cols
         expected_name="layer_norm",
     ),
+    KernelSpec(
+        name="layer_norm_eps",
+        factory=kernels.layer_norm_eps,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, out, cols, epsilon
+        expected_name="layer_norm_eps",
+        invalid_kwargs=[(dict(tile_size=1000), "multiple of 16")],
+    ),
 ]
 
 
@@ -1219,14 +1227,16 @@ def kernel_arch(request):
         yield request.param
 
 
-@pytest.mark.parametrize("name", ["rms_norm", "rms_norm_eps", "layer_norm", "rope"])
+@pytest.mark.parametrize(
+    "name", ["rms_norm", "rms_norm_eps", "layer_norm", "layer_norm_eps", "rope"]
+)
 def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
     from aie.iron.kernels import datamovement, norm, transformer
 
     factory = getattr(kernels, name)
     canonical = datamovement if name == "rope" else norm
     assert factory is getattr(canonical, name)
-    if name != "rms_norm_eps":
+    if name not in ("rms_norm_eps", "layer_norm_eps"):
         assert factory is getattr(transformer, name)
     assert factory().arg_shape(0) == (1024,)
     fn = factory(tile_size=2048)
@@ -1267,6 +1277,11 @@ def test_norm_tail_and_vector_constraints(kernel_arch):
     x = np.ones((2, 33), dtype=bfloat16)
     np.testing.assert_array_equal(
         fn.contract_for().reference(x, 0.5), kernels.rms_norm_ref(x, eps=0.5)
+    )
+    x = np.arange(64, dtype=np.float32).reshape(2, 32).astype(bfloat16)
+    np.testing.assert_array_equal(
+        kernels.layer_norm_eps(cols=32).contract_for().reference(x, 1e-6),
+        kernels.layer_norm_ref(x, eps=1e-6),
     )
     for cols in (16, 208):
         assert kernels.layer_norm(cols=cols).arg_shape(0) == (cols,)

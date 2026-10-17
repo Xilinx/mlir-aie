@@ -21,7 +21,9 @@ static inline void normalize_16(const T *restrict in, T *restrict out,
 }
 
 template <typename T>
-void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
+static inline __attribute__((always_inline)) void
+layer_norm_row(const T *restrict input, T *restrict output, int32_t cols,
+               float epsilon) {
   event0();
   constexpr unsigned N = 32;
   // cols is a multiple of 16: whole 32-lane chunks, then maybe one half.
@@ -113,7 +115,7 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
       d_limbs, bf16_pair(i1, i1), mul_elem_16_2(d_limbs, bf16_pair(i0, i0))));
   v16accfloat var_eps = mac_elem_16_2(
       d_n, bf16_pair(i1, i1),
-      mac_elem_16_2(d_n, bf16_pair(i0, i0), broadcast_to_v16accfloat(1e-5f)));
+      mac_elem_16_2(d_n, bf16_pair(i0, i0), broadcast_to_v16accfloat(epsilon)));
   v32bfloat16 inv_std = inv_sqrt_limbs(var_eps);
 
   // mean = q + e: q = s1 inv_n to 16 bits, and e = (s1 - n q) inv_n corrects
@@ -152,6 +154,11 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
   event1();
 }
 
+template <typename T>
+void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
+  layer_norm_row<T>(input, output, cols, 1e-5f);
+}
+
 extern "C" {
 void layer_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
   // conv_even rounding matches the reference math more closely than the
@@ -159,6 +166,14 @@ void layer_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
   layer_norm<bfloat16>(input, output, cols);
+  ::aie::set_rounding(saved_rounding);
+}
+
+void layer_norm_eps(bfloat16 *input, bfloat16 *output, int32_t cols,
+                    float epsilon) {
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
+  layer_norm_row<bfloat16>(input, output, cols, epsilon);
   ::aie::set_rounding(saved_rounding);
 }
 }
