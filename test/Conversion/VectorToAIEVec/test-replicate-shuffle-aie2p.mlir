@@ -42,3 +42,45 @@ func.func @not_repeat(%a: vector<8xbf16>) -> vector<32xbf16> {
   %r = vector.shuffle %a, %a [1, 0, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7] : vector<8xbf16>, vector<8xbf16>
   return %r : vector<32xbf16>
 }
+
+// Other element widths: i32 to 512 bits, i8 to 1024 bits.
+// CHECK-LABEL: @repeat_v4i32_to_v16
+// CHECK: vector.shuffle %{{.*}}, %{{.*}} [0, 1, 2, 3, 0, 1, 2, 3] : vector<4xi32>, vector<4xi32>
+// CHECK: aievec.shuffle %{{.*}}, %{{.*}} [t256_2x2_lo] : vector<2xi256>
+// CHECK-NOT: aievec.concat
+func.func @repeat_v4i32_to_v16(%a: vector<4xi32>) -> vector<16xi32> {
+  %r = vector.shuffle %a, %a [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3] : vector<4xi32>, vector<4xi32>
+  return %r : vector<16xi32>
+}
+
+// CHECK-LABEL: @repeat_v16i8_to_v128
+// CHECK: aievec.shuffle %{{.*}}, %{{.*}} [t256_2x2_lo] : vector<2xi256>
+// CHECK: aievec.concat %{{.*}}, %{{.*}} : vector<64xi8>, vector<128xi8>
+func.func @repeat_v16i8_to_v128(%a: vector<16xi8>) -> vector<128xi8> {
+  %r = vector.shuffle %a, %a [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<16xi8>, vector<16xi8>
+  return %r : vector<128xi8>
+}
+
+// Left as they are: a 256-bit source, a repetition only to 256 bits, and a
+// poison lane.
+// CHECK-LABEL: @source_256
+// CHECK-NOT: aievec
+func.func @source_256(%a: vector<16xbf16>) -> vector<32xbf16> {
+  %r = vector.shuffle %a, %a [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<16xbf16>, vector<16xbf16>
+  return %r : vector<32xbf16>
+}
+
+// CHECK-LABEL: @to_256
+// CHECK-NOT: aievec
+func.func @to_256(%a: vector<8xbf16>) -> vector<16xbf16> {
+  %r = vector.shuffle %a, %a [0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7] : vector<8xbf16>, vector<8xbf16>
+  return %r : vector<16xbf16>
+}
+
+// CHECK-LABEL: @poison_lane
+// CHECK: vector.shuffle %{{.*}}, %{{.*}} [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, -1]
+// CHECK-NOT: aievec
+func.func @poison_lane(%a: vector<4xi32>) -> vector<16xi32> {
+  %r = vector.shuffle %a, %a [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, -1] : vector<4xi32>, vector<4xi32>
+  return %r : vector<16xi32>
+}
