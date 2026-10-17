@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-16T18:54:05+00:00",
+ "generated_at": "2026-10-17T01:10:04+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,11 +10,11 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 419,
+   "runs": 391,
    "main": {
     "passed": 11,
-    "failed": 1,
-    "rate": 0.917
+    "failed": 0,
+    "rate": 1.0
    },
    "latest_main": {
     "id": 38831385965,
@@ -29,14 +29,14 @@
     "attempt": 1
    },
    "newest_main": {
-    "id": 38831385965,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38831385965",
-    "status": "completed",
-    "conclusion": "success",
-    "created_at": "2026-10-16T00:46:24Z",
-    "run_started_at": "2026-10-16T00:46:24Z",
-    "updated_at": "2026-10-16T01:20:26Z",
-    "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "id": 38987940853,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38987940853",
+    "status": "in_progress",
+    "conclusion": null,
+    "created_at": "2026-10-17T00:46:55Z",
+    "run_started_at": "2026-10-17T00:46:55Z",
+    "updated_at": "2026-10-17T00:47:21Z",
+    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
     "title": "Build and Test with AIE tools on Ryzen AI",
     "attempt": 1
    },
@@ -230,37 +230,25 @@
      "head_sha": "20c0463afeaaa52cb94e5ebaa88c3197cd135cd7",
      "title": "Build and Test with AIE tools on Ryzen AI",
      "attempt": 1
-    },
-    {
-     "id": 37083812907,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37083812907",
-     "status": "completed",
-     "conclusion": "failure",
-     "created_at": "2026-10-03T00:51:44Z",
-     "run_started_at": "2026-10-03T00:51:44Z",
-     "updated_at": "2026-10-03T02:14:32Z",
-     "head_sha": "ebd05795b5c47a93ee39c8f9cb285a48396f7aa6",
-     "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 109,
-    "failed": 60,
-    "rate": 0.645
+    "passed": 104,
+    "failed": 57,
+    "rate": 0.646
    },
    "merge_queue": {
-    "passed": 61,
-    "failed": 16,
-    "rate": 0.792
+    "passed": 57,
+    "failed": 14,
+    "rate": 0.803
    },
    "flaky": {
-    "commits": 400,
+    "commits": 375,
     "flaky": 28,
-    "rate": 0.07
+    "rate": 0.075
    },
-   "minutes_median": 65.3,
-   "minutes_p90": 159.8,
+   "minutes_median": 59.9,
+   "minutes_p90": 162.0,
    "queued_median": 0.0
   },
   {
@@ -269,11 +257,11 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 419,
+   "runs": 391,
    "main": {
-    "passed": 11,
+    "passed": 10,
     "failed": 3,
-    "rate": 0.786
+    "rate": 0.769
    },
    "latest_main": {
     "id": 38829198174,
@@ -288,14 +276,14 @@
     "attempt": 1
    },
    "newest_main": {
-    "id": 38829198174,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38829198174",
-    "status": "completed",
-    "conclusion": "success",
-    "created_at": "2026-10-16T00:23:20Z",
-    "run_started_at": "2026-10-16T00:23:20Z",
-    "updated_at": "2026-10-16T01:23:23Z",
-    "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "id": 38986207537,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38986207537",
+    "status": "in_progress",
+    "conclusion": null,
+    "created_at": "2026-10-17T00:24:16Z",
+    "run_started_at": "2026-10-17T00:24:16Z",
+    "updated_at": "2026-10-17T00:26:02Z",
+    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
     "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
     "attempt": 1
    },
@@ -465,36 +453,24 @@
      "head_sha": "20c0463afeaaa52cb94e5ebaa88c3197cd135cd7",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
      "attempt": 1
-    },
-    {
-     "id": 37082050238,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37082050238",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-03T00:26:10Z",
-     "run_started_at": "2026-10-03T00:26:10Z",
-     "updated_at": "2026-10-03T01:07:18Z",
-     "head_sha": "ebd05795b5c47a93ee39c8f9cb285a48396f7aa6",
-     "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 109,
-    "failed": 79,
-    "rate": 0.58
+    "passed": 105,
+    "failed": 73,
+    "rate": 0.59
    },
    "merge_queue": {
-    "passed": 59,
-    "failed": 19,
-    "rate": 0.756
+    "passed": 55,
+    "failed": 17,
+    "rate": 0.764
    },
    "flaky": {
-    "commits": 400,
+    "commits": 375,
     "flaky": 19,
-    "rate": 0.048
+    "rate": 0.051
    },
-   "minutes_median": 64.0,
+   "minutes_median": 64.4,
    "minutes_p90": 103.2,
    "queued_median": 0.0
   },
@@ -504,38 +480,62 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 482,
+   "runs": 451,
    "main": {
-    "passed": 76,
-    "failed": 0,
-    "rate": 1.0
+    "passed": 72,
+    "failed": 1,
+    "rate": 0.986
    },
    "latest_main": {
-    "id": 38830350454,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38830350454",
+    "id": 38987143865,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38987143865",
     "status": "completed",
-    "conclusion": "success",
-    "created_at": "2026-10-16T00:35:39Z",
-    "run_started_at": "2026-10-16T00:35:39Z",
-    "updated_at": "2026-10-16T00:44:01Z",
-    "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "conclusion": "failure",
+    "created_at": "2026-10-17T00:36:27Z",
+    "run_started_at": "2026-10-17T00:36:27Z",
+    "updated_at": "2026-10-17T00:44:23Z",
+    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
     "title": "Compile across platforms",
     "attempt": 1
    },
    "newest_main": {
-    "id": 38830350454,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38830350454",
+    "id": 38987143865,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38987143865",
     "status": "completed",
-    "conclusion": "success",
-    "created_at": "2026-10-16T00:35:39Z",
-    "run_started_at": "2026-10-16T00:35:39Z",
-    "updated_at": "2026-10-16T00:44:01Z",
-    "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "conclusion": "failure",
+    "created_at": "2026-10-17T00:36:27Z",
+    "run_started_at": "2026-10-17T00:36:27Z",
+    "updated_at": "2026-10-17T00:44:23Z",
+    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
     "title": "Compile across platforms",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 38987143865,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38987143865",
+     "status": "completed",
+     "conclusion": "failure",
+     "created_at": "2026-10-17T00:36:27Z",
+     "run_started_at": "2026-10-17T00:36:27Z",
+     "updated_at": "2026-10-17T00:44:23Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "Compile across platforms",
+     "attempt": 1
+    },
+    {
+     "id": 38961504647,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38961504647",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-16T20:20:18Z",
+     "run_started_at": "2026-10-16T20:20:18Z",
+     "updated_at": "2026-10-16T20:44:41Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in\u2026",
+     "attempt": 1
+    },
     {
      "id": 38830350454,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38830350454",
@@ -991,49 +991,25 @@
      "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
      "title": "Compile across platforms",
      "attempt": 1
-    },
-    {
-     "id": 37836220938,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37836220938",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T20:00:42Z",
-     "run_started_at": "2026-10-08T20:00:42Z",
-     "updated_at": "2026-10-08T20:09:26Z",
-     "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
-     "title": "[CI] Increase Retries and Stop on First Failure (#3904)",
-     "attempt": 1
-    },
-    {
-     "id": 37825354313,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37825354313",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T18:34:36Z",
-     "run_started_at": "2026-10-08T18:34:36Z",
-     "updated_at": "2026-10-08T18:43:55Z",
-     "head_sha": "2fa5927da839319d81550bb20090a087135f12ef",
-     "title": "[utils] Cut CachedXRTRuntime's per-dispatch host cost (#3892)",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 212,
-    "failed": 41,
-    "rate": 0.838
+    "passed": 203,
+    "failed": 35,
+    "rate": 0.853
    },
    "merge_queue": {
-    "passed": 75,
+    "passed": 69,
     "failed": 2,
-    "rate": 0.974
+    "rate": 0.972
    },
    "flaky": {
-    "commits": 401,
+    "commits": 375,
     "flaky": 31,
-    "rate": 0.077
+    "rate": 0.083
    },
-   "minutes_median": 9.5,
-   "minutes_p90": 22.6,
+   "minutes_median": 9.6,
+   "minutes_p90": 22.9,
    "queued_median": 0.0
   },
   {
@@ -1042,38 +1018,62 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 482,
+   "runs": 451,
    "main": {
-    "passed": 77,
+    "passed": 74,
     "failed": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 38827864036,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38827864036",
+    "id": 38985069158,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985069158",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-16T00:09:32Z",
-    "run_started_at": "2026-10-16T00:09:32Z",
-    "updated_at": "2026-10-16T00:18:55Z",
-    "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "created_at": "2026-10-17T00:09:48Z",
+    "run_started_at": "2026-10-17T00:09:48Z",
+    "updated_at": "2026-10-17T00:17:18Z",
+    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
     "title": "Build and Test across Python versions",
     "attempt": 1
    },
    "newest_main": {
-    "id": 38827864036,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38827864036",
+    "id": 38985069158,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985069158",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-16T00:09:32Z",
-    "run_started_at": "2026-10-16T00:09:32Z",
-    "updated_at": "2026-10-16T00:18:55Z",
-    "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "created_at": "2026-10-17T00:09:48Z",
+    "run_started_at": "2026-10-17T00:09:48Z",
+    "updated_at": "2026-10-17T00:17:18Z",
+    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
     "title": "Build and Test across Python versions",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 38985069158,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985069158",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-17T00:09:48Z",
+     "run_started_at": "2026-10-17T00:09:48Z",
+     "updated_at": "2026-10-17T00:17:18Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "Build and Test across Python versions",
+     "attempt": 1
+    },
+    {
+     "id": 38961504726,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38961504726",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-16T20:20:18Z",
+     "run_started_at": "2026-10-16T20:20:18Z",
+     "updated_at": "2026-10-16T20:39:03Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in\u2026",
+     "attempt": 1
+    },
     {
      "id": 38827864036,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38827864036",
@@ -1529,49 +1529,25 @@
      "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
      "title": "Build and Test across Python versions",
      "attempt": 1
-    },
-    {
-     "id": 37836220862,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37836220862",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T20:00:42Z",
-     "run_started_at": "2026-10-08T20:00:42Z",
-     "updated_at": "2026-10-08T20:09:35Z",
-     "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
-     "title": "[CI] Increase Retries and Stop on First Failure (#3904)",
-     "attempt": 1
-    },
-    {
-     "id": 37825354230,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37825354230",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T18:34:36Z",
-     "run_started_at": "2026-10-08T18:34:36Z",
-     "updated_at": "2026-10-08T18:43:11Z",
-     "head_sha": "2fa5927da839319d81550bb20090a087135f12ef",
-     "title": "[utils] Cut CachedXRTRuntime's per-dispatch host cost (#3892)",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 227,
-    "failed": 37,
-    "rate": 0.86
+    "passed": 212,
+    "failed": 36,
+    "rate": 0.855
    },
    "merge_queue": {
-    "passed": 77,
+    "passed": 71,
     "failed": 1,
-    "rate": 0.987
+    "rate": 0.986
    },
    "flaky": {
-    "commits": 402,
+    "commits": 375,
     "flaky": 32,
-    "rate": 0.08
+    "rate": 0.085
    },
-   "minutes_median": 9.0,
-   "minutes_p90": 17.4,
+   "minutes_median": 9.1,
+   "minutes_p90": 17.5,
    "queued_median": 0.0
   },
   {
@@ -1580,38 +1556,50 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 419,
+   "runs": 391,
    "main": {
     "passed": 14,
     "failed": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 38827861079,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38827861079",
+    "id": 38985069247,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985069247",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-16T00:09:30Z",
-    "run_started_at": "2026-10-16T00:09:30Z",
-    "updated_at": "2026-10-16T00:12:37Z",
-    "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "created_at": "2026-10-17T00:09:48Z",
+    "run_started_at": "2026-10-17T00:09:48Z",
+    "updated_at": "2026-10-17T00:12:45Z",
+    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
     "title": "Lint and Format",
     "attempt": 1
    },
    "newest_main": {
-    "id": 38827861079,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38827861079",
+    "id": 38985069247,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985069247",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-16T00:09:30Z",
-    "run_started_at": "2026-10-16T00:09:30Z",
-    "updated_at": "2026-10-16T00:12:37Z",
-    "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+    "created_at": "2026-10-17T00:09:48Z",
+    "run_started_at": "2026-10-17T00:09:48Z",
+    "updated_at": "2026-10-17T00:12:45Z",
+    "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
     "title": "Lint and Format",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 38985069247,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985069247",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-17T00:09:48Z",
+     "run_started_at": "2026-10-17T00:09:48Z",
+     "updated_at": "2026-10-17T00:12:45Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "Lint and Format",
+     "attempt": 1
+    },
     {
      "id": 38827861079,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38827861079",
@@ -1767,46 +1755,34 @@
      "head_sha": "20c0463afeaaa52cb94e5ebaa88c3197cd135cd7",
      "title": "Lint and Format",
      "attempt": 1
-    },
-    {
-     "id": 37080954158,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37080954158",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-03T00:10:53Z",
-     "run_started_at": "2026-10-03T00:10:53Z",
-     "updated_at": "2026-10-03T00:13:49Z",
-     "head_sha": "ebd05795b5c47a93ee39c8f9cb285a48396f7aa6",
-     "title": "Lint and Format",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 213,
-    "failed": 74,
-    "rate": 0.742
+    "passed": 200,
+    "failed": 69,
+    "rate": 0.743
    },
    "merge_queue": {
-    "passed": 77,
+    "passed": 71,
     "failed": 1,
-    "rate": 0.987
+    "rate": 0.986
    },
    "flaky": {
-    "commits": 403,
+    "commits": 375,
     "flaky": 32,
-    "rate": 0.079
+    "rate": 0.085
    },
    "minutes_median": 4.0,
-   "minutes_p90": 7.2,
+   "minutes_p90": 7.1,
    "queued_median": 0.0
   }
  ],
  "merge_time": {
-  "merged": 64,
-  "hours_median": 29.0,
+  "merged": 61,
+  "hours_median": 31.7,
   "hours_p90": 615.4,
-  "open": 65,
-  "open_drafts": 25,
+  "open": 63,
+  "open_drafts": 24,
   "open_over_30_days": 43
  },
  "workflows": [
@@ -2701,6 +2677,30 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 38987503222,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38987503222",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-17T00:41:10Z",
+     "run_started_at": "2026-10-17T00:41:10Z",
+     "updated_at": "2026-10-17T01:07:52Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 38960836597,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38960836597",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-16T20:14:49Z",
+     "run_started_at": "2026-10-16T20:14:49Z",
+     "updated_at": "2026-10-16T20:43:07Z",
+     "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 38930674402,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38930674402",
      "status": "completed",
@@ -2817,30 +2817,6 @@
      "run_started_at": "2026-10-15T04:17:59Z",
      "updated_at": "2026-10-15T08:26:56Z",
      "head_sha": "e7048fadf1975db3190accac9e7153f59a5e45b1",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 38661367561,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38661367561",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-15T00:40:26Z",
-     "run_started_at": "2026-10-15T00:40:26Z",
-     "updated_at": "2026-10-15T04:09:25Z",
-     "head_sha": "134df7ad6a4351e614aefbbf720a6b7f317f1e4a",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 38630547151,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38630547151",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-14T20:15:40Z",
-     "run_started_at": "2026-10-14T20:15:40Z",
-     "updated_at": "2026-10-14T23:41:17Z",
-     "head_sha": "da4c734455938810c290e05f0b398bdfd29558fb",
      "title": "MLIR Distro",
      "attempt": 1
     }
@@ -3007,6 +2983,18 @@
    "why": "the Docker build against Ryzen AI Software",
    "runs": [
     {
+     "id": 38985077519,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38985077519",
+     "status": "in_progress",
+     "conclusion": null,
+     "created_at": "2026-10-17T00:09:54Z",
+     "run_started_at": "2026-10-17T00:09:54Z",
+     "updated_at": "2026-10-17T00:10:25Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "Build and Test with Ryzen AI Sofware",
+     "attempt": 1
+    },
+    {
      "id": 38827862663,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38827862663",
      "status": "completed",
@@ -3137,18 +3125,6 @@
      "head_sha": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
      "title": "Build and Test with Ryzen AI Sofware",
      "attempt": 1
-    },
-    {
-     "id": 37246570363,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37246570363",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-05T00:12:12Z",
-     "run_started_at": "2026-10-05T00:12:12Z",
-     "updated_at": "2026-10-05T00:56:51Z",
-     "head_sha": "b15f3508006988ea0252300a1feac447990ce6ec",
-     "title": "Build and Test with Ryzen AI Sofware",
-     "attempt": 1
     }
    ],
    "jobs": null
@@ -3159,6 +3135,18 @@
    "every": 24,
    "why": "the coverage report, as an artifact",
    "runs": [
+    {
+     "id": 38984745508,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38984745508",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-17T00:05:40Z",
+     "run_started_at": "2026-10-17T00:05:40Z",
+     "updated_at": "2026-10-17T00:51:18Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "Code Coverage",
+     "attempt": 1
+    },
     {
      "id": 38827502088,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38827502088",
@@ -3288,18 +3276,6 @@
      "run_started_at": "2026-10-06T00:06:36Z",
      "updated_at": "2026-10-06T00:46:28Z",
      "head_sha": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
-     "title": "Code Coverage",
-     "attempt": 1
-    },
-    {
-     "id": 37246214272,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37246214272",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-05T00:07:05Z",
-     "run_started_at": "2026-10-05T00:07:05Z",
-     "updated_at": "2026-10-05T00:44:42Z",
-     "head_sha": "b15f3508006988ea0252300a1feac447990ce6ec",
      "title": "Code Coverage",
      "attempt": 1
     }
