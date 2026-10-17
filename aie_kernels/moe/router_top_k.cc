@@ -38,8 +38,16 @@ extern "C" {
 // weights[2 * i], a zeroed pad word at weights[2 * i + 1] -- every real
 // weight then sits at a 4-byte-aligned bf16 index, which a 1-element
 // Copy slice of it needs (the shim's scratch-argument addressing drops
-// low bits below 4 bytes).
+// low bits below 4 bytes). With ROUTER_PACKED, SAMPLE_K_MAX words, the
+// weight for ids[i] at weights[i]. With ROUTER_UNNORMALIZED the router also
+// reads the row's SAMPLE_SLICE logits, and each weight is its expert's share
+// of a softmax over all of them rather than over the chosen ones.
+#ifdef ROUTER_UNNORMALIZED
+void router_top_k(const int32_t *summary, const bfloat16 *logits, int32_t *ids,
+                  bfloat16 *weights) {
+#else
 void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
+#endif
   event0();
   int32_t n = 0;
   float values[SAMPLE_K_MAX];
@@ -72,9 +80,21 @@ void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
     w[i] = exp64((double)d);
     sum += w[i];
   }
+#ifdef ROUTER_UNNORMALIZED
+  sum = 0.0;
+  for (int32_t j = 0; j < SAMPLE_SLICE; ++j) {
+    const uint16_t bits = __builtin_bit_cast(uint16_t, logits[j]);
+    const float value = __builtin_bit_cast(float, (uint32_t)bits << 16);
+    sum += exp64((double)__subsf3(value, max_value));
+  }
+#endif
   for (int32_t i = 0; i < SAMPLE_K_MAX; ++i) {
+#ifdef ROUTER_PACKED
+    weights[i] = f32_to_bf16((float)(w[i] / sum));
+#else
     weights[2 * i] = f32_to_bf16((float)(w[i] / sum));
     weights[2 * i + 1] = (bfloat16)0.0f;
+#endif
   }
   event1();
 }
