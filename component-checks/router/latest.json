@@ -1,21 +1,21 @@
 {
  "schema": 1,
  "target": "router",
- "id": "38845819156",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38845819156",
- "date": "2026-10-16T03:30:04+00:00",
+ "id": "38998870733",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38998870733",
+ "date": "2026-10-17T03:27:50+00:00",
  "commit": {
-  "id": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/cb6f2d14a081ae09386eea05865c755dc0c4a86f",
-  "message": "IRON/mlir-aie Infrastructure Deduplication for iron-next (#3921)",
-  "timestamp": "2026-10-15T20:09:31Z"
+  "id": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/0094b28c3470f7774ff690e5ccc85e54159bfca8",
+  "message": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in a cpuset (#3926)",
+  "timestamp": "2026-10-16T19:35:01Z"
  },
  "event": "schedule",
  "pmode": null,
  "device": null,
  "device_raw": null,
  "provenance": {
-  "commit": "cb6f2d14a0"
+  "commit": "0094b28c34"
  },
  "sane": true,
  "published": true,
@@ -38,15 +38,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0121,
+    "value": 1.0131,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.0,
+    "value": 14.502,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 10.98,
+    "value": 18.27,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -72,15 +72,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.013,
+    "value": 1.0137,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.204,
+    "value": 14.829,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 17.43,
+    "value": 24.08,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -106,15 +106,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0066,
+    "value": 1.0129,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 17.77,
+    "value": 17.816,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 162.67,
+    "value": 203.7,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -136,75 +136,75 @@
   {
    "device": "npu1",
    "run": "properties",
-   "first_seed": 207420000,
+   "first_seed": 207430000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu1",
    "run": "hops-on",
-   "first_seed": 207420000,
+   "first_seed": 207430000,
    "seeds": 400,
-   "killed": 1945,
+   "killed": 1874,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu1",
    "run": "hops-off",
-   "first_seed": 207420000,
+   "first_seed": 207430000,
    "seeds": 400,
-   "killed": 1939,
+   "killed": 1865,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "properties",
-   "first_seed": 207420000,
+   "first_seed": 207430000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu2",
    "run": "hops-on",
-   "first_seed": 207420000,
+   "first_seed": 207430000,
    "seeds": 400,
-   "killed": 1939,
+   "killed": 1867,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "hops-off",
-   "first_seed": 207420000,
+   "first_seed": 207430000,
    "seeds": 400,
-   "killed": 1936,
+   "killed": 1857,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "properties",
-   "first_seed": 207420000,
+   "first_seed": 207430000,
    "seeds": 500,
    "failed": []
   },
   {
    "device": "xcvc1902",
    "run": "hops-on",
-   "first_seed": 207420000,
+   "first_seed": 207430000,
    "seeds": 100,
-   "killed": 432,
+   "killed": 402,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "hops-off",
-   "first_seed": 207420000,
+   "first_seed": 207430000,
    "seeds": 100,
-   "killed": 430,
+   "killed": 400,
    "survived": 0,
    "failures": 0
   }

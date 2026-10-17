@@ -37,6 +37,32 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "38998870733",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38998870733",
+   "date": "2026-10-17T03:27:50+00:00",
+   "commit": {
+    "id": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/0094b28c3470f7774ff690e5ccc85e54159bfca8",
+    "message": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in a cpuset (#3926)",
+    "timestamp": "2026-10-16T19:35:01Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "0094b28c34"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
