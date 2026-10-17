@@ -20,7 +20,7 @@ A single [`@iron.jit`](./transposes.py) design exposing five distinct on-device 
 <sup>1</sup> Shim DMA stride-1 must be ≥ 4 bytes, so 1- and 2-byte elements would lower to `aie.dma_bd` with stride < 4 bytes and be rejected.
 <sup>2</sup> The `shuffle_16x16.cc` kernel is hand-written for `uint8 16x16`; supporting other dtypes / sizes would require new kernels.
 <sup>3</sup> Plus an empirical lower bound — `s = 8` needs `m, n ≥ 32` for the underlying `transpose_8x8` VECTOR_SIZE arithmetic to do the right block interleave.
-<sup>4</sup> `mb`/`nb` are ordinary `int32` kernel arguments, not `-DDIM_m`/`-DDIM_n` macros, so `dyn` has no divisibility or minimum-size constraint the way `combined`/`shuffle` do; the whole `M x K` tile is moved and transposed in one core call, so it has to fit in the core's 64 KB L1 alongside the objectFIFO's ping-pong buffers.
+<sup>4</sup> `mb`/`nb` are ordinary `int32` kernel arguments, not `-DDIM_m`/`-DDIM_n` macros, and `M`/`K` are dispatch-time, so `dyn` has no divisibility or minimum-size constraint the way `combined`/`shuffle` do and needs no recompile per shape; the whole `M x K` tile is moved and transposed in one core call, so it has to fit in the core's 64 KB L1 alongside the objectFIFO's ping-pong buffers.
 
 Each `@iron.jit` function in [`transposes.py`](./transposes.py) raises `ValueError` if asked for a combo outside its support envelope.
 
@@ -150,8 +150,20 @@ a new `(M, K)` needs a new compiled kernel, and only shapes satisfying
 `m | M`, `n | K`, `s | m`, `s | n` are reachable at all. `dyn` moves the
 whole `M x K` tile into one core's L1 in a single DMA and transposes it
 with a plain nested loop, taking `mb`/`nb` as ordinary `int32` arguments
-(`aie_kernels/transpose_dyn.cc`) rather than macros. The same compiled
-object then serves any `M`/`K`/element width, including sizes `combined`
-cannot express, such as this design's own default `48 x 37`. The cost is
-one element per cycle instead of a `VSHUFFLE`-per-tile, and the tile has
-to fit L1 rather than being DMA-tiled the way `combined` tiles it.
+(`aie_kernels/transpose_dyn.cc`) rather than macros.
+
+`M` and `K` are `DispatchTime[np.int32]` parameters, so one compiled design
+serves every shape whose `M * K` fits the buffers it was compiled for,
+including sizes `combined` cannot express, such as this design's own
+default `48 x 37`. The runtime sequence writes `M` and `K` into a
+runtime-parameter buffer the core reads before each call, and refuses a
+shape that is non-positive or overflows the buffers before it reaches the
+NPU. The default run dispatches `48 x 37` and then `24 x 18` on the same
+build.
+
+An objectFIFO object has a fixed size, and the core's DMA waits for a whole
+one, so each dispatch moves the full compiled buffer, not just its live
+`M x K` prefix. The input and output sit packed row-major at the front of
+flat buffers. The costs are one element per cycle instead of a
+`VSHUFFLE` per tile, the full-buffer transfer, and a tile that has to fit
+L1 rather than being DMA-tiled the way `combined` tiles it.

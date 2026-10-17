@@ -30,12 +30,13 @@ mechanism has its own (dtype, size) support envelope:
                       ``i8`` / ``i16`` / ``i32`` and any sizes with
                       ``m | M``, ``n | N``, ``s | m``, ``s | n``.
   * ``dyn``         — scalar transpose on a compute core
-                      (``aie_kernels/transpose_dyn.cc``). ``mb``/``nb``
-                      are ordinary ``int32`` kernel arguments rather than
-                      the ``-DDIM_m``/``-DDIM_n`` macros ``combined`` and
-                      ``shuffle`` need, so one compiled object serves any
-                      ``M``/``K``/``i8``/``i16``/``i32`` combination with
-                      no divisibility or minimum-size constraint. One
+                      (``aie_kernels/transpose_dyn.cc``). ``M``/``K`` are
+                      ``DispatchTime`` scalars, delivered to the core as
+                      ``mb``/``nb`` RTP values rather than baked in at
+                      compile time, so one compiled object serves any
+                      ``M``/``K``/``i8``/``i16``/``i32`` combination — no
+                      recompile, no divisibility or minimum-size
+                      constraint — up to the host buffer's capacity. One
                       element per cycle, and the whole ``M x K`` tile must
                       fit one core's L1.
 
@@ -52,8 +53,21 @@ from pathlib import Path
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import (
+    Buffer,
+    CompileTime,
+    DispatchTime,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+    WorkerRuntimeBarrier,
+    require,
+)
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyComputeTile
 from aie.iron.kernel import ExternalFunction
@@ -281,8 +295,8 @@ def _transpose_dyn(
     A: In,
     C: Out,
     *,
-    M: CompileTime[int] = 64,
-    K: CompileTime[int] = 64,
+    M: DispatchTime[np.int32],
+    K: DispatchTime[np.int32],
     dtype_bytes: CompileTime[int] = 4,
 ):
     if dtype_bytes not in _BYTES_TO_DTYPE:
@@ -290,49 +304,73 @@ def _transpose_dyn(
             f"--strategy=dyn supports {sorted(_BYTES_TO_DTYPE)}-byte elements; "
             f"got dtype_bytes={dtype_bytes}."
         )
+    # A's compiled buffer bounds every dispatch's M * K.
+    max_elems = int(np.prod(np_ndarray_type_get_shape(A)))
     # dyn moves the whole tile into L1 in one DMA, so both fifos' buffers have
     # to sit there at once: 2 fifos x depth 2 x the tile.  Checked here because
     # overflowing it otherwise surfaces as a placement failure from aiecc.
-    tile_bytes = M * K * dtype_bytes
-    l1_bytes = 2 * _FIFO_DEPTH * tile_bytes
+    l1_bytes = 2 * _FIFO_DEPTH * max_elems * dtype_bytes
     if l1_bytes > _CORE_L1_BYTES:
         raise ValueError(
-            f"--strategy=dyn needs {l1_bytes} B of L1 for a {M}x{K} tile of "
-            f"{dtype_bytes}-byte elements (2 fifos x depth {_FIFO_DEPTH}), "
-            f"over the core's {_CORE_L1_BYTES} B."
+            f"--strategy=dyn needs {l1_bytes} B of L1 for a {max_elems}-element "
+            f"tile of {dtype_bytes}-byte elements (2 fifos x depth "
+            f"{_FIFO_DEPTH}), over the core's {_CORE_L1_BYTES} B."
         )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
-    tensor_ty = np.ndarray[(M, K), np.dtype[dtype]]
+    flat_ty = np.ndarray[(max_elems,), np.dtype[dtype]]
 
     kernel_func = ExternalFunction(
         "transpose_dyn",
         source_file=_DYN_SRC,
-        arg_types=[tensor_ty, tensor_ty, np.dtype(np.int32), np.dtype(np.int32)],
+        arg_types=[flat_ty, flat_ty, np.dtype(np.int32), np.dtype(np.int32)],
         compile_flags=[f"-D{_COMBINED_DTYPE_MACRO[dtype_bytes]}"],
     )
 
-    in_fifo = ObjectFifo(tensor_ty, name="in_fifo")
-    out_fifo = ObjectFifo(tensor_ty, name="out_fifo")
+    in_fifo = ObjectFifo(flat_ty, name="in_fifo")
+    out_fifo = ObjectFifo(flat_ty, name="out_fifo")
 
-    def core_fn(in_fifo, out_fifo, kernel_func):
+    # Only the runtime sequence sees dispatch-time M, K; the core reads them as RTP.
+    mk_rtp = Buffer(
+        np.ndarray[(2,), np.dtype[np.int32]], name="mk_rtp", use_write_rtp=True
+    )
+    barrier = WorkerRuntimeBarrier()
+
+    def core_fn(in_fifo, out_fifo, kernel_func, rtp, barrier):
+        barrier.wait_for_value(1)
+        mb = rtp[0]
+        nb = rtp[1]
+        # The wait leaves the barrier at 1; step it off so the next dispatch
+        # blocks until that dispatch's own set(1) instead of reusing these.
+        barrier.release_with_value(1)
         elem_in = in_fifo.acquire(1)
         elem_out = out_fifo.acquire(1)
-        # M, K are Python ints closed over from the @iron.jit trace here,
-        # same as this file's other strategies; nothing about the kernel
-        # signature requires that (see transpose_dyn.cc).
-        kernel_func(elem_in, elem_out, M, K)
+        kernel_func(elem_in, elem_out, mb, nb)
         out_fifo.release(1)
         in_fifo.release(1)
 
-    worker = Worker(core_fn, fn_args=[in_fifo.cons(), out_fifo.prod(), kernel_func])
+    worker = Worker(
+        core_fn,
+        fn_args=[in_fifo.cons(), out_fifo.prod(), kernel_func, mk_rtp, barrier],
+    )
 
-    def sequence(a, c, in_h, out_h):
+    def sequence(a, c, M, K, in_h, out_h):
+        require(M > 0, "M must be positive")
+        require(K > 0, "K must be positive")
+        require(
+            M * K <= max_elems,
+            f"M*K must fit the compiled buffer ({max_elems} elements)",
+        )
+        mk_rtp[0] = M
+        mk_rtp[1] = K
+        barrier.set(1)
+        # The core's DMA moves whole fifo objects, so the shim must too: a
+        # shorter transfer leaves the object incomplete and the core waits forever.
         in_h.fill(a)
         out_h.drain(c, wait=True)
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty, in_fifo.prod(), out_fifo.cons()],
+        [A, C, M, K, in_fifo.prod(), out_fifo.cons()],
     )
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
@@ -374,6 +412,13 @@ def _compile_kwargs(opts):
     base = dict(M=opts.M, K=opts.K, dtype_bytes=opts.dtype_bytes)
     if opts.strategy == "combined":
         base.update(m=opts.m, n=opts.n, s=opts.s)
+    if opts.strategy == "dyn":
+        # Compile-only and --emit-mlir bind no tensors, so supply A/C's type,
+        # rounded up to whole 4-byte words as the shim DMA requires.
+        per_word = 4 // opts.dtype_bytes
+        n_elems = -(-opts.M * opts.K // per_word) * per_word
+        flat_ty = np.ndarray[(n_elems,), np.dtype[_BYTES_TO_DTYPE[opts.dtype_bytes]]]
+        base.update(A=flat_ty, C=flat_ty)
     return base
 
 
@@ -398,7 +443,7 @@ def _apply_defaults(opts):
 
 
 def _make_argparser():
-    p = argparse.ArgumentParser(prog="AIE Transpose (four strategies)")
+    p = argparse.ArgumentParser(prog="AIE Transpose (five strategies)")
     add_compile_args(p)
     p.add_argument(
         "-s",
@@ -424,7 +469,37 @@ def _make_argparser():
     return p
 
 
+def _run_and_verify_dyn(opts):
+    """Dispatch two different (M, K) shapes against the one compiled design.
+
+    `M`/`K` are `DispatchTime` scalars (see `_transpose_dyn`), so unlike the
+    other strategies' single-shape check, this is also the proof that the
+    compiled design is reused rather than rebuilt per shape.
+    """
+    dtype = _BYTES_TO_DTYPE[opts.dtype_bytes]
+    rng = np.random.default_rng(0)
+    info = np.iinfo(dtype)
+    buf_shape = np_ndarray_type_get_shape(_compile_kwargs(opts)["A"])
+    a_t = iron.zeros(buf_shape, dtype=dtype, device="npu")
+    c_t = iron.zeros(buf_shape, dtype=dtype, device="npu")
+
+    for M, K in ((opts.M, opts.K), (max(1, opts.M // 2), max(1, opts.K // 2))):
+        in_np = rng.integers(info.min, info.max + 1, size=(M, K), dtype=dtype)
+        a_t.numpy_view().flat[: M * K] = in_np.flat
+        _transpose_dyn(a_t, c_t, M=M, K=K, dtype_bytes=opts.dtype_bytes)
+        expected = in_np.T
+        actual = c_t.numpy().reshape(-1)[: K * M].reshape(K, M)
+        assert_pass(
+            actual,
+            expected,
+            fail_msg=f"M={M}, K={K}: output does not match transpose(in)",
+        )
+
+
 def _run_and_verify(opts):
+    if opts.strategy == "dyn":
+        _run_and_verify_dyn(opts)
+        return
     M, K = opts.M, opts.K
     dtype = _BYTES_TO_DTYPE[opts.dtype_bytes]
     rng = np.random.default_rng(0)
