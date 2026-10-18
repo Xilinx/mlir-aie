@@ -26,6 +26,8 @@ from aie.utils.compile.jit.params import (
 
 
 class Base:
+    trace = None
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         cls.declaration = Declaration.of_class(cls, Base)
@@ -121,6 +123,11 @@ def declare(body: dict, annotations: dict | None = None, base: type = Base):
         ({}, {"M": "int"}, "an annotated attribute is a param()"),
         ({"M": 4}, {"M": "int"}, "an annotated attribute is a param()"),
         ({"M": 4}, {}, "does not override the inherited parameter"),
+        (
+            {"trace": param()},
+            {"trace": "int"},
+            "hides Base.trace, which the library reads",
+        ),
     ],
 )
 def test_a_class_body_breaking_a_rule_is_refused(body, annotations, message):
@@ -139,13 +146,14 @@ M.name, T.name, F.name = "M", "T", "F"
     "member, message",
     [
         (per_call(bounds=T), "must name a param\\(\\), the one a call may bound"),
-        (In(M, True), "dimension True is not a param\\(\\) or an integer"),
-        (In(M, 2.0), "dimension 2.0 is not a param\\(\\) or an integer"),
+        (In(M, True), "dimension True is not a param\\(\\) of Bad or an integer"),
+        (In(M, 2.0), "dimension 2.0 is not a param\\(\\) of Bad or an integer"),
         (In(Select(M, (T,), (1,))), "dimension T is a tunable\\(\\)"),
         (In(F, M, F), "at most one T | None dimension"),
         (In(M, when=T), "when=<tunable T> must be a param\\(\\)"),
         (In(M, obj_shape=(2.5,)), "obj_shape dimension 2.5 is not"),
         (In(M, per=3), "per=3 must be a param\\(\\) or tunable\\(\\)"),
+        (In(GEMV.M), "dimension <param M> is not a param\\(\\) of Bad"),
     ],
 )
 def test_a_member_breaking_a_rule_is_refused(member, message):
@@ -240,3 +248,12 @@ class Derived(Base):
 
 def test_a_flag_a_function_computes_is_absent_until_given():
     assert Derived.declaration.infer({"x": (4,)}) == {"flagged": False, "M": 4}
+
+
+class Narrowed(GEMV):
+    batches: int = param(default=1)
+
+
+def test_a_subclass_may_make_a_nullable_parameter_required_and_dims_may_be_numpy():
+    assert Narrowed.declaration.nullable == frozenset()
+    assert declare({"M": M, "x": In(M, np.int64(2))}, {"M": "int"}).declaration.params

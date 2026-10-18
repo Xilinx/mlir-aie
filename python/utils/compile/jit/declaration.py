@@ -20,8 +20,17 @@ from enum import Enum
 from types import FunctionType
 from typing import Any, ClassVar, get_args, get_origin
 
+import numpy as np
+
 from .markers import _Operand
 from .params import Member, Param, Select, _PerCallValue, _text
+
+
+def _foreign(d, owner: type) -> bool:
+    """Return whether ``d`` is neither an integer nor a parameter of ``owner``."""
+    if isinstance(d, Param):
+        return d.owner is None or not issubclass(owner, d.owner)
+    return isinstance(d, bool) or not isinstance(d, (int, np.integer))
 
 
 def _names(dims) -> set[str]:
@@ -33,14 +42,6 @@ def _names(dims) -> set[str]:
         elif isinstance(d, Select):
             out |= _names((d.flag, *d.when_true, *d.when_false))
     return out
-
-
-def _present(m: Member, flags: Mapping[str, Any]) -> bool:
-    """Return whether ``m`` exists under ``flags``; a flag left out is its plain default."""
-    if m.when is None:
-        return True
-    value = flags.get(m.when.name, m.when.default)
-    return value is not MISSING and not isinstance(value, FunctionType) and bool(value)
 
 
 class Declaration:
@@ -118,7 +119,8 @@ class Declaration:
                     f"annotation; annotating one makes it a constructor argument"
                 )
             if (isinstance(value, (Param, Member))) and any(
-                name in vars(b) for b in library.__mro__
+                name in vars(b) or name in inspect.get_annotations(b)
+                for b in library.__mro__
             ):
                 raise TypeError(
                     f"{owner.__name__}.{name} hides {library.__name__}.{name}, which the library reads; name it otherwise"
@@ -166,8 +168,9 @@ class Declaration:
                     f"{owner.__name__}.{name} = {value!r} does not override the inherited "
                     f"parameter: redeclare it, `{name}: int = tunable(default={value!r}, init=False)`"
                 )
-        nullable |= {
-            n for n, h in hints.items() if n in params and type(None) in get_args(h)
+        own = {n for n in hints if isinstance(vars(owner).get(n), Param)}
+        nullable = (nullable - own) | {
+            n for n in own if type(None) in get_args(hints[n])
         }
 
         # The most derived body's order wins for the members it declares;
@@ -194,7 +197,9 @@ class Declaration:
         where = f"{owner.__name__}.{m.name}"
         if isinstance(m, _PerCallValue):
             if m.bounds is not None and (
-                not isinstance(m.bounds, Param) or m.bounds.tunable
+                not isinstance(m.bounds, Param)
+                or _foreign(m.bounds, owner)
+                or m.bounds.tunable
             ):
                 raise TypeError(
                     f"{where}: per_call(bounds={m.bounds!r}) must name a param(), the one a call may bound"
@@ -203,9 +208,9 @@ class Declaration:
         assert isinstance(m, _Operand)
         for d in m.dims:
             for leaf in d.when_true + d.when_false if isinstance(d, Select) else (d,):
-                if isinstance(leaf, bool) or not isinstance(leaf, (int, Param)):
+                if _foreign(leaf, owner):
                     raise TypeError(
-                        f"{where}: dimension {leaf!r} is not a param() or an integer; declare an expression as a param()"
+                        f"{where}: dimension {leaf!r} is not a param() of {owner.__name__} or an integer; declare an expression as a param()"
                     )
                 if isinstance(leaf, Param) and leaf.tunable:
                     raise TypeError(
@@ -218,17 +223,19 @@ class Declaration:
             raise TypeError(
                 f"{where}: at most one T | None dimension {optional}, since the rank tells whether it is present"
             )
-        if m.when is not None and (not isinstance(m.when, Param) or m.when.tunable):
+        if m.when is not None and (
+            not isinstance(m.when, Param) or _foreign(m.when, owner) or m.when.tunable
+        ):
             raise TypeError(
                 f"{where}: when={m.when!r} must be a param(), the flag the operand exists under"
             )
         for d in m.obj_dims or ():
-            if isinstance(d, bool) or not isinstance(d, (int, Param)):
+            if _foreign(d, owner):
                 raise TypeError(
                     f"{where}: obj_shape dimension {d!r} is not a param(), a tunable() or an integer"
                 )
         for ref in m.per or ():
-            if not isinstance(ref, Param):
+            if not isinstance(ref, Param) or _foreign(ref, owner):
                 raise TypeError(f"{where}: per={ref!r} must be a param() or tunable()")
 
     def __repr__(self) -> str:
@@ -296,12 +303,23 @@ class Declaration:
                     else f"{self.name}: {m.name}= is an operand only where {flag} is true"
                 )
         given |= flags
-        ins = [m for m in operands if m.fills and _present(m, given)]
+        # An operand's flag left out is its plain default; a computed one is unknown, so false.
+        present = {
+            m.name
+            for m in operands
+            if m.when is None
+            or (
+                (v := given.get(m.when.name, m.when.default)) is not MISSING
+                and not isinstance(v, FunctionType)
+                and bool(v)
+            )
+        }
+        ins = [m for m in operands if m.fills and m.name in present]
         if [m.name for m in ins] != list(inputs):
             raise TypeError(
                 f"{self.name} takes {len(ins)} operand(s) ({', '.join(m.name for m in ins)}), got {len(inputs)}"
             )
-        outs = [m for m in operands if not m.fills and _present(m, given)]
+        outs = [m for m in operands if not m.fills and m.name in present]
         if outputs and len(outputs) != len(outs):
             raise TypeError(
                 f"{self.name} produces {len(outs)} output(s) ({', '.join(m.name for m in outs)}), got {len(outputs)}"

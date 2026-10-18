@@ -37,10 +37,6 @@ dtype is a different compiled design.
     recompiling. Explicit specialization instead fixes it at compile time.
     See ``DispatchTime`` below for generator binding and usage restrictions.
 
-Calling ``In(...)``, ``Out(...)`` or ``InOut(...)`` declares an operator's
-tensor in its class body: ``a = In(M, K, dtype=bfloat16)``, its shape in
-``param()`` dimensions (see ``params.py``).
-
 Any parameter without one of these annotations is rejected at ``@iron.jit``
 decoration time when the parameter has a default value: an unannotated scalar
 is bound at generation time, so the default would be baked into the compiled
@@ -142,7 +138,7 @@ class _Operand(Member):
     @property
     def dtype(self):
         dtype = self.declared_dtype
-        return vars(self.op)[dtype.name] if isinstance(dtype, Param) else dtype
+        return getattr(self.op, dtype.name) if isinstance(dtype, Param) else dtype
 
     @property
     def elements(self) -> int:

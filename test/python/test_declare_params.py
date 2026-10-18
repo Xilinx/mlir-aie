@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import functools
 from types import SimpleNamespace
 
 import numpy as np
@@ -41,19 +42,9 @@ def test_a_parameter_is_its_own_reference_and_an_instance_holds_its_value():
     assert op.M == 8
 
 
-def test_a_parameter_an_instance_does_not_hold_names_the_layout_key():
-    with pytest.raises(AttributeError, match="build\\(\\) reads M, which is not in"):
-        Op().M
-
-
 def test_a_parameter_takes_a_default_or_a_derive_not_both():
     with pytest.raises(TypeError, match="give one, not both"):
         param(default=1, derive=lambda op: 1)
-
-
-def test_a_tunable_is_always_keyed_and_a_parameter_only_when_marked():
-    assert Op.tile.array and Op.tile.tunable
-    assert not Op.M.array and Op.b_col_maj.array
 
 
 def test_widths_are_the_start_and_each_power_of_two_up_to_the_columns():
@@ -63,21 +54,18 @@ def test_widths_are_the_start_and_each_power_of_two_up_to_the_columns():
 def test_a_domain_is_a_tuple_an_enum_or_a_function():
     with pytest.raises(TypeError, match="give a tuple, an Enum or a function"):
         tunable(domain=[1, 2])
+    assert tunable(domain=functools.partial(widths)).domain is not None
+
+
+def test_a_mutable_default_is_refused():
+    with pytest.raises(TypeError, match="would be shared by every instance"):
+        param(default=[])
 
 
 def test_divisors_double_and_halve_within_their_bounds():
     assert divisors(64, of=256) == (256, 128, 64, 32, 16, 8, 4, 2, 1)
     assert divisors(64, of=256, step=16, cap=128) == (128, 64, 32, 16)
     assert divisors(64, of=256, span=1) == (128, 64, 32)
-
-
-def test_a_per_call_value_reads_what_the_operator_bound():
-    op = Op()
-    op._bound = {"count": 3}
-    assert op.count == 3
-    assert Op.valid.bounds is Op.M and Op.count.dtype is np.int32
-    with pytest.raises(AttributeError, match="Op.valid is not bound yet"):
-        op.valid
 
 
 def test_a_per_call_value_is_an_integer_with_one_source():

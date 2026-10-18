@@ -39,6 +39,7 @@ class Operator:
     declaration: ClassVar[Declaration]
     reference_only: ClassVar[bool] = False
     _library: ClassVar[type] = None  # pyright: ignore[reportAssignmentType]
+    trace: Any = None
 
     def __init_subclass__(cls, library: bool = False, **kwargs) -> None:
         super().__init_subclass__(**kwargs)

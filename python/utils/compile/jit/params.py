@@ -17,7 +17,6 @@ from __future__ import annotations
 import copy
 from dataclasses import MISSING, dataclass
 from enum import Enum
-from types import FunctionType
 from typing import Any, Callable, Self
 
 import numpy as np
@@ -98,6 +97,10 @@ def param(
     """
     if default is not MISSING and derive is not None:
         raise TypeError("param(default=, derive=): give one, not both")
+    if isinstance(default, (list, dict, set)):
+        raise TypeError(
+            f"param(default={default!r}) would be shared by every instance; give default=lambda op: {default!r}"
+        )
     return Param(
         default=default,
         derive=derive,
@@ -139,7 +142,7 @@ def tunable(
         domain is None
         or isinstance(domain, tuple)
         or (isinstance(domain, type) and issubclass(domain, Enum))
-        or isinstance(domain, FunctionType)
+        or (callable(domain) and not isinstance(domain, type))
     ):
         raise TypeError(
             f"tunable(domain={domain!r}): give a tuple, an Enum or a function "
@@ -184,7 +187,7 @@ class Member:
         try:
             return op._bound[self.name]
         except (AttributeError, KeyError):
-            if self.when is not None and not vars(op)[self.when.name]:
+            if self.when is not None and not getattr(op, self.when.name):
                 raise AttributeError(
                     f"{type(op).__name__}.{self.name} is declared when="
                     f"{self.when.name}, which is False on this instance"
@@ -209,9 +212,6 @@ class _PerCallValue(Member):
         self.dtype = dtype
         self.derive = derive
         self.bounds = bounds
-
-    def __repr__(self) -> str:
-        return f"per_call({np.dtype(self.dtype).name})"
 
 
 def per_call(
@@ -259,7 +259,7 @@ class Select:
 
     def branch(self, op) -> tuple:
         """Return the dimensions the flag picks on ``op``."""
-        flag = vars(op)[self.flag.name]
+        flag = getattr(op, self.flag.name)
         if flag is None:
             raise ValueError(
                 f"{self.flag.name} is None; a Select() on it needs a resolved operator"
@@ -282,7 +282,7 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
             out.extend(resolve(d.branch(op), op))
         elif not isinstance(d, Param):
             out.append(int(d))
-        elif (value := vars(op)[d.name]) is not None:
+        elif (value := getattr(op, d.name)) is not None:
             out.append(int(value))
         elif d.tunable:
             raise ValueError(
