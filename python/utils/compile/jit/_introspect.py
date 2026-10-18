@@ -22,7 +22,7 @@ from typing import Annotated, Callable, get_args, get_origin
 
 from .declaration import Declaration
 from .markers import In, InOut, Out
-from .params import Member, Param, PerCall, param
+from .params import Member, Param, PerCallMember, param
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ def declare(generator: Callable) -> Declaration:
         elif _is_tensor_param(ann):
             member = ann()
         elif (dtype := _dispatch_param_type(ann)) is not None:
-            member = PerCall(dtype, None, None)
+            member = PerCallMember(dtype, None, None)
         else:
             scalars.append(name)
             continue

@@ -197,7 +197,7 @@ class Member:
             ) from None
 
 
-class PerCall(Member):
+class PerCallMember(Member):
     """What ``per_call()`` returns: a value that may change every call.
 
     Attributes:
@@ -243,7 +243,7 @@ def per_call(
         )
     if derive is not None and bounds is not None:
         raise TypeError("per_call(derive=, bounds=): give one, not both")
-    return PerCall(dtype, derive, bounds)
+    return PerCallMember(dtype, derive, bounds)
 
 
 @dataclass(frozen=True)

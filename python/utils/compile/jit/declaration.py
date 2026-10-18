@@ -23,7 +23,7 @@ from typing import Any, ClassVar, get_args, get_origin
 import numpy as np
 
 from .markers import _Operand
-from .params import Member, Param, PerCall, Select, _text
+from .params import Member, Param, PerCallMember, Select, _text
 
 
 def _foreign(d, owner: type) -> bool:
@@ -95,8 +95,8 @@ class Declaration:
         return tuple(m for m in self.members if isinstance(m, _Operand))
 
     @property
-    def per_calls(self) -> tuple[PerCall, ...]:
-        return tuple(m for m in self.members if isinstance(m, PerCall))
+    def per_calls(self) -> tuple[PerCallMember, ...]:
+        return tuple(m for m in self.members if isinstance(m, PerCallMember))
 
     @staticmethod
     def of_class(owner: type, library: type) -> Declaration:
@@ -184,7 +184,7 @@ class Declaration:
     @staticmethod
     def _check(owner: type, m: Member, nullable: set[str]) -> None:
         where = f"{owner.__name__}.{m.name}"
-        if isinstance(m, PerCall):
+        if isinstance(m, PerCallMember):
             if m.bounds is not None and (
                 not isinstance(m.bounds, Param)
                 or _foreign(m.bounds, owner)
