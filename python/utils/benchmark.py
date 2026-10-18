@@ -12,17 +12,20 @@ numbers are numpy's.
 
 ``run_iters`` times one callable; ``run_interleaved`` times several against
 each other, round by round, so a drift in the host or the NPU lands on all of
-them alike.
+them alike. ``wait_idle`` holds a measurement until no other process uses the
+NPU.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Hashable, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
@@ -182,6 +185,67 @@ def cpu_wait_us() -> float | None:
         return int(Path("/proc/thread-self/schedstat").read_text().split()[1]) / 1e3
     except OSError:
         return None
+
+
+def other_npu_users(holding: bool = False) -> set[int]:
+    """Return the pids of the other processes holding a context on the NPU.
+
+    Read from ``xrt-smi examine -r aie-partitions``, which reports pids in the
+    host's namespace, so in a container this process cannot tell which is its
+    own.
+
+    Args:
+        holding: Whether this process holds a context. Where its pid is not
+            reported, it is then the one pid when one is reported, and
+            somewhere among them, all returned, when more are.
+    """
+    from aie.utils.probe import xrt_smi_path
+
+    with tempfile.TemporaryDirectory() as d:
+        report = Path(d) / "partitions.json"
+        subprocess.run(
+            [xrt_smi_path() or "xrt-smi", "examine", "-r", "aie-partitions"]
+            + ["-f", "JSON", "-o", str(report)],
+            capture_output=True,
+            check=True,
+        )
+        devices = json.loads(report.read_text())["devices"]
+    pids = {
+        int(context["pid"])
+        for device in devices
+        for partition in device["aie_partitions"].get("partitions", [])
+        for context in partition.get("hw_contexts", [])
+    }
+    if os.getpid() in pids or not holding:
+        return pids - {os.getpid()}
+    return pids if len(pids) > 1 else set()
+
+
+# Seconds between looks at an NPU another process holds, and the most waited.
+IDLE_POLL = 5.0
+IDLE_WAIT = 1800.0
+
+
+def wait_idle(log: Callable[[str], None] = print, holding: bool = False) -> None:
+    """Return once no other process holds a context on the NPU (``other_npu_users``).
+
+    Raises:
+        TimeoutError: Another has held one for ``IDLE_WAIT`` seconds. Two
+            processes measuring at once would each wait for the other.
+    """
+    held, told = other_npu_users(holding), set()
+    start = time.monotonic()
+    while held:
+        if held != told:
+            log(f"the NPU is in use by pid {sorted(held)}: waiting")
+            told = held
+        if time.monotonic() - start > IDLE_WAIT:
+            raise TimeoutError(
+                f"pid {sorted(held)} has held the NPU for {IDLE_WAIT:.0f} s; "
+                "measure once it is idle"
+            )
+        time.sleep(IDLE_POLL)
+        held = other_npu_users(holding)
 
 
 class CompletionCores(AbstractContextManager):

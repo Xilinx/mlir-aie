@@ -185,3 +185,59 @@ def test_print_benchmark_omits_the_npu_line_without_npu_time(capsys):
 def test_empty_arg_sets_is_rejected_not_divided_by():
     with pytest.raises(ValueError, match="at least one"):
         run_iters(lambda: None, arg_sets=[], iters=1)
+
+
+def _partitions(monkeypatch, *reports):
+    """Have xrt-smi report each of ``reports`` (lists of pids) in turn."""
+    import json
+    import os
+
+    from aie.utils import benchmark
+
+    pending = list(reports)
+
+    def run(args, **_):
+        pids = pending.pop(0) if len(pending) > 1 else pending[0]
+        contexts = [{"pid": str(os.getpid() if p == "me" else p)} for p in pids]
+        report = {
+            "devices": [{"aie_partitions": {"partitions": [{"hw_contexts": contexts}]}}]
+        }
+        with open(args[args.index("-o") + 1], "w") as f:
+            json.dump(report, f)
+
+    monkeypatch.setattr(benchmark.subprocess, "run", run)
+    monkeypatch.setattr(benchmark.time, "sleep", lambda _: None)
+    return benchmark
+
+
+@pytest.mark.parametrize(
+    "pids, holding, others",
+    [
+        ([], False, set()),
+        (["me"], True, set()),
+        (["me", 7], True, {7}),
+        ([7], False, {7}),
+        ([7], True, set()),
+        ([7, 8], True, {7, 8}),
+    ],
+)
+def test_other_npu_users_leave_out_this_process(monkeypatch, pids, holding, others):
+    benchmark = _partitions(monkeypatch, pids)
+    assert benchmark.other_npu_users(holding) == others
+
+
+def test_wait_idle_returns_once_the_others_leave(monkeypatch):
+    benchmark = _partitions(monkeypatch, [7], [7, 8], [])
+    said = []
+    benchmark.wait_idle(said.append)
+    assert said == [
+        "the NPU is in use by pid [7]: waiting",
+        "the NPU is in use by pid [7, 8]: waiting",
+    ]
+
+
+def test_wait_idle_gives_up_after_idle_wait(monkeypatch):
+    benchmark = _partitions(monkeypatch, [7])
+    monkeypatch.setattr(benchmark, "IDLE_WAIT", -1.0)
+    with pytest.raises(TimeoutError, match=r"pid \[7\] has held the NPU"):
+        benchmark.wait_idle(lambda _: None)
