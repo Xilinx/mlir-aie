@@ -2713,6 +2713,52 @@
     "offered": 90,
     "checked": 86
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "39103443288",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39103443288",
+   "date": "2026-10-18T06:16:12+00:00",
+   "commit": {
+    "id": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
+    "message": "[AIEVec] AIE2P: lower aievec.shuffle with the AIE2P intrinsic, and repeated 128-bit vectors through it (#3929)",
+    "timestamp": "2026-10-17T21:59:35Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "e040370784",
+    "peano": "22.0.0+83ba9ea9",
+    "kernels": "8ee515753dca",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 765,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 505,
+    "failed": 0,
+    "timed": 196,
+    "timing_failed": 0,
+    "untimed": 309,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 90,
+    "checked": 86
+   }
   }
  ]
 }
