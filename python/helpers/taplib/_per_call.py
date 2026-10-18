@@ -66,7 +66,9 @@ class PerCall:
     def __eq__(self, other) -> bool:
         if isinstance(other, (PerCall, Affine)):
             return self is other
-        raise TypeError(f"{self} has no value to compare: it is given per call")
+        if isinstance(other, (int, float, np.integer, np.floating)):
+            raise TypeError(f"{self} has no value to compare: it is given per call")
+        return NotImplemented
 
     __hash__ = object.__hash__
 
@@ -245,6 +247,11 @@ class Affine:
         if isinstance(other, (int, float, np.integer, np.floating)):
             raise TypeError(f"{self} has no value to compare: it is computed per call")
         return NotImplemented
+
+    def __hash__(self) -> int:
+        # The value by identity, as __eq__ compares it.
+        terms = tuple(getattr(self, f.name) for f in dataclasses.fields(self)[1:])
+        return hash((id(self.value), terms))
 
     def __bool__(self):
         raise TypeError(f"{self} has no truth value: it is computed per call")

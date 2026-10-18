@@ -96,7 +96,8 @@ def test_dispatch_generation_time_misuse(use, npu2_device):
 def test_an_expression_of_a_dispatch_parameter_is_computed_per_call(use, npu2_device):
     def gen(*, count: DispatchTime[np.int32]):
         e = count * 64 + 64
-        assert e == Affine(count, 64, 64)
+        assert e == Affine(count, 64, 64) and len({e, count * 64 + 64}) == 1
+        assert e != "e"
         use(e)
 
     with pytest.raises(TypeError, match="computed per call"):

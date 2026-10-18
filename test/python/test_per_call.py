@@ -49,6 +49,7 @@ def test_arithmetic_on_a_per_call_value_is_an_expression():
     ]
     assert p == p and p != per_call() and p + 1 == p + 1
     assert len({p, p}) == 1 and len({p + 1, 1 + p}) == 1
+    assert p != "p" and p + 1 != "p" and p != None  # noqa: E711
     for bad in (lambda: p * 0.5, lambda: p < 0, lambda: p + 1 == 1, lambda: bool(p)):
         with pytest.raises(TypeError):
             bad()
