@@ -1223,11 +1223,6 @@ class CompilableDesign:
 
         return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
 
-    @property
-    def kernels(self) -> list:
-        """The ExternalFunctions the design calls, found by generating it without compiling."""
-        return list(self._generated[1])
-
     def validate_tensor_args(
         self,
         tensor_args: list,
