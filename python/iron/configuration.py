@@ -7,20 +7,26 @@ import itertools
 from collections.abc import Sequence
 from contextlib import contextmanager
 
+import numpy as np
+
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import (
+    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+    DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
+    RuntimeSequenceOp,  # pyright: ignore[reportAttributeAccessIssue]
     TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
     WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     device,
 )
 from ..dialects.aiex import ConfigureOp  # pyright: ignore[reportAttributeAccessIssue]
 from ..helpers.dialects.func import FuncBase
+from ..helpers.util import mlir_type_to_np_dtype
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.flow import PacketFlow
 from .dataflow.objectfifo import ObjectFifoLink
-from .device import Device
+from .device import Device, NamedDevice
 from .kernel import Kernel
 from .resolvable import DeviceResources, PerDeviceConfiguration, Resolvable
 from .runtime import Runtime
@@ -63,6 +69,7 @@ class DeviceConfiguration(DeviceResources):
         self._shimtile_events = None
         self._core_trace_mode = TraceMode.EventTime
         self._owners = None
+        self._prebuilt: str | None = None
 
         runtime_names = [
             runtime.name for runtime in self._runtimes if runtime.name is not None
@@ -76,6 +83,61 @@ class DeviceConfiguration(DeviceResources):
             )
         for runtime in self._runtimes:
             runtime._bind_configuration(self)
+
+    @classmethod
+    def from_module(cls, name: str, module: ir.Module) -> DeviceConfiguration:
+        """Return a configuration that emits ``module``'s one ``aie.device`` verbatim.
+
+        Each runtime sequence in the device becomes a Runtime of the same name
+        and argument types, which declares the ``aiex.scratchpad_parameter``s
+        beside the device, so ``Program.compose`` takes it like any other.
+
+        Raises:
+            ValueError: ``module`` holds no ``aie.device``, or several.
+            TypeError: A sequence argument's elements have no NumPy dtype.
+        """
+        devices = [op for op in module.body.operations if isinstance(op, DeviceOp)]
+        if len(devices) != 1:
+            raise ValueError(
+                f"DeviceConfiguration.from_module needs a module holding one "
+                f"aie.device, not {len(devices)}."
+            )
+        (device_op,) = devices
+        with module.context:
+            parameters = [
+                ScratchpadParameter(
+                    ir.StringAttr(op.attributes["sym_name"]).value,
+                    mlir_type_to_np_dtype(ir.TypeAttr(op.attributes["type"]).value),
+                )
+                for op in module.body.operations
+                if op.operation.name == "aiex.scratchpad_parameter"
+            ]
+            runtimes = []
+            for sequence in device_op.body_region.blocks[0].operations:
+                if not isinstance(sequence, RuntimeSequenceOp):
+                    continue
+                types = []
+                for arg in sequence.body.blocks[0].arguments:
+                    memref = ir.MemRefType(arg.type)
+                    dtype = mlir_type_to_np_dtype(memref.element_type)
+                    if dtype is None:
+                        raise TypeError(f"No NumPy dtype for the elements of {memref}.")
+                    types.append(np.ndarray[tuple(memref.shape), np.dtype[dtype]])
+                runtime = Runtime(
+                    lambda *_: None,
+                    types,
+                    name=ir.StringAttr(sequence.attributes["sym_name"]).value,
+                )
+                for parameter in parameters:
+                    runtime.register_parameter(parameter)
+                runtimes.append(runtime)
+            kind = AIEDevice(ir.IntegerAttr(device_op.attributes["device"]).value)
+        device_type = next(
+            c for c in NamedDevice.__subclasses__() if c.aie_device == kind
+        )
+        configuration = cls(name, device_type(), runtimes=runtimes)
+        configuration._prebuilt = str(device_op)
+        return configuration
 
     # Device-local resources may belong to only one configuration.
     def _claim(self, resource, owners: dict[int, "DeviceConfiguration"]) -> None:
@@ -290,6 +352,13 @@ class DeviceConfiguration(DeviceResources):
         """Emit this configuration as one ``aie.device`` operation."""
         # The remaining emission order matches the dependencies between device ops.
         self._owners = owners
+        if self._prebuilt is not None:
+            prebuilt = ir.Module.parse(self._prebuilt)  # alive while cloned
+            (op,) = prebuilt.body.operations
+            op.clone(ip=ir.InsertionPoint.current).attributes["sym_name"] = (
+                ir.StringAttr.get(device_name)
+            )
+            return
         self._name_unnamed()
         device_type = type(self._device)
         self._device = device_type()  # pyright: ignore[reportCallIssue]

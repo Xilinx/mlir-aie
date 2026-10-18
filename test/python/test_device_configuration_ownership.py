@@ -29,6 +29,7 @@ from aie.iron import (
     sync_parameters,
 )
 from aie.iron.device import NPU2Col1, Tile
+from aie.ir import Context, Module, StringAttr
 
 Tensor = np.ndarray[(4,), np.dtype[np.int32]]
 
@@ -507,3 +508,41 @@ def test_co_resident_runtimes_may_share_one_tile_program():
     route = control_route()
     module = program(lambda rt: rt.add_flow(route), lambda rt: rt.add_flow(route))
     assert str(module).count("aie.packet_flow(") == 1
+
+
+PREBUILT = """
+aiex.scratchpad_parameter @count : i32
+aie.device(npu2_1col) @made_elsewhere {
+  %t = aie.tile(0, 2)
+  %c = aie.core(%t) {
+    aie.end
+  }
+  aie.runtime_sequence @run(%a: memref<16xi32>, %b: memref<4x8xbf16>) {
+  }
+}
+"""
+
+
+def test_a_prebuilt_device_composes_verbatim():
+    with Context():
+        module = Module.parse(PREBUILT)
+        prebuilt = DeviceConfiguration.from_module("other", module)
+        module.body.operations[1].attributes["sym_name"] = StringAttr.get("other")
+        device = str(module.body.operations[1])
+    (run,) = prebuilt.runtimes
+    assert run.name == "run" and [p.name for p in run.scratchpad_parameters] == [
+        "count"
+    ]
+    rt = runtime("seq")
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[rt])
+    composed = Program.compose([built, prebuilt], entry=rt).resolve_program()
+    assert str(composed.body.operations[2]) == device
+    assert str(composed).count("aiex.scratchpad_parameter @count") == 1
+
+
+@pytest.mark.parametrize(
+    "text", ["", PREBUILT + PREBUILT.split("\n", 2)[2].replace("made_", "built_")]
+)
+def test_a_prebuilt_module_holds_one_device(text):
+    with Context(), pytest.raises(ValueError, match="holding one aie.device, not"):
+        DeviceConfiguration.from_module("other", Module.parse(text))
