@@ -1,0 +1,13 @@
+<map id="xilinx::AIEX::TaskBdDecomposition" name="xilinx::AIEX::TaskBdDecomposition">
+<area shape="rect" id="Node000001" title="How aie&#45;decompose&#45;large&#45;dma&#45;bd splits a runtime task&#39;s descriptor." alt="" coords="55,240,303,265"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,145,56,170"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="62,175,162,238,159,242,59,179"/>
+<area shape="rect" id="Node000003" href="$structxilinx_1_1AIEX_1_1NdDmaPattern.html" title="Innermost&#45;first ND access pattern (d0..d3 / repeat), matching the convention used by verifyStridesWra..." alt="" coords="79,145,278,170"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="181,184,181,240,176,240,176,184"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="38,5,186,45"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="126,57,150,112,172,143,167,146,146,115,121,60"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="211,13,277,38"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="234,51,187,146,182,143,230,49"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="303,137,481,177"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="337,185,206,242,204,237,335,180"/>
+</map>
