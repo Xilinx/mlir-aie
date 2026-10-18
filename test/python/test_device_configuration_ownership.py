@@ -5,7 +5,7 @@
 
 import numpy as np
 import pytest
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
 from aie.iron import (
     Bd,
     Buffer,
@@ -465,3 +465,45 @@ def test_two_configurations_may_name_a_symbol_alike():
     Program.compose(
         [config_a, config_b], entry=rt_a
     ).resolve_program().operation.verify()
+
+
+def shim_dma(rt):
+    buffer = Buffer(Tensor, tile=Tile(0, 1, tile_type=AIETileType.MemTile))
+    channel = DmaChannel(DMAChannelDir.MM2S, 0, [Bd(buffer)])
+    rt.add_tile_dma(TileDma(Tile(0, 0), [channel]))
+
+
+def control_route():
+    source = Tile(0, 1, tile_type=AIETileType.MemTile)
+    return PacketFlow(3, source, Tile(0, 0), dst_port=WireBundle.TileControl)
+
+
+def program(*registers):
+    """One configuration of one Runtime per ``registers`` entry, which adds to it."""
+    runtimes = [runtime(f"seq_{i}") for i in range(len(registers))]
+    for rt, register in zip(runtimes, registers):
+        register(rt)
+    config = DeviceConfiguration("pack", NPU2Col1(), runtimes=runtimes)
+    return Program.compose([config], entry=runtimes[0]).resolve_program()
+
+
+@pytest.mark.parametrize(
+    "second, kinds",
+    [
+        (shim_dma, "a TileDma and a TileDma"),
+        (lambda rt: rt.add_flow(control_route()), "a TileDma and a PacketFlow"),
+    ],
+)
+def test_co_resident_runtimes_cannot_program_one_tile_dma(second, kinds):
+    with pytest.raises(
+        ValueError,
+        match=r"Runtimes 'seq_0' and 'seq_1' both program the DMA of tile "
+        rf"\(0, 0\) in device configuration 'pack', by {kinds}\.",
+    ):
+        program(shim_dma, second)
+
+
+def test_co_resident_runtimes_may_share_one_tile_program():
+    route = control_route()
+    module = program(lambda rt: rt.add_flow(route), lambda rt: rt.add_flow(route))
+    assert str(module).count("aie.packet_flow(") == 1
