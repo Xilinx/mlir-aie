@@ -28,7 +28,7 @@ from aie.utils.compile.jit.params import (
 class Base:
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        cls.declaration = Declaration(cls, Base)
+        cls.declaration = Declaration.of_class(cls, Base)
 
     def inputs(self):
         pass
@@ -118,6 +118,7 @@ def declare(body: dict, annotations: dict | None = None, base: type = Base):
         ({"a": In(4)}, {"a": "int"}, "members are declared without an annotation"),
         ({"inputs": In(4)}, {}, "hides Base.inputs, which the library reads"),
         ({"M": param()}, {}, "annotate the parameter with its type"),
+        ({}, {"M": "int"}, "an annotated attribute is a param()"),
         ({"M": 4}, {"M": "int"}, "an annotated attribute is a param()"),
         ({"M": 4}, {}, "does not override the inherited parameter"),
     ],
@@ -228,3 +229,14 @@ def test_inference_refuses_a_flag_its_operands_contradict():
 def test_a_select_with_no_flag_value_asks_for_it():
     with pytest.raises(ValueError, match="flip selects y's shape and has no default"):
         Gated.declaration.infer({"x": (4,)}, outputs=[(4, 1)])
+
+
+class Derived(Base):
+    M: int = param()
+    flagged: bool = param(default=lambda op: True)
+    x = In(M)
+    y = In(M, when=flagged)
+
+
+def test_a_flag_a_function_computes_is_absent_until_given():
+    assert Derived.declaration.infer({"x": (4,)}) == {"flagged": False, "M": 4}

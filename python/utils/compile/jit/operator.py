@@ -46,7 +46,7 @@ class Operator:
             cls._library = cls
             return
         library_cls = cls._library or Operator
-        cls.declaration = Declaration(cls, library_cls)
+        cls.declaration = Declaration.of_class(cls, library_cls)
         if cls.reference_only:
             kernel = [
                 n
@@ -78,30 +78,54 @@ class Operator:
     def _set(self, given: dict[str, Any]) -> None:
         """Set every parameter: given, else its default or what computes it.
 
-        None counts as not given. A function default or ``derive`` is
-        computed in declaration order, once the parameters before it are
-        set; a given ``derive`` parameter must equal what it computes.
+        None counts as not given. Plain defaults are set first; then each
+        function default or ``derive`` is computed in declaration order. A
+        given ``derive`` parameter must equal what it computes.
+
+        Raises:
+            TypeError: An ``Enum``-domain tunable holds another type.
+            ValueError: A computed parameter is None, or a given ``derive``
+                one disagrees.
         """
         params = self.declaration.params
-        vars(self).update({n: given.get(n) for n in params})
+        computed = {
+            n
+            for n, p in params.items()
+            if p.derive is not None or isinstance(p.default, FunctionType)
+        }
+        for n, p in params.items():
+            value = given.get(n)
+            plain = n not in computed and p.default is not MISSING
+            vars(self)[n] = p.default if value is None and plain else value
         self._resolved = False
         for n, p in params.items():
-            if vars(self)[n] is None:
-                value = p.initial(self)
-                computed = p.derive is not None or isinstance(p.default, FunctionType)
-                if value is None and computed and n not in self.declaration.nullable:
+            if n in computed and vars(self)[n] is None:
+                value = (p.derive or p.default)(self)
+                if value is None and n not in self.declaration.nullable:
                     raise ValueError(
                         f"{type(self).__name__}: {n} (None) must be given: nothing computes it"
                     )
                 vars(self)[n] = value
-        for n, p in params.items():
+            domain = p.domain
+            value = vars(self)[n]
+            if (
+                isinstance(domain, type)
+                and issubclass(domain, Enum)
+                and value is not None
+                and not isinstance(value, domain)
+            ):
+                raise TypeError(
+                    f"{type(self).__name__}: {n} ({value!r}) must be a {domain.__name__}"
+                )
+        for n in computed:
+            p = params[n]
             if (
                 p.derive is not None
                 and given.get(n) is not None
                 and given[n] != (expected := p.derive(self))
             ):
                 raise ValueError(
-                    f"{type(self).__name__}: {n} ({vars(self)[n]!r}) must be {expected!r}, what its other parameters make it"
+                    f"{type(self).__name__}: {n} ({given[n]!r}) must be {expected!r}, what its other parameters make it"
                 )
         self.validate()
         self._bind()
@@ -116,6 +140,12 @@ class Operator:
 
     def validate(self) -> None:
         """Check the parameters on their own; raise ``ValueError``. Runs at construction."""
+
+    def compatible(self) -> None:
+        """Check the parameters against the resolved tunables; raise ``ValueError``.
+
+        Runs on the copy ``resolved`` returns.
+        """
 
     def resolve(self, dev) -> Self:
         """Return a copy with every tunable filled for ``dev``.
@@ -149,6 +179,7 @@ class Operator:
             raise Unresolvable(
                 f"{type(self).__name__}.resolve() left {missing} unset for {dev}"
             )
+        new.compatible()
         new._resolved = True
         return new
 

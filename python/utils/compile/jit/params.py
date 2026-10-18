@@ -37,7 +37,7 @@ class Param:
         repr: It is in the operator's repr and device symbols.
         init: It is a constructor argument.
         tunable: A tuner may choose it.
-        domain: A tunable's search space (see `values`), or None.
+        domain: A tunable's search space, or None.
     """
 
     def __init__(self, *, default, derive, array, repr, init, tunable, domain):
@@ -51,7 +51,7 @@ class Param:
         self.name = ""
         self.owner: type | None = None
 
-    def __set_name__(self, owner: type, name: str) -> None:
+    def __set_name__(self, owner: type | None, name: str) -> None:
         self.name = name
         self.owner = owner
 
@@ -65,31 +65,6 @@ class Param:
             f"{type(op).__name__}.build() reads {self.name}, which is not in the "
             f"core-layout key; declare it param(array=True)"
         )
-
-    def initial(self, op) -> Any:
-        """Return the value on ``op`` when the caller gives none."""
-        if self.derive is not None:
-            return self.derive(op)
-        if isinstance(self.default, FunctionType):
-            return self.default(op)
-        return None if self.default is MISSING else self.default
-
-    def values(self, op, dev, start) -> tuple:
-        """Return the values a tuner tries for this tunable.
-
-        ``op`` is resolved for ``dev`` with ``start``. They are none without
-        a domain; a tuple, with ``start`` first if it is not among them; an
-        ``Enum``'s members, ``start`` first; or what a function ``(op, dev,
-        start)`` returns.
-        """
-        domain = self.domain
-        if domain is None:
-            return ()
-        if isinstance(domain, type) and issubclass(domain, Enum):
-            return (start, *(m for m in domain if m != start))
-        if isinstance(domain, tuple):
-            return domain if start in domain else (start, *domain)
-        return domain(op, dev, start)
 
     def __repr__(self) -> str:
         return f"<{'tunable' if self.tunable else 'param'} {self.name}>"
@@ -191,7 +166,7 @@ class Member:
     owner: type | None = None
     when: Param | None = None
 
-    def __set_name__(self, owner: type, name: str) -> None:
+    def __set_name__(self, owner: type | None, name: str) -> None:
         self.name = name
         self.owner = owner
 
@@ -219,15 +194,15 @@ class Member:
             ) from None
 
 
-class PerCallValue(Member):
+class _PerCallValue(Member):
     """What ``per_call()`` returns: a value that may change every call.
 
     Attributes:
         dtype: Its integer type.
         derive: A function of the operator computing it once per build, or
             None for one every call gives.
-        bounds: The parameter it bounds: it reads as that parameter until a
-            call gives a smaller value, the build sized for the full one.
+        bounds: The parameter it bounds: a call may give a smaller value,
+            and the build is sized for the parameter's.
     """
 
     def __init__(self, dtype, derive, bounds):
@@ -268,7 +243,7 @@ def per_call(
         )
     if derive is not None and bounds is not None:
         raise TypeError("per_call(derive=, bounds=): give one, not both")
-    return PerCallValue(dtype, derive, bounds)
+    return _PerCallValue(dtype, derive, bounds)
 
 
 @dataclass(frozen=True)
@@ -295,26 +270,28 @@ class Select:
 def resolve(dims: tuple, op) -> tuple[int, ...]:
     """Return ``dims`` on ``op``: each ``Select`` the branch its flag picks.
 
-    A ``param()`` that is None on ``op`` is left out, which is how a
-    ``T | None`` dimension is absent.
+    A parameter annotated ``T | None`` that is None on ``op`` is left out.
 
     Raises:
-        ValueError: A dimension is a tunable not yet resolved.
+        ValueError: Any other dimension is None: an unresolved tunable, or a
+            parameter nothing set.
     """
     out: list[int] = []
     for d in dims:
         if isinstance(d, Select):
             out.extend(resolve(d.branch(op), op))
-        elif isinstance(d, Param):
-            value = vars(op)[d.name]
-            if value is None and d.tunable:
-                raise ValueError(
-                    f"{d.name} is None: resolve the operator first (resolved(dev))"
-                )
-            if value is not None:
-                out.append(int(value))
-        else:
+        elif not isinstance(d, Param):
             out.append(int(d))
+        elif (value := vars(op)[d.name]) is not None:
+            out.append(int(value))
+        elif d.tunable:
+            raise ValueError(
+                f"{d.name} is None: resolve the operator first (resolved(dev))"
+            )
+        elif d.name not in op.declaration.nullable:
+            raise ValueError(
+                f"{d.name} is None; it must be set before the shape resolves"
+            )
     return tuple(out)
 
 

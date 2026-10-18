@@ -21,7 +21,7 @@ from types import FunctionType
 from typing import Any, ClassVar, get_args, get_origin
 
 from .markers import _Operand
-from .params import Member, Param, PerCallValue, Select, _text
+from .params import Member, Param, Select, _PerCallValue, _text
 
 
 def _names(dims) -> set[str]:
@@ -36,56 +36,96 @@ def _names(dims) -> set[str]:
 
 
 def _present(m: Member, flags: Mapping[str, Any]) -> bool:
-    """Return whether ``m`` exists under ``flags``; a flag left out is its default."""
+    """Return whether ``m`` exists under ``flags``; a flag left out is its plain default."""
     if m.when is None:
         return True
     value = flags.get(m.when.name, m.when.default)
-    return value is not MISSING and bool(value)
+    return value is not MISSING and not isinstance(value, FunctionType) and bool(value)
 
 
 class Declaration:
-    """What an operator class declares.
-
-    Args:
-        cls: The subclass, its body just run.
-        library: The base whose attributes the library reads; a parameter or
-            member may not hide one of them.
+    """What an operator declares, read from a class body or a generator's signature.
 
     Attributes:
-        name: The class's name.
-        params: Every ``param()`` and ``tunable()``, by name, a base's first.
+        name: The class's or the generator's name.
+        params: Every compile-time parameter (``param()``, ``tunable()``,
+            ``CompileTime[T]``), by name, a base's first.
         members: The operands and per-call values, the most derived body's
             order first.
         nullable: The parameters annotated ``T | None``: a shape dimension
             of one is present only where it is not None.
+        scalars: A generator's parameters with no marker.
+        signature: A generator's signature, its annotations evaluated, which
+            binds a call's arguments.
         tunables: The tunables a caller or the tuner sets (``init=True``).
         key: The parameters the cores are built from: every tunable, what a
             stream's ``obj_shape=``, ``per=``, ``dtype=`` or ``when=`` names,
             and every ``param(array=True)``.
-
-    Raises:
-        TypeError: The class breaks a declaration rule; the message names it.
     """
 
-    def __init__(self, cls: type, library: type) -> None:
-        self.name = cls.__name__
-        hints = inspect.get_annotations(cls, eval_str=True)
-        for name, value in vars(cls).items():
+    def __init__(
+        self,
+        name: str,
+        params: dict[str, Param],
+        members: tuple[Member, ...],
+        nullable: frozenset[str] = frozenset(),
+        scalars: tuple[str, ...] = (),
+        signature: inspect.Signature | None = None,
+    ) -> None:
+        self.name = name
+        self.params = params
+        self.members = members
+        self.nullable = nullable
+        self.scalars = scalars
+        self.signature = signature
+        self.tunables = tuple(n for n, p in params.items() if p.tunable and p.init)
+        named = {n for n, p in params.items() if p.array}
+        for m in self.operands:
+            if m.streamed:
+                named |= _names(m.obj_dims) | _names(m.per or ())
+                if isinstance(m.declared_dtype, Param):
+                    named.add(m.declared_dtype.name)
+                if m.when is not None:
+                    named.add(m.when.name)
+        self.key = tuple(n for n in params if n in named)
+
+    @property
+    def operands(self) -> tuple[_Operand, ...]:
+        return tuple(m for m in self.members if isinstance(m, _Operand))
+
+    @property
+    def per_call(self) -> tuple[_PerCallValue, ...]:
+        return tuple(m for m in self.members if isinstance(m, _PerCallValue))
+
+    @staticmethod
+    def of_class(owner: type, library: type) -> Declaration:
+        """Return what class ``owner``'s body, just run, declares.
+
+        Args:
+            owner: The operator class.
+            library: The base whose attributes the library reads; a
+                parameter or member may not hide one of them.
+
+        Raises:
+            TypeError: The class breaks a declaration rule; the message names it.
+        """
+        hints = inspect.get_annotations(owner, eval_str=True)
+        for name, value in vars(owner).items():
             hint = hints.get(name)
             if name in hints and isinstance(value, Member):
                 raise TypeError(
-                    f"{cls.__name__}.{name}: members are declared without an "
+                    f"{owner.__name__}.{name}: members are declared without an "
                     f"annotation; annotating one makes it a constructor argument"
                 )
             if (isinstance(value, (Param, Member))) and any(
                 name in vars(b) for b in library.__mro__
             ):
                 raise TypeError(
-                    f"{cls.__name__}.{name} hides {library.__name__}.{name}, which the library reads; name it otherwise"
+                    f"{owner.__name__}.{name} hides {library.__name__}.{name}, which the library reads; name it otherwise"
                 )
             if isinstance(value, Param) and name not in hints:
                 raise TypeError(
-                    f"{cls.__name__}.{name}: annotate the parameter with its type, `{name}: int = {value!r}`"
+                    f"{owner.__name__}.{name}: annotate the parameter with its type, `{name}: int = {value!r}`"
                 )
             if (
                 name in hints
@@ -94,27 +134,36 @@ class Declaration:
                 and get_origin(hint) is not ClassVar
             ):
                 raise TypeError(
-                    f"{cls.__name__}.{name}: an annotated attribute is a param(), a tunable() or a ClassVar"
+                    f"{owner.__name__}.{name}: an annotated attribute is a param(), a tunable() or a ClassVar"
                 )
 
+        for name, hint in hints.items():
+            if (
+                name not in vars(owner)
+                and hint is not ClassVar
+                and get_origin(hint) is not ClassVar
+            ):
+                raise TypeError(
+                    f"{owner.__name__}.{name}: an annotated attribute is a param(), a tunable() or a ClassVar"
+                )
         params: dict[str, Param] = {}
         nullable: set[str] = set()
-        for klass in reversed(cls.__mro__):
+        for klass in reversed(owner.__mro__):
             for name, value in vars(klass).items():
                 if isinstance(value, Param):
                     params[name] = value
-            if klass is not cls:
+            if klass is not owner:
                 nullable |= getattr(vars(klass).get("declaration"), "nullable", set())
-        for name, value in vars(cls).items():
+        for name, value in vars(owner).items():
             inherited = params.get(name)
             if (
                 inherited is not None
-                and inherited.owner is not cls
+                and inherited.owner is not owner
                 and not isinstance(value, (Param, property, classmethod, staticmethod))
                 and not callable(value)
             ):
                 raise TypeError(
-                    f"{cls.__name__}.{name} = {value!r} does not override the inherited "
+                    f"{owner.__name__}.{name} = {value!r} does not override the inherited "
                     f"parameter: redeclare it, `{name}: int = tunable(default={value!r}, init=False)`"
                 )
         nullable |= {
@@ -126,7 +175,7 @@ class Declaration:
         # A subclass hides an inherited member by assigning it None.
         members: dict[str, Member] = {}
         seen: set[str] = set()
-        for klass in cls.__mro__:
+        for klass in owner.__mro__:
             for name, value in vars(klass).items():
                 if name not in seen:
                     seen.add(name)
@@ -134,27 +183,16 @@ class Declaration:
                         members[name] = value
 
         for m in members.values():
-            if m.owner is cls:
-                self._check(cls, m, nullable)
-
-        self.params = params
-        self.members = tuple(members.values())
-        self.nullable = frozenset(nullable)
-        self.tunables = tuple(n for n, p in params.items() if p.tunable and p.init)
-        named = {n for n, p in params.items() if p.array}
-        for m in self.members:
-            if isinstance(m, _Operand) and m.streamed:
-                named |= _names(m.obj_dims) | _names(m.per or ())
-                if isinstance(m.declared_dtype, Param):
-                    named.add(m.declared_dtype.name)
-                if m.when is not None:
-                    named.add(m.when.name)
-        self.key = tuple(n for n in params if n in named)
+            if m.owner is owner:
+                Declaration._check(owner, m, nullable)
+        return Declaration(
+            owner.__name__, params, tuple(members.values()), frozenset(nullable)
+        )
 
     @staticmethod
     def _check(owner: type, m: Member, nullable: set[str]) -> None:
         where = f"{owner.__name__}.{m.name}"
-        if isinstance(m, PerCallValue):
+        if isinstance(m, _PerCallValue):
             if m.bounds is not None and (
                 not isinstance(m.bounds, Param) or m.bounds.tunable
             ):
@@ -237,7 +275,7 @@ class Declaration:
             ValueError: A shape disagrees with the declaration or another
                 operand.
         """
-        operands = [m for m in self.members if isinstance(m, _Operand)]
+        operands = self.operands
         names = set(self.params)
         for m in operands:
             names |= _names(m.dims)

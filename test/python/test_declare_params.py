@@ -7,12 +7,14 @@
 # RUN: %pytest %s
 """param(), tunable(), per_call(), Select, the domain functions and the In/Out/InOut operand — no NPU required."""
 
-from enum import Enum
+from __future__ import annotations
+
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from aie.utils.compile.jit.markers import In, InOut, Out
+from aie.utils.compile.jit.operator import Operator
 from aie.utils.compile.jit.params import (
     Select,
     divisors,
@@ -21,22 +23,11 @@ from aie.utils.compile.jit.params import (
     tunable,
     widths,
 )
-from ml_dtypes import bfloat16
-
-
-class Placement(Enum):
-    SHIMS = 1
-    MEMTILES = 2
 
 
 class Op:
     M = param()
-    rows = param(default=lambda op: op.M * 2)
-    dtype = param(default=bfloat16)
-    pad = param(derive=lambda op: op.M + 1)
     tile = tunable(default=64, domain=(32, 64))
-    width = tunable(domain=widths)
-    placement = tunable(default=Placement.SHIMS, domain=Placement)
     count = per_call(derive=lambda op: op.M // 4)
     valid = per_call(bounds=M)
     b_col_maj = param(default=False, array=True)
@@ -55,14 +46,6 @@ def test_a_parameter_an_instance_does_not_hold_names_the_layout_key():
         Op().M
 
 
-def test_a_function_default_is_computed_and_any_other_is_the_value():
-    op = Op()
-    vars(op)["M"] = 8
-    assert Op.rows.initial(op) == 16
-    assert Op.dtype.initial(op) is bfloat16
-    assert Op.pad.initial(op) == 9
-
-
 def test_a_parameter_takes_a_default_or_a_derive_not_both():
     with pytest.raises(TypeError, match="give one, not both"):
         param(default=1, derive=lambda op: 1)
@@ -73,22 +56,8 @@ def test_a_tunable_is_always_keyed_and_a_parameter_only_when_marked():
     assert not Op.M.array and Op.b_col_maj.array
 
 
-def test_a_tuple_domain_puts_a_start_outside_it_first():
-    assert Op.tile.values(None, None, 64) == (32, 64)
-    assert Op.tile.values(None, None, 16) == (16, 32, 64)
-
-
-def test_an_enum_domain_puts_the_start_first():
-    assert Op.placement.values(None, None, Placement.MEMTILES) == (
-        Placement.MEMTILES,
-        Placement.SHIMS,
-    )
-
-
-def test_a_function_domain_is_called_and_none_is_not_searched():
-    dev = SimpleNamespace(cols=4)
-    assert Op.width.values(None, dev, 3) == (4, 3, 2, 1)
-    assert Op.M.values(None, dev, 8) == ()
+def test_widths_are_the_start_and_each_power_of_two_up_to_the_columns():
+    assert widths(None, SimpleNamespace(cols=4), 3) == (4, 3, 2, 1)
 
 
 def test_a_domain_is_a_tuple_an_enum_or_a_function():
@@ -127,24 +96,21 @@ def test_a_select_picks_by_its_flag():
         Op.shape.branch(op)
 
 
-class Streams:
-    M = param()
-    batches = param(default=None)
-    K = param(default=4)
-    dtype = param(default=np.int8)
-    tile = tunable()
-    cores = tunable(default=2)
-    gated = param(default=False)
+class Streams(Operator):
+    M: int = param()
+    batches: int | None = param(default=None)
+    K: int = param(default=4)
+    dtype: type = param(default=np.int8)
+    tile: int = tunable()
+    cores: int = tunable(default=2)
+    gated: bool = param(default=False)
     a = In(batches, M, K, dtype=dtype, obj_shape=tile, per=(cores, K))
     b = Out(Select(gated, (K,), (M, K)), replicate=True, per=cores, when=gated)
     c = InOut(M)
 
 
 def streams(**values):
-    op = Streams()
-    vars(op).update(
-        M=8, batches=None, K=4, dtype=np.int8, tile=16, cores=2, gated=False
-    )
+    op = Streams(M=8, tile=16)
     vars(op).update(values)
     return op
 
@@ -181,9 +147,11 @@ def test_an_unstreamed_operand_has_no_element_or_lanes():
         c.lanes
 
 
-def test_an_operand_sized_by_an_unresolved_tunable_says_resolve_first():
+def test_a_dimension_that_is_none_and_not_nullable_is_refused():
     with pytest.raises(ValueError, match="tile is None: resolve the operator first"):
         Streams.a.of(streams(tile=None)).obj_shape
+    with pytest.raises(ValueError, match="M is None; it must be set"):
+        Streams.c.of(streams(M=None)).shape
 
 
 def test_an_absent_operand_names_its_flag():

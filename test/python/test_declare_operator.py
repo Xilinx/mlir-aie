@@ -31,7 +31,7 @@ class Scale(Operator):
     gated: bool = param(default=False)
     factor: float = param(default=1.0, array=True)
     tile: int | None = tunable()
-    placement: Placement = tunable(default=Placement.SHIMS)
+    placement: Placement = tunable(default=Placement.SHIMS, domain=Placement)
     lanes: int | None = tunable(init=False)
     x = In(M, obj_shape=tile)
     gate = In(M, when=gated)
@@ -186,3 +186,29 @@ def test_a_library_base_is_not_declared_and_a_reference_only_operator_has_no_ker
 
             def build(self):
                 pass
+
+
+class Ordered(Operator):
+    total: int = param(default=lambda op: op.M + op.tile)
+    M: int = param(default=3)
+    tile: int = tunable(default=4)
+
+
+def test_a_computed_default_sees_every_plain_default():
+    assert Ordered().total == 7
+
+
+def test_an_enum_tunable_takes_only_its_enum():
+    with pytest.raises(TypeError, match="placement \\(1\\) must be a Placement"):
+        Scale(M=8, placement=1)
+
+
+class Checked(Scale):
+    def compatible(self):
+        if self.tile > self.M:
+            raise ValueError("tile exceeds M")
+
+
+def test_a_resolved_copy_is_checked_against_its_tunables():
+    with pytest.raises(ValueError, match="tile exceeds M"):
+        Checked(M=8, tile=32).resolved(DEV)
