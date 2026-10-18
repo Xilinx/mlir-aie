@@ -13,7 +13,8 @@
 // 4's attention scale is 1), c and y round as FastFlowLM's kernel does, S * V
 // runs through the mmul, and the epilogue multiplies by a bf16 1/l. k and v
 // arrive in one ping-pong buffer pair behind two of this core's locks,
-// FLM_GEMMA4_PREFILL_IN_{PROD,CONS}_LOCK.
+// FLM_GEMMA4_PREFILL_IN_{PROD,CONS}_LOCK, for attn_qk_step and attn_fv_step;
+// attn_qk_chunk and attn_fv_chunk take a chunk the design acquired instead.
 #include "../linalg/flash_attn_prefill.h"
 #include "utils.h"
 
@@ -205,11 +206,16 @@ void attn_block_begin(bfloat16 *m, bfloat16 *prev_m) {
   event1();
 }
 
-void attn_qk_step(bfloat16 *s, bfloat16 *__restrict q,
-                  bfloat16 *__restrict in_ping, bfloat16 *__restrict in_pong,
-                  bfloat16 *m, int *L_begin_buffer, int *window_size_buffer,
-                  const int row, const int col, const int i,
-                  const int block_idx, const int j) {
+// apply_mask_and_get_max's three positions for chunk j of block block_idx of
+// round i, from the RTPs.
+struct QkPositions {
+  int inner_k, inner_q, inner_k_current;
+};
+
+static inline QkPositions qk_positions(int *L_begin_buffer,
+                                       int *window_size_buffer, const int row,
+                                       const int col, const int i,
+                                       const int block_idx, const int j) {
   const int pointer_block_q = L_begin_buffer[0] + i * 128;
   const int pointer_block_inner_q = G::inner_q(pointer_block_q, row, col);
   const int window_size = window_size_buffer[0];
@@ -219,14 +225,34 @@ void attn_qk_step(bfloat16 *s, bfloat16 *__restrict q,
   pointer_block_inner_k =
       pointer_block_inner_k > -LK ? pointer_block_inner_k : -LK;
   const int block_location = block_idx * (128 / LK) + j;
-  const int pointer_block_inner_k_current =
-      pointer_block_k + block_location * LK;
+  return {pointer_block_inner_k, pointer_block_inner_q,
+          pointer_block_k + block_location * LK};
+}
+
+void attn_qk_step(bfloat16 *s, bfloat16 *__restrict q,
+                  bfloat16 *__restrict in_ping, bfloat16 *__restrict in_pong,
+                  bfloat16 *m, int *L_begin_buffer, int *window_size_buffer,
+                  const int row, const int col, const int i,
+                  const int block_idx, const int j) {
+  const QkPositions p = qk_positions(L_begin_buffer, window_size_buffer, row,
+                                     col, i, block_idx, j);
   bfloat16 *k = in_pingpong.acquire(in_ping, in_pong, IN_CONS_LOCK);
   G::attn_qk(s + j * LQ * LK, q + G::q_offset(col), k);
   _lock_release_p(k, IN_PROD_LOCK);
-  apply_mask_and_get_max<LQ, LK>(s + j * LQ * LK, m, pointer_block_inner_k,
-                                 pointer_block_inner_q,
-                                 pointer_block_inner_k_current);
+  apply_mask_and_get_max<LQ, LK>(s + j * LQ * LK, m, p.inner_k, p.inner_q,
+                                 p.inner_k_current);
+}
+
+// attn_qk_step on a k chunk the design acquired: it takes no lock.
+void attn_qk_chunk(bfloat16 *s, bfloat16 *__restrict q, bfloat16 *__restrict k,
+                   bfloat16 *m, int *L_begin_buffer, int *window_size_buffer,
+                   const int row, const int col, const int i,
+                   const int block_idx, const int j) {
+  const QkPositions p = qk_positions(L_begin_buffer, window_size_buffer, row,
+                                     col, i, block_idx, j);
+  G::attn_qk(s + j * LQ * LK, q + G::q_offset(col), k);
+  apply_mask_and_get_max<LQ, LK>(s + j * LQ * LK, m, p.inner_k, p.inner_q,
+                                 p.inner_k_current);
 }
 
 void attn_block_mid(bfloat16 *s, bfloat16 *m, bfloat16 *new_m, bfloat16 *prev_m,
@@ -248,6 +274,11 @@ void attn_fv_step(float *y, bfloat16 *s, bfloat16 *__restrict in_ping,
   bfloat16 *v = in_pingpong.acquire(in_ping, in_pong, IN_CONS_LOCK);
   flm_attn_fv(y, s + j * LQ * LK, v);
   _lock_release_p(v, IN_PROD_LOCK);
+}
+
+// attn_fv_step on a v chunk the design acquired: it takes no lock.
+void attn_fv_chunk(float *y, bfloat16 *s, bfloat16 *__restrict v, const int j) {
+  flm_attn_fv(y, s + j * LQ * LK, v);
 }
 
 void attn_block_end(bfloat16 *prev_m, bfloat16 *new_m) {

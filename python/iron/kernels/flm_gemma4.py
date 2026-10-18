@@ -59,8 +59,10 @@ class _PrefillKernel(ExternalFunction):
     attn_blocks: Kernel
     attn_block_begin: Kernel
     attn_qk_step: Kernel
+    attn_qk_chunk: Kernel
     attn_block_mid: Kernel
     attn_fv_step: Kernel
+    attn_fv_chunk: Kernel
     attn_block_end: Kernel
     attn_finalize: Kernel
     attn_epilogue: ExternalFunction
@@ -143,10 +145,12 @@ def _prefill(
     fn.attn_blocks = bind("attn_blocks", blocks)
     fn.attn_block_begin = bind("attn_block_begin", [m, row_bf16])
     fn.attn_qk_step = bind("attn_qk_step", [s, q, kv, kv, m, L, L] + [np.int32] * 5)
+    fn.attn_qk_chunk = bind("attn_qk_chunk", [s, q, kv, m, L, L] + [np.int32] * 5)
     fn.attn_block_mid = bind(
         "attn_block_mid", [s, m, row_bf16, row_bf16, row_f32, row_f32, y]
     )
     fn.attn_fv_step = bind("attn_fv_step", [y, s, kv, kv, np.int32])
+    fn.attn_fv_chunk = bind("attn_fv_chunk", [y, s, kv, np.int32])
     fn.attn_block_end = bind("attn_block_end", [row_bf16, row_bf16])
     fn.attn_finalize = bind("attn_finalize", [row_f32, row_bf16])
     return fn
@@ -183,7 +187,11 @@ def flm_gemma4_attn_prefill(
     - ``attn_finalize(l, l_bf16)``
     - ``attn_epilogue(o, l_bf16, y, chunk)``
 
-    The design must declare the k/v locks and fill the pair with a tile DMA.
+    A design using the steps must declare the k/v locks and fill the pair with
+    a tile DMA. ``attn_qk_chunk(s, q, k, m, L_begin, window_size, row, col, i,
+    block, j)`` and ``attn_fv_chunk(y, s, v, j)`` are the steps on one chunk
+    the design acquired, from an ObjectFifo say: they take no lock, and
+    compute the same bits.
 
     Args:
         in_prod_lock: Core lock the k/v DMA acquires to fill a buffer.

@@ -1382,6 +1382,29 @@ def _arg_type_facts(arg_type) -> tuple[str, bool]:
     return _C_ELEMENT_NAMES[dtype], True
 
 
+@pytest.mark.parametrize(
+    "factory", [kernels.flm_gemma4_attn_prefill, kernels.flm_gemma4_swa_prefill]
+)
+def test_flm_prefill_chunks_are_the_steps_without_the_pair(factory):
+    """attn_qk_chunk and attn_fv_chunk take one k or v chunk where the steps
+    take the ping-pong pair, and every other argument as the steps do.
+    """
+    fn = factory()
+    declared = {
+        name: [("bf16" if t == "bfloat16" else t, ptr) for t, ptr in params]
+        for name, params in _extern_c_signatures(fn.source_file).items()
+    }
+    for step, chunk in (
+        ("attn_qk_step", "attn_qk_chunk"),
+        ("attn_fv_step", "attn_fv_chunk"),
+    ):
+        # Both steps take the pair third and fourth.
+        step_types = list(getattr(fn, step).arg_types())
+        chunk_types = list(getattr(fn, chunk).arg_types())
+        assert chunk_types == step_types[:3] + step_types[4:]
+        assert [_arg_type_facts(t) for t in chunk_types] == declared[chunk]
+
+
 def test_prefill_binds_its_translation_unit_as_one_object():
     """flash_attn_prefill.cc's five entry points bind through one artifact owner."""
     fn = kernels.prefill_fv(head_dim=512)
