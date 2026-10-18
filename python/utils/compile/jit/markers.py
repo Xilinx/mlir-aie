@@ -48,7 +48,7 @@ instead.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, NoReturn, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn, TypeVar
 
 T = TypeVar("T")
 
@@ -87,6 +87,11 @@ class _Declared:
     def __init__(self, *args: Any, **kwargs: Any):
         self.args = args
         self.kwargs = kwargs
+
+    if TYPE_CHECKING:
+        # The declaring library replaces the record, so a type checker
+        # reads the call as that library's value, not as a record.
+        def __new__(cls, *args: Any, **kwargs: Any) -> Any: ...
 
 
 class In(_Declared):
