@@ -29,6 +29,7 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import BUILDS, Build, KernelContract
 from aie.iron.kernels.activation import (
+    _GELU_ERF_TOLERANCE,
     _GELU_VTANH_TOLERANCE,
     _LUT_MODEL_TOLERANCE,
     _vtanh_family_tolerance,
@@ -213,6 +214,17 @@ def test_a_norm_built_unbound_keeps_the_bound_measured_where_it_ran(
         off = _nudged(ref, 2)
         assert _NORM_BF16.rtol > 0.1
         assert not fn.judge(off.ravel(), ref, calls=2)
+
+
+def test_gelu_erf_is_judged_at_one_ulp_on_either_device(no_device):
+    fn = kernels.gelu_erf()
+    inputs = kd.sample_inputs(fn, calls=2)
+    for device in (NPU1Col1(), NPU2Col1()):
+        set_current_device(device)
+        assert fn.contract_for().tolerance is _GELU_ERF_TOLERANCE
+        ref = fn.expected(inputs)
+        assert fn.judge(ref.ravel(), ref, calls=2)
+        assert not fn.judge(_nudged(ref, 2).ravel(), ref, calls=2)
 
 
 def test_an_f32_layer_norm_built_unbound_keeps_its_measured_bound(no_device):

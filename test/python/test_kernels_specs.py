@@ -23,6 +23,7 @@ The shared _isolate_extern_state fixture lives in conftest.py at this
 directory level.
 """
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -30,6 +31,7 @@ from typing import Callable
 import numpy as np
 import pytest
 from aie.iron import kernels
+from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.utils.hostruntime import set_current_device
@@ -354,6 +356,14 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,  # in, out, size
         expected_name="gelu_bf16_size",
         lut_source="gelu.cc",
+    ),
+    KernelSpec(
+        name="gelu_erf",
+        factory=kernels.gelu_erf,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="gelu_erf_bf16_size",
+        invalid_kwargs=[(dict(tile_size=48), "32-element vector step")],
     ),
     KernelSpec(
         name="silu",
@@ -1319,6 +1329,30 @@ def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
     assert f"-D{macro}={width * 4}" in other.compile_flags
     assert tiny.object_file_name != other.object_file_name
     assert tiny._symbol_prefix != other._symbol_prefix
+
+
+def test_gelu_erf_ports_and_reference(kernel_arch):
+    from aie.iron.kernels import activation
+
+    assert kernels.gelu_erf is activation.gelu_erf
+    fn = kernels.gelu_erf(tile_size=64)
+    assert fn.arg_shape(0) == (64,)
+    assert Path(fn._source_file).name == "gelu_erf.cc"
+    assert fn.built_for_arch == kernel_arch
+    x = np.array([-5, -3, -1, 0, 1, 3], dtype=bfloat16)
+    expected = [v * (1 + math.erf(v / math.sqrt(2))) / 2 for v in x.astype(float)]
+    np.testing.assert_array_equal(
+        fn.contract_for().reference(x), np.array(expected).astype(bfloat16)
+    )
+
+
+def test_gelu_erf_device_case_fails_a_tanh_gelu():
+    fn = kernels.gelu_erf()
+    for seed in range(1000, 1004):  # the device test's random seeds
+        (x,) = kd.sample_inputs(fn, calls=16, rng=np.random.default_rng(seed))
+        ref = fn.expected([x])
+        assert fn.judge(ref.ravel(), ref, calls=16)
+        assert not fn.judge(kernels.gelu_ref(x).ravel(), ref, calls=16)
 
 
 def test_relu_requires_whole_vectors(kernel_arch):

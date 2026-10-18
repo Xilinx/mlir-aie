@@ -704,6 +704,40 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
+# Not yet measured on a device; the bound is the model's.
+_GELU_ERF_TOLERANCE = Tolerance.bf16_ulps(
+    1,
+    atol=2.0**-126,
+    note="a model of the kernel's f32 limb arithmetic is within one ulp on "
+    "every finite bf16 input; atol is the smallest normal bf16",
+)
+
+
+def gelu_erf(tile_size: int = 1024) -> ExternalFunction:
+    """Exact GELU, ``x * Phi(x)``, for bf16 tiles; ``(in, out, size)``.
+
+    [`gelu`][iron.kernels.activation.gelu] takes the tanh approximation, which
+    rounds differently on 405 finite bf16 inputs, 280 below -3. This one
+    evaluates erfc in f32 and rounds once. ``tile_size`` is a positive
+    multiple of 32.
+    """
+    _require_vector_alignment("gelu_erf", tile_size, 32)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "gelu_erf_bf16_size",
+        _kernel_source("activation/gelu_erf.cc"),
+        [tile_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=gelu_erf_ref,
+            tolerance=_GELU_ERF_TOLERANCE,
+            acc_dtype=np.float32,
+        ),
+    )
+
+
 def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
 
@@ -1063,6 +1097,19 @@ def gelu_ref(x):
     with np.errstate(over="ignore"):
         inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
     return (0.5 * xf * (1.0 + np.tanh(inner))).astype(x.dtype)
+
+
+_erfc = np.frompyfunc(math.erfc, 1, 1)
+
+
+def gelu_erf_ref(x):
+    """Numpy reference for [`gelu_erf`][iron.kernels.activation.gelu_erf]: ``x * Phi(x)``.
+
+    ``0.5 x erfc(-x / sqrt 2)`` in float64, rounded once.
+    """
+    xf = _no_neg_inf(_f64(x))
+    erfc = np.asarray(_erfc(-xf / math.sqrt(2.0)), dtype=np.float64)
+    return _rounded(0.5 * xf * erfc, x)
 
 
 def gelu_lut_ref(x):

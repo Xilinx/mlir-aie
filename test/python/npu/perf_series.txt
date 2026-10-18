@@ -275,6 +275,7 @@ gelu/160x4/bfloat16/use_lut=True/lut-unroll-tail
 gelu/160x4/bfloat16/unroll-tail
 gelu/32x4/bfloat16/edge-tiny
 gelu/96x4/bfloat16/short-trip
+gelu_erf/1024x16/bfloat16
 gray2rgba/112x4/uint8/line_width=112/short-row
 gray2rgba/144x4/uint8/line_width=144/tail
 gray2rgba/1920x16/uint8
