@@ -107,14 +107,21 @@ void llama_flowkv_qk(int8_t *restrict q_i8, int8_t *restrict k_i8,
   constexpr float kInvSqrtHD = 0.125f;
   const float qk_scale = q_scale * k_scale * kInvSqrtHD;
 
-  // 1) Scores: int32 dot, then ONE combined float multiply.
+  // 1) Scores: int32 dot (exact -- integer add is associative, so
+  // vectorizing the reduction can't change the result), then ONE
+  // combined float multiply. q is the same for every i; load once.
+  // k_i8 is only 64-byte aligned from llama_flowkv_qk_dyn's unshifted
+  // callers; the dyn wrapper below passes k_i8 + 8, so the K load must
+  // not assume alignment.
   float scores[kT];
   float max_s = -1e30f;
+  ::aie::vector<int8, kHD> qv = ::aie::load_v<kHD>(q_i8);
   for (int i = 0; i < kT; i++) {
-    int32_t dot = 0;
-    for (int d = 0; d < kHD; d++) {
-      dot += (int32_t)q_i8[d] * (int32_t)k_i8[i * kHD + d];
-    }
+    ::aie::vector<int8, kHD> kv = ::aie::load_unaligned_v<kHD>(k_i8 + i * kHD);
+    ::aie::accum<acc32, kHD> acc;
+    acc.from_vector(::aie::zeros<int32, kHD>());
+    acc = ::aie::mac(acc, qv, kv);
+    int32_t dot = ::aie::reduce_add(acc.to_vector<int32>());
     float s = (float)dot * qk_scale;
     scores[i] = s;
     if (s > max_s)
@@ -152,15 +159,37 @@ void llama_flowkv_sv(int8_t *restrict v_i8, float *restrict probs_in,
 
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
-  for (int j = 0; j < kHD; j++) {
-    float acc = 0.0f;
-    for (int i = 0; i < kT; i++) {
-      acc += probs_in[i] * (float)v_i8[i * kHD + j];
-    }
-    // (inv_out_scale is HW-supplied as a precomputed reciprocal from
-    // host, so this is a regular fp32 multiply -- no division here.)
-    out_i8[j] = round_to_i8(acc * v_scale * inv_out_scale);
+  // acc[j] = sum_i probs[i] * v[i,j], kHD lanes at a time. i (the KV
+  // position) stays the serial outer loop so the per-lane summation
+  // order is identical to the scalar reference -- float add is not
+  // associative, so only this loop nest (not a j-outer/i-inner swap)
+  // preserves bit-exactness. v_i8 has the same alignment caveat as
+  // k_i8 above (llama_flowkv_sv_dyn passes v_i8 + 8).
+  ::aie::accum<accfloat, kHD> acc;
+  acc.from_vector(::aie::zeros<float, kHD>());
+  for (int i = 0; i < kT; i++) {
+    ::aie::vector<int8, kHD> vv = ::aie::load_unaligned_v<kHD>(v_i8 + i * kHD);
+    ::aie::vector<float, kHD> v_f = ::aie::to_float<float>(vv);
+    ::aie::vector<float, kHD> p_v = ::aie::broadcast<float, kHD>(probs_in[i]);
+    acc = ::aie::mac(acc, v_f, p_v);
   }
+  ::aie::vector<float, kHD> acc_f = acc.to_vector<float>();
+
+  // (inv_out_scale is HW-supplied as a precomputed reciprocal from
+  // host, so this is a regular fp32 multiply -- no division here.)
+  // Two separate multiplies, matching the reference's (acc*v_scale)*
+  // inv_out_scale left-to-right order exactly (fp32 multiply is not
+  // associative, so folding the two scales into one constant first
+  // would not necessarily give the same rounding).
+  ::aie::vector<float, kHD> v_scale_v = ::aie::broadcast<float, kHD>(v_scale);
+  ::aie::vector<float, kHD> inv_out_scale_v =
+      ::aie::broadcast<float, kHD>(inv_out_scale);
+  ::aie::vector<float, kHD> scaled =
+      ::aie::mul(acc_f, v_scale_v).template to_vector<float>();
+  ::aie::vector<float, kHD> out_f =
+      ::aie::mul(scaled, inv_out_scale_v).template to_vector<float>();
+  for (int j = 0; j < kHD; j++)
+    out_i8[j] = round_to_i8(out_f[j]);
 
   event1();
 }

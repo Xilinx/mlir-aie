@@ -459,33 +459,39 @@ FKV_HD ?= 64
 FKV_T  ?= 16
 FKV_EXP_QUANT_SCALE ?= 0.05
 FKV_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_FLOWKV_HEAD_DIM=${FKV_HD} -DLLAMA_FLOWKV_T=${FKV_T} -DLLAMA_FLOWKV_EXP_QUANT_SCALE=${FKV_EXP_QUANT_SCALE}f
+# FLOWKV_DYN picks llama_flowkv_{qk,sv} (static scale) vs.
+# llama_flowkv_{qk,sv}_dyn (scales read from tails); baked into the
+# filename for the same reason SILU_SELFCAL/ROPE_DYN are.
+FLOWKV_DYN ?= 0
+FLOWKV_TAG := $(if $(filter 1,${FLOWKV_DYN}),_dyn,)
 
 ${BUILD}/exp_lut.h: ${srcdir}/gen_exp_lut.py
 	mkdir -p ${@D}
 	python3 $< --exp-quant-scale ${FKV_EXP_QUANT_SCALE} -o $@
 
-${BUILD}/llama_flowkv.cc.o: ${KDIR}/llama_flowkv.cc ${BUILD}/exp_lut.h
+${BUILD}/llama_flowkv_${FKV_HD}x${FKV_T}.cc.o: ${KDIR}/llama_flowkv.cc ${BUILD}/exp_lut.h
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${FKV_FLAGS} -I${srcdir} -c $< -o ${@F}
 
-${BUILD}/aie_flowkv_${FKV_HD}x${FKV_T}.mlir: ${srcdir}/aie2_flowkv.py
+${BUILD}/aie_flowkv_${FKV_HD}x${FKV_T}${FLOWKV_TAG}.mlir: ${srcdir}/aie2_flowkv.py
 	mkdir -p ${@D}
-	python3 $< --head-dim ${FKV_HD} -T ${FKV_T} > $@
+	FLOWKV_DYN=${FLOWKV_DYN} python3 $< --head-dim ${FKV_HD} -T ${FKV_T} > $@
 
-${BUILD}/final_flowkv_${FKV_HD}x${FKV_T}.xclbin: ${BUILD}/aie_flowkv_${FKV_HD}x${FKV_T}.mlir \
-                                                 ${BUILD}/llama_flowkv.cc.o
+${BUILD}/final_flowkv_${FKV_HD}x${FKV_T}${FLOWKV_TAG}.xclbin: ${BUILD}/aie_flowkv_${FKV_HD}x${FKV_T}${FLOWKV_TAG}.mlir \
+                                                 ${BUILD}/llama_flowkv_${FKV_HD}x${FKV_T}.cc.o
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_flowkv_${FKV_HD}x${FKV_T}.cc.o ${BUILD}/llama_flowkv.cc.o
 	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
 		--xclbin-name=${@F} \
-		--npu-insts-name=insts_flowkv_${FKV_HD}x${FKV_T}.bin \
+		--npu-insts-name=insts_flowkv_${FKV_HD}x${FKV_T}${FLOWKV_TAG}.bin \
 		$(notdir $<)
 
-flowkv: ${BUILD}/final_flowkv_${FKV_HD}x${FKV_T}.xclbin
+flowkv: ${BUILD}/final_flowkv_${FKV_HD}x${FKV_T}${FLOWKV_TAG}.xclbin
 
 run_flowkv: flowkv
-	cd ${srcdir} && python3 test_flowkv.py \
-		--xclbin ${BUILD}/final_flowkv_${FKV_HD}x${FKV_T}.xclbin \
-		--instr ${BUILD}/insts_flowkv_${FKV_HD}x${FKV_T}.bin \
+	cd ${srcdir} && FLOWKV_DYN=${FLOWKV_DYN} python3 test_flowkv.py \
+		--xclbin ${BUILD}/final_flowkv_${FKV_HD}x${FKV_T}${FLOWKV_TAG}.xclbin \
+		--instr ${BUILD}/insts_flowkv_${FKV_HD}x${FKV_T}${FLOWKV_TAG}.bin \
 		-k MLIR_AIE --head-dim ${FKV_HD} -T ${FKV_T}
 
 # ---------- real sample (Phase 2 greedy v0) ----------

@@ -28,7 +28,7 @@ import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
 
-from aie2_flowkv import Q_SCALE, K_SCALE, V_SCALE, INV_OUT_SCALE
+from aie2_flowkv import Q_SCALE, K_SCALE, V_SCALE, INV_OUT_SCALE, DYN
 from gen_exp_lut import exp_lut
 
 # Must match the kernel #define LLAMA_FLOWKV_EXP_QUANT_SCALE.
@@ -137,9 +137,26 @@ def main():
 
     lut = exp_lut(EXP_QUANT_SCALE)
 
-    q_t = iron.tensor(q, dtype=np.int8)
-    k_t = iron.tensor(k, dtype=np.int8)
-    v_t = iron.tensor(v, dtype=np.int8)
+    if DYN:
+        q_buf = np.zeros(head_dim + 8, dtype=np.int8)
+        q_buf[:head_dim] = q
+        q_buf[head_dim : head_dim + 4] = np.frombuffer(
+            np.float32(Q_SCALE).tobytes(), dtype=np.int8
+        )
+        k_buf = np.zeros(8 + t * head_dim, dtype=np.int8)
+        k_buf[0:4] = np.frombuffer(np.float32(K_SCALE).tobytes(), dtype=np.int8)
+        k_buf[8:] = k
+        v_buf = np.zeros(8 + t * head_dim, dtype=np.int8)
+        v_buf[0:4] = np.frombuffer(np.float32(V_SCALE).tobytes(), dtype=np.int8)
+        v_buf[4:8] = np.frombuffer(np.float32(INV_OUT_SCALE).tobytes(), dtype=np.int8)
+        v_buf[8:] = v
+        q_t = iron.tensor(q_buf, dtype=np.int8)
+        k_t = iron.tensor(k_buf, dtype=np.int8)
+        v_t = iron.tensor(v_buf, dtype=np.int8)
+    else:
+        q_t = iron.tensor(q, dtype=np.int8)
+        k_t = iron.tensor(k, dtype=np.int8)
+        v_t = iron.tensor(v, dtype=np.int8)
     o_t = iron.zeros([head_dim], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
@@ -163,7 +180,7 @@ def main():
     n_diff = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_diff else 0
     print(
-        f"flowkv NPU vs numpy: head_dim={head_dim} T={t}  "
+        f"flowkv NPU vs numpy: head_dim={head_dim} T={t} dyn={DYN}  "
         f"mismatches={n_diff}/{head_dim}  max|int8 diff|={max_abs}"
     )
 

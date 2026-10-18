@@ -150,20 +150,27 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
     int8_t *restrict q_h = q_chunk + h * kHD;
     int8_t *restrict out_h = out_chunk + h * kHD;
 
-    // 1) Scores: int32 dot -> per-slot combined float multiply. Each cached
-    // position uses its OWN k_slot[i] scale (the per-slot KV fix). Causal
-    // mask: only the first T_used positions. Scale order (q_scale*k_slot[i])
-    // * kInvSqrtHD mirrors the numpy reference (and the per-head predecessor's
-    // q_scale*k_scale*kInvSqrtHD). NOTE: with varying per-slot scales this is
-    // NOT byte-exact vs numpy -- Peano fp32 mul differs by ~1 ULP on a few
-    // positions, flipping an exp-LUT bucket (<=2 LSB on the output). Proven
+    // 1) Scores: int32 dot (exact -- see llama_flowkv.cc's vectorized dot
+    // for why reordering this reduction can't change the result) -> per-slot
+    // combined float multiply. Each cached position uses its OWN k_slot[i]
+    // scale (the per-slot KV fix). Causal mask: only the first T_used
+    // positions. Scale order (q_scale*k_slot[i]) * kInvSqrtHD mirrors the
+    // numpy reference (and the per-head predecessor's q_scale*k_scale*
+    // kInvSqrtHD). NOTE: with varying per-slot scales this is NOT byte-exact
+    // vs numpy -- Peano fp32 mul differs by ~1 ULP on a few positions,
+    // flipping an exp-LUT bucket (<=2 LSB on the output). Proven
     // quality-neutral; see numpy_attention_perslot_lut + test_layer_mh.
+    // k_body may not be 64-byte aligned (kv_one's prefix/slot layout), so
+    // its load is unaligned; q_h is always a multiple of kHD from q_chunk.
     float max_s = -1e30f;
+    ::aie::vector<int8, kHD> qv = ::aie::load_v<kHD>(q_h);
     for (int i = 0; i < T_used; i++) {
-      int32_t dot = 0;
-      for (int d = 0; d < kHD; d++) {
-        dot += (int32_t)q_h[d] * (int32_t)k_body[i * kHD + d];
-      }
+      ::aie::vector<int8, kHD> kv =
+          ::aie::load_unaligned_v<kHD>(k_body + i * kHD);
+      ::aie::accum<acc32, kHD> dot_acc;
+      dot_acc.from_vector(::aie::zeros<int32, kHD>());
+      dot_acc = ::aie::mac(dot_acc, qv, kv);
+      int32_t dot = ::aie::reduce_add(dot_acc.to_vector<int32>());
       float s = (float)dot * ((q_scale * k_slot[i]) * kInvSqrtHD);
       scores[i] = s;
       if (s > max_s)
@@ -179,17 +186,30 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
     }
     const float inv_sum = sw_recip(sum);
 
-    // 3) sv: probs @ V then requant. Per-slot V scale folds into the inner
-    // term: acc += (p * v_slot[i]) * v[i,j]; j-outer / i-inner matches the
-    // single-head kernel.
-    for (int j = 0; j < kHD; j++) {
-      float acc = 0.0f;
-      for (int i = 0; i < T_used; i++) {
-        float p = lookup_exp(qvals[i]) * inv_sum;
-        acc += p * v_slot[i] * (float)v_body[i * kHD + j];
-      }
-      out_h[j] = round_to_i8(acc * sv_inv_out_scale);
+    // 3) sv: probs @ V then requant, kHD lanes at a time. i (the KV
+    // position) stays the serial outer loop, same discipline as
+    // llama_flowkv.cc's vectorized sv. p*v_slot[i] is the same combined
+    // per-position factor the scalar code recomputed redundantly inside
+    // the j loop; computing it once per i is value-identical, just not
+    // wasteful.
+    ::aie::accum<accfloat, kHD> acc;
+    acc.from_vector(::aie::zeros<float, kHD>());
+    for (int i = 0; i < T_used; i++) {
+      float p = lookup_exp(qvals[i]) * inv_sum;
+      float pv_i = p * v_slot[i];
+      ::aie::vector<int8, kHD> vv =
+          ::aie::load_unaligned_v<kHD>(v_body + i * kHD);
+      ::aie::vector<float, kHD> v_f = ::aie::to_float<float>(vv);
+      ::aie::vector<float, kHD> pv_v = ::aie::broadcast<float, kHD>(pv_i);
+      acc = ::aie::mac(acc, v_f, pv_v);
     }
+    ::aie::vector<float, kHD> acc_f = acc.to_vector<float>();
+    ::aie::vector<float, kHD> sv_inv_out_scale_v =
+        ::aie::broadcast<float, kHD>(sv_inv_out_scale);
+    ::aie::vector<float, kHD> out_f =
+        ::aie::mul(acc_f, sv_inv_out_scale_v).template to_vector<float>();
+    for (int j = 0; j < kHD; j++)
+      out_h[j] = round_to_i8(out_f[j]);
   }
 
   event1();
@@ -229,11 +249,14 @@ llama_flowkv_mh_selfcal(int8_t *restrict q_chunk, float *restrict k_slot,
 
     // 1) scores (identical to llama_flowkv_mh).
     float max_s = -1e30f;
+    ::aie::vector<int8, kHD> qv = ::aie::load_v<kHD>(q_h);
     for (int i = 0; i < T_used; i++) {
-      int32_t dot = 0;
-      for (int d = 0; d < kHD; d++) {
-        dot += (int32_t)q_h[d] * (int32_t)k_body[i * kHD + d];
-      }
+      ::aie::vector<int8, kHD> kv =
+          ::aie::load_unaligned_v<kHD>(k_body + i * kHD);
+      ::aie::accum<acc32, kHD> dot_acc;
+      dot_acc.from_vector(::aie::zeros<int32, kHD>());
+      dot_acc = ::aie::mac(dot_acc, qv, kv);
+      int32_t dot = ::aie::reduce_add(dot_acc.to_vector<int32>());
       float s = (float)dot * ((q_scale * k_slot[i]) * kInvSqrtHD);
       scores[i] = s;
       if (s > max_s)
@@ -249,17 +272,24 @@ llama_flowkv_mh_selfcal(int8_t *restrict q_chunk, float *restrict k_slot,
     }
     const float inv_sum = sw_recip(sum);
 
-    // 3a) Pass A: compute sv acc[j] on the fly, track absmax (no fp32 array).
+    // 3a) Pass A: compute sv acc[j] on the fly, kHD lanes at a time, track
+    // absmax (no fp32 array kept across loops -- acc_f is consumed within
+    // this pass, same discipline as llama_rmsnorm_int8_dyn).
     float absmax = 0.0f;
-    for (int j = 0; j < kHD; j++) {
-      float acc = 0.0f;
+    {
+      ::aie::accum<accfloat, kHD> acc;
+      acc.from_vector(::aie::zeros<float, kHD>());
       for (int i = 0; i < T_used; i++) {
         float p = lookup_exp(qvals[i]) * inv_sum;
-        acc += p * v_slot[i] * (float)v_body[i * kHD + j];
+        float pv_i = p * v_slot[i];
+        ::aie::vector<int8, kHD> vv =
+            ::aie::load_unaligned_v<kHD>(v_body + i * kHD);
+        ::aie::vector<float, kHD> v_f = ::aie::to_float<float>(vv);
+        ::aie::vector<float, kHD> pv_v = ::aie::broadcast<float, kHD>(pv_i);
+        acc = ::aie::mac(acc, v_f, pv_v);
       }
-      float a = acc >= 0.0f ? acc : -acc;
-      if (a > absmax)
-        absmax = a;
+      ::aie::vector<float, kHD> acc_f = acc.to_vector<float>();
+      absmax = ::aie::reduce_max(::aie::abs(acc_f));
     }
     if (absmax < 1e-12f)
       absmax = 1e-12f;
@@ -267,13 +297,25 @@ llama_flowkv_mh_selfcal(int8_t *restrict q_chunk, float *restrict k_slot,
     float sv_inv_out_scale = sw_recip(sv_out_scale);
 
     // 3b) Pass B: recompute acc[j], requant with the self-computed scale.
-    for (int j = 0; j < kHD; j++) {
-      float acc = 0.0f;
+    {
+      ::aie::accum<accfloat, kHD> acc;
+      acc.from_vector(::aie::zeros<float, kHD>());
       for (int i = 0; i < T_used; i++) {
         float p = lookup_exp(qvals[i]) * inv_sum;
-        acc += p * v_slot[i] * (float)v_body[i * kHD + j];
+        float pv_i = p * v_slot[i];
+        ::aie::vector<int8, kHD> vv =
+            ::aie::load_unaligned_v<kHD>(v_body + i * kHD);
+        ::aie::vector<float, kHD> v_f = ::aie::to_float<float>(vv);
+        ::aie::vector<float, kHD> pv_v = ::aie::broadcast<float, kHD>(pv_i);
+        acc = ::aie::mac(acc, v_f, pv_v);
       }
-      out_h[j] = round_to_i8(acc * sv_inv_out_scale);
+      ::aie::vector<float, kHD> acc_f = acc.to_vector<float>();
+      ::aie::vector<float, kHD> sv_inv_out_scale_v =
+          ::aie::broadcast<float, kHD>(sv_inv_out_scale);
+      ::aie::vector<float, kHD> out_f =
+          ::aie::mul(acc_f, sv_inv_out_scale_v).template to_vector<float>();
+      for (int j = 0; j < kHD; j++)
+        out_h[j] = round_to_i8(out_f[j]);
     }
     memcpy(out_tail + h * 4, &sv_out_scale, 4);
   }
