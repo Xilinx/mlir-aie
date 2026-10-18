@@ -61,6 +61,32 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "39093787782",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39093787782",
+   "date": "2026-10-18T03:29:16+00:00",
+   "commit": {
+    "id": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
+    "message": "[AIEVec] AIE2P: lower aievec.shuffle with the AIE2P intrinsic, and repeated 128-bit vectors through it (#3929)",
+    "timestamp": "2026-10-17T21:59:35Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "e040370784"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
