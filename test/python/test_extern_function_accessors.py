@@ -67,24 +67,26 @@ def test_accessors_return_copies(tmp_path):
     assert ef.compile_flags == ["-O3"]
 
 
-def test_a_build_key_names_the_build_not_where_it_happens(tmp_path):
-    def built(where, flags, prefix=None):
+def test_a_recipe_key_names_the_build_not_where_it_happens(tmp_path):
+    def built(where, flags=("-DN=16",), prefix=None, source="void k(int*){}", n=16):
         src = tmp_path / where / "k.cc"
         src.parent.mkdir(exist_ok=True)
-        src.write_text("void k(int*){}")
+        src.write_text(source)
         return ExternalFunction(
             "k",
             source_file=str(src),
-            arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
+            arg_types=[np.ndarray[(n,), np.dtype[np.int32]]],
             include_dirs=[str(tmp_path / where)],
-            compile_flags=flags,
+            compile_flags=list(flags),
             symbol_prefix=prefix,
-        ).build_key
+        ).recipe_key
 
-    here = built("a", ["-DN=16"])
-    assert here == built("b", ["-DN=16"], prefix="d1g3st")
-    assert here != built("c", ["-DN=32"])
+    here = built("a")
     assert here.startswith("k-")
+    assert here == built("b", prefix="d1g3st")
+    assert here != built("c", flags=("-DN=32",))
+    assert here != built("d", n=32)
+    assert here != built("e", source="void k(int* p){ *p = 0; }")
 
 
 # ---------------------------------------------------------------------------

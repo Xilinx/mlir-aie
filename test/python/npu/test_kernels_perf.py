@@ -258,7 +258,7 @@ def _detail(case: Case, m: dict) -> dict:
     slowest call sit above the min, how many calls the trace held) go here
     as fields.
     """
-    detail: dict = {"build": case.fn().build_key}
+    detail: dict = {"build": case.fn().recipe_key}
     if (traced := m.get("cycles")) is not None:
         k = traced.kernel
         detail["cycles"] = {

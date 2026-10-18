@@ -1176,19 +1176,21 @@ class ExternalFunction(Kernel):
         return self._cached_digest
 
     @property
-    def build_key(self) -> str:
-        """The same string on any machine that builds this kernel the same way.
+    def recipe_key(self) -> str:
+        """The same string on any machine that builds this kernel from the same recipe.
 
-        It covers the symbol, the source file's name, the argument types, the
-        compile flags and the toolchain, but not where the source or its
-        includes live, and not the symbol prefix, which a design adds. The
-        nightly kernel timings carry it, so a design that calls a kernel can
-        find that kernel's timed row.
+        It covers the symbol, the source's name and content, the argument
+        types, the compile flags and the toolchain choice (chess, inline),
+        but not the headers the source includes, where any of them live, or
+        the symbol prefix, which a design adds. The nightly kernel timings
+        carry it, so a design that calls a kernel can find that kernel's
+        timed row.
         """
         source = self._source_file
         parts = [
             self._original_name,
-            Path(source).name if source else self._recipe.source_digest,
+            Path(source).name if source else "",
+            self._recipe.source_digest,
             str(self._arg_types),
             str(self._compile_flags),
             f"chess={self._use_chess}",

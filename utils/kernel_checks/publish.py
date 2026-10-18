@@ -39,7 +39,7 @@ Each timed case's error is charted as two more metrics, its worst over every
 data case, seed and output: ``max_ulp``, how far any result fell from the
 correctly rounded reference, and ``not_correctly_rounded``, the percentage of
 results that were not. ``builds`` maps each timed case to its kernel's
-``ExternalFunction.build_key``, so a design that calls the same kernel finds
+``ExternalFunction.recipe_key``, so a design that calls the same kernel finds
 its row. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
 removed), rebuilds ``runs.json``, ``latest.json`` and the history from the
