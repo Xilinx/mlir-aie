@@ -5,13 +5,14 @@
 #
 
 # RUN: %pytest %s
-"""param(), tunable(), per_call(), Select and the domain functions — no NPU required."""
+"""param(), tunable(), per_call(), Select, the domain functions and the In/Out/InOut operand — no NPU required."""
 
 from enum import Enum
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.jit.params import (
     Select,
     divisors,
@@ -124,3 +125,67 @@ def test_a_select_picks_by_its_flag():
     vars(op).update(b_col_maj=None)
     with pytest.raises(ValueError, match="needs a resolved operator"):
         Op.shape.branch(op)
+
+
+class Streams:
+    M = param()
+    batches = param(default=None)
+    K = param(default=4)
+    dtype = param(default=np.int8)
+    tile = tunable()
+    cores = tunable(default=2)
+    gated = param(default=False)
+    a = In(batches, M, K, dtype=dtype, obj_shape=tile, per=(cores, K))
+    b = Out(Select(gated, (K,), (M, K)), replicate=True, per=cores, when=gated)
+    c = InOut(M)
+
+
+def streams(**values):
+    op = Streams()
+    vars(op).update(
+        M=8, batches=None, K=4, dtype=np.int8, tile=16, cores=2, gated=False
+    )
+    vars(op).update(values)
+    return op
+
+
+def test_an_operand_resolves_its_shapes_on_the_operator():
+    a = Streams.a.of(streams())
+    assert (a.shape, a.elements, a.dtype) == ((8, 4), 32, np.int8)
+    assert a.streamed and a.obj_shape == (16,) and a.lanes == 8
+    assert Streams.a.of(streams(batches=3)).shape == (3, 8, 4)
+    assert Streams.b.of(streams(gated=True)).shape == (4,)
+    assert not Streams.c.streamed and Streams.c.of(streams()).shape == (8,)
+
+
+def test_an_operand_says_which_way_it_moves():
+    assert (In.fills, In.drains, Out.fills, Out.drains) == (True, False, False, True)
+    assert InOut.fills and InOut.drains
+
+
+def test_an_operand_prints_its_declaration_and_its_resolved_shape():
+    assert repr(Streams.a) == "In(batches, M, K)"
+    assert repr(Streams.a.of(streams())) == "<In a (8, 4) int8>"
+
+
+def test_a_replicated_operand_needs_a_split():
+    with pytest.raises(TypeError, match="replicate=True needs per="):
+        In(Op.M, replicate=True)
+
+
+def test_an_unstreamed_operand_has_no_element_or_lanes():
+    c = Streams.c.of(streams())
+    with pytest.raises(TypeError, match="c is declared without an obj_shape="):
+        c.obj_shape
+    with pytest.raises(TypeError, match="c is declared without an obj_shape="):
+        c.lanes
+
+
+def test_an_operand_sized_by_an_unresolved_tunable_says_resolve_first():
+    with pytest.raises(ValueError, match="tile is None: resolve the operator first"):
+        Streams.a.of(streams(tile=None)).obj_shape
+
+
+def test_an_absent_operand_names_its_flag():
+    with pytest.raises(AttributeError, match="declared when=gated, which is False"):
+        streams().b

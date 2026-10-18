@@ -273,13 +273,6 @@ def test_tensor_markers_are_not_dispatch():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("marker", [In, Out, InOut])
-def test_calling_a_tensor_marker_keeps_its_arguments(marker):
-    declared = marker(4, "n", dtype=int)
-    assert isinstance(declared, marker)
-    assert declared.args == (4, "n") and declared.kwargs == {"dtype": int}
-
-
 # ---------------------------------------------------------------------------
 # split_params — comprehensive signature introspection
 # ---------------------------------------------------------------------------

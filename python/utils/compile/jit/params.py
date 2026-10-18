@@ -188,6 +188,7 @@ class Member:
 
     name: str = ""
     owner: type | None = None
+    when: Param | None = None
 
     def __set_name__(self, owner: type, name: str) -> None:
         self.name = name
@@ -199,6 +200,11 @@ class Member:
         try:
             return op._bound[self.name]
         except (AttributeError, KeyError):
+            if self.when is not None and not vars(op)[self.when.name]:
+                raise AttributeError(
+                    f"{type(op).__name__}.{self.name} is declared when="
+                    f"{self.when.name}, which is False on this instance"
+                ) from None
             raise AttributeError(
                 f"{type(op).__name__}.{self.name} is not bound yet"
             ) from None
@@ -275,6 +281,32 @@ class Select:
                 f"{self.flag.name} is None; a Select() on it needs a resolved operator"
             )
         return self.when_true if flag else self.when_false
+
+
+def resolve(dims: tuple, op) -> tuple[int, ...]:
+    """Return ``dims`` on ``op``: each ``Select`` the branch its flag picks.
+
+    A ``param()`` that is None on ``op`` is left out, which is how a
+    ``T | None`` dimension is absent.
+
+    Raises:
+        ValueError: A dimension is a tunable not yet resolved.
+    """
+    out: list[int] = []
+    for d in dims:
+        if isinstance(d, Select):
+            out.extend(resolve(d.branch(op), op))
+        elif isinstance(d, Param):
+            value = vars(op)[d.name]
+            if value is None and d.tunable:
+                raise ValueError(
+                    f"{d.name} is None: resolve the operator first (resolved(dev))"
+                )
+            if value is not None:
+                out.append(int(value))
+        else:
+            out.append(int(d))
+    return tuple(out)
 
 
 def widths(op, dev, start: int) -> tuple[int, ...]:

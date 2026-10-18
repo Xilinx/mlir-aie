@@ -37,10 +37,9 @@ dtype is a different compiled design.
     recompiling. Explicit specialization instead fixes it at compile time.
     See ``DispatchTime`` below for generator binding and usage restrictions.
 
-Calling ``In(...)``, ``Out(...)`` or ``InOut(...)`` declares a tensor in a
-class body, for a library that builds its own declarations (IRON's
-operators): it returns an instance that is an untyped record of the call's
-``args`` and ``kwargs``, which aie.iron does not read or check.
+Calling ``In(...)``, ``Out(...)`` or ``InOut(...)`` declares an operator's
+tensor in its class body: ``a = In(M, K, dtype=bfloat16)``, its shape in
+``param()`` dimensions (see ``params.py``).
 
 Any parameter without one of these annotations is rejected at ``@iron.jit``
 decoration time when the parameter has a default value: an unannotated scalar
@@ -53,11 +52,16 @@ instead.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any, NoReturn, TypeVar
+import copy
+import math
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn, Self, TypeVar
 
 import numpy as np
+from ml_dtypes import bfloat16
 
 from ....helpers.taplib._per_call import PerCall
+from ... import bfp
+from .params import Member, Param, resolve
 
 T = TypeVar("T")
 
@@ -85,31 +89,119 @@ def gemm(a: In, b: In, c: Out,
 """
 
 
-class _Declared:
-    """A tensor marker called in a class body: an untyped record of the call.
+class _Operand(Member):
+    """A tensor declared in an operator's class body.
 
-    ``args`` and ``kwargs`` are the call's arguments, kept as given and never
-    read or checked by aie.iron; the library that declares with the marker
-    interprets them.
+    On an instance, ``op.a`` is the operand the operator bound (`of`).
+
+    Args:
+        dims: The host shape: integers, ``param()``s and ``Select``s. A
+            ``param()`` that is None on an instance is a dimension the shape
+            leaves out there.
+        dtype: The element type, or a ``param()`` holding it.
+        obj_shape: What one ObjectFifo element holds. With one the tensor
+            streams into the array; without one a hand-written sequence
+            moves it.
+        per: The ``param()`` (or several, multiplied) the stream is split
+            over, one ObjectFifo each.
+        depth: The ObjectFifo depth.
+        replicate: Every ``per=`` lane gets the whole tensor, not a share.
+        when: A bool ``param()``; the tensor exists only where it is true.
+
+    Raises:
+        TypeError: ``replicate`` without ``per``.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any):
-        self.args = args
-        self.kwargs = kwargs
+    fills = drains = False
+
+    def __init__(
+        self,
+        *dims: Any,
+        dtype: Any = bfloat16,
+        obj_shape: Any = None,
+        per: Any = None,
+        depth: int = 2,
+        replicate: bool = False,
+        when: Param | None = None,
+    ):
+        if replicate and per is None:
+            raise TypeError(
+                "replicate=True needs per=<dim>: every lane receives the whole tensor"
+            )
+        self.dims = dims
+        self.declared_dtype = dtype
+        self.obj_dims = None if obj_shape is None else _dims(obj_shape)
+        self.per = None if per is None else _dims(per)
+        self.depth = depth
+        self.replicate = replicate
+        self.when = when
+        self.op = None
+
+    def of(self, op) -> Self:
+        """Return this operand on ``op``, its shapes resolved there."""
+        bound = copy.copy(self)
+        bound.op = op
+        return bound
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return resolve(self.dims, self.op)
+
+    @property
+    def dtype(self):
+        dtype = self.declared_dtype
+        return vars(self.op)[dtype.name] if isinstance(dtype, Param) else dtype
+
+    @property
+    def elements(self) -> int:
+        return math.prod(self.shape)
+
+    @property
+    def streamed(self) -> bool:
+        return self.obj_dims is not None
+
+    @property
+    def obj_shape(self) -> tuple[int, ...]:
+        if self.obj_dims is None:
+            raise TypeError(f"{self.name} is declared without an obj_shape=: no stream")
+        return resolve(self.obj_dims, self.op)
+
+    @property
+    def lanes(self) -> int:
+        """The stream's ObjectFifos."""
+        if self.obj_dims is None:
+            raise TypeError(f"{self.name} is declared without an obj_shape=: no stream")
+        return 1 if self.per is None else math.prod(resolve(self.per, self.op))
+
+    def __repr__(self) -> str:
+        role = type(self).__name__
+        if self.op is None:
+            return f"{role}({', '.join(getattr(d, 'name', None) or repr(d) for d in self.dims)})"
+        return f"<{role} {self.name} {self.shape} {bfp.dtype_name(self.dtype)}>"
+
+
+def _dims(spec) -> tuple:
+    return tuple(spec) if isinstance(spec, (tuple, list)) else (spec,)
 
 
 if TYPE_CHECKING:
     In = Out = InOut = type[np.ndarray]
 else:
 
-    class In(_Declared):
+    class In(_Operand):
         """Runtime input tensor annotation (host → NPU, DMA each call)."""
 
-    class Out(_Declared):
+        fills = True
+
+    class Out(_Operand):
         """Runtime output tensor annotation (NPU → host, DMA each call)."""
 
-    class InOut(_Declared):
+        drains = True
+
+    class InOut(_Operand):
         """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
+
+        fills = drains = True
 
 
 DispatchTime = Annotated[T, "aie.dispatch_time"]
