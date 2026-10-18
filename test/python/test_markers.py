@@ -7,6 +7,7 @@
 # RUN: %pytest %s
 """Unit tests for CompileTime[T], In, Out, InOut, DispatchTime[T] annotation markers — no NPU required."""
 
+import dataclasses
 import inspect
 import json
 from typing import Annotated, get_args, get_origin
@@ -46,13 +47,6 @@ def test_compile_type_arg_preserved():
     assert get_args(CompileTime[str])[0] is str
 
 
-def test_bare_compile_has_annotated_origin():
-    # Unlike a bespoke Generic[T], a bare (unsubscripted) Annotated[T, ...]
-    # alias already carries an Annotated origin -- this is why
-    # _is_compile_param(CompileTime) below is still True.
-    assert get_origin(CompileTime) is Annotated
-
-
 # ---------------------------------------------------------------------------
 # DispatchTime[T] — Annotated[T, ...] parameterisation (mirrors CompileTime[T])
 # ---------------------------------------------------------------------------
@@ -65,10 +59,6 @@ def test_dispatch_int_origin_is_annotated():
 def test_dispatch_type_arg_preserved():
     assert get_args(DispatchTime[int])[0] is int
     assert get_args(DispatchTime[str])[0] is str
-
-
-def test_bare_dispatch_has_annotated_origin():
-    assert get_origin(DispatchTime) is Annotated
 
 
 def test_dispatch_is_not_compile():
@@ -97,10 +87,6 @@ def test_is_compile_param_with_int():
 
 def test_is_compile_param_with_str():
     assert _is_compile_param(CompileTime[str]) is True
-
-
-def test_is_compile_param_bare():
-    assert _is_compile_param(CompileTime) is True
 
 
 def test_is_compile_param_rejects_in():
@@ -145,10 +131,6 @@ def test_is_dispatch_param_with_int():
 
 def test_is_dispatch_param_with_str():
     assert _is_dispatch_param(DispatchTime[str]) is True
-
-
-def test_is_dispatch_param_bare():
-    assert _is_dispatch_param(DispatchTime) is True
 
 
 def test_is_dispatch_param_rejects_in():
@@ -266,6 +248,25 @@ def test_tensor_markers_are_not_dispatch():
     assert In is not DispatchTime
     assert Out is not DispatchTime
     assert InOut is not DispatchTime
+
+
+# ---------------------------------------------------------------------------
+# Calling a marker declares a value in a class body
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("marker", [In, Out, InOut, DispatchTime])
+def test_calling_a_marker_keeps_its_arguments(marker):
+    declared = marker(4, "n", dtype=int)
+    assert isinstance(declared, marker)
+    assert declared.args == (4, "n") and declared.kwargs == {"dtype": int}
+
+
+def test_calling_compile_time_declares_a_keyword_only_field():
+    field = CompileTime(default=3, probe=1)
+    assert isinstance(field, dataclasses.Field)
+    assert field.default == 3 and field.kw_only
+    assert field.metadata["aie.compile_time"] == {"probe": 1}
 
 
 # ---------------------------------------------------------------------------
