@@ -2544,3 +2544,38 @@ def test_dispatch_time_accepts_runtime_integer_types(dtype):
         pass
 
     assert CompilableDesign(gen).dispatch_param_types == [dtype]
+
+
+def test_a_chain_links_each_xclbin_onto_the_last(monkeypatch, tmp_path):
+    def compile(design):
+        path = tmp_path / f"{len(built)}.xclbin"
+        built.append(design.aiecc_flags)
+        return path, None
+
+    built = []
+    monkeypatch.setattr(CompilableDesign, "compile", compile)
+    designs = [CompilableDesign(lambda: None, aiecc_flags=["-v"]) for _ in range(34)]
+    chained = CompilableDesign.chain(designs, "x" * 100)
+
+    assert built[0] == (
+        "-v",
+        "--xclbin-kernel-name=f50e483_op0",
+        "--xclbin-instance-name=f50e483_op0",
+        "--xclbin-kernel-id=0x901",
+    )
+    assert built[1][-1] == f"--xclbin-input={tmp_path / '0.xclbin'}"
+    assert not any(flag.startswith("--xclbin-input") for flag in built[32])
+    assert [image.name for _, image, _ in chained] == ["31.xclbin"] * 32 + [
+        "33.xclbin"
+    ] * 2
+    assert chained[33][2] == "f50e483_op33"
+
+
+def test_a_chain_of_one_keeps_the_default_kernel(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        CompilableDesign, "compile", lambda design: (tmp_path / "a.xclbin", None)
+    )
+    [(design, image, kernel)] = CompilableDesign.chain(
+        [CompilableDesign(lambda: None)], "x"
+    )
+    assert design.aiecc_flags == () and kernel == "MLIR_AIE"

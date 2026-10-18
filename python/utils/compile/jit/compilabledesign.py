@@ -525,6 +525,52 @@ class CompilableDesign:
             **config,
         )
 
+    # amdxdna's MAX_NUM_CUS: the kernels one hardware context configures.
+    XCLBIN_KERNELS = 32
+
+    @staticmethod
+    def chain(
+        designs: "list[CompilableDesign]", name: str
+    ) -> "list[tuple[CompilableDesign, Path, str]]":
+        """Compile ``designs`` into xclbins that each add a design's kernel to the last.
+
+        Each xclbin after the first of a chain is built with
+        ``--xclbin-input`` naming the one before, and a chain holds
+        ``XCLBIN_KERNELS`` kernels. With more than one design, each kernel is
+        named for a short hash of ``name`` and its index, under xclbinutil's
+        64-character limit; one design alone keeps the default name.
+
+        Returns:
+            Per design, the compiled design, the xclbin carrying its kernel (its
+            chain's last) and the kernel's name.
+        """
+        digest = hashlib.sha1(name.encode()).hexdigest()[:6]
+        named = len(designs) > 1
+        built, images = [], []
+        for index, design in enumerate(designs):
+            label = f"f{digest}_op{index}" if named else "MLIR_AIE"
+            flags = (
+                [
+                    f"--xclbin-kernel-name={label}",
+                    f"--xclbin-instance-name={label}",
+                    f"--xclbin-kernel-id=0x{0x901 + index:x}",
+                ]
+                if named
+                else []
+            )
+            if index % CompilableDesign.XCLBIN_KERNELS:
+                flags.append(f"--xclbin-input={images[-1]}")
+            design = design.specialize(aiecc_flags=[*design.aiecc_flags, *flags])
+            xclbin, _ = design.compile()
+            assert xclbin is not None
+            images.append(Path(xclbin).resolve())
+            built.append((design, label))
+        size = CompilableDesign.XCLBIN_KERNELS
+        return [
+            (design, images[min(index // size * size + size, len(built)) - 1], label)
+            for index, (design, label) in enumerate(built)
+        ]
+
     def compile(
         self,
         xclbin_path: Path | str | None = None,

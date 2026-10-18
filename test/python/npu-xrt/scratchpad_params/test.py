@@ -85,10 +85,14 @@ def test_a_run_drains_into_another_runs_scratchpad_alias(kernel_setup):
     run.start()
     run.wait2()
 
-    # The run's first output element lands in the low half of word 0.
+    # The run's first output element lands in the low half of word 0: the
+    # parameter params.txt gives index 0 (entries are "name index type kind
+    # min max" after the count).
+    words = open("params.txt").read().split()
+    entries = [words[i : i + 6] for i in range(1, 1 + 6 * int(words[0]), 6)]
+    (first,) = [name for name, index, *_ in entries if index == "0"]
     target.sync_from_device()
-    product = int(bfloat16(12.0).view(np.uint16))
-    assert product in {target.read(name) & 0xFFFF for name in ("foo", "bar")}
+    assert target.read(first) & 0xFFFF == int(bfloat16(12.0).view(np.uint16))
 
 
 if __name__ == "__main__":
