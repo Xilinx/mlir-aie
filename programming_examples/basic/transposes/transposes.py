@@ -53,7 +53,7 @@ from pathlib import Path
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.npdtypes import np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
@@ -301,6 +301,17 @@ def _transpose_dyn(
         )
     # A's compiled buffer bounds every dispatch's M * K.
     max_elems = int(np.prod(np_ndarray_type_get_shape(A)))
+    # in_fifo/out_fifo share one flat_ty derived from A alone, so a C that
+    # doesn't match A's element count or width would starve or overrun drain.
+    for name, arr_ty in (("A", A), ("C", C)):
+        elems = int(np.prod(np_ndarray_type_get_shape(arr_ty)))
+        itemsize = np.dtype(np_ndarray_type_get_dtype(arr_ty)).itemsize
+        if elems != max_elems or itemsize != dtype_bytes:
+            raise ValueError(
+                f"--strategy=dyn requires A and C to both hold {max_elems} "
+                f"elements of {dtype_bytes} bytes; got {name} with {elems} "
+                f"elements of {itemsize} bytes."
+            )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     flat_ty = np.ndarray[(max_elems,), np.dtype[dtype]]
 
