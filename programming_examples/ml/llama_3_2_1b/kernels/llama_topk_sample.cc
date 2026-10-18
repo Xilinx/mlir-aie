@@ -13,6 +13,7 @@
 // not `1.0f/x`; rotl via concat-shift; no fp32 array live across loops.
 //===----------------------------------------------------------------------===//
 
+#include <aie_api/aie.hpp>
 #include <stdint.h>
 #include <string.h>
 
@@ -36,6 +37,22 @@ static constexpr int kNTile = LLAMA_TOPK_NTILE;
 static constexpr int kKset = LLAMA_TOPK_KSET;
 static constexpr float kExpQuantScale = LLAMA_TOPK_EXP_QUANT_SCALE;
 static constexpr float kInvExpQuantScale = 1.0f / LLAMA_TOPK_EXP_QUANT_SCALE;
+static constexpr int kVec = 64;
+
+// Exact byte copy of one kD-element embed row, kVec lanes at a time (no
+// float rounding -- just a vectorized memcpy). kD is a multiple of kVec
+// for every shape this kernel is built at (D=256/2048, kVec=64), but
+// neither pointer is guaranteed 64-byte aligned -- src is offset by
+// kRowsOff (32 B) from the streamed slot's base, and dst is offset by
+// a multiple of kD from set_row's base -- so both sides use unaligned
+// load/store.
+static inline void vec_copy_row(int8_t *restrict dst,
+                                const int8_t *restrict src) {
+  static_assert(kD % kVec == 0, "LLAMA_TOPK_D must be a multiple of 64");
+  for (int c = 0; c < kD / kVec; c++)
+    ::aie::store_unaligned_v(dst + c * kVec,
+                             ::aie::load_unaligned_v<kVec>(src + c * kVec));
+}
 
 // Packed input slot per tile (mirrors the real lm_head weight slot shape so the
 // fused version reuses the same stream):
@@ -147,8 +164,7 @@ void llama_topk_insert(int8_t *restrict slot, float *restrict set_logit,
       set_logit[len] = lg;
       set_gidx[len] = gidx;
       set_scale[len] = sc;
-      for (int d = 0; d < kD; d++)
-        set_row[len * kD + d] = row[d];
+      vec_copy_row(set_row + len * kD, row);
       *set_len = len + 1;
       continue;
     }
@@ -165,8 +181,7 @@ void llama_topk_insert(int8_t *restrict slot, float *restrict set_logit,
       set_logit[mi] = lg;
       set_gidx[mi] = gidx;
       set_scale[mi] = sc;
-      for (int d = 0; d < kD; d++)
-        set_row[mi * kD + d] = row[d];
+      vec_copy_row(set_row + mi * kD, row);
     }
   }
 }
