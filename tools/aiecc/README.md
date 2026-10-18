@@ -143,6 +143,26 @@ its own. The core ELFs are byte-identical to compiling each core on its own.
 `--no-share-core-objects` compiles each core separately, should the sharing
 ever need to be ruled out.
 
+### Arguments for `opt` and `llc`: `-Xopt` and `-Xllc`
+
+`-Xopt <arg>` and `-Xllc <arg>` pass `<arg>` to the Peano `opt` and `llc` that
+compile each core's program, as clang's `-Xclang` does: one argument per
+occurrence, never split at commas, after the arguments `aiecc` passes itself,
+so an option that `aiecc` sets takes the value given here. They reach the
+cores' programs, including kernels merged into them
+(`link_with_mode = "merge"`); a kernel compiled to an object takes its flags
+from its own clang command line (`-mllvm`).
+
+```bash
+# Rule out opt passes, or bisect them, in the cores' programs
+aiecc --get-pdi -Xopt -opt-disable=licm,loop-unroll-full design.mlir
+aiecc --get-pdi -v -Xopt -opt-bisect-limit=40 design.mlir
+# A backend option
+aiecc --get-pdi -Xllc=--enable-aie-zol-without-minitercount=false design.mlir
+```
+
+With `--xchesscc` they are an error: Chess compiles the cores.
+
 ### Building the link files meanwhile: `--await-link-files`
 
 With `--await-link-files`, `aiecc` lowers the design but reads no file a core
