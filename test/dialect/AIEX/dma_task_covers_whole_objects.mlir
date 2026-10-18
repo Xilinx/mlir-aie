@@ -287,3 +287,210 @@ module {
     }
   }
 }
+
+// -----
+
+// An omitted len implies the whole buffer, as DMABDOp::getLenInBytes()
+// assumes: 300 f32 (1200 bytes) into 256-byte objects ends mid-object.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<300xf32>) {
+      // expected-error@+1 {{moves 1200 bytes through objectFIFO @of, which is not a whole number of its 256-byte objects}}
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<300xf32>)
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A linked fifo's far-end BD may be sized by the link's shared pool rather
+// than this fifo's own type, so a linked endpoint is not checked: 96 i32
+// against @of_in's 64-i32 (256-byte) objects would otherwise be rejected.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of_in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @of_out(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo.link [@of_in] -> [@of_out]([] [])
+    aie.runtime_sequence(%arg0: memref<96xi32>) {
+      %t = aiex.dma_configure_task_for @of_in {
+        aie.dma_bd(%arg0 : memref<96xi32> offset = 0 len = 96 sizes = [1, 1, 1, 96] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// The link's owner side (@of_in, the larger of the two and so the pool's
+// real size) is still checked even though the sizes differ: a transfer that
+// doesn't cover its own 384-byte objects is rejected, not waved through just
+// because @of_out is a different (smaller) size.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of_in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo @of_out(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@of_in] -> [@of_out]([] [])
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      // expected-error@+1 {{moves 256 bytes through objectFIFO @of_in, which is not a whole number of its 384-byte objects}}
+      %t = aiex.dma_configure_task_for @of_in {
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A distribute link's single combined side owns the pool at its own declared
+// size, unlike the several small sides whose segments are offset-derived: a
+// transfer through @of_in that doesn't cover its own 512-byte objects is
+// still rejected, even though @of_in and its smaller outputs are unequal
+// sizes (which would otherwise defer the check entirely).
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    aie.objectfifo @of_in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo @of_out0(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @of_out1(%t01, {%t03}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@of_in] -> [@of_out0, @of_out1]([] [0, 64])
+    aie.runtime_sequence(%arg0: memref<96xi32>) {
+      // expected-error@+1 {{moves 384 bytes through objectFIFO @of_in, which is not a whole number of its 512-byte objects}}
+      %t = aiex.dma_configure_task_for @of_in {
+        aie.dma_bd(%arg0 : memref<96xi32> offset = 0 len = 96 sizes = [1, 1, 1, 96] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A start inside a loop may run more than once, so it is not summed as one
+// execution: two issues of half an object (started lexically once, inside a
+// two-iteration loop) are not flagged, though the configuring task itself
+// stays in the sequence's entry block.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      scf.for %i = %c0 to %c2 step %c1 {
+        aiex.dma_start_task(%t)
+      }
+    }
+  }
+}
+
+// -----
+
+// A cyclic BD chain runs indefinitely, so walking its body once isn't its
+// true extent: this self-looping 32-i32 BD is not flagged, though 128 bytes
+// alone is not a whole 256-byte object.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.next_bd ^loop
+      ^loop:
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.next_bd ^loop
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A scratchpad length_parameter lengthens the BD at run time, so its static
+// len alone is not the transfer's extent and is not checked: 32 i32 plus
+// n * 32-i32 units is unknown, though 32 i32 alone is not a whole object.
+module {
+  aiex.scratchpad_parameter @n : i32
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+            {length_parameter = @n, length_unit = 32 : i32}
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A negative repeat_count is rejected at its own op, rather than folding to a
+// bogus negative byte count that happens to clear the modulus check below.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>) {
+      // expected-error@+1 {{repeat_count must be non-negative, got -2}}
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      } {repeat_count = -2 : i32}
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// An omitted len's implicit whole-buffer element count stays a true int64:
+// past INT32_MAX elements it must not wrap into a garbled (and possibly
+// falsely-whole) byte count.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<3000000001xi8>) {
+      // expected-error@+1 {{moves 3000000001 bytes through objectFIFO @of, which is not a whole number of its 256-byte objects}}
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<3000000001xi8>)
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}

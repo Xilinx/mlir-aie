@@ -1464,6 +1464,8 @@ def AIE_DMAConfigureTaskForOp
 
   let regions = (region AnyRegion:$body);
 
+  let hasVerifier = 1;
+
   let assemblyFormat = [{
     $alloc (`repeat` $repeat_count_val^ `:` type($repeat_count_val))? regions attr-dict
   }];

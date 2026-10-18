@@ -15,11 +15,13 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/TypeSwitch.h"
@@ -1324,6 +1326,9 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
 }
 
 LogicalResult AIEX::DMAConfigureTaskOp::verify() {
+  if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
+    return emitOpError("repeat_count must be non-negative, got ")
+           << rc.getInt();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
   // Skip the per-BD dimension check on an unplaced (logical) tile: the ND limit
   // is a function of the tile's placed coordinates, which are not yet known.
@@ -1401,33 +1406,71 @@ LogicalResult AIEX::DMAStartTaskOp::verify() {
   return success();
 }
 
+// True when the block chain rooted at `block` has a cycle (including a
+// self-loop), which Region::walk's single pass over each op can't see.
+static bool bdChainHasCycle(Block &block) {
+  for (auto it = llvm::scc_begin(&block), end = llvm::scc_end(&block);
+       it != end; ++it)
+    if (it.hasCycle())
+      return true;
+  return false;
+}
+
+// A BD's static length in bytes: the explicit or implicit (whole-buffer)
+// length, scaled by the element width. Nullopt for a runtime length, or one a
+// scratchpad parameter lengthens at run time (AIEOps.td's "Runtime length").
+static std::optional<int64_t> staticBdLenBytes(AIE::DMABDOp bd) {
+  if (bd.getLengthParameterAttr() || bd.getLengthStateTableIdxAttr())
+    return std::nullopt;
+  int64_t elems;
+  if (std::optional<int32_t> len = bd.getConstantLen()) {
+    elems = *len;
+  } else {
+    if (bd.hasLen())
+      return std::nullopt;
+    auto buffer = dyn_cast<MemRefType>(bd.getBuffer().getType());
+    if (!buffer || !buffer.hasStaticShape())
+      return std::nullopt;
+    elems = buffer.getNumElements();
+  }
+  return elems * bd.getBufferElementTypeWidthInBytes();
+}
+
 // Bytes a task streams per dispatch, or nullopt when any extent, repeat or
 // start count is not static.
 static std::optional<int64_t>
 staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
   std::optional<int64_t> repeat =
       getConstantIntValue(task.getRepeatCountValue());
-  if (!repeat)
+  if (!repeat || *repeat < 0)
     return std::nullopt;
   int64_t starts = 0;
   for (Operation *user : task.getResult().getUsers()) {
     auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
     if (!start)
       continue;
-    if (start.getRepeatCountAttr() || start.getRepeatCountVal() ||
-        start.hasRepeatParameter())
+    // A start outside the task's own block may run under a loop or a
+    // mutually-exclusive branch, either of which this static count can't see.
+    if (start->getBlock() != task->getBlock() || start.getRepeatCountAttr() ||
+        start.getRepeatCountVal() || start.hasRepeatParameter())
       return std::nullopt;
     ++starts;
   }
   if (starts == 0)
     return std::nullopt;
 
+  if (Region &body = task.getBody();
+      !body.empty() && bdChainHasCycle(body.front()))
+    return std::nullopt;
+
   int64_t moved = 0;
   WalkResult walk = task.getBody().walk([&](AIE::DMABDOp bd) {
-    std::optional<int32_t> len = bd.getConstantLen();
-    if (!len || bd.getIteration())
+    if (bd.getIteration())
       return WalkResult::interrupt();
-    moved += static_cast<int64_t>(*len) * bd.getBufferElementTypeWidthInBytes();
+    std::optional<int64_t> len = staticBdLenBytes(bd);
+    if (!len)
+      return WalkResult::interrupt();
+    moved += *len;
     return WalkResult::advance();
   });
   if (walk.wasInterrupted())
@@ -1446,24 +1489,64 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                              AIE::ObjectFifoCreateOp fifo) {
   if (fifo.getPadDimensions() || fifo.getAieStream())
     return success();
+  DataLayout layout = DataLayout::closest(task);
+  // Bytes a static-shape element type's object holds, or nullopt for a
+  // dynamically-shaped one.
+  auto elemBytes = [&](MemRefType elem) -> std::optional<int64_t> {
+    if (!elem.hasStaticShape())
+      return std::nullopt;
+    return elem.getNumElements() *
+           static_cast<int64_t>(layout.getTypeSize(elem.getElementType()));
+  };
+  auto declaredObjectBytes =
+      [&](AIE::ObjectFifoCreateOp f) -> std::optional<int64_t> {
+    return elemBytes(
+        cast<AIE::AIEObjectFifoType>(f.getElemType()).getElementType());
+  };
+  // createLinkPools (AIEObjectFifoSplit.cpp) puts a link's shared pool at one
+  // owning fifo's own declared size, so only that owner is still checked
+  // below. A join's or distribute's several small-side fifos instead get
+  // offset-derived segments of the pool, and a plain link's smaller side
+  // gets the larger one's size (mirroring createLinkPools' own owner pick).
+  if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
+    for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
+      std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
+      std::vector<AIE::ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
+      if (!llvm::is_contained(ins, fifo) && !llvm::is_contained(outs, fifo))
+        continue;
+      AIE::ObjectFifoCreateOp owner = ins.front();
+      if (link.isJoin()) {
+        owner = outs.front();
+      } else if (!link.isDistribute()) {
+        std::optional<int64_t> inBytes = declaredObjectBytes(ins.front());
+        std::optional<int64_t> outBytes = declaredObjectBytes(outs.front());
+        if (!inBytes || !outBytes)
+          return success();
+        // Equal sizes put the pool at that size either way, so both fifos'
+        // own declared type is authoritative; neither needs deferring.
+        if (*inBytes == *outBytes)
+          break;
+        if (outs.front().getInitValues() ||
+            (*outBytes > *inBytes && !outs.front().getPadDimensions()))
+          owner = outs.front();
+      }
+      if (fifo != owner)
+        return success();
+      break;
+    }
   auto producer =
       dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
   if (!producer)
     return success();
   Type farObject = producer.isShimTile() ? fifo.getConsumerElemTypeOrDefault()
                                          : fifo.getElemType();
-  auto object = cast<AIE::AIEObjectFifoType>(farObject).getElementType();
-  if (!object.hasStaticShape())
-    return success();
-  int64_t objectBytes =
-      object.getNumElements() *
-      static_cast<int64_t>(
-          DataLayout::closest(task).getTypeSize(object.getElementType()));
-  if (objectBytes <= 0)
+  std::optional<int64_t> objectBytes =
+      elemBytes(cast<AIE::AIEObjectFifoType>(farObject).getElementType());
+  if (!objectBytes || *objectBytes <= 0)
     return success();
 
   std::optional<int64_t> moved = staticBytesStreamed(task);
-  if (!moved || *moved % objectBytes == 0)
+  if (!moved || *moved % *objectBytes == 0)
     return success();
 
   // Transfers in a loop or branch have no static count to sum.
@@ -1480,13 +1563,13 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
     if (!bytes || other->getBlock() != task->getBlock())
       return WalkResult::interrupt();
     // The first partial transfer reports, so the error is raised once.
-    if (*bytes % objectBytes != 0 && other->isBeforeInBlock(task))
+    if (*bytes % *objectBytes != 0 && other->isBeforeInBlock(task))
       reportedEarlier = true;
     total += *bytes;
     ++sharing;
     return WalkResult::advance();
   });
-  if (walk.wasInterrupted() || reportedEarlier || total % objectBytes == 0)
+  if (walk.wasInterrupted() || reportedEarlier || total % *objectBytes == 0)
     return success();
 
   InFlightDiagnostic error =
@@ -1495,9 +1578,16 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   if (sharing > 1)
     error << ", with this runtime sequence's other transfers through it ("
           << total << " bytes in all),";
-  return error << " is not a whole number of its " << objectBytes
+  return error << " is not a whole number of its " << *objectBytes
                << "-byte objects; the far end's buffer descriptor is sized by "
                   "the object, so a partial one never completes";
+}
+
+LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
+  if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
+    return emitOpError("repeat_count must be non-negative, got ")
+           << rc.getInt();
+  return success();
 }
 
 // Resolving the allocation symbol through the collection keeps the lookup off

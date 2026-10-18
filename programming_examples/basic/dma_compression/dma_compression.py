@@ -177,6 +177,10 @@ class PingPongDma:
         out: Flow,
         name: str,
     ):
+        assert tile.row is not None, "PingPongDma needs a placed tile"
+        assert (
+            regs.row == tile.row
+        ), f"PingPongDma's regs are for row {regs.row}, tile is row {tile.row}"
         self.tile = tile
         self.regs = regs
         self.buffers = [
