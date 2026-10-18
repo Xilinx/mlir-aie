@@ -32,14 +32,10 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     recompiling. Explicit specialization instead fixes it at compile time.
     See ``DispatchTime`` below for generator binding and usage restrictions.
 
-Calling a marker declares a value of its kind in a class body, for a
-library that builds its own declarations (IRON's operators):
-``In(...)``/``Out(...)``/``InOut(...)``/``DispatchTime(...)`` return an
-instance that is an untyped record of the call's ``args`` and ``kwargs``,
-which aie.iron does not read or check, and
-``CompileTime(default=..., **options)`` returns a keyword-only
-``dataclasses.Field`` (not a ``CompileTime``) with ``options`` in its
-metadata under ``"aie.compile_time"``.
+Calling ``In(...)``, ``Out(...)`` or ``InOut(...)`` declares a tensor in a
+class body, for a library that builds its own declarations (IRON's
+operators): it returns an instance that is an untyped record of the call's
+``args`` and ``kwargs``, which aie.iron does not read or check.
 
 Any parameter without one of these annotations is rejected at ``@iron.jit``
 decoration time when the parameter has a default value: an unannotated scalar
@@ -52,14 +48,36 @@ instead.
 
 from __future__ import annotations
 
-import dataclasses
-from typing import TYPE_CHECKING, Annotated, Any, NoReturn, TypeVar
+from typing import Annotated, Any, NoReturn, TypeVar
 
 T = TypeVar("T")
 
 
+CompileTime = Annotated[T, "aie.compile_time"]
+"""Compile-time parameter annotation.
+
+Use as a type annotation on generator function parameters that affect the
+generated MLIR.  The value must be supplied at ``CompilableDesign``
+construction time (or bound by ``@iron.jit(...)``).
+
+Changing a ``CompileTime[T]``-annotated value → new cache key → recompile.
+Required unless a default is given.
+
+For example:
+
+```python
+from ml_dtypes import bfloat16
+
+def gemm(a: In, b: In, c: Out,
+         M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
+         dtype: CompileTime[type] = bfloat16):
+    ...
+```
+"""
+
+
 class _Declared:
-    """A marker called in a class body: an untyped record of the call.
+    """A tensor marker called in a class body: an untyped record of the call.
 
     ``args`` and ``kwargs`` are the call's arguments, kept as given and never
     read or checked by aie.iron; the library that declares with the marker
@@ -83,82 +101,38 @@ class InOut(_Declared):
     """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
 
 
-# pyright reads ``CompileTime[int]`` as ``int`` only through ``Annotated``.
-if TYPE_CHECKING:
-    CompileTime = Annotated[T, "aie.compile_time"]
-    DispatchTime = Annotated[T, "aie.dispatch_time"]
-else:
+DispatchTime = Annotated[T, "aie.dispatch_time"]
+"""Runtime-scalar parameter annotation.
 
-    class CompileTime:
-        """Compile-time parameter annotation.
+Per-call values rebuild instructions through a compiled host library without
+changing the device-program cache key. An omitted value uses the signature
+default, if any. Explicit binding with ``iron.jit(generator, name=value)`` or
+``design.specialize(name=value)`` instead produces a typed NumPy constant and
+includes it in the cache key; calls cannot override it.
 
-        Use as a type annotation on generator function parameters that affect the
-        generated MLIR.  The value must be supplied at ``CompilableDesign``
-        construction time (or bound by ``@iron.jit(...)``).
+``T`` must be a NumPy integer scalar type supported by ``Runtime``, such as
+``np.int32`` or ``np.int64``. Built-in ``int``/``bool`` and floating-point
+types are rejected. Parameters must be keyword-only, even when defaulted or
+specialized.
 
-        Changing a ``CompileTime[T]``-annotated value → new cache key → recompile.
-        Required unless a default is given.
+The generator receives an identity-bearing symbolic parameter for each unbound
+scalar. Forward it exactly once as a direct ``Runtime(seq, fn_args=[...])``
+entry, in any order. Use the callback's SSA argument for runtime operations.
+Generation-time arithmetic, truth tests, shapes, dtypes, and Worker arguments
+require ``CompileTime`` or specialization instead.
 
-        For example:
+The Python bridge supports one runtime sequence, rejects remaining load-PDI
+operations, and cannot use ``full_elf=True`` while any parameters remain dynamic.
 
-        ```python
-        from ml_dtypes import bfloat16
+For example:
 
-        def gemm(a: In, b: In, c: Out,
-                 M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
-                 dtype: CompileTime[type] = bfloat16):
-            ...
-        ```
-        """
+```python
+import numpy as np
 
-        def __class_getitem__(cls, item):
-            return Annotated[item, "aie.compile_time"]
-
-        def __new__(cls, default: Any = dataclasses.MISSING, **options: Any) -> Any:
-            """Return a keyword-only ``dataclasses.Field``, not an instance.
-
-            The field has ``default``, and the other keywords, untyped and
-            unread by aie.iron, under ``"aie.compile_time"`` in its metadata.
-            """
-            return dataclasses.field(
-                default=default, kw_only=True, metadata={"aie.compile_time": options}
-            )
-
-    class DispatchTime(_Declared):
-        """Runtime-scalar parameter annotation.
-
-        Per-call values rebuild instructions through a compiled host library without
-        changing the device-program cache key. An omitted value uses the signature
-        default, if any. Explicit binding with ``iron.jit(generator, name=value)`` or
-        ``design.specialize(name=value)`` instead produces a typed NumPy constant and
-        includes it in the cache key; calls cannot override it.
-
-        ``T`` must be a NumPy integer scalar type supported by ``Runtime``, such as
-        ``np.int32`` or ``np.int64``. Built-in ``int``/``bool`` and floating-point
-        types are rejected. Parameters must be keyword-only, even when defaulted or
-        specialized.
-
-        The generator receives an identity-bearing symbolic parameter for each unbound
-        scalar. Forward it exactly once as a direct ``Runtime(seq, fn_args=[...])``
-        entry, in any order. Use the callback's SSA argument for runtime operations.
-        Generation-time arithmetic, truth tests, shapes, dtypes, and Worker arguments
-        require ``CompileTime`` or specialization instead.
-
-        The Python bridge supports one runtime sequence, rejects remaining load-PDI
-        operations, and cannot use ``full_elf=True`` while any parameters remain dynamic.
-
-        For example:
-
-        ```python
-        import numpy as np
-
-        def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
-            ...
-        ```
-        """
-
-        def __class_getitem__(cls, item):
-            return Annotated[item, "aie.dispatch_time"]
+def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
+    ...
+```
+"""
 
 
 class _DispatchParameter:
