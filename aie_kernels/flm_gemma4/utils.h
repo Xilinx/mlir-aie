@@ -57,10 +57,6 @@ struct PingPong {
   }
 };
 
-inline void _down_lock_acquire(int lock_id, int num_locks = 1) {
-  acquire_greater_equal(lock_id, num_locks);
-}
-
 // Pointer forms for the locks of the neighbour tiles.
 inline void _down_lock_acquire_p(const void *a, int lock_id,
                                  int num_locks = 1) {

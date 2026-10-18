@@ -1250,7 +1250,8 @@ def flm_gemma4_decode_attn_kv(
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 1.
         **locks: Core lock ids overriding the defaults ``v_prod_lock=2``,
             ``v_cons_lock=3``, ``o_prod_lock=0``, ``o_cons_lock=1`` and
-            ``l_cons_lock=8`` (a lock of the qk core, on the tile below).
+            ``l_cons_lock=8``, which the runtime sequence sets after it
+            writes the RTPs.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_kv", geometry, 1)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1432,7 +1433,8 @@ def flm_gemma4_decode_attn_kv_kvh2(
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 2.
         **locks: Core lock ids overriding the defaults ``v_prod_lock=2``,
             ``v_cons_lock=3``, ``o_prod_lock=0``, ``o_cons_lock=1`` and
-            ``l_cons_lock=8`` (a lock of the qk core, on the tile below).
+            ``l_cons_lock=8``, which the runtime sequence sets after it
+            writes the RTPs.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_kv_kvh2", geometry, 2)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1507,8 +1509,8 @@ def flm_gemma4_decode_attn_qk(
     it multiplies the query heads into each round's 16 key rows, masks the
     keys past the sequence length, keeps the running row maximum ``m`` and
     hands the kv core the exponentiated scores with their corrections. The
-    returned kernel is ``attn_qk_begin``, which sets ``m`` to -inf and
-    releases the kv core; per round the Worker calls ``attn_qk_round``.
+    returned kernel is ``attn_qk_begin``, which sets ``m`` to -inf; per round
+    the Worker calls ``attn_qk_round``.
     The global build serves one KV head (E2B), the sliding-window build both.
 
     Args:
@@ -1516,7 +1518,7 @@ def flm_gemma4_decode_attn_qk(
         geometry: The model the kernel builds for; without ``sliding_window``
             ``num_kv_heads`` must be 1.
         **locks: Core lock ids overriding the defaults ``k_prod_lock=2``,
-            ``k_cons_lock=3`` and ``l_cons_lock=8``.
+            ``k_cons_lock=3``.
     """
     if not sliding_window:
         _decode_kv_heads("flm_gemma4_decode_attn_qk", geometry, 1)
@@ -1527,7 +1529,7 @@ def flm_gemma4_decode_attn_qk(
         "attn_qk_begin",
         [t["m"]],
         (Out,),
-        dict(k_prod_lock=2, k_cons_lock=3, l_cons_lock=8),
+        dict(k_prod_lock=2, k_cons_lock=3),
         locks,
         geometry,
         flags=(f"-DFLM_GEMMA4_DECODE_ATTN_QK_SWA={int(sliding_window)}",),
@@ -1553,7 +1555,7 @@ def flm_gemma4_decode_attn_qk_kvh2(
     Args:
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 2.
         **locks: Core lock ids overriding the defaults ``k_prod_lock=2``,
-            ``k_cons_lock=3`` and ``l_prod_lock=8``.
+            ``k_cons_lock=3``.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_qk_kvh2", geometry, 2)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1562,7 +1564,7 @@ def flm_gemma4_decode_attn_qk_kvh2(
         "attn_qk_begin",
         [t["m"]],
         (Out,),
-        dict(k_prod_lock=2, k_cons_lock=3, l_prod_lock=8),
+        dict(k_prod_lock=2, k_cons_lock=3),
         locks,
         geometry,
         cls=_AttnQkKvh2Kernel,
@@ -1782,7 +1784,8 @@ def flm_gemma4_decode_swa_attn_kv(
         geometry: The model the kernel builds for.
         **locks: Core lock ids overriding the defaults ``v_prod_lock=2``,
             ``v_cons_lock=3``, ``o_prod_lock=0``, ``o_cons_lock=1`` and
-            ``l_cons_lock=8`` (a lock of the qk core, on the tile below).
+            ``l_cons_lock=8``, which the runtime sequence sets after it
+            writes the RTPs.
     """
     t = _decode_attn_types(
         geometry, geometry.swa_dh, geometry.num_kv_heads * geometry.swa_dh
