@@ -24,21 +24,13 @@ run.start()
 ```
 """
 
-import ctypes
 import struct
 from pathlib import Path
 
-import numpy as np
 import pyxrt  # pyright: ignore[reportMissingImports]
 from aie._mlir_libs._parameter_scratchpad import (  # pyright: ignore[reportMissingImports]
     ParameterScratchpad as _ParameterScratchpadImpl,
 )
-
-# PyCapsule_New(pointer, name, destructor): pyxrt.ext.bo takes a host pointer
-# only wrapped in a capsule.
-_pointer_capsule = ctypes.PYFUNCTYPE(
-    ctypes.py_object, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p
-)(("PyCapsule_New", ctypes.pythonapi))
 
 
 def _to_bytes(value) -> bytes:
@@ -119,8 +111,5 @@ class ParameterScratchpad:
                 raise RuntimeError(
                     f"A scratchpad alias is an XRT buffer; the runtime is {runtime!r}."
                 )
-            pointer = np.frombuffer(self._mv, dtype=np.uint8).ctypes.data
-            self._alias = pyxrt.ext.bo(
-                runtime._device, _pointer_capsule(pointer, None, None), self._bo.size()
-            )
+            self._alias = runtime.host_buffer(self._mv)
         return self._alias
