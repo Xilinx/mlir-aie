@@ -79,16 +79,16 @@ void linear_proj_iD(int M, int K, bf16 *x_ping, bf16 *x_pong,
       }
     } else {
       if (y_pingpong.is_ping) {
-        _down_lock_acquire_p(y_using, y_prod_ping_lock);
+        _shared_lock_acquire_p(y_using, y_prod_ping_lock);
       } else {
-        _down_lock_acquire_p(y_using, y_prod_pong_lock);
+        _shared_lock_acquire_p(y_using, y_prod_pong_lock);
       }
       narrow_to_bf16<m>(y_using + 16 + m,
                         y_acc); // offset of 16+m, 16 for packed_it
       if (y_pingpong.is_ping) {
-        _down_lock_release_p(y_using, y_cons_ping_lock);
+        _shared_lock_release_p(y_using, y_cons_ping_lock);
       } else {
-        _down_lock_release_p(y_using, y_cons_pong_lock);
+        _shared_lock_release_p(y_using, y_cons_pong_lock);
       }
     }
   }

@@ -2192,7 +2192,7 @@ def flm_gemma4_decode_proj_main(
             ``y_prod_ping_lock=4``, ``y_prod_pong_lock=5``,
             ``rtp_available_lock=6``, ``y_cons_ping_lock=7`` and
             ``y_cons_pong_lock=8``. When ``send_x_output`` is 0 the four
-            ``y`` locks are the tile below's.
+            ``y`` locks are those of the neighbour whose memory holds ``y``.
     """
     bf16 = np.dtype[bfloat16]
     y_ty = np.ndarray[(2 * _DECODE_Q4NX_ROWS + 16,), bf16]
@@ -2403,7 +2403,7 @@ def flm_gemma4_decode_gate_layer_embedding(
     """Build the per-layer-input gate, from ``flm_gemma4/decode_gate_layer_embedding.cc``.
 
     ``gate_layer_embedding(x, proj_w_ping, proj_w_pong, y)``: copies the
-    layer output ``x`` (``model_dim`` bf16, a buffer of the tile to the left)
+    layer output ``x`` (``model_dim`` bf16, a buffer of a neighbouring tile)
     into ``y``, projects it to ``pli_d`` with bf16 weight blocks (32 by 256
     each) streamed through the ``proj_w`` ping-pong pair, and applies the
     activation into ``y + model_dim``. ``y`` is ``model_dim + pli_d`` bf16.
@@ -2416,8 +2416,8 @@ def flm_gemma4_decode_gate_layer_embedding(
         **locks: Core lock ids overriding the defaults ``x_prod_lock=0``,
             ``x_cons_lock=1``, ``proj_w_prod_lock=2``, ``proj_w_cons_lock=3``,
             ``y_prod_lock=4``, ``y_cons_lock=5``, ``final_x_prod_lock=7`` and
-            ``final_x_cons_lock=8`` (the last two locks of the tile to the
-            left).
+            ``final_x_cons_lock=8`` (the last two locks of the tile that
+            holds ``x``).
     """
     bf16 = np.dtype[bfloat16]
     d = geometry.model_dim
