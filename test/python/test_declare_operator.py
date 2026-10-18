@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from aie.utils import hostruntime
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.compile.jit.operator import Operator, Unresolvable
 from aie.utils.compile.jit.params import param, per_call, tunable
@@ -85,11 +86,16 @@ class Computed(Operator):
     M: int = param(default=lambda op: None)
 
 
-def test_a_computed_default_of_none_must_be_given():
+class Nullable(Operator):
+    M: int | None = param(default=lambda op: None)
+
+
+def test_a_computed_default_of_none_must_be_given_unless_nullable():
     with pytest.raises(
         ValueError, match="M \\(None\\) must be given: nothing computes it"
     ):
         Computed()
+    assert Nullable().M is None
 
 
 def test_a_copy_recomputes_a_derive_and_keeps_every_other_value():
@@ -116,11 +122,18 @@ class Same(Scale):
         return self
 
 
+class Other(Scale):
+    def resolve(self, dev):
+        return Scale(M=self.M).replace(tile=16, lanes=4)
+
+
 def test_a_resolve_that_leaves_a_tunable_or_returns_itself_is_refused():
     with pytest.raises(Unresolvable, match="left \\['tile', 'lanes'\\] unset"):
         Lazy(M=8).resolved(DEV)
     with pytest.raises(TypeError, match="must return a copy"):
         Same(M=8).resolved(DEV)
+    with pytest.raises(TypeError, match="must return a copy"):
+        Other(M=8).resolved(DEV)
 
 
 def test_the_layout_holds_the_key_and_names_any_other_read():
@@ -177,6 +190,11 @@ class Reference(Library):
 def test_a_library_base_is_not_declared_and_a_reference_only_operator_has_no_kernel():
     assert "declaration" not in vars(Library)
     assert Reference(n=2).x.dtype is np.float32
+    with pytest.raises(TypeError, match="Hiding.sequence hides Library.sequence"):
+
+        class Hiding(Library):
+            sequence: int = param()
+
     with pytest.raises(
         TypeError, match="Kernel is reference_only, so it declares no build"
     ):
@@ -212,3 +230,12 @@ class Checked(Scale):
 def test_a_resolved_copy_is_checked_against_its_tunables():
     with pytest.raises(ValueError, match="tile exceeds M"):
         Checked(M=8, tile=32).resolved(DEV)
+
+
+class OnDevice(Scale):
+    def compatible(self):
+        assert hostruntime._CURRENT_DEVICE is DEV
+
+
+def test_a_resolved_copy_is_checked_with_its_device_current():
+    OnDevice(M=8).resolved(DEV)

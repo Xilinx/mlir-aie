@@ -282,11 +282,13 @@ class CompilableDesign:
         # _generate_uncached read again.
         if callable(mlir_generator):
             self.declaration = declare(mlir_generator)
-            self._sig = sig = self.declaration.signature
+            sig = self.declaration.signature
             assert sig is not None
             cp = list(self.declaration.params)
             tp = [m.name for m in self.declaration.operands]
-            dp_types = {m.name: m.dtype for m in self.declaration.per_call}
+            self._dispatch_types = dp_types = {
+                m.name: m.dtype for m in self.declaration.per_calls
+            }
             dp = list(dp_types)
             sp = self.declaration.scalars
             non_keyword_dispatch = [
@@ -356,7 +358,7 @@ class CompilableDesign:
             self.dispatch_param_types = [dp_types[n] for n in self.dispatch_params]
         else:
             self.declaration = None
-            self._sig = None
+            self._dispatch_types = {}
             self.compile_params = []
             self.tensor_params = []
             self.variadic_tensor_param = None
@@ -1466,7 +1468,8 @@ class CompilableDesign:
                 "use specialize() to create a design with different constants."
             )
 
-        sig = self._sig
+        assert self.declaration is not None
+        sig = self.declaration.signature
         tensors = set(self.tensor_params)
         assert sig is not None
         params = [
@@ -1939,7 +1942,8 @@ class CompilableDesign:
                 f"  Valid CompileTime[T] params are: {self.compile_params}."
             )
 
-        sig = self._sig
+        assert self.declaration is not None
+        sig = self.declaration.signature
         assert sig is not None
         compile_only_params = {
             name: p.replace(kind=inspect.Parameter.KEYWORD_ONLY)
@@ -1984,10 +1988,10 @@ class CompilableDesign:
             **_dispatch_placeholders,
             **self.compile_kwargs,
         }
-        assert self.declaration is not None
-        dispatch_types = {m.name: m.dtype for m in self.declaration.per_call}
         for name in self.bound_dispatch_params:
-            _gen_call_kwargs[name] = dispatch_types[name](self.compile_kwargs[name])
+            _gen_call_kwargs[name] = self._dispatch_types[name](
+                self.compile_kwargs[name]
+            )
 
         # The generation's kernels register here, not in the process-wide
         # registry another thread's manual compile reads. ExternalFunction

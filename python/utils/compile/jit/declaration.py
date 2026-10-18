@@ -23,7 +23,7 @@ from typing import Any, ClassVar, get_args, get_origin
 import numpy as np
 
 from .markers import _Operand
-from .params import Member, Param, Select, _PerCallValue, _text
+from .params import Member, Param, PerCall, Select, _text
 
 
 def _foreign(d, owner: type) -> bool:
@@ -95,8 +95,8 @@ class Declaration:
         return tuple(m for m in self.members if isinstance(m, _Operand))
 
     @property
-    def per_call(self) -> tuple[_PerCallValue, ...]:
-        return tuple(m for m in self.members if isinstance(m, _PerCallValue))
+    def per_calls(self) -> tuple[PerCall, ...]:
+        return tuple(m for m in self.members if isinstance(m, PerCall))
 
     @staticmethod
     def of_class(owner: type, library: type) -> Declaration:
@@ -112,7 +112,6 @@ class Declaration:
         """
         hints = inspect.get_annotations(owner, eval_str=True)
         for name, value in vars(owner).items():
-            hint = hints.get(name)
             if name in hints and isinstance(value, Member):
                 raise TypeError(
                     f"{owner.__name__}.{name}: members are declared without an "
@@ -129,19 +128,9 @@ class Declaration:
                 raise TypeError(
                     f"{owner.__name__}.{name}: annotate the parameter with its type, `{name}: int = {value!r}`"
                 )
-            if (
-                name in hints
-                and not isinstance(value, Param)
-                and hint is not ClassVar
-                and get_origin(hint) is not ClassVar
-            ):
-                raise TypeError(
-                    f"{owner.__name__}.{name}: an annotated attribute is a param(), a tunable() or a ClassVar"
-                )
-
         for name, hint in hints.items():
             if (
-                name not in vars(owner)
+                not isinstance(vars(owner).get(name), Param)
                 and hint is not ClassVar
                 and get_origin(hint) is not ClassVar
             ):
@@ -195,7 +184,7 @@ class Declaration:
     @staticmethod
     def _check(owner: type, m: Member, nullable: set[str]) -> None:
         where = f"{owner.__name__}.{m.name}"
-        if isinstance(m, _PerCallValue):
+        if isinstance(m, PerCall):
             if m.bounds is not None and (
                 not isinstance(m.bounds, Param)
                 or _foreign(m.bounds, owner)
@@ -319,6 +308,13 @@ class Declaration:
             raise TypeError(
                 f"{self.name} takes {len(ins)} operand(s) ({', '.join(m.name for m in ins)}), got {len(inputs)}"
             )
+        for m in operands:
+            if outputs and not m.fills and m.when is not None:
+                v = given.get(m.when.name, m.when.default)
+                if v is MISSING or isinstance(v, FunctionType):
+                    raise ValueError(
+                        f"{self.name}: {m.when.name} decides whether {m.name} is an output and has no default; pass it explicitly"
+                    )
         outs = [m for m in operands if not m.fills and m.name in present]
         if outputs and len(outputs) != len(outs):
             raise TypeError(

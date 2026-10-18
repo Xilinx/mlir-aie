@@ -151,6 +151,8 @@ M.name, T.name, F.name = "M", "T", "F"
         (In(Select(M, (T,), (1,))), "dimension T is a tunable\\(\\)"),
         (In(F, M, F), "at most one T | None dimension"),
         (In(M, when=T), "when=<tunable T> must be a param\\(\\)"),
+        (In(M, when=True), "when=True must be a param\\(\\)"),
+        (per_call(bounds=3), "per_call\\(bounds=3\\) must name a param\\(\\)"),
         (In(M, obj_shape=(2.5,)), "obj_shape dimension 2.5 is not"),
         (In(M, per=3), "per=3 must be a param\\(\\) or tunable\\(\\)"),
         (In(GEMV.M), "dimension <param M> is not a param\\(\\) of Bad"),
@@ -248,6 +250,33 @@ class Derived(Base):
 
 def test_a_flag_a_function_computes_is_absent_until_given():
     assert Derived.declaration.infer({"x": (4,)}) == {"flagged": False, "M": 4}
+
+
+class Produced(Base):
+    M: int = param()
+    flagged: bool = param(default=lambda op: True)
+    x = In(M)
+    y = Out(M, when=flagged)
+
+
+def test_an_output_whose_flag_a_function_computes_asks_for_it():
+    with pytest.raises(ValueError, match="flagged decides whether y is an output"):
+        Produced.declaration.infer({"x": (8,)}, [(8,)])
+    assert Produced.declaration.infer({"x": (8,)}, [(8,)], flagged=True) == {
+        "flagged": True,
+        "M": 8,
+    }
+
+
+class Picked(Base):
+    M: int = param()
+    flip: bool = param(default=lambda op: False)
+    x = In(Select(flip, (M, 1), (1, M)))
+
+
+def test_a_select_whose_flag_a_function_computes_asks_for_it():
+    with pytest.raises(ValueError, match="flip selects x's shape and has no default"):
+        Picked.declaration.infer({"x": (1, 4)})
 
 
 class Narrowed(GEMV):

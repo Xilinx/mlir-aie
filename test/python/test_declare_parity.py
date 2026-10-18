@@ -39,10 +39,22 @@ def record(d):
     return (
         [(name, p.default, p.tunable) for name, p in d.params.items()],
         [(m.name, type(m)) for m in d.operands],
-        [(m.name, m.dtype) for m in d.per_call],
+        [(m.name, m.dtype) for m in d.per_calls],
     )
 
 
 def test_a_generator_and_a_class_body_make_one_record():
     assert record(declare(scale)) == record(Scale.declaration)
     assert declare(scale).signature.parameters["M"].annotation == CompileTime[int]
+
+
+def double(x):
+    return 2 * x
+
+
+def mapped(a: In, *, f: CompileTime[object] = double):
+    pass
+
+
+def test_a_function_compile_time_default_is_the_value():
+    assert declare(mapped).params["f"].default(None) is double

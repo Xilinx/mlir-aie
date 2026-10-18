@@ -396,7 +396,7 @@ def _compute_recipe_hash(
         h.update(getattr(generator, "__module__", "").encode())
         h.update(_python_identity([generator, *compile_kwargs.values()]))
         d = declare(generator)
-        dispatch_params = {m.name for m in d.per_call}
+        dispatch_params = {m.name for m in d.per_calls}
         # Dispatch defaults are call-time values; explicitly bound defaults are
         # unused. Neither changes the compiled program.
         h.update(

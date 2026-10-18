@@ -17,11 +17,12 @@ import inspect
 import logging
 import typing
 from dataclasses import MISSING
+from types import FunctionType
 from typing import Annotated, Callable, get_args, get_origin
 
 from .declaration import Declaration
 from .markers import In, InOut, Out
-from .params import Member, Param, _PerCallValue, param
+from .params import Member, Param, PerCall, param
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,6 @@ def _tagged_type(annotation, tag):
 def _is_compile_param(annotation) -> bool:
     """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
     return _tagged_type(annotation, "aie.compile_time") is not None
-
-
-def _is_dispatch_param(annotation) -> bool:
-    """Return True for ``DispatchTime[T]`` or ``Optional[DispatchTime[T]]``."""
-    return _dispatch_param_type(annotation) is not None
 
 
 def _is_tensor_param(annotation) -> bool:
@@ -107,11 +103,19 @@ def declare(generator: Callable) -> Declaration:
             scalars.append(name)
             continue
         if _is_compile_param(ann):
-            member = param(default=MISSING if p.default is p.empty else p.default)
+            default = MISSING if p.default is p.empty else p.default
+            # A function default is the value, so the record computes it as itself.
+            member = param(
+                default=(
+                    (lambda op, f=default: f)
+                    if isinstance(default, FunctionType)
+                    else default
+                )
+            )
         elif _is_tensor_param(ann):
             member = ann()
-        elif _is_dispatch_param(ann):
-            member = _PerCallValue(_dispatch_param_type(ann), None, None)
+        elif (dtype := _dispatch_param_type(ann)) is not None:
+            member = PerCall(dtype, None, None)
         else:
             scalars.append(name)
             continue
@@ -152,6 +156,6 @@ def split_params(
     return (
         list(d.params),
         [m.name for m in d.operands],
-        [m.name for m in d.per_call],
+        [m.name for m in d.per_calls],
         list(d.scalars),
     )

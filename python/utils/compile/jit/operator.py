@@ -157,7 +157,7 @@ class Operator:
         return self.replace()
 
     def resolved(self, dev) -> Self:
-        """Return this operator resolved for ``dev``, which is current while it resolves.
+        """Return this operator resolved for ``dev``, which is current while it resolves and is checked.
 
         Raises:
             TypeError: ``resolve`` returned ``self`` or another class.
@@ -167,20 +167,20 @@ class Operator:
             return self
         with set_current_device(dev):
             new = self.resolve(dev)
-        if new is self or not isinstance(new, type(self)):
-            raise TypeError(
-                f"{type(self).__name__}.resolve() must return a copy, self.replace(...)"
-            )
-        missing = [
-            n
-            for n, p in self.declaration.params.items()
-            if p.tunable and vars(new)[n] is None
-        ]
-        if missing:
-            raise Unresolvable(
-                f"{type(self).__name__}.resolve() left {missing} unset for {dev}"
-            )
-        new.compatible()
+            if new is self or not isinstance(new, type(self)):
+                raise TypeError(
+                    f"{type(self).__name__}.resolve() must return a copy, self.replace(...)"
+                )
+            missing = [
+                n
+                for n, p in self.declaration.params.items()
+                if p.tunable and vars(new)[n] is None
+            ]
+            if missing:
+                raise Unresolvable(
+                    f"{type(self).__name__}.resolve() left {missing} unset for {dev}"
+                )
+            new.compatible()
         new._resolved = True
         return new
 
