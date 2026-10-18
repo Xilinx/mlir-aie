@@ -493,9 +493,10 @@ class Runtime(DeviceResources, Resolvable):
             for rt_data in self._block_data:
                 if rt_data is not None:
                     rt_data.op = next(block_args)
-            for arg in self._fn_args:
+            for arg, rt_data in zip(self._fn_args, self._rt_data):
                 if isinstance(arg, _DispatchParameter):
-                    arg._bind(self._dispatch_binding)
+                    assert rt_data is not None
+                    arg._bind(self._dispatch_binding, rt_data.op)
 
             if trace_size is not None and trace_size > 0:
                 trace_utils.start_trace(
