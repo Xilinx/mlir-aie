@@ -293,7 +293,7 @@ ${BUILD}/llama_rmsnorm_int8_64.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DLLAMA_RMSNORM_COLS=64 -c $< -o ${@F}
 
-${BUILD}/llama_rmsnorm_int8.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
+${BUILD}/llama_rmsnorm_int8_${RMSI8_D}.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${RMSI8_FLAGS} -c $< -o ${@F}
 
@@ -302,8 +302,9 @@ ${BUILD}/aie_rmsnorm_int8_${RMSI8_D}.mlir: ${srcdir}/aie2_rmsnorm_int8.py
 	python3 $< -D ${RMSI8_D} > $@
 
 ${BUILD}/final_rmsnorm_int8_${RMSI8_D}.xclbin: ${BUILD}/aie_rmsnorm_int8_${RMSI8_D}.mlir \
-                                               ${BUILD}/llama_rmsnorm_int8.cc.o
+                                               ${BUILD}/llama_rmsnorm_int8_${RMSI8_D}.cc.o
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_rmsnorm_int8_${RMSI8_D}.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
 		--xclbin-name=${@F} \
 		--npu-insts-name=insts_rmsnorm_int8_${RMSI8_D}.bin \
@@ -323,8 +324,9 @@ ${BUILD}/aie_rmsnorm_int8_dyn_${RMSI8_D}.mlir: ${srcdir}/aie2_rmsnorm_int8_dyn.p
 	python3 $< -D ${RMSI8_D} > $@
 
 ${BUILD}/final_rmsnorm_int8_dyn_${RMSI8_D}.xclbin: ${BUILD}/aie_rmsnorm_int8_dyn_${RMSI8_D}.mlir \
-                                                   ${BUILD}/llama_rmsnorm_int8.cc.o
+                                                   ${BUILD}/llama_rmsnorm_int8_${RMSI8_D}.cc.o
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_rmsnorm_int8_${RMSI8_D}.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
 		--xclbin-name=${@F} \
 		--npu-insts-name=insts_rmsnorm_int8_dyn_${RMSI8_D}.bin \

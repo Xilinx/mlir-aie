@@ -19,11 +19,10 @@
 #ifndef LLAMA_RMSNORM_COLS
 #define LLAMA_RMSNORM_COLS 2048
 #endif
-#ifndef LLAMA_RMSNORM_N
-#define LLAMA_RMSNORM_N 16
-#endif
 
 static constexpr float kEps = 1e-5f;
+static constexpr int kVec =
+    64; // one aie::mac lane group / one AIE2P 512-bit reg
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
@@ -65,6 +64,40 @@ static inline float sw_invsqrt(float a) {
   return x;
 }
 
+// Exact int32 sum-of-squares, kVec lanes at a time (see vec_normalize_chunk
+// for why vectorizing preserves bit-exactness here).
+static inline int32_t vec_sum_sq_i8(const int8_t *restrict x, int cols) {
+  ::aie::accum<acc32, kVec> acc;
+  acc.from_vector(::aie::zeros<int32, kVec>());
+  const int chunks = cols / kVec;
+  for (int c = 0; c < chunks; c++) {
+    ::aie::vector<int8, kVec> xv = ::aie::load_v<kVec>(x + c * kVec);
+    acc = ::aie::mac(acc, xv, xv);
+  }
+  return ::aie::reduce_add(acc.template to_vector<int32>());
+}
+
+// (x_i8 * combined) * gamma[i], kVec lanes at a time. Bit-exactness with
+// the scalar/numpy reference holds throughout this file because every
+// vectorized step is either an exact widening (int8->f32, bf16->f32), an
+// order-independent reduction (integer add, float max), or -- here -- an
+// elementwise map that preserves the reference's left-to-right fp32
+// chain per lane; only a true reduction's lane order could change
+// rounding, and none of the fp32 math below is one.
+static inline ::aie::vector<float, kVec>
+vec_normalize_chunk(const int8_t *restrict x, const bfloat16 *restrict gamma,
+                    ::aie::vector<float, kVec> combined_v) {
+  ::aie::vector<int8, kVec> xv = ::aie::load_v<kVec>(x);
+  ::aie::vector<bfloat16, kVec> gv = ::aie::load_v<kVec>(gamma);
+  ::aie::vector<float, kVec> xf = ::aie::to_float<float>(xv);
+  ::aie::accum<accfloat, kVec> g_acc;
+  g_acc.from_vector(gv);
+  ::aie::vector<float, kVec> gf = g_acc.template to_vector<float>();
+  ::aie::vector<float, kVec> t =
+      ::aie::mul(xf, combined_v).template to_vector<float>();
+  return ::aie::mul(t, gf).template to_vector<float>();
+}
+
 extern "C" {
 
 void llama_rmsnorm_int8(int8_t *restrict x, bfloat16 *restrict gamma,
@@ -73,18 +106,13 @@ void llama_rmsnorm_int8(int8_t *restrict x, bfloat16 *restrict gamma,
   event0();
 
   constexpr int kCols = LLAMA_RMSNORM_COLS;
-  constexpr int kN = LLAMA_RMSNORM_N;
-  constexpr int kChunks = kCols / kN;
+  static_assert(kCols % kVec == 0,
+                "LLAMA_RMSNORM_COLS must be a multiple of 64");
+  constexpr int kChunks = kCols / kVec;
 
   // Pass 1: exact int32 sum-of-squares over int8 inputs. int8 * int8
   // = int16; 2048 lanes worst-case = 2048 * 16384 = 33M, fits in int32.
-  // Using exact int sums avoids any fp accumulation-order rounding so
-  // the numpy reference can compute the identical value.
-  int32_t sum_sq_i32 = 0;
-  for (int i = 0; i < kCols; i++) {
-    int32_t xi = x[i];
-    sum_sq_i32 += xi * xi;
-  }
+  int32_t sum_sq_i32 = vec_sum_sq_i8(x, kCols);
 
   // Fold act_scale_in into the variance: x_f^2 = act_scale_in^2 * x_i8^2.
   // 1/kCols (kCols=64) is exactly representable in fp32 as 2^-6, so
@@ -97,17 +125,15 @@ void llama_rmsnorm_int8(int8_t *restrict x, bfloat16 *restrict gamma,
   //   y_f = x_i8 * act_scale_in * inv_rms * gamma[i]
   //   y_i8 = round(y_f * inv_act_scale_out)
   float combined = act_scale_in * inv_rms * inv_act_scale_out;
+  ::aie::vector<float, kVec> combined_v =
+      ::aie::broadcast<float, kVec>(combined);
 
-  // Pass 2: scalar fp32 throughout (no bf16 multiply chain). Gamma
-  // loaded as bf16 from DRAM and cast once to fp32 per element; all
-  // arithmetic is IEEE fp32 so the numpy reference can compute the
-  // identical value bit-for-bit. Vec optimization (and bringing back
-  // the bf16 math path) is a follow-up.
-  for (int i = 0; i < kCols; i++) {
-    float xf = (float)x[i];        // int8 -> fp32 (exact)
-    float gf = (float)gamma[i];    // bf16 -> fp32 (exact)
-    float vf = xf * combined * gf; // single fp32 chain
-    y[i] = round_to_i8(vf);
+  // Pass 2: only the final round_to_i8 stays scalar.
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> vf =
+        vec_normalize_chunk(x + c * kVec, gamma + c * kVec, combined_v);
+    for (int i = 0; i < kVec; i++)
+      y[c * kVec + i] = round_to_i8(vf[i]);
   }
 
   event1();
@@ -123,25 +149,25 @@ void llama_rmsnorm_int8_dyn(int8_t *restrict x, bfloat16 *restrict gamma,
   event0();
 
   constexpr int kCols = LLAMA_RMSNORM_COLS;
+  static_assert(kCols % kVec == 0,
+                "LLAMA_RMSNORM_COLS must be a multiple of 64");
+  constexpr int kChunks = kCols / kVec;
 
-  int32_t sum_sq_i32 = 0;
-  for (int i = 0; i < kCols; i++) {
-    int32_t xi = x[i];
-    sum_sq_i32 += xi * xi;
-  }
+  int32_t sum_sq_i32 = vec_sum_sq_i8(x, kCols);
   float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
   float inv_rms = sw_invsqrt(var + kEps);
   float pre = act_scale_in * inv_rms; // x_i8 * pre * gamma = y_f (pre-requant)
+  ::aie::vector<float, kVec> pre_v = ::aie::broadcast<float, kVec>(pre);
 
-  // Pass A: scan fp32 y_f, find absmax. No fp32 array kept across loops.
+  // Pass A: scan fp32 y_f, find absmax. No fp32 array kept across loops --
+  // each chunk's vf vector is consumed within the same iteration.
   float absmax = 0.0f;
-  for (int i = 0; i < kCols; i++) {
-    float xf = (float)x[i];
-    float gf = (float)gamma[i];
-    float vf = xf * pre * gf;
-    float a = vf >= 0.0f ? vf : -vf;
-    if (a > absmax)
-      absmax = a;
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> vf =
+        vec_normalize_chunk(x + c * kVec, gamma + c * kVec, pre_v);
+    float chunk_max = ::aie::reduce_max(::aie::abs(vf));
+    if (chunk_max > absmax)
+      absmax = chunk_max;
   }
 
   // Guard against all-zero rows (avoid div-by-zero); 1e-12 matches the
@@ -152,13 +178,15 @@ void llama_rmsnorm_int8_dyn(int8_t *restrict x, bfloat16 *restrict gamma,
       absmax * (1.0f / 127.0f); // fp32 const; literal /127 is fine
   float inv_dyn = sw_recip(scale_dyn);
   float combined = pre * inv_dyn;
+  ::aie::vector<float, kVec> combined_v =
+      ::aie::broadcast<float, kVec>(combined);
 
   // Pass B: recompute the same chain, round to int8 with the dynamic scale.
-  for (int i = 0; i < kCols; i++) {
-    float xf = (float)x[i];
-    float gf = (float)gamma[i];
-    float vf = xf * combined * gf;
-    y[i] = round_to_i8(vf);
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> vf =
+        vec_normalize_chunk(x + c * kVec, gamma + c * kVec, combined_v);
+    for (int i = 0; i < kVec; i++)
+      y[c * kVec + i] = round_to_i8(vf[i]);
   }
 
   // Write the fp32 scale to the tail. memcpy avoids strict-aliasing UB.
@@ -180,27 +208,26 @@ void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x,
   event0();
 
   constexpr int kCols = LLAMA_RMSNORM_COLS;
+  static_assert(kCols % kVec == 0,
+                "LLAMA_RMSNORM_COLS must be a multiple of 64");
+  constexpr int kChunks = kCols / kVec;
 
   float act_scale_in;
   memcpy(&act_scale_in, x + kCols, 4);
 
-  int32_t sum_sq_i32 = 0;
-  for (int i = 0; i < kCols; i++) {
-    int32_t xi = x[i];
-    sum_sq_i32 += xi * xi;
-  }
+  int32_t sum_sq_i32 = vec_sum_sq_i8(x, kCols);
   float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
   float inv_rms = sw_invsqrt(var + kEps);
   float pre = act_scale_in * inv_rms;
+  ::aie::vector<float, kVec> pre_v = ::aie::broadcast<float, kVec>(pre);
 
   float absmax = 0.0f;
-  for (int i = 0; i < kCols; i++) {
-    float xf = (float)x[i];
-    float gf = (float)gamma[i];
-    float vf = xf * pre * gf;
-    float a = vf >= 0.0f ? vf : -vf;
-    if (a > absmax)
-      absmax = a;
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> vf =
+        vec_normalize_chunk(x + c * kVec, gamma + c * kVec, pre_v);
+    float chunk_max = ::aie::reduce_max(::aie::abs(vf));
+    if (chunk_max > absmax)
+      absmax = chunk_max;
   }
 
   if (absmax < 1e-12f)
@@ -208,12 +235,14 @@ void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x,
   float scale_dyn = absmax * (1.0f / 127.0f);
   float inv_dyn = sw_recip(scale_dyn);
   float combined = pre * inv_dyn;
+  ::aie::vector<float, kVec> combined_v =
+      ::aie::broadcast<float, kVec>(combined);
 
-  for (int i = 0; i < kCols; i++) {
-    float xf = (float)x[i];
-    float gf = (float)gamma[i];
-    float vf = xf * combined * gf;
-    y[i] = round_to_i8(vf);
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> vf =
+        vec_normalize_chunk(x + c * kVec, gamma + c * kVec, combined_v);
+    for (int i = 0; i < kVec; i++)
+      y[c * kVec + i] = round_to_i8(vf[i]);
   }
 
   memcpy(y + kCols, &scale_dyn, 4);

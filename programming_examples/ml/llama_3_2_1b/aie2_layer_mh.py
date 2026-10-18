@@ -644,6 +644,7 @@ def build():
             w_rms,
             [of_xin.cons(), of_gam_in.cons(), of_h1.prod(), k_rms],
             tile=Tile(0, 2),
+            stack_size=2048,
         ),
         Worker(
             w_q,
@@ -722,6 +723,7 @@ def build():
             w_rms,
             [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],
             tile=Tile(6, 4),
+            stack_size=2048,
         ),
         Worker(
             w_gate,

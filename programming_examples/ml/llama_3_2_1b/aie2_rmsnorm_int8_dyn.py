@@ -17,7 +17,7 @@ import sys
 import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
 from aie.iron.device import NPU2, Tile
 
 RMS_COL, RMS_ROW = 5, 4  # DECODE_PLACEMENT["rmsnorm"]
@@ -55,16 +55,19 @@ def build(D: int):
         core_fn,
         [of_x.cons(), of_g.cons(), of_y.prod(), kernel],
         tile=Tile(RMS_COL, RMS_ROW),
+        stack_size=2048,
     )
 
-    rt = Runtime()
-    with rt.sequence(x_ty, g_ty, y_ty) as (x, g, y):
-        rt.start(worker)
-        rt.fill(of_x.prod(), x)
-        rt.fill(of_g.prod(), g)
-        rt.drain(of_y.cons(), y, wait=True)
+    def sequence(x, g, y, x_prod, g_prod, y_cons):
+        tg = TaskGroup()
+        x_prod.fill(x, group=tg)
+        g_prod.fill(g, group=tg)
+        y_cons.drain(y, wait=True, group=tg)
+        tg.finish()
 
-    return Program(NPU2(), rt).resolve_program()
+    rt = Runtime(sequence, [x_ty, g_ty, y_ty, of_x.prod(), of_g.prod(), of_y.cons()])
+
+    return Program(NPU2(), rt, workers=[worker]).resolve_program()
 
 
 def main():

@@ -55,6 +55,7 @@ def build(D: int):
         core_fn,
         [of_x.cons(), of_g.cons(), of_y.prod(), kernel],
         tile=Tile(RMS_COL, RMS_ROW),
+        stack_size=2048,
     )
 
     def sequence(x, g, y, x_prod, g_prod, y_cons):
