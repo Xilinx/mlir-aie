@@ -123,7 +123,7 @@ def main():
     for i in np.argwhere(diff != 0).flatten()[:8]:
         print(
             f"  i={i}: NPU={actual[i]}  expected={expected[i]}  "
-            f"gate={gate[i]} (lut={float(lut[gate[i]+128]):.4f})  up={up[i]}"
+            f"gate={gate[i]} (lut={float(lut[int(gate[i]) + 128]):.4f})  up={up[i]}"
         )
     return 1
 

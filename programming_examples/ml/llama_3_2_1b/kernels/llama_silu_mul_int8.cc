@@ -26,6 +26,7 @@
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
+static constexpr int kVec = 64;
 
 static inline int8_t round_to_i8(float v) {
   int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
@@ -58,25 +59,31 @@ static inline float sw_recip(float a) {
   return x;
 }
 
-extern "C" {
+// s_f * (up_i8 * up_scale), kVec lanes at a time. The LUT gather has no
+// AIE2P vector form, so it stays a short scalar loop into a chunk-local
+// buffer; everything after that load is an exact widening or an
+// elementwise map, so this is bit-identical to the scalar chain per lane
+// (see llama_rmsnorm_int8.cc's vec_normalize_chunk for why that holds).
+static inline ::aie::vector<float, kVec>
+vec_silu_chunk(const int8_t *restrict gate, const int8_t *restrict up,
+               ::aie::vector<float, kVec> up_scale_v) {
+  bfloat16 s_buf[kVec];
+  for (int i = 0; i < kVec; i++)
+    s_buf[i] = silu_lookup(gate[i]);
+  ::aie::vector<bfloat16, kVec> sv = ::aie::load_v<kVec>(s_buf);
+  ::aie::accum<accfloat, kVec> s_acc;
+  s_acc.from_vector(sv);
+  ::aie::vector<float, kVec> s_f = s_acc.template to_vector<float>();
 
-void llama_silu_mul_int8(int8_t *restrict gate, int8_t *restrict up,
-                         int8_t *restrict out, float up_scale,
-                         float inv_out_scale) {
-  event0();
+  ::aie::vector<int8, kVec> uv = ::aie::load_v<kVec>(up);
+  ::aie::vector<float, kVec> u_i = ::aie::to_float<float>(uv);
+  ::aie::vector<float, kVec> u_f =
+      ::aie::mul(u_i, up_scale_v).template to_vector<float>();
 
-  constexpr int kCols = LLAMA_SILU_MUL_COLS;
-
-  for (int i = 0; i < kCols; i++) {
-    bfloat16 s_bf = silu_lookup(gate[i]);
-    float s_f = (float)s_bf;
-    float u_f = (float)up[i] * up_scale;
-    float out_f = s_f * u_f * inv_out_scale;
-    out[i] = round_to_i8(out_f);
-  }
-
-  event1();
+  return ::aie::mul(s_f, u_f).template to_vector<float>();
 }
+
+extern "C" {
 
 // Dynamic-scale variant (Phase 6c.5b.2). The `up` buffer is sized
 // kCols + 8 bytes; the last 8 bytes carry (up_scale fp32, inv_out_scale
@@ -87,16 +94,25 @@ void llama_silu_mul_int8_dyn(int8_t *restrict gate, int8_t *restrict up,
   event0();
 
   constexpr int kCols = LLAMA_SILU_MUL_COLS;
+  static_assert(kCols % kVec == 0,
+                "LLAMA_SILU_MUL_COLS must be a multiple of 64");
+  constexpr int kChunks = kCols / kVec;
+
   float up_scale, inv_out_scale;
   memcpy(&up_scale, up + kCols, 4);
   memcpy(&inv_out_scale, up + kCols + 4, 4);
+  ::aie::vector<float, kVec> up_scale_v =
+      ::aie::broadcast<float, kVec>(up_scale);
+  ::aie::vector<float, kVec> inv_out_scale_v =
+      ::aie::broadcast<float, kVec>(inv_out_scale);
 
-  for (int i = 0; i < kCols; i++) {
-    bfloat16 s_bf = silu_lookup(gate[i]);
-    float s_f = (float)s_bf;
-    float u_f = (float)up[i] * up_scale;
-    float out_f = s_f * u_f * inv_out_scale;
-    out[i] = round_to_i8(out_f);
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> su =
+        vec_silu_chunk(gate + c * kVec, up + c * kVec, up_scale_v);
+    ::aie::vector<float, kVec> out_f =
+        ::aie::mul(su, inv_out_scale_v).template to_vector<float>();
+    for (int i = 0; i < kVec; i++)
+      out[c * kVec + i] = round_to_i8(out_f[i]);
   }
 
   event1();
@@ -114,29 +130,40 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
   event0();
 
   constexpr int kCols = LLAMA_SILU_MUL_COLS;
+  static_assert(kCols % kVec == 0,
+                "LLAMA_SILU_MUL_COLS must be a multiple of 64");
+  constexpr int kChunks = kCols / kVec;
+
   float up_scale;
   memcpy(&up_scale, up + kCols, 4);
+  ::aie::vector<float, kVec> up_scale_v =
+      ::aie::broadcast<float, kVec>(up_scale);
 
-  // Pass A: absmax of s_f * u_f (no fp32 array kept across loops).
+  // Pass A: absmax of s_f * u_f. No fp32 array kept across loops -- each
+  // chunk's vector is consumed within the same iteration.
   float absmax = 0.0f;
-  for (int i = 0; i < kCols; i++) {
-    float s_f = (float)silu_lookup(gate[i]);
-    float u_f = (float)up[i] * up_scale;
-    float v = s_f * u_f;
-    float a = v >= 0.0f ? v : -v;
-    if (a > absmax)
-      absmax = a;
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> su =
+        vec_silu_chunk(gate + c * kVec, up + c * kVec, up_scale_v);
+    float chunk_max = ::aie::reduce_max(::aie::abs(su));
+    if (chunk_max > absmax)
+      absmax = chunk_max;
   }
   if (absmax < 1e-12f)
     absmax = 1e-12f;
   float out_scale = absmax * (1.0f / 127.0f);
   float inv_out_scale = sw_recip(out_scale);
+  ::aie::vector<float, kVec> inv_out_scale_v =
+      ::aie::broadcast<float, kVec>(inv_out_scale);
 
   // Pass B: recompute + round.
-  for (int i = 0; i < kCols; i++) {
-    float s_f = (float)silu_lookup(gate[i]);
-    float u_f = (float)up[i] * up_scale;
-    out[i] = round_to_i8(s_f * u_f * inv_out_scale);
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> su =
+        vec_silu_chunk(gate + c * kVec, up + c * kVec, up_scale_v);
+    ::aie::vector<float, kVec> out_f =
+        ::aie::mul(su, inv_out_scale_v).template to_vector<float>();
+    for (int i = 0; i < kVec; i++)
+      out[c * kVec + i] = round_to_i8(out_f[i]);
   }
 
   memcpy(out + kCols, &out_scale, 4);
@@ -152,19 +179,33 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
 // downstream silu reads up_scale from the up tail (as it already does).
 void llama_up_requant(float *restrict up_fp, int8_t *restrict out) {
   event0();
+
   constexpr int kCols = LLAMA_SILU_MUL_COLS;
+  static_assert(kCols % kVec == 0,
+                "LLAMA_SILU_MUL_COLS must be a multiple of 64");
+  constexpr int kChunks = kCols / kVec;
+
   float absmax = 0.0f;
-  for (int i = 0; i < kCols; i++) {
-    float a = up_fp[i] >= 0.0f ? up_fp[i] : -up_fp[i];
-    if (a > absmax)
-      absmax = a;
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> v = ::aie::load_v<kVec>(up_fp + c * kVec);
+    float chunk_max = ::aie::reduce_max(::aie::abs(v));
+    if (chunk_max > absmax)
+      absmax = chunk_max;
   }
   if (absmax < 1e-12f)
     absmax = 1e-12f;
   float up_scale = absmax * (1.0f / 127.0f);
   float up_inv = sw_recip(up_scale);
-  for (int i = 0; i < kCols; i++)
-    out[i] = round_to_i8(up_fp[i] * up_inv);
+  ::aie::vector<float, kVec> up_inv_v = ::aie::broadcast<float, kVec>(up_inv);
+
+  for (int c = 0; c < kChunks; c++) {
+    ::aie::vector<float, kVec> v = ::aie::load_v<kVec>(up_fp + c * kVec);
+    ::aie::vector<float, kVec> scaled =
+        ::aie::mul(v, up_inv_v).template to_vector<float>();
+    for (int i = 0; i < kVec; i++)
+      out[c * kVec + i] = round_to_i8(scaled[i]);
+  }
+
   memcpy(out + kCols, &up_scale, 4);
   int32_t zero = 0;
   memcpy(out + kCols + 4, &zero, 4);

@@ -284,18 +284,21 @@ run_rmsnorm: rmsnorm
 
 # ---------- rmsnorm int8 real kernel (Phase 2) ----------
 RMSI8_D ?= 2048
-RMSI8_FLAGS := ${PEANOWRAP2P_FLAGS} -ffp-contract=off -DLLAMA_RMSNORM_COLS=${RMSI8_D}
 
-# Per-shape rmsnorm .o files. The chain/layer designs use the D=64
-# version (their fifos are 64-byte); the standalone rmsnorm test
-# target uses whichever RMSI8_D the caller passes.
+# Per-shape rmsnorm .o files, named by the COLS they were compiled with so
+# Make's dependency tracking (and the chain/layer designs' cp-before-use
+# trick) can't silently reuse an object built for a different D. The D=64
+# and D=2048 shapes have their own explicit rules (Make prefers an explicit
+# rule over a pattern rule); this pattern rule covers any other D the
+# standalone rmsnorm test is asked to build.
 ${BUILD}/llama_rmsnorm_int8_64.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DLLAMA_RMSNORM_COLS=64 -c $< -o ${@F}
 
-${BUILD}/llama_rmsnorm_int8_${RMSI8_D}.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
+${BUILD}/llama_rmsnorm_int8_%.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${RMSI8_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_RMSNORM_COLS=$* -c $< -o ${@F}
 
 ${BUILD}/aie_rmsnorm_int8_${RMSI8_D}.mlir: ${srcdir}/aie2_rmsnorm_int8.py
 	mkdir -p ${@D}
@@ -374,34 +377,46 @@ run_gemm_srs: gemm_srs
 # ---------- real silu_mul int8 (Phase 2) ----------
 SILU_D ?= 8192
 SILU_GATE_SCALE ?= 0.05
-SILU_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_SILU_MUL_COLS=${SILU_D}
+# SILU_SELFCAL picks aie2_silu_mul_int8.py's dyn vs. selfcal IRON design
+# (the two bind different kernel entry points with different I/O shapes).
+# It must be baked into the generated .mlir/.xclbin filename, not just
+# exported to the subprocess env, or Make's mtime-based dependency
+# tracking can't tell the two modes apart and silently reuses an xclbin
+# built for the other one.
+SILU_SELFCAL ?= 0
+SILU_TAG := $(if $(filter 1,${SILU_SELFCAL}),_selfcal,)
 
 ${BUILD}/silu_lut.h: ${srcdir}/gen_silu_lut.py
 	mkdir -p ${@D}
 	python3 $< --gate-scale ${SILU_GATE_SCALE} -o $@
 
-${BUILD}/llama_silu_mul_int8.cc.o: ${KDIR}/llama_silu_mul_int8.cc ${BUILD}/silu_lut.h
+# D=8192 (HIDDEN_DIM) has its own explicit rule, matching the chain/layer
+# designs' cp-before-use object (Make prefers an explicit rule over a
+# pattern rule); this pattern rule covers any other D.
+${BUILD}/llama_silu_mul_int8_%.cc.o: ${KDIR}/llama_silu_mul_int8.cc ${BUILD}/silu_lut.h
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${SILU_FLAGS} -I${srcdir} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_SILU_MUL_COLS=$* -I${srcdir} -c $< -o ${@F}
 
-${BUILD}/aie_silu_mul_${SILU_D}.mlir: ${srcdir}/aie2_silu_mul_int8.py
+${BUILD}/aie_silu_mul_${SILU_D}${SILU_TAG}.mlir: ${srcdir}/aie2_silu_mul_int8.py
 	mkdir -p ${@D}
-	python3 $< -D ${SILU_D} > $@
+	SILU_SELFCAL=${SILU_SELFCAL} python3 $< -D ${SILU_D} > $@
 
-${BUILD}/final_silu_mul_${SILU_D}.xclbin: ${BUILD}/aie_silu_mul_${SILU_D}.mlir \
-                                          ${BUILD}/llama_silu_mul_int8.cc.o
+${BUILD}/final_silu_mul_${SILU_D}${SILU_TAG}.xclbin: ${BUILD}/aie_silu_mul_${SILU_D}${SILU_TAG}.mlir \
+                                          ${BUILD}/llama_silu_mul_int8_${SILU_D}.cc.o
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_silu_mul_int8_${SILU_D}.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
 		--xclbin-name=${@F} \
-		--npu-insts-name=insts_silu_mul_${SILU_D}.bin \
+		--npu-insts-name=insts_silu_mul_${SILU_D}${SILU_TAG}.bin \
 		$(notdir $<)
 
-silu_mul: ${BUILD}/final_silu_mul_${SILU_D}.xclbin
+silu_mul: ${BUILD}/final_silu_mul_${SILU_D}${SILU_TAG}.xclbin
 
 run_silu_mul: silu_mul
-	cd ${srcdir} && python3 test_silu_mul_int8.py \
-		--xclbin ${BUILD}/final_silu_mul_${SILU_D}.xclbin \
-		--instr ${BUILD}/insts_silu_mul_${SILU_D}.bin \
+	cd ${srcdir} && SILU_SELFCAL=${SILU_SELFCAL} python3 test_silu_mul_int8.py \
+		--xclbin ${BUILD}/final_silu_mul_${SILU_D}${SILU_TAG}.xclbin \
+		--instr ${BUILD}/insts_silu_mul_${SILU_D}${SILU_TAG}.bin \
 		-k MLIR_AIE -D ${SILU_D}
 
 # ---------- real rope int8 (Phase 2) ----------
