@@ -39,6 +39,7 @@ from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports
     AIETileType,
     DMAChannelDir,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Acquire,
     Bd,
@@ -129,14 +130,15 @@ def flow_endpoints(a_in: In, c_out: Out):
                     [
                         Bd(
                             gathered,
-                            offset=i * N,
-                            length=N,
+                            tap=half,
                             acquires=[take(gathered_free)],
                             releases=[Release(gathered_full, value=1)],
                         )
                     ],
                 )
-                for i, fl in enumerate(gather)
+                for fl, half in zip(
+                    gather, TensorAccessPattern.full((2 * N,)).partition(2)
+                )
             ),
             DmaChannel(
                 DMAChannelDir.MM2S,
@@ -156,8 +158,7 @@ def flow_endpoints(a_in: In, c_out: Out):
         # Core 1 sends its copy transposed.
         return Bd(
             landed[i],
-            sizes=[SIDE, SIDE] if i else [],
-            strides=[1, SIDE] if i else [],
+            tap=TensorAccessPattern.full((SIDE, SIDE)).T if i else None,
             acquires=[take(landed_full[i])],
             releases=[Release(landed_free[i], value=1)],
         )

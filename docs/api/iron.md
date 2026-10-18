@@ -37,6 +37,12 @@ The objects most designs are built from.
     options:
       show_root_heading: false
 
+### DeviceConfiguration
+
+::: iron.configuration
+    options:
+      show_root_heading: false
+
 ### Worker
 
 ::: iron.worker
@@ -147,7 +153,7 @@ into `iron` from `aie.utils`.
 | Symbol | Summary |
 |--------|---------|
 | `iron.get_current_device` | Return the currently selected NPU device. |
-| `iron.set_current_device` | Select the NPU device for subsequent allocations. |
+| `iron.set_current_device` | Select the NPU device for subsequent allocations; under `with`, restore the previous one on exit. |
 | `iron.ensure_current_device` | Raise if no device is currently selected. |
 
 The [`Device`][iron.Device] a `Program` targets also reports the hardware

@@ -11,7 +11,8 @@
 // 1. Default (ctrl-pkt=false): replaces each `load_pdi @device` with
 //    a. an empty device PDI load (`load_pdi @empty_N`), which causes the
 //       firmware to reset the device, and
-//    b. explicit `aiex.npu.write32`/`aiex.npu.blockwrite` configuration ops.
+//    b. an `aiex.npu.write_config @device`, whose register writes the NPU
+//       translation emits (or, with inline-config, those writes as ops).
 // 2. With ctrl-pkt=true: replaces each `load_pdi @device` with
 //    a. a `load_pdi @ctrl_pkt_overlay`, which configures the NPU to stream
 //       further configuration as control packets, and
@@ -22,18 +23,22 @@
 
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <map>
+#include <set>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEEXPANDLOADPDI
@@ -83,35 +88,60 @@ static AIE::DeviceOp getOrCreateCtrlPktOverlayCopy(ModuleOp moduleOp,
   return clonedDev;
 }
 
-// A stream-switch port: column, row, whether it is a master, bundle, channel.
-using SwitchPort = std::tuple<int, int, bool, int, int>;
+// A stream-switch setting: a port, or with `slot` >= 0 one of its packet rule
+// slots.
+struct SwitchPort {
+  AIE::TileID tile;
+  bool master;
+  AIE::Port port;
+  int slot;
 
-static std::string describe(const SwitchPort &port) {
-  auto [col, row, master, bundle, channel] = port;
-  return llvm::formatv(
-      "tile ({0}, {1}) {2} {3} : {4}", col, row, master ? "master" : "slave",
-      AIE::stringifyWireBundle(AIE::WireBundle(bundle)), channel);
-}
+  bool operator<(const SwitchPort &other) const {
+    return std::tie(tile, master, port, slot) <
+           std::tie(other.tile, other.master, other.port, other.slot);
+  }
 
-// The ports `op` sets and what it sets them to.
-static SmallVector<std::pair<SwitchPort, std::string>>
-portSettings(Operation &op, AIE::SwitchboxOp sb) {
-  auto key = [&](bool master, AIE::Port port) {
-    return SwitchPort{sb.colIndex(), sb.rowIndex(), master,
-                      static_cast<int>(port.bundle), port.channel};
+  std::string describe() const {
+    std::string s =
+        llvm::formatv("tile ({0}, {1}) {2} {3} : {4}", tile.col, tile.row,
+                      master ? "master" : "slave",
+                      AIE::stringifyWireBundle(port.bundle), port.channel);
+    if (slot >= 0)
+      s += llvm::formatv(" slot {0}", slot).str();
+    return s;
+  }
+};
+
+struct PortSetting {
+  SwitchPort port;
+  std::string value;
+  Operation *op;
+  bool skipped;
+};
+
+// The settings `op` writes, and whether a reload skips each. Each packet rule
+// fills one slot, and a reload skips the rules marked
+// is_ctrl_pkt_overlay. It skips enabling the port if it skips any of them.
+static SmallVector<PortSetting> portSettings(Operation &op,
+                                             AIE::SwitchboxOp sb) {
+  auto key = [&](bool master, AIE::Port port, int slot = -1) {
+    return SwitchPort{{sb.colIndex(), sb.rowIndex()}, master, port, slot};
   };
   auto amsel = [](Value v) {
     auto a = v.getDefiningOp<AIE::AMSelOp>();
     return llvm::formatv("{0}.{1}", a.arbiterIndex(), a.getMselValue()).str();
   };
-  SmallVector<std::pair<SwitchPort, std::string>> settings;
+  AIE::AIEDialect::IsCtrlPktOverlayAttrHelper overlay(op.getContext());
+  bool skipped = overlay.isAttrPresent(&op);
+  SmallVector<PortSetting> settings;
   if (auto connect = dyn_cast<AIE::ConnectOp>(op)) {
     AIE::Port src = connect.sourcePort();
     settings.push_back(
         {key(true, connect.destPort()),
-         llvm::formatv("circuit {0}{1}", static_cast<int>(src.bundle),
-                       src.channel)});
-    settings.push_back({key(false, src), "circuit"});
+         llvm::formatv("circuit {0} : {1}",
+                       AIE::stringifyWireBundle(src.bundle), src.channel),
+         &op, skipped});
+    settings.push_back({key(false, src), "circuit", &op, skipped});
   } else if (auto masterSet = dyn_cast<AIE::MasterSetOp>(op)) {
     int arbiter = -1;
     int mask = 0;
@@ -120,61 +150,65 @@ portSettings(Operation &op, AIE::SwitchboxOp sb) {
       arbiter = a.arbiterIndex();
       mask |= 1 << a.getMselValue();
     }
-    bool keepHeader = masterSet.getKeepPktHeader().value_or(
-        masterSet.getDestBundle() != AIE::WireBundle::DMA &&
-        (sb.rowIndex() != 0 ||
-         masterSet.getDestBundle() != AIE::WireBundle::South));
-    std::string value = llvm::formatv("packet {0}/{1} {2}", arbiter, mask,
-                                      keepHeader ? "keep" : "drop")
-                            .str();
-    settings.push_back({key(true, masterSet.destPort()), value});
+    std::string value =
+        llvm::formatv("packet {0}/{1} {2}", arbiter, mask,
+                      masterSet.keepsPktHeader() ? "keep" : "drop")
+            .str();
+    settings.push_back({key(true, masterSet.destPort()), value, &op, skipped});
   } else if (auto rules = dyn_cast<AIE::PacketRulesOp>(op)) {
     // An empty packet_rules op writes nothing to the hardware.
     auto ruleOps = rules.getRules().front().getOps<AIE::PacketRuleOp>();
     if (ruleOps.empty())
       return settings;
-    std::string value = "rules";
-    for (auto rule : ruleOps)
-      value += llvm::formatv(" {0}/{1}>{2}", rule.valueInt(), rule.maskInt(),
-                             amsel(rule.getAmsel()));
-    settings.push_back({key(false, rules.sourcePort()), value});
+    bool anySkipped = skipped;
+    for (auto [slot, rule] : llvm::enumerate(ruleOps)) {
+      bool ruleSkipped = skipped || overlay.isAttrPresent(rule);
+      anySkipped |= ruleSkipped;
+      settings.push_back({key(false, rules.sourcePort(), slot),
+                          llvm::formatv("{0}/{1}>{2}", rule.valueInt(),
+                                        rule.maskInt(), amsel(rule.getAmsel())),
+                          rule, ruleSkipped});
+    }
+    settings.insert(settings.begin(), {key(false, rules.sourcePort()), "packet",
+                                       &op, anySkipped});
   }
   return settings;
 }
 
 // A control-packet reload streams `device`'s configuration over the routes
-// `overlay` set up, skipping the switchbox ops marked is_ctrl_pkt_overlay. So
-// the overlay must already set every port a skipped op sets, the same way,
-// and no op the reload writes may set a port the overlay sets.
+// `overlay` set up, skipping what is marked is_ctrl_pkt_overlay. So the
+// overlay must already write every setting the reload skips, the same way,
+// and the reload may write nothing the overlay writes.
 static LogicalResult verifyReloadKeepsOverlay(AIE::DeviceOp device,
                                               AIE::DeviceOp overlay) {
   StringRef overlayName = overlay.getSymName();
   std::map<SwitchPort, std::string> overlaySettings;
   overlay.walk([&](AIE::SwitchboxOp sb) {
     for (Operation &op : sb.getConnections().front())
-      for (auto &[port, value] : portSettings(op, sb))
-        overlaySettings[port] = value;
+      for (PortSetting &setting : portSettings(op, sb))
+        overlaySettings[setting.port] = setting.value;
   });
   WalkResult result = device.walk([&](AIE::SwitchboxOp sb) {
     for (Operation &op : sb.getConnections().front()) {
-      bool skipped = op.hasAttr("is_ctrl_pkt_overlay");
-      for (auto &[port, value] : portSettings(op, sb)) {
+      for (auto &[port, value, setter, skipped] : portSettings(op, sb)) {
         auto it = overlaySettings.find(port);
         if (skipped && it == overlaySettings.end()) {
-          op.emitError() << "a control-packet reload skips this op, but @"
-                         << overlayName << " does not set " << describe(port);
+          setter->emitError()
+              << "a control-packet reload skips this op, but @" << overlayName
+              << " does not set " << port.describe();
           return WalkResult::interrupt();
         }
         if (skipped && it->second != value) {
-          op.emitError() << "a control-packet reload skips this op, but @"
-                         << overlayName << " sets " << describe(port)
-                         << " differently";
+          setter->emitError()
+              << "a control-packet reload skips this op, but @" << overlayName
+              << " sets " << port.describe() << " differently";
           return WalkResult::interrupt();
         }
         if (!skipped && it != overlaySettings.end()) {
-          op.emitError() << "a control-packet reload rewrites "
-                         << describe(port) << ", which the control packets of @"
-                         << overlayName << " route through";
+          setter->emitError()
+              << "a control-packet reload rewrites " << port.describe()
+              << ", which the control packets of @" << overlayName
+              << " route through";
           return WalkResult::interrupt();
         }
       }
@@ -184,19 +218,56 @@ static LogicalResult verifyReloadKeepsOverlay(AIE::DeviceOp device,
   return failure(result.wasInterrupted());
 }
 
+// A control-packet reload reaches a tile only if `overlay` routes control
+// packets to its TileControl port. `packets` are the reload's.
+static LogicalResult
+verifyOverlayReachesTiles(NpuLoadPdiOp loadPdiOp, AIE::DeviceOp overlay,
+                          iterator_range<Block::iterator> packets) {
+  std::set<AIE::TileID> reached;
+  overlay.walk([&](AIE::SwitchboxOp sb) {
+    for (Operation &op : sb.getConnections().front()) {
+      std::optional<AIE::Port> dest;
+      if (auto master = dyn_cast<AIE::MasterSetOp>(op))
+        dest = master.destPort();
+      else if (auto connect = dyn_cast<AIE::ConnectOp>(op))
+        dest = connect.destPort();
+      if (dest == AIE::Port{AIE::WireBundle::TileControl, 0})
+        reached.insert({sb.colIndex(), sb.rowIndex()});
+    }
+  });
+  for (Operation &op : packets) {
+    auto packet = dyn_cast<NpuControlPacketOp>(op);
+    if (!packet)
+      continue;
+    AIE::TileID tile{static_cast<int>(packet.getColumnFromAddr()),
+                     static_cast<int>(packet.getRowFromAddr())};
+    if (reached.count(tile))
+      continue;
+    return loadPdiOp.emitError()
+           << "a control-packet reload configures tile (" << tile.col << ", "
+           << tile.row << "), but @" << overlay.getSymName()
+           << " routes no control packets to it";
+  }
+  return success();
+}
+
 // The empty device whose PDI load makes the firmware reset the array. `parity`
 // alternates so that two consecutive loads never name the same PDI (see
 // transformLoadPdi).
 static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
                                             AIE::AIEDevice deviceType,
-                                            unsigned parity) {
+                                            unsigned parity, Location loc) {
   std::string emptyName = "empty_" + std::to_string(parity);
-  if (auto existing = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName))
+  if (auto existing = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName)) {
+    // Shared reset PDIs retain every load and trailing sequence's provenance.
+    loc = FusedLoc::get(moduleOp.getContext(), {existing.getLoc(), loc});
+    existing->setLoc(loc);
+    existing.getRegion().front().getTerminator()->setLoc(loc);
     return existing;
+  }
 
   OpBuilder builder(moduleOp.getContext());
   builder.setInsertionPointToStart(moduleOp.getBody());
-  auto loc = builder.getUnknownLoc();
   auto emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
                                            builder.getStringAttr(emptyName));
   emptyDevice.getRegion().emplaceBlock();
@@ -205,11 +276,20 @@ static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
   return emptyDevice;
 }
 
+// A control-packet reload: the load_pdi it replaces, the device it streams,
+// and the overlay load ahead of it.
+struct CtrlPktReload {
+  NpuLoadPdiOp load;
+  AIE::DeviceOp device;
+  NpuLoadPdiOp preload;
+  AIE::DeviceOp overlay;
+};
+
 // Helper to transform a single load_pdi operation
-static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
-                                      unsigned index,
-                                      AIEX::ExpandMode defaultMode) {
-  static unsigned long i = 0;
+static LogicalResult
+transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
+                 AIEX::ExpandMode defaultMode,
+                 SmallVectorImpl<CtrlPktReload> &ctrlPktReloads) {
   OpBuilder builder(loadPdiOp);
 
   // Only process load_pdi ops that reference a device
@@ -232,6 +312,7 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
   }
 
   FlatSymbolRefAttr preloadRef;
+  AIE::DeviceOp overlay;
   if (ctrlPkt) {
     // Overlay device PDI
     // Alternate between the original overlay and a clone of it on every
@@ -240,7 +321,6 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
     // PDI addresses that carry the same overlay configuration.
     StringRef overlayName =
         (index % 2 == 0) ? kCtrlPktOverlayName : kCtrlPktOverlayCopyName;
-    AIE::DeviceOp overlay;
     if (index % 2 != 0) {
       overlay =
           getOrCreateCtrlPktOverlayCopy(moduleOp, loadPdiOp.getOperation());
@@ -260,7 +340,7 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
   } else {
     // Empty device PDI (triggers firmware reset)
     AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
-        moduleOp, referencedDevice.getDevice(), index % 2);
+        moduleOp, referencedDevice.getDevice(), index % 2, loadPdiOp.getLoc());
     preloadRef = FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr());
   }
 
@@ -268,38 +348,25 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
 
   // Emit the preload load_pdi (either empty-device reset or ctrl_pkt_overlay).
   if (ctrlPkt) {
-    NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
-                         /*id=*/nullptr, /*size=*/nullptr,
-                         /*address=*/nullptr,
-                         /*expand_mode=*/
-                         AIEX::ExpandModeAttr::get(builder.getContext(),
-                                                   AIEX::ExpandMode::none));
-  } else {
-    NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
-                         loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
-                         loadPdiOp.getAddressAttr(),
-                         /*expand_mode=*/
-                         AIEX::ExpandModeAttr::get(builder.getContext(),
-                                                   AIEX::ExpandMode::none));
+    NpuLoadPdiOp preload =
+        NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
+                             /*id=*/nullptr, /*size=*/nullptr,
+                             /*address=*/nullptr,
+                             /*expand_mode=*/
+                             AIEX::ExpandModeAttr::get(builder.getContext(),
+                                                       AIEX::ExpandMode::none));
+    // The control packets go in once every reload is known, so that a
+    // sequence's reloads share their constants.
+    ctrlPktReloads.push_back({loadPdiOp, referencedDevice, preload, overlay});
+    return success();
   }
-
-  // Step 2: generate and insert configuration ops.
-  auto outputType = ctrlPkt ? AIEToConfigurationOutputType::ControlPacket
-                            : AIEToConfigurationOutputType::Transaction;
-  std::string prefix = ctrlPkt ? ("loadpdi_ctrlpkt_" + std::to_string(i) + "_")
-                               : ("loadpdi_" + std::to_string(i));
-  if (failed(xilinx::AIE::generateAndInsertConfigOps(
-          builder, referencedDevice, /*clElfDir=*/"", outputType, prefix,
-          /*skipCtrlPktOverlay=*/ctrlPkt))) {
-    loadPdiOp.emitError("Failed to generate configuration operations");
-    return failure();
-  }
-
-  // Erase the original load_pdi operation
+  NpuLoadPdiOp::create(
+      builder, loadPdiOp.getLoc(), preloadRef, loadPdiOp.getIdAttr(),
+      loadPdiOp.getSizeAttr(), loadPdiOp.getAddressAttr(),
+      /*expand_mode=*/
+      AIEX::ExpandModeAttr::get(builder.getContext(), AIEX::ExpandMode::none));
+  NpuWriteConfigOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
   loadPdiOp.erase();
-
-  i++;
-
   return success();
 }
 
@@ -308,8 +375,8 @@ struct AIEExpandLoadPdiPass
   using AIEExpandLoadPdiBase::AIEExpandLoadPdiBase;
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<memref::MemRefDialect, AIE::AIEDialect, AIEX::AIEXDialect>();
+    registry.insert<arith::ArithDialect, memref::MemRefDialect, AIE::AIEDialect,
+                    AIEX::AIEXDialect>();
   }
 
   void runOnOperation() override {
@@ -363,14 +430,34 @@ struct AIEExpandLoadPdiPass
     AIEX::ExpandMode defaultMode =
         clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
 
-    // Transform load_pdi ops
+    SmallVector<CtrlPktReload> ctrlPktReloads;
     unsigned idx = 0;
     for (auto loadPdiOp : loadPdiOps) {
-      if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode))) {
+      if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
+                                  ctrlPktReloads))) {
         signalPassFailure();
         return;
       }
       idx++;
+    }
+
+    SmallVector<std::pair<Operation *, AIE::DeviceOp>> ctrlPktSites;
+    for (CtrlPktReload &reload : ctrlPktReloads)
+      ctrlPktSites.emplace_back(reload.load, reload.device);
+    if (failed(AIE::insertConfigOps(
+            ctrlPktSites, AIEToConfigurationOutputType::ControlPacket))) {
+      signalPassFailure();
+      return;
+    }
+    for (CtrlPktReload &reload : ctrlPktReloads) {
+      if (failed(verifyOverlayReachesTiles(
+              reload.load, reload.overlay,
+              {std::next(reload.preload->getIterator()),
+               reload.load->getIterator()}))) {
+        signalPassFailure();
+        return;
+      }
+      reload.load.erase();
     }
 
     // The `index % 2` alternation above keeps two consecutive resets on
@@ -389,8 +476,8 @@ struct AIEExpandLoadPdiPass
     for (auto &[seq, info] : resetsPerSequence) {
       if (!info.seen || info.firstParity != info.lastParity)
         continue;
-      AIE::DeviceOp emptyDevice =
-          getOrCreateEmptyDevice(module, info.device, 1 - info.lastParity);
+      AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
+          module, info.device, 1 - info.lastParity, seq.getLoc());
       OpBuilder builder(seq.getContext());
       Block &body = seq.getBody().front();
       if (!body.empty() && body.back().hasTrait<OpTrait::IsTerminator>())
@@ -404,6 +491,9 @@ struct AIEExpandLoadPdiPass
           /*expand_mode=*/
           AIEX::ExpandModeAttr::get(seq.getContext(), AIEX::ExpandMode::none));
     }
+
+    if (clInlineConfig && failed(AIE::inlineWriteConfigs(module)))
+      signalPassFailure();
   }
 };
 

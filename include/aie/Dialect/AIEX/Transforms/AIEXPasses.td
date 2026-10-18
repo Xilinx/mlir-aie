@@ -195,6 +195,7 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIEDmaToNpuPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
                            "mlir::func::FuncDialect",
                            "mlir::memref::MemRefDialect",
                            "xilinx::AIE::AIEDialect",
@@ -220,7 +221,10 @@ def AIENpuToCert : Pass<"aie-npu-to-cert", "mlir::ModuleOp"> {
                         "removed after absorption)">];
 
   let constructor = "xilinx::AIEX::createAIENpuToCertPass()";
-  let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
 }
@@ -465,8 +469,9 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let summary = "Lower configured DMA tasks to NPU instructions";
 
   let constructor = "xilinx::AIEX::createAIEDMATasksToNPUPass()";
-  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::ub::UBDialect",
-                           "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
+                           "mlir::ub::UBDialect", "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
 }
@@ -507,6 +512,7 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIELowerSetLockPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -577,11 +583,14 @@ def AIELowerScratchpadParameters
     - In each qualifying core: inserts `aie.lock` + `aie.use_lock(Acquire, 1)`.
     - In each qualifying runtime sequence: inserts `aiex.npu.create_scratchpad`,
       per-parameter `aiex.npu.write32` + `aiex.npu.update_from_scratchpad`,
-      and `aiex.set_lock` for each core lock.
+      and `aiex.set_lock` for each core lock, after the last top-level
+      `aiex.npu.load_pdi` (or first, if the sequence loads no PDI).
 
     Sets a `kind` attribute on each `aiex.scratchpad_parameter` based on how
     it is used: `core` if read by `aiex.read_scratchpad_parameter`, `addr` if
-    used as a DMA `offset_parameter`. A parameter may not be used as both.
+    used as a DMA `offset_parameter`. A parameter may not be used as both. A
+    DMA `length_parameter` works with either kind and makes an otherwise
+    unused parameter `addr`; a core-kind length gets `length_core_encoded`.
 
     Optionally emits a `params.txt` file describing every parameter in the
     module (name, global state_table_idx, type, and kind).
@@ -640,8 +649,10 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     By default (`ctrl-pkt = false`), each op is replaced with:
     1. A `load_pdi { device_ref = @empty_N }` op (loading an empty device,
        which causes a device reset).
-    2. A sequence of `aiex.npu.write32`/`aiex.npu.blockwrite` ops that
-       configure the device.
+    2. An `aiex.npu.write_config @device` op, whose register writes the NPU
+       translation emits from the device, generating them once however many
+       times the device is reloaded. With `inline-config = true`, the
+       `aiex.npu.write32`/`aiex.npu.blockwrite` ops of those writes instead.
 
     With `ctrl-pkt = true`, each op is replaced with:
     1. A `load_pdi { device_ref = @ctrl_pkt_overlay }` op, which loads the
@@ -659,7 +670,8 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIEExpandLoadPdiPass()";
-  let dependentDialects = ["mlir::memref::MemRefDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -668,6 +680,9 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
               "If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi "
               "followed by aiex.npu.control_packet ops instead of write32/"
               "blockwrite ops with an empty-device reset.">,
+       Option<"clInlineConfig", "inline-config", "bool", /*default=*/"false",
+              "If true, write each reloaded device's configuration as "
+              "write32/blockwrite ops rather than an aiex.npu.write_config.">,
   ];
 }
 

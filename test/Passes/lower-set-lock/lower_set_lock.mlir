@@ -70,7 +70,8 @@ module @test_simple_lock_set {
 
     // A runtime value is written as is, guarded to [0, max lock value].
     // CHECK-LABEL: @runtime_value
-    // CHECK: aiex.npu.assert_bd_field(%arg0) {max = 63 : i32} : i32
+    // CHECK: %[[OK:.*]] = arith.cmpi ule, %arg0, %{{.*}} : i32
+    // CHECK: cf.assert %[[OK]], "a runtime lock value must be in [0:63]"
     // CHECK: aiex.npu.write32(%{{.*}}, %arg0) {column = 1 : i32, row = 1 : i32} : i32, i32
     aie.runtime_sequence @runtime_value(%uses: i32) {
         aiex.set_lock(%lock11_3, %uses)

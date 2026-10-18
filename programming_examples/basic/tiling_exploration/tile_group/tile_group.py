@@ -5,9 +5,9 @@
 #
 """Tile-group tensor access exploration — IRON + ``@iron.jit``.
 
-Demonstrates how ``TensorTiler2D.group_tiler`` produces a single TAP
-that walks the output tensor in tiled order — one ``rt.drain`` covers
-all tiles in tile-major position.  The core writes values
+Demonstrates how ``TensorAccessPattern.full(...).tile(...)`` is itself a single
+TAP that walks the output tensor in tiled order — one ``drain`` covers all
+tiles in tile-major position.  The core writes values
 ``0, 1, 2, ...`` in element-walk order; the single TAP reorders them
 into tile-major layout in the output tensor.
 
@@ -24,7 +24,7 @@ import argparse
 import aie.extras.dialects.arith as arith  # pyright: ignore[reportMissingImports]
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import CompileTime, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
@@ -46,11 +46,9 @@ def tile_group(
     tensor_size = tensor_height * tensor_width
     flattened_tensor = np.ndarray[(tensor_size,), np.dtype[dtype]]
 
-    tap = TensorTiler2D.group_tiler(
-        (tensor_height, tensor_width),
-        (tile_height, tile_width),
-        (tensor_height // tile_height, tensor_width // tile_width),
-    )[0]
+    tap = TensorAccessPattern.full((tensor_height, tensor_width)).tile(
+        (tile_height, tile_width)
+    )
 
     of_out = ObjectFifo(flattened_tensor)
 
@@ -105,35 +103,24 @@ def _run_and_verify(opts):
     tile_group(out_t, **_compile_kwargs(opts))
 
     expected = (
-        TensorTiler2D.group_tiler(
-            (opts.tensor_height, opts.tensor_width),
-            (opts.tile_height, opts.tile_width),
-            (
-                opts.tensor_height // opts.tile_height,
-                opts.tensor_width // opts.tile_width,
-            ),
-        )[0]
+        TensorAccessPattern.full((opts.tensor_height, opts.tensor_width))
+        .tile((opts.tile_height, opts.tile_width))
         .access_order()
         .flatten()
     )
     assert_pass(
         out_t.numpy(),
         expected,
-        fail_msg="output does not match TensorTiler2D.group_tiler access order",
+        fail_msg="output does not match TensorAccessPattern.tile() access order",
     )
 
 
 def main():
     opts = _make_argparser().parse_args()
     if opts.generate_access_map:
-        tap = TensorTiler2D.group_tiler(
-            (opts.tensor_height, opts.tensor_width),
-            (opts.tile_height, opts.tile_width),
-            (
-                opts.tensor_height // opts.tile_height,
-                opts.tensor_width // opts.tile_width,
-            ),
-        )[0]
+        tap = TensorAccessPattern.full((opts.tensor_height, opts.tensor_width)).tile(
+            (opts.tile_height, opts.tile_width)
+        )
         tap.visualize(show_arrows=True, file_path="tile_group.png")
         return
     run_design_cli(

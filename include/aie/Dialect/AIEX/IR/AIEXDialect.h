@@ -20,6 +20,9 @@
 
 #include "aie/Dialect/AIEX/IR/AIEXInterfaces.h.inc"
 
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.h.inc"
+
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.h.inc"
@@ -43,6 +46,7 @@ void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
                              llvm::SmallVector<int64_t, 4> &strides);
 mlir::LogicalResult
 verifyStridesWraps(mlir::Operation *forOp,
+                   llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
                    mlir::BaseMemRefType referencedBufType, int tileCol,
                    int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
                    llvm::SmallVector<int64_t, 4> inputStrides,
@@ -61,6 +65,12 @@ bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
 // is never applied during the transfer (the loop runs only once).
 // This is the vector-form counterpart of AIE::isContiguousBDTransfer.
 bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
+                          llvm::ArrayRef<int64_t> strides);
+
+// Whether the DMA lowerings encode the BD in linear mode (no ND wrap limits):
+// a linear transfer, or a contiguous one on a shim NOC tile. Innermost first.
+bool isLinearModeTransfer(const AIE::AIETargetModel &targetModel, int col,
+                          int row, llvm::ArrayRef<int64_t> sizes,
                           llvm::ArrayRef<int64_t> strides);
 
 // Folds an SSA value to a compile-time uint32_t if it is a constant integer,

@@ -18,9 +18,8 @@
 // CHECK: %[[NB:.*]] = arith.andi %[[BD1]], %[[C63]] : i32
 // CHECK: %[[C20:.*]] = arith.constant 20 : i32
 // CHECK: %[[NBS:.*]] = arith.shli %[[NB]], %[[C20]] : i32
-// CHECK: %[[NBW:.*]] = arith.ori %{{.*}}, %[[NBS]] : i32
 // CHECK: %[[USE:.*]] = arith.constant 524288 : i32
-// CHECK: %[[W1:.*]] = arith.ori %[[USE]], %[[NBW]] : i32
+// CHECK: %[[W1:.*]] = arith.ori %[[NBS]], %[[USE]] : i32
 // CHECK: %[[MUL0:.*]] = arith.muli %[[BD0]], %{{.*}} : i32
 // CHECK: %[[BASE0:.*]] = arith.addi %{{.*}}, %[[MUL0]] : i32
 // CHECK: aiex.npu.blockwrite_values(%[[BASE0]] : i32) values %{{.*}}, %[[W1]], %{{.*}}

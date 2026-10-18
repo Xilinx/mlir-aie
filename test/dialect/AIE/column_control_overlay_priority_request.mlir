@@ -9,7 +9,7 @@
 
 // A marked DMA-to-TileControl request is not a routed response.
 // CHECK-LABEL: aie.device(npu1_1col) {
-// CHECK: aie.masterset(TileControl : 0, %{{.*}}) {is_ctrl_pkt_overlay}
+// CHECK: aie.masterset(TileControl : 0, %{{.*}}) {aie.is_ctrl_pkt_overlay}
 // CHECK: aie.packet_flow(15) {
 // CHECK-NEXT: aie.packet_source<%{{.*}}, TileControl : 0>
 // CHECK-NEXT: aie.packet_dest<%{{.*}}, South : 0>

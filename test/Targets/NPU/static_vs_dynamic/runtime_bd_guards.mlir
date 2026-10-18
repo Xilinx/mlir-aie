@@ -19,15 +19,17 @@ module {
     %words = aie.buffer(%mem) {address = 8192 : i32} : memref<1024xi32>
 
     // CHECK-LABEL: @mem_bytes
-    // CHECK: aiex.npu.assert_bd_field(%arg1) {max = 524284 : i32, min = 4 : i32}
-    // CHECK: aiex.npu.assert_bd_divisible(%arg1) {divisor = 4 : i32}
+    // CHECK: cf.assert %{{.*}}, "a runtime DMA d0 size must be in [1:524284]"
+    // CHECK: cf.assert %{{.*}}, "a runtime DMA d0 size must be a multiple of 4 elements (whole 4-byte granules)"
     // CHECK: aiex.npu.blockwrite_values
     // Includes the NPU2 internal memtile aperture (0x80000) and buffer base.
-    // CHECK: aiex.npu.assert_bd_field(%arg0) {max = 1568767 : i32}
-    // CHECK: aiex.npu.assert_bd_divisible(%[[BYTE_ADDR:.*]]) {divisor = 4 : i32}
+    // CHECK: %[[BYTE_ADDR:.*]] = arith.addi %{{.*}}, %c528384_i64 : i64
+    // CHECK: cf.assert %{{.*}}, "a runtime DMA offset is not 4-byte aligned"
+    // CHECK: %[[FITS:.*]] = arith.cmpi ule, %[[BYTE_ADDR]], %c2097151_i64 : i64
+    // CHECK: cf.assert %[[FITS]], "a runtime DMA offset puts the buffer address past the tile's DMA address field"
     // CHECK: %[[WORD_ADDR:.*]] = arith.divui %[[BYTE_ADDR]],
-    // CHECK: aiex.npu.assert_bd_field(%[[WORD_ADDR]]) {max = 524287 : i32}
-    // CHECK: aiex.npu.maskwrite32
+    // CHECK: %[[WORD_ADDR32:.*]] = arith.trunci %[[WORD_ADDR]] : i64 to i32
+    // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[WORD_ADDR32]],
     aie.runtime_sequence @mem_bytes(%offset: i32, %len: i32) {
       %task = aiex.dma_configure_task(%mem, MM2S, 0) {
         aie.dma_bd(%bytes : memref<4096xi8> offset = %offset len = %len sizes = [4] strides = [1]) {bd_id = 0 : i32}
@@ -36,13 +38,16 @@ module {
     }
 
     // CHECK-LABEL: @core_halves
-    // CHECK: aiex.npu.assert_bd_divisible(%arg1) {divisor = 2 : i32}
+    // CHECK: cf.assert %{{.*}}, "a runtime DMA d0 size must be in [1:32766]"
+    // CHECK: cf.assert %{{.*}}, "a runtime DMA d0 size must be a multiple of 2 elements (whole 4-byte granules)"
     // CHECK: aiex.npu.blockwrite_values
-    // CHECK: aiex.npu.assert_bd_field(%arg0) {max = 30719 : i32}
-    // CHECK: aiex.npu.assert_bd_divisible(%[[CORE_BYTES:.*]]) {divisor = 4 : i32}
+    // CHECK: %[[CORE_BYTES:.*]] = arith.addi %{{.*}}, %c4096_i64 : i64
+    // CHECK: cf.assert %{{.*}}, "a runtime DMA offset is not 4-byte aligned"
+    // CHECK: %[[CORE_FITS:.*]] = arith.cmpi ule, %[[CORE_BYTES]], %c65535_i64 : i64
+    // CHECK: cf.assert %[[CORE_FITS]], "a runtime DMA offset puts the buffer address past the tile's DMA address field"
     // CHECK: %[[CORE_WORDS:.*]] = arith.divui %[[CORE_BYTES]],
-    // CHECK: aiex.npu.assert_bd_field(%[[CORE_WORDS]]) {max = 16383 : i32}
-    // CHECK: arith.shli %[[CORE_WORDS]],
+    // CHECK: %[[CORE_WORDS32:.*]] = arith.trunci %[[CORE_WORDS]] : i64 to i32
+    // CHECK: arith.shli %[[CORE_WORDS32]],
     // CHECK: aiex.npu.maskwrite32
     aie.runtime_sequence @core_halves(%offset: i32, %len: i32) {
       %task = aiex.dma_configure_task(%core, MM2S, 0) {

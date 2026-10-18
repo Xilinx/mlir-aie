@@ -27,6 +27,11 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     Marks a generator function parameter as a runtime bidirectional tensor.
     Data is DMA-transferred in both directions on every kernel call.
 
+A generator receives each tensor's type, ``np.ndarray[shape, np.dtype[T]]``,
+never its data: the type of the tensor the design is called with, or one bound
+ahead of time with ``specialize(name=np.ndarray[...])``. A different shape or
+dtype is a different compiled design.
+
 ``DispatchTime[T]``
     Marks a keyword-only integer scalar that can vary per dispatch without
     recompiling. Explicit specialization instead fixes it at compile time.
@@ -49,6 +54,8 @@ instead.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated, Any, NoReturn, TypeVar
+
+import numpy as np
 
 T = TypeVar("T")
 
@@ -88,22 +95,19 @@ class _Declared:
         self.args = args
         self.kwargs = kwargs
 
-    if TYPE_CHECKING:
-        # The declaring library replaces the record, so a type checker
-        # reads the call as that library's value, not as a record.
-        def __new__(cls, *args: Any, **kwargs: Any) -> Any: ...
 
+if TYPE_CHECKING:
+    In = Out = InOut = type[np.ndarray]
+else:
 
-class In(_Declared):
-    """Runtime input tensor annotation (host → NPU, DMA each call)."""
+    class In(_Declared):
+        """Runtime input tensor annotation (host → NPU, DMA each call)."""
 
+    class Out(_Declared):
+        """Runtime output tensor annotation (NPU → host, DMA each call)."""
 
-class Out(_Declared):
-    """Runtime output tensor annotation (NPU → host, DMA each call)."""
-
-
-class InOut(_Declared):
-    """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
+    class InOut(_Declared):
+        """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
 
 
 DispatchTime = Annotated[T, "aie.dispatch_time"]

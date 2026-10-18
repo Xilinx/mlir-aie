@@ -31,9 +31,9 @@
 // ALLOC-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
 // ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out_buff_0"}
 // ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out_buff_1"}
-// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "b0_in_cons_buff_0"}
+// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "b1_in_cons_buff_0"}
 // ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b0_in_cons_buff_1"}
-// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b1_in_cons_buff_0"}
+// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b0_in_cons_buff_0"}
 // ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b1_in_cons_buff_1"}
 // BOUNDARY: %[[M:.*]] = aie.tile(0, 1)
 // BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b0_in_cons_buff_0"}

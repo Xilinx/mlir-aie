@@ -113,15 +113,24 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return std::nullopt;
   }
 
+  // The BD ids each device's static DMAs take, by tile. Generators restart
+  // at every PDI load, so this is read once per tile per load.
+  llvm::DenseMap<Operation *,
+                 llvm::DenseMap<AIE::TileID, SmallVector<uint32_t>>>
+      staticBdIds;
+
   // Mark every BD id a static DMA already took on `tile`, so this allocator
   // doesn't hand the same id to a runtime-sequence task.
-  static void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
-                                BdIdGenerator &gen) {
-    for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
-      if (program.getTileID() == tile.getTileID())
-        for (uint32_t id : AIE::getAssignedBdIds(program))
-          if (!gen.bdIdAlreadyAssigned(id))
-            gen.assignBdId(id);
+  void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
+                         BdIdGenerator &gen) {
+    auto [it, inserted] = staticBdIds.try_emplace(device);
+    if (inserted)
+      for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+        llvm::append_range(it->second[program.getTileID()],
+                           AIE::getAssignedBdIds(program));
+    for (uint32_t id : it->second.lookup(tile.getTileID()))
+      if (!gen.bdIdAlreadyAssigned(id))
+        gen.assignBdId(id);
   }
 
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
@@ -132,8 +141,37 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                             device.getTargetModel())})
                .first;
       seedFromStaticBds(device, tile, it->second);
+      if (loadedDevice && loadedDevice != device)
+        seedFromStaticBds(loadedDevice, tile, it->second);
     }
     return it->second;
+  }
+
+  // The device the latest aiex.npu.load_pdi configured. A sequence that
+  // aie-materialize-runtime-sequences inlined runs on that device's static
+  // DMAs, which stay in it rather than in the device that holds the sequence.
+  AIE::DeviceOp loadedDevice;
+  // The latest aiex.npu.load_pdi, when it names no device in this module.
+  NpuLoadPdiOp opaqueLoad;
+  // Configures from before the latest aiex.npu.load_pdi.
+  llvm::SmallPtrSet<Operation *, 16> unloaded;
+
+  // A PDI load reconfigures the array, so the tasks configured so far no
+  // longer hold ids and allocation restarts around the new static BDs.
+  void noteLoadPdi(NpuLoadPdiOp load) {
+    loadedDevice = {};
+    if (FlatSymbolRefAttr ref = load.getDeviceRefAttr())
+      if (Operation *parent = getOperation()->getParentOp())
+        loadedDevice =
+            SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(parent, ref);
+    opaqueLoad = loadedDevice ? NpuLoadPdiOp() : load;
+    for (auto &[tile, tasks] : liveByTile)
+      for (DMAConfigureTaskOp task : tasks)
+        unloaded.insert(task);
+    gens.clear();
+    liveByTile.clear();
+    pendingAwaitReleases.clear();
+    freedInFlight.clear();
   }
 
   // Reject control flow the static path cannot lower. Constant-trip scf.for is
@@ -274,16 +312,40 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (result.wasInterrupted())
       return failure();
 
+    // A start whose repeat count is a scratchpad parameter pushes the head
+    // BD with an update that clears the low two bits of its id.
+    AIE::DMABDOp alignedHead =
+        llvm::any_of(op->getUsers(),
+                     [](Operation *user) {
+                       auto start = dyn_cast<DMAStartTaskOp>(user);
+                       return start && start.hasRepeatParameter();
+                     })
+            ? op.getFirstBd()
+            : nullptr;
+
     // Now allocate BD IDs for all unspecified BDs.
     result = op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
       if (bd_op.getBdId().has_value())
         return WalkResult::advance();
+      if (opaqueLoad) {
+        bd_op.emitOpError(
+                 "needs a buffer descriptor ID, but the aiex.npu.load_pdi "
+                 "before it does not name a device in this module, so the "
+                 "compiler cannot tell which ids the loaded PDI's static "
+                 "DMAs use. Name the loaded device with device_ref = "
+                 "@<device>, or give this aie.dma_bd a bd_id that the PDI "
+                 "leaves free.")
+                .attachNote(opaqueLoad.getLoc())
+            << "the PDI is loaded here";
+        return WalkResult::interrupt();
+      }
       // channelIndex matters on a MemTile, where the AIE2 model partitions
       // BDs by channel parity (isBdChannelAccessible: an even channel can
       // only submit ids below 24, an odd channel only 24 and above).
-      std::optional<int32_t> next_id = gen.nextBdId(op.getChannel());
+      uint32_t alignment = bd_op == alignedHead ? 4 : 1;
+      std::optional<int32_t> next_id = gen.nextBdId(op.getChannel(), alignment);
       while (!next_id && reclaimBds && succeeded(reclaimFor(op)))
-        next_id = gen.nextBdId(op.getChannel());
+        next_id = gen.nextBdId(op.getChannel(), alignment);
       if (!next_id) {
         auto diag =
             op.emitOpError()
@@ -329,31 +391,29 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     bool issuesToken;
     // Program order of the push, for picking the oldest task to reclaim.
     uint64_t order;
-    // A status poll proved it finished. Its token, if any, is still waiting
-    // for an await, so it stays here until one consumes it.
-    bool finished = false;
   };
-  // Pushes on each channel, in program order, whose tokens no await has
-  // consumed yet.
-  std::map<DmaQueueModel::ChannelKey, SmallVector<StartedTask, 8>>
-      startedOnChannel;
+  // Pushes on a channel, in program order, whose tokens no await has consumed
+  // yet. A status poll proves a prefix of them finished, the first `finished`;
+  // their tokens, if any, still wait for an await, so they stay here until one
+  // consumes them.
+  struct ChannelPushes {
+    SmallVector<StartedTask, 8> tasks;
+    size_t finished = 0;
+  };
+  std::map<DmaQueueModel::ChannelKey, ChannelPushes> startedOnChannel;
   uint64_t pushCount = 0;
+  // Per configure, its pushes in startedOnChannel and how many of them are not
+  // yet finished. A configure pushes onto its own channel alone.
+  llvm::DenseMap<Operation *, unsigned> startCount;
+  llvm::DenseMap<Operation *, unsigned> runningCount;
 
   void notePush(const DmaQueueModel::ChannelKey &key, DMAConfigureTaskOp task,
                 bool issuesToken) {
-    startedOnChannel[key].push_back({task, issuesToken, pushCount++});
-  }
-
-  static bool isStarted(ArrayRef<StartedTask> started,
-                        DMAConfigureTaskOp task) {
-    return llvm::any_of(started,
-                        [&](const StartedTask &s) { return s.task == task; });
-  }
-  static bool isRunning(ArrayRef<StartedTask> started,
-                        DMAConfigureTaskOp task) {
-    return llvm::any_of(started, [&](const StartedTask &s) {
-      return s.task == task && !s.finished;
-    });
+    startedOnChannel[key].tasks.push_back({task, issuesToken, pushCount++});
+    if (task) {
+      ++startCount[task];
+      ++runningCount[task];
+    }
   }
   // Configures whose completion an await has established.
   llvm::SmallPtrSet<Operation *, 16> knownComplete;
@@ -384,30 +444,38 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // of the configure named by its SSA operand. Only that token-issuing task and
   // the tasks queued ahead of it are known to have finished.
   void noteAwaited(const DmaQueueModel::ChannelKey &key) {
-    auto &started = startedOnChannel[key];
+    ChannelPushes &channel = startedOnChannel[key];
+    auto &started = channel.tasks;
     auto *it = llvm::find_if(
         started, [](const StartedTask &s) { return s.issuesToken; });
     if (it == started.end())
       return;
-    SmallVector<StartedTask, 8> retired(started.begin(), std::next(it));
+    size_t retired = std::distance(started.begin(), it) + 1;
+    for (size_t i = 0; i < retired; ++i)
+      if (DMAConfigureTaskOp task = started[i].task) {
+        --startCount[task];
+        if (i >= channel.finished)
+          --runningCount[task];
+      }
+    for (size_t i = 0; i < retired; ++i)
+      if (DMAConfigureTaskOp task = started[i].task)
+        if (startCount.lookup(task) == 0)
+          knownComplete.insert(task);
     started.erase(started.begin(), std::next(it));
-    for (const StartedTask &s : retired)
-      if (s.task && !isStarted(started, s.task))
-        knownComplete.insert(s.task);
+    channel.finished -= std::min(channel.finished, retired);
   }
 
   // A status poll proved at most `unfinished` pushes on `key` are still queued
   // or running. The channel runs its queue in order, so those are the newest.
   void noteDrained(const DmaQueueModel::ChannelKey &key, size_t unfinished) {
-    auto &started = startedOnChannel[key];
-    if (started.size() <= unfinished)
+    ChannelPushes &channel = startedOnChannel[key];
+    if (channel.tasks.size() <= unfinished)
       return;
-    auto done = MutableArrayRef<StartedTask>(started).drop_back(unfinished);
-    for (StartedTask &s : done)
-      s.finished = true;
-    for (StartedTask &s : done)
-      if (s.task && !isRunning(started, s.task))
-        pollProven.insert(s.task);
+    for (size_t done = channel.tasks.size() - unfinished;
+         channel.finished < done; ++channel.finished)
+      if (DMAConfigureTaskOp task = channel.tasks[channel.finished].task)
+        if (--runningCount[task] == 0)
+          pollProven.insert(task);
   }
 
   // Credit a maskpoll on a channel's status register, whether the queue-depth
@@ -424,7 +492,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     uint32_t idle = tm.getDmaChannelIdleMask();
     if (!address || !mask || !value || !field)
       return;
-    for (auto &[key, started] : startedOnChannel) {
+    for (const auto &[key, channel] : startedOnChannel) {
       if (tm.getDmaStatusAddress(key[0], key[1], key[3],
                                  static_cast<AIE::DMAChannelDir>(key[2])) !=
           address)
@@ -444,7 +512,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // from 0, so a just-freed low id is the first one handed out again -- the
   // worst case for aliasing a BD that is still running.
   void noteFreedInFlight(DMAConfigureTaskOp cfg, Operation *freeOp) {
-    if (!isStarted(startedOnChannel[channelOf(cfg)], cfg))
+    if (!startCount.lookup(cfg))
       return;
     AIE::TileOp tile = cfg.getTileOp();
     auto &ids = freedInFlight[{tile.getCol(), tile.getRow()}];
@@ -500,7 +568,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pendingAwaitReleases.erase(task_op);
     // Those IDs may now belong to another configure. A redundant release must
     // not inspect or change the generator's current ownership.
-    if (awaitedConfigures.contains(task_op) || reclaimed.contains(task_op))
+    if (awaitedConfigures.contains(task_op) || reclaimed.contains(task_op) ||
+        unloaded.contains(task_op))
       return success();
     BdIdGenerator &gen = getGeneratorForTile(task_op.getTileOp());
     WalkResult result = task_op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd) {
@@ -637,14 +706,16 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (!tm.getDmaStatusAddress(key[0], key[1], key[3],
                                   static_cast<AIE::DMAChannelDir>(key[2])))
         continue;
-      ArrayRef<StartedTask> started = startedOnChannel[key];
+      const ChannelPushes &channel = startedOnChannel[key];
+      ArrayRef<StartedTask> started = channel.tasks;
       auto last =
           llvm::find_if(llvm::reverse(started),
                         [&](const StartedTask &s) { return s.task == task; });
-      // Never started, or retired by an await and caught above.
-      if (last == started.rend() || last->finished)
-        continue;
       size_t queuedBehind = std::distance(started.rbegin(), last);
+      // Never started, or retired by an await and caught above.
+      if (last == started.rend() ||
+          started.size() - 1 - queuedBehind < channel.finished)
+        continue;
       if (queuedBehind == 0 ? !idle : !field)
         continue;
       // Rule 1 before rule 2, then oldest.
@@ -716,16 +787,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pendingAwaitReleases.clear();
     startedOnChannel.clear();
     pushCount = 0;
+    startCount.clear();
+    runningCount.clear();
     knownComplete.clear();
     pollProven.clear();
     reclaimed.clear();
     releasedTasks.clear();
     liveByTile.clear();
     freedInFlight.clear();
+    loadedDevice = {};
+    opaqueLoad = {};
+    unloaded.clear();
   }
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
+    staticBdIds.clear();
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
       // Skip sequences already handled by the dynamic free-list pool path
@@ -760,6 +837,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             return WalkResult::interrupt();
         } else if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = start.getTaskOp()) {
+            if (unloaded.contains(cfg)) {
+              start.emitOpError(
+                  "starts a task configured before an aiex.npu.load_pdi, "
+                  "which reconfigured the array; its buffer descriptor ids "
+                  "may now belong to the loaded device's static DMAs. "
+                  "Configure the task after the load_pdi instead.");
+              return WalkResult::interrupt();
+            }
             // Only an explicit aiex.dma_free_task releases a task that is
             // started again (an await or a reclaim keeps the ids of one that
             // is), so this start would push ids that may already describe
@@ -776,6 +861,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             pollProven.erase(cfg);
             notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg));
           }
+        } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
+          noteLoadPdi(load);
         } else if (auto poll = dyn_cast<NpuMaskPollOp>(op)) {
           notePoll(poll);
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {

@@ -91,6 +91,13 @@ hardcoding for one NPU generation.  See
 [`iron_configuration.md`](./iron_configuration.md)
 §Arch-aware kernel introspection.
 
+`.k_tail(A, B, k_valid)`, a second symbol of the same object, zeroes A's
+columns and B's rows from `k_valid` (clamped to `[0, dim_k]`) on, in the
+blocking the matmul reads.
+Call it on the last K tile of a reduction whose length is not a multiple of
+`dim_k`: the matmul after it sums only the first `k_valid` of the tile's K,
+whatever the rest of the tile holds.
+
 ## Shared-buffer factory kwargs
 
 Some convolution factories accept an opt-in kwarg that decouples the
@@ -161,6 +168,22 @@ mm = kernels.mm(input_dtype=np.int16, output_dtype=np.int32)
 mm.contract.acc_dtype    # numpy.int64: accauto is acc64 for int16
 mm.contract.reduction    # 64: products summed per output per call (dim_k)
 kernels.mm.dtypes        # every (input_dtype, output_dtype) the factory supports
+```
+
+Some kernels compute differently by build: `gelu` reads a LUT on AIE2 and
+uses AIE2P's tanh instruction, and `rms_norm` holds a bound measured on each
+NPU. Their contract lists one row per `Build` (an architecture, and whether
+`AIE_KERNELS_PORTABLE` compiled the untuned branch) in `contract.per_build`,
+and leaves `contract.reference` and `contract.tolerance` unset. The row is
+picked when an output is checked, for the build that produced it, so a kernel
+returned before any device was bound is still judged by the build that ran:
+
+```python
+fn = kernels.rms_norm()
+fn.contract.tolerance               # None: judged per build
+fn.contract_for().tolerance         # the bound device's row; raises if none is bound
+fn.contract_for("aie2p").tolerance  # one bf16 ulp, measured on npu2
+fn.expected(inputs, arch="aie2p")   # expected() and judge() take arch= too
 ```
 
 The contract is what lets `aie.iron.algorithms.kernel_design` build, run and check
@@ -244,8 +267,6 @@ A contract also declares the dtype facts an `arg_types` list leaves out:
   see [Rounding mode](#rounding-mode) below. The rounding setter is compiled
   as always-inline LLVM IR and merged into the core, avoiding an external
   function call; the setter therefore uses Peano, not Chess.
-- `stack_bytes`: the core stack a Worker calling this kernel needs, when
-  that is more than the target's default.
 - `unsupported`: why the generic builder cannot run this kernel, when it
   cannot; the reference still says what the kernel computes.
 
@@ -482,21 +503,8 @@ power mode, which the bench runners set at boot. PR and filtered dispatch
 runs may measure another mode, but comparisons require a known, matching
 mode.
 
-The [Nightly Kernel Checks dashboard](https://xilinx.github.io/mlir-aie/kernel-checks/)
-shows run health, per-kernel correctness and timing, and metric histories,
-with warnings for truncated traces and toolchain, runtime or host changes.
-The dashboard and Peano-PR report share `utils/kernel_checks/thresholds.json`:
-2% for cycles and kernel object size; for `npu_us`, 10% and more than three
-times the larger MAD. Reports are informational, not PR gates.
-
-`utils/kernel_checks/publish.py` writes `gh-pages:kernel-checks/<npu>/`:
-`runs/<id>.json`, `runs.json`, `latest.json` (the last published PR baseline),
-and `history/<metric>.json`; `catalogue.json` lists available kernels and
-case outcomes. Runs older than 90 days thin to weekly. Readers reject newer
-schema versions instead of interpreting them. The
-[components view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=components)
-reads the same format from `gh-pages:component-checks/<check>/`, written
-by `nightlyComponentChecks.yml`.
+Nightly results, and how the nightly runs and publishes these checks, are on the
+[maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=night).
 
 ### Static checks
 
@@ -511,20 +519,17 @@ runtime-library routines it calls (`__divsf3`, `__mulsf3`, `__floatsisf`:
 on AIE2P, scalar float divide, multiply and int-to-float are software
 routines). `kernel_stack_bytes` is the deepest call path's frames from the
 entry, without those routines' own and without the core's `main`, which
-aiecc's measured stack also counts; above the contract's `stack_bytes`
-(else the target default) it prints a warning, since an overflow corrupts
-the neighbouring memory silently. Each build prints its entry symbol and
-source file, and `--meta` names its object (kept with `--keep DIR`). The record shapes and the
-regression rules are documented on the module
+aiecc's measured stack also counts. aiecc sizes the core's stack from its own
+measurement of the linked core, so the row is for comparing builds. Each build
+prints its entry symbol and source file, and `--meta` names its object (kept
+with `--keep DIR`). The record shapes and the regression rules are documented on the module
 ([API](../api/kernels.md#static-checks)). These checks run on demand; there
 is no static-check CI workflow. When invoked in GitHub Actions, the tool
 emits a warning annotation for a dropped pragma and an error annotation
 for a kernel that fails to compile. With
 `MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
-`aie_kernels/` is compiled against an installed wheel. The separate
-`nightlyKernelChecks.yml` workflow runs the hardware correctness and
-performance checks nightly and on Peano-pin pull requests; it does not run these
-static checks.
+`aie_kernels/` is compiled against an installed wheel. The nightly
+hardware checks do not run these static checks.
 
 ### Kernels the generic builder cannot run
 

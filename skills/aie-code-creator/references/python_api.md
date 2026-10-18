@@ -62,7 +62,7 @@ producer = of.prod()              # endpoint used on the producer side (or in th
 consumer = of.cons()              # NEW consumer handle each call — for broadcast to N
 ```
 
-`prod()`/`cons()` also take an optional `tile=` to pin the shim tile a runtime-driven endpoint binds to (`prod(tile=...)`, `cons(tile=..., dims_from_stream=...)`); leave it `None` (the default) unless you have a specific placement reason — IRON picks any available shim tile automatically.
+`prod()`/`cons()` also take an optional `tile=` to pin the shim tile a runtime-driven endpoint binds to (`prod(tile=...)`, `cons(tile=..., from_stream=...)`); leave it `None` (the default) unless you have a specific placement reason — IRON picks any available shim tile automatically.
 
 Inside a `Worker` body:
 
@@ -90,12 +90,12 @@ joined = of_out.prod().join(of_offsets,
 of_via_mem = of.forward(obj_type=tile_ty, name="forwarded")
 ```
 
-`split()`/`join()`/`forward()` also accept `tile=` (which mem tile hosts the split/join/forward DMA; defaults to `AnyMemTile`), `depths=`/`depth=` (per-sub-fifo depth override, defaults to the parent's `depth`), `dims_to_stream=`/`dims_from_stream=` (per-sub-fifo stream-dimension reshaping), `plio=` (mark sub-fifos as PLIO), and `repeat_counts=`/`repeat_count=` (per-sub-fifo MemTile DMA repeat count). Defaults cover the common case above; reach for these only for custom placement or streaming layouts.
+`split()`/`join()`/`forward()` also accept `tile=` (which mem tile hosts the split/join/forward DMA; defaults to `AnyMemTile`), `depths=`/`depth=` (per-sub-fifo depth override, defaults to the parent's `depth`), `to_stream=`/`from_stream=` (per-sub-fifo stream-dimension reshaping), `plio=` (mark sub-fifos as PLIO), and `repeat_counts=`/`repeat_count=` (per-sub-fifo MemTile DMA repeat count). Defaults cover the common case above; reach for these only for custom placement or streaming layouts.
 
-The plain `ObjectFifo(...)` constructor itself also accepts `dims_to_stream=`/`dims_from_stream_per_cons=` — distinct from the per-sub-fifo kwargs above, this reshapes the *whole* fifo's stream dimensions before any split/join:
+The plain `ObjectFifo(...)` constructor itself also accepts `to_stream=`/`from_stream_per_cons=` — distinct from the per-sub-fifo kwargs above, this reshapes the *whole* fifo's stream dimensions before any split/join:
 
 ```python
-of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
+of_out = ObjectFifo(data_ty, name="out", to_stream=dims)
 ```
 
 `depth`: 2 gives ping-pong (double-buffering — the producer fills one slot while the consumer drains the other). For a pipeline where a stage holds a buffer while the next stage also holds one, set `depth ≥ producer_outstanding + consumer_outstanding`, where each term is the number of buffers that side holds acquired-but-not-released at once.
@@ -147,7 +147,7 @@ The placement kwarg is **`tile=`** (not `placement=`), and it defaults to `AnyCo
 which leaves the choice to the `--aie-place-tiles` pass. Passing a non-compute tile raises
 `ValueError` at construction.
 
-`while_true` (default `True`) wraps `core_body` in a `while(true)` loop so the core keeps servicing the fifo until reconfiguration; pass `False` for a core that should run exactly once (rare — most designs want the default forever-loop).
+`while_true` (default `True`) wraps `core_body` in a `while(true)` loop so the core keeps servicing the fifo until reconfiguration; pass `False` for a core that should run exactly once (rare — most designs want the default forever-loop). To run setup once and then loop, pass `False` and write `for _ in forever_():` (`aie.iron.controlflow`) in the body; don't fake it with `range_(sys.maxsize)`.
 
 `stack_size` defaults to the target model's `getDefaultCoreStackSize()` (currently 1024 bytes) — bump it if a core overflows its stack. `dynamic_objfifo_lowering` is a per-core override of the ObjectFifo lowering strategy and is only honored when the global `--dynamic-objFifos` flag is false; leave it `None` unless you're specifically working around a lowering issue.
 

@@ -155,6 +155,8 @@ LitConfigHelper.apply_config_to_lit(
     },
 )
 
+LitConfigHelper.add_hrxxclbinutil_feature(config)
+
 LitConfigHelper.setup_host_compiler_substitutions(config)
 LitConfigHelper.setup_aiecc_substitution(config)
 LitConfigHelper.setup_host_link_substitution(config)

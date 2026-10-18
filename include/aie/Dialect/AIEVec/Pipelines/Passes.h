@@ -40,9 +40,8 @@ struct CanonicalizeVectorForAIEVecOptions
   PassOptions::Option<bool> enableBF16Emulation{
       *this, "bf16-emulation",
       llvm::cl::desc(
-          "Emulate f32 vector arithmetic using bf16 operations. Inserts "
-          "arith.truncf/arith.extf around f32 vector ops to compute in bf16. "
-          "Trades precision for performance."),
+          "Run f32 vector arithmetic on the bf16 datapath: multiplies and "
+          "transcendentals take inputs rounded to bf16, sums stay f32."),
       llvm::cl::init(false)};
 };
 
@@ -97,9 +96,8 @@ struct ConvertVectorToAIEVecOptions
   PassOptions::Option<bool> enableBF16Emulation{
       *this, "bf16-emulation",
       llvm::cl::desc(
-          "Emulate f32 vector arithmetic using bf16 operations. Inserts "
-          "arith.truncf/arith.extf around f32 vector ops to compute in bf16. "
-          "Trades precision for performance."),
+          "Run f32 vector arithmetic on the bf16 datapath: multiplies and "
+          "transcendentals take inputs rounded to bf16, sums stay f32."),
       llvm::cl::init(false)};
 
   mlir::LogicalResult parseFromString(mlir::StringRef options) {
@@ -171,8 +169,8 @@ void buildDynamicSizeNoImplicitBroadcastPass(mlir::OpPassManager &pm);
 /// operations for AIE2p targets.
 std::unique_ptr<::mlir::Pass> createSplitVectorLoadUpsChainsPass();
 
-/// Create a pass that emulates f32 vector arithmetic using bf16 operations.
-/// Inserts arith.truncf/arith.extf around f32 vector ops to compute in bf16.
+/// Create a pass that runs f32 vector arithmetic on the bf16 datapath:
+/// multiplies and transcendentals take inputs rounded to bf16, sums stay f32.
 std::unique_ptr<::mlir::Pass> createBF16EmulationPass();
 
 } // namespace aievec

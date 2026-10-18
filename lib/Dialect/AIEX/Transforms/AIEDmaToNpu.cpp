@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
@@ -35,8 +36,10 @@ namespace {
 struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
-  Write32SymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  Write32SymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuWrite32Op op, OpAdaptor adaptor,
@@ -45,7 +48,7 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
     if (!address.has_value()) {
       return failure();
     }
@@ -60,8 +63,10 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
 struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  BlockWriteSymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  BlockWriteSymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuBlockWriteOp op, OpAdaptor adaptor,
@@ -70,7 +75,7 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
     if (!address.has_value()) {
       return failure();
     }
@@ -83,8 +88,10 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
 struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
-  MaskWrite32SymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  MaskWrite32SymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuMaskWrite32Op op, OpAdaptor adaptor,
@@ -93,7 +100,7 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress(&names);
     if (!absoluteAddress.has_value()) {
       return failure();
     }
@@ -110,13 +117,18 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
 struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
   using OpConversionPattern::OpConversionPattern;
 
+  MaskPollSymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
+
   LogicalResult
   matchAndRewrite(NpuMaskPollOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress(&names);
     if (!absoluteAddress)
       return failure();
 
@@ -132,16 +144,16 @@ struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
 struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  RtpToWrite32Pattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  RtpToWrite32Pattern(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuWriteRTPOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto device = op->getParentOfType<AIE::DeviceOp>();
-
-    auto buffer = AIE::lookupNamedOpIn<AIE::BufferOp>(device, op.getBuffer());
+    auto buffer = names.lookup<AIE::BufferOp>(op.getBufferAttr().getAttr());
     if (!buffer) {
       op->emitError("buffer '" + op.getBuffer() + "' not found in device");
       return failure();
@@ -219,9 +231,25 @@ public:
     uint32_t bdIdMask =
         tm.isMemTile(op.getColumn(), op.getRow()) ? 0x3Fu : 0xFu;
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
-    std::optional<uint32_t> repeat_cnt =
-        getConstantIntOperand(op.getRepeatCount());
+    std::optional<uint64_t> repeat_cnt =
+        getConstantInt64Operand(op.getRepeatCount());
     uint32_t issueBit = op.getIssueToken() ? 0x80000000 : 0;
+
+    // A scratchpad repeat count: the host writes it already shifted into the
+    // repeat field, and the update adds it to the rest of the command word.
+    // The verifier holds bd_id to a constant multiple of 4, which the
+    // update's clearing of bits [1:0] keeps.
+    if (IntegerAttr idx = op.getRepeatStateTableIdxAttr()) {
+      NpuUpdateFromScratchpadOp::create(
+          rewriter, loc, static_cast<uint8_t>(idx.getUInt()),
+          StateTableFunc::Incr,
+          // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+          /*func_arg=*/(*bd_id & bdIdMask) | issueBit,
+          /*address=*/queue_offset, /*buffer=*/nullptr, /*column=*/nullptr,
+          /*row=*/nullptr);
+      rewriter.eraseOp(op);
+      return success();
+    }
 
     Value cmdVal;
     if (bd_id && repeat_cnt) {
@@ -231,24 +259,41 @@ public:
     } else {
       // (bd_id & bdIdMask) | ((repeat & 0xFF) << 16) | issueBit, as arith over
       // the runtime operands (a constant field folds to its contribution).
+      // A runtime repeat_count is masked to its 8-bit field below, so an
+      // out-of-range value would silently wrap to a different number of
+      // executions. Refuse the dispatch instead (host-side guard); the
+      // unsigned compare also rejects a negative count (zero executions).
+      Value repeat;
+      if (repeat_cnt) {
+        repeat = createConstantI32(rewriter, loc, *repeat_cnt);
+      } else {
+        Value repeat64 =
+            getAsI64(rewriter, loc, OpFoldResult(op.getRepeatCount()));
+        if (!repeat64)
+          return failure();
+        uint32_t maxRepeat = tm.getMaxRepeatCount();
+        Value inRange = arith::CmpIOp::create(
+            rewriter, loc, arith::CmpIPredicate::ule, repeat64,
+            arith::ConstantOp::create(rewriter, loc,
+                                      rewriter.getI64IntegerAttr(maxRepeat)));
+        if (failed(emitRuntimeCheck(
+                rewriter, loc, inRange,
+                "a runtime DMA repeat count exceeds the task queue's [0:" +
+                    Twine(maxRepeat) + "] range (at most " +
+                    Twine(maxRepeat + 1) + " executions)")))
+          return failure();
+        repeat = rewriter.createOrFold<arith::TruncIOp>(loc, i32ty, repeat64);
+      }
       Value cmd = createConstantI32(rewriter, loc, issueBit);
-      Value bdField = arith::AndIOp::create(
-          rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
+      Value bdField = rewriter.createOrFold<arith::AndIOp>(
+          loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
           createConstantI32(rewriter, loc, bdIdMask));
-      cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
-      // The 0xFF mask would wrap a runtime repeat_count past the field (256
-      // pushes a task that runs once), so guard it as the verifier does a
-      // constant one.
-      if (!repeat_cnt)
-        NpuAssertBdFieldOp::create(
-            rewriter, loc, op.getRepeatCount(),
-            rewriter.getI32IntegerAttr(tm.getMaxRepeatCount()));
-      Value masked =
-          arith::AndIOp::create(rewriter, loc, op.getRepeatCount(),
-                                createConstantI32(rewriter, loc, 0xFF));
-      Value shifted = arith::ShLIOp::create(
-          rewriter, loc, masked, createConstantI32(rewriter, loc, 16));
-      cmdVal = arith::OrIOp::create(rewriter, loc, cmd, shifted);
+      cmd = rewriter.createOrFold<arith::OrIOp>(loc, cmd, bdField);
+      Value masked = rewriter.createOrFold<arith::AndIOp>(
+          loc, repeat, createConstantI32(rewriter, loc, 0xFF));
+      Value shifted = rewriter.createOrFold<arith::ShLIOp>(
+          loc, masked, createConstantI32(rewriter, loc, 16));
+      cmdVal = rewriter.createOrFold<arith::OrIOp>(loc, cmd, shifted);
     }
 
     NpuWrite32Op::create(
@@ -357,6 +402,14 @@ public:
     llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    // A contiguous row-major ND access on a shim NOC tile is lowered to linear
+    // mode (d0_size=d1_size=0) just like an already-canonical linear transfer.
+    // This allows naturally-expressed multidimensional transfers (e.g., a 2D
+    // image as [height, width]) without hitting the 10-bit ND wrap-size limit.
+    bool isLinear = isLinearModeTransfer(targetModel, tileCol, tileRow,
+                                         inputSizes, inputStrides);
+    if (!isLinear && op.getLengthStateTableIdxAttr())
+      AIE::placeRuntimeLengthDimension(inputSizes, inputStrides);
     llvm::SmallVector<int64_t, 4> sizes(4);
     llvm::SmallVector<int64_t, 4> strides(4);
     getHardwareStridesWraps(targetModel, op, bufferType, inputSizes,
@@ -368,15 +421,9 @@ public:
     // row
     row = IntegerAttr::get(i32ty, tileRow);
 
-    // A contiguous row-major ND access on a shim NOC tile is lowered to linear
-    // mode (d0_size=d1_size=0) just like an already-canonical linear transfer.
-    // This allows naturally-expressed multidimensional transfers (e.g., a 2D
-    // image as [height, width]) without hitting the 10-bit ND wrap-size limit.
-    bool isLinear = op.isLinearTransferWithoutTransformation() ||
-                    (targetModel.isShimNOCTile(tileCol, tileRow) &&
-                     isContiguousTransfer(inputSizes, inputStrides));
-    if (failed(verifyStridesWraps(op, bufferType, tileCol, tileRow, inputSizes,
-                                  inputStrides, sizes, strides, isLinear))) {
+    if (failed(verifyStridesWraps(
+            op, [&] { return op->emitOpError(); }, bufferType, tileCol, tileRow,
+            inputSizes, inputStrides, sizes, strides, isLinear))) {
       return failure();
     }
 
@@ -517,6 +564,17 @@ public:
                                       arg_idx)))
       return failure();
 
+    // A length_state_table_idx adds the runtime length to the BD's
+    // Buffer_Length, after the BD write above has set the static length. The
+    // verifier requires a length_unit with it.
+    auto lengthUnit = op.getLengthUnit();
+    if (op.getLengthStateTableIdxAttr() && lengthUnit) {
+      if (failed(emitUpdateBdLengthFromParameter(rewriter, op, bufferType,
+                                                 *lengthUnit, targetModel,
+                                                 tileCol, tileRow, op.getId())))
+        return failure();
+    }
+
     // push the patched bd onto the dma task queue. bd_id and repeat_count are
     // SSA operands; materialize them as constants here (the static path).
     NpuPushQueueOp::create(
@@ -525,7 +583,8 @@ public:
         createConstantI32(rewriter, op->getLoc(),
                           static_cast<uint32_t>(repeat_count.getInt())),
         createConstantI32(rewriter, op->getLoc(),
-                          static_cast<uint32_t>(bd_id.getInt())));
+                          static_cast<uint32_t>(bd_id.getInt())),
+        /*repeat_state_table_idx=*/nullptr);
 
     rewriter.eraseOp(op);
     return success();
@@ -535,7 +594,9 @@ public:
   // back to, and emit the address-patch (plus an offset-state update, if the op
   // carries one) that binds the runtime buffer pointer into the BD. Shared by
   // the static and dynamic lowering paths, which are otherwise identical here.
-  // On success `argIdx` receives the resolved index.
+  // A walk with any runtime offset, size or stride also gets a host-side check
+  // that it stays inside the host buffer. On success `argIdx` receives the
+  // resolved index.
   LogicalResult emitBufferAddressPatch(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                                        ConversionPatternRewriter &rewriter,
                                        int tileCol, int tileRow,
@@ -565,11 +626,24 @@ public:
     // (byte-identical to the static path); a runtime offset operand is built
     // with arith so it flows into the patch instead of being rejected. The
     // subview trace contributes a constant base byte offset.
+    SmallVector<OpFoldResult> offsets = op.getMixedOffsets();
+    SmallVector<OpFoldResult> strides = op.getMixedStrides();
+    int64_t elemBytes = op.getElementTypeBitwidth() / 8;
+    SmallVector<OpFoldResult> sizes = op.getMixedSizes();
+    bool isRuntime =
+        llvm::any_of(llvm::concat<OpFoldResult>(offsets, sizes, strides),
+                     [](OpFoldResult v) { return !getConstantIntValue(v); });
+    if (isRuntime && failed(guardWithinHostBuffer(
+                         rewriter, op->getLoc(),
+                         cast<BaseMemRefType>(traceResult->rootArg.getType()),
+                         traceResult->offsetInBytes, elemBytes, offsets,
+                         strides, sizes, strides)))
+      return failure();
     Value argPlus = buildArgPlusValue(
-        rewriter, op->getLoc(),
-        llvm::to_vector(llvm::reverse(op.getMixedOffsets())),
-        llvm::to_vector(llvm::reverse(op.getMixedStrides())),
-        op.getElementTypeBitwidth() / 8, traceResult->offsetInBytes);
+        rewriter, op->getLoc(), offsets, strides, elemBytes,
+        traceResult->offsetInBytes, targetModel.getAddressGenGranularity() / 8);
+    if (!argPlus)
+      return failure();
     NpuAddressPatchOp::create(rewriter, op->getLoc(), patchAddr,
                               /*addr_val=*/Value(), argIdx, argPlus);
 
@@ -625,15 +699,15 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    // buffer_length is the size-product here, hence no override; the encoder
-    // returns the hw repeat_count for the queue push.
+    // buffer_length is the size-product here, hence no explicit length; the
+    // encoder returns the hw repeat_count for the queue push.
     SmallVector<Value> words;
     Value repeatCount;
     if (failed(buildBdWords(rewriter, loc, targetModel, tileCol, tileRow,
                             fields, op.getMixedSizes(), op.getMixedStrides(),
                             op.getElementTypeBitwidth(), op.getBurstLength(),
                             op.getAxcacheOrDefault(),
-                            /*bufLenOverride=*/Value(), repeatCount, words)))
+                            /*lenElems=*/OpFoldResult(), repeatCount, words)))
       return failure();
     Value bdBase =
         getBdRegisterBase(rewriter, loc, targetModel, tileCol, tileRow,
@@ -650,7 +724,8 @@ public:
     NpuPushQueueOp::create(
         rewriter, loc, column, row, infoOp.getChannelDirAttr(),
         infoOp.getChannelIndexAttr(), issue_token, repeatCount,
-        createConstantI32(rewriter, loc, op.getId()));
+        createConstantI32(rewriter, loc, op.getId()),
+        /*repeat_state_table_idx=*/nullptr);
 
     rewriter.eraseOp(op);
     return success();
@@ -708,17 +783,12 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
 public:
-  WriteBdToBlockWritePattern(
-      MLIRContext *context,
-      llvm::DenseMap<Attribute, memref::GlobalOp> *dedupCache, unsigned *nextId,
-      PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), dedupCache(dedupCache),
-        nextId(nextId) {}
+  WriteBdToBlockWritePattern(MLIRContext *context,
+                             BlockwriteData &blockwriteData,
+                             PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), blockwriteData(blockwriteData) {}
 
-  // Per-pass-run memo + next free name index for blockwrite data globals (see
-  // getOrCreateDataMemref). Owned by the pass; live only during the conversion.
-  llvm::DenseMap<Attribute, memref::GlobalOp> *dedupCache;
-  unsigned *nextId;
+  BlockwriteData &blockwriteData;
 
   LogicalResult
   matchAndRewrite(NpuWriteBdOp op, OpAdaptor adaptor,
@@ -785,8 +855,7 @@ public:
     {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPoint(op->getParentOfType<AIE::RuntimeSequenceOp>());
-      global = getOrCreateDataMemref(rewriter, dev, op.getLoc(), words,
-                                     dedupCache, nextId);
+      global = blockwriteData.getOrCreate(rewriter, op.getLoc(), words);
     }
     auto memref = memref::GetGlobalOp::create(
         rewriter, op.getLoc(), global.getType(), global.getName());
@@ -837,6 +906,7 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addLegalDialect<AIEXDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<arith::ArithDialect>();
+    target.addLegalOp<cf::AssertOp>();
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
     target.addLegalOp<AIE::TileOp>();
@@ -854,37 +924,31 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addDynamicallyLegalOp<NpuMaskPollOp>(
         [&](NpuMaskPollOp op) { return !op.getBuffer(); });
 
-    // Seed, from the device's existing globals, a dedup cache (initial-value ->
-    // global) and the next free "blockwrite_data_<n>" name index (one past the
-    // current max). WriteBdToBlockWritePattern keeps both in sync as it creates
-    // globals, giving O(1) dedup and name-uniquing per BD; seeding the index
-    // past the max keeps names unique by construction. Both are locals holding
-    // raw op handles and must not outlive this conversion.
-    llvm::DenseMap<Attribute, memref::GlobalOp> dataMemrefCache;
-    unsigned nextBlockwriteId = 0;
-    for (auto g : device.getOps<memref::GlobalOp>()) {
-      if (auto initVal = g.getInitialValue())
-        dataMemrefCache.try_emplace(*initVal, g);
-      StringRef suffix = g.getSymName();
-      if (suffix.consume_front("blockwrite_data_")) {
-        unsigned idx;
-        if (!suffix.getAsInteger(10, idx) && idx >= nextBlockwriteId)
-          nextBlockwriteId = idx + 1;
-      }
-    }
+    BlockwriteData blockwriteData(device, "blockwrite_data_");
+    AIE::NamedOpTable names(device);
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<BlockWriteSymToAddr>(&getContext());
+    patterns.insert<BlockWriteSymToAddr>(&getContext(), names);
     patterns.insert<DmaToNpuPattern>(&getContext());
     patterns.insert<DmaWaitToSyncPattern>(&getContext());
-    patterns.insert<MaskWrite32SymToAddr>(&getContext());
-    patterns.insert<MaskPollSymToAddr>(&getContext());
-    patterns.insert<RtpToWrite32Pattern>(&getContext());
-    patterns.insert<Write32SymToAddr>(&getContext());
-    patterns.insert<WriteBdToBlockWritePattern>(&getContext(), &dataMemrefCache,
-                                                &nextBlockwriteId);
+    patterns.insert<MaskWrite32SymToAddr>(&getContext(), names);
+    patterns.insert<MaskPollSymToAddr>(&getContext(), names);
+    patterns.insert<RtpToWrite32Pattern>(&getContext(), names);
+    patterns.insert<Write32SymToAddr>(&getContext(), names);
+    patterns.insert<WriteBdToBlockWritePattern>(&getContext(), blockwriteData);
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+    // The driver converts the illegal ops alone; started from the device, it
+    // would visit every op of the runtime sequences.
+    SmallVector<Operation *> illegal;
+    device.walk([&](Operation *op) {
+      if (target.isIllegal(op))
+        illegal.push_back(op);
+    });
+    ConversionConfig config;
+    config.foldingMode = DialectConversionFoldingMode::Never;
+    config.allowPatternRollback = false;
+    if (failed(applyPartialConversion(illegal, target, std::move(patterns),
+                                      config))) {
       signalPassFailure();
       return;
     }
@@ -894,8 +958,13 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addIllegalOp<NpuPushQueueOp>();
     RewritePatternSet pushPatterns(&getContext());
     pushPatterns.insert<PushQueuetoWrite32Pattern>(&getContext());
-    if (failed(applyPartialConversion(device, target, std::move(pushPatterns))))
+    SmallVector<Operation *> pushes;
+    device.walk([&](NpuPushQueueOp op) { pushes.push_back(op); });
+    if (failed(applyPartialConversion(pushes, target, std::move(pushPatterns),
+                                      config)))
       signalPassFailure();
+
+    eraseDeadArith(device);
   }
 };
 

@@ -5,12 +5,17 @@
 """Compiler-only integration tests using real MLIR and the host C++ compiler."""
 
 import os
+import shutil
 import time
 from pathlib import Path
 
+import aie.utils.configure as configure
 import numpy as np
 import pytest
+from aie.dialects.aiex import npu_address_patch
 from aie.ir import Context, Module
+from aie.iron import Program, Runtime
+from aie.iron.device import NPU2Col1
 from aie.utils.compile import utils as compile_utils
 from aie.utils.compile.jit import _manifest
 from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
@@ -24,23 +29,14 @@ from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In
 from aie.utils.compile.utils import _run_aiecc
 
 
+@pytest.mark.skipif(shutil.which("xclbinutil") is None, reason="xclbinutil")
+@pytest.mark.skipif(not os.path.isdir(configure.peano_install_dir), reason="Peano")
 @pytest.mark.parametrize("emit_shim", [False, True])
-def test_compile_mlir_module_requests_cpp_with_device_outputs(
-    tmp_path, monkeypatch, emit_shim
-):
-    calls = []
-    monkeypatch.setattr(
-        compile_utils.config, "peano_install_dir", lambda: tmp_path / "peano"
-    )
-    monkeypatch.setattr(
-        compile_utils,
-        "_run_aiecc",
-        lambda path, args, *, cwd: calls.append((path, args, cwd)),
-    )
+def test_compile_mlir_module_writes_cpp_beside_device_outputs(tmp_path, emit_shim):
     cpp = tmp_path / "dispatch_gen.cpp"
     xclbin = tmp_path / "design.xclbin"
     compile_utils.compile_mlir_module(
-        "module {}",
+        _source(arg_idx=5),
         xclbin_path=xclbin,
         work_dir=tmp_path,
         npu_cpp_path=cpp,
@@ -48,34 +44,31 @@ def test_compile_mlir_module_requests_cpp_with_device_outputs(
         fold_ddr_addr_offset=False,
         options=["--get=npu_lowered.mlir"],
     )
-    assert len(calls) == 1
-    _, args, cwd = calls[0]
-    assert Path(cwd) == tmp_path
-    assert "--get-xclbin" in args
-    assert f"--xclbin-name={xclbin}" in args
-    assert "--get-npu-cpp" in args
-    assert f"--npu-cpp-name={cpp}" in args
-    assert ("--npu-cpp-emit-dispatch-shim" in args) == emit_shim
-    assert "--get=npu_lowered.mlir" in args
-    assert "--fold-ddr-addr-offset=false" in args
+    assert xclbin.stat().st_size > 0
+    assert (tmp_path / "npu_lowered.mlir").is_file()
+    assert ("AIE_DISPATCH_EXPORT" in cpp.read_text()) == emit_shim
+    if emit_shim:
+        path = compile_dispatch_bridge(tmp_path, ["param", "n"], [np.int32, np.uintp])
+        patches = _words(DispatchBridge(path, ["param", "n"]), 1)[4:].reshape(1, 12)
+        # Unfolded, the patch for buffer 5 carries its offset alone.
+        np.testing.assert_array_equal(patches[:, 10], 16)
+
+
+def _patch_bar_then_baz(
+    *, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7
+):
+    def sequence(baz_value, bar_value):
+        npu_address_patch(addr=119300, arg_idx=0, arg_plus=bar_value)
+        npu_address_patch(addr=119304, arg_idx=0, arg_plus=baz_value)
+
+    return Program(NPU2Col1(), Runtime(sequence, [baz, bar])).resolve_program()
 
 
 @pytest.mark.parametrize("bound", [{}, {"bar": 3}, {"baz": 7}])
 def test_reordered_parameters_reach_generated_instructions(
     tmp_path, npu2_device, bound
 ):
-    from aie.dialects.aiex import npu_address_patch
-    from aie.iron import Program, Runtime
-    from aie.iron.device import NPU2Col1
-
-    def generator(*, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7):
-        def sequence(baz_value, bar_value):
-            npu_address_patch(addr=119300, arg_idx=0, arg_plus=bar_value)
-            npu_address_patch(addr=119304, arg_idx=0, arg_plus=baz_value)
-
-        return Program(NPU2Col1(), Runtime(sequence, [baz, bar])).resolve_program()
-
-    design = CompilableDesign(generator).specialize(**bound)
+    design = CompilableDesign(_patch_bar_then_baz).specialize(**bound)
     _generate_cpp(tmp_path, str(design.generate_mlir()), fold=False)
     library = compile_dispatch_bridge(
         tmp_path, design.dispatch_params, design.dispatch_param_types
@@ -213,27 +206,18 @@ def test_identical_rebuild_does_not_replace_mapped_generation(tmp_path):
     assert not list(tmp_path.glob("dispatch.staging.*"))
 
 
-def test_failed_compile_cleans_linker_companions(tmp_path, monkeypatch):
-    import subprocess
-
-    from aie.utils.compile.jit import _dispatch_compile
-
+def test_failed_link_leaves_no_staging(tmp_path):
+    """A link that fails once the source has compiled takes its staging
+    directory with it, along with whatever it wrote there: on Windows, the
+    .lib and .exp beside the DLL."""
     path = _compile(tmp_path)
     before = path.read_bytes()
-
-    def fail_compile(command, **kwargs):
-        staging = Path(command[command.index("-o") + 1])
-        for suffix in (".dll", ".lib", ".exp"):
-            staging.with_suffix(suffix).write_bytes(b"partial link")
-        raise subprocess.CalledProcessError(1, command, stderr="link failed")
-
-    monkeypatch.setattr(
-        _dispatch_compile,
-        "host_shared_lib_cmd",
-        lambda src, out, **kwargs: ["compiler", str(src), "-o", str(out)],
-    )
-    monkeypatch.setattr(_dispatch_compile.subprocess, "run", fail_compile)
-    with pytest.raises(DispatchCompileError, match="link failed"):
+    with (tmp_path / "dispatch_gen.cpp").open("a") as source:
+        source.write(
+            '\nextern "C" __attribute__((visibility("hidden"))) int aie_missing();\n'
+            'extern "C" int aie_use_missing() { return aie_missing(); }\n'
+        )
+    with pytest.raises(DispatchCompileError, match="aie_missing"):
         compile_dispatch_bridge(tmp_path, ["param", "n"], [np.int32, np.uintp])
     assert path.read_bytes() == before
     assert not list(tmp_path.glob("dispatch.staging.*"))

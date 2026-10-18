@@ -10,22 +10,18 @@
 // npu.blockwrite_values carrying the mem tile's 8-word register block. Two
 // things differ from the shim layout, and are what this test pins:
 //
-//   * buffer_length is 17 bits and shares word 0 with the packet header, so
-//     the runtime length is masked to 0x1ffff and OR'd into a constant
-//     template -- and guarded against 131071, which the shim's full-width
-//     32-bit field needs no guard for;
+//   * buffer_length is 17 bits, so the runtime len is bounded by 131071
+//     elements, which the shim's full-width 32-bit field needs no bound for.
+//     With dims, len must also equal their d0*d1*d2 extent, so buffer_length
+//     is that constant;
 //   * the buffer is a local aie.buffer rather than a host argument, so the
 //     pointer is written by a maskwrite32 into the 19-bit buffer_offset field
 //     instead of by an address patch.
 
 // CHECK-LABEL: aie.runtime_sequence
-// buffer_length = len * elemWidth / addressGranularity, from the runtime %len:
-// CHECK: aiex.npu.assert_bd_field(%arg0) {max = 131071 : i32, min = 1 : i32}
-// CHECK: %[[DIV:.*]] = arith.divui %arg0, %{{.*}}
-// CHECK: %[[BLEN:.*]] = arith.muli %[[DIV]], %{{.*}}
-// The 17-bit buffer_length guard, emitted only because the field is narrow:
-// CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 131071 : i32}
-// CHECK: aiex.npu.blockwrite_values
+// CHECK: cf.assert %{{.*}}, "a runtime DMA length must be in [1:131071] elements"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA length must equal the d0*d1*d2 extent of its dimensions"
+// CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %c4096_i32,
 // The local-buffer pointer goes to the mem tile's 19-bit buffer_offset field.
 // CHECK: aiex.npu.maskwrite32
 // CHECK-NOT: aiex.npu.address_patch

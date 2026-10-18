@@ -42,10 +42,11 @@ def _decode_kwarg(encoded: Any) -> Any:
 
 
 class _TensorPlaceholder:
-    """Sentinel for ``In``/``Out``/``InOut`` params during MLIR generation.
+    """Sentinel for an ``In``/``Out``/``InOut`` param with no type bound.
 
-    Any attribute access raises so generator bodies can't read tensor
-    shape/dtype at compile time (use ``CompileTime[T]`` for that instead).
+    A generator receives a tensor's type, ``np.ndarray[shape, np.dtype[T]]``,
+    when the design is called with that tensor or the type is bound with
+    ``specialize``. Without one, any use of the parameter raises.
     """
 
     def __init__(self, param_name: str) -> None:
@@ -56,8 +57,9 @@ class _TensorPlaceholder:
         suffix = f": {op}" if op else ""
         raise RuntimeError(
             f"Generator parameter {name!r} is a runtime tensor (In/Out/InOut) "
-            f"and is not available at compile time{suffix}. "
-            f"Use CompileTime[T] parameters for shape/dtype information instead."
+            f"with no type bound{suffix}. Call the design with the tensor, or "
+            f"bind its type with specialize({name}=np.ndarray[shape, "
+            f"np.dtype[T]])."
         )
 
     def __getattr__(self, name: str):

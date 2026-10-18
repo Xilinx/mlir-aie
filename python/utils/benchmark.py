@@ -6,17 +6,26 @@
 """Benchmarking helpers for NPU kernel callables.
 
 ``Stats`` keeps the raw sample list and robust statistics (median, MAD,
-p95, coefficient of variation) beside avg/min/max, so callers can report
-jitter, not just central tendency. The numbers are numpy's.
+p95, coefficient of variation, the median's standard error) beside
+avg/min/max, so callers can report jitter, not just central tendency. The
+numbers are numpy's.
+
+``run_iters`` times one callable; ``run_interleaved`` times several against
+each other, round by round, so a drift in the host or the NPU lands on all of
+them alike.
 """
 
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 import subprocess
+import sys
 import time
+from collections.abc import Hashable, Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
@@ -37,6 +46,8 @@ class Stats:
     p95_us: float = 0.0
     cov: float = 0.0  # stdev / mean; 0 for a single sample
     n: int = 0
+    # sqrt(pi / 2) * stdev / sqrt(n), the median's under normal noise; 0 for a single sample
+    median_se_us: float = 0.0
     samples_us: list[float] = field(default_factory=list, repr=False)
 
     @classmethod
@@ -59,6 +70,11 @@ class Stats:
             p95_us=float(np.percentile(s, 95, method="inverted_cdf")),
             cov=float(s.std(ddof=1) / mean) if len(s) > 1 and mean > 0 else 0.0,
             n=len(s),
+            median_se_us=(
+                math.sqrt(math.pi / 2) * float(s.std(ddof=1)) / math.sqrt(len(s))
+                if len(s) > 1
+                else 0.0
+            ),
             samples_us=list(samples_us),
         )
 
@@ -146,6 +162,206 @@ def run_iters(
         e2e=_stats(e2e_samples),
         npu=_stats(npu_samples) if npu_samples else None,
     )
+
+
+# Kernel work delays the timing thread tens of microseconds; another process,
+# under lazy preemption, hundreds.
+CPU_WAIT_US = 100.0
+
+
+def cpu_wait_us() -> float | None:
+    """How long the calling thread has waited, runnable, for a CPU, microseconds in all.
+
+    Read from ``/proc/thread-self/schedstat``.
+
+    Returns:
+        float | None: The run delay so far, or None where the kernel does not
+        report it (not Linux, or schedstats off).
+    """
+    try:
+        return int(Path("/proc/thread-self/schedstat").read_text().split()[1]) / 1e3
+    except OSError:
+        return None
+
+
+class CompletionCores(AbstractContextManager):
+    """While entered, the calling thread held on the CPUs the NPU's completions interrupted.
+
+    A core in deep idle adds its exit latency to long runs but not short ones.
+    A nice-19 spinner on each of those CPUs' SMT siblings keeps the core
+    shallow. Linux only; elsewhere nothing is held.
+
+    Args:
+        before (Mapping[str, int]): ``interrupts()`` before the calls whose
+            completions choose the CPUs.
+    """
+
+    IRQ = "xdna_mailbox"
+
+    def __init__(self, before: Mapping[str, int]):
+        self.cpus: set[int] = set()
+        for irq, count in self.interrupts().items():
+            if count > before.get(irq, 0):
+                self.cpus |= self._cpus(f"/proc/irq/{irq}/effective_affinity_list")
+        # A container's cpuset may leave out the cores the completions
+        # interrupt: only the ones the process may run on can be held.
+        allowed = os.sched_getaffinity(0) if self.cpus else set()
+        self.cpus &= allowed
+        self.siblings: set[int] = set()
+        for cpu in self.cpus:
+            self.siblings |= self._cpus(
+                f"/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list"
+            )
+        self.siblings = (self.siblings & allowed) - self.cpus
+        self._affinity: set[int] | None = None
+        self._spinners: list[subprocess.Popen] = []
+
+    @classmethod
+    def interrupts(cls) -> dict[str, int]:
+        """Each NPU completion interrupt's count over every CPU, by IRQ number.
+
+        Returns:
+            dict[str, int]: Empty where ``/proc/interrupts`` does not exist.
+        """
+        path = Path("/proc/interrupts")
+        if not path.is_file():
+            return {}
+        counts = {}
+        for line in path.read_text().splitlines():
+            fields = line.split()
+            if fields and fields[-1] == cls.IRQ:
+                counts[fields[0].rstrip(":")] = sum(
+                    int(f) for f in fields[1:] if f.isdigit()
+                )
+        return counts
+
+    @staticmethod
+    def _cpus(path: str) -> set[int]:
+        cpus = set()
+        for part in Path(path).read_text().strip().split(","):
+            first, _, last = part.partition("-")
+            cpus.update(range(int(first), int(last or first) + 1))
+        return cpus
+
+    def __enter__(self) -> CompletionCores:
+        try:
+            if self.cpus:
+                self._affinity = os.sched_getaffinity(0)
+                os.sched_setaffinity(0, self.cpus)
+            for cpu in sorted(self.siblings):
+                spinner = subprocess.Popen([sys.executable, "-c", "while True: pass"])
+                self._spinners.append(spinner)
+                os.sched_setaffinity(spinner.pid, {cpu})
+                os.setpriority(os.PRIO_PROCESS, spinner.pid, 19)
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        for spinner in self._spinners:
+            spinner.kill()
+            spinner.wait()
+        self._spinners.clear()
+        if self._affinity is not None:
+            os.sched_setaffinity(0, self._affinity)
+            self._affinity = None
+
+
+def run_interleaved(
+    fns: Sequence[Callable[[], object]],
+    *,
+    rounds: int = 8,
+    calls: int = 50,
+    settle: int = 2,
+    cutoff: float = 1.5,
+    groups: Sequence[Hashable | None] | None = None,
+    fastest_us: float = math.inf,
+    completion_cores: bool = False,
+    max_cpu_wait_us: float = CPU_WAIT_US,
+) -> list[Stats]:
+    """Time callables against each other in interleaved rounds.
+
+    Each round runs every callable still timed ``calls`` times in turn and
+    keeps each one's median call. A call's time is the ``npu_time`` its
+    return value carries (``run_iters``'s rule), else the time around it.
+    Each callable is called twice first, untimed, so first-run setup lands on
+    nobody's figure.
+
+    Args:
+        fns: The callables, each taking no arguments.
+        rounds: Rounds to time.
+        calls: Calls per callable per round.
+        settle: Rounds after which `cutoff` applies.
+        cutoff: With `groups`, a group whose slowest callable takes more than
+            `cutoff` times the fastest group's is timed no further; its
+            figure is from the rounds it had.
+        groups: Per callable, the setting it measures (callables of one group
+            are stopped together), or None for one never stopped. Every
+            callable is timed every round if not given.
+        fastest_us: The fastest group's slowest median from callables timed
+            before these, which `cutoff` also measures against.
+        completion_cores: Hold the timing thread on the CPUs the callables'
+            NPU completions interrupt (`CompletionCores`), for callables that
+            dispatch to the NPU.
+        max_cpu_wait_us: The most a callable's median call may wait for a CPU
+            in its median round before the figures are refused; ``math.inf``
+            accepts figures from a busy host.
+
+    Returns:
+        list[Stats]: Per callable, the statistics of its per-round medians.
+
+    Raises:
+        RuntimeError: A callable's median call waited for a CPU past
+            `max_cpu_wait_us` (`cpu_wait_us`) in its median round: the host was
+            busy enough to hold the timing thread off its core, so the
+            figures are refused. Measure with the host otherwise idle.
+        ValueError: `rounds` or `calls` is below one, or `groups` is not one
+            per callable.
+    """
+    if rounds < 1 or calls < 1:
+        raise ValueError(f"{rounds} rounds of {calls} calls: both must be positive")
+    if groups is not None and len(groups) != len(fns):
+        raise ValueError(f"{len(groups)} groups for {len(fns)} callables")
+    for fn in fns:
+        fn()
+    before = CompletionCores.interrupts()
+    for fn in fns:
+        fn()
+    medians: list[list[float]] = [[] for _ in fns]
+    waited: list[list[float]] = [[] for _ in fns]
+    live = set(range(len(fns)))
+    with CompletionCores(before) if completion_cores else nullcontext():
+        for r in range(1, rounds + 1):
+            for i in sorted(live):
+                times, waits = [], []
+                for _ in range(calls):
+                    wait = cpu_wait_us()
+                    start = time.perf_counter()
+                    ret = fns[i]()
+                    elapsed_us = (time.perf_counter() - start) * 1e6
+                    waited_after = cpu_wait_us()
+                    if wait is not None and waited_after is not None:
+                        waits.append(waited_after - wait)
+                    npu_ns = _extract_npu_time_ns(ret)
+                    times.append(elapsed_us if npu_ns is None else npu_ns / 1e3)
+                medians[i].append(float(np.median(times)))
+                waited[i].append(float(np.median(waits)) if waits else 0.0)
+            if groups is None or r < settle:
+                continue
+            slowest: dict[Hashable | None, float] = {}
+            for i in live:
+                us = float(np.median(medians[i]))
+                slowest[groups[i]] = max(slowest.get(groups[i], 0.0), us)
+            bar = cutoff * min([fastest_us, *slowest.values()])
+            live = {i for i in live if groups[i] is None or slowest[groups[i]] <= bar}
+    late = max(float(np.median(w)) for w in waited)
+    if late > max_cpu_wait_us:
+        raise RuntimeError(
+            f"a callable's median call waited {late:.0f} us for a CPU in its "
+            "median round; time with the host otherwise idle"
+        )
+    return [Stats.from_samples(m) for m in medians]
 
 
 def print_benchmark(result: BenchmarkResult) -> None:

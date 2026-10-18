@@ -79,7 +79,7 @@ These classes live under `aie.iron`:
 | `DmaEndpoint(tile, direction, channel)` | One DMA channel of one tile.  `flow.endpoint(tile)` is the end of a `Flow` on `tile`, whose channel the compiler may assign | [`python/iron/dataflow/tile_dma.py`](../../../python/iron/dataflow/tile_dma.py) |
 | `TileDma(tile, channels=[DmaChannel(...)])` | `aie.mem` (compute), `aie.memtile_dma` (memtile), or `aie.shim_dma` (shim) — picked by tile type | [`python/iron/dataflow/tile_dma.py`](../../../python/iron/dataflow/tile_dma.py) |
 | `DmaChannel(direction, channel, bds=[Bd(...)], pad_value=0, repeat_count=0, out_of_order=False, loop=True)` | One `@dma(dir, ch)` chain inside the TileDma's region.  `channel` is an index or a `DmaEndpoint` such as `flow.endpoint(tile)` | same |
-| `Bd(buffer, offset=0, length=None, sizes=[], strides=[], acquires=[...], releases=[...], next=None\|"self"\|int, packet=None, bd_id=None, pad_dimensions=None, iteration=None, out_of_order_id=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd` | same |
+| `Bd(buffer, tap=None, acquires=[...], releases=[...], next=None\|"self"\|int, packet=None, bd_id=None, iteration=None, out_of_order_id=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd`.  `tap` is a `TensorAccessPattern` over `buffer` (default: the whole buffer) | same |
 | `BdIteration(size, stride, current=0)` | The `iteration` state of one `aie.dma_bd`: the BD's base advances by `stride` elements per execution and wraps after `size` | same |
 | `Acquire(lock, value=1, greater_equal=True)` | `aie.use_lock(..., AcquireGreaterEqual\|Acquire)` at BD start | same |
 | `Release(lock, value=1)` | `aie.use_lock(..., Release)` at BD end | same |
@@ -118,10 +118,12 @@ extra descriptors:
 * `iteration=BdIteration(size, stride)` lets one BD walk `size`
   sub-buffers, advancing its base by `stride` elements on each execution,
   where an unrolled chain would need `size` BDs.  Values are in elements;
-  the lowering applies the hardware's `-1` bias.  See
+  the lowering applies the hardware's `-1` bias.  It takes the BD's
+  outermost dimension, so in a runtime-sequence `task` its `tap` gets one
+  dimension fewer.  See
   [`test/npu-xrt/bd_iteration`](../../../test/npu-xrt/bd_iteration/bd_iteration.py).
-* `pad_dimensions=[(before, after), ...]` (mem tile only) pads each
-  dimension of the access pattern with `DmaChannel.pad_value`.  See
+* A padded `tap` (`tap.pad([(before, after), ...])`, mem tile only) pads
+  each dimension of the access pattern with `DmaChannel.pad_value`.  See
   [`dma_padding`](../../../programming_examples/basic/dma_padding/).
 * `DmaChannel(..., out_of_order=True)` on an S2MM channel places each
   arriving packet in the BD whose `bd_id` matches the out-of-order id in

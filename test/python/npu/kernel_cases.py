@@ -22,13 +22,16 @@ marks kernels whose source exists only for AIE2P.
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron.kernels import FLM_GEMMA4_E4B_DECODE
-from cases import Case
+from cases import FLOAT_BASE, Case
 from ml_dtypes import bfloat16
 
 _bf16 = dict(dtype=bfloat16)
 _mm = dict(dim_m=64, dim_k=32, dim_n=64)
 _mm_bf16 = dict(**_mm, input_dtype=bfloat16, output_dtype=np.float32)
 _mm_bfp = dict(dim_m=64, dim_k=64, dim_n=64)  # the block_datatypes examples' tile
+_GEMMA_MERGE = dict(
+    audio_token=258881, image_token=258880, audio_at=2048, vision_at=2560
+)
 # The tile amd/IRON's mm operator builds: square, and B stored transposed.
 _mm_bf16_col_maj = dict(
     dim_m=64,
@@ -62,8 +65,19 @@ def check(factory: str, kwargs: dict | None = None, calls: int = 4, **opts) -> C
 CASES: list[Case] = [
     check("zero", dict(tile_size=64), smoke=True),
     check("zero", dict(tile_size=64, dtype=bfloat16), smoke=True),
+    # The 64-element tiles above are four vector stores, too few to time.
+    Case("zero", dict(tile_size=4096), calls=4),
     check("zero", dict(tile_size=64, dtype=v8bfp16ebs8), smoke=True, devices=("npu2",)),
     check("zero", dict(tile_size=68, dtype=np.uint8), calls=3, tag="vector-tail"),
+    # Three 128-bit stores and four bytes past the last full vector.
+    check("zero", dict(tile_size=116, dtype=np.uint8), calls=3, tag="vector-tail"),
+    check("zero", dict(tile_size=20, dtype=np.float32), calls=3, tag="vector-tail"),
+    # A runtime window per call, from starts of every alignment up through
+    # elements, words and 128-bit stores to the native-width body.
+    *[
+        check("zero", dict(tile_size=4 * w, dtype=dt, window=w), calls=4, tag="window")
+        for dt, w in ((np.uint8, 101), (np.int16, 51), (np.float32, 21))
+    ],
     check(
         "zero",
         dict(tile_size=34, dtype=np.int16, vectorized=False),
@@ -108,6 +122,12 @@ CASES: list[Case] = [
     Case("mul", calls=256, data_cases=IEEE_FLOAT),
     Case("relu", calls=16, smoke=True),
     Case("relu", calls=256),
+    # clamp's bounds are bf16 bits: -0.75 and 1.25 cut random data on both sides.
+    Case("clamp", calls=16, scalars=(0xBF40, 0x3FA0), smoke=True),
+    Case("clamp", calls=256, scalars=(0xBF40, 0x3FA0), data_cases=IEEE_FLOAT),
+    check("clamp", scalars=(0x3F00, 0x3FC0), tag="one-sign", smoke=True),
+    check("clamp", scalars=(0x3F80, 0x3F80), tag="one-point"),
+    check("clamp", dict(tile_size=32), scalars=(0xBF40, 0x3FA0), tag="edge-one-vector"),
     # reduce
     Case("reduce_add", calls=16, smoke=True),
     Case("reduce_add", calls=256),
@@ -129,9 +149,44 @@ CASES: list[Case] = [
     Case("reduce_max", _bf16, calls=256),
     check("reduce_max", dict(tile_size=16), tag="edge-one-vector"),
     check("reduce_max", dict(tile_size=32, dtype=bfloat16), tag="edge-one-vector"),
+    Case("argmax", calls=16, scalars=(0,), smoke=True),
+    Case("argmax", calls=256, scalars=(0,)),
+    Case(
+        "argmax",
+        _bf16,
+        calls=16,
+        scalars=(0,),
+        data_cases=(*FLOAT_BASE, "min", "nan_inf"),
+        smoke=True,
+    ),
+    Case("argmax", _bf16, calls=256, scalars=(0,)),
+    check("argmax", scalars=(4096,), tag="offset", smoke=True),
+    check("argmax", dict(vectorized=False), scalars=(0,), tag="scalar"),
+    check("argmax", dict(tile_size=16), scalars=(0,), tag="edge-one-vector"),
+    check("argmax", dict(tile_size=1000), scalars=(0,), tag="edge-tail", smoke=True),
+    check("argmax", dict(tile_size=5), scalars=(0,), tag="edge-under-one-vector"),
+    check(
+        "argmax",
+        dict(tile_size=1000, dtype=bfloat16),
+        scalars=(0,),
+        tag="edge-tail",
+        smoke=True,
+    ),
+    check(
+        "argmax",
+        dict(tile_size=32, dtype=bfloat16),
+        scalars=(0,),
+        tag="edge-one-vector",
+    ),
+    Case("argmax_combine", calls=16, smoke=True),
+    # The records are int32 either way, so the name needs the value dtype.
+    Case("argmax_combine", _bf16, calls=16, tag="bfloat16-values", smoke=True),
     # activation
     Case("gelu", calls=16, smoke=True),
     Case("gelu", calls=256),
+    Case(
+        "gelu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
+    ),
     Case("silu", calls=16, smoke=True),
     Case(
         "silu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
@@ -174,6 +229,42 @@ CASES: list[Case] = [
     # the pipelined path.
     check("softmax", dict(tile_size=32), tag="short-trip", smoke=True),
     check("softmax", dict(tile_size=160), tag="min-pipelined", smoke=True),
+    Case(
+        "softmax",
+        dict(accurate_exp2=True),
+        calls=16,
+        tag="accurate",
+        smoke=True,
+    ),
+    check(
+        "softmax",
+        dict(tile_size=32, accurate_exp2=True),
+        tag="accurate-short",
+        smoke=True,
+    ),
+    # The float32 input path: each option, a soft-capped attention row (cap
+    # 50, masked, with an addend), and the ends of the cap's range.
+    *[
+        check(
+            "softmax",
+            dict(tile_size=n, input_dtype=np.float32, **kw),
+            calls=8,
+            tag="f32",
+            smoke=smoke,
+        )
+        for n, kw, smoke in (
+            (32, {}, True),
+            (1024, {}, False),
+            (32, dict(soft_cap=50.0), False),
+            (1024, dict(soft_cap=50.0), False),
+            (32, dict(masked=True), False),
+            (160, dict(addend=True), False),
+            (32, dict(soft_cap=50.0, masked=True, addend=True), True),
+            (1024, dict(soft_cap=30.0, masked=True, addend=True), False),
+            (32, dict(soft_cap=2.0**-100, masked=True), False),
+            (1024, dict(soft_cap=2.0**10, addend=True), False),
+        )
+    ],
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     # 160 is a multiple of the kernel's 32-element step but not of the 128 its
@@ -191,7 +282,7 @@ CASES: list[Case] = [
     # Sized kernels retaining their runtime-count ABI.
     check("add_sized", calls=16, smoke=True),
     check("mul_sized", calls=16, smoke=True),
-    check("relu_sized", calls=16, smoke=True),
+    Case("relu_sized", calls=16, smoke=True),
     check("silu_sized", calls=16, smoke=True),
     # Same remainder pass as the leaky_relu case above on aie2p: 160 steps the
     # 32-lane loop five times, where its unrolled body consumes four. On aie2,
@@ -199,7 +290,14 @@ CASES: list[Case] = [
     check("silu_sized", dict(tile_size=160), tag="unroll-tail", smoke=True),
     # AIE2 silu runs the same 64-element trips as gelu below.
     check("silu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
-    check("gelu_sized", calls=16, smoke=True),
+    check(
+        "silu_sized",
+        dict(tile_size=160, use_lut=True),
+        tag="lut-unroll-tail",
+        devices=("npu2",),
+        smoke=True,
+    ),
+    Case("gelu_sized", calls=16, smoke=True),
     # On aie2p gelu's 32-lane loop is unrolled four ways too, so it has the
     # same remainder pass and the same need for a size that is not a multiple
     # of it. On aie2, as for silu, 160 leaves a remainder after two trips.
@@ -207,6 +305,13 @@ CASES: list[Case] = [
     # AIE2 gelu takes 64 elements per trip and loads the next trip's input
     # ahead: 96 runs a single trip, reloading its own input, then the remainder.
     check("gelu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
+    check(
+        "gelu_sized",
+        dict(tile_size=160, use_lut=True),
+        tag="lut-unroll-tail",
+        devices=("npu2",),
+        smoke=True,
+    ),
     *[
         check(name, dict(tile_size=32), tag="edge-tiny", smoke=True)
         for name in ("add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized")
@@ -221,17 +326,105 @@ CASES: list[Case] = [
     # 272 is a multiple of the kernel's 16-element step but not of the 128 its
     # unrolled loop consumes per pass, so the remainder pass runs.
     check("convert_copy", dict(tile_size=272), tag="unroll-tail", smoke=True),
+    # amd/IRON's limbs operator splits rows of 160 and 320.
+    Case("limbs_f32", calls=16, smoke=True),
+    Case("limbs_f32", calls=256),
+    Case("limbs_f32", dict(tile_size=160), calls=16),
+    check("limbs_f32", dict(tile_size=32), tag="edge-one-vector"),
+    # activation, after the float32 split the log builds on. The offset is a
+    # log-mel spectrogram's floor; amd/IRON's audio front end adds 1e-3.
+    Case("log_f32", calls=16, scalars=(0.0,), smoke=True),
+    Case("log_f32", calls=256, scalars=(1e-3,)),
+    check("log_f32", scalars=(1e-3,), tag="mel-floor", smoke=True),
+    check("log_f32", dict(tile_size=128), scalars=(1e-3,), tag="mel-row"),
+    check("log_f32", dict(tile_size=32), scalars=(0.0,), tag="edge-one-vector"),
+    # eltwise, the spectrum's magnitude the log-mel starts from; amd/IRON's
+    # frames hold 320 bins.
+    Case("magnitude_f32", calls=16, smoke=True),
+    Case("magnitude_f32", calls=256),
+    check("magnitude_f32", dict(tile_size=32), tag="edge-one-vector"),
     # On AIE2 a row this short takes the loop that is not software-pipelined.
     *[
         check(name, dict(tile_size=64), tag="short-row", **kw)
         for name, kw in (("axpy", dict(scalars=(2.5,))), ("convert_copy", {}))
     ],
+    Case("affine_cast", calls=16, smoke=True),
+    # One row and one 16-lane column block: each loop runs a single trip.
+    check("affine_cast", dict(rows=1, cols=16), tag="edge-tiny", smoke=True),
+    check("affine_cast", dict(rows=8, cols=256), tag="wide"),
     Case("expand", calls=16, smoke=True),
     Case("expand", calls=256),
     # AIE2 builds a group's scale once when a group spans blocks; 96 leaves one
     # block of each group unpaired.
     check("expand", dict(tile_size=1024, group_size=64), calls=16, tag="group-64"),
     check("expand", dict(tile_size=768, group_size=96), calls=16, tag="group-96"),
+    # amd/IRON's GatherWords at Llama 3.2 1B's embedding table (one id a
+    # decode step), and a gather of many rows. The table sits at 0x240000040.
+    Case(
+        "row_addresses",
+        dict(rows=1, table_rows=128256, row_bytes=4096),
+        calls=16,
+        scalars=(0x40, 0x12),
+        smoke=True,
+    ),
+    Case(
+        "row_addresses",
+        dict(rows=64, table_rows=1000, row_bytes=260),
+        calls=16,
+        scalars=(0x40, 0x12),
+    ),
+    # Rows past 0xFFFFF000 carry into the high word, at bit 48 the high word
+    # keeps its 16 bits, and lo and hi are read as unsigned (an odd lo shows
+    # the low word rounded down to 4 bytes).
+    check(
+        "row_addresses",
+        dict(rows=16, table_rows=16, row_bytes=4096),
+        scalars=(0x1FFFF000, 3),
+        tag="carry",
+        smoke=True,
+    ),
+    check(
+        "row_addresses",
+        dict(rows=16, table_rows=16, row_bytes=4096),
+        scalars=(0x40, 0x80000),
+        tag="bit-48",
+    ),
+    check(
+        "row_addresses",
+        dict(rows=16, table_rows=16, row_bytes=4096),
+        scalars=(-3, -1),
+        tag="unsigned-words",
+    ),
+    # Offsets past 4 GiB take the 64-bit multiply.
+    check(
+        "row_addresses",
+        dict(rows=16, table_rows=1 << 20, row_bytes=4100),
+        scalars=(0x40, 0x12),
+        tag="past-4-gib",
+    ),
+    # amd/IRON's Merge at EmbeddingGemma 2's placeholders and rows: a
+    # 2048-token prompt in blocks of 64, the counts carried across them.
+    Case("merge_rows", _GEMMA_MERGE, calls=32, smoke=True),
+    Case("merge_rows", dict(block=32, **_GEMMA_MERGE), calls=6),
+    check("merge_rows", _GEMMA_MERGE, calls=1, tag="one-block"),
+    # The towers' rows overlapping each other and the text's.
+    check(
+        "merge_rows",
+        dict(audio_token=0, image_token=1, audio_at=0, vision_at=40),
+        calls=2,
+        tag="overlap",
+    ),
+    # EmbeddingGemma 2's image budget: 42x57 patches in 10 blocks, padded.
+    Case("patch_positions", {}, calls=10, scalars=(10, 672, 912), smoke=True),
+    Case("patch_positions", dict(cores=8), calls=8, scalars=(8, 480, 1056)),
+    Case("patch_positions", dict(block=32), calls=4, scalars=(4, 96, 48)),
+    check("patch_positions", {}, calls=9, scalars=(9, 768, 768), tag="whole"),
+    # Every row padding: a size past the blocks, not whole patches, not whole
+    # windows, negative.
+    check("patch_positions", {}, calls=1, scalars=(1, 288, 288), tag="past-count"),
+    check("patch_positions", {}, calls=1, scalars=(1, 48, 40), tag="part-patch"),
+    check("patch_positions", {}, calls=1, scalars=(1, 64, 48), tag="part-window"),
+    check("patch_positions", {}, calls=1, scalars=(1, -48, 48), tag="negative"),
     Case("transpose", dict(subtile=4), calls=16, smoke=True),
     Case("transpose", dict(subtile=8), calls=16, smoke=True),
     Case("transpose", dict(subtile=4, dtype=np.uint8), calls=16, smoke=True),
@@ -252,8 +445,8 @@ CASES: list[Case] = [
         dict(**_mm, input_dtype=np.int8, output_dtype=np.int32),
         calls=16,
     ),
-    # Peano miscompiles the fully unrolled int8 -> int32 K loop from K = 416,
-    # so mm_aie2p.h rolls K up there; the 16x16 tile still unrolls.
+    # mm_aie2p.h rolls the int8 -> int32 K loop from K = 416; the 16x16 tile
+    # still unrolls. The same long-K shapes cover mm_aie2.h.
     *[
         check(
             "mm",
@@ -265,7 +458,6 @@ CASES: list[Case] = [
                 input_dtype=np.int8,
                 output_dtype=np.int32,
             ),
-            devices=("npu2",),
         )
         for m, k, n, layout in (
             (16, 512, 32, {}),
@@ -373,6 +565,174 @@ CASES: list[Case] = [
         calls=4,
         devices=("npu2",),
     ),
+    # IRON's aie2 flm tiles at N16 and N32 (8x8x8, CT_K = N): N16 unrolls
+    # the mmul's i and j loops, N32 rolls them.
+    *[
+        Case(
+            "fused_mm",
+            dict(
+                dim_m=64,
+                band_m=64,
+                dim_k=128,
+                dim_n=n,
+                chunk_k=n,
+                out_chunk=512,
+                mmul_shape=(8, 8, 8),
+            ),
+            calls=4,
+            devices=("npu1",),
+        )
+        for n in (16, 32)
+    ],
+    # B stored transposed, as IRON's aie2 flm GEMM reads a checkpoint's
+    # (n, k) weights: its N64 k step, then two k chunks and two bands at
+    # N32, an N16 tile whose i and j loops unroll, and a CT_K below N. On
+    # aie2p these run on bf16 macs too.
+    Case(
+        "fused_mm",
+        dict(
+            dim_m=16,
+            band_m=16,
+            dim_k=128,
+            dim_n=64,
+            chunk_k=128,
+            out_chunk=512,
+            mmul_shape=(8, 8, 8),
+            b_col_maj=True,
+        ),
+        calls=4,
+        devices=("npu1", "npu2"),
+    ),
+    # The same tile with the FFN activations fused into its drain.
+    *[
+        Case(
+            "fused_mm",
+            dict(
+                dim_m=16,
+                band_m=16,
+                dim_k=128,
+                dim_n=64,
+                chunk_k=128,
+                out_chunk=512,
+                mmul_shape=(8, 8, 8),
+                b_col_maj=True,
+                epilogue=mode,
+            ),
+            calls=4,
+            devices=("npu1", "npu2"),
+            data_cases=("random", "zeros", "ones", "alternating"),
+        )
+        for mode in ("silu", "gelu")
+    ],
+    *[
+        check(
+            "fused_mm",
+            dict(
+                dim_m=32,
+                band_m=16,
+                dim_k=dim_k,
+                dim_n=n,
+                chunk_k=chunk_k,
+                out_chunk=256,
+                mmul_shape=(8, 8, 8),
+                b_col_maj=True,
+            ),
+            devices=("npu1", "npu2"),
+        )
+        for dim_k, n, chunk_k in ((256, 32, 128), (64, 16, 16), (128, 64, 64))
+    ],
+    # The B^T epilogue rejoins each block's column halves: with an
+    # activation and a clamp, and at r = 4, where a half is one aie2 vector.
+    *[
+        check(
+            "fused_mm",
+            dict(
+                dim_m=32,
+                band_m=16,
+                dim_k=64,
+                dim_n=16,
+                chunk_k=16,
+                out_chunk=256,
+                mmul_shape=shape,
+                b_col_maj=True,
+                **epilogue,
+            ),
+            devices=devices,
+            data_cases=("random", "zeros", "ones", "alternating"),
+        )
+        for shape, epilogue, devices in (
+            (
+                (8, 8, 8),
+                dict(epilogue="silu", clamp=(-0.125, 0.75)),
+                ("npu1", "npu2"),
+            ),
+            ((4, 8, 8), dict(epilogue="gelu"), ("npu1",)),
+        )
+    ],
+    # B^T on aie2p's bfp16 macs, converted on the core: IRON's two aie2p flm
+    # tiles, the walks above, and the overlay's every-mode floor tile. A bf16
+    # B is 16 KiB at N64/CT_K128, so those run 32 rows to fit L1's banks.
+    *[
+        Case(
+            "fused_mm",
+            dict(
+                dim_m=dim_m,
+                band_m=band_m,
+                dim_k=dim_k,
+                dim_n=n,
+                chunk_k=dim_k,
+                out_chunk=512,
+                b_col_maj=True,
+                emulate_bf16_mmul_with_bfp16=True,
+            ),
+            calls=4,
+            devices=("npu2",),
+        )
+        for dim_m, band_m, dim_k, n in ((32, 32, 128, 64), (64, 64, 32, 128))
+    ],
+    *[
+        check(
+            "fused_mm",
+            dict(
+                dim_m=32,
+                band_m=16,
+                dim_k=dim_k,
+                dim_n=n,
+                chunk_k=chunk_k,
+                out_chunk=256,
+                b_col_maj=True,
+                emulate_bf16_mmul_with_bfp16=True,
+            ),
+            devices=("npu2",),
+        )
+        for dim_k, n, chunk_k in ((256, 32, 128), (64, 16, 16), (128, 64, 64))
+    ],
+    check(
+        "fused_mm",
+        dict(
+            dim_m=32,
+            band_m=32,
+            dim_k=128,
+            dim_n=64,
+            chunk_k=128,
+            out_chunk=512,
+            epilogue="gelu",
+            epilogue_modes=("none", "gelu", "silu", "sigmoid"),
+            rounding="floor",
+            gelu="bf16_steps",
+            clamp=(-0.125, 0.75),
+            b_col_maj=True,
+            emulate_bf16_mmul_with_bfp16=True,
+        ),
+        devices=("npu2",),
+        data_cases=("random", "zeros", "ones", "alternating"),
+    ),
+    # Row-major B on the same emulated macs.
+    check(
+        "fused_mm",
+        dict(dim_k=48, emulate_bf16_mmul_with_bfp16=True),
+        devices=("npu2",),
+    ),
     Case(
         "fused_mm",
         dict(
@@ -433,13 +793,13 @@ CASES: list[Case] = [
         devices=("npu2",),
         tag="i3",
     ),
-    check("flm_gemma4_prefill_finalize", devices=("npu2",), smoke=True),
-    check("flm_gemma4_prefill_finalize", dict(head_dim=256), devices=("npu2",)),
+    Case("flm_gemma4_prefill_finalize", calls=4, devices=("npu2",), smoke=True),
+    Case("flm_gemma4_prefill_finalize", dict(head_dim=256), calls=4, devices=("npu2",)),
     Case("flm_gemma4_glu_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_pli_gelu_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_rope_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_rope_core", dict(sliding_window=True), calls=4, devices=("npu2",)),
-    check("flm_gemma4_v_norm_core", devices=("npu2",), smoke=True),
+    Case("flm_gemma4_v_norm_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_rms_residual_core", calls=4, devices=("npu2",), smoke=True),
     check(
         "flm_gemma4_rms_residual_core",
@@ -496,8 +856,13 @@ CASES: list[Case] = [
         dict(geometry=FLM_GEMMA4_E4B_DECODE),
         devices=("npu2",),
     ),
-    check("flm_gemma4_prefill_round_begin", devices=("npu2",), smoke=True),
-    check("flm_gemma4_prefill_round_begin", dict(head_dim=256), devices=("npu2",)),
+    Case("flm_gemma4_prefill_round_begin", calls=4, devices=("npu2",), smoke=True),
+    Case(
+        "flm_gemma4_prefill_round_begin",
+        dict(head_dim=256),
+        calls=4,
+        devices=("npu2",),
+    ),
     # Mask positions (inner_k, inner_q, inner_k_current): the global build's
     # chunk crosses the causal edge; the sliding-window one, with a window of
     # 8, crosses both edges.
@@ -694,7 +1059,7 @@ CASES: list[Case] = [
     Case("threshold", calls=16, scalars=(100, 255, 0), smoke=True),
     check("threshold", calls=16, scalars=(100, 255, 2), tag="trunc"),
     check("threshold", calls=16, scalars=(100, 255, 4), tag="tozero-inv"),
-    check("threshold", dict(dtype=np.int16), calls=16, scalars=(100, 255, 1)),
+    Case("threshold", dict(dtype=np.int16), calls=16, scalars=(100, 255, 1)),
     Case("bitwise_or", calls=16, smoke=True),
     Case("bitwise_and", calls=16, smoke=True),
     check("bitwise_or", dict(line_width=64), tag="edge-one-vector"),
@@ -742,6 +1107,54 @@ CASES: list[Case] = [
     # that is only the tail.
     check("rgba2hue", dict(line_width=288), tag="tail"),
     check("rgba2hue", dict(line_width=32), tag="one-vector"),
+    # A phone photo's width to EmbeddingGemma 2's image budget: a 19-tap
+    # window, 21 outputs to a chunk; core 11's chunks end in the partial 43rd.
+    Case("resample_peak", calls=2, scalars=(4032, 912, 11, 4), smoke=True),
+    # A 49-tap window on one core.
+    Case("resample_peak", dict(cores=1), calls=2, scalars=(8000, 672, 0, 80)),
+    # A patch's 16 outputs to a chunk, as amd/IRON's Resample reads them.
+    Case("resample_peak", dict(words=356, slots=16), scalars=(3024, 672, 5, 3)),
+    check("resample_peak", calls=2, scalars=(17, 1008, 4, 2), tag="upsample"),
+    # A peak of 0: a core past the outputs, too few chunks, no window fits.
+    check("resample_peak", calls=2, scalars=(1, 48, 15, 1), tag="idle-core"),
+    check("resample_peak", calls=2, scalars=(4032, 912, 0, 2), tag="too-few-chunks"),
+    check(
+        "resample_peak",
+        dict(slots=22),
+        calls=2,
+        scalars=(4032, 912, 0, 4),
+        tag="slots-past-fit",
+    ),
+    Case("resample_quantize", calls=4, scalars=(4032, 912, 11, 4), smoke=True),
+    # Every chunk of the 49-tap table: 74 full, a partial, 5 empty.
+    Case("resample_quantize", dict(cores=1), calls=80, scalars=(8000, 672, 0, 80)),
+    Case(
+        "resample_quantize",
+        dict(words=356, slots=16),
+        calls=3,
+        scalars=(3024, 672, 5, 3),
+    ),
+    # Upsampled: a 5-tap window, the partial 21st chunk second.
+    check("resample_quantize", calls=2, scalars=(17, 1008, 4, 2), tag="upsample"),
+    check(
+        "resample_quantize",
+        dict(cores=2),
+        calls=8,
+        scalars=(1, 48, 0, 8),
+        tag="one-sample",
+    ),
+    # Every header [-1, window, 0, 0].
+    check(
+        "resample_quantize", calls=2, scalars=(4032, 912, 0, 2), tag="too-few-chunks"
+    ),
+    check("resample_quantize", calls=2, scalars=(-5, 912, 0, 4), tag="negative"),
+    check(
+        "resample_quantize",
+        dict(slots=22),
+        calls=2,
+        scalars=(4032, 912, 0, 4),
+        tag="slots-past-fit",
+    ),
     # conv: full-range int8 data (the kernels saturate, so `input_limit` only
     # keeps the int32 accumulator safe); the shift puts random sums around
     # uint8's range (64 channels x 127^2 ~ 2**20 >> 12 for k1; 9x that >> 15
@@ -1045,7 +1458,7 @@ CASES: list[Case] = [
         scalars=(56, 16, 24, 3, 3, 2, 9, 0),
         tag="bottom-row",
     ),
-    check(
+    Case(
         "bn_conv2dk3",
         dict(input_width=112, input_channels=32, output_channels=16),
         calls=8,
@@ -1467,7 +1880,7 @@ CASES: list[Case] = [
     Case("mul_add", calls=16, scalars=(0,), tag="add", smoke=True),
     # transformer blocks: one row per call
     Case("rms_norm", dict(cols=1024), calls=16, smoke=True),
-    check("rms_norm_eps", dict(cols=1024), calls=16, scalars=(1e-5,), smoke=True),
+    Case("rms_norm_eps", dict(cols=1024), calls=16, scalars=(1e-5,), smoke=True),
     # 200 is too short for the pipelined loops and 1000 has an odd chunk
     # count; both end in a scalar tail.
     check("rms_norm", dict(cols=200), calls=16, tag="row-tail"),
@@ -1631,7 +2044,7 @@ CASES: list[Case] = [
         calls=16,
         tag="odd-chunk-tail",
     ),
-    # overflowed its declared stack on three builds when every channel unrolled
+    # needed a stack above the default on three builds when every channel unrolled
     check(
         "dwconv1d_channels_last",
         dict(channels=512),
@@ -1680,6 +2093,13 @@ CASES: list[Case] = [
     ),
     # ffn gate activation
     Case("silu_sized", dict(tile_size=4096), calls=16, tag="llama-prefill"),
+    Case(
+        "silu_sized",
+        dict(tile_size=4096, use_lut=True),
+        calls=16,
+        tag="llama-prefill-lut",
+        devices=("npu2",),
+    ),
     Case("silu_sized", dict(tile_size=1024), calls=16, tag="llama-decode"),
     # ffn gate product and attention-score scaling
     Case("mul_sized", dict(tile_size=4096), calls=16, tag="llama-prefill-ffn"),
@@ -1801,11 +2221,12 @@ CASES += [
     ),
     check("mv", dict(dim_m=32, dim_k=32), smoke=True),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
-    check("mha", smoke=True),
+    Case("mha", calls=4, smoke=True),
+    Case("mha", dict(f32_scores=True), calls=4, smoke=True, devices=("npu2",)),
     # ...and its P*V product, mha.cc's own 8x8x8 expansion. Same tile, but a
     # different micro-tile and so a different blocked operand order, which is
     # the part a shared case could not check.
-    check("mha", dict(pv=True), smoke=True),
+    Case("mha", dict(pv=True), calls=4, smoke=True),
     # The toolkit's online softmax over one key block: params is (key block,
     # query block), scalars the two sequence lengths. The padded diagonal
     # block takes every branch the full one skips (the causal mask, masked
@@ -1832,6 +2253,77 @@ CASES += [
         tag="diagonal-padded",
         smoke=True,
     ),
+    Case(
+        "mha_softmax",
+        dict(accurate_exp2=True),
+        calls=4,
+        params=((0, 1),),
+        scalars=(128, 64),
+        tag="accurate",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(accurate_exp2=True),
+        params=((0, 0),),
+        scalars=(37, 37),
+        tag="accurate-diagonal-padded",
+        smoke=True,
+    ),
+    # The band. A 32-row query block on the row-group path masks partway
+    # into its key block; past the diagonal a bidirectional block is kept,
+    # with its padded keys masked; a window drops each row's oldest keys.
+    check(
+        "mha_softmax",
+        dict(dim_m=32),
+        params=((0, 1),),
+        scalars=(64, 64),
+        tag="half-block-diagonal",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(causal=False),
+        params=((1, 0),),
+        scalars=(100, 100),
+        tag="bidirectional-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(causal=False, window=64),
+        params=((1, 2),),
+        scalars=(192, 192),
+        tag="window",
+        smoke=True,
+    ),
+    # 16- and 32-key blocks take the per-row path, a row read a block wide.
+    check(
+        "mha_softmax",
+        dict(dim_m=16, dim_n=16),
+        params=((0, 0),),
+        scalars=(13, 13),
+        tag="diagonal-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(dim_m=16, dim_n=16, accurate_exp2=True),
+        params=((0, 0),),
+        scalars=(13, 13),
+        tag="accurate-diagonal-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(dim_m=16, dim_n=32, causal=False, window=32),
+        params=((0, 2),),
+        scalars=(45, 45),
+        tag="window-padded",
+        smoke=True,
+    ),
+    # P*V's product at a head dimension past the key block.
+    check("mha", dict(dim_m=16, dim_k=256, dim_n=64, pv=True), smoke=True),
     # The prefill toolkit's S*V accumulate, one case per geometry. Each
     # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
     # the 512 one has a degenerate k-block term and so cannot tell a wrong V

@@ -42,7 +42,6 @@ exclude_docs: |
   # Legacy raw-MLIR walkthroughs (deprecated AIE. syntax, Versal-era). Kept in
   # the repo for reference but not published on the site.
   /AIEDesignPatterns.md
-  /AIERouting.md
   /AIEVectorization.md
   # Internal maintainer notes (wheel-build machinery). Kept in the repo, not
   # published on the site.
@@ -247,13 +246,12 @@ nav:
     - Extra References:
       - IRON Configuration: programming_guide/iron_configuration.md
       - Core Data Memory: programming_guide/core_data_memory.md
+      - Routing: programming_guide/routing.md
       - HRX Runtime (amdxdna): programming_guide/hrx_runtime.md
       - HSA Runtime (ROCR): programming_guide/hsa_runtime.md
       - Compilation Stages: programming_guide/compilation_stages.md
       - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
       - Kernel Library: programming_guide/kernels_library.md
-      - Nightly Kernel Checks: https://xilinx.github.io/mlir-aie/kernel-checks/
-      - Nightly Component Checks: https://xilinx.github.io/mlir-aie/kernel-checks/#view=components
   - Agentic Programming:
     - Introduction: skills/agentic_programming.md
     - Agent Skills Overview: skills/README.md

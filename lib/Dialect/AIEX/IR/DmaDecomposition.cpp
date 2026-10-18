@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/STLExtras.h"
@@ -31,8 +32,8 @@ int64_t maxIterations(const AIE::AIETargetModel &tm, int col, int row) {
 }
 
 int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
-                                unsigned dim, uint64_t elemWidth,
-                                uint32_t gran) {
+                                unsigned dim, int64_t stride,
+                                uint64_t elemWidth, uint32_t gran) {
   uint32_t wrapBits = tm.getDmaBdWrapBits(col, row);
   if (wrapBits == 0)
     return 0;
@@ -46,7 +47,8 @@ int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
     return maxInput;
   }
   if (dim == 3)
-    return maxIterations(tm, col, row);
+    return stride == 0 ? tm.getMaxRepeatCount() + 1
+                       : maxIterations(tm, col, row);
   return (1LL << wrapBits) - 1;
 }
 
@@ -81,6 +83,39 @@ void divisorsDescending(int64_t n, SmallVectorImpl<int64_t> &out) {
   llvm::sort(out);
   std::reverse(out.begin(), out.end());
   out.append(small.rbegin(), small.rend());
+}
+
+/// Fold each dimension into the next-inner one where the pair walks memory
+/// contiguously (stride[d+1] == size[d] * stride[d]) and the merged size still
+/// fits the inner slot's wrap. The element order is unchanged; the freed
+/// outermost slot becomes a unit dimension.
+NdDmaPattern mergeContiguousDims(const AIE::AIETargetModel &tm, int col,
+                                 int row, uint64_t elemWidth, uint32_t gran,
+                                 const NdDmaPattern &pattern) {
+  NdDmaPattern merged = pattern;
+  unsigned d = 0;
+  while (d + 1 < kNdDmaDims) {
+    int64_t n = merged.sizes[d] * merged.sizes[d + 1];
+    if (merged.sizes[d] <= 1 || merged.sizes[d + 1] <= 1 ||
+        merged.strides[d] <= 0 ||
+        merged.strides[d + 1] != merged.sizes[d] * merged.strides[d] ||
+        n > maxLegalInputSizeForDim(tm, col, row, d, merged.strides[d],
+                                    elemWidth, gran)) {
+      ++d;
+      continue;
+    }
+    merged.offsets[d] += merged.offsets[d + 1] * merged.sizes[d];
+    merged.sizes[d] = n;
+    for (unsigned i = d + 1; i + 1 < kNdDmaDims; ++i) {
+      merged.sizes[i] = merged.sizes[i + 1];
+      merged.strides[i] = merged.strides[i + 1];
+      merged.offsets[i] = merged.offsets[i + 1];
+    }
+    merged.sizes[kNdDmaDims - 1] = 1;
+    merged.strides[kNdDmaDims - 1] = 0;
+    merged.offsets[kNdDmaDims - 1] = 0;
+  }
+  return merged;
 }
 
 /// Split dim d (size N = a*b, stride s) into an inner dim (b, s) kept at
@@ -198,8 +233,8 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   {
     unsigned d = static_cast<unsigned>(outermost);
     int64_t n = pattern.sizes[d];
-    int64_t chunkSize =
-        maxLegalInputSizeForDim(tm, col, row, d, elemWidth, gran);
+    int64_t chunkSize = maxLegalInputSizeForDim(
+        tm, col, row, d, pattern.strides[d], elemWidth, gran);
     // An offset-bearing singleton cannot be reused by factoring; slice instead.
     if (pattern.sizes[3] == 1 && outerSlotHasOffset && n <= chunkSize)
       chunkSize = 1;
@@ -360,12 +395,35 @@ void squeezeUnitDims(NdDmaPattern &pattern) {
   }
 }
 
+// `op`'s pattern, innermost first and padded to kNdDmaDims, when it has no
+// padding and a constant offset, length, sizes and strides.
+std::optional<NdDmaPattern> constantPattern(AIE::DMABDOp op) {
+  if (op.getPadDimensions().has_value() ||
+      (op.getOffset() && !op.getConstantOffset()) ||
+      (op.getLen() && !op.getConstantLen()))
+    return std::nullopt;
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<SmallVector<int64_t>> strides =
+      getConstantIntValues(op.getMixedStrides());
+  if (!sizes || !strides || sizes->empty())
+    return std::nullopt;
+  NdDmaPattern pattern;
+  pattern.sizes.assign(sizes->rbegin(), sizes->rend());
+  pattern.strides.assign(strides->rbegin(), strides->rend());
+  pattern.sizes.resize(std::max<size_t>(pattern.sizes.size(), kNdDmaDims), 1);
+  pattern.strides.resize(pattern.sizes.size(), 0);
+  pattern.offsets.assign(pattern.sizes.size(), 0);
+  return pattern;
+}
+
 } // namespace
 
 bool AIEX::patternPassesVerification(Operation *forOp,
                                      BaseMemRefType referencedBufType,
                                      const AIE::AIETargetModel &tm, int tileCol,
-                                     int tileRow, const NdDmaPattern &pattern) {
+                                     int tileRow, const NdDmaPattern &pattern,
+                                     bool skipTransformationChecks) {
   if (pattern.sizes.size() != kNdDmaDims)
     return false;
   SmallVector<int64_t, kNdDmaDims> hwSizes(kNdDmaDims);
@@ -373,12 +431,13 @@ bool AIEX::patternPassesVerification(Operation *forOp,
   getHardwareStridesWraps(tm, forOp, referencedBufType, pattern.sizes,
                           pattern.strides, hwSizes, hwStrides);
 
+  // Location-only: an op diagnostic prints the whole enclosing sequence.
   ScopedDiagnosticHandler handler(forOp->getContext(),
                                   [](Diagnostic &) { return success(); });
-  return succeeded(verifyStridesWraps(forOp, referencedBufType, tileCol,
-                                      tileRow, pattern.sizes, pattern.strides,
-                                      hwSizes, hwStrides,
-                                      /*skipTransformationChecks=*/false));
+  return succeeded(verifyStridesWraps(
+      forOp, [&] { return mlir::emitError(forOp->getLoc()); },
+      referencedBufType, tileCol, tileRow, pattern.sizes, pattern.strides,
+      hwSizes, hwStrides, skipTransformationChecks));
 }
 
 bool AIEX::isDecomposableNdDmaPattern(Operation *forOp,
@@ -468,6 +527,57 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
                                 tileRow, pattern))
     return failure();
 
+  DataLayout dataLayout = DataLayout::closest(forOp);
+  NdDmaPattern merged = mergeContiguousDims(
+      targetModel, tileCol, tileRow,
+      dataLayout.getTypeSizeInBits(referencedBufType.getElementType()),
+      targetModel.getAddressGenGranularity(), pattern);
+  if (patternPassesVerification(forOp, referencedBufType, targetModel, tileCol,
+                                tileRow, merged))
+    return SmallVector<NdDmaPattern>{merged};
+
   return decompose4d(forOp, referencedBufType, targetModel, tileCol, tileRow,
                      pattern);
+}
+
+FailureOr<TaskBdDecomposition>
+AIEX::decomposeTaskBdPattern(AIE::DMABDOp bd,
+                             const AIE::AIETargetModel &targetModel,
+                             int tileCol, int tileRow) {
+  std::optional<NdDmaPattern> pattern = constantPattern(bd);
+  if (!pattern)
+    return failure();
+  auto bufferType = cast<BaseMemRefType>(bd.getBuffer().getType());
+  // See contiguousAndFits for why only d3 can make one too long.
+  auto lowerable = [&](const NdDmaPattern &p) {
+    if (p.sizes.size() != kNdDmaDims)
+      return false;
+    if (isContiguousTransfer(p.sizes, p.strides))
+      return p.sizes[3] <= maxIterations(targetModel, tileCol, tileRow);
+    return patternPassesVerification(bd, bufferType, targetModel, tileCol,
+                                     tileRow, p);
+  };
+
+  TaskBdDecomposition plan;
+  plan.pass = *pattern;
+  if (lowerable(plan.pass)) {
+    plan.legal = true;
+    return plan;
+  }
+
+  // Outer dimensions that only re-read the same data repeat, as the task's
+  // repeat count does, so they go and the pieces restart instead.
+  for (unsigned d = plan.pass.sizes.size();
+       d-- > 3 && (plan.pass.sizes[d] == 1 || plan.pass.strides[d] == 0);)
+    plan.pass.sizes[d] = 1;
+  if (lowerable(plan.pass)) {
+    plan.pieces = {plan.pass};
+    return plan;
+  }
+  FailureOr<SmallVector<NdDmaPattern>> pieces = decomposeNdDmaPattern(
+      bd, bufferType, plan.pass, targetModel, tileCol, tileRow);
+  if (succeeded(pieces))
+    plan.pieces =
+        std::move(*pieces); // NOLINT(bugprone-unchecked-optional-access)
+  return plan;
 }

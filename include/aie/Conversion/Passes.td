@@ -98,7 +98,9 @@ def ConvertAIEXToEmitC : Pass<"convert-aiex-to-emitc", "mlir::ModuleOp"> {
     a diagnostic; it is handled by later passes in the dynamic-sequences work.
   }];
   let constructor = "xilinx::createConvertAIEXToEmitCPass()";
-  let dependentDialects = ["mlir::emitc::EmitCDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::emitc::EmitCDialect",
+                           "mlir::memref::MemRefDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect"];
   let options =

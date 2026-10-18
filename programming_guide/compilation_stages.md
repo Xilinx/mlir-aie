@@ -82,9 +82,11 @@ safe.
 
 Two hashes drop out of the frozen recipe:
 
-- **`recipe_hash`** — function of generator + `compile_kwargs` +
-  compile/aiecc flags. Same across machines. Used as the cache key
-  for "have I built this design before?"
+- **`recipe_hash`** — function of generator + the Python sources it
+  reaches (its module, the modules it imports from, and mlir-aie's own)
+  + `compile_kwargs` + compile/aiecc flags. Computed without running the
+  generator. Used as the cache key for "have I built this design
+  before?"
 - **`artifact_hash`** — function of source-file mtimes, object-file
   mtimes, tool-binary mtimes, and target architecture. Different
   across machines / builds. Used to decide "are the cached artifacts

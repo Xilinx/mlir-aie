@@ -13,6 +13,7 @@ rides the packet header), emitted as a sibling aie.dma_bd_packet op.
 
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Bd, Buffer, DmaChannel, Program, Runtime, TileDma
 from aie.iron.device import NPU2Col1, Tile
 
@@ -20,8 +21,8 @@ tile = Tile(col=0, row=2, tile_type=AIETileType.CoreTile)
 buf = Buffer(tile=tile, type=np.ndarray[(8,), np.dtype[np.int32]], name="buf")
 
 bds = [
-    Bd(buffer=buf, offset=4 * i, length=4, packet=(0, 0), out_of_order_id=i)
-    for i in range(2)
+    Bd(buffer=buf, tap=slot, packet=(0, 0), out_of_order_id=i)
+    for i, slot in enumerate(TensorAccessPattern.full((8,)).partition(2))
 ]
 tile_dma = TileDma(
     tile=tile,

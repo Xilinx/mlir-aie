@@ -11,8 +11,6 @@ synchronization explicitly (via [`TileDma`][iron.TileDma] and
 manage it.
 """
 
-import itertools
-
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects._aie_enum_gen import LockAction  # pyright: ignore[reportMissingImports]
 from ..dialects.aie import (
@@ -22,14 +20,13 @@ from ..dialects.aie import (
     use_lock as _use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..dialects.aiex import set_lock_value as _set_lock_value
+from ..helpers.sourceloc import SourceSite
 from .device import Tile
-from .resolvable import NotResolvedError, Resolvable
+from .resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 
 
-class Lock(Resolvable):
+class Lock(PerDeviceConfigurationResolvable):
     """A named hardware lock on a specific tile."""
-
-    _glock_index = itertools.count()
 
     def __init__(
         self,
@@ -46,13 +43,14 @@ class Lock(Resolvable):
                 the underlying `aie.lock` op. If `None` (the default),
                 the lowering pass picks one.
             init (int): Initial lock value at design startup. Defaults to 0.
-            name (str | None): Symbol name for the lock. A unique name is
-                generated if not provided.
+            name (str | None): Symbol name for the lock. Defaults to None
+                (unnamed).
         """
+        self._site = SourceSite.capture()
         self._tile = tile
         self._lock_id = lock_id
         self._init = init
-        self._name = name or f"lock_{next(Lock._glock_index)}"
+        self._name = name
         self._op = None
 
     @property
@@ -60,7 +58,7 @@ class Lock(Resolvable):
         return self._tile
 
     @property
-    def name(self) -> str:
+    def name(self) -> str | None:
         return self._name
 
     @property
@@ -68,6 +66,9 @@ class Lock(Resolvable):
         if self._op is None:
             raise NotResolvedError()
         return self._op
+
+    def tiles(self) -> list[Tile]:
+        return [self._tile]
 
     def resolve(
         self,
@@ -82,6 +83,8 @@ class Lock(Resolvable):
                 lock_id=self._lock_id,
                 init=self._init,
                 sym_name=self._name,
+                loc=loc or self._site.location(self._name),
+                ip=ip,
             )
 
     # ------------------------------------------------------------------

@@ -18,6 +18,7 @@ of which is silent until a device run otherwise:
   generator the device tests and benchmarks run.
 """
 
+import dataclasses
 import inspect
 import re
 import sys
@@ -30,12 +31,20 @@ from aie.iron import In, InOut, Out, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
-from aie.iron.kernels import KernelContract, Param
+from aie.iron.kernels import BUILDS, KernelContract, Param
 from aie.iron.kernels._common import ARCH_TRAITS
+from aie.iron.kernels.activation import (
+    softmax_banded_bound,
+    softmax_banded_mask,
+    softmax_banded_ref,
+    softmax_banded_sample,
+    softmax_f32_bound,
+)
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
+from aie.utils.accuracy import round_to
 from aie.utils.verify import Tolerance, compare
-from ml_dtypes import bfloat16
+from ml_dtypes import bfloat16, finfo
 
 # One table for every tier: the host checks below walk the same cases the
 # device test runs (test/python/npu/kernel_cases.py), so a kernel is either
@@ -74,6 +83,8 @@ NOT_JUDGED = {
     "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
     "sample_select": "a state machine across a position's select_streams * slice / chunk calls; test_sample_e2e.py judges it",
     "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; test_sample_e2e.py judges the pair",
+    "router_top_k": "reads sample_select's summary, which the generic builder cannot draw; test_router_top_k_e2e.py judges the pair",
+    "resize": "six entry points share one core's state, driven by counts they write; test_resize_e2e.py judges them",
     **{
         name: "one half of a MobileNet bottleneck cascade pair; test_bn_cascade_pairs.py builds and judges the pair"
         for name in (
@@ -256,25 +267,29 @@ def test_roles_match_arg_types(case_id):
 def test_reference_takes_what_the_contract_hands_it(case_id):
     fkw, _ = CASES[case_id]
     c = _factory(case_id)(**fkw).contract
-    assert c.reference is not None, f"{case_id}: contract has no reference"
-    params = [
-        p
-        for p in inspect.signature(c.reference).parameters.values()
-        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
-    ]
-    assert len(params) == len(c.reference_indices())
+    for build in BUILDS:
+        reference = c.for_build(build).reference
+        assert reference is not None, f"{case_id}: no reference for {build}"
+        params = [
+            p
+            for p in inspect.signature(reference).parameters.values()
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
+        assert len(params) == len(c.reference_indices()), build
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
 def test_tolerance_is_declared_with_its_evidence(case_id):
     fkw, _ = CASES[case_id]
-    tol = _factory(case_id)(**fkw).contract.tolerance
-    assert isinstance(
-        tol, Tolerance
-    ), f"{case_id}: tolerance is the default; declare it"
-    assert (
-        tol.note
-    ), f"{case_id}: tolerance needs a note saying where the number comes from"
+    c = _factory(case_id)(**fkw).contract
+    for build in BUILDS:
+        tol = c.for_build(build).tolerance
+        assert isinstance(
+            tol, Tolerance
+        ), f"{case_id}: tolerance for {build} is the default; declare it"
+        assert (
+            tol.note
+        ), f"{case_id}: tolerance needs a note saying where the number comes from"
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
@@ -283,7 +298,11 @@ def test_harness_lowers_a_design_to_mlir(case_id):
     factory = _factory(case_id)
     fn = factory(**fkw)
     ins = kd.sample_inputs(fn, calls=opts.get("calls", 1), shape=opts.get("shape"))
-    d = kd.design(factory, params=fn.param_values(ins), **opts, **fkw)
+    # A fixed stack lowers without compiling each kernel to read its frame.
+    stack = get_current_device().default_core_stack_bytes
+    d = kd.design(
+        factory, params=fn.param_values(ins), stack_bytes=stack, **opts, **fkw
+    )
     ref = fn.expected(ins, scalars=opts.get("scalars", ()))
     mlir = d.as_mlir()
     assert "func.call" in str(mlir) or "aie.core" in str(mlir)
@@ -434,18 +453,18 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
     assert str(runtime_dir) in fn.include_dirs
     if arch == "aie2":
-        tolerance = fn.contract.tolerance
+        tolerance = fn.contract_for().tolerance
         assert tolerance is not None
         assert tolerance.atol == 2.0**-126
 
 
 @pytest.mark.parametrize(
     "device,reference",
-    [(NPU1Col1, kernels.swiglu_lut_ref), (NPU2Col1, kernels.swiglu_ref)],
+    [(NPU1Col1, kernels.swiglu_table_ref), (NPU2Col1, kernels.swiglu_ref)],
 )
 def test_swiglu_default_reference_matches_architecture(device, reference):
     set_current_device(device())
-    assert kernels.swiglu().contract.reference is reference
+    assert kernels.swiglu().contract_for().reference is reference
 
 
 def test_factory_contract_follows_device_switch():
@@ -454,9 +473,51 @@ def test_factory_contract_follows_device_switch():
     set_current_device(NPU1Col1())
     npu1 = kernels.mha_softmax()
     assert npu1 != npu2
-    assert npu1.contract.tolerance.rtol < npu2.contract.tolerance.rtol
+    assert (
+        npu1.contract_for("aie2").tolerance.rtol
+        < npu2.contract_for("aie2p").tolerance.rtol
+    )
     set_current_device(NPU2Col1())
     assert kernels.mha_softmax() == npu2
+
+
+@pytest.mark.parametrize("case_id", list(CASES))
+def test_a_kernel_built_before_binding_is_judged_as_one_built_bound(case_id):
+    fkw, opts = CASES[case_id]
+    factory = _factory(case_id)
+    set_current_device(None)
+    try:
+        early = factory(**fkw)
+    except (ValueError, NotImplementedError):
+        pytest.skip("aie2 refuses this configuration")
+    set_current_device(NPU2Col1())
+    late = factory(**fkw)
+    if (early.arg_types(), early.contract.layouts) != (
+        late.arg_types(),
+        late.contract.layouts,
+    ):
+        pytest.skip(
+            "its operands differ by arch, so the two describe different kernels"
+        )
+    if late.contract.unsupported:
+        pytest.skip(late.contract.unsupported)
+    ins = kd.sample_inputs(late, calls=1)
+    scalars = opts.get("scalars", ())
+    want, got = late.contract_for().tolerance, early.contract_for().tolerance
+    if want is None or got is None:
+        assert want is got
+    else:
+        for f in dataclasses.fields(Tolerance):
+            if f.name != "bound":
+                assert getattr(got, f.name) == getattr(want, f.name), f.name
+        if want.kind == "bound":
+            args = late._reference_args(ins, scalars)
+            bounds = got.bound(*args), want.bound(*args)
+            for a, b in zip(*(x if isinstance(x, tuple) else (x,) for x in bounds)):
+                np.testing.assert_array_equal(a, b)
+    refs = late.expected(ins, scalars=scalars), early.expected(ins, scalars=scalars)
+    for a, b in zip(*(r if isinstance(r, tuple) else (r,) for r in refs)):
+        np.testing.assert_array_equal(a, b)
 
 
 @pytest.mark.parametrize("mode", list(kernels.RoundingMode))
@@ -470,177 +531,12 @@ def test_rounding_mode_preserves_string_api(mode):
 
 
 @pytest.mark.parametrize(
-    "factory,minimum",
-    [
-        (kernels.conv2dk1, 1088),
-        (kernels.conv2dk1_skip, 512),
-        (kernels.conv2dk1_skip_init, 1216),
-        (kernels.conv2dk3, 384),
-    ],
-)
-def test_stack_contract_covers_measured_core(factory, minimum):
-    assert factory().contract.stack_bytes >= minimum
-
-
-@pytest.mark.parametrize(
-    "device,portable,minimum",
-    [
-        (NPU2Col1, False, 896),
-        (NPU2Col1, True, 896),
-        (NPU1Col1, False, 160),
-        (NPU1Col1, True, 736),
-    ],
-)
-def test_layer_norm_f32_stack_covers_measured_core(
-    monkeypatch, device, portable, minimum
-):
-    # aiecc's measured_stack_size, plus the 64-byte frame of __mulsf3 or
-    # __divsf3 where the build calls one: compiler-rt emits no .stack_sizes.
-    if portable:
-        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
-    set_current_device(device())
-    mlir = str(kd.design(kernels.layer_norm_f32, cols=1024, calls=16).as_mlir())
-    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
-    assert stack_sizes
-    assert all(int(size) >= minimum for size in stack_sizes)
-
-
-@pytest.mark.parametrize("portable", [False, True])
-@pytest.mark.parametrize(
-    "device,dim_k,dim_n,minimum",
-    [
-        (NPU2Col1, 56, 16, 1088),
-        (NPU2Col1, 72, 32, 1024),
-        (NPU2Col1, 144, 32, 2240),
-        (NPU2Col1, 256, 16, 4160),
-        (NPU2Col1, 256, 32, 4032),
-        (NPU2Col1, 384, 16, 6208),
-        (NPU1Col1, 256, 32, 512),
-    ],
-)
-def test_mm_i8_i32_stack_covers_measured_core(
-    monkeypatch, device, dim_k, dim_n, minimum, portable
-):
-    # aiecc's measured_stack_size, worst of the b_col_maj/c_col_maj builds.
-    if portable:
-        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
-    set_current_device(device())
-    fn = kernels.mm(
-        dim_m=32,
-        dim_k=dim_k,
-        dim_n=dim_n,
-        input_dtype=np.int8,
-        output_dtype=np.int32,
-    )
-    assert kd._stack_bytes(fn) >= minimum
-
-
-@pytest.mark.parametrize(
-    "kwargs,expected",
-    [
-        # In the fitted range: 16 * dim_k + 256.
-        (dict(dim_k=56, input_dtype=np.int8, output_dtype=np.int32), 16 * 56 + 256),
-        (dict(dim_k=408, input_dtype=np.int8, output_dtype=np.int32), 16 * 408 + 256),
-        # Excluded at both ends: the device default (None) covers these.
-        (dict(dim_k=48, input_dtype=np.int8, output_dtype=np.int32), None),
-        (dict(dim_k=416, input_dtype=np.int8, output_dtype=np.int32), None),
-        # Excluded by not being the tuned aie2p/vectorized/int8->int32 case.
-        (
-            dict(
-                dim_k=200,
-                input_dtype=np.int8,
-                output_dtype=np.int32,
-                vectorized=False,
-            ),
-            None,
-        ),
-        (dict(dim_k=200, input_dtype=np.int16, output_dtype=np.int32), None),
-    ],
-)
-def test_mm_i8_i32_stack_formula_envelope(kwargs, expected):
-    # Pins the 48 < dim_k < 416 fit boundaries themselves (kernel_cases.py and
-    # test_mm_i8_i32_stack_covers_measured_core pin measured values inside
-    # them), so a change to the envelope is caught even where it still
-    # happens to satisfy every measured minimum above.
-    set_current_device(NPU2Col1())
-    fn = kernels.mm(dim_m=32, dim_n=16, **kwargs)
-    assert fn.contract.stack_bytes == expected
-
-
-def test_mm_stack_falls_back_off_aie2p_and_under_chess():
-    set_current_device(NPU1Col1())
-    assert (
-        kernels.mm(
-            dim_k=200, input_dtype=np.int8, output_dtype=np.int32
-        ).contract.stack_bytes
-        is None
-    )
-    set_current_device(NPU2Col1())
-    assert (
-        kernels.mm(
-            dim_k=200, input_dtype=np.int8, output_dtype=np.int32, use_chess=True
-        ).contract.stack_bytes
-        == 0xD00
-    )
-
-
-@pytest.mark.parametrize(
     "input_width,kernel_width", [(112, 14), (336, 14), (230, 14), (240, 15)]
 )
 def test_conv2dk14_rejects_shapes_the_vector_paths_skip(input_width, kernel_width):
     # The vector paths step 16 patches and 2 pixels at a time.
     with pytest.raises(ValueError, match="conv2dk14"):
         kernels.conv2dk14(input_width=input_width, kernel_width=kernel_width)
-
-
-@pytest.mark.parametrize(
-    "device,portable,channels,minimum",
-    [
-        (NPU2Col1, False, 448, 1280),
-        (NPU2Col1, False, 224, 1024),
-        (NPU2Col1, True, 256, 1280),
-        (NPU1Col1, True, 192, 416),
-        (NPU1Col1, False, 416, 1056),
-        (NPU1Col1, False, 1248, 9760),
-    ],
-)
-def test_dwconv1d_channels_last_stack_covers_measured_core(
-    monkeypatch, device, portable, channels, minimum
-):
-    # aiecc's measured_stack_size at the worst channel count of each build,
-    # and at the first aie2 count that needs more than the default
-    if portable:
-        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
-    set_current_device(device())
-    mlir = str(
-        kd.design(kernels.dwconv1d_channels_last, channels=channels, calls=1).as_mlir()
-    )
-    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
-    assert stack_sizes
-    assert all(int(size) >= minimum for size in stack_sizes)
-
-
-@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
-@pytest.mark.parametrize("dim_m,dim_n", [(32, 16), (64, 32)])
-@pytest.mark.parametrize("epilogue", ["none", "gelu", "silu", "sigmoid"])
-def test_fused_mm_stack_covers_accumulator_and_epilogue(device, dim_m, dim_n, epilogue):
-    set_current_device(device())
-    kwargs = dict(
-        dim_m=dim_m,
-        dim_k=48,
-        dim_n=dim_n,
-        epilogue=epilogue,
-        clamp=(-0.125, 0.75),
-    )
-    # The 32x16 AIE2P SiLU+clamp core measured 3648 bytes with pinned Peano.
-    accumulator_bytes = np.dtype(np.float32).itemsize * dim_m * dim_n
-    minimum = accumulator_bytes + max(device().default_core_stack_bytes, 1600)
-    fn = kernels.fused_mm(**kwargs)
-    assert fn.contract.stack_bytes >= minimum
-    mlir = str(kd.design(kernels.fused_mm, calls=4, **kwargs).as_mlir())
-    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
-    assert stack_sizes
-    assert all(int(size) >= minimum for size in stack_sizes)
 
 
 def test_contract_validates_argument_bindings():
@@ -653,6 +549,15 @@ def test_contract_validates_argument_bindings():
     assert KernelContract(roles=(In, Out, Param)).reference_indices() == [0, 2]
     with pytest.raises(ValueError, match="initializers"):
         KernelContract(roles=(In, Out), initializers=((1, lambda fn: fn),))
+    with pytest.raises(ValueError, match="call_index"):
+        KernelContract(roles=(In, Out, Param), call_index=2)
+    with pytest.raises(ValueError, match="call_index"):
+        KernelContract(
+            roles=(In, Out, Param),
+            parameter_bindings=((2, 0),),
+            out_offset=(2, 64),
+            call_index=2,
+        )
 
 
 def test_multi_output_contract_drives_design_and_reference():
@@ -751,7 +656,6 @@ def test_mixed_params_infer_scalar_and_tensor_abi():
             x - weights,
         ),
         acc_dtype=np.int32,
-        stack_bytes=1024,
     )
     inputs = kd.sample_inputs(fn, calls=3)
     assert [a.shape for a in inputs] == [(3, 4), (4,)]
@@ -784,14 +688,14 @@ def test_param_is_kernel_only_and_host_descriptors_are_private():
     from aie.utils.compile.jit import markers
 
     assert Param is kernels.Param
-    assert not hasattr(iron, "Param")
+    assert "Param" not in vars(iron)
     assert (iron.In, iron.Out, iron.InOut) == (jit.In, jit.Out, jit.InOut)
     for name in ("Param", "Scalar", "Count", "ROLES"):
-        assert not hasattr(jit, name)
-        assert not hasattr(markers, name)
-    assert not hasattr(kernels, "ROLES")
-    assert not hasattr(kd, "HostArg")
-    assert not hasattr(iron.algorithms, "HostArg")
+        assert name not in vars(jit)
+        assert name not in vars(markers)
+    assert "ROLES" not in vars(kernels)
+    assert "HostArg" not in vars(kd)
+    assert "HostArg" not in vars(iron.algorithms)
 
 
 def test_output_only_kernel_uses_no_host_inputs():
@@ -814,7 +718,6 @@ def test_parameter_only_kernel_can_have_multiple_outputs():
     fn.contract = KernelContract(
         roles=(Param, Param, Out, Out),
         reference=lambda weights, factor: (weights * factor, weights + factor),
-        stack_bytes=1024,
     )
     inputs = kd.sample_inputs(fn)
     assert len(inputs) == 1
@@ -887,16 +790,23 @@ def test_per_tile_matrix_references_keep_calls_independent():
 
 
 def test_designs_for_different_kernels_do_not_share_a_cache_key():
-    h = lambda d: d.compilable.recipe_hash  # noqa: E731
-    assert h(kd.design(kernels.add, calls=4)) != h(kd.design(kernels.mul, calls=4))
-    assert h(kd.design(kernels.reduce_max, calls=4)) != h(
-        kd.design(kernels.reduce_max, calls=4, dtype=bfloat16)
+    add, mul, rmax, rmax_bf16, add_again, p3, p5 = (
+        design.compilable.recipe_hash
+        for design in (
+            kd.design(kernels.add, calls=4),
+            kd.design(kernels.mul, calls=4),
+            kd.design(kernels.reduce_max, calls=4),
+            kd.design(kernels.reduce_max, calls=4, dtype=bfloat16),
+            kd.design(kernels.add, calls=4),
+            kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])]),
+            kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])]),
+        )
     )
-    assert h(kd.design(kernels.add, calls=4)) == h(kd.design(kernels.add, calls=4))
+    assert add != mul
+    assert rmax != rmax_bf16
+    assert add == add_again
     # A tensor Param is baked into the design, so its value is part of the key.
-    p3 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])])
-    p5 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])])
-    assert h(p3) != h(p5)
+    assert p3 != p5
     with pytest.raises(ValueError, match=r"expected 1 param value\(s\)"):
         kd.design(kernels.scale, calls=4, dtype=np.int32)
 
@@ -1326,14 +1236,15 @@ def test_mha_binds_its_translation_unit_as_one_object():
     p = fn._symbol_prefix
     assert fn.name == f"{p}_matmul_bf16_bf16_wrapper"
     tile = np.ndarray[(64 * 64,), np.dtype[bfloat16]]
-    scale = np.ndarray[(64,), np.dtype[bfloat16]]
+    acc = np.ndarray[(64 * 64,), np.dtype[np.float32]]
+    scale = np.ndarray[(4 * 64,), np.dtype[np.float32]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
     expected = {
         "matmul_bf16_bf16_wrapper_scalar": [tile, tile, tile],
         "matmul_bf16_bf16_rowmaj": [tile, tile, tile],
         "partial_softmax": [tile, tile, scale, idx, bfloat16, *([np.int32] * 4)],
-        "matmul_PV": [tile, tile, tile, scale, np.int32, np.int32, idx, np.int32],
-        "rescale_O": [tile, scale, np.int32, idx],
+        "matmul_PV": [tile, tile, acc, scale, np.int32, np.int32, idx, np.int32],
+        "rescale_O": [acc, tile, scale, np.int32, idx],
         "init_scale_buffer": [scale, np.int32],
     }
     for symbol, arg_types in expected.items():
@@ -1364,6 +1275,50 @@ def test_mha_binds_its_translation_unit_as_one_object():
         kernels.mha(dim_m=17)
 
 
+def test_mha_band_reaches_the_kernel_and_its_reference():
+    """causal and window are -D flags only off their defaults, and mha_softmax_ref keeps the band."""
+    assert not any("MHA_" in f for f in kernels.mha().compile_flags)
+    assert not any("MHA_" in f for f in kernels.mha_softmax().compile_flags)
+    flags = kernels.mha(dim_k=256, causal=False, window=128).compile_flags
+    assert {"-DMHA_CAUSAL=0", "-DMHA_WINDOW=128", "-DDIM_K=256"} <= set(flags)
+    fn = kernels.mha_softmax(dim_m=16, dim_n=32, causal=False, window=32)
+    assert [v for i, v in fn.contract.parameter_bindings if i in (5, 6)] == [16, 32]
+    for bad in (
+        dict(window=48),
+        dict(dim_m=32, dim_n=16, window=64),
+        dict(window=-64),
+        dict(scale=0.0),
+        dict(dim_n=24),
+    ):
+        with pytest.raises(ValueError):
+            kernels.mha_softmax(**bad)
+
+    # A zero score gives a kept key the weight 1 against m = 0, a masked one 0.
+    for causal, window in ((True, 0), (False, 0), (True, 32), (False, 32)):
+        for kv, q in ((0, 0), (0, 1), (1, 0), (2, 1), (3, 0)):
+            p, _ = kernels.mha_softmax_ref(
+                np.zeros((1, 16 * 32)),
+                (kv, q),
+                40,
+                90,
+                scale=1.0,
+                dim_m=16,
+                dim_n=32,
+                causal=causal,
+                window=window,
+            )
+            want = np.zeros((16, 32))
+            for r in range(16):
+                for c in range(32):
+                    qi, ki = q * 16 + r, kv * 32 + c
+                    if qi >= 40 or ki >= 90 or (causal and ki > qi):
+                        continue
+                    if window and abs(ki - qi) > window:
+                        continue
+                    want[r, c] = 1
+            assert np.array_equal(p.reshape(16, 32), want), (causal, window, kv, q)
+
+
 @pytest.mark.parametrize("emulate", [False, True])
 @pytest.mark.parametrize("pv", [False, True])
 @pytest.mark.parametrize("b_col_maj", [False, True])
@@ -1375,10 +1330,8 @@ def test_mha_answers_its_micro_tile_without_building_a_kernel(
     kw = dict(pv=pv, emulate_bf16_mmul_with_bfp16=emulate)
     # mha.cc includes mm_aie2p.h even on AIE2, unlike mm.cc.
     expected = (8, 8, 8) if pv or (emulate and arch == "aie2p") else (4, 8, 8)
-    previous = get_current_device(probe_runtime=False)
     target = device()
-    set_current_device(target)
-    try:
+    with set_current_device(target):
         instances = ExternalFunction._instances.copy()
         assert kernels.mha.mac_dims(**kw) == expected
         assert kernels.mha.mac_dims(device=target, **kw) == expected
@@ -1394,8 +1347,6 @@ def test_mha_answers_its_micro_tile_without_building_a_kernel(
         assert ("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in fn._compile_flags) == (
             emulate and arch == "aie2p"
         )
-    finally:
-        set_current_device(previous)
 
 
 _C_ELEMENT_NAMES = {bfloat16: "bf16", np.float32: "float", np.int32: "int"}
@@ -1688,7 +1639,8 @@ def test_matrix_kernels_declare_their_blocking_on_the_operand_layouts():
     assert scalar.mac_dims == (1, 1, 1)
     assert scalar.stream_dims == kernels.linalg.StreamDimsABC(None, None, None)
     assert not isinstance(kernels.mv(), kernels.MatrixKernel)
-    assert kernels.mv().contract.layouts[0].stream == [(32, 2), (16, 64), (2, 1)]
+    a_from_stream = kernels.mv().contract.layouts[0].stream
+    assert a_from_stream.transformation_dims == ((32, 2), (16, 64), (2, 1))
 
 
 def test_contract_is_given_at_construction():
@@ -1741,6 +1693,235 @@ def test_softmax_tolerance_rejects_an_unwritten_tile():
     assert float(ref.max()) < 0.05
     assert compare(ref, ref, fn.contract.tolerance)
     assert not compare(np.zeros_like(ref), ref, fn.contract.tolerance)
+
+
+@pytest.mark.parametrize("addend", [False, True])
+@pytest.mark.parametrize("masked", [False, True])
+def test_softmax_float_path_takes_its_rows_in_order(addend, masked):
+    # (x, [addend], [mask], y, n): the options add rows and flags, in order.
+    fn = kernels.softmax(
+        32, input_dtype=np.float32, soft_cap=50.0, masked=masked, addend=addend
+    )
+    assert fn.name.endswith("softmax_f32_bf16")
+    dtypes = [kd.shape_dtype(t)[1] for t in fn.arg_types()[:-1]]
+    rows = [np.float32] * (1 + addend) + [bfloat16] * masked
+    assert dtypes == [np.dtype(d) for d in [*rows, bfloat16]]
+    assert fn.contract.roles == (*[In] * len(rows), Out, Param)
+    params = inspect.signature(fn.contract.reference).parameters
+    assert list(params) == [
+        "x",
+        *(["addend"] if addend else []),
+        *(["mask"] if masked else []),
+    ]
+    flags = set(fn.compile_flags)
+    assert {"-DSOFTMAX_F32_INPUT", "-DEXP2_BF16_ACCURATE=1"} <= flags
+    assert "-DSOFTMAX_SOFT_CAP=50.0f" in flags
+    assert ("-DSOFTMAX_ADDEND" in flags) == addend
+    assert ("-DSOFTMAX_MASKED" in flags) == masked
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(soft_cap=50.0),
+        dict(masked=True),
+        dict(addend=True),
+        dict(input_dtype=np.float16),
+        dict(input_dtype=np.float32, soft_cap=0.0),
+        dict(input_dtype=np.float32, soft_cap=np.inf),
+        dict(input_dtype=np.float32, soft_cap=np.nan),
+        dict(input_dtype=np.float32, soft_cap=2.0**-101),
+        dict(input_dtype=np.float32, soft_cap=2.0**10 * 1.01),
+    ],
+)
+def test_softmax_rejects_float_options_it_cannot_build(kwargs):
+    with pytest.raises(ValueError):
+        kernels.softmax(32, **kwargs)
+
+
+def test_softmax_float_input_builds_on_aie2():
+    with set_current_device(NPU1Col1()):
+        fn = kernels.softmax(32, input_dtype=np.float32, soft_cap=50.0)
+        assert fn.name.endswith("softmax_f32_bf16")
+        assert fn.built_for_arch == "aie2"
+
+
+def test_softmax_f32_bound_holds_four_roundings_and_the_logits_per_row():
+    # Uncapped, only a logit float32 rounds widens the bound; the cap adds its
+    # tanh's error and the row's largest capped logit.
+    x = np.zeros((2, 32), np.float32)
+    x[0] = np.linspace(-4, 4, 32)
+    x[1] = np.linspace(-3e4, 3e4, 32)
+    addend = np.full((2, 32), 0.1, np.float32)
+
+    plain = softmax_f32_bound(x, tile_size=32) / kernels.softmax_ref(
+        x, tile_size=32
+    ).clip(2.0**-125)
+    added = softmax_f32_bound(x, addend, tile_size=32) / kernels.softmax_ref(
+        x, addend, tile_size=32
+    ).clip(2.0**-125)
+    capped = softmax_f32_bound(x, tile_size=32, soft_cap=50.0) / kernels.softmax_ref(
+        x, tile_size=32, soft_cap=50.0
+    ).clip(2.0**-125)
+    four = 4 * 2.0**-8
+    assert four < plain[0].min() <= plain[0].max() < four * 1.01
+    assert plain[1, -1] < four * 1.01
+    assert added[1, -1] > plain[1, -1] + 2 * 2.0**-21 * 2.9e4
+    largest = 50.0 * np.tanh(4 / 50.0)
+    cap_share = 2 * (50.0 * 5.9537e-6 + 2.0**-21 * (largest - 128))
+    assert np.isclose(capped[0, -1] - plain[0, -1], cap_share, rtol=1e-3)
+
+
+def test_softmax_f32_sample_uncapped_cancels_a_large_logit_with_its_mask():
+    # Once a uniform row: the mask was added after the centred logit clamped.
+    x, mask = kernels.softmax(32, input_dtype=np.float32, masked=True).contract.sample(
+        np.random.default_rng(0), 8
+    )
+    assert x[3, 0] == 2.0**127 and (x[3, 1:] == np.float32(2.0**127 - 2.0**104)).all()
+    assert (mask[3] == bfloat16(-(2.0**127))).all()
+
+
+def test_softmax_f32_bound_is_tight_for_a_centred_row_of_3e38():
+    # Centred, a constant 3e38 row is uniform within four roundings, so an
+    # all-zero output is refused.
+    x = np.full((1, 32), 3e38, np.float32)
+    ref = kernels.softmax_ref(x, tile_size=32)
+    bound = softmax_f32_bound(x, tile_size=32)
+    assert (bound < 0.02 * ref).all()
+    fn = kernels.softmax(32, input_dtype=np.float32)
+    zeros = np.zeros_like(ref, dtype=bfloat16)
+    assert not compare(zeros, ref, fn.contract.tolerance, bound=bound)
+
+
+def test_softmax_f32_bound_rejects_a_wrong_output_and_admits_masked_zeros():
+    fn = kernels.softmax(32, input_dtype=np.float32, soft_cap=50.0, masked=True)
+    x, mask = fn.contract.sample(np.random.default_rng(1), 4)
+    ref = fn.contract.reference(x, mask)
+    bound = fn.contract.tolerance.bound(x, mask)
+    tol = fn.contract.tolerance
+    assert (ref[mask.astype(np.float32) < -1e30] == 0).all()
+    assert compare(round_to(ref, bfloat16), ref, tol, bound=bound)
+    # Off by 2% where the bound allows 1.6% and change: four bf16 roundings.
+    assert not compare((ref * 1.02).astype(bfloat16), ref, tol, bound=bound)
+    # A masked element is 0, and only flushing admits anything else.
+    wrong = round_to(ref, bfloat16)
+    wrong[mask.astype(np.float32) < -1e30] = 2.0**-120
+    assert not compare(wrong, ref, tol, bound=bound)
+
+
+def test_softmax_f32_sample_reaches_32_overflow_saturation_and_masked_tails():
+    rng = np.random.default_rng(0)
+    x, addend, mask = kernels.softmax(
+        32, input_dtype=np.float32, soft_cap=50.0, masked=True, addend=True
+    ).contract.sample(rng, 8)
+    assert x.dtype == addend.dtype == np.float32 and mask.dtype == bfloat16
+    assert (np.abs(x[0, :2]) == 32).all() and np.abs(x[3:]).max() > 300
+    # Past log2(e)'s overflow: once a row of NaN on the device.
+    assert (x[1] == np.float32(3e38)).all()
+    assert (x[2, :2] == np.float32([2e38, -2e38])).all()
+    dropped = mask.astype(np.float32) < -1e30
+    assert not dropped[:, 0].any() and dropped[:, -1].sum() >= 1
+    assert np.isinf(mask.astype(np.float32)).any()
+
+
+def test_softmax_banded_takes_its_rows_in_order():
+    # (x, addend, y, rows, row_len, window, period, row_offset): rows,
+    # row_len, window and period bound; row_offset the one free scalar.
+    fn = kernels.softmax(
+        32, input_dtype=np.float32, soft_cap=50.0, window=12, period=768
+    )
+    assert fn.name.endswith("softmax_rows_banded_f32_bf16")
+    dtypes = [kd.shape_dtype(t)[1] for t in fn.arg_types()[:3]]
+    assert dtypes == [np.dtype(np.float32), np.dtype(np.float32), np.dtype(bfloat16)]
+    assert fn.contract.roles == (In, In, Out, Param, Param, Param, Param, Param)
+    assert fn.contract.parameter_bindings == ((3, 1), (4, 32), (5, 12), (6, 768))
+    params = inspect.signature(fn.contract.reference).parameters
+    assert list(params) == ["x", "addend", "row_offset"]
+    flags = set(fn.compile_flags)
+    assert {"-DSOFTMAX_F32_INPUT", "-DEXP2_BF16_ACCURATE=1"} <= flags
+    assert "-DSOFTMAX_SOFT_CAP=50.0f" in flags
+    assert "-DSOFTMAX_ADDEND" not in flags and "-DSOFTMAX_MASKED" not in flags
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(window=12),
+        dict(period=768),
+        dict(window=12, period=768, masked=True),
+        dict(input_dtype=bfloat16, window=12, period=768),
+    ],
+)
+def test_softmax_rejects_banded_options_it_cannot_build(kwargs):
+    with pytest.raises(ValueError):
+        kernels.softmax(32, **{**dict(input_dtype=np.float32), **kwargs})
+
+
+def test_softmax_banded_mask_matches_the_kernels_own_derivation():
+    # EG2's own band: j >= max(q % 2, window - 1 - q + q % 2), j < window +
+    # q % 2, q = row_offset % period (audio.py's d = j - q % 2 restated).
+    window, period, tile_size = 12, 16, 32
+    row_offset = np.arange(period)
+    mask = softmax_banded_mask(
+        row_offset, window=window, period=period, tile_size=tile_size
+    )
+    q, j = row_offset[:, None] % period, np.arange(tile_size)[None, :]
+    d = j - q % 2
+    want = np.where(
+        (d >= 0) & (d < window) & (q - (window - 1) + d >= 0),
+        0.0,
+        float(finfo(bfloat16).min),
+    )
+    assert (mask.astype(np.float32) == want.astype(bfloat16).astype(np.float32)).all()
+    assert (mask[:, 0] == bfloat16(0.0)).any()  # a row keeps at least one
+
+
+def test_softmax_banded_ref_and_bound_agree_with_the_masked_path():
+    # softmax_banded_ref/bound restate softmax_ref/softmax_f32_bound with
+    # the band as their explicit mask: equal where the mask itself is.
+    window, period, tile_size = 12, 16, 32
+    rng = np.random.default_rng(0)
+    x = rng.uniform(-40, 40, (period, tile_size)).astype(np.float32)
+    addend = rng.uniform(-8, 8, (period, tile_size)).astype(np.float32)
+    row_offset = np.arange(period).astype(np.int32)
+    mask = softmax_banded_mask(
+        row_offset, window=window, period=period, tile_size=tile_size
+    )
+    ref = softmax_banded_ref(
+        x,
+        addend,
+        row_offset,
+        tile_size=tile_size,
+        window=window,
+        period=period,
+        soft_cap=50.0,
+    )
+    bound = softmax_banded_bound(
+        x,
+        addend,
+        row_offset,
+        tile_size=tile_size,
+        window=window,
+        period=period,
+        soft_cap=50.0,
+    )
+    want_ref = kernels.softmax_ref(x, addend, mask, tile_size=tile_size, soft_cap=50.0)
+    want_bound = softmax_f32_bound(x, addend, mask, tile_size=tile_size, soft_cap=50.0)
+    assert (ref == want_ref).all()
+    assert (bound == want_bound).all()
+    # A row keeps at least one: never an all-dropped, all-zero output.
+    assert (ref.sum(axis=-1) > 0).all()
+
+
+def test_softmax_banded_sample_covers_the_sequence_start_and_a_wrap():
+    rng = np.random.default_rng(0)
+    window, period = 12, 16
+    x, addend, row_offset = softmax_banded_sample(
+        rng, 40, tile_size=32, window=window, period=period, soft_cap=50.0
+    )
+    assert x.dtype == addend.dtype == np.float32 and row_offset.dtype == np.int32
+    assert (row_offset[:period] == np.arange(period)).all()
+    assert row_offset[period:].max() >= period  # past one wrap
 
 
 def test_exp2f_vec_reference_clamps_like_the_kernel():
@@ -1805,7 +1986,7 @@ def test_declared_arg_types_survive_a_design_build():
     kd.design(kernels.add, calls=2).as_mlir()
     fn = kernels.add()  # memoized: the instance the design resolved
     assert [str(t) for t in fn.arg_types()] == declared
-    assert all(hasattr(t, "__args__") for t in fn.arg_types()[:3])
+    assert all(typing.get_origin(t) is np.ndarray for t in fn.arg_types()[:3])
     assert kd.output_size(fn, calls=2) == 2 * 1024
     assert kd.sample_inputs(fn, calls=2)[0].shape == (2, 1024)
     kd.design(kernels.add, calls=4).as_mlir()  # a second design still builds
@@ -1886,17 +2067,10 @@ def test_transformer_references_match_the_example_formulas():
 def test_contract_validates_its_remaining_fields():
     with pytest.raises(ValueError, match="reduction"):
         KernelContract(roles=(In, Out), reduction=0)
-    with pytest.raises(ValueError, match="stack_bytes"):
-        KernelContract(roles=(In, Out), stack_bytes=0)
     with pytest.raises(ValueError, match="role"):
         KernelContract(roles=(In, "out"))
     c = KernelContract(roles=(In, Out))
-    assert (c.acc_dtype, c.reduction, c.setup, c.stack_bytes) == (
-        None,
-        None,
-        None,
-        None,
-    )
+    assert (c.acc_dtype, c.reduction, c.setup) == (None, None, None)
 
 
 def test_input_limit_keeps_the_reference_inside_the_accumulator():
@@ -1930,13 +2104,12 @@ def _combo_id(v) -> str:
 def _factories_with_dtypes():
     for name in kernels.factories():
         f = getattr(kernels, name)
-        if hasattr(f, "dtypes"):
-            for combo in f.dtypes:
-                yield pytest.param(
-                    name,
-                    combo,
-                    id=f"{name}/{'/'.join(_combo_id(v) for v in combo.values())}",
-                )
+        for combo in vars(f).get("dtypes", ()):
+            yield pytest.param(
+                name,
+                combo,
+                id=f"{name}/{'/'.join(_combo_id(v) for v in combo.values())}",
+            )
 
 
 @pytest.mark.parametrize("name,combo", list(_factories_with_dtypes()))
@@ -1953,7 +2126,9 @@ def test_declared_dtype_combinations_build(name, combo):
     if any(bfp.is_bfp(v) for v in combo.values()):
         return  # block-floating-point operands are not numpy dtypes
     tensor_dts = {
-        kd.shape_dtype(t)[1] for t in fn.arg_types() if hasattr(t, "__args__")
+        kd.shape_dtype(t)[1]
+        for t in fn.arg_types()
+        if typing.get_origin(t) is np.ndarray
     }
     tensor_dts = {np.dtype(dt) for dt in tensor_dts if not bfp.is_bfp(dt)}
     for v in combo.values():
@@ -2010,7 +2185,7 @@ def _condition(expr: str, macros: dict) -> bool:
     )
     for _ in range(8):
         expr = re.sub(r"\b[A-Za-z_]\w*\b", lambda m: f"({macros.get(m[0], '0')})", expr)
-    assert re.fullmatch(r"[\d\s()<>=!&|+*/-]*", expr), expr
+    assert re.fullmatch(r"(?:0[xX][\da-fA-F]+|[\d\s()<>=!&|+*/-])*", expr), expr
     expr = expr.replace("&&", " and ").replace("||", " or ")
     expr = re.sub(r"!(?!=)", " not ", expr)
     return bool(eval(expr, {"__builtins__": {}}))
@@ -2237,18 +2412,43 @@ def test_scalar_bounds_are_specialized_without_vector_alignment(name):
     [((64, 64, 64), (4, 8, 8)), ((128, 64, 64), (8, 8, 8)), ((64, 32, 64), (4, 4, 8))],
 )
 def test_mm_stream_dims_match_the_blocking_the_kernel_was_compiled_for(dims, mac):
-    """A and B come from taplib; C is the one layout taplib cannot express.
+    """A, B and C all come from taplib.
 
-    The A/B transforms are a plain (r x s) blocked walk, so they ask
-    TensorTiler2D for it. This pins that the answer is still the layout
-    ``mm.cc`` expects, byte for byte, rather than whatever the tiler happens
-    to return after a change.
+    The A/B transforms are a plain (r x s) blocked walk from
+    ``TensorAccessPattern.tile`` and C is its ``inverse()``. This pins that the answer is still the layout
+    ``mm.cc`` expects, byte for byte, rather than whatever the layout algebra
+    happens to return after a change.
     """
     (m, k, n), (r, s, t) = dims, mac
     d = kernels.mm_stream_dims(m, k, n, mac)
-    assert d.A == [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-    assert d.B == [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
-    assert d.C == [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    assert list(d.A.transformation_dims) == [
+        (m // r, r * k),
+        (k // s, s),
+        (r, k),
+        (s, 1),
+    ]
+    assert list(d.B.transformation_dims) == [
+        (k // s, s * n),
+        (n // t, t),
+        (s, n),
+        (t, 1),
+    ]
+    assert list(d.C.transformation_dims) == [
+        (m // r, r * n),
+        (r, t),
+        (n // t, r * t),
+        (t, 1),
+    ]
     col = kernels.mm_stream_dims(m, k, n, mac, b_col_maj=True, c_col_maj=True)
-    assert col.B == [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
-    assert col.C == [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
+    assert list(col.B.transformation_dims) == [
+        (n // t, t * k),
+        (k // s, s),
+        (t, k),
+        (s, 1),
+    ]
+    assert list(col.C.transformation_dims) == [
+        (n // t, t * m),
+        (t, r),
+        (m // r, r * t),
+        (r, 1),
+    ]

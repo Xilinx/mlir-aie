@@ -130,11 +130,15 @@ and launch them onto a tile's DMA task queue.
 | `aiex.npu.writebd` | Write a complete buffer descriptor (all fields explicit: buffer length/offset, the `d0..d2` sizes/strides, iteration, lock acquire/release, packet header, next-BD) to a BD slot on a tile. The low-level form behind `dma_memcpy_nd`. | any tile with a DMA engine (shim, mem, core) | `aiex.npu.writebd {column = 0 : i32, row = 0 : i32, bd_id = 0 : i32, buffer_length = 1024 : i32, /* ... */}` |
 | `aiex.npu.push_queue` | Push a BD id onto a tile channel's task queue to launch it, with an outer-dimension `repeat_count` and optional completion token. | any tile channel; `MM2S` / `S2MM` | `aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %bd repeat %rep {issue_token = false} : i32, i32` |
 | `aiex.npu.address_patch` | Patch a runtime buffer address into the instruction stream: takes runtime argument `arg_idx` plus `arg_plus` offset and writes it into a BD address field. Used to bind host buffers whose address is only known at launch. | shim BD addresses | `aiex.npu.address_patch(%off : i32) {addr = 0 : ui32, arg_idx = 0 : i32}` |
-| `aiex.npu.assert_bd_field` *(compiler-emitted)* | Guard a runtime BD-field value against its hardware field width (`min <= value <= max`, `min` defaulting to 0); emitted by the dynamic DMA lowering when a runtime scalar lands in a narrow BD field (e.g. a 10-bit wrap). On the host-C++ path it aborts stream generation for an out-of-range value; on the binary path `value` is a verified constant and it is a no-op. | dynamic-BD lowering path | `aiex.npu.assert_bd_field(%v) {max = 1023 : i32} : i32` |
-| `aiex.npu.assert_bd_divisible` *(compiler-emitted)* | Guard a runtime BD size/stride against the address-gen granule (`value % divisor == 0`, or `value == 1` when `allow_unit`); emitted by the dynamic DMA lowering. Same host-C++ / binary behavior as `assert_bd_field`. | dynamic-BD lowering path | `aiex.npu.assert_bd_divisible(%v) {divisor = 4 : i32} : i32` |
 
 See [Section 2d](programming_guide/section-2/section-2d/DMATasks.md) for a full
 walkthrough of `dma_memcpy_nd` access patterns and buffer-descriptor reuse.
+
+A runtime sequence states conditions on its runtime scalars with the upstream
+`cf.assert` (the dynamic DMA lowering emits one for every runtime BD field, and
+IRON's `require` for user-level shape constraints). The host C++ TXN builder
+refuses the dispatch with the assert's message when one fails; the binary
+target accepts only asserts that fold to true.
 
 ### 3. DMA tasks (configure / start / await / free)
 
@@ -183,6 +187,7 @@ carries values from host memory through the command processor into the array.
 | `aiex.npu.rtp_write` | Write `value` at `index` into an `aie.buffer` used to hold runtime parameters. | a buffer used for runtime parameters | `aiex.npu.rtp_write(@rtp_buf, 0, %val) : i32` |
 | `aiex.npu.create_scratchpad` | Allocate a control-code scratchpad of `size` bytes on the host and copy it into the command processor's memory. Values are read from it by `update_from_scratchpad`. | NPU command processor | `aiex.npu.create_scratchpad {size = 128 : ui32}` |
 | `aiex.npu.update_from_scratchpad` | Compute a value from a scratchpad `StateTable` entry (`mul` / `incr` / `decr` by `func_arg`) and add it to an 8-byte location at a resolved address. Always additive; writes both registers of the pair. | resolved address (shim BD address pairs) | `aiex.npu.update_from_scratchpad<incr> {state_table_idx = 0 : ui8, address = 0 : ui32}` |
+| `aiex.dma_start_task {repeat_parameter = @foo}` | Start a task with the repeat count the host writes to `@foo` for each run (at most the task's own repeat count); see `aiex.dma_start_task`. | shim NOC tile channel (AIE2, AIE2P) | `aiex.dma_start_task(%t) {repeat_parameter = @runs}` |
 | `aiex.scratchpad_parameter` | Declare a named scratchpad runtime parameter. Declared at **module scope** (outside `aie.device`), not inside the sequence; shared by all PDIs in the module. | module scope (declaration) | `aiex.scratchpad_parameter @foo : i32` |
 | `aiex.read_scratchpad_parameter` | Read a declared scratchpad parameter on a core. Used inside an `aie.core`, not inside the sequence. | core scope (read site) | `%v = aiex.read_scratchpad_parameter @foo : i32` |
 | `aiex.sync_scratchpad_parameters_from_host` | Marker in the sequence for where the host-to-core scratchpad parameter sync should be materialized (expands to create_scratchpad + per-parameter writes + lock releases). | in-sequence marker | `aiex.sync_scratchpad_parameters_from_host` |
@@ -218,6 +223,10 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
   }];
 
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
+  // The op assembly formats still print inherent attributes in `attr-dict`;
+  // opt out of upstream's strict-properties default until they migrate.
+  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -225,6 +234,23 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
 //===----------------------------------------------------------------------===//
 
 include "aie/Dialect/AIEX/IR/AIEXAttrs.td"
+
+def AIEX_JointBoundAttr : AttrDef<AIEX_Dialect, "JointBound"> {
+  let mnemonic = "joint_bound";
+  let summary = "Bound on an offset and a length parameter one transfer uses";
+  let description = [{
+    Held in the `joint_bounds` of a length parameter `n`: a transfer that also
+    uses the parameter `offset` as its offset stays within its buffer while
+    `offset + length_step * n <= max`.
+
+    ```mlir
+    #aiex.joint_bound<offset = @off, length_step = 64, max = 3976>
+    ```
+  }];
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$offset,
+      "int64_t":$length_step, "int64_t":$max);
+  let assemblyFormat = "`<` struct(params) `>`";
+}
 
 //===----------------------------------------------------------------------===//
 // AIEX Types
@@ -614,11 +640,24 @@ def AIE_NpuDmaMemcpyNdOp
     If the attribute is set, then every time the DMA BD gets issued, a packet header is generated prior to the transmission of data.
     The packet header is used to guide arbitration throughout a packet-routed data flow, where each switch box arbitrates the data packet to stream to a successor based on the packet header.
 
+    #### Runtime Length
+
+    With `length_parameter = @n` and `length_unit = u`, the transfer moves `u * n` more elements than
+    its sizes describe, where `n` is the value the host writes to the `aiex.scratchpad_parameter` `@n`.
+    The extra elements continue the third dimension (the second, if the third has size one; or the
+    linear transfer), and every iteration of the outermost dimension gets them. The constraints are
+    those of `length_parameter` on
+    [`aie.dma_bd`](AIEDialect.html#aiedma_bd-xilinxaiedmabdop), and the offsets, sizes and strides
+    must be constants. The sizes are always moved, so for a
+    transfer of exactly `n` units use an `aie.dma_bd` with `len = 0` in an `aiex.dma_configure_task`.
+
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$memref,
       // NOTE: these are in reverse order: offset3, offset2, ...
-      Variadic<I64>:$offsets, Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      Variadic<AnySignlessIntegerOrIndex>:$offsets,
+      Variadic<AnySignlessIntegerOrIndex>:$sizes,
+      Variadic<AnySignlessIntegerOrIndex>:$strides,
       ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
       ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
       ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
@@ -646,16 +685,57 @@ def AIE_NpuDmaMemcpyNdOp
       // scratchpad state-table index whose value is used as the BD address
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
-      OptionalAttr<UI8Attr>:$offset_state_table_idx);
+      OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // If set, the aiex.scratchpad_parameter value n lengthens the transfer
+      // at run time by n * length_unit elements; see "Runtime Length" above.
+      OptionalAttr<FlatSymbolRefAttr>:$length_parameter,
+      OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<1>]>>:$length_unit,
+      // Set by --aie-lower-scratchpad-parameters from $length_parameter, which
+      // it replaces, like $offset_state_table_idx.
+      OptionalAttr<UI8Attr>:$length_state_table_idx,
+      // Set by --aie-lower-scratchpad-parameters when the length parameter is
+      // core kind, whose state-table slot holds n << 2 rather than n.
+      UnitAttr:$length_core_encoded);
 
   let assemblyFormat = [{
     `(` $memref ``
-    custom<DynamicIndexList>($offsets, $static_offsets) ``
-    custom<DynamicIndexList>($sizes, $static_sizes) ``
-    custom<DynamicIndexList>($strides, $static_strides) ``
+    custom<TypedDynamicIndexList>($offsets, $static_offsets, type($offsets)) ``
+    custom<TypedDynamicIndexList>($sizes, $static_sizes, type($sizes)) ``
+    custom<TypedDynamicIndexList>($strides, $static_strides, type($strides)) ``
     (`,` `packet` `=` $packet^)? `)`
     attr-dict `:` type($memref)
   }];
+
+  let builders = [
+      // `base`'s transfer with a new static pattern.
+      OpBuilder<(ins "NpuDmaMemcpyNdOp":$base,
+                    "::llvm::ArrayRef<int64_t>":$static_offsets,
+                    "::llvm::ArrayRef<int64_t>":$static_sizes,
+                    "::llvm::ArrayRef<int64_t>":$static_strides),
+                [{
+      $_state.addOperands(base.getMemref());
+      Properties &props = $_state.getOrAddProperties<Properties>();
+      props = base.getProperties();
+      props.setStaticOffsets($_builder.getDenseI64ArrayAttr(static_offsets));
+      props.setStaticSizes($_builder.getDenseI64ArrayAttr(static_sizes));
+      props.setStaticStrides($_builder.getDenseI64ArrayAttr(static_strides));
+      props.operandSegmentSizes = {1, 0, 0, 0};
+    }]>,
+      OpBuilder<(ins "::mlir::Value":$memref,
+                    "::llvm::ArrayRef<int64_t>":$static_offsets,
+                    "::llvm::ArrayRef<int64_t>":$static_sizes,
+                    "::llvm::ArrayRef<int64_t>":$static_strides,
+                    "::mlir::SymbolRefAttr":$metadata, "uint64_t":$id,
+                    "bool":$issue_token),
+                [{
+      build($_builder, $_state, memref, ::mlir::ValueRange{},
+            ::mlir::ValueRange{}, ::mlir::ValueRange{}, static_offsets,
+            static_sizes, static_strides, /*packet=*/nullptr, metadata, id,
+            issue_token, 0, 0, 0, 0, 0, 0, /*burst_length=*/0,
+            /*axcache=*/nullptr, /*offset_parameter=*/nullptr,
+            /*offset_state_table_idx=*/nullptr, /*length_parameter=*/nullptr,
+            /*length_unit=*/nullptr, /*length_state_table_idx=*/nullptr);
+    }]>];
 
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
@@ -745,7 +825,9 @@ def AIE_NpuWriteRTPOp : AIEX_Op<"npu.rtp_write", []> {
 def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
   let summary = "bd queue push operator";
   let arguments = (ins I32Attr:$column, I32Attr:$row, DMAChannelDir:$direction,
-      I32Attr:$channel, BoolAttr:$issue_token, I32:$repeat_count, I32:$bd_id);
+      I32Attr:$channel, BoolAttr:$issue_token,
+      AnySignlessIntegerOrIndex:$repeat_count, I32:$bd_id,
+      OptionalAttr<UI8Attr>:$repeat_state_table_idx);
   let results = (outs);
   let assemblyFormat = [{
     `(` $column `,` $row `,` $direction `:` $channel `)`
@@ -759,6 +841,22 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
     (outer-dimension repeat for the launch) are SSA operands; use arith.constant
     for compile-time-known values or pass runtime sequence values to select the
     BD / repeat count at runtime.
+
+    With 'repeat_state_table_idx', the repeat count is the scratchpad
+    StateTable entry at that index instead (a `repeat` parameter, which the
+    host writes already shifted into the queue word's repeat field), and
+    'repeat_count' must be 0. The push lowers to an
+    `aiex.npu.update_from_scratchpad<incr>` of the task queue register adding
+    the entry to `bd_id | issue_token << 31`. That update clears the low two
+    bits of the word it writes, so 'bd_id' must be a constant multiple of 4;
+    the runtime-sequence BD allocator gives such an id to the head of a task
+    started with a repeat parameter. It also writes back the register after
+    the queue with the value it reads. After MM2S 0's queue and the two S2MM
+    queues that is a channel's control register, which nothing else writes.
+    After MM2S 1's queue it is `DMA_S2MM_Status_0`, whose sticky error bits
+    (16 to 18: AXI decode error, AXI slave error, task queue overflow) are
+    write-1-to-clear: a push on MM2S 1 clears any S2MM 0 error of its tile
+    that is pending. The data moved is unaffected.
   }];
 }
 
@@ -788,80 +886,9 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
-}
-
-// ASSERT_BD_FIELD
-def AIE_NpuAssertBdFieldOp : AIEX_Op<"npu.assert_bd_field", []> {
-  let summary =
-      "Guard a runtime BD-field value against its hardware field width";
-  let arguments = (ins AnyTypeOf<[I32, I64]>:$value, I32Attr:$max,
-      DefaultValuedAttr<I32Attr, "0">:$min);
-  let results = (outs);
-  let assemblyFormat = [{
-    `(` $value `)` attr-dict `:` type($value)
-  }];
-  let description = [{
-    Asserts, at TXN-build time, that a runtime value assigned to a buffer-
-    descriptor field fits its hardware field: `min <= value <= max`. Emitted by
-    the dynamic DMA lowering for a runtime scalar landing in a narrow field
-    (e.g. the 10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would
-    silently truncate an out-of-range value. The queue push's 8-bit
-    repeat_count and runtime lock values (a BD's acquire/release, an
-    aiex.set_lock) are guarded the same way, and a runtime transfer length gets
-    a `min` of one address-gen granule.
-
-    This op only ever appears on the dynamic (runtime-value) DMA lowering path;
-    a fully static sequence never produces it. When `value` is a constant, the
-    verifier hard-errors if it is outside `[min, max]`, so it is caught at
-    compile time.
-
-    The TXN instruction stream has no on-device trap, so a runtime guard runs
-    host-side in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op
-    to an early `if (value < min || value > max) return std::nullopt;` so the
-    builder yields no stream for an illegal value instead of a corrupt one. On
-    the binary (--aie-npu-to-binary) path `value` is always a verified
-    constant, so the op carries no runtime check and is emitted as a no-op
-    (skipped, contributing no TXN words).
-  }];
-  let hasVerifier = 1;
-}
-
-// ASSERT_BD_DIVISIBLE
-def AIE_NpuAssertBdDivisibleOp : AIEX_Op<"npu.assert_bd_divisible", []> {
-  let summary =
-      "Guard a runtime BD size/stride against the address-gen granule";
-  let arguments = (ins I32:$value, I32Attr:$divisor, UnitAttr:$allow_unit);
-  let results = (outs);
-  let assemblyFormat = [{
-    `(` $value `)` attr-dict `:` type($value)
-  }];
-  let description = [{
-    Asserts, at TXN-build time, that a runtime size/stride is realizable in
-    hardware: its byte extent is a whole number of address-gen granules, i.e.
-    `value % divisor == 0`. The hardware transfers whole granules only, so a
-    size or stride whose `value * elemWidth` is not a granule multiple (e.g. an
-    int8 innermost size of 2 = 16 bits against a 32-bit granule) cannot be
-    encoded. `divisor` is the compile-time granule/element ratio.
-
-    `allow_unit` exempts a value of 1 from the divisibility rule: the innermost
-    stride is allowed to be sub-granule when it is exactly 1 (the contiguous
-    scan the encoder collapses to hardware stride 0), but a non-unit sub-granule
-    stride (e.g. int8 stride 2) is still unrealizable. So with `allow_unit` the
-    predicate is `value == 1 || value % divisor == 0`.
-
-    Like `assert_bd_field`, this op only appears on the dynamic DMA lowering
-    path, and a constant `value` is hard-errored by the verifier at compile
-    time. The TXN stream has no on-device trap, so a runtime guard runs
-    host-side: --aie-npu-to-cpp lowers it to an early
-    `if (value % divisor != 0) return std::nullopt;` (or, with `allow_unit`,
-    `if (value != 1 && value % divisor != 0) ...`). On the binary
-    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
-    carries no runtime check and is emitted as a no-op (skipped, contributing no
-    TXN words).
-  }];
-  let hasVerifier = 1;
 }
 
 // MASKWRITE
@@ -893,7 +920,8 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -922,7 +950,8 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -946,7 +975,9 @@ def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", []> {
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
   let extraClassDeclaration = [{
-    std::optional<uint32_t> getAbsoluteAddress();
+    // `names` resolves a referenced buffer without a scan of the device.
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
     mlir::DenseIntElementsAttr getDataWords();
   }];
 }
@@ -1192,7 +1223,9 @@ def AIE_NpuUpdateFromScratchpadOp : AIEX_Op<"npu.update_from_scratchpad", []> {
 
   }];
   let extraClassDeclaration = [{
-    std::optional<uint32_t> getAbsoluteAddress();
+    // `names` resolves a referenced buffer without a scan of the device.
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
   let hasVerifier = 1;
 }
@@ -1284,6 +1317,43 @@ def AIE_NpuLoadPdiOp : AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
+def AIE_NpuWriteConfigOp
+    : AIEX_Op<"npu.write_config", [HasParent<"AIE::RuntimeSequenceOp">,
+                                   DeclareOpInterfaceMethods<
+                                       SymbolUserOpInterface>]> {
+  let summary = "Write a device's configuration as register writes";
+  let description = [{
+    Writes the configuration of `device_ref` (its cores' programs and its
+    switch, lock and DMA settings) as the register writes that load it, without
+    resetting the array first. The NPU translation emits the writes, generating
+    them once per device however many times the sequence writes it.
+    `aie-expand-load-pdi` places one after the reset it inserts for each
+    `load_pdi` it expands to writes.
+
+    The writes are generated when the sequence is translated, from
+    `device_ref` as it is then, so the core ELF files its cores name must still
+    be on disk. With `inline-config=true`, `aie-expand-load-pdi` writes them
+    into the sequence instead, and the IR no longer depends on those files.
+
+    The firmware resets the array when it loads an empty device's PDI, unless
+    that PDI is the one it loaded last. So the `load_pdi` before this op must
+    be of an empty device, and differ from the `load_pdi` before it. For the
+    sequence's first `load_pdi`, that is its last one: the host runs the
+    sequence again on each dispatch. An empty device may hold runtime sequences
+    with no ops, such as the `@configure` that `convert-aie-to-transaction`
+    adds.
+
+    Example:
+    ```
+      aiex.npu.load_pdi {device_ref = @empty_0}
+      aiex.npu.write_config @dev
+    ```
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$device_ref);
+  let assemblyFormat = [{ $device_ref attr-dict }];
+  let hasVerifier = 1;
+}
+
 def AIE_DMAConfigureTaskOp
     : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
                                      TileElement, DMAConfigureTaskLike]>,
@@ -1303,7 +1373,8 @@ def AIE_DMAConfigureTaskOp
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
       DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-      Optional<I32>:$repeat_count_val, OptionalAttr<PacketInfoAttr>:$packet,
+      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
+      OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
       UnitAttr:$out_of_order);
 
@@ -1389,7 +1460,7 @@ def AIE_DMAConfigureTaskForOp
   let arguments = (ins SymbolRefAttr:$alloc,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
       DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-      Optional<I32>:$repeat_count_val);
+      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val);
 
   let regions = (region AnyRegion:$body);
 
@@ -1446,10 +1517,38 @@ def AIE_DMAStartTaskOp
     replaces the task's repeat count and `no_token` withholds its token. A
     constant repeat count past the target's maximum is split into several
     pushes by `aie-split-long-repeats`; a runtime one must fit one push.
+
+    With `repeat_parameter = @n`, the push's repeat count is the value the
+    host writes to the `aiex.scratchpad_parameter` `@n` for each run, so a
+    full ELF, whose sequence is fixed at build time, can set it per call. The
+    task's own repeat count is its maximum: `@n` is bounded to
+    `[0, repeat_count]`, which must fit one push, and an iteration dimension
+    the task's buffer descriptor steps through stops after `@n + 1` runs.
+    `--aie-lower-scratchpad-parameters` rewrites `repeat_parameter` to
+    `repeat_state_table_idx`, and the push becomes an
+    `aiex.npu.update_from_scratchpad` of the channel's task queue register
+    (see `aiex.npu.push_queue`). On shim MM2S 1 that update also clears the
+    tile's pending S2MM 0 sticky error bits.
+
+    Example:
+    ```mlir
+    aiex.scratchpad_parameter @runs : i32
+    ...
+      %t = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64)
+        aie.end
+      } {repeat_count = 15 : i32}
+      aiex.dma_start_task(%t) {repeat_parameter = @runs}
+    ```
   }];
 
   let arguments = (ins Index:$task, OptionalAttr<I32Attr>:$repeat_count,
-      Optional<I32>:$repeat_count_val, UnitAttr:$no_token);
+      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val, UnitAttr:$no_token,
+      // If set, the aiex.scratchpad_parameter holding this push's repeat count.
+      OptionalAttr<FlatSymbolRefAttr>:$repeat_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $repeat_parameter: the
+      // scratchpad state-table index of the repeat count.
+      OptionalAttr<UI8Attr>:$repeat_state_table_idx);
 
   let assemblyFormat = [{
     `(` $task `)` (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
@@ -1458,11 +1557,17 @@ def AIE_DMAStartTaskOp
 
   let builders = [OpBuilder<(ins "mlir::Value":$task), [{
     build($_builder, $_state, task, /*repeat_count=*/nullptr,
-          /*repeat_count_val=*/nullptr, /*no_token=*/nullptr);
+          /*repeat_count_val=*/nullptr, /*no_token=*/nullptr,
+          /*repeat_parameter=*/nullptr, /*repeat_state_table_idx=*/nullptr);
   }]>];
 
   let extraClassDeclaration = [{
     DMAConfigureTaskOp getTaskOp();
+    // Whether the host sets this push's repeat count, before or after
+    // --aie-lower-scratchpad-parameters.
+    bool hasRepeatParameter() {
+      return getRepeatParameterAttr() || getRepeatStateTableIdxAttr();
+    }
     // The repeat count this push carries: the start's override if present,
     // else the task's (a runtime operand or the compile-time attribute).
     mlir::OpFoldResult getPushRepeatCount(DMAConfigureTaskOp task);
@@ -1846,16 +1951,31 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     cannot also be read from cores.
     If used as an address offset on a BD, the parameter is a multiple of the BD's element size.
 
+    Parameters can also lengthen shim BDs when used as the `length_parameter`
+    attribute in `aie.dma_bd` and `aiex.npu.dma_memcpy_nd`. A length works with
+    either kind, so a single parameter can set both a core's trip count and the
+    length of the transfers feeding that core, or both a transfer's offset and
+    its length.
+
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
-    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
+    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op, or as a DMA length via the `length_parameter` attribute and nothing else).
     Indices are unique across the entire module.
+    For a parameter used as a DMA offset or length, the pass also sets `min_value` and `max_value`:
+    the range of values that keeps every such transfer within its buffer, judging each transfer
+    with any other parameter it uses at 0. The host library rejects a value outside the range.
+    A transfer whose offset and length are two different parameters also adds a
+    `#aiex.joint_bound` to the length parameter's `joint_bounds`, which the host library
+    checks when it syncs the scratchpad.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
-    For `kind == addr`, the `type` must be `i32`.
+    For `kind == addr`, and for any parameter used as a `length_parameter`, the `type` must be `i32`.
     For `kind == core`, the encoding uses a 30-bit value range because the firmware masks
     the lower 2 bits of the scratchpad register (see `aiex.read_scratchpad_parameter`
     for details on how values are shifted to work around this).
+    A parameter used as an `aiex.dma_start_task`'s `repeat_parameter` is `kind == repeat`,
+    must have type `i32` and may have no other use; the host library writes it shifted left
+    by 16, into the task queue's repeat field.
 
     You can manually specify the parameter synchronization point inside the runtime sequence using the `aiex.sync_scratchpad_parameters_from_host` op.
 
@@ -1873,7 +1993,10 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
   let arguments = (ins SymbolNameAttr:$sym_name, TypeAttr:$type,
       // assigned by `--aie-lower-scratchpad-parameters` pass:
       OptionalAttr<UI8Attr>:$state_table_idx,
-      OptionalAttr<ScratchpadParameterKind>:$kind);
+      OptionalAttr<ScratchpadParameterKind>:$kind,
+      OptionalAttr<I32Attr>:$min_value, OptionalAttr<I32Attr>:$max_value,
+      OptionalAttr<TypedArrayAttrBase<AIEX_JointBoundAttr,
+                                      "joint bounds">>:$joint_bounds);
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }
@@ -1921,9 +2044,10 @@ def AIEX_SyncScratchpadParametersFromHostOp
     3. `aiex.set_lock(lock, 1)` for each parameter-sync lock in the device
        (releasing the cores that read parameters)
 
-    Placement: users who manually emit `aiex.npu.load_pdi` should manually
-    place this op *after* the load_pdi, since PDI loading resets core state
-    (including lock values).
+    Placement: PDI loading resets core state (including lock values), so the
+    compiler-inserted preamble goes after the last top-level
+    `aiex.npu.load_pdi` of the sequence. A sequence that loads a PDI anywhere
+    else should place this op by hand after that load.
 
     Example:
     ```mlir

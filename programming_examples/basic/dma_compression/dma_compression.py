@@ -14,7 +14,6 @@ to size asymmetric BDs so neither side hangs on a length mismatch.
 """
 
 import os
-import sys
 from dataclasses import dataclass
 
 import aie.iron as iron
@@ -24,7 +23,7 @@ from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports
 )
 from aie.dialects.aiex import npu_maskwrite32
 from aie.helpers.dialects.func import func
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Acquire,
     Bd,
@@ -43,13 +42,14 @@ from aie.iron import (
     TileDma,
     Worker,
 )
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 from aie.iron.device import Tile
 
 N = 4096
 LINE_SIZE = 1024
 RATIOED_N = 2944  # empirical compressed byte count for arange(N) on Phoenix
 RATIOED_PER_LINE = RATIOED_N // (N // LINE_SIZE)  # = 736; per-BD compressed
+RATIOED_TAP = TensorAccessPattern.full((N,))[:RATIOED_N]
 
 COL = 0
 COMPUTE_ROW = 2
@@ -160,11 +160,6 @@ def enable_processor_bus(row: int) -> None:
     )
 
 
-def linear_tap(n_elems):
-    """A contiguous shim access pattern over the first ``n_elems`` elements."""
-    return TensorAccessPattern((1, N), 0, [1, 1, 1, n_elems], [0, 0, 0, 1])
-
-
 class PingPongDma:
     """A two-buffer S2MM -> MM2S passthrough on one tile, run by its DMA alone.
 
@@ -230,7 +225,7 @@ def build_multi_cmp_only():
     def sequence(a_in, c_out):
         ct2_dma.regs.compress_mm2s()
         into.fill(a_in)
-        out.drain(c_out, tap=linear_tap(RATIOED_N), wait=True)
+        out.drain(c_out, tap=RATIOED_TAP, wait=True)
 
     rt = Runtime(sequence, [vec_ty, vec_ty])
     for f in (into, link, out):
@@ -312,9 +307,7 @@ def dma_compression(
         engage_decompress = config in ("lossless_roundtrip", "multi_lossless_roundtrip")
         # Asymmetric compress-only: ratio-size shim S2MM to match the
         # compressed stream length.
-        out_tap_rt = (
-            linear_tap(RATIOED_N) if engage_compress and not engage_decompress else None
-        )
+        out_tap_rt = RATIOED_TAP if engage_compress and not engage_decompress else None
 
         of_a = ObjectFifo(line_ty, name="a_shim_to_ct")
         of_b = ObjectFifo(line_ty, name="b_ct_to_consumer")
@@ -404,10 +397,10 @@ def dma_compression(
         def core_body(*enable_fns):
             for fn in enable_fns:
                 fn()
-            for _ in range_(sys.maxsize):
+            for _ in forever_():
                 pass
 
-        core_worker = Worker(core_body, list(enables), tile=link_tile)
+        core_worker = Worker(core_body, list(enables), tile=link_tile, while_true=False)
 
     # Strip "core_"/"memtile_" prefix to get the cmp/dcmp/both suffix.
     suffix = (
@@ -416,8 +409,8 @@ def dma_compression(
     has_mm2s_cmp = suffix in ("cmp_only", "both")
     has_s2mm_dcmp = suffix in ("dcmp_only", "both")
     # Ratio-size each shim BD whose channel is doing (de)compression.
-    in_tap = linear_tap(RATIOED_N) if has_s2mm_dcmp else None
-    out_tap = linear_tap(RATIOED_N) if has_mm2s_cmp else None
+    in_tap = RATIOED_TAP if has_s2mm_dcmp else None
+    out_tap = RATIOED_TAP if has_mm2s_cmp else None
 
     is_host_compression = config in HOST_CONFIGS or config in MEMTILE_CONFIGS
     base_config = config in ("base", "memtile_base")

@@ -15,20 +15,40 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 
-class v8bfp16ebs8(np.generic):
+class _BlockFloat(np.generic):
+    """A block-floating-point marker: ``block_size`` values packed in ``block_bytes``.
+
+    The layout mirrors the ``aiex.bfp`` MLIR type of the same name, which
+    this module cannot query without the compiled bindings.
+    """
+
+    block_size: int
+    block_bytes: int
+
+
+class v8bfp16ebs8(_BlockFloat):
     """Block floating point: 8 eight-bit mantissas sharing one eight-bit exponent.
 
     Each block occupies 72 bits (9 bytes). A marker for the type an ndarray
     annotation carries; ``aie.helpers.util`` maps it to the MLIR block-float type.
     """
 
+    block_size, block_bytes = 8, 9
 
-class v16bfp16ebs16(np.generic):
+
+class v16bfp16ebs16(_BlockFloat):
     """Block floating point: 16 eight-bit mantissas sharing one eight-bit exponent.
 
     Each block occupies 136 bits (17 bytes). A marker for the type an ndarray
     annotation carries; ``aie.helpers.util`` maps it to the MLIR block-float type.
     """
+
+    block_size, block_bytes = 16, 17
+
+
+def is_block_float(dt) -> bool:
+    """Whether ``dt`` is a block-floating-point marker, which numpy has no dtype for."""
+    return isinstance(dt, type) and issubclass(dt, _BlockFloat)
 
 
 NpuDType = (

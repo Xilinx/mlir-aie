@@ -5,6 +5,8 @@
 #
 from pathlib import Path
 
+import numpy as np
+
 from .compile.jit._dispatch_bridge import DispatchBridge
 from .hostruntime.hostruntime import HostRuntimeError
 from .trace import TraceConfig
@@ -178,6 +180,47 @@ class NPUKernel:
             )
         return self._dispatch_bridge.generate(dispatch_scalars)
 
+    def instructions(self, **dispatch_scalars) -> np.ndarray:
+        """Return the instruction words a call with ``dispatch_scalars`` runs.
+
+        A static design returns its ``insts.bin``. A ``DispatchTime[T]``
+        design builds the stream from its dispatch bridge exactly as a call
+        does, so a dispatch the guards refuse raises the same
+        ``HostRuntimeError``. No NPU is needed.
+
+        Raises:
+            ValueError: If this is a full-ELF kernel, whose instructions live
+                inside the ELF.
+        """
+        words = self._generate_dispatch_insts(dispatch_scalars)
+        if words is not None:
+            return words
+        if self._insts_path is None:
+            raise ValueError(
+                "this kernel has no separate instruction stream (full-ELF mode)"
+            )
+        return np.fromfile(self._insts_path, dtype=np.uint32)
+
+    @staticmethod
+    def check_keywords(dispatch_params: list[str], kwargs: dict) -> None:
+        """Reject keywords a kernel with ``dispatch_params`` would not accept.
+
+        Args:
+            dispatch_params: The kernel's declared dispatch parameter names.
+            kwargs: The keyword arguments of a call.
+
+        Raises:
+            TypeError: If a keyword is neither a dispatch parameter nor the
+                ``retry`` runtime option.
+        """
+        unknown = set(kwargs) - set(dispatch_params) - {"retry"}
+        if unknown:
+            raise TypeError(
+                f"NPUKernel got unexpected keyword argument(s): {sorted(unknown)}; "
+                f"expected dispatch parameters {dispatch_params!r} "
+                "or runtime option 'retry'"
+            )
+
     # Blocking call.
     def __call__(self, *args, **kwargs):
         """Run the kernel with the given arguments.
@@ -196,14 +239,8 @@ class NPUKernel:
         Raises:
             TypeError: If an unknown keyword argument is supplied.
         """
+        self.check_keywords(self._dispatch_params, kwargs)
         dispatch_names = set(self._dispatch_params)
-        unknown = set(kwargs) - dispatch_names - {"retry"}
-        if unknown:
-            raise TypeError(
-                f"NPUKernel got unexpected keyword argument(s): {sorted(unknown)}; "
-                f"expected dispatch parameters {self._dispatch_params!r} "
-                "or runtime option 'retry'"
-            )
 
         from . import DefaultNPURuntime
 

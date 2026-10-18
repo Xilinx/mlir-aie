@@ -17,6 +17,22 @@ def animate_from_accesses(
     access_count_tensors: list[np.ndarray] | None,
     title: str = "Animated Access Visualization",
 ) -> animation.FuncAnimation:
+    """Animate a sequence of 2-D access order (and count) arrays, one frame each.
+
+    Args:
+        access_order_tensors (list[np.ndarray]): One access order array per
+            frame, as `TensorAccessPattern.access_order()` returns.
+        access_count_tensors (list[np.ndarray] | None): One access count array
+            per frame, or None to animate the access order only.
+        title (str, optional): Title of the animation.
+            Defaults to "Animated Access Visualization".
+
+    Returns:
+        animation.FuncAnimation: A handle to the animation.
+
+    Raises:
+        ValueError: If there are no frames, or the two lists differ in length.
+    """
     if len(access_order_tensors) < 1:
         raise ValueError("At least one access order tensor is required.")
     if access_count_tensors is not None:
@@ -90,7 +106,21 @@ def visualize_from_accesses(
     show_arrows: bool | None = None,
     file_path: str | None = None,
     show_plot: bool = True,
-):
+) -> None:
+    """Plot a 2-D access order array, and optionally its access count.
+
+    Args:
+        access_order_tensor (np.ndarray): The access order, as
+            `TensorAccessPattern.access_order()` returns.
+        access_count_tensor (np.ndarray | None): The access count, or None to
+            plot the access order only.
+        title (str, optional): Title of the plot. Defaults to "Access Visualization".
+        show_arrows (bool | None, optional): Draw arrows between consecutively
+            accessed elements. Defaults to None (only for small tensors).
+        file_path (str | None, optional): Path to save the plot to. Defaults to None.
+        show_plot (bool, optional): Show the plot, e.g. in a Jupyter notebook.
+            Defaults to True.
+    """
     tensor_height, tensor_width = access_order_tensor.shape
     if tensor_height * tensor_width >= 1024:
         if show_arrows:

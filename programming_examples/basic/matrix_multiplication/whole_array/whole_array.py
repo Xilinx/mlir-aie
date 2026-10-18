@@ -8,76 +8,151 @@ A 4xN_cols AIE array computes ``C = A @ B`` (optionally with ``B`` column-major
 or ``C`` column-major).  Each compute tile owns one (m, n) output sub-tile and
 streams (m, k) x (k, n) inputs through three layers of ObjectFifos.
 
-The script has two modes:
+``M``, ``K`` and ``N`` are ``DispatchTime`` scalars. Specialized
+(``whole_array.specialize(M=.., K=.., N=..)``) they are constants and the
+runtime sequence unrolls. Left free, the design compiles once and every call
+rebuilds the instruction stream on the host from the same xclbin, in C++, with
+no Python in the loop: the taps come out as arithmetic on ``M``, ``K`` and
+``N``, and the row-block loop stays rolled. The tensors the design is called
+with size its host buffers, so any shape whose ``A``, ``B`` and ``C`` fit them
+(packed row-major at the front) runs on the same xclbin, and a shape that
+breaks a constraint or does not fit is refused before it reaches the NPU.
+
+Per-core trip counts (``K // k`` and the number of output tiles a core
+produces) reach the workers as runtime parameters: each worker owns an RTP
+buffer the sequence writes before releasing a barrier the worker waits on.
+The worker steps the barrier back off once it has read them, so its next
+dispatch waits for that dispatch's values instead of reusing these.
+
+The script has three modes:
 
 * ``--xclbin-path=... --insts-path=...`` — compile the design ahead-of-time
-  and write artifacts to the given paths (bypasses the JIT cache).  Used by
-  ``makefile-common`` so ``test.cpp`` + ``sweep.sh`` can drive the design
-  via ``make``.
-* default — JIT-compile + run on the attached NPU + verify against numpy.
+  for ``-M -K -N`` and write artifacts to the given paths (bypasses the JIT
+  cache).  Used by ``makefile-common`` so ``test.cpp`` + ``sweep.sh`` can
+  drive the design via ``make``.
+* ``--dynamic MxKxN ...`` — compile once with dispatch-time shapes and run
+  every listed shape on the NPU, verifying each against numpy.
+* default — JIT-compile for ``-M -K -N`` + run on the attached NPU + verify
+  against numpy.
 """
 
 import argparse
-import sys
+from typing import NamedTuple
 
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
+from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
+    Buffer,
     CompileTime,
+    DispatchTime,
     In,
     ObjectFifo,
     Out,
     Program,
     Runtime,
-    StreamDims,
     TaskGroup,
     Worker,
+    WorkerRuntimeBarrier,
+    require,
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU2, from_name
+from aie.iron.device import from_name
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_close_with_benchmark
 
 
-def _device_for(dev_str, n_aie_cols):
-    # On NPU1 pick the matching ColN variant (or NPU1 itself when
-    # n_aie_cols == max = 4).  On NPU2 use the unrestricted device
-    # regardless of n_aie_cols so the placer has the full 8-column array.
-    return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
+class Tilings(NamedTuple):
+    """The A, B and C tilings the runtime sequence fills and drains."""
+
+    A: TensorAccessPattern
+    B: TensorAccessPattern
+    C: TensorAccessPattern
 
 
-def _build_design(
-    dev,
-    M,
-    K,
-    N,
-    m,
-    k,
-    n,
-    n_aie_cols,
-    dtype_in_str,
-    dtype_out_str,
-    b_col_maj,
-    c_col_maj,
-    emulate_bf16_mmul_with_bfp16,
-    use_chess,
-    scalar,
+def tile_matrices(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj) -> Tilings:
+    """Tile A, B and C for the runtime sequence.
+
+    ``A[i]`` is the i-th row of A tiles, walked ``N // n // n_aie_cols`` times;
+    ``B[j]`` is the j-th column of B tiles; ``C[i, j]`` is the C tile at row
+    block ``i`` and column ``j``. ``M``, ``K`` and ``N`` may be ints or
+    dispatch-time scalars.
+    """
+    n_aie_rows = 4
+    n_A_tiles_per_shim = max(1, n_aie_rows // n_aie_cols)
+
+    A_tiles = (
+        TensorAccessPattern.full((M, K))
+        .tile((m * n_A_tiles_per_shim, k))
+        .repeat(N // n // n_aie_cols)
+        .permute((1, 0, 2, 3, 4))
+    )
+    if b_col_maj:
+        B_tiles = TensorAccessPattern.full((N, K)).tile((n, k))
+    else:
+        B_tiles = TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
+    if c_col_maj:
+        # A row block is n_aie_rows tiles of the transposed (N, M) layout.
+        C_tiles = (
+            TensorAccessPattern.full((N, M))
+            .tile((n, m))
+            .split(1, n_aie_rows)
+            .permute((1, 0, 2, 3, 4))
+        )
+    else:
+        C_tiles = TensorAccessPattern.full((M, N)).tile((m * n_aie_rows, n))
+    return Tilings(A_tiles, B_tiles, C_tiles)
+
+
+def step_transfers(tilings: Tilings, row, n_aie_cols: int) -> list:
+    """Return the shim transfers of row block ``row``.
+
+    Each transfer is ``(tensor, col, tap)``: the shim column ``col`` fills
+    ``"A"`` or ``"B"``, or drains ``"C"``, with the access pattern ``tap``.
+    ``row`` may be a dispatch-time scalar.
+    """
+    n_shim_mem_A = min(4, n_aie_cols)
+    transfers = []
+    for col in range(n_aie_cols):
+        transfers.append(("C", col, tilings.C[row, col::n_aie_cols]))
+        if col < n_shim_mem_A:
+            transfers.append(("A", col, tilings.A[row * n_shim_mem_A + col]))
+        transfers.append(("B", col, tilings.B[col::n_aie_cols]))
+    return transfers
+
+
+@iron.jit
+def whole_array(
+    A: In,
+    B: In,
+    C: Out,
     *,
-    generate_taps=False,
+    M: DispatchTime[np.int32],
+    K: DispatchTime[np.int32],
+    N: DispatchTime[np.int32],
+    m: CompileTime[int],
+    k: CompileTime[int],
+    n: CompileTime[int],
+    n_aie_cols: CompileTime[int],
+    b_col_maj: CompileTime[int] = 0,
+    c_col_maj: CompileTime[int] = 0,
+    emulate_bf16_mmul_with_bfp16: CompileTime[bool] = False,
+    use_chess: CompileTime[bool] = False,
+    scalar: CompileTime[bool] = False,
 ):
-    """Build the whole-array matmul IRON design and resolve to MLIR."""
-    dev_str = "npu2" if isinstance(dev, NPU2) else "npu"
-
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
+    fifo_depth = 2
+    n_shim_mem_A = min(n_aie_rows, n_aie_cols)
+    n_A_tiles_per_shim = max(1, n_aie_rows // n_aie_cols)
 
-    dtype_in = str_to_dtype(dtype_in_str)
-    dtype_out = str_to_dtype(dtype_out_str)
+    dtype_in = np_ndarray_type_get_dtype(A)
+    dtype_out = np_ndarray_type_get_dtype(C)
 
     assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
         dtype_out, np.integer
@@ -101,47 +176,30 @@ def _build_design(
     zero_kernel = kernels.zero(m * n, dtype_out, use_chess=use_chess)
     r, s, t = matmul_kernel.mac_dims
     dims = matmul_kernel.stream_dims
-
-    if n_aie_cols > dev.cols:
-        raise ValueError(
-            f"n_aie_cols={n_aie_cols} but {dev_str} has {dev.cols} columns"
-        )
-
-    assert (
-        M % (m * n_aie_rows) == 0
-    ), "A must be tileable into (m * n_aie_rows, k)-sized blocks"
-    assert K % k == 0
-    assert (
-        N % (n * n_aie_cols) == 0
-    ), "B must be tileable into (k, n * n_aie_cols)-sized blocks"
     assert m % r == 0
     assert k % s == 0
     assert n % t == 0
 
-    fifo_depth = 2
-    n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
+    dev = iron.get_current_device()
+    assert dev is not None
+    if n_aie_cols > dev.cols:
+        raise ValueError(
+            f"n_aie_cols={n_aie_cols} but the device has {dev.cols} columns"
+        )
+    # Element offsets into the buffers are i32 dispatch-time arithmetic.
+    for name, ty in (("A", A), ("B", B), ("C", C)):
+        if not np.prod(np_ndarray_type_get_shape(ty)) < 2**31:
+            raise ValueError(f"{name} must hold fewer than 2**31 elements")
 
-    if n_aie_cols > n_aie_rows:
-        n_shim_mem_A = n_aie_rows
-    else:
-        n_shim_mem_A = n_aie_cols
-
-    n_A_tiles_per_shim = n_aie_rows // n_aie_cols if n_aie_cols < 4 else 1
-
-    A_taps = []
-    B_taps = []
-    C_taps = []
-
-    A_ty = np.ndarray[(M * K,), np.dtype[dtype_in]]
-    B_ty = np.ndarray[(K * N,), np.dtype[dtype_in]]
-    C_ty = np.ndarray[(M * N,), np.dtype[dtype_out]]
     A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
     B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
     C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
     A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
     B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
+    rtp_ty = np.ndarray[(2,), np.dtype[np.int32]]
 
+    # Shim -> memtile -> core fifos: A per row, B per column, C per [row][col].
     A_l3l2_fifos: list[ObjectFifo] = []
     A_l2l1_fifos: list[ObjectFifo] = []
     B_l3l2_fifos: list[ObjectFifo] = []
@@ -154,38 +212,29 @@ def _build_design(
         A_l3l2_fifos.append(a_l3l2)
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
-        of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        a_dims: list[StreamDims] = [dims.A or []] * (stop_row - start_row)
-        a_tmp_fifos = a_l3l2.cons().split(
-            of_offsets,
-            obj_types=[A_l1_ty] * (stop_row - start_row),
-            names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-            dims_to_stream=a_dims,
+        A_l2l1_fifos.extend(
+            a_l3l2.cons().split(
+                [m * k * j for j in range(stop_row - start_row)],
+                obj_types=[A_l1_ty] * (stop_row - start_row),
+                names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
+                to_stream=[dims.A] * (stop_row - start_row),
+            )
         )
-        A_l2l1_fifos.extend(a_tmp_fifos)
 
     for col in range(n_aie_cols):
         b_l3l2 = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         B_l3l2_fifos.append(b_l3l2)
         B_l2l1_fifos.append(
             b_l3l2.cons().forward(
-                obj_type=B_l1_ty,
-                name=f"B_L2L1_{col}",
-                dims_to_stream=dims.B,
+                obj_type=B_l1_ty, name=f"B_L2L1_{col}", to_stream=dims.B
             )
         )
-
         c_l2l3 = ObjectFifo(
-            C_l2_ty,
-            name=f"C_L2L3_{col}",
-            depth=fifo_depth,
-            dims_to_stream=dims.C,
+            C_l2_ty, name=f"C_L2L3_{col}", depth=fifo_depth, to_stream=dims.C
         )
         C_l2l3_fifos.append(c_l2l3)
-        of_offsets = [m * n * i for i in range(n_aie_rows)]
-
         c_tmp_fifos = c_l2l3.prod().join(
-            of_offsets,
+            [m * n * i for i in range(n_aie_rows)],
             obj_types=[C_l1_ty] * n_aie_rows,
             names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
             depths=[fifo_depth] * n_aie_rows,
@@ -193,15 +242,31 @@ def _build_design(
         for j in range(n_aie_rows):
             C_l1l2_fifos[j].append(c_tmp_fifos[j])
 
-    def core_fn(in_a, in_b, out_c, zero, matmul):
-        loop = range(1)  # Workaround for issue #1547
-        if n_tiles_per_core > 1:
-            loop = range_(n_tiles_per_core)
-        for _ in loop:
+    # Each worker's trip counts arrive as runtime parameters: rtp[0] = K // k,
+    # rtp[1] = output tiles per core. The sequence writes them, then releases
+    # the barrier the worker waits on at the top of every dispatch.
+    rtps = [
+        [
+            Buffer(rtp_ty, name=f"rtp_{row}_{col}", use_write_rtp=True)
+            for col in range(n_aie_cols)
+        ]
+        for row in range(n_aie_rows)
+    ]
+    barriers = [
+        [WorkerRuntimeBarrier() for _ in range(n_aie_cols)] for _ in range(n_aie_rows)
+    ]
+
+    def core_fn(in_a, in_b, out_c, zero, matmul, rtp, barrier):
+        barrier.wait_for_value(1)
+        k_iters = rtp[0]
+        n_tiles = rtp[1]
+        # The wait leaves the barrier at 1; step it off so the next dispatch
+        # blocks until that dispatch's own set(1) instead of reusing these.
+        barrier.release_with_value(1)
+        for _ in range_(n_tiles):
             elem_out = out_c.acquire(1)
             zero(elem_out)
-
-            for _ in range_(K // k):
+            for _ in range_(k_iters):
                 elem_in_a = in_a.acquire(1)
                 elem_in_b = in_b.acquire(1)
                 matmul(elem_in_a, elem_in_b, elem_out)
@@ -220,206 +285,47 @@ def _build_design(
                 C_l1l2_fifos[row][col].prod(),
                 zero_kernel,
                 matmul_kernel,
+                rtps[row][col],
+                barriers[row][col],
             ],
             stack_size=0xD00,
         ),
     )
-
-    tb_max_n_rows = 4 if not c_col_maj else 2
-    tb_n_rows = tb_max_n_rows // 2
-
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K),
-        (m * n_A_tiles_per_shim, k),
-        (1, K // k),
-        pattern_repeat=N // n // n_aie_cols,
-        prune_step=False,
-    )
-    if b_col_maj:
-        B_tiles = TensorTiler2D.step_tiler(
-            (N, K),
-            (n, k),
-            tile_group_repeats=(N // n // n_aie_cols, K // k),
-            tile_group_steps=(n_aie_cols, 1),
-            prune_step=False,
-        )
-    else:
-        B_tiles = TensorTiler2D.step_tiler(
-            (K, N),
-            (k, n),
-            tile_group_repeats=(K // k, N // n // n_aie_cols),
-            tile_group_steps=(1, n_aie_cols),
-            tile_group_col_major=True,
-            prune_step=False,
-        )
-    if c_col_maj:
-        # Splitting n_aie_rows out of the tile dim is what lets TensorTiler emit
-        # the (col-fast, row_block-slow) DMA pattern; iter_col_major matches it.
-        C_tiles = TensorTiler2D.step_tiler(
-            (N, M),
-            (n, m),
-            tile_group_repeats=(N // n // n_aie_cols, n_aie_rows),
-            tile_group_steps=(n_aie_cols, 1),
-            iter_col_major=True,
-            prune_step=False,
-        )
-    else:
-        C_tiles = TensorTiler2D.step_tiler(
-            (M, N),
-            (m * n_aie_rows, n),
-            tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
-            tile_group_steps=(1, n_aie_cols),
-            prune_step=False,
-        )
     flat_workers = [w for row in workers for w in row]
 
     A_prods = [f.prod() for f in A_l3l2_fifos]
     B_prods = [f.prod() for f in B_l3l2_fifos]
     C_conses = [f.cons() for f in C_l2l3_fifos]
 
-    def sequence(A, B, C, A_hs, B_hs, C_hs):
-        c_index = 0
-        tg = TaskGroup()
-        for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
-            for pingpong in [0, 1]:
-                if c_index >= len(C_tiles):
-                    break
+    def sequence(A, B, C, M, K, N, A_hs, B_hs, C_hs):
+        # A ValueError on a specialized shape; a refused dispatch on a live one.
+        require(M > 0, "M must be positive")
+        require(K > 0, "K must be positive")
+        require(N > 0, "N must be positive")
+        require(M % (m * n_aie_rows) == 0, "M must be a multiple of m * n_aie_rows")
+        require(K % k == 0, "K must be a multiple of k")
+        require(N % (n * n_aie_cols) == 0, "N must be a multiple of n * n_aie_cols")
 
-                row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
-                current_tb_n_rows = min(
-                    [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
-                )
+        for row in range(n_aie_rows):
+            for col in range(n_aie_cols):
+                rtps[row][col][0] = K // k
+                rtps[row][col][1] = (M // m) * (N // n) // n_aie_cores
+                barriers[row][col].set(1)
 
-                for col in range(n_aie_cols):
-                    C_taps.append(C_tiles[c_index])
-                    C_hs[col].drain(
-                        C,
-                        tap=C_tiles[c_index],
-                        wait=True,
-                        group=tg,
-                    )
-                    c_index += 1
+        # Four row blocks in flight: each block's transfers form a group that
+        # is finished only after the next three blocks' are issued.
+        tilings = tile_matrices(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj)
+        for row, tg in TaskGroup.pipelined(M // m // n_aie_rows, depth=4):
+            for tensor, col, tap in step_transfers(tilings, row, n_aie_cols):
+                if tensor == "C":
+                    C_hs[col].drain(C, tap=tap, wait=True, group=tg)
+                elif tensor == "A":
+                    A_hs[col].fill(A, tap=tap, group=tg)
+                else:
+                    B_hs[col].fill(B, tap=tap, group=tg)
 
-                    for tile_row in range(current_tb_n_rows):
-                        tile_offset = (
-                            (row_base + tile_row) * n_shim_mem_A + col
-                        ) % len(A_tiles)
-                        if col < n_aie_rows:
-                            A_hs[col].fill(
-                                A,
-                                tap=A_tiles[tile_offset],
-                                group=tg,
-                            )
-                        B_hs[col].fill(
-                            B,
-                            tap=B_tiles[col],
-                            group=tg,
-                        )
-                        A_taps.append(A_tiles[tile_offset])
-                        B_taps.append(B_tiles[col])
-
-                if tb > 0 or (tb == 0 and pingpong > 0):
-                    tg.finish()
-                    tg = TaskGroup()
-        tg.finish()
-
-    rt = Runtime(
-        sequence,
-        [A_ty, B_ty, C_ty, A_prods, B_prods, C_conses],
-    )
-
-    # resolve_program() runs the sequence body, which populates the closure
-    # A_taps/B_taps/C_taps lists as a side effect. The generate_taps path needs
-    # that side effect, so resolve first and discard the module for that mode.
-    program = Program(dev, rt, workers=flat_workers)
-    module = program.resolve_program()
-
-    if generate_taps:
-        return (
-            TensorAccessSequence.from_taps(A_taps),
-            TensorAccessSequence.from_taps(B_taps),
-            TensorAccessSequence.from_taps(C_taps),
-        )
-
-    return module
-
-
-@iron.jit
-def whole_array(
-    A: In,
-    B: In,
-    C: Out,
-    *,
-    M: CompileTime[int],
-    K: CompileTime[int],
-    N: CompileTime[int],
-    m: CompileTime[int],
-    k: CompileTime[int],
-    n: CompileTime[int],
-    n_aie_cols: CompileTime[int],
-    dtype_in_str: CompileTime[str],
-    dtype_out_str: CompileTime[str],
-    b_col_maj: CompileTime[int] = 0,
-    c_col_maj: CompileTime[int] = 0,
-    emulate_bf16_mmul_with_bfp16: CompileTime[bool] = False,
-    use_chess: CompileTime[bool] = False,
-    scalar: CompileTime[bool] = False,
-):
-    return _build_design(
-        iron.get_current_device(),
-        M,
-        K,
-        N,
-        m,
-        k,
-        n,
-        n_aie_cols,
-        dtype_in_str,
-        dtype_out_str,
-        b_col_maj,
-        c_col_maj,
-        emulate_bf16_mmul_with_bfp16,
-        use_chess,
-        scalar,
-    )
-
-
-def generate_taps(
-    M,
-    K,
-    N,
-    m,
-    k,
-    n,
-    n_aie_cols,
-    dtype_in_str,
-    dtype_out_str,
-    b_col_maj=0,
-    c_col_maj=0,
-    emulate_bf16_mmul_with_bfp16=False,
-    dev="npu",
-):
-    """Return ``(A_taps, B_taps, C_taps)`` for the visualization notebook."""
-    dev_obj = _device_for(dev, n_aie_cols)
-    iron.set_current_device(dev_obj)
-    return _build_design(
-        dev_obj,
-        M,
-        K,
-        N,
-        m,
-        k,
-        n,
-        n_aie_cols,
-        dtype_in_str,
-        dtype_out_str,
-        b_col_maj,
-        c_col_maj,
-        emulate_bf16_mmul_with_bfp16,
-        use_chess=False,
-        scalar=False,
-        generate_taps=True,
-    )
+    rt = Runtime(sequence, [A, B, C, M, K, N, A_prods, B_prods, C_conses])
+    return Program(dev, rt, workers=flat_workers).resolve_program()
 
 
 def _make_argparser():
@@ -428,6 +334,14 @@ def _make_argparser():
     p.add_argument("-M", type=int, default=512)
     p.add_argument("-K", type=int, default=512)
     p.add_argument("-N", type=int, default=512)
+    p.add_argument(
+        "--dynamic",
+        type=lambda s: tuple(int(x) for x in s.split("x")),
+        nargs="+",
+        metavar="MxKxN",
+        help="compile once with dispatch-time M, K and N and run each shape; "
+        "the host buffers are sized for the largest A, B and C among them",
+    )
     p.add_argument("-m", type=int, default=64)
     p.add_argument("-k", type=int, default=64)
     p.add_argument("-n", type=int, default=32)
@@ -456,46 +370,32 @@ def _make_argparser():
     return p
 
 
-def _validate_shape_args(opts):
-    n_aie_rows = 4
-    if opts.M % (opts.m * n_aie_rows) != 0:
-        sys.exit(
-            f"-M {opts.M} must be a multiple of -m * n_aie_rows ({opts.m} * {n_aie_rows} = {opts.m * n_aie_rows})"
+def _buffer_shapes(opts):
+    """Return the A, B and C buffer shapes: one shape's, or the largest of ``--dynamic``."""
+    if opts.dynamic:
+        return (
+            (max(M * K for M, K, _ in opts.dynamic),),
+            (max(K * N for _, K, N in opts.dynamic),),
+            (max(M * N for M, _, N in opts.dynamic),),
         )
-    if opts.K % opts.k != 0:
-        sys.exit(f"-K {opts.K} must be a multiple of -k {opts.k}")
-    if opts.N % (opts.n * opts.n_aie_cols) != 0:
-        sys.exit(
-            f"-N {opts.N} must be a multiple of -n * --n-aie-cols ({opts.n} * {opts.n_aie_cols} = {opts.n * opts.n_aie_cols})"
-        )
-    tb_n_rows = 2
-    n_row_blocks = opts.M // opts.m // n_aie_rows
-    if n_row_blocks % tb_n_rows != 0:
-        sys.exit(
-            f"M/m/n_aie_rows = {n_row_blocks} must be a multiple of "
-            f"{tb_n_rows} (transfer-block row count). Try a larger -M or smaller -m."
-        )
-    if opts.dev == "npu" and opts.n_aie_cols > 4:
-        sys.exit(
-            f"--n-aie-cols {opts.n_aie_cols} > 4 not supported on NPU1 (Phoenix/Hawk)"
-        )
-    if opts.dev == "npu2" and opts.n_aie_cols > 8:
-        sys.exit(
-            f"--n-aie-cols {opts.n_aie_cols} > 8 not supported on NPU2 (Strix/Strix Halo/Krackan)"
-        )
+    B_shape = (opts.N, opts.K) if opts.b_col_maj else (opts.K, opts.N)
+    return (opts.M, opts.K), B_shape, (opts.M, opts.N)
 
 
 def _compile_kwargs(opts):
+    dtypes = [str_to_dtype(opts.dtype_in)] * 2 + [str_to_dtype(opts.dtype_out)]
+    tensor_types = {
+        name: np.ndarray[shape, np.dtype[dtype]]
+        for name, shape, dtype in zip("ABC", _buffer_shapes(opts), dtypes)
+    }
+    shape = {} if opts.dynamic else dict(M=opts.M, K=opts.K, N=opts.N)
     return dict(
-        M=opts.M,
-        K=opts.K,
-        N=opts.N,
+        **tensor_types,
+        **shape,
         m=opts.m,
         k=opts.k,
         n=opts.n,
         n_aie_cols=opts.n_aie_cols,
-        dtype_in_str=opts.dtype_in,
-        dtype_out_str=opts.dtype_out,
         b_col_maj=opts.b_col_maj,
         c_col_maj=opts.c_col_maj,
         emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
@@ -507,75 +407,66 @@ def _compile_kwargs(opts):
 def _run_and_verify(opts):
     dtype_in = str_to_dtype(opts.dtype_in)
     dtype_out = str_to_dtype(opts.dtype_out)
-
-    rng = np.random.default_rng(1726250518)
-    if np.issubdtype(dtype_in, np.integer):
-        info = np.iinfo(dtype_in)
-        A_np = rng.integers(
-            info.min // 4, info.max // 4, size=(opts.M, opts.K), dtype=dtype_in
-        )
-        B_shape = (opts.N, opts.K) if opts.b_col_maj else (opts.K, opts.N)
-        B_np = rng.integers(info.min // 4, info.max // 4, size=B_shape, dtype=dtype_in)
-    else:
-        A_np = (rng.random((opts.M, opts.K)) * 4.0).astype(dtype_in)
-        B_shape = (opts.N, opts.K) if opts.b_col_maj else (opts.K, opts.N)
-        B_np = (rng.random(B_shape) * 4.0).astype(dtype_in)
-    A_t = iron.tensor(A_np, dtype=dtype_in, device="npu")
-    B_t = iron.tensor(B_np, dtype=dtype_in, device="npu")
-    C_t = iron.zeros((opts.M, opts.N), dtype=dtype_out, device="npu")
-
-    bench = run_iters(
-        whole_array,
-        A_t,
-        B_t,
-        C_t,
-        M=opts.M,
-        K=opts.K,
-        N=opts.N,
-        m=opts.m,
-        k=opts.k,
-        n=opts.n,
-        n_aie_cols=opts.n_aie_cols,
-        dtype_in_str=opts.dtype_in,
-        dtype_out_str=opts.dtype_out,
-        b_col_maj=opts.b_col_maj,
-        c_col_maj=opts.c_col_maj,
-        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
-        use_chess=bool(opts.use_chess),
-        scalar=bool(opts.scalar),
-        warmup=opts.warmup,
-        iters=opts.iters,
-    )
-
-    B_logical = B_np.T if opts.b_col_maj else B_np  # b_col_maj stores B transposed
-    expected_logical = kernels.mm_ref(A_np, B_logical).astype(dtype_out)
-    if opts.c_col_maj:
-        actual = C_t.numpy().reshape(opts.N, opts.M)
-        expected = expected_logical.T
-    else:
-        actual = C_t.numpy().reshape(opts.M, opts.N)
-        expected = expected_logical
-
     # The same kernel the design binds; kernels.mm is memoized, so this is
     # the object the design built, asked for its tolerance.
-    kernel = kernels.mm(
+    tolerance = kernels.mm(
         dim_m=opts.m,
         dim_k=opts.k,
         dim_n=opts.n,
-        input_dtype=str_to_dtype(opts.dtype_in),
-        output_dtype=str_to_dtype(opts.dtype_out),
+        input_dtype=dtype_in,
+        output_dtype=dtype_out,
         b_col_maj=bool(opts.b_col_maj),
-    )
+    ).contract.tolerance
 
-    assert_close_with_benchmark(
-        actual,
-        expected,
-        bench=bench,
-        ops=2.0 * opts.M * opts.K * opts.N,
-        tolerance=kernel.contract.tolerance,
-        fail_msg="output does not match A @ B",
-        mismatch_indices=True,
+    design = whole_array.specialize(**_compile_kwargs(opts))
+    rng = np.random.default_rng(1726250518)
+    A_t, B_t, C_t = (
+        iron.zeros(buf, dtype=dt, device="npu")
+        for buf, dt in zip(_buffer_shapes(opts), (dtype_in, dtype_in, dtype_out))
     )
+    for M, K, N in opts.dynamic or [(opts.M, opts.K, opts.N)]:
+        B_shape = (N, K) if opts.b_col_maj else (K, N)
+        if np.issubdtype(dtype_in, np.integer):
+            info = np.iinfo(dtype_in)
+            lo, hi = info.min // 4, info.max // 4
+            A_np = rng.integers(lo, hi, size=(M, K), dtype=dtype_in)
+            B_np = rng.integers(lo, hi, size=B_shape, dtype=dtype_in)
+        else:
+            A_np = (rng.random((M, K)) * 4.0).astype(dtype_in)
+            B_np = (rng.random(B_shape) * 4.0).astype(dtype_in)
+        # Each matrix sits packed row-major at the front of its buffer.
+        A_t.numpy_view().flat[: A_np.size] = A_np.flat
+        B_t.numpy_view().flat[: B_np.size] = B_np.flat
+        shape = {}
+        if opts.dynamic:
+            print(f"M={M} K={K} N={N}")
+            shape = dict(M=M, K=K, N=N)
+
+        bench = run_iters(
+            design,
+            A_t,
+            B_t,
+            C_t,
+            **shape,
+            warmup=opts.warmup,
+            iters=opts.iters,
+        )
+
+        expected = kernels.mm_ref(A_np, B_np.T if opts.b_col_maj else B_np)
+        live = C_t.numpy().reshape(-1)[: M * N]
+        if opts.c_col_maj:
+            actual, expected = live.reshape(N, M), expected.T
+        else:
+            actual = live.reshape(M, N)
+        assert_close_with_benchmark(
+            actual,
+            expected.astype(dtype_out),
+            bench=bench,
+            ops=2.0 * M * K * N,
+            tolerance=tolerance,
+            fail_msg="output does not match A @ B",
+            mismatch_indices=True,
+        )
 
 
 def main():
@@ -585,8 +476,11 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: _device_for(o.dev, o.n_aie_cols),
-        validate=_validate_shape_args,
+        # NPU1 binds the ColN variant matching n_aie_cols; NPU2 keeps the
+        # full array for the placer.
+        device=lambda o: from_name(
+            o.dev, n_cols=o.n_aie_cols if o.dev == "npu" else None
+        ),
     )
 
 

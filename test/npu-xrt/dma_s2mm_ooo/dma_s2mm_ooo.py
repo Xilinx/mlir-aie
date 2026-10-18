@@ -69,13 +69,13 @@ from aie.iron import (
     TileDma,
     Worker,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 OOO_ID_MASK = 0x3F  # out-of-order id header field is 6-bit
-MAX_BD_ITER = 64  # BD iteration wrap (aie-rt IterWrapMax + 1)
 
 
 def _perm(n, shift):
@@ -97,27 +97,17 @@ def _chan_base(kc, r, lo, M, rounds):
     return lo + r * M + kc * rounds * M
 
 
-def _slot_walk(m, tw, runtime):
-    # A slot spreads its m packets over m tw-word sub-buffers. A runtime task
-    # takes that iteration from the outermost sizes/strides dim, since it
-    # rejects Bd.iteration; a one-packet slot stays linear.
-    if not runtime:
-        return dict(iteration=BdIteration(size=m, stride=tw))
-    if m == 1:
-        return {}
-    return dict(sizes=[m, 1, 1, tw], strides=[tw, 0, 0, 1])
-
-
-def _recv_bds(buf, ids, off, ms, tw, con, runtime=False):
+def _recv_bds(buf, ids, off, ms, tw, con):
+    # A slot spreads its m packets over m tw-word sub-buffers.
+    whole = TensorAccessPattern.full(buf.shape)
     return [
         Bd(
             buffer=buf,
-            offset=off[j] * tw,
-            length=tw,
+            tap=whole[off[j] * tw : (off[j] + 1) * tw],
             bd_id=ids[j],
             packet=(0, 0),
             releases=[Release(con, value=1)],
-            **_slot_walk(ms[j], tw, runtime),
+            iteration=BdIteration(size=ms[j], stride=tw),
         )
         for j in range(len(ids))
     ]
@@ -167,6 +157,7 @@ def dma_s2mm_ooo(
     max_lock = dev.max_lock_value
     max_repeat = dev.max_repeat_count
     core_bds = dev.get_num_bds(AIETileType.CoreTile)
+    max_bd_iter = 1 << dev.get_dma_bd_iter_bits(0, 2)
 
     # Guard the reusable API directly: an out-of-range config would otherwise hang
     # or lower silently wrong rather than raise. The CLI repeats these friendlier.
@@ -191,10 +182,10 @@ def dma_s2mm_ooo(
             f"rounds (k+1) = {rounds} exceeds the lock ceiling {max_lock} "
             "(each sender's token-credit lock is initialized to rounds)"
         )
-    if max(ms) * rounds > MAX_BD_ITER:
+    if max(ms) * rounds > max_bd_iter:
         raise ValueError(
             f"send BD iteration size max(ms)*(k+1) = {max(ms) * rounds} "
-            f"exceeds the BD iteration cap {MAX_BD_ITER} (the sender walks all "
+            f"exceeds the BD iteration cap {max_bd_iter} (the sender walks all "
             "rounds from one BD)"
         )
     if k > 0 and recv_is_core and c == 2 and 2 * n + 3 > core_bds:
@@ -281,8 +272,6 @@ def dma_s2mm_ooo(
             recv_bds = _recv_bds(bufs[kc], ids, off, ms, tw, cons[kc])
             egress_bd = Bd(
                 buffer=bufs[kc],
-                offset=0,
-                length=M * tw,
                 acquires=[Acquire(cons[kc], value=M)],
                 releases=[Release(cons[kc], value=0)],
                 next=0,
@@ -333,8 +322,9 @@ def dma_s2mm_ooo(
             send_bds = [
                 Bd(
                     buffer=sbuf,
-                    offset=kc * cnt * tw,
-                    length=tw,
+                    tap=TensorAccessPattern.full(sbuf.shape)[
+                        kc * cnt * tw : (kc * cnt + 1) * tw
+                    ],
                     iteration=BdIteration(size=cnt, stride=tw),
                     packet=(0, pkt_id(s, kc)),
                     out_of_order_id=_slot_ids(recv_is_core, kc, n)[t] & OOO_ID_MASK,
@@ -371,8 +361,7 @@ def dma_s2mm_ooo(
         recv_locks = [prod]
         recv_bd = Bd(
             buffer=bufs[0],
-            offset=0,
-            length=tw,
+            tap=TensorAccessPattern.full(bufs[0].shape)[:tw],
             bd_id=ids[0],
             packet=(0, 0),
             iteration=BdIteration(size=M, stride=tw),
@@ -381,8 +370,6 @@ def dma_s2mm_ooo(
         )
         egress_bd = Bd(
             buffer=bufs[0],
-            offset=0,
-            length=M * tw,
             acquires=[Acquire(cons[0], value=M)],
             releases=[Release(prod, value=M)],  # return the round's slots
             next=0,
@@ -422,8 +409,7 @@ def dma_s2mm_ooo(
         )
         send_bd = Bd(
             buffer=sbuf,
-            offset=0,
-            length=tw,
+            tap=TensorAccessPattern.full(sbuf.shape)[:tw],
             iteration=BdIteration(size=M * rounds, stride=tw),
             packet=(0, pkt_id(0, 0)),
             out_of_order_id=ids[0] & OOO_ID_MASK,
@@ -474,8 +460,6 @@ def dma_s2mm_ooo(
             drain_bds = [
                 Bd(
                     buffer=bufs[kc],
-                    offset=0,
-                    length=M * tw,
                     packet=(0, tok_pkt + 1) if kc == 0 else None,
                     acquires=[Acquire(cons[kc], value=M)],
                     releases=[Release(both, value=1)],
@@ -488,7 +472,6 @@ def dma_s2mm_ooo(
                 drain_bds.append(
                     Bd(
                         buffer=tokbuf,
-                        length=1,
                         packet=(0, tok_pkt),
                         acquires=[Acquire(both, value=c)],
                         releases=[Release(both, value=0)],  # dummy (lock invariant)
@@ -548,8 +531,9 @@ def dma_s2mm_ooo(
             send_bds = [
                 Bd(
                     buffer=sbuf,
-                    offset=kc * rounds * cnt * tw,
-                    length=tw,
+                    tap=TensorAccessPattern.full(sbuf.shape)[
+                        kc * rounds * cnt * tw : (kc * rounds * cnt + 1) * tw
+                    ],
                     iteration=BdIteration(size=cnt * rounds, stride=tw),
                     packet=(0, pkt_id(s, kc)),
                     out_of_order_id=_slot_ids(recv_is_core, kc, n)[t] & OOO_ID_MASK,
@@ -561,7 +545,6 @@ def dma_s2mm_ooo(
             ]
             tok_bd = Bd(
                 buffer=tokrx,
-                length=1,
                 acquires=[Acquire(tok_free, value=1)],
                 releases=[Release(go, value=c * cnt)],  # a token frees one round
                 next=0,
@@ -619,23 +602,18 @@ def dma_s2mm_ooo(
         # Use_Next_BD and places each packet by header id.
         for kc, ids in runtime_recv:
             DmaEndpoint(receiver, DMAChannelDir.S2MM, kc).task(
-                *_recv_bds(bufs[kc], ids, off, ms, tw, cons[kc], runtime=True),
+                *_recv_bds(bufs[kc], ids, off, ms, tw, cons[kc]),
                 runs=M * rounds,
                 out_of_order=True,
             ).start().free()
 
         # Drain each channel's merged buffer round-major; each drain self-gates
         # on-chip on the channel's ooo_cons count.
+        merged = TensorAccessPattern.full((rounds * c * M * tw,)).partition(rounds * c)
         for r in range(rounds):
             for kc in range(c):
                 tg = TaskGroup()
-                drains[kc].drain(
-                    c_h,
-                    offset=(r * c + kc) * M * tw,
-                    sizes=[1, 1, 1, M * tw],
-                    wait=True,
-                    group=tg,
-                )
+                drains[kc].drain(c_h, tap=merged[r * c + kc], wait=True, group=tg)
                 tg.finish()
 
     rt = Runtime(sequence, [np.ndarray[(rounds * c * M * tw,), np.dtype[np.int32]]])
@@ -775,6 +753,7 @@ def main():
     max_lock = dev.max_lock_value
     max_repeat = dev.max_repeat_count
     core_bds = dev.get_num_bds(AIETileType.CoreTile)
+    max_bd_iter = 1 << dev.get_dma_bd_iter_bits(0, 2)
     if not (1 <= opts.sources <= 8):
         sys.exit("--sources must be between 1 and 8")
     if (
@@ -833,10 +812,10 @@ def main():
             f"total packets over all rounds ({total * rounds}) exceed the "
             f"repeat field (the out-of-order channel encodes M*(k+1)-1 <= {max_repeat})"
         )
-    if opts.repeat_count > 0 and cnt_max * rounds > MAX_BD_ITER:
+    if opts.repeat_count > 0 and cnt_max * rounds > max_bd_iter:
         sys.exit(
             f"send BD iteration size max(ms)*(k+1) = {cnt_max * rounds} "
-            f"must be <= {MAX_BD_ITER} (the sender walks all rounds from one BD)"
+            f"must be <= {max_bd_iter} (the sender walks all rounds from one BD)"
         )
     if opts.recv_backpressure:
         if opts.sources != 1:

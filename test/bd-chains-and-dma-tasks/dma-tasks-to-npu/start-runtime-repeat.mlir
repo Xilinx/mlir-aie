@@ -21,7 +21,9 @@
 
 // TXN-LABEL: @replay
 // TXN: %[[RC:.*]] = arith.subi %arg1, %{{.*}} : i32
-// TXN: aiex.npu.assert_bd_field(%[[RC]]) {max = 255 : i32} : i32
+// TXN: %[[WIDE:.*]] = arith.extui %[[RC]] : i32 to i64
+// TXN: %[[OK:.*]] = arith.cmpi ule, %[[WIDE]], %c255_i64 : i64
+// TXN: cf.assert %[[OK]], "a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)"
 // TXN: %[[MASKED:.*]] = arith.andi %[[RC]], %{{.*}} : i32
 // TXN: arith.shli %[[MASKED]], %{{.*}} : i32
 // TXN: aiex.npu.write32

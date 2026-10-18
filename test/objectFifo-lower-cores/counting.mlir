@@ -1,4 +1,5 @@
 // RUN: aie-opt --aie-objectfifo-lower-cores %s | FileCheck %s
+// RUN: aie-opt --aie-objectfifo-lower-cores --mlir-print-debuginfo %s | FileCheck %s --check-prefix=LOC --implicit-check-not='loc(unknown)'
 // RUN: aie-opt --aie-objectfifo-lower-cores %s -o %t1.mlir
 // RUN: aie-opt --aie-objectfifo-lower-cores %t1.mlir -o %t2.mlir
 // RUN: diff %t1.mlir %t2.mlir
@@ -7,8 +8,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // An acquire names every object the core wants to hold, so it takes only the
-// ones it does not hold already; a release gives back what it names and moves
-// the rotating index on.
+// ones it does not hold already; a release gives back what it names and
+// rotates the objects on.
 
 module @counting {
   aie.device(xcve2302) {
@@ -27,8 +28,11 @@ module @counting {
     aie.objectfifo.core_endpoint @writer(%tile12) fills @pool
 
     %core = aie.core(%tile12) {
-      %e = aie.objectfifo.acquire @writer (1) : memref<16xi32>
-      aie.objectfifo.release @writer (1)
+      %e = aie.objectfifo.acquire @writer (1) : memref<16xi32> loc("fifo_user.py":50:4)
+      %i = arith.constant 0 : index
+      %v = arith.constant 1 : i32
+      memref.store %v, %e[%i] : memref<16xi32>
+      aie.objectfifo.release @writer (1) loc("fifo_user.py":60:4)
       aie.end
     }
   }
@@ -37,18 +41,39 @@ module @counting {
 // CHECK-LABEL: @counting
 // CHECK:   aie.core(%{{.*}}) {
 
+// The objects sit in memory in rotation order, starting with the next one to
+// acquire.
+// CHECK:     %[[FRONT:.*]] = memref.alloca() {aie.objectfifo.object_slot} : memref<memref<16xi32>>
+// CHECK:     memref.store %b0, %[[FRONT]][]
+// CHECK:     %[[BACK:.*]] = memref.alloca() {aie.objectfifo.object_slot} : memref<memref<16xi32>>
+// CHECK:     memref.store %b1, %[[BACK]][]
+
 // Take the shortfall between what is wanted and what is held.
 // CHECK:     %[[DELTA:.*]] = arith.maxsi
 // CHECK:     aie.use_lock(%free, AcquireGreaterEqual, %[[DELTA]])
 
-// The object handed over is the one the rotating index selects.
-// CHECK:     scf.index_switch
-// CHECK:       scf.yield %b0
-// CHECK:       scf.yield %b1
+// The object handed over is the one at the front.
+// CHECK:     %[[OBJ:.*]] = memref.load %[[FRONT]][]
+// CHECK:     memref.store %{{.*}}, %[[OBJ]][%{{.*}}]
 
+// Releasing one object rotates the objects by one.
 // CHECK:     aie.use_lock(%full, Release, %{{.*}})
+// CHECK:     %[[WAS_FRONT:.*]] = memref.load %[[FRONT]][]
+// CHECK:     %[[WAS_BACK:.*]] = memref.load %[[BACK]][]
+// CHECK:     memref.store %[[WAS_BACK]], %[[FRONT]][]
+// CHECK:     memref.store %[[WAS_FRONT]], %[[BACK]][]
 // CHECK:     aie.end
 
 // CHECK-NOT: aie.objectfifo.acquire
 // CHECK-NOT: aie.objectfifo.release
 // CHECK-NOT: aie.objectfifo.core_endpoint
+
+// Check provenance as well as coverage: acquire/release lower to the same op
+// kind but must still point at their respective user source lines.
+// LOC-DAG: arith.maxsi {{.*}} loc(#[[ACQUIRE:loc[0-9]*]])
+// LOC-DAG: aie.use_lock(%free, AcquireGreaterEqual, {{.*}}) loc(#[[ACQUIRE]])
+// LOC-DAG: memref.load {{.*}}[] {{.*}} loc(#[[ACQUIRE]])
+// LOC-DAG: aie.use_lock(%full, Release, {{.*}}) loc(#[[RELEASE:loc[0-9]*]])
+// LOC-DAG: memref.store {{.*}} loc(#[[RELEASE]])
+// LOC-DAG: #[[ACQUIRE]] = loc("fifo_user.py":50:4)
+// LOC-DAG: #[[RELEASE]] = loc("fifo_user.py":60:4)

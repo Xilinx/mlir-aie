@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+# RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
 # RUN: %run_on_npu2_hrx% %pytest %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
@@ -24,6 +25,7 @@ from fractions import Fraction
 import aie.iron as iron
 import numpy as np
 import pytest
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -38,8 +40,6 @@ from aie.iron import (
 from aie.iron.controlflow import range_
 from aie.iron.kernels import sample
 from ml_dtypes import bfloat16
-
-pytestmark = pytest.mark.supported_devices("npu2")
 
 I32 = np.dtype[np.int32]
 
@@ -131,7 +131,6 @@ def sample_positions(
                 of_record.prod(),
                 combine,
             ],
-            stack_size=combine.contract.stack_bytes,
         )
     )
 
@@ -147,12 +146,8 @@ def sample_positions(
     def sequence(logits_h, draws_h, token_h, record_h, draw, token, record, *xs):
         # Each column's slice of every copy of every row.
         for c, x in enumerate(xs):
-            x.fill(
-                logits_h,
-                sizes=[1, 1, positions * streams, slice_size],
-                strides=[0, 0, vocab, 1],
-                offset=c * slice_size,
-            )
+            rows = TensorAccessPattern.full((positions * streams, vocab))
+            x.fill(logits_h, tap=rows[:, c * slice_size : (c + 1) * slice_size])
         draw.fill(draws_h)
         token.drain(token_h, wait=True)
         record.drain(record_h, wait=True)

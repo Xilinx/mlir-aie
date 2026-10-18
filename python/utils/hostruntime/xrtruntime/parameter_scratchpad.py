@@ -63,11 +63,22 @@ class ParameterScratchpad:
             name: The parameter name (must match a name in the params file).
             value: A scalar value — ``int``, or any type with a ``tobytes()``
                    method (``np.int32``, ``bfloat16``, etc.).
+
+        Raises:
+            ValueError: `name` is a DMA offset or length parameter and `value`
+                is outside the range that keeps its transfers within their
+                buffers.
         """
         self._impl.write_bytes(name, _to_bytes(value))
 
     def sync(self) -> None:
-        """Sync the scratchpad buffer to device."""
+        """Sync the scratchpad buffer to device.
+
+        Raises:
+            ValueError: An offset and a length parameter that one DMA transfer
+                uses together take it past the end of its buffer.
+        """
+        self._impl.validate()
         self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def read(self, name: str) -> int:

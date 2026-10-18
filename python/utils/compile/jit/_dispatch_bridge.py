@@ -27,6 +27,7 @@ from aie.utils.hostruntime.hostruntime import HostRuntimeError
 # The C symbol the generated code exports to describe itself, and the
 # aiecc flag that emits it. A .so built without the flag has no ABI to
 # read and no entry point either.
+DISPATCH_LAST_REFUSAL_SYMBOL = "dispatch_last_refusal"
 DISPATCH_ABI_SYMBOL = "dispatch_abi"
 EMIT_DISPATCH_SHIM_FLAG = "--npu-cpp-emit-dispatch-shim"
 
@@ -141,6 +142,17 @@ class DispatchBridge:
             ctypes.POINTER(ctypes.POINTER(ctypes.c_uint32)),
         ]
 
+    def _last_refusal(self) -> str | None:
+        """Return the generated library's reason for the last -2, if it exports one."""
+        try:
+            fn = getattr(self._lib, DISPATCH_LAST_REFUSAL_SYMBOL)
+        except AttributeError:
+            return None
+        fn.restype = ctypes.c_char_p
+        fn.argtypes = []
+        why = fn()
+        return why.decode("utf-8", "replace") if why else None
+
     def generate(self, values: dict[str, Any]) -> np.ndarray:
         """Return a fresh ``uint32`` instruction word array for *values*.
 
@@ -167,6 +179,11 @@ class DispatchBridge:
         out_ptr = ctypes.POINTER(ctypes.c_uint32)()
         n = self._lib.dispatch_generate(*ordered, ctypes.byref(out_ptr))
         if n == -2:
+            why = self._last_refusal()
+            if why:
+                raise HostRuntimeError(
+                    f"dispatch refused for DispatchTime[T] value(s) {values!r}: {why}"
+                )
             raise HostRuntimeError(
                 f"DispatchTime[T] scalar value(s) {values!r} overflowed a "
                 "hardware BD field for this compiled design; try a "

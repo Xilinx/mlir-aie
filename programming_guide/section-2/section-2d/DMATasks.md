@@ -171,6 +171,7 @@ def shim_dma_single_bd_task(
 - **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
 - **`sizes`**: The extent of data to be transferred across each dimension. A buffer descriptor holds four; when `sizes` and `strides` are all constant, more may be given, and the compiler splits the extra ones off into further tasks.
 - **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
+- **`transfer_len`** (optional): The number of elements to transfer. Defaults to the extent of the inner three `sizes`, which one execution of the BD moves.
 - **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `False`.
 - **`burst_length`** (optional): The configuration of the burst length for the DMA task. If `0`, defaults to the highest available value.
 

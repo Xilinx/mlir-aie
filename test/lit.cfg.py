@@ -80,12 +80,14 @@ config.substitutions.append(
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # Show only failures
+# --maxfail=1 is scoped to lit: the kernel-check sweep runs the same wrapper and
+# must reach every case before it publishes.
 config.substitutions.append(
     (
         "%pytest",
         f"{_python_with_test_cache} "
         f"{LitConfigHelper._quote_lit_arg(config.python_executable)} "
-        f"{LitConfigHelper._quote_lit_arg(_pytest_wrapper)} -rA",
+        f"{LitConfigHelper._quote_lit_arg(_pytest_wrapper)} -rA --maxfail=1",
     )
 )
 
@@ -224,17 +226,15 @@ lit_config.parallelism_groups["concurrency"] = 1
 # NPU XRT tests should run serially to avoid resource contention
 lit_config.parallelism_groups["npu-xrt"] = 1
 
+if config.enable_assertions:
+    config.available_features.add("asserts")
+
 # shutil.which picks up the platform's executable suffix (.exe on Windows
 # via PATHEXT) so the feature gate fires correctly on every OS.
 if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
     config.available_features.add("aie-lsp-server")
 
-# The bundled XRT-free hrx-xclbinutil (-DAIE_BUILD_HRXXCLBINUTIL=ON) installs a
-# `xclbinutil` into the AIE tools dir. Gate the packaging section-check test on
-# its presence so the test only runs when that tool was actually built (and so
-# the bare `xclbinutil` it invokes resolves to the bundled copy).
-if shutil.which("xclbinutil", path=config.aie_tools_dir) is not None:
-    config.available_features.add("hrxxclbinutil")
+LitConfigHelper.add_hrxxclbinutil_feature(config)
 
 # aiebu ELF packager: gate tests that feed a runtime-assembled TXN blob to the
 # real `aiebu-asm` (the downstream tool that enforces invariants plain XRT

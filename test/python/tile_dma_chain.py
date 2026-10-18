@@ -15,6 +15,7 @@ of passes."""
 import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Acquire,
     Bd,
@@ -47,19 +48,23 @@ def emit_ring(bad=None):
         bds = [
             Bd(
                 ring,
-                offset=i * SLOT,
-                length=SLOT,
+                tap=slot,
                 acquires=[Acquire(prod[i], value=2)],
                 releases=[Release(cons[i], value=2)],
             )
-            for i in range(SLOTS)
+            for i, slot in enumerate(
+                TensorAccessPattern.full((SLOTS * SLOT,)).partition(SLOTS)
+            )
         ]
         if bad == "next":
             bds[0].next = "self"
         elif bad == "iteration":
+            bds[1].tap = TensorAccessPattern(
+                (SLOTS * SLOT,), 0, [2, 2, 2, 8], [1, 16, 64, 128]
+            )
             bds[1].iteration = BdIteration(size=2, stride=SLOT)
         elif bad == "tile":
-            bds[2] = Bd(stray, length=SLOT)
+            bds[2] = Bd(stray)
         elif bad == "empty":
             bds = []
         return bds
@@ -113,6 +118,6 @@ for bad in ("next", "iteration", "tile", "empty"):
     except Exception as e:
         print(f"// {bad}: {type(e).__name__}: {e}".replace("\n", " "))
 # CHECK: // next: ValueError: Bd 0 of a task on S2MM channel 0 on {{.*}} sets next='self'; a task runs its Bds in order and ends after the last.
-# CHECK: // iteration: {{.*}}the iteration attribute is not supported on the runtime-sequence path
+# CHECK: // iteration: {{.*}}Cannot give more than 3 dimensions for step sizes and wraps alongside the iteration attribute on this tile (got 4 dimensions).
 # CHECK: // tile: ValueError: A task on S2MM channel 0 on {{.*}} was given a buffer on {{.*}}; a tile's DMA can only address buffers on that tile.
 # CHECK: // empty: ValueError: A task on S2MM channel 0 on {{.*}} needs at least one Bd.

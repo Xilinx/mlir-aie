@@ -21,7 +21,7 @@ module {
     %buf = aie.buffer(%mem) : memref<1024xi32>
 
     // CHECK-LABEL: @mem_repeat
-    // CHECK: aiex.npu.assert_bd_field(%arg0) {max = 255 : i32}
+    // CHECK: cf.assert %{{.*}}, "a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)"
     // CHECK: aiex.npu.write32
     aie.runtime_sequence @mem_repeat(%repeat: i32) {
       %t = aiex.dma_configure_task(%mem, MM2S, 0) repeat %repeat : i32 {
@@ -32,7 +32,7 @@ module {
     }
 
     // CHECK-LABEL: @shim_repeat
-    // CHECK: aiex.npu.assert_bd_field(%arg1) {max = 255 : i32}
+    // CHECK: cf.assert %{{.*}}, "a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)"
     // CHECK: aiex.npu.write32
     aie.runtime_sequence @shim_repeat(%in: memref<1024xi32>, %repeat: i32) {
       %t = aiex.dma_configure_task(%shim, MM2S, 0) repeat %repeat : i32 {
@@ -44,7 +44,7 @@ module {
 
     // A constant repeat_count is verifier-checked, so it gets no guard.
     // CHECK-LABEL: @const_repeat
-    // CHECK-NOT: aiex.npu.assert_bd_field
+    // CHECK-NOT: cf.assert
     // CHECK: aiex.npu.write32(%{{.*}}, %c16711680_i32)
     aie.runtime_sequence @const_repeat() {
       %t = aiex.dma_configure_task(%mem, MM2S, 0) {

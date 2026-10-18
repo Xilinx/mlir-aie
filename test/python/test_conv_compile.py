@@ -14,7 +14,6 @@ import numpy as np
 import pytest
 from aie.iron import kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
-from aie.utils import get_current_device
 from aie.utils.compile.utils import cxx_core_compile_command
 from aie.utils.hostruntime import set_current_device
 
@@ -34,9 +33,7 @@ _CASES = [
 
 
 def _factory(arch, name, dtype, small):
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU1Col1() if arch == "aie2" else NPU2Col1())
-    try:
+    with set_current_device(NPU1Col1() if arch == "aie2" else NPU2Col1()):
         kwargs = dict(act_dtype=dtype) if dtype is not None else {}
         if small:
             kwargs.update(input_channels=16 if "skip" in name else 8, output_channels=8)
@@ -44,8 +41,6 @@ def _factory(arch, name, dtype, small):
             # The bound is this call's OC, not the shared weights' OC.
             kwargs["weight_output_channels"] = 128
         return getattr(kernels, name)(**kwargs)
-    finally:
-        set_current_device(previous)
 
 
 @pytest.mark.parametrize("arch,name,dtype", _CASES)

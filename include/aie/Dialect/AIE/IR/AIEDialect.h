@@ -144,6 +144,24 @@ OpTy lookupNamedOp(mlir::Operation *from, NameT name) {
   return llvm::dyn_cast_if_present<OpTy>(lookupNamedOp(from, name));
 }
 
+// `lookupNamedOpIn` indexed once, for resolving many names in a symbol table
+// whose named ops do not change meanwhile.
+class NamedOpTable {
+public:
+  explicit NamedOpTable(mlir::Operation *symbolTableOp);
+
+  mlir::Operation *lookup(mlir::StringAttr name) const {
+    return ops.lookup(name);
+  }
+  template <typename OpTy>
+  OpTy lookup(mlir::StringAttr name) const {
+    return llvm::dyn_cast_if_present<OpTy>(lookup(name));
+  }
+
+private:
+  llvm::DenseMap<mlir::StringAttr, mlir::Operation *> ops;
+};
+
 // Generate a symbol name guaranteed to be unique within the symbol table of
 // `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
 // counter is advanced past the chosen value so repeated calls with the same
@@ -156,6 +174,19 @@ std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
 
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
+
+// custom<TypedDynamicIndexList>($values, $integers, type($values)): the
+// upstream custom<DynamicIndexList> with an optional type on each SSA entry,
+// `%v` for i64 and `%v : type` otherwise.
+mlir::ParseResult parseTypedDynamicIndexList(
+    mlir::OpAsmParser &parser,
+    llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &values,
+    mlir::DenseI64ArrayAttr &integers,
+    llvm::SmallVectorImpl<mlir::Type> &types);
+void printTypedDynamicIndexList(mlir::OpAsmPrinter &printer,
+                                mlir::Operation *op, mlir::OperandRange values,
+                                llvm::ArrayRef<int64_t> integers,
+                                mlir::TypeRange types);
 
 } // namespace xilinx::AIE
 
@@ -249,6 +280,10 @@ using Port = struct Port {
   }
 };
 
+std::optional<std::pair<TileID, Port>>
+getConnectingWireEndpoint(const AIETargetModel &targetModel, TileID tile,
+                          Port port);
+
 using Connect = struct Connect {
   Port src;
   Port dst;
@@ -320,6 +355,21 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
                                   BDDimLayoutArrayArrayAttr dimsPerTileAttr);
 
+mlir::ParseResult
+parseFlowVias(mlir::OpAsmParser &parser,
+              llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &vias,
+              mlir::DenseI32ArrayAttr &ingressBundles,
+              mlir::DenseI32ArrayAttr &ingressChannels,
+              mlir::DenseI32ArrayAttr &egressBundles,
+              mlir::DenseI32ArrayAttr &egressChannels);
+
+void printFlowVias(mlir::OpAsmPrinter &printer, mlir::Operation *op,
+                   mlir::OperandRange vias,
+                   mlir::DenseI32ArrayAttr ingressBundles,
+                   mlir::DenseI32ArrayAttr ingressChannels,
+                   mlir::DenseI32ArrayAttr egressBundles,
+                   mlir::DenseI32ArrayAttr egressChannels);
+
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
 // Trace Event Value Parsing/Printing (handles both string and typed enums)
@@ -335,6 +385,16 @@ void printTraceEventEnum(mlir::AsmPrinter &printer, mlir::Attribute attr);
 
 namespace xilinx::AIE {
 
+// Whether packets leave `master` of `tile` with their header: not into a DMA,
+// nor down the shim's South to one, unless `keep` says.
+bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep);
+
+// Whether `bundle` links a switchbox to a neighbouring one.
+inline bool isDirectional(WireBundle bundle) {
+  return bundle == WireBundle::North || bundle == WireBundle::South ||
+         bundle == WireBundle::East || bundle == WireBundle::West;
+}
+
 void collectTiles(DeviceOp &device,
                   llvm::DenseMap<TileID, mlir::Operation *> &tiles);
 
@@ -349,10 +409,57 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
+// The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
+// dimensions (outermost first) and its length in elements: none when it
+// becomes one linear transfer, else its size-1 dimensions dropped. nullopt
+// when it stays as written: no size-1 dimension, or a length that is not the
+// dimensions' product (a leading repeat outside the length).
+std::optional<llvm::SmallVector<BDDimLayoutAttr>>
+normalizedBDDims(llvm::ArrayRef<BDDimLayoutAttr> dims, int64_t len);
+
+// The byte size of `lengthUnit` elements of `buffer`, checked to be a multiple
+// of 16 bytes whose word count fits a 32-bit BD length.
+mlir::FailureOr<int64_t> getLengthUnitBytes(mlir::Operation *op,
+                                            int64_t lengthUnit,
+                                            mlir::BaseMemRefType buffer);
+
+// Validate a BD's runtime length (`length_parameter`, see aie.dma_bd) against
+// its static pattern, shared by aie.dma_bd and aiex.npu.dma_memcpy_nd.
+// `lenElems` is the static length of one iteration, in elements. `contiguous`
+// says the BD is lowered in linear mode; otherwise the added length continues
+// the third dimension as placed by placeRuntimeLengthDimension, so
+// `innerSizes` (the three innermost sizes, innermost-first) must give it a
+// size above one and a row that divides the length unit.
+mlir::LogicalResult verifyLengthParameter(mlir::Operation *op,
+                                          std::optional<int64_t> lengthUnit,
+                                          mlir::BaseMemRefType buffer,
+                                          std::optional<int64_t> lenElems,
+                                          bool contiguous,
+                                          llvm::ArrayRef<int64_t> innerSizes);
+
+// The added length of a runtime-length BD steps the third dimension. When that
+// dimension has size one, its stride is not encoded, so a pattern stepping
+// rows in its second dimension is lowered with them in the third instead and
+// the second left at size one. `sizes` and `strides` are innermost-first and
+// hold at least three dimensions.
+void placeRuntimeLengthDimension(llvm::MutableArrayRef<int64_t> sizes,
+                                 llvm::MutableArrayRef<int64_t> strides);
+
+// Validate the tile a runtime-length BD is lowered on: an AIE2/AIE2P shim NOC
+// tile whose BD buffer length is a whole 32-bit register, which the firmware
+// update adds to.
+mlir::LogicalResult verifyLengthParameterTile(mlir::Operation *op,
+                                              const AIETargetModel &targetModel,
+                                              int col, int row);
+
 // Validate the sender-side out_of_order_id field on a single BD. Callable from
 // the AIEX dialect, whose runtime-sequence task BDs skip DMABDOp::verify.
 mlir::LogicalResult
 verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
+
+// Validate a BD's iteration attribute against its tile type's iteration and
+// step fields. Callable from the AIEX dialect, like verifyDMABDOutOfOrderId.
+mlir::LogicalResult verifyDMABDIteration(DMABDOp bd, AIETileType tileType);
 
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult
