@@ -655,7 +655,10 @@ def build():
         # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
         Worker(w_qrequant, [of_qfp.cons(), of_qf.prod(), k_qrequant], tile=Tile(4, 3)),
         Worker(
-            w_rope, [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope], tile=Tile(0, 4)
+            w_rope,
+            [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope],
+            tile=Tile(0, 4),
+            stack_size=2048,
         ),
         # k_proj / v_proj (h1 broadcast); fp32 out -> memtile kvcs join.
         Worker(

@@ -17,7 +17,7 @@ import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
 
-from aie2_rope_int8 import ACT_SCALE
+from aie2_rope_int8 import ACT_SCALE, DYN
 
 
 def round_to_i8(v):
@@ -82,9 +82,17 @@ def main():
 
     cs = np.concatenate([cos, sin])  # packed cos || sin
 
-    x_t = iron.tensor(x, dtype=np.int8)
+    if DYN:
+        x_buf = np.zeros(D + 8, dtype=np.int8)
+        x_buf[:D] = x
+        x_buf[D : D + 4] = np.frombuffer(np.float32(ACT_SCALE).tobytes(), dtype=np.int8)
+        x_buf[D + 4 : D + 8] = np.frombuffer(np.float32(0.0).tobytes(), dtype=np.int8)
+        x_t = iron.tensor(x_buf, dtype=np.int8)
+        o_t = iron.zeros([D + 8], dtype=np.int8)
+    else:
+        x_t = iron.tensor(x, dtype=np.int8)
+        o_t = iron.zeros([D], dtype=np.int8)
     cs_t = iron.tensor(cs, dtype=bfloat16)
-    o_t = iron.zeros([D], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
     rc = DefaultNPURuntime.run_test(
@@ -98,8 +106,20 @@ def main():
         return rc
 
     o_t.to("cpu")
-    actual = o_t.numpy()
-    expected = numpy_rope(x, cos, sin, n_heads, head_dim, ACT_SCALE)
+    out_full = o_t.numpy()
+    actual = out_full[:D]
+    if DYN:
+        expected = numpy_rope_dyn(x, cos, sin, n_heads, head_dim)
+        expected_tail = np.concatenate(
+            [
+                np.frombuffer(np.float32(ACT_SCALE).tobytes(), dtype=np.int8),
+                np.frombuffer(np.float32(0.0).tobytes(), dtype=np.int8),
+            ]
+        )
+        tail_mismatch = not np.array_equal(out_full[D : D + 8], expected_tail)
+    else:
+        expected = numpy_rope(x, cos, sin, n_heads, head_dim, ACT_SCALE)
+        tail_mismatch = False
 
     diff = actual.astype(np.int16) - expected.astype(np.int16)
     n_diff = int((diff != 0).sum())
@@ -114,11 +134,12 @@ def main():
     )
 
     print(
-        f"rope_int8 NPU vs numpy: heads={n_heads} d={head_dim}  "
-        f"mismatches={n_diff}/{D}  max|int8 diff|={max_abs}  cos={cos_sim:.6f}"
+        f"rope_int8 NPU vs numpy: heads={n_heads} d={head_dim} dyn={DYN}  "
+        f"mismatches={n_diff}/{D}  max|int8 diff|={max_abs}  cos={cos_sim:.6f}  "
+        f"tail_mismatch={tail_mismatch}"
     )
 
-    if n_diff <= opts.max_mismatches and max_abs <= 1:
+    if n_diff <= opts.max_mismatches and max_abs <= 1 and not tail_mismatch:
         print(f"PASS (within 1-LSB bf16 noise: <={opts.max_mismatches} diffs)")
         return 0
     print("FAIL")

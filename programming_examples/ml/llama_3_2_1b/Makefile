@@ -423,29 +423,35 @@ run_silu_mul: silu_mul
 ROPE_HD ?= 64
 ROPE_NH ?= 8
 ROPE_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_ROPE_HEAD_DIM=${ROPE_HD} -DLLAMA_ROPE_N_HEADS=${ROPE_NH}
+# ROPE_DYN picks llama_rope_int8 (static scale) vs. llama_rope_int8_dyn
+# (reads/passes through act_scale via a tail); baked into the filename for
+# the same reason SILU_SELFCAL is (see the silu_mul section above).
+ROPE_DYN ?= 0
+ROPE_TAG := $(if $(filter 1,${ROPE_DYN}),_dyn,)
 
-${BUILD}/llama_rope_int8.cc.o: ${KDIR}/llama_rope_int8.cc
+${BUILD}/llama_rope_int8_${ROPE_HD}x${ROPE_NH}.cc.o: ${KDIR}/llama_rope_int8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${ROPE_FLAGS} -c $< -o ${@F}
 
-${BUILD}/aie_rope_${ROPE_HD}x${ROPE_NH}.mlir: ${srcdir}/aie2_rope_int8.py
+${BUILD}/aie_rope_${ROPE_HD}x${ROPE_NH}${ROPE_TAG}.mlir: ${srcdir}/aie2_rope_int8.py
 	mkdir -p ${@D}
-	python3 $< --head-dim ${ROPE_HD} --n-heads ${ROPE_NH} > $@
+	ROPE_DYN=${ROPE_DYN} python3 $< --head-dim ${ROPE_HD} --n-heads ${ROPE_NH} > $@
 
-${BUILD}/final_rope_${ROPE_HD}x${ROPE_NH}.xclbin: ${BUILD}/aie_rope_${ROPE_HD}x${ROPE_NH}.mlir \
-                                                  ${BUILD}/llama_rope_int8.cc.o
+${BUILD}/final_rope_${ROPE_HD}x${ROPE_NH}${ROPE_TAG}.xclbin: ${BUILD}/aie_rope_${ROPE_HD}x${ROPE_NH}${ROPE_TAG}.mlir \
+                                                  ${BUILD}/llama_rope_int8_${ROPE_HD}x${ROPE_NH}.cc.o
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_rope_int8_${ROPE_HD}x${ROPE_NH}.cc.o ${BUILD}/llama_rope_int8.cc.o
 	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
 		--xclbin-name=${@F} \
-		--npu-insts-name=insts_rope_${ROPE_HD}x${ROPE_NH}.bin \
+		--npu-insts-name=insts_rope_${ROPE_HD}x${ROPE_NH}${ROPE_TAG}.bin \
 		$(notdir $<)
 
-rope: ${BUILD}/final_rope_${ROPE_HD}x${ROPE_NH}.xclbin
+rope: ${BUILD}/final_rope_${ROPE_HD}x${ROPE_NH}${ROPE_TAG}.xclbin
 
 run_rope: rope
-	cd ${srcdir} && python3 test_rope_int8.py \
-		--xclbin ${BUILD}/final_rope_${ROPE_HD}x${ROPE_NH}.xclbin \
-		--instr ${BUILD}/insts_rope_${ROPE_HD}x${ROPE_NH}.bin \
+	cd ${srcdir} && ROPE_DYN=${ROPE_DYN} python3 test_rope_int8.py \
+		--xclbin ${BUILD}/final_rope_${ROPE_HD}x${ROPE_NH}${ROPE_TAG}.xclbin \
+		--instr ${BUILD}/insts_rope_${ROPE_HD}x${ROPE_NH}${ROPE_TAG}.bin \
 		-k MLIR_AIE --head-dim ${ROPE_HD} --n-heads ${ROPE_NH}
 
 # ---------- real flowkv attention pair (Phase 2) ----------

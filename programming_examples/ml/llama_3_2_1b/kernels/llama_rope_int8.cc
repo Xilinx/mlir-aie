@@ -64,6 +64,35 @@ static inline float sw_recip(float a) {
   return x;
 }
 
+// o1 = x1*c1 - x2*s1, o2 = x2*c2 + x1*s2, kHalf lanes at a time (one call
+// covers a whole head's half). bf16->f32 widens are exact; the products
+// accumulate in accfloat and round to f32 once, same discipline as
+// aie_kernels/datamovement/rope.cc's rope_halves_step.
+template <int kHalf>
+static inline void
+vec_rope_halves(::aie::vector<float, kHalf> x1f,
+                ::aie::vector<float, kHalf> x2f, const bfloat16 *restrict cos,
+                const bfloat16 *restrict sin, ::aie::vector<float, kHalf> &o1,
+                ::aie::vector<float, kHalf> &o2) {
+  ::aie::vector<bfloat16, kHalf> c1v = ::aie::load_v<kHalf>(cos);
+  ::aie::vector<bfloat16, kHalf> s1v = ::aie::load_v<kHalf>(sin);
+  ::aie::vector<bfloat16, kHalf> c2v = ::aie::load_v<kHalf>(cos + kHalf);
+  ::aie::vector<bfloat16, kHalf> s2v = ::aie::load_v<kHalf>(sin + kHalf);
+
+  ::aie::accum<accfloat, kHalf> c1a, s1a, c2a, s2a;
+  c1a.from_vector(c1v);
+  s1a.from_vector(s1v);
+  c2a.from_vector(c2v);
+  s2a.from_vector(s2v);
+  ::aie::vector<float, kHalf> c1f = c1a.template to_vector<float>();
+  ::aie::vector<float, kHalf> s1f = s1a.template to_vector<float>();
+  ::aie::vector<float, kHalf> c2f = c2a.template to_vector<float>();
+  ::aie::vector<float, kHalf> s2f = s2a.template to_vector<float>();
+
+  o1 = ::aie::msc(::aie::mul(x1f, c1f), x2f, s1f).template to_vector<float>();
+  o2 = ::aie::mac(::aie::mul(x2f, c2f), x1f, s2f).template to_vector<float>();
+}
+
 extern "C" {
 
 // cs_packed layout: cos[head_dim] || sin[head_dim] -- packed into one
@@ -81,24 +110,32 @@ void llama_rope_int8(int8_t *restrict x, bfloat16 *restrict cs_packed,
   const bfloat16 *cos = cs_packed;
   const bfloat16 *sin = cs_packed + kHD;
   const float inv_scale = sw_recip(act_scale);
+  ::aie::vector<float, kHalf> scale_v =
+      ::aie::broadcast<float, kHalf>(act_scale);
+  ::aie::vector<float, kHalf> inv_scale_v =
+      ::aie::broadcast<float, kHalf>(inv_scale);
 
-  // Scalar pair-wise rotation. Vec optimization is a follow-up; rope is
-  // a small fraction of the layer wall, so scalar is acceptable for v0.
   for (int h = 0; h < kNHeads; h++) {
     int base = h * kHD;
+    ::aie::vector<int8, kHalf> x1v = ::aie::load_v<kHalf>(x + base);
+    ::aie::vector<int8, kHalf> x2v = ::aie::load_v<kHalf>(x + base + kHalf);
+    ::aie::vector<float, kHalf> x1f =
+        ::aie::mul(::aie::to_float<float>(x1v), scale_v)
+            .template to_vector<float>();
+    ::aie::vector<float, kHalf> x2f =
+        ::aie::mul(::aie::to_float<float>(x2v), scale_v)
+            .template to_vector<float>();
+
+    ::aie::vector<float, kHalf> o1, o2;
+    vec_rope_halves<kHalf>(x1f, x2f, cos, sin, o1, o2);
+
+    ::aie::vector<float, kHalf> o1s =
+        ::aie::mul(o1, inv_scale_v).template to_vector<float>();
+    ::aie::vector<float, kHalf> o2s =
+        ::aie::mul(o2, inv_scale_v).template to_vector<float>();
     for (int i = 0; i < kHalf; i++) {
-      float x1f = (float)x[base + i] * act_scale;
-      float x2f = (float)x[base + kHalf + i] * act_scale;
-      float c1 = (float)cos[i];
-      float s1 = (float)sin[i];
-      float c2 = (float)cos[kHalf + i];
-      float s2 = (float)sin[kHalf + i];
-
-      float o1 = x1f * c1 - x2f * s1;
-      float o2 = x2f * c2 + x1f * s2;
-
-      out[base + i] = round_to_i8(o1 * inv_scale);
-      out[base + kHalf + i] = round_to_i8(o2 * inv_scale);
+      out[base + i] = round_to_i8(o1s[i]);
+      out[base + kHalf + i] = round_to_i8(o2s[i]);
     }
   }
 
@@ -137,19 +174,17 @@ void llama_rope_int8_dyn(int8_t *restrict x, bfloat16 *restrict cs_packed,
 
   for (int h = 0; h < kNHeads; h++) {
     int base = h * kHD;
+    ::aie::vector<int8, kHalf> x1v = ::aie::load_v<kHalf>(x + base);
+    ::aie::vector<int8, kHalf> x2v = ::aie::load_v<kHalf>(x + base + kHalf);
+    ::aie::vector<float, kHalf> x1f = ::aie::to_float<float>(x1v);
+    ::aie::vector<float, kHalf> x2f = ::aie::to_float<float>(x2v);
+
+    ::aie::vector<float, kHalf> o1, o2;
+    vec_rope_halves<kHalf>(x1f, x2f, cos, sin, o1, o2);
+
     for (int i = 0; i < kHalf; i++) {
-      float x1f = (float)x[base + i];
-      float x2f = (float)x[base + kHalf + i];
-      float c1 = (float)cos[i];
-      float s1 = (float)sin[i];
-      float c2 = (float)cos[kHalf + i];
-      float s2 = (float)sin[kHalf + i];
-
-      float o1 = x1f * c1 - x2f * s1;
-      float o2 = x2f * c2 + x1f * s2;
-
-      out[base + i] = round_to_i8(o1);
-      out[base + kHalf + i] = round_to_i8(o2);
+      out[base + i] = round_to_i8(o1[i]);
+      out[base + kHalf + i] = round_to_i8(o2[i]);
     }
   }
 

@@ -56,21 +56,39 @@ extern "C" void llama_rope_int8_mh_dyn(int8_t *restrict x,
   const bfloat16 *cos = cs_packed;
   const bfloat16 *sin = cs_packed + kHD;
 
+  // cos/sin are the same for every head, so widen them to f32 once outside
+  // the head loop (exact bf16->f32, see llama_rmsnorm_int8.cc for why that
+  // holds). Products accumulate in accfloat and round to f32 once, same
+  // discipline as aie_kernels/datamovement/rope.cc's rope_halves_step.
+  ::aie::vector<bfloat16, kHalf> c1v = ::aie::load_v<kHalf>(cos);
+  ::aie::vector<bfloat16, kHalf> s1v = ::aie::load_v<kHalf>(sin);
+  ::aie::vector<bfloat16, kHalf> c2v = ::aie::load_v<kHalf>(cos + kHalf);
+  ::aie::vector<bfloat16, kHalf> s2v = ::aie::load_v<kHalf>(sin + kHalf);
+  ::aie::accum<accfloat, kHalf> c1a, s1a, c2a, s2a;
+  c1a.from_vector(c1v);
+  s1a.from_vector(s1v);
+  c2a.from_vector(c2v);
+  s2a.from_vector(s2v);
+  ::aie::vector<float, kHalf> c1f = c1a.to_vector<float>();
+  ::aie::vector<float, kHalf> s1f = s1a.to_vector<float>();
+  ::aie::vector<float, kHalf> c2f = c2a.to_vector<float>();
+  ::aie::vector<float, kHalf> s2f = s2a.to_vector<float>();
+
   for (int h = 0; h < kNHeads; h++) {
     int base = h * kHD;
+    ::aie::vector<int8, kHalf> x1v = ::aie::load_v<kHalf>(x + base);
+    ::aie::vector<int8, kHalf> x2v = ::aie::load_v<kHalf>(x + base + kHalf);
+    ::aie::vector<float, kHalf> x1f = ::aie::to_float<float>(x1v);
+    ::aie::vector<float, kHalf> x2f = ::aie::to_float<float>(x2v);
+
+    ::aie::vector<float, kHalf> o1 =
+        ::aie::msc(::aie::mul(x1f, c1f), x2f, s1f).to_vector<float>();
+    ::aie::vector<float, kHalf> o2 =
+        ::aie::mac(::aie::mul(x2f, c2f), x1f, s2f).to_vector<float>();
+
     for (int i = 0; i < kHalf; i++) {
-      float x1f = (float)x[base + i];
-      float x2f = (float)x[base + kHalf + i];
-      float c1 = (float)cos[i];
-      float s1 = (float)sin[i];
-      float c2 = (float)cos[kHalf + i];
-      float s2 = (float)sin[kHalf + i];
-
-      float o1 = x1f * c1 - x2f * s1;
-      float o2 = x2f * c2 + x1f * s2;
-
-      out[base + i] = round_to_i8(o1);
-      out[base + kHalf + i] = round_to_i8(o2);
+      out[base + i] = round_to_i8(o1[i]);
+      out[base + kHalf + i] = round_to_i8(o2[i]);
     }
   }
 
