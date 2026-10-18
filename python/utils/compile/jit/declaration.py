@@ -21,7 +21,7 @@ from types import FunctionType
 from typing import Any, ClassVar, get_args, get_origin
 
 from .markers import _Operand
-from .params import Member, Param, PerCall, Select, _text
+from .params import Member, Param, PerCallValue, Select, _text
 
 
 def _names(dims) -> set[str]:
@@ -154,7 +154,7 @@ class Declaration:
     @staticmethod
     def _check(owner: type, m: Member, nullable: set[str]) -> None:
         where = f"{owner.__name__}.{m.name}"
-        if isinstance(m, PerCall):
+        if isinstance(m, PerCallValue):
             if m.bounds is not None and (
                 not isinstance(m.bounds, Param) or m.bounds.tunable
             ):

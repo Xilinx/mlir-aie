@@ -14,10 +14,11 @@ captures ``M`` itself and ``GEMM.M`` names the parameter. On an instance,
 
 from __future__ import annotations
 
+import copy
 from dataclasses import MISSING, dataclass
 from enum import Enum
 from types import FunctionType
-from typing import Any, Callable
+from typing import Any, Callable, Self
 
 import numpy as np
 
@@ -71,7 +72,7 @@ class Param:
             return self.derive(op)
         if isinstance(self.default, FunctionType):
             return self.default(op)
-        return self.default
+        return None if self.default is MISSING else self.default
 
     def values(self, op, dev, start) -> tuple:
         """Return the values a tuner tries for this tunable.
@@ -194,6 +195,14 @@ class Member:
         self.name = name
         self.owner = owner
 
+    op = None
+
+    def of(self, op) -> Self:
+        """Return this member on ``op``."""
+        bound = copy.copy(self)
+        bound.op = op
+        return bound
+
     def __get__(self, op, owner=None):
         if op is None:
             return self
@@ -210,7 +219,7 @@ class Member:
             ) from None
 
 
-class PerCall(Member):
+class PerCallValue(Member):
     """What ``per_call()`` returns: a value that may change every call.
 
     Attributes:
@@ -259,7 +268,7 @@ def per_call(
         )
     if derive is not None and bounds is not None:
         raise TypeError("per_call(derive=, bounds=): give one, not both")
-    return PerCall(dtype, derive, bounds)
+    return PerCallValue(dtype, derive, bounds)
 
 
 @dataclass(frozen=True)

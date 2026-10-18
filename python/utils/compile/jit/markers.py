@@ -52,9 +52,8 @@ instead.
 
 from __future__ import annotations
 
-import copy
 import math
-from typing import TYPE_CHECKING, Annotated, Any, NoReturn, Self, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn, TypeVar
 
 import numpy as np
 from ml_dtypes import bfloat16
@@ -135,13 +134,6 @@ class _Operand(Member):
         self.depth = depth
         self.replicate = replicate
         self.when = when
-        self.op = None
-
-    def of(self, op) -> Self:
-        """Return this operand on ``op``, its shapes resolved there."""
-        bound = copy.copy(self)
-        bound.op = op
-        return bound
 
     @property
     def shape(self) -> tuple[int, ...]:
