@@ -540,6 +540,16 @@ def test_a_prebuilt_device_composes_verbatim():
     assert str(composed).count("aiex.scratchpad_parameter @count") == 1
 
 
+def test_a_prebuilt_runtime_can_be_the_entry():
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(PREBUILT))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    composed = Program.compose([built, prebuilt], entry=run).resolve_program()
+    assert StringAttr(composed.operation.attributes["iron.entry"]).value == "other:run"
+    assert str(composed).count("aiex.scratchpad_parameter @count") == 1
+
+
 @pytest.mark.parametrize(
     "text", ["", PREBUILT + PREBUILT.split("\n", 2)[2].replace("made_", "built_")]
 )

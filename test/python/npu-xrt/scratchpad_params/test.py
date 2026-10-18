@@ -17,6 +17,7 @@
 #   3. A second parametrized case with different values tests parameter re-use
 #      across runs.
 
+import numpy as np
 import pytest
 import pyxrt
 from ml_dtypes import bfloat16
@@ -43,7 +44,7 @@ def kernel_setup():
     run.set_arg(0, out_tensor.buffer_object())
 
     params = ParameterScratchpad(run, "params.txt")
-    return run, params, out_tensor
+    return run, params, out_tensor, kernel
 
 
 @pytest.mark.parametrize(
@@ -54,7 +55,7 @@ def kernel_setup():
     ],
 )
 def test_scratchpad_param_multiply(kernel_setup, foo, bar):
-    run, params, out_tensor = kernel_setup
+    run, params, out_tensor, _ = kernel_setup
 
     out_tensor.data.fill(0)
     out_tensor.to("npu")
@@ -70,6 +71,22 @@ def test_scratchpad_param_multiply(kernel_setup, foo, bar):
     result = float(out_tensor.numpy()[0])
     expected = float(foo) * float(bar)
     assert result == expected
+
+
+def test_a_run_drains_into_another_runs_scratchpad_alias(kernel_setup):
+    _, target, _, kernel = kernel_setup
+    run = pyxrt.run(kernel)
+    run.set_arg(0, target.alias())
+    params = ParameterScratchpad(run, "params.txt")
+    params.write("foo", bfloat16(3.0))
+    params.write("bar", bfloat16(4.0))
+    params.sync()
+
+    run.start()
+    run.wait2()
+
+    target.sync_from_device()
+    assert np.frombuffer(target.alias().map(), dtype=bfloat16)[0] == 12.0
 
 
 if __name__ == "__main__":
