@@ -21,7 +21,7 @@ import logging
 import typing
 from typing import Annotated, Callable, get_args, get_origin
 
-from .markers import In, InOut, Out
+from .markers import CompileTime, DispatchTime, In, InOut, Out, T
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +35,11 @@ def _tagged_type(annotation, tag):
     One traversal for every marker: ``get_type_hints`` rewrites a defaulted
     ``Marker[T] = None`` to ``Optional[...]``, so both the direct
     ``Annotated`` form and the ``Union`` wrapper have to be unwrapped, and
-    every marker needs it the same way.
+    every marker needs it the same way. A bare ``CompileTime`` or
+    ``DispatchTime`` is the marker of an unspecified ``T``.
     """
+    if annotation is CompileTime or annotation is DispatchTime:
+        annotation = annotation[T]
     origin = get_origin(annotation)
     if origin is Annotated:
         args = get_args(annotation)

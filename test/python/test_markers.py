@@ -89,6 +89,10 @@ def test_is_compile_param_with_str():
     assert _is_compile_param(CompileTime[str]) is True
 
 
+def test_is_compile_param_bare():
+    assert _is_compile_param(CompileTime) is True
+
+
 def test_is_compile_param_rejects_in():
     assert _is_compile_param(In) is False
 
@@ -131,6 +135,10 @@ def test_is_dispatch_param_with_int():
 
 def test_is_dispatch_param_with_str():
     assert _is_dispatch_param(DispatchTime[str]) is True
+
+
+def test_is_dispatch_param_bare():
+    assert _is_dispatch_param(DispatchTime) is True
 
 
 def test_is_dispatch_param_rejects_in():
@@ -272,6 +280,16 @@ def test_calling_compile_time_declares_a_keyword_only_field():
 # ---------------------------------------------------------------------------
 # split_params — comprehensive signature introspection
 # ---------------------------------------------------------------------------
+
+
+def test_split_params_bare_markers():
+    def f(*, n: CompileTime = 4, k: DispatchTime = 1):
+        pass
+
+    compile_params, _, dispatch_params, scalar_params = split_params(f)
+    assert compile_params == ["n"]
+    assert dispatch_params == ["k"]
+    assert scalar_params == []
 
 
 def test_split_params_all_compile():
