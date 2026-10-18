@@ -173,14 +173,15 @@ class DeviceConfiguration(DeviceResources):
                 if tile.col is None or tile.row is None:
                     continue
                 key = (tile.col, tile.row)
-                holder, held = programs.setdefault(key, (runtime, resource))
-                if holder is not runtime and held is not resource:
-                    raise ValueError(
-                        f"Runtimes {holder.name!r} and {runtime.name!r} both "
-                        f"program the DMA of tile {key} in device configuration "
-                        f"{self.name!r}, by a {type(held).__name__} and a "
-                        f"{type(resource).__name__}."
-                    )
+                for holder, held in programs.setdefault(key, []):
+                    if holder is not runtime and held is not resource:
+                        raise ValueError(
+                            f"Runtimes {holder.name!r} and {runtime.name!r} both "
+                            f"program the DMA of tile {key} in device configuration "
+                            f"{self.name!r}, by a {type(held).__name__} and a "
+                            f"{type(resource).__name__}."
+                        )
+                programs[key].append((runtime, resource))
 
     def claim_runtime_resource(self, resource) -> None:
         if self._owners is None:

@@ -546,3 +546,16 @@ def test_a_prebuilt_device_composes_verbatim():
 def test_a_prebuilt_module_holds_one_device(text):
     with Context(), pytest.raises(ValueError, match="holding one aie.device, not"):
         DeviceConfiguration.from_module("other", Module.parse(text))
+
+
+def test_a_runtime_sharing_one_of_two_tile_programs_conflicts_with_the_other():
+    # seq_0 claims the shared TileDma before its own route.
+    shared = []
+
+    def own_and_share(rt):
+        shim_dma(rt)
+        shared.extend(rt.tile_dmas)
+        rt.add_flow(control_route())
+
+    with pytest.raises(ValueError, match="both program the DMA of tile"):
+        program(own_and_share, lambda rt: rt.add_tile_dma(shared[0]))
