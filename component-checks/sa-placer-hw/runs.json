@@ -315,6 +315,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "39105298785",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39105298785",
+   "date": "2026-10-18T06:47:37+00:00",
+   "commit": {
+    "id": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
+    "message": "[AIEVec] AIE2P: lower aievec.shuffle with the AIE2P intrinsic, and repeated 128-bit vectors through it (#3929)",
+    "timestamp": "2026-10-17T21:59:35Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Strix",
+   "device_raw": "NPU Strix",
+   "provenance": {
+    "commit": "e040370784",
+    "peano": "22.0.0+83ba9ea9",
+    "kernels": "8ee515753dca",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.26.0_20261008",
+    "xrt": "2.26.0",
+    "host": "aie9",
+    "device": "NPU Strix",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 49,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
