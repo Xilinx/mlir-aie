@@ -195,9 +195,9 @@ def other_npu_users(holding: bool = False) -> set[int]:
     own.
 
     Args:
-        holding: Whether this process holds a context. Where its pid is not
-            reported, it is then the one pid when one is reported, and
-            somewhere among them, all returned, when more are.
+        holding: Whether this process holds a context. If its pid is not
+            reported, a lone reported pid is taken to be its own, and
+            several are all returned.
     """
     from aie.utils.probe import xrt_smi_path
 

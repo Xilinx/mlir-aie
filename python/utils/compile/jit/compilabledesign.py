@@ -165,7 +165,7 @@ class _GeneratedDesign:
     entry: str | None
     configuration_count: int
     expand_load_pdis: bool | None
-    devices: tuple = ()  # each aie.device's AIEDevice
+    devices: tuple
 
     @classmethod
     def from_module(
@@ -978,17 +978,8 @@ class CompilableDesign:
     def _infer_full_elf(self) -> bool:
         if self.full_elf:
             return False
-        generated = self._generated_for(full_elf=False)
-        if generated.configuration_count <= 1:
+        if self._generated_for(full_elf=False).configuration_count <= 1:
             return False
-        from aie.iron.device import Device
-
-        for kind in generated.devices:
-            if not Device(kind).dispatches_full_elf:
-                raise ValueError(
-                    "A Program of several configurations compiles to a full ELF, "
-                    f"which {kind.name} does not dispatch."
-                )
         self.full_elf = True
         self._inferred_full_elf = True
         return True
@@ -1084,6 +1075,11 @@ class CompilableDesign:
         """
         try:
             generated = self._generated_for(full_elf=True)
+            from aie.iron.device import Device
+
+            for kind in generated.devices:
+                if not Device(kind).dispatches_full_elf:
+                    raise ValueError(f"{kind.name} does not dispatch a full ELF.")
             external_kernels = generated.external_kernels
             use_chess = self._resolve_use_chess(external_kernels)
             digests: dict[str, str] = {}

@@ -2280,19 +2280,20 @@ def test_iron_jit_infers_full_elf_for_composed_program():
     assert "iron.configuration_count = 2 : i32" in mlir
 
 
-def test_a_composed_program_is_refused_where_no_full_elf_dispatches():
-    @jit
-    def generate():
-        runtime_a = Runtime(lambda: None, [])
-        runtime_b = Runtime(lambda: None, [])
-        configuration_a = DeviceConfiguration(NPU1Col1(), runtimes=[runtime_a])
-        configuration_b = DeviceConfiguration(NPU1Col1(), runtimes=[runtime_b])
-        return Program.compose(
-            [configuration_a, configuration_b], entry=runtime_a
-        ).resolve_program()
-
-    with pytest.raises(ValueError, match="which npu1_1col does not dispatch"):
-        generate.as_mlir()
+@pytest.mark.parametrize("full_elf", [True, False])
+def test_no_full_elf_builds_for_a_device_that_cannot_dispatch_one(tmp_path, full_elf):
+    # Two configurations infer a full ELF; one asks for it.
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "a:sequence"} '
+        "{ aie.device(npu1_1col) @a {} aie.device(npu1_1col) @b {} }"
+        if not full_elf
+        else "module { aie.device(npu1_1col) @a {} }"
+    )
+    design = CompilableDesign(mlir_path, full_elf=full_elf)
+    with pytest.raises(ValueError, match="npu1_1col does not dispatch a full ELF"):
+        design.compile()
 
 
 @pytest.mark.parametrize(
