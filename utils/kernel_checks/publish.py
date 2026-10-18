@@ -179,8 +179,11 @@ def rows_by_case(rows: list[dict]) -> dict[str, dict[str, dict]]:
 
 
 def error_rows(report: dict) -> dict[str, dict[str, dict]]:
-    """Each case's worst error in a ``--report-error`` report, keyed as
-    ``<case>/<data>/s<seed>``, as rows of its two error metrics."""
+    """Each case's worst error in a ``--report-error`` report.
+
+    The report is keyed ``<case>/<data>/s<seed>``; the result holds rows of
+    its two error metrics per case.
+    """
     worst: dict[str, list[int]] = {}
     for key, run in report.items():
         case = key.rsplit("/", 2)[0]
