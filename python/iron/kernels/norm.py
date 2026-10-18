@@ -96,12 +96,12 @@ def _norm(
     cols: int | None,
     *,
     eps: bool,
+    layer: bool,
     multiple: int = 1,
 ) -> ExternalFunction:
-    """``name``'s row kernel; with ``eps`` the design passes epsilon last."""
+    """``name``, a layer or RMS norm row kernel; with ``eps`` the design passes epsilon last."""
     tile_size = _row_size(name, tile_size, cols, multiple)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    layer = name.startswith("layer_norm")
     base = layer_norm_ref if layer else rms_norm_ref
 
     def with_eps(x, epsilon):
@@ -135,12 +135,12 @@ def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunct
     ``cols`` is a compatibility alias for ``tile_size``. Positive row lengths
     need not be vector-aligned: the kernel handles scalar tails.
     """
-    return _norm("rms_norm", tile_size, cols, eps=False)
+    return _norm("rms_norm", tile_size, cols, eps=False, layer=False)
 
 
 def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunction:
     """RMS-norm a bf16 row (gamma=1); design passes ``(in, out, cols, epsilon)``."""
-    return _norm("rms_norm_eps", tile_size, cols, eps=True)
+    return _norm("rms_norm_eps", tile_size, cols, eps=True, layer=False)
 
 
 def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunction:
@@ -149,14 +149,14 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
     ``cols`` aliases ``tile_size``, a positive multiple of 16 (the source
     processes whole 16-lane halves, without a scalar tail).
     """
-    return _norm("layer_norm", tile_size, cols, eps=False, multiple=16)
+    return _norm("layer_norm", tile_size, cols, eps=False, layer=True, multiple=16)
 
 
 def layer_norm_eps(
     tile_size: int = 1024, *, cols: int | None = None
 ) -> ExternalFunction:
     """Layer-norm a bf16 row (gamma=1, beta=0); design passes ``(in, out, cols, epsilon)``."""
-    return _norm("layer_norm_eps", tile_size, cols, eps=True, multiple=16)
+    return _norm("layer_norm_eps", tile_size, cols, eps=True, layer=True, multiple=16)
 
 
 def rms_norm_ref(x, *, eps: float = 1e-5):
