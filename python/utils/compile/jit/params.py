@@ -309,6 +309,16 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
     return tuple(out)
 
 
+def _text(d) -> str:
+    """Return a declared dimension as its declaration spells it."""
+    if isinstance(d, Select):
+        true, false = ", ".join(map(_text, d.when_true)), ", ".join(
+            map(_text, d.when_false)
+        )
+        return f"Select({d.flag.name}, ({true}), ({false}))"
+    return d.name if isinstance(d, Param) else repr(d)
+
+
 def widths(op, dev, start: int) -> tuple[int, ...]:
     """Return the widths a count of columns, channels or cores may take.
 

@@ -61,7 +61,7 @@ from ml_dtypes import bfloat16
 
 from ....helpers.taplib._per_call import PerCall
 from ... import bfp
-from .params import Member, Param, resolve
+from .params import Member, Param, _text, resolve
 
 T = TypeVar("T")
 
@@ -176,7 +176,7 @@ class _Operand(Member):
     def __repr__(self) -> str:
         role = type(self).__name__
         if self.op is None:
-            return f"{role}({', '.join(getattr(d, 'name', None) or repr(d) for d in self.dims)})"
+            return f"{role}({', '.join(map(_text, self.dims))})"
         return f"<{role} {self.name} {self.shape} {bfp.dtype_name(self.dtype)}>"
 
 
