@@ -271,6 +271,7 @@ def test_calling_a_marker_keeps_its_arguments(marker):
 
 
 def test_calling_compile_time_declares_a_keyword_only_field():
+    assert CompileTime(default=3).metadata["aie.compile_time"] == {}
     field = CompileTime(default=3, probe=1)
     assert isinstance(field, dataclasses.Field)
     assert field.default == 3 and field.kw_only

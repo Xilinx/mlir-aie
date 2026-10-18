@@ -35,9 +35,11 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
 Calling a marker declares a value of its kind in a class body, for a
 library that builds its own declarations (IRON's operators):
 ``In(...)``/``Out(...)``/``InOut(...)``/``DispatchTime(...)`` return an
-instance holding the call's ``args`` and ``kwargs``, which aie.iron does not
-read, and ``CompileTime(default=..., **options)`` returns a keyword-only
-dataclass field with ``options`` in its metadata under ``"aie.compile_time"``.
+instance that is an untyped record of the call's ``args`` and ``kwargs``,
+which aie.iron does not read or check, and
+``CompileTime(default=..., **options)`` returns a keyword-only
+``dataclasses.Field`` (not a ``CompileTime``) with ``options`` in its
+metadata under ``"aie.compile_time"``.
 
 Any parameter without one of these annotations is rejected at ``@iron.jit``
 decoration time when the parameter has a default value: an unannotated scalar
@@ -57,7 +59,12 @@ T = TypeVar("T")
 
 
 class _Declared:
-    """A marker called in a class body: the call's arguments, kept as given."""
+    """A marker called in a class body: an untyped record of the call.
+
+    ``args`` and ``kwargs`` are the call's arguments, kept as given and never
+    read or checked by aie.iron; the library that declares with the marker
+    interprets them.
+    """
 
     def __init__(self, *args: Any, **kwargs: Any):
         self.args = args
@@ -108,6 +115,11 @@ else:
             return Annotated[item, "aie.compile_time"]
 
         def __new__(cls, default: Any = dataclasses.MISSING, **options: Any) -> Any:
+            """Return a keyword-only ``dataclasses.Field``, not an instance.
+
+            The field has ``default``, and the other keywords, untyped and
+            unread by aie.iron, under ``"aie.compile_time"`` in its metadata.
+            """
             return dataclasses.field(
                 default=default, kw_only=True, metadata={"aie.compile_time": options}
             )
