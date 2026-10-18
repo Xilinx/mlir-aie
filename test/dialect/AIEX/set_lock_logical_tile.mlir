@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A set_lock on a lock whose tile is not placed yet verifies; its lock-ID
-// range is checked once aie-place-tiles places the tile.
+// A set_lock on a lock whose tile is not placed yet verifies; its range and
+// address checks run once aie-place-tiles places the tile.
+// set_lock_logical_tile_invalid.mlir shows an out-of-range id is still refused.
 
 // RUN: aie-opt %s | FileCheck %s
 // RUN: aie-opt --aie-place-tiles %s | FileCheck %s --check-prefix=PLACED
