@@ -72,9 +72,9 @@ class Device(Resolvable):
     @property
     def dispatches_full_elf(self) -> bool:
         """Whether a full ELF (PDIs and control code in one ELF) dispatches here: on AIE2p."""
-        # Inferred from source, untested on npu1: XRT sends an ELF with .pdi
-        # sections as ERT_START_NPU_PREEMPT_ELF (XRT 2.25 xrt_elf.cpp:1031), which
-        # amdxdna refuses without AIE2_PREEMPT, absent from npu1_regs.c:68-72.
+        # XRT sends an ELF with .pdi sections as ERT_START_NPU_PREEMPT_ELF (XRT
+        # 2.25 xrt_elf.cpp:1031), which amdxdna refuses without AIE2_PREEMPT,
+        # absent from npu1_regs.c:68-72.
         return self.arch is AIEArch.AIE2p
 
     @property
