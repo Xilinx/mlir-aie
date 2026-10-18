@@ -61,7 +61,7 @@ class Param:
         if op is None:
             return self
         raise AttributeError(
-            f"{owner.__name__}.build() reads {self.name}, which is not in the "
+            f"{type(op).__name__}.build() reads {self.name}, which is not in the "
             f"core-layout key; declare it param(array=True)"
         )
 
@@ -84,7 +84,7 @@ class Param:
         domain = self.domain
         if domain is None:
             return ()
-        if isinstance(domain, type):
+        if isinstance(domain, type) and issubclass(domain, Enum):
             return (start, *(m for m in domain if m != start))
         if isinstance(domain, tuple):
             return domain if start in domain else (start, *domain)
