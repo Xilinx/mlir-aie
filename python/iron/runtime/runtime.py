@@ -320,6 +320,49 @@ class Runtime(DeviceResources, Resolvable):
         self._implicit_configure = implicit_configure
         self._task_group_index = itertools.count()
 
+    @classmethod
+    def merge(cls, runtimes: Sequence[Runtime], name: str | None = None) -> Runtime:
+        """Return one Runtime whose sequence runs the bodies of ``runtimes`` in order.
+
+        Its ``fn_args`` are theirs, concatenated, and it registers their flows,
+        locks, tile DMAs and scratchpad parameters. Steps that run back to back
+        on one configuration so issue one instruction stream, with no
+        ``aiex.configure`` or ``aiex.run``, which an xclbin can carry.
+
+        Raises:
+            ValueError: One of ``runtimes`` already belongs to a configuration.
+        """
+        runtimes = list(runtimes)
+        for runtime in runtimes:
+            if runtime.configuration is not None:
+                raise ValueError(
+                    f"Runtime {runtime.name!r} belongs to configuration "
+                    f"{runtime.configuration.name!r}; merge it before configuring."
+                )
+        ends = list(itertools.accumulate(len(rt._fn_args) for rt in runtimes))
+
+        def body(*args):
+            for runtime, start, end in zip(runtimes, [0, *ends], ends):
+                runtime._seq_fn(*args[start:end])
+
+        merged = cls(
+            body,
+            [arg for runtime in runtimes for arg in runtime._fn_args],
+            name=name,
+            strict_task_groups=all(rt._strict_task_groups for rt in runtimes),
+            implicit_configure=all(rt._implicit_configure for rt in runtimes),
+        )
+        for runtime in runtimes:
+            for flow in runtime.flows:
+                merged.add_flow(flow)
+            for lock in runtime.locks:
+                merged.add_lock(lock)
+            for tile_dma in runtime.tile_dmas:
+                merged.add_tile_dma(tile_dma)
+            for parameter in runtime.scratchpad_parameters:
+                merged.register_parameter(parameter)
+        return merged
+
     @property
     def name(self) -> str | None:
         return self._name

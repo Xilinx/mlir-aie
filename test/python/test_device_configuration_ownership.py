@@ -569,3 +569,26 @@ def test_a_runtime_sharing_one_of_two_tile_programs_conflicts_with_the_other():
 
     with pytest.raises(ValueError, match="both program the DMA of tile"):
         program(own_and_share, lambda rt: rt.add_tile_dma(shared[0]))
+
+
+def test_merged_runtimes_issue_one_sequence():
+    (w_a, rt_a), (w_b, rt_b) = member(), member()
+    flow = Flow(Tile(0, 0), Tile(0, 1, tile_type=AIETileType.MemTile), src_channel=0)
+    rt_c = Runtime(lambda a: flow.fill(a), [Line])
+    rt_c.add_flow(flow)
+    merged = Runtime.merge([rt_a, rt_b, rt_c], name="steps")
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[w_a, w_b], runtimes=[merged]
+    )
+    module = Program.compose([config], entry=merged).resolve_program()
+    text = str(module)
+    assert text.count("aie.runtime_sequence") == 1
+    assert "@steps(%arg0: memref<256xi32>, %arg1: memref<256xi32>, " in text
+    assert text.count("aiex.dma_start_task") == 3
+
+
+def test_a_configured_runtime_does_not_merge():
+    rt = runtime("seq")
+    DeviceConfiguration("dev", NPU2Col1(), runtimes=[rt])
+    with pytest.raises(ValueError, match="merge it before configuring"):
+        Runtime.merge([rt, runtime("other")])
