@@ -51,7 +51,7 @@ from pathlib import Path
 from types import CodeType, FunctionType, MethodType, ModuleType
 from typing import Any, Callable, Mapping
 
-from ._introspect import _introspect_generator
+from ._introspect import declare
 
 logger = logging.getLogger(__name__)
 
@@ -395,21 +395,21 @@ def _compute_recipe_hash(
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
         h.update(_python_identity([generator, *compile_kwargs.values()]))
-        hints, sig, (_, _, dispatch_params, _) = _introspect_generator(generator)
+        d = declare(generator)
+        dispatch_params = {m.name for m in d.per_call}
         # Dispatch defaults are call-time values; explicitly bound defaults are
         # unused. Neither changes the compiled program.
         h.update(
             repr(
                 [
                     param.replace(
-                        annotation=hints.get(name, param.annotation),
                         default=(
                             param.empty
                             if name in dispatch_params or name in compile_kwargs
                             else param.default
                         ),
                     )
-                    for name, param in sig.parameters.items()
+                    for name, param in d.signature.parameters.items()
                 ]
             ).encode()
         )

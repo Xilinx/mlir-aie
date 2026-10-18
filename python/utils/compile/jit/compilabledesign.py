@@ -74,11 +74,7 @@ from ._hash import (
     _compute_recipe_hash,
     _device_identity_key,
 )
-from ._introspect import (
-    _dispatch_param_type,
-    _introspect_generator,
-    _is_tensor_param,
-)
+from ._introspect import declare
 from ._object_cache import KernelObjectCache
 from ._serialization import _decode_kwarg, _encode_kwarg, _TensorPlaceholder
 from .context import compile_context
@@ -282,18 +278,21 @@ class CompilableDesign:
         self._kernel_dir: Path | None = None
         self._generated_cache: dict[tuple, _GeneratedDesign] = {}
 
-        # Introspect generator signature to split param categories.  Cache
-        # hints+sig on self so split_runtime_args / _generate_uncached reuse the
-        # same memoised intro instead of re-running typing.get_type_hints
-        # and inspect.signature on every call.
+        # The generator's declaration, memoised, which split_runtime_args and
+        # _generate_uncached read again.
         if callable(mlir_generator):
-            self._hints, self._sig, (cp, tp, dp, sp) = _introspect_generator(
-                mlir_generator
-            )
+            self.declaration = declare(mlir_generator)
+            self._sig = sig = self.declaration.signature
+            assert sig is not None
+            cp = list(self.declaration.params)
+            tp = [m.name for m in self.declaration.operands]
+            dp_types = {m.name: m.dtype for m in self.declaration.per_call}
+            dp = list(dp_types)
+            sp = self.declaration.scalars
             non_keyword_dispatch = [
                 name
                 for name in dp
-                if self._sig.parameters[name].kind is not inspect.Parameter.KEYWORD_ONLY
+                if sig.parameters[name].kind is not inspect.Parameter.KEYWORD_ONLY
             ]
             if non_keyword_dispatch:
                 raise TypeError(
@@ -313,7 +312,7 @@ class CompilableDesign:
             # handed an empty tuple at generation).
             variadic = [
                 name
-                for name, p in self._sig.parameters.items()
+                for name, p in sig.parameters.items()
                 if p.kind is inspect.Parameter.VAR_POSITIONAL
             ]
             self.variadic_tensor_param = variadic[0] if variadic else None
@@ -330,10 +329,7 @@ class CompilableDesign:
             self.scalar_params = list(sp)
             normalized_kwargs = dict(self.compile_kwargs)
             for name in dp:
-                declared = _dispatch_param_type(
-                    self._hints.get(name, self._sig.parameters[name].annotation)
-                )
-                assert declared is not None
+                declared = dp_types[name]
                 dispatch_scalar_c_type(declared)
                 if name in self.bound_dispatch_params:
                     try:
@@ -357,14 +353,9 @@ class CompilableDesign:
             # The wrapped T of each DispatchTime[T], in declaration order, so
             # the build can check the generated C parameters against what was
             # declared instead of trusting the count alone.
-            self.dispatch_param_types = [
-                _dispatch_param_type(
-                    self._hints.get(name, self._sig.parameters[name].annotation)
-                )
-                for name in self.dispatch_params
-            ]
+            self.dispatch_param_types = [dp_types[n] for n in self.dispatch_params]
         else:
-            self._hints = {}
+            self.declaration = None
             self._sig = None
             self.compile_params = []
             self.tensor_params = []
@@ -1475,9 +1466,8 @@ class CompilableDesign:
                 "use specialize() to create a design with different constants."
             )
 
-        # Reuse the cached intro from __init__ — same generator, same hints/sig.
-        hints = self._hints
         sig = self._sig
+        tensors = set(self.tensor_params)
         assert sig is not None
         params = [
             (name, p)
@@ -1497,7 +1487,6 @@ class CompilableDesign:
 
         pos_iter = iter(runtime_args)
         for name, param in params:
-            ann = hints.get(name, param.annotation)
             if param.kind is inspect.Parameter.VAR_POSITIONAL:
                 # The variadic tensor list takes every positional left over.
                 tensor_args.extend(a for a in pos_iter if not isinstance(a, Kernel))
@@ -1517,12 +1506,12 @@ class CompilableDesign:
             if value is not inspect.Parameter.empty:
                 if name in scalar_kwargs:
                     raise TypeError(f"Multiple values for argument {name!r}.")
-                if _is_tensor_param(ann):
+                if name in tensors:
                     tensor_args.append(value)
                 else:
                     scalar_kwargs[name] = value
                 continue
-            if _is_tensor_param(ann):
+            if name in tensors:
                 if name in scalar_kwargs:
                     tensor_args.append(scalar_kwargs.pop(name))
             elif (
@@ -1995,12 +1984,10 @@ class CompilableDesign:
             **_dispatch_placeholders,
             **self.compile_kwargs,
         }
+        assert self.declaration is not None
+        dispatch_types = {m.name: m.dtype for m in self.declaration.per_call}
         for name in self.bound_dispatch_params:
-            declared = _dispatch_param_type(
-                self._hints.get(name, sig.parameters[name].annotation)
-            )
-            assert declared is not None
-            _gen_call_kwargs[name] = declared(self.compile_kwargs[name])
+            _gen_call_kwargs[name] = dispatch_types[name](self.compile_kwargs[name])
 
         # The generation's kernels register here, not in the process-wide
         # registry another thread's manual compile reads. ExternalFunction
