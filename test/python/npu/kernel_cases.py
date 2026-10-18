@@ -1703,6 +1703,73 @@ CASES: list[Case] = [
 ]
 
 
+def _iron_gemm_tiles(device: str, precision: str) -> set[tuple[int, int, int]]:
+    """Every m x k x n bf16 tile amd/IRON's GEMM searches on ``device``.
+
+    The tiles are powers of two. m and n are at least 16, though m may be 8
+    on npu2 where no bfp16 macs are used. k is 64 unless the precision is
+    ``highest``. Double-buffered A and B, C and IRON's 0xD00-byte stack must
+    fit a core's 64 KiB. C is two bf16 buffers, or at ``highest`` one bf16
+    buffer and its f32 accumulator.
+    """
+    sides = [2**i for i in range(3, 11)]
+    least_m = 8 if device == "npu2" and precision != "medium" else 16
+    c_bytes = 6 if precision == "highest" else 4
+    return {
+        (m, k, n)
+        for m in sides
+        for k in (sides if precision == "highest" else [64])
+        for n in sides
+        if m >= least_m
+        and n >= 16
+        and 4 * (m * k + k * n) + c_bytes * m * n + 0xD00 <= 64 * 1024
+    }
+
+
+def _iron_gemm_cases() -> list[Case]:
+    """IRON's GEMM tiles, timed so its autotune can skip slow settings.
+
+    npu1 has no bfp16 macs, so its ``medium`` builds the same kernel as
+    ``high``. A tile that both devices search is a single case.
+    """
+    builds: dict[tuple, set[str]] = {}
+    for device, precisions in (
+        ("npu1", ("high", "highest")),
+        ("npu2", ("medium", "high", "highest")),
+    ):
+        for precision in precisions:
+            for tile in _iron_gemm_tiles(device, precision):
+                builds.setdefault((precision, tile), set()).add(device)
+    cases = []
+    for (precision, (m, k, n)), devices in sorted(builds.items()):
+        cases.append(
+            Case(
+                "mm",
+                dict(
+                    dim_m=m,
+                    dim_k=k,
+                    dim_n=n,
+                    input_dtype=bfloat16,
+                    output_dtype=np.float32 if precision == "highest" else bfloat16,
+                    round_conv_even=True,
+                    **(
+                        dict(emulate_bf16_mmul_with_bfp16=True)
+                        if precision == "medium"
+                        else {}
+                    ),
+                ),
+                calls=4,
+                tag="iron-gemm",
+                devices=() if len(devices) == 2 else tuple(devices),
+                data_cases=("random",),
+            )
+        )
+    return cases
+
+
+CASES += _iron_gemm_cases()
+
+
 # Smaller shapes for the per-PR smoke test; the nightly times the shapes above.
 CASES += [
     check("passthrough", smoke=True),

@@ -253,6 +253,21 @@ def test_a_timed_case_is_charted_with_its_worst_error(publish, tmp_path):
     assert ulps["series"] == {"add/1024x16/bfloat16": {"values": [2]}}
 
 
+def test_each_timed_case_names_its_kernel_build(publish, tmp_path):
+    cases = {
+        "add/1024x16/bfloat16": {"build": "add_bf16-0123456789ab"},
+        # A case that recorded no row has no build to name.
+        "relu/1024x16/bfloat16": {"build": "relu_bf16-ba9876543210"},
+    }
+    record = publish.record_perf(
+        results_dir(tmp_path, meta={**META, "cases": cases}),
+        target="npu1",
+        run={"id": "1"},
+    )
+    assert record["builds"] == {"add/1024x16/bfloat16": "add_bf16-0123456789ab"}
+    assert "builds" not in publish.summary(record)
+
+
 def test_a_refused_run_records_why_and_no_sanity_result(publish, tmp_path):
     refused = "power mode is performance, required 'turbo'"
     meta = {"refused": refused, "exitstatus": 1, "n_rows": 0, "failed": []}

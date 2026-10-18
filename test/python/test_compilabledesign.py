@@ -644,6 +644,15 @@ def test_a_library_design_is_keyed_by_its_kernels_stack(monkeypatch):
     assert before != after
 
 
+def test_a_design_lists_the_kernels_it_calls_without_compiling():
+    set_current_device(NPU2Col1())
+    try:
+        found = kd.design(kernels.add).compilable.kernels
+        assert kernels.add().build_key in {f.build_key for f in found}
+    finally:
+        set_current_device(None)
+
+
 def test_hash_for_path_generator_uses_path_string():
     d1 = CompilableDesign(Path("/a/design.mlir"))
     d2 = CompilableDesign(Path("/b/design.mlir"))

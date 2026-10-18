@@ -38,7 +38,9 @@ correctness step's ``error.json`` (``--report-error``) and the catalogue.
 Each timed case's error is charted as two more metrics, its worst over every
 data case, seed and output: ``max_ulp``, how far any result fell from the
 correctly rounded reference, and ``not_correctly_rounded``, the percentage of
-results that were not. Every publish first migrates a directory that still holds a
+results that were not. ``builds`` maps each timed case to its kernel's
+``ExternalFunction.build_key``, so a design that calls the same kernel finds
+its row. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
 removed), rebuilds ``runs.json``, ``latest.json`` and the history from the
 run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
@@ -284,6 +286,11 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
             case: {**cells, **errors.get(case, {})}
             for case, cells in rows_by_case(rows).items()
         }
+        record["builds"] = {
+            case: d["build"]
+            for case, d in cases.items()
+            if case in record["rows"] and "build" in d
+        }
     for key in ("correctness_error", "refused", "detail"):
         if key in meta:
             record[key] = meta[key]
@@ -301,8 +308,8 @@ def is_nightly(record: dict) -> bool:
 
 
 def summary(record: dict) -> dict:
-    """Return the record without its rows or detail, for ``runs.json``."""
-    return {k: v for k, v in record.items() if k not in ("rows", "detail")}
+    """Return the record without its rows, builds or detail, for ``runs.json``."""
+    return {k: v for k, v in record.items() if k not in ("rows", "builds", "detail")}
 
 
 def _current_name(name: str) -> str | None:

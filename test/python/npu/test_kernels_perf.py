@@ -252,13 +252,13 @@ def _cycles_span(traced: kd.CallCycles) -> str:
 
 
 def _detail(case: Case, m: dict) -> dict:
-    """Return the distribution behind each row, for ``--perf-meta``.
+    """Return the kernel's build key and the distribution behind each row, for ``--perf-meta``.
 
     A row keeps one value and a text ``range``; the numbers a reader needs to judge that value (how far the median and the
     slowest call sit above the min, how many calls the trace held) go here
     as fields.
     """
-    detail: dict = {}
+    detail: dict = {"build": case.fn().build_key}
     if (traced := m.get("cycles")) is not None:
         k = traced.kernel
         detail["cycles"] = {

@@ -1175,6 +1175,28 @@ class ExternalFunction(Kernel):
         self._cached_digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
         return self._cached_digest
 
+    @property
+    def build_key(self) -> str:
+        """The same string on any machine that builds this kernel the same way.
+
+        It covers the symbol, the source file's name, the argument types, the
+        compile flags and the toolchain, but not where the source or its
+        includes live, and not the symbol prefix, which a design adds. The
+        nightly kernel timings carry it, so a design that calls a kernel can
+        find that kernel's timed row.
+        """
+        source = self._source_file
+        parts = [
+            self._original_name,
+            Path(source).name if source else self._recipe.source_digest,
+            str(self._arg_types),
+            str(self._compile_flags),
+            f"chess={self._use_chess}",
+            f"inline={self._inline}",
+        ]
+        digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:12]
+        return f"{self._original_name}-{digest}"
+
     def __hash__(self) -> int:
         """Content-based hash for use as a dict/set key and in cache signatures."""
         return int(self._content_digest(), 16)
