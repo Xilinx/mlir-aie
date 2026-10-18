@@ -150,3 +150,23 @@ module @adjacency_npu2_target_model {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// An objectfifo.allocate puts the fifo's objects in the delegate's memory, so
+// the unconstrained producer is steered next to the delegate pinned at (2, 3)
+// instead of the greedy (0, 2).
+// CHECK-LABEL: @adjacency_allocate_delegate
+module @adjacency_allocate_delegate {
+  aie.device(npu2) {
+    // CHECK-DAG: aie.tile(2, 3)
+    // CHECK-DAG: aie.tile(2, 2)
+    %delegate = aie.logical_tile<CoreTile>(2, 3)
+    %producer = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @of (%producer, {%delegate}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of (%delegate)
+    aie.core(%delegate) { aie.end }
+    aie.core(%producer) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}

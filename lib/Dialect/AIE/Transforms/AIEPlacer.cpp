@@ -78,6 +78,8 @@ Placer::CollectedOps Placer::collectOperations(DeviceOp device) {
             [&](auto of) { ops.objectFifos.push_back(of); })
         .Case<ObjectFifoLinkOp>(
             [&](auto link) { ops.objectFifoLinks.push_back(link); })
+        .Case<ObjectFifoAllocateOp>(
+            [&](auto alloc) { ops.objectFifoAllocates.push_back(alloc); })
         .Case<CascadeFlowOp>([&](auto cf) { ops.cascadeFlows.push_back(cf); })
         .Case<FlowOp>([&](auto f) { ops.flows.push_back(f); })
         .Case<PacketFlowOp>([&](auto pf) { ops.pktFlows.push_back(pf); })
@@ -187,7 +189,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto &routes = collected.routes;
 
   // Phase 2a: Build placement constraints
-  auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
+  auto bufferAdjacency =
+      buildBufferAdjacency(logicalTiles, collected.objectFifoAllocates);
   auto computePeerAdjacency = buildComputePeerAdjacency(objectFifos);
 
   // Phase 2b: Build channel requirements from ObjectFifo and Flow connectivity,
@@ -855,8 +858,26 @@ resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
 }
 
 Placer::Adjacency
-SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
+SequentialPlacer::buildBufferAdjacency(
+    ArrayRef<LogicalTileOp> logicalTiles,
+    ArrayRef<ObjectFifoAllocateOp> allocates) {
   Adjacency adjacency;
+  // An allocated fifo's objects live in the delegate's memory, which each of
+  // its ends then reaches as it would a buffer the delegate owns.
+  for (auto alloc : allocates) {
+    auto delegate =
+        dyn_cast_or_null<TileLike>(alloc.getDelegateTile().getDefiningOp());
+    ObjectFifoCreateOp fifo = alloc.getObjectFifo();
+    if (!delegate || !fifo)
+      continue;
+    SmallVector<Value> ends{fifo.getProducerTile()};
+    llvm::append_range(ends, fifo.getConsumerTiles());
+    for (Value end : ends) {
+      auto tile = dyn_cast_or_null<TileLike>(end.getDefiningOp());
+      if (tile && tile.getOperation() != delegate.getOperation())
+        adjacency.addEdge(tile, delegate);
+    }
+  }
   for (auto consumer : logicalTiles) {
     if (consumer.getTileType() != AIETileType::CoreTile)
       continue;
