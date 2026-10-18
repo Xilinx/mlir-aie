@@ -70,6 +70,23 @@ class Device(Resolvable):
         return AIEArch(self._tm.get_target_arch())
 
     @property
+    def dispatches_full_elf(self) -> bool:
+        """Whether a full ELF (PDIs and control code in one ELF) dispatches here: on AIE2p."""
+        # Inferred from source, untested on npu1: XRT sends an ELF with .pdi
+        # sections as ERT_START_NPU_PREEMPT_ELF (XRT 2.25 xrt_elf.cpp:1031), which
+        # amdxdna refuses without AIE2_PREEMPT, absent from npu1_regs.c:68-72.
+        return self.arch is AIEArch.AIE2p
+
+    @property
+    def core_mhz(self) -> float | None:
+        """A compute tile's measured clock in MHz, or None where none was measured.
+
+        1760 on AIE2p, measured on one npu2 part (programming guide,
+        section-4d, "Two clocks").
+        """
+        return 1760.0 if self.arch is AIEArch.AIE2p else None
+
+    @property
     def core_memory_bytes(self) -> int:
         """Data memory local to one compute tile."""
         return self._tm.get_local_memory_size()

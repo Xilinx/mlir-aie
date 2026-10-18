@@ -165,12 +165,19 @@ class _GeneratedDesign:
     entry: str | None
     configuration_count: int
     expand_load_pdis: bool | None
+    devices: tuple = ()  # each aie.device's AIEDevice
 
     @classmethod
     def from_module(
         cls, module, mlir_text: str, external_kernels: list
     ) -> "_GeneratedDesign":
         """Record `mlir_text` with the IRON attributes of `module`, its parse."""
+        from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
+            AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+            DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        from aie.ir import IntegerAttr  # pyright: ignore[reportMissingImports]
+
         attributes = module.operation.attributes
         entry = attributes.get("iron.entry")
         count = attributes.get("iron.configuration_count")
@@ -181,6 +188,11 @@ class _GeneratedDesign:
             entry=entry.value if entry is not None else None,
             configuration_count=count.value if count is not None else 1,
             expand_load_pdis=expand.value if expand is not None else None,
+            devices=tuple(
+                AIEDevice(IntegerAttr(op.attributes["device"]).value)
+                for op in module.body.operations
+                if isinstance(op, DeviceOp)
+            ),
         )
 
     @property
@@ -966,8 +978,17 @@ class CompilableDesign:
     def _infer_full_elf(self) -> bool:
         if self.full_elf:
             return False
-        if self._generated_for(full_elf=False).configuration_count <= 1:
+        generated = self._generated_for(full_elf=False)
+        if generated.configuration_count <= 1:
             return False
+        from aie.iron.device import Device
+
+        for kind in generated.devices:
+            if not Device(kind).dispatches_full_elf:
+                raise ValueError(
+                    "A Program of several configurations compiles to a full ELF, "
+                    f"which {kind.name} does not dispatch."
+                )
         self.full_elf = True
         self._inferred_full_elf = True
         return True
