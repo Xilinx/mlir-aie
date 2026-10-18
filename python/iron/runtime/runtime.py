@@ -157,19 +157,21 @@ class ActiveSequence:
             group._actions.append((dma_await_task, [task.task]))
         group._actions.append((dma_free_task, [task.task]))
 
-    def finalize(self) -> None:
-        """Close bookkeeping after the body runs."""
+    def finalize(self, strict: bool | None = None) -> None:
+        """Close bookkeeping after the body runs, or after one merged step's body.
+
+        ``strict`` is that body's ``strict_task_groups``, the runtime's when None.
+        A fresh default group then takes the next step's transfers.
+        """
+        if strict is None:
+            strict = self._runtime._strict_task_groups
         explicit_open = [
             tg for tg in self._open_task_groups if tg is not self._default_task_group
         ]
         if explicit_open:
             tgs = ", ".join(str(t) for t in explicit_open)
             raise IronRuntimeError(f"Failed to close task groups: {tgs}")
-        if (
-            self._runtime._strict_task_groups
-            and self._used_default
-            and self._used_explicit
-        ):
+        if strict and self._used_default and self._used_explicit:
             raise IronRuntimeError(
                 "Mixing explicit task groups and the default task group is "
                 "prohibited. Please assign all tasks to a task group."
@@ -177,6 +179,8 @@ class ActiveSequence:
         # Flush any transfers left in the default group (no explicit finish).
         if self._default_task_group._actions:
             self.finish_task_group(self._default_task_group)
+        self._default_task_group = TaskGroup(next(self._runtime._task_group_index))
+        self._used_default = self._used_explicit = False
 
 
 class Runtime(DeviceResources, Resolvable):
@@ -342,14 +346,15 @@ class Runtime(DeviceResources, Resolvable):
         ends = list(itertools.accumulate(len(rt._fn_args) for rt in runtimes))
 
         def body(*args):
+            # Each step's transfers finish before the next step's start.
             for runtime, start, end in zip(runtimes, [0, *ends], ends):
                 runtime._seq_fn(*args[start:end])
+                active_sequence().finalize(runtime._strict_task_groups)
 
         merged = cls(
             body,
             [arg for runtime in runtimes for arg in runtime._fn_args],
             name=name,
-            strict_task_groups=all(rt._strict_task_groups for rt in runtimes),
             implicit_configure=all(rt._implicit_configure for rt in runtimes),
         )
         for runtime in runtimes:

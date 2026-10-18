@@ -3,6 +3,8 @@
 
 # RUN: %pytest %s
 
+import re
+
 import numpy as np
 import pytest
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
@@ -585,6 +587,22 @@ def test_merged_runtimes_issue_one_sequence():
     assert text.count("aie.runtime_sequence") == 1
     assert "@steps(%arg0: memref<256xi32>, %arg1: memref<256xi32>, " in text
     assert text.count("aiex.dma_start_task") == 3
+
+
+def test_a_merged_step_waits_for_the_last_steps_transfers():
+    # A drains into the host buffer B then fills from; one step's await comes first.
+    of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
+    worker = Worker(lambda a, b: None, [of_in.cons(), of_out.prod()])
+    rt_a = Runtime(lambda c, h: h.drain(c, wait=True), [Line, of_out.cons()])
+    rt_b = Runtime(lambda c, h: h.fill(c), [Line, of_in.prod()])
+    merged = Runtime.merge([rt_a, rt_b])
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker], runtimes=[merged]
+    )
+    text = str(Program.compose([config], entry=merged).resolve_program())
+    sequence = text[text.index("aie.runtime_sequence") :]
+    steps = re.findall(r"aiex\.dma_(start|await|free)_task", sequence)
+    assert steps == ["start", "await", "free", "start", "free"]
 
 
 def test_a_configured_runtime_does_not_merge():
