@@ -166,13 +166,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="eltwise_mul_bf16_vector_size",
     ),
     KernelSpec(
-        name="relu_sized",
-        factory=kernels.relu_sized,
-        kwargs=dict(tile_size=1024),
-        arg_count=3,  # in, out, size
-        expected_name="relu_bf16_size",
-    ),
-    KernelSpec(
         name="clamp",
         factory=kernels.clamp,
         kwargs=dict(tile_size=1024),
@@ -342,9 +335,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         name="relu",
         factory=kernels.relu,
         kwargs=dict(tile_size=1024),
-        arg_count=2,
-        expected_name="bf16_relu",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+        arg_count=3,  # in, out, size
+        expected_name="relu_bf16_size",
     ),
     KernelSpec(
         name="softmax",
@@ -359,35 +351,17 @@ KERNEL_SPECS: list[KernelSpec] = [
         name="gelu",
         factory=kernels.gelu,
         kwargs=dict(tile_size=1024),
-        arg_count=2,
-        expected_name="gelu_bf16",
+        arg_count=3,  # in, out, size
+        expected_name="gelu_bf16_size",
         lut_source="gelu.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
         name="silu",
         factory=kernels.silu,
         kwargs=dict(tile_size=1024),
-        arg_count=2,
-        expected_name="silu_bf16",
-        lut_source="silu.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
-    ),
-    KernelSpec(
-        name="silu_sized",
-        factory=kernels.silu_sized,
-        kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="silu_bf16_size",
         lut_source="silu.cc",
-    ),
-    KernelSpec(
-        name="gelu_sized",
-        factory=kernels.gelu_sized,
-        kwargs=dict(tile_size=1024),
-        arg_count=3,  # in, out, size
-        expected_name="gelu_bf16_size",
-        lut_source="gelu.cc",
     ),
     KernelSpec(
         name="swiglu",
@@ -1288,9 +1262,7 @@ def test_rope_layout_contract_and_vector_constraints(
     np.testing.assert_array_equal(fn.contract.reference(x, lut), expected)
 
 
-@pytest.mark.parametrize(
-    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
-)
+@pytest.mark.parametrize("name", ["add_sized", "mul_sized", "relu", "silu", "gelu"])
 def test_sized_factory_contracts(name, kernel_arch):
     from aie.iron.kernels import Param
     from aie.utils.compile.jit.markers import In, Out
@@ -1301,8 +1273,8 @@ def test_sized_factory_contracts(name, kernel_arch):
     assert fn.contract.parameter_bindings == ((3 if binary else 2, 1024),)
     assert fn.contract_for().tolerance.note
     inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
-    reference_name = name.replace("_sized", "_ref")
-    if name == "silu_sized" and kernel_arch == "aie2":
+    reference_name = name.removesuffix("_sized") + "_ref"
+    if name == "silu" and kernel_arch == "aie2":
         reference_name = "silu_table_ref"
     expected = getattr(kernels, reference_name)(*inputs)
     np.testing.assert_array_equal(fn.contract_for().reference(*inputs), expected)
@@ -1315,15 +1287,13 @@ def test_sized_factory_contracts(name, kernel_arch):
             getattr(kernels, name)(tile_size=1025)
 
 
-@pytest.mark.parametrize(
-    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
-)
+@pytest.mark.parametrize("name", ["add_sized", "mul_sized", "relu", "silu", "gelu"])
 def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
     factory = getattr(kernels, name)
     width = (
         1
         if name in ("add_sized", "mul_sized")
-        else 32 if name == "relu_sized" or kernel_arch == "aie2p" else 16
+        else 32 if name == "relu" or kernel_arch == "aie2p" else 16
     )
     macro = name.removesuffix("_sized").upper() + "_ELEMS"
     tiny = factory(tile_size=width)
@@ -1335,10 +1305,10 @@ def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
     assert tiny._symbol_prefix != other._symbol_prefix
 
 
-def test_relu_sized_requires_whole_vectors(kernel_arch):
-    assert kernels.relu_sized(tile_size=32).arg_shape(0) == (32,)
+def test_relu_requires_whole_vectors(kernel_arch):
+    assert kernels.relu(tile_size=32).arg_shape(0) == (32,)
     with pytest.raises(ValueError, match="32-element vector step"):
-        kernels.relu_sized(tile_size=2049)
+        kernels.relu(tile_size=2049)
 
 
 @pytest.mark.parametrize(

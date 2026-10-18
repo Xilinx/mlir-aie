@@ -282,31 +282,28 @@ CASES: list[Case] = [
     # Sized kernels retaining their runtime-count ABI.
     check("add_sized", calls=16, smoke=True),
     check("mul_sized", calls=16, smoke=True),
-    Case("relu_sized", calls=16, smoke=True),
-    check("silu_sized", calls=16, smoke=True),
     # Same remainder pass as the leaky_relu case above on aie2p: 160 steps the
     # 32-lane loop five times, where its unrolled body consumes four. On aie2,
     # 160 is two 64-element trips and a 32-element remainder.
-    check("silu_sized", dict(tile_size=160), tag="unroll-tail", smoke=True),
+    check("silu", dict(tile_size=160), tag="unroll-tail", smoke=True),
     # AIE2 silu runs the same 64-element trips as gelu below.
-    check("silu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
+    check("silu", dict(tile_size=96), tag="short-trip", smoke=True),
     check(
-        "silu_sized",
+        "silu",
         dict(tile_size=160, use_lut=True),
         tag="lut-unroll-tail",
         devices=("npu2",),
         smoke=True,
     ),
-    Case("gelu_sized", calls=16, smoke=True),
     # On aie2p gelu's 32-lane loop is unrolled four ways too, so it has the
     # same remainder pass and the same need for a size that is not a multiple
     # of it. On aie2, as for silu, 160 leaves a remainder after two trips.
-    check("gelu_sized", dict(tile_size=160), tag="unroll-tail", smoke=True),
+    check("gelu", dict(tile_size=160), tag="unroll-tail", smoke=True),
     # AIE2 gelu takes 64 elements per trip and loads the next trip's input
     # ahead: 96 runs a single trip, reloading its own input, then the remainder.
-    check("gelu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
+    check("gelu", dict(tile_size=96), tag="short-trip", smoke=True),
     check(
-        "gelu_sized",
+        "gelu",
         dict(tile_size=160, use_lut=True),
         tag="lut-unroll-tail",
         devices=("npu2",),
@@ -314,7 +311,7 @@ CASES: list[Case] = [
     ),
     *[
         check(name, dict(tile_size=32), tag="edge-tiny", smoke=True)
-        for name in ("add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized")
+        for name in ("add_sized", "mul_sized", "relu", "silu", "gelu")
     ],
     # datamovement
     Case("axpy", calls=16, scalars=(2.5,), smoke=True),
@@ -2092,15 +2089,15 @@ CASES: list[Case] = [
         data_cases=("random", "zeros", "ones", "alternating"),
     ),
     # ffn gate activation
-    Case("silu_sized", dict(tile_size=4096), calls=16, tag="llama-prefill"),
+    Case("silu", dict(tile_size=4096), calls=16, tag="llama-prefill"),
     Case(
-        "silu_sized",
+        "silu",
         dict(tile_size=4096, use_lut=True),
         calls=16,
         tag="llama-prefill-lut",
         devices=("npu2",),
     ),
-    Case("silu_sized", dict(tile_size=1024), calls=16, tag="llama-decode"),
+    Case("silu", dict(tile_size=1024), calls=16, tag="llama-decode"),
     # ffn gate product and attention-score scaling
     Case("mul_sized", dict(tile_size=4096), calls=16, tag="llama-prefill-ffn"),
     Case("mul_sized", dict(tile_size=2048), calls=16, tag="llama-prefill-attn-scale"),

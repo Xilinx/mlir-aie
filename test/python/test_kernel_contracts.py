@@ -1050,8 +1050,8 @@ def test_conv2dk14_and_skip_init_references():
 # matmul) no factory can stand in, and the library guide says so.
 _IRON_KERNEL_SPECS = {
     "axpy": ({}, "saxpy", "axpy.cc", ()),
-    "gelu": ({}, "gelu_bf16", "gelu.cc", ()),
-    "silu": ({}, "silu_bf16", "silu.cc", ()),
+    "gelu": ({}, "gelu_bf16_size", "gelu.cc", ()),
+    "silu": ({}, "silu_bf16_size", "silu.cc", ()),
     "sigmoid": ({}, "sigmoid_bf16", "sigmoid.cc", ()),
     "tanh": ({}, "tanh_bf16", "tanh.cc", ()),
     "softmax": ({}, "softmax_bf16", "softmax.cc", ()),

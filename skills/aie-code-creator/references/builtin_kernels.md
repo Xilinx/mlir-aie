@@ -25,7 +25,7 @@ maintaining a slower copy of a kernel that already exists.
 | copy / passthrough | `kernels.passthrough(tile_size, dtype)` | `dtype` ∈ `uint8`, `int16`, `int32` |
 | multiply by a scalar | `kernels.scale(tile_size, dtype, vectorized=True)` | `dtype` ∈ `int16`, `int32`; see signature note below |
 | element-wise `a+b` / `a*b` | `kernels.add(...)` / `kernels.mul(...)` | **bf16 only**, `tile_size` fixed at 1024 |
-| ReLU | `kernels.relu(tile_size=1024)` | bf16 |
+| ReLU | `kernels.relu(tile_size)` | bf16, `tile_size` a multiple of 32 |
 | softmax / gelu / silu / swiglu / exp | `kernels.softmax`, `.gelu`, `.silu`, `.swiglu`, `.bf16_exp` | bf16, LUT-based |
 | sum / min / max over a tile | `kernels.reduce_add`, `.reduce_min`, `.reduce_max` | |
 | running max | `kernels.compute_max(dtype)` | |
@@ -70,7 +70,7 @@ surprise people:
   buffer** (`np.ndarray[(1,), np.dtype[np.int32]]`), not a plain Python scalar. Feed it from a
   small `depth=1` ObjectFifo or a `Buffer` — the upside is the factor becomes settable per
   launch without a rebuild.
-- **`kernels.add` / `kernels.mul` / `kernels.relu`** are bare `(in..., out)` with no trailing
+- **`kernels.add` / `kernels.mul`** are bare `(in..., out)` with no trailing
   size, which is why they need `pass_size_to_kernel=False`. `kernels.passthrough` *does* take a
   trailing size and wants the default `True`.
 
@@ -119,7 +119,6 @@ def my_relu(
         kernels.relu(tile_size=tile),
         np.ndarray[(size,), np.dtype[bfloat16]],
         tile_size=tile,
-        pass_size_to_kernel=False,
     )
 ```
 

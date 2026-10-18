@@ -118,9 +118,8 @@ def test_a_kernel_built_bound_compiles_for_its_arch(npu2_device, tmp_path):
     assert (tmp_path / exp.object_file_name).is_file()
 
 
-@pytest.mark.parametrize("factory", [kernels.gelu, kernels.gelu_sized])
-def test_a_lut_gelu_built_unbound_is_judged_as_the_npu2_build(no_device, factory):
-    fn = factory(tile_size=1024, use_lut=True)
+def test_a_lut_gelu_built_unbound_is_judged_as_the_npu2_build(no_device):
+    fn = kernels.gelu(tile_size=1024, use_lut=True)
     set_current_device(NPU2Col1())
     c = fn.contract_for()
     assert c.reference is kernels.gelu_lut_ref
@@ -135,7 +134,7 @@ def test_a_lut_gelu_built_unbound_is_judged_as_the_npu2_build(no_device, factory
 
 
 def test_a_gelu_built_unbound_takes_reference_and_tolerance_from_one_row(no_device):
-    fn = kernels.gelu_sized(tile_size=2048)
+    fn = kernels.gelu(tile_size=2048)
     set_current_device(NPU2Col1())
     c = fn.contract_for()
     assert (c.reference, c.tolerance) == (kernels.gelu_ref, _GELU_VTANH_TOLERANCE)
@@ -320,11 +319,11 @@ def test_attention_and_fused_matmul_built_unbound_are_judged_where_they_ran(
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
-def test_a_lut_silu_sized_is_judged_by_its_table_model(npu2_device, tmp_path):
+def test_a_lut_silu_is_judged_by_its_table_model(npu2_device, tmp_path):
     if not (Path(config.aie_runtime_lib_dir()) / "AIE2P").is_dir():
         pytest.skip("this build has no aie_runtime_lib/AIE2P")
-    vtanh = kernels.silu_sized(tile_size=1024)
-    lut = kernels.silu_sized(tile_size=1024, use_lut=True)
+    vtanh = kernels.silu(tile_size=1024)
+    lut = kernels.silu(tile_size=1024, use_lut=True)
     assert "-DACTIVATIONS_TANH_LUT=1" in lut.compile_flags
     assert vtanh.contract_for().reference is kernels.silu_ref
     c = lut.contract_for()
