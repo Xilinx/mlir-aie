@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 2 int8 RoPE test (half-split rotation, Llama-3 layout)."""
 
 from __future__ import annotations

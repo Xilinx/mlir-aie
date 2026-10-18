@@ -1,4 +1,8 @@
 //===- llama_gemm_int8_srs_tiled_layer_mh.cc --------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
 // Phase 7a multi-head GEMM entries:
 //   - K=2048, N_TILE=4, kOutDim=QD=2048: q_proj with per-Q-head requant.
 //     Slot prefix (448 B) holds act_scale + 32 q_inv_outs +

@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Llama 3.2 1B logical network specification for AIE2P NPU2 (Strix Point).
 
 Pure Python, no AIE imports. Mirrors the structure of

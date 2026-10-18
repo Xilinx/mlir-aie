@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 2 flowkv attention pair (qk + sv), v0 non-chunked full softmax.
 
 Two CTs in a vertical column (col 0, rows 4 and 5, matching

@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """M3b test: fused N-layer chain + on-chip lm_head + sampler -> int32 token.
 
 Reuses test_chain_mh's random-fixture chain (pack_blobs + numpy forward) to get

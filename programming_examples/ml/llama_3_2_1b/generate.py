@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.7: end-to-end generate.py wrapper around the N=16 chain xclbin.
 
 Tokenize prompt -> embed last token -> NPU chain (single-head, real

@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Llama 3.2 1B — physical tile placement on AIE2P NPU2 (decode + prefill).
 
 Mirrors the algorithm/placement split from

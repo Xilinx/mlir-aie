@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Persistent-loop GROWING-KV test (capstone increment 2): PT tokens in ONE
 dispatch, token feeding back on-chip, AND the KV cache GROWS across tokens --
 real autoregressive decode where context accumulates.

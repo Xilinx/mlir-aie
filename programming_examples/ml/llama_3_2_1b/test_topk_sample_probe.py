@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Test the one-stream top-k sampler + embed gather probe.
 
 Builds a packed V-row table [logits f32 | embed_sc f32 | embed rows i8], runs

@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Persistent-loop RESIDENT-KV test (capstone, toward 100% NPU): PT tokens in ONE
 dispatch, token feeding back on-chip, the KV cache GROWS across tokens, AND the
 cache BODY is resident on the attn compute tiles -- the host streams ONLY weights

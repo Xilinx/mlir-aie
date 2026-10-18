@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Probe: one-stream top-k sampler + embed gather (llama_topk_sample.cc).
 
 Streams a V-row packed table ONCE through a worker that maintains a resident

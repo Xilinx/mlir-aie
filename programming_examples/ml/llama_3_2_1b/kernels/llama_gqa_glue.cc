@@ -1,4 +1,8 @@
 //===- llama_gqa_glue.cc ------------------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
 // Glue kernels for the multi-head single-layer design.
 //
 // llama_q_split: reorders rope_mh's flat [32-head body | 32-head fp32

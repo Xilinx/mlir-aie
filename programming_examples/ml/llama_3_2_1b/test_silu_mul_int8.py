@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 2 int8 silu_mul test (LUT-based, bit-exact by construction).
 
 Uses the same SiLU LUT as the kernel (generated from gen_silu_lut.py

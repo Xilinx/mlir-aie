@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.5b.5: N-layer decode chain at production Llama 3.2 1B shapes
 (D=2048, HD=8192, single-head, T=128) with per-channel weight quant +
 per-token dynamic activation scales. Combines the earlier chain pattern

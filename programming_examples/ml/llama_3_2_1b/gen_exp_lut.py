@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Codegen: emit a static const float[256] exp LUT header.
 
 Used by llama_flowkv_qk to compute softmax without aie::exp2 (which

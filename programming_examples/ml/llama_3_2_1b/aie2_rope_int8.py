@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 2 RoPE (int8 in/out, bf16 cos/sin LUTs).
 
 1 CT, 3 input fifos (x, cos, sin), 1 output. Single shared scale

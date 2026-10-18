@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Bit-exact test for llama_rmsnorm_int8_dyn: int8 output + fp32 scale tail.
 
 The kernel computes per-token absmax of its fp32 output, requants with

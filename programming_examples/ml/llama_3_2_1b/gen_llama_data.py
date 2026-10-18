@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.5a: BF16 -> per-channel-INT8 weight extractor for Llama 3.2 1B.
 
 Loads model.safetensors (146 BF16 tensors, 2.4 GB; pass --weights or set

@@ -1,4 +1,8 @@
 //===- llama_rope_int8_mh.cc --------------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
 // Multi-head GQA rope: one call rotates all N_HEADS_Q Q heads (32 for
 // Llama 3.2 1B at HEAD_DIM=64) and passes a per-Q-head scale tail through
 // unchanged (q_scale_h, sv_inv_out_scale_h fp32 pairs, 8 B/head) so the

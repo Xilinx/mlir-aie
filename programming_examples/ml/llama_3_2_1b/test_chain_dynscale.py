@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.5b.5: N-layer decode chain at production D=2048/HD=8192
 with per-channel weight quant + per-token dynamic activation scales.
 Single xclbin handles N seeds (each layer's per-layer scales packed

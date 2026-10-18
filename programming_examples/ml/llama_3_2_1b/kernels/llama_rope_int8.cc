@@ -1,13 +1,13 @@
 //===- llama_rope_int8.cc -----------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Llama-3 RoPE on int8 activations with bf16 cos/sin LUTs. HALF-SPLIT
 // rotation (HF llama convention), not interleaved:
 //   x1, x2 = x[:d/2], x[d/2:]
-//   out[:d/2] = x1*cos[:d/2] - x2*sin[:d/2];  out[d/2:] = x2*cos[d/2:] + x1*sin[d/2:]
+//   out[:d/2] = x1*cos[:d/2] - x2*sin[:d/2];  out[d/2:] = x2*cos[d/2:] +
+//   x1*sin[d/2:]
 // Same scale in/out: rope is norm-preserving per (i, i+d/2) pair, so the
 // kernel dequants int8->bf16, rotates, requants with the same scale.
 // x is (n_heads, head_dim) flattened; cos/sin (head_dim,) reused per head.

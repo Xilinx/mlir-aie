@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.5b.3: attention-half bit-exact test with per-channel weight
 quant + per-token dynamic activation scales.
 

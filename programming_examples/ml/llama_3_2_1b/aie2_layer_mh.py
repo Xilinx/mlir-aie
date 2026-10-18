@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 7a: full single-layer Llama 3.2 1B decoder at PRODUCTION
 multi-head shapes (N_HEADS_Q=32, N_HEADS_KV=8, REP=4, HEAD_DIM=64,
 Q_DIM=2048, D=2048, HD=8192, T=128). One xclbin, one dispatch, all

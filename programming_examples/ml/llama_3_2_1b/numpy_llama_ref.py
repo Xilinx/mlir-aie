@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.5a: pure-numpy INT8 forward pass for Llama 3.2 1B.
 
 Loads the .bin files produced by gen_llama_data.py, runs a decoder

@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 8 quality benchmark: top-1 token agreement between fp16
 numpy_llama_ref and our INT8 multi-head chain on a curated factoid
 prompt set. Use this to track quantization-quality work (static scales,

@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 2: production-shaped RMSNorm (int8 in, int8 out, bf16-internal).
 
 Single CT, 2 input fifos, 1 output, with the production dtypes: int8

@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Accuracy of our INT8 W8A8-dynamic recipe vs the TRUE HF Llama 3.2 1B weights.
 
 The device decode is already bit-exact vs the numpy int8 forward (numpy_llama_ref).

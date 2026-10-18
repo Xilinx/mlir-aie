@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Persistent-loop test (capstone increment 1): PT tokens in ONE dispatch, the
 sampled token's embed seed feeding back to the chain ON-CHIP (no host between
 tokens). KV is held at a fixed position (host re-streams the pristine KV each

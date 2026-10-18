@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 2 silu_mul (int8 in, int8 out, bf16 LUT-based SiLU).
 
 1 CT, 2 input fifos (gate, up), 1 output. Pinned to the silu tile in

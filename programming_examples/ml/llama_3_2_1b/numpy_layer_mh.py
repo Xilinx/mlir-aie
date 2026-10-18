@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 7a: multi-head GQA reference + per-Q-head dynamic-scale
 calibration for the single-layer multi-head xclbin (aie2_layer_mh.py).
 

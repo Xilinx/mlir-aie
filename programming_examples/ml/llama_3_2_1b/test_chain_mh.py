@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 7b: bit-exact test for the N-layer multi-head GQA chain xclbin.
 
 Per seed:

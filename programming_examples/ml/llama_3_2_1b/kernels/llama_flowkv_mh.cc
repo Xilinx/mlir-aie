@@ -1,4 +1,8 @@
 //===- llama_flowkv_mh.cc -----------------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
 // Multi-head GQA flowkv -- REP Q heads sharing 1 KV head, fused qk+sv per
 // head in one kernel call. Arithmetic mirrors llama_flowkv.cc's qk+sv
 // exactly (quant_shifted/lookup_exp/sw_recip/round_to_i8 copied verbatim)

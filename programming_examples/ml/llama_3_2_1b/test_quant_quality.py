@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.5a Track 2: PTQ quality validation.
 
 Loads BF16 Llama 3.2 1B from safetensors, also loads our quantized INT8

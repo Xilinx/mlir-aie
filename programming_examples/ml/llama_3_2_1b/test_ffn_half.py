@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.5b.2: FFN-half with per-token activation scales as runtime args.
 
 Builds the xclbin ONCE (via `make ffn_half`). Each test invocation packs

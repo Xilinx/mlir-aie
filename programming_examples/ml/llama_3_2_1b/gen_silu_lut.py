@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Codegen: emit a static const bf16[256] SiLU LUT header.
 
 Used to make llama_silu_mul_int8.cc bit-exact against the numpy

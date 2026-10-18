@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Hand-written memtile DMA relay for the M3a lm_head->sampler logits bridge.
 
 Why hand-written (not ObjectFifo): the bridge needs a 256 KB HALF of fp32 logits

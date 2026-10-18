@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Numpy oracle for llama_topk_sample.cc -- the one-stream sampler + embed
 gather. Bit-exact mirror of the kernel's CLEAN top-k renormalization (softmax +
 inverse-CDF over EXACTLY the k survivors), NOT the legacy masked-tail path of

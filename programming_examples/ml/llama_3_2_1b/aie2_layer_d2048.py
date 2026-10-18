@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.5b.4: Full single-layer Llama 3.2 1B decoder at production
 D=2048, single-head attention (N_HEADS = N_KV = 1, HEAD_DIM = 64), T=128
 host-prefilled KV cache, with per-channel weight quant + per-token

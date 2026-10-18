@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Numpy reference for llama_sample.cc -- bit-exact, matches the kernel's
 xoshiro128++ PRNG, splitmix64-style seed expansion, exp LUT, sw_recip,
 and inverse-CDF draw.

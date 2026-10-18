@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """One-stream test: fused N-layer chain + lm_head GEMM + top-k insert + finalize
 -> token AND next-token embed seed, in ONE 262 MB table pass.
 

@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.3b.1: FFN-half at production Llama 3.2 1B shapes (D=2048, HD=8192).
 
 Six-worker xclbin wiring:

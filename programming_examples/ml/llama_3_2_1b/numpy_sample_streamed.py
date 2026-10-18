@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Numpy oracle for llama_sample_streamed.cc -- bit-exact mirror of the
 streamed sampler kernel on fp32 logits (real vocab).
 

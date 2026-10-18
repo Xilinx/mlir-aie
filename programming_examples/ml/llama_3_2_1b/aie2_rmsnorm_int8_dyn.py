@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Dynamic-output-scale RMSNorm (int8 in, int8+fp32-scale-tail out).
 
 Mirrors aie2_rmsnorm_int8.py but binds the `_dyn` kernel variant: the

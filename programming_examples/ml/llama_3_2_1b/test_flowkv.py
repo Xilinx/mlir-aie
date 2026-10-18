@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 2 flowkv test: full-softmax attention pair, 1 head, M=1 decode.
 
 Numpy reference replicates the kernel's arithmetic EXACTLY:

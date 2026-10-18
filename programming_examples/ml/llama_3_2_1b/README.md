@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # Llama 3.2 1B (INT8) decode on AI Engine (IRON)
 
 A fully on-NPU INT8 decode of Llama 3.2 1B on the AMD Strix Halo NPU2 (AIE2P),

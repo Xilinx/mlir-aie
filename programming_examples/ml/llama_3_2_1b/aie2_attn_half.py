@@ -1,3 +1,7 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Phase 6c.5b.3: Attention-half at production Llama 3.2 1B (D=2048,
 single-head, T=128) with per-channel weight quant + per-token dynamic
 activation scales delivered via slot prefixes / buffer tails.
