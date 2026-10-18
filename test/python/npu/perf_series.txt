@@ -285,6 +285,7 @@ layer_norm/208x16/bfloat16/cols=208/row-tail
 layer_norm_affine_cast/1008x16/float32_bfloat16/cols=1008/row-tail
 layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024
 layer_norm_affine_cast/112x16/float32_bfloat16/cols=112/row-tail
+layer_norm_eps/1024x16/bfloat16/cols=1024
 layer_norm_f32/1008x16/float32/cols=1008/row-tail
 layer_norm_f32/1024x16/float32/cols=1024
 layer_norm_f32/112x16/float32/cols=112/row-tail

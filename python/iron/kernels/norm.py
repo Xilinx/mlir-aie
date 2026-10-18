@@ -172,6 +172,35 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
     )
 
 
+def layer_norm_eps(
+    tile_size: int = 1024, *, cols: int | None = None
+) -> ExternalFunction:
+    """Layer-norm a bf16 row (gamma=1, beta=0); design passes ``(in, out, cols, epsilon)``."""
+    tile_size = _row_size("layer_norm_eps", tile_size, cols, 16)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _norm_extern(
+        "layer_norm_eps",
+        "layer_norm.cc",
+        [tile_ty, tile_ty, np.int32, np.float32],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param),
+            parameter_bindings=((2, tile_size),),
+            per_build=tuple(
+                (
+                    build,
+                    lambda x, epsilon: layer_norm_ref(x, eps=epsilon),
+                    _LAYER_NORM_TOLERANCE.get(build.tuned, _NORM_BF16),
+                )
+                for build in BUILDS
+            ),
+            acc_dtype=np.float32,
+            reduction=tile_size,
+            ops_per_call=6 * tile_size,
+        ),
+    )
+
+
 def rms_norm_ref(x, *, eps: float = 1e-5):
     """Numpy reference for [`rms_norm`][iron.kernels.norm.rms_norm]: ``x / sqrt(mean(x**2) + eps)``."""
     xf = x.astype(np.float32)

@@ -122,7 +122,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 ## norm
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
-| [layer_norm.cc](./norm/layer_norm.cc) | AIE API | Layer normalization | `bfloat16` |
+| [layer_norm.cc](./norm/layer_norm.cc) | AIE API | Layer normalization — `layer_norm` (eps=1e-5) + `layer_norm_eps` (runtime eps) | `bfloat16` |
 | [rms_norm.cc](./norm/rms_norm.cc) | AIE API | RMS normalization — `rms_norm` (eps=1e-5) + `rms_norm_eps` (runtime eps) | `bfloat16` |
 
 ## quant

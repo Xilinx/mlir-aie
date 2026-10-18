@@ -177,6 +177,13 @@ def _nudged(ref, ulps):
         ),
         (kernels.layer_norm, {}, (), _LAYER_NORM_BF16_AIE2, _LAYER_NORM_BF16_AIE2P),
         (
+            kernels.layer_norm_eps,
+            {},
+            (1e-5,),
+            _LAYER_NORM_BF16_AIE2,
+            _LAYER_NORM_BF16_AIE2P,
+        ),
+        (
             kernels.layer_norm_affine_cast,
             dict(cols=1024),
             (),
@@ -184,7 +191,13 @@ def _nudged(ref, ulps):
             _AFFINE_TOLERANCE["aie2p"],
         ),
     ],
-    ids=["rms_norm", "rms_norm_eps", "layer_norm", "layer_norm_affine_cast"],
+    ids=[
+        "rms_norm",
+        "rms_norm_eps",
+        "layer_norm",
+        "layer_norm_eps",
+        "layer_norm_affine_cast",
+    ],
 )
 def test_a_norm_built_unbound_keeps_the_bound_measured_where_it_ran(
     no_device, factory, kwargs, scalars, npu1, npu2

@@ -12,7 +12,7 @@ Submodules:
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, log_f32, tanh, sigmoid, leaky_relu
-- `norm` — rms_norm, rms_norm_eps, layer_norm
+- `norm` — rms_norm, rms_norm_eps, layer_norm, layer_norm_eps
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
 - `moe` — router_top_k (a mixture-of-experts router's top-k ids and softmax
@@ -255,7 +255,14 @@ from .linalg import (
     prefill_fv_ref,
 )
 from .moe import router_top_k, router_top_k_ref
-from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
+from .norm import (
+    layer_norm,
+    layer_norm_eps,
+    layer_norm_ref,
+    rms_norm,
+    rms_norm_eps,
+    rms_norm_ref,
+)
 from .quant import q4nx_dequant, q4nx_dequant_ref
 from .reduce import (
     argmax,
@@ -491,6 +498,7 @@ __all__ = [
     "mv_bf16_ref",
     "mm_stream_dims",
     "rms_norm_eps",
+    "layer_norm_eps",
     "relu_ref",
     "silu_ref",
     "gelu_aie2_lut_ref",

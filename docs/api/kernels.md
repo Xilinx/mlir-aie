@@ -68,8 +68,8 @@ f32 reduction and an optional activation and clamp fused into the drain.
 
 ## Normalization
 
-`rms_norm`, `rms_norm_eps`, and `layer_norm` support both aie2 and aie2p.
-They accept `tile_size` (default 1024) or its compatibility alias `cols`.
+`rms_norm`, `rms_norm_eps`, `layer_norm`, and `layer_norm_eps` support both
+aie2 and aie2p. They accept `tile_size` (default 1024) or its compatibility alias `cols`.
 `rope` in Data movement has the same size API and supports both interleaved
 and `two_halves=True` layouts. The transformer module re-exports the canonical
 bf16 norm and RoPE factories and references; importing through either module
