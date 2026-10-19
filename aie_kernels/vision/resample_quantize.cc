@@ -44,9 +44,10 @@ extern "C" void resample_quantize(int32_t *peak, int32_t *chunk, int32_t in,
     slot[0] = xmin;
     slot[1] = xsize;
     int16_t *q = (int16_t *)(slot + 2);
+    bool zero = is_zero(total);
     for (int j = 0; j < xsize; j++) {
-      double v = (total != 0.0 ? w[j] / total : w[j]) * (1 << p);
-      q[j] = v < 0 ? (int)(-0.5 + v) : (int)(0.5 + v);
+      double v = scale2(zero ? w[j] : w[j] / total, p);
+      q[j] = key(v) < 0 ? to_int(-0.5 + v) : to_int(0.5 + v);
     }
   }
   event1();
