@@ -27,6 +27,19 @@ Abstract runtime types that concrete backends (for example XRT) implement.
 
 ---
 
+## Sharing the NPU between processes
+
+`NPU_LOCK` names a lock file that runtimes hold only while they have a hardware
+context; see [`NPU_LOCK`](../programming_guide/iron_configuration.md#sharing-the-npu-between-processes-npu_lock).
+
+::: utils.hostruntime.npulock
+    options:
+      show_root_heading: false
+      docstring_options:
+        warn_missing_types: false
+
+---
+
 ## Tensor and device utilities
 
 Device selection, the `NpuTensor` tensor type, and numerical helpers used when
