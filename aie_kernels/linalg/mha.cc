@@ -483,7 +483,9 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
     // largest element takes, without widening m to 64 accumulator lanes first.
     a = A;
     AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
+#ifndef EXP2_BF16_ACCURATE
     AIE_LOOP_UNROLL(2)
+#endif
     for (int32_t i = 0; i < group_rows; i++) {
       aie::accum<accfloat, VECTOR_LENGTH> exp_in =
           aie::msc(aie::mul(aie::load_v<VECTOR_LENGTH>(a), scale_vec),
