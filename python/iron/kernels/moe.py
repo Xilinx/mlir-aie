@@ -127,7 +127,17 @@ def _experts_row(x, weights, ids):
     return np.concatenate([np.asarray(x, bfloat16), np.asarray(weights, bfloat16), ids])
 
 
-def experts_sample(rng, calls, *, hidden, width, num_experts, top_k, rows, cols):
+def experts_sample(
+    rng: np.random.Generator,
+    calls: int,
+    *,
+    hidden: int,
+    width: int,
+    num_experts: int,
+    top_k: int,
+    rows: int,
+    cols: int,
+) -> list[np.ndarray]:
     """Return a row per ``num_experts`` experts' tiles, as a design passes it; random tiles.
 
     Every third row repeats its first id when ``top_k`` > 1, so a device run

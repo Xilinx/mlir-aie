@@ -35,7 +35,7 @@ from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import activation
-from aie.iron.kernels.moe import _experts_row
+from aie.iron.kernels.moe import _experts_row, experts_ref, experts_sample
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -1638,3 +1638,38 @@ def test_experts_duplicated_id_sums_its_weights():
     np.testing.assert_array_equal(
         run([1, 1], [0.25, 0, 0.5, 0]), run([1, 0], [0.75, 0, 0, 0])
     )
+
+
+def test_experts_ref_is_the_dense_mixture_of_experts():
+    # Several column blocks in both matrices, so a walk in another block order
+    # assembles other weights.
+    geometry = dict(hidden=64, width=32, num_experts=3, top_k=2, rows=8, cols=16)
+    H, I, E, K, T, C = geometry.values()
+    gate_up_blocks = [(r, c) for r in range(0, 2 * I, T) for c in range(0, H, C)]
+    down_blocks = [(r, c) for r in range(0, H, T) for c in range(0, I, C)]
+    row_steps = E * (len(gate_up_blocks) + len(down_blocks))
+    rows, tiles = experts_sample(np.random.default_rng(3), 3 * row_steps, **geometry)
+    y = experts_ref(rows, tiles, **geometry).astype(np.float64)
+    tiles = np.asarray(tiles, np.float64).reshape(3, -1, T, C)
+    for n in range(3):
+        stream = iter(tiles[n])
+        gate_up = np.zeros((E, 2 * I, H))
+        down = np.zeros((E, H, I))
+        for e in range(E):
+            for r, c in gate_up_blocks:
+                gate_up[e, r : r + T, c : c + C] = next(stream)
+            for r, c in down_blocks:
+                down[e, r : r + T, c : c + C] = next(stream)
+        row = rows[n * row_steps]
+        x = row[:H].astype(np.float64)
+        weights = row[H : H + 2 * K : 2].astype(np.float64)
+        ids = np.ascontiguousarray(row[H + 2 * K :]).view(np.int32)
+        g, u = np.split(np.einsum("eih,h->ei", gate_up, x), 2, axis=1)
+        h = g / (1 + np.exp(-g)) * u
+        want = np.einsum("j,jhi,ji->h", weights, down[ids], h[ids])
+        np.testing.assert_allclose(
+            y[(n + 1) * row_steps - 1],
+            want,
+            rtol=2**-8,
+            atol=1e-5 * np.abs(want).max(),
+        )
