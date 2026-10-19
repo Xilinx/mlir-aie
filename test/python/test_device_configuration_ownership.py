@@ -690,6 +690,24 @@ def test_a_lowered_prebuilt_declaration_keeps_its_attributes():
     )
 
 
+def test_a_lowered_prebuilt_declaration_and_a_built_one_of_one_name_conflict():
+    text = PREBUILT.replace(
+        "aiex.scratchpad_parameter @count : i32",
+        "aiex.scratchpad_parameter @count : i32 {kind = 1 : i32, state_table_idx = 3 : ui8}",
+    )
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    rt = runtime("seq")
+    rt.register_parameter(ScratchpadParameter("count", np.int32))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[rt])
+    with pytest.raises(
+        ValueError,
+        match=r"ScratchpadParameter 'count' is declared with attributes \{\} and "
+        r"\{'kind': '1 : i32', 'state_table_idx': '3 : ui8'\}",
+    ):
+        Program.compose([built, prebuilt], entry=rt).resolve_program()
+
+
 def test_a_prebuilt_device_with_no_sequence_declares_what_its_cores_read():
     text = """
 aiex.scratchpad_parameter @count : i32

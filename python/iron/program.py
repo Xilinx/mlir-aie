@@ -301,6 +301,12 @@ class Program:
                 f"ScratchpadParameter {parameter.name!r} has conflicting dtypes "
                 f"{declaration.dtype} and {parameter.dtype}."
             )
+        if declaration.attributes != parameter.attributes:
+            raise ValueError(
+                f"ScratchpadParameter {parameter.name!r} is declared with "
+                f"attributes {declaration.attributes} and "
+                f"{parameter.attributes}."
+            )
         if parameter is not declaration:
             parameter._resolved = True
         return declaration

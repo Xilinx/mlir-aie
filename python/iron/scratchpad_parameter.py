@@ -104,6 +104,11 @@ class ScratchpadParameter(Resolvable):
         """The numpy scalar type of this parameter."""
         return self._dtype
 
+    @property
+    def attributes(self) -> dict[str, str]:
+        """The declaration's attributes beyond its name and type, as MLIR text."""
+        return dict(self._attributes)
+
     def read(self) -> "ir.Value":
         """Emit `aiex.read_scratchpad_parameter` inside a core body.
 
