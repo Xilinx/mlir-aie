@@ -1188,9 +1188,10 @@ struct AIEObjectFifoAllocatePass
   /// The flows `endpoint` is the source of.
   SmallVector<RouteOp> sourcedFlows(Operation *endpoint) {
     StringRef name = cast<SymbolOpInterface>(endpoint).getName();
-    return llvm::to_vector(llvm::make_filter_range(
-        device.getOps<RouteOp>(),
-        [&](RouteOp flow) { return flow.getSource() == name; }));
+    return llvm::to_vector(
+        llvm::make_filter_range(device.getOps<RouteOp>(), [&](RouteOp flow) {
+          return flow.getSource() == name;
+        }));
   }
 
   /// Assigned before flows are lowered, so every endpoint has one by now.
