@@ -17,7 +17,6 @@
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
-#include <functional>
 #include <numeric>
 
 using namespace mlir;
@@ -342,21 +341,24 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   };
   SmallVector<LogicalTileOp> sequenced;
   llvm::DenseSet<Operation *> queued;
-  std::function<void(LogicalTileOp)> emit = [&](LogicalTileOp lt) {
-    if (!queued.insert(lt.getOperation()).second)
-      return;
-    sequenced.push_back(lt);
-    if (!unpinned(lt))
-      return;
-    forEachPeer(lt.getOperation(), bufferAdjacency,
-                [&](TileLike peer, bool /*thisIsFirst*/) {
-                  auto peerLt = dyn_cast<LogicalTileOp>(peer.getOperation());
-                  if (peerLt && unpinned(peerLt))
-                    emit(peerLt);
-                });
-  };
-  for (auto lt : orderedTiles)
-    emit(lt);
+  for (auto start : orderedTiles) {
+    if (!queued.insert(start.getOperation()).second)
+      continue;
+    size_t next = sequenced.size();
+    sequenced.push_back(start);
+    for (; next < sequenced.size(); ++next) {
+      LogicalTileOp lt = sequenced[next];
+      if (!unpinned(lt))
+        continue;
+      forEachPeer(lt.getOperation(), bufferAdjacency,
+                  [&](TileLike peer, bool /*thisIsFirst*/) {
+                    auto peerLt = dyn_cast<LogicalTileOp>(peer.getOperation());
+                    if (peerLt && unpinned(peerLt) &&
+                        queued.insert(peerLt.getOperation()).second)
+                      sequenced.push_back(peerLt);
+                  });
+    }
+  }
   orderedTiles = std::move(sequenced);
 
   for (auto logicalTile : orderedTiles) {
