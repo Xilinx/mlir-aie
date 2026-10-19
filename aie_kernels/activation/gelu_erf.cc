@@ -144,6 +144,11 @@ void gelu_erf_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
   // Every limb and the output round to bf16 in this mode.
   const auto saved_rounding = aie::get_rounding();
   aie::set_rounding(aie::rounding_mode::conv_even);
+  // Each vector is one long dependency chain; two a trip fill each other's
+  // latency. AIE2 spills too much for it to pay.
+#if AIE_ARCH_AIE2P
+  AIE_LOOP_UNROLL(2)
+#endif
   for (int i = 0; i < vector_size / 32; i++) {
     aie::store_v(output, gelu_erf_32(aie::load_v<32>(input)));
     input += 32;

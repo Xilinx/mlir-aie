@@ -279,6 +279,7 @@ gelu/96x4/bfloat16/short-trip
 gelu_erf/1024x16/bfloat16
 gelu_erf/1024x64/bfloat16/all-bf16
 gelu_erf/32x4/bfloat16/edge-one-vector
+gelu_erf/96x4/bfloat16/unroll-tail
 gray2rgba/112x4/uint8/line_width=112/short-row
 gray2rgba/144x4/uint8/line_width=144/tail
 gray2rgba/1920x16/uint8

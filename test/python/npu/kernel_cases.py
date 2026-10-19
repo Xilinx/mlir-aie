@@ -190,6 +190,7 @@ CASES: list[Case] = [
     # test_kernels_specs checks a tanh GELU fails on this case's inputs.
     Case("gelu_erf", calls=16, smoke=True),
     check("gelu_erf", dict(tile_size=32), tag="edge-one-vector"),
+    check("gelu_erf", dict(tile_size=96), tag="unroll-tail"),
     check("gelu_erf", calls=64, data_cases=("all_bf16",), tag="all-bf16"),
     Case("silu", calls=16, smoke=True),
     Case(
