@@ -60,9 +60,8 @@ def test_kernels_mm_different_params_are_different_kernels():
 
 
 def test_kernels_mm_different_params_have_distinct_object_files():
-    """Defense A: distinct parameterizations get distinct object_file_names.
+    """Defense A: distinct parameterizations write distinct object files.
 
-    So JIT compilation outputs cannot overwrite each other on disk.
     This is the precise bug that broke whole_array c_col_maj support.
     """
     ef_plain = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)
@@ -148,10 +147,7 @@ def test_inline_defaults_to_ll_artifact_with_merge_mode():
 
 
 def test_object_path_declares_no_link_with_mode():
-    """The default object-linked path emits no mode.
-
-    So existing IR is byte-identical to what it was before link_with_mode existed.
-    """
+    """The default object-linked path emits no mode, as before link_with_mode."""
     ef = ExternalFunction(
         name="sentinel_object_default_name",
         source_string='extern "C" void sentinel_object_default_name() {}',
@@ -300,10 +296,7 @@ def test_kernels_mm_parameterized_symbol_is_digest_prefixed():
 
 
 def test_kernels_mm_two_versions_get_distinct_symbol_names():
-    """Two parameterizations get two distinct digest-prefixed symbols.
-
-    So MLIR and the linker don't see two `func.func @matmul_i16_i16` declarations.
-    """
+    """Two parameterizations declare two digest-prefixed `func.func` symbols."""
     ef1 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)
     ef2 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
     assert ef1._name != ef2._name

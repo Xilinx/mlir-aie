@@ -124,7 +124,7 @@ def test_a_round_another_process_used_is_timed_again(monkeypatch):
     )
     assert stats.n == 2
     assert next(looks, None) is None
-    assert logged == ["pid [7] used the NPU during a round: timing it again"]
+    assert logged == ["    pid [7] used the NPU during a round: timing it again"]
 
 
 def test_groups_must_be_one_per_callable():

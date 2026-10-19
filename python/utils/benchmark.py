@@ -428,7 +428,9 @@ def run_interleaved(
                     float(np.median(waits)) if waits else 0.0,
                 )
             if idle and (held := other_npu_users(holding=True)):
-                log(f"pid {sorted(held)} used the NPU during a round: timing it again")
+                log(
+                    f"    pid {sorted(held)} used the NPU during a round: timing it again"
+                )
                 wait_idle(log, holding=True)
                 continue
             for i, (us, wait) in timed.items():
