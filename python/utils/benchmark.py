@@ -194,6 +194,8 @@ def other_npu_users(holding: bool = False) -> set[int]:
     Read from ``xrt-smi examine -r aie-partitions``, which reports pids in the
     host's namespace. On the host this process finds its own pid there; in a
     container it cannot, and none of the reported pids is a process it sees.
+    That test reads ``/proc``, so it assumes ``/proc`` is not mounted with
+    ``hidepid``, which would hide other users' processes on the host too.
 
     Args:
         holding: Whether this process holds a context. In a container, a lone
