@@ -723,13 +723,15 @@ def _make_extern(
     flags_tuple = tuple(compile_flags or []) + _portable_flags()
     # A source that includes aie_api reads it first, so a precompiled header of it
     # builds the same object.
-    if not use_chess and "#include <aie_api/aie.hpp>" in Path(source_path).read_text():
+    source = Path(source_path).read_bytes()
+    if not use_chess and b"#include <aie_api/aie.hpp>" in source:
         flags_tuple += AIE_API_PREFIX_FLAGS
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
     # One source serves every arch, so the arch is part of the kernel's identity.
+    # The source counts by content, so a checkout's location leaves the names alone.
     identity = (
         func_name,
-        str(source_path),
+        hashlib.sha256(source).hexdigest(),
         arg_keys,
         flags_tuple,
         use_chess,
