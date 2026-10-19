@@ -102,6 +102,8 @@ jobs:
 
             Reason: ${{ steps.update.outputs.bump_reason }}
 
+            llvm-aie changes: ${{ steps.update.outputs.compare_url }}
+
             The on-device NPU test workflows run on this PR; do not merge unless they
             are green. A red run here means the new nightly miscompiles and is
             correctly quarantined out of `main`.
