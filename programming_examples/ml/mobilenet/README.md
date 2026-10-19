@@ -73,12 +73,19 @@ python3 gen_golden.py                          # writes data/scale_factors_final
                                                # + data/{bn*,init,post,FC*}_chain.txt
                                                # + data/golden_output.txt
                                                # + data/before_ifm_mem_fmt_1x1.txt
+cd .. && for g in bottleneck_A.gen_golden bottleneck_A.gen_golden_bn{1,2,3,6,7,8} \
+                  bottleneck_B.gen_golden bottleneck_C.gen_golden; do
+  python3 -m mobilenet.$g
+done
 ```
 
 The per-block / per-chain fixtures used by `run_e2e.lit` live under
-`bottleneck_A/data/`, `bottleneck_B/data/`, `bottleneck_C/data/` — each
-calibrated independently by the corresponding `gen_golden*.py` script in
-that subdirectory. Calibration images are not in this repo.
+`bottleneck_A/data/`, `bottleneck_B/data/`, `bottleneck_C/data/`, each
+calibrated independently by the `gen_golden*.py` scripts in that
+subdirectory, which write them in place. The calibration images are four
+COCO 2017 images with no known copyright restrictions, pinned by URL and
+sha256 in [`calibration.py`](calibration.py); regenerating downloads them
+into `~/.cache/mlir-aie/mobilenet-calib` (tests only read the checked-in data).
 
 ## Repo layout
 
@@ -96,6 +103,7 @@ mobilenet/
 │   └── _common.py                 #   shared helpers
 ├── data/                          # brevitas fixtures for the full network
 ├── gen_golden.py                  # brevitas reference generator
+├── calibration.py                 # the generators' pinned calibration images
 ├── bottleneck_{A,B,C}/data/       # brevitas fixtures for per-block / per-chain tests
 ├── bottleneck_{A,B,C}/gen_golden*.py  # brevitas generators for those fixtures
 ├── test_e2e.py                    # per-block / per-chain hardware harness

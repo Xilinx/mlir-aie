@@ -4,8 +4,6 @@
 #
 """bn3 brevitas fixture generator.  Delegates to ``_gen_golden_template``."""
 
-from pathlib import Path
-
 from ._gen_golden_template import BottleneckSpec, generate_bottleneck_fixtures
 
 _SPEC = BottleneckSpec(
@@ -17,12 +15,12 @@ _SPEC = BottleneckSpec(
     depthwise_stride=2,
     depthwise_channels=72,
     has_skip=False,
-    calibrate_imagenet=False,
+    calibrate_images=False,
 )
 
 
 def main():
-    generate_bottleneck_fixtures(_SPEC, log_dir=Path(__file__).parent / "log")
+    generate_bottleneck_fixtures(_SPEC)
 
 
 if __name__ == "__main__":

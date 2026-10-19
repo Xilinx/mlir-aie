@@ -11,8 +11,6 @@ this script just supplies the per-block shape constants and structural
 flags.  See ``_gen_golden_template.py`` for the rationale.
 """
 
-from pathlib import Path
-
 from ._gen_golden_template import BottleneckSpec, generate_bottleneck_fixtures
 
 _SPEC = BottleneckSpec(
@@ -24,12 +22,12 @@ _SPEC = BottleneckSpec(
     depthwise_stride=2,
     depthwise_channels=64,
     has_skip=False,
-    calibrate_imagenet=True,
+    calibrate_images=True,
 )
 
 
 def main():
-    generate_bottleneck_fixtures(_SPEC, log_dir=Path(__file__).parent / "log")
+    generate_bottleneck_fixtures(_SPEC)
 
 
 if __name__ == "__main__":

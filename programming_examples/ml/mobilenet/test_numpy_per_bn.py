@@ -9,8 +9,8 @@ Usage:
     python3 test_numpy_per_bn.py
     # all 11 verified blocks should report 100.0% BIT-EXACT.
 
-The fixtures use their OWN scales (in scale_factors.json — NOT the stale
-hardcoded values in bottleneck_A/aie2_bn_*.py). This proves every kernel
+The fixtures use their OWN scales (bottleneck_A's scale_factors_per_bn.json
+and each chain's scale_factors.json). This proves every kernel
 arithmetic matches brevitas; the only remaining gap on the full mobilenet
 network (max=2 vs golden) comes from blocks that don't have standalone
 fixtures: init / bn0 / post_l1 / post_l2.
@@ -56,14 +56,8 @@ def main():
     # Each has its own input + golden + scales (each block in its own brevitas calibration).
     # ------------------------------------------------------------------
     print("=== bottleneck_A (per-bn standalone) ===")
-    PER_BN_SF = {
-        "bn1": {"BN1": {"conv1x1_1": 8, "conv3x3": 7, "conv1x1_2": 9, "skip_add": 0}},
-        "bn2": {"BN2": {"conv1x1_1": 9, "conv3x3": 8, "conv1x1_2": 10, "skip_add": 1}},
-        "bn3": {"BN3": {"conv1x1_1": 8, "conv3x3": 8, "conv1x1_2": 11, "skip_add": 0}},
-        "bn6": {"BN6": {"conv1x1_1": 8, "conv3x3": 8, "conv1x1_2": 11, "skip_add": 0}},
-        "bn7": {"BN7": {"conv1x1_1": 9, "conv3x3": 8, "conv1x1_2": 11, "skip_add": 0}},
-        "bn8": {"BN8": {"conv1x1_1": 9, "conv3x3": 8, "conv1x1_2": 11, "skip_add": 0}},
-    }
+    with open(A_DATA + "scale_factors_per_bn.json") as f:
+        per_bn_sf = json.load(f)
     SHAPES = {
         "bn1": ((112, 112, 16), (56, 56, 24)),
         "bn2": ((56, 56, 24), (56, 56, 24)),
@@ -94,7 +88,7 @@ def main():
                 H,
                 W,
             )
-            out = _run_block(nsblock(name), inp, PER_BN_SF[name], tmp + "/")
+            out = _run_block(nsblock(name), inp, per_bn_sf, tmp + "/")
             gold = _hwc(
                 np.loadtxt(
                     A_DATA + f"golden_output_bn{name[2:]}_single.txt",

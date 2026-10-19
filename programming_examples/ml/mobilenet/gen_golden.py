@@ -4,14 +4,12 @@
 #
 import json
 import math
-import os
+from pathlib import Path
 
 import numpy as np
 import torch  # pyright: ignore[reportMissingImports]
 import torch.nn as nn  # pyright: ignore[reportMissingImports]
 import torch.nn.functional as F  # pyright: ignore[reportMissingImports]
-import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
-import torchvision  # pyright: ignore[reportMissingImports]
 from aie.utils.ml import DataShaper
 from brevitas.nn import (  # pyright: ignore[reportMissingImports]
     QuantConv2d,
@@ -26,6 +24,8 @@ from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports
 from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
     calibrate,
 )
+from calibration import calibration_loader
+from mb_utils import ExpandChannels
 from torchvision import transforms  # pyright: ignore[reportMissingImports]
 
 
@@ -126,8 +126,7 @@ def pad_weights(weights, target_shape):
     return padded_weights
 
 
-log_dir = "log/"
-data_dir = "data/"
+data_dir = str(Path(__file__).parent / "data") + "/"
 
 # Read the existing scale factors
 scale_factor_file = "scale_factors_final.json"
@@ -427,9 +426,6 @@ OutC_vec = math.floor(tensorOutC / vectorSize)
 def main():
 
     print("Running torch reference model for mobilenet ...")
-
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
 
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
@@ -1554,7 +1550,6 @@ def main():
         post_layer2_conv1=post_L2_OutC,
         post_conv2=post_L2_OutC,
     )
-    from mb_utils import ExpandChannels
 
     # # Define the image preprocessing pipeline
     transform = transforms.Compose(
@@ -1567,23 +1562,7 @@ def main():
         ]
     )
 
-    # data_dir = "data"
-
-    # # test_dataset = torchvision.datasets.ImageNet(
-    # #     root=data_dir, train=False, transform=transform, download=True)
-
-    # # # Create a subset and DataLoader for the single image
-    # # indices = torch.arange(32)
-    # # val_sub = data_utils.Subset(test_dataset, indices)
-    # # calib_loader = torch.utils.data.DataLoader(dataset=val_sub, batch_size=32, shuffle=False)
-
-    src_data = "/group/xrlabs2/imagenet/calibration"
-    dataset = torchvision.datasets.ImageFolder(src_data, transform)
-    indices = torch.arange(4)
-    val_sub = data_utils.Subset(dataset, indices)
-    calib_loader = torch.utils.data.DataLoader(
-        dataset=val_sub, batch_size=32, shuffle=False
-    )
+    calib_loader = calibration_loader(transform)
 
     quant_model.eval()
     calibrate(calib_loader, quant_model)
@@ -2094,7 +2073,7 @@ def main():
 
     # print("combined_scale after conv1x1:", ( block_0_relu_2 * block_0_weight_scale3).item())
     # Write the updated scale factors back to the file
-    write_scale_factors(log_dir + scale_factor_file, scale_factors)
+    write_scale_factors(data_dir + scale_factor_file, scale_factors)
 
     # ------------------------------------------------------
     # Reorder input data-layout
@@ -2270,14 +2249,12 @@ def main():
     print("Padded FC2 weights shape::", padded_post_layer3_conv1_int_weight.shape)
 
     print("Writing golden output txt file.")
-    golden_output.tofile(log_dir + "golden_output.txt", sep=",", format="%d")
+    golden_output.tofile(data_dir + "golden_output.txt", sep=",", format="%d")
     ds = DataShaper()
 
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
     print("Writing input txt file.")
-    before_input.tofile(log_dir + "before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
-    ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
-    ifm_mem_fmt.tofile(log_dir + "after_ifm_mem_fmt.txt", sep=",", format="%d")
+    before_input.tofile(data_dir + "before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
     # **************************** init ****************************
     init_wts_fmt = ds.reorder_mat(
         init_weight.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
@@ -2505,47 +2482,47 @@ def main():
     )
 
     print("Writing weights txt files.")
-    init_wts_fmt.tofile(log_dir + "init_chain.txt", sep=",", format="%d")
-    bn0_total_wts.tofile(log_dir + "bn0_chain.txt", sep=",", format="%d")
-    bn1_total_wts.tofile(log_dir + "bn1_chain.txt", sep=",", format="%d")
-    bn01_total_wts.tofile(log_dir + "bn0_1_chain.txt", sep=",", format="%d")
-    bn2_total_wts.tofile(log_dir + "bn2_chain.txt", sep=",", format="%d")
-    bn3_total_wts.tofile(log_dir + "bn3_chain.txt", sep=",", format="%d")
-    bn4_total_wts.tofile(log_dir + "bn4_chain.txt", sep=",", format="%d")
-    bn5_total_wts.tofile(log_dir + "bn5_chain.txt", sep=",", format="%d")
-    bn4_5_total_wts.tofile(log_dir + "bn4_5_chain.txt", sep=",", format="%d")
-    bn6_total_wts.tofile(log_dir + "bn6_chain.txt", sep=",", format="%d")
-    bn7_total_wts.tofile(log_dir + "bn7_chain.txt", sep=",", format="%d")
-    bn8_total_wts.tofile(log_dir + "bn8_chain.txt", sep=",", format="%d")
-    bn9_total_wts.tofile(log_dir + "bn9_chain.txt", sep=",", format="%d")
-    bn8_9_total_wts.tofile(log_dir + "bn8_9_chain.txt", sep=",", format="%d")
+    init_wts_fmt.tofile(data_dir + "init_chain.txt", sep=",", format="%d")
+    bn0_total_wts.tofile(data_dir + "bn0_chain.txt", sep=",", format="%d")
+    bn1_total_wts.tofile(data_dir + "bn1_chain.txt", sep=",", format="%d")
+    bn01_total_wts.tofile(data_dir + "bn0_1_chain.txt", sep=",", format="%d")
+    bn2_total_wts.tofile(data_dir + "bn2_chain.txt", sep=",", format="%d")
+    bn3_total_wts.tofile(data_dir + "bn3_chain.txt", sep=",", format="%d")
+    bn4_total_wts.tofile(data_dir + "bn4_chain.txt", sep=",", format="%d")
+    bn5_total_wts.tofile(data_dir + "bn5_chain.txt", sep=",", format="%d")
+    bn4_5_total_wts.tofile(data_dir + "bn4_5_chain.txt", sep=",", format="%d")
+    bn6_total_wts.tofile(data_dir + "bn6_chain.txt", sep=",", format="%d")
+    bn7_total_wts.tofile(data_dir + "bn7_chain.txt", sep=",", format="%d")
+    bn8_total_wts.tofile(data_dir + "bn8_chain.txt", sep=",", format="%d")
+    bn9_total_wts.tofile(data_dir + "bn9_chain.txt", sep=",", format="%d")
+    bn8_9_total_wts.tofile(data_dir + "bn8_9_chain.txt", sep=",", format="%d")
     #
-    bn10_wts1.tofile(log_dir + "bn10_1_chain.txt", sep=",", format="%d")
-    bn10_wts2.tofile(log_dir + "bn10_2_chain.txt", sep=",", format="%d")
-    bn10_wts3.tofile(log_dir + "bn10_3_chain.txt", sep=",", format="%d")
-    bn11_wts1.tofile(log_dir + "bn11_1_chain.txt", sep=",", format="%d")
-    bn11_wts2.tofile(log_dir + "bn11_2_chain.txt", sep=",", format="%d")
-    bn11_wts3.tofile(log_dir + "bn11_3_chain.txt", sep=",", format="%d")
-    bn12_wts1.tofile(log_dir + "bn12_1_chain.txt", sep=",", format="%d")
-    bn12_wts2.tofile(log_dir + "bn12_2_chain.txt", sep=",", format="%d")
-    bn12_wts3.tofile(log_dir + "bn12_3_chain.txt", sep=",", format="%d")
-    bn12_wts2_3.tofile(log_dir + "bn12_2_3_chain.txt", sep=",", format="%d")
+    bn10_wts1.tofile(data_dir + "bn10_1_chain.txt", sep=",", format="%d")
+    bn10_wts2.tofile(data_dir + "bn10_2_chain.txt", sep=",", format="%d")
+    bn10_wts3.tofile(data_dir + "bn10_3_chain.txt", sep=",", format="%d")
+    bn11_wts1.tofile(data_dir + "bn11_1_chain.txt", sep=",", format="%d")
+    bn11_wts2.tofile(data_dir + "bn11_2_chain.txt", sep=",", format="%d")
+    bn11_wts3.tofile(data_dir + "bn11_3_chain.txt", sep=",", format="%d")
+    bn12_wts1.tofile(data_dir + "bn12_1_chain.txt", sep=",", format="%d")
+    bn12_wts2.tofile(data_dir + "bn12_2_chain.txt", sep=",", format="%d")
+    bn12_wts3.tofile(data_dir + "bn12_3_chain.txt", sep=",", format="%d")
+    bn12_wts2_3.tofile(data_dir + "bn12_2_3_chain.txt", sep=",", format="%d")
 
     #
-    bn13_wts1.tofile(log_dir + "bn13_1_chain.txt", sep=",", format="%d")
-    bn13_wts2.tofile(log_dir + "bn13_2_chain.txt", sep=",", format="%d")
-    bn13_wts3_put.tofile(log_dir + "bn13_3_put_chain.txt", sep=",", format="%d")
-    bn13_wts3_get.tofile(log_dir + "bn13_3_get_chain.txt", sep=",", format="%d")
-    bn14_wts1.tofile(log_dir + "bn14_1_chain.txt", sep=",", format="%d")
-    bn14_wts2.tofile(log_dir + "bn14_2_chain.txt", sep=",", format="%d")
-    bn14_wts3_put.tofile(log_dir + "bn14_3_put_chain.txt", sep=",", format="%d")
-    bn14_wts3_get.tofile(log_dir + "bn14_3_get_chain.txt", sep=",", format="%d")
+    bn13_wts1.tofile(data_dir + "bn13_1_chain.txt", sep=",", format="%d")
+    bn13_wts2.tofile(data_dir + "bn13_2_chain.txt", sep=",", format="%d")
+    bn13_wts3_put.tofile(data_dir + "bn13_3_put_chain.txt", sep=",", format="%d")
+    bn13_wts3_get.tofile(data_dir + "bn13_3_get_chain.txt", sep=",", format="%d")
+    bn14_wts1.tofile(data_dir + "bn14_1_chain.txt", sep=",", format="%d")
+    bn14_wts2.tofile(data_dir + "bn14_2_chain.txt", sep=",", format="%d")
+    bn14_wts3_put.tofile(data_dir + "bn14_3_put_chain.txt", sep=",", format="%d")
+    bn14_wts3_get.tofile(data_dir + "bn14_3_get_chain.txt", sep=",", format="%d")
 
     post_conv1_int_weight_fmt = ds.reorder_mat(
         post_conv1_int_weight.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
     post_conv1_int_weight_fmt.tofile(
-        log_dir + "post_conv_chain.txt", sep=",", format="%d"
+        data_dir + "post_conv_chain.txt", sep=",", format="%d"
     )
 
     # Split weights for 4 cores
@@ -2578,37 +2555,36 @@ def main():
     total_wts = np.concatenate((c_total_wts), axis=None)
 
     np.concatenate((post_layer2_conv1_int_weight_fmt), axis=None).tofile(
-        log_dir + "FC1_chain.txt", sep=",", format="%d"
+        data_dir + "FC1_chain.txt", sep=",", format="%d"
     )
     post_layer2_conv1_int_weight_fmt[0].tofile(
-        log_dir + "FC1_0_chain.txt", sep=",", format="%d"
+        data_dir + "FC1_0_chain.txt", sep=",", format="%d"
     )
     post_layer2_conv1_int_weight_fmt[1].tofile(
-        log_dir + "FC1_1_chain.txt", sep=",", format="%d"
+        data_dir + "FC1_1_chain.txt", sep=",", format="%d"
     )
     post_layer2_conv1_int_weight_fmt[2].tofile(
-        log_dir + "FC1_2_chain.txt", sep=",", format="%d"
+        data_dir + "FC1_2_chain.txt", sep=",", format="%d"
     )
     post_layer2_conv1_int_weight_fmt[3].tofile(
-        log_dir + "FC1_3_chain.txt", sep=",", format="%d"
+        data_dir + "FC1_3_chain.txt", sep=",", format="%d"
     )
     np.concatenate((post_layer3_conv1_int_weight_fmt), axis=None).tofile(
-        log_dir + "FC2_chain.txt", sep=",", format="%d"
+        data_dir + "FC2_chain.txt", sep=",", format="%d"
     )
     post_layer3_conv1_int_weight_fmt[0].tofile(
-        log_dir + "FC2_0_chain.txt", sep=",", format="%d"
+        data_dir + "FC2_0_chain.txt", sep=",", format="%d"
     )
     post_layer3_conv1_int_weight_fmt[1].tofile(
-        log_dir + "FC2_1_chain.txt", sep=",", format="%d"
+        data_dir + "FC2_1_chain.txt", sep=",", format="%d"
     )
     post_layer3_conv1_int_weight_fmt[2].tofile(
-        log_dir + "FC2_2_chain.txt", sep=",", format="%d"
+        data_dir + "FC2_2_chain.txt", sep=",", format="%d"
     )
     post_layer3_conv1_int_weight_fmt[3].tofile(
-        log_dir + "FC2_3_chain.txt", sep=",", format="%d"
+        data_dir + "FC2_3_chain.txt", sep=",", format="%d"
     )
 
-    total_wts.tofile(log_dir + "after_weights_mem_fmt_final.txt", sep=",", format="%d")
     # print("{}+{}+{}".format(bn6_wts1.shape, bn6_wts2.shape, bn6_wts3.shape))
     print(shape_total_wts)
     print(total_wts.shape)
