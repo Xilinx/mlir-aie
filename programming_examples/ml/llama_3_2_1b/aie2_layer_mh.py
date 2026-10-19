@@ -634,7 +634,7 @@ def build():
             stack_size=PSK,
         ),
         # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
-        Worker(w_qrequant, [of_qfp.cons(), of_qf.prod(), k_qrequant]),
+        Worker(w_qrequant, [of_qfp.cons(), of_qf.prod(), k_qrequant], stack_size=4096),
         Worker(
             w_rope,
             [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope],
@@ -685,6 +685,7 @@ def build():
         Worker(
             w_afconcat,
             [of_svfull.cons(), of_af.prod(), k_afconcat],
+            stack_size=2048,
         ),
         Worker(
             w_o,
