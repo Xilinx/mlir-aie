@@ -705,7 +705,8 @@ _GELU_ERF_TOLERANCE = Tolerance.bf16_ulps(
     1,
     atol=2.0**-126,
     note="npu2, every finite bf16 input: within one ulp wherever GELU rounds "
-    "to a normal bf16; atol admits the subnormal results the core flushes to 0",
+    "to a normal bf16; atol admits the subnormal results the core flushes to 0. "
+    "Not yet measured on npu1",
 )
 
 
@@ -714,8 +715,10 @@ def gelu_erf(tile_size: int = 1024) -> ExternalFunction:
 
     [`gelu`][iron.kernels.activation.gelu] takes the tanh approximation, which
     rounds differently on 405 finite bf16 inputs, 280 below -3. This one
-    evaluates erfc in f32 and rounds once. ``tile_size`` is a positive
-    multiple of 32.
+    evaluates erfc in f32 and rounds once.
+
+    Args:
+        tile_size: Elements per call, a positive multiple of 32.
     """
     _require_vector_alignment("gelu_erf", tile_size, 32)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
