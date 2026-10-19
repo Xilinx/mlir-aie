@@ -119,6 +119,14 @@ def test_an_operator_resolved_for_one_device_resolves_again_for_another():
     assert four.resolved(SimpleNamespace(cols=4)) is four
 
 
+def test_a_copy_keeps_its_resolution():
+    four = Scale(M=8).resolved(DEV)
+    copy = four.copy()
+    assert copy is not four and copy.resolved(DEV) is copy
+    assert copy.resolved(SimpleNamespace(cols=1)).lanes == 1
+    assert Scale(M=8).copy().resolved(DEV).lanes == 4
+
+
 class Lazy(Scale):
     def resolve(self, dev):
         return self.replace()
