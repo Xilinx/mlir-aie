@@ -1525,17 +1525,22 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (!lockIDOpt) {
     return success();
   }
+  // A logical tile with a coordinate still unpinned waits for the
+  // post-placement re-verify for its range and address checks, as
+  // UsesAreAccessible's do.
+  std::optional<int> col = lockOp.getTileLike().tryGetCol();
+  std::optional<int> row = lockOp.getTileLike().tryGetRow();
+  if (!col || !row)
+    return success();
 
-  auto col = lockOp.colIndex();
-  auto row = lockOp.rowIndex();
   uint32_t lockID = lockOp.getLockIDValue();
 
-  if (lockID >= targetModel.getNumLocks(col, row)) {
+  if (lockID >= targetModel.getNumLocks(*col, *row)) {
     return emitOpError("Lock ID out of range for given tile. Max ID: " +
-                       std::to_string(targetModel.getNumLocks(col, row) - 1));
+                       std::to_string(targetModel.getNumLocks(*col, *row) - 1));
   }
 
-  if (!targetModel.getLocalLockAddress(lockID, lockOp.getTileID())) {
+  if (!targetModel.getLocalLockAddress(lockID, AIE::TileID{*col, *row})) {
     return emitOpError("Invalid lock ID and tile combination when trying to "
                        "retrieve the local lock address.");
   }
@@ -1900,6 +1905,19 @@ LogicalResult AIEX::NpuWriteConfigOp::verify() {
     diag.attachNote(before.getLoc()) << "the PDI is loaded here";
     return diag;
   }
+  return success();
+}
+
+LogicalResult
+AIEX::NpuLoadPdiOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  FlatSymbolRefAttr ref = getDeviceRefAttr();
+  if (!ref)
+    return success();
+  auto device = (*this)->getParentOfType<AIE::DeviceOp>();
+  Operation *scope = device ? device->getParentOp()
+                            : SymbolTable::getNearestSymbolTable(*this);
+  if (!isa_and_present<AIE::DeviceOp>(symbolTable.lookupSymbolIn(scope, ref)))
+    return emitOpError() << ref << " is not a device";
   return success();
 }
 

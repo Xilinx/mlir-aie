@@ -238,6 +238,10 @@ class Program:
                         self._register_scratchpad_parameter(
                             scratchpad_parameters, parameter
                         )
+                for parameter in configuration.scratchpad_parameters:
+                    self._register_scratchpad_parameter(
+                        scratchpad_parameters, parameter
+                    )
             for parameter in scratchpad_parameters.values():
                 parameter.resolve()
 
@@ -296,6 +300,12 @@ class Program:
             raise ValueError(
                 f"ScratchpadParameter {parameter.name!r} has conflicting dtypes "
                 f"{declaration.dtype} and {parameter.dtype}."
+            )
+        if declaration.attributes != parameter.attributes:
+            raise ValueError(
+                f"ScratchpadParameter {parameter.name!r} is declared with "
+                f"attributes {declaration.attributes} and "
+                f"{parameter.attributes}."
             )
         if parameter is not declaration:
             parameter._resolved = True

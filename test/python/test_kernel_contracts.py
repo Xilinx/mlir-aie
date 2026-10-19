@@ -41,8 +41,8 @@ from aie.iron.kernels.activation import (
     softmax_f32_bound,
 )
 from aie.utils import bfp, get_current_device
-from aie.utils.hostruntime import set_current_device
 from aie.utils.accuracy import round_to
+from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16, finfo
 
@@ -95,10 +95,21 @@ NOT_JUDGED = {
         )
     },
     **{
-        name: "blocks on core locks its design releases; codegen-identical to "
-        "FastFlowLM's kernel, which runs in its engine"
+        name: "blocks on core locks its design releases, so it is judged only "
+        "inside a design that sets them"
         for name in kernels.factories()
         if name.startswith("flm_gemma4_decode_")
+    },
+    # Later keys win: these three have a device design of their own.
+    **{
+        name: "blocks on core locks its design releases; "
+        "npu/test_flm_gemma4_decode_locks.py builds a design around them and "
+        "judges it on the device"
+        for name in (
+            "flm_gemma4_decode_attn_kv",
+            "flm_gemma4_decode_gate_layer_embedding",
+            "flm_gemma4_decode_proj_main",
+        )
     },
 }
 
@@ -1050,8 +1061,8 @@ def test_conv2dk14_and_skip_init_references():
 # matmul) no factory can stand in, and the library guide says so.
 _IRON_KERNEL_SPECS = {
     "axpy": ({}, "saxpy", "axpy.cc", ()),
-    "gelu": ({}, "gelu_bf16", "gelu.cc", ()),
-    "silu": ({}, "silu_bf16", "silu.cc", ()),
+    "gelu": ({}, "gelu_bf16_size", "gelu.cc", ()),
+    "silu": ({}, "silu_bf16_size", "silu.cc", ()),
     "sigmoid": ({}, "sigmoid_bf16", "sigmoid.cc", ()),
     "tanh": ({}, "tanh_bf16", "tanh.cc", ()),
     "softmax": ({}, "softmax_bf16", "softmax.cc", ()),
@@ -1276,16 +1287,15 @@ def test_mha_binds_its_translation_unit_as_one_object():
 
 
 def test_mha_band_reaches_the_kernel_and_its_reference():
-    """causal and window are -D flags only off their defaults, and mha_softmax_ref keeps the band."""
+    """causal, window and packed are -D flags only off their defaults, and mha_softmax_ref keeps the band."""
     assert not any("MHA_" in f for f in kernels.mha().compile_flags)
     assert not any("MHA_" in f for f in kernels.mha_softmax().compile_flags)
     flags = kernels.mha(dim_k=256, causal=False, window=128).compile_flags
     assert {"-DMHA_CAUSAL=0", "-DMHA_WINDOW=128", "-DDIM_K=256"} <= set(flags)
+    assert "-DMHA_PACKED=1" in kernels.mha(window=511, packed=True).compile_flags
     fn = kernels.mha_softmax(dim_m=16, dim_n=32, causal=False, window=32)
     assert [v for i, v in fn.contract.parameter_bindings if i in (5, 6)] == [16, 32]
     for bad in (
-        dict(window=48),
-        dict(dim_m=32, dim_n=16, window=64),
         dict(window=-64),
         dict(scale=0.0),
         dict(dim_n=24),
@@ -1294,7 +1304,9 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
             kernels.mha_softmax(**bad)
 
     # A zero score gives a kept key the weight 1 against m = 0, a masked one 0.
-    for causal, window in ((True, 0), (False, 0), (True, 32), (False, 32)):
+    # Packed, every row is the query at the last key.
+    bands = [(c, w, False) for c in (True, False) for w in (0, 21, 32)]
+    for causal, window, packed in [*bands, (True, 21, True), (True, 0, True)]:
         for kv, q in ((0, 0), (0, 1), (1, 0), (2, 1), (3, 0)):
             p, _ = kernels.mha_softmax_ref(
                 np.zeros((1, 16 * 32)),
@@ -1306,17 +1318,24 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
                 dim_n=32,
                 causal=causal,
                 window=window,
+                packed=packed,
             )
             want = np.zeros((16, 32))
             for r in range(16):
                 for c in range(32):
-                    qi, ki = q * 16 + r, kv * 32 + c
-                    if qi >= 40 or ki >= 90 or (causal and ki > qi):
+                    qi, ki = 89 if packed else q * 16 + r, kv * 32 + c
+                    if q * 16 + r >= 40 or ki >= 90 or (causal and ki > qi):
                         continue
                     if window and abs(ki - qi) > window:
                         continue
                     want[r, c] = 1
-            assert np.array_equal(p.reshape(16, 32), want), (causal, window, kv, q)
+            assert np.array_equal(p.reshape(16, 32), want), (
+                causal,
+                window,
+                packed,
+                kv,
+                q,
+            )
 
 
 @pytest.mark.parametrize("emulate", [False, True])
@@ -1380,6 +1399,21 @@ def _arg_type_facts(arg_type) -> tuple[str, bool]:
         return _C_ELEMENT_NAMES[arg_type], False
     (dtype,) = typing.get_args(args[1])
     return _C_ELEMENT_NAMES[dtype], True
+
+
+@pytest.mark.parametrize(
+    "factory", [kernels.flm_gemma4_attn_prefill, kernels.flm_gemma4_swa_prefill]
+)
+def test_flm_prefill_chunks_match_their_c_signatures(factory):
+    """attn_qk_chunk and attn_fv_chunk bind the arguments prefill.cc declares."""
+    fn = factory()
+    declared = {
+        name: [("bf16" if t == "bfloat16" else t, ptr) for t, ptr in params]
+        for name, params in _extern_c_signatures(fn.source_file).items()
+    }
+    for chunk in ("attn_qk_chunk", "attn_fv_chunk"):
+        types = getattr(fn, chunk).arg_types()
+        assert [_arg_type_facts(t) for t in types] == declared[chunk]
 
 
 def test_prefill_binds_its_translation_unit_as_one_object():

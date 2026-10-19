@@ -79,6 +79,7 @@ def arch(request):
         (kernels.sample_combine, "slice_size"),
         (kernels.sample_combine, "columns"),
         (kernels.sample_combine, "k_max"),
+        (kernels.sample_combine, "last_slice"),
         (kernels.router_top_k, "slice_size"),
         (kernels.router_top_k, "top_k"),
     ],
@@ -104,6 +105,8 @@ def test_factories_reject_non_positive_integers(factory, name, bad):
         (kernels.sample_select, dict(slice_size=1024, chunk=384), "divide"),
         (kernels.sample_select, dict(slice_size=1023, chunk=341), "even"),
         (kernels.sample_combine, dict(slice_size=1 << 23, columns=256), "int32"),
+        (kernels.sample_combine, dict(slice_size=1024, last_slice=1026), "last_slice"),
+        (kernels.sample_combine, dict(slice_size=1024, last_slice=32), "last_slice"),
         (kernels.router_top_k, dict(slice_size=32, top_k=33), "k_max"),
         (kernels.router_top_k, dict(slice_size=1024, top_k=129), "verified"),
         (kernels.router_top_k, dict(slice_size=1 << 24), "2\\*\\*24"),
@@ -121,8 +124,16 @@ def test_factories_accept_their_edges(arch):
     kernels.sample_combine(slice_size=(1 << 23) - 1, columns=256, k_max=1)
     kernels.sample_select(slice_size=1024, chunk=256, k_max=sample.K_MAX_LIMIT)
     kernels.sample_combine(slice_size=1024, k_max=sample.K_MAX_LIMIT)
+    kernels.sample_combine(slice_size=1024, k_max=64, last_slice=64)
     kernels.router_top_k(slice_size=np.int64(64), top_k=np.int32(64))
     kernels.router_top_k(slice_size=1024, top_k=sample.K_MAX_LIMIT)
+
+
+def test_combine_takes_a_shorter_last_summary():
+    combine = kernels.sample_combine(columns=4, slice_size=14560, last_slice=8186)
+    assert combine.arg_shape(0) == (
+        3 * sample.summary_words(14560, 64) + sample.summary_words(8186, 64),
+    )
 
 
 # --- geometry --------------------------------------------------------------

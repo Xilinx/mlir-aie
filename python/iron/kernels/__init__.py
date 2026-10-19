@@ -11,12 +11,15 @@ Submodules:
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize
-- `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, log_f32, tanh, sigmoid, leaky_relu
-- `norm` — rms_norm, rms_norm_eps, layer_norm
+- `activation` — softmax, gelu, gelu_erf, silu, swiglu, bf16_exp, exp2f_vec, log_f32, tanh, sigmoid, leaky_relu
+- `norm` — rms_norm, rms_norm_eps, layer_norm, layer_norm_eps
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
 - `moe` — router_top_k (a mixture-of-experts router's top-k ids and softmax
-  weights, deterministic, from a `sample_select` summary)
+  weights, deterministic, from a `sample_select` summary), experts (a
+  row's gated feed-forward through its chosen experts, tile by tile)
+- `ssm` — selective_scan (Mamba2's state space recurrence for one head),
+  gated_delta_rule (Gated DeltaNet's recurrence for one value head)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
   implementation (AIE2P): prefill attention, the q4nx LM head and the decode
@@ -63,9 +66,10 @@ from .activation import (
     exp2f_vec_ref,
     gelu,
     gelu_aie2_lut_ref,
+    gelu_erf,
+    gelu_erf_ref,
     gelu_lut_ref,
     gelu_ref,
-    gelu_sized,
     leaky_relu,
     leaky_relu_ref,
     log_f32,
@@ -76,7 +80,6 @@ from .activation import (
     sigmoid_table_ref,
     silu,
     silu_ref,
-    silu_sized,
     silu_table_ref,
     softmax,
     softmax_ref,
@@ -158,7 +161,6 @@ from .eltwise import (
     mul_sized,
     passthrough,
     relu,
-    relu_sized,
     scale,
     scale_ref,
 )
@@ -257,8 +259,20 @@ from .linalg import (
     prefill_fv,
     prefill_fv_ref,
 )
-from .moe import router_top_k, router_top_k_ref
-from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
+from .moe import (
+    experts,
+    experts_ref,
+    router_top_k,
+    router_top_k_ref,
+)
+from .norm import (
+    layer_norm,
+    layer_norm_eps,
+    layer_norm_ref,
+    rms_norm,
+    rms_norm_eps,
+    rms_norm_ref,
+)
 from .quant import q4nx_dequant, q4nx_dequant_ref
 from .reduce import (
     argmax,
@@ -275,6 +289,12 @@ from .reduce import (
     reduce_min_ref,
 )
 from .sample import exp64_ref, sample_combine, sample_ref, sample_select
+from .ssm import (
+    gated_delta_rule,
+    gated_delta_rule_ref,
+    selective_scan,
+    selective_scan_ref,
+)
 from .transformer import (
     layer_norm_affine_cast,
     layer_norm_affine_cast_ref,
@@ -339,6 +359,12 @@ __all__ = [
     "exp64_ref",
     "router_top_k",
     "router_top_k_ref",
+    "experts",
+    "experts_ref",
+    "selective_scan",
+    "selective_scan_ref",
+    "gated_delta_rule",
+    "gated_delta_rule_ref",
     "rms_norm_ref",
     "layer_norm",
     "layer_norm_ref",
@@ -426,7 +452,6 @@ __all__ = [
     "argmax_combine",
     "argmax_combine_ref",
     "relu",
-    "relu_sized",
     "clamp",
     "clamp_ref",
     "magnitude_f32",
@@ -455,9 +480,8 @@ __all__ = [
     "resize_ref",
     "softmax",
     "gelu",
-    "gelu_sized",
+    "gelu_erf",
     "silu",
-    "silu_sized",
     "swiglu",
     "swiglu_ref",
     "bf16_exp",
@@ -497,11 +521,13 @@ __all__ = [
     "mv_bf16_ref",
     "mm_stream_dims",
     "rms_norm_eps",
+    "layer_norm_eps",
     "relu_ref",
     "silu_ref",
     "gelu_aie2_lut_ref",
     "gelu_lut_ref",
     "gelu_ref",
+    "gelu_erf_ref",
     "bf16_exp_lut_ref",
     "bf16_exp_ref",
     "exp2f_vec_ref",

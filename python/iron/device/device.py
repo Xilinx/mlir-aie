@@ -22,7 +22,7 @@ from ...dialects.aie import (
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
-from ...dialects.aiex import _shim_dims
+from ...dialects.aiex import shim_dims
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.util import np_dtype_to_mlir_type
 from ..resolvable import Resolvable
@@ -44,6 +44,16 @@ class Device(Resolvable):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(AIEDevice.{self._device.name})"
+
+    def __eq__(self, other: object) -> bool:
+        # Two descriptors of one AIEDevice are one device; _resolved_tiles is
+        # emission scratch.
+        if not isinstance(other, Device):
+            return NotImplemented
+        return other._device == self._device
+
+    def __hash__(self) -> int:
+        return hash(self._device)
 
     @property
     def name(self) -> str:
@@ -68,6 +78,13 @@ class Device(Resolvable):
     def arch(self) -> AIEArch:
         """AIE architecture of the device (AIE1, AIE2, or AIE2p)."""
         return AIEArch(self._tm.get_target_arch())
+
+    @property
+    def dispatches_full_elf(self) -> bool:
+        """Whether a full ELF (PDIs and control code in one ELF) dispatches here: on AIE2p."""
+        # XRT sends an ELF with .pdi sections as a preemptible command, which
+        # amdxdna accepts only where the part supports preemption: not on npu1.
+        return self.arch is AIEArch.AIE2p
 
     @property
     def core_memory_bytes(self) -> int:
@@ -199,7 +216,7 @@ class Device(Resolvable):
         if self._tm.is_shim_noc_or_pl_tile(col, row):
             if tap.padding is not None:
                 return False
-            offset, sizes, strides = _shim_dims(tap)
+            offset, sizes, strides = shim_dims(tap)
         else:
             pad = 4 - len(tap.sizes)
             offset = tap.offset

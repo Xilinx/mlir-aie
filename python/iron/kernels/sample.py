@@ -43,7 +43,13 @@ from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, Trace, _kernel_source, _make_extern
+from ._common import (
+    _STRICT_FP,
+    KernelContract,
+    Trace,
+    _kernel_source,
+    _make_extern,
+)
 
 # int32 words of a draw row: temperature bits, top-k, n53 low, n53 high.
 ROW_WORDS = 4
@@ -56,8 +62,6 @@ SUMMARY_HEADER = 8
 # The largest k_max: sample_combine's stack holds a table of k_max weights.
 # 128 is the largest verified on hardware.
 K_MAX_LIMIT = 128
-
-_STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
 
 
 def summary_words(slice_size: int, k_max: int) -> int:
@@ -136,16 +140,25 @@ def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction
     )
 
 
-def sample_combine(*, columns=4, slice_size=32064, k_max=64) -> ExternalFunction:
+def sample_combine(
+    *, columns=4, slice_size=32064, k_max=64, last_slice=None
+) -> ExternalFunction:
     """Draw from ``columns`` summaries of ``sample_select``, as ``sample_ref`` does.
 
     ``sample_combine(summaries, row, token, record)`` reads the summaries
     column 0 first, and writes the drawn token (an index into the whole row
     of ``columns * slice_size``) to both one-word outputs, so a design can
-    send it two places.
+    send it two places. A ``last_slice`` shorter than ``slice_size`` is the
+    last column's: the row and the last summary end early.
     """
+    last = slice_size if last_slice is None else last_slice
     _check_slice("sample_combine", slice_size, k_max)
-    _positive("sample_combine", columns=columns)
+    _positive("sample_combine", columns=columns, last_slice=last)
+    # A tie's index in its column must stay below SAMPLE_SLICE, its sentinel.
+    if not k_max <= last <= slice_size:
+        raise ValueError(
+            "sample_combine: last_slice must hold k_max to slice_size logits"
+        )
     if columns * slice_size >= 1 << 31:
         raise ValueError("sample_combine: a token must fit int32")
     return _make_extern(
@@ -153,7 +166,11 @@ def sample_combine(*, columns=4, slice_size=32064, k_max=64) -> ExternalFunction
         _kernel_source("sample/sample_combine.cc"),
         [
             np.ndarray[
-                (columns * summary_words(slice_size, k_max),), np.dtype[np.int32]
+                (
+                    (columns - 1) * summary_words(slice_size, k_max)
+                    + summary_words(last, k_max),
+                ),
+                np.dtype[np.int32],
             ],
             np.ndarray[(ROW_WORDS,), np.dtype[np.int32]],
             np.ndarray[(1,), np.dtype[np.int32]],

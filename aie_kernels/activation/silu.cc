@@ -144,11 +144,6 @@ void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
 
 extern "C" {
 
-void silu_bf16(bfloat16 *restrict input, bfloat16 *restrict output) {
-  int32_t input_size = 1024; // Assuming input size is a multiple of 32
-  silu_tanh_approx_bf16(input, output, input_size);
-}
-
 void silu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
                     int32_t input_size) {
   silu_tanh_approx_bf16(input, output, input_size);

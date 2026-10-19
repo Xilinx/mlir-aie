@@ -150,3 +150,188 @@ module @adjacency_npu2_target_model {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// An objectfifo.allocate puts the fifo's objects in the delegate's memory, so
+// the unconstrained producer is steered next to the delegate pinned at (2, 3)
+// instead of the greedy (0, 2).
+// CHECK-LABEL: @adjacency_allocate_delegate
+module @adjacency_allocate_delegate {
+  aie.device(npu2) {
+    // CHECK-DAG: aie.tile(2, 3)
+    // CHECK-DAG: aie.tile(2, 2)
+    %delegate = aie.logical_tile<CoreTile>(2, 3)
+    %producer = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @of (%producer, {%delegate}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of (%delegate)
+    aie.core(%delegate) { aie.end }
+    aie.core(%producer) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// A consumer is placed right after the buffer's owner, before unrelated
+// cores take the owner's neighbors: in one column, the owner at (0, 2)
+// leaves (0, 3) to its consumer and the other cores go above.
+// CHECK-LABEL: @adjacency_consumer_follows_owner
+module @adjacency_consumer_follows_owner {
+  aie.device(npu2_1col) {
+    // CHECK: %[[OWNER:.*]] = aie.tile(0, 2)
+    // CHECK: aie.buffer(%[[OWNER]])
+    // CHECK: aie.core(%[[OWNER]])
+    // CHECK: aie.core(%tile_0_4)
+    // CHECK: aie.core(%tile_0_5)
+    // CHECK: aie.core(%tile_0_3)
+    // CHECK-NEXT: arith.constant
+    // CHECK-NEXT: memref.load %buffer_0_2
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %f0 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%f0) { aie.end }
+    %f1 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%f1) { aie.end }
+    %consumer = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%consumer) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// An allocate only ties core tiles: a fifo's MemTile end puts no shared-L1
+// constraint on the delegate, which takes the greedy (0, 2).
+// CHECK-LABEL: @adjacency_allocate_ignores_memtile_end
+module @adjacency_allocate_ignores_memtile_end {
+  aie.device(npu2) {
+    // CHECK-DAG: aie.tile(0, 1)
+    // CHECK-DAG: aie.tile(0, 2)
+    %mem = aie.logical_tile<MemTile>(0, 1)
+    %delegate = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @of (%mem, {%delegate}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of (%delegate)
+    aie.core(%delegate) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// The owner skips (0, 2): a consumer there would need a free tile beside it,
+// and the pinned core at (0, 3) takes the only one. Placing the owner at
+// (0, 4) leaves (0, 5) for its consumer.
+// CHECK-LABEL: @owner_leaves_room_for_consumer
+// CHECK-DAG: aie.tile(0, 5)
+// CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 4)
+// CHECK-DAG: aie.buffer(%[[OWNER]])
+module @owner_leaves_room_for_consumer {
+  aie.device(npu2_1col) {
+    %pin = aie.logical_tile<CoreTile>(0, 3)
+    aie.core(%pin) { aie.end }
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %consumer = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%consumer) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Three consumers of one owner each need their own free tile beside it. At
+// (0, 2) the owner has only two core neighbours, so it goes to (0, 3).
+// CHECK-LABEL: @owner_leaves_room_for_three_consumers
+// CHECK-DAG: aie.tile(0, 2)
+// CHECK-DAG: aie.tile(0, 4)
+// CHECK-DAG: aie.tile(1, 3)
+// CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 3)
+// CHECK-DAG: aie.buffer(%[[OWNER]])
+module @owner_leaves_room_for_three_consumers {
+  aie.device(npu2) {
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %c0 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c0) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c1) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+    %c2 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c2) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// In one column, two consumers need the owner's two vertical neighbours, so
+// the owner skips (0, 2) and takes (0, 3).
+// CHECK-LABEL: @owner_leaves_room_for_two_consumers
+// CHECK-DAG: aie.tile(0, 2)
+// CHECK-DAG: aie.tile(0, 4)
+// CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 3)
+// CHECK-DAG: aie.buffer(%[[OWNER]])
+module @owner_leaves_room_for_two_consumers {
+  aie.device(npu2_1col) {
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %c0 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c0) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c1) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The consumer both reads the owner's buffer and uses a fifo allocated on
+// the owner: still one peer, so the owner keeps (0, 2) as it would with
+// either use alone.
+// CHECK-LABEL: @buffer_and_allocate_on_one_owner
+// CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.tile(0, 3)
+// CHECK-DAG: aie.buffer(%[[OWNER]])
+module @buffer_and_allocate_on_one_owner {
+  aie.device(npu2_1col) {
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %consumer = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.objectfifo @of (%owner, {%consumer}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of (%owner)
+    aie.core(%owner) { aie.end }
+    aie.core(%consumer) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}

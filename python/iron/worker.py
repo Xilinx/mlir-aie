@@ -23,6 +23,7 @@ from ..dialects.aiex import (
 from ..helpers.dialects.scf import _for as range_
 from ..helpers.dialects.scf import forever_
 from ..helpers.sourceloc import SourceSite, traced_body
+from ..helpers.taplib import Affine
 from ..helpers.util import flatten_fn_args
 from ..utils.compile.jit.markers import _DispatchParameter
 from .buffer import Buffer
@@ -99,6 +100,11 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         ):
             if isinstance(arg, _DispatchParameter):
                 arg._misuse()
+            if isinstance(arg, Affine):
+                raise TypeError(
+                    f"A Worker cannot take {arg}, which is computed per call; use "
+                    "CompileTime or specialize"
+                )
         if tile is None:
             tile = AnyComputeTile
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:

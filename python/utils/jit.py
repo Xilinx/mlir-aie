@@ -56,6 +56,7 @@ import inspect as _inspect
 from typing import Callable, overload
 
 from aie.utils.callabledesign import CallableDesign as _CallableDesign
+from aie.utils.compile.jit._introspect import declare
 from aie.utils.compile.jit.compilabledesign import config_param_names
 
 # Derived from CallableDesign.__init__ so it stays in sync automatically:
@@ -104,11 +105,11 @@ def jit(
 
     # --- Validate CompileTime[T] params when generator is callable ---
     if callable(mlir_generator):
-        from aie.utils.compile.jit._introspect import split_params
-
-        compile_params, tensor_params, dispatch_params, scalar_params = split_params(
-            mlir_generator
-        )
+        declaration = declare(mlir_generator)
+        compile_params = list(declaration.params)
+        tensor_params = [m.name for m in declaration.operands]
+        dispatch_params = [m.name for m in declaration.per_calls]
+        scalar_params = list(declaration.scalars)
 
         # Guard 1-A: reject any compile kwarg that doesn't match a CompileTime[T]
         # param. Failing fast at decoration time catches typos like @jit(NN=...)

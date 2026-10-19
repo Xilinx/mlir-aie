@@ -12,10 +12,11 @@ Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 #include "../aie_kernel_utils.h" // AIE_LOOP_*
 
 #include <aie_api/aie.hpp>
+#include <cstdint>
 
 using bf16 = bfloat16;
 
-// The lock-id offset selects the tile: +48 this tile, +0 down, +16 left.
+// This tile's own locks, from 48 (see _lock_offset).
 inline void _lock_acquire(int lock_id, int num_locks = 1) {
   acquire_greater_equal(lock_id + 48, num_locks);
 }
@@ -57,24 +58,22 @@ struct PingPong {
   }
 };
 
-inline void _down_lock_acquire(int lock_id, int num_locks = 1) {
-  acquire_greater_equal(lock_id, num_locks);
+// The lock-id offset of the tile whose memory holds a, for a lock beside a
+// buffer that a neighbour owns. An aie2 or aie2p core reaches the memory of
+// the tiles south, west and north of it and its own at 0x40000, 0x50000,
+// 0x60000 and 0x70000 (AIE2TargetModel), and their locks from 0, 16, 32 and
+// 48, so the offset follows from the address wherever the placer puts the
+// two tiles.
+inline int _lock_offset(const void *a) {
+  return ((static_cast<int>(reinterpret_cast<uintptr_t>(a) >> 16) & 7) - 4) *
+         16;
 }
-
-// Pointer forms for the locks of the neighbour tiles.
-inline void _down_lock_acquire_p(const void *a, int lock_id,
-                                 int num_locks = 1) {
-  acquire_greater_equal(a, lock_id, num_locks);
+inline void _shared_lock_acquire_p(const void *a, int lock_id,
+                                   int num_locks = 1) {
+  acquire_greater_equal(a, _lock_offset(a) + lock_id, num_locks);
 }
-inline void _down_lock_release_p(void *a, int lock_id, int num_locks = 1) {
-  release(a, lock_id, num_locks);
-}
-inline void _left_lock_acquire_p(const void *a, int lock_id,
-                                 int num_locks = 1) {
-  acquire_greater_equal(a, lock_id + 16, num_locks);
-}
-inline void _left_lock_release_p(void *a, int lock_id, int num_locks = 1) {
-  release(a, lock_id + 16, num_locks);
+inline void _shared_lock_release_p(void *a, int lock_id, int num_locks = 1) {
+  release(a, _lock_offset(a) + lock_id, num_locks);
 }
 
 // Stores 256 bits at a time, so c needs only 32-byte alignment. A wider store

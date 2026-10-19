@@ -303,6 +303,11 @@ class DmaEndpoint:
                 f"{self} is a shim channel, which moves host memory; use the "
                 "Flow's fill()/drain() for it."
             )
+        if active.static_channel(self):
+            raise ValueError(
+                f"A task on {self} would rewrite the channel a TileDma program "
+                "runs, and the program stays broken for every later dispatch."
+            )
         if not bds:
             raise ValueError(f"A task on {self} needs at least one Bd.")
         bds = tuple(bd if isinstance(bd, Bd) else Bd(bd) for bd in bds)

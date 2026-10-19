@@ -119,8 +119,52 @@ class DeviceResources:
                 else:
                     programs[tile] = tile_dma
             self._resolved_tile_dmas = list(programs.values())
+            # A control-packet route rewrites its tile's DMA at dispatch; that
+            # would leave a static program broken for every later dispatch.
+            for flow in self._flows:
+                for tile in flow.control_tiles():
+                    if any(
+                        program.tile.is_same_tile(tile)
+                        for program in self._resolved_tile_dmas
+                    ):
+                        raise ValueError(
+                            f"{type(flow).__name__} {flow.name!r} writes the "
+                            f"TileControl of {tile}, which runs a TileDma program: "
+                            "a dispatch would rewrite the DMA that program "
+                            "keeps running."
+                        )
         for program in self._resolved_tile_dmas:
             program.resolve()
+
+    def static_channel(self, endpoint) -> bool:
+        """Return whether a resolved TileDma program may run ``endpoint``'s channel.
+
+        Tiles match as `Tile.is_same_tile` says. A channel the compiler
+        assigns is one endpoint object, so it matches only itself; a channel
+        given by index also matches a program's channel in that direction
+        that the compiler has yet to assign, which may get that index.
+
+        Args:
+            endpoint: The `DmaEndpoint` a dispatch-time task would run on.
+
+        Returns:
+            Whether a dispatch-time write to that channel could rewrite a
+            TileDma program.
+        """
+        return any(
+            program.tile.is_same_tile(endpoint.tile)
+            and any(
+                channel.channel is endpoint
+                or endpoint.channel is not None
+                and channel.direction == endpoint.direction
+                and (
+                    channel._key[1] == endpoint.channel
+                    or not isinstance(channel._key[1], int)
+                )
+                for channel in program.channels
+            )
+            for program in self._resolved_tile_dmas or ()
+        )
 
     @property
     def flows(self) -> list:

@@ -29,6 +29,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 |-|-|-|-|
 | [leaky_relu.cc](./activation/leaky_relu.cc) | AIE API | Leaky ReLU activation | `bfloat16` |
 | [gelu.cc](./activation/gelu.cc) | AIE API | GELU activation (tanh approx). The per-arch headers differ in tuning: the AIE2P one is MAC-fused with an `s*beta` precompute and post-RA pipelining | `bfloat16` |
+| [gelu_erf.cc](./activation/gelu_erf.cc) | AIE API | Exact GELU, `x * Phi(x)` (erfc in f32 limbs, rounded once) | `bfloat16` |
 | [silu.cc](./activation/silu.cc) | AIE API | SiLU / Swish activation (tanh path from `activations.h`) | `bfloat16` |
 | [swiglu.cc](./activation/swiglu.cc) | AIE API | SwiGLU gated activation (tanh path from `activations.h`) | `bfloat16` |
 | [tanh.cc](./activation/tanh.cc) | AIE API | Tanh activation (tanh path from `activations.h`: native on AIE2P, LUT on AIE2) | `bfloat16` |
@@ -119,10 +120,16 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query and key blocks a multiple of 16 rows and a head dimension a multiple of 8; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16`, running state and O `float32` |
 | [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
 
+## moe
+| Name | Coding style | Purpose | Datatypes |
+|-|-|-|-|
+| [router_top_k.cc](./moe/router_top_k.cc) | Generic C | A router's `top_k` expert ids and softmax weights, from one `sample_select` summary | `int32_t` → `int32_t`, `bfloat16` |
+| [experts.cc](./moe/experts.cc) | Generic C | One row's gated feed-forward through its chosen experts, from the row and one stream of weight tiles, summed in float32 and rounded once. Scalar first pass | `bfloat16` |
+
 ## norm
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
-| [layer_norm.cc](./norm/layer_norm.cc) | AIE API | Layer normalization | `bfloat16` |
+| [layer_norm.cc](./norm/layer_norm.cc) | AIE API | Layer normalization — `layer_norm` (eps=1e-5) + `layer_norm_eps` (runtime eps) | `bfloat16` |
 | [rms_norm.cc](./norm/rms_norm.cc) | AIE API | RMS normalization — `rms_norm` (eps=1e-5) + `rms_norm_eps` (runtime eps) | `bfloat16` |
 
 ## quant
@@ -143,6 +150,12 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 |-|-|-|-|
 | [sample_select.cc](./sample/sample_select.cc) | AIE API | One column's half of exact top-k sampling: reduces its slice of the logits to a summary (the entries above the k-th largest, and a bitmap of the ties at it); geometry via `-DSAMPLE_*`, shared with [sample.h](./sample/sample.h) | `bfloat16` → `int32_t` |
 | [sample_combine.cc](./sample/sample_combine.cc) | Generic C | Draws one token from every column's summary, bit for bit as `aie.iron.kernels.sample.sample_ref` does: IEEE soft-float weights through [exp64.h](./sample/exp64.h), summed exactly in fixed point | `int32_t` |
+
+## ssm
+| Name | Coding style | Purpose | Datatypes |
+|-|-|-|-|
+| [selective_scan.cc](./ssm/selective_scan.cc) | Generic C | Mamba2's state space recurrence for one head over a block of rows, the float32 state carried across calls. Scalar first pass | `bfloat16`, `float32` → `bfloat16`, `float32` |
+| [gated_delta_rule.cc](./ssm/gated_delta_rule.cc) | Generic C | Gated DeltaNet's recurrence for one value head over a block of rows, the float32 state carried across calls. Scalar first pass | `bfloat16`, `float32` → `bfloat16`, `float32` |
 
 ## transformer
 | Name | Coding style | Purpose | Datatypes |
