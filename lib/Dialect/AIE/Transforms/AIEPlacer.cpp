@@ -1286,12 +1286,14 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     });
   }
 
-  // The verifier lets an endpoint appear in only one route.
+  // Packet routes may share an endpoint, which holds one channel however many
+  // routes name it.
+  llvm::DenseSet<Operation *> countedEndpoints;
   for (auto route : routes) {
     auto count = [&](FlatSymbolRefAttr name, bool isOutput) {
       auto endpoint =
           SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(route, name);
-      if (endpoint)
+      if (endpoint && countedEndpoints.insert(endpoint).second)
         incIfDMA(endpoint.getTile().getDefiningOp(), endpoint.getRouteBundle(),
                  endpoint.getRouteChannel(), isOutput);
     };
