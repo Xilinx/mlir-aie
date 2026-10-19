@@ -3,8 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""A mixture of experts on the device: the router's top-k selection and the
-experts' gated feed-forward.
+"""Mixture of experts kernels: the router's top-k selection and the experts' FFN.
 
 ``router_top_k`` reads one column's ``sample_select`` summary (``sample.py``,
 ``k_max == top_k``, one call reduces the whole row) and writes the ``top_k``
@@ -117,7 +116,7 @@ def _experts_row(x, weights, ids):
 
 
 def experts_sample(rng, calls, *, hidden, width, num_experts, top_k, rows, cols):
-    """A row per ``num_experts`` experts' tiles, as a design passes it; random tiles."""
+    """Return a row per ``num_experts`` experts' tiles, as a design passes it; random tiles."""
     row_steps = num_experts * _experts_steps(hidden, width, rows, cols)[1]
     packed = []
     for _ in range(-(-calls // row_steps)):
@@ -171,7 +170,7 @@ def experts(
     rows: int = 8,
     cols: int = 32,
 ) -> ExternalFunction:
-    """A mixture of experts' feed-forward, a row at a time, from two input streams.
+    """Mixture of experts' feed-forward, a row at a time, from two input streams.
 
     ``experts(row, tile, y, step)``: ``row`` is bf16 x (``hidden``), then
     the row's ``2 * top_k`` router weights as ``router_top_k`` writes them
