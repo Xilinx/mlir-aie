@@ -451,8 +451,9 @@ module @task_size_eight {
 
 // Packet routes naming one endpoint share its channel: two cores merge into
 // the MemTile's one S2MM channel, and the MemTile sends both packet ids out of
-// one MM2S channel. By BD room, @scatter's two even-half BDs send @side to the
-// odd S2MM 1 and @gather to the odd S2MM 3: one channel for both its flows. keep_pkt_header
+// one MM2S channel. Endpoints with more BDs pick first, then by structural
+// rank, not source order: @scatter's two BDs take MM2S 0 and use up room in
+// the even half, so @side goes to the odd S2MM 1 and @gather to S2MM 3. keep_pkt_header
 // carries over to the packet flows. A program may source a packet route whose
 // id is pinned, since its BDs state the header themselves. Each packet flow
 // takes the place of its route.
@@ -514,6 +515,45 @@ module @shared_packet_channels {
     ^bd3:
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd3
+    ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A shared endpoint takes one channel however many flows name it: a compute
+// tile has two S2MM channels, and three flows into it fit on them.
+
+// CHECK-LABEL: @shared_channel_counted_once
+// CHECK-DAG: aie.route_endpoint @merge(%{{.*}}) DMA {channelIndex = [[M:[01]]] : i32}
+// CHECK-DAG: aie.route_endpoint @own(%{{.*}}) DMA {channelIndex = {{[01]}} : i32}
+// CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : [[M]]>
+// CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : [[M]]>
+module @shared_channel_counted_once {
+  aie.device(npu2) {
+    %mt = aie.tile(0, 1)
+    %core = aie.tile(0, 2)
+    %l1 = aie.buffer(%core) {sym_name = "l1"} : memref<64xi32>
+    aie.route_endpoint @x(%mt) DMA
+    aie.route_endpoint @y(%mt) DMA
+    aie.route_endpoint @z(%mt) DMA
+    aie.route_endpoint @merge(%core) DMA
+    aie.route_endpoint @own(%core) DMA
+    aie.route from @x to [@merge] {packet, packet_id = 1 : i8}
+    aie.route from @y to [@merge] {packet, packet_id = 2 : i8}
+    aie.route from @z to [@own]
+    aie.mem(%core) {
+      aie.dma_start(S2MM, @merge, ^bd0, ^own)
+    ^bd0:
+      aie.dma_bd(%l1 : memref<64xi32> offset = 0 len = 64)
+      aie.next_bd ^bd0
+    ^own:
+      aie.dma_start(S2MM, @own, ^bd1, ^end)
+    ^bd1:
+      aie.dma_bd(%l1 : memref<64xi32> offset = 0 len = 64)
+      aie.next_bd ^bd1
     ^end:
       aie.end
     }
