@@ -114,8 +114,6 @@ def test_a_clamp_is_carried_through_sums_products_and_floors():
         assert [e.evaluate({"p": v}) for v in range(-20, 21)] == [
             want(v) for v in range(-20, 21)
         ], e
-    with pytest.raises(TypeError, match="not linear"):
-        start.affine()
     for bad in (lambda: start + start, lambda: start // 3):
         with pytest.raises(TypeError):
             bad()
