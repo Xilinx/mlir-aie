@@ -8,6 +8,7 @@ import re
 import numpy as np
 import pytest
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.ir import Context, Module, StringAttr
 from aie.iron import (
     Bd,
     Buffer,
@@ -31,7 +32,6 @@ from aie.iron import (
     sync_parameters,
 )
 from aie.iron.device import NPU2Col1, Tile
-from aie.ir import Context, Module, StringAttr
 
 Tensor = np.ndarray[(4,), np.dtype[np.int32]]
 
@@ -408,7 +408,7 @@ Line = np.ndarray[(256,), np.dtype[np.int32]]
 
 
 def member(fifo_name=None, rtp_name=None):
-    """A Worker draining a fifo its Runtime fills, with an RTP buffer."""
+    """Return a Worker draining a fifo its Runtime fills, with an RTP buffer."""
     of = ObjectFifo(Line, name=fifo_name)
     rtp = Buffer(Tensor, name=rtp_name, use_write_rtp=True)
 
@@ -596,6 +596,7 @@ def test_a_merged_step_waits_for_the_last_steps_transfers():
     rt_a = Runtime(lambda c, h: h.drain(c, wait=True), [Line, of_out.cons()])
     rt_b = Runtime(lambda c, h: h.fill(c), [Line, of_in.prod()])
     merged = Runtime.merge([rt_a, rt_b])
+    assert merged.arg_types == [Line, Line]
     config = DeviceConfiguration(
         "pack", NPU2Col1(), workers=[worker], runtimes=[merged]
     )

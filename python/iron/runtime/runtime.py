@@ -377,6 +377,11 @@ class Runtime(DeviceResources, Resolvable):
             self._name = name
 
     @property
+    def arg_types(self) -> list[type]:
+        """The sequence's argument types, in the order it takes them."""
+        return [data.arr_type for data in self._block_data]
+
+    @property
     def configuration(self) -> DeviceConfiguration | None:
         return self._configuration
 
