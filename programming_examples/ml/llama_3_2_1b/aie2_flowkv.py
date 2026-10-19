@@ -4,10 +4,9 @@
 #
 """Phase 2 flowkv attention pair (qk + sv), v0 non-chunked full softmax.
 
-Two CTs in a vertical column (col 0, rows 4 and 5, matching
-DECODE_PLACEMENT["attention"]["pair0"]). qk on CT0, sv on CT1, with
-the bf16 probs vector flowing CT0 -> CT1 via a direct neighbor
-ObjectFifo. Each CT runs within its 2-in/2-out DMA budget:
+Two CTs in a vertical column (col 0, rows 4 and 5): qk on CT0, sv on
+CT1, with the bf16 probs vector flowing CT0 -> CT1 via a direct
+neighbor ObjectFifo. Each CT runs within its 2-in/2-out DMA budget:
 
   CT0 (qk):  Q (shim) + K (shim) -> probs (CT->CT)
   CT1 (sv):  probs (CT->CT) + V (shim) -> out (shim)

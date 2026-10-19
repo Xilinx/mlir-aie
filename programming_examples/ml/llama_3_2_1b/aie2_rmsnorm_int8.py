@@ -21,7 +21,7 @@ from ml_dtypes import bfloat16
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
 from aie.iron.device import NPU2, Tile
 
-RMS_COL, RMS_ROW = 5, 4  # DECODE_PLACEMENT["rmsnorm"]
+RMS_COL, RMS_ROW = 5, 4
 
 
 def build(D: int):

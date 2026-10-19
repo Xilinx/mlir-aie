@@ -6,8 +6,7 @@
 
 1 CT, 3 input fifos (x, cos, sin), 1 output. Single shared scale
 (rope is norm-preserving). cos and sin come from precomputed LUTs;
-in production they're per-position arrays. Placed on the rope tile
-in DECODE_PLACEMENT.
+in production they're per-position arrays.
 
 CT DMA budget is 2 in + 2 out. 3 inputs here -- pack cos+sin into one
 ObjectFifo to stay within budget.
@@ -23,7 +22,7 @@ from ml_dtypes import bfloat16
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
 from aie.iron.device import NPU2, Tile
 
-ROPE_COL, ROPE_ROW = 4, 4  # DECODE_PLACEMENT["rope"]
+ROPE_COL, ROPE_ROW = 4, 4
 
 # Single per-tensor activation scale (same for in and out).
 ACT_SCALE = 0.05

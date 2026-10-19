@@ -4,8 +4,7 @@
 #
 """Phase 2 silu_mul (int8 in, int8 out, bf16 LUT-based SiLU).
 
-1 CT, 2 input fifos (gate, up), 1 output. Pinned to the silu tile in
-DECODE_PLACEMENT. The SiLU LUT is baked into the kernel binary at
+1 CT, 2 input fifos (gate, up), 1 output. The SiLU LUT is baked into the kernel binary at
 build time via gen_silu_lut.py + the silu_lut.h include, so gate_scale
 is a build-time constant (not a kernel scalar arg). up_scale and
 inv_out_scale remain runtime scalar args.
