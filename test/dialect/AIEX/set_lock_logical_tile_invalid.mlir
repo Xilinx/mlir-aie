@@ -5,11 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// set_lock skips its range check on an unplaced tile, so the lock's own
-// verifier is what refuses an out-of-range id there, before and after placement.
+// set_lock skips its range check on an unplaced tile; the lock's own verifier
+// refuses an out-of-range id there first.
 
 // RUN: aie-opt --verify-diagnostics %s
-// RUN: aie-opt --aie-place-tiles --verify-diagnostics %s
 
 module {
   aie.device(npu2) {

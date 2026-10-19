@@ -1524,21 +1524,22 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (!lockIDOpt) {
     return success();
   }
-  // The lock's tile may still be an aie.logical_tile; its range and address
-  // checks wait for the post-placement re-verify, as UsesAreAccessible's do.
-  if (!isa_and_present<AIE::TileOp>(lockOp.getTile().getDefiningOp()))
+  // A logical tile with a coordinate still unpinned waits for the
+  // post-placement re-verify for its range and address checks, as
+  // UsesAreAccessible's do.
+  std::optional<int> col = lockOp.getTileLike().tryGetCol();
+  std::optional<int> row = lockOp.getTileLike().tryGetRow();
+  if (!col || !row)
     return success();
 
-  auto col = lockOp.colIndex();
-  auto row = lockOp.rowIndex();
   uint32_t lockID = lockOp.getLockIDValue();
 
-  if (lockID >= targetModel.getNumLocks(col, row)) {
+  if (lockID >= targetModel.getNumLocks(*col, *row)) {
     return emitOpError("Lock ID out of range for given tile. Max ID: " +
-                       std::to_string(targetModel.getNumLocks(col, row) - 1));
+                       std::to_string(targetModel.getNumLocks(*col, *row) - 1));
   }
 
-  if (!targetModel.getLocalLockAddress(lockID, lockOp.getTileID())) {
+  if (!targetModel.getLocalLockAddress(lockID, AIE::TileID{*col, *row})) {
     return emitOpError("Invalid lock ID and tile combination when trying to "
                        "retrieve the local lock address.");
   }
