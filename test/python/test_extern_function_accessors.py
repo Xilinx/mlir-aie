@@ -86,19 +86,29 @@ def test_a_recipe_key_names_the_build_not_where_it_happens(tmp_path):
     assert here != built("d", n=32)
     assert here != built("e", source="void k(int* p){ *p = 0; }")
 
+    # Two include trees under no known root are two builds.
+    assert built("f", flags=(f"-I{tmp_path / 'x' / 'inc'}",)) != built(
+        "g", flags=(f"-I{tmp_path / 'y' / 'inc'}",)
+    )
+
+
+def test_a_recipe_key_names_the_kernel_sources_by_their_root(tmp_path, monkeypatch):
     def installed(where, lut="gelu.cc"):
-        root = tmp_path / where
-        return built(
-            where,
-            flags=(
-                "-DN=16",
-                f"-I{root / 'AIE2P'}",
-                f'-DAIE_LUT_KERNEL_SOURCE="{root / lut}"',
-            ),
-        )
+        checkout = tmp_path / where
+        monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(checkout))
+        lib = checkout / "aie_runtime_lib"
+        return ExternalFunction(
+            "k",
+            source_string="void k(int* p){}",
+            arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
+            compile_flags=[
+                f"-I{lib / 'AIE2P'}",
+                f'-DAIE_LUT_KERNEL_SOURCE="{lib / lut}"',
+            ],
+        ).recipe_key
 
     assert installed("f") == installed("g")
-    assert installed("f") not in (here, installed("h", lut="silu.cc"))
+    assert installed("f") != installed("h", lut="silu.cc")
 
 
 # ---------------------------------------------------------------------------

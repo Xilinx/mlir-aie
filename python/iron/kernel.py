@@ -9,7 +9,7 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass, field, replace
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 from typing import Any, get_origin
 
 import numpy as np
@@ -21,6 +21,7 @@ from ..helpers.dialects.func import call
 from ..helpers.npdtypes import is_block_float
 from ..helpers.sourceloc import SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
+from ..utils import config
 from ..utils.compile.jit.context import get_compile_arg
 from .buffer import Buffer
 from .resolvable import Resolvable
@@ -146,19 +147,24 @@ def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
 _PATH_FLAG = re.compile(r'(-I|-isystem|-iquote|-D[^=]+=)?("?)(.*?)("?)')
 
 
-def _portable_flag(flag: str) -> str:
-    """Return ``flag`` with an absolute path in it reduced to its last component.
+def _install_relative_flag(flag: str, roots: dict[str, Path]) -> str:
+    """Return ``flag`` with a path under one of ``roots`` named relative to that root.
 
-    ``-I/opt/x/aie_runtime_lib/AIE2P`` is ``-IAIE2P`` and
-    ``-DAIE_LUT_KERNEL_SOURCE="/opt/x/gelu.cc"`` is
-    ``-DAIE_LUT_KERNEL_SOURCE="gelu.cc"`` in every installation.
+    With the runtime library at ``/opt/x/aie_runtime_lib``,
+    ``-I/opt/x/aie_runtime_lib/AIE2P`` is ``-I{aie_runtime_lib}/AIE2P`` in
+    every installation. A path under no root is kept whole, so two include
+    trees elsewhere stay told apart.
     """
     match = _PATH_FLAG.fullmatch(flag)
     if match is None:
         return flag
     prefix, open_quote, value, close_quote = match.groups()
-    if PurePosixPath(value).is_absolute() or PureWindowsPath(value).is_absolute():
-        value = PureWindowsPath(value).name
+    path = Path(value)
+    if path.is_absolute():
+        for label, root in roots.items():
+            if path.is_relative_to(root):
+                value = f"{{{label}}}/{path.relative_to(root).as_posix()}"
+                break
     return f"{prefix or ''}{open_quote}{value}{close_quote}"
 
 
@@ -1250,19 +1256,26 @@ class ExternalFunction(Kernel):
         It covers the symbol, the source's name and content, the argument
         types, the compile flags and the toolchain choice (chess, inline),
         but not the headers the source includes, where any of them live, or
-        the symbol prefix, which a design adds. An absolute path in a flag
-        counts by its last component only, so ``-I`` and
-        ``-DAIE_LUT_KERNEL_SOURCE="..."`` flags name no installation. The nightly kernel timings
-        carry it, so a design that calls a kernel can find that kernel's
-        timed row.
+        the symbol prefix, which a design adds. A path in a flag under the
+        kernel sources, the runtime library or the installed headers counts
+        relative to that root, so ``-I`` and ``-DAIE_LUT_KERNEL_SOURCE="..."``
+        flags name no installation; any other path counts whole. The nightly
+        kernel timings carry it, so a design that calls a kernel can find that
+        kernel's timed row.
         """
+        # aie_kernels sits inside the installed headers, so it is tried first.
+        roots = {
+            "aie_kernels": Path(config.aie_kernels_dir()),
+            "aie_runtime_lib": Path(config.aie_runtime_lib_dir()),
+            "include": Path(config.cxx_header_path()),
+        }
         source = self._source_file
         parts = [
             self._original_name,
             Path(source).name if source else "",
             self._recipe.source_digest,
             str(self._arg_types),
-            str([_portable_flag(flag) for flag in self._compile_flags]),
+            str([_install_relative_flag(f, roots) for f in self._compile_flags]),
             f"chess={self._use_chess}",
             f"inline={self._inline}",
         ]
