@@ -675,17 +675,18 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
 
   // A candidate that leaves no free core tile for one of this LTO's
   // unplaced shared-L1 peers is tried only in the second pass. Each peer is
-  // checked on its own, so two peers left one free tile both pass.
+  // checked on its own, so two peers may count on the same free tile.
   auto leavesPeerRoom = [&](TileID candidate) {
     bool room = true;
     forEachPeer(logicalTile.getOperation(), inputs.bufferAdjacency,
-                [&](TileLike peer, bool thisIsConsumer) {
+                [&](TileLike peer, bool thisIsFirst) {
                   if (!room || resolvePeerPosition(peer, this->result))
                     return;
+                  // edge.first is the consumer, edge.second the owner.
                   room = llvm::any_of(availability.compTiles, [&](TileID t) {
                     return t != candidate &&
-                           (thisIsConsumer ? inputs.bufferPred(candidate, t)
-                                           : inputs.bufferPred(t, candidate));
+                           (thisIsFirst ? inputs.bufferPred(candidate, t)
+                                        : inputs.bufferPred(t, candidate));
                   });
                 });
     return room;

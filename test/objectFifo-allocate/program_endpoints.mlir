@@ -524,13 +524,14 @@ module @shared_packet_channels {
 // -----
 
 // A shared endpoint takes one channel however many flows name it: a compute
-// tile has two S2MM channels, and three flows into it fit on them.
+// tile has two S2MM channels, 0 and 1, and three flows into it fit on them,
+// @own on the channel @merge leaves.
 
 // CHECK-LABEL: @shared_channel_counted_once
-// CHECK-DAG: aie.route_endpoint @merge(%{{.*}}) DMA {channelIndex = [[M:[01]]] : i32}
-// CHECK-DAG: aie.route_endpoint @own(%{{.*}}) DMA {channelIndex = {{[01]}} : i32}
-// CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : [[M]]>
-// CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : [[M]]>
+// CHECK: aie.route_endpoint @merge(%{{.*}}) DMA {channelIndex = [[#M:]] : i32}
+// CHECK: aie.route_endpoint @own(%{{.*}}) DMA {channelIndex = [[#1-M]] : i32}
+// CHECK: aie.packet_dest<%{{.*}}, DMA : [[#M]]>
+// CHECK: aie.packet_dest<%{{.*}}, DMA : [[#M]]>
 module @shared_channel_counted_once {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
