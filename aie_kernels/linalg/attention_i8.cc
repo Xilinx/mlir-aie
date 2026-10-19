@@ -88,20 +88,30 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
       for (int kb = 0; kb < N / 8; kb++)
         for (int c = 0; c < 8; c++)
           top = s[kb * 32 + i * 8 + c] > top ? s[kb * 32 + i * 8 + c] : top;
-      int32_t total = 0;
+      int64_t total = 0;
       for (int kb = 0; kb < N / 8; kb++)
         for (int c = 0; c < 8; c++)
           total += exp_table[top - s[kb * 32 + i * 8 + c]];
+      // A probability's quotient is at most 128, so it divides by restoring
+      // division on total * 2**b: 64-bit division is a libcall Peano lacks.
+      int64_t steps[8];
+      steps[0] = total;
+      for (int b = 1; b < 8; b++)
+        steps[b] = steps[b - 1] + steps[b - 1];
       for (int kb = 0; kb < N / 8; kb++)
         for (int c = 0; c < 8; c++) {
-          const int32_t num = exp_table[top - s[kb * 32 + i * 8 + c]]
-                              << prob_shift;
+          int64_t rem = exp_table[top - s[kb * 32 + i * 8 + c]];
+          for (int b = 0; b < prob_shift; b++)
+            rem += rem;
           int32_t prob = 0;
           // Below one half rounds to 0 (a tie too, 0 being even).
-          if (2 * num > total) {
-            prob = num / total;
-            const int32_t twice_rem = 2 * (num - prob * total);
-            prob += twice_rem > total || (twice_rem == total && (prob & 1));
+          if (rem + rem > total) {
+            for (int b = 7; b >= 0; b--)
+              if (rem >= steps[b]) {
+                rem -= steps[b];
+                prob |= 1 << b;
+              }
+            prob += rem + rem > total || (rem + rem == total && (prob & 1));
             prob = prob > 127 ? 127 : prob;
           }
           p[kb * 32 + i * 8 + c] = prob;

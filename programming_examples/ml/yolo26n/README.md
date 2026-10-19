@@ -75,10 +75,10 @@ mAP50-95 on coco128: FP32 0.474, XINT8 0.443. The XINT8 model is calibrated
 on the same 128 images, so its number is optimistic.
 
 On the NPU, the whole model's detections match the oracle bit for bit on
-all 128 coco128 images, and ONNX Runtime's on 122. The oracle itself agrees
-with ONNX Runtime on those 122, in all 169 tensors; in the other 6 an
-attention softmax probability lands on the other side of a rounding
-boundary (17 of 82 million probabilities; 4 of them do so for exact float64
-arithmetic too).
+all 128 coco128 images, and ONNX Runtime's on 126. The oracle agrees with
+ONNX Runtime on those 126 in all 169 tensors. In the other 2, ONNX
+Runtime's float32 softmax rounds an attention probability (4 of 82 million)
+to the other side of a rounding boundary from exact arithmetic; neither
+changes a detection above 0.25 confidence.
 
 Performance is not yet tuned.

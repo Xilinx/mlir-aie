@@ -11,7 +11,7 @@ int8 activations as `(C, H, W)` int64 arrays and the detections as float32
 
 Requantization rounds half to even and saturates to int8, as ONNX
 QuantizeLinear does; with power-of-two scales that is exact integer
-arithmetic. The attention softmax is integer too: a Q22 exp table and an
+arithmetic. The attention softmax is integer too: a Q26 exp table and an
 exactly rounded division, which agrees with ONNX Runtime's float32 softmax
 except where its result sits within float error of a rounding boundary. The
 postprocess runs in float32 on dequantized int8 values, as the ONNX graph
@@ -142,7 +142,7 @@ class Oracle:
         )
         s_s = int(p.of(op.name, "score_scale"))
         scores = requantize(np.einsum("hdi,hdj->hij", q, k), s_s - s_q - s_qkv)
-        # Integer softmax: exp(-(max - s) * 2**s_s) from a Q22 table, then each
+        # Integer softmax: exp(-(max - s) * 2**s_s) from a Q26 table, then each
         # probability rounded exactly (half to even) to the output's int8 grid.
         e = p.of(op.name, "exp_table").astype(np.int64)[
             scores.max(axis=-1, keepdims=True) - scores

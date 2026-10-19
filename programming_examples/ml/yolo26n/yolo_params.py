@@ -52,12 +52,13 @@ class Params(dict):
 
 
 def exp_table(score_scale: int) -> np.ndarray:
-    """`round(2**22 * exp(-d * 2**score_scale))` for every int8 score gap `d` in 0..255.
+    """`round(2**26 * exp(-d * 2**score_scale))` for every int8 score gap `d` in 0..255.
 
-    400 keys of at most 2**22 sum below 2**31, so a row's total fits int32.
+    26 bits is the fewest for which the rounded probabilities match exact
+    arithmetic on coco128; a row's total then needs 64 bits.
     """
     gaps = np.arange(256, dtype=np.float64)
-    return np.round(2.0**22 * np.exp(-gaps * 2.0**score_scale)).astype(np.int32)
+    return np.round(2.0**26 * np.exp(-gaps * 2.0**score_scale)).astype(np.int32)
 
 
 def anchor_grid(op: DetectPost) -> tuple[np.ndarray, np.ndarray]:
@@ -75,12 +76,16 @@ def anchor_grid(op: DetectPost) -> tuple[np.ndarray, np.ndarray]:
 
 
 def synthetic_params(seed: int, path: Path) -> Path:
-    """Write seed `seed`'s synthetic parameters to `path` unless already there; return `path`.
+    """Write seed `seed`'s synthetic parameters to `path` unless there and current; return `path`.
 
-    The file is written beside `path` and renamed into place, so runs
-    sharing it never read a partial file.
+    The file is current when newer than the sources that make it. It is
+    written beside `path` and renamed into place, so runs sharing it never
+    read a partial file.
     """
-    if not path.exists():
+    sources = [Path(__file__), Path(__file__).with_name("yolo_spec.py")]
+    if not path.exists() or path.stat().st_mtime < max(
+        s.stat().st_mtime for s in sources
+    ):
         path.parent.mkdir(parents=True, exist_ok=True)
         partial = path.with_name(f"{path.stem}.{os.getpid()}.partial.npz")
         np.savez(partial, **Synthesizer(seed).run(Network.yolo26n()))
