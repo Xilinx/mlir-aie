@@ -161,16 +161,17 @@ class Operator:
     def resolved(self, dev) -> Self:
         """Return this operator resolved for ``dev``, which is current while it resolves and is checked.
 
-        One already resolved for ``dev`` is itself; one resolved for another
-        device is resolved for ``dev`` again from the operator it came from.
+        One already resolved for ``dev`` is itself. One that came from an
+        unresolved operator, by resolving or by ``replace`` of a resolved one,
+        is resolved for ``dev`` from that operator.
 
         Raises:
             TypeError: ``resolve`` returned ``self`` or another class.
             Unresolvable: ``resolve`` left a tunable None.
         """
-        if self._resolved:
-            if self._resolved_for == dev:
-                return self
+        if self._resolved and self._resolved_for == dev:
+            return self
+        if self._unresolved is not self:
             return self._unresolved.resolved(dev)
         with set_current_device(dev):
             new = self.resolve(dev)
@@ -199,7 +200,9 @@ class Operator:
         A ``derive`` parameter not in ``changes`` is computed again; every
         other keeps its value, so pass a function-default one again when you
         change what it reads. The copy is not resolved, but its keys keep
-        naming the device its tunables were resolved for.
+        naming the device its tunables were resolved for, and a copy of a
+        resolved operator resolves for another device from the unresolved
+        one, with ``changes`` applied, as the original does.
         """
         params = self.declaration.params
         unknown = [n for n in changes if n not in params]
@@ -210,6 +213,9 @@ class Operator:
         new.trace = self.trace
         new._set(kept | changes)
         new._resolved_for = self._resolved_for
+        if self._unresolved is not self:
+            unresolved = self._unresolved
+            new._unresolved = unresolved.replace(**changes) if changes else unresolved
         return new
 
     def layout(self) -> Self:

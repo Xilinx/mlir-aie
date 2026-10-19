@@ -119,6 +119,27 @@ def test_an_operator_resolved_for_one_device_resolves_again_for_another():
     assert four.resolved(NPU2Col4()) is four
 
 
+class Sized(Scale):
+    def resolve(self, dev):
+        return self.replace(tile=self.tile or 4 * dev.cols, lanes=dev.cols)
+
+
+def test_a_copy_of_a_resolved_operator_resolves_again_from_the_unresolved_one():
+    four = Sized(M=8).resolved(DEV)
+    copy = four.replace()
+    assert (copy.tile, copy.lanes) == (16, 4)
+    one = copy.resolved(NPU1Col1())
+    assert (
+        (one.tile, one.lanes)
+        == (4, 1)
+        == (
+            four.resolved(NPU1Col1()).tile,
+            four.resolved(NPU1Col1()).lanes,
+        )
+    )
+    assert four.replace(M=4).resolved(NPU1Col1()).M == 4
+
+
 def test_two_resolutions_for_different_devices_have_different_keys():
     four = Scale(M=8).resolved(DEV)
     one = Scale(M=8).resolved(NPU1Col1()).replace(lanes=4)
