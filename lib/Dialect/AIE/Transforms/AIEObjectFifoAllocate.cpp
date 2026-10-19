@@ -1599,6 +1599,7 @@ struct AIEObjectFifoAllocatePass
     poolUsers.clear();
     lockUsers.clear();
     lockPlacements.clear();
+    spillTiles.clear();
 
     if (failed(collectFixedMemory()) || failed(checkStreamPorts()))
       return signalPassFailure();
