@@ -149,6 +149,7 @@ M.name, T.name, F.name = "M", "T", "F"
         (In(M, True), "dimension True is not a param\\(\\) of Bad or an integer"),
         (In(M, 2.0), "dimension 2.0 is not a param\\(\\) of Bad or an integer"),
         (In(Select(M, (T,), (1,))), "dimension T is a tunable\\(\\)"),
+        (In(Select(M, (Select(M, (T,), (1,)),), (1,))), "dimension T is a tunable"),
         (In(F, M, F), "at most one T | None dimension"),
         (In(M, when=T), "when=<tunable T> must be a param\\(\\)"),
         (In(M, when=True), "when=True must be a param\\(\\)"),
@@ -219,6 +220,25 @@ def test_a_flat_operand_takes_any_rank_and_a_when_operand_sets_its_flag():
         "flip": False,
         "biased": True,
         "M": 4,
+    }
+
+
+class Nested(Base):
+    M: int = param()
+    K: int = param()
+    packed: bool = param()
+    col_maj: bool = param()
+    b = In(Select(packed, (M,), (Select(col_maj, (K, M), (M, K)),)))
+
+
+def test_a_nested_select_infers_through_both_flags():
+    d = Nested.declaration
+    assert d.infer({"b": (8,)}, packed=True) == {"packed": True, "M": 8}
+    assert d.infer({"b": (4, 8)}, packed=False, col_maj=True) == {
+        "packed": False,
+        "col_maj": True,
+        "K": 4,
+        "M": 8,
     }
 
 

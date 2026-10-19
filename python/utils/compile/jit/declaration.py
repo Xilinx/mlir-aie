@@ -44,6 +44,15 @@ def _names(dims) -> set[str]:
     return out
 
 
+def _leaves(dims):
+    """Yield the dimensions ``dims`` may resolve to, through nested ``Select``."""
+    for d in dims:
+        if isinstance(d, Select):
+            yield from _leaves(d.when_true + d.when_false)
+        else:
+            yield d
+
+
 class Declaration:
     """What an operator declares, read from a class body or a generator's signature.
 
@@ -195,16 +204,15 @@ class Declaration:
                 )
             return
         assert isinstance(m, _Operand)
-        for d in m.dims:
-            for leaf in d.when_true + d.when_false if isinstance(d, Select) else (d,):
-                if _foreign(leaf, owner):
-                    raise TypeError(
-                        f"{where}: dimension {leaf!r} is not a param() of {owner.__name__} or an integer; declare an expression as a param()"
-                    )
-                if isinstance(leaf, Param) and leaf.tunable:
-                    raise TypeError(
-                        f"{where}: dimension {leaf.name} is a tunable(); a host shape may not depend on tuning"
-                    )
+        for leaf in _leaves(m.dims):
+            if _foreign(leaf, owner):
+                raise TypeError(
+                    f"{where}: dimension {leaf!r} is not a param() of {owner.__name__} or an integer; declare an expression as a param()"
+                )
+            if isinstance(leaf, Param) and leaf.tunable:
+                raise TypeError(
+                    f"{where}: dimension {leaf.name} is a tunable(); a host shape may not depend on tuning"
+                )
         optional = [
             d.name for d in m.dims if isinstance(d, Param) and d.name in nullable
         ]
