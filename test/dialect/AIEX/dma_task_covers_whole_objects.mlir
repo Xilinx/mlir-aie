@@ -581,6 +581,26 @@ module {
 
 // -----
 
+// A byte count past INT64_MAX is not checked, rather than wrapping: 2.4e10
+// bytes repeated 1e9 + 1 times is whole 300-byte objects, which a wrapped
+// count is not.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<300xi8>>
+    aie.runtime_sequence(%arg0: memref<3000000000xi64>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<3000000000xi64> offset = 0 len = 3000000000)
+        aie.end
+      } {repeat_count = 1000000000 : i32}
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
 // With runtime sizes, an omitted len is their inner extent, not the whole
 // 300-i32 buffer, so it is not checked: %n = 64 fills one whole object.
 module {
@@ -663,6 +683,57 @@ module {
       }
       aiex.dma_start_task(%t)
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 32][1, 1, 1, 32][0, 0, 0, 1]) {id = 1 : i64, metadata = @of} : memref<64xi32>
+    }
+  }
+}
+
+// -----
+
+// A task that is never started streams nothing, so it doesn't hide the other
+// transfer's partial object.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>, %arg1: memref<32xi32>) {
+      // expected-error@+1 {{moves 128 bytes through objectFIFO @of, which is not a whole number of its 256-byte objects}}
+      %t0 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+      %t1 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg1 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+    }
+  }
+}
+
+// -----
+
+// A task value forwarded through scf.if is started again under another name,
+// so its starts can't be counted: the two starts here move one whole object.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>, %n: i32) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+      %c0 = arith.constant 0 : i32
+      %again = arith.cmpi ne, %n, %c0 : i32
+      %u = scf.if %again -> (index) {
+        scf.yield %t : index
+      } else {
+        scf.yield %t : index
+      }
+      aiex.dma_start_task(%u)
     }
   }
 }

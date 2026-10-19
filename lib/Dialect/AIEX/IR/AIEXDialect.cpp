@@ -25,6 +25,7 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/TypeSize.h"
 
 #include <cstdint>
@@ -1426,17 +1427,14 @@ static std::optional<int64_t> staticBdLenBytes(AIE::DMABDOp bd) {
       return std::nullopt;
     elems = buffer.getNumElements();
   }
-  return elems * bd.getBufferElementTypeWidthInBytes();
+  return llvm::checkedMul(
+      elems, static_cast<int64_t>(bd.getBufferElementTypeWidthInBytes()));
 }
 
 // Bytes a task streams per dispatch, or nullopt when any extent, repeat or
-// start count is not static.
+// start count is not static, or the total overflows.
 static std::optional<int64_t>
 staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
-  std::optional<int64_t> repeat =
-      getConstantIntValue(task.getRepeatCountValue());
-  if (!repeat || *repeat < 0)
-    return std::nullopt;
   int64_t starts = 0;
   for (Operation *user : task.getResult().getUsers()) {
     auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
@@ -1455,6 +1453,10 @@ staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
     ++starts;
   }
   if (starts == 0)
+    return 0;
+  std::optional<int64_t> repeat =
+      getConstantIntValue(task.getRepeatCountValue());
+  if (!repeat || *repeat < 0)
     return std::nullopt;
 
   Region &body = task.getBody();
@@ -1463,7 +1465,7 @@ staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
   // The queue starts the chain at the entry block, so only blocks reachable
   // from it stream. A cycle runs indefinitely, and a next_bd_id continues the
   // chain outside the body.
-  int64_t moved = 0;
+  std::optional<int64_t> moved = 0;
   for (auto scc = llvm::scc_begin(&body.front()); !scc.isAtEnd(); ++scc) {
     if (scc.hasCycle())
       return std::nullopt;
@@ -1471,10 +1473,15 @@ staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
       std::optional<int64_t> len = staticBdLenBytes(bd);
       if (!len || bd.getIteration() || bd.getNextBdId())
         return std::nullopt;
-      moved += *len;
+      moved = llvm::checkedAdd(*moved, *len);
+      if (!moved)
+        return std::nullopt;
     }
   }
-  return moved * (*repeat + 1) * starts;
+  std::optional<int64_t> runs = llvm::checkedAdd(*repeat, int64_t{1});
+  if (runs)
+    runs = llvm::checkedMul(*runs, starts);
+  return runs ? llvm::checkedMul(*moved, *runs) : std::nullopt;
 }
 
 // The far end of a shim transfer on an objectFIFO receives (or sends) whole
@@ -1576,7 +1583,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   auto sequence = task->getParentOfType<AIE::RuntimeSequenceOp>();
   if (!sequence || task->getBlock() != &sequence.getBody().front())
     return success();
-  int64_t total = 0;
+  std::optional<int64_t> total = 0;
   int64_t sharing = 0;
   bool reportedEarlier = false;
   WalkResult walk = sequence.walk([&](Operation *op) {
@@ -1589,17 +1596,24 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
     if (!other || other.getAlloc() != task.getAlloc())
       return WalkResult::advance();
     std::optional<int64_t> bytes = staticBytesStreamed(other);
+    // A task that is never started streams nothing, wherever it is.
+    if (bytes == 0)
+      return WalkResult::advance();
     if (!bytes || other->getBlock() != task->getBlock())
       return WalkResult::interrupt();
     // The first partial transfer reports, so the error is raised once.
     if (partialFor(*bytes) && other->isBeforeInBlock(task))
       reportedEarlier = true;
-    total += *bytes;
+    total = llvm::checkedAdd(*total, *bytes);
+    if (!total)
+      return WalkResult::interrupt();
     ++sharing;
     return WalkResult::advance();
   });
-  std::optional<int64_t> objectBytes = partialFor(total);
-  if (walk.wasInterrupted() || reportedEarlier || !objectBytes)
+  if (walk.wasInterrupted() || reportedEarlier)
+    return success();
+  std::optional<int64_t> objectBytes = partialFor(*total);
+  if (!objectBytes)
     return success();
 
   InFlightDiagnostic error =
@@ -1607,7 +1621,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                          << fifo.getSymName() << ", which";
   if (sharing > 1)
     error << ", with this runtime sequence's other transfers through it ("
-          << total << " bytes in all),";
+          << *total << " bytes in all),";
   return error << " is not a whole number of its " << *objectBytes
                << "-byte objects; the far end's buffer descriptor is sized by "
                   "the object, so a partial one never completes";
