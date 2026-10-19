@@ -202,3 +202,21 @@ module @adjacency_consumer_follows_owner {
     }
   }
 }
+
+// -----
+
+// An allocate only ties core tiles: a fifo's MemTile end puts no shared-L1
+// constraint on the delegate, which takes the greedy (0, 2).
+// CHECK-LABEL: @adjacency_allocate_ignores_memtile_end
+module @adjacency_allocate_ignores_memtile_end {
+  aie.device(npu2) {
+    // CHECK-DAG: aie.tile(0, 1)
+    // CHECK-DAG: aie.tile(0, 2)
+    %mem = aie.logical_tile<MemTile>(0, 1)
+    %delegate = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @of (%mem, {%delegate}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of (%delegate)
+    aie.core(%delegate) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}

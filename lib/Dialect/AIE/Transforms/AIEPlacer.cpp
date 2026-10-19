@@ -349,7 +349,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     if (!unpinned(lt))
       return;
     forEachPeer(lt.getOperation(), bufferAdjacency,
-                [&](TileLike peer, bool /*thisIsFirst*/) {
+                [&](TileLike peer, bool /*thisIsConsumer*/) {
                   auto peerLt = dyn_cast<LogicalTileOp>(peer.getOperation());
                   if (peerLt && unpinned(peerLt))
                     emit(peerLt);
@@ -674,7 +674,8 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
   }
 
   // A candidate that leaves no free core tile for one of this LTO's
-  // unplaced shared-L1 peers is tried only in the second pass.
+  // unplaced shared-L1 peers is tried only in the second pass. Each peer is
+  // checked on its own, so two peers left one free tile both pass.
   auto leavesPeerRoom = [&](TileID candidate) {
     bool room = true;
     forEachPeer(logicalTile.getOperation(), inputs.bufferAdjacency,
