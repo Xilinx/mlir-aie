@@ -1380,7 +1380,8 @@ def AIE_DMAConfigureTaskOp
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<ConfinedAttr<I32Attr, [IntNonNegative]>,
+                                "0">:$repeat_count,
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
@@ -1451,6 +1452,17 @@ def AIE_DMAConfigureTaskForOp
     one the endpoint's route gives it. A shim endpoint with a `fifoName` is
     instead renamed to the `aie.shim_dma_allocation` allocation records for it.
 
+    Before the objectFIFO lowering, `alloc` may also name an `aie.objectfifo`
+    with a shim end. Its far ends then move whole objects through buffer
+    descriptors sized by the object, or by the segments of a link's pool, so
+    the verifier requires the runtime sequence's static total through the
+    fifo to stop at a descriptor boundary of every far end. Several tasks may
+    share an object. The check defers wherever that total isn't static: a
+    runtime extent or repeat, a looped, branched or forwarded task, a
+    `dma_memcpy_nd` or BD chain through the same fifo, or a
+    `dma_channel_reset_for` of it. It is not a liveness check, and it doesn't
+    cover buffer reuse or repeated dispatch.
+
     Example:
     ```
       aie.route_endpoint @b_in(%memtile) DMA
@@ -1467,7 +1479,8 @@ def AIE_DMAConfigureTaskForOp
 
   let arguments = (ins SymbolRefAttr:$alloc,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<ConfinedAttr<I32Attr, [IntNonNegative]>,
+                                "0">:$repeat_count,
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val);
 
   let regions = (region AnyRegion:$body);

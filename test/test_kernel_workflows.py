@@ -77,31 +77,6 @@ def test_ryzen_windows_smoke_tests_are_per_wheel():
     assert jobs["smoke-test-wheels-npu-windows"]["needs"] == "build-windows-npu-wheel"
 
 
-def test_baseline_cache_key_is_unique_per_attempt_and_restorable():
-    publish = workflow("publishKernelResults.yml")["jobs"]["publish"]["steps"]
-    report = workflow("nightlyKernelChecks.yml")["jobs"]["report"]["steps"]
-    saved = [
-        step["with"]
-        for step in publish
-        if step.get("uses", "").startswith("actions/cache/save@")
-    ]
-    restored = [
-        step["with"]
-        for step in report
-        if step.get("uses", "").startswith("actions/cache/restore@")
-    ]
-    assert saved and restored
-    for save in saved:
-        assert "${{ github.run_id }}" in save["key"]
-        assert "${{ github.run_attempt }}" in save["key"]
-        assert any(
-            save["key"].startswith(prefix) and save["path"] == restore["path"]
-            for restore in restored
-            for prefix in restore["restore-keys"].splitlines()
-            if prefix
-        )
-
-
 @pytest.mark.parametrize("only", ["", "softmax", "softmax and not large", "$(false)"])
 def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path):
     steps = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
@@ -254,20 +229,33 @@ def test_only_turbo_mode_is_published_and_the_other_npu_still_is(pmode, tmp_path
     assert (tmp_path / "results/npu2/meta.json").exists()
 
 
-def test_report_uses_restored_baseline_and_updates_summary(tmp_path):
+def test_report_reads_the_published_baseline_and_updates_summary(tmp_path):
+    """The report job's steps, in a checkout whose origin has a gh-pages
+    branch holding npu2's latest record and none for npu1."""
     steps = workflow("nightlyKernelChecks.yml")["jobs"]["report"]["steps"]
-    results = tmp_path / "results/npu2"
+    pages = tmp_path / "pages"
+    (pages / "kernel-checks/npu2").mkdir(parents=True)
+    baseline = {
+        "id": "baseline-run",
+        "pmode": "performance",
+        "commit": {"id": "abcdef0123", "url": "https://example.com/abcdef0"},
+        "rows": {"synthetic/1/i8": {"cycles": {"unit": "cycles", "value": 100}}},
+    }
+    (pages / "kernel-checks/npu2/latest.json").write_text(json.dumps(baseline))
+    git(pages, "init", "-q", "-b", "gh-pages")
+    git(pages, "add", "-A")
+    git(pages, "commit", "-q", "-m", "pages")
+
+    checkout = tmp_path / "checkout"
+    results = checkout / "results/npu2"
     results.mkdir(parents=True)
     write_meta(results / "meta.json", "performance")
     (results / "perf.json").write_text(
         json.dumps([{"name": "synthetic/1/i8/cycles", "unit": "cycles", "value": 150}])
     )
-    baseline = {
-        "id": "baseline-run",
-        "pmode": "performance",
-        "rows": {"synthetic/1/i8": {"cycles": {"unit": "cycles", "value": 100}}},
-    }
-    (tmp_path / "utils").symlink_to(WORKFLOWS.parents[1] / "utils")
+    (checkout / "utils").symlink_to(WORKFLOWS.parents[1] / "utils")
+    git(checkout, "init", "-q")
+    git(checkout, "remote", "add", "origin", pages.as_uri())
     summary = tmp_path / "summary.md"
     env = {
         **os.environ,
@@ -275,23 +263,27 @@ def test_report_uses_restored_baseline_and_updates_summary(tmp_path):
         "GITHUB_SERVER_URL": "https://github.com",
         "GITHUB_REPOSITORY": "example/synthetic",
         "GITHUB_RUN_ID": "7",
+        "COMMIT": "fedcba9876",
     }
+    ran = []
     for step in steps:
-        if step.get("uses", "").startswith("actions/cache/restore@"):
-            if "npu2-" in step["with"]["key"]:
-                (tmp_path / "baseline").mkdir()
-                (tmp_path / "baseline/latest.json").write_text(json.dumps(baseline))
-        elif "run" in step and "gh api" not in step["run"]:
-            subprocess.run(
+        if "run" in step and "gh api" not in step["run"]:
+            result = subprocess.run(
                 [BASH, "-eo", "pipefail", "-c", step["run"]],
-                cwd=tmp_path,
+                cwd=checkout,
                 env=env,
                 check=True,
+                capture_output=True,
+                text=True,
             )
+            ran.append(result.stdout)
+    assert "::warning::no gh-pages:kernel-checks/npu1/latest.json" in "".join(ran)
+    assert not (checkout / "baselines/npu1").exists()
     text = summary.read_text()
-    assert text == (tmp_path / "report.md").read_text()
+    assert text == (checkout / "report.md").read_text()
     assert "1 regressed" in text
-    assert "synthetic/1/i8" in text
+    assert "| [abcdef0](https://example.com/abcdef0) |" in text
+    assert "compare/abcdef0123...fedcba9876" in text
     assert "https://github.com/example/synthetic/actions/runs/7" in text
 
 
