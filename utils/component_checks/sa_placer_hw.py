@@ -1,40 +1,42 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Compile + run full mobilenet on NPU2 for a few SA placer seeds and batch sizes.
+r"""Compile + run full mobilenet on NPU2 for a few SA placer seeds and batch sizes.
 
 Complements sa_placer.py's CPU-only seed sweep (placement pass alone, no
 hardware) with the thing that actually matters: does the placed design still
 compile, verify, and run at the expected speed on real hardware for a
 handful of seeds. Shells out to the existing aie2_mobilenet_iron.py CLI (no
 new Python API) from programming_examples/ml, one fresh NPU_CACHE_HOME per
-run so runs don't share a JIT cache (test/python/npu's isolation
-convention).
+seed and effort so they don't share a JIT cache (test/python/npu's
+isolation convention).
 
-Each seed runs at each batch size at both of _EFFORTS (the design's real
-default, and full effort as a placement-quality baseline -- see
+Each seed runs at both of _EFFORTS (the design's real default, and full
+effort as a placement-quality baseline -- see
 mobilenet.bottleneck._common.sa_placer_flags, which the default must keep
-matching). Per run it compiles twice in the same fresh NPU_CACHE_HOME (the
-CLI's compile-only mode): once cold (kernel objects built from scratch, same
-as any first-time compile) and immediately again, warm (the same cache_dir,
-so it reuses the cold compile's kernel objects) -- kernel compilation, not
-placement, is almost all of a cold compile's time (measured: ~19.5s of
-MobileNet's ~20-27s), so the warm number is what an incremental compile
-actually costs. Both record wall time and peak RSS. Per run it also records,
-per image, the minimum NPU time of a launch and of the host's end-to-end
-call.
+matching). The batch is a dispatch-time parameter, so per seed and effort
+the design compiles once (the CLI's ``--dynamic`` compile-only mode) and
+every batch runs from it. It compiles twice in the same fresh
+NPU_CACHE_HOME: cold (every cache empty, same as any first-time compile),
+then warm, keeping only the cold compile's kernel objects (the whole-build
+and per-device caches and the outputs are cleared first), which is what an
+edit to the design, not its kernels, costs. Both record wall time and peak
+RSS. Per batch it records, per image, the minimum NPU time of a launch and
+of the host's end-to-end call; the run builds its own copy of the design
+through the JIT path, from the warm caches, unmeasured.
 From a seed's batch 1 and batch N it records the streaming time: what one
 more image in a launch costs, (T(N) - T(1)) / (N - 1), with the launch's
 fixed cost taken out. Per seed, per effort, it records the placement:
 aiecc's placed tiles as a digest, and its SA cost, from replaying the
 placement with aie-opt on the design's MLIR (aiecc does not report it).
 Writes rows and a meta file in the kernel checks' format
-(utils/kernel_checks/publish.py), with the device's power mode and the
-toolchain; ``--pmode`` refuses to measure in any other mode. Exits 1 when a
-run fails or the check refuses, after writing both. One run is reproduced,
-from programming_examples/ml, with
+(utils/kernel_checks/publish.py), with the device's power mode, the
+toolchain and the dispatch mode; ``--pmode`` refuses to measure in any
+other mode. Exits 1 when a run fails or the check refuses, after writing
+both. One seed and effort is reproduced, from programming_examples/ml, with
 
-    python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort E --batch B
+    python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort E \
+        --dynamic 1 2 4 8 16 32 64
 """
 
 import argparse
@@ -49,7 +51,10 @@ import sys
 import tempfile
 import time
 
+from aiecc_stages import PROFILE_NAME, STAGE_METRICS, stage_rows
+
 _PASS_RE = re.compile(r"^PASS!$", re.MULTILINE)
+_BATCH_RE = re.compile(r"^batch=(\d+)$", re.MULTILINE)
 _TIME_RE = (
     r"\s+\(avg/min/max us\):\s*[\d.]+\s*/\s*(?P<min>[\d.]+)\s*/\s*[\d.]+\s*"
     r"\[median (?P<median>[\d.]+), MAD (?P<mad>[\d.]+), p95 (?P<p95>[\d.]+)\]"
@@ -161,101 +166,113 @@ def parse_run(out: str, returncode: int, batch: int) -> dict:
     }
 
 
-def run_one(seed: int, batch: int, warmup: int, iters: int, effort_label: str) -> dict:
-    """Compile and run mobilenet for one SA seed at one batch size and effort."""
-    effort = _EFFORTS[effort_label]
-    cache_dir = tempfile.mkdtemp(
-        prefix=f"component-checks-sa{seed}-b{batch}-{effort_label}-"
-    )
-    env = dict(os.environ, NPU_CACHE_HOME=cache_dir)
-    flags = ["--sa-seed", str(seed), "--sa-effort", str(effort)]
-    flags += ["--batch", str(batch)]
-    compile_args = (
-        *flags,
-        "--xclbin-path",
-        os.path.join(cache_dir, "final.xclbin"),
-        "--insts-path",
-        os.path.join(cache_dir, "insts.bin"),
-    )
-    try:
-        # Cold: a fresh cache_dir, so kernel objects are compiled from
-        # scratch, same as any first-time compile.
-        start = time.perf_counter()
-        built, compile_peak_rss_mb = _mobilenet_rss(*compile_args, env=env)
-        compile_s = time.perf_counter() - start
-        # Warm: immediately after, same cache_dir, so this one reuses the
-        # kernel objects the cold compile just produced. Kernel compilation
-        # -- not placement -- is almost all of a cold compile's time
-        # (measured: ~19.5s of MobileNet's ~20-27s), so this is the number
-        # that actually reflects repeat/incremental compiles.
-        start = time.perf_counter()
-        built_warm, compile_peak_rss_mb_warm = _mobilenet_rss(*compile_args, env=env)
-        compile_s_warm = time.perf_counter() - start
-        placed = sorted(
-            glob.glob(os.path.join(cache_dir, "devices", "*", "placed.mlir"))
-        )
-        compiled = None
-        if placed:
-            with open(placed[0]) as f:
-                compiled = placement_of(f.read())
-        ran = _mobilenet(*flags, "-w", str(warmup), "-i", str(iters), env=env)
-    finally:
-        shutil.rmtree(cache_dir, ignore_errors=True)
+def split_batches(out: str) -> dict[int, str]:
+    """Split a ``--dynamic`` run's output into each batch's own lines."""
+    marks = list(_BATCH_RE.finditer(out))
+    ends = [m.start() for m in marks[1:]] + [len(out)]
+    return {int(m.group(1)): out[m.end() : end] for m, end in zip(marks, ends)}
 
-    result = parse_run(ran.stdout + ran.stderr, ran.returncode, batch)
-    result["passed"] = (
-        result["passed"] and built.returncode == 0 and built_warm.returncode == 0
+
+def compile_cold_warm(flags: list[str], batches: list[int], cache_dir: str) -> dict:
+    """Compile the dispatch-time design cold, then warm, into ``cache_dir``."""
+    env = dict(os.environ, NPU_CACHE_HOME=cache_dir)
+    xclbin = os.path.join(cache_dir, "final.xclbin")
+    args = (*flags, "--dynamic", *map(str, batches), "--xclbin-path", xclbin)
+    start = time.perf_counter()
+    cold, rss_cold = _mobilenet_rss(*args, env=env)
+    compile_s = time.perf_counter() - start
+    profile = os.path.join(cache_dir, "final.prj", PROFILE_NAME)
+    stages_cold = stage_rows(profile, compile_s if cold.returncode == 0 else None, "")
+    placed = sorted(glob.glob(os.path.join(cache_dir, "devices", "*", "placed.mlir")))
+    placement = None
+    if placed:
+        with open(placed[0]) as f:
+            placement = placement_of(f.read())
+    if os.path.exists(xclbin):
+        os.remove(xclbin)
+    for layer in ("final.prj", "builds", "devices"):
+        shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
+    start = time.perf_counter()
+    warm, rss_warm = _mobilenet_rss(*args, env=env)
+    compile_s_warm = time.perf_counter() - start
+    stages_warm = stage_rows(
+        profile, compile_s_warm if warm.returncode == 0 else None, "_warm"
     )
     return {
-        "seed": seed,
-        "batch": batch,
-        "effort_label": effort_label,
-        **result,
-        "compile_s": round(compile_s, 1) if built.returncode == 0 else None,
-        "compile_peak_rss_mb": (
-            round(compile_peak_rss_mb, 1) if built.returncode == 0 else None
-        ),
-        "compile_s_warm": (
-            round(compile_s_warm, 1) if built_warm.returncode == 0 else None
-        ),
+        **stages_cold,
+        **stages_warm,
+        "passed": cold.returncode == 0 and warm.returncode == 0,
+        "compile_s": round(compile_s, 1) if cold.returncode == 0 else None,
+        "compile_peak_rss_mb": round(rss_cold, 1) if cold.returncode == 0 else None,
+        "compile_s_warm": round(compile_s_warm, 1) if warm.returncode == 0 else None,
         "compile_peak_rss_mb_warm": (
-            round(compile_peak_rss_mb_warm, 1) if built_warm.returncode == 0 else None
+            round(rss_warm, 1) if warm.returncode == 0 else None
         ),
-        "placement": compiled,
-        "log": built.stdout
-        + built.stderr
-        + built_warm.stdout
-        + built_warm.stderr
-        + ran.stdout
-        + ran.stderr,
+        "placement": placement,
+        "log": cold.stdout + warm.stdout,
     }
 
 
-def place_seed(runs: list[dict], aie_opt: str, design: str) -> list[dict]:
-    """Replay one seed's placement at each effort: digest, SA cost, batches placed apart."""
-    seed = runs[0]["seed"]
+def run_seed(
+    seed: int, effort_label: str, batches: list[int], warmup: int, iters: int
+) -> tuple[dict, list[dict]]:
+    """Compile mobilenet once for one SA seed and effort, and run every batch."""
+    cache_dir = tempfile.mkdtemp(prefix=f"component-checks-sa{seed}-{effort_label}-")
+    flags = ["--sa-seed", str(seed), "--sa-effort", str(_EFFORTS[effort_label])]
+    try:
+        compiled = compile_cold_warm(flags, batches, cache_dir)
+        ran = _mobilenet(
+            *flags,
+            "--dynamic",
+            *map(str, batches),
+            "-w",
+            str(warmup),
+            "-i",
+            str(iters),
+            env=dict(os.environ, NPU_CACHE_HOME=cache_dir),
+        )
+    finally:
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
+    out = ran.stdout + ran.stderr
+    compiled = {"seed": seed, "effort_label": effort_label, **compiled}
+    compiled["log"] += out
+    segments = split_batches(out)
+    runs = [
+        {
+            "seed": seed,
+            "batch": b,
+            "effort_label": effort_label,
+            **parse_run(segments.get(b, ""), 0, b),
+            "placement": compiled["placement"],
+        }
+        for b in batches
+    ]
+    # A nonzero exit no batch's own output explains (a crash after the last
+    # PASS, say) is not a pass.
+    if not compiled["passed"] or (ran.returncode and all(r["passed"] for r in runs)):
+        for r in runs:
+            r["passed"] = False
+    return compiled, runs
+
+
+def place_seed(compiles: list[dict], aie_opt: str, design: str) -> list[dict]:
+    """Replay each of one seed's compiles' placement: digest and SA cost."""
     out = []
-    for effort_label in _EFFORTS:
-        mine = [r for r in runs if r["effort_label"] == effort_label]
-        replayed, cost = replay_placement(aie_opt, design, seed, _EFFORTS[effort_label])
-        compiled = [r["placement"] for r in mine if r["placement"]]
-        first = compiled[0] if compiled else replayed
+    for c in compiles:
+        replayed, cost = replay_placement(
+            aie_opt, design, c["seed"], _EFFORTS[c["effort_label"]]
+        )
+        first = c["placement"] or replayed
         out.append(
             {
-                "seed": seed,
-                "effort_label": effort_label,
+                "seed": c["seed"],
+                "effort_label": c["effort_label"],
                 "placement": first,
                 # The cost is only the compile's if the replay placed the
                 # design the same.
                 "placement_cost": cost if first == replayed else None,
                 "replay_matches": first == replayed,
-                # The runtime sequence is all a batch changes, and the placer
-                # should not see it; a batch placed apart from the first says
-                # it did. Compared only within this effort: different efforts
-                # are expected to place differently.
-                "placed_apart": [
-                    r["batch"] for r in mine if r["placement"] not in (None, first)
-                ],
             }
         )
     return out
@@ -266,8 +283,10 @@ def streaming_us(one: dict, many: dict) -> float:
     return round((many["launch_us"] - one["launch_us"]) / (many["batch"] - 1), 2)
 
 
-def aggregate(runs: list[dict], placements: list[dict]) -> list[dict]:
-    failed_seeds = {r["seed"] for r in runs if not r["passed"]}
+def aggregate(
+    runs: list[dict], compiles: list[dict], placements: list[dict]
+) -> list[dict]:
+    failed_seeds = {r["seed"] for r in runs + compiles if not r["passed"]}
     out = [
         {"name": "mobilenet/failed_seeds", "unit": "seeds", "value": len(failed_seeds)}
     ]
@@ -282,6 +301,20 @@ def aggregate(runs: list[dict], placements: list[dict]) -> list[dict]:
                     "range": f"placement {p['placement']}",
                 }
             )
+    for c in compiles:
+        case = f"mobilenet/seed={c['seed']}/effort={c['effort_label']}"
+        for metric, unit in (
+            ("compile_s", "s"),
+            ("compile_peak_rss_mb", "MB"),
+            ("compile_s_warm", "s"),
+            ("compile_peak_rss_mb_warm", "MB"),
+            *((m, "s") for m in STAGE_METRICS),
+            *((f"{m}_warm", "s") for m in STAGE_METRICS),
+        ):
+            if c.get(metric) is not None:
+                out.append(
+                    {"name": f"{case}/{metric}", "unit": unit, "value": c[metric]}
+                )
     # A failed run's times (say, a run that printed timing but produced the
     # wrong answer) are not a measurement of the design, so only passing runs
     # contribute a time point; the failure shows up in the count. Keyed by
@@ -327,66 +360,52 @@ def aggregate(runs: list[dict], placements: list[dict]) -> list[dict]:
                         "range": r["e2e_range"],
                     }
                 )
-        if r["compile_s"] is not None:
-            out.append(
-                {"name": f"{case}/compile_s", "unit": "s", "value": r["compile_s"]}
-            )
-        if r["compile_peak_rss_mb"] is not None:
-            out.append(
-                {
-                    "name": f"{case}/compile_peak_rss_mb",
-                    "unit": "MB",
-                    "value": r["compile_peak_rss_mb"],
-                }
-            )
-        if r["compile_s_warm"] is not None:
-            out.append(
-                {
-                    "name": f"{case}/compile_s_warm",
-                    "unit": "s",
-                    "value": r["compile_s_warm"],
-                }
-            )
-        if r["compile_peak_rss_mb_warm"] is not None:
-            out.append(
-                {
-                    "name": f"{case}/compile_peak_rss_mb_warm",
-                    "unit": "MB",
-                    "value": r["compile_peak_rss_mb_warm"],
-                }
-            )
     return out
 
 
-def print_table(runs: list[dict], placements: list[dict]) -> None:
+def print_table(runs: list[dict], compiles: list[dict], placements: list[dict]) -> None:
+    rows = {r["name"]: r["value"] for r in aggregate(runs, compiles, placements)}
+
+    def cell(case, metric):
+        value = rows.get(f"{case}/{metric}")
+        return "-" if value is None else f"{value:.1f}"
+
     print(
-        f"{'seed':>4} {'batch':>5} {'effort':>7}  {'pass':>4}  {'us/image':>9}  "
-        f"{'streaming':>9}  {'e2e/image':>9}  {'compile_s':>9}  {'peak_rss_mb':>11}  "
+        f"{'seed':>4} {'effort':>7}  {'pass':>4}  {'compile_s':>9}  {'peak_rss_mb':>11}  "
         f"{'warm_s':>7}  {'warm_rss_mb':>11}"
     )
-    rows = {r["name"]: r["value"] for r in aggregate(runs, placements)}
+    for c in compiles:
+        case = f"mobilenet/seed={c['seed']}/effort={c['effort_label']}"
+        print(
+            f"{c['seed']:>4} {c['effort_label']:>7}  {'yes' if c['passed'] else 'NO':>4}  "
+            f"{cell(case, 'compile_s'):>9}  {cell(case, 'compile_peak_rss_mb'):>11}  "
+            f"{cell(case, 'compile_s_warm'):>7}  "
+            f"{cell(case, 'compile_peak_rss_mb_warm'):>11}"
+        )
+    print(
+        f"{'seed':>4} {'batch':>5} {'effort':>7}  {'pass':>4}  {'us/image':>9}  "
+        f"{'streaming':>9}  {'e2e/image':>9}"
+    )
     for r in runs:
         case = (
             f"mobilenet/seed={r['seed']}/batch={r['batch']}"
             f"/effort={r['effort_label']}"
         )
-
-        def cell(metric):
-            value = rows.get(f"{case}/{metric}")
-            return "-" if value is None else f"{value:.1f}"
-
         print(
             f"{r['seed']:>4} {r['batch']:>5} {r['effort_label']:>7}  "
             f"{'yes' if r['passed'] else 'NO':>4}  "
-            f"{cell('us_per_image'):>9}  {cell('streaming_us'):>9}  "
-            f"{cell('e2e_us_per_image'):>9}  {cell('compile_s'):>9}  "
-            f"{cell('compile_peak_rss_mb'):>11}  {cell('compile_s_warm'):>7}  "
-            f"{cell('compile_peak_rss_mb_warm'):>11}"
+            f"{cell(case, 'us_per_image'):>9}  {cell(case, 'streaming_us'):>9}  "
+            f"{cell(case, 'e2e_us_per_image'):>9}"
         )
-        if not r["passed"]:
-            if r["launch_us"] is None:
-                print("no 'NPU time (avg/min/max us)' line in the output")
-            print(r["log"])
+        if not r["passed"] and r["launch_us"] is None:
+            print("no 'NPU time (avg/min/max us)' line in this batch's output")
+    for c in compiles:
+        if not c["passed"] or any(
+            not r["passed"]
+            for r in runs
+            if (r["seed"], r["effort_label"]) == (c["seed"], c["effort_label"])
+        ):
+            print(c["log"])
     for p in placements:
         print(
             f"seed {p['seed']} effort {p['effort_label']}: "
@@ -394,8 +413,6 @@ def print_table(runs: list[dict], placements: list[dict]) -> None:
         )
         if not p["replay_matches"]:
             print("aie-opt placed the design differently from aiecc; no cost recorded")
-        if p["placed_apart"]:
-            print(f"batches {p['placed_apart']} placed apart from the first")
 
 
 def emit_design(path: str) -> None:
@@ -433,9 +450,9 @@ def main(argv=None) -> int:
         "--batches",
         type=_positive_int,
         nargs="+",
-        default=[1, 4, 16, 64],
-        help="images per launch to run each seed at (default: 1 4 16 64; the "
-        "streaming time needs 1)",
+        default=[1, 2, 4, 8, 16, 32, 64],
+        help="images per launch to run each seed at (default: every power of "
+        "two from 1 to 64; the streaming time needs 1)",
     )
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--iters", type=int, default=20)
@@ -460,7 +477,9 @@ def main(argv=None) -> int:
     pre = preflight()
     meta = {
         "preflight": dict(vars(pre)),
-        "provenance": provenance(device=pre.device, pmode=pre.pmode),
+        "provenance": provenance(
+            device=pre.device, pmode=pre.pmode, dispatch="dynamic"
+        ),
         "efforts": _EFFORTS,
         "iters": args.iters,
     }
@@ -477,23 +496,25 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory(prefix="component-checks-design-") as d:
         design = os.path.join(d, "mobilenet.mlir")
         emit_design(design)
-        runs, placements = [], []
+        runs, compiles, placements = [], [], []
         for seed in args.seeds:
-            mine = [
-                run_one(seed, b, args.warmup, args.iters, effort_label)
-                for b in batches
-                for effort_label in _EFFORTS
-            ]
-            runs += mine
+            mine = []
+            for effort_label in _EFFORTS:
+                compiled, seed_runs = run_seed(
+                    seed, effort_label, batches, args.warmup, args.iters
+                )
+                mine.append(compiled)
+                runs += seed_runs
+            compiles += mine
             placements += place_seed(mine, args.aie_opt, design)
-    print_table(runs, placements)
+    print_table(runs, compiles, placements)
 
     failed = [
         f"mobilenet/seed={r['seed']}/batch={r['batch']}/effort={r['effort_label']}"
         for r in runs
         if not r["passed"]
     ]
-    write(args.out, aggregate(runs, placements))
+    write(args.out, aggregate(runs, compiles, placements))
     detail = [
         {
             k: r[k]
@@ -504,10 +525,6 @@ def main(argv=None) -> int:
                 "passed",
                 "us_per_image",
                 "e2e_us_per_image",
-                "compile_s",
-                "compile_peak_rss_mb",
-                "compile_s_warm",
-                "compile_peak_rss_mb_warm",
                 "placement",
             )
         }
@@ -519,6 +536,7 @@ def main(argv=None) -> int:
             **meta,
             "batches": batches,
             "measurement_sane": True,
+            "compiles": [{k: v for k, v in c.items() if k != "log"} for c in compiles],
             "placements": placements,
             "detail": detail,
             "failed": failed,
