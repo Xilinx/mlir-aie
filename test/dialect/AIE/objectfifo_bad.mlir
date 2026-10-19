@@ -190,6 +190,20 @@ aie.device(npu1) {
 
 // -----
 
+// CHECK: 'aie.route' op packet_id and keep_pkt_header are only meaningful on a packet flow
+
+aie.device(npu1) {
+  %shim0 = aie.tile(0, 0)
+  %shim1 = aie.tile(1, 0)
+
+  aie.route_endpoint @src(%shim0) DMA
+  aie.route_endpoint @dst(%shim1) DMA
+
+  aie.route from @src to [@dst] {packet_id = 3 : i8}
+}
+
+// -----
+
 // A shared source's BDs tell its flows apart by id.
 
 // CHECK: 'aie.route_endpoint' op sends several packet flows, two of which pin the same packet_id 1; each needs its own
