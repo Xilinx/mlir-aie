@@ -8,6 +8,7 @@ import operator
 
 import numpy as np
 import pytest
+from aie.helpers.taplib import Affine, TensorAccessPattern
 from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.ir import BlockArgument, IntegerAttr
 from aie.iron import Program, Runtime, Worker
@@ -59,10 +60,6 @@ def test_reordered_dispatch_identity(other_type, bound, npu2_device):
         operator.index,
         float,
         lambda x: range(x),
-        lambda x: x + 1,
-        lambda x: 1 + x,
-        lambda x: x * 2,
-        lambda x: x // 2,
         lambda x: x < 3,
         lambda x: x == 3,
         lambda x: x & 1,
@@ -86,6 +83,38 @@ def test_dispatch_generation_time_misuse(use, npu2_device):
         TypeError, match="DispatchTime parameter 'count'.*generation-time"
     ):
         CompilableDesign(gen).generate_mlir()
+
+
+@pytest.mark.parametrize(
+    "use",
+    [
+        lambda e: Worker(lambda value: None, [e]),
+        lambda e: np_ndarray_type_to_memref_type(np.ndarray[(e,), np.dtype[np.int32]]),
+        bool,
+    ],
+)
+def test_an_expression_of_a_dispatch_parameter_is_computed_per_call(use, npu2_device):
+    def gen(*, count: DispatchTime[np.int32]):
+        e = count * 64 + 64
+        assert e == Affine(count, 64, 64) and len({e, count * 64 + 64}) == 1
+        assert e != "e"
+        use(e)
+
+    with pytest.raises(TypeError, match="computed per call"):
+        CompilableDesign(gen).generate_mlir()
+
+
+def test_a_pattern_stages_an_expression_of_a_dispatch_parameter(npu2_device):
+    tensor_type = np.ndarray[(1024,), np.dtype[np.int32]]
+
+    def gen(*, start: DispatchTime[np.int32]):
+        def seq(a, start_value):
+            tap = TensorAccessPattern.full((1024,)).partition(16)[start + 1]
+            assert not isinstance(tap.offset, (int, Affine))
+
+        return Program(NPU2Col1(), Runtime(seq, [tensor_type, start])).resolve_program()
+
+    assert CompilableDesign(gen).generate_mlir().operation.verify()
 
 
 def test_dispatch_cannot_be_used_as_numpy_dtype(npu2_device):

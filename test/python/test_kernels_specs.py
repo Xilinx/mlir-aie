@@ -23,6 +23,7 @@ The shared _isolate_extern_state fixture lives in conftest.py at this
 directory level.
 """
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -30,6 +31,7 @@ from typing import Callable
 import numpy as np
 import pytest
 from aie.iron import kernels
+from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.utils.hostruntime import set_current_device
@@ -164,13 +166,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=4,  # a, b, c, size
         expected_name="eltwise_mul_bf16_vector_size",
-    ),
-    KernelSpec(
-        name="relu_sized",
-        factory=kernels.relu_sized,
-        kwargs=dict(tile_size=1024),
-        arg_count=3,  # in, out, size
-        expected_name="relu_bf16_size",
     ),
     KernelSpec(
         name="clamp",
@@ -342,9 +337,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         name="relu",
         factory=kernels.relu,
         kwargs=dict(tile_size=1024),
-        arg_count=2,
-        expected_name="bf16_relu",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+        arg_count=3,  # in, out, size
+        expected_name="relu_bf16_size",
     ),
     KernelSpec(
         name="softmax",
@@ -359,35 +353,25 @@ KERNEL_SPECS: list[KernelSpec] = [
         name="gelu",
         factory=kernels.gelu,
         kwargs=dict(tile_size=1024),
-        arg_count=2,
-        expected_name="gelu_bf16",
+        arg_count=3,  # in, out, size
+        expected_name="gelu_bf16_size",
         lut_source="gelu.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="gelu_erf",
+        factory=kernels.gelu_erf,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="gelu_erf_bf16_size",
+        invalid_kwargs=[(dict(tile_size=48), "32-element vector step")],
     ),
     KernelSpec(
         name="silu",
         factory=kernels.silu,
         kwargs=dict(tile_size=1024),
-        arg_count=2,
-        expected_name="silu_bf16",
-        lut_source="silu.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
-    ),
-    KernelSpec(
-        name="silu_sized",
-        factory=kernels.silu_sized,
-        kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="silu_bf16_size",
         lut_source="silu.cc",
-    ),
-    KernelSpec(
-        name="gelu_sized",
-        factory=kernels.gelu_sized,
-        kwargs=dict(tile_size=1024),
-        arg_count=3,  # in, out, size
-        expected_name="gelu_bf16_size",
-        lut_source="gelu.cc",
     ),
     KernelSpec(
         name="swiglu",
@@ -923,6 +907,38 @@ KERNEL_SPECS: list[KernelSpec] = [
         shape_checks=[(dict(_MERGE, block=32), 1, (32,))],
     ),
     KernelSpec(
+        name="experts",
+        factory=kernels.experts,
+        kwargs={},
+        arg_count=4,  # row, weight tile, y, step
+        expected_name="experts",
+        invalid_kwargs=[
+            (dict(top_k=0), "top_k must be a positive integer"),
+            (dict(rows=3), "rows must divide"),
+            (dict(top_k=5), "top_k at most num_experts"),
+            (dict(hidden=33, rows=1, cols=1), "hidden must be even"),
+        ],
+        shape_checks=[(dict(hidden=128, top_k=4), 0, (144,))],
+    ),
+    KernelSpec(
+        name="selective_scan",
+        factory=kernels.selective_scan,
+        kwargs={},
+        arg_count=6,  # block, head, final, y, valid, block index
+        expected_name="selective_scan",
+        invalid_kwargs=[(dict(state=0), "state must be a positive integer")],
+        shape_checks=[(dict(rows=4, head_dim=8, state=16), 0, (164,))],
+    ),
+    KernelSpec(
+        name="gated_delta_rule",
+        factory=kernels.gated_delta_rule,
+        kwargs={},
+        arg_count=6,  # block, head, final, y, valid, block index
+        expected_name="gated_delta_rule",
+        invalid_kwargs=[(dict(key_dim=0), "key_dim must be a positive integer")],
+        shape_checks=[(dict(rows=4, key_dim=8, value_dim=4), 0, (88,))],
+    ),
+    KernelSpec(
         name="patch_positions",
         factory=kernels.patch_positions,
         kwargs={},
@@ -985,6 +1001,13 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, cols
         expected_name="layer_norm",
+    ),
+    KernelSpec(
+        name="layer_norm_eps",
+        factory=kernels.layer_norm_eps,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, out, cols, epsilon
+        expected_name="layer_norm_eps",
     ),
 ]
 
@@ -1210,14 +1233,16 @@ def kernel_arch(request):
         yield request.param
 
 
-@pytest.mark.parametrize("name", ["rms_norm", "rms_norm_eps", "layer_norm", "rope"])
+@pytest.mark.parametrize(
+    "name", ["rms_norm", "rms_norm_eps", "layer_norm", "layer_norm_eps", "rope"]
+)
 def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
     from aie.iron.kernels import datamovement, norm, transformer
 
     factory = getattr(kernels, name)
     canonical = datamovement if name == "rope" else norm
     assert factory is getattr(canonical, name)
-    if name != "rms_norm_eps":
+    if not name.endswith("_eps"):
         assert factory is getattr(transformer, name)
     assert factory().arg_shape(0) == (1024,)
     fn = factory(tile_size=2048)
@@ -1263,6 +1288,13 @@ def test_norm_tail_and_vector_constraints(kernel_arch):
         assert kernels.layer_norm(cols=cols).arg_shape(0) == (cols,)
     with pytest.raises(ValueError, match="multiple of 16"):
         kernels.layer_norm(cols=17)
+    with pytest.raises(ValueError, match="multiple of 16"):
+        kernels.layer_norm_eps(cols=17)
+    rows = np.arange(2 * 208, dtype=np.float32).reshape(2, 208).astype(bfloat16)
+    np.testing.assert_array_equal(
+        kernels.layer_norm_eps(cols=208).contract_for().reference(rows, 0.5),
+        kernels.layer_norm_ref(rows, eps=0.5),
+    )
 
 
 @pytest.mark.parametrize("two_halves", [False, True])
@@ -1288,9 +1320,7 @@ def test_rope_layout_contract_and_vector_constraints(
     np.testing.assert_array_equal(fn.contract.reference(x, lut), expected)
 
 
-@pytest.mark.parametrize(
-    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
-)
+@pytest.mark.parametrize("name", ["add_sized", "mul_sized", "relu", "silu", "gelu"])
 def test_sized_factory_contracts(name, kernel_arch):
     from aie.iron.kernels import Param
     from aie.utils.compile.jit.markers import In, Out
@@ -1301,8 +1331,8 @@ def test_sized_factory_contracts(name, kernel_arch):
     assert fn.contract.parameter_bindings == ((3 if binary else 2, 1024),)
     assert fn.contract_for().tolerance.note
     inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
-    reference_name = name.replace("_sized", "_ref")
-    if name == "silu_sized" and kernel_arch == "aie2":
+    reference_name = name.removesuffix("_sized") + "_ref"
+    if name == "silu" and kernel_arch == "aie2":
         reference_name = "silu_table_ref"
     expected = getattr(kernels, reference_name)(*inputs)
     np.testing.assert_array_equal(fn.contract_for().reference(*inputs), expected)
@@ -1315,15 +1345,13 @@ def test_sized_factory_contracts(name, kernel_arch):
             getattr(kernels, name)(tile_size=1025)
 
 
-@pytest.mark.parametrize(
-    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
-)
+@pytest.mark.parametrize("name", ["add_sized", "mul_sized", "relu", "silu", "gelu"])
 def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
     factory = getattr(kernels, name)
     width = (
         1
         if name in ("add_sized", "mul_sized")
-        else 32 if name == "relu_sized" or kernel_arch == "aie2p" else 16
+        else 32 if name == "relu" or kernel_arch == "aie2p" else 16
     )
     macro = name.removesuffix("_sized").upper() + "_ELEMS"
     tiny = factory(tile_size=width)
@@ -1335,10 +1363,34 @@ def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
     assert tiny._symbol_prefix != other._symbol_prefix
 
 
-def test_relu_sized_requires_whole_vectors(kernel_arch):
-    assert kernels.relu_sized(tile_size=32).arg_shape(0) == (32,)
+def test_gelu_erf_ports_and_reference(kernel_arch):
+    from aie.iron.kernels import activation
+
+    assert kernels.gelu_erf is activation.gelu_erf
+    fn = kernels.gelu_erf(tile_size=64)
+    assert fn.arg_shape(0) == (64,)
+    assert Path(fn._source_file).name == "gelu_erf.cc"
+    assert fn.built_for_arch == kernel_arch
+    x = np.array([-5, -3, -1, 0, 1, 3], dtype=bfloat16)
+    expected = [v * (1 + math.erf(v / math.sqrt(2))) / 2 for v in x.astype(float)]
+    np.testing.assert_array_equal(
+        fn.contract_for().reference(x), np.array(expected).astype(bfloat16)
+    )
+
+
+def test_gelu_erf_device_case_fails_a_tanh_gelu():
+    fn = kernels.gelu_erf()
+    for seed in range(1000, 1004):  # the device test's random seeds
+        (x,) = kd.sample_inputs(fn, calls=16, rng=np.random.default_rng(seed))
+        ref = fn.expected([x])
+        assert fn.judge(ref.ravel(), ref, calls=16)
+        assert not fn.judge(kernels.gelu_ref(x).ravel(), ref, calls=16)
+
+
+def test_relu_requires_whole_vectors(kernel_arch):
+    assert kernels.relu(tile_size=32).arg_shape(0) == (32,)
     with pytest.raises(ValueError, match="32-element vector step"):
-        kernels.relu_sized(tile_size=2049)
+        kernels.relu(tile_size=2049)
 
 
 @pytest.mark.parametrize(
@@ -1565,3 +1617,19 @@ def test_bf16_mv_retains_output_contract_without_accumulator(kernel_arch):
     assert fn.contract.roles[-1] is Out
     assert fn.contract.initializers == ()
     assert not hasattr(fn, "zero")
+
+
+def test_experts_duplicated_id_sums_its_weights():
+    from aie.iron.kernels.moe import _experts_row
+
+    c = kernels.experts().contract
+    _, tile = c.sample(np.random.default_rng(0), 96)
+    x = np.random.default_rng(1).standard_normal(64) * 0.5
+
+    def run(ids, weights):
+        row = _experts_row(x, np.array(weights, np.float32), ids)
+        return c.reference(np.tile(row, (96, 1)), tile)
+
+    np.testing.assert_array_equal(
+        run([1, 1], [0.25, 0, 0.5, 0]), run([1, 0], [0.75, 0, 0, 0])
+    )

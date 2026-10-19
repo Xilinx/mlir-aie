@@ -5,7 +5,7 @@
 #
 
 # RUN: %pytest %s
-"""Device.core_memory_banks and core_memory_bank_bytes: the banks the allocator places in."""
+"""Device facts: the core memory banks the allocator places in, full-ELF dispatch and the core clock."""
 
 import pytest
 
@@ -51,3 +51,12 @@ def test_a_buffer_pinned_to_a_bank_lands_inside_it(device):
         address = placed[f"b{k}"]
         assert k * bank_bytes <= address
         assert address + bank_bytes // 2 <= (k + 1) * bank_bytes
+
+
+@pytest.mark.parametrize(
+    "device, full_elf, mhz",
+    [(NPU1, False, None), (NPU1Col1, False, None), (NPU2, True, 1760.0)],
+)
+def test_full_elf_dispatch_and_core_clock(device, full_elf, mhz):
+    assert device().dispatches_full_elf is full_elf
+    assert device().core_mhz == mhz

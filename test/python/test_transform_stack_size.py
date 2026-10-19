@@ -46,14 +46,13 @@ def test_transform_parallel_leaves_the_stack_to_aiecc(npu1_device, num_channels)
         np.ndarray[(4096,), np.dtype[bfloat16]],
         tile_size=1024,
         num_channels=num_channels,
-        pass_size_to_kernel=False,
     )
     assert "stack_size" not in str(module)
 
 
 def test_transform_leaves_the_stack_to_aiecc(npu1_device):
     module = transform(
-        kernels.gelu_sized(tile_size=1024),
+        kernels.gelu(tile_size=1024),
         np.ndarray[(4096,), np.dtype[bfloat16]],
         tile_size=1024,
     )

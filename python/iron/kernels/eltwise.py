@@ -25,7 +25,6 @@ from ._common import (
 from .core import conv_even
 
 _ELTWISE_FIXED_TILE = 1024
-_RELU_FIXED_TILE = 1024
 
 # passThrough.cc copies one 64-byte vector per loop iteration.
 _PASSTHROUGH_VEC_BYTES = 64
@@ -264,34 +263,6 @@ def mul_add_ref(a, b, is_mul):
     return (a32 * b32 if int(is_mul) else a32 + b32).astype(a.dtype)
 
 
-def relu(tile_size: int = 1024) -> ExternalFunction:
-    """Element-wise bf16 ReLU (tile_size must be 1024, hard-coded in C++).
-
-    Args:
-        tile_size: Elements per tile (must be 1024).
-
-    Returns:
-        ExternalFunction for bf16_relu.
-
-    Raises:
-        ValueError: When ``tile_size`` is not 1024.
-    """
-    _require_fixed_tile_size("relu", tile_size, _RELU_FIXED_TILE)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _make_extern(
-        "bf16_relu",
-        _kernel_source("eltwise/relu.cc"),
-        [tile_ty, tile_ty],
-        compile_flags=[f"-DRELU_ELEMS={tile_size}"],
-        contract=KernelContract(
-            trace=Trace.whole_call(),
-            roles=(In, Out),
-            reference=lambda x: np.maximum(x.astype(np.float32), 0.0),
-            tolerance=Tolerance.exact(note="selection: max(x, 0) is exact in bf16"),
-        ),
-    )
-
-
 def add_sized(tile_size: int = 1024) -> ExternalFunction:
     """Element-wise bf16 addition, with a compiled-in element count.
 
@@ -346,14 +317,13 @@ def mul_sized(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-def relu_sized(tile_size: int = 1024) -> ExternalFunction:
+def relu(tile_size: int = 1024) -> ExternalFunction:
     """Element-wise bf16 ReLU, with a compiled-in element count.
 
-    Runtime-size sibling of [`relu`][iron.kernels.eltwise.relu]; design passes
-    ``(in, out, size)`` for ABI compatibility. Not LUT-based. Positive
-    multiples of 32 elements are supported.
+    The ABI keeps ``(in, out, size)``. Not LUT-based. Positive multiples of
+    32 elements are supported.
     """
-    _require_vector_alignment("relu_sized", tile_size, 32)
+    _require_vector_alignment("relu", tile_size, 32)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "relu_bf16_size",
@@ -369,6 +339,9 @@ def relu_sized(tile_size: int = 1024) -> ExternalFunction:
             ops_per_call=tile_size,
         ),
     )
+
+
+relu_sized = relu
 
 
 def clamp(tile_size: int = 1024) -> ExternalFunction:

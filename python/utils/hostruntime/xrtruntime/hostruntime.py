@@ -4,6 +4,7 @@
 """XRT-based implementation of the HostRuntime."""
 
 import atexit
+import ctypes
 import gc
 import logging
 import os
@@ -27,6 +28,12 @@ if TYPE_CHECKING:
 
     from ...trace import TraceConfig
 from .tensor import XRTTensor, XrtTransport
+
+# PyCapsule_New(pointer, name, destructor): pyxrt.ext.bo takes a host pointer
+# only wrapped in a capsule.
+_pointer_capsule = ctypes.PYFUNCTYPE(
+    ctypes.py_object, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p
+)(("PyCapsule_New", ctypes.pythonapi))
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +170,13 @@ class XRTHostRuntime(HostRuntime):
 
     def device_name(self) -> str | None:
         return self._device_type_str
+
+    def host_buffer(self, memory: memoryview) -> "pyxrt.bo":
+        """Return a user-pointer buffer object over ``memory``, which must outlive it."""
+        pointer = np.frombuffer(memory, dtype=np.uint8).ctypes.data
+        return pyxrt.ext.bo(
+            self._device, _pointer_capsule(pointer, None, None), memory.nbytes
+        )
 
     @classmethod
     def read_insts(cls, insts_path: Path):

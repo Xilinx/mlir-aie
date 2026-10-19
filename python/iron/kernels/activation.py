@@ -392,7 +392,7 @@ def _bf16_lut_factory(
         [tile_ty] * arg_arity,
         compile_flags=(
             [f"-D{factory_name.upper()}_ELEMS={tile_size}"]
-            if factory_name in ("gelu", "silu", "swiglu")
+            if factory_name == "swiglu"
             else None
         ),
         contract=contract,
@@ -671,10 +671,13 @@ def _softmax_f32_banded(
 
 
 def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """GELU activation kernel (tanh approximation) for bf16 tiles.
+    """GELU (tanh approximation) for bf16 tiles, with a compiled-in element count.
+
+    The ABI keeps ``(in, out, size)``. Positive whole vectors only: multiples
+    of 16 on aie2 or 32 on aie2p.
 
     Args:
-        tile_size: Elements per call (must be 1024).
+        tile_size: Elements per call.
         use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
             vtanh instruction, which returns its argument up to 0.5, and be
             judged against an exact model of the kernel,
@@ -682,15 +685,16 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             aie2, which always takes the LUT and is judged against
             [`gelu_aie2_lut_ref`][iron.kernels.activation.gelu_aie2_lut_ref].
     """
-    return _bf16_lut_factory(
-        "gelu",
-        "gelu_bf16",
+    _require_vector_alignment("gelu", tile_size, _arch_traits().bf16_lanes)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "gelu_bf16_size",
         "gelu.cc",
-        tile_size,
-        arg_arity=2,
+        [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DGELU_ELEMS={tile_size}"],
         contract=_unary_lut_contract(
             gelu_ref,
-            count=False,
+            count=tile_size,
             tolerance=_GELU_VTANH_TOLERANCE,
             use_lut=use_lut,
             elementwise=gelu_lut_ref,
@@ -700,45 +704,53 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
+# Not yet measured on a device; the bound is the model's.
+_GELU_ERF_TOLERANCE = Tolerance.bf16_ulps(
+    1,
+    atol=2.0**-126,
+    note="a model of the kernel's f32 limb arithmetic is within one ulp on "
+    "every finite bf16 input; atol is the smallest normal bf16",
+)
+
+
+def gelu_erf(tile_size: int = 1024) -> ExternalFunction:
+    """Exact GELU, ``x * Phi(x)``, for bf16 tiles; ``(in, out, size)``.
+
+    [`gelu`][iron.kernels.activation.gelu] takes the tanh approximation, which
+    rounds differently on 405 finite bf16 inputs, 280 below -3. This one
+    evaluates erfc in f32 and rounds once. ``tile_size`` is a positive
+    multiple of 32.
+    """
+    _require_vector_alignment("gelu_erf", tile_size, 32)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "gelu_erf_bf16_size",
+        _kernel_source("activation/gelu_erf.cc"),
+        [tile_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=gelu_erf_ref,
+            tolerance=_GELU_ERF_TOLERANCE,
+            acc_dtype=np.float32,
+        ),
+    )
+
+
 def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """SiLU (Swish) activation kernel for bf16 tiles (must be 1024).
+    """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
+
+    The ABI keeps ``(in, out, size)``. Positive whole vectors only: multiples
+    of 16 on aie2 or 32 on aie2p.
 
     Args:
-        tile_size: Elements per call (must be 1024).
+        tile_size: Elements per call.
         use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
             vtanh instruction, which makes this 7.5x closer to the true
             function and judged against an exact model of it. Moot on aie2.
     """
-    return _bf16_lut_factory(
-        "silu",
-        "silu_bf16",
-        "silu.cc",
-        tile_size,
-        arg_arity=2,
-        contract=_unary_lut_contract(
-            silu_ref,
-            count=False,
-            use_lut=use_lut,
-            elementwise=silu_table_ref,
-            tolerance=_vtanh_family_tolerance("silu"),
-        ),
-        use_lut_tanh=use_lut,
-    )
-
-
-def silu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
-
-    Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
-    keeps the ``(in, out, size)`` ABI. Positive whole vectors are required
-    (16 on aie2, 32 on aie2p).
-
-    Args:
-        tile_size: Elements per call.
-        use_lut: As for [`silu`][iron.kernels.activation.silu].
-    """
-    width = _arch_traits().bf16_lanes
-    _require_vector_alignment("silu_sized", tile_size, width)
+    _require_vector_alignment("silu", tile_size, _arch_traits().bf16_lanes)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "silu_bf16_size",
@@ -756,34 +768,8 @@ def silu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction
     )
 
 
-def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """GELU (tanh approx) for bf16 tiles, with a compiled-in element count.
-
-    Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
-    keeps the ``(in, out, size)`` ABI. Positive whole vectors only: multiples
-    of 16 on aie2 or 32 on aie2p.
-
-    Args:
-        tile_size: Elements per call.
-        use_lut: As for [`gelu`][iron.kernels.activation.gelu].
-    """
-    _require_vector_alignment("gelu_sized", tile_size, _arch_traits().bf16_lanes)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "gelu_bf16_size",
-        "gelu.cc",
-        [tile_ty, tile_ty, np.int32],
-        compile_flags=[f"-DGELU_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(
-            gelu_ref,
-            count=tile_size,
-            tolerance=_GELU_VTANH_TOLERANCE,
-            use_lut=use_lut,
-            elementwise=gelu_lut_ref,
-            branch_models={"aie2": gelu_aie2_lut_ref},
-        ),
-        use_lut_tanh=use_lut,
-    )
+gelu_sized = gelu
+silu_sized = silu
 
 
 def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
@@ -1111,6 +1097,19 @@ def gelu_ref(x):
     with np.errstate(over="ignore"):
         inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
     return (0.5 * xf * (1.0 + np.tanh(inner))).astype(x.dtype)
+
+
+_erfc = np.frompyfunc(math.erfc, 1, 1)
+
+
+def gelu_erf_ref(x):
+    """Numpy reference for [`gelu_erf`][iron.kernels.activation.gelu_erf]: ``x * Phi(x)``.
+
+    ``0.5 x erfc(-x / sqrt 2)`` in float64, rounded once.
+    """
+    xf = _no_neg_inf(_f64(x))
+    erfc = np.asarray(_erfc(-xf / math.sqrt(2.0)), dtype=np.float64)
+    return _rounded(0.5 * xf * erfc, x)
 
 
 def gelu_lut_ref(x):

@@ -15,7 +15,6 @@ import pytest
 from aie.utils.compile.jit._introspect import (
     _dispatch_param_type,
     _is_compile_param,
-    _is_dispatch_param,
     _is_tensor_param,
     split_params,
 )
@@ -78,7 +77,10 @@ def test_dispatch_is_not_compile():
 
 @pytest.mark.parametrize(
     "annotation,predicate",
-    [(CompileTime[int], _is_compile_param), (DispatchTime[int], _is_dispatch_param)],
+    [
+        (CompileTime[int], _is_compile_param),
+        (DispatchTime[int], lambda a: _dispatch_param_type(a) is not None),
+    ],
 )
 def test_parameter_metadata_uses_value_not_identity(annotation, predicate):
     metadata = json.loads(json.dumps(get_args(annotation)[1]))
@@ -135,54 +137,6 @@ def test_is_compile_param_rejects_empty():
 
 
 # ---------------------------------------------------------------------------
-# _is_dispatch_param
-# ---------------------------------------------------------------------------
-
-
-def test_is_dispatch_param_with_int():
-    assert _is_dispatch_param(DispatchTime[int]) is True
-
-
-def test_is_dispatch_param_with_str():
-    assert _is_dispatch_param(DispatchTime[str]) is True
-
-
-def test_is_dispatch_param_bare():
-    assert _is_dispatch_param(DispatchTime) is True
-
-
-def test_is_dispatch_param_rejects_in():
-    assert _is_dispatch_param(In) is False
-
-
-def test_is_dispatch_param_rejects_out():
-    assert _is_dispatch_param(Out) is False
-
-
-def test_is_dispatch_param_rejects_inout():
-    assert _is_dispatch_param(InOut) is False
-
-
-def test_is_dispatch_param_rejects_compile():
-    assert _is_dispatch_param(CompileTime[int]) is False
-    assert _is_dispatch_param(CompileTime) is False
-
-
-def test_is_dispatch_param_rejects_builtin_types():
-    assert _is_dispatch_param(int) is False
-    assert _is_dispatch_param(float) is False
-    assert _is_dispatch_param(str) is False
-
-
-def test_is_dispatch_param_rejects_none():
-    assert _is_dispatch_param(None) is False
-
-
-def test_is_dispatch_param_rejects_empty():
-    assert _is_dispatch_param(inspect.Parameter.empty) is False
-
-
-# ---------------------------------------------------------------------------
 # _dispatch_param_type
 # ---------------------------------------------------------------------------
 
@@ -198,10 +152,10 @@ def test_dispatch_param_type_extracts_numpy_dtype():
 
 
 def test_dispatch_param_type_none_for_non_dispatch():
-    assert _dispatch_param_type(CompileTime[int]) is None
-    assert _dispatch_param_type(In) is None
-    assert _dispatch_param_type(int) is None
-    assert _dispatch_param_type(None) is None
+    assert _dispatch_param_type(DispatchTime) is not None
+    for annotation in (CompileTime[int], CompileTime, In, Out, InOut, int, str, None):
+        assert _dispatch_param_type(annotation) is None
+    assert _dispatch_param_type(inspect.Parameter.empty) is None
 
 
 # ---------------------------------------------------------------------------

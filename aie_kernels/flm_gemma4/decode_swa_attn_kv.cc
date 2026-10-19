@@ -30,7 +30,7 @@ extern "C" {
 // displaces the RTP buffer.
 static PingPong v_pingpong;
 
-// The swa qk tile releases l_cons_lock.
+// The runtime sequence sets l_cons_lock.
 void swa_attn_kv_begin(float *y, float *l) {
   attn_kv_begin_impl<8 * SWA_DH, l_cons_lock>(y, l);
 }

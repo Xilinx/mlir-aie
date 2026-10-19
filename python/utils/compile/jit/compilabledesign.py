@@ -74,11 +74,7 @@ from ._hash import (
     _compute_recipe_hash,
     _device_identity_key,
 )
-from ._introspect import (
-    _dispatch_param_type,
-    _introspect_generator,
-    _is_tensor_param,
-)
+from ._introspect import declare
 from ._object_cache import KernelObjectCache
 from ._serialization import _decode_kwarg, _encode_kwarg, _TensorPlaceholder
 from .context import compile_context
@@ -165,12 +161,19 @@ class _GeneratedDesign:
     entry: str | None
     configuration_count: int
     expand_load_pdis: bool | None
+    devices: tuple
 
     @classmethod
     def from_module(
         cls, module, mlir_text: str, external_kernels: list
     ) -> "_GeneratedDesign":
         """Record `mlir_text` with the IRON attributes of `module`, its parse."""
+        from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
+            AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+            DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        from aie.ir import IntegerAttr  # pyright: ignore[reportMissingImports]
+
         attributes = module.operation.attributes
         entry = attributes.get("iron.entry")
         count = attributes.get("iron.configuration_count")
@@ -181,6 +184,11 @@ class _GeneratedDesign:
             entry=entry.value if entry is not None else None,
             configuration_count=count.value if count is not None else 1,
             expand_load_pdis=expand.value if expand is not None else None,
+            devices=tuple(
+                AIEDevice(IntegerAttr(op.attributes["device"]).value)
+                for op in module.body.operations
+                if isinstance(op, DeviceOp)
+            ),
         )
 
     @property
@@ -270,18 +278,23 @@ class CompilableDesign:
         self._kernel_dir: Path | None = None
         self._generated_cache: dict[tuple, _GeneratedDesign] = {}
 
-        # Introspect generator signature to split param categories.  Cache
-        # hints+sig on self so split_runtime_args / _generate_uncached reuse the
-        # same memoised intro instead of re-running typing.get_type_hints
-        # and inspect.signature on every call.
+        # The generator's declaration, memoised, which split_runtime_args and
+        # _generate_uncached read again.
         if callable(mlir_generator):
-            self._hints, self._sig, (cp, tp, dp, sp) = _introspect_generator(
-                mlir_generator
-            )
+            self.declaration = declare(mlir_generator)
+            sig = self.declaration.signature
+            assert sig is not None
+            cp = list(self.declaration.params)
+            tp = [m.name for m in self.declaration.operands]
+            self._dispatch_types = dp_types = {
+                m.name: m.dtype for m in self.declaration.per_calls
+            }
+            dp = list(dp_types)
+            sp = self.declaration.scalars
             non_keyword_dispatch = [
                 name
                 for name in dp
-                if self._sig.parameters[name].kind is not inspect.Parameter.KEYWORD_ONLY
+                if sig.parameters[name].kind is not inspect.Parameter.KEYWORD_ONLY
             ]
             if non_keyword_dispatch:
                 raise TypeError(
@@ -301,7 +314,7 @@ class CompilableDesign:
             # handed an empty tuple at generation).
             variadic = [
                 name
-                for name, p in self._sig.parameters.items()
+                for name, p in sig.parameters.items()
                 if p.kind is inspect.Parameter.VAR_POSITIONAL
             ]
             self.variadic_tensor_param = variadic[0] if variadic else None
@@ -318,10 +331,7 @@ class CompilableDesign:
             self.scalar_params = list(sp)
             normalized_kwargs = dict(self.compile_kwargs)
             for name in dp:
-                declared = _dispatch_param_type(
-                    self._hints.get(name, self._sig.parameters[name].annotation)
-                )
-                assert declared is not None
+                declared = dp_types[name]
                 dispatch_scalar_c_type(declared)
                 if name in self.bound_dispatch_params:
                     try:
@@ -345,15 +355,10 @@ class CompilableDesign:
             # The wrapped T of each DispatchTime[T], in declaration order, so
             # the build can check the generated C parameters against what was
             # declared instead of trusting the count alone.
-            self.dispatch_param_types = [
-                _dispatch_param_type(
-                    self._hints.get(name, self._sig.parameters[name].annotation)
-                )
-                for name in self.dispatch_params
-            ]
+            self.dispatch_param_types = [dp_types[n] for n in self.dispatch_params]
         else:
-            self._hints = {}
-            self._sig = None
+            self.declaration = None
+            self._dispatch_types = {}
             self.compile_params = []
             self.tensor_params = []
             self.variadic_tensor_param = None
@@ -524,6 +529,52 @@ class CompilableDesign:
             compile_kwargs=compile_kwargs,
             **config,
         )
+
+    # amdxdna's MAX_NUM_CUS: the kernels one hardware context configures.
+    XCLBIN_KERNELS = 32
+
+    @staticmethod
+    def chain(
+        designs: "list[CompilableDesign]", name: str
+    ) -> "list[tuple[CompilableDesign, Path, str]]":
+        """Compile ``designs`` into xclbins that each add a design's kernel to the last.
+
+        Each xclbin after the first of a chain is built with
+        ``--xclbin-input`` naming the one before, and a chain holds
+        ``XCLBIN_KERNELS`` kernels. With more than one design, each kernel is
+        named for a short hash of ``name`` and its index, under xclbinutil's
+        64-character limit; one design alone keeps the default name.
+
+        Returns:
+            Per design, the compiled design, the xclbin carrying its kernel (its
+            chain's last) and the kernel's name.
+        """
+        digest = hashlib.sha1(name.encode()).hexdigest()[:6]
+        named = len(designs) > 1
+        built, images = [], []
+        for index, design in enumerate(designs):
+            label = f"f{digest}_op{index}" if named else "MLIR_AIE"
+            flags = (
+                [
+                    f"--xclbin-kernel-name={label}",
+                    f"--xclbin-instance-name={label}",
+                    f"--xclbin-kernel-id=0x{0x901 + index:x}",
+                ]
+                if named
+                else []
+            )
+            if index % CompilableDesign.XCLBIN_KERNELS:
+                flags.append(f"--xclbin-input={images[-1]}")
+            design = design.specialize(aiecc_flags=[*design.aiecc_flags, *flags])
+            xclbin, _ = design.compile()
+            assert xclbin is not None
+            images.append(Path(xclbin).resolve())
+            built.append((design, label))
+        size = CompilableDesign.XCLBIN_KERNELS
+        return [
+            (design, images[min(index // size * size + size, len(built)) - 1], label)
+            for index, (design, label) in enumerate(built)
+        ]
 
     def compile(
         self,
@@ -1017,6 +1068,11 @@ class CompilableDesign:
         """
         try:
             generated = self._generated_for(full_elf=True)
+            from aie.iron.device import Device
+
+            for kind in generated.devices:
+                if not Device(kind).dispatches_full_elf:
+                    raise ValueError(f"{kind.name} does not dispatch a full ELF.")
             external_kernels = generated.external_kernels
             use_chess = self._resolve_use_chess(external_kernels)
             digests: dict[str, str] = {}
@@ -1412,9 +1468,9 @@ class CompilableDesign:
                 "use specialize() to create a design with different constants."
             )
 
-        # Reuse the cached intro from __init__ — same generator, same hints/sig.
-        hints = self._hints
-        sig = self._sig
+        assert self.declaration is not None
+        sig = self.declaration.signature
+        tensors = set(self.tensor_params)
         assert sig is not None
         params = [
             (name, p)
@@ -1434,7 +1490,6 @@ class CompilableDesign:
 
         pos_iter = iter(runtime_args)
         for name, param in params:
-            ann = hints.get(name, param.annotation)
             if param.kind is inspect.Parameter.VAR_POSITIONAL:
                 # The variadic tensor list takes every positional left over.
                 tensor_args.extend(a for a in pos_iter if not isinstance(a, Kernel))
@@ -1454,12 +1509,12 @@ class CompilableDesign:
             if value is not inspect.Parameter.empty:
                 if name in scalar_kwargs:
                     raise TypeError(f"Multiple values for argument {name!r}.")
-                if _is_tensor_param(ann):
+                if name in tensors:
                     tensor_args.append(value)
                 else:
                     scalar_kwargs[name] = value
                 continue
-            if _is_tensor_param(ann):
+            if name in tensors:
                 if name in scalar_kwargs:
                     tensor_args.append(scalar_kwargs.pop(name))
             elif (
@@ -1887,7 +1942,8 @@ class CompilableDesign:
                 f"  Valid CompileTime[T] params are: {self.compile_params}."
             )
 
-        sig = self._sig
+        assert self.declaration is not None
+        sig = self.declaration.signature
         assert sig is not None
         compile_only_params = {
             name: p.replace(kind=inspect.Parameter.KEYWORD_ONLY)
@@ -1933,11 +1989,9 @@ class CompilableDesign:
             **self.compile_kwargs,
         }
         for name in self.bound_dispatch_params:
-            declared = _dispatch_param_type(
-                self._hints.get(name, sig.parameters[name].annotation)
+            _gen_call_kwargs[name] = self._dispatch_types[name](
+                self.compile_kwargs[name]
             )
-            assert declared is not None
-            _gen_call_kwargs[name] = declared(self.compile_kwargs[name])
 
         # The generation's kernels register here, not in the process-wide
         # registry another thread's manual compile reads. ExternalFunction

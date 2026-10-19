@@ -150,3 +150,73 @@ module @adjacency_npu2_target_model {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// An objectfifo.allocate puts the fifo's objects in the delegate's memory, so
+// the unconstrained producer is steered next to the delegate pinned at (2, 3)
+// instead of the greedy (0, 2).
+// CHECK-LABEL: @adjacency_allocate_delegate
+module @adjacency_allocate_delegate {
+  aie.device(npu2) {
+    // CHECK-DAG: aie.tile(2, 3)
+    // CHECK-DAG: aie.tile(2, 2)
+    %delegate = aie.logical_tile<CoreTile>(2, 3)
+    %producer = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @of (%producer, {%delegate}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of (%delegate)
+    aie.core(%delegate) { aie.end }
+    aie.core(%producer) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// A consumer is placed right after the buffer's owner, before unrelated
+// cores take the owner's neighbors: in one column, the owner at (0, 2)
+// leaves (0, 3) to its consumer and the other cores go above.
+// CHECK-LABEL: @adjacency_consumer_follows_owner
+module @adjacency_consumer_follows_owner {
+  aie.device(npu2_1col) {
+    // CHECK: %[[OWNER:.*]] = aie.tile(0, 2)
+    // CHECK: aie.buffer(%[[OWNER]])
+    // CHECK: aie.core(%[[OWNER]])
+    // CHECK: aie.core(%tile_0_4)
+    // CHECK: aie.core(%tile_0_5)
+    // CHECK: aie.core(%tile_0_3)
+    // CHECK-NEXT: arith.constant
+    // CHECK-NEXT: memref.load %buffer_0_2
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %f0 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%f0) { aie.end }
+    %f1 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%f1) { aie.end }
+    %consumer = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%consumer) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// An allocate only ties core tiles: a fifo's MemTile end puts no shared-L1
+// constraint on the delegate, which takes the greedy (0, 2).
+// CHECK-LABEL: @adjacency_allocate_ignores_memtile_end
+module @adjacency_allocate_ignores_memtile_end {
+  aie.device(npu2) {
+    // CHECK-DAG: aie.tile(0, 1)
+    // CHECK-DAG: aie.tile(0, 2)
+    %mem = aie.logical_tile<MemTile>(0, 1)
+    %delegate = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @of (%mem, {%delegate}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of (%delegate)
+    aie.core(%delegate) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}

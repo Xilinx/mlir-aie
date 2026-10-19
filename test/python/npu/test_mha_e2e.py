@@ -81,7 +81,7 @@ _L_RTOL_ACCURATE = 2.0**-9
 
 
 def _unblock(flat: np.ndarray, rows: int = _B, cols: int = _B) -> np.ndarray:
-    """The 8x8-blocked O tile back to (rows, cols)."""
+    """Return the 8x8-blocked O tile as (rows, cols)."""
     return (
         flat.reshape(rows // 8, cols // 8, 8, 8)
         .transpose(0, 2, 1, 3)
@@ -98,15 +98,18 @@ def _keep(
     b_kv: int = _B,
     causal: bool = True,
     window: int = 0,
+    packed: bool = False,
 ) -> np.ndarray:
     """Which (query, key) pairs of this block pair the band admits.
 
     The query at q keeps the keys from ``q - window`` to ``q`` when causal,
-    else to ``q + window``; a window of 0 is none.
+    else to ``q + window``; a window of 0 is none. Packed, every query is at
+    the last key.
     """
     rows = q_block * b_q + np.arange(b_q)
     cols = kv_block * b_kv + np.arange(b_kv)
-    ahead = cols[None, :] - rows[:, None]
+    at = np.full(b_q, s_kv_eff - 1) if packed else rows
+    ahead = cols[None, :] - at[:, None]
     keep = (rows[:, None] < s_q_eff) & (cols[None, :] < s_kv_eff)
     if causal or window:
         keep &= ahead <= (0 if causal else window)
@@ -323,10 +326,10 @@ def test_partial_softmax_matches_masked_attention(
     got_p = p_t.numpy().astype(np.float32).reshape(2, _B, _B)
     got_scale = scale_t.numpy()
 
-    m, l = np.full(_B, _LOWEST, np.float32), np.zeros(_B, np.float32)
+    m, sums = np.full(_B, _LOWEST, np.float32), np.zeros(_B, np.float32)
     ref_p = []
     for block_scores, keep in zip(scores, keeps):
-        p, m, l = _softmax_step(block_scores, keep, m, l)
+        p, m, sums = _softmax_step(block_scores, keep, m, sums)
         ref_p.append(p)
 
     # The exp2 envelope with an absolute floor for weights near zero; padded
@@ -358,14 +361,14 @@ def test_partial_softmax_matches_masked_attention(
     # with c an exp2 too, so it gets two weights' allowance (0.54% measured).
     got_l = got_scale[2 * _B : 3 * _B][live]
     if accurate_exp2:
-        verdict = compare(got_l, l[live], Tolerance.relative(_L_RTOL_ACCURATE))
+        verdict = compare(got_l, sums[live], Tolerance.relative(_L_RTOL_ACCURATE))
         assert verdict, verdict.detail
     elif aie2:
-        assert nearly_equal(got_l, l[live], rtol=2 * tol.rtol, atol=tol.atol).all()
+        assert nearly_equal(got_l, sums[live], rtol=2 * tol.rtol, atol=tol.atol).all()
     else:
-        l_ulp = 2**-7 * float(l[live].max())
+        l_ulp = 2**-7 * float(sums[live].max())
         np.testing.assert_allclose(
-            got_l, l[live], rtol=_RTOL_EXP2, atol=_ATOL_ULP * l_ulp
+            got_l, sums[live], rtol=_RTOL_EXP2, atol=_ATOL_ULP * l_ulp
         )
 
 
@@ -381,9 +384,9 @@ def test_rescale_o_divides_rows_by_their_sums(l_lo, l_hi):
     rng = np.random.default_rng(20260923 + int(l_hi))
     o_blocked = _dyadic(rng, (_B * _B,), 0.5).astype(np.float32)
     # Sums vary within each 8-row block, so a wrong-row broadcast shows.
-    l = np.exp2(rng.uniform(np.log2(l_lo), np.log2(l_hi), _B)).astype(np.float32)
+    sums = np.exp2(rng.uniform(np.log2(l_lo), np.log2(l_hi), _B)).astype(np.float32)
     scale = np.zeros(4 * _B, np.float32)
-    scale[2 * _B : 3 * _B] = l
+    scale[2 * _B : 3 * _B] = sums
 
     out_t = iron.zeros((_B * _B,), dtype=bfloat16)
     rescale_tile(
@@ -391,7 +394,7 @@ def test_rescale_o_divides_rows_by_their_sums(l_lo, l_hi):
     )  # fmt: skip
     got = _unblock(out_t.numpy()).astype(np.float32)
 
-    ref = _unblock(o_blocked) / l[:, None]
+    ref = _unblock(o_blocked) / sums[:, None]
     ulp = 2**-7 * float(np.abs(ref).max())
     np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
@@ -411,6 +414,7 @@ def mha_round(
     d: CompileTime[int] = _B,
     causal: CompileTime[bool] = True,
     window: CompileTime[int] = 0,
+    packed: CompileTime[bool] = False,
     accurate_exp2: CompileTime[bool] = False,
     f32_scores: CompileTime[bool] = False,
 ):
@@ -439,6 +443,7 @@ def mha_round(
         accurate_exp2=accurate_exp2,
         causal=causal,
         window=window,
+        packed=packed,
         f32_scores=f32_scores,
     )
     obj = qkt.object_file
@@ -565,25 +570,36 @@ def mha_round(
 
 
 def _round_case_data(
-    q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B, b_kv=_B, d=_B, causal=True, window=0
+    q_block,
+    n_kv,
+    s_q_eff,
+    s_kv_eff,
+    b_q=_B,
+    b_kv=_B,
+    d=_B,
+    causal=True,
+    window=0,
+    packed=False,
 ):
-    """Inputs for one round, as the mathematical operands and as device buffers."""
+    """Return one round's inputs, as the mathematical operands and as device buffers."""
     rng = np.random.default_rng(20260923 + 97 * q_block + n_kv + s_q_eff + s_kv_eff)
     q = _dyadic(rng, (b_q, d), 0.25, mag=2)
     k = _dyadic(rng, (n_kv * b_kv, d), 0.125, mag=2)
     v = _dyadic(rng, (n_kv * b_kv, d), 0.25, mag=2)
     # Aim each query at its diagonal key, in the last block, so the running max
     # rises late and matmul_PV must rescale what earlier blocks accumulated.
+    # Packed, row r is aimed r keys before the last.
     keep = np.concatenate(
         [
-            _keep(q_block, kv, s_q_eff, s_kv_eff, b_q, b_kv, causal, window)
+            _keep(q_block, kv, s_q_eff, s_kv_eff, b_q, b_kv, causal, window, packed)
             for kv in range(n_kv)
         ],
         axis=1,
     )
     for row in range(b_q):
         if keep[row].any():
-            k[q_block * b_q + row] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
+            key = s_kv_eff - 1 - row if packed else q_block * b_q + row
+            k[key] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
 
     scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(bfloat16)
     # Keys from s_kv_eff on do not exist; the device's V rows for them hold
@@ -691,6 +707,14 @@ def test_mha_round_matches_masked_attention(
         (2, 3, 3 * _B, dict(window=_B)),
         # 16-key blocks, a row one 16-lane vector.
         (3, 6, 90, dict(b_q=16, b_kv=16, causal=False, window=16)),
+        # Windows of no whole number of query blocks, as Gemma's 511: the last
+        # row keeps no key of a block the others keep, and none before it.
+        (2, 3, 3 * _B, dict(window=_B - 1)),
+        (5, 3, 90, dict(b_q=16, b_kv=32, d=256, window=21)),
+        # One decode step, a KV group's heads as the rows at the last key,
+        # the window dropping the first key block and cutting the second.
+        (0, 4, 200, dict(b_q=16, packed=True, window=100)),
+        (0, 4, 100, dict(b_q=16, b_kv=32, packed=True, window=50)),
     ],
 )
 @pytest.mark.parametrize("accurate_exp2", [False, True])

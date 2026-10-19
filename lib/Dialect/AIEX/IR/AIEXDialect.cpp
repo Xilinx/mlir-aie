@@ -1524,6 +1524,10 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (!lockIDOpt) {
     return success();
   }
+  // The lock's tile may still be an aie.logical_tile; its range and address
+  // checks wait for the post-placement re-verify, as UsesAreAccessible's do.
+  if (!isa<AIE::TileOp>(lockOp.getTile().getDefiningOp()))
+    return success();
 
   auto col = lockOp.colIndex();
   auto row = lockOp.rowIndex();

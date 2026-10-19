@@ -58,6 +58,9 @@ SUMMARY_HEADER = 8
 K_MAX_LIMIT = 128
 
 _STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
+# The scalar MoE and SSM kernels stay rolled: unrolled, they overflow aie2's
+# 16 KB program memory.
+_STRICT_FP_ROLLED = [*_STRICT_FP, "-fno-unroll-loops"]
 
 
 def summary_words(slice_size: int, k_max: int) -> int:

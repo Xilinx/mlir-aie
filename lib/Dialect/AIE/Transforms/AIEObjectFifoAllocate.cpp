@@ -883,7 +883,6 @@ struct AIEObjectFifoAllocatePass
   // the pass before the search rather than surfacing inside it.
   LogicalResult checkStreamPorts() {
     DMAChannelAnalysis channels(device);
-    // The endpoint verifier lets one route at most name each endpoint.
     DenseSet<Operation *> packetEndpoints;
     for (auto flow : device.getOps<RouteOp>()) {
       if (!flow.getPacket() && !clPacketSwObjectFifos)
@@ -1154,18 +1153,21 @@ struct AIEObjectFifoAllocatePass
   }
 
   /// A packet-switched flow shares the stream with others, so every buffer
-  /// descriptor the source emits has to carry the packet header.
+  /// descriptor the source emits has to carry the packet header. A source that
+  /// several flows share has no one header; its BDs state their own.
   LogicalResult lowerPacketFlow(RouteOp flow, RouteEndpoint source,
                                 int packetID) {
 
     auto info =
         PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
-    source.setRoutePacket(info);
+    if (sourcedFlows(source.getOperation()).size() == 1)
+      source.setRoutePacket(info);
 
     builder.setInsertionPoint(flow);
     auto packetFlow = PacketFlowOp::create(
         builder, flow.getLoc(),
-        builder.getIntegerAttr(builder.getI8Type(), packetID), nullptr,
+        builder.getIntegerAttr(builder.getI8Type(), packetID),
+        flow.getKeepPktHeader() ? builder.getBoolAttr(true) : nullptr,
         nullptr);
     OpBuilder::InsertionGuard g(builder);
     Block &ports = packetFlow.getRegion().emplaceBlock();
@@ -1182,6 +1184,14 @@ struct AIEObjectFifoAllocatePass
                            dest.getRouteBundle(), channelOf(dest));
     }
     return success();
+  }
+
+  /// The flows `endpoint` is the source of.
+  SmallVector<RouteOp> sourcedFlows(Operation *endpoint) {
+    StringRef name = cast<SymbolOpInterface>(endpoint).getName();
+    return llvm::to_vector(llvm::make_filter_range(
+        device.getOps<RouteOp>(),
+        [&](RouteOp flow) { return flow.getSource() == name; }));
   }
 
   /// Assigned before flows are lowered, so every endpoint has one by now.
@@ -1344,13 +1354,57 @@ struct AIEObjectFifoAllocatePass
              << stringifyDMAChannelDir(start.getChannelDir()) << " on "
              << start.getEndpoint() << ", but its route makes it "
              << stringifyDMAChannelDir(dir);
-    // Only a runtime task's BDs are given the packet header.
-    if (endpoint.getPacket())
+    // Only a runtime task's BDs are given the packet header, so a DMA
+    // program can state it only when every flow it sources pins its id.
+    SmallVector<RouteOp> flows = sourcedFlows(endpoint);
+    bool packet =
+        !flows.empty() && (flows[0].getPacket() || clPacketSwObjectFifos);
+    if (packet && llvm::any_of(flows, [](RouteOp flow) {
+          return !flow.getPacketId();
+        }))
       return start.emitOpError("names ")
              << start.getEndpoint()
              << ", the source of a packet-switched route; a DMA program's "
                 "BDs would not carry its header";
+    if (packet) {
+      SmallVector<DMABDOp> bds;
+      SmallVector<Block *> work{start.getDest()};
+      DenseSet<Block *> seen;
+      while (!work.empty()) {
+        Block *block = work.pop_back_val();
+        if (!seen.insert(block).second)
+          continue;
+        llvm::append_range(bds, block->getOps<DMABDOp>());
+        llvm::append_range(work, block->getTerminator()->getSuccessors());
+      }
+      if (failed(checkHeaders(endpoint, bds)))
+        return failure();
+    }
     start.setChannelAttr(builder.getI32IntegerAttr(channel));
+    return success();
+  }
+
+  /// A packet source that no one header is stamped on needs each of `bds` to
+  /// state the header of one of its flows.
+  LogicalResult checkHeaders(RouteEndpointOp endpoint, ArrayRef<DMABDOp> bds) {
+    SmallVector<RouteOp> flows = sourcedFlows(endpoint);
+    for (DMABDOp bd : bds) {
+      std::optional<int> id;
+      if (auto packet = bd.getPacket())
+        id = packet->getPktId();
+      else if (auto ops = bd->getBlock()->getOps<DMABDPACKETOp>(); !ops.empty())
+        id = (*ops.begin()).getPacketId();
+      if (id && llvm::any_of(flows, [&](RouteOp flow) {
+            return flow.getPacketId() == *id;
+          }))
+        continue;
+      auto diag = bd.emitOpError("sends on @")
+                  << endpoint.getSymName()
+                  << " without the packet header of one of its flows, ids";
+      for (RouteOp flow : flows)
+        diag << " " << static_cast<int>(*flow.getPacketId());
+      return diag;
+    }
     return success();
   }
 
@@ -1386,6 +1440,14 @@ struct AIEObjectFifoAllocatePass
       for (DMAStartOp start : starts)
         if (failed(resolveStart(start, endpoint, *channel)))
           return failure();
+      // A shared source has no one header to stamp on its tasks.
+      if (sourcedFlows(endpoint).size() > 1)
+        for (auto task : tasks) {
+          SmallVector<DMABDOp> bds;
+          task.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
+          if (failed(checkHeaders(endpoint, bds)))
+            return failure();
+        }
       if (endpoint.getTileLike().isShimTile() && endpoint.getFifoName())
         continue;
       for (auto task : tasks)

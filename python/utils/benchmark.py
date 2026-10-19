@@ -12,17 +12,20 @@ numbers are numpy's.
 
 ``run_iters`` times one callable; ``run_interleaved`` times several against
 each other, round by round, so a drift in the host or the NPU lands on all of
-them alike.
+them alike. ``wait_idle`` holds a measurement until no other process uses the
+NPU.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Hashable, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
@@ -184,6 +187,67 @@ def cpu_wait_us() -> float | None:
         return None
 
 
+def other_npu_users(holding: bool = False) -> set[int]:
+    """Return the pids of the other processes holding a context on the NPU.
+
+    Read from ``xrt-smi examine -r aie-partitions``, which reports pids in the
+    host's namespace, so in a container this process cannot tell which is its
+    own.
+
+    Args:
+        holding: Whether this process holds a context. If its pid is not
+            reported, a lone reported pid is taken to be its own, and
+            several are all returned.
+    """
+    from aie.utils.probe import xrt_smi_path
+
+    with tempfile.TemporaryDirectory() as d:
+        report = Path(d) / "partitions.json"
+        subprocess.run(
+            [xrt_smi_path() or "xrt-smi", "examine", "-r", "aie-partitions"]
+            + ["-f", "JSON", "-o", str(report)],
+            capture_output=True,
+            check=True,
+        )
+        devices = json.loads(report.read_text())["devices"]
+    pids = {
+        int(context["pid"])
+        for device in devices
+        for partition in device["aie_partitions"].get("partitions", [])
+        for context in partition.get("hw_contexts", [])
+    }
+    if os.getpid() in pids or not holding:
+        return pids - {os.getpid()}
+    return pids if len(pids) > 1 else set()
+
+
+# Seconds between looks at an NPU another process holds, and the most waited.
+IDLE_POLL = 5.0
+IDLE_WAIT = 1800.0
+
+
+def wait_idle(log: Callable[[str], None] = print, holding: bool = False) -> None:
+    """Return once no other process holds a context on the NPU (``other_npu_users``).
+
+    Raises:
+        TimeoutError: Another has held one for ``IDLE_WAIT`` seconds. Two
+            processes measuring at once would each wait for the other.
+    """
+    held, told = other_npu_users(holding), set()
+    start = time.monotonic()
+    while held:
+        if held != told:
+            log(f"the NPU is in use by pid {sorted(held)}: waiting")
+            told = held
+        if time.monotonic() - start > IDLE_WAIT:
+            raise TimeoutError(
+                f"pid {sorted(held)} has held the NPU for {IDLE_WAIT:.0f} s; "
+                "measure once it is idle"
+            )
+        time.sleep(IDLE_POLL)
+        held = other_npu_users(holding)
+
+
 class CompletionCores(AbstractContextManager):
     """While entered, the calling thread held on the CPUs the NPU's completions interrupted.
 
@@ -279,6 +343,8 @@ def run_interleaved(
     fastest_us: float = math.inf,
     completion_cores: bool = False,
     max_cpu_wait_us: float = CPU_WAIT_US,
+    idle: bool = False,
+    log: Callable[[str], None] = print,
 ) -> list[Stats]:
     """Time callables against each other in interleaved rounds.
 
@@ -307,11 +373,19 @@ def run_interleaved(
         max_cpu_wait_us: The most a callable's median call may wait for a CPU
             in its median round before the figures are refused; ``math.inf``
             accepts figures from a busy host.
+        idle: Time only while no other process holds the NPU: wait for it to
+            be idle first (`wait_idle`), and time a round again if another
+            holds it when the round ends. A use that starts and ends within
+            one round goes unseen, and one held but idle context stops the
+            measurement with `wait_idle`'s ``TimeoutError``.
+        log: Where `idle` reports waiting or timing a round again.
 
     Returns:
         list[Stats]: Per callable, the statistics of its per-round medians.
 
     Raises:
+        TimeoutError: With `idle`, another process held the NPU for
+            ``IDLE_WAIT`` seconds.
         RuntimeError: A callable's median call waited for a CPU past
             `max_cpu_wait_us` (`cpu_wait_us`) in its median round: the host was
             busy enough to hold the timing thread off its core, so the
@@ -331,8 +405,12 @@ def run_interleaved(
     medians: list[list[float]] = [[] for _ in fns]
     waited: list[list[float]] = [[] for _ in fns]
     live = set(range(len(fns)))
+    if idle:
+        wait_idle(log, holding=True)
+    r = 0
     with CompletionCores(before) if completion_cores else nullcontext():
-        for r in range(1, rounds + 1):
+        while r < rounds:
+            timed = {}
             for i in sorted(live):
                 times, waits = [], []
                 for _ in range(calls):
@@ -345,8 +423,20 @@ def run_interleaved(
                         waits.append(waited_after - wait)
                     npu_ns = _extract_npu_time_ns(ret)
                     times.append(elapsed_us if npu_ns is None else npu_ns / 1e3)
-                medians[i].append(float(np.median(times)))
-                waited[i].append(float(np.median(waits)) if waits else 0.0)
+                timed[i] = (
+                    float(np.median(times)),
+                    float(np.median(waits)) if waits else 0.0,
+                )
+            if idle and (held := other_npu_users(holding=True)):
+                log(
+                    f"    pid {sorted(held)} used the NPU during a round: timing it again"
+                )
+                wait_idle(log, holding=True)
+                continue
+            for i, (us, wait) in timed.items():
+                medians[i].append(us)
+                waited[i].append(wait)
+            r += 1
             if groups is None or r < settle:
                 continue
             slowest: dict[Hashable | None, float] = {}

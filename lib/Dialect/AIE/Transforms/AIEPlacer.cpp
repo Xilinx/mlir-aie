@@ -17,6 +17,7 @@
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
+#include <functional>
 #include <numeric>
 
 using namespace mlir;
@@ -78,6 +79,8 @@ Placer::CollectedOps Placer::collectOperations(DeviceOp device) {
             [&](auto of) { ops.objectFifos.push_back(of); })
         .Case<ObjectFifoLinkOp>(
             [&](auto link) { ops.objectFifoLinks.push_back(link); })
+        .Case<ObjectFifoAllocateOp>(
+            [&](auto alloc) { ops.objectFifoAllocates.push_back(alloc); })
         .Case<CascadeFlowOp>([&](auto cf) { ops.cascadeFlows.push_back(cf); })
         .Case<FlowOp>([&](auto f) { ops.flows.push_back(f); })
         .Case<PacketFlowOp>([&](auto pf) { ops.pktFlows.push_back(pf); })
@@ -187,7 +190,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto &routes = collected.routes;
 
   // Phase 2a: Build placement constraints
-  auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
+  auto bufferAdjacency =
+      buildBufferAdjacency(logicalTiles, collected.objectFifoAllocates);
   auto computePeerAdjacency = buildComputePeerAdjacency(objectFifos);
 
   // Phase 2b: Build channel requirements from ObjectFifo and Flow connectivity,
@@ -330,6 +334,30 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     return ctx.neighborDemand(a.getOperation()) >
            ctx.neighborDemand(b.getOperation());
   });
+
+  // An unpinned tile sharing L1 with another unpinned tile is placed right
+  // after it, while that tile's neighbors are still free.
+  auto unpinned = [](LogicalTileOp lt) {
+    return !lt.tryGetCol() && !lt.tryGetRow();
+  };
+  SmallVector<LogicalTileOp> sequenced;
+  llvm::DenseSet<Operation *> queued;
+  std::function<void(LogicalTileOp)> emit = [&](LogicalTileOp lt) {
+    if (!queued.insert(lt.getOperation()).second)
+      return;
+    sequenced.push_back(lt);
+    if (!unpinned(lt))
+      return;
+    forEachPeer(lt.getOperation(), bufferAdjacency,
+                [&](TileLike peer, bool /*thisIsConsumer*/) {
+                  auto peerLt = dyn_cast<LogicalTileOp>(peer.getOperation());
+                  if (peerLt && unpinned(peerLt))
+                    emit(peerLt);
+                });
+  };
+  for (auto lt : orderedTiles)
+    emit(lt);
+  orderedTiles = std::move(sequenced);
 
   for (auto logicalTile : orderedTiles) {
     // Place fully constrained tiles at their specified coordinates
@@ -645,6 +673,25 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
     });
   }
 
+  // A candidate that leaves no free core tile for one of this LTO's
+  // unplaced shared-L1 peers is tried only in the second pass. Each peer is
+  // checked on its own, so two peers may count on the same free tile.
+  auto leavesPeerRoom = [&](TileID candidate) {
+    bool room = true;
+    forEachPeer(logicalTile.getOperation(), inputs.bufferAdjacency,
+                [&](TileLike peer, bool thisIsFirst) {
+                  if (!room || resolvePeerPosition(peer, this->result))
+                    return;
+                  // edge.first is the consumer, edge.second the owner.
+                  room = llvm::any_of(availability.compTiles, [&](TileID t) {
+                    return t != candidate &&
+                           (thisIsFirst ? inputs.bufferPred(candidate, t)
+                                        : inputs.bufferPred(t, candidate));
+                  });
+                });
+    return room;
+  };
+
   // Two passes: first prefer candidates that aren't reserved for an
   // unrelated demand-bearing LTO's peers; fall back to reserved
   // candidates only if nothing else fits.
@@ -655,7 +702,8 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       if (row && candidate.row != *row)
         continue;
       if (!allowReserved &&
-          inputs.isReservedForOther(logicalTile.getOperation(), candidate))
+          (inputs.isReservedForOther(logicalTile.getOperation(), candidate) ||
+           !leavesPeerRoom(candidate)))
         continue;
       result.sawConstraintMatch = true;
       if (!satisfiesAdjacency(logicalTile, candidate, inputs.bufferAdjacency,
@@ -855,8 +903,27 @@ resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
 }
 
 Placer::Adjacency
-SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
+SequentialPlacer::buildBufferAdjacency(
+    ArrayRef<LogicalTileOp> logicalTiles,
+    ArrayRef<ObjectFifoAllocateOp> allocates) {
   Adjacency adjacency;
+  // An allocated fifo's objects live in the delegate's memory, which each of
+  // its ends then reaches as it would a buffer the delegate owns.
+  for (auto alloc : allocates) {
+    auto delegate =
+        dyn_cast_or_null<TileLike>(alloc.getDelegateTile().getDefiningOp());
+    ObjectFifoCreateOp fifo = alloc.getObjectFifo();
+    if (!delegate || !fifo || delegate.getTileType() != AIETileType::CoreTile)
+      continue;
+    SmallVector<Value> ends{fifo.getProducerTile()};
+    llvm::append_range(ends, fifo.getConsumerTiles());
+    for (Value end : ends) {
+      auto tile = dyn_cast_or_null<TileLike>(end.getDefiningOp());
+      if (tile && tile.getTileType() == AIETileType::CoreTile &&
+          tile.getOperation() != delegate.getOperation())
+        adjacency.addEdge(tile, delegate);
+    }
+  }
   for (auto consumer : logicalTiles) {
     if (consumer.getTileType() != AIETileType::CoreTile)
       continue;

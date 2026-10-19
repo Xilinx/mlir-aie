@@ -55,6 +55,7 @@ class ParameterScratchpad:
         self._bo = run.get_ctrl_scratchpad_bo()
         self._mv = self._bo.map()
         self._impl = _ParameterScratchpadImpl(self._mv, str(params_path))
+        self._alias = None
 
     def write(self, name: str, value) -> None:
         """Write a parameter value to the scratchpad.
@@ -84,3 +85,31 @@ class ParameterScratchpad:
     def read(self, name: str) -> int:
         """Read back a parameter's current decoded value (for debugging)."""
         return self._impl.read(name)
+
+    def sync_from_device(self) -> None:
+        """Sync from the device, so ``read`` sees what a transfer into ``alias`` wrote."""
+        self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
+
+    def alias(self):
+        """Return a buffer object over this scratchpad's host mapping.
+
+        The scratchpad's own buffer object is on the device heap, which the
+        shim DMA does not reach: a transfer into it goes nowhere. This
+        user-pointer buffer is reached like any host buffer, so another run
+        bound to it drains into this run's parameters with no host step. It
+        points into this scratchpad's mapping; keep this object as long as it.
+
+        Raises:
+            RuntimeError: The default NPU runtime is not XRT's.
+        """
+        if self._alias is None:
+            from ... import DefaultNPURuntime
+            from .hostruntime import XRTHostRuntime
+
+            runtime = DefaultNPURuntime
+            if not isinstance(runtime, XRTHostRuntime):
+                raise RuntimeError(
+                    f"A scratchpad alias is an XRT buffer; the runtime is {runtime!r}."
+                )
+            self._alias = runtime.host_buffer(self._mv)
+        return self._alias

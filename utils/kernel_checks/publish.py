@@ -12,7 +12,8 @@ the branch, ``kernel-checks/<npu>/``, and each component check
     runs/<id>.json         one record per run: the Actions run, what started
                            it (``event``), commit, power mode, provenance,
                            sanity result, failures, and every row as
-                           rows[case][metric] = {value, unit, range}; a
+                           rows[case][metric] = {value, unit, range}, a
+                           timed case's error beside its times; a
                            component check's adds its per-seed ``detail``
     runs.json              the records without their rows or detail, oldest
                            first, and the metrics there is a history of
@@ -33,8 +34,14 @@ the page, where the package is not installed.
         [--keep-pmode turbo]
     publish.py redirect --out kernel-checks --to ../dashboard/#view=night
 
-``perf`` reads the timing step's ``perf.json`` and ``meta.json`` and the
-catalogue. Every publish first migrates a directory that still holds a
+``perf`` reads the timing step's ``perf.json`` and ``meta.json``, the
+correctness step's ``error.json`` (``--report-error``) and the catalogue.
+Each timed case's error is charted as two more metrics, its worst over every
+data case, seed and output: ``max_ulp``, how far any result fell from the
+correctly rounded reference, and ``not_correctly_rounded``, the percentage of
+results that were not. ``builds`` maps each timed case to its kernel's
+``ExternalFunction.recipe_key``, so a design that calls the same kernel finds
+its row. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
 removed), rebuilds ``runs.json``, ``latest.json`` and the history from the
 run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
@@ -181,6 +188,31 @@ def rows_by_case(rows: list[dict]) -> dict[str, dict[str, dict]]:
     return out
 
 
+def error_rows(report: dict) -> dict[str, dict[str, dict]]:
+    """Each case's worst error in a ``--report-error`` report.
+
+    The report is keyed ``<case>/<data>/s<seed>``; the result holds rows of
+    its two error metrics per case.
+    """
+    worst: dict[str, list[int]] = {}
+    for key, run in report.items():
+        case = key.rsplit("/", 2)[0]
+        ulp, wrong, n = worst.setdefault(case, [0, 0, 0])
+        for entry in run["outputs"]:
+            ulp = max(ulp, entry["max_ulp"])
+            wrong += entry["not_correctly_rounded"]
+            n += entry["n"]
+        worst[case] = [ulp, wrong, n]
+    return {
+        case: {
+            "max_ulp": {"value": ulp, "unit": "ulp"},
+            "not_correctly_rounded": {"value": round(100 * wrong / n, 3), "unit": "%"},
+        }
+        for case, (ulp, wrong, n) in worst.items()
+        if n
+    }
+
+
 def _load(path: Path, default):
     return json.loads(path.read_text()) if path.exists() else default
 
@@ -233,6 +265,7 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
     """Return the record of one hardware run from its ``results`` directory."""
     meta = _load(results / "meta.json", {})
     rows = _load(results / "perf.json", [])
+    errors = error_rows(_load(results / "error.json", {}))
     catalogue = _load(results / "catalogue.json", None)
     preflight = meta.get("preflight") or {}
     cases = meta.get("cases") or {}
@@ -254,8 +287,18 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
             for name, d in cases.items()
             if (d.get("cycles") or {}).get("truncated")
         ),
-        "rows": rows_by_case(rows) if meta.get("measurement_sane") is True else {},
+        "rows": {},
     }
+    if meta.get("measurement_sane") is True:
+        record["rows"] = {
+            case: {**cells, **errors.get(case, {})}
+            for case, cells in rows_by_case(rows).items()
+        }
+        record["builds"] = {
+            case: d["build"]
+            for case, d in cases.items()
+            if case in record["rows"] and "build" in d
+        }
     for key in ("correctness_error", "refused", "detail"):
         if key in meta:
             record[key] = meta[key]
@@ -273,8 +316,8 @@ def is_nightly(record: dict) -> bool:
 
 
 def summary(record: dict) -> dict:
-    """Return the record without its rows or detail, for ``runs.json``."""
-    return {k: v for k, v in record.items() if k not in ("rows", "detail")}
+    """Return the record without its rows, builds or detail, for ``runs.json``."""
+    return {k: v for k, v in record.items() if k not in ("rows", "builds", "detail")}
 
 
 def _current_name(name: str) -> str | None:

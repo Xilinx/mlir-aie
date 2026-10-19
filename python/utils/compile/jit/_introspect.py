@@ -3,14 +3,11 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Annotation introspection helpers for classifying generator parameters.
+"""The generator front end of a declaration.
 
-Classifies generator parameters into ``CompileTime[T]`` / tensor /
-``DispatchTime[T]`` / scalar buckets. Carved out of ``compilabledesign.py`` to
-keep the main file focused on the
-``CompilableDesign`` class itself.  The public surface is
-`split_params`; the rest is implementation detail behind
-`_introspect_generator`'s ``lru_cache``.
+`declare` reads a generator's signature into the same ``Declaration`` an
+operator's class body makes, which ``CompilableDesign`` reads; `split_params`
+lists its parameter names by kind.
 """
 
 from __future__ import annotations
@@ -19,9 +16,13 @@ import functools
 import inspect
 import logging
 import typing
+from dataclasses import MISSING
+from types import FunctionType
 from typing import Annotated, Callable, get_args, get_origin
 
+from .declaration import Declaration
 from .markers import In, InOut, Out
+from .params import Member, Param, PerCallMember, param
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +59,6 @@ def _is_compile_param(annotation) -> bool:
     return _tagged_type(annotation, "aie.compile_time") is not None
 
 
-def _is_dispatch_param(annotation) -> bool:
-    """Return True for ``DispatchTime[T]`` or ``Optional[DispatchTime[T]]``."""
-    return _dispatch_param_type(annotation) is not None
-
-
 def _is_tensor_param(annotation) -> bool:
     """Return True if *annotation* is ``In``, ``Out``, or ``InOut``."""
     return annotation in _TENSOR_ANNOTATIONS
@@ -74,17 +70,14 @@ def _dispatch_param_type(annotation):
 
 
 @functools.lru_cache(maxsize=None)
-def _introspect_generator(generator: Callable):
-    """Memoise ``(hints, signature, (compile, tensor, dispatch, scalar))``.
+def declare(generator: Callable) -> Declaration:
+    """Return the declaration a generator's signature makes.
 
-    All four derived values are pure functions of the generator's source —
-    the same answer for every call of the same function object — but
-    ``typing.get_type_hints`` and ``inspect.signature`` together cost
-    ~40us per invocation.  Memoising shaves both ``split_params`` and
-    ``CompilableDesign.split_runtime_args`` to a dict lookup on the JIT
-    hot path.
-
-    The returned param tuples are immutable; callers that need lists copy.
+    ``CompileTime[T]`` parameters are its parameters, ``In``/``Out``/``InOut``
+    its operands (their shapes come from a call's tensor types) and
+    ``DispatchTime[T]`` its per-call values; any other is a scalar.
+    Memoised: ``typing.get_type_hints`` and ``inspect.signature`` together
+    cost ~40us, and the JIT hot path asks per call.
     """
     try:
         # include_extras=True: without it, get_type_hints strips Annotated
@@ -95,32 +88,48 @@ def _introspect_generator(generator: Callable):
         hints = {}
 
     sig = inspect.signature(generator)
-    compile_params: list[str] = []
-    tensor_params: list[str] = []
-    dispatch_params: list[str] = []
-    scalar_params: list[str] = []
-    for name, param in sig.parameters.items():
-        ann = hints.get(name, param.annotation)
+    sig = sig.replace(
+        parameters=[
+            p.replace(annotation=hints.get(n, p.annotation))
+            for n, p in sig.parameters.items()
+        ]
+    )
+    params: dict[str, Param] = {}
+    members: list[Member] = []
+    scalars: list[str] = []
+    for name, p in sig.parameters.items():
+        ann = p.annotation
         if ann is inspect.Parameter.empty:
-            scalar_params.append(name)
-        elif _is_compile_param(ann):
-            compile_params.append(name)
+            scalars.append(name)
+            continue
+        if _is_compile_param(ann):
+            default = MISSING if p.default is p.empty else p.default
+            # A function default is the value, so the record computes it as itself.
+            member = param(
+                default=(
+                    (lambda op, f=default: f)
+                    if isinstance(default, FunctionType)
+                    else default
+                )
+            )
         elif _is_tensor_param(ann):
-            tensor_params.append(name)
-        elif _is_dispatch_param(ann):
-            dispatch_params.append(name)
+            member = ann()
+        elif (dtype := _dispatch_param_type(ann)) is not None:
+            member = PerCallMember(dtype, None, None)
         else:
-            scalar_params.append(name)
-
-    return (
-        hints,
-        sig,
-        (
-            tuple(compile_params),
-            tuple(tensor_params),
-            tuple(dispatch_params),
-            tuple(scalar_params),
-        ),
+            scalars.append(name)
+            continue
+        member.__set_name__(None, name)
+        if isinstance(member, Param):
+            params[name] = member
+        else:
+            members.append(member)
+    return Declaration(
+        getattr(generator, "__name__", repr(generator)),
+        params,
+        tuple(members),
+        scalars=tuple(scalars),
+        signature=sig,
     )
 
 
@@ -143,5 +152,10 @@ def split_params(
     correctly.  Falls back to ``inspect.signature`` annotations on any error
     (e.g. when the generator's globals are not resolvable at call time).
     """
-    _, _, (cp, tp, dp, sp) = _introspect_generator(generator)
-    return list(cp), list(tp), list(dp), list(sp)
+    d = declare(generator)
+    return (
+        list(d.params),
+        [m.name for m in d.operands],
+        [m.name for m in d.per_calls],
+        list(d.scalars),
+    )

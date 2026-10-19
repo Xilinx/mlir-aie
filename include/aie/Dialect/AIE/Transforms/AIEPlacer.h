@@ -123,6 +123,7 @@ public:
     llvm::SmallVector<LogicalTileOp> logicalTiles;
     llvm::SmallVector<ObjectFifoCreateOp> objectFifos;
     llvm::SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+    llvm::SmallVector<ObjectFifoAllocateOp> objectFifoAllocates;
     llvm::SmallVector<CascadeFlowOp> cascadeFlows;
     llvm::SmallVector<FlowOp> flows;
     llvm::SmallVector<PacketFlowOp> pktFlows;
@@ -428,8 +429,11 @@ private:
                                  const UnpinnedPlacementInputs &inputs);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
-  // SequentialPlacer-only: walks CoreOps and BufferOps.
-  Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
+  // SequentialPlacer-only: walks CoreOps and BufferOps, and takes each end of
+  // an allocated fifo as a consumer of its delegate tile.
+  Adjacency
+  buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles,
+                       llvm::ArrayRef<ObjectFifoAllocateOp> allocates);
 
   // Per-LTO peer-Value lists, one list per flow that mentions the LTO.
   // Built once and shared so each centroid lookup is O(#flows on the LTO).

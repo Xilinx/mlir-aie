@@ -68,8 +68,8 @@ f32 reduction and an optional activation and clamp fused into the drain.
 
 ## Normalization
 
-`rms_norm`, `rms_norm_eps`, and `layer_norm` support both aie2 and aie2p.
-They accept `tile_size` (default 1024) or its compatibility alias `cols`.
+`rms_norm`, `rms_norm_eps`, `layer_norm`, and `layer_norm_eps` support both
+aie2 and aie2p. They accept `tile_size` (default 1024) or its compatibility alias `cols`.
 `rope` in Data movement has the same size API and supports both interleaved
 and `two_halves=True` layouts. The transformer module re-exports the canonical
 bf16 norm and RoPE factories and references; importing through either module
@@ -239,8 +239,20 @@ the bit-exact host reference.
 `router_top_k` turns one `sample_select` summary into a router's `top_k`
 expert ids and their softmax weights, deterministically. `router_top_k_ref`
 is the bit-exact host reference.
+`experts` runs one row through its chosen experts' gated feed-forward on one
+core, from the row and one stream of weight tiles.
 
 ::: iron.kernels.moe
+    options:
+      show_root_heading: false
+
+## State space models
+
+`selective_scan` runs Mamba2's recurrence for one head over a block of rows,
+and `gated_delta_rule` Gated DeltaNet's for one value head, each with its
+float32 state carried from call to call.
+
+::: iron.kernels.ssm
     options:
       show_root_heading: false
 
