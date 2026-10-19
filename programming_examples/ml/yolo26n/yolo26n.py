@@ -219,11 +219,28 @@ def main() -> None:
     args = parser.parse_args()
 
     network = Network.yolo26n()
+    plan = Plan(network)
     if args.synthetic is not None:
         params_path = synthetic_params(
             args.synthetic,
             args.params or DATA_DIR / f"yolo26n_params_synthetic{args.synthetic}.npz",
         )
+    else:
+        params_path = args.params or DATA_DIR / "yolo26n_params.npz"
+    kwargs = dict(
+        params_path=str(params_path),
+        params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
+    )
+    if args.compile_only:
+        yolo26n.specialize(
+            image=np.ndarray[(640 * 640 * 3 // 4,), np.dtype[np.int32]],
+            scratch=np.ndarray[(plan.words,), np.dtype[np.int32]],
+            detections=np.ndarray[(6 * 300,), np.dtype[np.int32]],
+            **kwargs,
+        ).compile()
+        return
+
+    if args.synthetic is not None:
         rng = np.random.default_rng(args.synthetic)
         images = [
             (f"random{i}", rng.integers(0, 256, (640, 640, 3), dtype=np.uint8))
@@ -233,17 +250,10 @@ def main() -> None:
         # Optional: only real images need OpenCV; a weight-free run goes without.
         from letterbox import letterbox
 
-        params_path = args.params or DATA_DIR / "yolo26n_params.npz"
         images = [
             (p.name, letterbox(p)) for p in sorted(args.images.glob("*.jpg"))[: args.n]
         ]
-    params = Params.load(params_path)
-    oracle = Oracle(params, network)
-    plan = Plan(network)
-    kwargs = dict(
-        params_path=str(params_path),
-        params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
-    )
+    oracle = Oracle(Params.load(params_path), network)
     scratch = iron.zeros(plan.words, dtype=np.int32)
     detections = iron.zeros(6 * 300, dtype=np.int32)
     session = None
@@ -254,14 +264,6 @@ def main() -> None:
         session = ort.InferenceSession(
             str(args.onnx), providers=["CPUExecutionProvider"]
         )
-    if args.compile_only:
-        yolo26n(
-            iron.tensor(images[0][1].reshape(-1).view(np.int32)),
-            scratch,
-            detections,
-            **kwargs,
-        )
-        return
 
     passed = matched = 0
     for name, image in images:
