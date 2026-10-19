@@ -16,8 +16,8 @@ Submodules:
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
 - `moe` — router_top_k (a mixture-of-experts router's top-k ids and softmax
-  weights, deterministic, from a `sample_select` summary), expert_gate_up
-  and expert_down (one tile of an expert's gated feed-forward)
+  weights, deterministic, from a `sample_select` summary), experts (a
+  row's gated feed-forward through its chosen experts, tile by tile)
 - `ssm` — selective_scan (Mamba2's state space recurrence for one head)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
@@ -259,10 +259,8 @@ from .linalg import (
     prefill_fv_ref,
 )
 from .moe import (
-    expert_down,
-    expert_down_ref,
-    expert_gate_up,
-    expert_gate_up_ref,
+    experts,
+    experts_ref,
     router_top_k,
     router_top_k_ref,
 )
@@ -355,10 +353,8 @@ __all__ = [
     "exp64_ref",
     "router_top_k",
     "router_top_k_ref",
-    "expert_gate_up",
-    "expert_gate_up_ref",
-    "expert_down",
-    "expert_down_ref",
+    "experts",
+    "experts_ref",
     "selective_scan",
     "selective_scan_ref",
     "rms_norm_ref",

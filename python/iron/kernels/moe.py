@@ -21,13 +21,13 @@ from functools import partial
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, InOut, Out
+from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, Trace, _kernel_source, _make_extern
+from ._common import KernelContract, Param, Trace, _kernel_source, _make_extern
+from .core import conv_even
 from .sample import _check_slice, _positive, exp64_ref, order_keys, summary_words
-from .zero import zero
 
 _STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
 
@@ -104,92 +104,103 @@ def router_top_k_ref(logits, top_k: int) -> tuple[np.ndarray, np.ndarray]:
     return ids, weights
 
 
-# Scalar float32 dot products, summed in another order than numpy's; the
-# floor covers terms that cancel. Measured against a host build, not a device.
-_EXPERT_TOLERANCE = Tolerance.relative(
-    1e-4, range_frac=1e-5, note="host clang build of the scalar source"
-)
+def _experts_steps(hidden, width, rows, cols):
+    """Tiles per expert: gate_up's, then the expert's total."""
+    gate_up = (2 * width // rows) * (hidden // cols)
+    return gate_up, gate_up + (hidden // rows) * (width // cols)
 
 
-def _zero_y(fn):
-    return zero(fn.arg_shape(3), np.float32)
+def experts_sample(rng, calls, *, hidden, width, top_k, rows, cols):
+    """One row for every call, as a design passes it, and random weight tiles."""
+    row = np.empty(hidden + 2 * top_k, np.float32)
+    row[:hidden] = rng.standard_normal(hidden) * 0.5
+    row[hidden:] = 0
+    row[hidden::2] = rng.random(top_k)
+    tiles = rng.standard_normal((calls, rows * cols)) * 0.1
+    return [np.tile(row, (calls, 1)).astype(bfloat16), tiles.astype(bfloat16)]
 
 
-def expert_gate_up_ref(x, w, *, rows: int, hidden: int):
-    """Numpy reference for [`expert_gate_up`][iron.kernels.moe.expert_gate_up]."""
-    x = np.asarray(x, np.float32).reshape(-1, hidden)
-    gate, up = np.asarray(w, np.float32).reshape(-1, 2, rows, hidden).swapaxes(0, 1)
-    g, u = np.einsum("crk,ck->cr", gate, x), np.einsum("crk,ck->cr", up, x)
-    with np.errstate(over="ignore"):
-        return g / (1 + np.exp(-g)) * u
+def experts_ref(row, tile, *, hidden, width, top_k, rows, cols):
+    """Numpy reference for [`experts`][iron.kernels.moe.experts]: ``y`` after each call, call ``s`` being step ``s``."""
+    gate_up_steps, expert_steps = _experts_steps(hidden, width, rows, cols)
+    row = np.asarray(row, np.float32).reshape(-1, hidden + 2 * top_k)
+    tile = np.asarray(tile, np.float32).reshape(-1, rows, cols)
+    y = np.zeros((len(row), hidden), np.float32)
+    total = np.zeros(hidden, np.float32)
+    for step, (r, t) in enumerate(zip(row, tile)):
+        j, s = divmod(step, expert_steps)
+        if s == 0:
+            acc = np.zeros(2 * width, np.float32)
+        if s < gate_up_steps:
+            r0, c0 = divmod(s, hidden // cols)
+            r0, c0 = r0 * rows, c0 * cols
+            acc[r0 : r0 + rows] += t @ r[c0 : c0 + cols]
+            if s == gate_up_steps - 1:
+                g = acc[:width]
+                with np.errstate(over="ignore"):
+                    acc[:width] = g / (1 + np.exp(-g)) * acc[width:]
+        else:
+            r0, c0 = divmod(s - gate_up_steps, width // cols)
+            r0, c0 = r0 * rows, c0 * cols
+            total[r0 : r0 + rows] += r[hidden + 2 * j] * (t @ acc[c0 : c0 + cols])
+        y[step] = total
+    return y.astype(bfloat16)
 
 
-def expert_gate_up(*, rows: int = 4, hidden: int = 256) -> ExternalFunction:
-    """One tile of an expert's gated activation: silu of each gate row's dot with x, times its up row's.
+def experts(
+    *, hidden: int = 64, width: int = 32, top_k: int = 2, rows: int = 8, cols: int = 32
+) -> ExternalFunction:
+    """One row of a mixture of experts' feed-forward, from two input streams.
 
-    ``expert_gate_up(x, w, h)`` takes ``hidden`` bf16 ``x``, the ``rows``
-    gate rows of one expert's ``gate_up`` followed by the ``rows`` up rows
-    they pair with (``2 * rows`` rows of ``hidden`` bf16), and writes
-    ``rows`` float32 ``h``, which ``expert_down`` reads unrounded.
+    ``experts(row, tile, y, step)``: ``row`` is bf16 x (``hidden``) then the
+    row's ``2 * top_k`` router weights as ``router_top_k`` writes them,
+    chosen expert ``j``'s at ``2 * j``. Step ``s`` of a row (0 first) brings
+    tile ``s``, ``rows`` x ``cols`` bf16: for each chosen expert in turn,
+    the blocks of its ``gate_up`` (``2 * width`` x ``hidden``) row block by
+    row block, then those of its ``down`` (``hidden`` x ``width``). ``y`` is
+    the row's bf16 output so far; after the last step it is the sum over
+    ``j`` of weight ``j`` times ``down @ (silu(g) * u)``, ``g`` and ``u``
+    the halves of ``gate_up @ x``, in float32 and rounded once. The caller
+    picks the chosen experts' tiles from ``ids``; the kernel never reads
+    them.
     """
-    _positive("expert_gate_up", rows=rows, hidden=hidden)
+    _positive("experts", hidden=hidden, width=width, top_k=top_k, rows=rows, cols=cols)
+    if (2 * width) % rows or hidden % rows or hidden % cols or width % cols:
+        raise ValueError(
+            "experts: rows must divide 2 * width and hidden, and cols must "
+            "divide hidden and width"
+        )
+    geometry = dict(hidden=hidden, width=width, top_k=top_k, rows=rows, cols=cols)
     return _make_extern(
-        "expert_gate_up",
-        _kernel_source("moe/expert_gate_up.cc"),
+        "experts",
+        _kernel_source("moe/experts.cc"),
         [
+            np.ndarray[(hidden + 2 * top_k,), np.dtype[bfloat16]],
+            np.ndarray[(rows * cols,), np.dtype[bfloat16]],
             np.ndarray[(hidden,), np.dtype[bfloat16]],
-            np.ndarray[(2 * rows * hidden,), np.dtype[bfloat16]],
-            np.ndarray[(rows,), np.dtype[np.float32]],
+            np.int32,
         ],
         compile_flags=_STRICT_FP
-        + [f"-DEXPERT_ROWS={rows}", f"-DEXPERT_HIDDEN={hidden}"],
-        contract=KernelContract(
-            trace=Trace.whole_call(),
-            roles=(In, In, Out),
-            reference=partial(expert_gate_up_ref, rows=rows, hidden=hidden),
-            tolerance=_EXPERT_TOLERANCE,
-            acc_dtype=np.float32,
-            reduction=hidden,
-        ),
-    )
-
-
-def expert_down_ref(h, w, weight, *, rows: int, width: int):
-    """Numpy reference for [`expert_down`][iron.kernels.moe.expert_down], from a zeroed ``y``."""
-    h = np.asarray(h, np.float32).reshape(-1, width)
-    w = np.asarray(w, np.float32).reshape(-1, rows, width)
-    scale = np.asarray(weight, np.float32).reshape(-1, 2)[:, :1]
-    return scale * np.einsum("crk,ck->cr", w, h)
-
-
-def expert_down(*, rows: int = 4, width: int = 256) -> ExternalFunction:
-    """One tile of an expert's down projection, weighted and accumulated.
-
-    ``expert_down(h, w, weight, y)`` adds ``weight[0] * (w @ h)`` to ``rows``
-    float32 ``y``: ``h`` is ``width`` float32 from ``expert_gate_up``, ``w``
-    ``rows`` rows of one expert's ``down`` (``width`` bf16 each) and
-    ``weight`` the router's padded pair for that expert, as ``router_top_k``
-    writes it. Summing every chosen expert into one ``y`` and rounding it
-    once (``convert_copy``) gives a row of the experts' output.
-    """
-    _positive("expert_down", rows=rows, width=width)
-    return _make_extern(
-        "expert_down",
-        _kernel_source("moe/expert_down.cc"),
-        [
-            np.ndarray[(width,), np.dtype[np.float32]],
-            np.ndarray[(rows * width,), np.dtype[bfloat16]],
-            np.ndarray[(2,), np.dtype[bfloat16]],
-            np.ndarray[(rows,), np.dtype[np.float32]],
+        + [
+            f"-DEXPERTS_HIDDEN={hidden}",
+            f"-DEXPERTS_WIDTH={width}",
+            f"-DEXPERTS_TOP_K={top_k}",
+            f"-DEXPERTS_TILE_ROWS={rows}",
+            f"-DEXPERTS_TILE_COLS={cols}",
         ],
-        compile_flags=[f"-DEXPERT_ROWS={rows}", f"-DEXPERT_WIDTH={width}"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            roles=(In, In, In, InOut),
-            reference=partial(expert_down_ref, rows=rows, width=width),
-            initializers=((3, _zero_y),),
-            tolerance=_EXPERT_TOLERANCE,
-            acc_dtype=np.float32,
-            reduction=width,
+            roles=(In, In, Out, Param),
+            parameter_bindings=((3, 0),),
+            call_index=3,
+            reference=partial(experts_ref, **geometry),
+            sample=partial(experts_sample, **geometry),
+            setup=conv_even,
+            tolerance=Tolerance(
+                ulps=1,
+                range_frac=1e-5,
+                note="host clang build of the scalar source; the floor is for "
+                "sums that cancel",
+            ),
         ),
     )

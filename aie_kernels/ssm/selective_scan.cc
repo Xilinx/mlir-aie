@@ -50,20 +50,27 @@ float softplus(float z) {
   return (z > 0.0f ? z : 0.0f) + f * q + (halve ? 0.69314718f : 0.0f);
 }
 
+float s[SCAN_HEAD_DIM * SCAN_STATE];
+
 } // namespace
 
-// Row t of x is the head's x (SCAN_HEAD_DIM) and row t of bc its group's B
-// then C (SCAN_STATE each); head is (dt_bias, A, D). final starts as state,
-// and for each of the first valid rows: step = softplus(dt + dt_bias),
-// final = exp(step * A) * final + step * outer(x, B), y = final @ C + D * x.
-// The rows after valid leave final alone and write zeros.
-extern "C" void selective_scan(bfloat16 *restrict x, bfloat16 *restrict bc,
-                               bfloat16 *restrict dt, float *restrict head,
-                               float *restrict state, float *restrict final,
-                               bfloat16 *restrict y, int32_t valid) {
+// block is x (SCAN_ROWS x SCAN_HEAD_DIM), then bc (SCAN_ROWS rows of the
+// group's B then C, SCAN_STATE each), then dt (SCAN_ROWS). head is
+// (dt_bias, A, D), then the state before the head's first block. Block b of
+// a head (0 first) runs its first valid rows: step = softplus(dt + dt_bias),
+// state = exp(step * A) * state + step * outer(x, B), y = state @ C + D * x.
+// The rows after valid leave the state alone and write zeros. The state
+// stays in the core from block to block; final is it after this block.
+extern "C" void selective_scan(bfloat16 *restrict block, float *restrict head,
+                               float *restrict final, bfloat16 *restrict y,
+                               int32_t valid, int32_t b) {
   event0();
-  for (int i = 0; i < SCAN_HEAD_DIM * SCAN_STATE; i++)
-    final[i] = state[i];
+  const bfloat16 *x = block;
+  const bfloat16 *bc = x + SCAN_ROWS * SCAN_HEAD_DIM;
+  const bfloat16 *dt = bc + SCAN_ROWS * 2 * SCAN_STATE;
+  if (b == 0)
+    for (int i = 0; i < SCAN_HEAD_DIM * SCAN_STATE; i++)
+      s[i] = head[3 + i];
   const float dt_bias = head[0], A = head[1], D = head[2];
   for (int t = 0; t < SCAN_ROWS; t++) {
     bfloat16 *yt = y + t * SCAN_HEAD_DIM;
@@ -80,14 +87,16 @@ extern "C" void selective_scan(bfloat16 *restrict x, bfloat16 *restrict bc,
     for (int p = 0; p < SCAN_HEAD_DIM; p++) {
       const float xp = (float)xt[p];
       const float sx = step * xp;
-      float *s = final + p * SCAN_STATE;
+      float *sp = s + p * SCAN_STATE;
       float acc = 0.0f;
       for (int n = 0; n < SCAN_STATE; n++) {
-        s[n] = decay * s[n] + sx * (float)B[n];
-        acc += s[n] * (float)C[n];
+        sp[n] = decay * sp[n] + sx * (float)B[n];
+        acc += sp[n] * (float)C[n];
       }
       yt[p] = acc + D * xp;
     }
   }
+  for (int i = 0; i < SCAN_HEAD_DIM * SCAN_STATE; i++)
+    final[i] = s[i];
   event1();
 }

@@ -907,31 +907,25 @@ KERNEL_SPECS: list[KernelSpec] = [
         shape_checks=[(dict(_MERGE, block=32), 1, (32,))],
     ),
     KernelSpec(
-        name="expert_gate_up",
-        factory=kernels.expert_gate_up,
+        name="experts",
+        factory=kernels.experts,
         kwargs={},
-        arg_count=3,  # x, gate and up rows, h
-        expected_name="expert_gate_up",
-        invalid_kwargs=[(dict(rows=0), "rows must be a positive integer")],
-        shape_checks=[(dict(rows=2, hidden=64), 1, (256,))],
-    ),
-    KernelSpec(
-        name="expert_down",
-        factory=kernels.expert_down,
-        kwargs={},
-        arg_count=4,  # h, down rows, router weight pair, y
-        expected_name="expert_down",
-        invalid_kwargs=[(dict(width=0), "width must be a positive integer")],
-        shape_checks=[(dict(rows=2, width=64), 1, (128,))],
+        arg_count=4,  # row, weight tile, y, step
+        expected_name="experts",
+        invalid_kwargs=[
+            (dict(top_k=0), "top_k must be a positive integer"),
+            (dict(rows=3), "rows must divide"),
+        ],
+        shape_checks=[(dict(hidden=128, top_k=4), 0, (136,))],
     ),
     KernelSpec(
         name="selective_scan",
         factory=kernels.selective_scan,
         kwargs={},
-        arg_count=8,  # x, bc, dt, head, state, final, y, valid
+        arg_count=6,  # block, head, final, y, valid, block index
         expected_name="selective_scan",
         invalid_kwargs=[(dict(state=0), "state must be a positive integer")],
-        shape_checks=[(dict(rows=4, head_dim=8, state=16), 1, (128,))],
+        shape_checks=[(dict(rows=4, head_dim=8, state=16), 0, (164,))],
     ),
     KernelSpec(
         name="patch_positions",

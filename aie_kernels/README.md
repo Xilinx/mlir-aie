@@ -124,8 +124,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
 | [router_top_k.cc](./moe/router_top_k.cc) | Generic C | A router's `top_k` expert ids and softmax weights, from one `sample_select` summary | `int32_t` → `int32_t`, `bfloat16` |
-| [expert_gate_up.cc](./moe/expert_gate_up.cc) | Generic C | One tile of an expert's gated activation, `silu(gate · x) * (up · x)`, in float32. Scalar first pass | `bfloat16` → `float32` |
-| [expert_down.cc](./moe/expert_down.cc) | Generic C | One tile of an expert's down projection, scaled by its router weight and added to a float32 sum. Scalar first pass | `float32`, `bfloat16` → `float32` |
+| [experts.cc](./moe/experts.cc) | Generic C | One row's gated feed-forward through its chosen experts, from the row and one stream of weight tiles, summed in float32 and rounded once. Scalar first pass | `bfloat16` |
 
 ## norm
 | Name | Coding style | Purpose | Datatypes |

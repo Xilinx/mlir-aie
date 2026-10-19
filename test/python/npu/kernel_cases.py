@@ -414,8 +414,8 @@ CASES: list[Case] = [
         tag="overlap",
     ),
     # Scalar first passes: checked, not timed until they are vectorized.
-    check("expert_gate_up", calls=4, smoke=True),
-    check("expert_down", calls=4, smoke=True),
+    # One row: two experts of 16 gate_up tiles and 8 down tiles each.
+    check("experts", calls=48, smoke=True),
     check("selective_scan", calls=4, scalars=(16,), smoke=True),
     check("selective_scan", calls=2, scalars=(5,), tag="partial"),
     check("selective_scan", calls=2, scalars=(0,), tag="none-valid"),
