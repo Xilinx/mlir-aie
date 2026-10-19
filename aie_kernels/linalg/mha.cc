@@ -41,22 +41,32 @@ using score_t = bfloat16;
 // The query at position q keeps the keys k with q - MHA_WINDOW <= k <= q +
 // AHEAD: a causal build bounds k by q, a windowed one by the window on either
 // side it is not causal on, and one that is neither keeps every key. A window
-// of 0 is none.
+// of 0 is none. Packed, a block's rows are one query each, of a KV group's
+// heads, all at the last key's position, S_kv_eff - 1.
 #ifndef MHA_CAUSAL
 #define MHA_CAUSAL 1
 #endif
 #ifndef MHA_WINDOW
 #define MHA_WINDOW 0
 #endif
+#ifndef MHA_PACKED
+#define MHA_PACKED 0
+#endif
 static constexpr bool BAND_AHEAD = MHA_CAUSAL || MHA_WINDOW > 0;
 static constexpr int32_t AHEAD = MHA_CAUSAL ? 0 : MHA_WINDOW;
 static constexpr bool BAND_BEHIND = MHA_WINDOW > 0;
 
-// Whether a query block keeps any key of a key block, diagonal being the
-// position of the query block's first row less that of the key block's.
+// The position of a query block's first row less that of a key block's.
+static inline __attribute__((always_inline)) int32_t
+block_diagonal(int32_t q_block, int32_t kv_block, int32_t B_q, int32_t B_kv,
+               int32_t S_kv_eff) {
+  return (MHA_PACKED ? S_kv_eff - 1 : q_block * B_q) - kv_block * B_kv;
+}
+
+// Whether a query block keeps any key of a key block.
 static inline __attribute__((always_inline)) bool
 block_live(int32_t diagonal, int32_t B_q, int32_t B_kv) {
-  return (!BAND_AHEAD || diagonal + B_q + AHEAD > 0) &&
+  return (!BAND_AHEAD || diagonal + (MHA_PACKED ? 1 : B_q) + AHEAD > 0) &&
          (!BAND_BEHIND || diagonal < MHA_WINDOW + B_kv);
 }
 
@@ -203,11 +213,14 @@ alignas(64) static const int16_t sm_lane_idx[VECTOR_LENGTH] = {
     48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63};
 
 // The lanes row i discards: it keeps the columns from i + diagonal -
-// MHA_WINDOW to i + diagonal + AHEAD that are before valid_cols.
+// MHA_WINDOW to i + diagonal + AHEAD that are before valid_cols, packed rows
+// all those of row 0.
 template <unsigned W>
 static inline __attribute__((always_inline)) aie::mask<W>
 band_mask(aie::vector<int16_t, W> lane, int32_t i, int32_t valid_cols,
           int32_t diagonal) {
+  if (MHA_PACKED)
+    i = 0;
   int32_t end = valid_cols;
   if (BAND_AHEAD && i + diagonal + AHEAD + 1 < end)
     end = i + diagonal + AHEAD + 1;
@@ -304,7 +317,8 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
   // Lanes a row discards hold lowest from here on.
   if ((BAND_AHEAD && diagonal + AHEAD < VECTOR_LENGTH - 1) ||
       valid_cols < VECTOR_LENGTH ||
-      (BAND_BEHIND && group_rows - 1 + diagonal > MHA_WINDOW)) {
+      (BAND_BEHIND &&
+       (MHA_PACKED ? 0 : group_rows - 1) + diagonal > MHA_WINDOW)) {
     T *__restrict row = A;
     AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
     AIE_LOOP_UNROLL(4)
@@ -587,9 +601,10 @@ void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, score_t *c_out,
                               int32_t *idx_buffer) {
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
-  // idx_buffer is (key block, query block).
-  if (!block_live(idx_buffer[1] * DIM_M - idx_buffer[0] * DIM_N, DIM_M,
-                  DIM_N)) {
+  // idx_buffer is (key block, query block). Packed, the rows' position is
+  // S_kv_eff's, which this call does not take, so every block is computed.
+  if (!MHA_PACKED && !block_live(idx_buffer[1] * DIM_M - idx_buffer[0] * DIM_N,
+                                 DIM_M, DIM_N)) {
     // matmul_bf16_bf16 brackets itself; an empty pair keeps a masked call to
     // one interval too, so every call can be timed.
     event0();
@@ -631,7 +646,9 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, float *out, float *scale_buffer,
   }
 
   // Skip a key block no row of the query block keeps, as partial_softmax does.
-  if (!block_live(idx_buffer[1] * B_q - idx_buffer[0] * DIM_N, B_q, DIM_N)) {
+  if (!block_live(
+          block_diagonal(idx_buffer[1], idx_buffer[0], B_q, DIM_N, S_kv_eff),
+          B_q, DIM_N)) {
     ::aie::set_rounding(saved_rounding);
     event1();
     return;
@@ -691,7 +708,8 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
   // i + diagonal - MHA_WINDOW to i + diagonal + AHEAD, so a query block
   // narrower than the key block masks at the right column. Skip a block no
   // row keeps a key of.
-  const int32_t diagonal = q_block_idx * B_q - kv_block_idx * B_kv;
+  const int32_t diagonal =
+      block_diagonal(q_block_idx, kv_block_idx, B_q, B_kv, S_kv_eff);
   if (!block_live(diagonal, B_q, B_kv)) {
     zero_vectorized<bfloat16, DIM_M, DIM_N>(P);
     ::aie::set_rounding(saved_rounding);
@@ -747,7 +765,8 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
   } else {
     constexpr unsigned SW = MW < SM_VEC_LEN ? MW : SM_VEC_LEN;
     if ((BAND_AHEAD && diagonal + AHEAD < B_kv - 1) || valid_kv_cols < B_kv ||
-        (BAND_BEHIND && valid_q_rows - 1 + diagonal > MHA_WINDOW)) {
+        (BAND_BEHIND &&
+         (MHA_PACKED ? 0 : valid_q_rows - 1) + diagonal > MHA_WINDOW)) {
       const auto lane = aie::load_v<MW>(sm_lane_idx);
       for (int32_t i = 0; i < valid_q_rows; i++) {
         score_t *row = A + i * B_kv;
@@ -784,9 +803,20 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
     }
 #endif
   }
+  // A row whose band starts past this block's keys has kept no key yet, the
+  // key blocks coming in order: its maximum is still lowest, so every lane
+  // came to 2^0, which only its first key's rescale, by 2^(lowest * s), would
+  // take back off. It adds nothing instead, its sum 0 and its P row zeroed
+  // with the padded rows'. Such rows are a suffix.
+  int32_t kept_rows = valid_q_rows;
+  if constexpr (BAND_BEHIND && !MHA_PACKED) {
+    const int32_t dead = valid_kv_cols + MHA_WINDOW - diagonal;
+    for (; kept_rows > dead && kept_rows > 0; kept_rows--)
+      scale_buffer[3 * B_q + kept_rows - 1] = 0.0f;
+  }
   // Zero out P rows corresponding to padded Q rows, which are again a suffix
   // and so one linear fill.
-  for (int32_t n = valid_q_rows * B_kv; n < B_q * B_kv; n += MW) {
+  for (int32_t n = kept_rows * B_kv; n < B_q * B_kv; n += MW) {
     aie::store_v(P + n, aie::zeros<bfloat16, MW>());
   }
 
