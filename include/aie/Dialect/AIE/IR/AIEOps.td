@@ -2620,6 +2620,10 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     std::optional<mlir::Value> getOptionalSharedTile();
     // The fifo whose declared object type sizes the pool on the shared tile.
     ObjectFifoCreateOp getPoolOwner();
+    // The pool's (offset, size) segments in the owner's elements: one per
+    // participant on a join's or distribute's many side, else the whole
+    // object.
+    llvm::SmallVector<std::pair<int64_t, int64_t>> getPoolSegments();
     std::optional<int> getRepeatCount();
     std::vector<int> getJoinTransferLengths();
     std::vector<int> getDistributeTransferLengths();

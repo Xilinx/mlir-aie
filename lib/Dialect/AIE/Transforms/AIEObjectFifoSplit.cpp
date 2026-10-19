@@ -483,28 +483,7 @@ void AIEObjectFifoSplitPass::createLinkPools() {
         cast<AIEObjectFifoType>(owner.getElemType()).getElementType());
     builder.setInsertionPoint(owner);
 
-    SmallVector<std::pair<int64_t, int64_t>> extents;
-    if (isJoin || isDistribute) {
-      ArrayAttr offsets =
-          isJoin ? linkOp.getSrcOffsets() : linkOp.getDstOffsets();
-      std::vector<ObjectFifoCreateOp> &side = isJoin ? ins : outs;
-      for (auto [index, participant] : llvm::enumerate(side)) {
-        int64_t offset = *getConstantIntValue(offsets[index]);
-        int64_t next = index + 1 < side.size()
-                           ? *getConstantIntValue(offsets[index + 1])
-                           : elemType.getNumElements();
-        int64_t size = next - offset;
-        if (size <= 0) {
-          size = cast<MemRefType>(
-                     cast<AIEObjectFifoType>(participant.getElemType())
-                         .getElementType())
-                     .getNumElements();
-        }
-        extents.emplace_back(offset, size);
-      }
-    } else {
-      extents.emplace_back(0, elemType.getNumElements());
-    }
+    SmallVector<std::pair<int64_t, int64_t>> extents = linkOp.getPoolSegments();
 
     bool ownerIsOutput = llvm::is_contained(outs, owner);
     std::string name;

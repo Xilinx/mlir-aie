@@ -954,3 +954,120 @@ module {
     }
   }
 }
+
+// -----
+
+// A distribute's combined end is a chain of per-segment BDs, each with its
+// own locks, not one BD over the pool object: 192 i32 ends on segment 0 of
+// the second object, so it fills three whole 64-i32 segment BDs.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    aie.objectfifo @in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo @out0(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @out1(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@in] -> [@out0, @out1]([] [0, 64])
+    aie.runtime_sequence(%a: memref<192xi32>, %b: memref<128xi32>, %c: memref<64xi32>) {
+      %t = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%a : memref<192xi32> offset = 0 len = 192 sizes = [1, 1, 1, 192] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+      %d0 = aiex.dma_configure_task_for @out0 {
+        aie.dma_bd(%b : memref<128xi32> offset = 0 len = 128 sizes = [1, 1, 1, 128] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%d0)
+      %d1 = aiex.dma_configure_task_for @out1 {
+        aie.dma_bd(%c : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%d1)
+      aiex.dma_await_task(%d0)
+      aiex.dma_await_task(%d1)
+    }
+  }
+}
+
+// -----
+
+// Unequal segments end at their ordered boundaries, not at multiples of a
+// common divisor: segments of 96 and 32 i32 end at bytes 384 and 512 of each
+// object, so 64 i32 stops inside segment 0, though 256 divides by 128.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    aie.objectfifo @in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo @out0(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo @out1(%t01, {%t03}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@in] -> [@out0, @out1]([] [0, 96])
+    aie.runtime_sequence(%a: memref<64xi32>) {
+      // expected-error@+1 {{moves 256 bytes through objectFIFO @in, which is not a whole number of its 512-byte objects and doesn't end where one of their segments does (byte 384 of each)}}
+      %t = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%a : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A join's combined end steps through the same ordered segments: a 96-i32
+// drain completes segment 0 of the first object.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    aie.objectfifo @in0(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo @in1(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @out(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo.link [@in0, @in1] -> [@out]([0, 96] [])
+    aie.runtime_sequence(%a: memref<96xi32>, %b: memref<32xi32>, %c: memref<96xi32>) {
+      %f0 = aiex.dma_configure_task_for @in0 {
+        aie.dma_bd(%a : memref<96xi32> offset = 0 len = 96 sizes = [1, 1, 1, 96] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%f0)
+      %f1 = aiex.dma_configure_task_for @in1 {
+        aie.dma_bd(%b : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%f1)
+      %t = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%c : memref<96xi32> offset = 0 len = 96 sizes = [1, 1, 1, 96] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A small end of a distribute is a chain over its own segment, so it is
+// checked against the segment: 48 i32 is not a whole 32-i32 segment.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    aie.objectfifo @in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo @out0(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo @out1(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@in] -> [@out0, @out1]([] [0, 96])
+    aie.runtime_sequence(%a: memref<48xi32>) {
+      // expected-error@+1 {{moves 192 bytes through objectFIFO @out1, which is not a whole number of its 128-byte objects}}
+      %t = aiex.dma_configure_task_for @out1 {
+        aie.dma_bd(%a : memref<48xi32> offset = 0 len = 48 sizes = [1, 1, 1, 48] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+    }
+  }
+}

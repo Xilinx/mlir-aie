@@ -1503,13 +1503,13 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
         elem.getNumElements(),
         static_cast<int64_t>(layout.getTypeSize(elem.getElementType())));
   };
-  // A linked fifo's far end on the link's shared tile is a BD over the shared
-  // pool, sized by the link's pool owner whatever this fifo's own (or
-  // consumer) type. A plain link's BD covers the whole pool; a join's or
-  // distribute's small sides get offset-derived segments of it, so those ends
-  // are not checked.
+  // A linked fifo's far end on the link's shared tile is a chain of BDs over
+  // the link's pool, one per pool segment, sized by the pool owner whatever
+  // this fifo's own (or consumer) type. A join's or distribute's combined end
+  // steps through every segment in order, each small end through its own, and
+  // a plain link's single segment is the whole pool object.
   Value linkTile;
-  std::optional<AIE::ObjectFifoCreateOp> linkOwner;
+  std::optional<SmallVector<int64_t>> linkEnds;
   if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
     for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
       std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
@@ -1521,42 +1521,64 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
         return success();
       linkTile = *sharedTile;
       AIE::ObjectFifoCreateOp owner = link.getPoolOwner();
-      if (owner == fifo || (!link.isJoin() && !link.isDistribute()))
-        linkOwner = owner;
+      MemRefType pool =
+          cast<AIE::AIEObjectFifoType>(owner.getElemType()).getElementType();
+      auto width =
+          static_cast<int64_t>(layout.getTypeSize(pool.getElementType()));
+      SmallVector<std::pair<int64_t, int64_t>> segments =
+          link.getPoolSegments();
+      if (fifo != owner && (link.isJoin() || link.isDistribute())) {
+        std::vector<AIE::ObjectFifoCreateOp> &many = link.isJoin() ? ins : outs;
+        segments = {segments[llvm::find(many, fifo) - many.begin()]};
+      }
+      SmallVector<int64_t> ends;
+      std::optional<int64_t> end = 0;
+      for (auto [offset, size] : segments) {
+        if (std::optional<int64_t> bytes = llvm::checkedMul(size, width))
+          end = llvm::checkedAdd(*end, *bytes);
+        else
+          end = std::nullopt;
+        if (!end)
+          break;
+        ends.push_back(*end);
+      }
+      if (end)
+        linkEnds = ends;
       break;
     }
-  // Every far-end BD this transfer must complete: the producer's, for a drain,
-  // and each consumer's other than the shim's own. A broadcast stalls on its
-  // slowest consumer, so a drain bounds what the others receive too. An end
-  // on a link's shared tile is a BD over the link pool, any other one over its
-  // own pool of the producer or consumer type.
-  SmallVector<int64_t> objectSizes;
-  auto addObjectSize = [&](Value tile, Type fifoType) {
-    if (linkTile && tile == linkTile) {
-      if (!linkOwner)
-        return;
-      fifoType = linkOwner->getElemType();
-    }
-    std::optional<int64_t> bytes = objectBytesOf(fifoType);
-    if (bytes && *bytes > 0 && !llvm::is_contained(objectSizes, *bytes))
-      objectSizes.push_back(*bytes);
+  // Every far-end BD chain this transfer must leave at a BD boundary: the
+  // producer's, for a drain, and each consumer's other than the shim's own. A
+  // broadcast stalls on its slowest consumer, so a drain bounds what the
+  // others receive too. Each chain is its cumulative BD ends in bytes over one
+  // object; an end off the link tile is one BD over its own object.
+  SmallVector<SmallVector<int64_t>> chains;
+  auto addChain = [&](Value tile, Type fifoType) {
+    std::optional<SmallVector<int64_t>> ends;
+    if (linkTile && tile == linkTile)
+      ends = linkEnds;
+    else if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
+      ends = SmallVector<int64_t>{*bytes};
+    if (ends && !ends->empty() && ends->back() > 0 &&
+        !llvm::is_contained(chains, *ends))
+      chains.push_back(*ends);
   };
   auto producer =
       dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
   if (!producer)
     return success();
   if (!producer.isShimTile())
-    addObjectSize(fifo.getProducerTile(), fifo.getElemType());
+    addChain(fifo.getProducerTile(), fifo.getElemType());
   for (Value consumer : fifo.getConsumerTiles()) {
     auto tile = dyn_cast_or_null<AIE::TileLike>(consumer.getDefiningOp());
     if (!tile || !tile.isShimTile())
-      addObjectSize(consumer, fifo.getConsumerElemTypeOrDefault());
+      addChain(consumer, fifo.getConsumerElemTypeOrDefault());
   }
-  auto partialFor = [&](int64_t bytes) -> std::optional<int64_t> {
-    for (int64_t size : objectSizes)
-      if (bytes % size != 0)
-        return size;
-    return std::nullopt;
+  auto partialFor = [&](int64_t bytes) -> const SmallVector<int64_t> * {
+    for (const SmallVector<int64_t> &ends : chains)
+      if (int64_t rest = bytes % ends.back();
+          rest != 0 && !llvm::is_contained(ends, rest))
+        return &ends;
+    return nullptr;
   };
   if (!partialFor(*moved))
     return success();
@@ -1605,8 +1627,8 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   });
   if (walk.wasInterrupted() || reportedEarlier)
     return success();
-  std::optional<int64_t> objectBytes = partialFor(*total);
-  if (!objectBytes)
+  const SmallVector<int64_t> *ends = partialFor(*total);
+  if (!ends)
     return success();
 
   InFlightDiagnostic error =
@@ -1615,9 +1637,17 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   if (sharing > 1)
     error << ", with this runtime sequence's other transfers through it ("
           << *total << " bytes in all),";
-  return error << " is not a whole number of its " << *objectBytes
-               << "-byte objects; the far end's buffer descriptor is sized by "
-                  "the object, so a partial one never completes";
+  error << " is not a whole number of its " << ends->back() << "-byte objects";
+  if (ends->size() == 1)
+    return error << "; the far end's buffer descriptor is sized by the "
+                    "object, so a partial one never completes";
+  std::string segmentEnds;
+  llvm::raw_string_ostream os(segmentEnds);
+  llvm::interleaveComma(ArrayRef(*ends).drop_back(), os);
+  return error << " and doesn't end where one of their segments does (byte "
+               << segmentEnds
+               << " of each); the far end's buffer descriptors are sized by "
+                  "the segments, so a partial one never completes";
 }
 
 // Resolving the allocation symbol through the collection keeps the lookup off
