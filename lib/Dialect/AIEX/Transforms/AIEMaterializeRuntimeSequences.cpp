@@ -597,8 +597,8 @@ static LogicalResult verifyRunOpsInConfigureOp(
     llvm::DenseMap<Operation *, AIE::NamedOpTable> &referencedDevNames) {
   if (configureOp.getBody().empty())
     return success();
-  // A device named by many aiex.configure ops (e.g. one callee reused across
-  // model layers) would otherwise rescan its whole symbol table per aiex.run.
+  // See RuntimeCallGraphCyclicityAnalysis's calleeNames for why this caches
+  // a symbol table across calls instead of rescanning per aiex.run.
   AIE::NamedOpTable &devNames =
       referencedDevNames.try_emplace(referencedDev, referencedDev)
           .first->second;
@@ -681,10 +681,8 @@ struct AIEMaterializeRuntimeSequencesPass
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
-    // Shared across every device's verification below: a referenced device
-    // (e.g. a callee reused across model layers) is named by many
-    // aiex.configure ops, so its NamedOpTable is built once, not once per
-    // aiex.run.
+    // Shared across every device's verification below -- see
+    // RuntimeCallGraphCyclicityAnalysis's calleeNames for why.
     llvm::DenseMap<Operation *, AIE::NamedOpTable> referencedDevNames;
 
     // Process each device in the module

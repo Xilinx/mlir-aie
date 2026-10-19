@@ -1658,7 +1658,8 @@ struct AIEPrepareBuffersPass
     // diagnostic below names the buffer it rejects.
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
     unsigned counter = 0;
-    // One snapshot for the whole walk -- see generateUniqueSymbolName's declaration.
+    // One snapshot for the whole walk -- see generateUniqueSymbolName's
+    // declaration.
     SymbolTable deviceSymbols(device);
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
       if (!buffer.hasName()) {
