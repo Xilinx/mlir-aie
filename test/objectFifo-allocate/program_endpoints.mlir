@@ -451,8 +451,9 @@ module @task_size_eight {
 
 // Packet routes naming one endpoint share its channel: two cores merge into
 // the MemTile's one S2MM channel, and the MemTile sends both packet ids out of
-// one MM2S channel. A program may source a packet route whose id is pinned,
-// since its BDs state the header themselves.
+// one MM2S channel. keep_pkt_header carries over to the packet flow. A program
+// may source a packet route whose id is pinned, since its BDs state the header
+// themselves.
 
 // CHECK-LABEL: @shared_packet_channels
 // CHECK: aie.route_endpoint @gather(%[[MT:.*]]) DMA {channelIndex = 0 : i32}
@@ -461,6 +462,7 @@ module @task_size_eight {
 // CHECK:   aie.packet_dest<%[[MT]], DMA : 0>
 // CHECK: aie.packet_flow(2) {
 // CHECK:   aie.packet_dest<%[[MT]], DMA : 0>
+// CHECK: } {keep_pkt_header = true}
 // CHECK: aie.packet_flow(1) {
 // CHECK:   aie.packet_source<%[[MT]], DMA : 0>
 // CHECK: aie.packet_flow(2) {
@@ -479,7 +481,7 @@ module @shared_packet_channels {
     aie.route_endpoint @b_out(%b) DMA
     aie.route_endpoint @gather(%mt) DMA
     aie.route from @a_out to [@gather] {packet, packet_id = 1 : i8}
-    aie.route from @b_out to [@gather] {packet, packet_id = 2 : i8}
+    aie.route from @b_out to [@gather] {keep_pkt_header, packet, packet_id = 2 : i8}
     aie.route_endpoint @scatter(%mt) DMA
     aie.route_endpoint @a_in(%a) DMA
     aie.route_endpoint @b_in(%b) DMA

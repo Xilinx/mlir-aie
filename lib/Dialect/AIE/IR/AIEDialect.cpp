@@ -1134,8 +1134,9 @@ LogicalResult RouteOp::verify() {
     return emitOpError("expects at least one destination");
   }
 
-  if (getPacketId() && !getPacket()) {
-    return emitOpError("packet_id is only meaningful on a packet flow");
+  if ((getPacketId() || getKeepPktHeader()) && !getPacket()) {
+    return emitOpError(
+        "packet_id and keep_pkt_header are only meaningful on a packet flow");
   }
 
   auto device = (*this)->getParentOfType<DeviceOp>();

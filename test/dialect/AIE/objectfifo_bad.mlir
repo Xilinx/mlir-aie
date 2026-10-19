@@ -174,3 +174,17 @@ aie.device(npu1) {
   aie.route from @src to [@a] {packet, packet_id = 1 : i8}
   aie.route from @src to [@b] {packet}
 }
+
+// -----
+
+// CHECK: 'aie.route' op packet_id and keep_pkt_header are only meaningful on a packet flow
+
+aie.device(npu1) {
+  %shim0 = aie.tile(0, 0)
+  %shim1 = aie.tile(1, 0)
+
+  aie.route_endpoint @src(%shim0) DMA
+  aie.route_endpoint @dst(%shim1) DMA
+
+  aie.route from @src to [@dst] {keep_pkt_header}
+}

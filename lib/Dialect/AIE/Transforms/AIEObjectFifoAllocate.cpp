@@ -1167,7 +1167,8 @@ struct AIEObjectFifoAllocatePass
     builder.setInsertionPoint(flow);
     auto packetFlow = PacketFlowOp::create(
         builder, flow.getLoc(),
-        builder.getIntegerAttr(builder.getI8Type(), packetID), nullptr,
+        builder.getIntegerAttr(builder.getI8Type(), packetID),
+        flow.getKeepPktHeader() ? builder.getBoolAttr(true) : nullptr,
         nullptr);
     OpBuilder::InsertionGuard g(builder);
     Block &ports = packetFlow.getRegion().emplaceBlock();
