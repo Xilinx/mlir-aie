@@ -27,24 +27,23 @@ import sys
 from pathlib import Path
 
 import numpy as np
-
+from gen_llama_data import SafetensorsReader
 from numpy_llama_ref import (
-    load_model,
-    forward_full,
-    rmsnorm,
-    rope_cos_sin,
-    apply_rope,
-    attention_full_gqa,
-    silu,
-    N_LAYERS,
+    HEAD_DIM,
+    KV_DIM,
     N_HEADS,
     N_KV_GROUPS,
+    N_LAYERS,
     Q_DIM,
-    KV_DIM,
-    HEAD_DIM,
+    apply_rope,
+    attention_full_gqa,
+    forward_full,
+    load_model,
+    load_tokenizer,
+    rmsnorm,
+    rope_cos_sin,
+    silu,
 )
-from gen_llama_data import SafetensorsReader
-from generate import load_tokenizer
 
 DATA_DIR = Path(__file__).parent / "data"
 # Reference bf16 checkpoint. No machine-specific default: pass --hf-weights or

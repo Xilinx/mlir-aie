@@ -28,13 +28,12 @@ import os as _os
 import sys
 
 import numpy as np
-
-from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
-from aie.iron.device import NPU2, Tile
-from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern
 from aie.dialects.arith import index_cast
-from aie.ir import IntegerType
+from aie.extras.types import i32
+from aie.helpers.taplib import TensorAccessPattern
+from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
+from aie.iron.controlflow import range_
+from aie.iron.device import NPU2, Tile
 
 V = int(_os.environ.get("LLAMA_TK_V", "64"))
 D = int(_os.environ.get("LLAMA_TK_D", "256"))
@@ -62,7 +61,7 @@ def _i32a(n):
 
 
 def _idx(i):
-    return index_cast(IntegerType.get_signless(32), i)
+    return index_cast(i32(), i)
 
 
 def params_init():

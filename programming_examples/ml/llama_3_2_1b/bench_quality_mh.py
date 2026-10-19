@@ -27,33 +27,34 @@ Run:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
 
 import numpy as np
-from ml_dtypes import bfloat16
-
 from aie2_chain_dynscale_mh import (
-    D,
-    N_LAYERS,
     ACT_SCALE,
+    HEAD_D,
     INV_ACT_SCALE,
     SILU_GATE_SCALE,
-    HEAD_D,
-    T,
+    D,
 )
-from numpy_layer_mh import gen_real_layer_mh, numpy_layer_mh_forward, requant
-from test_flowkv import EXP_QUANT_SCALE
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+from ml_dtypes import bfloat16
+from numpy_layer_mh import gen_real_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import (
-    load_model,
-    lm_head_logits,
-    rope_cos_sin,
     forward_full,
+    lm_head_logits,
+    load_model,
+    load_tokenizer,
+    rope_cos_sin,
 )
-from generate import load_tokenizer
+from test_flowkv import EXP_QUANT_SCALE
+
+T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
+N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
 
 # Curated set: each prompt has a "naturally correct" next token for a
 # well-tuned Llama 3.2 1B. We let the fp16 ref tell us the ground-truth
@@ -133,7 +134,12 @@ def int8_chain_next_token(
         for layer in layers:
             layer["cos"] = c
             layer["sin"] = s
-        xc = x.copy() if not residual_dyn else (x[0].copy(), x[1])
+        if residual_dyn:
+            assert isinstance(x, tuple)
+            xc = (x[0].copy(), x[1])
+        else:
+            assert isinstance(x, np.ndarray)
+            xc = x.copy()
         for L in range(N_LAYERS):
             xc, scales = numpy_layer_mh_forward(
                 xc,
@@ -148,10 +154,13 @@ def int8_chain_next_token(
         last_hidden = xc
     # Final hidden -> fp32 for lm_head.
     if residual_fp32:
+        assert isinstance(last_hidden, np.ndarray)
         hidden_fp = last_hidden
     elif residual_dyn:
+        assert isinstance(last_hidden, tuple)
         hidden_fp = last_hidden[0].astype(np.float32) * np.float32(last_hidden[1])
     else:
+        assert isinstance(last_hidden, np.ndarray)
         hidden_fp = last_hidden.astype(np.float32) * ACT_SCALE
     logits = lm_head_logits(model, hidden_fp[None, :])[0]
     return int(np.argmax(logits))
@@ -175,7 +184,7 @@ def bf16_ref_next_token(token_ids):
     'does the NPU match the actual model'. Lazily loads the 2.5 GB checkpoint."""
     global _BF16_REF
     if _BF16_REF is None:
-        from accuracy_vs_hf import RefModel, ref_forward_logits, HF_WEIGHTS
+        from accuracy_vs_hf import HF_WEIGHTS, RefModel, ref_forward_logits
         from gen_llama_data import SafetensorsReader
 
         print(f"loading bf16 HF reference from {HF_WEIGHTS} ...", flush=True)
@@ -303,6 +312,7 @@ def device_chain_next_token(
     if not self_prefill:
         # host-prefill: dispatch ONCE for the last token.
         wblob, kvblob = pack_blobs(layers)
+        assert isinstance(last_out, tuple)
         x_i8, res_scale = last_out
         xin = _np.zeros(D + 8, dtype=_np.int8)
         xin[:D] = x_i8
@@ -322,6 +332,7 @@ def device_chain_next_token(
         # (on-chip final_norm + lm_head + sampler).
         return last_out[1]
 
+    assert isinstance(last_out, np.ndarray)
     dev_scale = struct.unpack("<f", last_out[D : D + 4].tobytes())[0]
     hidden_fp = last_out[:D].astype(np.float32) * np.float32(dev_scale)
     logits = lm_head_logits(model, hidden_fp[None, :])[0]
@@ -331,18 +342,14 @@ def device_chain_next_token(
 def _set_kv_t_used(kvblob, t_used):
     """Write per-head T_used into every KV-head prefix of the device cache."""
     import numpy as _np
-    from aie2_chain_dynscale_mh import (
-        N_LAYERS,
-        N_HEADS_KV,
-        PER_LAYER_KV,
-        PER_KV_HEAD_BYTES,
-    )
+    from aie2_chain_dynscale_mh import N_HEADS_KV, derived_sizes
 
+    sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS)
     tb = _np.frombuffer(_np.int32(t_used).tobytes(), dtype=_np.int8)
     for L in range(N_LAYERS):
-        base = L * PER_LAYER_KV
+        base = L * sizes.PER_LAYER_KV
         for h in range(N_HEADS_KV):
-            off = base + h * PER_KV_HEAD_BYTES
+            off = base + h * sizes.PER_KV_HEAD_BYTES
             kvblob[off : off + 4] = tb
 
 
@@ -436,8 +443,8 @@ def main():
     dev = None
     if opts.device:
         import aie.iron as iron
-        from aie.utils import DefaultNPURuntime
         import aie.utils.test as test_utils
+        from aie.utils import DefaultNPURuntime
 
         assert (
             opts.xclbin and opts.instr and opts.kernel

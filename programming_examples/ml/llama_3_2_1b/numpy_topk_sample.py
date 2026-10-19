@@ -19,7 +19,7 @@ Reuses the xoshiro PRNG / exp LUT / quant_shifted / sw_recip from numpy_sample.
 from __future__ import annotations
 
 import numpy as np
-
+from gen_exp_lut import exp_lut
 from numpy_sample import (
     EXP_QUANT_SCALE,
     lookup_exp,
@@ -27,7 +27,6 @@ from numpy_sample import (
     xoshiro_seed,
     xoshiro_uniform,
 )
-from gen_exp_lut import exp_lut
 from test_flowkv import sw_recip
 
 
@@ -67,8 +66,6 @@ def topk_sample_reference(
     is the resident-set capacity (kernel's kKset). Requires top_k <= k_set and
     top_k > 0 (full-vocab top_k=0 is out of scope for the one-stream design)."""
     logits = logits_f32.astype(np.float32)
-    V = logits.size
-
     set_idx = topk_set_reference(logits, k_set)
 
     # Greedy: global argmax with first-occurrence (smallest gidx) tie-break.

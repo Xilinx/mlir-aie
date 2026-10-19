@@ -7,7 +7,7 @@ multi-head shapes (N_HEADS_Q=32, N_HEADS_KV=8, REP=4, HEAD_DIM=64,
 Q_DIM=2048, D=2048, HD=8192, T=128). One xclbin, one dispatch, all
 attention + FFN.
 
-Topology (additions vs aie2_layer_d2048):
+Topology (additions vs a single-head layer):
   - q_proj writes QD=2048 (32 heads) plus a 256 B per-head scale tail
     (32 [q_out_scale, sv_inv_out_scale] pairs).
   - rope_mh loops 32 heads, passes tail through.
@@ -35,17 +35,16 @@ import os as _os
 import sys
 
 import numpy as np
-
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
-from aie.iron.device import NPU2, Tile
-from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern
 from aie.dialects.arith import index_cast
-from aie.ir import IntegerType
+from aie.extras.types import i32
+from aie.helpers.taplib import TensorAccessPattern
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
+from aie.iron.controlflow import range_
+from aie.iron.device import NPU2
 
 
 def _i32(idx):
-    return index_cast(IntegerType.get_signless(32), idx)
+    return index_cast(i32(), idx)
 
 
 # --- Production multi-head shapes ---
@@ -236,17 +235,12 @@ def build():
     rt_kv_ty = _i8(KV_BYTES)
     rt_out_ty = _i8(D + 8)
 
-    t_D_i8 = _i8(D)
     t_D8_i8 = _i8(D + 8)  # rmsnorm-dyn output: D int8 + 4 B fp32 scale + 4 B pad
     t_D_f32 = _f32(D)  # o_proj / down fp32 output -> rescale-add
     t_QF_i8 = _i8(QF_BYTES)
     t_QR_i8 = _i8(QR_BYTES)
-    t_QCHUNKS_HALF_i8 = _i8(QCHUNKS_HALF_BYTES)
-    t_QCHUNK_i8 = _i8(QCHUNK_BYTES)
     t_SVCHUNK_i8 = _i8(SVCHUNK_BYTES)
     t_SVCONCAT_HALF_i8 = _i8(SV_CONCAT_HALF)
-    t_AFSCALES_i8 = _i8(AF_SCALES_BYTES)
-    t_AF_i8 = _i8(AF_BYTES)
     t_AF8_i8 = _i8(AF_BYTES + 8)  # af + self-cal o_act_scale tail (1b)
     t_HD_i8 = _i8(HD)
     t_UF_i8 = _i8(HD + 8)
@@ -259,8 +253,6 @@ def build():
     t_WD_slot = _i8(WD_SLOT)
     t_WK_slot = _i8(WK_SLOT)
     t_WV_slot = _i8(WV_SLOT)
-    t_KCACHE_i8 = _i8(KCACHE_PADDED)
-    t_VCACHE_i8 = _i8(VCACHE_PADDED)
 
     # --- ObjectFifos ---
     of_xin = ObjectFifo(t_D8_i8, depth=1, name="xin")
@@ -391,7 +383,6 @@ def build():
     KO_SILU = "llama_silu_mul_int8.cc.o"
     KO_FKV = "llama_flowkv_mh.cc.o"
     KO_GLUE = "llama_gqa_glue.cc.o"
-    KO_PT = "llama_layer_pt.cc.o"
 
     # rmsnorm acttail: per-token input scale read from the residual tail
     # (x[D..D+4]); no baked scale arg. Input + output are int8[D+8].
@@ -629,7 +620,7 @@ def build():
         c_proj.release(1)
         c_out.release(1)
 
-    PSK = 8192  # match layer_d2048 exactly
+    PSK = 8192  # FFN stack; larger silently corrupts (Bug 12)
     ATSK = 16384  # attn workers (flowkv_mh has local arrays + many loops)
     # FFN-side stack: with the self-cal silu growing of_sf to HD+8, the L1
     # layout shifts so an FFN worker's 8192 B stack ALIASES a fifo buffer
@@ -709,7 +700,7 @@ def build():
             stack_size=PSK,
         ),
         Worker(w_add, [of_xin.cons(), of_op.cons(), of_x1.prod(), k_add]),
-        # ---- FFN (match aie2_layer_d2048 placement exactly) ----
+        # ---- FFN ----
         Worker(
             w_rms,
             [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],

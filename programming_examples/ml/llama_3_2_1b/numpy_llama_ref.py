@@ -19,17 +19,15 @@ INT8 inputs that came from the same .bin files.
 It's also the QUALITY reference for the BF16 PyTorch baseline (6c.5a
 Track 2): compare layer outputs cos-sim.
 
-NOT a generate.py — single forward pass only. Decode loop wrapper is
-6c.7.
+Single forward pass only; no decode loop.
 """
 
 from __future__ import annotations
 
 import argparse
-import sys
+import base64
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import ml_dtypes
 import numpy as np
@@ -136,16 +134,36 @@ def load_model(data_dir: Path) -> ModelW:
     )
 
 
+def load_tokenizer(tokenizer_path: Path):
+    """Llama 3 tiktoken encoder from the data/ tokenizer.model ranks file."""
+    # Optional dep, only needed to tokenize; not in the lint/CI env.
+    import tiktoken  # pyright: ignore[reportMissingImports]
+
+    mergeable = {}
+    with open(tokenizer_path) as f:
+        for line in f:
+            tok_b64, rank = line.strip().split(" ")
+            mergeable[base64.b64decode(tok_b64)] = int(rank)
+    PAT = (
+        r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}"
+        r"| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"
+    )
+    SPECIAL = {
+        "<|begin_of_text|>": 128000,
+        "<|end_of_text|>": 128001,
+        "<|eot_id|>": 128009,
+    }
+    return tiktoken.Encoding(
+        name="llama3", pat_str=PAT, mergeable_ranks=mergeable, special_tokens=SPECIAL
+    )
+
+
 # ---------------------------------------------------------------------------
 # INT8 ops (per-token activation scale, per-channel weight scale).
 # ---------------------------------------------------------------------------
 def quant_act_per_token(x_f32: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Per-row symmetric INT8 quantization. x_f32 is (M, D); returns
-    (q_i8, scale_f32) where scale has shape (M, 1)."""
-    if x_f32.ndim == 1:
-        s = max(float(np.abs(x_f32).max()), 1e-12) / 127.0
-        q = np.round(x_f32 / s).clip(-127, 127).astype(np.int8)
-        return q, np.float32(s)
+    (q_i8, scale_f32) where scale has shape (M,)."""
     absmax = np.maximum(np.abs(x_f32).max(axis=1, keepdims=True), 1e-12)
     s = (absmax / 127.0).astype(np.float32)
     q = np.round(x_f32 / s).clip(-127, 127).astype(np.int8)
@@ -306,7 +324,6 @@ def forward_full(model: ModelW, token_ids: np.ndarray) -> np.ndarray:
     a single new token id (shape (1,)) and the caller's running KV
     cache."""
     x = embed_tokens(model, token_ids)
-    M = x.shape[0]
     # Empty caches; full-sequence prefill.
     kc = [np.zeros((0, KV_DIM), dtype=np.float32) for _ in range(N_LAYERS)]
     vc = [np.zeros((0, KV_DIM), dtype=np.float32) for _ in range(N_LAYERS)]

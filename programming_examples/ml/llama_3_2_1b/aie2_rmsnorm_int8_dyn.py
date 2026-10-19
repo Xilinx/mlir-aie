@@ -15,10 +15,9 @@ import argparse
 import sys
 
 import numpy as np
-from ml_dtypes import bfloat16
-
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
 from aie.iron.device import NPU2, Tile
+from ml_dtypes import bfloat16
 
 RMS_COL, RMS_ROW = 5, 4
 

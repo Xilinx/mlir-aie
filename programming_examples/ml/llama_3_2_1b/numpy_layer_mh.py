@@ -2,12 +2,14 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+# The residual_dyn/residual_fp32 branches bind names read only under the same
+# flag later; pyright can't correlate separate `if`s on one flag.
+# pyright: reportPossiblyUnboundVariable=false
 """Phase 7a: multi-head GQA reference + per-Q-head dynamic-scale
 calibration for the single-layer multi-head xclbin (aie2_layer_mh.py).
 
-Mirrors numpy_layer_forward in test_chain_dynscale.py but at full
-Llama 3.2 1B attn shapes: 32 Q heads, 8 KV heads (GQA, REP=4 Q per
-KV), HEAD_DIM=64, Q_DIM=2048, KV_DIM=512.
+Models the full Llama 3.2 1B attn shapes: 32 Q heads, 8 KV heads (GQA,
+REP=4 Q per KV), HEAD_DIM=64, Q_DIM=2048, KV_DIM=512.
 
 Key changes vs single-head:
   - wq, wo are full (Q_DIM, D) / (D, Q_DIM)
@@ -23,25 +25,24 @@ Key changes vs single-head:
 
 from __future__ import annotations
 
-import numpy as np
-from ml_dtypes import bfloat16
+from functools import partial
+from typing import cast
 
-from aie2_layer_d2048 import (
+import numpy as np
+from aie2_layer_mh import (
     ACT_SCALE,
+    GATE_INV_OUT_SCALE,
     INV_ACT_SCALE,
     SILU_GATE_SCALE,
-    GATE_INV_OUT_SCALE,
 )
-from test_rmsnorm_int8 import numpy_rmsnorm_int8
+from gen_exp_lut import exp_lut
+from gen_llama_data import quant_int8_perchan_absmax
+from gen_silu_lut import silu_lut
+from ml_dtypes import bfloat16
+from test_flowkv import EXP_QUANT_SCALE, numpy_attention
 from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn, sw_recip
 from test_rope_int8 import numpy_rope_dyn
-from test_flowkv import numpy_attention, EXP_QUANT_SCALE
 from test_silu_mul_int8 import numpy_silu_mul
-from test_attn_half import compute_sv_fp
-from test_ffn_half import numpy_gemm_perchan, i8_add_wrap
-from gen_exp_lut import exp_lut
-from gen_silu_lut import silu_lut
-from gen_llama_data import quant_int8_perchan_absmax
 
 # --- Multi-head GQA shape constants ---
 D = 2048
@@ -92,6 +93,56 @@ def attention_perslot(
     probs = e / e.sum()
     sv = probs @ v_mat  # (head_dim,)
     return requant(sv, np.float32(inv_out_scale)), sv.astype(np.float32)
+
+
+def i8_add_wrap(a, b):
+    return (a.astype(np.int32) + b.astype(np.int32)).astype(np.int8)
+
+
+def numpy_gemm_perchan(act_i8, x_scale, w_i8, w_scales, bias_i32, inv_out_scale):
+    """Bit-exact with the perchan kernel.
+    acc = w@a (int32) + bias
+    fp = float(acc) * x_scale * w_scales[n]
+    out = round_half_away_from_zero(fp * inv_out_scale).clip(-128,127)
+    """
+    acc = w_i8.astype(np.int32) @ act_i8.astype(np.int32) + bias_i32
+    fp = acc.astype(np.float32) * np.float32(x_scale) * w_scales.astype(np.float32)
+    scaled = fp * np.float32(inv_out_scale)
+    rounded = np.where(
+        scaled >= 0,
+        np.floor(scaled + np.float32(0.5)),
+        np.ceil(scaled - np.float32(0.5)),
+    )
+    return rounded.clip(-128, 127).astype(np.int8)
+
+
+def compute_sv_fp(qr, kcache, vcache, head_dim, t, q_scale, k_scale, v_scale, lut):
+    """Replicate numpy_attention's fp32 sv computation up to the final
+    (* inv_out_scale + round) — returns the unrounded fp32 sv vector so
+    the caller can derive sv_out_scale = max(|sv|)/127."""
+    from test_flowkv import quant_shifted, sw_recip
+
+    qs = np.float32(q_scale)
+    ks = np.float32(k_scale)
+    inv_sqrt = np.float32(0.125)
+    qk_scale = ((qs * ks).astype(np.float32) * inv_sqrt).astype(np.float32)
+    k_mat = kcache.astype(np.int32).reshape(t, head_dim)
+    dots = k_mat @ qr.astype(np.int32)
+    scores = dots.astype(np.float32) * qk_scale
+    max_s = np.float32(scores.max())
+    shifted = (scores - max_s).astype(np.float32)
+    q = quant_shifted(shifted)
+    exp_v = lut[q + 128].astype(np.float32)
+    sum_e = np.float32(0.0)
+    for i in range(t):
+        sum_e = (sum_e + exp_v[i]).astype(np.float32)
+    inv_sum = sw_recip(sum_e)
+    probs = (exp_v * inv_sum).astype(np.float32)
+    v_mat = vcache.astype(np.int32).reshape(t, head_dim).astype(np.float32)
+    acc = np.zeros(head_dim, dtype=np.float32)
+    for i in range(t):
+        acc = (acc + (probs[i] * v_mat[i])).astype(np.float32)
+    return (acc * np.float32(v_scale)).astype(np.float32)
 
 
 def numpy_attention_perslot_lut(
@@ -157,7 +208,6 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     """Phase 7a real-weight loader: full Q_DIM/KV_DIM Llama 3.2 1B weights
     sliced into the 8 KV-head layout the mh xclbin expects. KV cache stays
     random per-seed (chain doesn't model real k_proj/v_proj yet).
-    Mirrors test_chain_dynscale.gen_real_layer but without head-0 slicing.
     """
     from pathlib import Path
 
@@ -528,7 +578,7 @@ def numpy_layer_mh_forward(
             ksl = layer["k_scales_slot"][kvh]
             vsl = layer["v_scales_slot"][kvh]
             attn_fn = (
-                (lambda *a: numpy_attention_perslot_lut(*a, lut_exp))
+                partial(numpy_attention_perslot_lut, lut=lut_exp)
                 if attn_lut
                 else attention_perslot
             )
@@ -727,7 +777,12 @@ def _selftest():
     layer["lut_silu"] = silu_lut(SILU_GATE_SCALE)
 
     x = rng.integers(-32, 33, size=D, dtype=np.int8)
+    # residual_dyn defaults False, so x_out is always the plain-array form
+    # (see numpy_layer_mh_forward's residual_dyn branch for the other one);
+    # pyright can't narrow that from the default, hence the casts.
     y, scales = numpy_layer_mh_forward(x, layer)
+    y = cast(np.ndarray, y)
+    scales = cast(dict, scales)
 
     assert y.shape == (D,) and y.dtype == np.int8
     assert not np.isnan(y).any()

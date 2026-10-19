@@ -15,15 +15,13 @@ from __future__ import annotations
 import argparse
 import sys
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
 import aie.utils.test as test_utils
+import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
-
 from aie2_rmsnorm_int8 import ACT_SCALE_IN, INV_ACT_SCALE_OUT
+from ml_dtypes import bfloat16
 
 
 def round_to_i8(v: np.ndarray) -> np.ndarray:

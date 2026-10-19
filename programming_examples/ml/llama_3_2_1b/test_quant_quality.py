@@ -20,41 +20,36 @@ Pass criteria (per cautious-eureka quality findings):
 from __future__ import annotations
 
 import argparse
+import base64
 import os
 import sys
 from pathlib import Path
 
-import ml_dtypes
 import numpy as np
 
 # Reuse the safetensors reader from the extractor.
 from gen_llama_data import (
-    SafetensorsReader,
-    VOCAB_SIZE,
     EMB_DIM,
-    N_LAYERS,
+    HEAD_DIM,
+    KV_DIM,
     N_HEADS,
     N_KV_GROUPS,
-    HEAD_DIM,
-    HIDDEN_DIM,
+    N_LAYERS,
     Q_DIM,
-    KV_DIM,
+    SafetensorsReader,
 )
 
 # Reuse the INT8 numpy ref.
 from numpy_llama_ref import (
-    load_model,
+    apply_rope,
+    attention_full_gqa,
     embed_tokens,
     forward_layer_int8,
     lm_head_logits,
+    load_model,
     rmsnorm,
     rope_cos_sin,
-    apply_rope,
     silu,
-    attention_full_gqa,
-    quant_act_per_token,
-    ROPE_BASE,
-    RMS_EPS,
 )
 
 
@@ -187,8 +182,9 @@ def main():
         marker = "✓" if ok else "✗"
         print(f"  layer {L:02d}  cos_sim={cs:.6f}  max_rel_err={re:.3e}  {marker}")
 
-    # End-to-end logits comparison on a REAL prompt via tiktoken.
-    import base64, tiktoken
+    # End-to-end logits comparison on a REAL prompt via tiktoken (optional
+    # dep, only needed here; not in the lint/CI env).
+    import tiktoken  # pyright: ignore[reportMissingImports]
 
     mergeable = {}
     with open(opts.data_dir / "tokenizer.model") as f:

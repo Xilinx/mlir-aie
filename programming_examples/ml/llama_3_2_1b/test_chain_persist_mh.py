@@ -21,47 +21,44 @@ Run:
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
-import argparse
 import aie.utils.test as test_utils
+import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
-
 from aie2_chain_dynscale_mh import (
-    D,
-    N_HEADS_KV,
     HEAD_D,
-    VOCAB,
+    N_HEADS_KV,
     N_TILE,
-    WLM_TOTAL,
+    SAMPLE_SEED,
     SAMPLE_TEMP,
     SAMPLE_TOPK,
-    SAMPLE_SEED,
+    SILU_GATE_SCALE,
+    VOCAB,
+    WLM_TOTAL,
+    D,
     derived_sizes,
 )
+from gen_exp_lut import exp_lut
+from gen_silu_lut import silu_lut
+from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
+from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw
+from numpy_topk_sample import topk_sample_reference
+from test_chain_mh import pack_blobs
+from test_flowkv import EXP_QUANT_SCALE as FKV_EXP_QUANT_SCALE
+from test_layer_mh import pack_perchan_slots
+from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
 ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
 PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
 KV_BYTES = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT).KV_BYTES
-from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
-from numpy_llama_ref import _load_qw, _load_bf16, VOCAB_SIZE, EMB_DIM
-from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
-from test_ffn_half import pack_perchan_slots
-from numpy_topk_sample import topk_sample_reference
-from gen_exp_lut import exp_lut
-from gen_silu_lut import silu_lut
-from test_flowkv import EXP_QUANT_SCALE as FKV_EXP_QUANT_SCALE
-from aie2_chain_dynscale_mh import SILU_GATE_SCALE
-from test_chain_mh import pack_blobs
-
 DATA_DIR = Path(__file__).parent / "data"
 
 

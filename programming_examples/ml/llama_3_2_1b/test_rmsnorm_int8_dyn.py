@@ -17,15 +17,13 @@ import argparse
 import struct
 import sys
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
 import aie.utils.test as test_utils
+import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
-
 from aie2_rmsnorm_int8_dyn import ACT_SCALE_IN
+from ml_dtypes import bfloat16
 from test_rmsnorm_int8 import round_to_i8, sw_invsqrt
 
 
@@ -44,7 +42,10 @@ def sw_recip(a: float | np.float32) -> float:
 
 
 def numpy_rmsnorm_int8_dyn(
-    x_i8: np.ndarray, gamma_bf16: np.ndarray, act_scale_in: float, eps: float = 1e-5
+    x_i8: np.ndarray,
+    gamma_bf16: np.ndarray,
+    act_scale_in: float | np.floating,
+    eps: float = 1e-5,
 ):
     """Returns (y_i8: int8[D], scale_dyn: fp32)."""
     sum_sq_i32 = int((x_i8.astype(np.int32) ** 2).sum())

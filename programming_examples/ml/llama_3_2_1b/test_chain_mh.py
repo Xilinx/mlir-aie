@@ -25,53 +25,50 @@ import argparse
 import os
 import sys
 
-import numpy as np
-
 import aie.iron as iron
 import aie.utils.test as test_utils
+import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
-
 from aie2_chain_dynscale_mh import (
-    D,
-    HD,
-    HEAD_D,
-    N_HEADS_Q,
-    N_HEADS_KV,
-    REP,
-    QD,
-    N_TILE,
-    KV_DIM,
-    WQ_SLOT,
-    WO_SLOT,
-    WG_SLOT,
-    WU_SLOT,
-    WD_SLOT,
-    WK_SLOT,
-    WV_SLOT,
-    WQ_PREFIX,
-    N_TILES_Q,
-    N_TILES_O,
-    N_TILES_G,
-    N_TILES_U,
-    N_TILES_D,
-    N_TILES_K,
-    N_TILES_V,
-    GAMMA_BYTES,
-    CS_BYTES,
-    AF_SCALES_BYTES,
-    T_USED_BYTES,
     ACT_SCALE,
+    AF_SCALES_BYTES,
+    CS_BYTES,
+    GAMMA_BYTES,
+    HEAD_D,
     INV_ACT_SCALE,
+    KV_DIM,
+    N_HEADS_KV,
+    N_TILE,
+    N_TILES_D,
+    N_TILES_G,
+    N_TILES_K,
+    N_TILES_O,
+    N_TILES_Q,
+    N_TILES_U,
+    N_TILES_V,
     SILU_GATE_SCALE,
+    T_USED_BYTES,
+    WD_SLOT,
+    WG_SLOT,
+    WK_SLOT,
+    WO_SLOT,
+    WQ_SLOT,
+    WU_SLOT,
+    WV_SLOT,
+    D,
     derived_sizes,
 )
-from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
-from test_layer_mh import wq_mh_prefix, af_scales_bytes
-from test_ffn_half import pack_perchan_slots, fp32_bytes
-from test_flowkv import EXP_QUANT_SCALE
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
+from test_flowkv import EXP_QUANT_SCALE
+from test_layer_mh import (
+    af_scales_bytes,
+    fp32_bytes,
+    pack_perchan_slots,
+    wq_mh_prefix,
+)
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))

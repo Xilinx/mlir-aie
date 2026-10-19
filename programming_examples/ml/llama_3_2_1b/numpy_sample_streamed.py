@@ -17,7 +17,7 @@ Reuses the xoshiro PRNG, exp LUT, quant_shifted, sw_recip from numpy_sample.
 from __future__ import annotations
 
 import numpy as np
-
+from gen_exp_lut import exp_lut
 from numpy_sample import (
     EXP_QUANT_SCALE,
     MASK_SENTINEL,
@@ -26,7 +26,6 @@ from numpy_sample import (
     xoshiro_seed,
     xoshiro_uniform,
 )
-from gen_exp_lut import exp_lut
 from test_flowkv import sw_recip
 
 

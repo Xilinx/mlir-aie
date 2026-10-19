@@ -23,74 +23,96 @@ from __future__ import annotations
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
 import aie.utils.test as test_utils
+import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
-
 from aie2_layer_mh import (
-    D,
-    HD,
-    HEAD_D,
-    N_HEADS_Q,
-    N_HEADS_KV,
-    REP,
-    QD,
-    T,
-    N_TILE,
-    KV_DIM,
-    WQ_SLOT,
-    WO_SLOT,
-    WG_SLOT,
-    WU_SLOT,
-    WD_SLOT,
-    WK_SLOT,
-    WV_SLOT,
-    WQ_PREFIX,
-    N_TILES_Q,
-    N_TILES_O,
-    N_TILES_G,
-    N_TILES_U,
-    N_TILES_D,
-    N_TILES_K,
-    N_TILES_V,
-    OFF_GAMMA_IN,
-    OFF_WQ,
-    OFF_CS,
-    OFF_WO,
-    OFF_AF_SCALES,
-    OFF_GAMMA_POST,
-    OFF_WG,
-    OFF_WU,
-    OFF_WD,
-    OFF_WK,
-    OFF_WV,
-    GAMMA_BYTES,
-    CS_BYTES,
-    AF_SCALES_BYTES,
-    KCACHE_BYTES,
-    VCACHE_BYTES,
-    KCACHE_PADDED,
-    VCACHE_PADDED,
-    KV_HEADER,
-    PER_KV_HEAD_BYTES,
-    kv_off_t_used,
-    kv_off_k,
-    kv_off_v,
-    KV_BYTES,
-    WEIGHTS_BYTES,
-    T_USED_BYTES,
     ACT_SCALE,
+    AF_SCALES_BYTES,
+    CS_BYTES,
+    GAMMA_BYTES,
+    HEAD_D,
     INV_ACT_SCALE,
+    KCACHE_BYTES,
+    KV_BYTES,
+    KV_DIM,
+    KV_HEADER,
+    N_HEADS_KV,
+    N_HEADS_Q,
+    N_TILE,
+    N_TILES_D,
+    N_TILES_G,
+    N_TILES_K,
+    N_TILES_O,
+    N_TILES_Q,
+    N_TILES_U,
+    N_TILES_V,
+    OFF_AF_SCALES,
+    OFF_CS,
+    OFF_GAMMA_IN,
+    OFF_GAMMA_POST,
+    OFF_WD,
+    OFF_WG,
+    OFF_WK,
+    OFF_WO,
+    OFF_WQ,
+    OFF_WU,
+    OFF_WV,
     SILU_GATE_SCALE,
+    VCACHE_BYTES,
+    WD_SLOT,
+    WEIGHTS_BYTES,
+    WG_SLOT,
+    WK_SLOT,
+    WO_SLOT,
+    WQ_PREFIX,
+    WQ_SLOT,
+    WU_SLOT,
+    WV_SLOT,
+    D,
+    T,
+    kv_off_k,
+    kv_off_t_used,
+    kv_off_v,
 )
-from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
-from test_ffn_half import pack_perchan_slots, fp32_bytes
-from test_flowkv import EXP_QUANT_SCALE
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
+from test_flowkv import EXP_QUANT_SCALE
+
+
+def pack_perchan_slots(w_i8, w_scales, bias_i32, n_tile, prefix_bytes: bytes = b""):
+    """Pack per-tile slots:
+       [prefix_bytes | N_TILE*K i8 | N_TILE i32 bias | N_TILE fp32 w_scales]
+    prefix_bytes is a per-slot constant (repeated in every tile slot).
+    """
+    N, K = w_i8.shape
+    n_tiles = N // n_tile
+    pre = len(prefix_bytes)
+    slot = pre + n_tile * K + n_tile * 4 + n_tile * 4
+    blob = np.zeros(n_tiles * slot, dtype=np.int8)
+    pre_arr = np.frombuffer(prefix_bytes, dtype=np.int8)
+    for t in range(n_tiles):
+        base = t * slot
+        off = base
+        if pre:
+            blob[off : off + pre] = pre_arr
+            off += pre
+        rows = w_i8[t * n_tile : (t + 1) * n_tile].flatten()
+        bs = bias_i32[t * n_tile : (t + 1) * n_tile].view(np.int8).flatten()
+        ws = w_scales[t * n_tile : (t + 1) * n_tile].view(np.int8).flatten()
+        blob[off : off + rows.size] = rows
+        off += rows.size
+        blob[off : off + bs.size] = bs
+        off += bs.size
+        blob[off : off + ws.size] = ws
+    return blob
+
+
+def fp32_bytes(*vals):
+    return np.array(vals, dtype=np.float32).tobytes()
 
 
 def wq_mh_prefix(
@@ -365,8 +387,6 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
         ]
         kb_ref = kcaches_ref[h][P * HEAD_D : (P + 1) * HEAD_D]
         vb_ref = vcaches_ref[h][P * HEAD_D : (P + 1) * HEAD_D]
-        kbody_ok = np.array_equal(kb, kb_ref)
-        vbody_ok = np.array_equal(vb, vb_ref)
         ks_dev = struct.unpack(
             "<f", kv_dev[k_off + P * 4 : k_off + P * 4 + 4].tobytes()
         )[0]

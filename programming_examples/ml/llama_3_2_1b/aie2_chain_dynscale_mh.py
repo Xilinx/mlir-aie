@@ -2,6 +2,9 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+# Names here are bound under one mode flag and read under a flag that implies
+# it; pyright can't correlate separate `if`s on related flags.
+# pyright: reportPossiblyUnboundVariable=false, reportOptionalMemberAccess=false
 """Phase 7b: N-layer decode chain at PRODUCTION multi-head GQA shapes
 (32 Q heads, 8 KV heads, REP=4, HEAD_DIM=64, Q_DIM=2048, KV_DIM=512,
 HD=8192, T=128).
@@ -9,9 +12,9 @@ HD=8192, T=128).
 Combines:
   - aie2_layer_mh.py topology (q_proj_mh + rope_mh + q_split + 8 attn +
     sv_merge + af_concat + o_proj_mh + FFN-half, plus af_scales fifo)
-  - aie2_chain_dynscale.py multi-layer wrapper (residual loop-back via
-    router, range_(N_LAYERS) in each worker, per-fifo per-layer fill
-    with ping-pong BD reuse).
+  - a multi-layer wrapper (residual loop-back via router,
+    range_(N_LAYERS) in each worker, per-fifo per-layer fill with
+    ping-pong BD reuse).
 
 All ObjectFifos depth=1 (Bug 8). FFN-side stack_size matches
 layer_mh's PSK=8192 (Bug 12 -- larger silently corrupts).
@@ -32,8 +35,8 @@ from pathlib import Path
 
 import numpy as np
 from aie.dialects.arith import constant, index_cast
+from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
-from aie.ir import IntegerType
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -67,11 +70,11 @@ def _onestream_params_init():
 
 
 def _i32(idx):
-    return index_cast(IntegerType.get_signless(32), idx)
+    return index_cast(i32(), idx)
 
 
 def _const_i32(v):
-    return constant(IntegerType.get_signless(32), v)
+    return constant(i32(), v)
 
 
 # --- Production multi-head shapes (fixed architecture, never parameterized) ---
@@ -166,7 +169,7 @@ CS_BYTES = HEAD_D * 2 * 2
 T_USED_BYTES = 8
 
 
-def _envf(name, default):
+def _envf(name: str, default: str) -> float:
     return float(_os.environ.get(name, default))
 
 
@@ -390,6 +393,12 @@ def build(
     T: CompileTime[int] = 128,
     ONESTREAM_KSET: CompileTime[int] = 16,
 ):
+    # Below, a name assigned only under one mode flag (e.g. GATHER) is read
+    # only under a flag that implies it (e.g. GATHER implies SAMPLE, so a
+    # GATHER-only name is safe inside `if SAMPLE:`) -- pyright can't see that
+    # implication across separate `if` statements, hence the scattered
+    # `` below.
+    #
     # Flag implications (mirrors the former module-level env-var derivation:
     # each flag below only takes effect if its prerequisite does too).
     GATHER = GATHER and SAMPLE
@@ -402,26 +411,10 @@ def build(
     PT = PT if PERSIST else 1
 
     sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT, PERSIST_GROW=PERSIST_GROW)
-    KV_HEADER = sizes.KV_HEADER
-    KCACHE_BYTES = sizes.KCACHE_BYTES
-    VCACHE_BYTES = sizes.VCACHE_BYTES
-    KCACHE_PADDED = sizes.KCACHE_PADDED
-    VCACHE_PADDED = sizes.VCACHE_PADDED
-    GAMMA_TOTAL = sizes.GAMMA_TOTAL
-    CS_TOTAL = sizes.CS_TOTAL
-    WQ_TOTAL = sizes.WQ_TOTAL
-    WO_TOTAL = sizes.WO_TOTAL
-    WG_TOTAL = sizes.WG_TOTAL
-    WU_TOTAL = sizes.WU_TOTAL
-    WD_TOTAL = sizes.WD_TOTAL
-    WK_TOTAL = sizes.WK_TOTAL
-    WV_TOTAL = sizes.WV_TOTAL
-    AF_SCALES_TOTAL = sizes.AF_SCALES_TOTAL
     OFF_GAMMA_IN = sizes.OFF_GAMMA_IN
     OFF_WQ = sizes.OFF_WQ
     OFF_CS = sizes.OFF_CS
     OFF_WO = sizes.OFF_WO
-    OFF_AF_SCALES = sizes.OFF_AF_SCALES
     OFF_GAMMA_POST = sizes.OFF_GAMMA_POST
     OFF_WG = sizes.OFF_WG
     OFF_WU = sizes.OFF_WU
@@ -430,7 +423,6 @@ def build(
     OFF_WV = sizes.OFF_WV
     WEIGHTS_BYTES = sizes.WEIGHTS_BYTES
     OFF_CS_PERPOS = sizes.OFF_CS_PERPOS
-    CS_PERPOS_TOTAL = sizes.CS_PERPOS_TOTAL
     PER_KV_HEAD_BYTES = sizes.PER_KV_HEAD_BYTES
     PER_LAYER_KV = sizes.PER_LAYER_KV
     KV_HALF_BYTES = sizes.KV_HALF_BYTES
@@ -452,17 +444,12 @@ def build(
     rt_lmw_ty = _i8(LMW_GAMMA_BYTES + WLM_TOTAL)
     rt_token_ty = _i32a(1)
 
-    t_D_i8 = _i8(D)
     t_D8_i8 = _i8(D + 8)  # residual / rmsnorm-dyn: D int8 + 4 B scale + 4 B pad
     t_D_f32 = _f32(D)  # o_proj / down fp32 output -> rescale-add
     t_QF_i8 = _i8(QF_BYTES)
     t_QR_i8 = _i8(QR_BYTES)
-    t_QCHUNKS_HALF_i8 = _i8(QCHUNKS_HALF_BYTES)
-    t_QCHUNK_i8 = _i8(QCHUNK_BYTES)
     t_SVCHUNK_i8 = _i8(SVCHUNK_BYTES)
     t_SVCONCAT_HALF_i8 = _i8(SV_CONCAT_HALF)
-    t_AFSCALES_i8 = _i8(AF_SCALES_BYTES)
-    t_AF_i8 = _i8(AF_BYTES)
     t_AF8_i8 = _i8(AF_BYTES + 8)  # af + self-cal o_act tail (1b)
     t_HD_i8 = _i8(HD)
     t_UF_i8 = _i8(HD + 8)
@@ -551,7 +538,11 @@ def build(
 
     if GATHER:
         # A second pass over the lm_head weight slots (GATHER mode).
-        of_gwlm = ObjectFifo(t_wlm_slot, depth=2, name="gwlm")
+        of_gwlm = ObjectFifo(
+            t_wlm_slot,
+            depth=2,
+            name="gwlm",
+        )
         # token_in: the input token id, host-supplied (this step) -> on-chip
         # (capstone). Worker-local Buffer, host-filled via a tiny runtime arg.
         of_token_in = ObjectFifo(_i32a(1), depth=1, name="token_in")
@@ -674,7 +665,6 @@ def build(
     KO_SILU = "llama_silu_mul_int8.cc.o"
     KO_FKV = "llama_flowkv_mh.cc.o"
     KO_GLUE = "llama_gqa_glue.cc.o"
-    KO_PT = "llama_layer_pt.cc.o"
     KO_SAMP = "llama_sample_streamed.cc.o"
 
     # acttail variant (see aie2_layer_mh.py's same-named comment).
@@ -719,24 +709,45 @@ def build(
         k_lmhead = Kernel(
             "llama_gemm_tiled_layer_K2048_N4_lmhead_fp32out",
             KO_GEMM,
-            [t_D8_i8, t_wlm_slot, t_lm_chunk_f32, np.int32],
+            [
+                t_D8_i8,
+                t_wlm_slot,
+                t_lm_chunk_f32,
+                np.int32,
+            ],
         )
         k_sample = Kernel(
             "llama_sample_streamed",
             KO_SAMP,
-            [t_lm_chunk_f32, t_state_i8, t_params_u32, np.int32, np.int32, np.int32],
+            [
+                t_lm_chunk_f32,
+                t_state_i8,
+                t_params_u32,
+                np.int32,
+                np.int32,
+                np.int32,
+            ],
         )
         k_sample_final = Kernel(
             "llama_sample_streamed_finalize",
             KO_SAMP,
-            [t_state_i8, _i32a(1), t_params_u32],
+            [
+                t_state_i8,
+                _i32a(1),
+                t_params_u32,
+            ],
         )
     if GATHER:
         # embed select over a lm_head weight slot: pick embed[token] -> seed.
         k_embsel = Kernel(
             "llama_embed_select_slot",
             "llama_embed_select.cc.o",
-            [t_wlm_slot, t_D8_i8, _i32a(1), np.int32],
+            [
+                t_wlm_slot,
+                t_D8_i8,
+                _i32a(1),
+                np.int32,
+            ],
         )
     # q_proj-mh fp32 out (2a): act_scale from h1 tail; q_out_scales downstream.
     k_q = Kernel(
@@ -823,7 +834,12 @@ def build(
         k_fkv_res = Kernel(
             "llama_flowkv_mh_kvc_selfcal_resident",
             KO_FKV,
-            [t_COMB_i8, t_KVRES_i8, t_SVCHUNK_i8, np.int32],
+            [
+                t_COMB_i8,
+                t_KVRES_i8,
+                t_SVCHUNK_i8,
+                np.int32,
+            ],
         )
     # silu self-cal (1a): writes silu_out_scale to sf tail.
     k_silu = Kernel("llama_silu_mul_int8_selfcal", KO_SILU, [t_HD_i8, t_UF_i8, t_UF_i8])
@@ -1332,7 +1348,12 @@ def build(
             # final_norm (free tile 4,4)
             Worker(
                 w_fnorm,
-                [of_out.cons(), of_fgam.cons(), of_fnorm.prod(), k_rms],
+                [
+                    of_out.cons(),
+                    of_fgam.cons(),
+                    of_fnorm.prod(),
+                    k_rms,
+                ],
                 stack_size=2048,
             ),
             # Fused lm_head GEMM + top-k insert + finalize on one tile: ONE table
@@ -1383,7 +1404,11 @@ def build(
             workers += [
                 Worker(
                     w_seedmux,
-                    [of_hostseed.cons(), of_feedback.cons(), of_seed.prod()],
+                    [
+                        of_hostseed.cons(),
+                        of_feedback.cons(),
+                        of_seed.prod(),
+                    ],
                     stack_size=PSK,
                 ),
             ]
@@ -1392,14 +1417,24 @@ def build(
             # final_norm (free tile 4,4)
             Worker(
                 w_fnorm,
-                [of_out.cons(), of_fgam.cons(), of_fnorm.prod(), k_rms],
+                [
+                    of_out.cons(),
+                    of_fgam.cons(),
+                    of_fnorm.prod(),
+                    k_rms,
+                ],
                 stack_size=2048,
             ),
             # lm_head GEMM (5,4 = relay gemm tile) + streamed sampler (5,5 =
             # relay sampler tile). The relay owns the memtile (4,1) DMA.
             Worker(
                 w_lmhead,
-                [of_fnorm.cons(), of_wlm.cons(), lm_relay, k_lmhead],
+                [
+                    of_fnorm.cons(),
+                    of_wlm.cons(),
+                    lm_relay,
+                    k_lmhead,
+                ],
                 stack_size=PSK,
             ),
             Worker(
@@ -1420,7 +1455,12 @@ def build(
         workers += [
             Worker(
                 w_gather,
-                [of_gwlm.cons(), of_token_in.cons(), of_seed.prod(), k_embsel],
+                [
+                    of_gwlm.cons(),
+                    of_token_in.cons(),
+                    of_seed.prod(),
+                    k_embsel,
+                ],
                 stack_size=PSK,
             ),
         ]
@@ -1449,7 +1489,10 @@ def build(
 
     seq_eps = []
     if GATHER:
-        seq_eps += [of_token_in.prod(), of_gwlm.prod()]
+        seq_eps += [
+            of_token_in.prod(),
+            of_gwlm.prod(),
+        ]
     elif PERSIST:
         seq_eps += [of_hostseed.prod()]
     else:
@@ -1479,7 +1522,10 @@ def build(
     else:
         seq_eps += [of_out.cons()]
     if not PERSIST_RESIDENT:
-        seq_eps += [of_kvout_lo.cons(), of_kvout_hi.cons()]
+        seq_eps += [
+            of_kvout_lo.cons(),
+            of_kvout_hi.cons(),
+        ]
 
     def sequence(*args):
         it = iter(args)

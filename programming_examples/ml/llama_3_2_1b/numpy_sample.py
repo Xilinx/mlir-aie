@@ -14,7 +14,6 @@ Here we reproduce the kernel's bitwise arithmetic.
 from __future__ import annotations
 
 import numpy as np
-
 from gen_exp_lut import exp_lut
 from test_flowkv import sw_recip  # IEEE fp32 reciprocal NR, matches kernel
 
@@ -102,9 +101,9 @@ def sample_reference(
         best_v = 0
         best = int(logits_i8[0])
         for v in range(1, V):
-            l = int(logits_i8[v])
-            if l > best:
-                best = l
+            val = int(logits_i8[v])
+            if val > best:
+                best = val
                 best_v = v
         return best_v
 

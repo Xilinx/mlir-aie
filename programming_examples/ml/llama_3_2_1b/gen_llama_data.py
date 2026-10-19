@@ -33,8 +33,8 @@ Output layout:
                     /wu.i8.bin     wu.scales.f32.bin   (HD*D, HD)
                     /wd.i8.bin     wd.scales.f32.bin   (D*HD, D)
 
-A tokenizer file is copied into data/tokenizer.model so generate.py
-(Phase 6c.7) can read it without juggling another path.
+A tokenizer file is copied into data/tokenizer.model so
+numpy_llama_ref.load_tokenizer can read it without juggling another path.
 """
 
 from __future__ import annotations

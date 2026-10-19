@@ -24,7 +24,6 @@ import os
 import sys
 
 import numpy as np
-
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
 from aie.iron.device import NPU2, Tile
 

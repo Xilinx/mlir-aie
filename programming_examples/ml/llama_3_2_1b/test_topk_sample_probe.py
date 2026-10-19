@@ -18,14 +18,12 @@ from __future__ import annotations
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
 import aie.utils.test as test_utils
+import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
-
-from aie2_topk_sample_probe import V, D, KSET, N_TILE, N_TILES, TEMP, TOPK, SEED
+from aie2_topk_sample_probe import KSET, N_TILE, N_TILES, SEED, TEMP, TOPK, D, V
 from numpy_topk_sample import topk_sample_reference
 
 

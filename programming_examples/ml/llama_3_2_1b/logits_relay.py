@@ -31,7 +31,19 @@ them. The GEMM worker calls .produce_chunk() handles; the sampler worker calls
 """
 
 import numpy as np
-
+from aie.dialects._aie_enum_gen import DMAChannelDir, LockAction, WireBundle
+from aie.dialects._aie_ops_gen import EndOp
+from aie.dialects.aie import (
+    buffer,
+    dma_bd,
+    dma_start,
+    flow,
+    lock,
+    mem,
+    memtile_dma,
+    next_bd,
+    use_lock,
+)
 from aie.iron.resolvable import Resolvable
 
 
@@ -97,28 +109,20 @@ class LogitsRelay(Resolvable):
 
     # ---- GEMM producer side: write one chunk into the send buffer ----
     def gemm_acquire(self):
-        from aie.dialects.aie import use_lock, LockAction
-
         # wait for the buffer to be free (DMA done with the previous chunk)
         use_lock(self._gemm_free_lock, LockAction.AcquireGreaterEqual)
         return self._gemm_send_buf
 
     def gemm_release(self):
-        from aie.dialects.aie import use_lock, LockAction
-
         # signal the chunk is ready for the DMA to send
         use_lock(self._gemm_ready_lock, LockAction.Release)
 
     # ---- sampler consumer side: pull one CHUNK window ----
     def acquire(self, n: int = 1):
-        from aie.dialects.aie import use_lock, LockAction
-
         use_lock(self._samp_cons_lock, LockAction.AcquireGreaterEqual)
         return self._recv_buf
 
     def release(self, n: int = 1):
-        from aie.dialects.aie import use_lock, LockAction
-
         use_lock(self._samp_prod_lock, LockAction.Release)
 
     def resolve(self, loc=None, ip=None) -> None:
@@ -126,22 +130,6 @@ class LogitsRelay(Resolvable):
         if self._resolved:
             return
         self._resolved = True
-        from aie.dialects.aie import (
-            buffer,
-            lock,
-            flow,
-            memtile_dma,
-            mem,
-            dma_start,
-            dma_bd,
-            next_bd,
-            use_lock,
-            DMAChannelDir,
-            LockAction,
-            WireBundle,
-            EndOp,
-        )
-
         f32 = np.float32
         half_ty = np.ndarray[(self._half,), np.dtype[f32]]
         chunk_ty = np.ndarray[(self._chunk,), np.dtype[f32]]
@@ -150,9 +138,6 @@ class LogitsRelay(Resolvable):
         mem_op = self._memtile.op
         gemm_op = self._gemm.op
         samp_op = self._sampler.op
-
-        n_gemm_chunks = self._half // self._gemm_chunk
-        n_cons_chunks = self._half // self._chunk
 
         # --- Memtile: the resident HALF buffer ---
         half_buf = buffer(mem_op, half_ty, f"{self._name}_half")

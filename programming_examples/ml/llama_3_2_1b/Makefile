@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 rmsnorm_int8_dyn run_rmsnorm_int8_dyn gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh lmhead_sample run_lmhead_sample sample_streamed run_sample_streamed memrepeat_probe run_memrepeat_probe lmhead_full run_lmhead_full replay_probe run_replay_probe
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 rmsnorm_int8_dyn run_rmsnorm_int8_dyn gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm layer_mh run_layer_mh lmhead_sample run_lmhead_sample sample_streamed run_sample_streamed memrepeat_probe run_memrepeat_probe lmhead_full run_lmhead_full replay_probe run_replay_probe
 
 all: gemm_pt
 
@@ -631,17 +631,9 @@ run_tiled_gemm: tiled_gemm
 		--instr ${BUILD}/insts_gemm_tiled_${TILED_K}x${TILED_N}_t${TILED_N_TILE}.bin \
 		-k MLIR_AIE -K ${TILED_K} -N ${TILED_N} --n-tile ${TILED_N_TILE}
 
-# ---------- FFN-half integration at D=2048, HD=8192 (Phase 6c.3b.1) ----------
-# Six workers: rmsnorm2 + tiled gate + tiled up + silu_mul + tiled down + add2.
-# Kernel object exposes BOTH K=2048 (gate/up) and K=8192 (down) extern
-# entries in one .o so they link cleanly into one xclbin.
-${BUILD}/llama_gemm_int8_srs_tiled_ffn.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_ffn.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
-
-# Per-shape kernel .o files. cp'd into the standard llama_*.cc.o name
-# right before aiecc, same trick chain_real uses to avoid the chain's
-# D=64 rmsnorm clobbering FFN-half's D=2048 build (and vice-versa).
+# ---------- Production-shape kernel objects shared by the layer/chain targets ----------
+# Per-shape .o files, cp'd into the standard llama_*.cc.o name right before
+# aiecc so differently-shaped builds of the same kernel don't clobber each other.
 ${BUILD}/llama_rmsnorm_int8_2048.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
@@ -652,140 +644,6 @@ ${BUILD}/llama_silu_mul_int8_8192.cc.o: ${KDIR}/llama_silu_mul_int8.cc ${BUILD}/
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
 		-DLLAMA_SILU_MUL_COLS=8192 -I${srcdir} -c $< -o ${@F}
-
-FFN_HALF_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_ffn.cc.o \
-                ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
-                ${BUILD}/llama_silu_mul_int8_8192.cc.o \
-                ${BUILD}/llama_layer_pt.cc.o
-
-${BUILD}/aie_ffn_half.mlir: ${srcdir}/aie2_ffn_half.py
-	mkdir -p ${@D}
-	python3 $< > $@
-
-# Diagnostic: rmsnorm + gate only, drain gf to host. Used to A/B against
-# numpy gf when debugging the perchan FFN chain.
-${BUILD}/aie_ffn_half_gate_only.mlir: ${srcdir}/aie2_ffn_half_gate_only.py ${srcdir}/aie2_ffn_half.py
-	mkdir -p ${@D}
-	python3 $< > $@
-
-${BUILD}/final_ffn_half_gate_only.xclbin: ${BUILD}/aie_ffn_half_gate_only.mlir ${FFN_HALF_DEPS}
-	mkdir -p ${@D}
-	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
-	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_ffn_half_gate_only.bin \
-		$(notdir $<)
-
-ffn_half_gate_only: ${BUILD}/final_ffn_half_gate_only.xclbin
-
-${BUILD}/final_ffn_half.xclbin: ${BUILD}/aie_ffn_half.mlir ${FFN_HALF_DEPS}
-	mkdir -p ${@D}
-	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
-	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_ffn_half.bin \
-		$(notdir $<)
-
-ffn_half: ${BUILD}/final_ffn_half.xclbin
-
-run_ffn_half: ffn_half
-	cd ${srcdir} && python3 test_ffn_half.py \
-		--xclbin ${BUILD}/final_ffn_half.xclbin \
-		--instr ${BUILD}/insts_ffn_half.bin \
-		-k MLIR_AIE
-
-# ---------- Per-channel-weight tiled GEMM standalone (Phase 6c.5b.1a) ----------
-# Same kernel object as ffn_half (the per-channel extern entries live
-# in llama_gemm_int8_srs_tiled_ffn.cc). Different design (aie2_gemm_
-# tiled_perchan.py) that bakes per-call scales as Python closure
-# constants. ACT/OUT scales come via env vars so the test can re-bake
-# the xclbin for its own calibration.
-TILED_PC_K      ?= 2048
-TILED_PC_N      ?= 64
-TILED_PC_N_TILE ?= 4
-LLAMA_GEMM_ACT_SCALE     ?= 0.01
-LLAMA_GEMM_INV_OUT_SCALE ?= 1.0
-
-${BUILD}/aie_gemm_tiled_perchan_K${TILED_PC_K}_N${TILED_PC_N}_t${TILED_PC_N_TILE}.mlir: ${srcdir}/aie2_gemm_tiled_perchan.py
-	mkdir -p ${@D}
-	LLAMA_GEMM_ACT_SCALE=${LLAMA_GEMM_ACT_SCALE} \
-	LLAMA_GEMM_INV_OUT_SCALE=${LLAMA_GEMM_INV_OUT_SCALE} \
-	python3 $< -K ${TILED_PC_K} -N ${TILED_PC_N} --n-tile ${TILED_PC_N_TILE} > $@
-
-${BUILD}/final_gemm_tiled_perchan_K${TILED_PC_K}_N${TILED_PC_N}_t${TILED_PC_N_TILE}.xclbin: \
-		${BUILD}/aie_gemm_tiled_perchan_K${TILED_PC_K}_N${TILED_PC_N}_t${TILED_PC_N_TILE}.mlir \
-		${BUILD}/llama_gemm_int8_srs_tiled_ffn.cc.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_gemm_tiled_perchan_K${TILED_PC_K}_N${TILED_PC_N}_t${TILED_PC_N_TILE}.bin \
-		$(notdir $<)
-
-tiled_gemm_perchan: ${BUILD}/final_gemm_tiled_perchan_K${TILED_PC_K}_N${TILED_PC_N}_t${TILED_PC_N_TILE}.xclbin
-
-run_tiled_gemm_perchan: tiled_gemm_perchan
-	cd ${srcdir} && python3 test_gemm_tiled_perchan.py \
-		-K ${TILED_PC_K} -N ${TILED_PC_N} --n-tile ${TILED_PC_N_TILE}
-
-# ---------- Attention-half integration at D=2048, single-head (Phase 6c.3b.2) ----------
-# Seven workers: rmsnorm1 + q_proj tiled + rope_q + flowkv pair + o_proj
-# tiled + add1. Single-head simplification: N_HEADS=N_KV=1, HEAD_DIM=64.
-# Host pre-fills the full KV cache.
-ATTN_HALF_T ?= 128
-
-${BUILD}/llama_gemm_int8_srs_tiled_attn.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_attn.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
-
-# Per-shape rope (N_HEADS=1, HEAD_DIM=64; matches defaults but stamped
-# for cp-cleanness).
-${BUILD}/llama_rope_int8_attn.cc.o: ${KDIR}/llama_rope_int8.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
-		-ffp-contract=off \
-		-DLLAMA_ROPE_HEAD_DIM=64 -DLLAMA_ROPE_N_HEADS=1 -c $< -o ${@F}
-
-# Per-T flowkv (HEAD_DIM=64, T set by ATTN_HALF_T).
-${BUILD}/llama_flowkv_attn_T${ATTN_HALF_T}.cc.o: ${KDIR}/llama_flowkv.cc ${BUILD}/exp_lut.h
-	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
-		-DLLAMA_FLOWKV_HEAD_DIM=64 -DLLAMA_FLOWKV_T=${ATTN_HALF_T} \
-		-DLLAMA_FLOWKV_EXP_QUANT_SCALE=0.05f -I${srcdir} -c $< -o ${@F}
-
-ATTN_HALF_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_attn.cc.o \
-                 ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
-                 ${BUILD}/llama_rope_int8_attn.cc.o \
-                 ${BUILD}/llama_flowkv_attn_T${ATTN_HALF_T}.cc.o \
-                 ${BUILD}/llama_layer_pt.cc.o
-
-${BUILD}/aie_attn_half_T${ATTN_HALF_T}.mlir: ${srcdir}/aie2_attn_half.py
-	mkdir -p ${@D}
-	LLAMA_ATTN_T=${ATTN_HALF_T} python3 $< > $@
-
-${BUILD}/final_attn_half_T${ATTN_HALF_T}.xclbin: ${BUILD}/aie_attn_half_T${ATTN_HALF_T}.mlir ${ATTN_HALF_DEPS}
-	mkdir -p ${@D}
-	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
-	cp ${BUILD}/llama_rope_int8_attn.cc.o    ${BUILD}/llama_rope_int8.cc.o
-	cp ${BUILD}/llama_flowkv_attn_T${ATTN_HALF_T}.cc.o ${BUILD}/llama_flowkv.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_attn_half_T${ATTN_HALF_T}.bin \
-		$(notdir $<)
-
-attn_half: ${BUILD}/final_attn_half_T${ATTN_HALF_T}.xclbin
-
-run_attn_half: attn_half
-	cd ${srcdir} && LLAMA_ATTN_T=${ATTN_HALF_T} python3 test_attn_half.py \
-		--xclbin ${BUILD}/final_attn_half_T${ATTN_HALF_T}.xclbin \
-		--instr ${BUILD}/insts_attn_half_T${ATTN_HALF_T}.bin \
-		-k MLIR_AIE
-
-# ---------- Full single-layer at D=2048 (Phase 6c.3b.3) ----------
-# 13 workers: FFN-half + attn-half combined into one xclbin. Reuses the
-# per-shape rmsnorm/rope/flowkv .o files built by the FFN/attn rules.
-LAYER_D2048_T ?= 128
 
 # LMHEAD_KSET sizes the fused lm_head+top-k insert's resident set capacity. It
 # only affects llama_lmhead_topk_insert (unused by the layer/chain GEMM targets,
@@ -803,72 +661,6 @@ ${BUILD}/.lmhead_kset_${LMHEAD_KSET}:
 	mkdir -p ${@D}
 	rm -f ${BUILD}/.lmhead_kset_* ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
 	touch $@
-
-LAYER_D2048_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
-                   ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
-                   ${BUILD}/llama_silu_mul_int8_8192.cc.o \
-                   ${BUILD}/llama_rope_int8_attn.cc.o \
-                   ${BUILD}/llama_flowkv_attn_T${LAYER_D2048_T}.cc.o \
-                   ${BUILD}/llama_layer_pt.cc.o
-
-${BUILD}/aie_layer_d2048_T${LAYER_D2048_T}.mlir: ${srcdir}/aie2_layer_d2048.py
-	mkdir -p ${@D}
-	LLAMA_LAYER_T=${LAYER_D2048_T} python3 $< > $@
-
-${BUILD}/final_layer_d2048_T${LAYER_D2048_T}.xclbin: ${BUILD}/aie_layer_d2048_T${LAYER_D2048_T}.mlir ${LAYER_D2048_DEPS}
-	mkdir -p ${@D}
-	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
-	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
-	cp ${BUILD}/llama_rope_int8_attn.cc.o ${BUILD}/llama_rope_int8.cc.o
-	cp ${BUILD}/llama_flowkv_attn_T${LAYER_D2048_T}.cc.o ${BUILD}/llama_flowkv.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_layer_d2048_T${LAYER_D2048_T}.bin \
-		$(notdir $<)
-
-layer_d2048: ${BUILD}/final_layer_d2048_T${LAYER_D2048_T}.xclbin
-
-run_layer_d2048: layer_d2048
-	cd ${srcdir} && LLAMA_LAYER_T=${LAYER_D2048_T} python3 test_layer_d2048.py \
-		--xclbin ${BUILD}/final_layer_d2048_T${LAYER_D2048_T}.xclbin \
-		--instr ${BUILD}/insts_layer_d2048_T${LAYER_D2048_T}.bin \
-		-k MLIR_AIE
-
-# ---------- N-layer chain with perchan + dynamic scales (Phase 6c.5b.5) ----------
-# Reuses the LAYER_D2048 kernel deps + the production-shape rmsnorm/silu/rope/flowkv .o
-# files. N_LAYERS configurable via LLAMA_CHAIN_N env var (default 2 in the IRON design).
-CHAIN_DYNSCALE_T ?= 128
-CHAIN_DYNSCALE_N ?= 2
-
-CHAIN_DYNSCALE_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
-                      ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
-                      ${BUILD}/llama_silu_mul_int8_8192.cc.o \
-                      ${BUILD}/llama_rope_int8_attn.cc.o \
-                      ${BUILD}/llama_flowkv_attn_T${CHAIN_DYNSCALE_T}.cc.o \
-                      ${BUILD}/llama_layer_pt.cc.o
-
-${BUILD}/aie_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.mlir: ${srcdir}/aie2_chain_dynscale.py
-	mkdir -p ${@D}
-	LLAMA_CHAIN_N=${CHAIN_DYNSCALE_N} LLAMA_CHAIN_T=${CHAIN_DYNSCALE_T} python3 $< > $@
-
-${BUILD}/final_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.xclbin: ${BUILD}/aie_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.mlir ${CHAIN_DYNSCALE_DEPS}
-	mkdir -p ${@D}
-	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
-	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
-	cp ${BUILD}/llama_rope_int8_attn.cc.o ${BUILD}/llama_rope_int8.cc.o
-	cp ${BUILD}/llama_flowkv_attn_T${CHAIN_DYNSCALE_T}.cc.o ${BUILD}/llama_flowkv.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.bin \
-		$(notdir $<)
-
-chain_dynscale: ${BUILD}/final_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.xclbin
-
-run_chain_dynscale: chain_dynscale
-	cd ${srcdir} && LLAMA_CHAIN_N=${CHAIN_DYNSCALE_N} LLAMA_CHAIN_T=${CHAIN_DYNSCALE_T} python3 test_chain_dynscale.py \
-		--xclbin ${BUILD}/final_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.xclbin \
-		--instr ${BUILD}/insts_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.bin \
-		-k MLIR_AIE
 
 # ---------- chain + lm_head + sample (Phase 6b) ----------
 # V is the lm_head/sample vocab. Both the gemm and sample .cc must be
