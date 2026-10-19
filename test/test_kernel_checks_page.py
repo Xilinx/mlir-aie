@@ -1038,23 +1038,34 @@ assert.ok(spark.innerHTML.includes('var(--series-1)') && spark.innerHTML.include
 
 
 HW_NIGHTS = """
-// Two hardware nightlies, seeds 3 and 7 at batch 1 and 16: seed 3's
-// batch 16 is 7% slower in the latest, past its 5% and its MADs.
+// Two hardware nightlies, seeds 3 and 7 at batch 1 and 16, each at the
+// design's real default effort and a full-effort baseline: seed 3's batch
+// 16 (default effort) is 7% slower in the latest, past its 5% and its MADs.
+// The full-effort numbers are fixed (not parameterized by b16) and clearly
+// distinct from default's, so a test can tell the two apart.
 const hwRecord = (id, date, b16, extra) => {
   const rows = {};
   for (const seed of [3, 7]) {
-    rows[`mobilenet/seed=${seed}`] = { placement_cost: { value: 300 + seed, unit: 'cost', range: `placement 0123456789ab` } };
-    for (const [batch, us] of [[1, 295.7], [16, seed === 3 ? b16 : 99]]) {
-      rows[`mobilenet/seed=${seed}/batch=${batch}`] = {
-        us_per_image: { value: us, unit: 'us', range: `median ${us + 1}, MAD 0.20, p95 ${us + 2}` },
-        e2e_us_per_image: { value: us + 100, unit: 'us' },
-        compile_s: { value: 40, unit: 's' },
-        ...(batch > 1 ? { streaming_us: { value: (us * 16 - 295.7) / 15, unit: 'us' } } : {}),
+    for (const effort of ['default', 'full']) {
+      rows[`mobilenet/seed=${seed}/effort=${effort}`] = {
+        placement_cost: { value: (effort === 'default' ? 300 : 400) + seed, unit: 'cost', range: `placement 0123456789ab` },
       };
+      for (const [batch, us] of [[1, 295.7], [16, effort === 'default' && seed === 3 ? b16 : (effort === 'default' ? 99 : 120)]]) {
+        rows[`mobilenet/seed=${seed}/batch=${batch}/effort=${effort}`] = {
+          us_per_image: { value: us, unit: 'us', range: `median ${us + 1}, MAD 0.20, p95 ${us + 2}` },
+          e2e_us_per_image: { value: us + 100, unit: 'us' },
+          compile_s: { value: effort === 'default' ? 40 : 55, unit: 's' },
+          compile_peak_rss_mb: { value: 850, unit: 'MB' },
+          compile_s_warm: { value: 1.3, unit: 's' },
+          compile_peak_rss_mb_warm: { value: 313, unit: 'MB' },
+          ...(batch > 1 ? { streaming_us: { value: (us * 16 - 295.7) / 15, unit: 'us' } } : {}),
+        };
+      }
     }
   }
   rows.mobilenet = { failed_seeds: { value: 0, unit: 'seeds' } };
-  const detail = [3, 7].flatMap(seed => [1, 16].map(batch => ({ seed, batch, passed: true, placement: '0123456789ab' })));
+  const detail = [3, 7].flatMap(seed => ['default', 'full'].flatMap(effort_label =>
+    [1, 16].map(batch => ({ seed, batch, effort_label, passed: true, placement: '0123456789ab' }))));
   return { id, date, pmode: 'turbo', commit: { ...commit }, provenance: {}, rows, detail, ...(extra || {}) };
 };
 const hwBefore = hwRecord('6', '2026-10-01T06:30:00Z', 98);
@@ -1083,7 +1094,7 @@ assert.equal(card.trend.className, 'trend-slot');
 // A quiet night: "nothing moved" is detail too.
 const quiet = componentBand(hw, hwIndex, hwRecord('7', hwAfter.date, 98), NOW, hwBefore);
 assert.deepEqual(quiet.children.map(c => c.className), ['verdict-top', 'headline', 'trend-slot', 'band-more']);
-assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0 --batch B'));
+assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 0.05 --batch B'));
 assert.ok(card.text.includes('turbo mode'));
 // Nothing published yet.
 const empty = componentBand(hw, null, null, NOW);
@@ -1096,22 +1107,25 @@ def test_hardware_seed_cards_show_each_batch_against_the_nightly_before(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(one(card, n => n.className === 'moves').text,
-             'Since 1 Oct:seed 3, batch 16 streaming +8.7%seed 3, batch 16 per image +7.0%');
-assert.deepEqual(card.cards.map(c => c.kase), ['mobilenet/seed=3', 'mobilenet/seed=7']);
+             'Since 1 Oct:seed 3, batch 16, effort default streaming +8.7%seed 3, batch 16, effort default per image +7.0%');
+assert.deepEqual(card.cards.map(c => c.kase), ['mobilenet/seed=3/effort=default', 'mobilenet/seed=3/effort=full', 'mobilenet/seed=7/effort=default', 'mobilenet/seed=7/effort=full']);
 const [header, grid] = card.cards[0].children;
 assert.equal(header.children[0].text, "seed 3the design's default");
 // The placement, its cost under Placement.
 assert.equal(header.children[1].text, 'placement 0123456789ab');
 assert.equal(header.children[1].href, '#view=placement&metric=placement_cost');
 assert.equal(header.children.at(-1).text, 'b16 ÷ b1 per image 0.35×');
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Per image', 'Streaming', 'End-to-end / image', 'Compile time']);
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Per image', 'Streaming', 'End-to-end / image', 'Compile time (cold)', 'Compile peak memory (cold)', 'Compile time (warm)', 'Compile peak memory (warm)']);
 // A lane per batch, colored past the threshold only; streaming has no b1.
 const perImage = grid.children[0];
 assert.equal(perImage.text, 'Per imageb1295.7 µs 0.0%b16104.9 µs +7.0%');
 assert.deepEqual(perImage.children.slice(1, 3).map(r => r.children[0].className), ['npu n-series-1', 'npu n-series-2']);
 assert.deepEqual(all(perImage, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg flat', 'chg worse']);
 assert.equal(grid.children[1].children.length, 3);
-assert.equal(grid.children[3].text, 'Compile timeb140 s 0.0%b1640 s 0.0%');
+assert.equal(grid.children[3].text, 'Compile time (cold)b140 s 0.0%b1640 s 0.0%');
+assert.equal(grid.children[4].text, 'Compile peak memory (cold)b1850 MB 0.0%b16850 MB 0.0%');
+assert.equal(grid.children[5].text, 'Compile time (warm)b11.3 s 0.0%b161.3 s 0.0%');
+assert.equal(grid.children[6].text, 'Compile peak memory (warm)b1313 MB 0.0%b16313 MB 0.0%');
 assert.equal(perImage.href, '#view=performance&metric=us_per_image');
 // The trend lines, a line per batch.
 fillSparks(card.cards, collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter])));
@@ -1141,27 +1155,29 @@ assert.ok(noted.text.includes('placed differently at batch 16'));
 def test_a_failed_run_is_named_by_seed_and_batch_with_its_repro(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const failedAt = hwRecord('7', hwAfter.date, 104.9);
-delete failedAt.rows['mobilenet/seed=7/batch=16'];
-failedAt.detail[3].passed = false;
-failedAt.failed = ['mobilenet/seed=7/batch=16'];
+delete failedAt.rows['mobilenet/seed=7/batch=16/effort=default'];
+failedAt.detail.find(d => d.seed === 7 && d.batch === 16 && d.effort_label === 'default').passed = false;
+failedAt.failed = ['mobilenet/seed=7/batch=16/effort=default'];
 const index = { target: 'sa-placer-hw', runs: [night('6', hwBefore.date, 'turbo'),
-  night('7', hwAfter.date, 'turbo', { failed: ['mobilenet/seed=7/batch=16'] })] };
+  night('7', hwAfter.date, 'turbo', { failed: ['mobilenet/seed=7/batch=16/effort=default'] })] };
 const card = componentBand(hw, index, failedAt, NOW, hwBefore);
 assert.equal(card.className, 'verdict bad');
-assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: seed 7 at batch 16.');
+assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: seed 7 at batch 16, default effort.');
 // A failure's repro is beside the verdict, outside Details.
 assert.ok(card.children.some(c => c.className === 'repro'));
-const lanes = card.cards[1].children[1].children[0];
+const seed7default = card.cards.find(c => c.kase === 'mobilenet/seed=7/effort=default');
+const lanes = seed7default.children[1].children[0];
 assert.equal(lanes.text, 'Per imageb1295.7 µs 0.0%b16failed');
 // No ratio from the failed batch's number of the night before.
-assert.ok(!card.cards[1].children[0].text.includes('÷'));
-assert.ok(card.cards[0].children[0].text.includes('b16 ÷ b1'));
+assert.ok(!seed7default.children[0].text.includes('÷'));
+const seed3default = card.cards.find(c => c.kase === 'mobilenet/seed=3/effort=default');
+assert.ok(seed3default.children[0].text.includes('b16 ÷ b1'));
 const repro = one(card, n => n.className === 'repro');
 // Beside the verdict, shut: a click away.
 assert.ok(!repro.open && card.children.includes(repro));
 assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n').slice(0, 3), [
   'git checkout abcdef123456',
-  'cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed 7 --sa-effort 1.0 --batch 16',
+  'cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed 7 --sa-effort 0.05 --batch 16',
   '# every run, as the nightly runs them:',
 ]);
 """)
@@ -1235,24 +1251,25 @@ assert.equal(hw.section, 'performance');
 const card = componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(card.className, 'verdict ok');
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every seed placed, compiled and verified. Placement cost 303 at seed 3, 307 at seed 7.');
+             'Every seed placed, compiled and verified. Placement cost 303 at seed 3 (default), 403 at seed 3 (full), 307 at seed 7 (default), 407 at seed 7 (full).');
 // Only the section's metrics count as moves: seed 3's per-image regression is Performance's.
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:nothing moved past its threshold.');
 assert.equal(card.cards.length, 1);
 const [, grid] = card.cards[0].children;
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Placement cost', 'Placement', 'Runs', 'Failed runs']);
-assert.equal(grid.children[0].text, 'Placement costseed 3303 0.0%seed 7307 0.0%');
-assert.equal(grid.children[1].text, 'Placementseed 30123456789abseed 70123456789ab');
-assert.equal(grid.children[2].text, 'Runsseed 32 of 2 passedseed 72 of 2 passed');
-assert.equal(grid.children[2].href, '#view=performance');
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Placement cost', 'Compile time (cold)', 'Placement', 'Runs', 'Failed runs']);
+assert.equal(grid.children[0].text, 'Placement costseed 3 (default)303 0.0%seed 3 (full)403 0.0%seed 7 (default)307 0.0%seed 7 (full)407 0.0%');
+assert.equal(grid.children[2].text, 'Placementseed 3 (default)0123456789abseed 3 (full)0123456789abseed 7 (default)0123456789abseed 7 (full)0123456789ab');
+assert.equal(grid.children[3].text, 'Runsseed 3 (default)2 of 2 passedseed 3 (full)2 of 2 passedseed 7 (default)2 of 2 passedseed 7 (full)2 of 2 passed');
+assert.equal(grid.children[3].href, '#view=performance');
 // Words-only cells have no trend line; the metrics do.
-assert.deepEqual([...card.cards[0].sparks.keys()], ['placement_cost', 'failed_seeds']);
+assert.deepEqual([...card.cards[0].sparks.keys()], ['placement_cost', 'compile_s', 'failed_seeds']);
 // A failed run is named on its seed.
 const failedAt = hwRecord('7', hwAfter.date, 104.9);
-failedAt.detail[3].passed = false;
-failedAt.failed = ['mobilenet/seed=7/batch=16'];
+failedAt.detail.find(d => d.seed === 7 && d.batch === 16 && d.effort_label === 'default').passed = false;
+failedAt.failed = ['mobilenet/seed=7/batch=16/effort=default'];
 const bad = componentBand(hwPlacement, hwIndex, failedAt, NOW, hwBefore);
-assert.equal(bad.cards[0].children[1].children[2].text, 'Runsseed 32 of 2 passedseed 7failed at b16');
+assert.equal(bad.cards[0].children[1].children[3].text,
+             'Runsseed 3 (default)2 of 2 passedseed 3 (full)2 of 2 passedseed 7 (default)failed at b16seed 7 (full)2 of 2 passed');
 """)
 
 
@@ -1441,21 +1458,22 @@ def test_performance_trends_chart_each_batch_as_the_mean_over_seeds(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const read = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
 const data = seedMeans(read);
-const perImage = data.series.filter(s => s.metric === 'us_per_image');
-// A series per batch, not per seed and batch.
-assert.deepEqual(perImage.map(s => s.kase).sort(), ['mobilenet/batch=1', 'mobilenet/batch=16']);
-const b16 = perImage.find(s => s.kase === 'mobilenet/batch=16');
+// A series per batch per effort, not per seed/batch/effort; scoped here to
+// the design's real default effort, where the fixture's b16 math lives.
+const perImage = data.series.filter(s => s.metric === 'us_per_image' && s.kase.endsWith('/effort=default'));
+assert.deepEqual(perImage.map(s => s.kase).sort(), ['mobilenet/batch=1/effort=default', 'mobilenet/batch=16/effort=default']);
+const b16 = perImage.find(s => s.kase === 'mobilenet/batch=16/effort=default');
 // Seeds 3 and 7 at batch 16: (98 + 99) / 2, then (104.9 + 99) / 2; one point per run.
 assert.deepEqual(b16.byMode.get('turbo').map(p => p.row.value), [98.5, 101.95]);
 assert.equal(b16.byMode.get('turbo')[1].row.range, 'seeds 99 to 104.9, n=2');
 // The band runs from the fastest seed to the slowest.
 assert.deepEqual(spreadOf(101.95, b16.byMode.get('turbo')[1].row), [99, 104.9]);
-// Series that are not per seed and batch pass through.
-assert.ok(data.series.some(s => s.kase === 'mobilenet/seed=3' && s.metric === 'placement_cost'));
+// Series that are not per seed/batch/effort pass through.
+assert.ok(data.series.some(s => s.kase === 'mobilenet/seed=3/effort=default' && s.metric === 'placement_cost'));
 // Charted like a kernel case: one chart per batch, the mean moved +3.5%, under 5%.
 const groups = chartGroups(perImage);
 assert.equal(groups.length, 2);
-draw(el0, groups.find(g => g.kase === 'mobilenet/batch=16'), ['turbo'], data);
+draw(el0, groups.find(g => g.kase === 'mobilenet/batch=16/effort=default'), ['turbo'], data);
 assert.equal(chart.data.datasets.filter(d => d.band).length, 2);
 """)
 
@@ -1709,12 +1727,15 @@ assert.deepEqual(opened, ['https://github.com/Xilinx/mlir-aie/commit/abcdef12345
 assert.equal(commitLine({ id: '0123456789abcdef', message: 'x'.repeat(100) + '\\nbody' }), `0123456 ${'x'.repeat(71)}…`);
 // Compile time, seconds, on a plain axis.
 assert.equal(seedTrendConfig(data, 'compile_s').options.scales.y.type, 'linear');
-assert.equal(seedTrendConfig(data, 'compile_s').options.scales.y.title.text, 'Compile time (s)');
+assert.equal(seedTrendConfig(data, 'compile_s').options.scales.y.title.text, 'Compile time, cold (s)');
+// Compile peak memory, MB, also on a plain axis.
+assert.equal(seedTrendConfig(data, 'compile_peak_rss_mb').options.scales.y.type, 'linear');
+assert.equal(seedTrendConfig(data, 'compile_peak_rss_mb').options.scales.y.title.text, 'Compile peak memory, cold (MB)');
 // The box: a switch for the measure, drawn once on screen, redrawn on a switch.
 const box = seedTrendBox(data, 'compile_s');
 assert.equal(box.metric(), 'compile_s');
 const seg = box.children[0].children[0];
-assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s']);
+assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb', 'compile_s_warm', 'compile_peak_rss_mb_warm']);
 assert.equal(chart.options.scales.y.type, 'linear');
 seg.children[0].on.click();
 assert.equal(box.metric(), 'us_per_image');
