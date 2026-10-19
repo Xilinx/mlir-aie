@@ -12,9 +12,11 @@ the reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–10
 on prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
 beyond quantization.
 
-> Status: the decode path is complete and validated on hardware. Prefill (batched
-> M>1) and kernel vectorization (the throughput lever) are the open follow-ups —
-> see [What's next](#whats-next).
+> Status: the decode path is complete and validated on hardware. RMSNorm,
+> SiLU×up, RoPE, FlowKV attention, and the top-k sampler's hot path are
+> vectorized (2.21 → 4.71 tok/s at N=16). Prefill (batched M>1), the unplaced
+> layout, and further per-kernel tuning are the open follow-ups — see
+> [What's next](#whats-next).
 
 ---
 
@@ -96,22 +98,30 @@ Measured on hardware (`--time` on the persist tests; device clock via
 
 | Config | per-token | tok/s | bytes/token | DMA floor | ratio |
 |---|---|---|---|---|---|
-| **N=16 (full model)** | **452 ms** | **2.21** | 1253 MB | 10.45 ms | **43× over floor** |
-| N=2 (bring-up) | 100 ms | 10.0 | 389 MB | 3.24 ms | 31× over floor |
+| **N=16 (full model)** | **212 ms** | **4.71** | 1253 MB | 10.45 ms | **20× over floor** |
+| N=2 (bring-up) | 69 ms | 14.48 | 389 MB | 3.24 ms | 21× over floor |
 
-**Decode is heavily compute-bound, not DMA-bound.** The DMA floor (bytes/token ÷
-~120 GB/s LPDDR5) is ~10 ms at full config, but we run at 452 ms — 43× over. The
-weight prefetch (depth-2 per-layer weight fifos stream layer L+1 while layer L
-computes) is already hiding the DMA; the wall is the **scalar compute kernels**
-(written scalar for deterministic bit-exactness). The ratio worsens with depth
-(more scalar layers per token), which is why N=16 is further from the floor than
-N=2.
+RMSNorm, SiLU×up, RoPE, FlowKV attention, and the top-k sampler's hot insert
+path are now vectorized (`aie::mac`/`aie::mul` over 64-lane int8/fp32 groups,
+scalar only where AIE2P has no vector form — LUT gathers and the final
+round-to-i8); N=16 moved from 452 ms/token (2.21 tok/s) to 212 ms/token, a
+~2.1× speedup, with ratio-over-DMA-floor dropping from 43× to 20×.
 
-**The optimization lever is kernel vectorization**, not KV residency or more
-bandwidth. For reference, FastFlowLM (tuned, vectorized, decode-on-NPU) reaches
-60–89 tok/s on this model — the ~30–40× gap is entirely in the kernels. This
-example prioritizes correctness/architecture first; vectorization is the headline
-follow-up.
+**Decode is still compute-bound, not DMA-bound** — the harness's own
+compute/DMA-floor ratio still reads "COMPUTE-bound (vectorization is the
+lever)" at both configs, just a smaller gap than before. The weight prefetch
+(depth-2 per-layer weight fifos stream layer L+1 while layer L computes) is
+already hiding the DMA; the remaining wall is kernel compute. The ratio still
+worsens with depth (more layers per token), which is why N=16 is further from
+the floor than N=2.
+
+**Vectorization remains the lever for the rest of the gap.** For reference,
+FastFlowLM (tuned, vectorized, decode-on-NPU) reaches 60–89 tok/s on this
+model — vectorizing the five kernels above roughly halved the gap (from
+~30–40× to ~13–19×); closing the rest likely needs the unplaced layout (Phase
+7, better placement can shrink dispatch overhead) and further per-kernel
+tuning (loop pipelining, the LUT-gather techniques `flm_gemma4`'s
+bank-replication trick points at) rather than a new architectural change.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
 > **TTFT** (time to first token) and is a separate, not-yet-built phase.
@@ -294,11 +304,17 @@ accumulators, and full-precision fp32 glue chains.
 
 ## What's next
 
-- **Kernel vectorization** — the throughput lever (decode is 43× compute-bound at
-  N=16). The scalar kernels (`aie::mac` GEMMs aside) are the wall.
+- **Unplaced layout** — `placement.py` and the chain builder's explicit
+  `Tile(...)` calls still hand-assign all 32 compute tiles; letting the
+  placer derive layout from the dataflow graph (as mobilenet and the other
+  current examples do) is the remaining architectural change, and may shrink
+  dispatch overhead further.
+- **Further per-kernel tuning** — decode is still 20× compute-bound at N=16
+  after vectorizing (down from 43×). Loop pipelining hints and LUT-gather
+  techniques (e.g. `flm_gemma4`'s bank-replicated gather) are the likely next
+  gains; a per-stage NOOP ablation (mirrors `yolo26n/scripts/ablate_chain.sh`)
+  would pinpoint which kernel now dominates.
 - **Memtile-resident KV at N=16** — the last residency step (256 KB/head → memtile;
   the host-ferried growing mode already scales to N=16 today).
 - **Prefill overlay** — batched M>1 attention + GEMM for TTFT (a separate phase;
   decode is the focus here).
-- **Per-stage NOOP ablation** — to pinpoint which kernel dominates the per-token
-  time before vectorizing (mirrors `yolo26n/scripts/ablate_chain.sh`).
