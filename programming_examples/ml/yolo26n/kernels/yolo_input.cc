@@ -26,14 +26,13 @@ extern "C" {
 void yolo_input_quant(const uint8_t *__restrict rgb,
                       const int8_t *__restrict table, int8_t *__restrict out) {
   event0();
-  for (int x = 0; x < YOLO_INPUT_WIDTH; x++) {
-    out[x * 8 + 0] = table[rgb[x * 3 + 0]];
-    out[x * 8 + 1] = table[rgb[x * 3 + 1]];
-    out[x * 8 + 2] = table[rgb[x * 3 + 2]];
-    AIE_LOOP_UNROLL_FULL
-    for (int c = 3; c < 8; c++)
-      out[x * 8 + c] = 0;
-  }
+  const uint8_t *map = reinterpret_cast<const uint8_t *>(table);
+  uint64_t *dst = reinterpret_cast<uint64_t *>(out);
+  AIE_PREPARE_FOR_PIPELINING
+  for (int x = 0; x < YOLO_INPUT_WIDTH; x++)
+    dst[x] = (uint64_t)map[rgb[x * 3 + 0]] |
+             (uint64_t)map[rgb[x * 3 + 1]] << 8 |
+             (uint64_t)map[rgb[x * 3 + 2]] << 16;
   event1();
 }
 
