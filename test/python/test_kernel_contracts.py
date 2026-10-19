@@ -52,6 +52,7 @@ from ml_dtypes import bfloat16, finfo
 sys.path.insert(0, str(Path(__file__).parent / "npu"))
 from kernel_cases import CASES as DEVICE_CASES  # noqa: E402
 
+
 def _case_id(case) -> str:
     parts = [case.factory]
     parts += [
