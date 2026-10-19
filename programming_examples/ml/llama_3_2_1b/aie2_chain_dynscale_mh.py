@@ -496,17 +496,15 @@ def build(
         else:
             from logits_relay import LogitsRelay
 
+            relay_gemm_tile = Tile(5, 4)
+            relay_sampler_tile = Tile(5, 5)
             lm_relay = LogitsRelay(
                 total_elems=VOCAB,
                 chunk_elems=SAMPLE_CHUNK,
                 repeat_count=SAMPLE_PASSES,
-                # Column 4's memtile is where the KV writeback join (kvout_0..3)
-                # already lands, and the two together exceed the 4-channel
-                # S2MM budget; column 2's memtile has no other heavy DMA
-                # traffic in this topology.
                 memtile_placement=Tile(2, 1),
-                gemm_placement=Tile(5, 4),
-                sampler_placement=Tile(5, 5),
+                gemm_placement=relay_gemm_tile,
+                sampler_placement=relay_sampler_tile,
                 name="lmlogits",
             )
             b_sample_state = Buffer(t_state_i8, name="sample_state")
@@ -574,15 +572,22 @@ def build(
     # 8 head caches join into 2 halves; PERSIST_RESIDENT skips this (its
     # cache stays on-chip in worker-local b_kv).
     if not PERSIST_RESIDENT:
+        # The placer cannot see the relay's hand-written memtile (2,1) DMA, and
+        # a 4-input join beside it exceeds the memtile's 4 S2MM channels.
+        kvout_lo_tile, kvout_hi_tile = (
+            (Tile(0, 1), Tile(5, 1)) if SAMPLE and not ONESTREAM else (None, None)
+        )
         of_kvout_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_lo")
         of_kvout_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_hi")
         kvout_lo_eps = of_kvout_lo.prod().join(
             offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+            tile=kvout_lo_tile,
             obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
             names=[f"kvout_{i}" for i in range(N_HEADS_KV // 2)],
         )
         kvout_hi_eps = of_kvout_hi.prod().join(
             offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+            tile=kvout_hi_tile,
             obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
             names=[f"kvout_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
         )
@@ -1393,8 +1398,8 @@ def build(
                 ],
                 stack_size=2048,
             ),
-            # lm_head GEMM (5,4 = relay gemm tile) + streamed sampler (5,5 =
-            # relay sampler tile). The relay owns the memtile (4,1) DMA.
+            # lm_head GEMM + streamed sampler, on the relay tiles that hold
+            # their relay buffers.
             Worker(
                 w_lmhead,
                 [
@@ -1403,6 +1408,7 @@ def build(
                     lm_relay,
                     k_lmhead,
                 ],
+                tile=relay_gemm_tile,
                 stack_size=PSK,
             ),
             Worker(
@@ -1415,6 +1421,7 @@ def build(
                     k_sample,
                     k_sample_final,
                 ],
+                tile=relay_sampler_tile,
                 stack_size=8192,
             ),
         ]
