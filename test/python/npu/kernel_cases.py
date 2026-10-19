@@ -437,7 +437,17 @@ CASES: list[Case] = [
     Case("gated_delta_rule", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
     check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(5,), tag="partial"),
     check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(0,), tag="none-valid"),
-    # Two rows of a 2x2 state, and more valid rows than the block holds.
+    # One valid row a call, as in decode, over Mamba2's 128-wide state, as
+    # IRON's SelectiveScan slices it (two rows keep the block 4-byte whole).
+    check(
+        "selective_scan",
+        dict(rows=2, state=128, blocks=4),
+        calls=8,
+        scalars=(1,),
+        tag="one-row-state128",
+    ),
+    # Two rows of the smallest state each kernel takes, and more valid rows
+    # than the block holds.
     *(
         check(
             name,
@@ -447,7 +457,7 @@ CASES: list[Case] = [
             tag=f"edge-tiny-valid{valid}",
         )
         for name, dims in (
-            ("selective_scan", dict(head_dim=2, state=2)),
+            ("selective_scan", dict(head_dim=16, state=16)),
             ("gated_delta_rule", dict(key_dim=2, value_dim=2)),
         )
         for valid in (2, 17)
