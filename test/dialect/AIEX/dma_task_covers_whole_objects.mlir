@@ -925,3 +925,86 @@ module {
     }
   }
 }
+
+// -----
+
+// A dma_channel_reset_for re-arms the fifo's far ends and drops a partly
+// filled object, so transfers on either side of it don't share one: the half
+// object before the reset is partial in its own segment.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>, %arg1: memref<32xi32>) {
+      // expected-error@+1 {{moves 128 bytes through objectFIFO @of, which is not a whole number of its 256-byte objects}}
+      %t0 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+      aiex.dma_channel_reset_for(@of)
+      %t1 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg1 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t1)
+    }
+  }
+}
+
+// -----
+
+// After the reset, the half object is summed only with its own segment: the
+// whole object before the reset doesn't count toward it.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<64xi32>, %arg1: memref<32xi32>) {
+      %t0 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+      aiex.dma_channel_reset_for(@of)
+      // expected-error@+1 {{moves 128 bytes through objectFIFO @of, which is not a whole number of its 256-byte objects}}
+      %t1 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg1 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t1)
+    }
+  }
+}
+
+// -----
+
+// Two halves that complete an object before the reset, and a whole object
+// after it, are whole in each segment.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<32xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
+      %t0 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+      %t1 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg1 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t1)
+      aiex.dma_channel_reset_for(@of)
+      %t2 = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg2 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t2)
+    }
+  }
+}

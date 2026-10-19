@@ -1565,10 +1565,28 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   auto sequence = task->getParentOfType<AIE::RuntimeSequenceOp>();
   if (!sequence || task->getBlock() != &sequence.getBody().front())
     return success();
+  // A dma_channel_reset_for re-arms the fifo's far ends and drops a partly
+  // filled object, so only the transfers between the resets around this task
+  // share its objects. Resets are the sequence's own children, as is the task.
+  Block *body = task->getBlock();
+  Operation *segmentStart = nullptr;
+  Operation *segmentEnd = nullptr;
+  for (auto reset : body->getOps<AIEX::DmaChannelResetForOp>()) {
+    if (reset.getObjfifoAttr() != task.getAlloc())
+      continue;
+    if (reset->isBeforeInBlock(task))
+      segmentStart = reset;
+    else if (!segmentEnd)
+      segmentEnd = reset;
+  }
   std::optional<int64_t> total = 0;
   int64_t sharing = 0;
   bool reportedEarlier = false;
-  WalkResult walk = sequence.walk([&](Operation *op) {
+  WalkResult walk = sequence.walk<WalkOrder::PreOrder>([&](Operation *op) {
+    if (Operation *at = body->findAncestorOpInBlock(*op);
+        at && ((segmentStart && !segmentStart->isBeforeInBlock(at)) ||
+               (segmentEnd && segmentEnd->isBeforeInBlock(at))))
+      return WalkResult::skip();
     // A dma_memcpy_nd or BD chain through the fifo also shares its objects;
     // its extent is not summed here, so the sequence's total is unknown.
     if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
