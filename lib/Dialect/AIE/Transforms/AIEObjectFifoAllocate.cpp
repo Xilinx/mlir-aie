@@ -1363,15 +1363,8 @@ struct AIEObjectFifoAllocatePass
                 "BDs would not carry its header";
     if (packet) {
       SmallVector<DMABDOp> bds;
-      SmallVector<Block *> work{start.getDest()};
-      DenseSet<Block *> seen;
-      while (!work.empty()) {
-        Block *block = work.pop_back_val();
-        if (!seen.insert(block).second)
-          continue;
+      for (Block *block : chainOf(start))
         llvm::append_range(bds, block->getOps<DMABDOp>());
-        llvm::append_range(work, block->getTerminator()->getSuccessors());
-      }
       if (failed(checkHeaders(endpoint, ids, bds)))
         return failure();
     }
