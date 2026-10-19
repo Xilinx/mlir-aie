@@ -9,10 +9,13 @@ checks import without a built ``aie._mlir_libs``. ``aie.helpers.util`` holds
 the other half and builds on this one.
 """
 
-from typing import TypeVar, get_args
+from typing import TYPE_CHECKING, TypeVar, get_args
 
 import numpy as np
 from ml_dtypes import bfloat16
+
+if TYPE_CHECKING:
+    from ..utils.compile.jit.markers import _Operand
 
 
 class _BlockFloat(np.generic):
@@ -77,8 +80,29 @@ def ceildiv(a, b):
     return -(a // -b)
 
 
-def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
-    shape = get_args(ndarray_type)[0]
+_T = TypeVar("_T")
+
+
+def np_ndarray_type_of(tensor: "_T | _Operand") -> "_T | type[np.ndarray]":
+    """Return ``tensor``'s type, ``np.ndarray[shape, np.dtype[T]]``.
+
+    Args:
+        tensor: The ``In``/``Out``/``InOut`` operand a generator's tensor
+            parameter receives, or anything else, which is returned as is.
+
+    Returns:
+        The operand's tensor type, or ``tensor``.
+    """
+    # Imported lazily: JIT type introspection itself uses this module.
+    from ..utils.compile.jit.markers import _Operand
+
+    return tensor.ndarray_type if isinstance(tensor, _Operand) else tensor
+
+
+def np_ndarray_type_get_shape(
+    ndarray_type: "type[np.ndarray] | _Operand",
+) -> tuple[int, ...]:
+    shape = get_args(np_ndarray_type_of(ndarray_type))[0]
     # Imported lazily: JIT type introspection itself uses this module.
     from ..utils.compile.jit.markers import _DispatchParameter
     from .taplib import Affine
@@ -99,8 +123,10 @@ def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]
     return shape
 
 
-def np_ndarray_type_get_dtype(ndarray_type: type[np.ndarray]) -> type[NpuDType]:
-    return get_args(get_args(ndarray_type)[1])[0]
+def np_ndarray_type_get_dtype(
+    ndarray_type: "type[np.ndarray] | _Operand",
+) -> type[NpuDType]:
+    return get_args(get_args(np_ndarray_type_of(ndarray_type))[1])[0]
 
 
 def pack_pad_value(value: int, elem_bytes: int) -> int:

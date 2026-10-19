@@ -18,7 +18,7 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
 from ..helpers.dialects.func import call
-from ..helpers.npdtypes import is_block_float
+from ..helpers.npdtypes import is_block_float, np_ndarray_type_of
 from ..helpers.sourceloc import SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..utils import config
@@ -442,7 +442,7 @@ class Kernel(Resolvable):
         # The declaration as written (numpy shapes and dtypes). Resolving the
         # kernel builds MLIR types from it without disturbing it, so this stays
         # readable before and after a build.
-        self._arg_types = list(arg_types) if arg_types is not None else []
+        self._arg_types = [np_ndarray_type_of(t) for t in arg_types or ()]
 
     @property
     def name(self) -> str:

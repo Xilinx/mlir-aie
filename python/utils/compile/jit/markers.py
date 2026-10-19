@@ -166,6 +166,11 @@ class _Operand(Member):
         return math.prod(self.shape)
 
     @property
+    def ndarray_type(self) -> type[np.ndarray]:
+        """The tensor type this operand describes, ``np.ndarray[shape, np.dtype[T]]``."""
+        return np.ndarray[self.shape, np.dtype[self.dtype]]
+
+    @property
     def streamed(self) -> bool:
         return self.obj_dims is not None
 
