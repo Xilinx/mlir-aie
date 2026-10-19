@@ -44,9 +44,13 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping, get_origin
 
 import numpy as np
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIEArch,
+)
 from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
+    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from aie.ir import (  # pyright: ignore[reportMissingImports]
@@ -1084,12 +1088,10 @@ class CompilableDesign:
         """
         try:
             generated = self._generated_for(full_elf=True)
-            # aie.iron imports this module.
-            from aie.iron.device import Device
-
+            # As Device.dispatches_full_elf: amdxdna takes a full ELF only
+            # where the part preempts, which is AIE2p.
             for kind in generated.devices:
-                device = Device(kind)  # pyright: ignore[reportAbstractUsage]
-                if not device.dispatches_full_elf:
+                if AIEArch(get_target_model(kind).get_target_arch()) != AIEArch.AIE2p:
                     raise ValueError(f"{kind.name} does not dispatch a full ELF.")
             external_kernels = generated.external_kernels
             use_chess = self._resolve_use_chess(external_kernels)
