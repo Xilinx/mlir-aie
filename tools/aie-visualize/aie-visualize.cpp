@@ -29,6 +29,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -77,6 +78,17 @@ static cl::opt<bool>
 static cl::opt<bool>
     skipVerify("skip-verify",
                cl::desc("Do not verify analysis IR after parsing"));
+static cl::opt<bool>
+    weighEdges("weigh-edges",
+               cl::desc("Scale edge width by the bytes each flow group moves"));
+static cl::opt<double>
+    minEdgeWidth("min-edge-width",
+                 cl::desc("Edge width in points for the lightest flow group"),
+                 cl::init(0.5));
+static cl::opt<double>
+    maxEdgeWidth("max-edge-width",
+                 cl::desc("Edge width in points for the heaviest flow group"),
+                 cl::init(7.0));
 static cl::opt<double> tileWidth("tile-width", cl::desc("Tile width in inches"),
                                  cl::init(2.15));
 static cl::opt<double>
@@ -512,6 +524,131 @@ static DMAChannelBuffers collectDMAChannelBuffers(AIE::DeviceOp device) {
     }
   }
   return channels;
+}
+
+using DMAChannelBytes = std::map<DMAChannelKey, uint64_t>;
+
+/// Bytes one pass over each channel's buffer-descriptor chain moves. A chain
+/// repeats for the life of the design, so this is a per-iteration rate, not a
+/// total; it is the only volume the IR states without a trip count.
+static DMAChannelBytes collectDMAChannelBytes(AIE::DeviceOp device) {
+  DMAChannelBytes channels;
+  for (auto program : device.getOps<AIE::DmaBody>()) {
+    auto tile =
+        dyn_cast_or_null<AIE::TileLike>(program.getTile().getDefiningOp());
+    if (!tile)
+      continue;
+    std::optional<int> col = tile.tryGetCol();
+    std::optional<int> row = tile.tryGetRow();
+    if (!col || !row)
+      continue;
+    for (Block &block : program.getDmaBody()) {
+      for (AIE::DMAStartOp start : block.getOps<AIE::DMAStartOp>()) {
+        if (start.getEndpoint())
+          continue;
+        DMAChannelKey key{*col, *row, start.getChannelDir(),
+                          start.getChannelIndex()};
+        uint64_t &bytes = channels[key];
+        SmallVector<Block *> worklist{start.getDest()};
+        llvm::SmallPtrSet<Block *, 8> visited;
+        while (!worklist.empty()) {
+          Block *current = worklist.pop_back_val();
+          if (!current || !visited.insert(current).second)
+            continue;
+          for (AIE::DMABDOp descriptor : current->getOps<AIE::DMABDOp>())
+            bytes += descriptor.getLenInBytes();
+          Operation *terminator = current->getTerminator();
+          if (isa<AIE::DMAStartOp>(terminator))
+            continue;
+          llvm::append_range(worklist, terminator->getSuccessors());
+        }
+      }
+    }
+  }
+  return channels;
+}
+
+/// Bytes each flow group moves per iteration, measured at the group's sources.
+/// Counting the sources alone avoids double counting a broadcast, whose one
+/// source feeds several destinations. Groups whose sources are core ports
+/// rather than DMA channels fall back to their destinations, and a group with
+/// no DMA endpoint at all stays at zero.
+static std::vector<uint64_t>
+collectFlowGroupBytes(ArrayRef<FlowRoute> routes, const FlowGroups &groups,
+                      const DMAChannelBytes &channelBytes) {
+  std::vector<std::set<DMAChannelKey>> sources(groups.count);
+  std::vector<std::set<DMAChannelKey>> destinations(groups.count);
+  for (const FlowRoute &route : routes) {
+    unsigned group = groups.routeGroups[route.id];
+    const PortNode &source = route.points.front();
+    if (source.bundle == AIE::WireBundle::DMA)
+      sources[group].insert(
+          {source.col, source.row, AIE::DMAChannelDir::MM2S, source.channel});
+    const PortNode &dest = route.points.back();
+    if (dest.bundle == AIE::WireBundle::DMA)
+      destinations[group].insert(
+          {dest.col, dest.row, AIE::DMAChannelDir::S2MM, dest.channel});
+  }
+  std::vector<uint64_t> bytes(groups.count, 0);
+  for (unsigned group = 0; group < groups.count; ++group) {
+    const std::set<DMAChannelKey> &endpoints =
+        sources[group].empty() ? destinations[group] : sources[group];
+    for (const DMAChannelKey &channel : endpoints) {
+      auto found = channelBytes.find(channel);
+      if (found != channelBytes.end())
+        bytes[group] += found->second;
+    }
+  }
+  return bytes;
+}
+
+/// Maps bytes to stroke width on a log scale spanning the design's own range.
+/// Transfer sizes here span several orders of magnitude, so a linear map would
+/// collapse everything below the largest flow into one hairline.
+struct EdgeWeightScale {
+  uint64_t lightest = 0;
+  uint64_t heaviest = 0;
+  bool enabled = false;
+
+  static EdgeWeightScale build(ArrayRef<uint64_t> groupBytes) {
+    EdgeWeightScale scale;
+    for (uint64_t bytes : groupBytes) {
+      if (bytes == 0)
+        continue;
+      if (scale.lightest == 0 || bytes < scale.lightest)
+        scale.lightest = bytes;
+      scale.heaviest = std::max(scale.heaviest, bytes);
+    }
+    scale.enabled = scale.heaviest > 0;
+    return scale;
+  }
+
+  double width(uint64_t bytes) const {
+    if (!enabled || bytes == 0)
+      return minEdgeWidth;
+    if (heaviest == lightest)
+      return maxEdgeWidth;
+    double position = (std::log2(static_cast<double>(bytes)) -
+                       std::log2(static_cast<double>(lightest))) /
+                      (std::log2(static_cast<double>(heaviest)) -
+                       std::log2(static_cast<double>(lightest)));
+    return minEdgeWidth + position * (maxEdgeWidth - minEdgeWidth);
+  }
+};
+
+static std::string formatBytes(uint64_t bytes) {
+  static constexpr const char *units[] = {"B", "KiB", "MiB", "GiB"};
+  double value = static_cast<double>(bytes);
+  unsigned unit = 0;
+  while (value >= 1024.0 && unit + 1 < std::size(units)) {
+    value /= 1024.0;
+    ++unit;
+  }
+  SmallString<16> text;
+  llvm::raw_svector_ostream stream(text);
+  stream << llvm::format(value < 10.0 && unit > 0 ? "%.1f" : "%.0f", value)
+         << ' ' << units[unit];
+  return std::string(text);
 }
 
 static std::vector<DMAChannelKey> getAllocationChannel(AIE::DeviceOp device,
@@ -1020,6 +1157,10 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       collectRuntimeBufferUses(device, runtimeSequence);
   std::vector<CallInfo> calls = collectCalls(device);
   FlowGroups groups = collectFlowGroups(*routes, channelBuffers);
+  std::vector<uint64_t> groupBytes =
+      collectFlowGroupBytes(*routes, groups, collectDMAChannelBytes(device));
+  EdgeWeightScale weightScale =
+      weighEdges ? EdgeWeightScale::build(groupBytes) : EdgeWeightScale();
 
   std::set<unsigned> only(onlyFlows.begin(), onlyFlows.end());
   auto validateIDs = [&](const std::set<unsigned> &ids,
@@ -1232,6 +1373,40 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
          << ", outputorder=nodesfirst, bgcolor=\"white\", pad=\"0.45\"];\n"
          << "  node [fontname=\"Helvetica\"];\n"
          << "  edge [fontname=\"Helvetica\", fontsize=9, arrowsize=0.65];\n";
+  if (weightScale.enabled) {
+    // Anchored below the shim row, where no tile or runtime argument sits.
+    double legendX = layout.tileCenterX(0) - tileWidth / 2;
+    double legendY = layout.tileCenterY(0) - layout.tileHeight(0) / 2 - 1.9;
+    std::vector<uint64_t> samples{weightScale.lightest, weightScale.heaviest};
+    if (weightScale.heaviest > weightScale.lightest)
+      samples.insert(samples.begin() + 1,
+                     static_cast<uint64_t>(
+                         std::sqrt(static_cast<double>(weightScale.lightest) *
+                                   static_cast<double>(weightScale.heaviest))));
+    samples.erase(llvm::unique(samples), samples.end());
+    output << "  legend_title [shape=plaintext, pos=\""
+           << dotCoordinate(legendX + 0.75) << ','
+           << dotCoordinate(legendY + 0.45)
+           << "!\", label=\"bytes moved per iteration\", fontsize=10, "
+              "fontcolor=\"#333333\", class=\"legend\"];\n";
+    for (auto [index, bytes] : llvm::enumerate(samples)) {
+      double y = legendY - static_cast<double>(index) * 0.34;
+      output << "  legend_" << index << "_from [shape=point, width=0.01, "
+             << R"(color="#ffffff", pos=")" << dotCoordinate(legendX) << ','
+             << dotCoordinate(y) << "!\", class=\"legend\"];\n"
+             << "  legend_" << index << "_to [shape=point, width=0.01, "
+             << R"(color="#ffffff", pos=")" << dotCoordinate(legendX + 1.1)
+             << ',' << dotCoordinate(y) << "!\", class=\"legend\"];\n"
+             << "  legend_" << index << "_text [shape=plaintext, pos=\""
+             << dotCoordinate(legendX + 1.55) << ',' << dotCoordinate(y)
+             << "!\", label=\"" << formatBytes(bytes)
+             << "\", fontsize=9, fontcolor=\"#333333\", class=\"legend\"];\n"
+             << "  legend_" << index << "_from -> legend_" << index
+             << "_to [penwidth=\""
+             << llvm::format("%.2f", weightScale.width(bytes))
+             << "\", color=\"#555555\", arrowhead=none, class=\"legend\"];\n";
+    }
+  }
   for (int col = 0; col < model.columns(); ++col) {
     for (int row = 0; row < model.rows(); ++row) {
       if (!designTiles.count({col, row}) ||
@@ -1454,6 +1629,31 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       }
     }
   }
+  auto edgeBytes = [&](ArrayRef<const FlowRoute *> edgeRoutes) {
+    std::set<unsigned> counted;
+    uint64_t bytes = 0;
+    for (const FlowRoute *route : edgeRoutes) {
+      unsigned groupID = groups.routeGroups[route->id];
+      if (counted.insert(groupID).second)
+        bytes += groupBytes[groupID];
+    }
+    return bytes;
+  };
+  auto writeWeight = [&](ArrayRef<const FlowRoute *> edgeRoutes) {
+    if (!weightScale.enabled) {
+      output << R"(, penwidth="2.4")";
+      return;
+    }
+    uint64_t bytes = edgeBytes(edgeRoutes);
+    output << ", penwidth=\"" << llvm::format("%.2f", weightScale.width(bytes))
+           << '"';
+    // A flow with no buffer descriptor at either end states no volume. Saying
+    // "0 B" would claim it carries nothing, which is a different fact.
+    if (bytes == 0)
+      output << ", tooltip=\"volume not stated in the IR\"";
+    else
+      output << ", tooltip=\"" << formatBytes(bytes) << " per iteration\"";
+  };
   auto writeColors = [&](ArrayRef<const FlowRoute *> edgeRoutes) {
     bool first = true;
     std::set<unsigned> writtenGroups;
@@ -1525,7 +1725,24 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     std::set<unsigned> callDependentGroups;
     for (const auto &[call, callGroups] : callFlowGroups)
       callDependentGroups.insert(callGroups.begin(), callGroups.end());
-    for (const auto &[endpoints, edgeGroups] : edges) {
+    // Heaviest last, so a dominant flow is never hidden under a hairline.
+    std::vector<std::pair<std::string, std::string>> emissionOrder;
+    emissionOrder.reserve(edges.size());
+    for (const auto &[endpoints, edgeGroups] : edges)
+      emissionOrder.push_back(endpoints);
+    if (weightScale.enabled)
+      llvm::stable_sort(emissionOrder,
+                        [&](const auto &first, const auto &second) {
+                          auto weight = [&](const auto &endpoints) {
+                            uint64_t bytes = 0;
+                            for (unsigned group : edges.at(endpoints))
+                              bytes += groupBytes[group];
+                            return bytes;
+                          };
+                          return weight(first) < weight(second);
+                        });
+    for (const auto &endpoints : emissionOrder) {
+      const std::set<unsigned> &edgeGroups = edges.at(endpoints);
       std::vector<const FlowRoute *> edgeRoutes;
       std::vector<const FlowRoute *> labelRoutes;
       for (unsigned group : edgeGroups) {
@@ -1551,8 +1768,8 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       output << "  " << endpoints.first << " -> " << endpoints.second
              << " [color=\"";
       writeColors(edgeRoutes);
-      output << "\", class=\"" << flowClasses(edgeRoutes, groups, kind)
-             << R"(", penwidth="2.4")";
+      output << "\", class=\"" << flowClasses(edgeRoutes, groups, kind) << '"';
+      writeWeight(edgeRoutes);
       bool writeRouteLabels = !labelRoutes.empty();
       bool writeCount = edgeCounts[endpoints] > 1;
       if (writeRouteLabels || writeCount) {
@@ -1590,8 +1807,8 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     std::string kind = labels.empty() ? "route" : "route detail-packet-ids";
     if (!arrowSegments.count(segment))
       kind += " detail-vias";
-    output << "\", class=\"" << flowClasses(segmentRoutes, groups, kind)
-           << R"(", penwidth="2.4")";
+    output << "\", class=\"" << flowClasses(segmentRoutes, groups, kind) << '"';
+    writeWeight(segmentRoutes);
     if (!labels.empty()) {
       output << ", label=<";
       for (auto [index, route] : llvm::enumerate(labels)) {
@@ -1616,7 +1833,9 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     writeColors(segmentRoutes);
     output << "\", class=\""
            << flowClasses(segmentRoutes, groups, "buffer-link detail-buffers")
-           << "\", penwidth=\"2.4\", style=dashed];\n";
+           << '"';
+    writeWeight(segmentRoutes);
+    output << ", style=dashed];\n";
   }
   output << "}\n";
   return success();
