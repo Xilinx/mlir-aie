@@ -1163,7 +1163,7 @@ struct AIEObjectFifoAllocatePass
 
     auto info =
         PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
-    if (sourcedFlows[flow.getSourceAttr().getAttr()].size() == 1)
+    if (sourcedFlows.at(flow.getSourceAttr().getAttr()).size() == 1)
       source.setRoutePacket(info);
 
     builder.setInsertionPoint(flow);
@@ -1391,9 +1391,9 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// Programs, tasks and BD chains on a shared source are checked BD by BD; a
-  /// dma_memcpy_nd must name a header of its own, and nothing else may send
-  /// on one.
+  /// Tasks and BD chains on a shared source are checked BD by BD (programs
+  /// are, in resolveStart); a dma_memcpy_nd must name a header of its own,
+  /// and nothing else may send on one.
   LogicalResult checkSharedSourceUsers(RouteEndpointOp endpoint,
                                        ArrayRef<int> ids) {
     auto uses = SymbolTable::getSymbolUses(endpoint, device);
@@ -1401,9 +1401,15 @@ struct AIEObjectFifoAllocatePass
       return success();
     for (const SymbolTable::SymbolUse &use : *uses) {
       Operation *user = use.getUser();
-      if (isa<RouteOp, DMAStartOp, AIEX::DMAConfigureTaskForOp,
-              AIEX::NpuDmaWaitOp>(user))
+      if (isa<RouteOp, DMAStartOp, AIEX::NpuDmaWaitOp>(user))
         continue;
+      if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(user)) {
+        SmallVector<DMABDOp> bds;
+        task.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
+        if (failed(checkHeaders(endpoint, ids, bds)))
+          return failure();
+        continue;
+      }
       if (auto start = dyn_cast<AIEX::DMAStartBdChainForOp>(user)) {
         if (auto chain = device.lookupSymbol<BDChainOp>(start.getSymbol())) {
           SmallVector<DMABDOp> bds;
@@ -1453,8 +1459,10 @@ struct AIEObjectFifoAllocatePass
     for (auto endpoint : device.getOps<RouteEndpointOp>()) {
       auto starts = endpointStarts.lookup(endpoint);
       auto tasks = endpointTasks.lookup(endpoint);
-      SmallVector<RouteOp> flows =
-          sourcedFlows.lookup(endpoint.getSymNameAttr());
+      auto sourced = sourcedFlows.find(endpoint.getSymNameAttr());
+      ArrayRef<RouteOp> flows;
+      if (sourced != sourcedFlows.end())
+        flows = sourced->second;
       SmallVector<int> ids;
       for (RouteOp flow : flows)
         if (auto id = flow.getPacketId())
@@ -1471,13 +1479,6 @@ struct AIEObjectFifoAllocatePass
       for (DMAStartOp start : starts)
         if (failed(resolveStart(start, endpoint, flows, ids, *channel)))
           return failure();
-      if (shared)
-        for (auto task : tasks) {
-          SmallVector<DMABDOp> bds;
-          task.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
-          if (failed(checkHeaders(endpoint, ids, bds)))
-            return failure();
-        }
       if (endpoint.getTileLike().isShimTile() && endpoint.getFifoName())
         continue;
       for (auto task : tasks)
