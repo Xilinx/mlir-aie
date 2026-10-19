@@ -116,7 +116,9 @@ class _Route(PerDeviceConfigurationResolvable):
         Pass it as a [`DmaChannel`][iron.DmaChannel]'s ``channel``, or build a
         runtime-sequence task on it with
         [`task`][iron.dataflow.tile_dma.DmaEndpoint.task]. Its channel is the
-        one given to the route, or else the one the compiler assigns.
+        one given to the route, or else the one the compiler assigns. An end
+        that shares another route's channel returns that route's end, so one
+        channel is one endpoint.
         """
         ends = [i for i, t in enumerate(self._endpoint_tiles()) if t == tile]
         if len(ends) != 1:
@@ -124,10 +126,10 @@ class _Route(PerDeviceConfigurationResolvable):
                 f"{tile} is {'not an end' if not ends else 'more than one end'} "
                 f"of this {type(self).__name__}."
             )
-        end = ends[0]
-        if end not in self._endpoints:
-            self._endpoints[end] = FlowEndpoint(self, end)
-        return self._endpoints[end]
+        owner, end = self._owner(ends[0])
+        if end not in owner._endpoints:
+            owner._endpoints[end] = FlowEndpoint(owner, end)
+        return owner._endpoints[end]
 
     def _shim_end(self) -> int | None:
         """Return the end ``shim_symbol`` names: a shim source, else a lone shim dst."""

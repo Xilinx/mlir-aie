@@ -558,6 +558,60 @@ def test_a_task_on_a_channel_a_static_program_runs_is_refused():
         )
 
 
+def gathered(mem):
+    """Two packet routes into ``mem`` on one channel the compiler assigns."""
+    owner = PacketFlow(1, Tile(0, 2), mem, src_channel=None, dst_channel=None)
+    sharer = PacketFlow(
+        2, Tile(0, 3), mem, src_channel=None, dst_channel=owner.endpoint(mem)
+    )
+    return owner, sharer
+
+
+def static_on(name, tile, channel, flows=()):
+    """A Runtime with ``flows`` and a TileDma running S2MM on ``channel``."""
+    rt = runtime(name)
+    for flow in flows:
+        rt.add_flow(flow)
+    bd = Bd(Buffer(Tensor, tile=tile))
+    rt.add_tile_dma(TileDma(tile, [DmaChannel(DMAChannelDir.S2MM, channel, [bd])]))
+    return rt
+
+
+def test_a_route_sharing_a_channel_gives_the_owners_endpoint():
+    mem = mem_tile()
+    owner, sharer = gathered(mem)
+    assert sharer.endpoint(mem) is owner.endpoint(mem)
+    with pytest.raises(ValueError, match="already has S2MM channel"):
+        TileDma(
+            mem,
+            [
+                DmaChannel(
+                    DMAChannelDir.S2MM,
+                    owner.endpoint(mem),
+                    [Bd(Buffer(Tensor, tile=mem))],
+                ),
+                DmaChannel(
+                    DMAChannelDir.S2MM,
+                    sharer.endpoint(mem),
+                    [Bd(Buffer(Tensor, tile=mem))],
+                ),
+            ],
+        )
+
+
+def test_a_task_through_a_sharing_route_on_a_static_channel_is_refused():
+    mem = mem_tile()
+    owner, sharer = gathered(mem)
+    static = static_on("seq_0", mem, owner.endpoint(mem), (owner, sharer))
+    task = Runtime(
+        lambda: sharer.endpoint(mem).task(Bd(Buffer(Tensor, tile=mem))).start().free(),
+        [],
+        name="seq_1",
+    )
+    with pytest.raises(ValueError, match="would rewrite the channel a TileDma program"):
+        program(static, task)
+
+
 def test_tiles_pinned_to_one_column_alone_are_two_tiles():
     first = Tile(col=0, tile_type=AIETileType.MemTile)
     second = Tile(col=0, tile_type=AIETileType.MemTile)
