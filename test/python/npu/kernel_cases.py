@@ -719,7 +719,7 @@ CASES: list[Case] = [
                 dict(epilogue="silu", clamp=(-0.125, 0.75)),
                 ("npu1", "npu2"),
             ),
-            ((4, 8, 8), dict(epilogue="gelu"), ("npu1",)),
+            ((4, 8, 8), dict(epilogue="gelu"), ("npu1", "npu2")),
         )
     ],
     # B^T on aie2p's bfp16 macs, converted on the core: IRON's two aie2p flm
