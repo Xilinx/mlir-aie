@@ -914,6 +914,13 @@ Placer::Adjacency SequentialPlacer::buildBufferAdjacency(
     ArrayRef<LogicalTileOp> logicalTiles,
     ArrayRef<ObjectFifoAllocateOp> allocates) {
   Adjacency adjacency;
+  // One edge per (user, owner) pair: a duplicate would book a second free
+  // tile for the same peer in leavesPeerRoom.
+  llvm::DenseSet<std::pair<Operation *, Operation *>> seen;
+  auto addOnce = [&](TileLike user, TileLike owner) {
+    if (seen.insert({user.getOperation(), owner.getOperation()}).second)
+      adjacency.addEdge(user, owner);
+  };
   // An allocated fifo's objects live in the delegate's memory, which each of
   // its ends then reaches as it would a buffer the delegate owns.
   for (auto alloc : allocates) {
@@ -928,7 +935,7 @@ Placer::Adjacency SequentialPlacer::buildBufferAdjacency(
       auto tile = dyn_cast_or_null<TileLike>(end.getDefiningOp());
       if (tile && tile.getTileType() == AIETileType::CoreTile &&
           tile.getOperation() != delegate.getOperation())
-        adjacency.addEdge(tile, delegate);
+        addOnce(tile, delegate);
     }
   }
   for (auto consumer : logicalTiles) {
@@ -943,20 +950,14 @@ Placer::Adjacency SequentialPlacer::buildBufferAdjacency(
     if (!core)
       continue;
 
-    llvm::SmallDenseSet<Operation *, 4> seenOwners;
     core.getBody().walk([&](Operation *op) {
       for (Value operand : op->getOperands()) {
         BufferOp buf = traceToBuffer(operand);
         if (!buf)
           continue;
         auto owner = dyn_cast_or_null<TileLike>(buf.getTile().getDefiningOp());
-        if (!owner)
-          continue;
-        if (owner.getOperation() == consumer.getOperation())
-          continue;
-        if (!seenOwners.insert(owner.getOperation()).second)
-          continue;
-        adjacency.addEdge(TileLike(consumer), owner);
+        if (owner && owner.getOperation() != consumer.getOperation())
+          addOnce(TileLike(consumer), owner);
       }
     });
   }

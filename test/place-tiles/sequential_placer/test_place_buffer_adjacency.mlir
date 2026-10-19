@@ -310,3 +310,28 @@ module @owner_leaves_room_for_two_consumers {
     }
   }
 }
+
+// -----
+
+// The consumer both reads the owner's buffer and uses a fifo allocated on
+// the owner: still one peer, so the owner keeps (0, 2) as it would with
+// either use alone.
+// CHECK-LABEL: @buffer_and_allocate_on_one_owner
+// CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.tile(0, 3)
+// CHECK-DAG: aie.buffer(%[[OWNER]])
+module @buffer_and_allocate_on_one_owner {
+  aie.device(npu2_1col) {
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %consumer = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.objectfifo @of (%owner, {%consumer}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of (%owner)
+    aie.core(%owner) { aie.end }
+    aie.core(%consumer) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
