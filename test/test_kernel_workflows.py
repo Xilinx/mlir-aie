@@ -357,16 +357,18 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
     assert publishes == (
         event != "pull_request" and ref == "refs/heads/main" and not seeds
     )
-    step = next(
+    designs = [
         step
-        for step in jobs["hw-check"]["steps"]
-        if step.get("name") == "Run mobilenet at each seed and batch"
-    )
-    if not evaluate(jobs["hw-check"]["if"], context):
+        for step in jobs["hw-checks"]["steps"]
+        if "REQUIRED_PMODE" in step.get("env", {})
+    ]
+    assert [step["id"] for step in designs] == ["mobilenet", "llama"]
+    if not evaluate(jobs["hw-checks"]["if"], context):
         assert event == "pull_request"
         return
-    required = evaluate(step["env"]["REQUIRED_PMODE"], context)
-    assert required == ("turbo" if publishes else "any")
+    for step in designs:
+        required = evaluate(step["env"]["REQUIRED_PMODE"], context)
+        assert required == ("turbo" if publishes else "any")
 
 
 MODEL_INPUTS = (
