@@ -382,6 +382,7 @@ def _bf16_lut_factory(
     arg_arity: int,
     contract: KernelContract | None = None,
     use_lut_tanh: bool = False,
+    compile_flags: list[str] | None = None,
 ) -> ExternalFunction:
     """Build a LUT-backed bf16 kernel whose arg list is N copies of the same tile type."""
     _require_fixed_tile_size(factory_name, tile_size, _LUT_FIXED_TILE)
@@ -390,11 +391,7 @@ def _bf16_lut_factory(
         func_name,
         kernel_filename,
         [tile_ty] * arg_arity,
-        compile_flags=(
-            [f"-D{factory_name.upper()}_ELEMS={tile_size}"]
-            if factory_name == "swiglu"
-            else None
-        ),
+        compile_flags=compile_flags,
         contract=contract,
         use_lut_tanh=use_lut_tanh,
     )
@@ -778,6 +775,7 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
         "swiglu.cc",
         tile_size,
         arg_arity=4,
+        compile_flags=[f"-DSWIGLU_ELEMS={tile_size}"],
         contract=KernelContract(
             trace=Trace.whole_call(),
             setup=conv_even,
