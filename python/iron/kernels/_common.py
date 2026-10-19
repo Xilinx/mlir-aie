@@ -35,6 +35,11 @@ class Param:
 
 _ROLES = (In, Out, InOut, Param)
 
+_STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
+# The scalar MoE and SSM kernels stay rolled: unrolled, they overflow aie2's
+# 16 KB program memory.
+_STRICT_FP_ROLLED = [*_STRICT_FP, "-fno-unroll-loops"]
+
 
 def _is_tensor_type(arg_type):
     return get_origin(arg_type) is np.ndarray

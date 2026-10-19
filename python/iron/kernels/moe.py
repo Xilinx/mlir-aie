@@ -24,11 +24,17 @@ from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, Param, Trace, _kernel_source, _make_extern
-from .core import conv_even
-from .sample import (
+from ._common import (
     _STRICT_FP,
     _STRICT_FP_ROLLED,
+    KernelContract,
+    Param,
+    Trace,
+    _kernel_source,
+    _make_extern,
+)
+from .core import conv_even
+from .sample import (
     _check_slice,
     _positive,
     exp64_ref,

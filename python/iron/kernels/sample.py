@@ -43,7 +43,13 @@ from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, Trace, _kernel_source, _make_extern
+from ._common import (
+    _STRICT_FP,
+    KernelContract,
+    Trace,
+    _kernel_source,
+    _make_extern,
+)
 
 # int32 words of a draw row: temperature bits, top-k, n53 low, n53 high.
 ROW_WORDS = 4
@@ -56,11 +62,6 @@ SUMMARY_HEADER = 8
 # The largest k_max: sample_combine's stack holds a table of k_max weights.
 # 128 is the largest verified on hardware.
 K_MAX_LIMIT = 128
-
-_STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
-# The scalar MoE and SSM kernels stay rolled: unrolled, they overflow aie2's
-# 16 KB program memory.
-_STRICT_FP_ROLLED = [*_STRICT_FP, "-fno-unroll-loops"]
 
 
 def summary_words(slice_size: int, k_max: int) -> int:
