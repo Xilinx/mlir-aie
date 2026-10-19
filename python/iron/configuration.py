@@ -36,13 +36,6 @@ from .runtime._context import active_configuration, active_configuration_scope
 from .scratchpad_parameter import ScratchpadParameter
 
 
-def _rename_device(device_op, name: str) -> None:
-    """Rename ``device_op`` to ``name``, and each reference to it within it."""
-    old = ir.StringAttr(device_op.attributes["sym_name"]).value
-    device_op.attributes["sym_name"] = ir.StringAttr.get(name)
-    ir.SymbolTable.replace_all_symbol_uses(old, name, device_op.operation)
-
-
 class DeviceConfiguration(DeviceResources):
     """A device image and the runtime sequences that use it."""
 
@@ -367,7 +360,9 @@ class DeviceConfiguration(DeviceResources):
             prebuilt = ir.Module.parse(self._prebuilt)  # alive while cloned
             (op,) = [o for o in prebuilt.body.operations if isinstance(o, DeviceOp)]
             clone = op.clone(ip=ir.InsertionPoint.current)
-            _rename_device(clone, device_name)
+            old = ir.StringAttr(clone.attributes["sym_name"]).value
+            clone.attributes["sym_name"] = ir.StringAttr.get(device_name)
+            ir.SymbolTable.replace_all_symbol_uses(old, device_name, clone.operation)
             if entry in self._runtimes and get_compile_arg("_iron_full_elf"):
                 (sequence,) = [
                     o
