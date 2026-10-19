@@ -8,6 +8,7 @@ import operator
 
 import numpy as np
 import pytest
+from aie.helpers.taplib import Affine, TensorAccessPattern
 from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.ir import BlockArgument, IntegerAttr
 from aie.iron import Program, Runtime, Worker
@@ -59,14 +60,9 @@ def test_reordered_dispatch_identity(other_type, bound, npu2_device):
         operator.index,
         float,
         lambda x: range(x),
-        lambda x: x + 1,
-        lambda x: 1 + x,
-        lambda x: x * 2,
-        lambda x: x // 2,
         lambda x: x < 3,
         lambda x: x == 3,
         lambda x: x & 1,
-        lambda x: np.int32(1) + x,
         lambda x: np.array(x),
         lambda x: np.empty((x,), dtype=np.int32),
         lambda x: np_ndarray_type_to_memref_type(np.ndarray[(x,), np.dtype[np.int32]]),
@@ -85,6 +81,51 @@ def test_dispatch_generation_time_misuse(use, npu2_device):
     with pytest.raises(
         TypeError, match="DispatchTime parameter 'count'.*generation-time"
     ):
+        CompilableDesign(gen).generate_mlir()
+
+
+@pytest.mark.parametrize(
+    "use",
+    [
+        lambda e: Worker(lambda value: None, [e]),
+        lambda e: np_ndarray_type_to_memref_type(np.ndarray[(e,), np.dtype[np.int32]]),
+        bool,
+    ],
+)
+def test_an_expression_of_a_dispatch_parameter_is_computed_per_call(use, npu2_device):
+    def gen(*, count: DispatchTime[np.int32]):
+        e = count * 64 + 64
+        assert e == Affine(count, 64, 64) and len({e, count * 64 + 64}) == 1
+        assert e != "e"
+        use(e)
+
+    with pytest.raises(TypeError, match="computed per call"):
+        CompilableDesign(gen).generate_mlir()
+
+
+def test_a_pattern_stages_an_expression_of_a_dispatch_parameter(npu2_device):
+    tensor_type = np.ndarray[(1024,), np.dtype[np.int32]]
+
+    def gen(*, start: DispatchTime[np.int32]):
+        def seq(a, start_value):
+            tap = TensorAccessPattern.full((1024,)).partition(16)[start + 1]
+            assert not isinstance(tap.offset, (int, Affine))
+
+        return Program(NPU2Col1(), Runtime(seq, [tensor_type, start])).resolve_program()
+
+    assert CompilableDesign(gen).generate_mlir().operation.verify()
+
+
+def test_a_numpy_integer_scales_a_dispatch_parameter_from_either_side(npu2_device):
+    def gen(*, count: DispatchTime[np.int32]):
+        for k in (np.int32(4), np.int64(4)):
+            assert k * count == count * k == Affine(count, 4, 0)
+            assert k + count == count + k == Affine(count, 1, 4)
+        with pytest.raises(TypeError, match="does not support ufuncs"):
+            np.add(count, 1)
+        raise RuntimeError("every check ran")
+
+    with pytest.raises(RuntimeError, match="every check ran"):
         CompilableDesign(gen).generate_mlir()
 
 
@@ -227,3 +268,28 @@ def test_specialization_allows_compile_time_use(npu2_device):
         return Program(NPU2Col1(), Runtime(lambda: None)).resolve_program()
 
     assert CompilableDesign(gen).specialize(count=3).generate_mlir().operation.verify()
+
+
+def test_merged_steps_forwarding_one_dispatch_parameter_share_its_argument(
+    npu2_device,
+):
+    tensor_type = np.ndarray[(16,), np.dtype[np.int32]]
+    seen = []
+
+    def gen(*, seq_len: DispatchTime[np.int32]):
+        def step(a, length):
+            seen.append(
+                (BlockArgument(a.op).arg_number, BlockArgument(length).arg_number)
+            )
+
+        merged = Runtime.merge(
+            [
+                Runtime(step, [tensor_type, seq_len]),
+                Runtime(step, [tensor_type, seq_len]),
+            ]
+        )
+        return Program(NPU2Col1(), merged).resolve_program()
+
+    assert CompilableDesign(gen).generate_mlir().operation.verify()
+    (first_a, first_len), (second_a, second_len) = seen
+    assert first_len == second_len and first_a != second_a

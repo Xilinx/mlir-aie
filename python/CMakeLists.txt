@@ -96,6 +96,9 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/compile/jit/markers.py
     utils/compile/jit/context.py
     utils/compile/jit/compileconfig.py
+    utils/compile/jit/declaration.py
+    utils/compile/jit/operator.py
+    utils/compile/jit/params.py
     utils/callabledesign.py
     utils/jit.py
     utils/trace/__init__.py

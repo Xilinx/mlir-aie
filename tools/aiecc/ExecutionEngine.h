@@ -318,7 +318,8 @@ struct Engine {
     std::mutex mtx;
     std::condition_variable cv;
     std::vector<Task> ready;
-    llvm::StringSet<> seenPaths; // duplicate-output-path guard
+    // Duplicate-output-path guard: each written path and the item key it holds.
+    llvm::StringMap<std::string> seenPaths;
     unsigned numEdges = 0;
     unsigned finishedEdges = 0;
     unsigned inFlight = 0;
@@ -393,11 +394,17 @@ struct Engine {
       for (const ItemBase *item : e->outputNode()->itemRefs()) {
         if (item->filePath.empty())
           continue;
-        if (!seenPaths.insert(item->filePath).second) {
+        auto [seen, fresh] = seenPaths.try_emplace(item->filePath, item->key);
+        if (!fresh) {
           auto log = endProgressLine();
           llvm::errs() << "aiecc: edge '" << displayName(e)
                        << "' produced duplicate output path '" << item->filePath
-                       << "'\n";
+                       << "'";
+          if (!item->key.empty() && item->key != seen->second)
+            llvm::errs() << " for items '" << seen->second << "' and '"
+                         << item->key
+                         << "'; its output name needs '{0}' to tell them apart";
+          llvm::errs() << "\n";
           return false;
         }
       }

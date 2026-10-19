@@ -26,7 +26,16 @@ from typing import TYPE_CHECKING, Any, Iterator, Sequence
 
 import numpy as np
 
-from ._symbolic import IntLike, is_sym, require, show, sint, sprod, sym_any
+from ._per_call import Affine, PerCall
+from ._symbolic import (
+    IntLike,
+    is_sym,
+    require,
+    show,
+    sint,
+    sprod,
+    sym_any,
+)
 from .utils import (
     row_major_strides,
     validate_and_clean_sizes_strides,
@@ -424,7 +433,7 @@ class TensorAccessPattern:
                 raise TypeError(
                     "boolean indexing is advanced indexing; a pattern is a strided walk"
                 )
-            if is_sym(entry):
+            if is_sym(entry) or isinstance(entry, (Affine, PerCall)):
                 entry = sint(entry)
                 require(entry >= 0, "index must be >= 0 on a runtime dimension")
                 require(entry < n, "index exceeds the dimension")

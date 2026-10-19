@@ -29,7 +29,7 @@ from aie.iron.device import from_name
 from aie.iron.kernels import Param
 from aie.iron.kernels._common import ARCH_TRAITS
 from aie.utils import bfp, get_current_device
-from aie.utils.accuracy import error_stats
+from aie.utils.accuracy import all_bf16, error_stats
 from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
@@ -281,6 +281,8 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
                 edge.flat[edge.size // 2] = -np.inf
             elif data_case == "large":
                 edge = rng.standard_normal(shape) * 1e4
+            elif data_case == "all_bf16":
+                edge = np.resize(all_bf16(nan=False, inf=False), shape)
             else:
                 raise KeyError(data_case)
             if is_int:

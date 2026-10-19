@@ -296,9 +296,7 @@ def _lut_on_npu2(*args):
         _lut_on_npu2("sigmoid", _step),
         ("silu", _relu, {}),
         _lut_on_npu2("silu", _relu),
-        ("silu_sized", _relu, {}),
         ("gelu", _relu, {}),
-        ("gelu_sized", _relu, {}),
     ],
     ids=lambda v: (
         ("lut" if v.get("use_lut") else "default") if isinstance(v, dict) else None

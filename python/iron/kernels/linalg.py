@@ -1079,6 +1079,7 @@ def mha(
     accurate_exp2: bool = False,
     causal: bool = True,
     window: int = 0,
+    packed: bool = False,
     f32_scores: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
@@ -1128,6 +1129,9 @@ def mha(
         window: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
             query keeps no key more than ``window`` positions from it; 0 is
             no window.
+        packed: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]:
+            every row is a query at the last key. ``matmul_bf16_bf16_wrapper``
+            then computes every block.
         f32_scores: Keep the ``QK^T`` scores in float32 (``-DMHA_F32_SCORES``):
             ``matmul_bf16_bf16_wrapper`` writes, and ``partial_softmax``
             reads, a float32 tile, held to float32 summation order. AIE2P
@@ -1140,7 +1144,7 @@ def mha(
 
     Raises:
         ValueError: A tile dimension that is not a positive multiple, or a
-            window the band cannot hold (see ``mha_softmax``).
+            negative window.
     """
     for name, v, mult in (
         ("dim_m", dim_m, 16),
@@ -1178,7 +1182,7 @@ def mha(
         flags.append("-DB_COL_MAJ")
     if accurate_exp2:
         flags.append("-DEXP2_BF16_ACCURATE=1")
-    flags += _mha_band_flags("mha", dim_m, dim_n, causal, window)
+    flags += _mha_band_flags("mha", causal, window, packed)
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
@@ -1233,27 +1237,18 @@ def mha(
 mha.mac_dims = _MhaFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
 
 
-def _mha_band_flags(name, dim_m, dim_n, causal, window):
+def _mha_band_flags(name, causal, window, packed):
     """Return the ``-D`` flags that select ``mha.cc``'s band, after checking it.
 
     Raises:
-        ValueError: A negative ``window``, or a ``window`` that is not a
-            multiple of ``dim_m`` or with a ``dim_n`` that ``dim_m`` does
-            not divide.
+        ValueError: A negative ``window``.
     """
     if window < 0:
         raise ValueError(f"{name}: window must be 0 (none) or positive, got {window}")
-    # A row whose band misses a key block another row of its query block
-    # keeps, with no key of its own before it, would weigh its masked keys 1;
-    # whole query blocks per window and per key block rule that row out.
-    if window and (window % dim_m or dim_n % dim_m):
-        raise ValueError(
-            f"{name}: a window needs window and dim_n multiples of dim_m, "
-            f"got window={window}, dim_m={dim_m}, dim_n={dim_n}"
-        )
     return [
         *([] if causal else ["-DMHA_CAUSAL=0"]),
         *([f"-DMHA_WINDOW={window}"] if window else []),
+        *(["-DMHA_PACKED=1"] if packed else []),
     ]
 
 
@@ -1291,6 +1286,7 @@ def mha_softmax(
     dim_n: int = 64,
     causal: bool = True,
     window: int = 0,
+    packed: bool = False,
     scale: float = np.log2(np.e) / 8,
 ) -> ExternalFunction:
     """One block of ``mha.cc``'s online softmax, ``partial_softmax``.
@@ -1321,9 +1317,11 @@ def mha_softmax(
         dim_n: Keys of the block (``B_kv``), a multiple of 16.
         causal: A query keeps no key past its own position.
         window: A query keeps no key more than ``window`` positions before
-            it, nor, when not causal, after it; 0 is no window. A multiple of
-            ``dim_m``, as ``dim_n`` must then be, and for self-attention,
-            where every query row keeps its own position.
+            it, nor, when not causal, after it; 0 is no window. For
+            self-attention, where every query row keeps its own position.
+        packed: Every row is one query at the last key, ``S_kv_eff - 1``,
+            as for one decode step with a KV group's heads as the rows;
+            ``idx``'s query block is then unused.
         scale: The log2-domain factor ``s``, rounded to bf16: ``log2(e)``
             over the square root of the head dimension. Positive and finite,
             so a masked score, ``A``'s lowest times ``s``, stays below every
@@ -1334,8 +1332,8 @@ def mha_softmax(
 
     Raises:
         ValueError: A block dimension that is not a positive multiple of
-            16, a ``scale`` that is not positive and finite, or a window
-            the band cannot hold.
+            16, a ``scale`` that is not positive and finite, or a negative
+            window.
     """
     for name, v in (("dim_m", dim_m), ("dim_n", dim_n)):
         if v <= 0 or v % 16:
@@ -1345,8 +1343,8 @@ def mha_softmax(
     scale = float(bfloat16(scale))
     if not 0 < scale < np.inf:
         raise ValueError(f"mha_softmax: scale must be positive and finite, got {scale}")
-    band_flags = _mha_band_flags("mha_softmax", dim_m, dim_n, causal, window)
-    band = dict(dim_m=dim_m, dim_n=dim_n, causal=causal, window=window)
+    band_flags = _mha_band_flags("mha_softmax", causal, window, packed)
+    band = dict(dim_m=dim_m, dim_n=dim_n, causal=causal, window=window, packed=packed)
     tile = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
     state = np.ndarray[(4 * dim_m,), np.dtype[np.float32]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
@@ -1416,7 +1414,17 @@ def mha_softmax(
 
 
 def mha_softmax_ref(
-    a, idx, s_q_eff, s_kv_eff, *, scale, dim_m=64, dim_n=64, causal=True, window=0
+    a,
+    idx,
+    s_q_eff,
+    s_kv_eff,
+    *,
+    scale,
+    dim_m=64,
+    dim_n=64,
+    causal=True,
+    window=0,
+    packed=False,
 ):
     """Numpy reference for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: ``(P, scale_buffer)``.
 
@@ -1427,7 +1435,7 @@ def mha_softmax_ref(
     """
     kv, q = (int(i) for i in np.asarray(idx).ravel())
     rows, cols = np.indices((dim_m, dim_n))
-    key = kv * dim_n + cols - (q * dim_m + rows)
+    key = kv * dim_n + cols - (s_kv_eff - 1 if packed else q * dim_m + rows)
     keep = (rows < s_q_eff - q * dim_m) & (cols < s_kv_eff - kv * dim_n)
     if causal or window:
         keep &= key <= (0 if causal else window)

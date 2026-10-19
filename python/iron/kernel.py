@@ -7,6 +7,7 @@
 
 import hashlib
 import logging
+import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, get_origin
@@ -20,6 +21,7 @@ from ..helpers.dialects.func import call
 from ..helpers.npdtypes import is_block_float
 from ..helpers.sourceloc import SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
+from ..utils import config
 from ..utils.compile.jit.context import get_compile_arg
 from .buffer import Buffer
 from .resolvable import Resolvable
@@ -140,6 +142,30 @@ def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
             op = op.parent
             if op is None:
                 raise ValueError("Kernels must be used inside a symbol table.")
+
+
+_PATH_FLAG = re.compile(r'(-I|-isystem|-iquote|-D[^=]+=)?("?)(.*?)("?)')
+
+
+def _install_relative_flag(flag: str, roots: dict[str, Path]) -> str:
+    """Return ``flag`` with a path under one of ``roots`` named relative to that root.
+
+    With the runtime library at ``/opt/x/aie_runtime_lib``,
+    ``-I/opt/x/aie_runtime_lib/AIE2P`` is ``-I{aie_runtime_lib}/AIE2P`` in
+    every installation. A path under no root is kept whole, so two include
+    trees elsewhere stay told apart.
+    """
+    match = _PATH_FLAG.fullmatch(flag)
+    if match is None:
+        return flag
+    prefix, open_quote, value, close_quote = match.groups()
+    path = Path(value)
+    if path.is_absolute():
+        for label, root in roots.items():
+            if path.is_relative_to(root):
+                value = f"{{{label}}}/{path.relative_to(root).as_posix()}"
+                break
+    return f"{prefix or ''}{open_quote}{value}{close_quote}"
 
 
 @dataclass(frozen=True)
@@ -1222,6 +1248,39 @@ class ExternalFunction(Kernel):
         parts.extend([str(self._source_file), self._recipe.source_digest])
         self._cached_digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
         return self._cached_digest
+
+    @property
+    def recipe_key(self) -> str:
+        """The same string on any machine that builds this kernel from the same recipe.
+
+        It covers the symbol, the source's name and content, the argument
+        types, the compile flags and the toolchain choice (chess, inline),
+        but not the headers the source includes, where any of them live, or
+        the symbol prefix, which a design adds. A path in a flag under the
+        kernel sources, the runtime library or the installed headers counts
+        relative to that root, so ``-I`` and ``-DAIE_LUT_KERNEL_SOURCE="..."``
+        flags name no installation; any other path counts whole. The nightly
+        kernel timings carry it, so a design that calls a kernel can find that
+        kernel's timed row.
+        """
+        # aie_kernels sits inside the installed headers, so it is tried first.
+        roots = {
+            "aie_kernels": Path(config.aie_kernels_dir()),
+            "aie_runtime_lib": Path(config.aie_runtime_lib_dir()),
+            "include": Path(config.cxx_header_path()),
+        }
+        source = self._source_file
+        parts = [
+            self._original_name,
+            Path(source).name if source else "",
+            self._recipe.source_digest,
+            str(self._arg_types),
+            str([_install_relative_flag(f, roots) for f in self._compile_flags]),
+            f"chess={self._use_chess}",
+            f"inline={self._inline}",
+        ]
+        digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:12]
+        return f"{self._original_name}-{digest}"
 
     def __hash__(self) -> int:
         """Content-based hash for use as a dict/set key and in cache signatures."""

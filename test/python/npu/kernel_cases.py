@@ -187,6 +187,10 @@ CASES: list[Case] = [
     Case(
         "gelu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
     ),
+    # test_kernels_specs checks a tanh GELU fails on this case's inputs.
+    Case("gelu_erf", calls=16, smoke=True),
+    check("gelu_erf", dict(tile_size=32), tag="edge-one-vector"),
+    check("gelu_erf", calls=64, data_cases=("all_bf16",), tag="all-bf16"),
     Case("silu", calls=16, smoke=True),
     Case(
         "silu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
@@ -282,31 +286,28 @@ CASES: list[Case] = [
     # Sized kernels retaining their runtime-count ABI.
     check("add_sized", calls=16, smoke=True),
     check("mul_sized", calls=16, smoke=True),
-    Case("relu_sized", calls=16, smoke=True),
-    check("silu_sized", calls=16, smoke=True),
     # Same remainder pass as the leaky_relu case above on aie2p: 160 steps the
     # 32-lane loop five times, where its unrolled body consumes four. On aie2,
     # 160 is two 64-element trips and a 32-element remainder.
-    check("silu_sized", dict(tile_size=160), tag="unroll-tail", smoke=True),
+    check("silu", dict(tile_size=160), tag="unroll-tail", smoke=True),
     # AIE2 silu runs the same 64-element trips as gelu below.
-    check("silu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
+    check("silu", dict(tile_size=96), tag="short-trip", smoke=True),
     check(
-        "silu_sized",
+        "silu",
         dict(tile_size=160, use_lut=True),
         tag="lut-unroll-tail",
         devices=("npu2",),
         smoke=True,
     ),
-    Case("gelu_sized", calls=16, smoke=True),
     # On aie2p gelu's 32-lane loop is unrolled four ways too, so it has the
     # same remainder pass and the same need for a size that is not a multiple
     # of it. On aie2, as for silu, 160 leaves a remainder after two trips.
-    check("gelu_sized", dict(tile_size=160), tag="unroll-tail", smoke=True),
+    check("gelu", dict(tile_size=160), tag="unroll-tail", smoke=True),
     # AIE2 gelu takes 64 elements per trip and loads the next trip's input
     # ahead: 96 runs a single trip, reloading its own input, then the remainder.
-    check("gelu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
+    check("gelu", dict(tile_size=96), tag="short-trip", smoke=True),
     check(
-        "gelu_sized",
+        "gelu",
         dict(tile_size=160, use_lut=True),
         tag="lut-unroll-tail",
         devices=("npu2",),
@@ -314,7 +315,7 @@ CASES: list[Case] = [
     ),
     *[
         check(name, dict(tile_size=32), tag="edge-tiny", smoke=True)
-        for name in ("add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized")
+        for name in ("add_sized", "mul_sized", "relu", "silu", "gelu")
     ],
     # datamovement
     Case("axpy", calls=16, scalars=(2.5,), smoke=True),
@@ -413,6 +414,42 @@ CASES: list[Case] = [
         dict(audio_token=0, image_token=1, audio_at=0, vision_at=40),
         calls=2,
         tag="overlap",
+    ),
+    # Scalar first passes, timed as the baseline their vectorization beats.
+    # A row is four experts of 16 gate_up tiles and 8 down tiles each; three
+    # rows check that each one starts its sum again, and the third repeats an
+    # id (experts_sample).
+    Case("experts", calls=288, smoke=True),
+    # One gate_up tile wide and one down tile: three steps an expert.
+    check(
+        "experts",
+        dict(hidden=32, width=16, num_experts=2, top_k=1, rows=32, cols=16),
+        calls=18,
+        tag="edge-one-tile",
+    ),
+    check("experts", dict(top_k=4), calls=288, tag="edge-all-chosen"),
+    # Three heads of two blocks: each block carries the state, each head
+    # loads its own.
+    Case("selective_scan", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
+    check("selective_scan", dict(blocks=2), calls=4, scalars=(5,), tag="partial"),
+    check("selective_scan", dict(blocks=2), calls=4, scalars=(0,), tag="none-valid"),
+    Case("gated_delta_rule", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
+    check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(5,), tag="partial"),
+    check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(0,), tag="none-valid"),
+    # Two rows of a 2x2 state, and more valid rows than the block holds.
+    *(
+        check(
+            name,
+            dict(rows=2, blocks=3, **dims),
+            calls=6,
+            scalars=(valid,),
+            tag=f"edge-tiny-valid{valid}",
+        )
+        for name, dims in (
+            ("selective_scan", dict(head_dim=2, state=2)),
+            ("gated_delta_rule", dict(key_dim=2, value_dim=2)),
+        )
+        for valid in (2, 17)
     ),
     # EmbeddingGemma 2's image budget: 42x57 patches in 10 blocks, padded.
     Case("patch_positions", {}, calls=10, scalars=(10, 672, 912), smoke=True),
@@ -1886,6 +1923,18 @@ CASES: list[Case] = [
     check("rms_norm", dict(cols=200), calls=16, tag="row-tail"),
     check("rms_norm", dict(cols=1000), calls=16, tag="row-tail"),
     Case("layer_norm", dict(cols=1024), calls=16, smoke=True),
+    # A non-default epsilon, so a kernel that ignores it fails.
+    Case("layer_norm_eps", dict(cols=1024), calls=16, scalars=(1e-2,), smoke=True),
+    # One 16-lane half, a row tail, and exactly the pipelined loops' minimum
+    # on aie2; an epsilon large enough to move every output.
+    *(
+        check("layer_norm_eps", dict(cols=cols), calls=16, scalars=(0.25,), tag=tag)
+        for cols, tag in (
+            (16, "edge-one-half"),
+            (208, "row-tail"),
+            (256, "edge-pipelined"),
+        )
+    ),
     # Rows of an odd number of 16-lane halves: 208 is too short for the
     # pipelined loops and 1008 leaves an odd chunk (aie2p ends in a half vector).
     check("layer_norm", dict(cols=208), calls=16, tag="row-tail"),
@@ -2092,15 +2141,15 @@ CASES: list[Case] = [
         data_cases=("random", "zeros", "ones", "alternating"),
     ),
     # ffn gate activation
-    Case("silu_sized", dict(tile_size=4096), calls=16, tag="llama-prefill"),
+    Case("silu", dict(tile_size=4096), calls=16, tag="llama-prefill"),
     Case(
-        "silu_sized",
+        "silu",
         dict(tile_size=4096, use_lut=True),
         calls=16,
         tag="llama-prefill-lut",
         devices=("npu2",),
     ),
-    Case("silu_sized", dict(tile_size=1024), calls=16, tag="llama-decode"),
+    Case("silu", dict(tile_size=1024), calls=16, tag="llama-decode"),
     # ffn gate product and attention-score scaling
     Case("mul_sized", dict(tile_size=4096), calls=16, tag="llama-prefill-ffn"),
     Case("mul_sized", dict(tile_size=2048), calls=16, tag="llama-prefill-attn-scale"),
@@ -2121,6 +2170,73 @@ CASES: list[Case] = [
         tag="llama-decode",
     ),
 ]
+
+
+def _iron_gemm_tiles(device: str, precision: str) -> set[tuple[int, int, int]]:
+    """Every m x k x n bf16 tile amd/IRON's GEMM searches on ``device``.
+
+    The tiles are powers of two. m and n are at least 16, though m may be 8
+    on npu2 where no bfp16 macs are used. k is 64 unless the precision is
+    ``highest``. Double-buffered A and B, C and IRON's 0xD00-byte stack must
+    fit a core's 64 KiB. C is two bf16 buffers, or at ``highest`` one bf16
+    buffer and its f32 accumulator.
+    """
+    sides = [2**i for i in range(3, 11)]
+    least_m = 8 if device == "npu2" and precision != "medium" else 16
+    c_bytes = 6 if precision == "highest" else 4
+    return {
+        (m, k, n)
+        for m in sides
+        for k in (sides if precision == "highest" else [64])
+        for n in sides
+        if m >= least_m
+        and n >= 16
+        and 4 * (m * k + k * n) + c_bytes * m * n + 0xD00 <= 64 * 1024
+    }
+
+
+def _iron_gemm_cases() -> list[Case]:
+    """IRON's GEMM tiles, timed so its autotune can skip slow settings.
+
+    npu1 has no bfp16 macs, so its ``medium`` builds the same kernel as
+    ``high``. A tile that both devices search is a single case.
+    """
+    builds: dict[tuple, set[str]] = {}
+    for device, precisions in (
+        ("npu1", ("high", "highest")),
+        ("npu2", ("medium", "high", "highest")),
+    ):
+        for precision in precisions:
+            for tile in _iron_gemm_tiles(device, precision):
+                builds.setdefault((precision, tile), set()).add(device)
+    cases = []
+    for (precision, (m, k, n)), devices in sorted(builds.items()):
+        cases.append(
+            Case(
+                "mm",
+                dict(
+                    dim_m=m,
+                    dim_k=k,
+                    dim_n=n,
+                    input_dtype=bfloat16,
+                    output_dtype=np.float32 if precision == "highest" else bfloat16,
+                    round_conv_even=True,
+                    **(
+                        dict(emulate_bf16_mmul_with_bfp16=True)
+                        if precision == "medium"
+                        else {}
+                    ),
+                ),
+                calls=4,
+                tag="iron-gemm",
+                devices=() if len(devices) == 2 else tuple(devices),
+                data_cases=("random",),
+            )
+        )
+    return cases
+
+
+CASES += _iron_gemm_cases()
 
 
 # Smaller shapes for the per-PR smoke test; the nightly times the shapes above.

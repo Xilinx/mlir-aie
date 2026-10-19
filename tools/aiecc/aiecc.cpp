@@ -65,6 +65,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ObjCopy/ConfigManager.h"
 #include "llvm/ObjCopy/ObjCopy.h"
 #include "llvm/Object/Binary.h"
@@ -837,6 +838,32 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
 // Main compilation graph
 //===----------------------------------------------------------------------===//
 
+// The device named `root` and every device its sequences load or configure,
+// transitively: a full ELF for `root` has to carry their PDIs too.
+static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
+                                            llvm::StringRef root) {
+  llvm::StringSet<> reached;
+  llvm::SmallVector<llvm::StringRef> work{root};
+  while (!work.empty()) {
+    llvm::StringRef name = work.pop_back_val();
+    if (!reached.insert(name).second)
+      continue;
+    auto device = module.lookupSymbol<xilinx::AIE::DeviceOp>(name);
+    if (!device)
+      continue;
+    device.walk([&](mlir::Operation *op) {
+      if (auto load = llvm::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op)) {
+        if (std::optional<llvm::StringRef> ref = load.getDeviceRef())
+          work.push_back(*ref);
+      } else if (auto configure =
+                     llvm::dyn_cast<xilinx::AIEX::ConfigureOp>(op)) {
+        work.push_back(configure.getSymbol());
+      }
+    });
+  }
+  return reached;
+}
+
 // Assemble the full compilation artifact graph into `g` and return the list of
 // requested output edges. Edges named via `--cut` are appended to `cutEdges`
 // (and built) so a `--checkpoint` can capture them as its cut points. Edges
@@ -895,8 +922,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto matchesDeviceFilter = [devFilter](DeviceOp d) {
     // Empty reset devices synthesized by --expand-load-pdis must always be
     // included, regardless of --device-name.
-    return devFilter.empty() || d.getSymName() == devFilter ||
-           d.getSymName().starts_with("empty_");
+    if (devFilter.empty() || d.getSymName().starts_with("empty_"))
+      return true;
+    auto module = d->getParentOfType<mlir::ModuleOp>();
+    return module &&
+           devicesReachedFrom(module, devFilter).contains(d.getSymName());
   };
 
   // Split a whole-module edge into one item per DeviceOp (keyed by bare device

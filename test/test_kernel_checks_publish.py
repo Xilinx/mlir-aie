@@ -217,6 +217,57 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     ]
 
 
+def test_a_timed_case_is_charted_with_its_worst_error(publish, tmp_path):
+    entry = dict(output=0, max_ulp=1, not_correctly_rounded=3, n=1024)
+    errors = {
+        "add/1024x16/bfloat16/random/s0": {"passed": True, "outputs": [entry]},
+        "add/1024x16/bfloat16/edges/s1": {
+            "passed": True,
+            "outputs": [dict(entry, max_ulp=2, not_correctly_rounded=1)],
+        },
+        # An untimed case has no row to stand beside.
+        "relu/1024/bf16/random/s0": {"passed": True, "outputs": [entry]},
+    }
+    results = results_dir(tmp_path)
+    (results / "error.json").write_text(json.dumps(errors))
+    out = tmp_path / "npu1"
+    run_cli(
+        [
+            "perf",
+            "--target",
+            "npu1",
+            "--results",
+            results,
+            "--run-id",
+            "1",
+            "--out",
+            out,
+        ]
+    )
+    record = json.loads((out / "runs/1.json").read_text())
+    add = record["rows"]["add/1024x16/bfloat16"]
+    assert add["max_ulp"] == {"value": 2, "unit": "ulp"}
+    assert add["not_correctly_rounded"] == {"value": 0.195, "unit": "%"}
+    assert "relu/1024/bf16" not in record["rows"]
+    ulps = json.loads((out / "history/max_ulp.json").read_text())
+    assert ulps["series"] == {"add/1024x16/bfloat16": {"values": [2]}}
+
+
+def test_each_timed_case_names_its_kernel_build(publish, tmp_path):
+    cases = {
+        "add/1024x16/bfloat16": {"build": "add_bf16-0123456789ab"},
+        # A case that recorded no row has no build to name.
+        "relu/1024x16/bfloat16": {"build": "relu_bf16-ba9876543210"},
+    }
+    record = publish.record_perf(
+        results_dir(tmp_path, meta={**META, "cases": cases}),
+        target="npu1",
+        run={"id": "1"},
+    )
+    assert record["builds"] == {"add/1024x16/bfloat16": "add_bf16-0123456789ab"}
+    assert "builds" not in publish.summary(record)
+
+
 def test_a_refused_run_records_why_and_no_sanity_result(publish, tmp_path):
     refused = "power mode is performance, required 'turbo'"
     meta = {"refused": refused, "exitstatus": 1, "n_rows": 0, "failed": []}

@@ -150,7 +150,7 @@ def _transform_parallel_gen(
         pass_size_to_kernel: When True (default), the kernel receives an extra
             trailing ``int`` argument equal to ``tile_size``.  Set False for
             kernels whose signature is just ``(*in_tiles, out_tile)`` (e.g.
-            ``iron.kernels.relu``, ``iron.kernels.add``).
+            ``iron.kernels.add``, ``iron.kernels.mul``).
     """
     if num_channels < 1:
         raise ValueError("num_channels must be positive")

@@ -122,7 +122,7 @@ constants. These are re-exported into `iron` from `aie.utils`.
 | `iron.CallableDesign` | class | A compiled, callable design produced from a `CompilableDesign`. |
 | `iron.compileconfig` | decorator | Attach compile-time configuration to a design generator. |
 | `iron.get_compile_arg` | function | Dynamically inject a compile-time argument (advanced). |
-| `iron.In` / `iron.Out` / `iron.InOut` | markers | Type-annotation markers for design inputs/outputs. |
+| `iron.In` / `iron.Out` / `iron.InOut` | markers | Annotate a design's inputs and outputs; called in an operator's class body, they declare its tensors. |
 | `iron.CompileTime` | marker | Type-annotation marker for a compile-time constant argument. |
 | `iron.DispatchTime` | marker | Integer scalar that can vary per call without recompiling the device program. |
 

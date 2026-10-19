@@ -3,9 +3,13 @@
 
 # RUN: %pytest %s
 
+import re
+
 import numpy as np
 import pytest
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.dialects.aie import DeviceOp
+from aie.ir import Context, Module, StringAttr
 from aie.iron import (
     Bd,
     Buffer,
@@ -23,12 +27,14 @@ from aie.iron import (
     Resolvable,
     Runtime,
     ScratchpadParameter,
+    TaskGroup,
     TileDma,
     Worker,
     WorkerRuntimeBarrier,
     sync_parameters,
 )
 from aie.iron.device import NPU2Col1, Tile
+from aie.utils.compile.jit.context import compile_context
 
 Tensor = np.ndarray[(4,), np.dtype[np.int32]]
 
@@ -405,7 +411,7 @@ Line = np.ndarray[(256,), np.dtype[np.int32]]
 
 
 def member(fifo_name=None, rtp_name=None):
-    """A Worker draining a fifo its Runtime fills, with an RTP buffer."""
+    """Return a Worker draining a fifo its Runtime fills, with an RTP buffer."""
     of = ObjectFifo(Line, name=fifo_name)
     rtp = Buffer(Tensor, name=rtp_name, use_write_rtp=True)
 
@@ -465,3 +471,450 @@ def test_two_configurations_may_name_a_symbol_alike():
     Program.compose(
         [config_a, config_b], entry=rt_a
     ).resolve_program().operation.verify()
+
+
+def mem_tile():
+    return Tile(0, 1, tile_type=AIETileType.MemTile)
+
+
+def static_program(name, tile, direction, channel):
+    """A Runtime that adds a TileDma running one channel of ``tile``."""
+    rt = runtime(name)
+    bd = Bd(Buffer(Tensor, tile=tile))
+    rt.add_tile_dma(TileDma(tile, [DmaChannel(direction, channel, [bd])]))
+    return rt
+
+
+def task_on(name, tile, direction, channel):
+    """A Runtime whose sequence runs one task on a channel of ``tile``."""
+    buffer = Buffer(Tensor, tile=tile)
+    endpoint = DmaEndpoint(tile, direction, channel)
+    return Runtime(lambda: endpoint.task(Bd(buffer)).start().free(), [], name=name)
+
+
+def control_route(tile):
+    return PacketFlow(3, Tile(0, 0), tile, dst_port=WireBundle.TileControl)
+
+
+def program(*runtimes):
+    config = DeviceConfiguration("pack", NPU2Col1(), runtimes=runtimes)
+    return Program.compose([config], entry=runtimes[0]).resolve_program()
+
+
+def test_co_resident_runtimes_run_static_programs_on_one_tile():
+    mem = mem_tile()
+    text = str(
+        program(
+            static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
+            static_program("seq_1", mem, DMAChannelDir.S2MM, 0),
+        )
+    )
+    assert text.count("aie.memtile_dma(") == 1
+    assert "aie.dma_start(MM2S, 0" in text and "aie.dma_start(S2MM, 0" in text
+
+
+def test_one_channel_in_two_static_programs_is_refused():
+    mem = mem_tile()
+    with pytest.raises(ValueError, match="already has MM2S channel 0"):
+        program(
+            static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
+            static_program("seq_1", mem, DMAChannelDir.MM2S, 0),
+        )
+
+
+@pytest.mark.parametrize("one_runtime", [True, False])
+def test_a_control_route_into_a_tile_with_a_static_program_is_refused(one_runtime):
+    mem = mem_tile()
+    static = static_program("seq_0", mem, DMAChannelDir.MM2S, 0)
+    routed = static if one_runtime else runtime("seq_1")
+    routed.add_flow(control_route(mem))
+    with pytest.raises(
+        ValueError,
+        match=r"PacketFlow 'packetflow0' writes the TileControl of "
+        r"Tile<MemTile>\(0, 1\), which runs a TileDma program",
+    ):
+        program(*dict.fromkeys([static, routed]))
+
+
+def test_co_resident_runtimes_may_share_one_control_route():
+    route = control_route(mem_tile())
+    first, second = runtime("seq_0"), runtime("seq_1")
+    first.add_flow(route)
+    second.add_flow(route)
+    assert str(program(first, second)).count("aie.packet_flow(") == 1
+
+
+def test_a_task_on_a_channel_a_static_program_runs_is_refused():
+    mem = mem_tile()
+    with pytest.raises(
+        ValueError,
+        match=r"A task on MM2S channel 0 on Tile<MemTile>\(0, 1\) would rewrite "
+        "the channel a TileDma program runs",
+    ):
+        program(
+            static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
+            task_on("seq_1", mem, DMAChannelDir.MM2S, 0),
+        )
+
+
+def gathered(mem):
+    """Two packet routes into ``mem`` on one channel the compiler assigns."""
+    owner = PacketFlow(1, Tile(0, 2), mem, src_channel=None, dst_channel=None)
+    sharer = PacketFlow(
+        2, Tile(0, 3), mem, src_channel=None, dst_channel=owner.endpoint(mem)
+    )
+    return owner, sharer
+
+
+def static_on(name, tile, channel, flows=()):
+    """A Runtime with ``flows`` and a TileDma running S2MM on ``channel``."""
+    rt = runtime(name)
+    for flow in flows:
+        rt.add_flow(flow)
+    bd = Bd(Buffer(Tensor, tile=tile))
+    rt.add_tile_dma(TileDma(tile, [DmaChannel(DMAChannelDir.S2MM, channel, [bd])]))
+    return rt
+
+
+def test_a_route_sharing_a_channel_gives_the_owners_endpoint():
+    mem = mem_tile()
+    owner, sharer = gathered(mem)
+    assert sharer.endpoint(mem) is owner.endpoint(mem)
+    with pytest.raises(ValueError, match="already has S2MM channel"):
+        TileDma(
+            mem,
+            [
+                DmaChannel(
+                    DMAChannelDir.S2MM,
+                    owner.endpoint(mem),
+                    [Bd(Buffer(Tensor, tile=mem))],
+                ),
+                DmaChannel(
+                    DMAChannelDir.S2MM,
+                    sharer.endpoint(mem),
+                    [Bd(Buffer(Tensor, tile=mem))],
+                ),
+            ],
+        )
+
+
+def test_a_task_through_a_sharing_route_on_a_static_channel_is_refused():
+    mem = mem_tile()
+    owner, sharer = gathered(mem)
+    static = static_on("seq_0", mem, owner.endpoint(mem), (owner, sharer))
+    task = Runtime(
+        lambda: sharer.endpoint(mem).task(Bd(Buffer(Tensor, tile=mem))).start().free(),
+        [],
+        name="seq_1",
+    )
+    with pytest.raises(ValueError, match="would rewrite the channel a TileDma program"):
+        program(static, task)
+
+
+@pytest.mark.parametrize(
+    "direction, refused", [(DMAChannelDir.S2MM, True), (DMAChannelDir.MM2S, False)]
+)
+def test_an_indexed_task_meets_a_static_channel_left_for_the_compiler(
+    direction, refused
+):
+    mem = mem_tile()
+    owner, sharer = gathered(mem)
+    static = static_on("seq_0", mem, owner.endpoint(mem), (owner, sharer))
+    task = task_on("seq_1", mem, direction, 0)
+    if refused:
+        with pytest.raises(ValueError, match="would rewrite the channel"):
+            program(static, task)
+    else:
+        assert str(program(static, task)).count("aiex.dma_configure_task(") == 1
+
+
+def test_tiles_pinned_to_one_column_alone_are_two_tiles():
+    first = Tile(col=0, tile_type=AIETileType.MemTile)
+    second = Tile(col=0, tile_type=AIETileType.MemTile)
+    module = program(
+        static_program("seq_0", first, DMAChannelDir.MM2S, 0),
+        task_on("seq_1", second, DMAChannelDir.MM2S, 0),
+    )
+    assert str(module).count("aiex.dma_configure_task(") == 1
+
+
+def test_tasks_may_share_a_channel_and_leave_a_static_one_alone():
+    mem = mem_tile()
+    module = program(
+        static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
+        task_on("seq_1", mem, DMAChannelDir.MM2S, 1),
+        task_on("seq_2", mem, DMAChannelDir.MM2S, 1),
+    )
+    assert str(module).count("aiex.dma_configure_task(") == 2
+
+
+PREBUILT = """
+aiex.scratchpad_parameter @count : i32
+aie.device(npu2_1col) @made_elsewhere {
+  %t = aie.tile(0, 2)
+  %c = aie.core(%t) {
+    aie.end
+  }
+  aie.runtime_sequence @run(%a: memref<16xi32>, %b: memref<4x8xbf16>) {
+  }
+}
+"""
+
+
+SELF_NAMED = """
+aie.device(npu2_1col) @main {
+  %t = aie.tile(0, 2)
+  %s = aie.tile(0, 0)
+  aie.shim_dma_allocation @main (%s, MM2S, 0)
+  aie.runtime_sequence @run(%a: memref<16xi32>) {
+    aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 0 : i64, metadata = @main} : memref<16xi32>
+  }
+}
+"""
+
+
+def test_a_prebuilt_device_is_not_renamed_over_a_symbol_of_its_name():
+    with Context():
+        module = Module.parse(SELF_NAMED)
+        with pytest.raises(ValueError, match="holds a symbol named @main"):
+            DeviceConfiguration.from_module("other", module)
+        (run,) = DeviceConfiguration.from_module("main", module).runtimes
+        assert run.name == "run"
+
+
+def test_a_prebuilt_device_composes_verbatim():
+    with Context():
+        module = Module.parse(PREBUILT)
+        prebuilt = DeviceConfiguration.from_module("other", module)
+        module.body.operations[1].attributes["sym_name"] = StringAttr.get("other")
+        device = str(module.body.operations[1])
+    (run,) = prebuilt.runtimes
+    assert run.name == "run" and [p.name for p in run.scratchpad_parameters] == [
+        "count"
+    ]
+    rt = runtime("seq")
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[rt])
+    composed = Program.compose([built, prebuilt], entry=rt).resolve_program()
+    assert str(composed.body.operations[2]) == device
+    assert str(composed).count("aiex.scratchpad_parameter @count") == 1
+
+
+def test_a_prebuilt_runtime_can_be_the_entry():
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(PREBUILT))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    composed = Program.compose([built, prebuilt], entry=run).resolve_program()
+    assert StringAttr(composed.operation.attributes["iron.entry"]).value == "other:run"
+    assert str(composed).count("aiex.scratchpad_parameter @count") == 1
+
+
+def test_a_prebuilt_full_elf_entry_loads_its_own_pdi():
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(PREBUILT))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    with compile_context(_iron_full_elf=True):
+        composed = Program.compose([built, prebuilt], entry=run).resolve_program()
+    (device,) = [
+        op
+        for op in composed.body.operations
+        if isinstance(op, DeviceOp) and StringAttr(op.sym_name).value == "other"
+    ]
+    assert "aiex.npu.load_pdi {device_ref = @other}" in str(device)
+    assert composed.operation.verify()
+
+
+def test_a_prebuilt_runtime_takes_scalar_arguments():
+    text = PREBUILT.replace("%b: memref<4x8xbf16>", "%n: i32")
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    (run,) = prebuilt.runtimes
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    composed = Program.compose([built, prebuilt], entry=run).resolve_program()
+    assert "aie.runtime_sequence @run(%arg0: memref<16xi32>, %arg1: i32)" in str(
+        composed
+    )
+
+
+def test_a_renamed_prebuilt_device_refers_to_its_new_name():
+    text = """
+aie.device(npu2_1col) @main {
+  %t = aie.tile(0, 2)
+  aie.runtime_sequence @run(%a: memref<16xi32>) {
+    aiex.npu.load_pdi {device_ref = @main}
+  }
+}
+"""
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    composed = str(Program.compose([built, prebuilt], entry=run).resolve_program())
+    assert "aie.device(npu2_1col) @other" in composed
+    assert "device_ref = @other" in composed and "@main" not in composed
+
+
+def test_a_renamed_prebuilt_device_renames_a_configure_of_itself():
+    text = """
+aie.device(npu2_1col) @main {
+  %t = aie.tile(0, 2)
+  aie.runtime_sequence @run(%a: memref<16xi32>) {
+    aiex.configure @main {
+    }
+  }
+}
+"""
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    composed = str(Program.compose([built, prebuilt], entry=run).resolve_program())
+    assert "aiex.configure @other" in composed and "@main" not in composed
+
+
+def test_a_lowered_prebuilt_declaration_keeps_its_attributes():
+    attributes = (
+        "{kind = 2 : i32, max_value = 7 : i32, min_value = 0 : i32, "
+        "state_table_idx = 0 : ui8}"
+    )
+    text = PREBUILT.replace(
+        "aiex.scratchpad_parameter @count : i32",
+        f"aiex.scratchpad_parameter @count : i32 {attributes}",
+    )
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    composed = Program.compose([built, prebuilt], entry=prebuilt.runtimes[0])
+    assert f"aiex.scratchpad_parameter @count : i32 {attributes}" in str(
+        composed.resolve_program()
+    )
+
+
+def test_a_lowered_prebuilt_declaration_and_a_built_one_of_one_name_conflict():
+    text = PREBUILT.replace(
+        "aiex.scratchpad_parameter @count : i32",
+        "aiex.scratchpad_parameter @count : i32 {kind = 1 : i32, state_table_idx = 3 : ui8}",
+    )
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    rt = runtime("seq")
+    rt.register_parameter(ScratchpadParameter("count", np.int32))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[rt])
+    with pytest.raises(
+        ValueError,
+        match=r"ScratchpadParameter 'count' is declared with attributes \{\} and "
+        r"\{'kind': '1 : i32', 'state_table_idx': '3 : ui8'\}",
+    ):
+        Program.compose([built, prebuilt], entry=rt).resolve_program()
+
+
+def test_a_prebuilt_device_with_no_sequence_declares_what_its_cores_read():
+    text = """
+aiex.scratchpad_parameter @count : i32
+aie.device(npu2_1col) @made_elsewhere {
+  %t = aie.tile(0, 2)
+  %c = aie.core(%t) {
+    %v = aiex.read_scratchpad_parameter @count : i32
+    aie.end
+  }
+}
+"""
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    assert prebuilt.runtimes == []
+    rt = runtime("seq")
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[rt])
+    composed = Program.compose([built, prebuilt], entry=rt).resolve_program()
+    assert composed.operation.verify()
+    assert str(composed).count("aiex.scratchpad_parameter @count") == 1
+
+
+def test_a_prebuilt_sequence_with_a_dynamic_shape_is_refused():
+    text = PREBUILT.replace("%a: memref<16xi32>", "%a: memref<?xi32>")
+    with Context(), pytest.raises(TypeError, match="has a dynamic shape"):
+        DeviceConfiguration.from_module("other", Module.parse(text))
+
+
+def test_a_prebuilt_device_may_read_its_scratchpad_parameters():
+    text = PREBUILT.replace(
+        "    aie.end",
+        "    %v = aiex.read_scratchpad_parameter @count : i32\n    aie.end",
+    )
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    composed = Program.compose([built, prebuilt], entry=run).resolve_program()
+    assert composed.operation.verify()
+    text = str(composed)
+    assert text.count("aiex.scratchpad_parameter @count") == 1
+    assert "aiex.read_scratchpad_parameter @count" in text
+
+
+@pytest.mark.parametrize(
+    "text", ["", PREBUILT + PREBUILT.split("\n", 2)[2].replace("made_", "built_")]
+)
+def test_a_prebuilt_module_holds_one_device(text):
+    with Context(), pytest.raises(ValueError, match="holding one aie.device, not"):
+        DeviceConfiguration.from_module("other", Module.parse(text))
+
+
+def test_merged_runtimes_issue_one_sequence():
+    (w_a, rt_a), (w_b, rt_b) = member(), member()
+    flow = Flow(Tile(0, 0), Tile(0, 1, tile_type=AIETileType.MemTile), src_channel=0)
+    rt_c = Runtime(lambda a: flow.fill(a), [Line])
+    rt_c.add_flow(flow)
+    merged = Runtime.merge([rt_a, rt_b, rt_c], name="steps")
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[w_a, w_b], runtimes=[merged]
+    )
+    module = Program.compose([config], entry=merged).resolve_program()
+    text = str(module)
+    assert text.count("aie.runtime_sequence") == 1
+    assert "@steps(%arg0: memref<256xi32>, %arg1: memref<256xi32>, " in text
+    assert text.count("aiex.dma_start_task") == 3
+
+
+def test_a_merged_step_waits_for_the_last_steps_transfers():
+    # A drains into the host buffer B then fills from; one step's await comes first.
+    of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
+    worker = Worker(lambda a, b: None, [of_in.cons(), of_out.prod()])
+    rt_a = Runtime(lambda c, h: h.drain(c, wait=True), [Line, of_out.cons()])
+    rt_b = Runtime(lambda c, h: h.fill(c), [Line, of_in.prod()])
+    merged = Runtime.merge([rt_a, rt_b])
+    assert merged.arg_types == [Line, Line]
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker], runtimes=[merged]
+    )
+    text = str(Program.compose([config], entry=merged).resolve_program())
+    sequence = text[text.index("aie.runtime_sequence") :]
+    steps = re.findall(r"aiex\.dma_(start|await|free)_task", sequence)
+    assert steps == ["start", "await", "free", "start", "free"]
+
+
+def test_merged_steps_may_each_use_only_explicit_groups():
+    # Each step's default group is left empty, and must not stay open.
+    of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
+    worker = Worker(lambda a, b: None, [of_in.cons(), of_out.prod()])
+
+    def step(c, into, out_of):
+        tg = TaskGroup()
+        into.fill(c, group=tg)
+        out_of.drain(c, wait=True, group=tg)
+        tg.finish()
+
+    steps = [Runtime(step, [Line, of_in.prod(), of_out.cons()]) for _ in range(3)]
+    merged = Runtime.merge(steps)
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker], runtimes=[merged]
+    )
+    text = str(Program.compose([config], entry=merged).resolve_program())
+    assert text.count("aiex.dma_start_task") == 6
+
+
+def test_a_configured_runtime_does_not_merge():
+    rt = runtime("seq")
+    DeviceConfiguration("dev", NPU2Col1(), runtimes=[rt])
+    with pytest.raises(ValueError, match="merge it before configuring"):
+        Runtime.merge([rt, runtime("other")])

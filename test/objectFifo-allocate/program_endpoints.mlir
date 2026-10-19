@@ -446,3 +446,278 @@ module @task_size_eight {
     }
   }
 }
+
+// -----
+
+// Packet routes naming one endpoint share its channel: two cores merge into
+// the MemTile's one S2MM channel, and the MemTile sends both packet ids out of
+// one MM2S channel. Endpoints with more BDs pick first, then by structural
+// rank, not source order: @scatter's two BDs take MM2S 0 and use up room in
+// the even half, so @side goes to the odd S2MM 1 and @gather to S2MM 3.
+// keep_pkt_header carries over to the packet flows. A program may source a
+// packet route whose id is pinned, since its BDs state the header themselves,
+// so the shared @scatter gets no header stamped. Each packet flow takes the
+// place of its route.
+
+// CHECK-LABEL: @shared_packet_channels
+// CHECK: aie.route_endpoint @gather(%[[MT:.*]]) DMA {channelIndex = 3 : i32}
+// CHECK: aie.packet_flow(1) {
+// CHECK:   aie.packet_dest<%[[MT]], DMA : 3>
+// CHECK: } {keep_pkt_header = true}
+// CHECK: aie.packet_flow(2) {
+// CHECK:   aie.packet_dest<%[[MT]], DMA : 3>
+// CHECK: } {keep_pkt_header = true}
+// CHECK: aie.route_endpoint @side(%[[MT]]) DMA {channelIndex = 1 : i32}
+// CHECK: aie.route_endpoint @scatter(%[[MT]]) DMA {channelIndex = 0 : i32}
+// CHECK-NOT: packet = #aie.packet_info
+// CHECK: aie.packet_flow(1) {
+// CHECK:   aie.packet_source<%[[MT]], DMA : 0>
+// CHECK: aie.packet_flow(2) {
+// CHECK:   aie.packet_source<%[[MT]], DMA : 0>
+// CHECK: aie.dma_start(MM2S, 0, ^bb{{.*}}, ^bb{{.*}})
+// CHECK: aie.dma_start(S2MM, 3, ^bb{{.*}}, ^bb{{.*}})
+// CHECK: aie.dma_start(S2MM, 1, ^bb{{.*}}, ^bb{{.*}})
+module @shared_packet_channels {
+  aie.device(npu2) {
+    %mt = aie.tile(0, 1)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
+    %la = aie.buffer(%a) {sym_name = "la"} : memref<64xi32>
+    %lb = aie.buffer(%b) {sym_name = "lb"} : memref<64xi32>
+    aie.route_endpoint @a_out(%a) DMA
+    aie.route_endpoint @b_out(%b) DMA
+    aie.route_endpoint @gather(%mt) DMA
+    aie.route from @a_out to [@gather] {keep_pkt_header, packet, packet_id = 1 : i8}
+    aie.route from @b_out to [@gather] {keep_pkt_header, packet, packet_id = 2 : i8}
+    aie.route_endpoint @c_out(%c) DMA
+    aie.route_endpoint @side(%mt) DMA
+    aie.route from @c_out to [@side]
+    aie.route_endpoint @scatter(%mt) DMA
+    aie.route_endpoint @a_in(%a) DMA
+    aie.route_endpoint @b_in(%b) DMA
+    aie.route from @scatter to [@a_in] {packet, packet_id = 1 : i8}
+    aie.route from @scatter to [@b_in] {packet, packet_id = 2 : i8}
+    aie.memtile_dma(%mt) {
+      aie.dma_start(MM2S, @scatter, ^bd0, ^recv)
+    ^bd0:
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+      aie.next_bd ^bd1
+    ^bd1:
+      aie.dma_bd(%buf : memref<64xi32> offset = 32 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+      aie.next_bd ^bd0
+    ^recv:
+      aie.dma_start(S2MM, @gather, ^bd2, ^side)
+    ^bd2:
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
+      aie.next_bd ^bd2
+    ^side:
+      aie.dma_start(S2MM, @side, ^bd3, ^end)
+    ^bd3:
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
+      aie.next_bd ^bd3
+    ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A shared endpoint takes one channel however many flows name it: a compute
+// tile has two S2MM channels, 0 and 1, and three flows into it fit on them,
+// @own on the channel @merge leaves.
+
+// CHECK-LABEL: @shared_channel_counted_once
+// CHECK: aie.route_endpoint @merge(%{{.*}}) DMA {channelIndex = [[#M:]] : i32}
+// CHECK: aie.route_endpoint @own(%{{.*}}) DMA {channelIndex = [[#1-M]] : i32}
+// CHECK: aie.packet_dest<%{{.*}}, DMA : [[#M]]>
+// CHECK: aie.packet_dest<%{{.*}}, DMA : [[#M]]>
+module @shared_channel_counted_once {
+  aie.device(npu2) {
+    %mt = aie.tile(0, 1)
+    %core = aie.tile(0, 2)
+    %l1 = aie.buffer(%core) {sym_name = "l1"} : memref<64xi32>
+    aie.route_endpoint @x(%mt) DMA
+    aie.route_endpoint @y(%mt) DMA
+    aie.route_endpoint @z(%mt) DMA
+    aie.route_endpoint @merge(%core) DMA
+    aie.route_endpoint @own(%core) DMA
+    aie.route from @x to [@merge] {packet, packet_id = 1 : i8}
+    aie.route from @y to [@merge] {packet, packet_id = 2 : i8}
+    aie.route from @z to [@own]
+    aie.mem(%core) {
+      aie.dma_start(S2MM, @merge, ^bd0, ^own)
+    ^bd0:
+      aie.dma_bd(%l1 : memref<64xi32> offset = 0 len = 64)
+      aie.next_bd ^bd0
+    ^own:
+      aie.dma_start(S2MM, @own, ^bd1, ^end)
+    ^bd1:
+      aie.dma_bd(%l1 : memref<64xi32> offset = 0 len = 64)
+      aie.next_bd ^bd1
+    ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A runtime task on a shared source keeps the headers its BDs state, and its
+// configure gets none of its own.
+
+// CHECK-LABEL: @shared_source_task_headers
+// CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, [[#]]) {
+// CHECK:   aie.dma_bd({{.*}}) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+// CHECK:   aie.dma_bd({{.*}}) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+module @shared_source_task_headers {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_configure_task_for @host {
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+        aie.next_bd ^bd1
+      ^bd1:
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 32 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A program on a shared source may state each header with aie.dma_bd_packet.
+
+// CHECK-LABEL: @shared_source_bd_packet_ops
+// CHECK: aie.dma_start(MM2S, [[#]], ^bb{{.*}}, ^bb{{.*}})
+// CHECK: aie.dma_bd_packet(0, 1)
+// CHECK: aie.dma_bd_packet(0, 2)
+module @shared_source_bd_packet_ops {
+  aie.device(npu2) {
+    %mt = aie.tile(0, 1)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
+    aie.route_endpoint @scatter(%mt) DMA
+    aie.route_endpoint @a_in(%a) DMA
+    aie.route_endpoint @b_in(%b) DMA
+    aie.route from @scatter to [@a_in] {packet, packet_id = 1 : i8}
+    aie.route from @scatter to [@b_in] {packet, packet_id = 2 : i8}
+    aie.memtile_dma(%mt) {
+      aie.dma_start(MM2S, @scatter, ^bd0, ^end)
+    ^bd0:
+      aie.dma_bd_packet(0, 1)
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 32)
+      aie.next_bd ^bd1
+    ^bd1:
+      aie.dma_bd_packet(0, 2)
+      aie.dma_bd(%buf : memref<64xi32> offset = 32 len = 32)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A dma_memcpy_nd on a shared shim source states its own header, and reaches
+// the channel through the shim allocation, which carries none.
+
+// CHECK-LABEL: @shared_source_memcpy_header
+// CHECK: aiex.npu.dma_memcpy_nd({{.*}}packet = <pkt_type = 0, pkt_id = 2>) {{{.*}}metadata = @host_shim_alloc}
+// CHECK: aie.shim_dma_allocation @host_shim_alloc(%{{.*}}, MM2S, [[#]]){{$}}
+module @shared_source_memcpy_header {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1], packet = <pkt_id = 2, pkt_type = 0>) {id = 0 : i64, metadata = @host} : memref<64xi32>
+    }
+  }
+}
+
+// -----
+
+// A BD chain started on a shared shim source states each BD's header, so it
+// reaches the channel through the shim allocation like a task does.
+
+// CHECK-LABEL: @shared_source_bd_chain_headers
+// CHECK: aie.dma_bd({{.*}}) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+// CHECK: aie.dma_bd({{.*}}) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+// CHECK: aiex.dma_start_bd_chain_for @chain(%{{.*}}) : (memref<64xi32>) for @host_shim_alloc
+// CHECK: aie.shim_dma_allocation @host_shim_alloc(%{{.*}}, MM2S, [[#]]){{$}}
+module @shared_source_bd_chain_headers {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.bd_chain @chain(%buf: memref<64xi32>) {
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+      aie.next_bd ^b1
+    ^b1:
+      aie.dma_bd(%buf : memref<64xi32> offset = 32 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+      aie.end
+    }
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_start_bd_chain_for @chain(%arg0) : (memref<64xi32>) for @host
+      aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
+// The pass runs once per device; a second device reusing the first's endpoint
+// names sees only its own flows.
+
+// CHECK-LABEL: @shared_source_in_two_devices
+// CHECK: aie.device(npu2) @first
+// CHECK: aie.shim_dma_allocation @host_shim_alloc(%{{.*}}, MM2S, [[#]]){{$}}
+// CHECK: aie.device(npu2) @second
+// CHECK: aie.shim_dma_allocation @host_shim_alloc(%{{.*}}, MM2S, [[#]]){{$}}
+module @shared_source_in_two_devices {
+  aie.device(npu2) @first {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1], packet = <pkt_id = 1, pkt_type = 0>) {id = 0 : i64, metadata = @host} : memref<64xi32>
+    }
+  }
+  aie.device(npu2) @second {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1], packet = <pkt_id = 2, pkt_type = 0>) {id = 0 : i64, metadata = @host} : memref<64xi32>
+    }
+  }
+}
