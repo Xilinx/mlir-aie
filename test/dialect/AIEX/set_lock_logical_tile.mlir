@@ -22,7 +22,8 @@ module {
     %t = aie.logical_tile<CoreTile>(?, ?)
     %lock = aie.lock(%t, 0) {init = 0 : i32}
     aie.core(%t) {
-      aie.use_lock(%lock, AcquireGreaterEqual, 1)
+      %c1 = arith.constant 1 : i32
+      aie.use_lock(%lock, AcquireGreaterEqual, %c1)
       aie.end
     }
     aie.runtime_sequence() {

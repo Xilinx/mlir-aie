@@ -170,3 +170,35 @@ module @adjacency_allocate_delegate {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// A consumer is placed right after the buffer's owner, before unrelated
+// cores take the owner's neighbors: in one column, the owner at (0, 2)
+// leaves (0, 3) to its consumer and the other cores go above.
+// CHECK-LABEL: @adjacency_consumer_follows_owner
+module @adjacency_consumer_follows_owner {
+  aie.device(npu2_1col) {
+    // CHECK: %[[OWNER:.*]] = aie.tile(0, 2)
+    // CHECK: aie.buffer(%[[OWNER]])
+    // CHECK: aie.core(%[[OWNER]])
+    // CHECK: aie.core(%tile_0_4)
+    // CHECK: aie.core(%tile_0_5)
+    // CHECK: aie.core(%tile_0_3)
+    // CHECK-NEXT: arith.constant
+    // CHECK-NEXT: memref.load %buffer_0_2
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %f0 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%f0) { aie.end }
+    %f1 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%f1) { aie.end }
+    %consumer = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%consumer) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
