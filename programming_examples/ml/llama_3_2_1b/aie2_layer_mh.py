@@ -691,7 +691,9 @@ def build():
             [of_af.cons(), of_wo.cons(), of_op.prod(), k_o],
             stack_size=PSK,
         ),
-        Worker(w_add, [of_xin.cons(), of_op.cons(), of_x1.prod(), k_add]),
+        Worker(
+            w_add, [of_xin.cons(), of_op.cons(), of_x1.prod(), k_add], stack_size=2048
+        ),
         # ---- FFN ----
         Worker(
             w_rms,
@@ -724,7 +726,9 @@ def build():
             [of_sf.cons(), of_wd.cons(), of_df.prod(), k_down],
             stack_size=FFNSK,
         ),
-        Worker(w_add, [of_x1.cons(), of_df.cons(), of_out.prod(), k_add]),
+        Worker(
+            w_add, [of_x1.cons(), of_df.cons(), of_out.prod(), k_add], stack_size=2048
+        ),
     ]
 
     def sequence(

@@ -1268,6 +1268,7 @@ def build(
         Worker(
             w_add1,
             [of_routed.cons(), of_op.cons(), of_x1.prod(), k_add],
+            stack_size=2048,
         ),
         # FFN (FFNSK=4096: of_sf=HD+8 self-cal Bug-12 alias, see single layer)
         Worker(
@@ -1305,6 +1306,7 @@ def build(
         Worker(
             w_add2,
             [of_x1.cons(), of_df.cons(), of_back.prod(), of_out.prod(), k_add],
+            stack_size=2048,
         ),
     ]
 
