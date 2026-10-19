@@ -15,6 +15,7 @@ seconds and exits. ``xrt-smi`` reports its pid while it holds the context, so
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -63,36 +64,42 @@ def pids_in(message: str) -> list[int]:
     return [int(pid) for pid in listed.group(1).split(", ")]
 
 
-def holder() -> subprocess.Popen:
-    """Start a process that holds a context on the NPU for ``HOLD`` seconds."""
+def holder() -> tuple[subprocess.Popen, int]:
+    """Start a process that holds a context on the NPU for ``HOLD`` seconds.
+
+    Returns:
+        The process, and the pid that holds the context. On Windows a venv's
+        python.exe is a launcher, so the holder is its child, not ``Popen.pid``.
+    """
     process = subprocess.Popen(
         [sys.executable, __file__, "--hold", str(HOLD)],
         stdout=subprocess.PIPE,
         text=True,
     )
-    assert process.stdout.readline().strip() == "holding"
-    return process
+    word, pid = process.stdout.readline().split()
+    assert word == "holding"
+    return process, int(pid)
 
 
 def test_another_process_on_the_npu_is_named_and_waited_out():
     run_copy(0)
-    process = holder()
+    process, pid = holder()
     try:
-        assert process.pid in other_npu_users()
+        assert pid in other_npu_users()
         said = []
         start = time.monotonic()
         wait_idle(said.append, holding=True)
         assert process.poll() is not None
-        assert process.pid in pids_in(said[0])
+        assert pid in pids_in(said[0])
         assert time.monotonic() - start > 1.0
     finally:
         process.wait()
-    assert process.pid not in other_npu_users(holding=True)
+    assert pid not in other_npu_users(holding=True)
 
 
 def test_run_interleaved_times_nothing_while_another_process_holds_the_npu():
     run_copy(1)
-    process = holder()
+    process, pid = holder()
     try:
         logged = []
         (stats,) = run_interleaved(
@@ -100,7 +107,7 @@ def test_run_interleaved_times_nothing_while_another_process_holds_the_npu():
         )
         assert process.poll() is not None
         assert stats.n == 2
-        assert process.pid in pids_in(logged[0])
+        assert pid in pids_in(logged[0])
     finally:
         process.wait()
 
@@ -110,5 +117,5 @@ if __name__ == "__main__":
     parser.add_argument("--hold", type=float, required=True)
     args = parser.parse_args()
     run_copy(3)
-    print("holding", flush=True)
+    print("holding", os.getpid(), flush=True)
     time.sleep(args.hold)
