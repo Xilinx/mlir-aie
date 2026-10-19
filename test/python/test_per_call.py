@@ -41,12 +41,10 @@ def test_arithmetic_on_a_per_call_value_is_an_expression():
     assert (p + 1) * 64 == Affine(p, 64, 64) == 64 * (1 + p)
     assert 10 - p == Affine(p, -1, 10) and -p == Affine(p, -1)
     assert (p * 4) // 2 == p // 1 * 2 and p // 2 == Affine(p, 1, 0, 1)
-    assert [str(e) for e in (p.affine(), p * 64, (p + 1) * 64, p - 1)] == [
-        "p",
-        "p_x64",
-        "p_x64_p64",
-        "p_m1",
-    ]
+    exprs = (p.affine(), p * 64, (p + 1) * 64, p - 1, 10 - p)
+    assert [e.name for e in exprs] == ["p", "p_x64", "p_x64_p64", "p_m1", "p_xm1_p10"]
+    assert [str(e) for e in exprs] == ["p", "p * 64", "p * 64 + 64", "p - 1", "-p + 10"]
+    assert str(((p * 3 - 5) // 4) * 8 // 2 - 1) == "((p * 3 - 5) >> 2) * 4 - 1"
     assert p == p and p != per_call() and p + 1 == p + 1
     assert len({p, p}) == 1 and len({p + 1, 1 + p}) == 1
     assert p != "p" and p + 1 != "p" and p != None  # noqa: E711
@@ -104,7 +102,8 @@ def test_an_expression_computes_what_it_says(f, error):
 def test_a_clamp_is_carried_through_sums_products_and_floors():
     p = per_call()
     start = (p - 3).clamp(lo=0)
-    assert str(start) == "p_m3_lo0"
+    assert start.name == "p_m3_lo0" and str(start) == "max(p - 3, 0)"
+    assert str(start.clamp(hi=6)) == "clamp(p - 3, 0, 6)"
     cases = {
         start + 5: lambda v: max(v - 3, 0) + 5,
         start * -2: lambda v: -2 * max(v - 3, 0),
@@ -127,7 +126,8 @@ def test_a_clamp_is_carried_through_sums_products_and_floors():
 def test_a_wrapped_expression_is_a_ring_row_and_its_elements():
     p = per_call()
     ring = p % 16
-    assert str(ring) == "p_mod16" and (ring * 64).evaluate({"p": 21}) == 5 * 64
+    assert ring.name == "p_mod16" and str(ring * 64) == "(p * 64) % 1024"
+    assert (ring * 64).evaluate({"p": 21}) == 5 * 64
     for bad in (lambda: p % 12, lambda: ring % 32, lambda: ring * 3, lambda: ring + 1):
         with pytest.raises(TypeError):
             bad()

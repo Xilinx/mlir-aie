@@ -272,7 +272,7 @@ class Affine:
         def signed(tag: str, k: int) -> str:
             return f"_{tag}{'m' if k < 0 else ''}{abs(k)}"
 
-        text = self.value.name + (f"_x{self.scale}" if self.scale != 1 else "")
+        text = self.value.name + (signed("x", self.scale) if self.scale != 1 else "")
         if self.bias:
             text += f"_{'p' if self.bias > 0 else 'm'}{abs(self.bias)}"
         if self.down:
@@ -287,7 +287,27 @@ class Affine:
         return text
 
     def __str__(self) -> str:
-        return self.name
+        """Return the expression as Python would write it: ``(p + 1) * 64`` is ``p * 64 + 64``."""
+
+        def term(x: str) -> str:
+            return f"({x})" if " " in x else x
+
+        def plus(x: str, k: int) -> str:
+            return f"{x} {'+' if k > 0 else '-'} {abs(k)}" if k else x
+
+        def times(x: str, k: int) -> str:
+            return x if k == 1 else f"-{term(x)}" if k == -1 else f"{term(x)} * {k}"
+
+        x = plus(times(self.value.name, self.scale), self.bias)
+        if self.down:
+            x = plus(times(f"{term(x)} >> {self.down}", self.mul), self.add)
+        if self.lo is not None and self.hi is not None:
+            x = f"clamp({x}, {self.lo}, {self.hi})"
+        elif self.lo is not None:
+            x = f"max({x}, {self.lo})"
+        elif self.hi is not None:
+            x = f"min({x}, {self.hi})"
+        return x if self.mod is None else f"{term(x)} % {self.mod}"
 
     def evaluate(self, values: Mapping[str, int]) -> int:
         """Its value where ``values`` gives its per-call value by name."""
