@@ -458,6 +458,28 @@ module {
 
 // -----
 
+// The same disconnected block doesn't count against a whole entry chain
+// either: 256 bytes stream, not 384.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<96xi32>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<96xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.end
+      ^orphan:
+        aie.dma_bd(%arg0 : memref<96xi32> offset = 64 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.next_bd ^orphan
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
 // A pinned next_bd_id chains outside the block successors, so the chain's
 // extent can't be followed and is not checked.
 module {

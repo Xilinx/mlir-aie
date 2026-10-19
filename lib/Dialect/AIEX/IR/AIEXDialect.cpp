@@ -21,7 +21,6 @@
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
-#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -1407,16 +1406,6 @@ LogicalResult AIEX::DMAStartTaskOp::verify() {
   return success();
 }
 
-// True when the block chain rooted at `block` has a cycle (including a
-// self-loop), which Region::walk's single pass over each op can't see.
-static bool bdChainHasCycle(Block &block) {
-  for (auto it = llvm::scc_begin(&block), end = llvm::scc_end(&block);
-       it != end; ++it)
-    if (it.hasCycle())
-      return true;
-  return false;
-}
-
 // A BD's static length in bytes: the explicit or implicit (whole-buffer)
 // length, scaled by the element width. Nullopt for a runtime length, or one a
 // scratchpad parameter lengthens at run time (AIEOps.td's "Runtime length").
@@ -1469,26 +1458,21 @@ staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
     return std::nullopt;
 
   Region &body = task.getBody();
-  if (body.empty() || bdChainHasCycle(body.front()))
+  if (body.empty())
     return std::nullopt;
-
-  // Only the chain reachable from the entry block is queued at a start; a
-  // disconnected block never streams.
+  // The queue starts the chain at the entry block, so only blocks reachable
+  // from it stream. A cycle runs indefinitely, and a next_bd_id continues the
+  // chain outside the body.
   int64_t moved = 0;
-  for (Block *block : llvm::depth_first(&body.front())) {
-    WalkResult walk = block->walk([&](AIE::DMABDOp bd) {
-      // A pinned next_bd_id links outside the block successors, so the chain
-      // can't be followed here.
-      if (bd.getIteration() || bd.getNextBdId())
-        return WalkResult::interrupt();
-      std::optional<int64_t> len = staticBdLenBytes(bd);
-      if (!len)
-        return WalkResult::interrupt();
-      moved += *len;
-      return WalkResult::advance();
-    });
-    if (walk.wasInterrupted())
+  for (auto scc = llvm::scc_begin(&body.front()); !scc.isAtEnd(); ++scc) {
+    if (scc.hasCycle())
       return std::nullopt;
+    for (AIE::DMABDOp bd : scc->front()->getOps<AIE::DMABDOp>()) {
+      std::optional<int64_t> len = staticBdLenBytes(bd);
+      if (!len || bd.getIteration() || bd.getNextBdId())
+        return std::nullopt;
+      moved += *len;
+    }
   }
   return moved * (*repeat + 1) * starts;
 }
