@@ -416,8 +416,7 @@ CASES: list[Case] = [
     # Scalar first passes: checked, not timed until they are vectorized.
     # A row is four experts of 16 gate_up tiles and 8 down tiles each; three
     # rows check that each one starts its sum again.
-    check("experts", calls=96, smoke=True),
-    check("experts", calls=288, tag="rows"),
+    check("experts", calls=288, smoke=True),
     # Three heads of two blocks: each block carries the state, each head
     # loads its own.
     check("selective_scan", dict(blocks=2), calls=6, scalars=(16,), smoke=True),

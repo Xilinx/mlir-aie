@@ -916,6 +916,7 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(top_k=0), "top_k must be a positive integer"),
             (dict(rows=3), "rows must divide"),
             (dict(top_k=5), "top_k at most num_experts"),
+            (dict(hidden=33, rows=1, cols=1), "hidden must be even"),
         ],
         shape_checks=[(dict(hidden=128, top_k=4), 0, (144,))],
     ),

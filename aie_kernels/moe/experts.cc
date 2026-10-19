@@ -11,6 +11,7 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
+#include <string.h>
 
 #include "../sample/exp64.h"
 
@@ -63,7 +64,8 @@ extern "C" void experts(bfloat16 *restrict row, bfloat16 *restrict tile,
   if (step == 0)
     for (int o = 0; o < H; o++)
       sum[o] = 0.0f;
-  const int32_t *ids = (const int32_t *)(row + H + 2 * EXPERTS_TOP_K);
+  int32_t ids[EXPERTS_TOP_K];
+  memcpy(ids, row + H + 2 * EXPERTS_TOP_K, sizeof(ids));
   float weight = 0.0f;
   bool chosen = false;
   for (int j = 0; j < EXPERTS_TOP_K; j++)
