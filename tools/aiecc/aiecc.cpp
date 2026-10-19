@@ -855,7 +855,8 @@ static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
       if (auto load = llvm::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op)) {
         if (std::optional<llvm::StringRef> ref = load.getDeviceRef())
           work.push_back(*ref);
-      } else if (auto configure = llvm::dyn_cast<xilinx::AIEX::ConfigureOp>(op)) {
+      } else if (auto configure =
+                     llvm::dyn_cast<xilinx::AIEX::ConfigureOp>(op)) {
         work.push_back(configure.getSymbol());
       }
     });
