@@ -107,7 +107,15 @@ class ActiveSequence:
             resolvable.resolve()
 
     def static_channel(self, endpoint) -> bool:
-        """Return whether the device's TileDma programs run ``endpoint``'s channel."""
+        """Return whether the device's TileDma programs may run ``endpoint``'s channel.
+
+        Args:
+            endpoint: The `DmaEndpoint` a dispatch-time task would run on.
+
+        Returns:
+            What the configuration's, or else this Runtime's, `static_channel`
+            says.
+        """
         configuration = self._runtime.configuration
         resources = self._runtime if configuration is None else configuration
         return resources.static_channel(endpoint)
@@ -166,8 +174,10 @@ class ActiveSequence:
     def finalize(self, strict: bool | None = None) -> None:
         """Close bookkeeping after the body runs, or after one merged step's body.
 
-        ``strict`` is that body's ``strict_task_groups``, the runtime's when None.
         A fresh default group then takes the next step's transfers.
+
+        Args:
+            strict: That body's ``strict_task_groups``; the runtime's when None.
         """
         if strict is None:
             strict = self._runtime._strict_task_groups
@@ -340,8 +350,17 @@ class Runtime(DeviceResources, Resolvable):
         with a DispatchTime parameter several steps forward kept once, and it
         registers their flows, locks, tile DMAs and scratchpad parameters.
 
+        Args:
+            runtimes: The steps, in the order their bodies run.
+            name: The merged Runtime's name, or None to have one given.
+
+        Returns:
+            The merged Runtime.
+
         Raises:
             ValueError: One of ``runtimes`` already belongs to a configuration.
+            TypeError: The steps forward DispatchTime parameters of different
+                designs.
         """
         runtimes = list(runtimes)
         for runtime in runtimes:
@@ -638,6 +657,10 @@ class Runtime(DeviceResources, Resolvable):
 
         Nothing is added when this Runtime was made with
         ``implicit_configure=False`` or the body already configures a device.
+
+        Args:
+            entry_block: The entry runtime sequence's body.
+            device_ref: The symbol of the device whose PDI it loads.
         """
         if not self._implicit_configure:
             return

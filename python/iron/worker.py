@@ -102,7 +102,7 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
                 arg._misuse()
             if isinstance(arg, Affine):
                 raise TypeError(
-                    f"a Worker cannot take {arg}, which is computed per call; use "
+                    f"A Worker cannot take {arg}, which is computed per call; use "
                     "CompileTime or specialize"
                 )
         if tile is None:

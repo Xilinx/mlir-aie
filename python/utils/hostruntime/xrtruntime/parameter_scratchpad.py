@@ -100,7 +100,7 @@ class ParameterScratchpad:
         """Sync from the device, so ``read`` sees what a transfer into ``alias`` wrote."""
         self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
-    def alias(self):
+    def alias(self) -> "pyxrt.bo":
         """Return a buffer object over this scratchpad's host memory.
 
         The scratchpad's own buffer object is on the device heap, which the
@@ -116,6 +116,9 @@ class ParameterScratchpad:
         Needs amdxdna 2.27 or later, whose buffer-object mappings can be
         pinned (xdna-driver 72e64a6); an older one maps them ``VM_PFNMAP`` and
         refuses the pin with EFAULT.
+
+        Returns:
+            The user-pointer buffer object over the scratchpad's memory.
         """
         if self._alias is None:
             pointer = np.frombuffer(self._mv, dtype=np.uint8).ctypes.data
