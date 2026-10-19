@@ -4,12 +4,14 @@
 """XRT-based implementation of the HostRuntime."""
 
 import atexit
+import ctypes
 import gc
 import logging
 import os
 import re
 import stat
 import subprocess
+import sys
 import time
 import weakref
 from collections import OrderedDict
@@ -27,6 +29,36 @@ if TYPE_CHECKING:
 
     from ...trace import TraceConfig
 from .tensor import XRTTensor, XrtTransport
+
+if sys.platform == "linux":
+    import fcntl  # amdxdna's ioctls; Windows has neither
+
+
+# amdxdna_accel.h: struct amdxdna_drm_query_clock and its clock metadata, read
+# by DRM_IOCTL_AMDXDNA_GET_INFO (DRM_IOWR(DRM_COMMAND_BASE + 7, struct
+# amdxdna_drm_get_info)) with param DRM_AMDXDNA_QUERY_CLOCK_METADATA.
+class _Clock(ctypes.Structure):
+    _fields_ = [
+        ("name", ctypes.c_char * 16),
+        ("freq_mhz", ctypes.c_uint32),
+        ("pad", ctypes.c_uint32),
+    ]
+
+
+class _ClockMetadata(ctypes.Structure):
+    _fields_ = [("mp_npu_clock", _Clock), ("h_clock", _Clock)]
+
+
+class _GetInfo(ctypes.Structure):
+    _fields_ = [
+        ("param", ctypes.c_uint32),
+        ("buffer_size", ctypes.c_uint32),
+        ("buffer", ctypes.c_uint64),
+    ]
+
+
+_GET_INFO = 0xC0106447
+_QUERY_CLOCK_METADATA = 3
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +195,29 @@ class XRTHostRuntime(HostRuntime):
 
     def device_name(self) -> str | None:
         return self._device_type_str
+
+    @property
+    def core_mhz(self) -> int:
+        """The AIE core (H) clock of this runtime's NPU, in MHz, at its current power mode.
+
+        Read from amdxdna's clock metadata on the device's accel node, so it
+        follows the power mode ``xrt-smi`` sets.
+
+        Raises:
+            NotImplementedError: The host is not Linux, where amdxdna runs.
+            OSError: The accel node cannot be opened or refuses the query.
+        """
+        if sys.platform != "linux":
+            raise NotImplementedError("The NPU clock is read from amdxdna, on Linux.")
+        bdf = self._device.get_info(pyxrt.xrt_info_device.bdf)
+        (node,) = os.listdir(f"/sys/bus/pci/devices/{bdf}/accel")
+        clocks = _ClockMetadata()
+        request = _GetInfo(
+            _QUERY_CLOCK_METADATA, ctypes.sizeof(clocks), ctypes.addressof(clocks)
+        )
+        with open(f"/dev/accel/{node}", "rb", buffering=0) as accel:
+            fcntl.ioctl(accel, _GET_INFO, request)
+        return clocks.h_clock.freq_mhz
 
     @classmethod
     def read_insts(cls, insts_path: Path):

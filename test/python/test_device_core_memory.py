@@ -54,9 +54,7 @@ def test_a_buffer_pinned_to_a_bank_lands_inside_it(device):
 
 
 @pytest.mark.parametrize(
-    "device, full_elf, mhz",
-    [(NPU1, False, None), (NPU1Col1, False, None), (NPU2, True, 1760.0)],
+    "device, full_elf", [(NPU1, False), (NPU1Col1, False), (NPU2, True)]
 )
-def test_full_elf_dispatch_and_core_clock(device, full_elf, mhz):
+def test_full_elf_dispatch(device, full_elf):
     assert device().dispatches_full_elf is full_elf
-    assert device().core_mhz == mhz

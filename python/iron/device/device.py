@@ -85,15 +85,6 @@ class Device(Resolvable):
         return self.arch is AIEArch.AIE2p
 
     @property
-    def core_mhz(self) -> float | None:
-        """A compute tile's measured clock in MHz, or None where none was measured.
-
-        1760 on AIE2p, measured on one npu2 part (programming guide,
-        section-4d, "Two clocks").
-        """
-        return 1760.0 if self.arch is AIEArch.AIE2p else None
-
-    @property
     def core_memory_bytes(self) -> int:
         """Data memory local to one compute tile."""
         return self._tm.get_local_memory_size()
