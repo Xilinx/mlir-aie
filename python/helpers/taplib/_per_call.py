@@ -26,9 +26,10 @@ def _int(k: Any) -> int | None:
 class PerCall:
     """An integer scalar given per call.
 
-    Integer arithmetic on one makes an ``Affine``. ``marker`` says how a call gives it, and only its library reads it:
-    ``"aie.dispatch_time"`` for a `DispatchTime` parameter. ``ssa`` is its
-    staged value once a runtime sequence binds it.
+    Integer arithmetic on one makes an ``Affine``. ``marker`` says how a call
+    gives it, and only its library reads it: ``"aie.dispatch_time"`` for a
+    `DispatchTime` parameter. ``ssa`` is its staged value once a runtime
+    sequence binds it.
     """
 
     __slots__ = ("name", "marker", "dtype", "ssa")
@@ -94,8 +95,9 @@ class Affine:
 
     ``>>`` floors, a bound of None is none, and ``mod`` is a power of two
     (a ring's row) or None. ``post`` is added after the wrap, so a run of a
-    ring written twice over, ``ring[a : a + R]``, has its end. A linear one has ``down`` 0 and keeps its terms
-    in ``scale`` and ``bias``: ``(p + 1) * 64`` is ``Affine(p, 64, 64)``.
+    ring written twice over, ``ring[a : a + R]``, has its end. A linear one
+    has ``down`` 0 and keeps its terms in ``scale`` and ``bias``:
+    ``(p + 1) * 64`` is ``Affine(p, 64, 64)``.
 
     Sums and products with integers, floor divisions by a power of two (so
     ``ceildiv``), sums of two linear ones in one value, and the quotient of
