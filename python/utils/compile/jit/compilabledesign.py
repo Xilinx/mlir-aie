@@ -50,7 +50,7 @@ from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
     DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.ir import (  # pyright: ignore[reportMissingImports]
-    IntegerAttr,
+    IntegerAttr,  # pyright: ignore[reportAttributeAccessIssue]
     Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils.compile import (
