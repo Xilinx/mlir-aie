@@ -36,10 +36,10 @@ the page, where the package is not installed.
 
 ``perf`` reads the timing step's ``perf.json`` and ``meta.json``, the
 correctness step's ``error.json`` (``--report-error``) and the catalogue.
-Each timed case's error is charted as two more metrics, its worst over every
-data case, seed and output: ``max_ulp``, how far any result fell from the
-correctly rounded reference, and ``not_correctly_rounded``, the percentage of
-results that were not. ``builds`` maps each timed case to its kernel's
+Each timed case's error is charted as two more metrics over every data case,
+seed and output: ``max_ulp``, the furthest any result fell from the correctly
+rounded reference, and ``not_correctly_rounded``, the percentage of all those
+results, pooled, that were not. ``builds`` maps each timed case to its kernel's
 ``ExternalFunction.recipe_key``, so a design that calls the same kernel finds
 its row. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
@@ -189,26 +189,27 @@ def rows_by_case(rows: list[dict]) -> dict[str, dict[str, dict]]:
 
 
 def error_rows(report: dict) -> dict[str, dict[str, dict]]:
-    """Each case's worst error in a ``--report-error`` report.
+    """Each case's error metrics in a ``--report-error`` report.
 
-    The report is keyed ``<case>/<data>/s<seed>``; the result holds rows of
-    its two error metrics per case.
+    The report is keyed ``<case>/<data>/s<seed>``. Per case, ``max_ulp`` is
+    the worst over its data cases, seeds and outputs, and
+    ``not_correctly_rounded`` is pooled over all of them.
     """
-    worst: dict[str, list[int]] = {}
+    totals: dict[str, list[int]] = {}
     for key, run in report.items():
         case = key.rsplit("/", 2)[0]
-        ulp, wrong, n = worst.setdefault(case, [0, 0, 0])
+        ulp, wrong, n = totals.setdefault(case, [0, 0, 0])
         for entry in run["outputs"]:
             ulp = max(ulp, entry["max_ulp"])
             wrong += entry["not_correctly_rounded"]
             n += entry["n"]
-        worst[case] = [ulp, wrong, n]
+        totals[case] = [ulp, wrong, n]
     return {
         case: {
             "max_ulp": {"value": ulp, "unit": "ulp"},
             "not_correctly_rounded": {"value": round(100 * wrong / n, 3), "unit": "%"},
         }
-        for case, (ulp, wrong, n) in worst.items()
+        for case, (ulp, wrong, n) in totals.items()
         if n
     }
 
