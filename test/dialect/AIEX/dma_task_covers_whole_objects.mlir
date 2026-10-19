@@ -900,3 +900,28 @@ module {
     }
   }
 }
+
+// -----
+
+// A BD chain started for the fifo shares its objects too, so the sequence's
+// total is unknown: 128 bytes from the task plus 128 from the chain fill one
+// 256-byte object.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.bd_chain @half(%buf: memref<32xi32>) {
+      aie.dma_bd(%buf : memref<32xi32> offset = 0 len = 32)
+      aie.end
+    }
+    aie.runtime_sequence(%arg0: memref<32xi32>, %arg1: memref<32xi32>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+      %c = aiex.dma_start_bd_chain_for @half(%arg1) : (memref<32xi32>) for @of
+    }
+  }
+}

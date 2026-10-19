@@ -1569,10 +1569,13 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   int64_t sharing = 0;
   bool reportedEarlier = false;
   WalkResult walk = sequence.walk([&](Operation *op) {
-    // A dma_memcpy_nd through the fifo also shares its objects; its extent
-    // is not summed here, so the sequence's total is unknown.
+    // A dma_memcpy_nd or BD chain through the fifo also shares its objects;
+    // its extent is not summed here, so the sequence's total is unknown.
     if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
       return memcpy.getMetadata() == task.getAlloc() ? WalkResult::interrupt()
+                                                     : WalkResult::advance();
+    if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op))
+      return chain.getAllocAttr() == task.getAlloc() ? WalkResult::interrupt()
                                                      : WalkResult::advance();
     auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(op);
     if (!other || other.getAlloc() != task.getAlloc())
