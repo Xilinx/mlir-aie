@@ -18,6 +18,7 @@ from types import FunctionType
 from typing import Any, ClassVar, Self, dataclass_transform
 
 import numpy as np
+from aie.helpers.npdtypes import is_block_float
 
 from ...hostruntime import set_current_device
 from .declaration import Declaration
@@ -29,11 +30,16 @@ def _key_value(value: Any) -> Any:
 
     An Enum is its value, so renaming a member moves no key; a NumPy scalar
     type is its dtype and a NumPy integer its int, so ``np.float32`` and
-    ``np.dtype(np.float32)``, or ``np.int64(64)`` and ``64``, share a key.
+    ``np.dtype(np.float32)``, or ``np.int64(64)`` and ``64``, share a key. A
+    block-float type, which NumPy has no dtype for, is its class.
     """
     if isinstance(value, Enum):
         return value.value
-    if isinstance(value, type) and issubclass(value, np.generic):
+    if (
+        isinstance(value, type)
+        and issubclass(value, np.generic)
+        and not is_block_float(value)
+    ):
         return np.dtype(value)
     if isinstance(value, np.integer):
         return int(value)
