@@ -147,7 +147,6 @@ def selective_scan(
             call_index=5,
             reference=partial(selective_scan_ref, **geometry),
             sample=partial(selective_scan_sample, **geometry),
-            setup=conv_even,
             tolerance=Tolerance.bounded(
                 partial(_state_bound, selective_scan_ref, **geometry),
                 note="npu2: y bit for bit, final within 3.7e-7 of its range "
