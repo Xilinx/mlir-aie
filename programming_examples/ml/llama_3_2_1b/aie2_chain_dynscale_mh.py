@@ -389,7 +389,11 @@ def build():
                 total_elems=VOCAB,
                 chunk_elems=SAMPLE_CHUNK,
                 repeat_count=SAMPLE_PASSES,
-                memtile_placement=Tile(4, 1),
+                # Column 4's memtile is where the KV writeback join (kvout_0..3)
+                # already lands, and the two together exceed the 4-channel
+                # S2MM budget; column 2's memtile has no other heavy DMA
+                # traffic in this topology.
+                memtile_placement=Tile(2, 1),
                 gemm_placement=Tile(5, 4),
                 sampler_placement=Tile(5, 5),
                 name="lmlogits",
@@ -1204,6 +1208,7 @@ def build():
                 w_fnorm,
                 [of_out.cons(), of_fgam.cons(), of_fnorm.prod(), k_rms],
                 tile=Tile(4, 4),
+                stack_size=2048,
             ),
             # Fused lm_head GEMM + top-k insert + finalize on one tile: ONE table
             # pass -> token + next-token embed seed. The resident top-k rows live
@@ -1267,6 +1272,7 @@ def build():
                 w_fnorm,
                 [of_out.cons(), of_fgam.cons(), of_fnorm.prod(), k_rms],
                 tile=Tile(4, 4),
+                stack_size=2048,
             ),
             # lm_head GEMM (5,4 = relay gemm tile) + streamed sampler (5,5 =
             # relay sampler tile). The relay owns the memtile (4,1) DMA.

@@ -27,8 +27,10 @@ from pathlib import Path
 import numpy as np
 
 import aie.iron as iron
+import argparse
 import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
+from aie.utils.hostruntime.argparse import add_runtime_args
 
 from aie2_chain_dynscale_mh import (
     D,
@@ -161,7 +163,8 @@ def chain_forward_once(x_i8, res_scale, layers, P, embed_i8, embed_sc, gamma):
 
 
 def main():
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p)
     p.add_argument("--seed", type=int, default=0)
     opts = p.parse_args()
     fseed = opts.seed
