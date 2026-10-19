@@ -41,12 +41,8 @@ jobs:
         id: update
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ -n "${{ inputs.peano_version }}" ]; then
-            python3 utils/update_peano_version.py --peano-version "${{ inputs.peano_version }}"
-          else
-            python3 utils/update_peano_version.py
-          fi
+          PEANO_VERSION: ${{ inputs.peano_version }}
+        run: python3 utils/update_peano_version.py --peano-version "$PEANO_VERSION"
 
       - name: Check for changes
         id: check_changes
