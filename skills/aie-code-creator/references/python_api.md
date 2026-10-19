@@ -357,6 +357,11 @@ def my_design(input_t: In, output_t: Out, *, N: CompileTime[int] = 4096):
 my_design(input_array, output_array, N=4096)
 ```
 
+The generator never sees tensor data: `input_t` is an `In` with the call's
+`shape` and `dtype` (`input_t.shape`, `input_t.dtype`, `input_t.ndarray_type`),
+and any API that takes a tensor type (`Runtime` fn_args, `ObjectFifo`,
+`np_ndarray_type_get_shape`, the `iron.algorithms` helpers) takes it as is.
+
 `use_cache` defaults to `True`, so `@iron.jit` bare is the normal form — pass
 `use_cache=False` only to force a rebuild. Other config keys: `source_files`,
 `object_files`, `compile_flags`, `include_paths`, `aiecc_flags`, `trace_config`, `full_elf`. Any other

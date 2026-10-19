@@ -18,6 +18,7 @@ import warnings
 import aie.iron as iron
 import numpy as np
 import pytest
+from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.callabledesign import CallableDesign
@@ -592,7 +593,7 @@ def test_call_argument_errors_do_not_probe_runtime():
     assert result.stdout.split() == ["True", "True"]
 
 
-def test_as_mlir_generator_receives_tensor_types(npu2_device):
+def test_as_mlir_generator_receives_tensor_operands(npu2_device):
     seen = []
 
     @jit
@@ -610,10 +611,39 @@ def test_as_mlir_generator_receives_tensor_types(npu2_device):
 
     small = copy.as_mlir(np.zeros(64, np.int32), np.zeros(64, np.int32))
     large = copy.as_mlir(np.zeros((4, 32), np.int32), np.zeros(128, np.int32))
-    assert seen[0] == (
+    (a, b), (wide, _) = seen
+    assert isinstance(a, In) and isinstance(b, Out)
+    assert (a.ndarray_type, b.ndarray_type) == (
         np.ndarray[(64,), np.dtype[np.int32]],
         np.ndarray[(64,), np.dtype[np.int32]],
     )
-    assert seen[1][0] == np.ndarray[(4, 32), np.dtype[np.int32]]
+    assert wide.shape == (4, 32) and wide.dtype == np.int32
     assert "memref<64xi32>" in small
     assert "memref<4x32xi32>" in large
+
+
+def _copy_program(src_ty, dst_ty):
+    of_in = ObjectFifo(src_ty)
+    of_out = of_in.cons().forward()
+
+    def seq(src, dst, producer, consumer):
+        producer.fill(src)
+        consumer.drain(dst, wait=True)
+
+    rt = Runtime(seq, [src_ty, dst_ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt).resolve_program()
+
+
+def test_an_operand_goes_wherever_its_tensor_type_goes(npu2_device):
+    @jit
+    def by_operand(a: In, b: Out):
+        assert np_ndarray_type_get_shape(a) == (64,)
+        assert np_ndarray_type_get_dtype(b) == np.int32
+        return _copy_program(a, b)
+
+    @jit
+    def by_type(a: In, b: Out):
+        return _copy_program(a.ndarray_type, b.ndarray_type)
+
+    tensors = (np.zeros(64, np.int32), np.zeros(64, np.int32))
+    assert by_operand.as_mlir(*tensors) == by_type.as_mlir(*tensors)

@@ -592,8 +592,8 @@ class CallableDesign:
         """Return the resolved MLIR text for this kernel without compiling.
 
         Accepts the same arguments as ``__call__``. Tensor contents are not
-        read, only their types; a tensor argument may be ``None`` when the
-        generator does not need its type. ``DispatchTime[T]`` scalar values
+        read, only their shapes and dtypes; a tensor argument may be ``None``
+        when the generator does not need its operand. ``DispatchTime[T]`` scalar values
         are still used during generation.
 
         Returns:

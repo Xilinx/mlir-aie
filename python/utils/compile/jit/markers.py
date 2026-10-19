@@ -27,10 +27,13 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     Marks a generator function parameter as a runtime bidirectional tensor.
     Data is DMA-transferred in both directions on every kernel call.
 
-A generator receives each tensor's type, ``np.ndarray[shape, np.dtype[T]]``,
-never its data: the type of the tensor the design is called with, or one bound
-ahead of time with ``specialize(name=np.ndarray[...])``. A different shape or
-dtype is a different compiled design.
+A generator receives each tensor as an operand of its marker's class, never its
+data: an ``In``/``Out``/``InOut`` with the ``shape`` and ``dtype`` of the
+tensor the design is called with, or of a type bound ahead of time with
+``specialize(name=np.ndarray[...])``, as an operator's ``op.a`` is. Every API
+that takes a tensor type also takes the operand; ``operand.ndarray_type`` is
+its ``np.ndarray[shape, np.dtype[T]]``. A different shape or dtype is a
+different compiled design.
 
 ``DispatchTime[T]``
     Marks a keyword-only integer scalar that can vary per dispatch without
@@ -49,11 +52,12 @@ instead.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Annotated, Any, NoReturn, TypeVar
+from typing import Annotated, Any, NoReturn, Self, TypeVar
 
 import numpy as np
 from ml_dtypes import bfloat16
 
+from ....helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from ....helpers.taplib._per_call import PerCall
 from ... import bfp
 from .params import Member, _text, resolve
@@ -170,6 +174,24 @@ class _Operand(Member):
         """The tensor type this operand describes, ``np.ndarray[shape, np.dtype[T]]``."""
         return np.ndarray[self.shape, np.dtype[self.dtype]]
 
+    @classmethod
+    def for_tensor(cls, name: str, ndarray_type: type[np.ndarray]) -> Self:
+        """Return the operand a generator's ``name`` parameter receives.
+
+        Args:
+            name: The generator parameter.
+            ndarray_type: The tensor's type, ``np.ndarray[shape, np.dtype[T]]``.
+
+        Returns:
+            An operand of this class with that shape and dtype.
+        """
+        operand = cls(
+            *np_ndarray_type_get_shape(ndarray_type),
+            dtype=np_ndarray_type_get_dtype(ndarray_type),
+        )
+        operand.__set_name__(None, name)
+        return operand
+
     @property
     def streamed(self) -> bool:
         return self.obj_dims is not None
@@ -196,24 +218,22 @@ class _Operand(Member):
         return f"<{role} {self.name} {self.shape} {bfp.dtype_name(self.dtype)}>"
 
 
-if TYPE_CHECKING:
-    In = Out = InOut = type[np.ndarray]
-else:
+class In(_Operand):
+    """Runtime input tensor (host → NPU, DMA each call)."""
 
-    class In(_Operand):
-        """Runtime input tensor annotation (host → NPU, DMA each call)."""
+    fills = True
 
-        fills = True
 
-    class Out(_Operand):
-        """Runtime output tensor annotation (NPU → host, DMA each call)."""
+class Out(_Operand):
+    """Runtime output tensor (NPU → host, DMA each call)."""
 
-        drains = True
+    drains = True
 
-    class InOut(_Operand):
-        """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
 
-        fills = drains = True
+class InOut(_Operand):
+    """Runtime bidirectional tensor (DMA in both directions each call)."""
+
+    fills = drains = True
 
 
 DispatchTime = Annotated[T, "aie.dispatch_time"]
