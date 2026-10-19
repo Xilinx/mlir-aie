@@ -125,7 +125,7 @@ class DeviceResources:
                 for tile in flow.control_tiles():
                     if any(
                         program.tile is tile
-                        or tile.col is not None
+                        or None not in (tile.col, tile.row)
                         and (program.tile.col, program.tile.row) == (tile.col, tile.row)
                         for program in self._resolved_tile_dmas
                     ):
@@ -141,13 +141,15 @@ class DeviceResources:
     def static_channel(self, endpoint) -> bool:
         """Return whether a resolved TileDma program runs ``endpoint``'s channel.
 
-        A channel the compiler assigns matches only the same endpoint.
+        A channel the compiler assigns matches only the same endpoint. Tiles
+        match when they are one object or are placed at one column and row; a
+        tile not fully placed matches only itself.
         """
         tile = endpoint.tile
         return any(
             (
                 program.tile is tile
-                or tile.col is not None
+                or None not in (tile.col, tile.row)
                 and (program.tile.col, program.tile.row) == (tile.col, tile.row)
             )
             and any(

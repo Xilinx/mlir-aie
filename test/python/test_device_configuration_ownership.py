@@ -558,6 +558,16 @@ def test_a_task_on_a_channel_a_static_program_runs_is_refused():
         )
 
 
+def test_tiles_pinned_to_one_column_alone_are_two_tiles():
+    first = Tile(col=0, tile_type=AIETileType.MemTile)
+    second = Tile(col=0, tile_type=AIETileType.MemTile)
+    module = program(
+        static_program("seq_0", first, DMAChannelDir.MM2S, 0),
+        task_on("seq_1", second, DMAChannelDir.MM2S, 0),
+    )
+    assert str(module).count("aiex.dma_configure_task(") == 1
+
+
 def test_tasks_may_share_a_channel_and_leave_a_static_one_alone():
     mem = mem_tile()
     module = program(
