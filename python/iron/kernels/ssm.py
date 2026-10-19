@@ -17,7 +17,9 @@ from ._common import KernelContract, Param, Trace, _kernel_source, _make_extern
 from .core import conv_even
 from .sample import _positive
 
-_STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
+# Rolled loops: unrolled, gated_delta_rule alone fills aie2's 16 KB of
+# program memory. Scalar first passes, so nothing is lost.
+_SCALAR_FLAGS = ["-ffp-contract=off", "-fno-fast-math", "-fno-unroll-loops"]
 
 
 def selective_scan_sample(
@@ -111,7 +113,7 @@ def selective_scan(
             np.int32,
             np.int32,
         ],
-        compile_flags=_STRICT_FP
+        compile_flags=_SCALAR_FLAGS
         + [
             f"-DSCAN_ROWS={rows}",
             f"-DSCAN_HEAD_DIM={head_dim}",
@@ -222,7 +224,7 @@ def gated_delta_rule(
             np.int32,
             np.int32,
         ],
-        compile_flags=_STRICT_FP
+        compile_flags=_SCALAR_FLAGS
         + [
             f"-DGDR_ROWS={rows}",
             f"-DGDR_KEY_DIM={key_dim}",

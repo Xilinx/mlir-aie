@@ -11,7 +11,7 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-#include "../sample/exp64.h"
+#include "../common/scalar_exp.h"
 #include "softplus.h"
 
 #ifndef SCAN_ROWS
@@ -63,7 +63,7 @@ extern "C" void selective_scan(bfloat16 *restrict block, float *restrict head,
     const bfloat16 *B = bc + t * 2 * SCAN_STATE;
     const bfloat16 *C = B + SCAN_STATE;
     const float step = softplus((float)dt[t] + dt_bias);
-    const float decay = (float)exp64((double)(step * A));
+    const float decay = scalar_exp(step * A);
     for (int p = 0; p < SCAN_HEAD_DIM; p++) {
       const float xp = (float)xt[p];
       const float sx = step * xp;

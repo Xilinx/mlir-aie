@@ -216,6 +216,7 @@ def experts(
             np.int32,
         ],
         compile_flags=_STRICT_FP
+        + ["-fno-unroll-loops"]  # rolled: unrolled, it nearly fills aie2's 16 KB
         + [
             f"-DEXPERTS_HIDDEN={hidden}",
             f"-DEXPERTS_WIDTH={width}",

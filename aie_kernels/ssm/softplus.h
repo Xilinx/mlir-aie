@@ -10,7 +10,7 @@
 #ifndef AIE_KERNELS_SSM_SOFTPLUS_H
 #define AIE_KERNELS_SSM_SOFTPLUS_H
 
-#include "../sample/exp64.h"
+#include "../common/scalar_exp.h"
 
 // log_f32.cc's log1p(f) / f for f in [sqrt(1/2) - 1, sqrt(2) - 1).
 static const float log_q[10] = {1.0f,
@@ -28,7 +28,7 @@ static const float log_q[10] = {1.0f,
 // 1 + u >= sqrt(2), log1p(u) is log 2 plus log of (1 + u) / 2 = 1 + f.
 static inline float softplus(float z) {
   const float a = z < 0.0f ? -z : z;
-  const float u = (float)exp64(-(double)a);
+  const float u = scalar_exp(-a);
   const bool halve = u >= 0.41421356f;
   const float f = halve ? 0.5f * (u - 1.0f) : u;
   float q = log_q[9];

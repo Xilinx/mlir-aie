@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../sample/exp64.h"
+#include "../common/scalar_exp.h"
 #include "softplus.h"
 
 #ifndef GDR_ROWS
@@ -84,8 +84,8 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
     const bfloat16 *qt = q + t * Dk, *kt = k + t * Dk, *vt = v + t * Dv;
     const float qn = inv_norm(qt, q_scale), kn = inv_norm(kt, 1.0f);
     const float decay =
-        (float)exp64((double)(A * softplus((float)a[t] + dt_bias)));
-    const float beta = 1.0f / (1.0f + (float)exp64(-(double)(float)b[t]));
+        scalar_exp(A * softplus((float)a[t] + dt_bias));
+    const float beta = 1.0f / (1.0f + scalar_exp(-(float)b[t]));
     for (int i = 0; i < Dk * Dv; i++)
       s[i] *= decay;
     for (int j = 0; j < Dv; j++) {

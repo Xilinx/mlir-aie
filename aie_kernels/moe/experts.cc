@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../sample/exp64.h"
+#include "../common/scalar_exp.h"
 
 #ifndef EXPERTS_HIDDEN
 #define EXPERTS_HIDDEN 64
@@ -84,7 +84,7 @@ extern "C" void experts(bfloat16 *restrict row, bfloat16 *restrict tile,
     if (s == gate_up_steps - 1)
       for (int i = 0; i < I; i++) {
         const float g = acc[i];
-        acc[i] = g / (1.0f + (float)exp64(-(double)g)) * acc[I + i];
+        acc[i] = g / (1.0f + scalar_exp(-g)) * acc[I + i];
       }
   } else if (chosen) {
     s -= gate_up_steps;
