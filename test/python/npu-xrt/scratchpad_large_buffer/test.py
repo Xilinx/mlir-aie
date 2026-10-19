@@ -41,12 +41,12 @@ def setup():
     run = pyxrt.run(kernel)
     run.set_arg(0, big.buffer_object())
     run.set_arg(1, out.buffer_object())
-    return run, ParameterScratchpad(run, "params.txt"), out
+    return run, ParameterScratchpad(run, "params.txt"), big, out
 
 
 @pytest.mark.parametrize("off", OFFSETS)
 def test_offset_reaches_the_whole_buffer(setup, off):
-    run, params, out = setup
+    run, params, _, out = setup
     out.data.fill(-1)
     out.to("npu")
     params.write("off", np.int32(off))

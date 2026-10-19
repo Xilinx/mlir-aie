@@ -11,6 +11,7 @@
 
 import numpy as np
 
+from aie.dialects.aiex import npu_load_pdi
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import DeviceConfiguration, ObjectFifo, Program, Runtime
 from aie.iron.device import NPU2Col1
@@ -39,6 +40,8 @@ def design() -> str:
     b_out = b_in.cons().forward(name="b_out")
 
     def sequence(src, dst_a, dst_b, a_in, b_in, a_out, b_out):
+        npu_load_pdi(device_ref="empty")
+        npu_load_pdi(device_ref="test")
         stepped = TensorAccessPattern((N,), 0, [ITERS, 1, 1, TILE], [ROW, 0, 0, 1])
         same = TensorAccessPattern((N,), 0, [ITERS, 1, 1, TILE], [0, 0, 0, 1])
         linear = TensorAccessPattern((N,), 0, [1, 1, 1, TILE], [0, 0, 0, 1])
@@ -71,9 +74,11 @@ def design() -> str:
             b_out.cons(),
         ],
         name="sequence",
+        implicit_configure=False,
     )
     config = DeviceConfiguration("test", NPU2Col1(), runtimes=[rt])
-    return str(Program.compose([config], entry=rt).resolve_program())
+    empty = DeviceConfiguration("empty", NPU2Col1())
+    return str(Program.compose([empty, config], entry=rt).resolve_program())
 
 
 if __name__ == "__main__":

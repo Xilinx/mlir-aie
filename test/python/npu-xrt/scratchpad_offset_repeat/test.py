@@ -39,11 +39,11 @@ def setup():
     run = pyxrt.run(kernel)
     for i, t in enumerate((src, dst_a, dst_b)):
         run.set_arg(i, t.buffer_object())
-    return run, ParameterScratchpad(run, "params.txt"), dst_a, dst_b
+    return run, ParameterScratchpad(run, "params.txt"), src, dst_a, dst_b
 
 
 def dispatch(setup, off, n, reps_a, reps_b):
-    run, params, dst_a, dst_b = setup
+    run, params, _, dst_a, dst_b = setup
     for t in (dst_a, dst_b):
         t.data.fill(-1)
         t.to("npu")

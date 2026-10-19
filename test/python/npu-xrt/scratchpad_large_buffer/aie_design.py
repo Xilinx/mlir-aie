@@ -10,6 +10,7 @@
 
 import numpy as np
 
+from aie.dialects.aiex import npu_load_pdi
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import DeviceConfiguration, ObjectFifo, Program, Runtime
 from aie.iron.device import NPU2Col1
@@ -28,15 +29,21 @@ def design() -> str:
     of_out = of_in.cons().forward(name="objfifo_out")
 
     def sequence(big, out, in_h, out_h):
+        npu_load_pdi(device_ref="empty")
+        npu_load_pdi(device_ref="test")
         block = TensorAccessPattern((WORDS,), 0, [1, 1, 1, TILE], [0, 0, 0, 1])
         in_h.fill(big, tap=block, offset_parameter=off)
         out_h.drain(out, wait=True)
 
     rt = Runtime(
-        sequence, [big_ty, out_ty, of_in.prod(), of_out.cons()], name="sequence"
+        sequence,
+        [big_ty, out_ty, of_in.prod(), of_out.cons()],
+        name="sequence",
+        implicit_configure=False,
     )
     config = DeviceConfiguration("test", NPU2Col1(), runtimes=[rt])
-    return str(Program.compose([config], entry=rt).resolve_program())
+    empty = DeviceConfiguration("empty", NPU2Col1())
+    return str(Program.compose([empty, config], entry=rt).resolve_program())
 
 
 if __name__ == "__main__":

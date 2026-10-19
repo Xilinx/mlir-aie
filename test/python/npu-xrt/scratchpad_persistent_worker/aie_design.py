@@ -4,8 +4,8 @@
 # IRON design for the persistent-worker scratchpad test: a while_true Worker
 # runs one loop iteration per dispatch and writes [n, iterations so far], where
 # n is the ScratchpadParameter the host set for that dispatch. The core is not
-# reset between dispatches (the full-ELF sequence configures the device only
-# when its PDI changes), so the iteration count keeps growing.
+# reset between dispatches (firmware skips reloading the PDI it loaded last),
+# so the iteration count keeps growing.
 #
 # Usage:
 #   python3 aie_design.py [--fence {on,off}] > aie.mlir
@@ -23,8 +23,10 @@ from aie.iron import (
     Runtime,
     ScratchpadParameter,
     Worker,
+    sync_parameters,
 )
 from aie.iron.device import NPU2Col1
+from aie.dialects.aiex import npu_load_pdi
 from aie.ir import IntegerType
 
 
@@ -48,9 +50,13 @@ def design(fence: bool) -> str:
     worker = Worker(core_fn, [of_out.prod(), n, count], wait_for_parameters=fence)
 
     def sequence(out_tensor, out_h):
+        npu_load_pdi(device_ref="test")
+        sync_parameters()
         out_h.drain(out_tensor, wait=True)
 
-    rt = Runtime(sequence, [out_ty, of_out.cons()], name="sequence")
+    rt = Runtime(
+        sequence, [out_ty, of_out.cons()], name="sequence", implicit_configure=False
+    )
     config = DeviceConfiguration("test", NPU2Col1(), workers=[worker], runtimes=[rt])
     return str(Program.compose([config], entry=rt).resolve_program())
 
