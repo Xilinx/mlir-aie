@@ -176,9 +176,9 @@ class ActiveSequence:
                 "Mixing explicit task groups and the default task group is "
                 "prohibited. Please assign all tasks to a task group."
             )
-        # Flush any transfers left in the default group (no explicit finish).
-        if self._default_task_group._actions:
-            self.finish_task_group(self._default_task_group)
+        # Flush any transfers left in the default group (no explicit finish),
+        # and close it even when empty: a merged step makes a fresh one.
+        self.finish_task_group(self._default_task_group)
         self._default_task_group = TaskGroup(next(self._runtime._task_group_index))
         self._used_default = self._used_explicit = False
 

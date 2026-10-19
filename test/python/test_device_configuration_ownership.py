@@ -26,6 +26,7 @@ from aie.iron import (
     Resolvable,
     Runtime,
     ScratchpadParameter,
+    TaskGroup,
     TileDma,
     Worker,
     WorkerRuntimeBarrier,
@@ -604,6 +605,26 @@ def test_a_merged_step_waits_for_the_last_steps_transfers():
     sequence = text[text.index("aie.runtime_sequence") :]
     steps = re.findall(r"aiex\.dma_(start|await|free)_task", sequence)
     assert steps == ["start", "await", "free", "start", "free"]
+
+
+def test_merged_steps_may_each_use_only_explicit_groups():
+    # Each step's default group is left empty, and must not stay open.
+    of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
+    worker = Worker(lambda a, b: None, [of_in.cons(), of_out.prod()])
+
+    def step(c, into, out_of):
+        tg = TaskGroup()
+        into.fill(c, group=tg)
+        out_of.drain(c, wait=True, group=tg)
+        tg.finish()
+
+    steps = [Runtime(step, [Line, of_in.prod(), of_out.cons()]) for _ in range(3)]
+    merged = Runtime.merge(steps)
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker], runtimes=[merged]
+    )
+    text = str(Program.compose([config], entry=merged).resolve_program())
+    assert text.count("aiex.dma_start_task") == 6
 
 
 def test_a_configured_runtime_does_not_merge():
