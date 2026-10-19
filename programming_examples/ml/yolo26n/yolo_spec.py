@@ -48,6 +48,16 @@ class Tensor:
     def shape(self) -> tuple[int, int, int]:
         return (self.channels, self.height, self.width)
 
+    @property
+    def channels8(self) -> int:
+        """Channels as the NPU holds them: rounded up to a group of 8."""
+        return -(-self.channels // 8) * 8
+
+    @property
+    def row_bytes(self) -> int:
+        """One row on the NPU: `[channels8 / 8][width][8]` int8."""
+        return self.channels8 * self.width
+
 
 @dataclass(frozen=True)
 class InputQuant:
@@ -335,7 +345,11 @@ class Network:
     @classmethod
     def yolo26n(cls) -> Network:
         net = cls()
-        x = net._emit(InputQuant("images", Tensor("images", 3, IMAGE_SIZE, IMAGE_SIZE)))
+        x = net._emit(
+            InputQuant(
+                "images", Tensor("images/QuantizeLinear", 3, IMAGE_SIZE, IMAGE_SIZE)
+            )
+        )
         x = net.conv("/model.0", x, 16, 3, 2)
         x = net.conv("/model.1", x, 32, 3, 2)
         x = net.c3k2("/model.2", x, 64, c3k=False, expansion=0.25)
