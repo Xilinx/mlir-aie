@@ -13,6 +13,8 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 
 if TYPE_CHECKING:
     from .configuration import DeviceConfiguration
+    # tile_dma imports this module.
+    from .dataflow.tile_dma import DmaEndpoint
 
 
 # Structural typing via @runtime_checkable Protocol: any class with both
@@ -136,7 +138,7 @@ class DeviceResources:
         for program in self._resolved_tile_dmas:
             program.resolve()
 
-    def static_channel(self, endpoint) -> bool:
+    def static_channel(self, endpoint: DmaEndpoint) -> bool:
         """Return whether a resolved TileDma program may run ``endpoint``'s channel.
 
         Tiles match as `Tile.is_same_tile` says. A channel the compiler
