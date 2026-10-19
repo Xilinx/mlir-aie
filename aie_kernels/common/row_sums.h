@@ -11,6 +11,8 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
+#include "../aie_kernel_utils.h"
+
 // v and w hold rows of L partial sums each. Adds lane i + L / 2 onto lane i of
 // every row, the pairing reduce_add uses, and returns v's rows then w's.
 template <unsigned L, unsigned N>
@@ -70,6 +72,54 @@ pack_rows4(aie::accum<accfloat, r> a0, aie::accum<accfloat, r> a1,
         aie::concat(t01.template extract<16>(1), t01.template extract<16>(3),
                     t23.template extract<16>(1), t23.template extract<16>(3)));
   }
+}
+
+// Four rows of A times b, packed by pack_rows4. Each row walks its own cursor:
+// one pointer stepped through all four rows chains every load on the previous
+// load's post-increment. The first chunk multiplies instead of accumulating
+// onto zeros, which would be reloaded from the stack for every group. Short
+// rows unroll fully, so a whole group is one block the scheduler can overlap
+// with its neighbor. Not inlined, it returns its accumulator through the stack.
+template <uint32_t r, uint32_t k>
+__attribute__((always_inline)) static inline aie::accum<accfloat, 64>
+mac_rows4(const bfloat16 *__restrict a, const bfloat16 *__restrict b) {
+  constexpr uint32_t chunks = k / r;
+  const bfloat16 *__restrict a0 = a;
+  const bfloat16 *__restrict a1 = a + k;
+  const bfloat16 *__restrict a2 = a + 2 * k;
+  const bfloat16 *__restrict a3 = a + 3 * k;
+  const bfloat16 *__restrict pb = b;
+  aie::vector<bfloat16, r> b_0 = aie::load_v<r>(pb);
+  pb += r;
+  aie::accum<accfloat, r> acc0 = aie::mul(aie::load_v<r>(a0), b_0);
+  a0 += r;
+  aie::accum<accfloat, r> acc1 = aie::mul(aie::load_v<r>(a1), b_0);
+  a1 += r;
+  aie::accum<accfloat, r> acc2 = aie::mul(aie::load_v<r>(a2), b_0);
+  a2 += r;
+  aie::accum<accfloat, r> acc3 = aie::mul(aie::load_v<r>(a3), b_0);
+  a3 += r;
+  auto step = [&]() {
+    aie::vector<bfloat16, r> b_vec = aie::load_v<r>(pb);
+    pb += r;
+    acc0 = aie::mac(acc0, aie::load_v<r>(a0), b_vec);
+    a0 += r;
+    acc1 = aie::mac(acc1, aie::load_v<r>(a1), b_vec);
+    a1 += r;
+    acc2 = aie::mac(acc2, aie::load_v<r>(a2), b_vec);
+    a2 += r;
+    acc3 = aie::mac(acc3, aie::load_v<r>(a3), b_vec);
+    a3 += r;
+  };
+  if constexpr (chunks <= 4) {
+    AIE_LOOP_UNROLL_FULL
+    for (uint32_t i = 1; i < chunks; i++)
+      step();
+  } else {
+    for (uint32_t i = 1; i < chunks; i++)
+      step();
+  }
+  return pack_rows4<r>(acc0, acc1, acc2, acc3);
 }
 
 #endif
