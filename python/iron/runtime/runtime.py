@@ -54,6 +54,8 @@ from .taskgroup import TaskGroup
 
 if TYPE_CHECKING:
     from ..configuration import DeviceConfiguration
+    # tile_dma imports the runtime package, which imports this module.
+    from ..dataflow.tile_dma import DmaEndpoint
     from ..device import Device
 
 logger = logging.getLogger(__name__)
@@ -106,7 +108,7 @@ class ActiveSequence:
                 self._device.resolve_tile(resolvable.tile)
             resolvable.resolve()
 
-    def static_channel(self, endpoint) -> bool:
+    def static_channel(self, endpoint: DmaEndpoint) -> bool:
         """Return whether the device's TileDma programs may run ``endpoint``'s channel.
 
         Args:
