@@ -1042,41 +1042,35 @@ def build():
         Worker(
             w_router,
             [of_seed.cons(), of_back.cons(), of_routed.prod()],
-            tile=Tile(3, 4),
             stack_size=PSK,
         ),
         # Attention front
         Worker(
             w_rms,
             [of_routed.cons(), of_gam_in.cons(), of_h1.prod(), k_rms],
-            tile=Tile(0, 2),
             stack_size=2048,
         ),
         Worker(
             w_q,
             [of_h1.cons(), of_wq.cons(), of_qfp.prod(), k_q],
-            tile=Tile(0, 3),
             stack_size=PSK,
         ),
         # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
-        Worker(w_requant, [of_qfp.cons(), of_qf.prod(), k_qrequant], tile=Tile(4, 3)),
+        Worker(w_requant, [of_qfp.cons(), of_qf.prod(), k_qrequant]),
         Worker(
             w_rope,
             [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope],
-            tile=Tile(0, 4),
             stack_size=2048,
         ),
         # k_proj / v_proj (h1 broadcast); fp32 out -> memtile kvcs join.
         Worker(
             w_kv,
             [of_h1.cons(), of_wk.cons(), kvcs_eps[0].prod(), k_kv],
-            tile=Tile(7, 2),
             stack_size=PSK,
         ),
         Worker(
             w_kv,
             [of_h1.cons(), of_wv.cons(), kvcs_eps[1].prod(), k_kv],
-            tile=Tile(7, 3),
             stack_size=PSK,
         ),
         Worker(
@@ -1088,7 +1082,6 @@ def build():
                 of_comb_hi.prod(),
                 k_qkvcomb,
             ],
-            tile=Tile(0, 5),
         ),
         # 8 co-located append+flowkv workers (cols 1, 2 -- rows 2-5).
         # PERSIST_RESIDENT: KV cache resident in b_kv[i] (no kvout); host fills
@@ -1106,7 +1099,6 @@ def build():
                         k_append_res,
                         k_fkv_res,
                     ],
-                    tile=Tile(1 + i // 4, 2 + i % 4),
                     # Resident KV: the 2x17416 b_kv buffer + the 17416 seed-fill
                     # cons buffer dominate the 64 KB tile, so the stack must be
                     # small (flowkv needs ~1 KB: scores[T]+qvals[T]; append
@@ -1127,7 +1119,6 @@ def build():
                         k_append,
                         k_fkv,
                     ],
-                    tile=Tile(1 + i // 4, 2 + i % 4),
                     stack_size=ATSK,
                 )
                 for i in range(N_HEADS_KV)
@@ -1137,67 +1128,56 @@ def build():
         Worker(
             w_svmerge,
             [of_svconcat_lo.cons(), of_svconcat_hi.cons(), of_svfull.prod(), k_svmerge],
-            tile=Tile(3, 2),
         ),
         Worker(
             w_afconcat,
             [of_svfull.cons(), of_af.prod(), k_afconcat],
-            tile=Tile(3, 3),
         ),
         Worker(
             w_o,
             [of_af.cons(), of_wo.cons(), of_op.prod(), k_o],
-            tile=Tile(3, 5),
             stack_size=PSK,
         ),
         Worker(
             w_add1,
             [of_routed.cons(), of_op.cons(), of_x1.prod(), k_add],
-            tile=Tile(6, 5),
         ),
         # FFN (FFNSK=4096: of_sf=HD+8 self-cal Bug-12 alias, see single layer)
         Worker(
             w_rms,
             [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],
-            tile=Tile(6, 4),
             stack_size=2048,
         ),
         Worker(
             w_gate,
             [of_h2.cons(), of_wg.cons(), of_gf.prod(), k_gate],
-            tile=Tile(4, 2),
             stack_size=FFNSK,
         ),
         Worker(
             w_up,
             [of_h2.cons(), of_wu.cons(), of_ufp.prod(), k_up],
-            tile=Tile(5, 2),
             stack_size=FFNSK,
         ),
         # up_requant (2b): fp32 up -> self-cal up_out_scale -> int8 + tail.
         Worker(
             w_requant,
             [of_ufp.cons(), of_uf.prod(), k_uprequant],
-            tile=Tile(5, 3),
             stack_size=FFNSK,
         ),
         Worker(
             w_silu,
             [of_gf.cons(), of_uf.cons(), of_sf.prod(), k_silu],
-            tile=Tile(4, 5),
             stack_size=FFNSK,
         ),
         Worker(
             w_down,
             [of_sf.cons(), of_wd.cons(), of_df.prod(), k_down],
-            tile=Tile(6, 2),
             stack_size=FFNSK,
         ),
         # add2 with peeled final iter
         Worker(
             w_add2,
             [of_x1.cons(), of_df.cons(), of_back.prod(), of_out.prod(), k_add],
-            tile=Tile(7, 5),
         ),
     ]
 
@@ -1207,7 +1187,6 @@ def build():
             Worker(
                 w_fnorm,
                 [of_out.cons(), of_fgam.cons(), of_fnorm.prod(), k_rms],
-                tile=Tile(4, 4),
                 stack_size=2048,
             ),
             # Fused lm_head GEMM + top-k insert + finalize on one tile: ONE table
@@ -1231,7 +1210,6 @@ def build():
                         k_os_insert,
                         k_os_final,
                     ],
-                    tile=Tile(5, 4),
                     stack_size=ATSK,
                 )
                 if PERSIST
@@ -1250,7 +1228,6 @@ def build():
                         k_os_insert,
                         k_os_final,
                     ],
-                    tile=Tile(5, 4),
                     stack_size=ATSK,
                 )
             ),
@@ -1261,7 +1238,6 @@ def build():
                 Worker(
                     w_seedmux,
                     [of_hostseed.cons(), of_feedback.cons(), of_seed.prod()],
-                    tile=Tile(7, 4),
                     stack_size=PSK,
                 ),
             ]
@@ -1271,7 +1247,6 @@ def build():
             Worker(
                 w_fnorm,
                 [of_out.cons(), of_fgam.cons(), of_fnorm.prod(), k_rms],
-                tile=Tile(4, 4),
                 stack_size=2048,
             ),
             # lm_head GEMM (5,4 = relay gemm tile) + streamed sampler (5,5 =
@@ -1279,7 +1254,6 @@ def build():
             Worker(
                 w_lmhead,
                 [of_fnorm.cons(), of_wlm.cons(), lm_relay, k_lmhead],
-                tile=Tile(5, 4),
                 stack_size=PSK,
             ),
             Worker(
@@ -1292,7 +1266,6 @@ def build():
                     k_sample,
                     k_sample_final,
                 ],
-                tile=Tile(5, 5),
                 stack_size=8192,
             ),
         ]
@@ -1302,7 +1275,6 @@ def build():
             Worker(
                 w_gather,
                 [of_gwlm.cons(), of_token_in.cons(), of_seed.prod(), k_embsel],
-                tile=Tile(6, 3),
                 stack_size=PSK,
             ),
         ]
