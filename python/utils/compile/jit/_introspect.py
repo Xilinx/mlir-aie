@@ -6,8 +6,7 @@
 """The generator front end of a declaration.
 
 `declare` reads a generator's signature into the same ``Declaration`` an
-operator's class body makes, which ``CompilableDesign`` reads; `split_params`
-lists its parameter names by kind.
+operator's class body makes, which ``CompilableDesign`` reads.
 """
 
 from __future__ import annotations
@@ -132,29 +131,4 @@ def declare(generator: Callable) -> Declaration:
         tuple(members),
         scalars=tuple(scalars),
         signature=sig,
-    )
-
-
-def split_params(
-    generator: Callable,
-) -> tuple[list[str], list[str], list[str], list[str]]:
-    """Return `generator`'s ``(compile, tensor, dispatch, scalar)`` parameter names.
-
-    * ``compile_params``  — names with ``CompileTime[T]`` annotation
-    * ``tensor_params``   — names with ``In``/``Out``/``InOut`` annotation (in
-      order); a ``*tensors: In`` entry stands for however many tensors a call
-      passes after the named ones
-    * ``dispatch_params``  — names with ``DispatchTime[T]`` annotation (runtime
-      scalars, one compiled artifact serves many values)
-    * ``scalar_params``   — names with any other annotation (unclassified;
-      currently rejected at ``@iron.jit`` time if they carry a default)
-
-    They are read from ``declare(generator)``.
-    """
-    d = declare(generator)
-    return (
-        list(d.params),
-        [m.name for m in d.operands],
-        [m.name for m in d.per_calls],
-        list(d.scalars),
     )

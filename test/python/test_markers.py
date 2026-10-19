@@ -11,12 +11,13 @@ import inspect
 import json
 from typing import Annotated, get_args, get_origin
 
+import numpy as np
 import pytest
 from aie.utils.compile.jit._introspect import (
     _dispatch_param_type,
     _is_compile_param,
     _is_tensor_param,
-    split_params,
+    declare,
 )
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 
@@ -146,8 +147,6 @@ def test_dispatch_param_type_extracts_int():
 
 
 def test_dispatch_param_type_extracts_numpy_dtype():
-    import numpy as np
-
     assert _dispatch_param_type(DispatchTime[np.int32]) is np.int32
 
 
@@ -223,175 +222,109 @@ def test_tensor_markers_are_not_dispatch():
 
 
 # ---------------------------------------------------------------------------
-# split_params — comprehensive signature introspection
+# declare() — a generator's parameters by kind, in signature order
 # ---------------------------------------------------------------------------
 
 
-def test_split_params_all_compile():
-    def f(*, M: CompileTime[int], K: CompileTime[int]):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["M", "K"]
-    assert tensor_params == []
-    assert dispatch_params == []
-    assert scalar_params == []
+def _compile_only(*, M: CompileTime[int], K: CompileTime[int]):
+    pass
 
 
-def test_split_params_all_tensor():
-    def f(a: In, b: Out, c: InOut):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == ["a", "b", "c"]
-    assert dispatch_params == []
-    assert scalar_params == []
+def _tensors_only(a: In, b: Out, c: InOut):
+    pass
 
 
-def test_split_params_all_dispatch():
-    def f(x: DispatchTime[int], y: DispatchTime[float]):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == []
-    assert dispatch_params == ["x", "y"]
-    assert scalar_params == []
+def _dispatch_only(x: DispatchTime[int], y: DispatchTime[float]):
+    pass
 
 
-def test_split_params_all_scalar_annotated():
-    def f(x: int, y: float, z: str):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == []
-    assert dispatch_params == []
-    assert scalar_params == ["x", "y", "z"]
+def _scalars_annotated(x: int, y: float, z: str):
+    pass
 
 
-def test_split_params_all_unannotated():
-    def f(x, y, z):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == []
-    assert dispatch_params == []
-    assert scalar_params == ["x", "y", "z"]
+def _scalars_unannotated(x, y, z):
+    pass
 
 
-def test_split_params_no_params():
-    def f():
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == []
-    assert dispatch_params == []
-    assert scalar_params == []
+def _no_params():
+    pass
 
 
-def test_split_params_mixed_all_three():
-    def f(a: In, b: Out, alpha: float, *, M: CompileTime[int], N: CompileTime[int]):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["M", "N"]
-    assert tensor_params == ["a", "b"]
-    assert dispatch_params == []
-    assert scalar_params == ["alpha"]
+def _three_kinds(
+    a: In, b: Out, alpha: float, *, M: CompileTime[int], N: CompileTime[int]
+):
+    pass
 
 
-def test_split_params_mixed_all_four():
-    def f(
-        a: In,
-        b: Out,
-        scale: DispatchTime[int],
-        alpha: float,
-        *,
-        M: CompileTime[int],
-        N: CompileTime[int],
-    ):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["M", "N"]
-    assert tensor_params == ["a", "b"]
-    assert dispatch_params == ["scale"]
-    assert scalar_params == ["alpha"]
+def _four_kinds(
+    a: In,
+    b: Out,
+    scale: DispatchTime[int],
+    alpha: float,
+    *,
+    M: CompileTime[int],
+    N: CompileTime[int],
+):
+    pass
 
 
-def test_split_params_inout_goes_in_tensor():
-    def f(x: InOut, *, M: CompileTime[int]):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert tensor_params == ["x"]
-    assert compile_params == ["M"]
-    assert dispatch_params == []
+def _tensors_out_of_order(c: Out, a: In, b: InOut):
+    pass
 
 
-def test_split_params_preserves_declaration_order_for_tensors():
-    """Tensor params must come out in the same order as the function signature."""
-
-    def f(c: Out, a: In, b: InOut):
-        pass
-
-    _, tensor_params, _, _ = split_params(f)
-    assert tensor_params == ["c", "a", "b"]
+def _compile_out_of_order(
+    *, N: CompileTime[int], M: CompileTime[int], K: CompileTime[int]
+):
+    pass
 
 
-def test_split_params_preserves_declaration_order_for_compile():
-    def f(*, N: CompileTime[int], M: CompileTime[int], K: CompileTime[int]):
-        pass
-
-    compile_params, _, _, _ = split_params(f)
-    assert compile_params == ["N", "M", "K"]
+def _dispatch_out_of_order(
+    z: DispatchTime[int], y: DispatchTime[int], x: DispatchTime[int]
+):
+    pass
 
 
-def test_split_params_preserves_declaration_order_for_dispatch():
-    def f(z: DispatchTime[int], y: DispatchTime[int], x: DispatchTime[int]):
-        pass
-
-    _, _, dispatch_params, _ = split_params(f)
-    assert dispatch_params == ["z", "y", "x"]
+def _compile_with_default(
+    a: In, *, M: CompileTime[int], dtype: CompileTime[type] = np.float32
+):
+    pass
 
 
-def test_split_params_compile_with_default():
-    """Parameters with defaults are still categorised correctly."""
-    import numpy as np
-
-    def f(a: In, *, M: CompileTime[int], dtype: CompileTime[type] = np.float32):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["M", "dtype"]
-    assert tensor_params == ["a"]
-    assert dispatch_params == []
-    assert scalar_params == []
+def _scalar_with_default(a: In, alpha: float = 1.0, *, N: CompileTime[int] = 512):
+    pass
 
 
-def test_split_params_scalar_with_default():
-    def f(a: In, alpha: float = 1.0, *, N: CompileTime[int] = 512):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["N"]
-    assert tensor_params == ["a"]
-    assert dispatch_params == []
-    assert scalar_params == ["alpha"]
+# DispatchTime[T] params are exempt from Guard 1-C's default-value ban.
+def _dispatch_with_default(
+    a: In, scale: DispatchTime[int] = 1, *, N: CompileTime[int] = 512
+):
+    pass
 
 
-def test_split_params_dispatch_with_default():
-    """DispatchTime[T] params are exempt from Guard 1-C's default-value ban."""
-
-    def f(a: In, scale: DispatchTime[int] = 1, *, N: CompileTime[int] = 512):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["N"]
-    assert tensor_params == ["a"]
-    assert dispatch_params == ["scale"]
-    assert scalar_params == []
+@pytest.mark.parametrize(
+    "generator, compile_params, tensors, dispatch, scalars",
+    [
+        (_compile_only, ["M", "K"], [], [], []),
+        (_tensors_only, [], ["a", "b", "c"], [], []),
+        (_dispatch_only, [], [], ["x", "y"], []),
+        (_scalars_annotated, [], [], [], ["x", "y", "z"]),
+        (_scalars_unannotated, [], [], [], ["x", "y", "z"]),
+        (_no_params, [], [], [], []),
+        (_three_kinds, ["M", "N"], ["a", "b"], [], ["alpha"]),
+        (_four_kinds, ["M", "N"], ["a", "b"], ["scale"], ["alpha"]),
+        (_tensors_out_of_order, [], ["c", "a", "b"], [], []),
+        (_compile_out_of_order, ["N", "M", "K"], [], [], []),
+        (_dispatch_out_of_order, [], [], ["z", "y", "x"], []),
+        (_compile_with_default, ["M", "dtype"], ["a"], [], []),
+        (_scalar_with_default, ["N"], ["a"], [], ["alpha"]),
+        (_dispatch_with_default, ["N"], ["a"], ["scale"], []),
+    ],
+)
+def test_declare_sorts_a_generators_parameters(
+    generator, compile_params, tensors, dispatch, scalars
+):
+    d = declare(generator)
+    assert list(d.params) == compile_params
+    assert [m.name for m in d.operands] == tensors
+    assert [m.name for m in d.per_calls] == dispatch
+    assert list(d.scalars) == scalars
