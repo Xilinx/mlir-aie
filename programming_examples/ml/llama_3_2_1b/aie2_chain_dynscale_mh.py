@@ -94,6 +94,10 @@ LM_N_TILES = VOCAB // N_TILE  # 32064
 WLM_PREFIX = 64
 WLM_SLOT = WLM_PREFIX + N_TILE * D + N_TILE * 4 + N_TILE * 4  # 8256
 WLM_TOTAL = LM_N_TILES * WLM_SLOT  # 262 MB
+# lm_head slots per shim DMA task: the slots are contiguous, so one task streams
+# a run of them; at most 1023 (a BD dimension's size limit), dividing LM_N_TILES.
+LM_SLOTS_PER_TASK = 1002
+assert LM_N_TILES % LM_SLOTS_PER_TASK == 0
 SAMPLE_CHUNK = 2004  # V = 64 * 2004
 SAMPLE_N_CHUNKS = VOCAB // SAMPLE_CHUNK  # 64
 SAMPLE_TILES_PER_CHUNK = SAMPLE_CHUNK // N_TILE  # 501
@@ -1604,6 +1608,27 @@ def build(
                 )
             )
 
+        def stream_lm_table(prod):
+            n_tasks = LM_N_TILES // LM_SLOTS_PER_TASK
+            lm_tgs = [TaskGroup() for _ in range(n_tasks)]
+            for c in range(n_tasks):
+                prod.fill(
+                    lmw,
+                    tap=strided_tap(
+                        LMW_GAMMA_BYTES + WLM_TOTAL,
+                        LMW_GAMMA_BYTES + c * LM_SLOTS_PER_TASK * WLM_SLOT,
+                        WLM_SLOT,
+                        WLM_SLOT,
+                        LM_SLOTS_PER_TASK,
+                    ),
+                    group=lm_tgs[c],
+                    wait=True,
+                )
+                if c >= 2:
+                    lm_tgs[c - 2].finish()
+            for c in range(max(0, n_tasks - 2), n_tasks):
+                lm_tgs[c].finish()
+
         # Seed input (layer 0).
         seed_tg = TaskGroup()
         tgs.append(seed_tg)
@@ -1613,24 +1638,7 @@ def build(
             # + stream the embed weights (front, before the layer weights so the
             # gather completes before layer 0 consumes the seed).
             token_in_prod.fill(token_in, group=seed_tg)
-            gw_tgs = [TaskGroup() for _ in range(LM_N_TILES)]
-            for t in range(LM_N_TILES):
-                gwlm_prod.fill(
-                    lmw,
-                    tap=strided_tap(
-                        LMW_GAMMA_BYTES + WLM_TOTAL,
-                        LMW_GAMMA_BYTES + t * WLM_SLOT,
-                        WLM_SLOT,
-                        WLM_SLOT,
-                        1,
-                    ),
-                    group=gw_tgs[t],
-                    wait=True,
-                )
-                if t >= 2:
-                    gw_tgs[t - 2].finish()
-            for t in range(max(0, LM_N_TILES - 2), LM_N_TILES):
-                gw_tgs[t].finish()
+            stream_lm_table(gwlm_prod)
         elif PERSIST:
             # Host fill is token 0 only (see the PERSIST block's comment above).
             hostseed_prod.fill(xin, group=seed_tg)
@@ -1907,24 +1915,7 @@ def build(
             if SAMPLE:
                 # lm_head weight stream (262 MB), issued AFTER the chain layer
                 # fills so the chain runs first and produces of_out.
-                lm_tgs = [TaskGroup() for _ in range(LM_N_TILES)]
-                for t in range(LM_N_TILES):
-                    wlm_prod.fill(
-                        lmw,
-                        tap=strided_tap(
-                            LMW_GAMMA_BYTES + WLM_TOTAL,
-                            LMW_GAMMA_BYTES + t * WLM_SLOT,
-                            WLM_SLOT,
-                            WLM_SLOT,
-                            1,
-                        ),
-                        group=lm_tgs[t],
-                        wait=True,
-                    )
-                    if t >= 2:
-                        lm_tgs[t - 2].finish()
-                for t in range(max(0, LM_N_TILES - 2), LM_N_TILES):
-                    lm_tgs[t].finish()
+                stream_lm_table(wlm_prod)
 
         for tok in range(PT):
             issue_token(tok)
