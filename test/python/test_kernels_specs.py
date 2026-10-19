@@ -137,6 +137,17 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
     ),
     KernelSpec(
+        name="maxpool2d",
+        factory=kernels.maxpool2d,
+        kwargs=dict(input_width=20, channels=128),
+        arg_count=6,
+        expected_name="maxpool2d_5x5_i8",
+        invalid_kwargs=[
+            (dict(kernel=3), "5x5"),
+            (dict(input_width=18), "width of 4k"),
+        ],
+    ),
+    KernelSpec(
         name="mul",
         factory=kernels.mul,
         kwargs=dict(tile_size=1024, dtype=bfloat16),
