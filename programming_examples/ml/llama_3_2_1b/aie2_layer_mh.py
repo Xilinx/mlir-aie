@@ -643,34 +643,29 @@ def build():
         Worker(
             w_rms,
             [of_xin.cons(), of_gam_in.cons(), of_h1.prod(), k_rms],
-            tile=Tile(0, 2),
             stack_size=2048,
         ),
         Worker(
             w_q,
             [of_h1.cons(), of_wq.cons(), of_qfp.prod(), k_q],
-            tile=Tile(0, 3),
             stack_size=PSK,
         ),
         # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
-        Worker(w_qrequant, [of_qfp.cons(), of_qf.prod(), k_qrequant], tile=Tile(4, 3)),
+        Worker(w_qrequant, [of_qfp.cons(), of_qf.prod(), k_qrequant]),
         Worker(
             w_rope,
             [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope],
-            tile=Tile(0, 4),
             stack_size=2048,
         ),
         # k_proj / v_proj (h1 broadcast); fp32 out -> memtile kvcs join.
         Worker(
             w_kv,
             [of_h1.cons(), of_wk.cons(), kvcs_eps[0].prod(), k_kv],
-            tile=Tile(7, 2),
             stack_size=PSK,
         ),
         Worker(
             w_kv,
             [of_h1.cons(), of_wv.cons(), kvcs_eps[1].prod(), k_kv],
-            tile=Tile(7, 3),
             stack_size=PSK,
         ),
         Worker(
@@ -682,7 +677,6 @@ def build():
                 of_comb_hi.prod(),
                 k_qkvcomb,
             ],
-            tile=Tile(0, 5),
         ),
         # ---- 8 co-located append+flowkv workers (cols 1-2, rows 2-5) ----
         *[
@@ -696,7 +690,6 @@ def build():
                     k_append,
                     k_fkv,
                 ],
-                tile=Tile(1 + i // 4, 2 + i % 4),
                 stack_size=ATSK,
             )
             for i in range(N_HEADS_KV)
@@ -705,63 +698,50 @@ def build():
         Worker(
             w_svmerge,
             [of_svconcat_lo.cons(), of_svconcat_hi.cons(), of_svfull.prod(), k_svmerge],
-            tile=Tile(3, 2),
         ),
         Worker(
             w_afconcat,
             [of_svfull.cons(), of_af.prod(), k_afconcat],
-            tile=Tile(3, 5),
         ),
         Worker(
             w_o,
             [of_af.cons(), of_wo.cons(), of_op.prod(), k_o],
-            tile=Tile(3, 3),
             stack_size=PSK,
         ),
-        Worker(
-            w_add, [of_xin.cons(), of_op.cons(), of_x1.prod(), k_add], tile=Tile(3, 4)
-        ),
+        Worker(w_add, [of_xin.cons(), of_op.cons(), of_x1.prod(), k_add]),
         # ---- FFN (match aie2_layer_d2048 placement exactly) ----
         Worker(
             w_rms,
             [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],
-            tile=Tile(6, 4),
             stack_size=2048,
         ),
         Worker(
             w_gate,
             [of_h2.cons(), of_wg.cons(), of_gf.prod(), k_gate],
-            tile=Tile(4, 2),
             stack_size=FFNSK,
         ),
         Worker(
             w_up,
             [of_h2.cons(), of_wu.cons(), of_ufp.prod(), k_up],
-            tile=Tile(5, 2),
             stack_size=FFNSK,
         ),
         # up_requant (2b): fp32 up -> global self-cal up_out_scale -> int8 + tail.
         Worker(
             w_uprequant,
             [of_ufp.cons(), of_uf.prod(), k_uprequant],
-            tile=Tile(5, 3),
             stack_size=FFNSK,
         ),
         Worker(
             w_silu,
             [of_gf.cons(), of_uf.cons(), of_sf.prod(), k_silu],
-            tile=Tile(4, 5),
             stack_size=FFNSK,
         ),
         Worker(
             w_down,
             [of_sf.cons(), of_wd.cons(), of_df.prod(), k_down],
-            tile=Tile(6, 2),
             stack_size=FFNSK,
         ),
-        Worker(
-            w_add, [of_x1.cons(), of_df.cons(), of_out.prod(), k_add], tile=Tile(7, 5)
-        ),
+        Worker(w_add, [of_x1.cons(), of_df.cons(), of_out.prod(), k_add]),
     ]
 
     def sequence(
