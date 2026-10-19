@@ -55,7 +55,9 @@ def build():
         TileDma(
             core,
             [
-                DmaChannel(DMAChannelDir.MM2S, send.endpoint(core), [Bd(buf, packet=(0, pid))]),
+                DmaChannel(
+                    DMAChannelDir.MM2S, send.endpoint(core), [Bd(buf, packet=(0, pid))]
+                ),
                 DmaChannel(DMAChannelDir.S2MM, recv.endpoint(core), [Bd(buf)]),
             ],
         )

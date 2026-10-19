@@ -26,9 +26,15 @@ from ml_dtypes import bfloat16
 
 from ._common import KernelContract, Param, Trace, _kernel_source, _make_extern
 from .core import conv_even
-from .sample import _check_slice, _positive, exp64_ref, order_keys, summary_words
-
-_STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
+from .sample import (
+    _STRICT_FP,
+    _STRICT_FP_ROLLED,
+    _check_slice,
+    _positive,
+    exp64_ref,
+    order_keys,
+    summary_words,
+)
 
 
 def router_top_k(*, slice_size=32, top_k=8) -> ExternalFunction:
@@ -214,9 +220,7 @@ def experts(
             np.ndarray[(hidden,), np.dtype[bfloat16]],
             np.int32,
         ],
-        # rolled: unrolled, these overflow aie2's 16 KB program memory
-        compile_flags=_STRICT_FP
-        + ["-fno-unroll-loops"]
+        compile_flags=_STRICT_FP_ROLLED
         + [
             f"-DEXPERTS_HIDDEN={hidden}",
             f"-DEXPERTS_WIDTH={width}",

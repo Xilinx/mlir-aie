@@ -5,17 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Exact GELU, x * Phi(x) = 0.5 x erfc(-x / sqrt 2), where gelu.cc takes the
-// tanh approximation. The two round differently on 405 of the 65,280 finite
-// bf16 inputs, 280 of them below x = -3, where tanh's tail decays too fast.
+// Exact GELU, x * Phi(x), where gelu.cc takes the tanh approximation: the two
+// round differently on 405 finite bf16 inputs, most below x = -3. erfc is
+// Numerical Recipes' erfcc in f32 products of bf16 limbs, within one bf16 ulp
+// of the float64 GELU on every finite bf16 input.
 //
-// With a = |x|, z = a / sqrt 2 and t = 1 / (1 + z / 2), erfc(z) is
-// t exp(-z^2 + P(t)) for a degree-9 P (Numerical Recipes' erfcc, relative
-// error under 1.2e-7 for every z >= 0). h = a erfc(z) / 2 is then x Phi(-a),
-// and gelu is x - h for x >= 0 and -h below. Each f32 product multiplies
-// [hi | lo] bf16 limbs into the f32 accumulator, as exp2_f32_32 does. A model
-// of this arithmetic is within one bf16 ulp of the float64 GELU on every
-// finite bf16 input, or under the smallest normal bf16 of it.
+// With a = |x| and z = a / sqrt 2, erfc(z) = t exp(-z^2 + P(t)) for t =
+// 1 / (1 + z / 2), and h = a erfc(z) / 2: gelu is x - h for x >= 0, else -h.
 //
 //===----------------------------------------------------------------------===//
 #include <aie_api/aie.hpp>

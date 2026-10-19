@@ -1357,7 +1357,8 @@ struct AIEObjectFifoAllocatePass
     // Only a runtime task's BDs are given the packet header, so a DMA
     // program can state it only when every flow it sources pins its id.
     SmallVector<RouteOp> flows = sourcedFlows(endpoint);
-    bool packet = !flows.empty() && (flows[0].getPacket() || clPacketSwObjectFifos);
+    bool packet =
+        !flows.empty() && (flows[0].getPacket() || clPacketSwObjectFifos);
     if (packet && llvm::any_of(flows, [](RouteOp flow) {
           return !flow.getPacketId();
         }))

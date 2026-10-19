@@ -15,7 +15,7 @@ from ml_dtypes import bfloat16
 
 from ._common import KernelContract, Param, Trace, _kernel_source, _make_extern
 from .core import conv_even
-from .sample import _STRICT_FP, _positive
+from .sample import _STRICT_FP_ROLLED, _positive
 
 
 def selective_scan_sample(
@@ -111,9 +111,7 @@ def selective_scan(
             np.int32,
             np.int32,
         ],
-        # rolled: unrolled, these overflow aie2's 16 KB program memory
-        compile_flags=_STRICT_FP
-        + ["-fno-unroll-loops"]
+        compile_flags=_STRICT_FP_ROLLED
         + [
             f"-DSCAN_ROWS={rows}",
             f"-DSCAN_HEAD_DIM={head_dim}",
@@ -227,9 +225,7 @@ def gated_delta_rule(
             np.int32,
             np.int32,
         ],
-        # rolled: unrolled, these overflow aie2's 16 KB program memory
-        compile_flags=_STRICT_FP
-        + ["-fno-unroll-loops"]
+        compile_flags=_STRICT_FP_ROLLED
         + [
             f"-DGDR_ROWS={rows}",
             f"-DGDR_KEY_DIM={key_dim}",
