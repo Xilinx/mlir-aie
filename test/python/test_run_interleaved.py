@@ -20,7 +20,6 @@ from functools import partial
 from pathlib import Path
 
 import pytest
-
 from aie.utils.benchmark import CompletionCores, cpu_wait_us, run_interleaved
 
 N = 2_000
@@ -105,6 +104,27 @@ def test_a_faster_figure_from_before_stops_every_group():
         max_cpu_wait_us=math.inf,
     )
     assert only.n == 2
+
+
+def test_a_round_another_process_used_is_timed_again(monkeypatch):
+    from aie.utils import benchmark
+
+    # Before timing, after round 1 (held: timed again, then waited out), after
+    # the retry and after round 2.
+    looks = iter([set(), {7}, set(), set(), set()])
+    monkeypatch.setattr(benchmark, "other_npu_users", lambda holding: next(looks))
+    logged = []
+    (stats,) = run_interleaved(
+        [partial(work, N)],
+        rounds=2,
+        calls=2,
+        max_cpu_wait_us=math.inf,
+        idle=True,
+        log=logged.append,
+    )
+    assert stats.n == 2
+    assert next(looks, None) is None
+    assert logged == ["pid [7] used the NPU during a round: timing it again"]
 
 
 def test_groups_must_be_one_per_callable():
