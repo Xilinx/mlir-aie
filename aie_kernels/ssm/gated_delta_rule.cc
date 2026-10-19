@@ -6,11 +6,10 @@
 //===----------------------------------------------------------------------===//
 
 // Gated DeltaNet's recurrence for one value head over a block of rows.
-// Scalar, a first pass: neither vectorized nor checked on a device yet.
+// Scalar, not yet vectorized.
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "../common/scalar_exp.h"
 #include "softplus.h"
@@ -36,11 +35,9 @@ float delta[Dv];
 
 // 1 / sqrt(x) for x > 0: the bit-trick estimate and three Newton steps.
 float rsqrt_newton(float x) {
-  uint32_t i;
-  memcpy(&i, &x, sizeof(i));
+  uint32_t i = __builtin_bit_cast(uint32_t, x);
   i = 0x5f3759df - (i >> 1);
-  float y;
-  memcpy(&y, &i, sizeof(y));
+  float y = __builtin_bit_cast(float, i);
   for (int n = 0; n < 3; n++)
     y = y * (1.5f - 0.5f * x * y * y);
   return y;

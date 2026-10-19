@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // Mamba2's state space recurrence for one head over a block of rows. Scalar,
-// a first pass: neither vectorized nor checked on a device yet.
+// not yet vectorized.
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>

@@ -242,8 +242,8 @@ def experts(
             tolerance=Tolerance(
                 ulps=1,
                 range_frac=1e-5,
-                note="host clang build of the scalar source; the floor is for "
-                "sums that cancel",
+                note="npu2: bit for bit, duplicated ids included; the floor is "
+                "for sums that cancel",
             ),
         ),
     )

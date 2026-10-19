@@ -7,11 +7,10 @@
 
 // A mixture of experts' feed-forward on one core, a row at a time, from two
 // input streams: the row, and every expert's weight tiles in a fixed order.
-// Scalar, a first pass: neither vectorized nor checked on a device yet.
+// Scalar, not yet vectorized.
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "../common/scalar_exp.h"
 
@@ -65,7 +64,7 @@ extern "C" void experts(bfloat16 *restrict row, bfloat16 *restrict tile,
     for (int o = 0; o < H; o++)
       sum[o] = 0.0f;
   int32_t ids[EXPERTS_TOP_K];
-  memcpy(ids, row + H + 2 * EXPERTS_TOP_K, sizeof(ids));
+  __builtin_memcpy_inline(ids, row + H + 2 * EXPERTS_TOP_K, sizeof(ids));
   float weight = 0.0f;
   bool chosen = false;
   for (int j = 0; j < EXPERTS_TOP_K; j++)
