@@ -21,6 +21,7 @@
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -1467,22 +1468,28 @@ staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
   if (starts == 0)
     return std::nullopt;
 
-  if (Region &body = task.getBody();
-      !body.empty() && bdChainHasCycle(body.front()))
+  Region &body = task.getBody();
+  if (body.empty() || bdChainHasCycle(body.front()))
     return std::nullopt;
 
+  // Only the chain reachable from the entry block is queued at a start; a
+  // disconnected block never streams.
   int64_t moved = 0;
-  WalkResult walk = task.getBody().walk([&](AIE::DMABDOp bd) {
-    if (bd.getIteration())
-      return WalkResult::interrupt();
-    std::optional<int64_t> len = staticBdLenBytes(bd);
-    if (!len)
-      return WalkResult::interrupt();
-    moved += *len;
-    return WalkResult::advance();
-  });
-  if (walk.wasInterrupted())
-    return std::nullopt;
+  for (Block *block : llvm::depth_first(&body.front())) {
+    WalkResult walk = block->walk([&](AIE::DMABDOp bd) {
+      // A pinned next_bd_id links outside the block successors, so the chain
+      // can't be followed here.
+      if (bd.getIteration() || bd.getNextBdId())
+        return WalkResult::interrupt();
+      std::optional<int64_t> len = staticBdLenBytes(bd);
+      if (!len)
+        return WalkResult::interrupt();
+      moved += *len;
+      return WalkResult::advance();
+    });
+    if (walk.wasInterrupted())
+      return std::nullopt;
+  }
   return moved * (*repeat + 1) * starts;
 }
 

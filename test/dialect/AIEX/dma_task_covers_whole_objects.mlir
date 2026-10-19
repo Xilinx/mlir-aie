@@ -434,6 +434,49 @@ module {
 
 // -----
 
+// Only the chain reachable from the entry is queued at a start: the
+// disconnected self-looping block never streams, so 128 bytes is all that
+// moves, not a whole 256-byte object.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      // expected-error@+1 {{moves 128 bytes through objectFIFO @of, which is not a whole number of its 256-byte objects}}
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      ^orphan:
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 32 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.next_bd ^orphan
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A pinned next_bd_id chains outside the block successors, so the chain's
+// extent can't be followed and is not checked.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1]) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
 // A scratchpad length_parameter lengthens the BD at run time, so its static
 // len alone is not the transfer's extent and is not checked: 32 i32 plus
 // n * 32-i32 units is unknown, though 32 i32 alone is not a whole object.
