@@ -43,28 +43,22 @@ static int32_t f32_bits(int32_t num, int exp2) {
   if (num == 0)
     return 0;
   const uint32_t sign = num < 0 ? 0x80000000u : 0;
-  uint32_t mag = num < 0 ? -num : num;
-  int msb = 31;
-  while (!(mag >> msb))
-    msb--;
+  const uint32_t mag = num < 0 ? -num : num;
+  const int msb = 31 - __builtin_clz(mag);
   const uint32_t mantissa = (mag << (23 - msb)) & 0x7fffff;
   return sign | uint32_t(msb + exp2 + 127) << 23 | mantissa;
 }
 
 // Places, from the highest rank down and stable within a rank, of the
-// `rows` x `cols` entries, entry (r, c) of rank row_key(r)(c); writes to
-// `first` the entries taking the top KEEP places. `hist` is RANKS words of
-// scratch.
-template <typename RowKey>
-static void top_keep(int rows, int cols, RowKey row_key,
-                     int32_t *__restrict hist, int16_t *__restrict first) {
+// entries for_each(visit) visits, as visit(index, rank) in index order;
+// writes to `first` the entries taking the top KEEP places. `hist` is
+// RANKS words of scratch.
+template <typename ForEach>
+static void top_keep(ForEach for_each, int32_t *__restrict hist,
+                     int16_t *__restrict first) {
   for (int r = 0; r < RANKS; r++)
     hist[r] = 0;
-  for (int r = 0; r < rows; r++) {
-    const auto key = row_key(r);
-    for (int c = 0; c < cols; c++)
-      hist[key(c)]++;
-  }
+  for_each([&](int, int key) { hist[key]++; });
   // hist[r] becomes the first place of rank r, ranks taken from the top.
   int32_t place = 0;
   for (int r = RANKS - 1; r >= 0; r--) {
@@ -72,15 +66,15 @@ static void top_keep(int rows, int cols, RowKey row_key,
     hist[r] = place;
     place += count;
   }
-  for (int r = 0; r < rows; r++) {
-    const auto key = row_key(r);
-    for (int c = 0; c < cols; c++) {
-      const int32_t at = hist[key(c)]++;
-      if (at < KEEP)
-        first[at] = r * cols + c;
-    }
-  }
+  for_each([&](int i, int key) {
+    const int32_t at = hist[key]++;
+    if (at < KEEP)
+      first[at] = i;
+  });
 }
+
+// x / 80 for 0 <= x < 2**17, without a division libcall.
+static int div80(int x) { return (x * 52429) >> 22; }
 
 static int popcount8(uint32_t byte) {
   byte = byte - ((byte >> 1) & 0x55);
@@ -146,10 +140,9 @@ void yolo_detect_select(const int8_t *__restrict top,
   event0();
   static_assert(ANCHORS / 8 <= 2 * RANKS, "the prefix counts reuse hist");
   top_keep(
-      ANCHORS, 1,
-      [&](int a) {
-        const int16_t *ranks = rank + level_of(a) * 256 + 128;
-        return [=](int) { return ranks[top[a]]; };
+      [&](auto visit) {
+        for (int a = 0; a < ANCHORS; a++)
+          visit(a, rank[level_of(a) * 256 + top[a] + 128]);
       },
       hist, first);
   for (int i = 0; i < ANCHORS / 8; i++)
@@ -206,18 +199,59 @@ void yolo_detect_finish(const int8_t *__restrict candidates,
                         int32_t *__restrict out, int32_t box_shift0,
                         int32_t box_shift1, int32_t box_shift2) {
   event0();
+  // Each picked anchor's best class ranks at least as high as the last
+  // one's, so the best KEEP pairs do too: only logits that can reach that
+  // rank at some level are ranked.
+  const int16_t *last = rank + level_of(first[KEEP - 1]) * 256 + 128;
+  int16_t floor = 0;
+  for (int c = 0; c < CLASSES; c++) {
+    const int16_t r = last[candidates[(KEEP - 1) * CLASSES + c]];
+    floor = r > floor ? r : floor;
+  }
+  // Per level, the lowest logit of rank at least `floor`.
+  int8_t lowest[3] = {127, 127, 127};
+  for (int level = 0; level < 3; level++)
+    for (int v = -128; v < 127; v++)
+      if (rank[level * 256 + v + 128] >= floor) {
+        lowest[level] = v;
+        break;
+      }
+  static_assert(KEEP * CLASSES % 32 == 0, "candidates are whole vectors");
+  static_assert(CLASSES >= 32, "a vector spans at most two candidates");
+  alignas(32) static const int8_t lane[32] = {
+      0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+      16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
   top_keep(
-      KEEP, CLASSES,
-      [&](int r) {
-        const int16_t *ranks = rank + level_of(first[r]) * 256 + 128;
-        const int8_t *row = candidates + r * CLASSES;
-        return [=](int c) { return ranks[row[c]]; };
+      [&](auto visit) {
+        const aie::vector<int8_t, 32> lanes = aie::load_v<32>(lane);
+        int r = 0, end = CLASSES;
+        for (int i = 0; i < KEEP * CLASSES / 32; i++) {
+          if (i * 32 >= end) {
+            r++;
+            end += CLASSES;
+          }
+          // Lanes before `end` are candidate r's, the rest r + 1's.
+          const int next = r + 1 < KEEP ? r + 1 : r;
+          const auto low = aie::select(
+              aie::broadcast<int8_t, 32>(lowest[level_of(first[next])]),
+              aie::broadcast<int8_t, 32>(lowest[level_of(first[r])]),
+              aie::lt(lanes, int8_t(end - i * 32 < 32 ? end - i * 32 : 32)));
+          uint32_t bits =
+              aie::ge(aie::load_v<32>(candidates + i * 32), low).to_uint32();
+          while (bits) {
+            const int e = i * 32 + __builtin_ctz(bits);
+            bits &= bits - 1;
+            const int row = e >= end ? next : r;
+            visit(e, rank[level_of(first[row]) * 256 + candidates[e] + 128]);
+          }
+        }
       },
       hist, best);
   const int32_t shifts[3] = {box_shift0, box_shift1, box_shift2};
   for (int k = 0; k < KEEP; k++) {
-    const int r = best[k] / CLASSES;
-    const int c = best[k] % CLASSES;
+    static_assert(CLASSES == 80, "div80");
+    const int r = div80(best[k]);
+    const int c = best[k] - r * CLASSES;
     const int a = first[r];
     const int level = level_of(a);
     const int local = a - (level == 0 ? 0 : (level == 1 ? 6400 : 8000));
@@ -226,8 +260,9 @@ void yolo_detect_finish(const int8_t *__restrict candidates,
     // In units of 2**-frac: an anchor centre is x + 1/2, a distance d * 2**s.
     const int s = shifts[level];
     const int frac = -s > 1 ? -s : 1;
-    const int32_t ax = (2 * (local % width) + 1) << (frac - 1);
-    const int32_t ay = (2 * (local / width) + 1) << (frac - 1);
+    const int y = div80(local << level);
+    const int32_t ax = (2 * (local - y * width) + 1) << (frac - 1);
+    const int32_t ay = (2 * y + 1) << (frac - 1);
     const int8_t *d = distances + r * 4;
     const int up = frac + s;
     out[k * 6 + 0] = f32_bits(ax - d[0] * (1 << up), log2_stride - frac);
