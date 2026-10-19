@@ -21,6 +21,7 @@ Run:
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 
@@ -29,6 +30,7 @@ import numpy as np
 import aie.iron as iron
 import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
+from aie.utils.hostruntime.argparse import add_runtime_args
 
 from aie2_chain_dynscale_mh import (
     D,
@@ -426,7 +428,8 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
 
 
 def main():
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p)
     p.add_argument(
         "--seeds", type=str, default="0,1,7,42", help="comma-separated seed list"
     )
