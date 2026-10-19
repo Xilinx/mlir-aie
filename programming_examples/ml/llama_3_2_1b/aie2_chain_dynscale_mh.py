@@ -15,61 +15,40 @@ Combines:
 
 All ObjectFifos depth=1 (Bug 8). FFN-side stack_size matches
 layer_mh's PSK=8192 (Bug 12 -- larger silently corrupts).
+
+``build()`` is ``@iron.jit``-compiled: SAMPLE/GATHER/ONESTREAM/PERSIST/
+PERSIST_GROW/PERSIST_RESIDENT/PT/N_LAYERS/T/ONESTREAM_KSET are keyword-only
+CompileTime parameters (each distinct combination compiles and caches
+independently) replacing the former module-level env-var globals. PT is
+still CompileTime here (not yet a DispatchTime parameter -- a later,
+separate change).
 """
 
 import argparse
 import os as _os
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
-
-from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
-from aie.iron.device import NPU2, Tile
-from aie.iron.controlflow import range_
+from aie.dialects.arith import constant, index_cast
 from aie.helpers.taplib import TensorAccessPattern
-from aie.dialects.arith import index_cast, constant
 from aie.ir import IntegerType
-
-# M3b: fuse final_norm + lm_head GEMM + memtile logits relay + streamed sampler
-# onto the chain's final output, producing an int32 token (host-free decode).
-# Guarded so the default chain stays byte-identical.
-SAMPLE = _os.environ.get("LLAMA_CHAIN_SAMPLE", "0") == "1"
-# M3c: on-chip embed gather at the FRONT -- the dispatch input becomes a token
-# id (int32); a gather worker selects embed[token] from the lm_head weight
-# stream and produces the layer-0 seed. Makes the dispatch a token->token
-# function (the shape the persistent loop needs). Requires SAMPLE.
-GATHER = _os.environ.get("LLAMA_CHAIN_GATHER", "0") == "1" and SAMPLE
-# One-stream sampler + embed gather: the fused lm_head GEMM + top-k insert runs
-# over a SINGLE 262 MB table pass and emits BOTH the token and the next-token
-# embed seed (no relay, no 3-pass replay, no second gather stream). Replaces the
-# SAMPLE relay path; mutually exclusive with it. The shape the persistent loop
-# needs (token in -> token + seed out). When LLAMA_CHAIN_ONESTREAM=1.
-ONESTREAM = _os.environ.get("LLAMA_CHAIN_ONESTREAM", "0") == "1" and SAMPLE
-ONESTREAM_KSET = int(_os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
-# Persistent on-device autoregressive loop (capstone): PT tokens generated in ONE
-# dispatch, the sampled token's embed seed feeding back to the chain ON-CHIP (no
-# host between tokens). Requires ONESTREAM. Increment 1: KV held at a fixed
-# position (host re-supplies the same KV per token); proves the device-originated
-# control loop bit-exact. When LLAMA_CHAIN_PERSIST=1.
-PERSIST = _os.environ.get("LLAMA_CHAIN_PERSIST", "0") == "1" and ONESTREAM
-# Growing KV (increment 2): the KV cache accumulates across the PT tokens (real
-# autoregressive decode) via the on-chip advancing append + host KV ping-pong.
-# When off (increment 1), KV is held at a fixed position (host re-streams pristine
-# KV each token). Requires PERSIST.
-PERSIST_GROW = _os.environ.get("LLAMA_CHAIN_PERSIST_GROW", "0") == "1" and PERSIST
-# Resident KV (increment toward 100% NPU): the KV cache BODY lives in worker-local
-# buffers on each attn tile (N_LAYERS caches per head), seeded once from the host
-# on token 0 then read-modify-written IN PLACE -- zero KV DMA after the seed (host
-# streams ONLY weights). Requires PERSIST_GROW. Scoped to small N_LAYERS that fit
-# the compute tile (N=2 -> 32KB/head); N=16 (256KB/head) is a memtile follow-up.
-PERSIST_RESIDENT = (
-    _os.environ.get("LLAMA_CHAIN_PERSIST_RESIDENT", "0") == "1" and PERSIST_GROW
+from aie.iron import (
+    Buffer,
+    CompileTime,
+    Kernel,
+    ObjectFifo,
+    Program,
+    Runtime,
+    TaskGroup,
+    Worker,
+    jit,
 )
-# Tokens per dispatch. PT==1 (default off) makes every PERSIST-aware loop a no-op,
-# so the non-persist paths stay byte-identical.
-PT = int(_os.environ.get("LLAMA_CHAIN_PT", "4")) if PERSIST else 1
-if SAMPLE and not ONESTREAM:
-    from logits_relay import LogitsRelay
+from aie.iron.controlflow import range_
+from aie.iron.device import NPU2, Tile
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
 
 def _sample_params_init():
@@ -95,7 +74,7 @@ def _const_i32(v):
     return constant(IntegerType.get_signless(32), v)
 
 
-# --- Production multi-head shapes ---
+# --- Production multi-head shapes (fixed architecture, never parameterized) ---
 D = 2048
 HD = 8192
 HEAD_D = 64
@@ -104,9 +83,7 @@ N_HEADS_KV = 8
 REP = N_HEADS_Q // N_HEADS_KV  # 4
 QD = N_HEADS_Q * HEAD_D  # 2048
 KV_DIM = N_HEADS_KV * HEAD_D  # 512 (k_proj / v_proj output dim)
-T = int(_os.environ.get("LLAMA_CHAIN_T", "128"))
 N_TILE = 4
-N_LAYERS = int(_os.environ.get("LLAMA_CHAIN_N", "2"))
 
 # --- M3b sample-tile constants (only used when SAMPLE) ---
 VOCAB = 128256
@@ -150,13 +127,6 @@ AF_BYTES = N_HEADS_Q * HEAD_D  # 2048
 # sv_merge_selfcal output layout: see aie2_layer_mh.py's same constant.
 SVFULL_BYTES = AF_BYTES + N_HEADS_Q * 4  # 2176
 
-# Per-slot KV cache header: see aie2_layer_mh.py's kv-per-head comment.
-KV_HEADER = T * 4
-KCACHE_BYTES = T * HEAD_D  # 8192
-VCACHE_BYTES = T * HEAD_D  # 8192
-KCACHE_PADDED = KV_HEADER + KCACHE_BYTES
-VCACHE_PADDED = KV_HEADER + VCACHE_BYTES
-
 AF_SCALES_BYTES = 192
 
 PREFIX_ALIGN = 64
@@ -191,53 +161,9 @@ N_TILES_V = N_TILES_K
 GAMMA_BYTES = D * 2
 CS_BYTES = HEAD_D * 2 * 2
 
-# Per-fifo total bytes (contiguous across N_LAYERS in wblob).
-GAMMA_TOTAL = N_LAYERS * GAMMA_BYTES
-CS_TOTAL = N_LAYERS * CS_BYTES
-WQ_TOTAL = N_LAYERS * N_TILES_Q * WQ_SLOT
-WO_TOTAL = N_LAYERS * N_TILES_O * WO_SLOT
-WG_TOTAL = N_LAYERS * N_TILES_G * WG_SLOT
-WU_TOTAL = N_LAYERS * N_TILES_U * WU_SLOT
-WD_TOTAL = N_LAYERS * N_TILES_D * WD_SLOT
-WK_TOTAL = N_LAYERS * N_TILES_K * WK_SLOT
-WV_TOTAL = N_LAYERS * N_TILES_V * WV_SLOT
-AF_SCALES_TOTAL = N_LAYERS * AF_SCALES_BYTES
-
-OFF_GAMMA_IN = 0
-OFF_WQ = OFF_GAMMA_IN + GAMMA_TOTAL
-OFF_CS = OFF_WQ + WQ_TOTAL
-OFF_WO = OFF_CS + CS_TOTAL
-OFF_AF_SCALES = OFF_WO + WO_TOTAL
-OFF_GAMMA_POST = OFF_AF_SCALES + AF_SCALES_TOTAL
-OFF_WG = OFF_GAMMA_POST + GAMMA_TOTAL
-OFF_WU = OFF_WG + WG_TOTAL
-OFF_WD = OFF_WU + WU_TOTAL
-OFF_WK = OFF_WD + WD_TOTAL
-OFF_WV = OFF_WK + WK_TOTAL
-WEIGHTS_BYTES = OFF_WV + WV_TOTAL
-
-# PERSIST_GROW per-position rope: each of the PT tokens generates at position
-# P0+t, which needs ITS OWN cos/sin (the rotary phase advances with position).
-# Append a PT*N_LAYERS*CS_BYTES block to wblob; the of_cs (q-rope) + kvcs_eps[2]
-# (append rope_k) fills read it at the (tok,L) offset. CS_BYTES=256 so the whole
-# block is tiny (PT*N_LAYERS*256). Keeps the runtime at 5 args (folded into the
-# existing wblob). Laid out [token0: L0..L_{N-1} | token1: ... | ...].
-# Always define these at module scope (importable regardless of the env flag);
-# only EXTEND WEIGHTS_BYTES with the per-position block when PERSIST_GROW, so the
-# non-grow wblob size is unchanged.
-OFF_CS_PERPOS = WEIGHTS_BYTES
-CS_PERPOS_TOTAL = PT * N_LAYERS * CS_BYTES
-if PERSIST_GROW:
-    WEIGHTS_BYTES = OFF_CS_PERPOS + CS_PERPOS_TOTAL
-
-# kvblob: per-layer block, each containing 8 KV heads' (T_used | k_header |
-# kcache | v_header | vcache) combined slots. Phase 8c adds the 4-byte
-# T_used prefix per KV head -> per-head slot grows from 16392 to 16396 B.
-T_USED_BYTES = 8  # 4 B T_used + 4 B pad -> 16400 B per-head (factorable)
-PER_KV_HEAD_BYTES = T_USED_BYTES + KCACHE_PADDED + VCACHE_PADDED  # 16400
-PER_LAYER_KV = N_HEADS_KV * PER_KV_HEAD_BYTES  # 131168
-KV_HALF_BYTES = (N_HEADS_KV // 2) * PER_KV_HEAD_BYTES  # 65584
-KV_BYTES = N_LAYERS * PER_LAYER_KV
+# Per-slot KV cache header: see aie2_layer_mh.py's kv-per-head comment.
+# T_used prefix (Phase 8c): 4 B T_used + 4 B pad -> factorable per-head slot.
+T_USED_BYTES = 8
 
 
 def _envf(name, default):
@@ -291,7 +217,225 @@ def strided_tap(total, base_off, per_slot_stride, slot_bytes, n_slots):
     )
 
 
-def build():
+# The union of every pre-compiled kernel object any flag combination below
+# references. The Makefile stages (cp's) only the subset a given mode needs
+# into the build dir before invoking this script, so object_files is filtered
+# to what actually exists there at import time -- aiecc's object-file staging
+# (_copy_object_files) errors on a path that doesn't exist, and this list is
+# fixed at decoration time, before any CompileTime flag is bound.
+_KERNEL_OBJECT_NAMES = (
+    "llama_rmsnorm_int8.cc.o",
+    "llama_gemm_int8_srs_tiled_layer.cc.o",
+    "llama_gemm_int8_srs_tiled_layer_mh.cc.o",
+    "llama_rope_int8_mh.cc.o",
+    "llama_silu_mul_int8.cc.o",
+    "llama_flowkv_mh.cc.o",
+    "llama_gqa_glue.cc.o",
+    "llama_sample_streamed.cc.o",
+    "llama_topk_sample.cc.o",
+    "llama_embed_select.cc.o",
+    "llama_kv_append.cc.o",
+    "llama_rescale_add.cc.o",
+)
+_OBJECT_FILES = [
+    p for p in (Path.cwd() / name for name in _KERNEL_OBJECT_NAMES) if p.exists()
+]
+
+
+@dataclass(frozen=True)
+class DerivedSizes:
+    """wblob/kvblob byte offsets and sizes for one (T, N_LAYERS, PT,
+    PERSIST_GROW) combination.
+
+    Shared by `build()` and the test_chain_*.py fixtures, which need the
+    same layout to pack/unpack test data independently of a compile.
+    """
+
+    KV_HEADER: int
+    KCACHE_BYTES: int
+    VCACHE_BYTES: int
+    KCACHE_PADDED: int
+    VCACHE_PADDED: int
+    GAMMA_TOTAL: int
+    CS_TOTAL: int
+    WQ_TOTAL: int
+    WO_TOTAL: int
+    WG_TOTAL: int
+    WU_TOTAL: int
+    WD_TOTAL: int
+    WK_TOTAL: int
+    WV_TOTAL: int
+    AF_SCALES_TOTAL: int
+    OFF_GAMMA_IN: int
+    OFF_WQ: int
+    OFF_CS: int
+    OFF_WO: int
+    OFF_AF_SCALES: int
+    OFF_GAMMA_POST: int
+    OFF_WG: int
+    OFF_WU: int
+    OFF_WD: int
+    OFF_WK: int
+    OFF_WV: int
+    WEIGHTS_BYTES: int
+    OFF_CS_PERPOS: int
+    CS_PERPOS_TOTAL: int
+    PER_KV_HEAD_BYTES: int
+    PER_LAYER_KV: int
+    KV_HALF_BYTES: int
+    KV_BYTES: int
+
+
+def derived_sizes(*, T=128, N_LAYERS=2, PT=1, PERSIST_GROW=False) -> DerivedSizes:
+    KV_HEADER = T * 4
+    KCACHE_BYTES = T * HEAD_D  # 8192
+    VCACHE_BYTES = T * HEAD_D  # 8192
+    KCACHE_PADDED = KV_HEADER + KCACHE_BYTES
+    VCACHE_PADDED = KV_HEADER + VCACHE_BYTES
+
+    # Per-fifo total bytes (contiguous across N_LAYERS in wblob).
+    GAMMA_TOTAL = N_LAYERS * GAMMA_BYTES
+    CS_TOTAL = N_LAYERS * CS_BYTES
+    WQ_TOTAL = N_LAYERS * N_TILES_Q * WQ_SLOT
+    WO_TOTAL = N_LAYERS * N_TILES_O * WO_SLOT
+    WG_TOTAL = N_LAYERS * N_TILES_G * WG_SLOT
+    WU_TOTAL = N_LAYERS * N_TILES_U * WU_SLOT
+    WD_TOTAL = N_LAYERS * N_TILES_D * WD_SLOT
+    WK_TOTAL = N_LAYERS * N_TILES_K * WK_SLOT
+    WV_TOTAL = N_LAYERS * N_TILES_V * WV_SLOT
+    AF_SCALES_TOTAL = N_LAYERS * AF_SCALES_BYTES
+
+    OFF_GAMMA_IN = 0
+    OFF_WQ = OFF_GAMMA_IN + GAMMA_TOTAL
+    OFF_CS = OFF_WQ + WQ_TOTAL
+    OFF_WO = OFF_CS + CS_TOTAL
+    OFF_AF_SCALES = OFF_WO + WO_TOTAL
+    OFF_GAMMA_POST = OFF_AF_SCALES + AF_SCALES_TOTAL
+    OFF_WG = OFF_GAMMA_POST + GAMMA_TOTAL
+    OFF_WU = OFF_WG + WG_TOTAL
+    OFF_WD = OFF_WU + WU_TOTAL
+    OFF_WK = OFF_WD + WD_TOTAL
+    OFF_WV = OFF_WK + WK_TOTAL
+    WEIGHTS_BYTES = OFF_WV + WV_TOTAL
+
+    # PERSIST_GROW per-position rope: each of the PT tokens generates at
+    # position P0+t, which needs ITS OWN cos/sin (the rotary phase advances
+    # with position). Append a PT*N_LAYERS*CS_BYTES block to wblob; the of_cs
+    # (q-rope) + kvcs_eps[2] (append rope_k) fills read it at the (tok,L)
+    # offset. CS_BYTES=256 so the whole block is tiny (PT*N_LAYERS*256). Keeps
+    # the runtime at 5 args (folded into the existing wblob). Laid out
+    # [token0: L0..L_{N-1} | token1: ... | ...]. Only EXTEND WEIGHTS_BYTES with
+    # the per-position block when PERSIST_GROW, so the non-grow wblob size is
+    # unchanged.
+    OFF_CS_PERPOS = WEIGHTS_BYTES
+    CS_PERPOS_TOTAL = PT * N_LAYERS * CS_BYTES
+    if PERSIST_GROW:
+        WEIGHTS_BYTES = OFF_CS_PERPOS + CS_PERPOS_TOTAL
+
+    # kvblob: per-layer block, each containing 8 KV heads' (T_used | k_header |
+    # kcache | v_header | vcache) combined slots.
+    PER_KV_HEAD_BYTES = T_USED_BYTES + KCACHE_PADDED + VCACHE_PADDED  # 16400
+    PER_LAYER_KV = N_HEADS_KV * PER_KV_HEAD_BYTES  # 131168
+    KV_HALF_BYTES = (N_HEADS_KV // 2) * PER_KV_HEAD_BYTES  # 65584
+    KV_BYTES = N_LAYERS * PER_LAYER_KV
+
+    return DerivedSizes(
+        KV_HEADER=KV_HEADER,
+        KCACHE_BYTES=KCACHE_BYTES,
+        VCACHE_BYTES=VCACHE_BYTES,
+        KCACHE_PADDED=KCACHE_PADDED,
+        VCACHE_PADDED=VCACHE_PADDED,
+        GAMMA_TOTAL=GAMMA_TOTAL,
+        CS_TOTAL=CS_TOTAL,
+        WQ_TOTAL=WQ_TOTAL,
+        WO_TOTAL=WO_TOTAL,
+        WG_TOTAL=WG_TOTAL,
+        WU_TOTAL=WU_TOTAL,
+        WD_TOTAL=WD_TOTAL,
+        WK_TOTAL=WK_TOTAL,
+        WV_TOTAL=WV_TOTAL,
+        AF_SCALES_TOTAL=AF_SCALES_TOTAL,
+        OFF_GAMMA_IN=OFF_GAMMA_IN,
+        OFF_WQ=OFF_WQ,
+        OFF_CS=OFF_CS,
+        OFF_WO=OFF_WO,
+        OFF_AF_SCALES=OFF_AF_SCALES,
+        OFF_GAMMA_POST=OFF_GAMMA_POST,
+        OFF_WG=OFF_WG,
+        OFF_WU=OFF_WU,
+        OFF_WD=OFF_WD,
+        OFF_WK=OFF_WK,
+        OFF_WV=OFF_WV,
+        WEIGHTS_BYTES=WEIGHTS_BYTES,
+        OFF_CS_PERPOS=OFF_CS_PERPOS,
+        CS_PERPOS_TOTAL=CS_PERPOS_TOTAL,
+        PER_KV_HEAD_BYTES=PER_KV_HEAD_BYTES,
+        PER_LAYER_KV=PER_LAYER_KV,
+        KV_HALF_BYTES=KV_HALF_BYTES,
+        KV_BYTES=KV_BYTES,
+    )
+
+
+@jit(object_files=_OBJECT_FILES)
+def build(
+    *,
+    SAMPLE: CompileTime[bool] = False,
+    GATHER: CompileTime[bool] = False,
+    ONESTREAM: CompileTime[bool] = False,
+    PERSIST: CompileTime[bool] = False,
+    PERSIST_GROW: CompileTime[bool] = False,
+    PERSIST_RESIDENT: CompileTime[bool] = False,
+    PT: CompileTime[int] = 4,
+    N_LAYERS: CompileTime[int] = 2,
+    T: CompileTime[int] = 128,
+    ONESTREAM_KSET: CompileTime[int] = 16,
+):
+    # Flag implications (mirrors the former module-level env-var derivation:
+    # each flag below only takes effect if its prerequisite does too).
+    GATHER = GATHER and SAMPLE
+    ONESTREAM = ONESTREAM and SAMPLE
+    PERSIST = PERSIST and ONESTREAM
+    PERSIST_GROW = PERSIST_GROW and PERSIST
+    PERSIST_RESIDENT = PERSIST_RESIDENT and PERSIST_GROW
+    # Tokens per dispatch. PT==1 (default off) makes every PERSIST-aware loop a
+    # no-op, so the non-persist paths stay byte-identical.
+    PT = PT if PERSIST else 1
+
+    sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT, PERSIST_GROW=PERSIST_GROW)
+    KV_HEADER = sizes.KV_HEADER
+    KCACHE_BYTES = sizes.KCACHE_BYTES
+    VCACHE_BYTES = sizes.VCACHE_BYTES
+    KCACHE_PADDED = sizes.KCACHE_PADDED
+    VCACHE_PADDED = sizes.VCACHE_PADDED
+    GAMMA_TOTAL = sizes.GAMMA_TOTAL
+    CS_TOTAL = sizes.CS_TOTAL
+    WQ_TOTAL = sizes.WQ_TOTAL
+    WO_TOTAL = sizes.WO_TOTAL
+    WG_TOTAL = sizes.WG_TOTAL
+    WU_TOTAL = sizes.WU_TOTAL
+    WD_TOTAL = sizes.WD_TOTAL
+    WK_TOTAL = sizes.WK_TOTAL
+    WV_TOTAL = sizes.WV_TOTAL
+    AF_SCALES_TOTAL = sizes.AF_SCALES_TOTAL
+    OFF_GAMMA_IN = sizes.OFF_GAMMA_IN
+    OFF_WQ = sizes.OFF_WQ
+    OFF_CS = sizes.OFF_CS
+    OFF_WO = sizes.OFF_WO
+    OFF_AF_SCALES = sizes.OFF_AF_SCALES
+    OFF_GAMMA_POST = sizes.OFF_GAMMA_POST
+    OFF_WG = sizes.OFF_WG
+    OFF_WU = sizes.OFF_WU
+    OFF_WD = sizes.OFF_WD
+    OFF_WK = sizes.OFF_WK
+    OFF_WV = sizes.OFF_WV
+    WEIGHTS_BYTES = sizes.WEIGHTS_BYTES
+    OFF_CS_PERPOS = sizes.OFF_CS_PERPOS
+    CS_PERPOS_TOTAL = sizes.CS_PERPOS_TOTAL
+    PER_KV_HEAD_BYTES = sizes.PER_KV_HEAD_BYTES
+    PER_LAYER_KV = sizes.PER_LAYER_KV
+    KV_HALF_BYTES = sizes.KV_HALF_BYTES
+    KV_BYTES = sizes.KV_BYTES
+
     # int8[D+8] residual tail (see aie2_layer_mh.py's same comment): xin
     # seed + layer out are both this shape.
     rt_xin_ty = _i8(D + 8)
@@ -385,6 +529,8 @@ def build():
                 name="os_params",
             )
         else:
+            from logits_relay import LogitsRelay
+
             lm_relay = LogitsRelay(
                 total_elems=VOCAB,
                 chunk_elems=SAMPLE_CHUNK,
@@ -1744,9 +1890,80 @@ def build():
     return Program(NPU2(), rt, workers=workers).resolve_program()
 
 
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="Llama 3.2 1B decode chain (multi-head)")
+    add_compile_args(p, with_dev=True, default_dev="npu2", dev_choices=("npu2",))
+    p.add_argument(
+        "--sample",
+        type=int,
+        choices=[0, 1],
+        default=int(_os.environ.get("LLAMA_CHAIN_SAMPLE", "0")),
+    )
+    p.add_argument(
+        "--gather",
+        type=int,
+        choices=[0, 1],
+        default=int(_os.environ.get("LLAMA_CHAIN_GATHER", "0")),
+    )
+    p.add_argument(
+        "--onestream",
+        type=int,
+        choices=[0, 1],
+        default=int(_os.environ.get("LLAMA_CHAIN_ONESTREAM", "0")),
+    )
+    p.add_argument(
+        "--persist",
+        type=int,
+        choices=[0, 1],
+        default=int(_os.environ.get("LLAMA_CHAIN_PERSIST", "0")),
+    )
+    p.add_argument(
+        "--persist-grow",
+        type=int,
+        choices=[0, 1],
+        default=int(_os.environ.get("LLAMA_CHAIN_PERSIST_GROW", "0")),
+    )
+    p.add_argument(
+        "--persist-resident",
+        type=int,
+        choices=[0, 1],
+        default=int(_os.environ.get("LLAMA_CHAIN_PERSIST_RESIDENT", "0")),
+    )
+    p.add_argument(
+        "--pt", type=int, default=int(_os.environ.get("LLAMA_CHAIN_PT", "4"))
+    )
+    p.add_argument(
+        "--n-layers", type=int, default=int(_os.environ.get("LLAMA_CHAIN_N", "2"))
+    )
+    p.add_argument(
+        "--t", type=int, default=int(_os.environ.get("LLAMA_CHAIN_T", "128"))
+    )
+    p.add_argument(
+        "--onestream-kset",
+        type=int,
+        default=int(_os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16")),
+    )
+    return p
+
+
+def _compile_kwargs(opts):
+    return dict(
+        SAMPLE=bool(opts.sample),
+        GATHER=bool(opts.gather),
+        ONESTREAM=bool(opts.onestream),
+        PERSIST=bool(opts.persist),
+        PERSIST_GROW=bool(opts.persist_grow),
+        PERSIST_RESIDENT=bool(opts.persist_resident),
+        PT=opts.pt,
+        N_LAYERS=opts.n_layers,
+        T=opts.t,
+        ONESTREAM_KSET=opts.onestream_kset,
+    )
+
+
 def main():
-    argparse.ArgumentParser().parse_args(sys.argv[1:])
-    print(build())
+    opts = _make_argparser().parse_args(sys.argv[1:])
+    run_design_cli(build, opts, compile_kwargs=_compile_kwargs, device=NPU2())
 
 
 if __name__ == "__main__":

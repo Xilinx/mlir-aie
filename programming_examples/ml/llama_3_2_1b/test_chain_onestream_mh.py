@@ -19,6 +19,7 @@ Run:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -32,8 +33,6 @@ from aie.utils.hostruntime.argparse import add_runtime_args
 
 from aie2_chain_dynscale_mh import (
     D,
-    T,
-    N_LAYERS,
     N_HEADS_KV,
     HEAD_D,
     VOCAB,
@@ -42,8 +41,11 @@ from aie2_chain_dynscale_mh import (
     SAMPLE_TEMP,
     SAMPLE_TOPK,
     SAMPLE_SEED,
-    ONESTREAM_KSET,
 )
+
+T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
+N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
+ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import _load_qw, _load_bf16, VOCAB_SIZE, EMB_DIM
 from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn

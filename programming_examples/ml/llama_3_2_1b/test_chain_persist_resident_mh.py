@@ -24,6 +24,7 @@ Run:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -37,25 +38,28 @@ from aie.utils.hostruntime.argparse import add_runtime_args
 
 from aie2_chain_dynscale_mh import (
     D,
-    T,
-    N_LAYERS,
     N_HEADS_KV,
     HEAD_D,
     VOCAB,
     N_TILE,
-    KV_BYTES,
-    PER_LAYER_KV,
-    PER_KV_HEAD_BYTES,
     WLM_TOTAL,
-    WEIGHTS_BYTES,
-    OFF_CS_PERPOS,
     CS_BYTES,
     SAMPLE_TEMP,
     SAMPLE_TOPK,
     SAMPLE_SEED,
-    ONESTREAM_KSET,
-    PT,
+    derived_sizes,
 )
+
+T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
+N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
+ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
+PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
+_sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT, PERSIST_GROW=True)
+KV_BYTES = _sizes.KV_BYTES
+PER_LAYER_KV = _sizes.PER_LAYER_KV
+PER_KV_HEAD_BYTES = _sizes.PER_KV_HEAD_BYTES
+WEIGHTS_BYTES = _sizes.WEIGHTS_BYTES
+OFF_CS_PERPOS = _sizes.OFF_CS_PERPOS
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import _load_qw, _load_bf16, VOCAB_SIZE, EMB_DIM

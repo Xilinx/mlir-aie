@@ -1000,20 +1000,15 @@ CHAIN_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
                 ${BUILD}/llama_gqa_glue.cc.o \
                 ${BUILD}/llama_layer_pt.cc.o
 
-${BUILD}/aie_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py
-	mkdir -p ${@D}
-	LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
-
-${BUILD}/final_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${BUILD}/aie_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir ${CHAIN_MH_DEPS}
+${BUILD}/final_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_MH_DEPS}
 	mkdir -p ${@D}
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
 	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
-		$(notdir $<)
+	cd ${BUILD} && LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< \
+		--xclbin-path $@ \
+		--insts-path ${BUILD}/insts_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin
 
 chain_mh: ${BUILD}/final_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin
 
@@ -1026,21 +1021,16 @@ run_chain_mh: chain_mh
 # ---------- M3b: chain + on-chip lm_head + sampler (LLAMA_CHAIN_SAMPLE=1) ----------
 CHAIN_SAMPLE_DEPS = ${CHAIN_MH_DEPS} ${BUILD}/llama_sample_streamed.cc.o
 
-${BUILD}/aie_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py ${srcdir}/logits_relay.py
-	mkdir -p ${@D}
-	LLAMA_CHAIN_SAMPLE=1 LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
-		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
-
-${BUILD}/final_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${BUILD}/aie_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir ${CHAIN_SAMPLE_DEPS}
+${BUILD}/final_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${srcdir}/logits_relay.py ${CHAIN_SAMPLE_DEPS}
 	mkdir -p ${@D}
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
 	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
-		$(notdir $<)
+	cd ${BUILD} && LLAMA_CHAIN_SAMPLE=1 LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
+		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< \
+		--xclbin-path $@ \
+		--insts-path ${BUILD}/insts_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin
 
 chain_sample_mh: ${BUILD}/final_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin
 
@@ -1060,22 +1050,17 @@ ${BUILD}/llama_embed_select_2048.cc.o: ${KDIR}/llama_embed_select.cc
 
 CHAIN_GATHER_DEPS = ${CHAIN_SAMPLE_DEPS} ${BUILD}/llama_embed_select_2048.cc.o
 
-${BUILD}/aie_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py ${srcdir}/logits_relay.py
-	mkdir -p ${@D}
-	LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_GATHER=1 LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
-		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
-
-${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${BUILD}/aie_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir ${CHAIN_GATHER_DEPS}
+${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${srcdir}/logits_relay.py ${CHAIN_GATHER_DEPS}
 	mkdir -p ${@D}
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
 	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
 	cp ${BUILD}/llama_embed_select_2048.cc.o ${BUILD}/llama_embed_select.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
-		$(notdir $<)
+	cd ${BUILD} && LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_GATHER=1 LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
+		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< \
+		--xclbin-path $@ \
+		--insts-path ${BUILD}/insts_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin
 
 chain_gather_mh: ${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin
 
@@ -1087,13 +1072,7 @@ chain_gather_mh: ${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbi
 ONESTREAM_KSET ?= 8
 CHAIN_ONESTREAM_DEPS = ${CHAIN_MH_DEPS} ${BUILD}/llama_sample_streamed.cc.o
 
-${BUILD}/aie_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py
-	mkdir -p ${@D}
-	LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
-		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
-		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
-
-${BUILD}/final_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${BUILD}/aie_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir ${CHAIN_ONESTREAM_DEPS} ${BUILD}/llama_topk_sample.cc.o
+${BUILD}/final_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_ONESTREAM_DEPS} ${BUILD}/llama_topk_sample.cc.o
 	mkdir -p ${@D}
 	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${ONESTREAM_KSET}
 	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${ONESTREAM_KSET}
@@ -1101,10 +1080,11 @@ ${BUILD}/final_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${BUILD}/ai
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
 	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
-		$(notdir $<)
+	cd ${BUILD} && LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
+		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
+		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< \
+		--xclbin-path $@ \
+		--insts-path ${BUILD}/insts_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin
 
 chain_onestream_mh: ${BUILD}/final_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin
 
@@ -1123,14 +1103,7 @@ run_chain_onestream_mh: chain_onestream_mh
 PT ?= 4
 CHAIN_PERSIST_DEPS = ${CHAIN_MH_DEPS} ${BUILD}/llama_sample_streamed.cc.o
 
-${BUILD}/aie_chain_persist_N${CHAIN_MH_N}_PT${PT}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py
-	mkdir -p ${@D}
-	LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PT=${PT} \
-		LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
-		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
-		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
-
-${BUILD}/final_chain_persist_N${CHAIN_MH_N}_PT${PT}.xclbin: ${BUILD}/aie_chain_persist_N${CHAIN_MH_N}_PT${PT}.mlir ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
+${BUILD}/final_chain_persist_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
 	mkdir -p ${@D}
 	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${ONESTREAM_KSET}
 	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${ONESTREAM_KSET}
@@ -1138,10 +1111,12 @@ ${BUILD}/final_chain_persist_N${CHAIN_MH_N}_PT${PT}.xclbin: ${BUILD}/aie_chain_p
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
 	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_chain_persist_N${CHAIN_MH_N}_PT${PT}.bin \
-		$(notdir $<)
+	cd ${BUILD} && LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PT=${PT} \
+		LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
+		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
+		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< \
+		--xclbin-path $@ \
+		--insts-path ${BUILD}/insts_chain_persist_N${CHAIN_MH_N}_PT${PT}.bin
 
 chain_persist_mh: ${BUILD}/final_chain_persist_N${CHAIN_MH_N}_PT${PT}.xclbin
 
@@ -1158,14 +1133,7 @@ run_chain_persist_mh: chain_persist_mh
 # KV cache accumulates across the PT tokens (real autoregressive decode) via the
 # on-chip advancing append + host KV ping-pong. Distinct artifact names so it
 # doesn't collide with the fixed-position increment-1 build.
-${BUILD}/aie_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py
-	mkdir -p ${@D}
-	LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PERSIST_GROW=1 \
-		LLAMA_CHAIN_PT=${PT} LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
-		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
-		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
-
-${BUILD}/final_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.xclbin: ${BUILD}/aie_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.mlir ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
+${BUILD}/final_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
 	mkdir -p ${@D}
 	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${ONESTREAM_KSET}
 	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${ONESTREAM_KSET}
@@ -1173,10 +1141,12 @@ ${BUILD}/final_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.xclbin: ${BUILD}/aie_ch
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
 	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.bin \
-		$(notdir $<)
+	cd ${BUILD} && LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PERSIST_GROW=1 \
+		LLAMA_CHAIN_PT=${PT} LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
+		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
+		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< \
+		--xclbin-path $@ \
+		--insts-path ${BUILD}/insts_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.bin
 
 chain_persist_grow_mh: ${BUILD}/final_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.xclbin
 
@@ -1192,15 +1162,7 @@ run_chain_persist_grow_mh: chain_persist_grow_mh
 # ---------- persistent loop with RESIDENT KV (LLAMA_CHAIN_PERSIST_RESIDENT=1) ----------
 # KV cache resident on the attn compute tiles (b_kv); host streams ONLY weights
 # after the token-0 seed. Scoped to small N (N=2 -> 32KB/head fits the tile).
-${BUILD}/aie_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py
-	mkdir -p ${@D}
-	LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PERSIST_GROW=1 \
-		LLAMA_CHAIN_PERSIST_RESIDENT=1 \
-		LLAMA_CHAIN_PT=${PT} LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
-		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
-		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
-
-${BUILD}/final_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.xclbin: ${BUILD}/aie_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.mlir ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
+${BUILD}/final_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
 	mkdir -p ${@D}
 	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${ONESTREAM_KSET}
 	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${ONESTREAM_KSET}
@@ -1208,10 +1170,13 @@ ${BUILD}/final_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.xclbin: ${BUILD}/ai
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
 	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
-	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
-		--xclbin-name=${@F} \
-		--npu-insts-name=insts_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.bin \
-		$(notdir $<)
+	cd ${BUILD} && LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PERSIST_GROW=1 \
+		LLAMA_CHAIN_PERSIST_RESIDENT=1 \
+		LLAMA_CHAIN_PT=${PT} LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
+		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
+		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< \
+		--xclbin-path $@ \
+		--insts-path ${BUILD}/insts_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.bin
 
 chain_persist_resident_mh: ${BUILD}/final_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.xclbin
 

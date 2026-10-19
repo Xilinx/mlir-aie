@@ -40,9 +40,7 @@ from aie2_chain_dynscale_mh import (
     N_HEADS_KV,
     REP,
     QD,
-    T,
     N_TILE,
-    N_LAYERS,
     KV_DIM,
     WQ_SLOT,
     WO_SLOT,
@@ -59,33 +57,14 @@ from aie2_chain_dynscale_mh import (
     N_TILES_D,
     N_TILES_K,
     N_TILES_V,
-    OFF_GAMMA_IN,
-    OFF_WQ,
-    OFF_CS,
-    OFF_WO,
-    OFF_AF_SCALES,
-    OFF_GAMMA_POST,
-    OFF_WG,
-    OFF_WU,
-    OFF_WD,
-    OFF_WK,
-    OFF_WV,
     GAMMA_BYTES,
     CS_BYTES,
     AF_SCALES_BYTES,
-    KCACHE_BYTES,
-    VCACHE_BYTES,
-    KCACHE_PADDED,
-    VCACHE_PADDED,
-    KV_HEADER,
-    PER_KV_HEAD_BYTES,
-    PER_LAYER_KV,
-    KV_BYTES,
-    WEIGHTS_BYTES,
     T_USED_BYTES,
     ACT_SCALE,
     INV_ACT_SCALE,
     SILU_GATE_SCALE,
+    derived_sizes,
 )
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
 from test_layer_mh import wq_mh_prefix, af_scales_bytes
@@ -93,6 +72,36 @@ from test_ffn_half import pack_perchan_slots, fp32_bytes
 from test_flowkv import EXP_QUANT_SCALE
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+
+T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
+N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
+PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
+PERSIST_GROW = os.environ.get("LLAMA_CHAIN_PERSIST_GROW", "0") == "1"
+# pack_blobs() below is reused by test_chain_persist_grow_mh.py/
+# test_chain_persist_resident_mh.py (imported with those env vars already
+# set), so WEIGHTS_BYTES must reflect PERSIST_GROW/PT there too, not just
+# this file's own chain_mh defaults.
+_sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT, PERSIST_GROW=PERSIST_GROW)
+OFF_GAMMA_IN = _sizes.OFF_GAMMA_IN
+OFF_WQ = _sizes.OFF_WQ
+OFF_CS = _sizes.OFF_CS
+OFF_WO = _sizes.OFF_WO
+OFF_AF_SCALES = _sizes.OFF_AF_SCALES
+OFF_GAMMA_POST = _sizes.OFF_GAMMA_POST
+OFF_WG = _sizes.OFF_WG
+OFF_WU = _sizes.OFF_WU
+OFF_WD = _sizes.OFF_WD
+OFF_WK = _sizes.OFF_WK
+OFF_WV = _sizes.OFF_WV
+KCACHE_BYTES = _sizes.KCACHE_BYTES
+VCACHE_BYTES = _sizes.VCACHE_BYTES
+KCACHE_PADDED = _sizes.KCACHE_PADDED
+VCACHE_PADDED = _sizes.VCACHE_PADDED
+KV_HEADER = _sizes.KV_HEADER
+PER_KV_HEAD_BYTES = _sizes.PER_KV_HEAD_BYTES
+PER_LAYER_KV = _sizes.PER_LAYER_KV
+KV_BYTES = _sizes.KV_BYTES
+WEIGHTS_BYTES = _sizes.WEIGHTS_BYTES
 
 
 def pack_blobs(layers):
