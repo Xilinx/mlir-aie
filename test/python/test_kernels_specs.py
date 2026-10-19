@@ -129,9 +129,11 @@ KERNEL_SPECS: list[KernelSpec] = [
                 dict(tile_size=1024, dtype=bfloat16, vectorized=False),
                 "eltwise_add_bf16_scalar",
             ),
+            (dict(tile_size=64, dtype=np.int8), "eltwise_add_i8_vector"),
         ],
         invalid_kwargs=[
             (dict(tile_size=1024, dtype=np.float32), "dtype must be bfloat16"),
+            (dict(tile_size=48, dtype=np.int8), "multiple of 32"),
         ],
     ),
     KernelSpec(

@@ -52,6 +52,17 @@ def add_ref(a, b):
     return a.astype(np.float32) + b.astype(np.float32)
 
 
+def add_i8_ref(a, b, a_shift, b_shift, out_shift):
+    """Numpy reference for [`add`][iron.kernels.eltwise.add] on int8.
+
+    ``sat_i8(round_half_even(((a << a_shift) + (b << b_shift)) / 2**out_shift))``.
+    """
+    total = (np.asarray(a, np.int64) << int(a_shift)) + (
+        np.asarray(b, np.int64) << int(b_shift)
+    )
+    return np.clip(np.round(total / 2.0 ** int(out_shift)), -128, 127).astype(np.int8)
+
+
 def mul_ref(a, b):
     """Numpy reference for [`mul`][iron.kernels.eltwise.mul]: element-wise ``a * b`` in float32."""
     return a.astype(np.float32) * b.astype(np.float32)
@@ -101,17 +112,23 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
     Args:
         tile_size: Number of elements per tile, a positive whole number of
             64-byte vectors. Compiled into the kernel's loop bound.
-        dtype: Element data type (``np.uint8``, ``np.int16``, or ``np.int32``).
+        dtype: Element data type (``np.int8``, ``np.uint8``, ``np.int16``, or
+            ``np.int32``).
 
     Returns:
         ExternalFunction configured for ``passThroughLine``.
 
     Raises:
-        ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or
-            ``np.int32``, or when ``tile_size`` is not a whole number of
+        ValueError: When ``dtype`` is not ``np.int8``, ``np.uint8``,
+            ``np.int16``, or ``np.int32``, or when ``tile_size`` is not a whole number of
             64-byte vectors, or is nonpositive.
     """
-    bit_width = _dtype_to_bit_width(dtype, factory_name="passthrough")
+    # The copy is bitwise, so int8 shares the 8-bit build.
+    bit_width = (
+        8
+        if np.dtype(dtype) == np.dtype(np.int8)
+        else _dtype_to_bit_width(dtype, factory_name="passthrough")
+    )
     _require_vector_alignment(
         "passthrough",
         tile_size,
@@ -187,23 +204,53 @@ def scale(
     )
 
 
+@dtypes(({"dtype": bfloat16}, {"dtype": np.int8, "tile_size": 1024}))
 def add(
     tile_size: int = 1024, dtype: type = bfloat16, vectorized: bool = True
 ) -> ExternalFunction:
-    """Element-wise bf16 addition (tile_size must be 1024, hard-coded in C++).
+    """Element-wise addition: bf16, or int8 on power-of-two scales.
+
+    The int8 kernel is ONNX QLinearAdd with power-of-two scales: it takes
+    ``a_shift``, ``b_shift`` and ``out_shift`` after the output tile, shifts
+    each operand up by its shift onto a common scale, and the sum down by
+    ``out_shift``, rounding half to even and saturating.
 
     Args:
-        tile_size: Elements per tile (must be 1024).
-        dtype: Element data type (only ``bfloat16`` supported).
-        vectorized: If ``True`` use vectorized path; ``False`` selects scalar.
+        tile_size: Elements per tile: 1024 for bf16 (hard-coded in C++); a
+            multiple of 32 for int8.
+        dtype: ``bfloat16`` or ``np.int8``.
+        vectorized: If ``True`` use vectorized path; ``False`` selects scalar
+            (bf16 only).
 
     Returns:
-        ExternalFunction for eltwise_add_bf16.
+        ExternalFunction for eltwise_add_bf16 or eltwise_add_i8.
 
     Raises:
-        ValueError: When ``dtype`` is not ``bfloat16``.
+        ValueError: When ``dtype`` is neither, or an int8 ``tile_size`` is not
+            a multiple of 32.
     """
-    return _eltwise_bf16_kernel("add", tile_size, dtype, vectorized)
+    if np.dtype(dtype) != np.dtype(np.int8):
+        return _eltwise_bf16_kernel("add", tile_size, dtype, vectorized)
+    if tile_size % 32 or tile_size <= 0 or not vectorized:
+        raise ValueError(
+            f"add(): an int8 tile_size must be a positive multiple of 32 and "
+            f"vectorized, got {tile_size}"
+        )
+    tile_ty = np.ndarray[(tile_size,), np.dtype[np.int8]]
+    return _make_extern(
+        "eltwise_add_i8_vector",
+        _kernel_source("eltwise/add.cc"),
+        [tile_ty, tile_ty, tile_ty, np.int32, np.int32, np.int32],
+        compile_flags=["-DADD_INT8", f"-DADD_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out, Param, Param, Param),
+            reference=add_i8_ref,
+            acc_dtype=np.int32,
+            tolerance=Tolerance.exact(note="integer arithmetic, rounding modeled"),
+            alignments=((0, 32), (1, 32), (2, 32)),
+        ),
+    )
 
 
 def mul(

@@ -96,6 +96,7 @@ CASES: list[Case] = [
     Case("passthrough", dict(tile_size=2048), calls=256),
     Case("passthrough", dict(dtype=np.int16), calls=16, smoke=True),
     Case("passthrough", dict(dtype=np.uint8), calls=16, smoke=True),
+    check("passthrough", dict(dtype=np.int8, tile_size=1280), calls=4, smoke=True),
     # The tile amd/IRON's passthrough operator compiles (PASSTHROUGH_ELEMS=1024
     # with BIT_WIDTH=16); the cases above all build a different loop bound.
     Case("passthrough", dict(tile_size=1024, dtype=np.int16), calls=16),
@@ -117,6 +118,22 @@ CASES: list[Case] = [
     # to grade such a reference until the kernel declares it.
     check("scale", dict(dtype=np.int32), calls=16, params=(-7,), tag="edge-negfactor"),
     Case("add", calls=16, smoke=True),
+    # int8 on power-of-two scales: operands shifted up 2 and 0, the sum down
+    # 3, and a sum on the output's scale; YOLO26n's residual adds.
+    Case(
+        "add",
+        dict(dtype=np.int8, tile_size=2560),
+        calls=4,
+        scalars=(2, 0, 3),
+        smoke=True,
+    ),
+    check(
+        "add",
+        dict(dtype=np.int8, tile_size=64),
+        calls=4,
+        scalars=(0, 1, 0),
+        tag="no-down-shift",
+    ),
     Case("add", calls=256, data_cases=IEEE_FLOAT),
     Case("mul", calls=16, smoke=True),
     Case("mul", calls=256, data_cases=IEEE_FLOAT),
