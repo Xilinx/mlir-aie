@@ -87,17 +87,17 @@ class Part:
 class Fill:
     """One host transfer into a fifo: a tensor, in `layout`, at sequence step `step`.
 
-    `rows` sends the tensor's rows as they are. `anchor_classes` sends each
-    pixel's channels together (every 8-channel group of it in turn), and
-    `anchor_boxes` each pixel's first 4 channels: the per-anchor records
-    the Detect postprocess reads. A step's transfers finish before the next
-    step's start.
+    `rows` sends the tensor's rows as they are. `anchor_classes` sends a
+    row `chunk` pixels at a time, each 8-channel group of those pixels in
+    turn: the per-anchor records the Detect postprocess reads. A step's
+    transfers finish before the next step's start.
     """
 
     fifo: ObjectFifo
     tensor: Tensor
     layout: str = "rows"
     step: int = 0
+    chunk: int = 1
 
     def tap(self, total: int, offset: int) -> TensorAccessPattern:
         """The pattern over a host buffer of `total` int32 words with the tensor at word `offset`."""
@@ -107,12 +107,8 @@ class Fill:
             return TensorAccessPattern(
                 (total,),
                 offset,
-                [t.height, t.width, groups, 2],
-                [groups * t.width * 2, 2, t.width * 2, 1],
-            )
-        if self.layout == "anchor_boxes":
-            return TensorAccessPattern(
-                (total,), offset, [1, 1, t.height * t.width, 1], [0, 0, 2, 1]
+                [t.height, t.width // self.chunk, groups, 2 * self.chunk],
+                [groups * t.width * 2, 2 * self.chunk, t.width * 2, 1],
             )
         size = (IMAGE_ROW_BYTES if t.name == "images" else t.row_bytes) * t.height // 4
         return TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1])
@@ -1045,31 +1041,33 @@ class SegmentDesign:
         chunk = 20
         anchors = sum(t.height * t.width for t in op.scores)
         records = ObjectFifo(row(chunk * 80), name="detect_classes")
-        boxes = ObjectFifo(row(chunk * 4), name="detect_boxes")
+        boxes = ObjectFifo(row(chunk * 8), name="detect_boxes")
         for step in (0, 1):
             for tensor in op.scores:
-                self.fills.append(Fill(records, tensor, "anchor_classes", step))
+                self.fills.append(
+                    Fill(records, tensor, "anchor_classes", step, chunk=chunk)
+                )
         for tensor in op.boxes:
-            self.fills.append(Fill(boxes, tensor, "anchor_boxes", 1))
+            self.fills.append(Fill(boxes, tensor, step=1))
         self.inputs += [*op.scores, *op.boxes]
         self.fifos[op.dst.name] = ObjectFifo(
             np.ndarray[(6 * op.dst.height,), np.dtype[np.int32]], name="detections"
         )
         flags = [f"-DYOLO_DETECT_CHUNK={chunk}"]
-        top_t = np.ndarray[(anchors,), np.dtype[np.int16]]
+        top_t = row(anchors)
         k_max = self.function(
             "yolo_detect_max",
             "yolo_detect.cc",
             [
                 row(chunk * 80),
-                np.ndarray[(768,), np.dtype[np.int16]],
+                np.ndarray[(2 * 768,), np.dtype[np.int16]],
                 top_t,
                 np.int32,
             ],
             flags,
         )
         bind = k_max.object_file.bind
-        ranks_t = np.ndarray[(768,), np.dtype[np.int16]]
+        ranks_t = np.ndarray[(2 * 768,), np.dtype[np.int16]]
         words_t = np.ndarray[(768,), np.dtype[np.int32]]
         keep_t = np.ndarray[(300,), np.dtype[np.int16]]
         count_t = np.ndarray[(4,), np.dtype[np.int32]]
@@ -1082,7 +1080,7 @@ class SegmentDesign:
             "yolo_detect_gather",
             [
                 row(chunk * 80),
-                row(chunk * 4),
+                row(chunk * 8),
                 picked_t,
                 keep_t,
                 row(300 * 80),
@@ -1104,8 +1102,12 @@ class SegmentDesign:
         shifts = [p.scale(t.name) for t in op.boxes]
         bits = np.zeros(768, np.int32)
         bits[: tables.size] = tables.view(np.int32).reshape(-1)
-        rank_table = np.zeros(768, np.int16)
+        # Each level's ranks, then its peaks: the highest rank of any logit up to each.
+        rank_table = np.zeros(2 * 768, np.int16)
         rank_table[: rank.size] = rank.reshape(-1)
+        rank_table[768 : 768 + rank.size] = np.maximum.accumulate(
+            rank, axis=-1
+        ).reshape(-1)
         n = anchors // chunk
 
         def body(cls, box, out, k_max, k_select, k_gather, k_finish, *b):

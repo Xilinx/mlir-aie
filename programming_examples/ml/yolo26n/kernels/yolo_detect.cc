@@ -9,13 +9,16 @@
 // SegmentDesign.detect. Scores compare by their rank among the sigmoid
 // tables' float32 values, ties to the lower index as in ONNX TopK. Anchors
 // run level by level, row by row (80x80 at stride 8, 40x40 at 16, 20x20 at
-// 32); a record is an anchor's 80 class logits or its 4 box distances.
+// 32). Class logits come CHUNK anchors at a time, [CLASSES / 8][CHUNK][8];
+// box distances [CHUNK][8], the first 4 of each anchor's 8 bytes.
 //
 //===----------------------------------------------------------------------===//
 
 #define NOCPP
 
 #include <stdint.h>
+
+#include <aie_api/aie.hpp>
 
 #include "aie_kernel_utils.h"
 
@@ -87,22 +90,47 @@ static int popcount8(uint32_t byte) {
 
 extern "C" {
 
-// top: per anchor, the rank of its best class score. ONNX Runtime's
+// top: per anchor, a class logit with its best score. ONNX Runtime's
 // float32 sigmoid is not monotonic where it saturates, so the scores'
-// ranks, not the logits, are compared; only the best rank is kept.
+// ranks, not the logits, are compared. `rank` holds each level's ranks of
+// the 256 logits, then their peaks (the highest rank of any logit up to
+// each): an anchor's highest logit has its best score when its rank is the
+// peak, otherwise every class is ranked.
 void yolo_detect_max(const int8_t *__restrict records,
-                     const int16_t *__restrict rank, int16_t *__restrict top,
+                     const int16_t *__restrict rank, int8_t *__restrict top,
                      int32_t chunk) {
   event0();
-  const int16_t *ranks = rank + level_of(chunk * CHUNK) * 256 + 128;
-  for (int a = 0; a < CHUNK; a++) {
-    int16_t best = 0;
+  static_assert(CHUNK * 8 % 32 == 0, "a chunk's group is whole vectors");
+  const int level = level_of(chunk * CHUNK);
+  const int16_t *ranks = rank + level * 256 + 128;
+  const int16_t *peaks = rank + (3 + level) * 256 + 128;
+  // Lane 8a of `most` ends up the highest logit of anchor a.
+  alignas(32) int8_t most[CHUNK * 8];
+  for (int j = 0; j < CHUNK * 8 / 32; j++) {
+    aie::vector<int8_t, 32> m = aie::load_v<32>(records + j * 32);
     AIE_LOOP_UNROLL_FULL
-    for (int c = 0; c < CLASSES; c++) {
-      const int16_t r = ranks[records[a * CLASSES + c]];
-      best = r > best ? r : best;
+    for (int g = 1; g < CLASSES / 8; g++)
+      m = aie::max(m, aie::load_v<32>(records + g * CHUNK * 8 + j * 32));
+    m = aie::max(m, aie::shuffle_down_rotate(m, 4));
+    m = aie::max(m, aie::shuffle_down_rotate(m, 2));
+    m = aie::max(m, aie::shuffle_down_rotate(m, 1));
+    aie::store_v(most + j * 32, m);
+  }
+  for (int a = 0; a < CHUNK; a++) {
+    int8_t m = most[a * 8];
+    if (ranks[m] != peaks[m]) {
+      int16_t best = -1;
+      for (int g = 0; g < CLASSES / 8; g++) {
+        const int8_t *group = records + (g * CHUNK + a) * 8;
+        AIE_LOOP_UNROLL_FULL
+        for (int l = 0; l < 8; l++) {
+          const int16_t r = ranks[group[l]];
+          m = r > best ? group[l] : m;
+          best = r > best ? r : best;
+        }
+      }
     }
-    top[chunk * CHUNK + a] = best;
+    top[chunk * CHUNK + a] = m;
   }
   event1();
 }
@@ -110,7 +138,7 @@ void yolo_detect_max(const int8_t *__restrict records,
 // first: the KEEP anchors in score order. picked: one bit per anchor.
 // row: for the k-th picked anchor by index, its place in `first`.
 // count: the gather's running count of picked anchors, reset here.
-void yolo_detect_select(const int16_t *__restrict top,
+void yolo_detect_select(const int8_t *__restrict top,
                         const int16_t *__restrict rank,
                         int32_t *__restrict hist, int16_t *__restrict first,
                         uint8_t *__restrict picked, int16_t *__restrict row,
@@ -118,8 +146,12 @@ void yolo_detect_select(const int16_t *__restrict top,
   event0();
   static_assert(ANCHORS / 8 <= 2 * RANKS, "the prefix counts reuse hist");
   top_keep(
-      ANCHORS, 1, [&](int a) { return [&, a](int) { return top[a]; }; }, hist,
-      first);
+      ANCHORS, 1,
+      [&](int a) {
+        const int16_t *ranks = rank + level_of(a) * 256 + 128;
+        return [=](int) { return ranks[top[a]]; };
+      },
+      hist, first);
   for (int i = 0; i < ANCHORS / 8; i++)
     picked[i] = 0;
   for (int k = 0; k < KEEP; k++)
@@ -156,9 +188,9 @@ void yolo_detect_gather(const int8_t *__restrict records,
       continue;
     const int r = row[count[0]++];
     for (int c = 0; c < CLASSES; c++)
-      candidates[r * CLASSES + c] = records[i * CLASSES + c];
+      candidates[r * CLASSES + c] = records[(c / 8 * CHUNK + i) * 8 + c % 8];
     for (int d = 0; d < 4; d++)
-      distances[r * 4 + d] = boxes[i * 4 + d];
+      distances[r * 4 + d] = boxes[i * 8 + d];
   }
   event1();
 }
