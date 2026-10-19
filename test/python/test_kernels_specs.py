@@ -34,6 +34,8 @@ from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
+from aie.iron.kernels import activation
+from aie.iron.kernels.moe import _experts_row
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -1364,7 +1366,6 @@ def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
 
 
 def test_gelu_erf_ports_and_reference(kernel_arch):
-    from aie.iron.kernels import activation
 
     assert kernels.gelu_erf is activation.gelu_erf
     fn = kernels.gelu_erf(tile_size=64)
@@ -1625,7 +1626,6 @@ def test_bf16_mv_retains_output_contract_without_accumulator(kernel_arch):
 
 
 def test_experts_duplicated_id_sums_its_weights():
-    from aie.iron.kernels.moe import _experts_row
 
     c = kernels.experts().contract
     _, tile = c.sample(np.random.default_rng(0), 96)

@@ -24,13 +24,23 @@ run.start()
 ```
 """
 
+import ctypes
 import struct
 from pathlib import Path
 
+import numpy as np
 import pyxrt  # pyright: ignore[reportMissingImports]
 from aie._mlir_libs._parameter_scratchpad import (  # pyright: ignore[reportMissingImports]
     ParameterScratchpad as _ParameterScratchpadImpl,
 )
+
+from .device import acquire_device
+
+# PyCapsule_New(pointer, name, destructor): pyxrt.ext.bo takes a host pointer
+# only wrapped in a capsule.
+_pointer_capsule = ctypes.PYFUNCTYPE(
+    ctypes.py_object, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p
+)(("PyCapsule_New", ctypes.pythonapi))
 
 
 def _to_bytes(value) -> bytes:
@@ -91,25 +101,27 @@ class ParameterScratchpad:
         self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def alias(self):
-        """Return a buffer object over this scratchpad's host mapping.
+        """Return a buffer object over this scratchpad's host memory.
 
         The scratchpad's own buffer object is on the device heap, which the
-        shim DMA does not reach: a transfer into it goes nowhere. This
-        user-pointer buffer is reached like any host buffer, so another run
-        bound to it drains into this run's parameters with no host step. It
-        points into this scratchpad's mapping; keep this object as long as it.
+        shim DMA does not reach. This user-pointer buffer object over the same
+        memory is reached like any host buffer, so another run bound to it
+        writes this run's parameters with no host step. It is made once and is
+        valid while this ParameterScratchpad is.
 
-        Raises:
-            RuntimeError: The default NPU runtime is not XRT's.
+        A transfer writes raw words: the shift ``write`` applies to a
+        core-kind parameter is not, so a run drains only into addr-kind
+        parameters, or writes a core-kind value already shifted left by 2.
+
+        Needs an amdxdna that pins a buffer object's own mapping (xdna-driver
+        72e64a6, 2026-09-18, or later); an older one maps it ``VM_PFNMAP`` and
+        refuses the pin with EFAULT.
         """
         if self._alias is None:
-            from ... import DefaultNPURuntime
-            from .hostruntime import XRTHostRuntime
-
-            runtime = DefaultNPURuntime
-            if not isinstance(runtime, XRTHostRuntime):
-                raise RuntimeError(
-                    f"A scratchpad alias is an XRT buffer; the runtime is {runtime!r}."
-                )
-            self._alias = runtime.host_buffer(self._mv)
+            pointer = np.frombuffer(self._mv, dtype=np.uint8).ctypes.data
+            self._alias = pyxrt.ext.bo(
+                acquire_device(),
+                _pointer_capsule(pointer, None, None),
+                self._mv.nbytes,
+            )
         return self._alias

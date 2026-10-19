@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 from aie.iron import kernels
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.iron.kernels._common import _make_extern
 
 # ---------------------------------------------------------------------------
 # Memoization + collision protection (kernels.X helpers and ExternalFunction)
@@ -328,14 +329,11 @@ def test_kernels_mm_object_file_name_is_order_independent():
     assert ef._object_file_name == f"matmul_i16_i16_{ef._symbol_prefix}.o"
 
 
-def test_extern_names_differ_by_source_dir(tmp_path, monkeypatch):
+def test_extern_names_differ_by_source_dir(tmp_path):
     """Same-content sources in two directories are two kernels, in one process.
 
     Their local includes may resolve to different headers.
     """
-    from aie.iron.kernels._common import _make_extern
-
-    monkeypatch.setattr(ExternalFunction, "_instances", set())
     names = set()
     for checkout in ("a", "b"):
         source = tmp_path / checkout / "k.cc"

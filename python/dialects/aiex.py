@@ -63,6 +63,14 @@ def shim_dims(tap: TensorAccessPattern, ndims: int = 4):
     staged or not, stays there and the padding goes after it, so
     `[R, th, tw]` becomes `[R, 1, th, tw]`.
 
+    Args:
+        tap: The access pattern.
+        ndims: The dimensions a buffer descriptor takes.
+
+    Returns:
+        `(offset, sizes, strides)`, with `ndims` sizes and strides unless the
+        walk does not fit.
+
     Raises:
         ValueError: If `tap` is padded.
     """
