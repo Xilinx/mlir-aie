@@ -416,7 +416,6 @@ CASES: list[Case] = [
         calls=2,
         tag="overlap",
     ),
-    # Scalar first passes, timed as the baseline their vectorization beats.
     # A row is four experts of 16 gate_up tiles and 8 down tiles each; three
     # rows check that each one starts its sum again, and the third repeats an
     # id (experts_sample).
