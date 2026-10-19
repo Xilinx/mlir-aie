@@ -256,3 +256,28 @@ def test_specialization_allows_compile_time_use(npu2_device):
         return Program(NPU2Col1(), Runtime(lambda: None)).resolve_program()
 
     assert CompilableDesign(gen).specialize(count=3).generate_mlir().operation.verify()
+
+
+def test_merged_steps_forwarding_one_dispatch_parameter_share_its_argument(
+    npu2_device,
+):
+    tensor_type = np.ndarray[(16,), np.dtype[np.int32]]
+    seen = []
+
+    def gen(*, seq_len: DispatchTime[np.int32]):
+        def step(a, length):
+            seen.append(
+                (BlockArgument(a.op).arg_number, BlockArgument(length).arg_number)
+            )
+
+        merged = Runtime.merge(
+            [
+                Runtime(step, [tensor_type, seq_len]),
+                Runtime(step, [tensor_type, seq_len]),
+            ]
+        )
+        return Program(NPU2Col1(), merged).resolve_program()
+
+    assert CompilableDesign(gen).generate_mlir().operation.verify()
+    (first_a, first_len), (second_a, second_len) = seen
+    assert first_len == second_len and first_a != second_a

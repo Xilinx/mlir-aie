@@ -8,6 +8,7 @@ import re
 import numpy as np
 import pytest
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.dialects.aie import DeviceOp
 from aie.ir import Context, Module, StringAttr
 from aie.iron import (
     Bd,
@@ -34,6 +35,7 @@ from aie.iron import (
 )
 from aie.iron.device import NPU2Col1, Tile
 from aie.iron.runtime.runtime import IronRuntimeError
+from aie.utils.compile.jit.context import compile_context
 
 Tensor = np.ndarray[(4,), np.dtype[np.int32]]
 
@@ -606,6 +608,22 @@ def test_a_prebuilt_runtime_can_be_the_entry():
     assert str(composed).count("aiex.scratchpad_parameter @count") == 1
 
 
+def test_a_prebuilt_full_elf_entry_loads_its_own_pdi():
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(PREBUILT))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    with compile_context(_iron_full_elf=True):
+        composed = Program.compose([built, prebuilt], entry=run).resolve_program()
+    (device,) = [
+        op
+        for op in composed.body.operations
+        if isinstance(op, DeviceOp) and StringAttr(op.sym_name).value == "other"
+    ]
+    assert "aiex.npu.load_pdi {device_ref = @other}" in str(device)
+    assert composed.operation.verify()
+
+
 def test_a_prebuilt_runtime_takes_scalar_arguments():
     text = PREBUILT.replace("%b: memref<4x8xbf16>", "%n: i32")
     with Context():
@@ -634,6 +652,69 @@ aie.device(npu2_1col) @main {
     composed = str(Program.compose([built, prebuilt], entry=run).resolve_program())
     assert "aie.device(npu2_1col) @other" in composed
     assert "device_ref = @other" in composed and "@main" not in composed
+
+
+def test_a_renamed_prebuilt_device_renames_a_configure_of_itself():
+    text = """
+aie.device(npu2_1col) @main {
+  %t = aie.tile(0, 2)
+  aie.runtime_sequence @run(%a: memref<16xi32>) {
+    aiex.configure @main {
+    }
+  }
+}
+"""
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    composed = str(Program.compose([built, prebuilt], entry=run).resolve_program())
+    assert "aiex.configure @other" in composed and "@main" not in composed
+
+
+def test_a_lowered_prebuilt_declaration_keeps_its_attributes():
+    attributes = (
+        "{kind = 2 : i32, max_value = 7 : i32, min_value = 0 : i32, "
+        "state_table_idx = 0 : ui8}"
+    )
+    text = PREBUILT.replace(
+        "aiex.scratchpad_parameter @count : i32",
+        f"aiex.scratchpad_parameter @count : i32 {attributes}",
+    )
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    composed = Program.compose([built, prebuilt], entry=prebuilt.runtimes[0])
+    assert f"aiex.scratchpad_parameter @count : i32 {attributes}" in str(
+        composed.resolve_program()
+    )
+
+
+def test_a_prebuilt_device_with_no_sequence_declares_what_its_cores_read():
+    text = """
+aiex.scratchpad_parameter @count : i32
+aie.device(npu2_1col) @made_elsewhere {
+  %t = aie.tile(0, 2)
+  %c = aie.core(%t) {
+    %v = aiex.read_scratchpad_parameter @count : i32
+    aie.end
+  }
+}
+"""
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    assert prebuilt.runtimes == []
+    rt = runtime("seq")
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[rt])
+    composed = Program.compose([built, prebuilt], entry=rt).resolve_program()
+    assert composed.operation.verify()
+    assert str(composed).count("aiex.scratchpad_parameter @count") == 1
+
+
+def test_a_prebuilt_sequence_with_a_dynamic_shape_is_refused():
+    text = PREBUILT.replace("%a: memref<16xi32>", "%a: memref<?xi32>")
+    with Context(), pytest.raises(TypeError, match="has a dynamic shape"):
+        DeviceConfiguration.from_module("other", Module.parse(text))
 
 
 def test_a_prebuilt_device_may_read_its_scratchpad_parameters():

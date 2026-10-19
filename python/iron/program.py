@@ -238,6 +238,10 @@ class Program:
                         self._register_scratchpad_parameter(
                             scratchpad_parameters, parameter
                         )
+                for parameter in configuration.scratchpad_parameters:
+                    self._register_scratchpad_parameter(
+                        scratchpad_parameters, parameter
+                    )
             for parameter in scratchpad_parameters.values():
                 parameter.resolve()
 

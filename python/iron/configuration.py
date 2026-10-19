@@ -6,7 +6,6 @@ from __future__ import annotations
 import itertools
 from collections.abc import Sequence
 from contextlib import contextmanager
-from typing import cast
 
 import numpy as np
 
@@ -18,9 +17,11 @@ from ..dialects.aie import (
     TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
     device,
 )
-from ..dialects.aiex import ConfigureOp  # pyright: ignore[reportAttributeAccessIssue]
+from ..dialects.aiex import (
+    ConfigureOp,  # pyright: ignore[reportAttributeAccessIssue]
+    ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ..helpers.dialects.func import FuncBase
-from ..helpers.npdtypes import NpuDType
 from ..helpers.util import mlir_type_to_np_dtype
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
@@ -34,33 +35,12 @@ from .runtime import Runtime
 from .runtime._context import active_configuration, active_configuration_scope
 from .scratchpad_parameter import ScratchpadParameter
 
-# The attribute of each op that names a device, not a symbol within one.
-_DEVICE_REFS = {
-    "aiex.configure": "symbol",
-    "aiex.npu.load_pdi": "device_ref",
-    "aiex.npu.write_config": "device_ref",
-}
-
 
 def _rename_device(device_op, name: str) -> None:
     """Rename ``device_op`` to ``name``, and each reference to it within it."""
     old = ir.StringAttr(device_op.attributes["sym_name"]).value
     device_op.attributes["sym_name"] = ir.StringAttr.get(name)
-    if old == name:
-        return
-    new_ref = ir.FlatSymbolRefAttr.get(name)
-
-    def remap(op):
-        attr = _DEVICE_REFS.get(op.name)
-        if (
-            attr is not None
-            and attr in op.attributes
-            and ir.FlatSymbolRefAttr(op.attributes[attr]).value == old
-        ):
-            op.attributes[attr] = new_ref
-        return ir.WalkResult.ADVANCE
-
-    device_op.operation.walk(remap)
+    ir.SymbolTable.replace_all_symbol_uses(old, name, device_op.operation)
 
 
 class DeviceConfiguration(DeviceResources):
@@ -99,6 +79,7 @@ class DeviceConfiguration(DeviceResources):
         self._core_trace_mode = TraceMode.EventTime
         self._owners = None
         self._prebuilt: str | None = None
+        self._scratchpad_parameters: list[ScratchpadParameter] = []
 
         runtime_names = [
             runtime.name for runtime in self._runtimes if runtime.name is not None
@@ -118,13 +99,21 @@ class DeviceConfiguration(DeviceResources):
         """Return a configuration that emits ``module``'s one ``aie.device`` verbatim.
 
         Each runtime sequence in the device becomes a Runtime of the same name
-        and argument types, which declares the ``aiex.scratchpad_parameter``s
-        beside the device, so ``Program.compose`` takes it like any other.
+        and argument types. The ``aiex.scratchpad_parameter`` declarations
+        beside the device are declared again with all their attributes, so
+        ``Program.compose`` takes it like any other.
+
+        Args:
+            name: The configuration's name; the device is renamed to it.
+            module: The module holding the device and its declarations.
+
+        Returns:
+            The configuration.
 
         Raises:
             ValueError: ``module`` holds no ``aie.device``, or several.
-            TypeError: A sequence argument, its elements or a scratchpad
-                parameter has no NumPy dtype.
+            TypeError: A sequence argument has no NumPy dtype or a dynamic
+                shape, or a scratchpad parameter has no NumPy dtype.
         """
         devices = [op for op in module.body.operations if isinstance(op, DeviceOp)]
         if len(devices) != 1:
@@ -134,22 +123,14 @@ class DeviceConfiguration(DeviceResources):
             )
         (device_op,) = devices
         with module.context:
-            parameters = []
-            declarations = []
-            for op in module.body.operations:
-                if op.operation.name != "aiex.scratchpad_parameter":
-                    continue
-                declarations.append(str(op))
-                type_ = ir.TypeAttr(op.attributes["type"]).value
-                dtype = mlir_type_to_np_dtype(type_)
-                if dtype is None:
-                    raise TypeError(f"No NumPy dtype for scratchpad parameter {type_}.")
-                parameters.append(
-                    ScratchpadParameter(
-                        ir.StringAttr(op.attributes["sym_name"]).value,
-                        cast(NpuDType, dtype),
-                    )
-                )
+            declarations = [
+                op
+                for op in module.body.operations
+                if isinstance(op, ScratchpadParameterOp)
+            ]
+            parameters = [
+                ScratchpadParameter.from_declaration(op) for op in declarations
+            ]
             runtimes = []
             for sequence in device_op.body_region.blocks[0].operations:
                 if not isinstance(sequence, RuntimeSequenceOp):
@@ -163,6 +144,11 @@ class DeviceConfiguration(DeviceResources):
                         types.append(dtype)
                         continue
                     memref = ir.MemRefType(arg.type)
+                    if not memref.has_static_shape:
+                        raise TypeError(
+                            f"Argument {memref} has a dynamic shape; a Runtime "
+                            "argument's shape is fixed."
+                        )
                     dtype = mlir_type_to_np_dtype(memref.element_type)
                     if dtype is None:
                         raise TypeError(f"No NumPy dtype for the elements of {memref}.")
@@ -176,13 +162,15 @@ class DeviceConfiguration(DeviceResources):
                     runtime.register_parameter(parameter)
                 runtimes.append(runtime)
             kind = AIEDevice(ir.IntegerAttr(device_op.attributes["device"]).value)
+            # The device's reads verify against the declarations, so the text
+            # parsed again at resolution keeps them; only the device is cloned.
+            text = "\n".join([*(str(op) for op in declarations), str(device_op)])
         device_type = next(
             c for c in NamedDevice.__subclasses__() if c.aie_device == kind
         )
         configuration = cls(name, device_type(), runtimes=runtimes)
-        # The device's scratchpad reads verify against these module-scope
-        # declarations, so they are kept beside it; only the device is cloned.
-        configuration._prebuilt = "\n".join([*declarations, str(device_op)])
+        configuration._prebuilt = text
+        configuration._scratchpad_parameters = parameters
         return configuration
 
     # Device-local resources may belong to only one configuration.
@@ -265,6 +253,11 @@ class DeviceConfiguration(DeviceResources):
     @property
     def runtimes(self) -> list[Runtime]:
         return list(self._runtimes)
+
+    @property
+    def scratchpad_parameters(self) -> list[ScratchpadParameter]:
+        """The parameters a prebuilt device declares beside it, used or not by a sequence."""
+        return list(self._scratchpad_parameters)
 
     @contextmanager
     def configure(self):
@@ -373,7 +366,16 @@ class DeviceConfiguration(DeviceResources):
         if self._prebuilt is not None:
             prebuilt = ir.Module.parse(self._prebuilt)  # alive while cloned
             (op,) = [o for o in prebuilt.body.operations if isinstance(o, DeviceOp)]
-            _rename_device(op.clone(ip=ir.InsertionPoint.current), device_name)
+            clone = op.clone(ip=ir.InsertionPoint.current)
+            _rename_device(clone, device_name)
+            if entry in self._runtimes and get_compile_arg("_iron_full_elf"):
+                (sequence,) = [
+                    o
+                    for o in clone.body_region.blocks[0].operations
+                    if isinstance(o, RuntimeSequenceOp)
+                    and ir.StringAttr(o.attributes["sym_name"]).value == entry.name
+                ]
+                entry.load_pdi_first(sequence.body.blocks[0], device_name)
             return
         self._name_unnamed()
         device_type = type(self._device)

@@ -334,10 +334,11 @@ class Runtime(DeviceResources, Resolvable):
     def merge(cls, runtimes: Sequence[Runtime], name: str | None = None) -> Runtime:
         """Return one Runtime whose sequence runs the bodies of ``runtimes`` in order.
 
-        Its ``fn_args`` are theirs, concatenated, and it registers their flows,
-        locks, tile DMAs and scratchpad parameters. Steps that run back to back
-        on one configuration so issue one instruction stream, with no
-        ``aiex.configure`` or ``aiex.run``, which an xclbin can carry.
+        For steps that run back to back on one configuration: they issue one
+        instruction stream with no ``aiex.configure`` or ``aiex.run`` between
+        them, which an xclbin can carry. Its ``fn_args`` are theirs, in order,
+        with a DispatchTime parameter several steps forward kept once, and it
+        registers their flows, locks, tile DMAs and scratchpad parameters.
 
         Raises:
             ValueError: One of ``runtimes`` already belongs to a configuration.
@@ -349,17 +350,30 @@ class Runtime(DeviceResources, Resolvable):
                     f"Runtime {runtime.name!r} belongs to configuration "
                     f"{runtime.configuration.name!r}; merge it before configuring."
                 )
-        ends = list(itertools.accumulate(len(rt._fn_args) for rt in runtimes))
+        fn_args: list = []
+        slots: list[list[int]] = []
+        for runtime in runtimes:
+            slots.append([])
+            for arg in runtime._fn_args:
+                shared = [
+                    i
+                    for i, kept in enumerate(fn_args)
+                    if isinstance(arg, _DispatchParameter) and kept is arg
+                ]
+                slots[-1].append(shared[0] if shared else len(fn_args))
+                if not shared:
+                    fn_args.append(arg)
 
         def body(*args):
-            # Each step's transfers finish before the next step's start.
-            for runtime, start, end in zip(runtimes, [0, *ends], ends):
-                runtime._seq_fn(*args[start:end])
+            for runtime, slot in zip(runtimes, slots):
+                runtime._seq_fn(*(args[i] for i in slot))
+                # Closing the step's task groups awaits its wait=True
+                # transfers before the next step issues; the rest are freed.
                 active_sequence().finalize(runtime._strict_task_groups)
 
         merged = cls(
             body,
-            [arg for runtime in runtimes for arg in runtime._fn_args],
+            fn_args,
             name=name,
             implicit_configure=all(rt._implicit_configure for rt in runtimes),
         )
@@ -614,28 +628,38 @@ class Runtime(DeviceResources, Resolvable):
                     self._seq_fn(*body_args)
                 active.finalize()
 
-        if implicit_configure_device_ref is not None and self._implicit_configure:
-
-            def contains_configuration(block: ir.Block) -> bool:
-                for operation in block.operations:
-                    if operation.name in ("aiex.configure", "aiex.npu.load_pdi"):
-                        return True
-                    for region in operation.regions:
-                        if any(
-                            contains_configuration(nested_block)
-                            for nested_block in region.blocks
-                        ):
-                            return True
-                return False
-
-            if not contains_configuration(entry_block):
-                operations = list(entry_block.operations)
-                with ir.InsertionPoint(entry_block):
-                    load_pdi = npu_load_pdi(device_ref=implicit_configure_device_ref)
-                if operations:
-                    load_pdi.operation.move_before(operations[0])
+        if implicit_configure_device_ref is not None:
+            self.load_pdi_first(entry_block, implicit_configure_device_ref)
 
         self._dedup_runtime_consumers()
+
+    def load_pdi_first(self, entry_block: ir.Block, device_ref: str) -> None:
+        """Load ``device_ref``'s PDI at the start of ``entry_block``, the full-ELF entry's body.
+
+        Nothing is added when this Runtime was made with
+        ``implicit_configure=False`` or the body already configures a device.
+        """
+        if not self._implicit_configure:
+            return
+
+        def contains_configuration(block: ir.Block) -> bool:
+            for operation in block.operations:
+                if operation.name in ("aiex.configure", "aiex.npu.load_pdi"):
+                    return True
+                for region in operation.regions:
+                    if any(
+                        contains_configuration(nested_block)
+                        for nested_block in region.blocks
+                    ):
+                        return True
+            return False
+
+        if not contains_configuration(entry_block):
+            operations = list(entry_block.operations)
+            with ir.InsertionPoint(entry_block):
+                load_pdi = npu_load_pdi(device_ref=device_ref)
+            if operations:
+                load_pdi.operation.move_before(operations[0])
 
     def _dedup_runtime_consumers(self) -> None:
         """Prune duplicate runtime consumer handles on shared ObjectFifos.
