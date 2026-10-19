@@ -148,6 +148,14 @@ def test_two_resolutions_for_different_devices_have_different_keys():
     assert one.design_key() != four.design_key()
 
 
+def test_a_copy_keeps_its_resolution():
+    four = Scale(M=8).resolved(DEV)
+    copy = four.copy()
+    assert copy is not four and copy.resolved(DEV) is copy
+    assert copy.resolved(NPU1Col1()).lanes == 1
+    assert Scale(M=8).copy().resolved(DEV).lanes == 4
+
+
 class Lazy(Scale):
     def resolve(self, dev):
         return self.replace()

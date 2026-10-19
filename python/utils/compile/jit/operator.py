@@ -218,6 +218,12 @@ class Operator:
             new._unresolved = unresolved.replace(**changes) if changes else unresolved
         return new
 
+    def copy(self) -> Self:
+        """Return a fresh instance with every value, still resolved as this one is."""
+        new = self.replace()
+        new._resolved = self._resolved
+        return new
+
     def layout(self) -> Self:
         """Return this operator as its cores see it: the key's parameters and the members."""
         view = object.__new__(type(self))
