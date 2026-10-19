@@ -306,9 +306,13 @@ jobs:
           done
 
       - name: Write report
+        env:
+          # A PR runs on its merge into this base.
+          COMMIT: ${{ github.event.pull_request.base.sha || github.sha }}
         run: |
           python3 utils/kernel_checks/pr_report.py --results results \
             --baselines baselines --out report.md --run-id "$GITHUB_RUN_ID" \
+            --commit "$COMMIT" \
             --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           cat report.md >> "$GITHUB_STEP_SUMMARY"
 

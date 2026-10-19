@@ -26,6 +26,7 @@ from pathlib import Path
 
 MARKER = "<!-- kernel-checks-report -->"
 PAGE = "https://xilinx.github.io/mlir-aie/dashboard/#view=night"
+REPO = "https://github.com/Xilinx/mlir-aie"
 THRESHOLDS = {
     metric: spec
     for metric, spec in json.loads(
@@ -398,7 +399,7 @@ def _coverage(legs: list[Leg]) -> str:
     )
 
 
-def render(legs: list[Leg], run_url: str = "") -> str:
+def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
     failing = sum(len(leg.failures) for leg in legs)
     regressed = sum(len(leg.regressed) for leg in legs)
     compared = any(not leg.uncompared for leg in legs)
@@ -431,6 +432,20 @@ def render(legs: list[Leg], run_url: str = "") -> str:
         lead + " \u00b7 ".join(links),
         "",
     ]
+    nightlies = {
+        leg.baseline_commit["id"]
+        for leg in legs
+        if leg.baseline_commit and leg.baseline_commit.get("id")
+    }
+    if commit and (others := sorted(nightlies - {commit})):
+        ranges = ", ".join(
+            f"[{n[:7]}...{commit[:7]}]({REPO}/compare/{n}...{commit})" for n in others
+        )
+        out += [
+            f"This run is on a different commit than the nightly ({ranges}): "
+            "a change there can move these numbers too, not only the compiler.",
+            "",
+        ]
     if coverage := _coverage(legs):
         out += [coverage, ""]
 
@@ -535,6 +550,9 @@ def main(argv=None) -> int:
     parser.add_argument("--baselines", required=True, type=Path)
     parser.add_argument("--run-url", default="")
     parser.add_argument(
+        "--commit", default="", help="the mlir-aie commit this run is on"
+    )
+    parser.add_argument(
         "--run-id", default="", help="ignore a baseline this run published itself"
     )
     parser.add_argument("--out", type=Path)
@@ -548,7 +566,7 @@ def main(argv=None) -> int:
         if args.results.is_dir()
         else []
     )
-    report = render(legs, args.run_url)
+    report = render(legs, args.run_url, args.commit)
     if args.out:
         args.out.write_text(report)
     else:

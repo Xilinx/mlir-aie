@@ -301,6 +301,19 @@ def test_a_test_that_passed_on_a_retry_is_listed(read_leg, report):
     assert "`perf.py::test_kernel_perf[synthetic/3/i8]` | 1 |" in comment
 
 
+@pytest.mark.parametrize("commit", ["abcdef0123", "fedcba9876"])
+def test_a_run_off_the_nightlys_commit_links_the_range(read_leg, report, commit):
+    nightly = {"id": "abcdef0123", "url": "https://example.com/abcdef0"}
+    leg = read_leg(
+        {"synthetic/1/i8/cycles": ("cycles", 100)},
+        _record({"synthetic/1/i8/cycles": ("cycles", 100)}, commit=nightly),
+    )
+    comment = report.render([leg], commit=commit)
+    link = f"[abcdef0...fedcba9]({report.REPO}/compare/abcdef0123...fedcba9876)"
+    assert (link in comment) is (commit != nightly["id"])
+    assert ("different commit than the nightly" in comment) is (commit != nightly["id"])
+
+
 @pytest.mark.parametrize("published", [False, True])
 def test_cli_writes_report(tmp_path, published):
     results = tmp_path / "results/npu2"
@@ -331,6 +344,8 @@ def test_cli_writes_report(tmp_path, published):
             out,
             "--run-id",
             "current-run",
+            "--commit",
+            "fedcba9876",
         ],
         check=True,
     )
@@ -340,7 +355,9 @@ def test_cli_writes_report(tmp_path, published):
         assert "0 failing, 1 regressed" in text
         assert "Compared with the last nightly on main." in text
         assert "| [abcdef0](https://example.com/abcdef0) |" in text
+        assert "compare/abcdef0123...fedcba9876" in text
     else:
         assert "all passed, not compared with a nightly" in text
         assert "Not compared with a nightly on main" in text
         assert "| no nightly to compare with |" in text
+        assert "compare/" not in text
