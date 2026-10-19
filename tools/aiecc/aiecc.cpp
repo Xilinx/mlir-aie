@@ -2938,7 +2938,8 @@ int main(int argc, char **argv) {
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile,
-                 enableRepeaterScripts && !disableRepeaterScripts});
+                 enableRepeaterScripts && !disableRepeaterScripts,
+                 profileJson});
   // --cut stops the build at the cut point: only the prefix up to the cut
   // edges is produced (as work-dir intermediates) and snapshotted by
   // --checkpoint; the requested final artifacts are NOT built here (the

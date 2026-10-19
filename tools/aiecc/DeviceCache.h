@@ -70,6 +70,7 @@ public:
         "progress",
         "no-progress",
         "profile",
+        "profile-json",
         "verify-each",
         "nthreads",
         "get",

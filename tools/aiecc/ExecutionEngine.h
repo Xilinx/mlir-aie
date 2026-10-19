@@ -241,6 +241,8 @@ struct Engine {
     bool profile = false; // print a per-edge execution-time summary at the end
     // No edge owns its input: the on-failure reproducer reads intermediates.
     bool keepInputs = false;
+    std::string profileJson; // also write the summary here, as JSON
+    bool timesEdges() const { return profile || !profileJson.empty(); }
   };
 
   Options opts;
@@ -621,7 +623,7 @@ struct Engine {
           ++finishedEdges;
           if (opts.verbose)
             logEdgeFinished(s);
-          if (opts.profile) {
+          if (opts.timesEdges()) {
             auto now = std::chrono::steady_clock::now();
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                           now - s.startTime)
@@ -851,6 +853,41 @@ struct Engine {
       llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  total\n",
                                     total, "", "", formatMiB(peak));
     }
+    if (!opts.profileJson.empty())
+      return writeProfileJson(edgeTimings);
+    return mlir::success();
+  }
+
+  mlir::LogicalResult
+  writeProfileJson(llvm::ArrayRef<Scheduler::EdgeCost> edgeTimings) const {
+    auto mib = [](uint64_t bytes) -> llvm::json::Value {
+      if (bytes == 0)
+        return nullptr;
+      return bytes / (1024.0 * 1024.0);
+    };
+    int64_t wallMs = 0;
+    llvm::json::Array edges;
+    for (const Scheduler::EdgeCost &e : edgeTimings) {
+      wallMs = std::max(wallMs, e.endMs);
+      edges.push_back(llvm::json::Object{{"name", e.name},
+                                         {"ms", e.ms},
+                                         {"start_ms", e.endMs - e.ms},
+                                         {"end_ms", e.endMs},
+                                         {"rss_after_mib", mib(e.rssAfter)},
+                                         {"peak_mib", mib(e.peakAfter)}});
+    }
+    std::error_code ec;
+    llvm::raw_fd_ostream os(opts.profileJson, ec, llvm::sys::fs::OF_Text);
+    if (ec) {
+      llvm::errs() << "aiecc: --profile-json: cannot write '"
+                   << opts.profileJson << "': " << ec.message() << "\n";
+      return mlir::failure();
+    }
+    os << llvm::formatv("{0:2}", llvm::json::Value(llvm::json::Object{
+                                     {"version", 1},
+                                     {"wall_ms", wallMs},
+                                     {"edges", std::move(edges)}}))
+       << "\n";
     return mlir::success();
   }
 };

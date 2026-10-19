@@ -39,6 +39,8 @@ _DEFAULT_FILE_MODE = 0o666 & ~_UMASK
 _SYMBOL_PREFIX_STAMP_VERSION = 3
 
 
+AIECC_PROFILE_NAME = "aiecc_profile.json"
+
 SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
 SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
 
@@ -1192,7 +1194,13 @@ def compile_mlir_module(
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
             f.write(mlir_text)
-        _run_aiecc(mlir_file, args, cwd=work_dir, build_link_files=build_link_files)
+        profile = os.path.abspath(os.path.join(work_dir, AIECC_PROFILE_NAME))
+        _run_aiecc(
+            mlir_file,
+            args + [f"--profile-json={profile}"],
+            cwd=work_dir,
+            build_link_files=build_link_files,
+        )
     elif build_link_files is not None:
         raise ValueError("build_link_files requires work_dir.")
     else:
