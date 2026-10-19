@@ -1,0 +1,212 @@
+{
+ "schema": 1,
+ "target": "router",
+ "id": "39195230650",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39195230650",
+ "date": "2026-10-19T03:33:17+00:00",
+ "commit": {
+  "id": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/943cbc47e2da9b0238421c4e30a12a8a858efd0e",
+  "message": "[programming_examples] transposes: add dyn, a runtime-shape strategy [LOW] (#3627)",
+  "timestamp": "2026-10-18T16:01:33Z"
+ },
+ "event": "schedule",
+ "pmode": null,
+ "device": null,
+ "device_raw": null,
+ "provenance": {
+  "commit": "943cbc47e2"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 24,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "npu1": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0141,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 15.023,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 18.01,
+    "unit": "ms"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  },
+  "npu2": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.013,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 15.062,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 24.31,
+    "unit": "ms"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  },
+  "xcvc1902": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0113,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 17.606,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 132.16,
+    "unit": "ms"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  }
+ },
+ "detail": [
+  {
+   "run": "lit",
+   "tests": 2,
+   "failed": []
+  },
+  {
+   "device": "npu1",
+   "run": "properties",
+   "first_seed": 207450000,
+   "seeds": 2000,
+   "failed": []
+  },
+  {
+   "device": "npu1",
+   "run": "hops-on",
+   "first_seed": 207450000,
+   "seeds": 400,
+   "killed": 1909,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "npu1",
+   "run": "hops-off",
+   "first_seed": 207450000,
+   "seeds": 400,
+   "killed": 1901,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "npu2",
+   "run": "properties",
+   "first_seed": 207450000,
+   "seeds": 2000,
+   "failed": []
+  },
+  {
+   "device": "npu2",
+   "run": "hops-on",
+   "first_seed": 207450000,
+   "seeds": 400,
+   "killed": 1890,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "npu2",
+   "run": "hops-off",
+   "first_seed": 207450000,
+   "seeds": 400,
+   "killed": 1882,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "xcvc1902",
+   "run": "properties",
+   "first_seed": 207450000,
+   "seeds": 500,
+   "failed": []
+  },
+  {
+   "device": "xcvc1902",
+   "run": "hops-on",
+   "first_seed": 207450000,
+   "seeds": 100,
+   "killed": 406,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "xcvc1902",
+   "run": "hops-off",
+   "first_seed": 207450000,
+   "seeds": 100,
+   "killed": 405,
+   "survived": 0,
+   "failures": 0
+  }
+ ]
+}
