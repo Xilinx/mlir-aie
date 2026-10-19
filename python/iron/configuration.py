@@ -104,7 +104,9 @@ class DeviceConfiguration(DeviceResources):
             The configuration.
 
         Raises:
-            ValueError: ``module`` holds no ``aie.device``, or several.
+            ValueError: ``module`` holds no ``aie.device``, or several; or the
+                device needs renaming and a symbol inside it has its name,
+                which the rename would rewrite too.
             TypeError: A sequence argument has no NumPy dtype or a dynamic
                 shape, or a scratchpad parameter has no NumPy dtype.
         """
@@ -115,6 +117,12 @@ class DeviceConfiguration(DeviceResources):
                 f"aie.device, not {len(devices)}."
             )
         (device_op,) = devices
+        old = ir.StringAttr(device_op.attributes["sym_name"]).value
+        if old != name and old in ir.SymbolTable(device_op.operation):
+            raise ValueError(
+                f"aie.device @{old} holds a symbol named @{old}; renaming the "
+                f"device to @{name} would rewrite references to that symbol too."
+            )
         with module.context:
             declarations = [
                 op

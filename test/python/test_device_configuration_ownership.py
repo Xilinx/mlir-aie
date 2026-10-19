@@ -661,6 +661,27 @@ aie.device(npu2_1col) @made_elsewhere {
 """
 
 
+SELF_NAMED = """
+aie.device(npu2_1col) @main {
+  %t = aie.tile(0, 2)
+  %s = aie.tile(0, 0)
+  aie.shim_dma_allocation @main (%s, MM2S, 0)
+  aie.runtime_sequence @run(%a: memref<16xi32>) {
+    aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 0 : i64, metadata = @main} : memref<16xi32>
+  }
+}
+"""
+
+
+def test_a_prebuilt_device_is_not_renamed_over_a_symbol_of_its_name():
+    with Context():
+        module = Module.parse(SELF_NAMED)
+        with pytest.raises(ValueError, match="holds a symbol named @main"):
+            DeviceConfiguration.from_module("other", module)
+        (run,) = DeviceConfiguration.from_module("main", module).runtimes
+        assert run.name == "run"
+
+
 def test_a_prebuilt_device_composes_verbatim():
     with Context():
         module = Module.parse(PREBUILT)
