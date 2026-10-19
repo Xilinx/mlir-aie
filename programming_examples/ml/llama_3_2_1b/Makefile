@@ -942,6 +942,9 @@ ${BUILD}/final_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_
 
 chain_persist_grow_mh: ${BUILD}/final_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.xclbin
 
+# Extra test flags, e.g. PERSIST_GROW_ARGS=--synthetic-weights (no data/ needed).
+PERSIST_GROW_ARGS ?=
+
 run_chain_persist_grow_mh: chain_persist_grow_mh
 	cd ${srcdir} && LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PERSIST_GROW=1 \
 		LLAMA_CHAIN_PT=${PT} LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
@@ -949,7 +952,7 @@ run_chain_persist_grow_mh: chain_persist_grow_mh
 		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 test_chain_persist_grow_mh.py \
 		--xclbin ${BUILD}/final_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.xclbin \
 		--instr ${BUILD}/insts_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.bin \
-		-k MLIR_AIE
+		-k MLIR_AIE ${PERSIST_GROW_ARGS}
 
 # ---------- persistent loop with RESIDENT KV (LLAMA_CHAIN_PERSIST_RESIDENT=1) ----------
 # KV cache resident on the attn compute tiles (b_kv); host streams ONLY weights

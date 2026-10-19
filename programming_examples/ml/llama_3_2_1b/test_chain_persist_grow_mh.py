@@ -50,6 +50,7 @@ from aie2_chain_dynscale_mh import (
     derived_sizes,
 )
 from gen_exp_lut import exp_lut
+from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
@@ -71,6 +72,24 @@ PER_KV_HEAD_BYTES = _sizes.PER_KV_HEAD_BYTES
 WEIGHTS_BYTES = _sizes.WEIGHTS_BYTES
 OFF_CS_PERPOS = _sizes.OFF_CS_PERPOS
 DATA_DIR = Path(__file__).parent / "data"
+
+
+def synthetic_lm_weights(seed, rows_per_chunk=8192):
+    """A seeded stand-in for data/'s embed table and final_norm gamma.
+
+    Same shapes, dtypes and per-row INT8 quantization as gen_llama_data.py
+    writes; the distributions follow Llama 3.2 1B's (embed std ~0.022, gamma
+    ~N(2.35, 0.28)). Built in row chunks: the full fp32 table would be 1 GB.
+    """
+    rng = np.random.default_rng(seed)
+    embed_i8 = np.empty((VOCAB, D), np.int8)
+    embed_sc = np.empty(VOCAB, np.float32)
+    for r0 in range(0, VOCAB, rows_per_chunk):
+        r1 = min(r0 + rows_per_chunk, VOCAB)
+        rows = rng.normal(0.0, 0.022, size=(r1 - r0, D)).astype(np.float32)
+        embed_i8[r0:r1], embed_sc[r0:r1] = quant_int8_perchan_absmax(rows)
+    gamma = rng.normal(2.35, 0.28, size=D).astype(bfloat16)
+    return embed_i8, embed_sc, gamma
 
 
 def pack_lmw(embed_i8, embed_sc, gamma):
@@ -239,13 +258,23 @@ def main():
     p.add_argument("--time", action="store_true", help="measure per-token device time")
     p.add_argument("--n-iters", type=int, default=1)
     p.add_argument("--n-warmup", type=int, default=0)
+    p.add_argument(
+        "--synthetic-weights",
+        action="store_true",
+        help="use a seeded synthetic embed table + final_norm (same layout as data/) "
+        "instead of the real Llama weights; the oracle runs on the same table",
+    )
     opts = p.parse_args()
     fseed = opts.seed
 
     assert VOCAB == VOCAB_SIZE and D == EMB_DIM
-    print(f"loading embed/final_norm from {DATA_DIR} ...", flush=True)
-    embed_i8, embed_sc = _load_qw(DATA_DIR, "embed", (VOCAB, D))
-    gamma = _load_bf16(DATA_DIR, "final_norm", (D,))
+    if opts.synthetic_weights:
+        print(f"building synthetic embed/final_norm (seed {fseed}) ...", flush=True)
+        embed_i8, embed_sc, gamma = synthetic_lm_weights(fseed)
+    else:
+        print(f"loading embed/final_norm from {DATA_DIR} ...", flush=True)
+        embed_i8, embed_sc = _load_qw(DATA_DIR, "embed", (VOCAB, D))
+        gamma = _load_bf16(DATA_DIR, "final_norm", (D,))
     print("packing lm_head weights (262 MB) ...", flush=True)
     lmw = pack_lmw(embed_i8, embed_sc, gamma)
 
