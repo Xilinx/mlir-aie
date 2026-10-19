@@ -18,26 +18,12 @@ import struct
 import sys
 
 import aie.iron as iron
+import aie_fp
 import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie2_rmsnorm_int8_dyn import ACT_SCALE_IN, build
 from llama_npu import add_artifact_args, design_kernel
 from ml_dtypes import bfloat16
-from test_rmsnorm_int8 import round_to_i8, sw_invsqrt
-
-
-def sw_recip(a: float | np.float32) -> float:
-    """Bit-exact mirror of the kernel sw_recip (NR over magic-constant init)."""
-    a32 = np.float32(a)
-    bits = a32.view(np.int32)
-    new_bits = np.int32(np.uint32(0x7EF477D5)) - bits
-    x = new_bits.view(np.float32)
-    two = np.float32(2.0)
-    x = np.float32(x * (two - a32 * x))
-    x = np.float32(x * (two - a32 * x))
-    x = np.float32(x * (two - a32 * x))
-    x = np.float32(x * (two - a32 * x))
-    return float(x)
 
 
 def numpy_rmsnorm_int8_dyn(
@@ -54,7 +40,7 @@ def numpy_rmsnorm_int8_dyn(
         * np.float32(act_scale_in)
         / np.float32(len(x_i8))
     )
-    inv_rms = sw_invsqrt(np.float32(var + np.float32(eps)))
+    inv_rms = aie_fp.sw_invsqrt(aie_fp.aie_add(var, np.float32(eps)))
     pre = np.float32(np.float32(act_scale_in) * np.float32(inv_rms))
 
     g_f = gamma_bf16.astype(np.float32)
@@ -65,12 +51,12 @@ def numpy_rmsnorm_int8_dyn(
     if absmax < 1e-12:
         absmax = 1e-12
     scale_dyn = np.float32(absmax * np.float32(1.0 / 127.0))
-    inv_dyn = np.float32(sw_recip(scale_dyn))
+    inv_dyn = aie_fp.sw_recip(scale_dyn)
     combined = np.float32(pre * inv_dyn)
 
     # Pass B: recompute (matches the kernel's two-pass-no-intermediate).
     out_f = (x_f * combined * g_f).astype(np.float32)
-    y_i8 = round_to_i8(out_f)
+    y_i8 = aie_fp.round_to_i8(out_f)
     return y_i8, float(scale_dyn)
 
 

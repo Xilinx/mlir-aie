@@ -18,6 +18,7 @@ Run (compiles the design, or reuses its JIT cache entry):
 from __future__ import annotations
 
 import argparse
+import struct
 import sys
 
 import aie.iron as iron
@@ -76,7 +77,7 @@ from aie2_layer_mh import (
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
 from llama_npu import add_artifact_args, design_kernel
-from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
+from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from test_flowkv import EXP_QUANT_SCALE
 
 
@@ -277,10 +278,6 @@ def pack_blobs(layer):
 
 
 def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
-    import struct
-
-    from numpy_layer_mh import requant
-
     rng = np.random.default_rng(seed)
     layer = gen_layer_mh(rng)
     layer["lut_exp"] = lut_exp
@@ -366,10 +363,7 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
     y_dev = out_full[:D]
     dev_scale = struct.unpack("<f", out_full[D : D + 4].tobytes())[0]
 
-    # Read the device-owned cache back (drained over kv_t) and verify the
-    # appended slot P: int8 K/V body byte-exact, per-slot scale <=1 ULP
-    # (scalar-fp32 sw_recip/absmax floor, Bug 11c). This proves the on-chip
-    # k_proj/v_proj/rope_k/quant/append matched the numpy oracle.
+    # The appended slot P (body and per-slot scale) must match byte for byte.
     kv_t.to("cpu")
     kv_dev = kv_t.numpy()
     append_fails = 0
@@ -384,29 +378,19 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
         ]
         kb_ref = kcaches_ref[h][P * HEAD_D : (P + 1) * HEAD_D]
         vb_ref = vcaches_ref[h][P * HEAD_D : (P + 1) * HEAD_D]
-        ks_dev = struct.unpack(
-            "<f", kv_dev[k_off + P * 4 : k_off + P * 4 + 4].tobytes()
-        )[0]
-        vs_dev = struct.unpack(
-            "<f", kv_dev[v_off + P * 4 : v_off + P * 4 + 4].tobytes()
-        )[0]
-        # Scale: relative tol. The append body is computed with the device's
-        # own scale, so a tiny scale diff (scalar-fp32 absmax/sw_recip floor)
-        # can flip a handful of body LSBs -- allow <=1 LSB body + 1e-3 rel scale.
-        ks_rel = abs(ks_dev - float(k_slot_ref[h, P])) / max(
-            float(k_slot_ref[h, P]), 1e-12
-        )
-        vs_rel = abs(vs_dev - float(v_slot_ref[h, P])) / max(
-            float(v_slot_ref[h, P]), 1e-12
-        )
+        ks_dev = kv_dev[k_off + P * 4 : k_off + P * 4 + 4].tobytes()
+        vs_dev = kv_dev[v_off + P * 4 : v_off + P * 4 + 4].tobytes()
         kd = int(np.abs(kb.astype(np.int32) - kb_ref.astype(np.int32)).max())
         vd = int(np.abs(vb.astype(np.int32) - vb_ref.astype(np.int32)).max())
-        if not (kd <= 1 and vd <= 1 and ks_rel < 1e-3 and vs_rel < 1e-3):
+        scales_match = ks_dev == np.float32(k_slot_ref[h, P]).tobytes() and (
+            vs_dev == np.float32(v_slot_ref[h, P]).tobytes()
+        )
+        if kd or vd or not scales_match:
             append_fails += 1
             if append_fails <= 2:
                 print(
                     f"  [append h{h}] kbody max|d|={kd} vbody max|d|={vd} "
-                    f"ks_rel={ks_rel:.2e} vs_rel={vs_rel:.2e}"
+                    f"scales_match={scales_match}"
                 )
 
     diff = y_dev.astype(np.int32) - y_ref.astype(np.int32)
@@ -416,31 +400,9 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
         "<f", np.float32(xo_scale)
     )
 
-    # Residual path is byte-exact; per-slot KV attention is NOT: varying K
-    # slot-scales make the device's fp32 score ~1 ULP off numpy's on a few
-    # positions (Peano fp32 mul isn't IEEE-identical), flipping an exp-LUT
-    # bucket and shifting attention by <=2 LSB -- amplified by two
-    # downstream whole-vector absmax requants (af-concat, residual
-    # rescale-add) to a ~4 LSB body diff / few e-3 scale diff. Proven
-    # quality-neutral: bench_quality_mh.py --residual-dyn --attn-lut
-    # (device-faithful) == --residual-dyn (fp32 golden), both 15/20, same
-    # prompts -- that comparison is the AUTHORITATIVE quality gate; this
-    # unit tolerance just bounds the per-element amplification.
-    BODY_TOL = 5  # LSB
-    # Each on-chip self-calibrated scale (KV append k/v, silu_out, o_act,
-    # sv_out) adds a scalar-fp32 absmax/sw_recip floor vs numpy's exact value,
-    # so the benign per-slot-KV boundary noise compounds: the residual scale
-    # drifts up to ~1.3e-2 on the one boundary seed (seed 1) with all four
-    # self-cal scales on-chip. Bodies bit-exact on the other seeds; this only
-    # bounds the downstream amplification. AUTHORITATIVE gate = the bench.
-    SCALE_REL_TOL = 1.5e-2
-    scale_ok = scale_match or (
-        abs(dev_scale - float(xo_scale)) <= SCALE_REL_TOL * abs(float(xo_scale))
-    )
-    if max_abs <= BODY_TOL and scale_ok and append_fails == 0:
-        tag = "BIT-EXACT" if (n_mismatch == 0 and scale_match) else "PASS(tol)"
+    if n_mismatch == 0 and scale_match and append_fails == 0:
         print(
-            f"seed {seed}: {tag}  (mismatch={n_mismatch}/{D} max|d|={max_abs} "
+            f"seed {seed}: BIT-EXACT  (mismatch={n_mismatch}/{D} max|d|={max_abs} "
             f"sat={int((y_ref==127).sum()+(y_ref==-128).sum())}/{D} "
             f"scale={dev_scale:.10g}  append=OK[{N_HEADS_KV}/{N_HEADS_KV}])"
         )
@@ -475,7 +437,7 @@ def main():
         fails += run_one_seed(s, opts, lut_exp, lut_silu, npu_kernel) != 0
     print(
         f"\nlayer_mh: {len(seeds) - fails}/{len(seeds)} seeds PASS "
-        f"(self-cal scales on-chip; attention within <=5 LSB tol)"
+        f"(self-cal scales on-chip; byte-exact)"
     )
     return 0 if fails == 0 else 1
 

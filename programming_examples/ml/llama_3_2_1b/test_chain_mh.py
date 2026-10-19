@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import struct
 import sys
 
 import aie.iron as iron
@@ -58,7 +59,7 @@ from aie2_chain_dynscale_mh import (
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
 from llama_npu import add_artifact_args, design_kernel
-from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
+from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from test_flowkv import EXP_QUANT_SCALE
 from test_layer_mh import (
     af_scales_bytes,
@@ -235,10 +236,6 @@ def pack_blobs(layers, weights_bytes=WEIGHTS_BYTES):
 
 
 def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
-    import struct
-
-    from numpy_layer_mh import requant
-
     rng = np.random.default_rng(seed)
 
     # x is N-independent: generate before per-layer fixtures. Per-token
@@ -327,23 +324,14 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
     y_dev = out_full[:D]
     dev_scale = struct.unpack("<f", out_full[D : D + 4].tobytes())[0]
 
-    # Verify the device-owned cache (drained over kv_t): each layer's appended
-    # slot P, K/V body byte-exact + per-slot scale <=1e-3 rel, every KV head.
+    # Each layer's appended slot P (body and per-slot scale) must match byte for
+    # byte, every KV head.
     kv_t.to("cpu")
     kv_dev = kv_t.numpy()
     append_fails = 0
     append_fails_per_layer = [0] * N_LAYERS
-    # The appended slot inherits upstream residual/attention drift: layer L's
-    # k_proj sees h1 derived from L-1's output, so the append body/scale diff
-    # grows with depth (same benign per-slot-KV noise, compounded). Layer 0's
-    # append is exact; deeper layers tolerate proportional drift. Measured on
-    # the boundary seed (seed 1): body drifts ~2 LSB/layer, per-slot scale ~1%/
-    # layer -- the SAME compounding rate the body/scale residual gates use
-    # (BODY_TOL=4+3*N, SCALE_REL_TOL=1.2e-2*N). Tolerate proportionally.
     for L in range(N_LAYERS):
         base = L * PER_LAYER_KV
-        kd_tol = 2 * (L + 1)
-        ks_tol = 1.2e-2 * (L + 1)
         for h in range(N_HEADS_KV):
             tu = base + h * PER_KV_HEAD_BYTES
             k_off = tu + T_USED_BYTES
@@ -366,28 +354,18 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
                     - vref[L][h][P * HEAD_D : (P + 1) * HEAD_D].astype(np.int32)
                 ).max()
             )
-            ks_dev = struct.unpack(
-                "<f", kv_dev[k_off + P * 4 : k_off + P * 4 + 4].tobytes()
-            )[0]
-            vs_dev = struct.unpack(
-                "<f", kv_dev[v_off + P * 4 : v_off + P * 4 + 4].tobytes()
-            )[0]
-            ks_rel = abs(ks_dev - float(ksref[L][h, P])) / max(
-                float(ksref[L][h, P]), 1e-12
+            ks_dev = kv_dev[k_off + P * 4 : k_off + P * 4 + 4].tobytes()
+            vs_dev = kv_dev[v_off + P * 4 : v_off + P * 4 + 4].tobytes()
+            scales_match = ks_dev == np.float32(ksref[L][h, P]).tobytes() and (
+                vs_dev == np.float32(vsref[L][h, P]).tobytes()
             )
-            vs_rel = abs(vs_dev - float(vsref[L][h, P])) / max(
-                float(vsref[L][h, P]), 1e-12
-            )
-            if not (
-                kd <= kd_tol and vd <= kd_tol and ks_rel < ks_tol and vs_rel < ks_tol
-            ):
+            if kd or vd or not scales_match:
                 append_fails += 1
                 append_fails_per_layer[L] += 1
                 if os.environ.get("LLAMA_APPEND_DIAG"):
                     print(
                         f"    L{L} h{h}: kd={kd} vd={vd} "
-                        f"ks_rel={ks_rel:.2e} vs_rel={vs_rel:.2e} "
-                        f"(kd_tol={kd_tol} ks_tol={ks_tol:.2e})"
+                        f"scales_match={scales_match}"
                     )
     if append_fails:
         print(f"  append_fails_per_layer={append_fails_per_layer}")
@@ -399,26 +377,10 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
         "<f", np.float32(xo_scale)
     )
 
-    # Per-slot KV attention is NOT byte-exact (Peano fp32 mul ~1 ULP on the
-    # score, flipping an exp-LUT bucket; benign, proven quality-neutral via
-    # bench_quality_mh.py --attn-lut). Over N chained layers this <=1-LSB-per-
-    # layer drift COMPOUNDS (each layer's attention feeds the next rmsnorm), so
-    # the body diff and the per-token residual scale grow roughly linearly in
-    # N. The tolerance therefore scales with N_LAYERS. NOTE: this unit test
-    # gates the residual/dataflow PLUMBING (which is byte-exact -- seeds hit
-    # mismatch=0 when their draws avoid bucket edges); the AUTHORITATIVE
-    # attention-quality gate is bench_quality_mh.py --residual-dyn --attn-lut
-    # (== fp32-softmax golden, 15/20, same prompts).
-    BODY_TOL = 4 + 3 * N_LAYERS
-    SCALE_REL_TOL = 1.2e-2 * max(1, N_LAYERS)
-    scale_ok = scale_match or (
-        abs(dev_scale - float(xo_scale)) <= SCALE_REL_TOL * abs(float(xo_scale))
-    )
-    if max_abs <= BODY_TOL and scale_ok and append_fails == 0:
-        tag = "BIT-EXACT" if (n_mismatch == 0 and scale_match) else "PASS(tol)"
+    if n_mismatch == 0 and scale_match and append_fails == 0:
         sat = int((y_ref == 127).sum() + (y_ref == -128).sum())
         print(
-            f"seed {seed}: {tag}  (mismatch={n_mismatch}/{D} max|d|={max_abs} "
+            f"seed {seed}: BIT-EXACT  (mismatch={n_mismatch}/{D} max|d|={max_abs} "
             f"sat={sat}/{D} scale={dev_scale:.10g}  "
             f"append=OK[{N_LAYERS * N_HEADS_KV}/{N_LAYERS * N_HEADS_KV}])"
         )
@@ -453,7 +415,7 @@ def main():
         fails += run_one_seed(s, opts, lut_exp, lut_silu, npu_kernel) != 0
     print(
         f"\nchain_mh: {len(seeds) - fails}/{len(seeds)} seeds PASS "
-        f"(residual byte-exact; per-slot KV attention within tol)"
+        f"(residual and KV appends byte-exact)"
     )
     return 0 if fails == 0 else 1
 

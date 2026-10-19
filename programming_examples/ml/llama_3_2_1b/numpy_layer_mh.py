@@ -28,6 +28,7 @@ from __future__ import annotations
 from functools import partial
 from typing import cast
 
+import aie_fp
 import numpy as np
 from aie2_layer_mh import (
     ACT_SCALE,
@@ -39,8 +40,8 @@ from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
 from ml_dtypes import bfloat16
-from test_flowkv import EXP_QUANT_SCALE, numpy_attention
-from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn, sw_recip
+from test_flowkv import EXP_QUANT_SCALE, numpy_attention, quant_shifted
+from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 from test_rope_int8 import numpy_rope_dyn
 from test_silu_mul_int8 import numpy_silu_mul
 
@@ -57,9 +58,7 @@ T = 128
 
 
 def requant(fp, inv):
-    s = fp * np.float32(inv)
-    r = np.where(s >= 0, np.floor(s + np.float32(0.5)), np.ceil(s - np.float32(0.5)))
-    return r.clip(-128, 127).astype(np.int8)
+    return aie_fp.round_to_i8(np.asarray(fp, np.float32) * np.float32(inv))
 
 
 def _dyn_scale(fp):
@@ -120,8 +119,6 @@ def compute_sv_fp(qr, kcache, vcache, head_dim, t, q_scale, k_scale, v_scale, lu
     """Replicate numpy_attention's fp32 sv computation up to the final
     (* inv_out_scale + round) — returns the unrounded fp32 sv vector so
     the caller can derive sv_out_scale = max(|sv|)/127."""
-    from test_flowkv import quant_shifted, sw_recip
-
     qs = np.float32(q_scale)
     ks = np.float32(k_scale)
     inv_sqrt = np.float32(0.125)
@@ -130,18 +127,18 @@ def compute_sv_fp(qr, kcache, vcache, head_dim, t, q_scale, k_scale, v_scale, lu
     dots = k_mat @ qr.astype(np.int32)
     scores = dots.astype(np.float32) * qk_scale
     max_s = np.float32(scores.max())
-    shifted = (scores - max_s).astype(np.float32)
+    shifted = aie_fp.aie_add(scores, -max_s)
     q = quant_shifted(shifted)
     exp_v = lut[q + 128].astype(np.float32)
     sum_e = np.float32(0.0)
     for i in range(t):
-        sum_e = (sum_e + exp_v[i]).astype(np.float32)
-    inv_sum = sw_recip(sum_e)
+        sum_e = aie_fp.aie_add(sum_e, exp_v[i])
+    inv_sum = aie_fp.sw_recip(sum_e)
     probs = (exp_v * inv_sum).astype(np.float32)
     v_mat = vcache.astype(np.int32).reshape(t, head_dim).astype(np.float32)
     acc = np.zeros(head_dim, dtype=np.float32)
     for i in range(t):
-        acc = (acc + (probs[i] * v_mat[i])).astype(np.float32)
+        acc = aie_fp.aie_add(acc, probs[i] * v_mat[i])
     return (acc * np.float32(v_scale)).astype(np.float32)
 
 
@@ -166,8 +163,6 @@ def numpy_attention_perslot_lut(
       sv[j]   += (lut_exp*inv_sum) * v_slot[i] * v[i,j]    (strict fp32)
     q_i8: (head_dim,); k_i8/v_i8: (t*head_dim,); *_slot_scales: (>=t,).
     """
-    from test_flowkv import quant_shifted, round_to_i8, sw_recip
-
     qs = np.float32(q_scale)
     inv_sqrt = np.float32(0.125)
 
@@ -181,14 +176,14 @@ def numpy_attention_perslot_lut(
     scores = (dots.astype(np.float32) * qk).astype(np.float32)
 
     max_s = np.float32(scores.max())
-    shifted = (scores - max_s).astype(np.float32)
+    shifted = aie_fp.aie_add(scores, -max_s)
     q = quant_shifted(shifted)
     exp_v = lut[q + 128].astype(np.float32)
 
     sum_e = np.float32(0.0)
     for i in range(t):
-        sum_e = (sum_e + exp_v[i]).astype(np.float32)
-    inv_sum = sw_recip(sum_e)
+        sum_e = aie_fp.aie_add(sum_e, exp_v[i])
+    inv_sum = aie_fp.sw_recip(sum_e)
     probs = (exp_v * inv_sum).astype(np.float32)
 
     # sv: kernel accumulates acc[j] += p[i] * v_slot[i] * v[i,j], strictly
@@ -197,11 +192,9 @@ def numpy_attention_perslot_lut(
     v_mat = v_i8.astype(np.int32).reshape(t, head_dim).astype(np.float32)
     acc = np.zeros(head_dim, dtype=np.float32)
     for i in range(t):
-        acc = (acc + (probs[i] * vsl[i]).astype(np.float32) * v_mat[i]).astype(
-            np.float32
-        )
+        acc = aie_fp.aie_add(acc, (probs[i] * vsl[i]).astype(np.float32) * v_mat[i])
     out_f = (acc * np.float32(inv_out_scale)).astype(np.float32)
-    return round_to_i8(out_f), acc.astype(np.float32)
+    return aie_fp.round_to_i8(out_f), acc.astype(np.float32)
 
 
 def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
@@ -497,8 +490,8 @@ def numpy_layer_mh_forward(
             x1 = kh[:half].copy()
             x2 = kh[half:].copy()
             out = np.empty(HEAD_DIM, dtype=np.float32)
-            out[:half] = x1 * cosf[:half] - x2 * sinf[:half]
-            out[half:] = x2 * cosf[half:] + x1 * sinf[half:]
+            out[:half] = aie_fp.aie_add(x1 * cosf[:half], -(x2 * sinf[:half]))
+            out[half:] = aie_fp.aie_add(x2 * cosf[half:], x1 * sinf[half:])
             k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM] = out
         # Per-slot, not per-head-scalar (see aie2_layer_mh.py's kv-per-head
         # comment). Lazily created; (N_HEADS_KV, T).
@@ -515,17 +508,17 @@ def numpy_layer_mh_forward(
         for h in range(N_HEADS_KV):
             kh = k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM]
             vh = v_fp[h * HEAD_DIM : (h + 1) * HEAD_DIM]
-            ks = float(np.maximum(np.abs(kh).max(), 1e-12)) / 127.0
-            vs = float(np.maximum(np.abs(vh).max(), 1e-12)) / 127.0
+            ks = _dyn_scale(kh)
+            vs = _dyn_scale(vh)
             k_scales[h] = np.float32(ks)
             v_scales[h] = np.float32(vs)
             k_scales_slot[h, position] = np.float32(ks)
             v_scales_slot[h, position] = np.float32(vs)
             kcaches[h][position * HEAD_DIM : (position + 1) * HEAD_DIM] = requant(
-                kh, np.float32(1.0) / np.float32(ks)
+                kh, aie_fp.sw_recip(ks)
             )
             vcaches[h][position * HEAD_DIM : (position + 1) * HEAD_DIM] = requant(
-                vh, np.float32(1.0) / np.float32(vs)
+                vh, aie_fp.sw_recip(vs)
             )
 
     # 2) q_proj (full Q_DIM=2048)
@@ -541,9 +534,9 @@ def numpy_layer_mh_forward(
     qf = np.zeros(Q_DIM, dtype=np.int8)
     for h in range(N_HEADS_Q):
         slice_h = fp_q_full[h * HEAD_DIM : (h + 1) * HEAD_DIM]
-        s = float(np.maximum(np.abs(slice_h).max(), 1e-12)) / 127.0
+        s = _dyn_scale(slice_h)
         q_out_scales[h] = np.float32(s)
-        q_inv_outs[h] = np.float32(1.0) / np.float32(s)
+        q_inv_outs[h] = aie_fp.sw_recip(s)
         qf[h * HEAD_DIM : (h + 1) * HEAD_DIM] = requant(slice_h, q_inv_outs[h])
 
     # 4) rope (per-head). numpy_rope_dyn reshapes to (n_heads, head_dim) internally.
@@ -594,9 +587,9 @@ def numpy_layer_mh_forward(
                 vsl,
                 1.0,
             )
-            s = float(np.maximum(np.abs(sv_fp_h).max(), 1e-12)) / 127.0
+            s = _dyn_scale(sv_fp_h)
             sv_out_scales[h_q] = np.float32(s)
-            sv_inv_out_scales[h_q] = np.float32(1.0) / np.float32(s)
+            sv_inv_out_scales[h_q] = aie_fp.sw_recip(s)
             sv_i8, _ = attn_fn(
                 q_h,
                 k_slice,
@@ -646,9 +639,17 @@ def numpy_layer_mh_forward(
             for h in range(N_HEADS_Q)
         ]
     )
-    o_act_scale = float(np.maximum(np.abs(af_fp).max(), 1e-12)) / 127.0
-    o_inv_act_scale = float(np.float32(1.0) / np.float32(o_act_scale))
-    af = requant(af_fp, o_inv_act_scale)
+    o_act_scale = float(_dyn_scale(af_fp))
+    o_inv_act_scale = float(aie_fp.sw_recip(o_act_scale))
+    af = np.concatenate(
+        [
+            requant(
+                sv_i8_per_head[h].astype(np.float32),
+                np.float32(sv_out_scales[h]) * np.float32(o_inv_act_scale),
+            )
+            for h in range(N_HEADS_Q)
+        ]
+    )
 
     _cap = layer.get("_cap")
     if _cap is not None:
@@ -665,13 +666,13 @@ def numpy_layer_mh_forward(
         # Rescale-add: fp32 sum of (residual + o_proj), requant to a new
         # per-token residual scale. (Device: o_proj emits dynamic int8+scale,
         # rescale-add kernel reconstructs both and requants.)
-        x1_fp = x_resid_fp + op_fp
+        x1_fp = aie_fp.aie_add(x_resid_fp, op_fp)
         # Scale computed EXACTLY as the device rescale-add kernel:
         # absmax (fp32, 1e-12 floor) * (1.0f/127.0f), inverse via sw_recip.
         # The /127.0-in-float64 form diverges by ~1 ULP and flips dozens of
         # knife-edge requant roundings (matches the dyn-rmsnorm HW mirror).
         x1_scale = _dyn_scale(x1_fp)
-        x1_i8 = requant(x1_fp, np.float32(sw_recip(x1_scale)))
+        x1_i8 = requant(x1_fp, aie_fp.sw_recip(x1_scale))
         h2, act_scale2 = numpy_rmsnorm_int8_dyn(x1_i8, gamma_post, float(x1_scale))
     elif residual_fp32:
         x1 = x_resid_fp + op_fp  # fp32 residual
@@ -700,8 +701,8 @@ def numpy_layer_mh_forward(
         * np.float32(act_scale2)
         * wu_sc.astype(np.float32)
     )
-    up_out_scale = float(np.maximum(np.abs(fp_up).max(), 1e-12)) / 127.0
-    up_inv_out = float(np.float32(1.0) / np.float32(up_out_scale))
+    up_out_scale = float(_dyn_scale(fp_up))
+    up_inv_out = float(aie_fp.sw_recip(up_out_scale))
     uf = requant(fp_up, up_inv_out)
 
     # 11) silu_mul
@@ -709,8 +710,8 @@ def numpy_layer_mh_forward(
     s_gate_fp = lut_silu[gf.astype(np.int32) + 128].astype(np.float32)
     s_up_fp = uf.astype(np.float32) * np.float32(silu_up_scale)
     sf_fp = s_gate_fp * s_up_fp
-    silu_out_scale = float(np.maximum(np.abs(sf_fp).max(), 1e-12)) / 127.0
-    silu_inv_out_scale = float(np.float32(1.0) / np.float32(silu_out_scale))
+    silu_out_scale = float(_dyn_scale(sf_fp))
+    silu_inv_out_scale = float(aie_fp.sw_recip(silu_out_scale))
     sf = numpy_silu_mul(gf, uf, lut_silu, silu_up_scale, silu_inv_out_scale)
 
     if _cap is not None:
@@ -732,10 +733,10 @@ def numpy_layer_mh_forward(
         # flowed through the of_x1 fifo (x1_i8 * x1_scale), NOT the exact
         # pre-quant x1_fp. Mirror that: reconstruct from the quantized x1.
         x1_resid_fp = x1_i8.astype(np.float32) * np.float32(x1_scale)
-        xo_fp = x1_resid_fp + df_fp
+        xo_fp = aie_fp.aie_add(x1_resid_fp, df_fp)
         # Scale computed EXACTLY as the device rescale-add kernel (see add1).
         xo_scale = _dyn_scale(xo_fp)
-        xo_i8 = requant(xo_fp, np.float32(sw_recip(xo_scale)))
+        xo_i8 = requant(xo_fp, aie_fp.sw_recip(xo_scale))
         x_out = (xo_i8, float(xo_scale))  # (int8[D], fp32) per-token residual
     elif residual_fp32:
         df_acc = wd_i8.astype(np.int32) @ sf.astype(np.int32) + bd

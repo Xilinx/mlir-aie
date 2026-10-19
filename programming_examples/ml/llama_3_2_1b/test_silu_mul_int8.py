@@ -19,16 +19,12 @@ import struct
 import sys
 
 import aie.iron as iron
+import aie_fp
 import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie2_silu_mul_int8 import GATE_SCALE, INV_OUT_SCALE, UP_SCALE, build
 from gen_silu_lut import silu_lut
 from llama_npu import add_artifact_args, design_kernel
-
-
-def round_to_i8(v):
-    r = np.where(v >= 0, np.floor(v + 0.5), np.ceil(v - 0.5)).astype(np.int32)
-    return np.clip(r, -128, 127).astype(np.int8)
 
 
 def numpy_silu_mul(gate, up, lut, up_scale, inv_out_scale):
@@ -37,12 +33,10 @@ def numpy_silu_mul(gate, up, lut, up_scale, inv_out_scale):
     s_f = silu_bf.astype(np.float32)
     u_f = up.astype(np.float32) * up_scale
     out_f = s_f * u_f * inv_out_scale
-    return round_to_i8(out_f)
+    return aie_fp.round_to_i8(out_f)
 
 
 def main():
-    from test_rmsnorm_int8_dyn import sw_recip
-
     p = argparse.ArgumentParser()
     add_artifact_args(p)
     p.add_argument("-D", type=int, default=8192)
@@ -95,8 +89,8 @@ def main():
     if selfcal:
         absmax = max(float(np.abs(sf_fp).max()), 1e-12)
         out_scale = np.float32(absmax * np.float32(1.0 / 127.0))
-        inv = np.float32(sw_recip(out_scale))
-        expected = round_to_i8(sf_fp * inv)
+        inv = aie_fp.sw_recip(out_scale)
+        expected = aie_fp.round_to_i8(sf_fp * inv)
         dev_scale = struct.unpack("<f", out_full[D : D + 4].tobytes())[0]
         print(
             f"selfcal: dev_scale={dev_scale:.8g} numpy_out_scale={float(out_scale):.8g} "

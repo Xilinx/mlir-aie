@@ -156,10 +156,7 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
     // scale (the per-slot KV fix). Causal mask: only the first T_used
     // positions. Scale order (q_scale*k_slot[i]) * kInvSqrtHD mirrors the
     // numpy reference (and the per-head predecessor's q_scale*k_scale*
-    // kInvSqrtHD). NOTE: with varying per-slot scales this is NOT byte-exact
-    // vs numpy -- Peano fp32 mul differs by ~1 ULP on a few positions,
-    // flipping an exp-LUT bucket (<=2 LSB on the output). Proven
-    // quality-neutral; see numpy_attention_perslot_lut + test_layer_mh.
+    // kInvSqrtHD).
     // k_body may not be 64-byte aligned (kv_one's prefix/slot layout), so
     // its load is unaligned; q_h is always a multiple of kHD from q_chunk.
     float max_s = -1e30f;

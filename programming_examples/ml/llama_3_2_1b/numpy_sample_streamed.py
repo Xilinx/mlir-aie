@@ -16,6 +16,7 @@ Reuses the xoshiro PRNG, exp LUT, quant_shifted, sw_recip from numpy_sample.
 
 from __future__ import annotations
 
+import aie_fp
 import numpy as np
 from gen_exp_lut import exp_lut
 from numpy_sample import (
@@ -26,7 +27,6 @@ from numpy_sample import (
     xoshiro_seed,
     xoshiro_uniform,
 )
-from test_flowkv import sw_recip
 
 
 def sample_streamed_reference(
@@ -52,7 +52,7 @@ def sample_streamed_reference(
     if lut is None:
         lut = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
 
-    inv_temp = sw_recip(np.float32(temperature))
+    inv_temp = aie_fp.sw_recip(temperature)
     z = (logits * inv_temp).astype(np.float32)
 
     use_topk = 0 < top_k < V

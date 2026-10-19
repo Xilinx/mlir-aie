@@ -256,9 +256,10 @@ def time_decode(npu, buffers, opts):
 # Device-trajectory replay tolerances: the oracle follows the DEVICE's tokens
 # (not its own greedy trajectory) since the token feeds back ON-CHIP. A device
 # token passes if it is the oracle argmax OR a near-tie judged RELATIVE to the
-# logit spread (gap/std): flowkv_mh's ~1-ULP noise accumulates with depth, so
-# an absolute delta calibrated at N=2 is too tight at N=16. A flip within the
-# top cluster is documented quality-neutral; one far down would be real drift.
+# logit spread (gap/std): the vector fp32 multiplies the oracle does not mirror
+# yet (rmsnorm, silu, up_requant) leave rare 1-ULP differences that grow with
+# depth. A flip within the top cluster is quality-neutral; one far down would be
+# real drift.
 TOL_GAP_STD = 0.15  # gap as a fraction of the logit std
 TOL_RANK = 5  # dev_tok must be within the oracle top-K
 
@@ -434,8 +435,7 @@ def main():
     # One throwaway oracle pass (greedy argmax trajectory) just to populate
     # layer["scales"] for pack_blobs; the authoritative per-token check is the
     # device-trajectory replay (greedy argmax on random fixtures is brittle near
-    # a near-tie -- the flowkv ~1-ULP non-bit-exactness can flip it, which is
-    # documented quality-neutral). We don't compare against this trajectory.
+    # a near-tie). We don't compare against this trajectory.
     cur_x, cur_sc = x_i8, res_scale
     for t in range(PT):
         for L in range(N_LAYERS):

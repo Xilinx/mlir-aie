@@ -22,6 +22,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie_fp
 import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie2_flowkv import INV_OUT_SCALE, K_SCALE, Q_SCALE, V_SCALE, build
@@ -32,29 +33,6 @@ from llama_npu import add_artifact_args, design_kernel
 EXP_QUANT_SCALE = 0.05
 
 
-def round_to_i8(v):
-    r = np.where(v >= 0, np.floor(v + 0.5), np.ceil(v - 0.5)).astype(np.int32)
-    return np.clip(r, -128, 127).astype(np.int8)
-
-
-def sw_recip(a: float | np.float32) -> np.float32:
-    """Matches kernel's sw_recip: bit-hack initial guess + 4 NR iters.
-
-    Peano lowers `1.0f / x` on AIE2P to a HW reciprocal approximation
-    (NOT IEEE-correct). The kernel uses this SW reciprocal to converge
-    to IEEE fp32 precision; the numpy reference does the same so both
-    compute byte-identical inv_sum.
-    """
-    a32 = np.float32(a)
-    bits = a32.view(np.int32)
-    new_bits = np.int32(np.uint32(0x7EF477D5)) - bits
-    x = new_bits.view(np.float32)
-    two = np.float32(2.0)
-    for _ in range(4):
-        x = (x * (two - (a32 * x).astype(np.float32))).astype(np.float32)
-    return x
-
-
 def quant_shifted(shifted: np.ndarray) -> np.ndarray:
     """Replicates the kernel's quant_shifted exactly (strict fp32)."""
     # Kernel: kInvExpQuantScale = 1.0f / 0.05f computed in fp32. Numpy
@@ -62,9 +40,8 @@ def quant_shifted(shifted: np.ndarray) -> np.ndarray:
     # match by computing the reciprocal in fp32.
     inv = np.float32(1.0) / np.float32(EXP_QUANT_SCALE)
     v = (shifted.astype(np.float32) * inv).astype(np.float32)
-    q = np.where(
-        v >= 0, np.floor(v + np.float32(0.5)), np.ceil(v - np.float32(0.5))
-    ).astype(np.int32)
+    half = np.where(v >= 0, np.float32(0.5), np.float32(-0.5))
+    q = np.trunc(aie_fp.aie_add(v, half)).astype(np.int32)
     return np.clip(q, -128, 0)
 
 
@@ -88,7 +65,7 @@ def numpy_attention(
     # Kernel finds max via scalar loop with strict > comparison; numpy's
     # .max() uses the same first-occurrence semantics, so this matches.
     max_s = np.float32(scores.max())
-    shifted = (scores - max_s).astype(np.float32)
+    shifted = aie_fp.aie_add(scores, -max_s)
     q = quant_shifted(shifted)
     exp_v = lut[q + 128].astype(np.float32)
 
@@ -97,9 +74,9 @@ def numpy_attention(
     # exact accumulation order.
     sum_e = np.float32(0.0)
     for i in range(t):
-        sum_e = (sum_e + exp_v[i]).astype(np.float32)
+        sum_e = aie_fp.aie_add(sum_e, exp_v[i])
     # Kernel uses sw_recip (NR over bit-hack initial) -- match here.
-    inv_sum = sw_recip(sum_e)
+    inv_sum = aie_fp.sw_recip(sum_e)
     probs = (exp_v * inv_sum).astype(np.float32)
 
     # sv path. The kernel accumulates strictly left-to-right per
@@ -111,12 +88,12 @@ def numpy_attention(
     v_mat = v_i8.astype(np.int32).reshape(t, head_dim).astype(np.float32)
     acc = np.zeros(head_dim, dtype=np.float32)
     for i in range(t):
-        acc = (acc + (probs[i] * v_mat[i])).astype(np.float32)
+        acc = aie_fp.aie_add(acc, probs[i] * v_mat[i])
     # Match kernel's fp32 scale order: (acc * v_scale) * inv_out_scale.
     vs = np.float32(v_scale)
     ios = np.float32(inv_out_scale)
     out_f = ((acc * vs).astype(np.float32) * ios).astype(np.float32)
-    return round_to_i8(out_f)
+    return aie_fp.round_to_i8(out_f)
 
 
 def main():
