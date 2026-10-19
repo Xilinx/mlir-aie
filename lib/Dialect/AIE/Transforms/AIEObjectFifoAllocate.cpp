@@ -1401,7 +1401,8 @@ struct AIEObjectFifoAllocatePass
                   << endpoint.getSymName()
                   << " without the packet header of one of its flows, ids";
       for (RouteOp flow : flows)
-        diag << " " << static_cast<int>(*flow.getPacketId());
+        if (auto flowId = flow.getPacketId())
+          diag << " " << static_cast<int>(*flowId);
       return diag;
     }
     return success();

@@ -136,9 +136,11 @@ class DeviceConfiguration(DeviceResources):
         (device_op,) = devices
         with module.context:
             parameters = []
+            declarations = []
             for op in module.body.operations:
                 if op.operation.name != "aiex.scratchpad_parameter":
                     continue
+                declarations.append(str(op))
                 type_ = ir.TypeAttr(op.attributes["type"]).value
                 dtype = mlir_type_to_np_dtype(type_)
                 if dtype is None:
@@ -179,7 +181,9 @@ class DeviceConfiguration(DeviceResources):
             c for c in NamedDevice.__subclasses__() if c.aie_device == kind
         )
         configuration = cls(name, device_type(), runtimes=runtimes)
-        configuration._prebuilt = str(device_op)
+        # The device's scratchpad reads verify against these module-scope
+        # declarations, so they are kept beside it; only the device is cloned.
+        configuration._prebuilt = "\n".join([*declarations, str(device_op)])
         return configuration
 
     # Device-local resources may belong to only one configuration.
@@ -398,7 +402,7 @@ class DeviceConfiguration(DeviceResources):
         self._owners = owners
         if self._prebuilt is not None:
             prebuilt = ir.Module.parse(self._prebuilt)  # alive while cloned
-            (op,) = prebuilt.body.operations
+            (op,) = [o for o in prebuilt.body.operations if isinstance(o, DeviceOp)]
             _rename_device(op.clone(ip=ir.InsertionPoint.current), device_name)
             return
         self._name_unnamed()

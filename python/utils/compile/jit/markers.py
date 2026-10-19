@@ -56,7 +56,8 @@ from ml_dtypes import bfloat16
 
 from ....helpers.taplib._per_call import PerCall
 from ... import bfp
-from .params import Member, Param, _text, resolve
+from .params import Member, _text, resolve
+from .params import Param as _Param
 
 T = TypeVar("T")
 
@@ -121,7 +122,7 @@ class _Operand(Member):
         per: Any = None,
         depth: int = 2,
         replicate: bool = False,
-        when: Param | None = None,
+        when: _Param | None = None,
         like: _Operand | None = None,
     ):
         if replicate and per is None:
@@ -146,7 +147,7 @@ class _Operand(Member):
     @property
     def dtype(self):
         dtype = self.declared_dtype
-        return getattr(self.op, dtype.name) if isinstance(dtype, Param) else dtype
+        return getattr(self.op, dtype.name) if isinstance(dtype, _Param) else dtype
 
     @property
     def elements(self) -> int:

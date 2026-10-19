@@ -583,6 +583,22 @@ aie.device(npu2_1col) @main {
     assert "device_ref = @other" in composed and "@main" not in composed
 
 
+def test_a_prebuilt_device_may_read_its_scratchpad_parameters():
+    text = PREBUILT.replace(
+        "    aie.end",
+        "    %v = aiex.read_scratchpad_parameter @count : i32\n    aie.end",
+    )
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    composed = Program.compose([built, prebuilt], entry=run).resolve_program()
+    assert composed.operation.verify()
+    text = str(composed)
+    assert text.count("aiex.scratchpad_parameter @count") == 1
+    assert "aiex.read_scratchpad_parameter @count" in text
+
+
 @pytest.mark.parametrize(
     "text", ["", PREBUILT + PREBUILT.split("\n", 2)[2].replace("made_", "built_")]
 )
