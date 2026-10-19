@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# REQUIRES: peano
+# REQUIRES: peano, system-linux
 # RUN: %pytest %s
 """The NPU lock between real processes and open files, without an NPU.
 
