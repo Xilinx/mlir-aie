@@ -127,7 +127,7 @@ class DeviceResources:
                         program.tile.is_same_tile(tile)
                         for program in self._resolved_tile_dmas
                     ):
-                        raise IronRuntimeError(
+                        raise ValueError(
                             f"{type(flow).__name__} {flow.name!r} writes the "
                             f"TileControl of {tile}, which runs a TileDma program: "
                             "a dispatch would rewrite the DMA that program "

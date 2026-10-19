@@ -34,7 +34,6 @@ from aie.iron import (
     sync_parameters,
 )
 from aie.iron.device import NPU2Col1, Tile
-from aie.iron.runtime.runtime import IronRuntimeError
 from aie.utils.compile.jit.context import compile_context
 
 Tensor = np.ndarray[(4,), np.dtype[np.int32]]
@@ -530,7 +529,7 @@ def test_a_control_route_into_a_tile_with_a_static_program_is_refused(one_runtim
     routed = static if one_runtime else runtime("seq_1")
     routed.add_flow(control_route(mem))
     with pytest.raises(
-        IronRuntimeError,
+        ValueError,
         match=r"PacketFlow 'packetflow0' writes the TileControl of "
         r"Tile<MemTile>\(0, 1\), which runs a TileDma program",
     ):
