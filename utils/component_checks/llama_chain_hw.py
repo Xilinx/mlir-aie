@@ -36,11 +36,15 @@ programming_examples/ml/llama_3_2_1b, with
 """
 
 import argparse
+import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
+import time
 
 N_LAYERS = 16
 PT = 4
@@ -61,6 +65,7 @@ _PER_TOKEN_RE = re.compile(r"per-token:\s+([\d.]+) ms\s+\(([\d.]+) tok/s\)")
 _RATIO_RE = re.compile(r"ratio:\s+([\d.]+)x\s+->\s+(\S+)")
 _XCLBIN = f"build/final_chain_persist_grow_N{N_LAYERS}_PT{PT}.xclbin"
 _INSTR = f"build/insts_chain_persist_grow_N{N_LAYERS}_PT{PT}.bin"
+_PROJ_DIR = f"build/aie_chain_persist_grow_N{N_LAYERS}_PT{PT}.mlir.prj"
 
 # The env this design's own Makefile sets for this target (see its
 # run_chain_persist_grow_mh recipe); the build and the test script both read
@@ -107,8 +112,92 @@ def ensure_data(
     return _run(args, env)
 
 
-def build(env: dict) -> subprocess.CompletedProcess:
-    return _run(["make", f"CHAIN_MH_N={N_LAYERS}", "chain_persist_grow_mh"], env)
+def _build_rss(env: dict) -> tuple[subprocess.CompletedProcess, float]:
+    """Like ``build``, plus the process's own peak RSS in MB.
+
+    Uses os.wait4 (not resource.getrusage(RUSAGE_CHILDREN), a running max
+    across every reaped child), so this call's peak RSS is its own -- see
+    sa_placer_hw.py's _mobilenet_rss, which this mirrors.
+    """
+    proc = subprocess.Popen(
+        ["make", f"CHAIN_MH_N={N_LAYERS}", "chain_persist_grow_mh"],
+        cwd=_LLAMA_DIR,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    out = proc.stdout.read() if proc.stdout else ""
+    _, status, ru = os.wait4(proc.pid, 0)
+    result = subprocess.CompletedProcess(
+        proc.args, os.waitstatus_to_exitcode(status), out, ""
+    )
+    return result, ru.ru_maxrss / 1024.0
+
+
+def _clean_build_outputs() -> None:
+    """Remove this config's generated MLIR/project/xclbin/instr.
+
+    Unlike mobilenet's CLI (which takes a fresh --xclbin-path/--insts-path
+    per run), this design's Makefile always writes into the persistent
+    build/ dir, so a fresh NPU_CACHE_HOME alone wouldn't force Make to
+    recompile -- it would just see the existing xclbin as up to date.
+    """
+    for rel in (
+        _XCLBIN,
+        _INSTR,
+        f"build/aie_chain_persist_grow_N{N_LAYERS}_PT{PT}.mlir",
+    ):
+        path = os.path.join(_LLAMA_DIR, rel)
+        if os.path.exists(path):
+            os.remove(path)
+    proj = os.path.join(_LLAMA_DIR, _PROJ_DIR)
+    if os.path.isdir(proj):
+        shutil.rmtree(proj)
+
+
+def compile_cold_warm(env: dict) -> dict:
+    """Compile twice into one fresh NPU_CACHE_HOME: cold, then warm.
+
+    Cold: kernel objects built from scratch, same as any first-time compile.
+    Warm: immediately after, same cache_dir, so it reuses the cold compile's
+    kernel objects -- the Makefile's own output is cleaned before each
+    compile so both runs go through the full pipeline (placement + xclbin
+    assembly), not just a Make no-op. See sa_placer_hw.py's run_one for the
+    mobilenet analogue.
+    """
+    cache_dir = tempfile.mkdtemp(prefix="component-checks-llama-chain-")
+    run_env = dict(env, NPU_CACHE_HOME=cache_dir)
+    try:
+        _clean_build_outputs()
+        start = time.perf_counter()
+        built_cold, rss_cold = _build_rss(run_env)
+        compile_s = time.perf_counter() - start
+
+        _clean_build_outputs()
+        start = time.perf_counter()
+        built_warm, rss_warm = _build_rss(run_env)
+        compile_s_warm = time.perf_counter() - start
+    finally:
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
+    return {
+        "built": built_warm if built_warm.returncode == 0 else built_cold,
+        "compile_s": round(compile_s, 1) if built_cold.returncode == 0 else None,
+        "compile_peak_rss_mb": (
+            round(rss_cold, 1) if built_cold.returncode == 0 else None
+        ),
+        "compile_s_warm": (
+            round(compile_s_warm, 1) if built_warm.returncode == 0 else None
+        ),
+        "compile_peak_rss_mb_warm": (
+            round(rss_warm, 1) if built_warm.returncode == 0 else None
+        ),
+        "log": built_cold.stdout
+        + built_cold.stderr
+        + built_warm.stdout
+        + built_warm.stderr,
+    }
 
 
 def run_correctness(env: dict) -> subprocess.CompletedProcess:
@@ -162,6 +251,24 @@ def parse_correctness(out: str, returncode: int) -> dict:
     }
 
 
+def artifact_stats() -> dict:
+    """Sizes/counts of the files this build actually produced.
+
+    Per-core ELFs are counted from the project dir rather than the xclbin
+    (which packs them compressed), so `core_elfs_bytes` reflects what Peano
+    + the chess backend generated, not the shipped payload size.
+    """
+    xclbin = os.path.join(_LLAMA_DIR, _XCLBIN)
+    instr = os.path.join(_LLAMA_DIR, _INSTR)
+    elfs = glob.glob(os.path.join(_LLAMA_DIR, _PROJ_DIR, "**", "*.elf"), recursive=True)
+    return {
+        "xclbin_bytes": os.path.getsize(xclbin) if os.path.exists(xclbin) else None,
+        "instr_bytes": os.path.getsize(instr) if os.path.exists(instr) else None,
+        "n_core_elfs": len(elfs) if elfs else None,
+        "core_elfs_bytes": sum(os.path.getsize(f) for f in elfs) if elfs else None,
+    }
+
+
 def parse_timing(out: str) -> dict:
     per_token = _PER_TOKEN_RE.search(out)
     ratio = _RATIO_RE.search(out)
@@ -173,7 +280,9 @@ def parse_timing(out: str) -> dict:
     }
 
 
-def aggregate(correctness: dict, timing: dict) -> list[dict]:
+def aggregate(
+    correctness: dict, timing: dict, artifacts: dict, compile_stats: dict
+) -> list[dict]:
     case = f"llama/persist_grow/N={N_LAYERS}"
     out = [
         {
@@ -202,6 +311,57 @@ def aggregate(correctness: dict, timing: dict) -> list[dict]:
                 "range": timing["bound"],
             }
         )
+    if artifacts.get("xclbin_bytes") is not None:
+        out.append(
+            {
+                "name": f"{case}/xclbin_bytes",
+                "unit": "bytes",
+                "value": artifacts["xclbin_bytes"],
+            }
+        )
+    if artifacts.get("instr_bytes") is not None:
+        out.append(
+            {
+                "name": f"{case}/instr_bytes",
+                "unit": "bytes",
+                "value": artifacts["instr_bytes"],
+            }
+        )
+    if artifacts.get("n_core_elfs") is not None:
+        out.append(
+            {
+                "name": f"{case}/n_core_elfs",
+                "unit": "elfs",
+                "value": artifacts["n_core_elfs"],
+            }
+        )
+    if artifacts.get("core_elfs_bytes") is not None:
+        out.append(
+            {
+                "name": f"{case}/core_elfs_bytes",
+                "unit": "bytes",
+                "value": artifacts["core_elfs_bytes"],
+                "range": f"across {artifacts['n_core_elfs']} ELFs",
+            }
+        )
+    # Reuses sa_placer_hw.py's metric names (compile_s, compile_peak_rss_mb,
+    # ...) so the dashboard's existing labels/tooltips/thresholds for them
+    # apply here with no new Layer-3 vocabulary.
+    for metric in (
+        "compile_s",
+        "compile_peak_rss_mb",
+        "compile_s_warm",
+        "compile_peak_rss_mb_warm",
+    ):
+        if compile_stats.get(metric) is not None:
+            unit = "s" if metric.startswith("compile_s") else "MB"
+            out.append(
+                {
+                    "name": f"{case}/{metric}",
+                    "unit": unit,
+                    "value": compile_stats[metric],
+                }
+            )
     return out
 
 
@@ -249,13 +409,16 @@ def main(argv=None) -> int:
 
     env = _env(args.weights, args.tokenizer)
     gen = ensure_data(args.weights, args.tokenizer, env)
-    built = build(env)
+    compiled = compile_cold_warm(env)
+    built = compiled["built"]
     correctness = parse_correctness("", 1)
     timing = parse_timing("")
+    artifacts: dict = {}
     log = (gen.stdout + gen.stderr) if gen else ""
-    log += built.stdout + built.stderr
+    log += compiled["log"]
 
     if built.returncode == 0:
+        artifacts = artifact_stats()
         ran = run_correctness(env)
         correctness = parse_correctness(ran.stdout + ran.stderr, ran.returncode)
         log += ran.stdout + ran.stderr
@@ -268,13 +431,21 @@ def main(argv=None) -> int:
     case = f"llama/persist_grow/N={N_LAYERS}"
     failed = [] if correctness["passed"] else [case]
 
-    write(args.out, aggregate(correctness, timing))
+    write(args.out, aggregate(correctness, timing, artifacts, compiled))
     write(
         args.meta,
         {
             **meta,
             "measurement_sane": True,
-            "detail": [{"case": case, **correctness, **timing}],
+            "detail": [
+                {
+                    "case": case,
+                    **correctness,
+                    **timing,
+                    **artifacts,
+                    **{k: v for k, v in compiled.items() if k not in ("built", "log")},
+                }
+            ],
             "failed": failed,
             "exitstatus": 1 if failed else 0,
         },
