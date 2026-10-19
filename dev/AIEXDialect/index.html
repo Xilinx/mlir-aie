@@ -11611,7 +11611,7 @@ transform retargets it to the fifo's <code>aie.objectfifo_rearm_binding</code>.<
 <tr><td><code>direction</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td>DMA Channel direction</td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
-<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose value is non-negative</td></tr>
 <tr><td><code>packet</code></td><td>::xilinx::AIE::PacketInfoAttr</td><td>
     Tuple encoding the type and header of a packet;
   </td></tr>
@@ -11663,6 +11663,16 @@ transform retargets it to the fifo's <code>aie.objectfifo_rearm_binding</code>.<
 <code>aiex.dma_configure_task</code> on that tile and channel. The direction is the
 one the endpoint's route gives it. A shim endpoint with a <code>fifoName</code> is
 instead renamed to the <code>aie.shim_dma_allocation</code> allocation records for it.</p>
+<p>Before the objectFIFO lowering, <code>alloc</code> may also name an <code>aie.objectfifo</code>
+with a shim end. Its far ends then move whole objects through buffer
+descriptors sized by the object, or by the segments of a link's pool, so
+the verifier requires the runtime sequence's static total through the
+fifo to stop at a descriptor boundary of every far end. Several tasks may
+share an object. The check defers wherever that total isn't static: a
+runtime extent or repeat, a looped, branched or forwarded task, a
+<code>dma_memcpy_nd</code> or BD chain through the same fifo, or a
+<code>dma_channel_reset_for</code> of it. It is not a liveness check, and it doesn't
+cover buffer reuse or repeated dispatch.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>  aie.route_endpoint @b_in(%memtile) DMA
 <a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a>  aie.route from @b_shim to [@b_in]
@@ -11681,7 +11691,7 @@ instead renamed to the <code>aie.shim_dma_allocation</code> allocation records f
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>alloc</code></td><td>::mlir::SymbolRefAttr</td><td>symbol reference attribute</td></tr>
 <tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
-<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose value is non-negative</td></tr>
 </table>
 
 <h4 id="operands_7">Operands:<a class="headerlink" href="#operands_7" title="Permanent link">&para;</a></h4>

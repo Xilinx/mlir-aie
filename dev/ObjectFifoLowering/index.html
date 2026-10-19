@@ -4516,8 +4516,9 @@ granularity. The pool keeps one segment.</p>
 <a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>aie.objectfifo.dma_endpoint @drain_all(%t21) drains @out_pool {segments = [@s0, @s1]}
 </code></pre></div>
 <p>Two DMAs fill different segments of one pool, each ordered by its own locks, and
-one DMA drains the whole object. Distribute is the same picture reversed: one
-endpoint fills the whole object and N endpoints each drain one segment.</p>
+one DMA drains the whole object, through one BD per segment with that segment's
+locks. Distribute is the same picture reversed: one endpoint fills the whole
+object and N endpoints each drain one segment.</p>
 <h2 id="the-pipeline">The pipeline<a class="headerlink" href="#the-pipeline" title="Permanent link">&para;</a></h2>
 <p><code>--aie-objectFifo-stateful-transform</code> runs these in order. Its options:
 <code>skip-verify=true</code> drops step 2, and <code>packet-sw-objFifos=true</code> makes every flow
