@@ -1153,10 +1153,8 @@ def build(
 
         # Feedback seed is the layer-0 input format (body+scale, no token),
         # so copy o[:D+4] and zero the pad -- the packed buffer's token
-        # bytes (line 1302's layout) must NOT leak into it. Produces
-        # feedback PT times; seedmux consumes PT-1 (the last token's seed is
-        # produced but unused) -- the proven persist_decode imbalance, safe with
-        # a depth>=2 feedback fifo.
+        # bytes (line 1302's layout) must NOT leak into it. Produces feedback
+        # PT times per dispatch; seedmux consumes all PT (see w_seedmux).
         def w_onestream_persist(
             c_act, c_w, c_out, c_fb, sl, sg, ss, sr, slen, pr, ki, kf
         ):
@@ -1193,6 +1191,11 @@ def build(
                     o[i] = f[i]
                 p_seed.release(1)
                 c_fb.release(1)
+            # The last token's seed has no next token in this dispatch. Left in
+            # the fifo it would feed the next dispatch's token 1 and, with one
+            # more left each dispatch, fill the fifo and hang a later dispatch.
+            c_fb.acquire(1)
+            c_fb.release(1)
 
     PSK = 8192
     ATSK = 16384
