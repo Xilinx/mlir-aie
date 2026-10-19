@@ -237,3 +237,51 @@ module @bds_overcommitted {
     }
   }
 }
+
+// -----
+
+// A shared source has no one header for the shim allocation to carry, so a
+// dma_memcpy_nd on it states one of its flows'.
+module @shared_source_memcpy_without_header {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      // expected-error @+1 {{sends on @host, a source several packet routes share, which has no one header to stamp; it needs a packet header of its own, one of ids 1 2}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @host} : memref<64xi32>
+    }
+  }
+}
+
+// -----
+
+// An aie.dma_bd_packet states the header too, and must name one of the
+// source's flows.
+module @shared_source_bd_packet_wrong_id {
+  aie.device(npu2) {
+    %mt = aie.tile(0, 1)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
+    aie.route_endpoint @scatter(%mt) DMA
+    aie.route_endpoint @a_in(%a) DMA
+    aie.route_endpoint @b_in(%b) DMA
+    aie.route from @scatter to [@a_in] {packet, packet_id = 1 : i8}
+    aie.route from @scatter to [@b_in] {packet, packet_id = 2 : i8}
+    aie.memtile_dma(%mt) {
+      aie.dma_start(MM2S, @scatter, ^bd0, ^end)
+    ^bd0:
+      aie.dma_bd_packet(0, 3)
+      // expected-error @+1 {{sends on @scatter without the packet header of one of its flows, ids 1 2}}
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+    }
+  }
+}
