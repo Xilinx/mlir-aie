@@ -59,7 +59,8 @@
       --ok: #0e8a6d; --ok-soft: #d6efe7; --bad: #c62f3a; --bad-soft: #fbe3e5; --warn: #b26b00; --warn-soft: #fcefd6;
       --none: #c7ccd5; --none-soft: #eceef2;
       --npu1: #1f6fb8; --npu2: #9a3fc4; --grid: rgba(28, 34, 48, 0.08); --band: 0.16;
-      --series-1: #1f6fb8; --series-2: #9a3fc4; --series-3: #0e8a6d; --series-4: #b26b00; --series-5: #c62f3a; --series-6: #5b6475;
+      --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6;
+      --stage-place: #2b221a; --stage-place-ink: #ffffff; --stage-route: #453b33; --stage-route-ink: #ffffff; --stage-lower: #61564d; --stage-lower-ink: #ffffff; --stage-kernels: #7e7269; --stage-kernels-ink: #ffffff; --stage-codegen: #988c83; --stage-codegen-ink: #1c2230; --stage-link: #ab9f95; --stage-link-ink: #1c2230; --stage-package: #bfb2a8; --stage-package-ink: #1c2230;
       --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
     }
     @media (prefers-color-scheme: dark) {
@@ -69,7 +70,8 @@
         --ok: #3cc49a; --ok-soft: #173a31; --bad: #ff6b74; --bad-soft: #4a1d23; --warn: #f0a93b; --warn-soft: #43321a;
         --none: #4a515e; --none-soft: #232832;
         --npu1: #5aa6ea; --npu2: #c587e6; --grid: rgba(230, 233, 239, 0.08); --band: 0.22;
-        --series-1: #5aa6ea; --series-2: #c587e6; --series-3: #3cc49a; --series-4: #f0a93b; --series-5: #ff6b74; --series-6: #a2aab8;
+        --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-7: #9085e9;
+        --stage-place: #f9ece1; --stage-place-ink: #0d0f13; --stage-route: #dbcec4; --stage-route-ink: #0d0f13; --stage-lower: #beb2a8; --stage-lower-ink: #0d0f13; --stage-kernels: #a2968c; --stage-kernels-ink: #0d0f13; --stage-codegen: #8f837a; --stage-codegen-ink: #0d0f13; --stage-link: #70655c; --stage-link-ink: #e6e9ef; --stage-package: #5f544b; --stage-package-ink: #e6e9ef;
       }
     }
     :root[data-theme="dark"] {
@@ -78,7 +80,8 @@
       --ok: #3cc49a; --ok-soft: #173a31; --bad: #ff6b74; --bad-soft: #4a1d23; --warn: #f0a93b; --warn-soft: #43321a;
       --none: #4a515e; --none-soft: #232832;
       --npu1: #5aa6ea; --npu2: #c587e6; --grid: rgba(230, 233, 239, 0.08); --band: 0.22;
-      --series-1: #5aa6ea; --series-2: #c587e6; --series-3: #3cc49a; --series-4: #f0a93b; --series-5: #ff6b74; --series-6: #a2aab8;
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-7: #9085e9;
+      --stage-place: #f9ece1; --stage-place-ink: #0d0f13; --stage-route: #dbcec4; --stage-route-ink: #0d0f13; --stage-lower: #beb2a8; --stage-lower-ink: #0d0f13; --stage-kernels: #a2968c; --stage-kernels-ink: #0d0f13; --stage-codegen: #8f837a; --stage-codegen-ink: #0d0f13; --stage-link: #70655c; --stage-link-ink: #e6e9ef; --stage-package: #5f544b; --stage-package-ink: #e6e9ef;
     }
     * { box-sizing: border-box; }
     html { background: var(--paper); }
@@ -264,25 +267,67 @@
     .glance-card header .why { font-size: 12.5px; }
     .glance-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
     a.glance-metric { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px 4px; color: var(--ink); border-left: 1px solid var(--rule); min-width: 0; }
-    a.glance-metric:first-child { border-left: 0; padding-left: 0; }
+    a.glance-metric:nth-child(4n+1) { border-left: 0; padding-left: 0; }
     a.glance-metric:hover { background: var(--paper); text-decoration: none; }
     .glance-label { font-size: 12px; font-weight: 600; color: var(--muted); }
     .glance-row { display: grid; grid-template-columns: minmax(34px, max-content) 1fr; align-items: baseline; gap: 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
-    .glance-row .npu { font-size: 11.5px; font-weight: 600; }
-    .glance-row .npu.n-npu1 { color: var(--npu1); }
-    .glance-row .npu.n-npu2 { color: var(--npu2); }
-    .glance-row .npu.n-series-1 { color: var(--series-1); }
-    .glance-row .npu.n-series-2 { color: var(--series-2); }
-    .glance-row .npu.n-series-3 { color: var(--series-3); }
-    .glance-row .npu.n-series-4 { color: var(--series-4); }
-    .glance-row .npu.n-series-5 { color: var(--series-5); }
-    .glance-row .npu.n-series-6 { color: var(--series-6); }
+    .glance-row.solo { grid-template-columns: 1fr; }
+    .glance-row .npu { font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+    .glance-row .npu::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--lane, transparent); flex: none; }
+    .glance-row .npu.n-npu1 { --lane: var(--npu1); }
+    .glance-row .npu.n-npu2 { --lane: var(--npu2); }
+    .glance-row .npu.n-muted { --lane: var(--muted); }
+    .glance-row .npu.n-series-1 { --lane: var(--series-1); }
+    .glance-row .npu.n-series-2 { --lane: var(--series-2); }
+    .glance-row .npu.n-series-3 { --lane: var(--series-3); }
+    .glance-row .npu.n-series-4 { --lane: var(--series-4); }
+    .glance-row .npu.n-series-5 { --lane: var(--series-5); }
+    .glance-row .npu.n-series-6 { --lane: var(--series-6); }
+    .glance-row .npu.n-series-7 { --lane: var(--series-7); }
     .glance-row .vals { overflow-wrap: anywhere; }
     .glance-row .before { color: var(--faint); }
     .glance-row .after { font-weight: 650; }
     .glance-row .after.cyc { font-size: 14px; }
     .spark { display: block; height: 34px; margin-top: 2px; }
     .spark svg { display: block; width: 100%; height: 34px; overflow: visible; }
+    /* A card's compile: a bar per compile of the time each aiecc stage took
+       (an ordinal ramp, place to package, apart from the batch colors), on
+       one seconds axis, the whole compile's wall clock marked. */
+    .stages { border-top: 1px solid var(--rule); padding: 8px 0 2px; display: grid; gap: 4px; }
+    .stages-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+    .stages-head .note { font-size: 12px; color: var(--muted); }
+    .stage-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) minmax(150px, max-content) 160px; align-items: center; gap: 10px; font-size: 13px; }
+    .stage-row .name { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+    .stage-track { position: relative; height: 18px; display: flex; }
+    .stage-axis { position: relative; height: 14px; font-size: 11px; color: var(--faint); }
+    .stage-axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+    .stage-axis span:first-child { transform: none; }
+    .stage-seg { position: relative; flex: none; height: 100%; margin-right: 2px; border-radius: 2px; background: var(--seg); color: var(--seg-ink);
+           font-size: 11px; font-weight: 600; line-height: 18px; white-space: nowrap; overflow: hidden; }
+    .stage-seg .lbl { padding: 0 4px; }
+    .stage-seg::after { content: ''; position: absolute; inset: -3px -3px; }
+    .stage-seg:hover, .stage-seg:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; z-index: 1; }
+    .st-place { --seg: var(--stage-place); --seg-ink: var(--stage-place-ink); }
+    .st-route { --seg: var(--stage-route); --seg-ink: var(--stage-route-ink); }
+    .st-lower { --seg: var(--stage-lower); --seg-ink: var(--stage-lower-ink); }
+    .st-kernels { --seg: var(--stage-kernels); --seg-ink: var(--stage-kernels-ink); }
+    .st-codegen { --seg: var(--stage-codegen); --seg-ink: var(--stage-codegen-ink); }
+    .st-link { --seg: var(--stage-link); --seg-ink: var(--stage-link-ink); }
+    .st-package { --seg: var(--stage-package); --seg-ink: var(--stage-package-ink); }
+    .st-other { --seg: var(--faint); --seg-ink: var(--surface); }
+    .st-outside_aiecc { --seg: repeating-linear-gradient(45deg, var(--faint) 0 2px, transparent 2px 6px); --seg-ink: var(--ink);
+                   box-shadow: inset 0 0 0 1px var(--faint); }
+    .wall { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); z-index: 2; }
+    .wall::after { content: ''; position: absolute; inset: 0 -4px; }
+    .stage-row .total { white-space: nowrap; }
+    .stage-row .total .peak { color: var(--muted); }
+    .stage-row .spark { height: 22px; margin: 0; }
+    .stage-row .spark svg { height: 22px; }
+    table.stage-key { justify-self: start; width: auto; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+    table.stage-key th, table.stage-key td { padding: 1px 12px 1px 0; text-align: right; font-weight: normal; white-space: nowrap; }
+    table.stage-key th:first-child, table.stage-key td:first-child { text-align: left; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+    table.stage-key thead th { color: var(--muted); position: static; }
+    table.stage-key .chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--seg); vertical-align: -1px; margin-right: 5px; }
     .key { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; }
     .key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
     .key i.n-npu1 { background: var(--npu1); }
@@ -455,7 +500,10 @@
       /* Only prose: hiding a column would slide the NPU group headers. */
       #kernels .summary.wide { display: none; }
       .glance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      a.glance-metric:nth-child(3) { border-left: 0; padding-left: 0; }
+      a.glance-metric:nth-child(2n+1) { border-left: 0; padding-left: 0; }
+      .stage-row { grid-template-columns: 40px minmax(0, 1fr); }
+      .stage-row .total, .stage-row .spark { grid-column: 2; }
+      .stage-seg .lbl { display: none; }
     }
     @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
   </style>
@@ -585,7 +633,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
         </section>
 
         <section class="block">
-          <div class="block-head"><h2>Changed over recent nightlies</h2></div>
+          <div class="block-head"><h2>Changed over recent nightlies</h2><span id="window-compare" class="seg" role="group" aria-label="compare with"></span></div>
           <p class="note" id="window-about"></p>
           <div id="window-changes"><p class="dim">Reading the history…</p></div>
         </section>
@@ -650,10 +698,11 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
     <section id="performance" hidden>
       <div class="section-head">
         <h2>Performance</h2>
-        <p>MobileNet, compiled, run and verified nightly on an NPU2.</p>
+        <p>MobileNet and Llama 3.2 1B, compiled, run and verified nightly on an NPU2.</p>
         <span class="runs">
           <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyComponentChecks.yml">Actions runs</a>
           <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/mobilenet">MobileNet design</a>
+          <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/llama_3_2_1b">Llama design</a>
         </span>
       </div>
       <div id="performance-bands" class="band-list"></div>
@@ -663,9 +712,13 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
           <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/sa_placer_hw.py"><code>utils/component_checks/sa_placer_hw.py</code></a>
             runs in <code>nightlyComponentChecks.yml</code> at 06:30 UTC on an NPU2 bench runner. The
             <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/mobilenet">MobileNet</a> design is placed with the SA placer at seeds 3
-            (the design's default), 2 and 7, then compiled, run and verified at batch 1, 4, 16 and 64, every image checked. A publishing run refuses to time
+            (the design's default), 2 and 7, then compiled once per seed and effort and run and verified at every power of two from 1 to 64 images per launch, every image checked. A publishing run refuses to time
             unless the NPU is in turbo mode.</p>
-          <h3>What each seed and batch records</h3>
+          <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/llama_chain_hw.py"><code>utils/component_checks/llama_chain_hw.py</code></a>
+            runs in the same workflow, queued on the same NPU. The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/llama_3_2_1b">Llama 3.2 1B</a>
+            16-layer persistent decode is compiled twice in one fresh cache, cold then warm, its 4 tokens per dispatch checked one by one against the numpy
+            oracle, then timed.</p>
+          <h3>What each run records</h3>
           <dl id="performance-metrics"></dl>
           <p>Per image and end-to-end are the fastest of 20 launches. Streaming, <code>(T(N) − T(1)) ÷ (N − 1)</code>, is what one more image in a launch costs
             with the launch's fixed cost taken out, so it is recorded above batch 1 only. A seed whose batches placed differently is flagged on its card.</p>
@@ -673,6 +726,10 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
           <pre>python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0 --batch B</pre>
           <p>and every seed and batch, as the nightly does:</p>
           <pre>python utils/component_checks/sa_placer_hw.py --out perf.json --meta meta.json</pre>
+          <p>The Llama decode, from <code>programming_examples/ml/llama_3_2_1b</code> after <code>gen_llama_data.py</code> has built <code>data/</code> from the model's weights:</p>
+          <pre>make run_chain_persist_grow_mh CHAIN_MH_N=16 PT=4 ONESTREAM_KSET=8</pre>
+          <p>and as the nightly does:</p>
+          <pre>python utils/component_checks/llama_chain_hw.py --out perf.json --meta meta.json</pre>
         </div>
       </details>
     </section>
@@ -753,7 +810,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     --mlir-pass-statistics utils/component_checks/fixtures/mobilenet.mlir</pre>
           <h3>MobileNet placements on hardware (NPU2)</h3>
           <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/sa_placer_hw.py"><code>utils/component_checks/sa_placer_hw.py</code></a>:
-            MobileNet is placed with seeds 3 (the design's default), 2 and 7, then compiled, run and verified at batch 1, 4, 16 and 64, every image checked.
+            MobileNet is placed with seeds 3 (the design's default), 2 and 7, then compiled once per seed and effort and run and verified at every power of two from 1 to 64 images per launch, every image checked.
             For each seed it records the placement aiecc chose (a digest of the placed tiles) and its SA cost, replayed with <code>aie-opt</code>.
             What the placed design then costs to run is under <a href="#view=performance">Performance</a>.</p>
           <p>To rerun a whole check, run its script with <code>--out perf.json --meta meta.json</code> (the sweep also needs <code>--aie-opt "$(which aie-opt)"</code>;
@@ -794,6 +851,20 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       npu_us: 'host time to submit a run and wait for it, median of 50; moves with the machine',
     };
     // What the component checks record per case (utils/component_checks/).
+    // A compile's aiecc stages in pipeline order (aiecc_stages.py names
+    // them), then the rest of the compile, outside aiecc.
+    const COMPILE_STAGES = [
+      ['place', 'place', 'tile placement: aie-place-tiles, which runs the SA placer at its seed and effort'],
+      ['route', 'route', 'routing the placed design\'s flows'],
+      ['lower', 'lower', 'objectFifo lowering, buffer addresses, each core\'s module and the runtime sequence'],
+      ['kernels', 'waiting on kernels', 'aiecc waiting for the external kernel objects: their compile overlaps the lowering and placement, so only the wait shows'],
+      ['codegen', 'codegen', 'each core\'s program to an object (LLVM IR, Peano)'],
+      ['link', 'link', 'core ELFs, and the stack, data and bank checks read back from them'],
+      ['package', 'package', 'CDO, PDI, xclbin and the instruction stream'],
+      ['other', 'other aiecc', 'an aiecc step no stage names yet'],
+      ['outside_aiecc', 'outside aiecc', 'the rest of the compile: the Python trace and whatever drives aiecc'],
+    ];
+
     const COMPONENT_METRICS = {
       failed_seeds: 'seeds that did not place (the sweep), or did not compile, run and verify (hardware)',
       final_cost_mean: 'the SA placer\'s final cost, mean over the seeds that placed; lower is a tighter placement',
@@ -806,9 +877,17 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       e2e_us_per_image: 'host time of one call, from Python, the fastest of 20, over the images in its batch',
       compile_s: 'wall time of the whole compile, from Python to xclbin, cold (a fresh NPU_CACHE_HOME, kernel objects built from scratch)',
       compile_peak_rss_mb: 'peak memory of the whole compile, cold (always a fresh NPU_CACHE_HOME), from Python to xclbin',
-      compile_s_warm: 'wall time of the same compile run again immediately after, same cache_dir, so it reuses the cold compile\'s kernel objects -- what an incremental compile actually costs',
+      compile_s_warm: 'wall time of the same compile again, keeping only the cold compile\'s kernel objects (the whole-build and per-device caches and the outputs cleared first) -- what an edit to the design, not its kernels, costs',
       compile_peak_rss_mb_warm: 'peak memory of that warm compile',
       placement_cost: 'the SA cost of the placement aiecc chose, replayed with aie-opt; the tooltip names the placement',
+      tok_s: 'decoded tokens per second, from the median dispatch of the timed run; higher is better',
+      ms_per_token: 'NPU time per decoded token, the median dispatch over the tokens it generates',
+      dma_floor_ratio: 'time per token over the time its weight and KV bytes take at 120 GB/s of DDR bandwidth; under 1.5× it is DMA-bound, else compute-bound, as the card\'s header says',
+      tokens_passed: 'decoded tokens that matched the numpy oracle\'s, of those the dispatch generated',
+      xclbin_bytes: 'size of the xclbin the compile wrote',
+      instr_bytes: 'size of the runtime-sequence instruction stream the host submits with each dispatch',
+      pdi_bytes: 'size of the device image the xclbin carries: every core\'s ELF plus the array configuration',
+      n_cores: 'compute cores the placed design uses',
       failed_properties: 'properties of the model-based test that did not hold',
       unsolved: 'generated designs, each known to fit, that the allocator left unplaced',
       illegal: 'placements or routings the model\'s verifier rejected',
@@ -821,6 +900,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       ms_per_design: 'routing time of one design, mean, on a shared hosted runner',
       failed_mutations: 'mutation cases where the router or the model gave the wrong answer, both hop settings',
       survived_corruptions: 'corruptions of routed output the model\'s verifier did not notice, both hop settings',
+      ...Object.fromEntries(['', '_warm'].flatMap(suffix => [
+        ...COMPILE_STAGES.map(([key, name, about]) => [`compile_${key}_s${suffix}`, `time the ${suffix ? 'warm' : 'cold'} compile spent in ${name}: ${about}`]),
+        [`compile_aiecc_wall_s${suffix}`, `wall time of aiecc within the ${suffix ? 'warm' : 'cold'} compile`],
+      ])),
     };
     const LABELS = {
       cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', npu_us: 'Host time',
@@ -831,7 +914,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       failed_properties: 'Failed properties', unsolved: 'Unplaced', illegal: 'Illegal', avoidable_crossings: 'Avoidable crossings',
       bank_pair_sharing: 'Bank sharing', wall_s: 'Wall time', unrouted: 'Unrouted', hop_ratio: 'Hops ÷ constructed',
       amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
-      survived_corruptions: 'Missed corruptions',
+      survived_corruptions: 'Missed corruptions', tok_s: 'Tokens / s', ms_per_token: 'Time / token', dma_floor_ratio: 'Over the DMA floor',
+      tokens_passed: 'Tokens verified', xclbin_bytes: 'xclbin', instr_bytes: 'Instructions', pdi_bytes: 'Device image', n_cores: 'Cores',
+      ...Object.fromEntries(['', '_warm'].flatMap(suffix => [
+        ...COMPILE_STAGES.map(([key, name]) => [`compile_${key}_s${suffix}`, `Compile: ${name} (${suffix ? 'warm' : 'cold'})`]),
+        [`compile_aiecc_wall_s${suffix}`, `Compile: aiecc wall (${suffix ? 'warm' : 'cold'})`],
+      ])),
     };
     // Where the kernel checks and the component checks publish, beside this
     // page's directory (dashboard/).
@@ -843,8 +931,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // the ones their Trends offer, in order. One with no bands in BANDS says
     // it has no checks yet.
     const SECTIONS = {
-      performance: { title: 'Performance', about: 'MobileNet compiled, run and verified on an NPU2: time per image, streaming, and compile time and memory, cold and warm.',
-                     metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb', 'compile_s_warm', 'compile_peak_rss_mb_warm'] },
+      performance: { title: 'Performance', about: 'MobileNet and Llama 3.2 1B compiled, run and verified on an NPU2: time per image, tokens per second, compile time and memory, cold and warm, and what the compile wrote.',
+                     metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'tok_s', 'ms_per_token', 'dma_floor_ratio', 'tokens_passed',
+                               'compile_s', 'compile_peak_rss_mb', 'compile_s_warm', 'compile_peak_rss_mb_warm',
+                               'xclbin_bytes', 'instr_bytes', 'pdi_bytes', 'n_cores'] },
       routing: { title: 'Routing', about: 'The packet router against its model on npu1, npu2 and xcvc1902: legal routes, their cost, and mutation testing.',
                  metrics: ['failed_properties', 'unrouted', 'illegal', 'failed_mutations', 'survived_corruptions', 'hop_ratio', 'amsels_per_design', 'ms_per_design'] },
       placement: { title: 'Placement', about: 'The SA placer: every seed placed, the placements\' cost, CPU time and memory. The buffer allocator against its model.',
@@ -888,8 +978,18 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         about: 'aiecc places mobilenet with seeds 3, 2 and 7 for an NPU2, at the design\'s real default effort and at full effort: the placement each chose, its SA cost, how long it took to compile, and whether the design then ran.',
         cards: placementCards, charts: () => [], summary: placementSummary },
       { id: 'sa-placer-hw', section: 'performance', title: 'MobileNet on NPU2', short: 'MobileNet', ...HW_RUNS, passed: 'Every run passed.',
-        about: 'mobilenet placed with seeds 3, 2 and 7, then compiled, run and verified on an NPU2 at batch 1, 4, 16 and 64, at both the design\'s real default effort and a full-effort baseline -- one card per seed per effort, so a runtime difference between them would show up here, not just in placement cost.',
+        about: 'mobilenet placed with seeds 3, 2 and 7, then compiled once and run and verified on an NPU2 at batch 1, 2, 4, 8, 16, 32 and 64, at both the design\'s real default effort and a full-effort baseline -- one card per seed per effort, so a runtime difference between them would show up here, not just in placement cost.',
         cards: seedCards, trend: true, charts: batchCharts, summary: hardwareSummary },
+      { id: 'llama-chain-hw', section: 'performance', title: 'Llama 3.2 1B decode on NPU2', short: 'Llama 3.2 1B', failure: 'run',
+        passed: 'Every decoded token matched the oracle.',
+        about: 'the 16-layer persistent decode loop, growing its KV cache on chip and sampling 4 tokens per dispatch, compiled cold and then warm, '
+          + 'run and verified token by token against the numpy oracle on an NPU2, then timed. Embedding and lm_head weights are the real model\'s.',
+        script: 'utils/component_checks/llama_chain_hw.py',
+        whole: 'python utils/component_checks/llama_chain_hw.py --out perf.json --meta meta.json',
+        failedId: /^llama\/persist_grow\/N=(\d+)$/,
+        repro: (n = '16') => `cd programming_examples/ml/llama_3_2_1b && make run_chain_persist_grow_mh CHAIN_MH_N=${n} PT=4 ONESTREAM_KSET=8`,
+        say: n => `the ${n}-layer decode`,
+        cards: llamaCards, charts: () => [], summary: llamaSummary },
       { id: 'router', section: 'routing', title: 'Router model-based tests', short: 'Router', failure: 'check',
         passed: 'Every property held and every mutation was answered right.',
         about: 'router_properties.py and router_mutation.py (hops on and off) on npu1, npu2 and xcvc1902, on a hosted runner with an assertions build; '
@@ -927,10 +1027,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true}, "xclbin_bytes": {"pct": 2}, "instr_bytes": {"pct": 2}, "pdi_bytes": {"pct": 2}, "n_cores": {"pct": 1}, "compile_place_s": {"pct": 15}, "compile_lower_s": {"pct": 15}, "compile_kernels_s": {"pct": 15}, "compile_codegen_s": {"pct": 15}, "compile_link_s": {"pct": 15}, "compile_package_s": {"pct": 15}, "compile_other_s": {"pct": 15}, "compile_outside_aiecc_s": {"pct": 15}, "compile_aiecc_wall_s": {"pct": 15}, "compile_place_s_warm": {"pct": 15}, "compile_lower_s_warm": {"pct": 15}, "compile_kernels_s_warm": {"pct": 15}, "compile_codegen_s_warm": {"pct": 15}, "compile_link_s_warm": {"pct": 15}, "compile_package_s_warm": {"pct": 15}, "compile_other_s_warm": {"pct": 15}, "compile_outside_aiecc_s_warm": {"pct": 15}, "compile_aiecc_wall_s_warm": {"pct": 15}, "compile_route_s": {"pct": 15}, "compile_route_s_warm": {"pct": 15}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
+    const worseSign = metric => THRESHOLDS[metric] && THRESHOLDS[metric].higher_is_better ? -1 : 1;
     const thresholdText = metric => `counts past ${pct(metric)}%` +
       (THRESHOLDS[metric] && THRESHOLDS[metric].mad ? ` and ${THRESHOLDS[metric].mad}× its spread` : '');
     const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
@@ -1052,7 +1153,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const [a, b] = pts.slice(-2).map(p => p.row);
         if (!a.value) continue;
         const change = (b.value - a.value) / a.value;
-        if (worst === null || change > worst.change) worst = { change, delta: b.value - a.value, cls: verdict(s.metric, a, b) };
+        if (worst === null || change * worseSign(s.metric) > worst.change * worseSign(s.metric)) {
+          worst = { change, delta: b.value - a.value, cls: verdict(s.metric, a, b) };
+        }
       }
       return worst;
     }
@@ -1126,8 +1229,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // Colored only past the metric's threshold: a 3% move is a regression
     // in cycles and noise in npu_us.
     function changeClass(d, metric) {
-      const t = threshold(metric);
-      return d >= t ? 'worse' : d <= -t ? 'better' : '';
+      const t = threshold(metric), w = d * worseSign(metric);
+      return w >= t ? 'worse' : w <= -t ? 'better' : '';
     }
 
 
@@ -1242,7 +1345,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // A value in a column that already names its unit.
     function formatNumber(value, unit) {
-      if (unit === 'bytes') return `${(value / 1024).toFixed(1)} KiB`;
+      if (unit === 'bytes') return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MiB` : `${(value / 1024).toFixed(1)} KiB`;
+      if (unit === 'tok/s') return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} tok/s`;
+      if (unit === 'x') return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}×`;
       if (unit === 'us') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} µs`;
       if (['s', 'ms', 'MB'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`;
       if (['×', 'pairs'].includes(unit)) return value.toLocaleString('en-US', { maximumFractionDigits: 3 });
@@ -1306,7 +1411,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         else if (!out.dtype && !part.includes('=') && out.shape) out.dtype = part;
         else {
           const cut = part.indexOf('=');
-          out.params.push(cut < 0 ? part : `${part.slice(0, cut).replace(/_/g, ' ')} ${part.slice(cut + 1)}`);
+          const [key, value] = [part.slice(0, cut).replace(/_/g, ' '), part.slice(cut + 1)];
+          // "full effort", as the cards' headers say it.
+          out.params.push(cut < 0 ? part : key === 'effort' ? `${value} effort` : `${key} ${value}`);
         }
       }
       return out;
@@ -1769,12 +1876,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         for (const lane of lanes) {
           const values = lane.m ? glanceValues(lane.m, lane.metric, lane.current) : lane.missing || el('span', { className: 'faint' }, '—');
           if (lane.bad) values.className += ' worse';
-          cell.append(el('span', { className: 'glance-row' }, el('span', { className: `npu n-${lane.color}` }, lane.name), values));
+          cell.append(lane.name
+            ? el('span', { className: 'glance-row' }, el('span', { className: `npu n-${lane.color}` }, lane.name), values)
+            : el('span', { className: 'glance-row solo' }, values));
         }
         grid.append(cell);
         if (!metric) continue;
         const spark = el('span', { className: 'spark' });
-        spark.lines = lanes.map(l => [l.color, l.key]);
+        spark.lines = lanes.map(l => [l.color, l.key, l.dashed]);
         card.sparks.set(metric, spark);
         cell.append(spark);
       }
@@ -1798,13 +1907,15 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // A trend line per lane, each relative to its own latest value, so npu1
     // and npu2 (or batch 1 and 64) share an axis whatever their scale: up is
-    // worse. The band is ± the metric's threshold; the axis spans at least
-    // 2.5 times that. lines: [[color, [values, oldest first]]], the color a
-    // --variable. An SVG string.
+    // a larger value. The band is ± the metric's threshold; the axis spans at least
+    // 2.5 times that. lines: [[color, [values, oldest first], dashed?]], the
+    // color a --variable; dashed distinguishes a paired line sharing that
+    // color (e.g. a warm compile against the same lane's cold one), not a
+    // different lane. An SVG string.
     function sparkSvg(lines, metric) {
       const W = 160, H = 34, pad = 3;
       const rel = lines.filter(([, vs]) => vs.length && vs[vs.length - 1])
-        .map(([color, vs]) => [color, vs.map(v => v / vs[vs.length - 1] - 1)]);
+        .map(([color, vs, dashed]) => [color, vs.map(v => v / vs[vs.length - 1] - 1), dashed]);
       if (!rel.length) return '';
       const t = threshold(metric);
       const span = Math.max(2.5 * t, ...rel.flatMap(([, r]) => r.map(Math.abs)));
@@ -1813,10 +1924,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const y = r => (H / 2 - r / span * (H / 2 - pad)).toFixed(1);
       const parts = [`<rect x="0" y="${y(t)}" width="${W}" height="${(y(-t) - y(t)).toFixed(1)}" style="fill:var(--grid)"/>`,
                      `<line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" style="stroke:var(--rule)"/>`];
-      for (const [color, r] of rel) {
+      for (const [color, r, dashed] of rel) {
         const off = n - r.length;
         const pts = r.map((v, i) => `${x(off + i).toFixed(1)},${y(v)}`);
-        if (pts.length > 1) parts.push(`<polyline points="${pts.join(' ')}" fill="none" style="stroke:var(--${color})" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`);
+        const dash = dashed ? ' stroke-dasharray="3,2"' : '';
+        if (pts.length > 1) parts.push(`<polyline points="${pts.join(' ')}" fill="none" style="stroke:var(--${color})" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"${dash}/>`);
         const [lx, ly] = pts[pts.length - 1].split(',');
         parts.push(`<circle cx="${lx}" cy="${ly}" r="2.2" style="fill:var(--${color})"/>`);
       }
@@ -1838,7 +1950,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       };
       for (const card of cards) {
         for (const [metric, holder] of card.sparks) {
-          const lines = holder.lines.map(([color, key]) => [color, valuesOf(index.get(key))]);
+          const lines = holder.lines.map(([color, key, dashed]) => [color, valuesOf(index.get(key)), dashed]);
           holder.innerHTML = sparkSvg(lines, metric);
           const n = Math.max(...lines.map(([, v]) => v.length));
           holder.title = n > 1 ? `the last ${n} nightlies` : n === 1 ? 'one nightly so far: nothing to draw a line through' : 'no nightly has timed this yet';
@@ -1874,45 +1986,62 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return [...runs.values()].sort((a, b) => a.date - b.date).slice(-WINDOW_NIGHTS);
     }
 
-    // Each case's first and latest value in the window on one NPU, and the
-    // change between them: [{kase, factory, npu, metric, unit, then, thenDate,
-    // now, nowDate, change, cls}], the largest moves first. A case measured on
-    // one night only has nothing to compare and is left out.
-    function windowChanges(db, npu, metric, factory) {
+    // What a case's latest nightly is compared with: the nightly before it,
+    // or its first in the window.
+    const COMPARE = { last: 'Last night', window: 'Window' };
+
+    // Each case's latest value in the window on one NPU against an earlier
+    // one (`compare`: COMPARE's key), and the change between them: [{kase,
+    // factory, npu, metric, unit, then, thenDate, now, nowDate, change,
+    // cls}], the largest moves first. A case measured on one night only has
+    // nothing to compare and is left out.
+    function windowChanges(db, npu, metric, factory, compare = 'window') {
       const runs = nightValues(db, npu, metric, factory);
       const unit = (db && (db.series.find(x => x.metric === metric) || {}).unit) || '';
       const out = [];
       for (const kase of new Set(runs.flatMap(r => [...r.values.keys()]))) {
         const seen = runs.filter(r => r.values.has(kase));
-        if (seen.length < 2) continue;
-        const then = seen[0].values.get(kase), now = seen.at(-1).values.get(kase);
+        // Last night's change is only a case's that ran last night.
+        if (seen.length < 2 || (compare === 'last' && seen.at(-1) !== runs.at(-1))) continue;
+        const before = compare === 'last' ? seen.at(-2) : seen[0];
+        const then = before.values.get(kase), now = seen.at(-1).values.get(kase);
         if (!then) continue;
         const change = (now - then) / then;
-        out.push({ kase, factory: kase.split('/')[0], npu, metric, unit, then, thenDate: seen[0].date, now, nowDate: seen.at(-1).date,
+        out.push({ kase, factory: kase.split('/')[0], npu, metric, unit, then, thenDate: before.date, now, nowDate: seen.at(-1).date,
                    change, cls: changeClass(change, metric) });
       }
       return out.sort((x, y) => Math.abs(Math.log(y.now / y.then)) - Math.abs(Math.log(x.now / x.then)));
     }
 
-    // The window's dates on these NPUs, for saying what is compared with what.
-    function windowDates(db, npus) {
-      const dates = npus.flatMap(n => GATED.flatMap(m => nightValues(db, n, m).map(r => r.date)));
-      return dates.length ? { first: Math.min(...dates), last: Math.max(...dates), nights: new Set(dates).size } : null;
+    // The nightlies compared on these NPUs (`compare` as for windowChanges),
+    // for saying what is compared with what: {first, last, nights}.
+    function windowDates(db, npus, compare = 'window') {
+      const dates = [...new Set(npus.flatMap(n => GATED.flatMap(m => nightValues(db, n, m).map(r => r.date))))].sort((a, b) => a - b);
+      if (!dates.length) return null;
+      return { first: compare === 'last' && dates.length > 1 ? dates.at(-2) : dates[0], last: dates.at(-1), nights: dates.length };
     }
 
     // Summary: every case whose cycles or size moved past its threshold
-    // between its first and latest nightly in the window, as then and now.
+    // between its latest nightly and the one before it, or its first in the
+    // window (the `changes` hash, last night by default), as then and now.
     function renderWindowChanges(db, npus) {
       const target = $('window-changes');
       if (!target) return [];
-      const span = windowDates(db, npus);
+      const compare = COMPARE[readHash().changes] ? readHash().changes : 'last';
+      segment($('window-compare'), Object.keys(COMPARE), compare, v => {
+        history.replaceState(null, '', hashFor({ ...readHash(), changes: v }));
+        renderWindowChanges(db, npus);
+      }, v => COMPARE[v]);
+      const span = windowDates(db, npus, compare);
       if (!span || span.nights < 2) {
-        $('window-about').textContent = 'Each case\'s first and latest nightly will be compared once there are two.';
+        $('window-about').textContent = 'Each case\'s latest nightly will be compared with an earlier one once there are two.';
         target.replaceChildren();
         return [];
       }
-      $('window-about').textContent = `Each case's cycles and object size on its first nightly from ${shortDate(span.first)} against its latest, up to ` +
-        `${shortDate(span.last)}: ${span.nights} nightlies. A kernel is listed when any case moved past its threshold; each cell shows the case that moved most, a measure that did not move greyed. Hover a cell for every case.`;
+      const how = compare === 'last'
+        ? `Each case's cycles and object size on its latest nightly, up to ${shortDate(span.last)}, against the nightly before it, ${shortDate(span.first)} for most cases.`
+        : `Each case's cycles and object size on its first nightly from ${shortDate(span.first)} against its latest, up to ${shortDate(span.last)}: ${span.nights} nightlies.`;
+      $('window-about').textContent = `${how} A kernel is listed when any case moved past its threshold; each cell shows the case that moved most, a measure that did not move greyed. Hover a cell for every case.`;
       // A row per kernel and NPU where any case moved past its threshold in
       // cycles or in size; a column per measure, each "then → now (change)"
       // over the kernel's cases, greyed when that measure did not move.
@@ -1920,7 +2049,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const rowsBy = new Map();
       for (const npu of npus) {
         for (const metric of order) {
-          for (const x of windowChanges(db, npu, metric)) {
+          for (const x of windowChanges(db, npu, metric, null, compare)) {
             const key = `${x.factory}|${npu}`;
             if (!rowsBy.has(key)) rowsBy.set(key, { factory: x.factory, npu, by: new Map(order.map(m => [m, []])) });
             rowsBy.get(key).by.get(metric).push(x);
@@ -1959,7 +2088,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         return el('tr', {}, el('td', {}, name), el('td', {}, g.npu), ...order.map(m => cell(g.by.get(m), m)));
       });
       if (!rows.length) {
-        target.replaceChildren(el('p', { className: 'empty' }, 'Nothing moved past its threshold over these nightlies.'));
+        target.replaceChildren(el('p', { className: 'empty' },
+          compare === 'last' ? 'Nothing moved past its threshold since the nightly before.' : 'Nothing moved past its threshold over these nightlies.'));
         return [];
       }
       const dates = `${shortDate(span.first)} → ${shortDate(span.last)}`;
@@ -2102,7 +2232,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const cases = [...new Set(runs.flatMap(r => [...r.values.keys()]))].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
       const unit = (db.series.find(s => s.metric === metric) || {}).unit || '';
       const datasets = cases.map((kase, i) => {
-        const color = cssVar(`--series-${i % 6 + 1}`, '#5b6475');
+        const color = cssVar(`--series-${i % 7 + 1}`, '#5b6475');
         return { label: kase.slice(factory.length + 1) || kase, data: runs.map(r => r.values.has(kase) ? r.values.get(kase) : null),
                  borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 2.5, tension: 0, spanGaps: true };
       });
@@ -2489,9 +2619,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     // A row of buttons, one per metric, `current` pressed.
-    function segment(target, values, current, onPick) {
+    function segment(target, values, current, onPick, name = label) {
       target.replaceChildren(...values.map(v => {
-        const b = el('button', { type: 'button', textContent: label(v), title: METRICS[v] || COMPONENT_METRICS[v] || '', className: v === current ? 'on' : '', ariaPressed: String(v === current) });
+        const b = el('button', { type: 'button', textContent: name(v), title: METRICS[v] || COMPONENT_METRICS[v] || '', className: v === current ? 'on' : '', ariaPressed: String(v === current) });
         b.value = v;
         b.addEventListener('click', () => onPick(v));
         return b;
@@ -2569,6 +2699,63 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const componentCell = (metric, text, lanes, view = sectionOfMetric(metric)) => ({ metric, text, lanes, href: hashFor({ view, metric }),
       title: `${COMPONENT_METRICS[metric] || ''}\nClick for its trends.` });
 
+    // A card's compile: per compile (cold, warm) a bar of the time each stage
+    // took, on one seconds axis for both, the whole compile's wall clock
+    // marked; its total, peak memory and trend; and a key that is also the
+    // table of every stage's seconds, so a sliver too thin to hover still
+    // reads. A compile without a stage profile has its total and no bar.
+    // `m(metric)` is the case's latest value, `keyOf(metric)` its trend key.
+    function compileStages(m, keyOf, href) {
+      const seconds = v => v === 0 ? '0 s' : v < 10 ? `${v.toFixed(2)} s` : `${v.toFixed(1)} s`;
+      const compiles = [['cold', ''], ['warm', '_warm']].map(([name, suffix]) => {
+        const stages = COMPILE_STAGES.map(([key]) => m(`compile_${key}_s${suffix}`));
+        return { name, suffix, total: m(`compile_s${suffix}`), peak: m(`compile_peak_rss_mb${suffix}`),
+                 stages: stages.some(Boolean) ? stages.map(x => x ? x.value : 0) : null };
+      }).filter(c => c.total || c.stages);
+      if (!compiles.length) return null;
+      const sums = compiles.map(c => c.stages ? c.stages.reduce((a, b) => a + b, 0) : 0);
+      const scale = Math.max(...compiles.map((c, i) => Math.max(c.total ? c.total.value : 0, sums[i])));
+      const at = v => `${(100 * v / scale).toFixed(3)}%`;
+      const shown = COMPILE_STAGES.map((stage, i) => [...stage, i]).filter(([, , , i]) => compiles.some(c => c.stages && c.stages[i] > 0));
+      const block = el('div', { className: 'stages' },
+        el('div', { className: 'stages-head' }, link(href, shown.length ? 'Compile, time per stage' : 'Compile', { className: 'glance-label', title: COMPONENT_METRICS.compile_s }),
+           shown.length ? el('span', { className: 'note' }, 'stages run in parallel, so they can add up past the whole compile\'s wall clock, marked by the line') : ''));
+      block.sparks = new Map();
+      compiles.forEach((c, n) => {
+        const track = el('div', { className: 'stage-track' });
+        for (const [key, name, about, i] of c.stages ? shown : []) {
+          const v = c.stages[i];
+          if (!v) continue;
+          track.append(el('span', {
+            className: `stage-seg st-${key}`, tabIndex: 0, style: `width: max(1px, calc(${at(v)} - 2px))`,
+            title: `${name}, ${c.name} compile: ${seconds(v)}, ${(100 * v / sums[n]).toFixed(1)}% of its time per stage\n${about}`,
+          }, key !== 'outside_aiecc' && 100 * v / scale >= name.length * 0.7 + 2 ? el('span', { className: 'lbl' }, name) : null));
+        }
+        if (c.total && c.stages) {
+          track.append(el('span', { className: 'wall', style: `left: ${at(c.total.value)}`,
+                                    title: `the whole ${c.name} compile, wall clock: ${seconds(c.total.value)}` }));
+        }
+        const total = el('span', { className: 'total' }, c.total ? glanceValues(c.total, `compile_s${c.suffix}`, c.total.current) : '—',
+                         c.peak ? el('span', { className: 'peak', title: COMPONENT_METRICS[`compile_peak_rss_mb${c.suffix}`] },
+                                     ` · ${formatNumber(c.peak.value, 'MB')} peak`) : '');
+        const spark = el('span', { className: 'spark' });
+        spark.lines = [['muted', keyOf(`compile_s${c.suffix}`), c.suffix === '_warm']];
+        block.sparks.set(`compile_s${c.suffix}`, spark);
+        block.append(el('div', { className: 'stage-row' }, el('span', { className: 'name' }, c.name), track, total, spark));
+      });
+      if (!shown.length) return block;
+      const step = [1, 2, 5, 10, 20, 50, 100].find(x => scale / x <= 6) || 200;
+      const axis = el('div', { className: 'stage-axis' });
+      for (let t = 0; t <= scale; t += step) axis.append(el('span', { style: `left: ${at(t)}` }, `${t} s`));
+      block.append(el('div', { className: 'stage-row' }, el('span', {}), axis, el('span', {}), el('span', {})));
+      const head = el('tr', {}, el('th', {}, ''), ...shown.map(([key, name, about]) => el('th', { title: about },
+        el('span', { className: `chip st-${key}` }), name)));
+      const rows = compiles.map((c, n) => el('tr', {}, el('td', {}, c.name),
+        ...shown.map(([, , , i]) => el('td', {}, c.stages ? seconds(c.stages[i]) : '—'))));
+      block.append(el('table', { className: 'stage-key' }, el('thead', {}, head), el('tbody', {}, ...rows)));
+      return block;
+    }
+
     // The hardware check's runs as seeds, efforts and batches: {seeds:
     // Map(seed -> Map(effort -> [batch])), efforts: every effort label seen,
     // failed: Set of run ids, every: every batch, sorted}.
@@ -2610,18 +2797,17 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (!seeds.size) return [];
       const order = [...seeds.keys()];
       const pairs = order.flatMap(seed => efforts.map(effort => [seed, effort]));
-      const color = ([seed]) => `series-${order.indexOf(seed) % 6 + 1}`;
+      const color = ([seed]) => `series-${order.indexOf(seed) % 7 + 1}`;
       const name = ([seed, effort]) => `seed ${seed} (${effort})`;
       const kase = ([seed, effort]) => `mobilenet/seed=${seed}/effort=${effort}`;
-      const batchKase = ([seed, effort]) => `mobilenet/seed=${seed}/batch=1/effort=${effort}`;
       const costs = pairs.map(pair => {
         const c = cases.get(kase(pair));
         return { name: name(pair), color: color(pair), key: `${target}|${kase(pair)}|placement_cost`, metric: 'placement_cost',
                  m: c && c.metrics.get('placement_cost'), current: c && c.current };
       });
       const compileTimes = pairs.map(pair => {
-        const c = cases.get(batchKase(pair));
-        return { name: name(pair), color: color(pair), key: `${target}|${batchKase(pair)}|compile_s`, metric: 'compile_s',
+        const c = cases.get(kase(pair));
+        return { name: name(pair), color: color(pair), key: `${target}|${kase(pair)}|compile_s`, metric: 'compile_s',
                  m: c && c.metrics.get('compile_s'), current: c && c.current };
       });
       const placed = pairs.map(pair => {
@@ -2667,9 +2853,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // not interleaved lanes, so a reader compares the design's real default
     // against the full-effort baseline card-by-card rather than untangling
     // double-width lanes): its batches are the lanes of per image,
-    // streaming, end-to-end, compile time and compile memory (cold and
-    // warm). The header names the placement (its cost is under Placement),
-    // and any batch whose compile placed differently.
+    // streaming and end-to-end; the one compile that serves them all is the
+    // cold and warm lanes of compile time and memory. The header names the
+    // placement (its cost is under Placement), and, in a record from before
+    // one compile served every batch, any batch whose compile placed
+    // differently.
     function seedCards(record, cases, target) {
       const { seeds, failed, every } = hardwareRuns(record);
       return [...seeds].flatMap(([seed, effortMap]) => [...effortMap].map(([effort, batches]) => {
@@ -2677,7 +2865,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const caseOf = b => !failed.has(kase(b)) && cases.get(kase(b));
         const lanes = metric => batches.filter(b => metric !== 'streaming_us' || b > 1).map(b => {
           const c = caseOf(b);
-          return { name: `b${b}`, color: `series-${every.indexOf(b) % 6 + 1}`, key: `${target}|${kase(b)}|${metric}`, metric,
+          return { name: `b${b}`, color: `series-${every.indexOf(b) % 7 + 1}`, key: `${target}|${kase(b)}|${metric}`, metric,
                    m: c && c.metrics.get(metric), current: c && c.current,
                    missing: failed.has(kase(b)) ? el('span', { className: 'worse' }, 'failed') : null };
         });
@@ -2705,14 +2893,25 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           componentCell('us_per_image', label('us_per_image'), lanes('us_per_image')),
           componentCell('streaming_us', label('streaming_us'), lanes('streaming_us')),
           componentCell('e2e_us_per_image', label('e2e_us_per_image'), lanes('e2e_us_per_image')),
-          componentCell('compile_s', label('compile_s'), lanes('compile_s')),
-          componentCell('compile_peak_rss_mb', label('compile_peak_rss_mb'), lanes('compile_peak_rss_mb')),
-          componentCell('compile_s_warm', label('compile_s_warm'), lanes('compile_s_warm')),
-          componentCell('compile_peak_rss_mb_warm', label('compile_peak_rss_mb_warm'), lanes('compile_peak_rss_mb_warm')),
         ]);
         card.kase = `mobilenet/seed=${seed}/effort=${effort}`;
+        // One compile serves every batch: its block reads the seed/effort case.
+        const block = compileStages(metric => placed && placed.metrics.get(metric), metric => `${target}|${card.kase}|${metric}`,
+                                    hashFor({ view: sectionOfMetric('compile_s'), metric: 'compile_s' }));
+        if (block) {
+          card.append(block);
+          for (const [metric, spark] of block.sparks) card.sparks.set(metric, spark);
+        }
         return card;
       }));
+    }
+
+    // The effort the hardware charts track: the design's real default, or
+    // the full-effort baseline when that is all the cases measured (every
+    // run before efforts were recorded ran at full effort).
+    function chartedEffort(kases) {
+      if (kases.some(k => k.endsWith('/effort=default'))) return 'default';
+      return kases.some(k => k.endsWith('/effort=full')) ? 'full' : 'default';
     }
 
     // Collected hardware histories -> one series per batch, effort and
@@ -2721,14 +2920,17 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // batch (at one effort) charts like a kernel's case. Grouped by effort
     // too, not just batch: a default-effort run and a full-effort run are
     // expected to differ, so averaging them together would hide that.
-    // Series that are not per seed/batch/effort pass through.
+    // A per-seed-per-effort series (a compile, which serves every batch)
+    // means over the seeds the same way, as `<factory>/effort=E`. Series
+    // that are not per seed pass through.
     function seedMeans(db) {
       const groups = new Map(), rest = [];
       for (const s of db.series) {
-        const m = /^(.*)\/seed=\d+\/batch=(\d+)\/effort=(\w+)$/.exec(s.kase);
+        const m = /^(.*)\/seed=\d+(\/batch=\d+)?\/effort=(\w+)$/.exec(s.kase);
         if (!m) { rest.push(s); continue; }
-        const key = `${s.npu}|${m[1]}/batch=${m[2]}/effort=${m[3]}|${s.metric}`;
-        if (!groups.has(key)) groups.set(key, { key, npu: s.npu, kase: `${m[1]}/batch=${m[2]}/effort=${m[3]}`, factory: m[1].split('/')[0], metric: s.metric, unit: s.unit, parts: [] });
+        const kase = `${m[1]}${m[2] || ''}/effort=${m[3]}`;
+        const key = `${s.npu}|${kase}|${s.metric}`;
+        if (!groups.has(key)) groups.set(key, { key, npu: s.npu, kase, factory: m[1].split('/')[0], metric: s.metric, unit: s.unit, parts: [] });
         groups.get(key).parts.push(s);
       }
       const series = [...groups.values()].map(g => {
@@ -2774,12 +2976,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // The hardware check's chart: a line per batch, each nightly's mean over
     // the seeds of `metric` at the design's real default effort (so the
     // chart tracks what ships, not a 2x-wider batch x effort grid; the
-    // full-effort baseline is under Placement), the fastest-to-slowest seed
+    // full-effort baseline is under Placement, and charted here only when
+    // it is all there is -- see chartedEffort), the fastest-to-slowest seed
     // shaded behind it, so every batch's trend reads on one chart. A
     // Chart.js config.
     function seedTrendConfig(data, metric) {
-      const means = seedMeans(data);
-      const series = means.series.filter(s => s.metric === metric && /\/batch=\d+\/effort=default$/.test(s.kase))
+      const mine = seedMeans(data).series.filter(s => s.metric === metric);
+      const effort = chartedEffort(mine.map(s => s.kase));
+      const series = mine.filter(s => s.kase.endsWith(`/effort=${effort}`))
         .sort((a, b) => a.kase.localeCompare(b.kase, 'en', { numeric: true }));
       const mode = series.some(s => s.byMode.has(EXPECTED_PMODE)) ? EXPECTED_PMODE
         : series.length ? [...series[0].byMode.keys()][0] : EXPECTED_PMODE;
@@ -2792,11 +2996,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
       const datasets = [];
       series.forEach((s, i) => {
-        const color = cssVar(`--series-${i % 6 + 1}`, '#5b6475');
+        const color = cssVar(`--series-${i % 7 + 1}`, '#5b6475');
         const values = new Array(runs.length).fill(null), rows = new Array(runs.length).fill(null);
         for (const p of s.byMode.get(mode) || []) { values[at.get(p.id)] = p.row.value; rows[at.get(p.id)] = p.row; }
         datasets.push(...band(values, rows, color));
-        datasets.push({ label: `batch ${/\/batch=(\d+)\//.exec(s.kase)[1]}`, data: values, rows, borderColor: color, backgroundColor: color,
+        const batch = /\/batch=(\d+)\//.exec(s.kase);
+        datasets.push({ label: batch ? `batch ${batch[1]}` : 'every batch', data: values, rows, borderColor: color, backgroundColor: color,
                         borderWidth: 2, pointRadius: runs.map(p => p.manual ? 4 : 2.5), pointStyle: runs.map(p => p.manual ? 'rectRot' : 'circle'),
                         tension: 0, spanGaps: true });
       });
@@ -2938,7 +3143,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const about = el('p', { className: 'note' });
       const canvas = el('canvas', { ariaLabel: 'MobileNet over recent nightlies, a line per batch' });
       const box = el('div', { className: 'chart trend' }, el('div', { className: 'trend-head' }, seg), about, el('div', { className: 'canvas' }, canvas));
-      const say = m => { about.textContent = `${label(m)}: ${COMPONENT_METRICS[m]}. A line per batch, the mean over the seeds; the shading runs from the fastest seed to the slowest.`; };
+      const say = m => {
+        const effort = chartedEffort(data.series.filter(s => s.metric === m).map(s => s.kase));
+        const lines = m.startsWith('compile_')
+          ? 'One line: a single compile serves every batch'
+          : 'A line per batch';
+        about.textContent = `${label(m)}: ${COMPONENT_METRICS[m]}. ${lines}, the mean over the seeds at ${effort} effort; the shading runs from the fastest seed to the slowest.`;
+      };
       const draw = m => {
         metric = m;
         segment(seg, metrics, m, draw);
@@ -2989,18 +3200,68 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     // The hardware check in a sentence: the default seed's best streaming
-    // time and one image's time, at the design's real default effort.
+    // time and one image's time, at the charted effort.
     function hardwareSummary(rows) {
-      const runs = Object.keys(rows).map(k => /^mobilenet\/seed=(\d+)\/batch=(\d+)\/effort=default$/.exec(k)).filter(Boolean);
+      const effort = chartedEffort(Object.keys(rows));
+      const runs = Object.keys(rows).map(k => /^mobilenet\/seed=(\d+)\/batch=(\d+)\/effort=(\w+)$/.exec(k)).filter(m => m && m[3] === effort);
       const seeds = [...new Set(runs.map(m => m[1]))];
       const seed = seeds.includes('3') ? '3' : seeds[0];
       const streaming = runs.filter(m => m[1] === seed).map(m => rows[m[0]].streaming_us).filter(Boolean)
         .sort((a, b) => a.value - b.value)[0];
-      const one = rows[`mobilenet/seed=${seed}/batch=1/effort=default`] && rows[`mobilenet/seed=${seed}/batch=1/effort=default`].us_per_image;
+      const b1 = rows[`mobilenet/seed=${seed}/batch=1/effort=${effort}`];
+      const one = b1 && b1.us_per_image;
       const parts = [streaming ? `seed ${seed} streams at ${formatNumber(streaming.value, 'us')} per image` : '',
                      one ? `${streaming ? 'one' : `seed ${seed}: one`} image takes ${formatNumber(one.value, 'us')}` : ''].filter(Boolean);
-      const text = parts.join('; ');
+      const text = parts.join('; ') + (parts.length && effort === 'full' ? ' (full effort)' : '');
       return text ? ` ${text[0].toUpperCase()}${text.slice(1)}.` : '';
+    }
+
+    // The llama check's card, one per case: decode rate, verification,
+    // compile cost cold beside warm, and the sizes of what the compile wrote.
+    // The header names what bounds the decode.
+    function llamaCards(record, cases, target) {
+      const detail = record.detail || [];
+      return Object.keys(record.rows).map(kase => /^llama\/persist_grow\/N=(\d+)$/.exec(kase)).filter(Boolean).map(([kase, n]) => {
+        const c = cases.get(kase);
+        const run = detail.find(d => d.case === kase) || {};
+        const lane = (metric, name = '', color = 'series-1') => ({ name, color, key: `${target}|${kase}|${metric}`, metric,
+                                                                    m: c && c.metrics.get(metric), current: c && c.current });
+        const header = el('header', {}, el('span', { className: 'case-title', title: kase },
+          el('span', { className: 'shape' }, `${n} layers`),
+          el('span', { className: 'params' }, run.tokens_total ? `persistent decode, ${plural(run.tokens_total, 'token')} per dispatch` : 'persistent decode')));
+        const ratio = c && c.metrics.get('dma_floor_ratio');
+        if (ratio && ratio.range) header.append(el('span', { className: 'ratio', title: COMPONENT_METRICS.dma_floor_ratio }, ratio.range));
+        const passed = c && c.metrics.get('tokens_passed');
+        const card = glanceGrid(header, [
+          componentCell('tok_s', label('tok_s'), [lane('tok_s')]),
+          componentCell('ms_per_token', label('ms_per_token'), [lane('ms_per_token')]),
+          componentCell('dma_floor_ratio', label('dma_floor_ratio'), [lane('dma_floor_ratio')]),
+          componentCell('tokens_passed', label('tokens_passed'),
+                        [{ ...lane('tokens_passed'), bad: Boolean(passed && run.tokens_total && passed.value < run.tokens_total) }]),
+          componentCell('xclbin_bytes', 'Compiled sizes',
+                        [lane('xclbin_bytes', 'xclbin'), lane('pdi_bytes', 'image', 'series-2'), lane('instr_bytes', 'insts', 'series-3')]),
+          componentCell('n_cores', label('n_cores'), [lane('n_cores')]),
+        ]);
+        card.kase = kase;
+        const block = compileStages(metric => c && c.metrics.get(metric), metric => `${target}|${kase}|${metric}`,
+                                    hashFor({ view: sectionOfMetric('compile_s'), metric: 'compile_s' }));
+        if (block) {
+          card.append(block);
+          for (const [metric, spark] of block.sparks) card.sparks.set(metric, spark);
+        }
+        return card;
+      });
+    }
+
+    // The llama check in a sentence: its decode rate and what bounds it.
+    function llamaSummary(rows) {
+      const kase = Object.keys(rows).find(k => /^llama\/persist_grow\/N=\d+$/.test(k));
+      const r = kase && rows[kase];
+      if (!r || !r.tok_s) return '';
+      const per = r.ms_per_token ? `, ${formatNumber(r.ms_per_token.value, 'ms')} per token` : '';
+      const floor = r.dma_floor_ratio;
+      const bound = floor ? `, ${formatNumber(floor.value, 'x')} the DMA floor${floor.range ? ` (${floor.range})` : ''}` : '';
+      return ` ${/N=(\d+)/.exec(kase)[1]} layers decode at ${formatNumber(r.tok_s.value, 'tok/s')}${per}${bound}.`;
     }
 
     // The sweep in a sentence: the costliest fixture's cost and CPU time.
@@ -3098,11 +3359,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // image against the batch at the design's real default effort, on a
     // log axis; the nightly before dashed.
     function batchCharts(record, previous) {
+      const effort = chartedEffort(Object.keys(record.rows || {}));
       const curves = rec => {
         const out = new Map();
         for (const [kase, cells] of Object.entries((rec && rec.rows) || {})) {
-          const m = /^mobilenet\/seed=(\d+)\/batch=(\d+)\/effort=default$/.exec(kase);
-          if (!m || !cells.us_per_image) continue;
+          const m = /^mobilenet\/seed=(\d+)\/batch=(\d+)\/effort=(\w+)$/.exec(kase);
+          if (!m || m[3] !== effort || !cells.us_per_image) continue;
           if (!out.has(m[1])) out.set(m[1], []);
           out.get(m[1]).push({ x: Number(m[2]), y: cells.us_per_image.value });
         }
@@ -3112,11 +3374,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const now = curves(record), before = curves(previous);
       if (!now.size) return [];
       const batches = [...new Set([...now.values(), ...before.values()].flat().map(p => p.x))].sort((a, b) => a - b);
-      return [bandChart('Batch scaling', 'µs per image against the batch; the nightly before dashed', canvas => {
+      return [bandChart('Batch scaling', `µs per image against the batch, at ${effort} effort; the nightly before dashed`, canvas => {
         const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
         const datasets = [];
         [...now].forEach(([seed, pts], i) => {
-          const color = cssVar(`--series-${i % 6 + 1}`, '#5b6475');
+          const color = cssVar(`--series-${i % 7 + 1}`, '#5b6475');
           datasets.push({ label: `seed ${seed}`, data: pts, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 3, tension: 0 });
           if (before.has(seed)) {
             datasets.push({ label: `seed ${seed}, the nightly before`, data: before.get(seed), previous: true, borderColor: color, backgroundColor: color,
