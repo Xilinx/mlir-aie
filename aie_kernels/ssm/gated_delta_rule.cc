@@ -35,7 +35,7 @@ float s[Dk * Dv];
 float delta[Dv];
 
 // 1 / sqrt(x) for x > 0: the bit-trick estimate and three Newton steps.
-float invsqrt(float x) {
+float rsqrt_newton(float x) {
   uint32_t i;
   memcpy(&i, &x, sizeof(i));
   i = 0x5f3759df - (i >> 1);
@@ -51,7 +51,7 @@ float inv_norm(const bfloat16 *m, float scale) {
   float sq = 0.0f;
   for (int i = 0; i < Dk; i++)
     sq += (float)m[i] * (float)m[i];
-  return invsqrt(sq + 1e-6f) * scale;
+  return rsqrt_newton(sq + 1e-6f) * scale;
 }
 } // namespace
 
@@ -73,7 +73,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
     for (int i = 0; i < Dk * Dv; i++)
       s[i] = head[2 + i];
   const float dt_bias = head[0], A = head[1];
-  const float q_scale = invsqrt((float)Dk);
+  const float q_scale = rsqrt_newton((float)Dk);
   for (int t = 0; t < R; t++) {
     bfloat16 *yt = y + t * Dv;
     if (t >= valid) {
