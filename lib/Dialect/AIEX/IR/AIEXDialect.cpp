@@ -1450,8 +1450,13 @@ staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
   int64_t starts = 0;
   for (Operation *user : task.getResult().getUsers()) {
     auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
-    if (!start)
-      continue;
+    if (!start) {
+      if (isa<AIEX::DMAAwaitTaskOp, AIEX::DMAFreeTaskOp>(user))
+        continue;
+      // The task value is forwarded (a branch operand, a call, ...), so its
+      // starts elsewhere can't be counted.
+      return std::nullopt;
+    }
     // A start outside the task's own block may run under a loop or a
     // mutually-exclusive branch, either of which this static count can't see.
     if (start->getBlock() != task->getBlock() || start.getRepeatCountAttr() ||
@@ -1540,7 +1545,8 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
     }
   // Every far-end BD this transfer must complete. A fill reaches each of the
   // fifo's consumers: the one on a link's shared tile through the link pool,
-  // any other (a broadcast) through its own pool of the consumer type.
+  // any other (a broadcast) through its own pool of the consumer type. A
+  // drain's producer likewise uses the link pool only on the shared tile.
   SmallVector<int64_t> objectSizes;
   auto addObjectSize = [&](Type fifoType) {
     std::optional<int64_t> bytes = objectBytesOf(fifoType);
@@ -1558,7 +1564,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       else if (linkOwner)
         addObjectSize(linkOwner->getElemType());
     }
-  } else if (!linkTile) {
+  } else if (!linkTile || fifo.getProducerTile() != linkTile) {
     addObjectSize(fifo.getElemType());
   } else if (linkOwner) {
     addObjectSize(linkOwner->getElemType());
