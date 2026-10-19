@@ -36,24 +36,4 @@ void _mvm_bf16_bf16(bf16 *w, bf16 *x, float *y_acc) {
   }
   aie::store_v(y_acc, acc.template to_vector<float>());
 }
-
-extern "C" void bf16_proj_zero(float *y_acc) {
-  zero_256<float, BF16_PROJ_M_BLOCK>(y_acc);
-}
-
-extern "C" void bf16_proj_mvm(bf16 *w, bf16 *x, float *y_acc, int j,
-                              int x_offset) {
-  _mvm_bf16_bf16<BF16_PROJ_M_BLOCK, BF16_PROJ_K_BLOCK>(
-      w, x + x_offset + j * BF16_PROJ_K_BLOCK, y_acc);
-}
-
-extern "C" void bf16_proj_store(bf16 *y, float *y_acc, int i, int y_offset) {
-  bf16 *y_using = y + y_offset + i * BF16_PROJ_M_BLOCK;
-  aie::vector<float, BF16_PROJ_M_BLOCK> y_acc_vec =
-      aie::load_v<BF16_PROJ_M_BLOCK>(y_acc);
-  aie::accum<accfloat, BF16_PROJ_M_BLOCK> c_acc;
-  c_acc.from_vector(y_acc_vec);
-  aie::vector<bf16, BF16_PROJ_M_BLOCK> y_vec = c_acc.template to_vector<bf16>();
-  aie::store_v(y_using, y_vec);
-}
 #endif // AIE_KERNELS_FLM_GEMMA4_DECODE_BF16_PROJ_H
