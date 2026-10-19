@@ -1534,12 +1534,18 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
         linkOwner = owner;
       break;
     }
-  // Every far-end BD this transfer must complete. A fill reaches each of the
-  // fifo's consumers: the one on a link's shared tile through the link pool,
-  // any other (a broadcast) through its own pool of the consumer type. A
-  // drain's producer likewise uses the link pool only on the shared tile.
+  // Every far-end BD this transfer must complete: the producer's, for a drain,
+  // and each consumer's other than the shim's own. A broadcast stalls on its
+  // slowest consumer, so a drain bounds what the others receive too. An end
+  // on a link's shared tile is a BD over the link pool, any other one over its
+  // own pool of the producer or consumer type.
   SmallVector<int64_t> objectSizes;
-  auto addObjectSize = [&](Type fifoType) {
+  auto addObjectSize = [&](Value tile, Type fifoType) {
+    if (linkTile && tile == linkTile) {
+      if (!linkOwner)
+        return;
+      fifoType = linkOwner->getElemType();
+    }
     std::optional<int64_t> bytes = objectBytesOf(fifoType);
     if (bytes && *bytes > 0 && !llvm::is_contained(objectSizes, *bytes))
       objectSizes.push_back(*bytes);
@@ -1548,17 +1554,12 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
   if (!producer)
     return success();
-  if (producer.isShimTile()) {
-    for (Value consumer : fifo.getConsumerTiles()) {
-      if (!linkTile || consumer != linkTile)
-        addObjectSize(fifo.getConsumerElemTypeOrDefault());
-      else if (linkOwner)
-        addObjectSize(linkOwner->getElemType());
-    }
-  } else if (!linkTile || fifo.getProducerTile() != linkTile) {
-    addObjectSize(fifo.getElemType());
-  } else if (linkOwner) {
-    addObjectSize(linkOwner->getElemType());
+  if (!producer.isShimTile())
+    addObjectSize(fifo.getProducerTile(), fifo.getElemType());
+  for (Value consumer : fifo.getConsumerTiles()) {
+    auto tile = dyn_cast_or_null<AIE::TileLike>(consumer.getDefiningOp());
+    if (!tile || !tile.isShimTile())
+      addObjectSize(consumer, fifo.getConsumerElemTypeOrDefault());
   }
   auto partialFor = [&](int64_t bytes) -> std::optional<int64_t> {
     for (int64_t size : objectSizes)

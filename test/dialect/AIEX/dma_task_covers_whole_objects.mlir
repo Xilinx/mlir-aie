@@ -742,7 +742,9 @@ module {
 
 // -----
 
-// The same broadcast drain with 512 bytes completes two of the core's objects.
+// A broadcast stalls on its slowest consumer, so the memtile receives only
+// what the shim drains: 512 bytes completes two of the core's objects but
+// leaves the second 384-byte link-pool object incomplete.
 module {
   aie.device(npu2_1col) {
     %t00 = aie.tile(0, 0)
@@ -753,8 +755,32 @@ module {
     aie.objectfifo @of_out(%t01, {%t03}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
     aie.objectfifo.link [@of_in] -> [@of_out]([] [])
     aie.runtime_sequence(%arg0: memref<128xi32>) {
+      // expected-error@+1 {{moves 512 bytes through objectFIFO @of_in, which is not a whole number of its 384-byte objects}}
       %t = aiex.dma_configure_task_for @of_in {
         aie.dma_bd(%arg0 : memref<128xi32> offset = 0 len = 128 sizes = [1, 1, 1, 128] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// The same broadcast drain with 768 bytes completes three of the core's
+// objects and two of the memtile's.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    aie.objectfifo @of_in(%t02, {%t01, %t00}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @of_out(%t01, {%t03}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo.link [@of_in] -> [@of_out]([] [])
+    aie.runtime_sequence(%arg0: memref<192xi32>) {
+      %t = aiex.dma_configure_task_for @of_in {
+        aie.dma_bd(%arg0 : memref<192xi32> offset = 0 len = 192 sizes = [1, 1, 1, 192] strides = [0, 0, 0, 1])
         aie.end
       }
       aiex.dma_start_task(%t)
