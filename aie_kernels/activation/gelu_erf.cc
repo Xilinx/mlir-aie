@@ -8,7 +8,8 @@
 // Exact GELU, x * Phi(x), where gelu.cc takes the tanh approximation: the two
 // round differently on 405 finite bf16 inputs, most below x = -3. erfc is
 // Numerical Recipes' erfcc in f32 products of bf16 limbs, within one bf16 ulp
-// of the float64 GELU on every finite bf16 input.
+// of the float64 GELU wherever that is a normal number; subnormal results
+// flush to 0, as the AIE's floating point does.
 //
 // With a = |x| and z = a / sqrt 2, erfc(z) = t exp(-z^2 + P(t)) for t =
 // 1 / (1 + z / 2), and h = a erfc(z) / 2: gelu is x - h for x >= 0, else -h.
@@ -54,9 +55,9 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
       0.27886807f,  -1.13520398f, 1.48851587f, -0.82215223f, 0.17087277f};
   const auto xi = x.cast_to<int16_t>();
   // From 13.5 on, h is below the smallest normal f32.
-  const bf_t a = aie::min(aie::bit_and(xi, aie::broadcast<int16_t, 32>(0x7fff)),
-                          aie::broadcast<int16_t, 32>(0x4158))
-                     .cast_to<bfloat16>();
+  const auto ai = aie::min(aie::bit_and(xi, aie::broadcast<int16_t, 32>(0x7fff)),
+                           aie::broadcast<int16_t, 32>(0x4158));
+  const bf_t a = ai.cast_to<bfloat16>();
 
   // d = 1 + a / (2 sqrt 2), and t = 1 / d by Newton's r (2 - d r) from the
   // integer-subtraction estimate, which is within 5.1% on [1, 5.8].
@@ -79,15 +80,15 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
   const bf_t half_a = aie::mul(a, bfloat16(0.5f)).to_vector<bfloat16>();
   const acc_t e = aie::msc(p, a, half_a);
 
-  // h = t 2^(e log2(e) + 2) (a / 8). The 2 keeps 2^y normal for every h at or
-  // above the smallest normal f32; below that, h is flushed to 0.
+  // h = t 2^(e log2(e) + 8) (a 2^-9). The 8 keeps t 2^(...) normal for every
+  // normal h; a lane whose 2^(...) underflows has a subnormal h.
   const Exp2F32 ex = exp2_f32_32(
-      mac3(acc(2.0f), limbs(e), limbs(acc(1.44269504f))).to_vector<float>());
+      mac3(acc(8.0f), limbs(e), limbs(acc(1.44269504f))).to_vector<float>());
   const Limbs u =
       limbs(mac3(acc(0.0f), t, limbs(acc_t(ex.bits.cast_to<float>()))));
-  const bf_t eighth_a = aie::mul(a, bfloat16(0.125f)).to_vector<bfloat16>();
+  const bf_t a_2m9 = aie::mul(a, bfloat16(0.001953125f)).to_vector<bfloat16>();
   const auto h = aie::select(
-      aie::mac(aie::mul(u.hi, eighth_a), u.lo, eighth_a).to_vector<float>(),
+      aie::mac(aie::mul(u.hi, a_2m9), u.lo, a_2m9).to_vector<float>(),
       aie::zeros<float, 32>(), ex.below);
 
   acc_t xa;
@@ -95,7 +96,17 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
   const auto x_or_0 =
       aie::select(xa.to_vector<float>(), aie::zeros<float, 32>(),
                   aie::lt(xi, aie::zeros<int16_t, 32>()));
-  return acc_t(aie::sub(x_or_0, h)).to_vector<bfloat16>();
+  // Below 2^-16, x Phi(x) rounds to x / 2, which x - h cannot reach near
+  // 2^-126 and a 2^-9 does not survive below 2^-117. x / 2 also flushes a
+  // subnormal result to 0, except that |x| = 0x00ff halves to a tie that
+  // rounds up to the smallest normal, 0x0080 with x's sign.
+  const auto half_x = aie::select(
+      aie::mul(x, bfloat16(0.5f)).to_vector<bfloat16>().cast_to<int16_t>(),
+      aie::sub(xi, aie::broadcast<int16_t, 32>(0x007f)),
+      aie::eq(ai, aie::broadcast<int16_t, 32>(0x00ff)));
+  return aie::select(acc_t(aie::sub(x_or_0, h)).to_vector<bfloat16>(),
+                     half_x.cast_to<bfloat16>(),
+                     aie::lt(ai, aie::broadcast<int16_t, 32>(0x3780)));
 }
 
 extern "C" {

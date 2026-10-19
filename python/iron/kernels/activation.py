@@ -704,12 +704,11 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-# Not yet measured on a device; the bound is the model's.
 _GELU_ERF_TOLERANCE = Tolerance.bf16_ulps(
     1,
     atol=2.0**-126,
-    note="a model of the kernel's f32 limb arithmetic is within one ulp on "
-    "every finite bf16 input; atol is the smallest normal bf16",
+    note="npu2, every finite bf16 input: within one ulp wherever GELU rounds "
+    "to a normal bf16; atol admits the subnormal results the core flushes to 0",
 )
 
 

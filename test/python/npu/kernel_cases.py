@@ -189,6 +189,7 @@ CASES: list[Case] = [
     ),
     # test_kernels_specs checks a tanh GELU fails on this case's inputs.
     Case("gelu_erf", calls=16, smoke=True),
+    check("gelu_erf", calls=64, data_cases=("all_bf16",), tag="all-bf16"),
     Case("silu", calls=16, smoke=True),
     Case(
         "silu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
