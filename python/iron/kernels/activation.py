@@ -767,10 +767,6 @@ def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-gelu_sized = gelu
-silu_sized = silu
-
-
 def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """SwiGLU gated activation kernel for bf16 tiles (must be 1024).
 

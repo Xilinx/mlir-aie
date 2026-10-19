@@ -341,9 +341,6 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-relu_sized = relu
-
-
 def clamp(tile_size: int = 1024) -> ExternalFunction:
     """Element-wise bf16 clamp to ``[low, high]``, with a compiled-in element count.
 

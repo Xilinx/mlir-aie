@@ -90,7 +90,7 @@
         "The design uses an aie.iron.algorithms template (transform_parallel or transform) rather than hand-building ObjectFifo/Worker/Runtime for this element-wise case",
         "Tensor parameters of the @iron.jit function are annotated with In / Out",
         "Any size or tile specialization parameter is keyword-only and annotated CompileTime[int]",
-        "pass_size_to_kernel=False is passed (or the bare (in, out) signature of kernels.relu is otherwise correctly accounted for)",
+        "kernels.relu's (in, out, size) signature is respected: the template's default pass_size_to_kernel=True is kept, not overridden to False",
         "The response states that a built-in kernel was used instead of writing one"
       ]
     },
