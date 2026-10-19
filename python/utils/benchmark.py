@@ -37,6 +37,7 @@ from typing import Callable
 
 import numpy as np
 from aie.utils import config
+from aie.utils.probe import xrt_smi_path
 
 
 @dataclass
@@ -191,16 +192,21 @@ def other_npu_users(holding: bool = False) -> set[int]:
     """Return the pids of the other processes holding a context on the NPU.
 
     Read from ``xrt-smi examine -r aie-partitions``, which reports pids in the
-    host's namespace, so in a container this process cannot tell which is its
-    own.
+    host's namespace. On the host this process finds its own pid there; in a
+    container it cannot, and none of the reported pids is a process it sees.
 
     Args:
-        holding: Whether this process holds a context. If its pid is not
-            reported, a lone reported pid is taken to be its own, and
-            several are all returned.
-    """
-    from aie.utils.probe import xrt_smi_path
+        holding: Whether this process holds a context. In a container, a lone
+            reported pid is then taken to be its own; several are all
+            returned.
 
+    Returns:
+        The other holders' pids, in the host's namespace.
+
+    Raises:
+        FileNotFoundError: This host has no ``xrt-smi``.
+        subprocess.CalledProcessError: ``xrt-smi`` failed.
+    """
     with tempfile.TemporaryDirectory() as d:
         report = Path(d) / "partitions.json"
         subprocess.run(
@@ -216,9 +222,12 @@ def other_npu_users(holding: bool = False) -> set[int]:
         for partition in device["aie_partitions"].get("partitions", [])
         for context in partition.get("hw_contexts", [])
     }
-    if os.getpid() in pids or not holding:
+    if os.getpid() in pids:
         return pids - {os.getpid()}
-    return pids if len(pids) > 1 else set()
+    namespaced = not any(Path(f"/proc/{pid}").exists() for pid in pids)
+    if holding and namespaced and len(pids) == 1:
+        return set()
+    return pids
 
 
 # Seconds between looks at an NPU another process holds, and the most waited.
@@ -229,9 +238,16 @@ IDLE_WAIT = 1800.0
 def wait_idle(log: Callable[[str], None] = print, holding: bool = False) -> None:
     """Return once no other process holds a context on the NPU (``other_npu_users``).
 
+    Args:
+        log: Where the wait is reported.
+        holding: Whether this process holds a context, as ``other_npu_users``
+            takes it.
+
     Raises:
         TimeoutError: Another has held one for ``IDLE_WAIT`` seconds. Two
             processes measuring at once would each wait for the other.
+        FileNotFoundError: This host has no ``xrt-smi``.
+        subprocess.CalledProcessError: ``xrt-smi`` failed.
     """
     held, told = other_npu_users(holding), set()
     start = time.monotonic()
