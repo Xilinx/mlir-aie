@@ -10,10 +10,10 @@
 from __future__ import annotations
 
 from enum import Enum
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from aie.iron.device import NPU1Col1, NPU2Col4
 from aie.utils import hostruntime
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.compile.jit.operator import Operator, Unresolvable
@@ -43,7 +43,7 @@ class Scale(Operator):
         return self.replace(tile=self.tile or 16, lanes=dev.cols)
 
 
-DEV = SimpleNamespace(cols=4)
+DEV = NPU2Col4()
 
 
 def test_an_operator_sets_its_parameters_given_defaulted_or_computed():
@@ -114,9 +114,17 @@ def test_resolving_fills_every_tunable_on_a_copy():
 
 def test_an_operator_resolved_for_one_device_resolves_again_for_another():
     four = Scale(M=8).resolved(DEV)
-    one = four.resolved(SimpleNamespace(cols=1))
+    one = four.resolved(NPU1Col1())
     assert (four.lanes, one.lanes) == (4, 1)
-    assert four.resolved(SimpleNamespace(cols=4)) is four
+    assert four.resolved(NPU2Col4()) is four
+
+
+def test_two_resolutions_for_different_devices_have_different_keys():
+    four = Scale(M=8).resolved(DEV)
+    one = Scale(M=8).resolved(NPU1Col1()).replace(lanes=4)
+    assert (one.tile, one.lanes) == (four.tile, four.lanes)
+    assert one.array_key() != four.array_key()
+    assert one.design_key() != four.design_key()
 
 
 class Lazy(Scale):
@@ -164,6 +172,7 @@ def test_the_keys_are_the_layout_for_cores_and_every_parameter_for_a_build():
     op = Scale(M=8).resolved(DEV)
     assert op.array_key() == (
         Scale,
+        ("device", "npu2_4col"),
         ("factor", 1.0),
         ("tile", 16),
         ("placement", 1),
@@ -173,7 +182,7 @@ def test_the_keys_are_the_layout_for_cores_and_every_parameter_for_a_build():
     assert op.replace(M=4).design_key() != op.design_key()
     traced = Scale(M=8, trace="t").resolved(DEV)
     assert traced.array_key()[-1] == ("trace", "t")
-    assert traced.design_key()[1][0] == ("trace", "t")
+    assert traced.design_key()[1][:2] == (("device", "npu2_4col"), ("trace", "t"))
 
 
 def test_an_operator_prints_its_shown_parameters():

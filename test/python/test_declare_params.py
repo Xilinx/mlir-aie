@@ -10,10 +10,10 @@
 from __future__ import annotations
 
 import functools
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from aie.iron.device import NPU2Col4
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.jit.operator import Operator
 from aie.utils.compile.jit.params import (
@@ -48,7 +48,7 @@ def test_a_parameter_takes_a_default_or_a_derive_not_both():
 
 
 def test_widths_are_the_start_and_each_power_of_two_up_to_the_columns():
-    assert widths(None, SimpleNamespace(cols=4), 3) == (4, 3, 2, 1)
+    assert widths(None, NPU2Col4(), 3) == (4, 3, 2, 1)
 
 
 def test_a_domain_is_a_tuple_an_enum_or_a_function():

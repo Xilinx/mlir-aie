@@ -45,6 +45,14 @@ class Device(Resolvable):
     def __repr__(self) -> str:
         return f"{type(self).__name__}(AIEDevice.{self._device.name})"
 
+    def __eq__(self, other: object) -> bool:
+        # Two descriptors of one AIEDevice are one device; _resolved_tiles is
+        # emission scratch.
+        return isinstance(other, Device) and other._device == self._device
+
+    def __hash__(self) -> int:
+        return hash(self._device)
+
     @property
     def name(self) -> str:
         """The device's name in the dialect: ``"npu2"``, ``"npu1_1col"``, ...

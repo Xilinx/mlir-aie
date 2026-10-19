@@ -198,7 +198,8 @@ class Operator:
 
         A ``derive`` parameter not in ``changes`` is computed again; every
         other keeps its value, so pass a function-default one again when you
-        change what it reads.
+        change what it reads. The copy is not resolved, but its keys keep
+        naming the device its tunables were resolved for.
         """
         params = self.declaration.params
         unknown = [n for n in changes if n not in params]
@@ -208,6 +209,7 @@ class Operator:
         new = object.__new__(type(self))
         new.trace = self.trace
         new._set(kept | changes)
+        new._resolved_for = self._resolved_for
         return new
 
     def layout(self) -> Self:
@@ -221,17 +223,35 @@ class Operator:
         return view
 
     def array_key(self) -> tuple:
-        """Return the identity two operators share their cores by."""
-        key = (type(self), *((n, _value(vars(self)[n])) for n in self.declaration.key))
+        """Return the identity two operators share their cores by.
+
+        It names the device this operator is resolved for (None until
+        resolved), since the resolved tunables depend on it.
+        """
+        dev = self._resolved_for
+        # An Enum is its value, so renaming a member moves no key.
+        key = (
+            type(self),
+            ("device", None if dev is None else dev.name),
+            *(
+                (n, v.value if isinstance(v := vars(self)[n], Enum) else v)
+                for n in self.declaration.key
+            ),
+        )
         return key if self.trace is None else (*key, ("trace", self.trace))
 
     def design_key(self) -> tuple:
-        """Return the identity two operators share a build by: every parameter."""
+        """Return the identity two operators share a build by: the device and every parameter."""
+        dev = self._resolved_for
         return (
             type(self),
             (
+                ("device", None if dev is None else dev.name),
                 ("trace", self.trace),
-                *((n, _value(vars(self)[n])) for n in self.declaration.params),
+                *(
+                    (n, v.value if isinstance(v := vars(self)[n], Enum) else v)
+                    for n in self.declaration.params
+                ),
             ),
         )
 
@@ -242,8 +262,3 @@ class Operator:
             if p.repr
         )
         return f"{type(self).__name__}({own})"
-
-
-def _value(v: Any) -> Any:
-    # An Enum is its value, so renaming a member moves no key.
-    return v.value if isinstance(v, Enum) else v
