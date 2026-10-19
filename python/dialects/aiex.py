@@ -53,7 +53,7 @@ from ..helpers.taplib.utils import zero_leading_unit_strides
 register_dialect(get_dialect_registry())
 
 
-def _shim_dims(tap: TensorAccessPattern, ndims: int = 4):
+def shim_dims(tap: TensorAccessPattern, ndims: int = 4):
     """Return `tap`'s offset, sizes and strides as a shim buffer descriptor takes them.
 
     A walk deeper than `ndims` is coalesced, and one that still does not fit
@@ -216,7 +216,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
                 "NpuDmaMemcpyNd can take either a TileAccessPattern OR (sizes and/or strides and/or offsets), but not both."
             )
         if tap:
-            offset, sizes, strides = _shim_dims(tap)
+            offset, sizes, strides = shim_dims(tap)
             offsets = [0] * 3 + [offset]
         else:
             if offsets is None:
@@ -332,7 +332,7 @@ def shim_dma_bd(
         )
 
     if tap:
-        offset, sizes, strides = _shim_dims(tap)
+        offset, sizes, strides = shim_dims(tap)
 
     if offset is None:
         offset = 0
@@ -419,7 +419,7 @@ def shim_dma_single_bd_task(
         )
 
     if tap:
-        offset, sizes, strides = _shim_dims(tap)
+        offset, sizes, strides = shim_dims(tap)
 
     # The iteration attribute (when set) claims the shim's single iteration/repeat
     # slot, so the BD carries ONLY its access dimensions (<=3) and does NOT also
