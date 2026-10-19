@@ -1513,13 +1513,20 @@ dw_i8_bias_vector(const int8_t *line0, const int8_t *line1, const int8_t *line2,
   const int row_end = check == bottom ? 2 : 3;
   const aie::vector<int8, V> zeros = aie::zeros<int8, V>();
 
+  // Odd words: the second half of each pixel's 8 channels.
+  static_assert(V / 4 <= 32, "one word of mask bits");
+  const auto odd = aie::mask<V / 4>::from_uint32(0xaaaaaaaau);
   for (int c = 0; c < channels / 8; c++) {
     // Each tap's 8 channel weights, repeated for the M pixels.
     aie::vector<int8, V> w[9];
     AIE_LOOP_UNROLL_FULL
-    for (int t = 0; t < 9; t++)
-      for (int i = 0; i < V; i++)
-        w[t].set(wts[(c * 9 + t) * 8 + i % 8], i);
+    for (int t = 0; t < 9; t++) {
+      const int32_t *tap =
+          reinterpret_cast<const int32_t *>(wts + (c * 9 + t) * 8);
+      w[t] = aie::vector_cast<int8>(
+          aie::select(aie::broadcast<int32, V / 4>(tap[0]),
+                      aie::broadcast<int32, V / 4>(tap[1]), odd));
+    }
     aie::vector<int32, V> seed;
     AIE_LOOP_UNROLL_FULL
     for (int p = 0; p < M; p++)
