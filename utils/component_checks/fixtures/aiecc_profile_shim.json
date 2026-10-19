@@ -1,0 +1,374 @@
+{
+ "edges": [
+  {
+   "end_ms": 0,
+   "ms": 0,
+   "name": "input.mlir",
+   "peak_mib": 85.91015625,
+   "rss_after_mib": 85.91015625,
+   "start_ms": 0
+  },
+  {
+   "end_ms": 1,
+   "ms": 1,
+   "name": "default_stack_size.mlir",
+   "peak_mib": 89.47265625,
+   "rss_after_mib": 89.47265625,
+   "start_ms": 0
+  },
+  {
+   "end_ms": 3,
+   "ms": 1,
+   "name": "placed.mlir",
+   "peak_mib": 90.41015625,
+   "rss_after_mib": 90.41015625,
+   "start_ms": 2
+  },
+  {
+   "end_ms": 3,
+   "ms": 0,
+   "name": "traced.mlir",
+   "peak_mib": 90.41015625,
+   "rss_after_mib": 90.41015625,
+   "start_ms": 3
+  },
+  {
+   "end_ms": 7,
+   "ms": 4,
+   "name": "input_with_symbols.mlir",
+   "peak_mib": 96.03515625,
+   "rss_after_mib": 96.03515625,
+   "start_ms": 3
+  },
+  {
+   "end_ms": 15,
+   "ms": 7,
+   "name": "input_physical.mlir",
+   "peak_mib": 99.59765625,
+   "rss_after_mib": 99.59765625,
+   "start_ms": 8
+  },
+  {
+   "end_ms": 15,
+   "ms": 0,
+   "name": "perCore_{0}.mlir",
+   "peak_mib": 99.59765625,
+   "rss_after_mib": 99.59765625,
+   "start_ms": 15
+  },
+  {
+   "end_ms": 15,
+   "ms": 0,
+   "name": "perCoreInDevice",
+   "peak_mib": 99.59765625,
+   "rss_after_mib": 99.59765625,
+   "start_ms": 15
+  },
+  {
+   "end_ms": 15,
+   "ms": 0,
+   "name": "perCoreCompile",
+   "peak_mib": 99.59765625,
+   "rss_after_mib": 99.59765625,
+   "start_ms": 15
+  },
+  {
+   "end_ms": 15,
+   "ms": 0,
+   "name": "preBakedCores",
+   "peak_mib": 99.59765625,
+   "rss_after_mib": 99.59765625,
+   "start_ms": 15
+  },
+  {
+   "end_ms": 15,
+   "ms": 0,
+   "name": "perCoreStackSpace_{0}.txt",
+   "peak_mib": 99.59765625,
+   "rss_after_mib": 99.59765625,
+   "start_ms": 15
+  },
+  {
+   "end_ms": 15,
+   "ms": 0,
+   "name": "perCoreArches_{0}.txt",
+   "peak_mib": 99.59765625,
+   "rss_after_mib": 99.59765625,
+   "start_ms": 15
+  },
+  {
+   "end_ms": 17,
+   "ms": 2,
+   "name": "lowered_{0}.mlir",
+   "peak_mib": 100.72265625,
+   "rss_after_mib": 100.72265625,
+   "start_ms": 15
+  },
+  {
+   "end_ms": 17,
+   "ms": 0,
+   "name": "perCoreIRLinkFiles_{0}.txt",
+   "peak_mib": 100.72265625,
+   "rss_after_mib": 100.72265625,
+   "start_ms": 17
+  },
+  {
+   "end_ms": 18,
+   "ms": 0,
+   "name": "probeScripts_{0}.ld.script",
+   "peak_mib": 100.91015625,
+   "rss_after_mib": 100.91015625,
+   "start_ms": 18
+  },
+  {
+   "end_ms": 18,
+   "ms": 0,
+   "name": "llvmIR_{0}.ll",
+   "peak_mib": 102.78515625,
+   "rss_after_mib": 102.78515625,
+   "start_ms": 18
+  },
+  {
+   "end_ms": 18,
+   "ms": 0,
+   "name": "peano-compat_{0}.ll",
+   "peak_mib": 102.78515625,
+   "rss_after_mib": 102.78515625,
+   "start_ms": 18
+  },
+  {
+   "end_ms": 18,
+   "ms": 0,
+   "name": "peano-linked_{0}.ll",
+   "peak_mib": 102.78515625,
+   "rss_after_mib": 102.78515625,
+   "start_ms": 18
+  },
+  {
+   "end_ms": 60,
+   "ms": 41,
+   "name": "objects_{0}.o",
+   "peak_mib": 104.09765625,
+   "rss_after_mib": 104.09765625,
+   "start_ms": 19
+  },
+  {
+   "end_ms": 92,
+   "ms": 31,
+   "name": "probeElfs_{0}.elf",
+   "peak_mib": 104.09765625,
+   "rss_after_mib": 104.09765625,
+   "start_ms": 61
+  },
+  {
+   "end_ms": 93,
+   "ms": 0,
+   "name": "input_with_addresses.mlir",
+   "peak_mib": 104.28515625,
+   "rss_after_mib": 104.28515625,
+   "start_ms": 93
+  },
+  {
+   "end_ms": 93,
+   "ms": 0,
+   "name": "placedCore_{0}.mlir",
+   "peak_mib": 104.28515625,
+   "rss_after_mib": 104.28515625,
+   "start_ms": 93
+  },
+  {
+   "end_ms": 93,
+   "ms": 0,
+   "name": "sequencePlacement",
+   "peak_mib": 104.28515625,
+   "rss_after_mib": 104.28515625,
+   "start_ms": 93
+  },
+  {
+   "end_ms": 93,
+   "ms": 0,
+   "name": "placedCoreCompile",
+   "peak_mib": 104.28515625,
+   "rss_after_mib": 104.28515625,
+   "start_ms": 93
+  },
+  {
+   "end_ms": 93,
+   "ms": 0,
+   "name": "npu_materialized.mlir",
+   "peak_mib": 104.28515625,
+   "rss_after_mib": 104.28515625,
+   "start_ms": 93
+  },
+  {
+   "end_ms": 93,
+   "ms": 0,
+   "name": "ldScripts_{0}.ld.script",
+   "peak_mib": 104.28515625,
+   "rss_after_mib": 104.28515625,
+   "start_ms": 93
+  },
+  {
+   "end_ms": 94,
+   "ms": 1,
+   "name": "npu_dma_lowered.mlir",
+   "peak_mib": 104.47265625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 93
+  },
+  {
+   "end_ms": 94,
+   "ms": 0,
+   "name": "npu_lowered.mlir",
+   "peak_mib": 104.47265625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 94
+  },
+  {
+   "end_ms": 94,
+   "ms": 0,
+   "name": "npu_seq_{0}.mlir",
+   "peak_mib": 104.47265625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 94
+  },
+  {
+   "end_ms": 94,
+   "ms": 0,
+   "name": "perSeqMatching",
+   "peak_mib": 104.47265625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 94
+  },
+  {
+   "end_ms": 95,
+   "ms": 0,
+   "name": "npu_program_{0}.bin",
+   "peak_mib": 104.47265625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 95
+  },
+  {
+   "end_ms": 95,
+   "ms": 0,
+   "name": "insts_{0}.bin",
+   "peak_mib": 104.47265625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 95
+  },
+  {
+   "end_ms": 116,
+   "ms": 22,
+   "name": "elfs_{0}.elf",
+   "peak_mib": 104.47265625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 94
+  },
+  {
+   "end_ms": 116,
+   "ms": 0,
+   "name": "measured_stack_sizes.mlir",
+   "peak_mib": 104.47265625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 116
+  },
+  {
+   "end_ms": 116,
+   "ms": 0,
+   "name": "measured_data_sizes.mlir",
+   "peak_mib": 104.47265625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 116
+  },
+  {
+   "end_ms": 116,
+   "ms": 0,
+   "name": "checked_bank_placement.mlir",
+   "peak_mib": 104.66015625,
+   "rss_after_mib": 104.47265625,
+   "start_ms": 116
+  },
+  {
+   "end_ms": 117,
+   "ms": 0,
+   "name": "physical_with_elfs.mlir",
+   "peak_mib": 104.66015625,
+   "rss_after_mib": 104.66015625,
+   "start_ms": 117
+  },
+  {
+   "end_ms": 117,
+   "ms": 0,
+   "name": "perDevice_{0}.mlir",
+   "peak_mib": 104.66015625,
+   "rss_after_mib": 104.66015625,
+   "start_ms": 117
+  },
+  {
+   "end_ms": 117,
+   "ms": 0,
+   "name": "perDeviceMatching",
+   "peak_mib": 104.66015625,
+   "rss_after_mib": 104.66015625,
+   "start_ms": 117
+  },
+  {
+   "end_ms": 117,
+   "ms": 0,
+   "name": "cdo_{0}",
+   "peak_mib": 104.66015625,
+   "rss_after_mib": 104.66015625,
+   "start_ms": 117
+  },
+  {
+   "end_ms": 117,
+   "ms": 0,
+   "name": "memTopology_{0}.json",
+   "peak_mib": 104.66015625,
+   "rss_after_mib": 104.66015625,
+   "start_ms": 117
+  },
+  {
+   "end_ms": 117,
+   "ms": 0,
+   "name": "kernels_{0}.json",
+   "peak_mib": 104.66015625,
+   "rss_after_mib": 104.66015625,
+   "start_ms": 117
+  },
+  {
+   "end_ms": 117,
+   "ms": 0,
+   "name": "bif_{0}.bif",
+   "peak_mib": 104.66015625,
+   "rss_after_mib": 104.66015625,
+   "start_ms": 117
+  },
+  {
+   "end_ms": 117,
+   "ms": 0,
+   "name": "{0}.pdi",
+   "peak_mib": 105.59765625,
+   "rss_after_mib": 105.59765625,
+   "start_ms": 117
+  },
+  {
+   "end_ms": 117,
+   "ms": 0,
+   "name": "partition_{0}.json",
+   "peak_mib": 105.78515625,
+   "rss_after_mib": 105.59765625,
+   "start_ms": 117
+  },
+  {
+   "end_ms": 134,
+   "ms": 16,
+   "name": "aie.xclbin",
+   "peak_mib": 105.78515625,
+   "rss_after_mib": 105.78515625,
+   "start_ms": 118
+  }
+ ],
+ "version": 1,
+ "wall_ms": 134
+}

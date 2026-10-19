@@ -36,7 +36,6 @@ programming_examples/ml/llama_3_2_1b, with
 """
 
 import argparse
-import glob
 import json
 import os
 import re
@@ -45,6 +44,8 @@ import subprocess
 import sys
 import tempfile
 import time
+
+from aiecc_stages import PROFILE_NAME, STAGE_METRICS, stage_rows
 
 N_LAYERS = 16
 PT = 4
@@ -65,7 +66,9 @@ _PER_TOKEN_RE = re.compile(r"per-token:\s+([\d.]+) ms\s+\(([\d.]+) tok/s\)")
 _RATIO_RE = re.compile(r"ratio:\s+([\d.]+)x\s+->\s+(\S+)")
 _XCLBIN = f"build/final_chain_persist_grow_N{N_LAYERS}_PT{PT}.xclbin"
 _INSTR = f"build/insts_chain_persist_grow_N{N_LAYERS}_PT{PT}.bin"
-_PROJ_DIR = f"build/aie_chain_persist_grow_N{N_LAYERS}_PT{PT}.mlir.prj"
+_PROJ_DIR = f"build/final_chain_persist_grow_N{N_LAYERS}_PT{PT}.prj"
+_PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
+_CORE_RE = re.compile(r"\baie\.core\(")
 
 # The env this design's own Makefile sets for this target (see its
 # run_chain_persist_grow_mh recipe); the build and the test script both read
@@ -136,18 +139,12 @@ def _build_rss(env: dict) -> tuple[subprocess.CompletedProcess, float]:
 
 
 def _clean_build_outputs() -> None:
-    """Remove this config's generated MLIR/project/xclbin/instr.
+    """Remove this config's xclbin, instructions and project dir.
 
-    Unlike mobilenet's CLI (which takes a fresh --xclbin-path/--insts-path
-    per run), this design's Makefile always writes into the persistent
-    build/ dir, so a fresh NPU_CACHE_HOME alone wouldn't force Make to
-    recompile -- it would just see the existing xclbin as up to date.
+    The Makefile writes into the persistent build/ dir, so without this Make
+    would see the existing xclbin as up to date and not recompile.
     """
-    for rel in (
-        _XCLBIN,
-        _INSTR,
-        f"build/aie_chain_persist_grow_N{N_LAYERS}_PT{PT}.mlir",
-    ):
+    for rel in (_XCLBIN, _INSTR):
         path = os.path.join(_LLAMA_DIR, rel)
         if os.path.exists(path):
             os.remove(path)
@@ -159,29 +156,39 @@ def _clean_build_outputs() -> None:
 def compile_cold_warm(env: dict) -> dict:
     """Compile twice into one fresh NPU_CACHE_HOME: cold, then warm.
 
-    Cold: kernel objects built from scratch, same as any first-time compile.
-    Warm: immediately after, same cache_dir, so it reuses the cold compile's
-    kernel objects -- the Makefile's own output is cleaned before each
-    compile so both runs go through the full pipeline (placement + xclbin
-    assembly), not just a Make no-op. See sa_placer_hw.py's run_one for the
-    mobilenet analogue.
+    Cold: every cache empty, same as any first-time compile. Warm: only the
+    cold compile's kernel objects (NPU_CACHE_HOME/objects) are kept -- the
+    whole-build and per-device caches and the outputs are cleared first, so
+    the warm compile reruns the full pipeline, which is what an edit to the
+    design (not its kernels) costs.
     """
     cache_dir = tempfile.mkdtemp(prefix="component-checks-llama-chain-")
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
+    profile = os.path.join(_LLAMA_DIR, _PROFILE)
     try:
         _clean_build_outputs()
         start = time.perf_counter()
         built_cold, rss_cold = _build_rss(run_env)
         compile_s = time.perf_counter() - start
+        stages_cold = stage_rows(
+            profile, compile_s if built_cold.returncode == 0 else None, ""
+        )
 
         _clean_build_outputs()
+        for layer in ("builds", "devices"):
+            shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
         start = time.perf_counter()
         built_warm, rss_warm = _build_rss(run_env)
         compile_s_warm = time.perf_counter() - start
+        stages_warm = stage_rows(
+            profile, compile_s_warm if built_warm.returncode == 0 else None, "_warm"
+        )
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
 
     return {
+        **stages_cold,
+        **stages_warm,
         "built": built_warm if built_warm.returncode == 0 else built_cold,
         "compile_s": round(compile_s, 1) if built_cold.returncode == 0 else None,
         "compile_peak_rss_mb": (
@@ -254,19 +261,24 @@ def parse_correctness(out: str, returncode: int) -> dict:
 def artifact_stats() -> dict:
     """Sizes/counts of the files this build actually produced.
 
-    Per-core ELFs are counted from the project dir rather than the xclbin
-    (which packs them compressed), so `core_elfs_bytes` reflects what Peano
-    + the chess backend generated, not the shipped payload size.
+    The per-core ELFs are linked into the PDI and not kept on disk, so the
+    PDI's size stands in for them, and the placed MLIR gives the core count.
     """
-    xclbin = os.path.join(_LLAMA_DIR, _XCLBIN)
-    instr = os.path.join(_LLAMA_DIR, _INSTR)
-    elfs = glob.glob(os.path.join(_LLAMA_DIR, _PROJ_DIR, "**", "*.elf"), recursive=True)
-    return {
-        "xclbin_bytes": os.path.getsize(xclbin) if os.path.exists(xclbin) else None,
-        "instr_bytes": os.path.getsize(instr) if os.path.exists(instr) else None,
-        "n_core_elfs": len(elfs) if elfs else None,
-        "core_elfs_bytes": sum(os.path.getsize(f) for f in elfs) if elfs else None,
+    paths = {
+        "xclbin_bytes": os.path.join(_LLAMA_DIR, _XCLBIN),
+        "instr_bytes": os.path.join(_LLAMA_DIR, _INSTR),
+        "pdi_bytes": os.path.join(_LLAMA_DIR, _PROJ_DIR, "main.pdi"),
     }
+    out: dict = {
+        k: os.path.getsize(p) if os.path.exists(p) else None for k, p in paths.items()
+    }
+    placed = os.path.join(_LLAMA_DIR, _PROJ_DIR, "input_with_addresses.mlir")
+    if os.path.exists(placed):
+        with open(placed) as f:
+            out["n_cores"] = len(_CORE_RE.findall(f.read()))
+    else:
+        out["n_cores"] = None
+    return out
 
 
 def parse_timing(out: str) -> dict:
@@ -311,39 +323,16 @@ def aggregate(
                 "range": timing["bound"],
             }
         )
-    if artifacts.get("xclbin_bytes") is not None:
-        out.append(
-            {
-                "name": f"{case}/xclbin_bytes",
-                "unit": "bytes",
-                "value": artifacts["xclbin_bytes"],
-            }
-        )
-    if artifacts.get("instr_bytes") is not None:
-        out.append(
-            {
-                "name": f"{case}/instr_bytes",
-                "unit": "bytes",
-                "value": artifacts["instr_bytes"],
-            }
-        )
-    if artifacts.get("n_core_elfs") is not None:
-        out.append(
-            {
-                "name": f"{case}/n_core_elfs",
-                "unit": "elfs",
-                "value": artifacts["n_core_elfs"],
-            }
-        )
-    if artifacts.get("core_elfs_bytes") is not None:
-        out.append(
-            {
-                "name": f"{case}/core_elfs_bytes",
-                "unit": "bytes",
-                "value": artifacts["core_elfs_bytes"],
-                "range": f"across {artifacts['n_core_elfs']} ELFs",
-            }
-        )
+    for metric, unit in (
+        ("xclbin_bytes", "bytes"),
+        ("instr_bytes", "bytes"),
+        ("pdi_bytes", "bytes"),
+        ("n_cores", "cores"),
+    ):
+        if artifacts.get(metric) is not None:
+            out.append(
+                {"name": f"{case}/{metric}", "unit": unit, "value": artifacts[metric]}
+            )
     # Reuses sa_placer_hw.py's metric names (compile_s, compile_peak_rss_mb,
     # ...) so the dashboard's existing labels/tooltips/thresholds for them
     # apply here with no new Layer-3 vocabulary.
@@ -352,9 +341,11 @@ def aggregate(
         "compile_peak_rss_mb",
         "compile_s_warm",
         "compile_peak_rss_mb_warm",
+        *STAGE_METRICS,
+        *(f"{m}_warm" for m in STAGE_METRICS),
     ):
         if compile_stats.get(metric) is not None:
-            unit = "s" if metric.startswith("compile_s") else "MB"
+            unit = "MB" if "_rss_" in metric else "s"
             out.append(
                 {
                     "name": f"{case}/{metric}",
