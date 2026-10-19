@@ -928,10 +928,10 @@ KERNEL_SPECS: list[KernelSpec] = [
         name="selective_scan",
         factory=kernels.selective_scan,
         kwargs={},
-        arg_count=6,  # xbc, dt, head, state, y, valid
+        arg_count=8,  # x, bc, dt, head, state, final, y, valid
         expected_name="selective_scan",
         invalid_kwargs=[(dict(state=0), "state must be a positive integer")],
-        shape_checks=[(dict(rows=4, head_dim=8, state=16), 0, (160,))],
+        shape_checks=[(dict(rows=4, head_dim=8, state=16), 1, (128,))],
     ),
     KernelSpec(
         name="patch_positions",

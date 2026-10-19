@@ -52,15 +52,18 @@ float softplus(float z) {
 
 } // namespace
 
-// Each row of xbc is the head's x (SCAN_HEAD_DIM), then its group's B and C
-// (SCAN_STATE each); head is (dt_bias, A, D). For each of the first valid
-// rows: step = softplus(dt + dt_bias), state = exp(step * A) * state +
-// step * outer(x, B), y = state @ C + D * x. The rows after valid leave the
-// state alone and write zeros.
-extern "C" void selective_scan(bfloat16 *restrict xbc, bfloat16 *restrict dt,
-                               float *restrict head, float *restrict state,
+// Row t of x is the head's x (SCAN_HEAD_DIM) and row t of bc its group's B
+// then C (SCAN_STATE each); head is (dt_bias, A, D). final starts as state,
+// and for each of the first valid rows: step = softplus(dt + dt_bias),
+// final = exp(step * A) * final + step * outer(x, B), y = final @ C + D * x.
+// The rows after valid leave final alone and write zeros.
+extern "C" void selective_scan(bfloat16 *restrict x, bfloat16 *restrict bc,
+                               bfloat16 *restrict dt, float *restrict head,
+                               float *restrict state, float *restrict final,
                                bfloat16 *restrict y, int32_t valid) {
   event0();
+  for (int i = 0; i < SCAN_HEAD_DIM * SCAN_STATE; i++)
+    final[i] = state[i];
   const float dt_bias = head[0], A = head[1], D = head[2];
   for (int t = 0; t < SCAN_ROWS; t++) {
     bfloat16 *yt = y + t * SCAN_HEAD_DIM;
@@ -69,15 +72,15 @@ extern "C" void selective_scan(bfloat16 *restrict xbc, bfloat16 *restrict dt,
         yt[p] = 0.0f;
       continue;
     }
-    const bfloat16 *x = xbc + t * (SCAN_HEAD_DIM + 2 * SCAN_STATE);
-    const bfloat16 *B = x + SCAN_HEAD_DIM;
+    const bfloat16 *xt = x + t * SCAN_HEAD_DIM;
+    const bfloat16 *B = bc + t * 2 * SCAN_STATE;
     const bfloat16 *C = B + SCAN_STATE;
     const float step = softplus((float)dt[t] + dt_bias);
     const float decay = (float)exp64((double)(step * A));
     for (int p = 0; p < SCAN_HEAD_DIM; p++) {
-      const float xp = (float)x[p];
+      const float xp = (float)xt[p];
       const float sx = step * xp;
-      float *s = state + p * SCAN_STATE;
+      float *s = final + p * SCAN_STATE;
       float acc = 0.0f;
       for (int n = 0; n < SCAN_STATE; n++) {
         s[n] = decay * s[n] + sx * (float)B[n];
