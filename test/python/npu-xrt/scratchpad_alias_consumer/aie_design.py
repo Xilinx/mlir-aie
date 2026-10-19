@@ -74,14 +74,10 @@ def design() -> str:
     config = DeviceConfiguration(
         "test", NPU2Col1(), workers=[worker], runtimes=[consumer, producer]
     )
-    module = Program.compose([config], entry=consumer).resolve_program()
     # The firmware skips loading a PDI it loaded last, so each sequence loads
-    # an empty device first to reload "test" and its parameters. The module
-    # then holds two devices, which compose's count of one would contradict.
-    for name in ("iron.entry", "iron.configuration_count"):
-        del module.operation.attributes[name]
-    empty = "module {\n  aie.device(npu2) @empty { }\n"
-    return str(module).replace("module {\n", empty, 1)
+    # an empty device first to reload "test" and its parameters.
+    empty = DeviceConfiguration("empty", NPU2Col1())
+    return str(Program.compose([empty, config], entry=consumer).resolve_program())
 
 
 print(design())

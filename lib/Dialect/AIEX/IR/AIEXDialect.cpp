@@ -1890,6 +1890,19 @@ LogicalResult AIEX::NpuWriteConfigOp::verify() {
 }
 
 LogicalResult
+AIEX::NpuLoadPdiOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  FlatSymbolRefAttr ref = getDeviceRefAttr();
+  if (!ref)
+    return success();
+  auto device = (*this)->getParentOfType<AIE::DeviceOp>();
+  Operation *scope = device ? device->getParentOp()
+                            : SymbolTable::getNearestSymbolTable(*this);
+  if (!isa_and_present<AIE::DeviceOp>(symbolTable.lookupSymbolIn(scope, ref)))
+    return emitOpError() << ref << " is not a device";
+  return success();
+}
+
+LogicalResult
 AIEX::NpuWriteConfigOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
   if (!isa_and_present<AIE::DeviceOp>(

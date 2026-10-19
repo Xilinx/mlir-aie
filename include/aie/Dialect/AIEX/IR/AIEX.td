@@ -1292,7 +1292,9 @@ def AIE_NpuWriteBdOp : AIEX_Op<"npu.writebd", []> {
 }
 
 // NPU Load PDI operation
-def AIE_NpuLoadPdiOp : AIEX_Op<"npu.load_pdi", []> {
+def AIE_NpuLoadPdiOp
+    : AIEX_Op<"npu.load_pdi",
+              [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "load pdi operator";
   let arguments = (ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
       DefaultValuedOptionalAttr<I32Attr, "0">:$id,
