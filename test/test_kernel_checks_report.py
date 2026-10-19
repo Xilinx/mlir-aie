@@ -265,7 +265,8 @@ def test_a_refused_run_reports_one_reason_not_a_failure_per_case(read_leg, repor
     assert leg.failures == []
     assert leg.uncompared == f"not timed: {refusal}"
     comment = report.render([leg])
-    assert "all passed, no regressions, npu2 not timed" in comment
+    assert "all passed, not compared with a nightly, npu2 not timed" in comment
+    assert "Not compared with a nightly on main; the table says why." in comment
     assert f"| npu2 | ? | not timed: {refusal} | 1 | 0 | \u2014 |" in comment
 
 
@@ -300,13 +301,23 @@ def test_a_test_that_passed_on_a_retry_is_listed(read_leg, report):
     assert "`perf.py::test_kernel_perf[synthetic/3/i8]` | 1 |" in comment
 
 
-def test_cli_writes_report(tmp_path):
+@pytest.mark.parametrize("published", [False, True])
+def test_cli_writes_report(tmp_path, published):
     results = tmp_path / "results/npu2"
     results.mkdir(parents=True)
     (results / "meta.json").write_text(json.dumps(META))
     (results / "perf.json").write_text(
         json.dumps(_rows({"synthetic/1/i8/cycles": ("cycles", 100)}))
     )
+    if published:
+        nightly = tmp_path / "baselines/npu2"
+        nightly.mkdir(parents=True)
+        commit = {"id": "abcdef0123", "url": "https://example.com/abcdef0"}
+        (nightly / "latest.json").write_text(
+            json.dumps(
+                _record({"synthetic/1/i8/cycles": ("cycles", 90)}, commit=commit)
+            )
+        )
     out = tmp_path / "report.md"
     subprocess.run(
         [
@@ -325,5 +336,11 @@ def test_cli_writes_report(tmp_path):
     )
     text = out.read_text()
     assert "<!-- kernel-checks-report -->" in text
-    assert "all passed, no regressions" in text
-    assert "| no nightly to compare with |" in text
+    if published:
+        assert "0 failing, 1 regressed" in text
+        assert "Compared with the last nightly on main." in text
+        assert "| [abcdef0](https://example.com/abcdef0) |" in text
+    else:
+        assert "all passed, not compared with a nightly" in text
+        assert "Not compared with a nightly on main" in text
+        assert "| no nightly to compare with |" in text

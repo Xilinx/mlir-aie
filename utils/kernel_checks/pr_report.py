@@ -12,8 +12,7 @@ keeps it as one comment. Standard library only, so it runs on any runner.
 
 ``results/<npu>/`` holds a leg's artifact (meta.json, perf.json,
 correctness.xml); ``baselines/<npu>/latest.json`` is the record publish.py
-wrote for the last nightly that published rows, which the publish job
-caches. The thresholds are ``thresholds.json``'s, shared with the page.
+wrote to gh-pages for the last nightly that published rows. The thresholds are ``thresholds.json``'s, shared with the page.
 """
 
 import argparse
@@ -233,8 +232,8 @@ def baseline(path: Path, run_id: str = "") -> dict | None:
     """Return the last nightly's record (``latest.json``), or None.
 
     None without rows, in a newer format than this reads, or from this very
-    run: the publish job of a nightly can cache its record before a re-run
-    of the report restores it, and a run compared with itself shows nothing.
+    run: a re-run of a nightly's report reads the record its own publish job
+    already wrote, and a run compared with itself shows nothing.
     """
     if not path.exists():
         return None
@@ -402,8 +401,12 @@ def _coverage(legs: list[Leg]) -> str:
 def render(legs: list[Leg], run_url: str = "") -> str:
     failing = sum(len(leg.failures) for leg in legs)
     regressed = sum(len(leg.regressed) for leg in legs)
+    compared = any(not leg.uncompared for leg in legs)
     if not legs:
         title = "no NPU produced results"
+    elif not compared:
+        title = f"{failing} failing" if failing else "all passed"
+        title += ", not compared with a nightly"
     elif failing or regressed:
         title = f"{failing} failing, {regressed} regressed"
     else:
@@ -415,13 +418,17 @@ def render(legs: list[Leg], run_url: str = "") -> str:
     gated = " or ".join(f"`{m}` {100 * t:g}%" for m, t in GATED.items())
     links = [f"[run]({run_url})"] if run_url else []
     links.append(f"[nightly history]({PAGE})")
+    lead = (
+        f"Compared with the last nightly on main. Regressed: {gated} or more "
+        "worse. Both are stable run to run, so a move is the compiler's. "
+        if compared
+        else "Not compared with a nightly on main; the table says why. "
+    )
     out = [
         MARKER,
         f"## Kernel checks: {title}",
         "",
-        f"Compared with the last nightly on main. Regressed: {gated} or more "
-        "worse. Both are stable run to run, so a move is the compiler's. "
-        + " \u00b7 ".join(links),
+        lead + " \u00b7 ".join(links),
         "",
     ]
     if coverage := _coverage(legs):
