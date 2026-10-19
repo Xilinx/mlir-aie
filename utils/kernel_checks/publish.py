@@ -89,7 +89,14 @@ MAX_RUNS = 400
 # reader of the old format would get wrong.
 SCHEMA = 1
 REPO = "https://github.com/Xilinx/mlir-aie"
-COMPONENTS = ("sa-placer", "sa-placer-hw", "allocator", "router", "llama-chain-hw")
+COMPONENTS = (
+    "sa-placer",
+    "sa-placer-hw",
+    "allocator",
+    "router",
+    "llama-chain-hw",
+    "yolo26n-hw",
+)
 # The dashboard section each component check's page redirects to.
 SECTION_OF = {
     "sa-placer": "placement",
@@ -97,6 +104,7 @@ SECTION_OF = {
     "allocator": "placement",
     "router": "routing",
     "llama-chain-hw": "performance",
+    "yolo26n-hw": "performance",
 }
 TARGETS = ("npu1", "npu2") + COMPONENTS
 # Provenance fields worth a column in the history (the rest stay in the record).

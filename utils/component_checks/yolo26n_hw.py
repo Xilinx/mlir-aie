@@ -1,0 +1,427 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+r"""Build + run the YOLO26n 640x640 detector on NPU2 over real COCO images.
+
+The whole detector end to end: does it still build, does every image's
+detection match the numpy oracle (and, as information, onnxruntime), and how
+long one image takes at batch 1. Shells out to the example's own yolo26n.py
+CLI (no new Python API): ``--compile-only`` twice into one fresh
+NPU_CACHE_HOME, cold then warm, keeping only the cold compile's kernel
+objects for the warm one, as llama_chain_hw.py does; then one ``--time`` run
+from that cache, its timing kept only when every image matched.
+
+Needs the quantized model and the COCO128 images where amd/IRON's examples
+keep them, ``$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/`` (default ``/srv``), or
+``--weights-dir``: ``yolo26n_xint8.onnx`` and ``coco128/images/train2017``.
+Generates ``data/`` once if not already there.
+
+Writes rows and a meta file in the kernel checks' format
+(utils/kernel_checks/publish.py), with the device's power mode and the
+toolchain; ``--pmode`` refuses to measure in any other mode. Exits 1 when
+the run fails or the check refuses, after writing both. Reproduced, from
+programming_examples/ml/yolo26n, with
+
+    python yolo26n.py --images $IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/coco128/images/train2017 --n 8
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+from aiecc_stages import PROFILE_NAME, STAGE_METRICS, stage_rows
+
+CASE = "yolo26n/640"
+N_ITERS = 5
+N_WARMUP = 2
+
+_YOLO_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "programming_examples", "ml", "yolo26n"
+)
+_PARAMS = os.path.join(_YOLO_DIR, "data", "yolo26n_params.npz")
+
+_IMAGE_LINE_RE = re.compile(
+    r"^image (.+): (PASS|FAIL) \((\d+)/(\d+) differ\)$", re.MULTILINE
+)
+_SUMMARY_RE = re.compile(r"^yolo26n: (\d+)/(\d+) images PASS", re.MULTILINE)
+_ORT_RE = re.compile(r"^ort: (\d+)/(\d+) images match onnxruntime", re.MULTILINE)
+_PER_IMAGE_RE = re.compile(
+    r"^per-image: ([\d.]+) us \(([\d.]+) fps\) at batch (\d+)", re.MULTILINE
+)
+_CORE_RE = re.compile(r"\baie\.core\(")
+
+
+def _run(cmd: list[str], env: dict) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, cwd=_YOLO_DIR, env=env, capture_output=True, text=True)
+
+
+def ensure_data(onnx: Path, env: dict) -> subprocess.CompletedProcess | None:
+    """Generate data/ once, if this checkout doesn't already have it."""
+    if os.path.exists(_PARAMS):
+        return None
+    return _run([sys.executable, "gen_yolo_data.py", "--onnx", str(onnx)], env)
+
+
+def _compile_rss(
+    images: Path, onnx: Path, env: dict
+) -> tuple[subprocess.CompletedProcess, float]:
+    """Compile once, returning the run and its own peak RSS in MB.
+
+    Uses os.wait4, as llama_chain_hw.py's _build_rss does, so this call's
+    peak RSS is its own rather than a running max over every reaped child.
+    """
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "yolo26n.py",
+            "--compile-only",
+            "--images",
+            str(images),
+            "--onnx",
+            str(onnx),
+        ],
+        cwd=_YOLO_DIR,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    out = proc.stdout.read() if proc.stdout else ""
+    _, status, ru = os.wait4(proc.pid, 0)
+    result = subprocess.CompletedProcess(
+        proc.args, os.waitstatus_to_exitcode(status), out, ""
+    )
+    return result, ru.ru_maxrss / 1024.0
+
+
+def newest_build(cache_dir: str) -> str | None:
+    """Return the JIT build directory under ``cache_dir`` aiecc last profiled.
+
+    Args:
+        cache_dir: an NPU_CACHE_HOME; each build is ``<cache_dir>/<hash>/``.
+
+    Returns:
+        The directory holding the newest ``aiecc_profile.json``, or None when
+        no build wrote one.
+    """
+    profiles = glob.glob(os.path.join(cache_dir, "*", PROFILE_NAME))
+    if not profiles:
+        return None
+    return os.path.dirname(max(profiles, key=os.path.getmtime))
+
+
+def compile_cold_warm(images: Path, onnx: Path, env: dict, cache_dir: str) -> dict:
+    """Compile twice into the fresh NPU_CACHE_HOME ``cache_dir``: cold, then warm.
+
+    Cold: every cache empty, same as any first-time compile. Warm: only the
+    cold compile's kernel objects (``objects/``) are kept, so the warm
+    compile reruns the full pipeline, which is what an edit to the design
+    (not its kernels) costs.
+    """
+    run_env = dict(env, NPU_CACHE_HOME=cache_dir)
+    start = time.perf_counter()
+    built_cold, rss_cold = _compile_rss(images, onnx, run_env)
+    compile_s = time.perf_counter() - start
+    build = newest_build(cache_dir)
+    stages_cold = stage_rows(
+        os.path.join(build or cache_dir, PROFILE_NAME),
+        compile_s if built_cold.returncode == 0 else None,
+        "",
+    )
+
+    for entry in os.listdir(cache_dir):
+        if entry != "objects":
+            shutil.rmtree(os.path.join(cache_dir, entry), ignore_errors=True)
+    start = time.perf_counter()
+    built_warm, rss_warm = _compile_rss(images, onnx, run_env)
+    compile_s_warm = time.perf_counter() - start
+    build = newest_build(cache_dir)
+    stages_warm = stage_rows(
+        os.path.join(build or cache_dir, PROFILE_NAME),
+        compile_s_warm if built_warm.returncode == 0 else None,
+        "_warm",
+    )
+
+    return {
+        **stages_cold,
+        **stages_warm,
+        "built": built_warm if built_warm.returncode == 0 else built_cold,
+        "build_dir": build,
+        "compile_s": round(compile_s, 1) if built_cold.returncode == 0 else None,
+        "compile_peak_rss_mb": (
+            round(rss_cold, 1) if built_cold.returncode == 0 else None
+        ),
+        "compile_s_warm": (
+            round(compile_s_warm, 1) if built_warm.returncode == 0 else None
+        ),
+        "compile_peak_rss_mb_warm": (
+            round(rss_warm, 1) if built_warm.returncode == 0 else None
+        ),
+        "log": built_cold.stdout + built_warm.stdout,
+    }
+
+
+def run_timed(
+    images: Path, onnx: Path, n_images: int, env: dict
+) -> subprocess.CompletedProcess:
+    return _run(
+        [
+            sys.executable,
+            "yolo26n.py",
+            "--images",
+            str(images),
+            "--onnx",
+            str(onnx),
+            "--n",
+            str(n_images),
+            "--time",
+            "--n-iters",
+            str(N_ITERS),
+            "--n-warmup",
+            str(N_WARMUP),
+        ],
+        env,
+    )
+
+
+def parse_correctness(out: str, returncode: int) -> dict:
+    """Read a yolo26n.py run: how many images matched the oracle and onnxruntime.
+
+    Args:
+        out: the run's stdout and stderr.
+        returncode: its exit code.
+
+    Returns:
+        ``passed`` (every image matched, by the run's own summary line),
+        ``images_passed``, ``images_total``, ``ort_matches`` (None when the
+        run printed no onnxruntime line) and ``failed_images``, by name.
+    """
+    images = _IMAGE_LINE_RE.findall(out)
+    summary = _SUMMARY_RE.search(out)
+    ort = _ORT_RE.search(out)
+    passed_n = (
+        int(summary.group(1))
+        if summary
+        else sum(1 for _, verdict, _, _ in images if verdict == "PASS")
+    )
+    total_n = int(summary.group(2)) if summary else len(images)
+    return {
+        "passed": returncode == 0
+        and bool(summary)
+        and total_n > 0
+        and passed_n == total_n,
+        "images_passed": passed_n,
+        "images_total": total_n,
+        "ort_matches": int(ort.group(1)) if ort else None,
+        "failed_images": [name for name, verdict, _, _ in images if verdict == "FAIL"],
+    }
+
+
+def parse_timing(out: str) -> dict:
+    """Read a ``--time`` run: per batch, one image's time and the frame rate.
+
+    Args:
+        out: the run's stdout and stderr.
+
+    Returns:
+        ``{"us_per_image_b<B>": us, "fps_b<B>": fps}`` for each batch ``B``
+        the run timed, in the order it printed them; empty when it timed none.
+    """
+    timing: dict = {}
+    for us, fps, batch in _PER_IMAGE_RE.findall(out):
+        timing[f"us_per_image_b{batch}"] = float(us)
+        timing[f"fps_b{batch}"] = float(fps)
+    return timing
+
+
+def artifact_stats(build_dir: str | None) -> dict:
+    """Sizes/counts of the files the warm build actually produced.
+
+    A full-ELF build's one ``.elf`` carries every core and the runtime
+    sequence; otherwise the xclbin and instruction stream stand in for it.
+    The placed MLIR gives the core count.
+    """
+    if build_dir is None:
+        return {}
+    out: dict = {}
+    elfs = sorted(glob.glob(os.path.join(build_dir, "*.elf")))
+    if elfs:
+        out["elf_bytes"] = os.path.getsize(elfs[0])
+    else:
+        for metric, name in (
+            ("xclbin_bytes", "final.xclbin"),
+            ("instr_bytes", "insts.bin"),
+        ):
+            path = os.path.join(build_dir, name)
+            if os.path.exists(path):
+                out[metric] = os.path.getsize(path)
+    placed = os.path.join(build_dir, "input_with_addresses.mlir")
+    if os.path.exists(placed):
+        with open(placed) as f:
+            out["n_cores"] = len(_CORE_RE.findall(f.read()))
+    return out
+
+
+def aggregate(
+    correctness: dict, timing: dict, artifacts: dict, compile_stats: dict
+) -> list[dict]:
+    out = [
+        {
+            "name": f"{CASE}/images_passed",
+            "unit": "images",
+            "value": correctness["images_passed"],
+            "range": f"of {correctness['images_total']}",
+        }
+    ]
+    if correctness["ort_matches"] is not None:
+        out.append(
+            {
+                "name": f"{CASE}/ort_matches",
+                "unit": "images",
+                "value": correctness["ort_matches"],
+                "range": f"of {correctness['images_total']}",
+            }
+        )
+    for metric, value in timing.items():
+        unit = "fps" if metric.startswith("fps_") else "us"
+        out.append({"name": f"{CASE}/{metric}", "unit": unit, "value": value})
+    for metric, unit in (
+        ("elf_bytes", "bytes"),
+        ("xclbin_bytes", "bytes"),
+        ("instr_bytes", "bytes"),
+        ("n_cores", "cores"),
+    ):
+        if artifacts.get(metric) is not None:
+            out.append(
+                {"name": f"{CASE}/{metric}", "unit": unit, "value": artifacts[metric]}
+            )
+    for metric in (
+        "compile_s",
+        "compile_peak_rss_mb",
+        "compile_s_warm",
+        "compile_peak_rss_mb_warm",
+        *STAGE_METRICS,
+        *(f"{m}_warm" for m in STAGE_METRICS),
+    ):
+        if compile_stats.get(metric) is not None:
+            unit = "MB" if "_rss_" in metric else "s"
+            out.append(
+                {
+                    "name": f"{CASE}/{metric}",
+                    "unit": unit,
+                    "value": compile_stats[metric],
+                }
+            )
+    return out
+
+
+def write(path: str, data) -> None:
+    with open(path, "w") as f:
+        json.dump(data, f, indent=1)
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
+    parser.add_argument(
+        "--weights-dir",
+        type=Path,
+        default=Path(os.environ.get("IRON_EXAMPLE_WEIGHTS_DIR", "/srv")) / "yolo26n",
+        help="holds yolo26n_xint8.onnx and coco128/ (default: $IRON_EXAMPLE_WEIGHTS_DIR/yolo26n)",
+    )
+    parser.add_argument(
+        "--n-images", type=int, default=8, help="COCO images to run (default: 8)"
+    )
+    parser.add_argument(
+        "--pmode",
+        default="any",
+        help="refuse to measure unless the NPU is in this power mode (default: any)",
+    )
+    parser.add_argument("--out", required=True, help="perf.json to write")
+    parser.add_argument("--meta", required=True, help="meta.json to write")
+    args = parser.parse_args(argv)
+
+    # Deferred so that the tests can import this module's parsers without an NPU runtime.
+    from aie.utils.benchmark import preflight, provenance
+
+    onnx = args.weights_dir / "yolo26n_xint8.onnx"
+    images = args.weights_dir / "coco128" / "images" / "train2017"
+    pre = preflight()
+    meta = {
+        "preflight": dict(vars(pre)),
+        "provenance": provenance(device=pre.device, pmode=pre.pmode),
+        "weights_dir": str(args.weights_dir),
+        "n_images": args.n_images,
+    }
+    if args.pmode != "any" and pre.pmode != args.pmode:
+        meta["refused"] = (
+            f"power mode is {pre.pmode or 'unreadable'}, required '{args.pmode}'"
+        )
+    elif not onnx.is_file() or not images.is_dir():
+        missing = onnx if not onnx.is_file() else images
+        meta["refused"] = f"{missing} is missing; see --weights-dir"
+    if "refused" in meta:
+        print(f"refusing to measure: {meta['refused']}")
+        write(args.out, [])
+        write(args.meta, {**meta, "failed": [], "exitstatus": 1})
+        return 1
+
+    env = dict(os.environ)
+    gen = ensure_data(onnx, env)
+    cache_dir = tempfile.mkdtemp(prefix="component-checks-yolo26n-")
+    run_env = dict(env, NPU_CACHE_HOME=cache_dir)
+    correctness = parse_correctness("", 1)
+    timing = parse_timing("")
+    artifacts: dict = {}
+    log = (gen.stdout + gen.stderr) if gen else ""
+    try:
+        compiled = compile_cold_warm(images, onnx, env, cache_dir)
+        log += compiled["log"]
+        if compiled["built"].returncode == 0:
+            artifacts = artifact_stats(compiled["build_dir"])
+            ran = run_timed(images, onnx, args.n_images, run_env)
+            correctness = parse_correctness(ran.stdout + ran.stderr, ran.returncode)
+            if correctness["passed"]:
+                timing = parse_timing(ran.stdout + ran.stderr)
+            log += ran.stdout + ran.stderr
+    finally:
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
+    print(log)
+    failed = [] if correctness["passed"] else [CASE]
+
+    write(args.out, aggregate(correctness, timing, artifacts, compiled))
+    write(
+        args.meta,
+        {
+            **meta,
+            "measurement_sane": True,
+            "detail": [
+                {
+                    "case": CASE,
+                    **correctness,
+                    **timing,
+                    **artifacts,
+                    **{
+                        k: v
+                        for k, v in compiled.items()
+                        if k not in ("built", "build_dir", "log")
+                    },
+                }
+            ],
+            "failed": failed,
+            "exitstatus": 1 if failed else 0,
+        },
+    )
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

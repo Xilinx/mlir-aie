@@ -6,6 +6,7 @@
 
 import importlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -109,3 +110,54 @@ def test_llama_publishes_each_stage_cold_and_warm(checks):
     assert by_name["compile_outside_aiecc_s"]["value"] == 2.38
     assert by_name["compile_place_s_warm"]["unit"] == "s"
     assert {f"{m}_warm" for m in stages.STAGE_METRICS} <= by_name.keys()
+
+
+def test_yolo26n_publishes_each_stage_cold_and_warm(checks):
+    stages, _ = checks
+    yolo = importlib.import_module("yolo26n_hw")
+    compiled = {
+        "compile_s": 19.8,
+        "compile_s_warm": 0.5,
+        **stages.stage_rows(str(MOBILENET), 19.8, ""),
+        **stages.stage_rows(str(SHIM), 0.5, "_warm"),
+    }
+    rows = yolo.aggregate(
+        yolo.parse_correctness("", 1), yolo.parse_timing(""), {}, compiled
+    )
+    by_name = {r["name"].rsplit("/", 1)[1]: r for r in rows}
+    assert all(r["name"].startswith("yolo26n/640/") for r in rows)
+    assert by_name["compile_place_s"]["value"] == 0.96
+    assert by_name["compile_kernels_s"]["value"] == 15.72
+    assert by_name["compile_outside_aiecc_s"]["value"] == 2.38
+    assert {
+        f"{m}{suffix}" for m in stages.STAGE_METRICS for suffix in ("", "_warm")
+    } <= by_name.keys()
+    # A run that never verified still says so, with nothing to time.
+    assert by_name["images_passed"] == {
+        "name": "yolo26n/640/images_passed",
+        "unit": "images",
+        "value": 0,
+        "range": "of 0",
+    }
+    assert not any(n.startswith(("us_per_image", "fps")) for n in by_name)
+
+
+def test_yolo26n_reads_the_newest_build_in_its_cache(checks, tmp_path):
+    stages, _ = checks
+    yolo = importlib.import_module("yolo26n_hw")
+    assert yolo.newest_build(str(tmp_path)) is None
+    for name, mtime in (("older", 1_000_000), ("newer", 2_000_000)):
+        build = tmp_path / name
+        build.mkdir()
+        (build / stages.PROFILE_NAME).write_text(SHIM.read_text())
+        os.utime(build / stages.PROFILE_NAME, (mtime, mtime))
+    (tmp_path / "objects").mkdir()
+    newest = yolo.newest_build(str(tmp_path))
+    assert newest == str(tmp_path / "newer")
+    (tmp_path / "newer" / "design.elf").write_bytes(b"\0" * 4096)
+    (tmp_path / "newer" / "input_with_addresses.mlir").write_text(
+        "%c = aie.core(%t0) {\n}\n%d = aie.core(%t1) {\n}\n"
+    )
+    assert yolo.artifact_stats(newest) == {"elf_bytes": 4096, "n_cores": 2}
+    assert yolo.artifact_stats(str(tmp_path / "older")) == {}
+    assert yolo.artifact_stats(None) == {}
