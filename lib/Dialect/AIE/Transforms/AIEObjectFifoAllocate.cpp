@@ -1154,13 +1154,15 @@ struct AIEObjectFifoAllocatePass
   }
 
   /// A packet-switched flow shares the stream with others, so every buffer
-  /// descriptor the source emits has to carry the packet header.
+  /// descriptor the source emits has to carry the packet header. A source that
+  /// several flows share has no one header; its BDs state their own.
   LogicalResult lowerPacketFlow(RouteOp flow, RouteEndpoint source,
                                 int packetID) {
 
     auto info =
         PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
-    source.setRoutePacket(info);
+    if (sourcedFlows(source.getOperation()).size() == 1)
+      source.setRoutePacket(info);
 
     builder.setInsertionPoint(flow);
     auto packetFlow = PacketFlowOp::create(
@@ -1182,6 +1184,14 @@ struct AIEObjectFifoAllocatePass
                            dest.getRouteBundle(), channelOf(dest));
     }
     return success();
+  }
+
+  /// The flows `endpoint` is the source of.
+  SmallVector<RouteOp> sourcedFlows(Operation *endpoint) {
+    StringRef name = cast<SymbolOpInterface>(endpoint).getName();
+    return llvm::to_vector(llvm::make_filter_range(
+        device.getOps<RouteOp>(),
+        [&](RouteOp flow) { return flow.getSource() == name; }));
   }
 
   /// Assigned before flows are lowered, so every endpoint has one by now.
@@ -1344,8 +1354,12 @@ struct AIEObjectFifoAllocatePass
              << stringifyDMAChannelDir(start.getChannelDir()) << " on "
              << start.getEndpoint() << ", but its route makes it "
              << stringifyDMAChannelDir(dir);
-    // Only a runtime task's BDs are given the packet header.
-    if (endpoint.getPacket())
+    // Only a runtime task's BDs are given the packet header, so a DMA
+    // program can state it only when every flow it sources pins its id.
+    if (llvm::any_of(sourcedFlows(endpoint), [&](RouteOp flow) {
+          return (flow.getPacket() || clPacketSwObjectFifos) &&
+                 !flow.getPacketId();
+        }))
       return start.emitOpError("names ")
              << start.getEndpoint()
              << ", the source of a packet-switched route; a DMA program's "

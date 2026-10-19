@@ -1078,22 +1078,35 @@ LogicalResult RouteEndpointOp::verify() {
   if (!tile) {
     return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   }
-  // getRouteDirection() reads this end's direction off the flow naming it, so a
-  // second mention would leave it ambiguous, including both ends of one flow.
+  // getRouteDirection() reads this end's direction off the flows naming it, so
+  // they must all name it on the same side. Packet flows can share the channel;
+  // a circuit owns it.
   StringRef name = getSymName();
-  int flows = 0;
+  int flows = 0, sources = 0;
+  bool shareable = true, pinned = true;
   for (auto flow : (*this)->getParentOfType<DeviceOp>().getOps<RouteOp>()) {
-    if (flow.getSource() == name) {
-      flows++;
-    }
-    flows += llvm::count_if(
-        flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
-        [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; });
+    int asSource = flow.getSource() == name;
+    int named = asSource + llvm::count_if(
+                               flow.getDestinations()
+                                   .getAsRange<FlatSymbolRefAttr>(),
+                               [&](FlatSymbolRefAttr dest) {
+                                 return dest.getValue() == name;
+                               });
+    if (named)
+      shareable &= named == 1 && flow.getPacket();
+    if (asSource)
+      pinned &= flow.getPacketId().has_value();
+    flows += named;
+    sources += asSource;
   }
-  if (flows > 1) {
-    return emitOpError("drives one channel, so at most one flow may name it, "
-                       "but it is named ")
+  if (flows > 1 && (!shareable || (sources && sources != flows))) {
+    return emitOpError("drives one channel, so only packet flows naming it on "
+                       "the same side may share it, but it is named ")
            << flows << " times";
+  }
+  if (sources > 1 && !pinned) {
+    return emitOpError("sends several packet flows, so each must pin its "
+                       "packet_id for the BDs to state it");
   }
   switch (getBundle()) {
   case WireBundle::DMA:

@@ -2216,6 +2216,11 @@ def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
     an id no other flow is using. Circuit- and packet-switched routes coexist in
     one device.
 
+    Packet routes that name the same endpoint, all as source or all as
+    destination, share its one channel: several sources merge into one
+    receiving channel, or one channel sends several ids. A shared source's BDs
+    state each packet's header themselves, so its routes pin `packet_id`.
+
     Example:
     ```
       aie.route from @src to [@dst0, @dst1]
