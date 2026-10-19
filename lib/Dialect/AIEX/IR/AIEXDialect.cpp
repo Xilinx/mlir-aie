@@ -1507,7 +1507,8 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   // pool that createLinkPools (AIEObjectFifoSplit.cpp) sizes by one owning
   // fifo's declared type, whatever this fifo's own (or consumer) type. A plain
   // link's BD covers the whole pool; a join's or distribute's small sides get
-  // offset-derived segments of it, so those are not checked.
+  // offset-derived segments of it, so those ends are not checked.
+  Value linkTile;
   std::optional<AIE::ObjectFifoCreateOp> linkOwner;
   if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
     for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
@@ -1515,8 +1516,10 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       std::vector<AIE::ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
       if (!llvm::is_contained(ins, fifo) && !llvm::is_contained(outs, fifo))
         continue;
-      if (ins.empty() || outs.empty() || !link.getOptionalSharedTile())
+      std::optional<Value> sharedTile = link.getOptionalSharedTile();
+      if (ins.empty() || outs.empty() || !sharedTile)
         return success();
+      linkTile = *sharedTile;
       AIE::ObjectFifoCreateOp owner =
           link.isJoin() ? outs.front() : ins.front();
       if (!link.isJoin() && !link.isDistribute()) {
@@ -1530,29 +1533,45 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
             (count(outs.front()) > count(ins.front()) &&
              !outs.front().getPadDimensions()))
           owner = outs.front();
-      } else if (fifo != owner) {
-        return success();
       }
-      linkOwner = owner;
+      if (owner == fifo || (!link.isJoin() && !link.isDistribute()))
+        linkOwner = owner;
       break;
     }
-  std::optional<int64_t> objectBytes;
-  if (linkOwner) {
-    objectBytes = objectBytesOf(linkOwner->getElemType());
-  } else {
-    auto producer =
-        dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
-    if (!producer)
-      return success();
-    objectBytes = objectBytesOf(producer.isShimTile()
-                                    ? fifo.getConsumerElemTypeOrDefault()
-                                    : fifo.getElemType());
-  }
-  if (!objectBytes || *objectBytes <= 0)
+  // Every far-end BD this transfer must complete. A fill reaches each of the
+  // fifo's consumers: the one on a link's shared tile through the link pool,
+  // any other (a broadcast) through its own pool of the consumer type.
+  SmallVector<int64_t> objectSizes;
+  auto addObjectSize = [&](Type fifoType) {
+    std::optional<int64_t> bytes = objectBytesOf(fifoType);
+    if (bytes && *bytes > 0 && !llvm::is_contained(objectSizes, *bytes))
+      objectSizes.push_back(*bytes);
+  };
+  auto producer =
+      dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
+  if (!producer)
     return success();
+  if (producer.isShimTile()) {
+    for (Value consumer : fifo.getConsumerTiles()) {
+      if (!linkTile || consumer != linkTile)
+        addObjectSize(fifo.getConsumerElemTypeOrDefault());
+      else if (linkOwner)
+        addObjectSize(linkOwner->getElemType());
+    }
+  } else if (!linkTile) {
+    addObjectSize(fifo.getElemType());
+  } else if (linkOwner) {
+    addObjectSize(linkOwner->getElemType());
+  }
+  auto partialFor = [&](int64_t bytes) -> std::optional<int64_t> {
+    for (int64_t size : objectSizes)
+      if (bytes % size != 0)
+        return size;
+    return std::nullopt;
+  };
 
   std::optional<int64_t> moved = staticBytesStreamed(task);
-  if (!moved || *moved % *objectBytes == 0)
+  if (!moved || !partialFor(*moved))
     return success();
 
   // Transfers in a loop or branch have no static count to sum.
@@ -1575,13 +1594,14 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
     if (!bytes || other->getBlock() != task->getBlock())
       return WalkResult::interrupt();
     // The first partial transfer reports, so the error is raised once.
-    if (*bytes % *objectBytes != 0 && other->isBeforeInBlock(task))
+    if (partialFor(*bytes) && other->isBeforeInBlock(task))
       reportedEarlier = true;
     total += *bytes;
     ++sharing;
     return WalkResult::advance();
   });
-  if (walk.wasInterrupted() || reportedEarlier || total % *objectBytes == 0)
+  std::optional<int64_t> objectBytes = partialFor(total);
+  if (walk.wasInterrupted() || reportedEarlier || !objectBytes)
     return success();
 
   InFlightDiagnostic error =

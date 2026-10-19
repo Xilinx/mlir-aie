@@ -601,3 +601,51 @@ module {
     }
   }
 }
+
+// -----
+
+// A broadcast fill reaches every consumer's BD: the memtile's lands in the
+// 384-byte link pool @of_out owns, but the core's in its own pool of 256-byte
+// @of_in objects, so 384 bytes leaves the core's second object incomplete.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    aie.objectfifo @of_in(%t00, {%t01, %t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @of_out(%t01, {%t03}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo.link [@of_in] -> [@of_out]([] [])
+    aie.runtime_sequence(%arg0: memref<96xi32>) {
+      // expected-error@+1 {{moves 384 bytes through objectFIFO @of_in, which is not a whole number of its 256-byte objects}}
+      %t = aiex.dma_configure_task_for @of_in {
+        aie.dma_bd(%arg0 : memref<96xi32> offset = 0 len = 96 sizes = [1, 1, 1, 96] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// The same broadcast with 768 bytes completes both consumers' BDs: two
+// 384-byte link-pool objects and three 256-byte core objects.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    aie.objectfifo @of_in(%t00, {%t01, %t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @of_out(%t01, {%t03}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo.link [@of_in] -> [@of_out]([] [])
+    aie.runtime_sequence(%arg0: memref<192xi32>) {
+      %t = aiex.dma_configure_task_for @of_in {
+        aie.dma_bd(%arg0 : memref<192xi32> offset = 0 len = 192 sizes = [1, 1, 1, 192] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
