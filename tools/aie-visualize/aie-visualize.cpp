@@ -89,6 +89,15 @@ static cl::opt<double>
     maxEdgeWidth("max-edge-width",
                  cl::desc("Edge width in points for the heaviest flow group"),
                  cl::init(7.0));
+static cl::opt<bool>
+    tileRoles("tile-roles",
+              cl::desc("Headline each tile with the kernels it runs and mark "
+                       "tiles that run the same kernels"));
+static cl::opt<unsigned>
+    maxHeadlineKernels("max-headline-kernels",
+                       cl::desc("Name at most this many kernels in a tile "
+                                "headline, counting the rest"),
+                       cl::init(4));
 static cl::opt<double> tileWidth("tile-width", cl::desc("Tile width in inches"),
                                  cl::init(2.15));
 static cl::opt<double>
@@ -195,10 +204,20 @@ struct RuntimeArgumentInfo {
 struct LayoutGeometry {
   std::vector<double> rowHeights;
   std::vector<double> rowCenters;
+  std::map<std::pair<int, int>, double> ownHeights;
 
   double tileCenterX(int col) const { return col * (tileWidth + tileGapX); }
   double tileCenterY(int row) const { return rowCenters.at(row); }
   double tileHeight(int row) const { return rowHeights.at(row); }
+
+  /// A tile is only as tall as its own contents. Sizing every tile to the
+  /// tallest one in its row shrinks the text in all the others to fit a
+  /// neighbour's buffer list. Rows still reserve the tallest tile's height so
+  /// that boxes never overlap.
+  double tileHeight(int col, int row) const {
+    auto found = ownHeights.find({col, row});
+    return found == ownHeights.end() ? rowHeights.at(row) : found->second;
+  }
 };
 
 struct CallInfo {
@@ -820,6 +839,90 @@ static std::vector<CallInfo> collectCalls(AIE::DeviceOp device) {
   return calls;
 }
 
+/// Drops the content-hash prefix kernel symbols carry. The hash identifies a
+/// build variant, not a function, so two tiles running the same kernel read as
+/// unrelated while it is still attached. Requires a digit so that an
+/// all-letters word that happens to be hex ("decade") survives.
+static StringRef stripKernelHash(StringRef callee) {
+  size_t separator = callee.find('_');
+  if (separator == StringRef::npos || separator < 8 || separator > 16)
+    return callee;
+  StringRef prefix = callee.take_front(separator);
+  if (!llvm::all_of(prefix, isHexDigit) || !llvm::any_of(prefix, isDigit))
+    return callee;
+  return callee.drop_front(separator + 1);
+}
+
+/// What a tile does: each kernel it runs named once, with how many times it
+/// runs. Tiles that share a role are doing the same job on different data.
+struct TileRole {
+  std::vector<std::pair<std::string, unsigned>> kernels;
+
+  /// At most `limit` kernels, then a count of the rest. One tile with a long
+  /// kernel list would otherwise set the height of every tile in its row.
+  std::string text(unsigned limit) const {
+    std::string result;
+    for (const auto &[kernel, count] : ArrayRef(kernels).take_front(limit)) {
+      if (!result.empty())
+        result += "\\n";
+      result += kernel;
+      if (count > 1)
+        result += " x" + std::to_string(count);
+    }
+    if (kernels.size() > limit)
+      result += "\\n+" + std::to_string(kernels.size() - limit) + " more";
+    return result;
+  }
+
+  unsigned lines(unsigned limit) const {
+    return std::min<unsigned>(kernels.size(), limit) +
+           (kernels.size() > limit ? 1 : 0);
+  }
+
+  bool operator<(const TileRole &other) const {
+    return kernels < other.kernels;
+  }
+};
+
+static std::map<std::pair<int, int>, TileRole>
+collectTileRoles(ArrayRef<CallInfo> calls) {
+  std::map<std::pair<int, int>, TileRole> roles;
+  for (const CallInfo &call : calls) {
+    TileRole &role = roles[{call.col, call.row}];
+    std::string kernel = stripKernelHash(call.callee).str();
+    auto existing = llvm::find_if(
+        role.kernels, [&](const auto &entry) { return entry.first == kernel; });
+    if (existing == role.kernels.end())
+      role.kernels.emplace_back(kernel, 1);
+    else
+      ++existing->second;
+  }
+  return roles;
+}
+
+/// Labels for tiles that share a role, so a reader can see that four tiles are
+/// the same worker without comparing four lists of kernel names. Roles held by
+/// a single tile get no label: there is no repetition to point out.
+static std::map<std::pair<int, int>, std::string>
+collectRoleLabels(const std::map<std::pair<int, int>, TileRole> &roles) {
+  std::map<TileRole, std::vector<std::pair<int, int>>> classes;
+  for (const auto &[coordinate, role] : roles)
+    classes[role].push_back(coordinate);
+  std::map<std::pair<int, int>, std::string> labels;
+  unsigned next = 0;
+  for (const auto &[role, members] : classes) {
+    if (members.size() < 2)
+      continue;
+    std::string name(1, static_cast<char>('A' + next % 26));
+    if (next >= 26)
+      name += std::to_string(next / 26);
+    ++next;
+    for (const std::pair<int, int> &coordinate : members)
+      labels[coordinate] = name + " x" + std::to_string(members.size());
+  }
+  return labels;
+}
+
 static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
                                     const DMAChannelBuffers &channelBuffers) {
   FlowGroups groups;
@@ -1073,7 +1176,7 @@ static std::pair<double, double> portPosition(const PortNode &port,
   double x = layout.tileCenterX(port.col);
   double y = layout.tileCenterY(port.row);
   double halfWidth = tileWidth / 2;
-  double halfHeight = layout.tileHeight(port.row) / 2;
+  double halfHeight = layout.tileHeight(port.col, port.row) / 2;
   double channelOffset = (port.channel - 1.5) * 0.18;
   switch (port.bundle) {
   case AIE::WireBundle::North:
@@ -1347,22 +1450,45 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
     }
   }
 
+  std::map<std::pair<int, int>, TileRole> roles;
+  std::map<std::pair<int, int>, std::string> roleLabels;
+  if (tileRoles) {
+    roles = collectTileRoles(calls);
+    roleLabels = collectRoleLabels(roles);
+  }
+  // The headline sits inside the tile box, so the box reserves room for it
+  // before the buffers and calls start.
+  auto headroom = [&](std::pair<int, int> coordinate) {
+    if (!tileRoles)
+      return 0.45;
+    auto role = roles.find(coordinate);
+    unsigned lines =
+        role == roles.end() ? 1 : 1 + role->second.lines(maxHeadlineKernels);
+    return 0.30 + 0.17 * static_cast<double>(lines);
+  };
+
   LayoutGeometry layout;
   layout.rowHeights.assign(model.rows(), minimumTileHeight);
-  for (const auto &[coordinate, count] : localCounts) {
-    int row = coordinate.second;
-    layout.rowHeights[row] =
-        std::max(layout.rowHeights[row],
-                 0.9 + static_cast<double>(count) * localSpacing);
+  for (const std::pair<int, int> &coordinate : designTiles) {
+    auto count = localCounts.find(coordinate);
+    double height =
+        std::max(static_cast<double>(minimumTileHeight),
+                 headroom(coordinate) + 0.45 +
+                     (count == localCounts.end()
+                          ? 0.0
+                          : static_cast<double>(count->second) * localSpacing));
+    layout.ownHeights[coordinate] = height;
+    layout.rowHeights[coordinate.second] =
+        std::max(layout.rowHeights[coordinate.second], height);
   }
   layout.rowCenters.assign(model.rows(), 0.0);
   for (int row = 1; row < model.rows(); ++row)
     layout.rowCenters[row] = layout.rowCenters[row - 1] +
                              layout.rowHeights[row - 1] / 2 + tileGapY +
                              layout.rowHeights[row] / 2;
-  auto localNodeY = [&](int row, unsigned index) {
-    return layout.tileCenterY(row) + layout.tileHeight(row) / 2 - 0.45 -
-           index * localSpacing;
+  auto localNodeY = [&](int col, int row, unsigned index) {
+    return layout.tileCenterY(row) + layout.tileHeight(col, row) / 2 -
+           headroom({col, row}) - index * localSpacing;
   };
   double localNodeWidth =
       std::clamp(static_cast<double>(tileWidth) - 0.4, 1.0, 1.75);
@@ -1418,11 +1544,22 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
                                                        : "#f3edf8";
       output << "  " << tileNodeID(col, row) << " [shape=box";
       output << ", fixedsize=true, width=" << dotCoordinate(tileWidth)
-             << ", height=" << dotCoordinate(layout.tileHeight(row))
+             << ", height=" << dotCoordinate(layout.tileHeight(col, row))
              << ", pos=\"" << dotCoordinate(layout.tileCenterX(col)) << ','
              << dotCoordinate(layout.tileCenterY(row)) << "!\"";
-      output << ", label=\"(" << col << ',' << row
-             << ")\", style=filled, fillcolor=\"" << fill
+      output << ", label=\"(" << col << ',' << row << ')';
+      if (tileRoles) {
+        auto label = roleLabels.find({col, row});
+        if (label != roleLabels.end())
+          output << "  " << label->second;
+        auto role = roles.find({col, row});
+        if (role != roles.end())
+          output << "\\n" << role->second.text(maxHeadlineKernels);
+        output << R"(", labelloc="t", fontsize=11)";
+      } else {
+        output << '"';
+      }
+      output << ", style=filled, fillcolor=\"" << fill
              << "\", color=\"#b8b8b8\", fontcolor=\"#555555\"];\n";
     }
   }
@@ -1547,7 +1684,7 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       continue;
     bufferIDs[buffer.op] = buffer.id;
     double x = layout.tileCenterX(buffer.col);
-    double y = localNodeY(buffer.row, localIndex->second);
+    double y = localNodeY(buffer.col, buffer.row, localIndex->second);
     output << "  " << bufferNodeID(buffer.id)
            << " [shape=box, fixedsize=true, width="
            << dotCoordinate(localNodeWidth) << ", height=0.34, pos=\""
@@ -1607,7 +1744,7 @@ static LogicalResult emitRouteDot(AIE::DeviceOp device, raw_ostream &output,
       if (localIndex == callLocalIndices.end())
         continue;
       double x = layout.tileCenterX(call.col);
-      double y = localNodeY(call.row, localIndex->second);
+      double y = localNodeY(call.col, call.row, localIndex->second);
       output << "  " << callNodeID(call.id)
              << " [shape=box, fixedsize=true, width="
              << dotCoordinate(localNodeWidth) << ", height=0.3, pos=\""
