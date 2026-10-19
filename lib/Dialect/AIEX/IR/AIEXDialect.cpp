@@ -1527,11 +1527,11 @@ struct BdChain {
 } // namespace
 
 // The far end of a shim transfer on an objectFIFO receives (or sends) whole
-// objects through a BD sized by the object type, so transfers ending
-// mid-object never complete that BD and the fifo hangs. Several transfers may
-// share an object (concatenating host buffers into it, or splitting it across
-// them), so a partial transfer is an error only when its runtime sequence's
-// static total through the fifo is not whole objects either.
+// objects through BDs sized by the object type, or by its link pool's
+// segments, so transfers ending mid-BD never complete it and the fifo hangs.
+// Several transfers may share an object (concatenating host buffers into it, or
+// splitting it across them), so it is the runtime sequence's static total
+// through the fifo that must stop at a BD boundary.
 static LogicalResult
 verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                              AIE::ObjectFifoCreateOp fifo) {

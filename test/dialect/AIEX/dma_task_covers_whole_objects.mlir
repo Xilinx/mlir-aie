@@ -1147,3 +1147,29 @@ module {
     }
   }
 }
+
+// -----
+
+// A link's repeat_count repeats only its outputs' BDs: a repeated
+// distribute's combined fill still steps through each segment once, so 512
+// bytes fills one whole object, though repeating segments 384 and 128 would
+// end BDs at 384, 768, 896 and 1024 instead.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    aie.objectfifo @in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo @out0(%t01, {%t02}, 2 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo @out1(%t01, {%t03}, 2 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@in] -> [@out0, @out1]([] [0, 96])
+    aie.runtime_sequence(%a: memref<128xi32>) {
+      %t = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%a : memref<128xi32> offset = 0 len = 128 sizes = [1, 1, 1, 128] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
