@@ -52,6 +52,12 @@ from ml_dtypes import bfloat16, finfo
 sys.path.insert(0, str(Path(__file__).parent / "npu"))
 from kernel_cases import CASES as DEVICE_CASES  # noqa: E402
 
+_DECODE_LOCK_DESIGNS = (
+    "flm_gemma4_decode_attn_kv",
+    "flm_gemma4_decode_gate_layer_embedding",
+    "flm_gemma4_decode_proj_main",
+)
+
 
 def _case_id(case) -> str:
     parts = [case.factory]
@@ -95,10 +101,16 @@ NOT_JUDGED = {
         )
     },
     **{
-        name: "blocks on core locks its design releases; codegen-identical to "
-        "FastFlowLM's kernel, which runs in its engine"
+        name: "blocks on core locks its design releases; "
+        "npu/test_flm_gemma4_decode_locks.py builds a design around them and "
+        "judges it on the device"
+        for name in _DECODE_LOCK_DESIGNS
+    },
+    **{
+        name: "blocks on core locks its design releases, so it is judged only "
+        "inside a design that sets them"
         for name in kernels.factories()
-        if name.startswith("flm_gemma4_decode_")
+        if name.startswith("flm_gemma4_decode_") and name not in _DECODE_LOCK_DESIGNS
     },
 }
 
