@@ -102,8 +102,10 @@ module @link_distribute_output_sizes {
         %tile23 = aie.tile(2, 3)
 
         aie.objectfifo @link1 (%tile20, {%tile21}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
-        aie.objectfifo @link2 (%tile21, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-        aie.objectfifo @link3 (%tile21, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        // Each output's 32-element slot reaches its consumer as two 16-element
+        // objects.
+        aie.objectfifo @link2 (%tile21, {%tile22}, 2 : i32) : !aie.objectfifo<memref<32xi32>> -> !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @link3 (%tile21, {%tile23}, 2 : i32) : !aie.objectfifo<memref<32xi32>> -> !aie.objectfifo<memref<16xi32>>
 
         aie.objectfifo.link [@link1] -> [@link2, @link3] ([][0, 32])
     }
