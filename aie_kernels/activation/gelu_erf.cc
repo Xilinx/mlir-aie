@@ -5,11 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Exact GELU, x * Phi(x), where gelu.cc takes the tanh approximation: the two
-// round differently on 405 finite bf16 inputs, most below x = -3. erfc is
+// Exact GELU, x * Phi(x); gelu.cc takes the tanh approximation. erfc is
 // Numerical Recipes' erfcc in f32 products of bf16 limbs, within one bf16 ulp
-// of the float64 GELU wherever that is a normal number; subnormal results
-// flush to 0, as the AIE's floating point does.
+// of the float64 GELU wherever that is normal; subnormal results flush to 0.
 //
 // With a = |x| and z = a / sqrt 2, erfc(z) = t exp(-z^2 + P(t)) for t =
 // 1 / (1 + z / 2), and h = a erfc(z) / 2: gelu is x - h for x >= 0, else -h.
@@ -55,8 +53,9 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
       0.27886807f,  -1.13520398f, 1.48851587f, -0.82215223f, 0.17087277f};
   const auto xi = x.cast_to<int16_t>();
   // From 13.5 on, h is below the smallest normal f32.
-  const auto ai = aie::min(aie::bit_and(xi, aie::broadcast<int16_t, 32>(0x7fff)),
-                           aie::broadcast<int16_t, 32>(0x4158));
+  const auto ai =
+      aie::min(aie::bit_and(xi, aie::broadcast<int16_t, 32>(0x7fff)),
+               aie::broadcast<int16_t, 32>(0x4158));
   const bf_t a = ai.cast_to<bfloat16>();
 
   // d = 1 + a / (2 sqrt 2), and t = 1 / d by Newton's r (2 - d r) from the

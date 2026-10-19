@@ -9,6 +9,9 @@ from typing import cast
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import aiex
+from ..dialects.aiex import (
+    ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ..helpers.npdtypes import NpuDType
 from ..helpers.sourceloc import SourceSite
 from ..helpers.util import mlir_type_to_np_dtype, np_dtype_to_mlir_type
@@ -64,7 +67,7 @@ class ScratchpadParameter(Resolvable):
         self._attributes: dict[str, str] = {}
 
     @classmethod
-    def from_declaration(cls, op) -> "ScratchpadParameter":
+    def from_declaration(cls, op: ScratchpadParameterOp) -> "ScratchpadParameter":
         """Return the parameter an ``aiex.scratchpad_parameter`` op declares.
 
         It is declared again with every attribute of ``op``, so one that

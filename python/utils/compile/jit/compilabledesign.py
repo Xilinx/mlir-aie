@@ -44,13 +44,15 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping, get_origin
 
 import numpy as np
-from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     IntegerAttr,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.ir import (
     Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils.compile import (
