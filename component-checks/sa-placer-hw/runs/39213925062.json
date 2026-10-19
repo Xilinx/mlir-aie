@@ -1,0 +1,410 @@
+{
+ "schema": 1,
+ "target": "sa-placer-hw",
+ "id": "39213925062",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39213925062",
+ "date": "2026-10-19T07:07:05+00:00",
+ "commit": {
+  "id": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/943cbc47e2da9b0238421c4e30a12a8a858efd0e",
+  "message": "[programming_examples] transposes: add dyn, a runtime-shape strategy [LOW] (#3627)",
+  "timestamp": "2026-10-18T16:01:33Z"
+ },
+ "event": "schedule",
+ "pmode": "turbo",
+ "device": "Strix",
+ "device_raw": "NPU Strix",
+ "provenance": {
+  "commit": "943cbc47e2",
+  "peano": "22.0.0+83ba9ea9",
+  "kernels": "8ee515753dca",
+  "runtime": "CachedXRTRuntime",
+  "xdna": "2.26.0_20261008",
+  "xrt": "2.26.0",
+  "host": "aie9",
+  "device": "NPU Strix",
+  "pmode": "turbo"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 49,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "mobilenet": {
+   "failed_seeds": {
+    "value": 0,
+    "unit": "seeds"
+   }
+  },
+  "mobilenet/seed=3": {
+   "placement_cost": {
+    "value": 293,
+    "unit": "cost",
+    "range": "placement 79a41f43d136"
+   }
+  },
+  "mobilenet/seed=2": {
+   "placement_cost": {
+    "value": 295,
+    "unit": "cost",
+    "range": "placement 510881b1cc56"
+   }
+  },
+  "mobilenet/seed=7": {
+   "placement_cost": {
+    "value": 296,
+    "unit": "cost",
+    "range": "placement 43a6222d608e"
+   }
+  },
+  "mobilenet/seed=3/batch=1": {
+   "us_per_image": {
+    "value": 304.1,
+    "unit": "us",
+    "range": "median 305.50, MAD 0.60, p95 307.20"
+   },
+   "e2e_us_per_image": {
+    "value": 358.1,
+    "unit": "us",
+    "range": "median 362.70, MAD 1.40, p95 365.30"
+   },
+   "compile_s": {
+    "value": 27.0,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=3/batch=4": {
+   "us_per_image": {
+    "value": 127.6,
+    "unit": "us",
+    "range": "median 129.35, MAD 0.75, p95 130.60"
+   },
+   "streaming_us": {
+    "value": 68.77,
+    "unit": "us",
+    "range": "from b1 304.1 and b4 510.4"
+   },
+   "e2e_us_per_image": {
+    "value": 142.1,
+    "unit": "us",
+    "range": "median 143.80, MAD 0.95, p95 145.53"
+   },
+   "compile_s": {
+    "value": 28.4,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=3/batch=16": {
+   "us_per_image": {
+    "value": 84.43,
+    "unit": "us",
+    "range": "median 85.19, MAD 0.18, p95 85.84"
+   },
+   "streaming_us": {
+    "value": 69.79,
+    "unit": "us",
+    "range": "from b1 304.1 and b16 1350.9"
+   },
+   "e2e_us_per_image": {
+    "value": 88.39,
+    "unit": "us",
+    "range": "median 88.91, MAD 0.14, p95 94.93"
+   },
+   "compile_s": {
+    "value": 27.6,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=3/batch=64": {
+   "us_per_image": {
+    "value": 73.78,
+    "unit": "us",
+    "range": "median 73.95, MAD 0.01, p95 73.99"
+   },
+   "streaming_us": {
+    "value": 70.12,
+    "unit": "us",
+    "range": "from b1 304.1 and b64 4721.7"
+   },
+   "e2e_us_per_image": {
+    "value": 76.19,
+    "unit": "us",
+    "range": "median 76.28, MAD 0.05, p95 76.38"
+   },
+   "compile_s": {
+    "value": 26.8,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=2/batch=1": {
+   "us_per_image": {
+    "value": 287.2,
+    "unit": "us",
+    "range": "median 300.00, MAD 1.10, p95 304.20"
+   },
+   "e2e_us_per_image": {
+    "value": 345.1,
+    "unit": "us",
+    "range": "median 357.20, MAD 4.30, p95 362.00"
+   },
+   "compile_s": {
+    "value": 30.6,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=2/batch=4": {
+   "us_per_image": {
+    "value": 121.22,
+    "unit": "us",
+    "range": "median 123.17, MAD 0.97, p95 124.53"
+   },
+   "streaming_us": {
+    "value": 65.9,
+    "unit": "us",
+    "range": "from b1 287.2 and b4 484.9"
+   },
+   "e2e_us_per_image": {
+    "value": 135.75,
+    "unit": "us",
+    "range": "median 137.75, MAD 1.00, p95 139.38"
+   },
+   "compile_s": {
+    "value": 31.1,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=2/batch=16": {
+   "us_per_image": {
+    "value": 78.33,
+    "unit": "us",
+    "range": "median 79.09, MAD 0.32, p95 79.77"
+   },
+   "streaming_us": {
+    "value": 64.41,
+    "unit": "us",
+    "range": "from b1 287.2 and b16 1253.3"
+   },
+   "e2e_us_per_image": {
+    "value": 82.16,
+    "unit": "us",
+    "range": "median 82.81, MAD 0.38, p95 83.91"
+   },
+   "compile_s": {
+    "value": 31.0,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=2/batch=64": {
+   "us_per_image": {
+    "value": 68.6,
+    "unit": "us",
+    "range": "median 68.76, MAD 0.01, p95 68.81"
+   },
+   "streaming_us": {
+    "value": 65.13,
+    "unit": "us",
+    "range": "from b1 287.2 and b64 4390.2"
+   },
+   "e2e_us_per_image": {
+    "value": 70.99,
+    "unit": "us",
+    "range": "median 71.06, MAD 0.01, p95 71.20"
+   },
+   "compile_s": {
+    "value": 30.8,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=1": {
+   "us_per_image": {
+    "value": 290.8,
+    "unit": "us",
+    "range": "median 295.20, MAD 1.00, p95 298.80"
+   },
+   "e2e_us_per_image": {
+    "value": 349.0,
+    "unit": "us",
+    "range": "median 352.00, MAD 1.20, p95 358.10"
+   },
+   "compile_s": {
+    "value": 29.5,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=4": {
+   "us_per_image": {
+    "value": 119.0,
+    "unit": "us",
+    "range": "median 122.47, MAD 0.62, p95 123.22"
+   },
+   "streaming_us": {
+    "value": 61.73,
+    "unit": "us",
+    "range": "from b1 290.8 and b4 476"
+   },
+   "e2e_us_per_image": {
+    "value": 134.93,
+    "unit": "us",
+    "range": "median 137.40, MAD 0.72, p95 138.22"
+   },
+   "compile_s": {
+    "value": 30.6,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=16": {
+   "us_per_image": {
+    "value": 78.35,
+    "unit": "us",
+    "range": "median 79.34, MAD 0.17, p95 79.54"
+   },
+   "streaming_us": {
+    "value": 64.19,
+    "unit": "us",
+    "range": "from b1 290.8 and b16 1253.6"
+   },
+   "e2e_us_per_image": {
+    "value": 82.01,
+    "unit": "us",
+    "range": "median 83.04, MAD 0.19, p95 83.29"
+   },
+   "compile_s": {
+    "value": 30.4,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=64": {
+   "us_per_image": {
+    "value": 68.67,
+    "unit": "us",
+    "range": "median 68.72, MAD 0.01, p95 68.79"
+   },
+   "streaming_us": {
+    "value": 65.15,
+    "unit": "us",
+    "range": "from b1 290.8 and b64 4395"
+   },
+   "e2e_us_per_image": {
+    "value": 70.95,
+    "unit": "us",
+    "range": "median 71.05, MAD 0.03, p95 71.16"
+   },
+   "compile_s": {
+    "value": 29.5,
+    "unit": "s"
+   }
+  }
+ },
+ "detail": [
+  {
+   "seed": 3,
+   "batch": 1,
+   "passed": true,
+   "us_per_image": 304.1,
+   "e2e_us_per_image": 358.1,
+   "compile_s": 27.0,
+   "placement": "79a41f43d136"
+  },
+  {
+   "seed": 3,
+   "batch": 4,
+   "passed": true,
+   "us_per_image": 127.6,
+   "e2e_us_per_image": 142.1,
+   "compile_s": 28.4,
+   "placement": "79a41f43d136"
+  },
+  {
+   "seed": 3,
+   "batch": 16,
+   "passed": true,
+   "us_per_image": 84.43,
+   "e2e_us_per_image": 88.39,
+   "compile_s": 27.6,
+   "placement": "79a41f43d136"
+  },
+  {
+   "seed": 3,
+   "batch": 64,
+   "passed": true,
+   "us_per_image": 73.78,
+   "e2e_us_per_image": 76.19,
+   "compile_s": 26.8,
+   "placement": "79a41f43d136"
+  },
+  {
+   "seed": 2,
+   "batch": 1,
+   "passed": true,
+   "us_per_image": 287.2,
+   "e2e_us_per_image": 345.1,
+   "compile_s": 30.6,
+   "placement": "510881b1cc56"
+  },
+  {
+   "seed": 2,
+   "batch": 4,
+   "passed": true,
+   "us_per_image": 121.22,
+   "e2e_us_per_image": 135.75,
+   "compile_s": 31.1,
+   "placement": "510881b1cc56"
+  },
+  {
+   "seed": 2,
+   "batch": 16,
+   "passed": true,
+   "us_per_image": 78.33,
+   "e2e_us_per_image": 82.16,
+   "compile_s": 31.0,
+   "placement": "510881b1cc56"
+  },
+  {
+   "seed": 2,
+   "batch": 64,
+   "passed": true,
+   "us_per_image": 68.6,
+   "e2e_us_per_image": 70.99,
+   "compile_s": 30.8,
+   "placement": "510881b1cc56"
+  },
+  {
+   "seed": 7,
+   "batch": 1,
+   "passed": true,
+   "us_per_image": 290.8,
+   "e2e_us_per_image": 349.0,
+   "compile_s": 29.5,
+   "placement": "43a6222d608e"
+  },
+  {
+   "seed": 7,
+   "batch": 4,
+   "passed": true,
+   "us_per_image": 119.0,
+   "e2e_us_per_image": 134.93,
+   "compile_s": 30.6,
+   "placement": "43a6222d608e"
+  },
+  {
+   "seed": 7,
+   "batch": 16,
+   "passed": true,
+   "us_per_image": 78.35,
+   "e2e_us_per_image": 82.01,
+   "compile_s": 30.4,
+   "placement": "43a6222d608e"
+  },
+  {
+   "seed": 7,
+   "batch": 64,
+   "passed": true,
+   "us_per_image": 68.67,
+   "e2e_us_per_image": 70.95,
+   "compile_s": 29.5,
+   "placement": "43a6222d608e"
+  }
+ ]
+}

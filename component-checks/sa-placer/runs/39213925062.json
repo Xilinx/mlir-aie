@@ -1,0 +1,403 @@
+{
+ "schema": 1,
+ "target": "sa-placer",
+ "id": "39213925062",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39213925062",
+ "date": "2026-10-19T07:07:05+00:00",
+ "commit": {
+  "id": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/943cbc47e2da9b0238421c4e30a12a8a858efd0e",
+  "message": "[programming_examples] transposes: add dyn, a runtime-shape strategy [LOW] (#3627)",
+  "timestamp": "2026-10-18T16:01:33Z"
+ },
+ "event": "schedule",
+ "pmode": null,
+ "device": null,
+ "device_raw": null,
+ "provenance": {
+  "commit": "943cbc47e2",
+  "fixtures": "3aa7139253a0"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 12,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "test_sa_effort": {
+   "failed_seeds": {
+    "value": 0,
+    "unit": "seeds"
+   },
+   "cpu_ms_mean": {
+    "value": 1361.0,
+    "unit": "ms"
+   },
+   "cpu_ms_max": {
+    "value": 1680.0,
+    "unit": "ms"
+   },
+   "peak_rss_mb_max": {
+    "value": 60.5,
+    "unit": "MB"
+   },
+   "final_cost_mean": {
+    "value": 12,
+    "unit": "cost"
+   },
+   "final_cost_max": {
+    "value": 12,
+    "unit": "cost"
+   }
+  },
+  "mobilenet": {
+   "failed_seeds": {
+    "value": 0,
+    "unit": "seeds"
+   },
+   "cpu_ms_mean": {
+    "value": 51597.7,
+    "unit": "ms"
+   },
+   "cpu_ms_max": {
+    "value": 57752.2,
+    "unit": "ms"
+   },
+   "peak_rss_mb_max": {
+    "value": 64.7,
+    "unit": "MB"
+   },
+   "final_cost_mean": {
+    "value": 294.6,
+    "unit": "cost"
+   },
+   "final_cost_max": {
+    "value": 305,
+    "unit": "cost"
+   }
+  }
+ },
+ "detail": [
+  {
+   "fixture": "test_sa_effort",
+   "seed": 1,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1680.0,
+   "peak_rss_mb": 60.0
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 2,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1372.4,
+   "peak_rss_mb": 60.2
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 3,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1345.6,
+   "peak_rss_mb": 60.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 4,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1352.0,
+   "peak_rss_mb": 59.5
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 5,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1137.0,
+   "peak_rss_mb": 60.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 6,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1518.8,
+   "peak_rss_mb": 60.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 7,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1314.4,
+   "peak_rss_mb": 59.7
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 8,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1332.5,
+   "peak_rss_mb": 60.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 9,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1281.3,
+   "peak_rss_mb": 60.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 10,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1588.2,
+   "peak_rss_mb": 60.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 11,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1239.5,
+   "peak_rss_mb": 59.5
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 12,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1437.4,
+   "peak_rss_mb": 60.5
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 13,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1570.7,
+   "peak_rss_mb": 59.8
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 14,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1066.3,
+   "peak_rss_mb": 59.8
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 15,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1210.7,
+   "peak_rss_mb": 60.2
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 16,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1537.1,
+   "peak_rss_mb": 59.8
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 17,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1432.8,
+   "peak_rss_mb": 59.8
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 18,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1218.2,
+   "peak_rss_mb": 59.9
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 19,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1354.0,
+   "peak_rss_mb": 59.5
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 20,
+   "passed": true,
+   "final_cost": 12,
+   "cpu_ms": 1230.5,
+   "peak_rss_mb": 60.4
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 1,
+   "passed": true,
+   "final_cost": 287,
+   "cpu_ms": 47980.3,
+   "peak_rss_mb": 64.7
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 2,
+   "passed": true,
+   "final_cost": 298,
+   "cpu_ms": 50059.4,
+   "peak_rss_mb": 64.0
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 3,
+   "passed": true,
+   "final_cost": 292,
+   "cpu_ms": 49002.6,
+   "peak_rss_mb": 64.2
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 4,
+   "passed": true,
+   "final_cost": 305,
+   "cpu_ms": 57298.2,
+   "peak_rss_mb": 64.1
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 5,
+   "passed": true,
+   "final_cost": 297,
+   "cpu_ms": 53605.0,
+   "peak_rss_mb": 64.3
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 6,
+   "passed": true,
+   "final_cost": 295,
+   "cpu_ms": 57752.2,
+   "peak_rss_mb": 63.9
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 7,
+   "passed": true,
+   "final_cost": 303,
+   "cpu_ms": 48296.1,
+   "peak_rss_mb": 64.7
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 8,
+   "passed": true,
+   "final_cost": 282,
+   "cpu_ms": 50248.1,
+   "peak_rss_mb": 63.6
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 9,
+   "passed": true,
+   "final_cost": 299,
+   "cpu_ms": 55235.0,
+   "peak_rss_mb": 64.5
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 10,
+   "passed": true,
+   "final_cost": 300,
+   "cpu_ms": 57375.7,
+   "peak_rss_mb": 64.0
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 11,
+   "passed": true,
+   "final_cost": 302,
+   "cpu_ms": 55334.4,
+   "peak_rss_mb": 63.8
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 12,
+   "passed": true,
+   "final_cost": 295,
+   "cpu_ms": 52531.7,
+   "peak_rss_mb": 64.1
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 13,
+   "passed": true,
+   "final_cost": 289,
+   "cpu_ms": 57110.7,
+   "peak_rss_mb": 64.3
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 14,
+   "passed": true,
+   "final_cost": 289,
+   "cpu_ms": 47809.7,
+   "peak_rss_mb": 63.9
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 15,
+   "passed": true,
+   "final_cost": 286,
+   "cpu_ms": 45957.7,
+   "peak_rss_mb": 63.9
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 16,
+   "passed": true,
+   "final_cost": 285,
+   "cpu_ms": 45808.6,
+   "peak_rss_mb": 64.6
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 17,
+   "passed": true,
+   "final_cost": 296,
+   "cpu_ms": 46204.5,
+   "peak_rss_mb": 64.6
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 18,
+   "passed": true,
+   "final_cost": 297,
+   "cpu_ms": 57510.8,
+   "peak_rss_mb": 64.3
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 19,
+   "passed": true,
+   "final_cost": 296,
+   "cpu_ms": 45561.4,
+   "peak_rss_mb": 63.8
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 20,
+   "passed": true,
+   "final_cost": 299,
+   "cpu_ms": 51272.2,
+   "peak_rss_mb": 64.4
+  }
+ ]
+}
