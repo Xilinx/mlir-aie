@@ -1969,8 +1969,6 @@ def flm_gemma4_rope_core(
 
     ``rope_head_core(x, rope_w, y)``: ``x`` is a q head then a k head,
     ``rope_w`` the base kernel's ``[cos | sin | q weight | k weight]``.
-    The kernel normalizes ``x`` in place; the write lands in the core's input
-    element, which the next DMA fill overwrites.
     """
     base = flm_gemma4_decode_rope(sliding_window=sliding_window, geometry=geometry)
     dh = geometry.swa_dh if sliding_window else geometry.dh
