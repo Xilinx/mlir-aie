@@ -450,19 +450,20 @@ module @task_size_eight {
 // -----
 
 // Packet routes naming one endpoint share its channel: two cores merge into
-// the MemTile's one S2MM channel, so the unshared @side takes S2MM 1, and the
-// MemTile sends both packet ids out of one MM2S channel. keep_pkt_header
+// the MemTile's one S2MM channel, and the MemTile sends both packet ids out of
+// one MM2S channel. By BD room, @scatter's two even-half BDs send @side to the
+// odd S2MM 1 and @gather to the odd S2MM 3: one channel for both its flows. keep_pkt_header
 // carries over to the packet flows. A program may source a packet route whose
 // id is pinned, since its BDs state the header themselves. Each packet flow
 // takes the place of its route.
 
 // CHECK-LABEL: @shared_packet_channels
-// CHECK: aie.route_endpoint @gather(%[[MT:.*]]) DMA {channelIndex = 0 : i32}
+// CHECK: aie.route_endpoint @gather(%[[MT:.*]]) DMA {channelIndex = 3 : i32}
 // CHECK: aie.packet_flow(1) {
-// CHECK:   aie.packet_dest<%[[MT]], DMA : 0>
+// CHECK:   aie.packet_dest<%[[MT]], DMA : 3>
 // CHECK: } {keep_pkt_header = true}
 // CHECK: aie.packet_flow(2) {
-// CHECK:   aie.packet_dest<%[[MT]], DMA : 0>
+// CHECK:   aie.packet_dest<%[[MT]], DMA : 3>
 // CHECK: } {keep_pkt_header = true}
 // CHECK: aie.route_endpoint @side(%[[MT]]) DMA {channelIndex = 1 : i32}
 // CHECK: aie.route_endpoint @scatter(%[[MT]]) DMA {channelIndex = 0 : i32}
@@ -471,7 +472,7 @@ module @task_size_eight {
 // CHECK: aie.packet_flow(2) {
 // CHECK:   aie.packet_source<%[[MT]], DMA : 0>
 // CHECK: aie.dma_start(MM2S, 0, ^bb{{.*}}, ^bb{{.*}})
-// CHECK: aie.dma_start(S2MM, 0, ^bb{{.*}}, ^bb{{.*}})
+// CHECK: aie.dma_start(S2MM, 3, ^bb{{.*}}, ^bb{{.*}})
 // CHECK: aie.dma_start(S2MM, 1, ^bb{{.*}}, ^bb{{.*}})
 module @shared_packet_channels {
   aie.device(npu2) {
