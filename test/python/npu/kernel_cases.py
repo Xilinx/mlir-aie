@@ -422,6 +422,9 @@ CASES: list[Case] = [
     check("selective_scan", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
     check("selective_scan", dict(blocks=2), calls=4, scalars=(5,), tag="partial"),
     check("selective_scan", dict(blocks=2), calls=4, scalars=(0,), tag="none-valid"),
+    check("gated_delta_rule", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
+    check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(5,), tag="partial"),
+    check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(0,), tag="none-valid"),
     # EmbeddingGemma 2's image budget: 42x57 patches in 10 blocks, padded.
     Case("patch_positions", {}, calls=10, scalars=(10, 672, 912), smoke=True),
     Case("patch_positions", dict(cores=8), calls=8, scalars=(8, 480, 1056)),

@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""State space model kernels: Mamba2's selective scan."""
+"""State space model kernels: Mamba2's selective scan and Gated DeltaNet's delta rule."""
 
 from functools import partial
 
@@ -68,9 +68,9 @@ def selective_scan_ref(
     return final, y.astype(bfloat16).reshape(calls, -1)
 
 
-def _scan_bound(*args, **geometry):
+def _state_bound(reference, *args, **geometry):
     """1e-6 of the state's range for ``final``; one bf16 ulp for ``y``."""
-    final, y = selective_scan_ref(*args, **geometry)
+    final, y = reference(*args, **geometry)
     span = np.abs(final).max(axis=1, keepdims=True)
     y = np.abs(y.astype(np.float32))
     _, k = np.frexp(y)
@@ -127,9 +127,119 @@ def selective_scan(
             sample=partial(selective_scan_sample, **geometry),
             setup=conv_even,
             tolerance=Tolerance.bounded(
-                partial(_scan_bound, **geometry),
+                partial(_state_bound, selective_scan_ref, **geometry),
                 note="host build of the source: y bit for bit, final within "
                 "1e-7 of its range",
+            ),
+        ),
+    )
+
+
+def gated_delta_rule_sample(
+    rng, calls: int, *, rows: int, key_dim: int, value_dim: int, blocks: int
+):
+    """Return heads of ``blocks`` blocks, A < 0 so the state decays, each from a random state."""
+    block = rng.standard_normal((calls, rows * (2 * key_dim + value_dim + 2)))
+    heads = [
+        np.concatenate(
+            [
+                [rng.uniform(-4, 0)],  # dt_bias
+                [-rng.uniform(0.5, 16)],  # A = -exp(A_log)
+                rng.standard_normal(key_dim * value_dim) * 0.5,
+            ]
+        )
+        for _ in range(-(-calls // blocks))
+    ]
+    head = np.repeat(np.stack(heads), blocks, axis=0)[:calls]
+    return [block.astype(bfloat16), head.astype(np.float32)]
+
+
+def gated_delta_rule_ref(
+    block, head, valid, *, rows: int, key_dim: int, value_dim: int, blocks: int
+):
+    """Numpy reference for [`gated_delta_rule`][iron.kernels.ssm.gated_delta_rule]: call ``b`` is block ``b``.
+
+    Returns ``(final, y)`` per call.
+    """
+    head = np.asarray(head, np.float32).reshape(-1, 2 + key_dim * value_dim)
+    calls = len(head)
+    block = np.asarray(block, np.float32).reshape(calls, -1)
+    q, k, v, ab = np.split(
+        block, np.cumsum([rows * key_dim, rows * key_dim, rows * value_dim]), axis=1
+    )
+    q, k = q.reshape(calls, rows, key_dim), k.reshape(calls, rows, key_dim)
+    v, a, b = v.reshape(calls, rows, value_dim), ab[:, :rows], ab[:, rows:]
+    final = np.zeros((calls, key_dim * value_dim), np.float32)
+    y = np.zeros((calls, rows, value_dim), np.float32)
+    for c in range(calls):
+        if c % blocks == 0:
+            s = head[c, 2:].reshape(key_dim, value_dim).copy()
+        dt_bias, A = head[c, :2]
+        for t in range(min(int(valid), rows)):
+            qt = q[c, t] / np.sqrt((q[c, t] ** 2).sum() + np.float32(1e-6))
+            qt = qt / np.sqrt(np.float32(key_dim))
+            kt = k[c, t] / np.sqrt((k[c, t] ** 2).sum() + np.float32(1e-6))
+            g = A * np.logaddexp(np.float32(0), a[c, t] + dt_bias)
+            beta = 1 / (1 + np.exp(-b[c, t]))
+            s = np.exp(g) * s
+            s = s + np.outer(kt, beta * (v[c, t] - kt @ s))
+            y[c, t] = qt @ s
+        final[c] = s.reshape(-1)
+    return final, y.astype(bfloat16).reshape(calls, -1)
+
+
+def gated_delta_rule(
+    *, rows: int = 16, key_dim: int = 32, value_dim: int = 16, blocks: int = 1
+) -> ExternalFunction:
+    """Gated DeltaNet's recurrence for one value head, a block of rows a call.
+
+    ``gated_delta_rule(block, head, final, y, valid, b)``: ``block`` is bf16
+    q and k (``rows`` x ``key_dim`` each), v (``rows`` x ``value_dim``),
+    then a and b (``rows`` each). ``head`` is float32 ``(dt_bias, A)`` then
+    the state before the head's first block, ``(key_dim, value_dim)``.
+    ``b`` counts blocks from 0, ``blocks`` to a head, and a head's first
+    block loads the state from ``head``. Each block runs its first ``valid``
+    rows: q and k are l2-normalized (eps 1e-6) and q scaled by ``1 /
+    sqrt(key_dim)``, ``g = A * softplus(a + dt_bias)``, ``beta =
+    sigmoid(b)``, ``state = exp(g) * state``, then ``state += outer(k, beta
+    * (v - k @ state))`` and ``y = q @ state``, rounded once to bf16. Rows
+    from ``valid`` on leave the state alone and write zero ``y``. The state
+    stays in the core between blocks, and ``final`` is it after this one.
+    The caller gathers key head ``h // (v_heads // k_heads)``'s q and k and
+    value head ``h``'s v, a and b into ``block``. ``value_dim`` may be a
+    slice of the head's: the state's columns are independent.
+    """
+    geometry = dict(rows=rows, key_dim=key_dim, value_dim=value_dim, blocks=blocks)
+    _positive("gated_delta_rule", **geometry)
+    return _make_extern(
+        "gated_delta_rule",
+        _kernel_source("ssm/gated_delta_rule.cc"),
+        [
+            np.ndarray[(rows * (2 * key_dim + value_dim + 2),), np.dtype[bfloat16]],
+            np.ndarray[(2 + key_dim * value_dim,), np.dtype[np.float32]],
+            np.ndarray[(key_dim * value_dim,), np.dtype[np.float32]],
+            np.ndarray[(rows * value_dim,), np.dtype[bfloat16]],
+            np.int32,
+            np.int32,
+        ],
+        compile_flags=_STRICT_FP
+        + [
+            f"-DGDR_ROWS={rows}",
+            f"-DGDR_KEY_DIM={key_dim}",
+            f"-DGDR_VALUE_DIM={value_dim}",
+            f"-DGDR_BLOCKS={blocks}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out, Out, Param, Param),
+            parameter_bindings=((5, 0),),
+            call_index=5,
+            reference=partial(gated_delta_rule_ref, **geometry),
+            sample=partial(gated_delta_rule_sample, **geometry),
+            setup=conv_even,
+            tolerance=Tolerance.bounded(
+                partial(_state_bound, gated_delta_rule_ref, **geometry),
+                note="host build of the source",
             ),
         ),
     )

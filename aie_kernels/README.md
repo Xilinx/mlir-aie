@@ -155,6 +155,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
 | [selective_scan.cc](./ssm/selective_scan.cc) | Generic C | Mamba2's state space recurrence for one head over a block of rows, the float32 state carried across calls. Scalar first pass | `bfloat16`, `float32` → `bfloat16`, `float32` |
+| [gated_delta_rule.cc](./ssm/gated_delta_rule.cc) | Generic C | Gated DeltaNet's recurrence for one value head over a block of rows, the float32 state carried across calls. Scalar first pass | `bfloat16`, `float32` → `bfloat16`, `float32` |
 
 ## transformer
 | Name | Coding style | Purpose | Datatypes |

@@ -930,6 +930,15 @@ KERNEL_SPECS: list[KernelSpec] = [
         shape_checks=[(dict(rows=4, head_dim=8, state=16), 0, (164,))],
     ),
     KernelSpec(
+        name="gated_delta_rule",
+        factory=kernels.gated_delta_rule,
+        kwargs={},
+        arg_count=6,  # block, head, final, y, valid, block index
+        expected_name="gated_delta_rule",
+        invalid_kwargs=[(dict(key_dim=0), "key_dim must be a positive integer")],
+        shape_checks=[(dict(rows=4, key_dim=8, value_dim=4), 0, (88,))],
+    ),
+    KernelSpec(
         name="patch_positions",
         factory=kernels.patch_positions,
         kwargs={},

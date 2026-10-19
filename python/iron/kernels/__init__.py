@@ -18,7 +18,8 @@ Submodules:
 - `moe` — router_top_k (a mixture-of-experts router's top-k ids and softmax
   weights, deterministic, from a `sample_select` summary), experts (a
   row's gated feed-forward through its chosen experts, tile by tile)
-- `ssm` — selective_scan (Mamba2's state space recurrence for one head)
+- `ssm` — selective_scan (Mamba2's state space recurrence for one head),
+  gated_delta_rule (Gated DeltaNet's recurrence for one value head)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
   implementation (AIE2P): prefill attention, the q4nx LM head and the decode
@@ -288,7 +289,12 @@ from .reduce import (
     reduce_min_ref,
 )
 from .sample import exp64_ref, sample_combine, sample_ref, sample_select
-from .ssm import selective_scan, selective_scan_ref
+from .ssm import (
+    gated_delta_rule,
+    gated_delta_rule_ref,
+    selective_scan,
+    selective_scan_ref,
+)
 from .transformer import (
     layer_norm_affine_cast,
     layer_norm_affine_cast_ref,
@@ -357,6 +363,8 @@ __all__ = [
     "experts_ref",
     "selective_scan",
     "selective_scan_ref",
+    "gated_delta_rule",
+    "gated_delta_rule_ref",
     "rms_norm_ref",
     "layer_norm",
     "layer_norm_ref",

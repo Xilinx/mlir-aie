@@ -249,7 +249,8 @@ core, from the row and one stream of weight tiles.
 ## State space models
 
 `selective_scan` runs Mamba2's recurrence for one head over a block of rows,
-its float32 state carried from call to call.
+and `gated_delta_rule` Gated DeltaNet's for one value head, each with its
+float32 state carried from call to call.
 
 ::: iron.kernels.ssm
     options:
