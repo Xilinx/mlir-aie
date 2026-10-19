@@ -13,6 +13,7 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 
 if TYPE_CHECKING:
     from .configuration import DeviceConfiguration
+
     # tile_dma imports this module.
     from .dataflow.tile_dma import DmaEndpoint
 
