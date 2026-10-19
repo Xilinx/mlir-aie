@@ -459,9 +459,9 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
         peano = leg.peano or "?"
         if leg.baseline_peano and leg.baseline_peano != leg.peano:
             peano += f" (nightly: {leg.baseline_peano})"
-        commit = leg.baseline_commit
-        if commit and commit.get("id"):
-            base = f"[{commit['id'][:7]}]({commit.get('url', '')})"
+        nightly = leg.baseline_commit
+        if nightly and nightly.get("id"):
+            base = f"[{nightly['id'][:7]}]({nightly.get('url', '')})"
         else:
             base = leg.uncompared or "\u2014"
         summary.append(
@@ -471,8 +471,8 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
                 base,
                 str(leg.cases),
                 str(len(leg.failures)),
-                str(len(leg.regressed)) if commit else "\u2014",
-                str(len(leg.improved)) if commit else "\u2014",
+                str(len(leg.regressed)) if nightly else "\u2014",
+                str(len(leg.improved)) if nightly else "\u2014",
             ]
         )
     out += _table(
