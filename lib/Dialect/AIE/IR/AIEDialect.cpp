@@ -1111,8 +1111,9 @@ LogicalResult RouteEndpointOp::verify() {
         return emitOpError("sends several packet flows, so each must pin its "
                            "packet_id for the BDs to state it");
       if (!ids.insert(*id).second)
-        return emitOpError("sends several packet flows with packet_id ")
-               << static_cast<int>(*id);
+        return emitOpError("sends several packet flows, two of which pin the "
+                           "same packet_id ")
+               << static_cast<int>(*id) << "; each needs its own";
     }
     // The port keeps or drops every header it receives.
     if (llvm::any_of(dests, [&](RouteOp flow) {

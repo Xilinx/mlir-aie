@@ -192,7 +192,7 @@ aie.device(npu1) {
 
 // A shared source's BDs tell its flows apart by id.
 
-// CHECK: 'aie.route_endpoint' op sends several packet flows with packet_id 1
+// CHECK: 'aie.route_endpoint' op sends several packet flows, two of which pin the same packet_id 1; each needs its own
 
 aie.device(npu1) {
   %shim0 = aie.tile(0, 0)
