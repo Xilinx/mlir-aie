@@ -25,14 +25,11 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-import onnxruntime as ort
 from aie.iron import CompileTime, DeviceConfiguration, In, InOut, Out, Program, Runtime
 from aie.iron.device import NPU2
-
-from gen_yolo_data import DATA_DIR, WEIGHTS_DIR, Params, Synthesizer
-from letterbox import letterbox
 from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
+from yolo_params import DATA_DIR, WEIGHTS_DIR, Params, synthetic_params
 from yolo_spec import (
     Add,
     Attention,
@@ -190,18 +187,25 @@ def yolo26n(
     return Program.compose([main, *configurations], entry=entry).resolve_program()
 
 
-def onnx_detections(session: ort.InferenceSession, image: np.ndarray) -> np.ndarray:
+def onnx_detections(session, image: np.ndarray) -> np.ndarray:
     x = (image.transpose(2, 0, 1)[None] / np.float32(255)).astype(np.float32)
-    return session.run(None, {"images": x})[0][0]
+    return np.asarray(session.run(None, {"images": x})[0])[0]
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
         "--images", type=Path, default=WEIGHTS_DIR / "coco128" / "images" / "train2017"
     )
     parser.add_argument("--n", type=int, default=4, help="images to run")
-    parser.add_argument("--params", type=Path, default=DATA_DIR / "yolo26n_params.npz")
+    parser.add_argument(
+        "--params",
+        type=Path,
+        help="parameter file (default data/yolo26n_params.npz, or with --synthetic "
+        "data/yolo26n_params_synthetic<SEED>.npz, made if missing)",
+    )
     parser.add_argument("--onnx", type=Path, default=WEIGHTS_DIR / "yolo26n_xint8.onnx")
     parser.add_argument(
         "--synthetic", type=int, metavar="SEED", help="seeded weights and random images"
@@ -216,17 +220,20 @@ def main() -> None:
 
     network = Network.yolo26n()
     if args.synthetic is not None:
-        params_path = DATA_DIR / f"yolo26n_params_synthetic{args.synthetic}.npz"
-        if not params_path.exists():
-            params_path.parent.mkdir(parents=True, exist_ok=True)
-            np.savez(params_path, **Synthesizer(args.synthetic).run(network))
+        params_path = synthetic_params(
+            args.synthetic,
+            args.params or DATA_DIR / f"yolo26n_params_synthetic{args.synthetic}.npz",
+        )
         rng = np.random.default_rng(args.synthetic)
         images = [
             (f"random{i}", rng.integers(0, 256, (640, 640, 3), dtype=np.uint8))
             for i in range(args.n)
         ]
     else:
-        params_path = args.params
+        # Optional: only real images need OpenCV; a weight-free run goes without.
+        from letterbox import letterbox
+
+        params_path = args.params or DATA_DIR / "yolo26n_params.npz"
         images = [
             (p.name, letterbox(p)) for p in sorted(args.images.glob("*.jpg"))[: args.n]
         ]
@@ -239,11 +246,14 @@ def main() -> None:
     )
     scratch = iron.zeros(plan.words, dtype=np.int32)
     detections = iron.zeros(6 * 300, dtype=np.int32)
-    session = (
-        ort.InferenceSession(str(args.onnx), providers=["CPUExecutionProvider"])
-        if args.synthetic is None and args.onnx.exists()
-        else None
-    )
+    session = None
+    if args.synthetic is None and args.onnx.exists():
+        # Optional: ONNX Runtime only serves the comparison with the ONNX graph.
+        import onnxruntime as ort  # pyright: ignore[reportMissingImports]
+
+        session = ort.InferenceSession(
+            str(args.onnx), providers=["CPUExecutionProvider"]
+        )
     if args.compile_only:
         yolo26n(
             iron.tensor(images[0][1].reshape(-1).view(np.int32)),

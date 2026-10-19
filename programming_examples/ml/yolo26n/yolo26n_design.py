@@ -32,8 +32,7 @@ from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import AnyMemTile
 from aie.utils.config import aie_kernels_dir
-
-from gen_yolo_data import Params
+from yolo_params import Params
 from yolo_spec import (
     Add,
     Attention,
@@ -662,22 +661,23 @@ class SegmentDesign:
         )
         src_tensor = op.src
         while True:
+            reader: RowInput | Part
             if op.kernel == 1:
-                src = RowInput(self, src_tensor)
-                if len(src.sources) > 2:
+                reader = RowInput(self, src_tensor)
+                if len(reader.sources) > 2:
                     src_tensor = self.assemble(src_tensor)
                     continue
-                windows = src.windows(op.dst.height)
-                local_bytes = src_tensor.row_bytes if src.assembled else 0
+                windows = reader.windows(op.dst.height)
+                local_bytes = src_tensor.row_bytes if reader.assembled else 0
             else:
                 parts = self.parts(src_tensor)
                 if len(parts) > 1 or parts[0].upsample:
                     src_tensor = self.assemble(src_tensor)
                     continue
-                (part,) = parts
+                (reader,) = parts
                 y = np.arange(op.dst.height)
                 lo = np.maximum(op.stride * y - 1, 0)
-                windows = [(part.source, lo, op.stride * y + 1)]
+                windows = [(reader.source, lo, op.stride * y + 1)]
                 local_bytes = 0
             # Double-buffered if the weights then fit, else one row at a time.
             for double in (True, False):
@@ -768,7 +768,8 @@ class SegmentDesign:
                 )
                 wts.release(1)
 
-        if op.kernel == 1:
+        if isinstance(reader, RowInput):
+            src = reader
             k = kernels.conv2dk1_i8(
                 src_tensor.width,
                 ic,
@@ -794,6 +795,7 @@ class SegmentDesign:
             self.workers.append(Worker(body1, [*src.fn_args, out, k, *constants]))
             return
 
+        part = reader
         if op.groups == 1:
             k = kernels.conv2dk3(
                 src_tensor.width,
@@ -1004,7 +1006,7 @@ class SegmentDesign:
                         pieces[2 * h + 1].cons(depth=2),
                         self.fifo(out).prod(depth=2),
                         k,
-                        k.load_kv,
+                        k.load_kv,  # pyright: ignore[reportAttributeAccessIssue]
                         Buffer(
                             initial_value=p.of(op.name, "exp_table").astype(np.int32)
                         ),

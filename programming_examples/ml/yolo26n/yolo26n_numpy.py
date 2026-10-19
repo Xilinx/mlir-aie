@@ -22,8 +22,7 @@ from __future__ import annotations
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
-
-from gen_yolo_data import Params, anchor_grid
+from yolo_params import Params, anchor_grid
 from yolo_spec import (
     Add,
     Attention,
@@ -48,7 +47,7 @@ def conv2d(x: np.ndarray, weight: np.ndarray, stride: int, groups: int) -> np.nd
     """Exact integer convolution, `(C, H, W)` by `(O, C/groups, k, k)`, zero-padded by `k // 2`."""
     k = weight.shape[-1]
     padded = np.pad(x, ((0, 0), (k // 2, k // 2), (k // 2, k // 2))).astype(np.float64)
-    windows = sliding_window_view(padded, (k, k), axis=(1, 2))[:, ::stride, ::stride]
+    windows = sliding_window_view(padded, (1, k, k))[:, ::stride, ::stride, 0]
     # float64 holds every partial sum exactly: |sum| < 128 * 128 * 9 * 512 < 2**53.
     if groups == 1:
         acc = np.tensordot(
@@ -118,8 +117,8 @@ class Oracle:
                         t[op.src.name], ((0, 0), (r, r), (r, r)), constant_values=-129
                     )
                     t[op.dst.name] = sliding_window_view(
-                        padded, (op.kernel, op.kernel), axis=(1, 2)
-                    ).max(axis=(3, 4))
+                        padded, (1, op.kernel, op.kernel)
+                    ).max(axis=(3, 4, 5))
                 case Upsample():
                     t[op.dst.name] = t[op.src.name].repeat(2, axis=1).repeat(2, axis=2)
                 case Attention():

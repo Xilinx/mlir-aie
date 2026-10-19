@@ -25,13 +25,22 @@ import os
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnxruntime.quantization import CalibrationDataReader
-from quark.onnx import AdaRoundConfig, ModelQuantizer, QConfig, QLayerConfig, XInt8Spec
-from ultralytics import YOLO
-from ultralytics.utils.downloads import safe_download
-
+import onnx  # pyright: ignore[reportMissingImports]
 from letterbox import IMAGE_SIZE, letterbox
+from onnxruntime.quantization import (  # pyright: ignore[reportMissingImports]
+    CalibrationDataReader,
+)
+from quark.onnx import (  # pyright: ignore[reportMissingImports]
+    AdaRoundConfig,
+    ModelQuantizer,
+    QConfig,
+    QLayerConfig,
+    XInt8Spec,
+)
+from ultralytics import YOLO  # pyright: ignore[reportMissingImports]
+from ultralytics.utils.downloads import (  # pyright: ignore[reportMissingImports]
+    safe_download,
+)
 
 WEIGHTS_DIR = Path(os.environ.get("IRON_EXAMPLE_WEIGHTS_DIR", "/srv")) / "yolo26n"
 COCO128_URL = (
@@ -51,7 +60,8 @@ class CalibrationImages(CalibrationDataReader):
         ]
         self.index = 0
 
-    def get_next(self):
+    # ORT's reader protocol ends with None, which the base annotation omits.
+    def get_next(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         if self.index == len(self.batches):
             return None
         self.index += 1
@@ -62,7 +72,9 @@ class CalibrationImages(CalibrationDataReader):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--weights-dir", type=Path, default=WEIGHTS_DIR)
     parser.add_argument(
         "--n-calib", type=int, default=128, help="coco128 images to calibrate on"
@@ -91,17 +103,16 @@ def main() -> None:
         safe_download(COCO128_URL, dir=out, unzip=True, delete=True)
     paths = sorted(images.glob("*.jpg"))[: args.n_calib]
 
-    postprocess = [
-        node.name
-        for node in onnx.load(fp32).graph.node
-        if node.name.startswith("/model.23/")
-        and node.op_type != "Conv"
-        and "/act/" not in node.name
-    ]
     config = QConfig(
         global_config=QLayerConfig(activation=XInt8Spec(), weight=XInt8Spec()),
         algo_config=[] if args.no_adaround else [AdaRoundConfig()],
-        exclude=postprocess,
+        exclude=[
+            node.name
+            for node in onnx.load(fp32).graph.node
+            if node.name.startswith("/model.23/")
+            and node.op_type != "Conv"
+            and "/act/" not in node.name
+        ],
         extra_options={"SimulateDPU": False},
         use_external_data_format=False,
     )

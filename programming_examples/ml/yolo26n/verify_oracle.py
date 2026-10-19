@@ -18,16 +18,17 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import onnx
-import onnxruntime as ort
-
-from gen_yolo_data import DATA_DIR, WEIGHTS_DIR, Params
+import onnx  # pyright: ignore[reportMissingImports]
+import onnxruntime as ort  # pyright: ignore[reportMissingImports]
 from letterbox import letterbox
 from yolo26n_numpy import Oracle
+from yolo_params import DATA_DIR, WEIGHTS_DIR, Params
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--onnx", type=Path, default=WEIGHTS_DIR / "yolo26n_xint8.onnx")
     parser.add_argument("--params", type=Path, default=DATA_DIR / "yolo26n_params.npz")
     parser.add_argument(
@@ -56,7 +57,10 @@ def main() -> None:
         image = letterbox(path)
         ours = oracle.run(image)
         x = (image.transpose(2, 0, 1)[None] / np.float32(255)).astype(np.float32)
-        theirs = dict(zip(outputs, session.run(outputs, {"images": x})))
+        theirs = {
+            name: np.asarray(value)
+            for name, value in zip(outputs, session.run(outputs, {"images": x}))
+        }
         diffs = []
         for name, onnx_name in names.items():
             a, b = ours[name], theirs[onnx_name].reshape(ours[name].shape).astype(

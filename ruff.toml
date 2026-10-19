@@ -44,6 +44,7 @@ include = [
   "programming_examples/ml/scale_shift/**/*.py",
   "programming_examples/ml/softmax/**/*.py",
   "programming_examples/ml/swiglu/**/*.py",
+  "programming_examples/ml/yolo26n/**/*.py",
   "utils/kernel_checks/**/*.py",
   "utils/component_checks/**/*.py",
 ]
@@ -58,6 +59,10 @@ extend-exclude = [
   "cmakeModules*",
   "ironenv",
 ]
+
+# The mlir_aie wheel requires Python 3.11; these examples use `match`.
+[per-file-target-version]
+"programming_examples/ml/yolo26n/**/*.py" = "py311"
 
 [lint]
 # E/F: pyflakes + pycodestyle errors (ruff defaults).

@@ -6,7 +6,7 @@
 
 from pathlib import Path
 
-import cv2
+import cv2  # pyright: ignore[reportMissingImports]
 import numpy as np
 
 IMAGE_SIZE = 640

@@ -23,11 +23,9 @@ import aie.iron as iron
 import numpy as np
 from aie.iron import CompileTime, In, Out, Program, Runtime
 from aie.iron.device import NPU2
-
-from gen_yolo_data import DATA_DIR, Params, Synthesizer
-from letterbox import letterbox
-from yolo26n_design import IMAGE_ROW_BYTES, SegmentDesign
+from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
+from yolo_params import DATA_DIR, Params, synthetic_params
 from yolo_spec import Network, Tensor
 
 
@@ -97,11 +95,18 @@ def segment(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
         "--ops", required=True, help="FIRST:STOP indexes into Network.yolo26n().ops"
     )
-    parser.add_argument("--params", type=Path, default=DATA_DIR / "yolo26n_params.npz")
+    parser.add_argument(
+        "--params",
+        type=Path,
+        help="parameter file (default data/yolo26n_params.npz, or with --synthetic "
+        "data/yolo26n_params_synthetic<SEED>.npz, made if missing)",
+    )
     parser.add_argument(
         "--synthetic",
         type=int,
@@ -119,14 +124,17 @@ def main() -> None:
     first, stop = (int(v) for v in args.ops.split(":"))
     network = Network.yolo26n()
     if args.synthetic is not None:
-        params_path = DATA_DIR / f"yolo26n_params_synthetic{args.synthetic}.npz"
-        if not params_path.exists():
-            params_path.parent.mkdir(parents=True, exist_ok=True)
-            np.savez(params_path, **Synthesizer(args.synthetic).run(network))
+        params_path = synthetic_params(
+            args.synthetic,
+            args.params or DATA_DIR / f"yolo26n_params_synthetic{args.synthetic}.npz",
+        )
     else:
-        params_path = args.params
+        params_path = args.params or DATA_DIR / "yolo26n_params.npz"
     params = Params.load(params_path)
     if args.image is not None:
+        # Optional: only a real image needs OpenCV.
+        from letterbox import letterbox
+
         image = letterbox(args.image)
     else:
         image = np.random.default_rng(args.synthetic or 0).integers(
