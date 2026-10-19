@@ -36,8 +36,10 @@ the page, where the package is not installed.
 ``perf`` reads the timing step's ``perf.json`` and ``meta.json`` and the
 catalogue. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
-removed), rebuilds ``runs.json``, ``latest.json`` and the history from the
-run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
+removed), upgrades any run record still using older case ids (an
+``sa-placer-hw`` record from before the SA effort sweep becomes
+``effort=full``), rebuilds ``runs.json``, ``latest.json`` and the history from
+the run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
 ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
 also deletes the records of every run measured in ``MODE``, for retiring a
 power mode nobody should compare against; ``--keep-pmode MODE`` deletes
@@ -108,8 +110,14 @@ LEGACY_ROWS = (
     (r"sa_placer/fail_count", "test_sa_effort/failed_seeds"),
     (r"sa_placer/(mean|max)_final_cost", r"test_sa_effort/final_cost_\1"),
     (r"sa_placer/hw_fail_count", "mobilenet/failed_seeds"),
-    (r"sa_placer/hw_seed(\d+)_latency_us", r"mobilenet/seed=\1/batch=1/us_per_image"),
+    (
+        r"sa_placer/hw_seed(\d+)_latency_us",
+        r"mobilenet/seed=\1/batch=1/effort=full/us_per_image",
+    ),
 )
+# An sa-placer-hw case from before the check swept the SA effort. Every one of
+# those runs placed at effort 1.0, the page's "full".
+PRE_EFFORT_CASE = re.compile(r"^(mobilenet/seed=\d+(?:/batch=\d+)?)$")
 # The part a runtime's device name means, first match wins. XRT names the
 # same NPU differently across drivers ("RyzenAI-npu1", "NPU Phoenix"); the
 # raw name stays in the record as ``device_raw``.
@@ -285,6 +293,31 @@ def _current_name(name: str) -> str | None:
     return None if name.startswith("sa_placer/") else name
 
 
+def upgrade(record: dict) -> bool:
+    """Bring an older run record up to the current case ids; return whether it changed.
+
+    An ``sa-placer-hw`` record from before the check swept the SA effort names
+    its cases ``mobilenet/seed=S[/batch=B]`` and its runs carry no
+    ``effort_label``; they become ``.../effort=full``. Other records, and
+    records already current, are left as they are.
+    """
+    if record.get("target") != "sa-placer-hw":
+        return False
+    before = json.dumps(record, sort_keys=True)
+    if "rows" in record:
+        record["rows"] = {
+            PRE_EFFORT_CASE.sub(r"\1/effort=full", case): cells
+            for case, cells in record["rows"].items()
+        }
+    if "failed" in record:
+        record["failed"] = [
+            PRE_EFFORT_CASE.sub(r"\1/effort=full", case) for case in record["failed"]
+        ]
+    for run in record.get("detail", []):
+        run.setdefault("effort_label", "full")
+    return json.dumps(record, sort_keys=True) != before
+
+
 def migrate(out: Path) -> int:
     """Turn a github-action-benchmark ``data.js`` into run records; return how many.
 
@@ -385,7 +418,8 @@ def rebuild(
 ) -> dict:
     """Rewrite the derived files from ``runs/*.json``, pruning old runs.
 
-    With ``drop_pmode``, the records of runs measured in that power mode are
+    A record still using older case ids is upgraded in place first. With
+    ``drop_pmode``, the records of runs measured in that power mode are
     deleted first; with ``keep_pmode``, those of runs that charted numbers in
     any other mode.
     """
@@ -395,6 +429,9 @@ def rebuild(
     records = [
         _check_schema(json.loads(p.read_text()), p) for p in runs_dir.glob("*.json")
     ]
+    for r in records:
+        if upgrade(r):
+            (runs_dir / f"{r['id']}.json").write_text(json.dumps(r, indent=1))
 
     def dropped(r: dict) -> bool:
         if drop_pmode and r.get("pmode") == drop_pmode:
