@@ -83,8 +83,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
     }
     const bfloat16 *qt = q + t * Dk, *kt = k + t * Dk, *vt = v + t * Dv;
     const float qn = inv_norm(qt, q_scale), kn = inv_norm(kt, 1.0f);
-    const float decay =
-        scalar_exp(A * softplus((float)a[t] + dt_bias));
+    const float decay = scalar_exp(A * softplus((float)a[t] + dt_bias));
     const float beta = 1.0f / (1.0f + scalar_exp(-(float)b[t]));
     for (int i = 0; i < Dk * Dv; i++)
       s[i] *= decay;

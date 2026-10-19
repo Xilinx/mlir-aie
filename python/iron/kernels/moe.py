@@ -215,8 +215,9 @@ def experts(
             np.ndarray[(hidden,), np.dtype[bfloat16]],
             np.int32,
         ],
+        # rolled: unrolled, these overflow aie2's 16 KB program memory
         compile_flags=_STRICT_FP
-        + ["-fno-unroll-loops"]  # rolled: unrolled, it nearly fills aie2's 16 KB
+        + ["-fno-unroll-loops"]
         + [
             f"-DEXPERTS_HIDDEN={hidden}",
             f"-DEXPERTS_WIDTH={width}",

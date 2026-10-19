@@ -5,15 +5,15 @@
 #define AIE_KERNELS_COMMON_SCALAR_EXP_H
 
 #include <stdint.h>
-#include <string.h>
 
 // exp(x) in plain scalar float32, for kernels that call it a few times per
 // row; small enough to leave room in program memory, unlike exp64.h's
 // doubles. x = k ln 2 + r with |r| <= ln 2 / 2 (Cody-Waite: ln 2's high part
 // has 12 bits, so k * high is exact), e^r by its Taylor series to r^7
-// (6e-9 at the ends), times 2^k. Below -87.3 it returns 0, where the result
-// would be subnormal; above 88.7, infinity.
+// (6e-9 at the ends), times 2^k. Returns 0 below -87.3 and infinity above 88.7.
 static inline float scalar_exp(float x) {
+  if (x != x)
+    return x;
   if (x < -87.3f)
     return 0.0f;
   if (x > 88.7f)
@@ -32,8 +32,7 @@ static inline float scalar_exp(float x) {
   // 2^k as its bits; k reaches 128 only just below 88.7, so halve it there.
   const int half = k > 127;
   const uint32_t bits = (uint32_t)(k - half + 127) << 23;
-  float scale;
-  memcpy(&scale, &bits, sizeof(scale));
+  const float scale = __builtin_bit_cast(float, bits);
   return half ? p * scale * 2.0f : p * scale;
 }
 

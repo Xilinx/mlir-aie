@@ -15,11 +15,7 @@ from ml_dtypes import bfloat16
 
 from ._common import KernelContract, Param, Trace, _kernel_source, _make_extern
 from .core import conv_even
-from .sample import _positive
-
-# Rolled loops: unrolled, gated_delta_rule alone fills aie2's 16 KB of
-# program memory. Scalar first passes, so nothing is lost.
-_SCALAR_FLAGS = ["-ffp-contract=off", "-fno-fast-math", "-fno-unroll-loops"]
+from .sample import _STRICT_FP, _positive
 
 
 def selective_scan_sample(
@@ -71,12 +67,14 @@ def selective_scan_ref(
 
 
 def _state_bound(reference, *args, **geometry):
-    """1e-6 of the state's range for ``final``; one bf16 ulp for ``y``."""
+    """1e-6 of the state's range for ``final``; one bf16 ulp of its row's largest for ``y``."""
     final, y = reference(*args, **geometry)
     span = np.abs(final).max(axis=1, keepdims=True)
-    y = np.abs(y.astype(np.float32))
-    _, k = np.frexp(y)
-    ulp = np.where(y > 0, np.ldexp(np.float32(1), k - 8), 0)
+    y = np.abs(y.astype(np.float32)).reshape(len(y), geometry["rows"], -1)
+    top = y.max(axis=2, keepdims=True)
+    _, k = np.frexp(top)
+    ulp = np.where(top > 0, np.ldexp(np.float32(1), k - 8), 0)
+    ulp = np.broadcast_to(ulp, y.shape).reshape(len(y), -1)
     return np.broadcast_to(1e-6 * span, final.shape), ulp.astype(np.float32)
 
 
@@ -113,7 +111,9 @@ def selective_scan(
             np.int32,
             np.int32,
         ],
-        compile_flags=_SCALAR_FLAGS
+        # rolled: unrolled, these overflow aie2's 16 KB program memory
+        compile_flags=_STRICT_FP
+        + ["-fno-unroll-loops"]
         + [
             f"-DSCAN_ROWS={rows}",
             f"-DSCAN_HEAD_DIM={head_dim}",
@@ -227,7 +227,9 @@ def gated_delta_rule(
             np.int32,
             np.int32,
         ],
-        compile_flags=_SCALAR_FLAGS
+        # rolled: unrolled, these overflow aie2's 16 KB program memory
+        compile_flags=_STRICT_FP
+        + ["-fno-unroll-loops"]
         + [
             f"-DGDR_ROWS={rows}",
             f"-DGDR_KEY_DIM={key_dim}",
