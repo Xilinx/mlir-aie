@@ -189,6 +189,7 @@ CASES: list[Case] = [
     ),
     # test_kernels_specs checks a tanh GELU fails on this case's inputs.
     Case("gelu_erf", calls=16, smoke=True),
+    check("gelu_erf", dict(tile_size=32), tag="edge-one-vector"),
     check("gelu_erf", calls=64, data_cases=("all_bf16",), tag="all-bf16"),
     Case("silu", calls=16, smoke=True),
     Case(
@@ -414,18 +415,42 @@ CASES: list[Case] = [
         calls=2,
         tag="overlap",
     ),
-    # Scalar first passes: checked, not timed until they are vectorized.
+    # Scalar first passes, timed as the baseline their vectorization beats.
     # A row is four experts of 16 gate_up tiles and 8 down tiles each; three
-    # rows check that each one starts its sum again.
-    check("experts", calls=288, smoke=True),
+    # rows check that each one starts its sum again, and the third repeats an
+    # id (experts_sample).
+    Case("experts", calls=288, smoke=True),
+    # One gate_up tile wide and one down tile: three steps an expert.
+    check(
+        "experts",
+        dict(hidden=32, width=16, num_experts=2, top_k=1, rows=32, cols=16),
+        calls=18,
+        tag="edge-one-tile",
+    ),
+    check("experts", dict(top_k=4), calls=288, tag="edge-all-chosen"),
     # Three heads of two blocks: each block carries the state, each head
     # loads its own.
-    check("selective_scan", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
+    Case("selective_scan", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
     check("selective_scan", dict(blocks=2), calls=4, scalars=(5,), tag="partial"),
     check("selective_scan", dict(blocks=2), calls=4, scalars=(0,), tag="none-valid"),
-    check("gated_delta_rule", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
+    Case("gated_delta_rule", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
     check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(5,), tag="partial"),
     check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(0,), tag="none-valid"),
+    # Two rows of a 2x2 state, and more valid rows than the block holds.
+    *(
+        check(
+            name,
+            dict(rows=2, blocks=3, **dims),
+            calls=6,
+            scalars=(valid,),
+            tag=f"edge-tiny-valid{valid}",
+        )
+        for name, dims in (
+            ("selective_scan", dict(head_dim=2, state=2)),
+            ("gated_delta_rule", dict(key_dim=2, value_dim=2)),
+        )
+        for valid in (2, 17)
+    ),
     # EmbeddingGemma 2's image budget: 42x57 patches in 10 blocks, padded.
     Case("patch_positions", {}, calls=10, scalars=(10, 672, 912), smoke=True),
     Case("patch_positions", dict(cores=8), calls=8, scalars=(8, 480, 1056)),
@@ -1900,6 +1925,16 @@ CASES: list[Case] = [
     Case("layer_norm", dict(cols=1024), calls=16, smoke=True),
     # A non-default epsilon, so a kernel that ignores it fails.
     Case("layer_norm_eps", dict(cols=1024), calls=16, scalars=(1e-2,), smoke=True),
+    # One 16-lane half, a row tail, and exactly the pipelined loops' minimum
+    # on aie2; an epsilon large enough to move every output.
+    *(
+        check("layer_norm_eps", dict(cols=cols), calls=16, scalars=(0.25,), tag=tag)
+        for cols, tag in (
+            (16, "edge-one-half"),
+            (208, "row-tail"),
+            (256, "edge-pipelined"),
+        )
+    ),
     # Rows of an odd number of 16-lane halves: 208 is too short for the
     # pipelined loops and 1008 leaves an odd chunk (aie2p ends in a half vector).
     check("layer_norm", dict(cols=208), calls=16, tag="row-tail"),

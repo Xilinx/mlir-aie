@@ -122,13 +122,19 @@ def _experts_row(x, weights, ids):
 
 
 def experts_sample(rng, calls, *, hidden, width, num_experts, top_k, rows, cols):
-    """Return a row per ``num_experts`` experts' tiles, as a design passes it; random tiles."""
+    """Return a row per ``num_experts`` experts' tiles, as a design passes it; random tiles.
+
+    Every third row repeats its first id when ``top_k`` > 1, so a device run
+    checks that a duplicated id sums its weights.
+    """
     row_steps = num_experts * _experts_steps(hidden, width, rows, cols)[1]
     packed = []
-    for _ in range(-(-calls // row_steps)):
+    for row in range(-(-calls // row_steps)):
         weights = np.zeros(2 * top_k, np.float32)
         weights[::2] = rng.random(top_k)
         ids = rng.choice(num_experts, top_k, replace=False)
+        if row % 3 == 2 and top_k > 1:
+            ids[1] = ids[0]
         packed.append(_experts_row(rng.standard_normal(hidden) * 0.5, weights, ids))
     rows_in = np.repeat(np.stack(packed), row_steps, axis=0)[:calls]
     tiles = rng.standard_normal((calls, rows * cols)) * 0.1

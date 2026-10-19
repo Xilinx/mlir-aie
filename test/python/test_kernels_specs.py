@@ -1378,6 +1378,11 @@ def test_gelu_erf_ports_and_reference(kernel_arch):
     )
 
 
+def test_gelu_erf_refuses_a_tile_with_a_tail():
+    with pytest.raises(ValueError, match="gelu_erf"):
+        kernels.gelu_erf(tile_size=48)
+
+
 def test_gelu_erf_device_case_fails_a_tanh_gelu():
     fn = kernels.gelu_erf()
     for seed in range(1000, 1004):  # the device test's random seeds
