@@ -285,3 +285,31 @@ module @shared_source_bd_packet_wrong_id {
     }
   }
 }
+
+// -----
+
+// Each BD of a chain started on a shared source states one of its flows'
+// headers.
+module @shared_source_bd_chain_without_header {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.bd_chain @chain(%buf: memref<64xi32>) {
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+      aie.next_bd ^b1
+    ^b1:
+      // expected-error @+1 {{sends on @host without the packet header of one of its flows, ids 1, 2}}
+      aie.dma_bd(%buf : memref<64xi32> offset = 32 len = 32)
+      aie.end
+    }
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_start_bd_chain_for @chain(%arg0) : (memref<64xi32>) for @host
+      aiex.dma_await_task(%t)
+    }
+  }
+}

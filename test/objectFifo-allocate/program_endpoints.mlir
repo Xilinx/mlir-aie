@@ -651,3 +651,36 @@ module @shared_source_memcpy_header {
     }
   }
 }
+
+// -----
+
+// A BD chain started on a shared shim source states each BD's header, so it
+// reaches the channel through the shim allocation like a task does.
+
+// CHECK-LABEL: @shared_source_bd_chain_headers
+// CHECK: aie.dma_bd({{.*}}) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+// CHECK: aie.dma_bd({{.*}}) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+// CHECK: aiex.dma_start_bd_chain_for @chain(%{{.*}}) : (memref<64xi32>) for @host_shim_alloc
+// CHECK: aie.shim_dma_allocation @host_shim_alloc(%{{.*}}, MM2S, [[#]]){{$}}
+module @shared_source_bd_chain_headers {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.bd_chain @chain(%buf: memref<64xi32>) {
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+      aie.next_bd ^b1
+    ^b1:
+      aie.dma_bd(%buf : memref<64xi32> offset = 32 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+      aie.end
+    }
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_start_bd_chain_for @chain(%arg0) : (memref<64xi32>) for @host
+      aiex.dma_await_task(%t)
+    }
+  }
+}

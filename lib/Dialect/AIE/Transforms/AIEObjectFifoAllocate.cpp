@@ -1391,7 +1391,7 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// Programs and tasks on a shared source are checked BD by BD; a
+  /// Programs, tasks and BD chains on a shared source are checked BD by BD; a
   /// dma_memcpy_nd must name a header of its own, and nothing else may send
   /// on one.
   LogicalResult checkSharedSourceUsers(RouteEndpointOp endpoint,
@@ -1404,6 +1404,15 @@ struct AIEObjectFifoAllocatePass
       if (isa<RouteOp, DMAStartOp, AIEX::DMAConfigureTaskForOp,
               AIEX::NpuDmaWaitOp>(user))
         continue;
+      if (auto start = dyn_cast<AIEX::DMAStartBdChainForOp>(user)) {
+        if (auto chain = device.lookupSymbol<BDChainOp>(start.getSymbol())) {
+          SmallVector<DMABDOp> bds;
+          chain.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
+          if (failed(checkHeaders(endpoint, ids, bds)))
+            return failure();
+          continue;
+        }
+      }
       if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user)) {
         std::optional<PacketInfoAttr> packet = memcpy.getPacket();
         if (packet && llvm::is_contained(ids, packet->getPktId()))
