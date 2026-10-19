@@ -1358,9 +1358,8 @@ struct AIEObjectFifoAllocatePass
     SmallVector<RouteOp> flows = sourcedFlows(endpoint);
     bool packet =
         !flows.empty() && (flows[0].getPacket() || clPacketSwObjectFifos);
-    if (packet && llvm::any_of(flows, [](RouteOp flow) {
-          return !flow.getPacketId();
-        }))
+    if (packet &&
+        llvm::any_of(flows, [](RouteOp flow) { return !flow.getPacketId(); }))
       return start.emitOpError("names ")
              << start.getEndpoint()
              << ", the source of a packet-switched route; a DMA program's "
