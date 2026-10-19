@@ -63,7 +63,6 @@ def test_reordered_dispatch_identity(other_type, bound, npu2_device):
         lambda x: x < 3,
         lambda x: x == 3,
         lambda x: x & 1,
-        lambda x: np.int32(1) + x,
         lambda x: np.array(x),
         lambda x: np.empty((x,), dtype=np.int32),
         lambda x: np_ndarray_type_to_memref_type(np.ndarray[(x,), np.dtype[np.int32]]),
@@ -115,6 +114,19 @@ def test_a_pattern_stages_an_expression_of_a_dispatch_parameter(npu2_device):
         return Program(NPU2Col1(), Runtime(seq, [tensor_type, start])).resolve_program()
 
     assert CompilableDesign(gen).generate_mlir().operation.verify()
+
+
+def test_a_numpy_integer_scales_a_dispatch_parameter_from_either_side(npu2_device):
+    def gen(*, count: DispatchTime[np.int32]):
+        for k in (np.int32(4), np.int64(4)):
+            assert k * count == count * k == Affine(count, 4, 0)
+            assert k + count == count + k == Affine(count, 1, 4)
+        with pytest.raises(TypeError, match="does not support ufuncs"):
+            np.add(count, 1)
+        raise RuntimeError("every check ran")
+
+    with pytest.raises(RuntimeError, match="every check ran"):
+        CompilableDesign(gen).generate_mlir()
 
 
 def test_dispatch_cannot_be_used_as_numpy_dtype(npu2_device):

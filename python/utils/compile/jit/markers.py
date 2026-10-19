@@ -285,9 +285,11 @@ class _DispatchParameter(PerCall):
 
     # Python and NumPy must not silently interpret a symbolic parameter as a
     # truthy object, a dtype, an object-array element, or a generation-time
-    # value. PerCall's integer arithmetic stays.
+    # value. PerCall's integer arithmetic stays: None makes a NumPy scalar on
+    # the left defer to the reflected operator, and a ufunc refuse.
+    __array_ufunc__ = None
     __bool__ = __int__ = __index__ = __float__ = __complex__ = __hash__ = _misuse
-    __array__ = __array_ufunc__ = __getattr__ = _misuse
+    __array__ = __getattr__ = _misuse
     __call__ = __iter__ = __len__ = __getitem__ = __contains__ = _misuse
     __eq__ = __ne__ = __lt__ = __le__ = __gt__ = __ge__ = _misuse
     __truediv__ = __rtruediv__ = __rfloordiv__ = _misuse
