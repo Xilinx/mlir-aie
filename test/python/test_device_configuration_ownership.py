@@ -553,6 +553,36 @@ def test_a_prebuilt_runtime_can_be_the_entry():
     assert str(composed).count("aiex.scratchpad_parameter @count") == 1
 
 
+def test_a_prebuilt_runtime_takes_scalar_arguments():
+    text = PREBUILT.replace("%b: memref<4x8xbf16>", "%n: i32")
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    (run,) = prebuilt.runtimes
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    composed = Program.compose([built, prebuilt], entry=run).resolve_program()
+    assert "aie.runtime_sequence @run(%arg0: memref<16xi32>, %arg1: i32)" in str(
+        composed
+    )
+
+
+def test_a_renamed_prebuilt_device_refers_to_its_new_name():
+    text = """
+aie.device(npu2_1col) @main {
+  %t = aie.tile(0, 2)
+  aie.runtime_sequence @run(%a: memref<16xi32>) {
+    aiex.npu.load_pdi {device_ref = @main}
+  }
+}
+"""
+    with Context():
+        prebuilt = DeviceConfiguration.from_module("other", Module.parse(text))
+    built = DeviceConfiguration("built", NPU2Col1(), runtimes=[runtime("seq")])
+    (run,) = prebuilt.runtimes
+    composed = str(Program.compose([built, prebuilt], entry=run).resolve_program())
+    assert "aie.device(npu2_1col) @other" in composed
+    assert "device_ref = @other" in composed and "@main" not in composed
+
+
 @pytest.mark.parametrize(
     "text", ["", PREBUILT + PREBUILT.split("\n", 2)[2].replace("made_", "built_")]
 )

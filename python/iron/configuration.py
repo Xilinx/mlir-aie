@@ -6,6 +6,7 @@ from __future__ import annotations
 import itertools
 from collections.abc import Sequence
 from contextlib import contextmanager
+from typing import cast
 
 import numpy as np
 
@@ -20,6 +21,7 @@ from ..dialects.aie import (
 )
 from ..dialects.aiex import ConfigureOp  # pyright: ignore[reportAttributeAccessIssue]
 from ..helpers.dialects.func import FuncBase
+from ..helpers.npdtypes import NpuDType
 from ..helpers.util import mlir_type_to_np_dtype
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
@@ -32,6 +34,34 @@ from .resolvable import DeviceResources, PerDeviceConfiguration, Resolvable
 from .runtime import Runtime
 from .runtime._context import active_configuration, active_configuration_scope
 from .scratchpad_parameter import ScratchpadParameter
+
+# The attribute of each op that names a device, not a symbol within one.
+_DEVICE_REFS = {
+    "aiex.configure": "symbol",
+    "aiex.npu.load_pdi": "device_ref",
+    "aiex.npu.write_config": "device_ref",
+}
+
+
+def _rename_device(device_op, name: str) -> None:
+    """Rename ``device_op`` to ``name``, and each reference to it within it."""
+    old = ir.StringAttr(device_op.attributes["sym_name"]).value
+    device_op.attributes["sym_name"] = ir.StringAttr.get(name)
+    if old == name:
+        return
+    new_ref = ir.FlatSymbolRefAttr.get(name)
+
+    def remap(op):
+        attr = _DEVICE_REFS.get(op.name)
+        if (
+            attr is not None
+            and attr in op.attributes
+            and ir.FlatSymbolRefAttr(op.attributes[attr]).value == old
+        ):
+            op.attributes[attr] = new_ref
+        return ir.WalkResult.ADVANCE
+
+    device_op.operation.walk(remap)
 
 
 class DeviceConfiguration(DeviceResources):
@@ -94,7 +124,8 @@ class DeviceConfiguration(DeviceResources):
 
         Raises:
             ValueError: ``module`` holds no ``aie.device``, or several.
-            TypeError: A sequence argument's elements have no NumPy dtype.
+            TypeError: A sequence argument, its elements or a scratchpad
+                parameter has no NumPy dtype.
         """
         devices = [op for op in module.body.operations if isinstance(op, DeviceOp)]
         if len(devices) != 1:
@@ -104,20 +135,32 @@ class DeviceConfiguration(DeviceResources):
             )
         (device_op,) = devices
         with module.context:
-            parameters = [
-                ScratchpadParameter(
-                    ir.StringAttr(op.attributes["sym_name"]).value,
-                    mlir_type_to_np_dtype(ir.TypeAttr(op.attributes["type"]).value),
+            parameters = []
+            for op in module.body.operations:
+                if op.operation.name != "aiex.scratchpad_parameter":
+                    continue
+                type_ = ir.TypeAttr(op.attributes["type"]).value
+                dtype = mlir_type_to_np_dtype(type_)
+                if dtype is None:
+                    raise TypeError(f"No NumPy dtype for scratchpad parameter {type_}.")
+                parameters.append(
+                    ScratchpadParameter(
+                        ir.StringAttr(op.attributes["sym_name"]).value,
+                        cast(NpuDType, dtype),
+                    )
                 )
-                for op in module.body.operations
-                if op.operation.name == "aiex.scratchpad_parameter"
-            ]
             runtimes = []
             for sequence in device_op.body_region.blocks[0].operations:
                 if not isinstance(sequence, RuntimeSequenceOp):
                     continue
                 types = []
                 for arg in sequence.body.blocks[0].arguments:
+                    if not isinstance(arg.type, ir.MemRefType):
+                        dtype = mlir_type_to_np_dtype(arg.type)
+                        if dtype is None:
+                            raise TypeError(f"No NumPy dtype for argument {arg.type}.")
+                        types.append(dtype)
+                        continue
                     memref = ir.MemRefType(arg.type)
                     dtype = mlir_type_to_np_dtype(memref.element_type)
                     if dtype is None:
@@ -356,9 +399,7 @@ class DeviceConfiguration(DeviceResources):
         if self._prebuilt is not None:
             prebuilt = ir.Module.parse(self._prebuilt)  # alive while cloned
             (op,) = prebuilt.body.operations
-            op.clone(ip=ir.InsertionPoint.current).attributes["sym_name"] = (
-                ir.StringAttr.get(device_name)
-            )
+            _rename_device(op.clone(ip=ir.InsertionPoint.current), device_name)
             return
         self._name_unnamed()
         device_type = type(self._device)

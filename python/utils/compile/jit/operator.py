@@ -99,6 +99,8 @@ class Operator:
             plain = n not in computed and p.default is not MISSING
             vars(self)[n] = p.default if value is None and plain else value
         self._resolved = False
+        self._resolved_for: Any = None
+        self._unresolved: Self = self
         for n, p in params.items():
             if n in computed and vars(self)[n] is None:
                 value = (p.derive or p.default)(self)
@@ -159,12 +161,17 @@ class Operator:
     def resolved(self, dev) -> Self:
         """Return this operator resolved for ``dev``, which is current while it resolves and is checked.
 
+        One already resolved for ``dev`` is itself; one resolved for another
+        device is resolved for ``dev`` again from the operator it came from.
+
         Raises:
             TypeError: ``resolve`` returned ``self`` or another class.
             Unresolvable: ``resolve`` left a tunable None.
         """
         if self._resolved:
-            return self
+            if self._resolved_for == dev:
+                return self
+            return self._unresolved.resolved(dev)
         with set_current_device(dev):
             new = self.resolve(dev)
             if new is self or not isinstance(new, type(self)):
@@ -182,6 +189,8 @@ class Operator:
                 )
             new.compatible()
         new._resolved = True
+        new._resolved_for = dev
+        new._unresolved = self
         return new
 
     def replace(self, **changes: Any) -> Self:

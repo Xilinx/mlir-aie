@@ -7,8 +7,9 @@
 
 import hashlib
 import logging
+import re
 from dataclasses import dataclass, field, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, get_origin
 
 import numpy as np
@@ -140,6 +141,25 @@ def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
             op = op.parent
             if op is None:
                 raise ValueError("Kernels must be used inside a symbol table.")
+
+
+_PATH_FLAG = re.compile(r'(-I|-isystem|-iquote|-D[^=]+=)?("?)(.*?)("?)')
+
+
+def _portable_flag(flag: str) -> str:
+    """Return ``flag`` with an absolute path in it reduced to its last component.
+
+    ``-I/opt/x/aie_runtime_lib/AIE2P`` is ``-IAIE2P`` and
+    ``-DAIE_LUT_KERNEL_SOURCE="/opt/x/gelu.cc"`` is
+    ``-DAIE_LUT_KERNEL_SOURCE="gelu.cc"`` in every installation.
+    """
+    match = _PATH_FLAG.fullmatch(flag)
+    if match is None:
+        return flag
+    prefix, open_quote, value, close_quote = match.groups()
+    if PurePosixPath(value).is_absolute() or PureWindowsPath(value).is_absolute():
+        value = PureWindowsPath(value).name
+    return f"{prefix or ''}{open_quote}{value}{close_quote}"
 
 
 @dataclass(frozen=True)
@@ -1230,7 +1250,9 @@ class ExternalFunction(Kernel):
         It covers the symbol, the source's name and content, the argument
         types, the compile flags and the toolchain choice (chess, inline),
         but not the headers the source includes, where any of them live, or
-        the symbol prefix, which a design adds. The nightly kernel timings
+        the symbol prefix, which a design adds. An absolute path in a flag
+        counts by its last component only, so ``-I`` and
+        ``-DAIE_LUT_KERNEL_SOURCE="..."`` flags name no installation. The nightly kernel timings
         carry it, so a design that calls a kernel can find that kernel's
         timed row.
         """
@@ -1240,7 +1262,7 @@ class ExternalFunction(Kernel):
             Path(source).name if source else "",
             self._recipe.source_digest,
             str(self._arg_types),
-            str(self._compile_flags),
+            str([_portable_flag(flag) for flag in self._compile_flags]),
             f"chess={self._use_chess}",
             f"inline={self._inline}",
         ]

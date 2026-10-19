@@ -396,6 +396,7 @@ def _compute_recipe_hash(
         h.update(getattr(generator, "__module__", "").encode())
         h.update(_python_identity([generator, *compile_kwargs.values()]))
         d = declare(generator)
+        assert d.signature is not None, "a generator's declaration has a signature"
         dispatch_params = {m.name for m in d.per_calls}
         # Dispatch defaults are call-time values; explicitly bound defaults are
         # unused. Neither changes the compiled program.

@@ -192,7 +192,7 @@ class Affine:
             if c <= 0 or c & (c - 1):
                 raise TypeError(f"no expression for ({self}) * {c}")
             wrapped = dataclasses.replace(self, mod=None, post=0)
-            return wrapped * c % (self.mod * c) + self.post * c
+            return dataclasses.replace(wrapped * c % (self.mod * c), post=self.post * c)
         if self.clamped:
             return self._reclamped(lambda e: e * c, lambda b: b * c, flip=c < 0)
         if self.down:

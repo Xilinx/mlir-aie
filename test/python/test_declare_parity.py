@@ -58,3 +58,15 @@ def mapped(a: In, *, f: CompileTime[object] = double):
 
 def test_a_function_compile_time_default_is_the_value():
     assert declare(mapped).params["f"].default(None) is double
+
+
+def configured(
+    a: In, *, options: CompileTime[dict] = {}, sizes: CompileTime[list] = []
+):
+    pass
+
+
+def test_a_mutable_compile_time_default_is_the_value():
+    d = declare(configured)
+    assert d.params["options"].default(None) is configured.__kwdefaults__["options"]
+    assert d.params["sizes"].default(None) is configured.__kwdefaults__["sizes"]

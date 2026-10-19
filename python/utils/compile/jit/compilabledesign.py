@@ -1071,7 +1071,8 @@ class CompilableDesign:
             from aie.iron.device import Device
 
             for kind in generated.devices:
-                if not Device(kind).dispatches_full_elf:
+                device = Device(kind)  # pyright: ignore[reportAbstractUsage]
+                if not device.dispatches_full_elf:
                     raise ValueError(f"{kind.name} does not dispatch a full ELF.")
             external_kernels = generated.external_kernels
             use_chess = self._resolve_use_chess(external_kernels)

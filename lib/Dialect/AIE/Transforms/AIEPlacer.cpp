@@ -902,8 +902,7 @@ resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
   return std::nullopt;
 }
 
-Placer::Adjacency
-SequentialPlacer::buildBufferAdjacency(
+Placer::Adjacency SequentialPlacer::buildBufferAdjacency(
     ArrayRef<LogicalTileOp> logicalTiles,
     ArrayRef<ObjectFifoAllocateOp> allocates) {
   Adjacency adjacency;

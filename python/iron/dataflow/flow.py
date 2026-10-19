@@ -417,7 +417,7 @@ class Flow(_Route):
         self._src = src
         self._src_port = src_port
         self._dst_port = dst_port
-        self._channels = [src_channel] + [dst_channel] * len(self._dsts)
+        self._channels = [src_channel, *([dst_channel] * len(self._dsts))]
         self._shim_symbol = shim_symbol
         self._shim_ends: set[int] = set()
         self._name = name

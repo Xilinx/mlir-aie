@@ -391,8 +391,10 @@ class Declaration:
                         f"{self.name}: operand {m.name}.shape[{i}] is {n}, declared {d}"
                     )
         for m, shape in zip(outs, outputs):
-            like = None if m.like is None else tuple(inputs[m.like.name])
-            if like is not None and tuple(shape) != like:
+            if m.like is None:
+                continue
+            like = tuple(inputs[m.like.name])
+            if tuple(shape) != like:
                 raise ValueError(
                     f"{self.name}: output {m.name} is {tuple(shape)}, but shaped like {m.like.name}, {like}"
                 )

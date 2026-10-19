@@ -143,6 +143,8 @@ def experts_ref(row, tile, *, hidden, width, num_experts, top_k, rows, cols):
     row = row.astype(np.float32)
     tile = np.asarray(tile, np.float32).reshape(-1, rows, cols)
     y = np.zeros((len(row), hidden), np.float32)
+    total = np.zeros(hidden, np.float32)
+    acc = np.zeros(2 * width, np.float32)
     for call, (r, t) in enumerate(zip(row, tile)):
         e, s = divmod(call % (num_experts * expert_steps), expert_steps)
         if e == 0 and s == 0:

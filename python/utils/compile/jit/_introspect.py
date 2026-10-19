@@ -104,11 +104,13 @@ def declare(generator: Callable) -> Declaration:
             continue
         if _is_compile_param(ann):
             default = MISSING if p.default is p.empty else p.default
-            # A function default is the value, so the record computes it as itself.
+            # A function default is the value, so the record computes it as
+            # itself; so is a list, dict or set, which param() would reject as
+            # shared between instances, but the function already shares it.
             member = param(
                 default=(
                     (lambda op, f=default: f)
-                    if isinstance(default, FunctionType)
+                    if isinstance(default, (FunctionType, list, dict, set))
                     else default
                 )
             )

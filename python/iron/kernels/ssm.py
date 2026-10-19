@@ -53,6 +53,7 @@ def selective_scan_ref(
     dt = block[:, -rows:]
     final = np.zeros((calls, head_dim * state), np.float32)
     y = np.zeros((calls, rows, head_dim), np.float32)
+    s = np.zeros((head_dim, state), np.float32)
     for c in range(calls):
         if c % blocks == 0:
             s = head[c, 3:].reshape(head_dim, state).copy()
@@ -174,6 +175,7 @@ def gated_delta_rule_ref(
     v, a, b = v.reshape(calls, rows, value_dim), ab[:, :rows], ab[:, rows:]
     final = np.zeros((calls, key_dim * value_dim), np.float32)
     y = np.zeros((calls, rows, value_dim), np.float32)
+    s = np.zeros((key_dim, value_dim), np.float32)
     for c in range(calls):
         if c % blocks == 0:
             s = head[c, 2:].reshape(key_dim, value_dim).copy()

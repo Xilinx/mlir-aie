@@ -86,6 +86,20 @@ def test_a_recipe_key_names_the_build_not_where_it_happens(tmp_path):
     assert here != built("d", n=32)
     assert here != built("e", source="void k(int* p){ *p = 0; }")
 
+    def installed(where, lut="gelu.cc"):
+        root = tmp_path / where
+        return built(
+            where,
+            flags=(
+                "-DN=16",
+                f"-I{root / 'AIE2P'}",
+                f'-DAIE_LUT_KERNEL_SOURCE="{root / lut}"',
+            ),
+        )
+
+    assert installed("f") == installed("g")
+    assert installed("f") not in (here, installed("h", lut="silu.cc"))
+
 
 # ---------------------------------------------------------------------------
 # cxx_core_compile_command

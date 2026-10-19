@@ -112,6 +112,13 @@ def test_resolving_fills_every_tunable_on_a_copy():
     assert (new.tile, new.lanes) == (16, 4) and new.resolved(DEV) is new
 
 
+def test_an_operator_resolved_for_one_device_resolves_again_for_another():
+    four = Scale(M=8).resolved(DEV)
+    one = four.resolved(SimpleNamespace(cols=1))
+    assert (four.lanes, one.lanes) == (4, 1)
+    assert four.resolved(SimpleNamespace(cols=4)) is four
+
+
 class Lazy(Scale):
     def resolve(self, dev):
         return self.replace()
