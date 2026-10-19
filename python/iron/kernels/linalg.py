@@ -1069,6 +1069,153 @@ def mm_bfp_shuffle(
     return extern
 
 
+def attention_i8_ref(
+    q_row,
+    kt,
+    v,
+    exp_table,
+    q_mul,
+    q_shift,
+    score_shift,
+    prob_shift,
+    out_shift,
+    *,
+    seq_len: int,
+    key_dim: int,
+    head_dim: int,
+    width: int,
+):
+    """Numpy reference for [`attention_i8`][iron.kernels.linalg.attention_i8]: one row of queries.
+
+    ``q_row`` is ``[key_dim/8][width][8]`` int8 (``(calls, n)`` of them),
+    ``kt`` the keys as ``[seq_len/8][key_dim][8]``, ``v`` the values as
+    ``[head_dim/8][seq_len][8]``; the output row is ``[head_dim/8][width][8]``.
+    Every requantization rounds half to even and saturates; each probability
+    is ``2**prob_shift * e / sum(e)`` rounded exactly, ``e`` the exp table at
+    the score's distance below the row's maximum.
+    """
+    N, KD, HD, W = int(seq_len), int(key_dim), int(head_dim), int(width)
+    q = np.asarray(q_row, np.int64)
+    lead = q.shape[:-1]
+    q = q.reshape(*lead, KD // 8, W, 8).swapaxes(-1, -2).reshape(*lead, KD, W)
+    q = np.clip(np.round(q * int(q_mul) / 2.0 ** int(q_shift)), -128, 127)
+    keys = (
+        np.asarray(kt, np.int64)
+        .reshape(N // 8, KD, 8)
+        .transpose(1, 0, 2)
+        .reshape(KD, N)
+    )
+    vals = (
+        np.asarray(v, np.int64).reshape(HD // 8, N, 8).transpose(0, 2, 1).reshape(HD, N)
+    )
+    scores = np.einsum("...dw,dn->...wn", q, keys)
+    scores = np.clip(np.round(scores / 2.0 ** int(score_shift)), -128, 127).astype(
+        np.int64
+    )
+    e = np.asarray(exp_table, np.int64)[scores.max(axis=-1, keepdims=True) - scores]
+    num = e << int(prob_shift)
+    total = e.sum(axis=-1, keepdims=True)
+    quotient, remainder = np.divmod(2 * num, 2 * total)
+    up = (remainder > total) | ((remainder == total) & (quotient % 2 == 1))
+    probs = np.minimum(quotient + up, 127)
+    out = np.einsum("...wn,dn->...dw", probs, vals)
+    out = np.clip(np.round(out / 2.0 ** int(out_shift)), -128, 127)
+    out = out.reshape(*lead, HD // 8, 8, W).swapaxes(-1, -2)
+    return out.astype(np.int8).reshape(*lead, HD * W)
+
+
+def attention_i8_sample(
+    rng, calls: int, *, seq_len: int, key_dim: int, head_dim: int, width: int
+) -> list:
+    """Random int8 queries, keys and values, and the exp table of a 2**-3 score scale."""
+    table = np.round(2.0**22 * np.exp(-np.arange(256) / 8.0)).astype(np.int32)
+    return [
+        rng.integers(-128, 128, (calls, key_dim * width)).astype(np.int8),
+        rng.integers(-128, 128, (seq_len * key_dim,)).astype(np.int8),
+        rng.integers(-128, 128, (seq_len * head_dim,)).astype(np.int8),
+        table,
+    ]
+
+
+def attention_i8(
+    seq_len: int = 400, key_dim: int = 32, head_dim: int = 64, width: int = 20
+) -> ExternalFunction:
+    """One head of int8 attention over a 2-D map, one row of queries per call.
+
+    YOLO26n's PSA quantized as ONNX QDQ with power-of-two scales: queries
+    scaled by ``q_mul`` and shifted, scores shifted to int8, an integer
+    softmax (an exp table indexed by each score's distance below the row's
+    maximum, each probability rounded exactly to ``2**-prob_shift`` steps),
+    and the value product shifted to int8, all rounding half to even. Not
+    flash attention: every key's scores of a query fit the tile at once, so
+    there is no running state, unlike [`mha`][iron.kernels.linalg.mha].
+
+    Arguments: a ``[key_dim/8][width][8]`` row of queries, the keys
+    ``[seq_len/8][key_dim][8]``, the values ``[head_dim/8][seq_len][8]``, the
+    256-entry int32 exp table (each entry at most ``2**31 / seq_len``), the
+    output row, then ``q_mul, q_shift, score_shift, prob_shift, out_shift``.
+    ``fn.load_kv(k_row, v_row, kt, v, row)`` stores one row of the map's keys
+    and values in those layouts.
+
+    Args:
+        seq_len: Keys: the map's pixels, a multiple of 8.
+        key_dim: Query and key channels, a multiple of 8.
+        head_dim: Value channels, a multiple of 8.
+        width: Pixels per row, a multiple of 4.
+
+    Returns:
+        ExternalFunction for attention_i8, with ``load_kv`` bound.
+
+    Raises:
+        ValueError: On a shape the kernel cannot tile.
+    """
+    if seq_len % 8 or key_dim % 8 or head_dim % 8 or width % 4 or seq_len % width:
+        raise ValueError(
+            f"attention_i8(): needs seq_len, key_dim, head_dim of 8k and a width of 4k "
+            f"dividing seq_len, got {seq_len}, {key_dim}, {head_dim}, {width}"
+        )
+    shapes = dict(seq_len=seq_len, key_dim=key_dim, head_dim=head_dim, width=width)
+    q_ty = np.ndarray[(key_dim * width,), np.dtype[np.int8]]
+    kt_ty = np.ndarray[(seq_len * key_dim,), np.dtype[np.int8]]
+    v_ty = np.ndarray[(seq_len * head_dim,), np.dtype[np.int8]]
+    table_ty = np.ndarray[(256,), np.dtype[np.int32]]
+    out_ty = np.ndarray[(head_dim * width,), np.dtype[np.int8]]
+    fn = _make_extern(
+        "attention_i8",
+        _kernel_source("linalg/attention_i8.cc"),
+        [q_ty, kt_ty, v_ty, table_ty, out_ty] + [np.int32] * 5,
+        compile_flags=[
+            f"-DATTN_SEQ={seq_len}",
+            f"-DATTN_KEY_DIM={key_dim}",
+            f"-DATTN_HEAD_DIM={head_dim}",
+            f"-DATTN_WIDTH={width}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Param, Param, Out) + (Param,) * 5,
+            reference=partial(attention_i8_ref, **shapes),
+            sample=partial(attention_i8_sample, **shapes),
+            acc_dtype=np.int32,
+            tolerance=Tolerance.exact(
+                note="integer arithmetic, every rounding modeled"
+            ),
+            alignments=((0, 32), (1, 64), (2, 64), (4, 32)),
+            ops_per_call=2 * width * seq_len * (key_dim + head_dim),
+        ),
+    )
+    fn.load_kv = fn.object_file.bind(
+        "attention_i8_load_kv",
+        [
+            np.ndarray[(key_dim * width,), np.dtype[np.int8]],
+            np.ndarray[(head_dim * width,), np.dtype[np.int8]],
+            kt_ty,
+            v_ty,
+            np.int32,
+        ],
+    )
+    return fn
+
+
 def mha(
     dim_m: int = 64,
     dim_k: int = 64,

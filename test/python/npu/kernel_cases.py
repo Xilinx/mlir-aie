@@ -118,6 +118,15 @@ CASES: list[Case] = [
     # to grade such a reference until the kernel declares it.
     check("scale", dict(dtype=np.int32), calls=16, params=(-7,), tag="edge-negfactor"),
     Case("add", calls=16, smoke=True),
+    # YOLO26n's PSA attention head: 400 keys of a 20x20 map, a row of 20
+    # queries per call, with the real model's shifts.
+    Case(
+        "attention_i8",
+        calls=2,
+        scalars=(91, 6, 8, 7, 7),
+        smoke=True,
+        devices=("npu2",),
+    ),
     # YOLO26n's SPPF pool: a 20-pixel row (4 at a time) and a 64-pixel one.
     Case("maxpool2d", dict(input_width=20, channels=128), calls=4, smoke=True),
     check("maxpool2d", dict(input_width=64, channels=16), calls=4, tag="width-64"),

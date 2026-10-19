@@ -137,6 +137,14 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
     ),
     KernelSpec(
+        name="attention_i8",
+        factory=kernels.attention_i8,
+        kwargs=dict(),
+        arg_count=10,
+        expected_name="attention_i8",
+        invalid_kwargs=[(dict(width=18), "width of 4k")],
+    ),
+    KernelSpec(
         name="maxpool2d",
         factory=kernels.maxpool2d,
         kwargs=dict(input_width=20, channels=128),
