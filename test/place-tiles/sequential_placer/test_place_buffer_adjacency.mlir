@@ -245,3 +245,68 @@ module @owner_leaves_room_for_consumer {
     }
   }
 }
+
+// -----
+
+// Three consumers of one owner each need their own free tile beside it. At
+// (0, 2) the owner has only two core neighbours, so it goes to (0, 3).
+// CHECK-LABEL: @owner_leaves_room_for_three_consumers
+// CHECK-DAG: aie.tile(0, 2)
+// CHECK-DAG: aie.tile(0, 4)
+// CHECK-DAG: aie.tile(1, 3)
+// CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 3)
+// CHECK-DAG: aie.buffer(%[[OWNER]])
+module @owner_leaves_room_for_three_consumers {
+  aie.device(npu2) {
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %c0 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c0) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c1) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+    %c2 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c2) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// In one column, two consumers need the owner's two vertical neighbours, so
+// the owner skips (0, 2) and takes (0, 3).
+// CHECK-LABEL: @owner_leaves_room_for_two_consumers
+// CHECK-DAG: aie.tile(0, 2)
+// CHECK-DAG: aie.tile(0, 4)
+// CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 3)
+// CHECK-DAG: aie.buffer(%[[OWNER]])
+module @owner_leaves_room_for_two_consumers {
+  aie.device(npu2_1col) {
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %c0 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c0) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c1) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}

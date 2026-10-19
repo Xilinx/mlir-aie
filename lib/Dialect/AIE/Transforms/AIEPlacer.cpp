@@ -674,20 +674,26 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
   }
 
   // A candidate that leaves no free core tile for one of this LTO's
-  // unplaced shared-L1 peers is tried only in the second pass. Each peer is
-  // checked on its own, so two peers may count on the same free tile.
+  // unplaced shared-L1 peers is tried only in the second pass. Each peer
+  // claims its own tile; claiming greedily is exact when the peers share one
+  // candidate set, as one owner's consumers do.
   auto leavesPeerRoom = [&](TileID candidate) {
+    llvm::DenseSet<TileID> claimed;
     bool room = true;
     forEachPeer(logicalTile.getOperation(), inputs.bufferAdjacency,
                 [&](TileLike peer, bool thisIsFirst) {
                   if (!room || resolvePeerPosition(peer, this->result))
                     return;
                   // edge.first is the consumer, edge.second the owner.
-                  room = llvm::any_of(availability.compTiles, [&](TileID t) {
-                    return t != candidate &&
-                           (thisIsFirst ? inputs.bufferPred(candidate, t)
-                                        : inputs.bufferPred(t, candidate));
-                  });
+                  auto free =
+                      llvm::find_if(availability.compTiles, [&](TileID t) {
+                        return t != candidate && !claimed.contains(t) &&
+                               (thisIsFirst ? inputs.bufferPred(candidate, t)
+                                            : inputs.bufferPred(t, candidate));
+                      });
+                  room = free != availability.compTiles.end();
+                  if (room)
+                    claimed.insert(*free);
                 });
     return room;
   };
