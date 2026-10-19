@@ -21,8 +21,7 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import CompileTime, In, Out, Program, Runtime, TaskGroup
+from aie.iron import CompileTime, In, Out, Program, Runtime
 from aie.iron.device import NPU2
 
 from gen_yolo_data import DATA_DIR, Params, Synthesizer
@@ -76,36 +75,23 @@ def segment(
         offsets[tensor.name] = at
         at += design.host_bytes(tensor) // 4
     total_in = at
-    sizes_out = [design.host_bytes(t) // 4 for t in design.outputs]
+    outputs_at, at = {}, 0
+    for tensor in design.outputs:
+        outputs_at[tensor.name] = at
+        at += design.host_bytes(tensor) // 4
+    total_out = at
     in_ty = np.ndarray[(total_in,), np.dtype[np.int32]]
-    out_ty = np.ndarray[(sum(sizes_out),), np.dtype[np.int32]]
-    steps = sorted({f.step for f in design.fills})
+    out_ty = np.ndarray[(total_out,), np.dtype[np.int32]]
 
     def sequence(inp, out, *handles):
-        fill_handles = dict(zip(design.in_fifos, handles))
-        drains = TaskGroup()
-        offset = 0
-        for size, handle in zip(sizes_out, handles[len(design.in_fifos) :]):
-            tap = TensorAccessPattern(
-                (sum(sizes_out),), offset, [1, 1, 1, size], [0, 0, 0, 1]
-            )
-            handle.drain(out, tap, wait=True, group=drains)
-            offset += size
-        # Each step's fills finish before the next step's start.
-        for step in steps:
-            fills = TaskGroup()
-            for fill in (f for f in design.fills if f.step == step):
-                tap = fill.tap(total_in, offsets[fill.tensor.name])
-                fill_handles[fill.fifo].fill(
-                    inp, tap, wait=step != steps[-1], group=fills
-                )
-            if step != steps[-1]:
-                fills.finish()
-        drains.finish()
-        fills.finish()
+        def locate(tensor):
+            if tensor.name in outputs_at:
+                return out, total_out, outputs_at[tensor.name]
+            return inp, total_in, offsets[tensor.name]
 
-    handles = [fifo.prod() for fifo in design.in_fifos]
-    handles += [design.out_fifos[t.name].cons() for t in design.outputs]
+        design.transfer(handles, locate)
+
+    handles = design.handles()
     rt = Runtime(sequence, [in_ty, out_ty, *handles])
     return Program(NPU2(), rt, workers=design.workers).resolve_program()
 

@@ -16,7 +16,7 @@ against the oracle on its own.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,7 +27,7 @@ from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingI
 from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.util import np_ndarray_type_to_memref_type
-from aie.iron import Buffer, ExternalFunction, ObjectFifo, Worker, kernels
+from aie.iron import Buffer, ExternalFunction, ObjectFifo, TaskGroup, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import AnyMemTile
@@ -297,6 +297,47 @@ class SegmentDesign:
         self.outputs = list(outputs)
         self.out_fifos = {t.name: self.fifo(t) for t in self.outputs}
         self.in_fifos = list(dict.fromkeys(f.fifo for f in self.fills))
+
+    def handles(self) -> list:
+        """The runtime sequence's fifo handles: every filled fifo, then every drained one."""
+        return [fifo.prod() for fifo in self.in_fifos] + [
+            self.out_fifos[t.name].cons() for t in self.outputs
+        ]
+
+    def transfer(self, handles: Sequence, locate: Callable[[Tensor], tuple]) -> None:
+        """The run's host transfers, inside its runtime sequence.
+
+        `handles` are `handles()`' as the sequence received them; `locate`
+        gives each tensor's host buffer, its size in int32 words and the
+        tensor's word offset in it. Drains are issued first; then each fill
+        step's transfers, every step but the last finishing before the next
+        starts.
+        """
+        filled = dict(zip(self.in_fifos, handles))
+        drains = TaskGroup()
+        for tensor, handle in zip(self.outputs, handles[len(self.in_fifos) :]):
+            buffer, total, offset = locate(tensor)
+            size = self.host_bytes(tensor) // 4
+            handle.drain(
+                buffer,
+                TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1]),
+                wait=True,
+                group=drains,
+            )
+        steps = sorted({f.step for f in self.fills})
+        fills = None
+        for step in steps:
+            fills = TaskGroup()
+            for fill in (f for f in self.fills if f.step == step):
+                buffer, total, offset = locate(fill.tensor)
+                filled[fill.fifo].fill(
+                    buffer, fill.tap(total, offset), wait=step != steps[-1], group=fills
+                )
+            if step != steps[-1]:
+                fills.finish()
+        drains.finish()
+        if fills is not None:
+            fills.finish()
 
     def host_bytes(self, tensor: Tensor) -> int:
         """How many bytes `tensor` takes in a host buffer."""
