@@ -58,8 +58,9 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
   const bf_t one = aie::broadcast<bfloat16, 32>(1.0f);
   const auto xi = x.cast_to<int16_t>();
   // From 13.5 on, h is below the smallest normal f32.
-  const auto ai = aie::min(aie::bit_and(xi, aie::broadcast<int16_t, 32>(0x7fff)),
-                           aie::broadcast<int16_t, 32>(0x4158));
+  const auto ai =
+      aie::min(aie::bit_and(xi, aie::broadcast<int16_t, 32>(0x7fff)),
+               aie::broadcast<int16_t, 32>(0x4158));
   const bf_t a = ai.cast_to<bfloat16>();
 
   // d = 1 + a / (2 sqrt 2). t = 1 / d from the integer-subtraction estimate
