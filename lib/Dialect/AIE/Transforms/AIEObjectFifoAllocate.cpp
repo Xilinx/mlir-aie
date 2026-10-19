@@ -1359,8 +1359,9 @@ struct AIEObjectFifoAllocatePass
         llvm::any_of(flows, [](RouteOp flow) { return !flow.getPacketId(); }))
       return start.emitOpError("names ")
              << start.getEndpoint()
-             << ", the source of a packet-switched route; a DMA program's "
-                "BDs would not carry its header";
+             << ", the source of a packet-switched route without a pinned "
+                "packet_id; pin packet_id on each route it sources and state "
+                "that header in each of the program's BDs";
     if (packet) {
       SmallVector<DMABDOp> bds;
       for (Block *block : chainOf(start))

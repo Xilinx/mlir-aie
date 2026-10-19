@@ -37,7 +37,7 @@ module @packet_source_program {
     aie.route_endpoint @catch(%core) DMA
     aie.route from @spray to [@catch] {packet}
     aie.memtile_dma(%mt) {
-      // expected-error @+1 {{names @spray, the source of a packet-switched route; a DMA program's BDs would not carry its header}}
+      // expected-error @+1 {{names @spray, the source of a packet-switched route without a pinned packet_id; pin packet_id on each route it sources and state that header in each of the program's BDs}}
       aie.dma_start(MM2S, @spray, ^bd0, ^end)
     ^bd0:
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
