@@ -532,9 +532,9 @@ class CompilableDesign:
     # amdxdna's MAX_NUM_CUS: the kernels one hardware context configures.
     XCLBIN_KERNELS = 32
 
-    @staticmethod
+    @classmethod
     def chain(
-        designs: "list[CompilableDesign]", name: str
+        cls, designs: "list[CompilableDesign]", name: str
     ) -> "list[tuple[CompilableDesign, Path, str]]":
         """Compile ``designs`` into xclbins that each add a design's kernel to the last.
 
@@ -562,14 +562,14 @@ class CompilableDesign:
                 if named
                 else []
             )
-            if index % CompilableDesign.XCLBIN_KERNELS:
+            if index % cls.XCLBIN_KERNELS:
                 flags.append(f"--xclbin-input={images[-1]}")
             design = design.specialize(aiecc_flags=[*design.aiecc_flags, *flags])
             xclbin, _ = design.compile()
             assert xclbin is not None
             images.append(Path(xclbin).resolve())
             built.append((design, label))
-        size = CompilableDesign.XCLBIN_KERNELS
+        size = cls.XCLBIN_KERNELS
         return [
             (design, images[min(index // size * size + size, len(built)) - 1], label)
             for index, (design, label) in enumerate(built)
