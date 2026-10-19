@@ -310,9 +310,9 @@ module {
 
 // -----
 
-// A linked fifo's far-end BD may be sized by the link's shared pool rather
-// than this fifo's own type, so a linked endpoint is not checked: 96 i32
-// against @of_in's 64-i32 (256-byte) objects would otherwise be rejected.
+// A linked fifo's far-end BD is sized by the link's shared pool rather than
+// this fifo's own type: @of_out's larger 96-i32 objects own the pool, so 96
+// i32 is whole, though not whole 64-i32 (256-byte) @of_in objects.
 module {
   aie.device(npu2_1col) {
     %t00 = aie.tile(0, 0)
@@ -491,6 +491,113 @@ module {
         aie.end
       }
       aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// An explicit len is unsigned, as DMABDOp::getLenInBytes() reads it: 3e9 i8
+// is 2,500,000 whole 1200-byte objects, not a negative byte count.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<1200xi8>>
+    aie.runtime_sequence(%arg0: memref<3000000000xi8>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<3000000000xi8> offset = 0 len = 3000000000)
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// With runtime sizes, an omitted len is their inner extent, not the whole
+// 300-i32 buffer, so it is not checked: %n = 64 fills one whole object.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<300xi32>, %n: i64) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<300xi32> offset = 0 sizes = [1, 1, 1, %n] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A plain link's pool owner is picked by element count, as createLinkPools
+// does: @of_in's 128 i8 outnumber @of_out's 64 i32, so the pool (and the
+// memtile BD @of_out drains from) holds 128 bytes, and a 128-byte drain is
+// whole though @of_out declares 256-byte objects.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of_in(%t02, {%t01}, 2 : i32) : !aie.objectfifo<memref<128xi8>>
+    aie.objectfifo @of_out(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@of_in] -> [@of_out]([] [])
+    aie.runtime_sequence(%arg0: memref<32xi32>) {
+      %t = aiex.dma_configure_task_for @of_out {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A linked fill lands in the link's pool, sized by its owner's declared type
+// rather than the fill's consumerElemType: @of_in owns a 256-byte pool, so a
+// 128-byte fill (one 32-i32 consumer object) leaves its BD incomplete.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of_in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<64xi32>> -> !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @of_out(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@of_in] -> [@of_out]([] [])
+    aie.runtime_sequence(%arg0: memref<32xi32>) {
+      // expected-error@+1 {{moves 128 bytes through objectFIFO @of_in, which is not a whole number of its 256-byte objects}}
+      %t = aiex.dma_configure_task_for @of_in {
+        aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A dma_memcpy_nd through the same fifo shares its objects too, so the
+// sequence's total is unknown: 128 bytes from the task plus 128 from the
+// memcpy fill one 256-byte object.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 32][1, 1, 1, 32][0, 0, 0, 1]) {id = 1 : i64, metadata = @of} : memref<64xi32>
     }
   }
 }

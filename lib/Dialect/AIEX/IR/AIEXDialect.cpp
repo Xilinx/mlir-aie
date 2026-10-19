@@ -1424,9 +1424,12 @@ static std::optional<int64_t> staticBdLenBytes(AIE::DMABDOp bd) {
     return std::nullopt;
   int64_t elems;
   if (std::optional<int32_t> len = bd.getConstantLen()) {
-    elems = *len;
+    // Zero-extended, as DMABDOp::getLenInBytes() reads the length.
+    elems = static_cast<uint32_t>(*len);
   } else {
-    if (bd.hasLen())
+    // With runtime sizes/strides, an omitted len is their inner extent
+    // (AIEDMATasksToNPU), not the whole buffer.
+    if (bd.hasLen() || !bd.getSizes().empty() || !bd.getStrides().empty())
       return std::nullopt;
     auto buffer = dyn_cast<MemRefType>(bd.getBuffer().getType());
     if (!buffer || !buffer.hasStaticShape())
@@ -1492,56 +1495,59 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   DataLayout layout = DataLayout::closest(task);
   // Bytes a static-shape element type's object holds, or nullopt for a
   // dynamically-shaped one.
-  auto elemBytes = [&](MemRefType elem) -> std::optional<int64_t> {
+  auto objectBytesOf = [&](Type fifoType) -> std::optional<int64_t> {
+    auto elem = cast<MemRefType>(
+        cast<AIE::AIEObjectFifoType>(fifoType).getElementType());
     if (!elem.hasStaticShape())
       return std::nullopt;
     return elem.getNumElements() *
            static_cast<int64_t>(layout.getTypeSize(elem.getElementType()));
   };
-  auto declaredObjectBytes =
-      [&](AIE::ObjectFifoCreateOp f) -> std::optional<int64_t> {
-    return elemBytes(
-        cast<AIE::AIEObjectFifoType>(f.getElemType()).getElementType());
-  };
-  // createLinkPools (AIEObjectFifoSplit.cpp) puts a link's shared pool at one
-  // owning fifo's own declared size, so only that owner is still checked
-  // below. A join's or distribute's several small-side fifos instead get
-  // offset-derived segments of the pool, and a plain link's smaller side
-  // gets the larger one's size (mirroring createLinkPools' own owner pick).
+  // A linked fifo's far end on the link's shared tile is a BD over the shared
+  // pool that createLinkPools (AIEObjectFifoSplit.cpp) sizes by one owning
+  // fifo's declared type, whatever this fifo's own (or consumer) type. A plain
+  // link's BD covers the whole pool; a join's or distribute's small sides get
+  // offset-derived segments of it, so those are not checked.
+  std::optional<AIE::ObjectFifoCreateOp> linkOwner;
   if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
     for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
       std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
       std::vector<AIE::ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
       if (!llvm::is_contained(ins, fifo) && !llvm::is_contained(outs, fifo))
         continue;
-      AIE::ObjectFifoCreateOp owner = ins.front();
-      if (link.isJoin()) {
-        owner = outs.front();
-      } else if (!link.isDistribute()) {
-        std::optional<int64_t> inBytes = declaredObjectBytes(ins.front());
-        std::optional<int64_t> outBytes = declaredObjectBytes(outs.front());
-        if (!inBytes || !outBytes)
-          return success();
-        // Equal sizes put the pool at that size either way, so both fifos'
-        // own declared type is authoritative; neither needs deferring.
-        if (*inBytes == *outBytes)
-          break;
-        if (outs.front().getInitValues() ||
-            (*outBytes > *inBytes && !outs.front().getPadDimensions()))
-          owner = outs.front();
-      }
-      if (fifo != owner)
+      if (ins.empty() || outs.empty() || !link.getOptionalSharedTile())
         return success();
+      AIE::ObjectFifoCreateOp owner =
+          link.isJoin() ? outs.front() : ins.front();
+      if (!link.isJoin() && !link.isDistribute()) {
+        // Mirrors createLinkPools' owner pick, which compares element counts.
+        auto count = [](AIE::ObjectFifoCreateOp f) {
+          return cast<MemRefType>(cast<AIE::AIEObjectFifoType>(f.getElemType())
+                                      .getElementType())
+              .getNumElements();
+        };
+        if (outs.front().getInitValues() ||
+            (count(outs.front()) > count(ins.front()) &&
+             !outs.front().getPadDimensions()))
+          owner = outs.front();
+      } else if (fifo != owner) {
+        return success();
+      }
+      linkOwner = owner;
       break;
     }
-  auto producer =
-      dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
-  if (!producer)
-    return success();
-  Type farObject = producer.isShimTile() ? fifo.getConsumerElemTypeOrDefault()
-                                         : fifo.getElemType();
-  std::optional<int64_t> objectBytes =
-      elemBytes(cast<AIE::AIEObjectFifoType>(farObject).getElementType());
+  std::optional<int64_t> objectBytes;
+  if (linkOwner) {
+    objectBytes = objectBytesOf(linkOwner->getElemType());
+  } else {
+    auto producer =
+        dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
+    if (!producer)
+      return success();
+    objectBytes = objectBytesOf(producer.isShimTile()
+                                    ? fifo.getConsumerElemTypeOrDefault()
+                                    : fifo.getElemType());
+  }
   if (!objectBytes || *objectBytes <= 0)
     return success();
 
@@ -1556,8 +1562,14 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   int64_t total = 0;
   int64_t sharing = 0;
   bool reportedEarlier = false;
-  WalkResult walk = sequence.walk([&](AIEX::DMAConfigureTaskForOp other) {
-    if (other.getAlloc() != task.getAlloc())
+  WalkResult walk = sequence.walk([&](Operation *op) {
+    // A dma_memcpy_nd through the fifo also shares its objects; its extent
+    // is not summed here, so the sequence's total is unknown.
+    if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
+      return memcpy.getMetadata() == task.getAlloc() ? WalkResult::interrupt()
+                                                     : WalkResult::advance();
+    auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(op);
+    if (!other || other.getAlloc() != task.getAlloc())
       return WalkResult::advance();
     std::optional<int64_t> bytes = staticBytesStreamed(other);
     if (!bytes || other->getBlock() != task->getBlock())
