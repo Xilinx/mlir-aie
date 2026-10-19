@@ -106,6 +106,12 @@ class ActiveSequence:
                 self._device.resolve_tile(resolvable.tile)
             resolvable.resolve()
 
+    def static_channel(self, endpoint) -> bool:
+        """Return whether the device's TileDma programs run ``endpoint``'s channel."""
+        configuration = self._runtime.configuration
+        resources = self._runtime if configuration is None else configuration
+        return resources.static_channel(endpoint)
+
     def register_task_group(self, tg: TaskGroup) -> None:
         self._open_task_groups.append(tg)
 

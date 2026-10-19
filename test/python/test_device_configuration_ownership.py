@@ -33,6 +33,7 @@ from aie.iron import (
     sync_parameters,
 )
 from aie.iron.device import NPU2Col1, Tile
+from aie.iron.runtime.runtime import IronRuntimeError
 
 Tensor = np.ndarray[(4,), np.dtype[np.int32]]
 
@@ -471,46 +472,98 @@ def test_two_configurations_may_name_a_symbol_alike():
     ).resolve_program().operation.verify()
 
 
-def shim_dma(rt):
-    buffer = Buffer(Tensor, tile=Tile(0, 1, tile_type=AIETileType.MemTile))
-    channel = DmaChannel(DMAChannelDir.MM2S, 0, [Bd(buffer)])
-    rt.add_tile_dma(TileDma(Tile(0, 0), [channel]))
+def mem_tile():
+    return Tile(0, 1, tile_type=AIETileType.MemTile)
 
 
-def control_route():
-    source = Tile(0, 1, tile_type=AIETileType.MemTile)
-    return PacketFlow(3, source, Tile(0, 0), dst_port=WireBundle.TileControl)
+def static_program(name, tile, direction, channel):
+    """A Runtime that adds a TileDma running one channel of ``tile``."""
+    rt = runtime(name)
+    bd = Bd(Buffer(Tensor, tile=tile))
+    rt.add_tile_dma(TileDma(tile, [DmaChannel(direction, channel, [bd])]))
+    return rt
 
 
-def program(*registers):
-    """One configuration of one Runtime per ``registers`` entry, which adds to it."""
-    runtimes = [runtime(f"seq_{i}") for i in range(len(registers))]
-    for rt, register in zip(runtimes, registers):
-        register(rt)
+def task_on(name, tile, direction, channel):
+    """A Runtime whose sequence runs one task on a channel of ``tile``."""
+    buffer = Buffer(Tensor, tile=tile)
+    endpoint = DmaEndpoint(tile, direction, channel)
+    return Runtime(lambda: endpoint.task(Bd(buffer)).start().free(), [], name=name)
+
+
+def control_route(tile):
+    return PacketFlow(3, Tile(0, 0), tile, dst_port=WireBundle.TileControl)
+
+
+def program(*runtimes):
     config = DeviceConfiguration("pack", NPU2Col1(), runtimes=runtimes)
     return Program.compose([config], entry=runtimes[0]).resolve_program()
 
 
-@pytest.mark.parametrize(
-    "second, kinds",
-    [
-        (shim_dma, "a TileDma and a TileDma"),
-        (lambda rt: rt.add_flow(control_route()), "a TileDma and a PacketFlow"),
-    ],
-)
-def test_co_resident_runtimes_cannot_program_one_tile_dma(second, kinds):
+def test_co_resident_runtimes_run_static_programs_on_one_tile():
+    mem = mem_tile()
+    text = str(
+        program(
+            static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
+            static_program("seq_1", mem, DMAChannelDir.S2MM, 0),
+        )
+    )
+    assert text.count("aie.memtile_dma(") == 1
+    assert "aie.dma_start(MM2S, 0" in text and "aie.dma_start(S2MM, 0" in text
+
+
+def test_one_channel_in_two_static_programs_is_refused():
+    mem = mem_tile()
+    with pytest.raises(ValueError, match="already has MM2S channel 0"):
+        program(
+            static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
+            static_program("seq_1", mem, DMAChannelDir.MM2S, 0),
+        )
+
+
+@pytest.mark.parametrize("one_runtime", [True, False])
+def test_a_control_route_into_a_tile_with_a_static_program_is_refused(one_runtime):
+    mem = mem_tile()
+    static = static_program("seq_0", mem, DMAChannelDir.MM2S, 0)
+    routed = static if one_runtime else runtime("seq_1")
+    routed.add_flow(control_route(mem))
+    with pytest.raises(
+        IronRuntimeError,
+        match=r"PacketFlow 'packetflow0' writes the TileControl of "
+        r"Tile<MemTile>\(0, 1\), which runs a TileDma program",
+    ):
+        program(*dict.fromkeys([static, routed]))
+
+
+def test_co_resident_runtimes_may_share_one_control_route():
+    route = control_route(mem_tile())
+    first, second = runtime("seq_0"), runtime("seq_1")
+    first.add_flow(route)
+    second.add_flow(route)
+    assert str(program(first, second)).count("aie.packet_flow(") == 1
+
+
+def test_a_task_on_a_channel_a_static_program_runs_is_refused():
+    mem = mem_tile()
     with pytest.raises(
         ValueError,
-        match=r"Runtimes 'seq_0' and 'seq_1' both program the DMA of tile "
-        rf"\(0, 0\) in device configuration 'pack', by {kinds}\.",
+        match=r"A task on MM2S channel 0 on Tile<MemTile>\(0, 1\) would rewrite "
+        "the channel a TileDma program runs",
     ):
-        program(shim_dma, second)
+        program(
+            static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
+            task_on("seq_1", mem, DMAChannelDir.MM2S, 0),
+        )
 
 
-def test_co_resident_runtimes_may_share_one_tile_program():
-    route = control_route()
-    module = program(lambda rt: rt.add_flow(route), lambda rt: rt.add_flow(route))
-    assert str(module).count("aie.packet_flow(") == 1
+def test_tasks_may_share_a_channel_and_leave_a_static_one_alone():
+    mem = mem_tile()
+    module = program(
+        static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
+        task_on("seq_1", mem, DMAChannelDir.MM2S, 1),
+        task_on("seq_2", mem, DMAChannelDir.MM2S, 1),
+    )
+    assert str(module).count("aiex.dma_configure_task(") == 2
 
 
 PREBUILT = """
@@ -605,19 +658,6 @@ def test_a_prebuilt_device_may_read_its_scratchpad_parameters():
 def test_a_prebuilt_module_holds_one_device(text):
     with Context(), pytest.raises(ValueError, match="holding one aie.device, not"):
         DeviceConfiguration.from_module("other", Module.parse(text))
-
-
-def test_a_runtime_sharing_one_of_two_tile_programs_conflicts_with_the_other():
-    # seq_0 claims the shared TileDma before its own route.
-    shared = []
-
-    def own_and_share(rt):
-        shim_dma(rt)
-        shared.extend(rt.tile_dmas)
-        rt.add_flow(control_route())
-
-    with pytest.raises(ValueError, match="both program the DMA of tile"):
-        program(own_and_share, lambda rt: rt.add_tile_dma(shared[0]))
 
 
 def test_merged_runtimes_issue_one_sequence():

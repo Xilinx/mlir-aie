@@ -16,7 +16,6 @@ from ..dialects.aie import (
     DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
     RuntimeSequenceOp,  # pyright: ignore[reportAttributeAccessIssue]
     TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
-    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     device,
 )
 from ..dialects.aiex import ConfigureOp  # pyright: ignore[reportAttributeAccessIssue]
@@ -200,35 +199,6 @@ class DeviceConfiguration(DeviceResources):
                 f"{owner.name!r}; it cannot also belong to {self.name!r}."
             )
         owners[id(resource)] = self
-
-    # A pinned tile's DMA runs one co-resident Runtime's program: a TileDma, or
-    # a route into its TileControl. Runtimes may share one such resource.
-    def _claim_tile_programs(self) -> None:
-        programs = {}
-        for runtime in self._runtimes:
-            claims = [(tile_dma, tile_dma.tile) for tile_dma in runtime.tile_dmas]
-            for flow in runtime.flows:
-                ports = [flow._dst_port] * len(flow._dsts)
-                if isinstance(flow, PacketFlow):
-                    ports[1:] = [dest.port for dest in flow._extra_dsts]
-                claims += [
-                    (flow, tile)
-                    for tile, port in zip(flow._dsts, ports)
-                    if port == WireBundle.TileControl
-                ]
-            for resource, tile in claims:
-                if tile.col is None or tile.row is None:
-                    continue
-                key = (tile.col, tile.row)
-                for holder, held in programs.setdefault(key, []):
-                    if holder is not runtime and held is not resource:
-                        raise ValueError(
-                            f"Runtimes {holder.name!r} and {runtime.name!r} both "
-                            f"program the DMA of tile {key} in device configuration "
-                            f"{self.name!r}, by a {type(held).__name__} and a "
-                            f"{type(resource).__name__}."
-                        )
-                programs[key].append((runtime, resource))
 
     def claim_runtime_resource(self, resource) -> None:
         if self._owners is None:
@@ -414,7 +384,6 @@ class DeviceConfiguration(DeviceResources):
             self._claim(runtime, owners)
         for worker in self._workers:
             self._claim(worker, owners)
-        self._claim_tile_programs()
 
         @device(current_device.resolve(), sym_name=device_name, loc=loc)
         def device_body():

@@ -74,6 +74,19 @@ class _Route(PerDeviceConfigurationResolvable):
     def _endpoint_tiles(self):
         return [self._src, *self._dsts]
 
+    @property
+    def dst_ports(self) -> list[WireBundle]:
+        """The port each destination tile receives on, in ``_dsts`` order."""
+        raise NotImplementedError
+
+    def control_tiles(self) -> list[Tile]:
+        """Return the destination tiles whose TileControl port this route writes."""
+        return [
+            tile
+            for tile, port in zip(self._dsts, self.dst_ports)
+            if port == WireBundle.TileControl
+        ]
+
     def all_tiles(self):
         """Return the tiles this route touches — Program uses this to resolve them."""
         return self._endpoint_tiles()
@@ -433,6 +446,10 @@ class Flow(_Route):
         return list(self._dsts) if self._broadcast else self._dsts[0]
 
     @property
+    def dst_ports(self) -> list[WireBundle]:
+        return [self._dst_port] * len(self._dsts)
+
+    @property
     def _routed(self) -> bool:
         """Whether this Flow lowers to route endpoints rather than `aie.flow`."""
         return self._broadcast or None in self._channels
@@ -463,9 +480,7 @@ class Flow(_Route):
             return
         loc = loc or self._site.location(self._name)
         if self._routed:
-            self._resolve_route(
-                loc, ip, [self._src_port] + [self._dst_port] * len(self._dsts)
-            )
+            self._resolve_route(loc, ip, [self._src_port, *self.dst_ports])
             return
         if self._vias:
             self._op = _FlowOp(
@@ -612,6 +627,10 @@ class PacketFlow(_Route):
         return self._pkt_id
 
     @property
+    def dst_ports(self) -> list[WireBundle]:
+        return [self._dst_port, *(d.port for d in self._extra_dsts)]
+
+    @property
     def _routed(self) -> bool:
         """Whether a channel is left to the compiler, so this lowers to a route."""
         return not all(isinstance(c, int) for c in self._channels)
@@ -642,7 +661,7 @@ class PacketFlow(_Route):
             self._resolve_route(
                 loc,
                 ip,
-                [self._src_port, self._dst_port, *(d.port for d in self._extra_dsts)],
+                [self._src_port, *self.dst_ports],
                 packet=True,
                 packet_id=self._pkt_id,
                 keep_pkt_header=self._keep_pkt_header or None,

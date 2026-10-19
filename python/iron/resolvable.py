@@ -119,8 +119,45 @@ class DeviceResources:
                 else:
                     programs[tile] = tile_dma
             self._resolved_tile_dmas = list(programs.values())
+            # A control-packet route rewrites its tile's DMA at dispatch; that
+            # would leave a static program broken for every later dispatch.
+            for flow in self._flows:
+                for tile in flow.control_tiles():
+                    if any(
+                        program.tile is tile
+                        or tile.col is not None
+                        and (program.tile.col, program.tile.row) == (tile.col, tile.row)
+                        for program in self._resolved_tile_dmas
+                    ):
+                        raise IronRuntimeError(
+                            f"{type(flow).__name__} {flow.name!r} writes the "
+                            f"TileControl of {tile}, which runs a TileDma program: "
+                            "a dispatch would rewrite the DMA that program "
+                            "keeps running."
+                        )
         for program in self._resolved_tile_dmas:
             program.resolve()
+
+    def static_channel(self, endpoint) -> bool:
+        """Return whether a resolved TileDma program runs ``endpoint``'s channel.
+
+        A channel the compiler assigns matches only the same endpoint.
+        """
+        tile = endpoint.tile
+        return any(
+            (
+                program.tile is tile
+                or tile.col is not None
+                and (program.tile.col, program.tile.row) == (tile.col, tile.row)
+            )
+            and any(
+                channel.channel is endpoint
+                or endpoint.channel is not None
+                and channel._key == (endpoint.direction, endpoint.channel)
+                for channel in program.channels
+            )
+            for program in self._resolved_tile_dmas or ()
+        )
 
     @property
     def flows(self) -> list:
