@@ -22,7 +22,7 @@ from ...dialects.aie import (
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
-from ...dialects.aiex import _shim_dims
+from ...dialects.aiex import shim_dims
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.util import np_dtype_to_mlir_type
 from ..resolvable import Resolvable
@@ -216,7 +216,7 @@ class Device(Resolvable):
         if self._tm.is_shim_noc_or_pl_tile(col, row):
             if tap.padding is not None:
                 return False
-            offset, sizes, strides = _shim_dims(tap)
+            offset, sizes, strides = shim_dims(tap)
         else:
             pad = 4 - len(tap.sizes)
             offset = tap.offset
