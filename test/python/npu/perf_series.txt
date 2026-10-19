@@ -269,6 +269,8 @@ fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=gelu/e
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/out_chunk=512
 fused_mm/64x32x128x4/bfloat16/b_col_maj=True/band_m=64/chunk_k=32/emulate_bf16_mmul_with_bfp16=True/out_chunk=512
 fused_mm/64x32x128x4/bfloat16/band_m=64/bfp16_b=True/chunk_k=32/out_chunk=512
+fused_mm/16x512x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/mmul_shape=(8, 8, 8)/out_chunk=128/long-k
+fused_mm/16x512x16x4/bfloat16/band_m=16/chunk_k=64/out_chunk=128/long-k
 gelu/1024x16/bfloat16
 gelu/1024x16/bfloat16/use_lut=True/lut
 gelu/1024x256/bfloat16
@@ -706,6 +708,7 @@ mm/64x64x32x4/bfloat16/emulate_bf16_mmul_with_bfp16=True/round_conv_even=True/ir
 mm/64x64x64x4/bfloat16/emulate_bf16_mmul_with_bfp16=True/round_conv_even=True/iron-gemm
 mm/128x64x16x4/bfloat16/emulate_bf16_mmul_with_bfp16=True/round_conv_even=True/iron-gemm
 mm/128x64x32x4/bfloat16/emulate_bf16_mmul_with_bfp16=True/round_conv_even=True/iron-gemm
+mm/16x512x16x4/bfloat16/long-k
 zero/84x4/float32/window=21/window
 experts/36x18/bfloat16/cols=16/hidden=32/num_experts=2/rows=32/top_k=1/width=16/edge-one-tile
 experts/72x288/bfloat16

@@ -525,6 +525,14 @@ CASES: list[Case] = [
         )
     ],
     check("mm", _mm_bf16, calls=1, tag="edge-single-tile"),
+    # The long-k fused_mm cases' shape on mm (Precision.HIGHEST's kernel).
+    check(
+        "mm",
+        dict(
+            dim_m=16, dim_k=512, dim_n=16, input_dtype=bfloat16, output_dtype=bfloat16
+        ),
+        tag="long-k",
+    ),
     # Bounded fused composition: two A bands and multiple K/drain chunks.
     Case("fused_mm", calls=4, smoke=True),
     *[
@@ -640,6 +648,29 @@ CASES: list[Case] = [
         )
         for n in (16, 32)
     ],
+    # Eight k steps into one accumulator, as ProjectionGEMM's k loop drives
+    # mm_fused_k_step: the f32 sum is rounded once, so the error bound stays
+    # K f32 ulps (Precision.HIGHEST), not a bf16 rounding per step.
+    check(
+        "fused_mm",
+        dict(dim_m=16, band_m=16, dim_k=512, dim_n=16, chunk_k=64, out_chunk=128),
+        tag="long-k",
+    ),
+    check(
+        "fused_mm",
+        dict(
+            dim_m=16,
+            band_m=16,
+            dim_k=512,
+            dim_n=16,
+            chunk_k=64,
+            out_chunk=128,
+            mmul_shape=(8, 8, 8),
+            b_col_maj=True,
+        ),
+        devices=("npu2",),
+        tag="long-k",
+    ),
     # IRON's exact-precision tile on aie2p (8x8x8, row-major B): bf16 macs,
     # each 8-row block run as two 4-row halves.
     Case(
