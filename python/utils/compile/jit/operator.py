@@ -247,7 +247,9 @@ class Operator:
         view = object.__new__(type(self))
         vars(view).update(
             {n: vars(self)[n] for n in self.declaration.key},
-            _bound=self._bound,
+            # Bound to the view, a member's dims read through it, so a
+            # parameter outside the key raises there too.
+            _bound={name: m.of(view) for name, m in self._bound.items()},
             trace=self.trace,
         )
         return view

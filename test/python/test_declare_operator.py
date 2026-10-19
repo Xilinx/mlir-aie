@@ -189,12 +189,13 @@ def test_the_layout_holds_the_key_and_names_any_other_read():
         1.0,
         4,
     )
-    assert view.x.op is op
-    with pytest.raises(
-        AttributeError,
-        match="Scale.build\\(\\) reads M, which is not in the core-layout key",
-    ):
-        view.M
+    assert view.x.op is view
+    for read in (lambda: view.M, lambda: view.x.shape):
+        with pytest.raises(
+            AttributeError,
+            match="Scale.build\\(\\) reads M, which is not in the core-layout key",
+        ):
+            read()
 
 
 def test_the_keys_are_the_layout_for_cores_and_every_parameter_for_a_build():
