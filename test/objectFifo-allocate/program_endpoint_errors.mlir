@@ -50,6 +50,33 @@ module @packet_source_program {
 
 // -----
 
+// A program sourcing packet flows with pinned ids states a header on each BD,
+// one of its flows'.
+module @packet_source_without_header {
+  aie.device(npu2) {
+    %mt = aie.tile(0, 1)
+    %core = aie.tile(0, 2)
+    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.route_endpoint @spray(%mt) DMA
+    aie.route_endpoint @catch(%core) DMA
+    aie.route from @spray to [@catch] {packet, packet_id = 3 : i8}
+    aie.memtile_dma(%mt) {
+      aie.dma_start(MM2S, @spray, ^bd0, ^end)
+    ^bd0:
+      aie.dma_bd(%b : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
+      aie.next_bd ^bd1
+    ^bd1:
+      // expected-error @+1 {{sends on @spray without the packet header of one of its flows, ids 3}}
+      aie.dma_bd(%b : memref<64xi32> offset = 32 len = 32)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
 // A pinned endpoint may not take a channel a DMA program already starts.
 module @pinned_clash {
   // expected-remark @+1 {{could not find a spill-aware allocation}}

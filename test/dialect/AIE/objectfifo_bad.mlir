@@ -86,10 +86,10 @@ aie.device(npu2) {
 
 // -----
 
-// The direction of a route endpoint is read off the routes that name it, and a
-// circuit owns its channel, so a second circuit may not name it.
+// The direction of a route endpoint is read off the routes that name it, so
+// they must all name it on the same side.
 
-// CHECK: 'aie.route_endpoint' op drives one channel, so only packet flows naming it on the same side may share it, but it is named 2 times
+// CHECK: 'aie.route_endpoint' op is named as both a source and a destination, so its direction is ambiguous
 
 aie.device(npu1) {
   %tile02 = aie.tile(0, 2)
@@ -113,7 +113,7 @@ aie.device(npu1) {
 
 // Both ends of one flow is the same ambiguity.
 
-// CHECK: 'aie.route_endpoint' op drives one channel, so only packet flows naming it on the same side may share it, but it is named 2 times
+// CHECK: 'aie.route_endpoint' op is named as both a source and a destination, so its direction is ambiguous
 
 aie.device(npu1) {
   %shim0 = aie.tile(0, 0)
@@ -140,21 +140,20 @@ aie.device(npu1) {
 
 // -----
 
-// Packet routes may share an endpoint only on the same side, or its direction
-// is ambiguous.
+// A circuit owns its channel, so no second flow may name its endpoint.
 
-// CHECK: 'aie.route_endpoint' op drives one channel, so only packet flows naming it on the same side may share it, but it is named 2 times
+// CHECK: 'aie.route_endpoint' op drives one channel, which a circuit flow owns, but it is named 2 times
 
 aie.device(npu1) {
   %shim0 = aie.tile(0, 0)
   %shim1 = aie.tile(1, 0)
 
   aie.route_endpoint @a(%shim0) DMA
-  aie.route_endpoint @mid(%shim1) DMA
   aie.route_endpoint @b(%shim0) DMA
+  aie.route_endpoint @sink(%shim1) DMA
 
-  aie.route from @a to [@mid] {packet}
-  aie.route from @mid to [@b] {packet}
+  aie.route from @a to [@sink] {packet}
+  aie.route from @b to [@sink]
 }
 
 // -----
@@ -187,4 +186,54 @@ aie.device(npu1) {
   aie.route_endpoint @dst(%shim1) DMA
 
   aie.route from @src to [@dst] {keep_pkt_header}
+}
+
+// -----
+
+// A shared source's BDs tell its flows apart by id.
+
+// CHECK: 'aie.route_endpoint' op sends several packet flows with packet_id 1
+
+aie.device(npu1) {
+  %shim0 = aie.tile(0, 0)
+  %shim1 = aie.tile(1, 0)
+
+  aie.route_endpoint @src(%shim0) DMA
+  aie.route_endpoint @a(%shim1) DMA
+  aie.route_endpoint @b(%shim1) DMA
+
+  aie.route from @src to [@a] {packet, packet_id = 1 : i8}
+  aie.route from @src to [@b] {packet, packet_id = 1 : i8}
+}
+
+// -----
+
+// One port keeps or drops every header it receives.
+
+// CHECK: 'aie.route_endpoint' op receives several packet flows, so they must agree on keep_pkt_header
+
+aie.device(npu1) {
+  %shim0 = aie.tile(0, 0)
+  %shim1 = aie.tile(1, 0)
+
+  aie.route_endpoint @a(%shim0) DMA
+  aie.route_endpoint @b(%shim0) DMA
+  aie.route_endpoint @sink(%shim1) DMA
+
+  aie.route from @a to [@sink] {keep_pkt_header, packet}
+  aie.route from @b to [@sink] {packet}
+}
+
+// -----
+
+// CHECK: 'aie.route_endpoint' op is named twice by one flow
+
+aie.device(npu1) {
+  %shim0 = aie.tile(0, 0)
+  %shim1 = aie.tile(1, 0)
+
+  aie.route_endpoint @a(%shim0) DMA
+  aie.route_endpoint @sink(%shim1) DMA
+
+  aie.route from @a to [@sink, @sink] {packet}
 }

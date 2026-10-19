@@ -22,7 +22,9 @@ def build():
     mem = Tile(0, 1)
     cores = [Tile(0, 2), Tile(0, 3)]
 
-    gather = PacketFlow(1, cores[0], mem, src_channel=None, dst_channel=None)
+    gather = PacketFlow(
+        1, cores[0], mem, src_channel=None, dst_channel=None, keep_pkt_header=True
+    )
     gather_b = PacketFlow(
         2,
         cores[1],
@@ -76,7 +78,7 @@ def build():
 
 # CHECK-DAG: aie.route_endpoint @packetflow0_dst(%{{.*}}) DMA
 # CHECK-DAG: aie.route_endpoint @packetflow2_src(%{{.*}}) DMA
-# CHECK-DAG: aie.route from @packetflow0_src to [@packetflow0_dst] {packet, packet_id = 1 : i8}
+# CHECK-DAG: aie.route from @packetflow0_src to [@packetflow0_dst] {keep_pkt_header, packet, packet_id = 1 : i8}
 # CHECK-DAG: aie.route from @packetflow1_src to [@packetflow0_dst] {keep_pkt_header, packet, packet_id = 2 : i8}
 # CHECK-DAG: aie.route from @packetflow2_src to [@packetflow2_dst] {packet, packet_id = 1 : i8}
 # CHECK-DAG: aie.route from @packetflow2_src to [@packetflow3_dst] {packet, packet_id = 2 : i8}

@@ -596,8 +596,8 @@ class PacketFlow(_Route):
             ):
                 raise ValueError(
                     f"PacketFlow end on {tile} can share only another "
-                    "PacketFlow's end on the same tile and side whose channel "
-                    f"the compiler assigns, not {channel}."
+                    "PacketFlow's end on this same Tile object, on the same "
+                    f"side, whose channel the compiler assigns, not {channel}."
                 )
         self._extra_dsts: list[PacketDest] = list(extra_dsts)
         self._endpoints: dict[int, FlowEndpoint] = {}

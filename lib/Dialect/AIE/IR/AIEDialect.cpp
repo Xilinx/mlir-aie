@@ -1082,31 +1082,44 @@ LogicalResult RouteEndpointOp::verify() {
   // they must all name it on the same side. Packet flows can share the channel;
   // a circuit owns it.
   StringRef name = getSymName();
-  int flows = 0, sources = 0;
-  bool shareable = true, pinned = true;
+  SmallVector<RouteOp> sources, dests;
   for (auto flow : (*this)->getParentOfType<DeviceOp>().getOps<RouteOp>()) {
-    int asSource = flow.getSource() == name;
-    int named = asSource + llvm::count_if(
-                               flow.getDestinations()
-                                   .getAsRange<FlatSymbolRefAttr>(),
-                               [&](FlatSymbolRefAttr dest) {
-                                 return dest.getValue() == name;
-                               });
-    if (named)
-      shareable &= named == 1 && flow.getPacket();
-    if (asSource)
-      pinned &= flow.getPacketId().has_value();
-    flows += named;
-    sources += asSource;
+    if (flow.getSource() == name)
+      sources.push_back(flow);
+    for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      if (dest.getValue() == name) {
+        if (!dests.empty() && dests.back() == flow)
+          return emitOpError("is named twice by one flow");
+        dests.push_back(flow);
+      }
   }
-  if (flows > 1 && (!shareable || (sources && sources != flows))) {
-    return emitOpError("drives one channel, so only packet flows naming it on "
-                       "the same side may share it, but it is named ")
-           << flows << " times";
+  if (!sources.empty() && !dests.empty()) {
+    return emitOpError("is named as both a source and a destination, so its "
+                       "direction is ambiguous");
   }
-  if (sources > 1 && !pinned) {
-    return emitOpError("sends several packet flows, so each must pin its "
-                       "packet_id for the BDs to state it");
+  ArrayRef<RouteOp> sharers = sources.empty() ? dests : sources;
+  if (sharers.size() > 1) {
+    if (llvm::any_of(sharers, [](RouteOp flow) { return !flow.getPacket(); }))
+      return emitOpError("drives one channel, which a circuit flow owns, but "
+                         "it is named ")
+             << sharers.size() << " times";
+    // A shared source's BDs state each header, so they must tell them apart.
+    llvm::SmallDenseSet<int> ids;
+    for (RouteOp flow : sources) {
+      auto id = flow.getPacketId();
+      if (!id)
+        return emitOpError("sends several packet flows, so each must pin its "
+                           "packet_id for the BDs to state it");
+      if (!ids.insert(*id).second)
+        return emitOpError("sends several packet flows with packet_id ")
+               << static_cast<int>(*id);
+    }
+    // The port keeps or drops every header it receives.
+    if (llvm::any_of(dests, [&](RouteOp flow) {
+          return flow.getKeepPktHeader() != dests[0].getKeepPktHeader();
+        }))
+      return emitOpError("receives several packet flows, so they must agree "
+                         "on keep_pkt_header");
   }
   switch (getBundle()) {
   case WireBundle::DMA:

@@ -450,38 +450,46 @@ module @task_size_eight {
 // -----
 
 // Packet routes naming one endpoint share its channel: two cores merge into
-// the MemTile's one S2MM channel, and the MemTile sends both packet ids out of
-// one MM2S channel. keep_pkt_header carries over to the packet flow. A program
-// may source a packet route whose id is pinned, since its BDs state the header
-// themselves.
+// the MemTile's one S2MM channel, so the unshared @side takes S2MM 1, and the
+// MemTile sends both packet ids out of one MM2S channel. keep_pkt_header
+// carries over to the packet flows. A program may source a packet route whose
+// id is pinned, since its BDs state the header themselves. Each packet flow
+// takes the place of its route.
 
 // CHECK-LABEL: @shared_packet_channels
 // CHECK: aie.route_endpoint @gather(%[[MT:.*]]) DMA {channelIndex = 0 : i32}
-// CHECK: aie.route_endpoint @scatter(%[[MT]]) DMA {channelIndex = 0 : i32}
 // CHECK: aie.packet_flow(1) {
 // CHECK:   aie.packet_dest<%[[MT]], DMA : 0>
+// CHECK: } {keep_pkt_header = true}
 // CHECK: aie.packet_flow(2) {
 // CHECK:   aie.packet_dest<%[[MT]], DMA : 0>
 // CHECK: } {keep_pkt_header = true}
+// CHECK: aie.route_endpoint @side(%[[MT]]) DMA {channelIndex = 1 : i32}
+// CHECK: aie.route_endpoint @scatter(%[[MT]]) DMA {channelIndex = 0 : i32}
 // CHECK: aie.packet_flow(1) {
 // CHECK:   aie.packet_source<%[[MT]], DMA : 0>
 // CHECK: aie.packet_flow(2) {
 // CHECK:   aie.packet_source<%[[MT]], DMA : 0>
 // CHECK: aie.dma_start(MM2S, 0, ^bb{{.*}}, ^bb{{.*}})
 // CHECK: aie.dma_start(S2MM, 0, ^bb{{.*}}, ^bb{{.*}})
+// CHECK: aie.dma_start(S2MM, 1, ^bb{{.*}}, ^bb{{.*}})
 module @shared_packet_channels {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
     %a = aie.tile(0, 2)
     %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
     %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
     %la = aie.buffer(%a) {sym_name = "la"} : memref<64xi32>
     %lb = aie.buffer(%b) {sym_name = "lb"} : memref<64xi32>
     aie.route_endpoint @a_out(%a) DMA
     aie.route_endpoint @b_out(%b) DMA
     aie.route_endpoint @gather(%mt) DMA
-    aie.route from @a_out to [@gather] {packet, packet_id = 1 : i8}
+    aie.route from @a_out to [@gather] {keep_pkt_header, packet, packet_id = 1 : i8}
     aie.route from @b_out to [@gather] {keep_pkt_header, packet, packet_id = 2 : i8}
+    aie.route_endpoint @c_out(%c) DMA
+    aie.route_endpoint @side(%mt) DMA
+    aie.route from @c_out to [@side]
     aie.route_endpoint @scatter(%mt) DMA
     aie.route_endpoint @a_in(%a) DMA
     aie.route_endpoint @b_in(%b) DMA
@@ -496,10 +504,15 @@ module @shared_packet_channels {
       aie.dma_bd(%buf : memref<64xi32> offset = 32 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
       aie.next_bd ^bd0
     ^recv:
-      aie.dma_start(S2MM, @gather, ^bd2, ^end)
+      aie.dma_start(S2MM, @gather, ^bd2, ^side)
     ^bd2:
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd2
+    ^side:
+      aie.dma_start(S2MM, @side, ^bd3, ^end)
+    ^bd3:
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
+      aie.next_bd ^bd3
     ^end:
       aie.end
     }
