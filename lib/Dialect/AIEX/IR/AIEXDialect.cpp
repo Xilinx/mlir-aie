@@ -1481,6 +1481,51 @@ staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
   return runs ? llvm::checkedMul(*moved, *runs) : std::nullopt;
 }
 
+namespace {
+// A far end's cyclic chain of BDs over one object: each segment's BD, in
+// order, sent `copies` times in a row.
+struct BdChain {
+  SmallVector<int64_t> segmentBytes;
+  int64_t copies;
+  int64_t objectBytes;
+
+  // Nullopt when the object's bytes overflow or a segment is empty.
+  static std::optional<BdChain> get(ArrayRef<int64_t> segmentBytes,
+                                    int64_t copies) {
+    if (segmentBytes.size() == 1)
+      copies = 1;
+    std::optional<int64_t> objectBytes = 0;
+    for (int64_t bytes : segmentBytes) {
+      std::optional<int64_t> run = llvm::checkedMul(bytes, copies);
+      if (bytes <= 0 || copies <= 0 || !run)
+        return std::nullopt;
+      objectBytes = llvm::checkedAdd(*objectBytes, *run);
+      if (!objectBytes)
+        return std::nullopt;
+    }
+    if (segmentBytes.empty())
+      return std::nullopt;
+    return BdChain{SmallVector<int64_t>(segmentBytes), copies, *objectBytes};
+  }
+
+  // True when `bytes` through the chain stop where one of its BDs ends.
+  bool endsOnBd(int64_t bytes) const {
+    int64_t rest = bytes % objectBytes;
+    int64_t start = 0;
+    for (int64_t segment : segmentBytes) {
+      if (rest < start + segment * copies)
+        return (rest - start) % segment == 0;
+      start += segment * copies;
+    }
+    return true;
+  }
+
+  bool operator==(const BdChain &other) const {
+    return segmentBytes == other.segmentBytes && copies == other.copies;
+  }
+};
+} // namespace
+
 // The far end of a shim transfer on an objectFIFO receives (or sends) whole
 // objects through a BD sized by the object type, so transfers ending
 // mid-object never complete that BD and the fifo hangs. Several transfers may
@@ -1507,9 +1552,11 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   // the link's pool, one per pool segment, sized by the pool owner whatever
   // this fifo's own (or consumer) type. A join's or distribute's combined end
   // steps through every segment in order, each small end through its own, and
-  // a plain link's single segment is the whole pool object.
+  // a plain link's single segment is the whole pool object. The link's
+  // repeat_count sends each of its output's segment BDs that many times in a
+  // row.
   Value linkTile;
-  std::optional<SmallVector<int64_t>> linkEnds;
+  std::optional<BdChain> linkChain;
   if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
     for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
       std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
@@ -1531,36 +1578,34 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
         std::vector<AIE::ObjectFifoCreateOp> &many = link.isJoin() ? ins : outs;
         segments = {segments[llvm::find(many, fifo) - many.begin()]};
       }
-      SmallVector<int64_t> ends;
-      std::optional<int64_t> end = 0;
+      SmallVector<int64_t> segmentBytes;
       for (auto [offset, size] : segments) {
-        if (std::optional<int64_t> bytes = llvm::checkedMul(size, width))
-          end = llvm::checkedAdd(*end, *bytes);
-        else
-          end = std::nullopt;
-        if (!end)
+        std::optional<int64_t> bytes = llvm::checkedMul(size, width);
+        if (!bytes)
           break;
-        ends.push_back(*end);
+        segmentBytes.push_back(*bytes);
       }
-      if (end)
-        linkEnds = ends;
+      int64_t copies = llvm::is_contained(outs, fifo)
+                           ? link.getRepeatCount().value_or(1)
+                           : 1;
+      if (segmentBytes.size() == segments.size())
+        linkChain = BdChain::get(segmentBytes, copies);
       break;
     }
   // Every far-end BD chain this transfer must leave at a BD boundary: the
   // producer's, for a drain, and each consumer's other than the shim's own. A
   // broadcast stalls on its slowest consumer, so a drain bounds what the
-  // others receive too. Each chain is its cumulative BD ends in bytes over one
-  // object; an end off the link tile is one BD over its own object.
-  SmallVector<SmallVector<int64_t>> chains;
+  // others receive too. An end off the link tile is one BD over its own
+  // object.
+  SmallVector<BdChain> chains;
   auto addChain = [&](Value tile, Type fifoType) {
-    std::optional<SmallVector<int64_t>> ends;
+    std::optional<BdChain> chain;
     if (linkTile && tile == linkTile)
-      ends = linkEnds;
+      chain = linkChain;
     else if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
-      ends = SmallVector<int64_t>{*bytes};
-    if (ends && !ends->empty() && ends->back() > 0 &&
-        !llvm::is_contained(chains, *ends))
-      chains.push_back(*ends);
+      chain = BdChain::get({*bytes}, 1);
+    if (chain && !llvm::is_contained(chains, *chain))
+      chains.push_back(*chain);
   };
   auto producer =
       dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
@@ -1573,14 +1618,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
     if (!tile || !tile.isShimTile())
       addChain(consumer, fifo.getConsumerElemTypeOrDefault());
   }
-  auto partialFor = [&](int64_t bytes) -> const SmallVector<int64_t> * {
-    for (const SmallVector<int64_t> &ends : chains)
-      if (int64_t rest = bytes % ends.back();
-          rest != 0 && !llvm::is_contained(ends, rest))
-        return &ends;
-    return nullptr;
-  };
-  if (!partialFor(*moved))
+  if (chains.empty())
     return success();
 
   // Transfers in a loop or branch have no static count to sum.
@@ -1595,9 +1633,16 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                      return reset.getObjfifoAttr() == task.getAlloc();
                    }))
     return success();
+  // Segment boundaries don't add up the way whole objects do, so the
+  // sequence's total is checked whatever this transfer moves, once: by the
+  // first transfer through the fifo.
+  for (Operation *prev = task->getPrevNode(); prev; prev = prev->getPrevNode())
+    if (auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(prev);
+        other && other.getAlloc() == task.getAlloc() &&
+        staticBytesStreamed(other) != 0)
+      return success();
   std::optional<int64_t> total = 0;
   int64_t sharing = 0;
-  bool reportedEarlier = false;
   WalkResult walk = sequence.walk([&](Operation *op) {
     // A dma_memcpy_nd or BD chain through the fifo also shares its objects;
     // its extent is not summed here, so the sequence's total is unknown.
@@ -1616,19 +1661,17 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       return WalkResult::advance();
     if (!bytes || other->getBlock() != task->getBlock())
       return WalkResult::interrupt();
-    // The first partial transfer reports, so the error is raised once.
-    if (partialFor(*bytes) && other->isBeforeInBlock(task))
-      reportedEarlier = true;
     total = llvm::checkedAdd(*total, *bytes);
     if (!total)
       return WalkResult::interrupt();
     ++sharing;
     return WalkResult::advance();
   });
-  if (walk.wasInterrupted() || reportedEarlier)
+  if (walk.wasInterrupted())
     return success();
-  const SmallVector<int64_t> *ends = partialFor(*total);
-  if (!ends)
+  const BdChain *partial = llvm::find_if(
+      chains, [&](const BdChain &chain) { return !chain.endsOnBd(*total); });
+  if (partial == chains.end())
     return success();
 
   InFlightDiagnostic error =
@@ -1637,17 +1680,20 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   if (sharing > 1)
     error << ", with this runtime sequence's other transfers through it ("
           << *total << " bytes in all),";
-  error << " is not a whole number of its " << ends->back() << "-byte objects";
-  if (ends->size() == 1)
+  error << " is not a whole number of its " << partial->objectBytes
+        << "-byte objects";
+  if (partial->segmentBytes.size() == 1)
     return error << "; the far end's buffer descriptor is sized by the "
                     "object, so a partial one never completes";
-  std::string segmentEnds;
-  llvm::raw_string_ostream os(segmentEnds);
-  llvm::interleaveComma(ArrayRef(*ends).drop_back(), os);
-  return error << " and doesn't end where one of their segments does (byte "
-               << segmentEnds
-               << " of each); the far end's buffer descriptors are sized by "
-                  "the segments, so a partial one never completes";
+  std::string segments;
+  llvm::raw_string_ostream os(segments);
+  llvm::interleaveComma(partial->segmentBytes, os);
+  error << " and doesn't end on a segment boundary (segments of " << segments
+        << " bytes";
+  if (partial->copies > 1)
+    error << ", each sent " << partial->copies << " times in a row";
+  return error << "); the far end's buffer descriptors are sized by the "
+                  "segments, so a partial one never completes";
 }
 
 // Resolving the allocation symbol through the collection keeps the lookup off

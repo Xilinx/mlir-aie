@@ -1006,7 +1006,7 @@ module {
     aie.objectfifo @out1(%t01, {%t03}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
     aie.objectfifo.link [@in] -> [@out0, @out1]([] [0, 96])
     aie.runtime_sequence(%a: memref<64xi32>) {
-      // expected-error@+1 {{moves 256 bytes through objectFIFO @in, which is not a whole number of its 512-byte objects and doesn't end where one of their segments does (byte 384 of each)}}
+      // expected-error@+1 {{moves 256 bytes through objectFIFO @in, which is not a whole number of its 512-byte objects and doesn't end on a segment boundary (segments of 384, 128 bytes)}}
       %t = aiex.dma_configure_task_for @in {
         aie.dma_bd(%a : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
         aie.end
@@ -1065,6 +1065,82 @@ module {
       // expected-error@+1 {{moves 192 bytes through objectFIFO @out1, which is not a whole number of its 128-byte objects}}
       %t = aiex.dma_configure_task_for @out1 {
         aie.dma_bd(%a : memref<48xi32> offset = 0 len = 48 sizes = [1, 1, 1, 48] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// Segment boundaries don't add up the way whole objects do: each 96-i32 fill
+// ends on segment 0's boundary, but together they stop 256 bytes into the
+// second object's segment 0. The first transfer reports.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    aie.objectfifo @in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo @out0(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo @out1(%t01, {%t03}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@in] -> [@out0, @out1]([] [0, 96])
+    aie.runtime_sequence(%a: memref<96xi32>, %b: memref<96xi32>) {
+      // expected-error@+1 {{moves 384 bytes through objectFIFO @in, which, with this runtime sequence's other transfers through it (768 bytes in all), is not a whole number of its 512-byte objects and doesn't end on a segment boundary (segments of 384, 128 bytes)}}
+      %t0 = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%a : memref<96xi32> offset = 0 len = 96 sizes = [1, 1, 1, 96] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+      %t1 = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%b : memref<96xi32> offset = 0 len = 96 sizes = [1, 1, 1, 96] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t1)
+    }
+  }
+}
+
+// -----
+
+// A link's repeat_count sends each of its output's segment BDs that many
+// times in a row, so a repeated join's drain ends BDs at bytes 384, 768, 896
+// and 1024 of each object: 512 bytes stops inside segment 0's second copy.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    aie.objectfifo @in0(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo @in1(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @out(%t01, {%t00}, 2 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo.link [@in0, @in1] -> [@out]([0, 96] [])
+    aie.runtime_sequence(%a: memref<128xi32>) {
+      // expected-error@+1 {{moves 512 bytes through objectFIFO @out, which is not a whole number of its 1024-byte objects and doesn't end on a segment boundary (segments of 384, 128 bytes, each sent 2 times in a row)}}
+      %t = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%a : memref<128xi32> offset = 0 len = 128 sizes = [1, 1, 1, 128] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// The same repeated join's 768-byte drain ends with segment 0's second copy.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    aie.objectfifo @in0(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<96xi32>>
+    aie.objectfifo @in1(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @out(%t01, {%t00}, 2 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo.link [@in0, @in1] -> [@out]([0, 96] [])
+    aie.runtime_sequence(%a: memref<192xi32>) {
+      %t = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%a : memref<192xi32> offset = 0 len = 192 sizes = [1, 1, 1, 192] strides = [0, 0, 0, 1])
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)

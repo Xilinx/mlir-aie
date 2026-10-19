@@ -9,7 +9,8 @@
 # end's buffer descriptor completes once the stream carries a whole object,
 # however many transfers it took. 128 + 896 elements straddle the 256-element
 # object boundaries and make 4 whole objects together. A distribute's combined
-# end completes per segment, so a fill may end between segments.
+# end completes per segment, so a fill may end between segments, and a
+# repeated join sends each segment's copies in a row before the next segment.
 
 import aie.iron as iron
 import numpy as np
@@ -62,6 +63,24 @@ def distribute(a: In, c0: Out, c1: Out, *, n: CompileTime[int] = SEGMENT):
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
+@iron.jit
+def repeated_join(x: In, y: In, c: Out, *, n: CompileTime[int] = SEGMENT):
+    big_ty = np.ndarray[(n + n // 2,), np.dtype[np.int32]]
+    small_ty = np.ndarray[(n // 2,), np.dtype[np.int32]]
+    of_out = ObjectFifo(
+        np.ndarray[(2 * n,), np.dtype[np.int32]], name="out", repeat_count=2
+    )
+    in0, in1 = of_out.prod().join([0, n + n // 2], obj_types=[big_ty, small_ty])
+
+    def sequence(x_h, y_h, c_h, in0_prod, in1_prod, out_cons):
+        in0_prod.fill(x_h)
+        in1_prod.fill(y_h)
+        out_cons.drain(c_h, wait=True)
+
+    rt = Runtime(sequence, [x, y, c, in0.prod(), in1.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt).resolve_program()
+
+
 def test_fills_concatenate_into_shared_objects():
     rng = np.random.default_rng(0)
     x, y = (
@@ -96,3 +115,15 @@ def test_fill_ends_on_a_distribute_segment():
     distribute(iron.tensor(a, device="npu"), c0, c1)
     assert np.array_equal(c0.numpy(), segments[0::2].reshape(-1))
     assert np.array_equal(c1.numpy(), segments[1])
+
+
+def test_drain_ends_on_a_repeated_join_segment():
+    big, small = SEGMENT + SEGMENT // 2, SEGMENT // 2
+    rng = np.random.default_rng(4)
+    x, y = (
+        rng.integers(INT32.min, INT32.max, size, np.int32, endpoint=True)
+        for size in (big, small)
+    )
+    c = iron.zeros((2 * big,), dtype=np.int32, device="npu")
+    repeated_join(iron.tensor(x, device="npu"), iron.tensor(y, device="npu"), c)
+    assert np.array_equal(c.numpy(), np.tile(x, 2))
