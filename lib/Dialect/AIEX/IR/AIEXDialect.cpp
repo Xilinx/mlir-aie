@@ -1772,6 +1772,13 @@ LogicalResult AIEX::ReadScratchpadParameterOp::verify() {
   return success();
 }
 
+LogicalResult AIEX::WaitScratchpadParametersOp::verify() {
+  if (!(*this)->getParentOfType<AIE::CoreOp>()) {
+    return emitOpError("must be inside an aie.core");
+  }
+  return success();
+}
+
 LogicalResult AIEX::ConfigureOp::verify() {
   AIE::DeviceOp parentDev = getOperation()->getParentOfType<AIE::DeviceOp>();
   AIE::DeviceOp referencedDev = getReferencedDeviceOp();

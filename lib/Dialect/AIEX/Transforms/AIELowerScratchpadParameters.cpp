@@ -18,6 +18,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/MapVector.h"
@@ -37,17 +38,19 @@ namespace xilinx::AIEX {
 
 namespace {
 
-/// Returns true iff the parameter-sync preamble (use_lock acquire) should be
-/// emitted for this core. Reads the explicit attribute if present; otherwise
-/// defaults to true iff any 'aiex.read_scratchpad_parameter' op is present in
-/// the core body.
+/// Returns true iff this core needs a parameter-sync lock. Reads the explicit
+/// attribute if present; otherwise defaults to true iff the core body reads a
+/// scratchpad parameter or waits for them.
 static bool shouldEmitParameterSyncPreamble(CoreOp coreOp) {
   if (auto attr = coreOp.getEmitParameterSyncPreambleAttr()) {
     return attr.getValue();
   }
-  bool found = false;
-  coreOp.getBody().walk([&](ReadScratchpadParameterOp) { found = true; });
-  return found;
+  WalkResult found = coreOp.getBody().walk([&](Operation *op) {
+    return isa<ReadScratchpadParameterOp, WaitScratchpadParametersOp>(op)
+               ? WalkResult::interrupt()
+               : WalkResult::advance();
+  });
+  return found.wasInterrupted();
 }
 
 // Warned here, not at NPU lowering, which inlines a sequence at every call
@@ -240,7 +243,7 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
     if (found) {
       return;
     }
-    if (llvm::isa<ReadScratchpadParameterOp>(op) ||
+    if (llvm::isa<ReadScratchpadParameterOp, WaitScratchpadParametersOp>(op) ||
         op->hasAttr("offset_parameter") ||
         op->hasAttr("offset_state_table_idx") ||
         op->hasAttr("length_parameter") ||
@@ -343,13 +346,34 @@ struct AIELowerScratchpadParametersPass
 
   // For each core in `device` with shouldEmitParameterSyncPreamble()==true,
   // create an aie.lock (no lockID; AIEAssignLockIDs will assign one later) and
-  // insert aie.use_lock(Acquire, 1) at the top of the core body.  Returns the
-  // list of lock values created (one per qualifying core, in walk order).
-  SmallVector<Value> emitCorePreambles(DeviceOp device, OpBuilder &builder) {
-    SmallVector<Value> syncLocks;
-    device.walk([&](CoreOp coreOp) {
+  // acquire it: in place of each aiex.wait_scratchpad_parameters if the core
+  // has any, else once at the top of the core body. Appends the lock values
+  // created (one per qualifying core, in walk order) to `syncLocks`. Fails if
+  // a core with waits reads a parameter no wait comes before.
+  LogicalResult emitCorePreambles(DeviceOp device, OpBuilder &builder,
+                                  SmallVector<Value> &syncLocks) {
+    WalkResult result = device.walk([&](CoreOp coreOp) {
       if (!shouldEmitParameterSyncPreamble(coreOp)) {
-        return;
+        return WalkResult::advance();
+      }
+
+      SmallVector<WaitScratchpadParametersOp> waits;
+      coreOp.walk([&](WaitScratchpadParametersOp op) { waits.push_back(op); });
+      if (!waits.empty()) {
+        DominanceInfo dominance(coreOp);
+        WalkResult unordered = coreOp.walk([&](ReadScratchpadParameterOp read) {
+          if (llvm::any_of(waits, [&](WaitScratchpadParametersOp wait) {
+                return dominance.properlyDominates(wait, read);
+              }))
+            return WalkResult::advance();
+          read.emitOpError("reads @")
+              << read.getParameter()
+              << " where no aiex.wait_scratchpad_parameters of its core "
+                 "comes first, so it may read a previous dispatch's value";
+          return WalkResult::interrupt();
+        });
+        if (unordered.wasInterrupted())
+          return WalkResult::interrupt();
       }
 
       TileOp tile = coreOp.getTileOp();
@@ -360,15 +384,23 @@ struct AIELowerScratchpadParametersPass
           /*sym_name=*/StringAttr{});
       syncLocks.push_back(lockOp.getResult());
 
-      Block &bodyBlock = coreOp.getBody().front();
-      builder.setInsertionPointToStart(&bodyBlock);
-      UseLockOp::create(builder, coreOp.getLoc(), lockOp.getResult(),
-                        LockAction::Acquire, 1);
+      if (waits.empty()) {
+        builder.setInsertionPointToStart(&coreOp.getBody().front());
+        UseLockOp::create(builder, coreOp.getLoc(), lockOp.getResult(),
+                          LockAction::Acquire, 1);
+      }
+      for (WaitScratchpadParametersOp wait : waits) {
+        builder.setInsertionPoint(wait);
+        UseLockOp::create(builder, wait.getLoc(), lockOp.getResult(),
+                          LockAction::Acquire, 1);
+        wait.erase();
+      }
 
       // Mark as done so the pass is idempotent.
       coreOp.setEmitParameterSyncPreambleAttr(builder.getBoolAttr(false));
+      return WalkResult::advance();
     });
-    return syncLocks;
+    return failure(result.wasInterrupted());
   }
 
   // For each runtime sequence in `device` with shouldEmitParameterSyncPreamble
@@ -803,8 +835,9 @@ struct AIELowerScratchpadParametersPass
       // sync_scratchpad_parameters_from_host op in the device (both the
       // preamble-inserted ones and any user-written ones) using this device's
       // parameter info.
-      SmallVector<Value> syncLocks = emitCorePreambles(d, builder);
-      if (failed(emitSequencePreambles(d, builder)))
+      SmallVector<Value> syncLocks;
+      if (failed(emitCorePreambles(d, builder, syncLocks)) ||
+          failed(emitSequencePreambles(d, builder)))
         return signalPassFailure();
       uint32_t scratchpadSize = static_cast<uint32_t>(allParams.size() * 4);
       lowerSyncParametersOps(d, scratchpadSize, paramEntries, syncLocks);
