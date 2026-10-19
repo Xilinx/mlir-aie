@@ -63,12 +63,14 @@ extern "C" void experts(bfloat16 *restrict row, bfloat16 *restrict tile,
   if (step == 0)
     for (int o = 0; o < H; o++)
       sum[o] = 0.0f;
-  int32_t ids[EXPERTS_TOP_K];
-  __builtin_memcpy_inline(ids, row + H + 2 * EXPERTS_TOP_K, sizeof(ids));
+  // Each id is an int32 in two bf16 slots, low half first.
+  const bfloat16 *ids = row + H + 2 * EXPERTS_TOP_K;
   float weight = 0.0f;
   bool chosen = false;
   for (int j = 0; j < EXPERTS_TOP_K; j++)
-    if (ids[j] == e) {
+    if ((int32_t)(__builtin_bit_cast(uint16_t, ids[2 * j]) |
+                  (uint32_t)__builtin_bit_cast(uint16_t, ids[2 * j + 1])
+                      << 16) == e) {
       weight += (float)row[H + 2 * j];
       chosen = true;
     }
