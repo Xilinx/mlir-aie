@@ -839,7 +839,15 @@ def _conv2dk3_bias(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
-            alignments=_vector_args(0, 1, 2, 3, 4 + len(extra)) + ((4, 32),),
+            # A row of 8k + 4 output pixels is stored 4 pixels (32 bytes) at a
+            # time, so its output only needs 32-byte alignment.
+            alignments=_vector_args(0, 1, 2, 3)
+            + ((4, 32),)
+            + (
+                ((4 + len(extra), 32),)
+                if out_width % 8
+                else _vector_args(4 + len(extra))
+            ),
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, *((Param,) * len(extra)), Out, *((Param,) * 8)),
             reference=reference,
@@ -975,7 +983,11 @@ def conv2dk1_i8(
             rounding=rounding,
         )
         tolerance = Tolerance.exact(note="the reference models the rounding mode")
-        alignments = _vector_args(0, 1, 2 + len(extra)) + ((2, 32),)
+        # A row of 8k + 4 pixels goes 4 pixels (32 bytes) at a time.
+        out_align = (
+            ((2 + len(extra), 32),) if input_width % 8 else _vector_args(2 + len(extra))
+        )
+        alignments = _vector_args(0, 1) + ((2, 32),) + out_align
     elif rounding == "conv_even":
         reference = conv2dk1_i8_even_ref
         tolerance = Tolerance.exact(note="the reference models the rounding mode")
