@@ -218,7 +218,7 @@ class Affine:
             return self._reclamped(lambda e: e // c, lambda b: b // c)
         if isinstance(d, Affine):
             # floor(q u / u) = q, wherever u is not 0
-            if d.value is self.value and not (self.down or d.down) and d.scale:
+            if d.value is self.value and not self.down and d.linear and d.scale:
                 q, r = divmod(self.scale, d.scale)
                 if not r and self.bias == q * d.bias:
                     return q

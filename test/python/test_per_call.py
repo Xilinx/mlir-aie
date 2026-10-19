@@ -130,6 +130,13 @@ def test_an_expression_divides_by_the_raw_per_call_value_it_is_a_multiple_of():
         (n * 4 + 1) // n
 
 
+def test_an_expression_does_not_divide_by_a_clamped_or_wrapped_one():
+    n = per_call("n")
+    for divisor in ((n + 0).clamp(1, 8), n % 8, n % 8 + 0):
+        with pytest.raises(TypeError, match="no expression"):
+            (n * 4) // divisor
+
+
 def test_a_printed_expression_is_python_that_evaluates_to_its_value():
     p = per_call()
     exprs = [
