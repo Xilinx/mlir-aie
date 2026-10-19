@@ -28,6 +28,8 @@ constexpr int KEEP = 300;
 constexpr int RANKS = 768;
 constexpr int ANCHORS = 6400 + 1600 + 400;
 constexpr int CHUNK = YOLO_DETECT_CHUNK;
+static_assert(6400 % CHUNK == 0 && 8000 % CHUNK == 0,
+              "a chunk stays within one level");
 
 static int level_of(int anchor) {
   return anchor < 6400 ? 0 : (anchor < 8000 ? 1 : 2);
@@ -46,15 +48,20 @@ static int32_t f32_bits(int32_t num, int exp2) {
   return sign | uint32_t(msb + exp2 + 127) << 23 | mantissa;
 }
 
-// Positions, by rank from the highest down, of `n` keys in a stable order;
-// keys[i] is the rank of entry i. Writes to `first` the entries taking the
-// top KEEP places. `hist` is RANKS words of scratch.
-template <typename Key>
-static void top_keep(Key key, int n, int32_t *hist, int16_t *first) {
+// Places, from the highest rank down and stable within a rank, of the
+// `rows` x `cols` entries, entry (r, c) of rank row_key(r)(c); writes to
+// `first` the entries taking the top KEEP places. `hist` is RANKS words of
+// scratch.
+template <typename RowKey>
+static void top_keep(int rows, int cols, RowKey row_key,
+                     int32_t *__restrict hist, int16_t *__restrict first) {
   for (int r = 0; r < RANKS; r++)
     hist[r] = 0;
-  for (int i = 0; i < n; i++)
-    hist[key(i)]++;
+  for (int r = 0; r < rows; r++) {
+    const auto key = row_key(r);
+    for (int c = 0; c < cols; c++)
+      hist[key(c)]++;
+  }
   // hist[r] becomes the first place of rank r, ranks taken from the top.
   int32_t place = 0;
   for (int r = RANKS - 1; r >= 0; r--) {
@@ -62,28 +69,38 @@ static void top_keep(Key key, int n, int32_t *hist, int16_t *first) {
     hist[r] = place;
     place += count;
   }
-  for (int i = 0; i < n; i++) {
-    const int32_t at = hist[key(i)]++;
-    if (at < KEEP)
-      first[at] = i;
+  for (int r = 0; r < rows; r++) {
+    const auto key = row_key(r);
+    for (int c = 0; c < cols; c++) {
+      const int32_t at = hist[key(c)]++;
+      if (at < KEEP)
+        first[at] = r * cols + c;
+    }
   }
+}
+
+static int popcount8(uint32_t byte) {
+  byte = byte - ((byte >> 1) & 0x55);
+  byte = (byte & 0x33) + ((byte >> 2) & 0x33);
+  return (byte + (byte >> 4)) & 0x0f;
 }
 
 extern "C" {
 
-// top: per anchor, the class logit with the highest score. ONNX Runtime's
-// float32 sigmoid is not monotonic where it saturates, so the scores, not
-// the logits, are compared.
+// top: per anchor, the rank of its best class score. ONNX Runtime's
+// float32 sigmoid is not monotonic where it saturates, so the scores'
+// ranks, not the logits, are compared; only the best rank is kept.
 void yolo_detect_max(const int8_t *__restrict records,
-                     const int16_t *__restrict rank, int8_t *__restrict top,
+                     const int16_t *__restrict rank, int16_t *__restrict top,
                      int32_t chunk) {
   event0();
+  const int16_t *ranks = rank + level_of(chunk * CHUNK) * 256 + 128;
   for (int a = 0; a < CHUNK; a++) {
-    const int16_t *ranks = rank + level_of(chunk * CHUNK + a) * 256 + 128;
-    int8_t best = records[a * CLASSES];
-    for (int c = 1; c < CLASSES; c++) {
-      const int8_t v = records[a * CLASSES + c];
-      best = ranks[v] > ranks[best] ? v : best;
+    int16_t best = 0;
+    AIE_LOOP_UNROLL_FULL
+    for (int c = 0; c < CLASSES; c++) {
+      const int16_t r = ranks[records[a * CLASSES + c]];
+      best = r > best ? r : best;
     }
     top[chunk * CHUNK + a] = best;
   }
@@ -93,28 +110,34 @@ void yolo_detect_max(const int8_t *__restrict records,
 // first: the KEEP anchors in score order. picked: one bit per anchor.
 // row: for the k-th picked anchor by index, its place in `first`.
 // count: the gather's running count of picked anchors, reset here.
-void yolo_detect_select(const int8_t *__restrict top,
+void yolo_detect_select(const int16_t *__restrict top,
                         const int16_t *__restrict rank,
                         int32_t *__restrict hist, int16_t *__restrict first,
                         uint8_t *__restrict picked, int16_t *__restrict row,
                         int32_t *__restrict count) {
   event0();
-  top_keep([&](int a) { return rank[level_of(a) * 256 + top[a] + 128]; },
-           ANCHORS, hist, first);
+  static_assert(ANCHORS / 8 <= 2 * RANKS, "the prefix counts reuse hist");
+  top_keep(
+      ANCHORS, 1, [&](int a) { return [&, a](int) { return top[a]; }; }, hist,
+      first);
   for (int i = 0; i < ANCHORS / 8; i++)
     picked[i] = 0;
   for (int k = 0; k < KEEP; k++)
     picked[first[k] / 8] |= 1 << (first[k] % 8);
-  // Number the picked anchors in index order, as the gather meets them.
-  int k = 0;
-  for (int a = 0; a < ANCHORS; a++)
-    if (picked[a / 8] >> (a % 8) & 1) {
-      for (int place = 0; place < KEEP; place++)
-        if (first[place] == a) {
-          row[k++] = place;
-          break;
-        }
-    }
+  // The picked anchors before each byte of `picked`, then each one's
+  // number in index order, as the gather meets them.
+  int16_t *before = reinterpret_cast<int16_t *>(hist);
+  int16_t n = 0;
+  for (int i = 0; i < ANCHORS / 8; i++) {
+    before[i] = n;
+    n += popcount8(picked[i]);
+  }
+  for (int place = 0; place < KEEP; place++) {
+    const int a = first[place];
+    const int k =
+        before[a / 8] + popcount8(picked[a / 8] & ((1u << (a % 8)) - 1));
+    row[k] = place;
+  }
   count[0] = 0;
   event1();
 }
@@ -152,10 +175,13 @@ void yolo_detect_finish(const int8_t *__restrict candidates,
                         int32_t box_shift1, int32_t box_shift2) {
   event0();
   top_keep(
-      [&](int i) {
-        return rank[level_of(first[i / CLASSES]) * 256 + candidates[i] + 128];
+      KEEP, CLASSES,
+      [&](int r) {
+        const int16_t *ranks = rank + level_of(first[r]) * 256 + 128;
+        const int8_t *row = candidates + r * CLASSES;
+        return [=](int c) { return ranks[row[c]]; };
       },
-      KEEP * CLASSES, hist, best);
+      hist, best);
   const int32_t shifts[3] = {box_shift0, box_shift1, box_shift2};
   for (int k = 0; k < KEEP; k++) {
     const int r = best[k] / CLASSES;

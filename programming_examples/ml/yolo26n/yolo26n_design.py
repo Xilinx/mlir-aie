@@ -1056,13 +1056,14 @@ class SegmentDesign:
             np.ndarray[(6 * op.dst.height,), np.dtype[np.int32]], name="detections"
         )
         flags = [f"-DYOLO_DETECT_CHUNK={chunk}"]
+        top_t = np.ndarray[(anchors,), np.dtype[np.int16]]
         k_max = self.function(
             "yolo_detect_max",
             "yolo_detect.cc",
             [
                 row(chunk * 80),
                 np.ndarray[(768,), np.dtype[np.int16]],
-                row(anchors),
+                top_t,
                 np.int32,
             ],
             flags,
@@ -1075,7 +1076,7 @@ class SegmentDesign:
         picked_t = np.ndarray[(anchors // 8,), np.dtype[np.uint8]]
         k_select = bind(
             "yolo_detect_select",
-            [row(anchors), ranks_t, words_t, keep_t, picked_t, keep_t, count_t],
+            [top_t, ranks_t, words_t, keep_t, picked_t, keep_t, count_t],
         )
         k_gather = bind(
             "yolo_detect_gather",
@@ -1125,7 +1126,7 @@ class SegmentDesign:
             out.release(1)
 
         buffers = [
-            Buffer(row(anchors)),
+            Buffer(top_t),
             Buffer(initial_value=rank_table),
             Buffer(words_t),
             Buffer(keep_t),
