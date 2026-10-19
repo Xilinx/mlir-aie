@@ -152,6 +152,11 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [sample_select.cc](./sample/sample_select.cc) | AIE API | One column's half of exact top-k sampling: reduces its slice of the logits to a summary (the entries above the k-th largest, and a bitmap of the ties at it); geometry via `-DSAMPLE_*`, shared with [sample.h](./sample/sample.h) | `bfloat16` → `int32_t` |
 | [sample_combine.cc](./sample/sample_combine.cc) | Generic C | Draws one token from every column's summary, bit for bit as `aie.iron.kernels.sample.sample_ref` does: IEEE soft-float weights through [exp64.h](./sample/exp64.h), summed exactly in fixed point | `int32_t` |
 
+## ssm
+| Name | Coding style | Purpose | Datatypes |
+|-|-|-|-|
+| [selective_scan.cc](./ssm/selective_scan.cc) | Generic C | Mamba2's state space recurrence for one head over a block of rows, the float32 state carried across calls. Scalar first pass | `bfloat16`, `float32` → `bfloat16`, `float32` |
+
 ## transformer
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|

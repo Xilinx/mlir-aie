@@ -247,6 +247,15 @@ once.
     options:
       show_root_heading: false
 
+## State space models
+
+`selective_scan` runs Mamba2's recurrence for one head over a block of rows,
+its float32 state carried from call to call.
+
+::: iron.kernels.ssm
+    options:
+      show_root_heading: false
+
 ## FastFlowLM Gemma 4
 
 ::: iron.kernels.flm_gemma4
