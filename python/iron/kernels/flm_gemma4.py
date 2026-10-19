@@ -2235,7 +2235,7 @@ def flm_gemma4_decode_per_layer_up(
     """Build the per-layer-input up projection, from ``flm_gemma4/decode_per_layer_up.cc``.
 
     ``per_layer_up_begin(x)`` gates the layer's per-layer input.
-    ``bf16_proj_zero``, ``bf16_proj_mvm`` and ``bf16_proj_store`` implement
+    ``bf16_proj_zero``, ``per_layer_up_mvm`` and ``per_layer_up_store`` implement
     the projection from ``pli_d`` up to ``model_dim``. The design streams its
     32 by 256 bf16 weight blocks. ``per_layer_up_finish(x, y)`` RMS-normalizes
     the result, adds the residual and scales it by the layer scale. ``x`` is
@@ -2251,7 +2251,6 @@ def flm_gemma4_decode_per_layer_up(
     """
     bf16 = np.dtype[bfloat16]
     d, pli = geometry.model_dim, geometry.pli_d
-    w_ty = np.ndarray[(_DECODE_BF16_BLOCK,), bf16]
     x_ty = np.ndarray[(2 * (pli + d) + 32,), bf16]
     y_ty = np.ndarray[(d,), bf16]
     fn = _decode_kernel(
@@ -2263,21 +2262,123 @@ def flm_gemma4_decode_per_layer_up(
         locks,
         geometry,
     )
-    bind = fn.object_file.bind
-    fn.per_layer_up_finish = bind("per_layer_up_finish", [x_ty, y_ty])
-    fn.bf16_proj_zero = bind("bf16_proj_zero", [np.ndarray[(_BF16_PROJ_M,), _F32]])
-    fn.bf16_proj_mvm = bind(
-        "bf16_proj_mvm",
-        [w_ty, x_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
-    )
-    fn.bf16_proj_store = bind(
-        "bf16_proj_store",
-        [y_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
-    )
+    fn.per_layer_up_finish = fn.object_file.bind("per_layer_up_finish", [x_ty, y_ty])
     return fn
 
 
 _BF16_PROJ_M, _BF16_PROJ_K = 32, 256
+
+
+def _bf16_proj_helper(symbol, helper, arg_types, roles, geometry):
+    if not _arch_traits().bfp16:
+        raise NotImplementedError(f"{symbol}() is only available on aie2p.")
+    if geometry not in (FLM_GEMMA4_E2B_DECODE, FLM_GEMMA4_E4B_DECODE):
+        raise ValueError(
+            f"{symbol}: builds only FLM_GEMMA4_E2B_DECODE and "
+            f"FLM_GEMMA4_E4B_DECODE, not {geometry}"
+        )
+    return _make_extern(
+        symbol,
+        _kernel_source("flm_gemma4/decode_bf16_proj_helper.cc"),
+        arg_types,
+        compile_flags=[
+            *geometry.flags(),
+            "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
+            f"-DBF16_PROJ_HELPER={helper}",
+            f"-DBF16_PROJ_SYMBOL={symbol}",
+        ],
+        inline=True,
+        contract=KernelContract(
+            trace=Trace.none(_DECODE_UNTIMED),
+            roles=roles,
+            unsupported=_DECODE_UNTIMED,
+        ),
+    )
+
+
+def flm_gemma4_decode_bf16_proj_zero(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """Zero one 32-element float projection accumulator, inlined into its core."""
+    return _bf16_proj_helper(
+        "bf16_proj_zero",
+        0,
+        [np.ndarray[(_BF16_PROJ_M,), _F32]],
+        (Out,),
+        geometry,
+    )
+
+
+def _bf16_proj_mvm(symbol, x_size, geometry):
+    return _bf16_proj_helper(
+        symbol,
+        1,
+        [
+            np.ndarray[(_DECODE_BF16_BLOCK,), _BF16],
+            np.ndarray[(x_size,), _BF16],
+            np.ndarray[(_BF16_PROJ_M,), _F32],
+            np.int32,
+            np.int32,
+        ],
+        (In, In, InOut, Param, Param),
+        geometry,
+    )
+
+
+def _bf16_proj_store(symbol, y_size, geometry):
+    return _bf16_proj_helper(
+        symbol,
+        2,
+        [
+            np.ndarray[(y_size,), _BF16],
+            np.ndarray[(_BF16_PROJ_M,), _F32],
+            np.int32,
+            np.int32,
+        ],
+        (Out, In, Param, Param),
+        geometry,
+    )
+
+
+def flm_gemma4_decode_proj_layer_embedding_mvm(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    return _bf16_proj_mvm("proj_layer_embedding_mvm", geometry.model_dim, geometry)
+
+
+def flm_gemma4_decode_proj_layer_embedding_store(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    return _bf16_proj_store("proj_layer_embedding_store", geometry.pli_d, geometry)
+
+
+def flm_gemma4_decode_gate_layer_embedding_mvm(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    return _bf16_proj_mvm(
+        "gate_layer_embedding_mvm", geometry.model_dim + geometry.pli_d, geometry
+    )
+
+
+def flm_gemma4_decode_gate_layer_embedding_store(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    return _bf16_proj_store(
+        "gate_layer_embedding_store", geometry.model_dim + geometry.pli_d, geometry
+    )
+
+
+def flm_gemma4_decode_per_layer_up_mvm(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    size = 2 * (geometry.pli_d + geometry.model_dim) + 32
+    return _bf16_proj_mvm("per_layer_up_mvm", size, geometry)
+
+
+def flm_gemma4_decode_per_layer_up_store(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    return _bf16_proj_store("per_layer_up_store", geometry.model_dim, geometry)
 
 
 def flm_gemma4_bf16_proj_core_ref(w, x):
@@ -2342,9 +2443,10 @@ def flm_gemma4_decode_proj_layer_embedding(
 ) -> ExternalFunction:
     """Build the per-layer-input embedding projection, from ``flm_gemma4/decode_proj_layer_embedding.cc``.
 
-    ``bf16_proj_zero``, ``bf16_proj_mvm`` and ``bf16_proj_store`` project the
-    layer input ``x0`` (``model_dim`` bf16) down to ``pli_d``. The design
-    streams its 32 by 256 bf16 weight blocks. Then
+    ``bf16_proj_zero``, ``proj_layer_embedding_mvm`` and
+    ``proj_layer_embedding_store`` project the layer input ``x0``
+    (``model_dim`` bf16) down to ``pli_d``. The design streams its 32 by 256
+    bf16 weight blocks. Then
     ``proj_layer_embedding_finish(norm_w, x0_per_layer, x_proj, y)`` scales,
     RMS-normalizes and adds the token's per-layer embedding ``x0_per_layer``
     (``pli_d``), and scales again, in the scratch ``x_proj`` (``pli_d``).
@@ -2362,8 +2464,6 @@ def flm_gemma4_decode_proj_layer_embedding(
     d, pli = geometry.model_dim, geometry.pli_d
     pli_ty = np.ndarray[(pli,), bf16]
     y_ty = np.ndarray[(pli + d + 32,), bf16]
-    w_ty = np.ndarray[(_DECODE_BF16_BLOCK,), bf16]
-    x_ty = np.ndarray[(d,), bf16]
     fn = _decode_kernel(
         "proj_layer_embedding",
         "proj_layer_embedding_finish",
@@ -2372,16 +2472,6 @@ def flm_gemma4_decode_proj_layer_embedding(
         {},
         locks,
         geometry,
-    )
-    bind = fn.object_file.bind
-    fn.bf16_proj_zero = bind("bf16_proj_zero", [np.ndarray[(_BF16_PROJ_M,), _F32]])
-    fn.bf16_proj_mvm = bind(
-        "bf16_proj_mvm",
-        [w_ty, x_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
-    )
-    fn.bf16_proj_store = bind(
-        "bf16_proj_store",
-        [pli_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
     )
     return fn
 
@@ -2394,9 +2484,10 @@ def flm_gemma4_decode_gate_layer_embedding(
 
     ``gate_layer_embedding_begin(x, y)`` copies the layer output ``x``
     (``model_dim`` bf16, a buffer of the tile to the left) into ``y``.
-    ``bf16_proj_zero``, ``bf16_proj_mvm`` and ``bf16_proj_store`` project it
-    to ``pli_d``. The design streams its 32 by 256 bf16 weight blocks.
-    ``gate_layer_embedding_finish(y)`` applies the activation into
+    ``bf16_proj_zero``, ``gate_layer_embedding_mvm`` and
+    ``gate_layer_embedding_store`` project it to ``pli_d``. The design streams
+    its 32 by 256 bf16 weight blocks. ``gate_layer_embedding_finish(y)`` applies
+    the activation into
     ``y + model_dim``. ``y`` is ``model_dim + pli_d`` bf16.
 
     ``y`` needs a 64-byte-aligned base pointer; the kernel also stores
@@ -2408,7 +2499,6 @@ def flm_gemma4_decode_gate_layer_embedding(
     """
     bf16 = np.dtype[bfloat16]
     d = geometry.model_dim
-    w_ty = np.ndarray[(_DECODE_BF16_BLOCK,), bf16]
     x_ty = np.ndarray[(d,), bf16]
     y_ty = np.ndarray[(d + geometry.pli_d,), bf16]
     fn = _decode_kernel(
@@ -2421,16 +2511,8 @@ def flm_gemma4_decode_gate_layer_embedding(
         geometry,
         lut=True,
     )
-    bind = fn.object_file.bind
-    fn.gate_layer_embedding_finish = bind("gate_layer_embedding_finish", [y_ty])
-    fn.bf16_proj_zero = bind("bf16_proj_zero", [np.ndarray[(_BF16_PROJ_M,), _F32]])
-    fn.bf16_proj_mvm = bind(
-        "bf16_proj_mvm",
-        [w_ty, y_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
-    )
-    fn.bf16_proj_store = bind(
-        "bf16_proj_store",
-        [y_ty, np.ndarray[(_BF16_PROJ_M,), _F32], np.int32, np.int32],
+    fn.gate_layer_embedding_finish = fn.object_file.bind(
+        "gate_layer_embedding_finish", [y_ty]
     )
     return fn
 
