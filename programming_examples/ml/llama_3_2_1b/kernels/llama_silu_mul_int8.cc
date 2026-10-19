@@ -139,8 +139,8 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
   ::aie::vector<float, kVec> up_scale_v =
       ::aie::broadcast<float, kVec>(up_scale);
 
-  // Pass A: absmax of s_f * u_f (no fp32 array kept across loops, same
-  // discipline as llama_rmsnorm_int8_dyn).
+  // Pass A: absmax of s_f * u_f (see llama_rmsnorm_int8_dyn for why no
+  // fp32 array is kept across loops here).
   float absmax = 0.0f;
   for (int c = 0; c < kChunks; c++) {
     ::aie::vector<float, kVec> su =

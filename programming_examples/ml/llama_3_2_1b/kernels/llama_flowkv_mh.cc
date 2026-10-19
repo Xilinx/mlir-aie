@@ -273,8 +273,8 @@ llama_flowkv_mh_selfcal(int8_t *restrict q_chunk, float *restrict k_slot,
     const float inv_sum = sw_recip(sum);
 
     // 3a) Pass A: compute sv acc[j] on the fly, kHD lanes at a time, track
-    // absmax (no fp32 array kept across loops -- acc_f is consumed within
-    // this pass, same discipline as llama_rmsnorm_int8_dyn).
+    // absmax (see llama_rmsnorm_int8_dyn for why no fp32 array is kept
+    // across loops here).
     float absmax = 0.0f;
     {
       ::aie::accum<accfloat, kHD> acc;
