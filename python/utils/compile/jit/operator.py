@@ -17,9 +17,27 @@ from enum import Enum
 from types import FunctionType
 from typing import Any, ClassVar, Self, dataclass_transform
 
+import numpy as np
+
 from ...hostruntime import set_current_device
 from .declaration import Declaration
 from .params import param, tunable
+
+
+def _key_value(value: Any) -> Any:
+    """Return `value` as a key holds it, one spelling per value.
+
+    An Enum is its value, so renaming a member moves no key; a NumPy scalar
+    type is its dtype and a NumPy integer its int, so ``np.float32`` and
+    ``np.dtype(np.float32)``, or ``np.int64(64)`` and ``64``, share a key.
+    """
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, type) and issubclass(value, np.generic):
+        return np.dtype(value)
+    if isinstance(value, np.integer):
+        return int(value)
+    return value
 
 
 class Unresolvable(ValueError):
@@ -241,14 +259,10 @@ class Operator:
         resolved), since the resolved tunables depend on it.
         """
         dev = self._resolved_for
-        # An Enum is its value, so renaming a member moves no key.
         key = (
             type(self),
             ("device", None if dev is None else dev.name),
-            *(
-                (n, v.value if isinstance(v := vars(self)[n], Enum) else v)
-                for n in self.declaration.key
-            ),
+            *((n, _key_value(vars(self)[n])) for n in self.declaration.key),
         )
         return key if self.trace is None else (*key, ("trace", self.trace))
 
@@ -260,10 +274,7 @@ class Operator:
             (
                 ("device", None if dev is None else dev.name),
                 ("trace", self.trace),
-                *(
-                    (n, v.value if isinstance(v := vars(self)[n], Enum) else v)
-                    for n in self.declaration.params
-                ),
+                *((n, _key_value(vars(self)[n])) for n in self.declaration.params),
             ),
         )
 

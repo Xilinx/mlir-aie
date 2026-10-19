@@ -214,6 +214,23 @@ def test_the_keys_are_the_layout_for_cores_and_every_parameter_for_a_build():
     assert traced.design_key()[1][:2] == (("device", "npu2_4col"), ("trace", "t"))
 
 
+class Typed(Operator):
+    M: int = param()
+    dtype: object = param(default=np.float32, array=True)
+    x = In(M)
+
+
+def test_a_key_holds_one_spelling_of_each_value():
+    spellings = [
+        (Typed(M=64), Typed(M=np.int64(64))),
+        (Typed(M=8), Typed(M=8, dtype=np.dtype(np.float32))),
+    ]
+    for a, b in spellings:
+        for key in (Operator.array_key, Operator.design_key):
+            assert key(a) == key(b) and hash(key(a)) == hash(key(b))
+            assert repr(key(a)) == repr(key(b))
+
+
 def test_an_operator_prints_its_shown_parameters():
     assert repr(Scale(M=8)) == (
         "Scale(M=8, rows=16, gated=False, factor=1.0, tile=None, "
