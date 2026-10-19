@@ -683,6 +683,10 @@ class SegmentDesign:
             for double in (True, False):
                 depths = dict(self.schedule(op.dst, windows, double))
                 window = 2 if op.kernel == 1 else 3
+                if double and op.stride > 1:
+                    # The worker holds its whole window while it computes, so
+                    # the producer runs ahead only into rows past it.
+                    depths[windows[0][0].name] += op.stride
                 held = sum(
                     self.l1_rows(s, depths[s.name], window) * s.row_bytes
                     for s, _, _ in windows
