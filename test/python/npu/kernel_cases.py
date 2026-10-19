@@ -2362,6 +2362,27 @@ CASES += [
         tag="window",
         smoke=True,
     ),
+    # A window that ends inside the block on the row-group path: rows 21 to
+    # 63 of query block 1 keep no key of key block 0. From the zeroed state
+    # their weights are 0 anyway, so the dead-row suffix itself is only
+    # observable from a lowest running maximum, as in test_mha_e2e.py.
+    check(
+        "mha_softmax",
+        dict(window=21),
+        params=((0, 1),),
+        scalars=(128, 128),
+        tag="window-dead-rows",
+        smoke=True,
+    ),
+    # Decode rows, each one query at key 99: the window keeps keys 49 to 63.
+    check(
+        "mha_softmax",
+        dict(packed=True, window=50),
+        params=((0, 0),),
+        scalars=(64, 100),
+        tag="packed-window",
+        smoke=True,
+    ),
     # 16- and 32-key blocks take the per-row path, a row read a block wide.
     check(
         "mha_softmax",

@@ -330,6 +330,8 @@ mha_softmax/4096x4/bfloat16_bfloat16+float32/causal=False/bidirectional-padded
 mha_softmax/4096x4/bfloat16_bfloat16+float32/causal=False/window=64/window
 mha_softmax/4096x4/bfloat16_bfloat16+float32/diagonal
 mha_softmax/4096x4/bfloat16_bfloat16+float32/diagonal-padded
+mha_softmax/4096x4/bfloat16_bfloat16+float32/packed=True/window=50/packed-window
+mha_softmax/4096x4/bfloat16_bfloat16+float32/window=21/window-dead-rows
 mha_softmax/512x4/bfloat16_bfloat16+float32/causal=False/window=32/window-padded
 mm/16x1008x16x4/int8_int32
 mm/16x512x32x4/int8_int32
