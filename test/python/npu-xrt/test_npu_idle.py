@@ -15,6 +15,7 @@ seconds and exits. ``xrt-smi`` reports its pid while it holds the context, so
 """
 
 import argparse
+import re
 import subprocess
 import sys
 import time
@@ -55,6 +56,13 @@ def run_copy(seed: int) -> None:
     np.testing.assert_array_equal(c.numpy(), host)
 
 
+def pids_in(message: str) -> list[int]:
+    """The pids a ``wait_idle`` message lists; another NPU user may be among them."""
+    listed = re.fullmatch(r"the NPU is in use by pid \[(.*)\]: waiting", message)
+    assert listed is not None, message
+    return [int(pid) for pid in listed.group(1).split(", ")]
+
+
 def holder() -> subprocess.Popen:
     """Start a process that holds a context on the NPU for ``HOLD`` seconds."""
     process = subprocess.Popen(
@@ -75,11 +83,11 @@ def test_another_process_on_the_npu_is_named_and_waited_out():
         start = time.monotonic()
         wait_idle(said.append, holding=True)
         assert process.poll() is not None
-        assert said == [f"the NPU is in use by pid [{process.pid}]: waiting"]
+        assert process.pid in pids_in(said[0])
         assert time.monotonic() - start > 1.0
     finally:
         process.wait()
-    assert other_npu_users(holding=True) == set()
+    assert process.pid not in other_npu_users(holding=True)
 
 
 def test_run_interleaved_times_nothing_while_another_process_holds_the_npu():
@@ -92,7 +100,7 @@ def test_run_interleaved_times_nothing_while_another_process_holds_the_npu():
         )
         assert process.poll() is not None
         assert stats.n == 2
-        assert logged[0] == f"the NPU is in use by pid [{process.pid}]: waiting"
+        assert process.pid in pids_in(logged[0])
     finally:
         process.wait()
 
