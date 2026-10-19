@@ -20,21 +20,29 @@ from .sample import _positive
 _STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
 
 
-def selective_scan_sample(rng, calls: int, *, rows: int, head_dim: int, state: int):
-    """Return one head's blocks, A < 0 so its state decays, from a random state."""
+def selective_scan_sample(
+    rng, calls: int, *, rows: int, head_dim: int, state: int, blocks: int
+):
+    """Return heads of ``blocks`` blocks, A < 0 so the state decays, each from a random state."""
     block = rng.standard_normal((calls, rows * (head_dim + 2 * state + 1))) * 0.5
-    head = np.concatenate(
-        [
-            [rng.uniform(-4, 0)],  # dt_bias
-            [-rng.uniform(0.5, 16)],  # A = -exp(A_log)
-            [rng.uniform(0, 2)],  # D
-            rng.standard_normal(head_dim * state),
-        ]
-    )
-    return [block.astype(bfloat16), np.tile(head, (calls, 1)).astype(np.float32)]
+    heads = [
+        np.concatenate(
+            [
+                [rng.uniform(-4, 0)],  # dt_bias
+                [-rng.uniform(0.5, 16)],  # A = -exp(A_log)
+                [rng.uniform(0, 2)],  # D
+                rng.standard_normal(head_dim * state),
+            ]
+        )
+        for _ in range(-(-calls // blocks))
+    ]
+    head = np.repeat(np.stack(heads), blocks, axis=0)[:calls]
+    return [block.astype(bfloat16), head.astype(np.float32)]
 
 
-def selective_scan_ref(block, head, valid, *, rows: int, head_dim: int, state: int):
+def selective_scan_ref(
+    block, head, valid, *, rows: int, head_dim: int, state: int, blocks: int
+):
     """Numpy reference for [`selective_scan`][iron.kernels.ssm.selective_scan]: call ``b`` is block ``b``.
 
     Returns ``(final, y)`` per call.
@@ -45,10 +53,11 @@ def selective_scan_ref(block, head, valid, *, rows: int, head_dim: int, state: i
     x = block[:, : rows * head_dim].reshape(calls, rows, head_dim)
     bc = block[:, rows * head_dim : -rows].reshape(calls, rows, 2, state)
     dt = block[:, -rows:]
-    s = head[0, 3:].reshape(head_dim, state).copy()
     final = np.zeros((calls, head_dim * state), np.float32)
     y = np.zeros((calls, rows, head_dim), np.float32)
     for c in range(calls):
+        if c % blocks == 0:
+            s = head[c, 3:].reshape(head_dim, state).copy()
         dt_bias, A, D = head[c, :3]
         for t in range(min(int(valid), rows)):
             B, C = bc[c, t]
@@ -70,7 +79,7 @@ def _scan_bound(*args, **geometry):
 
 
 def selective_scan(
-    *, rows: int = 16, head_dim: int = 16, state: int = 32
+    *, rows: int = 16, head_dim: int = 16, state: int = 32, blocks: int = 1
 ) -> ExternalFunction:
     """Mamba2's state space recurrence for one head, a block of rows a call.
 
@@ -78,17 +87,19 @@ def selective_scan(
     x (``rows`` x ``head_dim``), then bc (``rows`` rows of the group's
     ``state`` B then ``state`` C), then dt (``rows``). ``head`` is float32
     ``(dt_bias, A, D)`` then the state before the head's first block,
-    ``(head_dim, state)``. Block ``b`` of a head (0 first) runs its first
-    ``valid`` rows: ``step = softplus(dt + dt_bias)``, ``state = exp(step *
+    ``(head_dim, state)``. ``b`` counts blocks from 0, ``blocks`` to a head,
+    and block ``b`` loads the state from ``head`` when it is a head's first.
+    Each block runs its first ``valid`` rows: ``step = softplus(dt + dt_bias)``, ``state = exp(step *
     A) * state + step * outer(x, B)`` and ``y = state @ C + D * x``, rounded
     once to bf16; rows from ``valid`` on leave the state alone and write
     zero ``y``. The state stays in the core between blocks, and ``final``
     is it after this one. The caller gathers head ``h``'s x and dt and
-    group ``h // (heads // groups)``'s B and C into ``block``. ``head_dim``
-    may be a slice of the head's: the rows of state are independent.
+    group ``h // (heads // groups)``'s B and C into ``block``, so each
+    group's B and C stream ``heads // groups`` times. ``head_dim`` may be a
+    slice of the head's: the rows of state are independent.
     """
-    _positive("selective_scan", rows=rows, head_dim=head_dim, state=state)
-    geometry = dict(rows=rows, head_dim=head_dim, state=state)
+    geometry = dict(rows=rows, head_dim=head_dim, state=state, blocks=blocks)
+    _positive("selective_scan", **geometry)
     return _make_extern(
         "selective_scan",
         _kernel_source("ssm/selective_scan.cc"),
@@ -105,6 +116,7 @@ def selective_scan(
             f"-DSCAN_ROWS={rows}",
             f"-DSCAN_HEAD_DIM={head_dim}",
             f"-DSCAN_STATE={state}",
+            f"-DSCAN_BLOCKS={blocks}",
         ],
         contract=KernelContract(
             trace=Trace.whole_call(),

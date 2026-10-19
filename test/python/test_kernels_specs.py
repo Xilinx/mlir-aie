@@ -915,8 +915,9 @@ KERNEL_SPECS: list[KernelSpec] = [
         invalid_kwargs=[
             (dict(top_k=0), "top_k must be a positive integer"),
             (dict(rows=3), "rows must divide"),
+            (dict(top_k=5), "top_k at most num_experts"),
         ],
-        shape_checks=[(dict(hidden=128, top_k=4), 0, (136,))],
+        shape_checks=[(dict(hidden=128, top_k=4), 0, (144,))],
     ),
     KernelSpec(
         name="selective_scan",

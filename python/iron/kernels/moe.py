@@ -110,28 +110,42 @@ def _experts_steps(hidden, width, rows, cols):
     return gate_up, gate_up + (hidden // rows) * (width // cols)
 
 
-def experts_sample(rng, calls, *, hidden, width, top_k, rows, cols):
-    """One row for every call, as a design passes it, and random weight tiles."""
-    row = np.empty(hidden + 2 * top_k, np.float32)
-    row[:hidden] = rng.standard_normal(hidden) * 0.5
-    row[hidden:] = 0
-    row[hidden::2] = rng.random(top_k)
+def _experts_row(x, weights, ids):
+    """Pack one row buffer: x, the padded weights, then the int32 ids as bf16 pairs."""
+    ids = np.ascontiguousarray(ids, np.int32).view(bfloat16)
+    return np.concatenate([np.asarray(x, bfloat16), np.asarray(weights, bfloat16), ids])
+
+
+def experts_sample(rng, calls, *, hidden, width, num_experts, top_k, rows, cols):
+    """A row per ``num_experts`` experts' tiles, as a design passes it; random tiles."""
+    row_steps = num_experts * _experts_steps(hidden, width, rows, cols)[1]
+    packed = []
+    for _ in range(-(-calls // row_steps)):
+        weights = np.zeros(2 * top_k, np.float32)
+        weights[::2] = rng.random(top_k)
+        ids = rng.choice(num_experts, top_k, replace=False)
+        packed.append(_experts_row(rng.standard_normal(hidden) * 0.5, weights, ids))
+    rows_in = np.repeat(np.stack(packed), row_steps, axis=0)[:calls]
     tiles = rng.standard_normal((calls, rows * cols)) * 0.1
-    return [np.tile(row, (calls, 1)).astype(bfloat16), tiles.astype(bfloat16)]
+    return [rows_in, tiles.astype(bfloat16)]
 
 
-def experts_ref(row, tile, *, hidden, width, top_k, rows, cols):
-    """Numpy reference for [`experts`][iron.kernels.moe.experts]: ``y`` after each call, call ``s`` being step ``s``."""
+def experts_ref(row, tile, *, hidden, width, num_experts, top_k, rows, cols):
+    """Numpy reference for [`experts`][iron.kernels.moe.experts]: ``y`` after each call, call ``c`` being step ``c``."""
     gate_up_steps, expert_steps = _experts_steps(hidden, width, rows, cols)
-    row = np.asarray(row, np.float32).reshape(-1, hidden + 2 * top_k)
+    row = np.ascontiguousarray(row, bfloat16).reshape(-1, hidden + 4 * top_k)
+    ids = row[:, hidden + 2 * top_k :].copy().view(np.int32)
+    row = row.astype(np.float32)
     tile = np.asarray(tile, np.float32).reshape(-1, rows, cols)
     y = np.zeros((len(row), hidden), np.float32)
-    total = np.zeros(hidden, np.float32)
-    for step, (r, t) in enumerate(zip(row, tile)):
-        j, s = divmod(step, expert_steps)
+    for call, (r, t) in enumerate(zip(row, tile)):
+        e, s = divmod(call % (num_experts * expert_steps), expert_steps)
+        if e == 0 and s == 0:
+            total = np.zeros(hidden, np.float32)
+        chosen = ids[call] == e
         if s == 0:
             acc = np.zeros(2 * width, np.float32)
-        if s < gate_up_steps:
+        if chosen.any() and s < gate_up_steps:
             r0, c0 = divmod(s, hidden // cols)
             r0, c0 = r0 * rows, c0 * cols
             acc[r0 : r0 + rows] += t @ r[c0 : c0 + cols]
@@ -139,43 +153,64 @@ def experts_ref(row, tile, *, hidden, width, top_k, rows, cols):
                 g = acc[:width]
                 with np.errstate(over="ignore"):
                     acc[:width] = g / (1 + np.exp(-g)) * acc[width:]
-        else:
+        elif chosen.any():
+            weight = r[hidden : hidden + 2 * top_k : 2][chosen].sum()
             r0, c0 = divmod(s - gate_up_steps, width // cols)
             r0, c0 = r0 * rows, c0 * cols
-            total[r0 : r0 + rows] += r[hidden + 2 * j] * (t @ acc[c0 : c0 + cols])
-        y[step] = total
+            total[r0 : r0 + rows] += weight * (t @ acc[c0 : c0 + cols])
+        y[call] = total
     return y.astype(bfloat16)
 
 
 def experts(
-    *, hidden: int = 64, width: int = 32, top_k: int = 2, rows: int = 8, cols: int = 32
+    *,
+    hidden: int = 64,
+    width: int = 32,
+    num_experts: int = 4,
+    top_k: int = 2,
+    rows: int = 8,
+    cols: int = 32,
 ) -> ExternalFunction:
-    """One row of a mixture of experts' feed-forward, from two input streams.
+    """A mixture of experts' feed-forward, a row at a time, from two input streams.
 
-    ``experts(row, tile, y, step)``: ``row`` is bf16 x (``hidden``) then the
-    row's ``2 * top_k`` router weights as ``router_top_k`` writes them,
-    chosen expert ``j``'s at ``2 * j``. Step ``s`` of a row (0 first) brings
-    tile ``s``, ``rows`` x ``cols`` bf16: for each chosen expert in turn,
-    the blocks of its ``gate_up`` (``2 * width`` x ``hidden``) row block by
-    row block, then those of its ``down`` (``hidden`` x ``width``). ``y`` is
-    the row's bf16 output so far; after the last step it is the sum over
-    ``j`` of weight ``j`` times ``down @ (silu(g) * u)``, ``g`` and ``u``
-    the halves of ``gate_up @ x``, in float32 and rounded once. The caller
-    picks the chosen experts' tiles from ``ids``; the kernel never reads
-    them.
+    ``experts(row, tile, y, step)``: ``row`` is bf16 x (``hidden``), then
+    the row's ``2 * top_k`` router weights as ``router_top_k`` writes them
+    (chosen expert ``j``'s at ``2 * j``), then its ``top_k`` int32 ids as
+    pairs of bf16 words. Step ``s`` brings tile ``s`` modulo a row's steps,
+    ``rows`` x ``cols`` bf16, of one fixed stream: for each of the
+    ``num_experts`` experts in order, the blocks of its ``gate_up`` (``2 *
+    width`` x ``hidden``) row block by row block, then those of its ``down``
+    (``hidden`` x ``width``). The kernel skips the tiles of experts the row
+    did not choose. ``y`` is the row's bf16 output so far; after the row's
+    last step it is the sum over ``j`` of weight ``j`` times ``down[ids[j]]
+    @ (silu(g) * u)``, ``g`` and ``u`` the halves of ``gate_up[ids[j]] @
+    x``, in float32 and rounded once. A shim BD repeats a dimension at most
+    64 times, so at Qwen3 shapes ``rows`` is 32 or more.
     """
-    _positive("experts", hidden=hidden, width=width, top_k=top_k, rows=rows, cols=cols)
+    geometry = dict(
+        hidden=hidden,
+        width=width,
+        num_experts=num_experts,
+        top_k=top_k,
+        rows=rows,
+        cols=cols,
+    )
+    _positive("experts", **geometry)
     if (2 * width) % rows or hidden % rows or hidden % cols or width % cols:
         raise ValueError(
             "experts: rows must divide 2 * width and hidden, and cols must "
             "divide hidden and width"
         )
-    geometry = dict(hidden=hidden, width=width, top_k=top_k, rows=rows, cols=cols)
+    if hidden % 2 or top_k > num_experts:
+        raise ValueError(
+            "experts: hidden must be even, so the ids are word aligned, and "
+            "top_k at most num_experts"
+        )
     return _make_extern(
         "experts",
         _kernel_source("moe/experts.cc"),
         [
-            np.ndarray[(hidden + 2 * top_k,), np.dtype[bfloat16]],
+            np.ndarray[(hidden + 4 * top_k,), np.dtype[bfloat16]],
             np.ndarray[(rows * cols,), np.dtype[bfloat16]],
             np.ndarray[(hidden,), np.dtype[bfloat16]],
             np.int32,
@@ -184,6 +219,7 @@ def experts(
         + [
             f"-DEXPERTS_HIDDEN={hidden}",
             f"-DEXPERTS_WIDTH={width}",
+            f"-DEXPERTS_EXPERTS={num_experts}",
             f"-DEXPERTS_TOP_K={top_k}",
             f"-DEXPERTS_TILE_ROWS={rows}",
             f"-DEXPERTS_TILE_COLS={cols}",
