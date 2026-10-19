@@ -170,24 +170,43 @@ def _preprocessed(pch_cmd: tuple[str, ...]) -> tuple[str, frozenset[str]] | None
         return None
     if ret.returncode != 0:
         return None
-    headers = set(re.findall(rb'^# \d+ "([^"<]+)"', ret.stdout, re.M))
+    digest = hashlib.sha256(ret.stdout).hexdigest()
+    headers = _OUTPUT_HEADERS.get(digest)
+    if headers is None:
+        headers = _OUTPUT_HEADERS[digest] = frozenset(
+            re.findall(rb'^# \d+ "([^"<]+)"', ret.stdout, re.M)
+        )
     directives: set[str] = set()
     for header in headers:
-        with contextlib.suppress(OSError):
-            directives.update(
+        try:
+            text = Path(os.fsdecode(header)).read_bytes()
+        except OSError:
+            continue
+        key = hashlib.sha256(text).digest()
+        names = _HEADER_DIRECTIVES.get(key)
+        if names is None:
+            names = _HEADER_DIRECTIVES[key] = frozenset(
                 name.decode()
                 for name in re.findall(
-                    rb"^[ \t]*#[ \t]*(?:define|undef)[ \t]+(\w+)",
-                    Path(os.fsdecode(header)).read_bytes(),
-                    re.M,
+                    rb"^[ \t]*#[ \t]*(?:define|undef)[ \t]+(\w+)", text, re.M
                 )
             )
-    return hashlib.sha256(ret.stdout).hexdigest(), frozenset(directives)
+        directives |= names
+    return digest, frozenset(directives)
+
+
+# Every kernel compile preprocesses, and most read the same headers: scanning
+# them is pure Python, so many threads at once serialize on it. Both memos are
+# keyed on content, so an edited header is still scanned again.
+_OUTPUT_HEADERS: dict[str, frozenset[bytes]] = {}
+_HEADER_DIRECTIVES: dict[bytes, frozenset[str]] = {}
 
 
 # The bare command's search paths are fixed; a caller's can gain a header at any
 # time, so only the bare command is preprocessed once per process.
 _BARE_PREPROCESSED: dict[tuple[str, ...], tuple[str, frozenset[str]] | None] = {}
+_BARE_PREPROCESSED_LOCKS: dict[tuple[str, ...], threading.Lock] = {}
+_BARE_PREPROCESSED_GUARD = threading.Lock()
 
 
 def _kernel_pch(pch_cmd: list[str]) -> str | None:
@@ -808,9 +827,16 @@ def compile_cxx_core_function(
         if all(os.path.isabs(d) for d in search_paths) and not any(
             arg.startswith(("-include", "-imacros")) for arg in others
         ):
-            if tuple(bare_cmd) not in _BARE_PREPROCESSED:
-                _BARE_PREPROCESSED[tuple(bare_cmd)] = _preprocessed(tuple(bare_cmd))
-            bare = _BARE_PREPROCESSED[tuple(bare_cmd)]
+            bare_key = tuple(bare_cmd)
+            with _BARE_PREPROCESSED_GUARD:
+                bare_lock = _BARE_PREPROCESSED_LOCKS.setdefault(
+                    bare_key, threading.Lock()
+                )
+            # Concurrent compiles of one design all need it: one runs it.
+            with bare_lock:
+                if bare_key not in _BARE_PREPROCESSED:
+                    _BARE_PREPROCESSED[bare_key] = _preprocessed(bare_key)
+            bare = _BARE_PREPROCESSED[bare_key]
             own = _preprocessed(tuple(own_cmd))
             shared = (
                 not others
