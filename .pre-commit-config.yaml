@@ -90,7 +90,8 @@ repos:
           sandbox.*/.*|
           llvm.*/.*|
           cmakeModules.*/.*|
-          ironenv/.*
+          ironenv/.*|
+          programming_examples/ml/mobilenet/(.*/)?data/.*
         )$
     - id: check-toml
     - id: check-json
