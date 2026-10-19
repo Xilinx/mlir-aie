@@ -67,6 +67,9 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
   // layout an mmul A operand reads 8 keys of 4 queries from.
   alignas(64) int8_t s[N * 4];
   alignas(64) int8_t p[N * 4];
+  // Each score's gap below its query's top, 0 to 255: it wraps exactly into
+  // a byte.
+  alignas(64) uint8_t gaps[N * 4];
 
   const aie::vector<int8, 32> mul = aie::broadcast<int8, 32>(q_mul);
   for (int i = 0; i < KD * W; i += 32)
@@ -83,39 +86,86 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
       aie::store_v(s + kb * 32, acc.template to_vector<int8>(score_shift));
     }
 
+    aie::vector<int8, 32> highest = aie::load_v<32>(s);
+    for (int kb = 1; kb < N / 8; kb++)
+      highest = aie::max(highest, aie::load_v<32>(s + kb * 32));
+    alignas(32) int8_t tops[32];
+    aie::store_v(tops, highest);
     for (int i = 0; i < 4; i++) {
-      int top = -128;
-      for (int kb = 0; kb < N / 8; kb++)
-        for (int c = 0; c < 8; c++)
-          top = s[kb * 32 + i * 8 + c] > top ? s[kb * 32 + i * 8 + c] : top;
+      int8_t top = tops[i * 8];
+      for (int c = 1; c < 8; c++)
+        top = tops[i * 8 + c] > top ? tops[i * 8 + c] : top;
+      for (int c = 0; c < 8; c++)
+        tops[i * 8 + c] = top;
+    }
+    const aie::vector<int8, 32> top_lanes = aie::load_v<32>(tops);
+    for (int kb = 0; kb < N / 8; kb++)
+      aie::store_v(reinterpret_cast<int8_t *>(gaps) + kb * 32,
+                   aie::sub(top_lanes, aie::load_v<32>(s + kb * 32)));
+    for (int i = 0; i < 4; i++) {
+      // Each entry is below 2**29, so 8 of them sum in 32 bits.
       int64_t total = 0;
-      for (int kb = 0; kb < N / 8; kb++)
+      for (int kb = 0; kb < N / 8; kb++) {
+        const uint8_t *gap = gaps + kb * 32 + i * 8;
+        uint32_t block = 0;
         for (int c = 0; c < 8; c++)
-          total += exp_table[top - s[kb * 32 + i * 8 + c]];
-      // A probability's quotient is at most 128, so it divides by restoring
-      // division on total * 2**b: 64-bit division is a libcall Peano lacks.
+          block += exp_table[gap[c]];
+        total += block;
+      }
+      // A probability's quotient is at most 128, so the top gap's divides by
+      // restoring division on total * 2**b: 64-bit division is a libcall
+      // Peano lacks.
       int64_t steps[8];
       steps[0] = total;
       for (int b = 1; b < 8; b++)
         steps[b] = steps[b - 1] + steps[b - 1];
-      for (int kb = 0; kb < N / 8; kb++)
-        for (int c = 0; c < 8; c++) {
-          int64_t rem = exp_table[top - s[kb * 32 + i * 8 + c]];
-          for (int b = 0; b < prob_shift; b++)
-            rem += rem;
-          int32_t prob = 0;
-          // Below one half rounds to 0 (a tie too, 0 being even).
-          if (rem + rem > total) {
-            for (int b = 7; b >= 0; b--)
-              if (rem >= steps[b]) {
-                rem -= steps[b];
-                prob |= 1 << b;
-              }
-            prob += rem + rem > total || (rem + rem == total && (prob & 1));
-            prob = prob > 127 ? 127 : prob;
-          }
-          p[kb * 32 + i * 8 + c] = prob;
+      int64_t rem = exp_table[0];
+      for (int b = 0; b < prob_shift; b++)
+        rem += rem;
+      int level = 0;
+      for (int b = 7; b >= 0; b--)
+        if (rem >= steps[b]) {
+          rem -= steps[b];
+          level |= 1 << b;
         }
+      level += rem + rem > total || (rem + rem == total && (level & 1));
+      // A probability depends only on its gap below the top score, and the
+      // table falls, so the rounded probability falls with the gap: walk the
+      // levels down, giving each gap the highest one it reaches. A gap
+      // reaches `level` when exp_table[gap] * 2**k, k = prob_shift + 1,
+      // exceeds bar = (2 * level - 1) * total, or equals it with `level` even
+      // (half to even); exp_table[gap] * 2**k being a multiple of 2**k, that
+      // is exp_table[gap] > (bar >> k) - (bar % 2**k == 0 && level even).
+      // bar >> k starts at most exp_table[0] and only falls; below 0, every
+      // gap left reaches the level. So the test is 32-bit.
+      const int k = prob_shift + 1;
+      const int64_t unit = (int64_t)1 << k;
+      int64_t bar = 0;
+      for (int b = 0; b < 8; b++)
+        if ((2 * level - 1) >> b & 1)
+          bar += steps[b];
+      int64_t bar_high = bar >> k;
+      int64_t bar_low = bar & (unit - 1);
+      alignas(32) int8_t by_gap[256];
+      for (int d = 0; d < 256; d += 32)
+        aie::store_v(by_gap + d, aie::zeros<int8, 32>());
+      for (int d = 0; level > 0 && d < 256; level--) {
+        const int32_t bound =
+            bar_high < 0 ? -1 : bar_high - (bar_low == 0 && (level & 1) == 0);
+        const int8_t value = level > 127 ? 127 : level;
+        while (d < 256 && exp_table[d] > bound)
+          by_gap[d++] = value;
+        // One level down, bar falls by 2 * total.
+        bar_low -= steps[1] & (unit - 1);
+        bar_high -= steps[1] >> k;
+        if (bar_low < 0) {
+          bar_low += unit;
+          bar_high--;
+        }
+      }
+      for (int kb = 0; kb < N / 8; kb++)
+        for (int c = 0; c < 8; c++)
+          p[kb * 32 + i * 8 + c] = by_gap[gaps[kb * 32 + i * 8 + c]];
     }
 
     for (int g = 0; g < HD / 8; g++) {

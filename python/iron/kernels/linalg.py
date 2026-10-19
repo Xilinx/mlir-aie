@@ -1152,8 +1152,10 @@ def attention_i8(
 
     Arguments: a ``[key_dim/8][width][8]`` row of queries, the keys
     ``[seq_len/8][key_dim][8]``, the values ``[head_dim/8][seq_len][8]``, the
-    256-entry int32 exp table (summed per row in 64 bits), the
-    output row, then ``q_mul, q_shift, score_shift, prob_shift, out_shift``.
+    256-entry int32 exp table (non-increasing, as an exp table is, and each
+    entry from 0 to below ``2**29``), the output row, then
+    ``q_mul, q_shift, score_shift, prob_shift, out_shift`` (``prob_shift`` at
+    most 30).
     ``fn.load_kv(k_row, v_row, kt, v, row)`` stores one row of the map's keys
     and values in those layouts.
 
