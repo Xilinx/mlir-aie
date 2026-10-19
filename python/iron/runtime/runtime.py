@@ -55,6 +55,7 @@ from .taskgroup import TaskGroup
 
 if TYPE_CHECKING:
     from ..configuration import DeviceConfiguration
+
     # tile_dma imports the runtime package, which imports this module.
     from ..dataflow.tile_dma import DmaEndpoint
     from ..device import Device
