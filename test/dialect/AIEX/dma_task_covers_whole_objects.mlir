@@ -529,10 +529,10 @@ module {
     %t02 = aie.tile(0, 2)
     aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.runtime_sequence(%arg0: memref<32xi32>) {
-      // expected-error@+1 {{repeat_count must be non-negative, got -2}}
       %t = aiex.dma_configure_task_for @of {
         aie.dma_bd(%arg0 : memref<32xi32> offset = 0 len = 32 sizes = [1, 1, 1, 32] strides = [0, 0, 0, 1])
         aie.end
+      // expected-error@+1 {{attribute 'repeat_count' failed to satisfy constraint: 32-bit signless integer attribute whose value is non-negative}}
       } {repeat_count = -2 : i32}
       aiex.dma_start_task(%t)
     }

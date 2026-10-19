@@ -2618,6 +2618,8 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     bool isJoin() { return getFifoIns().size() > 1; }
     bool isDistribute() { return getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
+    // The fifo whose declared object type sizes the pool on the shared tile.
+    ObjectFifoCreateOp getPoolOwner();
     std::optional<int> getRepeatCount();
     std::vector<int> getJoinTransferLengths();
     std::vector<int> getDistributeTransferLengths();

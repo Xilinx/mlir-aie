@@ -1372,7 +1372,8 @@ def AIE_DMAConfigureTaskOp
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<ConfinedAttr<I32Attr, [IntNonNegative]>,
+                                "0">:$repeat_count,
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
@@ -1459,12 +1460,11 @@ def AIE_DMAConfigureTaskForOp
 
   let arguments = (ins SymbolRefAttr:$alloc,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<ConfinedAttr<I32Attr, [IntNonNegative]>,
+                                "0">:$repeat_count,
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val);
 
   let regions = (region AnyRegion:$body);
-
-  let hasVerifier = 1;
 
   let assemblyFormat = [{
     $alloc (`repeat` $repeat_count_val^ `:` type($repeat_count_val))? regions attr-dict

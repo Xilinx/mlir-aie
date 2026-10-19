@@ -1697,6 +1697,25 @@ std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
   return {};
 }
 
+ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
+  std::vector<ObjectFifoCreateOp> ins = getInputObjectFifos();
+  std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+  if (isJoin())
+    return outs[0];
+  if (isDistribute())
+    return ins[0];
+  auto count = [](ObjectFifoCreateOp fifo) {
+    return cast<AIEObjectFifoType>(fifo.getElemType())
+        .getElementType()
+        .getNumElements();
+  };
+  // Padding is applied as the objects leave, so the pool holds what arrives.
+  if (outs[0].getInitValues() ||
+      (count(outs[0]) > count(ins[0]) && !outs[0].getPadDimensions()))
+    return outs[0];
+  return ins[0];
+}
+
 std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
   std::vector<ObjectFifoCreateOp> inputObjFifos;
   Operation *parent = getOperation();

@@ -1327,9 +1327,6 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
 }
 
 LogicalResult AIEX::DMAConfigureTaskOp::verify() {
-  if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
-    return emitOpError("repeat_count must be non-negative, got ")
-           << rc.getInt();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
   // Skip the per-BD dimension check on an unplaced (logical) tile: the ND limit
   // is a function of the tile's placed coordinates, which are not yet known.
@@ -1495,6 +1492,9 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                              AIE::ObjectFifoCreateOp fifo) {
   if (fifo.getPadDimensions() || fifo.getAieStream())
     return success();
+  std::optional<int64_t> moved = staticBytesStreamed(task);
+  if (!moved || *moved == 0)
+    return success();
   DataLayout layout = DataLayout::closest(task);
   // Bytes a static-shape element type's object holds, or nullopt for a
   // dynamically-shaped one.
@@ -1507,10 +1507,10 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
            static_cast<int64_t>(layout.getTypeSize(elem.getElementType()));
   };
   // A linked fifo's far end on the link's shared tile is a BD over the shared
-  // pool that createLinkPools (AIEObjectFifoSplit.cpp) sizes by one owning
-  // fifo's declared type, whatever this fifo's own (or consumer) type. A plain
-  // link's BD covers the whole pool; a join's or distribute's small sides get
-  // offset-derived segments of it, so those ends are not checked.
+  // pool, sized by the link's pool owner whatever this fifo's own (or
+  // consumer) type. A plain link's BD covers the whole pool; a join's or
+  // distribute's small sides get offset-derived segments of it, so those ends
+  // are not checked.
   Value linkTile;
   std::optional<AIE::ObjectFifoCreateOp> linkOwner;
   if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
@@ -1523,20 +1523,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       if (ins.empty() || outs.empty() || !sharedTile)
         return success();
       linkTile = *sharedTile;
-      AIE::ObjectFifoCreateOp owner =
-          link.isJoin() ? outs.front() : ins.front();
-      if (!link.isJoin() && !link.isDistribute()) {
-        // Mirrors createLinkPools' owner pick, which compares element counts.
-        auto count = [](AIE::ObjectFifoCreateOp f) {
-          return cast<MemRefType>(cast<AIE::AIEObjectFifoType>(f.getElemType())
-                                      .getElementType())
-              .getNumElements();
-        };
-        if (outs.front().getInitValues() ||
-            (count(outs.front()) > count(ins.front()) &&
-             !outs.front().getPadDimensions()))
-          owner = outs.front();
-      }
+      AIE::ObjectFifoCreateOp owner = link.getPoolOwner();
       if (owner == fifo || (!link.isJoin() && !link.isDistribute()))
         linkOwner = owner;
       break;
@@ -1574,9 +1561,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
         return size;
     return std::nullopt;
   };
-
-  std::optional<int64_t> moved = staticBytesStreamed(task);
-  if (!moved || !partialFor(*moved))
+  if (!partialFor(*moved))
     return success();
 
   // Transfers in a loop or branch have no static count to sum.
@@ -1625,13 +1610,6 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   return error << " is not a whole number of its " << *objectBytes
                << "-byte objects; the far end's buffer descriptor is sized by "
                   "the object, so a partial one never completes";
-}
-
-LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
-  if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
-    return emitOpError("repeat_count must be non-negative, got ")
-           << rc.getInt();
-  return success();
 }
 
 // Resolving the allocation symbol through the collection keeps the lookup off
