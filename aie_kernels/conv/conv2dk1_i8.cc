@@ -33,6 +33,17 @@
 #define CONV2DK1_I8_MMUL_M 8
 #endif
 
+// The factory names each variant's entry point.
+#ifndef CONV2DK1_I8_SYMBOL
+#define CONV2DK1_I8_SYMBOL conv2dk1_i8
+#endif
+
+#ifdef CONV_ROUND_EVEN
+#define CONV2DK1_I8_ROUNDING aie::rounding_mode::conv_even
+#else
+#define CONV2DK1_I8_ROUNDING aie::rounding_mode::symmetric_inf
+#endif
+
 #define REL_WRITE 0
 #define REL_READ 1
 
@@ -126,8 +137,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
   using MMUL8x8x8 = aie::mmul<MMUL_M, MMUL_K, MMUL_N, int8, int8>;
   ::aie::set_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(aie::rounding_mode::symmetric_inf); // Needed to saturate
-                                                          // properly to uint8
+  ::aie::set_rounding(CONV2DK1_I8_ROUNDING);
 
   int8_t *restrict out_ptr = output;
 
@@ -262,6 +272,96 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
   event1();
 }
+
+#ifdef CONV_BIAS
+//*****************************************************************************
+// conv2d 1x1 - vector, with a bias
+// act: int8, wts: int8, bias: int32 per output channel, out: int8
+//
+// ONNX QLinearConv: the bias, in accumulator units, seeds the accumulator,
+// and an optional 256-entry table maps each int8 result (a quantized SiLU).
+//*****************************************************************************
+template <int NumAcc, int M, bool Table>
+static inline __attribute__((always_inline)) void conv2dk1_i8_bias_block(
+    const int8_t *__restrict input, const int8_t *__restrict kernels,
+    aie::vector<int32, 8> bias, const int8_t *__restrict table,
+    int8_t *__restrict output, const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int input_channels = CONV_INPUT_CHANNELS;
+  using MMUL = aie::mmul<M, 8, 8, int8, int8>;
+
+  aie::vector<int32, M * 8> seed;
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < M; p++)
+    seed.insert(p, bias);
+  aie::accum<acc32, M * 8> seeded;
+  seeded.from_vector(seed, 0);
+
+  MMUL acc[NumAcc];
+  AIE_LOOP_UNROLL_FULL
+  for (int x = 0; x < NumAcc; x++)
+    acc[x] = seeded;
+
+  AIE_PREPARE_FOR_PIPELINING
+  for (int ic = 0; ic < input_channels / 8; ic++) {
+    aie::vector<int8, 64> b = aie::load_v<64>(kernels + ic * 64);
+    AIE_LOOP_UNROLL_FULL
+    for (int x = 0; x < NumAcc; x++)
+      acc[x].mac(aie::load_v<M * 8>(input + ic * iw * 8 + x * M * 8), b);
+  }
+
+  AIE_LOOP_UNROLL_FULL
+  for (int x = 0; x < NumAcc; x++) {
+    aie::vector<int8, M * 8> out = acc[x].template to_vector<int8>(scale);
+    if constexpr (Table) {
+      for (int i = 0; i < M * 8; i++)
+        output[x * M * 8 + i] = table[out[i] + 128];
+    } else {
+      aie::store_v(output + x * M * 8, out);
+    }
+  }
+}
+
+template <bool Table>
+static void
+conv2dk1_i8_bias_vector(int8_t *__restrict input, int8_t *__restrict kernels,
+                        int32_t *__restrict bias, int8_t *__restrict table,
+                        int8_t *__restrict output, const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int input_channels = CONV_INPUT_CHANNELS;
+  constexpr int output_channels = CONV_OUTPUT_CHANNELS;
+  constexpr int NUM_ACC = CONV2DK1_I8_NUM_ACC;
+  // A row of 8k + 4 pixels leaves every other channel group's row off the
+  // 64-byte alignment of an 8-pixel load, so it goes 4 pixels at a time.
+  constexpr int M = iw % 8 == 0 ? CONV2DK1_I8_MMUL_M : 4;
+  constexpr int blocks = iw / (NUM_ACC * M);
+  constexpr int singles = iw % (NUM_ACC * M) / M;
+  static_assert(iw % 4 == 0, "conv2dk1_i8 with a bias needs a width of 4k");
+  static_assert(input_channels % 8 == 0 && output_channels % 8 == 0,
+                "conv2dk1_i8 channels come in groups of 8");
+  event0();
+
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(CONV2DK1_I8_ROUNDING);
+
+  for (int oc = 0; oc < output_channels / 8; oc++) {
+    const int8_t *w = kernels + oc * (input_channels / 8) * 64;
+    aie::vector<int32, 8> b = aie::load_v<8>(bias + oc * 8);
+    int8_t *out = output + oc * iw * 8;
+    for (int x = 0; x < blocks; x++)
+      conv2dk1_i8_bias_block<NUM_ACC, M, Table>(
+          input + x * NUM_ACC * M * 8, w, b, table, out + x * NUM_ACC * M * 8,
+          scale);
+    constexpr int done = blocks * NUM_ACC * M;
+    for (int x = 0; x < singles; x++)
+      conv2dk1_i8_bias_block<1, M, Table>(input + (done + x * M) * 8, w, b,
+                                          table, out + (done + x * M) * 8,
+                                          scale);
+  }
+
+  event1();
+}
+#endif // CONV_BIAS
 #endif // INT8_ACT
 #endif // Vector
 
@@ -285,12 +385,28 @@ void conv2dk1_i8(int8_t *input, int8_t *kernels, int8_t *output,
 
 #ifdef INT8_ACT
 
-void conv2dk1_i8(int8_t *input, int8_t *kernels, int8_t *output,
-                 const int32_t input_width, const int32_t input_channels,
-                 const int32_t output_channels, const int scale) {
+#if defined(CONV_BIAS) && defined(CONV_TABLE)
+void CONV2DK1_I8_SYMBOL(int8_t *input, int8_t *kernels, int32_t *bias,
+                        int8_t *table, int8_t *output,
+                        const int32_t input_width, const int32_t input_channels,
+                        const int32_t output_channels, const int scale) {
+  conv2dk1_i8_bias_vector<true>(input, kernels, bias, table, output, scale);
+}
+#elif defined(CONV_BIAS)
+void CONV2DK1_I8_SYMBOL(int8_t *input, int8_t *kernels, int32_t *bias,
+                        int8_t *output, const int32_t input_width,
+                        const int32_t input_channels,
+                        const int32_t output_channels, const int scale) {
+  conv2dk1_i8_bias_vector<false>(input, kernels, bias, nullptr, output, scale);
+}
+#else
+void CONV2DK1_I8_SYMBOL(int8_t *input, int8_t *kernels, int8_t *output,
+                        const int32_t input_width, const int32_t input_channels,
+                        const int32_t output_channels, const int scale) {
   conv2dk1_i8_vector(input, kernels, output, input_width, input_channels,
                      output_channels, scale);
 }
+#endif
 #endif // INT8_ACT
 #endif // Vector
 } // extern "C"

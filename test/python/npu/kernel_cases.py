@@ -1213,6 +1213,51 @@ CASES: list[Case] = [
         scalars=(64, 64, 64, 12),
         tag="two-blocks",
     ),
+    # conv2dk1_i8 rounding half to even, and ONNX QLinearConv's bias-seeded
+    # form, with and without a table, at widths that are not multiples of 32:
+    # 80 is two 32-pixel blocks and two 8-pixel ones, 20 two 8s and a 4.
+    check(
+        "conv2dk1_i8",
+        dict(rounding="conv_even"),
+        calls=8,
+        scalars=(32, 64, 64, 12),
+        tag="conv-even",
+        smoke=True,
+    ),
+    Case(
+        "conv2dk1_i8",
+        dict(bias=True, rounding="conv_even"),
+        calls=8,
+        scalars=(32, 64, 64, 12),
+        smoke=True,
+    ),
+    check(
+        "conv2dk1_i8",
+        dict(input_width=80, bias=True, rounding="conv_even"),
+        calls=4,
+        scalars=(80, 64, 64, 12),
+        tag="width-80",
+    ),
+    check(
+        "conv2dk1_i8",
+        dict(
+            input_width=20,
+            input_channels=16,
+            output_channels=16,
+            bias=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(20, 16, 16, 9),
+        tag="width-20",
+    ),
+    Case(
+        "conv2dk1_i8",
+        dict(input_width=40, bias=True, table=True, rounding="conv_even"),
+        calls=8,
+        scalars=(40, 64, 64, 12),
+        smoke=True,
+    ),
     # conv2dk1_skip streams three tensors; the harness packs them into one
     # fifo when they share a type, i.e. input_channels == 2 * output_channels
     # with a uint8 residual. An int8 residual goes in a fifo of its own.
@@ -1294,6 +1339,75 @@ CASES: list[Case] = [
         scalars=(32, 64, 64, 12),
     ),
     Case("conv2dk3", calls=8, scalars=(32, 64, 64, 3, 3, 1, 15, 0), smoke=True),
+    # The bias variant, ONNX QLinearConv's arithmetic, at stride 1 and 2, on
+    # the top, middle and bottom rows. Width 20 tiles by 4 pixels, the rest
+    # by 8; stride 2 at width 40 writes 20.
+    Case(
+        "conv2dk3",
+        dict(bias=True, rounding="conv_even"),
+        calls=8,
+        scalars=(32, 64, 64, 3, 3, 1, 15, 0),
+        smoke=True,
+    ),
+    *[
+        check(
+            "conv2dk3",
+            dict(bias=True, rounding="conv_even"),
+            calls=4,
+            scalars=(32, 64, 64, 3, 3, region, 15, 0),
+            tag=tag,
+        )
+        for region, tag in ((0, "bias-top-row"), (2, "bias-bottom-row"))
+    ],
+    check(
+        "conv2dk3",
+        dict(
+            input_width=20,
+            input_channels=16,
+            output_channels=16,
+            bias=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(20, 16, 16, 3, 3, 1, 12, 0),
+        tag="bias-width-20",
+    ),
+    Case(
+        "conv2dk3",
+        dict(input_width=40, bias=True, table=True, rounding="conv_even"),
+        calls=4,
+        scalars=(40, 64, 64, 3, 3, 1, 15, 0),
+        smoke=True,
+    ),
+    Case(
+        "conv2dk3",
+        dict(input_width=64, bias=True, stride=2, rounding="conv_even"),
+        calls=4,
+        scalars=(64, 64, 64, 3, 3, 1, 15, 0),
+        smoke=True,
+    ),
+    check(
+        "conv2dk3",
+        dict(input_width=64, bias=True, stride=2, rounding="conv_even"),
+        calls=4,
+        scalars=(64, 64, 64, 3, 3, 0, 15, 0),
+        tag="bias-s2-top-row",
+    ),
+    check(
+        "conv2dk3",
+        dict(
+            input_width=40,
+            input_channels=32,
+            output_channels=32,
+            bias=True,
+            table=True,
+            stride=2,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(40, 32, 32, 3, 3, 1, 14, 0),
+        tag="bias-s2-width-40",
+    ),
     Case(
         "conv2dk3",
         dict(act_dtype=np.uint8),
@@ -1547,6 +1661,40 @@ CASES: list[Case] = [
         scalars=(28, 120, 120, 3, 3, 1, 7, 0),
         smoke=True,
     ),
+    # The int8 bias variant (ONNX QLinearConv depthwise): YOLO26n's
+    # positional-encoding conv and Detect class branch widths and channels.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(
+            input_width=20,
+            input_channels=128,
+            output_channels=128,
+            bias=True,
+        ),
+        calls=4,
+        scalars=(20, 128, 128, 3, 3, 1, 7, 0),
+        smoke=True,
+    ),
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(
+                input_width=40,
+                input_channels=80,
+                output_channels=80,
+                bias=True,
+                table=True,
+            ),
+            calls=4,
+            scalars=(40, 80, 80, 3, 3, region, 7, 0),
+            tag=tag,
+        )
+        for region, tag in (
+            (0, "bias-top-row"),
+            (1, "bias-table"),
+            (2, "bias-bottom-row"),
+        )
+    ],
     Case(
         "bn_conv2dk3_dw",
         dict(input_width=56, input_channels=72, output_channels=72, stride=2),

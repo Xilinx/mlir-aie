@@ -688,8 +688,23 @@ KERNEL_SPECS: list[KernelSpec] = [
         name_variants=[
             (dict(act_dtype=np.int8), "conv2dk3_i8"),
             (dict(act_dtype=np.uint8), "conv2dk3_ui8"),
+            (dict(bias=True, rounding="conv_even"), "conv2dk3_i8_bias_even"),
+            (
+                dict(bias=True, table=True, stride=2, rounding="conv_even"),
+                "conv2dk3_i8_bias_table_s2_even",
+            ),
         ],
-        invalid_kwargs=[(dict(act_dtype=np.float32), "act_dtype")],
+        invalid_kwargs=[
+            (dict(act_dtype=np.float32), "act_dtype"),
+            (dict(stride=2), "need bias"),
+            (dict(bias=True, act_dtype=np.uint8, rounding="conv_even"), "act_dtype"),
+            (dict(bias=True, stride=3, rounding="conv_even"), "stride"),
+            (dict(bias=True), "needs no bias"),
+            (
+                dict(bias=True, input_width=36, stride=2, rounding="conv_even"),
+                "multiple of 8",
+            ),
+        ],
     ),
     KernelSpec(
         name="conv2dk1_skip",
@@ -709,6 +724,17 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(),
         arg_count=7,
         expected_name="conv2dk1_i8",
+        name_variants=[
+            (dict(rounding="conv_even"), "conv2dk1_i8_even"),
+            (dict(bias=True, rounding="conv_even"), "conv2dk1_i8_bias_even"),
+            (dict(bias=True, table=True), "conv2dk1_i8_bias_table"),
+        ],
+        invalid_kwargs=[
+            (dict(rounding="nearest"), "rounding"),
+            (dict(table=True), "needs bias"),
+            (dict(input_width=20), "multiple of 32"),
+            (dict(input_width=18, bias=True), "multiple of 4"),
+        ],
     ),
     KernelSpec(
         name="conv2dk14",
@@ -771,8 +797,15 @@ KERNEL_SPECS: list[KernelSpec] = [
         name_variants=[
             (dict(stride=1), "conv2dk3_dw_stride1_relu_ui8_ui8"),
             (dict(stride=2), "conv2dk3_dw_stride2_relu_ui8_ui8"),
+            (dict(stride=1, bias=True), "conv2dk3_dw_i8_bias_even"),
+            (dict(stride=1, bias=True, table=True), "conv2dk3_dw_i8_bias_table_even"),
         ],
-        invalid_kwargs=[(dict(stride=3), "stride")],
+        invalid_kwargs=[
+            (dict(stride=3), "stride"),
+            (dict(stride=2, bias=True), "stride 1"),
+            (dict(stride=1, table=True), "needs bias"),
+            (dict(stride=1, bias=True, input_width=30), "multiple of 4"),
+        ],
     ),
     KernelSpec(
         name="bn_conv2dk1_relu_xy_pool_padded",

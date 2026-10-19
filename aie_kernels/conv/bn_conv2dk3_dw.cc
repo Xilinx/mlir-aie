@@ -1480,6 +1480,109 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 }
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 
+#ifdef CONV_BIAS
+//*****************************************************************************
+// depthwise conv2d 3x3 - vector, with a bias and table, see conv2dk1_i8.cc
+//
+// Weights [C/8][3][3][c8]. The output row for line1, 4 pixels x 8 channels
+// per elementwise mac; the borders shift in zeros.
+//*****************************************************************************
+#ifdef CONV_ROUND_EVEN
+#define DW_BIAS_ROUNDING aie::rounding_mode::conv_even
+#else
+#define DW_BIAS_ROUNDING aie::rounding_mode::symmetric_inf
+#endif
+
+template <bool Table>
+static void
+dw_i8_bias_vector(const int8_t *line0, const int8_t *line1, const int8_t *line2,
+                  const int8_t *__restrict wts, const int32_t *__restrict bias,
+                  const int8_t *__restrict table, int8_t *__restrict output,
+                  const int32_t check, const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int channels = CONV_OUTPUT_CHANNELS;
+  constexpr int M = 4;
+  constexpr int V = M * 8;
+  static_assert(iw % M == 0, "the depthwise bias kernel tiles the row by 4");
+  event0();
+
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(DW_BIAS_ROUNDING);
+
+  const int row_start = check == top ? 1 : 0;
+  const int row_end = check == bottom ? 2 : 3;
+  const aie::vector<int8, V> zeros = aie::zeros<int8, V>();
+
+  for (int c = 0; c < channels / 8; c++) {
+    // Each tap's 8 channel weights, repeated for the M pixels.
+    aie::vector<int8, V> w[9];
+    AIE_LOOP_UNROLL_FULL
+    for (int t = 0; t < 9; t++)
+      for (int i = 0; i < V; i++)
+        w[t].set(wts[(c * 9 + t) * 8 + i % 8], i);
+    aie::vector<int32, V> seed;
+    AIE_LOOP_UNROLL_FULL
+    for (int p = 0; p < M; p++)
+      seed.insert(p, aie::load_v<8>(bias + c * 8));
+
+    for (int xb = 0; xb < iw / M; xb++) {
+      const int x0 = xb * M;
+      aie::accum<acc32, V> acc;
+      acc.from_vector(seed, 0);
+      for (int r = row_start; r < row_end; r++) {
+        const int8_t *row =
+            (r == 0 ? line0 : (r == 1 ? line1 : line2)) + c * iw * 8;
+        aie::vector<int8, V> cur = aie::load_v<V>(row + x0 * 8);
+        aie::vector<int8, V> prev =
+            x0 > 0 ? aie::load_v<V>(row + (x0 - M) * 8) : zeros;
+        aie::vector<int8, V> next =
+            x0 + M < iw ? aie::load_v<V>(row + (x0 + M) * 8) : zeros;
+        acc = aie::mac(acc, aie::shuffle_down_fill(prev, cur, V - 8),
+                       w[r * 3 + 0]);
+        acc = aie::mac(acc, cur, w[r * 3 + 1]);
+        acc = aie::mac(acc, aie::shuffle_down_fill(cur, next, 8), w[r * 3 + 2]);
+      }
+      aie::vector<int8, V> out = acc.template to_vector<int8>(scale);
+      int8_t *dst = output + c * iw * 8 + x0 * 8;
+      if constexpr (Table) {
+        for (int i = 0; i < V; i++)
+          dst[i] = table[out[i] + 128];
+      } else {
+        aie::store_v(dst, out);
+      }
+    }
+  }
+  event1();
+}
+
+extern "C" {
+
+#ifdef CONV_TABLE
+void DW_BIAS_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
+                    int32_t *bias, int8_t *table, int8_t *output,
+                    const int32_t input_width, const int32_t input_channels,
+                    const int32_t output_channels, const int32_t kernel_width,
+                    const int32_t kernel_height, const int32_t check,
+                    const int scale, const int channel_offset) {
+  dw_i8_bias_vector<true>(line0, line1, line2, wts, bias, table, output, check,
+                          scale);
+}
+#else
+void DW_BIAS_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
+                    int32_t *bias, int8_t *output, const int32_t input_width,
+                    const int32_t input_channels, const int32_t output_channels,
+                    const int32_t kernel_width, const int32_t kernel_height,
+                    const int32_t check, const int scale,
+                    const int channel_offset) {
+  dw_i8_bias_vector<false>(line0, line1, line2, wts, bias, nullptr, output,
+                           check, scale);
+}
+#endif
+
+} // extern "C"
+
+#else // CONV_BIAS
+
 extern "C" {
 
 #ifdef REGULAR
@@ -1631,3 +1734,5 @@ void bn14_conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 #endif
 #endif // BN
 }
+
+#endif // CONV_BIAS
