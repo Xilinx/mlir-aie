@@ -77,6 +77,30 @@ module @packet_source_without_header {
 
 // -----
 
+// A runtime task on a source several packet flows share gets no header stamped,
+// so each of its BDs states one of theirs.
+module @shared_source_task_without_header {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_configure_task_for @host {
+        // expected-error @+1 {{sends on @host without the packet header of one of its flows, ids 1 2}}
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64)
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
 // A pinned endpoint may not take a channel a DMA program already starts.
 module @pinned_clash {
   // expected-remark @+1 {{could not find a spill-aware allocation}}
