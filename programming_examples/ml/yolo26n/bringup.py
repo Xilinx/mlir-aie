@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import statistics
 import sys
+import time
 from pathlib import Path
 
 import aie.iron as iron
@@ -119,6 +121,9 @@ def main() -> None:
     parser.add_argument(
         "--outputs", help="comma-separated tensors to drain (default: the last op's)"
     )
+    parser.add_argument("--time", action="store_true", help="also time the dispatch")
+    parser.add_argument("--n-iters", type=int, default=5)
+    parser.add_argument("--n-warmup", type=int, default=2)
     args = parser.parse_args()
 
     first, stop = (int(v) for v in args.ops.split(":"))
@@ -163,15 +168,14 @@ def main() -> None:
     sizes = [plan.host_bytes(t) for t in plan.outputs]
     inputs = iron.tensor(packed_in.view(np.int32))
     outputs = iron.zeros(sum(sizes) // 4, dtype=np.int32)
-    segment(
-        inputs,
-        outputs,
+    kwargs = dict(
         first=first,
         last=stop,
         params_path=str(params_path),
         params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
         drained=drained,
     )
+    segment(inputs, outputs, **kwargs)
     got = outputs.numpy().view(np.int8)
     failed = False
     at = 0
@@ -188,6 +192,17 @@ def main() -> None:
         )
         failed |= bad != 0
         at += size
+
+    if args.time:
+        for _ in range(args.n_warmup):
+            segment(inputs, outputs, **kwargs)
+        samples = []
+        for _ in range(args.n_iters):
+            start = time.perf_counter()
+            segment(inputs, outputs, **kwargs)
+            samples.append(time.perf_counter() - start)
+        us = statistics.median(samples) * 1e6
+        print(f"ops {first}:{stop}: {us:.1f} us")
     sys.exit(1 if failed else 0)
 
 
