@@ -701,9 +701,7 @@ def _make_extern(
     declaration. Different parameterizations get distinct
     ``object_file_name``s — the latter is auto-suffixed with a short
     digest of the identity so per-parameterization .o files don't
-    overwrite each other on disk.  The default ``<name>.o`` is preserved
-    when ``compile_flags`` is empty AND ``use_chess`` is False (no
-    parameterization to disambiguate).
+    overwrite each other on disk.
 
     ``use_chess`` selects the Chess (xchesscc) compiler instead of Peano
     for this kernel's .o build.  See
@@ -723,15 +721,14 @@ def _make_extern(
     flags_tuple = tuple(compile_flags or []) + _portable_flags()
     # A source that includes aie_api reads it first, so a precompiled header of it
     # builds the same object.
-    source = Path(source_path).read_bytes()
-    if not use_chess and b"#include <aie_api/aie.hpp>" in source:
+    if not use_chess and "#include <aie_api/aie.hpp>" in Path(source_path).read_text():
         flags_tuple += AIE_API_PREFIX_FLAGS
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
     # One source serves every arch, so the arch is part of the kernel's identity.
-    # The source counts by content, so a checkout's location leaves the names alone.
     identity = (
         func_name,
-        hashlib.sha256(source).hexdigest(),
+        str(source_path),
+        tuple(include_dirs or ()),
         arg_keys,
         flags_tuple,
         use_chess,
@@ -754,15 +751,12 @@ def _make_extern(
         # suffix, and (below) no symbol prefix, so every binding of that
         # translation unit resolves to the one KernelObject.
         digest = None
-    elif flags_tuple or arg_keys or str(source_path):
+    else:
         # 8 hex chars of sha256 — short enough not to bloat MLIR strings,
         # wide enough that the chance of two distinct identities colliding
         # is vanishingly small (~2^-32).
         digest = hashlib.sha256(repr(identity).encode()).hexdigest()[:8]
         object_file_name = f"{func_name}_{digest}{'.ll' if inline else '.o'}"
-    else:
-        digest = None
-        object_file_name = None  # ExternalFunction default → ``<name>.o``
 
     # Prefix the SYMBOL name with the digest whenever this is a parameterized
     # kernel.  Two helper calls with different parameterizations compile two
@@ -782,8 +776,8 @@ def _make_extern(
     # copy.  ``digest`` is a pure function of ``identity``, so prefixing every
     # parameterized variant unconditionally keeps the symbol and the
     # suffix-form ``f"{func_name}_{digest}.o"`` filename identical across builds.
-    # When ``digest`` is None (unparameterized default-name kernel, or an
-    # explicit ``object_file_name``) this leaves the symbol unprefixed.
+    # An explicit ``object_file_name`` leaves ``digest`` None and the symbol
+    # unprefixed.
     #
     # Chess exception: the symbol prefix is applied post-compile via
     # ``llvm-objcopy --redefine-sym`` (see compile_external_kernel), which only

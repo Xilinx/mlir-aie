@@ -180,8 +180,7 @@ def test_inline_explicit_non_ir_object_file_name_rejected():
     """A non-IR explicit name for an inline kernel is rejected.
 
     It used to be silently rewritten to .ll so aiecc would route it by suffix;
-    routing is explicit metadata now, so the wrong
-    suffix is simply rejected.
+    routing is explicit metadata now, so the wrong suffix is simply rejected.
     """
     with pytest.raises(ValueError, match=r"must end in '\.ll'"):
         ExternalFunction(
@@ -288,9 +287,9 @@ def test_kernels_mm_parameterized_symbol_is_digest_prefixed():
     """A parameterized variant's symbol is digest-prefixed.
 
     The digest is a pure function of the kernel's identity, never of
-    registration order, so a
-    separate build (e.g. the full-model .o cache vs. a per-block design)
-    computes the SAME symbol and .o filename and can reuse the object.
+    registration order, so a separate build (e.g. the full-model .o cache vs.
+    a per-block design) computes the SAME symbol and .o filename and can reuse
+    the object.
     """
     ef = kernels.mm(
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
@@ -330,23 +329,28 @@ def test_kernels_mm_object_file_name_is_order_independent():
     """object_file_name is the suffix form ``{name}_{digest}.o``.
 
     It embeds the same digest as the symbol prefix, so the on-disk filename a
-    separate build
-    reuses by name is identical regardless of registration order.
+    separate build reuses by name is identical regardless of registration order.
     """
     ef = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
     assert ef._object_file_name == f"matmul_i16_i16_{ef._symbol_prefix}.o"
 
 
-def test_a_kernels_names_do_not_depend_on_where_its_source_lives(tmp_path):
-    """Two checkouts of one source name the same object and symbol."""
+def test_extern_names_differ_by_source_dir(tmp_path, monkeypatch):
+    """Same-content sources in two directories are two kernels, in one process.
+
+    Their local includes may resolve to different headers.
+    """
     from aie.iron.kernels._common import _make_extern
 
-    names = []
+    monkeypatch.setattr(ExternalFunction, "_instances", set())
+    names = set()
     for checkout in ("a", "b"):
-        ExternalFunction._instances.clear()  # one process sees one checkout
         source = tmp_path / checkout / "k.cc"
         source.parent.mkdir()
         source.write_text('extern "C" void k(int *x) {}')
         ef = _make_extern("k", source, [np.ndarray[(4,), np.dtype[np.int32]]])
-        names.append((ef.object_file_name, ef._symbol_prefix))
-    assert names[0] == names[1]
+        names.add((ef.object_file_name, ef._symbol_prefix))
+    assert len(names) == 2
+    # So are one source's builds against two include paths.
+    other = _make_extern("k", source, ef.arg_types(), include_dirs=[str(tmp_path)])
+    assert other._symbol_prefix != ef._symbol_prefix
