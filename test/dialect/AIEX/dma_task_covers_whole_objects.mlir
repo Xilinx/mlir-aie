@@ -858,3 +858,26 @@ module {
     }
   }
 }
+
+// -----
+
+// The fifo verifier rejects a dynamically-shaped object type, which only the
+// generic form can spell, before the link pool's owner is sized from it.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of_in(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    // expected-error@+1 {{type should be static shaped memref, but got 'memref<?xi32>'}}
+    "aie.objectfifo"(%t01, %t02) <{dimensionsFromStreamPerConsumer = #aie<bd_dim_layout_array_array[[]]>, dimensionsToStream = #aie<bd_dim_layout_array[]>, disable_synchronization = false, elemNumber = 2 : i32, elemType = !aie.objectfifo<memref<?xi32>>, plio = false, sym_name = "of_out", via_DMA = false}> : (index, index) -> ()
+    aie.objectfifo.link [@of_in] -> [@of_out]([] [])
+    aie.runtime_sequence(%arg0: memref<96xi32>) {
+      %t = aiex.dma_configure_task_for @of_in {
+        aie.dma_bd(%arg0 : memref<96xi32> offset = 0 len = 96 sizes = [1, 1, 1, 96] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}

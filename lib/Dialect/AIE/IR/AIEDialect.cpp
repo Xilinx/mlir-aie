@@ -524,6 +524,12 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoCreateOp::verify() {
+  for (Type fifoType : {Type(getElemType()), getConsumerElemTypeOrDefault()})
+    if (MemRefType memref = cast<AIEObjectFifoType>(fifoType).getElementType();
+        !memref.hasStaticShape())
+      return emitOpError("type should be static shaped memref, but got ")
+             << memref;
+
   if (isa<ArrayAttr>(getElemNumber())) {
     if (size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
         numDepths != getConsumerTiles().size() + 1) // +1 for producer depth
