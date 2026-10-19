@@ -26,8 +26,7 @@ KV cache: host-pre-filled, 8 ObjectFifos (one per KV head). Each kcache/
 vcache fifo carries a 4 B scale header + 8192 B body. flowkv_mh reads
 those at fixed offsets.
 
-All ObjectFifos depth=1 (Bug 8). GEMM workers get stack_size=16384
-(Bug 5). PSK applied to all large gemm workers.
+All ObjectFifos depth=1 (Bug 8).
 """
 
 import argparse
@@ -612,44 +611,30 @@ def build():
         c_proj.release(1)
         c_out.release(1)
 
-    PSK = 8192  # FFN stack; larger silently corrupts (Bug 12)
-    ATSK = 16384  # attn workers (flowkv_mh has local arrays + many loops)
-    # FFN-side stack: with the self-cal silu growing of_sf to HD+8, the L1
-    # layout shifts so an FFN worker's 8192 B stack ALIASES a fifo buffer
-    # (Bug 12), corrupting the FFN output (proven: FFNSK=8192 -> max|d|=171,
-    # FFNSK=4096 -> bit-exact, sole variable). 4096 fits the FFN gemms' frames
-    # and clears the alias. Env-overridable for future layout changes.
-    FFNSK = int(_os.environ.get("LLAMA_FFNSK", "4096"))
-
     workers = [
         # ---- Attention front ----
         Worker(
             w_rms,
             [of_xin.cons(), of_gam_in.cons(), of_h1.prod(), k_rms],
-            stack_size=2048,
         ),
         Worker(
             w_q,
             [of_h1.cons(), of_wq.cons(), of_qfp.prod(), k_q],
-            stack_size=PSK,
         ),
         # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
-        Worker(w_qrequant, [of_qfp.cons(), of_qf.prod(), k_qrequant], stack_size=4096),
+        Worker(w_qrequant, [of_qfp.cons(), of_qf.prod(), k_qrequant]),
         Worker(
             w_rope,
             [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope],
-            stack_size=2048,
         ),
         # k_proj / v_proj (h1 broadcast); fp32 out -> memtile kvcs join.
         Worker(
             w_kv,
             [of_h1.cons(), of_wk.cons(), kvcs_eps[0].prod(), k_kv],
-            stack_size=PSK,
         ),
         Worker(
             w_kv,
             [of_h1.cons(), of_wv.cons(), kvcs_eps[1].prod(), k_kv],
-            stack_size=PSK,
         ),
         Worker(
             w_qkvcomb,
@@ -673,7 +658,6 @@ def build():
                     k_append,
                     k_fkv,
                 ],
-                stack_size=ATSK,
             )
             for i in range(N_HEADS_KV)
         ],
@@ -685,51 +669,39 @@ def build():
         Worker(
             w_afconcat,
             [of_svfull.cons(), of_af.prod(), k_afconcat],
-            stack_size=2048,
         ),
         Worker(
             w_o,
             [of_af.cons(), of_wo.cons(), of_op.prod(), k_o],
-            stack_size=PSK,
         ),
-        Worker(
-            w_add, [of_xin.cons(), of_op.cons(), of_x1.prod(), k_add], stack_size=2048
-        ),
+        Worker(w_add, [of_xin.cons(), of_op.cons(), of_x1.prod(), k_add]),
         # ---- FFN ----
         Worker(
             w_rms,
             [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],
-            stack_size=2048,
         ),
         Worker(
             w_gate,
             [of_h2.cons(), of_wg.cons(), of_gf.prod(), k_gate],
-            stack_size=FFNSK,
         ),
         Worker(
             w_up,
             [of_h2.cons(), of_wu.cons(), of_ufp.prod(), k_up],
-            stack_size=FFNSK,
         ),
         # up_requant (2b): fp32 up -> global self-cal up_out_scale -> int8 + tail.
         Worker(
             w_uprequant,
             [of_ufp.cons(), of_uf.prod(), k_uprequant],
-            stack_size=FFNSK,
         ),
         Worker(
             w_silu,
             [of_gf.cons(), of_uf.cons(), of_sf.prod(), k_silu],
-            stack_size=FFNSK,
         ),
         Worker(
             w_down,
             [of_sf.cons(), of_wd.cons(), of_df.prod(), k_down],
-            stack_size=FFNSK,
         ),
-        Worker(
-            w_add, [of_x1.cons(), of_df.cons(), of_out.prod(), k_add], stack_size=2048
-        ),
+        Worker(w_add, [of_x1.cons(), of_df.cons(), of_out.prod(), k_add]),
     ]
 
     def sequence(

@@ -179,7 +179,6 @@ def build(
             k_final,
         ],
         tile=Tile(0, 2),
-        stack_size=16384,
     )
 
     def sequence(tbl, token, seed, tbl_prod, token_cons, seed_cons):

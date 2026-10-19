@@ -87,7 +87,6 @@ def build(
         core_fn,
         [of_x.cons(), of_cs.cons(), of_out.prod(), kernel],
         tile=Tile(ROPE_COL, ROPE_ROW),
-        stack_size=4096,
     )
 
     def sequence(x, cs, o, x_prod, cs_prod, out_cons):
