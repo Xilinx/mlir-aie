@@ -127,7 +127,7 @@ def declare(generator: Callable) -> Declaration:
         else:
             members.append(member)
     return Declaration(
-        getattr(generator, "__name__", repr(generator)),
+        generator.__name__ if isinstance(generator, FunctionType) else repr(generator),
         params,
         tuple(members),
         scalars=tuple(scalars),
@@ -138,7 +138,7 @@ def declare(generator: Callable) -> Declaration:
 def split_params(
     generator: Callable,
 ) -> tuple[list[str], list[str], list[str], list[str]]:
-    """Inspect *generator*; return ``(compile, tensor, dispatch, scalar)`` params.
+    """Return `generator`'s ``(compile, tensor, dispatch, scalar)`` parameter names.
 
     * ``compile_params``  — names with ``CompileTime[T]`` annotation
     * ``tensor_params``   — names with ``In``/``Out``/``InOut`` annotation (in
@@ -149,10 +149,7 @@ def split_params(
     * ``scalar_params``   — names with any other annotation (unclassified;
       currently rejected at ``@iron.jit`` time if they carry a default)
 
-    Uses ``typing.get_type_hints()`` so that stringified annotations (produced
-    by ``from __future__ import annotations`` or PEP 563 mode) are evaluated
-    correctly.  Falls back to ``inspect.signature`` annotations on any error
-    (e.g. when the generator's globals are not resolvable at call time).
+    They are read from ``declare(generator)``.
     """
     d = declare(generator)
     return (

@@ -45,7 +45,12 @@ from typing import Any, Callable, Mapping, get_origin
 
 import numpy as np
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
+from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
+    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+    DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.ir import (  # pyright: ignore[reportMissingImports]
+    IntegerAttr,
     Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils.compile import (
@@ -168,12 +173,6 @@ class _GeneratedDesign:
         cls, module, mlir_text: str, external_kernels: list
     ) -> "_GeneratedDesign":
         """Record `mlir_text` with the IRON attributes of `module`, its parse."""
-        from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
-            AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
-            DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
-        )
-        from aie.ir import IntegerAttr  # pyright: ignore[reportMissingImports]
-
         attributes = module.operation.attributes
         entry = attributes.get("iron.entry")
         count = attributes.get("iron.configuration_count")
@@ -1068,6 +1067,7 @@ class CompilableDesign:
         """
         try:
             generated = self._generated_for(full_elf=True)
+            # aie.iron imports this module.
             from aie.iron.device import Device
 
             for kind in generated.devices:

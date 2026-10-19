@@ -35,6 +35,7 @@ from ...ir import (  # pyright: ignore[reportMissingImports]
     OpView,
     Value,
 )
+from ._per_call import Affine, PerCall
 
 __all__ = [
     "IntLike",
@@ -115,8 +116,6 @@ def sint(value: Any) -> Any:
     Raises:
         TypeError: If `value` is neither an integer nor a staged value.
     """
-    from ._per_call import Affine, PerCall
-
     if isinstance(value, PerCall):
         value = value.affine()
     if isinstance(value, Affine):

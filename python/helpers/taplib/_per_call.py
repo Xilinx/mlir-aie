@@ -3,8 +3,8 @@
 """Integers known only at dispatch: expressions in one per-call value.
 
 Plain Python, so they need no MLIR context: the host evaluates one per call,
-names a device symbol after it, and `stage` lowers it to `arith` through
-eudsl's `ScalarValue` where a pattern needs it on the device.
+names a device symbol after it, and ``stage`` lowers it to ``arith`` through
+eudsl's ``ScalarValue`` where a pattern needs it on the device.
 """
 
 from __future__ import annotations
@@ -15,12 +15,14 @@ from typing import Any
 
 import numpy as np
 
-
-def _int(k: Any) -> int | None:
-    """``k`` as an int, or None if it is not an integer (a bool is not)."""
-    if isinstance(k, bool) or not isinstance(k, (int, np.integer)):
-        return None
-    return int(k)
+from ...dialects import (  # pyright: ignore[reportMissingImports]
+    arith,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from ...extras import types as T  # pyright: ignore[reportMissingImports]
+from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
+    ScalarValue,
+    constant,
+)
 
 
 class PerCall:
@@ -28,7 +30,7 @@ class PerCall:
 
     Integer arithmetic on one makes an ``Affine``. ``marker`` says how a call
     gives it, and only its library reads it: ``"aie.dispatch_time"`` for a
-    `DispatchTime` parameter. ``ssa`` is its staged value once a runtime
+    ``DispatchTime`` parameter. ``ssa`` is its staged value once a runtime
     sequence binds it.
     """
 
@@ -58,7 +60,7 @@ class PerCall:
     def __neg__(self) -> Affine:
         return -self.affine()
 
-    def __floordiv__(self, d: int | Affine) -> Affine | int:
+    def __floordiv__(self, d: int | Affine | PerCall) -> Affine | int:
         return self.affine() // d
 
     def __mod__(self, m: int) -> Affine:
@@ -163,9 +165,9 @@ class Affine:
             if not scale:
                 return self.bias + k.bias
             return Affine(self.value, scale, self.bias + k.bias)
-        c = _int(k)
-        if c is None:
+        if isinstance(k, bool) or not isinstance(k, (int, np.integer)):
             return NotImplemented
+        c = int(k)
         if self.mod is not None:
             return dataclasses.replace(self, post=self.post + c)
         if self.clamped:
@@ -184,9 +186,9 @@ class Affine:
         return self * -1
 
     def __mul__(self, k: int) -> Affine:
-        c = _int(k)
-        if c is None:
+        if isinstance(k, bool) or not isinstance(k, (int, np.integer)):
             return NotImplemented
+        c = int(k)
         if self.mod is not None:
             # (x % m) * c is (x * c) % (m * c) for c > 0, a ring row's elements.
             if c <= 0 or c & (c - 1):
@@ -201,8 +203,14 @@ class Affine:
 
     __radd__, __rmul__ = __add__, __mul__
 
-    def __floordiv__(self, d: int | Affine) -> Affine | int:
-        c = _int(d)
+    def __floordiv__(self, d: int | Affine | PerCall) -> Affine | int:
+        if isinstance(d, PerCall):
+            d = d.affine()
+        c = (
+            None
+            if isinstance(d, bool) or not isinstance(d, (int, np.integer))
+            else int(d)
+        )
         if self.mod is not None or self.clamped and (c is None or c <= 0):
             raise TypeError(f"no expression for ({self}) // {d}")
         if self.clamped:
@@ -235,9 +243,9 @@ class Affine:
         return Affine(self.value, scale, bias, k)
 
     def __mod__(self, m: int) -> Affine:
-        c = _int(m)
-        if c is None:
+        if isinstance(m, bool) or not isinstance(m, (int, np.integer)):
             return NotImplemented
+        c = int(m)
         if c <= 0 or c & (c - 1):
             raise TypeError(f"no expression for ({self}) % {c}: a ring is 2^k rows")
         if self.mod is not None and (self.mod % c or self.post):
@@ -275,48 +283,55 @@ class Affine:
     @property
     def name(self) -> str:
         """An identifier for the device symbol: ``p``, ``p_x64``, ``p_x64_p64``, ``p_m1``."""
-
-        def signed(tag: str, k: int) -> str:
-            return f"_{tag}{'m' if k < 0 else ''}{abs(k)}"
-
-        text = self.value.name + (signed("x", self.scale) if self.scale != 1 else "")
-        if self.bias:
-            text += f"_{'p' if self.bias > 0 else 'm'}{abs(self.bias)}"
+        # (tag, k): a tag names a factor or bound, ``_x64``, ``_lom3``; None an
+        # offset, ``_p64``, ``_m3``. A k of None is absent.
+        terms = [("x", None if self.scale == 1 else self.scale), (None, self.bias)]
         if self.down:
-            text += f"_d{self.down}" + (signed("x", self.mul) if self.mul != 1 else "")
-            if self.add:
-                text += f"_{'p' if self.add > 0 else 'm'}{abs(self.add)}"
-        for tag, b in (("lo", self.lo), ("hi", self.hi)):
-            if b is not None:
-                text += signed(tag, b)
-        if self.mod is not None:
-            text += f"_mod{self.mod}"
-        if self.post:
-            text += f"_{'p' if self.post > 0 else 'm'}{abs(self.post)}"
+            terms += [
+                ("d", self.down),
+                ("x", None if self.mul == 1 else self.mul),
+                (None, self.add),
+            ]
+        terms += [("lo", self.lo), ("hi", self.hi), ("mod", self.mod)]
+        terms += [(None, self.post)]
+        text = self.value.name
+        for tag, k in terms:
+            if tag is not None and k is not None:
+                text += f"_{tag}{'m' if k < 0 else ''}{abs(k)}"
+            elif tag is None and k:
+                text += f"_{'p' if k > 0 else 'm'}{abs(k)}"
         return text
 
     def __str__(self) -> str:
         """Return the expression as Python would write it: ``(p + 1) * 64`` is ``p * 64 + 64``."""
-
-        def term(x: str) -> str:
-            return f"({x})" if " " in x else x
-
-        def plus(x: str, k: int) -> str:
-            return f"{x} {'+' if k > 0 else '-'} {abs(k)}" if k else x
-
-        def times(x: str, k: int) -> str:
-            return x if k == 1 else f"-{term(x)}" if k == -1 else f"{term(x)} * {k}"
-
-        x = plus(times(self.value.name, self.scale), self.bias)
-        if self.down:
-            x = plus(times(f"{term(x)} >> {self.down}", self.mul), self.add)
+        x = self.value.name
+        # (multiplier, addend): the linear part's, then the floored term's. The
+        # multiplier's operand is a name or a parenthesized shift.
+        for i, (mul, add) in enumerate(
+            [(self.scale, self.bias)] + ([(self.mul, self.add)] if self.down else [])
+        ):
+            if i:
+                x = f"{f'({x})' if ' ' in x else x} >> {self.down}"
+                # + and * bind tighter than >>.
+                if mul != 1 or add:
+                    x = f"({x})"
+            if mul == -1:
+                x = f"-{x}"
+            elif mul != 1:
+                x = f"{x} * {mul}"
+            if add:
+                x = f"{x} {'+' if add > 0 else '-'} {abs(add)}"
         if self.lo is not None and self.hi is not None:
             x = f"clamp({x}, {self.lo}, {self.hi})"
         elif self.lo is not None:
             x = f"max({x}, {self.lo})"
         elif self.hi is not None:
             x = f"min({x}, {self.hi})"
-        return x if self.mod is None else plus(f"{term(x)} % {self.mod}", self.post)
+        if self.mod is not None:
+            x = f"{f'({x})' if ' ' in x else x} % {self.mod}"
+            if self.post:
+                x = f"{x} {'+' if self.post > 0 else '-'} {abs(self.post)}"
+        return x
 
     def evaluate(self, values: Mapping[str, int]) -> int:
         """Its value where ``values`` gives its per-call value by name."""
@@ -334,14 +349,7 @@ class Affine:
         Raises:
             TypeError: No runtime sequence has bound the value.
         """
-        from ...dialects import (  # pyright: ignore[reportMissingImports]
-            arith,  # pyright: ignore[reportAttributeAccessIssue]
-        )
-        from ...extras import types as T  # pyright: ignore[reportMissingImports]
-        from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
-            ScalarValue,
-            constant,
-        )
+        # _symbolic imports this module.
         from ._symbolic import sint
 
         if self.value.ssa is None:

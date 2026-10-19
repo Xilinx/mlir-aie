@@ -116,6 +116,9 @@ class Declaration:
             library: The base whose attributes the library reads; a
                 parameter or member may not hide one of them.
 
+        Returns:
+            The class's parameters, in base-first order, and its members.
+
         Raises:
             TypeError: The class breaks a declaration rule; the message names it.
         """
@@ -152,8 +155,9 @@ class Declaration:
             for name, value in vars(klass).items():
                 if isinstance(value, Param):
                     params[name] = value
-            if klass is not owner:
-                nullable |= getattr(vars(klass).get("declaration"), "nullable", set())
+            base = vars(klass).get("declaration")
+            if klass is not owner and isinstance(base, Declaration):
+                nullable |= base.nullable
         for name, value in vars(owner).items():
             inherited = params.get(name)
             if (

@@ -134,8 +134,20 @@ class _Operand(Member):
         self.like = like
         self.dims = dims if like is None else like.dims
         self.declared_dtype = dtype
-        self.obj_dims = None if obj_shape is None else _dims(obj_shape)
-        self.per = None if per is None else _dims(per)
+        self.obj_dims = (
+            None
+            if obj_shape is None
+            else (
+                tuple(obj_shape)
+                if isinstance(obj_shape, (tuple, list))
+                else (obj_shape,)
+            )
+        )
+        self.per = (
+            None
+            if per is None
+            else tuple(per) if isinstance(per, (tuple, list)) else (per,)
+        )
         self.depth = depth
         self.replicate = replicate
         self.when = when
@@ -177,10 +189,6 @@ class _Operand(Member):
                 return f"{role}(like={self.like.name})"
             return f"{role}({', '.join(map(_text, self.dims))})"
         return f"<{role} {self.name} {self.shape} {bfp.dtype_name(self.dtype)}>"
-
-
-def _dims(spec) -> tuple:
-    return tuple(spec) if isinstance(spec, (tuple, list)) else (spec,)
 
 
 if TYPE_CHECKING:

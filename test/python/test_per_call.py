@@ -123,6 +123,29 @@ def test_a_clamp_is_carried_through_sums_products_and_floors():
         (p + 0).clamp(lo=5, hi=2)
 
 
+def test_an_expression_divides_by_the_raw_per_call_value_it_is_a_multiple_of():
+    n = per_call("n")
+    assert (4 * n) // n == 4 and (n * 6 + 12) // (n + 2) == 6
+    with pytest.raises(TypeError, match="no expression"):
+        (n * 4 + 1) // n
+
+
+def test_a_printed_expression_is_python_that_evaluates_to_its_value():
+    p = per_call()
+    exprs = [
+        (p * 5).clamp(0, 40) // 4 - 3,
+        (p * 3 + 1) // 4 * 5 + 2,
+        -((p * 3 + 1) // 4),
+        (p + 1) // 2 - 3,
+        (p * 8) % 16 + 2,
+    ]
+    assert str(exprs[0]) == "clamp(((p * 5) >> 2) - 3, -3, 7)"
+    clamp = lambda x, lo, hi: min(max(x, lo), hi)  # noqa: E731
+    for e in exprs:
+        for v in range(-20, 21):
+            assert eval(str(e), {"p": v, "clamp": clamp}) == e.evaluate({"p": v}), e
+
+
 def test_a_wrapped_expression_is_a_ring_row_and_its_elements():
     p = per_call()
     ring = p % 16
