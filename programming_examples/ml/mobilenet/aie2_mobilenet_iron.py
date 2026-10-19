@@ -27,12 +27,14 @@ programming_examples/ml for the options.
 import argparse
 import os
 import sys
+from typing import get_origin
 
 import aie.iron as iron
 import numpy as np
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
-    CompileTime,
+    DispatchTime,
     In,
     InOut,
     ObjectFifo,
@@ -40,7 +42,9 @@ from aie.iron import (
     Program,
     Runtime,
     TaskGroup,
+    require,
 )
+from aie.iron.controlflow import else_, if_, range_, yield_
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
@@ -83,29 +87,63 @@ post_L2_OutC = nsblock("post_l2").layers[-1].out_shape[2]
 _PREFETCH = 3
 
 
+# Runtime arg types: i32 element view over the underlying byte buffers.
+#   arg0 (act_in):            100352 i32 = 401408 bytes per image
+#   arg1 (post-L1/FC1 scratch): 1280 i32 =   5120 bytes
+#   arg2 (final FC2 output):    640 i32 =   2560 bytes per image
+in_sz_i32 = tensorInW * tensorInH * tensorInC // 4
+out_sz_i32 = post_L1_OutW * post_L1_OutH * post_L2_OutC * 2 // 4
+
+
 # ---------------------------------------------------------------------------
 # Design top-level function
 # ---------------------------------------------------------------------------
 @iron.jit(aiecc_flags=sa_placer_flags())
-def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: CompileTime[int] = 1):
+def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: DispatchTime[np.int32]):
     """Build the full mobilenet IRON design and return the resolved Program.
 
     Runtime args (declared via In/Out so @iron.jit knows the design takes
     three host tensors): ``batch`` images of activations, the scratch the
     post-L1 / FC1 outputs round-trip through, and ``batch`` FC2 outputs.
     The runtime ``sequence(...)`` body's args match.
-    """
-    if batch < 1:
-        raise ValueError(f"batch must be a positive integer, got {batch}")
 
-    # Runtime arg types: i32 element view over the underlying byte buffers.
-    #   arg0 (act_in):            100352 i32 = 401408 bytes per image
-    #   arg1 (post-L1/FC1 scratch): 1280 i32 =   5120 bytes
-    #   arg2 (final FC2 output):    640 i32 =   2560 bytes per image
-    in_sz_i32 = tensorInW * tensorInH * tensorInC // 4
-    out_sz_i32 = post_L1_OutW * post_L1_OutH * post_L2_OutC * 2 // 4
-    in_ty = np.ndarray[(batch * in_sz_i32,), np.dtype[np.int32]]
-    out_ty = np.ndarray[(batch * out_sz_i32,), np.dtype[np.int32]]
+    Specialized, ``batch`` sizes the host tensors and the sequence unrolls.
+    Left free, the design compiles once: the host tensors it is called with
+    set how many images it can take, and each dispatch runs any ``batch``
+    from 1 up to that many.
+
+    Raises:
+        ValueError: If a specialized ``batch`` is below 1, or a free
+            ``batch`` has no host tensor types to size its buffers from.
+    """
+    static = isinstance(batch, (int, np.integer))
+    if static:
+        if batch < 1:
+            raise ValueError(f"batch must be a positive integer, got {batch}")
+        capacity = int(batch)
+        in_ty = np.ndarray[(capacity * in_sz_i32,), np.dtype[np.int32]]
+        out_ty = np.ndarray[(capacity * out_sz_i32,), np.dtype[np.int32]]
+    else:
+        if get_origin(inp) is not np.ndarray or get_origin(out) is not np.ndarray:
+            raise ValueError(
+                "a dispatch-time batch sizes its host buffers from the input "
+                "and output tensor types; call the design with tensors or "
+                "specialize inp and out"
+            )
+        in_ty, out_ty = inp, out
+        (in_elems,) = np_ndarray_type_get_shape(in_ty)
+        (out_elems,) = np_ndarray_type_get_shape(out_ty)
+        capacity = in_elems // in_sz_i32
+        if capacity < 1 or in_elems != capacity * in_sz_i32:
+            raise ValueError(
+                f"input holds {in_elems} i32, not a whole number of "
+                f"{in_sz_i32}-i32 images"
+            )
+        if out_elems != capacity * out_sz_i32:
+            raise ValueError(
+                f"output holds {out_elems} i32 but the input holds {capacity} "
+                f"images, which need {capacity * out_sz_i32}"
+            )
 
     # ------------------------------------------------------------------
     # Block chain — each builder owns its fifos / kernels / workers and
@@ -151,24 +189,23 @@ def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: CompileTime[int]
     # so `dma_free_task` is not emitted for tasks that were never awaited
     # (act_in, FC fills) — otherwise their BD IDs would be deallocated while
     # their DMAs were potentially still in flight.
-    def sequence(inp, scratch, out, act_in_prod, avgpool_cons, fc_prod, fc_cons):
-        # Image i's input fill joins image i's avgpool-drain group. By the
-        # time that drain completes, init_conv has consumed all of it, so
-        # freeing it at finish_task_group() is safe (causal closure). Fills
-        # run _PREFETCH images ahead so the backbone never idles while the
-        # previous image's FC round-trip runs.
-        groups = [TaskGroup() for _ in range(batch)]
-        in_taps = TensorAccessPattern.full((batch * in_sz_i32,)).partition(batch)
-        out_taps = TensorAccessPattern.full((batch * out_sz_i32,)).partition(batch)
+    def sequence(inp, scratch, out, batch, act_in_prod, avgpool_cons, fc_prod, fc_cons):
+        in_taps = TensorAccessPattern.full((capacity * in_sz_i32,)).partition(capacity)
+        out_taps = TensorAccessPattern.full((capacity * out_sz_i32,)).partition(
+            capacity
+        )
 
-        for i in range(min(_PREFETCH, batch)):
-            act_in_prod.fill(inp, in_taps[i], group=groups[i])
-        for i in range(batch):
-            j = i + _PREFETCH
-            if j < batch:
-                act_in_prod.fill(inp, in_taps[j], group=groups[j])
-            avgpool_cons.drain(scratch, tap=post_l1_tap, wait=True, group=groups[i])
-            groups[i].finish()
+        def fill_image(i):
+            group = TaskGroup()
+            act_in_prod.fill(inp, in_taps[i], group=group)
+            return group
+
+        def finish_image(group, i):
+            # Image i's input fill shares this group with its avgpool drain:
+            # by the time that drain completes, init_conv has consumed all of
+            # the input, so freeing the fill here is safe (causal closure).
+            avgpool_cons.drain(scratch, tap=post_l1_tap, wait=True, group=group)
+            group.finish()
 
             # FC1: reads the avgpool scratch, drains FC1 output to scratch.
             tg = TaskGroup()
@@ -182,12 +219,58 @@ def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: CompileTime[int]
             fc_cons.drain(out, tap=out_taps[i], wait=True, group=tg)
             tg.finish()
 
+        # Fills run _PREFETCH images ahead so the backbone never idles while
+        # the previous image's FC round-trip runs.
+        def unrolled(n):
+            groups = [fill_image(i) for i in range(min(_PREFETCH, n))]
+            for i in range(n):
+                if i + _PREFETCH < n:
+                    groups.append(fill_image(i + _PREFETCH))
+                finish_image(groups[i], i)
+
+        # The same schedule with the steady state rolled: the _PREFETCH fill
+        # groups in flight ride the loop as iter_args.
+        def rolled():
+            groups = [fill_image(i) for i in range(_PREFETCH)]
+            for i, carried, last in range_(batch - _PREFETCH, iter_args=groups):
+                ahead = fill_image(i + _PREFETCH)
+                finish_image(carried[0], i)
+                yield_([*carried[1:], ahead])
+            # range_ traces its body exactly once, so last is always bound.
+            tail = last  # pyright: ignore[reportPossiblyUnboundVariable]
+            for k, group in enumerate(tail):
+                finish_image(group, batch - _PREFETCH + k)
+
+        # Batches below _PREFETCH never reach a steady state; each gets its
+        # unrolled schedule.
+        def select(n):
+            if n >= _PREFETCH:
+                rolled()
+            elif n == capacity:
+                unrolled(n)
+            else:
+                with if_(batch == n) as branch:
+                    unrolled(n)
+                with else_(branch):
+                    select(n + 1)
+
+        if static:
+            unrolled(capacity)
+        else:
+            require(batch >= 1, "batch must be at least 1")
+            require(
+                batch <= capacity,
+                f"batch exceeds the {capacity} images the host tensors hold",
+            )
+            select(1)
+
     rt = Runtime(
         sequence,
         [
             in_ty,
             scratch_ty,
             out_ty,
+            batch,
             act_in.prod(depth=1),
             act_out_post_avgpool_shim.cons(),
             act_out_post_shim_FC.prod(),
@@ -219,13 +302,23 @@ def _make_argparser():
         "  %(prog)s --emit-mlir     # print the MLIR\n"
         "  %(prog)s --sa-seed 7     # place with another SA seed\n"
         "  %(prog)s --sa-effort 0.25\n"
-        "  %(prog)s --batch 16      # 16 images per launch",
+        "  %(prog)s --batch 16      # 16 images per launch\n"
+        "  %(prog)s --dynamic 1 4 16 64  # one compile, each batch per launch",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     add_compile_args(p, default_dev="npu2", with_emit_mlir=True)
     p.add_argument("--sa-seed", type=int, help="SA placer seed (default: 3)")
-    p.add_argument(
+    batch = p.add_mutually_exclusive_group()
+    batch.add_argument(
         "--batch", type=_positive_int, default=1, help="images per launch (>= 1)"
+    )
+    batch.add_argument(
+        "--dynamic",
+        type=_positive_int,
+        nargs="+",
+        metavar="BATCH",
+        help="compile once with a dispatch-time batch and run each listed "
+        "batch; the host tensors hold the largest",
     )
     p.add_argument(
         "--sa-effort",
@@ -247,47 +340,63 @@ def _run_and_verify(design, opts):
         .astype(np.int8)
         .reshape(tensorInC, tensorInH, tensorInW)
     )
-    n = opts.batch
+    golden_image = np.loadtxt(
+        data_dir + "golden_output.txt", delimiter=",", dtype=np.int32
+    ).astype(np.int8)
+    batches = opts.dynamic or [opts.batch]
+    capacity = max(batches)
     inp = iron.tensor(
-        np.tile(ds.reorder_mat(chw, "YCXC8", "CYX").flatten().view(np.int32), n),
+        np.tile(ds.reorder_mat(chw, "YCXC8", "CYX").flatten().view(np.int32), capacity),
         dtype=np.int32,
     )
     scratch = iron.zeros((post_L2_OutC * 2 // 4 * 2,), dtype=np.int32)
-    out = iron.zeros((n * post_L2_OutC * 2 // 4,), dtype=np.int32)
 
-    bench = run_iters(
-        design,
-        inp,
-        scratch,
-        out,
-        warmup=opts.warmup,
-        iters=opts.iters,
-    )
+    for n in batches:
+        # A fresh output per batch, so no image passes on an earlier batch's result.
+        out = iron.zeros((capacity * post_L2_OutC * 2 // 4,), dtype=np.int32)
+        dispatch = {}
+        if opts.dynamic:
+            print(f"batch={n}")
+            dispatch = dict(batch=n)
+        bench = run_iters(
+            design,
+            inp,
+            scratch,
+            out,
+            **dispatch,
+            warmup=opts.warmup,
+            iters=opts.iters,
+        )
 
-    actual = np.concatenate(
-        [
-            ds.reorder_mat(
-                o.reshape(1, post_L2_OutC // 8, 1, 8), "CDYX", "YCXD"
-            ).reshape(post_L2_OutC)
-            for o in out.numpy().view(np.uint16).reshape(n, -1)
-        ]
+        actual = np.concatenate(
+            [
+                ds.reorder_mat(
+                    o.reshape(1, post_L2_OutC // 8, 1, 8), "CDYX", "YCXD"
+                ).reshape(post_L2_OutC)
+                for o in out.numpy().view(np.uint16).reshape(capacity, -1)[:n]
+            ]
+        )
+        verdict = compare(
+            actual.astype(np.int32),
+            np.tile(golden_image, n).astype(np.int32),
+            Tolerance.lsb(9, note="should be 1; #3009"),
+        )
+        print_benchmark(bench)
+        print(f"max_difference: {verdict.max_abs_err:g}")
+        if not verdict.ok:
+            sys.exit(f"FAIL: {verdict.detail}")
+        print("PASS!")
+
+
+def _compile_kwargs(opts):
+    """Size a ``--dynamic`` compile's host buffers for its largest batch."""
+    if not opts.dynamic:
+        return {}
+    capacity = max(opts.dynamic)
+    return dict(
+        inp=np.ndarray[(capacity * in_sz_i32,), np.dtype[np.int32]],
+        out=np.ndarray[(capacity * out_sz_i32,), np.dtype[np.int32]],
     )
-    golden = np.tile(
-        np.loadtxt(
-            data_dir + "golden_output.txt", delimiter=",", dtype=np.int32
-        ).astype(np.int8),
-        n,
-    )
-    verdict = compare(
-        actual.astype(np.int32),
-        golden.astype(np.int32),
-        Tolerance.lsb(9, note="should be 1; #3009"),
-    )
-    print_benchmark(bench)
-    print(f"max_difference: {verdict.max_abs_err:g}")
-    if not verdict.ok:
-        sys.exit(f"FAIL: {verdict.detail}")
-    print("PASS!")
 
 
 def main():
@@ -300,12 +409,12 @@ def main():
         if opts.sa_effort is not None:
             overrides["effort"] = opts.sa_effort
         design = design.specialize(aiecc_flags=sa_placer_flags(**overrides))
-    if opts.batch > 1:
+    if not opts.dynamic:
         design = design.specialize(batch=opts.batch)
     run_design_cli(
         design,
         opts,
-        compile_kwargs={},
+        compile_kwargs=_compile_kwargs,
         device=lambda o: device_from_args(o, n_cols=None),
         run_and_verify=lambda o: _run_and_verify(design, o),
     )

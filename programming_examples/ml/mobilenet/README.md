@@ -35,6 +35,8 @@ From `programming_examples/ml`:
 ```bash
 python3 -m mobilenet.aie2_mobilenet_iron                  # compile, 20 warmup + 5 timed launches, verify
 python3 -m mobilenet.aie2_mobilenet_iron -w 2 -i 20       # warmup / timed launches
+python3 -m mobilenet.aie2_mobilenet_iron --batch 16       # 16 images per launch
+python3 -m mobilenet.aie2_mobilenet_iron --dynamic 1 4 16 64  # one compile, any batch per launch
 python3 -m mobilenet.test_e2e block bn3                   # one bottleneck standalone
 python3 -m mobilenet.test_e2e chain cascade               # bn13 -> bn14
 ```
