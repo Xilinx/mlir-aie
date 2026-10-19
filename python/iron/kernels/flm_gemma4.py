@@ -761,7 +761,7 @@ def _prefill_block_mid_bound(in_bf16, in_f32, *, head_dim):
 
 
 def _prefill_block_mid_sample(rng, calls, *, head_dim):
-    """State as attn_qk_chunk leaves it, on grids that make the kernel's bf16 differences exact.
+    """State as attn_qk_chunk leaves it, on grids that keep its bf16 differences exact.
 
     Scores are multiples of 1/8 in [-12, 12], so every ``s - new_m`` is a
     bf16. The last chunk masks the keys past each row's own, as the causal
