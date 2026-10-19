@@ -645,22 +645,15 @@ ${BUILD}/llama_silu_mul_int8_8192.cc.o: ${KDIR}/llama_silu_mul_int8.cc ${BUILD}/
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
 		-DLLAMA_SILU_MUL_COLS=8192 -I${srcdir} -c $< -o ${@F}
 
-# LMHEAD_KSET sizes the fused lm_head+top-k insert's resident set capacity. It
-# only affects llama_lmhead_topk_insert (unused by the layer/chain GEMM targets,
-# so default 16 leaves their behavior unchanged). The .topk_cfg stamp forces a
-# rebuild when it changes; the object MUST keep its exact basename (the MLIR
-# Kernel() op references it by name -- see the object-rename footgun in
-# onestream-topk-sampler memory).
+# LMHEAD_KSET sizes the fused lm_head+top-k insert's resident set capacity; it
+# only affects llama_lmhead_topk_insert (unused by the layer/chain GEMMs, so the
+# default 16 leaves them unchanged). Each KSET is its own object, and a target
+# cp's the one it needs to the basename its Kernel() op references.
 LMHEAD_KSET ?= 16
-${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_layer.cc ${BUILD}/.lmhead_kset_${LMHEAD_KSET}
+${BUILD}/llama_gemm_int8_srs_tiled_layer_k%.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_layer.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
-		-DLLAMA_LMHEAD_KSET=${LMHEAD_KSET} -c $< -o ${@F}
-
-${BUILD}/.lmhead_kset_${LMHEAD_KSET}:
-	mkdir -p ${@D}
-	rm -f ${BUILD}/.lmhead_kset_* ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
-	touch $@
+		-DLLAMA_LMHEAD_KSET=$* -c $< -o ${@F}
 
 # ---------- chain + lm_head + sample (Phase 6b) ----------
 # V is the lm_head/sample vocab. Both the gemm and sample .cc must be
@@ -743,7 +736,7 @@ ${BUILD}/llama_rescale_add.cc.o: ${KDIR}/llama_rescale_add.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off -DLLAMA_RESCALE_D=2048 -c $< -o ${@F}
 
-LAYER_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
+LAYER_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o \
                 ${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o \
                 ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
                 ${BUILD}/llama_rescale_add.cc.o \
@@ -760,6 +753,7 @@ ${BUILD}/aie_layer_mh_T${LAYER_MH_T}.mlir: ${srcdir}/aie2_layer_mh.py
 
 ${BUILD}/final_layer_mh_T${LAYER_MH_T}.xclbin: ${BUILD}/aie_layer_mh_T${LAYER_MH_T}.mlir ${LAYER_MH_DEPS}
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${LAYER_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
@@ -781,8 +775,7 @@ run_layer_mh: layer_mh
 CHAIN_MH_T ?= 128
 CHAIN_MH_N ?= 2
 
-CHAIN_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
-                ${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o \
+CHAIN_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o \
                 ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
                 ${BUILD}/llama_rescale_add.cc.o \
                 ${BUILD}/llama_kv_append.cc.o \
@@ -792,8 +785,9 @@ CHAIN_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
                 ${BUILD}/llama_gqa_glue.cc.o \
                 ${BUILD}/llama_layer_pt.cc.o
 
-${BUILD}/final_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_MH_DEPS}
+${BUILD}/final_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_MH_DEPS} ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
@@ -813,8 +807,9 @@ run_chain_mh: chain_mh
 # ---------- M3b: chain + on-chip lm_head + sampler (LLAMA_CHAIN_SAMPLE=1) ----------
 CHAIN_SAMPLE_DEPS = ${CHAIN_MH_DEPS} ${BUILD}/llama_sample_streamed.cc.o
 
-${BUILD}/final_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${srcdir}/logits_relay.py ${CHAIN_SAMPLE_DEPS}
+${BUILD}/final_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${srcdir}/logits_relay.py ${CHAIN_SAMPLE_DEPS} ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
@@ -842,8 +837,9 @@ ${BUILD}/llama_embed_select_2048.cc.o: ${KDIR}/llama_embed_select.cc
 
 CHAIN_GATHER_DEPS = ${CHAIN_SAMPLE_DEPS} ${BUILD}/llama_embed_select_2048.cc.o
 
-${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${srcdir}/logits_relay.py ${CHAIN_GATHER_DEPS}
+${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${srcdir}/logits_relay.py ${CHAIN_GATHER_DEPS} ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
@@ -857,17 +853,16 @@ ${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2
 chain_gather_mh: ${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin
 
 # ---------- one-stream sampler+gather fused into the chain (LLAMA_CHAIN_ONESTREAM=1) ----------
-# The fused lm_head GEMM + top-k insert (in the gemm .o, needs LMHEAD_KSET) +
-# llama_topk_finalize (in llama_topk_sample.cc.o, needs TK_D=2048 + TK_KSET).
-# Both share fixed basenames, so the xclbin recipe sub-makes them with matched
-# defines (== ONESTREAM_KSET) to avoid stale-object linkage.
+# The fused lm_head GEMM + top-k insert (the gemm object at KSET) and
+# llama_topk_finalize (the topk object at D=2048, KSET) must agree on KSET
+# (== ONESTREAM_KSET).
 ONESTREAM_KSET ?= 8
 CHAIN_ONESTREAM_DEPS = ${CHAIN_MH_DEPS} ${BUILD}/llama_sample_streamed.cc.o
 
-${BUILD}/final_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_ONESTREAM_DEPS} ${BUILD}/llama_topk_sample.cc.o
+${BUILD}/final_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_ONESTREAM_DEPS} ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_topk_sample_d2048_k${ONESTREAM_KSET}.cc.o
 	mkdir -p ${@D}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${ONESTREAM_KSET}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${ONESTREAM_KSET}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
+	cp ${BUILD}/llama_topk_sample_d2048_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_topk_sample.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
@@ -895,10 +890,10 @@ run_chain_onestream_mh: chain_onestream_mh
 PT ?= 4
 CHAIN_PERSIST_DEPS = ${CHAIN_MH_DEPS} ${BUILD}/llama_sample_streamed.cc.o
 
-${BUILD}/final_chain_persist_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
+${BUILD}/final_chain_persist_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_topk_sample_d2048_k${ONESTREAM_KSET}.cc.o
 	mkdir -p ${@D}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${ONESTREAM_KSET}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${ONESTREAM_KSET}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
+	cp ${BUILD}/llama_topk_sample_d2048_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_topk_sample.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
@@ -925,10 +920,10 @@ run_chain_persist_mh: chain_persist_mh
 # KV cache accumulates across the PT tokens (real autoregressive decode) via the
 # on-chip advancing append + host KV ping-pong. Distinct artifact names so it
 # doesn't collide with the fixed-position increment-1 build.
-${BUILD}/final_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
+${BUILD}/final_chain_persist_grow_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_topk_sample_d2048_k${ONESTREAM_KSET}.cc.o
 	mkdir -p ${@D}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${ONESTREAM_KSET}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${ONESTREAM_KSET}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
+	cp ${BUILD}/llama_topk_sample_d2048_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_topk_sample.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
@@ -957,10 +952,10 @@ run_chain_persist_grow_mh: chain_persist_grow_mh
 # ---------- persistent loop with RESIDENT KV (LLAMA_CHAIN_PERSIST_RESIDENT=1) ----------
 # KV cache resident on the attn compute tiles (b_kv); host streams ONLY weights
 # after the token-0 seed. Scoped to small N (N=2 -> 32KB/head fits the tile).
-${BUILD}/final_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
+${BUILD}/final_chain_persist_resident_N${CHAIN_MH_N}_PT${PT}.xclbin: ${srcdir}/aie2_chain_dynscale_mh.py ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_topk_sample_d2048_k${ONESTREAM_KSET}.cc.o
 	mkdir -p ${@D}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${ONESTREAM_KSET}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${ONESTREAM_KSET}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
+	cp ${BUILD}/llama_topk_sample_d2048_k${ONESTREAM_KSET}.cc.o ${BUILD}/llama_topk_sample.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
 	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
@@ -986,7 +981,7 @@ run_chain_persist_resident_mh: chain_persist_resident_mh
 		-k MLIR_AIE
 
 # ---------- standalone tiled lm_head + greedy argmax (sample tile M1) ----------
-LMHEAD_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
+LMHEAD_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o \
               ${BUILD}/llama_rmsnorm_int8_2048.cc.o
 
 ${BUILD}/aie_lmhead_sample.mlir: ${srcdir}/aie2_lmhead_sample.py
@@ -995,6 +990,7 @@ ${BUILD}/aie_lmhead_sample.mlir: ${srcdir}/aie2_lmhead_sample.py
 
 ${BUILD}/final_lmhead_sample.xclbin: ${BUILD}/aie_lmhead_sample.mlir ${LMHEAD_DEPS}
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
 		--xclbin-name=${@F} \
@@ -1041,7 +1037,7 @@ run_sample_streamed: sample_streamed
 		-k MLIR_AIE
 
 # ---------- standalone fused lm_head + memtile logits + full sampler (M3a) ----------
-LMFULL_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
+LMFULL_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o \
               ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
               ${BUILD}/llama_sample_streamed.cc.o
 
@@ -1054,6 +1050,7 @@ ${BUILD}/aie_lmhead_full.mlir: ${srcdir}/aie2_lmhead_full.py
 
 ${BUILD}/final_lmhead_full.xclbin: ${BUILD}/aie_lmhead_full.mlir ${LMFULL_DEPS}
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LMHEAD_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
 	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
 		--xclbin-name=${@F} \
@@ -1271,30 +1268,23 @@ TK_SEED ?= 0
 # the MLIR + xclbin are config-specific. Encode the config in the artifact names
 # so a different temp/top_k/seed never silently reuses a stale build.
 TK_CFG := V${TK_V}_D${TK_D}_K${TK_KSET}_t${TK_TEMP}_k${TK_TOPK}_s${TK_SEED}
-# The object is named llama_topk_sample.cc.o (the name the probe's Kernel() op
-# references, which aiecc copies into the .prj by basename). It is rebuilt
-# whenever TK_D/TK_KSET change because the .cc.o target is order-only-rebuilt
-# via the config stamp below.
-${BUILD}/llama_topk_sample.cc.o: ${KDIR}/llama_topk_sample.cc ${BUILD}/exp_lut.h ${BUILD}/.topk_cfg_${TK_D}_${TK_KSET}
+# Each (TK_D, TK_KSET) is its own object, llama_topk_sample_d<D>_k<KSET>.cc.o; a
+# target cp's the one it needs to llama_topk_sample.cc.o, the basename its
+# Kernel() op references.
+${BUILD}/llama_topk_sample_d%.cc.o: ${KDIR}/llama_topk_sample.cc ${BUILD}/exp_lut.h
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
-		-I${srcdir} -DLLAMA_TOPK_D=${TK_D} -DLLAMA_TOPK_NTILE=4 \
-		-DLLAMA_TOPK_KSET=${TK_KSET} -c $< -o ${@F}
-
-# Config stamp: changing TK_D/TK_KSET creates a new empty stamp and removes the
-# stale .cc.o so the object is recompiled for the new shape.
-${BUILD}/.topk_cfg_${TK_D}_${TK_KSET}:
-	mkdir -p ${@D}
-	rm -f ${BUILD}/.topk_cfg_* ${BUILD}/llama_topk_sample.cc.o
-	touch $@
+		-I${srcdir} -DLLAMA_TOPK_D=$(word 1,$(subst _k, ,$*)) -DLLAMA_TOPK_NTILE=4 \
+		-DLLAMA_TOPK_KSET=$(word 2,$(subst _k, ,$*)) -c $< -o ${@F}
 
 ${BUILD}/aie_topk_sample_probe_${TK_CFG}.mlir: ${srcdir}/aie2_topk_sample_probe.py
 	mkdir -p ${@D}
 	LLAMA_TK_V=${TK_V} LLAMA_TK_D=${TK_D} LLAMA_TK_KSET=${TK_KSET} \
 		LLAMA_TK_TEMP=${TK_TEMP} LLAMA_TK_TOPK=${TK_TOPK} LLAMA_TK_SEED=${TK_SEED} python3 $< > $@
 
-${BUILD}/final_topk_sample_probe_${TK_CFG}.xclbin: ${BUILD}/aie_topk_sample_probe_${TK_CFG}.mlir ${BUILD}/llama_topk_sample.cc.o
+${BUILD}/final_topk_sample_probe_${TK_CFG}.xclbin: ${BUILD}/aie_topk_sample_probe_${TK_CFG}.mlir ${BUILD}/llama_topk_sample_d${TK_D}_k${TK_KSET}.cc.o
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_topk_sample_d${TK_D}_k${TK_KSET}.cc.o ${BUILD}/llama_topk_sample.cc.o
 	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
 		--xclbin-name=${@F} \
 		--npu-insts-name=insts_topk_sample_probe_${TK_CFG}.bin \
@@ -1323,17 +1313,13 @@ ${BUILD}/aie_lmhead_topk_probe_${LT_CFG}.mlir: ${srcdir}/aie2_lmhead_topk_probe.
 	LLAMA_LT_V=${LT_V} LLAMA_LT_KSET=${LT_KSET} \
 		LLAMA_LT_TEMP=${LT_TEMP} LLAMA_LT_TOPK=${LT_TOPK} LLAMA_LT_SEED=${LT_SEED} python3 $< > $@
 
-# The fused probe links TWO config-sensitive objects that share fixed basenames:
-# llama_gemm_int8_srs_tiled_layer.cc.o (the insert; needs LMHEAD_KSET==LT_KSET)
-# and llama_topk_sample.cc.o (the finalize; needs TK_D==2048 and TK_KSET==LT_KSET
-# so set_row indexing matches D=2048). Build both with the right defines via
-# sub-make so a stale object from another probe (e.g. the topk probe's default
-# TK_D=256) can never link silently. (See the object-name footgun documented in
-# the onestream-topk-sampler memory.)
-${BUILD}/final_lmhead_topk_probe_${LT_CFG}.xclbin: ${BUILD}/aie_lmhead_topk_probe_${LT_CFG}.mlir
+# The insert (gemm object) and finalize (topk object, D=2048 so set_row indexing
+# matches) must agree on KSET == LT_KSET.
+${BUILD}/final_lmhead_topk_probe_${LT_CFG}.xclbin: ${BUILD}/aie_lmhead_topk_probe_${LT_CFG}.mlir \
+		${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LT_KSET}.cc.o ${BUILD}/llama_topk_sample_d2048_k${LT_KSET}.cc.o
 	mkdir -p ${@D}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${LT_KSET}
-	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${LT_KSET}
+	cp ${BUILD}/llama_gemm_int8_srs_tiled_layer_k${LT_KSET}.cc.o ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
+	cp ${BUILD}/llama_topk_sample_d2048_k${LT_KSET}.cc.o ${BUILD}/llama_topk_sample.cc.o
 	cd ${@D} && aiecc --unified --peano=${PEANO_INSTALL_DIR} --get-xclbin --get-npu-insts \
 		--xclbin-name=${@F} \
 		--npu-insts-name=insts_lmhead_topk_probe_${LT_CFG}.bin \
