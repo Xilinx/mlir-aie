@@ -124,9 +124,7 @@ class DeviceResources:
             for flow in self._flows:
                 for tile in flow.control_tiles():
                     if any(
-                        program.tile is tile
-                        or None not in (tile.col, tile.row)
-                        and (program.tile.col, program.tile.row) == (tile.col, tile.row)
+                        program.tile.is_same_tile(tile)
                         for program in self._resolved_tile_dmas
                     ):
                         raise IronRuntimeError(
@@ -139,23 +137,30 @@ class DeviceResources:
             program.resolve()
 
     def static_channel(self, endpoint) -> bool:
-        """Return whether a resolved TileDma program runs ``endpoint``'s channel.
+        """Return whether a resolved TileDma program may run ``endpoint``'s channel.
 
-        A channel the compiler assigns matches only the same endpoint. Tiles
-        match when they are one object or are placed at one column and row; a
-        tile not fully placed matches only itself.
+        Tiles match as `Tile.is_same_tile` says. A channel the compiler
+        assigns is one endpoint object, so it matches only itself; a channel
+        given by index also matches a program's channel in that direction
+        that the compiler has yet to assign, which may get that index.
+
+        Args:
+            endpoint: The `DmaEndpoint` a dispatch-time task would run on.
+
+        Returns:
+            Whether a dispatch-time write to that channel could rewrite a
+            TileDma program.
         """
-        tile = endpoint.tile
         return any(
-            (
-                program.tile is tile
-                or None not in (tile.col, tile.row)
-                and (program.tile.col, program.tile.row) == (tile.col, tile.row)
-            )
+            program.tile.is_same_tile(endpoint.tile)
             and any(
                 channel.channel is endpoint
                 or endpoint.channel is not None
-                and channel._key == (endpoint.direction, endpoint.channel)
+                and channel.direction == endpoint.direction
+                and (
+                    channel._key[1] == endpoint.channel
+                    or not isinstance(channel._key[1], int)
+                )
                 for channel in program.channels
             )
             for program in self._resolved_tile_dmas or ()

@@ -612,6 +612,23 @@ def test_a_task_through_a_sharing_route_on_a_static_channel_is_refused():
         program(static, task)
 
 
+@pytest.mark.parametrize(
+    "direction, refused", [(DMAChannelDir.S2MM, True), (DMAChannelDir.MM2S, False)]
+)
+def test_an_indexed_task_meets_a_static_channel_left_for_the_compiler(
+    direction, refused
+):
+    mem = mem_tile()
+    owner, sharer = gathered(mem)
+    static = static_on("seq_0", mem, owner.endpoint(mem), (owner, sharer))
+    task = task_on("seq_1", mem, direction, 0)
+    if refused:
+        with pytest.raises(ValueError, match="would rewrite the channel"):
+            program(static, task)
+    else:
+        assert str(program(static, task)).count("aiex.dma_configure_task(") == 1
+
+
 def test_tiles_pinned_to_one_column_alone_are_two_tiles():
     first = Tile(col=0, tile_type=AIETileType.MemTile)
     second = Tile(col=0, tile_type=AIETileType.MemTile)

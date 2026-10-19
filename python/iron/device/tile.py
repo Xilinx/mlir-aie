@@ -122,6 +122,24 @@ class Tile(PerDeviceConfiguration):
             return NotImplemented
         return id(self) == id(other)
 
+    def is_same_tile(self, other: "Tile") -> bool:
+        """Return whether this and ``other`` name one physical tile.
+
+        Two Tile objects are one tile when both are placed at one column and
+        row; a tile not fully placed is only itself.
+
+        Args:
+            other: The tile to compare with.
+
+        Returns:
+            True for the same object, or for two fully placed tiles at one
+            column and row.
+        """
+        return self is other or (
+            None not in (self.col, self.row, other.col, other.row)
+            and (self.col, self.row) == (other.col, other.row)
+        )
+
     def __str__(self) -> str:
         col_str = str(self.col) if self.col is not None else "?"
         row_str = str(self.row) if self.row is not None else "?"
