@@ -239,6 +239,9 @@ the bit-exact host reference.
 `router_top_k` turns one `sample_select` summary into a router's `top_k`
 expert ids and their softmax weights, deterministically. `router_top_k_ref`
 is the bit-exact host reference.
+`expert_gate_up` and `expert_down` are one tile each of a chosen expert's
+gated feed-forward, summed in float32 across the chosen experts and rounded
+once.
 
 ::: iron.kernels.moe
     options:

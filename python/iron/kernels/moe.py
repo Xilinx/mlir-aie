@@ -3,7 +3,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""A mixture-of-experts router's top-k selection on the device.
+"""A mixture of experts on the device: the router's top-k selection and the
+experts' gated feed-forward.
 
 ``router_top_k`` reads one column's ``sample_select`` summary (``sample.py``,
 ``k_max == top_k``, one call reduces the whole row) and writes the ``top_k``
@@ -16,13 +17,17 @@ their values alone. That softmax is the weighting of routers that normalize
 over the selected experts (Granite-MoE, Mixtral, ``norm_topk_prob=True``).
 """
 
+from functools import partial
+
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, Out
+from aie.utils.compile.jit.markers import In, InOut, Out
+from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import KernelContract, Trace, _kernel_source, _make_extern
 from .sample import _check_slice, _positive, exp64_ref, order_keys, summary_words
+from .zero import zero
 
 _STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
 
@@ -97,3 +102,94 @@ def router_top_k_ref(logits, top_k: int) -> tuple[np.ndarray, np.ndarray]:
     weights = np.zeros(2 * top_k, dtype=bfloat16)
     weights[0::2] = packed
     return ids, weights
+
+
+# Scalar float32 dot products, summed in another order than numpy's; the
+# floor covers terms that cancel. Measured against a host build, not a device.
+_EXPERT_TOLERANCE = Tolerance.relative(
+    1e-4, range_frac=1e-5, note="host clang build of the scalar source"
+)
+
+
+def _zero_y(fn):
+    return zero(fn.arg_shape(3), np.float32)
+
+
+def expert_gate_up_ref(x, w, *, rows: int, hidden: int):
+    """Numpy reference for [`expert_gate_up`][iron.kernels.moe.expert_gate_up]."""
+    x = np.asarray(x, np.float32).reshape(-1, hidden)
+    gate, up = np.asarray(w, np.float32).reshape(-1, 2, rows, hidden).swapaxes(0, 1)
+    g, u = np.einsum("crk,ck->cr", gate, x), np.einsum("crk,ck->cr", up, x)
+    with np.errstate(over="ignore"):
+        return g / (1 + np.exp(-g)) * u
+
+
+def expert_gate_up(*, rows: int = 4, hidden: int = 256) -> ExternalFunction:
+    """One tile of an expert's gated activation: silu of each gate row's dot with x, times its up row's.
+
+    ``expert_gate_up(x, w, h)`` takes ``hidden`` bf16 ``x``, the ``rows``
+    gate rows of one expert's ``gate_up`` followed by the ``rows`` up rows
+    they pair with (``2 * rows`` rows of ``hidden`` bf16), and writes
+    ``rows`` float32 ``h``, which ``expert_down`` reads unrounded.
+    """
+    _positive("expert_gate_up", rows=rows, hidden=hidden)
+    return _make_extern(
+        "expert_gate_up",
+        _kernel_source("moe/expert_gate_up.cc"),
+        [
+            np.ndarray[(hidden,), np.dtype[bfloat16]],
+            np.ndarray[(2 * rows * hidden,), np.dtype[bfloat16]],
+            np.ndarray[(rows,), np.dtype[np.float32]],
+        ],
+        compile_flags=_STRICT_FP
+        + [f"-DEXPERT_ROWS={rows}", f"-DEXPERT_HIDDEN={hidden}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out),
+            reference=partial(expert_gate_up_ref, rows=rows, hidden=hidden),
+            tolerance=_EXPERT_TOLERANCE,
+            acc_dtype=np.float32,
+            reduction=hidden,
+        ),
+    )
+
+
+def expert_down_ref(h, w, weight, *, rows: int, width: int):
+    """Numpy reference for [`expert_down`][iron.kernels.moe.expert_down], from a zeroed ``y``."""
+    h = np.asarray(h, np.float32).reshape(-1, width)
+    w = np.asarray(w, np.float32).reshape(-1, rows, width)
+    scale = np.asarray(weight, np.float32).reshape(-1, 2)[:, :1]
+    return scale * np.einsum("crk,ck->cr", w, h)
+
+
+def expert_down(*, rows: int = 4, width: int = 256) -> ExternalFunction:
+    """One tile of an expert's down projection, weighted and accumulated.
+
+    ``expert_down(h, w, weight, y)`` adds ``weight[0] * (w @ h)`` to ``rows``
+    float32 ``y``: ``h`` is ``width`` float32 from ``expert_gate_up``, ``w``
+    ``rows`` rows of one expert's ``down`` (``width`` bf16 each) and
+    ``weight`` the router's padded pair for that expert, as ``router_top_k``
+    writes it. Summing every chosen expert into one ``y`` and rounding it
+    once (``convert_copy``) gives a row of the experts' output.
+    """
+    _positive("expert_down", rows=rows, width=width)
+    return _make_extern(
+        "expert_down",
+        _kernel_source("moe/expert_down.cc"),
+        [
+            np.ndarray[(width,), np.dtype[np.float32]],
+            np.ndarray[(rows * width,), np.dtype[bfloat16]],
+            np.ndarray[(2,), np.dtype[bfloat16]],
+            np.ndarray[(rows,), np.dtype[np.float32]],
+        ],
+        compile_flags=[f"-DEXPERT_ROWS={rows}", f"-DEXPERT_WIDTH={width}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, In, InOut),
+            reference=partial(expert_down_ref, rows=rows, width=width),
+            initializers=((3, _zero_y),),
+            tolerance=_EXPERT_TOLERANCE,
+            acc_dtype=np.float32,
+            reduction=width,
+        ),
+    )

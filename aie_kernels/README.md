@@ -120,6 +120,13 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query and key blocks a multiple of 16 rows and a head dimension a multiple of 8; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16`, running state and O `float32` |
 | [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
 
+## moe
+| Name | Coding style | Purpose | Datatypes |
+|-|-|-|-|
+| [router_top_k.cc](./moe/router_top_k.cc) | Generic C | A router's `top_k` expert ids and softmax weights, from one `sample_select` summary | `int32_t` → `int32_t`, `bfloat16` |
+| [expert_gate_up.cc](./moe/expert_gate_up.cc) | Generic C | One tile of an expert's gated activation, `silu(gate · x) * (up · x)`, in float32. Scalar first pass | `bfloat16` → `float32` |
+| [expert_down.cc](./moe/expert_down.cc) | Generic C | One tile of an expert's down projection, scaled by its router weight and added to a float32 sum. Scalar first pass | `float32`, `bfloat16` → `float32` |
+
 ## norm
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|

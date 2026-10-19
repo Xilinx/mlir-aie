@@ -16,7 +16,8 @@ Submodules:
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
 - `moe` — router_top_k (a mixture-of-experts router's top-k ids and softmax
-  weights, deterministic, from a `sample_select` summary)
+  weights, deterministic, from a `sample_select` summary), expert_gate_up
+  and expert_down (one tile of an expert's gated feed-forward)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
   implementation (AIE2P): prefill attention, the q4nx LM head and the decode
@@ -256,7 +257,14 @@ from .linalg import (
     prefill_fv,
     prefill_fv_ref,
 )
-from .moe import router_top_k, router_top_k_ref
+from .moe import (
+    expert_down,
+    expert_down_ref,
+    expert_gate_up,
+    expert_gate_up_ref,
+    router_top_k,
+    router_top_k_ref,
+)
 from .norm import (
     layer_norm,
     layer_norm_eps,
@@ -345,6 +353,10 @@ __all__ = [
     "exp64_ref",
     "router_top_k",
     "router_top_k_ref",
+    "expert_gate_up",
+    "expert_gate_up_ref",
+    "expert_down",
+    "expert_down_ref",
     "rms_norm_ref",
     "layer_norm",
     "layer_norm_ref",

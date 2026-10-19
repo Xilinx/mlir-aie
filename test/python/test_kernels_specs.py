@@ -907,6 +907,24 @@ KERNEL_SPECS: list[KernelSpec] = [
         shape_checks=[(dict(_MERGE, block=32), 1, (32,))],
     ),
     KernelSpec(
+        name="expert_gate_up",
+        factory=kernels.expert_gate_up,
+        kwargs={},
+        arg_count=3,  # x, gate and up rows, h
+        expected_name="expert_gate_up",
+        invalid_kwargs=[(dict(rows=0), "rows must be a positive integer")],
+        shape_checks=[(dict(rows=2, hidden=64), 1, (256,))],
+    ),
+    KernelSpec(
+        name="expert_down",
+        factory=kernels.expert_down,
+        kwargs={},
+        arg_count=4,  # h, down rows, router weight pair, y
+        expected_name="expert_down",
+        invalid_kwargs=[(dict(width=0), "width must be a positive integer")],
+        shape_checks=[(dict(rows=2, width=64), 1, (128,))],
+    ),
+    KernelSpec(
         name="patch_positions",
         factory=kernels.patch_positions,
         kwargs={},
