@@ -1078,6 +1078,20 @@ CASES: list[Case] = [
         calls=256,
         tag="llama-decode-ffn-down",
     ),
+    # Llama 3.2 3B's decode projections: two rows of K=3072 a call
+    # (tile_size_input=2 in IRON's npu2 profile).
+    Case(
+        "mv",
+        dict(
+            dim_m=2,
+            dim_k=3072,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+            vec_size=64,
+        ),
+        calls=16,
+        tag="llama-3b-decode",
+    ),
     # The column-major bf16 matvec, a whole K per call: llama 3.2 1B's
     # attention context shape (64 head dims, 128 cached positions per call),
     # and the narrowest output block at the narrowest VEC_SIZE. Calls that
@@ -1953,6 +1967,17 @@ CASES: list[Case] = [
     # transformer blocks: one row per call
     Case("rms_norm", dict(cols=1024), calls=16, smoke=True),
     Case("rms_norm_eps", dict(cols=1024), calls=16, scalars=(1e-5,), smoke=True),
+    # Llama 3.2 1B's and 3B's hidden sizes, one row a call as IRON's RMSNorm.
+    *[
+        Case(
+            "rms_norm_eps",
+            dict(cols=cols),
+            calls=16,
+            scalars=(1e-5,),
+            tag=f"llama-hidden-{cols}",
+        )
+        for cols in (2048, 3072)
+    ],
     # 200 is too short for the pipelined loops and 1000 has an odd chunk
     # count; both end in a scalar tail.
     check("rms_norm", dict(cols=200), calls=16, tag="row-tail"),
@@ -2311,6 +2336,19 @@ CASES += [
     # different micro-tile and so a different blocked operand order, which is
     # the part a shared case could not check.
     Case("mha", dict(pv=True), calls=4, smoke=True),
+    # As IRON's MHA operator builds them on npu2: B column-major and the
+    # accurate exp2 (operators/mha.py), at head_dim 64 (Llama 3.2 1B) and 128.
+    *[
+        Case(
+            "mha",
+            dict(dim_k=d, b_col_maj=True, accurate_exp2=True) | pv,
+            calls=4,
+            tag=f"iron-prefill-d{d}",
+            devices=("npu2",),
+        )
+        for d in (64, 128)
+        for pv in ({}, {"pv": True})
+    ],
     # The toolkit's online softmax over one key block: params is (key block,
     # query block), scalars the two sequence lengths. The padded diagonal
     # block takes every branch the full one skips (the causal mask, masked

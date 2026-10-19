@@ -321,6 +321,10 @@ mha/16x256x64x4/bfloat16/pv=True
 mha/64x64x64x4/bfloat16
 mha/64x64x64x4/bfloat16/pv=True
 mha/64x64x64x4/bfloat16_float32/f32_scores=True
+mha/64x64x64x4/bfloat16/accurate_exp2=True/b_col_maj=True/iron-prefill-d64
+mha/64x64x64x4/bfloat16/accurate_exp2=True/b_col_maj=True/pv=True/iron-prefill-d64
+mha/64x128x64x4/bfloat16/accurate_exp2=True/b_col_maj=True/iron-prefill-d128
+mha/64x128x64x4/bfloat16/accurate_exp2=True/b_col_maj=True/pv=True/iron-prefill-d128
 mha_softmax/2048x4/bfloat16_bfloat16+float32/half-block-diagonal
 mha_softmax/256x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate-diagonal-padded
 mha_softmax/256x4/bfloat16_bfloat16+float32/diagonal-padded
@@ -409,6 +413,7 @@ mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4
 mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down
 mv/8192x4/bfloat16/a_col_maj=True/vec_size=32/edge-eight-vectors
 mv/8192x4/bfloat16/a_col_maj=True/vec_size=64
+mv/2x3072x16/bfloat16/vec_size=64/llama-3b-decode
 passthrough/1024x16/int16
 passthrough/128x4/int16/edge-tiny
 passthrough/16x4/int32/edge-one-vector
@@ -482,6 +487,8 @@ rms_norm/1000x16/bfloat16/cols=1000/row-tail
 rms_norm/1024x16/bfloat16/cols=1024
 rms_norm/200x16/bfloat16/cols=200/row-tail
 rms_norm_eps/1024x16/bfloat16/cols=1024
+rms_norm_eps/2048x16/bfloat16/cols=2048/llama-hidden-2048
+rms_norm_eps/3072x16/bfloat16/cols=3072/llama-hidden-3072
 rope/1008x16/bfloat16/cols=1008/row-tail
 rope/1024x16/bfloat16/cols=1024
 rope/1024x16/bfloat16/cols=1024/two_halves=True
