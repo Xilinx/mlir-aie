@@ -349,7 +349,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     if (!unpinned(lt))
       return;
     forEachPeer(lt.getOperation(), bufferAdjacency,
-                [&](TileLike peer, bool /*thisIsConsumer*/) {
+                [&](TileLike peer, bool /*thisIsFirst*/) {
                   auto peerLt = dyn_cast<LogicalTileOp>(peer.getOperation());
                   if (peerLt && unpinned(peerLt))
                     emit(peerLt);

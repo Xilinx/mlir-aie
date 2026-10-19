@@ -220,3 +220,28 @@ module @adjacency_allocate_ignores_memtile_end {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// The owner skips (0, 2): a consumer there would need a free tile beside it,
+// and the pinned core at (0, 3) takes the only one. Placing the owner at
+// (0, 4) leaves (0, 5) for its consumer.
+// CHECK-LABEL: @owner_leaves_room_for_consumer
+// CHECK-DAG: aie.tile(0, 5)
+// CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 4)
+// CHECK-DAG: aie.buffer(%[[OWNER]])
+module @owner_leaves_room_for_consumer {
+  aie.device(npu2_1col) {
+    %pin = aie.logical_tile<CoreTile>(0, 3)
+    aie.core(%pin) { aie.end }
+    %owner = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %consumer = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%consumer) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
