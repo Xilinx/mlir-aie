@@ -1617,3 +1617,19 @@ def test_bf16_mv_retains_output_contract_without_accumulator(kernel_arch):
     assert fn.contract.roles[-1] is Out
     assert fn.contract.initializers == ()
     assert not hasattr(fn, "zero")
+
+
+def test_experts_duplicated_id_sums_its_weights():
+    from aie.iron.kernels.moe import _experts_row
+
+    c = kernels.experts().contract
+    _, tile = c.sample(np.random.default_rng(0), 96)
+    x = np.random.default_rng(1).standard_normal(64) * 0.5
+
+    def run(ids, weights):
+        row = _experts_row(x, np.array(weights, np.float32), ids)
+        return c.reference(np.tile(row, (96, 1)), tile)
+
+    np.testing.assert_array_equal(
+        run([1, 1], [0.25, 0, 0.5, 0]), run([1, 0], [0.75, 0, 0, 0])
+    )
