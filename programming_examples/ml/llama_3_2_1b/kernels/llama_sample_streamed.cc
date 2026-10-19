@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "build/exp_lut.h"
+#include "exp_lut.h"
 
 #ifndef LLAMA_SAMPLE_EXP_QUANT_SCALE
 #define LLAMA_SAMPLE_EXP_QUANT_SCALE 0.05f

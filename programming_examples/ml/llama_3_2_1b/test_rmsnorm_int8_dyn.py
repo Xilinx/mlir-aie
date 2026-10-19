@@ -18,11 +18,10 @@ import struct
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
-from aie2_rmsnorm_int8_dyn import ACT_SCALE_IN
+from aie2_rmsnorm_int8_dyn import ACT_SCALE_IN, build
+from llama_npu import add_artifact_args, design_kernel
 from ml_dtypes import bfloat16
 from test_rmsnorm_int8 import round_to_i8, sw_invsqrt
 
@@ -77,7 +76,7 @@ def numpy_rmsnorm_int8_dyn(
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("-D", type=int, default=2048)
     p.add_argument("--max-mismatches", type=int, default=0)
     p.add_argument("--seed", type=int, default=0)
@@ -92,9 +91,9 @@ def main():
     g_t = iron.tensor(g, dtype=bfloat16)
     y_t = iron.zeros([D + 8], dtype=np.int8)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu = design_kernel(build, opts, D=D)
     rc = DefaultNPURuntime.run_test(
-        npu_opts.npu_kernel,
+        npu,
         [x_t, g_t, y_t],
         {},
         verify=False,

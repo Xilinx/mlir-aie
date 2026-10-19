@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "build/exp_lut.h"
+#include "exp_lut.h"
 
 #ifndef LLAMA_TOPK_D
 #define LLAMA_TOPK_D 2048

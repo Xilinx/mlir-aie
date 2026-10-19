@@ -11,11 +11,8 @@ For each seed:
      + kvblob (8 KV heads, 4 B header each).
   4. Dispatch xclbin, compare bit-exact.
 
-Run:
-  make layer_mh
-  python test_layer_mh.py -x build/final_layer_mh_T128.xclbin \
-                          -i build/insts_layer_mh_T128.bin \
-                          -k MLIR_AIE --seeds 0,1,7,42
+Run (compiles the design, or reuses its JIT cache entry):
+  python test_layer_mh.py --seeds 0,1,7,42
 """
 
 from __future__ import annotations
@@ -24,10 +21,8 @@ import argparse
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
 from aie2_layer_mh import (
     ACT_SCALE,
     AF_SCALES_BYTES,
@@ -73,12 +68,14 @@ from aie2_layer_mh import (
     WV_SLOT,
     D,
     T,
+    build,
     kv_off_k,
     kv_off_t_used,
     kv_off_v,
 )
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+from llama_npu import add_artifact_args, design_kernel
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
 from test_flowkv import EXP_QUANT_SCALE
 
@@ -462,14 +459,14 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument(
         "--seeds", type=str, default="0,1,7,42", help="comma-separated seed list"
     )
     opts = p.parse_args()
     seeds = [int(s) for s in opts.seeds.split(",")]
 
-    npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
+    npu_kernel = design_kernel(build, opts)
     lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
 

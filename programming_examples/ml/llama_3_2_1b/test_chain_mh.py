@@ -12,11 +12,8 @@ Per seed:
      8-KV-head contiguous block).
   4. Dispatch xclbin, compare bit-exact.
 
-Run:
-  make chain_mh CHAIN_MH_N=2
-  python test_chain_mh.py -x build/final_chain_mh_N2_T128.xclbin \\
-                          -i build/insts_chain_mh_N2_T128.bin \\
-                          -k MLIR_AIE --seeds 0,1,7,42
+Run (compiles the design, or reuses its JIT cache entry):
+  python test_chain_mh.py --seeds 0,1,7,42
 """
 
 from __future__ import annotations
@@ -26,10 +23,8 @@ import os
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
 from aie2_chain_dynscale_mh import (
     ACT_SCALE,
     AF_SCALES_BYTES,
@@ -57,10 +52,12 @@ from aie2_chain_dynscale_mh import (
     WU_SLOT,
     WV_SLOT,
     D,
+    build,
     derived_sizes,
 )
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+from llama_npu import add_artifact_args, design_kernel
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
 from test_flowkv import EXP_QUANT_SCALE
 from test_layer_mh import (
@@ -72,13 +69,7 @@ from test_layer_mh import (
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
-PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
-PERSIST_GROW = os.environ.get("LLAMA_CHAIN_PERSIST_GROW", "0") == "1"
-# pack_blobs() below is reused by test_chain_persist_grow_mh.py/
-# test_chain_persist_resident_mh.py (imported with those env vars already
-# set), so WEIGHTS_BYTES must reflect PERSIST_GROW/PT there too, not just
-# this file's own chain_mh defaults.
-_sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT, PERSIST_GROW=PERSIST_GROW)
+_sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS)
 OFF_GAMMA_IN = _sizes.OFF_GAMMA_IN
 OFF_WQ = _sizes.OFF_WQ
 OFF_CS = _sizes.OFF_CS
@@ -101,8 +92,18 @@ KV_BYTES = _sizes.KV_BYTES
 WEIGHTS_BYTES = _sizes.WEIGHTS_BYTES
 
 
-def pack_blobs(layers):
-    wblob = np.zeros(WEIGHTS_BYTES, dtype=np.int8)
+def pack_blobs(layers, weights_bytes=WEIGHTS_BYTES):
+    """Pack `layers` into the chain's wblob and kvblob.
+
+    Args:
+        layers: Per-layer fixtures, as numpy_layer_mh builds them.
+        weights_bytes: The wblob size; a PERSIST_GROW chain's is larger, its
+            per-position cos/sin block following the packed weights.
+
+    Returns:
+        `(wblob, kvblob)`.
+    """
+    wblob = np.zeros(weights_bytes, dtype=np.int8)
     for L in range(N_LAYERS):
         layer = layers[L]
         sc = layer["scales"]
@@ -435,14 +436,14 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument(
         "--seeds", type=str, default="0,1,7,42", help="comma-separated seed list"
     )
     opts = p.parse_args()
     seeds = [int(s) for s in opts.seeds.split(",")]
 
-    npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
+    npu_kernel = design_kernel(build, opts, N_LAYERS=N_LAYERS, T=T)
     lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
 

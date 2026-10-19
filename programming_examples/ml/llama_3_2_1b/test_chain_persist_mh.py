@@ -13,10 +13,8 @@ The numpy oracle runs the SAME loop: token 0 from the host xin; each subsequent
 token's xin = the previous token's embed seed (embed[prev_token] requantised).
 Bit-exact on every generated token id + embed seed proves the on-chip feedback.
 
-Run:
-  make chain_persist_mh CHAIN_MH_N=2 PT=4 ONESTREAM_KSET=8
-  python test_chain_persist_mh.py -x build/final_chain_persist_N2_PT4.xclbin \\
-      -i build/insts_chain_persist_N2_PT4.bin -k MLIR_AIE
+Run (compiles the design, or reuses its JIT cache entry):
+  python test_chain_persist_mh.py
 """
 
 from __future__ import annotations
@@ -27,10 +25,8 @@ import sys
 from pathlib import Path
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
 from aie2_chain_dynscale_mh import (
     HEAD_D,
     N_HEADS_KV,
@@ -42,10 +38,12 @@ from aie2_chain_dynscale_mh import (
     VOCAB,
     WLM_TOTAL,
     D,
+    build,
     derived_sizes,
 )
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+from llama_npu import add_artifact_args, design_kernel
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw
 from numpy_topk_sample import topk_sample_reference
@@ -56,7 +54,7 @@ from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
-ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
+ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8"))
 PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
 KV_BYTES = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT).KV_BYTES
 DATA_DIR = Path(__file__).parent / "data"
@@ -164,7 +162,7 @@ def chain_forward_once(x_i8, res_scale, layers, P, embed_i8, embed_sc, gamma):
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("--seed", type=int, default=0)
     opts = p.parse_args()
     fseed = opts.seed
@@ -202,7 +200,17 @@ def main():
     kv2 = np.zeros(2 * KV_BYTES, dtype=np.int8)
     kv2[:KV_BYTES] = kvblob
 
-    npu = test_utils.create_npu_kernel(opts).npu_kernel
+    npu = design_kernel(
+        build,
+        opts,
+        SAMPLE=True,
+        ONESTREAM=True,
+        PERSIST=True,
+        PT=PT,
+        N_LAYERS=N_LAYERS,
+        T=T,
+        ONESTREAM_KSET=ONESTREAM_KSET,
+    )
     x_t = iron.tensor(xin, dtype=np.int8)
     w_t = iron.tensor(wblob, dtype=np.int8)
     kv_t = iron.tensor(kv2, dtype=np.int8)

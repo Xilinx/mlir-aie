@@ -22,12 +22,11 @@ import argparse
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
-from aie2_flowkv import DYN, INV_OUT_SCALE, K_SCALE, Q_SCALE, V_SCALE
+from aie2_flowkv import INV_OUT_SCALE, K_SCALE, Q_SCALE, V_SCALE, build
 from gen_exp_lut import exp_lut
+from llama_npu import add_artifact_args, design_kernel
 
 # Must match the kernel #define LLAMA_FLOWKV_EXP_QUANT_SCALE.
 EXP_QUANT_SCALE = 0.05
@@ -122,12 +121,13 @@ def numpy_attention(
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("--head-dim", type=int, default=64)
     p.add_argument("-T", type=int, default=16)
+    p.add_argument("--dyn", action="store_true")
     opts = p.parse_args()
 
-    head_dim, t = opts.head_dim, opts.T
+    head_dim, t, dyn = opts.head_dim, opts.T, opts.dyn
     rng = np.random.default_rng(0)
     q = rng.integers(-128, 128, size=head_dim, dtype=np.int8)
     k = rng.integers(-128, 128, size=t * head_dim, dtype=np.int8)
@@ -135,7 +135,7 @@ def main():
 
     lut = exp_lut(EXP_QUANT_SCALE)
 
-    if DYN:
+    if dyn:
         q_buf = np.zeros(head_dim + 8, dtype=np.int8)
         q_buf[:head_dim] = q
         q_buf[head_dim : head_dim + 4] = np.frombuffer(
@@ -157,9 +157,9 @@ def main():
         v_t = iron.tensor(v, dtype=np.int8)
     o_t = iron.zeros([head_dim], dtype=np.int8)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu = design_kernel(build, opts, head_dim=head_dim, t=t, DYN=dyn)
     rc = DefaultNPURuntime.run_test(
-        npu_opts.npu_kernel,
+        npu,
         [q_t, k_t, v_t, o_t],
         {},
         verify=False,
@@ -178,7 +178,7 @@ def main():
     n_diff = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_diff else 0
     print(
-        f"flowkv NPU vs numpy: head_dim={head_dim} T={t} dyn={DYN}  "
+        f"flowkv NPU vs numpy: head_dim={head_dim} T={t} dyn={dyn}  "
         f"mismatches={n_diff}/{head_dim}  max|int8 diff|={max_abs}"
     )
 

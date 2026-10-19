@@ -19,33 +19,32 @@ set_gidx i32[KSET], set_scale f32[KSET], set_row i8[KSET*D], set_len i32[1].
 params (Buffer): [temperature bits, top_k, seed]. For bit-exactness the kernel
 samples over the whole resident set, so the host sets KSET == top_k (greedy
 ignores top_k and uses the global max in the set).
-
-Env: LLAMA_TK_V (64), LLAMA_TK_D (256), LLAMA_TK_KSET (8), LLAMA_TK_TEMP (0.0),
-LLAMA_TK_TOPK (8), LLAMA_TK_SEED (0).
 """
 
-import os as _os
+import argparse
 import sys
 
+import llama_kernels
 import numpy as np
 from aie.dialects.arith import index_cast
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
+from aie.iron import (
+    Buffer,
+    CompileTime,
+    ObjectFifo,
+    Program,
+    Runtime,
+    TaskGroup,
+    Worker,
+    jit,
+)
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, Tile
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
-V = int(_os.environ.get("LLAMA_TK_V", "64"))
-D = int(_os.environ.get("LLAMA_TK_D", "256"))
-KSET = int(_os.environ.get("LLAMA_TK_KSET", "8"))
 N_TILE = 4
-N_TILES = V // N_TILE
-SLOT = N_TILE * 4 + N_TILE * 4 + N_TILE * D  # logits | scales | rows
-TOTAL = N_TILES * SLOT
-
-TEMP = float(_os.environ.get("LLAMA_TK_TEMP", "0.0"))
-TOPK = int(_os.environ.get("LLAMA_TK_TOPK", "8"))
-SEED = int(_os.environ.get("LLAMA_TK_SEED", "0"))
 
 
 def _i8(n):
@@ -64,14 +63,14 @@ def _idx(i):
     return index_cast(i32(), i)
 
 
-def params_init():
+def params_init(temp, top_k, seed):
     # NOTE: pack as int32, NOT uint32 -- IRON's ui32 Buffer initial_value
     # silently zeros large words (see iron-ui32-buffer-init-bug memory). The
     # kernel memcpy's the raw bytes, so signed/unsigned labeling is irrelevant
     # to it; only the dense<> init differs.
-    tb = np.frombuffer(np.float32(TEMP).tobytes(), dtype=np.int32)[0]
-    sb = np.frombuffer(np.uint32(SEED & 0xFFFFFFFF).tobytes(), dtype=np.int32)[0]
-    return np.asarray([tb, np.int32(TOPK), sb], dtype=np.int32)
+    tb = np.frombuffer(np.float32(temp).tobytes(), dtype=np.int32)[0]
+    sb = np.frombuffer(np.uint32(seed & 0xFFFFFFFF).tobytes(), dtype=np.int32)[0]
+    return np.asarray([tb, np.int32(top_k), sb], dtype=np.int32)
 
 
 def factor(nb):
@@ -93,7 +92,19 @@ def strided_tap(total, base, slot, n):
     )
 
 
-def build():
+@jit
+def build(
+    *,
+    V: CompileTime[int] = 64,
+    D: CompileTime[int] = 256,
+    KSET: CompileTime[int] = 8,
+    TEMP: CompileTime[float] = 0.0,
+    TOPK: CompileTime[int] = 8,
+    SEED: CompileTime[int] = 0,
+):
+    N_TILES = V // N_TILE
+    SLOT = N_TILE * 4 + N_TILE * 4 + N_TILE * D  # logits | scales | rows
+    TOTAL = N_TILES * SLOT
     t_slot = _i8(SLOT)
     t_seed = _i8(D + 8)
     rt_tbl_ty = _i8(TOTAL)
@@ -110,12 +121,13 @@ def build():
     b_scale = Buffer(_f32(KSET), name="tk_set_scale")
     b_row = Buffer(_i8(KSET * D), name="tk_set_row")
     b_len = Buffer(_i32a(1), initial_value=np.zeros(1, np.int32), name="tk_set_len")
-    b_params = Buffer(_i32a(3), initial_value=params_init(), name="tk_params")
+    b_params = Buffer(
+        _i32a(3), initial_value=params_init(TEMP, TOPK, SEED), name="tk_params"
+    )
 
-    KO = "llama_topk_sample.cc.o"
-    k_insert = Kernel(
+    KO = llama_kernels.topk_sample(dim=D, kset=KSET)
+    k_insert = KO.bind(
         "llama_topk_insert",
-        KO,
         [
             t_slot,
             _f32(KSET),
@@ -126,9 +138,8 @@ def build():
             np.int32,
         ],
     )
-    k_final = Kernel(
+    k_final = KO.bind(
         "llama_topk_finalize",
-        KO,
         [
             _f32(KSET),
             _i32a(KSET),
@@ -204,11 +215,33 @@ def build():
     return Program(NPU2(), rt, workers=[w]).resolve_program()
 
 
-def main():
-    import argparse
+def add_config_args(p):
+    """The probe's CompileTime parameters as named flags."""
+    p.add_argument("--vocab", type=int, default=64)
+    p.add_argument("--dim", type=int, default=256)
+    p.add_argument("--kset", type=int, default=8)
+    p.add_argument("--temp", type=float, default=0.0)
+    p.add_argument("--topk", type=int, default=8)
+    p.add_argument("--seed", type=int, default=0)
 
-    argparse.ArgumentParser().parse_args(sys.argv[1:])
-    print(build())
+
+def compile_kwargs(opts):
+    return dict(
+        V=opts.vocab,
+        D=opts.dim,
+        KSET=opts.kset,
+        TEMP=opts.temp,
+        TOPK=opts.topk,
+        SEED=opts.seed,
+    )
+
+
+def main():
+    p = argparse.ArgumentParser()
+    add_compile_args(p, with_dev=True, default_dev="npu2", dev_choices=("npu2",))
+    add_config_args(p)
+    opts = p.parse_args(sys.argv[1:])
+    run_design_cli(build, opts, compile_kwargs=compile_kwargs, device=NPU2())
 
 
 if __name__ == "__main__":

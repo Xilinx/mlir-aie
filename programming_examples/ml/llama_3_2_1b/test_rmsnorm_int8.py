@@ -16,11 +16,10 @@ import argparse
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
-from aie2_rmsnorm_int8 import ACT_SCALE_IN, INV_ACT_SCALE_OUT
+from aie2_rmsnorm_int8 import ACT_SCALE_IN, INV_ACT_SCALE_OUT, build
+from llama_npu import add_artifact_args, design_kernel
 from ml_dtypes import bfloat16
 
 
@@ -72,7 +71,7 @@ def numpy_rmsnorm_int8(
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("-D", type=int, default=2048)
     # With fp32-scalar pass 2 + sw_invsqrt + exact-int sum-of-squares,
     # the kernel and reference compute byte-identical fp32 values --
@@ -91,9 +90,9 @@ def main():
     g_t = iron.tensor(g, dtype=bfloat16)
     y_t = iron.zeros([D], dtype=np.int8)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu = design_kernel(build, opts, D=D)
     rc = DefaultNPURuntime.run_test(
-        npu_opts.npu_kernel,
+        npu,
         [x_t, g_t, y_t],
         {},
         verify=False,

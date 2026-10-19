@@ -9,10 +9,9 @@ matters end to end: does the full N=16 persistent, growing-KV decode loop
 still build, verify (device token == numpy-fixture argmax, same oracle
 test_chain_persist_grow_mh.py already uses), and run at the expected
 throughput on real hardware. Shells out to the existing
-test_chain_persist_grow_mh.py CLI (no new Python API), building once via the
-example's own Makefile and then invoking the test script directly for both
-the correctness run and the ``--time`` run, so both share one compiled
-xclbin. One run, no seed sweep: unlike mobilenet this design has no SA-
+test_chain_persist_grow_mh.py CLI (no new Python API), compiling once with the
+design's own CLI (aie2_chain_dynscale_mh.py) and then invoking the test script
+with that xclbin for both the correctness run and the ``--time`` run. One run, no seed sweep: unlike mobilenet this design has no SA-
 placer-seed dimension (Phase 7 unplaced it onto the plain default
 sequential placer, which has no seed concept).
 
@@ -30,10 +29,7 @@ toolchain; ``--pmode`` refuses to measure in any other mode. Exits 1 when
 the run fails or the check refuses, after writing both. Reproduced, from
 programming_examples/ml/llama_3_2_1b, with
 
-    make CHAIN_MH_N=16 chain_persist_grow_mh
-    python3 test_chain_persist_grow_mh.py \\
-        --xclbin build/final_chain_persist_grow_N16_PT4.xclbin \\
-        --instr build/insts_chain_persist_grow_N16_PT4.bin -k MLIR_AIE --time
+    LLAMA_CHAIN_N=16 python3 test_chain_persist_grow_mh.py --time
 """
 
 import argparse
@@ -71,14 +67,19 @@ _PROJ_DIR = f"build/final_chain_persist_grow_N{N_LAYERS}_PT{PT}.prj"
 _PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
 _CORE_RE = re.compile(r"\baie\.core\(")
 
-# The env this design's own Makefile sets for this target (see its
-# run_chain_persist_grow_mh recipe); the build and the test script both read
-# these at import time, so both subprocess calls need the same dict.
+# The design's CompileTime values; the test script reads the same
+# configuration from _CHAIN_ENV at import time.
+_BUILD_ARGS = [
+    "--sample=1",
+    "--onestream=1",
+    "--persist=1",
+    "--persist-grow=1",
+    f"--pt={PT}",
+    "--onestream-kset=8",
+    f"--n-layers={N_LAYERS}",
+    "--t=128",
+]
 _CHAIN_ENV = {
-    "LLAMA_CHAIN_SAMPLE": "1",
-    "LLAMA_CHAIN_ONESTREAM": "1",
-    "LLAMA_CHAIN_PERSIST": "1",
-    "LLAMA_CHAIN_PERSIST_GROW": "1",
     "LLAMA_CHAIN_PT": str(PT),
     "LLAMA_CHAIN_ONESTREAM_KSET": "8",
     "LLAMA_SAMPLE_TEMP": "0.0",
@@ -114,8 +115,17 @@ def _build_rss(env: dict) -> tuple[subprocess.CompletedProcess, float]:
     across every reaped child), so this call's peak RSS is its own -- see
     sa_placer_hw.py's _mobilenet_rss, which this mirrors.
     """
+    os.makedirs(os.path.join(_LLAMA_DIR, "build"), exist_ok=True)
     proc = subprocess.Popen(
-        ["make", f"CHAIN_MH_N={N_LAYERS}", "chain_persist_grow_mh"],
+        [
+            sys.executable,
+            "aie2_chain_dynscale_mh.py",
+            *_BUILD_ARGS,
+            "--xclbin-path",
+            _XCLBIN,
+            "--insts-path",
+            _INSTR,
+        ],
         cwd=_LLAMA_DIR,
         env=env,
         stdout=subprocess.PIPE,
@@ -133,8 +143,8 @@ def _build_rss(env: dict) -> tuple[subprocess.CompletedProcess, float]:
 def _clean_build_outputs() -> None:
     """Remove this config's xclbin, instructions and project dir.
 
-    The Makefile writes into the persistent build/ dir, so without this Make
-    would see the existing xclbin as up to date and not recompile.
+    The design CLI writes into the persistent build/ dir and rebuilds only
+    outputs that are out of date, so without this it would not recompile.
     """
     for rel in (_XCLBIN, _INSTR):
         path = os.path.join(_LLAMA_DIR, rel)
@@ -208,8 +218,6 @@ def run_correctness(env: dict) -> subprocess.CompletedProcess:
             _XCLBIN,
             "--instr",
             _INSTR,
-            "-k",
-            "MLIR_AIE",
         ],
         env,
     )
@@ -224,8 +232,6 @@ def run_timed(env: dict) -> subprocess.CompletedProcess:
             _XCLBIN,
             "--instr",
             _INSTR,
-            "-k",
-            "MLIR_AIE",
             "--time",
             "--n-iters",
             str(N_ITERS),

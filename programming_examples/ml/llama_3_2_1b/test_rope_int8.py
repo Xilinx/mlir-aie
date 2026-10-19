@@ -10,11 +10,10 @@ import argparse
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
-from aie2_rope_int8 import ACT_SCALE, DYN
+from aie2_rope_int8 import ACT_SCALE, build
+from llama_npu import add_artifact_args, design_kernel
 from ml_dtypes import bfloat16
 
 
@@ -59,13 +58,14 @@ def numpy_rope_dyn(x_i8, cos_bf, sin_bf, n_heads, head_dim):
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("--head-dim", type=int, default=64)
     p.add_argument("--n-heads", type=int, default=8)
+    p.add_argument("--dyn", action="store_true")
     p.add_argument("--max-mismatches", type=int, default=64)
     opts = p.parse_args()
 
-    head_dim, n_heads = opts.head_dim, opts.n_heads
+    head_dim, n_heads, dyn = opts.head_dim, opts.n_heads, opts.dyn
     D = head_dim * n_heads
     half = head_dim // 2
 
@@ -80,7 +80,7 @@ def main():
 
     cs = np.concatenate([cos, sin])  # packed cos || sin
 
-    if DYN:
+    if dyn:
         x_buf = np.zeros(D + 8, dtype=np.int8)
         x_buf[:D] = x
         x_buf[D : D + 4] = np.frombuffer(np.float32(ACT_SCALE).tobytes(), dtype=np.int8)
@@ -92,9 +92,9 @@ def main():
         o_t = iron.zeros([D], dtype=np.int8)
     cs_t = iron.tensor(cs, dtype=bfloat16)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu = design_kernel(build, opts, head_dim=head_dim, n_heads=n_heads, DYN=dyn)
     rc = DefaultNPURuntime.run_test(
-        npu_opts.npu_kernel,
+        npu,
         [x_t, cs_t, o_t],
         {},
         verify=False,
@@ -106,7 +106,7 @@ def main():
     o_t.to("cpu")
     out_full = o_t.numpy()
     actual = out_full[:D]
-    if DYN:
+    if dyn:
         expected = numpy_rope_dyn(x, cos, sin, n_heads, head_dim)
         expected_tail = np.concatenate(
             [
@@ -132,7 +132,7 @@ def main():
     )
 
     print(
-        f"rope_int8 NPU vs numpy: heads={n_heads} d={head_dim} dyn={DYN}  "
+        f"rope_int8 NPU vs numpy: heads={n_heads} d={head_dim} dyn={dyn}  "
         f"mismatches={n_diff}/{D}  max|int8 diff|={max_abs}  cos={cos_sim:.6f}  "
         f"tail_mismatch={tail_mismatch}"
     )

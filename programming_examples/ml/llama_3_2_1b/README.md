@@ -140,7 +140,7 @@ Evidence chain: `device == numpy-int8` (bit-exact) → `numpy-int8 == NPU silico
 
 ### Next-token greedy agreement, NPU vs HF bf16 (20 hard prompts, N=16)
 
-`make`-built `final_chain_mh_N16` on silicon, scored against the true bf16 model:
+The N=16 decode chain on silicon, scored against the true bf16 model:
 
 | Prompt | HF bf16 | NPU int8 | |
 |---|---|---|---|
@@ -205,6 +205,11 @@ find it: `model.safetensors` and `tokenizer.model` in
 override it. The INT8 weights live in `data/`, generated from it by
 `gen_llama_data.py`. The bf16 reference reads the safetensors directly.
 
+Each test compiles the design it checks with `@iron.jit` (cached under
+`NPU_CACHE_HOME`, so a rerun reuses it), or runs a prebuilt one given
+`--xclbin`/`--instr`. Each design's own CLI (`python aie2_*.py ...
+--xclbin-path X --insts-path Y`) compiles it ahead of time.
+
 > **Always set `LLAMA_CHAIN_N=16`** for any accuracy/timing/baseline run.
 > `N_LAYERS` defaults to 2 (a fast bring-up toy); a 2-layer run silently produces
 > meaningless quality numbers.
@@ -222,59 +227,53 @@ LLAMA_CHAIN_N=16 python bench_quality_mh.py --bf16-ref --residual-dyn --attn-lut
 ### Accuracy on silicon (NPU vs HF bf16)
 
 ```bash
-# build the N=16 decode chain xclbin, then score the device vs bf16
-make chain_mh CHAIN_MH_N=16
-LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --self-prefill --bf16-ref \
-    -x build/final_chain_mh_N16_T128.xclbin \
-    -i build/insts_chain_mh_N16_T128.bin -k MLIR_AIE
+# compile the N=16 decode chain, then score the device vs bf16
+LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --self-prefill --bf16-ref
 ```
 
 ### Full persistent decode (on-chip loop + growing KV) + timing
 
 ```bash
-# build + run the full 16-layer autoregressive decode (PT tokens / dispatch)
-make run_chain_persist_grow_mh CHAIN_MH_N=16 PT=4 ONESTREAM_KSET=8
+# the full 16-layer autoregressive decode (PT tokens / dispatch)
+LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py
 
-# per-token TPS at full config (reuses the built xclbin)
-LLAMA_CHAIN_N=16 LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 \
-  LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PERSIST_GROW=1 LLAMA_CHAIN_PT=4 \
-  LLAMA_CHAIN_ONESTREAM_KSET=8 \
-  python test_chain_persist_grow_mh.py --time \
-    -x build/final_chain_persist_grow_N16_PT4.xclbin \
-    -i build/insts_chain_persist_grow_N16_PT4.bin -k MLIR_AIE
+# per-token TPS at full config (reuses the compiled design)
+LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --time
 ```
 
 ### Resident-KV decode (host streams only weights, N=2)
 
 ```bash
-make run_chain_persist_resident_mh CHAIN_MH_N=2 PT=4 ONESTREAM_KSET=8
+python test_chain_persist_resident_mh.py
 ```
 
 ### Primitive / kernel validation (bit-exact, isolation)
 
 ```bash
-make run_topk_sample_probe          # one-stream sampler + embed gather
-make run_chain_onestream_mh CHAIN_MH_N=2   # fused chain + lm_head + sampler
-grep -E '^run_' Makefile             # list runnable targets
+python test_topk_sample_probe.py    # one-stream sampler + embed gather
+python test_chain_onestream_mh.py   # fused chain + lm_head + sampler
+python test_rmsnorm_int8.py         # also test_rmsnorm_int8_dyn, test_rope_int8
+python test_silu_mul_int8.py --selfcal   # and test_flowkv.py --dyn, ...
 ```
 
 ---
 
 ## Configuration flags (env)
 
+The chain tests read these; each test picks its own mode.
+
 | Flag | Meaning |
 |---|---|
 | `LLAMA_CHAIN_N` | number of decoder layers (**set 16** for real runs; default 2) |
-| `LLAMA_CHAIN_PT` | tokens generated per dispatch (persistent loop) |
-| `LLAMA_CHAIN_SAMPLE` | enable on-chip final_norm + lm_head + sampler |
-| `LLAMA_CHAIN_ONESTREAM` | fused one-stream sampler + embed gather |
-| `LLAMA_CHAIN_PERSIST` | on-chip token feedback (fixed-position KV) |
-| `LLAMA_CHAIN_PERSIST_GROW` | + growing KV cache + per-position rope |
-| `LLAMA_CHAIN_PERSIST_RESIDENT` | + KV resident on-chip (weights-only host) |
+| `LLAMA_CHAIN_PT` | tokens generated per dispatch (persistent loop; default 4) |
+| `LLAMA_CHAIN_T` | KV cache length (default 128) |
+| `LLAMA_CHAIN_ONESTREAM_KSET` | the one-stream sampler's resident top-k set size (default 8) |
 | `LLAMA_SAMPLE_TEMP` / `_TOPK` / `_SEED` | sampler params (temp≤0 = greedy) |
 
-Each `PERSIST*` flag is a strict superset of the one above; the default (all off)
-chain stays byte-identical.
+The chain modes are `build()`'s CompileTime flags in `aie2_chain_dynscale_mh.py`
+(`--sample`, `--onestream`, `--persist`, `--persist-grow`, `--persist-resident`
+on its CLI). Each `PERSIST*` flag is a strict superset of the one above; the
+default (all off) chain stays byte-identical.
 
 ---
 

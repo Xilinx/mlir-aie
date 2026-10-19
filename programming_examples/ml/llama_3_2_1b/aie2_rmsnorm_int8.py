@@ -15,15 +15,19 @@ StaticWeightStream, but scalar-args keeps Phase 2 minimal.
 import argparse
 import sys
 
+import llama_kernels
 import numpy as np
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
+from aie.iron import CompileTime, ObjectFifo, Program, Runtime, TaskGroup, Worker, jit
 from aie.iron.device import NPU2, Tile
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 from ml_dtypes import bfloat16
 
 RMS_COL, RMS_ROW = 5, 4
 
 
-def build(D: int):
+@jit
+def build(*, D: CompileTime[int] = 2048):
     x_ty = np.ndarray[(D,), np.dtype[np.int8]]
     g_ty = np.ndarray[(D,), np.dtype[bfloat16]]
     y_ty = np.ndarray[(D,), np.dtype[np.int8]]
@@ -32,9 +36,8 @@ def build(D: int):
     of_g = ObjectFifo(g_ty, name="gamma")
     of_y = ObjectFifo(y_ty, name="y")
 
-    kernel = Kernel(
+    kernel = llama_kernels.rmsnorm(cols=D).bind(
         "llama_rmsnorm_int8",
-        "llama_rmsnorm_int8.cc.o",
         [x_ty, g_ty, y_ty, np.float32, np.float32],
     )
 
@@ -76,9 +79,10 @@ INV_ACT_SCALE_OUT = 1.0 / 0.05  # matches chain's INV_ACT_SCALE
 
 def main():
     p = argparse.ArgumentParser()
+    add_compile_args(p, with_dev=True, default_dev="npu2", dev_choices=("npu2",))
     p.add_argument("-D", type=int, default=2048)
-    args = p.parse_args(sys.argv[1:])
-    print(build(args.D))
+    opts = p.parse_args(sys.argv[1:])
+    run_design_cli(build, opts, compile_kwargs={"D": opts.D}, device=NPU2())
 
 
 if __name__ == "__main__":

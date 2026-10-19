@@ -16,10 +16,8 @@ seed the resident cache on token 0; there is no KV drain. The growing-append
 token-0 KV prefix T_used = P (NOT P+1): the grow-append's slot = T_used, so token
 0 writes slot P and sets T_used = P+1 (flowkv attends P+1, incl the new slot).
 
-Run:
-  make chain_persist_resident_mh CHAIN_MH_N=2 PT=4 ONESTREAM_KSET=8
-  python test_chain_persist_resident_mh.py -x build/final_chain_persist_resident_N2_PT4.xclbin \\
-      -i build/insts_chain_persist_resident_N2_PT4.bin -k MLIR_AIE
+Run (compiles the design, or reuses its JIT cache entry):
+  python test_chain_persist_resident_mh.py
 """
 
 from __future__ import annotations
@@ -30,10 +28,8 @@ import sys
 from pathlib import Path
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
 from aie2_chain_dynscale_mh import (
     CS_BYTES,
     HEAD_D,
@@ -46,10 +42,12 @@ from aie2_chain_dynscale_mh import (
     VOCAB,
     WLM_TOTAL,
     D,
+    build,
     derived_sizes,
 )
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+from llama_npu import add_artifact_args, design_kernel
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw
@@ -61,7 +59,7 @@ from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
-ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
+ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8"))
 PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
 _sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT, PERSIST_GROW=True)
 KV_BYTES = _sizes.KV_BYTES
@@ -248,7 +246,7 @@ def time_decode(npu, buffers, opts):
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
         "--time",
@@ -299,7 +297,7 @@ def main():
     # on-device so these are placeholders, but pack_blobs requires the key. The
     # static OFF_CS cos/sin in wblob is unused by PERSIST_GROW (per-position block
     # below drives rope), so its value doesn't matter.
-    wblob, _ = pack_blobs(layers)
+    wblob, _ = pack_blobs(layers, WEIGHTS_BYTES)
     # Append the per-position cos/sin block at OFF_CS_PERPOS, laid out
     # [token0: L0..L_{N-1} | token1: ... ] matching the chain's (tok,L) fill.
     assert wblob.size == WEIGHTS_BYTES, (wblob.size, WEIGHTS_BYTES)
@@ -316,7 +314,7 @@ def main():
         layers[L]["vcaches"] = pristine_vcaches[L]
         layers[L]["k_scales_slot"] = pristine_kslot[L]
         layers[L]["v_scales_slot"] = pristine_vslot[L]
-    _, kvblob_pristine = pack_blobs(layers)
+    _, kvblob_pristine = pack_blobs(layers, WEIGHTS_BYTES)
     kv_pristine = pack_kv_prefix(kvblob_pristine, P0)
 
     # Device dispatch. KV buffer is 1x (the resident seed); host fills it on token 0 only
@@ -327,7 +325,19 @@ def main():
     kv2 = np.zeros(KV_BYTES, dtype=np.int8)
     kv2[:] = kv_pristine
 
-    npu = test_utils.create_npu_kernel(opts).npu_kernel
+    npu = design_kernel(
+        build,
+        opts,
+        SAMPLE=True,
+        ONESTREAM=True,
+        PERSIST=True,
+        PERSIST_GROW=True,
+        PERSIST_RESIDENT=True,
+        PT=PT,
+        N_LAYERS=N_LAYERS,
+        T=T,
+        ONESTREAM_KSET=ONESTREAM_KSET,
+    )
     x_t = iron.tensor(xin, dtype=np.int8)
     w_t = iron.tensor(wblob, dtype=np.int8)
     kv_t = iron.tensor(kv2, dtype=np.int8)
