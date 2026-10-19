@@ -20,9 +20,11 @@ static inline void normalize_16(const T *restrict in, T *restrict out,
                           mac_elem_16_2(bf16_pair(x, x), inv_std, c))));
 }
 
+// Inlined into each entry point so layer_norm's default epsilon folds.
 template <typename T>
-void layer_norm(const T *restrict input, T *restrict output, int32_t cols,
-                float epsilon = 1e-5f) {
+__attribute__((always_inline)) inline void
+layer_norm(const T *restrict input, T *restrict output, int32_t cols,
+           float epsilon = 1e-5f) {
   event0();
   constexpr unsigned N = 32;
   // cols is a multiple of 16: whole 32-lane chunks, then maybe one half.
