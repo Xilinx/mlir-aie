@@ -22,7 +22,10 @@ from pathlib import Path
 
 import numpy as np
 from aie.dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
+from aie.dialects.arith import index_cast  # pyright: ignore[reportAttributeAccessIssue]
 from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
+from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.iron import Buffer, ExternalFunction, ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
@@ -36,6 +39,7 @@ from yolo_spec import (
     Attention,
     Concat,
     Conv,
+    DetectPost,
     InputQuant,
     MaxPool,
     Network,
@@ -78,6 +82,41 @@ class Part:
             and self.size == self.source.row_bytes
             and not self.upsample
         )
+
+
+@dataclass(frozen=True)
+class Fill:
+    """One host transfer into a fifo: a tensor, in `layout`, at sequence step `step`.
+
+    `rows` sends the tensor's rows as they are. `anchor_classes` sends each
+    pixel's channels together (every 8-channel group of it in turn), and
+    `anchor_boxes` each pixel's first 4 channels: the per-anchor records
+    the Detect postprocess reads. A step's transfers finish before the next
+    step's start.
+    """
+
+    fifo: ObjectFifo
+    tensor: Tensor
+    layout: str = "rows"
+    step: int = 0
+
+    def tap(self, total: int, offset: int) -> TensorAccessPattern:
+        """The pattern over a host buffer of `total` int32 words with the tensor at word `offset`."""
+        t = self.tensor
+        if self.layout == "anchor_classes":
+            groups = t.channels8 // 8
+            return TensorAccessPattern(
+                (total,),
+                offset,
+                [t.height, t.width, groups, 2],
+                [groups * t.width * 2, 2, t.width * 2, 1],
+            )
+        if self.layout == "anchor_boxes":
+            return TensorAccessPattern(
+                (total,), offset, [1, 1, t.height * t.width, 1], [0, 0, 2, 1]
+            )
+        size = (IMAGE_ROW_BYTES if t.name == "images" else t.row_bytes) * t.height // 4
+        return TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1])
 
 
 def pack_weights(op: Conv, weight: np.ndarray) -> np.ndarray:
@@ -208,7 +247,9 @@ class SegmentDesign:
     Attributes:
         inputs: Tensors filled from the host, in fill order; the image when
             the run starts at the input.
-        in_fifos / out_fifos: The fifo of each host input and output tensor.
+        fills: The host transfers into the run, see `Fill`; `in_fifos` the
+            fifos they fill, in order.
+        out_fifos: The fifo of each host output tensor.
         workers: Every worker of the run.
     """
 
@@ -225,6 +266,7 @@ class SegmentDesign:
         self.fifos: dict[str, ObjectFifo] = {}
         self.functions: dict[str, ExternalFunction] = {}
         self.inputs: list[Tensor] = []
+        self.fills: list[Fill] = []
         self.workers: list[Worker] = []
         self.stages: dict[str, list[tuple[ObjectFifo, int]]] = {}
         # Tensors that travel inside another stream's rows, as SPPF's pools do,
@@ -246,20 +288,31 @@ class SegmentDesign:
                     self.maxpool(op)
                 case Attention():
                     self.attention(op)
+                case DetectPost():
+                    self.detect(op)
                 case Concat() | Slice() | Upsample():
                     pass
                 case _:
                     raise NotImplementedError(f"{type(op).__name__} is not lowered yet")
         self.outputs = list(outputs)
         self.out_fifos = {t.name: self.fifo(t) for t in self.outputs}
-        self.in_fifos = {t.name: self.fifos[t.name] for t in self.inputs}
+        self.in_fifos = list(dict.fromkeys(f.fifo for f in self.fills))
+
+    def host_bytes(self, tensor: Tensor) -> int:
+        """How many bytes `tensor` takes in a host buffer."""
+        if tensor.name == "images":
+            return IMAGE_ROW_BYTES * tensor.height
+        if isinstance(self.producer.get(tensor.name), DetectPost):
+            return 4 * 6 * tensor.height
+        return tensor.row_bytes * tensor.height
 
     def fifo(self, tensor: Tensor) -> ObjectFifo:
         if tensor.name not in self.fifos:
-            if tensor.name not in self.local:
-                self.inputs.append(tensor)
             size = IMAGE_ROW_BYTES if tensor.name == "images" else tensor.row_bytes
             self.fifos[tensor.name] = ObjectFifo(row(size), name=f"t{len(self.fifos)}")
+            if tensor.name not in self.local:
+                self.inputs.append(tensor)
+                self.fills.append(Fill(self.fifos[tensor.name], tensor))
         return self.fifos[tensor.name]
 
     def schedule(
@@ -924,6 +977,134 @@ class SegmentDesign:
             Part(qkv, h * per_head + 2 * kd * width, hd * width)
             for h in range(op.heads)
         ]
+
+    def detect(self, op: DetectPost) -> None:
+        """The end-to-end postprocess on one worker, from per-anchor records the host sends twice.
+
+        The first pass finds each anchor's best class score and picks the
+        300 best anchors; the second gathers those anchors' class logits and
+        box distances; the worker then picks the 300 best (anchor, class)
+        scores and writes their boxes, scores and classes. See
+        kernels/yolo_detect.cc.
+        """
+        p = self.params
+        tables = p.of(op.name, "sigmoid").astype(np.float32)
+        values = np.unique(tables)
+        rank = np.searchsorted(values, tables).astype(np.int16)
+        if values.size > 768:
+            raise ValueError(
+                f"{op.name}: {values.size} distinct scores, the kernel ranks 768"
+            )
+        chunk = 20
+        anchors = sum(t.height * t.width for t in op.scores)
+        records = ObjectFifo(row(chunk * 80), name="detect_classes")
+        boxes = ObjectFifo(row(chunk * 4), name="detect_boxes")
+        for step in (0, 1):
+            for tensor in op.scores:
+                self.fills.append(Fill(records, tensor, "anchor_classes", step))
+        for tensor in op.boxes:
+            self.fills.append(Fill(boxes, tensor, "anchor_boxes", 1))
+        self.inputs += [*op.scores, *op.boxes]
+        self.fifos[op.dst.name] = ObjectFifo(
+            np.ndarray[(6 * op.dst.height,), np.dtype[np.int32]], name="detections"
+        )
+        flags = [f"-DYOLO_DETECT_CHUNK={chunk}"]
+        k_max = self.function(
+            "yolo_detect_max",
+            "yolo_detect.cc",
+            [
+                row(chunk * 80),
+                np.ndarray[(768,), np.dtype[np.int16]],
+                row(anchors),
+                np.int32,
+            ],
+            flags,
+        )
+        bind = k_max.object_file.bind
+        ranks_t = np.ndarray[(768,), np.dtype[np.int16]]
+        words_t = np.ndarray[(768,), np.dtype[np.int32]]
+        keep_t = np.ndarray[(300,), np.dtype[np.int16]]
+        count_t = np.ndarray[(4,), np.dtype[np.int32]]
+        picked_t = np.ndarray[(anchors // 8,), np.dtype[np.uint8]]
+        k_select = bind(
+            "yolo_detect_select",
+            [row(anchors), ranks_t, words_t, keep_t, picked_t, keep_t, count_t],
+        )
+        k_gather = bind(
+            "yolo_detect_gather",
+            [
+                row(chunk * 80),
+                row(chunk * 4),
+                picked_t,
+                keep_t,
+                row(300 * 80),
+                row(300 * 4),
+                count_t,
+                np.int32,
+            ],
+        )
+        k_finish = bind(
+            "yolo_detect_finish",
+            [row(300 * 80), row(300 * 4), keep_t, ranks_t, words_t, words_t, keep_t]
+            + [
+                np.ndarray[(6 * op.dst.height,), np.dtype[np.int32]],
+                np.int32,
+                np.int32,
+                np.int32,
+            ],
+        )
+        shifts = [p.scale(t.name) for t in op.boxes]
+        bits = np.zeros(768, np.int32)
+        bits[: tables.size] = tables.view(np.int32).reshape(-1)
+        rank_table = np.zeros(768, np.int16)
+        rank_table[: rank.size] = rank.reshape(-1)
+        n = anchors // chunk
+
+        def body(cls, box, out, k_max, k_select, k_gather, k_finish, *b):
+            top, ranks, hist, first, picked, rows, count, cand, dist, sigmoid, best = b
+            for i in range_(n):
+                r = cls.acquire(1)
+                k_max(r, ranks, top, index_cast(i32(), i))
+                cls.release(1)
+            k_select(top, ranks, hist, first, picked, rows, count)
+            for i in range_(n):
+                r = cls.acquire(1)
+                d = box.acquire(1)
+                k_gather(r, d, picked, rows, cand, dist, count, index_cast(i32(), i))
+                cls.release(1)
+                box.release(1)
+            o = out.acquire(1)
+            k_finish(cand, dist, first, ranks, sigmoid, hist, best, o, *shifts)
+            out.release(1)
+
+        buffers = [
+            Buffer(row(anchors)),
+            Buffer(initial_value=rank_table),
+            Buffer(words_t),
+            Buffer(keep_t),
+            Buffer(picked_t),
+            Buffer(keep_t),
+            Buffer(count_t),
+            Buffer(row(300 * 80)),
+            Buffer(row(300 * 4)),
+            Buffer(initial_value=bits),
+            Buffer(keep_t),
+        ]
+        self.workers.append(
+            Worker(
+                body,
+                [
+                    records.cons(depth=2),
+                    boxes.cons(depth=2),
+                    self.fifos[op.dst.name].prod(depth=1),
+                    k_max,
+                    k_select,
+                    k_gather,
+                    k_finish,
+                    *buffers,
+                ],
+            )
+        )
 
     def add(self, op: Add) -> None:
         p = self.params

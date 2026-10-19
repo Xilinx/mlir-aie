@@ -50,14 +50,6 @@ def from_rows(tensor: Tensor, rows: np.ndarray) -> np.ndarray:
     )[: tensor.channels]
 
 
-def host_size(tensor: Tensor) -> int:
-    return (
-        IMAGE_ROW_BYTES * tensor.height
-        if tensor.name == "images"
-        else tensor.row_bytes * tensor.height
-    )
-
-
 @iron.jit
 def segment(
     inputs: In,
@@ -79,30 +71,40 @@ def segment(
         network.ops[first:last],
         [tensors[n] for n in drained.split(",")],
     )
-    sizes_in = [host_size(t) // 4 for t in design.inputs]
-    sizes_out = [host_size(t) // 4 for t in design.outputs]
-    in_ty = np.ndarray[(sum(sizes_in),), np.dtype[np.int32]]
+    offsets, at = {}, 0
+    for tensor in design.inputs:
+        offsets[tensor.name] = at
+        at += design.host_bytes(tensor) // 4
+    total_in = at
+    sizes_out = [design.host_bytes(t) // 4 for t in design.outputs]
+    in_ty = np.ndarray[(total_in,), np.dtype[np.int32]]
     out_ty = np.ndarray[(sum(sizes_out),), np.dtype[np.int32]]
+    steps = sorted({f.step for f in design.fills})
 
     def sequence(inp, out, *handles):
-        group = TaskGroup()
+        fill_handles = dict(zip(design.in_fifos, handles))
+        drains = TaskGroup()
         offset = 0
-        for size, handle in zip(sizes_in, handles):
-            tap = TensorAccessPattern(
-                (sum(sizes_in),), offset, [1, 1, 1, size], [0, 0, 0, 1]
-            )
-            handle.fill(inp, tap, group=group)
-            offset += size
-        offset = 0
-        for size, handle in zip(sizes_out, handles[len(sizes_in) :]):
+        for size, handle in zip(sizes_out, handles[len(design.in_fifos) :]):
             tap = TensorAccessPattern(
                 (sum(sizes_out),), offset, [1, 1, 1, size], [0, 0, 0, 1]
             )
-            handle.drain(out, tap, wait=True, group=group)
+            handle.drain(out, tap, wait=True, group=drains)
             offset += size
-        group.finish()
+        # Each step's fills finish before the next step's start.
+        for step in steps:
+            fills = TaskGroup()
+            for fill in (f for f in design.fills if f.step == step):
+                tap = fill.tap(total_in, offsets[fill.tensor.name])
+                fill_handles[fill.fifo].fill(
+                    inp, tap, wait=step != steps[-1], group=fills
+                )
+            if step != steps[-1]:
+                fills.finish()
+        drains.finish()
+        fills.finish()
 
-    handles = [design.in_fifos[t.name].prod() for t in design.inputs]
+    handles = [fifo.prod() for fifo in design.in_fifos]
     handles += [design.out_fifos[t.name].cons() for t in design.outputs]
     rt = Runtime(sequence, [in_ty, out_ty, *handles])
     return Program(NPU2(), rt, workers=design.workers).resolve_program()
@@ -164,7 +166,7 @@ def main() -> None:
             for t in plan.inputs
         ]
     )
-    sizes = [host_size(t) for t in plan.outputs]
+    sizes = [plan.host_bytes(t) for t in plan.outputs]
     inputs = iron.tensor(packed_in.view(np.int32))
     outputs = iron.zeros(sum(sizes) // 4, dtype=np.int32)
     segment(
@@ -180,8 +182,12 @@ def main() -> None:
     failed = False
     at = 0
     for tensor, size in zip(plan.outputs, sizes):
-        mine = from_rows(tensor, got[at : at + size]).astype(np.int64)
         want = reference[tensor.name]
+        if want.dtype == np.float32:
+            mine = got[at : at + size].view(np.int32).reshape(want.shape)
+            want = want.view(np.int32)
+        else:
+            mine = from_rows(tensor, got[at : at + size]).astype(np.int64)
         bad = int((mine != want).sum())
         print(
             f"{tensor.name}: {'PASS' if bad == 0 else 'FAIL'} ({bad}/{want.size} differ)"
