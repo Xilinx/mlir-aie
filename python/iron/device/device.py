@@ -48,7 +48,9 @@ class Device(Resolvable):
     def __eq__(self, other: object) -> bool:
         # Two descriptors of one AIEDevice are one device; _resolved_tiles is
         # emission scratch.
-        return isinstance(other, Device) and other._device == self._device
+        if not isinstance(other, Device):
+            return NotImplemented
+        return other._device == self._device
 
     def __hash__(self) -> int:
         return hash(self._device)

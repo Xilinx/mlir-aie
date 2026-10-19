@@ -58,3 +58,15 @@ def test_a_buffer_pinned_to_a_bank_lands_inside_it(device):
 )
 def test_full_elf_dispatch(device, full_elf):
     assert device().dispatches_full_elf is full_elf
+
+
+class _EqualsEverything:
+    def __eq__(self, other: object) -> bool:
+        return True
+
+
+def test_two_descriptors_of_one_device_are_equal():
+    assert NPU2() == NPU2() and hash(NPU2()) == hash(NPU2())
+    assert NPU2() != NPU1() and NPU2() != NPU2Col1()
+    # A non-device decides for itself.
+    assert NPU2() == _EqualsEverything() and NPU2() != "npu2"
