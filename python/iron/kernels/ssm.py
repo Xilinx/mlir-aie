@@ -142,6 +142,9 @@ def gated_delta_rule_sample(
 ):
     """Return heads of ``blocks`` blocks, A < 0 so the state decays, each from a random state."""
     block = rng.standard_normal((calls, rows * (2 * key_dim + value_dim + 2)))
+    # Row 1's q and k are tiny, so their norms depend on eps.
+    for m in (0, rows):
+        block[:, (m + 1) * key_dim : (m + 2) * key_dim] *= 1e-4
     heads = [
         np.concatenate(
             [
