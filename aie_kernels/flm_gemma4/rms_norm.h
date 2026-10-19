@@ -96,6 +96,29 @@ void rms_norm(bf16 *y, const bf16 *x, const bf16 *w) {
   }
 }
 
+/// \brief y = rms_norm(x, w) + r, over D elements, rounding as rms_norm then
+/// residual_add would.
+template <int D>
+void rms_norm_add(bf16 *__restrict y, const bf16 *__restrict x,
+                  const bf16 *__restrict w, const bf16 *__restrict r) {
+  static_assert(D % (2 * f32_lanes) == 0);
+  const Limbs<f32_lanes> s =
+      bf16_limbs(f32_acc(aie::broadcast<float, f32_lanes>(rms_scale<D>(x))));
+  for (int i = 0; i < D / (2 * f32_lanes); i++) {
+    const bf16_vec n0 =
+        weighted_norm(aie::load_v<f32_lanes>(x), aie::load_v<f32_lanes>(w), s);
+    const bf16_vec n1 = weighted_norm(aie::load_v<f32_lanes>(x + f32_lanes),
+                                      aie::load_v<f32_lanes>(w + f32_lanes), s);
+    aie::store_v(y, aie::add(n0, aie::load_v<f32_lanes>(r)));
+    aie::store_v(y + f32_lanes,
+                 aie::add(n1, aie::load_v<f32_lanes>(r + f32_lanes)));
+    x += 2 * f32_lanes;
+    y += 2 * f32_lanes;
+    w += 2 * f32_lanes;
+    r += 2 * f32_lanes;
+  }
+}
+
 /// \brief y = x * rsqrt(mean(x^2) + eps), over D elements.
 ///
 /// x is bf16, so its middle limb is zero too: three of `weighted_norm`'s
