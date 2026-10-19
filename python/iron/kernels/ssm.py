@@ -264,8 +264,9 @@ def gated_delta_rule(
             setup=conv_even,
             tolerance=Tolerance.bounded(
                 partial(_state_bound, gated_delta_rule_ref, **geometry),
-                note="npu2: y bit for bit, final within 4.9e-7 of its range "
-                "over three seeds",
+                note="npu2, against a float64 recurrence: final within 2.9e-7 "
+                "of its range (the scalar kernel's 2.6e-7), y one bf16 ulp off "
+                "in 1 of 10240, as the scalar kernel's",
             ),
         ),
     )

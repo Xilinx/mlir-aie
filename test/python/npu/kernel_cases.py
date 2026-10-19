@@ -462,6 +462,15 @@ CASES: list[Case] = [
         )
         for valid in (2, 17)
     ),
+    # An odd key_dim leaves a row over after gated_delta_rule's paired rows,
+    # and a value_dim of 20 a partly padded second column block.
+    check(
+        "gated_delta_rule",
+        dict(rows=4, key_dim=17, value_dim=20, blocks=2),
+        calls=4,
+        scalars=(3,),
+        tag="edge-odd-dims",
+    ),
     # EmbeddingGemma 2's image budget: 42x57 patches in 10 blocks, padded.
     Case("patch_positions", {}, calls=10, scalars=(10, 672, 912), smoke=True),
     Case("patch_positions", dict(cores=8), calls=8, scalars=(8, 480, 1056)),
