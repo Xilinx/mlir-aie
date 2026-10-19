@@ -621,6 +621,22 @@ CASES: list[Case] = [
         )
         for n in (16, 32)
     ],
+    # IRON's exact-precision tile on aie2p (8x8x8, row-major B): bf16 macs,
+    # each 8-row block run as two 4-row halves.
+    Case(
+        "fused_mm",
+        dict(
+            dim_m=16,
+            band_m=16,
+            dim_k=128,
+            dim_n=64,
+            chunk_k=128,
+            out_chunk=512,
+            mmul_shape=(8, 8, 8),
+        ),
+        calls=4,
+        devices=("npu2",),
+    ),
     # B stored transposed, as IRON's aie2 flm GEMM reads a checkpoint's
     # (n, k) weights: its N64 k step, then two k chunks and two bands at
     # N32, an N16 tile whose i and j loops unroll, and a CT_K below N. On

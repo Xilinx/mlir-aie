@@ -93,9 +93,10 @@ def fused_mm(
     ``b_col_maj`` (with an ``(r, 8, 8)`` mmul, r 8 on aie2p) takes B as stored
     transposed, the ``(n, k)`` layout of a checkpoint's weights: each k chunk
     holds k panels of ``s`` rows, every n row of a panel ``s`` contiguous k,
-    a layout a DMA builds from ``(n, k)`` storage in 16-byte runs. On bf16
-    macs the core transposes each half block in one shuffle; on bfp16 macs
-    it converts each block as loaded.
+    a layout a DMA builds from ``(n, k)`` storage in 16-byte runs. On aie2's
+    macs the core transposes each half block in one shuffle, on aie2p's bf16
+    macs each whole block, and on bfp16 macs it converts each block as
+    loaded.
 
     ``emulate_bf16_mmul_with_bfp16`` (aie2p) multiplies on bfp16 macs, as
     aie_api's emulated bf16 mmul does: the core converts A and B to
