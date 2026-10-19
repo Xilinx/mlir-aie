@@ -1542,14 +1542,26 @@ dw_i8_bias_vector(const int8_t *line0, const int8_t *line1, const int8_t *line2,
         acc = aie::mac(acc, cur, w[r * 3 + 1]);
         acc = aie::mac(acc, aie::shuffle_down_fill(cur, next, 8), w[r * 3 + 2]);
       }
-      aie::vector<int8, V> out = acc.template to_vector<int8>(scale);
-      int8_t *dst = output + c * iw * 8 + x0 * 8;
-      if constexpr (Table) {
-        for (int i = 0; i < V; i++)
-          dst[i] = table[out[i] + 128];
-      } else {
-        aie::store_v(dst, out);
-      }
+      aie::store_v(output + c * iw * 8 + x0 * 8,
+                   acc.template to_vector<int8>(scale));
+    }
+  }
+  // The table maps the row a word at a time; see conv2dk1_i8.cc.
+  if constexpr (Table) {
+    static_assert(channels * iw % 32 == 0, "the table maps 8 words at a time");
+    uint32_t *words = reinterpret_cast<uint32_t *>(output);
+    const uint8_t *map = reinterpret_cast<const uint8_t *>(table);
+    for (int i = 0; i < channels * iw / 4; i += 8) {
+      uint32_t w[8];
+      AIE_LOOP_UNROLL_FULL
+      for (int k = 0; k < 8; k++)
+        w[k] = words[i + k];
+      AIE_LOOP_UNROLL_FULL
+      for (int k = 0; k < 8; k++)
+        words[i + k] = map[(w[k] & 0xff) ^ 0x80] |
+                       map[(w[k] >> 8 & 0xff) ^ 0x80] << 8 |
+                       map[(w[k] >> 16 & 0xff) ^ 0x80] << 16 |
+                       uint32_t(map[(w[k] >> 24) ^ 0x80]) << 24;
     }
   }
   event1();

@@ -281,11 +281,10 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 // ONNX QLinearConv: the bias, in accumulator units, seeds the accumulator,
 // and an optional 256-entry table maps each int8 result (a quantized SiLU).
 //*****************************************************************************
-template <int NumAcc, int M, bool Table>
+template <int NumAcc, int M>
 static inline __attribute__((always_inline)) void conv2dk1_i8_bias_block(
     const int8_t *__restrict input, const int8_t *__restrict kernels,
-    aie::vector<int32, 8> bias, const int8_t *__restrict table,
-    int8_t *__restrict output, const int scale) {
+    aie::vector<int32, 8> bias, int8_t *__restrict output, const int scale) {
   constexpr int iw = CONV_INPUT_WIDTH;
   constexpr int input_channels = CONV_INPUT_CHANNELS;
   using MMUL = aie::mmul<M, 8, 8, int8, int8>;
@@ -311,15 +310,8 @@ static inline __attribute__((always_inline)) void conv2dk1_i8_bias_block(
   }
 
   AIE_LOOP_UNROLL_FULL
-  for (int x = 0; x < NumAcc; x++) {
-    aie::vector<int8, M * 8> out = acc[x].template to_vector<int8>(scale);
-    if constexpr (Table) {
-      for (int i = 0; i < M * 8; i++)
-        output[x * M * 8 + i] = table[out[i] + 128];
-    } else {
-      aie::store_v(output + x * M * 8, out);
-    }
-  }
+  for (int x = 0; x < NumAcc; x++)
+    aie::store_v(output + x * M * 8, acc[x].template to_vector<int8>(scale));
 }
 
 template <bool Table>
@@ -349,16 +341,34 @@ conv2dk1_i8_bias_vector(int8_t *__restrict input, int8_t *__restrict kernels,
     aie::vector<int32, 8> b = aie::load_v<8>(bias + oc * 8);
     int8_t *out = output + oc * iw * 8;
     for (int x = 0; x < blocks; x++)
-      conv2dk1_i8_bias_block<NUM_ACC, M, Table>(
-          input + x * NUM_ACC * M * 8, w, b, table, out + x * NUM_ACC * M * 8,
-          scale);
+      conv2dk1_i8_bias_block<NUM_ACC, M>(input + x * NUM_ACC * M * 8, w, b,
+                                         out + x * NUM_ACC * M * 8, scale);
     constexpr int done = blocks * NUM_ACC * M;
     for (int x = 0; x < singles; x++)
-      conv2dk1_i8_bias_block<1, M, Table>(input + (done + x * M) * 8, w, b,
-                                          table, out + (done + x * M) * 8,
-                                          scale);
+      conv2dk1_i8_bias_block<1, M>(input + (done + x * M) * 8, w, b,
+                                   out + (done + x * M) * 8, scale);
   }
-
+  // The table maps the stored row a word at a time (byte ^ 0x80 is the
+  // value + 128 it indexes): lanes taken one by one from the vector, or byte
+  // loads and stores, each cost several times more.
+  if constexpr (Table) {
+    static_assert(output_channels * iw % 32 == 0,
+                  "the table maps 8 words at a time");
+    uint32_t *words = reinterpret_cast<uint32_t *>(output);
+    const uint8_t *map = reinterpret_cast<const uint8_t *>(table);
+    for (int i = 0; i < output_channels * iw / 4; i += 8) {
+      uint32_t w[8];
+      AIE_LOOP_UNROLL_FULL
+      for (int k = 0; k < 8; k++)
+        w[k] = words[i + k];
+      AIE_LOOP_UNROLL_FULL
+      for (int k = 0; k < 8; k++)
+        words[i + k] = map[(w[k] & 0xff) ^ 0x80] |
+                       map[(w[k] >> 8 & 0xff) ^ 0x80] << 8 |
+                       map[(w[k] >> 16 & 0xff) ^ 0x80] << 16 |
+                       uint32_t(map[(w[k] >> 24) ^ 0x80]) << 24;
+    }
+  }
   event1();
 }
 #endif // CONV_BIAS
