@@ -1496,15 +1496,12 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   if (!moved || *moved == 0)
     return success();
   DataLayout layout = DataLayout::closest(task);
-  // Bytes a static-shape element type's object holds, or nullopt for a
-  // dynamically-shaped one.
+  // Bytes an object holds, or nullopt when that overflows.
   auto objectBytesOf = [&](Type fifoType) -> std::optional<int64_t> {
-    auto elem = cast<MemRefType>(
-        cast<AIE::AIEObjectFifoType>(fifoType).getElementType());
-    if (!elem.hasStaticShape())
-      return std::nullopt;
-    return elem.getNumElements() *
-           static_cast<int64_t>(layout.getTypeSize(elem.getElementType()));
+    MemRefType elem = cast<AIE::AIEObjectFifoType>(fifoType).getElementType();
+    return llvm::checkedMul(
+        elem.getNumElements(),
+        static_cast<int64_t>(layout.getTypeSize(elem.getElementType())));
   };
   // A linked fifo's far end on the link's shared tile is a BD over the shared
   // pool, sized by the link's pool owner whatever this fifo's own (or

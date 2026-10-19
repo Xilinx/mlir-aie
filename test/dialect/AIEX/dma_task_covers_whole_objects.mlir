@@ -881,3 +881,22 @@ module {
     }
   }
 }
+
+// -----
+
+// An object whose byte size passes INT64_MAX is not checked, rather than
+// wrapping: 2^61 + 1 i64 would wrap to an 8-byte object that 12 bytes misses.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<2305843009213693953xi64>>
+    aie.runtime_sequence(%arg0: memref<3xi32>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<3xi32> offset = 0 len = 3)
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
