@@ -45,6 +45,9 @@ struct AIEObjectFifoAllocatePass
   /// Flows already lowered. A route endpoint reads its direction off the
   /// flow naming it, so these outlive the walk that replaces them.
   SmallVector<Operation *> loweredFlows;
+  /// The flows each route endpoint is the source of, by its symbol name,
+  /// gathered before any flow is lowered.
+  DenseMap<StringAttr, SmallVector<RouteOp>> sourcedFlows;
   DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -1160,7 +1163,7 @@ struct AIEObjectFifoAllocatePass
 
     auto info =
         PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
-    if (sourcedFlows(source.getOperation()).size() == 1)
+    if (sourcedFlows[flow.getSourceAttr().getAttr()].size() == 1)
       source.setRoutePacket(info);
 
     builder.setInsertionPoint(flow);
@@ -1185,15 +1188,6 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// The flows `endpoint` is the source of.
-  SmallVector<RouteOp> sourcedFlows(Operation *endpoint) {
-    StringRef name = cast<SymbolOpInterface>(endpoint).getName();
-    return llvm::to_vector(
-        llvm::make_filter_range(device.getOps<RouteOp>(), [&](RouteOp flow) {
-          return flow.getSource() == name;
-        }));
-  }
-
   /// Assigned before flows are lowered, so every endpoint has one by now.
   int channelOf(RouteEndpoint endpoint) {
     std::optional<int> channel = endpoint.getRouteChannel();
@@ -1212,6 +1206,8 @@ struct AIEObjectFifoAllocatePass
     llvm::SmallDenseSet<int> taken = takenPacketIDs();
     int nextFree = 0;
     SmallVector<RouteOp> flows(device.getOps<RouteOp>());
+    for (RouteOp flow : flows)
+      sourcedFlows[flow.getSourceAttr().getAttr()].push_back(flow);
     llvm::stable_sort(flows, [&](RouteOp a, RouteOp b) {
       return structuralRank.lookup(a) < structuralRank.lookup(b);
     });
@@ -1347,7 +1343,8 @@ struct AIEObjectFifoAllocatePass
 
   /// Give each dma_start naming an endpoint the channel it was assigned.
   LogicalResult resolveStart(DMAStartOp start, RouteEndpointOp endpoint,
-                             ArrayRef<RouteOp> flows, int channel) {
+                             ArrayRef<RouteOp> flows, ArrayRef<int> ids,
+                             int channel) {
     DMAChannelDir dir = endpoint.getRouteDirection();
     if (start.getChannelDir() != dir)
       return start.emitOpError("starts ")
@@ -1375,7 +1372,7 @@ struct AIEObjectFifoAllocatePass
         llvm::append_range(bds, block->getOps<DMABDOp>());
         llvm::append_range(work, block->getTerminator()->getSuccessors());
       }
-      if (failed(checkHeaders(endpoint, flows, bds)))
+      if (failed(checkHeaders(endpoint, ids, bds)))
         return failure();
     }
     start.setChannelAttr(builder.getI32IntegerAttr(channel));
@@ -1383,8 +1380,8 @@ struct AIEObjectFifoAllocatePass
   }
 
   /// A packet source that no one header is stamped on needs each of `bds` to
-  /// state the header of one of its flows.
-  LogicalResult checkHeaders(RouteEndpointOp endpoint, ArrayRef<RouteOp> flows,
+  /// state the header of one of its flows, whose pinned ids are `ids`.
+  LogicalResult checkHeaders(RouteEndpointOp endpoint, ArrayRef<int> ids,
                              ArrayRef<DMABDOp> bds) {
     for (DMABDOp bd : bds) {
       std::optional<int> id;
@@ -1392,17 +1389,11 @@ struct AIEObjectFifoAllocatePass
         id = packet->getPktId();
       else if (auto ops = bd->getBlock()->getOps<DMABDPACKETOp>(); !ops.empty())
         id = (*ops.begin()).getPacketId();
-      if (id && llvm::any_of(flows, [&](RouteOp flow) {
-            return flow.getPacketId() == *id;
-          }))
+      if (id && llvm::is_contained(ids, *id))
         continue;
-      auto diag = bd.emitOpError("sends on @")
-                  << endpoint.getSymName()
-                  << " without the packet header of one of its flows, ids";
-      for (RouteOp flow : flows)
-        if (auto flowId = flow.getPacketId())
-          diag << " " << static_cast<int>(*flowId);
-      return diag;
+      return bd.emitOpError("sends on @")
+             << endpoint.getSymName()
+             << " without the packet header of one of its flows, ids " << ids;
     }
     return success();
   }
@@ -1411,7 +1402,7 @@ struct AIEObjectFifoAllocatePass
   /// dma_memcpy_nd must name a header of its own, and nothing else may send
   /// on one.
   LogicalResult checkSharedSourceUsers(RouteEndpointOp endpoint,
-                                       ArrayRef<RouteOp> flows) {
+                                       ArrayRef<int> ids) {
     auto uses = SymbolTable::getSymbolUses(endpoint, device);
     if (!uses)
       return success();
@@ -1422,20 +1413,15 @@ struct AIEObjectFifoAllocatePass
         continue;
       if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user)) {
         std::optional<PacketInfoAttr> packet = memcpy.getPacket();
-        if (packet && llvm::any_of(flows, [&](RouteOp flow) {
-              return flow.getPacketId() == packet->getPktId();
-            }))
+        if (packet && llvm::is_contained(ids, packet->getPktId()))
           continue;
       }
-      auto diag = user->emitOpError("sends on @")
-                  << endpoint.getSymName()
-                  << ", a source several packet routes share, which has no "
-                     "one header to stamp; it needs a packet header of its "
-                     "own, one of ids";
-      for (RouteOp flow : flows)
-        if (auto flowId = flow.getPacketId())
-          diag << " " << static_cast<int>(*flowId);
-      return diag;
+      return user->emitOpError("sends on @")
+             << endpoint.getSymName()
+             << ", a source several packet routes share, which has no one "
+                "header to stamp; it needs a packet header of its own, one of "
+                "ids "
+             << ids;
     }
     return success();
   }
@@ -1465,24 +1451,29 @@ struct AIEObjectFifoAllocatePass
     for (auto endpoint : device.getOps<RouteEndpointOp>()) {
       auto starts = endpointStarts.lookup(endpoint);
       auto tasks = endpointTasks.lookup(endpoint);
-      SmallVector<RouteOp> flows = sourcedFlows(endpoint);
+      SmallVector<RouteOp> flows =
+          sourcedFlows.lookup(endpoint.getSymNameAttr());
+      SmallVector<int> ids;
+      for (RouteOp flow : flows)
+        if (auto id = flow.getPacketId())
+          ids.push_back(*id);
       // A shared source has no one header to stamp, so whatever sends on it
       // states each BD's header itself.
       bool shared = flows.size() > 1;
-      if (shared && failed(checkSharedSourceUsers(endpoint, flows)))
+      if (shared && failed(checkSharedSourceUsers(endpoint, ids)))
         return failure();
       if (starts.empty() && tasks.empty())
         continue;
       std::optional<int> channel = endpoint.getRouteChannel();
       assert(channel && "assignChannels gives every routed endpoint one");
       for (DMAStartOp start : starts)
-        if (failed(resolveStart(start, endpoint, flows, *channel)))
+        if (failed(resolveStart(start, endpoint, flows, ids, *channel)))
           return failure();
       if (shared)
         for (auto task : tasks) {
           SmallVector<DMABDOp> bds;
           task.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
-          if (failed(checkHeaders(endpoint, flows, bds)))
+          if (failed(checkHeaders(endpoint, ids, bds)))
             return failure();
         }
       if (endpoint.getTileLike().isShimTile() && endpoint.getFifoName())

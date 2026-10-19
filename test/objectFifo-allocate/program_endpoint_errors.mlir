@@ -90,7 +90,7 @@ module @shared_source_task_without_header {
     aie.route from @host to [@b] {packet, packet_id = 2 : i8}
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       %t = aiex.dma_configure_task_for @host {
-        // expected-error @+1 {{sends on @host without the packet header of one of its flows, ids 1 2}}
+        // expected-error @+1 {{sends on @host without the packet header of one of its flows, ids 1, 2}}
         aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64)
         aie.end
       }
@@ -252,7 +252,7 @@ module @shared_source_memcpy_without_header {
     aie.route from @host to [@a] {packet, packet_id = 1 : i8}
     aie.route from @host to [@b] {packet, packet_id = 2 : i8}
     aie.runtime_sequence(%arg0: memref<64xi32>) {
-      // expected-error @+1 {{sends on @host, a source several packet routes share, which has no one header to stamp; it needs a packet header of its own, one of ids 1 2}}
+      // expected-error @+1 {{sends on @host, a source several packet routes share, which has no one header to stamp; it needs a packet header of its own, one of ids 1, 2}}
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @host} : memref<64xi32>
     }
   }
@@ -277,7 +277,7 @@ module @shared_source_bd_packet_wrong_id {
       aie.dma_start(MM2S, @scatter, ^bd0, ^end)
     ^bd0:
       aie.dma_bd_packet(0, 3)
-      // expected-error @+1 {{sends on @scatter without the packet header of one of its flows, ids 1 2}}
+      // expected-error @+1 {{sends on @scatter without the packet header of one of its flows, ids 1, 2}}
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:
