@@ -16,9 +16,10 @@ xclbin. One run, no seed sweep: unlike mobilenet this design has no SA-
 placer-seed dimension (Phase 7 unplaced it onto the plain default
 sequential placer, which has no seed concept).
 
-Needs the real Llama 3.2 1B weights staged where gen_llama_data.py can read
-them (``--weights``/``--tokenizer``, or $LLAMA_3_2_1B_SAFETENSORS /
-$LLAMA_3_2_1B_TOKENIZER): the test loads the real embed table + final_norm
+Needs the real Llama 3.2 1B checkpoint where amd/IRON's examples keep it,
+``$IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/`` (default ``/srv``; see
+gen_llama_data.WEIGHTS_DIR), or ``--weights``/``--tokenizer``: the test loads
+the real embed table + final_norm
 gamma even for a pure timing run (the transformer layers themselves use a
 random fixture; only the embed/lm_head weights are real). Generates
 ``data/`` once if not already there.
@@ -86,15 +87,6 @@ _CHAIN_ENV = {
     "LLAMA_CHAIN_N": str(N_LAYERS),
     "LLAMA_CHAIN_T": "128",
 }
-
-
-def _env(weights: str | None, tokenizer: str | None) -> dict:
-    env = dict(os.environ, **_CHAIN_ENV)
-    if weights:
-        env["LLAMA_3_2_1B_SAFETENSORS"] = weights
-    if tokenizer:
-        env["LLAMA_3_2_1B_TOKENIZER"] = tokenizer
-    return env
 
 
 def _run(cmd: list[str], env: dict) -> subprocess.CompletedProcess:
@@ -365,11 +357,11 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     parser.add_argument(
         "--weights",
-        help="path to model.safetensors (overrides $LLAMA_3_2_1B_SAFETENSORS)",
+        help="path to model.safetensors (default: $IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/)",
     )
     parser.add_argument(
         "--tokenizer",
-        help="path to tokenizer.model (overrides $LLAMA_3_2_1B_TOKENIZER)",
+        help="path to tokenizer.model (default: beside the weights)",
     )
     parser.add_argument(
         "--pmode",
@@ -398,7 +390,7 @@ def main(argv=None) -> int:
         write(args.meta, {**meta, "failed": [], "exitstatus": 1})
         return 1
 
-    env = _env(args.weights, args.tokenizer)
+    env = dict(os.environ, **_CHAIN_ENV)
     gen = ensure_data(args.weights, args.tokenizer, env)
     compiled = compile_cold_warm(env)
     built = compiled["built"]

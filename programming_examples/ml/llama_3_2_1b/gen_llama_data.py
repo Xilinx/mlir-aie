@@ -4,8 +4,8 @@
 #
 """Phase 6c.5a: BF16 -> per-channel-INT8 weight extractor for Llama 3.2 1B.
 
-Loads model.safetensors (146 BF16 tensors, 2.4 GB; pass --weights or set
-$LLAMA_3_2_1B_SAFETENSORS) and dumps INT8 weights + fp32 per-output-channel
+Loads model.safetensors (146 BF16 tensors, 2.4 GB; from WEIGHTS_DIR, or pass
+--weights) and dumps INT8 weights + fp32 per-output-channel
 scales into data/ as flat .bin files our NPU runtime can pack.
 
 Per-channel symmetric absmax quant for every (out, in) linear weight:
@@ -51,6 +51,10 @@ import ml_dtypes
 import numpy as np
 
 # --- Llama 3.2 1B spec (mirrors cautious-eureka/npu2/llama_spec.py) ---
+# The gated checkpoint's directory, as amd/IRON's examples find it
+# (iron/lm/testing.py): model.safetensors and tokenizer.model.
+WEIGHTS_DIR = Path(os.environ.get("IRON_EXAMPLE_WEIGHTS_DIR", "/srv")) / "llama3.2-1b"
+
 VOCAB_SIZE = 128_256
 EMB_DIM = 2_048
 N_LAYERS = 16
@@ -150,16 +154,17 @@ def main():
     p.add_argument(
         "--weights",
         type=Path,
-        default=Path(os.environ.get("LLAMA_3_2_1B_SAFETENSORS", "model.safetensors")),
-        help="path to the bf16 Llama 3.2 1B model.safetensors. Overrides "
-        "$LLAMA_3_2_1B_SAFETENSORS.",
+        default=WEIGHTS_DIR / "model.safetensors",
+        help="path to the bf16 Llama 3.2 1B model.safetensors "
+        "(default: $IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/, $IRON_EXAMPLE_WEIGHTS_DIR "
+        "defaulting to /srv).",
     )
     p.add_argument(
         "--tokenizer",
         type=Path,
-        default=Path(os.environ.get("LLAMA_3_2_1B_TOKENIZER", "tokenizer.model")),
-        help="path to the Llama 3.2 1B tokenizer.model. Overrides "
-        "$LLAMA_3_2_1B_TOKENIZER.",
+        default=WEIGHTS_DIR / "tokenizer.model",
+        help="path to the Llama 3.2 1B tokenizer.model (default: beside the "
+        "weights).",
     )
     p.add_argument("--out-dir", type=Path, default=Path(__file__).parent / "data")
     args = p.parse_args(sys.argv[1:])

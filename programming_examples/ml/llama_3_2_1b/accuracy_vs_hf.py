@@ -6,8 +6,8 @@
 
 The device decode is already bit-exact vs the numpy int8 forward (numpy_llama_ref).
 The open question is upstream: does the int8 RECIPE track the real (bf16) model?
-Here the reference is the UNQUANTIZED bf16 safetensors, passed via --hf-weights or
-$LLAMA_3_2_1B_SAFETENSORS, loaded as fp32 -- no torch/transformers needed
+Here the reference is the UNQUANTIZED bf16 safetensors (gen_llama_data.WEIGHTS_DIR,
+or --hf-weights), loaded as fp32 -- no torch/transformers needed
 (SafetensorsReader + numpy_llama_ref's fp32 ops).
 
 We run both forwards on a real text sample (teacher-forced) and report:
@@ -22,12 +22,11 @@ Run:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
 import numpy as np
-from gen_llama_data import SafetensorsReader
+from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
 from numpy_llama_ref import (
     HEAD_DIM,
     KV_DIM,
@@ -46,10 +45,6 @@ from numpy_llama_ref import (
 )
 
 DATA_DIR = Path(__file__).parent / "data"
-# Reference bf16 checkpoint. No machine-specific default: pass --hf-weights or
-# set $LLAMA_3_2_1B_SAFETENSORS: the weights are gated on HuggingFace, so there
-# is no path every user has.
-HF_WEIGHTS = Path(os.environ.get("LLAMA_3_2_1B_SAFETENSORS", "model.safetensors"))
 TOKENIZER = DATA_DIR / "tokenizer.model"
 
 DEFAULT_TEXT = (
@@ -143,9 +138,9 @@ def main():
     p.add_argument(
         "--hf-weights",
         type=Path,
-        default=HF_WEIGHTS,
-        help="path to the bf16 HF Llama 3.2 1B model.safetensors (reference). "
-        "Overrides $LLAMA_3_2_1B_SAFETENSORS.",
+        default=WEIGHTS_DIR / "model.safetensors",
+        help="path to the bf16 HF Llama 3.2 1B model.safetensors (reference; "
+        "default: $IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/).",
     )
     opts = p.parse_args()
 
@@ -168,7 +163,7 @@ def main():
         print(
             f"ERROR: HF reference weights not found at {opts.hf_weights}\n"
             f"  pass --hf-weights /path/to/model.safetensors or set "
-            f"$LLAMA_3_2_1B_SAFETENSORS",
+            f"$IRON_EXAMPLE_WEIGHTS_DIR (its llama3.2-1b/ subdirectory)",
             file=sys.stderr,
         )
         return 1

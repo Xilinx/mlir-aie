@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import os
 import sys
 from pathlib import Path
 
@@ -36,6 +35,7 @@ from gen_llama_data import (
     N_KV_GROUPS,
     N_LAYERS,
     Q_DIM,
+    WEIGHTS_DIR,
     SafetensorsReader,
 )
 
@@ -132,9 +132,9 @@ def main():
     p.add_argument(
         "--weights",
         type=Path,
-        default=Path(os.environ.get("LLAMA_3_2_1B_SAFETENSORS", "model.safetensors")),
-        help="path to the bf16 Llama 3.2 1B model.safetensors. Overrides "
-        "$LLAMA_3_2_1B_SAFETENSORS.",
+        default=WEIGHTS_DIR / "model.safetensors",
+        help="path to the bf16 Llama 3.2 1B model.safetensors (default: "
+        "$IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/).",
     )
     p.add_argument(
         "--M", type=int, default=4, help="number of input tokens for the test"

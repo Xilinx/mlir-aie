@@ -198,10 +198,12 @@ source utils/env_setup.sh install/
 cd programming_examples/ml/llama_3_2_1b
 ```
 
-The INT8 weights live in `data/` (generated from the HF checkpoint by
-`gen_llama_data.py --weights /path/to/model.safetensors`). The bf16 reference reads
-the safetensors directly: pass `--hf-weights` or set `$LLAMA_3_2_1B_SAFETENSORS`
-to your own copy of the gated `meta-llama/Llama-3.2-1B` checkpoint.
+The gated `meta-llama/Llama-3.2-1B` checkpoint is found where amd/IRON's examples
+find it: `model.safetensors` and `tokenizer.model` in
+`$IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/` (`IRON_EXAMPLE_WEIGHTS_DIR` defaults to
+`/srv`); `--weights`/`--tokenizer` (`--hf-weights` for the bf16 reference)
+override it. The INT8 weights live in `data/`, generated from it by
+`gen_llama_data.py`. The bf16 reference reads the safetensors directly.
 
 > **Always set `LLAMA_CHAIN_N=16`** for any accuracy/timing/baseline run.
 > `N_LAYERS` defaults to 2 (a fast bring-up toy); a 2-layer run silently produces
