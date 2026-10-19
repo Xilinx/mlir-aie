@@ -197,6 +197,18 @@ class _GeneratedDesign:
             return []
         return [f"--expand-load-pdis={str(self.expand_load_pdis).lower()}"]
 
+    @property
+    def entry_stream_options(self) -> list[str]:
+        """The aiecc flags that keep only the entry's instruction stream.
+
+        An xclbin dispatch runs one stream, so a configuration holding several
+        runtimes compiles just its entry's; a full ELF carries them all.
+        """
+        if self.entry is None:
+            return []
+        device, sequence = self.entry.split(":")
+        return [f"--device-name={device}", f"--sequence-name={sequence}"]
+
 
 class CompilableDesign:
     """Bundles an MLIR generator with compile-time parameters.
@@ -878,7 +890,10 @@ class CompilableDesign:
                 use_chess = self._resolve_use_chess(external_kernels)
                 digests: dict[str, str] = {}
 
-                compiler_options = list(self.aiecc_flags)
+                compiler_options = [
+                    *self.aiecc_flags,
+                    *generated.entry_stream_options,
+                ]
                 if has_dispatch:
                     compiler_options.append("--get=npu_lowered.mlir")
                 compile_mlir_module(
@@ -1203,7 +1218,12 @@ class CompilableDesign:
                     insts_path=inst_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
-                    options=[*self.aiecc_flags, *check] or None,
+                    options=[
+                        *self.aiecc_flags,
+                        *generated.entry_stream_options,
+                        *check,
+                    ]
+                    or None,
                     device_cache_dir=self._device_cache_dir(),
                     # The stream addresses the buffers where the image's build
                     # placed them, and that placement reserves each bank's

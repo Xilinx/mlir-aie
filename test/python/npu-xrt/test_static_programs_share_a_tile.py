@@ -11,7 +11,8 @@
 Each runtime of one configuration loops its input through the mem tile on its
 own channel pair, 0 or 1, with a TileDma it registers. The programs merge into
 the mem tile's one DMA program, which runs whichever runtime dispatches; a
-coordinator runs both.
+coordinator runs both. On the xclbin path, which dispatches one instruction
+stream, the program's entry is the one that runs.
 """
 
 import aie.iron as iron
@@ -37,9 +38,9 @@ from aie.iron.device import Tile
 N = 1024
 
 
-def loop_through(mem: Tile, channel: int, name: str) -> Runtime:
-    """A Runtime whose TileDma loops a tensor through ``mem`` on ``channel``."""
-    ty = np.ndarray[(N,), np.dtype[np.int32]]
+def loop_through(mem: Tile, channel: int, name: str, n: int = N) -> Runtime:
+    """A Runtime whose TileDma loops ``n`` int32s through ``mem`` on ``channel``."""
+    ty = np.ndarray[(n,), np.dtype[np.int32]]
     shim = Tile(channel, 0, tile_type=AIETileType.ShimNOCTile)
     into = Flow(shim, mem, src_channel=0, dst_channel=channel)
     back = Flow(mem, shim, src_channel=channel, dst_channel=0)
@@ -108,3 +109,26 @@ def test_two_runtimes_programs_run_on_one_mem_tile():
     d.to("cpu")
     np.testing.assert_array_equal(b.numpy(), first)
     np.testing.assert_array_equal(d.numpy(), second)
+
+
+# The runtimes loop different lengths, so running first's stream instead would
+# leave the second half of the output unwritten.
+@iron.jit
+def second_of_two(a: In, b: Out):
+    mem = Tile(0, 1, tile_type=AIETileType.MemTile)
+    first = loop_through(mem, 0, "first", N // 2)
+    second = loop_through(mem, 1, "second")
+    pack = DeviceConfiguration(
+        "pack", iron.get_current_device(), runtimes=[first, second]
+    )
+    return Program.compose([pack], entry=second).resolve_program()
+
+
+def test_an_xclbin_runs_the_entry_of_two_runtimes():
+    rng = np.random.default_rng(9)
+    data = rng.integers(-(2**31), 2**31 - 1, N, dtype=np.int32)
+    a = iron.tensor(data, dtype=np.int32, device="npu")
+    b = iron.zeros(N, dtype=np.int32, device="npu")
+    second_of_two(a, b)
+    b.to("cpu")
+    np.testing.assert_array_equal(b.numpy(), data)
