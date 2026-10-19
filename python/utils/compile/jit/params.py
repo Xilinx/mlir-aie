@@ -17,7 +17,7 @@ from __future__ import annotations
 import copy
 from dataclasses import MISSING, dataclass
 from enum import Enum
-from typing import Any, Callable, Self
+from typing import Any, Callable, Self, overload
 
 import numpy as np
 
@@ -181,6 +181,10 @@ class Member:
         bound.op = op
         return bound
 
+    @overload
+    def __get__(self, op: None, owner: type | None = None) -> Self: ...
+    @overload
+    def __get__(self, op: object, owner: type | None = None) -> Any: ...
     def __get__(self, op, owner=None):
         if op is None:
             return self
