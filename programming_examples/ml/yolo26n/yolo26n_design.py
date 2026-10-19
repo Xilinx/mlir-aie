@@ -226,7 +226,7 @@ class SegmentDesign:
         self.functions: dict[str, ExternalFunction] = {}
         self.inputs: list[Tensor] = []
         self.workers: list[Worker] = []
-        self.stages: dict[str, tuple[ObjectFifo, int]] = {}
+        self.stages: dict[str, list[tuple[ObjectFifo, int]]] = {}
         # Tensors that travel inside another stream's rows, as SPPF's pools do,
         # or across several, as attention's heads do.
         self.alias: dict[str, Part] = {}
@@ -263,7 +263,10 @@ class SegmentDesign:
         return self.fifos[tensor.name]
 
     def schedule(
-        self, out: Tensor, windows: list[tuple[Tensor, np.ndarray, np.ndarray]]
+        self,
+        out: Tensor,
+        windows: list[tuple[Tensor, np.ndarray, np.ndarray]],
+        double: bool = True,
     ) -> dict[str, int]:
         """Record which rows of each upstream stream `out` waits for, and size this worker's input fifos.
 
@@ -275,9 +278,9 @@ class SegmentDesign:
         while the other path pulls the upstream stream on to the row its own
         row y waits for, and the first input's producer keeps up; the fifo
         holds all those rows, or the upstream stream's producer and so both
-        paths stall. A wait on a virtual row is a wait on a finished stream,
-        which nothing stalls. Returns the depth per input stream: that span
-        and a row in flight, or the window (doubled when it is one row).
+        paths stall. Returns the depth per input stream: that span
+        and a row in flight, or the window (doubled when it is one row and
+        `double`).
         """
 
         def at(rows: np.ndarray, index: np.ndarray) -> np.ndarray:
@@ -312,19 +315,21 @@ class SegmentDesign:
                 for shared in mine.keys() & theirs.keys():
                     # The rows of this input made from the shared stream's rows
                     # that the other input's row y has pulled through.
-                    pulled = at(theirs[shared], other_hi)
-                    live = pulled < self.heights[shared]
-                    if live.any():
-                        # This input itself must take the pulled row; a path
-                        # from the shared stream need only make the rows
-                        # before it, to make room for it.
-                        side = "right" if shared == source.name else "left"
-                        ahead = (
-                            np.searchsorted(mine[shared], pulled[live], side=side) - 1
-                        )
-                        span = max(span, int((ahead - lo[live] + 1).max()) + 1)
+                    # A wait past the last row is a wait on the last row:
+                    # the stream's producer still has to make it.
+                    pulled = np.minimum(
+                        at(theirs[shared], other_hi), self.heights[shared] - 1
+                    )
+                    # This input itself must take the pulled row; a path from
+                    # the shared stream need only make the rows before it, to
+                    # make room for it.
+                    side = "right" if shared == source.name else "left"
+                    ahead = np.searchsorted(mine[shared], pulled, side=side) - 1
+                    span = max(span, int((ahead - lo + 1).max()) + 1)
             # A one-row window double-buffers; a wider one already overlaps.
-            depths[source.name] = max(span + (window == 1), depths.get(source.name, 0))
+            depths[source.name] = max(
+                span + (window == 1 and double), depths.get(source.name, 0)
+            )
         return depths
 
     def l1_rows(self, tensor: Tensor, depth: int, window: int) -> int:
@@ -346,23 +351,26 @@ class SegmentDesign:
         """
         if self.l1_rows(tensor, depth, window) == depth:
             return self.fifo(tensor).cons(depth=depth)
-        # A fifo joins one memtile link, so the consumers that stage share it.
-        if tensor.name not in self.stages:
-            source = self.fifo(tensor)
-            if depth - window <= MEMTILE_LAG_ROWS:
-                staged = source.cons(depth=depth - window).forward(
-                    depth=2, name=f"lag{len(self.stages)}"
+        # A fifo joins one memtile link, so the consumers that stage share
+        # the stage, and one needing more lag extends it.
+        lag = depth - window
+        stages = self.stages.setdefault(tensor.name, [])
+        base = max(
+            (st for st in stages if st[1] <= lag), key=lambda st: st[1], default=None
+        )
+        if base is None or base[1] < lag:
+            source, held = (self.fifo(tensor), 0) if base is None else base
+            if not stages and lag <= MEMTILE_LAG_ROWS:
+                staged = source.cons(depth=lag).forward(
+                    depth=2, name=f"lag{sum(map(len, self.stages.values()))}"
                 )
             else:
                 staged = self.buffer(
-                    source, tensor.row_bytes, tensor.height, depth - window
+                    source, tensor.row_bytes, tensor.height, lag - held
                 )
-            self.stages[tensor.name] = (staged, depth - window)
-        staged, held = self.stages[tensor.name]
-        if depth - window > held:
-            raise NotImplementedError(
-                f"{tensor.name}: a later reader needs {depth - window} staged rows, not {held}"
-            )
+            stages.append((staged, lag))
+            base = stages[-1]
+        staged = base[0]
         return staged.cons(depth=window)
 
     def buffer(
@@ -520,7 +528,15 @@ class SegmentDesign:
         assembled = Tensor(f"{tensor.name}/assembled", *tensor.shape)
         self.local.add(assembled.name)
         src = RowInput(self, tensor, into_output=True)
-        src.connect(self, self.schedule(assembled, src.windows(tensor.height)))
+        # Double-buffered if that fits the tile, else one row at a time.
+        for double in (True, False):
+            depths = self.schedule(assembled, src.windows(tensor.height), double)
+            held = sum(
+                self.l1_rows(t, depths[t.name], 1) * t.row_bytes for t in src.sources
+            )
+            if held + (1 + double) * tensor.row_bytes <= L1_BYTES - L1_RESERVE:
+                break
+        src.connect(self, depths)
 
         def body(*args):
             args = list(args)
@@ -534,7 +550,7 @@ class SegmentDesign:
                     out.release(1)
 
         self.workers.append(
-            Worker(body, [*src.fn_args, self.fifo(assembled).prod(depth=2)])
+            Worker(body, [*src.fn_args, self.fifo(assembled).prod(depth=1 + double)])
         )
         return assembled
 
@@ -569,30 +585,34 @@ class SegmentDesign:
                 lo = np.maximum(op.stride * y - 1, 0)
                 windows = [(part.source, lo, op.stride * y + 1)]
                 local_bytes = 0
-            depths = dict(self.schedule(op.dst, windows))
-            window = 2 if op.kernel == 1 else 3
-            held = sum(
-                self.l1_rows(s, depths[s.name], window) * s.row_bytes
-                for s, _, _ in windows
-            )
-            free = (
-                L1_BYTES
-                - L1_RESERVE
-                - held
-                - local_bytes
-                - 2 * op.dst.row_bytes
-                - 256 * op.act
-            )
-            chunk = oc
-            while (
-                chunk
-                and (weights.nbytes + bias.nbytes)
-                * chunk
-                // oc
-                * (1 if chunk == oc else 2)
-                > free
-            ):
-                chunk = next((c for c in range(chunk - 8, 0, -8) if oc % c == 0), 0)
+            # Double-buffered if the weights then fit, else one row at a time.
+            for double in (True, False):
+                depths = dict(self.schedule(op.dst, windows, double))
+                window = 2 if op.kernel == 1 else 3
+                held = sum(
+                    self.l1_rows(s, depths[s.name], window) * s.row_bytes
+                    for s, _, _ in windows
+                )
+                free = (
+                    L1_BYTES
+                    - L1_RESERVE
+                    - held
+                    - local_bytes
+                    - (1 + double) * op.dst.row_bytes
+                    - 256 * op.act
+                )
+                chunk = oc
+                while (
+                    chunk
+                    and (weights.nbytes + bias.nbytes)
+                    * chunk
+                    // oc
+                    * (1 if chunk == oc else 2)
+                    > free
+                ):
+                    chunk = next((c for c in range(chunk - 8, 0, -8) if oc % c == 0), 0)
+                if chunk:
+                    break
             if chunk == oc or len(windows) == 1:
                 break
             # A streamed conv needs its second input channel for the weights.
@@ -633,7 +653,7 @@ class SegmentDesign:
             )
             wts.prod().endpoint = ObjectFifoEndpoint(AnyMemTile.copy())
             constants = [wts.cons(depth=2), *table]
-        out = self.fifo(op.dst).prod(depth=2)
+        out = self.fifo(op.dst).prod(depth=1 + double)
         out_part = op.dst.width * chunk
 
         def call(k, x, consts, o, *scalars):
