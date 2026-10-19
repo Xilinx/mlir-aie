@@ -113,8 +113,8 @@ class ParameterScratchpad:
         core-kind parameter is not, so a run drains only into addr-kind
         parameters, or writes a core-kind value already shifted left by 2.
 
-        Needs an amdxdna that pins a buffer object's own mapping (xdna-driver
-        72e64a6, 2026-09-18, or later); an older one maps it ``VM_PFNMAP`` and
+        Needs amdxdna 2.27 or later, whose buffer-object mappings can be
+        pinned (xdna-driver 72e64a6); an older one maps them ``VM_PFNMAP`` and
         refuses the pin with EFAULT.
         """
         if self._alias is None:
