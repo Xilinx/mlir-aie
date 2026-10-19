@@ -89,11 +89,12 @@ class Affine:
     """An integer expression in one per-call value ``v``.
 
     ```text
-    clamp(((v * scale + bias) >> down) * mul + add, lo, hi) % mod
+    clamp(((v * scale + bias) >> down) * mul + add, lo, hi) % mod + post
     ```
 
     ``>>`` floors, a bound of None is none, and ``mod`` is a power of two
-    (a ring's row) or None. A linear one has ``down`` 0 and keeps its terms
+    (a ring's row) or None. ``post`` is added after the wrap, so a run of a
+    ring written twice over, ``ring[a : a + R]``, has its end. A linear one has ``down`` 0 and keeps its terms
     in ``scale`` and ``bias``: ``(p + 1) * 64`` is ``Affine(p, 64, 64)``.
 
     Sums and products with integers, floor divisions by a power of two (so
@@ -113,6 +114,7 @@ class Affine:
     lo: int | None = None
     hi: int | None = None
     mod: int | None = None
+    post: int = 0
 
     @property
     def clamped(self) -> bool:
@@ -160,8 +162,10 @@ class Affine:
                 return self.bias + k.bias
             return Affine(self.value, scale, self.bias + k.bias)
         c = _int(k)
-        if c is None or self.mod is not None:
+        if c is None:
             return NotImplemented
+        if self.mod is not None:
+            return dataclasses.replace(self, post=self.post + c)
         if self.clamped:
             return self._reclamped(lambda e: e + c, lambda b: b + c)
         if self.down:
@@ -185,7 +189,8 @@ class Affine:
             # (x % m) * c is (x * c) % (m * c) for c > 0, a ring row's elements.
             if c <= 0 or c & (c - 1):
                 raise TypeError(f"no expression for ({self}) * {c}")
-            return dataclasses.replace(self, mod=None) * c % (self.mod * c)
+            wrapped = dataclasses.replace(self, mod=None, post=0)
+            return wrapped * c % (self.mod * c) + self.post * c
         if self.clamped:
             return self._reclamped(lambda e: e * c, lambda b: b * c, flip=c < 0)
         if self.down:
@@ -233,7 +238,7 @@ class Affine:
             return NotImplemented
         if c <= 0 or c & (c - 1):
             raise TypeError(f"no expression for ({self}) % {c}: a ring is 2^k rows")
-        if self.mod is not None and self.mod % c:
+        if self.mod is not None and (self.mod % c or self.post):
             raise TypeError(f"no expression for ({self}) % {c}")
         return dataclasses.replace(self, mod=c)
 
@@ -284,6 +289,8 @@ class Affine:
                 text += signed(tag, b)
         if self.mod is not None:
             text += f"_mod{self.mod}"
+        if self.post:
+            text += f"_{'p' if self.post > 0 else 'm'}{abs(self.post)}"
         return text
 
     def __str__(self) -> str:
@@ -307,7 +314,7 @@ class Affine:
             x = f"max({x}, {self.lo})"
         elif self.hi is not None:
             x = f"min({x}, {self.hi})"
-        return x if self.mod is None else f"{term(x)} % {self.mod}"
+        return x if self.mod is None else plus(f"{term(x)} % {self.mod}", self.post)
 
     def evaluate(self, values: Mapping[str, int]) -> int:
         """Its value where ``values`` gives its per-call value by name."""
@@ -317,7 +324,7 @@ class Affine:
             x = max(x, self.lo)
         if self.hi is not None:
             x = min(x, self.hi)
-        return x if self.mod is None else x % self.mod
+        return x if self.mod is None else x % self.mod + self.post
 
     def stage(self):
         """Stage this expression on its value's ``i64``, as eudsl's ``ScalarValue``.
@@ -351,5 +358,5 @@ class Affine:
         if self.hi is not None:
             x = ScalarValue(arith.minsi(x, constant(self.hi, T.i64())))
         if self.mod is not None:  # a power of two: the floored remainder
-            x = x & (self.mod - 1)
+            x = (x & (self.mod - 1)) + self.post
         return x

@@ -128,7 +128,19 @@ def test_a_wrapped_expression_is_a_ring_row_and_its_elements():
     ring = p % 16
     assert ring.name == "p_mod16" and str(ring * 64) == "(p * 64) % 1024"
     assert (ring * 64).evaluate({"p": 21}) == 5 * 64
-    for bad in (lambda: p % 12, lambda: ring % 32, lambda: ring * 3, lambda: ring + 1):
+    # A constant after the wrap: the end of a run in a ring written twice.
+    run = (p % 8 + 3) * 4
+    assert run == (p * 4) % 32 + 12 and run.name == "p_x4_mod32_p12"
+    assert str(run) == "(p * 4) % 32 + 12"
+    assert [run.evaluate({"p": v}) for v in (-3, 0, 13)] == [32, 12, 32]
+    for bad in (
+        lambda: p % 12,
+        lambda: ring % 32,
+        lambda: ring * 3,
+        lambda: (ring + 1) % 4,
+        lambda: (ring + 1).clamp(lo=0),
+        lambda: (ring + 1) // 2,
+    ):
         with pytest.raises(TypeError):
             bad()
 
@@ -140,6 +152,7 @@ def test_a_wrapped_expression_is_a_ring_row_and_its_elements():
         lambda p: ceildiv(p * 3 - 5, 64),
         lambda p: ((p * 3 + 1) // 2).clamp(lo=-4, hi=20) * 3 + 1,
         lambda p: (p - 5).clamp(lo=0) % 8 * 4,
+        lambda p: (p % 8 + 3) * 4,
     ],
 )
 def test_a_staged_expression_folds_to_its_host_value(build):
