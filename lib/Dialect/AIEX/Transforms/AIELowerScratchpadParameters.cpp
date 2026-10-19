@@ -392,7 +392,7 @@ struct AIELowerScratchpadParametersPass
       for (WaitScratchpadParametersOp wait : waits) {
         builder.setInsertionPoint(wait);
         UseLockOp::create(builder, wait.getLoc(), lockOp.getResult(),
-                          LockAction::Acquire, 1);
+                          LockAction::AcquireGreaterEqual, 1);
         wait.erase();
       }
 

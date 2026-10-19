@@ -23,7 +23,7 @@
 // CHECK-NOT: aie.use_lock
 // CHECK: scf.for
 // CHECK-NEXT: %[[ONE:.*]] = arith.constant 1 : i32
-// CHECK-NEXT: aie.use_lock(%[[L02]], Acquire, %[[ONE]])
+// CHECK-NEXT: aie.use_lock(%[[L02]], AcquireGreaterEqual, %[[ONE]])
 // CHECK-NOT: aiex.wait_scratchpad_parameters
 // CHECK: memref.load
 // CHECK: aie.end

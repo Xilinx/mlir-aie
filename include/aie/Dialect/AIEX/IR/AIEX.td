@@ -2048,8 +2048,8 @@ def AIEX_WaitScratchpadParametersOp
 
     Protocol, per core: the pass gives the core one parameter-sync lock,
     initialized to 0, and replaces each `aiex.wait_scratchpad_parameters` with
-    an acquire of that lock (`aie.use_lock(Acquire, 1)`: wait until it is at
-    least 1, then decrement). Each runtime sequence's
+    an acquire of that lock (`aie.use_lock(AcquireGreaterEqual, 1)`: wait
+    until it is at least 1, then decrement). Each runtime sequence's
     `aiex.sync_scratchpad_parameters_from_host` writes every core-kind
     parameter and then sets the lock to 1. A dispatch therefore releases
     exactly one wait, after its values are in place; a core that is still busy
