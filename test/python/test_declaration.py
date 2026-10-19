@@ -278,6 +278,9 @@ def test_an_output_shaped_like_an_input_takes_its_call_shape():
         Shaped.declaration.infer({"x": (2, 4)}, [(8,)])
     with pytest.raises(TypeError, match="or like=In\\(M\\), not both"):
         Out(M, like=Shaped.x)
+    x = In(M, when=F)
+    with pytest.raises(TypeError, match="must be an input of Bad with no when="):
+        declare({"M": M, "F": F, "x": x, "y": Out(like=x)}, {"M": "int", "F": "bool"})
 
 
 class Derived(Base):
