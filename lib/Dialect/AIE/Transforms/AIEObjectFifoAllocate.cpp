@@ -1594,6 +1594,7 @@ struct AIEObjectFifoAllocatePass
     filledPools.clear();
     rearmUsers.clear();
     loweredFlows.clear();
+    sourcedFlows.clear();
     localPools.clear();
     poolUsers.clear();
     lockUsers.clear();
