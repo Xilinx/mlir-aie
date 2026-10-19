@@ -75,7 +75,6 @@ def build(*, D: CompileTime[int] = 8192, SELFCAL: CompileTime[bool] = False):
         core_fn,
         [of_g.cons(), of_u.cons(), of_o.prod(), kernel],
         tile=Tile(SILU_COL, SILU_ROW),
-        stack_size=2048,
     )
 
     def sequence(g, u, o, g_prod, u_prod, o_cons):

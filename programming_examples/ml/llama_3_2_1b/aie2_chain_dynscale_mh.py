@@ -16,8 +16,7 @@ Combines:
     range_(N_LAYERS) in each worker, per-fifo per-layer fill with
     ping-pong BD reuse).
 
-All ObjectFifos depth=1 (Bug 8). FFN-side stack_size matches
-layer_mh's PSK=8192 (Bug 12 -- larger silently corrupts).
+All ObjectFifos depth=1 (Bug 8).
 
 ``build()`` is ``@iron.jit``-compiled: SAMPLE/GATHER/ONESTREAM/PERSIST/
 PERSIST_GROW/PERSIST_RESIDENT/PT/N_LAYERS/T/ONESTREAM_KSET are keyword-only
@@ -1160,50 +1159,35 @@ def build(
             c_fb.acquire(1)
             c_fb.release(1)
 
-    PSK = 8192
-    ATSK = 16384
-    # Resident-KV attn tiles hold the 2x17416 b_kv + 17416 seed-fill buffer, so
-    # the stack must be small (flowkv ~1KB scratch). Tunable if placement fails.
-    RESIDENT_ATSK = int(_os.environ.get("LLAMA_RESIDENT_ATSK", "8192"))
-    # FFN-side stack: of_sf grows to HD+8 (silu self-cal) -> Bug-12 stack/fifo
-    # alias at 8192 on the FFN tiles; 4096 clears it (see single-layer 1a).
-    FFNSK = int(_os.environ.get("LLAMA_FFNSK", "4096"))
-
     workers = [
         # Router
         Worker(
             w_router,
             [of_seed.cons(), of_back.cons(), of_routed.prod()],
-            stack_size=PSK,
         ),
         # Attention front
         Worker(
             w_rms,
             [of_routed.cons(), of_gam_in.cons(), of_h1.prod(), k_rms],
-            stack_size=2048,
         ),
         Worker(
             w_q,
             [of_h1.cons(), of_wq.cons(), of_qfp.prod(), k_q],
-            stack_size=PSK,
         ),
         # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
-        Worker(w_requant, [of_qfp.cons(), of_qf.prod(), k_qrequant], stack_size=4096),
+        Worker(w_requant, [of_qfp.cons(), of_qf.prod(), k_qrequant]),
         Worker(
             w_rope,
             [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope],
-            stack_size=2048,
         ),
         # k_proj / v_proj (h1 broadcast); fp32 out -> memtile kvcs join.
         Worker(
             w_kv,
             [of_h1.cons(), of_wk.cons(), kvcs_eps[0].prod(), k_kv],
-            stack_size=PSK,
         ),
         Worker(
             w_kv,
             [of_h1.cons(), of_wv.cons(), kvcs_eps[1].prod(), k_kv],
-            stack_size=PSK,
         ),
         Worker(
             w_qkvcomb,
@@ -1231,11 +1215,6 @@ def build(
                         k_append_res,
                         k_fkv_res,
                     ],
-                    # Resident KV: the 2x17416 b_kv buffer + the 17416 seed-fill
-                    # cons buffer dominate the 64 KB tile, so the stack must be
-                    # small (flowkv needs ~1 KB: scores[T]+qvals[T]; append
-                    # k_rope[HD]). 8192 keeps total ~62 KB; ATSK (16384) overflows.
-                    stack_size=RESIDENT_ATSK,
                 )
                 for i in range(N_HEADS_KV)
             ]
@@ -1251,7 +1230,6 @@ def build(
                         k_append,
                         k_fkv,
                     ],
-                    stack_size=ATSK,
                 )
                 for i in range(N_HEADS_KV)
             ]
@@ -1264,55 +1242,45 @@ def build(
         Worker(
             w_afconcat,
             [of_svfull.cons(), of_af.prod(), k_afconcat],
-            stack_size=2048,
         ),
         Worker(
             w_o,
             [of_af.cons(), of_wo.cons(), of_op.prod(), k_o],
-            stack_size=PSK,
         ),
         Worker(
             w_add1,
             [of_routed.cons(), of_op.cons(), of_x1.prod(), k_add],
-            stack_size=2048,
         ),
-        # FFN (FFNSK=4096: of_sf=HD+8 self-cal Bug-12 alias, see single layer)
+        # FFN
         Worker(
             w_rms,
             [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],
-            stack_size=2048,
         ),
         Worker(
             w_gate,
             [of_h2.cons(), of_wg.cons(), of_gf.prod(), k_gate],
-            stack_size=FFNSK,
         ),
         Worker(
             w_up,
             [of_h2.cons(), of_wu.cons(), of_ufp.prod(), k_up],
-            stack_size=FFNSK,
         ),
         # up_requant (2b): fp32 up -> self-cal up_out_scale -> int8 + tail.
         Worker(
             w_requant,
             [of_ufp.cons(), of_uf.prod(), k_uprequant],
-            stack_size=FFNSK,
         ),
         Worker(
             w_silu,
             [of_gf.cons(), of_uf.cons(), of_sf.prod(), k_silu],
-            stack_size=FFNSK,
         ),
         Worker(
             w_down,
             [of_sf.cons(), of_wd.cons(), of_df.prod(), k_down],
-            stack_size=FFNSK,
         ),
         # add2 with peeled final iter
         Worker(
             w_add2,
             [of_x1.cons(), of_df.cons(), of_back.prod(), of_out.prod(), k_add],
-            stack_size=2048,
         ),
     ]
 
@@ -1327,7 +1295,6 @@ def build(
                     of_fnorm.prod(),
                     k_rms,
                 ],
-                stack_size=2048,
             ),
             # Fused lm_head GEMM + top-k insert + finalize on one tile: ONE table
             # pass -> token + next-token embed seed. The resident top-k rows live
@@ -1350,7 +1317,6 @@ def build(
                         k_os_insert,
                         k_os_final,
                     ],
-                    stack_size=ATSK,
                 )
                 if PERSIST
                 else Worker(
@@ -1368,7 +1334,6 @@ def build(
                         k_os_insert,
                         k_os_final,
                     ],
-                    stack_size=ATSK,
                 )
             ),
         ]
@@ -1382,7 +1347,6 @@ def build(
                         of_feedback.cons(),
                         of_seed.prod(),
                     ],
-                    stack_size=PSK,
                 ),
             ]
     elif SAMPLE:
@@ -1396,7 +1360,6 @@ def build(
                     of_fnorm.prod(),
                     k_rms,
                 ],
-                stack_size=2048,
             ),
             # lm_head GEMM + streamed sampler, on the relay tiles that hold
             # their relay buffers.
@@ -1409,7 +1372,6 @@ def build(
                     k_lmhead,
                 ],
                 tile=relay_gemm_tile,
-                stack_size=PSK,
             ),
             Worker(
                 w_sample,
@@ -1422,7 +1384,6 @@ def build(
                     k_sample_final,
                 ],
                 tile=relay_sampler_tile,
-                stack_size=8192,
             ),
         ]
     if GATHER:
@@ -1436,7 +1397,6 @@ def build(
                     of_seed.prod(),
                     k_embsel,
                 ],
-                stack_size=PSK,
             ),
         ]
 

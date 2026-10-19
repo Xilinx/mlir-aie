@@ -290,8 +290,8 @@ Real constraints learned during bring-up — apply preemptively to skip build cy
    the persistent loop packs token+seed into one output buffer.)
 4. **One `Kernel` object per unique C symbol.** Share it across same-signature
    workers; use a distinct symbol per shape.
-5. **L1 is 64 KB/tile.** Resident KV (32 KB/head at N=2) fits only with a reduced
-   worker stack; the full 16-layer cache (256 KB/head) needs a memtile.
+5. **L1 is 64 KB/tile.** Resident KV (32 KB/head at N=2) fits beside the worker
+   stack aiecc measures; the full 16-layer cache (256 KB/head) needs a memtile.
 6. **Peano AIE2P codegen quirks** (see `kernels/`): `1.0f/x` is a ~10-bit HW
    reciprocal (use the NR `sw_recip`); fp32 stack arrays kept across loops can be
    corrupted (stash int LUT indices instead); `G_ROTL` fails to legalize (use a
