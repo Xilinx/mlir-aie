@@ -197,6 +197,10 @@ def other_npu_users(holding: bool = False) -> set[int]:
     That test reads ``/proc``, so it assumes ``/proc`` is not mounted with
     ``hidepid``, which would hide other users' processes on the host too.
 
+    amdxdna reports only this user's contexts unless the caller has
+    CAP_SYS_ADMIN (the uapi's ``DRM_AMDXDNA_HW_CONTEXT_ALL`` query), so
+    another Linux user's job on the NPU is not seen.
+
     Args:
         holding: Whether this process holds a context. In a container, a lone
             reported pid is then taken to be its own; several are all
@@ -395,7 +399,8 @@ def run_interleaved(
             be idle first (`wait_idle`), and time a round again if another
             holds it when the round ends. A use that starts and ends within
             one round goes unseen, and one held but idle context stops the
-            measurement with `wait_idle`'s ``TimeoutError``.
+            measurement with `wait_idle`'s ``TimeoutError``. Only this
+            user's processes are seen, as `other_npu_users` says.
         log: Where `idle` reports waiting or timing a round again.
 
     Returns:
