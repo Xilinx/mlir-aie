@@ -102,9 +102,13 @@ class _Operand(Member):
         depth: The ObjectFifo depth.
         replicate: Every ``per=`` lane gets the whole tensor, not a share.
         when: A bool ``param()``; the tensor exists only where it is true.
+        like: An input whose dims these are; a caller gives this tensor the
+            shape that input has on the call, so ``Out(like=x)`` of a flat
+            ``x`` is ``(rows, cols)`` where ``x`` is.
 
     Raises:
-        TypeError: ``replicate`` without ``per``.
+        TypeError: ``replicate`` without ``per``, or both ``dims`` and
+            ``like``.
     """
 
     fills = drains = False
@@ -118,12 +122,16 @@ class _Operand(Member):
         depth: int = 2,
         replicate: bool = False,
         when: Param | None = None,
+        like: _Operand | None = None,
     ):
         if replicate and per is None:
             raise TypeError(
                 "replicate=True needs per=<dim>: every lane receives the whole tensor"
             )
-        self.dims = dims
+        if like is not None and dims:
+            raise TypeError(f"give dims {dims} or like={like!r}, not both")
+        self.like = like
+        self.dims = dims if like is None else like.dims
         self.declared_dtype = dtype
         self.obj_dims = None if obj_shape is None else _dims(obj_shape)
         self.per = None if per is None else _dims(per)
@@ -164,6 +172,8 @@ class _Operand(Member):
     def __repr__(self) -> str:
         role = type(self).__name__
         if self.op is None:
+            if self.like is not None:
+                return f"{role}(like={self.like.name})"
             return f"{role}({', '.join(map(_text, self.dims))})"
         return f"<{role} {self.name} {self.shape} {bfp.dtype_name(self.dtype)}>"
 

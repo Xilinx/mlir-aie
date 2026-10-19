@@ -204,6 +204,14 @@ class Declaration:
                 )
             return
         assert isinstance(m, _Operand)
+        if m.like is not None and (
+            not m.like.fills
+            or m.like.owner is None
+            or not issubclass(owner, m.like.owner)
+        ):
+            raise TypeError(
+                f"{where}: like={m.like!r} must be an input of {owner.__name__}"
+            )
         for leaf in _leaves(m.dims):
             if _foreign(leaf, owner):
                 raise TypeError(
@@ -381,6 +389,12 @@ class Declaration:
                     raise ValueError(
                         f"{self.name}: operand {m.name}.shape[{i}] is {n}, declared {d}"
                     )
+        for m, shape in zip(outs, outputs):
+            like = inputs.get(m.like.name) if m.like is not None else None
+            if like is not None and tuple(shape) != tuple(like):
+                raise ValueError(
+                    f"{self.name}: output {m.name} is {tuple(shape)}, but shaped like {m.like.name}, {tuple(like)}"
+                )
         origin = {k: "given" for k in given}
         for ref, value, where in found:
             if ref.name in bound and bound[ref.name] != value:

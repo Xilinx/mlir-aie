@@ -157,6 +157,8 @@ M.name, T.name, F.name = "M", "T", "F"
         (In(M, obj_shape=(2.5,)), "obj_shape dimension 2.5 is not"),
         (In(M, per=3), "per=3 must be a param\\(\\) or tunable\\(\\)"),
         (In(GEMV.M), "dimension <param M> is not a param\\(\\) of Bad"),
+        (Out(like=GEMV.a), "like=In\\(batches, M, K\\) must be an input of Bad"),
+        (Out(like=Out(M)), "like=Out\\(M\\) must be an input of Bad"),
     ],
 )
 def test_a_member_breaking_a_rule_is_refused(member, message):
@@ -259,6 +261,23 @@ def test_inference_refuses_a_flag_its_operands_contradict():
 def test_a_select_with_no_flag_value_asks_for_it():
     with pytest.raises(ValueError, match="flip selects y's shape and has no default"):
         Gated.declaration.infer({"x": (4,)}, outputs=[(4, 1)])
+
+
+class Shaped(Base):
+    M: int = param()
+    x = In(M)
+    y = Out(like=x)
+
+
+def test_an_output_shaped_like_an_input_takes_its_call_shape():
+    assert Shaped.y.dims == Shaped.x.dims and repr(Shaped.y) == "Out(like=x)"
+    assert Shaped.declaration.infer({"x": (2, 4)}, [(2, 4)]) == {"M": 8}
+    with pytest.raises(
+        ValueError, match="y is \\(8,\\), but shaped like x, \\(2, 4\\)"
+    ):
+        Shaped.declaration.infer({"x": (2, 4)}, [(8,)])
+    with pytest.raises(TypeError, match="or like=In\\(M\\), not both"):
+        Out(M, like=Shaped.x)
 
 
 class Derived(Base):
