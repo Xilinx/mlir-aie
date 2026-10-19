@@ -15,6 +15,7 @@ import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime
 
 OBJECT, FIRST, SECOND = 256, 128, 896
+INT32 = np.iinfo(np.int32)
 
 
 @iron.jit
@@ -45,13 +46,12 @@ def split(a: In, c1: Out, c2: Out, *, n: CompileTime[int] = OBJECT):
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
-def _random(size, seed):
-    rng = np.random.default_rng(seed)
-    return rng.integers(-(2**31), 2**31 - 1, size=size, dtype=np.int32)
-
-
 def test_fills_concatenate_into_shared_objects():
-    x, y = _random(FIRST, seed=0), _random(SECOND, seed=1)
+    rng = np.random.default_rng(0)
+    x, y = (
+        rng.integers(INT32.min, INT32.max, size, np.int32, endpoint=True)
+        for size in (FIRST, SECOND)
+    )
     c = iron.zeros((FIRST + SECOND,), dtype=np.int32, device="npu")
     concat(
         iron.tensor(x, device="npu"),
@@ -62,7 +62,8 @@ def test_fills_concatenate_into_shared_objects():
 
 
 def test_drains_split_shared_objects():
-    a = _random(FIRST + SECOND, seed=2)
+    rng = np.random.default_rng(2)
+    a = rng.integers(INT32.min, INT32.max, FIRST + SECOND, np.int32, endpoint=True)
     c1 = iron.zeros((FIRST,), dtype=np.int32, device="npu")
     c2 = iron.zeros((SECOND,), dtype=np.int32, device="npu")
     split(iron.tensor(a, device="npu"), c1, c2)
