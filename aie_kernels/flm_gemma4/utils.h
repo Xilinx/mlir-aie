@@ -16,8 +16,7 @@ Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 
 using bf16 = bfloat16;
 
-// The lock-id offset selects the tile: +48 this tile, +0 down, +16 left,
-// +32 up.
+// This tile's own locks, from 48 (see _lock_offset).
 inline void _lock_acquire(int lock_id, int num_locks = 1) {
   acquire_greater_equal(lock_id + 48, num_locks);
 }
