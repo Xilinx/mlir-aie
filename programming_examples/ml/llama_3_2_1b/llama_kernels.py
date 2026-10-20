@@ -115,6 +115,13 @@ def gemm_layer_mh():
     )
 
 
+def gemv_array(*, kset=8):
+    return KernelSource(
+        "llama_gemv_array.cc",
+        ["-ffp-contract=off", f"-DLLAMA_GEMV_ARRAY_KSET={kset}"],
+    )
+
+
 def kv_append(*, T=128):
     return KernelSource(
         "llama_kv_append.cc",
