@@ -999,11 +999,13 @@ class SegmentDesign:
         )
 
     def attention(self, op: Attention) -> None:
-        """One worker per head: it stores the map's keys and values, then answers its queries.
+        """Two workers per head: each stores the map's keys and values, then answers every other row of queries.
 
         A memtile splits each qkv row into every head's queries and its keys
         and values. A head answers its first query only once it has every
-        key, so its queries wait in a tile of their own.
+        key, so its queries wait in a tile of their own. A memtile joins the
+        two workers' rows in pairs, and the head's consumers take them a row
+        at a time.
         """
         p = self.params
         (part,) = self.parts(op.qkv)
@@ -1045,6 +1047,8 @@ class SegmentDesign:
         upstream = {qkv.name: np.full(height, height - 1)}
         for name, rows in self.need.get(qkv.name, {}).items():
             upstream[name] = np.full(height, rows[height - 1])
+        if height % 2:
+            raise NotImplementedError(f"{op.name}: an odd number of query rows")
         heads = []
         for h in range(op.heads):
             out = Tensor(f"{op.name}/head{h}", hd, height, width)
@@ -1053,46 +1057,69 @@ class SegmentDesign:
             self.heights[out.name] = height
             self.heights[qkv.name] = height
             heads.append(out)
-
-            def body(queries, keys, out, k, load, table, kt, v):
-                # The rows are few (20), so the store walks unrolled.
-                for r in range(height):
-                    kv = keys.acquire(1)
-                    load(
-                        view(kv, 0, kd * width),
-                        view(kv, kd * width, hd * width),
-                        kt,
-                        v,
-                        r,
-                    )
-                    keys.release(1)
-                for _ in range_(height):
-                    q = queries.acquire(1)
-                    o = out.acquire(1)
-                    k(q, kt, v, table, o, q_mul, *shifts)
-                    queries.release(1)
-                    out.release(1)
-
-            self.workers.append(
-                Worker(
-                    body,
-                    [
-                        # Queries wait for every key in a tile of their own.
-                        self.buffer(pieces[2 * h], kd * width, height, height).cons(
-                            depth=2
-                        ),
-                        pieces[2 * h + 1].cons(depth=2),
-                        self.fifo(out).prod(depth=2),
-                        k,
-                        k.load_kv,  # pyright: ignore[reportAttributeAccessIssue]
-                        Buffer(
-                            initial_value=p.of(op.name, "exp_table").astype(np.int32)
-                        ),
-                        Buffer(np.ndarray[(height * width * kd,), np.dtype[np.int8]]),
-                        Buffer(np.ndarray[(height * width * hd,), np.dtype[np.int8]]),
-                    ],
+            size = out.row_bytes
+            self.fifos[out.name] = ObjectFifo(
+                row(2 * size), name=f"t{len(self.fifos)}", consumer_obj_type=row(size)
+            )
+            self.joined.add(out.name)
+            halves = (
+                self.fifo(out)
+                .prod(depth=2)
+                .join(
+                    [0, size],
+                    obj_types=[row(size)] * 2,
+                    depths=[2, 2],
+                    names=[f"{self.fifo(out).name}_rows{j}" for j in range(2)],
                 )
             )
+            # Queries wait for every key in a tile of their own.
+            queries = self.buffer(pieces[2 * h], kd * width, height, height)
+            for j, half in enumerate(halves):
+
+                def body(queries, keys, out, k, load, table, kt, v, j=j):
+                    # The rows are few (20), so the store walks unrolled.
+                    for r in range(height):
+                        kv = keys.acquire(1)
+                        load(
+                            view(kv, 0, kd * width),
+                            view(kv, kd * width, hd * width),
+                            kt,
+                            v,
+                            r,
+                        )
+                        keys.release(1)
+                    for _ in range_(height // 2):
+                        for i in range(2):
+                            q = queries.acquire(1)
+                            if i == j:
+                                o = out.acquire(1)
+                                k(q, kt, v, table, o, q_mul, *shifts)
+                                out.release(1)
+                            queries.release(1)
+
+                self.workers.append(
+                    Worker(
+                        body,
+                        [
+                            queries.cons(depth=2),
+                            pieces[2 * h + 1].cons(depth=2),
+                            half.prod(),
+                            k,
+                            k.load_kv,  # pyright: ignore[reportAttributeAccessIssue]
+                            Buffer(
+                                initial_value=p.of(op.name, "exp_table").astype(
+                                    np.int32
+                                )
+                            ),
+                            Buffer(
+                                np.ndarray[(height * width * kd,), np.dtype[np.int8]]
+                            ),
+                            Buffer(
+                                np.ndarray[(height * width * hd,), np.dtype[np.int8]]
+                            ),
+                        ],
+                    )
+                )
         self.virtual[op.dst.name] = [Part(t, 0, t.row_bytes) for t in heads]
         self.virtual[op.values.name] = [
             Part(qkv, h * per_head + 2 * kd * width, hd * width)
