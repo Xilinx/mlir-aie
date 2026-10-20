@@ -5,8 +5,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 An INT8 decode of Llama 3.2 1B on an AMD NPU2 (AIE2P), written in the IRON
 Python API and compiled with `@iron.jit` to one full ELF. Each dispatch runs the
-whole per-token decode on the AI Engine array for `PT` tokens: all 16 transformer
-layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
+whole per-token decode on the AI Engine array for 1 to 4 tokens, chosen per
+dispatch: all 16 transformer layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
 and the token→embedding feedback. The W8A8-dynamic INT8 recipe tracks the
 reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % on
 prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
@@ -30,7 +30,7 @@ stream from DDR (fundamental — a 1 GB model can't live on-chip) and, at the en
 the generated token ids.
 
 ```
-                       ┌──────────────── one device dispatch, PT tokens ────────────────┐
+                       ┌──────────────── one device dispatch, P tokens ─────────────────┐
   DDR: seed(token0) ──►│ seed-mux ─► router ─► [ rmsnorm ─ q/k/v ─ rope ─ KV-append ─    │
                        │     ▲                   flowkv-attn ─ o_proj ─ +res ─ rmsnorm ─  │
                        │     │                   gate/up ─ silu ─ down ─ +res ] ×16 ─►    │
@@ -38,7 +38,7 @@ the generated token ids.
                        │     │                            ─► sample ─► (token, embed seed)│
                        │     └──────────── embed seed feeds back on-chip ────────────────┤
   host: weights (DDR) ─────────────────────────► streamed per token ─────────────────────►
-  host: tokens out  ◄──────────────────────────── PT packed records ◄─────────────────────┘
+  host: tokens out  ◄───────────────────────────── P packed records ◄─────────────────────┘
   DDR: next seed    ◄──────────────────────────── last token's seed ◄──────────────────────┘
 ```
 
@@ -53,7 +53,7 @@ Key design pieces (each validated bit-exact in isolation before integration):
 
 - **On-chip token feedback** (`--persist`). The sampled token's embed seed feeds
   back to layer 0 **on-chip** via a depth-2 self-feedback fifo + a seed-mux (the
-  seed buffer for token 0, on-chip feedback for tokens 1..PT-1). The last token's
+  seed buffer for token 0, on-chip feedback for tokens 1..P-1). The last token's
   seed goes back to the seed buffer in DDR, so the next dispatch continues from
   it; the host writes the seed buffer only for the first dispatch. (DDR, not core
   memory: after the driver's 5 s autosuspend the cores come back reset.)
@@ -79,10 +79,11 @@ Every transformer op, the lm_head, the sampler, the token feedback and the KV
 append run as AI Engine kernels, and one compiled design serves every dispatch.
 The host (`DispatchSession` in `llama_npu.py`) keeps one hardware context and,
 per dispatch, writes the design's ScratchpadParameters (`dispatch_params` in
-`test_chain_persist_grow_mh.py`): the position of the dispatch's first token,
-which the attention workers read; its row in the RoPE table the weight blob
-carries, built once with Llama 3's rope scaling; and per token, how many KV
-blocks to read and where its row goes. What the host still does, each to move
+`test_chain_persist_grow_mh.py`): how many tokens it generates, which every
+worker reads; the position of the dispatch's first token, which the attention
+workers read; its row in the RoPE table the weight blob carries, built once
+with Llama 3's rope scaling; and per token slot, whether it runs (a slot that
+does not run moves nothing), how many KV blocks to read and where its row goes. What the host still does, each to move
 to the device in the stages of the one-design restructure:
 
 - **Prefill.** There is none yet: the starting 64-token context is a fixture the
@@ -106,7 +107,7 @@ to the device in the stages of the one-design restructure:
 
 Measured on NPU2 (Strix) with `test_chain_persist_grow_mh.py --time`
 (`taskset -c 2-4`, median of 10 timed dispatches after warmup); per-token =
-dispatch time / PT. N=16, PT=4 unless noted:
+dispatch time / tokens per dispatch. N=16, 4 tokens a dispatch unless noted:
 
 | Context (position of the first token) | per-token | tok/s |
 |---|---|---|
@@ -114,7 +115,7 @@ dispatch time / PT. N=16, PT=4 unless noted:
 | 1024 | 57.5 ms | 17.4 |
 | 4096 | 86.9 ms | 11.5 |
 | 32768 | 362 ms | 2.8 |
-| 131071 (PT=1) | 1304 ms | 0.77 |
+| 131068 (3 tokens a dispatch) | 1303 ms | 0.77 |
 
 N=16 went from 452 ms/token to 212 ms by vectorizing the kernels, then to
 91.2 ms by moving the remaining scalar fp32 epilogues onto vectors (bit-exact),
@@ -129,8 +130,15 @@ one core, about 18 ms per 1k tokens of context.
 **What bounds it now.** The layers' weights stream over the array's eight
 lanes (about 52 GB/s), but the lm_head's 262 MB still stream over one lane
 (about 19 ms a token), and past a few thousand tokens attention dominates,
-about 9.5 ms per 1k tokens of context; at 128k a 4-token dispatch outlasts the
-driver's timeout, so long contexts decode fewer tokens a dispatch.
+about 9.5 ms per 1k tokens of context.
+
+**Tokens per dispatch.** amdxdna times a dispatch out after about 5 s, and at
+128k a 4-token dispatch takes about 5.2 s. The host picks each dispatch's
+token count from its first position (`passes_for` in
+`test_chain_persist_grow_mh.py`): as many of the 4 as fit a 4 s budget by a
+cost model fit to the table above (19 ms of lm_head a token, plus per layer
+1.85 ms and 0.6 ms per 1k rows of context). At 16 layers that is 4 tokens from
+positions up to 99102 and 3 beyond, to 128k (3.9 s a dispatch).
 The array's activations and outputs pass through a DDR `stage` buffer
 between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
 60–89 tok/s on this model.
@@ -248,7 +256,7 @@ LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --self-prefill --bf16-ref
 ### Full persistent decode (on-chip loop + growing KV) + timing
 
 ```bash
-# the full 16-layer autoregressive decode (PT tokens / dispatch)
+# the full 16-layer autoregressive decode (4 tokens a dispatch; --passes picks 1-4)
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py
 
 # per-token TPS at full config (reuses the compiled design)

@@ -23,3 +23,11 @@
 // CARRY-COUNT-2: KV cache: PASS
 // CARRY: chain_persist_grow_mh: 8/8 tokens PASS
 // CARRY: carry across 2 dispatches: PASS
+//
+// Three of the four token slots, against the same three tokens one per
+// dispatch: the records, the KV cache and the stage are byte-identical, and
+// the slots that do not run move nothing.
+// RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 62 --passes 3 --split | FileCheck %s --check-prefix=SPLIT
+// SPLIT: KV cache: PASS
+// SPLIT: chain_persist_grow_mh: 3/3 tokens PASS
+// SPLIT: 3 tokens vs 3 x 1: PASS

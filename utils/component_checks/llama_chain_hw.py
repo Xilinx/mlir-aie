@@ -45,7 +45,7 @@ import time
 from aiecc_stages import PROFILE_NAME, STAGE_METRICS, stage_rows
 
 N_LAYERS = 16
-PT = 4
+P_MAX = 4
 N_ITERS = 3
 N_WARMUP = 1
 
@@ -61,16 +61,16 @@ _SUMMARY_RE = re.compile(
 )
 _PER_TOKEN_RE = re.compile(r"per-token:\s+([\d.]+) ms\s+\(([\d.]+) tok/s\)")
 _RATIO_RE = re.compile(r"ratio:\s+([\d.]+)x\s+->\s+(\S+)")
-_ELF = f"build/chain_persist_grow_N{N_LAYERS}_PT{PT}.elf"
-_PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{PT}.prj"
+_ELF = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}.elf"
+_PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}.prj"
 _PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
 _CORE_RE = re.compile(r"\baie\.core\(")
 
 # The design's CompileTime values; the test script reads the same
-# configuration from _CHAIN_ENV at import time.
-_BUILD_ARGS = [f"--pt={PT}", "--kset=8", f"--n-layers={N_LAYERS}", "--t=128"]
+# configuration from _CHAIN_ENV at import time and generates P_MAX tokens a
+# dispatch.
+_BUILD_ARGS = [f"--p-max={P_MAX}", "--kset=8", f"--n-layers={N_LAYERS}", "--t=128"]
 _CHAIN_ENV = {
-    "LLAMA_CHAIN_PT": str(PT),
     "LLAMA_CHAIN_ONESTREAM_KSET": "8",
     "LLAMA_CHAIN_N": str(N_LAYERS),
     "LLAMA_CHAIN_T": "128",
@@ -363,7 +363,7 @@ def main(argv=None) -> int:
         "preflight": dict(vars(pre)),
         "provenance": provenance(device=pre.device, pmode=pre.pmode),
         "n_layers": N_LAYERS,
-        "pt": PT,
+        "pt": P_MAX,
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
         meta["refused"] = (

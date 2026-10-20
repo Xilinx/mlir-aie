@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Persistent-loop GROWING-KV test (capstone increment 2): PT tokens in ONE
+"""Persistent-loop GROWING-KV test (capstone increment 2): `--passes` tokens in ONE
 dispatch, token feeding back on-chip, AND the KV cache GROWS across tokens --
 real autoregressive decode where context accumulates.
 
@@ -49,7 +49,15 @@ from aie2_chain_dynscale_mh import (
     kv_blocks,
     kv_words,
 )
-from aie2_decode import GAMMA_AT, LANE_BYTES, build, stage_layout, wblob_layout
+from aie2_decode import (
+    ACT_BYTES,
+    GAMMA_AT,
+    LANE_BYTES,
+    REC_BYTES,
+    build,
+    stage_layout,
+    wblob_layout,
+)
 from aie2_gemv_array import LAYER, N_CORES, RESID_OFF
 from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
@@ -66,7 +74,7 @@ from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
 ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8"))
-PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
+P_MAX = 4
 ATTN_CORES = 2
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -183,23 +191,57 @@ DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
 LMW_GAMMA_BYTES = 2 * D
 
 
-def dispatch_params(t0):
+def dispatch_params(t0, passes):
     """The design's ScratchpadParameters for one dispatch.
 
     Args:
         t0: The position of the dispatch's first token.
+        passes: The tokens it generates, 1..P_MAX.
 
     Returns:
-        The parameter values by name: t0; its RoPE table row's offset; per
-        token t at position p = t0 + t, the KV blocks it reads (kvb{t}) and
+        The parameter values by name: passes; t0; its RoPE table row's
+        offset; per token slot t < P_MAX, whether it runs (pass{t}) and, for
+        a token at position p = t0 + t, the KV blocks it reads (kvb{t}) and
         its row's word offset within a (layer, half) region (row{t}).
     """
-    params = {"t0": t0, "cs_off": t0 * CS_BYTES}
-    for t in range(PT):
+    params = {"passes": passes, "t0": t0, "cs_off": t0 * CS_BYTES}
+    for t in range(P_MAX):
         p = t0 + t
-        params[f"kvb{t}"] = p // KV_TB + 1
-        params[f"row{t}"] = (p // KV_TB) * KV_BLOCK_WORDS + (p % KV_TB) * KV_ROW_WORDS
+        on = t < passes
+        params[f"pass{t}"] = int(on)
+        params[f"kvb{t}"] = p // KV_TB + 1 if on else 0
+        params[f"row{t}"] = (
+            (p // KV_TB) * KV_BLOCK_WORDS + (p % KV_TB) * KV_ROW_WORDS if on else 0
+        )
     return params
+
+
+# The decode's time a token at position p, fit to the README's N=16
+# measurements: the lm_head, then per layer its weights and its attention
+# over p rows. amdxdna times a dispatch out after about 5 s.
+LM_HEAD_MS = 19.0
+LAYER_MS = 1.85
+LAYER_MS_PER_ROW = 0.0006
+DISPATCH_BUDGET_MS = 4000.0
+
+
+def passes_for(t0):
+    """The tokens a dispatch from position t0 generates.
+
+    Args:
+        t0: The position of its first token.
+
+    Returns:
+        As many as P_MAX allows, the cache has room for and the dispatch
+        budget fits, and at least one.
+    """
+    n, ms = 0, 0.0
+    while n < min(P_MAX, T - t0):
+        ms += LM_HEAD_MS + N_LAYERS * (LAYER_MS + LAYER_MS_PER_ROW * (t0 + n))
+        if n and ms > DISPATCH_BUDGET_MS:
+            break
+        n += 1
+    return max(n, 1)
 
 
 def pack_wblob(layers, rope):
@@ -289,8 +331,9 @@ def pack_kv(layers):
 def time_decode(session, buffers, params, opts):
     """Per-token device time + DMA floor (bytes/token counts the live KV
     prefix the first token reads)."""
+    passes = params["passes"]
     print(
-        f"timing: warmup x{opts.n_warmup}, time x{opts.n_iters}  (PT={PT} tokens/dispatch)",
+        f"timing: warmup x{opts.n_warmup}, time x{opts.n_iters}  ({passes} tokens/dispatch)",
         flush=True,
     )
     for _ in range(opts.n_warmup):
@@ -298,7 +341,7 @@ def time_decode(session, buffers, params, opts):
     times_ms = [session(buffers, **params) for _ in range(opts.n_iters)]
     arr = np.array(times_ms)
     disp_med = float(np.median(arr))
-    per_token_ms = disp_med / PT
+    per_token_ms = disp_med / passes
     kv_read = 2 * N_LAYERS * params["kvb0"] * KV_BLOCK_WORDS * 4
     bytes_per_token = (
         wblob_layout(N_LAYERS, T)[1] + LMW_GAMMA_BYTES + WLM_TOTAL + kv_read
@@ -376,14 +419,15 @@ def replay(dev_tokens, x_i8, res_scale, layers, p0, rope, lm):
     return fails
 
 
-def tokens_of(packed):
+def tokens_of(packed, passes):
     return [
         int(
             np.frombuffer(
-                packed[t * (D + 12) + D + 4 : t * (D + 12) + D + 8].tobytes(), np.int32
+                packed[t * REC_BYTES + D + 4 : t * REC_BYTES + D + 8].tobytes(),
+                np.int32,
             )[0]
         )
-        for t in range(PT)
+        for t in range(passes)
     ]
 
 
@@ -432,15 +476,35 @@ def main():
         help="KV prefix length before the first generated token "
         "(default: T//2, or as much as leaves room for every generated token)",
     )
+    p.add_argument(
+        "--passes",
+        type=int,
+        choices=range(1, P_MAX + 1),
+        help="tokens generated per dispatch (default: passes_for's, per dispatch)",
+    )
+    p.add_argument(
+        "--split",
+        action="store_true",
+        help="also generate the first dispatch's tokens one per dispatch, from the "
+        "same inputs; the records, KV cache and stage must be byte-identical",
+    )
     opts = p.parse_args()
     fseed = opts.seed
     n_disp = opts.dispatches
-    n_tok = n_disp * PT
-    p0 = opts.start_pos if opts.start_pos is not None else min(T // 2, T - n_tok)
+    p0 = opts.start_pos
+    if p0 is None:
+        p0 = min(T // 2, T - n_disp * (opts.passes or P_MAX))
+    schedule = []
+    pos = p0
+    for _ in range(n_disp):
+        schedule.append((pos, opts.passes or passes_for(pos)))
+        pos += schedule[-1][1]
+    passes = schedule[0][1]
+    n_tok = pos - p0
     if p0 < 0 or p0 + n_tok > T:
         p.error(f"{n_tok} tokens from position {p0} do not fit in T={T}")
-    if n_disp > 1 and opts.repeats > 1:
-        p.error("--dispatches and --repeats are separate modes")
+    if (n_disp > 1) + (opts.repeats > 1) + opts.split > 1:
+        p.error("--dispatches, --repeats and --split are separate modes")
 
     assert VOCAB == VOCAB_SIZE and D == EMB_DIM
     if opts.synthetic_weights:
@@ -474,7 +538,7 @@ def main():
     session = DispatchSession(
         build,
         opts.elf,
-        PT=PT,
+        P_MAX=P_MAX,
         N_LAYERS=N_LAYERS,
         T=T,
         KSET=ONESTREAM_KSET,
@@ -482,7 +546,8 @@ def main():
     )
     lmw_t = iron.tensor(lmw, dtype=np.int8)
     print(
-        f"chain_persist_grow_mh N_LAYERS={N_LAYERS} PT={PT} P0={p0} KSET={ONESTREAM_KSET}"
+        f"chain_persist_grow_mh N_LAYERS={N_LAYERS} passes={[n for _, n in schedule]}"
+        f" P0={p0} KSET={ONESTREAM_KSET}"
         f"  temp={SAMPLE_TEMP} topk={SAMPLE_TOPK} seed={SAMPLE_SEED}  fixture_seed={fseed}"
         f"  dispatches={n_disp} repeats={opts.repeats}",
         flush=True,
@@ -494,10 +559,10 @@ def main():
                 w_t,
                 iron.tensor(kv0, dtype=np.int32),
                 lmw_t,
-                iron.zeros([PT * (D + 12)], dtype=np.int8),
+                iron.zeros([P_MAX * REC_BYTES], dtype=np.int8),
                 iron.tensor(stage0, dtype=np.int8),
             ],
-            dispatch_params(p0),
+            dispatch_params(p0, passes),
             opts,
         )
 
@@ -505,7 +570,7 @@ def main():
     # tensor is created once per run of dispatches and stays on the device,
     # so a generation loop's dispatches carry the cache with no host copy.
     def dispatch(stage_t, kv_t, params):
-        out_t = iron.zeros([PT * (D + 12)], dtype=np.int8)
+        out_t = iron.zeros([P_MAX * REC_BYTES], dtype=np.int8)
         session([w_t, kv_t, lmw_t, out_t, stage_t], **params)
         out_t.to("cpu")
         return out_t.numpy().copy()
@@ -515,14 +580,51 @@ def main():
     # equal the oracle's.
     dev_tokens = []
     tok_fails = carry_fails = 0
-    if opts.repeats > 1:
+    if opts.split:
+        # One dispatch of `passes` tokens, then the same tokens one per
+        # dispatch: a token slot that does not run moves nothing.
+        kv_t = iron.tensor(kv0, dtype=np.int32)
+        stage_t = iron.tensor(stage0, dtype=np.int8)
+        whole = dispatch(stage_t, kv_t, dispatch_params(p0, passes))
+        kv_t.to("cpu")
+        stage_t.to("cpu")
+        kv_whole, stage_whole = kv_t.numpy().copy(), stage_t.numpy().copy()
+        kv_t = iron.tensor(kv0, dtype=np.int32)
+        stage_t = iron.tensor(stage0, dtype=np.int8)
+        recs = [
+            dispatch(stage_t, kv_t, dispatch_params(p0 + t, 1)) for t in range(passes)
+        ]
+        kv_t.to("cpu")
+        stage_t.to("cpu")
+        n_rec = passes * REC_BYTES
+        checks = {
+            "records": np.array_equal(
+                whole[:n_rec], np.concatenate([r[:REC_BYTES] for r in recs])
+            ),
+            "untouched records": not np.any(whole[n_rec:])
+            and not any(np.any(r[REC_BYTES:]) for r in recs),
+            "KV cache": np.array_equal(kv_whole, kv_t.numpy()),
+            "stage": np.array_equal(stage_whole, stage_t.numpy()),
+        }
+        for name, same in checks.items():
+            print(
+                f"  {passes} tokens vs {passes} x 1, {name}: {'same' if same else 'DIFFER'}"
+            )
+            carry_fails += not same
+        dev_tokens = tokens_of(whole, passes)
+        tok_fails = replay(dev_tokens, x_i8, res_scale, layers, p0, rope, lm)
+        wrong = int(np.count_nonzero(kv_whole != pack_kv(layers)))
+        print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
+        carry_fails += wrong != 0
+    elif opts.repeats > 1:
         for r in range(opts.repeats):
             toks = tokens_of(
                 dispatch(
                     iron.tensor(stage0, dtype=np.int8),
                     iron.tensor(kv0, dtype=np.int32),
-                    dispatch_params(p0),
-                )
+                    dispatch_params(p0, passes),
+                ),
+                passes,
             )
             if r == 0:
                 dev_tokens = toks
@@ -542,12 +644,11 @@ def main():
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
         x_d, sc_d = x_i8, res_scale
-        for d in range(n_disp):
+        for d, (pos, passes) in enumerate(schedule):
             if d:
                 time.sleep(opts.idle_s)
-            pos = p0 + d * PT
-            toks_out = dispatch(stage_t, kv_t, dispatch_params(pos))
-            toks = tokens_of(toks_out)
+            toks_out = dispatch(stage_t, kv_t, dispatch_params(pos, passes))
+            toks = tokens_of(toks_out, passes)
             dev_tokens += toks
             if n_disp > 1:
                 print(f"dispatch {d} (pos {pos}): tokens {toks}", flush=True)
@@ -560,7 +661,7 @@ def main():
             carry_fails += wrong != 0
             # The oracle's next layer-0 input is the last token's seed (body +
             # scale), which the device left in the seed tensor with a zero pad.
-            last = (PT - 1) * (D + 12)
+            last = (passes - 1) * REC_BYTES
             x_d = toks_out[last : last + D].copy()
             sc_d = float(
                 np.frombuffer(toks_out[last + D : last + D + 4].tobytes(), np.float32)[
@@ -568,10 +669,10 @@ def main():
                 ]
             )
             stage_t.to("cpu")
-            seed_left = np.zeros(D + 8, dtype=np.int8)
+            seed_left = np.zeros(ACT_BYTES, dtype=np.int8)
             seed_left[: D + 4] = toks_out[last : last + D + 4]
             if not np.array_equal(
-                stage_t.numpy()[SEED_AT : SEED_AT + D + 8], seed_left
+                stage_t.numpy()[SEED_AT : SEED_AT + ACT_BYTES], seed_left
             ):
                 print(f"  seed carry: FAIL (dispatch {d})", flush=True)
                 carry_fails += 1
@@ -581,6 +682,10 @@ def main():
         f"\nchain_persist_grow_mh: {n - tok_fails}/{n} tokens PASS  "
         f"(on-chip feedback + GROWING KV + per-position rope)"
     )
+    if opts.split:
+        print(
+            f"{passes} tokens vs {passes} x 1: {'PASS' if not carry_fails else 'FAIL'}"
+        )
     if n_disp > 1:
         print(
             f"carry across {n_disp} dispatches: {'PASS' if not carry_fails else 'FAIL'}"
