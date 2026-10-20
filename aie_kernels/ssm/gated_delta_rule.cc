@@ -39,9 +39,10 @@ constexpr int R = GDR_ROWS, Dk = GDR_KEY_DIM, Dv = GDR_VALUE_DIM;
 constexpr int L = 16, W = f32_lanes;
 constexpr int P = (Dv + L - 1) / L * L, KP = (Dk + L - 1) / L * L;
 constexpr int RP = (R + W - 1) / W * W;
-// The vector paths below are AIE2P's; AIE2 keeps the scalar ones until npu1
-// is timed (Peano's aie2 MachineLICM also crashes on the paired update).
-constexpr bool Vec = AIE_ARCH_AIE2P;
+// AIE2 keeps the scalar paths at key_dim 2 only: there Peano's aie2
+// MachineLICM asserts on the paired update ("Machine instr not mapped for
+// this vreg?!").
+constexpr bool Vec = AIE_ARCH_AIE2P || Dk > 2;
 // Where a row scalar's second set starts (b after a, k's norm after q's):
 // with at most 16 rows, both sets share one vector.
 constexpr int RS = Vec && R <= L ? L : RP;
