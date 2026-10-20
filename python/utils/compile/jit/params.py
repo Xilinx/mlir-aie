@@ -15,7 +15,9 @@ captures ``M`` itself and ``GEMM.M`` names the parameter. On an instance,
 from __future__ import annotations
 
 import copy
+import functools
 import sys
+import types
 from dataclasses import MISSING, dataclass
 from enum import Enum
 from typing import Any, Callable, overload
@@ -148,7 +150,7 @@ def tunable(
         domain is None
         or isinstance(domain, tuple)
         or (isinstance(domain, type) and issubclass(domain, Enum))
-        or (callable(domain) and not isinstance(domain, type))
+        or isinstance(domain, (types.FunctionType, functools.partial))
     ):
         raise TypeError(
             f"tunable(domain={domain!r}): give a tuple, an Enum or a function "
@@ -194,17 +196,15 @@ class Member:
     def __get__(self, op, owner=None):
         if op is None:
             return self
-        try:
-            return op._bound[self.name]
-        except (AttributeError, KeyError):
-            if self.when is not None and not getattr(op, self.when.name):
-                raise AttributeError(
-                    f"{type(op).__name__}.{self.name} is declared when="
-                    f"{self.when.name}, which is False on this instance"
-                ) from None
+        bound = vars(op).get("_bound", {})
+        if self.name in bound:
+            return bound[self.name]
+        if self.when is not None and not getattr(op, self.when.name):
             raise AttributeError(
-                f"{type(op).__name__}.{self.name} is not bound yet"
-            ) from None
+                f"{type(op).__name__}.{self.name} is declared when="
+                f"{self.when.name}, which is False on this instance"
+            )
+        raise AttributeError(f"{type(op).__name__}.{self.name} is not bound yet")
 
 
 class PerCallMember(Member):

@@ -163,8 +163,10 @@ class Declaration:
             if (
                 inherited is not None
                 and inherited.owner is not owner
-                and not isinstance(value, (Param, property, classmethod, staticmethod))
-                and not callable(value)
+                and not isinstance(
+                    value,
+                    (Param, property, classmethod, staticmethod, FunctionType, type),
+                )
             ):
                 raise TypeError(
                     f"{owner.__name__}.{name} = {value!r} does not override the inherited "

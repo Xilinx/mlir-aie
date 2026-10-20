@@ -1092,7 +1092,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 else None
             )
             insts_bo = None
-            is_module = hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module)
+            is_module = insts is not None and not isinstance(insts, np.ndarray)
             kernel_key = (kernel_name, insts_file) if is_module else kernel_name
             if kernel_key not in entry["kernels"]:
                 kernel = (
