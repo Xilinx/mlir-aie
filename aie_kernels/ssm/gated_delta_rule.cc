@@ -39,6 +39,9 @@ constexpr int R = GDR_ROWS, Dk = GDR_KEY_DIM, Dv = GDR_VALUE_DIM;
 constexpr int L = 16, W = f32_lanes;
 constexpr int P = (Dv + L - 1) / L * L, KP = (Dk + L - 1) / L * L;
 constexpr int RP = (R + W - 1) / W * W;
+// Where a row scalar's second set starts (b after a, k's norm after q's):
+// with at most 16 rows, both sets share one vector.
+constexpr int RS = R <= L ? L : RP;
 template <unsigned N>
 using acc_t = aie::accum<accfloat, N>;
 template <unsigned N>
@@ -201,7 +204,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
 
   for (int t = 0; t < R; t++) {
     ab[t] = a[t];
-    ab[RP + t] = b[t];
+    ab[RS + t] = b[t];
     acc_t<L> aq, ak;
     if constexpr (Dk == KP) {
       aq = lane_squares(q + t * Dk);
@@ -217,7 +220,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
     }
     const aie::vector<float, W> sums = fold_lanes(aie::concat(aq, ak));
     sq[t] = sums.get(0);
-    sq[RP + t] = sums.get(L);
+    sq[RS + t] = sums.get(L);
   }
   // exp's arguments, g then -b, so one exp_f32 serves both; then the norms'
   // reciprocals, q's then k's, from one rsqrt_f32.
@@ -228,12 +231,18 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
         acc_t<W>(aie::broadcast<float, W>(head[0])));
     aie::store_v(ex + t0,
                  mul_limbs(bf16_limbs(softplus_f32(z)), A).to_vector<float>());
-    aie::store_v(ex + RP + t0, aie::mul(aie::load_v<W>(ab + RP + t0),
-                                        aie::broadcast<bfloat16, W>(-1.0f))
-                                   .to_vector<float>());
+    // ab + RS is only 32-byte aligned when RS is 16.
+    if constexpr (RS == L)
+      aie::store_v(ex + RS, aie::mul(aie::load_v<L>(ab + RS),
+                                     aie::broadcast<bfloat16, L>(-1.0f))
+                                .to_vector<float>());
+    else
+      aie::store_v(ex + RS + t0, aie::mul(aie::load_v<W>(ab + RS + t0),
+                                          aie::broadcast<bfloat16, W>(-1.0f))
+                                     .to_vector<float>());
   }
   const acc_t<W> eps(aie::broadcast<float, W>(1e-6f));
-  for (int t0 = 0; t0 < 2 * RP; t0 += W) {
+  for (int t0 = 0; t0 < 2 * RS; t0 += W) {
     aie::store_v(ex + t0,
                  exp_f32(acc_t<W>(aie::load_v<W>(ex + t0))).to_vector<float>());
     aie::store_v(sq + t0,
@@ -245,7 +254,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
   for (int t0 = 0; t0 < RP; t0 += W) {
     aie::store_v(qn + t0,
                  mul_limbs(limbs<W>(sq + t0), q_scale).to_vector<float>());
-    aie::store_v(beta + t0, aie::add(acc_t<W>(aie::load_v<W>(ex + RP + t0)),
+    aie::store_v(beta + t0, aie::add(acc_t<W>(aie::load_v<W>(ex + RS + t0)),
                                      acc_t<W>(aie::broadcast<float, W>(1.0f)))
                                 .to_vector<float>());
   }
@@ -254,7 +263,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
   // With k the unnormalized row, the update adds outer(k, d) for d = kn delta
   // = e v - f (k @ state), e = kn beta and f = e kn decay.
   for (int t0 = 0; t0 < RP; t0 += W) {
-    const Limbs<W> kn = limbs<W>(sq + RP + t0);
+    const Limbs<W> kn = limbs<W>(sq + RS + t0);
     const acc_t<W> et = mul_limbs(kn, limbs<W>(beta + t0));
     aie::store_v(e + t0, et.to_vector<float>());
     aie::store_v(f + t0, mul_limbs(bf16_limbs(mul_limbs(bf16_limbs(et), kn)),
