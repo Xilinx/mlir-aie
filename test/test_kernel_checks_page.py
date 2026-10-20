@@ -1338,7 +1338,7 @@ const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open && card.children.includes(repro));
 assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n'), [
   'git checkout abcdef123456',
-  'cd programming_examples/ml/llama_3_2_1b && make run_chain_persist_grow_mh CHAIN_MH_N=16 PT=4 ONESTREAM_KSET=8',
+  'cd programming_examples/ml/llama_3_2_1b && python aie2_decode.py --p-max=4 --kset=8 --n-layers=16 --t=128 --full-elf-path build/chain_persist_grow_N16_PT4.elf && LLAMA_CHAIN_N=16 LLAMA_CHAIN_T=128 LLAMA_CHAIN_ONESTREAM_KSET=8 python test_chain_persist_grow_mh.py --elf build/chain_persist_grow_N16_PT4.elf',
   '# every run, as the nightly runs them:',
   'python utils/component_checks/llama_chain_hw.py --out perf.json --meta meta.json',
 ]);
