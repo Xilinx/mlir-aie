@@ -405,6 +405,46 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
   return success();
 }
 
+// The checks that need no expansion, so the pass fails before it changes the
+// IR. `initEntries` holds the devices that get an init entry.
+static LogicalResult verifyExpansion(
+    ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
+    function_ref<AIEX::ExpandMode(NpuLoadPdiOp)> expandMode, bool teardown,
+    bool initEntry,
+    const llvm::MapVector<AIE::DeviceOp, AIE::AIEDevice> &initEntries) {
+  if (initEntry && !teardown)
+    return module.emitError(
+        "aie-expand-load-pdi: init-entry requires teardown");
+  for (AIE::DeviceOp device : llvm::make_first_range(initEntries))
+    if (Operation *existing = device.lookupSymbol(initEntrySequenceName))
+      return existing->emitOpError() << "is named '" << initEntrySequenceName
+                                     << "', which aie-expand-load-pdi needs "
+                                        "for the device's init entry";
+  if (!teardown)
+    return success();
+  for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
+    AIEX::ExpandMode mode = expandMode(loadPdiOp);
+    if (mode == AIEX::ExpandMode::ctrlpkt)
+      return loadPdiOp.emitError(
+          "teardown is not implemented for control packet reconfiguration");
+    if (mode == AIEX::ExpandMode::none)
+      continue;
+    // A shim DMA channel has no reset, so no teardown can stop one a
+    // configuration starts itself.
+    auto dev = module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
+    if (dev && dev.walk([](AIE::DMAStartOp start) {
+                    if (!isa<AIE::ShimDMAOp>(start->getParentOp()))
+                      return WalkResult::advance();
+                    start.emitOpError("starts a shim DMA channel, which "
+                                      "teardown cannot stop");
+                    return WalkResult::interrupt();
+                  })
+                   .wasInterrupted())
+      return failure();
+  }
+  return success();
+}
+
 struct AIEExpandLoadPdiPass
     : public xilinx::AIEX::impl::AIEExpandLoadPdiBase<AIEExpandLoadPdiPass> {
   using AIEExpandLoadPdiBase::AIEExpandLoadPdiBase;
@@ -430,42 +470,11 @@ struct AIEExpandLoadPdiPass
     AIEX::ExpandMode defaultMode =
         clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
 
-    if (clInitEntry && !clTeardown) {
-      module.emitError("aie-expand-load-pdi: init-entry requires teardown");
-      return signalPassFailure();
-    }
     auto expandMode = [&](NpuLoadPdiOp loadPdiOp) {
       return loadPdiOp.getDeviceRefAttr()
                  ? loadPdiOp.getExpandMode().value_or(defaultMode)
                  : AIEX::ExpandMode::none;
     };
-    if (clTeardown)
-      for (NpuLoadPdiOp loadPdiOp : loadPdiOps)
-        if (expandMode(loadPdiOp) == AIEX::ExpandMode::ctrlpkt) {
-          loadPdiOp.emitError(
-              "teardown is not implemented for control packet reconfiguration");
-          return signalPassFailure();
-        }
-
-    // A shim DMA channel has no reset, so no teardown can stop one a
-    // configuration starts itself.
-    if (clTeardown)
-      for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
-        auto dev = expandMode(loadPdiOp) != AIEX::ExpandMode::none
-                       ? module.lookupSymbol<AIE::DeviceOp>(
-                             loadPdiOp.getDeviceRefAttr())
-                       : nullptr;
-        if (dev && dev.walk([](AIE::DMAStartOp start) {
-                        if (!isa<AIE::ShimDMAOp>(start->getParentOp()))
-                          return WalkResult::advance();
-                        start.emitOpError("starts a shim DMA channel, which "
-                                          "teardown cannot stop");
-                        return WalkResult::interrupt();
-                      })
-                       .wasInterrupted())
-          return signalPassFailure();
-      }
-
     // Per enclosing runtime sequence, the parity of the FIRST and LAST of its
     // empty-device resets and of its overlay loads, plus the device type, and
     // the kind of its last load, which leaves the array as the next dispatch
@@ -523,6 +532,10 @@ struct AIEExpandLoadPdiPass
           initEntries.erase(seq->getParentOfType<AIE::DeviceOp>());
     }
 
+    if (failed(verifyExpansion(module, loadPdiOps, expandMode, clTeardown,
+                               clInitEntry, initEntries)))
+      return signalPassFailure();
+
     // Transform load_pdi ops
     SmallVector<CtrlPktReload> ctrlPktReloads;
     llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> configData,
@@ -577,12 +590,6 @@ struct AIEExpandLoadPdiPass
     }
 
     for (auto [device, deviceType] : initEntries) {
-      if (Operation *existing = device.lookupSymbol(initEntrySequenceName)) {
-        existing->emitOpError()
-            << "is named '" << initEntrySequenceName
-            << "', which aie-expand-load-pdi needs for the device's init entry";
-        return signalPassFailure();
-      }
       OpBuilder builder(device.getContext());
       builder.setInsertionPoint(
           *device.getOps<AIE::RuntimeSequenceOp>().begin());
