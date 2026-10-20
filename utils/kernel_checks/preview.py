@@ -384,7 +384,7 @@ def _sweep_night(rng: random.Random) -> tuple[list, dict]:
 
 def _compile_night(rng: random.Random, compile_s: float) -> dict:
     """A cold and a warm compile's times, staged as the captured profiles were."""
-    cold, warm = compile_s * rng.uniform(0.97, 1.05), rng.uniform(0.4, 0.6)
+    cold, warm = compile_s * rng.uniform(0.97, 1.05), 0.5 * rng.uniform(0.97, 1.03)
     return {
         "compile_s": round(cold, 1),
         "compile_peak_rss_mb": round(rng.uniform(2000, 2200), 1),
@@ -402,7 +402,10 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
     ttft = 286.0 * rng.uniform(0.98, 1.03)
     ran = "".join(f"token {i}: PASS\n" for i in range(4))
     ran += "chain_persist_grow_mh: 4/4 tokens PASS\n"
-    timed = f"per-token: {ms:.2f} ms ({1000 / ms:.2f} tok/s)\nratio: 1.84x -> dma\n"
+    timed = (
+        f"per-token: {ms:.2f} ms ({1000 / ms:.2f} tok/s)\n"
+        "ratio:        1.84x  -> COMPUTE-bound (vectorization is the lever)\n"
+    )
     generated = (
         f"prompt 6 tokens, generated 32: TTFT {ttft:.1f} ms "
         f"({6000 / ttft:.1f} prompt tok/s), decode {1000 / ms:.2f} tok/s\n"
