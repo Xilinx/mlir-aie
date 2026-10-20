@@ -2428,7 +2428,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(window=21),
-        params=((0, 1),),
+        params=((0, 1, 0),),
         scalars=(128, 128),
         tag="window-dead-rows",
         smoke=True,
@@ -2437,7 +2437,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(packed=True, window=50),
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(64, 100),
         tag="packed-window",
         smoke=True,
