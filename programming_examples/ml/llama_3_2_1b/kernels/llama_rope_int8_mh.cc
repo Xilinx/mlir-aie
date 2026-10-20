@@ -16,6 +16,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "llama_vec_fp.h"
+
 #ifndef LLAMA_ROPE_MH_HEAD_DIM
 #define LLAMA_ROPE_MH_HEAD_DIM 64
 #endif
@@ -29,22 +31,7 @@ static constexpr int kHalf = kHD / 2;
 static constexpr int kBody = kHD * kNHeads;
 static constexpr int kTail = kNHeads * 8;
 
-static constexpr int32_t I8_MAX = 127;
-static constexpr int32_t I8_MIN = -128;
-
 static_assert(kHD % 2 == 0, "head_dim must be even");
-
-static inline int8_t round_to_i8(float v) {
-  int32_t sign = (v >= 0.0f) ? 1 : -1;
-  float scaled = (float)sign * v * 2.0f + 1.0f;
-  int32_t doubled = (int32_t)scaled;
-  int32_t r = sign * (doubled / 2);
-  if (r > I8_MAX)
-    r = I8_MAX;
-  if (r < I8_MIN)
-    r = I8_MIN;
-  return (int8_t)r;
-}
 
 extern "C" void llama_rope_int8_mh_dyn(int8_t *restrict x,
                                        bfloat16 *restrict cs_packed,
@@ -86,10 +73,8 @@ extern "C" void llama_rope_int8_mh_dyn(int8_t *restrict x,
     ::aie::vector<float, kHalf> o2 =
         ::aie::mac(::aie::mul(x2f, c2f), x1f, s2f).to_vector<float>();
 
-    for (int i = 0; i < kHalf; i++) {
-      out[base + i] = round_to_i8(o1[i]);
-      out[base + kHalf + i] = round_to_i8(o2[i]);
-    }
+    ::aie::store_v(out + base, vec_round_to_i8(o1));
+    ::aie::store_v(out + base + kHalf, vec_round_to_i8(o2));
   }
 
   // Passthrough the per-head scale tail unchanged.
