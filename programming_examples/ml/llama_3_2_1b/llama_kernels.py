@@ -101,6 +101,20 @@ def flowkv(*, head_dim=64, T=16):
     )
 
 
+def attn_block(*, tb=64):
+    return KernelSource(
+        "llama_attn_block.cc",
+        [
+            "-ffp-contract=off",
+            "-DLLAMA_ATTN_HEAD_DIM=64",
+            f"-DLLAMA_ATTN_TB={tb}",
+            "-DLLAMA_ATTN_REP=4",
+            f"-DLLAMA_ATTN_EXP_QUANT_SCALE={EXP_QUANT_SCALE}f",
+        ],
+        [generated_include_dir({"exp_lut.h": exp_lut_header(EXP_QUANT_SCALE)})],
+    )
+
+
 def gemm_layer(*, kset=16):
     return KernelSource(
         "llama_gemm_int8_srs_tiled_layer.cc",
