@@ -88,6 +88,12 @@ public:
     return std::nullopt;
   }
 
+  /// How wide a tile has to be for the arrows drawn inside it to have room,
+  /// given the most buffers and calls any one tile holds.
+  virtual std::optional<double> preferredTileWidth(unsigned contents) const {
+    return std::nullopt;
+  }
+
   /// Where the nodes arrows end on should sit. An absent entry leaves a node
   /// where the caller put it.
   virtual std::map<std::string, Point>

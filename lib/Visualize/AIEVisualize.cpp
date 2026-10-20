@@ -1411,12 +1411,18 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     gapX = std::max(gapX, *wanted);
     gapY = std::max(gapY, *wanted);
   }
+  double tileWidth = options.tileWidth;
+  unsigned busiest = 0;
+  for (const auto &[coordinate, count] : localCounts)
+    busiest = std::max(busiest, count);
+  if (std::optional<double> wanted = arrows->preferredTileWidth(busiest))
+    tileWidth = std::max(tileWidth, *wanted);
 
   LayoutGeometry layout;
   // Only nop2 leaves supplied edge geometry alone; every laying-out engine
   // recomputes it.
   layout.preLaidOut = options.arrows == AIE::ArrowStyle::Channel;
-  layout.tileWidth = options.tileWidth;
+  layout.tileWidth = tileWidth;
   layout.tileGapX = gapX;
   layout.tileGapY = gapY;
   layout.rowHeights.assign(model.rows(), options.minimumTileHeight);
@@ -1495,8 +1501,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
         addArrow(portEnds[segment.source], portEnds[segment.dest],
                  groups.routeGroups[segmentRoutes.front()->id]);
 
-  double localNodeWidth =
-      std::clamp(static_cast<double>(options.tileWidth) - 0.4, 1.0, 1.75);
+  double localNodeWidth = std::clamp(tileWidth - 0.4, 1.0, 1.75);
 
   auto argumentPoint = [&, localNodeWidth](size_t index) -> Point {
     std::set<int> designColumns;
@@ -1681,7 +1686,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       if (options.tileRoles && roleClass != roleClasses.end())
         fill = roleFill(roleClass->second.id);
       output << "  " << tileNodeID(col, row) << " [shape=box";
-      output << ", fixedsize=true, width=" << dotCoordinate(options.tileWidth)
+      output << ", fixedsize=true, width=" << dotCoordinate(tileWidth)
              << ", height=" << dotCoordinate(layout.tileHeight(col, row))
              << ", pos=\""
              << layout.pos(layout.tileCenterX(col),
