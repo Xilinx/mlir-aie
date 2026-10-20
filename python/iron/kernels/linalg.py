@@ -1114,6 +1114,7 @@ def mha(
     window: int = 0,
     packed: bool = False,
     f32_scores: bool = False,
+    float_o: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1129,11 +1130,11 @@ def mha(
     ``idx[2]`` positions past the block's start, keeps) bound here to
     ``[0, 0, 0]``. With ``pv`` it is the
     ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
-    the native 8x8x8 micro-tile and ungated. ``matmul_PV`` is that same
-    product into a float32 ``O``, preceded by a row rescale, which needs the
-    online softmax's running state and so is exercised by
-    ``test_mha_e2e.py`` instead; ``rescale_O`` divides that ``O`` by the row
-    sums into a bf16 tile.
+    the native 8x8x8 micro-tile and ungated. With ``float_o`` it is
+    ``matmul_PV``, that product added into a float32 ``O`` after ``O``'s
+    rows are rescaled by the running state's factor, here 1 on a block every
+    row keeps; ``test_mha_e2e.py`` exercises it across key blocks.
+    ``rescale_O`` divides that ``O`` by the row sums into a bf16 tile.
     ``mha.mac_dims(pv=...)`` answers either product's micro-tile without
     building a kernel, as ``mm.mac_dims`` does.
 
@@ -1171,15 +1172,20 @@ def mha(
             reads, a float32 tile, held to float32 summation order. AIE2P
             only, and not with ``emulate_bf16_mmul_with_bfp16``. At 64-key
             blocks a design places only with ``P V`` split over two cores.
+        float_o: With ``pv``, return ``matmul_PV``: ``P``, ``dim_m`` by
+            ``dim_n``, times ``V``, ``dim_n`` by ``dim_k``, into a float32
+            ``O``, as IRON's MHA operator binds it.
 
     Returns:
-        MatrixKernel for ``matmul_bf16_bf16_wrapper``, or with ``pv``
-        ``matmul_bf16_bf16_rowmaj``.
+        MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
+        ``matmul_bf16_bf16_rowmaj``, or with ``float_o`` ``matmul_PV``.
 
     Raises:
-        ValueError: A tile dimension that is not a positive multiple, or a
-            negative window.
+        ValueError: A tile dimension that is not a positive multiple, a
+            negative window, or ``float_o`` without ``pv``.
     """
+    if float_o and not pv:
+        raise ValueError("mha: float_o is the P*V product's, so it needs pv")
     for name, v, mult in (
         ("dim_m", dim_m, 16),
         ("dim_k", dim_k, 8),
@@ -1226,6 +1232,57 @@ def mha(
     r, s, t = _MhaFactory.mac_dims(
         pv=pv, emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16
     )
+    if float_o:
+        streams = mm_stream_dims(dim_m, dim_n, dim_k, (r, s, t))
+        state = np.zeros(4 * dim_m, np.float32)
+        state[3 * dim_m :] = 1
+        return _make_extern(
+            "matmul_PV",
+            _kernel_source("linalg/mha.cc"),
+            [
+                np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
+                np.ndarray[(dim_n * dim_k,), np.dtype[bfloat16]],
+                np.ndarray[(dim_m * dim_k,), np.dtype[np.float32]],
+                np.ndarray[(4 * dim_m,), np.dtype[np.float32]],
+                np.int32,
+                np.int32,
+                idx,
+                np.int32,
+            ],
+            compile_flags=flags,
+            cls=MatrixKernel,
+            contract=KernelContract(
+                trace=Trace.whole_call(),
+                layouts=(
+                    _tile_layout((dim_m, dim_n), streams.A, block=(r, s)),
+                    _tile_layout((dim_n, dim_k), streams.B, block=(s, t)),
+                    _tile_layout((dim_m, dim_k), streams.C, inverse=True, block=(r, t)),
+                    *([None] * 5),
+                ),
+                roles=(In, In, InOut, *([Param] * 5)),
+                # A later key block (first_iter 1) of a block every row keeps:
+                # the rescale runs, by 1, and so does the whole product.
+                parameter_bindings=(
+                    (3, state),
+                    (4, dim_m),
+                    (5, 1),
+                    (6, np.array([0, 0, 0], np.int32)),
+                    (7, dim_n),
+                ),
+                reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_n, dim_n=dim_k),
+                initializers=((2, _zero_output),),
+                acc_dtype=np.float32,
+                reduction=dim_n,
+                tolerance=Tolerance.bounded(
+                    partial(
+                        _f32_sum_order_bound, dim_m=dim_m, dim_k=dim_n, dim_n=dim_k
+                    ),
+                    note="float32 O: f32 summation order over dim_n exact bf16 "
+                    "products",
+                ),
+                ops_per_call=2 * dim_m * dim_k * dim_n,
+            ),
+        )
     streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t), b_col_maj=b_col_maj)
     return _make_extern(
         "matmul_bf16_bf16_rowmaj" if pv else "matmul_bf16_bf16_wrapper",

@@ -2382,6 +2382,37 @@ CASES += [
         for d in (64, 128)
         for pv in ({}, {"pv": True})
     ],
+    # The P*V call IRON's MHA makes, matmul_PV into the float32 O, at
+    # prefill's 64-row query blocks and a decode step's 16 packed rows; and
+    # decode's QK^T, at 16 rows.
+    *[
+        Case(
+            "mha",
+            dict(
+                dim_m=b_q,
+                dim_k=d,
+                b_col_maj=True,
+                accurate_exp2=True,
+                pv=True,
+                float_o=True,
+            ),
+            calls=4,
+            tag=f"iron-{phase}-d{d}",
+            devices=("npu2",),
+        )
+        for b_q, phase in ((64, "prefill"), (16, "decode"))
+        for d in (64, 128)
+    ],
+    *[
+        Case(
+            "mha",
+            dict(dim_m=16, dim_k=d, b_col_maj=True, accurate_exp2=True),
+            calls=4,
+            tag=f"iron-decode-d{d}",
+            devices=("npu2",),
+        )
+        for d in (64, 128)
+    ],
     # The toolkit's online softmax over one key block: params is (key block,
     # query block, row offset), scalars the two sequence lengths. The padded
     # diagonal block takes every branch the full one skips (the causal mask,
@@ -2400,6 +2431,17 @@ CASES += [
         params=((0, 0, 0),),
         scalars=(64, 64),
         tag="diagonal",
+    ),
+    # A decode step's block on npu2: 16 packed rows past every one of the 64
+    # keys, so nothing is masked.
+    Case(
+        "mha_softmax",
+        dict(dim_m=16, accurate_exp2=True),
+        calls=4,
+        params=((0, 0, 64),),
+        scalars=(16, 128),
+        tag="iron-decode",
+        devices=("npu2",),
     ),
     check(
         "mha_softmax",
