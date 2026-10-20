@@ -61,43 +61,6 @@ vec_silu_lanes(const int8_t *restrict gate, const int8_t *restrict up,
 
 extern "C" {
 
-// Dynamic-scale variant (Phase 6c.5b.2). The `up` buffer is sized
-// kCols + 8 bytes; the last 8 bytes carry (up_scale fp32, inv_out_scale
-// fp32) written by the up-gemm worker upstream. gate_scale stays baked
-// into the LUT.
-void llama_silu_mul_int8_dyn(int8_t *restrict gate, int8_t *restrict up,
-                             int8_t *restrict out) {
-  event0();
-  const ::aie::saturation_mode prev_sat =
-      ::aie::swap_saturation(::aie::saturation_mode::saturate);
-  const ::aie::rounding_mode prev_rnd =
-      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-
-  constexpr int kCols = LLAMA_SILU_MUL_COLS;
-  static_assert(kCols % kLanes == 0,
-                "LLAMA_SILU_MUL_COLS must be a multiple of 16");
-  constexpr int kChunks = kCols / kLanes;
-
-  float up_scale, inv_out_scale;
-  memcpy(&up_scale, up + kCols, 4);
-  memcpy(&inv_out_scale, up + kCols + 4, 4);
-  ::aie::vector<float, kLanes> up_scale_v =
-      ::aie::broadcast<float, kLanes>(up_scale);
-  ::aie::vector<float, kLanes> inv_out_scale_v =
-      ::aie::broadcast<float, kLanes>(inv_out_scale);
-
-  for (int c = 0; c < kChunks; c++)
-    ::aie::store_v(
-        out + c * kLanes,
-        vec_round_to_i8(vec_mul_rne(
-            vec_silu_lanes(gate + c * kLanes, up + c * kLanes, up_scale_v),
-            inv_out_scale_v)));
-
-  ::aie::set_rounding(prev_rnd);
-  ::aie::set_saturation(prev_sat);
-  event1();
-}
-
 // Self-calibrating variant: computes its OWN output scale on-chip (the
 // per-token silu_out_scale = down's act_scale) instead of reading
 // inv_out_scale from the up tail. Two-pass over s_f*u_f (it holds the whole

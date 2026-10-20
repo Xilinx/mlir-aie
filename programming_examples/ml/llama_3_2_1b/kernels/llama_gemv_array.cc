@@ -118,37 +118,4 @@ void llama_gemv_array_rescale_finalize(int8_t *restrict lo, int8_t *restrict hi,
   event1();
 }
 
-void llama_gemv_array_topk_reset(int32_t *restrict set_len) { *set_len = 0; }
-
-// Candidate `i` of this core's top-k set for the merging glue core
-// (llama_topk_merge_insert): [logit | gidx | embed_sc | valid | pad to 64 |
-// row int8 x 2048].
-void llama_gemv_array_topk_cand(float *restrict set_logit,
-                                int32_t *restrict set_gidx,
-                                float *restrict set_scale,
-                                int8_t *restrict set_row,
-                                int32_t *restrict set_len, int8_t *restrict out,
-                                int32_t i) {
-  int32_t *hdr = reinterpret_cast<int32_t *>(out);
-  hdr[0] = __builtin_bit_cast(int32_t, set_logit[i]);
-  hdr[1] = set_gidx[i];
-  hdr[2] = __builtin_bit_cast(int32_t, set_scale[i]);
-  hdr[3] = i < *set_len;
-  for (int c = 0; c < 2048 / 64; c++)
-    ::aie::store_unaligned_v(
-        out + 64 + c * 64,
-        ::aie::load_unaligned_v<64>(set_row + i * 2048 + c * 64));
-}
-
-void llama_gemv_array_topk_pack(float *restrict set_logit,
-                                int32_t *restrict set_gidx,
-                                float *restrict set_scale,
-                                int32_t *restrict set_len,
-                                int8_t *restrict out) {
-  memcpy(out, set_logit, 4 * LLAMA_GEMV_ARRAY_KSET);
-  memcpy(out + 4 * LLAMA_GEMV_ARRAY_KSET, set_gidx, 4 * LLAMA_GEMV_ARRAY_KSET);
-  memcpy(out + 8 * LLAMA_GEMV_ARRAY_KSET, set_scale, 4 * LLAMA_GEMV_ARRAY_KSET);
-  memcpy(out + 12 * LLAMA_GEMV_ARRAY_KSET, set_len, 4);
-}
-
 } // extern "C"

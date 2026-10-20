@@ -792,7 +792,7 @@ def build(
     of_wlm = ObjectFifo(t_wlm, depth=2, name="wlm")
     of_rec = ObjectFifo(t_rec, depth=1, name="rec")
     of_seed = ObjectFifo(t_vec, depth=1, name="seed")
-    KL = llama_kernels.gemm_layer(kset=KSET)
+    KL = llama_kernels.lmhead(kset=KSET)
     k_insert = KL.bind(
         "llama_lmhead_topk_insert",
         [t_vec, t_wlm, _f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1)]

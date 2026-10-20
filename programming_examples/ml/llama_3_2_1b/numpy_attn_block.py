@@ -161,7 +161,7 @@ def attention(
     n_cores,
     interleaved=False,
 ):
-    """`llama_attn_block` over the cache's blocks, then `llama_attn_merge_selfcal`.
+    """`llama_attn_block` over the cache's blocks, then `llama_attn_merge_pair_selfcal`.
 
     Args:
         `q_chunk_i8`: int8 (rep, head_dim).

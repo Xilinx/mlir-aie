@@ -112,90 +112,10 @@ static inline void vec_requant(const int8_t *restrict x,
 
 extern "C" {
 
-void llama_rmsnorm_int8(int8_t *restrict x, bfloat16 *restrict gamma,
-                        int8_t *restrict y, float act_scale_in,
-                        float inv_act_scale_out) {
-  event0();
-  const ::aie::saturation_mode prev_sat =
-      ::aie::swap_saturation(::aie::saturation_mode::saturate);
-  const ::aie::rounding_mode prev_rnd =
-      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-
-  constexpr int kCols = LLAMA_RMSNORM_COLS;
-  static_assert(kCols % kVec == 0,
-                "LLAMA_RMSNORM_COLS must be a multiple of 64");
-
-  // Pass 1: exact int32 sum-of-squares over int8 inputs. int8 * int8
-  // = int16; 2048 lanes worst-case = 2048 * 16384 = 33M, fits in int32.
-  int32_t sum_sq_i32 = vec_sum_sq_i8(x, kCols);
-
-  // Fold act_scale_in into the variance: x_f^2 = act_scale_in^2 * x_i8^2.
-  // 1/kCols (kCols=64) is exactly representable in fp32 as 2^-6, so
-  // the Peano HW reciprocal happens to be IEEE-correct for this
-  // specific case -- regular division works here.
-  float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
-  float inv_rms = sw_invsqrt(var + kEps);
-
-  // Combined per-output multiplier (single fp32 scalar):
-  //   y_f = x_i8 * act_scale_in * inv_rms * gamma[i]
-  //   y_i8 = round(y_f * inv_act_scale_out)
-  float combined = act_scale_in * inv_rms * inv_act_scale_out;
-  vec_requant(x, gamma, y, ::aie::broadcast<float, kLanes>(combined), kCols);
-
-  ::aie::set_rounding(prev_rnd);
-  ::aie::set_saturation(prev_sat);
-  event1();
-}
-
-// Dynamic-output-scale variant: writes the fp32 dynamic scale (absmax/127)
-// into y[kCols..kCols+4]. Recomputes the fp32 chain twice (find absmax,
-// then requant) rather than buffering kCols fp32 between passes -- Peano
-// AIE2P corrupts stack-allocated fp32 arrays kept live across loops.
-// y must be int8[kCols + 8] (4 B scale + 4 B pad, 64 B-aligned).
-void llama_rmsnorm_int8_dyn(int8_t *restrict x, bfloat16 *restrict gamma,
-                            int8_t *restrict y, float act_scale_in) {
-  event0();
-  const ::aie::saturation_mode prev_sat =
-      ::aie::swap_saturation(::aie::saturation_mode::saturate);
-  const ::aie::rounding_mode prev_rnd =
-      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-
-  constexpr int kCols = LLAMA_RMSNORM_COLS;
-  static_assert(kCols % kVec == 0,
-                "LLAMA_RMSNORM_COLS must be a multiple of 64");
-
-  int32_t sum_sq_i32 = vec_sum_sq_i8(x, kCols);
-  float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
-  float inv_rms = sw_invsqrt(var + kEps);
-  float pre = act_scale_in * inv_rms; // x_i8 * pre * gamma = y_f (pre-requant)
-
-  float absmax =
-      vec_absmax(x, gamma, ::aie::broadcast<float, kLanes>(pre), kCols);
-  // Guard against all-zero rows (avoid div-by-zero); 1e-12 matches the
-  // numpy reference's floor in cautious-eureka quant_act.
-  if (absmax < 1e-12f)
-    absmax = 1e-12f;
-  float scale_dyn =
-      absmax * (1.0f / 127.0f); // fp32 const; literal /127 is fine
-  float inv_dyn = sw_recip(scale_dyn);
-  float combined = pre * inv_dyn;
-  vec_requant(x, gamma, y, ::aie::broadcast<float, kLanes>(combined), kCols);
-
-  // Write the fp32 scale to the tail. memcpy avoids strict-aliasing UB.
-  memcpy(y + kCols, &scale_dyn, 4);
-  // Zero the 4 B pad so deterministic byte-compares pass.
-  int32_t zero = 0;
-  memcpy(y + kCols + 4, &zero, 4);
-
-  ::aie::set_rounding(prev_rnd);
-  ::aie::set_saturation(prev_sat);
-  event1();
-}
-
-// Same as llama_rmsnorm_int8_dyn, but act_scale_in comes from x's own tail
-// (x[kCols..kCols+4], written upstream by rescale-add) instead of an arg --
-// the same acttail pattern gemm's ...gate_acttail uses. x and y must both
-// be int8[kCols + 8].
+// RMSNorm with a dynamic output scale: act_scale_in comes from x's own tail
+// (x[kCols..kCols+4], written upstream by the residual add), and the output's
+// fp32 scale, absmax/127, goes to y[kCols..kCols+4]. x and y must both be
+// int8[kCols + 8].
 void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x,
                                     bfloat16 *restrict gamma,
                                     int8_t *restrict y) {

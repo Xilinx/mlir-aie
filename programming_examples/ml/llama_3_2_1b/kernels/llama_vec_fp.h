@@ -106,7 +106,7 @@ vec_sw_recip(::aie::vector<float, kN> a) {
   return x;
 }
 
-// Per-head requant of kHeads heads of kHD fp32 values (llama_q_requant):
+// Per-head requant of kHeads heads of kHD fp32 values:
 // each head's scale is max(absmax, 1e-12) * (1/127), its body int8
 // round(q * sw_recip(scale)); tail[h*8..+4] gets the scale, [+4..+8] zero.
 template <int kHeads, int kHD>

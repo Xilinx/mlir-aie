@@ -31,11 +31,11 @@ from numpy_sample import (
 
 
 def topk_set_reference(logits_f32: np.ndarray, k_set: int):
-    """Mirror llama_topk_insert: an unsorted set of capacity k_set streamed in
-    index order, ordered by logit and then by lower index on equal logits.
-    The set is the k_set largest under that order, ties included, whatever
-    the streaming order. Returns the set's global indices in slot order, as
-    the kernel holds them."""
+    """Mirror llama_lmhead_topk_insert's set: an unsorted set of capacity
+    k_set streamed in index order, ordered by logit and then by lower index on
+    equal logits. The set is the k_set largest under that order, ties
+    included, whatever the streaming order. Returns the set's global indices
+    in slot order, as the kernel holds them."""
     V = logits_f32.size
     set_idx: list[int] = []
     for g in range(V):

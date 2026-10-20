@@ -96,7 +96,7 @@ def numpy_rmsnorm_int8_dyn(
     act_scale_in: float | np.floating,
     eps: float = 1e-5,
 ):
-    """Returns (y_i8: int8[D], scale_dyn: fp32), as llama_rmsnorm_int8_dyn."""
+    """Returns (y_i8: int8[D], scale_dyn: fp32), as llama_rmsnorm_int8_dyn_acttail."""
     sum_sq_i32 = int((x_i8.astype(np.int32) ** 2).sum())
     var = np.float32(
         np.float32(sum_sq_i32)

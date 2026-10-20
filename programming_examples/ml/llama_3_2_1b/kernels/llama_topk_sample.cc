@@ -40,28 +40,6 @@ static constexpr float kExpQuantScale = LLAMA_TOPK_EXP_QUANT_SCALE;
 static constexpr float kInvExpQuantScale = 1.0f / LLAMA_TOPK_EXP_QUANT_SCALE;
 static constexpr int kVec = 64;
 
-// Exact byte copy of one kD-element embed row, kVec lanes at a time (no
-// float rounding -- just a vectorized memcpy). kD is a multiple of kVec
-// for every shape this kernel is built at (D=256/2048, kVec=64), but
-// neither pointer is guaranteed 64-byte aligned -- src is offset by
-// kRowsOff (32 B) from the streamed slot's base, and dst is offset by
-// a multiple of kD from set_row's base -- so both sides use unaligned
-// load/store.
-static inline void vec_copy_row(int8_t *restrict dst,
-                                const int8_t *restrict src) {
-  static_assert(kD % kVec == 0, "LLAMA_TOPK_D must be a multiple of 64");
-  for (int c = 0; c < kD / kVec; c++)
-    ::aie::store_unaligned_v(dst + c * kVec,
-                             ::aie::load_unaligned_v<kVec>(src + c * kVec));
-}
-
-// Packed input slot per tile (mirrors the real lm_head weight slot shape so the
-// fused version reuses the same stream):
-//   [kNTile fp32 logits | kNTile fp32 embed_sc | kNTile*kD int8 embed rows]
-static constexpr int kLogitsOff = 0;
-static constexpr int kScalesOff = kNTile * 4;
-static constexpr int kRowsOff = kNTile * 4 + kNTile * 4;
-
 static inline int32_t quant_shifted(float shifted) {
   float v = shifted * kInvExpQuantScale;
   int32_t q = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
@@ -167,106 +145,6 @@ static void embed_seed(const int8_t *restrict row, float embed_sc,
 }
 
 extern "C" {
-
-// Insert one streamed slot of kNTile rows into the resident top-k set
-// (set_logit/gidx/scale/row, capacity kKset, set_len tracks occupancy).
-// Unsorted set ordered by logit, then by lower gidx on equal logits: append
-// until full, then replace the lowest member when a higher one arrives. The
-// set is the vocabulary's top kKset under that order whatever the insertion
-// order, ties included (numpy_topk_sample.topk_set_reference).
-void llama_topk_insert(int8_t *restrict slot, float *restrict set_logit,
-                       int32_t *restrict set_gidx, float *restrict set_scale,
-                       int8_t *restrict set_row, int32_t *restrict set_len,
-                       int32_t tile_idx) {
-  const float *logits = reinterpret_cast<const float *>(slot + kLogitsOff);
-  const float *scales = reinterpret_cast<const float *>(slot + kScalesOff);
-  const int8_t *rows = slot + kRowsOff;
-  const int32_t base = tile_idx * kNTile;
-
-  for (int j = 0; j < kNTile; j++) {
-    const float lg = logits[j];
-    const int32_t gidx = base + j;
-    const float sc = scales[j];
-    const int8_t *row = rows + j * kD;
-
-    int len = *set_len;
-    if (len < kKset) {
-      set_logit[len] = lg;
-      set_gidx[len] = gidx;
-      set_scale[len] = sc;
-      vec_copy_row(set_row + len * kD, row);
-      *set_len = len + 1;
-      continue;
-    }
-    int mi = 0;
-    float mv = set_logit[0];
-    int32_t mg = set_gidx[0];
-    for (int i = 1; i < kKset; i++) {
-      if (set_logit[i] < mv || (set_logit[i] == mv && set_gidx[i] > mg)) {
-        mv = set_logit[i];
-        mg = set_gidx[i];
-        mi = i;
-      }
-    }
-    if (lg > mv || (lg == mv && gidx < mg)) {
-      set_logit[mi] = lg;
-      set_gidx[mi] = gidx;
-      set_scale[mi] = sc;
-      vec_copy_row(set_row + mi * kD, row);
-    }
-  }
-}
-
-// Merge per-core top-k sets into this resident set, for a vocabulary split
-// across cores that each ran llama_lmhead_topk_insert over their own slice.
-// Each call takes one round: lo and hi hold four candidates each (cores 0-3
-// and 4-7), every candidate kCandBytes long:
-//   [logit f32 | gidx i32 | embed_sc f32 | valid i32 | pad to 64 | row i8 x kD]
-// Insertion is llama_topk_insert's, so the merge equals a single pass.
-static constexpr int kCandHeader = 64;
-static constexpr int kCandBytes = kCandHeader + kD;
-
-void llama_topk_merge_insert(int8_t *restrict lo, int8_t *restrict hi,
-                             float *restrict set_logit,
-                             int32_t *restrict set_gidx,
-                             float *restrict set_scale,
-                             int8_t *restrict set_row,
-                             int32_t *restrict set_len, int32_t round) {
-  if (round == 0)
-    *set_len = 0;
-  for (int c = 0; c < 8; c++) {
-    const int8_t *cand = (c < 4 ? lo : hi) + (c % 4) * kCandBytes;
-    const int32_t *hdr = reinterpret_cast<const int32_t *>(cand);
-    if (hdr[3] == 0)
-      continue;
-    const float lg = reinterpret_cast<const float *>(cand)[0];
-    const int32_t gidx = hdr[1];
-    const float sc = reinterpret_cast<const float *>(cand)[2];
-    int len = *set_len;
-    int slot;
-    if (len < kKset) {
-      slot = len;
-      *set_len = len + 1;
-    } else {
-      slot = 0;
-      float mv = set_logit[0];
-      int32_t mg = set_gidx[0];
-      for (int i = 1; i < kKset; i++) {
-        if (set_logit[i] < mv || (set_logit[i] == mv && set_gidx[i] > mg)) {
-          mv = set_logit[i];
-          mg = set_gidx[i];
-          slot = i;
-        }
-      }
-      if (!(lg > mv || (lg == mv && gidx < mg)))
-        continue;
-    }
-    set_logit[slot] = lg;
-    set_gidx[slot] = gidx;
-    set_scale[slot] = sc;
-    vec_copy_row(set_row + slot * kD, cand + kCandHeader);
-  }
-}
 
 // Finalize: sample over the resident set -> token id + next-token embed seed.
 //   params : [temperature bits f32 | top_k i32 | seed u32]

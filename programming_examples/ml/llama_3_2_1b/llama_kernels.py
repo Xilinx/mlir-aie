@@ -92,9 +92,9 @@ def attn_block(*, tb=64):
     )
 
 
-def gemm_layer(*, kset=16):
+def lmhead(*, kset=16):
     return KernelSource(
-        "llama_gemm_int8_srs_tiled_layer.cc",
+        "llama_lmhead_topk.cc",
         ["-ffp-contract=off", f"-DLLAMA_LMHEAD_KSET={kset}"],
     )
 

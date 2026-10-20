@@ -30,7 +30,6 @@ static constexpr int kHD = LLAMA_ATTN_HEAD_DIM;
 static constexpr int kTB = LLAMA_ATTN_TB;
 static constexpr int kREP = LLAMA_ATTN_REP;
 static constexpr int kLanes = 16;
-static constexpr int kGroups = kTB / kLanes;
 static constexpr int kSlices = kHD / kLanes;
 static constexpr float kInvSqrtHD = 0.125f;
 
@@ -526,41 +525,9 @@ void llama_attn_put_q(int8_t *restrict states, int8_t *restrict part,
   memcpy(part, states + r * kStateBytes, kStateBytes);
 }
 
-// Folds n_parts states (each kStateBytes, in core order; empty ones are
-// skipped) and requantizes each Q head's sv with its own scale:
-// out_chunk = kREP*kHD int8, then kREP f32 sv_out_scales.
-void llama_attn_merge_selfcal(int8_t *restrict parts, int8_t *restrict out,
-                              int32_t n_parts) {
-  event0();
-  const ::aie::saturation_mode prev_sat =
-      ::aie::swap_saturation(::aie::saturation_mode::saturate);
-  const ::aie::rounding_mode prev_rnd =
-      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-
-  int first = -1;
-  for (int c = 0; c < n_parts && first < 0; c++) {
-    int32_t count;
-    memcpy(&count, parts + c * kStateBytes, 4);
-    if (count > 0)
-      first = c;
-  }
-  int8_t *acc_state = parts + first * kStateBytes;
-  for (int c = first + 1; c < n_parts; c++) {
-    int8_t *part = parts + c * kStateBytes;
-    int32_t count;
-    memcpy(&count, part, 4);
-    if (count > 0)
-      fold_part(acc_state, part);
-  }
-  requant_selfcal(acc_state, out);
-
-  ::aie::set_rounding(prev_rnd);
-  ::aie::set_saturation(prev_sat);
-  event1();
-}
-
-// llama_attn_merge_selfcal over two cores' states, the first core's first,
-// folding in place into the first non-empty one.
+// Folds two cores' states, the first core's first, in place into the first
+// non-empty one, then requantizes each Q head's sv with its own scale: out is
+// kREP*kHD int8, then kREP f32 sv_out_scales.
 void llama_attn_merge_pair_selfcal(int8_t *restrict state0,
                                    int8_t *restrict state1,
                                    int8_t *restrict out) {
