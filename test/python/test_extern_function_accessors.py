@@ -65,6 +65,18 @@ def test_accessors_return_copies(tmp_path):
     assert ef.compile_flags == ["-O3"]
 
 
+def test_a_kernel_made_unregistered_joins_no_build():
+    before = set(ExternalFunction._instances)
+    with ExternalFunction.unregistered():
+        probe = ExternalFunction(
+            "probe",
+            source_string="void probe(int* p){}",
+            arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
+        )
+    assert probe not in ExternalFunction._instances
+    assert ExternalFunction._instances == before
+
+
 def test_a_recipe_key_names_the_build_not_where_it_happens(tmp_path):
     def built(where, flags=("-DN=16",), prefix=None, source="void k(int*){}", n=16):
         src = tmp_path / where / "k.cc"

@@ -26,7 +26,7 @@ from ..utils import config
 from ..utils.compile import NPU_CACHE_HOME, compile_external_kernel
 from ..utils.compile.jit._object_cache import KernelObjectCache
 from ..utils.compile.jit.compilabledesign import COMPILE_LOCK_TIMEOUT_SECONDS
-from ..utils.compile.jit.context import get_compile_arg
+from ..utils.compile.jit.context import compile_context, get_compile_arg
 from ..utils.compile.readobj import Linked, linked
 from .buffer import Buffer
 from .resolvable import Resolvable
@@ -602,6 +602,18 @@ class ExternalFunction(Kernel):
     """
 
     _instances: set = set()  # Registry of all live ExternalFunction instances.
+
+    @staticmethod
+    def unregistered():
+        """Return a context whose new kernels no build compiles.
+
+        A kernel made only to be read, for its ``frame_bytes`` or its
+        contract, otherwise joins the registry a build in progress compiles.
+
+        Returns:
+            The context manager.
+        """
+        return compile_context(_iron_kernel_registry=set())
 
     @classmethod
     def _register_object(cls, kernel: Kernel) -> None:
