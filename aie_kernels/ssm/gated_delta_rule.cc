@@ -177,13 +177,20 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
   const bfloat16 *q = block, *k = q + R * Dk, *v = k + R * Dk;
   const bfloat16 *a = v + R * Dv, *b = a + R;
   const bf_t<L> one = aie::broadcast<bfloat16, L>(1.0f);
-  if (b_idx % GDR_BLOCKS == 0)
-    for (int i = 0; i < Dk; i++) {
+  if (b_idx % GDR_BLOCKS == 0) {
+    int i = 0;
+    // head's state starts two floats in, so it is loaded unaligned.
+    if constexpr (Dv == L)
+      for (; i + 1 < Dk; i += 2)
+        set_state2(i, bf16_limbs(acc_t<W>(
+                          aie::load_unaligned_v<W>(head + 2 + i * Dv, 2))));
+    for (; i < Dk; i++) {
       for (int j = 0; j < Dv; j++)
         wide[j] = head[2 + i * Dv + j];
       for (int c = 0; c < P; c += L)
         set_state(i, c, limbs<L>(wide + c));
     }
+  }
 
   for (int t = 0; t < R; t++) {
     ab[t] = a[t];
@@ -338,7 +345,14 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
       for (int j = 0; j < Dv; j++)
         yt[j] = out[j];
   }
-  for (int i = 0; i < Dk; i++) {
+  int i = 0;
+  if constexpr (Dv == L) {
+    const bf_t<W> one2 = aie::broadcast<bfloat16, W>(1.0f);
+    for (; i + 1 < Dk; i += 2)
+      aie::store_v(final + i * Dv,
+                   mul_limbs(state2(i), one2).to_vector<float>());
+  }
+  for (; i < Dk; i++) {
     for (int c = 0; c < P; c += L)
       aie::store_v(wide + c, mul_limbs(state(i, c), one).to_vector<float>());
     for (int j = 0; j < Dv; j++)
