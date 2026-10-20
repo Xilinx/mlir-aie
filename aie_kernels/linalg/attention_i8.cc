@@ -110,8 +110,7 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
   const int8_t *exp_lo = reinterpret_cast<const int8_t *>(exp_lo_runs) + 512;
   const int8_t *exp_hi = reinterpret_cast<const int8_t *>(exp_hi_runs) + 512;
   const int8_t *probs = reinterpret_cast<const int8_t *>(prob_runs) + 512;
-  // A table's runs take 1024 bytes; queries 1, 2 and 3 of a block read the
-  // ones after query 0's.
+  // Query q's table starts q * 1024 bytes in; see read_runs.
   alignas(64) static const int32_t query_tables[32] = {
       0,    0,    0,    0,    0,    0,    0,    0,    1024, 1024, 1024,
       1024, 1024, 1024, 1024, 1024, 2048, 2048, 2048, 2048, 2048, 2048,
