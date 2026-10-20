@@ -2476,6 +2476,7 @@ def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
     cd = CompilableDesign(gen)
     cd._kernel_dir = tmp_path
     cd._elf_path = tmp_path / "design.elf"
+    cd._full_elf_kernel_name = "main:sequence"
     cd._xclbin_path = tmp_path / "final.xclbin"  # never written: left out
     for name in ("design.elf", "params.txt", "input_with_addresses.mlir", "main.pdi"):
         (tmp_path / name).write_bytes(b"x")
@@ -2484,6 +2485,7 @@ def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
     entry = cd.get_cache_entry()
     assert entry.directory == tmp_path
     assert entry.elf == tmp_path / "design.elf" and entry.xclbin is None
+    assert entry.full_elf_kernel == "main:sequence"
     assert entry.insts is None and entry.dispatch_library is None
     assert entry.pdis == (tmp_path / "main.pdi",)
     assert entry.params == tmp_path / "params.txt"

@@ -140,6 +140,7 @@ class CacheEntry:
     xclbin: Path | None
     insts: Path | None
     elf: Path | None
+    full_elf_kernel: str | None
     pdis: tuple[Path, ...]
     params: Path | None
     lowered_mlir: Path | None
@@ -1377,7 +1378,7 @@ class CompilableDesign:
 
         One accessor for the whole entry, whether it sits in the JIT cache
         (``<NPU_CACHE_HOME>/<hash>/``) or beside caller-supplied outputs
-        (``<stem>.prj/``): the image (xclbin or full ELF) and its
+        (``<stem>.prj/``): the image (xclbin, or full ELF and its kernel name), its
         instructions, the PDIs, the kernel objects, the manifest, and the
         two graph outputs aiecc writes into the work directory when asked
         for them -- ``params.txt`` (``--get-scratchpad-parameters``) and
@@ -1398,6 +1399,7 @@ class CompilableDesign:
             xclbin=present(self._xclbin_path),
             insts=present(self._inst_path),
             elf=present(self._elf_path),
+            full_elf_kernel=self._full_elf_kernel_name,
             pdis=tuple(self.get_pdi_paths()),
             params=present(directory / "params.txt"),
             lowered_mlir=present(directory / "input_with_addresses.mlir"),
