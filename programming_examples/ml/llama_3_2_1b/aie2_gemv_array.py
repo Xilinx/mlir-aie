@@ -27,7 +27,7 @@ import sys
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import index_cast
+from aie.dialects.arith import constant, index_cast, ori, shli
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
@@ -36,6 +36,7 @@ from aie.iron import (
     ObjectFifo,
     Program,
     Runtime,
+    ScratchpadParameter,
     TaskGroup,
     Worker,
     jit,
@@ -56,6 +57,22 @@ LM_SLOT = 64 + 4 * D + 4 * 4 + 4 * 4
 LM_OUT_BYTES = 128
 LM_CAND_BYTES = 64 + D
 LM_SEED_BYTES = D + 12
+SAMPLE_PARAMS = ("temp_lo", "temp_hi", "top_k", "seed_lo", "seed_hi")
+
+
+def sample_param_values(temperature, top_k, seed):
+    """build_lm(PER_CALL=True)'s ScratchpadParameter values for one dispatch."""
+    t = int(np.float32(temperature).view(np.uint32))
+    s = int(seed) & 0xFFFFFFFF
+    return dict(
+        temp_lo=t & 0xFFFF,
+        temp_hi=t >> 16,
+        top_k=int(top_k),
+        seed_lo=s & 0xFFFF,
+        seed_hi=s >> 16,
+    )
+
+
 PROJECTIONS = {
     "q": (D, D, "f32"),
     "k": (D, 512, "f32"),
@@ -384,6 +401,7 @@ def build_lm(
     TEMPERATURE: CompileTime[float] = 0.0,
     TOP_K: CompileTime[int] = 8,
     SEED: CompileTime[int] = 0,
+    PER_CALL: CompileTime[bool] = False,
 ):
     """lm_head over the array, then the token on a glue core.
 
@@ -393,8 +411,9 @@ def build_lm(
     llama_topk_finalize_packed, giving `LM_SEED_BYTES`: the next token's
     embed seed, its scale and the token id. Sets are ordered by logit, then
     by lower token id, so the merged set is the one a single pass keeps.
-    TEMPERATURE, TOP_K and SEED are the sampler's params (S4 makes them
-    per-call).
+    TEMPERATURE, TOP_K and SEED are the sampler's params. With PER_CALL they
+    come instead from per-dispatch ScratchpadParameters (`SAMPLE_PARAMS`, see
+    `sample_param_values`), which the glue core reads behind the dispatch fence.
     """
     per_core = LM_TILES // N_CORES
     per_task = next(n for n in range(min(per_core, 1023), 0, -1) if per_core % n == 0)
@@ -430,7 +449,7 @@ def build_lm(
         "llama_gemv_array_topk_cand", [t_sl, t_sg, t_ss, t_sr, t_len, t_cand, np.int32]
     )
     t_join = _i8(4 * LM_CAND_BYTES)
-    t_params = np.ndarray[(3,), np.dtype[np.uint32]]
+    t_params = _i32a(3)
     t_seed = _i8(LM_SEED_BYTES)
     KS = llama_kernels.topk_sample(kset=KSET)
     k_merge = KS.bind(
@@ -466,7 +485,15 @@ def build_lm(
             kc(sl, sg, ss, sr, slen, b, _i32(i))
             c_cand.release(1)
 
-    def w_merge(c_lo, c_hi, c_seed, sl, sg, ss, sr, slen, params, km, kf):
+    def w_merge(c_lo, c_hi, c_seed, sl, sg, ss, sr, slen, params, km, kf, *per_call):
+        if per_call:
+            # The scratchpad keeps 30 bits a word, so the 32-bit temperature
+            # bits and seed arrive as 16-bit halves.
+            t_lo, t_hi, top_k, s_lo, s_hi = (p.read() for p in per_call)
+            c16 = constant(i32(), 16)
+            params[0] = ori(shli(t_hi, c16), t_lo)
+            params[1] = top_k
+            params[2] = ori(shli(s_hi, c16), s_lo)
         for r in range_(KSET):
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
@@ -515,10 +542,18 @@ def build_lm(
                 Buffer(t_ss, name="merge_scale"),
                 Buffer(t_sr, name="merge_row"),
                 Buffer(t_len, initial_value=np.zeros(1, np.int32), name="merge_len"),
-                Buffer(t_params, initial_value=params, name="sample_params"),
+                Buffer(
+                    t_params, initial_value=params.view(np.int32), name="sample_params"
+                ),
                 k_merge,
                 k_final,
+                *(
+                    [ScratchpadParameter(name, np.int32) for name in SAMPLE_PARAMS]
+                    if PER_CALL
+                    else []
+                ),
             ],
+            wait_for_parameters=PER_CALL,
         )
     )
 
@@ -598,7 +633,7 @@ def build_lm_single(
         _i8(KSET * D),
         _i32a(1),
     )
-    t_params = np.ndarray[(3,), np.dtype[np.uint32]]
+    t_params = _i32a(3)
     t_seed = _i8(LM_SEED_BYTES)
     k_insert = llama_kernels.gemm_layer(kset=KSET).bind(
         "llama_lmhead_topk_insert",
@@ -636,7 +671,7 @@ def build_lm_single(
             Buffer(t_ss, name="one_scale"),
             Buffer(t_sr, name="one_row"),
             Buffer(t_len, initial_value=np.zeros(1, np.int32), name="one_len"),
-            Buffer(t_params, initial_value=params, name="one_params"),
+            Buffer(t_params, initial_value=params.view(np.int32), name="one_params"),
             k_insert,
             k_final,
         ],

@@ -31,6 +31,13 @@ Interfaces, per layer unit and core c (one output object of OUT_BYTES each):
   copies the KSET-th best row to another token so the set boundary ties;
   `--single-pass` also runs the vocabulary through one core
   (`build_lm_single`) and requires its seed and token to equal the merge's.
+  `--per-call` builds build_lm once with PER_CALL and dispatches it with
+  several (temperature, top_k, seed): each dispatch writes the five int32
+  ScratchpadParameters `sample_param_values` gives (the float32 temperature
+  bits and the 32-bit seed as 16-bit halves, since the scratchpad keeps 30
+  bits a word; top_k as is), and its token and seed must equal the
+  CompileTime build's for those values. The sampler draws from the whole
+  KSET set, so top_k does not change the result yet.
 """
 
 import argparse
@@ -67,8 +74,9 @@ from aie2_gemv_array import (
     prefill_down_passes,
     prefill_out_bytes,
     rows_per_slot,
+    sample_param_values,
 )
-from llama_npu import add_artifact_args, design_kernel
+from llama_npu import DispatchSession, add_artifact_args, design_kernel
 from numpy_topk_sample import topk_sample_reference, topk_set_reference
 from test_topk_sample_probe import embed_seed_ref
 
@@ -332,6 +340,57 @@ def run_prefill(opts):
     return 0 if ok else 1
 
 
+PER_CALL_SAMPLES = [
+    (0.0, 8, 0),
+    (0.8, 8, 1),
+    (500.0, 8, 2),
+    (0.0, 8, 0xDEADBEEF),
+    (500.0, 4, 3),
+    (500.0, 8, 4),
+    (50.0, 8, 0xDEADBEEF),
+    (2.0, 8, 0x7FFFFFFF),
+]
+
+
+def check_per_call(opts, tensors, logits, embed, embed_sc):
+    """One build_lm(PER_CALL=True) dispatched with each of PER_CALL_SAMPLES
+    against the CompileTime build of the same values and the oracle."""
+    k = opts.kset
+    session = DispatchSession(
+        build_lm, None, LM_TILES=opts.lm_tiles, KSET=k, PER_CALL=True
+    )
+    ok = True
+    for temperature, top_k, seed in PER_CALL_SAMPLES:
+        out_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
+        ms = session([*tensors, out_t], **sample_param_values(temperature, top_k, seed))
+        out_t.to("cpu")
+        fixed_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
+        npu = design_kernel(
+            build_lm,
+            opts,
+            LM_TILES=opts.lm_tiles,
+            KSET=k,
+            TEMPERATURE=temperature,
+            TOP_K=top_k,
+            SEED=seed,
+        )
+        DefaultNPURuntime.load_and_run(npu, [*tensors, fixed_t])
+        fixed_t.to("cpu")
+        dev, fixed = out_t.numpy()[: D + 8], fixed_t.numpy()[: D + 8]
+        ref_token = topk_sample_reference(logits, temperature, k, seed, k_set=k)
+        ref_xin, _ = embed_seed_ref(embed[ref_token], float(embed_sc[ref_token]))
+        token = int(dev[D + 4 : D + 8].view(np.int32)[0])
+        same = np.array_equal(dev, fixed) and token == ref_token
+        same &= np.array_equal(dev[:D], ref_xin)
+        print(
+            f"per-call temp={temperature} top_k={top_k} seed={seed:#x}: token {token} "
+            f"(ref {ref_token}), {'BIT-EXACT' if same else 'DIFF'} vs the CompileTime build"
+            f"  ({ms:.2f} ms)"
+        )
+        ok &= same
+    return ok
+
+
 def run_lm(opts):
     vocab = opts.lm_tiles * 4
     rng = np.random.default_rng(opts.seed)
@@ -431,6 +490,8 @@ def run_lm(opts):
     ok &= token == ref_token and seed_ok
     if opts.force_tie:
         ok &= tied
+    if opts.per_call:
+        ok &= check_per_call(opts, [w_t, a_t, s_t], logits, embed, embed_sc)
     if opts.single_pass:
         one_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
         npu1 = design_kernel(
@@ -487,6 +548,11 @@ def main():
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--sample-seed", type=int, default=0)
     p.add_argument("--force-tie", action="store_true")
+    p.add_argument(
+        "--per-call",
+        action="store_true",
+        help="also dispatch one PER_CALL build with several sampler params",
+    )
     p.add_argument(
         "--single-pass",
         action="store_true",
