@@ -74,9 +74,8 @@ vec_sw_exp_nonpos(::aie::vector<float, kLanes> x) {
   ::aie::vector<int32, kLanes> n = ::aie::to_fixed<int32>(t, 0);
   ::aie::vector<int32, kLanes> nb =
       ::aie::to_float<float>(n, 0).template cast_to<int32>();
-  ::aie::vector<int32, kLanes> k =
-      ::aie::select(n, ::aie::add(n, int32(1)),
-                    ::aie::gt(nb, tb) & ::aie::lt(nb, int32(0)));
+  ::aie::vector<int32, kLanes> k = ::aie::select(
+      n, ::aie::add(n, int32(1)), ::aie::gt(nb, tb) & ::aie::lt(nb, int32(0)));
   ::aie::vector<float, kLanes> f = ::aie::sub(t, ::aie::to_float<float>(k, 0));
   static constexpr float kC[] = {
       1.321548666e-06f, 1.525273365e-05f, 1.540352969e-04f,
@@ -115,14 +114,13 @@ static void fold_weights(int8_t *state, const float *m_b, const float *s_b,
   ::aie::vector<float, kLanes> big =
       ::aie::max(m, ::aie::select(::aie::shuffle_up(m, kREP),
                                   ::aie::shuffle_down(m, kREP), low));
-  ::aie::vector<float, kLanes> ab =
-      vec_mul_rne(::aie::load_v<kLanes>(x + kLanes),
-                  vec_sw_exp_nonpos(::aie::sub(m, big)));
+  ::aie::vector<float, kLanes> ab = vec_mul_rne(
+      ::aie::load_v<kLanes>(x + kLanes), vec_sw_exp_nonpos(::aie::sub(m, big)));
   ::aie::vector<float, kLanes> den =
       ::aie::add(ab, ::aie::shuffle_down(ab, kREP));
   ::aie::vector<float, kLanes> inv = vec_sw_recip(den);
-  ::aie::store_v(
-      w, vec_mul_rne(ab, ::aie::select(::aie::shuffle_up(inv, kREP), inv, low)));
+  ::aie::store_v(w, vec_mul_rne(ab, ::aie::select(::aie::shuffle_up(inv, kREP),
+                                                  inv, low)));
   ::aie::store_v(x, big);
   ::aie::store_v(x + kLanes, den);
   for (int h = 0; h < kREP; h++) {
@@ -133,15 +131,17 @@ static void fold_weights(int8_t *state, const float *m_b, const float *s_b,
 
 // sv = sv * wa + sv_b * wb over one head's kHD lanes. Out of line, like the
 // rolled loops here, to fit the attention core's 16 KB program memory.
-__attribute__((noinline)) static void fold_sv(float *sv, const float *sv_b, float wa, float wb) {
+__attribute__((noinline)) static void fold_sv(float *sv, const float *sv_b,
+                                              float wa, float wb) {
   ::aie::vector<float, kLanes> wa_v = ::aie::broadcast<float, kLanes>(wa);
   ::aie::vector<float, kLanes> wb_v = ::aie::broadcast<float, kLanes>(wb);
 #pragma clang loop unroll(disable)
   for (int j = 0; j < kSlices; j++)
     ::aie::store_v(
         sv + j * kLanes,
-        ::aie::add(vec_mul_rne(::aie::load_v<kLanes>(sv + j * kLanes), wa_v),
-                   vec_mul_rne(::aie::load_v<kLanes>(sv_b + j * kLanes), wb_v)));
+        ::aie::add(
+            vec_mul_rne(::aie::load_v<kLanes>(sv + j * kLanes), wa_v),
+            vec_mul_rne(::aie::load_v<kLanes>(sv_b + j * kLanes), wb_v)));
 }
 
 // Folds part's heads into acc_state's.
@@ -167,17 +167,19 @@ static void requant_selfcal(int8_t *state, int8_t *out) {
   alignas(64) int32_t absmax[kLanes] = {};
 #pragma clang loop unroll(disable)
   for (int i = 0; i < kREP * kSlices; i++) {
-    const float *sv = head_record(state, i / kSlices) + 16 + i % kSlices * kLanes;
-    int32_t mag = ::aie::reduce_max(::aie::bit_and(
-        int32(0x7fffffff), ::aie::load_v<kLanes>(sv).template cast_to<int32>()));
+    const float *sv =
+        head_record(state, i / kSlices) + 16 + i % kSlices * kLanes;
+    int32_t mag = ::aie::reduce_max(
+        ::aie::bit_and(int32(0x7fffffff),
+                       ::aie::load_v<kLanes>(sv).template cast_to<int32>()));
     if (mag > absmax[i / kSlices])
       absmax[i / kSlices] = mag;
   }
-  ::aie::vector<float, kLanes> scale = vec_mul_rne(
-      ::aie::max(::aie::load_v<kLanes>(absmax),
-                 __builtin_bit_cast(int32_t, 1e-12f))
-          .template cast_to<float>(),
-      ::aie::broadcast<float, kLanes>(1.0f / 127.0f));
+  ::aie::vector<float, kLanes> scale =
+      vec_mul_rne(::aie::max(::aie::load_v<kLanes>(absmax),
+                             __builtin_bit_cast(int32_t, 1e-12f))
+                      .template cast_to<float>(),
+                  ::aie::broadcast<float, kLanes>(1.0f / 127.0f));
   alignas(64) float scale_a[kLanes];
   alignas(64) float inv_a[kLanes];
   ::aie::store_v(scale_a, scale);
@@ -252,9 +254,9 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
   }
   for (int g = 0; g < kTB / 8; g++) {
     const int8_t *rows = block + 8 * g * kRowBytes;
-    auto [a0, a1] =
-        ::aie::interleave_zip(::aie::load_unaligned_v<kHD>(rows),
-                              ::aie::load_unaligned_v<kHD>(rows + kRowBytes), 1);
+    auto [a0, a1] = ::aie::interleave_zip(
+        ::aie::load_unaligned_v<kHD>(rows),
+        ::aie::load_unaligned_v<kHD>(rows + kRowBytes), 1);
     auto [b0, b1] = ::aie::interleave_zip(
         ::aie::load_unaligned_v<kHD>(rows + 2 * kRowBytes),
         ::aie::load_unaligned_v<kHD>(rows + 3 * kRowBytes), 1);
@@ -322,13 +324,12 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     lanes[h] = m_b;
     ::aie::vector<float, kLanes> m_v = ::aie::broadcast<float, kLanes>(m_b);
     for (int g = 0; g < groups; g++)
-      ::aie::store_v(
-          qidx + h * kTB + g * kLanes,
-          vec_round_to_i8(vec_mul_rne(
-              ::aie::sub(::aie::load_v<kLanes>(scores + g * kLanes)
-                             .template cast_to<float>(),
-                         m_v),
-              iq_v)));
+      ::aie::store_v(qidx + h * kTB + g * kLanes,
+                     vec_round_to_i8(vec_mul_rne(
+                         ::aie::sub(::aie::load_v<kLanes>(scores + g * kLanes)
+                                        .template cast_to<float>(),
+                                    m_v),
+                         iq_v)));
   }
 
   // e = LUT[q] (rows past n_rows as 0); the sums run in row order with a
@@ -390,12 +391,12 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     ::aie::vector<int32, kLanes> pv_max = ::aie::zeros<int32, kLanes>();
     for (int g = 0; g < groups; g++) {
       ::aie::vector<int32, kLanes> b =
-          vec_mul_rne(vec_mul_rne(::aie::load_v<kLanes>(expq + h * kTB +
-                                                        g * kLanes)
-                                      .template cast_to<float>(),
-                                  inv_v),
-                      ::aie::load_v<kLanes>(vslot + g * kLanes)
-                          .template cast_to<float>())
+          vec_mul_rne(
+              vec_mul_rne(::aie::load_v<kLanes>(expq + h * kTB + g * kLanes)
+                              .template cast_to<float>(),
+                          inv_v),
+              ::aie::load_v<kLanes>(vslot + g * kLanes)
+                  .template cast_to<float>())
               .template cast_to<int32>();
       ::aie::store_v(pv + g * kLanes, b);
       auto is_live =
@@ -415,8 +416,9 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
       ::aie::store_v(pv_mh + g * kLanes, t.template to_vector<uint16>(0));
       t.from_vector(::aie::bit_and(int32(0xff), mant));
       ::aie::store_v(pv_ml + g * kLanes, t.template to_vector<uint16>(0));
-      ::aie::store_v(pv_e + g * kLanes,
-                     ::aie::downshift(::aie::bit_and(int32(0x7f800000), live), 23));
+      ::aie::store_v(
+          pv_e + g * kLanes,
+          ::aie::downshift(::aie::bit_and(int32(0x7f800000), live), 23));
     }
     // |v| * pv rounded once: n = |v| * significand is exact in acc32 as
     // (|v| << 8) * (m >> 8) + |v| * (m & 0xff), and to_float(n, 150 - e)
@@ -455,13 +457,13 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
         ::aie::vector<float, 32> f1 =
             ::aie::to_float<float>(n1.template to_vector<int32>(0), sh);
         sv_lo = ::aie::add(
-            sv_lo, ::aie::select(f0, ::aie::neg(f0),
-                                 ::aie::lt(v16.template extract<32>(0),
-                                           int16(0))));
+            sv_lo,
+            ::aie::select(f0, ::aie::neg(f0),
+                          ::aie::lt(v16.template extract<32>(0), int16(0))));
         sv_hi = ::aie::add(
-            sv_hi, ::aie::select(f1, ::aie::neg(f1),
-                                 ::aie::lt(v16.template extract<32>(1),
-                                           int16(0))));
+            sv_hi,
+            ::aie::select(f1, ::aie::neg(f1),
+                          ::aie::lt(v16.template extract<32>(1), int16(0))));
       }
       ::aie::store_v(dst, sv_lo);
       ::aie::store_v(dst + 32, sv_hi);
