@@ -20,9 +20,17 @@ from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
 from llama_config import (
     ACT_SCALE,
+    D,
     EXP_QUANT_SCALE,
     GATE_INV_OUT_SCALE,
+    HD,
+    HEAD_D,
     INV_ACT_SCALE,
+    KV_DIM,
+    N_HEADS_KV,
+    N_HEADS_Q,
+    Q_DIM,
+    REP,
     SILU_GATE_SCALE,
 )
 from ml_dtypes import bfloat16
@@ -30,14 +38,6 @@ from numpy_attn_block import attention as attn_block_attention
 from numpy_attn_block import exp_nonpos
 
 # --- Multi-head GQA shape constants ---
-D = 2048
-N_HEADS_Q = 32
-N_HEADS_KV = 8
-HEAD_DIM = 64
-REP = N_HEADS_Q // N_HEADS_KV  # 4
-Q_DIM = N_HEADS_Q * HEAD_DIM  # 2048
-KV_DIM = N_HEADS_KV * HEAD_DIM  # 512
-HD = 8192
 T = 128
 
 
@@ -330,7 +330,7 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     gamma_in = _bf16("gamma_in.bf16.bin", (D,))
     gamma_post = _bf16("gamma_post.bf16.bin", (D,))
 
-    half = HEAD_DIM // 2
+    half = HEAD_D // 2
     ang = rng.uniform(0, 2 * np.pi, size=half).astype(np.float32)
     cos_half = np.cos(ang).astype(bfloat16)
     sin_half = np.sin(ang).astype(bfloat16)
@@ -340,8 +340,8 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     # Phase 8a: empty caches; the host harness fills slots 0..t_cur as
     # tokens are processed. k/v_scales start at a tiny epsilon and get
     # overwritten per token by numpy_layer_mh_forward(position=...).
-    kcaches = [np.zeros(T * HEAD_DIM, dtype=np.int8) for _ in range(N_HEADS_KV)]
-    vcaches = [np.zeros(T * HEAD_DIM, dtype=np.int8) for _ in range(N_HEADS_KV)]
+    kcaches = [np.zeros(T * HEAD_D, dtype=np.int8) for _ in range(N_HEADS_KV)]
+    vcaches = [np.zeros(T * HEAD_D, dtype=np.int8) for _ in range(N_HEADS_KV)]
     k_scales = np.full(N_HEADS_KV, 1e-6, dtype=np.float32)
     v_scales = np.full(N_HEADS_KV, 1e-6, dtype=np.float32)
 
@@ -401,7 +401,7 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
     wd_i8, wd_sc = quant_int8_perchan_absmax(wd_fp)
 
     # Rope: one (cos, sin) pair for the single decode position.
-    half = HEAD_DIM // 2
+    half = HEAD_D // 2
     ang = rng.uniform(0, 2 * np.pi, size=half).astype(np.float32)
     cos_half = np.cos(ang).astype(bfloat16)
     sin_half = np.sin(ang).astype(bfloat16)
@@ -410,12 +410,10 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
 
     # Per-KV-head cache + scale.
     kcaches = [
-        rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
-        for _ in range(N_HEADS_KV)
+        rng.integers(-32, 33, size=T * HEAD_D, dtype=np.int8) for _ in range(N_HEADS_KV)
     ]
     vcaches = [
-        rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
-        for _ in range(N_HEADS_KV)
+        rng.integers(-32, 33, size=T * HEAD_D, dtype=np.int8) for _ in range(N_HEADS_KV)
     ]
     k_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
     v_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
@@ -563,22 +561,22 @@ def numpy_layer_mh_forward(
             * wv_sc.astype(np.float32)
         )
         # Apply rope to k per KV head (Llama half-split convention).
-        # cos / sin are full HEAD_DIM (two copies of half), bf16; cast to fp32.
+        # cos / sin are full HEAD_D (two copies of half), bf16; cast to fp32.
         cosf = np.asarray(cos, dtype=np.float32)
         sinf = np.asarray(sin, dtype=np.float32)
-        half = HEAD_DIM // 2
+        half = HEAD_D // 2
         k_rope = np.empty_like(k_fp)
         for h in range(N_HEADS_KV):
-            kh = k_fp[h * HEAD_DIM : (h + 1) * HEAD_DIM]
+            kh = k_fp[h * HEAD_D : (h + 1) * HEAD_D]
             # Snapshot both halves as COPIES — x1/x2 must not be views of kh,
             # or writing the first half corrupts x1 before the second half
             # reads it (in-place rotate-half aliasing bug).
             x1 = kh[:half].copy()
             x2 = kh[half:].copy()
-            out = np.empty(HEAD_DIM, dtype=np.float32)
+            out = np.empty(HEAD_D, dtype=np.float32)
             out[:half] = aie_fp.aie_add(x1 * cosf[:half], -(x2 * sinf[:half]))
             out[half:] = aie_fp.aie_add(x2 * cosf[half:], x1 * sinf[half:])
-            k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM] = out
+            k_rope[h * HEAD_D : (h + 1) * HEAD_D] = out
         # One k and v scale per cached position; (N_HEADS_KV, T).
         k_scales_slot = layer.get("k_scales_slot")
         if k_scales_slot is None:
@@ -591,18 +589,18 @@ def numpy_layer_mh_forward(
 
         # Per-KV-head dynamic quant + cache append at slot `position`.
         for h in range(N_HEADS_KV):
-            kh = k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM]
-            vh = v_fp[h * HEAD_DIM : (h + 1) * HEAD_DIM]
+            kh = k_rope[h * HEAD_D : (h + 1) * HEAD_D]
+            vh = v_fp[h * HEAD_D : (h + 1) * HEAD_D]
             ks = _dyn_scale(kh)
             vs = _dyn_scale(vh)
             k_scales[h] = np.float32(ks)
             v_scales[h] = np.float32(vs)
             k_scales_slot[h, position] = np.float32(ks)
             v_scales_slot[h, position] = np.float32(vs)
-            kcaches[h][position * HEAD_DIM : (position + 1) * HEAD_DIM] = requant(
+            kcaches[h][position * HEAD_D : (position + 1) * HEAD_D] = requant(
                 kh, aie_fp.sw_recip(ks)
             )
-            vcaches[h][position * HEAD_DIM : (position + 1) * HEAD_DIM] = requant(
+            vcaches[h][position * HEAD_D : (position + 1) * HEAD_D] = requant(
                 vh, aie_fp.sw_recip(vs)
             )
 
@@ -618,14 +616,14 @@ def numpy_layer_mh_forward(
     q_inv_outs = np.zeros(N_HEADS_Q, dtype=np.float32)
     qf = np.zeros(Q_DIM, dtype=np.int8)
     for h in range(N_HEADS_Q):
-        slice_h = fp_q_full[h * HEAD_DIM : (h + 1) * HEAD_DIM]
+        slice_h = fp_q_full[h * HEAD_D : (h + 1) * HEAD_D]
         s = _dyn_scale(slice_h)
         q_out_scales[h] = np.float32(s)
         q_inv_outs[h] = aie_fp.sw_recip(s)
-        qf[h * HEAD_DIM : (h + 1) * HEAD_DIM] = requant(slice_h, q_inv_outs[h])
+        qf[h * HEAD_D : (h + 1) * HEAD_D] = requant(slice_h, q_inv_outs[h])
 
     # 4) rope (per-head). numpy_rope_dyn reshapes to (n_heads, head_dim) internally.
-    qr = numpy_rope_dyn(qf, cos, sin, N_HEADS_Q, HEAD_DIM)
+    qr = numpy_rope_dyn(qf, cos, sin, N_HEADS_Q, HEAD_D)
 
     # 5) Per-Q-head attention. GQA: kvh = h_q // REP. Each Q head gets
     #    its own sv_out_scale + sv_inv_out_scale. T_used (Phase 8c):
@@ -645,12 +643,10 @@ def numpy_layer_mh_forward(
         for kvh in range(N_HEADS_KV):
             heads = slice(kvh * REP, (kvh + 1) * REP)
             out, scales, _ = attn_block_attention(
-                qr[kvh * REP * HEAD_DIM : (kvh + 1) * REP * HEAD_DIM].reshape(
-                    REP, HEAD_DIM
-                ),
+                qr[kvh * REP * HEAD_D : (kvh + 1) * REP * HEAD_D].reshape(REP, HEAD_D),
                 q_out_scales[heads],
-                kcaches[kvh][: t_used * HEAD_DIM].reshape(t_used, HEAD_DIM),
-                vcaches[kvh][: t_used * HEAD_DIM].reshape(t_used, HEAD_DIM),
+                kcaches[kvh][: t_used * HEAD_D].reshape(t_used, HEAD_D),
+                vcaches[kvh][: t_used * HEAD_D].reshape(t_used, HEAD_D),
                 layer["k_scales_slot"][kvh][:t_used],
                 layer["v_scales_slot"][kvh][:t_used],
                 t_used,
@@ -665,9 +661,9 @@ def numpy_layer_mh_forward(
     else:
         for h_q in range(N_HEADS_Q):
             kvh = h_q // REP
-            q_h = qr[h_q * HEAD_DIM : (h_q + 1) * HEAD_DIM]
-            k_slice = kcaches[kvh][: t_used * HEAD_DIM]
-            v_slice = vcaches[kvh][: t_used * HEAD_DIM]
+            q_h = qr[h_q * HEAD_D : (h_q + 1) * HEAD_D]
+            k_slice = kcaches[kvh][: t_used * HEAD_D]
+            v_slice = vcaches[kvh][: t_used * HEAD_D]
             if attn_perslot or attn_flowkv:
                 # attn_flowkv=True takes the device's softmax; False keeps the
                 # fp32 np.exp softmax (the quality golden). Both use per-slot scales.
@@ -681,7 +677,7 @@ def numpy_layer_mh_forward(
                     q_h,
                     k_slice,
                     v_slice,
-                    HEAD_DIM,
+                    HEAD_D,
                     t_used,
                     float(q_out_scales[h_q]),
                     ksl,
@@ -695,7 +691,7 @@ def numpy_layer_mh_forward(
                     q_h,
                     k_slice,
                     v_slice,
-                    HEAD_DIM,
+                    HEAD_D,
                     t_used,
                     float(q_out_scales[h_q]),
                     ksl,
@@ -708,7 +704,7 @@ def numpy_layer_mh_forward(
                 q_h,
                 k_slice,
                 v_slice,
-                HEAD_DIM,
+                HEAD_D,
                 t_used,
                 float(q_out_scales[h_q]),
                 float(k_scales[kvh]),
@@ -722,7 +718,7 @@ def numpy_layer_mh_forward(
                 q_h,
                 k_slice,
                 v_slice,
-                HEAD_DIM,
+                HEAD_D,
                 t_used,
                 float(q_out_scales[h_q]),
                 float(k_scales[kvh]),

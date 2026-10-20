@@ -80,6 +80,7 @@ from aie2_gemv_array import (
 )
 from llama_config import (
     CS_BYTES,
+    D,
     HD,
     HEAD_D,
     N_HEADS_KV,
@@ -89,13 +90,12 @@ from llama_config import (
     SILU_GATE_SCALE,
     SVCHUNK_BYTES,
     SVFULL_BYTES,
-    D,
+    VOCAB,
 )
 
 # The lm_head's weights: per 4-row tile a prefix, the rows and per-row
 # scales and biases; one shim task streams LM_SLOTS_PER_TASK of them (at
 # most 1023, a BD dimension's limit, dividing LM_N_TILES).
-VOCAB = 128256
 LM_N_TILES = VOCAB // N_TILE
 WLM_SLOT = 64 + N_TILE * D + N_TILE * 4 + N_TILE * 4
 WLM_TOTAL = LM_N_TILES * WLM_SLOT

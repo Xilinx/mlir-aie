@@ -38,14 +38,13 @@ from aie2_decode import (
     M_MAX,
     REC_BYTES,
     RROW,
-    VOCAB,
     WLM_TOTAL,
     wblob_layout,
 )
 from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
-from llama_config import EXP_QUANT_SCALE, HEAD_D, N_HEADS_KV, SILU_GATE_SCALE, D
+from llama_config import D, EXP_QUANT_SCALE, HEAD_D, N_HEADS_KV, SILU_GATE_SCALE, VOCAB
 from llama_decode import Decoder, DecodeShape, embed_seed_ref, tokens_of
 from ml_dtypes import bfloat16
 from numpy_layer_mh import (
@@ -54,7 +53,7 @@ from numpy_layer_mh import (
     numpy_rmsnorm_int8_dyn,
     requant,
 )
-from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw, rope_table
+from numpy_llama_ref import _load_bf16, _load_qw, rope_table
 from numpy_topk_sample import topk_sample_reference
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
@@ -463,7 +462,7 @@ def main():
         )
     )
 
-    assert VOCAB == VOCAB_SIZE and D == EMB_DIM
+    assert VOCAB == VOCAB and D == D
     if opts.synthetic_weights:
         print(f"building synthetic embed/final_norm (seed {fseed}) ...", flush=True)
         embed_i8, embed_sc, gamma = synthetic_lm_weights(fseed)

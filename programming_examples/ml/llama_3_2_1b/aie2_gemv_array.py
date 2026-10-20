@@ -30,9 +30,8 @@ from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
 )
 from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.iron.controlflow import range_
+from llama_config import D, HD
 
-D = 2048
-HD = 8192
 N_CORES = 8
 CORE_TILES = [(c, r) for c in (0, 1, 6, 7) for r in (2, 3)]
 OUT_BYTES = 4096

@@ -10,6 +10,10 @@ HEAD_D = 64
 N_HEADS_Q = 32
 N_HEADS_KV = 8
 REP = N_HEADS_Q // N_HEADS_KV
+Q_DIM = N_HEADS_Q * HEAD_D
+KV_DIM = N_HEADS_KV * HEAD_D
+N_LAYERS = 16
+VOCAB = 128_256
 N_TILE = 4
 
 # A KV group's Q chunk: [REP * HEAD_D int8 | REP * 8 B of scales].

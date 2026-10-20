@@ -20,16 +20,10 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from llama_config import HEAD_D
+from llama_config import HEAD_D, N_LAYERS
 from llama_decode import Decoder, DecodeShape
 from numpy_layer_mh import gen_real_layer_mh
-from numpy_llama_ref import (
-    N_LAYERS,
-    forward_full,
-    load_model,
-    load_tokenizer,
-    rope_table,
-)
+from numpy_llama_ref import forward_full, load_model, load_tokenizer, rope_table
 
 BOS = 128000
 STOP = (128001, 128009)

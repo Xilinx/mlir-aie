@@ -28,12 +28,6 @@ from pathlib import Path
 import numpy as np
 from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
 from numpy_llama_ref import (
-    HEAD_DIM,
-    KV_DIM,
-    N_HEADS,
-    N_KV_GROUPS,
-    N_LAYERS,
-    Q_DIM,
     apply_rope,
     attention_full_gqa,
     forward_full,
@@ -53,7 +47,7 @@ DEFAULT_TEXT = (
     "important technologies of the modern era, powering applications from search "
     "engines to self-driving cars and medical diagnosis."
 )
-
+from llama_config import HEAD_D, KV_DIM, N_HEADS_KV, N_HEADS_Q, N_LAYERS, Q_DIM
 
 # --- True bf16 reference: load HF weights as fp32, full-precision forward ---
 
@@ -97,9 +91,9 @@ def ref_forward_logits(model: RefModel, token_ids: np.ndarray) -> np.ndarray:
         k = h @ W["wk"].T
         v = h @ W["wv"].T
         pos = np.arange(0, M)
-        cos, sin = rope_cos_sin(pos, HEAD_DIM)
-        q = apply_rope(q.reshape(M, N_HEADS, HEAD_DIM), cos, sin).reshape(M, Q_DIM)
-        k = apply_rope(k.reshape(M, N_KV_GROUPS, HEAD_DIM), cos, sin).reshape(M, KV_DIM)
+        cos, sin = rope_cos_sin(pos, HEAD_D)
+        q = apply_rope(q.reshape(M, N_HEADS_Q, HEAD_D), cos, sin).reshape(M, Q_DIM)
+        k = apply_rope(k.reshape(M, N_HEADS_KV, HEAD_D), cos, sin).reshape(M, KV_DIM)
         a = attention_full_gqa(q, k, v)
         a = a @ W["wo"].T
         x = x + a

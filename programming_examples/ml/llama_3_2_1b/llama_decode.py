@@ -21,7 +21,6 @@ from aie2_decode import (
     REC_BYTES,
     RROW,
     STAGE_RESID,
-    VOCAB,
     WLM_SLOT,
     WLM_TOTAL,
     build,
@@ -37,7 +36,7 @@ from aie2_gemv_array import (
     PROJECTIONS,
     sample_param_values,
 )
-from llama_config import CS_BYTES, HEAD_D, N_HEADS_KV, N_TILE, D
+from llama_config import CS_BYTES, D, HEAD_D, N_HEADS_KV, N_TILE, VOCAB
 from llama_npu import DispatchSession
 from ml_dtypes import bfloat16
 

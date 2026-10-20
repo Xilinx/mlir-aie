@@ -31,17 +31,19 @@ from pathlib import Path
 
 import ml_dtypes
 import numpy as np
+from llama_config import (
+    D,
+    HD,
+    HEAD_D,
+    KV_DIM,
+    N_HEADS_KV,
+    N_HEADS_Q,
+    N_LAYERS,
+    Q_DIM,
+    VOCAB,
+)
 
 # --- Llama 3.2 1B spec ---
-VOCAB_SIZE = 128_256
-EMB_DIM = 2_048
-N_LAYERS = 16
-N_HEADS = 32
-N_KV_GROUPS = 8
-HEAD_DIM = EMB_DIM // N_HEADS
-HIDDEN_DIM = 8_192
-Q_DIM = N_HEADS * HEAD_DIM
-KV_DIM = N_KV_GROUPS * HEAD_DIM
 ROPE_BASE = 500_000.0
 # config.json's rope_scaling (rope_type "llama3").
 ROPE_FACTOR = 32.0
@@ -102,22 +104,22 @@ def _load_bf16(data_dir: Path, stem: str, shape: tuple[int, ...]) -> np.ndarray:
 
 
 def load_model(data_dir: Path) -> ModelW:
-    embed_i8, embed_sc = _load_qw(data_dir, "embed", (VOCAB_SIZE, EMB_DIM))
-    final_norm = _load_bf16(data_dir, "final_norm", (EMB_DIM,))
+    embed_i8, embed_sc = _load_qw(data_dir, "embed", (VOCAB, D))
+    final_norm = _load_bf16(data_dir, "final_norm", (D,))
     layers = []
     for L in range(N_LAYERS):
         ld = data_dir / f"layer_{L:02d}"
-        wq_i8, wq_sc = _load_qw(ld, "wq", (Q_DIM, EMB_DIM))
-        wk_i8, wk_sc = _load_qw(ld, "wk", (KV_DIM, EMB_DIM))
-        wv_i8, wv_sc = _load_qw(ld, "wv", (KV_DIM, EMB_DIM))
-        wo_i8, wo_sc = _load_qw(ld, "wo", (EMB_DIM, Q_DIM))
-        wg_i8, wg_sc = _load_qw(ld, "wg", (HIDDEN_DIM, EMB_DIM))
-        wu_i8, wu_sc = _load_qw(ld, "wu", (HIDDEN_DIM, EMB_DIM))
-        wd_i8, wd_sc = _load_qw(ld, "wd", (EMB_DIM, HIDDEN_DIM))
+        wq_i8, wq_sc = _load_qw(ld, "wq", (Q_DIM, D))
+        wk_i8, wk_sc = _load_qw(ld, "wk", (KV_DIM, D))
+        wv_i8, wv_sc = _load_qw(ld, "wv", (KV_DIM, D))
+        wo_i8, wo_sc = _load_qw(ld, "wo", (D, Q_DIM))
+        wg_i8, wg_sc = _load_qw(ld, "wg", (HD, D))
+        wu_i8, wu_sc = _load_qw(ld, "wu", (HD, D))
+        wd_i8, wd_sc = _load_qw(ld, "wd", (D, HD))
         layers.append(
             LayerW(
-                gamma_in=_load_bf16(ld, "gamma_in", (EMB_DIM,)),
-                gamma_post=_load_bf16(ld, "gamma_post", (EMB_DIM,)),
+                gamma_in=_load_bf16(ld, "gamma_in", (D,)),
+                gamma_post=_load_bf16(ld, "gamma_post", (D,)),
                 wq_i8=wq_i8,
                 wq_sc=wq_sc,
                 wk_i8=wk_i8,
@@ -276,13 +278,13 @@ def attention_full_gqa(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarra
     """
     M = q.shape[0]
     Mc = k.shape[0]
-    q = q.reshape(M, N_HEADS, HEAD_DIM)
-    k = k.reshape(Mc, N_KV_GROUPS, HEAD_DIM)
-    v = v.reshape(Mc, N_KV_GROUPS, HEAD_DIM)
-    scale = 1.0 / np.sqrt(HEAD_DIM)
-    out = np.zeros((M, N_HEADS, HEAD_DIM), dtype=np.float32)
-    rep = N_HEADS // N_KV_GROUPS  # 4
-    for h in range(N_HEADS):
+    q = q.reshape(M, N_HEADS_Q, HEAD_D)
+    k = k.reshape(Mc, N_HEADS_KV, HEAD_D)
+    v = v.reshape(Mc, N_HEADS_KV, HEAD_D)
+    scale = 1.0 / np.sqrt(HEAD_D)
+    out = np.zeros((M, N_HEADS_Q, HEAD_D), dtype=np.float32)
+    rep = N_HEADS_Q // N_HEADS_KV  # 4
+    for h in range(N_HEADS_Q):
         kvh = h // rep
         s = (q[:, h, :] @ k[:, kvh, :].T) * scale  # (M, Mc)
         # Causal: only attend to positions <= my position; for decode M=1
@@ -319,9 +321,9 @@ def forward_layer_int8(
     k = linear_int8(h, W.wk_i8, W.wk_sc)
     v = linear_int8(h, W.wv_i8, W.wv_sc)
     pos = np.arange(position, position + M)
-    cos, sin = rope_cos_sin(pos, HEAD_DIM)
-    q = apply_rope(q.reshape(M, N_HEADS, HEAD_DIM), cos, sin).reshape(M, Q_DIM)
-    k = apply_rope(k.reshape(M, N_KV_GROUPS, HEAD_DIM), cos, sin).reshape(M, KV_DIM)
+    cos, sin = rope_cos_sin(pos, HEAD_D)
+    q = apply_rope(q.reshape(M, N_HEADS_Q, HEAD_D), cos, sin).reshape(M, Q_DIM)
+    k = apply_rope(k.reshape(M, N_HEADS_KV, HEAD_D), cos, sin).reshape(M, KV_DIM)
 
     # Append this step's K/V to caches (caches may be empty pre-prefill).
     if k_cache.size == 0:
@@ -413,10 +415,8 @@ def main():
         print(f"  top-5 token ids at last pos: {top5.tolist()}")
         print(f"  top-5 logit values: {last[top5].tolist()}")
     else:
-        x_in = rng.standard_normal((args.M, EMB_DIM)).astype(np.float32)
-        print(
-            f"\nrunning ONE layer ({args.layer}) on random (M={args.M}, D={EMB_DIM}) input"
-        )
+        x_in = rng.standard_normal((args.M, D)).astype(np.float32)
+        print(f"\nrunning ONE layer ({args.layer}) on random (M={args.M}, D={D}) input")
         W = model.layers[args.layer]
         kc = np.zeros((0, KV_DIM), dtype=np.float32)
         vc = np.zeros((0, KV_DIM), dtype=np.float32)

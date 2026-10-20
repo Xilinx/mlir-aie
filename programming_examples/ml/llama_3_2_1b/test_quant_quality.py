@@ -27,17 +27,7 @@ from pathlib import Path
 import numpy as np
 
 # Reuse the safetensors reader from the extractor.
-from gen_llama_data import (
-    EMB_DIM,
-    HEAD_DIM,
-    KV_DIM,
-    N_HEADS,
-    N_KV_GROUPS,
-    N_LAYERS,
-    Q_DIM,
-    WEIGHTS_DIR,
-    SafetensorsReader,
-)
+from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
 
 # Reuse the INT8 numpy ref.
 from numpy_llama_ref import (
@@ -51,6 +41,7 @@ from numpy_llama_ref import (
     rope_cos_sin,
     silu,
 )
+from llama_config import D, HEAD_D, KV_DIM, N_HEADS_KV, N_HEADS_Q, N_LAYERS, Q_DIM
 
 
 # ---------------------------------------------------------------------------
@@ -90,9 +81,9 @@ def forward_layer_fp32(
     k = (h @ wk.T).astype(np.float32)
     v = (h @ wv.T).astype(np.float32)
     pos = np.arange(position, position + M)
-    cos, sin = rope_cos_sin(pos, HEAD_DIM)
-    q = apply_rope(q.reshape(M, N_HEADS, HEAD_DIM), cos, sin).reshape(M, Q_DIM)
-    k = apply_rope(k.reshape(M, N_KV_GROUPS, HEAD_DIM), cos, sin).reshape(M, KV_DIM)
+    cos, sin = rope_cos_sin(pos, HEAD_D)
+    q = apply_rope(q.reshape(M, N_HEADS_Q, HEAD_D), cos, sin).reshape(M, Q_DIM)
+    k = apply_rope(k.reshape(M, N_HEADS_KV, HEAD_D), cos, sin).reshape(M, KV_DIM)
 
     if k_cache.size == 0:
         k_full = k
@@ -162,7 +153,7 @@ def main():
     rng = np.random.default_rng(opts.seed)
     # Realistic Gaussian residual stream as input (RMSNorm makes the
     # layer scale-invariant on input, so unit-Gaussian is fair).
-    x0 = rng.standard_normal((opts.M, EMB_DIM)).astype(np.float32)
+    x0 = rng.standard_normal((opts.M, D)).astype(np.float32)
 
     # Per-layer A/B: feed IDENTICAL x_in into both paths and cos-sim outputs.
     print(f"\n--- Per-layer quality (M={opts.M}) ---")

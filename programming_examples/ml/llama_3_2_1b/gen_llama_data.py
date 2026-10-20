@@ -49,21 +49,22 @@ from pathlib import Path
 
 import ml_dtypes
 import numpy as np
+from llama_config import (
+    D,
+    HD,
+    HEAD_D,
+    KV_DIM,
+    N_HEADS_KV,
+    N_HEADS_Q,
+    N_LAYERS,
+    Q_DIM,
+    VOCAB,
+)
 
 # --- Llama 3.2 1B spec (mirrors cautious-eureka/npu2/llama_spec.py) ---
 # The gated checkpoint's directory, as amd/IRON's examples find it
 # (iron/lm/testing.py): model.safetensors and tokenizer.model.
 WEIGHTS_DIR = Path(os.environ.get("IRON_EXAMPLE_WEIGHTS_DIR", "/srv")) / "llama3.2-1b"
-
-VOCAB_SIZE = 128_256
-EMB_DIM = 2_048
-N_LAYERS = 16
-N_HEADS = 32
-N_KV_GROUPS = 8
-HEAD_DIM = EMB_DIM // N_HEADS  # 64
-HIDDEN_DIM = 8_192
-Q_DIM = N_HEADS * HEAD_DIM  # 2048
-KV_DIM = N_KV_GROUPS * HEAD_DIM  # 512
 
 
 _ST_DTYPE = {
@@ -183,9 +184,7 @@ def main():
     # --- Embedding (also serves as lm_head; tied in Llama 3.2 1B) ---
     embed_f32 = reader.load_f32("model.embed_tokens.weight")
     print(f"  embed_tokens: shape={embed_f32.shape} dtype=fp32")
-    dump_quantized(
-        args.out_dir, "embed", embed_f32, expected_shape=(VOCAB_SIZE, EMB_DIM)
-    )
+    dump_quantized(args.out_dir, "embed", embed_f32, expected_shape=(VOCAB, D))
 
     # tied -> lm_head shares the same bytes. Use a symlink to avoid duplicating
     # the ~125 MB blob.
@@ -198,7 +197,7 @@ def main():
 
     # --- Final RMSNorm gamma (bf16, no quant) ---
     final_norm_bf16 = reader.load_bf16("model.norm.weight")
-    dump_bf16(args.out_dir, "final_norm", final_norm_bf16, expected_shape=(EMB_DIM,))
+    dump_bf16(args.out_dir, "final_norm", final_norm_bf16, expected_shape=(D,))
 
     # --- Per-layer weights ---
     for L in range(N_LAYERS):
@@ -208,26 +207,26 @@ def main():
 
         gamma_in = reader.load_bf16(p + "input_layernorm.weight")
         gamma_post = reader.load_bf16(p + "post_attention_layernorm.weight")
-        dump_bf16(layer_dir, "gamma_in", gamma_in, expected_shape=(EMB_DIM,))
-        dump_bf16(layer_dir, "gamma_post", gamma_post, expected_shape=(EMB_DIM,))
+        dump_bf16(layer_dir, "gamma_in", gamma_in, expected_shape=(D,))
+        dump_bf16(layer_dir, "gamma_post", gamma_post, expected_shape=(D,))
 
         # Attention projections
         wq = reader.load_f32(p + "self_attn.q_proj.weight")
         wk = reader.load_f32(p + "self_attn.k_proj.weight")
         wv = reader.load_f32(p + "self_attn.v_proj.weight")
         wo = reader.load_f32(p + "self_attn.o_proj.weight")
-        dump_quantized(layer_dir, "wq", wq, expected_shape=(Q_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wk", wk, expected_shape=(KV_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wv", wv, expected_shape=(KV_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wo", wo, expected_shape=(EMB_DIM, Q_DIM))
+        dump_quantized(layer_dir, "wq", wq, expected_shape=(Q_DIM, D))
+        dump_quantized(layer_dir, "wk", wk, expected_shape=(KV_DIM, D))
+        dump_quantized(layer_dir, "wv", wv, expected_shape=(KV_DIM, D))
+        dump_quantized(layer_dir, "wo", wo, expected_shape=(D, Q_DIM))
 
         # FFN projections (SwiGLU)
         wg = reader.load_f32(p + "mlp.gate_proj.weight")
         wu = reader.load_f32(p + "mlp.up_proj.weight")
         wd = reader.load_f32(p + "mlp.down_proj.weight")
-        dump_quantized(layer_dir, "wg", wg, expected_shape=(HIDDEN_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wu", wu, expected_shape=(HIDDEN_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wd", wd, expected_shape=(EMB_DIM, HIDDEN_DIM))
+        dump_quantized(layer_dir, "wg", wg, expected_shape=(HD, D))
+        dump_quantized(layer_dir, "wu", wu, expected_shape=(HD, D))
+        dump_quantized(layer_dir, "wd", wd, expected_shape=(D, HD))
 
         if L == 0 or L == N_LAYERS - 1:
             for k in ("wq", "wk", "wv", "wo", "wg", "wu", "wd"):
