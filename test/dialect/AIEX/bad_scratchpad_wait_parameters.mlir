@@ -5,9 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// aiex.wait_scratchpad_parameters belongs in a core, and once a core has one,
-// each of its parameter reads must come after a wait, or the read could see a
-// previous dispatch's value.
+// aiex.wait_scratchpad_parameters belongs in a core that keeps its sync
+// preamble, and once a core has one, each of its parameter reads must come
+// after a wait, or the read could see a previous dispatch's value.
 //
 //===----------------------------------------------------------------------===//
 
@@ -39,4 +39,16 @@ aie.device(npu2) {
     }
     aie.end
   }
+}
+
+// -----
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t02 = aie.tile(0, 2)
+  aie.core(%t02) {
+    // expected-error @+1 {{'aiex.wait_scratchpad_parameters' op waits in a core with emit_parameter_sync_preamble = false, which gets no lock to wait on}}
+    aiex.wait_scratchpad_parameters
+    aie.end
+  } {emit_parameter_sync_preamble = false}
 }

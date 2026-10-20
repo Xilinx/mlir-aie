@@ -353,12 +353,17 @@ struct AIELowerScratchpadParametersPass
   // acquire it: in place of each aiex.wait_scratchpad_parameters if the core
   // has any, else once at the top of the core body. Appends the lock values
   // created (one per qualifying core, in walk order) to `syncLocks`. Fails if
-  // a core with waits reads a parameter no wait comes before.
+  // a core with waits reads a parameter no wait comes before, or if a core
+  // without the preamble waits.
   LogicalResult emitCorePreambles(DeviceOp device, OpBuilder &builder,
                                   SmallVector<Value> &syncLocks) {
     WalkResult result = device.walk([&](CoreOp coreOp) {
       if (!shouldEmitParameterSyncPreamble(coreOp)) {
-        return WalkResult::advance();
+        return coreOp.walk([](WaitScratchpadParametersOp wait) {
+          wait.emitOpError("waits in a core with emit_parameter_sync_preamble "
+                           "= false, which gets no lock to wait on");
+          return WalkResult::interrupt();
+        });
       }
 
       SmallVector<WaitScratchpadParametersOp> waits;
