@@ -2605,6 +2605,28 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
 
     Join and distribute hand each participant its own slice of the shared object, so the link point must have a memory module
     to hold that object and the device must have counting locks to guard the slices independently.
+
+    A 1:1 link's output may walk the whole stream of input objects rather than one object, for example to cut overlapping
+    windows of rows. Its `toStream` dimensions then reach past one input object, the outer dimension enumerates the outputs
+    and steps whole input objects, and the inner dimensions are one output's transfer, as many elements as the output object.
+    At most one inner dimension steps by exactly one input object (the rows of a window); the others stay inside an object.
+    `padDimensions` may pad only the outer dimension, where `(before, after)` counts zero objects ahead of and behind the
+    stream, so walk coordinates start at the first of them. The link infers how many objects the stream holds:
+    `(outputs - 1) * advance + span - before - after`.
+    ```
+      aie.objectfifo @rows (%shim, { %mem }, 2) : !aie.objectfifo<memref<8xi32>>
+      aie.objectfifo @windows (%mem dimensionsToStream [<size = 4, stride = 8>, <size = 3, stride = 8>,
+                                                        <size = 8, stride = 1>], { %core }, 2)
+        {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 1, const_pad_after = 1>,
+                                                  <const_pad_before = 0, const_pad_after = 0>,
+                                                  <const_pad_before = 0, const_pad_after = 0>]>}
+        : !aie.objectfifo<memref<24xi32>>
+      aie.objectfifo.link [@rows] -> [@windows] ([] [])
+    ```
+    Here four rows of 8 become four windows of three rows each, a zero row above the first and below the last. The MemTile
+    link point holds all the stream's objects at once in one buffer (the fifos' depths do not apply), counted on one lock
+    pair, so the stream has at most as many objects as a lock counts, and each output is one descriptor on the MemTile
+    channel.
   }];
 
   let arguments = (ins SymbolRefArrayAttr:$fifoIns,
@@ -2634,6 +2656,12 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     std::optional<int> getRepeatCount();
     std::vector<int> getJoinTransferLengths();
     std::vector<int> getDistributeTransferLengths();
+    // Whether the output walks the whole stream of input objects (a window),
+    // not one object: a 1:1 link whose output's dimensions walk `outputs`
+    // objects of the output's size, the outer dimension stepping outputs.
+    bool walksStream();
+    // The window a stream walk reads, in input objects.
+    mlir::FailureOr<StreamWindow> getStreamWindow();
   }];
 }
 
@@ -2715,7 +2743,13 @@ def AIE_ObjectFifoPoolOp
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
       // If lowered from a high-level ObjectFifo, the name of that fifo.
       // Used to group ops lowered by the same ObjectFifo.
-      OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);
+      OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues,
+      // The objects sit side by side in one buffer, which `buffers` names,
+      // so one descriptor can read across several of them.
+      UnitAttr:$contiguous,
+      // On a contiguous pool, `[before, after]` objects of zeros around the
+      // `depth` objects in its buffer, which no endpoint fills.
+      OptionalAttr<DenseI32ArrayAttr>:$zeroObjects);
 
   let regions = (region SizedRegion<1>:$segments);
 
@@ -2734,6 +2768,10 @@ def AIE_ObjectFifoPoolOp
 
     /// Size of one object in bytes, under the closest data layout.
     int64_t getObjectSizeInBytes();
+
+    /// Objects each buffer holds: one, or on a contiguous pool `depth` and
+    /// its zero objects.
+    int64_t getObjectsPerBuffer();
 
     /// One entry per way the object is divided, in increasing offset order.
     std::vector<ObjectFifoSegmentOp> getSegmentOps();
@@ -2861,8 +2899,13 @@ def AIE_ObjectFifoDmaEndpointOp
     std::vector<ObjectFifoSegmentOp> getSelectedSegments();
 
     /// Descriptors in one pass over the pool: one per object and selected
-    /// segment.
+    /// segment; on a contiguous pool, one per output of a draining walk over
+    /// the stream, and one stepping through the objects for the filling end.
     int64_t getNumDescriptors();
+    /// Whether this end drains a contiguous pool by a walk over its stream.
+    bool walksStream();
+    /// The window a stream walk reads, in the pool's objects.
+    mlir::FailureOr<StreamWindow> getStreamWindow();
     /// Times the chain runs per pass: the pool's repeat count at the draining
     /// end, once at the filling end.
     int64_t getRepeat();

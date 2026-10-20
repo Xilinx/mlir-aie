@@ -34,6 +34,12 @@ struct Descriptor {
   FlatSymbolRefAttr releaseLock;
   /// Index of the buffer's own binary lock, where the device uses those.
   int64_t binaryLock;
+  /// Lock units taken and given back, where they are not one object's.
+  std::optional<int64_t> acquireValue = std::nullopt;
+  std::optional<int64_t> releaseValue = std::nullopt;
+  /// How the address steps on each run of a descriptor that walks a
+  /// contiguous pool's objects in turn.
+  BDIterationAttr iteration = nullptr;
 };
 
 int64_t paddedSize(BDDimLayoutArrayAttr dimensions,
@@ -100,10 +106,52 @@ struct AIEObjectFifoLowerDMAsPass
     return buffers;
   }
 
+  /// A contiguous pool's one buffer holds its objects side by side. Its
+  /// filling end steps through them with one descriptor; its draining end
+  /// walks the stream with one descriptor per output, each taking the objects
+  /// up to the newest it reads and giving back those no later one reads.
+  SmallVector<Descriptor>
+  contiguousDescriptors(ObjectFifoDmaEndpointOp endpoint, Value buffer,
+                        bool drains) {
+    ObjectFifoPoolOp pool = endpoint.getPoolOp();
+    ObjectFifoSegmentOp segment = endpoint.getSelectedSegments().front();
+    FlatSymbolRefAttr take =
+        drains ? segment.getConsumeLockAttr() : segment.getProduceLockAttr();
+    FlatSymbolRefAttr give =
+        drains ? segment.getProduceLockAttr() : segment.getConsumeLockAttr();
+    MLIRContext *context = builder.getContext();
+    if (!endpoint.walksStream()) {
+      BDDimLayoutArrayAttr dims;
+      if (auto all = endpoint.getDimensions(); all && !all->empty())
+        dims = (*all)[0];
+      int64_t object = pool.getObjectSize();
+      int64_t first = 0;
+      if (auto zeros = pool.getZeroObjects())
+        first = (*zeros)[0] * object;
+      return {{buffer, first + segment.getOffset(), segment.getSize(), dims,
+               BDPadLayoutArrayAttr(), take, give, 0, std::nullopt,
+               std::nullopt,
+               BDIterationAttr::get(context, pool.getDepth(), object, 0)}};
+    }
+
+    StreamWindow window = *endpoint.getStreamWindow();
+    BDDimLayoutArrayAttr dims =
+        BDDimLayoutArrayAttr::get(context, window.inner);
+    SmallVector<Descriptor> descriptors;
+    for (StreamWindowStep step : streamWindowSteps(window))
+      descriptors.push_back({buffer, step.first * window.objectSize,
+                             window.transfer(), dims, BDPadLayoutArrayAttr(),
+                             take, give, 0, step.acquire, step.release,
+                             nullptr});
+    return descriptors;
+  }
+
   /// Buffer-major, segment-minor: the DMA walks the objects in turn, and within
   /// each object the slices this endpoint is responsible for.
   SmallVector<Descriptor> descriptorsFor(ObjectFifoDmaEndpointOp endpoint,
                                          ArrayRef<Value> buffers, bool drains) {
+    if (endpoint.getPoolOp().getContiguous())
+      return contiguousDescriptors(endpoint, buffers.front(), drains);
     std::vector<ObjectFifoSegmentOp> segments = endpoint.getSelectedSegments();
     SmallVector<BDDimLayoutArrayAttr> dimensions;
     if (auto allDimensions = endpoint.getDimensions()) {
@@ -158,6 +206,10 @@ struct AIEObjectFifoLowerDMAsPass
           lookupNamedOp<LockOp>(device, descriptor.releaseLock.getAttr());
     }
 
+    if (descriptor.acquireValue)
+      acquireValue = *descriptor.acquireValue;
+    if (descriptor.releaseValue)
+      releaseValue = *descriptor.releaseValue;
     if (acquireLock) {
       UseLockOp::create(builder, loc, acquireLock, action, acquireValue);
     }
@@ -166,18 +218,21 @@ struct AIEObjectFifoLowerDMAsPass
                             packet->getPktId());
     }
 
+    DMABDOp bd;
     if (descriptor.dimensions && drains && descriptor.padding) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      paddedSize(descriptor.dimensions, descriptor.padding,
-                                 descriptor.size),
-                      descriptor.dimensions, descriptor.padding);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           paddedSize(descriptor.dimensions, descriptor.padding,
+                                      descriptor.size),
+                           descriptor.dimensions, descriptor.padding);
     } else if (descriptor.dimensions) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size, descriptor.dimensions);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           descriptor.size, descriptor.dimensions);
     } else {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           descriptor.size);
     }
+    if (descriptor.iteration && descriptor.iteration.getSize() > 1)
+      bd.setIterationAttr(descriptor.iteration);
 
     if (releaseLock) {
       UseLockOp::create(builder, loc, releaseLock, LockAction::Release,

@@ -339,6 +339,87 @@ static int64_t getDimsMaxIdx(ArrayRef<BDDimLayoutAttr> dims) {
   return maxIdx;
 }
 
+int64_t xilinx::AIE::StreamWindow::transfer() const {
+  int64_t elements = 1;
+  for (BDDimLayoutAttr dim : inner)
+    elements *= dim.getSize();
+  return elements;
+}
+
+FailureOr<StreamWindow> xilinx::AIE::inferStreamWindow(
+    ArrayRef<BDDimLayoutAttr> dims, ArrayRef<BDPadLayoutAttr> pads,
+    int64_t objectSize, function_ref<InFlightDiagnostic()> emitError) {
+  if (dims.size() < 2)
+    return emitError() << "a walk over a stream needs an outer dimension of "
+                          "outputs and at least one inner dimension";
+  StreamWindow w;
+  w.objectSize = objectSize;
+  w.outputs = dims.front().getSize();
+  int64_t outerStride = dims.front().getStride();
+  if (outerStride % objectSize)
+    return emitError() << "a walk over a stream steps whole objects between "
+                          "outputs, but its outer stride "
+                       << outerStride << " is not a multiple of the "
+                       << objectSize << "-element object";
+  w.advance = outerStride / objectSize;
+  w.inner.assign(dims.begin() + 1, dims.end());
+  w.rowDim = -1;
+  int64_t reach = 0;
+  for (auto [index, dim] : llvm::enumerate(w.inner)) {
+    if (dim.getSize() > 1 && dim.getStride() >= objectSize) {
+      if (w.rowDim >= 0 || dim.getStride() != objectSize)
+        return emitError() << "a walk over a stream may step one inner "
+                              "dimension by exactly one "
+                           << objectSize << "-element object";
+      w.rowDim = index;
+      continue;
+    }
+    reach += dim.getStride() * (dim.getSize() - 1);
+  }
+  if (reach >= objectSize)
+    return emitError() << "a walk over a stream reads " << reach + 1
+                       << " elements of each object, past the " << objectSize
+                       << "-element object";
+  w.span = w.rowDim >= 0 ? w.inner[w.rowDim].getSize() : 1;
+  w.top = w.bottom = 0;
+  for (auto [index, pad] : llvm::enumerate(pads)) {
+    if (index == 0) {
+      w.top = pad.getConstPadBefore();
+      w.bottom = pad.getConstPadAfter();
+    } else if (pad.getConstPadBefore() || pad.getConstPadAfter()) {
+      return emitError() << "a walk over a stream pads only its outer "
+                            "dimension, with the objects before and after "
+                            "the stream";
+    }
+  }
+  w.objects = (w.outputs - 1) * w.advance + w.span - w.top - w.bottom;
+  if (w.objects < w.span || w.top >= w.span || w.bottom >= w.span)
+    return emitError() << "a walk over a stream of " << w.objects
+                       << " objects with " << w.top << " and " << w.bottom
+                       << " padding objects leaves an output without data";
+  return w;
+}
+
+SmallVector<StreamWindowStep>
+xilinx::AIE::streamWindowSteps(const StreamWindow &w) {
+  SmallVector<StreamWindowStep> steps;
+  int64_t acquired = 0, released = 0;
+  for (int64_t j = 0; j < w.outputs; j++) {
+    int64_t start = j * w.advance - w.top;
+    int64_t newest = std::max(
+        acquired, start + std::clamp<int64_t>(w.objects - start, 0, w.span));
+    int64_t next =
+        j + 1 < w.outputs
+            ? std::clamp<int64_t>((j + 1) * w.advance - w.top, 0, newest)
+            : w.objects;
+    next = std::max(released, next);
+    steps.push_back({j * w.advance, newest - acquired, next - released});
+    acquired = newest;
+    released = next;
+  }
+  return steps;
+}
+
 namespace {
 
 struct UsesAreAccessible {
@@ -717,6 +798,15 @@ int64_t ObjectFifoPoolOp::getObjectSize() {
   return llvm::cast<MemRefType>(getElemType()).getNumElements();
 }
 
+int64_t ObjectFifoPoolOp::getObjectsPerBuffer() {
+  if (!getContiguous())
+    return 1;
+  int64_t objects = getDepth();
+  if (auto zeros = getZeroObjects())
+    objects += (*zeros)[0] + (*zeros)[1];
+  return objects;
+}
+
 LogicalResult ObjectFifoPoolOp::verify() {
   auto &target = (*this)->getParentOfType<DeviceOp>().getTargetModel();
   bool semaphoreLocks = target.hasProperty(AIETargetModel::UsesSemaphoreLocks);
@@ -733,8 +823,19 @@ LogicalResult ObjectFifoPoolOp::verify() {
     }
   }
 
+  if (auto zeros = getZeroObjects()) {
+    if (!getContiguous() || zeros->size() != 2 ||
+        llvm::any_of(*zeros, [](int32_t count) { return count < 0; }))
+      return emitOpError("'zeroObjects' expects [before, after] counts on a "
+                         "contiguous pool");
+  }
+
   if (auto buffers = getBuffers()) {
-    if (static_cast<int64_t>(buffers->size()) != getDepth()) {
+    if (getContiguous() && buffers->size() != 1) {
+      return emitOpError("expects one buffer holding its objects side by side");
+    }
+    if (!getContiguous() &&
+        static_cast<int64_t>(buffers->size()) != getDepth()) {
       return emitOpError("expects 'depth' buffers");
     }
   }
@@ -965,7 +1066,29 @@ int64_t ObjectFifoDmaEndpointOp::getNumDescriptors() {
   ObjectFifoPoolOp pool = getPoolOp();
   if (!pool)
     return 0;
+  if (pool.getContiguous()) {
+    if (!walksStream())
+      return 1;
+    FailureOr<StreamWindow> window = getStreamWindow();
+    return succeeded(window) ? window->outputs : 0;
+  }
   return pool.getDepth() * getSelectedSegments().size();
+}
+
+bool ObjectFifoDmaEndpointOp::walksStream() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  auto dims = getDimensions();
+  return pool && pool.getContiguous() && drains() && dims && !dims->empty() &&
+         !(*dims)[0].getValue().empty();
+}
+
+FailureOr<StreamWindow> ObjectFifoDmaEndpointOp::getStreamWindow() {
+  ArrayRef<BDPadLayoutAttr> pads;
+  if (auto padding = getPadDimensions(); padding && !padding->empty())
+    pads = (*padding)[0].getValue();
+  return inferStreamWindow((*getDimensions())[0].getValue(), pads,
+                           getPoolOp().getObjectSize(),
+                           [&] { return emitOpError(); });
 }
 
 int64_t ObjectFifoDmaEndpointOp::getRepeat() {
@@ -1030,6 +1153,10 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
     return emitOpError("nonzero padValue requires a non-empty padDimensions "
                        "entry");
   }
+
+  // A walk over the stream reads across the pool's objects, outputs apart.
+  if (walksStream())
+    return success(succeeded(getStreamWindow()));
 
   std::vector<ObjectFifoSegmentOp> selected = getSelectedSegments();
   for (size_t position = 0; position < selectedCount; ++position) {
@@ -1800,6 +1927,34 @@ LogicalResult ObjectFifoLinkOp::verify() {
                          "join or distribute");
   }
 
+  if (walksStream()) {
+    FailureOr<StreamWindow> window = getStreamWindow();
+    if (failed(window))
+      return failure();
+    if (!tile.isMemTile())
+      return emitOpError("a walk over a stream needs a MemTile link point");
+    ObjectFifoCreateOp in = getInputObjectFifos()[0];
+    ObjectFifoCreateOp out = getOutputObjectFifos()[0];
+    if (in.getRepeatCount() || out.getRepeatCount())
+      return emitOpError("a walk over a stream does not repeat objects");
+    if (in.getIterCount() || out.getIterCount())
+      return emitOpError("a walk over a stream runs without an iter_count");
+    const AIETargetModel &target = getTargetModel(getOperation());
+    // Its pool counts the stream's objects on one lock pair, and each output
+    // is a descriptor of its own on a MemTile channel.
+    if (window->objects > static_cast<int64_t>(target.getMaxLockValue()))
+      return emitOpError() << "a walk over a stream of " << window->objects
+                           << " objects needs a lock counting that many, "
+                              "but locks count to "
+                           << target.getMaxLockValue();
+    int64_t bds = target.getNumBDs(AIETileType::MemTile) / 2;
+    if (window->outputs > bds)
+      return emitOpError() << "a walk over a stream lowers to one descriptor "
+                              "per output, "
+                           << window->outputs << ", but a MemTile channel has "
+                           << bds;
+  }
+
   return success();
 }
 
@@ -1829,12 +1984,51 @@ std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
   return {};
 }
 
+bool ObjectFifoLinkOp::walksStream() {
+  if (isJoin() || isDistribute())
+    return false;
+  std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+  if (outs.empty())
+    return false;
+  ArrayRef<BDDimLayoutAttr> dims = outs[0].getDimensionsToStream();
+  if (dims.size() < 2 || dims.front().getSize() < 2)
+    return false;
+  int64_t inner = 1;
+  for (BDDimLayoutAttr dim : dims.drop_front())
+    inner *= dim.getSize();
+  int64_t objectSize =
+      cast<AIEObjectFifoType>(getInputObjectFifos()[0].getElemType())
+          .getElementType()
+          .getNumElements();
+  // A walk within one input object (rate conversion) is no window.
+  return getDimsMaxIdx(dims) >= objectSize &&
+         inner == cast<AIEObjectFifoType>(outs[0].getElemType())
+                      .getElementType()
+                      .getNumElements();
+}
+
+FailureOr<StreamWindow> ObjectFifoLinkOp::getStreamWindow() {
+  ObjectFifoCreateOp in = getInputObjectFifos()[0];
+  ObjectFifoCreateOp out = getOutputObjectFifos()[0];
+  ArrayRef<BDPadLayoutAttr> pads;
+  if (auto padding = out.getPadDimensions())
+    pads = *padding;
+  return inferStreamWindow(out.getDimensionsToStream(), pads,
+                           cast<AIEObjectFifoType>(in.getElemType())
+                               .getElementType()
+                               .getNumElements(),
+                           [&] { return emitOpError(); });
+}
+
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
   std::vector<ObjectFifoCreateOp> ins = getInputObjectFifos();
   std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
   if (isJoin())
     return outs[0];
   if (isDistribute())
+    return ins[0];
+  // A window's pool holds the stream it walks, object by object.
+  if (walksStream())
     return ins[0];
   auto count = [](ObjectFifoCreateOp fifo) {
     return cast<AIEObjectFifoType>(fifo.getElemType())

@@ -228,7 +228,8 @@ struct AIEObjectFifoSplitPass
         repeatCount ? builder.getI32IntegerAttr(*repeatCount) : IntegerAttr(),
         from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
-        holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr());
+        holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr(),
+        /*contiguous=*/false, /*zeroObjects=*/nullptr);
     createSegments(pool, loc, extents);
     return pool;
   }
@@ -329,7 +330,8 @@ struct AIEObjectFifoSplitPass
         /*locks=*/ArrayAttr(), /*repeatCount=*/IntegerAttr(),
         fifo.getDisableSynchronization(),
         builder.getStringAttr(fifo.name().getValue()),
-        /*initValues=*/ArrayAttr());
+        /*initValues=*/ArrayAttr(), /*contiguous=*/false,
+        /*zeroObjects=*/nullptr);
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }
@@ -468,13 +470,13 @@ struct AIEObjectFifoSplitPass
   /// Shim endpoint each fifo is driven through, where it has one.
   DenseMap<Operation *, std::string> shimEndpointName;
 
-  void createLinkPools();
+  LogicalResult createLinkPools();
 };
 
 /// A link's participants meet on one pool on the shared tile: the fifo carrying
 /// whole objects owns its size, and each of the other side's fifos occupies one
 /// segment.
-void AIEObjectFifoSplitPass::createLinkPools() {
+LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
   for (auto linkOp : device.getOps<ObjectFifoLinkOp>()) {
     auto sharedTile = linkOp.getOptionalSharedTile();
     if (!sharedTile) {
@@ -496,7 +498,17 @@ void AIEObjectFifoSplitPass::createLinkPools() {
     bool ownerIsOutput = llvm::is_contained(outs, owner);
     std::string name;
     int depth;
-    if (ownerIsOutput) {
+    // A walk over the stream reads across the objects of one image, so the
+    // pool holds the image's objects side by side.
+    bool window = linkOp.walksStream();
+    FailureOr<StreamWindow> walk = failure();
+    if (window) {
+      walk = linkOp.getStreamWindow();
+      if (failed(walk))
+        return failure();
+      name = (owner.name().getValue() + "_cons_pool").str();
+      depth = walk->objects;
+    } else if (ownerIsOutput) {
       name = (owner.name().getValue() + "_pool").str();
       depth = owner.size();
     } else {
@@ -515,6 +527,15 @@ void AIEObjectFifoSplitPass::createLinkPools() {
     auto pool = createPool(
         linkOp.getLoc(), name, *sharedTile, depth, elemType, owner, extents,
         /*holdsInitialContents=*/ownerIsOutput, linkOp.getRepeatCount());
+    if (window) {
+      pool.setContiguous(true);
+      // The padding objects sit in the buffer as zeros, since a MemTile
+      // descriptor walking four dimensions ignores its padding.
+      if (walk->top || walk->bottom)
+        pool.setZeroObjects(
+            SmallVector<int32_t>{static_cast<int32_t>(walk->top),
+                                 static_cast<int32_t>(walk->bottom)});
+    }
     linkPoolOwner.insert(owner);
 
     SmallVector<int32_t> allSegments;
@@ -532,6 +553,7 @@ void AIEObjectFifoSplitPass::createLinkPools() {
                              : allSegments};
     }
   }
+  return success();
 }
 
 void AIEObjectFifoSplitPass::runOnOperation() {
@@ -546,9 +568,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  createLinkPools();
-
-  if (failed(verifyAllocateDelegates())) {
+  if (failed(createLinkPools()) || failed(verifyAllocateDelegates())) {
     return signalPassFailure();
   }
 

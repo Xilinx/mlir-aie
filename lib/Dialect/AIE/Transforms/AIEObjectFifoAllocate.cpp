@@ -191,6 +191,14 @@ struct AIEObjectFifoAllocatePass
     return local ? local : pool.getTile();
   }
 
+  /// A contiguous pool's objects are one buffer; others have one per object.
+  static int bufferCount(ObjectFifoPoolOp pool) {
+    return pool.getContiguous() ? 1 : pool.getDepth();
+  }
+  static int64_t bufferBytes(ObjectFifoPoolOp pool) {
+    return pool.getObjectSizeInBytes() * pool.getObjectsPerBuffer();
+  }
+
   /// Reserve mandatory-local objects before any other pool can spill into
   /// their memory. Existing buffers are fixed and counted by identity, not by
   /// how many pools or endpoints reference them.
@@ -202,8 +210,8 @@ struct AIEObjectFifoAllocatePass
       if (!localPools.contains(pool))
         continue;
       Value tile = localPools.lookup(pool);
-      int count = pool.getBuffers() ? 0 : pool.getDepth();
-      int64_t size = pool.getObjectSizeInBytes();
+      int count = pool.getBuffers() ? 0 : bufferCount(pool);
+      int64_t size = bufferBytes(pool);
       if (!canAccess(pool.getTile(), tile) ||
           !canPlace(pool, tile, size, count)) {
         bufferFailure = pool;
@@ -231,9 +239,10 @@ struct AIEObjectFifoAllocatePass
       if (pool.getTileLike().isShimTile())
         continue;
       if (localPools.contains(pool))
-        bufferPlacements[pool].append(pool.getDepth(), localPools.lookup(pool));
+        bufferPlacements[pool].append(bufferCount(pool),
+                                      localPools.lookup(pool));
       else
-        generated.append(pool.getDepth(), pool);
+        generated.append(bufferCount(pool), pool);
     }
     int retries = kSpillRetries;
     return success(placeBuffers(generated, retries));
@@ -250,7 +259,7 @@ struct AIEObjectFifoAllocatePass
     if (buffers.empty())
       return true;
     ObjectFifoPoolOp pool = buffers.front();
-    int64_t size = pool.getObjectSizeInBytes();
+    int64_t size = bufferBytes(pool);
     Value homeTile = pool.getTileLike()->getResult(0);
     bool fitsHome = canPlace(pool, homeTile, size);
     SmallVector<Value> candidates;
@@ -373,16 +382,27 @@ struct AIEObjectFifoAllocatePass
     StringRef base = pool.getBaseName();
 
     SmallVector<Attribute> names;
+    MemRefType type = pool.getElemType();
+    ElementsAttr zeros;
+    if (pool.getContiguous()) {
+      type =
+          MemRefType::get({pool.getObjectsPerBuffer() * type.getNumElements()},
+                          type.getElementType());
+      if (pool.getZeroObjects())
+        zeros = DenseElementsAttr::get(
+            RankedTensorType::get(type.getShape(), type.getElementType()),
+            builder.getZeroAttr(type.getElementType()));
+    }
     // Initial contents may fill only the first objects of a deeper pool.
-    for (int i = 0; i < pool.getDepth(); i++) {
+    for (int i = 0; i < bufferCount(pool); i++) {
       ElementsAttr init =
-          i < filled ? cast<ElementsAttr>(initValues[i]) : nullptr;
+          i < filled ? cast<ElementsAttr>(initValues[i]) : zeros;
       std::string name = (base + "_buff_" + std::to_string(i)).str();
       Value placement = bufferPlacements[pool][i];
       setInsertionPointOn(placement);
       lastPlaced[placement] = BufferOp::create(
-          builder, pool.getLoc(), pool.getElemType(), placement,
-          builder.getStringAttr(name), /*address=*/nullptr, init,
+          builder, pool.getLoc(), type, placement, builder.getStringAttr(name),
+          /*address=*/nullptr, init,
           /*mem_bank=*/nullptr, /*core_data=*/nullptr);
       names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
     }
