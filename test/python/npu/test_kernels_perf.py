@@ -414,7 +414,9 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
     """
     timed = "wall" in current
     # The baseline's kernels share their object names with this tree's but
-    # not their sources; the registry would refuse them as a collision.
+    # not their sources; the registry would refuse either arm's as a collision
+    # with the other's.
+    saved = set(ExternalFunction._instances)
     ExternalFunction._instances.clear()
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("MLIR_AIE_KERNEL_SOURCES", tree)
@@ -424,6 +426,9 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
             )
         except AssertionError as e:
             raise AssertionError(f"baseline tree {tree}: {e}") from None
+        finally:
+            ExternalFunction._instances.clear()
+            ExternalFunction._instances.update(saved)
 
     def cycles(m):
         if "cycles" not in m:
