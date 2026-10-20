@@ -1092,8 +1092,9 @@ def mha(
     [`mm`][iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
     ``matmul_bf16_bf16_wrapper``, ``mm_aie2p.h``'s bf16 product on its 4x8x8
     micro-tile behind an ``idx_buffer`` gate (the call runs when key block
-    ``idx[0]`` holds a key some row of query block ``idx[1]`` keeps) bound
-    here to ``[0, 0]``. With ``pv`` it is the
+    ``idx[0]`` holds a key some row of query block ``idx[1]``, its first row
+    ``idx[2]`` positions past the block's start, keeps) bound here to
+    ``[0, 0, 0]``. With ``pv`` it is the
     ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
     the native 8x8x8 micro-tile and ungated. ``matmul_PV`` is that same
     product into a float32 ``O``, preceded by a row rescale, which needs the
@@ -1166,7 +1167,7 @@ def mha(
     tile = np.ndarray[(dim_m * dim_n,), np.dtype[score]]
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
-    idx = np.ndarray[(2,), np.dtype[np.int32]]
+    idx = np.ndarray[(3,), np.dtype[np.int32]]
     # mha.cc only calls mm.cc's bf16 products, so build none of the others.
     flags = [
         f"-DDIM_M={dim_m}",
@@ -1213,7 +1214,7 @@ def mha(
                 *(() if pv else (None,)),
             ),
             roles=(In, In, InOut) if pv else (In, In, InOut, Param),
-            parameter_bindings=(() if pv else ((3, np.array([0, 0], np.int32)),)),
+            parameter_bindings=(() if pv else ((3, np.array([0, 0, 0], np.int32)),)),
             reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
             initializers=((2, _zero_output),),
             acc_dtype=np.float32,
@@ -1302,9 +1303,11 @@ def mha_softmax(
     kernel masks by overwriting ``A``'s masked entries in place.
 
     Which block it is stays a runtime operand, as in the kernel: ``idx`` is
-    ``(key block, query block)``, a block no query row keeps a key of is
-    skipped, and ``S_q_eff``/``S_kv_eff`` are the sequence lengths whose
-    tails pad the block. A 64-key block of a multiple of 8 rows, at least
+    ``(key block, query block, row offset)``, the query block's first row at
+    position ``query block * dim_m + row offset``, so the queries may start
+    anywhere among the keys. A block no query row keeps a key of is skipped,
+    and ``S_q_eff``/``S_kv_eff`` are the query rows (in blocks' rows, from
+    the offset) and keys whose tails pad the block. A 64-key block of a multiple of 8 rows, at least
     16, takes the kernel's row-group path; any other shape the per-row one.
 
     Args:
@@ -1321,7 +1324,7 @@ def mha_softmax(
             self-attention, where every query row keeps its own position.
         packed: Every row is one query at the last key, ``S_kv_eff - 1``,
             as for one decode step with a KV group's heads as the rows;
-            ``idx``'s query block is then unused.
+            ``idx``'s query block and row offset are then unused.
         scale: The log2-domain factor ``s``, rounded to bf16: ``log2(e)``
             over the square root of the head dimension. Positive and finite,
             so a masked score, ``A``'s lowest times ``s``, stays below every
@@ -1347,7 +1350,7 @@ def mha_softmax(
     band = dict(dim_m=dim_m, dim_n=dim_n, causal=causal, window=window, packed=packed)
     tile = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
     state = np.ndarray[(4 * dim_m,), np.dtype[np.float32]]
-    idx = np.ndarray[(2,), np.dtype[np.int32]]
+    idx = np.ndarray[(3,), np.dtype[np.int32]]
     return _make_extern(
         "partial_softmax",
         _kernel_source("linalg/mha.cc"),
@@ -1433,9 +1436,9 @@ def mha_softmax_ref(
     padded row keeps ``m = l = 0``; a skipped or wholly padded block leaves
     the state untouched.
     """
-    kv, q = (int(i) for i in np.asarray(idx).ravel())
+    kv, q, offset = (int(i) for i in np.asarray(idx).ravel())
     rows, cols = np.indices((dim_m, dim_n))
-    key = kv * dim_n + cols - (s_kv_eff - 1 if packed else q * dim_m + rows)
+    key = kv * dim_n + cols - (s_kv_eff - 1 if packed else q * dim_m + offset + rows)
     keep = (rows < s_q_eff - q * dim_m) & (cols < s_kv_eff - kv * dim_n)
     if causal or window:
         keep &= key <= (0 if causal else window)

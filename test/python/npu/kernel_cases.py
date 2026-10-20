@@ -2350,27 +2350,27 @@ CASES += [
         for pv in ({}, {"pv": True})
     ],
     # The toolkit's online softmax over one key block: params is (key block,
-    # query block), scalars the two sequence lengths. The padded diagonal
-    # block takes every branch the full one skips (the causal mask, masked
-    # tail keys, padded query rows), so the two smoke cases cover the kernel;
-    # the plain diagonal block is its own cycle series.
+    # query block, row offset), scalars the two sequence lengths. The padded
+    # diagonal block takes every branch the full one skips (the causal mask,
+    # masked tail keys, padded query rows), so the two smoke cases cover the
+    # kernel; the plain diagonal block is its own cycle series.
     Case(
         "mha_softmax",
         calls=4,
-        params=((0, 1),),
+        params=((0, 1, 0),),
         scalars=(128, 64),
         smoke=True,
     ),
     Case(
         "mha_softmax",
         calls=4,
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(64, 64),
         tag="diagonal",
     ),
     check(
         "mha_softmax",
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(37, 37),
         tag="diagonal-padded",
         smoke=True,
@@ -2379,7 +2379,7 @@ CASES += [
         "mha_softmax",
         dict(accurate_exp2=True),
         calls=4,
-        params=((0, 1),),
+        params=((0, 1, 0),),
         scalars=(128, 64),
         tag="accurate",
         smoke=True,
@@ -2387,7 +2387,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(accurate_exp2=True),
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(37, 37),
         tag="accurate-diagonal-padded",
         smoke=True,
@@ -2398,7 +2398,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(dim_m=32),
-        params=((0, 1),),
+        params=((0, 1, 0),),
         scalars=(64, 64),
         tag="half-block-diagonal",
         smoke=True,
@@ -2406,7 +2406,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(causal=False),
-        params=((1, 0),),
+        params=((1, 0, 0),),
         scalars=(100, 100),
         tag="bidirectional-padded",
         smoke=True,
@@ -2414,7 +2414,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(causal=False, window=64),
-        params=((1, 2),),
+        params=((1, 2, 0),),
         scalars=(192, 192),
         tag="window",
         smoke=True,
@@ -2444,7 +2444,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(dim_m=16, dim_n=16),
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(13, 13),
         tag="diagonal-padded",
         smoke=True,
@@ -2452,7 +2452,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(dim_m=16, dim_n=16, accurate_exp2=True),
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(13, 13),
         tag="accurate-diagonal-padded",
         smoke=True,
@@ -2460,9 +2460,34 @@ CASES += [
     check(
         "mha_softmax",
         dict(dim_m=16, dim_n=32, causal=False, window=32),
-        params=((0, 2),),
+        params=((0, 2, 0),),
         scalars=(45, 45),
         tag="window-padded",
+        smoke=True,
+    ),
+    # Queries starting mid-block: the row offset moves the causal diagonal
+    # and the window's edge off the block's, on both paths.
+    check(
+        "mha_softmax",
+        params=((0, 0, 14),),
+        scalars=(37, 51),
+        tag="offset-diagonal-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(dim_m=16, dim_n=16),
+        params=((1, 1, 5),),
+        scalars=(29, 34),
+        tag="offset-diagonal-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(causal=False, window=64),
+        params=((1, 1, 27),),
+        scalars=(128, 192),
+        tag="offset-window",
         smoke=True,
     ),
     # P*V's product at a head dimension past the key block.

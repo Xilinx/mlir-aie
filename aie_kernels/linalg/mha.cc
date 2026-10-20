@@ -56,11 +56,13 @@ static constexpr bool BAND_AHEAD = MHA_CAUSAL || MHA_WINDOW > 0;
 static constexpr int32_t AHEAD = MHA_CAUSAL ? 0 : MHA_WINDOW;
 static constexpr bool BAND_BEHIND = MHA_WINDOW > 0;
 
-// The position of a query block's first row less that of a key block's.
-static inline __attribute__((always_inline)) int32_t
-block_diagonal(int32_t q_block, int32_t kv_block, int32_t B_q, int32_t B_kv,
-               int32_t S_kv_eff) {
-  return (MHA_PACKED ? S_kv_eff - 1 : q_block * B_q) - kv_block * B_kv;
+// idx_buffer is (key block, query block, row offset): the query block's
+// first row is at position query block * B_q + row offset, so the queries
+// may start anywhere. The position of that row less that of the key block's.
+static inline __attribute__((always_inline)) int32_t block_diagonal(
+    const int32_t *idx_buffer, int32_t B_q, int32_t B_kv, int32_t S_kv_eff) {
+  return (MHA_PACKED ? S_kv_eff - 1 : idx_buffer[1] * B_q + idx_buffer[2]) -
+         idx_buffer[0] * B_kv;
 }
 
 // Whether a query block keeps any key of a key block.
@@ -601,10 +603,10 @@ void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, score_t *c_out,
                               int32_t *idx_buffer) {
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
-  // idx_buffer is (key block, query block). Packed, the rows' position is
-  // S_kv_eff's, which this call does not take, so every block is computed.
-  if (!MHA_PACKED && !block_live(idx_buffer[1] * DIM_M - idx_buffer[0] * DIM_N,
-                                 DIM_M, DIM_N)) {
+  // Packed, the rows' position is S_kv_eff's, which this call does not take,
+  // so every block is computed.
+  if (!MHA_PACKED &&
+      !block_live(block_diagonal(idx_buffer, DIM_M, DIM_N, 0), DIM_M, DIM_N)) {
     // matmul_bf16_bf16 brackets itself; an empty pair keeps a masked call to
     // one interval too, so every call can be timed.
     event0();
@@ -646,9 +648,8 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, float *out, float *scale_buffer,
   }
 
   // Skip a key block no row of the query block keeps, as partial_softmax does.
-  if (!block_live(
-          block_diagonal(idx_buffer[1], idx_buffer[0], B_q, DIM_N, S_kv_eff),
-          B_q, DIM_N)) {
+  if (!block_live(block_diagonal(idx_buffer, B_q, DIM_N, S_kv_eff), B_q,
+                  DIM_N)) {
     ::aie::set_rounding(saved_rounding);
     event1();
     return;
@@ -708,8 +709,7 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
   // i + diagonal - MHA_WINDOW to i + diagonal + AHEAD, so a query block
   // narrower than the key block masks at the right column. Skip a block no
   // row keeps a key of.
-  const int32_t diagonal =
-      block_diagonal(q_block_idx, kv_block_idx, B_q, B_kv, S_kv_eff);
+  const int32_t diagonal = block_diagonal(idx_buffer, B_q, B_kv, S_kv_eff);
   if (!block_live(diagonal, B_q, B_kv)) {
     zero_vectorized<bfloat16, DIM_M, DIM_N>(P);
     ::aie::set_rounding(saved_rounding);

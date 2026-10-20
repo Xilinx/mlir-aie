@@ -99,16 +99,18 @@ def _keep(
     causal: bool = True,
     window: int = 0,
     packed: bool = False,
+    offset: int = 0,
 ) -> np.ndarray:
     """Which (query, key) pairs of this block pair the band admits.
 
     The query at q keeps the keys from ``q - window`` to ``q`` when causal,
     else to ``q + window``; a window of 0 is none. Packed, every query is at
-    the last key.
+    the last key. The query block's rows sit ``offset`` positions past its
+    start.
     """
     rows = q_block * b_q + np.arange(b_q)
     cols = kv_block * b_kv + np.arange(b_kv)
-    at = np.full(b_q, s_kv_eff - 1) if packed else rows
+    at = np.full(b_q, s_kv_eff - 1) if packed else rows + offset
     ahead = cols[None, :] - at[:, None]
     keep = (rows[:, None] < s_q_eff) & (cols[None, :] < s_kv_eff)
     if causal or window:
@@ -170,7 +172,7 @@ def softmax_blocks(
     """
     tile_ty = np.ndarray[(_B * _B,), BF]
     scale_ty = np.ndarray[(4 * _B,), F32]
-    idx_ty = np.ndarray[(2,), I32]
+    idx_ty = np.ndarray[(3,), I32]
 
     mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
     obj = mha.object_file
@@ -184,9 +186,11 @@ def softmax_blocks(
     of_p = ObjectFifo(tile_ty, name="p", depth=2)
     of_scale = ObjectFifo(scale_ty, name="scale", depth=1)
 
-    # idx_buffer is (key block, query block).
+    # idx_buffer is (key block, query block, row offset).
     idx = [
-        Buffer(idx_ty, name=f"idx{n}", initial_value=np.array([kv, q_block], np.int32))
+        Buffer(
+            idx_ty, name=f"idx{n}", initial_value=np.array([kv, q_block, 0], np.int32)
+        )
         for n, kv in enumerate((kv_first, kv_second))
     ]
 
@@ -235,7 +239,7 @@ def rescale_tile(o_in: In, scale_in: In, o_out: Out):
     acc_ty = np.ndarray[(_B * _B,), F32]
     tile_ty = np.ndarray[(_B * _B,), BF]
     scale_ty = np.ndarray[(4 * _B,), F32]
-    idx_ty = np.ndarray[(2,), I32]
+    idx_ty = np.ndarray[(3,), I32]
 
     mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B)
     rescale = mha.object_file.bind(
@@ -247,7 +251,7 @@ def rescale_tile(o_in: In, scale_in: In, o_out: Out):
     of_o_out = ObjectFifo(tile_ty, name="o_out", depth=1)
 
     # rescale_O never reads its idx_buffer.
-    idx = Buffer(idx_ty, name="idx", initial_value=np.array([0, 0], np.int32))
+    idx = Buffer(idx_ty, name="idx", initial_value=np.array([0, 0, 0], np.int32))
 
     def core(of_o_in, of_scale, of_o_out, rescale, idx):
         rescale(of_o_in.acquire(1), of_o_out.acquire(1), of_scale.acquire(1), _B, idx)
@@ -417,6 +421,7 @@ def mha_round(
     packed: CompileTime[bool] = False,
     accurate_exp2: CompileTime[bool] = False,
     f32_scores: CompileTime[bool] = False,
+    offset: CompileTime[int] = 0,
 ):
     """One round of mha.cc's steps from the mask on, over two cores.
 
@@ -425,7 +430,8 @@ def mha_round(
     its running state with each ``P``, and the other accumulates ``P V``. P
     is reblocked through a memtile on its way to ``matmul_PV``. The query
     block is ``b_q`` rows against a ``b_kv``-row key block, over a head
-    dimension ``d``. With ``f32_scores`` the scores are float32.
+    dimension ``d``. With ``f32_scores`` the scores are float32. The query
+    block's first row is ``offset`` positions past its start.
     """
     s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
     p_ty = np.ndarray[(b_q * b_kv,), BF]
@@ -433,7 +439,7 @@ def mha_round(
     o_ty = np.ndarray[(b_q * d,), BF]
     acc_ty = np.ndarray[(b_q * d,), F32]
     scale_ty = np.ndarray[(4 * b_q,), F32]
-    idx_ty = np.ndarray[(2,), I32]
+    idx_ty = np.ndarray[(3,), I32]
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
 
     qkt = kernels.mha(
@@ -477,7 +483,7 @@ def mha_round(
             Buffer(
                 idx_ty,
                 name=f"idx_{core}{k}",
-                initial_value=np.array([k, q_block], np.int32),
+                initial_value=np.array([k, q_block, offset], np.int32),
             )
             for k in range(n_kv)
         ]
@@ -580,9 +586,12 @@ def _round_case_data(
     causal=True,
     window=0,
     packed=False,
+    offset=0,
 ):
     """Return one round's inputs, as the mathematical operands and as device buffers."""
-    rng = np.random.default_rng(20260923 + 97 * q_block + n_kv + s_q_eff + s_kv_eff)
+    rng = np.random.default_rng(
+        20260923 + 97 * q_block + n_kv + s_q_eff + s_kv_eff + 7 * offset
+    )
     q = _dyadic(rng, (b_q, d), 0.25, mag=2)
     k = _dyadic(rng, (n_kv * b_kv, d), 0.125, mag=2)
     v = _dyadic(rng, (n_kv * b_kv, d), 0.25, mag=2)
@@ -591,14 +600,25 @@ def _round_case_data(
     # Packed, row r is aimed r keys before the last.
     keep = np.concatenate(
         [
-            _keep(q_block, kv, s_q_eff, s_kv_eff, b_q, b_kv, causal, window, packed)
+            _keep(
+                q_block,
+                kv,
+                s_q_eff,
+                s_kv_eff,
+                b_q,
+                b_kv,
+                causal,
+                window,
+                packed,
+                offset,
+            )
             for kv in range(n_kv)
         ],
         axis=1,
     )
     for row in range(b_q):
         if keep[row].any():
-            key = s_kv_eff - 1 - row if packed else q_block * b_q + row
+            key = s_kv_eff - 1 - row if packed else q_block * b_q + offset + row
             k[key] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
 
     scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(bfloat16)
@@ -723,6 +743,32 @@ def test_mha_round_keeps_its_band(
     q_block, n_kv, s_eff, shape, accurate_exp2, f32_scores
 ):
     _check_round(q_block, n_kv, s_eff, s_eff, accurate_exp2, f32_scores, **shape)
+
+
+# Queries starting mid-block, as a prompt call from any position runs: the
+# last valid row is the last key's, each row offset positions past its block's.
+@pytest.mark.parametrize(
+    "q_block,n_kv,s_q_eff,offset,shape",
+    [
+        # The diagonal mid-block, the query rows padded.
+        (0, 1, 50, 14, {}),
+        # Carried across key blocks to a last one cut partway.
+        (1, 3, 2 * _B, 37, {}),
+        # A narrower query block, on the row-group path.
+        (3, 2, 4 * 32 - 5, 5, dict(b_q=32)),
+        # A causal sliding window, its edge off the key blocks'.
+        (2, 3, 3 * _B - 20, 20, dict(window=_B)),
+        # 16-key blocks, a row one 16-lane vector.
+        (3, 6, 60, 30, dict(b_q=16, b_kv=16, window=16)),
+    ],
+)
+@pytest.mark.parametrize("accurate_exp2", [False, True])
+def test_mha_round_starts_its_queries_mid_block(
+    q_block, n_kv, s_q_eff, offset, shape, accurate_exp2
+):
+    _check_round(
+        q_block, n_kv, s_q_eff, s_q_eff + offset, accurate_exp2, offset=offset, **shape
+    )
 
 
 # A bf16 score whose product with _INV_SCALE, 45695, is 127 above its own bf16
@@ -857,7 +903,7 @@ def mha_long_round(
     tile_ty = np.ndarray[(_B * _B,), BF]
     acc_ty = np.ndarray[(_B * _B,), F32]
     scale_ty = np.ndarray[(4 * _B,), F32]
-    idx_ty = np.ndarray[(2,), I32]
+    idx_ty = np.ndarray[(3,), I32]
     s_eff = n_kv * _B
 
     qkt = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
@@ -937,7 +983,7 @@ def mha_long_round(
                 Buffer(
                     idx_ty,
                     name="idx_softmax",
-                    initial_value=np.array([0, n_kv - 1], np.int32),
+                    initial_value=np.array([0, n_kv - 1, 0], np.int32),
                 ),
             ],
         ),
@@ -954,7 +1000,7 @@ def mha_long_round(
                 Buffer(
                     idx_ty,
                     name="idx_pv",
-                    initial_value=np.array([0, n_kv - 1], np.int32),
+                    initial_value=np.array([0, n_kv - 1, 0], np.int32),
                 ),
             ],
         ),

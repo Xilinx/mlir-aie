@@ -1249,7 +1249,7 @@ def test_mha_binds_its_translation_unit_as_one_object():
     tile = np.ndarray[(64 * 64,), np.dtype[bfloat16]]
     acc = np.ndarray[(64 * 64,), np.dtype[np.float32]]
     scale = np.ndarray[(4 * 64,), np.dtype[np.float32]]
-    idx = np.ndarray[(2,), np.dtype[np.int32]]
+    idx = np.ndarray[(3,), np.dtype[np.int32]]
     expected = {
         "matmul_bf16_bf16_wrapper_scalar": [tile, tile, tile],
         "matmul_bf16_bf16_rowmaj": [tile, tile, tile],
@@ -1275,7 +1275,7 @@ def test_mha_binds_its_translation_unit_as_one_object():
     # declared, sampled and judged exactly like mm.
     assert fn.contract.unsupported is None and fn.contract.accumulates
     assert (fn.mac_dims, fn.stream_dims) == (mm.mac_dims, mm.stream_dims)
-    assert dict(fn.contract.parameter_bindings)[3].tolist() == [0, 0]
+    assert dict(fn.contract.parameter_bindings)[3].tolist() == [0, 0, 0]
     a, b = kd.sample_inputs(fn, calls=2)
     assert np.array_equal(
         fn.expected([a, b]),
@@ -1304,13 +1304,15 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
             kernels.mha_softmax(**bad)
 
     # A zero score gives a kept key the weight 1 against m = 0, a masked one 0.
-    # Packed, every row is the query at the last key.
+    # Packed, every row is the query at the last key. A row offset puts the
+    # query block's first row that many positions past its start.
     bands = [(c, w, False) for c in (True, False) for w in (0, 21, 32)]
+    blocks = ((0, 0, 0), (0, 1, 0), (1, 0, 0), (2, 1, 0), (3, 0, 0), (1, 1, 9))
     for causal, window, packed in [*bands, (True, 21, True), (True, 0, True)]:
-        for kv, q in ((0, 0), (0, 1), (1, 0), (2, 1), (3, 0)):
+        for kv, q, offset in blocks:
             p, _ = kernels.mha_softmax_ref(
                 np.zeros((1, 16 * 32)),
-                (kv, q),
+                (kv, q, offset),
                 40,
                 90,
                 scale=1.0,
@@ -1323,7 +1325,7 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
             want = np.zeros((16, 32))
             for r in range(16):
                 for c in range(32):
-                    qi, ki = 89 if packed else q * 16 + r, kv * 32 + c
+                    qi, ki = 89 if packed else q * 16 + offset + r, kv * 32 + c
                     if q * 16 + r >= 40 or ki >= 90 or (causal and ki > qi):
                         continue
                     if window and abs(ki - qi) > window:
@@ -1335,6 +1337,7 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
                 packed,
                 kv,
                 q,
+                offset,
             )
 
 
