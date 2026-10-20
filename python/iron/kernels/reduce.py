@@ -186,36 +186,39 @@ def reduce_min(
     return _reduce_kernel("min", tile_size, dtype, vectorized)
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}, {"dtype": np.float32}))
 def reduce_max(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
-    """Reduction kernel: finds the maximum element of a tile (int32 or bfloat16).
+    """Reduction kernel: finds the maximum element of a tile (int32, bfloat16 or float32).
 
     Args:
         tile_size: Number of elements in the input tile.
-        dtype: Element data type (``np.int32`` or ``bfloat16``).
+        dtype: Element data type (``np.int32``, ``bfloat16`` or ``np.float32``).
         vectorized: If ``True`` use vectorized path; ``False`` selects scalar.
 
     Returns:
         ExternalFunction configured for the reduce_max kernel.
 
     Raises:
-        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.
+        ValueError: When ``dtype`` is not ``np.int32``, ``bfloat16`` or
+            ``np.float32``.
     """
-    is_bf16 = np.dtype(dtype) == np.dtype(bfloat16)
-    is_int32 = np.dtype(dtype) == np.dtype(np.int32)
-    if not is_bf16 and not is_int32:
+    suffixes = {
+        np.dtype(np.int32): "",
+        np.dtype(bfloat16): "_bfloat16",
+        np.dtype(np.float32): "_float",
+    }
+    if np.dtype(dtype) not in suffixes:
         raise ValueError(
-            f"reduce_max() dtype must be np.int32 or bfloat16, got {dtype}"
+            f"reduce_max() dtype must be np.int32, bfloat16 or np.float32, got {dtype}"
         )
-
-    actual_dtype = bfloat16 if is_bf16 else np.int32
+    actual_dtype = np.dtype(dtype).type
     if vectorized:
         _require_vector_alignment(
             "reduce_max",
             tile_size,
-            _REDUCE_VEC_ELEMS_BF16 if is_bf16 else _REDUCE_VEC_ELEMS,
+            (_REDUCE_VEC_ELEMS_BF16 if actual_dtype is bfloat16 else _REDUCE_VEC_ELEMS),
         )
     in_ty = np.ndarray[(tile_size,), np.dtype[actual_dtype]]
     # The C++ kernel writes one scalar; the output tile must still be at least
@@ -224,9 +227,8 @@ def reduce_max(
     out_ty = np.ndarray[(_min_dma_aligned_elems(actual_dtype),), np.dtype[actual_dtype]]
 
     func_variant = "vector" if vectorized else "scalar"
-    suffix = "_bfloat16" if is_bf16 else ""
     return _make_extern(
-        f"reduce_max_{func_variant}{suffix}",
+        f"reduce_max_{func_variant}{suffixes[np.dtype(dtype)]}",
         _kernel_source("reduce/reduce_max.cc"),
         [in_ty, out_ty, np.int32],
         compile_flags=[f"-DREDUCE_MAX_ELEMS={tile_size}"],

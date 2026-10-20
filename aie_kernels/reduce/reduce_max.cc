@@ -104,6 +104,14 @@ void compute_max_bfloat16(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
   _compute_max<bfloat16>(a_in, b_in, c_out);
 }
 
+void reduce_max_vector_float(float *a_in, float *c_out, int32_t input_size) {
+  _reduce_max_vector<float, aie::vector<float>>(a_in, c_out, input_size);
+}
+
+void reduce_max_scalar_float(float *a_in, float *c_out, int32_t input_size) {
+  _reduce_max_scalar<float>(a_in, c_out, input_size);
+}
+
 void reduce_max_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
   _reduce_max_vector<int32_t, aie::vector<int32_t>>(a_in, c_out, input_size);
 }

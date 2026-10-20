@@ -32,7 +32,8 @@ def selective_scan_sample(
 
     A < 0, so the state decays.
     """
-    block = rng.standard_normal((calls, rows * (head_dim + 2 * state + 1))) * 0.5
+    words = -(-rows * (head_dim + 2 * state + 1) // 2)
+    block = rng.standard_normal((calls, 2 * words)) * 0.5
     heads = [
         np.concatenate(
             [
@@ -59,8 +60,9 @@ def selective_scan_ref(
     calls = len(head)
     block = np.asarray(block, np.float32).reshape(calls, -1)
     x = block[:, : rows * head_dim].reshape(calls, rows, head_dim)
-    bc = block[:, rows * head_dim : -rows].reshape(calls, rows, 2, state)
-    dt = block[:, -rows:]
+    end = rows * (head_dim + 2 * state)
+    bc = block[:, rows * head_dim : end].reshape(calls, rows, 2, state)
+    dt = block[:, end : end + rows]
     final = np.zeros((calls, head_dim * state), np.float32)
     y = np.zeros((calls, rows, head_dim), np.float32)
     s = np.zeros((head_dim, state), np.float32)
@@ -96,7 +98,8 @@ def selective_scan(
 
     ``selective_scan(block, head, final, y, valid, b)``: ``block`` is bf16
     x (``rows`` x ``head_dim``), then bc (``rows`` rows of the group's
-    ``state`` B then ``state`` C), then dt (``rows``). ``head`` is float32
+    ``state`` B then ``state`` C), then dt (``rows``), then a bf16 of
+    padding where those are odd, so a DMA moves whole words. ``head`` is float32
     ``(dt_bias, A, D)`` then the state before the head's first block,
     ``(head_dim, state)``. ``b`` counts blocks from 0, ``blocks`` to a head,
     and block ``b`` loads the state from ``head`` when it is a head's first.
@@ -122,11 +125,13 @@ def selective_scan(
             f"selective_scan: head_dim ({head_dim}) and state ({state}) must be "
             "multiples of 16"
         )
+    # One bf16 of padding after an odd block, so a DMA moves whole words.
+    words = -(-rows * (head_dim + 2 * state + 1) // 2)
     return _make_extern(
         "selective_scan",
         _kernel_source("ssm/selective_scan.cc"),
         [
-            np.ndarray[(rows * (head_dim + 2 * state + 1),), np.dtype[bfloat16]],
+            np.ndarray[(2 * words,), np.dtype[bfloat16]],
             np.ndarray[(3 + head_dim * state,), np.dtype[np.float32]],
             np.ndarray[(head_dim * state,), np.dtype[np.float32]],
             np.ndarray[(rows * head_dim,), np.dtype[bfloat16]],

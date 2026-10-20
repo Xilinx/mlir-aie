@@ -148,6 +148,11 @@ CASES: list[Case] = [
     Case("reduce_max", _bf16, calls=16, smoke=True),
     Case("reduce_max", _bf16, calls=256),
     check("reduce_max", dict(tile_size=16), tag="edge-one-vector"),
+    # float32: amd/IRON's Whisper log-mel takes a clip's largest energy as 96
+    # rows of 4000, then the one row of those 96.
+    Case("reduce_max", dict(tile_size=4000, dtype=np.float32), calls=16, smoke=True),
+    check("reduce_max", dict(tile_size=96, dtype=np.float32), tag="whisper-peaks"),
+    check("reduce_max", dict(tile_size=16, dtype=np.float32), tag="edge-one-vector"),
     check("reduce_max", dict(tile_size=32, dtype=bfloat16), tag="edge-one-vector"),
     Case("argmax", calls=16, scalars=(0,), smoke=True),
     Case("argmax", calls=256, scalars=(0,)),
@@ -340,11 +345,29 @@ CASES: list[Case] = [
     check("log_f32", scalars=(1e-3,), tag="mel-floor", smoke=True),
     check("log_f32", dict(tile_size=128), scalars=(1e-3,), tag="mel-row"),
     check("log_f32", dict(tile_size=32), scalars=(0.0,), tag="edge-one-vector"),
+    # Whisper's log-mel features: amd/IRON's lines of 1600 of a 30 s clip's
+    # 3000 frames of 128 mels, at its extractor's floor, range and affine.
+    Case(
+        "log10_clamp_f32",
+        dict(tile_size=1600),
+        calls=16,
+        scalars=(1e-10, 8.0, 4.0, 0.25),
+        smoke=True,
+    ),
+    check(
+        "log10_clamp_f32",
+        dict(tile_size=32),
+        scalars=(1e-10, 8.0, 4.0, 0.25),
+        tag="edge-one-vector",
+    ),
     # eltwise, the spectrum's magnitude the log-mel starts from; amd/IRON's
     # frames hold 320 bins.
     Case("magnitude_f32", calls=16, smoke=True),
     Case("magnitude_f32", calls=256),
     check("magnitude_f32", dict(tile_size=32), tag="edge-one-vector"),
+    # Whisper's power spectrum: 201 bins padded to 256.
+    Case("magnitude_f32", dict(tile_size=256, power=2), calls=16, smoke=True),
+    check("magnitude_f32", dict(tile_size=32, power=2), tag="edge-one-vector"),
     # On AIE2 a row this short takes the loop that is not software-pipelined.
     *[
         check(name, dict(tile_size=64), tag="short-row", **kw)
@@ -462,6 +485,28 @@ CASES: list[Case] = [
         calls=8,
         scalars=(1,),
         tag="one-row-state128",
+    ),
+    # An odd row count leaves B and C 32 bytes off the 64-byte line the
+    # 32-lane state loads need: IRON's decode block is one row.
+    *(
+        check(
+            "selective_scan",
+            dict(rows=rows, state=state, blocks=2),
+            calls=4,
+            scalars=(rows,),
+            tag=f"odd-rows{rows}-state{state}",
+        )
+        for rows, state in ((1, 32), (1, 64), (1, 128), (3, 64))
+    ),
+    # Granite 4.0-H's decode slice as IRON's SelectiveScan calls it: one row,
+    # its state loaded every call.
+    Case(
+        "selective_scan",
+        dict(rows=1, state=128),
+        calls=4,
+        scalars=(1,),
+        tag="iron-decode-one-row",
+        devices=("npu2",),
     ),
     # Two rows of the smallest state each kernel takes, and more valid rows
     # than the block holds.

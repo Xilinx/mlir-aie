@@ -8,6 +8,7 @@
 import hashlib
 import logging
 import re
+import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, get_origin
@@ -22,7 +23,11 @@ from ..helpers.npdtypes import is_block_float, np_ndarray_type_of
 from ..helpers.sourceloc import SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..utils import config
+from ..utils.compile import NPU_CACHE_HOME, compile_external_kernel
+from ..utils.compile.jit._object_cache import KernelObjectCache
+from ..utils.compile.jit.compilabledesign import COMPILE_LOCK_TIMEOUT_SECONDS
 from ..utils.compile.jit.context import get_compile_arg
+from ..utils.compile.readobj import linked
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -1151,6 +1156,81 @@ class ExternalFunction(Kernel):
     def use_chess(self) -> bool:
         """True when this kernel's object is built with xchesscc, not Peano."""
         return self._use_chess
+
+    def frame_bytes(
+        self,
+        target_arch: str,
+        object_cache: KernelObjectCache | None = None,
+        entry: str | None = None,
+    ) -> int:
+        """Return the core data memory this kernel takes beyond its arguments.
+
+        Args:
+            target_arch: ``"aie2"`` or ``"aie2p"``.
+            object_cache: The store it compiles through, so the design's build
+                reuses the object; the one under ``NPU_CACHE_HOME`` when None.
+            entry: A bound ``Kernel``'s symbol in this object to take the stack below.
+
+        Returns:
+            Its object's static data plus its stack, or plus a declared
+            ``stack_size_override`` for its own entry; 0 for what ``measure``
+            cannot read.
+        """
+        found = self.measure(
+            target_arch,
+            object_cache
+            or KernelObjectCache(
+                NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS
+            ),
+            entry=entry,
+        )
+        data = found.data if found else 0
+        if self.stack_size_override is not None and entry is None:
+            return data + self.stack_size_override
+        return data + ((found.stack if found else None) or 0)
+
+    def measure(
+        self,
+        target_arch: str,
+        object_cache=None,
+        embed_bitcode=False,
+        entry: str | None = None,
+    ):
+        """Compile this kernel and read its object from its entry.
+
+        Args:
+            target_arch: ``"aie2"`` or ``"aie2p"``.
+            object_cache: The design's ``KernelObjectCache``; None compiles
+                in a scratch directory.
+            embed_bitcode: Keep the object's LLVM IR, as the design's build
+                does for ``--check-lut-banks``.
+            entry: A bound ``Kernel``'s symbol in this object to read from.
+
+        Returns:
+            Its ``Linked``; None for a kernel aiecc cannot measure either: a
+            Chess or merge-mode kernel, or any kernel when no Peano is
+            installed.
+
+        Raises:
+            ValueError: Its factory built it for another architecture (see
+                ``check_target_arch``).
+        """
+        self.check_target_arch(target_arch)
+        try:
+            config.peano_cxx_path()
+        except RuntimeError:
+            return None
+        if self.use_chess or self.link_with_mode is not None:
+            return None
+        with tempfile.TemporaryDirectory() as tmp:
+            compile_external_kernel(
+                self,
+                tmp,
+                target_arch,
+                embed_bitcode=embed_bitcode,
+                object_cache=object_cache,
+            )
+            return linked(Path(tmp) / self.object_file_name, entry or self.name)
 
     def __call__(self, *args, **kwargs):
         """Call with argument count and type validation before emitting MLIR.

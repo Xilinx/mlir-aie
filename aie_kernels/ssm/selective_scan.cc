@@ -47,6 +47,11 @@ using bf16_t = aie::vector<bfloat16, W>;
 alignas(aie::vector_decl_align) float s[P * N];
 constexpr int RW = (SCAN_ROWS + 31) / 32 * 32;
 
+// B and C start SCAN_ROWS x P bf16s into the block, 64-byte whole only for
+// an even SCAN_ROWS; otherwise each row's are copied here for the L-lane loads.
+constexpr bool BC_ALIGNED = SCAN_ROWS * P * 2 % 64 == 0;
+alignas(64) bfloat16 bc_row[BC_ALIGNED ? L : 2 * N];
+
 alignas(aie::vector_decl_align) float ydot[P];
 alignas(aie::vector_decl_align) float halves[16 * 16];
 alignas(aie::vector_decl_align) bfloat16 dts[RW];
@@ -125,6 +130,11 @@ extern "C" void selective_scan(bfloat16 *restrict block, float *restrict head,
     }
     const bfloat16 *xt = x + t * P;
     const bfloat16 *B = bc + t * 2 * N;
+    if constexpr (!BC_ALIGNED) {
+      for (int n = 0; n < 2 * N; n += L)
+        aie::store_v(bc_row + n, aie::load_unaligned_v<L>(B + n));
+      B = bc_row;
+    }
     const bfloat16 *C = B + N;
     const Limbs<L> decay =
         bf16_limbs(acc_t<L>(aie::broadcast<float, L>(decays[t])));

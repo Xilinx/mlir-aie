@@ -496,6 +496,8 @@ def fused_mm(
         symbol_prefix=prefix,
         contract=contract,
     )
+    # Its source, flags and LUT includes are this arch's, as _make_extern's are.
+    fn.built_for_arch = arch
     acc = np.ndarray[(dim_m * dim_n,), np.dtype[np.float32]]
     b_chunk = (
         np.ndarray[(chunk_k * dim_n // 8,), np.dtype[v8bfp16ebs8]]
