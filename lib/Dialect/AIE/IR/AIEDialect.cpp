@@ -1627,11 +1627,11 @@ LogicalResult ObjectFifoLinkOp::verify() {
                        "semaphore locks, which this device lacks");
   }
 
-  // A join's memtile takes exactly a slot's bytes for each input object, and a
-  // distribute's memtile sends exactly a slot's bytes into each output object.
-  // A participant whose objects are another size never completes its side of
-  // the transfer, and the design hangs on the device. Sizes are compared in
-  // bytes: offsets count the shared object's elements.
+  // A join or distribute slot must hold a whole number of its participant's
+  // objects; otherwise an object straddles two shared objects and the DMA
+  // stalls. A whole-multiple slot can still hang if the producer sends fewer
+  // objects per shared object than the slot holds, but that depends on the
+  // core's loop, which the verifier can't see: this catches non-multiples only.
   auto elementsOf = [](Type objectFifoType) {
     return cast<MemRefType>(
                cast<AIEObjectFifoType>(objectFifoType).getElementType())
@@ -1657,23 +1657,21 @@ LogicalResult ObjectFifoLinkOp::verify() {
           dim.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
     return padded;
   };
-  auto slotMismatch = [&](StringRef role, ObjectFifoCreateOp participant,
-                          int64_t participantBytes, ObjectFifoCreateOp shared,
-                          int64_t slot, ArrayAttr offsets) {
+  auto checkSlot = [&](StringRef role, ObjectFifoCreateOp participant,
+                       int64_t object, ObjectFifoCreateOp shared,
+                       int64_t slotBytes, ArrayAttr offsets) -> LogicalResult {
+    if (slotBytes <= 0 || slotBytes % object == 0)
+      return success();
     std::string offsetText;
     llvm::raw_string_ostream os(offsetText);
     llvm::interleaveComma(offsets, os, [&](Attribute offset) {
       os << *getConstantIntValue(offset);
     });
     return emitOpError() << role << " @" << participant.name().getValue()
-                         << " moves " << participantBytes
-                         << " B per object, but its slot in @"
-                         << shared.name().getValue() << " ("
-                         << elementsOf(shared.getElemType()) << " elements) is "
-                         << slot << " elements ("
-                         << bytesOf(shared.getElemType(), slot)
-                         << " B) from offsets [" << offsetText
-                         << "]; the transfer would never complete";
+                         << " has " << object << " B objects, but its "
+                         << slotBytes << " B slot in @"
+                         << shared.name().getValue() << " from offsets ["
+                         << offsetText << "] is not a whole number of them";
   };
 
   if (isJoin()) {
@@ -1689,17 +1687,16 @@ LogicalResult ObjectFifoLinkOp::verify() {
     // from its participant by the lowering, so it cannot mismatch.
     for (auto [fifoIn, slot] :
          llvm::zip(getInputObjectFifos(), getJoinTransferLengths())) {
-      // The memtile receives the consumer-side object, else what the producer
-      // sends for its own object.
-      int64_t received =
+      int64_t object =
           fifoIn.getConsumerElemType()
               ? bytesOf(fifoIn.getConsumerElemTypeOrDefault(),
                         elementsOf(fifoIn.getConsumerElemTypeOrDefault()))
               : bytesOf(fifoIn.getElemType(),
                         sentElements(fifoIn, elementsOf(fifoIn.getElemType())));
-      if (slot > 0 && received != bytesOf(fifoOut.getElemType(), slot))
-        return slotMismatch("input", fifoIn, received, fifoOut, slot,
-                            getSrcOffsets());
+      if (failed(checkSlot("input", fifoIn, object, fifoOut,
+                           bytesOf(fifoOut.getElemType(), slot),
+                           getSrcOffsets())))
+        return failure();
     }
     if (!fifoOut.getDimensionsToStream().empty()) {
       int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
@@ -1729,12 +1726,15 @@ LogicalResult ObjectFifoLinkOp::verify() {
     for (auto [fifoOut, slot] :
          llvm::zip(getOutputObjectFifos(), getDistributeTransferLengths())) {
       // The memtile sends the slot, padded if the output pads.
-      int64_t sent = bytesOf(fifoIn.getElemType(), sentElements(fifoOut, slot));
-      int64_t object =
-          bytesOf(fifoOut.getElemType(), elementsOf(fifoOut.getElemType()));
-      if (slot > 0 && sent != object)
-        return slotMismatch("output", fifoOut, object, fifoIn, slot,
-                            getDstOffsets());
+      if (failed(checkSlot(
+              "output", fifoOut,
+              bytesOf(fifoOut.getElemType(), elementsOf(fifoOut.getElemType())),
+              fifoIn,
+              slot > 0
+                  ? bytesOf(fifoIn.getElemType(), sentElements(fifoOut, slot))
+                  : 0,
+              getDstOffsets())))
+        return failure();
     }
     if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
       int64_t maxIdx =

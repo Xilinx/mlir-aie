@@ -29,8 +29,8 @@ from util import construct_and_print_module
 # CHECK:      aie.objectfifo.link [@of0] -> [@of1]([] [])
 # CHECK:      aie.objectfifo @of2(%{{.*}}tile_1_1 dimensionsToStream [<size = 1, stride = 2>], {%{{.*}}tile_2_2 dimensionsFromStream [<size = 1, stride = 2>], %{{.*}}tile_2_3 dimensionsFromStream [<size = 1, stride = 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !aie.objectfifo<memref<256xui8>>
 # CHECK:      aie.objectfifo @of3(%{{.*}}tile_0_0, {%{{.*}}tile_1_1}, 1 : i32) : !aie.objectfifo<memref<256xi32>>
-# CHECK:      aie.objectfifo @of4(%{{.*}}tile_1_1, {%{{.*}}tile_2_2}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
-# CHECK:      aie.objectfifo @of5(%{{.*}}tile_1_1, {%{{.*}}tile_2_3}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+# CHECK:      aie.objectfifo @of4(%{{.*}}tile_1_1, {%{{.*}}tile_2_2}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+# CHECK:      aie.objectfifo @of5(%{{.*}}tile_1_1, {%{{.*}}tile_2_3}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
 # CHECK:      aie.objectfifo.link [@of3] -> [@of4, @of5]([] [0, 128])
 # CHECK:    }
 # CHECK:  }
@@ -59,7 +59,7 @@ def link_example():
         )
 
         of3 = object_fifo("of3", S, M, 1, np.ndarray[(256,), np.dtype[np.int32]])
-        of4 = object_fifo("of4", M, T0, 2, T.memref(128, T.i32()))
-        of5 = object_fifo("of5", M, T1, 2, T.memref(128, T.i32()))
+        of4 = object_fifo("of4", M, T0, 2, T.memref(64, T.i32()))
+        of5 = object_fifo("of5", M, T1, 2, T.memref(64, T.i32()))
         object_fifo_link(of3, [of4, of5], [], [0, 128])
         EndOp()
