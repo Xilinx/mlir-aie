@@ -672,11 +672,23 @@ aie.device(npu2_1col) @main {
 }
 """
 
+BUFFER_NAMED = """
+aie.device(npu2_1col) @main {
+  %t = aie.tile(0, 2)
+  %b = aie.buffer(%t) {sym_name = "main"} : memref<16xi32>
+  aie.runtime_sequence @run(%a: memref<16xi32>) {
+    %c = arith.constant 1 : i32
+    aiex.npu.rtp_write(@main, 0, %c) : i32
+  }
+}
+"""
 
-def test_a_prebuilt_device_is_not_renamed_over_a_symbol_of_its_name():
+
+@pytest.mark.parametrize("text", [SELF_NAMED, BUFFER_NAMED], ids=["symbol", "buffer"])
+def test_a_prebuilt_device_is_not_renamed_over_a_name_inside_it(text):
     with Context():
-        module = Module.parse(SELF_NAMED)
-        with pytest.raises(ValueError, match="holds a symbol named @main"):
+        module = Module.parse(text)
+        with pytest.raises(ValueError, match="holds an op named @main"):
             DeviceConfiguration.from_module("other", module)
         (run,) = DeviceConfiguration.from_module("main", module).runtimes
         assert run.name == "run"
