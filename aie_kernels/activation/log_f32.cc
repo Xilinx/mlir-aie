@@ -32,9 +32,8 @@ static const float log_q[10] = {1.0f,
                                 -0.07451186329126358f};
 
 // One Horner step of q: split q into limbs and return q f + c.
-static inline __attribute__((always_inline)) f32_acc
-log_step(f32_acc q, bf16_vec fh, bf16_vec fm, bf16_vec fl, float c,
-         bf16_vec one) {
+static inline __attribute__((always_inline)) f32_acc log_step(
+    f32_acc q, bf16_vec fh, bf16_vec fm, bf16_vec fl, float c, bf16_vec one) {
   bf16_vec qh, qm, ql;
   split3(q, qh, qm, ql, one);
   q = aie::mul(ql, fh);
@@ -70,13 +69,14 @@ log_prep(const float *__restrict x, float offset, bfloat16 *__restrict ef,
         aie::sub(bits, aie::broadcast<int32_t, f32_lanes>(0x3f3504f3)), 23);
     auto m = aie::sub(bits, aie::upshift(e, 23)).cast_to<float>();
     auto e_magic = aie::add(e, aie::broadcast<int32_t, f32_lanes>(0x4b400000));
-    aie::store_v(ef + i, aie::add(f32_acc(e_magic.cast_to<float>()), -12582912.0f)
-                             .to_vector<bfloat16>());
-    bf16_vec h, m_, l;
-    split3(aie::msc(f32_acc(m), one, one), h, m_, l, one);
-    aie::store_v(fh + i, h);
-    aie::store_v(fm + i, m_);
-    aie::store_v(fl + i, l);
+    aie::store_v(ef + i,
+                 aie::add(f32_acc(e_magic.cast_to<float>()), -12582912.0f)
+                     .to_vector<bfloat16>());
+    bf16_vec f_hi, f_mid, f_lo;
+    split3(aie::msc(f32_acc(m), one, one), f_hi, f_mid, f_lo, one);
+    aie::store_v(fh + i, f_hi);
+    aie::store_v(fm + i, f_mid);
+    aie::store_v(fl + i, f_lo);
   }
 }
 
@@ -103,10 +103,10 @@ log_pass(const float *__restrict q_in, float *__restrict q_out,
          const bfloat16 *__restrict fh, const bfloat16 *__restrict fm,
          const bfloat16 *__restrict fl, float c, bf16_vec one) {
   for (int i = 0; i < LOG_BLOCK; i += f32_lanes) {
-    const f32_acc q = log_step(f32_acc(aie::load_v<f32_lanes>(q_in + i)),
-                               aie::load_v<f32_lanes>(fh + i),
-                               aie::load_v<f32_lanes>(fm + i),
-                               aie::load_v<f32_lanes>(fl + i), c, one);
+    const f32_acc q =
+        log_step(f32_acc(aie::load_v<f32_lanes>(q_in + i)),
+                 aie::load_v<f32_lanes>(fh + i), aie::load_v<f32_lanes>(fm + i),
+                 aie::load_v<f32_lanes>(fl + i), c, one);
     aie::store_v(q_out + i, q.to_vector<float>());
   }
 }
