@@ -19,6 +19,15 @@
 
 namespace xilinx::AIE {
 
+/// How an arrow gets from one tile to another.
+enum class ArrowStyle {
+  /// A straight line between the nodes it joins, crossing whatever lies
+  /// between.
+  Straight,
+  /// Along the gaps between tiles, never over a tile's contents.
+  Channel,
+};
+
 /// What to draw and how large to draw it. Physical views need flows that carry
 /// `via` data; run `aie-find-flows=emit-vias=true` first.
 struct VisualizeOptions {
@@ -36,6 +45,9 @@ struct VisualizeOptions {
   std::vector<std::string> contractedNodeKinds;
   /// Keep flows that share a buffer or an endpoint in separate groups.
   bool noFollowBuffers = false;
+
+  /// How arrows are drawn between tiles.
+  ArrowStyle arrows = ArrowStyle::Straight;
 
   /// Scale edge width by the bytes each flow group moves per iteration.
   bool weighEdges = false;

@@ -40,6 +40,7 @@ namespace {
 using xilinx::AIE::ArrowPath;
 using xilinx::AIE::ArrowRenderer;
 using xilinx::AIE::ArrowRequest;
+using xilinx::AIE::createChannelArrowRenderer;
 using xilinx::AIE::createStraightArrowRenderer;
 using xilinx::AIE::LayoutGeometry;
 using xilinx::AIE::Point;
@@ -1397,7 +1398,10 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     return 0.30 + 0.17 * static_cast<double>(lines);
   };
 
-  std::unique_ptr<ArrowRenderer> arrows = createStraightArrowRenderer();
+  std::unique_ptr<ArrowRenderer> arrows =
+      options.arrows == AIE::ArrowStyle::Channel
+          ? createChannelArrowRenderer()
+          : createStraightArrowRenderer();
   // A renderer that needs room between tiles to put arrows in says so here,
   // rather than the caller having to know which style wants what spacing.
   double gapX = options.tileGapX;
@@ -1408,6 +1412,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   }
 
   LayoutGeometry layout;
+  // Only nop2 leaves supplied edge geometry alone; every laying-out engine
+  // recomputes it.
+  layout.preLaidOut = options.arrows == AIE::ArrowStyle::Channel;
   layout.tileWidth = options.tileWidth;
   layout.tileGapX = gapX;
   layout.tileGapY = gapY;
@@ -1433,11 +1440,38 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     return layout.tileCenterY(row) + layout.tileHeight(col, row) / 2 -
            headroom({col, row}) - index * options.localSpacing;
   };
+  // Arrows are laid out together: separating the ones that share a channel,
+  // and ordering them to cross less, are properties of the whole set.
+  SmallVector<ArrowRequest> arrowRequests;
+  std::map<Segment, unsigned> arrowIDs;
+  for (const auto &[segment, segmentRoutes] : segments) {
+    unsigned id = arrowRequests.size();
+    arrowIDs[segment] = id;
+    unsigned group = groups.routeGroups[segmentRoutes.front()->id];
+    arrowRequests.push_back({id,
+                             portNodeID(segment.source),
+                             portNodeID(segment.dest),
+                             {{segment.source.col, segment.source.row},
+                              {segment.dest.col, segment.dest.row}},
+                             portPosition(segment.source, layout),
+                             portPosition(segment.dest, layout),
+                             group,
+                             weightScale.width(groupBytes[group])});
+  }
+  std::map<std::string, Point> placedPorts =
+      arrows->portPositions(arrowRequests, layout);
+  auto portPoint = [&](const PortNode &port) {
+    auto found = placedPorts.find(portNodeID(port));
+    return found == placedPorts.end() ? portPosition(port, layout)
+                                      : found->second;
+  };
+
   double localNodeWidth =
       std::clamp(static_cast<double>(options.tileWidth) - 0.4, 1.0, 1.75);
 
   output << "digraph aie_routes {\n"
-         << "  graph [layout=neato, overlap=true"
+         << (layout.preLaidOut ? "  graph [layout=nop2, overlap=true"
+                               : "  graph [layout=neato, overlap=true")
          << (semanticView ? ", splines=curved" : "")
          << ", outputorder=nodesfirst, bgcolor=\"white\", pad=\"0.45\"];\n"
          << "  node [fontname=\"Helvetica\"];\n"
@@ -1454,21 +1488,20 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                                    static_cast<double>(weightScale.heaviest))));
     samples.erase(llvm::unique(samples), samples.end());
     output << "  legend_title [shape=plaintext, pos=\""
-           << dotCoordinate(legendX + 0.75) << ','
-           << dotCoordinate(legendY + 0.45)
-           << "!\", label=\"bytes moved per iteration\", fontsize=10, "
+           << layout.pos(legendX + 0.75, legendY + 0.45)
+           << "\", label=\"bytes moved per iteration\", fontsize=10, "
               "fontcolor=\"#333333\", class=\"legend\"];\n";
     for (auto [index, bytes] : llvm::enumerate(samples)) {
       double y = legendY - static_cast<double>(index) * 0.34;
       output << "  legend_" << index << "_from [shape=point, width=0.01, "
-             << R"(color="#ffffff", pos=")" << dotCoordinate(legendX) << ','
-             << dotCoordinate(y) << "!\", class=\"legend\"];\n"
+             << R"(color="#ffffff", pos=")" << layout.pos(legendX, y)
+             << "\", class=\"legend\"];\n"
              << "  legend_" << index << "_to [shape=point, width=0.01, "
-             << R"(color="#ffffff", pos=")" << dotCoordinate(legendX + 1.1)
-             << ',' << dotCoordinate(y) << "!\", class=\"legend\"];\n"
+             << R"(color="#ffffff", pos=")" << layout.pos(legendX + 1.1, y)
+             << "\", class=\"legend\"];\n"
              << "  legend_" << index << "_text [shape=plaintext, pos=\""
-             << dotCoordinate(legendX + 1.55) << ',' << dotCoordinate(y)
-             << "!\", label=\"" << formatBytes(bytes)
+             << layout.pos(legendX + 1.55, y) << "\", label=\""
+             << formatBytes(bytes)
              << "\", fontsize=9, fontcolor=\"#333333\", class=\"legend\"];\n"
              << "  legend_" << index << "_from -> legend_" << index
              << "_to [penwidth=\""
@@ -1494,8 +1527,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       output << "  " << tileNodeID(col, row) << " [shape=box";
       output << ", fixedsize=true, width=" << dotCoordinate(options.tileWidth)
              << ", height=" << dotCoordinate(layout.tileHeight(col, row))
-             << ", pos=\"" << dotCoordinate(layout.tileCenterX(col)) << ','
-             << dotCoordinate(layout.tileCenterY(row)) << "!\"";
+             << ", pos=\""
+             << layout.pos(layout.tileCenterX(col), layout.tileCenterY(row))
+             << '"';
       output << ", label=\"(" << col << ',' << row << ')';
       if (options.tileRoles) {
         if (roleClass != roleClasses.end())
@@ -1513,25 +1547,23 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   }
   if (!semanticView) {
     for (const PortNode &port : ports) {
-      auto [x, y] = portPosition(port, layout);
+      auto [x, y] = portPoint(port);
       output << "  " << portNodeID(port);
       if (port.bundle == AIE::WireBundle::DMA) {
         AIE::DMAChannelDir direction =
             port.dmaDirection.value_or(AIE::DMAChannelDir::MM2S);
         DMAChannelKey key{port.col, port.row, direction, port.channel};
         output << " [shape=box, fixedsize=true, width=0.82, height=0.18, pos=\""
-               << dotCoordinate(x) << ',' << dotCoordinate(y) << "!\", label=\""
-               << shortPortName(port) << "\", class=\""
-               << flowClasses(channelFlowGroups[key], "port")
+               << layout.pos(x, y) << "\", label=\"" << shortPortName(port)
+               << "\", class=\"" << flowClasses(channelFlowGroups[key], "port")
                << "\", fontsize=7, style=filled, fillcolor=\"#ffffff\", "
                   "color=\"#777777\"];\n";
       } else {
         StringRef kind =
             port.bundle == AIE::WireBundle::Core ? "port" : "port detail-vias";
-        output << " [shape=point, width=0.09, pos=\"" << dotCoordinate(x) << ','
-               << dotCoordinate(y) << "!\", xlabel=\"" << shortPortName(port)
-               << "\", class=\"" << flowClasses(portFlowGroups[port], kind)
-               << "\"];\n";
+        output << " [shape=point, width=0.09, pos=\"" << layout.pos(x, y)
+               << "\", xlabel=\"" << shortPortName(port) << "\", class=\""
+               << flowClasses(portFlowGroups[port], kind) << "\"];\n";
       }
     }
     unsigned annotationID = 0;
@@ -1569,8 +1601,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       }
       if (matchingGroups.empty())
         continue;
-      auto [sourceX, sourceY] = portPosition(rule.segment.source, layout);
-      auto [destX, destY] = portPosition(rule.segment.dest, layout);
+      auto [sourceX, sourceY] = portPoint(rule.segment.source);
+      auto [destX, destY] = portPoint(rule.segment.dest);
       unsigned offsetIndex = segmentAnnotationCounts[rule.segment]++;
       double x = (sourceX + destX) / 2;
       double y = (sourceY + destY) / 2;
@@ -1585,9 +1617,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       }
       output << "  arbitration_" << annotationID++
              << R"( [shape=box, fixedsize=false, margin="0.04,0.02", pos=")"
-             << dotCoordinate(x) << ',' << dotCoordinate(y) << "!\", label=\"r"
-             << rule.priority << " pkt=" << rule.value << '/' << rule.mask
-             << " -> A" << rule.arbiter << ".M" << rule.msel;
+             << layout.pos(x, y) << "\", label=\"r" << rule.priority
+             << " pkt=" << rule.value << '/' << rule.mask << " -> A"
+             << rule.arbiter << ".M" << rule.msel;
       if (rule.keepsPacketHeader)
         output << " header";
       if (rule.priorityRoute)
@@ -1611,16 +1643,15 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       std::string id = portNodeID(port);
       if (!topologyNodes.count(id))
         continue;
-      auto [x, y] = portPosition(port, layout);
+      auto [x, y] = portPoint(port);
       std::set<unsigned> nodeGroups;
       for (const SemanticEdge &edge : topologyEdges)
         if (edge.source == id || edge.dest == id)
           nodeGroups.insert(edge.flowGroup);
       output << "  " << id
              << " [shape=box, fixedsize=true, width=0.82, height=0.18, pos=\""
-             << dotCoordinate(x) << ',' << dotCoordinate(y) << "!\", label=\""
-             << shortPortName(port) << "\", class=\""
-             << flowClasses(nodeGroups, "port")
+             << layout.pos(x, y) << "\", label=\"" << shortPortName(port)
+             << "\", class=\"" << flowClasses(nodeGroups, "port")
              << "\", fontsize=7, style=filled, fillcolor=\"#ffffff\", "
                 "color=\"#777777\"];\n";
     }
@@ -1636,7 +1667,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     output << "  " << bufferNodeID(buffer.id)
            << " [shape=box, fixedsize=true, width="
            << dotCoordinate(localNodeWidth) << ", height=0.34, pos=\""
-           << dotCoordinate(x) << ',' << dotCoordinate(y) << "!\"";
+           << layout.pos(x, y) << '"';
     output << ", label=\"" << bufferLabel(buffer.op, buffer.id)
            << "\", class=\""
            << flowClasses(bufferFlowGroups[buffer.op], "buffer detail-buffers")
@@ -1663,9 +1694,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       output << "  " << runtimeArgumentNodeID(argument.id)
              << " [shape=ellipse, fixedsize=true, width="
              << dotCoordinate(localNodeWidth) << ", height=0.3, pos=\""
-             << dotCoordinate(x) << ',' << dotCoordinate(argumentY)
-             << "!\", label=\"%" << escapeDotLabel(argument.name)
-             << "\", class=\""
+             << layout.pos(x, argumentY) << "\", label=\"%"
+             << escapeDotLabel(argument.name) << "\", class=\""
              << flowClasses(argument.flowGroups, "runtime-argument")
              << "\", fontsize=8, style=filled, fillcolor=\"#fff7d6\", "
                 "color=\"#8f7c32\"];\n";
@@ -1696,7 +1726,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       output << "  " << callNodeID(call.id)
              << " [shape=box, fixedsize=true, width="
              << dotCoordinate(localNodeWidth) << ", height=0.3, pos=\""
-             << dotCoordinate(x) << ',' << dotCoordinate(y) << "!\", label=\""
+             << layout.pos(x, y) << "\", label=\""
              << escapeDotLabel(call.callee) << "\", class=\""
              << flowClasses(callFlowGroups[call.id], "call detail-calls")
              << "\", fontsize=8, style=filled, fillcolor=\"#f7f7f7\", "
@@ -1878,21 +1908,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     output << "}\n";
     return success();
   }
-  // Arrows are laid out together: separating the ones that share a channel,
-  // and ordering them to cross less, are properties of the whole set.
-  SmallVector<ArrowRequest> arrowRequests;
-  std::map<Segment, unsigned> arrowIDs;
-  for (const auto &[segment, segmentRoutes] : segments) {
-    unsigned id = arrowRequests.size();
-    arrowIDs[segment] = id;
-    arrowRequests.push_back({id,
-                             {{segment.source.col, segment.source.row},
-                              {segment.dest.col, segment.dest.row}},
-                             portPosition(segment.source, layout),
-                             portPosition(segment.dest, layout),
-                             groups.routeGroups[segmentRoutes.front()->id],
-                             weightScale.width(edgeBytes(segmentRoutes))});
-  }
   std::map<unsigned, ArrowPath> arrowPaths;
   for (ArrowPath &path : arrows->route(arrowRequests, layout))
     arrowPaths[path.id] = std::move(path);
@@ -1904,8 +1919,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     for (auto [index, point] : llvm::enumerate(found->second.points)) {
       if (index)
         output << ' ';
-      output << dotCoordinate(point.first) << ','
-             << dotCoordinate(point.second);
+      output << layout.pos(point.first, point.second);
     }
     output << '"';
   };

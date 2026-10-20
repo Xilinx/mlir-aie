@@ -32,6 +32,8 @@ using Point = std::pair<double, double>;
 /// leaves the way between them to the renderer.
 struct ArrowRequest {
   unsigned id;
+  /// The DOT nodes at either end, for a renderer that places them itself.
+  std::string sourceNode, destNode;
   llvm::SmallVector<std::pair<int, int>> tiles;
   /// Where the arrow leaves and enters, when the caller has pinned those
   /// points itself. A renderer that places its own endpoints ignores these.
@@ -77,6 +79,12 @@ public:
 /// Draws nothing, leaving every arrow a straight line between the nodes it
 /// joins. What the viewer has always drawn.
 std::unique_ptr<ArrowRenderer> createStraightArrowRenderer();
+
+/// Keeps arrows in the gaps between tiles: an arrow runs along a ring around
+/// its tile and crosses the channel to the next one, so none is drawn over a
+/// tile's contents. Arrows sharing a stretch are spread onto tracks, and
+/// corners are rounded.
+std::unique_ptr<ArrowRenderer> createChannelArrowRenderer();
 
 } // namespace xilinx::AIE
 

@@ -90,6 +90,11 @@ static cl::opt<double>
     maxEdgeWidth("max-edge-width",
                  cl::desc("Edge width in points for the heaviest flow group"),
                  cl::init(7.0));
+static cl::opt<std::string> arrowStyle(
+    "arrows",
+    cl::desc("How arrows run between tiles: straight (default) or channel, "
+             "which keeps them in the gaps and off the tiles"),
+    cl::value_desc("style"), cl::init("straight"));
 static cl::opt<bool>
     tileRoles("tile-roles",
               cl::desc("Headline each tile with the kernels it runs and mark "
@@ -161,6 +166,12 @@ int main(int argc, char *argv[]) {
   }
 
   AIE::VisualizeOptions options;
+  if (arrowStyle == "channel") {
+    options.arrows = AIE::ArrowStyle::Channel;
+  } else if (arrowStyle != "straight") {
+    errs() << "--arrows expects 'straight' or 'channel'\n";
+    return 3;
+  }
   options.deviceName = deviceName;
   options.runtimeSequenceName = runtimeSequenceName;
   options.skipRuntime = skipRuntime;

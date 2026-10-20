@@ -9,6 +9,7 @@
 #define AIE_LIB_VISUALIZE_LAYOUTGEOMETRY_H
 
 #include <map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -17,6 +18,11 @@ namespace xilinx::AIE {
 /// Where the tiles sit, in inches. Columns are evenly spaced; rows are not,
 /// because a row is as tall as its tallest tile.
 struct LayoutGeometry {
+  /// Graphviz reads a pinned `pos` in inches when it is laying the graph out
+  /// and in points when it is not. A renderer that supplies its own edge
+  /// geometry needs the latter, since only `nop2` leaves edges alone.
+  bool preLaidOut = false;
+
   double tileWidth = 0.0;
   double tileGapX = 0.0;
   double tileGapY = 0.0;
@@ -35,6 +41,13 @@ struct LayoutGeometry {
   double tileHeight(int col, int row) const {
     auto found = ownHeights.find({col, row});
     return found == ownHeights.end() ? rowHeights.at(row) : found->second;
+  }
+
+  /// A position as graphviz should read it, in whichever units apply.
+  std::string pos(double x, double y) const {
+    double scale = preLaidOut ? 72.0 : 1.0;
+    return std::to_string(x * scale) + "," + std::to_string(y * scale) +
+           (preLaidOut ? "" : "!");
   }
 
   double tileLeft(int col) const { return tileCenterX(col) - tileWidth / 2; }
