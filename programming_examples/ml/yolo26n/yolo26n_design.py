@@ -58,19 +58,26 @@ MEMTILE_LAG_ROWS = 8
 # What one buffering worker's ring takes of its tile.
 BUFFER_TILE_BYTES = 48 * 1024
 # Runs of operators, as network op index ranges, that one worker computes
-# row by row (see SegmentDesign.fuse): the C3k blocks of model.6, 13, 16
-# and 19, the PSA blocks' FFNs, and the Detect head's P4 and P5 branches.
+# row by row (see SegmentDesign.fuse): the bottlenecks of model.2, 4 and
+# 8, the C3k blocks of model.6, 13, 16 and 19, the PSA blocks' FFNs, and
+# the Detect head's P3 box branch and P4 and P5 branches. P3's class convs
+# stay apart: each runs split over two workers, which fusing would undo.
 FUSED = (
+    (6, 9),
+    (15, 18),
     (24, 28),
     (28, 34),
     (78, 82),
     (82, 88),
     (95, 99),
     (99, 105),
+    (41, 44),
+    (44, 47),
     (68, 71),
     (112, 116),
     (116, 122),
     (138, 141),
+    (143, 146),
     (151, 154),
     (154, 156),
     (156, 159),
