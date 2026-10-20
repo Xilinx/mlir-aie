@@ -250,3 +250,36 @@ module {
     }
   }
 }
+
+// -----
+
+// @second ends with a configuration no teardown undoes, and the host may
+// dispatch either sequence after it, so both keep their reset and the device
+// gets no init entry.
+
+// INIT-LABEL: aie.device(npu2_1col) @tail
+// INIT-NOT:   reconfig_init
+// INIT:       aie.runtime_sequence @first(%arg0: memref<16xi32>)
+// INIT-NEXT:    aiex.npu.load_pdi {device_ref = @empty_0
+// INIT:       aie.runtime_sequence @second(%arg0: memref<16xi32>)
+// INIT-NEXT:    aiex.npu.load_pdi {device_ref = @empty_1
+// INIT:         aiex.npu.load_pdi {device_ref = @tail, expand_mode = 0
+
+module {
+  aie.device(npu2_1col) @tail {
+    %compute = aie.tile(0, 2)
+    aie.switchbox(%compute) {
+      aie.connect<South : 1, DMA : 0>
+    }
+  }
+
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence @first(%arg0: memref<16xi32>) {
+      aiex.npu.load_pdi {device_ref = @tail}
+    }
+    aie.runtime_sequence @second(%arg0: memref<16xi32>) {
+      aiex.npu.load_pdi {device_ref = @tail}
+      aiex.npu.load_pdi {device_ref = @tail, expand_mode = 0 : i32}
+    }
+  }
+}

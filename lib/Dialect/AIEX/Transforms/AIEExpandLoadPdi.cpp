@@ -473,32 +473,37 @@ struct AIEExpandLoadPdiPass
       }
 
     // Per enclosing runtime sequence, the parity of the FIRST and LAST of its
-    // empty-device resets and of its overlay loads, plus the device type.
-    // `transformLoadPdi` picks the preload as `index % 2` over the module-wide
-    // op order, and that order includes ops this pass skips, so a sequence's
-    // first preload is not necessarily the even one and its parity cannot be
-    // recovered from a count. Captured BEFORE transforming, which erases the
-    // ops.
+    // empty-device resets and of its overlay loads, plus the device type, and
+    // the kind of its last load, which leaves the array as the next dispatch
+    // finds it. `transformLoadPdi` picks the preload as `index % 2` over the
+    // module-wide op order, and that order includes ops this pass skips, so a
+    // sequence's first preload is not necessarily the even one and its parity
+    // cannot be recovered from a count. Captured BEFORE transforming, which
+    // erases the ops.
     struct PreloadParity {
       unsigned firstParity = 0;
       unsigned lastParity = 0;
       bool seen = false;
       AIE::AIEDevice device = {};
     };
-    llvm::MapVector<AIE::RuntimeSequenceOp, std::array<PreloadParity, 2>>
-        preloadsPerSequence;
+    struct SequenceLoads {
+      std::array<PreloadParity, 2> preloads;
+      AIEX::ExpandMode last = AIEX::ExpandMode::none;
+    };
+    llvm::MapVector<AIE::RuntimeSequenceOp, SequenceLoads> sequences;
     for (auto [index, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
-      auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
-      if (!deviceRefAttr)
+      auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
+      if (!seq)
         continue;
-      AIEX::ExpandMode mode = loadPdiOp.getExpandMode().value_or(defaultMode);
+      SequenceLoads &loads = sequences[seq];
+      AIEX::ExpandMode mode = loads.last = expandMode(loadPdiOp);
       if (mode == AIEX::ExpandMode::none)
         continue;
-      auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
-      auto dev = module.lookupSymbol<AIE::DeviceOp>(deviceRefAttr);
-      if (!seq || !dev)
+      auto dev =
+          module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
+      if (!dev)
         continue;
-      auto &entry = preloadsPerSequence[seq][mode == AIEX::ExpandMode::ctrlpkt];
+      auto &entry = loads.preloads[mode == AIEX::ExpandMode::ctrlpkt];
       if (!entry.seen) {
         entry.firstParity = index % 2;
         entry.seen = true;
@@ -508,18 +513,20 @@ struct AIEExpandLoadPdiPass
     }
 
     // Teardown leaves the array ready for the next configuration, so only a
-    // sequence's first load needs a reset. With an init entry, `reconfig_init`
-    // holds that reset. A load this pass leaves alone sets up a configuration
-    // no teardown undoes, so the load after it keeps its reset.
+    // sequence's first load needs a reset. A load this pass leaves alone sets
+    // up a configuration no teardown undoes, so the load after it keeps its
+    // reset. The host may dispatch a device's sequences in any order, so with
+    // an init entry they start without a reset only if each ends torn down,
+    // and `reconfig_init` holds that reset.
     llvm::MapVector<AIE::DeviceOp, AIE::AIEDevice> initEntries;
-    for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
-      auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
-      if (clInitEntry && seq &&
-          expandMode(loadPdiOp) == AIEX::ExpandMode::write32)
-        if (auto dev = module.lookupSymbol<AIE::DeviceOp>(
-                loadPdiOp.getDeviceRefAttr()))
+    if (clInitEntry) {
+      for (auto &[seq, loads] : sequences)
+        if (loads.preloads[0].seen)
           initEntries.try_emplace(seq->getParentOfType<AIE::DeviceOp>(),
-                                  dev.getDevice());
+                                  loads.preloads[0].device);
+      for (auto &[seq, loads] : sequences)
+        if (loads.last != AIEX::ExpandMode::write32)
+          initEntries.erase(seq->getParentOfType<AIE::DeviceOp>());
     }
 
     // Transform load_pdi ops
@@ -528,13 +535,16 @@ struct AIEExpandLoadPdiPass
         teardownData;
     // The kind of each sequence's last load, which left the array as it is.
     llvm::DenseMap<Operation *, std::optional<AIEX::ExpandMode>> arrayState;
-    std::optional<AIEX::ExpandMode> start;
-    if (clInitEntry)
-      start = AIEX::ExpandMode::write32;
     for (auto [idx, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
       auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
+      std::optional<AIEX::ExpandMode> start;
+      if (seq && initEntries.contains(seq->getParentOfType<AIE::DeviceOp>()))
+        start = AIEX::ExpandMode::write32;
       std::optional<AIEX::ExpandMode> &state =
           arrayState.try_emplace(seq, start).first->second;
+      // We need to insert a reset/overlay `load_pdi` if the last configuration
+      // was configured using a different mode, or if we did not insert a
+      // teardown.
       bool keepPreload = !clTeardown || state != expandMode(loadPdiOp);
       state = expandMode(loadPdiOp);
       AIEX::BlockwriteData *config = nullptr, *teardown = nullptr;
@@ -601,8 +611,9 @@ struct AIEExpandLoadPdiPass
     if (clInlineConfig && failed(AIE::inlineWriteConfigs(module)))
       return signalPassFailure();
 
-    // Under teardown each sequence loads at most one reset, so none needs the
-    // append.
+    // Under teardown the firmware skips a reset only if no other PDI was loaded
+    // since the same one, so every configuration since was torn down and the
+    // array is as the reset leaves it. Nothing needs the append.
     if (clTeardown)
       return;
 
@@ -619,8 +630,8 @@ struct AIEExpandLoadPdiPass
     // sequence ends somewhere its own start will not repeat. The empty PDI is a
     // few hundred bytes, so the cost is negligible next to the configuration it
     // guards.
-    for (auto &[seq, kinds] : preloadsPerSequence) {
-      for (auto [ctrlPkt, info] : llvm::enumerate(kinds)) {
+    for (auto &[seq, loads] : sequences) {
+      for (auto [ctrlPkt, info] : llvm::enumerate(loads.preloads)) {
         if (!info.seen || info.firstParity != info.lastParity)
           continue;
         unsigned parity = 1 - info.lastParity;
