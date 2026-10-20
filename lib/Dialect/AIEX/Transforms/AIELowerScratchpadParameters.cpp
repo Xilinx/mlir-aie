@@ -221,11 +221,12 @@ static std::optional<int64_t> getMaxLengthSteps(AIE::DMABDOp op) {
 
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
 /// should be emitted into this sequence. Reads the explicit attribute if
-/// present; otherwise defaults to true iff the parent device uses any
-/// scratchpad parameter, from a core, a DMA BD or a task start, and the
-/// runtime sequence does
-/// not already contain a `aiex.sync_scratchpad_parameters_from_host` marker.
-static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
+/// present; otherwise defaults to true iff the runtime sequence does not
+/// already contain a `aiex.sync_scratchpad_parameters_from_host` marker and
+/// either a core of the device waits on a sync lock (`coresWait`) or the device
+/// uses a scratchpad parameter from a core, a DMA BD or a task start.
+static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp,
+                                            bool coresWait) {
   if (auto attr = seqOp.getEmitParameterSyncPreambleAttr()) {
     return attr.getValue();
   }
@@ -233,6 +234,9 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
   seqOp.walk([&](SyncScratchpadParametersFromHostOp) { hasManualSync = true; });
   if (hasManualSync) {
     return false;
+  }
+  if (coresWait) {
+    return true;
   }
   auto device = seqOp->getParentOfType<DeviceOp>();
   if (!device) {
@@ -243,7 +247,7 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
     if (found) {
       return;
     }
-    if (llvm::isa<ReadScratchpadParameterOp, WaitScratchpadParametersOp>(op) ||
+    if (llvm::isa<ReadScratchpadParameterOp>(op) ||
         op->hasAttr("offset_parameter") ||
         op->hasAttr("offset_state_table_idx") ||
         op->hasAttr("length_parameter") ||
@@ -407,9 +411,10 @@ struct AIELowerScratchpadParametersPass
   // ()==true, insert a marker SyncScratchpadParametersFromHostOp after the
   // last top-level load_pdi of the sequence body, or at its start if there is
   // none.
-  LogicalResult emitSequencePreambles(DeviceOp device, OpBuilder &builder) {
+  LogicalResult emitSequencePreambles(DeviceOp device, OpBuilder &builder,
+                                      bool coresWait) {
     WalkResult result = device.walk([&](RuntimeSequenceOp seqOp) {
-      if (!shouldEmitParameterSyncPreamble(seqOp)) {
+      if (!shouldEmitParameterSyncPreamble(seqOp, coresWait)) {
         return WalkResult::advance();
       }
 
@@ -837,7 +842,7 @@ struct AIELowerScratchpadParametersPass
       // parameter info.
       SmallVector<Value> syncLocks;
       if (failed(emitCorePreambles(d, builder, syncLocks)) ||
-          failed(emitSequencePreambles(d, builder)))
+          failed(emitSequencePreambles(d, builder, !syncLocks.empty())))
         return signalPassFailure();
       uint32_t scratchpadSize = static_cast<uint32_t>(allParams.size() * 4);
       lowerSyncParametersOps(d, scratchpadSize, paramEntries, syncLocks);
