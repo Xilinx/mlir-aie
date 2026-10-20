@@ -916,7 +916,13 @@ struct AIEObjectFifoAllocatePass
   /// holds no per-stream state, and sharing it needs the DMA's out-of-order
   /// packet mode.
   bool sharesPinnedChannel(RouteEndpoint endpoint, DMAChannelDir dir) {
-    if (dir != DMAChannelDir::MM2S || !tileOf(endpoint).isShimTile())
+    // An out-of-order receiver takes each object into the buffer its header
+    // names, so its channel keeps no order its fifos would have to agree on.
+    if (dir == DMAChannelDir::S2MM) {
+      auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+      return dma && dma.getOutOfOrder();
+    }
+    if (!tileOf(endpoint).isShimTile())
       return false;
     for (auto flow : device.getOps<RouteOp>()) {
       if (!flow.getPacket() && !clPacketSwObjectFifos)
@@ -948,6 +954,31 @@ struct AIEObjectFifoAllocatePass
         bds = endpointBDs(endpoint.getOperation());
       demand[{*col, *row, channel}] += bds;
     };
+    // An out-of-order pool starts where the channel's earlier pools end, so
+    // the fifos sharing it take disjoint runs of bd ids. The sender names a
+    // buffer by its id, so the fifo's other end takes the same base.
+    auto noteBdIdBase =
+        [&](RouteEndpoint endpoint, int channel,
+            DenseMap<std::tuple<int, int, int>, int64_t> &demand) {
+          auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+          if (!dma || !dma.getOutOfOrder() ||
+              endpoint.getRouteDirection() != DMAChannelDir::S2MM)
+            return;
+          TileLike tile = tileOf(endpoint);
+          auto col = tile.tryGetCol(), row = tile.tryGetRow();
+          if (!col || !row)
+            return;
+          int64_t base = demand.lookup({*col, *row, channel});
+          dma.setBdIdBase(base);
+          for (auto flow : device.getOps<RouteOp>())
+            for (auto destName :
+                 flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+              if (lookupEndpoint(destName).getOperation() == dma.getOperation())
+                if (auto src = dyn_cast<ObjectFifoDmaEndpointOp>(
+                        lookupEndpoint(flow.getSourceAttr()).getOperation()))
+                  src.setBdIdBase(base);
+        };
+
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       std::optional<int> channel = endpoint.getRouteChannel();
@@ -980,6 +1011,7 @@ struct AIEObjectFifoAllocatePass
             noteChannelOwner(diag, owner, channel);
           return failure();
         }
+        noteBdIdBase(endpoint, *channel, demand);
         noteDemand(endpoint, *channel);
         continue;
       }

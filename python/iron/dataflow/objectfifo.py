@@ -768,6 +768,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
         repeat_parameter: ScratchpadParameter | str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Shared body for fill()/drain().
 
@@ -804,6 +805,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             length_parameter=length_parameter,
             length_unit=length_unit,
             repeat_parameter=repeat_parameter,
+            out_of_order_id=out_of_order_id,
         )
 
     def fill(
@@ -818,8 +820,13 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
         repeat_parameter: ScratchpadParameter | str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
+
+        An ``out_of_order`` fifo takes ``out_of_order_id``: the buffer of the
+        pool this transfer lands in. One transfer carries one header, so it
+        carries one object; walk the pool by cycling the id across transfers.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body on a producer
         handle. See ``_emit_transfer`` for the shared arguments; returns a
@@ -828,6 +835,11 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
 
+        if self._object_fifo._out_of_order and out_of_order_id is None:
+            raise ValueError(
+                f"ObjectFifo '{self.name}' is out_of_order, so each fill names "
+                "the buffer it lands in: pass out_of_order_id"
+            )
         return self._emit_transfer(
             source,
             tap,
@@ -839,6 +851,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             length_parameter,
             length_unit,
             repeat_parameter,
+            out_of_order_id,
         )
 
     def drain(

@@ -747,11 +747,11 @@ SequentialPlacer::buildChannelRequirements(
   // so several packet-switched fifos leave on one channel and the switchbox
   // tells them apart by id.
   //
-  // Only that case. A channel whose descriptors are a fixed BD chain -- any
-  // S2MM channel, or an MM2S channel of a core or MemTile -- holds no per-fifo
-  // state, so two fifos on it would interleave into one ring. Sharing those
-  // needs the DMA's out-of-order packet mode, which no ObjectFifo lowering
-  // emits.
+  // A receiving channel shares when its fifos are out-of-order: each object
+  // carries the descriptor that takes it, so the channel keeps no order the
+  // fifos would have to agree on. An MM2S channel of a core or MemTile shares
+  // neither way -- its descriptors are a fixed chain, which fixes the order it
+  // sends in.
   // Keyed on the physical tile, not the logical one: each endpoint pinned to a
   // tile gets a logical tile of its own, and they share the channel all the
   // same. An unpinned logical tile has no physical tile yet and cannot share.
@@ -789,6 +789,41 @@ SequentialPlacer::buildChannelRequirements(
     return true;
   };
 
+  // The receiving counterpart: out-of-order fifos pinned to one S2MM channel
+  // of a tile share it, and the packet ids keep their objects apart.
+  llvm::DenseMap<std::tuple<int, int, int>, ObjectFifoCreateOp> sharedIn;
+  auto sharesConsumerChannel = [&](ObjectFifoCreateOp fifo, Operation *tileOp,
+                                   unsigned consumer) -> bool {
+    auto logicalTile = dyn_cast_or_null<LogicalTileOp>(tileOp);
+    std::optional<ArrayRef<int>> pinned = fifo.getConsDmaChannels();
+    if (!logicalTile || !pinned || consumer >= pinned->size())
+      return false;
+    int channel = (*pinned)[consumer];
+    std::optional<uint32_t> col = logicalTile.getCol();
+    std::optional<uint32_t> row = logicalTile.getRow();
+    if (channel < 0 || !col || !row)
+      return false;
+    auto [it, fresh] = sharedIn.try_emplace(
+        {static_cast<int>(*col), static_cast<int>(*row), channel}, fifo);
+    if (fresh)
+      return false;
+    ObjectFifoCreateOp other = it->second;
+    auto reject = [&](const Twine &why) {
+      fifo.emitError() << "shares S2MM channel " << channel << " with @"
+                       << other.getSymName() << ", but " << why;
+      return false;
+    };
+    if (!fifo.getOutOfOrder() || !other.getOutOfOrder())
+      return reject("a channel its fifos receive in turn holds their order; "
+                    "out_of_order puts that order in each object's header");
+    std::optional<uint8_t> id = fifo.getPacketId();
+    std::optional<uint8_t> otherId = other.getPacketId();
+    if (id && otherId && *id == *otherId)
+      return reject(Twine("both pin packet id ") +
+                    Twine(static_cast<unsigned>(*id)));
+    return true;
+  };
+
   // Count channels for every ObjectFifo, omitting only the link-tile side of
   // linked fifos. The off-link-tile endpoint still needs DMA: a shim that
   // produces a linked source fifo consumes an MM2S channel; a core that
@@ -804,7 +839,8 @@ SequentialPlacer::buildChannelRequirements(
     // Check if ANY consumer is a different tile type (needs DMA channel)
     bool producerNeedsDMA = false;
 
-    for (Value consumerTile : ofOp.getConsumerTiles()) {
+    for (auto [consumerIndex, consumerTile] :
+         llvm::enumerate(ofOp.getConsumerTiles())) {
       auto *consumerOp = consumerTile.getDefiningOp();
       auto consumerLogicalTile = dyn_cast_or_null<LogicalTileOp>(consumerOp);
 
@@ -817,7 +853,8 @@ SequentialPlacer::buildChannelRequirements(
 
       // This consumer needs a DMA channel (unless it's the link tile, which
       // the link loop credits separately).
-      if (consumerOp && !skipConsumerSide)
+      if (consumerOp && !skipConsumerSide &&
+          !sharesConsumerChannel(ofOp, consumerOp, consumerIndex))
         channelRequirements[consumerOp].first++; // input++
 
       producerNeedsDMA = true;

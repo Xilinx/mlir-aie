@@ -67,15 +67,3 @@ module @needs_packet {
     aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) {out_of_order} : !aie.objectfifo<memref<16xi32>>
   }
 }
-
-// -----
-
-// A shim's descriptors come from the runtime sequence, which names no buffer.
-module @no_shim_sender {
-  aie.device(npu2) {
-    %shim_noc_tile_0_0 = aie.tile(0, 0)
-    %tile_0_2 = aie.tile(0, 2)
-    // expected-error@+1 {{sends from a shim, whose descriptors the runtime sequence writes; out_of_order needs a sender that names the buffer each object lands in}}
-    aie.objectfifo @of(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) {packet, out_of_order} : !aie.objectfifo<memref<16xi32>>
-  }
-}
