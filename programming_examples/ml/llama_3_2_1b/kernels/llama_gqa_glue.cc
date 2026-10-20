@@ -55,20 +55,6 @@ static inline float sw_recip(float a) {
   return x;
 }
 
-// sw_recip on kVec lanes: the same seed and Newton steps, with the scalar
-// form's soft-float products as vec_mul_rne and its `-` as the same vsub.f.
-static inline ::aie::vector<float, kVec>
-vec_sw_recip(::aie::vector<float, kVec> a) {
-  ::aie::vector<float, kVec> two = ::aie::broadcast<float, kVec>(2.0f);
-  ::aie::vector<float, kVec> x =
-      ::aie::sub(::aie::broadcast<int32, kVec>(0x7EF477D5),
-                 a.template cast_to<int32>())
-          .template cast_to<float>();
-  for (int i = 0; i < 4; i++)
-    x = vec_mul_rne(x, ::aie::sub(two, vec_mul_rne(a, x)));
-  return x;
-}
-
 static inline float bits_to_float(int32_t bits) {
   float f;
   memcpy(&f, &bits, 4);
@@ -87,49 +73,7 @@ extern "C" void llama_q_requant(float *restrict q_fp, int8_t *restrict out) {
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-  static_assert(kNHeadsQ % kVec == 0,
-                "LLAMA_GQA_N_HEADS_Q must be a multiple of 16");
-  // q_scale holds each head's absmax until the scales are computed in place.
-  alignas(64) float q_scale[kNHeadsQ];
-  alignas(64) float q_inv[kNHeadsQ];
-  for (int h = 0; h < kNHeadsQ; h++) {
-    const float *src = q_fp + h * kHD;
-    ::aie::vector<int32, kVec> mag = ::aie::zeros<int32, kVec>();
-    for (int c = 0; c < kHD / kVec; c++)
-      mag = ::aie::max(
-          mag,
-          ::aie::bit_and(
-              int32(0x7fffffff),
-              ::aie::load_v<kVec>(src + c * kVec).template cast_to<int32>()));
-    q_scale[h] = bits_to_float(::aie::reduce_max(mag));
-  }
-  // Every head's scale and reciprocal at once. max(absmax, 1e-12f) is an
-  // integer max of the non-negative bits.
-  for (int g = 0; g < kNHeadsQ / kVec; g++) {
-    ::aie::vector<float, kVec> absmax =
-        ::aie::max(
-            ::aie::load_v<kVec>(q_scale + g * kVec).template cast_to<int32>(),
-            int32(0x2b8cbccc))
-            .template cast_to<float>();
-    ::aie::vector<float, kVec> scale =
-        vec_mul_rne(absmax, ::aie::broadcast<float, kVec>(1.0f / 127.0f));
-    ::aie::store_v(q_scale + g * kVec, scale);
-    ::aie::store_v(q_inv + g * kVec, vec_sw_recip(scale));
-  }
-  int8_t *tail = out + kQD;
-  for (int h = 0; h < kNHeadsQ; h++) {
-    const float *src = q_fp + h * kHD;
-    int8_t *dst = out + h * kHD;
-    ::aie::vector<float, kVec> q_inv_v =
-        ::aie::broadcast<float, kVec>(q_inv[h]);
-    for (int c = 0; c < kHD / kVec; c++)
-      ::aie::store_v(dst + c * kVec,
-                     vec_round_to_i8(vec_mul_rne(
-                         ::aie::load_v<kVec>(src + c * kVec), q_inv_v)));
-    memcpy(tail + h * 8 + 0, &q_scale[h], 4);
-    int32_t zero = 0;
-    memcpy(tail + h * 8 + 4, &zero, 4);
-  }
+  q_requant_heads<kNHeadsQ, kHD>(q_fp, out, out + kQD);
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   event1();

@@ -10,6 +10,12 @@ cores run q, k, v, o, gate, up and down back to back on a broadcast
 activation; each lane's weights for a layer are one contiguous DDR region in
 consumption order, filled by one task. Slots are 8224 B: 4 rows of K=2048 or
 1 row of K=8192, each followed by its int32 biases and fp32 scales.
+
+A layer runs as units, each taking one activation and giving one output
+object per core. Without fusion every projection is a unit. With `FUSE_QKV`
+q, k and v share one activation and form one unit whose per-core output is
+that core's KV group as llama_qkv_combine lays it out (`COMB_BYTES`, see
+kernels/llama_gemv_array.cc).
 """
 
 import argparse
@@ -54,6 +60,16 @@ PROJECTIONS = {
     "d": (HD, D, "f32"),
 }
 LAYER = "qkvogud"
+COMB_BYTES = 1056
+
+
+def layer_units(order, fuse_qkv):
+    """The units one layer runs: projection letters, with "qkv" fused when asked."""
+    if fuse_qkv:
+        if not order.startswith("qkv"):
+            raise ValueError(f"FUSE_QKV needs ORDER to start with qkv, got {order!r}")
+        return ["qkv", *order[3:]]
+    return list(order)
 
 
 def rows_per_slot(k):
@@ -101,11 +117,13 @@ def build(
     ORDER: CompileTime[str] = LAYER,
     GATE_INV: CompileTime[float] = 20.0,
     MEMTILE_DEPTH: CompileTime[int] = 0,
+    FUSE_QKV: CompileTime[bool] = False,
 ):
+    units = layer_units(ORDER, FUSE_QKV)
     n_slots = lane_slots(ORDER)
     lane_bytes = n_slots * SLOT
     w_total = N_CORES * N_LAYERS * lane_bytes
-    n_steps = N_LAYERS * len(ORDER)
+    n_steps = N_LAYERS * len(units)
     act_total = n_steps * ACT_BYTES
     out_total = N_CORES * n_steps * OUT_BYTES
 
@@ -143,29 +161,55 @@ def build(
         "llama_gemv_array_k2048_i8",
         [_i8(ACT_BYTES), t_slot, _i8(OUT_BYTES), np.int32, np.float32],
     )
+    fused = (
+        [KO.bind("llama_gemv_array_qkv_comb", [_i8(OUT_BYTES), _i8(OUT_BYTES)])]
+        if FUSE_QKV
+        else []
+    )
 
-    def w_core(c_act, c_w, c_out, kf2, kf8, ki8):
+    def gemv(proj, a, c_w, o, kf2, kf8, ki8, slot_base=0):
+        k, _, kind = PROJECTIONS[proj]
+        for s in range_(slots_per_core(proj)):
+            w = c_w.acquire(1)
+            if kind == "i8":
+                ki8(a, w, o, _i32(s), GATE_INV)
+            elif k == HD:
+                kf8(a, w, o, _i32(s))
+            else:
+                kf2(a, w, o, _i32(s) + slot_base)
+            c_w.release(1)
+
+    def w_core(c_act, c_w, c_out, kf2, kf8, ki8, *qkv):
         for _ in range_(N_LAYERS):
-            for proj in ORDER:
-                k, _, kind = PROJECTIONS[proj]
+            for unit in units:
                 a = c_act.acquire(1)
-                o = c_out.acquire(1)
-                for s in range_(slots_per_core(proj)):
-                    w = c_w.acquire(1)
-                    if kind == "i8":
-                        ki8(a, w, o, _i32(s), GATE_INV)
-                    elif k == HD:
-                        kf8(a, w, o, _i32(s))
-                    else:
-                        kf2(a, w, o, _i32(s))
-                    c_w.release(1)
+                if unit == "qkv":
+                    kcomb, scratch = qkv
+                    # q, k and v land at fp32 offsets 0, 256 and 320 of scratch.
+                    gemv("q", a, c_w, scratch, kf2, kf8, ki8)
+                    gemv("k", a, c_w, scratch, kf2, kf8, ki8, 64)
+                    gemv("v", a, c_w, scratch, kf2, kf8, ki8, 80)
+                    o = c_out.acquire(1)
+                    kcomb(scratch, o)
+                else:
+                    o = c_out.acquire(1)
+                    gemv(unit, a, c_w, o, kf2, kf8, ki8)
                 c_out.release(1)
                 c_act.release(1)
 
     workers = [
         Worker(
             w_core,
-            [of_act.cons(), w_cons[c], of_out[c].prod(), k_f2, k_f8, k_i8],
+            [
+                of_act.cons(),
+                w_cons[c],
+                of_out[c].prod(),
+                k_f2,
+                k_f8,
+                k_i8,
+                *fused,
+                *([Buffer(_i8(OUT_BYTES), name=f"qkv_fp{c}")] if FUSE_QKV else []),
+            ],
             tile=Tile(*CORE_TILES[c]),
         )
         for c in range(N_CORES)
@@ -347,6 +391,7 @@ def add_config_args(p):
     p.add_argument("--order", default=LAYER)
     p.add_argument("--gate-inv", type=float, default=20.0)
     p.add_argument("--memtile-depth", type=int, default=0)
+    p.add_argument("--fuse-qkv", action="store_true")
 
 
 def compile_kwargs(opts):
@@ -355,6 +400,7 @@ def compile_kwargs(opts):
         ORDER=opts.order,
         GATE_INV=opts.gate_inv,
         MEMTILE_DEPTH=opts.memtile_depth,
+        FUSE_QKV=opts.fuse_qkv,
     )
 
 
