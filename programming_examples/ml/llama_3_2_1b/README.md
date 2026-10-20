@@ -110,25 +110,27 @@ dispatch time / PT. N=16, PT=4 unless noted:
 
 | Context (position of the first token) | per-token | tok/s |
 |---|---|---|
-| **64** | **48.6 ms** | **20.6** |
-| 1024 | 66.8 ms | 15.0 |
-| 4096 | 125.1 ms | 8.0 |
-| 32768 | 670 ms | 1.5 |
-| 131071 (PT=1) | 2537 ms | 0.39 |
+| **64** | **48.7 ms** | **20.5** |
+| 1024 | 57.5 ms | 17.4 |
+| 4096 | 86.9 ms | 11.5 |
+| 32768 | 362 ms | 2.8 |
+| 131071 (PT=1) | 1304 ms | 0.77 |
 
 N=16 went from 452 ms/token to 212 ms by vectorizing the kernels, then to
 91.2 ms by moving the remaining scalar fp32 epilogues onto vectors (bit-exact),
 taking the lm_head's top-k insert off soft float, and double-buffering the
 up-projection weights, then to 86.8 ms by reading only the live KV blocks,
 then to 48.6 ms by running every projection on the shared 8-lane GEMV array
-(`aie2_decode.py`).
+(`aie2_decode.py`). Two cores attend each KV head's blocks, alternating, which
+halves the cost of context.
 Past a few thousand tokens attention dominates: each KV head's blocks fold on
 one core, about 18 ms per 1k tokens of context.
 
 **What bounds it now.** The layers' weights stream over the array's eight
 lanes (about 52 GB/s), but the lm_head's 262 MB still stream over one lane
-(about 19 ms a token), and past a few thousand tokens attention dominates:
-each KV head's blocks fold on one core, about 19 ms per 1k tokens of context.
+(about 19 ms a token), and past a few thousand tokens attention dominates,
+about 9.5 ms per 1k tokens of context; at 128k a 4-token dispatch outlasts the
+driver's timeout, so long contexts decode fewer tokens a dispatch.
 The array's activations and outputs pass through a DDR `stage` buffer
 between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
 60–89 tok/s on this model.
@@ -330,8 +332,5 @@ ScratchpadParameters:
 
 - **The shared 8-lane GEMV array** for every projection and the lm_head, with
   the glue fused into its epilogues; the old chain modes retire with it.
-- **Attention across cores**: each KV head's blocks split over the cores the
-  array frees, merged exactly (`llama_attn_merge_selfcal`, measured standalone
-  in `aie2_attn_block.py`), for long contexts.
 - **Prefill** on the device, token by token and then batched, with TTFT and
   tok/s measured end to end.

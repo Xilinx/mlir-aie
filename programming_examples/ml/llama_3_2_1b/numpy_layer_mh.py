@@ -395,6 +395,8 @@ def numpy_layer_mh_forward(
     attn_perslot=None,
     attn_lut=False,
     attn_tb=None,
+    attn_cores=1,
+    attn_interleaved=False,
 ):
     """Multi-head GQA single-layer forward + per-Q-head scale calibration.
 
@@ -412,9 +414,10 @@ def numpy_layer_mh_forward(
     `x` is fp32 in and fp32 out when this flag is set. The int8 path (flag
     False) preserves the device-test bit-exact contract.
 
-    attn_tb: attend in blocks of this many rows, one core per KV head, as the
-    growing decode's llama_attn_block does (numpy_attn_block.attention);
-    needs `position`.
+    attn_tb: attend in blocks of this many rows, as the growing decode's
+    llama_attn_block does (numpy_attn_block.attention), split across
+    `attn_cores` cores per KV head, contiguously or (`attn_interleaved`)
+    block by block; needs `position`.
     """
     lut_exp = layer["lut_exp"]
     lut_silu = layer["lut_silu"]
@@ -579,8 +582,9 @@ def numpy_layer_mh_forward(
                 layer["v_scales_slot"][kvh][:t_used],
                 t_used,
                 attn_tb,
-                1,
+                attn_cores,
                 lut_exp,
+                attn_interleaved,
             )
             sv_out_scales[heads] = scales
             for r in range(REP):

@@ -355,4 +355,14 @@ void llama_attn_merge_selfcal(int8_t *restrict parts, int8_t *restrict out,
   event1();
 }
 
+// llama_attn_merge_selfcal over two cores' states, the first core's first.
+void llama_attn_merge_pair_selfcal(int8_t *restrict state0,
+                                   int8_t *restrict state1,
+                                   int8_t *restrict out) {
+  alignas(64) int8_t parts[2 * kStateBytes];
+  memcpy(parts, state0, kStateBytes);
+  memcpy(parts + kStateBytes, state1, kStateBytes);
+  llama_attn_merge_selfcal(parts, out, 2);
+}
+
 } // extern "C"

@@ -31,7 +31,15 @@ import sys
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import addi, constant, divsi, index_cast, remsi
+from aie.dialects.arith import (
+    CmpIPredicate,
+    addi,
+    cmpi,
+    constant,
+    divsi,
+    index_cast,
+    remsi,
+)
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
 from aie.ir import IndexType
@@ -46,7 +54,7 @@ from aie.iron import (
     Worker,
     jit,
 )
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import else_, if_, range_
 from aie.iron.device import NPU2, Tile
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -198,7 +206,9 @@ def gather_tap(total, offset, count, stride, nbytes):
     )
 
 
-@jit
+# The sequential placer leaves the 31 cores' flows unroutable along the shim
+# row; the SA placer's placement routes.
+@jit(aiecc_flags=["--placer=sa_placer", "--sa-seed=1"])
 def build(
     *,
     PT: CompileTime[int] = 4,
@@ -209,6 +219,7 @@ def build(
     SAMPLE_TOPK: CompileTime[int] = SAMPLE_TOPK,
     SAMPLE_SEED: CompileTime[int] = SAMPLE_SEED,
     SILU_GATE_SCALE: CompileTime[float] = SILU_GATE_SCALE,
+    ATTN_CORES: CompileTime[int] = 2,
 ):
     if not 0 <= SAMPLE_TOPK <= KSET:
         raise ValueError(
@@ -448,6 +459,7 @@ def build(
     k_attn_block = KT.bind("llama_attn_block", [t_rc, t_kvhb, t_state, np.int32])
     k_attn_own = KT.bind("llama_attn_block_own", [t_rc, t_kvhb, t_state, np.int32])
     k_attn_merge = KT.bind("llama_attn_merge_selfcal", [t_state, t_sv, np.int32])
+    k_attn_pair = KT.bind("llama_attn_merge_pair_selfcal", [t_state, t_state, t_sv])
 
     # Token tok is at position p = t0 + tok. Each layer it attends the
     # p // KV_TB full blocks before its own, then its own block with its new
@@ -473,24 +485,110 @@ def build(
                 c_sv.release(1)
                 c_rc.release(1)
 
-    workers += [
-        Worker(
-            w_attn,
-            [
-                rc_eps[i].cons(),
-                kvb_eps[i].cons(),
-                sv_eps[i].prod(),
-                Buffer(t_state, name=f"attn_state_{i}"),
-                p_t0,
-                k_attn_init,
-                k_attn_block,
-                k_attn_own,
-                k_attn_merge,
-            ],
-            wait_for_parameters=True,
-        )
-        for i in range(N_HEADS_KV)
-    ]
+    # ATTN_CORES == 2: both cores of a KV head see every block, the first
+    # attending the even ones and the second the odd ones (whoever holds
+    # the last, own block sets the token's row into it); the second merges
+    # the first's state, then its own (numpy_attn_block.attention with
+    # interleaved=True). Alternating keeps both busy as the blocks stream.
+    def w_attn_split(c_rc, c_kvb, c_part, c_sv, state, t0p, mine, ki, kb_, ko, km):
+        t0 = t0p.read()
+        for tok in range_(PT):
+            p = addi(t0, _i32(tok))
+            n = addi(divsi(p, _const_i32(KV_TB)), _const_i32(1))
+            last = addi(n, _const_i32(-1))
+            last_rows = addi(remsi(p, _const_i32(KV_TB)), _const_i32(1))
+            for _ in range_(N_LAYERS):
+                rc = c_rc.acquire(1)
+                part = c_part.acquire(1) if mine == 0 else state
+                ki(part)
+                for b in range_(index_cast(IndexType.get(), n)):
+                    bi = _i32(b)
+                    kb = c_kvb.acquire(1)
+                    with if_(
+                        cmpi(
+                            CmpIPredicate.eq,
+                            remsi(bi, _const_i32(2)),
+                            _const_i32(mine),
+                        )
+                    ):
+                        with if_(cmpi(CmpIPredicate.eq, bi, last)) as own:
+                            ko(rc, kb, part, last_rows)
+                        with else_(own):
+                            kb_(rc, kb, part, KV_TB)
+                    c_kvb.release(1)
+                if mine == 0:
+                    c_part.release(1)
+                else:
+                    first = c_part.acquire(1)
+                    sv = c_sv.acquire(1)
+                    km(first, state, sv)
+                    c_sv.release(1)
+                    c_part.release(1)
+                c_rc.release(1)
+
+    if ATTN_CORES == 1:
+        workers += [
+            Worker(
+                w_attn,
+                [
+                    rc_eps[i].cons(),
+                    kvb_eps[i].cons(),
+                    sv_eps[i].prod(),
+                    Buffer(t_state, name=f"attn_state_{i}"),
+                    p_t0,
+                    k_attn_init,
+                    k_attn_block,
+                    k_attn_own,
+                    k_attn_merge,
+                ],
+                wait_for_parameters=True,
+            )
+            for i in range(N_HEADS_KV)
+        ]
+    elif ATTN_CORES == 2:
+        of_part = [
+            ObjectFifo(t_state, depth=1, name=f"attn_part_{i}")
+            for i in range(N_HEADS_KV)
+        ]
+        for i in range(N_HEADS_KV):
+            workers += [
+                Worker(
+                    w_attn_split,
+                    [
+                        rc_eps[i].cons(),
+                        kvb_eps[i].cons(),
+                        of_part[i].prod(),
+                        None,
+                        None,
+                        p_t0,
+                        0,
+                        k_attn_init,
+                        k_attn_block,
+                        k_attn_own,
+                        k_attn_pair,
+                    ],
+                    wait_for_parameters=True,
+                ),
+                Worker(
+                    w_attn_split,
+                    [
+                        rc_eps[i].cons(),
+                        kvb_eps[i].cons(),
+                        of_part[i].cons(),
+                        sv_eps[i].prod(),
+                        Buffer(t_state, name=f"attn_state_{i}"),
+                        p_t0,
+                        1,
+                        k_attn_init,
+                        k_attn_block,
+                        k_attn_own,
+                        k_attn_pair,
+                    ],
+                    wait_for_parameters=True,
+                ),
+            ]
+    else:
+        raise ValueError(f"ATTN_CORES must be 1 or 2, got {ATTN_CORES}")
 
     of_svfull = ObjectFifo(_i8(SVFULL_BYTES), depth=1, name="sv_full")
     of_af = ObjectFifo(_i8(AF_BYTES), depth=1, name="af")

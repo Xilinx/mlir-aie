@@ -139,7 +139,17 @@ def core_ranges(n_blocks, n_cores):
 
 
 def attention(
-    q_chunk_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb, n_cores, lut_exp
+    q_chunk_i8,
+    q_scales,
+    k_i8,
+    v_i8,
+    k_slot,
+    v_slot,
+    t,
+    tb,
+    n_cores,
+    lut_exp,
+    interleaved=False,
 ):
     """`llama_attn_block` over the cache's blocks, then `llama_attn_merge_selfcal`.
 
@@ -154,21 +164,28 @@ def attention(
         `tb`: rows per block.
         `n_cores`: cores the blocks are split across.
         `lut_exp`: fp32 (256,) exp LUT.
+        `interleaved`: core c takes blocks c, c + n_cores, ... instead of a
+            contiguous range (the array decode's split, where every core sees
+            every block).
 
     Returns:
         (int8 (rep, head_dim) output, fp32 (rep,) sv_out_scales, fp32 (rep, head_dim) sv).
     """
     n_blocks = -(-t // tb)
-    ranges = core_ranges(n_blocks, n_cores)
+    per_core = (
+        [range(c, n_blocks, n_cores) for c in range(n_cores)]
+        if interleaved
+        else [range(first, end) for first, end in core_ranges(n_blocks, n_cores)]
+    )
     rep = q_chunk_i8.shape[0]
     out = np.zeros(q_chunk_i8.shape, np.int8)
     scales = np.zeros(rep, np.float32)
     svs = np.zeros(q_chunk_i8.shape, np.float32)
     for h in range(rep):
         merged = None
-        for first, end in ranges:
+        for blocks in per_core:
             state = None
-            for b in range(first, end):
+            for b in blocks:
                 rows = slice(b * tb, min(t, (b + 1) * tb))
                 state = fold(
                     state,

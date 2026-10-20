@@ -67,6 +67,7 @@ T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
 ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8"))
 PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
+ATTN_CORES = 2
 DATA_DIR = Path(__file__).parent / "data"
 
 
@@ -164,6 +165,8 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
             attn_perslot=True,
             attn_lut=True,
             attn_tb=KV_TB,
+            attn_cores=ATTN_CORES,
+            attn_interleaved=True,
         )
         layers[L]["scales"] = scales
     xo_i8, xo_scale = x_cur
@@ -469,7 +472,13 @@ def main():
     stage0 = pack_stage(layers, gamma, x_i8, res_scale)
 
     session = DispatchSession(
-        build, opts.elf, PT=PT, N_LAYERS=N_LAYERS, T=T, KSET=ONESTREAM_KSET
+        build,
+        opts.elf,
+        PT=PT,
+        N_LAYERS=N_LAYERS,
+        T=T,
+        KSET=ONESTREAM_KSET,
+        ATTN_CORES=ATTN_CORES,
     )
     lmw_t = iron.tensor(lmw, dtype=np.int8)
     print(
