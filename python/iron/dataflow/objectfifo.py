@@ -119,6 +119,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         aie_stream: tuple[int, int] | None = None,
         packet: bool = False,
         packet_id: int | None = None,
+        out_of_order: bool = False,
     ):
         """Construct an ObjectFifo.
 
@@ -183,6 +184,13 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 designs that route on the id (e.g. a MemTile dispatching to one of several
                 cores). Requires ``packet``; when absent, allocation picks an id no other
                 flow is using. Defaults to None.
+            out_of_order (bool, optional): Receive each object into the buffer its sender
+                names in the packet header's ``out_of_order_id`` field, rather than walking
+                the pool in a fixed BD chain. The consumer's channel then carries no order
+                of its own, which is what lets several fifos share one S2MM channel. The
+                field is 6 bits and separate from ``packet_id``, so a pool costs ids out of
+                its own space, not out of the 5-bit routing one. Requires ``packet``.
+                Defaults to False.
 
         Raises:
             TypeError: If a stream walk is not a ``TensorAccessPattern``.
@@ -220,6 +228,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         self._aie_stream: tuple[int, int] | None = aie_stream
         self._packet: bool = packet
         self._packet_id: int | None = packet_id
+        self._out_of_order: bool = out_of_order
 
     @property
     def depth(self) -> int | None:
@@ -519,6 +528,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 consumer_datatype=consumer_datatype,
                 packet=self._packet or None,
                 packet_id=self._packet_id,
+                out_of_order=self._out_of_order or None,
                 loc=ir.Location.name(self.name, childLoc=loc or self._site.location()),
                 ip=ip,
             )
