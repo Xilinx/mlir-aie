@@ -27,7 +27,7 @@ from ..utils.compile import NPU_CACHE_HOME, compile_external_kernel
 from ..utils.compile.jit._object_cache import KernelObjectCache
 from ..utils.compile.jit.compilabledesign import COMPILE_LOCK_TIMEOUT_SECONDS
 from ..utils.compile.jit.context import get_compile_arg
-from ..utils.compile.readobj import linked
+from ..utils.compile.readobj import Linked, linked
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -1192,10 +1192,10 @@ class ExternalFunction(Kernel):
     def measure(
         self,
         target_arch: str,
-        object_cache=None,
-        embed_bitcode=False,
+        object_cache: KernelObjectCache | None = None,
+        embed_bitcode: bool = False,
         entry: str | None = None,
-    ):
+    ) -> Linked | None:
         """Compile this kernel and read its object from its entry.
 
         Args:

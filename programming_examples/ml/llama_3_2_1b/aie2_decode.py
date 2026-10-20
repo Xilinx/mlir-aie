@@ -33,7 +33,7 @@ import sys
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import (
+from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
     CmpIPredicate,
     addi,
     andi,
@@ -46,7 +46,7 @@ from aie.dialects.arith import (
     select,
     shrui,
 )
-from aie.extras.types import i32, index
+from aie.extras.types import i32, index  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,

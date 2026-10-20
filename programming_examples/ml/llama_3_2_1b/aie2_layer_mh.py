@@ -34,8 +34,8 @@ import sys
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import index_cast
-from aie.extras.types import i32
+from aie.dialects.arith import index_cast  # pyright: ignore[reportMissingImports]
+from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, ObjectFifo, Program, Runtime, TaskGroup, Worker, jit
 from aie.iron.controlflow import range_
@@ -89,7 +89,6 @@ SVCHUNK_TAIL = REP * 4  # 16 (per-Q-head sv_out_scale, self-calibrated)
 SVCHUNK_BYTES = SVCHUNK_BODY + SVCHUNK_TAIL  # 272
 SV_CONCAT_HALF = (N_HEADS_KV // 2) * SVCHUNK_BYTES  # 1088 (4 chunks)
 AF_BYTES = N_HEADS_Q * HEAD_D  # 2048
-# sv_merge_selfcal output: [AF_BYTES bodies | N_HEADS_Q*4 sv_out_scales].
 SVFULL_BYTES = AF_BYTES + N_HEADS_Q * 4  # 2176
 
 # kv-per-head: per-slot scale header (T fp32) + T*HEAD_D body. Each cached
@@ -409,7 +408,6 @@ def build(*, SILU_GATE_SCALE: CompileTime[float] = SILU_GATE_SCALE):
         "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_fp32out_acttail",
         [t_D8_i8, t_WU_slot, _f32(HD), np.int32],
     )
-    # up_requant: fp32[HD] -> global absmax -> up_out_scale + int8 uf + tail.
     k_uprequant = KO_SILU.bind("llama_up_requant", [_f32(HD), t_UF_i8])
     # down: fp32 out, act_scale (down_act_scale) from the self-calibrated sf
     # tail at act[HD]. act buffer is sf = int8[HD+8].

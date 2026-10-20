@@ -26,8 +26,8 @@ import sys
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import index_cast
-from aie.extras.types import i32
+from aie.dialects.arith import index_cast  # pyright: ignore[reportMissingImports]
+from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,

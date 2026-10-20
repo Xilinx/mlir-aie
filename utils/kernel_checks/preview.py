@@ -56,7 +56,15 @@ import sa_placer_hw  # noqa: E402
 
 # Per hardware seed: its batch 1 launch and streaming time in us, and its cost.
 HW_SEEDS = {3: (316.0, 65.0, 290), 2: (309.0, 65.0, 295), 7: (313.0, 72.0, 295)}
-HW_DETAIL = ("seed", "batch", "passed", "us_per_image", "e2e_us_per_image")
+HW_DETAIL = (
+    "seed",
+    "batch",
+    "effort_label",
+    "passed",
+    "us_per_image",
+    "e2e_us_per_image",
+    "placement",
+)
 
 
 def extract(ref: str, into: Path) -> Path:
@@ -294,38 +302,55 @@ def refused_night(out: Path) -> None:
 
 
 def _hw_night(rng: random.Random) -> tuple[list, dict]:
-    """One synthetic hardware nightly: its rows and meta."""
-    runs, placements = [], []
+    """One synthetic hardware nightly at each SA effort: its rows and meta."""
+    runs, compiles, placements = [], [], []
     for seed, (one, streaming, cost) in HW_SEEDS.items():
-        digest = hashlib.sha256(str(seed).encode()).hexdigest()[:12]
-        for batch in (1, 4, 16, 64):
-            launch = (one + streaming * (batch - 1)) * rng.uniform(0.99, 1.02)
-            per, e2e = launch / batch, (launch + 75) / batch
-            runs.append(
+        for effort_label in sa_placer_hw._EFFORTS:
+            digest = hashlib.sha256(f"{seed}/{effort_label}".encode()).hexdigest()[:12]
+            compiles.append(
                 {
                     "seed": seed,
-                    "batch": batch,
+                    "effort_label": effort_label,
                     "passed": True,
-                    "launch_us": round(launch, 1),
-                    "us_per_image": round(per, 2),
-                    "us_per_image_range": f"median {per * 1.02:.2f}, MAD {per * 0.005:.2f}, p95 {per * 1.08:.2f}",
-                    "e2e_us_per_image": round(e2e, 2),
-                    "e2e_range": f"median {e2e * 1.05:.2f}, MAD {e2e * 0.01:.2f}, p95 {e2e * 1.15:.2f}",
                     "compile_s": round(rng.uniform(39, 41), 1),
                     "placement": digest,
                 }
             )
-        placements.append({"seed": seed, "placement": digest, "placement_cost": cost})
+            for batch in (1, 4, 16, 64):
+                launch = (one + streaming * (batch - 1)) * rng.uniform(0.99, 1.02)
+                per, e2e = launch / batch, (launch + 75) / batch
+                runs.append(
+                    {
+                        "seed": seed,
+                        "batch": batch,
+                        "effort_label": effort_label,
+                        "passed": True,
+                        "launch_us": round(launch, 1),
+                        "us_per_image": round(per, 2),
+                        "us_per_image_range": f"median {per * 1.02:.2f}, MAD {per * 0.005:.2f}, p95 {per * 1.08:.2f}",
+                        "e2e_us_per_image": round(e2e, 2),
+                        "e2e_range": f"median {e2e * 1.05:.2f}, MAD {e2e * 0.01:.2f}, p95 {e2e * 1.15:.2f}",
+                        "placement": digest,
+                    }
+                )
+            placements.append(
+                {
+                    "seed": seed,
+                    "effort_label": effort_label,
+                    "placement": digest,
+                    "placement_cost": cost,
+                }
+            )
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
         "measurement_sane": True,
-        "detail": [
-            {k: r[k] for k in HW_DETAIL + ("compile_s", "placement")} for r in runs
-        ],
+        "compiles": compiles,
+        "placements": placements,
+        "detail": [{k: r[k] for k in HW_DETAIL} for r in runs],
         "failed": [],
         "exitstatus": 0,
     }
-    return sa_placer_hw.aggregate(runs, placements), meta
+    return sa_placer_hw.aggregate(runs, compiles, placements), meta
 
 
 def _sweep_night(rng: random.Random) -> tuple[list, dict]:

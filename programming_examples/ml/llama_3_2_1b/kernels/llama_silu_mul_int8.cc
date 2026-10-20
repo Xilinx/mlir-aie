@@ -159,10 +159,8 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
   event1();
 }
 
-// up_requant (Phase 2b self-cal): the up_proj gemm now emits fp32[kCols]; this
-// stage computes up_out_scale ON-CHIP (global absmax) and requants to int8,
-// writing up_out_scale to out[kCols..kCols+4] (out is int8[kCols+8]) so the
-// downstream silu reads up_scale from the up tail (as it already does).
+// Requantizes up_proj's fp32 output to int8 by its global absmax and stores
+// that scale at out[kCols] (out is int8[kCols + 8]) for silu_mul to read.
 void llama_up_requant(float *restrict up_fp, int8_t *restrict out) {
   event0();
   const ::aie::saturation_mode prev_sat =

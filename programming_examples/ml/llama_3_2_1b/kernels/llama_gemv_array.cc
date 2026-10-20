@@ -85,9 +85,8 @@ void llama_gemv_array_resid_partial(int8_t *restrict act, int8_t *restrict fp,
 }
 
 // The glue core's half of llama_rescale_add_D over the joined blocks (lo:
-// cores 0-3, hi: cores 4-7): the global absmax is the integer max of the
-// eight partials, then the same scale, reciprocal and requant. out is
-// int8[2048 + 8] with the new scale at out[2048].
+// cores 0-3, hi: cores 4-7). The eight partials are integer, so their max is
+// exact; see llama_rescale_add_D for the rest. out is int8[2048 + 8].
 void llama_gemv_array_rescale_finalize(int8_t *restrict lo, int8_t *restrict hi,
                                        int8_t *restrict out) {
   event0();

@@ -81,14 +81,10 @@ extern "C" void llama_q_requant(float *restrict q_fp, int8_t *restrict out) {
   event1();
 }
 
-// Self-calibrating sv_merge: the selfcal flowkv writes each KV group's chunk
-// as [REP*kHD body | REP*4 sv_out_scale] (272 B). The memtile join packs 4
-// such chunks per half (in_lo/in_hi). This kernel DE-INTERLEAVES them into
-//   out[0 .. kQD]                 = all 32 Q-head sv bodies, contiguous
-//   out[kQD .. kQD + kNHeadsQ*4]  = all 32 per-Q-head sv_out_scales (fp32)
-// so the downstream af_concat reads both bodies and sv_out_scales from this
-// single buffer (no host af_scales fifo). Q-head order is preserved:
-// KV group g holds Q heads [g*REP .. g*REP+REP).
+// Each KV group's chunk is [REP*kHD body | REP*4 sv_out_scale]; the memtile
+// join packs 4 chunks per half. De-interleave them into [kQD bodies |
+// kNHeadsQ*4 scales] so af_concat reads both from one buffer. KV group g
+// holds Q heads [g*REP, g*REP + REP), so Q-head order is preserved.
 static constexpr int kSvBody = kREP * kHD; // 256 (one KV group's body)
 static constexpr int kSvTail = kREP * 4;   // 16  (one KV group's scales)
 static constexpr int kSvChunk = kSvBody + kSvTail; // 272
@@ -186,11 +182,8 @@ extern "C" void llama_comb_rope_rows(int8_t *restrict comb,
   event1();
 }
 
-// af_concat, fully self-calibrating: sv_out_scales come from the merged sv
-// buffer tail (written by sv_merge_selfcal), and the global o_act_scale is
-// computed on-chip (absmax of af_fp = sv[h]*sv_out_scale[h] over Q_DIM) and
-// written to af_out[kOutDim..kOutDim+4] (af_out is int8[kOutDim+8]) for the
-// downstream o_proj. Input `sv` = [kQD bodies | kNHeadsQ*4 sv_out_scales].
+// Writes o_proj's activation scale to af_out[kOutDim] (af_out is
+// int8[kOutDim + 8]). For the layout of `sv`, see llama_sv_merge_selfcal.
 extern "C" void llama_af_concat_selfcal2(int8_t *restrict sv,
                                          int8_t *restrict af_out) {
   event0();
