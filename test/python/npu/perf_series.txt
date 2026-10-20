@@ -469,6 +469,7 @@ resample_peak/2x2/int32/cores=1
 resample_peak/2x2/int32/idle-core
 resample_peak/2x2/int32/slots=22/slots-past-fit
 resample_peak/2x2/int32/too-few-chunks
+resample_peak/2x2/int32/upsample-left-edge
 resample_peak/2x2/int32/upsample
 resample_quantize/2x2/int32/negative
 resample_quantize/2x2/int32/slots=22/slots-past-fit

@@ -85,7 +85,7 @@ double scale2(double x, int p) {
 }
 
 struct Axis {
-  double scale, support, invscale;
+  double scale, support, invscale, step_from;
   int in, out, window, slot, per;
   bool ok;
 };
@@ -103,6 +103,7 @@ Axis axis(int32_t in, int32_t out, int32_t chunks) {
     s++;
   a.window = s * 2 + 1;
   a.invscale = a.scale >= 1.0 ? 1.0 / a.scale : 1.0;
+  a.step_from = 2.0 * a.support + 4.0;
   a.slot = 2 + (a.window + 1) / 2;
   a.per = (WORDS - HEADER) / a.slot;
   if (PER)
@@ -137,9 +138,17 @@ double taps(const Axis &a, int i, int &xmin, int &xsize) {
     xsize = 0;
   if (xsize > a.window)
     xsize = a.window;
+  // Every tap n is within support + 1 of center. From step_from up to 2^51
+  // each n - center + 0.5 is a multiple of ulp(center) below 2^E, so it and
+  // its two roundings are exact, and a tap's offset is the last one plus 1.
+  bool step = key(center) >= key(a.step_from) && key(center) < key(0x1p51);
+  bool unit = bits(a.invscale) == bits(1.0);
   double total = 0.0;
+  double t = to_double(xmin) - center + 0.5;
   for (int j = 0; j < xsize; j++) {
-    w[j] = filter((to_double(j + xmin) - center + 0.5) * a.invscale);
+    if (j > 0)
+      t = step ? t + 1.0 : to_double(j + xmin) - center + 0.5;
+    w[j] = filter(unit ? t : t * a.invscale);
     total += w[j];
   }
   return total;

@@ -1201,6 +1201,8 @@ CASES: list[Case] = [
     # A patch's 16 outputs to a chunk, as amd/IRON's Resample reads them.
     Case("resample_peak", dict(words=356, slots=16), scalars=(3024, 672, 5, 3)),
     check("resample_peak", calls=2, scalars=(17, 1008, 4, 2), tag="upsample"),
+    # Core 0 owns the left edge, where a tap's offset is not the last plus 1.
+    check("resample_peak", calls=2, scalars=(44, 395, 0, 1), tag="upsample-left-edge"),
     # A peak of 0: a core past the outputs, too few chunks, no window fits.
     check("resample_peak", calls=2, scalars=(1, 48, 15, 1), tag="idle-core"),
     check("resample_peak", calls=2, scalars=(4032, 912, 0, 2), tag="too-few-chunks"),
