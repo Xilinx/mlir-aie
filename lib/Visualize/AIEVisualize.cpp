@@ -1442,32 +1442,154 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   };
   // Arrows are laid out together: separating the ones that share a channel,
   // and ordering them to cross less, are properties of the whole set.
+  //
+  // A tile's ports are numbered here rather than placed, so that a renderer
+  // free to move them can stack them in a fixed order instead of scattering
+  // them around the perimeter by whichever bundle each faces.
+  std::map<std::pair<int, int>, int> switchSlots;
+  std::map<std::pair<int, int>, int> dmaSlots;
+  std::map<PortNode, AIE::ArrowEnd> portEnds;
+  for (const PortNode &port : ports) {
+    std::pair<int, int> tile{port.col, port.row};
+    bool dma = port.bundle == AIE::WireBundle::DMA;
+    portEnds[port] = {portNodeID(port), tile,
+                      dma ? AIE::EndKind::DMA : AIE::EndKind::Switch,
+                      dma ? dmaSlots[tile]++ : switchSlots[tile]++,
+                      portPosition(port, layout)};
+  }
+
   SmallVector<ArrowRequest> arrowRequests;
   std::map<Segment, unsigned> arrowIDs;
-  for (const auto &[segment, segmentRoutes] : segments) {
+  std::map<BufferSegment, unsigned> bufferArrowIDs;
+  auto addArrow = [&](AIE::ArrowEnd from, AIE::ArrowEnd to, unsigned group) {
     unsigned id = arrowRequests.size();
-    arrowIDs[segment] = id;
-    unsigned group = groups.routeGroups[segmentRoutes.front()->id];
-    arrowRequests.push_back({id,
-                             portNodeID(segment.source),
-                             portNodeID(segment.dest),
-                             {{segment.source.col, segment.source.row},
-                              {segment.dest.col, segment.dest.row}},
-                             portPosition(segment.source, layout),
-                             portPosition(segment.dest, layout),
-                             group,
-                             weightScale.width(groupBytes[group])});
-  }
-  std::map<std::string, Point> placedPorts =
-      arrows->portPositions(arrowRequests, layout);
-  auto portPoint = [&](const PortNode &port) {
-    auto found = placedPorts.find(portNodeID(port));
-    return found == placedPorts.end() ? portPosition(port, layout)
-                                      : found->second;
+    arrowRequests.push_back(
+        {id, std::move(from), std::move(to), group,
+         weightScale.width(group < groupBytes.size() ? groupBytes[group] : 0)});
+    return id;
   };
+  for (const auto &[segment, segmentRoutes] : segments)
+    arrowIDs[segment] =
+        addArrow(portEnds[segment.source], portEnds[segment.dest],
+                 groups.routeGroups[segmentRoutes.front()->id]);
 
   double localNodeWidth =
       std::clamp(static_cast<double>(options.tileWidth) - 0.4, 1.0, 1.75);
+
+  auto argumentPoint = [&, localNodeWidth](size_t index) -> Point {
+    std::set<int> designColumns;
+    for (auto [col, row] : designTiles)
+      designColumns.insert(col);
+    double designLeft = layout.tileCenterX(*designColumns.begin());
+    double designRight = layout.tileCenterX(*designColumns.rbegin());
+    double center = (designLeft + designRight) / 2;
+    double spacing = localNodeWidth + 0.3;
+    if (runtimeArguments.size() > 1)
+      spacing = std::max(spacing, (designRight - designLeft) /
+                                      (runtimeArguments.size() - 1));
+    double left = center - spacing * (runtimeArguments.size() - 1) / 2;
+    return {left + index * spacing,
+            layout.tileCenterY(0) - layout.tileHeight(0) / 2 - 0.55};
+  };
+
+  std::map<Operation *, unsigned> bufferIDs;
+  for (const BufferInfo &buffer : *buffers)
+    if (bufferLocalIndices.count(buffer.op))
+      bufferIDs[buffer.op] = buffer.id;
+
+  // The stub from a DMA channel to the buffer it serves is the one arrow that
+  // enters a tile, so it is routed with the rest rather than left diagonal.
+  auto bufferPoint = [&](Operation *buffer, int col, int row) -> Point {
+    auto index = bufferLocalIndices.find(buffer);
+    return {layout.tileCenterX(col), index == bufferLocalIndices.end()
+                                         ? layout.tileCenterY(row)
+                                         : localNodeY(col, row, index->second)};
+  };
+  for (const auto &[segment, segmentRoutes] : bufferSegments) {
+    AIE::ArrowEnd port = portEnds[segment.port];
+    AIE::ArrowEnd content{
+        bufferNodeID(bufferIDs.count(segment.buffer) ? bufferIDs[segment.buffer]
+                                                     : 0),
+        {segment.port.col, segment.port.row},
+        AIE::EndKind::Content,
+        0,
+        bufferPoint(segment.buffer, segment.port.col, segment.port.row)};
+    unsigned group = segmentRoutes.empty()
+                         ? 0
+                         : groups.routeGroups[segmentRoutes.front()->id];
+    bufferArrowIDs[segment] = segment.intoBuffer
+                                  ? addArrow(port, content, group)
+                                  : addArrow(content, port, group);
+  }
+
+  std::map<std::pair<unsigned, Operation *>, unsigned> callArrowIDs;
+  for (const CallInfo &call : calls) {
+    auto localIndex = callLocalIndices.find(call.id);
+    if (localIndex == callLocalIndices.end())
+      continue;
+    Point callAt{layout.tileCenterX(call.col),
+                 localNodeY(call.col, call.row, localIndex->second)};
+    for (AIE::BufferOp buffer : call.buffers) {
+      if (!bufferIDs.count(buffer))
+        continue;
+      AIE::ArrowEnd from{bufferNodeID(bufferIDs[buffer]),
+                         {call.col, call.row},
+                         AIE::EndKind::Content,
+                         0,
+                         bufferPoint(buffer, call.col, call.row)};
+      AIE::ArrowEnd to{callNodeID(call.id),
+                       {call.col, call.row},
+                       AIE::EndKind::Content,
+                       1,
+                       callAt};
+      callArrowIDs[{call.id, buffer}] = addArrow(from, to, 0);
+    }
+  }
+
+  // Runtime arguments sit below the array and reach a shim DMA, so they get
+  // routed like anything else rather than cutting a diagonal across it.
+  std::map<std::pair<unsigned, DMAChannelKey>, unsigned> runtimeArrowIDs;
+  for (auto [index, argument] : llvm::enumerate(runtimeArguments)) {
+    for (const DMAChannelKey &key : argument.channels) {
+      auto [col, row, direction, channel] = key;
+      PortNode port{col, row, AIE::WireBundle::DMA, channel, direction};
+      AIE::ArrowEnd outside{runtimeArgumentNodeID(argument.id),
+                            {col, row},
+                            AIE::EndKind::External,
+                            0,
+                            argumentPoint(index)};
+      AIE::ArrowEnd at =
+          portEnds.count(port) ? portEnds[port] : AIE::ArrowEnd{};
+      unsigned group =
+          argument.flowGroups.empty() ? 0 : *argument.flowGroups.begin();
+      runtimeArrowIDs[{argument.id, key}] =
+          direction == AIE::DMAChannelDir::S2MM ? addArrow(at, outside, group)
+                                                : addArrow(outside, at, group);
+    }
+  }
+
+  std::map<std::string, Point> placedNodes =
+      arrows->nodePositions(arrowRequests, layout);
+  std::map<unsigned, ArrowPath> arrowPaths;
+  for (ArrowPath &path : arrows->route(arrowRequests, layout))
+    arrowPaths[path.id] = std::move(path);
+  auto writeArrowGeometry = [&](unsigned id) {
+    auto found = arrowPaths.find(id);
+    if (found == arrowPaths.end())
+      return;
+    output << ", pos=\"";
+    for (auto [index, point] : llvm::enumerate(found->second.points)) {
+      if (index)
+        output << ' ';
+      output << layout.pos(point.first, point.second);
+    }
+    output << '"';
+  };
+  auto portPoint = [&](const PortNode &port) {
+    auto found = placedNodes.find(portNodeID(port));
+    return found == placedNodes.end() ? portPosition(port, layout)
+                                      : found->second;
+  };
 
   output << "digraph aie_routes {\n"
          << (layout.preLaidOut ? "  graph [layout=nop2, overlap=true"
@@ -1656,12 +1778,10 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                 "color=\"#777777\"];\n";
     }
   }
-  std::map<Operation *, unsigned> bufferIDs;
   for (const BufferInfo &buffer : *buffers) {
     auto localIndex = bufferLocalIndices.find(buffer.op);
     if (localIndex == bufferLocalIndices.end())
       continue;
-    bufferIDs[buffer.op] = buffer.id;
     double x = layout.tileCenterX(buffer.col);
     double y = localNodeY(buffer.col, buffer.row, localIndex->second);
     output << "  " << bufferNodeID(buffer.id)
@@ -1675,22 +1795,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
               "color=\"#666666\"];\n";
   }
   if (!runtimeArguments.empty()) {
-    std::set<int> designColumns;
-    for (auto [col, row] : designTiles)
-      designColumns.insert(col);
-    double designLeft = layout.tileCenterX(*designColumns.begin());
-    double designRight = layout.tileCenterX(*designColumns.rbegin());
-    double center = (designLeft + designRight) / 2;
-    double argumentSpacing = localNodeWidth + 0.3;
-    if (runtimeArguments.size() > 1)
-      argumentSpacing =
-          std::max(argumentSpacing,
-                   (designRight - designLeft) / (runtimeArguments.size() - 1));
-    double argumentLeft =
-        center - argumentSpacing * (runtimeArguments.size() - 1) / 2;
-    double argumentY = layout.tileCenterY(0) - layout.tileHeight(0) / 2 - 0.55;
     for (auto [index, argument] : llvm::enumerate(runtimeArguments)) {
-      double x = argumentLeft + index * argumentSpacing;
+      double x = argumentPoint(index).first;
+      double argumentY = argumentPoint(index).second;
       output << "  " << runtimeArgumentNodeID(argument.id)
              << " [shape=ellipse, fixedsize=true, width="
              << dotCoordinate(localNodeWidth) << ", height=0.3, pos=\""
@@ -1711,7 +1818,11 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
             std::swap(source, dest);
           output << "  " << source << " -> " << dest << " [class=\""
                  << flowClasses(channelFlowGroups[key], "runtime-link")
-                 << "\", color=\"#39789b\", penwidth=\"1.2\"];\n";
+                 << "\", color=\"#39789b\", penwidth=\"1.2\"";
+          auto arrow = runtimeArrowIDs.find({argument.id, key});
+          if (arrow != runtimeArrowIDs.end())
+            writeArrowGeometry(arrow->second);
+          output << "];\n";
         }
       }
     }
@@ -1735,12 +1846,17 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
         continue;
       for (AIE::BufferOp buffer : call.buffers) {
         auto bufferID = bufferIDs.find(buffer);
-        if (bufferID != bufferIDs.end())
+        if (bufferID != bufferIDs.end()) {
           output << "  " << bufferNodeID(bufferID->second) << " -> "
                  << callNodeID(call.id) << " [class=\""
                  << flowClasses(bufferFlowGroups[buffer],
                                 "call-link detail-calls detail-buffers")
-                 << "\", color=\"#666666\", arrowsize=0.55];\n";
+                 << "\", color=\"#666666\", arrowsize=0.55";
+          auto arrow = callArrowIDs.find({call.id, buffer});
+          if (arrow != callArrowIDs.end())
+            writeArrowGeometry(arrow->second);
+          output << "];\n";
+        }
       }
     }
   }
@@ -1908,20 +2024,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     output << "}\n";
     return success();
   }
-  std::map<unsigned, ArrowPath> arrowPaths;
-  for (ArrowPath &path : arrows->route(arrowRequests, layout))
-    arrowPaths[path.id] = std::move(path);
   auto writeGeometry = [&](const Segment &segment) {
-    auto found = arrowPaths.find(arrowIDs.at(segment));
-    if (found == arrowPaths.end())
-      return;
-    output << ", pos=\"";
-    for (auto [index, point] : llvm::enumerate(found->second.points)) {
-      if (index)
-        output << ' ';
-      output << layout.pos(point.first, point.second);
-    }
-    output << '"';
+    writeArrowGeometry(arrowIDs.at(segment));
   };
   for (const auto &[segment, segmentRoutes] : segments) {
     std::vector<const FlowRoute *> labels;
@@ -1966,6 +2070,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << flowClasses(segmentRoutes, groups, "buffer-link detail-buffers")
            << '"';
     writeWeight(segmentRoutes);
+    auto arrow = bufferArrowIDs.find(segment);
+    if (arrow != bufferArrowIDs.end())
+      writeArrowGeometry(arrow->second);
     output << ", style=dashed];\n";
   }
   output << "}\n";

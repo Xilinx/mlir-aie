@@ -13,9 +13,8 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 
-#include <memory>
-
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -26,21 +25,36 @@ struct LayoutGeometry;
 
 using Point = std::pair<double, double>;
 
-/// One arrow to draw, named by the tiles it passes through. A physical hop
-/// names both of its tiles (the same tile twice when a switchbox turns a flow
-/// around inside itself); a contracted edge names only its endpoints and
-/// leaves the way between them to the renderer.
+/// What an arrow ends on, which decides where a renderer may put it.
+enum class EndKind {
+  /// A switchbox port: the stream side of a tile, which only ever reaches a
+  /// neighbouring switchbox or its own tile's DMA.
+  Switch,
+  /// A DMA channel, facing the switchbox on one side and the tile's buffers
+  /// on the other.
+  DMA,
+  /// Something inside a tile: a buffer, or a kernel call.
+  Content,
+  /// Something outside the array, such as a runtime sequence argument.
+  External,
+};
+
+struct ArrowEnd {
+  std::string node;
+  std::pair<int, int> tile{0, 0};
+  EndKind kind = EndKind::Content;
+  /// Stacking order among a tile's ends of the same kind.
+  int slot = 0;
+  /// Where the caller would have put it, used when a renderer places nothing.
+  Point pinned{0, 0};
+};
+
+/// One arrow to draw.
 struct ArrowRequest {
-  unsigned id;
-  /// The DOT nodes at either end, for a renderer that places them itself.
-  std::string sourceNode, destNode;
-  llvm::SmallVector<std::pair<int, int>> tiles;
-  /// Where the arrow leaves and enters, when the caller has pinned those
-  /// points itself. A renderer that places its own endpoints ignores these.
-  std::optional<Point> pinnedSource;
-  std::optional<Point> pinnedDest;
-  unsigned flowGroup;
-  double width;
+  unsigned id = 0;
+  ArrowEnd from, to;
+  unsigned flowGroup = 0;
+  double width = 1.0;
 };
 
 /// A drawn arrow: a cubic Bezier chain, as graphviz's edge `pos` spells it.
@@ -50,9 +64,10 @@ struct ArrowPath {
   llvm::SmallVector<Point> points;
 };
 
-/// Decides where arrows go. Laying out every arrow in one call is what lets an
-/// implementation separate the ones that share a channel and order them to
-/// cross less; neither is decidable one arrow at a time.
+/// Decides where arrows go, and where the things they join sit. Laying out
+/// every arrow in one call is what lets an implementation separate the ones
+/// that share a channel and order them to cross less; neither is decidable one
+/// arrow at a time.
 class ArrowRenderer {
 public:
   virtual ~ArrowRenderer();
@@ -63,10 +78,10 @@ public:
     return std::nullopt;
   }
 
-  /// Where ports sit, for renderers that move them off the tile. An absent
-  /// entry leaves the port where the caller put it.
+  /// Where the nodes arrows end on should sit. An absent entry leaves a node
+  /// where the caller put it.
   virtual std::map<std::string, Point>
-  portPositions(llvm::ArrayRef<ArrowRequest> requests,
+  nodePositions(llvm::ArrayRef<ArrowRequest> requests,
                 const LayoutGeometry &layout) {
     return {};
   }
@@ -80,10 +95,11 @@ public:
 /// joins. What the viewer has always drawn.
 std::unique_ptr<ArrowRenderer> createStraightArrowRenderer();
 
-/// Keeps arrows in the gaps between tiles: an arrow runs along a ring around
-/// its tile and crosses the channel to the next one, so none is drawn over a
-/// tile's contents. Arrows sharing a stretch are spread onto tracks, and
-/// corners are rounded.
+/// Keeps arrows in the gaps between tiles. A tile's switchbox ports gather at
+/// the channel junction off its corner, from which all four channels are
+/// reachable, so a hop to a neighbour is one straight run and a hop the
+/// switchbox makes within itself never crosses the tile. DMA channels stack
+/// along the tile's edge, a short stub from the buffers they serve.
 std::unique_ptr<ArrowRenderer> createChannelArrowRenderer();
 
 } // namespace xilinx::AIE
