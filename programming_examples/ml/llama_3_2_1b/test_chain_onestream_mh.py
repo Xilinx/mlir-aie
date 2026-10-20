@@ -84,7 +84,7 @@ def embed_seed_ref(row_i8, embed_sc):
     return xin, scale
 
 
-def oracle(hidden_i8, hidden_scale, gamma, embed_i8, embed_sc):
+def oracle(hidden_i8, hidden_scale, gamma, embed_i8, embed_sc, sample):
     """final_norm -> lm_head logits (= sum_i32 * norm_scale * embed_sc) -> clean
     top-k sample -> token + next-token embed seed. Mirrors the fused kernel."""
     normed_i8, norm_scale = numpy_rmsnorm_int8_dyn(hidden_i8, gamma, hidden_scale)
@@ -92,9 +92,7 @@ def oracle(hidden_i8, hidden_scale, gamma, embed_i8, embed_sc):
     logits = (
         acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(np.float32)
     ).astype(np.float32)
-    tok = topk_sample_reference(
-        logits, SAMPLE_TEMP, SAMPLE_TOPK, SAMPLE_SEED, k_set=ONESTREAM_KSET
-    )
+    tok = topk_sample_reference(logits, *sample, k_set=ONESTREAM_KSET)
     xin, scale = embed_seed_ref(embed_i8[tok], float(embed_sc[tok]))
     return tok, xin, scale
 
@@ -149,7 +147,12 @@ def run_one_seed(seed, opts, lut_exp, lut_silu, npu, embed_i8, embed_sc, gamma, 
     wblob, kvblob = pack_blobs(layers)
 
     ref_tok, ref_xin, ref_scale = oracle(
-        xo_i8, np.float32(xo_scale), gamma, embed_i8, embed_sc
+        xo_i8,
+        np.float32(xo_scale),
+        gamma,
+        embed_i8,
+        embed_sc,
+        (opts.sample_temp, opts.sample_topk, opts.sample_seed),
     )
 
     xin = np.zeros(D + 8, dtype=np.int8)
@@ -194,6 +197,9 @@ def main():
     p = argparse.ArgumentParser()
     add_artifact_args(p)
     p.add_argument("--seeds", type=str, default="0,1,7,42")
+    p.add_argument("--sample-temp", type=float, default=SAMPLE_TEMP)
+    p.add_argument("--sample-topk", type=int, default=SAMPLE_TOPK)
+    p.add_argument("--sample-seed", type=int, default=SAMPLE_SEED)
     opts = p.parse_args()
     seeds = [int(s) for s in opts.seeds.split(",")]
 
@@ -212,13 +218,17 @@ def main():
         N_LAYERS=N_LAYERS,
         T=T,
         ONESTREAM_KSET=ONESTREAM_KSET,
+        SAMPLE_TEMP=opts.sample_temp,
+        SAMPLE_TOPK=opts.sample_topk,
+        SAMPLE_SEED=opts.sample_seed,
     )
     lut_exp = exp_lut(FKV_EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
 
     print(
         f"chain_onestream_mh N_LAYERS={N_LAYERS} T={T} KSET={ONESTREAM_KSET}  "
-        f"temp={SAMPLE_TEMP} topk={SAMPLE_TOPK} seed={SAMPLE_SEED}  seeds={seeds}",
+        f"temp={opts.sample_temp} topk={opts.sample_topk} seed={opts.sample_seed}"
+        f"  seeds={seeds}",
         flush=True,
     )
     fails = 0

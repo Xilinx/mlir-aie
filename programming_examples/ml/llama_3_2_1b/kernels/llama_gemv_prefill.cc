@@ -25,7 +25,6 @@
 static constexpr int kM = LLAMA_GEMV_ARRAY_M;
 static constexpr int kMStride = 2048 + 64;
 static constexpr int kOutRows = 64;
-static constexpr int kDownRows = 256;
 
 extern "C" {
 
@@ -52,15 +51,16 @@ void llama_gemv_array_m_i8(int8_t *restrict act, int8_t *restrict w,
 
 // Down's first three column chunks: the 4-row slot's integer sums against
 // each activation's chunk go into (chunk 0) or onto (chunks 1, 2) partial,
-// int32[kM x kDownRows], at rows slot*4..slot*4+3.
+// int32[kM x rows], at rows slot*4..slot*4+3 (`rows`: the down rows this
+// pass covers).
 void llama_gemv_array_m_kchunk(int8_t *restrict act, int8_t *restrict w,
                                int32_t *restrict partial, int32_t slot,
-                               int32_t chunk) {
+                               int32_t chunk, int32_t rows) {
   event0();
   for (int m = 0; m < kM; m++)
     for (int n = 0; n < 4; n++) {
       int32_t s = gemv_row_sum<2048, 4>(act + m * kMStride, w + n * 2048, 0);
-      int32_t *p = partial + m * kDownRows + slot * 4 + n;
+      int32_t *p = partial + m * rows + slot * 4 + n;
       *p = chunk == 0 ? s : *p + s;
     }
   event1();
@@ -70,7 +70,7 @@ void llama_gemv_array_m_kchunk(int8_t *restrict act, int8_t *restrict w,
 // epilogue with each activation's scale.
 void llama_gemv_array_m_kfinal(int8_t *restrict act, int8_t *restrict w,
                                int32_t *restrict partial, int8_t *restrict out,
-                               int32_t slot, int32_t sic) {
+                               int32_t slot, int32_t sic, int32_t rows) {
   event0();
   const int32_t *bias = reinterpret_cast<const int32_t *>(w + 4 * 2048);
   const float *w_scales = reinterpret_cast<const float *>(w + 4 * 2048 + 16);
@@ -80,7 +80,7 @@ void llama_gemv_array_m_kfinal(int8_t *restrict act, int8_t *restrict w,
     const int8_t *a = act + m * kMStride;
     int32_t sums[4];
     for (int n = 0; n < 4; n++)
-      sums[n] = partial[m * kDownRows + slot * 4 + n] +
+      sums[n] = partial[m * rows + slot * 4 + n] +
                 gemv_row_sum<2048, 4>(a, w + n * 2048, bias[n]);
     epilogue_f32<4>(sums, *reinterpret_cast<const float *>(a + 2048), w_scales,
                     reinterpret_cast<float *>(out) + m * kOutRows + sic * 4);

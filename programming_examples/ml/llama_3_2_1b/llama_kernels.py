@@ -136,9 +136,9 @@ def gemv_array(*, kset=8):
     )
 
 
-def gemv_prefill(*, m=4):
+def gemv_prefill(*, m=4, mmul=False):
     return KernelSource(
-        "llama_gemv_prefill.cc",
+        "llama_gemv_prefill_mmul.cc" if mmul else "llama_gemv_prefill.cc",
         ["-ffp-contract=off", f"-DLLAMA_GEMV_ARRAY_M={m}"],
     )
 

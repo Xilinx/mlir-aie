@@ -27,7 +27,7 @@ import sys
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import index_cast
+from aie.dialects.arith import constant, index_cast, ori, shli
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
@@ -36,6 +36,7 @@ from aie.iron import (
     ObjectFifo,
     Program,
     Runtime,
+    ScratchpadParameter,
     TaskGroup,
     Worker,
     jit,
@@ -56,6 +57,28 @@ LM_SLOT = 64 + 4 * D + 4 * 4 + 4 * 4
 LM_OUT_BYTES = 128
 LM_CAND_BYTES = 64 + D
 LM_SEED_BYTES = D + 12
+SAMPLE_PARAMS = ("temp_lo", "temp_hi", "top_k", "seed_lo", "seed_hi")
+
+
+def sample_param_values(temperature, top_k, seed, kset):
+    """build_lm(PER_CALL=True)'s ScratchpadParameter values for one dispatch.
+
+    Raises:
+        ValueError: top_k is not 0 (the whole set) or 1..kset.
+    """
+    if not 0 <= top_k <= kset:
+        raise ValueError(f"top_k must be 0 (the whole set) or 1..{kset}, got {top_k}")
+    t = int(np.float32(temperature).view(np.uint32))
+    s = int(seed) & 0xFFFFFFFF
+    return dict(
+        temp_lo=t & 0xFFFF,
+        temp_hi=t >> 16,
+        top_k=int(top_k),
+        seed_lo=s & 0xFFFF,
+        seed_hi=s >> 16,
+    )
+
+
 PROJECTIONS = {
     "q": (D, D, "f32"),
     "k": (D, 512, "f32"),
@@ -78,8 +101,15 @@ DOWN_CHUNKS = HD // D
 DOWN_ROWS_PER_CORE = D // N_CORES
 
 
-def prefill_act_bytes(m):
-    return m * M_STRIDE
+def prefill_act_bytes(m, mmul=False):
+    """An M-row activation object: M_STRIDE rows, or mmul's 8-activation
+    groups of transposed 8x8 tiles plus the M act_scales."""
+    return ((m + 7) // 8 * 8 * D + 64) if mmul else m * M_STRIDE
+
+
+def prefill_down_passes(m, mmul=False):
+    """Passes over down's rows that keep M x rows int32 partials in L1."""
+    return 2 if mmul and m > 8 else 1
 
 
 def prefill_out_bytes(m):
@@ -377,6 +407,7 @@ def build_lm(
     TEMPERATURE: CompileTime[float] = 0.0,
     TOP_K: CompileTime[int] = 8,
     SEED: CompileTime[int] = 0,
+    PER_CALL: CompileTime[bool] = False,
 ):
     """lm_head over the array, then the token on a glue core.
 
@@ -386,8 +417,10 @@ def build_lm(
     llama_topk_finalize_packed, giving `LM_SEED_BYTES`: the next token's
     embed seed, its scale and the token id. Sets are ordered by logit, then
     by lower token id, so the merged set is the one a single pass keeps.
-    TEMPERATURE, TOP_K and SEED are the sampler's params (S4 makes them
-    per-call).
+    TEMPERATURE, TOP_K and SEED are the sampler's params: it draws from the
+    merged set's best TOP_K (0: all KSET) members. With PER_CALL they
+    come instead from per-dispatch ScratchpadParameters (`SAMPLE_PARAMS`, see
+    `sample_param_values`), which the glue core reads behind the dispatch fence.
     """
     per_core = LM_TILES // N_CORES
     per_task = next(n for n in range(min(per_core, 1023), 0, -1) if per_core % n == 0)
@@ -423,7 +456,7 @@ def build_lm(
         "llama_gemv_array_topk_cand", [t_sl, t_sg, t_ss, t_sr, t_len, t_cand, np.int32]
     )
     t_join = _i8(4 * LM_CAND_BYTES)
-    t_params = np.ndarray[(3,), np.dtype[np.uint32]]
+    t_params = _i32a(3)
     t_seed = _i8(LM_SEED_BYTES)
     KS = llama_kernels.topk_sample(kset=KSET)
     k_merge = KS.bind(
@@ -459,7 +492,15 @@ def build_lm(
             kc(sl, sg, ss, sr, slen, b, _i32(i))
             c_cand.release(1)
 
-    def w_merge(c_lo, c_hi, c_seed, sl, sg, ss, sr, slen, params, km, kf):
+    def w_merge(c_lo, c_hi, c_seed, sl, sg, ss, sr, slen, params, km, kf, *per_call):
+        if per_call:
+            # The scratchpad keeps 30 bits a word, so the 32-bit temperature
+            # bits and seed arrive as 16-bit halves.
+            t_lo, t_hi, top_k, s_lo, s_hi = (p.read() for p in per_call)
+            c16 = constant(i32(), 16)
+            params[0] = ori(shli(t_hi, c16), t_lo)
+            params[1] = top_k
+            params[2] = ori(shli(s_hi, c16), s_lo)
         for r in range_(KSET):
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
@@ -493,6 +534,8 @@ def build_lm(
         )
         for c in range(N_CORES)
     ]
+    if not 0 <= TOP_K <= KSET:
+        raise ValueError(f"TOP_K must be 0 (the whole set) or 1..{KSET}, got {TOP_K}")
     params = np.array(
         [np.float32(TEMPERATURE).view(np.uint32), TOP_K, SEED & 0xFFFFFFFF], np.uint32
     )
@@ -508,10 +551,18 @@ def build_lm(
                 Buffer(t_ss, name="merge_scale"),
                 Buffer(t_sr, name="merge_row"),
                 Buffer(t_len, initial_value=np.zeros(1, np.int32), name="merge_len"),
-                Buffer(t_params, initial_value=params, name="sample_params"),
+                Buffer(
+                    t_params, initial_value=params.view(np.int32), name="sample_params"
+                ),
                 k_merge,
                 k_final,
+                *(
+                    [ScratchpadParameter(name, np.int32) for name in SAMPLE_PARAMS]
+                    if PER_CALL
+                    else []
+                ),
             ],
+            wait_for_parameters=PER_CALL,
         )
     )
 
@@ -591,7 +642,7 @@ def build_lm_single(
         _i8(KSET * D),
         _i32a(1),
     )
-    t_params = np.ndarray[(3,), np.dtype[np.uint32]]
+    t_params = _i32a(3)
     t_seed = _i8(LM_SEED_BYTES)
     k_insert = llama_kernels.gemm_layer(kset=KSET).bind(
         "llama_lmhead_topk_insert",
@@ -615,6 +666,8 @@ def build_lm_single(
         kf(sl, sg, ss, sr, slen, params, o)
         c_seed.release(1)
 
+    if not 0 <= TOP_K <= KSET:
+        raise ValueError(f"TOP_K must be 0 (the whole set) or 1..{KSET}, got {TOP_K}")
     params = np.array(
         [np.float32(TEMPERATURE).view(np.uint32), TOP_K, SEED & 0xFFFFFFFF], np.uint32
     )
@@ -629,7 +682,7 @@ def build_lm_single(
             Buffer(t_ss, name="one_scale"),
             Buffer(t_sr, name="one_row"),
             Buffer(t_len, initial_value=np.zeros(1, np.int32), name="one_len"),
-            Buffer(t_params, initial_value=params, name="one_params"),
+            Buffer(t_params, initial_value=params.view(np.int32), name="one_params"),
             k_insert,
             k_final,
         ],
@@ -670,9 +723,17 @@ def build_prefill(
     M: CompileTime[int] = 4,
     ACT_DEPTH: CompileTime[int] = 2,
     GATE_INV: CompileTime[float] = 20.0,
+    MMUL: CompileTime[bool] = False,
+    OUT_DEPTH: CompileTime[int] = 2,
 ):
     """M activations per pass (S6 batched prefill): every weight slot streams
     once and serves all M rows.
+
+    With MMUL the cores run aie::mmul (kernels/llama_gemv_prefill_mmul.cc):
+    slots and activation objects (`prefill_act_bytes(M, MMUL)`) are in its
+    tile layouts, and above M=8 down runs in `prefill_down_passes(M, MMUL)`
+    passes over its rows, each re-reading the four activation chunks, to keep
+    the int32 partial sums in L1.
 
     Activation objects are `prefill_act_bytes(M)`: M rows of `M_STRIDE` bytes
     ([int8 x 2048 | act_scale f32 | pad]); down takes four of them, one per
@@ -684,9 +745,11 @@ def build_prefill(
     n_slots = lane_slots(ORDER)
     lane_bytes = n_slots * SLOT
     w_total = N_CORES * N_LAYERS * lane_bytes
-    acts_per_layer = sum(DOWN_CHUNKS if p == "d" else 1 for p in ORDER)
+    passes = prefill_down_passes(M, MMUL)
+    pass_rows = DOWN_ROWS_PER_CORE // passes
+    acts_per_layer = sum(DOWN_CHUNKS * passes if p == "d" else 1 for p in ORDER)
     outs_per_layer = sum(PROJECTIONS[p][1] // N_CORES // OUT_ROWS for p in ORDER)
-    act_bytes = prefill_act_bytes(M)
+    act_bytes = prefill_act_bytes(M, MMUL)
     out_bytes = prefill_out_bytes(M)
     n_acts = N_LAYERS * acts_per_layer
     n_outs = N_LAYERS * outs_per_layer
@@ -696,19 +759,23 @@ def build_prefill(
     t_slot = _i8(SLOT)
     t_act = _i8(act_bytes)
     t_out = _i8(out_bytes)
-    t_part = _i32a(M * DOWN_ROWS_PER_CORE)
+    t_part = _i32a(M * pass_rows)
     of_act = ObjectFifo(t_act, depth=ACT_DEPTH, name="pact")
     of_w = [ObjectFifo(t_slot, depth=2, name=f"pw{c}") for c in range(N_CORES)]
-    of_out = [ObjectFifo(t_out, depth=2, name=f"pout{c}") for c in range(N_CORES)]
+    of_out = [
+        ObjectFifo(t_out, depth=OUT_DEPTH, name=f"pout{c}") for c in range(N_CORES)
+    ]
 
-    KO = llama_kernels.gemv_prefill(m=M)
-    k_f = KO.bind("llama_gemv_array_m_f32", [t_act, t_slot, t_out, np.int32])
-    k_i = KO.bind("llama_gemv_array_m_i8", [t_act, t_slot, t_out, np.int32, np.float32])
+    KO = llama_kernels.gemv_prefill(m=M, mmul=MMUL)
+    pre = "llama_gemv_mmul" if MMUL else "llama_gemv_array_m"
+    k_f = KO.bind(f"{pre}_f32", [t_act, t_slot, t_out, np.int32])
+    k_i = KO.bind(f"{pre}_i8", [t_act, t_slot, t_out, np.int32, np.float32])
     k_chunk = KO.bind(
-        "llama_gemv_array_m_kchunk", [t_act, t_slot, t_part, np.int32, np.int32]
+        f"{pre}_kchunk", [t_act, t_slot, t_part, np.int32, np.int32, np.int32]
     )
     k_final = KO.bind(
-        "llama_gemv_array_m_kfinal", [t_act, t_slot, t_part, t_out, np.int32, np.int32]
+        f"{pre}_kfinal",
+        [t_act, t_slot, t_part, t_out, np.int32, np.int32, np.int32],
     )
     slots_per_out = OUT_ROWS // 4
 
@@ -716,29 +783,31 @@ def build_prefill(
         for _ in range_(N_LAYERS):
             for proj in ORDER:
                 if proj == "d":
-                    for chunk in range_(DOWN_CHUNKS - 1):
+                    for _p in range_(passes):
+                        for chunk in range_(DOWN_CHUNKS - 1):
+                            a = c_act.acquire(1)
+                            for s in range_(pass_rows // 4):
+                                w = c_w.acquire(1)
+                                kc(a, w, part, _i32(s), _i32(chunk), pass_rows)
+                                c_w.release(1)
+                            c_act.release(1)
                         a = c_act.acquire(1)
-                        for s in range_(DOWN_ROWS_PER_CORE // 4):
-                            w = c_w.acquire(1)
-                            kc(a, w, part, _i32(s), _i32(chunk))
-                            c_w.release(1)
+                        for oc in range_(pass_rows // OUT_ROWS):
+                            o = c_out.acquire(1)
+                            for s in range_(slots_per_out):
+                                w = c_w.acquire(1)
+                                kfin(
+                                    a,
+                                    w,
+                                    part,
+                                    o,
+                                    _i32(oc) * slots_per_out + _i32(s),
+                                    _i32(s),
+                                    pass_rows,
+                                )
+                                c_w.release(1)
+                            c_out.release(1)
                         c_act.release(1)
-                    a = c_act.acquire(1)
-                    for oc in range_(DOWN_ROWS_PER_CORE // OUT_ROWS):
-                        o = c_out.acquire(1)
-                        for s in range_(slots_per_out):
-                            w = c_w.acquire(1)
-                            kfin(
-                                a,
-                                w,
-                                part,
-                                o,
-                                _i32(oc) * slots_per_out + _i32(s),
-                                _i32(s),
-                            )
-                            c_w.release(1)
-                        c_out.release(1)
-                    c_act.release(1)
                     continue
                 a = c_act.acquire(1)
                 for _oc in range_(PROJECTIONS[proj][1] // N_CORES // OUT_ROWS):

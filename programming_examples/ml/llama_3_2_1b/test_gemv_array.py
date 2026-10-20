@@ -31,6 +31,16 @@ Interfaces, per layer unit and core c (one output object of OUT_BYTES each):
   copies the KSET-th best row to another token so the set boundary ties;
   `--single-pass` also runs the vocabulary through one core
   (`build_lm_single`) and requires its seed and token to equal the merge's.
+  `--per-call` builds build_lm once with PER_CALL and dispatches it with
+  several (temperature, top_k, seed): each dispatch writes the five int32
+  ScratchpadParameters `sample_param_values` gives (the float32 temperature
+  bits and the 32-bit seed as 16-bit halves, since the scratchpad keeps 30
+  bits a word; top_k as is), and its token and seed must equal the
+  CompileTime build's for those values and the oracle's. The sampler draws
+  from the merged set's best top_k members (by logit, then lower id); top_k
+  0 means the whole set and values past KSET are rejected. `--topk-sweep`
+  samples many seeds at top_k = 1, 2, 4 and KSET at a high temperature, each
+  dispatch matching the oracle.
 """
 
 import argparse
@@ -44,7 +54,6 @@ from aie.utils import DefaultNPURuntime
 from aie2_gemv_array import (
     ACT_BYTES,
     COMB_BYTES,
-    DOWN_CHUNKS,
     LM_OUT_BYTES,
     LM_SEED_BYTES,
     LM_SLOT,
@@ -65,10 +74,12 @@ from aie2_gemv_array import (
     build_prefill,
     lane_slots,
     layer_units,
+    prefill_down_passes,
     prefill_out_bytes,
     rows_per_slot,
+    sample_param_values,
 )
-from llama_npu import add_artifact_args, design_kernel
+from llama_npu import DispatchSession, add_artifact_args, design_kernel
 from numpy_topk_sample import topk_sample_reference, topk_set_reference
 from test_topk_sample_probe import embed_seed_ref
 
@@ -172,31 +183,61 @@ def rescale_reference(proj, resid, resid_scale):
     return np.concatenate([body, np.array([scale, 0.0], np.float32).view(np.int8)])
 
 
-def pack_lane_prefill(layer_w, order, core):
+def pack_lane_prefill(layer_w, order, core, mmul=False, passes=1):
     """pack_lane for build_prefill: down's slots are 4 rows by 2048 columns,
-    chunk-major (all row groups of columns 0-2047, then 2048-4095, ...), each
-    with the four rows' bias and scales."""
+    chunk-major (all row groups of columns 0-2047, then 2048-4095, ...) within
+    each of `passes` row passes, each with the four rows' bias and scales.
+    With `mmul` every slot's weights are in kt-major 4x8 tiles (weight
+    W[n][8kt + i] at kt*32 + n*8 + i)."""
     parts = []
     for p in order:
         k, rows, _ = PROJECTIONS[p]
-        if k == D:
-            parts.append(pack_lane(layer_w, p, core))
-            continue
         w, bias, sc = layer_w[p]
         rc = rows // N_CORES
         lo = core * rc
-        slots = np.zeros((DOWN_CHUNKS, rc // 4, SLOT), np.int8)
-        for ch in range(DOWN_CHUNKS):
-            blk = w[lo : lo + rc, ch * D : (ch + 1) * D].reshape(rc // 4, 4 * D)
-            slots[ch, :, : 4 * D] = blk
-            slots[ch, :, 4 * D : 4 * D + 16] = (
-                bias[lo : lo + rc].reshape(-1, 4).view(np.int8)
-            )
-            slots[ch, :, 4 * D + 16 : 4 * D + 32] = (
-                sc[lo : lo + rc].reshape(-1, 4).view(np.int8)
-            )
+        groups = rc // 4
+        chunks = k // D
+        n_pass = passes if chunks > 1 else 1
+        per_pass = groups // n_pass
+        slots = np.zeros((n_pass, chunks, per_pass, SLOT), np.int8)
+        for ps in range(n_pass):
+            for ch in range(chunks):
+                r0 = lo + ps * per_pass * 4
+                blk = w[r0 : r0 + per_pass * 4, ch * D : (ch + 1) * D]
+                blk = blk.reshape(per_pass, 4, D)
+                if mmul:
+                    blk = blk.reshape(per_pass, 4, D // 8, 8).transpose(0, 2, 1, 3)
+                slots[ps, ch, :, : 4 * D] = blk.reshape(per_pass, 4 * D)
+                slots[ps, ch, :, 4 * D : 4 * D + 16] = (
+                    bias[r0 : r0 + per_pass * 4].reshape(-1, 4).view(np.int8)
+                )
+                slots[ps, ch, :, 4 * D + 16 : 4 * D + 32] = (
+                    sc[r0 : r0 + per_pass * 4].reshape(-1, 4).view(np.int8)
+                )
         parts.append(slots.reshape(-1))
     return np.concatenate(parts)
+
+
+def prefill_act_object(rows_m, ch, mmul):
+    """One build_prefill activation object from M (activation, scale) pairs,
+    column chunk `ch`: M_STRIDE rows, or with `mmul` 8-activation groups of
+    transposed tiles (a[8g + m][8kt + i] at g*16384 + kt*64 + i*8 + m) and
+    then 16 scales, those past M 1.0."""
+    m = len(rows_m)
+    if not mmul:
+        obj = np.zeros((m, M_STRIDE), np.int8)
+        for i, (a, s) in enumerate(rows_m):
+            obj[i, :D] = a[ch * D : (ch + 1) * D]
+            obj[i, D : D + 4] = np.frombuffer(np.float32(s).tobytes(), np.int8)
+        return obj.reshape(-1)
+    groups = (m + 7) // 8
+    a = np.zeros((groups * 8, D), np.int8)
+    for i, (row, _s) in enumerate(rows_m):
+        a[i] = row[ch * D : (ch + 1) * D]
+    tiles = a.reshape(groups, 8, D // 8, 8).transpose(0, 2, 3, 1)
+    scales = np.ones(16, np.float32)
+    scales[:m] = [s for _a, s in rows_m]
+    return np.concatenate([tiles.reshape(-1), scales.view(np.int8)])
 
 
 def run_prefill(opts):
@@ -218,7 +259,9 @@ def run_prefill(opts):
     for li, lw in enumerate(layers):
         for c in range(N_CORES):
             off = (li * N_CORES + c) * lane_bytes
-            wblob[off : off + lane_bytes] = pack_lane_prefill(lw, order, c)
+            wblob[off : off + lane_bytes] = pack_lane_prefill(
+                lw, order, c, opts.mmul, prefill_down_passes(m, opts.mmul)
+            )
 
     act_objs = []
     unit_acts = []
@@ -226,13 +269,14 @@ def run_prefill(opts):
         for proj in order:
             k = PROJECTIONS[proj][0]
             rows_m = [make_act(rng, k) for _ in range(m)]
+            if opts.tiny_scale:
+                # Outside the vector epilogue's guarded range: its scalar path.
+                rows_m[0] = (rows_m[0][0], np.float32(1e-30))
             unit_acts.append(rows_m)
-            for ch in range(k // D):
-                obj = np.zeros((m, M_STRIDE), np.int8)
-                for i, (a, s) in enumerate(rows_m):
-                    obj[i, :D] = a[ch * D : (ch + 1) * D]
-                    obj[i, D : D + 4] = np.frombuffer(np.float32(s).tobytes(), np.int8)
-                act_objs.append(obj.reshape(-1))
+            n_pass = prefill_down_passes(m, opts.mmul) if k > D else 1
+            for _p in range(n_pass):
+                for ch in range(k // D):
+                    act_objs.append(prefill_act_object(rows_m, ch, opts.mmul))
     acts_blob = np.concatenate(act_objs)
     out_bytes = prefill_out_bytes(m)
     n_outs = n_layers * sum(PROJECTIONS[p][1] // N_CORES // OUT_ROWS for p in order)
@@ -248,6 +292,8 @@ def run_prefill(opts):
         M=m,
         ACT_DEPTH=opts.act_depth,
         GATE_INV=opts.gate_inv,
+        MMUL=opts.mmul,
+        OUT_DEPTH=opts.out_depth,
     )
     buffers = [w_t, a_t, o_t]
     DefaultNPURuntime.load_and_run(npu, buffers)
@@ -295,6 +341,95 @@ def run_prefill(opts):
         )
     print(f"\ngemv_array prefill M={m}: {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
+
+
+PER_CALL_SAMPLES = [
+    (0.0, 8, 0),
+    (0.8, 8, 1),
+    (500.0, 8, 2),
+    (0.0, 1, 0xDEADBEEF),
+    (500.0, 4, 3),
+    (500.0, 2, 4),
+    (500.0, 0, 5),
+    (50.0, 8, 0xDEADBEEF),
+    (2.0, 1, 0x7FFFFFFF),
+]
+
+
+def check_per_call(opts, tensors, logits, embed, embed_sc):
+    """One build_lm(PER_CALL=True) dispatched with each of PER_CALL_SAMPLES
+    against the CompileTime build of the same values and the oracle."""
+    k = opts.kset
+    session = DispatchSession(
+        build_lm, None, LM_TILES=opts.lm_tiles, KSET=k, PER_CALL=True
+    )
+    ok = True
+    for temperature, top_k, seed in PER_CALL_SAMPLES:
+        out_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
+        ms = session(
+            [*tensors, out_t], **sample_param_values(temperature, top_k, seed, k)
+        )
+        out_t.to("cpu")
+        fixed_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
+        npu = design_kernel(
+            build_lm,
+            opts,
+            LM_TILES=opts.lm_tiles,
+            KSET=k,
+            TEMPERATURE=temperature,
+            TOP_K=top_k,
+            SEED=seed,
+        )
+        DefaultNPURuntime.load_and_run(npu, [*tensors, fixed_t])
+        fixed_t.to("cpu")
+        dev, fixed = out_t.numpy()[: D + 8], fixed_t.numpy()[: D + 8]
+        ref_token = topk_sample_reference(logits, temperature, top_k, seed, k_set=k)
+        ref_xin, _ = embed_seed_ref(embed[ref_token], float(embed_sc[ref_token]))
+        token = int(dev[D + 4 : D + 8].view(np.int32)[0])
+        same = np.array_equal(dev, fixed) and token == ref_token
+        same &= np.array_equal(dev[:D], ref_xin)
+        print(
+            f"per-call temp={temperature} top_k={top_k} seed={seed:#x}: token {token} "
+            f"(ref {ref_token}), {'BIT-EXACT' if same else 'DIFF'} vs the CompileTime build"
+            f"  ({ms:.2f} ms)"
+        )
+        ok &= same
+    return ok
+
+
+def topk_sweep(opts, tensors, logits):
+    """Many sampler seeds per top_k on one PER_CALL build, against the oracle."""
+    k = opts.kset
+    session = DispatchSession(
+        build_lm, None, LM_TILES=opts.lm_tiles, KSET=k, PER_CALL=True
+    )
+    ok = True
+    picks = {}
+    for top_k in sorted({1, 2, 4, k}):
+        tokens = []
+        for seed in range(opts.sweep_seeds):
+            out_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
+            session(
+                [*tensors, out_t],
+                **sample_param_values(opts.sweep_temp, top_k, seed, k),
+            )
+            out_t.to("cpu")
+            token = int(out_t.numpy()[D + 4 : D + 8].view(np.int32)[0])
+            ref = topk_sample_reference(logits, opts.sweep_temp, top_k, seed, k_set=k)
+            ok &= token == ref
+            tokens.append(token)
+        ids, counts = np.unique(tokens, return_counts=True)
+        picks[top_k] = set(ids.tolist())
+        print(
+            f"top_k={top_k} temp={opts.sweep_temp}: {len(ids)} distinct tokens over "
+            f"{opts.sweep_seeds} seeds {dict(zip(ids.tolist(), counts.tolist()))}"
+        )
+    best = sorted(range(len(logits)), key=lambda g: (-logits[g], g))
+    for top_k, ids in picks.items():
+        ok &= ids <= set(best[:top_k])
+    ok &= len(picks[1]) == 1 and len(picks[k]) > len(picks[2])
+    print(f"top-k sweep: {'every dispatch matches the oracle' if ok else 'FAIL'}")
+    return ok
 
 
 def run_lm(opts):
@@ -396,6 +531,10 @@ def run_lm(opts):
     ok &= token == ref_token and seed_ok
     if opts.force_tie:
         ok &= tied
+    if opts.per_call:
+        ok &= check_per_call(opts, [w_t, a_t, s_t], logits, embed, embed_sc)
+    if opts.topk_sweep:
+        ok &= topk_sweep(opts, [w_t, a_t, s_t], logits)
     if opts.single_pass:
         one_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
         npu1 = design_kernel(
@@ -440,11 +579,26 @@ def main():
         help="run build_prefill with this many activations per pass",
     )
     p.add_argument("--act-depth", type=int, default=2)
+    p.add_argument("--out-depth", type=int, default=2)
+    p.add_argument(
+        "--tiny-scale",
+        action="store_true",
+        help="give each unit's first activation a 1e-30 act_scale",
+    )
+    p.add_argument("--mmul", action="store_true", help="prefill on the mmul kernel")
     p.add_argument("--lm-tiles", type=int, default=32064)
     p.add_argument("--kset", type=int, default=8)
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--sample-seed", type=int, default=0)
     p.add_argument("--force-tie", action="store_true")
+    p.add_argument(
+        "--per-call",
+        action="store_true",
+        help="also dispatch one PER_CALL build with several sampler params",
+    )
+    p.add_argument("--topk-sweep", action="store_true")
+    p.add_argument("--sweep-seeds", type=int, default=32)
+    p.add_argument("--sweep-temp", type=float, default=500.0)
     p.add_argument(
         "--single-pass",
         action="store_true",

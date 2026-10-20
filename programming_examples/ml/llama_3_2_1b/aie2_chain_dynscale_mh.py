@@ -552,6 +552,10 @@ def build(
             t_opacked = _i8(D + 12)
             of_opacked = ObjectFifo(t_opacked, name="opacked")
             KS = ONESTREAM_KSET
+            if not 0 <= SAMPLE_TOPK <= KS:
+                raise ValueError(
+                    f"SAMPLE_TOPK must be 0 (whole set) or 1..{KS}, got {SAMPLE_TOPK}"
+                )
             b_set_logit = Buffer(_f32(KS), name="os_set_logit")
             b_set_gidx = Buffer(_i32a(KS), name="os_set_gidx")
             b_set_scale = Buffer(_f32(KS), name="os_set_scale")

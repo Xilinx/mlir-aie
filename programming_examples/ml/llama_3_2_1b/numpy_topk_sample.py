@@ -62,9 +62,17 @@ def topk_sample_reference(
     k_set: int = 64,
     lut: np.ndarray | None = None,
 ) -> int:
-    """Return the sampled global token id. top_k is the sampling cutoff; k_set
-    is the resident-set capacity (kernel's kKset). Requires top_k <= k_set and
-    top_k > 0 (full-vocab top_k=0 is out of scope for the one-stream design)."""
+    """Return the sampled global token id. k_set is the resident-set capacity
+    (the kernel's kKset); sampling draws from the set's best top_k members (by
+    logit, then lower id), and top_k 0 means the whole set. Greedy
+    (temperature <= 0) is the argmax whatever top_k is.
+
+    Raises:
+        ValueError: top_k is outside 0..k_set.
+    """
+    if not 0 <= top_k <= k_set:
+        raise ValueError(f"top_k must be 0 (the whole set) or 1..{k_set}, got {top_k}")
+    top_k = top_k or k_set
     logits = logits_f32.astype(np.float32)
     set_idx = topk_set_reference(logits, k_set)
 
@@ -78,10 +86,7 @@ def topk_sample_reference(
         lut = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     inv_temp = aie_fp.sw_recip(temperature)
 
-    # The sampling survivors = the top_k of the resident set (the set may hold
-    # k_set >= top_k; cut to top_k by logit, first-seen tie-break). The kernel
-    # currently samples over the WHOLE resident set, so for bit-exactness the
-    # caller passes k_set == top_k; we cut here to top_k to stay general.
+    # The survivors: the set's best top_k by logit, then lower id.
     by_logit = sorted(set_idx, key=lambda g: (-logits[g], g))
     survivors = sorted(by_logit[:top_k])  # ascending global-index order
 
