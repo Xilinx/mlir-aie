@@ -2220,6 +2220,15 @@ CASES: list[Case] = [
         scalars=(1, 11),
         arg_byte_offsets=((0, 16),),
     ),
+    # Scale 0 on that scalar path, whose rounding term shifts by scale - 1.
+    check(
+        "bn_fc_relu_ui16_ic_chunk",
+        dict(),
+        calls=4,
+        scalars=(1, 0),
+        arg_byte_offsets=((0, 16),),
+        tag="scale-0-scalar",
+    ),
     # Weights 16 bytes past a 64-byte boundary, as MobileNet's packed weight
     # views handed them before 7c1cde46072; AIE2P's 64-byte weight loads
     # would read the words below them. AIE2's builds load the weights as

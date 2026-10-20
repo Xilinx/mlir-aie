@@ -1239,8 +1239,12 @@ static void fc_ic_chunk_scalar(const uint16_t *input, const int8_t *kernels,
         sum += x[ic] * w[ic * 8];
       int32_t *acc = fc_acc + n * FC_CHUNK_OC + oc;
       *acc = chunk == 0 ? sum : *acc + sum;
+      // Scale 0 saturates without a shift, as the vector path's srs does.
       int32_t srs =
-          (*acc + (1 << (scale - 1)) - 1 + ((*acc >> scale) & 1)) >> scale;
+          scale == 0
+              ? *acc
+              : (*acc + (1 << (scale - 1)) - 1 + ((*acc >> scale) & 1)) >>
+                    scale;
       output[n * FC_CHUNK_OC + oc] = srs > UMAX ? UMAX : srs < 0 ? 0 : srs;
     }
   }
