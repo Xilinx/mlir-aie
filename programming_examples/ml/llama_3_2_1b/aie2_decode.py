@@ -102,10 +102,8 @@ WLM_TOTAL = LM_N_TILES * WLM_SLOT
 LM_SLOTS_PER_TASK = 1002
 assert LM_N_TILES % LM_SLOTS_PER_TASK == 0
 
-# The KV cache (llama_attn_block.cc's layout): int32
-# [layer][half][block][head][KV_TB rows], a row being [k int8[HEAD_D] | v
-# int8[HEAD_D] | k_scale f32 | v_scale f32]. One (layer, half)'s blocks are
-# contiguous, so its live prefix is one linear transfer.
+# Rows as llama_attn_block.cc lays them out, ordered [layer][half][block]
+# [head], so one (layer, half)'s live prefix is one linear transfer.
 KV_TB = 64
 KV_ROW_WORDS = (2 * HEAD_D + 8) // 4
 KV_HEAD_BLOCK_WORDS = KV_TB * KV_ROW_WORDS
