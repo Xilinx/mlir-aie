@@ -43,9 +43,8 @@ from aie.dialects.arith import (
     remsi,
     shli,
 )
-from aie.extras.types import i32
+from aie.extras.types import i32, index
 from aie.helpers.taplib import TensorAccessPattern
-from aie.ir import IndexType
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -78,6 +77,7 @@ from aie2_gemv_array import (
 )
 from aie2_layer_mh import (
     CS_BYTES,
+    HD,
     HEAD_D,
     N_HEADS_KV,
     N_TILE,
@@ -87,7 +87,6 @@ from aie2_layer_mh import (
     SVCHUNK_BYTES,
     SVFULL_BYTES,
     D,
-    HD,
 )
 
 # The lm_head's weights: per 4-row tile a prefix, the rows and per-row
@@ -354,9 +353,7 @@ def build(
             c_w.release(1)
 
     def w_array(c_act, c_w, c_out, c_blk, scratch, cs, core, n, kf2, kf8, ki8, kc, kr):
-        for _ in range_(
-            index_cast(IndexType.get(), muli(n.read(), _const_i32(N_LAYERS)))
-        ):
+        for _ in range_(index_cast(index(), muli(n.read(), _const_i32(N_LAYERS)))):
             hdr = c_w.acquire(1)
             for i in range_(CS_BYTES):
                 cs[i] = hdr[i]
@@ -407,9 +404,7 @@ def build(
     ]
 
     def w_resid(c_lo, c_hi, c_res, n, k):
-        for _ in range_(
-            index_cast(IndexType.get(), muli(n.read(), _const_i32(2 * N_LAYERS)))
-        ):
+        for _ in range_(index_cast(index(), muli(n.read(), _const_i32(2 * N_LAYERS)))):
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
             r = c_res.acquire(1)
@@ -438,7 +433,7 @@ def build(
 
     def w_rms(c_x, c_h, n, k):
         for _ in range_(
-            index_cast(IndexType.get(), muli(n.read(), _const_i32(2 * N_LAYERS + 1)))
+            index_cast(index(), muli(n.read(), _const_i32(2 * N_LAYERS + 1)))
         ):
             x = c_x.acquire(1)
             h = c_h.acquire(1)
@@ -477,9 +472,7 @@ def build(
     k_rope_rows = KG.bind("llama_comb_rope_rows", [t_comb, t_rc_half, t_rc_half])
 
     def w_rope_rows(c_comb, c_lo, c_hi, n, k):
-        for _ in range_(
-            index_cast(IndexType.get(), muli(n.read(), _const_i32(N_LAYERS)))
-        ):
+        for _ in range_(index_cast(index(), muli(n.read(), _const_i32(N_LAYERS)))):
             cb = c_comb.acquire(1)
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
@@ -533,9 +526,9 @@ def build(
     # row (from the chunk) set at p % KV_TB.
     def w_attn(c_rc, c_kvb, c_sv, state, t0p, n, k_init, k_blk, k_own, k_m):
         t0 = t0p.read()
-        for tok in range_(index_cast(IndexType.get(), n.read())):
+        for tok in range_(index_cast(index(), n.read())):
             p = addi(t0, _i32(tok))
-            n_full = index_cast(IndexType.get(), divsi(p, _const_i32(KV_TB)))
+            n_full = index_cast(index(), divsi(p, _const_i32(KV_TB)))
             last_rows = addi(remsi(p, _const_i32(KV_TB)), _const_i32(1))
             for _ in range_(N_LAYERS):
                 rc = c_rc.acquire(1)
@@ -559,7 +552,7 @@ def build(
     # interleaved=True). Alternating keeps both busy as the blocks stream.
     def w_attn_split(c_rc, c_kvb, c_part, c_sv, state, t0p, n_, mine, ki, kb_, ko, km):
         t0 = t0p.read()
-        for tok in range_(index_cast(IndexType.get(), n_.read())):
+        for tok in range_(index_cast(index(), n_.read())):
             p = addi(t0, _i32(tok))
             n = addi(divsi(p, _const_i32(KV_TB)), _const_i32(1))
             last = addi(n, _const_i32(-1))
@@ -568,7 +561,7 @@ def build(
                 rc = c_rc.acquire(1)
                 part = c_part.acquire(1) if mine == 0 else state
                 ki(part)
-                for b in range_(index_cast(IndexType.get(), n)):
+                for b in range_(index_cast(index(), n)):
                     bi = _i32(b)
                     kb = c_kvb.acquire(1)
                     with if_(
@@ -670,9 +663,7 @@ def build(
     )
 
     def w_svmerge(c_lo, c_hi, c_out, n, k):
-        for _ in range_(
-            index_cast(IndexType.get(), muli(n.read(), _const_i32(N_LAYERS)))
-        ):
+        for _ in range_(index_cast(index(), muli(n.read(), _const_i32(N_LAYERS)))):
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
             o = c_out.acquire(1)
@@ -682,9 +673,7 @@ def build(
             c_lo.release(1)
 
     def w_afconcat(c_in, c_out, n, k):
-        for _ in range_(
-            index_cast(IndexType.get(), muli(n.read(), _const_i32(N_LAYERS)))
-        ):
+        for _ in range_(index_cast(index(), muli(n.read(), _const_i32(N_LAYERS)))):
             x = c_in.acquire(1)
             o = c_out.acquire(1)
             k(x, o)
@@ -715,9 +704,7 @@ def build(
     k_silu = KS.bind("llama_silu_mul_int8_selfcal", [_i8(HD), t_hd8, _i8(HACT_BYTES)])
 
     def w_silu(c_g, c_u, c_out, uf, n, kq, ks):
-        for _ in range_(
-            index_cast(IndexType.get(), muli(n.read(), _const_i32(N_LAYERS)))
-        ):
+        for _ in range_(index_cast(index(), muli(n.read(), _const_i32(N_LAYERS)))):
             u = c_u.acquire(1)
             kq(u, uf)
             c_u.release(1)
@@ -769,7 +756,7 @@ def build(
         pr[0] = ori(shli(t_hi, c16), t_lo)
         pr[1] = top_k
         pr[2] = ori(shli(s_hi, c16), s_lo)
-        for _ in range_(index_cast(IndexType.get(), n.read())):
+        for _ in range_(index_cast(index(), n.read())):
             for _ in range_(2 * N_LAYERS):
                 c_h.acquire(1)
                 c_h.release(1)
