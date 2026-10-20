@@ -1640,6 +1640,68 @@ CASES: list[Case] = [
         calls=4,
         scalars=(320, 16, 32, 3, 3, 1, 13, 0),
     ),
+    # Rows of fewer than four blocks run as one run and share each input load
+    # across 4 (8 px), 2 (16 px) or 1 (24 px) output-channel groups; with 3
+    # groups, 8 px falls back to one. 80 px is two runs of four and a run of
+    # two, the first and last at the borders.
+    *[
+        Case(
+            "conv2dk3",
+            dict(
+                input_width=w,
+                input_channels=64,
+                output_channels=64,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+            ),
+            calls=4,
+            scalars=(w, 64, 64, 3, 3, 1, 15, 0),
+            tag=f"bias-width-{w}",
+        )
+        for w in (8, 16, 80)
+    ],
+    check(
+        "conv2dk3",
+        dict(
+            input_width=24,
+            input_channels=32,
+            output_channels=32,
+            bias=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(24, 32, 32, 3, 3, 0, 14, 0),
+        tag="bias-width-24-top-row",
+    ),
+    check(
+        "conv2dk3",
+        dict(
+            input_width=8,
+            input_channels=32,
+            output_channels=24,
+            bias=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(8, 32, 24, 3, 3, 2, 14, 0),
+        tag="bias-width-8-three-groups",
+    ),
+    check(
+        "conv2dk3",
+        dict(
+            input_width=32,
+            input_channels=32,
+            output_channels=32,
+            bias=True,
+            table=True,
+            stride=2,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(32, 32, 32, 3, 3, 1, 14, 0),
+        tag="bias-s2-width-32",
+    ),
     Case(
         "conv2dk3",
         dict(act_dtype=np.uint8),
