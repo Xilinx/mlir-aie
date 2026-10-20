@@ -4542,6 +4542,14 @@ LogicalResult DMABDOp::verify() {
     if (dims->size() != paddims->size())
       return emitOpError() << "Mismatch number of dimensions between padding(s)"
                            << " and wrap(s) and stride(s).";
+    // Measured on npu2: with d3 in use, d2 padding is not applied (and d3 has
+    // no padding fields).
+    if (paddims->size() == 4)
+      for (BDPadLayoutAttr pad : paddims->take_front(2))
+        if (pad.getConstPadBefore() || pad.getConstPadAfter())
+          return emitOpError()
+                 << "a four-dimensional walk pads only its two innermost "
+                    "dimensions; the DMA does not apply d2 or d3 padding";
     int actuallen = 1;
     for (unsigned i = 0; i < paddims->size(); i++) {
       auto dim = (*dims)[i];
