@@ -361,6 +361,11 @@ class SegmentDesign:
         self.out_fifos = {t.name: self.fifo(t) for t in self.outputs}
         self.in_fifos = list(dict.fromkeys(f.fifo for f in self.fills))
 
+    @property
+    def in_ddr(self) -> list[Tensor]:
+        """The tensors this run holds in DDR: each spill's rows, then each staged."""
+        return [rows for _, _, rows in self.spills] + [t for _, t in self.staged]
+
     def handles(self) -> list:
         """The runtime sequence's fifo handles: every filled fifo, every drained one, then each spill's drain and fill."""
         return (

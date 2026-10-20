@@ -82,14 +82,9 @@ class Plan:
                     self.words += t.row_bytes * t.height // 4
         self.weight_offset: dict[str, int] = {}
         weights: list[np.ndarray] = []
-        # Rows a segment holds in DDR across a whole-map wait (SegmentDesign.spill)
-        # or reads back in a layout of its own (SegmentDesign.staged).
         for k, (a, b) in enumerate(SEGMENTS):
             design = SegmentDesign(network, params, network.ops[a:b], self.outputs[k])
-            for _, _, rows in design.spills:
-                self.offset[rows.name] = self.words
-                self.words += rows.row_bytes * rows.height // 4
-            for _, tensor in design.staged:
+            for tensor in design.in_ddr:
                 self.offset[tensor.name] = self.words
                 self.words += tensor.row_bytes * tensor.height // 4
             for tensor, packed in design.loads:
