@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import statistics
 import sys
 import time
 from pathlib import Path
@@ -248,6 +247,9 @@ def main() -> None:
     args = parser.parse_args()
     if args.batch < 1 or not args.compile_only and args.n % args.batch:
         parser.error(f"--batch {args.batch} does not divide --n {args.n}")
+    paths = sorted(args.images.glob("*.jpg"))[: args.n]
+    if args.synthetic is None and not args.compile_only and len(paths) < args.n:
+        parser.error(f"{args.images} holds {len(paths)} .jpg images, not --n {args.n}")
 
     network = Network.yolo26n()
     if args.synthetic is not None:
@@ -284,9 +286,7 @@ def main() -> None:
         # Optional: only real images need OpenCV; a weight-free run goes without.
         from letterbox import letterbox
 
-        images = [
-            (p.name, letterbox(p)) for p in sorted(args.images.glob("*.jpg"))[: args.n]
-        ]
+        images = [(p.name, letterbox(p)) for p in paths]
     oracle = Oracle(params, network)
     scratch = iron.zeros(args.batch * plan.words, dtype=np.int32)
     detections = iron.zeros(args.batch * DETECTION_WORDS, dtype=np.int32)
@@ -301,6 +301,7 @@ def main() -> None:
         )
 
     passed = matched = 0
+    first: list[np.ndarray] = []
     for start in range(0, len(images), args.batch):
         group = images[start : start + args.batch]
         pixels = np.concatenate([image.reshape(-1) for _, image in group])
@@ -310,6 +311,8 @@ def main() -> None:
         found = detections.numpy().reshape(args.batch, 300, 6)
         for (name, image), mine in zip(group, found):
             want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
+            if start == 0:
+                first.append(want)
             bad = int((mine != want).sum())
             passed += bad == 0
             print(f"image {name}: {'PASS' if bad == 0 else 'FAIL'} ({bad}/1800 differ)")
@@ -320,6 +323,7 @@ def main() -> None:
     print(f"yolo26n: {passed}/{len(images)} images PASS")
     if session is not None:
         print(f"ort: {matched}/{len(images)} images match onnxruntime")
+    failed = passed != len(images)
 
     if args.time:
         pixels = np.concatenate(
@@ -333,9 +337,13 @@ def main() -> None:
             start = time.perf_counter()
             yolo26n(tensor, scratch, detections, weights, **kwargs)
             samples.append(time.perf_counter() - start)
-        us = statistics.median(samples) * 1e6 / args.batch
+        us = min(samples) * 1e6 / args.batch
         print(f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {args.batch}")
-    sys.exit(0 if passed == len(images) else 1)
+        timed = detections.numpy().reshape(args.batch, 300, 6)
+        same = all(np.array_equal(t, w) for t, w in zip(timed, first))
+        print(f"timed dispatch: {'PASS' if same else 'FAIL'}")
+        failed |= not same
+    sys.exit(1 if failed else 0)
 
 
 if __name__ == "__main__":

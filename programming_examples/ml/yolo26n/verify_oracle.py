@@ -36,6 +36,9 @@ def main() -> None:
     )
     parser.add_argument("--n", type=int, default=4, help="images to compare")
     args = parser.parse_args()
+    paths = sorted(args.images.glob("*.jpg"))[: args.n]
+    if len(paths) < args.n:
+        parser.error(f"{args.images} holds {len(paths)} .jpg images, not --n {args.n}")
 
     params = Params.load(args.params)
     oracle = Oracle(params)
@@ -53,7 +56,7 @@ def main() -> None:
     outputs = [o.name for o in session.get_outputs()]
 
     failed = False
-    for path in sorted(args.images.glob("*.jpg"))[: args.n]:
+    for path in paths:
         image = letterbox(path)
         ours = oracle.run(image)
         x = (image.transpose(2, 0, 1)[None] / np.float32(255)).astype(np.float32)
