@@ -150,6 +150,7 @@ inline __attribute__((always_inline)) acc_t<W> rsqrt_f32(acc_t<W> x) {
 // Exact bf16 squares of x[0, KP) summed per lane.
 acc_t<L> lane_squares(const bfloat16 *x) {
   acc_t<L> a = aie::zeros<accfloat, L>();
+#pragma clang loop unroll(full)
   for (int i = 0; i < KP; i += L) {
     const bf_t<L> xi = aie::load_v<L>(x + i);
     a = aie::mac(a, xi, xi);
@@ -163,8 +164,10 @@ acc_t<L> lane_squares(const bfloat16 *x) {
 inline __attribute__((always_inline)) aie::vector<float, W>
 fold_lanes(acc_t<W> a) {
   const aie::vector<float, W> x = a.to_vector<float>();
+#pragma clang loop unroll(full)
   for (int m = 4; m < L; m += 4)
     a = aie::add(a, acc_t<W>(aie::shuffle_down(x, m)));
+#pragma clang loop unroll(full)
   for (int m = 1; m < 4; m *= 2)
     a = aie::add(a, acc_t<W>(aie::shuffle_down(a.to_vector<float>(), m)));
   return a.to_vector<float>();
