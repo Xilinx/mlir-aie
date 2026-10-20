@@ -28,10 +28,8 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bf16 *__restrict pY,
 
 // ---------------------------------------------------------------------------
 // Entry points. See decode_attn_kv.cc; k has the role of v there. q arrives
-// through an ObjectFifo, so this kernel has no q lock. The k parity persists
-// across dispatches and never resets. One round covers every KV head of the
-// core.
-static PingPong k_pingpong;
+// through an ObjectFifo, so this kernel has no q lock. One round covers every
+// KV head of the core.
 
 extern "C" {
 
@@ -46,10 +44,8 @@ void attn_qk_begin(bf16 *m) {
 
 // One round. iter is the round index and sets the causal mask. s is the
 // ObjectFifo object.
-void attn_qk_round(bf16 *q, bf16 *k_ping, bf16 *k_pong, bf16 *s, bf16 *m,
-                   float *c_local, int iter, int L0) {
-  bf16 *k = k_pingpong.next(k_ping, k_pong);
-
+void attn_qk_round(bf16 *q, bf16 *k, bf16 *s, bf16 *m, float *c_local, int iter,
+                   int L0) {
   int i = L0 - 16 * iter;
   float *c = (float *)(s + Q_HEADS_PADDED_PER_CU * 16);
   bool is_first = (iter == 0);
