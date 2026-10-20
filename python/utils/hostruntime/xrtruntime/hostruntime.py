@@ -552,7 +552,9 @@ class XRTHostRuntime(HostRuntime):
             ),
         )
 
-    def _run_init_entry(self, context, init_name: str | None, kernel_name: str) -> None:
+    def _run_init_entry(
+        self, context, init_name: str | None, kernel_name: str | None
+    ) -> None:
         """Run the init entry ``init_name``, if any, before ``kernel_name``.
 
         Args:
@@ -1107,7 +1109,9 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict_insts()
         gc.collect()
 
-    def _run_init_entry(self, context, init_name: str | None, kernel_name: str) -> None:
+    def _run_init_entry(
+        self, context, init_name: str | None, kernel_name: str | None
+    ) -> None:
         """Evict the context if its init entry fails, as the array state is unknown."""
         try:
             super()._run_init_entry(context, init_name, kernel_name)
