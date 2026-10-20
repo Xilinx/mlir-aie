@@ -103,6 +103,7 @@ def test_a_recipe_key_names_the_kernel_sources_by_their_root(tmp_path, monkeypat
             arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
             compile_flags=[
                 f"-I{lib / 'AIE2P'}",
+                f"-isystem {lib / 'AIE2P'}",
                 f'-DAIE_LUT_KERNEL_SOURCE="{lib / lut}"',
             ],
         ).recipe_key

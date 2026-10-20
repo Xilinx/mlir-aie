@@ -149,7 +149,7 @@ def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
                 raise ValueError("Kernels must be used inside a symbol table.")
 
 
-_PATH_FLAG = re.compile(r'(-I|-isystem|-iquote|-D[^=]+=)?("?)(.*?)("?)')
+_PATH_FLAG = re.compile(r'((?:-I|-isystem|-iquote)\s*|-D[^=]+=)?("?)(.*?)("?)')
 
 
 def _install_relative_flag(flag: str, roots: dict[str, Path]) -> str:
