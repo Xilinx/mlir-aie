@@ -10,7 +10,6 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "llama_gemv_array.h"
 
@@ -36,8 +35,8 @@ void llama_gemv_array_qkv_comb(int8_t *restrict fp, int8_t *restrict out) {
   q_requant_heads<4, 64>(reinterpret_cast<const float *>(fp), out, out + 256);
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
-  memcpy(out + 288, fp + 1024, 512);
-  memset(out + 800, 0, 256);
+  copy_words<512>(out + 288, fp + 1024);
+  zero_words<256>(out + 800);
   event1();
 }
 
@@ -47,7 +46,7 @@ void llama_gemv_array_qkv_comb(int8_t *restrict fp, int8_t *restrict out) {
 void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
                                   int8_t *restrict out, int32_t row) {
   llama_gemv_array_qkv_comb(fp + row * 384 * 4, out);
-  memcpy(out + 800, cs + row * 256, 256);
+  copy_words<256>(out + 800, cs + row * 256);
 }
 
 // Core `core`'s half of the residual add for activation `row`: x_fp =

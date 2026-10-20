@@ -11,7 +11,6 @@
 #define LLAMA_KV_ROW_H
 
 #include <stdint.h>
-#include <string.h>
 
 static inline int8_t llama_kv_row_round(float v) {
   int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
@@ -24,11 +23,9 @@ static inline int8_t llama_kv_row_round(float v) {
 
 // Pure IEEE fp32 reciprocal (Peano AIE2P `/` is a HW approximation, Bug 1).
 static inline float llama_kv_row_recip(float a) {
-  int32_t bits;
-  memcpy(&bits, &a, 4);
+  int32_t bits = __builtin_bit_cast(int32_t, a);
   bits = (int32_t)0x7EF477D5 - bits;
-  float x;
-  memcpy(&x, &bits, 4);
+  float x = __builtin_bit_cast(float, bits);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);

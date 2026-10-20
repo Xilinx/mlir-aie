@@ -12,7 +12,6 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "llama_vec_fp.h"
 
@@ -65,7 +64,7 @@ static inline void llama_rope_heads(const int8_t *restrict x,
   }
 
   // Passthrough the per-head scale tail unchanged.
-  memcpy(out + kBody, x + kBody, kTail);
+  copy_words<kTail>(out + kBody, x + kBody);
 }
 
 #endif // LLAMA_ROPE_HEADS_H

@@ -13,7 +13,25 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
+
+// Word loops for copies a __builtin_memcpy would make a call to libc's memcpy
+// (Peano passes -fno-builtin-memcpy), which carries no .stack_sizes. Both
+// pointers are 4-byte aligned.
+using llama_word = int32_t __attribute__((may_alias));
+
+template <int kBytes>
+static inline void copy_words(void *restrict dst, const void *restrict src) {
+  static_assert(kBytes % 4 == 0);
+  for (int i = 0; i < kBytes / 4; ++i)
+    ((llama_word *)dst)[i] = ((const llama_word *)src)[i];
+}
+
+template <int kBytes>
+static inline void zero_words(void *restrict dst) {
+  static_assert(kBytes % 4 == 0);
+  for (int i = 0; i < kBytes / 4; ++i)
+    ((llama_word *)dst)[i] = 0;
+}
 
 // Lane-wise a * b rounded to nearest-even, as the scalar soft-float `*` is.
 // aie::mul on fp32 vectors is an emulation that is one ulp off on up to ~1.5%
@@ -151,9 +169,9 @@ static inline void q_requant_heads(const float *restrict q_fp,
       ::aie::store_v(dst + c * kV,
                      vec_round_to_i8(vec_mul_rne(
                          ::aie::load_v<kV>(src + c * kV), q_inv_v)));
-    memcpy(tail + h * 8 + 0, &q_scale[h], 4);
+    __builtin_memcpy(tail + h * 8 + 0, &q_scale[h], 4);
     int32_t zero = 0;
-    memcpy(tail + h * 8 + 4, &zero, 4);
+    __builtin_memcpy(tail + h * 8 + 4, &zero, 4);
   }
 }
 

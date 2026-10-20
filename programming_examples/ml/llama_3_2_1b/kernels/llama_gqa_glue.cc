@@ -12,7 +12,6 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "llama_kv_row.h"
 #include "llama_rope_heads.h"
@@ -44,11 +43,9 @@ static_assert(kHD % kVec == 0, "LLAMA_GQA_HEAD_DIM must be a multiple of 16");
 
 // See vec_sw_recip in llama_vec_fp.h; this is its scalar form.
 static inline float sw_recip(float a) {
-  int32_t bits;
-  memcpy(&bits, &a, 4);
+  int32_t bits = __builtin_bit_cast(int32_t, a);
   bits = (int32_t)0x7EF477D5 - bits;
-  float x;
-  memcpy(&x, &bits, 4);
+  float x = __builtin_bit_cast(float, bits);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
@@ -57,8 +54,7 @@ static inline float sw_recip(float a) {
 }
 
 static inline float bits_to_float(int32_t bits) {
-  float f;
-  memcpy(&f, &bits, 4);
+  float f = __builtin_bit_cast(float, bits);
   return f;
 }
 
@@ -80,8 +76,9 @@ extern "C" void llama_sv_merge_selfcal(int8_t *restrict in_lo,
     int8_t *src = (g < kHalfKV) ? in_lo : in_hi;
     int local = (g < kHalfKV) ? g : (g - kHalfKV);
     int8_t *chunk = src + local * kSvChunk;
-    memcpy(out + g * kSvBody, chunk, kSvBody); // body -> contiguous
-    memcpy(scales_out + g * kSvTail, chunk + kSvBody, kSvTail); // scales
+    copy_words<kSvBody>(out + g * kSvBody, chunk); // body -> contiguous
+    __builtin_memcpy(scales_out + g * kSvTail, chunk + kSvBody,
+                     kSvTail); // scales
   }
   event1();
 }
@@ -117,16 +114,16 @@ extern "C" void llama_comb_rope_rows(int8_t *restrict comb,
     alignas(64) int8_t q[kChunk];
     alignas(64) bfloat16 cs[2 * kHD];
     alignas(64) int8_t roped[kChunk];
-    memcpy(q, src, kChunk);
-    memcpy(cs, kvfp + 2 * kKfpHead, kCsBytes);
+    copy_words<kChunk>(q, src);
+    copy_words<kCsBytes>(cs, kvfp + 2 * kKfpHead);
     llama_rope_heads<kHD, kREP>(q, cs, roped);
-    memcpy(dst, roped, kChunk);
+    copy_words<kChunk>(dst, roped);
     int8_t *row = dst + kChunk;
     float ks, vs;
     llama_kv_row_quant<kHD>(kvfp, row, row + kHD, &ks, &vs);
-    memcpy(row + 2 * kHD, &ks, 4);
-    memcpy(row + 2 * kHD + 4, &vs, 4);
-    memcpy(base + kHalfKV * kRowChunk + local * kRowBytes, row, kRowBytes);
+    __builtin_memcpy(row + 2 * kHD, &ks, 4);
+    __builtin_memcpy(row + 2 * kHD + 4, &vs, 4);
+    copy_words<kRowBytes>(base + kHalfKV * kRowChunk + local * kRowBytes, row);
   }
   event1();
 }
@@ -184,9 +181,9 @@ extern "C" void llama_af_concat_selfcal2(int8_t *restrict sv,
               combined_v)));
   }
 
-  memcpy(af_out + kOutDim, &o_act_scale, 4);
+  __builtin_memcpy(af_out + kOutDim, &o_act_scale, 4);
   int32_t zero = 0;
-  memcpy(af_out + kOutDim + 4, &zero, 4);
+  __builtin_memcpy(af_out + kOutDim + 4, &zero, 4);
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   event1();

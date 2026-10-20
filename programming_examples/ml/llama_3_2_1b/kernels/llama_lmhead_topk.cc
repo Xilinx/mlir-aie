@@ -8,7 +8,6 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "llama_vec_fp.h"
 

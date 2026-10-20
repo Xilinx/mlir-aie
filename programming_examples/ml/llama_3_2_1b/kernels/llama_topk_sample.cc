@@ -15,7 +15,6 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "exp_lut.h"
 #include "llama_vec_fp.h"
@@ -52,17 +51,14 @@ static inline int32_t quant_shifted(float shifted) {
 
 static inline float lookup_exp(int32_t q) {
   uint32_t raw = llama_exp_lut_raw[q + 128];
-  float v;
-  memcpy(&v, &raw, 4);
+  float v = __builtin_bit_cast(float, raw);
   return v;
 }
 
 static inline float sw_recip(float a) {
-  int32_t bits;
-  memcpy(&bits, &a, 4);
+  int32_t bits = __builtin_bit_cast(int32_t, a);
   bits = (int32_t)0x7EF477D5 - bits;
-  float x;
-  memcpy(&x, &bits, 4);
+  float x = __builtin_bit_cast(float, bits);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
@@ -139,9 +135,9 @@ static void embed_seed(const int8_t *restrict row, float embed_sc,
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   float scale = (float)amax * embed_sc * (1.0f / 127.0f);
-  memcpy(seed + kD, &scale, 4);
+  __builtin_memcpy(seed + kD, &scale, 4);
   int32_t zero = 0;
-  memcpy(seed + kD + 4, &zero, 4);
+  __builtin_memcpy(seed + kD + 4, &zero, 4);
 }
 
 extern "C" {
@@ -160,7 +156,7 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
   const int len = *set_len;
   float temperature;
   uint32_t tbits = params[0];
-  memcpy(&temperature, &tbits, 4);
+  __builtin_memcpy(&temperature, &tbits, 4);
   const uint32_t seed_rng = params[2];
 
   int winner;
@@ -272,7 +268,7 @@ void llama_topk_finalize_packed(float *restrict set_logit,
   int32_t token;
   llama_topk_finalize(set_logit, set_gidx, set_scale, set_row, set_len, params,
                       &token, out);
-  memcpy(out + kD + 4, &token, 4);
+  __builtin_memcpy(out + kD + 4, &token, 4);
 }
 
 // The embed seed of row `row` of one lm_head weight slot, [64 B prefix |
@@ -282,7 +278,8 @@ void llama_embed_seed(int8_t *restrict slot, int8_t *restrict seed,
                       int32_t row) {
   constexpr int kPrefix = 64;
   float embed_sc;
-  memcpy(&embed_sc, slot + kPrefix + kNTile * kD + kNTile * 4 + row * 4, 4);
+  __builtin_memcpy(&embed_sc,
+                   slot + kPrefix + kNTile * kD + kNTile * 4 + row * 4, 4);
   embed_seed(slot + kPrefix + row * kD, embed_sc, seed);
 }
 

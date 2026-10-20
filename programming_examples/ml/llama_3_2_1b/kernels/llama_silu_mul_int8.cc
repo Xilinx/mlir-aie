@@ -16,7 +16,6 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "llama_vec_fp.h"
 
@@ -31,11 +30,9 @@ static constexpr int kLanes = 16;
 
 // See vec_sw_recip in llama_vec_fp.h; this is its scalar form.
 static inline float sw_recip(float a) {
-  int32_t bits;
-  memcpy(&bits, &a, 4);
+  int32_t bits = __builtin_bit_cast(int32_t, a);
   bits = (int32_t)0x7EF477D5 - bits;
-  float x;
-  memcpy(&x, &bits, 4);
+  float x = __builtin_bit_cast(float, bits);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
@@ -82,7 +79,7 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
   constexpr int kChunks = kCols / kLanes;
 
   float up_scale;
-  memcpy(&up_scale, up + kCols, 4);
+  __builtin_memcpy(&up_scale, up + kCols, 4);
   ::aie::vector<float, kLanes> up_scale_v =
       ::aie::broadcast<float, kLanes>(up_scale);
 
@@ -95,8 +92,7 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
                                                    up + c * kLanes, up_scale_v)
                                         .template cast_to<int32>()));
   int32_t absmax_bits = ::aie::reduce_max(mag);
-  float absmax;
-  memcpy(&absmax, &absmax_bits, 4);
+  float absmax = __builtin_bit_cast(float, absmax_bits);
   if (absmax < 1e-12f)
     absmax = 1e-12f;
   float out_scale = absmax * (1.0f / 127.0f);
@@ -112,9 +108,9 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
             vec_silu_lanes(gate + c * kLanes, up + c * kLanes, up_scale_v),
             inv_out_scale_v)));
 
-  memcpy(out + kCols, &out_scale, 4);
+  __builtin_memcpy(out + kCols, &out_scale, 4);
   int32_t zero = 0;
-  memcpy(out + kCols + 4, &zero, 4);
+  __builtin_memcpy(out + kCols + 4, &zero, 4);
 
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
@@ -144,8 +140,7 @@ void llama_up_requant(float *restrict up_fp, int8_t *restrict out) {
                                        ::aie::load_v<kLanes>(up_fp + c * kLanes)
                                            .template cast_to<int32>()));
   int32_t absmax_bits = ::aie::reduce_max(mag);
-  float absmax;
-  memcpy(&absmax, &absmax_bits, 4);
+  float absmax = __builtin_bit_cast(float, absmax_bits);
   if (absmax < 1e-12f)
     absmax = 1e-12f;
   float up_scale = absmax * (1.0f / 127.0f);
@@ -158,9 +153,9 @@ void llama_up_requant(float *restrict up_fp, int8_t *restrict out) {
                    vec_round_to_i8(vec_mul_rne(
                        ::aie::load_v<kLanes>(up_fp + c * kLanes), up_inv_v)));
 
-  memcpy(out + kCols, &up_scale, 4);
+  __builtin_memcpy(out + kCols, &up_scale, 4);
   int32_t zero = 0;
-  memcpy(out + kCols + 4, &zero, 4);
+  __builtin_memcpy(out + kCols + 4, &zero, 4);
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   event1();

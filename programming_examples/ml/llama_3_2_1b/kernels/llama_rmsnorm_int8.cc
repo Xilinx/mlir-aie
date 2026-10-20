@@ -14,7 +14,6 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "llama_vec_fp.h"
 
@@ -30,11 +29,9 @@ static constexpr int kLanes = 16;
 
 // See vec_sw_recip in llama_vec_fp.h; this is its scalar form.
 static inline float sw_recip(float a) {
-  int32_t bits;
-  memcpy(&bits, &a, 4);
+  int32_t bits = __builtin_bit_cast(int32_t, a);
   bits = (int32_t)0x7EF477D5 - bits;
-  float x;
-  memcpy(&x, &bits, 4);
+  float x = __builtin_bit_cast(float, bits);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
@@ -46,11 +43,9 @@ static inline float sw_recip(float a) {
 // Newton-Raphson refinement iterations. Bit-identical to the numpy
 // reference's sw_invsqrt -- no HW intrinsic approximation gap.
 static inline float sw_invsqrt(float a) {
-  int32_t bits;
-  memcpy(&bits, &a, 4);
+  int32_t bits = __builtin_bit_cast(int32_t, a);
   bits = (int32_t)0x5f3759df - (bits >> 1);
-  float x;
-  memcpy(&x, &bits, 4);
+  float x = __builtin_bit_cast(float, bits);
   x = x * (1.5f - 0.5f * a * x * x);
   x = x * (1.5f - 0.5f * a * x * x);
   return x;
@@ -94,8 +89,7 @@ static inline float vec_absmax(const int8_t *restrict x,
                  vec_normalize_lanes(x + c * kLanes, gamma + c * kLanes, pre_v)
                      .template cast_to<int32>()));
   int32_t bits = ::aie::reduce_max(mag);
-  float absmax;
-  memcpy(&absmax, &bits, 4);
+  float absmax = __builtin_bit_cast(float, bits);
   return absmax;
 }
 
@@ -130,7 +124,7 @@ void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x,
                 "LLAMA_RMSNORM_COLS must be a multiple of 64");
 
   float act_scale_in;
-  memcpy(&act_scale_in, x + kCols, 4);
+  __builtin_memcpy(&act_scale_in, x + kCols, 4);
 
   int32_t sum_sq_i32 = vec_sum_sq_i8(x, kCols);
   float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
@@ -146,9 +140,9 @@ void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x,
   float combined = pre * inv_dyn;
   vec_requant(x, gamma, y, ::aie::broadcast<float, kLanes>(combined), kCols);
 
-  memcpy(y + kCols, &scale_dyn, 4);
+  __builtin_memcpy(y + kCols, &scale_dyn, 4);
   int32_t zero = 0;
-  memcpy(y + kCols + 4, &zero, 4);
+  __builtin_memcpy(y + kCols + 4, &zero, 4);
 
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);

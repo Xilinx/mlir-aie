@@ -12,7 +12,6 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "llama_vec_fp.h"
 
@@ -181,7 +180,7 @@ static void requant_selfcal(int8_t *state, int8_t *out) {
   alignas(64) float inv_a[kLanes];
   ::aie::store_v(scale_a, scale);
   ::aie::store_v(inv_a, vec_sw_recip(scale));
-  memcpy(out + kREP * kHD, scale_a, kREP * 4);
+  __builtin_memcpy(out + kREP * kHD, scale_a, kREP * 4);
 #pragma clang loop unroll(disable)
   for (int i = 0; i < kREP * kSlices; i++)
     ::aie::store_v(out + i * kLanes,
@@ -194,7 +193,7 @@ static void requant_selfcal(int8_t *state, int8_t *out) {
 extern "C" {
 
 void llama_attn_state_init(int8_t *restrict state) {
-  memset(state, 0, kStateBytes);
+  zero_words<kStateBytes>(state);
 }
 
 // Attends q_chunk's kREP heads (kREP*kHD int8, then per head [q_scale f32 |
@@ -502,7 +501,7 @@ static constexpr int kChunkStride = (kChunkBytes + 63) / 64 * 64;
 // Query r of a batch: its chunk into the core's chunks, its state fresh.
 void llama_attn_take_q(int8_t *restrict chunk, int8_t *restrict chunks,
                        int8_t *restrict states, int32_t r) {
-  memcpy(chunks + r * kChunkStride, chunk, kChunkBytes);
+  copy_words<kChunkBytes>(chunks + r * kChunkStride, chunk);
   llama_attn_state_init(states + r * kStateBytes);
 }
 
@@ -514,15 +513,15 @@ void llama_attn_block_q(int8_t *restrict chunks, int32_t *restrict block_i32,
                         int8_t *restrict states, int32_t row0, int32_t r) {
   int8_t *chunk = chunks + r * kChunkStride;
   if (row0 >= 0)
-    memcpy(block_i32 + (row0 + r) * (kRowBytes / 4), chunk + kQChunkBytes,
-           kRowBytes);
+    copy_words<kRowBytes>(block_i32 + (row0 + r) * (kRowBytes / 4),
+                          chunk + kQChunkBytes);
   llama_attn_block(chunk, block_i32, states + r * kStateBytes,
                    row0 >= 0 ? row0 + r + 1 : kTB);
 }
 
 void llama_attn_put_q(int8_t *restrict states, int8_t *restrict part,
                       int32_t r) {
-  memcpy(part, states + r * kStateBytes, kStateBytes);
+  copy_words<kStateBytes>(part, states + r * kStateBytes);
 }
 
 // Folds two cores' states, the first core's first, in place into the first
@@ -538,8 +537,8 @@ void llama_attn_merge_pair_selfcal(int8_t *restrict state0,
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 
   int32_t count0, count1;
-  memcpy(&count0, state0, 4);
-  memcpy(&count1, state1, 4);
+  __builtin_memcpy(&count0, state0, 4);
+  __builtin_memcpy(&count1, state1, 4);
   if (count0 > 0 && count1 > 0)
     fold_part(state0, state1);
   requant_selfcal(count0 > 0 ? state0 : state1, out);
