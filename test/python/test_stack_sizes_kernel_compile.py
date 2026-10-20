@@ -19,7 +19,11 @@ import subprocess
 import tempfile
 
 import numpy as np
+import pytest
+from aie.iron import kernels
+from aie.iron.device import NPU2
 from aie.iron.kernel import ExternalFunction
+from aie.utils import set_current_device
 from aie.utils.compile.jit._object_cache import KernelObjectCache
 from aie.utils.compile.utils import compile_cxx_core_function
 
@@ -137,3 +141,21 @@ extern "C" void large_frame(int *a, int n) {
     assert other.stack - (own.stack or 0) >= 2048
     assert other.data == own.data >= 1024
     assert small.frame_bytes("aie2p", entry=large.name) == other.data + other.stack
+
+
+def test_measure_refuses_an_arch_the_recipe_was_not_built_for():
+    """A factory's recipe is its bound device's; measuring it for another
+    arch is refused before Peano compiles the wrong source.
+    """
+    with set_current_device(NPU2()):
+        zero = kernels.zero(1024, np.int32)
+        fused = kernels.fused_mm(
+            dim_m=64, dim_k=256, dim_n=64, band_m=16, chunk_k=128, out_chunk=512
+        )
+    for kernel in (zero, fused):
+        assert kernel.built_for_arch == "aie2p"
+        with pytest.raises(ValueError, match="was built for aie2p"):
+            kernel.measure("aie2")
+        with pytest.raises(ValueError, match="was built for aie2p"):
+            kernel.frame_bytes("aie2")
+    assert zero.measure("aie2p") is not None

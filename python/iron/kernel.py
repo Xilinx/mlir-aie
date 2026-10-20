@@ -1210,7 +1210,12 @@ class ExternalFunction(Kernel):
             Its ``Linked``; None for a kernel aiecc cannot measure either: a
             Chess or merge-mode kernel, or any kernel when no Peano is
             installed.
+
+        Raises:
+            ValueError: Its factory built it for another architecture (see
+                ``check_target_arch``).
         """
+        self.check_target_arch(target_arch)
         try:
             config.peano_cxx_path()
         except RuntimeError:
