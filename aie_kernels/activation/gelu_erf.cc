@@ -5,10 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Exact GELU, x * Phi(x), where gelu.cc takes the tanh approximation: the two
-// round differently on 405 finite bf16 inputs, most below x = -3. Within one
-// bf16 ulp of the float64 GELU wherever that is a normal number; subnormal
-// results flush to 0, as the AIE's floating point does.
+// Exact GELU, x * Phi(x); gelu.cc takes the tanh approximation. Within one
+// bf16 ulp of the float64 GELU wherever that is normal; subnormals flush to 0.
 //
 // With a = |x|, z = a / sqrt 2 and t = 1 / (1 + z / 2), erfc(z) = t exp(-z^2 +
 // P(t)) as in Numerical Recipes' erfcc, with P refit as a degree-6 minimax.
