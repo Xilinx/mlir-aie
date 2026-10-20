@@ -925,14 +925,25 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     };
   };
 
-  auto matchesDeviceFilter = [devFilter](DeviceOp d) {
+  // --device-name keeps the named device; a full ELF also carries the PDIs of
+  // the devices it reaches. The first module a filter sees answers for every
+  // stage, since each stage keeps the sequences' device references.
+  auto reached =
+      std::make_shared<std::pair<std::once_flag, llvm::StringSet<>>>();
+  auto matchesDeviceFilter = [devFilter, reached,
+                              fullElf = generateFullElf](DeviceOp d) {
     // Empty reset devices synthesized by --expand-load-pdis must always be
     // included, regardless of --device-name.
-    if (devFilter.empty() || d.getSymName().starts_with("empty_"))
+    if (devFilter.empty() || d.getSymName().starts_with("empty_") ||
+        d.getSymName() == devFilter)
       return true;
     auto module = d->getParentOfType<mlir::ModuleOp>();
-    return module &&
-           devicesReachedFrom(module, devFilter).contains(d.getSymName());
+    if (!fullElf || !module)
+      return false;
+    std::call_once(reached->first, [&] {
+      reached->second = devicesReachedFrom(module, devFilter);
+    });
+    return reached->second.contains(d.getSymName());
   };
 
   // Split a whole-module edge into one item per DeviceOp (keyed by bare device
