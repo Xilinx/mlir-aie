@@ -1,0 +1,196 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+"""Integer numpy reference for yolo26n: the oracle every NPU run is checked against.
+
+`Oracle(params).run(image)` evaluates `yolo_spec.Network.yolo26n()` on one
+letterboxed uint8 RGB image (640, 640, 3) and returns every tensor by name:
+int8 activations as `(C, H, W)` int64 arrays and the detections as float32
+`(300, 6)` rows of x1, y1, x2, y2, score, class.
+
+Requantization rounds half to even and saturates to int8, as ONNX
+QuantizeLinear does; with power-of-two scales that is exact integer
+arithmetic. The attention softmax is integer too: a Q26 exp table and an
+exactly rounded division, which agrees with ONNX Runtime's float32 softmax
+except where its result sits within float error of a rounding boundary. The
+postprocess runs in float32 on dequantized int8 values, as the ONNX graph
+does, and is exact.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+from yolo_params import Params, anchor_grid
+from yolo_spec import (
+    Add,
+    Attention,
+    Concat,
+    Conv,
+    DetectPost,
+    InputQuant,
+    MaxPool,
+    Network,
+    Slice,
+    Upsample,
+)
+
+
+def requantize(acc: np.ndarray, shift: int) -> np.ndarray:
+    """`acc / 2**shift`, rounded half to even and saturated to int8."""
+    scaled = np.round(acc / 2.0**shift) if shift >= 0 else acc * 2.0**-shift
+    return np.clip(scaled, -128, 127).astype(np.int64)
+
+
+def conv2d(x: np.ndarray, weight: np.ndarray, stride: int, groups: int) -> np.ndarray:
+    """Exact integer convolution, `(C, H, W)` by `(O, C/groups, k, k)`, zero-padded by `k // 2`."""
+    k = weight.shape[-1]
+    padded = np.pad(x, ((0, 0), (k // 2, k // 2), (k // 2, k // 2))).astype(np.float64)
+    windows = sliding_window_view(padded, (1, k, k))[:, ::stride, ::stride, 0]
+    # float64 holds every partial sum exactly: |sum| < 128 * 128 * 9 * 512 < 2**53.
+    if groups == 1:
+        acc = np.tensordot(
+            weight.astype(np.float64), windows, axes=([1, 2, 3], [0, 3, 4])
+        )
+    elif groups == x.shape[0] == weight.shape[0]:
+        acc = np.einsum("chwij,cij->chw", windows, weight[:, 0].astype(np.float64))
+    else:
+        raise ValueError(
+            f"unsupported grouped conv: groups={groups}, shape {weight.shape}"
+        )
+    return acc.astype(np.int64)
+
+
+def topk(values: np.ndarray, k: int) -> np.ndarray:
+    """Indices of the `k` largest values, ties to the lower index, as ONNX TopK orders them."""
+    return np.lexsort((np.arange(values.size), -values))[:k]
+
+
+class Oracle:
+    def __init__(self, params: Params, network: Network | None = None) -> None:
+        self.params = params
+        self.network = network or Network.yolo26n()
+
+    def run(self, image: np.ndarray) -> dict[str, np.ndarray]:
+        if image.shape != (640, 640, 3) or image.dtype != np.uint8:
+            raise ValueError(
+                f"expected a (640, 640, 3) uint8 image, got {image.shape} {image.dtype}"
+            )
+        p = self.params
+        t: dict[str, np.ndarray] = {}
+        for op in self.network.ops:
+            match op:
+                case InputQuant():
+                    t[op.dst.name] = p.of(op.name, "table").astype(np.int64)[
+                        image.transpose(2, 0, 1)
+                    ]
+                case Conv():
+                    acc = conv2d(
+                        t[op.src.name], p.of(op.name, "weight"), op.stride, op.groups
+                    )
+                    y = requantize(
+                        acc + p.of(op.name, "bias")[:, None, None],
+                        int(p.of(op.name, "shift")),
+                    )
+                    t[op.dst.name] = (
+                        p.of(op.name, "table").astype(np.int64)[y + 128]
+                        if op.act
+                        else y
+                    )
+                case Add():
+                    sa, sb = p.scale(op.a.name), p.scale(op.b.name)
+                    base = min(sa, sb)
+                    total = (t[op.a.name] << (sa - base)) + (
+                        t[op.b.name] << (sb - base)
+                    )
+                    t[op.dst.name] = requantize(total, p.scale(op.dst.name) - base)
+                case Concat():
+                    t[op.dst.name] = np.concatenate([t[s.name] for s in op.srcs])
+                case Slice():
+                    t[op.dst.name] = t[op.src.name][
+                        op.start : op.start + op.dst.channels
+                    ]
+                case MaxPool():
+                    r = op.kernel // 2
+                    padded = np.pad(
+                        t[op.src.name], ((0, 0), (r, r), (r, r)), constant_values=-129
+                    )
+                    t[op.dst.name] = sliding_window_view(
+                        padded, (1, op.kernel, op.kernel)
+                    ).max(axis=(3, 4, 5))
+                case Upsample():
+                    t[op.dst.name] = t[op.src.name].repeat(2, axis=1).repeat(2, axis=2)
+                case Attention():
+                    self.attention(op, t)
+                case DetectPost():
+                    t[op.dst.name] = self.detect(op, t)
+        return t
+
+    def attention(self, op: Attention, t: dict[str, np.ndarray]) -> None:
+        p = self.params
+        s_qkv = p.scale(op.qkv.name)
+        c, h, w = op.qkv.shape
+        heads = t[op.qkv.name].reshape(op.heads, c // op.heads, h * w)
+        q = heads[:, : op.key_dim]
+        k = heads[:, op.key_dim : 2 * op.key_dim]
+        v = heads[:, 2 * op.key_dim :]
+        s_q = int(p.of(op.name, "q_scale"))
+        q = requantize(
+            q * int(p.of(op.name, "q_mul")),
+            s_q - s_qkv - int(p.of(op.name, "q_mul_scale")),
+        )
+        s_s = int(p.of(op.name, "score_scale"))
+        scores = requantize(np.einsum("hdi,hdj->hij", q, k), s_s - s_q - s_qkv)
+        # Integer softmax: exp(-(max - s) * 2**s_s) from a Q26 table, then each
+        # probability rounded exactly (half to even) to the output's int8 grid.
+        e = p.of(op.name, "exp_table").astype(np.int64)[
+            scores.max(axis=-1, keepdims=True) - scores
+        ]
+        s_p = int(p.of(op.name, "prob_scale"))
+        numerator = e << -s_p
+        total = e.sum(axis=-1, keepdims=True)
+        quotient, remainder = np.divmod(2 * numerator, 2 * total)
+        round_up = (remainder > total) | ((remainder == total) & (quotient % 2 == 1))
+        probs = np.minimum(quotient + round_up, 127)
+        out = requantize(
+            np.einsum("hdj,hij->hdi", v, probs), p.scale(op.dst.name) - s_qkv - s_p
+        )
+        t[op.values.name] = v.reshape(op.values.shape)
+        t[op.dst.name] = out.reshape(op.dst.shape)
+
+    def detect(self, op: DetectPost, t: dict[str, np.ndarray]) -> np.ndarray:
+        p = self.params
+        dist = np.concatenate(
+            [
+                (t[b.name] * np.float32(2.0 ** p.scale(b.name)))
+                .reshape(4, -1)
+                .astype(np.float32)
+                for b in op.boxes
+            ],
+            axis=1,
+        )
+        sigmoid = p.of(op.name, "sigmoid")
+        scores = np.concatenate(
+            [
+                sigmoid[i][t[s.name] + 128].reshape(s.channels, -1)
+                for i, s in enumerate(op.scores)
+            ],
+            axis=1,
+        ).T
+        anchors, strides = anchor_grid(op)
+        boxes = (np.concatenate([anchors - dist[:2], anchors + dist[2:]]) * strides).T
+        k = op.dst.height
+        first = topk(scores.max(axis=1), k)
+        candidates = scores[first].reshape(-1)
+        second = topk(candidates, k)
+        classes = scores.shape[1]
+        rows = first[second // classes]
+        return np.concatenate(
+            [
+                boxes[rows],
+                candidates[second][:, None],
+                (second % classes).astype(np.float32)[:, None],
+            ],
+            axis=1,
+        ).astype(np.float32)

@@ -27,6 +27,7 @@
     "programming_examples/ml/scale_shift",
     "programming_examples/ml/softmax",
     "programming_examples/ml/swiglu",
+    "programming_examples/ml/yolo26n",
     "utils/kernel_checks"
   ],
   "exclude": [

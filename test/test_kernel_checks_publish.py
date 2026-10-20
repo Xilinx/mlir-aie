@@ -873,7 +873,9 @@ def test_a_hardware_run_from_before_the_effort_sweep_becomes_full_effort(
     assert {p.name: p.read_text() for p in out.rglob("*.json")} == before
 
 
-@pytest.mark.parametrize("target", ["sa-placer", "llama-chain-hw", "npu2"])
+@pytest.mark.parametrize(
+    "target", ["sa-placer", "llama-chain-hw", "yolo26n-hw", "npu2"]
+)
 def test_only_the_hardware_check_has_its_cases_upgraded(publish, target):
     record = {**hardware_record("r", "2026-10-16T06:52:54+00:00"), "target": target}
     assert not publish.upgrade(record)

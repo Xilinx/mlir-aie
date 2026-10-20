@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Reduction kernel factories: reduce_add, reduce_min, reduce_max, compute_max, argmax."""
+"""Reduction kernel factories: reduce_add, reduce_min, reduce_max, compute_max, argmax, maxpool2d."""
 
 from functools import partial
 
@@ -454,5 +454,74 @@ def argmax_combine(dtype: type = np.int32) -> ExternalFunction:
             sample=partial(argmax_combine_sample, dtype=actual_dtype),
             tolerance=Tolerance.exact(note="selection"),
             ops_per_call=1,
+        ),
+    )
+
+
+def maxpool2d_ref(line0, line1, line2, line3, line4, input_width, channels):
+    """Numpy reference for [`maxpool2d`][iron.kernels.reduce.maxpool2d]: a 5x5 stride-1 max pool row.
+
+    Lines are ``[C/8][W][8]`` int8, the output row is the max over the five
+    lines and the five pixels around each one, pixels past the row's ends
+    counting as -inf.
+    """
+    W, C = int(input_width), int(channels)
+    lines = [np.asarray(line) for line in (line0, line1, line2, line3, line4)]
+    lead = lines[0].shape[:-1]
+    column = np.max(np.stack(lines), axis=0).reshape(*lead, C // 8, W, 8)
+    padded = np.pad(
+        column, [(0, 0)] * len(lead) + [(0, 0), (2, 2), (0, 0)], constant_values=-128
+    )
+    out = np.max(np.stack([padded[..., k : k + W, :] for k in range(5)]), axis=0)
+    return out.astype(np.int8).reshape(*lead, C * W)
+
+
+def maxpool2d(
+    input_width: int = 20, channels: int = 128, kernel: int = 5
+) -> ExternalFunction:
+    """5x5, stride-1 max pool of one int8 row, padded with -inf (YOLO's SPPF).
+
+    Takes the five ``[C/8][W][8]`` rows around the output row, then the
+    output row. At the top or bottom of the image the caller passes an edge
+    row again in place of a missing one, which a max leaves unchanged.
+
+    Args:
+        input_width: Pixels per row, a multiple of 4.
+        channels: Channels, a multiple of 8.
+        kernel: The window; 5.
+
+    Returns:
+        ExternalFunction for maxpool2d_5x5_i8.
+
+    Raises:
+        ValueError: On another window, or a width or channel count the
+            kernel cannot tile.
+    """
+    if kernel != 5:
+        raise ValueError(f"maxpool2d(): only a 5x5 window is built, got {kernel}")
+    if input_width % 4 or channels % 8 or input_width < 4:
+        raise ValueError(
+            f"maxpool2d(): needs a width of 4k and channels of 8k, got "
+            f"{input_width} and {channels}"
+        )
+    line_ty = np.ndarray[(input_width * channels,), np.dtype[np.int8]]
+    align = 64 if input_width % 8 == 0 else 32
+    return _make_extern(
+        "maxpool2d_5x5_i8",
+        _kernel_source("reduce/maxpool2d.cc"),
+        [line_ty] * 6,
+        compile_flags=[
+            f"-DMAXPOOL_WIDTH={input_width}",
+            f"-DMAXPOOL_CHANNELS={channels}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, In, In, In, Out),
+            reference=partial(
+                maxpool2d_ref, input_width=input_width, channels=channels
+            ),
+            tolerance=Tolerance.exact(note="a max is exact"),
+            alignments=tuple((i, align) for i in range(6)),
+            ops_per_call=24 * input_width * channels,
         ),
     )

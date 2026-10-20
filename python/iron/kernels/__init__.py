@@ -9,7 +9,7 @@ Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu, clamp, magnitude_f32
 - `datamovement` — affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
-- `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
+- `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine, maxpool2d
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize
 - `activation` — softmax, gelu, gelu_erf, silu, swiglu, bf16_exp, exp2f_vec, log_f32, log10_clamp_f32, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm, layer_norm_eps
@@ -238,6 +238,8 @@ from .linalg import (
     MV_COL_MAJ_FIRST,
     MV_COL_MAJ_LAST,
     MatrixKernel,
+    attention_i8,
+    attention_i8_ref,
     cascade_mm,
     cascade_mm_put,
     mha,
@@ -283,6 +285,8 @@ from .reduce import (
     argmax_ref,
     compute_max,
     compute_max_ref,
+    maxpool2d,
+    maxpool2d_ref,
     reduce_add,
     reduce_add_ref,
     reduce_max,
@@ -453,6 +457,8 @@ __all__ = [
     "argmax_ref",
     "argmax_combine",
     "argmax_combine_ref",
+    "maxpool2d",
+    "maxpool2d_ref",
     "relu",
     "clamp",
     "clamp_ref",
@@ -550,6 +556,8 @@ __all__ = [
     "mha",
     "mha_softmax",
     "mha_softmax_ref",
+    "attention_i8",
+    "attention_i8_ref",
     "prefill_fv",
     "prefill_fv_ref",
     "mm_bfp",

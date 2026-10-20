@@ -780,21 +780,27 @@ SequentialPlacer::buildChannelRequirements(
     fifoNameToOp[ofOp.getSymName()] = ofOp;
   }
 
-  // For each fifo involved in a link, track which side IS the link tile so we
-  // don't double-count it: the subsequent link loop credits the link tile with
-  // (#sources input + #dests output) and we'd otherwise count the same channels
-  // again in the per-fifo loop below. A linked source fifo terminates at the
-  // link tile on its CONSUMER side; a linked dest fifo originates from the
-  // link tile on its PRODUCER side.
-  llvm::DenseSet<llvm::StringRef> linkedAsSource;
+  // A link's tile is the one producing its dest fifos (each fifo has one
+  // producer). The link loop below credits it with (#sources input + #dests
+  // output), so the per-fifo loop skips that tile's side of each linked fifo,
+  // and only that tile's: a linked source fifo can have other consumers, such
+  // as a shim that also drains it, and those still need their own channels.
+  llvm::DenseMap<Operation *, Operation *> linkTileOf;
+  llvm::StringMap<Operation *> linkTileOfSource;
   llvm::DenseSet<llvm::StringRef> linkedAsDest;
   for (auto linkOp : objectFifoLinks) {
+    Operation *linkTileOp = nullptr;
+    for (auto dstFifoAttr : linkOp.getFifoOuts())
+      if (auto sym = dyn_cast<FlatSymbolRefAttr>(dstFifoAttr)) {
+        linkedAsDest.insert(sym.getValue());
+        auto it = fifoNameToOp.find(sym.getValue());
+        if (!linkTileOp && it != fifoNameToOp.end())
+          linkTileOp = it->second.getProducerTile().getDefiningOp();
+      }
+    linkTileOf[linkOp.getOperation()] = linkTileOp;
     for (auto srcFifoAttr : linkOp.getFifoIns())
       if (auto sym = dyn_cast<FlatSymbolRefAttr>(srcFifoAttr))
-        linkedAsSource.insert(sym.getValue());
-    for (auto dstFifoAttr : linkOp.getFifoOuts())
-      if (auto sym = dyn_cast<FlatSymbolRefAttr>(dstFifoAttr))
-        linkedAsDest.insert(sym.getValue());
+        linkTileOfSource[sym.getValue()] = linkTileOp;
   }
 
   // Count channels for every ObjectFifo, omitting only the link-tile side of
@@ -802,7 +808,7 @@ SequentialPlacer::buildChannelRequirements(
   // produces a linked source fifo consumes an MM2S channel; a core that
   // consumes a linked dest fifo consumes an S2MM channel.
   for (auto ofOp : objectFifos) {
-    bool skipConsumerSide = linkedAsSource.count(ofOp.getSymName());
+    Operation *linkConsumer = linkTileOfSource.lookup(ofOp.getSymName());
     bool skipProducerSide = linkedAsDest.count(ofOp.getSymName());
 
     Value producerTile = ofOp.getProducerTile();
@@ -825,7 +831,7 @@ SequentialPlacer::buildChannelRequirements(
 
       // This consumer needs a DMA channel (unless it's the link tile, which
       // the link loop credits separately).
-      if (consumerOp && !skipConsumerSide)
+      if (consumerOp && consumerOp != linkConsumer)
         channelRequirements[consumerOp].first++; // input++
 
       producerNeedsDMA = true;
@@ -841,30 +847,7 @@ SequentialPlacer::buildChannelRequirements(
   // Link tiles need channels for all sources and destinations
   for (auto linkOp : objectFifoLinks) {
 
-    // Find the tile that fifos are linked on
-    Operation *linkTileOp = nullptr;
-
-    // Get link tile from first source fifo's consumer
-    for (auto srcFifoAttr : linkOp.getFifoIns()) {
-      auto sym = dyn_cast<FlatSymbolRefAttr>(srcFifoAttr);
-      if (!sym)
-        continue;
-      auto srcFifoName = sym.getValue();
-      auto it = fifoNameToOp.find(srcFifoName);
-      if (it == fifoNameToOp.end())
-        continue;
-
-      auto srcFifo = it->second;
-      for (Value consumerTile : srcFifo.getConsumerTiles()) {
-        if (auto *consumerOp = consumerTile.getDefiningOp()) {
-          linkTileOp = consumerOp;
-          break;
-        }
-      }
-      if (linkTileOp)
-        break;
-    }
-
+    Operation *linkTileOp = linkTileOf.lookup(linkOp.getOperation());
     if (!linkTileOp)
       continue;
 

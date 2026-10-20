@@ -96,6 +96,7 @@ CASES: list[Case] = [
     Case("passthrough", dict(tile_size=2048), calls=256),
     Case("passthrough", dict(dtype=np.int16), calls=16, smoke=True),
     Case("passthrough", dict(dtype=np.uint8), calls=16, smoke=True),
+    check("passthrough", dict(dtype=np.int8, tile_size=1280), calls=4, smoke=True),
     # The tile amd/IRON's passthrough operator compiles (PASSTHROUGH_ELEMS=1024
     # with BIT_WIDTH=16); the cases above all build a different loop bound.
     Case("passthrough", dict(tile_size=1024, dtype=np.int16), calls=16),
@@ -117,6 +118,34 @@ CASES: list[Case] = [
     # to grade such a reference until the kernel declares it.
     check("scale", dict(dtype=np.int32), calls=16, params=(-7,), tag="edge-negfactor"),
     Case("add", calls=16, smoke=True),
+    # YOLO26n's PSA attention head: 400 keys of a 20x20 map, a row of 20
+    # queries per call, with the real model's shifts.
+    Case(
+        "attention_i8",
+        calls=2,
+        scalars=(91, 6, 8, 7, 7),
+        smoke=True,
+        devices=("npu2",),
+    ),
+    # YOLO26n's SPPF pool: a 20-pixel row (4 at a time) and a 64-pixel one.
+    Case("maxpool2d", dict(input_width=20, channels=128), calls=4, smoke=True),
+    check("maxpool2d", dict(input_width=64, channels=16), calls=4, tag="width-64"),
+    # int8 on power-of-two scales: operands shifted up 2 and 0, the sum down
+    # 3, and a sum on the output's scale; YOLO26n's residual adds.
+    Case(
+        "add",
+        dict(dtype=np.int8, tile_size=2560),
+        calls=4,
+        scalars=(2, 0, 3),
+        smoke=True,
+    ),
+    check(
+        "add",
+        dict(dtype=np.int8, tile_size=64),
+        calls=4,
+        scalars=(0, 1, 0),
+        tag="no-down-shift",
+    ),
     Case("add", calls=256, data_cases=IEEE_FLOAT),
     Case("mul", calls=16, smoke=True),
     Case("mul", calls=256, data_cases=IEEE_FLOAT),
@@ -1358,6 +1387,80 @@ CASES: list[Case] = [
         scalars=(64, 64, 64, 12),
         tag="two-blocks",
     ),
+    # conv2dk1_i8 rounding half to even, and ONNX QLinearConv's bias-seeded
+    # form, with and without a table, at widths that are not multiples of 32:
+    # 80 is two 32-pixel blocks and two 8-pixel ones, 20 two 8s and a 4.
+    check(
+        "conv2dk1_i8",
+        dict(rounding="conv_even"),
+        calls=8,
+        scalars=(32, 64, 64, 12),
+        tag="conv-even",
+        smoke=True,
+    ),
+    Case(
+        "conv2dk1_i8",
+        dict(bias=True, rounding="conv_even"),
+        calls=8,
+        scalars=(32, 64, 64, 12),
+        smoke=True,
+    ),
+    check(
+        "conv2dk1_i8",
+        dict(input_width=80, bias=True, rounding="conv_even"),
+        calls=4,
+        scalars=(80, 64, 64, 12),
+        tag="width-80",
+    ),
+    check(
+        "conv2dk1_i8",
+        dict(
+            input_width=20,
+            input_channels=16,
+            output_channels=16,
+            bias=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(20, 16, 16, 9),
+        tag="width-20",
+    ),
+    Case(
+        "conv2dk1_i8",
+        dict(input_width=40, bias=True, table=True, rounding="conv_even"),
+        calls=8,
+        scalars=(40, 64, 64, 12),
+        smoke=True,
+    ),
+    # A row of 160 bytes: the table maps 64 bytes at a time, then 32.
+    check(
+        "conv2dk1_i8",
+        dict(
+            input_width=20,
+            input_channels=16,
+            output_channels=8,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(20, 16, 8, 9),
+        tag="table-tail",
+    ),
+    # YOLO26n's Detect P3 class branch 1x1, 64 -> 80 at width 80, with SiLU.
+    Case(
+        "conv2dk1_i8",
+        dict(
+            input_width=80,
+            input_channels=64,
+            output_channels=80,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(80, 64, 80, 12),
+    ),
     # conv2dk1_skip streams three tensors; the harness packs them into one
     # fifo when they share a type, i.e. input_channels == 2 * output_channels
     # with a uint8 residual. An int8 residual goes in a fifo of its own.
@@ -1439,6 +1542,105 @@ CASES: list[Case] = [
         scalars=(32, 64, 64, 12),
     ),
     Case("conv2dk3", calls=8, scalars=(32, 64, 64, 3, 3, 1, 15, 0), smoke=True),
+    # The bias variant, ONNX QLinearConv's arithmetic, at stride 1 and 2, on
+    # the top, middle and bottom rows. Width 20 tiles by 4 pixels, the rest
+    # by 8; stride 2 at width 40 writes 20.
+    Case(
+        "conv2dk3",
+        dict(bias=True, rounding="conv_even"),
+        calls=8,
+        scalars=(32, 64, 64, 3, 3, 1, 15, 0),
+        smoke=True,
+    ),
+    *[
+        check(
+            "conv2dk3",
+            dict(bias=True, rounding="conv_even"),
+            calls=4,
+            scalars=(32, 64, 64, 3, 3, region, 15, 0),
+            tag=tag,
+        )
+        for region, tag in ((0, "bias-top-row"), (2, "bias-bottom-row"))
+    ],
+    check(
+        "conv2dk3",
+        dict(
+            input_width=20,
+            input_channels=16,
+            output_channels=16,
+            bias=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(20, 16, 16, 3, 3, 1, 12, 0),
+        tag="bias-width-20",
+    ),
+    Case(
+        "conv2dk3",
+        dict(input_width=40, bias=True, table=True, rounding="conv_even"),
+        calls=4,
+        scalars=(40, 64, 64, 3, 3, 1, 15, 0),
+        smoke=True,
+    ),
+    Case(
+        "conv2dk3",
+        dict(input_width=64, bias=True, stride=2, rounding="conv_even"),
+        calls=4,
+        scalars=(64, 64, 64, 3, 3, 1, 15, 0),
+        smoke=True,
+    ),
+    check(
+        "conv2dk3",
+        dict(input_width=64, bias=True, stride=2, rounding="conv_even"),
+        calls=4,
+        scalars=(64, 64, 64, 3, 3, 0, 15, 0),
+        tag="bias-s2-top-row",
+    ),
+    check(
+        "conv2dk3",
+        dict(
+            input_width=40,
+            input_channels=32,
+            output_channels=32,
+            bias=True,
+            table=True,
+            stride=2,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(40, 32, 32, 3, 3, 1, 14, 0),
+        tag="bias-s2-width-40",
+    ),
+    # YOLO26n's stem conv (RGB padded to 8 channels, 640 wide) and model.1,
+    # both stride 2 with the SiLU table.
+    Case(
+        "conv2dk3",
+        dict(
+            input_width=640,
+            input_channels=8,
+            output_channels=16,
+            bias=True,
+            table=True,
+            stride=2,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(640, 8, 16, 3, 3, 1, 12, 0),
+    ),
+    Case(
+        "conv2dk3",
+        dict(
+            input_width=320,
+            input_channels=16,
+            output_channels=32,
+            bias=True,
+            table=True,
+            stride=2,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(320, 16, 32, 3, 3, 1, 13, 0),
+    ),
     Case(
         "conv2dk3",
         dict(act_dtype=np.uint8),
@@ -1691,6 +1893,53 @@ CASES: list[Case] = [
         calls=8,
         scalars=(28, 120, 120, 3, 3, 1, 7, 0),
         smoke=True,
+    ),
+    # The int8 bias variant (ONNX QLinearConv depthwise): YOLO26n's
+    # positional-encoding conv and Detect class branch widths and channels.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(
+            input_width=20,
+            input_channels=128,
+            output_channels=128,
+            bias=True,
+        ),
+        calls=4,
+        scalars=(20, 128, 128, 3, 3, 1, 7, 0),
+        smoke=True,
+    ),
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(
+                input_width=40,
+                input_channels=80,
+                output_channels=80,
+                bias=True,
+                table=True,
+            ),
+            calls=4,
+            scalars=(40, 80, 80, 3, 3, region, 7, 0),
+            tag=tag,
+        )
+        for region, tag in (
+            (0, "bias-top-row"),
+            (1, "bias-table"),
+            (2, "bias-bottom-row"),
+        )
+    ],
+    # YOLO26n's Detect P3 class branch: 80 channels at width 80, with SiLU.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(
+            input_width=80,
+            input_channels=80,
+            output_channels=80,
+            bias=True,
+            table=True,
+        ),
+        calls=4,
+        scalars=(80, 80, 80, 3, 3, 1, 7, 0),
     ),
     Case(
         "bn_conv2dk3_dw",

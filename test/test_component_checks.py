@@ -3,7 +3,7 @@
 #
 # RUN: %pytest %s
 
-"""The SA placer component checks, with the real aie-opt; no NPU required."""
+"""The component checks, with the real aie-opt; no NPU required."""
 
 import importlib.util
 import json
@@ -38,6 +38,25 @@ PASS!
 """
 
 
+# What yolo26n.py prints on an npu2 over 8 COCO128 images: a line per image,
+# a summary, the onnxruntime agreement and, with --time, one image's time at
+# the run's batch.
+YOLO_OUTPUT = """\
+image 000000000009.jpg: PASS (0/1800 differ)
+image 000000000025.jpg: PASS (0/1800 differ)
+image 000000000030.jpg: PASS (0/1800 differ)
+image 000000000034.jpg: PASS (0/1800 differ)
+image 000000000036.jpg: PASS (0/1800 differ)
+image 000000000042.jpg: PASS (0/1800 differ)
+image 000000000049.jpg: PASS (0/1800 differ)
+image 000000000061.jpg: PASS (0/1800 differ)
+yolo26n: 8/8 images PASS
+ort: 8/8 images match onnxruntime
+"""
+YOLO_TIMED_OUTPUT = YOLO_OUTPUT + "per-image: 78365.1 us (12.76 fps) at batch 1\n"
+YOLO_BATCHED_OUTPUT = YOLO_OUTPUT + "per-image: 12727.7 us (78.57 fps) at batch 8\n"
+
+
 def load(name):
     spec = importlib.util.spec_from_file_location(name, CHECKS / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
@@ -59,6 +78,11 @@ def aie_opt():
 @pytest.fixture(scope="module")
 def hw():
     return load("sa_placer_hw")
+
+
+@pytest.fixture(scope="module")
+def yolo():
+    return load("yolo26n_hw")
 
 
 def sweep(tmp_path, *args):
@@ -341,6 +365,100 @@ def test_each_compile_charts_its_stages_cold_and_warm(hw):
     } <= rows.keys()
     timed = [r for n, r in rows.items() if "/compile_" in n and "_rss_" not in n]
     assert {r["unit"] for r in timed} == {"s"}
+
+
+def test_a_yolo26n_run_that_matches_every_image_passes(yolo):
+    assert yolo.parse_correctness(YOLO_OUTPUT, 0) == {
+        "passed": True,
+        "images_passed": 8,
+        "images_total": 8,
+        "ort_matches": 8,
+        "failed_images": [],
+    }
+
+
+def test_a_yolo26n_image_that_differs_fails_the_run_by_name(yolo):
+    out = YOLO_OUTPUT.replace(
+        "000000000025.jpg: PASS (0/1800 differ)",
+        "000000000025.jpg: FAIL (7/1800 differ)",
+    ).replace("8/8 images PASS", "7/8 images PASS")
+    got = yolo.parse_correctness(out, 1)
+    assert not got["passed"]
+    assert (got["images_passed"], got["images_total"]) == (7, 8)
+    assert got["failed_images"] == ["000000000025.jpg"]
+
+
+@pytest.mark.parametrize(
+    "out, returncode",
+    [
+        # A run that stops before its summary counts its image lines.
+        (YOLO_OUTPUT.split("yolo26n:")[0], 0),
+        (YOLO_OUTPUT, 1),
+        ("", 0),
+    ],
+    ids=["no-summary", "nonzero-exit", "no-output"],
+)
+def test_a_yolo26n_run_without_a_clean_summary_fails(yolo, out, returncode):
+    got = yolo.parse_correctness(out, returncode)
+    assert not got["passed"]
+    assert got["images_passed"] == out.count(": PASS (")
+
+
+def test_onnxruntime_disagreeing_does_not_fail_a_yolo26n_run(yolo):
+    out = YOLO_OUTPUT.replace("ort: 8/8", "ort: 6/8")
+    got = yolo.parse_correctness(out, 0)
+    assert got["passed"] and got["ort_matches"] == 6
+    ort = yolo.aggregate(got, {}, {}, {})[1]
+    assert (ort["name"], ort["value"], ort["range"]) == (
+        "yolo26n/640/ort_matches",
+        6,
+        "of 8",
+    )
+
+
+def test_a_yolo26n_run_without_onnxruntime_has_no_ort_row(yolo):
+    out = YOLO_OUTPUT.replace("ort: 8/8 images match onnxruntime\n", "")
+    got = yolo.parse_correctness(out, 0)
+    assert got["passed"] and got["ort_matches"] is None
+    rows = yolo.aggregate(got, {}, {}, {})
+    assert [r["name"] for r in rows] == ["yolo26n/640/images_passed"]
+
+
+def test_timed_yolo26n_runs_report_each_batch(yolo):
+    assert yolo.parse_timing(YOLO_OUTPUT) == {}
+    timing = yolo.parse_timing(YOLO_TIMED_OUTPUT) | yolo.parse_timing(
+        YOLO_BATCHED_OUTPUT
+    )
+    assert timing == {
+        "us_per_image_b1": 78365.1,
+        "fps_b1": 12.76,
+        "us_per_image_b8": 12727.7,
+        "fps_b8": 78.57,
+    }
+    rows = yolo.aggregate(
+        yolo.parse_correctness(YOLO_TIMED_OUTPUT, 0),
+        timing,
+        {"elf_bytes": 1_234_567, "n_cores": 32},
+        {"compile_s": 95.1, "compile_peak_rss_mb": 3100.0},
+    )
+    assert [(r["name"], r["unit"], r["value"], r.get("range")) for r in rows] == [
+        ("yolo26n/640/images_passed", "images", 8, "of 8"),
+        ("yolo26n/640/ort_matches", "images", 8, "of 8"),
+        ("yolo26n/640/us_per_image_b1", "us", 78365.1, None),
+        ("yolo26n/640/fps_b1", "fps", 12.76, None),
+        ("yolo26n/640/us_per_image_b8", "us", 12727.7, None),
+        ("yolo26n/640/fps_b8", "fps", 78.57, None),
+        ("yolo26n/640/elf_bytes", "bytes", 1_234_567, None),
+        ("yolo26n/640/n_cores", "cores", 32, None),
+        ("yolo26n/640/compile_s", "s", 95.1, None),
+        ("yolo26n/640/compile_peak_rss_mb", "MB", 3100.0, None),
+    ]
+    # Every metric the check publishes has a threshold the page and the PR
+    # report share.
+    thresholds = json.loads(
+        (ROOT / "utils/kernel_checks/thresholds.json").read_text(encoding="utf-8")
+    )
+    assert {r["name"].rsplit("/", 1)[1] for r in rows} <= thresholds.keys()
 
 
 @pytest.mark.parametrize("batches", ["0", "-3", "two"])

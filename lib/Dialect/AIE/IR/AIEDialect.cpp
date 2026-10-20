@@ -1699,6 +1699,13 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
+    // Each input's transfer runs to the next input's offset, so the offsets
+    // must increase; otherwise the lengths come out wrong and the link hangs.
+    for (auto [idx, len] : llvm::enumerate(getJoinTransferLengths()))
+      if (len <= 0)
+        return emitOpError("src offsets must increase: input objectFifo ")
+               << idx << " would transfer " << len << " elements";
+
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     // A slot that comes out empty or negative (offsets not ascending) is sized
     // from its participant by the lowering, so it cannot mismatch.
@@ -1738,6 +1745,11 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     if (!getSrcOffsets().empty())
       return emitOpError("src offsets should be empty for distribute");
+
+    for (auto [idx, len] : llvm::enumerate(getDistributeTransferLengths()))
+      if (len <= 0)
+        return emitOpError("dst offsets must increase: output objectFifo ")
+               << idx << " would transfer " << len << " elements";
 
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     for (auto [fifoOut, slot] :

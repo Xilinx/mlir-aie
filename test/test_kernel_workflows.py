@@ -354,7 +354,7 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
         for step in jobs["hw-checks"]["steps"]
         if "REQUIRED_PMODE" in step.get("env", {})
     ]
-    assert [step["id"] for step in designs] == ["mobilenet", "llama"]
+    assert [step["id"] for step in designs] == ["mobilenet", "llama", "yolo26n"]
     if not evaluate(jobs["hw-checks"]["if"], context):
         assert event == "pull_request"
         return
