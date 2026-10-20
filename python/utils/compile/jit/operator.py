@@ -28,7 +28,7 @@ from aie.helpers.npdtypes import is_block_float
 
 from ...hostruntime import set_current_device
 from .declaration import Declaration
-from .params import param, tunable
+from .params import Member, param, tunable
 
 
 def _key_value(value: Any) -> Any:
@@ -261,7 +261,10 @@ class Operator:
             {n: vars(self)[n] for n in self.declaration.key},
             # Bound to the view, a member's dims read through it, so a
             # parameter outside the key raises there too.
-            _bound={name: m.of(view) for name, m in self._bound.items()},
+            _bound={
+                name: m.of(view) if isinstance(m, Member) else m
+                for name, m in self._bound.items()
+            },
             trace=self.trace,
         )
         return view
