@@ -19,6 +19,7 @@ from aie2_decode import (
     LANE_BYTES,
     LMW_GAMMA_BYTES,
     REC_BYTES,
+    STAGE_RESID,
     VOCAB,
     WLM_SLOT,
     WLM_TOTAL,
@@ -28,11 +29,11 @@ from aie2_decode import (
     stage_layout,
     wblob_layout,
 )
-from aie2_gemv_array import LAYER, N_CORES, RESID_OFF, sample_param_values
+from aie2_gemv_array import LAYER, N_CORES, sample_param_values
 from aie2_layer_mh import CS_BYTES, HEAD_D, N_HEADS_KV, N_TILE, D
 from llama_npu import DispatchSession
 from ml_dtypes import bfloat16
-from test_gemv_array import pack_lane
+from test_gemv_array import pack_lane_mma
 from test_layer_mh import pack_perchan_slots
 
 # The decode's time a token at position p, fit to the README's N=16
@@ -123,8 +124,8 @@ class DecodeShape:
         self.p_max = p_max
         self.attn_cores = attn_cores
         slots, _, final, discard, self.stage_bytes = stage_layout(n_layers)
-        self.seed_at = slots[0, "o"] + RESID_OFF
-        self.final_at = final + RESID_OFF
+        self.seed_at = slots[0, "o"] + STAGE_RESID
+        self.final_at = final + STAGE_RESID
         self.discard_at = discard
         self.kv_words = kv_words(t, n_layers)
 
@@ -223,7 +224,7 @@ class DecodeShape:
             }
             for c in range(N_CORES):
                 at = off_lanes + (L * N_CORES + c) * LANE_BYTES
-                w[at : at + LANE_BYTES] = pack_lane(weights, LAYER, c)
+                w[at : at + LANE_BYTES] = pack_lane_mma(weights, LAYER, c)
         w[off_rope : off_rope + self.t * CS_BYTES] = rope.view(np.int8).ravel()
         return w
 
@@ -248,7 +249,7 @@ class DecodeShape:
         ]
         gammas.append((final, final_gamma))
         for at, g in gammas:
-            at += RESID_OFF + GAMMA_AT
+            at += STAGE_RESID + GAMMA_AT
             st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
         st[self.seed_at : self.seed_at + D] = x_i8
         st[self.seed_at + D : self.seed_at + D + 4] = np.frombuffer(

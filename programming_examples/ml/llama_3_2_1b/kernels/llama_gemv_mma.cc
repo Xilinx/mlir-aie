@@ -132,6 +132,31 @@ static inline void epilogue(const int8_t *restrict act,
 
 extern "C" {
 
+// The activation object for one activation: its columns k_at..k_at + 2048
+// of row-major src in tile slot 0, zeros in slots 1-7 (their sums are bias
+// only, inside the epilogue's exact range), then src's scale at scale_at
+// and 1.0 for the others.
+void llama_mma_spread(int8_t *restrict src, int8_t *restrict dst, int32_t k_at,
+                      int32_t scale_at) {
+  event0();
+  const int8_t *x = src + k_at;
+  for (int c = 0; c < 2048 / 64; c++) {
+    ::aie::vector<int32, 16> v =
+        ::aie::load_unaligned_v<64>(x + c * 64).template cast_to<int32>();
+    for (int j = 0; j < 8; j++) {
+      ::aie::vector<int32, 16> t = ::aie::zeros<int32, 16>();
+      t.set(v.get(2 * j), 0);
+      t.set(v.get(2 * j + 1), 1);
+      ::aie::store_v(dst + (c * 8 + j) * 64, t.template cast_to<int8>());
+    }
+  }
+  float *scales = reinterpret_cast<float *>(dst + kScalesOff);
+  scales[0] = *reinterpret_cast<const float *>(src + scale_at);
+  for (int m = 1; m < 8; m++)
+    scales[m] = 1.0f;
+  event1();
+}
+
 // Partial sums group g (int32[64] at part + 64g, lane m*8 + n) = (first) or
 // += this slot's sums against the activations' half `half` of K.
 void llama_mma_acc(int8_t *restrict act, int8_t *restrict w,

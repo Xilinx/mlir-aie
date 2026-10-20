@@ -221,7 +221,7 @@ def build(
     k_comb = KO.bind("llama_gemv_array_qkv_comb", [_i8(OUT_BYTES), _i8(OUT_BYTES)])
     k_resid = KO.bind(
         "llama_gemv_array_resid_partial",
-        [t_act, _i8(OUT_BYTES), _i8(RESID_BLOCK), np.int32],
+        [t_act, _i8(OUT_BYTES), _i8(RESID_BLOCK), np.int32, np.int32],
     )
     k_final = KO.bind(
         "llama_gemv_array_rescale_finalize",
@@ -271,7 +271,7 @@ def build(
                     (c_blk,) = blk
                     gemv(unit, a, c_w, scratch, kf2, kf8, ki8)
                     b = c_blk.acquire(1)
-                    kres(a, scratch, b, core)
+                    kres(a, scratch, b, core, RESID_OFF)
                     c_blk.release(1)
                 else:
                     o = c_out.acquire(1)

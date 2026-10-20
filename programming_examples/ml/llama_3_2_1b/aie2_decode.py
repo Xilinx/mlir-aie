@@ -16,7 +16,7 @@ sampler core.
 The array's activations and outputs are staged through DDR: a glue core
 drains the activation for a unit into its slot in the `stage` buffer, and
 the array fills it from there; a slot of a residual unit (o, down) also
-holds the residual its add needs at `RESID_OFF`, drained there by the core
+holds the residual its add needs at `STAGE_RESID`, drained there by the core
 that last wrote the residual, and right after it the RMSNorm gamma the norm
 of that residual reads, so the norm fills both at once. The array's gate,
 up and qkv outputs go to `stage` too, where the SiLU and RoPE cores fill
@@ -40,6 +40,7 @@ from aie.dialects.arith import (
     cmpi,
     constant,
     divsi,
+    extui,
     index_cast,
     muli,
     ori,
@@ -68,16 +69,14 @@ from aie2_gemv_array import (
     COMB_BYTES,
     CORE_TILES,
     LAYER,
+    MMA_ACT_BYTES,
+    MMA_SLOT,
     N_CORES,
     OUT_BYTES,
     PROJECTIONS,
-    RESID_ACT_BYTES,
     RESID_BLOCK,
-    RESID_OFF,
     SAMPLE_PARAMS,
-    SLOT,
     lane_slots,
-    slots_per_core,
 )
 from aie2_layer_mh import (
     CS_BYTES,
@@ -140,7 +139,7 @@ def kv_words(T, N_LAYERS):
 
 
 UNITS = ["qkv", "o", "g", "u", "d"]
-LANE_BYTES = lane_slots(LAYER) * SLOT
+LANE_BYTES = lane_slots(LAYER) * MMA_SLOT
 NH = N_HEADS_KV // 2
 ROW_CHUNK = QCHUNK_BYTES + KV_ROW_WORDS * 4  # 424
 # A transfer gated by a length parameter moves a multiple of 16 bytes (the
@@ -152,17 +151,24 @@ HACT_BYTES = HD + 16
 REC_BYTES = D + 16
 LMW_GAMMA_BYTES = 2 * D
 
-# stage: per layer the four activation slots (qkv, o, gu, d), each followed
-# by a norm's gamma (the o slot's residual is normed by gamma_in, the d
-# slot's by gamma_post); then the array outputs of one layer's qkv, gate
-# and up units (8 cores x OUT_BYTES each); then the final residual's slot,
-# with the final norm's gamma; then a slot for outputs nothing reads.
+# stage: per layer the four activation slots (qkv, o, gu, d), each the
+# unit's activation (ROW bytes, room for down's), then at STAGE_RESID the
+# residual its unit adds (o, down) or its norm reads, and that norm's gamma
+# (the o slot's residual is normed by gamma_in, the d slot's by
+# gamma_post); then the array outputs of one layer's qkv, gate and up units
+# (8 cores x OUT_BYTES each); then the final residual's slot, with the
+# final norm's gamma; then a slot for outputs nothing reads.
 SLOTS = ("qkv", "o", "gu", "d")
 OUTS = ("qkv", "g", "u")
 OUT_REGION = N_CORES * OUT_BYTES
-SLOT_STRIDE = RESID_ACT_BYTES + D * 2
-NORM_IN_BYTES = SLOT_STRIDE - RESID_OFF  # [x int8[D + 8] | pad | gamma]
-GAMMA_AT = RESID_ACT_BYTES - RESID_OFF  # gamma's offset in a norm input
+ROW = HACT_BYTES
+STAGE_RESID = ROW
+GAMMA_AT = 2112  # gamma's offset in a norm input [x int8[D + 8] | pad | gamma]
+NORM_IN_BYTES = GAMMA_AT + 2 * D
+SLOT_STRIDE = STAGE_RESID + NORM_IN_BYTES
+# The array's activation object: a slot's activation and residual. Each core
+# spreads the activation into the mma kernel's tile.
+ARRAY_ACT_BYTES = ROW + ACT_BYTES
 
 
 def stage_layout(n_layers):
@@ -202,12 +208,12 @@ def wblob_layout(n_layers, t):
     Returns:
         (lanes offset, RoPE table offset, total bytes). Lanes are
         [layer][core][LANE_BYTES], each in the array's consumption order
-        (test_gemv_array.pack_lane); the table is one CS_BYTES row per
-        position, padded by one SLOT so the row of the last position can be
-        read as a whole header slot. The norms' gammas live in `stage`.
+        (test_gemv_array.pack_lane_mma); the table is one CS_BYTES row per
+        position, padded by one MMA_SLOT so the row of the last position can
+        be read as a whole header slot. The norms' gammas live in `stage`.
     """
     rope = n_layers * N_CORES * LANE_BYTES
-    return 0, rope, rope + t * CS_BYTES + SLOT
+    return 0, rope, rope + t * CS_BYTES + MMA_SLOT
 
 
 def _i8(n):
@@ -271,8 +277,8 @@ def build(
     lmw_total = LMW_GAMMA_BYTES + WLM_TOTAL
     rec_total = P_MAX * REC_BYTES
 
-    t_act = _i8(RESID_ACT_BYTES)
-    t_slot = _i8(SLOT)
+    t_act = _i8(ARRAY_ACT_BYTES)
+    t_slot = _i8(MMA_SLOT)
     t_out = _i8(OUT_BYTES)
     t_vec = _i8(ACT_BYTES)
     t_comb = _i8(N_CORES * COMB_BYTES)
@@ -313,7 +319,7 @@ def build(
     p_rows = ScratchpadParameter("rows", np.int32)
 
     # --- the array ---
-    of_act = ObjectFifo(t_act, depth=2, name="act")
+    of_act = ObjectFifo(t_act, depth=1, name="act")
     of_w = [ObjectFifo(t_slot, depth=2, name=f"w{c}") for c in range(N_CORES)]
     of_outlo = ObjectFifo(_i8(4 * OUT_BYTES), depth=1, name="outlo")
     of_outhi = ObjectFifo(_i8(4 * OUT_BYTES), depth=1, name="outhi")
@@ -338,34 +344,62 @@ def build(
     of_res = ObjectFifo(t_vec, depth=1, name="res")
 
     KA = llama_kernels.gemv_array()
-    k_f2 = KA.bind("llama_gemv_array_k2048_f32", [t_act, t_slot, t_out, np.int32])
-    k_f8 = KA.bind("llama_gemv_array_k8192_f32", [t_act, t_slot, t_out, np.int32])
-    k_i8 = KA.bind(
-        "llama_gemv_array_k2048_i8", [t_act, t_slot, t_out, np.int32, np.float32]
+    KM = llama_kernels.gemv_mma()
+    t_part = _i32a(8 * 256)
+    t_tile = _i8(MMA_ACT_BYTES)
+    k_spread = KM.bind("llama_mma_spread", [t_act, t_tile, np.int32, np.int32])
+    k_acc = KM.bind("llama_mma_acc", [t_tile, t_slot, t_part] + [np.int32] * 3)
+    k_f = KM.bind("llama_mma_f32", [t_tile, t_slot, t_part, t_out] + [np.int32] * 5)
+    k_i = KM.bind(
+        "llama_mma_i8",
+        [t_tile, t_slot, t_part, t_out] + [np.int32] * 5 + [np.float32],
     )
     k_comb = KA.bind("llama_gemv_array_qkv_comb_cs", [t_out, _i8(CS_BYTES), t_out])
     k_resid = KA.bind(
-        "llama_gemv_array_resid_partial", [t_act, t_out, _i8(RESID_BLOCK), np.int32]
+        "llama_gemv_array_resid_partial",
+        [t_act, t_out, _i8(RESID_BLOCK), np.int32, np.int32],
     )
     k_final = KA.bind(
         "llama_gemv_array_rescale_finalize",
         [_i8(4 * RESID_BLOCK), _i8(4 * RESID_BLOCK), t_vec],
     )
     gate_inv = 1.0 / SILU_GATE_SCALE
+    groups = {p: PROJECTIONS[p][1] // N_CORES // 8 for p in LAYER}
+    down_chunks = HD // D
 
-    def gemv(proj, a, c_w, o, slot_base=0):
-        k, _, kind = PROJECTIONS[proj]
-        for s in range_(slots_per_core(proj)):
+    def mma(proj, a, c_w, part, o, row0=0):
+        # Each row group of eight: its first half-K slot sums into part, its
+        # second adds its own and writes the group's rows at row0 + 8g.
+        for g in range_(groups[proj]):
             w = c_w.acquire(1)
-            if kind == "i8":
-                k_i8(a, w, o, _i32(s), gate_inv)
-            elif k == HD:
-                k_f8(a, w, o, _i32(s))
+            k_acc(a, w, part, 0, 0, 1)
+            c_w.release(1)
+            w = c_w.acquire(1)
+            at = _i32(g) * 8 + row0
+            if PROJECTIONS[proj][2] == "i8":
+                k_i(a, w, part, o, 0, 1, 0, at, 1, gate_inv)
             else:
-                k_f2(a, w, o, _i32(s) + slot_base)
+                k_f(a, w, part, o, 0, 1, 0, at, 1)
             c_w.release(1)
 
-    def w_array(c_act, c_w, c_out, c_blk, scratch, cs, core, n, kf2, kf8, ki8, kc, kr):
+    def w_array(
+        c_act,
+        c_w,
+        c_out,
+        c_blk,
+        scratch,
+        cs,
+        part,
+        tile,
+        core,
+        n,
+        ks,
+        ka,
+        kf,
+        ki,
+        kc,
+        kr,
+    ):
         for _ in range_(index_cast(index(), muli(n.read(), _const_i32(N_LAYERS)))):
             hdr = c_w.acquire(1)
             for i in range_(CS_BYTES):
@@ -373,22 +407,50 @@ def build(
             c_w.release(1)
             for unit in UNITS:
                 a = c_act.acquire(1)
+                if unit == "d":
+                    # Down's 8192 columns go through the tile in four
+                    # chunks; chunks 0-2 sum into the row groups' partials.
+                    for chunk in range_(down_chunks - 1):
+                        ci = _i32(chunk)
+                        k_spread(a, tile, muli(ci, _const_i32(D)), HD)
+                        first = extui(i32(), cmpi(CmpIPredicate.eq, ci, _const_i32(0)))
+                        for g in range_(groups["d"]):
+                            w = c_w.acquire(1)
+                            k_acc(tile, w, part, _i32(g), 0, first)
+                            c_w.release(1)
+                            w = c_w.acquire(1)
+                            k_acc(tile, w, part, _i32(g), 1, 0)
+                            c_w.release(1)
+                    k_spread(a, tile, (down_chunks - 1) * D, HD)
+                    for g in range_(groups["d"]):
+                        w = c_w.acquire(1)
+                        k_acc(tile, w, part, _i32(g), 0, 0)
+                        c_w.release(1)
+                        w = c_w.acquire(1)
+                        k_f(tile, w, part, scratch, _i32(g), 1, 0, _i32(g) * 8, 1)
+                        c_w.release(1)
+                    b = c_blk.acquire(1)
+                    kr(a, scratch, b, core, ROW)
+                    c_blk.release(1)
+                    c_act.release(1)
+                    continue
+                k_spread(a, tile, 0, D)
                 if unit == "qkv":
                     # q, k and v land at fp32 offsets 0, 256 and 320 of scratch.
-                    gemv("q", a, c_w, scratch)
-                    gemv("k", a, c_w, scratch, 64)
-                    gemv("v", a, c_w, scratch, 80)
+                    mma("q", tile, c_w, part, scratch)
+                    mma("k", tile, c_w, part, scratch, 256)
+                    mma("v", tile, c_w, part, scratch, 320)
                     o = c_out.acquire(1)
                     kc(scratch, cs, o)
                     c_out.release(1)
-                elif unit in ("o", "d"):
-                    gemv(unit, a, c_w, scratch)
+                elif unit == "o":
+                    mma("o", tile, c_w, part, scratch)
                     b = c_blk.acquire(1)
-                    kr(a, scratch, b, core)
+                    kr(a, scratch, b, core, ROW)
                     c_blk.release(1)
                 else:
                     o = c_out.acquire(1)
-                    gemv(unit, a, c_w, o)
+                    mma(unit, tile, c_w, part, o)
                     c_out.release(1)
                 c_act.release(1)
 
@@ -402,11 +464,14 @@ def build(
                 blk_eps[c].prod(),
                 Buffer(t_out, name=f"scratch{c}"),
                 Buffer(_i8(CS_BYTES), name=f"cs{c}"),
+                Buffer(t_part, name=f"part{c}"),
+                Buffer(t_tile, name=f"tile{c}"),
                 c,
                 p_passes,
-                k_f2,
-                k_f8,
-                k_i8,
+                k_spread,
+                k_acc,
+                k_f,
+                k_i,
                 k_comb,
                 k_resid,
             ],
@@ -891,12 +956,12 @@ def build(
         def norm(on, slot_at, h_at):
             step(
                 on,
-                stage_fill(x, slot_at + RESID_OFF, NORM_IN_BYTES),
+                stage_fill(x, slot_at + STAGE_RESID, NORM_IN_BYTES),
                 stage_drain(h, h_at, ACT_BYTES),
             )
 
         def unit(on, slot_at, *drains):
-            step(on, stage_fill(act, slot_at, RESID_ACT_BYTES), *drains)
+            step(on, *drains, stage_fill(act, slot_at, ARRAY_ACT_BYTES))
 
         def out_drains(name):
             return (
@@ -935,7 +1000,7 @@ def build(
                 for c in range(N_CORES):
                     w[c].fill(
                         wblob,
-                        tap=linear_tap(w_total, off_rope + tok * CS_BYTES, SLOT),
+                        tap=linear_tap(w_total, off_rope + tok * CS_BYTES, MMA_SLOT),
                         offset_parameter=p_cs_off,
                         length_parameter=on,
                         group=w_tg,
@@ -997,7 +1062,7 @@ def build(
                 )
                 kv_tg.finish()
 
-                unit(on, o_at, stage_drain(res, d_at + RESID_OFF, ACT_BYTES))
+                unit(on, o_at, stage_drain(res, d_at + STAGE_RESID, ACT_BYTES))
                 norm(on, d_at, slots[L, "gu"])
                 unit(on, slots[L, "gu"], *out_drains("g"))
                 unit(on, slots[L, "gu"], *out_drains("u"))
@@ -1021,7 +1086,7 @@ def build(
                 )
                 next_at = (
                     slots[L + 1, "o"] if L + 1 < N_LAYERS else final_slot
-                ) + RESID_OFF
+                ) + STAGE_RESID
                 unit(on, d_at, stage_drain(res, next_at, ACT_BYTES))
                 w_tg.finish()
 
@@ -1036,7 +1101,7 @@ def build(
             )
             seed.drain(
                 stage,
-                tap=linear_tap(stage_total, slots[0, "o"] + RESID_OFF, ACT_BYTES),
+                tap=linear_tap(stage_total, slots[0, "o"] + STAGE_RESID, ACT_BYTES),
                 length_parameter=on,
                 group=out_tg,
                 wait=True,

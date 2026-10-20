@@ -21,10 +21,9 @@
 #endif
 
 // Residual units (o, down): the activation carries the residual int8[2048]
-// and its fp32 scale at kResidOff; each core owns 256 of the 2048 rows and
+// and its fp32 scale at resid_off; each core owns 256 of the 2048 rows and
 // emits a kResidBlock-byte block [x_fp fp32 x256 | absmax bits i32 | pad].
 // Both stay 64-byte aligned for the vector loads and stores.
-static constexpr int kResidOff = 8256;
 static constexpr int kResidRows = 256;
 static constexpr int kResidBlock = kResidRows * 4 + 64;
 
@@ -86,15 +85,16 @@ void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
 // rows' magnitude max as int32 bits, which the glue core's
 // llama_gemv_array_rescale_finalize turns into the global one.
 void llama_gemv_array_resid_partial(int8_t *restrict act, int8_t *restrict fp,
-                                    int8_t *restrict blk, int32_t core) {
+                                    int8_t *restrict blk, int32_t core,
+                                    int32_t resid_off) {
   event0();
   const ::aie::saturation_mode prev_sat =
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-  const int8_t *resid = act + kResidOff + core * kResidRows;
+  const int8_t *resid = act + resid_off + core * kResidRows;
   ::aie::vector<float, 16> resid_scale_v = ::aie::broadcast<float, 16>(
-      *reinterpret_cast<const float *>(act + kResidOff + 2048));
+      *reinterpret_cast<const float *>(act + resid_off + 2048));
   const float *proj = reinterpret_cast<const float *>(fp);
   float *x = reinterpret_cast<float *>(blk);
   ::aie::vector<int32, 16> mag = ::aie::zeros<int32, 16>();
