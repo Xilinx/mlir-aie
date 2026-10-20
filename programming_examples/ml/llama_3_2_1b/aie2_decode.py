@@ -367,6 +367,9 @@ def build(
     k_spread, k_mma, k_mma_s, t_tile, t_part = mma_kernels(
         t_act, t_slot, t_out, t_scratch
     )
+    k_take_cs = KA.bind(
+        "llama_gemv_array_take_cs", [t_slot, _i8(M_MAX * CS_BYTES), np.int32]
+    )
     k_comb = KA.bind(
         "llama_gemv_array_qkv_comb_cs",
         [t_scratch, _i8(M_MAX * CS_BYTES), t_out, np.int32],
@@ -401,6 +404,7 @@ def build(
         kfs,
         kc,
         kr,
+        kt,
     ):
         m0 = m0p.read()
         for tok in range_(index_cast(index(), n.read())):
@@ -408,8 +412,7 @@ def build(
             mi = index_cast(index(), m)
             for _ in range_(N_LAYERS):
                 hdr = c_w.acquire(1)
-                for i in range_(index_cast(index(), muli(m, _const_i32(CS_BYTES)))):
-                    cs[i] = hdr[i]
+                kt(hdr, cs, m)
                 c_w.release(1)
 
                 def spread():
@@ -475,6 +478,7 @@ def build(
                 k_mma_s[1],
                 k_comb,
                 k_resid,
+                k_take_cs,
             ],
             tile=Tile(*CORE_TILES[c]),
             wait_for_parameters=True,
@@ -804,6 +808,7 @@ def build(
         "llama_topk_finalize_packed",
         [_f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1), _i32a(3), t_rec],
     )
+    k_seed = KTS.bind("llama_seed_from_record", [t_rec, t_vec])
 
     def w_lm(
         c_h,
@@ -822,6 +827,7 @@ def build(
         ki,
         kf,
         ke,
+        ks,
         *sample,
     ):
         read_sample_params(pr, sample)
@@ -870,10 +876,7 @@ def build(
                 for i in range_(D + 12, REC_BYTES):
                     o[i] = 0
                 s = c_seed.acquire(1)
-                for i in range_(D + 4):
-                    s[i] = o[i]
-                for i in range_(D + 4, ACT_BYTES):
-                    s[i] = 0
+                ks(o, s)
                 c_seed.release(1)
                 c_rec.release(1)
             with else_(lm_on):
@@ -901,6 +904,7 @@ def build(
                 k_insert,
                 k_sample,
                 k_embed,
+                k_seed,
                 *p_sample,
             ],
             wait_for_parameters=True,

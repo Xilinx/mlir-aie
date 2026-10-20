@@ -271,6 +271,13 @@ void llama_topk_finalize_packed(float *restrict set_logit,
   __builtin_memcpy(out + kD + 4, &token, 4);
 }
 
+// The next token's layer-0 input from a packed record: the embed row and its
+// scale, then zeros to the activation's kD + 16 bytes.
+void llama_seed_from_record(int8_t *restrict record, int8_t *restrict seed) {
+  copy_words<kD + 4>(seed, record);
+  zero_words<12>(seed + kD + 4);
+}
+
 // The embed seed of row `row` of one lm_head weight slot, [64 B prefix |
 // kNTile int8 rows | kNTile i32 bias | kNTile f32 embed_sc]: a prompt
 // token's layer-0 input.

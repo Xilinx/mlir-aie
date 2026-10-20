@@ -49,6 +49,14 @@ void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
   copy_words<256>(out + 800, cs + row * 256);
 }
 
+// The first `rows` positions' RoPE cos/sin (256 B each) from the head of the
+// core's weight lane into cs, before the lane is released.
+void llama_gemv_array_take_cs(int8_t *restrict lane, int8_t *restrict cs,
+                              int32_t rows) {
+  for (int32_t r = 0; r < rows; r++)
+    copy_words<256>(cs + r * 256, lane + r * 256);
+}
+
 // Core `core`'s half of the residual add for activation `row`: x_fp =
 // resid * resid_scale + proj on its rows (resid int8[2048], then its scale,
 // at act + resid_off + row * kResidStride; proj the unit's fp32 output in
