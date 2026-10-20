@@ -62,7 +62,8 @@ bf16_limbs(aie::accum<accfloat, N> x) {
 
 // x * c from three-limb x and c: the six products f32's precision needs,
 // smallest first, so only the last addition rounds at the product's scale and
-// the sum matches the correctly rounded product all but at ties.
+// the sum matches the correctly rounded product all but at ties. That holds in
+// conv_even rounding only; the core's default floor misrounded 42% (4.1 ulp).
 template <unsigned N>
 static inline __attribute__((always_inline)) aie::accum<accfloat, N>
 mul_limbs(const Limbs<N> &x, const Limbs<N> &c) {
