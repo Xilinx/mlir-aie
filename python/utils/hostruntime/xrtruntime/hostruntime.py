@@ -817,6 +817,21 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict_insts()
         gc.collect()
 
+    def _run_init_entry(self, context, init_name: str | None, kernel_name: str) -> None:
+        """Run the init entry as `XRTHostRuntime._run_init_entry` does.
+
+        If it fails, the array state is unknown, so the context is evicted and
+        the next load creates a new one.
+        """
+        try:
+            super()._run_init_entry(context, init_name, kernel_name)
+        except Exception:
+            for key, entry in list(self._context_cache.items()):
+                if entry["context"] is context:
+                    del self._context_cache[key]
+                    self._cleanup_entry(entry)
+            raise
+
     def _load_full_elf_cached(
         self, npu_kernel, retry: bool = True
     ) -> CachedXRTKernelHandle:

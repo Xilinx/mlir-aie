@@ -22,6 +22,7 @@ from aie.iron import (
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
 from aie.utils import DefaultNPURuntime
+from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
 Chunk = np.ndarray[(4,), np.dtype[np.int32]]
 Tensor = np.ndarray[(8,), np.dtype[np.int32]]
@@ -116,6 +117,34 @@ def test_init_entry_runs_on_each_new_context(looked_up):
 
     # A new context, as after an IOCTL EINVAL, runs main:reconfig_init again.
     DefaultNPURuntime.cleanup()
+    data = iron.arange(8, dtype=np.int32, device="npu")
+    reconfigure_add(data)
+    data.to("cpu")
+    np.testing.assert_array_equal(data.numpy(), expected())
+    assert looked_up == ["main:sequence", "main:reconfig_init"] * 2
+
+
+class FailedRun:
+    def start(self):
+        pass
+
+    def wait(self):
+        return pyxrt.ert_cmd_state.ERT_CMD_STATE_ABORT
+
+
+def test_failed_init_entry_evicts_the_context(looked_up, monkeypatch):
+    # The first pyxrt.run is main:reconfig_init's.
+    run = pyxrt.run
+
+    def fail_once(kernel):
+        monkeypatch.setattr(pyxrt, "run", run)
+        return FailedRun()
+
+    monkeypatch.setattr(pyxrt, "run", fail_once)
+    with pytest.raises(HostRuntimeError, match="main:reconfig_init"):
+        reconfigure_add(iron.arange(8, dtype=np.int32, device="npu"))
+    assert looked_up == ["main:sequence", "main:reconfig_init"]
+
     data = iron.arange(8, dtype=np.int32, device="npu")
     reconfigure_add(data)
     data.to("cpu")
