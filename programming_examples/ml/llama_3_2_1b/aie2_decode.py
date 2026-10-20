@@ -80,7 +80,6 @@ from aie2_gemv_array import (
 )
 from llama_config import (
     CS_BYTES,
-    D,
     HD,
     HEAD_D,
     N_HEADS_KV,
@@ -91,6 +90,7 @@ from llama_config import (
     SVCHUNK_BYTES,
     SVFULL_BYTES,
     VOCAB,
+    D,
 )
 
 # The lm_head's weights: per 4-row tile a prefix, the rows and per-row

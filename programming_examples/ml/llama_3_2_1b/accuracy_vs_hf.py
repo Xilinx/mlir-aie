@@ -27,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
+from llama_config import HEAD_D, KV_DIM, N_HEADS_KV, N_HEADS_Q, N_LAYERS, Q_DIM
 from numpy_llama_ref import (
     apply_rope,
     attention_full_gqa,
@@ -47,7 +48,6 @@ DEFAULT_TEXT = (
     "important technologies of the modern era, powering applications from search "
     "engines to self-driving cars and medical diagnosis."
 )
-from llama_config import HEAD_D, KV_DIM, N_HEADS_KV, N_HEADS_Q, N_LAYERS, Q_DIM
 
 # --- True bf16 reference: load HF weights as fp32, full-precision forward ---
 

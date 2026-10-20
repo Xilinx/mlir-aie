@@ -44,7 +44,7 @@ from aie2_decode import (
 from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
-from llama_config import D, EXP_QUANT_SCALE, HEAD_D, N_HEADS_KV, SILU_GATE_SCALE, VOCAB
+from llama_config import EXP_QUANT_SCALE, HEAD_D, N_HEADS_KV, SILU_GATE_SCALE, VOCAB, D
 from llama_decode import Decoder, DecodeShape, embed_seed_ref, tokens_of
 from ml_dtypes import bfloat16
 from numpy_layer_mh import (

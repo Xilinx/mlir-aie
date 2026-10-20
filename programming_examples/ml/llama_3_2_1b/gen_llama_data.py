@@ -50,15 +50,12 @@ from pathlib import Path
 import ml_dtypes
 import numpy as np
 from llama_config import (
-    D,
     HD,
-    HEAD_D,
     KV_DIM,
-    N_HEADS_KV,
-    N_HEADS_Q,
     N_LAYERS,
     Q_DIM,
     VOCAB,
+    D,
 )
 
 # --- Llama 3.2 1B spec (mirrors cautious-eureka/npu2/llama_spec.py) ---

@@ -32,7 +32,6 @@ from pathlib import Path
 import ml_dtypes
 import numpy as np
 from llama_config import (
-    D,
     HD,
     HEAD_D,
     KV_DIM,
@@ -41,6 +40,7 @@ from llama_config import (
     N_LAYERS,
     Q_DIM,
     VOCAB,
+    D,
 )
 
 # --- Llama 3.2 1B spec ---

@@ -20,7 +20,6 @@ from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
 from llama_config import (
     ACT_SCALE,
-    D,
     EXP_QUANT_SCALE,
     GATE_INV_OUT_SCALE,
     HD,
@@ -32,6 +31,7 @@ from llama_config import (
     Q_DIM,
     REP,
     SILU_GATE_SCALE,
+    D,
 )
 from ml_dtypes import bfloat16
 from numpy_attn_block import attention as attn_block_attention

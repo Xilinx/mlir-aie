@@ -28,7 +28,6 @@ Run:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import time
 from pathlib import Path
@@ -240,7 +239,10 @@ def main():
         "numpy INT8 chain",
     )
     parser.add_argument(
-        "--n-layers", type=int, default=N_LAYERS, help="decoder layers (default: the model's)"
+        "--n-layers",
+        type=int,
+        default=N_LAYERS,
+        help="decoder layers (default: the model's)",
     )
     parser.add_argument("--t", type=int, default=128, help="KV cache rows")
     opts = parser.parse_args()

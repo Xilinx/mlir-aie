@@ -28,6 +28,7 @@ import numpy as np
 
 # Reuse the safetensors reader from the extractor.
 from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
+from llama_config import HEAD_D, KV_DIM, N_HEADS_KV, N_HEADS_Q, N_LAYERS, Q_DIM, D
 
 # Reuse the INT8 numpy ref.
 from numpy_llama_ref import (
@@ -41,7 +42,6 @@ from numpy_llama_ref import (
     rope_cos_sin,
     silu,
 )
-from llama_config import D, HEAD_D, KV_DIM, N_HEADS_KV, N_HEADS_Q, N_LAYERS, Q_DIM
 
 
 # ---------------------------------------------------------------------------
