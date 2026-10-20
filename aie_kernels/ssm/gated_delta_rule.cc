@@ -285,6 +285,8 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
                      .to_vector<float>());
   }
   constexpr float q_root = rsqrt_newton((float)Dk);
+  // AIE2 keeps the base kernel's run-time form: folding it changes AIE2's
+  // code at key_dim 2, which no npu1 run has checked.
   const Limbs<W> q_scale = limbs<W>(Vec ? q_root : rsqrt_newton((float)Dk));
   for (int t0 = 0; t0 < RP; t0 += W) {
     aie::store_v(qn + t0,
