@@ -49,6 +49,7 @@
 #include "aie/InitialAllDialect.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "aie/Targets/AIETargetShared.h"
+#include "aie/Visualize/AIEVisualize.h"
 
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/Diagnostics.h"
@@ -61,6 +62,7 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
+#include "mlir/Transforms/Mem2Reg.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -1311,6 +1313,49 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return mlir::success();
       });
 
+  // A visualization reads the design as late as it can still recognize it:
+  // after routing and address assignment, while the runtime sequence is still
+  // `aiex.runtime_sequence` rather than lowered NPU instructions. Two passes
+  // put it in the form the renderer reads. mem2reg promotes the objectFifo
+  // object slots, without which a kernel reaches its buffers through memory
+  // and the view cannot say which core consumes what. aie-find-flows lifts the
+  // switchbox configuration back into flows carrying their own route.
+  auto &visualizationIR = physical.map<ModRef>(
+      "visualization-ir.mlir",
+      [&context](const Item<ModRef> &in,
+                 Item<ModRef> &out) -> mlir::LogicalResult {
+        out.value = ModRef(in.get().get().clone());
+        mlir::PassManager pm(&context);
+        pm.enableVerifier(false);
+        mlir::OpPassManager &dpm = pm.nest<DeviceOp>();
+        dpm.addPass(mlir::createMem2Reg());
+        if (mlir::failed(
+                mlir::parsePassPipeline("aie-find-flows{emit-vias=true}", dpm)))
+          return mlir::failure();
+        // Lifting a routed switchbox network back into flows produces flows
+        // whose via claims overlap, which a design may not have but a view of
+        // one may; this module is read, never compiled, so it is not verified.
+        return pm.run(out.value->get());
+      });
+
+  auto &visualization = visualizationIR.map<std::string>(
+      "visualization.dot",
+      [](const Item<ModRef> &in,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        xilinx::AIE::VisualizeOptions options;
+        options.contractedNodeKinds = {"port", "buffer"};
+        options.weighEdges = true;
+        options.tileRoles = true;
+        options.tileWidth = 3.2;
+        std::string dot;
+        llvm::raw_string_ostream os(dot);
+        if (mlir::failed(
+                xilinx::AIE::emitRouteDot(in.get().get(), os, options)))
+          return mlir::failure();
+        out.value = std::move(dot);
+        return mlir::success();
+      });
+
   // Per-core view of the placed module, for anything that needs addresses.
   auto &placedCores =
       physical
@@ -2444,16 +2489,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   if (generateScratchpadParams) {
     outputs.push_back(&paramsFile);
   }
+  if (generateVisualization) {
+    outputs.push_back(&visualization);
+  }
 
   // Core-ELF output: emit the per-core ELFs when --get-core-elfs is
   // passed, or as the default when no other artifact was requested (so a bare
   // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
       generateInputWithAddresses || generateInputWithSymbols ||
-      generateScratchpadParams || generateNpuInsts || generateNpuCpp ||
-      keepLoc || generateElf || generateCdo || generatePdi || generateTxn ||
-      generateCtrlpkt || generateXclbin || generateFullElf || wantAiesim ||
-      doCompileHost || !getOutputs.empty() || !cutOutputs.empty();
+      generateScratchpadParams || generateVisualization || generateNpuInsts ||
+      generateNpuCpp || keepLoc || generateElf || generateCdo || generatePdi ||
+      generateTxn || generateCtrlpkt || generateXclbin || generateFullElf ||
+      wantAiesim || doCompileHost || !getOutputs.empty() || !cutOutputs.empty();
   // Every other artifact depends on the post-link checks through
   // physicalWithElfs. A core-ELF build ends before that edge, so run the
   // checks too, without writing the module they check.

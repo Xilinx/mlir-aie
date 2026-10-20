@@ -333,6 +333,10 @@ inline bool generateInputWithSymbols = false;
 
 inline bool generateScratchpadParams = false;
 
+// A Graphviz view of the routed design, with the IR it was read from. See the
+// visualization edges in aiecc.cpp.
+inline bool generateVisualization = false;
+
 inline bool generateElf = false;
 inline cl::opt<std::string> elfName(
     "elf-name",
@@ -447,6 +451,7 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
       {"input-with-symbols", "input_with_symbols.mlir",
        &generateInputWithSymbols},
       {"scratchpad-parameters", "params.txt", &generateScratchpadParams},
+      {"visualization", "visualization.dot", &generateVisualization},
       {"core-elfs", "elfs_{0}.elf", &generateCoreElfs},
       {"npu-insts", "insts_{0}.bin", &generateNpuInsts},
       {"npu-cpp", "npu_{0}.cpp", &generateNpuCpp},

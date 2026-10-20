@@ -13,16 +13,22 @@
 // RUN: aie-visualize --emit-dot --tile-roles %s | FileCheck %s --check-prefix=ROLES
 // RUN: aie-visualize --emit-dot --tile-roles --max-headline-kernels=1 %s | FileCheck %s --check-prefix=CAPPED
 
-// Without the option a tile is labelled by coordinate alone.
+// Without the option a tile is labelled by coordinate alone and keeps the
+// fill of its kind.
 // PLAIN: tile_0_2 [shape=box{{.*}}label="(0,2)"
+// PLAIN-SAME: fillcolor="#eef7ee"
 // PLAIN-NOT: labelloc="t"
 
 // The two tiles running matmul twice plus zero share a role, so both carry the
-// same class marker; the odd tile out carries none.
+// same class marker and the same fill. The odd tile out keeps its kind fill
+// and carries no marker.
 // ROLES: tile_0_2 [shape=box{{.*}}label="(0,2)  A x2\nmatmul x2\nzero"
 // ROLES-SAME: labelloc="t"
+// ROLES-SAME: fillcolor="#cfe3f7"
 // ROLES: tile_0_3 [shape=box{{.*}}label="(0,3)  A x2\nmatmul x2\nzero"
+// ROLES-SAME: fillcolor="#cfe3f7"
 // ROLES: tile_0_4 [shape=box{{.*}}label="(0,4)\nreduce"
+// ROLES-SAME: fillcolor="#eef7ee"
 // ROLES-NOT: tile_0_4 {{.*}}x2
 
 // A headline longer than the cap counts the kernels it does not name.

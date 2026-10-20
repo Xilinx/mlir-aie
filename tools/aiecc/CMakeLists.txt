@@ -58,6 +58,7 @@ set(LIBS
   AIE
   AIETargets
   AIETransforms
+  AIEVisualize
   AIEX
   AIEXTransforms
   AIEXUtils

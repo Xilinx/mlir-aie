@@ -36,6 +36,7 @@ target_link_libraries(aie-visualize
   MLIRLLVMToLLVMIRTranslation
   AIE
   AIETransforms
+  AIEVisualize
   AIETargets
   AIEX
   AIEXTransforms
