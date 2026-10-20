@@ -436,6 +436,24 @@ CASES: list[Case] = [
     Case("gated_delta_rule", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
     check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(5,), tag="partial"),
     check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(0,), tag="none-valid"),
+    # IRON's slices: a 32-row prefill block and a decode step's one valid row
+    # (two rows keep the block 4-byte whole), over Mamba2's 128-wide state and
+    # Gated DeltaNet's 128-wide keys, 16 state columns a call.
+    *[
+        Case(
+            kernel,
+            dims | dict(rows=rows, blocks=blocks),
+            calls=2 * blocks,
+            scalars=(valid,),
+            tag=f"iron-{phase}",
+            devices=("npu2",),
+        )
+        for kernel, dims in (
+            ("selective_scan", dict(state=128)),
+            ("gated_delta_rule", dict(key_dim=128)),
+        )
+        for phase, rows, blocks, valid in (("prefill", 32, 2, 32), ("decode", 2, 4, 1))
+    ],
     # One valid row a call, as in decode, over Mamba2's 128-wide state, as
     # IRON's SelectiveScan slices it (two rows keep the block 4-byte whole).
     check(
