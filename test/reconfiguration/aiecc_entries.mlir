@@ -9,6 +9,8 @@
 // options. --sequence-name keeps the init entry. The configurations have no
 // cores, so nothing needs compiling.
 
+// REQUIRES: aiebu
+
 // RUN: rm -rf %t && mkdir -p %t/whole %t/init %t/select
 // RUN: cd %t/whole && %aiecc --get-full-elf --expand-load-pdis --reconfig-teardown --tmpdir=prj %s
 // RUN: FileCheck %s --check-prefix=WHOLE < prj/full_elf_config.json
