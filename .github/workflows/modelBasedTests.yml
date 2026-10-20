@@ -278,7 +278,7 @@ jobs:
     needs: [build, router]
     if: always()
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
@@ -334,7 +334,7 @@ jobs:
       ${{ !cancelled() && github.ref == 'refs/heads/main'
       && !(inputs.allocator_seeds || inputs.allocator_bankres_seeds
       || inputs.router_seeds || inputs.mutation_seeds || inputs.first_seed) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: read  # the workflow's runs, to date each record by its start
