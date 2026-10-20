@@ -5,11 +5,12 @@ r"""Build + run the YOLO26n 640x640 detector on NPU2 over real COCO images.
 
 The whole detector end to end: does it still build, does every image's
 detection match the numpy oracle (and, as information, onnxruntime), and how
-long one image takes at batch 1. Shells out to the example's own yolo26n.py
-CLI (no new Python API): ``--compile-only`` twice into one fresh
-NPU_CACHE_HOME, cold then warm, keeping only the cold compile's kernel
-objects for the warm one, as llama_chain_hw.py does; then one ``--time`` run
-from that cache, its timing kept only when every image matched.
+long one image takes at batch 1 and at batch 8. Shells out to the example's
+own yolo26n.py CLI (no new Python API): ``--compile-only`` twice into one
+fresh NPU_CACHE_HOME, cold then warm, keeping only the cold compile's kernel
+objects for the warm one, as llama_chain_hw.py does; then a ``--time`` run
+from that cache and one at ``--batch 8``, each checking every image, their
+timing kept only when every image matched in both.
 
 Needs the quantized model and the COCO128 images where amd/IRON's examples
 keep them, ``$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/`` (default ``/srv``), or
@@ -42,6 +43,7 @@ from aiecc_stages import PROFILE_NAME, STAGE_METRICS, stage_rows
 CASE = "yolo26n/640"
 N_ITERS = 5
 N_WARMUP = 2
+BATCH = 8
 
 _YOLO_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "programming_examples", "ml", "yolo26n"
@@ -170,7 +172,7 @@ def compile_cold_warm(images: Path, onnx: Path, env: dict, cache_dir: str) -> di
 
 
 def run_timed(
-    images: Path, onnx: Path, n_images: int, env: dict
+    images: Path, onnx: Path, n_images: int, batch: int, env: dict
 ) -> subprocess.CompletedProcess:
     return _run(
         [
@@ -182,6 +184,8 @@ def run_timed(
             str(onnx),
             "--n",
             str(n_images),
+            "--batch",
+            str(batch),
             "--time",
             "--n-iters",
             str(N_ITERS),
@@ -337,7 +341,10 @@ def main(argv=None) -> int:
         help="holds yolo26n_xint8.onnx and coco128/ (default: $IRON_EXAMPLE_WEIGHTS_DIR/yolo26n)",
     )
     parser.add_argument(
-        "--n-images", type=int, default=8, help="COCO images to run (default: 8)"
+        "--n-images",
+        type=int,
+        default=8,
+        help="COCO images to run, a multiple of 8 (default: 8)",
     )
     parser.add_argument(
         "--pmode",
@@ -386,11 +393,21 @@ def main(argv=None) -> int:
         log += compiled["log"]
         if compiled["built"].returncode == 0:
             artifacts = artifact_stats(compiled["build_dir"])
-            ran = run_timed(images, onnx, args.n_images, run_env)
+            ran = run_timed(images, onnx, args.n_images, 1, run_env)
             correctness = parse_correctness(ran.stdout + ran.stderr, ran.returncode)
-            if correctness["passed"]:
-                timing = parse_timing(ran.stdout + ran.stderr)
             log += ran.stdout + ran.stderr
+            if correctness["passed"]:
+                batched = run_timed(images, onnx, args.n_images, BATCH, run_env)
+                log += batched.stdout + batched.stderr
+                in_batches = parse_correctness(
+                    batched.stdout + batched.stderr, batched.returncode
+                )
+                if in_batches["passed"]:
+                    timing = parse_timing(ran.stdout + ran.stderr) | parse_timing(
+                        batched.stdout + batched.stderr
+                    )
+                else:
+                    correctness = in_batches
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
 

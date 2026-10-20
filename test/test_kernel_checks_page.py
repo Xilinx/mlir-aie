@@ -1358,6 +1358,8 @@ const yoloRecord = (id, date, us_b1, extra) => ({
     ort_matches: { value: 8, unit: 'images', range: 'of 8' },
     us_per_image_b1: { value: us_b1, unit: 'us' },
     fps_b1: { value: 1e6 / us_b1, unit: 'fps' },
+    us_per_image_b8: { value: 3000, unit: 'us' },
+    fps_b8: { value: 1e6 / 3000, unit: 'fps' },
     elf_bytes: { value: 3 * 1048576, unit: 'bytes' },
     n_cores: { value: 32, unit: 'cores' },
     compile_s: { value: 95.5, unit: 's' },
@@ -1374,25 +1376,25 @@ const yoloIndex = { target: 'yolo26n-hw', runs: [night('6', yoloBefore.date, 'tu
 """
 
 
-def test_the_yolo26n_card_shows_its_time_and_what_it_verified(page):
+def test_the_yolo26n_card_shows_each_batch_and_what_it_verified(page):
     page(COMPONENT_RUNS + YOLO_NIGHTS + """
 assert.equal(yolo.section, 'performance');
 const card = componentBand(yolo, yoloIndex, yoloAfter, NOW, yoloBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every image matched the oracle. One image takes 5,400 µs (185.19 fps) at batch 1.');
+             'Every image matched the oracle. One image takes 5,400 µs (185.19 fps) at batch 1, 3,000 µs at batch 8.');
 // The frame rate repeats the time per image and is not listed twice.
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n per image (b1) +8.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [YOLO]);
 const [header, grid] = card.cards[0].children;
-assert.equal(header.text, '640 × 6408 COCO images');
+assert.equal(header.text, '640 × 6408 COCO imagesb8 ÷ b1 per image 0.56×');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['Per image', 'Images / s', 'Images verified', 'Match onnxruntime',
   'Compiled size', 'Cores']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);
-// Up is worse for time per image, down for images per second.
-assert.equal(grid.children[0].text, 'Per imageb15,400 µs +8.0%');
-assert.deepEqual(chip(grid.children[0]), ['chg worse']);
-assert.equal(grid.children[1].text, 'Images / sb1185.19 fps −7.4%');
-assert.deepEqual(chip(grid.children[1]), ['chg worse']);
+// A lane per batch; up is worse for time per image, down for images per second.
+assert.equal(grid.children[0].text, 'Per imageb15,400 µs +8.0%b83,000 µs 0.0%');
+assert.deepEqual(chip(grid.children[0]), ['chg worse', 'chg flat']);
+assert.equal(grid.children[1].text, 'Images / sb1185.19 fps −7.4%b8333.33 fps 0.0%');
+assert.deepEqual(chip(grid.children[1]), ['chg worse', 'chg flat']);
 // A full-ELF build has one compiled size.
 assert.equal(grid.children[4].text, 'Compiled sizeELF3.0 MiB ±0.0 KiB');
 assert.equal(grid.children[0].href, '#view=performance&metric=us_per_image_b1');
@@ -1400,9 +1402,16 @@ assert.deepEqual(card.cards[0].children[2].children.filter(r => r.className === 
   ['cold95.5 s 0.0% · 3,100 MB peak', 'warm12.5 s 0.0% · 1,200 MB peak']);
 fillSparks(card.cards, collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter])));
 const perImage = card.cards[0].sparks.get('us_per_image_b1').innerHTML;
-assert.ok(perImage.includes('var(--series-1)'));
+assert.ok(perImage.includes('var(--series-1)') && perImage.includes('var(--series-2)'));
 // One case: no batch chart.
 assert.equal(all(card, n => n.className === 'charts').length, 0);
+// A run that timed batch 1 alone says so, and its card has no ratio.
+const b1Only = yoloRecord('7', yoloAfter.date, 78365.1);
+for (const m of ['us_per_image_b8', 'fps_b8']) delete b1Only.rows[YOLO][m];
+assert.equal(yoloSummary(b1Only.rows), ' One image takes 78,365.1 µs (12.76 fps) at batch 1.');
+const alone = componentBand(yolo, yoloIndex, b1Only, NOW).cards[0];
+assert.ok(!alone.children[0].text.includes('÷'));
+assert.equal(alone.children[1].children[0].text, 'Per imageb178,365.1 µsb8—');
 // A run that was not timed has no sentence to say.
 const untimed = yoloRecord('7', yoloAfter.date, 5000);
 delete untimed.rows[YOLO].us_per_image_b1;

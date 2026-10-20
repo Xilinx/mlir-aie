@@ -722,7 +722,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
           <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/yolo26n_hw.py"><code>utils/component_checks/yolo26n_hw.py</code></a>
             runs after it, on the same NPU. The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/yolo26n">YOLO26n</a>
             640×640 detector is compiled twice in one fresh cache, cold then warm, run on 8 COCO128 images, each checked against the numpy
-            oracle and, for information, onnxruntime, then timed at batch 1.</p>
+            oracle and, for information, onnxruntime, then timed at batch 1 and checked and timed again at batch 8.</p>
           <h3>What each run records</h3>
           <dl id="performance-metrics"></dl>
           <p>Per image and end-to-end are the fastest of 20 launches. Streaming, <code>(T(N) − T(1)) ÷ (N − 1)</code>, is what one more image in a launch costs
@@ -899,7 +899,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       pdi_bytes: 'size of the device image the xclbin carries: every core\'s ELF plus the array configuration',
       n_cores: 'compute cores the placed design uses',
       us_per_image_b1: 'time of one dispatch of one image, from the host, the median of 5, as yolo26n.py --time reports it',
+      us_per_image_b8: 'time per image of one dispatch of 8 images, from the host, the median of 5, as yolo26n.py --time --batch 8 reports it',
       fps_b1: 'images per second at batch 1, from the time per image; higher is better',
+      fps_b8: 'images per second at batch 8, from the time per image; higher is better',
       images_passed: 'COCO images whose every detection output matched the numpy oracle, of those run',
       ort_matches: 'COCO images whose detections matched onnxruntime\'s, of those run; information only, since the oracle decides pass or fail',
       elf_bytes: 'size of the full ELF the compile wrote: every core\'s program, the array configuration and the runtime sequence in one file',
@@ -931,7 +933,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
       survived_corruptions: 'Missed corruptions', tok_s: 'Tokens / s', ms_per_token: 'Time / token', dma_floor_ratio: 'Over the DMA floor',
       tokens_passed: 'Tokens verified', xclbin_bytes: 'xclbin', instr_bytes: 'Instructions', pdi_bytes: 'Device image', n_cores: 'Cores',
-      us_per_image_b1: 'Per image (b1)', fps_b1: 'Images / s (b1)',
+      us_per_image_b1: 'Per image (b1)', us_per_image_b8: 'Per image (b8)', fps_b1: 'Images / s (b1)', fps_b8: 'Images / s (b8)',
       images_passed: 'Images verified', ort_matches: 'Match onnxruntime', elf_bytes: 'Full ELF',
       ...Object.fromEntries(['', '_warm'].flatMap(suffix => [
         ...COMPILE_STAGES.map(([key, name]) => [`compile_${key}_s${suffix}`, `Compile: ${name} (${suffix ? 'warm' : 'cold'})`]),
@@ -950,7 +952,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const SECTIONS = {
       performance: { title: 'Performance', about: 'MobileNet, Llama 3.2 1B and YOLO26n compiled, run and verified on an NPU2: time per image, tokens per second, compile time and memory, cold and warm, and what the compile wrote.',
                      metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'tok_s', 'ms_per_token', 'dma_floor_ratio', 'tokens_passed',
-                               'us_per_image_b1', 'fps_b1', 'images_passed', 'ort_matches',
+                               'us_per_image_b1', 'us_per_image_b8', 'fps_b1', 'fps_b8', 'images_passed', 'ort_matches',
                                'compile_s', 'compile_peak_rss_mb', 'compile_s_warm', 'compile_peak_rss_mb_warm',
                                'xclbin_bytes', 'instr_bytes', 'pdi_bytes', 'elf_bytes', 'n_cores'] },
       routing: { title: 'Routing', about: 'The packet router against its model on npu1, npu2 and xcvc1902: legal routes, their cost, and mutation testing.',
@@ -1012,7 +1014,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         passed: 'Every image matched the oracle.',
         about: 'the whole 640×640 int8 detector, backbone through the Detect head\'s postprocess, compiled cold and then warm, '
           + 'run on real COCO128 images and checked image by image against the numpy oracle (and, for information, onnxruntime) on an NPU2, '
-          + 'then timed at batch 1.',
+          + 'then timed at batch 1 and checked and timed again at batch 8.',
         script: 'utils/component_checks/yolo26n_hw.py',
         whole: 'python utils/component_checks/yolo26n_hw.py --out perf.json --meta meta.json',
         failedId: /^yolo26n\/640$/,
@@ -1056,7 +1058,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true}, "xclbin_bytes": {"pct": 2}, "instr_bytes": {"pct": 2}, "pdi_bytes": {"pct": 2}, "n_cores": {"pct": 1}, "us_per_image_b1": {"pct": 5}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "images_passed": {"pct": 1, "higher_is_better": true}, "ort_matches": {"pct": 1, "higher_is_better": true}, "elf_bytes": {"pct": 2}, "compile_place_s": {"pct": 15}, "compile_lower_s": {"pct": 15}, "compile_kernels_s": {"pct": 15}, "compile_codegen_s": {"pct": 15}, "compile_link_s": {"pct": 15}, "compile_package_s": {"pct": 15}, "compile_other_s": {"pct": 15}, "compile_outside_aiecc_s": {"pct": 15}, "compile_aiecc_wall_s": {"pct": 15}, "compile_place_s_warm": {"pct": 15}, "compile_lower_s_warm": {"pct": 15}, "compile_kernels_s_warm": {"pct": 15}, "compile_codegen_s_warm": {"pct": 15}, "compile_link_s_warm": {"pct": 15}, "compile_package_s_warm": {"pct": 15}, "compile_other_s_warm": {"pct": 15}, "compile_outside_aiecc_s_warm": {"pct": 15}, "compile_aiecc_wall_s_warm": {"pct": 15}, "compile_route_s": {"pct": 15}, "compile_route_s_warm": {"pct": 15}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true}, "xclbin_bytes": {"pct": 2}, "instr_bytes": {"pct": 2}, "pdi_bytes": {"pct": 2}, "n_cores": {"pct": 1}, "us_per_image_b1": {"pct": 5}, "us_per_image_b8": {"pct": 5}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "images_passed": {"pct": 1, "higher_is_better": true}, "ort_matches": {"pct": 1, "higher_is_better": true}, "elf_bytes": {"pct": 2}, "compile_place_s": {"pct": 15}, "compile_lower_s": {"pct": 15}, "compile_kernels_s": {"pct": 15}, "compile_codegen_s": {"pct": 15}, "compile_link_s": {"pct": 15}, "compile_package_s": {"pct": 15}, "compile_other_s": {"pct": 15}, "compile_outside_aiecc_s": {"pct": 15}, "compile_aiecc_wall_s": {"pct": 15}, "compile_place_s_warm": {"pct": 15}, "compile_lower_s_warm": {"pct": 15}, "compile_kernels_s_warm": {"pct": 15}, "compile_codegen_s_warm": {"pct": 15}, "compile_link_s_warm": {"pct": 15}, "compile_package_s_warm": {"pct": 15}, "compile_other_s_warm": {"pct": 15}, "compile_outside_aiecc_s_warm": {"pct": 15}, "compile_aiecc_wall_s_warm": {"pct": 15}, "compile_route_s": {"pct": 15}, "compile_route_s_warm": {"pct": 15}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
@@ -3294,7 +3296,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     // The yolo26n check's card, one per case: time per image and frame rate
-    // at batch 1, verification against the oracle and onnxruntime, the
+    // at each batch, verification against the oracle and onnxruntime, the
     // compile cold beside warm, and the size of what the compile wrote.
     function yoloCards(record, cases, target) {
       const detail = record.detail || [];
@@ -3306,12 +3308,17 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const header = el('header', {}, el('span', { className: 'case-title', title: kase },
           el('span', { className: 'shape' }, `${side} × ${side}`),
           el('span', { className: 'params' }, run.images_total ? plural(run.images_total, 'COCO image') : 'COCO images')));
+        const [b1, b8] = ['us_per_image_b1', 'us_per_image_b8'].map(m => c && c.metrics.get(m));
+        if (b1 && b8 && b1.value) {
+          header.append(el('span', { className: 'ratio', title: 'time per image at batch 8 over batch 1' },
+            `b8 ÷ b1 per image ${(b8.value / b1.value).toFixed(2)}×`));
+        }
         const passed = c && c.metrics.get('images_passed');
         const sizes = c && c.metrics.get('elf_bytes') ? [lane('elf_bytes', 'ELF')]
           : [lane('xclbin_bytes', 'xclbin'), lane('instr_bytes', 'insts', 'series-3')];
         const card = glanceGrid(header, [
-          componentCell('us_per_image_b1', 'Per image', [lane('us_per_image_b1', 'b1')]),
-          componentCell('fps_b1', 'Images / s', [lane('fps_b1', 'b1')]),
+          componentCell('us_per_image_b1', 'Per image', [lane('us_per_image_b1', 'b1'), lane('us_per_image_b8', 'b8', 'series-2')]),
+          componentCell('fps_b1', 'Images / s', [lane('fps_b1', 'b1'), lane('fps_b8', 'b8', 'series-2')]),
           componentCell('images_passed', label('images_passed'),
                         [{ ...lane('images_passed'), bad: Boolean(passed && run.images_total && passed.value < run.images_total) }]),
           componentCell('ort_matches', label('ort_matches'), [lane('ort_matches')]),
@@ -3329,12 +3336,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       });
     }
 
-    // The yolo26n check in a sentence: one image's time.
+    // The yolo26n check in a sentence: one image's time at each batch.
     function yoloSummary(rows) {
       const r = rows[Object.keys(rows).find(k => /^yolo26n\/\d+$/.test(k))];
       if (!r || !r.us_per_image_b1) return '';
       const fps = r.fps_b1 ? ` (${formatNumber(r.fps_b1.value, 'fps')})` : '';
-      return ` One image takes ${formatNumber(r.us_per_image_b1.value, 'us')}${fps} at batch 1.`;
+      const b8 = r.us_per_image_b8 ? `, ${formatNumber(r.us_per_image_b8.value, 'us')} at batch 8` : '';
+      return ` One image takes ${formatNumber(r.us_per_image_b1.value, 'us')}${fps} at batch 1${b8}.`;
     }
 
     // The sweep in a sentence: the costliest fixture's cost and CPU time.

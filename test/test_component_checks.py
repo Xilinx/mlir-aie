@@ -39,7 +39,8 @@ PASS!
 
 
 # What yolo26n.py prints on an npu2 over 8 COCO128 images: a line per image,
-# a summary, the onnxruntime agreement and, with --time, one image's time.
+# a summary, the onnxruntime agreement and, with --time, one image's time at
+# the run's batch.
 YOLO_OUTPUT = """\
 image 000000000009.jpg: PASS (0/1800 differ)
 image 000000000025.jpg: PASS (0/1800 differ)
@@ -53,6 +54,7 @@ yolo26n: 8/8 images PASS
 ort: 8/8 images match onnxruntime
 """
 YOLO_TIMED_OUTPUT = YOLO_OUTPUT + "per-image: 78365.1 us (12.76 fps) at batch 1\n"
+YOLO_BATCHED_OUTPUT = YOLO_OUTPUT + "per-image: 12727.7 us (78.57 fps) at batch 8\n"
 
 
 def load(name):
@@ -422,10 +424,17 @@ def test_a_yolo26n_run_without_onnxruntime_has_no_ort_row(yolo):
     assert [r["name"] for r in rows] == ["yolo26n/640/images_passed"]
 
 
-def test_a_timed_yolo26n_run_reports_its_time_and_frame_rate(yolo):
-    timing = yolo.parse_timing(YOLO_TIMED_OUTPUT)
-    assert timing == {"us_per_image_b1": 78365.1, "fps_b1": 12.76}
+def test_timed_yolo26n_runs_report_each_batch(yolo):
     assert yolo.parse_timing(YOLO_OUTPUT) == {}
+    timing = yolo.parse_timing(YOLO_TIMED_OUTPUT) | yolo.parse_timing(
+        YOLO_BATCHED_OUTPUT
+    )
+    assert timing == {
+        "us_per_image_b1": 78365.1,
+        "fps_b1": 12.76,
+        "us_per_image_b8": 12727.7,
+        "fps_b8": 78.57,
+    }
     rows = yolo.aggregate(
         yolo.parse_correctness(YOLO_TIMED_OUTPUT, 0),
         timing,
@@ -437,6 +446,8 @@ def test_a_timed_yolo26n_run_reports_its_time_and_frame_rate(yolo):
         ("yolo26n/640/ort_matches", "images", 8, "of 8"),
         ("yolo26n/640/us_per_image_b1", "us", 78365.1, None),
         ("yolo26n/640/fps_b1", "fps", 12.76, None),
+        ("yolo26n/640/us_per_image_b8", "us", 12727.7, None),
+        ("yolo26n/640/fps_b8", "fps", 78.57, None),
         ("yolo26n/640/elf_bytes", "bytes", 1_234_567, None),
         ("yolo26n/640/n_cores", "cores", 32, None),
         ("yolo26n/640/compile_s", "s", 95.1, None),
