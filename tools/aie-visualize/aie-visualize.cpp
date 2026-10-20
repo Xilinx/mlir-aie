@@ -60,7 +60,7 @@ static cl::list<unsigned>
               cl::CommaSeparated, cl::ZeroOrMore);
 static cl::list<std::string> contractedNodeKinds(
     "contract",
-    cl::desc("Contract semantic node kinds: tile, port, buffer, "
+    cl::desc("Contract semantic node kinds: tile, port, dma, buffer, "
              "runtime-argument, call"),
     cl::value_desc("kind"), cl::CommaSeparated, cl::ZeroOrMore);
 static cl::opt<bool> noFollowBuffers(

@@ -13,8 +13,10 @@
 // CHECK-NOT: buffer_
 // CHECK: call_0 {{.*}}label="consume"
 // CHECK-NOT: buffer_
-// CHECK: tile_0_2 -> call_0
-// CHECK-SAME: label={{.*}}&#215;2
+// The two buffers contract away; their multiplicity is carried by the DMA
+// channel both of them reach, which is where they genuinely meet.
+// CHECK-DAG: tile_0_2 -> p_0_3_1_0_s
+// CHECK-DAG: p_0_3_1_0_s -> call_0 {{.*}}label={{.*}}&#215;2
 // CHECK-NOT: buffer_
 
 module {

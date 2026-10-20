@@ -50,14 +50,19 @@
 // TOPOLOGY: call_1 {{.*}} label="view_kernel"{{.*}} class="call detail-calls flow flow-2 flow-3"
 // TOPOLOGY-DAG: call_0 -> buffer_0 {{.*}}class="route detail-packet-ids detail-calls flow flow-2"
 // TOPOLOGY-DAG: call_1 -> buffer_0 {{.*}}class="route detail-packet-ids detail-calls flow flow-2"
-// TOPOLOGY-DAG: buffer_0 -> tile_0_3 {{.*}}class="route detail-packet-ids detail-calls flow flow-2"{{.*}}label=<<FONT COLOR="#1a9850">F2</FONT>>
-// TOPOLOGY-DAG: call_1 -> tile_0_4 {{.*}}class="route detail-packet-ids detail-calls flow flow-3"
+// A DMA channel stands between a buffer and the tile it leaves for.
+// TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}class="route detail-packet-ids detail-calls flow flow-2"{{.*}}label=<<FONT COLOR="#1a9850">F2</FONT>>
+// TOPOLOGY-DAG: p_0_2_1_0_m -> tile_0_3 {{.*}}class="route detail-packet-ids detail-calls flow flow-2"
+// TOPOLOGY-DAG: call_1 -> p_0_2_1_1_m {{.*}}class="route detail-packet-ids detail-calls flow flow-3"
+// TOPOLOGY-DAG: p_0_2_1_1_m -> tile_0_4 {{.*}}class="route detail-packet-ids detail-calls flow flow-3"
 // TOPOLOGY-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="route detail-packet-ids flow flow-0"
 // TOPOLOGY-DAG: runtime_arg_1 -> p_0_0_1_0_m {{.*}}class="route detail-packet-ids flow flow-0"
 // TOPOLOGY-DAG: runtime_arg_2 -> p_0_0_1_0_m {{.*}}class="route detail-packet-ids flow flow-0"
 // TOPOLOGY-DAG: p_0_0_1_0_m -> p_0_2_0_0 {{.*}}class="route detail-packet-ids flow flow-0"{{.*}}label=<<FONT COLOR="#d73027">F0</FONT>>
-// TOPOLOGY-DAG: runtime_arg_0 -> tile_1_2 {{.*}}class="route detail-packet-ids flow flow-4"
-// TOPOLOGY-DAG: p_0_2_0_0 -> runtime_arg_3 {{.*}}class="route detail-packet-ids flow flow-1"
+// TOPOLOGY-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="route detail-packet-ids flow flow-4"
+// TOPOLOGY-DAG: p_1_0_1_0_m -> tile_1_2 {{.*}}class="route detail-packet-ids flow flow-4"
+// TOPOLOGY-DAG: p_0_2_0_0 -> p_0_0_1_1_s {{.*}}class="route detail-packet-ids flow flow-1"
+// TOPOLOGY-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="route detail-packet-ids flow flow-1"
 // TOPOLOGY-NOT: topology_junction_
 
 module {

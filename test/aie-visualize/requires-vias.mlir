@@ -11,13 +11,15 @@
 // RUN: not aie-visualize --emit-dot %s 2>&1 | FileCheck %s
 // RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
 
-// CHECK: error: 'aie.flow' op requires vias; run aie-find-flows with emit-vias=true
+// CHECK: error: flow carries no vias, so its route cannot be drawn
 
 // TOPOLOGY: graph [layout=neato, overlap=true, splines=curved
 // TOPOLOGY: tile_0_2 {{.*}} pos="0.000000,6.000000!"
 // TOPOLOGY: tile_0_3 {{.*}} pos="0.000000,9.000000!"
-// TOPOLOGY: tile_0_2 -> tile_0_3
-// TOPOLOGY-NOT: p_0_2_1_0_m
+// Contracting ports keeps the DMA channels a flow leaves and arrives on.
+// TOPOLOGY-DAG: tile_0_2 -> p_0_2_1_0_m
+// TOPOLOGY-DAG: p_0_2_1_0_m -> p_0_3_1_0_s
+// TOPOLOGY-DAG: p_0_3_1_0_s -> tile_0_3
 
 module {
   aie.device(npu1_1col) {

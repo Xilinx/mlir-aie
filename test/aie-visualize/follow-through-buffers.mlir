@@ -58,10 +58,17 @@
 // TOPOLOGY-DAG: buffer_0 {{.*}}label="bridge"{{.*}}class="buffer detail-buffers flow flow-0"
 // TOPOLOGY-DAG: buffer_1 {{.*}}label="fanout"{{.*}}class="buffer detail-buffers flow flow-2"
 // TOPOLOGY-DAG: buffer_2 {{.*}}label="join"{{.*}}class="buffer detail-buffers flow flow-3"
-// TOPOLOGY-DAG: buffer_1 -> p_0_3_0_0 {{.*}}class="route detail-packet-ids flow flow-2"
-// TOPOLOGY-DAG: buffer_1 -> p_0_4_0_0 {{.*}}class="route detail-packet-ids flow flow-2"
-// TOPOLOGY-DAG: p_0_3_0_0 -> buffer_2 {{.*}}flow-3
-// TOPOLOGY-DAG: p_0_5_0_0 -> buffer_2 {{.*}}flow-3
+// Contracting ports removes the switchbox hops a flow passes through, not
+// the DMA channel it leaves or arrives on, so a buffer reaches a switchbox
+// by way of its channel.
+// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_0_m {{.*}}class="route detail-packet-ids flow flow-2"
+// TOPOLOGY-DAG: p_0_5_1_0_m -> p_0_3_0_0 {{.*}}class="route detail-packet-ids flow flow-2"
+// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_1_m {{.*}}class="route detail-packet-ids flow flow-2"
+// TOPOLOGY-DAG: p_0_5_1_1_m -> p_0_4_0_0 {{.*}}class="route detail-packet-ids flow flow-2"
+// TOPOLOGY-DAG: p_0_3_0_0 -> p_0_2_1_0_s {{.*}}flow-3
+// TOPOLOGY-DAG: p_0_2_1_0_s -> buffer_2 {{.*}}flow-3
+// TOPOLOGY-DAG: p_0_5_0_0 -> p_0_2_1_1_s {{.*}}flow-3
+// TOPOLOGY-DAG: p_0_2_1_1_s -> buffer_2 {{.*}}flow-3
 // TOPOLOGY-NOT: tile_0_5 -> buffer_1
 // TOPOLOGY-NOT: buffer_2 -> tile_0_2
 // TOPOLOGY-NOT: topology_junction_
