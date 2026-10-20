@@ -237,6 +237,7 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bfloat16 *__restrict pY,
     out[6] = mout3.extract<16>(2);
     out[7] = mout3.extract<16>(3);
 
+    AIE_LOOP_UNROLL_FULL
     for (int h = 0; h < Q_HEADS_PER_CU; h++) {
       aie::vector<bf16, 16> vec = update(m + h, c + h, out[h], mask, is_first);
       aie::store_v(pY1, vec);
