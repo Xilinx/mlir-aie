@@ -6,6 +6,8 @@
 
 import logging
 
+import numpy as np
+
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import TraceMode  # pyright: ignore[reportAttributeAccessIssue]
 from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
@@ -296,7 +298,8 @@ class Program:
         if declaration is None:
             parameters[parameter.name] = parameter
             return parameter
-        if declaration.dtype != parameter.dtype:
+        # numpy.intc and numpy.int32 are distinct classes on Windows.
+        if np.dtype(declaration.dtype) != np.dtype(parameter.dtype):
             raise ValueError(
                 f"ScratchpadParameter {parameter.name!r} has conflicting dtypes "
                 f"{declaration.dtype} and {parameter.dtype}."
