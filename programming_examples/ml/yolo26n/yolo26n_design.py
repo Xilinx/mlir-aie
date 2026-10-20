@@ -22,7 +22,9 @@ from pathlib import Path
 
 import numpy as np
 from aie.dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
-from aie.dialects.arith import index_cast  # pyright: ignore[reportAttributeAccessIssue]
+from aie.dialects.arith import (
+    index_cast,
+)  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
@@ -1727,7 +1729,7 @@ class SegmentDesign:
                             pieces[2 * h + 1].cons(depth=2),
                             half.prod(),
                             k,
-                            k.load_kv,  # pyright: ignore[reportAttributeAccessIssue]
+                            k.load_kv,
                             Buffer(
                                 initial_value=p.of(op.name, "exp_table").astype(
                                     np.int32
