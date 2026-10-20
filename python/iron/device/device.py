@@ -80,7 +80,7 @@ class Device(Resolvable):
         return AIEArch(self._tm.get_target_arch())
 
     @property
-    def dispatches_full_elf(self) -> bool:
+    def can_dispatch_full_elf(self) -> bool:
         """Whether a full ELF (PDIs and control code in one ELF) dispatches here: on AIE2p."""
         # XRT sends an ELF with .pdi sections as a preemptible command, which
         # amdxdna accepts only where the part supports preemption: not on npu1.
