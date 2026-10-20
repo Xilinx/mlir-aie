@@ -57,16 +57,21 @@ to drain more than the last op's output).
   upstream rows each output row waits for sizes the fifo depths so neither
   path stalls the other. Rows held longer than a compute tile can buffer are
   staged in a memtile, or in a ring buffer on chained workers when they need
-  more buffer descriptors than a memtile channel has.
-- A conv whose weights do not fit beside its rows streams them from a
-  memtile one output-channel chunk at a time, each chunk followed by its
-  bias.
-- C2PSA attention runs one worker per head; a memtile splits each qkv row
-  into the heads' queries, keys and values.
+  more buffer descriptors than a memtile channel has; rows a consumer holds
+  for the whole map, as across an attention barrier, go to DDR and back.
+- Runs of operators (the C3k blocks and bottlenecks, the PSA FFNs, the
+  Detect branches) run fused, one worker each, their rows in rings in its
+  tile (`FUSED`, `SegmentDesign.fuse`).
+- A conv whose weights do not fit beside its rows streams them from the
+  host's weights buffer one output-channel chunk at a time, each chunk
+  followed by its bias, once an output row.
+- C2PSA attention runs two workers per head, each answering every other row
+  of queries; a memtile splits each qkv row into the heads' queries, keys
+  and values, and another joins every worker's rows into the output.
 - The Detect postprocess (best class per anchor, top 300 anchors, top 300
   anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`.
-- `yolo26n.py` runs the network as a sequence of such segments, each its own
-  device configuration in one full ELF, handing tensors on through a DDR
+- `yolo26n.py` runs the network as four such segments (`SEGMENTS`), each its
+  own device configuration in one full ELF, handing tensors on through a DDR
   scratch buffer, in one dispatch.
 
 ## Accuracy
@@ -83,7 +88,8 @@ changes a detection above 0.25 confidence.
 
 ## Performance
 
-On Strix Halo (NPU2), one image takes 22.1 ms (45 fps) at batch 1 and
-12.6 ms per image (79 fps) at batch 8 (`python yolo26n.py --n 8 --batch
-8 --time`), in nine device configurations of one full ELF. Each configuration costs about 1.1 ms to set up, which a batch
-shares. Compiling takes about 10 s.
+On Strix Halo (NPU2), one 640x640 image takes 12.7 ms (79 fps) at batch 1
+and 6.15 ms per image (163 fps) at batch 8 (`python yolo26n.py --n 8 --batch
+8 --time`), in four device configurations of one full ELF and 92 workers.
+A batch-1 dispatch configures every segment's workers again, at roughly
+60-110 us a worker, which a batch shares. Compiling takes about 12 s.
