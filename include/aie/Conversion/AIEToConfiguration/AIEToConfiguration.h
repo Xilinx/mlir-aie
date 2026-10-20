@@ -54,14 +54,14 @@ mlir::LogicalResult generateAndInsertConfigOps(
 // its device. They are generated once per device and sequence-holding device,
 // and a sequence's constants and payload globals are made once, at its head:
 // a device reloaded hundreds of times would otherwise repeat each per reload.
-// Control-packet output skips what is marked is_ctrl_pkt_overlay.
+// Control-packet output skips what is marked is_ctrl_pkt_overlay. A site that
+// is an aiex.npu.write_teardown gets the device's teardown ops instead.
 mlir::LogicalResult insertConfigOps(
     llvm::ArrayRef<std::pair<mlir::Operation *, xilinx::AIE::DeviceOp>> sites,
     AIEToConfigurationOutputType outputType);
 
-// Replaces each aiex.npu.write_config in `module` with the configuration ops
-// the NPU translation writes for it. The arith and memref dialects must be
-// loaded.
+// Inlines each aiex.npu.write_config and write_teardown in `module`. The arith
+// and memref dialects must be loaded.
 mlir::LogicalResult inlineWriteConfigs(mlir::ModuleOp module);
 
 // Insert operations that disable the stream-switch circuits, packet ports and

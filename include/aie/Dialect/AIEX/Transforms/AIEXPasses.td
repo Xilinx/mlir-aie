@@ -668,9 +668,9 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     (i.e., after `aiex.configure` ops have been turned into
     `aiex.npu.load_pdi`).
 
-    With `teardown = true`, each configuration undoes what it enabled after its
-    last `aiex.npu.sync`, so only a sequence's first configuration keeps its
-    reset. With `init-entry = true` as well, that reset moves into an
+    With `teardown = true`, an `aiex.npu.write_teardown @device` before the
+    next `load_pdi`, or at the sequence's end, undoes what each configuration
+    enabled, so only a sequence's first configuration keeps its reset. With `init-entry = true` as well, that reset moves into an
     argument-free `reconfig_init` runtime sequence, which the host runs once
     before the others.
 
@@ -691,8 +691,9 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
               "followed by aiex.npu.control_packet ops instead of write32/"
               "blockwrite ops with an empty-device reset.">,
        Option<"clInlineConfig", "inline-config", "bool", /*default=*/"false",
-              "If true, write each reloaded device's configuration as "
-              "write32/blockwrite ops rather than an aiex.npu.write_config.">,
+              "If true, write each reloaded device's configuration and "
+              "teardown as write32/blockwrite ops rather than an "
+              "aiex.npu.write_config and aiex.npu.write_teardown.">,
        Option<"clTeardown", "teardown", "bool", /*default=*/"false",
               "If true, each configuration undoes what it enabled once it is "
               "done, and only the first configuration of a runtime sequence "

@@ -13,6 +13,7 @@
 //       firmware to reset the device, and
 //    b. an `aiex.npu.write_config @device`, whose register writes the NPU
 //       translation emits (or, with inline-config, those writes as ops).
+//    c. with teardown, an `aiex.npu.write_teardown @device` where it ends.
 // 2. With ctrl-pkt=true: replaces each `load_pdi @device` with
 //    a. a `load_pdi @ctrl_pkt_overlay`, which configures the NPU to stream
 //       further configuration as control packets, and
@@ -299,14 +300,11 @@ static void setInsertionPointToSegmentEnd(OpBuilder &builder,
 }
 
 // Helper to transform a single load_pdi operation. Without `keepPreload` the
-// empty-device reset is left out. With `teardownData` the configuration's
-// writes are inserted here, since aiex.npu.write_config needs a reset ahead of
-// it, and its teardown goes where it ends.
+// empty-device reset is left out. With `teardown` the configuration's teardown
+// goes where it ends.
 static LogicalResult
 transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
-                 AIEX::ExpandMode defaultMode, bool keepPreload,
-                 AIEX::BlockwriteData *configData,
-                 AIEX::BlockwriteData *teardownData,
+                 AIEX::ExpandMode defaultMode, bool keepPreload, bool teardown,
                  SmallVectorImpl<CtrlPktReload> &ctrlPktReloads) {
   OpBuilder builder(loadPdiOp);
 
@@ -385,21 +383,10 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
                          /*expand_mode=*/
                          AIEX::ExpandModeAttr::get(builder.getContext(),
                                                    AIEX::ExpandMode::none));
-  if (!teardownData) {
-    NpuWriteConfigOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
-  } else if (failed(xilinx::AIE::generateAndInsertConfigOps(
-                 builder, referencedDevice, *configData))) {
-    loadPdiOp.emitError("Failed to generate configuration operations");
-    return failure();
-  }
-
-  if (teardownData) {
+  NpuWriteConfigOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
+  if (teardown) {
     setInsertionPointToSegmentEnd(builder, loadPdiOp);
-    if (failed(xilinx::AIE::generateAndInsertTeardownOps(
-            builder, referencedDevice, *teardownData))) {
-      loadPdiOp.emitError("Failed to generate teardown operations");
-      return failure();
-    }
+    NpuWriteTeardownOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
   }
   loadPdiOp.erase();
   return success();
@@ -538,8 +525,6 @@ struct AIEExpandLoadPdiPass
 
     // Transform load_pdi ops
     SmallVector<CtrlPktReload> ctrlPktReloads;
-    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> configData,
-        teardownData;
     // The kind of each sequence's last load, which left the array as it is.
     llvm::DenseMap<Operation *, std::optional<AIEX::ExpandMode>> arrayState;
     for (auto [idx, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
@@ -554,17 +539,8 @@ struct AIEExpandLoadPdiPass
       // teardown.
       bool keepPreload = !clTeardown || state != expandMode(loadPdiOp);
       state = expandMode(loadPdiOp);
-      AIEX::BlockwriteData *config = nullptr, *teardown = nullptr;
-      if (clTeardown) {
-        auto device = loadPdiOp->getParentOfType<AIE::DeviceOp>();
-        config =
-            &configData.try_emplace(device, device, "loadpdi_").first->second;
-        teardown = &teardownData.try_emplace(device, device, "teardown_")
-                        .first->second;
-      }
       if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
-                                  keepPreload, config, teardown,
-                                  ctrlPktReloads))) {
+                                  keepPreload, clTeardown, ctrlPktReloads))) {
         signalPassFailure();
         return;
       }

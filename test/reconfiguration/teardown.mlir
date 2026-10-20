@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-expand-load-pdi="teardown=true" --split-input-file %s | FileCheck %s
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" --split-input-file %s | FileCheck %s
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true init-entry=true" --split-input-file --verify-diagnostics %s | FileCheck %s --check-prefix=INIT
 // RUN: not aie-opt --aie-expand-load-pdi="init-entry=true" --split-input-file %s 2>&1 | FileCheck %s --check-prefix=NO-TEARDOWN
 // RUN: not aie-opt --aie-expand-load-pdi="ctrl-pkt=true teardown=true" --split-input-file %s 2>&1 | FileCheck %s --check-prefix=CTRL-PKT
@@ -21,33 +21,33 @@
 // appended.
 
 // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<16xi32>)
-// CHECK:     %[[SYNC_ADDR:.*]] = arith.constant 119316 : i32
-// CHECK:     aiex.npu.load_pdi {device_ref = @empty_0
-// CHECK:     aiex.npu.write32(%[[SYNC_ADDR]], %{{.*}})
-// CHECK:     aiex.npu.sync
-// CHECK:     aiex.npu.write32(%[[SYNC_ADDR]], %{{.*}})
-// CHECK-DAG: %[[ZERO:.*]] = arith.constant 0 : i32
-// CHECK-DAG: %[[A0:.*]] = arith.constant 2355204 : i32
-// CHECK:     aiex.npu.write32(%[[A0]], %[[ZERO]])
-// CHECK-DAG: %[[A1:.*]] = arith.constant 2355480 : i32
-// CHECK:     aiex.npu.write32(%[[A1]], %[[ZERO]])
-// CHECK-DAG: %[[A2:.*]] = arith.constant 2355200 : i32
-// CHECK:     aiex.npu.write32(%[[A2]], %[[ZERO]])
-// CHECK-DAG: %[[A3:.*]] = arith.constant 2355484 : i32
-// CHECK:     aiex.npu.write32(%[[A3]], %[[ZERO]])
-// CHECK-DAG: %[[A4:.*]] = arith.constant 2355824 : i32
-// CHECK:     aiex.npu.write32(%[[A4]], %[[ZERO]])
-// CHECK-DAG: %[[RESET:.*]] = arith.constant 1705528 : i32
-// CHECK-DAG: %[[BIT:.*]] = arith.constant 2 : i32
-// CHECK:     aiex.npu.maskwrite32(%[[RESET]], %[[BIT]], %[[BIT]])
-// CHECK:     aiex.npu.maskwrite32(%[[RESET]], %[[ZERO]], %[[BIT]])
-// CHECK-NOT: aiex.npu.load_pdi
-// CHECK:     aiex.npu.sync
-// CHECK:     aiex.npu.write32(%{{.*}}, %{{.*}})
-// CHECK:     aiex.npu.maskwrite32
-// CHECK:     aiex.npu.maskwrite32
-// CHECK-NOT: aiex.npu.load_pdi
-// CHECK:     {{^    }}}
+// CHECK-DAG:  %[[A0:.*]] = arith.constant 2355204 : i32
+// CHECK-DAG:  %[[A1:.*]] = arith.constant 2355480 : i32
+// CHECK-DAG:  %[[A2:.*]] = arith.constant 2355200 : i32
+// CHECK-DAG:  %[[A3:.*]] = arith.constant 2355484 : i32
+// CHECK-DAG:  %[[A4:.*]] = arith.constant 2355824 : i32
+// CHECK-DAG:  %[[RESET:.*]] = arith.constant 1705528 : i32
+// CHECK-DAG:  %[[BIT:.*]] = arith.constant 2 : i32
+// CHECK-DAG:  %[[ZERO:.*]] = arith.constant 0 : i32
+// CHECK-DAG:  %[[SYNC_ADDR:.*]] = arith.constant 119316 : i32
+// CHECK:      aiex.npu.load_pdi {device_ref = @empty_0
+// CHECK:      aiex.npu.write32(%[[SYNC_ADDR]], %{{.*}})
+// CHECK:      aiex.npu.sync
+// CHECK:      aiex.npu.write32(%[[SYNC_ADDR]], %{{.*}})
+// CHECK-NEXT: aiex.npu.write32(%[[A0]], %[[ZERO]])
+// CHECK-NEXT: aiex.npu.write32(%[[A1]], %[[ZERO]])
+// CHECK-NEXT: aiex.npu.write32(%[[A2]], %[[ZERO]])
+// CHECK-NEXT: aiex.npu.write32(%[[A3]], %[[ZERO]])
+// CHECK-NEXT: aiex.npu.write32(%[[A4]], %[[ZERO]])
+// CHECK-NEXT: aiex.npu.maskwrite32(%[[RESET]], %[[BIT]], %[[BIT]])
+// CHECK-NEXT: aiex.npu.maskwrite32(%[[RESET]], %[[ZERO]], %[[BIT]])
+// CHECK-NOT:  aiex.npu.load_pdi
+// CHECK:      aiex.npu.sync
+// CHECK-NEXT: aiex.npu.write32(%[[A0]], %[[ZERO]])
+// CHECK:      aiex.npu.maskwrite32
+// CHECK:      aiex.npu.maskwrite32
+// CHECK-NOT:  aiex.npu.load_pdi
+// CHECK:      {{^    }}}
 
 module {
   aie.device(npu2_1col) @cfg {
@@ -184,19 +184,16 @@ module {
 // A core is disabled, and only the channel its tile starts is reset.
 
 // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<16xi32>)
-// CHECK:     %[[CORE:.*]] = arith.constant 2301952 : i32
-// CHECK:     %[[ON:.*]] = arith.constant 1 : i32
-// CHECK:     aiex.npu.maskwrite32(%[[CORE]], %[[ON]], %[[ON]])
-// CHECK:     %[[TD_CORE:.*]] = arith.constant 2301952 : i32
-// CHECK:     %[[ZERO:.*]] = arith.constant 0 : i32
-// CHECK:     %[[ENABLE:.*]] = arith.constant 1 : i32
-// CHECK:     aiex.npu.maskwrite32(%[[TD_CORE]], %[[ZERO]], %[[ENABLE]])
-// CHECK:     %[[S2MM0:.*]] = arith.constant 2219520 : i32
-// CHECK:     %[[RESET:.*]] = arith.constant 2 : i32
-// CHECK:     aiex.npu.maskwrite32(%[[S2MM0]], %[[RESET]], %[[RESET]])
-// CHECK:     aiex.npu.maskwrite32(%[[S2MM0]], %[[ZERO]], %[[RESET]])
-// CHECK-NOT: aiex.npu
-// CHECK:     {{^    }}}
+// CHECK-DAG:  %[[CORE:.*]] = arith.constant 2301952 : i32
+// CHECK-DAG:  %[[ON:.*]] = arith.constant 1 : i32
+// CHECK-DAG:  %[[ZERO:.*]] = arith.constant 0 : i32
+// CHECK-DAG:  %[[S2MM0:.*]] = arith.constant 2219520 : i32
+// CHECK-DAG:  %[[RESET:.*]] = arith.constant 2 : i32
+// CHECK:      aiex.npu.maskwrite32(%[[CORE]], %[[ON]], %[[ON]])
+// CHECK-NEXT: aiex.npu.maskwrite32(%[[CORE]], %[[ZERO]], %[[ON]])
+// CHECK-NEXT: aiex.npu.maskwrite32(%[[S2MM0]], %[[RESET]], %[[RESET]])
+// CHECK-NEXT: aiex.npu.maskwrite32(%[[S2MM0]], %[[ZERO]], %[[RESET]])
+// CHECK-NEXT: {{^    }}}
 
 module {
   aie.device(npu2_1col) @cfg {
