@@ -222,6 +222,8 @@ jobs:
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
+          # generate.py tokenizes its prompt.
+          pip install tiktoken
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME" results/llama-chain-hw
           python utils/component_checks/llama_chain_hw.py --pmode "$REQUIRED_PMODE" \
             --out results/llama-chain-hw/perf.json --meta results/llama-chain-hw/meta.json \
