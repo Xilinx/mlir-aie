@@ -123,10 +123,7 @@ class DeviceResources:
             # would leave a static program broken for every later dispatch.
             for flow in self._flows:
                 for tile in flow.control_tiles():
-                    if any(
-                        program.tile.is_same_tile(tile)
-                        for program in self._resolved_tile_dmas
-                    ):
+                    if tile in programs or (tile.col, tile.row) in coordinates:
                         raise ValueError(
                             f"{type(flow).__name__} {flow.name!r} writes the "
                             f"TileControl of {tile}, which runs a TileDma program: "

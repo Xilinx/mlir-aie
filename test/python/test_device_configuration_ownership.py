@@ -532,12 +532,15 @@ def test_one_channel_in_two_static_programs_is_refused():
         )
 
 
+@pytest.mark.parametrize("same_object", [True, False])
 @pytest.mark.parametrize("one_runtime", [True, False])
-def test_a_control_route_into_a_tile_with_a_static_program_is_refused(one_runtime):
+def test_a_control_route_into_a_tile_with_a_static_program_is_refused(
+    one_runtime, same_object
+):
     mem = mem_tile()
     static = static_program("seq_0", mem, DMAChannelDir.MM2S, 0)
     routed = static if one_runtime else runtime("seq_1")
-    routed.add_flow(control_route(mem))
+    routed.add_flow(control_route(mem if same_object else mem_tile()))
     with pytest.raises(
         ValueError,
         match=r"PacketFlow 'packetflow0' writes the TileControl of "
