@@ -2164,6 +2164,62 @@ def flm_gemma4_rms_residual_core(
     )
 
 
+_PACKET_HEADER = 16
+
+
+def flm_gemma4_rms_norm_core_ref(x, w):
+    """Numpy reference for [`flm_gemma4_rms_norm_core`][iron.kernels.flm_gemma4.flm_gemma4_rms_norm_core].
+
+    16 zeros, then ``x * w / sqrt(mean(x^2) + 1e-6)`` rounded to bf16.
+    """
+    n = _rms_residual_core_terms(x, w, 0)[0]
+    header = np.zeros((len(n), _PACKET_HEADER))
+    return np.concatenate([header, n], axis=1).astype(np.float32).astype(bfloat16)
+
+
+def _rms_norm_core_bound(x, w):
+    n = np.abs(_rms_residual_core_terms(x, w, 0)[0])
+    bound = (1.5 * 2.0**-7 + _RMS_SCALE_REL) * n + _BF16_TINY
+    return np.concatenate([np.full((len(n), _PACKET_HEADER), _BF16_TINY), bound], 1)
+
+
+@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+def flm_gemma4_rms_norm_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """``rms_norm`` of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual] into its packet layout.
+
+    ``rms_norm_core(x, w, y)``: ``x`` and ``w`` are ``model_dim`` bf16, ``y``
+    is ``model_dim + 16``, a zeroed 16-element packet header then
+    ``rms_norm(x) * w``: the row starts 32 bytes into a 64-byte-aligned
+    buffer, as the QKV and up/gate projections' input does.
+    """
+    base = flm_gemma4_decode_rms_residual(geometry=geometry)
+    d = geometry.model_dim
+    row = np.ndarray[(d,), _BF16]
+    return _wrapper(
+        base,
+        "decode_rms_residual_core.cc",
+        "rms_norm_core",
+        [row, row, np.ndarray[(d + _PACKET_HEADER,), _BF16]],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out),
+            reference=flm_gemma4_rms_norm_core_ref,
+            tolerance=Tolerance.bounded(
+                _rms_norm_core_bound,
+                note="bf16 ulp <= 2**-7 |v|. The kernel floors the normalized "
+                "value to bf16 (1 ulp, plus the fast inverse sqrt's and the "
+                "float32 sum of squares' error, under 2**-12) and the "
+                "reference rounds it to nearest (1/2 ulp). The header is "
+                "exact. Each flush of a subnormal adds the smallest normal",
+            ),
+            # Per element: square-add and two multiplies.
+            ops_per_call=4 * d,
+        ),
+    )
+
+
 @dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 def flm_gemma4_decode_proj_main(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int

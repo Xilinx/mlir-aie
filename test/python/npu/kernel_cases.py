@@ -1000,6 +1000,13 @@ CASES: list[Case] = [
         dict(geometry=FLM_GEMMA4_E4B_DECODE),
         devices=("npu2",),
     ),
+    # The row starts 32 bytes into its buffer, past the packet header.
+    Case("flm_gemma4_rms_norm_core", calls=4, devices=("npu2",), smoke=True),
+    check(
+        "flm_gemma4_rms_norm_core",
+        dict(geometry=FLM_GEMMA4_E4B_DECODE),
+        devices=("npu2",),
+    ),
     # One decode attention qk round; the scalars are iter and L0.
     Case(
         "flm_gemma4_attn_qk_core",

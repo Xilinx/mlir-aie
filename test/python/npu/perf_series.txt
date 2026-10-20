@@ -233,6 +233,8 @@ flm_gemma4_rope_core/1024x4/bfloat16
 flm_gemma4_rope_core/512x4/bfloat16/sliding_window=True
 flm_gemma4_rms_residual_core/1536x4/bfloat16
 flm_gemma4_rms_residual_core/2560x4/bfloat16/geometry=gemma4_e4b
+flm_gemma4_rms_norm_core/1536x4/bfloat16
+flm_gemma4_rms_norm_core/2560x4/bfloat16/geometry=gemma4_e4b
 flm_gemma4_swa_attn_kv_core/4256x4/bfloat16_float32
 flm_gemma4_swa_attn_kv_core/8352x4/bfloat16_float32/geometry=gemma4_e4b
 flm_gemma4_swa_prefill/16x4/bfloat16
