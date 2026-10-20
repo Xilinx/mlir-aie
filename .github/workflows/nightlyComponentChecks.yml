@@ -3,29 +3,17 @@
 
 name: Nightly Component Checks
 
-# Checks on individual compiler components and example-level capstones, as
-# opposed to kernels in isolation. The SA tile placer: a CPU-only seed sweep
-# (does every seed still place, how much CPU time and memory it takes, how
-# good a placement) over a small fixture and mobilenet, plus a hardware
-# check on mobilenet at three seeds and every power-of-two batch from 1 to
-# 64 (does the placed design still compile once and verify at every batch,
-# how long one image takes, what each image costs once they stream, and how
-# long the compile takes). Also a hardware check on the llama 3.2 1b
-# example's N=16 persistent-decode capstone (does it still build, verify
-# against its own numpy-fixture oracle, and run at the expected tok/s), and
-# on the yolo26n example's 640x640 detector (does it still build, match its
-# numpy oracle on real COCO images, and run at the expected time per image).
-# Never gates PRs.
-#
-# Runs nightly from main, and on pull requests that touch the placer or
-# these checks (the CPU sweep only). The nightly and an unfiltered dispatch
-# on main publish, to component-checks/<check>/ on the site, in the kernel
-# checks' format (utils/kernel_checks/publish.py); the maintainer dashboard
-# (dashboard/ on the site) shows the sweep under Placement and the hardware
-# checks under both Placement and Performance (mobilenet) or just
-# Performance (llama, yolo26n). The hardware checks refuse to time a
-# publishing run unless the NPU is in $PERF_PMODE. A check that fails still
-# publishes what it measured, and its record lists the failed seeds and runs.
+# Nightly checks of compiler components and whole example designs (kernels
+# alone are nightlyKernelChecks.yml). Never gates PRs.
+#   seed-sweep (CPU): every SA placer seed on a small fixture and mobilenet --
+#     does it place, and at what CPU time, memory and placement cost.
+#   hw-checks (npu2): mobilenet at three seeds, two SA efforts and batches
+#     1 to 64; llama 3.2 1b's 16-layer decode; yolo26n's 640x640 detector.
+#     Each is built, verified against its numpy oracle and timed.
+# Runs nightly from main, and on PRs that touch the placer or these checks
+# (the sweep only). The nightly and an unfiltered dispatch on main publish to
+# component-checks/<check>/ for the maintainer dashboard. A publishing run
+# times only in $PERF_PMODE; a failed check still publishes what it measured.
 
 permissions:
   contents: read
@@ -225,7 +213,7 @@ jobs:
           source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
           # generate.py tokenizes its prompt.
-          pip install tiktoken
+          pip install tiktoken==0.14.0
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME" results/llama-chain-hw
           python utils/component_checks/llama_chain_hw.py --pmode "$REQUIRED_PMODE" \
             --out results/llama-chain-hw/perf.json --meta results/llama-chain-hw/meta.json \
