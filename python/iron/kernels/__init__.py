@@ -32,6 +32,7 @@ Submodules:
   `mm.mac_dims(...)`, `cascade_mm.mac_dims(...)` and `mha.mac_dims(...)` query
   micro-kernel geometry without constructing a kernel.
 - `zero` — independent zero-fill kernel
+- `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
 ``.contract``: the role of each argument (``In``, ``Out``, ``InOut``,
@@ -41,7 +42,6 @@ reference and tolerance per build, and ``fn.contract_for()`` picks the one of
 the build that produced an output. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
 run and check any kernel, and the ``*_ref`` functions exported here are those
 references. ``factories`` lists the factory names.
-- `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 
 import inspect

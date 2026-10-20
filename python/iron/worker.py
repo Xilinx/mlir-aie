@@ -93,6 +93,7 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
 
         Raises:
             ValueError: Parameters are validated.
+            TypeError: An argument is computed per call.
         """
         self._site = SourceSite.capture()
         for arg in flatten_fn_args(

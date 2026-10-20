@@ -148,8 +148,17 @@ def sample_combine(
     ``sample_combine(summaries, row, token, record)`` reads the summaries
     column 0 first, and writes the drawn token (an index into the whole row
     of ``columns * slice_size``) to both one-word outputs, so a design can
-    send it two places. A ``last_slice`` shorter than ``slice_size`` is the
-    last column's: the row and the last summary end early.
+    send it two places.
+
+    Args:
+        columns: Summaries to combine, one per ``sample_select`` column.
+        slice_size: Each column's slice of the row.
+        k_max: The largest top-k the summaries carry.
+        last_slice: The last column's slice, if shorter than
+            ``slice_size``: the row and the last summary end early.
+
+    Returns:
+        The kernel.
     """
     last = slice_size if last_slice is None else last_slice
     _check_slice("sample_combine", slice_size, k_max)

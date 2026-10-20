@@ -575,6 +575,10 @@ class CompilableDesign:
         named for a short hash of ``name`` and its index, under xclbinutil's
         64-character limit; one design alone keeps the default name.
 
+        Args:
+            designs: The designs, in kernel order.
+            name: What the kernel names hash.
+
         Returns:
             Per design, the compiled design, the xclbin carrying its kernel (its
             chain's last) and the kernel's name.

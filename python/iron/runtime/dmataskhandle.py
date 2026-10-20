@@ -78,17 +78,20 @@ class Task:
         """Push this task onto its channel's queue (``dma_start_task``).
 
         Its buffer descriptors are written when the task is configured, so each
-        start costs one queue push. ``repeat_count`` replaces the task's
-        configured count for this start only; a runtime value must fit one
-        queue push. ``repeat_parameter`` is a scratchpad parameter whose value,
-        written per run, is the count instead, at most the task's own; a full
-        ELF's shim and mem tile channels take one.
+        start costs one queue push.
 
         A task carried through a ``range_`` ``iter_args`` entry can be started
         only if every value it can carry comes from the same configure (the
         loop yields it unchanged), since the push names one head buffer
         descriptor. A task reconfigured inside the loop is started where it is
         configured, before it is yielded; compilation otherwise fails.
+
+        Args:
+            repeat_count: Replaces the task's configured count for this start
+                only; a runtime value must fit one queue push.
+            repeat_parameter: A scratchpad parameter whose value, written per
+                run, is the count instead, at most the task's own; a full
+                ELF's shim and mem tile channels take one.
 
         Returns:
             This task.

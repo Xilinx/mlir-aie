@@ -70,11 +70,6 @@ class _KernelRun:
     """
 
     def __init__(self, kernel):
-        """Initialize the run slot.
-
-        Args:
-            kernel: The `pyxrt` kernel the run dispatches.
-        """
         self.kernel = kernel
         self.run = None
 

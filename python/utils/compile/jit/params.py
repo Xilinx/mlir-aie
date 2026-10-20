@@ -282,6 +282,13 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
 
     A parameter annotated ``T | None`` that is None on ``op`` is left out.
 
+    Args:
+        dims: Integers, parameters and ``Select``s.
+        op: The operator whose parameters they read.
+
+    Returns:
+        The integer dimensions.
+
     Raises:
         ValueError: Any other dimension is None: an unresolved tunable, or a
             parameter nothing set.
@@ -320,6 +327,14 @@ def widths(op, dev, start: int) -> tuple[int, ...]:
 
     They are ``start`` and every power of two up to ``dev``'s columns, widest
     first: ``tunable(domain=widths)``.
+
+    Args:
+        op: The operator, unused: a domain function's first argument.
+        dev: The device whose columns bound the widths.
+        start: The tunable's default, always included.
+
+    Returns:
+        The widths, widest first.
     """
     powers = {1 << i for i in range(dev.cols.bit_length())}
     return tuple(sorted({start, *powers}, reverse=True))
@@ -334,9 +349,18 @@ def divisors(
 ) -> tuple[int, ...]:
     """Return ``start`` times each power of two that fits, largest first.
 
-    Each divides `of`, is a multiple of `step`, is at most `cap` and is at
-    most `span` octaves from ``start``. A domain function returns it:
+    A domain function returns it:
     ``tunable(domain=lambda op, dev, t: divisors(t, of=op.K, step=64))``.
+
+    Args:
+        start: The tunable's default.
+        of: What each value divides.
+        step: What each value is a multiple of.
+        cap: The largest value, if any.
+        span: The most octaves a value may be from ``start``, if bounded.
+
+    Returns:
+        The values, largest first.
     """
     found = [start]
     value, octave = start * 2, 1

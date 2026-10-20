@@ -183,6 +183,12 @@ class Operator:
     def resolve(self, dev) -> Self:
         """Return a copy with every tunable filled for ``dev``.
 
+        Args:
+            dev: The device the tunables are chosen for.
+
+        Returns:
+            The resolved copy.
+
         Raises:
             Unresolvable: No legal value exists on ``dev``.
         """

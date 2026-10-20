@@ -111,8 +111,17 @@ def selective_scan(
     zero ``y``. The state stays in the core between blocks, and ``final``
     is it after this one. The caller gathers head ``h``'s x and dt and
     group ``h // (heads // groups)``'s B and C into ``block``, so each
-    group's B and C stream ``heads // groups`` times. ``head_dim`` may be a
-    slice of the head's: the rows of state are independent.
+    group's B and C stream ``heads // groups`` times.
+
+    Args:
+        rows: Rows of a block.
+        head_dim: The head's x width, or a slice of it: the rows of state
+            are independent. A multiple of 16.
+        state: The state size, a multiple of 16.
+        blocks: Blocks to a head.
+
+    Returns:
+        The kernel.
 
     Raises:
         ValueError: A dimension is not a positive integer, or ``head_dim`` or
@@ -242,8 +251,17 @@ def gated_delta_rule(
     from ``valid`` on leave the state alone and write zero ``y``. The state
     stays in the core between blocks, and ``final`` is it after this one.
     The caller gathers key head ``h // (v_heads // k_heads)``'s q and k and
-    value head ``h``'s v, a and b into ``block``. ``value_dim`` may be a
-    slice of the head's: the state's columns are independent.
+    value head ``h``'s v, a and b into ``block``.
+
+    Args:
+        rows: Rows of a block.
+        key_dim: The q and k width.
+        value_dim: The v width, or a slice of it: the state's columns are
+            independent.
+        blocks: Blocks to a head.
+
+    Returns:
+        The kernel.
     """
     geometry = dict(rows=rows, key_dim=key_dim, value_dim=value_dim, blocks=blocks)
     _positive("gated_delta_rule", **geometry)

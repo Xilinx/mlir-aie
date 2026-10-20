@@ -211,10 +211,24 @@ def experts_sample(
     rows: int,
     cols: int,
 ) -> list[np.ndarray]:
-    """Return a row per ``num_experts`` experts' tiles, as a design passes it; random tiles.
+    """Return random inputs for [`experts`][iron.kernels.moe.experts], as a design passes them.
 
     Every third row repeats its first id when ``top_k`` > 1, so a device run
     checks that a duplicated id sums its weights.
+
+    Args:
+        rng: The generator to draw from.
+        calls: How many kernel calls, one step each, to draw for.
+        hidden: As for `experts`.
+        width: As for `experts`.
+        num_experts: As for `experts`.
+        top_k: As for `experts`.
+        rows: As for `experts`.
+        cols: As for `experts`.
+
+    Returns:
+        ``[row, tile]``, one entry per call: each row repeated for its
+        steps, and a random tile.
     """
     row_steps = num_experts * _experts_steps(hidden, width, rows, cols)[1]
     packed = []
@@ -231,7 +245,21 @@ def experts_sample(
 
 
 def experts_ref(row, tile, *, hidden, width, num_experts, top_k, rows, cols):
-    """Numpy reference for [`experts`][iron.kernels.moe.experts]: ``y`` after each call, call ``c`` being step ``c``."""
+    """Numpy reference for [`experts`][iron.kernels.moe.experts].
+
+    Args:
+        row: The rows, as `experts_sample` returns them.
+        tile: The weight tiles, as `experts_sample` returns them.
+        hidden: As for `experts`.
+        width: As for `experts`.
+        num_experts: As for `experts`.
+        top_k: As for `experts`.
+        rows: As for `experts`.
+        cols: As for `experts`.
+
+    Returns:
+        ``y`` after each call, call ``c`` being step ``c``.
+    """
     gate_up_steps, expert_steps = _experts_steps(hidden, width, rows, cols)
     row = np.ascontiguousarray(row, bfloat16).reshape(-1, hidden + 4 * top_k)
     ids = row[:, hidden + 2 * top_k :].copy().view(np.int32)
@@ -286,8 +314,19 @@ def experts(
     did not choose. ``y`` is the row's bf16 output so far; after the row's
     last step it is the sum over ``j`` of weight ``j`` times ``down[ids[j]]
     @ (silu(g) * u)``, ``g`` and ``u`` the halves of ``gate_up[ids[j]] @
-    x``, in float32 and rounded once. A shim BD repeats a dimension at most
-    64 times, so at Qwen3 shapes ``rows`` is 32 or more.
+    x``, in float32 and rounded once.
+
+    Args:
+        hidden: The model's hidden size, the length of x and y.
+        width: Each expert's intermediate size.
+        num_experts: Experts in the weight stream.
+        top_k: Experts each row chooses.
+        rows: Rows of a weight tile. A shim BD repeats a dimension at most 64
+            times, so at Qwen3 shapes it is 32 or more.
+        cols: Columns of a weight tile.
+
+    Returns:
+        The kernel.
     """
     geometry = dict(
         hidden=hidden,
