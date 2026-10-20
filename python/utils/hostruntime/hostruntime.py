@@ -134,9 +134,8 @@ class HostRuntime(ABC):
 
         Base implementation is a no-op: a plain runtime holds nothing to
         release. Caching runtimes override this to free hardware contexts,
-        loaded executables, instruction buffers, etc. Runtimes that create
-        hardware contexts also release their hold on ``npulock.npu_lock`` here.
-        Safe to call even if the runtime never ran anything.
+        loaded executables, instruction buffers, etc. Safe to call even if the
+        runtime never ran anything.
         """
         return
 

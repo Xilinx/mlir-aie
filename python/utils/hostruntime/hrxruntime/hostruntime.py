@@ -32,7 +32,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
-from ..npulock import npu_lock
 from . import HRXContext, HRXError, control_code_from_elf
 from .tensor import HRXTensor
 
@@ -201,7 +200,6 @@ class HRXHostRuntime(HostRuntime):
         return xclbin_path, insts_path, kernel_name
 
     def _create_executable(self, xclbin_bytes, insts_bytes, kernel_name):
-        npu_lock.acquire(self)
         return self._ctx.create_executable(xclbin_bytes, insts_bytes, kernel_name)
 
     def _create_executable_from_bytes(self, xclbin_bytes, insts_data, kernel_name):
@@ -469,19 +467,19 @@ class HRXHostRuntime(HostRuntime):
             logger.debug("HRX executable release failed during cleanup: %s", e)
 
     def cleanup(self) -> None:
-        """Release the executables this runtime created, then `npu_lock`.
+        """Release the executables this runtime created.
 
         Invoked by the shared ``aie.utils.cleanup_npu_runtime`` entry point.
         Each executable is released back to HRX; the process-wide device/stream
         owned by `HRXContext` is intentionally left intact (it is a
         shared singleton that other runtimes/tensors may still use and is torn
-        down by libhrx at process exit). A live kernel handle keeps its own
-        reference to an executable, so drop handles first.
+        down by libhrx at process exit).
         """
         executables = getattr(self, "_executables", None)
+        if not executables:
+            return
         while executables:
             self._release_executable(executables.pop())
-        npu_lock.release(self)
 
 
 class CachedHRXRuntime(HRXHostRuntime):

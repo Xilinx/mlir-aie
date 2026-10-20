@@ -22,7 +22,6 @@ import numpy as np
 import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
-from ..npulock import npu_lock
 from .device import acquire_device, xrt_smi_path
 
 if TYPE_CHECKING:
@@ -300,19 +299,6 @@ class XRTHostRuntime(HostRuntime):
         else:
             return super().read_insts(insts_path)
 
-    def _hw_context(self, source) -> "pyxrt.hw_context":
-        """Create a hardware context from an xclbin uuid or a ``pyxrt.elf``, under `npu_lock`."""
-        npu_lock.acquire(self)
-        return pyxrt.hw_context(self._device, source)
-
-    def cleanup(self) -> None:
-        """Release this runtime's hold on `npu_lock`.
-
-        Contexts are owned by the kernel handles ``load()`` returned, so drop
-        those first.
-        """
-        npu_lock.release(self)
-
     def load(
         self,
         npu_kernel,
@@ -351,7 +337,7 @@ class XRTHostRuntime(HostRuntime):
         xclbin = pyxrt.xclbin(str(xclbin_path))
         self._device.register_xclbin(xclbin)
         xclbin_uuid = xclbin.get_uuid()
-        context = self._hw_context(xclbin_uuid)
+        context = pyxrt.hw_context(self._device, xclbin_uuid)
 
         kernel_args = {k.get_name(): k.get_num_args() for k in xclbin.get_kernels()}
         kernel_name = self._kernel_name(kernel_name, kernel_args)
@@ -413,7 +399,7 @@ class XRTHostRuntime(HostRuntime):
             )
 
         elf = pyxrt.elf(str(elf_path))
-        context = self._hw_context(elf)
+        context = pyxrt.hw_context(self._device, elf)
         kernel = pyxrt.ext.kernel(context, kernel_name)
 
         return XRTKernelHandle(
@@ -710,14 +696,13 @@ class CachedXRTRuntime(XRTHostRuntime):
         atexit.register(self.cleanup)
 
     def cleanup(self):
-        """Clean up cached XRT resources in dependency order, then release `npu_lock`."""
+        """Clean up cached XRT resources in dependency order."""
         while self._insts_cache:
             self._evict_insts()
         while self._context_cache:
             self._evict()
         self._insts_content_cache.clear()
         gc.collect()  # Make sure contexts are garbage collected.
-        super().cleanup()
 
     def evict_context(self, xclbin_path: Path) -> None:
         """Evict a stale cached hw_context (after an IOCTL EINVAL).
@@ -955,7 +940,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 max_retries = len(self._context_cache) if retry else 0
                 while context is None:
                     try:
-                        context = self._hw_context(elf)
+                        context = pyxrt.hw_context(self._device, elf)
                     except RuntimeError as e:
                         if self._context_cache and retries < max_retries:
                             self._evict()
@@ -1074,7 +1059,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 max_retries = len(self._context_cache) if retry else 0
                 while context is None:
                     try:
-                        context = self._hw_context(xclbin_uuid)
+                        context = pyxrt.hw_context(self._device, xclbin_uuid)
                     except RuntimeError as e:
                         # Context-slot exhaustion is reported differently across XRT backends.
                         # Evict cached contexts and retry, but only while cached entries remain.

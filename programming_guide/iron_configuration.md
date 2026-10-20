@@ -180,24 +180,6 @@ The instruction streams it has loaded are cached apart from the contexts, up to
 `XRT_INSTS_CACHE_SIZE` of them (256 by default). They hold no hardware context,
 and a stream is released with the context it was loaded into.
 
-## Sharing the NPU between processes (`NPU_LOCK`)
-
-Set `NPU_LOCK` to a file path to make processes that share an NPU take turns on
-it. Each runtime takes an exclusive `flock` on that file right before it creates
-its first hardware context, and releases it in `cleanup()` (which
-`aie.utils.cleanup_npu_runtime()` calls) or at process exit. Compiling,
-allocating tensors and host-side work never take it, so one process compiles
-while another runs on the device. A process waiting for the lock blocks without
-a timeout and logs, at `INFO`, when it starts waiting and how long it waited.
-
-```bash
-NPU_LOCK=/tmp/npu.lock AIE_LOG_LEVEL=INFO python my_script.py
-```
-
-Unset (the default), no lock is taken. The HSA backend keeps its queue for the
-life of the process, so it holds the lock from its first tensor or kernel until
-exit. Linux only.
-
 ## IRON HRX Runtime Cache Size
 
 `HRX_EXE_CACHE_SIZE` bounds the loaded-executable cache in `CachedHRXRuntime`.

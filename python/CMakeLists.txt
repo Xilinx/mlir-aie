@@ -58,7 +58,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/cli.py
     utils/hostruntime/coherence.py
     utils/hostruntime/hostruntime.py
-    utils/hostruntime/npulock.py
     utils/hostruntime/tensor_class.py
     utils/hostruntime/torch_interop.py
     utils/hostruntime/xrtruntime/__init__.py
