@@ -2418,17 +2418,19 @@ CASES += [
             tag=f"iron-{phase}-d{d}",
             devices=("npu2",),
         )
-        for b_q, phase in ((64, "prefill"), (16, "decode"))
+        for b_q, phase in ((64, "prefill"), (16, "decode"), (8, "decode8"))
         for d in (64, 128)
     ],
+    # A decode step's KV group of up to 8 heads in an 8-row block.
     *[
         Case(
             "mha",
-            dict(dim_m=16, dim_k=d, b_col_maj=True, accurate_exp2=True),
+            dict(dim_m=b_q, dim_k=d, b_col_maj=True, accurate_exp2=True),
             calls=4,
-            tag=f"iron-decode-d{d}",
+            tag=f"iron-{phase}-d{d}",
             devices=("npu2",),
         )
+        for b_q, phase in ((16, "decode"), (8, "decode8"))
         for d in (64, 128)
     ],
     # The toolkit's online softmax over one key block: params is (key block,
@@ -2452,13 +2454,34 @@ CASES += [
     ),
     # A decode step's block on npu2: 16 packed rows past every one of the 64
     # keys, so nothing is masked.
-    Case(
+    *[
+        Case(
+            "mha_softmax",
+            dict(dim_m=b_q, accurate_exp2=True),
+            calls=4,
+            params=((0, 0, 64),),
+            scalars=(b_q, 128),
+            tag=tag,
+            devices=("npu2",),
+        )
+        for b_q, tag in ((16, "iron-decode"), (8, "iron-decode8"))
+    ],
+    # Three of the 8 rows a query, as Llama 3.2 3B's KV groups: the rest pad.
+    check(
         "mha_softmax",
-        dict(dim_m=16, accurate_exp2=True),
-        calls=4,
+        dict(dim_m=8, accurate_exp2=True),
         params=((0, 0, 64),),
-        scalars=(16, 128),
-        tag="iron-decode",
+        scalars=(3, 128),
+        tag="decode8-padded",
+        devices=("npu2",),
+    ),
+    # ...and its last key block, 36 of whose 64 keys exist.
+    check(
+        "mha_softmax",
+        dict(dim_m=8, accurate_exp2=True),
+        params=((1, 0, 127),),
+        scalars=(3, 100),
+        tag="decode8-tail",
         devices=("npu2",),
     ),
     check(

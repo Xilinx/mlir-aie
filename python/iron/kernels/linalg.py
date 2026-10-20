@@ -1146,7 +1146,10 @@ def mha(
     ``passthrough(dtype=np.int32)``, as IRON's MHA operator does.
 
     Args:
-        dim_m: Rows of the micro-tile (multiple of 16).
+        dim_m: Rows of the micro-tile (multiple of 8, or of 16 with
+            ``emulate_bf16_mmul_with_bfp16``). An 8-row block, a decode
+            step's KV group of up to 8 heads, runs the online state 8 lanes
+            wide.
         dim_k: Depth of the micro-tile (multiple of 8).
         dim_n: Columns of the micro-tile (multiple of 16).
         pv: If ``True`` return the ``P*V`` product instead of ``QK^T``.
@@ -1187,7 +1190,7 @@ def mha(
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
     for name, v, mult in (
-        ("dim_m", dim_m, 16),
+        ("dim_m", dim_m, 16 if emulate_bf16_mmul_with_bfp16 else 8),
         ("dim_k", dim_k, 8),
         ("dim_n", dim_n, 16),
     ):
@@ -1398,7 +1401,7 @@ def mha_softmax(
     anywhere among the keys. A block no query row keeps a key of is skipped,
     and ``S_q_eff``/``S_kv_eff`` are the query rows (in blocks' rows, from
     the offset) and keys whose tails pad the block. A 64-key block of a multiple of 8 rows, at least
-    16, takes the kernel's row-group path; any other shape the per-row one.
+    16 or exactly 8, takes the kernel's row-group path; any other shape the per-row one.
 
     Args:
         accurate_exp2: Take 2^x from a polynomial within 2.8e-6 before its
@@ -1406,7 +1409,7 @@ def mha_softmax(
             exp2 instruction, which is off by up to 6.15%, or AIE2's cubic,
             0.74% with the bf16 store. ``s`` stays the bf16 scalar the
             kernel takes, 1.8e-3 from log2(e) / 8.
-        dim_m: Query rows of the block (``B_q``), a multiple of 16.
+        dim_m: Query rows of the block (``B_q``), a multiple of 8.
         dim_n: Keys of the block (``B_kv``), a multiple of 16.
         causal: A query keeps no key past its own position.
         window: A query keeps no key more than ``window`` positions before
@@ -1425,13 +1428,13 @@ def mha_softmax(
 
     Raises:
         ValueError: A block dimension that is not a positive multiple of
-            16, a ``scale`` that is not positive and finite, or a negative
-            window.
+            8 (``dim_m``) or 16 (``dim_n``), a ``scale`` that is not positive
+            and finite, or a negative window.
     """
-    for name, v in (("dim_m", dim_m), ("dim_n", dim_n)):
-        if v <= 0 or v % 16:
+    for name, v, mult in (("dim_m", dim_m, 8), ("dim_n", dim_n, 16)):
+        if v <= 0 or v % mult:
             raise ValueError(
-                f"mha_softmax: {name} must be a positive multiple of 16, got {v}"
+                f"mha_softmax: {name} must be a positive multiple of {mult}, got {v}"
             )
     scale = float(bfloat16(scale))
     if not 0 < scale < np.inf:
@@ -1445,10 +1448,13 @@ def mha_softmax(
         "partial_softmax",
         _kernel_source("linalg/mha.cc"),
         [tile, tile, state, idx, bfloat16, *([np.int32] * 4)],
+        # mha.cc calls only mm.cc's bf16 products; the others assert on an
+        # 8-row block.
         compile_flags=[
             f"-DDIM_M={dim_m}",
             "-DDIM_K=64",
             f"-DDIM_N={dim_n}",
+            "-Dbf16_bf16_ONLY",
             *(["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else []),
             *band_flags,
         ],

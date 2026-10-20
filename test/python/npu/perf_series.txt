@@ -331,6 +331,10 @@ mha/16x128x64x4/bfloat16/accurate_exp2=True/b_col_maj=True/iron-decode-d128
 mha/16x64x128x4/bfloat16_float32/accurate_exp2=True/b_col_maj=True/float_o=True/pv=True/iron-decode-d128
 mha/16x64x64x4/bfloat16/accurate_exp2=True/b_col_maj=True/iron-decode-d64
 mha/16x64x64x4/bfloat16_float32/accurate_exp2=True/b_col_maj=True/float_o=True/pv=True/iron-decode-d64
+mha/8x128x64x4/bfloat16/accurate_exp2=True/b_col_maj=True/iron-decode8-d128
+mha/8x64x128x4/bfloat16_float32/accurate_exp2=True/b_col_maj=True/float_o=True/pv=True/iron-decode8-d128
+mha/8x64x64x4/bfloat16/accurate_exp2=True/b_col_maj=True/iron-decode8-d64
+mha/8x64x64x4/bfloat16_float32/accurate_exp2=True/b_col_maj=True/float_o=True/pv=True/iron-decode8-d64
 mha/64x64x128x4/bfloat16_float32/accurate_exp2=True/b_col_maj=True/float_o=True/pv=True/iron-prefill-d128
 mha/64x64x64x4/bfloat16_float32/accurate_exp2=True/b_col_maj=True/float_o=True/pv=True/iron-prefill-d64
 mha_softmax/2048x4/bfloat16_bfloat16+float32/half-block-diagonal
@@ -348,6 +352,9 @@ mha_softmax/4096x4/bfloat16_bfloat16+float32/diagonal-padded
 mha_softmax/4096x4/bfloat16_bfloat16+float32/offset-diagonal-padded
 mha_softmax/4096x4/bfloat16_bfloat16+float32/packed=True/window=50/packed-window
 mha_softmax/4096x4/bfloat16_bfloat16+float32/window=21/window-dead-rows
+mha_softmax/512x4/bfloat16_bfloat16+float32/accurate_exp2=True/decode8-padded
+mha_softmax/512x4/bfloat16_bfloat16+float32/accurate_exp2=True/decode8-tail
+mha_softmax/512x4/bfloat16_bfloat16+float32/accurate_exp2=True/iron-decode8
 mha_softmax/512x4/bfloat16_bfloat16+float32/causal=False/window=32/window-padded
 mha_softmax/1024x4/bfloat16_bfloat16+float32/accurate_exp2=True/iron-decode
 mm/16x1008x16x4/int8_int32

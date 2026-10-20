@@ -258,6 +258,11 @@ static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
 // before scaling, which a positive scale leaves unchanged.
 static constexpr int32_t SM_ROWS = 8;
 static constexpr int32_t SM_LANES = 16;
+#if DIM_M == 8
+#define MHA_GROUP_LOOP
+#else
+#define MHA_GROUP_LOOP AIE_LOOP_MIN_ITERATION_COUNT(2)
+#endif
 
 // Lane numbers, compared against the ends of a row's band, build its mask in a
 // vector compare or two.
@@ -386,8 +391,11 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
 
   // Rows past the last valid one keep their scale_buffer entries; their P rows
   // are zeroed after. The group loops run over at least two groups, which the
-  // caller's block always has, so that the pipeliner may overlap them.
-  const int32_t group_end = group_rows > SM_ROWS ? group_rows : 2 * SM_ROWS;
+  // caller's block always has, so that the pipeliner may overlap them; an
+  // 8-row build's block is one group.
+  const int32_t group_end = DIM_M == SM_ROWS       ? SM_ROWS
+                            : group_rows > SM_ROWS ? group_rows
+                                                   : 2 * SM_ROWS;
   auto live = [rows](int32_t g) {
     int32_t n = rows - g >= SM_ROWS ? SM_ROWS : rows - g > 0 ? rows - g : 0;
     return aie::mask<SM_ROWS>::from_uint32((1u << n) - 1);
@@ -398,7 +406,7 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
   // below its element's product, and 2^128 overflows.
   alignas(32) T m_rows[DIM_M];
   const T *__restrict a = A;
-  AIE_LOOP_MIN_ITERATION_COUNT(2)
+  MHA_GROUP_LOOP
   for (int32_t g = 0; g < group_end; g += SM_ROWS) {
     aie::vector<T, SM_LANES> o =
         fold_rows<T, SM_VEC_LEN>(
@@ -519,7 +527,7 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
   }
 
   sums = A;
-  AIE_LOOP_MIN_ITERATION_COUNT(2)
+  MHA_GROUP_LOOP
   for (int32_t g = 0; g < group_end; g += SM_ROWS) {
     Vec16f t = fold_rows<float, SM_LANES>(
         [&](int32_t r) {
@@ -559,10 +567,13 @@ static void zero_rows_from(bfloat16 *V, int32_t row) {
 }
 
 // The online state is four B_q-long regions, so a vector walking one is at
-// most B_q wide: the widest of 64, 32 and 16 lanes that divides B_q.
+// most B_q wide: the widest of 64, 32 and 16 lanes that divides B_q, or 8 in
+// an 8-row build.
 template <typename F>
 static inline void for_state_width(int32_t B_q, F walk) {
-  if (B_q % VECTOR_LENGTH == 0)
+  if constexpr (DIM_M % 16 != 0)
+    walk(std::integral_constant<int, 8>{});
+  else if (B_q % VECTOR_LENGTH == 0)
     walk(std::integral_constant<int, VECTOR_LENGTH>{});
   else if (B_q % 32 == 0)
     walk(std::integral_constant<int, 32>{});
@@ -744,7 +755,7 @@ void rescale_O(float *O, bfloat16 *out, float *scale_buffer, int32_t B_q,
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   // Once per query block, so one width: a float inv is long code on aie2.
-  invert_sums_w<16>(scale_buffer, B_q);
+  invert_sums_w<DIM_M % 16 ? 8 : 16>(scale_buffer, B_q);
 
   // VJUNG: Only after all KV are processed
   // VJUNG: TODO: Make this generic for every tile size
@@ -816,7 +827,8 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
   // partial_softmax_rows takes a row's maximum before scaling, which gives
   // the same maximum only for a positive, finite scale.
   uint16_t scale_bits = __builtin_bit_cast(uint16_t, inv_scale);
-  if (B_kv == VECTOR_LENGTH && B_q % SM_ROWS == 0 && B_q >= 2 * SM_ROWS &&
+  constexpr int32_t group_min = DIM_M == SM_ROWS ? SM_ROWS : 2 * SM_ROWS;
+  if (B_kv == VECTOR_LENGTH && B_q % SM_ROWS == 0 && B_q >= group_min &&
       scale_bits > 0 && scale_bits < 0x7f80) {
     partial_softmax_rows(A, P, scale_buffer, scale_buffer + B_q,
                          scale_buffer + 3 * B_q, valid_q_rows, valid_kv_cols,

@@ -699,6 +699,7 @@ def _check_round(
         (3, 2, 4 * 32, 2 * _B, 32),  # carried across key blocks, then mid-block
         (1, 2, 2 * 32, 2 * _B, 32),  # a key block past every row, which must drop
         (3, 1, 4 * 16, _B, 16),  # the 16-row state walk
+        (7, 1, 8 * 8, _B, 8),  # the 8-row block: one row group, 8-lane state
         (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
     ],
 )
@@ -735,6 +736,8 @@ def test_mha_round_matches_masked_attention(
         # the window dropping the first key block and cutting the second.
         (0, 4, 200, dict(b_q=16, packed=True, window=100)),
         (0, 4, 100, dict(b_q=16, b_kv=32, packed=True, window=50)),
+        # ...as an 8-row block, the last key block a tail.
+        (0, 3, 150, dict(b_q=8, packed=True)),
     ],
 )
 @pytest.mark.parametrize("accurate_exp2", [False, True])
