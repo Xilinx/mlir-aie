@@ -39,6 +39,11 @@ enum class EndKind {
   External,
 };
 
+/// Which way a switchbox port faces, so that it can be put on that side of
+/// the switchbox and a flow passing straight through need not meet the ports
+/// it passes.
+enum class Facing { North, East, South, West, Local };
+
 struct ArrowEnd {
   std::string node;
   std::pair<int, int> tile{0, 0};
@@ -51,6 +56,7 @@ struct ArrowEnd {
   /// run to the middle and over the text.
   double halfWidth = 0.0;
   double halfHeight = 0.0;
+  Facing facing = Facing::Local;
 };
 
 /// One arrow to draw.

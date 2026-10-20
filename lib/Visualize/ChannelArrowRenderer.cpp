@@ -43,12 +43,18 @@ constexpr double kCornerRadius = 0.06;
 /// Space between parallel runs sharing a channel, and between stacked ports.
 constexpr double kTrackPitch = 0.085;
 constexpr double kPortPitch = 0.155;
+/// DMA boxes carry a label, so their stack steps further than a bare port.
+constexpr double kDMAPitch = 0.23;
 /// How far a DMA port sits off the tile's west edge.
 constexpr double kDMAOffset = 0.46;
 /// Tracks past this share a line rather than widening the channel for ever.
 constexpr unsigned kMaxTracks = 10;
 /// How far a track keeps off the tiles either side of its channel.
 constexpr double kChannelMargin = 0.16;
+/// Half the switchbox the ports sit around.
+constexpr double kSwitchHalf = 0.13;
+/// A lane just inside a tile's edge, clear of the stack of its contents.
+constexpr double kTileMargin = 0.17;
 
 /// Appends the Bezier triple for a straight run ending at `to`.
 void lineTo(SmallVectorImpl<Point> &out, Point to) {
@@ -162,12 +168,33 @@ private:
       return;
     auto [col, row] = end.tile;
     if (end.kind == EndKind::Switch) {
+      // A port sits on the side of the switchbox it faces, offset along that
+      // side by its slot, so a flow passing straight through from north to
+      // south never meets the ports facing east or west.
       Point at = junction(layout, col, row);
-      placed[end.node] = {at.first, at.second + end.slot * kPortPitch};
+      double along = end.slot * kPortPitch;
+      switch (end.facing) {
+      case Facing::North:
+        placed[end.node] = {at.first + along, at.second + kSwitchHalf};
+        break;
+      case Facing::South:
+        placed[end.node] = {at.first + along, at.second - kSwitchHalf};
+        break;
+      case Facing::East:
+        placed[end.node] = {at.first + kSwitchHalf, at.second + along};
+        break;
+      case Facing::West:
+        placed[end.node] = {at.first - kSwitchHalf, at.second + along};
+        break;
+      case Facing::Local:
+        placed[end.node] = {at.first + kSwitchHalf + kPortPitch,
+                            at.second - kSwitchHalf - along - kPortPitch};
+        break;
+      }
     } else if (end.kind == EndKind::DMA) {
       placed[end.node] = {layout.tileLeft(col) - kDMAOffset,
-                          layout.tileTop(col, row) - 0.55 -
-                              end.slot * kPortPitch};
+                          layout.tileTop(col, row) - 0.5 -
+                              end.slot * kDMAPitch};
     }
   }
 
@@ -219,8 +246,16 @@ ChannelArrowRenderer::route(ArrayRef<ArrowRequest> requests,
     SmallVector<Point> corners{from};
     if (sameTile && request.from.kind == EndKind::Switch &&
         request.to.kind == EndKind::Switch) {
-      // Both ends are in the same column of ports: a straight run that never
-      // approaches the tile.
+      // Across the switchbox, between the two sides the flow uses. A turn
+      // goes by way of the middle so it bends once rather than cutting the
+      // corner across the ports in between.
+      bool fromVertical = request.from.facing == Facing::North ||
+                          request.from.facing == Facing::South;
+      bool toVertical = request.to.facing == Facing::North ||
+                        request.to.facing == Facing::South;
+      if (fromVertical != toVertical)
+        corners.push_back(fromVertical ? Point{from.first, to.second}
+                                       : Point{to.first, from.second});
     } else if (sameTile &&
                (request.from.kind == EndKind::DMA ||
                 request.to.kind == EndKind::DMA) &&
@@ -255,8 +290,18 @@ ChannelArrowRenderer::route(ArrayRef<ArrowRequest> requests,
       corners.push_back({lane, from.second});
       corners.push_back({lane, to.second});
     } else if (sameTile) {
-      // A DMA channel and the buffer it serves: straight in from the edge.
-      corners.push_back({from.first, to.second});
+      // A DMA channel and the buffer it serves. The turn happens just inside
+      // the tile, where nothing else is drawn: climbing beside the DMA stack
+      // instead would cross the channels stacked above and below this one.
+      double lane = layout.tileLeft(col) + kTileMargin + track;
+      bool fromIsContent = request.from.kind == EndKind::Content;
+      if (fromIsContent) {
+        corners.push_back({lane, from.second});
+        corners.push_back({lane, to.second});
+      } else {
+        corners.push_back({lane, from.second});
+        corners.push_back({lane, to.second});
+      }
     } else {
       // Neighbouring switchboxes share a channel, so one turn reaches it.
       // Tracks stay inside the channel, clear of the tiles either side of it.

@@ -1447,19 +1447,37 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   // A tile's ports are numbered here rather than placed, so that a renderer
   // free to move them can stack them in a fixed order instead of scattering
   // them around the perimeter by whichever bundle each faces.
-  std::map<std::pair<int, int>, int> switchSlots;
+  std::map<std::pair<std::pair<int, int>, AIE::Facing>, int> switchSlots;
   std::map<std::pair<int, int>, int> dmaSlots;
   std::map<PortNode, AIE::ArrowEnd> portEnds;
   for (const PortNode &port : ports) {
     std::pair<int, int> tile{port.col, port.row};
     bool dma = port.bundle == AIE::WireBundle::DMA;
+    AIE::Facing facing = AIE::Facing::Local;
+    switch (port.bundle) {
+    case AIE::WireBundle::North:
+      facing = AIE::Facing::North;
+      break;
+    case AIE::WireBundle::South:
+      facing = AIE::Facing::South;
+      break;
+    case AIE::WireBundle::East:
+      facing = AIE::Facing::East;
+      break;
+    case AIE::WireBundle::West:
+      facing = AIE::Facing::West;
+      break;
+    default:
+      break;
+    }
     portEnds[port] = {portNodeID(port),
                       tile,
                       dma ? AIE::EndKind::DMA : AIE::EndKind::Switch,
-                      dma ? dmaSlots[tile]++ : switchSlots[tile]++,
+                      dma ? dmaSlots[tile]++ : switchSlots[{tile, facing}]++,
                       portPosition(port, layout),
                       dma ? 0.41 : 0.045,
-                      dma ? 0.09 : 0.045};
+                      dma ? 0.09 : 0.045,
+                      facing};
   }
 
   SmallVector<ArrowRequest> arrowRequests;
@@ -1492,8 +1510,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       spacing = std::max(spacing, (designRight - designLeft) /
                                       (runtimeArguments.size() - 1));
     double left = center - spacing * (runtimeArguments.size() - 1) / 2;
-    return {left + index * spacing,
-            layout.tileCenterY(0) - layout.tileHeight(0) / 2 - 0.55};
+    // Below the channel the shim switchboxes route in, so that the runs
+    // reaching an argument do not cross the arguments beside it.
+    return {left + index * spacing, layout.channelY(0) - layout.tileGapY};
   };
 
   std::map<Operation *, unsigned> bufferIDs;
@@ -1517,7 +1536,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
         {segment.port.col, segment.port.row},
         AIE::EndKind::Content,
         0,
-        bufferPoint(segment.buffer, segment.port.col, segment.port.row)};
+        bufferPoint(segment.buffer, segment.port.col, segment.port.row),
+        localNodeWidth / 2,
+        0.17};
     unsigned group = segmentRoutes.empty()
                          ? 0
                          : groups.routeGroups[segmentRoutes.front()->id];
@@ -1611,7 +1632,10 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   if (weightScale.enabled) {
     // Anchored below the shim row, where no tile or runtime argument sits.
     double legendX = layout.tileCenterX(0) - options.tileWidth / 2;
-    double legendY = layout.tileCenterY(0) - layout.tileHeight(0) / 2 - 1.9;
+    // Below everything else, including the runtime arguments.
+    double legendY = (runtimeArguments.empty() ? layout.channelY(0)
+                                               : argumentPoint(0).second) -
+                     1.0;
     std::vector<uint64_t> samples{weightScale.lightest, weightScale.heaviest};
     if (weightScale.heaviest > weightScale.lightest)
       samples.insert(samples.begin() + 1,
