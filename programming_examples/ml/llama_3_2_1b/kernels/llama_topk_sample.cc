@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "exp_lut.h"
+#include "llama_vec_fp.h"
 
 #ifndef LLAMA_TOPK_D
 #define LLAMA_TOPK_D 2048
@@ -91,16 +92,6 @@ static inline float sw_recip(float a) {
   return x;
 }
 
-static inline int8_t round_to_i8(float v) {
-  float r = v >= 0.0f ? (v + 0.5f) : (v - 0.5f);
-  int32_t i = (int32_t)r;
-  if (i > 127)
-    i = 127;
-  if (i < -128)
-    i = -128;
-  return (int8_t)i;
-}
-
 // --- xoshiro128++ (must match llama_sample.cc / numpy_topk_sample.py) ---
 struct Xoshiro128 {
   uint32_t s[4];
@@ -140,10 +131,10 @@ extern "C" {
 
 // Insert one streamed slot of kNTile rows into the resident top-k set
 // (set_logit/gidx/scale/row, capacity kKset, set_len tracks occupancy).
-// Min-eviction unsorted set: append until full, then replace the current
-// min slot if a strictly-larger logit arrives -- for DISTINCT fp32
-// logits (real GEMM output, effectively always) this yields exactly the
-// kKset largest, matching the oracle's first-seen tie-break.
+// Unsorted set ordered by logit, then by lower gidx on equal logits: append
+// until full, then replace the lowest member when a higher one arrives. The
+// set is the vocabulary's top kKset under that order whatever the insertion
+// order, ties included (numpy_topk_sample.topk_set_reference).
 void llama_topk_insert(int8_t *restrict slot, float *restrict set_logit,
                        int32_t *restrict set_gidx, float *restrict set_scale,
                        int8_t *restrict set_row, int32_t *restrict set_len,
@@ -168,21 +159,74 @@ void llama_topk_insert(int8_t *restrict slot, float *restrict set_logit,
       *set_len = len + 1;
       continue;
     }
-    // find current-min slot
     int mi = 0;
     float mv = set_logit[0];
+    int32_t mg = set_gidx[0];
     for (int i = 1; i < kKset; i++) {
-      if (set_logit[i] < mv) {
+      if (set_logit[i] < mv || (set_logit[i] == mv && set_gidx[i] > mg)) {
         mv = set_logit[i];
+        mg = set_gidx[i];
         mi = i;
       }
     }
-    if (lg > mv) {
+    if (lg > mv || (lg == mv && gidx < mg)) {
       set_logit[mi] = lg;
       set_gidx[mi] = gidx;
       set_scale[mi] = sc;
       vec_copy_row(set_row + mi * kD, row);
     }
+  }
+}
+
+// Merge per-core top-k sets into this resident set, for a vocabulary split
+// across cores that each ran llama_lmhead_topk_insert over their own slice.
+// Each call takes one round: lo and hi hold four candidates each (cores 0-3
+// and 4-7), every candidate kCandBytes long:
+//   [logit f32 | gidx i32 | embed_sc f32 | valid i32 | pad to 64 | row i8 x kD]
+// Insertion is llama_topk_insert's, so under its order the merged set is the
+// one a single pass over the whole vocabulary keeps, ties included.
+static constexpr int kCandHeader = 64;
+static constexpr int kCandBytes = kCandHeader + kD;
+
+void llama_topk_merge_insert(int8_t *restrict lo, int8_t *restrict hi,
+                             float *restrict set_logit,
+                             int32_t *restrict set_gidx,
+                             float *restrict set_scale,
+                             int8_t *restrict set_row,
+                             int32_t *restrict set_len, int32_t round) {
+  if (round == 0)
+    *set_len = 0;
+  for (int c = 0; c < 8; c++) {
+    const int8_t *cand = (c < 4 ? lo : hi) + (c % 4) * kCandBytes;
+    const int32_t *hdr = reinterpret_cast<const int32_t *>(cand);
+    if (hdr[3] == 0)
+      continue;
+    const float lg = reinterpret_cast<const float *>(cand)[0];
+    const int32_t gidx = hdr[1];
+    const float sc = reinterpret_cast<const float *>(cand)[2];
+    int len = *set_len;
+    int slot;
+    if (len < kKset) {
+      slot = len;
+      *set_len = len + 1;
+    } else {
+      slot = 0;
+      float mv = set_logit[0];
+      int32_t mg = set_gidx[0];
+      for (int i = 1; i < kKset; i++) {
+        if (set_logit[i] < mv || (set_logit[i] == mv && set_gidx[i] > mg)) {
+          mv = set_logit[i];
+          mg = set_gidx[i];
+          slot = i;
+        }
+      }
+      if (!(lg > mv || (lg == mv && gidx < mg)))
+        continue;
+    }
+    set_logit[slot] = lg;
+    set_gidx[slot] = gidx;
+    set_scale[slot] = sc;
+    vec_copy_row(set_row + slot * kD, cand + kCandHeader);
   }
 }
 
@@ -278,19 +322,34 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
   // Embed gather: requant the winner's resident row. embed_sc cancels, same
   // math as llama_embed_select.cc.
   const int8_t *row = set_row + winner * kD;
-  int32_t amax = 0;
-  for (int i = 0; i < kD; i++) {
-    int32_t a = row[i];
-    if (a < 0)
-      a = -a;
-    if (a > amax)
-      amax = a;
+  ::aie::vector<int8, kVec> hi = ::aie::load_unaligned_v<kVec>(row);
+  ::aie::vector<int8, kVec> lo = hi;
+  for (int c = 1; c < kD / kVec; c++) {
+    ::aie::vector<int8, kVec> v = ::aie::load_unaligned_v<kVec>(row + c * kVec);
+    hi = ::aie::max(hi, v);
+    lo = ::aie::min(lo, v);
   }
+  int32_t amax = ::aie::reduce_max(hi);
+  if (-(int32_t)::aie::reduce_min(lo) > amax)
+    amax = -(int32_t)::aie::reduce_min(lo);
   if (amax < 1)
     amax = 1;
   float inv = sw_recip((float)amax) * 127.0f; // 127/amax
-  for (int i = 0; i < kD; i++)
-    seed[i] = round_to_i8((float)row[i] * inv);
+  // (float)row * inv and round_to_i8 on 16 lanes: vec_mul_rne is the soft
+  // `*`, and vec_round_to_i8 rounds as round_to_i8 does.
+  const ::aie::saturation_mode prev_sat =
+      ::aie::swap_saturation(::aie::saturation_mode::saturate);
+  const ::aie::rounding_mode prev_rnd =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+  ::aie::vector<float, 16> inv_v = ::aie::broadcast<float, 16>(inv);
+  for (int c = 0; c < kD / 16; c++)
+    ::aie::store_v(
+        seed + c * 16,
+        vec_round_to_i8(vec_mul_rne(
+            ::aie::to_float<float>(::aie::load_unaligned_v<16>(row + c * 16)),
+            inv_v)));
+  ::aie::set_rounding(prev_rnd);
+  ::aie::set_saturation(prev_sat);
   float scale = (float)amax * set_scale[winner] * (1.0f / 127.0f);
   memcpy(seed + kD, &scale, 4);
   int32_t zero = 0;

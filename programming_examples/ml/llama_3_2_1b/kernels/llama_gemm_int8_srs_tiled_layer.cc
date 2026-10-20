@@ -507,11 +507,33 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
       logits[n] = (float)sums[n] * act_scale * w_scales[n];
   }
 
+  // The set is ordered by logit, then by lower gidx on equal logits, so it
+  // holds the vocabulary's top kKset under that order whatever the
+  // insertion order, which is what lets per-core sets merge exactly.
   int len = *set_len;
+  if (len == kKset) {
+    // Almost every call inserts nothing: compare the call's best key with the
+    // set's lowest key (one vector pass) before the scan that breaks ties.
+    ::aie::vector<int32, kKset> b =
+        ::aie::load_unaligned_v<kKset>(set_logit).template cast_to<int32>();
+    b = ::aie::select(b, ::aie::zeros<int32, kKset>(),
+                      ::aie::eq(b, int32(INT32_MIN)));
+    int32_t set_min = ::aie::reduce_min(::aie::bit_xor(
+        b, ::aie::bit_and(int32(0x7fffffff), ::aie::downshift(b, 31))));
+    int32_t best = logit_key(logits[0]);
+    for (int n = 1; n < kNTile; n++) {
+      int32_t k = logit_key(logits[n]);
+      best = k > best ? k : best;
+    }
+    if (best < set_min)
+      return;
+  }
   bool rescan = true;
   int mi = 0;
   int32_t min_key = 0;
+  int32_t min_gidx = 0;
   for (int n = 0; n < kNTile; n++) {
+    const int32_t gidx = tile_idx * kNTile + n;
     int slot;
     if (len < kKset) {
       slot = len++;
@@ -519,23 +541,26 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
       if (rescan) {
         mi = 0;
         min_key = logit_key(set_logit[0]);
+        min_gidx = set_gidx[0];
         for (int i = 1; i < kKset; i++) {
           int32_t k = logit_key(set_logit[i]);
-          if (k < min_key) {
+          if (k < min_key || (k == min_key && set_gidx[i] > min_gidx)) {
             min_key = k;
+            min_gidx = set_gidx[i];
             mi = i;
           }
         }
         rescan = false;
       }
-      if (logit_key(logits[n]) <= min_key)
+      int32_t key = logit_key(logits[n]);
+      if (key < min_key || (key == min_key && gidx > min_gidx))
         continue;
       slot = mi;
       rescan = true;
     }
     const int8_t *__restrict w_row = weights + n * kK;
     set_logit[slot] = logits[n];
-    set_gidx[slot] = tile_idx * kNTile + n;
+    set_gidx[slot] = gidx;
     set_scale[slot] = w_scales[n];
     for (int d = 0; d < kK; d++)
       set_row[slot * kK + d] = w_row[d];

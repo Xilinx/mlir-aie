@@ -31,10 +31,11 @@ from numpy_sample import (
 
 
 def topk_set_reference(logits_f32: np.ndarray, k_set: int):
-    """Mirror llama_topk_insert: min-eviction unsorted set of capacity k_set
-    streamed in index order. For distinct fp32 logits this yields exactly the
-    k_set largest; ties keep the incumbent (first-seen). Returns the set's
-    global indices (unordered, as the kernel holds them)."""
+    """Mirror llama_topk_insert: an unsorted set of capacity k_set streamed in
+    index order, ordered by logit and then by lower index on equal logits.
+    The set is the k_set largest under that order, ties included, whatever
+    the streaming order. Returns the set's global indices in slot order, as
+    the kernel holds them."""
     V = logits_f32.size
     set_idx: list[int] = []
     for g in range(V):
@@ -42,14 +43,13 @@ def topk_set_reference(logits_f32: np.ndarray, k_set: int):
         if len(set_idx) < k_set:
             set_idx.append(g)
             continue
-        # current-min slot (first-seen on ties)
         mi = 0
-        mv = logits_f32[set_idx[0]]
         for i in range(1, k_set):
-            if logits_f32[set_idx[i]] < mv:
-                mv = logits_f32[set_idx[i]]
+            a, b = logits_f32[set_idx[i]], logits_f32[set_idx[mi]]
+            if a < b or (a == b and set_idx[i] > set_idx[mi]):
                 mi = i
-        if lg > mv:
+        mv = logits_f32[set_idx[mi]]
+        if lg > mv or (lg == mv and g < set_idx[mi]):
             set_idx[mi] = g
     return set_idx
 
