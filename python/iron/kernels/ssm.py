@@ -21,7 +21,6 @@ from ._common import (
     _kernel_source,
     _make_extern,
 )
-from .core import conv_even
 from .sample import _positive
 
 
@@ -296,7 +295,6 @@ def gated_delta_rule(
             call_index=5,
             reference=partial(gated_delta_rule_ref, **geometry),
             sample=partial(gated_delta_rule_sample, **geometry),
-            setup=conv_even,
             tolerance=Tolerance.bounded(
                 partial(
                     _state_bound,

@@ -34,7 +34,6 @@ from ._common import (
     _kernel_source,
     _make_extern,
 )
-from .core import conv_even
 from .sample import (
     SUMMARY_HEADER,
     _check_slice,
@@ -382,7 +381,6 @@ def experts(
             call_index=3,
             reference=partial(experts_ref, **geometry),
             sample=partial(experts_sample, **geometry),
-            setup=conv_even,
             tolerance=Tolerance.exact(
                 note="npu2: bit for bit, duplicated ids included"
             ),
