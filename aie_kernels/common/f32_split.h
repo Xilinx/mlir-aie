@@ -60,9 +60,10 @@ bf16_limbs(aie::accum<accfloat, N> x) {
   return l;
 }
 
-// x * c from three-limb x and c: the six products f32's precision needs,
-// smallest first, so only the last addition rounds at the product's scale and
-// the sum matches the correctly rounded product all but at ties. That holds in
+// x * c from three-limb x and c: six of the nine limb products, smallest
+// first. The three dropped (mid lo, lo mid, lo lo) reach about 2^-24 of the
+// product, so about 4% of products land 1 ulp off the correctly rounded one
+// (numpy model of conv_even accumulation, 1e6 random pairs). That holds in
 // conv_even rounding only; the core's default floor misrounded 42% (4.1 ulp).
 template <unsigned N>
 static inline __attribute__((always_inline)) aie::accum<accfloat, N>
