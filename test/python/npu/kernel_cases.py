@@ -2002,6 +2002,51 @@ CASES: list[Case] = [
         calls=4,
         scalars=(80, 80, 80, 3, 3, 1, 7, 0),
     ),
+    # The sliding paths: 56 px is seven words with no odd word left over;
+    # 20 px rows of 80 channels (P5's class branch) run in channel-block
+    # pairs, 12 px too with one word a block; 24 channels at 20 px have an
+    # odd block and take the mmul path.
+    check(
+        "bn_conv2dk3_dw",
+        dict(input_width=56, input_channels=16, output_channels=16, bias=True),
+        calls=4,
+        scalars=(56, 16, 16, 3, 3, 1, 7, 0),
+        tag="bias-width-56",
+    ),
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(
+                input_width=20,
+                input_channels=80,
+                output_channels=80,
+                bias=True,
+                table=True,
+            ),
+            calls=4,
+            scalars=(20, 80, 80, 3, 3, region, 7, 0),
+            tag=tag,
+        )
+        for region, tag in (
+            (0, "bias-pairs-top-row"),
+            (1, "bias-pairs"),
+            (2, "bias-pairs-bottom-row"),
+        )
+    ],
+    check(
+        "bn_conv2dk3_dw",
+        dict(input_width=12, input_channels=16, output_channels=16, bias=True),
+        calls=4,
+        scalars=(12, 16, 16, 3, 3, 1, 7, 0),
+        tag="bias-width-12",
+    ),
+    check(
+        "bn_conv2dk3_dw",
+        dict(input_width=20, input_channels=24, output_channels=24, bias=True),
+        calls=4,
+        scalars=(20, 24, 24, 3, 3, 1, 7, 0),
+        tag="bias-odd-block",
+    ),
     Case(
         "bn_conv2dk3_dw",
         dict(input_width=56, input_channels=72, output_channels=72, stride=2),

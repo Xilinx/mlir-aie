@@ -760,11 +760,17 @@ selective_scan/274x4/bfloat16_float32+bfloat16/rows=1/state=128/iron-decode-one-
 add/2560x4/int8
 add/64x4/int8/no-down-shift
 attention_i8/640x2/int8
+bn_conv2dk3_dw/1600x4/int8/bias=True/input_channels=80/input_width=20/output_channels=80/table=True/bias-pairs
+bn_conv2dk3_dw/1600x4/int8/bias=True/input_channels=80/input_width=20/output_channels=80/table=True/bias-pairs-bottom-row
+bn_conv2dk3_dw/1600x4/int8/bias=True/input_channels=80/input_width=20/output_channels=80/table=True/bias-pairs-top-row
+bn_conv2dk3_dw/192x4/int8/bias=True/input_channels=16/input_width=12/output_channels=16/bias-width-12
 bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-bottom-row
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-table
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-top-row
+bn_conv2dk3_dw/480x4/int8/bias=True/input_channels=24/input_width=20/output_channels=24/bias-odd-block
 bn_conv2dk3_dw/6400x4/int8/bias=True/input_channels=80/input_width=80/output_channels=80/table=True
+bn_conv2dk3_dw/896x4/int8/bias=True/input_channels=16/input_width=56/output_channels=16/bias-width-56
 conv2dk1_i8/2048x8/int8/bias=True/rounding=conv_even
 conv2dk1_i8/2048x8/int8/rounding=conv_even/conv-even
 conv2dk1_i8/2560x8/int8/bias=True/input_width=40/rounding=conv_even/table=True

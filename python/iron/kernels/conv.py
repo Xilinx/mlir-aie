@@ -1811,7 +1811,7 @@ def _bn_conv2dk3_dw_bias(input_width, channels, table, stride, rounding):
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, *((Param,) * len(extra)), Out, *((Param,) * 8)),
-            alignments=_vector_32b(0, 1, 2, 4 + len(extra)) + ((4, 32),),
+            alignments=_vector_loads(0, 1, 2, 4 + len(extra)) + ((4, 32),),
             reference=reference,
             acc_dtype=np.int32,
             reduction=9,
