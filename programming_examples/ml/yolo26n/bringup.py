@@ -74,6 +74,10 @@ def segment(
     for tensor in design.inputs:
         offsets[tensor.name] = at
         at += design.host_bytes(tensor) // 4
+    # The weights the run's cores read from DDR (SegmentDesign.weights).
+    for tensor, packed in design.loads:
+        offsets[tensor.name] = at
+        at += packed.size // 4
     total_in = at
     outputs_at, at = {}, 0
     for tensor in design.outputs:
@@ -171,6 +175,7 @@ def main() -> None:
             )
             for t in plan.inputs
         ]
+        + [packed for _, packed in plan.loads]
     )
     sizes = [plan.host_bytes(t) for t in plan.outputs]
     spilled = sum(rows.row_bytes * rows.height for _, _, rows in plan.spills) + sum(

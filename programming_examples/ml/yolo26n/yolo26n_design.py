@@ -29,9 +29,7 @@ from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.iron import Buffer, ExternalFunction, ObjectFifo, TaskGroup, Worker, kernels
 from aie.iron.controlflow import range_
-from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.dataflow.objectfifo import ObjectFifoHandle
-from aie.iron.device import AnyMemTile
 from aie.utils.config import aie_kernels_dir
 from yolo_params import Params
 from yolo_spec import (
@@ -114,8 +112,9 @@ class Fill:
 
     `rows` sends the tensor's rows as they are. `anchor_classes` sends a
     row `chunk` pixels at a time, each 8-channel group of those pixels in
-    turn: the per-anchor records the Detect postprocess reads. A step's
-    transfers finish before the next step's start.
+    turn: the per-anchor records the Detect postprocess reads. `repeat`
+    sends the whole tensor `chunk` times, as a conv's weights go once an
+    output row. A step's transfers finish before the next step's start.
     """
 
     fifo: ObjectFifo
@@ -136,6 +135,10 @@ class Fill:
                 [groups * t.width * 2, 2 * self.chunk, t.width * 2, 1],
             )
         size = (IMAGE_ROW_BYTES if t.name == "images" else t.row_bytes) * t.height // 4
+        if self.layout == "repeat":
+            return TensorAccessPattern(
+                (total,), offset, [1, self.chunk, 1, size], [0, 0, 0, 1]
+            )
         return TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1])
 
 
@@ -311,6 +314,9 @@ class SegmentDesign:
         # their own, as the Detect postprocess reads its records: drained, and
         # filled once every such drain is done.
         self.staged: list[tuple[ObjectFifoHandle, Tensor]] = []
+        # Weights a run's cores read from DDR, see `weights`: each set's name
+        # and size, and its bytes.
+        self.loads: list[tuple[Tensor, np.ndarray]] = []
         index = {op.dst.name: i for i, op in enumerate(network.ops)}
         mine = {index[op.dst.name] for op in ops}
         fused = [(a, b) for a, b in fused if set(range(a, b)) <= mine]
@@ -573,6 +579,18 @@ class SegmentDesign:
             base = stages[-1]
         staged = base[0]
         return staged.cons(depth=window)
+
+    def weights(self, op: Conv, packed: np.ndarray, chunk_bytes: int) -> ObjectFifo:
+        """`op`'s packed weight chunks, each with its bias, sent from DDR once an output row.
+
+        Read from the host's weights buffer rather than set up with the
+        configuration: configuring the array costs what it loads.
+        """
+        fifo = ObjectFifo(row(chunk_bytes), name=f"weights{len(self.loads)}")
+        tensor = Tensor(f"{op.name}/weights", 8, 1, packed.size // 8)
+        self.loads.append((tensor, packed))
+        self.fills.append(Fill(fifo, tensor, "repeat", chunk=op.dst.height))
+        return fifo
 
     def spill(self, source: ObjectFifo, rows: Tensor) -> ObjectFifo:
         """`source`'s rows held in DDR: drained as they come, filled back once all have.
@@ -899,13 +917,7 @@ class SegmentDesign:
                     for c in range(n)
                 ]
             )
-            wts = ObjectFifo(
-                np.ndarray[(packed.size,), np.dtype[np.int8]],
-                depth=1,
-                consumer_obj_type=np.ndarray[(per + 4 * chunk,), np.dtype[np.int8]],
-                init_values=[packed],
-            )
-            wts.prod().endpoint = ObjectFifoEndpoint(AnyMemTile.copy())
+            wts = self.weights(op, packed, per + 4 * chunk)
             constants = [
                 [wts.cons(depth=2), *([Buffer(initial_value=table)] if op.act else [])]
             ]
@@ -1285,15 +1297,7 @@ class SegmentDesign:
                                 for c in range(oc // chunk)
                             ]
                         )
-                        wts = ObjectFifo(
-                            np.ndarray[(packed.size,), np.dtype[np.int8]],
-                            depth=1,
-                            consumer_obj_type=np.ndarray[
-                                (per + 4 * chunk,), np.dtype[np.int8]
-                            ],
-                            init_values=[packed],
-                        )
-                        wts.prod().endpoint = ObjectFifoEndpoint(AnyMemTile.copy())
+                        wts = self.weights(op, packed, per + 4 * chunk)
                         consts = [wts.cons(depth=2), *table]
                         streams[op.name] = (oc // chunk, per, chunk)
                     if op.kernel == 1:

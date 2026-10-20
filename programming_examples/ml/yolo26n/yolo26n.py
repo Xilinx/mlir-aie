@@ -82,6 +82,8 @@ class Plan:
                 if t is not detections:
                     self.offset[t.name] = self.words
                     self.words += t.row_bytes * t.height // 4
+        self.weight_offset: dict[str, int] = {}
+        weights: list[np.ndarray] = []
         # Rows a segment holds in DDR across a whole-map wait (SegmentDesign.spill)
         # or reads back in a layout of its own (SegmentDesign.staged).
         for k, (a, b) in enumerate(SEGMENTS):
@@ -92,6 +94,11 @@ class Plan:
             for _, tensor in design.staged:
                 self.offset[tensor.name] = self.words
                 self.words += tensor.row_bytes * tensor.height // 4
+            for tensor, packed in design.loads:
+                self.weight_offset[tensor.name] = sum(w.size for w in weights) // 4
+                weights.append(packed)
+        # Every segment's streamed weights, in the host buffer they are read from.
+        self.weights = np.concatenate(weights) if weights else np.zeros(4, np.int8)
 
     def reads(self, ops: list[Op]) -> list[Tensor]:
         """The tensors a run of operators reads from outside it, as streams."""
@@ -137,6 +144,7 @@ def yolo26n(
     image: In,
     scratch: InOut,
     detections: Out,
+    weights: In,
     *,
     batch: CompileTime[int],
     params_path: CompileTime[str],
@@ -153,6 +161,7 @@ def yolo26n(
     image_ty = np.ndarray[(batch * IMAGE_WORDS,), np.dtype[np.int32]]
     scratch_ty = np.ndarray[(batch * plan.words,), np.dtype[np.int32]]
     det_ty = np.ndarray[(batch * DETECTION_WORDS,), np.dtype[np.int32]]
+    weights_ty = np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]]
     configurations, runtimes = [], []
     for k, (a, b) in enumerate(SEGMENTS):
         design = SegmentDesign(network, params, network.ops[a:b], plan.outputs[k])
@@ -161,12 +170,18 @@ def yolo26n(
                 f"segment {k}: the design reads {design.inputs}, the plan {plan.inputs[k]}"
             )
 
-        def sequence(img, scr, det, *handles, design=design):
+        def sequence(img, scr, det, wts, *handles, design=design):
             for i in range(batch):
 
                 def locate(tensor, i=i):
                     if tensor.name == IMAGE.name:
                         return img, batch * IMAGE_WORDS, i * IMAGE_WORDS
+                    if tensor.name in plan.weight_offset:
+                        return (
+                            wts,
+                            plan.weights.size // 4,
+                            plan.weight_offset[tensor.name],
+                        )
                     if tensor.name in plan.offset:
                         return (
                             scr,
@@ -179,7 +194,7 @@ def yolo26n(
 
         runtime = Runtime(
             sequence,
-            [image_ty, scratch_ty, det_ty, *design.handles()],
+            [image_ty, scratch_ty, det_ty, weights_ty, *design.handles()],
             name=f"segment{k}",
         )
         configurations.append(
@@ -189,12 +204,12 @@ def yolo26n(
         )
         runtimes.append(runtime)
 
-    def run_all(img, scr, det):
+    def run_all(img, scr, det, wts):
         for configuration, runtime in zip(configurations, runtimes):
             with configuration.configure():
-                runtime.call(img, scr, det)
+                runtime.call(img, scr, det, wts)
 
-    entry = Runtime(run_all, [image_ty, scratch_ty, det_ty])
+    entry = Runtime(run_all, [image_ty, scratch_ty, det_ty, weights_ty])
     main = DeviceConfiguration("main", NPU2(), runtimes=[entry])
     return Program.compose([main, *configurations], entry=entry).resolve_program()
 
@@ -255,6 +270,7 @@ def main() -> None:
             image=np.ndarray[(args.batch * IMAGE_WORDS,), np.dtype[np.int32]],
             scratch=np.ndarray[(args.batch * plan.words,), np.dtype[np.int32]],
             detections=np.ndarray[(args.batch * DETECTION_WORDS,), np.dtype[np.int32]],
+            weights=np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]],
             **kwargs,
         ).compile()
         return
@@ -275,6 +291,7 @@ def main() -> None:
     oracle = Oracle(params, network)
     scratch = iron.zeros(args.batch * plan.words, dtype=np.int32)
     detections = iron.zeros(args.batch * DETECTION_WORDS, dtype=np.int32)
+    weights = iron.tensor(plan.weights.view(np.int32))
     session = None
     if args.synthetic is None and args.onnx.exists():
         # Optional: ONNX Runtime only serves the comparison with the ONNX graph.
@@ -288,7 +305,9 @@ def main() -> None:
     for start in range(0, len(images), args.batch):
         group = images[start : start + args.batch]
         pixels = np.concatenate([image.reshape(-1) for _, image in group])
-        yolo26n(iron.tensor(pixels.view(np.int32)), scratch, detections, **kwargs)
+        yolo26n(
+            iron.tensor(pixels.view(np.int32)), scratch, detections, weights, **kwargs
+        )
         found = detections.numpy().reshape(args.batch, 300, 6)
         for (name, image), mine in zip(group, found):
             want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
@@ -309,11 +328,11 @@ def main() -> None:
         )
         tensor = iron.tensor(pixels.view(np.int32))
         for _ in range(args.n_warmup):
-            yolo26n(tensor, scratch, detections, **kwargs)
+            yolo26n(tensor, scratch, detections, weights, **kwargs)
         samples = []
         for _ in range(args.n_iters):
             start = time.perf_counter()
-            yolo26n(tensor, scratch, detections, **kwargs)
+            yolo26n(tensor, scratch, detections, weights, **kwargs)
             samples.append(time.perf_counter() - start)
         us = statistics.median(samples) * 1e6 / args.batch
         print(f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {args.batch}")
