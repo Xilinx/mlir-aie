@@ -2317,6 +2317,16 @@ def test_program_attributes_select_aiecc_options(tmp_path, expand_load_pdis, exp
     assert design._generated_for(full_elf=True).aiecc_options == expected
 
 
+def test_scratchpad_parameters_ask_for_their_params_file(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module { aiex.scratchpad_parameter @n : i32 }")
+    design = CompilableDesign(mlir_path)
+
+    assert design._generated_for(full_elf=True).aiecc_options == [
+        "--get-scratchpad-parameters"
+    ]
+
+
 def test_full_elf_kernel_name_selects_explicit_entry(tmp_path):
     (tmp_path / "full_elf_config.json").write_text(
         json.dumps(

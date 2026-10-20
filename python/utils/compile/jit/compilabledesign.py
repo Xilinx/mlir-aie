@@ -52,6 +52,9 @@ from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
     DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
+    ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     IntegerAttr,  # pyright: ignore[reportAttributeAccessIssue]
@@ -174,6 +177,7 @@ class _GeneratedDesign:
     configuration_count: int
     expand_load_pdis: bool | None
     devices: tuple
+    scratchpad_parameters: bool
 
     @classmethod
     def from_module(
@@ -195,14 +199,20 @@ class _GeneratedDesign:
                 for op in module.body.operations
                 if isinstance(op, DeviceOp)
             ),
+            scratchpad_parameters=any(
+                isinstance(op, ScratchpadParameterOp) for op in module.body.operations
+            ),
         )
 
     @property
     def aiecc_options(self) -> list[str]:
-        """The aiecc flags the program's own attributes ask for."""
-        if self.expand_load_pdis is None:
-            return []
-        return [f"--expand-load-pdis={str(self.expand_load_pdis).lower()}"]
+        """The aiecc flags the program's own attributes and declarations ask for."""
+        options = []
+        if self.expand_load_pdis is not None:
+            options.append(f"--expand-load-pdis={str(self.expand_load_pdis).lower()}")
+        if self.scratchpad_parameters:
+            options.append("--get-scratchpad-parameters")
+        return options
 
     @property
     def entry_stream_options(self) -> list[str]:
