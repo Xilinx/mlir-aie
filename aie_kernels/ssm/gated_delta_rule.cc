@@ -74,6 +74,46 @@ inline __attribute__((always_inline)) void set_state(int i, int c, Limbs<L> s) {
   aie::store_v(s_lo + i * P + c, s.lo);
 }
 
+// With one column block, rows i and i + 1 of the state side by side.
+inline __attribute__((always_inline)) Limbs<W> state2(int i) {
+  return {aie::load_v<W>(s_hi + i * L), aie::load_v<W>(s_mid + i * L),
+          aie::load_v<W>(s_lo + i * L)};
+}
+
+inline __attribute__((always_inline)) void set_state2(int i, Limbs<W> s) {
+  aie::store_v(s_hi + i * L, s.hi);
+  aie::store_v(s_mid + i * L, s.mid);
+  aie::store_v(s_lo + i * L, s.lo);
+}
+
+// x[i] in the low half's lanes and x[i + 1] in the high half's.
+inline __attribute__((always_inline)) bf_t<W> pair(const bfloat16 *x, int i) {
+  return aie::concat(aie::broadcast<bfloat16, L>(x[i]),
+                     aie::broadcast<bfloat16, L>(x[i + 1]));
+}
+
+template <unsigned N>
+inline __attribute__((always_inline)) Limbs<2 * N> twice(const Limbs<N> &x) {
+  return {aie::concat(x.hi, x.hi), aie::concat(x.mid, x.mid),
+          aie::concat(x.lo, x.lo)};
+}
+
+// Pairs of state rows a trip of the update. Peano orders a trip's state
+// loads after the previous trip's stores, so a trip loads all its pairs
+// before storing any (#1337).
+constexpr int PB = 4;
+
+// One pair of the state's rows decayed by G and given outer(k, d), added to
+// q @ state, with even rows in the low lanes and odd rows in the high.
+inline __attribute__((always_inline)) acc_t<W>
+update_pair(acc_t<W> y2, const Limbs<W> &s, int i, const bfloat16 *kt,
+            const bfloat16 *qt, const Limbs<W> &G2, const Limbs<W> &d2) {
+  const Limbs<W> n =
+      bf16_limbs(aie::add(mul_limbs(s, G2), mul_limbs(d2, pair(kt, i))));
+  set_state2(i, n);
+  return aie::add(y2, mul_limbs(n, pair(qt, i)));
+}
+
 // 1 / sqrt(x) for x > 0: the bit-trick estimate and three Newton steps.
 float rsqrt_newton(float x) {
   uint32_t i = __builtin_bit_cast(uint32_t, x);
@@ -225,13 +265,23 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
     const Limbs<L> G = limbs<L>(ex[t]), E = limbs<L>(e[t]);
     const Limbs<L> F = limbs<L>(f[t]), Q = limbs<L>(qn[t]);
     for (int c = 0; c < P; c += L) {
+      // Even rows in kv and ya, odd rows in kw and yb. With one column
+      // block, a vector of twice the width carries an even and an odd row.
       acc_t<L> kv = aie::zeros<accfloat, L>(), kw = aie::zeros<accfloat, L>();
       int r = 0;
-      for (; r + 1 < Dk; r += 2) {
-        kv = aie::add(
-            kv, mul_limbs(state(r, c), aie::broadcast<bfloat16, L>(kt[r])));
-        kw = aie::add(kw, mul_limbs(state(r + 1, c),
-                                    aie::broadcast<bfloat16, L>(kt[r + 1])));
+      if constexpr (P == L) {
+        acc_t<W> k2 = aie::zeros<accfloat, W>();
+        for (; r + 1 < Dk; r += 2)
+          k2 = aie::add(k2, mul_limbs(state2(r), pair(kt, r)));
+        kv = k2.template extract<L>(0);
+        kw = k2.template extract<L>(1);
+      } else {
+        for (; r + 1 < Dk; r += 2) {
+          kv = aie::add(
+              kv, mul_limbs(state(r, c), aie::broadcast<bfloat16, L>(kt[r])));
+          kw = aie::add(kw, mul_limbs(state(r + 1, c),
+                                      aie::broadcast<bfloat16, L>(kt[r + 1])));
+        }
       }
       if (r < Dk)
         kv = aie::add(
@@ -239,21 +289,39 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
       const bf_t<L> vt = aie::load_v<L>(vr + c);
       const Limbs<L> d = bf16_limbs(aie::sub(
           mul_limbs(E, vt), mul_limbs(bf16_limbs(aie::add(kv, kw)), F)));
-      // Two rows a trip, so the scheduler interleaves independent chains.
       acc_t<L> ya = aie::zeros<accfloat, L>(), yb = aie::zeros<accfloat, L>();
       int i = 0;
-      for (; i + 1 < Dk; i += 2) {
-        const Limbs<L> n0 = bf16_limbs(
-            aie::add(mul_limbs(state(i, c), G),
-                     mul_limbs(d, aie::broadcast<bfloat16, L>(kt[i]))));
-        const Limbs<L> n1 = bf16_limbs(
-            aie::add(mul_limbs(state(i + 1, c), G),
-                     mul_limbs(d, aie::broadcast<bfloat16, L>(kt[i + 1]))));
-        set_state(i, c, n0);
-        set_state(i + 1, c, n1);
-        ya = aie::add(ya, mul_limbs(n0, aie::broadcast<bfloat16, L>(qt[i])));
-        yb =
-            aie::add(yb, mul_limbs(n1, aie::broadcast<bfloat16, L>(qt[i + 1])));
+      if constexpr (P == L) {
+        const Limbs<W> G2 = twice(G), d2 = twice(d);
+        acc_t<W> y2 = aie::zeros<accfloat, W>();
+        for (; i + 2 * PB - 1 < Dk; i += 2 * PB) {
+          Limbs<W> s[PB];
+#pragma clang loop unroll(full)
+          for (int u = 0; u < PB; u++)
+            s[u] = state2(i + 2 * u);
+#pragma clang loop unroll(full)
+          for (int u = 0; u < PB; u++)
+            y2 = update_pair(y2, s[u], i + 2 * u, kt, qt, G2, d2);
+        }
+        for (; i + 1 < Dk; i += 2)
+          y2 = update_pair(y2, state2(i), i, kt, qt, G2, d2);
+        ya = y2.template extract<L>(0);
+        yb = y2.template extract<L>(1);
+      } else {
+        // Two rows a trip, so the scheduler interleaves independent chains.
+        for (; i + 1 < Dk; i += 2) {
+          const Limbs<L> n0 = bf16_limbs(
+              aie::add(mul_limbs(state(i, c), G),
+                       mul_limbs(d, aie::broadcast<bfloat16, L>(kt[i]))));
+          const Limbs<L> n1 = bf16_limbs(
+              aie::add(mul_limbs(state(i + 1, c), G),
+                       mul_limbs(d, aie::broadcast<bfloat16, L>(kt[i + 1]))));
+          set_state(i, c, n0);
+          set_state(i + 1, c, n1);
+          ya = aie::add(ya, mul_limbs(n0, aie::broadcast<bfloat16, L>(qt[i])));
+          yb = aie::add(yb,
+                        mul_limbs(n1, aie::broadcast<bfloat16, L>(qt[i + 1])));
+        }
       }
       if (i < Dk) {
         const Limbs<L> n0 = bf16_limbs(
