@@ -103,6 +103,51 @@ static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
   static_assert(N % (2 * t) == 0);
   using MMUL = aie::mmul<r, s, t, bfloat16, bfloat16, accauto>;
 
+#if AIE_ARCH_AIE2P && !defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16)
+  // AIE2P emulates mmul<8, 8, 8> as two mmul<4, 8, 8> on a tile's contiguous
+  // 4-row halves, its accumulator two registers wide. Running those halves
+  // directly as a 2x2 tile of (half, column block) keeps four one-register
+  // accumulators, as fused_mm's bf16 form does: the same macs in the same k
+  // order.
+  using Half = aie::mmul<4, s, t, bfloat16, bfloat16, accauto>;
+  for (unsigned z = 0; z < rowA; z++) {
+    C *__restrict pC1 = c_out + (z * colB) * MMUL::size_C;
+    for (unsigned j = 0; j < colB; j += 2) {
+      const bfloat16 *__restrict pA0 = a_in + (z * colA) * MMUL::size_A;
+      const bfloat16 *__restrict pA1 = pA0 + Half::size_A;
+      const bfloat16 *__restrict pB1 = b_in + j * MMUL::size_B;
+      const bfloat16 *__restrict pB2 = pB1 + MMUL::size_B;
+      C *__restrict pC2 = pC1 + MMUL::size_C;
+
+      Half C00(aie::load_v<Half::size_C>(pC1));
+      Half C10(aie::load_v<Half::size_C>(pC1 + Half::size_C));
+      Half C01(aie::load_v<Half::size_C>(pC2));
+      Half C11(aie::load_v<Half::size_C>(pC2 + Half::size_C));
+
+      for (unsigned i = 0; i < colA; ++i) {
+        aie::vector<bfloat16, Half::size_A> A0 = aie::load_v<Half::size_A>(pA0);
+        pA0 += MMUL::size_A;
+        aie::vector<bfloat16, Half::size_A> A1 = aie::load_v<Half::size_A>(pA1);
+        pA1 += MMUL::size_A;
+        aie::vector<bfloat16, Half::size_B> B0 = aie::load_v<Half::size_B>(pB1);
+        pB1 += MMUL::size_B * colB;
+        aie::vector<bfloat16, Half::size_B> B1 = aie::load_v<Half::size_B>(pB2);
+        pB2 += MMUL::size_B * colB;
+
+        C00.mac(A0, B0);
+        C01.mac(A0, B1);
+        C10.mac(A1, B0);
+        C11.mac(A1, B1);
+      }
+
+      aie::store_v(pC1, C00.template to_vector<C>());
+      aie::store_v(pC1 + Half::size_C, C10.template to_vector<C>());
+      aie::store_v(pC2, C01.template to_vector<C>());
+      aie::store_v(pC2 + Half::size_C, C11.template to_vector<C>());
+      pC1 += 2 * MMUL::size_C;
+    }
+  }
+#else
   for (unsigned z = 0; z < rowA; z++) {
     C *__restrict pC1 = c_out + (z * colB) * MMUL::size_C;
     for (unsigned j = 0; j < colB; j += 2) {
@@ -133,6 +178,7 @@ static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
       pC1 += MMUL::size_C;
     }
   }
+#endif
   ::aie::set_rounding(saved_rounding);
 }
 
