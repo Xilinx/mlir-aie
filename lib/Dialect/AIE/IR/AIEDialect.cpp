@@ -541,6 +541,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
     return emitOpError("packet_id is only meaningful on a packet objectfifo");
   }
 
+  if (getOutOfOrder() && !getPacket()) {
+    return emitOpError("out_of_order names each object's buffer in the packet "
+                       "header, so it needs a packet objectfifo");
+  }
+
   // Helper to get tile interface from Value
   auto getTileLikeFromValue = [](Value v) -> TileLike {
     return llvm::dyn_cast<TileLike>(v.getDefiningOp());
@@ -549,6 +554,12 @@ LogicalResult ObjectFifoCreateOp::verify() {
   TileLike producerTile = getTileLikeFromValue(getProducerTile());
   if (!producerTile)
     return emitError("producer tile must implement TileLike interface");
+
+  if (getOutOfOrder() && producerTile.isShimTile()) {
+    return emitOpError("sends from a shim, whose descriptors the runtime "
+                       "sequence writes; out_of_order needs a sender that "
+                       "names the buffer each object lands in");
+  }
 
   // data layout transformations on shim tiles are handled by runtime operations
   if (producerTile.isShimTile() && !getDimensionsToStream().empty()) {
@@ -3557,6 +3568,16 @@ xilinx::AIE::verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
       return bd.emitOpError(
           "out_of_order_id belongs on the sender buffer descriptor, not an "
           "out-of-order S2MM receive buffer descriptor");
+  }
+  // The sender names a buffer by the id of the descriptor that receives it,
+  // so a pool's descriptors have to hold the ids their senders name.
+  for (auto [slot, constBd] : llvm::enumerate(bds)) {
+    DMABDOp bd = constBd;
+    std::optional<int32_t> bdId = bd.getBdId();
+    if (bdId && *bdId != static_cast<int32_t>(slot))
+      return bd.emitOpError("is buffer ")
+             << slot << " of an out-of-order S2MM channel but holds bd_id "
+             << *bdId << "; its senders name buffer " << slot;
   }
   // an inter-BD lock dependency can deadlock because arrival order is unknown
   DenseMap<Operation *, Operation *> releasedByRecvBd;

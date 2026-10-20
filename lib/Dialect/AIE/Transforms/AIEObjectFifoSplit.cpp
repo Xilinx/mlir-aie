@@ -277,7 +277,8 @@ struct AIEObjectFifoSplitPass
                            : IntegerAttr(),
         iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
-        builder.getStringAttr(from.name().getValue()));
+        builder.getStringAttr(from.name().getValue()),
+        from.getOutOfOrder() ? builder.getUnitAttr() : UnitAttr());
   }
 
   /// An end with no pool behind it: a shim whose transfers the runtime issues,

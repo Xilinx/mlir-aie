@@ -34,6 +34,8 @@ struct Descriptor {
   FlatSymbolRefAttr releaseLock;
   /// Index of the buffer's own binary lock, where the device uses those.
   int64_t binaryLock;
+  /// The buffer's place in the pool, which an out-of-order sender names.
+  int64_t slot;
 };
 
 int64_t paddedSize(BDDimLayoutArrayAttr dimensions,
@@ -127,7 +129,7 @@ struct AIEObjectFifoLowerDMAsPass
                     : segment.getProduceLockAttr(),
              drains ? segment.getProduceLockAttr()
                     : segment.getConsumeLockAttr(),
-             static_cast<int64_t>(index)});
+             static_cast<int64_t>(index), static_cast<int64_t>(index)});
       }
     }
     return descriptors;
@@ -166,17 +168,25 @@ struct AIEObjectFifoLowerDMAsPass
                             packet->getPktId());
     }
 
+    DMABDOp bd;
     if (descriptor.dimensions && drains && descriptor.padding) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      paddedSize(descriptor.dimensions, descriptor.padding,
-                                 descriptor.size),
-                      descriptor.dimensions, descriptor.padding);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           paddedSize(descriptor.dimensions, descriptor.padding,
+                                      descriptor.size),
+                           descriptor.dimensions, descriptor.padding);
     } else if (descriptor.dimensions) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size, descriptor.dimensions);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           descriptor.size, descriptor.dimensions);
     } else {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           descriptor.size);
+    }
+    // The receiving channel walks no chain of its own, so the sender says
+    // which buffer each object lands in. The receiver's descriptor for that
+    // buffer carries the matching bd_id.
+    if (endpoint.getOutOfOrder() &&
+        endpoint.getRouteDirection() == DMAChannelDir::MM2S) {
+      bd.setOutOfOrderId(descriptor.slot);
     }
 
     if (releaseLock) {
@@ -226,7 +236,9 @@ struct AIEObjectFifoLowerDMAsPass
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, loc, endpoint.getRouteDirection(), channel,
                        taskCount, endpoint.getPadValue(),
-                       /*out_of_order=*/false, bdBlock, endBlock);
+                       endpoint.getOutOfOrder() &&
+                           endpoint.getRouteDirection() == DMAChannelDir::S2MM,
+                       bdBlock, endBlock);
     if (lastDmaBlock) {
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
     }

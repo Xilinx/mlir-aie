@@ -2469,7 +2469,12 @@ def AIE_ObjectFifoCreateOp
       // packet selects packet-switched routing. packet_id pins the header;
       // allocation chooses an unused id when it is absent.
       UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id,
+      // out_of_order receives each object into the buffer its sender names in
+      // the packet header's out_of_order_id field, instead of walking the
+      // pool in a fixed BD chain. The consumer's channel then holds no order
+      // of its own, which is what lets several fifos share it. Needs packet.
+      UnitAttr:$out_of_order);
 
   let assemblyFormat = [{
     $sym_name
@@ -2830,7 +2835,11 @@ def AIE_ObjectFifoDmaEndpointOp
       // in that many fewer cycles than the receiver opposite it.
       OptionalAttr<AIEI32Attr>:$iterCount, OptionalAttr<PacketInfoAttr>:$packet,
       // ObjectFifo name used by runtime records.
-      OptionalAttr<StrAttr>:$fifoName);
+      OptionalAttr<StrAttr>:$fifoName,
+      // See aie.objectfifo's out_of_order. A draining endpoint puts its
+      // channel in out-of-order mode; a filling one names each object's
+      // buffer in the header it sends.
+      UnitAttr:$out_of_order);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict
