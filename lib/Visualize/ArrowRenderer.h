@@ -94,6 +94,11 @@ public:
     return std::nullopt;
   }
 
+  /// The widest a line may be drawn, in points, before it reaches the one
+  /// beside it. A renderer that puts lines on tracks knows how far apart it
+  /// put them; nothing else does.
+  virtual std::optional<double> widestLine() const { return std::nullopt; }
+
   /// Where the nodes arrows end on should sit. An absent entry leaves a node
   /// where the caller put it.
   virtual std::map<std::string, Point>

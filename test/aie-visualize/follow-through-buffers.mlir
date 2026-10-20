@@ -33,10 +33,10 @@
 // GROUP: p_0_3_1_0_m -> p_0_3_5_1
 // GROUP: p_0_3_1_1_m -> p_0_3_3_3
 // GROUP: p_0_3_5_2 -> p_0_3_1_1_s
-// GROUP: p_0_3_1_0_s -> buffer_0 {{.*}}style=dashed];
-// GROUP: buffer_0 -> p_0_3_1_0_m {{.*}}style=dashed];
-// GROUP: p_0_3_1_1_s -> buffer_0 {{.*}}style=dashed];
-// GROUP: buffer_0 -> p_0_3_1_1_m {{.*}}style=dashed];
+// GROUP: p_0_3_1_0_s -> buffer_0 {{.*}}class="buffer-link{{.*}}];
+// GROUP: buffer_0 -> p_0_3_1_0_m {{.*}}class="buffer-link{{.*}}];
+// GROUP: p_0_3_1_1_s -> buffer_0 {{.*}}class="buffer-link{{.*}}];
+// GROUP: buffer_0 -> p_0_3_1_1_m {{.*}}class="buffer-link{{.*}}];
 // GROUP-NOT: S2MM
 // GROUP-NOT: MM2S
 // GROUP-NOT: p_0_4_0_1
@@ -46,12 +46,12 @@
 // OTHER: p_0_4_5_0 -> p_0_5_3_0 {{.*}} label=<<FONT COLOR="#4575b4">F1</FONT>>
 
 // FANOUT: label="fanout"
-// FANOUT: buffer_1 -> p_0_5_1_0_m {{.*}}style=dashed];
-// FANOUT: buffer_1 -> p_0_5_1_1_m {{.*}}style=dashed];
+// FANOUT: buffer_1 -> p_0_5_1_0_m {{.*}}class="buffer-link{{.*}}];
+// FANOUT: buffer_1 -> p_0_5_1_1_m {{.*}}class="buffer-link{{.*}}];
 
 // JOIN: label="join"
-// JOIN: p_0_2_1_0_s -> buffer_2 {{.*}}style=dashed];
-// JOIN: p_0_2_1_1_s -> buffer_2 {{.*}}style=dashed];
+// JOIN: p_0_2_1_0_s -> buffer_2 {{.*}}class="buffer-link{{.*}}];
+// JOIN: p_0_2_1_1_s -> buffer_2 {{.*}}class="buffer-link{{.*}}];
 
 // UNGROUPED: F8
 

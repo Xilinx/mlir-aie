@@ -68,6 +68,8 @@ constexpr double kSwitchHalfWidth = 0.30;
 constexpr double kEdgeMargin = 0.09;
 /// The widest a tile's buffer and call boxes are drawn.
 constexpr double kContentWidth = 1.75;
+/// However busy a tile is, it stops widening here.
+constexpr double kWidestTile = 7.5;
 
 double dmaCentreX(const LayoutGeometry &layout, int col) {
   return layout.tileLeft(col) - kDMAInset - kDMAHalfWidth;
@@ -189,10 +191,19 @@ class ChannelArrowRenderer : public ArrowRenderer {
 public:
   std::optional<double> preferredTileGap() const override { return kChannel; }
 
+  std::optional<double> widestLine() const override {
+    // Leave better than half the gap between neighbouring tracks clear, or
+    // two lines running side by side read as one thick one.
+    return kTrack * 72.0 * 0.42;
+  }
+
   std::optional<double> preferredTileWidth(unsigned contents) const override {
     // Contents down the middle, and a lane either side wide enough that the
-    // arrows between them each get a track of their own.
-    return kContentWidth + 2 * (contents * kTrack + 2 * kEdgeMargin);
+    // arrows between them each get a track of their own. A tile with more
+    // arrows than that stops growing and packs them closer instead: past a
+    // point a wider tile costs the whole picture more than it buys this one.
+    double wanted = kContentWidth + 2 * (contents * kTrack + 2 * kEdgeMargin);
+    return std::min(wanted, kWidestTile);
   }
 
   std::map<std::string, Point>

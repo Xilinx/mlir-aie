@@ -34,8 +34,8 @@
 // ALL-DAG: p_0_4_3_2 -> p_0_3_5_2 {{.*}} label=<<FONT COLOR="#ff7f00">F4</FONT>>
 // ALL-DAG: p_0_3_5_2 -> p_0_3_0_0
 // ALL-NOT: p_0_2_0_0
-// ALL: buffer_0 -> p_0_2_1_0_m {{.*}}style=dashed];
-// ALL: p_0_3_1_0_s -> buffer_1 {{.*}}style=dashed];
+// ALL: buffer_0 -> p_0_2_1_0_m {{.*}}class="buffer-link{{.*}}];
+// ALL: p_0_3_1_0_s -> buffer_1 {{.*}}class="buffer-link{{.*}}];
 // ALL-NOT: MM2S
 // ALL-NOT: S2MM
 

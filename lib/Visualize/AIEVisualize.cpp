@@ -1239,10 +1239,18 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       collectFlowGroups(*routes, channelBuffers, options.noFollowBuffers);
   std::vector<uint64_t> groupBytes =
       collectFlowGroupBytes(*routes, groups, collectDMAChannelBytes(device));
+  const Palette &palette = paletteFor(options.colors);
+  std::unique_ptr<ArrowRenderer> arrows =
+      options.arrows == AIE::ArrowStyle::Channel
+          ? createChannelArrowRenderer()
+          : createStraightArrowRenderer();
+
+  double widest = options.maxEdgeWidth;
+  if (std::optional<double> room = arrows->widestLine())
+    widest = std::min(widest, *room);
   EdgeWeightScale weightScale =
       options.weighEdges
-          ? EdgeWeightScale::build(groupBytes, options.minEdgeWidth,
-                                   options.maxEdgeWidth)
+          ? EdgeWeightScale::build(groupBytes, options.minEdgeWidth, widest)
           : EdgeWeightScale();
 
   std::set<unsigned> only(options.onlyFlows.begin(), options.onlyFlows.end());
@@ -1448,11 +1456,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     return 0.34 + 0.17 * static_cast<double>(lines + 1);
   };
 
-  const Palette &palette = paletteFor(options.colors);
-  std::unique_ptr<ArrowRenderer> arrows =
-      options.arrows == AIE::ArrowStyle::Channel
-          ? createChannelArrowRenderer()
-          : createStraightArrowRenderer();
   // A renderer that needs room between tiles to put arrows in says so here,
   // rather than the caller having to know which style wants what spacing.
   double gapX = options.tileGapX;
@@ -1461,9 +1464,18 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     gapX = std::max(gapX, *wanted);
     gapY = std::max(gapY, *wanted);
   }
+  // A tile is sized by the arrows drawn inside it, not by the boxes they
+  // join: one buffer feeding four kernels is four lanes, not one.
   double tileWidth = options.tileWidth;
+  std::map<std::pair<int, int>, unsigned> insideTile;
+  for (const auto &[segment, segmentRoutes] : bufferSegments)
+    ++insideTile[{segment.port.col, segment.port.row}];
+  for (const CallInfo &call : calls)
+    insideTile[{call.col, call.row}] += call.buffers.size();
   unsigned busiest = 0;
   for (const auto &[coordinate, count] : localCounts)
+    busiest = std::max(busiest, count);
+  for (const auto &[coordinate, count] : insideTile)
     busiest = std::max(busiest, count);
   if (std::optional<double> wanted = arrows->preferredTileWidth(busiest))
     tileWidth = std::max(tileWidth, *wanted);
@@ -2207,7 +2219,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     auto arrow = bufferArrowIDs.find(segment);
     if (arrow != bufferArrowIDs.end())
       writeArrowGeometry(arrow->second, /*tipped=*/true);
-    output << ", style=dashed];\n";
+    // Solid, not dashed: a tile's lane carries these a dozen at a time, and
+    // among that many neighbours a broken line cannot be followed at all.
+    output << "];\n";
   }
   output << "}\n";
   return success();
