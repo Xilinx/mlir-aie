@@ -2329,18 +2329,21 @@ def _bf16_proj_store(symbol, y_size, geometry):
 def flm_gemma4_decode_proj_layer_embedding_mvm(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
+    """One MVM block of the per-layer-input embedding projection, inlined into its core."""
     return _bf16_proj_mvm("proj_layer_embedding_mvm", geometry.model_dim, geometry)
 
 
 def flm_gemma4_decode_proj_layer_embedding_store(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
+    """Store one output block of the per-layer-input embedding projection, inlined into its core."""
     return _bf16_proj_store("proj_layer_embedding_store", geometry.pli_d, geometry)
 
 
 def flm_gemma4_decode_gate_layer_embedding_mvm(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
+    """One MVM block of the per-layer-input gate projection, inlined into its core."""
     return _bf16_proj_mvm(
         "gate_layer_embedding_mvm", geometry.model_dim + geometry.pli_d, geometry
     )
@@ -2349,6 +2352,7 @@ def flm_gemma4_decode_gate_layer_embedding_mvm(
 def flm_gemma4_decode_gate_layer_embedding_store(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
+    """Store one output block of the per-layer-input gate projection, inlined into its core."""
     return _bf16_proj_store(
         "gate_layer_embedding_store", geometry.model_dim + geometry.pli_d, geometry
     )
@@ -2357,6 +2361,7 @@ def flm_gemma4_decode_gate_layer_embedding_store(
 def flm_gemma4_decode_per_layer_up_mvm(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
+    """One MVM block of the per-layer-input up projection, inlined into its core."""
     size = 2 * (geometry.pli_d + geometry.model_dim) + 32
     return _bf16_proj_mvm("per_layer_up_mvm", size, geometry)
 
@@ -2364,6 +2369,7 @@ def flm_gemma4_decode_per_layer_up_mvm(
 def flm_gemma4_decode_per_layer_up_store(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
+    """Store one output block of the per-layer-input up projection, inlined into its core."""
     return _bf16_proj_store("per_layer_up_store", geometry.model_dim, geometry)
 
 
