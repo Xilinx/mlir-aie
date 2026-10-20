@@ -46,11 +46,11 @@ from aie2_chain_dynscale_mh import (
     VOCAB,
     WLM_TOTAL,
     D,
-    build,
-    derived_sizes,
     kv_blocks,
     kv_words,
 )
+from aie2_decode import GAMMA_AT, LANE_BYTES, build, stage_layout, wblob_layout
+from aie2_gemv_array import LAYER, N_CORES, RESID_OFF
 from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
@@ -58,9 +58,8 @@ from llama_npu import DispatchSession
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw, rope_table
-from numpy_topk_sample import topk_sample_reference
-from test_chain_mh import pack_blobs
 from test_flowkv import EXP_QUANT_SCALE as FKV_EXP_QUANT_SCALE
+from test_gemv_array import pack_lane
 from test_layer_mh import pack_perchan_slots
 from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 
@@ -68,9 +67,6 @@ T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
 ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8"))
 PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
-_sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT, PERSIST_GROW=True)
-WEIGHTS_BYTES = _sizes.WEIGHTS_BYTES
-OFF_ROPE = _sizes.OFF_ROPE
 DATA_DIR = Path(__file__).parent / "data"
 
 
@@ -179,19 +175,7 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
     return logits
 
 
-def chain_forward_grow(x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma):
-    """Greedy variant: forward -> token + next-token embed seed (used only to
-    populate layer['scales'] in the throwaway trajectory)."""
-    logits = chain_forward_logits(
-        x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma
-    )
-    tok = topk_sample_reference(
-        logits, SAMPLE_TEMP, SAMPLE_TOPK, SAMPLE_SEED, k_set=ONESTREAM_KSET
-    )
-    xin, scale = embed_seed_ref(embed_i8[tok], float(embed_sc[tok]))
-    return tok, xin, scale
-
-
+SEED_AT = stage_layout(N_LAYERS)[0][0, "o"] + RESID_OFF
 DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
 LMW_GAMMA_BYTES = 2 * D
 
@@ -213,6 +197,63 @@ def dispatch_params(t0):
         params[f"kvb{t}"] = p // KV_TB + 1
         params[f"row{t}"] = (p // KV_TB) * KV_BLOCK_WORDS + (p % KV_TB) * KV_ROW_WORDS
     return params
+
+
+def pack_wblob(layers, rope):
+    """The array decode's weight blob: each layer's eight weight lanes, then
+    the RoPE table.
+
+    Args:
+        layers: The oracle's layers.
+        rope: bf16 (T, 2 * HEAD_D), numpy_llama_ref.rope_table.
+
+    Returns:
+        int8, wblob_layout(N_LAYERS, T)'s.
+    """
+    off_lanes, off_rope, total = wblob_layout(N_LAYERS, T)
+    w = np.zeros(total, np.int8)
+    for L, layer in enumerate(layers):
+        weights = {
+            p: (
+                layer[f"w{p}_i8"],
+                layer.get(f"b{p}", np.zeros(layer[f"w{p}_i8"].shape[0], np.int32)),
+                layer[f"w{p}_sc"],
+            )
+            for p in LAYER
+        }
+        for c in range(N_CORES):
+            at = off_lanes + (L * N_CORES + c) * LANE_BYTES
+            w[at : at + LANE_BYTES] = pack_lane(weights, LAYER, c)
+    w[off_rope : off_rope + T * CS_BYTES] = rope.view(np.int8).ravel()
+    return w
+
+
+def pack_stage(layers, final_gamma, x_i8, res_scale):
+    """The array decode's stage buffer at the start of a generation: each
+    norm's gamma after the residual it norms, and the first token's seed.
+
+    Args:
+        layers: The oracle's layers.
+        final_gamma: The final norm's bf16 gamma.
+        x_i8: The first token's seed, int8[D].
+        res_scale: Its scale.
+
+    Returns:
+        int8, stage_layout(N_LAYERS)'s.
+    """
+    slots, _, final, _, total = stage_layout(N_LAYERS)
+    st = np.zeros(total, np.int8)
+    gammas = [(slots[L, "o"], layer["gamma_in"]) for L, layer in enumerate(layers)]
+    gammas += [(slots[L, "d"], layer["gamma_post"]) for L, layer in enumerate(layers)]
+    gammas.append((final, final_gamma))
+    for at, g in gammas:
+        at += RESID_OFF + GAMMA_AT
+        st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
+    st[SEED_AT : SEED_AT + D] = x_i8
+    st[SEED_AT + D : SEED_AT + D + 4] = np.frombuffer(
+        np.float32(res_scale).tobytes(), np.int8
+    )
+    return st
 
 
 def pack_kv(layers):
@@ -256,7 +297,9 @@ def time_decode(session, buffers, params, opts):
     disp_med = float(np.median(arr))
     per_token_ms = disp_med / PT
     kv_read = 2 * N_LAYERS * params["kvb0"] * KV_BLOCK_WORDS * 4
-    bytes_per_token = WEIGHTS_BYTES + LMW_GAMMA_BYTES + WLM_TOTAL + kv_read
+    bytes_per_token = (
+        wblob_layout(N_LAYERS, T)[1] + LMW_GAMMA_BYTES + WLM_TOTAL + kv_read
+    )
     dma_floor_ms = bytes_per_token / (DDR_BW_GBPS * 1e9) * 1e3
     ratio = per_token_ms / dma_floor_ms
     verdict = (
@@ -421,49 +464,12 @@ def main():
         [lyr["v_scales_slot"].copy() for lyr in layers],
     )
 
-    # One throwaway oracle pass (greedy argmax trajectory) just to populate
-    # layer["scales"] for pack_blobs; the authoritative per-token check is the
-    # device-trajectory replay (greedy argmax on random fixtures is brittle near
-    # a near-tie). We don't compare against this trajectory. The scales are
-    # placeholders the chain recalibrates on chip, so --time, which checks no
-    # token, takes them from position 0 rather than attend a long cache.
-    cur_x, cur_sc = x_i8, res_scale
-    first = 0 if opts.time else p0
-    for t in range(PT):
-        for L in range(N_LAYERS):
-            layers[L]["cos"] = rope[first + t, :HEAD_D]
-            layers[L]["sin"] = rope[first + t, HEAD_D:]
-        _, nxin, nscale = chain_forward_grow(
-            cur_x, cur_sc, layers, first + t, embed_i8, embed_sc, gamma
-        )
-        cur_x, cur_sc = nxin, nscale
-
-    # Pack wblob with the (now-populated) real scales; the chain self-calibrates
-    # on-device so these are placeholders, but pack_blobs requires the key. The
-    # static OFF_CS cos/sin in wblob is unused by PERSIST_GROW, whose q-rope
-    # and rope_k read the RoPE table at OFF_ROPE.
-    wblob, _ = pack_blobs(layers, WEIGHTS_BYTES)
-    assert wblob.size == WEIGHTS_BYTES, (wblob.size, WEIGHTS_BYTES)
-    wblob[OFF_ROPE : OFF_ROPE + T * CS_BYTES] = rope.view(np.int8).ravel()
-    w_t = iron.tensor(wblob, dtype=np.int8)
-
-    set_pristine(layers, pristine)
+    w_t = iron.tensor(pack_wblob(layers, rope), dtype=np.int8)
     kv0 = pack_kv(layers)
-    xin = np.zeros(D + 8, dtype=np.int8)
-    xin[:D] = x_i8
-    xin[D : D + 4] = np.frombuffer(np.float32(res_scale).tobytes(), dtype=np.int8)
+    stage0 = pack_stage(layers, gamma, x_i8, res_scale)
 
     session = DispatchSession(
-        build,
-        opts.elf,
-        SAMPLE=True,
-        ONESTREAM=True,
-        PERSIST=True,
-        PERSIST_GROW=True,
-        PT=PT,
-        N_LAYERS=N_LAYERS,
-        T=T,
-        ONESTREAM_KSET=ONESTREAM_KSET,
+        build, opts.elf, PT=PT, N_LAYERS=N_LAYERS, T=T, KSET=ONESTREAM_KSET
     )
     lmw_t = iron.tensor(lmw, dtype=np.int8)
     print(
@@ -476,11 +482,11 @@ def main():
         return time_decode(
             session,
             [
-                iron.tensor(xin, dtype=np.int8),
                 w_t,
                 iron.tensor(kv0, dtype=np.int32),
                 lmw_t,
                 iron.zeros([PT * (D + 12)], dtype=np.int8),
+                iron.tensor(stage0, dtype=np.int8),
             ],
             dispatch_params(p0),
             opts,
@@ -489,18 +495,9 @@ def main():
     # Each dispatch gets its own input, weight and output tensors; the KV
     # tensor is created once per run of dispatches and stays on the device,
     # so a generation loop's dispatches carry the cache with no host copy.
-    def dispatch(xin_t, kv_t, params):
+    def dispatch(stage_t, kv_t, params):
         out_t = iron.zeros([PT * (D + 12)], dtype=np.int8)
-        session(
-            [
-                xin_t,
-                w_t,
-                kv_t,
-                lmw_t,
-                out_t,
-            ],
-            **params,
-        )
+        session([w_t, kv_t, lmw_t, out_t, stage_t], **params)
         out_t.to("cpu")
         return out_t.numpy().copy()
 
@@ -513,7 +510,7 @@ def main():
         for r in range(opts.repeats):
             toks = tokens_of(
                 dispatch(
-                    iron.tensor(xin, dtype=np.int8),
+                    iron.tensor(stage0, dtype=np.int8),
                     iron.tensor(kv0, dtype=np.int32),
                     dispatch_params(p0),
                 )
@@ -530,18 +527,17 @@ def main():
         set_pristine(layers, pristine)
         tok_fails = replay(dev_tokens, x_i8, res_scale, layers, p0, rope, lm)
     else:
-        # Like the KV tensor, the seed tensor stays on the device: the host
-        # writes the first dispatch's seed, and each dispatch leaves the next
-        # one's there.
+        # Like the KV tensor, the stage tensor stays on the device: the host
+        # writes the first dispatch's seed into it, and each dispatch leaves
+        # the next one's there.
         kv_t = iron.tensor(kv0, dtype=np.int32)
-        xin_t = iron.tensor(xin, dtype=np.int8)
+        stage_t = iron.tensor(stage0, dtype=np.int8)
         x_d, sc_d = x_i8, res_scale
-        set_pristine(layers, pristine)
         for d in range(n_disp):
             if d:
                 time.sleep(opts.idle_s)
             pos = p0 + d * PT
-            toks_out = dispatch(xin_t, kv_t, dispatch_params(pos))
+            toks_out = dispatch(stage_t, kv_t, dispatch_params(pos))
             toks = tokens_of(toks_out)
             dev_tokens += toks
             if n_disp > 1:
@@ -562,10 +558,12 @@ def main():
                     0
                 ]
             )
-            xin_t.to("cpu")
+            stage_t.to("cpu")
             seed_left = np.zeros(D + 8, dtype=np.int8)
             seed_left[: D + 4] = toks_out[last : last + D + 4]
-            if not np.array_equal(xin_t.numpy(), seed_left):
+            if not np.array_equal(
+                stage_t.numpy()[SEED_AT : SEED_AT + D + 8], seed_left
+            ):
                 print(f"  seed carry: FAIL (dispatch {d})", flush=True)
                 carry_fails += 1
 

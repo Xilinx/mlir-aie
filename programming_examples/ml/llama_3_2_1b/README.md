@@ -12,7 +12,7 @@ reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % 
 prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
 beyond quantization.
 
-> Status: decode is validated on hardware at 86.8 ms/token (11.5 tok/s) at
+> Status: decode is validated on hardware at 48.6 ms/token (20.6 tok/s) at
 > N=16 at short context, with a KV cache of up to 128k tokens. Prefill is the
 > open stage — see [On the device, and on the host](#on-the-device-and-on-the-host)
 > and [What's next](#whats-next).
@@ -110,24 +110,28 @@ dispatch time / PT. N=16, PT=4 unless noted:
 
 | Context (position of the first token) | per-token | tok/s |
 |---|---|---|
-| **64** | **86.8 ms** | **11.5** |
-| 1024 | 105.1 ms | 9.5 |
-| 4096 | 163.5 ms | 6.1 |
-| 32768 | 708 ms | 1.4 |
-| 131071 (PT=1) | 2575 ms | 0.39 |
+| **64** | **48.6 ms** | **20.6** |
+| 1024 | 66.8 ms | 15.0 |
+| 4096 | 125.1 ms | 8.0 |
+| 32768 | 670 ms | 1.5 |
+| 131071 (PT=1) | 2537 ms | 0.39 |
 
 N=16 went from 452 ms/token to 212 ms by vectorizing the kernels, then to
 91.2 ms by moving the remaining scalar fp32 epilogues onto vectors (bit-exact),
 taking the lm_head's top-k insert off soft float, and double-buffering the
-up-projection weights, then to 86.8 ms by reading only the live KV blocks.
+up-projection weights, then to 86.8 ms by reading only the live KV blocks,
+then to 48.6 ms by running every projection on the shared 8-lane GEMV array
+(`aie2_decode.py`).
 Past a few thousand tokens attention dominates: each KV head's blocks fold on
 one core, about 18 ms per 1k tokens of context.
 
-**What bounds it now.** With every kernel replaced by a no-op, a token still
-takes 69 ms at N=16: each weight stream has one shim lane (about 13.7 GB/s) and
-only one stream runs at a time. The rest is compute the streams wait on. A
-shared 8-lane GEMV array (`aie2_gemv_array.py`, measured at 52 GB/s) is the
-next step; FastFlowLM reaches 60–89 tok/s on this model.
+**What bounds it now.** The layers' weights stream over the array's eight
+lanes (about 52 GB/s), but the lm_head's 262 MB still stream over one lane
+(about 19 ms a token), and past a few thousand tokens attention dominates:
+each KV head's blocks fold on one core, about 19 ms per 1k tokens of context.
+The array's activations and outputs pass through a DDR `stage` buffer
+between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
+60–89 tok/s on this model.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
 > **TTFT** (time to first token) and is a separate, not-yet-built phase.

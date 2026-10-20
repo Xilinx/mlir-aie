@@ -10,7 +10,7 @@ still build, verify (device token == numpy-fixture argmax, same oracle
 test_chain_persist_grow_mh.py already uses), and run at the expected
 throughput on real hardware. Shells out to the existing
 test_chain_persist_grow_mh.py CLI (no new Python API), compiling once with the
-design's own CLI (aie2_chain_dynscale_mh.py) and then invoking the test script
+design's own CLI (aie2_decode.py) and then invoking the test script
 with that full ELF for both the correctness run and the ``--time`` run. One run, no seed sweep: unlike mobilenet this design has no SA-
 placer-seed dimension (Phase 7 unplaced it onto the plain default
 sequential placer, which has no seed concept).
@@ -68,16 +68,7 @@ _CORE_RE = re.compile(r"\baie\.core\(")
 
 # The design's CompileTime values; the test script reads the same
 # configuration from _CHAIN_ENV at import time.
-_BUILD_ARGS = [
-    "--sample=1",
-    "--onestream=1",
-    "--persist=1",
-    "--persist-grow=1",
-    f"--pt={PT}",
-    "--onestream-kset=8",
-    f"--n-layers={N_LAYERS}",
-    "--t=128",
-]
+_BUILD_ARGS = [f"--pt={PT}", "--kset=8", f"--n-layers={N_LAYERS}", "--t=128"]
 _CHAIN_ENV = {
     "LLAMA_CHAIN_PT": str(PT),
     "LLAMA_CHAIN_ONESTREAM_KSET": "8",
@@ -115,7 +106,7 @@ def _build_rss(env: dict) -> tuple[subprocess.CompletedProcess, float]:
     proc = subprocess.Popen(
         [
             sys.executable,
-            "aie2_chain_dynscale_mh.py",
+            "aie2_decode.py",
             *_BUILD_ARGS,
             "--full-elf-path",
             _ELF,
