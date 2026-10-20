@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import functools
 from enum import Enum
 from typing import ClassVar
 
@@ -108,6 +109,15 @@ def test_a_declaration_prints_what_it_declared():
             "  key:      (dtype, scale, tile, cores, placement, width)",
         ]
     )
+
+
+def test_a_declaration_names_a_partial_domain_by_its_function():
+    class Partial(Base):
+        M: int = param()
+        cores: int = tunable(default=1, domain=functools.partial(widths))
+        c = Out(M)
+
+    assert "cores in widths" in repr(Partial.declaration)
 
 
 def declare(body: dict, annotations: dict | None = None, base: type = Base):

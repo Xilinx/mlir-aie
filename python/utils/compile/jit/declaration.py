@@ -12,6 +12,7 @@ as.
 
 from __future__ import annotations
 
+import functools
 import inspect
 import math
 from collections.abc import Mapping
@@ -425,7 +426,8 @@ def _tunable(p: Param) -> str:
     elif isinstance(domain, tuple):
         text = "{" + ", ".join(map(repr, domain)) + "}"
     else:
-        text = "f(op, dev)" if domain.__name__ == "<lambda>" else domain.__name__
+        func = domain.func if isinstance(domain, functools.partial) else domain
+        text = "f(op, dev)" if func.__name__ == "<lambda>" else func.__name__
     return f"{p.name} in {text}"
 
 
