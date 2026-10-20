@@ -59,8 +59,9 @@ bool fast_weights(const float *d, bfloat16 *weights) {
     alignas(64) float lane[W] = {};
     for (int i = c; i < K && i < c + W; ++i)
       lane[i - c] = d[i];
-    aie::store_v(e + c, exp_f32<W>(aie::accum<accfloat, W>(aie::load_v<W>(lane)))
-                            .to_vector<float>());
+    aie::store_v(e + c,
+                 exp_f32<W>(aie::accum<accfloat, W>(aie::load_v<W>(lane)))
+                     .to_vector<float>());
   }
   aie::set_rounding(saved);
   float sum = e[0];
@@ -75,8 +76,7 @@ bool fast_weights(const float *d, bfloat16 *weights) {
       return false;
   }
   for (int i = 0; i < K; ++i) {
-    const uint16_t rounded =
-        (bits[i] + 0x7fffu + ((bits[i] >> 16) & 1u)) >> 16;
+    const uint16_t rounded = (bits[i] + 0x7fffu + ((bits[i] >> 16) & 1u)) >> 16;
     weights[2 * i] = __builtin_bit_cast(bfloat16, rounded);
     weights[2 * i + 1] = (bfloat16)0.0f;
   }
