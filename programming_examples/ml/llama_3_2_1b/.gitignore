@@ -3,9 +3,7 @@
 
 build/
 data/
-*.exe
 *.xclbin
 *.o
 *.elf
 __pycache__/
-ironenv/

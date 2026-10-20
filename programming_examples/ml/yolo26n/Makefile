@@ -1,5 +1,8 @@
 ##===- Makefile -----------------------------------------------------------===##
 #
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 # Ultralytics yolo26n detection on NPU2: fetching and quantizing the
 # checkpoint (export), extracting its integer parameters (data; synthetic
 # ones are made under BUILD as runs need them), checking the oracle against ONNX
