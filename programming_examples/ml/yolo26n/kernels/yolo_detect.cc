@@ -222,7 +222,8 @@ void yolo_detect_select(const int16_t *__restrict best,
     picked[first[k] / 8] |= 1 << (first[k] % 8);
   // The picked anchors before each byte of `picked`, then each one's
   // number in index order, as the gather meets them.
-  int16_t *before = reinterpret_cast<int16_t *>(hist);
+  using half = int16_t __attribute__((may_alias));
+  half *before = reinterpret_cast<half *>(hist);
   int16_t n = 0;
   for (int i = 0; i < ANCHORS / 8; i++) {
     before[i] = n;
