@@ -1635,10 +1635,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
   }
 
   // A join or distribute slot must hold a whole number of its participant's
-  // objects; otherwise an object straddles two shared objects and the DMA
-  // stalls. A whole-multiple slot can still hang if the producer sends fewer
-  // objects per shared object than the slot holds, but that depends on the
-  // core's loop, which the verifier can't see: this catches non-multiples only.
+  // objects, or one straddles two shared objects and the DMA stalls.
   auto elementsOf = [](Type objectFifoType) {
     return cast<MemRefType>(
                cast<AIEObjectFifoType>(objectFifoType).getElementType())
@@ -1669,7 +1666,10 @@ LogicalResult ObjectFifoLinkOp::verify() {
   auto checkSlot = [&](StringRef role, ObjectFifoCreateOp participant,
                        int64_t object, ObjectFifoCreateOp shared,
                        int64_t slotBytes, ArrayAttr offsets) -> LogicalResult {
-    if (slotBytes <= 0 || slotBytes % object == 0)
+    if (object <= 0)
+      return emitOpError() << role << " @" << participant.name().getValue()
+                           << " has empty objects";
+    if (slotBytes % object == 0)
       return success();
     std::string offsetText;
     llvm::raw_string_ostream os(offsetText);
@@ -1699,8 +1699,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
                << idx << " would transfer " << len << " elements";
 
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    // A slot that comes out empty or negative (offsets not ascending) is sized
-    // from its participant by the lowering, so it cannot mismatch.
     for (auto [fifoIn, slot] :
          llvm::zip(getInputObjectFifos(), getJoinTransferLengths())) {
       int64_t object =
@@ -1751,9 +1749,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
               "output", fifoOut,
               bytesOf(fifoOut.getElemType(), elementsOf(fifoOut.getElemType())),
               fifoIn,
-              slot > 0
-                  ? bytesOf(fifoIn.getElemType(), sentElements(fifoOut, slot))
-                  : 0,
+              bytesOf(fifoIn.getElemType(), sentElements(fifoOut, slot)),
               getDstOffsets())))
         return failure();
     }
