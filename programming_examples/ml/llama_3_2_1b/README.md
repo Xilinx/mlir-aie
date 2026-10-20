@@ -3,20 +3,19 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 # Llama 3.2 1B (INT8) decode on AI Engine (IRON)
 
-A fully on-NPU INT8 decode of Llama 3.2 1B on the AMD Strix Halo NPU2 (AIE2P),
-written in the high-level IRON Python API. One `aiecc`-built xclbin runs the whole
-per-token decode on the AI Engine array — all 16 transformer layers, attention with
-a growing KV cache, the tied 262 MB lm_head, the sampler, and the token→embedding
-feedback — with the host doing only weight I/O. The W8A8-dynamic INT8 recipe tracks
-the reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 %
-on prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
+An INT8 decode of Llama 3.2 1B on an AMD NPU2 (AIE2P), written in the IRON
+Python API and compiled with `@iron.jit` to one full ELF. Each dispatch runs the
+whole per-token decode on the AI Engine array for `PT` tokens: all 16 transformer
+layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
+and the token→embedding feedback. The W8A8-dynamic INT8 recipe tracks the
+reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % on
+prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
 beyond quantization.
 
-> Status: the decode path is complete and validated on hardware. RMSNorm,
-> SiLU×up, RoPE, FlowKV attention, and the top-k sampler's hot path are
-> vectorized (2.21 → 4.71 tok/s at N=16). Prefill (batched M>1), the unplaced
-> layout, and further per-kernel tuning are the open follow-ups — see
-> [What's next](#whats-next).
+> Status: decode is validated on hardware at 91.2 ms/token (10.97 tok/s) at
+> N=16. Prefill, RoPE tables on the device, and a KV cache longer than 128 are
+> the open stages — see [On the device, and on the host](#on-the-device-and-on-the-host)
+> and [What's next](#whats-next).
 
 ---
 
@@ -32,7 +31,7 @@ the generated token ids.
 
 ```
                        ┌──────────────── one device dispatch, PT tokens ────────────────┐
-  host: xin(token0) ──►│ seed-mux ─► router ─► [ rmsnorm ─ q/k/v ─ rope ─ KV-append ─    │
+  DDR: seed(token0) ──►│ seed-mux ─► router ─► [ rmsnorm ─ q/k/v ─ rope ─ KV-append ─    │
                        │     ▲                   flowkv-attn ─ o_proj ─ +res ─ rmsnorm ─  │
                        │     │                   gate/up ─ silu ─ down ─ +res ] ×16 ─►    │
                        │     │                 final_norm ─► lm_head GEMM + top-k insert  │
@@ -40,6 +39,7 @@ the generated token ids.
                        │     └──────────── embed seed feeds back on-chip ────────────────┤
   host: weights (DDR) ─────────────────────────► streamed per token ─────────────────────►
   host: tokens out  ◄──────────────────────────── PT packed records ◄─────────────────────┘
+  DDR: next seed    ◄──────────────────────────── last token's seed ◄──────────────────────┘
 ```
 
 Key design pieces (each validated bit-exact in isolation before integration):
@@ -51,32 +51,41 @@ Key design pieces (each validated bit-exact in isolation before integration):
   row}` as the table flows by **once**, then emits both the token id and the
   next-token embedding seed. No second pass, one shim channel.
 
-- **On-chip token feedback** (`LLAMA_CHAIN_PERSIST=1`). The sampled token's embed
-  seed feeds back to layer 0 **on-chip** via a depth-2 self-feedback fifo + a
-  seed-mux (host seed for token 0, on-chip feedback for tokens 1..PT-1). The host
-  does zero compute and zero token handling between tokens.
+- **On-chip token feedback** (`--persist`). The sampled token's embed seed feeds
+  back to layer 0 **on-chip** via a depth-2 self-feedback fifo + a seed-mux (the
+  seed buffer for token 0, on-chip feedback for tokens 1..PT-1). The last token's
+  seed goes back to the seed buffer in DDR, so the next dispatch continues from
+  it; the host writes the seed buffer only for the first dispatch. (DDR, not core
+  memory: after the driver's 5 s autosuspend the cores come back reset.)
 
-- **Growing KV cache** (`LLAMA_CHAIN_PERSIST_GROW=1`). Each token appends its K/V
+- **Growing KV cache** (`--persist-grow`). Each token appends its K/V
   on-chip at an advancing position (the append writes slot `T_used` and bumps it,
   so **position advances on-device**; the host never computes a position) and
   attention widens to include the new slot. Rope advances with position too. This
   is real autoregressive decode — context accumulates.
 
-- **Resident KV cache** (`LLAMA_CHAIN_PERSIST_RESIDENT=1`). The KV body lives in
+- **Resident KV cache** (`--persist-resident`). The KV body lives in
   worker-local buffers on the attention tiles, seeded once on token 0 then
   read-modify-written in place — **zero per-token KV DMA, host streams only
   weights**. Fits a compute tile at small `N_LAYERS` (32 KB/head at N=2); the full
   16-layer cache (256 KB/head) needs a memtile (the one remaining residency item).
 
-### Single dispatch, single xclbin, fully on-NPU
+### On the device, and on the host
 
-For a given config, decode is one `aiecc`-built xclbin and one device dispatch that
-generates `PT` tokens. Every transformer op, the lm_head, the sampler, and the
-token feedback run as AI Engine kernels. The host builds the static instruction
-stream and supplies/reads DDR buffers; it performs no per-token compute. The only
-runtime-dynamic value in the loop — the sampled token — stays on-chip via the
-feedback fifo, which is what makes it a genuine autoregressive loop rather than a
-static replay.
+Every transformer op, the lm_head, the sampler, the token feedback and the KV
+append run as AI Engine kernels, and one compiled design serves every dispatch.
+The host (`DispatchSession` in `llama_npu.py`) keeps one hardware context and,
+per dispatch, writes the design's ScratchpadParameters. What the host still does,
+each to move to the device in the stages of the one-design restructure:
+
+- **RoPE tables.** The test computes each position's cos/sin in numpy and writes
+  them into the weight blob before each dispatch.
+- **The KV half.** The KV buffer is two halves that tokens alternate between;
+  the host passes the half a dispatch starts in (`kv_even`/`kv_odd`). A
+  block-major cache appended in place replaces this.
+- **Prefill.** There is none yet: the starting 64-token context is a fixture the
+  numpy oracle builds.
+- **Tokenization**, which stays on the host.
 
 ### INT8 recipe (W8A8-dynamic)
 
@@ -93,35 +102,25 @@ static replay.
 
 ## 2. Performance
 
-Measured on hardware (`--time` on the persist tests; device clock via
-`result.npu_time`). Per-token = dispatch time / PT.
+Measured on NPU2 (Strix) with `test_chain_persist_grow_mh.py --time`
+(`taskset -c 2-4`, 5 warmup + 10 timed dispatches, median); per-token =
+dispatch time / PT, PT=4.
 
-| Config | per-token | tok/s | bytes/token | DMA floor | ratio |
-|---|---|---|---|---|---|
-| **N=16 (full model)** | **212 ms** | **4.71** | 1253 MB | 10.45 ms | **20× over floor** |
-| N=2 (bring-up) | 69 ms | 14.48 | 389 MB | 3.24 ms | 21× over floor |
+| Config | per-token | tok/s | bytes/token |
+|---|---|---|---|
+| **N=16 (full model)** | **91.2 ms** | **10.97** | 1253 MB |
+| N=2 (bring-up) | 30.3 ms | 33.0 | 389 MB |
 
-RMSNorm, SiLU×up, RoPE, FlowKV attention, and the top-k sampler's hot insert
-path are now vectorized (`aie::mac`/`aie::mul` over 64-lane int8/fp32 groups,
-scalar only where AIE2P has no vector form — LUT gathers and the final
-round-to-i8); N=16 moved from 452 ms/token (2.21 tok/s) to 212 ms/token, a
-~2.1× speedup, with ratio-over-DMA-floor dropping from 43× to 20×.
+N=16 went from 452 ms/token to 212 ms by vectorizing the kernels, then to
+91.2 ms by moving the remaining scalar fp32 epilogues onto vectors (bit-exact),
+taking the lm_head's top-k insert off soft float, and double-buffering the
+up-projection weights.
 
-**Decode is still compute-bound, not DMA-bound** — the harness's own
-compute/DMA-floor ratio still reads "COMPUTE-bound (vectorization is the
-lever)" at both configs, just a smaller gap than before. The weight prefetch
-(depth-2 per-layer weight fifos stream layer L+1 while layer L computes) is
-already hiding the DMA; the remaining wall is kernel compute. The ratio still
-worsens with depth (more layers per token), which is why N=16 is further from
-the floor than N=2.
-
-**Vectorization remains the lever for the rest of the gap.** For reference,
-FastFlowLM (tuned, vectorized, decode-on-NPU) reaches 60–89 tok/s on this
-model — vectorizing the five kernels above roughly halved the gap (from
-~30–40× to ~13–19×); closing the rest likely needs the unplaced layout (Phase
-7, better placement can shrink dispatch overhead) and further per-kernel
-tuning (loop pipelining, the LUT-gather techniques `flm_gemma4`'s
-bank-replication trick points at) rather than a new architectural change.
+**What bounds it now.** With every kernel replaced by a no-op, a token still
+takes 69 ms at N=16: each weight stream has one shim lane (about 13.7 GB/s) and
+only one stream runs at a time. The rest is compute the streams wait on. A
+shared 8-lane GEMV array (`aie2_gemv_array.py`, measured at 52 GB/s) is the
+next step; FastFlowLM reaches 60–89 tok/s on this model.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
 > **TTFT** (time to first token) and is a separate, not-yet-built phase.
@@ -193,7 +192,7 @@ prompts are the harder case — hence 75 % there.)
 ```bash
 cd <mlir-aie>
 source /opt/xilinx/xrt/setup.sh
-source programming_examples/ml/llama_3_2_1b/ironenv/bin/activate
+source ironenv/bin/activate
 source utils/env_setup.sh install/
 cd programming_examples/ml/llama_3_2_1b
 ```
@@ -206,9 +205,11 @@ override it. The INT8 weights live in `data/`, generated from it by
 `gen_llama_data.py`. The bf16 reference reads the safetensors directly.
 
 Each test compiles the design it checks with `@iron.jit` (cached under
-`NPU_CACHE_HOME`, so a rerun reuses it), or runs a prebuilt one given
-`--xclbin`/`--instr`. Each design's own CLI (`python aie2_*.py ...
---xclbin-path X --insts-path Y`) compiles it ahead of time.
+`NPU_CACHE_HOME`, so a rerun reuses it). The decode test,
+`test_chain_persist_grow_mh.py`, runs a full ELF (or a prebuilt one, `--elf`,
+from `python aie2_chain_dynscale_mh.py ... --full-elf-path X`); the others run
+an xclbin (or a prebuilt one, `--xclbin`/`--instr`, from a design CLI's
+`--xclbin-path X --insts-path Y`).
 
 > **Always set `LLAMA_CHAIN_N=16`** for any accuracy/timing/baseline run.
 > `N_LAYERS` defaults to 2 (a fast bring-up toy); a 2-layer run silently produces
@@ -239,6 +240,10 @@ LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py
 
 # per-token TPS at full config (reuses the compiled design)
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --time
+
+# a generation loop: 10 dispatches carrying the KV cache and seed, with the
+# NPU left idle (and suspended) between them
+LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --dispatches 10 --idle-s 6
 ```
 
 ### Resident-KV decode (host streams only weights, N=2)
@@ -258,22 +263,25 @@ python test_silu_mul_int8.py --selfcal   # and test_flowkv.py --dyn, ...
 
 ---
 
-## Configuration flags (env)
+## Configuration
 
-The chain tests read these; each test picks its own mode.
+The chain tests read these from the environment and pass them to the design as
+CompileTime values; each test picks its own mode.
 
-| Flag | Meaning |
+| Variable | Meaning |
 |---|---|
 | `LLAMA_CHAIN_N` | number of decoder layers (**set 16** for real runs; default 2) |
 | `LLAMA_CHAIN_PT` | tokens generated per dispatch (persistent loop; default 4) |
 | `LLAMA_CHAIN_T` | KV cache length (default 128) |
 | `LLAMA_CHAIN_ONESTREAM_KSET` | the one-stream sampler's resident top-k set size (default 8) |
-| `LLAMA_SAMPLE_TEMP` / `_TOPK` / `_SEED` | sampler params (temp≤0 = greedy) |
 
-The chain modes are `build()`'s CompileTime flags in `aie2_chain_dynscale_mh.py`
-(`--sample`, `--onestream`, `--persist`, `--persist-grow`, `--persist-resident`
-on its CLI). Each `PERSIST*` flag is a strict superset of the one above; the
-default (all off) chain stays byte-identical.
+Everything else that changes the build is a CompileTime value of `build()` in
+`aie2_chain_dynscale_mh.py`, also on its CLI: the chain modes (`--sample`,
+`--onestream`, `--persist`, `--persist-grow`, `--persist-resident`; each
+`PERSIST*` flag a strict superset of the one above), the sampler
+(`--sample-temp`, `--sample-topk`, `--sample-seed`; temp ≤ 0 is greedy) and
+`--pingpong-depth`. `test_compile_time_keys.py` checks that each value is part
+of the JIT cache key.
 
 ---
 
@@ -305,17 +313,14 @@ accumulators, and full-precision fp32 glue chains.
 
 ## What's next
 
-- **Unplaced layout** — `placement.py` and the chain builder's explicit
-  `Tile(...)` calls still hand-assign all 32 compute tiles; letting the
-  placer derive layout from the dataflow graph (as mobilenet and the other
-  current examples do) is the remaining architectural change, and may shrink
-  dispatch overhead further.
-- **Further per-kernel tuning** — decode is still 20× compute-bound at N=16
-  after vectorizing (down from 43×). Loop pipelining hints and LUT-gather
-  techniques (e.g. `flm_gemma4`'s bank-replicated gather) are the likely next
-  gains; a per-stage NOOP ablation (mirrors `yolo26n/scripts/ablate_chain.sh`)
-  would pinpoint which kernel now dominates.
-- **Memtile-resident KV at N=16** — the last residency step (256 KB/head → memtile;
-  the host-ferried growing mode already scales to N=16 today).
-- **Prefill overlay** — batched M>1 attention + GEMM for TTFT (a separate phase;
-  decode is the focus here).
+One compiled design for decode, token-by-token prefill and batched prefill, with
+the per-call values (tokens per pass, position, live context, layers) as
+ScratchpadParameters:
+
+- **RoPE on the device**: the table in the weight blob, indexed by position.
+- **A long KV cache**: block-major in DDR up to 128k tokens, appended in place,
+  with block-wise attention (`aie2_attn_block.py`).
+- **The shared 8-lane GEMV array** for every projection and the lm_head, with
+  the glue fused into its epilogues; the old chain modes retire with it.
+- **Prefill** on the device, token by token and then batched, with TTFT and
+  tok/s measured end to end.
