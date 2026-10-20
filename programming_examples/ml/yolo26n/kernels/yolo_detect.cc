@@ -86,20 +86,18 @@ static int popcount8(uint32_t byte) {
 
 extern "C" {
 
-// best: per anchor, the rank of its best class score; hist counts them per
-// rank (zeroed at chunk 0). ONNX Runtime's float32 sigmoid is not monotonic
+// best: per anchor, the rank of its best class score. ONNX Runtime's
+// float32 sigmoid is not monotonic
 // where it saturates, so the scores' ranks, not the logits, are compared.
 // `rank` holds each level's ranks of the 256 logits, then their peaks (the
 // highest rank of any logit up to each): an anchor's highest logit has its
 // best score when its rank is the peak, otherwise every class is ranked.
 void yolo_detect_max(const int8_t *__restrict records,
                      const int16_t *__restrict rank, int16_t *__restrict best,
-                     int32_t *__restrict hist, int32_t chunk) {
+                     int32_t chunk) {
   event0();
   static_assert(CHUNK * 8 % 32 == 0, "a chunk's group is whole vectors");
-  if (chunk == 0)
-    for (int r = 0; r < RANKS; r++)
-      hist[r] = 0;
+  static_assert(CHUNK <= 32, "a chunk's anchors are one word of bits");
   const int level = level_of(chunk * CHUNK);
   const int16_t *ranks = rank + level * 256 + 128;
   const int16_t *peaks = rank + (3 + level) * 256 + 128;
@@ -115,28 +113,35 @@ void yolo_detect_max(const int8_t *__restrict records,
     m = aie::max(m, aie::shuffle_down_rotate(m, 1));
     aie::store_v(most + j * 32, m);
   }
+  int16_t *out = best + chunk * CHUNK;
+  uint32_t ranked = 0;
+  AIE_PREPARE_FOR_PIPELINING
   for (int a = 0; a < CHUNK; a++) {
     const int8_t m = most[a * 8];
-    int16_t top = ranks[m];
-    if (top != peaks[m])
-      for (int g = 0; g < CLASSES / 8; g++) {
-        const int8_t *group = records + (g * CHUNK + a) * 8;
-        AIE_LOOP_UNROLL_FULL
-        for (int l = 0; l < 8; l++) {
-          const int16_t r = ranks[group[l]];
-          top = r > top ? r : top;
-        }
+    out[a] = ranks[m];
+    ranked |= uint32_t(ranks[m] != peaks[m]) << a;
+  }
+  // The anchors whose highest logit is not their best score: every class.
+  while (ranked) {
+    const int a = __builtin_ctz(ranked);
+    ranked &= ranked - 1;
+    int16_t top = out[a];
+    for (int g = 0; g < CLASSES / 8; g++) {
+      const int8_t *group = records + (g * CHUNK + a) * 8;
+      AIE_LOOP_UNROLL_FULL
+      for (int l = 0; l < 8; l++) {
+        const int16_t r = ranks[group[l]];
+        top = r > top ? r : top;
       }
-    best[chunk * CHUNK + a] = top;
-    hist[top]++;
+    }
+    out[a] = top;
   }
   event1();
 }
 
-// first: the KEEP anchors in score order, from max's ranks and their
-// counts. picked: one bit per anchor. row: for the k-th picked anchor by
-// index, its place in `first`. count: the gather's running count of picked
-// anchors, reset here.
+// first: the KEEP anchors in score order, from max's ranks. picked: one bit
+// per anchor. row: for the k-th picked anchor by index, its place in
+// `first`. count: the gather's running count of picked anchors, reset here.
 void yolo_detect_select(const int16_t *__restrict best,
                         int32_t *__restrict hist, int16_t *__restrict first,
                         uint8_t *__restrict picked, int16_t *__restrict row,
@@ -144,15 +149,42 @@ void yolo_detect_select(const int16_t *__restrict best,
   event0();
   static_assert(ANCHORS / 8 <= 2 * RANKS, "the prefix counts reuse hist");
   static_assert(ANCHORS % 16 == 0, "ranks are scanned 16 at a time");
-  // hist[r] becomes the first place of rank r, ranks taken from the top;
-  // only anchors of rank `low` or higher take a place below KEEP.
+  // `low`: the highest rank at least KEEP anchors reach; only anchors of
+  // that rank or higher take a place below KEEP.
+  int lo = 0, hi = RANKS - 1;
+  while (lo < hi) {
+    const int t = (lo + hi + 1) / 2;
+    aie::vector<int16_t, 16> reach = aie::zeros<int16_t, 16>();
+    for (int i = 0; i < ANCHORS; i += 16)
+      reach =
+          aie::add(reach, aie::select(aie::zeros<int16_t, 16>(),
+                                      aie::broadcast<int16_t, 16>(1),
+                                      aie::ge(aie::load_v<16>(best + i),
+                                              aie::broadcast<int16_t, 16>(t))));
+    if (aie::reduce_add(reach) >= KEEP)
+      lo = t;
+    else
+      hi = t - 1;
+  }
+  const int16_t low = lo;
+  // hist[r], for the ranks from `low` up: the first place of rank r, ranks
+  // taken from the top, counted over the anchors that reach `low`.
+  for (int r = low; r < RANKS; r++)
+    hist[r] = 0;
+  for (int i = 0; i < ANCHORS; i += 16) {
+    uint32_t bits =
+        aie::ge(aie::load_v<16>(best + i), aie::broadcast<int16_t, 16>(low))
+            .to_uint32();
+    while (bits) {
+      const int a = i + __builtin_ctz(bits);
+      bits &= bits - 1;
+      hist[best[a]]++;
+    }
+  }
   int32_t place = 0;
-  int16_t low = 0;
-  for (int r = RANKS - 1; r >= 0; r--) {
+  for (int r = RANKS - 1; r >= low; r--) {
     const int32_t n = hist[r];
     hist[r] = place;
-    if (place < KEEP)
-      low = r;
     place += n;
   }
   for (int i = 0; i < ANCHORS; i += 16) {

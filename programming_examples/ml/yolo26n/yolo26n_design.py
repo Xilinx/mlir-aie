@@ -1698,7 +1698,7 @@ class SegmentDesign:
         k_max = self.function(
             "yolo_detect_max",
             "yolo_detect.cc",
-            [row(chunk * 80), ranks_t, best_t, words_t, np.int32],
+            [row(chunk * 80), ranks_t, best_t, np.int32],
             flags,
         )
         bind = k_max.object_file.bind
@@ -1751,7 +1751,7 @@ class SegmentDesign:
             top = view(cand, 0, anchors, np.int16)
             for i in range_(n):
                 r = cls.acquire(1)
-                k_max(r, ranks, top, hist, index_cast(i32(), i))
+                k_max(r, ranks, top, index_cast(i32(), i))
                 cls.release(1)
             k_select(top, hist, first, picked, rows, count)
             for i in range_(n):
