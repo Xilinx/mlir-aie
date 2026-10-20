@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from math import lcm
 from pathlib import Path
 
 import numpy as np
@@ -60,8 +59,24 @@ MEMTILE_LAG_ROWS = 8
 # What one buffering worker's ring takes of its tile.
 BUFFER_TILE_BYTES = 48 * 1024
 # Runs of operators, as network op index ranges, that one worker computes
-# row by row (see SegmentDesign.fuse): the Detect head's P4 and P5 branches.
-FUSED = ((151, 154), (154, 156), (156, 159), (160, 162), (162, 164), (164, 167))
+# row by row (see SegmentDesign.fuse): the C3k blocks of model.6, 13, 16
+# and 19, and the Detect head's P4 and P5 branches.
+FUSED = (
+    (24, 28),
+    (28, 34),
+    (78, 82),
+    (82, 88),
+    (95, 99),
+    (99, 105),
+    (112, 116),
+    (116, 122),
+    (151, 154),
+    (154, 156),
+    (156, 159),
+    (160, 162),
+    (162, 164),
+    (164, 167),
+)
 # A conv writing more than this per image, mostly through its SiLU table at
 # about 2 cycles a byte, splits its output channels over up to 4 workers.
 SPLIT_BYTES = 400 * 1024
@@ -1036,11 +1051,39 @@ class SegmentDesign:
         # A row another worker sends that is read only as it arrives is read
         # in place, in the fifo's own element.
         direct = {name for name in external if need[name] == 1}
-        rings = {name: rows for name, rows in need.items() if name not in direct}
-        period = lcm(*rings.values()) if rings else 1
-        if period > 8:
-            rings = {name: 1 << (rows - 1).bit_length() for name, rows in rings.items()}
-            period = max(rings.values())
+        # A ring holds the bytes of a row its readers read: a tensor the run
+        # makes, whole; another worker's, the span of the parts read.
+        span: dict[str, tuple[int, int]] = {}
+        for op, inputs in steps:
+            span[op.dst.name] = (0, op.dst.row_bytes)
+        for op, inputs in steps:
+            for parts, _ in inputs:
+                for part in parts:
+                    name = part.source.name
+                    if name not in made:
+                        lo, hi = span.get(name, (part.offset, part.offset))
+                        span[name] = (
+                            min(lo, part.offset),
+                            max(hi, part.offset + part.size),
+                        )
+        kept = {name: hi - lo for name, (lo, hi) in span.items()}
+        wanted = {name: rows for name, rows in need.items() if name not in direct}
+
+        # The steady state rolls `period` steps, each ring the least divisor of
+        # it that holds its rows, so every slot is known; the period is the
+        # one, up to 8 steps, that takes the least memory.
+        def sized(period: int) -> dict[str, int]:
+            return {
+                name: next(d for d in range(rows, period + 1) if period % d == 0)
+                for name, rows in wanted.items()
+            }
+
+        most = max(wanted.values(), default=1)
+        period = min(
+            range(most, max(most, 8) + 1),
+            key=lambda n: sum(rows * kept[name] for name, rows in sized(n).items()),
+        )
+        rings = sized(period)
         if len(external) > 2:
             raise NotImplementedError(f"{group[0].name}: a core has two input channels")
 
@@ -1052,29 +1095,30 @@ class SegmentDesign:
                 at[key] = len(args)
                 args.append(value)
 
+        # All inputs in one schedule, so two that share an upstream stream
+        # hold the rows one waits for while the other's path catches up.
+        y = np.arange(height)
+        depths: dict[str, int] = {}
+        for out in outs:
+            windows = [
+                (tensors[name], y + lead[name] - lead[out], y + lead[name] - lead[out])
+                for name in external
+            ]
+            for name, depth in self.schedule(tensors[out], windows).items():
+                depths[name] = max(depths.get(name, 0), depth)
         for name in external:
-            y = np.arange(height)
             source = tensors[name]
-            depth = max(
-                self.schedule(
-                    tensors[out],
-                    [(source, y + lead[name] - lead[out], y + lead[name] - lead[out])],
-                )[name]
-                for out in outs
-            )
-            arg(("in", name), self.consumer(source, depth, 1))
+            arg(("in", name), self.consumer(source, depths[name], 1))
             if name not in direct:
-                arg(
-                    ("copy", source.row_bytes),
-                    self.copier(Part(source, 0, source.row_bytes)),
-                )
+                lo, _ = span[name]
+                arg(("copy", kept[name]), self.copier(Part(source, lo, kept[name])))
         for name in outs:
             arg(("out", name), self.fifo(tensors[name]).prod(depth=2))
             if name in rings:
                 size = tensors[name].row_bytes
                 arg(("copy", size), self.copier(Part(tensors[name], 0, size)))
         for name, rows in rings.items():
-            arg(("ring", name), Buffer(row(rows * tensors[name].row_bytes)))
+            arg(("ring", name), Buffer(row(rows * kept[name])))
         calls = {}
         for op, inputs in steps:
             match op:
@@ -1146,9 +1190,11 @@ class SegmentDesign:
                         if part is None or part.whole
                         else view(element, offset, length)
                     )
+                if part is None:
+                    offset, length = span[name][0], kept[name]
                 return view(
                     values[at[("ring", name)]],
-                    (r % rings[name]) * size + offset,
+                    (r % rings[name]) * kept[name] + offset - span[name][0],
                     length,
                 )
 
@@ -1162,7 +1208,10 @@ class SegmentDesign:
                         if name in direct:
                             arrived[name] = x
                             continue
-                        values[at[("copy", tensors[name].row_bytes)]](x, slot(name, r))
+                        lo = span[name][0]
+                        if kept[name] != tensors[name].row_bytes:
+                            x = view(x, lo, kept[name])
+                        values[at[("copy", kept[name])]](x, slot(name, r))
                         handle.release(1)
                 for op, inputs in steps:
                     name = op.dst.name
