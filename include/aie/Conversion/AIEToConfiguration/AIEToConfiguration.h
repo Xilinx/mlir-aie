@@ -64,8 +64,7 @@ mlir::LogicalResult insertConfigOps(
 // and memref dialects must be loaded.
 mlir::LogicalResult inlineWriteConfigs(mlir::ModuleOp module);
 
-// Insert operations that disable the stream-switch circuits, packet ports and
-// cores `device`'s configuration enabled and reset its DMA channels.
+// Insert the ops of `device`'s teardown (see aiex.npu.write_teardown).
 mlir::LogicalResult
 generateAndInsertTeardownOps(mlir::OpBuilder &builder,
                              xilinx::AIE::DeviceOp device,

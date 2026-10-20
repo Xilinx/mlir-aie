@@ -4,8 +4,7 @@
 # REQUIRES: ryzen_ai_npu2, xrt_python_bindings, peano
 # RUN: %run_on_npu2% %pytest %s
 
-# The reconfigure_loadpdi_iron program with teardown and an init entry. The host
-# runtime runs main:reconfig_init on each hardware context it creates.
+# The reconfigure_loadpdi_iron program with teardown and an init entry.
 
 import aie.iron as iron
 import numpy as np

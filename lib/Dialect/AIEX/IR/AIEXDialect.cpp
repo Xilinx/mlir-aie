@@ -1967,7 +1967,6 @@ AIEX::NpuWriteTeardownOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       symbolTable.lookupSymbolIn(scope, getDeviceRefAttr()));
   if (!device)
     return emitOpError() << getDeviceRefAttr() << " is not a device";
-  // A shim DMA channel has no reset.
   AIE::DMAStartOp shimStart;
   device.walk([&](AIE::DMAStartOp start) {
     if (!isa<AIE::ShimDMAOp>(start->getParentOp()))

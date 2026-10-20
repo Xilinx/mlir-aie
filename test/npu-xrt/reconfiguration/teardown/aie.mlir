@@ -3,10 +3,10 @@
 
 // Three configurations of one pipeline, host -> memtile (0, 1) -> core (0, 2) ->
 // host, differing in the order the memtile hands each 16-element slice to the
-// core; configuration i writes in[order_i[m]] + 100 to out[m]. Each core waits
-// for up to 8 buffers, so the memtile's relay channel is still busy when the
-// next configuration starts. Loading the next ELF resets the core tile, but
-// only the teardown resets the memtile's channel.
+// core; configuration i writes in[order_i[m]] + 100 to out[m]. Each core loops
+// forever, so the memtile's relay channel is still busy when the next
+// configuration starts. Loading the next ELF resets the core tile, but only the
+// teardown resets the memtile's channel.
 
 module {
   aie.device(npu2) @main {

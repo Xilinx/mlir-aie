@@ -296,13 +296,9 @@ class XRTHostRuntime(HostRuntime):
     def _run_init_entry(context, init_name: str | None, kernel_name: str) -> None:
         """Run the init entry ``init_name``, if any, on a new hardware context.
 
-        ``init_name`` is ``NPUKernel.init_kernel_name``, set only when the
-        build added the entry, never for a design's own sequence named
-        ``reconfig_init``.
-
         Args:
             context: The hardware context, just created from the full ELF.
-            init_name: The ``"<device>:reconfig_init"`` entry, or ``None``.
+            init_name: ``NPUKernel.init_kernel_name``.
             kernel_name: The ``"<device>:<sequence>"`` kernel being loaded.
 
         Raises:
@@ -818,11 +814,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         gc.collect()
 
     def _run_init_entry(self, context, init_name: str | None, kernel_name: str) -> None:
-        """Run the init entry as `XRTHostRuntime._run_init_entry` does.
-
-        If it fails, the array state is unknown, so the context is evicted and
-        the next load creates a new one.
-        """
+        """Evict the context if its init entry fails, as the array state is unknown."""
         try:
             super()._run_init_entry(context, init_name, kernel_name)
         except Exception:

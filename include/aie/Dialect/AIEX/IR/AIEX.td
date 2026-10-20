@@ -1341,9 +1341,8 @@ def AIE_NpuWriteConfigOp
     sequence's first `load_pdi`, that is its last one: the host runs the
     sequence again on each dispatch. An empty device may hold runtime sequences
     with no ops, such as the `@configure` that `convert-aie-to-transaction`
-    adds. The firmware may skip the reset if every configuration written since
-    that PDI was loaded is torn down by an `aiex.npu.write_teardown`, and this
-    op may follow a `write_teardown` in place of the reset.
+    adds. A `write_teardown` may stand in for the reset, and a skipped reset is
+    fine if every configuration since that PDI was loaded is torn down.
 
     Example:
     ```
@@ -1362,18 +1361,13 @@ def AIE_NpuWriteTeardownOp
                                          SymbolUserOpInterface>]> {
   let summary = "Undo the configuration a write_config wrote";
   let description = [{
-    Writes the register writes that undo what the configuration of
-    `device_ref` enabled: they disable its stream-switch circuits, packet
-    ports and cores, and reset its DMA channels. The array is then ready for
-    the next `aiex.npu.write_config` without a reset. A shim DMA channel has no
-    reset, so `device_ref` must not start one itself.
+    Disables the stream-switch circuits, packet ports and cores the
+    configuration of `device_ref` enabled and resets its DMA channels, so the
+    next `aiex.npu.write_config` needs no reset. A shim DMA channel has no
+    reset (aie-rt's `xaie_dma.c`), so `device_ref` must not start one itself.
 
     It must follow the `aiex.npu.write_config` of `device_ref`, with no
-    `load_pdi` between. Like that op, the NPU translation emits its writes,
-    generating them once per device, and `aie-expand-load-pdi` with
-    `inline-config=true` writes them into the sequence instead.
-    `aie-expand-load-pdi` with `teardown=true` places one before the next
-    `load_pdi` after each configuration, or at the sequence's end.
+    `load_pdi` between, and is translated and inlined as that op is.
 
     Example:
     ```

@@ -64,10 +64,8 @@ class NPUKernel:
                 compiled dispatch bridge (``dispatch.so``) for a
                 DispatchTime[T] design. Required (non-None) whenever
                 ``dispatch_params`` is non-empty.
-            init_entry (bool, optional): Whether the full ELF has the
-                ``"<device>:reconfig_init"`` entry aiecc's
-                ``--reconfig-init-entry`` builds, which the host runtime runs on
-                each new hardware context before this kernel. Defaults to False.
+            init_entry (bool, optional): Whether the full ELF has the entry
+                aiecc's ``--reconfig-init-entry`` builds. Defaults to False.
         """
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
@@ -122,8 +120,7 @@ class NPUKernel:
         """Get the full ELF's init entry, or ``None``.
 
         Returns:
-            str | None: The ``"<device>:reconfig_init"`` entry the host runtime
-            runs on each new hardware context before this kernel.
+            str | None: The ``"<device>:reconfig_init"`` entry.
         """
         if not self._init_entry:
             return None

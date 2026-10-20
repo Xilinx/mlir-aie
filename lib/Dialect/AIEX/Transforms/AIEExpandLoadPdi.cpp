@@ -417,8 +417,8 @@ verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
           "teardown is not implemented for control packet reconfiguration");
     if (mode == AIEX::ExpandMode::none)
       continue;
-    // A shim DMA channel has no reset, so no teardown can stop one a
-    // configuration starts itself.
+    // write_teardown's verifier checks this too, but inline-config leaves no
+    // write_teardown to verify.
     auto dev = module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
     if (dev && dev.walk([](AIE::DMAStartOp start) {
                     if (!isa<AIE::ShimDMAOp>(start->getParentOp()))
@@ -522,7 +522,6 @@ struct AIEExpandLoadPdiPass
                                clInitEntry, initEntries.getArrayRef())))
       return signalPassFailure();
 
-    // Transform load_pdi ops
     SmallVector<CtrlPktReload> ctrlPktReloads;
     // The kind of each sequence's last load, which left the array as it is.
     llvm::DenseMap<Operation *, std::optional<AIEX::ExpandMode>> arrayState;
@@ -587,9 +586,8 @@ struct AIEExpandLoadPdiPass
     if (clInlineConfig && failed(AIE::inlineWriteConfigs(module)))
       return signalPassFailure();
 
-    // Under teardown the firmware skips a reset only if no other PDI was loaded
-    // since the same one, so every configuration since was torn down and the
-    // array is as the reset leaves it. Nothing needs the append.
+    // Under teardown a skipped reset follows only torn-down configurations, as
+    // write_config's verifier checks, so nothing needs the append.
     if (clTeardown)
       return;
 

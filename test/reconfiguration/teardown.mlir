@@ -17,8 +17,8 @@
 // memtile's MM2S channel 1. Its teardown, where the next configuration starts,
 // zeroes the circuit's master and slave ports (2355204, 2355480), the packet
 // route's (2355200, 2355484) and its slot (2355824), and pulses the reset bit
-// of the memtile channel (1705528). Only the first configuration keeps its reset, and nothing is
-// appended.
+// of the memtile channel (1705528). Only the first configuration keeps its
+// reset, and nothing is appended.
 
 // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<16xi32>)
 // CHECK-DAG:  %[[A0:.*]] = arith.constant 2355204 : i32

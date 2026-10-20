@@ -7,9 +7,6 @@
 
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true" --verify-diagnostics %s
 
-// A shim DMA channel has no reset, so teardown refuses a configuration that
-// starts one itself.
-
 module {
   aie.device(npu2_1col) @cfg {
     %shim = aie.tile(0, 0)
