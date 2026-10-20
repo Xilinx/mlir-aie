@@ -32,10 +32,10 @@ Interfaces, per layer unit and core c (one output object of OUT_BYTES each):
   `--single-pass` also runs the vocabulary through one core
   (`build_lm_single`) and requires its seed and token to equal the merge's.
   `--per-call` builds build_lm once with PER_CALL and dispatches it with
-  several (temperature, top_k, seed): each dispatch writes the five int32
-  ScratchpadParameters `sample_param_values` gives (the float32 temperature
-  bits and the 32-bit seed as 16-bit halves, since the scratchpad keeps 30
-  bits a word; top_k as is), and its token and seed must equal the
+  several (temperature, top_k, seed): each dispatch writes the three int32
+  ScratchpadParameters `sample_param_values` gives (the scratchpad keeps 30
+  bits a word: the float32 temperature bits' and the 32-bit seed's low 30
+  bits, then their top two bits and top_k), and its token and seed must equal the
   CompileTime build's for those values and the oracle's. The sampler draws
   from the merged set's best top_k members (by logit, then lower id); top_k
   0 means the whole set and values past KSET are rejected. `--topk-sweep`
@@ -331,6 +331,11 @@ PER_CALL_SAMPLES = [
     (500.0, 0, 5),
     (50.0, 8, 0xDEADBEEF),
     (2.0, 1, 0x7FFFFFFF),
+    # The packed words' top bits: the temperature's sign and exponent, the
+    # seed's top two bits.
+    (-2.0, 8, 0x80000000),
+    (3.0e38, 4, 0xFFFFFFFF),
+    (2.5, 8, 0xC0000001),
 ]
 
 

@@ -43,9 +43,7 @@ from aie.dialects.arith import (
     extui,
     index_cast,
     muli,
-    ori,
     remsi,
-    shli,
     shrui,
 )
 from aie.extras.types import i32, index
@@ -77,6 +75,7 @@ from aie2_gemv_array import (
     RESID_BLOCK,
     SAMPLE_PARAMS,
     lane_slots,
+    read_sample_params,
 )
 from aie2_layer_mh import (
     CS_BYTES,
@@ -308,14 +307,17 @@ def build(
     p_row = [ScratchpadParameter(f"row{t}", np.int32) for t in range(P_MAX)]
     # The sampler's, as aie2_gemv_array.sample_param_values gives them.
     p_sample = [ScratchpadParameter(name, np.int32) for name in SAMPLE_PARAMS]
-    # Each token slot starts from an embed seed the lm_head core makes of one
-    # row of an lm_head weight slot: for a prompt token, its row (gat{t} the
-    # weight slot's offset in lmw, bits 2t..2t+1 of `rows` the row), which
-    # goes to the stage's seed slot (sd{t}) as the token's input; for a
-    # generated token, any row, which goes to the stage's discard slot, the
-    # previous token's sample being its input.
+    # A prompt token's slot starts from the embed seed the lm_head core makes
+    # of the token's embed row (pg{t} 1: gat{t} is its lm_head weight slot's
+    # offset in lmw, bits 2t..2t+1 of `rows` its row in the slot), drained to
+    # the stage's seed slot as the token's input; a generated token's input is
+    # the previous token's sample. The lm_head and sampler run for a slot
+    # with lm{t} 1, and a prompt token before the prompt's last skips them.
+    # `rows` also carries pg{t} at bit 8 + t and lm{t} at bit 12 + t for the
+    # lm_head core.
     p_gat = [ScratchpadParameter(f"gat{t}", np.int32) for t in range(P_MAX)]
-    p_sd = [ScratchpadParameter(f"sd{t}", np.int32) for t in range(P_MAX)]
+    p_pg = [ScratchpadParameter(f"pg{t}", np.int32) for t in range(P_MAX)]
+    p_lm = [ScratchpadParameter(f"lm{t}", np.int32) for t in range(P_MAX)]
     p_rows = ScratchpadParameter("rows", np.int32)
 
     # --- the array ---
@@ -831,46 +833,49 @@ def build(
     def w_lm(
         c_h, c_w, c_rec, c_seed, sl, sg, ss, sr, slen, pr, n, rows, ki, kf, ke, *sample
     ):
-        # The scratchpad keeps 30 bits a word, so the 32-bit temperature bits
-        # and seed arrive as 16-bit halves.
-        t_lo, t_hi, top_k, s_lo, s_hi = (p.read() for p in sample)
-        c16 = _const_i32(16)
-        pr[0] = ori(shli(t_hi, c16), t_lo)
-        pr[1] = top_k
-        pr[2] = ori(shli(s_hi, c16), s_lo)
-        row_bits = rows.read()
+        read_sample_params(pr, sample)
+        bits = rows.read()
         for tok in range_(index_cast(index(), n.read())):
-            w = c_w.acquire(1)
-            s = c_seed.acquire(1)
-            ke(
-                w,
-                s,
-                andi(shrui(row_bits, muli(_i32(tok), _const_i32(2))), _const_i32(3)),
+            ti = _i32(tok)
+            prompt_on, lm_bit = (
+                cmpi(
+                    CmpIPredicate.ne,
+                    andi(shrui(bits, addi(ti, _const_i32(at))), _const_i32(1)),
+                    _const_i32(0),
+                )
+                for at in (8, 12)
             )
-            for i in range_(D + 8, ACT_BYTES):
-                s[i] = 0
-            c_seed.release(1)
-            c_w.release(1)
+            with if_(prompt_on):
+                w = c_w.acquire(1)
+                s = c_seed.acquire(1)
+                ke(w, s, andi(shrui(bits, muli(ti, _const_i32(2))), _const_i32(3)))
+                for i in range_(D + 8, ACT_BYTES):
+                    s[i] = 0
+                c_seed.release(1)
+                c_w.release(1)
             for _ in range_(2 * N_LAYERS):
                 c_h.acquire(1)
                 c_h.release(1)
             a = c_h.acquire(1)
-            for t in range_(LM_N_TILES):
-                w = c_w.acquire(1)
-                ki(a, w, sl, sg, ss, sr, slen, _i32(t))
-                c_w.release(1)
-            c_h.release(1)
-            o = c_rec.acquire(1)
-            kf(sl, sg, ss, sr, slen, pr, o)
-            for i in range_(D + 12, REC_BYTES):
-                o[i] = 0
-            s = c_seed.acquire(1)
-            for i in range_(D + 4):
-                s[i] = o[i]
-            for i in range_(D + 4, ACT_BYTES):
-                s[i] = 0
-            c_seed.release(1)
-            c_rec.release(1)
+            with if_(lm_bit) as lm_on:
+                for t in range_(LM_N_TILES):
+                    w = c_w.acquire(1)
+                    ki(a, w, sl, sg, ss, sr, slen, _i32(t))
+                    c_w.release(1)
+                c_h.release(1)
+                o = c_rec.acquire(1)
+                kf(sl, sg, ss, sr, slen, pr, o)
+                for i in range_(D + 12, REC_BYTES):
+                    o[i] = 0
+                s = c_seed.acquire(1)
+                for i in range_(D + 4):
+                    s[i] = o[i]
+                for i in range_(D + 4, ACT_BYTES):
+                    s[i] = 0
+                c_seed.release(1)
+                c_rec.release(1)
+            with else_(lm_on):
+                c_h.release(1)
 
     workers.append(
         Worker(
@@ -969,10 +974,11 @@ def build(
                 stage_drain(outhi, outs[name] + 4 * OUT_BYTES, 4 * OUT_BYTES),
             )
 
+        seed_at = slots[0, "o"] + STAGE_RESID
         for tok in range(P_MAX):
             on = p_on[tok]
             step(
-                on,
+                p_pg[tok],
                 (
                     wlm.fill,
                     dict(
@@ -981,15 +987,7 @@ def build(
                         offset_parameter=p_gat[tok],
                     ),
                 ),
-                (
-                    seed.drain,
-                    dict(
-                        dest=stage,
-                        tap=linear_tap(stage_total, 0, ACT_BYTES),
-                        offset_parameter=p_sd[tok],
-                        wait=True,
-                    ),
-                ),
+                stage_drain(seed, seed_at, ACT_BYTES),
             )
             for L in range(N_LAYERS):
                 o_at = slots[L, "o"]
@@ -1095,14 +1093,14 @@ def build(
             rec_c.drain(
                 rec,
                 tap=linear_tap(rec_total, tok * REC_BYTES, REC_BYTES),
-                length_parameter=on,
+                length_parameter=p_lm[tok],
                 group=out_tg,
                 wait=True,
             )
             seed.drain(
                 stage,
-                tap=linear_tap(stage_total, slots[0, "o"] + STAGE_RESID, ACT_BYTES),
-                length_parameter=on,
+                tap=linear_tap(stage_total, seed_at, ACT_BYTES),
+                length_parameter=p_lm[tok],
                 group=out_tg,
                 wait=True,
             )
@@ -1118,7 +1116,7 @@ def build(
                         WLM_SLOT,
                         WLM_SLOT,
                     ),
-                    length_parameter=on,
+                    length_parameter=p_lm[tok],
                     group=lm_tgs[j],
                     wait=True,
                 )

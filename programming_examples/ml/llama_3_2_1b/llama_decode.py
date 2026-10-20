@@ -123,10 +123,9 @@ class DecodeShape:
         self.kset = kset
         self.p_max = p_max
         self.attn_cores = attn_cores
-        slots, _, final, discard, self.stage_bytes = stage_layout(n_layers)
+        slots, _, final, _, self.stage_bytes = stage_layout(n_layers)
         self.seed_at = slots[0, "o"] + STAGE_RESID
         self.final_at = final + STAGE_RESID
-        self.discard_at = discard
         self.kv_words = kv_words(t, n_layers)
 
     @property
@@ -140,25 +139,28 @@ class DecodeShape:
             ATTN_CORES=self.attn_cores,
         )
 
-    def params(self, t0, passes, sample, prompt=()):
+    def params(self, t0, passes, sample, prompt=(), prompt_ends=True):
         """The design's ScratchpadParameters for one dispatch.
 
         Args:
             t0: The position of the dispatch's first token.
             passes: The tokens it generates, 1..p_max.
             sample: The sampler's (temperature, top_k, seed).
-            prompt: Per token slot, the prompt token it inputs, or None (or
-                past the end) to input the previous token's sample.
+            prompt: The prompt tokens the first slots input; the others
+                input the previous token's sample.
+            prompt_ends: Whether the last of `prompt` is the prompt's last
+                token: the lm_head and sampler run for it and every
+                generated token, and skip the prompt tokens before it.
 
         Returns:
             The parameter values by name: passes; t0; its RoPE table row's
             offset; per token slot t < p_max, whether it runs (pass{t}) and,
             for a token at position p = t0 + t, the KV blocks it reads
             (kvb{t}) and its row's word offset within a (layer, half) region
-            (row{t}); the sampler's; per token slot, the lm_head weight slot
-            (gat{t}) and its row (in `rows`) of the slot's prompt token, and
-            where the seed made of it goes (sd{t}): the stage's seed slot,
-            or for a slot without a prompt token, its discard slot.
+            (row{t}); the sampler's; per token slot, whether it inputs a
+            prompt token (pg{t}), the token's lm_head weight slot (gat{t})
+            and row, and whether the lm_head runs (lm{t}), the row and both
+            flags also in `rows`.
         """
         temperature, top_k, seed = sample
         params = {
@@ -168,11 +170,15 @@ class DecodeShape:
             **sample_param_values(temperature, top_k, seed, self.kset),
         }
         rows = 0
+        skip_lm = len(prompt) - 1 if prompt_ends else len(prompt)
         for t in range(self.p_max):
-            tok = prompt[t] if t < len(prompt) else None
-            params[f"gat{t}"] = LMW_GAMMA_BYTES + (tok or 0) // N_TILE * WLM_SLOT
-            params[f"sd{t}"] = self.discard_at if tok is None else self.seed_at
-            rows |= ((tok or 0) % N_TILE) << (2 * t)
+            tok = prompt[t] if t < len(prompt) else 0
+            pg = int(t < min(len(prompt), passes))
+            lm = int(skip_lm <= t < passes)
+            params[f"gat{t}"] = LMW_GAMMA_BYTES + tok // N_TILE * WLM_SLOT
+            params[f"pg{t}"] = pg
+            params[f"lm{t}"] = lm
+            rows |= (tok % N_TILE) << (2 * t) | pg << (8 + t) | lm << (12 + t)
             p = t0 + t
             on = t < passes
             params[f"pass{t}"] = int(on)
@@ -326,7 +332,8 @@ class Decoder:
         """Prefill `prompt` from an empty KV cache, then generate.
 
         Each dispatch runs shape.passes_for's many tokens, the prompt's last
-        token ending one; that token's sample is the first generated token.
+        token ending one; that token's sample is the first generated token,
+        and the prompt tokens before it skip the lm_head.
 
         Args:
             prompt: The prompt's token ids.
@@ -360,7 +367,15 @@ class Decoder:
             if pos < len(prompt):
                 n = min(n, len(prompt) - pos)
             records, _ = self.dispatch(
-                kv_t, stage_t, self.shape.params(pos, n, sample, prompt[pos : pos + n])
+                kv_t,
+                stage_t,
+                self.shape.params(
+                    pos,
+                    n,
+                    sample,
+                    prompt[pos : pos + n],
+                    prompt_ends=pos + n >= len(prompt),
+                ),
             )
             for t, tok in enumerate(tokens_of(records, n)):
                 if pos + t >= len(prompt) - 1 and len(out) < max_new:

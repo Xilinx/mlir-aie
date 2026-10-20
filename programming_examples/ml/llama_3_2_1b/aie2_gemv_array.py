@@ -27,7 +27,7 @@ import sys
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import constant, index_cast, ori, shli
+from aie.dialects.arith import andi, constant, index_cast, ori, shli, shrui
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
@@ -57,11 +57,23 @@ LM_SLOT = 64 + 4 * D + 4 * 4 + 4 * 4
 LM_OUT_BYTES = 128
 LM_CAND_BYTES = 64 + D
 LM_SEED_BYTES = D + 12
-SAMPLE_PARAMS = ("temp_lo", "temp_hi", "top_k", "seed_lo", "seed_hi")
+# The scratchpad keeps 30 bits a word, so the sampler's 32-bit temperature
+# bits and seed take one word each for their low 30 bits, and a third word
+# holds both their top two bits and top_k.
+SAMPLE_PARAMS = ("samp0", "samp1", "samp2")
 
 
 def sample_param_values(temperature, top_k, seed, kset):
-    """build_lm(PER_CALL=True)'s ScratchpadParameter values for one dispatch.
+    """The sampler's ScratchpadParameter values for one dispatch.
+
+    Args:
+        temperature: float32; at or below 0 the sampler is greedy.
+        top_k: 0 (the whole set) or 1..kset.
+        seed: The 32-bit seed.
+        kset: The resident set's size.
+
+    Returns:
+        `SAMPLE_PARAMS`' values by name, as `read_sample_params` reads them.
 
     Raises:
         ValueError: top_k is not 0 (the whole set) or 1..kset.
@@ -70,13 +82,22 @@ def sample_param_values(temperature, top_k, seed, kset):
         raise ValueError(f"top_k must be 0 (the whole set) or 1..{kset}, got {top_k}")
     t = int(np.float32(temperature).view(np.uint32))
     s = int(seed) & 0xFFFFFFFF
+    low = (1 << 30) - 1
     return dict(
-        temp_lo=t & 0xFFFF,
-        temp_hi=t >> 16,
-        top_k=int(top_k),
-        seed_lo=s & 0xFFFF,
-        seed_hi=s >> 16,
+        samp0=t & low,
+        samp1=s & low,
+        samp2=(t >> 30) | (s >> 30) << 2 | int(top_k) << 4,
     )
+
+
+def read_sample_params(params, words):
+    """In a core body: the sampler's [temperature bits, top_k, seed] into
+    params[0..2] from the `SAMPLE_PARAMS` words."""
+    w0, w1, w2 = (p.read() for p in words)
+    c3, c30 = constant(i32(), 3), constant(i32(), 30)
+    params[0] = ori(w0, shli(andi(w2, c3), c30))
+    params[1] = shrui(w2, constant(i32(), 4))
+    params[2] = ori(w1, shli(andi(shrui(w2, constant(i32(), 2)), c3), c30))
 
 
 PROJECTIONS = {
@@ -490,13 +511,7 @@ def build_lm(
 
     def w_merge(c_lo, c_hi, c_seed, sl, sg, ss, sr, slen, params, km, kf, *per_call):
         if per_call:
-            # The scratchpad keeps 30 bits a word, so the 32-bit temperature
-            # bits and seed arrive as 16-bit halves.
-            t_lo, t_hi, top_k, s_lo, s_hi = (p.read() for p in per_call)
-            c16 = constant(i32(), 16)
-            params[0] = ori(shli(t_hi, c16), t_lo)
-            params[1] = top_k
-            params[2] = ori(shli(s_hi, c16), s_lo)
+            read_sample_params(params, per_call)
         for r in range_(KSET):
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)

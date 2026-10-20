@@ -43,9 +43,13 @@
 // SAMPLE: chain_persist_grow_mh: 4/4 tokens PASS
 //
 // A 7-token prompt, then generation: each prompt token's input is the seed
-// the device makes of its embed row, the prompt ending inside a dispatch
-// and the run crossing a KV block.
+// the device makes of its embed row, and the prompt tokens before the last
+// skip the lm_head and leave their records untouched; the prompt ends
+// inside a dispatch and the run crosses a KV block.
 // RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 60 --dispatches 3 --prompt-tokens 7 | FileCheck %s --check-prefix=PROMPT
-// PROMPT-COUNT-3: KV cache: PASS
-// PROMPT: chain_persist_grow_mh: 12/12 tokens PASS
+// PROMPT-COUNT-4: prompt, no sample, record untouched
+// PROMPT: KV cache: PASS
+// PROMPT-COUNT-2: prompt, no sample, record untouched
+// PROMPT-COUNT-2: KV cache: PASS
+// PROMPT: chain_persist_grow_mh: 6/6 tokens PASS
 // PROMPT: carry across 3 dispatches: PASS

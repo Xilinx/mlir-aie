@@ -205,7 +205,7 @@ def set_pristine(layers, pristine):
         layers[L]["v_scales_slot"] = vslot[L].copy()
 
 
-def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, prompt):
+def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan):
     """Check a dispatch's records against the numpy oracle.
 
     The oracle runs from the caches the caller set and position p0 on,
@@ -220,8 +220,9 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, promp
         rope: The RoPE table.
         lm: (embed_i8, embed_sc, final_norm gamma).
         sample: The sampler's (temperature, top_k, seed).
-        prompt: Per token, the prompt token it inputs, or None to input the
-            previous token's sample (the first token: x_i8).
+        plan: Per token, (the prompt token it inputs, or None to input the
+            previous token's sample (the first token: x_i8); whether the
+            lm_head and sampler ran for it, leaving a record to check).
 
     Returns:
         (failed tokens, the last token's final residual and its scale).
@@ -231,17 +232,26 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, promp
     fails = 0
     hidden = None
     cur_x, cur_sc = x_i8, res_scale
-    for t, dev_tok in enumerate(tokens_of(records, passes)):
-        if prompt[t] is not None:
-            cur_x, cur_sc = embed_seed_ref(
-                embed_i8[prompt[t]], float(embed_sc[prompt[t]])
-            )
+    for t, (dev_tok, (prompt, lm_on)) in enumerate(
+        zip(tokens_of(records, passes), plan)
+    ):
+        if prompt is not None:
+            cur_x, cur_sc = embed_seed_ref(embed_i8[prompt], float(embed_sc[prompt]))
         for L in range(N_LAYERS):
             layers[L]["cos"] = rope[p0 + t, :HEAD_D]
             layers[L]["sin"] = rope[p0 + t, HEAD_D:]
         logits, *hidden = chain_forward_logits(
             cur_x, cur_sc, layers, p0 + t, embed_i8, embed_sc, gamma
         )
+        if not lm_on:
+            untouched = not np.any(records[t * REC_BYTES : (t + 1) * REC_BYTES])
+            fails += not untouched
+            print(
+                f"  token {t} (pos {p0+t}): prompt, no sample, record "
+                f"{'untouched' if untouched else 'WRITTEN'}",
+                flush=True,
+            )
+            continue
         if temperature > 0:
             ref = topk_sample_reference(
                 logits, temperature, top_k, seed, k_set=ONESTREAM_KSET
@@ -387,9 +397,14 @@ def main():
     passes = schedule[0][1]
     n_tok = pos - p0
     prompt_ids = np.random.default_rng(fseed + 1).integers(0, VOCAB, opts.prompt_tokens)
-    prompts = [
+    # Per dispatch, per token: (its prompt token or None, whether the lm_head
+    # runs for it: every token but the prompt's before its last).
+    plans = [
         [
-            int(prompt_ids[at - p0]) if at - p0 < opts.prompt_tokens else None
+            (
+                int(prompt_ids[at - p0]) if at - p0 < opts.prompt_tokens else None,
+                at - p0 >= opts.prompt_tokens - 1,
+            )
             for at in range(start, start + n)
         ]
         for start, n in schedule
@@ -527,7 +542,7 @@ def main():
             rope,
             lm,
             sample,
-            [None] * passes,
+            [(None, True)] * passes,
         )
         hidden_fails += check_final(stage_whole, hidden)
         wrong = int(np.count_nonzero(kv_whole != SHAPE.pack_kv(layers)))
@@ -563,7 +578,7 @@ def main():
             rope,
             lm,
             sample,
-            [None] * passes,
+            [(None, True)] * passes,
         )
     else:
         # Like the KV tensor, the stage tensor stays on the device: the host
@@ -589,8 +604,17 @@ def main():
             for d, (pos, passes) in enumerate(schedule):
                 if d:
                     time.sleep(opts.idle_s)
+                prompt = [tok for tok, _ in plans[d] if tok is not None]
                 records = dispatch(
-                    stage_t, kv_t, SHAPE.params(pos, passes, sample, prompts[d])
+                    stage_t,
+                    kv_t,
+                    SHAPE.params(
+                        pos,
+                        passes,
+                        sample,
+                        prompt,
+                        prompt_ends=plans[d][len(prompt) - 1][1] if prompt else True,
+                    ),
                 )
                 kv_t.to("cpu")
                 stage_t.to("cpu")
@@ -615,12 +639,16 @@ def main():
         for d, ((pos, passes), (toks_out, stage, kv_idx, kv_val)) in enumerate(
             zip(schedule, runs)
         ):
-            toks = tokens_of(toks_out, passes)
+            toks = [
+                tok
+                for tok, (_, lm_on) in zip(tokens_of(toks_out, passes), plans[d])
+                if lm_on
+            ]
             dev_tokens += toks
             if n_disp > 1:
                 print(f"dispatch {d} (pos {pos}): tokens {toks}", flush=True)
             fails, hidden = replay(
-                toks_out, passes, x_d, sc_d, layers, pos, rope, lm, sample, prompts[d]
+                toks_out, passes, x_d, sc_d, layers, pos, rope, lm, sample, plans[d]
             )
             tok_fails += fails
             # The device appended exactly the rows the oracle did, and wrote
@@ -641,7 +669,7 @@ def main():
             hidden_fails += check_final(stage, hidden)
             seed_left = np.zeros(ACT_BYTES, dtype=np.int8)
             seed_left[: D + 4] = toks_out[last : last + D + 4]
-            if not np.array_equal(
+            if plans[d][-1][1] and not np.array_equal(
                 stage[SHAPE.seed_at : SHAPE.seed_at + ACT_BYTES], seed_left
             ):
                 print(f"  seed carry: FAIL (dispatch {d})", flush=True)

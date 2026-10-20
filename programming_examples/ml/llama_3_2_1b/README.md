@@ -89,9 +89,10 @@ the stages of the one-design restructure:
 
 - **Prefill** runs on the device token by token: a prompt token is a token slot
   whose input is the seed the lm_head core makes of the token's embed row, which
-  it fetches from the lm_head's weights (`gat{t}`, `rows`), rather than the
-  previous token's sample; the host only says which tokens are the prompt's.
-  Batched prefill, many prompt rows a pass, is the next stage.
+  it fetches from the lm_head's weights (`gat{t}`, `pg{t}`, `rows`), rather than
+  the previous token's sample, and the prompt tokens before the last skip the
+  lm_head and sampler (`lm{t}`); the host only says which tokens are the
+  prompt's. Batched prefill, many prompt rows a pass, is the next stage.
 - **Tokenization**, which stays on the host.
 
 ### INT8 recipe (W8A8-dynamic)
@@ -146,9 +147,9 @@ between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
 60–89 tok/s on this model.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
-> **TTFT** (time to first token). `generate.py --prompt "The capital of France
-> is"` (6 prompt tokens, N=16): TTFT 286 ms (21 prompt tok/s, token by token),
-> then 20.97 tok/s.
+> **TTFT** (time to first token). `generate.py` at N=16, token by token, the
+> prompt's tokens before its last skipping the lm_head: 6 prompt tokens, TTFT
+> 190 ms (31.6 prompt tok/s); 27, 782 ms (34.5); then 20.9 tok/s.
 
 ---
 
