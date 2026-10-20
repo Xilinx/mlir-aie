@@ -370,9 +370,10 @@ def build_lm(
 
     Each core keeps a KSET top-k set over its eighth of the vocabulary and
     sends it, one candidate per object, through two 4-way joins to a glue
-    core that merges the sets (llama_topk_merge_insert) and samples as
-    llama_topk_finalize_packed does, giving `LM_SEED_BYTES`: the next
-    token's embed seed, its scale, the token id and a boundary-tie flag.
+    core that merges the sets (llama_topk_merge_insert) and samples with
+    llama_topk_finalize_packed, giving `LM_SEED_BYTES`: the next token's
+    embed seed, its scale and the token id. Sets are ordered by logit, then
+    by lower token id, so the merged set is the one a single pass keeps.
     TEMPERATURE, TOP_K and SEED are the sampler's params (S4 makes them
     per-call).
     """
@@ -410,16 +411,15 @@ def build_lm(
         "llama_gemv_array_topk_cand", [t_sl, t_sg, t_ss, t_sr, t_len, t_cand, np.int32]
     )
     t_join = _i8(4 * LM_CAND_BYTES)
-    t_mlen = _i32a(2)
     t_params = np.ndarray[(3,), np.dtype[np.uint32]]
     t_seed = _i8(LM_SEED_BYTES)
     KS = llama_kernels.topk_sample(kset=KSET)
     k_merge = KS.bind(
         "llama_topk_merge_insert",
-        [t_join, t_join, t_sl, t_sg, t_ss, t_sr, t_mlen, np.int32],
+        [t_join, t_join, t_sl, t_sg, t_ss, t_sr, t_len, np.int32],
     )
     k_final = KS.bind(
-        "llama_topk_finalize_merged", [t_sl, t_sg, t_ss, t_sr, t_mlen, t_params, t_seed]
+        "llama_topk_finalize_packed", [t_sl, t_sg, t_ss, t_sr, t_len, t_params, t_seed]
     )
     of_clo = ObjectFifo(t_join, depth=1, name="lm_cand_lo")
     of_chi = ObjectFifo(t_join, depth=1, name="lm_cand_hi")
@@ -495,7 +495,7 @@ def build_lm(
                 Buffer(t_sg, name="merge_gidx"),
                 Buffer(t_ss, name="merge_scale"),
                 Buffer(t_sr, name="merge_row"),
-                Buffer(t_mlen, initial_value=np.zeros(2, np.int32), name="merge_len"),
+                Buffer(t_len, initial_value=np.zeros(1, np.int32), name="merge_len"),
                 Buffer(t_params, initial_value=params, name="sample_params"),
                 k_merge,
                 k_final,
@@ -554,6 +554,100 @@ def build_lm(
         ],
     )
     return Program(NPU2(), rt, workers=workers).resolve_program()
+
+
+@jit
+def build_lm_single(
+    *,
+    LM_TILES: CompileTime[int] = 32064,
+    KSET: CompileTime[int] = 8,
+    TEMPERATURE: CompileTime[float] = 0.0,
+    TOP_K: CompileTime[int] = 8,
+    SEED: CompileTime[int] = 0,
+):
+    """The single-pass lm_head build_lm's merge must equal: one core, the
+    whole vocabulary, then llama_topk_finalize_packed (`LM_SEED_BYTES`)."""
+    per_task = next(n for n in range(1023, 0, -1) if LM_TILES % n == 0)
+    n_tasks = LM_TILES // per_task
+    w_total = LM_TILES * LM_SLOT
+    t_slot = _i8(LM_SLOT)
+    t_act = _i8(D + 8)
+    t_sl, t_sg, t_ss, t_sr, t_len = (
+        _f32(KSET),
+        _i32a(KSET),
+        _f32(KSET),
+        _i8(KSET * D),
+        _i32a(1),
+    )
+    t_params = np.ndarray[(3,), np.dtype[np.uint32]]
+    t_seed = _i8(LM_SEED_BYTES)
+    k_insert = llama_kernels.gemm_layer(kset=KSET).bind(
+        "llama_lmhead_topk_insert",
+        [t_act, t_slot, t_sl, t_sg, t_ss, t_sr, t_len, np.int32],
+    )
+    k_final = llama_kernels.topk_sample(kset=KSET).bind(
+        "llama_topk_finalize_packed", [t_sl, t_sg, t_ss, t_sr, t_len, t_params, t_seed]
+    )
+    of_act = ObjectFifo(t_act, depth=1, name="lm1_act")
+    of_w = ObjectFifo(t_slot, depth=2, name="lm1_w")
+    of_seed = ObjectFifo(t_seed, depth=1, name="lm1_seed")
+
+    def w_one(c_act, c_w, c_seed, sl, sg, ss, sr, slen, params, ki, kf):
+        a = c_act.acquire(1)
+        for s in range_(LM_TILES):
+            w = c_w.acquire(1)
+            ki(a, w, sl, sg, ss, sr, slen, _i32(s))
+            c_w.release(1)
+        c_act.release(1)
+        o = c_seed.acquire(1)
+        kf(sl, sg, ss, sr, slen, params, o)
+        c_seed.release(1)
+
+    params = np.array(
+        [np.float32(TEMPERATURE).view(np.uint32), TOP_K, SEED & 0xFFFFFFFF], np.uint32
+    )
+    worker = Worker(
+        w_one,
+        [
+            of_act.cons(),
+            of_w.cons(),
+            of_seed.prod(),
+            Buffer(t_sl, name="one_logit"),
+            Buffer(t_sg, name="one_gidx"),
+            Buffer(t_ss, name="one_scale"),
+            Buffer(t_sr, name="one_row"),
+            Buffer(t_len, initial_value=np.zeros(1, np.int32), name="one_len"),
+            Buffer(t_params, initial_value=params, name="one_params"),
+            k_insert,
+            k_final,
+        ],
+    )
+
+    def sequence(wblob, act, seed, w_prod, act_prod, seed_cons):
+        tg = TaskGroup()
+        seed_cons.drain(seed, wait=True, group=tg)
+        act_prod.fill(act, group=tg)
+        tgs = [TaskGroup() for _ in range(n_tasks)]
+        for j in range(n_tasks):
+            w_prod.fill(
+                wblob,
+                tap=contiguous_tap(
+                    w_total, j * per_task * LM_SLOT, per_task, LM_SLOT, 518
+                ),
+                group=tgs[j],
+                wait=True,
+            )
+            if j >= 2:
+                tgs[j - 2].finish()
+        for j in range(max(0, n_tasks - 2), n_tasks):
+            tgs[j].finish()
+        tg.finish()
+
+    rt = Runtime(
+        sequence,
+        [_i8(w_total), t_act, t_seed, of_w.prod(), of_act.prod(), of_seed.cons()],
+    )
+    return Program(NPU2(), rt, workers=[worker]).resolve_program()
 
 
 def add_config_args(p):

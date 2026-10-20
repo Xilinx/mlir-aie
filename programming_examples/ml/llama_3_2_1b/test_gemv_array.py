@@ -24,11 +24,13 @@ Interfaces, per layer unit and core c (one output object of OUT_BYTES each):
   new scale, 4 zero bytes) per unit, in unit order.
 - `--lm`: each core's KSET set (`LM_OUT_BYTES`, as before) and the glue
   core's merged result (`LM_SEED_BYTES`): the next token's embed seed
-  int8[2048], its fp32 scale, the token id and a flag that is 1 when the
-  vocabulary's KSET-th and (KSET+1)-th logits tie (the one case where a
-  single pass may keep a different tied index). Checked against the
-  single-pass oracle (numpy_topk_sample) for the token and against the
-  winner's requanted row for the seed.
+  int8[2048], its fp32 scale and the token id. Sets are ordered by logit,
+  then by lower token id, so the merged set is the single-pass one, ties
+  included; the token is checked against numpy_topk_sample's single-pass
+  oracle and the seed against the winner's requanted row. `--force-tie`
+  copies the KSET-th best row to another token so the set boundary ties;
+  `--single-pass` also runs the vocabulary through one core
+  (`build_lm_single`) and requires its seed and token to equal the merge's.
 """
 
 import argparse
@@ -56,6 +58,7 @@ from aie2_gemv_array import (
     D,
     build,
     build_lm,
+    build_lm_single,
     lane_slots,
     layer_units,
     rows_per_slot,
@@ -164,20 +167,6 @@ def rescale_reference(proj, resid, resid_scale):
     return np.concatenate([body, np.array([scale, 0.0], np.float32).view(np.int8)])
 
 
-def topk_reference(logits, gidx_base, kset):
-    set_logit, set_gidx = [], []
-    for i, v in enumerate(logits):
-        if len(set_logit) < kset:
-            set_logit.append(v)
-            set_gidx.append(gidx_base + i)
-            continue
-        mi = int(np.argmin(np.asarray(set_logit, np.float32)))
-        if v > set_logit[mi]:
-            set_logit[mi] = v
-            set_gidx[mi] = gidx_base + i
-    return np.asarray(set_logit, np.float32), np.asarray(set_gidx, np.int32)
-
-
 def run_lm(opts):
     vocab = opts.lm_tiles * 4
     rng = np.random.default_rng(opts.seed)
@@ -236,9 +225,10 @@ def run_lm(opts):
     k = opts.kset
     cand = []
     for c in range(N_CORES):
-        ref_l, ref_g = topk_reference(
-            logits[c * per_core : (c + 1) * per_core], c * per_core, k
-        )
+        ref_g = np.asarray(
+            topk_set_reference(logits[c * per_core : (c + 1) * per_core], k), np.int32
+        ) + np.int32(c * per_core)
+        ref_l = logits[ref_g]
         dev_l = sets[c, : 4 * k].view(np.float32)
         dev_g = sets[c, 4 * k : 8 * k].view(np.int32)
         dev_s = sets[c, 8 * k : 12 * k].view(np.float32)
@@ -259,10 +249,8 @@ def run_lm(opts):
 
     out = seed_t.numpy()
     token = int(out[D + 4 : D + 8].view(np.int32)[0])
-    tie = int(out[D + 8 : D + 12].view(np.int32)[0])
     ref_set = topk_set_reference(logits, k)
     ref_sorted = np.sort(logits)[::-1]
-    ref_tie = int(ref_sorted[k - 1] == ref_sorted[k])
     ref_token = topk_sample_reference(
         logits, opts.temperature, k, opts.sample_seed, k_set=k
     )
@@ -270,13 +258,30 @@ def run_lm(opts):
     seed_ok = np.array_equal(out[:D], ref_xin) and np.array_equal(
         out[D : D + 4].view(np.int32), np.array([ref_scale], np.float32).view(np.int32)
     )
+    tied = bool(ref_sorted[k - 1] == ref_sorted[k])
     print(
-        f"merged token: dev={token} ref={ref_token} (single-pass set {sorted(ref_set)})  "
-        f"seed {'BIT-EXACT' if seed_ok else 'DIFF'}  boundary tie dev={tie} ref={ref_tie}"
+        f"merged token: dev={token} ref={ref_token} (single-pass set {sorted(ref_set)}, "
+        f"boundary {'tied' if tied else 'distinct'})  seed {'BIT-EXACT' if seed_ok else 'DIFF'}"
     )
-    # On a tied boundary a single pass keeps whichever tied index its slot
-    # history favoured, so only the flag is checked there.
-    ok &= tie == ref_tie and (ref_tie or (token == ref_token and seed_ok))
+    ok &= token == ref_token and seed_ok
+    if opts.force_tie:
+        ok &= tied
+    if opts.single_pass:
+        one_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
+        npu1 = design_kernel(
+            build_lm_single,
+            opts,
+            LM_TILES=opts.lm_tiles,
+            KSET=opts.kset,
+            TEMPERATURE=opts.temperature,
+            TOP_K=opts.kset,
+            SEED=opts.sample_seed,
+        )
+        DefaultNPURuntime.load_and_run(npu1, [w_t, a_t, one_t])
+        one_t.to("cpu")
+        same = np.array_equal(one_t.numpy()[: D + 8], out[: D + 8])
+        print(f"single pass on one core vs merge: {'BIT-EXACT' if same else 'DIFF'}")
+        ok &= same
 
     if opts.time:
         for _ in range(opts.n_warmup):
@@ -303,6 +308,11 @@ def main():
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--sample-seed", type=int, default=0)
     p.add_argument("--force-tie", action="store_true")
+    p.add_argument(
+        "--single-pass",
+        action="store_true",
+        help="also run lm_head as one single-pass core and compare with the merge",
+    )
     p.add_argument("--weights", choices=("synthetic", "real"), default="synthetic")
     p.add_argument("--layers", type=int, nargs="+", default=[0])
     p.add_argument("--order", default="qkvogud")
