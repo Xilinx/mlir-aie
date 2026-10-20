@@ -1632,11 +1632,19 @@ struct AIEObjectFifoAllocatePass
         source.setRoutePacket(header);
     }
 
+    // An out-of-order receiver reads the buffer it should fill out of the
+    // header, so the header has to reach its DMA.
+    bool keepHeader = flow.getKeepPktHeader();
+    for (auto destName : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(
+              lookupEndpoint(destName).getOperation()))
+        keepHeader |= dma.getOutOfOrder();
+
     builder.setInsertionPoint(flow);
     auto packetFlow = PacketFlowOp::create(
         builder, flow.getLoc(),
         builder.getIntegerAttr(builder.getI8Type(), packetID),
-        flow.getKeepPktHeader() ? builder.getBoolAttr(true) : nullptr, nullptr);
+        keepHeader ? builder.getBoolAttr(true) : nullptr, nullptr);
     OpBuilder::InsertionGuard g(builder);
     Block &ports = packetFlow.getRegion().emplaceBlock();
     builder.setInsertionPointToStart(&ports);
@@ -1649,6 +1657,11 @@ struct AIEObjectFifoAllocatePass
     }
     for (StringRef destName : flow.getDestinationNames()) {
       auto dest = lookupEndpoint(destName);
+      // An out-of-order receiver matches on the header rather than walking a
+      // chain, so its descriptors carry the id too.
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(dest.getOperation()))
+        if (dma.getOutOfOrder())
+          dest.setRoutePacket(info);
       PacketDestOp::create(builder, flow.getLoc(), dest.getTile(),
                            dest.getRouteBundle(), channelOf(dest));
     }

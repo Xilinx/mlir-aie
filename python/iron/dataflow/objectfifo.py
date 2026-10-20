@@ -121,6 +121,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         transport: Transport | str | None = None,
         init_values: list[np.ndarray] | None = None,
         consumer_obj_type: type[np.ndarray] | In | Out | InOut | None = None,
+        out_of_order: bool = False,
     ):
         """Construct an ObjectFifo.
 
@@ -183,6 +184,13 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 transfers and the consumer receives consumer_obj_type-sized transfers.
                 Producer element count must be an integer multiple of consumer element count.
                 Defaults to None.
+            out_of_order (bool, optional): Receive each object into the buffer its sender
+                names in the packet header's ``out_of_order_id`` field, rather than walking
+                the pool in a fixed BD chain. The consumer's channel then carries no order
+                of its own, which is what lets several fifos share one S2MM channel. The
+                field is 6 bits and separate from ``packet_id``, so a pool costs ids out of
+                its own space, not out of the 5-bit routing one. Requires packet transport.
+                Defaults to False.
 
         Raises:
             TypeError: If a stream walk is not a ``TensorAccessPattern``.
@@ -219,6 +227,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         self._delegate_tile: Tile | None = delegate_tile
         self._transport: Transport | None = Transport.coerce(transport)
         self._init_values: list[np.ndarray] | None = init_values
+        self._out_of_order: bool = out_of_order
 
     @property
     def depth(self) -> int | None:
@@ -529,6 +538,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 transport=self._transport,
                 initValues=self._init_values,
                 consumer_datatype=consumer_datatype,
+                out_of_order=self._out_of_order or None,
                 loc=ir.Location.name(self.name, childLoc=loc or self._site.location()),
                 ip=ip,
             )

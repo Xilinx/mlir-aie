@@ -227,6 +227,13 @@ struct AIEObjectFifoLowerDMAsPass
       bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
                            descriptor.size);
     }
+    // The receiving channel walks no chain of its own, so the sender says
+    // which buffer each object lands in. The receiver's descriptor for that
+    // buffer carries the matching bd_id.
+    if (endpoint.getOutOfOrder() &&
+        endpoint.getRouteDirection() == DMAChannelDir::MM2S) {
+      bd.setOutOfOrderId(descriptor.object);
+    }
     if (descriptor.iteration && descriptor.iteration.getSize() > 1)
       bd.setIterationAttr(descriptor.iteration);
 
@@ -251,7 +258,9 @@ struct AIEObjectFifoLowerDMAsPass
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, loc, endpoint.getRouteDirection(), channel,
                        taskCount, endpoint.getPadValue(),
-                       /*out_of_order=*/false, bdBlock, endBlock);
+                       endpoint.getOutOfOrder() &&
+                           endpoint.getRouteDirection() == DMAChannelDir::S2MM,
+                       bdBlock, endBlock);
     if (lastDmaBlock) {
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
     }

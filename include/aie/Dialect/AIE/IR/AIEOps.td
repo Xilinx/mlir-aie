@@ -2510,7 +2510,12 @@ def AIE_ObjectFifoCreateOp
       OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
       // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-      OptionalAttr<AIEI32Attr>:$iter_count);
+      OptionalAttr<AIEI32Attr>:$iter_count,
+      // out_of_order receives each object into the buffer its sender names in
+      // the packet header's out_of_order_id field, instead of walking the
+      // pool in a fixed BD chain. The consumer's channel then holds no order
+      // of its own, which is what lets several fifos share it. Needs packet.
+      UnitAttr:$out_of_order);
 
   let assemblyFormat = [{
     $sym_name
@@ -3017,7 +3022,11 @@ def AIE_ObjectFifoDmaEndpointOp
       OptionalAttr<StrAttr>:$fifoName,
       OptionalAttr<FlatSymbolRefArrayAttr>:$dispatch,
       OptionalAttr<PacketInfoArrayAttr>:$dispatchPackets,
-      OptionalAttr<FlatSymbolRefArrayAttr>:$turns);
+      OptionalAttr<FlatSymbolRefArrayAttr>:$turns,
+      // See aie.objectfifo's out_of_order. A draining endpoint puts its
+      // channel in out-of-order mode; a filling one names each object's
+      // buffer in the header it sends.
+      UnitAttr:$out_of_order);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict
