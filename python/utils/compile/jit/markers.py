@@ -289,10 +289,6 @@ class _DispatchParameter(PerCall):
         self.owner = owner
         self._binding = None
 
-    @property
-    def scalar_type(self) -> type:
-        return self.dtype
-
     def __repr__(self) -> str:
         return f"DispatchTime({self.name!r}, {self.scalar_type.__name__})"
 

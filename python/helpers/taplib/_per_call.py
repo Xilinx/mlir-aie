@@ -34,10 +34,10 @@ class PerCall:
     sequence binds it.
     """
 
-    __slots__ = ("name", "marker", "dtype", "ssa")
+    __slots__ = ("name", "marker", "scalar_type", "ssa")
 
-    def __init__(self, name: str, marker: Any, dtype):
-        self.name, self.marker, self.dtype = name, marker, dtype
+    def __init__(self, name: str, marker: Any, scalar_type: type):
+        self.name, self.marker, self.scalar_type = name, marker, scalar_type
         self.ssa: Any = None
 
     def affine(self) -> Affine:
@@ -84,7 +84,7 @@ class PerCall:
     __int__ = __index__
 
     def __repr__(self) -> str:
-        return f"PerCall({self.name!r}, {np.dtype(self.dtype).name})"
+        return f"PerCall({self.name!r}, {np.dtype(self.scalar_type).name})"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -277,8 +277,8 @@ class Affine:
     __int__ = __index__
 
     @property
-    def dtype(self):
-        return self.value.dtype
+    def scalar_type(self) -> type:
+        return self.value.scalar_type
 
     @property
     def name(self) -> str:
