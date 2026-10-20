@@ -81,9 +81,6 @@ _BUILD_ARGS = [
 _CHAIN_ENV = {
     "LLAMA_CHAIN_PT": str(PT),
     "LLAMA_CHAIN_ONESTREAM_KSET": "8",
-    "LLAMA_SAMPLE_TEMP": "0.0",
-    "LLAMA_SAMPLE_TOPK": "0",
-    "LLAMA_SAMPLE_SEED": "0",
     "LLAMA_CHAIN_N": str(N_LAYERS),
     "LLAMA_CHAIN_T": "128",
 }

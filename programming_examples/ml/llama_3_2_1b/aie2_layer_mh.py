@@ -30,7 +30,6 @@ All ObjectFifos depth=1 (Bug 8).
 """
 
 import argparse
-import os as _os
 import sys
 
 import llama_kernels
@@ -38,7 +37,7 @@ import numpy as np
 from aie.dialects.arith import index_cast
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import ObjectFifo, Program, Runtime, TaskGroup, Worker, jit
+from aie.iron import CompileTime, ObjectFifo, Program, Runtime, TaskGroup, Worker, jit
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -59,7 +58,7 @@ REP = N_HEADS_Q // N_HEADS_KV  # 4
 QD = N_HEADS_Q * HEAD_D  # 2048
 KVD_PER_HEAD = HEAD_D  # 64
 KV_DIM = N_HEADS_KV * HEAD_D  # 512 (k_proj / v_proj output dim)
-T = int(_os.environ.get("LLAMA_LAYER_T", "128"))
+T = 128
 N_TILE = 4
 
 # Per-Q-head tail: 32 * [q_out_scale fp32, sv_inv_out_scale fp32] = 256 B.
@@ -186,13 +185,9 @@ KV_BYTES = N_HEADS_KV * PER_KV_HEAD_BYTES
 
 
 # Baked scales: only rmsnorm + gate's pair fixed.
-def _envf(name: str, default: str) -> float:
-    return float(_os.environ.get(name, default))
-
-
-ACT_SCALE = _envf("LAYER_ACT_SCALE", "0.05")
-INV_ACT_SCALE = _envf("LAYER_INV_ACT_SCALE", str(1.0 / 0.05))
-SILU_GATE_SCALE = _envf("SILU_GATE_SCALE", "0.05")
+ACT_SCALE = 0.05
+INV_ACT_SCALE = 1.0 / 0.05
+SILU_GATE_SCALE = 0.05
 GATE_INV_OUT_SCALE = 1.0 / SILU_GATE_SCALE
 
 
@@ -230,7 +225,7 @@ def strided_tap(total, base_off, per_slot_stride, slot_bytes, n_slots):
 
 
 @jit
-def build():
+def build(*, SILU_GATE_SCALE: CompileTime[float] = SILU_GATE_SCALE):
     # Residual stream carries a per-token dynamic scale in an int8[D+8] tail
     # (Phase B residual_dyn): xin seed + layer out are both int8[D+8].
     rt_xin_ty = _i8(D + 8)
@@ -498,7 +493,7 @@ def build():
         o = c_out.acquire(1)
         for t in range_(N_TILES_G):
             w = c_w.acquire(1)
-            k(a, w, o, _i32(t), GATE_INV_OUT_SCALE)
+            k(a, w, o, _i32(t), 1.0 / SILU_GATE_SCALE)
             c_w.release(1)
         c_act.release(1)
         c_out.release(1)

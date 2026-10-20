@@ -11,7 +11,6 @@ inv_out_scale remain runtime scalar args.
 """
 
 import argparse
-import os as _os
 import sys
 
 import llama_kernels
@@ -23,16 +22,20 @@ from aie.utils.hostruntime.cli import run_design_cli
 
 SILU_COL, SILU_ROW = 4, 5
 
-# Scales baked at build time: GATE_SCALE into the kernel's SiLU LUT, UP_SCALE
-# and INV_OUT_SCALE here. Env-var overridable so the test can drive specific
-# calibrations.
-GATE_SCALE = float(_os.environ.get("SILU_GATE_SCALE", "0.05"))
-UP_SCALE = float(_os.environ.get("SILU_UP_SCALE", "0.05"))
-INV_OUT_SCALE = float(_os.environ.get("SILU_INV_OUT_SCALE", str(1.0 / 0.05)))
+# GATE_SCALE is baked into the kernel's SiLU LUT at build time; the test
+# sends UP_SCALE and INV_OUT_SCALE in the inputs' scale tails.
+GATE_SCALE = 0.05
+UP_SCALE = 0.05
+INV_OUT_SCALE = 1.0 / 0.05
 
 
 @jit
-def build(*, D: CompileTime[int] = 8192, SELFCAL: CompileTime[bool] = False):
+def build(
+    *,
+    D: CompileTime[int] = 8192,
+    SELFCAL: CompileTime[bool] = False,
+    GATE_SCALE: CompileTime[float] = GATE_SCALE,
+):
     i8_ty = np.ndarray[(D,), np.dtype[np.int8]]
     up_ty = np.ndarray[(D + 8,), np.dtype[np.int8]]  # up carries up_scale tail
     out_ty = np.ndarray[(D + 8,), np.dtype[np.int8]] if SELFCAL else i8_ty

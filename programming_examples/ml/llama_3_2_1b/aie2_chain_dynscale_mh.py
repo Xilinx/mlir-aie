@@ -53,19 +53,19 @@ from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 
 
-def _sample_params_init():
-    tb = np.frombuffer(np.float32(SAMPLE_TEMP).tobytes(), dtype=np.uint32)[0]
-    kb = np.frombuffer(np.int32(SAMPLE_TOPK).tobytes(), dtype=np.uint32)[0]
-    return np.asarray([tb, kb, np.uint32(SAMPLE_SEED & 0xFFFFFFFF)], dtype=np.uint32)
+def _sample_params_init(temp, topk, seed):
+    tb = np.frombuffer(np.float32(temp).tobytes(), dtype=np.uint32)[0]
+    kb = np.frombuffer(np.int32(topk).tobytes(), dtype=np.uint32)[0]
+    return np.asarray([tb, kb, np.uint32(seed & 0xFFFFFFFF)], dtype=np.uint32)
 
 
-def _onestream_params_init():
+def _onestream_params_init(temp, topk, seed):
     # int32-packed [temperature bits | top_k | seed] -- NOT uint32 (the IRON
     # ui32 Buffer initial_value silently zeros large words; the finalize kernel
-    # memcpy's the bytes so signedness is irrelevant). Reuses the SAMPLE_* env.
-    tb = np.frombuffer(np.float32(SAMPLE_TEMP).tobytes(), dtype=np.int32)[0]
-    sb = np.frombuffer(np.uint32(SAMPLE_SEED & 0xFFFFFFFF).tobytes(), dtype=np.int32)[0]
-    return np.asarray([tb, np.int32(SAMPLE_TOPK), sb], dtype=np.int32)
+    # memcpy's the bytes so signedness is irrelevant).
+    tb = np.frombuffer(np.float32(temp).tobytes(), dtype=np.int32)[0]
+    sb = np.frombuffer(np.uint32(seed & 0xFFFFFFFF).tobytes(), dtype=np.int32)[0]
+    return np.asarray([tb, np.int32(topk), sb], dtype=np.int32)
 
 
 def _i32(idx):
@@ -102,10 +102,11 @@ SAMPLE_N_CHUNKS = VOCAB // SAMPLE_CHUNK  # 64
 SAMPLE_TILES_PER_CHUNK = SAMPLE_CHUNK // N_TILE  # 501
 SAMPLE_PASSES = 3
 SAMPLE_STATE_BYTES = 1088
-# Baked sampler params (worker-local Buffer; 0 DMA). Greedy by default.
-SAMPLE_TEMP = float(_os.environ.get("LLAMA_SAMPLE_TEMP", "0.0"))
-SAMPLE_TOPK = int(_os.environ.get("LLAMA_SAMPLE_TOPK", "0"))
-SAMPLE_SEED = int(_os.environ.get("LLAMA_SAMPLE_SEED", "0"))
+# The sampler's defaults (greedy), baked into a worker-local Buffer; build()
+# takes others as CompileTime values.
+SAMPLE_TEMP = 0.0
+SAMPLE_TOPK = 0
+SAMPLE_SEED = 0
 
 # Per-Q-head tail: 32 * [q_out_scale fp32, sv_inv_out_scale fp32] = 256 B.
 QF_TAIL = N_HEADS_Q * 8
@@ -172,14 +173,9 @@ CS_BYTES = HEAD_D * 2 * 2
 T_USED_BYTES = 8
 
 
-def _envf(name: str, default: str) -> float:
-    return float(_os.environ.get(name, default))
-
-
-ACT_SCALE = _envf("LAYER_ACT_SCALE", "0.05")
-INV_ACT_SCALE = _envf("LAYER_INV_ACT_SCALE", str(1.0 / 0.05))
-SILU_GATE_SCALE = _envf("SILU_GATE_SCALE", "0.05")
-GATE_INV_OUT_SCALE = 1.0 / SILU_GATE_SCALE
+ACT_SCALE = 0.05
+INV_ACT_SCALE = 1.0 / 0.05
+SILU_GATE_SCALE = 0.05
 
 
 def _i8(n):
@@ -370,6 +366,11 @@ def build(
     N_LAYERS: CompileTime[int] = 2,
     T: CompileTime[int] = 128,
     ONESTREAM_KSET: CompileTime[int] = 8,
+    SAMPLE_TEMP: CompileTime[float] = SAMPLE_TEMP,
+    SAMPLE_TOPK: CompileTime[int] = SAMPLE_TOPK,
+    SAMPLE_SEED: CompileTime[int] = SAMPLE_SEED,
+    SILU_GATE_SCALE: CompileTime[float] = SILU_GATE_SCALE,
+    PINGPONG_DEPTH: CompileTime[int] = 2,
 ):
     # Below, a name assigned only under one mode flag (e.g. GATHER) is read
     # only under a flag that implies it (e.g. GATHER implies SAMPLE, so a
@@ -503,7 +504,9 @@ def build(
             )
             b_os_params = Buffer(
                 _i32a(3),
-                initial_value=_onestream_params_init(),
+                initial_value=_onestream_params_init(
+                    SAMPLE_TEMP, SAMPLE_TOPK, SAMPLE_SEED
+                ),
                 name="os_params",
             )
         else:
@@ -522,7 +525,11 @@ def build(
             )
             b_sample_state = Buffer(t_state_i8, name="sample_state")
             b_sample_params = Buffer(
-                t_params_u32, initial_value=_sample_params_init(), name="sample_params"
+                t_params_u32,
+                initial_value=_sample_params_init(
+                    SAMPLE_TEMP, SAMPLE_TOPK, SAMPLE_SEED
+                ),
+                name="sample_params",
             )
 
     if GATHER:
@@ -912,7 +919,7 @@ def build(
             o = c_out.acquire(1)
             for t in range_(N_TILES_G):
                 w = c_w.acquire(1)
-                k(a, w, o, _i32(t), GATE_INV_OUT_SCALE)
+                k(a, w, o, _i32(t), 1.0 / SILU_GATE_SCALE)
                 c_w.release(1)
             c_act.release(1)
             c_out.release(1)
@@ -1752,8 +1759,6 @@ def build(
             ]
         )
 
-        PINGPONG_DEPTH = int(_os.environ.get("LLAMA_CHAIN_PINGPONG", "2"))
-
         # tok is the record index; PT==1 runs this once, byte-identical to the
         # earlier non-persist form.
         def issue_token(tok):
@@ -1975,6 +1980,17 @@ def _make_argparser():
         type=int,
         default=int(_os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8")),
     )
+    p.add_argument(
+        "--sample-temp", type=float, default=SAMPLE_TEMP, help="0 or less is greedy"
+    )
+    p.add_argument("--sample-topk", type=int, default=SAMPLE_TOPK)
+    p.add_argument("--sample-seed", type=int, default=SAMPLE_SEED)
+    p.add_argument(
+        "--pingpong-depth",
+        type=int,
+        default=2,
+        help="layers of weight fills in flight before the oldest is awaited",
+    )
     return p
 
 
@@ -1990,6 +2006,10 @@ def _compile_kwargs(opts):
         N_LAYERS=opts.n_layers,
         T=opts.t,
         ONESTREAM_KSET=opts.onestream_kset,
+        SAMPLE_TEMP=opts.sample_temp,
+        SAMPLE_TOPK=opts.sample_topk,
+        SAMPLE_SEED=opts.sample_seed,
+        PINGPONG_DEPTH=opts.pingpong_depth,
     )
 
 
