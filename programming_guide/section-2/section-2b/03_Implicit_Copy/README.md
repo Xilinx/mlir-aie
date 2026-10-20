@@ -48,6 +48,8 @@ of_out = of_in.cons().forward(obj_type=line_type, name="out")
 ```
 Where a consumer `ObjectFifoHandle` to `of_in` is forwarded to `of_out` as its producer.
 
+A forwarded fifo's `to_stream` may also walk the whole stream of `of_in`'s objects to cut overlapping windows out of it, for example the rows a 3x3 convolution reads for each output row; see [Overlapping Windows over a Forwarded Stream](../../section-2c/README.md#overlapping-windows-over-a-forwarded-stream).
+
 This functionality is also available at the dialect level. The ObjectFifo API provides an implicit copy via an `object_fifo_link`, which can be initialized using its class constructor (defined in [aie.py](../../../../python/dialects/aie.py)):
 ```python
 class object_fifo_link(ObjectFifoLinkOp):

@@ -251,6 +251,53 @@ one DMA drains the whole object, through one BD per segment with that segment's
 locks. Distribute is the same picture reversed: one endpoint fills the whole
 object and N endpoints each drain one segment.
 
+### Windows: a link walking the whole stream
+
+A 1:1 link at a MemTile may cut overlapping windows out of its input stream.
+The output fifo's `dimensionsToStream` then walks the whole stream of input
+objects instead of one object (IRON: `forward(to_stream=...)`, see
+[Section 2c](../programming_guide/section-2/section-2c/README.md#overlapping-windows-over-a-forwarded-stream)):
+
+- the outer dimension enumerates the outputs and steps whole input objects;
+  its stride over the input object's size is how far each window advances;
+- the inner dimensions are one output's transfer, as many elements as the
+  output object, and at most one of them steps by exactly one input object
+  (the window's rows);
+- `padDimensions` may pad only the outer dimension, where `(before, after)`
+  counts zero objects ahead of and behind the stream; walk coordinates start
+  at the first zero object.
+
+Nothing else is stated: the link infers the number of outputs, the advance,
+the span (input objects each output reads) and how many objects the stream
+holds, `(outputs - 1) * advance + span - before - after`. A walk that stays
+inside one object is the ordinary rate-converting link above.
+
+```mlir
+// Three-row windows over four rows of 8, a zero row above and below.
+aie.objectfifo @rows(%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
+aie.objectfifo @windows(%mem dimensionsToStream [<size = 4, stride = 8>,
+    <size = 3, stride = 8>, <size = 8, stride = 1>], {%core}, 2 : i32)
+    {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 1, const_pad_after = 1>,
+        <const_pad_before = 0, const_pad_after = 0>, <const_pad_before = 0, const_pad_after = 0>]>}
+    : !aie.objectfifo<memref<24xi32>>
+aie.objectfifo.link [@rows] -> [@windows] ([] [])
+```
+
+Split gives the link one pool holding the whole stream in a single buffer,
+its zero objects included (initialized to zero, so they cost configuration
+bytes), with one lock pair counting objects; the fifos' depths do not apply.
+Lower-dmas fills it with one descriptor iterating over the stream's objects,
+and drains it with one descriptor per output at offset `advance * j`, each
+acquiring the input objects that output is the first to read and releasing
+those no later output reads (`link_stream_walk.mlir` shows the chain). The
+zero rows are stored rather than produced by BD padding because a four-dim
+MemTile walk cannot pad its d2 or d3 dimension.
+
+Limits of this lowering: a stream holds at most as many objects as a lock
+counts (63), it yields at most one MemTile channel's descriptors (24) per pass,
+the link point is a MemTile, and the output neither repeats objects nor has an
+iteration count.
+
 ## The pipeline
 
 `--aie-objectFifo-stateful-transform` runs these in order. Its options:
@@ -417,6 +464,7 @@ Endpoints:
 - a core endpoint's segments are contiguous
 - `dimensions` and `padDimensions` have one entry per selected segment, with matching ranks, within segment bounds
 - `padDimensions` appears on a draining endpoint, and a nonzero `padValue` requires one
+- a MemTile walk of four dimensions pads neither d2 nor d3, which the hardware ignores
 - a route endpoint with a DMA or PLIO bundle is on a shim tile, and its bundle is DMA, PLIO or Core
 
 Flows and core accesses:
@@ -424,6 +472,16 @@ Flows and core accesses:
 - a flow has at least one destination, and its source and destinations are endpoints
 - `packet_id` requires a packet flow
 - `acquire` and `release` sit inside a core, and `acquire` takes at least one object of the pool's element type
+
+Links walking the whole stream (windows):
+
+- the outer stride is a whole number of input objects, and the inner
+  dimensions move exactly one output object
+- at most one inner dimension steps by exactly one input object
+- padding is on the outer dimension only, and every output reads some data
+- the link point is a MemTile, and the output has no repeat or iteration count
+- the stream's objects fit one lock's count (63), and its outputs one MemTile
+  channel's descriptors (24)
 
 ### By `--aie-objectfifo-verify`
 

@@ -1010,7 +1010,10 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
                 each is named after this one, or by the Program if this one is unnamed.
                 Defaults to None.
             to_stream (Sequence[TensorAccessPattern | None] | None, optional): Each new ObjectFifo's
-                ``to_stream``; a padded one pads that output. Defaults to None.
+                ``to_stream``; a padded one pads that output. A split into one
+                fifo at offset 0 is a ``forward()``, whose ``to_stream`` may
+                also walk the whole stream (overlapping windows; see
+                ``forward()``). Defaults to None.
             from_stream (Sequence[TensorAccessPattern | None] | None, optional): Each new
                 ObjectFifo's ``from_stream_per_cons``. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.

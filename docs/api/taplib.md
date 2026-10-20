@@ -104,6 +104,11 @@ A pattern goes wherever IRON takes a DMA walk:
   tensor the size of what each transfer moves, from offset 0: one object, or
   one segment of it on a join's output or a distribute's input. A padded
   pattern as `to_stream` also pads the stream on a MemTile.
+- A fifo forwarded through a MemTile may take a `to_stream` that walks the
+  whole stream of input objects instead, to cut overlapping windows: its
+  tensor is the stream, its outer dimension enumerates outputs, and padding
+  that dimension counts zero objects before and after the stream. See
+  [Section 2c](../../programming_guide/section-2/section-2c/README.md#overlapping-windows-over-a-forwarded-stream).
 - `tap.transformation_dims` gives the `((size, stride), ...)` pairs, for code
   that still wants them.
 

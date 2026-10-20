@@ -2411,6 +2411,12 @@ def AIE_ObjectFifoCreateOp
     architectural requirement. Hence, a stride of 4 always expresses 4 `i32`s,
     i.e. 16 bytes.
 
+    `dimensionsToStream` walks one object, except on the output of a 1:1
+    `aie.objectfifo.link` at a MemTile, where it may walk the whole stream of
+    input objects to cut overlapping windows; `padDimensions` on its outer
+    dimension then counts zero objects ahead of and behind the stream. See
+    `ObjectFifoLinkOp`.
+
     The following example shows an objectFifo which transposes a 16x16 matrix of
     `i32`s on the producer side using strides and sizes. No transformation is
     applied on the consumer side of `%tile13` (in this case the `fromStream`
