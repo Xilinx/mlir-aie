@@ -609,29 +609,44 @@ class SegmentDesign:
         )
 
     def input_quant(self, op: InputQuant) -> None:
-        table = Buffer(initial_value=self.params.of(op.name, "table").astype(np.int8))
+        table = self.params.of(op.name, "table").astype(np.int64)
+        pixels = np.arange(256)
+        # The quantizer as a vector multiply and a rounding, saturating shift.
+        found = [
+            (mul, shift)
+            for shift in range(8)
+            for mul in range(1, 128)
+            if np.array_equal(
+                np.minimum((pixels * mul + (1 << shift >> 1)) >> shift, 127), table
+            )
+        ]
+        if not found:
+            raise ValueError(f"{op.name}: no multiply and shift gives its table")
+        mul, shift = found[0]
         k = self.function(
             "yolo_input_quant",
             "yolo_input.cc",
-            [row(IMAGE_ROW_BYTES), row(256), row(op.dst.row_bytes)],
-            [f"-DYOLO_INPUT_WIDTH={op.dst.width}"],
+            [row(IMAGE_ROW_BYTES), row(op.dst.row_bytes)],
+            [
+                f"-DYOLO_INPUT_WIDTH={op.dst.width}",
+                f"-DYOLO_INPUT_MUL={mul}",
+                f"-DYOLO_INPUT_SHIFT={shift}",
+            ],
         )
         images = Tensor("images", 3, op.dst.height, op.dst.width)
         rows = np.arange(op.dst.height)
         depths = self.schedule(op.dst, [(images, rows, rows)])
         image = self.consumer(images, depths["images"], 2)
 
-        def body(src, out, table, k):
+        def body(src, out, k):
             for _ in range_(op.dst.height):
                 pixels = src.acquire(1)
                 o = out.acquire(1)
-                k(pixels, table, o)
+                k(pixels, o)
                 src.release(1)
                 out.release(1)
 
-        self.workers.append(
-            Worker(body, [image, self.fifo(op.dst).prod(depth=2), table, k])
-        )
+        self.workers.append(Worker(body, [image, self.fifo(op.dst).prod(depth=2), k]))
 
     def assemble(self, tensor: Tensor) -> Tensor:
         """A worker that copies `tensor`'s parts into rows of a stream of their own."""
