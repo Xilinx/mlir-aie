@@ -52,8 +52,7 @@ SEGMENTS = (
     (21, 59),
     (59, 90),
     (90, 143),
-    (143, 167),
-    (167, 168),
+    (143, 168),
 )
 IMAGE = Tensor("images", 3, 640, 640)
 IMAGE_WORDS = 640 * 640 * 3 // 4
@@ -83,12 +82,16 @@ class Plan:
                 if t is not detections:
                     self.offset[t.name] = self.words
                     self.words += t.row_bytes * t.height // 4
-        # Rows a segment holds in DDR across a whole-map wait (SegmentDesign.spill).
+        # Rows a segment holds in DDR across a whole-map wait (SegmentDesign.spill)
+        # or reads back in a layout of its own (SegmentDesign.staged).
         for k, (a, b) in enumerate(SEGMENTS):
             design = SegmentDesign(network, params, network.ops[a:b], self.outputs[k])
             for _, _, rows in design.spills:
                 self.offset[rows.name] = self.words
                 self.words += rows.row_bytes * rows.height // 4
+            for _, tensor in design.staged:
+                self.offset[tensor.name] = self.words
+                self.words += tensor.row_bytes * tensor.height // 4
 
     def reads(self, ops: list[Op]) -> list[Tensor]:
         """The tensors a run of operators reads from outside it, as streams."""

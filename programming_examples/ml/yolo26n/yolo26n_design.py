@@ -307,6 +307,10 @@ class SegmentDesign:
         # Streams held through DDR: the shim's drain of the source, the fifo
         # filled back, and the rows' shape for the host buffer.
         self.spills: list[tuple[ObjectFifoHandle, ObjectFifo, Tensor]] = []
+        # Tensors this run makes and then reads back from DDR in a layout of
+        # their own, as the Detect postprocess reads its records: drained, and
+        # filled once every such drain is done.
+        self.staged: list[tuple[ObjectFifoHandle, Tensor]] = []
         index = {op.dst.name: i for i, op in enumerate(network.ops)}
         mine = {index[op.dst.name] for op in ops}
         fused = [(a, b) for a, b in fused if set(range(a, b)) <= mine]
@@ -348,6 +352,7 @@ class SegmentDesign:
             [fifo.prod() for fifo in self.in_fifos]
             + [self.out_fifos[t.name].cons() for t in self.outputs]
             + [h for drain, back, _ in self.spills for h in (drain, back.prod(depth=2))]
+            + [drain for drain, _ in self.staged]
         )
 
     def transfer(self, handles: Sequence, locate: Callable[[Tensor], tuple]) -> None:
@@ -356,13 +361,34 @@ class SegmentDesign:
         `handles` are `handles()`' as the sequence received them; `locate`
         gives each tensor's host buffer, its size in int32 words and the
         tensor's word offset in it; a spill's rows are the tensor it carries.
-        Drains are issued first, then each spill's drain; then each fill
-        step's transfers, every step but the last finishing before the next
-        starts; then each spill's fill, once its drain is done.
+        Drains are issued first, then each spill's and each staged tensor's;
+        then each fill step's transfers, every step but the last finishing
+        before the next starts, and a step that reads a staged tensor
+        starting once every staged drain is done; then each spill's fill,
+        once its drain is done.
         """
         filled = dict(zip(self.in_fifos, handles))
         drains = TaskGroup()
-        spilled = handles[len(self.in_fifos) + len(self.outputs) :]
+        spilled = handles[
+            len(self.in_fifos) + len(self.outputs) : len(handles) - len(self.staged)
+        ]
+        staging = TaskGroup() if self.staged else None
+        for (_, tensor), drain in zip(
+            self.staged, handles[len(handles) - len(self.staged) :]
+        ):
+            buffer, total, offset = locate(tensor)
+            drain.drain(
+                buffer,
+                TensorAccessPattern(
+                    (total,),
+                    offset,
+                    [1, 1, 1, tensor.row_bytes * tensor.height // 4],
+                    [0, 0, 0, 1],
+                ),
+                wait=True,
+                group=staging,
+            )
+        staged = {tensor.name for _, tensor in self.staged}
         refills = []
         for (_, _, rows), drain, back in zip(self.spills, spilled[0::2], spilled[1::2]):
             buffer, total, offset = locate(rows)
@@ -387,6 +413,11 @@ class SegmentDesign:
         steps = sorted({f.step for f in self.fills})
         fills = None
         for step in steps:
+            if staging is not None and any(
+                f.tensor.name in staged for f in self.fills if f.step == step
+            ):
+                staging.finish()
+                staging = None
             fills = TaskGroup()
             for fill in (f for f in self.fills if f.step == step):
                 buffer, total, offset = locate(fill.tensor)
@@ -1680,14 +1711,23 @@ class SegmentDesign:
         anchors = sum(t.height * t.width for t in op.scores)
         records = ObjectFifo(row(chunk * 80), name="detect_classes")
         boxes = ObjectFifo(row(chunk * 8), name="detect_boxes")
-        for step in (0, 1):
+        # Made here, the Detect outputs go to DDR first, and the records come
+        # back once they all have, after the run's own inputs (step 0).
+        made = [t for t in (*op.scores, *op.boxes) if t.name in self.local]
+        if made and len(made) < len(op.scores) + len(op.boxes):
+            raise NotImplementedError(f"{op.name}: some Detect outputs made here")
+        first = 1 if made else 0
+        for tensor in made:
+            self.staged.append((self.fifo(tensor).cons(depth=2), tensor))
+        for step in (first, first + 1):
             for tensor in op.scores:
                 self.fills.append(
                     Fill(records, tensor, "anchor_classes", step, chunk=chunk)
                 )
         for tensor in op.boxes:
-            self.fills.append(Fill(boxes, tensor, step=1))
-        self.inputs += [*op.scores, *op.boxes]
+            self.fills.append(Fill(boxes, tensor, step=first + 1))
+        if not made:
+            self.inputs += [*op.scores, *op.boxes]
         self.fifos[op.dst.name] = ObjectFifo(
             np.ndarray[(6 * op.dst.height,), np.dtype[np.int32]], name="detections"
         )

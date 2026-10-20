@@ -79,10 +79,13 @@ def segment(
     for tensor in design.outputs:
         outputs_at[tensor.name] = at
         at += design.host_bytes(tensor) // 4
-    # Rows the run holds in DDR (SegmentDesign.spill), after its outputs.
+    # Rows the run holds in DDR (SegmentDesign.spill, .staged), after its outputs.
     for _, _, rows in design.spills:
         outputs_at[rows.name] = at
         at += rows.row_bytes * rows.height // 4
+    for _, tensor in design.staged:
+        outputs_at[tensor.name] = at
+        at += tensor.row_bytes * tensor.height // 4
     total_out = at
     in_ty = np.ndarray[(total_in,), np.dtype[np.int32]]
     out_ty = np.ndarray[(total_out,), np.dtype[np.int32]]
@@ -170,7 +173,9 @@ def main() -> None:
         ]
     )
     sizes = [plan.host_bytes(t) for t in plan.outputs]
-    spilled = sum(rows.row_bytes * rows.height for _, _, rows in plan.spills)
+    spilled = sum(rows.row_bytes * rows.height for _, _, rows in plan.spills) + sum(
+        t.row_bytes * t.height for _, t in plan.staged
+    )
     inputs = iron.tensor(packed_in.view(np.int32))
     outputs = iron.zeros((sum(sizes) + spilled) // 4, dtype=np.int32)
     kwargs = dict(
