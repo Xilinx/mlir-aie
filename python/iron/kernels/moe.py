@@ -30,6 +30,7 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
+    _detect_arch,
     _kernel_source,
     _make_extern,
 )
@@ -71,7 +72,8 @@ def router_top_k(*, slice_size=32, top_k=8) -> ExternalFunction:
             np.ndarray[(top_k,), np.dtype[np.int32]],
             np.ndarray[(2 * top_k,), np.dtype[bfloat16]],
         ],
-        compile_flags=_STRICT_FP
+        # Unrolled, the float32 and float64 paths overflow aie2's 16 KB.
+        compile_flags=(_STRICT_FP_ROLLED if _detect_arch() == "aie2" else _STRICT_FP)
         + [f"-DSAMPLE_SLICE={slice_size}", f"-DSAMPLE_K_MAX={top_k}"],
         contract=KernelContract(
             trace=Trace.whole_call(),

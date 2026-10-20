@@ -13,11 +13,9 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../common/exp_f32.h"
 #include "../sample/exp64.h"
 #include "../sample/sample.h"
-#if AIE_ARCH_AIE2P
-#include "../common/exp_f32.h"
-#endif
 
 extern "C" float __subsf3(float, float);
 extern "C" float __addsf3(float, float);
@@ -33,13 +31,12 @@ bfloat16 f32_to_bf16(float value) {
   return __builtin_bit_cast(bfloat16, rounded);
 }
 
-#if AIE_ARCH_AIE2P
 // How far, in float32 ulps, a fast weight must sit from a bf16 rounding
 // midpoint to round as the float64 path does. exp_f32's error is at most
-// 9.41 * 2^-24 over every float32 in [-87, 0] (an exhaustive NPU sweep), so a
-// weight is within (2 * 9.41 + K + 1) * 2^-24 of the float64 quotient: exp
-// twice, K - 1 adds and the divide. One ulp more covers the float64 path's
-// (float) cast, and the margin doubles that.
+// 9.41 * 2^-24 over every float32 in [-87, 0] (exhaustive NPU sweeps: 9.41
+// on npu2, 9.39 on npu1), so a weight is within (2 * 9.41 + K + 1) * 2^-24
+// of the float64 quotient: exp twice, K - 1 adds and the divide. One ulp
+// more covers the float64 path's (float) cast, and the margin doubles that.
 #define ROUTER_MARGIN_ULPS (2 * (SAMPLE_K_MAX + 21))
 
 // The weights in float32: d exactly as the float64 path forms it, exp_f32 on
@@ -47,7 +44,8 @@ bfloat16 f32_to_bf16(float value) {
 // sits farther than ROUTER_MARGIN_ULPS from a bf16 midpoint, so it rounds to
 // the float64 path's word; otherwise weights is untouched.
 bool fast_weights(const float *d, bfloat16 *weights) {
-  constexpr int W = 32;
+  // At 16 lanes AIE2 needs half the frame and less program memory than at 32.
+  constexpr int W = AIE_ARCH_AIE2 ? 16 : 32;
   constexpr int K = SAMPLE_K_MAX;
   alignas(64) float e[(K + W - 1) / W * W];
   for (int i = 0; i < K; ++i)
@@ -82,7 +80,6 @@ bool fast_weights(const float *d, bfloat16 *weights) {
   }
   return true;
 }
-#endif
 
 } // namespace
 
@@ -123,7 +120,6 @@ void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
   const float max_value = sample_value(summary[SAMPLE_MAX_KEY]);
   double w[SAMPLE_K_MAX];
   double sum = 0.0;
-#if AIE_ARCH_AIE2P
   float d[SAMPLE_K_MAX];
   for (int32_t i = 0; i < SAMPLE_K_MAX; ++i)
     d[i] = __subsf3(values[i], max_value);
@@ -135,13 +131,6 @@ void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
     w[i] = exp64((double)d[i]);
     sum += w[i];
   }
-#else
-  for (int32_t i = 0; i < SAMPLE_K_MAX; ++i) {
-    const float d = __subsf3(values[i], max_value);
-    w[i] = exp64((double)d);
-    sum += w[i];
-  }
-#endif
   for (int32_t i = 0; i < SAMPLE_K_MAX; ++i) {
     weights[2 * i] = f32_to_bf16((float)(w[i] / sum));
     weights[2 * i + 1] = (bfloat16)0.0f;
