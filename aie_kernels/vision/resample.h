@@ -103,7 +103,8 @@ Axis axis(int32_t in, int32_t out, int32_t chunks) {
     s++;
   a.window = s * 2 + 1;
   a.invscale = a.scale >= 1.0 ? 1.0 / a.scale : 1.0;
-  a.step_from = 2.0 * a.support + 4.0;
+  // 2 ceil(support) + 4, at or above 2 support + 4, without a soft multiply.
+  a.step_from = to_double(2 * s + 4);
   a.slot = 2 + (a.window + 1) / 2;
   a.per = (WORDS - HEADER) / a.slot;
   if (PER)
