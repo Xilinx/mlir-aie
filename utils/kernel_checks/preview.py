@@ -49,13 +49,21 @@ PAGE = HERE / "index.html"
 
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "utils" / "component_checks"))
+import aiecc_stages  # noqa: E402
 import ci_health  # noqa: E402
+import llama_chain_hw  # noqa: E402
 import publish  # noqa: E402
 import sa_placer  # noqa: E402
 import sa_placer_hw  # noqa: E402
+import yolo26n_hw  # noqa: E402
 
 # Per hardware seed: its batch 1 launch and streaming time in us, and its cost.
 HW_SEEDS = {3: (316.0, 65.0, 290), 2: (309.0, 65.0, 295), 7: (313.0, 72.0, 295)}
+# A cold and a warm compile's aiecc profiles, for the stage times.
+STAGE_PROFILES = (
+    ROOT / "utils/component_checks/fixtures/aiecc_profile_mobilenet.json",
+    ROOT / "utils/component_checks/fixtures/aiecc_profile_shim.json",
+)
 HW_DETAIL = (
     "seed",
     "batch",
@@ -374,11 +382,100 @@ def _sweep_night(rng: random.Random) -> tuple[list, dict]:
     return sa_placer.aggregate(rows), sa_placer.meta(rows, sa_placer.FIXTURES, 20, 1.0)
 
 
+def _compile_night(rng: random.Random, compile_s: float) -> dict:
+    """A cold and a warm compile's times, staged as the captured profiles were."""
+    cold, warm = compile_s * rng.uniform(0.97, 1.05), rng.uniform(0.4, 0.6)
+    return {
+        "compile_s": round(cold, 1),
+        "compile_peak_rss_mb": round(rng.uniform(2000, 2200), 1),
+        "compile_s_warm": round(warm, 1),
+        "compile_peak_rss_mb_warm": round(rng.uniform(1700, 1900), 1),
+        **aiecc_stages.stage_rows(str(STAGE_PROFILES[0]), cold, ""),
+        **aiecc_stages.stage_rows(str(STAGE_PROFILES[1]), warm, "_warm"),
+    }
+
+
+def _llama_night(rng: random.Random) -> tuple[list, dict]:
+    """One synthetic llama decode nightly, read through the check's own parsers."""
+    n = llama_chain_hw.N_LAYERS
+    ms = 47.6 * rng.uniform(0.98, 1.03)
+    ttft = 286.0 * rng.uniform(0.98, 1.03)
+    ran = "".join(f"token {i}: PASS\n" for i in range(4))
+    ran += "chain_persist_grow_mh: 4/4 tokens PASS\n"
+    timed = f"per-token: {ms:.2f} ms ({1000 / ms:.2f} tok/s)\nratio: 1.84x -> dma\n"
+    generated = (
+        f"prompt 6 tokens, generated 32: TTFT {ttft:.1f} ms "
+        f"({6000 / ttft:.1f} prompt tok/s), decode {1000 / ms:.2f} tok/s\n"
+        "check: 22/32 tokens are numpy_llama_ref's argmax\n"
+    )
+    correctness = llama_chain_hw.parse_correctness(ran, 0)
+    timing = llama_chain_hw.parse_timing(timed)
+    gen = llama_chain_hw.parse_generate(generated)
+    artifacts = {"elf_bytes": 1_843_200, "pdi_bytes": 412_160, "n_cores": 32}
+    compiled = _compile_night(rng, 19.8)
+    case = f"llama/persist_grow/N={n}"
+    meta = {
+        "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
+        "n_layers": n,
+        "pt": llama_chain_hw.P_MAX,
+        "measurement_sane": True,
+        "detail": [
+            {"case": case, **correctness, **timing, **gen, **artifacts, **compiled}
+        ],
+        "failed": [],
+        "exitstatus": 0,
+    }
+    return (
+        llama_chain_hw.aggregate(correctness, timing, gen, artifacts, compiled),
+        meta,
+    )
+
+
+def _yolo_night(rng: random.Random) -> tuple[list, dict]:
+    """One synthetic YOLO26n nightly, read through the check's own parsers."""
+    images = [f"{i:012d}.jpg" for i in (9, 25, 30, 34, 36, 42, 49, 61)]
+    ran = "".join(f"image {name}: PASS (0/8400 differ)\n" for name in images)
+    ran += f"yolo26n: {len(images)}/{len(images)} images PASS\n"
+    ran += f"ort: {len(images)}/{len(images)} images match onnxruntime\n"
+    one = 12700 * rng.uniform(0.98, 1.03)
+    batched = 6150 * rng.uniform(0.98, 1.03)
+    timed = (
+        f"per-image: {one:.1f} us ({1e6 / one:.1f} fps) at batch 1\n"
+        f"per-image: {batched:.1f} us ({1e6 / batched:.1f} fps) "
+        f"at batch {yolo26n_hw.BATCH}\n"
+    )
+    correctness = yolo26n_hw.parse_correctness(ran, 0)
+    timing = yolo26n_hw.parse_timing(timed)
+    artifacts = {"elf_bytes": 2_621_440, "n_cores": 32}
+    compiled = _compile_night(rng, 12.0)
+    meta = {
+        "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
+        "measurement_sane": True,
+        "detail": [
+            {
+                "case": yolo26n_hw.CASE,
+                **correctness,
+                **timing,
+                **artifacts,
+                **compiled,
+            }
+        ],
+        "failed": [],
+        "exitstatus": 0,
+    }
+    return yolo26n_hw.aggregate(correctness, timing, artifacts, compiled), meta
+
+
 def synthetic_components(site: Path, nights: int = 5) -> None:
     """Append ``nights`` daily nightlies to a check that publishes no per-seed detail yet."""
     rng = random.Random(1)
     now = publish.now_utc()
-    for check, night in (("sa-placer", _sweep_night), ("sa-placer-hw", _hw_night)):
+    for check, night in (
+        ("sa-placer", _sweep_night),
+        ("sa-placer-hw", _hw_night),
+        ("llama-chain-hw", _llama_night),
+        ("yolo26n-hw", _yolo_night),
+    ):
         out = site / check
         latest = out / "latest.json"
         if latest.exists() and "detail" in json.loads(latest.read_text()):
