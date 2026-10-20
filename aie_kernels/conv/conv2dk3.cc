@@ -1540,11 +1540,84 @@ void conv2dk3_ui8_vector(
 #define CONV_STRIDE 1
 #endif
 
+#ifndef CONV2DK3_BLOCKS
+#define CONV2DK3_BLOCKS 4
+#endif
+
 #ifdef CONV_ROUND_EVEN
 #define CONV2DK3_ROUNDING aie::rounding_mode::conv_even
 #else
 #define CONV2DK3_ROUNDING aie::rounding_mode::symmetric_inf
 #endif
+
+// NB neighbouring blocks of M output pixels from output pixel x0: each
+// weight vector loaded once for all of them, and each input vector once,
+// shared by the blocks that overlap it.
+template <int M, int Stride, int NB>
+static inline __attribute__((always_inline)) void conv2dk3_i8_bias_blocks(
+    const int8_t *line0, const int8_t *line1, const int8_t *line2,
+    const int8_t *__restrict wts_oc, aie::accum<acc32, M * 8> seeded,
+    int8_t *__restrict output, const int x0, const int row_start,
+    const int row_end, const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int input_channels = CONV_INPUT_CHANNELS;
+  constexpr int V = M * 8;
+  using MMUL = aie::mmul<M, 8, 8, int8, int8>;
+  const aie::vector<int8, V> zeros = aie::zeros<int8, V>();
+
+  MMUL acc[NB];
+  AIE_LOOP_UNROLL_FULL
+  for (int b = 0; b < NB; b++)
+    acc[b] = seeded;
+  for (int r = row_start; r < row_end; r++) {
+    const int8_t *line = r == 0 ? line0 : (r == 1 ? line1 : line2);
+    const int8_t *__restrict w = wts_oc + r * 3 * 64;
+    for (int ic = 0; ic < input_channels / 8; ic++) {
+      const int8_t *row = line + ic * iw * 8;
+      aie::vector<int8, 64> w0 = aie::load_v<64>(w);
+      aie::vector<int8, 64> w1 = aie::load_v<64>(w + 64);
+      aie::vector<int8, 64> w2 = aie::load_v<64>(w + 128);
+      w += 9 * 64;
+      if constexpr (Stride == 1) {
+        // in[b] holds input pixels x0 + (b - 1) * M onwards.
+        aie::vector<int8, V> in[NB + 2];
+        in[0] = x0 > 0 ? aie::load_v<V>(row + (x0 - M) * 8) : zeros;
+        AIE_LOOP_UNROLL_FULL
+        for (int b = 0; b < NB; b++)
+          in[b + 1] = aie::load_v<V>(row + (x0 + b * M) * 8);
+        in[NB + 1] =
+            x0 + NB * M < iw ? aie::load_v<V>(row + (x0 + NB * M) * 8) : zeros;
+        AIE_LOOP_UNROLL_FULL
+        for (int b = 0; b < NB; b++) {
+          acc[b].mac(aie::shuffle_down_fill(in[b], in[b + 1], V - 8), w0);
+          acc[b].mac(in[b + 1], w1);
+          acc[b].mac(aie::shuffle_down_fill(in[b + 1], in[b + 2], 8), w2);
+        }
+      } else {
+        // Output pixel x reads input pixels 2x - 1, 2x and 2x + 1.
+        const int xi = 2 * x0;
+        aie::vector<int8, V> prev =
+            xi > 0 ? aie::load_v<V>(row + (xi - M) * 8) : zeros;
+        AIE_LOOP_UNROLL_FULL
+        for (int b = 0; b < NB; b++) {
+          aie::vector<int8, V> lo = aie::load_v<V>(row + (xi + 2 * b * M) * 8);
+          aie::vector<int8, V> hi =
+              aie::load_v<V>(row + (xi + (2 * b + 1) * M) * 8);
+          aie::vector<int8, 2 * V> pair = aie::concat(lo, hi);
+          aie::vector<int8, V> even = aie::filter_even(pair, 8);
+          aie::vector<int8, V> odd = aie::filter_odd(pair, 8);
+          acc[b].mac(aie::shuffle_down_fill(prev, odd, V - 8), w0);
+          acc[b].mac(even, w1);
+          acc[b].mac(odd, w2);
+          prev = hi;
+        }
+      }
+    }
+  }
+  AIE_LOOP_UNROLL_FULL
+  for (int b = 0; b < NB; b++)
+    aie::store_v(output + b * V, acc[b].template to_vector<int8>(scale));
+}
 
 template <int M, int Stride, bool Table>
 static void conv2dk3_i8_bias_vector(const int8_t *line0, const int8_t *line1,
@@ -1559,8 +1632,10 @@ static void conv2dk3_i8_bias_vector(const int8_t *line0, const int8_t *line1,
   constexpr int input_channels = CONV_INPUT_CHANNELS;
   constexpr int output_channels = CONV_OUTPUT_CHANNELS;
   constexpr int V = M * 8;
+  constexpr int NB = CONV2DK3_BLOCKS;
+  constexpr int groups = ow / M / NB;
+  constexpr int singles = ow / M % NB;
   static_assert(ow % M == 0, "conv2dk3 with a bias tiles the row by M");
-  using MMUL = aie::mmul<M, 8, 8, int8, int8>;
   event0();
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -1568,7 +1643,6 @@ static void conv2dk3_i8_bias_vector(const int8_t *line0, const int8_t *line1,
 
   const int row_start = check == top ? 1 : 0;
   const int row_end = check == bottom ? 2 : 3;
-  const aie::vector<int8, V> zeros = aie::zeros<int8, V>();
 
   for (int oc = 0; oc < output_channels / 8; oc++) {
     aie::vector<int32, V> seed;
@@ -1578,54 +1652,21 @@ static void conv2dk3_i8_bias_vector(const int8_t *line0, const int8_t *line1,
     aie::accum<acc32, V> seeded;
     seeded.from_vector(seed, 0);
     const int8_t *wts_oc = wts + oc * (input_channels / 8) * 9 * 64;
+    int8_t *out = output + oc * ow * 8;
 
-    for (int xb = 0; xb < ow / M; xb++) {
-      MMUL acc;
-      acc = seeded;
-      for (int r = row_start; r < row_end; r++) {
-        const int8_t *line = r == 0 ? line0 : (r == 1 ? line1 : line2);
-        const int8_t *__restrict w = wts_oc + r * 3 * 64;
-        for (int ic = 0; ic < input_channels / 8; ic++) {
-          const int8_t *row = line + ic * iw * 8;
-          aie::vector<int8, 64> w0 = aie::load_v<64>(w);
-          aie::vector<int8, 64> w1 = aie::load_v<64>(w + 64);
-          aie::vector<int8, 64> w2 = aie::load_v<64>(w + 128);
-          w += 9 * 64;
-          if constexpr (Stride == 1) {
-            const int x0 = xb * M;
-            aie::vector<int8, V> cur = aie::load_v<V>(row + x0 * 8);
-            aie::vector<int8, V> prev =
-                x0 > 0 ? aie::load_v<V>(row + (x0 - M) * 8) : zeros;
-            aie::vector<int8, V> next =
-                x0 + M < iw ? aie::load_v<V>(row + (x0 + M) * 8) : zeros;
-            acc.mac(aie::shuffle_down_fill(prev, cur, V - 8), w0);
-            acc.mac(cur, w1);
-            acc.mac(aie::shuffle_down_fill(cur, next, 8), w2);
-          } else {
-            // Output pixel x reads input pixels 2x - 1, 2x and 2x + 1.
-            const int x0 = 2 * xb * M;
-            aie::vector<int8, 2 * V> pair =
-                aie::concat(aie::load_v<V>(row + x0 * 8),
-                            aie::load_v<V>(row + (x0 + M) * 8));
-            aie::vector<int8, V> even = aie::filter_even(pair, 8);
-            aie::vector<int8, V> odd = aie::filter_odd(pair, 8);
-            aie::vector<int8, V> prev =
-                x0 > 0 ? aie::load_v<V>(row + (x0 - M) * 8) : zeros;
-            acc.mac(aie::shuffle_down_fill(prev, odd, V - 8), w0);
-            acc.mac(even, w1);
-            acc.mac(odd, w2);
-          }
-        }
-      }
-      aie::store_v(output + oc * ow * 8 + xb * V,
-                   acc.template to_vector<int8>(scale));
-    }
+    for (int g = 0; g < groups; g++)
+      conv2dk3_i8_bias_blocks<M, Stride, NB>(
+          line0, line1, line2, wts_oc, seeded, out + g * NB * V, g * NB * M,
+          row_start, row_end, scale);
+    for (int x = 0; x < singles; x++)
+      conv2dk3_i8_bias_blocks<M, Stride, 1>(
+          line0, line1, line2, wts_oc, seeded, out + (groups * NB + x) * V,
+          (groups * NB + x) * M, row_start, row_end, scale);
   }
   if constexpr (Table)
     map_table_i8<output_channels * ow>(output, table);
   event1();
 }
-
 #define CONV2DK3_M ((CONV_INPUT_WIDTH / CONV_STRIDE) % 8 == 0 ? 8 : 4)
 
 extern "C" {
