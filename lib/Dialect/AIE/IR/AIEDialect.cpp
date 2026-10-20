@@ -167,7 +167,8 @@ Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
   return nullptr;
 }
 
-xilinx::AIE::NamedOpTable::NamedOpTable(Operation *symbolTableOp) {
+xilinx::AIE::NamedOpTable::NamedOpTable(Operation *symbolTableOp)
+    : context(symbolTableOp->getContext()) {
   if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
       symbolTableOp->getRegion(0).empty()) {
     return;
@@ -195,21 +196,12 @@ Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringRef name) {
   return lookupNamedOp(from, StringAttr::get(from->getContext(), name));
 }
 
-std::string xilinx::AIE::generateUniqueSymbolName(
-    mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
+std::string xilinx::AIE::NamedOpTable::uniqueName(llvm::StringRef prefix,
+                                                  unsigned &counter) const {
   std::string name;
   do {
     name = (prefix + llvm::Twine(counter++)).str();
-  } while (lookupNamedOpIn(symbolTableOp, llvm::StringRef(name)));
-  return name;
-}
-
-std::string xilinx::AIE::generateUniqueSymbolName(
-    mlir::SymbolTable &symbolTable, llvm::StringRef prefix, unsigned &counter) {
-  std::string name;
-  do {
-    name = (prefix + llvm::Twine(counter++)).str();
-  } while (symbolTable.lookup(name));
+  } while (ops.count(StringAttr::get(context, name)));
   return name;
 }
 

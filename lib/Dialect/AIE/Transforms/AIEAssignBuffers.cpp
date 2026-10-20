@@ -1658,14 +1658,12 @@ struct AIEPrepareBuffersPass
     // diagnostic below names the buffer it rejects.
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
     unsigned counter = 0;
-    // One snapshot for the whole walk -- see generateUniqueSymbolName's
-    // declaration.
-    SymbolTable deviceSymbols(device);
+    NamedOpTable names(device);
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
       if (!buffer.hasName()) {
-        buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                        builder.getStringAttr(generateUniqueSymbolName(
-                            deviceSymbols, "_anonymous", counter)));
+        buffer->setAttr(
+            SymbolTable::getSymbolAttrName(),
+            builder.getStringAttr(names.uniqueName("_anonymous", counter)));
       }
     });
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
