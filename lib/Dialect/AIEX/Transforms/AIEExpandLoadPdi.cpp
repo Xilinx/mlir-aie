@@ -34,6 +34,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -394,15 +395,15 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
 
 // The checks that need no expansion, so the pass fails before it changes the
 // IR. `initEntries` holds the devices that get an init entry.
-static LogicalResult verifyExpansion(
-    ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
-    function_ref<AIEX::ExpandMode(NpuLoadPdiOp)> expandMode, bool teardown,
-    bool initEntry,
-    const llvm::MapVector<AIE::DeviceOp, AIE::AIEDevice> &initEntries) {
+static LogicalResult
+verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
+                function_ref<AIEX::ExpandMode(NpuLoadPdiOp)> expandMode,
+                bool teardown, bool initEntry,
+                ArrayRef<AIE::DeviceOp> initEntries) {
   if (initEntry && !teardown)
     return module.emitError(
         "aie-expand-load-pdi: init-entry requires teardown");
-  for (AIE::DeviceOp device : llvm::make_first_range(initEntries))
+  for (AIE::DeviceOp device : initEntries)
     if (Operation *existing = device.lookupSymbol(initEntrySequenceName))
       return existing->emitOpError() << "is named '" << initEntrySequenceName
                                      << "', which aie-expand-load-pdi needs "
@@ -508,19 +509,17 @@ struct AIEExpandLoadPdiPass
     // reset. The host may dispatch a device's sequences in any order, so with
     // an init entry they start without a reset only if each ends torn down,
     // and `reconfig_init` holds that reset.
-    llvm::MapVector<AIE::DeviceOp, AIE::AIEDevice> initEntries;
+    llvm::SetVector<AIE::DeviceOp> initEntries;
     if (clInitEntry) {
-      for (auto &[seq, loads] : sequences)
-        if (loads.preloads[0].seen)
-          initEntries.try_emplace(seq->getParentOfType<AIE::DeviceOp>(),
-                                  loads.preloads[0].device);
+      for (AIE::RuntimeSequenceOp seq : llvm::make_first_range(sequences))
+        initEntries.insert(seq->getParentOfType<AIE::DeviceOp>());
       for (auto &[seq, loads] : sequences)
         if (loads.last != AIEX::ExpandMode::write32)
-          initEntries.erase(seq->getParentOfType<AIE::DeviceOp>());
+          initEntries.remove(seq->getParentOfType<AIE::DeviceOp>());
     }
 
     if (failed(verifyExpansion(module, loadPdiOps, expandMode, clTeardown,
-                               clInitEntry, initEntries)))
+                               clInitEntry, initEntries.getArrayRef())))
       return signalPassFailure();
 
     // Transform load_pdi ops
@@ -565,7 +564,7 @@ struct AIEExpandLoadPdiPass
       reload.load.erase();
     }
 
-    for (auto [device, deviceType] : initEntries) {
+    for (AIE::DeviceOp device : initEntries) {
       OpBuilder builder(device.getContext());
       builder.setInsertionPoint(
           *device.getOps<AIE::RuntimeSequenceOp>().begin());
@@ -574,8 +573,8 @@ struct AIEExpandLoadPdiPass
           builder.getStringAttr(initEntrySequenceName), BoolAttr{},
           AIE::TraceBufferAttr{}, ArrayAttr{});
       builder.setInsertionPointToStart(&init.getBody().emplaceBlock());
-      AIE::DeviceOp emptyDevice =
-          getOrCreateEmptyDevice(module, deviceType, 0, device.getLoc());
+      AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
+          module, device.getDevice(), 0, device.getLoc());
       NpuLoadPdiOp::create(builder, device.getLoc(),
                            FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
                            /*id=*/nullptr, /*size=*/nullptr,

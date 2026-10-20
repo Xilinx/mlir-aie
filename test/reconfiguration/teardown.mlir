@@ -134,6 +134,7 @@ module {
 // With an init entry, the reset moves into one `reconfig_init` sequence shared
 // by both sequences.
 
+// INIT:       aie.device(npu2) @empty_0
 // INIT-LABEL: aie.device(npu2_1col) @shared
 // INIT:       aie.runtime_sequence @reconfig_init() {
 // INIT-NEXT:    aiex.npu.load_pdi {device_ref = @empty_0, expand_mode = 0 : i32}
@@ -152,7 +153,7 @@ module {
     }
   }
 
-  aie.device(npu2_1col) @main {
+  aie.device(npu2) @main {
     aie.runtime_sequence @first(%arg0: memref<16xi32>) {
       aiex.npu.load_pdi {device_ref = @shared}
     }
