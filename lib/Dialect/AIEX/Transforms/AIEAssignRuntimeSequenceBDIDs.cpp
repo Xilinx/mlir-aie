@@ -760,7 +760,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                       /*row=*/nullptr);
     SmallVector<int32_t> ids;
     victim.walk([&](AIE::DMABDOp bd) { ids.push_back(*bd.getBdId()); });
-    auto remark = poll.emitRemark()
+    // Not poll.emitRemark(): its "see current operation" note verifies and
+    // numbers the whole device for each poll, quadratic in the sequence.
+    auto remark = mlir::emitRemark(poll.getLoc())
                   << "tile (" << tile.getCol() << "," << tile.getRow()
                   << ") has no free buffer descriptor id, so this poll waits "
                   << (victimQueuedBehind > 0
