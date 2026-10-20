@@ -6,4 +6,4 @@
 // NPU.
 //
 // RUN: %python %S/test_compile_time_keys.py | FileCheck %s
-// CHECK: compile_time_keys: 8/8 PASS
+// CHECK: compile_time_keys: 7/7 PASS

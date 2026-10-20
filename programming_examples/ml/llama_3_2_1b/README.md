@@ -6,17 +6,18 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 An INT8 decode of Llama 3.2 1B on an AMD NPU2 (AIE2P), written in the IRON
 Python API and compiled with `@iron.jit` to one full ELF. Each dispatch runs the
 whole per-token decode on the AI Engine array for 1 to 4 tokens, chosen per
-dispatch, each a prompt token or a generated one: all 16 transformer layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
+dispatch, or a batch of up to 4 prompt tokens together: all 16 transformer
+layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
 and the token→embedding feedback. The W8A8-dynamic INT8 recipe tracks the
 reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % on
 prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
 beyond quantization.
 
-> Status: decode is validated on hardware at 47.9 ms/token (20.9 tok/s) at
+> Status: decode is validated on hardware at 48.3 ms/token (20.7 tok/s) at
 > N=16 at short context and 389 ms/token at 128k. Prefill runs on the device
-> token by token (`generate.py`: prompt in, text out); batched prefill is
-> next — see [On the device, and on the host](#on-the-device-and-on-the-host)
-> and [What's next](#whats-next).
+> in batches of up to 4 prompt tokens (`generate.py`: prompt in, text out) —
+> see [On the device, and on the host](#on-the-device-and-on-the-host) and
+> [What's next](#whats-next).
 
 ---
 
@@ -49,7 +50,9 @@ Key design pieces (each validated bit-exact in isolation before integration):
 - **Shared 8-lane GEMV array** (`aie2_gemv_array.py`). Eight cores run every
   projection as units on one broadcast activation: qkv (fused, each core giving
   its KV group's chunk), o and down (fused with the residual add), gate and up.
-  The layers' weights stream over eight shim lanes, one per core.
+  The layers' weights stream over eight shim lanes, one per core, on
+  `aie::mmul<8, 8, 8>` (`kernels/llama_gemv_mma.cc`): a prefill batch's up to 4
+  activations share one pass of the weights.
 
 - **One-stream sampler + embed gather** (`kernels/llama_topk_sample.cc`). The
   lm_head must stream the full 262 MB tied embed table every token. Rather than
@@ -71,7 +74,9 @@ Key design pieces (each validated bit-exact in isolation before integration):
   only the live blocks of its 8 KV heads, one linear transfer per half; two cores
   per KV head fold them block by block, alternating (`llama_attn_block.cc`, an
   exact online softmax), and the token's own new row joins its last block on chip
-  and is the one row written back. Rope advances with position too.
+  and is the one row written back. A batch's queries read each block once, the
+  batch's rows joining its block in turn so each query sees its own prefix. Rope
+  advances with position too.
 
 ### On the device, and on the host
 
@@ -79,20 +84,22 @@ Every transformer op, the lm_head, the sampler, the token feedback and the KV
 append run as AI Engine kernels, and one compiled design serves every dispatch.
 The host (`DispatchSession` in `llama_npu.py`) keeps one hardware context and,
 per dispatch, writes the design's ScratchpadParameters (`DecodeShape.params` in
-`llama_decode.py`): how many tokens it generates, which every
-worker reads; the position of the dispatch's first token, which the attention
-workers read; its row in the RoPE table the weight blob carries, built once
-with Llama 3's rope scaling; per token slot, whether it runs (a slot that does
-not run moves nothing), how many KV blocks to read and where its row goes; and
-the sampler's settings. What the host still does, each to move to the device in
+`llama_decode.py`): how many passes it runs and how many rows the first one
+has (one, or a prompt batch of up to 4), which every worker reads; the position
+of the dispatch's first token, which the attention workers read; its row in the
+RoPE table the weight blob carries, built once with Llama 3's rope scaling; per
+pass, whether it runs (a pass that does not run moves nothing), how many KV
+blocks to read and where its rows go; and the sampler's settings. What the host still does, each to move to the device in
 the stages of the one-design restructure:
 
-- **Prefill** runs on the device token by token: a prompt token is a token slot
-  whose input is the seed the lm_head core makes of the token's embed row, which
-  it fetches from the lm_head's weights (`gat{t}`, `pg{t}`, `rows`), rather than
-  the previous token's sample, and the prompt tokens before the last skip the
-  lm_head and sampler (`lm{t}`); the host only says which tokens are the
-  prompt's. Batched prefill, many prompt rows a pass, is the next stage.
+- **Prefill** runs on the device in batches: a dispatch's one pass takes up to
+  4 prompt tokens as its rows, within one KV block, each row's input being the
+  seed the lm_head core makes of the token's embed row, which it fetches from
+  the lm_head's weights (`gat{m}`, `pg{m}`, `rows`). The GEMV array runs each
+  projection once for all the rows; the norms, RoPE, attention and SiLU take
+  them a row at a time. Only the prompt's last batch runs the lm_head and
+  sampler (`lm{t}`), for its last row; the host only splits the prompt into
+  batches (`DecodeShape.batches`).
 - **Tokenization**, which stays on the host.
 
 ### INT8 recipe (W8A8-dynamic)
@@ -116,11 +123,14 @@ dispatch time / tokens per dispatch. N=16, 4 tokens a dispatch unless noted:
 
 | Context (position of the first token) | per-token | tok/s |
 |---|---|---|
-| **64** | **47.9 ms** | **20.9** |
+| **64** | **48.3 ms** | **20.7** |
 | 4096 | 60.1 ms | 16.6 |
 | 32768 | 132.9 ms | 7.5 |
 | 65536 | 218.2 ms | 4.6 |
 | 131068 | 388.8 ms | 2.6 |
+
+The longer contexts were measured before the design took prompt batches,
+which cost 0.35 ms a token at 64 (47.9 ms before).
 
 N=16 went from 452 ms/token to 212 ms by vectorizing the kernels, then to
 91.2 ms by moving the remaining scalar fp32 epilogues onto vectors (bit-exact),
@@ -147,9 +157,10 @@ between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
 60–89 tok/s on this model.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
-> **TTFT** (time to first token). `generate.py` at N=16, token by token, the
-> prompt's tokens before its last skipping the lm_head: 6 prompt tokens, TTFT
-> 190 ms (31.6 prompt tok/s); 27, 782 ms (34.5); then 20.9 tok/s.
+> **TTFT** (time to first token). `generate.py` at N=16, the prompt in batches
+> of up to 4 tokens, only the last batch running the lm_head: 6 prompt tokens,
+> TTFT 122 ms (49.2 prompt tok/s); 27, 429 ms (62.9); then 20.8 tok/s. Token
+> by token, the same prompts took 190 and 782 ms.
 
 ---
 
@@ -276,8 +287,9 @@ LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --bf16-ref
 # the full 16-layer autoregressive decode (4 tokens a dispatch; --passes picks 1-4)
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py
 
-# a 6-token prompt (seeded random ids) before generating
-LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --prompt-tokens 6
+# a 6-token prompt (seeded random ids) before generating, in batches of up to
+# 4; --vs-batch 1 also runs it a token per dispatch and compares the two
+LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --prompt-tokens 6 --vs-batch 1
 
 # sampled instead of greedy (the sampler's settings are per dispatch)
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --sample-temp 0.7 --sample-topk 4
@@ -351,10 +363,12 @@ accumulators, and full-precision fp32 glue chains.
 
 ## What's next
 
-One compiled design for decode, token-by-token prefill and batched prefill, with
-the per-call values (tokens per dispatch, position, live context, the sampler's
-settings) as ScratchpadParameters:
+One compiled design serves decode and batched prefill, with the per-call
+values (passes, a batch's rows, position, live context, the sampler's
+settings) as ScratchpadParameters. Next:
 
 - **The lm_head over more lanes** (it streams over one, about 19 ms a token),
   and the glue fused into the GEMV array's epilogues.
-- **Batched prefill**, many prompt rows a pass through the GEMV array, for TTFT.
+- **Larger prefill batches**: the mma tile has 8 activation slots and the
+  design fills 4, its per-row parameters (`pg{m}`, `gat{m}`) sharing the
+  32-parameter budget with the passes'.

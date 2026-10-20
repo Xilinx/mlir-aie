@@ -35,7 +35,9 @@ from aie2_decode import (
     KV_BLOCK_WORDS,
     KV_TB,
     LMW_GAMMA_BYTES,
+    M_MAX,
     REC_BYTES,
+    RROW,
     VOCAB,
     WLM_TOTAL,
     wblob_layout,
@@ -134,7 +136,7 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
             attn_perslot=True,
             attn_lut=True,
             attn_tb=KV_TB,
-            attn_cores=SHAPE.attn_cores,
+            attn_cores=2,
             attn_interleaved=True,
         )
         layers[L]["scales"] = scales
@@ -213,7 +215,7 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan)
 
     Args:
         records: The dispatch's packed records.
-        passes: The tokens it generated.
+        passes: Its passes.
         x_i8, res_scale: The first token's seed.
         layers: The oracle's layers, their caches as the dispatch found them.
         p0: The first token's position.
@@ -221,8 +223,8 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan)
         lm: (embed_i8, embed_sc, final_norm gamma).
         sample: The sampler's (temperature, top_k, seed).
         plan: Per token, (the prompt token it inputs, or None to input the
-            previous token's sample (the first token: x_i8); whether the
-            lm_head and sampler ran for it, leaving a record to check).
+            previous token's sample (the first token: x_i8); the index of
+            the record the lm_head and sampler left for it, or None).
 
     Returns:
         (failed tokens, the last token's final residual and its scale).
@@ -232,9 +234,8 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan)
     fails = 0
     hidden = None
     cur_x, cur_sc = x_i8, res_scale
-    for t, (dev_tok, (prompt, lm_on)) in enumerate(
-        zip(tokens_of(records, passes), plan)
-    ):
+    dev_toks = tokens_of(records, passes)
+    for t, (prompt, rec_at) in enumerate(plan):
         if prompt is not None:
             cur_x, cur_sc = embed_seed_ref(embed_i8[prompt], float(embed_sc[prompt]))
         for L in range(N_LAYERS):
@@ -243,15 +244,10 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan)
         logits, *hidden = chain_forward_logits(
             cur_x, cur_sc, layers, p0 + t, embed_i8, embed_sc, gamma
         )
-        if not lm_on:
-            untouched = not np.any(records[t * REC_BYTES : (t + 1) * REC_BYTES])
-            fails += not untouched
-            print(
-                f"  token {t} (pos {p0+t}): prompt, no sample, record "
-                f"{'untouched' if untouched else 'WRITTEN'}",
-                flush=True,
-            )
+        if rec_at is None:
+            print(f"  token {t} (pos {p0+t}): prompt, no sample", flush=True)
             continue
+        dev_tok = dev_toks[rec_at]
         if temperature > 0:
             ref = topk_sample_reference(
                 logits, temperature, top_k, seed, k_set=ONESTREAM_KSET
@@ -271,7 +267,7 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan)
                 else f"near-tie gap/std={gap/spread:.3f} rank={rank}"
             )
         cur_x, cur_sc = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
-        rec = records[t * REC_BYTES : (t + 1) * REC_BYTES]
+        rec = records[rec_at * REC_BYTES : (rec_at + 1) * REC_BYTES]
         seed_ok = np.array_equal(rec[:D], cur_x) and rec[D : D + 4].tobytes() == (
             np.float32(cur_sc).tobytes()
         )
@@ -287,10 +283,11 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan)
     return fails, hidden
 
 
-def check_final(stage, hidden):
-    """Print whether `stage` holds `hidden` as the final residual; return 1 if not."""
+def check_final(stage, hidden, row):
+    """Print whether `stage` holds `hidden` as final residual row `row`;
+    return 1 if not."""
     xo_i8, xo_scale = hidden
-    at = stage[SHAPE.final_at : SHAPE.final_at + D + 4]
+    at = stage[SHAPE.final_at + row * RROW : SHAPE.final_at + row * RROW + D + 4]
     ok = np.array_equal(at[:D], xo_i8) and at[D:].tobytes() == xo_scale.tobytes()
     print(f"  final hidden: {'PASS' if ok else 'FAIL'}", flush=True)
     return int(not ok)
@@ -374,6 +371,21 @@ def main():
         "input from its own embed row as the device gathers it, not the sample before",
     )
     p.add_argument(
+        "--batch",
+        type=int,
+        choices=range(1, M_MAX + 1),
+        default=M_MAX,
+        help="the prompt's tokens a dispatch runs together, at most",
+    )
+    p.add_argument(
+        "--vs-batch",
+        type=int,
+        choices=range(1, M_MAX + 1),
+        help="also run the prompt in batches of at most this many tokens; the "
+        "sampled records, the KV cache, the last final residual and the seed "
+        "left must be byte-identical",
+    )
+    p.add_argument(
         "--save-run",
         help="run the dispatches and save what the device left to this .npz, "
         "without the oracle (which takes about 30 min a token at 128k)",
@@ -388,27 +400,48 @@ def main():
     n_disp = opts.dispatches
     p0 = opts.start_pos
     if p0 is None:
-        p0 = min(T // 2, T - n_disp * (opts.passes or SHAPE.p_max))
-    schedule = []
-    pos = p0
-    for _ in range(n_disp):
-        schedule.append((pos, opts.passes or SHAPE.passes_for(pos)))
-        pos += schedule[-1][1]
-    passes = schedule[0][1]
-    n_tok = pos - p0
-    prompt_ids = np.random.default_rng(fseed + 1).integers(0, VOCAB, opts.prompt_tokens)
-    # Per dispatch, per token: (its prompt token or None, whether the lm_head
-    # runs for it: every token but the prompt's before its last).
-    plans = [
-        [
-            (
-                int(prompt_ids[at - p0]) if at - p0 < opts.prompt_tokens else None,
-                at - p0 >= opts.prompt_tokens - 1,
-            )
-            for at in range(start, start + n)
-        ]
-        for start, n in schedule
+        p0 = min(T // 2, T - n_disp * (opts.passes or SHAPE.p_max) - opts.prompt_tokens)
+    prompt_ids = [
+        int(t)
+        for t in np.random.default_rng(fseed + 1).integers(0, VOCAB, opts.prompt_tokens)
     ]
+
+    def schedule_of(largest):
+        """The run's dispatches with the prompt in batches of `largest` at most.
+
+        Returns:
+            (per dispatch, (position, passes, its batch of prompt tokens,
+            whether the batch ends the prompt): the prompt's batches first,
+            then --dispatches of generated tokens; per dispatch, per token,
+            (its prompt token or None, the index of the record the lm_head
+            and sampler leave for it, or None)).
+        """
+        schedule = []
+        pos = p0
+        sizes = SHAPE.batches(p0, opts.prompt_tokens, largest)
+        for i, n in enumerate(sizes):
+            at = pos - p0
+            schedule.append((pos, 1, prompt_ids[at : at + n], i == len(sizes) - 1))
+            pos += n
+        for _ in range(n_disp):
+            schedule.append((pos, opts.passes or SHAPE.passes_for(pos), [], True))
+            pos += schedule[-1][1]
+        plans = [
+            (
+                [
+                    (tok, 0 if i == len(batch) - 1 and ends else None)
+                    for i, tok in enumerate(batch)
+                ]
+                if batch
+                else [(None, t) for t in range(n)]
+            )
+            for _, n, batch, ends in schedule
+        ]
+        return schedule, plans
+
+    schedule, plans = schedule_of(opts.batch)
+    passes = schedule[0][1]
+    n_tok = sum(len(b) or n for _, n, b, _ in schedule)
     if p0 < 0 or p0 + n_tok > T:
         p.error(f"{n_tok} tokens from position {p0} do not fit in T={T}")
     if (n_disp > 1) + (opts.repeats > 1) + opts.split > 1:
@@ -419,8 +452,8 @@ def main():
         p.error(
             "--save-run, --from-run and --prompt-tokens are for runs of --dispatches"
         )
-    if opts.prompt_tokens > n_tok:
-        p.error(f"--prompt-tokens {opts.prompt_tokens} is past the {n_tok} tokens")
+    if opts.vs_batch and (opts.save_run or opts.from_run or not opts.prompt_tokens):
+        p.error("--vs-batch is for a --prompt-tokens run on the NPU")
     config = json.dumps(
         dict(
             n_layers=N_LAYERS,
@@ -466,7 +499,8 @@ def main():
         print("packing the weights ...", flush=True)
         decoder = Decoder(SHAPE, layers, lm, rope, opts.elf)
     print(
-        f"chain_persist_grow_mh N_LAYERS={N_LAYERS} passes={[n for _, n in schedule]}"
+        f"chain_persist_grow_mh N_LAYERS={N_LAYERS} "
+        f"passes={[len(b) or n for _, n, b, _ in schedule]}"
         f" P0={p0} KSET={ONESTREAM_KSET}"
         f"  temp={sample[0]} topk={sample[1]} seed={sample[2]}  fixture_seed={fseed}"
         f"  dispatches={n_disp} repeats={opts.repeats}",
@@ -494,11 +528,38 @@ def main():
         assert decoder is not None
         return decoder.dispatch(kv_t, stage_t, params)[0]
 
+    def run_schedule(schedule):
+        """Run a schedule's dispatches back to back on one KV and stage tensor.
+
+        Returns:
+            Per dispatch, (its records, the stage it left, the KV words it
+            changed, their values).
+        """
+        kv_t = iron.tensor(kv0, dtype=np.int32)
+        stage_t = iron.tensor(stage0, dtype=np.int8)
+        kv_prev = kv0
+        runs = []
+        for d, (pos, passes, batch, ends) in enumerate(schedule):
+            if d:
+                time.sleep(opts.idle_s)
+            records = dispatch(
+                stage_t,
+                kv_t,
+                SHAPE.params(pos, passes, sample, batch, batch_ends_prompt=ends),
+            )
+            kv_t.to("cpu")
+            stage_t.to("cpu")
+            kv_now = kv_t.numpy()
+            kv_idx = np.flatnonzero(kv_now != kv_prev)
+            runs.append((records, stage_t.numpy().copy(), kv_idx, kv_now[kv_idx]))
+            kv_prev = kv_now.copy()
+        return runs
+
     # The oracle follows the device's tokens across dispatches, from the
     # seed each dispatch left; after each, the device's whole KV cache must
     # equal the oracle's.
     dev_tokens = []
-    tok_fails = carry_fails = hidden_fails = 0
+    tok_fails = carry_fails = hidden_fails = vs_fails = 0
     if opts.split:
         # One dispatch of `passes` tokens, then the same tokens one per
         # dispatch: a token slot that does not run moves nothing.
@@ -542,9 +603,9 @@ def main():
             rope,
             lm,
             sample,
-            [(None, True)] * passes,
+            [(None, t) for t in range(passes)],
         )
-        hidden_fails += check_final(stage_whole, hidden)
+        hidden_fails += check_final(stage_whole, hidden, 0)
         wrong = int(np.count_nonzero(kv_whole != SHAPE.pack_kv(layers)))
         print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
         carry_fails += wrong != 0
@@ -578,7 +639,7 @@ def main():
             rope,
             lm,
             sample,
-            [(None, True)] * passes,
+            [(None, t) for t in range(passes)],
         )
     else:
         # Like the KV tensor, the stage tensor stays on the device: the host
@@ -597,31 +658,7 @@ def main():
                 for d in range(n_disp)
             ]
         else:
-            kv_t = iron.tensor(kv0, dtype=np.int32)
-            stage_t = iron.tensor(stage0, dtype=np.int8)
-            kv_prev = kv0
-            runs = []
-            for d, (pos, passes) in enumerate(schedule):
-                if d:
-                    time.sleep(opts.idle_s)
-                prompt = [tok for tok, _ in plans[d] if tok is not None]
-                records = dispatch(
-                    stage_t,
-                    kv_t,
-                    SHAPE.params(
-                        pos,
-                        passes,
-                        sample,
-                        prompt,
-                        prompt_ends=plans[d][len(prompt) - 1][1] if prompt else True,
-                    ),
-                )
-                kv_t.to("cpu")
-                stage_t.to("cpu")
-                kv_now = kv_t.numpy()
-                kv_idx = np.flatnonzero(kv_now != kv_prev)
-                runs.append((records, stage_t.numpy().copy(), kv_idx, kv_now[kv_idx]))
-                kv_prev = kv_now.copy()
+            runs = run_schedule(schedule)
             if opts.save_run:
                 np.savez(
                     opts.save_run,
@@ -636,16 +673,17 @@ def main():
                 return 0
         kv_dev = kv0.copy()
         x_d, sc_d = x_i8, res_scale
-        for d, ((pos, passes), (toks_out, stage, kv_idx, kv_val)) in enumerate(
+        for d, ((pos, passes, _, _), (toks_out, stage, kv_idx, kv_val)) in enumerate(
             zip(schedule, runs)
         ):
+            plan = plans[d]
             toks = [
-                tok
-                for tok, (_, lm_on) in zip(tokens_of(toks_out, passes), plans[d])
-                if lm_on
+                tokens_of(toks_out, passes)[rec_at]
+                for _, rec_at in plan
+                if rec_at is not None
             ]
             dev_tokens += toks
-            if n_disp > 1:
+            if len(schedule) > 1:
                 print(f"dispatch {d} (pos {pos}): tokens {toks}", flush=True)
             fails, hidden = replay(
                 toks_out, passes, x_d, sc_d, layers, pos, rope, lm, sample, plans[d]
@@ -657,23 +695,70 @@ def main():
             wrong = int(np.count_nonzero(kv_dev != SHAPE.pack_kv(layers)))
             print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
             carry_fails += wrong != 0
+            # A batch's rows are rows of its one pass; a pass's token is row 0.
+            hidden_fails += check_final(
+                stage, hidden, len(schedule[d][2]) - 1 if schedule[d][2] else 0
+            )
             # The oracle's next layer-0 input is the last token's seed (body +
             # scale), which the device left in the stage with a zero pad.
-            last = (passes - 1) * REC_BYTES
-            x_d = toks_out[last : last + D].copy()
-            sc_d = float(
-                np.frombuffer(toks_out[last + D : last + D + 4].tobytes(), np.float32)[
-                    0
-                ]
-            )
-            hidden_fails += check_final(stage, hidden)
-            seed_left = np.zeros(ACT_BYTES, dtype=np.int8)
-            seed_left[: D + 4] = toks_out[last : last + D + 4]
-            if plans[d][-1][1] and not np.array_equal(
-                stage[SHAPE.seed_at : SHAPE.seed_at + ACT_BYTES], seed_left
+            if plan[-1][1] is not None:
+                last = plan[-1][1] * REC_BYTES
+                x_d = toks_out[last : last + D].copy()
+                sc_d = float(
+                    np.frombuffer(
+                        toks_out[last + D : last + D + 4].tobytes(), np.float32
+                    )[0]
+                )
+                seed_left = np.zeros(ACT_BYTES, dtype=np.int8)
+                seed_left[: D + 4] = toks_out[last : last + D + 4]
+                if not np.array_equal(
+                    stage[SHAPE.seed_at : SHAPE.seed_at + ACT_BYTES], seed_left
+                ):
+                    print(f"  seed carry: FAIL (dispatch {d})", flush=True)
+                    carry_fails += 1
+            else:
+                untouched = not np.any(toks_out)
+                print(f"  records: {'untouched' if untouched else 'WRITTEN'}")
+                carry_fails += not untouched
+        if opts.vs_batch:
+            vs = schedule_of(opts.vs_batch)
+            ends = []
+            for (sched, pl), rs in (
+                ((schedule, plans), runs),
+                (vs, run_schedule(vs[0])),
             ):
-                print(f"  seed carry: FAIL (dispatch {d})", flush=True)
-                carry_fails += 1
+                kv = kv0.copy()
+                for _, _, kv_idx, kv_val in rs:
+                    kv[kv_idx] = kv_val
+                prompt_end = max(d for d, (_, _, b, e) in enumerate(sched) if b and e)
+                end = {}
+                for name, d in (("prompt's", prompt_end), ("last", len(rs) - 1)):
+                    at = SHAPE.final_at + max(len(sched[d][2]) - 1, 0) * RROW
+                    end[f"{name} final residual"] = rs[d][1][at : at + D + 4]
+                ends.append(
+                    end
+                    | {
+                        "sampled records": np.concatenate(
+                            [
+                                r[0][k * REC_BYTES : (k + 1) * REC_BYTES]
+                                for r, plan in zip(rs, pl)
+                                for _, k in plan
+                                if k is not None
+                            ]
+                        ),
+                        "KV cache": kv,
+                        "seed left": rs[-1][1][
+                            SHAPE.seed_at : SHAPE.seed_at + ACT_BYTES
+                        ],
+                    }
+                )
+            for name, ours in ends[0].items():
+                same = np.array_equal(ours, ends[1][name])
+                print(
+                    f"  batches of {opts.batch} vs {opts.vs_batch}, {name}: "
+                    f"{'same' if same else 'DIFFER'}"
+                )
+                vs_fails += not same
 
     n = len(dev_tokens)
     print(
@@ -684,11 +769,17 @@ def main():
         print(
             f"{passes} tokens vs {passes} x 1: {'PASS' if not carry_fails else 'FAIL'}"
         )
-    if n_disp > 1:
+    if len(schedule) > 1:
         print(
-            f"carry across {n_disp} dispatches: {'PASS' if not carry_fails else 'FAIL'}"
+            f"carry across {len(schedule)} dispatches: "
+            f"{'PASS' if not carry_fails else 'FAIL'}"
         )
-    return 0 if tok_fails == carry_fails == hidden_fails == 0 else 1
+    if opts.vs_batch:
+        print(
+            f"prompt in batches of {opts.batch} vs {opts.vs_batch}: "
+            f"{'PASS' if not vs_fails else 'FAIL'}"
+        )
+    return 0 if tok_fails == carry_fails == hidden_fails == vs_fails == 0 else 1
 
 
 if __name__ == "__main__":

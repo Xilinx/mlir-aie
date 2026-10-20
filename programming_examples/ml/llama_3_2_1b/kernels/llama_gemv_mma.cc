@@ -132,28 +132,42 @@ static inline void epilogue(const int8_t *restrict act,
 
 extern "C" {
 
-// The activation object for one activation: its columns k_at..k_at + 2048
-// of row-major src in tile slot 0, zeros in slots 1-7 (their sums are bias
-// only, inside the epilogue's exact range), then src's scale at scale_at
-// and 1.0 for the others.
-void llama_mma_spread(int8_t *restrict src, int8_t *restrict dst, int32_t k_at,
-                      int32_t scale_at) {
+// The mma tile from m_count (at most 4) activations of src: activation m's
+// columns k_at..k_at + 2048 at src + m*row_stride + k_at in tile slot m, zeros
+// in the slots past m_count (their sums are bias only, inside the epilogue's
+// exact range); activation m's scale at src + scales_at + m*scale_stride, 1.0
+// for the others.
+void llama_mma_spread(int8_t *restrict src, int8_t *restrict dst,
+                      int32_t m_count, int32_t row_stride, int32_t k_at,
+                      int32_t scales_at, int32_t scale_stride) {
   event0();
-  const int8_t *x = src + k_at;
+  const ::aie::vector<int8, 32> zero = ::aie::zeros<int8, 32>();
   for (int c = 0; c < 2048 / 64; c++) {
-    ::aie::vector<int32, 16> v =
-        ::aie::load_unaligned_v<64>(x + c * 64).template cast_to<int32>();
-    for (int j = 0; j < 8; j++) {
-      ::aie::vector<int32, 16> t = ::aie::zeros<int32, 16>();
-      t.set(v.get(2 * j), 0);
-      t.set(v.get(2 * j + 1), 1);
-      ::aie::store_v(dst + (c * 8 + j) * 64, t.template cast_to<int8>());
-    }
+    ::aie::vector<int8, 64> v[4];
+    for (int m = 0; m < 4; m++)
+      v[m] = m < m_count ? ::aie::load_unaligned_v<64>(src + m * row_stride +
+                                                       k_at + c * 64)
+                         : ::aie::zeros<int8, 64>();
+    // Tile kt's slots 0-3: the four rows' bytes 8kt..8kt + 7, in turn.
+    auto [a0, a1] = ::aie::interleave_zip(v[0], v[1], 8);
+    auto [b0, b1] = ::aie::interleave_zip(v[2], v[3], 8);
+    auto [t0, t1] = ::aie::interleave_zip(a0, b0, 16);
+    auto [t2, t3] = ::aie::interleave_zip(a1, b1, 16);
+    int8_t *d = dst + c * 8 * 64;
+    ::aie::store_v(d, ::aie::concat(t0.extract<32>(0), zero));
+    ::aie::store_v(d + 64, ::aie::concat(t0.extract<32>(1), zero));
+    ::aie::store_v(d + 128, ::aie::concat(t1.extract<32>(0), zero));
+    ::aie::store_v(d + 192, ::aie::concat(t1.extract<32>(1), zero));
+    ::aie::store_v(d + 256, ::aie::concat(t2.extract<32>(0), zero));
+    ::aie::store_v(d + 320, ::aie::concat(t2.extract<32>(1), zero));
+    ::aie::store_v(d + 384, ::aie::concat(t3.extract<32>(0), zero));
+    ::aie::store_v(d + 448, ::aie::concat(t3.extract<32>(1), zero));
   }
   float *scales = reinterpret_cast<float *>(dst + kScalesOff);
-  scales[0] = *reinterpret_cast<const float *>(src + scale_at);
-  for (int m = 1; m < 8; m++)
-    scales[m] = 1.0f;
+  for (int m = 0; m < 8; m++)
+    scales[m] = m < m_count ? *reinterpret_cast<const float *>(src + scales_at +
+                                                               m * scale_stride)
+                            : 1.0f;
   event1();
 }
 
@@ -178,6 +192,15 @@ void llama_mma_f32(int8_t *restrict act, int8_t *restrict w,
   epilogue(act, w, part + 64 * g, out, half, ostride, row0, m_count, false,
            0.0f);
   event1();
+}
+
+// llama_mma_f32 under a second symbol, which a design binds to a second
+// output buffer type (one symbol takes one signature).
+void llama_mma_f32_to(int8_t *restrict act, int8_t *restrict w,
+                      int32_t *restrict part, int8_t *restrict out, int32_t g,
+                      int32_t half, int32_t ostride, int32_t row0,
+                      int32_t m_count) {
+  llama_mma_f32(act, w, part, out, g, half, ostride, row0, m_count);
 }
 
 // As llama_mma_f32, through the int8 (gate) epilogue: out is int8.

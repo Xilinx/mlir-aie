@@ -12,13 +12,14 @@ import time
 import aie.iron as iron
 import numpy as np
 from aie2_decode import (
-    GAMMA_AT,
     KV_BLOCK_WORDS,
     KV_ROW_WORDS,
     KV_TB,
     LANE_BYTES,
     LMW_GAMMA_BYTES,
+    M_MAX,
     REC_BYTES,
+    RROW,
     STAGE_RESID,
     VOCAB,
     WLM_SLOT,
@@ -113,16 +114,14 @@ class DecodeShape:
         n_layers: Decoder layers.
         t: KV cache rows.
         kset: The sampler's resident top-k set size.
-        p_max: Tokens a dispatch can generate.
-        attn_cores: Attention cores a KV head.
+        p_max: Passes (tokens) a dispatch can run.
     """
 
-    def __init__(self, n_layers, t, kset=8, p_max=4, attn_cores=2):
+    def __init__(self, n_layers, t, kset=8, p_max=4):
         self.n_layers = n_layers
         self.t = t
         self.kset = kset
         self.p_max = p_max
-        self.attn_cores = attn_cores
         slots, _, final, _, self.stage_bytes = stage_layout(n_layers)
         self.seed_at = slots[0, "o"] + STAGE_RESID
         self.final_at = final + STAGE_RESID
@@ -131,56 +130,62 @@ class DecodeShape:
     @property
     def compile_kwargs(self):
         """aie2_decode.build's CompileTime values."""
-        return dict(
-            P_MAX=self.p_max,
-            N_LAYERS=self.n_layers,
-            T=self.t,
-            KSET=self.kset,
-            ATTN_CORES=self.attn_cores,
-        )
+        return dict(P_MAX=self.p_max, N_LAYERS=self.n_layers, T=self.t, KSET=self.kset)
 
-    def params(self, t0, passes, sample, prompt=(), prompt_ends=True):
+    def params(self, t0, passes, sample, batch=(), batch_ends_prompt=True):
         """The design's ScratchpadParameters for one dispatch.
 
         Args:
             t0: The position of the dispatch's first token.
-            passes: The tokens it generates, 1..p_max.
+            passes: The passes it runs, 1..p_max, one token each, except
+                that a batch is the only pass.
             sample: The sampler's (temperature, top_k, seed).
-            prompt: The prompt tokens the first slots input; the others
-                input the previous token's sample.
-            prompt_ends: Whether the last of `prompt` is the prompt's last
-                token: the lm_head and sampler run for it and every
-                generated token, and skip the prompt tokens before it.
+            batch: Prompt tokens, up to M_MAX within one KV block, that the
+                first pass runs together as its rows; without any, the first
+                pass inputs the previous token's sample.
+            batch_ends_prompt: Whether the batch's last token is the
+                prompt's last: the lm_head and sampler run for it (and for
+                every generated token) and give the first generated token.
 
         Returns:
-            The parameter values by name: passes; t0; its RoPE table row's
-            offset; per token slot t < p_max, whether it runs (pass{t}) and,
-            for a token at position p = t0 + t, the KV blocks it reads
-            (kvb{t}) and its row's word offset within a (layer, half) region
-            (row{t}); the sampler's; per token slot, whether it inputs a
-            prompt token (pg{t}), the token's lm_head weight slot (gat{t})
-            and row, and whether the lm_head runs (lm{t}), the row and both
+            The parameter values by name: passes; m0, the first pass's rows;
+            t0; its RoPE table row's offset; per pass t < p_max, whether it
+            runs (pass{t}) and, for its first token at position p = t0 + t,
+            the KV blocks it reads (kvb{t}) and its row's word offset within
+            a (layer, half) region (row{t}); the sampler's; per batch row m,
+            whether it runs (pg{m}), the token's lm_head weight slot (gat{m})
+            and row; per pass, whether the lm_head runs (lm{t}); the rows and
             flags also in `rows`.
+
+        Raises:
+            ValueError: The batch is too long, crosses a KV block, or shares
+                the dispatch with other passes.
         """
+        if len(batch) > M_MAX or (batch and (t0 % KV_TB) + len(batch) > KV_TB):
+            raise ValueError(f"a batch of {len(batch)} from {t0} is not one block's")
+        if len(batch) > 1 and passes != 1:
+            raise ValueError("a batch of several tokens is its dispatch's only pass")
         temperature, top_k, seed = sample
         params = {
             "passes": passes,
+            "m0": max(len(batch), 1),
             "t0": t0,
             "cs_off": t0 * CS_BYTES,
             **sample_param_values(temperature, top_k, seed, self.kset),
         }
         rows = 0
-        skip_lm = len(prompt) - 1 if prompt_ends else len(prompt)
+        for m in range(M_MAX):
+            tok = batch[m] if m < len(batch) else 0
+            pg = int(m < len(batch))
+            params[f"gat{m}"] = LMW_GAMMA_BYTES + tok // N_TILE * WLM_SLOT
+            params[f"pg{m}"] = pg
+            rows |= (tok % N_TILE) << (2 * m) | pg << (8 + m)
         for t in range(self.p_max):
-            tok = prompt[t] if t < len(prompt) else 0
-            pg = int(t < min(len(prompt), passes))
-            lm = int(skip_lm <= t < passes)
-            params[f"gat{t}"] = LMW_GAMMA_BYTES + tok // N_TILE * WLM_SLOT
-            params[f"pg{t}"] = pg
-            params[f"lm{t}"] = lm
-            rows |= (tok % N_TILE) << (2 * t) | pg << (8 + t) | lm << (12 + t)
-            p = t0 + t
             on = t < passes
+            lm = int(on and (t > 0 or not batch or batch_ends_prompt))
+            params[f"lm{t}"] = lm
+            rows |= lm << (12 + t)
+            p = t0 + t
             params[f"pass{t}"] = int(on)
             params[f"kvb{t}"] = p // KV_TB + 1 if on else 0
             params[f"row{t}"] = (
@@ -188,6 +193,20 @@ class DecodeShape:
             )
         params["rows"] = rows
         return params
+
+    def batches(self, t0, n, largest=M_MAX):
+        """How n prompt tokens from position t0 split into batches.
+
+        Returns:
+            The batches' sizes: up to `largest` (at most M_MAX) each, none
+            crossing a KV block.
+        """
+        out = []
+        while n:
+            out.append(min(largest, M_MAX, n, KV_TB - t0 % KV_TB))
+            t0 += out[-1]
+            n -= out[-1]
+        return out
 
     def passes_for(self, t0):
         """The tokens a dispatch from position t0 generates.
@@ -255,7 +274,7 @@ class DecodeShape:
         ]
         gammas.append((final, final_gamma))
         for at, g in gammas:
-            at += STAGE_RESID + GAMMA_AT
+            at += STAGE_RESID + M_MAX * RROW
             st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
         st[self.seed_at : self.seed_at + D] = x_i8
         st[self.seed_at + D : self.seed_at + D + 4] = np.frombuffer(
@@ -331,9 +350,9 @@ class Decoder:
     def generate(self, prompt, max_new, sample, stop=()):
         """Prefill `prompt` from an empty KV cache, then generate.
 
-        Each dispatch runs shape.passes_for's many tokens, the prompt's last
-        token ending one; that token's sample is the first generated token,
-        and the prompt tokens before it skip the lm_head.
+        The prompt runs in batches (shape.batches), the last one's sample
+        being the first generated token; then each dispatch runs
+        shape.passes_for's many tokens.
 
         Args:
             prompt: The prompt's token ids.
@@ -355,37 +374,35 @@ class Decoder:
             )
         kv_t = iron.tensor(np.zeros(self.shape.kv_words, np.int32), dtype=np.int32)
         stage_t = iron.tensor(self._stage0, dtype=np.int8)
-        out = []
-        pos = 0
         start = time.perf_counter()
-        first_at = None
-        # The last prompt token's sample is the first generated token, and
-        # the last generated token is not input again.
-        end = len(prompt) + max_new - 1
-        while pos < end and not (out and out[-1] in stop):
-            n = min(self.shape.passes_for(pos), end - pos)
-            if pos < len(prompt):
-                n = min(n, len(prompt) - pos)
+        pos = 0
+        out = []
+        sizes = self.shape.batches(0, len(prompt))
+        for i, n in enumerate(sizes):
             records, _ = self.dispatch(
                 kv_t,
                 stage_t,
                 self.shape.params(
                     pos,
-                    n,
+                    1,
                     sample,
                     prompt[pos : pos + n],
-                    prompt_ends=pos + n >= len(prompt),
+                    batch_ends_prompt=i == len(sizes) - 1,
                 ),
             )
-            for t, tok in enumerate(tokens_of(records, n)):
-                if pos + t >= len(prompt) - 1 and len(out) < max_new:
-                    out.append(tok)
-                    if first_at is None:
-                        first_at = time.perf_counter()
-                    if tok in stop:
-                        break
+            pos += n
+            out = tokens_of(records, 1)[:max_new]
+        first_at = time.perf_counter()
+        # The last generated token is not input again.
+        end = len(prompt) + max_new - 1
+        while pos < end and out[-1] not in stop:
+            n = min(self.shape.passes_for(pos), end - pos)
+            records, _ = self.dispatch(kv_t, stage_t, self.shape.params(pos, n, sample))
+            for tok in tokens_of(records, n):
+                out.append(tok)
+                if tok in stop:
+                    break
             pos += n
         done = time.perf_counter()
-        assert first_at is not None
         tps = (len(out) - 1) / (done - first_at) if len(out) > 1 else 0.0
         return out, first_at - start, tps

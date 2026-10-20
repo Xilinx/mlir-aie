@@ -42,14 +42,21 @@
 // SAMPLE: final hidden: PASS
 // SAMPLE: chain_persist_grow_mh: 4/4 tokens PASS
 //
-// A 7-token prompt, then generation: each prompt token's input is the seed
-// the device makes of its embed row, and the prompt tokens before the last
-// skip the lm_head and leave their records untouched; the prompt ends
-// inside a dispatch and the run crosses a KV block.
-// RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 60 --dispatches 3 --prompt-tokens 7 | FileCheck %s --check-prefix=PROMPT
-// PROMPT-COUNT-4: prompt, no sample, record untouched
+// A 7-token prompt, then generation: the prompt runs in batches of up to 4
+// tokens, a dispatch each, every batch row's input the seed the device
+// makes of its embed row; the batch before the last skips the lm_head and
+// leaves the records untouched, and the batches do not cross a KV block.
+// The same prompt a token per dispatch leaves byte-identical sampled
+// records, KV cache, final residuals (the prompt's last and the run's) and
+// seed.
+// RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 60 --prompt-tokens 7 --vs-batch 1 | FileCheck %s --check-prefix=PROMPT
+// PROMPT-COUNT-4: prompt, no sample
 // PROMPT: KV cache: PASS
-// PROMPT-COUNT-2: prompt, no sample, record untouched
+// PROMPT: final hidden: PASS
+// PROMPT: records: untouched
+// PROMPT-COUNT-2: prompt, no sample
 // PROMPT-COUNT-2: KV cache: PASS
-// PROMPT: chain_persist_grow_mh: 6/6 tokens PASS
+// PROMPT-COUNT-5: batches of 4 vs 1, {{.*}}: same
+// PROMPT: chain_persist_grow_mh: 5/5 tokens PASS
 // PROMPT: carry across 3 dispatches: PASS
+// PROMPT: prompt in batches of 4 vs 1: PASS

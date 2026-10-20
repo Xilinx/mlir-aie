@@ -18,12 +18,12 @@
 #define LLAMA_GEMV_ARRAY_KSET 8
 #endif
 
-// Residual units (o, down): the activation carries the residual int8[2048]
-// and its fp32 scale at resid_off; each core owns 256 of the 2048 rows and
-// emits a kResidBlock-byte block [x_fp fp32 x256 | absmax bits i32 | pad].
-// Both stay 64-byte aligned for the vector loads and stores.
+// Residual units (o, down): each core owns 256 of the 2048 rows and emits a
+// kResidBlock-byte block [x_fp fp32 x256 | absmax bits i32 | pad], 64-byte
+// aligned for the vector stores.
 static constexpr int kResidRows = 256;
 static constexpr int kResidBlock = kResidRows * 4 + 64;
+static constexpr int kResidStride = 2048 + 16;
 
 extern "C" {
 
@@ -41,30 +41,34 @@ void llama_gemv_array_qkv_comb(int8_t *restrict fp, int8_t *restrict out) {
   event1();
 }
 
-// llama_gemv_array_qkv_comb with the position's RoPE cos/sin, which ride the
-// head of the core's weight lane each layer (cs: 256 B), in the cs region.
+// llama_gemv_array_qkv_comb for activation `row` of fp ([row][q 256 | k 64 |
+// v 64] fp32) with its position's RoPE cos/sin, which ride the head of the
+// core's weight lane each layer (cs: 256 B a position), in the cs region.
 void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
-                                  int8_t *restrict out) {
-  llama_gemv_array_qkv_comb(fp, out);
-  memcpy(out + 800, cs, 256);
+                                  int8_t *restrict out, int32_t row) {
+  llama_gemv_array_qkv_comb(fp + row * 384 * 4, out);
+  memcpy(out + 800, cs + row * 256, 256);
 }
 
-// Core `core`'s half of llama_rescale_add_D: x_fp = resid * resid_scale +
-// proj on its rows (proj is the unit's fp32 output in fp[0..256)), and the
-// rows' magnitude max as int32 bits, which the glue core's
-// llama_gemv_array_rescale_finalize turns into the global one.
+// Core `core`'s half of llama_rescale_add_D for activation `row`: x_fp =
+// resid * resid_scale + proj on its rows (resid int8[2048], then its scale,
+// at act + resid_off + row * kResidStride; proj the unit's fp32 output in
+// fp[256 row..256 row + 256)), and the rows' magnitude max as int32 bits,
+// which the glue core's llama_gemv_array_rescale_finalize turns into the
+// global one.
 void llama_gemv_array_resid_partial(int8_t *restrict act, int8_t *restrict fp,
                                     int8_t *restrict blk, int32_t core,
-                                    int32_t resid_off) {
+                                    int32_t resid_off, int32_t row) {
   event0();
   const ::aie::saturation_mode prev_sat =
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-  const int8_t *resid = act + resid_off + core * kResidRows;
-  ::aie::vector<float, 16> resid_scale_v = ::aie::broadcast<float, 16>(
-      *reinterpret_cast<const float *>(act + resid_off + 2048));
-  const float *proj = reinterpret_cast<const float *>(fp);
+  const int8_t *r = act + resid_off + row * kResidStride;
+  const int8_t *resid = r + core * kResidRows;
+  ::aie::vector<float, 16> resid_scale_v =
+      ::aie::broadcast<float, 16>(*reinterpret_cast<const float *>(r + 2048));
+  const float *proj = reinterpret_cast<const float *>(fp) + row * kResidRows;
   float *x = reinterpret_cast<float *>(blk);
   ::aie::vector<int32, 16> mag = ::aie::zeros<int32, 16>();
   for (int c = 0; c < kResidRows / 16; c++) {

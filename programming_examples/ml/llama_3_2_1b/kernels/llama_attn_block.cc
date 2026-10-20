@@ -494,16 +494,38 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
   event1();
 }
 
-// The growing decode's chunk carries the token's own K/V row after the
-// q_chunk (llama_qkv_combine_rows): llama_attn_block over a block whose row
-// n_rows - 1 is first set to that row, which is not in the cache yet.
+// A batch of decode tokens' queries: each token's chunk is its q_chunk then
+// its own K/V row (llama_comb_rope_rows), and query r's chunk and state sit at
+// r * kChunkStride and r * kStateBytes of the core's buffers (llama_attn_block
+// loads q aligned).
 static constexpr int kQChunkBytes = kREP * kHD + kREP * 8;
+static constexpr int kChunkBytes = kQChunkBytes + kRowBytes;
+static constexpr int kChunkStride = (kChunkBytes + 63) / 64 * 64;
 
-void llama_attn_block_own(int8_t *restrict q_chunk, int32_t *restrict block_i32,
-                          int8_t *restrict state, int32_t n_rows) {
-  memcpy(block_i32 + (n_rows - 1) * (kRowBytes / 4), q_chunk + kQChunkBytes,
-         kRowBytes);
-  llama_attn_block(q_chunk, block_i32, state, n_rows);
+// Query r of a batch: its chunk into the core's chunks, its state fresh.
+void llama_attn_take_q(int8_t *restrict chunk, int8_t *restrict chunks,
+                       int8_t *restrict states, int32_t r) {
+  memcpy(chunks + r * kChunkStride, chunk, kChunkBytes);
+  llama_attn_state_init(states + r * kStateBytes);
+}
+
+// llama_attn_block for query r over a block: all kTB rows, or, when row0 >= 0,
+// the batch's own block, in which query r attends rows up to row0 + r, its
+// own K/V row (not in the cache yet) first set there; the earlier queries,
+// run first, set theirs.
+void llama_attn_block_q(int8_t *restrict chunks, int32_t *restrict block_i32,
+                        int8_t *restrict states, int32_t row0, int32_t r) {
+  int8_t *chunk = chunks + r * kChunkStride;
+  if (row0 >= 0)
+    memcpy(block_i32 + (row0 + r) * (kRowBytes / 4), chunk + kQChunkBytes,
+           kRowBytes);
+  llama_attn_block(chunk, block_i32, states + r * kStateBytes,
+                   row0 >= 0 ? row0 + r + 1 : kTB);
+}
+
+void llama_attn_put_q(int8_t *restrict states, int8_t *restrict part,
+                      int32_t r) {
+  memcpy(part, states + r * kStateBytes, kStateBytes);
 }
 
 // Folds n_parts states (each kStateBytes, in core order; empty ones are
@@ -560,6 +582,13 @@ void llama_attn_merge_pair_selfcal(int8_t *restrict state0,
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   event1();
+}
+
+// llama_attn_merge_pair_selfcal for query r: the first core's state, then
+// the second's at states + r * kStateBytes.
+void llama_attn_merge_pair_q(int8_t *restrict state0, int8_t *restrict states,
+                             int8_t *restrict out, int32_t r) {
+  llama_attn_merge_pair_selfcal(state0, states + r * kStateBytes, out);
 }
 
 } // extern "C"

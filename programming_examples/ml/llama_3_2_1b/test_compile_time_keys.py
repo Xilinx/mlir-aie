@@ -19,7 +19,6 @@ CASES = [
     (aie2_decode.build, {}, "T", 128, 256, True),
     (aie2_decode.build, {}, "KSET", 8, 4, True),
     (aie2_decode.build, {}, "SILU_GATE_SCALE", 0.05, 0.04, True),
-    (aie2_decode.build, {}, "ATTN_CORES", 2, 1, True),
     (aie2_layer_mh.build, {}, "SILU_GATE_SCALE", 0.05, 0.04, True),
     (aie2_silu_mul_int8.build, {"SELFCAL": True}, "GATE_SCALE", 0.05, 0.04, False),
 ]

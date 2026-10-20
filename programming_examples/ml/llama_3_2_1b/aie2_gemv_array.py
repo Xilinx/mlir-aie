@@ -161,9 +161,22 @@ def lane_slots(order):
     return sum(PROJECTIONS[p][1] // N_CORES * PROJECTIONS[p][0] // 8192 for p in order)
 
 
-def mma_rows(proj, tile, c_w, part, out, kernels, gate_inv, row0=0):
+def mma_rows(
+    proj,
+    tile,
+    c_w,
+    part,
+    out,
+    kernels,
+    gate_inv,
+    row0=0,
+    m_count=1,
+    ostride=0,
+    groups=None,
+):
     """In a core body: the core's rows of a 2048-column projection for the
-    activation in tile slot 0, at out[row0 + n] (fp32, or int8 for gate).
+    activations in the tile's first m_count slots: activation m's row n at
+    out[m * ostride + row0 + n] (fp32, or int8 for gate).
 
     Args:
         proj: The projection's letter.
@@ -174,40 +187,44 @@ def mma_rows(proj, tile, c_w, part, out, kernels, gate_inv, row0=0):
         kernels: The bound (llama_mma_acc, llama_mma_f32, llama_mma_i8).
         gate_inv: The gate's 1 / out_scale.
         row0: The first row's index in out.
+        m_count: Activations (an MLIR i32 value or an int).
+        ostride: Elements between two activations' rows in out.
+        groups: Row groups of eight to run (default: all the core's).
     """
     k_acc, k_f, k_i = kernels
-    for g in range_(PROJECTIONS[proj][1] // N_CORES // 8):
+    for g in range_(groups or PROJECTIONS[proj][1] // N_CORES // 8):
         w = c_w.acquire(1)
         k_acc(tile, w, part, 0, 0, 1)
         c_w.release(1)
         w = c_w.acquire(1)
         at = _i32(g) * 8 + row0
         if PROJECTIONS[proj][2] == "i8":
-            k_i(tile, w, part, out, 0, 1, 0, at, 1, gate_inv)
+            k_i(tile, w, part, out, 0, 1, ostride, at, m_count, gate_inv)
         else:
-            k_f(tile, w, part, out, 0, 1, 0, at, 1)
+            k_f(tile, w, part, out, 0, 1, ostride, at, m_count)
         c_w.release(1)
 
 
-def mma_down(a, tile, c_w, part, out, k_spread, kernels):
-    """In a core body: the core's down rows (fp32, at out[n]) for the
-    activation row a (HD columns, then its scale), through the tile in four
-    2048-column chunks; chunks 0-2 sum into the row groups' partials.
+def mma_down(tile, c_w, part, out, kernels, spread_chunk, m_count=1):
+    """In a core body: the core's down rows (fp32, activation m's at
+    out[256 m + n]) through the tile in four 2048-column chunks; chunks 0-2
+    sum into the row groups' partials.
 
     Args:
-        a: The activation.
         tile: The core's mma activation tile.
         c_w: Its weight lane's consumer.
         part: Its int32 partial sums, eight per row.
         out: Where the rows go.
-        k_spread: The bound llama_mma_spread.
         kernels: The bound (llama_mma_acc, llama_mma_f32, llama_mma_i8).
+        spread_chunk: Called with a chunk's index (an MLIR i32 value or an
+            int) to spread that chunk's activations into the tile.
+        m_count: Activations (an MLIR i32 value or an int).
     """
     k_acc, k_f, _ = kernels
     groups = PROJECTIONS["d"][1] // N_CORES // 8
     for chunk in range_(DOWN_CHUNKS - 1):
         ci = _i32(chunk)
-        k_spread(a, tile, muli(ci, constant(i32(), D)), HD)
+        spread_chunk(ci)
         first = extui(i32(), cmpi(CmpIPredicate.eq, ci, constant(i32(), 0)))
         for g in range_(groups):
             w = c_w.acquire(1)
@@ -216,35 +233,50 @@ def mma_down(a, tile, c_w, part, out, k_spread, kernels):
             w = c_w.acquire(1)
             k_acc(tile, w, part, _i32(g), 1, 0)
             c_w.release(1)
-    k_spread(a, tile, (DOWN_CHUNKS - 1) * D, HD)
+    spread_chunk(DOWN_CHUNKS - 1)
     for g in range_(groups):
         w = c_w.acquire(1)
         k_acc(tile, w, part, _i32(g), 0, 0)
         c_w.release(1)
         w = c_w.acquire(1)
-        k_f(tile, w, part, out, _i32(g), 1, 0, _i32(g) * 8, 1)
+        k_f(tile, w, part, out, _i32(g), 1, DOWN_ROWS_PER_CORE, _i32(g) * 8, m_count)
         c_w.release(1)
 
 
-def mma_kernels(t_act, t_slot, t_out):
+def mma_kernels(t_act, t_slot, t_out, t_scratch):
     """The mma kernel object's bound entry points for these object types.
 
+    Args:
+        t_act: The activation objects' type, spread from.
+        t_slot: The weight slots' type.
+        t_out: The output objects' type.
+        t_scratch: A second fp32 output buffer's type.
+
     Returns:
-        (llama_mma_spread, (llama_mma_acc, llama_mma_f32, llama_mma_i8), the
-        tile's type, the partials' type).
+        (llama_mma_spread, (llama_mma_acc, llama_mma_f32, llama_mma_i8) for
+        t_out, the same with llama_mma_f32_to for t_scratch, the tile's type,
+        the partials' type).
     """
     km = llama_kernels.gemv_mma()
     t_tile = _i8(MMA_ACT_BYTES)
     t_part = _i32a(8 * DOWN_ROWS_PER_CORE)
+    k_acc = km.bind("llama_mma_acc", [t_tile, t_slot, t_part] + [np.int32] * 3)
+    k_i = km.bind(
+        "llama_mma_i8", [t_tile, t_slot, t_part, t_out] + [np.int32] * 5 + [np.float32]
+    )
     return (
-        km.bind("llama_mma_spread", [t_act, t_tile, np.int32, np.int32]),
+        km.bind("llama_mma_spread", [t_act, t_tile] + [np.int32] * 5),
         (
-            km.bind("llama_mma_acc", [t_tile, t_slot, t_part] + [np.int32] * 3),
+            k_acc,
             km.bind("llama_mma_f32", [t_tile, t_slot, t_part, t_out] + [np.int32] * 5),
+            k_i,
+        ),
+        (
+            k_acc,
             km.bind(
-                "llama_mma_i8",
-                [t_tile, t_slot, t_part, t_out] + [np.int32] * 5 + [np.float32],
+                "llama_mma_f32_to", [t_tile, t_slot, t_part, t_scratch] + [np.int32] * 5
             ),
+            k_i,
         ),
         t_tile,
         t_part,
@@ -325,11 +357,13 @@ def build(
     ]
 
     KO = llama_kernels.gemv_array()
-    k_spread, k_mma, t_tile, t_part = mma_kernels(t_act, t_slot, _i8(OUT_BYTES))
+    k_spread, k_mma, _, t_tile, t_part = mma_kernels(
+        t_act, t_slot, _i8(OUT_BYTES), _i8(OUT_BYTES)
+    )
     k_comb = KO.bind("llama_gemv_array_qkv_comb", [_i8(OUT_BYTES), _i8(OUT_BYTES)])
     k_resid = KO.bind(
         "llama_gemv_array_resid_partial",
-        [t_act, _i8(OUT_BYTES), _i8(RESID_BLOCK), np.int32, np.int32],
+        [t_act, _i8(OUT_BYTES), _i8(RESID_BLOCK)] + [np.int32] * 3,
     )
     k_final = KO.bind(
         "llama_gemv_array_rescale_finalize",
@@ -357,8 +391,19 @@ def build(
         for _ in range_(N_LAYERS):
             for unit in units:
                 a = c_act.acquire(1)
+
+                def spread_chunk(chunk):
+                    # Down's chunk of the one activation a: 8192 columns, its
+                    # scale after them.
+                    k_at = (
+                        chunk * D
+                        if isinstance(chunk, int)
+                        else muli(chunk, constant(i32(), D))
+                    )
+                    k_spread(a, tile, 1, 0, k_at, HD, 0)
+
                 if unit != "d":
-                    k_spread(a, tile, 0, D)
+                    k_spread(a, tile, 1, 0, 0, D, 0)
                 if unit == "qkv":
                     # q, k and v land at fp32 offsets 0, 256 and 320 of scratch.
                     mma_rows("q", tile, c_w, part, scratch, k_mma, GATE_INV)
@@ -370,16 +415,16 @@ def build(
                 elif unit in resid_units:
                     (c_blk,) = blk
                     if unit == "d":
-                        mma_down(a, tile, c_w, part, scratch, k_spread, k_mma)
+                        mma_down(tile, c_w, part, scratch, k_mma, spread_chunk)
                     else:
                         mma_rows(unit, tile, c_w, part, scratch, k_mma, GATE_INV)
                     b = c_blk.acquire(1)
-                    kres(a, scratch, b, core, RESID_OFF)
+                    kres(a, scratch, b, core, RESID_OFF, 0)
                     c_blk.release(1)
                 else:
                     o = c_out.acquire(1)
                     if unit == "d":
-                        mma_down(a, tile, c_w, part, o, k_spread, k_mma)
+                        mma_down(tile, c_w, part, o, k_mma, spread_chunk)
                     else:
                         mma_rows(unit, tile, c_w, part, o, k_mma, GATE_INV)
                     c_out.release(1)
