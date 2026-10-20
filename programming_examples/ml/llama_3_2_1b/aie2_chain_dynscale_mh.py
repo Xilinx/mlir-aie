@@ -629,10 +629,7 @@ def build(
     of_gam_post = ObjectFifo(t_D_bf16, depth=1, name="gam_post")
     of_h2 = ObjectFifo(t_D8_i8, depth=1, name="h2")
     of_wg = ObjectFifo(t_WG_slot, depth=2, name="wg")
-    # depth=1 (not 2 like sibling weight fifos): self-cal adds of_ufp
-    # (fp32[HD]=32KB) on the up tile (5,2); double-buffering of_wu too overflows
-    # L1 there -> corruption (N=2 0/4 with depth=2). depth=1 fits + passes.
-    of_wu = ObjectFifo(t_WU_slot, depth=1, name="wu")
+    of_wu = ObjectFifo(t_WU_slot, depth=2, name="wu")
     of_wd = ObjectFifo(t_WD_slot, depth=1, name="wd")  # K=8192 L1 budget
     of_gf = ObjectFifo(t_HD_i8, depth=1, name="gf")
     of_ufp = ObjectFifo(_f32(HD), depth=1, name="ufp")  # fp32 up_proj out (2b)
