@@ -81,4 +81,9 @@ Runtime's float32 softmax rounds an attention probability (4 of 82 million)
 to the other side of a rounding boundary from exact arithmetic; neither
 changes a detection above 0.25 confidence.
 
-Performance is not yet tuned.
+## Performance
+
+On Strix Halo (NPU2), one image takes 22.1 ms (45 fps) at batch 1 and
+12.6 ms per image (79 fps) at batch 8 (`python yolo26n.py --n 8 --batch
+8 --time`), in nine device configurations of one full ELF. Each configuration costs about 1.1 ms to set up, which a batch
+shares. Compiling takes about 10 s.
