@@ -10,32 +10,26 @@ import argparse
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
+import aie_fp
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
-from aie2_rope_int8 import ACT_SCALE, DYN
+from aie2_rope_int8 import ACT_SCALE, build
+from llama_npu import add_artifact_args, design_kernel
 from ml_dtypes import bfloat16
 
 
-def round_to_i8(v):
-    r = np.where(v >= 0, np.floor(v + 0.5), np.ceil(v - 0.5)).astype(np.int32)
-    return np.clip(r, -128, 127).astype(np.int8)
-
-
 def numpy_rope(x_i8, cos_bf, sin_bf, n_heads, head_dim, act_scale):
-    # Kernel uses sw_recip (Peano fp32 division is HW recip, NOT IEEE).
-    from test_flowkv import sw_recip
-
-    inv_scale = float(sw_recip(np.float32(act_scale)))
+    inv_scale = aie_fp.sw_recip(act_scale)
     half = head_dim // 2
     x_f = x_i8.astype(np.float32).reshape(n_heads, head_dim) * act_scale
     c = cos_bf.astype(np.float32)
     s = sin_bf.astype(np.float32)
     out = np.empty_like(x_f)
-    out[:, :half] = x_f[:, :half] * c[:half] - x_f[:, half:] * s[:half]
-    out[:, half:] = x_f[:, half:] * c[half:] + x_f[:, :half] * s[half:]
-    return round_to_i8((out * inv_scale).flatten())
+    out[:, :half] = aie_fp.aie_add(
+        x_f[:, :half] * c[:half], -(x_f[:, half:] * s[:half])
+    )
+    out[:, half:] = aie_fp.aie_add(x_f[:, half:] * c[half:], x_f[:, :half] * s[half:])
+    return aie_fp.round_to_i8((out * inv_scale).flatten())
 
 
 def numpy_rope_dyn(x_i8, cos_bf, sin_bf, n_heads, head_dim):
@@ -52,20 +46,22 @@ def numpy_rope_dyn(x_i8, cos_bf, sin_bf, n_heads, head_dim):
     c = cos_bf.astype(np.float32)
     s = sin_bf.astype(np.float32)
     out = np.empty_like(x_f)
-    out[:, :half] = x_f[:, :half] * c[:half] - x_f[:, half:] * s[:half]
-    out[:, half:] = x_f[:, half:] * c[half:] + x_f[:, :half] * s[half:]
-    return round_to_i8(out.flatten())
+    out[:, :half] = aie_fp.aie_add(
+        x_f[:, :half] * c[:half], -(x_f[:, half:] * s[:half])
+    )
+    out[:, half:] = aie_fp.aie_add(x_f[:, half:] * c[half:], x_f[:, :half] * s[half:])
+    return aie_fp.round_to_i8(out.flatten())
 
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("--head-dim", type=int, default=64)
     p.add_argument("--n-heads", type=int, default=8)
-    p.add_argument("--max-mismatches", type=int, default=64)
+    p.add_argument("--dyn", action="store_true")
     opts = p.parse_args()
 
-    head_dim, n_heads = opts.head_dim, opts.n_heads
+    head_dim, n_heads, dyn = opts.head_dim, opts.n_heads, opts.dyn
     D = head_dim * n_heads
     half = head_dim // 2
 
@@ -80,7 +76,7 @@ def main():
 
     cs = np.concatenate([cos, sin])  # packed cos || sin
 
-    if DYN:
+    if dyn:
         x_buf = np.zeros(D + 8, dtype=np.int8)
         x_buf[:D] = x
         x_buf[D : D + 4] = np.frombuffer(np.float32(ACT_SCALE).tobytes(), dtype=np.int8)
@@ -92,9 +88,9 @@ def main():
         o_t = iron.zeros([D], dtype=np.int8)
     cs_t = iron.tensor(cs, dtype=bfloat16)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu = design_kernel(build, opts, head_dim=head_dim, n_heads=n_heads, DYN=dyn)
     rc = DefaultNPURuntime.run_test(
-        npu_opts.npu_kernel,
+        npu,
         [x_t, cs_t, o_t],
         {},
         verify=False,
@@ -106,7 +102,7 @@ def main():
     o_t.to("cpu")
     out_full = o_t.numpy()
     actual = out_full[:D]
-    if DYN:
+    if dyn:
         expected = numpy_rope_dyn(x, cos, sin, n_heads, head_dim)
         expected_tail = np.concatenate(
             [
@@ -132,13 +128,13 @@ def main():
     )
 
     print(
-        f"rope_int8 NPU vs numpy: heads={n_heads} d={head_dim} dyn={DYN}  "
+        f"rope_int8 NPU vs numpy: heads={n_heads} d={head_dim} dyn={dyn}  "
         f"mismatches={n_diff}/{D}  max|int8 diff|={max_abs}  cos={cos_sim:.6f}  "
         f"tail_mismatch={tail_mismatch}"
     )
 
-    if n_diff <= opts.max_mismatches and max_abs <= 1 and not tail_mismatch:
-        print(f"PASS (within 1-LSB bf16 noise: <={opts.max_mismatches} diffs)")
+    if n_diff == 0 and not tail_mismatch:
+        print("BIT-EXACT PASS")
         return 0
     print("FAIL")
     for i in np.argwhere(diff != 0).flatten()[:8]:

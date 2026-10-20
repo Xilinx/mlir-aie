@@ -19,16 +19,16 @@ import argparse
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
-from aie2_topk_sample_probe import KSET, N_TILE, N_TILES, SEED, TEMP, TOPK, D, V
+from aie2_topk_sample_probe import N_TILE, add_config_args, build, compile_kwargs
+from llama_npu import add_artifact_args, design_kernel
 from numpy_topk_sample import topk_sample_reference
 
 
 def embed_seed_ref(row_i8: np.ndarray, embed_sc: float):
     """Mirror llama_topk_finalize's requant (== llama_embed_select)."""
+    D = row_i8.size
     amax = int(np.max(np.abs(row_i8.astype(np.int32))))
     if amax < 1:
         amax = 1
@@ -46,8 +46,12 @@ def embed_seed_ref(row_i8: np.ndarray, embed_sc: float):
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
+    add_config_args(p)
     opts = p.parse_args()
+    V, D, KSET = opts.vocab, opts.dim, opts.kset
+    TEMP, TOPK, SEED = opts.temp, opts.topk, opts.seed
+    N_TILES = V // N_TILE
     rng = np.random.default_rng(SEED + 1)
 
     # Distinct fp32 logits (top-k set is well-defined). embed_sc positive.
@@ -76,7 +80,7 @@ def main():
     tbl_t = iron.tensor(tbl, dtype=np.int8)
     token_t = iron.zeros([1], dtype=np.int32)
     seed_t = iron.zeros([D + 8], dtype=np.int8)
-    npu = test_utils.create_npu_kernel(opts).npu_kernel
+    npu = design_kernel(build, opts, **compile_kwargs(opts))
     rc = DefaultNPURuntime.run_test(
         npu, [tbl_t, token_t, seed_t], {}, verify=False, verbosity=opts.verbosity
     )

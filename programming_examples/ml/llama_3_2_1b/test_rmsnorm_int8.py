@@ -16,30 +16,12 @@ import argparse
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
+import aie_fp
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
-from aie2_rmsnorm_int8 import ACT_SCALE_IN, INV_ACT_SCALE_OUT
+from aie2_rmsnorm_int8 import ACT_SCALE_IN, INV_ACT_SCALE_OUT, build
+from llama_npu import add_artifact_args, design_kernel
 from ml_dtypes import bfloat16
-
-
-def round_to_i8(v: np.ndarray) -> np.ndarray:
-    r = np.where(v >= 0, np.floor(v + 0.5), np.ceil(v - 0.5)).astype(np.int32)
-    return np.clip(r, -128, 127).astype(np.int8)
-
-
-def sw_invsqrt(a: float | np.float32) -> float:
-    """Quake-III + 2 NR; matches the kernel's sw_invsqrt byte-for-byte."""
-    a32 = np.float32(a)
-    bits = a32.view(np.int32)
-    new_bits = np.int32(np.uint32(0x5F3759DF)) - (bits >> np.int32(1))
-    x = new_bits.view(np.float32)
-    half = np.float32(0.5)
-    onehalf = np.float32(1.5)
-    x = np.float32(x * (onehalf - half * a32 * x * x))
-    x = np.float32(x * (onehalf - half * a32 * x * x))
-    return float(x)
 
 
 def numpy_rmsnorm_int8(
@@ -58,7 +40,7 @@ def numpy_rmsnorm_int8(
         * np.float32(act_scale_in)
         / np.float32(len(x_i8))
     )
-    inv_rms = sw_invsqrt(np.float32(var + np.float32(eps)))
+    inv_rms = aie_fp.sw_invsqrt(aie_fp.aie_add(var, np.float32(eps)))
     combined = np.float32(
         np.float32(act_scale_in) * np.float32(inv_rms) * np.float32(inv_act_scale_out)
     )
@@ -67,12 +49,12 @@ def numpy_rmsnorm_int8(
     g_f = gamma_bf16.astype(np.float32)  # bf16 -> fp32 (exact)
     x_f = x_i8.astype(np.float32)  # int8 -> fp32 (exact)
     out_f = (x_f * combined * g_f).astype(np.float32)
-    return round_to_i8(out_f)
+    return aie_fp.round_to_i8(out_f)
 
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("-D", type=int, default=2048)
     # With fp32-scalar pass 2 + sw_invsqrt + exact-int sum-of-squares,
     # the kernel and reference compute byte-identical fp32 values --
@@ -91,9 +73,9 @@ def main():
     g_t = iron.tensor(g, dtype=bfloat16)
     y_t = iron.zeros([D], dtype=np.int8)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu = design_kernel(build, opts, D=D)
     rc = DefaultNPURuntime.run_test(
-        npu_opts.npu_kernel,
+        npu,
         [x_t, g_t, y_t],
         {},
         verify=False,

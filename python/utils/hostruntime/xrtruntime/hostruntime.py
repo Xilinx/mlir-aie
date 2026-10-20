@@ -205,7 +205,7 @@ class XRTHostRuntime(HostRuntime):
 
         Raises:
             NotImplementedError: The host is not Linux, where amdxdna runs.
-            OSError: The accel node cannot be opened or refuses the query.
+            OSError: The accel node refuses the query.
         """
         if sys.platform != "linux":
             raise NotImplementedError("The NPU clock is read from amdxdna, on Linux.")
@@ -215,8 +215,14 @@ class XRTHostRuntime(HostRuntime):
         request = _GetInfo(
             _QUERY_CLOCK_METADATA, ctypes.sizeof(clocks), ctypes.addressof(clocks)
         )
-        with open(f"/dev/accel/{node}", "rb", buffering=0) as accel:
-            fcntl.ioctl(accel, _GET_INFO, request)
+        # amdxdna refuses a process's second open of the node (EBUSY), so query
+        # through the descriptor XRT already holds.
+        accel = [
+            int(fd)
+            for fd in os.listdir("/proc/self/fd")
+            if os.path.realpath(f"/proc/self/fd/{fd}") == f"/dev/accel/{node}"
+        ]
+        fcntl.ioctl(accel[0], _GET_INFO, request)
         return clocks.h_clock.freq_mhz
 
     @classmethod

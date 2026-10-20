@@ -413,6 +413,44 @@ static inline void gemm_tile_perchan_v2_up_acttail_impl(
   }
 }
 
+// See llama_rescale_add.cc for vec_mul_rne: a * b rounded to nearest-even,
+// exact against the scalar soft-float `*` for normal operands and products.
+template <unsigned kN>
+static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
+                                                   ::aie::vector<float, kN> b) {
+  ::aie::vector<int32, kN> ai = a.template cast_to<int32>();
+  ::aie::vector<int32, kN> bi = b.template cast_to<int32>();
+  ::aie::vector<int32, kN> ea =
+      ::aie::bit_and(int32(0xff), ::aie::downshift(ai, 23));
+  ::aie::vector<int32, kN> eb =
+      ::aie::bit_and(int32(0xff), ::aie::downshift(bi, 23));
+  ::aie::accum<acc64, kN> p = ::aie::mul(
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), ai)),
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bi)));
+  ::aie::vector<int32, kN> lo = p.template to_vector<int32>(23);
+  ::aie::vector<int32, kN> hi = p.template to_vector<int32>(24);
+  auto wide = ::aie::ge(lo, int32(1 << 24));
+  ::aie::vector<int32, kN> e = ::aie::add(
+      ::aie::add(ea, eb), ::aie::select(int32(-127), int32(-126), wide));
+  ::aie::vector<int32, kN> mag = ::aie::add(
+      ::aie::upshift(::aie::sub(e, int32(1)), 23), ::aie::select(lo, hi, wide));
+  mag = ::aie::select(mag, ::aie::broadcast<int32, kN>(0x7f800000),
+                      ::aie::ge(e, int32(255)));
+  mag = ::aie::select(mag, ::aie::zeros<int32, kN>(),
+                      ::aie::lt(::aie::min(::aie::min(ea, eb), e), int32(1)));
+  return ::aie::bit_or(
+             ::aie::bit_and(int32(0x80000000), ::aie::bit_xor(ai, bi)), mag)
+      .template cast_to<float>();
+}
+
+// A signed key ordered as IEEE orders non-NaN floats, with -0 tying +0.
+static inline int32_t logit_key(float f) {
+  int32_t b = __builtin_bit_cast(int32_t, f);
+  if (b == INT32_MIN)
+    b = 0;
+  return b ^ ((b >> 31) & 0x7fffffff);
+}
+
 // Fused lm_head GEMM + top-k insert (the one-stream sampler+gather
 // front). Computes this slot's kNTile logits and, instead of writing
 // to a DDR logits buffer, inserts {logit, global index, embed_sc, embed
@@ -428,7 +466,7 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
                         float *restrict set_logit, int32_t *restrict set_gidx,
                         float *restrict set_scale, int8_t *restrict set_row,
                         int32_t *restrict set_len, int32_t tile_idx) {
-  constexpr int kK = 2048, kNTile = 4, kPrefix = 64, kVec = 64;
+  constexpr int kK = 2048, kNTile = 4, kPrefix = 64, kVec = 64, kEpi = 16;
   constexpr int kGroups = kK / kVec;
 
   // Reset the resident set at the start of each table pass. The set buffers
@@ -437,8 +475,7 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
   if (tile_idx == 0)
     *set_len = 0;
 
-  float act_scale;
-  memcpy(&act_scale, act + kK, 4);
+  float act_scale = *reinterpret_cast<const float *>(act + kK);
 
   int8_t *body = w_tile + kPrefix;
   const int8_t *weights = body;
@@ -449,6 +486,7 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
+  int32_t sums[kNTile];
   for (int n = 0; n < kNTile; n++) {
     aie::accum<acc32, kVec> acc;
     acc.from_vector(aie::zeros<int32, kVec>());
@@ -458,38 +496,71 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
       aie::vector<int8, kVec> x_v = aie::load_v<kVec>(act + g * kVec);
       acc = aie::mac(acc, w_v, x_v);
     }
-    int32_t sum_i32 =
-        aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
-    float logit = (float)sum_i32 * act_scale * w_scales[n];
-    int32_t gidx = tile_idx * kNTile + n;
-    float sc = w_scales[n];
-
-    int len = *set_len;
-    if (len < kKset) {
-      set_logit[len] = logit;
-      set_gidx[len] = gidx;
-      set_scale[len] = sc;
-      for (int d = 0; d < kK; d++)
-        set_row[len * kK + d] = w_row[d];
-      *set_len = len + 1;
-      continue;
-    }
-    int mi = 0;
-    float mv = set_logit[0];
-    for (int i = 1; i < kKset; i++) {
-      if (set_logit[i] < mv) {
-        mv = set_logit[i];
-        mi = i;
-      }
-    }
-    if (logit > mv) {
-      set_logit[mi] = logit;
-      set_gidx[mi] = gidx;
-      set_scale[mi] = sc;
-      for (int d = 0; d < kK; d++)
-        set_row[mi * kK + d] = w_row[d];
-    }
+    sums[n] = aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
   }
+
+  // The vector path is exact where every scale's exponent field is in
+  // [80, 174], so neither product leaves the normal range, and |sum| < 2^23:
+  // fx2flt misrounds odd sums below -(2^24 - 2^16). Anything else takes the
+  // scalar soft-float path.
+  int32_t act_bits = __builtin_bit_cast(int32_t, act_scale);
+  bool vec_ok = (uint32_t)(((act_bits >> 23) & 0xff) - 80) <= 94;
+  ::aie::vector<int32, kEpi> sum_v = ::aie::zeros<int32, kEpi>();
+  ::aie::vector<float, kEpi> scale_v = ::aie::zeros<float, kEpi>();
+  for (int n = 0; n < kNTile; n++) {
+    int32_t w_bits = __builtin_bit_cast(int32_t, w_scales[n]);
+    vec_ok &= (uint32_t)(((w_bits >> 23) & 0xff) - 80) <= 94;
+    vec_ok &= (uint32_t)sums[n] + (1u << 23) - 1 < (1u << 24) - 1;
+    sum_v.set(sums[n], n);
+    scale_v.set(w_scales[n], n);
+  }
+  float logits[kNTile];
+  if (vec_ok) {
+    ::aie::vector<float, kEpi> logit_v =
+        vec_mul_rne(vec_mul_rne(::aie::to_float<float>(sum_v, 0),
+                                ::aie::broadcast<float, kEpi>(act_scale)),
+                    scale_v);
+    for (int n = 0; n < kNTile; n++)
+      logits[n] = logit_v.get(n);
+  } else {
+    for (int n = 0; n < kNTile; n++)
+      logits[n] = (float)sums[n] * act_scale * w_scales[n];
+  }
+
+  int len = *set_len;
+  bool rescan = true;
+  int mi = 0;
+  int32_t min_key = 0;
+  for (int n = 0; n < kNTile; n++) {
+    int slot;
+    if (len < kKset) {
+      slot = len++;
+    } else {
+      if (rescan) {
+        mi = 0;
+        min_key = logit_key(set_logit[0]);
+        for (int i = 1; i < kKset; i++) {
+          int32_t k = logit_key(set_logit[i]);
+          if (k < min_key) {
+            min_key = k;
+            mi = i;
+          }
+        }
+        rescan = false;
+      }
+      if (logit_key(logits[n]) <= min_key)
+        continue;
+      slot = mi;
+      rescan = true;
+    }
+    const int8_t *__restrict w_row = weights + n * kK;
+    set_logit[slot] = logits[n];
+    set_gidx[slot] = tile_idx * kNTile + n;
+    set_scale[slot] = w_scales[n];
+    for (int d = 0; d < kK; d++)
+      set_row[slot * kK + d] = w_row[d];
+  }
+  *set_len = len;
 }
 
 #ifndef LLAMA_LMHEAD_KSET

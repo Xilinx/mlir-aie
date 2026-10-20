@@ -13,12 +13,14 @@ ObjectFifo to stay within budget.
 """
 
 import argparse
-import os
 import sys
 
+import llama_kernels
 import numpy as np
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
+from aie.iron import CompileTime, ObjectFifo, Program, Runtime, TaskGroup, Worker, jit
 from aie.iron.device import NPU2, Tile
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 from ml_dtypes import bfloat16
 
 ROPE_COL, ROPE_ROW = 4, 4
@@ -26,13 +28,17 @@ ROPE_COL, ROPE_ROW = 4, 4
 # Single per-tensor activation scale (same for in and out).
 ACT_SCALE = 0.05
 
-# ROPE_DYN picks llama_rope_int8 (static scale, a scalar kernel arg) vs.
+
+# DYN picks llama_rope_int8 (static scale, a scalar kernel arg) vs.
 # llama_rope_int8_dyn (reads act_scale from x's own tail, passes it through
 # unchanged for a downstream kernel).
-DYN = os.environ.get("ROPE_DYN", "0") == "1"
-
-
-def build(head_dim: int, n_heads: int):
+@jit
+def build(
+    *,
+    head_dim: CompileTime[int] = 64,
+    n_heads: CompileTime[int] = 8,
+    DYN: CompileTime[bool] = False,
+):
     D = head_dim * n_heads
     cs_ty = np.ndarray[(2 * head_dim,), np.dtype[bfloat16]]  # cos || sin
 
@@ -48,9 +54,8 @@ def build(head_dim: int, n_heads: int):
     of_out = ObjectFifo(out_ty, name="out")
 
     if DYN:
-        kernel = Kernel(
+        kernel = llama_kernels.rope(head_dim=head_dim, n_heads=n_heads).bind(
             "llama_rope_int8_dyn",
-            "llama_rope_int8.cc.o",
             [x_ty, cs_ty, out_ty],
         )
 
@@ -64,9 +69,8 @@ def build(head_dim: int, n_heads: int):
             c_out.release(1)
 
     else:
-        kernel = Kernel(
+        kernel = llama_kernels.rope(head_dim=head_dim, n_heads=n_heads).bind(
             "llama_rope_int8",
-            "llama_rope_int8.cc.o",
             [x_ty, cs_ty, out_ty, np.float32],
         )
 
@@ -83,7 +87,6 @@ def build(head_dim: int, n_heads: int):
         core_fn,
         [of_x.cons(), of_cs.cons(), of_out.prod(), kernel],
         tile=Tile(ROPE_COL, ROPE_ROW),
-        stack_size=4096,
     )
 
     def sequence(x, cs, o, x_prod, cs_prod, out_cons):
@@ -102,10 +105,21 @@ def build(head_dim: int, n_heads: int):
 
 def main():
     p = argparse.ArgumentParser()
+    add_compile_args(p, with_dev=True, default_dev="npu2", dev_choices=("npu2",))
     p.add_argument("--head-dim", type=int, default=64)
     p.add_argument("--n-heads", type=int, default=8)
-    args = p.parse_args(sys.argv[1:])
-    print(build(args.head_dim, args.n_heads))
+    p.add_argument("--dyn", action="store_true")
+    opts = p.parse_args(sys.argv[1:])
+    run_design_cli(
+        build,
+        opts,
+        compile_kwargs={
+            "head_dim": opts.head_dim,
+            "n_heads": opts.n_heads,
+            "DYN": opts.dyn,
+        },
+        device=NPU2(),
+    )
 
 
 if __name__ == "__main__":

@@ -6,10 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 // Float division and integer remainder lower to the compiler-rt calls
-// __divsf3 and __modsi3.
+// __divsf3 and __modsi3; a copy of runtime length lowers to libc's memcpy.
 
 extern "C" void div_mod(int *out) {
   float *f = reinterpret_cast<float *>(out);
   f[0] = f[1] / f[2];
   out[3] = out[4] % out[5];
+  __builtin_memcpy(out + 8, out, out[6] & 31);
 }

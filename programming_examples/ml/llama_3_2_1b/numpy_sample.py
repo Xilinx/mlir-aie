@@ -13,9 +13,9 @@ Here we reproduce the kernel's bitwise arithmetic.
 
 from __future__ import annotations
 
+import aie_fp
 import numpy as np
 from gen_exp_lut import exp_lut
-from test_flowkv import sw_recip  # IEEE fp32 reciprocal NR, matches kernel
 
 EXP_QUANT_SCALE = 0.05
 MASK_SENTINEL = np.float32(-1.0e9)
@@ -110,7 +110,7 @@ def sample_reference(
     if lut is None:
         lut = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
 
-    inv_temp = sw_recip(np.float32(temperature))
+    inv_temp = aie_fp.sw_recip(temperature)
 
     # Pass 1: z[i] = logits[i] * inv_temp, fp32. Stored as raw fp32 (we
     # don't need the bit-cast game the kernel plays -- numpy preserves

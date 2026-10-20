@@ -19,17 +19,12 @@ import struct
 import sys
 
 import aie.iron as iron
-import aie.utils.test as test_utils
+import aie_fp
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
-from aie2_silu_mul_int8 import GATE_SCALE, INV_OUT_SCALE, SELFCAL, UP_SCALE
+from aie2_silu_mul_int8 import GATE_SCALE, INV_OUT_SCALE, UP_SCALE, build
 from gen_silu_lut import silu_lut
-
-
-def round_to_i8(v):
-    r = np.where(v >= 0, np.floor(v + 0.5), np.ceil(v - 0.5)).astype(np.int32)
-    return np.clip(r, -128, 127).astype(np.int8)
+from llama_npu import add_artifact_args, design_kernel
 
 
 def numpy_silu_mul(gate, up, lut, up_scale, inv_out_scale):
@@ -38,18 +33,18 @@ def numpy_silu_mul(gate, up, lut, up_scale, inv_out_scale):
     s_f = silu_bf.astype(np.float32)
     u_f = up.astype(np.float32) * up_scale
     out_f = s_f * u_f * inv_out_scale
-    return round_to_i8(out_f)
+    return aie_fp.round_to_i8(out_f)
 
 
 def main():
-    from test_rmsnorm_int8_dyn import sw_recip
-
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("-D", type=int, default=8192)
+    p.add_argument("--selfcal", action="store_true")
     opts = p.parse_args()
 
     D = opts.D
+    selfcal = opts.selfcal
     rng = np.random.default_rng(0)
     gate = rng.integers(-128, 128, size=D, dtype=np.int8)
     up = rng.integers(-128, 128, size=D, dtype=np.int8)
@@ -60,19 +55,19 @@ def main():
     up_buf = np.zeros(D + 8, dtype=np.int8)
     up_buf[:D] = up
     up_buf[D : D + 4] = np.frombuffer(np.float32(UP_SCALE).tobytes(), dtype=np.int8)
-    if not SELFCAL:
+    if not selfcal:
         up_buf[D + 4 : D + 8] = np.frombuffer(
             np.float32(INV_OUT_SCALE).tobytes(), dtype=np.int8
         )
 
-    out_n = D + 8 if SELFCAL else D + 8  # both paths now HD+8 out in this harness
+    out_n = D + 8 if selfcal else D + 8  # both paths now HD+8 out in this harness
     g_t = iron.tensor(gate, dtype=np.int8)
     u_t = iron.tensor(up_buf, dtype=np.int8)
     o_t = iron.zeros([out_n], dtype=np.int8)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu = design_kernel(build, opts, D=D, SELFCAL=selfcal)
     rc = DefaultNPURuntime.run_test(
-        npu_opts.npu_kernel,
+        npu,
         [g_t, u_t, o_t],
         {},
         verify=False,
@@ -91,11 +86,11 @@ def main():
     s_f = silu_bf.astype(np.float32)
     u_f = up.astype(np.float32) * np.float32(UP_SCALE)
     sf_fp = s_f * u_f
-    if SELFCAL:
+    if selfcal:
         absmax = max(float(np.abs(sf_fp).max()), 1e-12)
         out_scale = np.float32(absmax * np.float32(1.0 / 127.0))
-        inv = np.float32(sw_recip(out_scale))
-        expected = round_to_i8(sf_fp * inv)
+        inv = aie_fp.sw_recip(out_scale)
+        expected = aie_fp.round_to_i8(sf_fp * inv)
         dev_scale = struct.unpack("<f", out_full[D : D + 4].tobytes())[0]
         print(
             f"selfcal: dev_scale={dev_scale:.8g} numpy_out_scale={float(out_scale):.8g} "
@@ -109,7 +104,7 @@ def main():
     max_abs = int(np.abs(diff).max()) if n_diff else 0
 
     print(
-        f"silu_mul NPU vs numpy: D={D} selfcal={SELFCAL} "
+        f"silu_mul NPU vs numpy: D={D} selfcal={selfcal} "
         f"mismatches={n_diff}/{D}  max|int8 diff|={max_abs}"
     )
 

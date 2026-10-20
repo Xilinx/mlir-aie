@@ -16,8 +16,7 @@ Combines:
     range_(N_LAYERS) in each worker, per-fifo per-layer fill with
     ping-pong BD reuse).
 
-All ObjectFifos depth=1 (Bug 8). FFN-side stack_size matches
-layer_mh's PSK=8192 (Bug 12 -- larger silently corrupts).
+All ObjectFifos depth=1 (Bug 8).
 
 ``build()`` is ``@iron.jit``-compiled: SAMPLE/GATHER/ONESTREAM/PERSIST/
 PERSIST_GROW/PERSIST_RESIDENT/PT/N_LAYERS/T/ONESTREAM_KSET are keyword-only
@@ -31,8 +30,8 @@ import argparse
 import os as _os
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 
+import llama_kernels
 import numpy as np
 from aie.dialects.arith import constant, index_cast
 from aie.extras.types import i32
@@ -40,7 +39,6 @@ from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
-    Kernel,
     ObjectFifo,
     Program,
     Runtime,
@@ -224,31 +222,6 @@ def strided_tap(total, base_off, per_slot_stride, slot_bytes, n_slots):
     )
 
 
-# The union of every pre-compiled kernel object any flag combination below
-# references. The Makefile stages (cp's) only the subset a given mode needs
-# into the build dir before invoking this script, so object_files is filtered
-# to what actually exists there at import time -- aiecc's object-file staging
-# (_copy_object_files) errors on a path that doesn't exist, and this list is
-# fixed at decoration time, before any CompileTime flag is bound.
-_KERNEL_OBJECT_NAMES = (
-    "llama_rmsnorm_int8.cc.o",
-    "llama_gemm_int8_srs_tiled_layer.cc.o",
-    "llama_gemm_int8_srs_tiled_layer_mh.cc.o",
-    "llama_rope_int8_mh.cc.o",
-    "llama_silu_mul_int8.cc.o",
-    "llama_flowkv_mh.cc.o",
-    "llama_gqa_glue.cc.o",
-    "llama_sample_streamed.cc.o",
-    "llama_topk_sample.cc.o",
-    "llama_embed_select.cc.o",
-    "llama_kv_append.cc.o",
-    "llama_rescale_add.cc.o",
-)
-_OBJECT_FILES = [
-    p for p in (Path.cwd() / name for name in _KERNEL_OBJECT_NAMES) if p.exists()
-]
-
-
 @dataclass(frozen=True)
 class DerivedSizes:
     """wblob/kvblob byte offsets and sizes for one (T, N_LAYERS, PT,
@@ -383,7 +356,7 @@ def derived_sizes(*, T=128, N_LAYERS=2, PT=1, PERSIST_GROW=False) -> DerivedSize
     )
 
 
-@jit(object_files=_OBJECT_FILES)
+@jit
 def build(
     *,
     SAMPLE: CompileTime[bool] = False,
@@ -395,7 +368,7 @@ def build(
     PT: CompileTime[int] = 4,
     N_LAYERS: CompileTime[int] = 2,
     T: CompileTime[int] = 128,
-    ONESTREAM_KSET: CompileTime[int] = 16,
+    ONESTREAM_KSET: CompileTime[int] = 8,
 ):
     # Below, a name assigned only under one mode flag (e.g. GATHER) is read
     # only under a flag that implies it (e.g. GATHER implies SAMPLE, so a
@@ -522,17 +495,15 @@ def build(
         else:
             from logits_relay import LogitsRelay
 
+            relay_gemm_tile = Tile(5, 4)
+            relay_sampler_tile = Tile(5, 5)
             lm_relay = LogitsRelay(
                 total_elems=VOCAB,
                 chunk_elems=SAMPLE_CHUNK,
                 repeat_count=SAMPLE_PASSES,
-                # Column 4's memtile is where the KV writeback join (kvout_0..3)
-                # already lands, and the two together exceed the 4-channel
-                # S2MM budget; column 2's memtile has no other heavy DMA
-                # traffic in this topology.
                 memtile_placement=Tile(2, 1),
-                gemm_placement=Tile(5, 4),
-                sampler_placement=Tile(5, 5),
+                gemm_placement=relay_gemm_tile,
+                sampler_placement=relay_sampler_tile,
                 name="lmlogits",
             )
             b_sample_state = Buffer(t_state_i8, name="sample_state")
@@ -600,15 +571,22 @@ def build(
     # 8 head caches join into 2 halves; PERSIST_RESIDENT skips this (its
     # cache stays on-chip in worker-local b_kv).
     if not PERSIST_RESIDENT:
+        # The placer cannot see the relay's hand-written memtile (2,1) DMA, and
+        # a 4-input join beside it exceeds the memtile's 4 S2MM channels.
+        kvout_lo_tile, kvout_hi_tile = (
+            (Tile(0, 1), Tile(5, 1)) if SAMPLE and not ONESTREAM else (None, None)
+        )
         of_kvout_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_lo")
         of_kvout_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_hi")
         kvout_lo_eps = of_kvout_lo.prod().join(
             offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+            tile=kvout_lo_tile,
             obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
             names=[f"kvout_{i}" for i in range(N_HEADS_KV // 2)],
         )
         kvout_hi_eps = of_kvout_hi.prod().join(
             offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+            tile=kvout_hi_tile,
             obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
             names=[f"kvout_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
         )
@@ -651,10 +629,7 @@ def build(
     of_gam_post = ObjectFifo(t_D_bf16, depth=1, name="gam_post")
     of_h2 = ObjectFifo(t_D8_i8, depth=1, name="h2")
     of_wg = ObjectFifo(t_WG_slot, depth=2, name="wg")
-    # depth=1 (not 2 like sibling weight fifos): self-cal adds of_ufp
-    # (fp32[HD]=32KB) on the up tile (5,2); double-buffering of_wu too overflows
-    # L1 there -> corruption (N=2 0/4 with depth=2). depth=1 fits + passes.
-    of_wu = ObjectFifo(t_WU_slot, depth=1, name="wu")
+    of_wu = ObjectFifo(t_WU_slot, depth=2, name="wu")
     of_wd = ObjectFifo(t_WD_slot, depth=1, name="wd")  # K=8192 L1 budget
     of_gf = ObjectFifo(t_HD_i8, depth=1, name="gf")
     of_ufp = ObjectFifo(_f32(HD), depth=1, name="ufp")  # fp32 up_proj out (2b)
@@ -662,27 +637,29 @@ def build(
     of_sf = ObjectFifo(t_UF_i8, depth=1, name="sf")  # HD+8: self-cal silu_out tail
     of_df = ObjectFifo(t_D_f32, depth=1, name="df")  # fp32 down output
 
-    KO_RMS = "llama_rmsnorm_int8.cc.o"
-    KO_GEMM = "llama_gemm_int8_srs_tiled_layer.cc.o"
-    KO_GEMM2 = "llama_gemm_int8_srs_tiled_layer_mh.cc.o"
-    KO_ROPE = "llama_rope_int8_mh.cc.o"
-    KO_SILU = "llama_silu_mul_int8.cc.o"
-    KO_FKV = "llama_flowkv_mh.cc.o"
-    KO_GLUE = "llama_gqa_glue.cc.o"
-    KO_SAMP = "llama_sample_streamed.cc.o"
+    KO_RMS = llama_kernels.rmsnorm()
+    # KSET sizes only the fused lm_head top-k insert, which only ONESTREAM uses.
+    KO_GEMM = (
+        llama_kernels.gemm_layer(kset=ONESTREAM_KSET)
+        if ONESTREAM
+        else llama_kernels.gemm_layer()
+    )
+    KO_GEMM2 = llama_kernels.gemm_layer_mh()
+    KO_ROPE = llama_kernels.rope_mh()
+    KO_SILU = llama_kernels.silu_mul(gate_scale=SILU_GATE_SCALE)
+    KO_FKV = llama_kernels.flowkv_mh(T=T)
+    KO_GLUE = llama_kernels.gqa_glue()
+    KO_SAMP = llama_kernels.sample_streamed()
 
     # acttail variant (see aie2_layer_mh.py's same-named comment).
-    k_rms = Kernel(
-        "llama_rmsnorm_int8_dyn_acttail", KO_RMS, [t_D8_i8, t_D_bf16, t_D8_i8]
-    )
+    k_rms = KO_RMS.bind("llama_rmsnorm_int8_dyn_acttail", [t_D8_i8, t_D_bf16, t_D8_i8])
 
     if SAMPLE and ONESTREAM:
         # One-stream: fused lm_head GEMM + top-k insert, then finalize -> token +
         # next-token embed seed. final_norm reuses k_rms (below).
         KS = ONESTREAM_KSET
-        k_os_insert = Kernel(
+        k_os_insert = KO_GEMM.bind(
             "llama_lmhead_topk_insert",
-            KO_GEMM,
             [
                 t_D8_i8,
                 t_wlm_slot,
@@ -694,9 +671,8 @@ def build(
                 np.int32,
             ],
         )
-        k_os_final = Kernel(
+        k_os_final = llama_kernels.topk_sample(kset=KS).bind(
             "llama_topk_finalize_packed",
-            "llama_topk_sample.cc.o",
             [
                 _f32(KS),
                 _i32a(KS),
@@ -710,9 +686,8 @@ def build(
     elif SAMPLE:
         # M3b: final_norm reuses the dyn_acttail rmsnorm (k_rms). lm_head fp32-out
         # GEMM + streamed sampler.
-        k_lmhead = Kernel(
+        k_lmhead = KO_GEMM.bind(
             "llama_gemm_tiled_layer_K2048_N4_lmhead_fp32out",
-            KO_GEMM,
             [
                 t_D8_i8,
                 t_wlm_slot,
@@ -720,9 +695,8 @@ def build(
                 np.int32,
             ],
         )
-        k_sample = Kernel(
+        k_sample = KO_SAMP.bind(
             "llama_sample_streamed",
-            KO_SAMP,
             [
                 t_lm_chunk_f32,
                 t_state_i8,
@@ -732,9 +706,8 @@ def build(
                 np.int32,
             ],
         )
-        k_sample_final = Kernel(
+        k_sample_final = KO_SAMP.bind(
             "llama_sample_streamed_finalize",
-            KO_SAMP,
             [
                 t_state_i8,
                 _i32a(1),
@@ -743,9 +716,8 @@ def build(
         )
     if GATHER:
         # embed select over a lm_head weight slot: pick embed[token] -> seed.
-        k_embsel = Kernel(
+        k_embsel = llama_kernels.embed_select().bind(
             "llama_embed_select_slot",
-            "llama_embed_select.cc.o",
             [
                 t_wlm_slot,
                 t_D8_i8,
@@ -754,90 +726,77 @@ def build(
             ],
         )
     # q_proj-mh fp32 out (2a): act_scale from h1 tail; q_out_scales downstream.
-    k_q = Kernel(
+    k_q = KO_GEMM2.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_q_mh_fp32out_acttail",
-        KO_GEMM2,
         [t_D8_i8, t_WQ_slot, _f32(QD), np.int32],
     )
-    k_qrequant = Kernel("llama_q_requant", KO_GLUE, [_f32(QD), t_QF_i8])
+    k_qrequant = KO_GLUE.bind("llama_q_requant", [_f32(QD), t_QF_i8])
     # o_proj-mh fp32 out, act_scale from the self-cal af tail (1b).
-    k_o = Kernel(
+    k_o = KO_GEMM2.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh_fp32out_acttail",
-        KO_GEMM2,
         [t_AF8_i8, t_WO_slot, t_D_f32, np.int32],
     )
     # gate acttail (act_scale from h2 tail; inv_out stays silu-lock arg)
-    k_gate = Kernel(
+    k_gate = KO_GEMM.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_gate_acttail",
-        KO_GEMM,
         [t_D8_i8, t_WG_slot, t_HD_i8, np.int32, np.float32],
     )
     # up_proj fp32 out (2b): act_scale from h2 tail; up_out_scale downstream.
-    k_up = Kernel(
+    k_up = KO_GEMM.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_fp32out_acttail",
-        KO_GEMM,
         [t_D8_i8, t_WU_slot, _f32(HD), np.int32],
     )
-    k_uprequant = Kernel("llama_up_requant", KO_SILU, [_f32(HD), t_UF_i8])
-    k_down = Kernel(
+    k_uprequant = KO_SILU.bind("llama_up_requant", [_f32(HD), t_UF_i8])
+    k_down = KO_GEMM.bind(
         "llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out_acttail",
-        KO_GEMM,
         [t_UF_i8, t_WD_slot, t_D_f32, np.int32],
     )
-    k_rope = Kernel("llama_rope_int8_mh_dyn", KO_ROPE, [t_QF_i8, t_CS_bf16, t_QR_i8])
+    k_rope = KO_ROPE.bind("llama_rope_int8_mh_dyn", [t_QF_i8, t_CS_bf16, t_QR_i8])
     # k_proj / v_proj: fp32 out, act_scale from h1 tail (one symbol, both).
-    k_kv = Kernel(
+    k_kv = KO_GEMM2.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_fp32out_acttail",
-        KO_GEMM2,
         [t_D8_i8, t_WK_slot, t_KVfp, np.int32],
     )
-    k_qkvcomb = Kernel(
+    k_qkvcomb = KO_GLUE.bind(
         "llama_qkv_combine",
-        KO_GLUE,
         [t_QR_i8, t_KVCS_i8, t_COMB_HALF_i8, t_COMB_HALF_i8],
     )
-    KO_KVA = "llama_kv_append.cc.o"
+    KO_KVA = llama_kernels.kv_append(T=T)
     # Growing-cache mode writes T_used then advances it by one, so the
     # write index moves forward on-chip across dispatches; the original
     # single-slot mode instead always targets T_used-1 and leaves it put.
     _append_sym = (
         "llama_kv_append_combined_grow" if PERSIST_GROW else "llama_kv_append_combined"
     )
-    k_append = Kernel(_append_sym, KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8])
+    k_append = KO_KVA.bind(_append_sym, [t_COMB_i8, t_KV_i8, t_KV_i8])
     if PERSIST_RESIDENT:
         # Resident KV: per-head cache buffer holds N_LAYERS caches; the layer
         # index selects the slot. seed (token 0): host cache -> resident slot +
         # append. resident (tokens 1..): in-place append. flowkv: attend the
         # layer's resident slot.
         t_KVRES_i8 = _i8(N_LAYERS * PER_KV_HEAD_BYTES)
-        k_append_seed = Kernel(
+        k_append_seed = KO_KVA.bind(
             "llama_kv_append_combined_resident_seed",
-            KO_KVA,
             [t_COMB_i8, t_KV_i8, t_KVRES_i8, np.int32],
         )
-        k_append_res = Kernel(
+        k_append_res = KO_KVA.bind(
             "llama_kv_append_combined_resident",
-            KO_KVA,
             [t_COMB_i8, t_KVRES_i8, np.int32],
         )
     # (see aie2_layer_mh.py's sv_merge_selfcal comment)
-    k_svmerge = Kernel(
+    k_svmerge = KO_GLUE.bind(
         "llama_sv_merge_selfcal",
-        KO_GLUE,
         [t_SVCONCAT_HALF_i8, t_SVCONCAT_HALF_i8, _i8(SVFULL_BYTES)],
     )
     # af_concat fully self-cal (1b+1c): 1 input (merged sv); o_act -> af tail.
-    k_afconcat = Kernel(
-        "llama_af_concat_selfcal2", KO_GLUE, [_i8(SVFULL_BYTES), t_AF8_i8]
-    )
+    k_afconcat = KO_GLUE.bind("llama_af_concat_selfcal2", [_i8(SVFULL_BYTES), t_AF8_i8])
     # flowkv self-cal (1c): per-Q-head sv_out_scale -> out_chunk tail.
-    k_fkv = Kernel(
-        "llama_flowkv_mh_kvc_selfcal", KO_FKV, [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8]
+    k_fkv = KO_FKV.bind(
+        "llama_flowkv_mh_kvc_selfcal", [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8]
     )
     if PERSIST_RESIDENT:
-        k_fkv_res = Kernel(
+        k_fkv_res = KO_FKV.bind(
             "llama_flowkv_mh_kvc_selfcal_resident",
-            KO_FKV,
             [
                 t_COMB_i8,
                 t_KVRES_i8,
@@ -846,10 +805,10 @@ def build(
             ],
         )
     # silu self-cal (1a): writes silu_out_scale to sf tail.
-    k_silu = Kernel("llama_silu_mul_int8_selfcal", KO_SILU, [t_HD_i8, t_UF_i8, t_UF_i8])
+    k_silu = KO_SILU.bind("llama_silu_mul_int8_selfcal", [t_HD_i8, t_UF_i8, t_UF_i8])
     # rescale-add: (residual int8[D+8], proj fp32[D]) -> residual int8[D+8].
-    KO_RADD = "llama_rescale_add.cc.o"
-    k_add = Kernel("llama_rescale_add_D", KO_RADD, [t_D8_i8, t_D_f32, t_D8_i8])
+    KO_RADD = llama_kernels.rescale_add()
+    k_add = KO_RADD.bind("llama_rescale_add_D", [t_D8_i8, t_D_f32, t_D8_i8])
 
     # --- Worker bodies (each loops N_LAYERS times) ---
     # Persistent loop: the 1:1 per-layer workers (rms/q/kv/attn/ffn/...) just see
@@ -1153,10 +1112,8 @@ def build(
 
         # Feedback seed is the layer-0 input format (body+scale, no token),
         # so copy o[:D+4] and zero the pad -- the packed buffer's token
-        # bytes (line 1302's layout) must NOT leak into it. Produces
-        # feedback PT times; seedmux consumes PT-1 (the last token's seed is
-        # produced but unused) -- the proven persist_decode imbalance, safe with
-        # a depth>=2 feedback fifo.
+        # bytes (line 1302's layout) must NOT leak into it. Produces feedback
+        # PT times per dispatch; seedmux consumes all PT (see w_seedmux).
         def w_onestream_persist(
             c_act, c_w, c_out, c_fb, sl, sg, ss, sr, slen, pr, ki, kf
         ):
@@ -1193,51 +1150,41 @@ def build(
                     o[i] = f[i]
                 p_seed.release(1)
                 c_fb.release(1)
-
-    PSK = 8192
-    ATSK = 16384
-    # Resident-KV attn tiles hold the 2x17416 b_kv + 17416 seed-fill buffer, so
-    # the stack must be small (flowkv ~1KB scratch). Tunable if placement fails.
-    RESIDENT_ATSK = int(_os.environ.get("LLAMA_RESIDENT_ATSK", "8192"))
-    # FFN-side stack: of_sf grows to HD+8 (silu self-cal) -> Bug-12 stack/fifo
-    # alias at 8192 on the FFN tiles; 4096 clears it (see single-layer 1a).
-    FFNSK = int(_os.environ.get("LLAMA_FFNSK", "4096"))
+            # The last token's seed has no next token in this dispatch. Left in
+            # the fifo it would feed the next dispatch's token 1 and, with one
+            # more left each dispatch, fill the fifo and hang a later dispatch.
+            c_fb.acquire(1)
+            c_fb.release(1)
 
     workers = [
         # Router
         Worker(
             w_router,
             [of_seed.cons(), of_back.cons(), of_routed.prod()],
-            stack_size=PSK,
         ),
         # Attention front
         Worker(
             w_rms,
             [of_routed.cons(), of_gam_in.cons(), of_h1.prod(), k_rms],
-            stack_size=2048,
         ),
         Worker(
             w_q,
             [of_h1.cons(), of_wq.cons(), of_qfp.prod(), k_q],
-            stack_size=PSK,
         ),
         # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
         Worker(w_requant, [of_qfp.cons(), of_qf.prod(), k_qrequant]),
         Worker(
             w_rope,
             [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope],
-            stack_size=2048,
         ),
         # k_proj / v_proj (h1 broadcast); fp32 out -> memtile kvcs join.
         Worker(
             w_kv,
             [of_h1.cons(), of_wk.cons(), kvcs_eps[0].prod(), k_kv],
-            stack_size=PSK,
         ),
         Worker(
             w_kv,
             [of_h1.cons(), of_wv.cons(), kvcs_eps[1].prod(), k_kv],
-            stack_size=PSK,
         ),
         Worker(
             w_qkvcomb,
@@ -1265,11 +1212,6 @@ def build(
                         k_append_res,
                         k_fkv_res,
                     ],
-                    # Resident KV: the 2x17416 b_kv buffer + the 17416 seed-fill
-                    # cons buffer dominate the 64 KB tile, so the stack must be
-                    # small (flowkv needs ~1 KB: scores[T]+qvals[T]; append
-                    # k_rope[HD]). 8192 keeps total ~62 KB; ATSK (16384) overflows.
-                    stack_size=RESIDENT_ATSK,
                 )
                 for i in range(N_HEADS_KV)
             ]
@@ -1285,7 +1227,6 @@ def build(
                         k_append,
                         k_fkv,
                     ],
-                    stack_size=ATSK,
                 )
                 for i in range(N_HEADS_KV)
             ]
@@ -1302,43 +1243,36 @@ def build(
         Worker(
             w_o,
             [of_af.cons(), of_wo.cons(), of_op.prod(), k_o],
-            stack_size=PSK,
         ),
         Worker(
             w_add1,
             [of_routed.cons(), of_op.cons(), of_x1.prod(), k_add],
         ),
-        # FFN (FFNSK=4096: of_sf=HD+8 self-cal Bug-12 alias, see single layer)
+        # FFN
         Worker(
             w_rms,
             [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],
-            stack_size=2048,
         ),
         Worker(
             w_gate,
             [of_h2.cons(), of_wg.cons(), of_gf.prod(), k_gate],
-            stack_size=FFNSK,
         ),
         Worker(
             w_up,
             [of_h2.cons(), of_wu.cons(), of_ufp.prod(), k_up],
-            stack_size=FFNSK,
         ),
         # up_requant (2b): fp32 up -> self-cal up_out_scale -> int8 + tail.
         Worker(
             w_requant,
             [of_ufp.cons(), of_uf.prod(), k_uprequant],
-            stack_size=FFNSK,
         ),
         Worker(
             w_silu,
             [of_gf.cons(), of_uf.cons(), of_sf.prod(), k_silu],
-            stack_size=FFNSK,
         ),
         Worker(
             w_down,
             [of_sf.cons(), of_wd.cons(), of_df.prod(), k_down],
-            stack_size=FFNSK,
         ),
         # add2 with peeled final iter
         Worker(
@@ -1358,7 +1292,6 @@ def build(
                     of_fnorm.prod(),
                     k_rms,
                 ],
-                stack_size=2048,
             ),
             # Fused lm_head GEMM + top-k insert + finalize on one tile: ONE table
             # pass -> token + next-token embed seed. The resident top-k rows live
@@ -1381,7 +1314,6 @@ def build(
                         k_os_insert,
                         k_os_final,
                     ],
-                    stack_size=ATSK,
                 )
                 if PERSIST
                 else Worker(
@@ -1399,7 +1331,6 @@ def build(
                         k_os_insert,
                         k_os_final,
                     ],
-                    stack_size=ATSK,
                 )
             ),
         ]
@@ -1413,7 +1344,6 @@ def build(
                         of_feedback.cons(),
                         of_seed.prod(),
                     ],
-                    stack_size=PSK,
                 ),
             ]
     elif SAMPLE:
@@ -1427,10 +1357,9 @@ def build(
                     of_fnorm.prod(),
                     k_rms,
                 ],
-                stack_size=2048,
             ),
-            # lm_head GEMM (5,4 = relay gemm tile) + streamed sampler (5,5 =
-            # relay sampler tile). The relay owns the memtile (4,1) DMA.
+            # lm_head GEMM + streamed sampler, on the relay tiles that hold
+            # their relay buffers.
             Worker(
                 w_lmhead,
                 [
@@ -1439,7 +1368,7 @@ def build(
                     lm_relay,
                     k_lmhead,
                 ],
-                stack_size=PSK,
+                tile=relay_gemm_tile,
             ),
             Worker(
                 w_sample,
@@ -1451,7 +1380,7 @@ def build(
                     k_sample,
                     k_sample_final,
                 ],
-                stack_size=8192,
+                tile=relay_sampler_tile,
             ),
         ]
     if GATHER:
@@ -1465,7 +1394,6 @@ def build(
                     of_seed.prod(),
                     k_embsel,
                 ],
-                stack_size=PSK,
             ),
         ]
 
@@ -1978,7 +1906,7 @@ def _make_argparser():
     p.add_argument(
         "--onestream-kset",
         type=int,
-        default=int(_os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16")),
+        default=int(_os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8")),
     )
     return p
 

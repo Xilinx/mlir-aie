@@ -20,12 +20,14 @@ Scales baked at MLIR-gen time; the test uses the same values.
 """
 
 import argparse
-import os
 import sys
 
+import llama_kernels
 import numpy as np
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
+from aie.iron import CompileTime, ObjectFifo, Program, Runtime, TaskGroup, Worker, jit
 from aie.iron.device import NPU2, Tile
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
 PAIR_COL = 0
 QK_ROW = 4
@@ -37,13 +39,17 @@ K_SCALE = 0.05
 V_SCALE = 0.05
 INV_OUT_SCALE = 1.0 / 0.05
 
+
 # DYN picks llama_flowkv_{qk,sv} (static-scale scalar args) vs.
 # llama_flowkv_{qk,sv}_dyn (scales read from q/k/v tails, same shape the
 # real pipeline uses upstream of rope_int8_dyn/silu_mul_int8_dyn).
-DYN = os.environ.get("FLOWKV_DYN", "0") == "1"
-
-
-def build(head_dim: int, t: int):
+@jit
+def build(
+    *,
+    head_dim: CompileTime[int] = 64,
+    t: CompileTime[int] = 16,
+    DYN: CompileTime[bool] = False,
+):
     # fp32 probs on the CT0 -> CT1 stream; no bf16 truncation so the
     # softmax probabilities arrive bit-identical to what qk computed.
     probs_ty = np.ndarray[(t,), np.dtype[np.float32]]
@@ -64,15 +70,14 @@ def build(head_dim: int, t: int):
     of_probs = ObjectFifo(probs_ty, name="probs")
     of_out = ObjectFifo(out_ty, name="out")
 
+    unit = llama_kernels.flowkv(head_dim=head_dim, T=t)
     if DYN:
-        k_qk = Kernel(
+        k_qk = unit.bind(
             "llama_flowkv_qk_dyn",
-            "llama_flowkv.cc.o",
             [q_ty, k_ty, probs_ty],
         )
-        k_sv = Kernel(
+        k_sv = unit.bind(
             "llama_flowkv_sv_dyn",
-            "llama_flowkv.cc.o",
             [v_ty, probs_ty, out_ty],
         )
 
@@ -95,14 +100,12 @@ def build(head_dim: int, t: int):
             c_out.release(1)
 
     else:
-        k_qk = Kernel(
+        k_qk = unit.bind(
             "llama_flowkv_qk",
-            "llama_flowkv.cc.o",
             [q_ty, k_ty, probs_ty, np.float32, np.float32],
         )
-        k_sv = Kernel(
+        k_sv = unit.bind(
             "llama_flowkv_sv",
-            "llama_flowkv.cc.o",
             [v_ty, probs_ty, out_ty, np.float32, np.float32],
         )
 
@@ -124,15 +127,10 @@ def build(head_dim: int, t: int):
             c_probs.release(1)
             c_out.release(1)
 
-    # qk_fn allocates `scores[T]` + `qvals[T]` on the worker stack (= 8*T B).
-    # At T>=128 this overflows the default 1 KB stack -- Peano Bug 5:
-    # silently corrupts (off-by-1 i8 mismatches that look like rounding).
-    # 16 KB stack handles T up to ~2048; beyond that move to a L1 Buffer.
     worker_qk = Worker(
         qk_fn,
         [of_q.cons(), of_k.cons(), of_probs.prod(), k_qk],
         tile=Tile(PAIR_COL, QK_ROW),
-        stack_size=16384,
     )
     worker_sv = Worker(
         sv_fn,
@@ -167,10 +165,17 @@ def build(head_dim: int, t: int):
 
 def main():
     p = argparse.ArgumentParser()
+    add_compile_args(p, with_dev=True, default_dev="npu2", dev_choices=("npu2",))
     p.add_argument("--head-dim", type=int, default=64)
     p.add_argument("-T", type=int, default=16)
-    args = p.parse_args(sys.argv[1:])
-    print(build(args.head_dim, args.T))
+    p.add_argument("--dyn", action="store_true")
+    opts = p.parse_args(sys.argv[1:])
+    run_design_cli(
+        build,
+        opts,
+        compile_kwargs={"head_dim": opts.head_dim, "t": opts.T, "DYN": opts.dyn},
+        device=NPU2(),
+    )
 
 
 if __name__ == "__main__":

@@ -1782,41 +1782,45 @@ CASES: list[Case] = [
         scalars=(7, 80, 128, 128, 8, 6, 2, 1),
         tag="split",
     ),
+    # MobileNet's FC2: 1280 inputs in four 320-wide chunks.
     Case(
-        "bn_fc_relu_ui16_pad",
-        dict(input_channels=1280, output_channels=8),
-        calls=8,
-        scalars=(1, 1280, 1280, 8, 12),
+        "bn_fc_relu_ui16_ic_chunk",
+        dict(),
+        calls=4,
+        scalars=(1, 11),
         smoke=True,
     ),
-    # MobileNet's FC1: 960 of the 1280 weight rows used.
+    # MobileNet's FC1: 960 inputs, three chunks.
     Case(
-        "bn_fc_relu_ui16_pad",
-        dict(input_channels=1280, output_channels=8),
-        calls=8,
-        scalars=(1, 960, 1280, 8, 11),
+        "bn_fc_relu_ui16_ic_chunk",
+        dict(),
+        calls=3,
+        scalars=(1, 9),
         tag="fc1",
     ),
     check(
-        "bn_fc_relu_ui16_pad",
-        dict(input_channels=1280, output_channels=16),
-        calls=8,
-        scalars=(1, 960, 1280, 16, 12),
-        tag="two-blocks",
+        "bn_fc_relu_ui16_ic_chunk",
+        dict(chunk_input_channels=1280, chunk_output_channels=8),
+        calls=1,
+        scalars=(1, 12),
+        tag="one-chunk",
     ),
     check(
-        "bn_fc_relu_ui16_pad",
-        dict(input_channels=1280, output_channels=8),
-        calls=8,
-        scalars=(1, 1264, 1280, 8, 12),
-        tag="ic-tail",
+        "bn_fc_relu_ui16_ic_chunk",
+        dict(max_images=4),
+        calls=4,
+        scalars=(4, 11),
+        tag="images",
     ),
+    # An input 16 bytes past a 64-byte boundary, which AIE2P's 64-byte loads
+    # would round down; the kernel takes its scalar path there.
     check(
-        "bn_fc_relu_ui16_pad",
-        dict(input_channels=1280, output_channels=8),
-        calls=8,
-        scalars=(1, 48, 1280, 8, 8),
-        tag="short",
+        "bn_fc_relu_ui16_ic_chunk",
+        dict(),
+        calls=4,
+        scalars=(1, 11),
+        arg_byte_offsets=((0, 16),),
+        devices=("npu2",),
     ),
     # Weights 16 bytes past a 64-byte boundary, as MobileNet's packed weight
     # views handed them before 7c1cde46072; AIE2P's 64-byte weight loads
@@ -1865,11 +1869,6 @@ CASES: list[Case] = [
                 "bn_conv2dk1_relu_xy_pool_padded",
                 dict(input_width=7, input_channels=80, output_channels=120),
                 (7, 80, 120, 120, 8, 6, 1, 0),
-            ),
-            (
-                "bn_fc_relu_ui16_pad",
-                dict(input_channels=1280, output_channels=8),
-                (1, 1280, 1280, 8, 12),
             ),
         )
     ],

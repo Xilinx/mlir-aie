@@ -1096,25 +1096,37 @@ def bn_conv2dk1_relu_xy_pool_padded_ref(
     return out
 
 
-def bn_fc_relu_ui16_pad_ref(
-    x, weights, input_width, input_channels, input_channels_pad, output_channels, scale
+def bn_fc_relu_ui16_ic_chunk_ref(
+    x,
+    weights,
+    images,
+    scale,
+    *,
+    input_channels: int,
+    chunk_input_channels: int,
+    chunk_output_channels: int,
+    max_images: int,
 ):
-    """Numpy reference for [`bn_fc_relu_ui16_pad`][iron.kernels.conv.bn_fc_relu_ui16_pad].
+    """Numpy reference for [`bn_fc_relu_ui16_ic_chunk`][iron.kernels.conv.bn_fc_relu_ui16_ic_chunk].
 
-    A 1x1 conv of ``uint16`` activations whose weights are laid out for
-    ``input_channels_pad`` input channels (``[OC/8][ICP/8][ic8][oc8]``, the
-    first ``input_channels`` used); the output is ``uint16`` holding
-    ``sat_u8(round_even(sum_ic x * w, scale))``.
+    Call ``k`` of ``weights`` (``(calls, n)``, one ``[OC/8][ICc][8]`` chunk
+    each) adds input channels ``[k * ICc, (k + 1) * ICc)`` of each of the
+    first ``images`` images in ``x`` to their running sums, and stores
+    ``sat_u8(round_even(sum, scale))`` as ``uint16``.
     """
-    W, IC, ICP = int(input_width), int(input_channels), int(input_channels_pad)
-    OC = int(output_channels)
-    x = np.asarray(x)
-    lead = x.shape[:-1]
-    xi = x[..., : IC * W].reshape(*lead, IC // 8, W, 8).astype(np.int64)
-    w = np.asarray(weights, dtype=np.int8)[: OC * ICP]
-    w = w.reshape(OC // 8, ICP // 8, 8, 8)[:, : IC // 8].astype(np.int64)
-    acc = np.einsum("...iwc,oicp->...owp", xi, w)
-    return _requant_even(acc, scale, dtype=np.uint16).reshape(*lead, W * OC)
+    IC, ICc, OCc = input_channels, chunk_input_channels, chunk_output_channels
+    n = int(images)
+    w = np.asarray(weights, dtype=np.int8).astype(np.int64)
+    calls = w.shape[0]
+    w = w.reshape(calls, OCc // 8, ICc, 8).transpose(0, 2, 1, 3)
+    w = w.reshape(calls, ICc, OCc)
+    xi = np.asarray(x).astype(np.int64).reshape(max_images, IC)[:n]
+    out = np.zeros((calls, max_images * OCc), dtype=np.uint16)
+    acc = np.zeros((n, OCc), dtype=np.int64)
+    for k in range(calls):
+        acc += xi[:, k * ICc : (k + 1) * ICc] @ w[k]
+        out[k, : n * OCc] = _requant_even(acc, scale, dtype=np.uint16).reshape(-1)
+    return out
 
 
 _BN_EXACT = Tolerance.exact(
@@ -1678,51 +1690,86 @@ def bn_conv2dk1_input_split_partial_skip_get(
     )
 
 
-def bn_fc_relu_ui16_pad(
+def bn_fc_relu_ui16_ic_chunk(
     input_channels: int = 1280,
-    output_channels: int = 16,
-    weight_chunk_count: int | None = None,
+    chunk_input_channels: int = 320,
+    chunk_output_channels: int = 32,
+    max_images: int = 1,
 ) -> ExternalFunction:
-    """Fully-connected layer (1x1 conv on (1,1,C)) + ReLU, uint16 in/out, with padding.
+    """Fully-connected layer + ReLU over one input-channel chunk, uint16 in and out.
 
-    A post-stage FC kernel used by MobileNet V3's classifier head.  Input is
-    a (1,1,input_channels) feature vector held as uint16; output is
-    ``output_channels`` uint16 logits.  Weights stored in a padded layout
-    (the ``input_channels_pad`` runtime arg selects the actual stride).
+    MobileNet V3's classifier head streams each FC layer's weights in chunks
+    of ``chunk_output_channels`` outputs by ``chunk_input_channels`` inputs,
+    so a layer whose input width is any multiple of the chunk (FC1's 960,
+    FC2's 1280) streams no padding. Call ``chunk`` adds that slice of each
+    image's ``input_channels`` uint16 inputs to the outputs' int32 sums,
+    which the kernel keeps from one call to the next and restarts at chunk
+    0, and stores them requantized, so the last chunk's store is the
+    result. Takes ``(input, weights, output, chunk, images, scale)``; the
+    weights are ``[chunk_output_channels / 8][chunk_input_channels][8]``.
 
     Args:
-        input_channels: Number of input channels (e.g. 1280).
-        output_channels: Number of output channels per call (slice width,
-            since the full FC is split across multiple tiles).
-        weight_chunk_count: Override the weight buffer's element count when
-            the design streams weights in chunks (cascade/ping-pong).
-            ``None`` means use the full ``input_channels * output_channels``
-            tile.
+        input_channels: Input channels per image in ``input``.
+        chunk_input_channels: Input channels per call.
+        chunk_output_channels: Output channels per call.
+        max_images: Images the buffers hold; ``images`` may be fewer.
 
     Returns:
-        ExternalFunction configured for the post-L2 FC kernel.
+        ExternalFunction for ``post_L2_fc_ui16_ic_chunk``.
+
+    Raises:
+        ValueError: When a channel count is not a multiple of the vector
+            width (32 inputs, 8 outputs) or ``max_images`` is below 1.
     """
-    wts_count = (
-        weight_chunk_count
-        if weight_chunk_count is not None
-        else input_channels * output_channels
-    )
-    in_ty = np.ndarray[(input_channels,), np.dtype[np.uint16]]
-    wt_ty = np.ndarray[(wts_count,), np.dtype[np.int8]]
-    out_ty = np.ndarray[(output_channels,), np.dtype[np.uint16]]
+    if (
+        input_channels % 32
+        or chunk_input_channels % 32
+        or chunk_output_channels % 8
+        or max_images < 1
+    ):
+        raise ValueError(
+            "bn_fc_relu_ui16_ic_chunk() needs input channel counts that are "
+            "multiples of 32, an output chunk that is a multiple of 8 and "
+            f"max_images >= 1, got input_channels={input_channels}, "
+            f"chunk_input_channels={chunk_input_channels}, "
+            f"chunk_output_channels={chunk_output_channels}, "
+            f"max_images={max_images}."
+        )
+    in_ty = np.ndarray[(max_images * input_channels,), np.dtype[np.uint16]]
+    wt_ty = np.ndarray[
+        (chunk_input_channels * chunk_output_channels,), np.dtype[np.int8]
+    ]
+    out_ty = np.ndarray[(max_images * chunk_output_channels,), np.dtype[np.uint16]]
     return _make_extern(
-        "post_L2_conv2dk1_relu_i16_ui16_pad",
+        "post_L2_fc_ui16_ic_chunk",
         _kernel_source("conv/bn_conv2dk1_relu.cc"),
-        [in_ty, wt_ty, out_ty, *_i32s(5)],
-        compile_flags=["-DSCALAR", "-DPOSTL2_PAD", "-DUINT16_ACT"],
+        [in_ty, wt_ty, out_ty, *_i32s(3)],
+        compile_flags=[
+            "-DPOSTL2_IC_CHUNK",
+            f"-DFC_INPUT_CHANNELS={input_channels}",
+            f"-DFC_CHUNK_IC={chunk_input_channels}",
+            f"-DFC_CHUNK_OC={chunk_output_channels}",
+            f"-DFC_MAX_IMAGES={max_images}",
+        ],
         contract=KernelContract(
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
-            roles=(In, Param, Out, *((Param,) * 5)),
-            reference=bn_fc_relu_ui16_pad_ref,
+            roles=(Param, In, Out, Param, Param, Param),
+            parameter_bindings=((3, 0),),
+            call_index=3,
+            reference=lambda x, weights, images, scale: bn_fc_relu_ui16_ic_chunk_ref(
+                x,
+                weights,
+                images,
+                scale,
+                input_channels=input_channels,
+                chunk_input_channels=chunk_input_channels,
+                chunk_output_channels=chunk_output_channels,
+                max_images=max_images,
+            ),
             acc_dtype=np.int32,
             reduction=input_channels,
             tolerance=_BN_EXACT,
-            ops_per_call=2 * input_channels * output_channels,
+            ops_per_call=2 * max_images * chunk_input_channels * chunk_output_channels,
         ),
     )

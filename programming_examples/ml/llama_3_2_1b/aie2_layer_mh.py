@@ -26,21 +26,23 @@ KV cache: host-pre-filled, 8 ObjectFifos (one per KV head). Each kcache/
 vcache fifo carries a 4 B scale header + 8192 B body. flowkv_mh reads
 those at fixed offsets.
 
-All ObjectFifos depth=1 (Bug 8). GEMM workers get stack_size=16384
-(Bug 5). PSK applied to all large gemm workers.
+All ObjectFifos depth=1 (Bug 8).
 """
 
 import argparse
 import os as _os
 import sys
 
+import llama_kernels
 import numpy as np
 from aie.dialects.arith import index_cast
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
+from aie.iron import ObjectFifo, Program, Runtime, TaskGroup, Worker, jit
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
 
 def _i32(idx):
@@ -227,6 +229,7 @@ def strided_tap(total, base_off, per_slot_stride, slot_bytes, n_slots):
     )
 
 
+@jit
 def build():
     # Residual stream carries a per-token dynamic scale in an int8[D+8] tail
     # (Phase B residual_dyn): xin seed + layer out are both int8[D+8].
@@ -376,94 +379,82 @@ def build():
 
     of_out = ObjectFifo(t_D8_i8, depth=1, name="layer_out")  # residual int8[D+8]
 
-    KO_RMS = "llama_rmsnorm_int8.cc.o"
-    KO_GEMM = "llama_gemm_int8_srs_tiled_layer.cc.o"
-    KO_GEMM2 = "llama_gemm_int8_srs_tiled_layer_mh.cc.o"
-    KO_ROPE = "llama_rope_int8_mh.cc.o"
-    KO_SILU = "llama_silu_mul_int8.cc.o"
-    KO_FKV = "llama_flowkv_mh.cc.o"
-    KO_GLUE = "llama_gqa_glue.cc.o"
+    KO_RMS = llama_kernels.rmsnorm()
+    KO_GEMM = llama_kernels.gemm_layer()
+    KO_GEMM2 = llama_kernels.gemm_layer_mh()
+    KO_ROPE = llama_kernels.rope_mh()
+    KO_SILU = llama_kernels.silu_mul(gate_scale=SILU_GATE_SCALE)
+    KO_FKV = llama_kernels.flowkv_mh(T=T)
+    KO_GLUE = llama_kernels.gqa_glue()
 
     # rmsnorm acttail: per-token input scale read from the residual tail
     # (x[D..D+4]); no baked scale arg. Input + output are int8[D+8].
-    k_rms = Kernel(
-        "llama_rmsnorm_int8_dyn_acttail", KO_RMS, [t_D8_i8, t_D_bf16, t_D8_i8]
-    )
+    k_rms = KO_RMS.bind("llama_rmsnorm_int8_dyn_acttail", [t_D8_i8, t_D_bf16, t_D8_i8])
     # act_scale from h1 tail; q_out_scales come from q_requant below.
-    k_q = Kernel(
+    k_q = KO_GEMM2.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_q_mh_fp32out_acttail",
-        KO_GEMM2,
         [t_D8_i8, t_WQ_slot, _f32(QD), np.int32],
     )
     # q_requant: fp32[QD] -> per-Q-head absmax -> q_out_scale + int8 qf + tail.
-    k_qrequant = Kernel("llama_q_requant", KO_GLUE, [_f32(QD), t_QF_i8])
+    k_qrequant = KO_GLUE.bind("llama_q_requant", [_f32(QD), t_QF_i8])
     # o_proj-mh, fp32 output. act_scale (o_act_scale) from the self-calibrated
     # af tail at af[QD] (reuses the K=2048 fp32out_acttail symbol; af is
     # int8[AF_BYTES+8]).
-    k_o = Kernel(
+    k_o = KO_GEMM2.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh_fp32out_acttail",
-        KO_GEMM2,
         [t_AF8_i8, t_WO_slot, t_D_f32, np.int32],
     )
     # gate (acttail: act_scale read from h2 tail; inv_out stays silu-lock arg)
-    k_gate = Kernel(
+    k_gate = KO_GEMM.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_gate_acttail",
-        KO_GEMM,
         [t_D8_i8, t_WG_slot, t_HD_i8, np.int32, np.float32],
     )
     # act_scale from h2 tail; up_out_scale comes from up_requant (see k_q).
-    k_up = Kernel(
+    k_up = KO_GEMM.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_fp32out_acttail",
-        KO_GEMM,
         [t_D8_i8, t_WU_slot, _f32(HD), np.int32],
     )
     # up_requant: fp32[HD] -> global absmax -> up_out_scale + int8 uf + tail.
-    k_uprequant = Kernel("llama_up_requant", KO_SILU, [_f32(HD), t_UF_i8])
+    k_uprequant = KO_SILU.bind("llama_up_requant", [_f32(HD), t_UF_i8])
     # down: fp32 out, act_scale (down_act_scale) from the self-calibrated sf
     # tail at act[HD]. act buffer is sf = int8[HD+8].
-    k_down = Kernel(
+    k_down = KO_GEMM.bind(
         "llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out_acttail",
-        KO_GEMM,
         [t_UF_i8, t_WD_slot, t_D_f32, np.int32],
     )
-    k_rope = Kernel("llama_rope_int8_mh_dyn", KO_ROPE, [t_QF_i8, t_CS_bf16, t_QR_i8])
+    k_rope = KO_ROPE.bind("llama_rope_int8_mh_dyn", [t_QF_i8, t_CS_bf16, t_QR_i8])
     # k_proj / v_proj: fp32 out, act_scale from h1 tail (one symbol, both).
-    k_kv = Kernel(
+    k_kv = KO_GEMM2.bind(
         "llama_gemm_tiled_layer_K2048_N4_perchan_fp32out_acttail",
-        KO_GEMM2,
         [t_D8_i8, t_WK_slot, t_KVfp, np.int32],
     )
     # qkv_combine: qr + joined kvcs -> 2 halves of combined per-head chunks.
-    k_qkvcomb = Kernel(
+    k_qkvcomb = KO_GLUE.bind(
         "llama_qkv_combine",
-        KO_GLUE,
         [t_QR_i8, t_KVCS_i8, t_COMB_HALF_i8, t_COMB_HALF_i8],
     )
     # co-located variant (kernels/llama_kv_append.cc), offset 288 per line 76.
-    KO_KVA = "llama_kv_append.cc.o"
-    k_append = Kernel("llama_kv_append_combined", KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8])
+    KO_KVA = llama_kernels.kv_append(T=T)
+    k_append = KO_KVA.bind("llama_kv_append_combined", [t_COMB_i8, t_KV_i8, t_KV_i8])
     # Output layout is line 88's SVFULL_BYTES.
-    k_svmerge = Kernel(
+    k_svmerge = KO_GLUE.bind(
         "llama_sv_merge_selfcal",
-        KO_GLUE,
         [t_SVCONCAT_HALF_i8, t_SVCONCAT_HALF_i8, _i8(SVFULL_BYTES)],
     )
     # af_concat fully self-cal (1b+1c): sv_out_scales from the merged sv tail
     # (no host af_scales fifo), o_act_scale computed on-chip -> af tail.
-    k_afconcat = Kernel(
-        "llama_af_concat_selfcal2", KO_GLUE, [_i8(SVFULL_BYTES), t_AF8_i8]
-    )
+    k_afconcat = KO_GLUE.bind("llama_af_concat_selfcal2", [_i8(SVFULL_BYTES), t_AF8_i8])
     # flowkv self-calibrates per-Q-head sv_out_scale: out_chunk is
     # [REP*HEAD_D body | REP*4 sv_out_scale] = SVCHUNK_BYTES (272).
-    k_fkv = Kernel(
-        "llama_flowkv_mh_kvc_selfcal", KO_FKV, [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8]
+    k_fkv = KO_FKV.bind(
+        "llama_flowkv_mh_kvc_selfcal", [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8]
     )
     # silu self-calibrates its OUTPUT scale: writes silu_out_scale to the sf
     # tail (sf int8[HD+8]); reads up_scale from the up tail.
-    k_silu = Kernel("llama_silu_mul_int8_selfcal", KO_SILU, [t_HD_i8, t_UF_i8, t_UF_i8])
+    k_silu = KO_SILU.bind("llama_silu_mul_int8_selfcal", [t_HD_i8, t_UF_i8, t_UF_i8])
     # rescale-add: (residual int8[D+8], proj fp32[D]) -> residual int8[D+8].
-    KO_RADD = "llama_rescale_add.cc.o"
-    k_add = Kernel("llama_rescale_add_D", KO_RADD, [t_D8_i8, t_D_f32, t_D8_i8])
+    KO_RADD = llama_kernels.rescale_add()
+    k_add = KO_RADD.bind("llama_rescale_add_D", [t_D8_i8, t_D_f32, t_D8_i8])
 
     # --- Worker bodies ---
     def w_rms(c_in, c_gamma, c_out, k):
@@ -620,44 +611,30 @@ def build():
         c_proj.release(1)
         c_out.release(1)
 
-    PSK = 8192  # FFN stack; larger silently corrupts (Bug 12)
-    ATSK = 16384  # attn workers (flowkv_mh has local arrays + many loops)
-    # FFN-side stack: with the self-cal silu growing of_sf to HD+8, the L1
-    # layout shifts so an FFN worker's 8192 B stack ALIASES a fifo buffer
-    # (Bug 12), corrupting the FFN output (proven: FFNSK=8192 -> max|d|=171,
-    # FFNSK=4096 -> bit-exact, sole variable). 4096 fits the FFN gemms' frames
-    # and clears the alias. Env-overridable for future layout changes.
-    FFNSK = int(_os.environ.get("LLAMA_FFNSK", "4096"))
-
     workers = [
         # ---- Attention front ----
         Worker(
             w_rms,
             [of_xin.cons(), of_gam_in.cons(), of_h1.prod(), k_rms],
-            stack_size=2048,
         ),
         Worker(
             w_q,
             [of_h1.cons(), of_wq.cons(), of_qfp.prod(), k_q],
-            stack_size=PSK,
         ),
         # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
         Worker(w_qrequant, [of_qfp.cons(), of_qf.prod(), k_qrequant]),
         Worker(
             w_rope,
             [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope],
-            stack_size=2048,
         ),
         # k_proj / v_proj (h1 broadcast); fp32 out -> memtile kvcs join.
         Worker(
             w_kv,
             [of_h1.cons(), of_wk.cons(), kvcs_eps[0].prod(), k_kv],
-            stack_size=PSK,
         ),
         Worker(
             w_kv,
             [of_h1.cons(), of_wv.cons(), kvcs_eps[1].prod(), k_kv],
-            stack_size=PSK,
         ),
         Worker(
             w_qkvcomb,
@@ -681,7 +658,6 @@ def build():
                     k_append,
                     k_fkv,
                 ],
-                stack_size=ATSK,
             )
             for i in range(N_HEADS_KV)
         ],
@@ -697,40 +673,33 @@ def build():
         Worker(
             w_o,
             [of_af.cons(), of_wo.cons(), of_op.prod(), k_o],
-            stack_size=PSK,
         ),
         Worker(w_add, [of_xin.cons(), of_op.cons(), of_x1.prod(), k_add]),
         # ---- FFN ----
         Worker(
             w_rms,
             [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],
-            stack_size=2048,
         ),
         Worker(
             w_gate,
             [of_h2.cons(), of_wg.cons(), of_gf.prod(), k_gate],
-            stack_size=FFNSK,
         ),
         Worker(
             w_up,
             [of_h2.cons(), of_wu.cons(), of_ufp.prod(), k_up],
-            stack_size=FFNSK,
         ),
         # up_requant (2b): fp32 up -> global self-cal up_out_scale -> int8 + tail.
         Worker(
             w_uprequant,
             [of_ufp.cons(), of_uf.prod(), k_uprequant],
-            stack_size=FFNSK,
         ),
         Worker(
             w_silu,
             [of_gf.cons(), of_uf.cons(), of_sf.prod(), k_silu],
-            stack_size=FFNSK,
         ),
         Worker(
             w_down,
             [of_sf.cons(), of_wd.cons(), of_df.prod(), k_down],
-            stack_size=FFNSK,
         ),
         Worker(w_add, [of_x1.cons(), of_df.cons(), of_out.prod(), k_add]),
     ]
@@ -847,8 +816,9 @@ def build():
 
 
 def main():
-    argparse.ArgumentParser().parse_args(sys.argv[1:])
-    print(build())
+    p = argparse.ArgumentParser(prog="Llama 3.2 1B decoder layer (multi-head)")
+    add_compile_args(p, with_dev=True, default_dev="npu2", dev_choices=("npu2",))
+    run_design_cli(build, p.parse_args(sys.argv[1:]), compile_kwargs={}, device=NPU2())
 
 
 if __name__ == "__main__":

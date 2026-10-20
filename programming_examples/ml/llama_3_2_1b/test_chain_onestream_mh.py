@@ -11,10 +11,8 @@ next-token embedding seed (int8[D]+scale) on-chip, with no DDR logits scratch an
 no second gather stream. Verifies both against the numpy oracle (clean top-k
 renormalisation -- see numpy_topk_sample / project_topk_masked_tail_bug).
 
-Run:
-  make chain_onestream_mh CHAIN_MH_N=2 ONESTREAM_KSET=8
-  python test_chain_onestream_mh.py -x build/final_chain_onestream_N2_T128.xclbin \\
-      -i build/insts_chain_onestream_N2_T128.bin -k MLIR_AIE
+Run (compiles the design, or reuses its JIT cache entry):
+  python test_chain_onestream_mh.py
 """
 
 from __future__ import annotations
@@ -25,10 +23,8 @@ import sys
 from pathlib import Path
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
 from aie2_chain_dynscale_mh import (
     HEAD_D,
     N_HEADS_KV,
@@ -40,9 +36,11 @@ from aie2_chain_dynscale_mh import (
     VOCAB,
     WLM_TOTAL,
     D,
+    build,
 )
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+from llama_npu import add_artifact_args, design_kernel
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw
 from numpy_topk_sample import topk_sample_reference
@@ -53,7 +51,7 @@ from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
-ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
+ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8"))
 DATA_DIR = Path(__file__).parent / "data"
 
 
@@ -194,7 +192,7 @@ def run_one_seed(seed, opts, lut_exp, lut_silu, npu, embed_i8, embed_sc, gamma, 
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("--seeds", type=str, default="0,1,7,42")
     opts = p.parse_args()
     seeds = [int(s) for s in opts.seeds.split(",")]
@@ -206,7 +204,15 @@ def main():
     print("packing lm_head weights (262 MB) ...", flush=True)
     lmw = pack_lmw(embed_i8, embed_sc, gamma)
 
-    npu = test_utils.create_npu_kernel(opts).npu_kernel
+    npu = design_kernel(
+        build,
+        opts,
+        SAMPLE=True,
+        ONESTREAM=True,
+        N_LAYERS=N_LAYERS,
+        T=T,
+        ONESTREAM_KSET=ONESTREAM_KSET,
+    )
     lut_exp = exp_lut(FKV_EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
 

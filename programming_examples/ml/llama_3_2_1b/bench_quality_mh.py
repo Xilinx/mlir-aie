@@ -33,6 +33,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+from accuracy_vs_hf import RefModel, ref_forward_logits
 from aie2_chain_dynscale_mh import (
     ACT_SCALE,
     HEAD_D,
@@ -41,6 +42,7 @@ from aie2_chain_dynscale_mh import (
     D,
 )
 from gen_exp_lut import exp_lut
+from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
 from gen_silu_lut import silu_lut
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_real_layer_mh, numpy_layer_mh_forward, requant
@@ -184,11 +186,9 @@ def bf16_ref_next_token(token_ids):
     'does the NPU match the actual model'. Lazily loads the 2.5 GB checkpoint."""
     global _BF16_REF
     if _BF16_REF is None:
-        from accuracy_vs_hf import HF_WEIGHTS, RefModel, ref_forward_logits
-        from gen_llama_data import SafetensorsReader
-
-        print(f"loading bf16 HF reference from {HF_WEIGHTS} ...", flush=True)
-        _BF16_REF = (RefModel(SafetensorsReader(HF_WEIGHTS)), ref_forward_logits)
+        hf_weights = WEIGHTS_DIR / "model.safetensors"
+        print(f"loading bf16 HF reference from {hf_weights} ...", flush=True)
+        _BF16_REF = (RefModel(SafetensorsReader(hf_weights)), ref_forward_logits)
     ref_model, fwd = _BF16_REF
     logits = fwd(ref_model, np.array(token_ids))  # (M, V)
     return int(np.argmax(logits[-1]))

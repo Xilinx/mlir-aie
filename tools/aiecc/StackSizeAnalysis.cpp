@@ -97,11 +97,11 @@ struct Graph {
 // of the object that defines the symbol. `elfFlags` is the ELF header's
 // e_flags: 2 for aie2, 3 for aie2p.
 //
-// FIXME: Peano compiles libclang_rt.builtins.a without -fstack-size-section,
-// so any core reaching a builtin such as `__divsf3` or `__modsi3` needs bytes
-// that no `.stack_sizes` entry reports. CompilerRtStackFrames.inc supplies
-// them. Once llvm-aie builds the builtins with -fstack-size-section
-// (llvm-aie#1374), delete this table.
+// FIXME: Peano compiles libclang_rt.builtins.a, libc.a and libm.a without
+// -fstack-size-section, so any core reaching a builtin such as `__divsf3` or a
+// libc function such as `memcpy` needs bytes that no `.stack_sizes` entry
+// reports. CompilerRtStackFrames.inc supplies them. Once llvm-aie builds these
+// libraries with -fstack-size-section (llvm-aie#1374), delete this table.
 struct FallbackFrame {
   unsigned elfFlags;
   llvm::StringLiteral symbol;

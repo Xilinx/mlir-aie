@@ -13,10 +13,8 @@ The chain layers use random fixtures (no vocab), but the lm_head uses the real
 embedding weights -- so the token is arbitrary-but-deterministic and still a
 valid bit-exact check of the fused final_norm + lm_head + sampler path.
 
-Run:
-  make chain_sample_mh CHAIN_MH_N=2
-  python test_chain_sample_mh.py -x build/final_chain_sample_N2_T128.xclbin \\
-      -i build/insts_chain_sample_N2_T128.bin -k MLIR_AIE
+Run (compiles the design, or reuses its JIT cache entry):
+  python test_chain_sample_mh.py
 """
 
 from __future__ import annotations
@@ -27,10 +25,8 @@ import sys
 from pathlib import Path
 
 import aie.iron as iron
-import aie.utils.test as test_utils
 import numpy as np
 from aie.utils import DefaultNPURuntime
-from aie.utils.hostruntime.argparse import add_runtime_args
 from aie2_chain_dynscale_mh import (
     HEAD_D,
     N_HEADS_KV,
@@ -42,9 +38,11 @@ from aie2_chain_dynscale_mh import (
     VOCAB,
     WLM_TOTAL,
     D,
+    build,
 )
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
+from llama_npu import add_artifact_args, design_kernel
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw
 from numpy_sample import EXP_QUANT_SCALE
@@ -161,7 +159,7 @@ def run_one_seed(
 
 def main():
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_artifact_args(p)
     p.add_argument("--seeds", type=str, default="0,1,7,42")
     opts = p.parse_args()
     seeds = [int(s) for s in opts.seeds.split(",")]
@@ -173,7 +171,7 @@ def main():
     print("packing lm_head weights (262 MB) ...", flush=True)
     lmw = pack_lmw(embed_i8, embed_sc, gamma)
 
-    npu = test_utils.create_npu_kernel(opts).npu_kernel
+    npu = design_kernel(build, opts, SAMPLE=True, N_LAYERS=N_LAYERS, T=T)
     lut_exp = exp_lut(FKV_EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
     lut = exp_lut(EXP_QUANT_SCALE).astype(np.float32)

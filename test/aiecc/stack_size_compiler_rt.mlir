@@ -6,8 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 // The kernel calls __divsf3 and __modsi3, which libclang_rt.builtins.a carries
-// without `.stack_sizes`. Their frames come from the compiler-rt table, so the
-// core measures exactly on both targets.
+// without `.stack_sizes`, and memcpy, which libc.a carries without them. Their
+// frames come from the fallback table, so the core measures exactly on both
+// targets.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

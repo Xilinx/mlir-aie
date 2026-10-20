@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "build/exp_lut.h"
+#include "exp_lut.h"
 
 #ifndef LLAMA_FLOWKV_HEAD_DIM
 #define LLAMA_FLOWKV_HEAD_DIM 64
