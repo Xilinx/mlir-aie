@@ -18,6 +18,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "llama_vec_fp.h"
+
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
@@ -212,8 +214,7 @@ static inline void gemm_tile_perchan_v2_fp32out_acttail_impl(
     int8_t *restrict act, int8_t *restrict w_tile, float *restrict out_tile) {
   static_assert(kPrefix % 64 == 0,
                 "prefix must be a multiple of 64 for aligned weight loads");
-  float act_scale;
-  memcpy(&act_scale, act + kK, 4);
+  float act_scale = *reinterpret_cast<const float *>(act + kK);
 
   int8_t *body = w_tile + kPrefix;
   constexpr int kVec = 64;
@@ -228,6 +229,7 @@ static inline void gemm_tile_perchan_v2_fp32out_acttail_impl(
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
+  int32_t sums[kNTile];
   for (int n = 0; n < kNTile; n++) {
     aie::accum<acc32, kVec> acc;
     acc.from_vector(aie::zeros<int32, kVec>());
@@ -237,10 +239,17 @@ static inline void gemm_tile_perchan_v2_fp32out_acttail_impl(
       aie::vector<int8, kVec> x_v = aie::load_v<kVec>(act + g * kVec);
       acc = aie::mac(acc, w_v, x_v);
     }
-    int32_t sum_i32 =
-        aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+    sums[n] = aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+  }
 
-    out_tile[n] = (float)sum_i32 * act_scale * w_scales[n];
+  if (vec_epilogue_exact<80, 174, kNTile>(sums, act_scale, w_scales)) {
+    ::aie::vector<float, 16> fp =
+        vec_scaled_sums<kNTile>(sums, act_scale, w_scales);
+    for (int n = 0; n < kNTile; n++)
+      out_tile[n] = fp.get(n);
+  } else {
+    for (int n = 0; n < kNTile; n++)
+      out_tile[n] = (float)sums[n] * act_scale * w_scales[n];
   }
 }
 
@@ -320,8 +329,7 @@ gemm_tile_perchan_acttail_impl(int8_t *restrict act, int8_t *restrict w_tile,
                 "K must be a multiple of 64 (one aie::mac lane group)");
   constexpr int kGroups = kK / kVec;
 
-  float act_scale;
-  memcpy(&act_scale, act + kK, 4);
+  float act_scale = *reinterpret_cast<const float *>(act + kK);
 
   const int8_t *weights = w_tile;
   const int32_t *bias = reinterpret_cast<const int32_t *>(w_tile + kNTile * kK);
@@ -331,6 +339,7 @@ gemm_tile_perchan_acttail_impl(int8_t *restrict act, int8_t *restrict w_tile,
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
+  int32_t sums[kNTile];
   for (int n = 0; n < kNTile; n++) {
     aie::accum<acc32, kVec> acc;
     acc.from_vector(aie::zeros<int32, kVec>());
@@ -341,10 +350,28 @@ gemm_tile_perchan_acttail_impl(int8_t *restrict act, int8_t *restrict w_tile,
       aie::vector<int8, kVec> x_v = aie::load_v<kVec>(act + g * kVec);
       acc = aie::mac(acc, w_v, x_v);
     }
-    int32_t sum_i32 =
-        aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+    sums[n] = aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+  }
 
-    float fp = (float)sum_i32 * act_scale * w_scales[n];
+  // Three products deep, so the scale exponents are held tighter than the
+  // two-product epilogues' [80, 174]. At |scaled| >= 2^31 the scalar int cast
+  // below is undefined, so those calls keep the scalar code too.
+  if (vec_epilogue_exact<96, 158, kNTile>(sums, act_scale, w_scales,
+                                          inv_out_scale)) {
+    ::aie::vector<float, 16> scaled =
+        vec_mul_rne(vec_scaled_sums<kNTile>(sums, act_scale, w_scales),
+                    ::aie::broadcast<float, 16>(inv_out_scale));
+    if (::aie::reduce_max(::aie::bit_and(int32(0x7fffffff),
+                                         scaled.template cast_to<int32>())) <
+        0x4f000000) {
+      ::aie::vector<int8, 16> r = vec_round_to_i8(scaled);
+      for (int n = 0; n < kNTile; n++)
+        out_tile[n] = r.get(n);
+      return;
+    }
+  }
+  for (int n = 0; n < kNTile; n++) {
+    float fp = (float)sums[n] * act_scale * w_scales[n];
     float scaled = fp * inv_out_scale;
 
     int32_t r = (int32_t)(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
@@ -413,36 +440,6 @@ static inline void gemm_tile_perchan_v2_up_acttail_impl(
   }
 }
 
-// See llama_rescale_add.cc for vec_mul_rne: a * b rounded to nearest-even,
-// exact against the scalar soft-float `*` for normal operands and products.
-template <unsigned kN>
-static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
-                                                   ::aie::vector<float, kN> b) {
-  ::aie::vector<int32, kN> ai = a.template cast_to<int32>();
-  ::aie::vector<int32, kN> bi = b.template cast_to<int32>();
-  ::aie::vector<int32, kN> ea =
-      ::aie::bit_and(int32(0xff), ::aie::downshift(ai, 23));
-  ::aie::vector<int32, kN> eb =
-      ::aie::bit_and(int32(0xff), ::aie::downshift(bi, 23));
-  ::aie::accum<acc64, kN> p = ::aie::mul(
-      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), ai)),
-      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bi)));
-  ::aie::vector<int32, kN> lo = p.template to_vector<int32>(23);
-  ::aie::vector<int32, kN> hi = p.template to_vector<int32>(24);
-  auto wide = ::aie::ge(lo, int32(1 << 24));
-  ::aie::vector<int32, kN> e = ::aie::add(
-      ::aie::add(ea, eb), ::aie::select(int32(-127), int32(-126), wide));
-  ::aie::vector<int32, kN> mag = ::aie::add(
-      ::aie::upshift(::aie::sub(e, int32(1)), 23), ::aie::select(lo, hi, wide));
-  mag = ::aie::select(mag, ::aie::broadcast<int32, kN>(0x7f800000),
-                      ::aie::ge(e, int32(255)));
-  mag = ::aie::select(mag, ::aie::zeros<int32, kN>(),
-                      ::aie::lt(::aie::min(::aie::min(ea, eb), e), int32(1)));
-  return ::aie::bit_or(
-             ::aie::bit_and(int32(0x80000000), ::aie::bit_xor(ai, bi)), mag)
-      .template cast_to<float>();
-}
-
 // A signed key ordered as IEEE orders non-NaN floats, with -0 tying +0.
 static inline int32_t logit_key(float f) {
   int32_t b = __builtin_bit_cast(int32_t, f);
@@ -466,7 +463,7 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
                         float *restrict set_logit, int32_t *restrict set_gidx,
                         float *restrict set_scale, int8_t *restrict set_row,
                         int32_t *restrict set_len, int32_t tile_idx) {
-  constexpr int kK = 2048, kNTile = 4, kPrefix = 64, kVec = 64, kEpi = 16;
+  constexpr int kK = 2048, kNTile = 4, kPrefix = 64, kVec = 64;
   constexpr int kGroups = kK / kVec;
 
   // Reset the resident set at the start of each table pass. The set buffers
@@ -499,27 +496,10 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
     sums[n] = aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
   }
 
-  // The vector path is exact where every scale's exponent field is in
-  // [80, 174], so neither product leaves the normal range, and |sum| < 2^23:
-  // fx2flt misrounds odd sums below -(2^24 - 2^16). Anything else takes the
-  // scalar soft-float path.
-  int32_t act_bits = __builtin_bit_cast(int32_t, act_scale);
-  bool vec_ok = (uint32_t)(((act_bits >> 23) & 0xff) - 80) <= 94;
-  ::aie::vector<int32, kEpi> sum_v = ::aie::zeros<int32, kEpi>();
-  ::aie::vector<float, kEpi> scale_v = ::aie::zeros<float, kEpi>();
-  for (int n = 0; n < kNTile; n++) {
-    int32_t w_bits = __builtin_bit_cast(int32_t, w_scales[n]);
-    vec_ok &= (uint32_t)(((w_bits >> 23) & 0xff) - 80) <= 94;
-    vec_ok &= (uint32_t)sums[n] + (1u << 23) - 1 < (1u << 24) - 1;
-    sum_v.set(sums[n], n);
-    scale_v.set(w_scales[n], n);
-  }
   float logits[kNTile];
-  if (vec_ok) {
-    ::aie::vector<float, kEpi> logit_v =
-        vec_mul_rne(vec_mul_rne(::aie::to_float<float>(sum_v, 0),
-                                ::aie::broadcast<float, kEpi>(act_scale)),
-                    scale_v);
+  if (vec_epilogue_exact<80, 174, kNTile>(sums, act_scale, w_scales)) {
+    ::aie::vector<float, 16> logit_v =
+        vec_scaled_sums<kNTile>(sums, act_scale, w_scales);
     for (int n = 0; n < kNTile; n++)
       logits[n] = logit_v.get(n);
   } else {
