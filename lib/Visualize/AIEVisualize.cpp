@@ -1515,9 +1515,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       spacing = std::max(spacing, (designRight - designLeft) /
                                       (runtimeArguments.size() - 1));
     double left = center - spacing * (runtimeArguments.size() - 1) / 2;
-    // Below the channel the shim switchboxes route in, so that the runs
-    // reaching an argument do not cross the arguments beside it.
-    return {left + index * spacing, layout.channelY(0) - layout.tileGapY};
+    // Far enough below the array to leave a band the runs reaching an
+    // argument can travel along without touching the arguments themselves.
+    return {left + index * spacing, layout.channelY(0) - layout.tileGapY * 1.3};
   };
 
   std::map<Operation *, unsigned> bufferIDs;

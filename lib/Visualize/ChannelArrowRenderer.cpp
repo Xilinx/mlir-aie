@@ -411,8 +411,10 @@ Corridor ChannelArrowRenderer::corridorOf(const CorridorKey &key,
     break;
   }
   case CorridorKind::Arguments: {
-    corridor.base = argumentsTop;
-    corridor.span = -layout.tileGapY;
+    // Above the arguments, never through them: they are the lowest thing
+    // drawn, and the only way out of one is a short run up out of its top.
+    corridor.base = argumentsTop + kEdgeMargin;
+    corridor.span = layout.tileGapY / 2;
     break;
   }
   }
@@ -426,13 +428,14 @@ ChannelArrowRenderer::route(ArrayRef<ArrowRequest> requests,
 
   // Where a tile's contents sit, which bounds the two corridors inside it.
   contentHalfWidth = 0;
-  argumentsTop = 0;
+  argumentsTop = -std::numeric_limits<double>::infinity();
   for (const ArrowRequest &request : requests)
     for (const ArrowEnd *end : {&request.from, &request.to}) {
       if (end->kind == EndKind::Content)
         contentHalfWidth = std::max(contentHalfWidth, end->halfWidth);
       if (end->kind == EndKind::External)
-        argumentsTop = end->pinned.second + 0.5;
+        argumentsTop =
+            std::max(argumentsTop, end->pinned.second + end->halfHeight);
     }
 
   SmallVector<Run> runs;
