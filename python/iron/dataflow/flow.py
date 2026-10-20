@@ -237,7 +237,7 @@ class _Route(PerDeviceConfigurationResolvable):
     def _transfer(self, rt_data, direction, **kwargs):
         """Emit a fill's MM2S at the source or a drain's S2MM at the one dst."""
         kind = type(self).__name__
-        if self not in active_sequence()._runtime.flows:
+        if self not in active_sequence().runtime.flows:
             raise ValueError(
                 f"{kind} must be registered with rt.add_flow(flow) before the "
                 "runtime sequence fills or drains it."
@@ -320,7 +320,7 @@ class FlowEndpoint(DmaEndpoint):
                 tile is not placed or the channel is not given.
         """
         flow = self._flow
-        if flow not in active_sequence()._runtime.flows:
+        if flow not in active_sequence().runtime.flows:
             raise ValueError(
                 f"{type(flow).__name__} must be registered with rt.add_flow(flow) "
                 "before the runtime sequence waits on its end."

@@ -89,6 +89,11 @@ class ActiveSequence:
         self._used_default = False
         self._used_explicit = False
 
+    @property
+    def runtime(self) -> "Runtime":
+        """The Runtime whose sequence body is running."""
+        return self._runtime
+
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
         """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
         self._runtime._fifos[handle] = None

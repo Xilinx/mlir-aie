@@ -112,7 +112,7 @@ class Task:
             repeat_parameter=(
                 None
                 if repeat_parameter is None
-                else active_sequence()._runtime.register_parameter(repeat_parameter)
+                else active_sequence().runtime.register_parameter(repeat_parameter)
             ),
         )
         return self
