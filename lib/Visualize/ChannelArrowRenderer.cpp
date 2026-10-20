@@ -52,19 +52,19 @@ constexpr double kArcControl = 0.5523;
 constexpr double kCornerRadius = 0.05;
 
 /// Spacing between tracks, and between the ports stacked on a switchbox.
-constexpr double kTrack = 0.062;
-constexpr double kPortPitch = 0.1;
+constexpr double kTrack = 0.1;
+constexpr double kPortPitch = 0.17;
 /// How far each port steps out from its side, so no two share a line.
-constexpr double kStagger = 0.075;
+constexpr double kStagger = 0.12;
 constexpr double kDMAPitch = 0.23;
 
 /// The channel a column reserves, and how it is divided. Measured leftwards
 /// from the tile's edge, so each piece has a place that cannot drift.
-constexpr double kChannel = 2.6;
+constexpr double kChannel = 3.4;
 constexpr double kDMAHalfWidth = 0.42;
 constexpr double kDMAInset = 0.06;
-constexpr double kSwitchInset = 1.05;
-constexpr double kSwitchHalfWidth = 0.22;
+constexpr double kSwitchInset = 1.45;
+constexpr double kSwitchHalfWidth = 0.30;
 constexpr double kEdgeMargin = 0.09;
 /// The widest a tile's buffer and call boxes are drawn.
 constexpr double kContentWidth = 1.75;

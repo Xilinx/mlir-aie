@@ -838,11 +838,59 @@ collectRoleClasses(const std::map<std::pair<int, int>, TileRole> &roles) {
 /// any label is read. The tints stay pale enough to sit under black text and
 /// under the flow edges drawn across them, and far enough apart in hue to
 /// survive being seen one tile at a time rather than side by side.
-static StringRef roleFill(unsigned id) {
-  static constexpr const char *fills[] = {
-      "#cfe3f7", "#ffdfd3", "#d6efd6", "#ebdcf5", "#ffeec2",
-      "#ccebe8", "#f6d9e6", "#e3e6c9", "#dcdcf0", "#e6e6e6"};
-  return fills[id % std::size(fills)];
+/// Every colour the view draws in, so that a scheme is one table rather than
+/// a hunt through the emitter.
+struct Palette {
+  StringRef background;
+  StringRef tileEdge;
+  StringRef tileText;
+  StringRef coreTile, memTile, shimTile, otherTile;
+  StringRef boxFill, boxEdge;
+  StringRef callFill, callEdge;
+  StringRef argumentFill, argumentEdge;
+  StringRef ruleFill, ruleEdge, ruleText;
+  StringRef runtimeLink, callLink, quietEdge;
+  StringRef legendText, legendRule;
+  /// Fills for tiles that share a role, and colours for the flows.
+  ArrayRef<const char *> roles;
+  ArrayRef<const char *> flows;
+};
+
+/// Seaborn's mako, sampled away from both ends: the darkest steps vanish into
+/// a black page and the lightest wash out against it.
+static constexpr const char *kMakoFlows[] = {
+    "#3e4c8a", "#38699e", "#3487a6", "#35a1ab", "#43bbad",
+    "#6cd3ad", "#9fe0b0", "#4a3f7a", "#2e7ba3", "#57c7ae"};
+/// The same ramp held back to tints a label can be read on.
+static constexpr const char *kMakoRoles[] = {
+    "#1d2b45", "#163a4a", "#17484c", "#1c5553", "#24604f",
+    "#38393f", "#2a2f55", "#113f3f", "#214a63", "#2f2f33"};
+
+static constexpr const char *kLightFlows[] = {
+    "#d73027", "#4575b4", "#1a9850", "#984ea3", "#ff7f00",
+    "#00a6a6", "#e7298a", "#6a3d9a", "#a6761d", "#1f78b4"};
+static constexpr const char *kLightRoles[] = {
+    "#cfe3f7", "#ffdfd3", "#d6efd6", "#ebdcf5", "#ffeec2",
+    "#ccebe8", "#f6d9e6", "#e3e6c9", "#dcdcf0", "#e6e6e6"};
+
+static const Palette &paletteFor(AIE::ColorScheme scheme) {
+  static const Palette light{
+      "white",   "#b8b8b8", "#555555", "#eef7ee",   "#fff2df",  "#e8f1fb",
+      "#f3edf8", "#ffffff", "#666666", "#f7f7f7",   "#555555",  "#fff7d6",
+      "#8f7c32", "#fffdf4", "#9a8b52", "#554b2c",   "#39789b",  "#666666",
+      "#c2c2c2", "#333333", "#555555", kLightRoles, kLightFlows};
+  // On black the tiles step just off the background rather than drawing a
+  // line of their own, and every label is light.
+  static const Palette mako{
+      "#06080c", "#1b2430", "#dfe8ee", "#101722",  "#141b16", "#0d1620",
+      "#141320", "#161d28", "#46586b", "#1b2430",  "#5a6e82", "#1a1f2e",
+      "#6f7fa6", "#141b26", "#55617a", "#aab6c6",  "#6cd3ad", "#46586b",
+      "#39424f", "#dfe8ee", "#8a97a8", kMakoRoles, kMakoFlows};
+  return scheme == AIE::ColorScheme::Mako ? mako : light;
+}
+
+static StringRef roleFill(const Palette &palette, unsigned id) {
+  return palette.roles[id % palette.roles.size()];
 }
 
 static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
@@ -1140,11 +1188,8 @@ static std::string flowClasses(ArrayRef<const FlowRoute *> routes,
   return flowClasses(groupIDs, kind);
 }
 
-static std::string flowColor(unsigned id) {
-  static constexpr const char *colors[] = {
-      "#d73027", "#4575b4", "#1a9850", "#984ea3", "#ff7f00",
-      "#00a6a6", "#e7298a", "#6a3d9a", "#a6761d", "#1f78b4"};
-  return colors[id % std::size(colors)];
+static std::string flowColor(const Palette &palette, unsigned id) {
+  return palette.flows[id % palette.flows.size()];
 }
 
 static std::string shortPortName(const PortNode &port) {
@@ -1399,6 +1444,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     return 0.34 + 0.17 * static_cast<double>(lines + 1);
   };
 
+  const Palette &palette = paletteFor(options.colors);
   std::unique_ptr<ArrowRenderer> arrows =
       options.arrows == AIE::ArrowStyle::Channel
           ? createChannelArrowRenderer()
@@ -1609,12 +1655,20 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   std::map<unsigned, ArrowPath> arrowPaths;
   for (ArrowPath &path : arrows->route(arrowRequests, layout))
     arrowPaths[path.id] = std::move(path);
-  auto writeArrowGeometry = [&](unsigned id) {
+  // Graphviz draws no arrowhead on a supplied spline unless it is told where
+  // the tip goes. Only the hop that reaches a core or a DMA is told: a flow
+  // has one destination, and a head on every switchbox it passes through
+  // suggests it has many.
+  auto writeArrowGeometry = [&](unsigned id, bool tipped) {
     auto found = arrowPaths.find(id);
     if (found == arrowPaths.end())
       return;
+    ArrayRef<Point> points = found->second.points;
     output << ", pos=\"";
-    for (auto [index, point] : llvm::enumerate(found->second.points)) {
+    if (tipped)
+      output << "e," << layout.pos(points.back().first, points.back().second)
+             << ' ';
+    for (auto [index, point] : llvm::enumerate(points)) {
       if (index)
         output << ' ';
       output << layout.pos(point.first, point.second);
@@ -1631,7 +1685,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
          << (layout.preLaidOut ? "  graph [layout=nop2, overlap=true"
                                : "  graph [layout=neato, overlap=true")
          << (semanticView ? ", splines=curved" : "")
-         << ", outputorder=nodesfirst, bgcolor=\"white\", pad=\"0.45\"];\n"
+         << ", outputorder=nodesfirst, bgcolor=\"" << palette.background
+         << "\", pad=\"0.45\"];\n"
          << "  node [fontname=\"Helvetica\"];\n"
          << "  edge [fontname=\"Helvetica\", fontsize=9, arrowsize=0.65];\n";
   if (weightScale.enabled) {
@@ -1651,23 +1706,25 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     output << "  legend_title [shape=plaintext, pos=\""
            << layout.pos(legendX + 0.75, legendY + 0.45)
            << "\", label=\"bytes moved per iteration\", fontsize=10, "
-              "fontcolor=\"#333333\", class=\"legend\"];\n";
+              "fontcolor=\""
+           << palette.legendText << "\", class=\"legend\"];\n";
     for (auto [index, bytes] : llvm::enumerate(samples)) {
       double y = legendY - static_cast<double>(index) * 0.34;
       output << "  legend_" << index << "_from [shape=point, width=0.01, "
-             << R"(color="#ffffff", pos=")" << layout.pos(legendX, y)
+             << R"(color="none", pos=")" << layout.pos(legendX, y)
              << "\", class=\"legend\"];\n"
              << "  legend_" << index << "_to [shape=point, width=0.01, "
-             << R"(color="#ffffff", pos=")" << layout.pos(legendX + 1.1, y)
+             << R"(color="none", pos=")" << layout.pos(legendX + 1.1, y)
              << "\", class=\"legend\"];\n"
              << "  legend_" << index << "_text [shape=plaintext, pos=\""
              << layout.pos(legendX + 1.55, y) << "\", label=\""
-             << formatBytes(bytes)
-             << "\", fontsize=9, fontcolor=\"#333333\", class=\"legend\"];\n"
+             << formatBytes(bytes) << "\", fontsize=9, fontcolor=\""
+             << palette.legendText << "\", class=\"legend\"];\n"
              << "  legend_" << index << "_from -> legend_" << index
              << "_to [penwidth=\""
-             << llvm::format("%.2f", weightScale.width(bytes))
-             << "\", color=\"#555555\", arrowhead=none, class=\"legend\"];\n";
+             << llvm::format("%.2f", weightScale.width(bytes)) << "\", color=\""
+             << palette.legendRule
+             << "\", arrowhead=none, class=\"legend\"];\n";
     }
   }
   for (int col = 0; col < model.columns(); ++col) {
@@ -1675,16 +1732,16 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       if (!designTiles.count({col, row}) ||
           (semanticView && !topologyTiles.count({col, row})))
         continue;
-      StringRef fill = model.isCoreTile(col, row)      ? "#eef7ee"
-                       : model.isMemTile(col, row)     ? "#fff2df"
-                       : model.isShimNOCTile(col, row) ? "#e8f1fb"
-                                                       : "#f3edf8";
+      StringRef fill = model.isCoreTile(col, row)      ? palette.coreTile
+                       : model.isMemTile(col, row)     ? palette.memTile
+                       : model.isShimNOCTile(col, row) ? palette.shimTile
+                                                       : palette.otherTile;
       // A role fill replaces the tile-kind fill, so that colour carries one
       // meaning at a time. Only repeated roles take one; a tile left in its
       // kind colour is one of a kind.
       auto roleClass = roleClasses.find({col, row});
       if (options.tileRoles && roleClass != roleClasses.end())
-        fill = roleFill(roleClass->second.id);
+        fill = roleFill(palette, roleClass->second.id);
       output << "  " << tileNodeID(col, row) << " [shape=box";
       output << ", fixedsize=true, width=" << dotCoordinate(tileWidth)
              << ", height=" << dotCoordinate(layout.tileHeight(col, row))
@@ -1704,8 +1761,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       } else {
         output << '"';
       }
-      output << ", style=filled, fillcolor=\"" << fill
-             << "\", color=\"#b8b8b8\", fontcolor=\"#555555\"];\n";
+      output << ", style=\"rounded,filled\", fillcolor=\"" << fill
+             << "\", color=\"" << palette.tileEdge << "\", fontcolor=\""
+             << palette.tileText << "\", penwidth=\"2.0\"];\n";
     }
   }
   if (!semanticView) {
@@ -1719,8 +1777,10 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
         output << " [shape=box, fixedsize=true, width=0.82, height=0.18, pos=\""
                << layout.pos(x, y) << "\", label=\"" << shortPortName(port)
                << "\", class=\"" << flowClasses(channelFlowGroups[key], "port")
-               << "\", fontsize=7, style=filled, fillcolor=\"#ffffff\", "
-                  "color=\"#777777\"];\n";
+               << "\", fontsize=7, style=filled, fillcolor=\""
+               << palette.boxFill << "\", fontcolor=\"" << palette.tileText
+               << "\", "
+               << "color=\"" << palette.boxEdge << "\"];\n";
       } else {
         StringRef kind =
             port.bundle == AIE::WireBundle::Core ? "port" : "port detail-vias";
@@ -1798,8 +1858,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << "\", class=\""
              << flowClasses(matchingGroups,
                             "arbitration detail-arbitration detail-vias")
-             << "\", fontsize=6, style=filled, fillcolor=\"#fffdf4\", "
-                "color=\"#9a8b52\", fontcolor=\"#554b2c\"];\n";
+             << "\", fontsize=6, style=filled, fillcolor=\"" << palette.ruleFill
+             << "\", color=\"" << palette.ruleEdge << "\", fontcolor=\""
+             << palette.ruleText << "\"];\n";
     }
   } else {
     for (const PortNode &port : ports) {
@@ -1815,8 +1876,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << " [shape=box, fixedsize=true, width=0.82, height=0.18, pos=\""
              << layout.pos(x, y) << "\", label=\"" << shortPortName(port)
              << "\", class=\"" << flowClasses(nodeGroups, "port")
-             << "\", fontsize=7, style=filled, fillcolor=\"#ffffff\", "
-                "color=\"#777777\"];\n";
+             << "\", fontsize=7, style=filled, fillcolor=\"" << palette.boxFill
+             << "\", fontcolor=\"" << palette.tileText << "\", "
+             << "color=\"" << palette.boxEdge << "\"];\n";
     }
   }
   for (const BufferInfo &buffer : *buffers) {
@@ -1832,8 +1894,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     output << ", label=\"" << bufferLabel(buffer.op, buffer.id)
            << "\", class=\""
            << flowClasses(bufferFlowGroups[buffer.op], "buffer detail-buffers")
-           << "\", fontsize=8, style=filled, fillcolor=\"#ffffff\", "
-              "color=\"#666666\"];\n";
+           << "\", fontsize=8, style=filled, fillcolor=\"" << palette.boxFill
+           << "\", fontcolor=\"" << palette.tileText << "\", "
+           << "color=\"" << palette.boxEdge << "\"];\n";
   }
   if (!runtimeArguments.empty()) {
     for (auto [index, argument] : llvm::enumerate(runtimeArguments)) {
@@ -1845,8 +1908,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << layout.pos(x, argumentY) << "\", label=\"%"
              << escapeDotLabel(argument.name) << "\", class=\""
              << flowClasses(argument.flowGroups, "runtime-argument")
-             << "\", fontsize=8, style=filled, fillcolor=\"#fff7d6\", "
-                "color=\"#8f7c32\"];\n";
+             << "\", fontsize=8, style=\"rounded,filled\", fillcolor=\""
+             << palette.argumentFill << "\", color=\"" << palette.argumentEdge
+             << "\", fontcolor=\"" << palette.tileText << "\"];\n";
     }
     if (!semanticView) {
       for (const RuntimeArgumentInfo &argument : runtimeArguments) {
@@ -1859,10 +1923,11 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
             std::swap(source, dest);
           output << "  " << source << " -> " << dest << " [class=\""
                  << flowClasses(channelFlowGroups[key], "runtime-link")
-                 << "\", color=\"#39789b\", penwidth=\"1.2\"";
+                 << "\", color=\"" << palette.runtimeLink
+                 << "\", penwidth=\"1.2\"";
           auto arrow = runtimeArrowIDs.find({argument.id, key});
           if (arrow != runtimeArrowIDs.end())
-            writeArrowGeometry(arrow->second);
+            writeArrowGeometry(arrow->second, /*tipped=*/true);
           output << "];\n";
         }
       }
@@ -1882,7 +1947,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << escapeDotLabel(call.callee) << "\", class=\""
              << flowClasses(callFlowGroups[call.id], "call detail-calls")
              << "\", fontsize=8, style=\"rounded,filled\", "
-                "fillcolor=\"#f7f7f7\", color=\"#555555\"];\n";
+                "fillcolor=\""
+             << palette.callFill << "\", color=\"" << palette.callEdge
+             << "\", fontcolor=\"" << palette.tileText << "\"];\n";
       if (semanticView)
         continue;
       for (AIE::BufferOp buffer : call.buffers) {
@@ -1892,10 +1959,10 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                  << callNodeID(call.id) << " [class=\""
                  << flowClasses(bufferFlowGroups[buffer],
                                 "call-link detail-calls detail-buffers")
-                 << "\", color=\"#666666\", arrowsize=0.55";
+                 << "\", color=\"" << palette.callLink << "\", arrowsize=0.55";
           auto arrow = callArrowIDs.find({call.id, buffer});
           if (arrow != callArrowIDs.end())
-            writeArrowGeometry(arrow->second);
+            writeArrowGeometry(arrow->second, /*tipped=*/true);
           output << "];\n";
         }
       }
@@ -1935,15 +2002,16 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
         continue;
       if (!first)
         output << ':';
-      output << flowColor(groupID);
+      output << flowColor(palette, groupID);
       first = false;
     }
     if (first)
-      output << "#c2c2c2";
+      output << palette.quietEdge;
   };
   auto writeLabel = [&](const FlowRoute &route) {
     unsigned groupID = groups.routeGroups[route.id];
-    output << "<FONT COLOR=\"" << flowColor(groupID) << "\">F" << groupID;
+    output << "<FONT COLOR=\"" << flowColor(palette, groupID) << "\">F"
+           << groupID;
     if (route.packetID) {
       output << " pkt=" << *route.packetID;
       if (route.packetMask)
@@ -2056,8 +2124,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
         if (writeRouteLabels && writeCount)
           output << "<BR/>";
         if (writeCount)
-          output << "<FONT COLOR=\"#555555\">&#215;" << edgeCounts[endpoints]
-                 << "</FONT>";
+          output << "<FONT COLOR=\"" << palette.tileText << "\">&#215;"
+                 << edgeCounts[endpoints] << "</FONT>";
         output << '>';
       }
       output << "];\n";
@@ -2066,7 +2134,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     return success();
   }
   auto writeGeometry = [&](const Segment &segment) {
-    writeArrowGeometry(arrowIDs.at(segment));
+    writeArrowGeometry(arrowIDs.at(segment), arrowSegments.count(segment) > 0);
   };
   for (const auto &[segment, segmentRoutes] : segments) {
     std::vector<const FlowRoute *> labels;
@@ -2113,7 +2181,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     writeWeight(segmentRoutes);
     auto arrow = bufferArrowIDs.find(segment);
     if (arrow != bufferArrowIDs.end())
-      writeArrowGeometry(arrow->second);
+      writeArrowGeometry(arrow->second, /*tipped=*/true);
     output << ", style=dashed];\n";
   }
   output << "}\n";

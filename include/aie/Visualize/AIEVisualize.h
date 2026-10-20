@@ -28,6 +28,15 @@ enum class ArrowStyle {
   Channel,
 };
 
+/// Which colours to draw in.
+enum class ColorScheme {
+  /// Dark ink on a white page.
+  Light,
+  /// Seaborn's mako ramp on black, which separates many flows without any of
+  /// them shouting, and keeps the tiles quiet behind them.
+  Mako,
+};
+
 /// What to draw and how large to draw it. Physical views need flows that carry
 /// `via` data; run `aie-find-flows=emit-vias=true` first.
 struct VisualizeOptions {
@@ -48,6 +57,9 @@ struct VisualizeOptions {
 
   /// How arrows are drawn between tiles.
   ArrowStyle arrows = ArrowStyle::Straight;
+
+  /// Which colours to draw in.
+  ColorScheme colors = ColorScheme::Light;
 
   /// Scale edge width by the bytes each flow group moves per iteration.
   bool weighEdges = false;

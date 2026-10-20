@@ -95,6 +95,11 @@ static cl::opt<std::string> arrowStyle(
     cl::desc("How arrows run between tiles: straight (default) or channel, "
              "which keeps them in the gaps and off the tiles"),
     cl::value_desc("style"), cl::init("straight"));
+static cl::opt<std::string>
+    colorScheme("colors",
+                cl::desc("Colour scheme: light (default) or mako, which is "
+                         "seaborn's mako ramp on a black page"),
+                cl::value_desc("scheme"), cl::init("light"));
 static cl::opt<bool>
     tileRoles("tile-roles",
               cl::desc("Headline each tile with the kernels it runs and mark "
@@ -170,6 +175,12 @@ int main(int argc, char *argv[]) {
     options.arrows = AIE::ArrowStyle::Channel;
   } else if (arrowStyle != "straight") {
     errs() << "--arrows expects 'straight' or 'channel'\n";
+    return 3;
+  }
+  if (colorScheme == "mako") {
+    options.colors = AIE::ColorScheme::Mako;
+  } else if (colorScheme != "light") {
+    errs() << "--colors expects 'light' or 'mako'\n";
     return 3;
   }
   options.deviceName = deviceName;
