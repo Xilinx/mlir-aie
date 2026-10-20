@@ -74,9 +74,11 @@ python3 gen_golden.py                          # writes data/scale_factors_final
                                                # + data/{bn*,init,post,FC*}_chain.txt
                                                # + data/golden_output.txt
                                                # + data/before_ifm_mem_fmt_1x1.txt
-cd .. && for g in bottleneck_A.gen_golden bottleneck_A.gen_golden_bn{1,2,3,6,7,8} \
-                  bottleneck_B.gen_golden bottleneck_C.gen_golden; do
+cd .. && for g in bottleneck_A.gen_golden bottleneck_B.gen_golden bottleneck_C.gen_golden; do
   python3 -m mobilenet.$g
+done
+for b in bn1 bn2 bn3 bn6 bn7 bn8; do
+  python3 -m mobilenet.bottleneck_A.gen_golden_blocks --block $b
 done
 ```
 

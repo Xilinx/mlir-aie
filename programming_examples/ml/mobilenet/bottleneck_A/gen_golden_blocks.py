@@ -2,10 +2,10 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Shared brevitas-reference generator for bottleneck_A per-block fixtures.
+"""Brevitas-reference generator for bottleneck_A's per-block fixtures.
 
-The ``gen_golden_bn{1,2,3,6,7,8}.py`` scripts share one 3-conv
-1×1+3×3+1×1 quantized bottleneck recipe, differing only in:
+Blocks bn1, bn2, bn3, bn6, bn7 and bn8 share one 3-conv 1×1+3×3+1×1
+quantized bottleneck recipe, differing only in:
 
 * the per-block shape constants (``tensor{In,Out}{W,H,C}``, depthwise
   stride / channels);
@@ -13,13 +13,15 @@ The ``gen_golden_bn{1,2,3,6,7,8}.py`` scripts share one 3-conv
 * whether the model is calibrated on the calibration images (bn1, bn2)
   or on the seeded random input alone (bn3, bn6, bn7, bn8).
 
-Each wrapper supplies its ``BottleneckSpec`` and calls
-``generate_bottleneck_fixtures``, which writes the block's fixtures and its
-``scale_factors_per_bn.json`` entry into ``data/``.
+``--block`` picks a ``SPECS`` entry; ``generate_bottleneck_fixtures`` writes
+the block's fixtures and its ``scale_factors_per_bn.json`` entry into
+``data/``. Run from programming_examples/ml as
+``python3 -m mobilenet.bottleneck_A.gen_golden_blocks --block bn1``.
 """
 
 from __future__ import annotations
 
+import argparse
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -315,3 +317,83 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
     print(total_wts.shape)
 
     print("Done.")
+
+
+SPECS = {
+    "bn1": BottleneckSpec(
+        "bn1",
+        tensor_in_w=112,
+        tensor_in_h=112,
+        tensor_in_c=16,
+        tensor_out_c=24,
+        depthwise_stride=2,
+        depthwise_channels=64,
+        has_skip=False,
+        calibrate_images=True,
+    ),
+    "bn2": BottleneckSpec(
+        "bn2",
+        tensor_in_w=56,
+        tensor_in_h=56,
+        tensor_in_c=24,
+        tensor_out_c=24,
+        depthwise_stride=1,
+        depthwise_channels=72,
+        has_skip=True,
+        calibrate_images=True,
+    ),
+    "bn3": BottleneckSpec(
+        "bn3",
+        tensor_in_w=56,
+        tensor_in_h=56,
+        tensor_in_c=24,
+        tensor_out_c=40,
+        depthwise_stride=2,
+        depthwise_channels=72,
+        has_skip=False,
+        calibrate_images=False,
+    ),
+    "bn6": BottleneckSpec(
+        "bn6",
+        tensor_in_w=28,
+        tensor_in_h=28,
+        tensor_in_c=40,
+        tensor_out_c=80,
+        depthwise_stride=2,
+        depthwise_channels=240,
+        has_skip=False,
+        calibrate_images=False,
+    ),
+    "bn7": BottleneckSpec(
+        "bn7",
+        tensor_in_w=14,
+        tensor_in_h=14,
+        tensor_in_c=80,
+        tensor_out_c=80,
+        depthwise_stride=1,
+        depthwise_channels=200,
+        has_skip=True,
+        calibrate_images=False,
+    ),
+    "bn8": BottleneckSpec(
+        "bn8",
+        tensor_in_w=14,
+        tensor_in_h=14,
+        tensor_in_c=80,
+        tensor_out_c=80,
+        depthwise_stride=1,
+        depthwise_channels=184,
+        has_skip=True,
+        calibrate_images=False,
+    ),
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="bottleneck_A per-block fixtures")
+    parser.add_argument("--block", required=True, choices=sorted(SPECS))
+    generate_bottleneck_fixtures(SPECS[parser.parse_args().block])
+
+
+if __name__ == "__main__":
+    main()
