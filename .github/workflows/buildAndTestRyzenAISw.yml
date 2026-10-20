@@ -41,7 +41,7 @@ jobs:
   build-repo:
     name: Build and Test with Ryzen AI Software
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         ubuntu_version: [ "ubuntu22", "ubuntu24" ]

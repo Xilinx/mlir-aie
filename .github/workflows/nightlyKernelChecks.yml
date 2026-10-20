@@ -274,7 +274,7 @@ jobs:
     # on the page says the same against the previous nightly, but the
     # summary is what a red run's notification links to.
     if: ${{ !cancelled() && needs.checks.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write   # the one report comment on a Peano PR

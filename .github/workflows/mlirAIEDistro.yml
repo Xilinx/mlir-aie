@@ -56,7 +56,7 @@ jobs:
 
     name: Get canonical AIE Project commit
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     outputs:
       AIE_PROJECT_COMMIT: ${{ steps.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
@@ -527,7 +527,7 @@ jobs:
 
     needs: smoke_test_wheels
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       id-token: write
