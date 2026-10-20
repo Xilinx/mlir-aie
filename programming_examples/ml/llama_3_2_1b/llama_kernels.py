@@ -136,6 +136,13 @@ def gemv_array(*, kset=8):
     )
 
 
+def gemv_prefill(*, m=4):
+    return KernelSource(
+        "llama_gemv_prefill.cc",
+        ["-ffp-contract=off", f"-DLLAMA_GEMV_ARRAY_M={m}"],
+    )
+
+
 def kv_append(*, T=128):
     return KernelSource(
         "llama_kv_append.cc",

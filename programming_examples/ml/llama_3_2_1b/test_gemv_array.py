@@ -44,11 +44,14 @@ from aie.utils import DefaultNPURuntime
 from aie2_gemv_array import (
     ACT_BYTES,
     COMB_BYTES,
+    DOWN_CHUNKS,
     LM_OUT_BYTES,
     LM_SEED_BYTES,
     LM_SLOT,
+    M_STRIDE,
     N_CORES,
     OUT_BYTES,
+    OUT_ROWS,
     PROJECTIONS,
     RESID_ACT_BYTES,
     RESID_OFF,
@@ -59,8 +62,10 @@ from aie2_gemv_array import (
     build,
     build_lm,
     build_lm_single,
+    build_prefill,
     lane_slots,
     layer_units,
+    prefill_out_bytes,
     rows_per_slot,
 )
 from llama_npu import add_artifact_args, design_kernel
@@ -165,6 +170,131 @@ def rescale_reference(proj, resid, resid_scale):
     scale = np.float32(absmax * np.float32(1.0 / 127.0))
     body = aie_fp.round_to_i8((x * aie_fp.sw_recip(scale)).astype(np.float32))
     return np.concatenate([body, np.array([scale, 0.0], np.float32).view(np.int8)])
+
+
+def pack_lane_prefill(layer_w, order, core):
+    """pack_lane for build_prefill: down's slots are 4 rows by 2048 columns,
+    chunk-major (all row groups of columns 0-2047, then 2048-4095, ...), each
+    with the four rows' bias and scales."""
+    parts = []
+    for p in order:
+        k, rows, _ = PROJECTIONS[p]
+        if k == D:
+            parts.append(pack_lane(layer_w, p, core))
+            continue
+        w, bias, sc = layer_w[p]
+        rc = rows // N_CORES
+        lo = core * rc
+        slots = np.zeros((DOWN_CHUNKS, rc // 4, SLOT), np.int8)
+        for ch in range(DOWN_CHUNKS):
+            blk = w[lo : lo + rc, ch * D : (ch + 1) * D].reshape(rc // 4, 4 * D)
+            slots[ch, :, : 4 * D] = blk
+            slots[ch, :, 4 * D : 4 * D + 16] = (
+                bias[lo : lo + rc].reshape(-1, 4).view(np.int8)
+            )
+            slots[ch, :, 4 * D + 16 : 4 * D + 32] = (
+                sc[lo : lo + rc].reshape(-1, 4).view(np.int8)
+            )
+        parts.append(slots.reshape(-1))
+    return np.concatenate(parts)
+
+
+def run_prefill(opts):
+    """build_prefill against M separate references per projection."""
+    m = opts.prefill
+    order = opts.order
+    rng = np.random.default_rng(opts.seed)
+    layers = [
+        (
+            real_layer(layer, order)
+            if opts.weights == "real"
+            else synthetic_layer(np.random.default_rng(opts.seed + layer), order)
+        )
+        for layer in opts.layers
+    ]
+    n_layers = len(layers)
+    lane_bytes = lane_slots(order) * SLOT
+    wblob = np.empty(N_CORES * n_layers * lane_bytes, np.int8)
+    for li, lw in enumerate(layers):
+        for c in range(N_CORES):
+            off = (li * N_CORES + c) * lane_bytes
+            wblob[off : off + lane_bytes] = pack_lane_prefill(lw, order, c)
+
+    act_objs = []
+    unit_acts = []
+    for _ in range(n_layers):
+        for proj in order:
+            k = PROJECTIONS[proj][0]
+            rows_m = [make_act(rng, k) for _ in range(m)]
+            unit_acts.append(rows_m)
+            for ch in range(k // D):
+                obj = np.zeros((m, M_STRIDE), np.int8)
+                for i, (a, s) in enumerate(rows_m):
+                    obj[i, :D] = a[ch * D : (ch + 1) * D]
+                    obj[i, D : D + 4] = np.frombuffer(np.float32(s).tobytes(), np.int8)
+                act_objs.append(obj.reshape(-1))
+    acts_blob = np.concatenate(act_objs)
+    out_bytes = prefill_out_bytes(m)
+    n_outs = n_layers * sum(PROJECTIONS[p][1] // N_CORES // OUT_ROWS for p in order)
+
+    w_t = iron.tensor(wblob, dtype=np.int8)
+    a_t = iron.tensor(acts_blob, dtype=np.int8)
+    o_t = iron.zeros([N_CORES * n_outs * out_bytes], dtype=np.int8)
+    npu = design_kernel(
+        build_prefill,
+        opts,
+        N_LAYERS=n_layers,
+        ORDER=order,
+        M=m,
+        ACT_DEPTH=opts.act_depth,
+        GATE_INV=opts.gate_inv,
+    )
+    buffers = [w_t, a_t, o_t]
+    DefaultNPURuntime.load_and_run(npu, buffers)
+    ok = True
+    if not opts.no_check:
+        o_t.to("cpu")
+        out = o_t.numpy().reshape(N_CORES, n_outs, m, OUT_ROWS * 4)
+        oi = 0
+        ui = 0
+        for li, lw in enumerate(layers):
+            for proj in order:
+                _, rows, kind = PROJECTIONS[proj]
+                n_obj = rows // N_CORES // OUT_ROWS
+                bad = 0
+                for i, (a, s) in enumerate(unit_acts[ui]):
+                    ref = reference(lw, proj, a, s, opts.gate_inv)
+                    dev = out[:, oi : oi + n_obj, i, :]
+                    dev = (
+                        dev[..., :OUT_ROWS].reshape(-1)
+                        if kind == "i8"
+                        else dev.reshape(-1).view(np.float32)
+                    )
+                    bad += int(
+                        np.count_nonzero(
+                            dev.view(np.int8) != np.asarray(ref).view(np.int8)
+                        )
+                    )
+                tag = "BIT-EXACT" if bad == 0 else f"MISMATCH {bad} B"
+                print(f"layer {opts.layers[li]:2d} {proj}: {rows} rows x {m}  {tag}")
+                ok &= bad == 0
+                oi += n_obj
+                ui += 1
+    if opts.time:
+        for _ in range(opts.n_warmup):
+            DefaultNPURuntime.load_and_run(npu, buffers)
+        times = []
+        for _ in range(opts.n_iters):
+            _h, result = DefaultNPURuntime.load_and_run(npu, buffers)
+            times.append(result.npu_time / 1e3)
+        t = np.array(times)
+        print(
+            f"time: n={len(t)} min={t.min():.1f} us median={np.median(t):.1f} us  "
+            f"M={m}  {t.min() / n_layers:.1f} us/layer  "
+            f"{wblob.nbytes / (t.min() * 1e3):.2f} GB/s at min"
+        )
+    print(f"\ngemv_array prefill M={m}: {'PASS' if ok else 'FAIL'}")
+    return 0 if ok else 1
 
 
 def run_lm(opts):
@@ -303,6 +433,13 @@ def main():
     p = argparse.ArgumentParser()
     add_artifact_args(p)
     p.add_argument("--lm", action="store_true", help="run lm_head instead of a layer")
+    p.add_argument(
+        "--prefill",
+        type=int,
+        default=0,
+        help="run build_prefill with this many activations per pass",
+    )
+    p.add_argument("--act-depth", type=int, default=2)
     p.add_argument("--lm-tiles", type=int, default=32064)
     p.add_argument("--kset", type=int, default=8)
     p.add_argument("--temperature", type=float, default=0.0)
@@ -328,6 +465,8 @@ def main():
     opts = p.parse_args()
     if opts.lm:
         return run_lm(opts)
+    if opts.prefill:
+        return run_prefill(opts)
     order = opts.order
     n_layers = len(opts.layers)
     rng = np.random.default_rng(opts.seed)

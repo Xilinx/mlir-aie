@@ -72,6 +72,18 @@ RESID_ACT_BYTES = 10368
 RESID_BLOCK = 256 * 4 + 64
 RESID_OUT_BYTES = D + 8
 RESID_UNITS = "od"
+M_STRIDE = 2048 + 64
+OUT_ROWS = 64
+DOWN_CHUNKS = HD // D
+DOWN_ROWS_PER_CORE = D // N_CORES
+
+
+def prefill_act_bytes(m):
+    return m * M_STRIDE
+
+
+def prefill_out_bytes(m):
+    return m * OUT_ROWS * 4
 
 
 def layer_units(order, fuse_qkv):
@@ -648,6 +660,179 @@ def build_lm_single(
         [_i8(w_total), t_act, t_seed, of_w.prod(), of_act.prod(), of_seed.cons()],
     )
     return Program(NPU2(), rt, workers=[worker]).resolve_program()
+
+
+@jit
+def build_prefill(
+    *,
+    N_LAYERS: CompileTime[int] = 1,
+    ORDER: CompileTime[str] = LAYER,
+    M: CompileTime[int] = 4,
+    ACT_DEPTH: CompileTime[int] = 2,
+    GATE_INV: CompileTime[float] = 20.0,
+):
+    """M activations per pass (S6 batched prefill): every weight slot streams
+    once and serves all M rows.
+
+    Activation objects are `prefill_act_bytes(M)`: M rows of `M_STRIDE` bytes
+    ([int8 x 2048 | act_scale f32 | pad]); down takes four of them, one per
+    2048-column chunk, and its slots arrive chunk-major (see
+    test_gemv_array.pack_lane_prefill) with int32 partial sums kept per core.
+    Each core emits its rows in objects of `OUT_ROWS` rows for each of the M
+    activations (`prefill_out_bytes(M)`), activation-major, in unit order.
+    """
+    n_slots = lane_slots(ORDER)
+    lane_bytes = n_slots * SLOT
+    w_total = N_CORES * N_LAYERS * lane_bytes
+    acts_per_layer = sum(DOWN_CHUNKS if p == "d" else 1 for p in ORDER)
+    outs_per_layer = sum(PROJECTIONS[p][1] // N_CORES // OUT_ROWS for p in ORDER)
+    act_bytes = prefill_act_bytes(M)
+    out_bytes = prefill_out_bytes(M)
+    n_acts = N_LAYERS * acts_per_layer
+    n_outs = N_LAYERS * outs_per_layer
+    act_total = n_acts * act_bytes
+    out_total = N_CORES * n_outs * out_bytes
+
+    t_slot = _i8(SLOT)
+    t_act = _i8(act_bytes)
+    t_out = _i8(out_bytes)
+    t_part = _i32a(M * DOWN_ROWS_PER_CORE)
+    of_act = ObjectFifo(t_act, depth=ACT_DEPTH, name="pact")
+    of_w = [ObjectFifo(t_slot, depth=2, name=f"pw{c}") for c in range(N_CORES)]
+    of_out = [ObjectFifo(t_out, depth=2, name=f"pout{c}") for c in range(N_CORES)]
+
+    KO = llama_kernels.gemv_prefill(m=M)
+    k_f = KO.bind("llama_gemv_array_m_f32", [t_act, t_slot, t_out, np.int32])
+    k_i = KO.bind("llama_gemv_array_m_i8", [t_act, t_slot, t_out, np.int32, np.float32])
+    k_chunk = KO.bind(
+        "llama_gemv_array_m_kchunk", [t_act, t_slot, t_part, np.int32, np.int32]
+    )
+    k_final = KO.bind(
+        "llama_gemv_array_m_kfinal", [t_act, t_slot, t_part, t_out, np.int32, np.int32]
+    )
+    slots_per_out = OUT_ROWS // 4
+
+    def w_core(c_act, c_w, c_out, part, kf, ki, kc, kfin):
+        for _ in range_(N_LAYERS):
+            for proj in ORDER:
+                if proj == "d":
+                    for chunk in range_(DOWN_CHUNKS - 1):
+                        a = c_act.acquire(1)
+                        for s in range_(DOWN_ROWS_PER_CORE // 4):
+                            w = c_w.acquire(1)
+                            kc(a, w, part, _i32(s), _i32(chunk))
+                            c_w.release(1)
+                        c_act.release(1)
+                    a = c_act.acquire(1)
+                    for oc in range_(DOWN_ROWS_PER_CORE // OUT_ROWS):
+                        o = c_out.acquire(1)
+                        for s in range_(slots_per_out):
+                            w = c_w.acquire(1)
+                            kfin(
+                                a,
+                                w,
+                                part,
+                                o,
+                                _i32(oc) * slots_per_out + _i32(s),
+                                _i32(s),
+                            )
+                            c_w.release(1)
+                        c_out.release(1)
+                    c_act.release(1)
+                    continue
+                a = c_act.acquire(1)
+                for _oc in range_(PROJECTIONS[proj][1] // N_CORES // OUT_ROWS):
+                    o = c_out.acquire(1)
+                    for s in range_(slots_per_out):
+                        w = c_w.acquire(1)
+                        if PROJECTIONS[proj][2] == "i8":
+                            ki(a, w, o, _i32(s), GATE_INV)
+                        else:
+                            kf(a, w, o, _i32(s))
+                        c_w.release(1)
+                    c_out.release(1)
+                c_act.release(1)
+
+    workers = [
+        Worker(
+            w_core,
+            [
+                of_act.cons(),
+                of_w[c].cons(),
+                of_out[c].prod(),
+                Buffer(t_part, name=f"partial{c}"),
+                k_f,
+                k_i,
+                k_chunk,
+                k_final,
+            ],
+            tile=Tile(*CORE_TILES[c]),
+        )
+        for c in range(N_CORES)
+    ]
+
+    def sequence(wblob, acts, out, *eps):
+        w_prods = eps[:N_CORES]
+        act_prod = eps[N_CORES]
+        out_conss = eps[N_CORES + 1 :]
+        out_tg = TaskGroup()
+        for c in range(N_CORES):
+            out_conss[c].drain(
+                out,
+                tap=contiguous_tap(
+                    out_total,
+                    c * n_outs * out_bytes,
+                    n_outs,
+                    out_bytes,
+                    next(i for i in range(1023, 0, -1) if out_bytes % i == 0),
+                ),
+                wait=True,
+                group=out_tg,
+            )
+        act_prod.fill(
+            acts,
+            tap=contiguous_tap(
+                act_total,
+                0,
+                n_acts,
+                act_bytes,
+                next(i for i in range(1023, 0, -1) if act_bytes % i == 0),
+            ),
+            group=out_tg,
+        )
+        layer_tgs = [TaskGroup() for _ in range(N_LAYERS)]
+        for layer in range(N_LAYERS):
+            for c in range(N_CORES):
+                w_prods[c].fill(
+                    wblob,
+                    tap=contiguous_tap(
+                        w_total,
+                        (layer * N_CORES + c) * lane_bytes,
+                        n_slots,
+                        SLOT,
+                        514,
+                    ),
+                    group=layer_tgs[layer],
+                    wait=True,
+                )
+            if layer >= 2:
+                layer_tgs[layer - 2].finish()
+        for layer in range(max(0, N_LAYERS - 2), N_LAYERS):
+            layer_tgs[layer].finish()
+        out_tg.finish()
+
+    rt = Runtime(
+        sequence,
+        [
+            _i8(w_total),
+            _i8(act_total),
+            _i8(out_total),
+            *[of.prod() for of in of_w],
+            of_act.prod(),
+            *[of.cons() for of in of_out],
+        ],
+    )
+    return Program(NPU2(), rt, workers=workers).resolve_program()
 
 
 def add_config_args(p):
