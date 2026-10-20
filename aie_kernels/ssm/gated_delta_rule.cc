@@ -101,12 +101,13 @@ inline __attribute__((always_inline)) acc_t<W> rsqrt_f32(acc_t<W> x) {
   return y;
 }
 
-// Exact bf16 squares summed per lane, then the lanes in four chains.
-float sum_squares() {
+// Exact bf16 squares of x[0, KP) summed per lane, then the lanes in four
+// chains.
+float sum_squares(const bfloat16 *x) {
   acc_t<L> a = aie::zeros<accfloat, L>();
   for (int i = 0; i < KP; i += L) {
-    const bf_t<L> x = aie::load_v<L>(row + i);
-    a = aie::mac(a, x, x);
+    const bf_t<L> xi = aie::load_v<L>(x + i);
+    a = aie::mac(a, xi, xi);
   }
   aie::store_v(lanes, a.to_vector<float>());
   float s0 = lanes[0], s1 = lanes[1], s2 = lanes[2], s3 = lanes[3];
@@ -147,12 +148,18 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
   for (int t = 0; t < R; t++) {
     ab[t] = a[t];
     ab[RP + t] = b[t];
-    for (int i = 0; i < Dk; i++)
-      row[i] = q[t * Dk + i];
-    sq[t] = sum_squares();
-    for (int i = 0; i < Dk; i++)
-      row[i] = k[t * Dk + i];
-    sq[RP + t] = sum_squares();
+    if constexpr (Dk == KP) {
+      sq[t] = sum_squares(q + t * Dk);
+      sq[RP + t] = sum_squares(k + t * Dk);
+    } else {
+      // row's tail past Dk stays zero.
+      for (int i = 0; i < Dk; i++)
+        row[i] = q[t * Dk + i];
+      sq[t] = sum_squares(row);
+      for (int i = 0; i < Dk; i++)
+        row[i] = k[t * Dk + i];
+      sq[RP + t] = sum_squares(row);
+    }
   }
   // exp's arguments, g then -b, so one exp_f32 serves both; then the norms'
   // reciprocals, q's then k's, from one rsqrt_f32.
@@ -199,13 +206,22 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
   for (int t = 0; t < R; t++) {
     bfloat16 *yt = y + t * Dv;
     if (t >= valid) {
-      for (int j = 0; j < Dv; j++)
-        yt[j] = 0.0f;
+      if constexpr (Dv == P)
+        for (int c = 0; c < P; c += L)
+          aie::store_v(yt + c, aie::zeros<bfloat16, L>());
+      else
+        for (int j = 0; j < Dv; j++)
+          yt[j] = 0.0f;
       continue;
     }
     const bfloat16 *kt = k + t * Dk, *qt = q + t * Dk;
-    for (int j = 0; j < Dv; j++)
-      v_row[j] = v[t * Dv + j];
+    // v's row in place when it fills whole vectors, else padded with zeros.
+    const bfloat16 *vr = v + t * Dv;
+    if constexpr (Dv != P) {
+      for (int j = 0; j < Dv; j++)
+        v_row[j] = vr[j];
+      vr = v_row;
+    }
     const Limbs<L> G = limbs<L>(ex[t]), E = limbs<L>(e[t]);
     const Limbs<L> F = limbs<L>(f[t]), Q = limbs<L>(qn[t]);
     for (int c = 0; c < P; c += L) {
@@ -220,7 +236,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
       if (r < Dk)
         kv = aie::add(
             kv, mul_limbs(state(r, c), aie::broadcast<bfloat16, L>(kt[r])));
-      const bf_t<L> vt = aie::load_v<L>(v_row + c);
+      const bf_t<L> vt = aie::load_v<L>(vr + c);
       const Limbs<L> d = bf16_limbs(aie::sub(
           mul_limbs(E, vt), mul_limbs(bf16_limbs(aie::add(kv, kw)), F)));
       // Two rows a trip, so the scheduler interleaves independent chains.
@@ -247,11 +263,12 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
         ya = aie::add(ya, mul_limbs(n0, aie::broadcast<bfloat16, L>(qt[i])));
       }
       aie::store_v(
-          out + c,
+          (Dv == P ? yt : out) + c,
           mul_limbs(bf16_limbs(aie::add(ya, yb)), Q).to_vector<bfloat16>());
     }
-    for (int j = 0; j < Dv; j++)
-      yt[j] = out[j];
+    if constexpr (Dv != P)
+      for (int j = 0; j < Dv; j++)
+        yt[j] = out[j];
   }
   for (int i = 0; i < Dk; i++) {
     for (int c = 0; c < P; c += L)
