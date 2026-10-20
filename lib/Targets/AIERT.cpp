@@ -925,9 +925,13 @@ LogicalResult xilinx::AIE::AIERTControl::resetDmaChannels(DeviceOp &targetOp) {
       TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelReset, &aiert->devInst,
                               tileLoc, channel, direction,
                               XAie_DmaChReset::DMA_CHANNEL_RESET);
-      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelReset, &aiert->devInst,
-                              tileLoc, channel, direction,
-                              XAie_DmaChReset::DMA_CHANNEL_UNRESET);
+      // Writing a fresh descriptor ends the reset and returns every field of
+      // the control register, such as out-of-order mode, to its reset value.
+      XAie_DmaChannelDesc defaults;
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelDescInit, &aiert->devInst,
+                              &defaults, tileLoc);
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaWriteChannel, &aiert->devInst,
+                              &defaults, tileLoc, channel, direction);
       return success();
     };
     Region &region = memOp.getOperation()->getRegion(0);

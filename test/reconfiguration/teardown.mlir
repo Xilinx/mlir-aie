@@ -16,9 +16,9 @@
 // @cfg sets a circuit and a packet route in tile (0, 2) and starts the
 // memtile's MM2S channel 1. Its teardown, where the next configuration starts,
 // zeroes the circuit's master and slave ports (2355204, 2355480), the packet
-// route's (2355200, 2355484) and its slot (2355824), and pulses the reset bit
-// of the memtile channel (1705528). Only the first configuration keeps its
-// reset, and nothing is appended.
+// route's (2355200, 2355484) and its slot (2355824), and resets the memtile
+// channel, then writes its control register (1705528) back to its reset value.
+// Only the first configuration keeps its reset, and nothing is appended.
 
 // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<16xi32>)
 // CHECK-DAG:  %[[A0:.*]] = arith.constant 2355204 : i32
@@ -40,12 +40,12 @@
 // CHECK-NEXT: aiex.npu.write32(%[[A3]], %[[ZERO]])
 // CHECK-NEXT: aiex.npu.write32(%[[A4]], %[[ZERO]])
 // CHECK-NEXT: aiex.npu.maskwrite32(%[[RESET]], %[[BIT]], %[[BIT]])
-// CHECK-NEXT: aiex.npu.maskwrite32(%[[RESET]], %[[ZERO]], %[[BIT]])
+// CHECK-NEXT: aiex.npu.write32(%[[RESET]], %[[ZERO]])
 // CHECK-NOT:  aiex.npu.load_pdi
 // CHECK:      aiex.npu.sync
 // CHECK-NEXT: aiex.npu.write32(%[[A0]], %[[ZERO]])
-// CHECK:      aiex.npu.maskwrite32
-// CHECK:      aiex.npu.maskwrite32
+// CHECK:      aiex.npu.maskwrite32(%[[RESET]], %[[BIT]], %[[BIT]])
+// CHECK-NEXT: aiex.npu.write32(%[[RESET]], %[[ZERO]])
 // CHECK-NOT:  aiex.npu.load_pdi
 // CHECK:      {{^    }}}
 
@@ -96,11 +96,11 @@ module {
 // CHECK:     aiex.npu.load_pdi {device_ref = @empty_0
 // CHECK:     aiex.npu.write32(%[[ADDR]], %{{.*}})
 // CHECK:     aiex.npu.maskwrite32(%[[RESET:.*]], %{{.*}}, %{{.*}})
-// CHECK:     aiex.npu.maskwrite32(%[[RESET]], %{{.*}}, %{{.*}})
+// CHECK:     aiex.npu.write32(%[[RESET]], %{{.*}})
 // CHECK-NOT: aiex.npu.load_pdi
 // CHECK:     aiex.npu.blockwrite
 // CHECK:     aiex.npu.maskwrite32(%[[RESET2:.*]], %{{.*}}, %{{.*}})
-// CHECK:     aiex.npu.maskwrite32(%[[RESET2]], %{{.*}}, %{{.*}})
+// CHECK:     aiex.npu.write32(%[[RESET2]], %{{.*}})
 // CHECK-NOT: aiex.npu
 // CHECK:     {{^    }}}
 
@@ -193,7 +193,7 @@ module {
 // CHECK:      aiex.npu.maskwrite32(%[[CORE]], %[[ON]], %[[ON]])
 // CHECK-NEXT: aiex.npu.maskwrite32(%[[CORE]], %[[ZERO]], %[[ON]])
 // CHECK-NEXT: aiex.npu.maskwrite32(%[[S2MM0]], %[[RESET]], %[[RESET]])
-// CHECK-NEXT: aiex.npu.maskwrite32(%[[S2MM0]], %[[ZERO]], %[[RESET]])
+// CHECK-NEXT: aiex.npu.write32(%[[S2MM0]], %[[ZERO]])
 // CHECK-NEXT: {{^    }}}
 
 module {
