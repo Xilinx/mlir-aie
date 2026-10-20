@@ -5,10 +5,13 @@
 //
 //   ./test sequence  runs main:sequence three times.
 //   ./test init      runs main:reconfig_init once, then as `sequence`.
+//   ./test switch E  as `init`, but before each later pass runs E's
+//                    main:sequence in another hardware context.
 
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -57,10 +60,14 @@ int main(int argc, const char *argv[]) {
     in[i] = 1000 * (i / SLICE) + i % SLICE;
   bo_in.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  auto dispatch = [&](const std::string &name, bool args) {
+  std::optional<xrt::hw_context> other;
+  if (mode == "switch" && argc > 2)
+    other.emplace(device, xrt::elf{argv[2]});
+
+  auto dispatch = [&](xrt::hw_context &on, const std::string &name, bool args) {
     std::fill(out, out + COUNT, POISON);
     bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    auto kernel = xrt::ext::kernel(context, name);
+    auto kernel = xrt::ext::kernel(on, name);
     xrt::run run(kernel);
     if (args) {
       run.set_arg(0, bo_in);
@@ -79,14 +86,16 @@ int main(int argc, const char *argv[]) {
     }
   };
 
-  if (mode != "sequence" && mode != "init") {
+  if (mode != "sequence" && mode != "init" && !other) {
     std::cerr << "unknown mode " << mode << std::endl;
     return 2;
   }
-  if (mode == "init")
-    dispatch("main:reconfig_init", false);
+  if (mode != "sequence")
+    dispatch(context, "main:reconfig_init", false);
   for (int pass = 0; pass < 3; pass++) {
-    dispatch("main:sequence", true);
+    if (other && pass > 0)
+      dispatch(*other, "main:sequence", true);
+    dispatch(context, "main:sequence", true);
     for (int i = 1; i <= NUM_CONFIGS; i++)
       report("pass " + std::to_string(pass), i);
   }
