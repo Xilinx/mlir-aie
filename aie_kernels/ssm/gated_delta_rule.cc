@@ -115,7 +115,7 @@ update_pair(acc_t<W> y2, const Limbs<W> &s, int i, const bfloat16 *kt,
 }
 
 // 1 / sqrt(x) for x > 0: the bit-trick estimate and three Newton steps.
-float rsqrt_newton(float x) {
+constexpr float rsqrt_newton(float x) {
   uint32_t i = __builtin_bit_cast(uint32_t, x);
   i = 0x5f3759df - (i >> 1);
   float y = __builtin_bit_cast(float, i);
@@ -229,7 +229,8 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
                  rsqrt_f32(aie::add(acc_t<W>(aie::load_v<W>(sq + t0)), eps))
                      .to_vector<float>());
   }
-  const Limbs<W> q_scale = limbs<W>(rsqrt_newton((float)Dk));
+  constexpr float q_root = rsqrt_newton((float)Dk);
+  const Limbs<W> q_scale = limbs<W>(q_root);
   for (int t0 = 0; t0 < RP; t0 += W) {
     aie::store_v(qn + t0,
                  mul_limbs(limbs<W>(sq + t0), q_scale).to_vector<float>());
