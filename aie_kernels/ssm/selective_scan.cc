@@ -48,8 +48,35 @@ alignas(aie::vector_decl_align) float s[P * N];
 constexpr int RW = (SCAN_ROWS + 31) / 32 * 32;
 
 alignas(aie::vector_decl_align) float ydot[P];
+alignas(aie::vector_decl_align) float halves[16 * 16];
 alignas(aie::vector_decl_align) bfloat16 dts[RW];
 alignas(aie::vector_decl_align) float steps[RW], decays[RW];
+
+// aie::reduce_add's pairwise sums for 16 rows at once: h holds each row's
+// 16 lanes (for 32, the sums of lanes i and i + 16), and every later level
+// pairs the same lanes across packed rows, so each total rounds as
+// reduce_add's does.
+static inline __attribute__((always_inline)) aie::vector<float, 16>
+reduce_rows(const float *__restrict h) {
+  using v32 = aie::vector<float, 32>;
+  auto sum = [](v32 a, v32 b) {
+    return aie::add(acc_t<32>(a), acc_t<32>(b)).template to_vector<float>();
+  };
+  v32 x[4], y[2];
+  for (int m = 0; m < 4; m++) {
+    const auto [lo, hi] = aie::interleave_unzip(
+        aie::load_v<32>(h + 64 * m), aie::load_v<32>(h + 64 * m + 32), 8);
+    x[m] = sum(lo, hi);
+  }
+  for (int j = 0; j < 2; j++) {
+    const auto [lo, hi] = aie::interleave_unzip(x[2 * j], x[2 * j + 1], 4);
+    y[j] = sum(lo, hi);
+  }
+  const auto [zl, zh] = aie::interleave_unzip(y[0], y[1], 2);
+  const v32 z = sum(zl, zh);
+  const auto [rl, rh] = aie::interleave_unzip(z, z, 1);
+  return sum(rl, rh).template extract<16>(0);
+}
 
 } // namespace
 
@@ -119,8 +146,15 @@ extern "C" void selective_scan(bfloat16 *restrict block, float *restrict head,
           aie::store_v(sp + n, next.template to_vector<float>());
           dot = aie::add(dot, mul_limbs(bf16_limbs(next), Cn));
         }
-        ydot[p0 + q] = aie::reduce_add(dot.template to_vector<float>());
+        if constexpr (L == 32)
+          aie::store_v(halves + q * 16,
+                       aie::add(dot.template extract<16>(0),
+                                dot.template extract<16>(1))
+                           .template to_vector<float>());
+        else
+          aie::store_v(halves + q * 16, dot.template to_vector<float>());
       }
+      aie::store_v(ydot + p0, reduce_rows(halves));
     }
     for (int p = 0; p < P; p += 16) {
       const acc_t<16> yp = aie::add(acc_t<16>(aie::load_v<16>(ydot + p)),
