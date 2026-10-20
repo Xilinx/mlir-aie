@@ -51,7 +51,7 @@ alignas(64) bfloat16 row[KP], v_row[P], out[P];
 alignas(64) bfloat16 ab[2 * RP];
 alignas(64) float sq[2 * RP], ex[2 * RP];
 alignas(64) float beta[RP], qn[RP], e[RP], f[RP];
-alignas(64) float lanes[L], wide[P];
+alignas(64) float wide[P];
 
 template <unsigned N>
 inline __attribute__((always_inline)) Limbs<N> limbs(float x) {
@@ -144,23 +144,27 @@ inline __attribute__((always_inline)) acc_t<W> rsqrt_f32(acc_t<W> x) {
   return y;
 }
 
-// Exact bf16 squares of x[0, KP) summed per lane, then the lanes in four
-// chains.
-float sum_squares(const bfloat16 *x) {
+// Exact bf16 squares of x[0, KP) summed per lane.
+acc_t<L> lane_squares(const bfloat16 *x) {
   acc_t<L> a = aie::zeros<accfloat, L>();
   for (int i = 0; i < KP; i += L) {
     const bf_t<L> xi = aie::load_v<L>(x + i);
     a = aie::mac(a, xi, xi);
   }
-  aie::store_v(lanes, a.to_vector<float>());
-  float s0 = lanes[0], s1 = lanes[1], s2 = lanes[2], s3 = lanes[3];
-  for (int j = 4; j < L; j += 4) {
-    s0 += lanes[j];
-    s1 += lanes[j + 1];
-    s2 += lanes[j + 2];
-    s3 += lanes[j + 3];
-  }
-  return (s0 + s1) + (s2 + s3);
+  return a;
+}
+
+// Each half's lanes summed in four chains, chain j adding lanes j, j + 4,
+// j + 8 and j + 12 in turn, then the chains as (0 + 1) + (2 + 3), into its
+// first lane. The shifts never bring a lane into another half's first four.
+inline __attribute__((always_inline)) aie::vector<float, W>
+fold_lanes(acc_t<W> a) {
+  const aie::vector<float, W> x = a.to_vector<float>();
+  for (int m = 4; m < L; m += 4)
+    a = aie::add(a, acc_t<W>(aie::shuffle_down(x, m)));
+  for (int m = 1; m < 4; m *= 2)
+    a = aie::add(a, acc_t<W>(aie::shuffle_down(a.to_vector<float>(), m)));
+  return a.to_vector<float>();
 }
 } // namespace
 
@@ -198,18 +202,22 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
   for (int t = 0; t < R; t++) {
     ab[t] = a[t];
     ab[RP + t] = b[t];
+    acc_t<L> aq, ak;
     if constexpr (Dk == KP) {
-      sq[t] = sum_squares(q + t * Dk);
-      sq[RP + t] = sum_squares(k + t * Dk);
+      aq = lane_squares(q + t * Dk);
+      ak = lane_squares(k + t * Dk);
     } else {
       // row's tail past Dk stays zero.
       for (int i = 0; i < Dk; i++)
         row[i] = q[t * Dk + i];
-      sq[t] = sum_squares(row);
+      aq = lane_squares(row);
       for (int i = 0; i < Dk; i++)
         row[i] = k[t * Dk + i];
-      sq[RP + t] = sum_squares(row);
+      ak = lane_squares(row);
     }
+    const aie::vector<float, W> sums = fold_lanes(aie::concat(aq, ak));
+    sq[t] = sums.get(0);
+    sq[RP + t] = sums.get(L);
   }
   // exp's arguments, g then -b, so one exp_f32 serves both; then the norms'
   // reciprocals, q's then k's, from one rsqrt_f32.
