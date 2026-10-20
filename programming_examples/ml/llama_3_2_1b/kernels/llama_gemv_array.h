@@ -3,10 +3,10 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// The GEMV array's row arithmetic, shared by the decode cores
-// (llama_gemv_array.cc) and the M-row prefill cores (llama_gemv_prefill.cc):
-// a slot is [kRows*K int8 weights | kRows int32 bias | kRows fp32 w_scales]
-// and an activation carries its act_scale in act[K..K+4].
+// The GEMV array's row arithmetic (llama_gemv_array.cc; the mma cores,
+// llama_gemv_mma.cc, share its saturation and int8 bounds): a slot is
+// [kRows*K int8 weights | kRows int32 bias | kRows fp32 w_scales] and an
+// activation carries its act_scale in act[K..K+4].
 //===----------------------------------------------------------------------===//
 
 #ifndef LLAMA_GEMV_ARRAY_H
