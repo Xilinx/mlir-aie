@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "exp_lut.h"
+#include "llama_vec_fp.h"
 
 #ifndef LLAMA_TOPK_D
 #define LLAMA_TOPK_D 2048
@@ -89,16 +90,6 @@ static inline float sw_recip(float a) {
   x = x * (2.0f - a * x);
   x = x * (2.0f - a * x);
   return x;
-}
-
-static inline int8_t round_to_i8(float v) {
-  float r = v >= 0.0f ? (v + 0.5f) : (v - 0.5f);
-  int32_t i = (int32_t)r;
-  if (i > 127)
-    i = 127;
-  if (i < -128)
-    i = -128;
-  return (int8_t)i;
 }
 
 // --- xoshiro128++ (must match llama_sample.cc / numpy_topk_sample.py) ---
@@ -278,19 +269,34 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
   // Embed gather: requant the winner's resident row. embed_sc cancels, same
   // math as llama_embed_select.cc.
   const int8_t *row = set_row + winner * kD;
-  int32_t amax = 0;
-  for (int i = 0; i < kD; i++) {
-    int32_t a = row[i];
-    if (a < 0)
-      a = -a;
-    if (a > amax)
-      amax = a;
+  ::aie::vector<int8, kVec> hi = ::aie::load_unaligned_v<kVec>(row);
+  ::aie::vector<int8, kVec> lo = hi;
+  for (int c = 1; c < kD / kVec; c++) {
+    ::aie::vector<int8, kVec> v = ::aie::load_unaligned_v<kVec>(row + c * kVec);
+    hi = ::aie::max(hi, v);
+    lo = ::aie::min(lo, v);
   }
+  int32_t amax = ::aie::reduce_max(hi);
+  if (-(int32_t)::aie::reduce_min(lo) > amax)
+    amax = -(int32_t)::aie::reduce_min(lo);
   if (amax < 1)
     amax = 1;
   float inv = sw_recip((float)amax) * 127.0f; // 127/amax
-  for (int i = 0; i < kD; i++)
-    seed[i] = round_to_i8((float)row[i] * inv);
+  // (float)row * inv and round_to_i8 on 16 lanes: vec_mul_rne is the soft
+  // `*`, and vec_round_to_i8 rounds as round_to_i8 does.
+  const ::aie::saturation_mode prev_sat =
+      ::aie::swap_saturation(::aie::saturation_mode::saturate);
+  const ::aie::rounding_mode prev_rnd =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+  ::aie::vector<float, 16> inv_v = ::aie::broadcast<float, 16>(inv);
+  for (int c = 0; c < kD / 16; c++)
+    ::aie::store_v(
+        seed + c * 16,
+        vec_round_to_i8(vec_mul_rne(
+            ::aie::to_float<float>(::aie::load_unaligned_v<16>(row + c * 16)),
+            inv_v)));
+  ::aie::set_rounding(prev_rnd);
+  ::aie::set_saturation(prev_sat);
   float scale = (float)amax * set_scale[winner] * (1.0f / 127.0f);
   memcpy(seed + kD, &scale, 4);
   int32_t zero = 0;
