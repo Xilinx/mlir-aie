@@ -38,12 +38,11 @@ static constexpr int kTailChunk = kREP * 8;            // 32
 static constexpr int kChunk = kBodyChunk + kTailChunk; // 288
 static constexpr int kHalfKV = kNHeadsKV / 2;          // 4
 
-// See llama_rescale_add.cc for the lane width and the integer-bit absmax.
+// One 512-bit fp32 register; wider vectors made Peano spill to 3 KB frames.
 static constexpr int kVec = 16;
 static_assert(kHD % kVec == 0, "LLAMA_GQA_HEAD_DIM must be a multiple of 16");
 
-// Software fp32 reciprocal (see llama_flowkv.cc); matches the other
-// kernels' sw_recip so the numpy reference and device share the function.
+// See vec_sw_recip in llama_vec_fp.h; this is its scalar form.
 static inline float sw_recip(float a) {
   int32_t bits;
   memcpy(&bits, &a, 4);
@@ -194,7 +193,8 @@ extern "C" void llama_af_concat_selfcal2(int8_t *restrict sv,
   constexpr int kOutDim = kNHeadsQ * kHD;
   const float *sv_out_scales = reinterpret_cast<const float *>(sv + kOutDim);
 
-  // Pass A: absmax of af_fp = sv[h]*sv_out_scale[h].
+  // Pass A: absmax of af_fp = sv[h]*sv_out_scale[h]. A non-NaN float's |v|
+  // bits order as an int32, so the absmax is an integer max.
   ::aie::vector<int32, kVec> mag = ::aie::zeros<int32, kVec>();
   for (int h = 0; h < kNHeadsQ; h++) {
     ::aie::vector<float, kVec> s_v =

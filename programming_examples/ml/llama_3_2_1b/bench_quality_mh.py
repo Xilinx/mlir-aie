@@ -35,10 +35,16 @@ from pathlib import Path
 
 import numpy as np
 from accuracy_vs_hf import RefModel, ref_forward_logits
-from aie2_layer_mh import ACT_SCALE, HEAD_D, INV_ACT_SCALE, SILU_GATE_SCALE
 from gen_exp_lut import exp_lut
 from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
 from gen_silu_lut import silu_lut
+from llama_config import (
+    ACT_SCALE,
+    EXP_QUANT_SCALE,
+    HEAD_D,
+    INV_ACT_SCALE,
+    SILU_GATE_SCALE,
+)
 from llama_decode import Decoder, DecodeShape
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_real_layer_mh, numpy_layer_mh_forward, requant
@@ -50,7 +56,6 @@ from numpy_llama_ref import (
     rope_cos_sin,
     rope_table,
 )
-from test_flowkv import EXP_QUANT_SCALE
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
@@ -219,8 +224,8 @@ def main():
         "--attn-flowkv",
         action="store_true",
         help="device-faithful per-slot KV attention with the device's softmax "
-        "(flowkv_mh mirror) instead of the fp32-softmax golden — measures "
-        "whether its fp32 rounding affects top-1",
+        "instead of the fp32-softmax golden — measures whether its fp32 "
+        "rounding affects top-1",
     )
     parser.add_argument(
         "--bf16-ref",

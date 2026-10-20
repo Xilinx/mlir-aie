@@ -1,9 +1,8 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Two values of a llama design's CompileTime value give two JIT cache keys,
-// and two MLIR modules where the MLIR carries the value. Generation only; no
-// NPU.
+// Two values of a decode CompileTime value give two JIT cache keys and two
+// MLIR modules. Generation only; no NPU.
 //
 // RUN: %python %S/test_compile_time_keys.py | FileCheck %s
-// CHECK: compile_time_keys: 7/7 PASS
+// CHECK: compile_time_keys: 5/5 PASS

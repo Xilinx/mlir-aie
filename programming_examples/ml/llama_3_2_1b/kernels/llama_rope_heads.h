@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // RoPE over kNHeads int8 Q heads, [body int8 kHD x kNHeads | scale tail 8 B
-// per head], the tail passed through (llama_rope_int8_mh_dyn's math).
+// per head], the tail passed through.
 //===----------------------------------------------------------------------===//
 
 #ifndef LLAMA_ROPE_HEADS_H

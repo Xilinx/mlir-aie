@@ -50,7 +50,7 @@ void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
   memcpy(out + 800, cs + row * 256, 256);
 }
 
-// Core `core`'s half of llama_rescale_add_D for activation `row`: x_fp =
+// Core `core`'s half of the residual add for activation `row`: x_fp =
 // resid * resid_scale + proj on its rows (resid int8[2048], then its scale,
 // at act + resid_off + row * kResidStride; proj the unit's fp32 output in
 // fp[256 row..256 row + 256)), and the rows' magnitude max as int32 bits,
@@ -84,9 +84,9 @@ void llama_gemv_array_resid_partial(int8_t *restrict act, int8_t *restrict fp,
   event1();
 }
 
-// The glue core's half of llama_rescale_add_D over the joined blocks (lo:
-// cores 0-3, hi: cores 4-7). The eight partials are integer, so their max is
-// exact; see llama_rescale_add_D for the rest. out is int8[2048 + 8].
+// The glue core's half of the residual add over the joined blocks (lo:
+// cores 0-3, hi: cores 4-7): the eight integer-bit partials' max, which is
+// exact, gives the new scale, at out[2048]; out is int8[2048 + 8].
 void llama_gemv_array_rescale_finalize(int8_t *restrict lo, int8_t *restrict hi,
                                        int8_t *restrict out) {
   event0();

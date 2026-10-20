@@ -19,11 +19,9 @@ from aie.iron.kernel import ExternalFunction
 from aie.utils.compile import NPU_CACHE_HOME
 from gen_exp_lut import exp_lut_header
 from gen_silu_lut import silu_lut_header
+from llama_config import EXP_QUANT_SCALE
 
 KERNELS_DIR = Path(__file__).parent / "kernels"
-
-# The softmax/sampler exp LUT resolution; the numpy references use the same.
-EXP_QUANT_SCALE = 0.05
 
 
 def generated_include_dir(headers: dict[str, str]) -> str:
@@ -82,25 +80,6 @@ def silu_mul(*, cols=8192, gate_scale=0.05):
     )
 
 
-def rope(*, head_dim=64, n_heads=8):
-    return KernelSource(
-        "llama_rope_int8.cc",
-        [f"-DLLAMA_ROPE_HEAD_DIM={head_dim}", f"-DLLAMA_ROPE_N_HEADS={n_heads}"],
-    )
-
-
-def flowkv(*, head_dim=64, T=16):
-    return KernelSource(
-        "llama_flowkv.cc",
-        [
-            f"-DLLAMA_FLOWKV_HEAD_DIM={head_dim}",
-            f"-DLLAMA_FLOWKV_T={T}",
-            f"-DLLAMA_FLOWKV_EXP_QUANT_SCALE={EXP_QUANT_SCALE}f",
-        ],
-        [generated_include_dir({"exp_lut.h": exp_lut_header(EXP_QUANT_SCALE)})],
-    )
-
-
 def attn_block(*, tb=64):
     return KernelSource(
         "llama_attn_block.cc",
@@ -120,13 +99,6 @@ def gemm_layer(*, kset=16):
     )
 
 
-def gemm_layer_mh():
-    return KernelSource(
-        "llama_gemm_int8_srs_tiled_layer_mh.cc",
-        ["-ffp-contract=off"],
-    )
-
-
 def gemv_array(*, kset=8):
     return KernelSource(
         "llama_gemv_array.cc",
@@ -138,36 +110,6 @@ def gemv_mma():
     return KernelSource("llama_gemv_mma.cc", ["-ffp-contract=off"])
 
 
-def kv_append(*, T=128):
-    return KernelSource(
-        "llama_kv_append.cc",
-        ["-ffp-contract=off", "-DLLAMA_KVA_HEAD_DIM=64", f"-DLLAMA_KVA_T={T}"],
-    )
-
-
-def rope_mh():
-    return KernelSource(
-        "llama_rope_int8_mh.cc",
-        [
-            "-ffp-contract=off",
-            "-DLLAMA_ROPE_MH_HEAD_DIM=64",
-            "-DLLAMA_ROPE_MH_N_HEADS=32",
-        ],
-    )
-
-
-def flowkv_mh(*, T=128):
-    return KernelSource(
-        "llama_flowkv_mh.cc",
-        [
-            "-ffp-contract=off",
-            "-DLLAMA_FLOWKV_HEAD_DIM=64",
-            f"-DLLAMA_FLOWKV_T={T}",
-            "-DLLAMA_FLOWKV_REP=4",
-        ],
-    )
-
-
 def gqa_glue():
     return KernelSource(
         "llama_gqa_glue.cc",
@@ -176,13 +118,6 @@ def gqa_glue():
             "-DLLAMA_GQA_N_HEADS_Q=32",
             "-DLLAMA_GQA_N_HEADS_KV=8",
         ],
-    )
-
-
-def rescale_add():
-    return KernelSource(
-        "llama_rescale_add.cc",
-        ["-ffp-contract=off", "-DLLAMA_RESCALE_D=2048"],
     )
 
 

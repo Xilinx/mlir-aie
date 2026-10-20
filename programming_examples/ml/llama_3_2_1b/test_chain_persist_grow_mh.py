@@ -42,22 +42,20 @@ from aie2_decode import (
     WLM_TOTAL,
     wblob_layout,
 )
-from aie2_layer_mh import (
-    HEAD_D,
-    N_HEADS_KV,
-    SILU_GATE_SCALE,
-    D,
-)
 from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
+from llama_config import EXP_QUANT_SCALE, HEAD_D, N_HEADS_KV, SILU_GATE_SCALE, D
 from llama_decode import Decoder, DecodeShape, embed_seed_ref, tokens_of
 from ml_dtypes import bfloat16
-from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
+from numpy_layer_mh import (
+    gen_layer_mh,
+    numpy_layer_mh_forward,
+    numpy_rmsnorm_int8_dyn,
+    requant,
+)
 from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw, rope_table
 from numpy_topk_sample import topk_sample_reference
-from test_flowkv import EXP_QUANT_SCALE as FKV_EXP_QUANT_SCALE
-from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
@@ -92,7 +90,7 @@ def build_fixtures(seed, p0, n_tok):
     res_scale = np.float32(np.maximum(np.abs(x_fp).max(), 1e-12) / 127.0)
     x_i8 = requant(x_fp, np.float32(1.0) / res_scale)
 
-    lut_exp = exp_lut(FKV_EXP_QUANT_SCALE).astype(np.float32)
+    lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
     layers = []
     for L in range(N_LAYERS):

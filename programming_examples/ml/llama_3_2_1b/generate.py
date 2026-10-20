@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from aie2_layer_mh import HEAD_D
+from llama_config import HEAD_D
 from llama_decode import Decoder, DecodeShape
 from numpy_layer_mh import gen_real_layer_mh
 from numpy_llama_ref import (

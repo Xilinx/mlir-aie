@@ -5,10 +5,9 @@
 //
 // Block-wise GQA attention for one KV head's kREP Q heads over a cache of
 // kTB-row blocks, a row being [k int8[kHD] | v int8[kHD] | k_scale | v_scale].
-// Each block is attended as llama_flowkv_mh attends a whole cache, then
-// folded into a running (max, sum, normalized sv) state; products round once
-// as the scalar `*` does and sums are vadd.f, so numpy_attn_block.py mirrors
-// it exactly. One block gives llama_flowkv_mh_selfcal's output.
+// Each block is attended as a whole cache would be, then folded into a
+// running (max, sum, normalized sv) state; products round once as the scalar
+// `*` does and sums are vadd.f, so numpy_attn_block.py mirrors it exactly.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>

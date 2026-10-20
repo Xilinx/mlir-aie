@@ -3,12 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 r"""Build + run the Llama 3.2 1B persistent-decode capstone on NPU2.
 
-Complements the kernel-level checks (each of RMSNorm/SiLU/RoPE/FlowKV/the
-top-k sampler has its own isolated unit test) with the thing that actually
-matters end to end: does the full N=16 persistent, growing-KV decode loop
-still build, verify (device token == numpy-fixture argmax, same oracle
-test_chain_persist_grow_mh.py already uses), and run at the expected
-throughput on real hardware. Shells out to the existing
+Does the full N=16 persistent, growing-KV decode loop still build, verify
+(device token == numpy-fixture argmax, the oracle
+test_chain_persist_grow_mh.py uses), and run at the expected throughput on
+real hardware. Shells out to the existing
 test_chain_persist_grow_mh.py CLI (no new Python API), compiling once with the
 design's own CLI (aie2_decode.py) and then invoking the test script
 with that full ELF for both the correctness run and the ``--time`` run. One

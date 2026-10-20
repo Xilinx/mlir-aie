@@ -78,7 +78,7 @@ from aie2_gemv_array import (
     mma_rows,
     read_sample_params,
 )
-from aie2_layer_mh import (
+from llama_config import (
     CS_BYTES,
     HD,
     HEAD_D,
@@ -212,7 +212,7 @@ def wblob_layout(n_layers, t):
     Returns:
         (lanes offset, RoPE table offset, total bytes). Lanes are
         [layer][core][LANE_BYTES], each in the array's consumption order
-        (test_gemv_array.pack_lane_mma); the table is one CS_BYTES row per
+        (llama_decode.pack_lane_mma); the table is one CS_BYTES row per
         position, padded by one MMA_SLOT so the row of the last position can
         be read as a whole header slot. The norms' gammas live in `stage`.
     """

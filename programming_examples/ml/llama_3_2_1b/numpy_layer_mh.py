@@ -5,22 +5,8 @@
 # The residual_dyn/residual_fp32 branches bind names read only under the same
 # flag later; pyright can't correlate separate `if`s on one flag.
 # pyright: reportPossiblyUnboundVariable=false
-"""Phase 7a: multi-head GQA reference + per-Q-head dynamic-scale
-calibration for the single-layer multi-head xclbin (aie2_layer_mh.py).
-
-Models the full Llama 3.2 1B attn shapes: 32 Q heads, 8 KV heads (GQA,
-REP=4 Q per KV), HEAD_DIM=64, Q_DIM=2048, KV_DIM=512.
-
-Key changes vs single-head:
-  - wq, wo are full (Q_DIM, D) / (D, Q_DIM)
-  - q_out_scale, sv_inv_out_scale are PER Q HEAD (length 32)
-  - k_scale, v_scale are PER KV HEAD (length 8)
-  - sv outputs from each Q head are concatenated, dequanted with each
-    head's sv_out_scale, then globally requanted to int8 with a single
-    o_act_scale before o_proj. This matches the on-device topology
-    where 8 attn workers emit per-head int8 sv chunks and an "af-concat"
-    worker stitches + requantizes for the (single-act_scale) o_proj.
-  - FFN stays unchanged (per-token scales, single act for gate/up/down).
+"""The decode's numpy oracle: one Llama 3.2 1B GQA layer (32 Q heads, 8 KV
+heads) with per-Q-head dynamic scales, as aie2_decode.py computes it.
 """
 
 from __future__ import annotations
@@ -29,22 +15,19 @@ from typing import cast
 
 import aie_fp
 import numpy as np
-from aie2_layer_mh import (
+from gen_exp_lut import exp_lut
+from gen_llama_data import quant_int8_perchan_absmax
+from gen_silu_lut import silu_lut
+from llama_config import (
     ACT_SCALE,
+    EXP_QUANT_SCALE,
     GATE_INV_OUT_SCALE,
     INV_ACT_SCALE,
     SILU_GATE_SCALE,
 )
-from gen_exp_lut import exp_lut
-from gen_llama_data import quant_int8_perchan_absmax
-from gen_silu_lut import silu_lut
 from ml_dtypes import bfloat16
 from numpy_attn_block import attention as attn_block_attention
 from numpy_attn_block import exp_nonpos
-from test_flowkv import EXP_QUANT_SCALE, numpy_attention, quant_shifted
-from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
-from test_rope_int8 import numpy_rope_dyn
-from test_silu_mul_int8 import numpy_silu_mul
 
 # --- Multi-head GQA shape constants ---
 D = 2048
@@ -62,11 +45,111 @@ def requant(fp, inv):
     return aie_fp.round_to_i8(np.asarray(fp, np.float32) * np.float32(inv))
 
 
+def quant_shifted(shifted: np.ndarray) -> np.ndarray:
+    """The exp LUT index of max-shifted scores, as the kernels' quant_shifted."""
+    # 1/scale in fp32, as the kernel takes it; fp64's 1/0.05 differs in the last bit.
+    inv = np.float32(1.0) / np.float32(EXP_QUANT_SCALE)
+    v = (shifted.astype(np.float32) * inv).astype(np.float32)
+    half = np.where(v >= 0, np.float32(0.5), np.float32(-0.5))
+    q = np.trunc(aie_fp.aie_add(v, half)).astype(np.int32)
+    return np.clip(q, -128, 0)
+
+
+def numpy_attention(
+    q_i8, k_i8, v_i8, head_dim, t, q_scale, k_scale, v_scale, inv_out_scale, lut
+):
+    """LUT-softmax attention with one k and v scale per head, in fp32."""
+    qs = np.float32(q_scale)
+    ks = np.float32(k_scale)
+    inv_sqrt = np.float32(0.125)
+    qk_scale = ((qs * ks).astype(np.float32) * inv_sqrt).astype(np.float32)
+
+    k_mat = k_i8.astype(np.int32).reshape(t, head_dim)
+    dots = k_mat @ q_i8.astype(np.int32)
+    scores = dots.astype(np.float32) * qk_scale
+
+    max_s = np.float32(scores.max())
+    shifted = aie_fp.aie_add(scores, -max_s)
+    q = quant_shifted(shifted)
+    exp_v = lut[q + 128].astype(np.float32)
+
+    # Sums run left to right, not in numpy's pairwise order.
+    sum_e = np.float32(0.0)
+    for i in range(t):
+        sum_e = aie_fp.aie_add(sum_e, exp_v[i])
+    inv_sum = aie_fp.sw_recip(sum_e)
+    probs = (exp_v * inv_sum).astype(np.float32)
+
+    v_mat = v_i8.astype(np.int32).reshape(t, head_dim).astype(np.float32)
+    acc = np.zeros(head_dim, dtype=np.float32)
+    for i in range(t):
+        acc = aie_fp.aie_add(acc, probs[i] * v_mat[i])
+    vs = np.float32(v_scale)
+    ios = np.float32(inv_out_scale)
+    out_f = ((acc * vs).astype(np.float32) * ios).astype(np.float32)
+    return aie_fp.round_to_i8(out_f)
+
+
+def numpy_rmsnorm_int8_dyn(
+    x_i8: np.ndarray,
+    gamma_bf16: np.ndarray,
+    act_scale_in: float | np.floating,
+    eps: float = 1e-5,
+):
+    """Returns (y_i8: int8[D], scale_dyn: fp32), as llama_rmsnorm_int8_dyn."""
+    sum_sq_i32 = int((x_i8.astype(np.int32) ** 2).sum())
+    var = np.float32(
+        np.float32(sum_sq_i32)
+        * np.float32(act_scale_in)
+        * np.float32(act_scale_in)
+        / np.float32(len(x_i8))
+    )
+    inv_rms = aie_fp.sw_invsqrt(aie_fp.aie_add(var, np.float32(eps)))
+    pre = np.float32(np.float32(act_scale_in) * np.float32(inv_rms))
+
+    g_f = gamma_bf16.astype(np.float32)
+    x_f = x_i8.astype(np.float32)
+    y_f = (x_f * pre * g_f).astype(np.float32)
+    absmax = float(np.abs(y_f).max())
+    if absmax < 1e-12:
+        absmax = 1e-12
+    scale_dyn = np.float32(absmax * np.float32(1.0 / 127.0))
+    inv_dyn = aie_fp.sw_recip(scale_dyn)
+    combined = np.float32(pre * inv_dyn)
+
+    # The kernel recomputes the product rather than keep it between passes.
+    out_f = (x_f * combined * g_f).astype(np.float32)
+    y_i8 = aie_fp.round_to_i8(out_f)
+    return y_i8, float(scale_dyn)
+
+
+def numpy_rope_dyn(x_i8, cos_bf, sin_bf, n_heads, head_dim):
+    """RoPE over `n_heads` int8 heads, as kernels/llama_rope_heads.h."""
+    half = head_dim // 2
+    x_f = x_i8.astype(np.float32).reshape(n_heads, head_dim)
+    c = cos_bf.astype(np.float32)
+    s = sin_bf.astype(np.float32)
+    out = np.empty_like(x_f)
+    out[:, :half] = aie_fp.aie_add(
+        x_f[:, :half] * c[:half], -(x_f[:, half:] * s[:half])
+    )
+    out[:, half:] = aie_fp.aie_add(x_f[:, half:] * c[half:], x_f[:, :half] * s[half:])
+    return aie_fp.round_to_i8(out.flatten())
+
+
+def numpy_silu_mul(gate, up, lut, up_scale, inv_out_scale):
+    """SiLU(gate) * up through the gate's LUT, as llama_silu_mul_int8."""
+    silu_bf = lut[(gate.astype(np.int32) + 128)]
+    s_f = silu_bf.astype(np.float32)
+    u_f = up.astype(np.float32) * up_scale
+    out_f = s_f * u_f * inv_out_scale
+    return aie_fp.round_to_i8(out_f)
+
+
 def _dyn_scale(fp):
     """Per-token dynamic scale, bit-identical to the device rescale-add kernel:
     absmax (fp32, 1e-12 floor) * (1.0f/127.0f). Using float64 /127.0 diverges
-    by ~1 ULP and flips knife-edge requant roundings, so keep everything fp32
-    (matches the dyn-rmsnorm HW mirror in test_rmsnorm_int8_dyn)."""
+    by ~1 ULP and flips knife-edge requant roundings, so keep everything fp32."""
     absmax = np.float32(max(float(np.abs(fp).max()), 1e-12))
     return np.float32(absmax * np.float32(1.0 / 127.0))
 
@@ -154,12 +237,9 @@ def numpy_attention_perslot_flowkv(
     v_slot_scales,
     inv_out_scale,
 ):
-    """Bit-exact mirror of the device flowkv_mh per-slot kernel.
-
-    Per-cache-slot k/v scales (fixes the per-head-scalar bug) AND the device's
-    softmax, e = exp_nonpos(score - max) (matches the device kernel, unlike
-    the np.exp attention_perslot which is the QUALITY golden). Op order
-    replicates llama_flowkv_mh exactly:
+    """Per-cache-slot attention with the device's softmax, e =
+    exp_nonpos(score - max), unlike the np.exp attention_perslot, which is
+    the quality golden. Op order, as the device's:
       score[i] = dot_i32 * (q_scale*0.125 * k_slot[i])     (strict fp32)
       sv[j]   += (e*inv_sum) * v_slot[i] * v[i,j]          (strict fp32)
     q_i8: (head_dim,); k_i8/v_i8: (t*head_dim,); *_slot_scales: (>=t,).
@@ -499,8 +579,7 @@ def numpy_layer_mh_forward(
             out[:half] = aie_fp.aie_add(x1 * cosf[:half], -(x2 * sinf[:half]))
             out[half:] = aie_fp.aie_add(x2 * cosf[half:], x1 * sinf[half:])
             k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM] = out
-        # Per-slot, not per-head-scalar (see aie2_layer_mh.py's kv-per-head
-        # comment). Lazily created; (N_HEADS_KV, T).
+        # One k and v scale per cached position; (N_HEADS_KV, T).
         k_scales_slot = layer.get("k_scales_slot")
         if k_scales_slot is None:
             k_scales_slot = np.full((N_HEADS_KV, T), 1e-6, dtype=np.float32)
@@ -555,11 +634,8 @@ def numpy_layer_mh_forward(
     #    T slots (Phase 7 / 8a behavior, preserves BIT-EXACT for
     #    random-fixture tests).
     t_used = (position + 1) if position is not None else T
-    # attn_perslot selects the per-cache-slot-scale fp32-softmax attention
-    # (the KV-fix path). It defaults to follow residual_dyn so the quality
-    # bench gets both fixes, but is decoupled so the device single-layer test
-    # (which checks flowkv_mh through attn_flowkv) can validate the residual
-    # fix in isolation with attn_perslot=False.
+    # attn_perslot selects the per-cache-slot-scale fp32-softmax attention;
+    # it follows residual_dyn unless set.
     if attn_perslot is None:
         attn_perslot = residual_dyn
     sv_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
@@ -593,9 +669,8 @@ def numpy_layer_mh_forward(
             k_slice = kcaches[kvh][: t_used * HEAD_DIM]
             v_slice = vcaches[kvh][: t_used * HEAD_DIM]
             if attn_perslot or attn_flowkv:
-                # attn_flowkv=True is the DEVICE-FAITHFUL path: the device's
-                # softmax (bit-exact mirror of flowkv_mh). attn_flowkv=False keeps the fp32
-                # np.exp softmax (the quality golden). Both use per-slot scales.
+                # attn_flowkv=True takes the device's softmax; False keeps the
+                # fp32 np.exp softmax (the quality golden). Both use per-slot scales.
                 ksl = layer["k_scales_slot"][kvh]
                 vsl = layer["v_scales_slot"][kvh]
                 attn_fn = (

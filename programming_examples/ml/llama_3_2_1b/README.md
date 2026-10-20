@@ -45,7 +45,7 @@ and the cores around it.
                     └───────────────────────────────────────────────────────────────────┘
 ```
 
-Key design pieces (each validated bit-exact in isolation before integration):
+Key design pieces:
 
 - **Shared 8-lane GEMV array** (`aie2_gemv_array.py`). Eight cores run every
   projection as units on one broadcast activation: qkv (fused, each core giving
@@ -166,8 +166,8 @@ between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
 
 ## 3. Accuracy / quality
 
-The device is **bit-exact to the numpy INT8 oracle** (every kernel validated
-0-diff in isolation). The remaining question is whether the INT8 **recipe** tracks
+The device is **bit-exact to the numpy INT8 oracle** (`numpy_layer_mh.py`; the
+decode test checks every token, KV row and record against it). The remaining question is whether the INT8 **recipe** tracks
 the real model. We compare against the true HF Llama 3.2 1B **bf16** weights
 (loaded full-precision from the safetensors — no torch/transformers needed).
 
@@ -247,12 +247,10 @@ find it: `model.safetensors` and `tokenizer.model` in
 override it. The INT8 weights live in `data/`, generated from it by
 `gen_llama_data.py`. The bf16 reference reads the safetensors directly.
 
-Each test compiles the design it checks with `@iron.jit` (cached under
-`NPU_CACHE_HOME`, so a rerun reuses it). The decode test,
-`test_chain_persist_grow_mh.py`, runs a full ELF (or a prebuilt one, `--elf`,
-from `python aie2_decode.py ... --full-elf-path X`); the others run
-an xclbin (or a prebuilt one, `--xclbin`/`--instr`, from a design CLI's
-`--xclbin-path X --insts-path Y`).
+The decode test, `test_chain_persist_grow_mh.py`, compiles `aie2_decode.py`
+with `@iron.jit` to a full ELF (cached under `NPU_CACHE_HOME`, so a rerun
+reuses it), or runs a prebuilt one (`--elf`, from
+`python aie2_decode.py ... --full-elf-path X`).
 
 > **Always set `LLAMA_CHAIN_N=16`** for any accuracy/timing/baseline run.
 > `N_LAYERS` defaults to 2 (a fast bring-up toy); a 2-layer run silently produces
@@ -300,16 +298,6 @@ LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --time
 # a generation loop: 10 dispatches carrying the KV cache and seed, with the
 # NPU left idle (and suspended) between them
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --dispatches 10 --idle-s 6
-```
-
-### Primitive / kernel validation (bit-exact, isolation)
-
-```bash
-python test_topk_sample_probe.py    # one-stream sampler + embed gather
-python test_gemv_array.py           # the 8-lane GEMV array
-python test_layer_mh.py             # one decoder layer
-python test_rmsnorm_int8.py         # also test_rmsnorm_int8_dyn, test_rope_int8
-python test_silu_mul_int8.py --selfcal   # and test_flowkv.py --dyn, ...
 ```
 
 ---

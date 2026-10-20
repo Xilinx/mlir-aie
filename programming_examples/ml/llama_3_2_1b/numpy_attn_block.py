@@ -4,8 +4,8 @@
 #
 """Mirror of kernels/llama_attn_block.cc: block-wise attention over a KV cache.
 
-Each block of up to `tb` rows is attended the way llama_flowkv_mh attends a
-whole cache, then folded into a running (max, sum, normalized sv) state.
+Each block of up to `tb` rows is attended as a whole cache would be, then
+folded into a running (max, sum, normalized sv) state.
 Blocks split across `n_cores` contiguous ranges; each core folds its blocks
 in order and the merge folds the cores' states in core order, so the result
 depends on (tb, n_cores) exactly as the device computes it.

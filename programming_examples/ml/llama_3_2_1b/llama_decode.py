@@ -30,12 +30,16 @@ from aie2_decode import (
     stage_layout,
     wblob_layout,
 )
-from aie2_gemv_array import LAYER, N_CORES, sample_param_values
-from aie2_layer_mh import CS_BYTES, HEAD_D, N_HEADS_KV, N_TILE, D
+from aie2_gemv_array import (
+    LAYER,
+    MMA_SLOT,
+    N_CORES,
+    PROJECTIONS,
+    sample_param_values,
+)
+from llama_config import CS_BYTES, HEAD_D, N_HEADS_KV, N_TILE, D
 from llama_npu import DispatchSession
 from ml_dtypes import bfloat16
-from test_gemv_array import pack_lane_mma
-from test_layer_mh import pack_perchan_slots
 
 # The decode's time a token at position p, fit to the README's N=16
 # measurements: the lm_head, then per layer its weights and its attention
@@ -44,6 +48,60 @@ LM_HEAD_MS = 19.0
 LAYER_MS = 1.80
 LAYER_MS_PER_ROW = 0.000163
 DISPATCH_BUDGET_MS = 4000.0
+
+
+def pack_perchan_slots(w_i8, w_scales, bias_i32, n_tile, prefix_bytes: bytes = b""):
+    """Per-tile slots [prefix_bytes | n_tile * K int8 | n_tile int32 bias |
+    n_tile fp32 w_scales], the prefix repeated in every slot."""
+    N, K = w_i8.shape
+    n_tiles = N // n_tile
+    pre = len(prefix_bytes)
+    slot = pre + n_tile * K + n_tile * 4 + n_tile * 4
+    blob = np.zeros(n_tiles * slot, dtype=np.int8)
+    pre_arr = np.frombuffer(prefix_bytes, dtype=np.int8)
+    for t in range(n_tiles):
+        base = t * slot
+        off = base
+        if pre:
+            blob[off : off + pre] = pre_arr
+            off += pre
+        rows = w_i8[t * n_tile : (t + 1) * n_tile].flatten()
+        bs = bias_i32[t * n_tile : (t + 1) * n_tile].view(np.int8).flatten()
+        ws = w_scales[t * n_tile : (t + 1) * n_tile].view(np.int8).flatten()
+        blob[off : off + rows.size] = rows
+        off += rows.size
+        blob[off : off + bs.size] = bs
+        off += bs.size
+        blob[off : off + ws.size] = ws
+    return blob
+
+
+def pack_lane_mma(layer_w, order, core):
+    """One core's weight lane for kernels/llama_gemv_mma.cc: per projection,
+    its row groups of eight rows, each as two `MMA_SLOT` slots, one per half
+    of 2048 columns (down: per 2048-column chunk, chunk-major), with weight
+    W[n][8kt + i] of a slot's half at kt*64 + i*8 + n, then the eight rows'
+    int32 biases and fp32 scales."""
+    parts = []
+    for p in order:
+        k, rows, _ = PROJECTIONS[p]
+        w, bias, sc = layer_w[p]
+        rc = rows // N_CORES
+        lo = core * rc
+        groups = rc // 8
+        chunks = k // D
+        blk = w[lo : lo + rc].reshape(groups, 8, chunks, 2, D // 16, 8)
+        tiles = blk.transpose(2, 0, 3, 4, 5, 1).reshape(chunks, groups, 2, D * 4)
+        slots = np.zeros((chunks, groups, 2, MMA_SLOT), np.int8)
+        slots[..., : D * 4] = tiles
+        slots[..., D * 4 : D * 4 + 32] = (
+            bias[lo : lo + rc].reshape(1, groups, 1, 8).view(np.int8)
+        )
+        slots[..., D * 4 + 32 : D * 4 + 64] = (
+            sc[lo : lo + rc].reshape(1, groups, 1, 8).view(np.int8)
+        )
+        parts.append(slots.reshape(-1))
+    return np.concatenate(parts)
 
 
 def pack_lmw(embed_i8, embed_sc, gamma):

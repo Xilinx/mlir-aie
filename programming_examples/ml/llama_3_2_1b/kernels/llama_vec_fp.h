@@ -90,9 +90,9 @@ vec_residual_sum(const int8_t *restrict resid, const float *restrict proj,
       ::aie::load_v<16>(proj));
 }
 
-// sw_recip (see llama_flowkv.cc) on kN lanes: the same seed and Newton
-// steps, with the scalar form's soft-float products as vec_mul_rne and its
-// `-` as the same vsub.f.
+// A reciprocal on kN lanes from a bit-trick seed and Newton steps, which
+// aie_fp.sw_recip mirrors; the kernels' scalar sw_recip takes the same steps,
+// with these soft-float products as vec_mul_rne and `-` as the same vsub.f.
 template <unsigned kN>
 static inline ::aie::vector<float, kN>
 vec_sw_recip(::aie::vector<float, kN> a) {

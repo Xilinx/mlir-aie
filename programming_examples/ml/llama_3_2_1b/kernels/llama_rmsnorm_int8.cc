@@ -28,8 +28,7 @@ static constexpr int kVec =
 // One 512-bit fp32 register.
 static constexpr int kLanes = 16;
 
-// Software fp32 reciprocal (see llama_flowkv.cc for why Peano's `/` needs
-// this workaround).
+// See vec_sw_recip in llama_vec_fp.h; this is its scalar form.
 static inline float sw_recip(float a) {
   int32_t bits;
   memcpy(&bits, &a, 4);

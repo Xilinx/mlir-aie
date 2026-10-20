@@ -16,8 +16,8 @@ from __future__ import annotations
 import aie_fp
 import numpy as np
 from gen_exp_lut import exp_lut
+from llama_config import EXP_QUANT_SCALE
 
-EXP_QUANT_SCALE = 0.05
 MASK_SENTINEL = np.float32(-1.0e9)
 
 
