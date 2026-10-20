@@ -183,7 +183,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=320),
         arg_count=3,  # [re | im] in, magnitudes out, size
         expected_name="magnitude_f32",
-        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        name_variants=[(dict(tile_size=256, power=2), "power_f32")],
+        invalid_kwargs=[
+            (dict(tile_size=48), "not a multiple of"),
+            (dict(tile_size=320, power=3), "power must be 1 or 2"),
+        ],
         shape_checks=[(dict(tile_size=64), 0, (128,)), (dict(tile_size=64), 1, (64,))],
     ),
     # ----- reduce -----
@@ -272,11 +276,16 @@ KERNEL_SPECS: list[KernelSpec] = [
                 "reduce_max_scalar_bfloat16",
             ),
             (dict(tile_size=1024, dtype=bfloat16), "reduce_max_vector_bfloat16"),
+            (dict(tile_size=4000, dtype=np.float32), "reduce_max_vector_float"),
+            (
+                dict(tile_size=96, dtype=np.float32, vectorized=False),
+                "reduce_max_scalar_float",
+            ),
         ],
         invalid_kwargs=[
             (
-                dict(tile_size=1024, dtype=np.float32),
-                "dtype must be np.int32 or bfloat16",
+                dict(tile_size=1024, dtype=np.float16),
+                "dtype must be np.int32, bfloat16 or np.float32",
             ),
         ],
         shape_checks=[
@@ -285,6 +294,7 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=2048, dtype=np.int32), 1, (1,)),
             # bfloat16: out must be padded to 2 elements (4 bytes) for DMA alignment.
             (dict(tile_size=1024, dtype=bfloat16), 1, (2,)),
+            (dict(tile_size=4000, dtype=np.float32), 1, (1,)),
         ],
     ),
     KernelSpec(
@@ -459,6 +469,16 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="log_f32_bf16",
         invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
         shape_checks=[(dict(tile_size=128), 1, (128,))],
+    ),
+    KernelSpec(
+        name="log10_clamp_f32",
+        factory=kernels.log10_clamp_f32,
+        kwargs=dict(tile_size=1600),
+        # f32 in, peak in, bf16 out, size, mel_floor, decades, shift, scale
+        arg_count=8,
+        expected_name="log10_clamp_f32_bf16",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        shape_checks=[(dict(tile_size=128), 1, (1,)), (dict(tile_size=128), 2, (128,))],
     ),
     # ----- vision -----
     KernelSpec(

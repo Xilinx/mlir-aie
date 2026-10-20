@@ -956,6 +956,58 @@ def log_f32(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
+def log10_clamp_f32(tile_size: int = 1024) -> ExternalFunction:
+    """Whisper's log-mel features from mel energies, rounded once to bf16.
+
+    Takes ``(x, peak, y, size, mel_floor, decades, shift, scale)``:
+    ``tile_size`` float32 energies and the clip's largest, one float32, in,
+    and ``tile_size`` bf16 out, ``(max(log10(max(x, mel_floor)),
+    log10(max(peak, mel_floor)) - decades) + shift) * scale``, each step in
+    float32 as WhisperFeatureExtractor takes it (its ``mel_floor`` 1e-10,
+    ``decades`` 8, ``shift`` 4 and ``scale`` 1/4). The log is
+    ``log_f32``'s, kept in float32, times ``1 / ln 10`` on bf16 limbs.
+
+    The source sets ``conv_even`` itself and restores the core's mode on
+    exit, and builds for aie2 and aie2p.
+
+    Args:
+        tile_size: Float32 elements per call, a positive multiple of 32.
+
+    Returns:
+        ExternalFunction for ``log10_clamp_f32_bf16``.
+
+    Raises:
+        ValueError: When ``tile_size`` is not a positive multiple of 32.
+    """
+    _require_vector_alignment("log10_clamp_f32", tile_size, 32)
+    return _make_extern(
+        "log10_clamp_f32_bf16",
+        _kernel_source("activation/log_f32.cc"),
+        [
+            np.ndarray[(tile_size,), np.dtype[np.float32]],
+            np.ndarray[(1,), np.dtype[np.float32]],
+            np.ndarray[(tile_size,), np.dtype[bfloat16]],
+            np.int32,
+            np.float32,
+            np.float32,
+            np.float32,
+            np.float32,
+        ],
+        compile_flags=[f"-DLOG_ELEMS={tile_size}", "-DLOG10_CLAMP"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out, Param, Param, Param, Param, Param),
+            parameter_bindings=((3, tile_size),),
+            reference=log10_clamp_f32_ref,
+            sample=lambda rng, calls: log10_clamp_f32_sample(
+                rng, calls, tile_size=tile_size
+            ),
+            tolerance=_LOG10_CLAMP_F32_TOLERANCE,
+            ops_per_call=tile_size,
+        ),
+    )
+
+
 def tanh(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """Tanh for bf16 tiles of a positive multiple of 32 elements.
 
@@ -1432,6 +1484,66 @@ def log_f32_sample(rng, calls: int, *, tile_size: int) -> list:
     ).view(np.float32)
     x[: edges.size] = edges[: x.size]
     return [x.reshape(calls, tile_size)]
+
+
+def _log10_clamped(x, peak, mel_floor, decades):
+    """Each clamped log10 of ``log10_clamp_f32``, in float32 and in float64.
+
+    The float32 one is as WhisperFeatureExtractor takes it.
+    """
+    lo = np.float32(mel_floor)
+    top = np.log10(np.maximum(np.asarray(peak, np.float32)[..., :1], lo))
+    log = np.log10(np.maximum(np.asarray(x, np.float32), lo).astype(np.float64))
+    clamped32 = np.maximum(
+        log.astype(np.float32), top.astype(np.float32) - np.float32(decades)
+    )
+    return clamped32, np.maximum(log, top - decades)
+
+
+def log10_clamp_f32_ref(x, peak, mel_floor=1e-10, decades=8.0, shift=4.0, scale=0.25):
+    """Numpy reference for [`log10_clamp_f32`][iron.kernels.activation.log10_clamp_f32].
+
+    WhisperFeatureExtractor's float32 steps after its log10, each log
+    correctly rounded, the result rounded once to bf16.
+    """
+    v, _ = _log10_clamped(x, peak, mel_floor, decades)
+    return ((v + np.float32(shift)) * np.float32(scale)).astype(bfloat16)
+
+
+def _log10_clamp_f32_bound(
+    x, peak, mel_floor=1e-10, decades=8.0, shift=4.0, scale=0.25
+):
+    """Bound on log10_clamp_f32's error against its reference.
+
+    Zero, except where the exact result is within ``gap`` of a bf16 rounding
+    midpoint: there one bf16 ulp plus ``gap``, 16 float32 ulps of the clamped
+    log and the shift, how far the kernel's float32 steps and the
+    reference's may lie apart (most where ``log + shift`` cancels).
+    """
+    _, v = _log10_clamped(x, peak, mel_floor, decades)
+    t = (v + shift) * scale
+    b = t.astype(bfloat16).astype(np.float64)
+    ulp = _bf16_ulp(b)
+    gap = 2.0**-20 * (np.abs(v) + abs(shift)) * abs(scale)
+    return np.where(np.abs(np.abs(t - b) - ulp / 2) <= gap, ulp + gap, 0.0)
+
+
+_LOG10_CLAMP_F32_TOLERANCE = Tolerance.bounded(
+    _log10_clamp_f32_bound,
+    note="WhisperFeatureExtractor's float32 steps, rounded once; a near tie "
+    "may round either way: 323 of 8,388,608 results on npu2",
+)
+
+
+def log10_clamp_f32_sample(rng, calls: int, *, tile_size: int) -> list:
+    """Mel energies over seventeen decades and each call's largest as its peak.
+
+    An eighth of the energies are zero, as a padded clip's silent frames are.
+    """
+    n = calls * tile_size
+    x = 10.0 ** rng.uniform(-14, 3, n) * (rng.uniform(size=n) >= 0.125)
+    x = x.astype(np.float32).reshape(calls, tile_size)
+    return [x, x.max(axis=-1, keepdims=True)]
 
 
 def _softmax_rows(f, addend: bool, masked: bool, **kw) -> Callable:

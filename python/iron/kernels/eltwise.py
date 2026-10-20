@@ -5,6 +5,8 @@
 #
 """Element-wise kernel factories: passthrough, scale, add, mul, relu, clamp, magnitude_f32."""
 
+from functools import partial
+
 import numpy as np
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, Out
@@ -384,11 +386,11 @@ def clamp_ref(x, low, high):
     return np.minimum(np.maximum(x.astype(np.float32), low), high)
 
 
-def magnitude_f32(tile_size: int = 320) -> ExternalFunction:
-    """``sqrt(re^2 + im^2)`` of complex float32, float32-accurate.
+def magnitude_f32(tile_size: int = 320, power: int = 1) -> ExternalFunction:
+    """``sqrt(re^2 + im^2)`` of complex float32, or its square, float32-accurate.
 
-    Takes ``(x, y, size)``: ``x`` holds ``tile_size`` real parts then as many
-    imaginary parts, and ``y`` gets ``tile_size`` float32 magnitudes. Every
+    With ``power=2`` it is ``re^2 + im^2``, the power spectrum. Takes ``(x, y, size)``: ``x`` holds ``tile_size`` real parts then as many
+    imaginary parts, and ``y`` gets ``tile_size`` float32 results. Every
     product is of bf16 limbs, exact in the float32 accumulator, and the
     square root is three Newton steps from a bit-trick estimate. Defined for
     ``|z|`` zero or from ``2**-51`` to below ``2**63``, where ``|z|^2`` and
@@ -398,41 +400,48 @@ def magnitude_f32(tile_size: int = 320) -> ExternalFunction:
     exit, and builds for aie2 and aie2p.
 
     Args:
-        tile_size: Magnitudes per call, a positive multiple of 32.
+        tile_size: Results per call, a positive multiple of 32.
+        power: 1 for the magnitude, 2 for its square.
 
     Returns:
-        ExternalFunction for ``magnitude_f32``.
+        ExternalFunction for ``magnitude_f32`` or ``power_f32``.
 
     Raises:
-        ValueError: When ``tile_size`` is not a positive multiple of 32.
+        ValueError: When ``tile_size`` is not a positive multiple of 32, or
+            ``power`` is not 1 or 2.
     """
     _require_vector_alignment("magnitude_f32", tile_size, 32)
+    if power not in (1, 2):
+        raise ValueError(f"magnitude_f32() power must be 1 or 2, got {power}")
     return _make_extern(
-        "magnitude_f32",
+        "magnitude_f32" if power == 1 else "power_f32",
         _kernel_source("eltwise/magnitude_f32.cc"),
         [
             np.ndarray[(2 * tile_size,), np.dtype[np.float32]],
             np.ndarray[(tile_size,), np.dtype[np.float32]],
             np.int32,
         ],
-        compile_flags=[f"-DMAGNITUDE_ELEMS={tile_size}"],
+        compile_flags=[f"-DMAGNITUDE_ELEMS={tile_size}"]
+        + (["-DMAGNITUDE_POWER"] if power == 2 else []),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
-            reference=magnitude_f32_ref,
+            reference=partial(magnitude_f32_ref, power=power),
             sample=lambda rng, calls: magnitude_f32_sample(
                 rng, calls, tile_size=tile_size
             ),
-            tolerance=_MAGNITUDE_F32_TOLERANCE,
+            tolerance=(
+                _MAGNITUDE_F32_TOLERANCE if power == 1 else _POWER_F32_TOLERANCE
+            ),
             ops_per_call=tile_size,
         ),
     )
 
 
-def _magnitude_f32_bound(x):
+def _magnitude_f32_bound(x, power=1):
     """Bound on magnitude_f32.cc's error: one ulp from the correctly rounded float32."""
-    t = magnitude_f32_ref(x)
+    t = magnitude_f32_ref(x, power)
     r = t.astype(np.float32)
     return np.abs(t - r) + np.spacing(r).astype(np.float64)
 
@@ -443,14 +452,20 @@ _MAGNITUDE_F32_TOLERANCE = Tolerance.bounded(
     "(1.23 ulp from the exact hypot) on 13% of 261,504 results",
 )
 
+_POWER_F32_TOLERANCE = Tolerance.bounded(
+    partial(_magnitude_f32_bound, power=2),
+    note="one float32 ulp from correctly rounded; npu2 measured 1.18 ulps "
+    "from the exact power over 6,144,000 spectrum bins",
+)
 
-def magnitude_f32_ref(x):
+
+def magnitude_f32_ref(x, power=1):
     """Numpy reference for [`magnitude_f32`][iron.kernels.eltwise.magnitude_f32].
 
-    ``hypot`` of each call's two halves, in float64.
+    ``hypot`` of each call's two halves, or its square, in float64.
     """
     re, im = np.split(np.asarray(x, np.float64), 2, axis=-1)
-    return np.hypot(re, im)
+    return np.hypot(re, im) if power == 1 else re * re + im * im
 
 
 def magnitude_f32_sample(rng, calls: int, *, tile_size: int) -> list:

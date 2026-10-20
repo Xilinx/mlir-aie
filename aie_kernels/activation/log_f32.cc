@@ -10,11 +10,13 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-#ifdef LOG_ELEMS
-#define LOG_STAGED (!AIE_ARCH_AIE2 && LOG_ELEMS % 256 == 0)
-#else
+#ifndef LOG_ELEMS
 #define LOG_ELEMS n
 #define LOG_STAGED 0
+#elif defined(LOG10_CLAMP)
+#define LOG_STAGED 0
+#else
+#define LOG_STAGED (!AIE_ARCH_AIE2 && LOG_ELEMS % 256 == 0)
 #endif
 
 // log(m) for m in [sqrt(1/2), sqrt(2)) is f q(f) with f = m - 1, and q is
@@ -134,6 +136,7 @@ log_last(const float *__restrict q_in, const bfloat16 *__restrict fh,
 }
 #endif
 
+#ifndef LOG10_CLAMP
 // log(x + offset) of float32, rounded once to bf16, for x + offset a positive
 // normal float32. Multiplies as f32_split.h does.
 extern "C" void log_f32_bf16(float *restrict x, bfloat16 *restrict y, int32_t n,
@@ -206,3 +209,72 @@ extern "C" void log_f32_bf16(float *restrict x, bfloat16 *restrict y, int32_t n,
   aie::set_rounding(saved);
   event1();
 }
+#else
+using f32_vec = aie::vector<float, f32_lanes>;
+
+// log10(z) for z a positive normal float32: log_f32_bf16's log, kept in the
+// accumulator rather than rounded to bf16, times 1 / ln 10 on limbs.
+static inline __attribute__((always_inline)) f32_vec
+log10_f32(f32_vec z, const Limbs<f32_lanes> &inv_ln10, bf16_vec one) {
+  const bf16_vec ln2_hi = bf16_splat(0x3f31);
+  const bf16_vec ln2_mid = bf16_splat(0x3ae4);
+  const bf16_vec ln2_lo = bf16_splat(0x35c0);
+  auto bits = z.cast_to<int32_t>();
+  auto e = aie::downshift(
+      aie::sub(bits, aie::broadcast<int32_t, f32_lanes>(0x3f3504f3)), 23);
+  auto m = aie::sub(bits, aie::upshift(e, 23)).cast_to<float>();
+  auto e_magic = aie::add(e, aie::broadcast<int32_t, f32_lanes>(0x4b400000));
+  bf16_vec ef = aie::add(f32_acc(e_magic.cast_to<float>()), -12582912.0f)
+                    .to_vector<bfloat16>();
+  bf16_vec fh, fm, fl;
+#if AIE_ARCH_AIE2
+  const bf16_vec half = bf16_splat(0x3f00);
+  f32_acc f = aie::msc(aie::msc(f32_acc(m), one, half), one, half);
+#else
+  f32_acc f = aie::msc(f32_acc(m), one, one);
+#endif
+  split3(f, fh, fm, fl, one);
+  f32_acc q =
+      aie::add(f32_acc(aie::broadcast<float, f32_lanes>(0.0f)), log_q[9]);
+  for (int k = 8; k >= 0; k--)
+    q = log_step(q, fh, fm, fl, log_q[k], one);
+  bf16_vec qh, qm, ql;
+  split3(q, qh, qm, ql, one);
+  f32_acc r = aie::mul(ef, ln2_lo);
+  r = aie::mac(r, ef, ln2_mid);
+  r = aie::mac(aie::mac(aie::mac(r, ql, fh), qm, fm), qh, fl);
+  r = aie::mac(aie::mac(aie::mac(r, qm, fh), qh, fm), qh, fh);
+  r = aie::mac(r, ef, ln2_hi);
+  return mul_limbs(bf16_limbs(r), inv_ln10).to_vector<float>();
+}
+
+// Whisper's log-mel features from mel energies x and the clip's largest,
+// *peak: max(log10(max(x, mel_floor)), log10(max(peak, mel_floor)) - decades),
+// plus shift, times scale, each step in float32 as its extractor takes it,
+// rounded once to bf16.
+extern "C" void log10_clamp_f32_bf16(float *restrict x, float *restrict peak,
+                                     bfloat16 *restrict y, int32_t n,
+                                     float mel_floor, float decades,
+                                     float shift, float scale) {
+  event0();
+  aie::rounding_mode saved = aie::swap_rounding(aie::rounding_mode::conv_even);
+  const bf16_vec one = bf16_splat(0x3f80);
+  const Limbs<f32_lanes> inv_ln10 = bf16_limbs(
+      f32_acc(aie::broadcast<float, f32_lanes>(0.43429448190325176f)));
+  const Limbs<f32_lanes> s =
+      bf16_limbs(f32_acc(aie::broadcast<float, f32_lanes>(scale)));
+  const f32_vec lo = aie::broadcast<float, f32_lanes>(mel_floor);
+  const f32_vec top = log10_f32(
+      aie::max(aie::broadcast<float, f32_lanes>(*peak), lo), inv_ln10, one);
+  const f32_vec least = aie::add(f32_acc(top), -decades).to_vector<float>();
+  for (int i = 0; i < LOG_ELEMS; i += f32_lanes) {
+    f32_vec v = aie::max(
+        log10_f32(aie::max(aie::load_v<f32_lanes>(x + i), lo), inv_ln10, one),
+        least);
+    aie::store_v(y + i, mul_limbs(bf16_limbs(aie::add(f32_acc(v), shift)), s)
+                            .to_vector<bfloat16>());
+  }
+  aie::set_rounding(saved);
+  event1();
+}
+#endif
