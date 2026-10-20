@@ -20,8 +20,8 @@
 #include <parameter_scratchpad.h>
 
 int main(int argc, const char *argv[]) {
-  constexpr int IN = 2048;
-  constexpr int OUT = 4096;
+  constexpr int IN_LEN = 2048;
+  constexpr int OUT_LEN = 4096;
   constexpr int TILE = 64;
 
   auto device = xrt::device(0);
@@ -31,13 +31,13 @@ int main(int argc, const char *argv[]) {
   xrt::hw_context context = xrt::hw_context(device, ctx_elf);
   auto kernel = xrt::ext::kernel(context, kernelName);
 
-  xrt::bo bo_in = xrt::ext::bo{device, IN * sizeof(int32_t)};
+  xrt::bo bo_in = xrt::ext::bo{device, IN_LEN * sizeof(int32_t)};
   auto *buf_in = bo_in.map<int32_t *>();
-  for (int i = 0; i < IN; ++i)
+  for (int i = 0; i < IN_LEN; ++i)
     buf_in[i] = i;
   bo_in.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  xrt::bo bo_out = xrt::ext::bo{device, OUT * sizeof(int32_t)};
+  xrt::bo bo_out = xrt::ext::bo{device, OUT_LEN * sizeof(int32_t)};
   auto *buf_out = bo_out.map<int32_t *>();
 
   auto run = xrt::run(kernel);
@@ -49,7 +49,7 @@ int main(int argc, const char *argv[]) {
   bool all_pass = true;
   for (auto [lng, shrt] :
        {std::pair{15, 0}, {0, 15}, {6, 2}, {2, 6}, {15, 15}, {0, 0}, {9, 1}}) {
-    for (int i = 0; i < OUT; ++i)
+    for (int i = 0; i < OUT_LEN; ++i)
       buf_out[i] = -1;
     bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
@@ -65,7 +65,7 @@ int main(int argc, const char *argv[]) {
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     int errors = 0;
-    for (int i = 0; i < OUT; ++i) {
+    for (int i = 0; i < OUT_LEN; ++i) {
       int phase = i / 1024, j = i % 1024;
       int filled = phase == 0   ? 2 * TILE
                    : phase == 1 ? (lng + 1) * TILE
