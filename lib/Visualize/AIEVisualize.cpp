@@ -993,6 +993,10 @@ static std::string runtimeArgumentNodeID(unsigned id) {
   return "runtime_arg_" + std::to_string(id);
 }
 
+/// How far back from the tip an arrowhead's base sits, in inches: ten
+/// points of head at the 0.65 arrowsize the edges are drawn with.
+static constexpr double kArrowLength = 10.0 * 0.65 / 72.0;
+
 static std::string dotCoordinate(double value) { return std::to_string(value); }
 
 static std::string tileNodeID(int col, int row) {
@@ -1663,11 +1667,30 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     auto found = arrowPaths.find(id);
     if (found == arrowPaths.end())
       return;
-    ArrayRef<Point> points = found->second.points;
+    SmallVector<Point> points(found->second.points);
     output << ", pos=\"";
-    if (tipped)
-      output << "e," << layout.pos(points.back().first, points.back().second)
-             << ' ';
+    if (tipped && points.size() >= 4) {
+      // The tip is where the head's point goes; the curve has to stop at its
+      // base, or graphviz has no direction to turn the head to and draws it
+      // back along the line.
+      Point tip = points.back();
+      Point before = points[points.size() - 4];
+      double dx = tip.first - before.first, dy = tip.second - before.second;
+      double length = std::hypot(dx, dy);
+      if (length > 1e-6) {
+        double back = std::min(kArrowLength, length * 0.9);
+        Point base{tip.first - dx / length * back,
+                   tip.second - dy / length * back};
+        points[points.size() - 3] = {
+            before.first + (base.first - before.first) / 3,
+            before.second + (base.second - before.second) / 3};
+        points[points.size() - 2] = {
+            before.first + 2 * (base.first - before.first) / 3,
+            before.second + 2 * (base.second - before.second) / 3};
+        points.back() = base;
+      }
+      output << "e," << layout.pos(tip.first, tip.second) << ' ';
+    }
     for (auto [index, point] : llvm::enumerate(points)) {
       if (index)
         output << ' ';
@@ -1785,7 +1808,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
         StringRef kind =
             port.bundle == AIE::WireBundle::Core ? "port" : "port detail-vias";
         output << " [shape=point, width=0.09, pos=\"" << layout.pos(x, y)
-               << "\", xlabel=\"" << shortPortName(port) << "\", class=\""
+               << "\", color=\"" << palette.boxEdge << "\", xlabel=\""
+               << shortPortName(port) << "\", fontsize=7, fontcolor=\""
+               << palette.tileText << "\", class=\""
                << flowClasses(portFlowGroups[port], kind) << "\"];\n";
       }
     }
