@@ -20,6 +20,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+
 from aie.utils.benchmark import CompletionCores, cpu_wait_us, run_interleaved
 
 N = 2_000

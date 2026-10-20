@@ -5,9 +5,8 @@
 #
 
 # RUN: %pytest %s
-"""Equal-kernel sharing, collision protection and symbol prefixes of aie.iron.kernels.
-
-The factories also get an independent zero kernel each.
+"""Equal-kernel sharing, collision protection, independent zero, and auto-prefix
+on symbol collision for the aie.iron.kernels factory functions.
 
 Sibling files:
   test_kernels_specs.py   — spec-table-driven coverage of every factory
@@ -16,6 +15,7 @@ Sibling files:
 
 import numpy as np
 import pytest
+
 from aie.iron import kernels
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.iron.kernels._common import _make_extern
@@ -61,10 +61,9 @@ def test_kernels_mm_different_params_are_different_kernels():
 
 
 def test_kernels_mm_different_params_have_distinct_object_files():
-    """Defense A: distinct parameterizations write distinct object files.
-
-    This is the precise bug that broke whole_array c_col_maj support.
-    """
+    """Defense A: distinct parameterizations get distinct object_file_names so
+    JIT compilation outputs cannot overwrite each other on disk.
+    This is the precise bug that broke whole_array c_col_maj support."""
     ef_plain = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)
     ef_ccm = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
     assert ef_plain.object_file_name != ef_ccm.object_file_name
@@ -84,10 +83,8 @@ def test_kernels_mm_b_and_c_col_maj_independent():
 
 
 def test_external_function_collision_check_fires():
-    """Defense B: two ExternalFunctions differing only in flags are rejected.
-
-    They have the same (name, object_file_name) but different compile_flags.
-    """
+    """Defense B: directly constructing two ExternalFunctions with the same
+    (name, object_file_name) but different compile_flags is rejected."""
     # Use a unique source_string so we don't collide with real kernels.X
     # registrations from other tests in this session.
     src = "/* dummy */ int sentinel_for_collision_test() { return 0; }"
@@ -148,7 +145,8 @@ def test_inline_defaults_to_ll_artifact_with_merge_mode():
 
 
 def test_object_path_declares_no_link_with_mode():
-    """The default object-linked path emits no mode, as before link_with_mode."""
+    """The default object-linked path emits no mode, so existing IR is
+    byte-identical to what it was before link_with_mode existed."""
     ef = ExternalFunction(
         name="sentinel_object_default_name",
         source_string='extern "C" void sentinel_object_default_name() {}',
@@ -158,11 +156,8 @@ def test_object_path_declares_no_link_with_mode():
 
 
 def test_inline_explicit_ir_object_file_name_is_not_rewritten():
-    """An explicit .ll/.bc name is honored verbatim.
-
-    The caller's artifact name is never silently rewritten, and .bc still means
-    bitcode.
-    """
+    """An explicit .ll/.bc name is honored verbatim -- the caller's artifact
+    name is never silently rewritten, and .bc still means bitcode."""
     ef = ExternalFunction(
         name="sentinel_inline_explicit_bc",
         object_file_name="sentinel_inline_explicit.bc",
@@ -174,11 +169,9 @@ def test_inline_explicit_ir_object_file_name_is_not_rewritten():
 
 
 def test_inline_explicit_non_ir_object_file_name_rejected():
-    """A non-IR explicit name for an inline kernel is rejected.
-
-    It used to be silently rewritten to .ll so aiecc would route it by suffix;
-    routing is explicit metadata now, so the wrong suffix is simply rejected.
-    """
+    """A non-IR explicit name used to be silently rewritten to .ll so aiecc
+    would route it by suffix; routing is explicit metadata now, so the wrong
+    suffix is simply rejected."""
     with pytest.raises(ValueError, match=r"must end in '\.ll'"):
         ExternalFunction(
             name="sentinel_inline_explicit_o",
@@ -239,7 +232,7 @@ def test_zero_initializer_reused_across_matmul_reduction_sizes():
 
 
 def test_zero_arg_count():
-    """Zero kernel takes one arg (the output buffer to zero)."""
+    """zero kernel takes one arg (the output buffer to zero)."""
     assert len(kernels.zero(64 * 32, np.int16).arg_types()) == 1
 
 
@@ -258,7 +251,8 @@ def test_mv_zero_initializer_is_independent_kernel():
 
 
 def test_mm_no_longer_carries_only_flags():
-    """Sanity: kernels.mm no longer adds MATMUL_ONLY/ZERO_ONLY to its flags."""
+    """Sanity: dropping the MATMUL_ONLY/ZERO_ONLY gating means kernels.mm
+    no longer adds those flags to its compile_flags."""
     ef = kernels.mm(
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
@@ -281,13 +275,10 @@ def test_mm_no_longer_carries_only_flags():
 
 
 def test_kernels_mm_parameterized_symbol_is_digest_prefixed():
-    """A parameterized variant's symbol is digest-prefixed.
-
-    The digest is a pure function of the kernel's identity, never of
-    registration order, so a separate build (e.g. the full-model .o cache vs.
-    a per-block design) computes the SAME symbol and .o filename and can reuse
-    the object.
-    """
+    """A parameterized variant's symbol is digest-prefixed and the digest is a
+    pure function of the kernel's identity — never of registration order, so a
+    separate build (e.g. the full-model .o cache vs. a per-block design)
+    computes the SAME symbol and .o filename and can reuse the object."""
     ef = kernels.mm(
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
@@ -297,7 +288,8 @@ def test_kernels_mm_parameterized_symbol_is_digest_prefixed():
 
 
 def test_kernels_mm_two_versions_get_distinct_symbol_names():
-    """Two parameterizations declare two digest-prefixed `func.func` symbols."""
+    """Two parameterizations get two distinct digest-prefixed symbols so MLIR +
+    linker don't see two `func.func @matmul_i16_i16` declarations."""
     ef1 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)
     ef2 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
     assert ef1._name != ef2._name
@@ -308,7 +300,8 @@ def test_kernels_mm_two_versions_get_distinct_symbol_names():
 
 
 def test_kernels_mm_three_versions_all_distinct_names():
-    """Three distinct parameterizations get three digest-prefixed names."""
+    """Three distinct parameterizations get three distinct effective names,
+    each digest-prefixed."""
     efs = [
         kernels.mm(dim_m=64, dim_k=64, dim_n=32, b_col_maj=False, c_col_maj=False),
         kernels.mm(dim_m=64, dim_k=64, dim_n=32, b_col_maj=True, c_col_maj=False),
@@ -320,11 +313,9 @@ def test_kernels_mm_three_versions_all_distinct_names():
 
 
 def test_kernels_mm_object_file_name_is_order_independent():
-    """object_file_name is the suffix form ``{name}_{digest}.o``.
-
-    It embeds the same digest as the symbol prefix, so the on-disk filename a
-    separate build reuses by name is identical regardless of registration order.
-    """
+    """object_file_name is the suffix form ``{name}_{digest}.o`` and embeds the
+    same digest as the symbol prefix — so the on-disk filename a separate build
+    reuses by name is identical regardless of registration order."""
     ef = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
     assert ef._object_file_name == f"matmul_i16_i16_{ef._symbol_prefix}.o"
 
