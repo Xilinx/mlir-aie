@@ -165,17 +165,17 @@ module {
 
 // -----
 
-// The init entry is named `reconfig_init`, so no other symbol of the device may
-// be.
+// With init-entry, `reconfig_init` is reserved in every device, also one that
+// gets no init entry.
 
 module {
   aie.device(npu2_1col) @cfg {
     %t = aie.tile(0, 0)
   }
   aie.device(npu2_1col) @main {
-    // expected-error@+1 {{is named 'reconfig_init', which aie-expand-load-pdi needs for the device's init entry}}
+    // expected-error@+1 {{is named 'reconfig_init', which aie-expand-load-pdi reserves under init-entry}}
     aie.runtime_sequence @reconfig_init(%arg0: memref<16xi32>) {
-      aiex.npu.load_pdi {device_ref = @cfg}
+      aiex.npu.load_pdi {device_ref = @cfg, expand_mode = 0 : i32}
     }
   }
 }

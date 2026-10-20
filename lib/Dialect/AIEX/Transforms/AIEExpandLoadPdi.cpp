@@ -394,20 +394,20 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
 }
 
 // The checks that need no expansion, so the pass fails before it changes the
-// IR. `initEntries` holds the devices that get an init entry.
+// IR.
 static LogicalResult
 verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
                 function_ref<AIEX::ExpandMode(NpuLoadPdiOp)> expandMode,
-                bool teardown, bool initEntry,
-                ArrayRef<AIE::DeviceOp> initEntries) {
+                bool teardown, bool initEntry) {
   if (initEntry && !teardown)
     return module.emitError(
         "aie-expand-load-pdi: init-entry requires teardown");
-  for (AIE::DeviceOp device : initEntries)
-    if (Operation *existing = device.lookupSymbol(initEntrySequenceName))
-      return existing->emitOpError() << "is named '" << initEntrySequenceName
-                                     << "', which aie-expand-load-pdi needs "
-                                        "for the device's init entry";
+  if (initEntry)
+    for (auto device : module.getOps<AIE::DeviceOp>())
+      if (Operation *existing = device.lookupSymbol(initEntrySequenceName))
+        return existing->emitOpError()
+               << "is named '" << initEntrySequenceName
+               << "', which aie-expand-load-pdi reserves under init-entry";
   if (!teardown)
     return success();
   for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
@@ -513,7 +513,7 @@ struct AIEExpandLoadPdiPass
     }
 
     if (failed(verifyExpansion(module, loadPdiOps, expandMode, clTeardown,
-                               clInitEntry, initEntries.getArrayRef())))
+                               clInitEntry)))
       return signalPassFailure();
 
     SmallVector<CtrlPktReload> ctrlPktReloads;
