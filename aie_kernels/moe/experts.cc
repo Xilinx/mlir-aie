@@ -113,11 +113,10 @@ inline AccI silu_mul(aie::vector<float, VI> g, aie::vector<float, VI> u) {
                         aie::broadcast<float, VI>(-80.0f)),
                aie::broadcast<float, VI>(88.0f));
   const aie::vector<float, VI> magic = aie::broadcast<float, VI>(12582912.0f);
-  const aie::vector<float, VI> t =
-      aie::add(mac_limbs(zero_acc(), bf16_limbs(AccI(x)),
-                         splat_limbs(1.44269504f))
-                   .template to_vector<float>(),
-               magic);
+  const aie::vector<float, VI> t = aie::add(
+      mac_limbs(zero_acc(), bf16_limbs(AccI(x)), splat_limbs(1.44269504f))
+          .template to_vector<float>(),
+      magic);
   const aie::vector<int32_t, VI> k = aie::sub(
       t.template cast_to<int32_t>(), aie::broadcast<int32_t, VI>(0x4b400000));
   // k and the two limbs of ln 2's high part are exact in bf16, and so is
@@ -157,7 +156,8 @@ inline AccI silu_mul(aie::vector<float, VI> g, aie::vector<float, VI> u) {
   res = aie::msc(res, dl.mid, ql.mid);
   res = aie::msc(res, dl.lo, ql.hi);
   const AccI q = mac_limbs(AccI(q0), ql, bf16_limbs(res));
-  const AccI gu = mac_limbs(zero_acc(), bf16_limbs(AccI(g)), bf16_limbs(AccI(u)));
+  const AccI gu =
+      mac_limbs(zero_acc(), bf16_limbs(AccI(g)), bf16_limbs(AccI(u)));
   return mac_limbs(zero_acc(), bf16_limbs(gu), bf16_limbs(q));
 }
 
@@ -224,10 +224,10 @@ extern "C" void experts(bfloat16 *restrict row, bfloat16 *restrict tile,
     if (s == gate_up_steps - 1) {
       const Limbs<VI> w = splat_limbs(weight);
       for (uint32_t i = 0; i < I; i += VI) {
-        const Limbs<VI> h = bf16_limbs(mac_limbs(
-            zero_acc(), w,
-            bf16_limbs(silu_mul(aie::load_v<VI>(acc + i),
-                                aie::load_v<VI>(acc + I + i)))));
+        const Limbs<VI> h = bf16_limbs(
+            mac_limbs(zero_acc(), w,
+                      bf16_limbs(silu_mul(aie::load_v<VI>(acc + i),
+                                          aie::load_v<VI>(acc + I + i)))));
         aie::store_v(h_hi + i, h.hi);
         aie::store_v(h_mid + i, h.mid);
         aie::store_v(h_lo + i, h.lo);
@@ -249,8 +249,7 @@ extern "C" void experts(bfloat16 *restrict row, bfloat16 *restrict tile,
     for (uint32_t r = 0; r < T % 4; r++, t += C)
       o[r] += tail_row([&](uint32_t k) {
         const aie::vector<bfloat16, V> v = aie::load_v<V>(t + k);
-        aie::accum<accfloat, V> d =
-            aie::mul(v, aie::load_v<V>(h_hi + c0 + k));
+        aie::accum<accfloat, V> d = aie::mul(v, aie::load_v<V>(h_hi + c0 + k));
         d = aie::mac(d, v, aie::load_v<V>(h_mid + c0 + k));
         return aie::mac(d, v, aie::load_v<V>(h_lo + c0 + k));
       });
