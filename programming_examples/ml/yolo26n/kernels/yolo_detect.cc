@@ -79,8 +79,8 @@ static void top_keep(ForEach for_each, int32_t *__restrict hist,
   });
 }
 
-// x / 80 for 0 <= x < 2**17, without a division libcall.
-static int div80(int x) { return (x * 52429) >> 22; }
+// x / 80 for 0 <= x < 81920, without a division libcall.
+static int div80(int x) { return ((uint32_t)x * 52429u) >> 22; }
 
 // Whether any byte of `word` is v.
 static bool has_byte(uint64_t word, int8_t v) {

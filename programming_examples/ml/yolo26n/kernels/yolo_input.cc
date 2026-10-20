@@ -26,6 +26,8 @@
 #endif
 
 static_assert(YOLO_INPUT_WIDTH % 32 == 0, "rows go 32 pixels at a time");
+static_assert(YOLO_INPUT_MUL >= 1 && YOLO_INPUT_MUL <= 127,
+              "the multiplier is an int8 lane");
 
 extern "C" {
 
