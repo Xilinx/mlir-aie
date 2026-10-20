@@ -2805,6 +2805,52 @@
     "offered": 90,
     "checked": 86
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "39379556786",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39379556786",
+   "date": "2026-10-20T06:17:47+00:00",
+   "commit": {
+    "id": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/1a647f100e50c3f526d5e3c97eaba1327558e0f8",
+    "message": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile the cores (#3933)",
+    "timestamp": "2026-10-20T01:03:35Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "1a647f100e",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "8ee515753dca",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie2",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 765,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 505,
+    "failed": 0,
+    "timed": 196,
+    "timing_failed": 0,
+    "untimed": 309,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 90,
+    "checked": 86
+   }
   }
  ]
 }
