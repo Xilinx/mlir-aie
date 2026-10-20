@@ -157,8 +157,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   std::map<DmaQueueModel::ChannelKey, AIE::DMAStartOp> &
   loopingStartsOf(AIE::DeviceOp device) {
     auto [it, inserted] = loopingStarts.try_emplace(device);
+    auto &starts = it->second;
     if (!inserted)
-      return it->second;
+      return starts;
     for (AIE::DmaBody program : device.getOps<AIE::DmaBody>()) {
       AIE::TileID tile = program.getTileID();
       program->walk([&](AIE::DMAStartOp start) {
@@ -169,13 +170,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         while (bd && visited.insert(bd).second)
           bd = bd->getNumSuccessors() == 1 ? bd->getSuccessor(0) : nullptr;
         if (bd)
-          it->second.try_emplace(
-              {tile.col, tile.row, static_cast<int>(start.getChannelDir()),
-               start.getChannelIndex()},
-              start);
+          starts.try_emplace({tile.col, tile.row,
+                              static_cast<int>(start.getChannelDir()),
+                              start.getChannelIndex()},
+                             start);
       });
     }
-    return it->second;
+    return starts;
   }
 
   // A task pushed behind a static program that never ends never runs. Only
