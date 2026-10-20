@@ -64,7 +64,7 @@ DETECTION_WORDS = 6 * 300
 class Plan:
     """Which tensors each segment reads and hands on, and where each waits in the scratch buffer."""
 
-    def __init__(self, network: Network) -> None:
+    def __init__(self, network: Network, params: Params) -> None:
         self.network = network
         self.producer = {op.dst.name: op for op in network.ops}
         self.inputs = [self.reads(network.ops[a:b]) for a, b in SEGMENTS]
@@ -84,6 +84,12 @@ class Plan:
                 if t is not detections:
                     self.offset[t.name] = self.words
                     self.words += t.row_bytes * t.height // 4
+        # Rows a segment holds in DDR across a whole-map wait (SegmentDesign.spill).
+        for k, (a, b) in enumerate(SEGMENTS):
+            design = SegmentDesign(network, params, network.ops[a:b], self.outputs[k])
+            for _, _, rows in design.spills:
+                self.offset[rows.name] = self.words
+                self.words += rows.row_bytes * rows.height // 4
 
     def reads(self, ops: list[Op]) -> list[Tensor]:
         """The tensors a run of operators reads from outside it, as streams."""
@@ -141,7 +147,7 @@ def yolo26n(
     del params_digest  # keys the compile cache on the parameter file's contents
     network = Network.yolo26n()
     params = Params.load(Path(params_path))
-    plan = Plan(network)
+    plan = Plan(network, params)
     image_ty = np.ndarray[(batch * IMAGE_WORDS,), np.dtype[np.int32]]
     scratch_ty = np.ndarray[(batch * plan.words,), np.dtype[np.int32]]
     det_ty = np.ndarray[(batch * DETECTION_WORDS,), np.dtype[np.int32]]
@@ -228,7 +234,6 @@ def main() -> None:
         parser.error(f"--batch {args.batch} does not divide --n {args.n}")
 
     network = Network.yolo26n()
-    plan = Plan(network)
     if args.synthetic is not None:
         params_path = synthetic_params(
             args.synthetic,
@@ -236,6 +241,8 @@ def main() -> None:
         )
     else:
         params_path = args.params or DATA_DIR / "yolo26n_params.npz"
+    params = Params.load(params_path)
+    plan = Plan(network, params)
     kwargs = dict(
         batch=args.batch,
         params_path=str(params_path),
@@ -263,7 +270,7 @@ def main() -> None:
         images = [
             (p.name, letterbox(p)) for p in sorted(args.images.glob("*.jpg"))[: args.n]
         ]
-    oracle = Oracle(Params.load(params_path), network)
+    oracle = Oracle(params, network)
     scratch = iron.zeros(args.batch * plan.words, dtype=np.int32)
     detections = iron.zeros(args.batch * DETECTION_WORDS, dtype=np.int32)
     session = None

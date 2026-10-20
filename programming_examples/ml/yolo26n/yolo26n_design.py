@@ -30,6 +30,7 @@ from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.iron import Buffer, ExternalFunction, ObjectFifo, TaskGroup, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
+from aie.iron.dataflow.objectfifo import ObjectFifoHandle
 from aie.iron.device import AnyMemTile
 from aie.utils.config import aie_kernels_dir
 from yolo_params import Params
@@ -60,7 +61,7 @@ MEMTILE_LAG_ROWS = 8
 BUFFER_TILE_BYTES = 48 * 1024
 # Runs of operators, as network op index ranges, that one worker computes
 # row by row (see SegmentDesign.fuse): the C3k blocks of model.6, 13, 16
-# and 19, and the Detect head's P4 and P5 branches.
+# and 19, the PSA blocks' FFNs, and the Detect head's P4 and P5 branches.
 FUSED = (
     (24, 28),
     (28, 34),
@@ -68,8 +69,10 @@ FUSED = (
     (82, 88),
     (95, 99),
     (99, 105),
+    (68, 71),
     (112, 116),
     (116, 122),
+    (138, 141),
     (151, 154),
     (154, 156),
     (156, 159),
@@ -301,6 +304,9 @@ class SegmentDesign:
         # slices: already the output of a link, so a lagging consumer's rows
         # wait in buffering workers instead of a memtile stage.
         self.joined: set[str] = set()
+        # Streams held through DDR: the shim's drain of the source, the fifo
+        # filled back, and the rows' shape for the host buffer.
+        self.spills: list[tuple[ObjectFifoHandle, ObjectFifo, Tensor]] = []
         index = {op.dst.name: i for i, op in enumerate(network.ops)}
         mine = {index[op.dst.name] for op in ops}
         fused = [(a, b) for a, b in fused if set(range(a, b)) <= mine]
@@ -337,22 +343,38 @@ class SegmentDesign:
         self.in_fifos = list(dict.fromkeys(f.fifo for f in self.fills))
 
     def handles(self) -> list:
-        """The runtime sequence's fifo handles: every filled fifo, then every drained one."""
-        return [fifo.prod() for fifo in self.in_fifos] + [
-            self.out_fifos[t.name].cons() for t in self.outputs
-        ]
+        """The runtime sequence's fifo handles: every filled fifo, every drained one, then each spill's drain and fill."""
+        return (
+            [fifo.prod() for fifo in self.in_fifos]
+            + [self.out_fifos[t.name].cons() for t in self.outputs]
+            + [h for drain, back, _ in self.spills for h in (drain, back.prod(depth=2))]
+        )
 
     def transfer(self, handles: Sequence, locate: Callable[[Tensor], tuple]) -> None:
         """The run's host transfers, inside its runtime sequence.
 
         `handles` are `handles()`' as the sequence received them; `locate`
         gives each tensor's host buffer, its size in int32 words and the
-        tensor's word offset in it. Drains are issued first; then each fill
+        tensor's word offset in it; a spill's rows are the tensor it carries.
+        Drains are issued first, then each spill's drain; then each fill
         step's transfers, every step but the last finishing before the next
-        starts.
+        starts; then each spill's fill, once its drain is done.
         """
         filled = dict(zip(self.in_fifos, handles))
         drains = TaskGroup()
+        spilled = handles[len(self.in_fifos) + len(self.outputs) :]
+        refills = []
+        for (_, _, rows), drain, back in zip(self.spills, spilled[0::2], spilled[1::2]):
+            buffer, total, offset = locate(rows)
+            tap = TensorAccessPattern(
+                (total,),
+                offset,
+                [1, 1, 1, rows.row_bytes * rows.height // 4],
+                [0, 0, 0, 1],
+            )
+            group = TaskGroup()
+            drain.drain(buffer, tap, wait=True, group=group)
+            refills.append((group, back, buffer, tap))
         for tensor, handle in zip(self.outputs, handles[len(self.in_fifos) :]):
             buffer, total, offset = locate(tensor)
             size = self.host_bytes(tensor) // 4
@@ -373,9 +395,15 @@ class SegmentDesign:
                 )
             if step != steps[-1]:
                 fills.finish()
+        back_in = TaskGroup() if refills else None
+        for group, back, buffer, tap in refills:
+            group.finish()
+            back.fill(buffer, tap, wait=True, group=back_in)
         drains.finish()
         if fills is not None:
             fills.finish()
+        if back_in is not None:
+            back_in.finish()
 
     def host_bytes(self, tensor: Tensor) -> int:
         """How many bytes `tensor` takes in a host buffer."""
@@ -492,7 +520,13 @@ class SegmentDesign:
         )
         if base is None or base[1] < lag:
             source, held = (self.fifo(tensor), 0) if base is None else base
-            if (
+            if lag >= tensor.height:
+                # The consumer waits for the whole map: hold it in DDR.
+                staged = self.spill(
+                    self.fifo(tensor),
+                    Tensor(f"{tensor.name}/spill", *tensor.shape),
+                )
+            elif (
                 not stages
                 and lag <= MEMTILE_LAG_ROWS
                 and tensor.name not in self.joined
@@ -508,6 +542,18 @@ class SegmentDesign:
             base = stages[-1]
         staged = base[0]
         return staged.cons(depth=window)
+
+    def spill(self, source: ObjectFifo, rows: Tensor) -> ObjectFifo:
+        """`source`'s rows held in DDR: drained as they come, filled back once all have.
+
+        For a consumer that waits for the whole map anyway, as one across an
+        attention barrier does: no tile holds them, and the runtime sequence
+        starts the fill once the drain is done. `rows` names the stream and
+        gives its row size and height for the host buffer.
+        """
+        back = ObjectFifo(row(rows.row_bytes), name=f"spill{len(self.spills)}")
+        self.spills.append((source.cons(depth=2), back, rows))
+        return back
 
     def buffer(
         self, source: ObjectFifo, size: int, height: int, lag: int
@@ -1119,28 +1165,120 @@ class SegmentDesign:
                 arg(("copy", size), self.copier(Part(tensors[name], 0, size)))
         for name, rows in rings.items():
             arg(("ring", name), Buffer(row(rows * kept[name])))
+        # A conv's weights stream from a memtile a chunk of output channels at
+        # a time when the run's rows and other weights leave too little room:
+        # the largest set only, as a core has two input channels.
+        convs = [op for op, _ in steps if isinstance(op, Conv)]
+        weights_of = {
+            op.name: pack_weights(op, p.of(op.name, "weight")) for op in convs
+        }
+        held = {
+            op.name: weights_of[op.name].nbytes + 4 * op.dst.channels8 + 256 * op.act
+            for op in convs
+        }
+        free = (
+            L1_BYTES
+            - L1_RESERVE
+            - sum(rows * kept[name] for name, rows in rings.items())
+            - sum(
+                self.l1_rows(tensors[name], depths[name], 1) * tensors[name].row_bytes
+                for name in external
+            )
+            - sum(2 * tensors[name].row_bytes for name in outs)
+            - sum(
+                op.src.row_bytes
+                for op, ((parts, _),) in (
+                    (o, i) for o, i in steps if isinstance(o, Conv)
+                )
+                if len(parts) > 1
+            )
+            - sum(held.values())
+        )
+        streamed: dict[str, int] = {}
+        if free < 0:
+            if len(external) > 1:
+                raise NotImplementedError(
+                    f"{group[0].name}: two inputs leave no channel for its weights"
+                )
+            big = max(
+                (op for op in convs if op.groups == 1), key=lambda op: held[op.name]
+            )
+            oc = big.dst.channels8
+            room = free + held[big.name] - 256 * big.act
+            per_channel = weights_of[big.name].nbytes // oc + 4
+            chunk = next(
+                (
+                    c
+                    for c in range(oc - 8, 0, -8)
+                    if oc % c == 0 and 2 * per_channel * c <= room
+                ),
+                0,
+            )
+            if not chunk:
+                raise ValueError(
+                    f"{group[0].name}: no chunk of {big.name}'s weights fits beside its rows"
+                )
+            streamed[big.name] = chunk
         calls = {}
+        # Per streamed conv: its chunks, each chunk's weight bytes, its channels.
+        streams: dict[str, tuple[int, int, int]] = {}
         for op, inputs in steps:
             match op:
                 case Conv():
                     width, ic, oc = op.src.width, op.src.channels8, op.dst.channels8
-                    weights = pack_weights(op, p.of(op.name, "weight"))
+                    weights = weights_of[op.name]
                     bias = np.zeros(oc, np.int32)
                     bias[: op.dst.channels] = p.of(op.name, "bias")
-                    consts = [Buffer(initial_value=weights), Buffer(initial_value=bias)]
-                    if op.act:
-                        consts.append(
-                            Buffer(initial_value=p.of(op.name, "table").astype(np.int8))
+                    table = (
+                        [Buffer(initial_value=p.of(op.name, "table").astype(np.int8))]
+                        if op.act
+                        else []
+                    )
+                    chunk = streamed.get(op.name, oc)
+                    if chunk == oc:
+                        consts = [
+                            Buffer(initial_value=weights),
+                            Buffer(initial_value=bias),
+                            *table,
+                        ]
+                    else:
+                        per = weights.nbytes // (oc // chunk)
+                        packed = np.concatenate(
+                            [
+                                np.concatenate(
+                                    [
+                                        weights[c * per : (c + 1) * per],
+                                        bias[c * chunk : (c + 1) * chunk].view(np.int8),
+                                    ]
+                                )
+                                for c in range(oc // chunk)
+                            ]
                         )
+                        wts = ObjectFifo(
+                            np.ndarray[(packed.size,), np.dtype[np.int8]],
+                            depth=1,
+                            consumer_obj_type=np.ndarray[
+                                (per + 4 * chunk,), np.dtype[np.int8]
+                            ],
+                            init_values=[packed],
+                        )
+                        wts.prod().endpoint = ObjectFifoEndpoint(AnyMemTile.copy())
+                        consts = [wts.cons(depth=2), *table]
+                        streams[op.name] = (oc // chunk, per, chunk)
                     if op.kernel == 1:
                         k = kernels.conv2dk1_i8(
-                            width, ic, oc, bias=True, table=op.act, rounding="conv_even"
+                            width,
+                            ic,
+                            chunk,
+                            bias=True,
+                            table=op.act,
+                            rounding="conv_even",
                         )
                     elif op.groups == 1:
                         k = kernels.conv2dk3(
                             width,
                             ic,
-                            oc,
+                            chunk,
                             bias=True,
                             table=op.act,
                             stride=1,
@@ -1156,9 +1294,18 @@ class SegmentDesign:
                         for part in parts:
                             arg(("copy", part.size), self.copier(part))
                     scalars = (
-                        [width, ic, oc, int(p.of(op.name, "shift"))]
+                        [width, ic, chunk, int(p.of(op.name, "shift"))]
                         if op.kernel == 1
-                        else [width, ic, oc, 3, 3, None, int(p.of(op.name, "shift")), 0]
+                        else [
+                            width,
+                            ic,
+                            chunk,
+                            3,
+                            3,
+                            None,
+                            int(p.of(op.name, "shift")),
+                            0,
+                        ]
                     )
                 case Add():
                     sa, sb, so = (
@@ -1197,6 +1344,25 @@ class SegmentDesign:
                     (r % rings[name]) * kept[name] + offset - span[name][0],
                     length,
                 )
+
+            def convolve(op, k, rows, consts, target, scalars):
+                if op.name not in streams:
+                    k(*rows, *consts, target, *scalars)
+                    return
+                chunks, per, chunk = streams[op.name]
+                size = op.dst.width * chunk
+                wts, *rest = consts
+                for c in range(chunks):
+                    wc = wts.acquire(1)
+                    k(
+                        *rows,
+                        view(wc, 0, per),
+                        view(wc, per, chunk, np.int32),
+                        *rest,
+                        view(target, c * size, size),
+                        *scalars,
+                    )
+                    wts.release(1)
 
             def step(s, steady):
                 arrived.clear()
@@ -1238,7 +1404,14 @@ class SegmentDesign:
                                 slot(part.source.name, r, part)
                                 for r in (above, y, below)
                             ]
-                            k(*rows, *consts, target, *scalars[:5], check, *scalars[6:])
+                            convolve(
+                                op,
+                                k,
+                                rows,
+                                consts,
+                                target,
+                                [*scalars[:5], check, *scalars[6:]],
+                            )
                         case Conv():
                             ((parts, _),) = inputs
                             if len(parts) == 1:
@@ -1252,7 +1425,7 @@ class SegmentDesign:
                                         view(x, offset, part.size),
                                     )
                                     offset += part.size
-                            k(x, *consts, target, *scalars)
+                            convolve(op, k, [x], consts, target, scalars)
                         case Add():
                             ((pa,), _), ((pb,), _) = inputs
                             k(
@@ -1430,8 +1603,10 @@ class SegmentDesign:
                     names=[f"{self.fifo(out).name}_rows{j}" for j in range(2)],
                 )
             )
-            # Queries wait for every key in a tile of their own.
-            queries = self.buffer(pieces[2 * h], kd * width, height, height)
+            # Queries wait for every key, in DDR.
+            queries = self.spill(
+                pieces[2 * h], Tensor(f"{op.name}/head{h}/queries", kd, height, width)
+            )
             for j, half in enumerate(halves):
 
                 def body(queries, keys, out, k, load, table, kt, v, j=j):
