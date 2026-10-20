@@ -15,7 +15,11 @@ A layer runs as units, each taking one activation and giving one output
 object per core. Without fusion every projection is a unit. With `FUSE_QKV`
 q, k and v share one activation and form one unit whose per-core output is
 that core's KV group as llama_qkv_combine lays it out (`COMB_BYTES`, see
-kernels/llama_gemv_array.cc).
+kernels/llama_gemv_array.cc). With `FUSE_RESID` the o and down units also add
+the residual that rides in their activation (`RESID_OFF`) and send their
+rows to two 4-way joins instead of the host; a glue core next to the joins
+finishes llama_rescale_add_D (`RESID_OUT_BYTES` per unit, see
+test_gemv_array.py).
 """
 
 import argparse
@@ -61,6 +65,11 @@ PROJECTIONS = {
 }
 LAYER = "qkvogud"
 COMB_BYTES = 1056
+RESID_OFF = 8256
+RESID_ACT_BYTES = 10368
+RESID_BLOCK = 256 * 4 + 64
+RESID_OUT_BYTES = D + 8
+RESID_UNITS = "od"
 
 
 def layer_units(order, fuse_qkv):
@@ -118,20 +127,28 @@ def build(
     GATE_INV: CompileTime[float] = 20.0,
     MEMTILE_DEPTH: CompileTime[int] = 0,
     FUSE_QKV: CompileTime[bool] = False,
+    FUSE_RESID: CompileTime[bool] = False,
 ):
     units = layer_units(ORDER, FUSE_QKV)
+    resid_units = [u for u in units if FUSE_RESID and u in RESID_UNITS]
+    host_units = [u for u in units if u not in resid_units]
     n_slots = lane_slots(ORDER)
     lane_bytes = n_slots * SLOT
     w_total = N_CORES * N_LAYERS * lane_bytes
-    n_steps = N_LAYERS * len(units)
-    act_total = n_steps * ACT_BYTES
+    n_acts = N_LAYERS * len(units)
+    n_steps = N_LAYERS * len(host_units)
+    n_res = N_LAYERS * len(resid_units)
+    act_bytes = RESID_ACT_BYTES if FUSE_RESID else ACT_BYTES
+    act_total = n_acts * act_bytes
     out_total = N_CORES * n_steps * OUT_BYTES
 
     t_slot = _i8(SLOT)
-    of_act = ObjectFifo(_i8(ACT_BYTES), depth=2, name="act")
+    t_act = _i8(act_bytes)
+    of_act = ObjectFifo(t_act, depth=2, name="act")
     of_w = [ObjectFifo(t_slot, depth=2, name=f"w{c}") for c in range(N_CORES)]
     of_out = [
-        ObjectFifo(_i8(OUT_BYTES), depth=2, name=f"out{c}") for c in range(N_CORES)
+        ObjectFifo(_i8(OUT_BYTES), depth=2, name=f"out{c}")
+        for c in range(N_CORES if host_units else 0)
     ]
     w_cons = [
         (
@@ -152,18 +169,37 @@ def build(
 
     KO = llama_kernels.gemv_array()
     k_f2 = KO.bind(
-        "llama_gemv_array_k2048_f32", [_i8(ACT_BYTES), t_slot, _i8(OUT_BYTES), np.int32]
+        "llama_gemv_array_k2048_f32", [t_act, t_slot, _i8(OUT_BYTES), np.int32]
     )
     k_f8 = KO.bind(
-        "llama_gemv_array_k8192_f32", [_i8(ACT_BYTES), t_slot, _i8(OUT_BYTES), np.int32]
+        "llama_gemv_array_k8192_f32", [t_act, t_slot, _i8(OUT_BYTES), np.int32]
     )
     k_i8 = KO.bind(
         "llama_gemv_array_k2048_i8",
-        [_i8(ACT_BYTES), t_slot, _i8(OUT_BYTES), np.int32, np.float32],
+        [t_act, t_slot, _i8(OUT_BYTES), np.int32, np.float32],
     )
-    fused = (
-        [KO.bind("llama_gemv_array_qkv_comb", [_i8(OUT_BYTES), _i8(OUT_BYTES)])]
-        if FUSE_QKV
+    k_comb = KO.bind("llama_gemv_array_qkv_comb", [_i8(OUT_BYTES), _i8(OUT_BYTES)])
+    k_resid = KO.bind(
+        "llama_gemv_array_resid_partial",
+        [t_act, _i8(OUT_BYTES), _i8(RESID_BLOCK), np.int32],
+    )
+    k_final = KO.bind(
+        "llama_gemv_array_rescale_finalize",
+        [_i8(4 * RESID_BLOCK), _i8(4 * RESID_BLOCK), _i8(RESID_OUT_BYTES)],
+    )
+    of_rlo = ObjectFifo(_i8(4 * RESID_BLOCK), depth=1, name="rlo")
+    of_rhi = ObjectFifo(_i8(4 * RESID_BLOCK), depth=1, name="rhi")
+    of_res = ObjectFifo(_i8(RESID_OUT_BYTES), depth=1, name="res")
+    blk_offsets = [i * RESID_BLOCK for i in range(4)]
+    blk_types = [_i8(RESID_BLOCK)] * 4
+    blk_fifos = (
+        of_rlo.prod().join(
+            blk_offsets, obj_types=blk_types, names=[f"rblk{c}" for c in range(4)]
+        )
+        + of_rhi.prod().join(
+            blk_offsets, obj_types=blk_types, names=[f"rblk{c}" for c in range(4, 8)]
+        )
+        if FUSE_RESID
         else []
     )
 
@@ -179,22 +215,28 @@ def build(
                 kf2(a, w, o, _i32(s) + slot_base)
             c_w.release(1)
 
-    def w_core(c_act, c_w, c_out, kf2, kf8, ki8, *qkv):
+    def w_core(c_act, c_w, c_out, kf2, kf8, ki8, kcomb, kres, scratch, core, *blk):
         for _ in range_(N_LAYERS):
             for unit in units:
                 a = c_act.acquire(1)
                 if unit == "qkv":
-                    kcomb, scratch = qkv
                     # q, k and v land at fp32 offsets 0, 256 and 320 of scratch.
                     gemv("q", a, c_w, scratch, kf2, kf8, ki8)
                     gemv("k", a, c_w, scratch, kf2, kf8, ki8, 64)
                     gemv("v", a, c_w, scratch, kf2, kf8, ki8, 80)
                     o = c_out.acquire(1)
                     kcomb(scratch, o)
+                    c_out.release(1)
+                elif unit in resid_units:
+                    (c_blk,) = blk
+                    gemv(unit, a, c_w, scratch, kf2, kf8, ki8)
+                    b = c_blk.acquire(1)
+                    kres(a, scratch, b, core)
+                    c_blk.release(1)
                 else:
                     o = c_out.acquire(1)
                     gemv(unit, a, c_w, o, kf2, kf8, ki8)
-                c_out.release(1)
+                    c_out.release(1)
                 c_act.release(1)
 
     workers = [
@@ -203,35 +245,77 @@ def build(
             [
                 of_act.cons(),
                 w_cons[c],
-                of_out[c].prod(),
+                of_out[c].prod() if host_units else None,
                 k_f2,
                 k_f8,
                 k_i8,
-                *fused,
-                *([Buffer(_i8(OUT_BYTES), name=f"qkv_fp{c}")] if FUSE_QKV else []),
+                k_comb,
+                k_resid,
+                (
+                    Buffer(_i8(OUT_BYTES), name=f"scratch{c}")
+                    if FUSE_QKV or FUSE_RESID
+                    else None
+                ),
+                c,
+                *([blk_fifos[c].prod()] if FUSE_RESID else []),
             ],
             tile=Tile(*CORE_TILES[c]),
         )
         for c in range(N_CORES)
     ]
 
-    def sequence(wblob, acts, out, *eps):
+    def w_glue(c_lo, c_hi, c_res, kfin):
+        for _ in range_(n_res):
+            lo = c_lo.acquire(1)
+            hi = c_hi.acquire(1)
+            r = c_res.acquire(1)
+            kfin(lo, hi, r)
+            c_res.release(1)
+            c_hi.release(1)
+            c_lo.release(1)
+
+    if FUSE_RESID:
+        workers.append(
+            Worker(w_glue, [of_rlo.cons(), of_rhi.cons(), of_res.prod(), k_final])
+        )
+
+    def sequence(wblob, acts, out, res, *eps):
         w_prods = eps[:N_CORES]
         act_prod = eps[N_CORES]
-        out_conss = eps[N_CORES + 1 :]
+        out_conss = eps[N_CORES + 1 : N_CORES + 1 + len(of_out)]
         out_tg = TaskGroup()
-        for c in range(N_CORES):
-            out_conss[c].drain(
-                out,
+        if n_steps:
+            for c in range(N_CORES):
+                out_conss[c].drain(
+                    out,
+                    tap=contiguous_tap(
+                        out_total, c * n_steps * OUT_BYTES, n_steps, OUT_BYTES, 512
+                    ),
+                    wait=True,
+                    group=out_tg,
+                )
+        if n_res:
+            eps[N_CORES + 1 + len(of_out)].drain(
+                res,
                 tap=contiguous_tap(
-                    out_total, c * n_steps * OUT_BYTES, n_steps, OUT_BYTES, 512
+                    n_res * RESID_OUT_BYTES,
+                    0,
+                    n_res,
+                    RESID_OUT_BYTES,
+                    RESID_OUT_BYTES // 8,
                 ),
                 wait=True,
                 group=out_tg,
             )
         act_prod.fill(
             acts,
-            tap=contiguous_tap(act_total, 0, n_steps, ACT_BYTES, 820),
+            tap=contiguous_tap(
+                act_total,
+                0,
+                n_acts,
+                act_bytes,
+                next(i for i in range(1023, 0, -1) if act_bytes % i == 0),
+            ),
             group=out_tg,
         )
         layer_tgs = [TaskGroup() for _ in range(N_LAYERS)]
@@ -260,10 +344,12 @@ def build(
         [
             _i8(w_total),
             _i8(act_total),
-            _i8(out_total),
+            _i8(max(out_total, 1)),
+            _i8(max(n_res * RESID_OUT_BYTES, 1)),
             *[of.prod() for of in of_w],
             of_act.prod(),
             *[of.cons() for of in of_out],
+            *([of_res.cons()] if FUSE_RESID else []),
         ],
     )
     return Program(NPU2(), rt, workers=workers).resolve_program()
@@ -392,6 +478,7 @@ def add_config_args(p):
     p.add_argument("--gate-inv", type=float, default=20.0)
     p.add_argument("--memtile-depth", type=int, default=0)
     p.add_argument("--fuse-qkv", action="store_true")
+    p.add_argument("--fuse-resid", action="store_true")
 
 
 def compile_kwargs(opts):
@@ -401,6 +488,7 @@ def compile_kwargs(opts):
         GATE_INV=opts.gate_inv,
         MEMTILE_DEPTH=opts.memtile_depth,
         FUSE_QKV=opts.fuse_qkv,
+        FUSE_RESID=opts.fuse_resid,
     )
 
 

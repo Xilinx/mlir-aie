@@ -17,6 +17,11 @@ Interfaces, per layer unit and core c (one output object of OUT_BYTES each):
   requanted as llama_q_requant does (256 B body, 4 x 8 B scale tail), then
   KV head c's k and v fp32 rows (256 B each), then 256 B reserved for S2's
   RoPE cos/sin (zeros). RoPE itself is not applied yet.
+- `--fuse-resid`, the o and down units: every activation object grows to
+  `RESID_ACT_BYTES` and carries the residual int8[2048] plus its fp32 scale
+  at `RESID_OFF`. Those units send no rows to the host; the glue core
+  returns llama_rescale_add_D's output (`RESID_OUT_BYTES`: int8[2048], the
+  new scale, 4 zero bytes) per unit, in unit order.
 """
 
 import argparse
@@ -35,6 +40,10 @@ from aie2_gemv_array import (
     N_CORES,
     OUT_BYTES,
     PROJECTIONS,
+    RESID_ACT_BYTES,
+    RESID_OFF,
+    RESID_OUT_BYTES,
+    RESID_UNITS,
     SLOT,
     D,
     build,
@@ -132,6 +141,17 @@ def comb_reference(layer_w, act, act_scale, core):
             np.zeros(256, np.int8),
         ]
     )
+
+
+def rescale_reference(proj, resid, resid_scale):
+    """llama_rescale_add_D: x = resid * scale + proj, requanted with its own absmax scale."""
+    x = aie_fp.aie_add(
+        (resid.astype(np.float32) * np.float32(resid_scale)).astype(np.float32), proj
+    )
+    absmax = np.float32(max(float(np.abs(x).max()), 1e-12))
+    scale = np.float32(absmax * np.float32(1.0 / 127.0))
+    body = aie_fp.round_to_i8((x * aie_fp.sw_recip(scale)).astype(np.float32))
+    return np.concatenate([body, np.array([scale, 0.0], np.float32).view(np.int8)])
 
 
 def topk_reference(logits, gidx_base, kset):
@@ -235,6 +255,7 @@ def main():
     p.add_argument("--gate-inv", type=float, default=20.0)
     p.add_argument("--memtile-depth", type=int, default=0)
     p.add_argument("--fuse-qkv", action="store_true")
+    p.add_argument("--fuse-resid", action="store_true")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--time", action="store_true")
     p.add_argument("--no-check", action="store_true")
@@ -264,19 +285,33 @@ def main():
             wblob[off : off + lane_bytes] = pack_lane(lw, order, c)
 
     units = layer_units(order, opts.fuse_qkv)
+    resid_units = [u for u in units if opts.fuse_resid and u in RESID_UNITS]
+    act_bytes = RESID_ACT_BYTES if opts.fuse_resid else ACT_BYTES
     acts = []
     scales = []
+    resids = []
     for li in range(n_layers):
         for unit in units:
             a, s = make_act(rng, PROJECTIONS[unit[0]][0])
+            a = np.concatenate([a, np.zeros(act_bytes - ACT_BYTES, np.int8)])
+            if unit in resid_units:
+                r = rng.integers(-127, 128, size=D, dtype=np.int8)
+                rs = np.float32(rng.random() * 0.09 + 0.01)
+                a[RESID_OFF : RESID_OFF + D] = r
+                a[RESID_OFF + D : RESID_OFF + D + 4] = np.frombuffer(
+                    rs.tobytes(), np.int8
+                )
+                resids.append((r, rs))
             acts.append(a)
             scales.append(s)
     acts_blob = np.concatenate(acts)
-    n_steps = n_layers * len(units)
+    n_steps = n_layers * (len(units) - len(resid_units))
+    n_res = n_layers * len(resid_units)
 
     w_t = iron.tensor(wblob, dtype=np.int8)
     a_t = iron.tensor(acts_blob, dtype=np.int8)
-    o_t = iron.zeros([N_CORES * n_steps * OUT_BYTES], dtype=np.int8)
+    o_t = iron.zeros([max(N_CORES * n_steps * OUT_BYTES, 1)], dtype=np.int8)
+    r_t = iron.zeros([max(n_res * RESID_OUT_BYTES, 1)], dtype=np.int8)
     npu = design_kernel(
         build,
         opts,
@@ -285,21 +320,39 @@ def main():
         GATE_INV=opts.gate_inv,
         MEMTILE_DEPTH=opts.memtile_depth,
         FUSE_QKV=opts.fuse_qkv,
+        FUSE_RESID=opts.fuse_resid,
     )
-    buffers = [w_t, a_t, o_t]
+    buffers = [w_t, a_t, o_t, r_t]
     _h, result = DefaultNPURuntime.load_and_run(npu, buffers)
 
     ok = True
     if not opts.no_check:
         o_t.to("cpu")
-        out = o_t.numpy().reshape(N_CORES, n_steps, OUT_BYTES)
+        r_t.to("cpu")
+        out = o_t.numpy()[: N_CORES * n_steps * OUT_BYTES].reshape(
+            N_CORES, n_steps, OUT_BYTES
+        )
+        res = r_t.numpy()[: n_res * RESID_OUT_BYTES].reshape(n_res, RESID_OUT_BYTES)
         step = 0
+        act_i = 0
+        res_i = 0
         for li, lw in enumerate(layers):
             for proj in units:
+                ai = act_i
+                act_i += 1
+                if proj in resid_units:
+                    fp = reference(lw, proj, acts[ai], scales[ai], opts.gate_inv)
+                    ref = rescale_reference(fp, *resids[res_i])
+                    bad = int(np.count_nonzero(res[res_i] != ref))
+                    tag = "BIT-EXACT" if bad == 0 else f"MISMATCH {bad} B"
+                    print(f"layer {opts.layers[li]:2d} {proj}+rescale_add: {tag}")
+                    ok &= bad == 0
+                    res_i += 1
+                    continue
                 if proj == "qkv":
                     ref = np.stack(
                         [
-                            comb_reference(lw, acts[step], scales[step], c)
+                            comb_reference(lw, acts[ai], scales[ai], c)
                             for c in range(N_CORES)
                         ]
                     )
@@ -310,7 +363,7 @@ def main():
                     step += 1
                     continue
                 k, rows, kind = PROJECTIONS[proj]
-                ref = reference(lw, proj, acts[step], scales[step], opts.gate_inv)
+                ref = reference(lw, proj, acts[ai], scales[ai], opts.gate_inv)
                 rc = rows // N_CORES
                 nbytes = rc * (1 if kind == "i8" else 4)
                 dev = out[:, step, :nbytes].reshape(-1)

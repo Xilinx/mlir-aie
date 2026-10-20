@@ -41,17 +41,6 @@ static inline float bits_to_float(int32_t bits) {
   return f;
 }
 
-// x_fp = resid_i8 * resid_scale + proj, kVec lanes at a time: the multiply
-// and the add round separately, as the scalar form does, whose `+` is vadd.f.
-static inline ::aie::vector<float, kVec>
-vec_residual_sum(const int8_t *restrict resid, const float *restrict proj,
-                 ::aie::vector<float, kVec> resid_scale_v) {
-  return ::aie::add(
-      vec_mul_rne(::aie::to_float<float>(::aie::load_v<kVec>(resid)),
-                  resid_scale_v),
-      ::aie::load_v<kVec>(proj));
-}
-
 // Software fp32 reciprocal (see llama_flowkv.cc for why Peano's `/` needs
 // this workaround); identical to the other kernels' sw_recip so the numpy
 // golden and device target share the function.

@@ -79,6 +79,17 @@ vec_round_to_i8(::aie::vector<float, kN> v) {
   return acc.template to_vector<int8>(0);
 }
 
+// x_fp = resid_i8 * resid_scale + proj, 16 lanes at a time: the multiply
+// and the add round separately, as the scalar form does, whose `+` is vadd.f.
+static inline ::aie::vector<float, 16>
+vec_residual_sum(const int8_t *restrict resid, const float *restrict proj,
+                 ::aie::vector<float, 16> resid_scale_v) {
+  return ::aie::add(
+      vec_mul_rne(::aie::to_float<float>(::aie::load_v<16>(resid)),
+                  resid_scale_v),
+      ::aie::load_v<16>(proj));
+}
+
 // sw_recip (see llama_flowkv.cc) on kN lanes: the same seed and Newton
 // steps, with the scalar form's soft-float products as vec_mul_rne and its
 // `-` as the same vsub.f.
