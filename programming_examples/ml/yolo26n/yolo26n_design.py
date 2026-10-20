@@ -1691,7 +1691,13 @@ class SegmentDesign:
         self.fifos[op.dst.name] = ObjectFifo(
             np.ndarray[(6 * op.dst.height,), np.dtype[np.int32]], name="detections"
         )
-        flags = [f"-DYOLO_DETECT_CHUNK={chunk}"]
+        # How far below an anchor's highest logit a higher score can lie: max
+        # looks only that far when the highest's rank is not its peak.
+        reach = 0
+        for level in rank:
+            for m in np.nonzero(level != np.maximum.accumulate(level))[0]:
+                reach = max(reach, int(m - np.nonzero(level[:m] > level[m])[0].min()))
+        flags = [f"-DYOLO_DETECT_CHUNK={chunk}", f"-DYOLO_DETECT_REACH={reach}"]
         best_t = np.ndarray[(anchors,), np.dtype[np.int16]]
         ranks_t = np.ndarray[(2 * 768,), np.dtype[np.int16]]
         words_t = np.ndarray[(768,), np.dtype[np.int32]]

@@ -25,6 +25,10 @@
 #ifndef YOLO_DETECT_CHUNK
 #error "YOLO_DETECT_CHUNK (anchors per record chunk) must be defined"
 #endif
+#ifndef YOLO_DETECT_REACH
+#error                                                                         \
+    "YOLO_DETECT_REACH (how far below a logit a higher score lies) must be defined"
+#endif
 
 constexpr int CLASSES = 80;
 constexpr int KEEP = 300;
@@ -78,6 +82,13 @@ static void top_keep(ForEach for_each, int32_t *__restrict hist,
 // x / 80 for 0 <= x < 2**17, without a division libcall.
 static int div80(int x) { return (x * 52429) >> 22; }
 
+// Whether any byte of `word` is v.
+static bool has_byte(uint64_t word, int8_t v) {
+  const uint64_t ones = 0x0101010101010101ull;
+  const uint64_t x = word ^ (uint8_t(v) * ones);
+  return ((x - ones) & ~x & (ones << 7)) != 0;
+}
+
 static int popcount8(uint32_t byte) {
   byte = byte - ((byte >> 1) & 0x55);
   byte = (byte & 0x33) + ((byte >> 2) & 0x33);
@@ -87,11 +98,11 @@ static int popcount8(uint32_t byte) {
 extern "C" {
 
 // best: per anchor, the rank of its best class score. ONNX Runtime's
-// float32 sigmoid is not monotonic
-// where it saturates, so the scores' ranks, not the logits, are compared.
-// `rank` holds each level's ranks of the 256 logits, then their peaks (the
-// highest rank of any logit up to each): an anchor's highest logit has its
-// best score when its rank is the peak, otherwise every class is ranked.
+// float32 sigmoid is not monotonic where it saturates, so the scores'
+// ranks, not the logits, are compared. `rank` holds each level's ranks of
+// the 256 logits, then their peaks (the highest rank of any logit up to
+// each): an anchor's highest logit has its best score when its rank is the
+// peak.
 void yolo_detect_max(const int8_t *__restrict records,
                      const int16_t *__restrict rank, int16_t *__restrict best,
                      int32_t chunk) {
@@ -121,18 +132,24 @@ void yolo_detect_max(const int8_t *__restrict records,
     out[a] = ranks[m];
     ranked |= uint32_t(ranks[m] != peaks[m]) << a;
   }
-  // The anchors whose highest logit is not their best score: every class.
+  // The anchors whose highest logit m is not their best score: a higher
+  // score lies at most YOLO_DETECT_REACH logits below m (the design measured
+  // it from the tables), so only those logits are looked for.
+  const uint64_t *words = reinterpret_cast<const uint64_t *>(records);
   while (ranked) {
     const int a = __builtin_ctz(ranked);
     ranked &= ranked - 1;
+    const int8_t m = most[a * 8];
     int16_t top = out[a];
-    for (int g = 0; g < CLASSES / 8; g++) {
-      const int8_t *group = records + (g * CHUNK + a) * 8;
+    for (int d = 1; d <= YOLO_DETECT_REACH && m - d >= -128; d++) {
+      const int8_t v = m - d;
+      if (ranks[v] <= top)
+        continue;
+      bool present = false;
       AIE_LOOP_UNROLL_FULL
-      for (int l = 0; l < 8; l++) {
-        const int16_t r = ranks[group[l]];
-        top = r > top ? r : top;
-      }
+      for (int g = 0; g < CLASSES / 8; g++)
+        present |= has_byte(words[g * CHUNK + a], v);
+      top = present ? ranks[v] : top;
     }
     out[a] = top;
   }
