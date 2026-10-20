@@ -1412,13 +1412,14 @@ struct AIEObjectFifoAllocatePass
         continue;
       }
       if (auto start = dyn_cast<AIEX::DMAStartBdChainForOp>(user)) {
-        if (auto chain = device.lookupSymbol<BDChainOp>(start.getSymbol())) {
-          SmallVector<DMABDOp> bds;
-          chain.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
-          if (failed(checkHeaders(endpoint, ids, bds)))
-            return failure();
-          continue;
-        }
+        auto chain = device.lookupSymbol<BDChainOp>(start.getSymbol());
+        if (!chain)
+          return start.emitOpError("symbol does not reference valid BD chain");
+        SmallVector<DMABDOp> bds;
+        chain.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
+        if (failed(checkHeaders(endpoint, ids, bds)))
+          return failure();
+        continue;
       }
       if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user)) {
         std::optional<PacketInfoAttr> packet = memcpy.getPacket();
