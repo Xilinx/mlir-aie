@@ -39,9 +39,12 @@ constexpr int R = GDR_ROWS, Dk = GDR_KEY_DIM, Dv = GDR_VALUE_DIM;
 constexpr int L = 16, W = f32_lanes;
 constexpr int P = (Dv + L - 1) / L * L, KP = (Dk + L - 1) / L * L;
 constexpr int RP = (R + W - 1) / W * W;
+// The vector paths below are AIE2P's; AIE2 keeps the scalar ones until npu1
+// is timed (Peano's aie2 MachineLICM also crashes on the paired update).
+constexpr bool Vec = AIE_ARCH_AIE2P;
 // Where a row scalar's second set starts (b after a, k's norm after q's):
 // with at most 16 rows, both sets share one vector.
-constexpr int RS = R <= L ? L : RP;
+constexpr int RS = Vec && R <= L ? L : RP;
 template <unsigned N>
 using acc_t = aie::accum<accfloat, N>;
 template <unsigned N>
@@ -54,7 +57,7 @@ alignas(64) bfloat16 row[KP], v_row[P], out[P];
 alignas(64) bfloat16 ab[2 * RP];
 alignas(64) float sq[2 * RP], ex[2 * RP];
 alignas(64) float beta[RP], qn[RP], e[RP], f[RP];
-alignas(64) float wide[P];
+alignas(64) float lanes[L], wide[P];
 
 template <unsigned N>
 inline __attribute__((always_inline)) Limbs<N> limbs(float x) {
@@ -147,6 +150,24 @@ inline __attribute__((always_inline)) acc_t<W> rsqrt_f32(acc_t<W> x) {
   return y;
 }
 
+// Exact bf16 squares summed per lane, then the lanes in four chains.
+float sum_squares() {
+  acc_t<L> a = aie::zeros<accfloat, L>();
+  for (int i = 0; i < KP; i += L) {
+    const bf_t<L> x = aie::load_v<L>(row + i);
+    a = aie::mac(a, x, x);
+  }
+  aie::store_v(lanes, a.to_vector<float>());
+  float s0 = lanes[0], s1 = lanes[1], s2 = lanes[2], s3 = lanes[3];
+  for (int j = 4; j < L; j += 4) {
+    s0 += lanes[j];
+    s1 += lanes[j + 1];
+    s2 += lanes[j + 2];
+    s3 += lanes[j + 3];
+  }
+  return (s0 + s1) + (s2 + s3);
+}
+
 // Exact bf16 squares of x[0, KP) summed per lane.
 acc_t<L> lane_squares(const bfloat16 *x) {
   acc_t<L> a = aie::zeros<accfloat, L>();
@@ -193,7 +214,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
   if (b_idx % GDR_BLOCKS == 0) {
     int i = 0;
     // head's state starts two floats in, so it is loaded unaligned.
-    if constexpr (Dv == L)
+    if constexpr (Vec && Dv == L)
       for (; i + 1 < Dk; i += 2)
         set_state2(i, bf16_limbs(acc_t<W>(
                           aie::load_unaligned_v<W>(head + 2 + i * Dv, 2))));
@@ -208,6 +229,15 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
   for (int t = 0; t < R; t++) {
     ab[t] = a[t];
     ab[RS + t] = b[t];
+    if constexpr (!Vec) {
+      for (int i = 0; i < Dk; i++)
+        row[i] = q[t * Dk + i];
+      sq[t] = sum_squares();
+      for (int i = 0; i < Dk; i++)
+        row[i] = k[t * Dk + i];
+      sq[RS + t] = sum_squares();
+      continue;
+    }
     acc_t<L> aq, ak;
     if constexpr (Dk == KP) {
       aq = lane_squares(q + t * Dk);
@@ -253,7 +283,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
                      .to_vector<float>());
   }
   constexpr float q_root = rsqrt_newton((float)Dk);
-  const Limbs<W> q_scale = limbs<W>(q_root);
+  const Limbs<W> q_scale = limbs<W>(Vec ? q_root : rsqrt_newton((float)Dk));
   for (int t0 = 0; t0 < RP; t0 += W) {
     aie::store_v(qn + t0,
                  mul_limbs(limbs<W>(sq + t0), q_scale).to_vector<float>());
@@ -280,7 +310,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
   for (int t = 0; t < R; t++) {
     bfloat16 *yt = y + t * Dv;
     if (t >= valid) {
-      if constexpr (Dv == P)
+      if constexpr (Vec && Dv == P)
         for (int c = 0; c < P; c += L)
           aie::store_v(yt + c, aie::zeros<bfloat16, L>());
       else
@@ -290,12 +320,12 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
     }
     const bfloat16 *kt = k + t * Dk, *qt = q + t * Dk;
     // v's row in place when it fills whole vectors, else padded with zeros.
-    const bfloat16 *vr = v + t * Dv;
-    if constexpr (Dv != P) {
+    const bfloat16 *vr = v_row;
+    if constexpr (Vec && Dv == P)
+      vr = v + t * Dv;
+    else
       for (int j = 0; j < Dv; j++)
-        v_row[j] = vr[j];
-      vr = v_row;
-    }
+        v_row[j] = v[t * Dv + j];
     const Limbs<L> G = limbs<L>(ex[t]), E = limbs<L>(e[t]);
     const Limbs<L> F = limbs<L>(f[t]), Q = limbs<L>(qn[t]);
     for (int c = 0; c < P; c += L) {
@@ -303,7 +333,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
       // block, a vector of twice the width carries an even and an odd row.
       acc_t<L> kv = aie::zeros<accfloat, L>(), kw = aie::zeros<accfloat, L>();
       int r = 0;
-      if constexpr (P == L) {
+      if constexpr (Vec && P == L) {
         if (t == 0)
           for (; r + 1 < Dk; r += 2)
             k2 = aie::add(k2, mul_limbs(state2(r), pair(kt, r)));
@@ -326,7 +356,7 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
           mul_limbs(E, vt), mul_limbs(bf16_limbs(aie::add(kv, kw)), F)));
       acc_t<L> ya = aie::zeros<accfloat, L>(), yb = aie::zeros<accfloat, L>();
       int i = 0;
-      if constexpr (P == L) {
+      if constexpr (Vec && P == L) {
         const Limbs<W> G2 = twice(G), d2 = twice(d);
         acc_t<W> y2 = aie::zeros<accfloat, W>();
         k2 = aie::zeros<accfloat, W>();
@@ -369,15 +399,15 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
         ya = aie::add(ya, mul_limbs(n0, aie::broadcast<bfloat16, L>(qt[i])));
       }
       aie::store_v(
-          (Dv == P ? yt : out) + c,
+          (Vec && Dv == P ? yt : out) + c,
           mul_limbs(bf16_limbs(aie::add(ya, yb)), Q).to_vector<bfloat16>());
     }
-    if constexpr (Dv != P)
+    if constexpr (!Vec || Dv != P)
       for (int j = 0; j < Dv; j++)
         yt[j] = out[j];
   }
   int i = 0;
-  if constexpr (Dv == L) {
+  if constexpr (Vec && Dv == L) {
     const bf_t<W> one2 = aie::broadcast<bfloat16, W>(1.0f);
     for (; i + 1 < Dk; i += 2)
       aie::store_v(final + i * Dv,
