@@ -76,8 +76,9 @@ to drain more than the last op's output).
 
 ## Accuracy
 
-mAP50-95 on coco128: FP32 0.474, XINT8 0.443. The XINT8 model is calibrated
-on the same 128 images, so its number is optimistic.
+mAP50-95 on coco128, measured when the model was exported and not recomputed
+by this example: FP32 0.474, XINT8 0.443. The XINT8 model is calibrated on
+the same 128 images, so its number is optimistic.
 
 On the NPU, the whole model's detections match the oracle bit for bit on
 all 128 coco128 images, and ONNX Runtime's on 126. The oracle agrees with
