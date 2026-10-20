@@ -104,14 +104,17 @@ inline __attribute__((always_inline)) Limbs<2 * N> twice(const Limbs<N> &x) {
 constexpr int PB = 4;
 
 // One pair of the state's rows decayed by G and given outer(k, d), added to
-// q @ state, with even rows in the low lanes and odd rows in the high.
-inline __attribute__((always_inline)) acc_t<W>
-update_pair(acc_t<W> y2, const Limbs<W> &s, int i, const bfloat16 *kt,
-            const bfloat16 *qt, const Limbs<W> &G2, const Limbs<W> &d2) {
+// q @ state and to the next row's k @ state, with even rows in the low lanes
+// and odd rows in the high.
+inline __attribute__((always_inline)) void
+update_pair(acc_t<W> &y2, acc_t<W> &k2, const Limbs<W> &s, int i,
+            const bfloat16 *kt, const bfloat16 *qt, const bfloat16 *kn,
+            const Limbs<W> &G2, const Limbs<W> &d2) {
   const Limbs<W> n =
       bf16_limbs(aie::add(mul_limbs(s, G2), mul_limbs(d2, pair(kt, i))));
   set_state2(i, n);
-  return aie::add(y2, mul_limbs(n, pair(qt, i)));
+  y2 = aie::add(y2, mul_limbs(n, pair(qt, i)));
+  k2 = aie::add(k2, mul_limbs(n, pair(kn, i)));
 }
 
 // 1 / sqrt(x) for x > 0: the bit-trick estimate and three Newton steps.
@@ -251,6 +254,9 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
                              .to_vector<float>());
   }
 
+  // With one column block and paired rows, a row's update also takes the next
+  // row's k @ state, in the same order as its own pass would.
+  acc_t<W> k2 = aie::zeros<accfloat, W>();
   for (int t = 0; t < R; t++) {
     bfloat16 *yt = y + t * Dv;
     if (t >= valid) {
@@ -278,9 +284,10 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
       acc_t<L> kv = aie::zeros<accfloat, L>(), kw = aie::zeros<accfloat, L>();
       int r = 0;
       if constexpr (P == L) {
-        acc_t<W> k2 = aie::zeros<accfloat, W>();
-        for (; r + 1 < Dk; r += 2)
-          k2 = aie::add(k2, mul_limbs(state2(r), pair(kt, r)));
+        if (t == 0)
+          for (; r + 1 < Dk; r += 2)
+            k2 = aie::add(k2, mul_limbs(state2(r), pair(kt, r)));
+        r = Dk / 2 * 2;
         kv = k2.template extract<L>(0);
         kw = k2.template extract<L>(1);
       } else {
@@ -302,6 +309,9 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
       if constexpr (P == L) {
         const Limbs<W> G2 = twice(G), d2 = twice(d);
         acc_t<W> y2 = aie::zeros<accfloat, W>();
+        k2 = aie::zeros<accfloat, W>();
+        // The last row's next is itself; nothing reads that sum.
+        const bfloat16 *kn = kt + (t + 1 < R ? Dk : 0);
         for (; i + 2 * PB - 1 < Dk; i += 2 * PB) {
           Limbs<W> s[PB];
 #pragma clang loop unroll(full)
@@ -309,10 +319,10 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
             s[u] = state2(i + 2 * u);
 #pragma clang loop unroll(full)
           for (int u = 0; u < PB; u++)
-            y2 = update_pair(y2, s[u], i + 2 * u, kt, qt, G2, d2);
+            update_pair(y2, k2, s[u], i + 2 * u, kt, qt, kn, G2, d2);
         }
         for (; i + 1 < Dk; i += 2)
-          y2 = update_pair(y2, state2(i), i, kt, qt, G2, d2);
+          update_pair(y2, k2, state2(i), i, kt, qt, kn, G2, d2);
         ya = y2.template extract<L>(0);
         yb = y2.template extract<L>(1);
       } else {
