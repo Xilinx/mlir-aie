@@ -135,30 +135,34 @@ def _poison_fill(words, use_chess):
     )
 
 
-def _kernel_stack_bytes(kernels, embed_bitcode):
-    """Return the deepest stack any of ``kernels`` adds below the core's frame.
+def _kernel_frame_bytes(kernels, embed_bitcode):
+    """Return what ``kernels`` hold in the core beyond the core's own frame.
 
-    A declared ``stack_size_override`` stands. An object-linked Peano kernel
-    is built through the design's object cache, which its own build then hits,
-    or in a scratch directory when caching is off, and read from its
-    ``.stack_sizes``. A function with no entry there, such as a
-    runtime-library routine, adds 0. Anything else, such as a Chess or
-    merge-mode kernel, counts as 0, as aiecc cannot measure it either. So
-    does every kernel when no Peano is installed, where the design can be
-    lowered but not built. An undercount only picks too deep a buffering for
-    the tile; aiecc measures the linked core and its allocator fails the
-    build when the buffers no longer fit.
+    Each object's static data (``ExternalFunction.frame_bytes``' data), which
+    all coexists, and the deepest kernel stack, as only one call is live: a
+    declared ``stack_size_override`` stands. An object-linked Peano kernel is
+    built through the design's object cache, which its own build then hits,
+    or in a scratch directory when caching is off. A kernel ``measure``
+    cannot read counts as 0, as aiecc cannot measure it either; that
+    undercount only picks too deep a buffering for the tile, and aiecc's
+    allocator then fails the build.
     """
     cache = get_compile_arg("_iron_object_cache")
     arch = resolve_target_arch(_device())
-    deepest = 0
+    data, deepest = {}, 0
     for k in kernels:
+        found = (
+            k.measure(arch, cache, embed_bitcode)
+            if isinstance(k, ExternalFunction)
+            else None
+        )
+        if found is not None:
+            data[k.object_file_name] = found.data
         if k.stack_size_override is not None:
             deepest = max(deepest, k.stack_size_override)
-        elif isinstance(k, ExternalFunction):
-            found = k.measure(arch, cache, embed_bitcode)
-            deepest = max(deepest, (found.stack if found else None) or 0)
-    return deepest
+        elif found is not None:
+            deepest = max(deepest, found.stack or 0)
+    return sum(data.values()) + deepest
 
 
 def _view(raw, arg_type, byte_shift):
@@ -315,10 +319,10 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
     words = {i: (nbytes(i) + GUARD_BYTES) // 4 for i in guarded}
     fills = {n: _poison_fill(n, fn.use_chess) for n in words.values()}
 
-    # Two sets of tiles (ping-pong) when they fit beside the parameters and
-    # the stack, one otherwise. aiecc reserves the larger of the default
-    # stack and main's frame plus the deepest kernel call; the default
-    # covers main's frame, so the kernels' frames go on top of it.
+    # Two sets of tiles (ping-pong) when they fit beside the parameters, the
+    # kernels' static data and the stack, one otherwise. aiecc reserves the
+    # larger of the default stack and main's frame plus the deepest kernel
+    # call; the default covers main's frame, so the kernels' go on top of it.
     tile_bytes = sum(nbytes(i) for i in [*ins, *outs]) + GUARD_BYTES * len(guarded)
     shifted = dict(arg_byte_offsets)
     fixed_bytes = (
@@ -328,7 +332,7 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
     )
     core_bytes = _device().core_memory_bytes
     if not stack_bytes and 2 * tile_bytes + fixed_bytes <= core_bytes:
-        fixed_bytes += _kernel_stack_bytes(
+        fixed_bytes += _kernel_frame_bytes(
             [
                 fn,
                 *(k for _, k in initializers),

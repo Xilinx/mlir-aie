@@ -1157,27 +1157,33 @@ class ExternalFunction(Kernel):
         """True when this kernel's object is built with xchesscc, not Peano."""
         return self._use_chess
 
-    def frame_bytes(self, target_arch: str, entry: str | None = None) -> int:
-        """Core data memory this kernel takes beyond its arguments.
-
-        Its object's static data (``.data``, ``.rodata``, ``.bss``) and its
-        stack, as aiecc's probe link measures a core's, read before the design
-        is built so it can size its buffers to the tile. The object compiles
-        through the store under ``NPU_CACHE_HOME``, which the design's build
-        then reuses.
+    def frame_bytes(
+        self,
+        target_arch: str,
+        object_cache: KernelObjectCache | None = None,
+        entry: str | None = None,
+    ) -> int:
+        """Return the core data memory this kernel takes beyond its arguments.
 
         Args:
             target_arch: ``"aie2"`` or ``"aie2p"``.
+            object_cache: The store it compiles through, so the design's build
+                reuses the object; the one under ``NPU_CACHE_HOME`` when None.
             entry: A bound ``Kernel``'s symbol in this object to take the stack below.
 
         Returns:
-            The bytes; a kernel aiecc cannot measure (see ``measure``) counts 0
-            beyond a declared ``stack_size_override``.
+            Its object's static data plus its stack, or plus a declared
+            ``stack_size_override`` for its own entry; 0 for what ``measure``
+            cannot read.
         """
-        cache = KernelObjectCache(
-            NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS
+        found = self.measure(
+            target_arch,
+            object_cache
+            or KernelObjectCache(
+                NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS
+            ),
+            entry=entry,
         )
-        found = self.measure(target_arch, cache, entry=entry)
         data = found.data if found else 0
         if self.stack_size_override is not None and entry is None:
             return data + self.stack_size_override
