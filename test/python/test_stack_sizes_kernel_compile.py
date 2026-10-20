@@ -109,3 +109,31 @@ def test_frame_bytes_is_data_and_stack_or_its_declared_override():
         stack_size_override=96,
     )
     assert declared.frame_bytes("aie2p") == found.data + 96
+
+
+def test_measure_reads_each_entry_of_one_object(tmp_path):
+    """Two symbols of one object: each entry's own stack, the object's data."""
+    small = ExternalFunction(
+        "small_frame",
+        source_string="""
+static int table[256];
+extern "C" void small_frame(int *a, int n) {
+  for (int i = 0; i < n; i++)
+    table[i % 256] += a[i % 64];
+}
+extern "C" void large_frame(int *a, int n) {
+  volatile int scratch[512];
+  for (int i = 0; i < 512; i++)
+    scratch[i] = a[i % 64] + n;
+  a[0] = scratch[n % 512] + table[n % 256];
+}
+""",
+        arg_types=[np.ndarray[(64,), np.dtype[np.int32]], np.int32],
+    )
+    large = small.object_file.bind("large_frame", small.arg_types())
+    cache = KernelObjectCache(tmp_path, 60)
+    own = small.measure("aie2p", cache)
+    other = small.measure("aie2p", cache, entry=large.name)
+    assert other.stack - (own.stack or 0) >= 2048
+    assert other.data == own.data >= 1024
+    assert small.frame_bytes("aie2p", entry=large.name) == other.data + other.stack
