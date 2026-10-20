@@ -3,11 +3,9 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Shared GEMV array cores: every decode projection on one slot format,
-// [kRows*K int8 weights | kRows int32 bias | kRows fp32 w_scales], with the
-// per-token act_scale in the activation tail act[K..K+4]. Each row's
-// arithmetic is the per-channel acttail kernels' in
-// llama_gemm_int8_srs_tiled_layer{,_mh}.cc, so outputs are bit-identical.
+// The GEMV array cores' glue beside the projections (llama_gemv_mma.cc): the
+// fused qkv combine, the residual add's partials and their finalize, and the
+// lm_head's top-k set packing.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
@@ -29,35 +27,6 @@ static constexpr int kResidBlock = kResidRows * 4 + 64;
 
 extern "C" {
 
-void llama_gemv_array_k2048_f32(int8_t *restrict act, int8_t *restrict w,
-                                int8_t *restrict out, int32_t slot) {
-  event0();
-  gemv_f32<2048, 4>(act, w, reinterpret_cast<float *>(out) + slot * 4);
-  event1();
-}
-
-void llama_gemv_array_k8192_f32(int8_t *restrict act, int8_t *restrict w,
-                                int8_t *restrict out, int32_t slot) {
-  event0();
-  gemv_f32<8192, 1>(act, w, reinterpret_cast<float *>(out) + slot);
-  event1();
-}
-
-void llama_gemv_array_k2048_i8(int8_t *restrict act, int8_t *restrict w,
-                               int8_t *restrict out, int32_t slot,
-                               float inv_out_scale) {
-  event0();
-  gemv_i8<2048, 4>(act, w, out + slot * 4, inv_out_scale);
-  event1();
-}
-
-// One KV group's combined chunk, llama_qkv_combine's per-head layout, from
-// the core's q, k and v rows (Q heads 4c..4c+3 and KV head c on core c):
-//   fp  = [q fp32 x256 | k fp32 x64 | v fp32 x64]   (the core's scratch)
-//   out = [q body i8 x256 | q tail 4x8 B | k fp32 x64 | v fp32 x64 | cs 256 B]
-// The q body and tail are llama_q_requant's for those four heads. RoPE (S2)
-// goes after the requant, on the q body in place; the cs region is reserved
-// for S2's per-position table and written as zeros until then.
 void llama_gemv_array_qkv_comb(int8_t *restrict fp, int8_t *restrict out) {
   event0();
   const ::aie::saturation_mode prev_sat =

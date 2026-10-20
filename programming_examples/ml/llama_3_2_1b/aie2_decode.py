@@ -40,7 +40,6 @@ from aie.dialects.arith import (
     cmpi,
     constant,
     divsi,
-    extui,
     index_cast,
     muli,
     remsi,
@@ -67,14 +66,15 @@ from aie2_gemv_array import (
     COMB_BYTES,
     CORE_TILES,
     LAYER,
-    MMA_ACT_BYTES,
     MMA_SLOT,
     N_CORES,
     OUT_BYTES,
-    PROJECTIONS,
     RESID_BLOCK,
     SAMPLE_PARAMS,
     lane_slots,
+    mma_down,
+    mma_kernels,
+    mma_rows,
     read_sample_params,
 )
 from aie2_layer_mh import (
@@ -346,16 +346,7 @@ def build(
     of_res = ObjectFifo(t_vec, depth=1, name="res")
 
     KA = llama_kernels.gemv_array()
-    KM = llama_kernels.gemv_mma()
-    t_part = _i32a(8 * 256)
-    t_tile = _i8(MMA_ACT_BYTES)
-    k_spread = KM.bind("llama_mma_spread", [t_act, t_tile, np.int32, np.int32])
-    k_acc = KM.bind("llama_mma_acc", [t_tile, t_slot, t_part] + [np.int32] * 3)
-    k_f = KM.bind("llama_mma_f32", [t_tile, t_slot, t_part, t_out] + [np.int32] * 5)
-    k_i = KM.bind(
-        "llama_mma_i8",
-        [t_tile, t_slot, t_part, t_out] + [np.int32] * 5 + [np.float32],
-    )
+    k_spread, k_mma, t_tile, t_part = mma_kernels(t_act, t_slot, t_out)
     k_comb = KA.bind("llama_gemv_array_qkv_comb_cs", [t_out, _i8(CS_BYTES), t_out])
     k_resid = KA.bind(
         "llama_gemv_array_resid_partial",
@@ -366,23 +357,6 @@ def build(
         [_i8(4 * RESID_BLOCK), _i8(4 * RESID_BLOCK), t_vec],
     )
     gate_inv = 1.0 / SILU_GATE_SCALE
-    groups = {p: PROJECTIONS[p][1] // N_CORES // 8 for p in LAYER}
-    down_chunks = HD // D
-
-    def mma(proj, a, c_w, part, o, row0=0):
-        # Each row group of eight: its first half-K slot sums into part, its
-        # second adds its own and writes the group's rows at row0 + 8g.
-        for g in range_(groups[proj]):
-            w = c_w.acquire(1)
-            k_acc(a, w, part, 0, 0, 1)
-            c_w.release(1)
-            w = c_w.acquire(1)
-            at = _i32(g) * 8 + row0
-            if PROJECTIONS[proj][2] == "i8":
-                k_i(a, w, part, o, 0, 1, 0, at, 1, gate_inv)
-            else:
-                k_f(a, w, part, o, 0, 1, 0, at, 1)
-            c_w.release(1)
 
     def w_array(
         c_act,
@@ -409,50 +383,27 @@ def build(
             c_w.release(1)
             for unit in UNITS:
                 a = c_act.acquire(1)
-                if unit == "d":
-                    # Down's 8192 columns go through the tile in four
-                    # chunks; chunks 0-2 sum into the row groups' partials.
-                    for chunk in range_(down_chunks - 1):
-                        ci = _i32(chunk)
-                        k_spread(a, tile, muli(ci, _const_i32(D)), HD)
-                        first = extui(i32(), cmpi(CmpIPredicate.eq, ci, _const_i32(0)))
-                        for g in range_(groups["d"]):
-                            w = c_w.acquire(1)
-                            k_acc(tile, w, part, _i32(g), 0, first)
-                            c_w.release(1)
-                            w = c_w.acquire(1)
-                            k_acc(tile, w, part, _i32(g), 1, 0)
-                            c_w.release(1)
-                    k_spread(a, tile, (down_chunks - 1) * D, HD)
-                    for g in range_(groups["d"]):
-                        w = c_w.acquire(1)
-                        k_acc(tile, w, part, _i32(g), 0, 0)
-                        c_w.release(1)
-                        w = c_w.acquire(1)
-                        k_f(tile, w, part, scratch, _i32(g), 1, 0, _i32(g) * 8, 1)
-                        c_w.release(1)
-                    b = c_blk.acquire(1)
-                    kr(a, scratch, b, core, ROW)
-                    c_blk.release(1)
-                    c_act.release(1)
-                    continue
-                k_spread(a, tile, 0, D)
+                if unit != "d":
+                    k_spread(a, tile, 0, D)
                 if unit == "qkv":
                     # q, k and v land at fp32 offsets 0, 256 and 320 of scratch.
-                    mma("q", tile, c_w, part, scratch)
-                    mma("k", tile, c_w, part, scratch, 256)
-                    mma("v", tile, c_w, part, scratch, 320)
+                    mma_rows("q", tile, c_w, part, scratch, k_mma, gate_inv)
+                    mma_rows("k", tile, c_w, part, scratch, k_mma, gate_inv, 256)
+                    mma_rows("v", tile, c_w, part, scratch, k_mma, gate_inv, 320)
                     o = c_out.acquire(1)
                     kc(scratch, cs, o)
                     c_out.release(1)
-                elif unit == "o":
-                    mma("o", tile, c_w, part, scratch)
+                elif unit in ("o", "d"):
+                    if unit == "d":
+                        mma_down(a, tile, c_w, part, scratch, k_spread, k_mma)
+                    else:
+                        mma_rows("o", tile, c_w, part, scratch, k_mma, gate_inv)
                     b = c_blk.acquire(1)
                     kr(a, scratch, b, core, ROW)
                     c_blk.release(1)
                 else:
                     o = c_out.acquire(1)
-                    mma(unit, tile, c_w, part, o)
+                    mma_rows(unit, tile, c_w, part, o, k_mma, gate_inv)
                     c_out.release(1)
                 c_act.release(1)
 
@@ -471,9 +422,7 @@ def build(
                 c,
                 p_passes,
                 k_spread,
-                k_acc,
-                k_f,
-                k_i,
+                *k_mma,
                 k_comb,
                 k_resid,
             ],

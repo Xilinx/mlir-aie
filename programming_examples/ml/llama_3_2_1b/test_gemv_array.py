@@ -66,7 +66,6 @@ from aie2_gemv_array import (
     RESID_OFF,
     RESID_OUT_BYTES,
     RESID_UNITS,
-    SLOT,
     D,
     build,
     build_lm,
@@ -75,7 +74,6 @@ from aie2_gemv_array import (
     lane_slots,
     layer_units,
     prefill_out_bytes,
-    rows_per_slot,
     sample_param_values,
 )
 from llama_npu import DispatchSession, add_artifact_args, design_kernel
@@ -106,27 +104,6 @@ def synthetic_layer(rng, order):
         sc = (rng.random(rows, dtype=np.float32) * 2e-3 + 1e-4).astype(np.float32)
         out[p] = (w, bias, sc)
     return out
-
-
-def pack_lane(layer_w, order, core):
-    parts = []
-    for p in order:
-        k, rows, _ = PROJECTIONS[p]
-        w, bias, sc = layer_w[p]
-        rc = rows // N_CORES
-        rps = rows_per_slot(k)
-        n = rc // rps
-        lo = core * rc
-        slots = np.zeros((n, SLOT), np.int8)
-        slots[:, : rps * k] = w[lo : lo + rc].reshape(n, rps * k)
-        slots[:, rps * k : rps * k + 4 * rps] = (
-            bias[lo : lo + rc].reshape(n, rps).view(np.int8)
-        )
-        slots[:, rps * k + 4 * rps : rps * k + 8 * rps] = (
-            sc[lo : lo + rc].reshape(n, rps).view(np.int8)
-        )
-        parts.append(slots.reshape(-1))
-    return np.concatenate(parts)
 
 
 def make_act(rng, k):
@@ -616,12 +593,12 @@ def main():
                 synthetic_layer(np.random.default_rng(opts.seed + layer), order)
             )
 
-    lane_bytes = lane_slots(order) * SLOT
+    lane_bytes = lane_slots(order) * MMA_SLOT
     wblob = np.empty(N_CORES * n_layers * lane_bytes, np.int8)
     for li, lw in enumerate(layers):
         for c in range(N_CORES):
             off = (li * N_CORES + c) * lane_bytes
-            wblob[off : off + lane_bytes] = pack_lane(lw, order, c)
+            wblob[off : off + lane_bytes] = pack_lane_mma(lw, order, c)
 
     units = layer_units(order, opts.fuse_qkv)
     resid_units = [u for u in units if opts.fuse_resid and u in RESID_UNITS]

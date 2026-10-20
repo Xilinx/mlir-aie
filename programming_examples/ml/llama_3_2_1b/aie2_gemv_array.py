@@ -8,8 +8,11 @@ Eight cores on columns 0, 1, 6 and 7 (two per column) each own one shim MM2S
 weight lane and an eighth of every projection's output rows. Per layer the
 cores run q, k, v, o, gate, up and down back to back on a broadcast
 activation; each lane's weights for a layer are one contiguous DDR region in
-consumption order, filled by one task. Slots are 8224 B: 4 rows of K=2048 or
-1 row of K=8192, each followed by its int32 biases and fp32 scales.
+consumption order, filled by one task. The cores run aie::mmul
+(kernels/llama_gemv_mma.cc): a slot (`MMA_SLOT`) is eight rows by 1024
+columns, then their int32 biases and fp32 scales; each core spreads an
+activation into its mma tile (llama_mma_spread) and runs a projection's row
+groups (`mma_rows`, `mma_down`).
 
 A layer runs as units, each taking one activation and giving one output
 object per core. Without fusion every projection is a unit. With `FUSE_QKV`
@@ -27,7 +30,18 @@ import sys
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import andi, constant, index_cast, ori, shli, shrui
+from aie.dialects.arith import (
+    CmpIPredicate,
+    andi,
+    cmpi,
+    constant,
+    extui,
+    index_cast,
+    muli,
+    ori,
+    shli,
+    shrui,
+)
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
@@ -50,7 +64,6 @@ D = 2048
 HD = 8192
 N_CORES = 8
 CORE_TILES = [(c, r) for c in (0, 1, 6, 7) for r in (2, 3)]
-SLOT = 8224
 ACT_BYTES = HD + 8
 OUT_BYTES = 4096
 LM_SLOT = 64 + 4 * D + 4 * 4 + 4 * 4
@@ -142,17 +155,100 @@ def layer_units(order, fuse_qkv):
     return list(order)
 
 
-def rows_per_slot(k):
-    return 4 if k == D else 1
-
-
-def slots_per_core(proj):
-    k, rows, _ = PROJECTIONS[proj]
-    return rows // N_CORES // rows_per_slot(k)
-
-
 def lane_slots(order):
-    return sum(slots_per_core(p) for p in order)
+    """MMA_SLOTs one core's lane holds for a layer: per projection, each row
+    group of eight takes one slot per 1024 columns."""
+    return sum(PROJECTIONS[p][1] // N_CORES * PROJECTIONS[p][0] // 8192 for p in order)
+
+
+def mma_rows(proj, tile, c_w, part, out, kernels, gate_inv, row0=0):
+    """In a core body: the core's rows of a 2048-column projection for the
+    activation in tile slot 0, at out[row0 + n] (fp32, or int8 for gate).
+
+    Args:
+        proj: The projection's letter.
+        tile: The core's mma activation tile.
+        c_w: Its weight lane's consumer.
+        part: Its int32 partial sums.
+        out: Where the rows go.
+        kernels: The bound (llama_mma_acc, llama_mma_f32, llama_mma_i8).
+        gate_inv: The gate's 1 / out_scale.
+        row0: The first row's index in out.
+    """
+    k_acc, k_f, k_i = kernels
+    for g in range_(PROJECTIONS[proj][1] // N_CORES // 8):
+        w = c_w.acquire(1)
+        k_acc(tile, w, part, 0, 0, 1)
+        c_w.release(1)
+        w = c_w.acquire(1)
+        at = _i32(g) * 8 + row0
+        if PROJECTIONS[proj][2] == "i8":
+            k_i(tile, w, part, out, 0, 1, 0, at, 1, gate_inv)
+        else:
+            k_f(tile, w, part, out, 0, 1, 0, at, 1)
+        c_w.release(1)
+
+
+def mma_down(a, tile, c_w, part, out, k_spread, kernels):
+    """In a core body: the core's down rows (fp32, at out[n]) for the
+    activation row a (HD columns, then its scale), through the tile in four
+    2048-column chunks; chunks 0-2 sum into the row groups' partials.
+
+    Args:
+        a: The activation.
+        tile: The core's mma activation tile.
+        c_w: Its weight lane's consumer.
+        part: Its int32 partial sums, eight per row.
+        out: Where the rows go.
+        k_spread: The bound llama_mma_spread.
+        kernels: The bound (llama_mma_acc, llama_mma_f32, llama_mma_i8).
+    """
+    k_acc, k_f, _ = kernels
+    groups = PROJECTIONS["d"][1] // N_CORES // 8
+    for chunk in range_(DOWN_CHUNKS - 1):
+        ci = _i32(chunk)
+        k_spread(a, tile, muli(ci, constant(i32(), D)), HD)
+        first = extui(i32(), cmpi(CmpIPredicate.eq, ci, constant(i32(), 0)))
+        for g in range_(groups):
+            w = c_w.acquire(1)
+            k_acc(tile, w, part, _i32(g), 0, first)
+            c_w.release(1)
+            w = c_w.acquire(1)
+            k_acc(tile, w, part, _i32(g), 1, 0)
+            c_w.release(1)
+    k_spread(a, tile, (DOWN_CHUNKS - 1) * D, HD)
+    for g in range_(groups):
+        w = c_w.acquire(1)
+        k_acc(tile, w, part, _i32(g), 0, 0)
+        c_w.release(1)
+        w = c_w.acquire(1)
+        k_f(tile, w, part, out, _i32(g), 1, 0, _i32(g) * 8, 1)
+        c_w.release(1)
+
+
+def mma_kernels(t_act, t_slot, t_out):
+    """The mma kernel object's bound entry points for these object types.
+
+    Returns:
+        (llama_mma_spread, (llama_mma_acc, llama_mma_f32, llama_mma_i8), the
+        tile's type, the partials' type).
+    """
+    km = llama_kernels.gemv_mma()
+    t_tile = _i8(MMA_ACT_BYTES)
+    t_part = _i32a(8 * DOWN_ROWS_PER_CORE)
+    return (
+        km.bind("llama_mma_spread", [t_act, t_tile, np.int32, np.int32]),
+        (
+            km.bind("llama_mma_acc", [t_tile, t_slot, t_part] + [np.int32] * 3),
+            km.bind("llama_mma_f32", [t_tile, t_slot, t_part, t_out] + [np.int32] * 5),
+            km.bind(
+                "llama_mma_i8",
+                [t_tile, t_slot, t_part, t_out] + [np.int32] * 5 + [np.float32],
+            ),
+        ),
+        t_tile,
+        t_part,
+    )
 
 
 def _i8(n):
@@ -194,7 +290,7 @@ def build(
     resid_units = [u for u in units if FUSE_RESID and u in RESID_UNITS]
     host_units = [u for u in units if u not in resid_units]
     n_slots = lane_slots(ORDER)
-    lane_bytes = n_slots * SLOT
+    lane_bytes = n_slots * MMA_SLOT
     w_total = N_CORES * N_LAYERS * lane_bytes
     n_acts = N_LAYERS * len(units)
     n_steps = N_LAYERS * len(host_units)
@@ -203,12 +299,12 @@ def build(
     act_total = n_acts * act_bytes
     out_total = N_CORES * n_steps * OUT_BYTES
 
-    t_slot = _i8(SLOT)
+    t_slot = _i8(MMA_SLOT)
     t_act = _i8(act_bytes)
-    of_act = ObjectFifo(t_act, depth=2, name="act")
+    of_act = ObjectFifo(t_act, depth=1, name="act")
     of_w = [ObjectFifo(t_slot, depth=2, name=f"w{c}") for c in range(N_CORES)]
     of_out = [
-        ObjectFifo(_i8(OUT_BYTES), depth=2, name=f"out{c}")
+        ObjectFifo(_i8(OUT_BYTES), depth=1, name=f"out{c}")
         for c in range(N_CORES if host_units else 0)
     ]
     w_cons = [
@@ -229,16 +325,7 @@ def build(
     ]
 
     KO = llama_kernels.gemv_array()
-    k_f2 = KO.bind(
-        "llama_gemv_array_k2048_f32", [t_act, t_slot, _i8(OUT_BYTES), np.int32]
-    )
-    k_f8 = KO.bind(
-        "llama_gemv_array_k8192_f32", [t_act, t_slot, _i8(OUT_BYTES), np.int32]
-    )
-    k_i8 = KO.bind(
-        "llama_gemv_array_k2048_i8",
-        [t_act, t_slot, _i8(OUT_BYTES), np.int32, np.float32],
-    )
+    k_spread, k_mma, t_tile, t_part = mma_kernels(t_act, t_slot, _i8(OUT_BYTES))
     k_comb = KO.bind("llama_gemv_array_qkv_comb", [_i8(OUT_BYTES), _i8(OUT_BYTES)])
     k_resid = KO.bind(
         "llama_gemv_array_resid_partial",
@@ -264,39 +351,37 @@ def build(
         else []
     )
 
-    def gemv(proj, a, c_w, o, kf2, kf8, ki8, slot_base=0):
-        k, _, kind = PROJECTIONS[proj]
-        for s in range_(slots_per_core(proj)):
-            w = c_w.acquire(1)
-            if kind == "i8":
-                ki8(a, w, o, _i32(s), GATE_INV)
-            elif k == HD:
-                kf8(a, w, o, _i32(s))
-            else:
-                kf2(a, w, o, _i32(s) + slot_base)
-            c_w.release(1)
-
-    def w_core(c_act, c_w, c_out, kf2, kf8, ki8, kcomb, kres, scratch, core, *blk):
+    def w_core(
+        c_act, c_w, c_out, ks, ka, kf, ki, kcomb, kres, tile, part, scratch, core, *blk
+    ):
         for _ in range_(N_LAYERS):
             for unit in units:
                 a = c_act.acquire(1)
+                if unit != "d":
+                    k_spread(a, tile, 0, D)
                 if unit == "qkv":
                     # q, k and v land at fp32 offsets 0, 256 and 320 of scratch.
-                    gemv("q", a, c_w, scratch, kf2, kf8, ki8)
-                    gemv("k", a, c_w, scratch, kf2, kf8, ki8, 64)
-                    gemv("v", a, c_w, scratch, kf2, kf8, ki8, 80)
+                    mma_rows("q", tile, c_w, part, scratch, k_mma, GATE_INV)
+                    mma_rows("k", tile, c_w, part, scratch, k_mma, GATE_INV, 256)
+                    mma_rows("v", tile, c_w, part, scratch, k_mma, GATE_INV, 320)
                     o = c_out.acquire(1)
                     kcomb(scratch, o)
                     c_out.release(1)
                 elif unit in resid_units:
                     (c_blk,) = blk
-                    gemv(unit, a, c_w, scratch, kf2, kf8, ki8)
+                    if unit == "d":
+                        mma_down(a, tile, c_w, part, scratch, k_spread, k_mma)
+                    else:
+                        mma_rows(unit, tile, c_w, part, scratch, k_mma, GATE_INV)
                     b = c_blk.acquire(1)
                     kres(a, scratch, b, core, RESID_OFF)
                     c_blk.release(1)
                 else:
                     o = c_out.acquire(1)
-                    gemv(unit, a, c_w, o, kf2, kf8, ki8)
+                    if unit == "d":
+                        mma_down(a, tile, c_w, part, o, k_spread, k_mma)
+                    else:
+                        mma_rows(unit, tile, c_w, part, o, k_mma, GATE_INV)
                     c_out.release(1)
                 c_act.release(1)
 
@@ -307,11 +392,12 @@ def build(
                 of_act.cons(),
                 w_cons[c],
                 of_out[c].prod() if host_units else None,
-                k_f2,
-                k_f8,
-                k_i8,
+                k_spread,
+                *k_mma,
                 k_comb,
                 k_resid,
+                Buffer(t_tile, name=f"tile{c}"),
+                Buffer(t_part, name=f"part{c}"),
                 (
                     Buffer(_i8(OUT_BYTES), name=f"scratch{c}")
                     if FUSE_QKV or FUSE_RESID
@@ -388,8 +474,8 @@ def build(
                         w_total,
                         (layer * N_CORES + c) * lane_bytes,
                         n_slots,
-                        SLOT,
-                        514,
+                        MMA_SLOT,
+                        688,
                     ),
                     group=layer_tgs[layer],
                     wait=True,
