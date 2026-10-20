@@ -2839,7 +2839,11 @@ def AIE_ObjectFifoDmaEndpointOp
       // See aie.objectfifo's out_of_order. A draining endpoint puts its
       // channel in out-of-order mode; a filling one names each object's
       // buffer in the header it sends.
-      UnitAttr:$out_of_order);
+      UnitAttr:$out_of_order,
+      // The bd id of this pool's first buffer. Fifos sharing a channel take
+      // disjoint runs of ids, and a sender names a buffer by its id, so both
+      // ends of a fifo carry the same base.
+      OptionalAttr<AIEI32Attr>:$bd_id_base);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict

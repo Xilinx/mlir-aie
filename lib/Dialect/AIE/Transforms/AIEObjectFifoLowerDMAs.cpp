@@ -184,9 +184,14 @@ struct AIEObjectFifoLowerDMAsPass
     // The receiving channel walks no chain of its own, so the sender says
     // which buffer each object lands in. The receiver's descriptor for that
     // buffer carries the matching bd_id.
-    if (endpoint.getOutOfOrder() &&
-        endpoint.getRouteDirection() == DMAChannelDir::MM2S) {
-      bd.setOutOfOrderId(descriptor.slot);
+    if (endpoint.getOutOfOrder()) {
+      // Fifos sharing a channel take disjoint runs of bd ids, so a buffer is
+      // named by its id rather than its place in the pool.
+      int64_t id = endpoint.getBdIdBase().value_or(0) + descriptor.slot;
+      if (endpoint.getRouteDirection() == DMAChannelDir::MM2S)
+        bd.setOutOfOrderId(id);
+      else
+        bd.setBdId(id);
     }
 
     if (releaseLock) {

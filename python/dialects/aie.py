@@ -698,6 +698,7 @@ class object_fifo(ObjectFifoCreateOp):
         consumer_datatype=None,
         packet=None,
         packet_id=None,
+        out_of_order=None,
         loc=None,
         ip=None,
     ):
@@ -758,6 +759,7 @@ class object_fifo(ObjectFifoCreateOp):
             iter_count=iter_count,
             packet=packet,
             packet_id=packet_id,
+            out_of_order=out_of_order,
             loc=loc,
             ip=ip,
         )
