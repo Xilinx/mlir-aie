@@ -33,9 +33,10 @@ from dataclasses import dataclass
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import constant, index_cast
+from aie.dialects.arith import addi, constant, divsi, index_cast, remsi
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
+from aie.ir import IndexType
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -133,6 +134,59 @@ SV_CONCAT_HALF = (N_HEADS_KV // 2) * SVCHUNK_BYTES  # 1088
 AF_BYTES = N_HEADS_Q * HEAD_D  # 2048
 # sv_merge_selfcal output layout: see aie2_layer_mh.py's same constant.
 SVFULL_BYTES = AF_BYTES + N_HEADS_Q * 4  # 2176
+
+# The growing decode's KV cache (llama_attn_block.cc's layout): int32
+# [layer][half][block][head][KV_TB rows], a row being [k int8[HEAD_D] | v
+# int8[HEAD_D] | k_scale f32 | v_scale f32]. One (layer, half)'s blocks are
+# contiguous, so its live prefix is one linear transfer.
+KV_TB = 64
+KV_ROW_WORDS = (2 * HEAD_D + 8) // 4  # 34
+KV_HEAD_BLOCK_WORDS = KV_TB * KV_ROW_WORDS  # 2176
+KV_BLOCK_WORDS = (N_HEADS_KV // 2) * KV_HEAD_BLOCK_WORDS  # 8704, one half
+ATTN_STATE_BYTES = 64 + REP * (64 + 4 * HEAD_D)  # 1344
+
+
+def kv_blocks(T):
+    """Blocks per (layer, half) in the growing decode's KV cache.
+
+    Args:
+        `T`: The cache's rows.
+
+    Returns:
+        ceil(T / KV_TB).
+    """
+    return -(-T // KV_TB)
+
+
+def kv_words(T, N_LAYERS):
+    """The growing decode's KV cache size.
+
+    Args:
+        `T`: The cache's rows.
+        `N_LAYERS`: Layers.
+
+    Returns:
+        The size in int32 words.
+    """
+    return N_LAYERS * 2 * kv_blocks(T) * KV_BLOCK_WORDS
+
+
+def kv_row_word(N_LAYERS, T, layer, half, head, pos):
+    """Where a row sits in the growing decode's KV cache.
+
+    Args:
+        `N_LAYERS`: Layers in the cache.
+        `T`: The cache's rows.
+        `layer`, `half`, `head`: The KV head (head within its half).
+        `pos`: The row.
+
+    Returns:
+        The row's int32 word offset.
+    """
+    region = (layer * 2 + half) * kv_blocks(T) * KV_BLOCK_WORDS
+    block = (pos // KV_TB) * KV_BLOCK_WORDS
+    return region + block + head * KV_HEAD_BLOCK_WORDS + (pos % KV_TB) * KV_ROW_WORDS
+
 
 AF_SCALES_BYTES = 192
 
@@ -407,7 +461,11 @@ def build(
     # PERSIST_RESIDENT: KV lives on-chip (b_kv); the host supplies only the 1x
     # pristine seed (filled once on token 0). PERSIST (host-ferried) uses a 2x
     # [pristine | scratch] (fixed-pos) or ping-pong (grow) buffer. Non-persist: 1x.
-    rt_kv_ty = _i8(2 * KV_BYTES if (PERSIST and not PERSIST_RESIDENT) else KV_BYTES)
+    rt_kv_ty = (
+        _i32a(kv_words(T, N_LAYERS))
+        if PER_CALL
+        else _i8(2 * KV_BYTES if (PERSIST and not PERSIST_RESIDENT) else KV_BYTES)
+    )
     rt_out_ty = _i8(D + 8)
 
     # M3b: lmw blob = [final_norm gamma bf16(D) = 2*D bytes | lm_head weight
@@ -438,8 +496,10 @@ def build(
     t_KV_HALF_i8 = _i8(KV_HALF_BYTES)
     t_KVfp = _f32(KV_DIM)
     t_KVCS_i8 = _i8(KVCS_BYTES)
-    t_COMB_i8 = _i8(COMB_CHUNK_BYTES)
-    t_COMB_HALF_i8 = _i8(COMB_HALF_BYTES)
+    # PER_CALL chunks carry the head's new KV row instead of its fp32 k/v.
+    comb_chunk = QCHUNK_BYTES + KV_ROW_WORDS * 4 if PER_CALL else COMB_CHUNK_BYTES
+    t_COMB_i8 = _i8(comb_chunk)
+    t_COMB_HALF_i8 = _i8((N_HEADS_KV // 2) * comb_chunk)
 
     # All depth=1; every one of these carries the int8[D+8] scale tail.
     of_seed = ObjectFifo(t_D8_i8, depth=1, name="seed")
@@ -462,11 +522,14 @@ def build(
         # next dispatch's token 0 reads it. Core memory does not outlive the
         # NPU's runtime suspend after an idle gap, so the carry lives in DDR.
         of_carry = ObjectFifo(t_D8_i8, depth=1, name="seed_carry")
-        # Per dispatch: the KV region the even tokens fill from (the odd
-        # tokens' is the other); see dispatch_params in
-        # test_chain_persist_grow_mh.
-        p_kv_even = ScratchpadParameter("kv_even", np.int32)
-        p_kv_odd = ScratchpadParameter("kv_odd", np.int32)
+        # Per dispatch (see dispatch_params in test_chain_persist_grow_mh):
+        # t0, the first token's position, which the attention workers read;
+        # per token, the KV blocks its attention reads (the fills' length)
+        # and the word offset of its row within a (layer, half) region (the
+        # write-back's offset).
+        p_t0 = ScratchpadParameter("t0", np.int32)
+        p_kvb = [ScratchpadParameter(f"kvb{t}", np.int32) for t in range(PT)]
+        p_row = [ScratchpadParameter(f"row{t}", np.int32) for t in range(PT)]
 
     # M3b sample block: final hidden (of_out) -> final_norm rms -> lm_head GEMM
     # -> memtile logits relay -> streamed sampler -> token.
@@ -560,54 +623,95 @@ def build(
     of_comb_lo = ObjectFifo(t_COMB_HALF_i8, depth=1, name="comb_lo")
     of_comb_hi = ObjectFifo(t_COMB_HALF_i8, depth=1, name="comb_hi")
     comb_lo_eps = of_comb_lo.cons().split(
-        offsets=[i * COMB_CHUNK_BYTES for i in range(N_HEADS_KV // 2)],
+        offsets=[i * comb_chunk for i in range(N_HEADS_KV // 2)],
         obj_types=[t_COMB_i8] * (N_HEADS_KV // 2),
         names=[f"comb_{i}" for i in range(N_HEADS_KV // 2)],
     )
     comb_hi_eps = of_comb_hi.cons().split(
-        offsets=[i * COMB_CHUNK_BYTES for i in range(N_HEADS_KV // 2)],
+        offsets=[i * comb_chunk for i in range(N_HEADS_KV // 2)],
         obj_types=[t_COMB_i8] * (N_HEADS_KV // 2),
         names=[f"comb_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
     )
     comb_eps = list(comb_lo_eps) + list(comb_hi_eps)
 
-    of_kv_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kv_lo")
-    of_kv_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kv_hi")
-    kv_lo_eps = of_kv_lo.cons().split(
-        offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
-        obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
-        names=[f"kv_{i}" for i in range(N_HEADS_KV // 2)],
-    )
-    kv_hi_eps = of_kv_hi.cons().split(
-        offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
-        obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
-        names=[f"kv_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
-    )
-    of_kvs = list(kv_lo_eps) + list(kv_hi_eps)
+    if PER_CALL:
+        # Each half's KV blocks stream through a memtile that splits a block
+        # to its 4 heads' attention workers; their new rows join back to one
+        # write-back per half.
+        t_KVB_i32 = _i32a(KV_BLOCK_WORDS)
+        t_KVHB_i32 = _i32a(KV_HEAD_BLOCK_WORDS)
+        t_ROW_i32 = _i32a(KV_ROW_WORDS)
+        t_ROWS_i32 = _i32a((N_HEADS_KV // 2) * KV_ROW_WORDS)
+        nh = N_HEADS_KV // 2
+        of_kvb = [ObjectFifo(t_KVB_i32, depth=2, name=f"kvblk_{h}") for h in range(2)]
+        of_kvrow = [
+            ObjectFifo(t_ROWS_i32, depth=1, name=f"kvrows_{h}") for h in range(2)
+        ]
+        of_kvs = [
+            ep
+            for half in range(2)
+            for ep in of_kvb[half]
+            .cons()
+            .split(
+                offsets=[i * KV_HEAD_BLOCK_WORDS for i in range(nh)],
+                obj_types=[t_KVHB_i32] * nh,
+                depths=[2] * nh,
+                names=[f"kvb_{half * nh + i}" for i in range(nh)],
+            )
+        ]
+        kvrow_eps = [
+            ep
+            for half in range(2)
+            for ep in of_kvrow[half]
+            .prod()
+            .join(
+                offsets=[i * KV_ROW_WORDS for i in range(nh)],
+                obj_types=[t_ROW_i32] * nh,
+                names=[f"kvrow_{half * nh + i}" for i in range(nh)],
+            )
+        ]
+        b_attn_state = [
+            Buffer(_i8(ATTN_STATE_BYTES), name=f"attn_state_{i}")
+            for i in range(N_HEADS_KV)
+        ]
+    else:
+        of_kv_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kv_lo")
+        of_kv_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kv_hi")
+        kv_lo_eps = of_kv_lo.cons().split(
+            offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+            obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
+            names=[f"kv_{i}" for i in range(N_HEADS_KV // 2)],
+        )
+        kv_hi_eps = of_kv_hi.cons().split(
+            offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+            obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
+            names=[f"kv_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
+        )
+        of_kvs = list(kv_lo_eps) + list(kv_hi_eps)
 
-    # 8 head caches join into 2 halves; PERSIST_RESIDENT skips this (its
-    # cache stays on-chip in worker-local b_kv).
-    if not PERSIST_RESIDENT:
-        # The placer cannot see the relay's hand-written memtile (2,1) DMA, and
-        # a 4-input join beside it exceeds the memtile's 4 S2MM channels.
-        kvout_lo_tile, kvout_hi_tile = (
-            (Tile(0, 1), Tile(5, 1)) if SAMPLE and not ONESTREAM else (None, None)
-        )
-        of_kvout_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_lo")
-        of_kvout_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_hi")
-        kvout_lo_eps = of_kvout_lo.prod().join(
-            offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
-            tile=kvout_lo_tile,
-            obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
-            names=[f"kvout_{i}" for i in range(N_HEADS_KV // 2)],
-        )
-        kvout_hi_eps = of_kvout_hi.prod().join(
-            offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
-            tile=kvout_hi_tile,
-            obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
-            names=[f"kvout_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
-        )
-        kvout_eps = list(kvout_lo_eps) + list(kvout_hi_eps)
+        # 8 head caches join into 2 halves; PERSIST_RESIDENT skips this (its
+        # cache stays on-chip in worker-local b_kv).
+        if not PERSIST_RESIDENT:
+            # The placer cannot see the relay's hand-written memtile (2,1) DMA, and
+            # a 4-input join beside it exceeds the memtile's 4 S2MM channels.
+            kvout_lo_tile, kvout_hi_tile = (
+                (Tile(0, 1), Tile(5, 1)) if SAMPLE and not ONESTREAM else (None, None)
+            )
+            of_kvout_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_lo")
+            of_kvout_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_hi")
+            kvout_lo_eps = of_kvout_lo.prod().join(
+                offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+                tile=kvout_lo_tile,
+                obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
+                names=[f"kvout_{i}" for i in range(N_HEADS_KV // 2)],
+            )
+            kvout_hi_eps = of_kvout_hi.prod().join(
+                offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+                tile=kvout_hi_tile,
+                obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
+                names=[f"kvout_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
+            )
+            kvout_eps = list(kvout_lo_eps) + list(kvout_hi_eps)
 
     if PERSIST_RESIDENT:
         # Per-attn-head resident KV: N_LAYERS caches each, held on the attn tile
@@ -775,7 +879,7 @@ def build(
         [t_D8_i8, t_WK_slot, t_KVfp, np.int32],
     )
     k_qkvcomb = KO_GLUE.bind(
-        "llama_qkv_combine",
+        "llama_qkv_combine_rows" if PER_CALL else "llama_qkv_combine",
         [t_QR_i8, t_KVCS_i8, t_COMB_HALF_i8, t_COMB_HALF_i8],
     )
     KO_KVA = llama_kernels.kv_append(T=T)
@@ -785,7 +889,22 @@ def build(
     _append_sym = (
         "llama_kv_append_combined_grow" if PERSIST_GROW else "llama_kv_append_combined"
     )
-    k_append = KO_KVA.bind(_append_sym, [t_COMB_i8, t_KV_i8, t_KV_i8])
+    if not PER_CALL:
+        k_append = KO_KVA.bind(_append_sym, [t_COMB_i8, t_KV_i8, t_KV_i8])
+    if PER_CALL:
+        t_ATTN_STATE = _i8(ATTN_STATE_BYTES)
+        KO_ATTN = llama_kernels.attn_block(tb=KV_TB)
+        k_attn_init = KO_ATTN.bind("llama_attn_state_init", [t_ATTN_STATE])
+        k_attn_block = KO_ATTN.bind(
+            "llama_attn_block", [t_COMB_i8, t_KVHB_i32, t_ATTN_STATE, np.int32]
+        )
+        k_attn_block_own = KO_ATTN.bind(
+            "llama_attn_block_own", [t_COMB_i8, t_KVHB_i32, t_ATTN_STATE, np.int32]
+        )
+        k_attn_own_row = KO_ATTN.bind("llama_attn_own_row", [t_COMB_i8, t_ROW_i32])
+        k_attn_merge = KO_ATTN.bind(
+            "llama_attn_merge_selfcal", [t_ATTN_STATE, t_SVCHUNK_i8, np.int32]
+        )
     if PERSIST_RESIDENT:
         # Resident KV: per-head cache buffer holds N_LAYERS caches; the layer
         # index selects the slot. seed (token 0): host cache -> resident slot +
@@ -808,9 +927,10 @@ def build(
     # af_concat fully self-cal (1b+1c): 1 input (merged sv); o_act -> af tail.
     k_afconcat = KO_GLUE.bind("llama_af_concat_selfcal2", [_i8(SVFULL_BYTES), t_AF8_i8])
     # flowkv self-cal (1c): per-Q-head sv_out_scale -> out_chunk tail.
-    k_fkv = KO_FKV.bind(
-        "llama_flowkv_mh_kvc_selfcal", [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8]
-    )
+    if not PER_CALL:
+        k_fkv = KO_FKV.bind(
+            "llama_flowkv_mh_kvc_selfcal", [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8]
+        )
     if PERSIST_RESIDENT:
         k_fkv_res = KO_FKV.bind(
             "llama_flowkv_mh_kvc_selfcal_resident",
@@ -1010,6 +1130,36 @@ def build(
             c_out.release(1)
 
     # Append then attend over the same just-updated cache, per layer.
+    # PER_CALL attention (llama_attn_block.cc): token tok is at position
+    # p = t0 + tok. Each layer it attends the p // KV_TB full blocks before
+    # its own, then its own block with its new row (from the chunk) set at
+    # p % KV_TB; the row also goes to the write-back.
+    def w_attn_blocks(
+        c_comb, c_kvb, c_row, c_sv, state, t0p, k_row, k_init, k_blk, k_own, k_merge
+    ):
+        t0 = t0p.read()
+        for tok in range_(PT):
+            p = addi(t0, _i32(tok))
+            n_full = index_cast(IndexType.get(), divsi(p, _const_i32(KV_TB)))
+            last_rows = addi(remsi(p, _const_i32(KV_TB)), _const_i32(1))
+            for _ in range_(N_LAYERS):
+                comb = c_comb.acquire(1)
+                row = c_row.acquire(1)
+                k_row(comb, row)
+                k_init(state)
+                for _ in range_(n_full):
+                    kb = c_kvb.acquire(1)
+                    k_blk(comb, kb, state, KV_TB)
+                    c_kvb.release(1)
+                kb = c_kvb.acquire(1)
+                k_own(comb, kb, state, last_rows)
+                c_kvb.release(1)
+                sv = c_sv.acquire(1)
+                k_merge(state, sv, 1)
+                c_sv.release(1)
+                c_row.release(1)
+                c_comb.release(1)
+
     def w_attn(c_comb, c_kvin, c_kvout, c_sv, k_app, k_fk):
         for _ in range_(CHAIN_ITERS):
             comb = c_comb.acquire(1)
@@ -1273,20 +1423,43 @@ def build(
                 for i in range(N_HEADS_KV)
             ]
             if PERSIST_RESIDENT
-            else [
-                Worker(
-                    w_attn,
-                    [
-                        comb_eps[i].cons(),
-                        of_kvs[i].cons(),
-                        kvout_eps[i].prod(),
-                        svchunk_eps[i].prod(),
-                        k_append,
-                        k_fkv,
-                    ],
-                )
-                for i in range(N_HEADS_KV)
-            ]
+            else (
+                [
+                    Worker(
+                        w_attn_blocks,
+                        [
+                            comb_eps[i].cons(),
+                            of_kvs[i].cons(),
+                            kvrow_eps[i].prod(),
+                            svchunk_eps[i].prod(),
+                            b_attn_state[i],
+                            p_t0,
+                            k_attn_own_row,
+                            k_attn_init,
+                            k_attn_block,
+                            k_attn_block_own,
+                            k_attn_merge,
+                        ],
+                        wait_for_parameters=True,
+                    )
+                    for i in range(N_HEADS_KV)
+                ]
+                if PER_CALL
+                else [
+                    Worker(
+                        w_attn,
+                        [
+                            comb_eps[i].cons(),
+                            of_kvs[i].cons(),
+                            kvout_eps[i].prod(),
+                            svchunk_eps[i].prod(),
+                            k_append,
+                            k_fkv,
+                        ],
+                    )
+                    for i in range(N_HEADS_KV)
+                ]
+            )
         ),
         # Attention back
         Worker(
@@ -1512,8 +1685,11 @@ def build(
         of_wk.prod(),
         of_wv.prod(),
         *([] if PERSIST_GROW else [kvcs_eps[2].prod()]),
-        of_kv_lo.prod(),
-        of_kv_hi.prod(),
+        *(
+            [f.prod() for f in of_kvb]
+            if PER_CALL
+            else [of_kv_lo.prod(), of_kv_hi.prod()]
+        ),
     ]
     if SAMPLE:
         seq_eps += [of_fgam.prod()]
@@ -1524,7 +1700,9 @@ def build(
         seq_eps += [of_wlm.prod()]
     else:
         seq_eps += [of_out.cons()]
-    if not PERSIST_RESIDENT:
+    if PER_CALL:
+        seq_eps += [f.cons() for f in of_kvrow]
+    elif not PERSIST_RESIDENT:
         seq_eps += [
             of_kvout_lo.cons(),
             of_kvout_hi.cons(),
@@ -1766,12 +1944,15 @@ def build(
         kv_total = (2 * KV_BYTES) if (PERSIST and not PERSIST_RESIDENT) else KV_BYTES
         kvout_specs = (
             []
-            if PERSIST_RESIDENT
+            if PERSIST_RESIDENT or PER_CALL
             else [
                 (kvout_lo_cons, 0),
                 (kvout_hi_cons, KV_HALF_BYTES),
             ]
         )
+        if PER_CALL:
+            kv_specs = []
+            kv_region_words = kv_blocks(T) * KV_BLOCK_WORDS
 
         # tok is the record index; PT==1 runs this once, byte-identical to the
         # earlier non-persist form.
@@ -1814,12 +1995,7 @@ def build(
             # KV region selection per token (see PERSIST_GROW's declaration
             # above for what each mode means):
             kv_fill_param = kv_drain_param = None
-            if PER_CALL:
-                kv_fill_base = kv_drain_base = 0
-                kv_fill_param, kv_drain_param = (
-                    (p_kv_even, p_kv_odd) if tok % 2 == 0 else (p_kv_odd, p_kv_even)
-                )
-            elif PERSIST_GROW:
+            if PERSIST_GROW:
                 kv_fill_base = (tok % 2) * KV_BYTES
                 kv_drain_base = ((tok + 1) % 2) * KV_BYTES
             elif PERSIST:
@@ -1832,6 +2008,22 @@ def build(
             # Ping-pong per-layer fill issue with BD reuse.
             layer_tgs = [TaskGroup() for _ in range(N_LAYERS)]
             for L in range(N_LAYERS):
+                if PER_CALL:
+                    # The token's new row of each head goes to row t0 + tok
+                    # of its (layer, half) region (offset row{tok}).
+                    for half, cons in enumerate((kvout_lo_cons, kvout_hi_cons)):
+                        cons.drain(
+                            kvblob,
+                            tap=TensorAccessPattern(
+                                tensor_dims=[kv_words(T, N_LAYERS)],
+                                offset=(L * 2 + half) * kv_region_words,
+                                sizes=[1, 1, N_HEADS_KV // 2, KV_ROW_WORDS],
+                                strides=[0, 0, KV_HEAD_BLOCK_WORDS, 1],
+                            ),
+                            group=layer_tgs[L],
+                            wait=True,
+                            offset_parameter=p_row[tok],
+                        )
                 for cons, half_off in kvout_specs:
                     cons.drain(
                         kvblob,
@@ -1893,6 +2085,21 @@ def build(
                             group=layer_tgs[L],
                             wait=True,
                             offset_parameter=kv_fill_param,
+                        )
+                if PER_CALL:
+                    # The live blocks of each (layer, half), the first kvb{tok}.
+                    for half, prod in enumerate((kv_lo_prod, kv_hi_prod)):
+                        prod.fill(
+                            kvblob,
+                            tap=TensorAccessPattern(
+                                tensor_dims=[kv_words(T, N_LAYERS)],
+                                offset=(L * 2 + half) * kv_region_words,
+                                sizes=[1, 1, 16, KV_BLOCK_WORDS // 16],
+                                strides=[0, 0, KV_BLOCK_WORDS // 16, 1],
+                            ),
+                            group=layer_tgs[L],
+                            wait=True,
+                            length_parameter=p_kvb[tok],
                         )
                 if PERSIST_GROW:
                     # Token `tok` is at position t0 + tok: its table row, with

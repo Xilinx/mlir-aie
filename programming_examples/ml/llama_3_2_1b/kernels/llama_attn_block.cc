@@ -281,6 +281,23 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
   event1();
 }
 
+// The growing decode's chunk carries the token's own K/V row after the
+// q_chunk (llama_qkv_combine_rows): llama_attn_block over a block whose row
+// n_rows - 1 is first set to that row, which is not in the cache yet.
+static constexpr int kQChunkBytes = kREP * kHD + kREP * 8;
+
+void llama_attn_block_own(int8_t *restrict q_chunk, int32_t *restrict block_i32,
+                          int8_t *restrict state, int32_t n_rows) {
+  memcpy(block_i32 + (n_rows - 1) * (kRowBytes / 4), q_chunk + kQChunkBytes,
+         kRowBytes);
+  llama_attn_block(q_chunk, block_i32, state, n_rows);
+}
+
+// The token's own row, for the cache write-back.
+void llama_attn_own_row(int8_t *restrict q_chunk, int32_t *restrict row_i32) {
+  memcpy(row_i32, q_chunk + kQChunkBytes, kRowBytes);
+}
+
 // Folds n_parts states (each kStateBytes, in core order; empty ones are
 // skipped) and requantizes each Q head's sv with its own scale:
 // out_chunk = kREP*kHD int8, then kREP f32 sv_out_scales.

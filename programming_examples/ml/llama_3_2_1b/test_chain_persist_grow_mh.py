@@ -34,18 +34,22 @@ import numpy as np
 from aie2_chain_dynscale_mh import (
     CS_BYTES,
     HEAD_D,
+    KV_BLOCK_WORDS,
+    KV_ROW_WORDS,
+    KV_TB,
     N_HEADS_KV,
     N_TILE,
     SAMPLE_SEED,
     SAMPLE_TEMP,
     SAMPLE_TOPK,
     SILU_GATE_SCALE,
-    T_USED_BYTES,
     VOCAB,
     WLM_TOTAL,
     D,
     build,
     derived_sizes,
+    kv_blocks,
+    kv_words,
 )
 from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
@@ -65,13 +69,8 @@ N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
 ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8"))
 PT = int(os.environ.get("LLAMA_CHAIN_PT", "4"))
 _sizes = derived_sizes(T=T, N_LAYERS=N_LAYERS, PT=PT, PERSIST_GROW=True)
-KV_BYTES = _sizes.KV_BYTES
-PER_LAYER_KV = _sizes.PER_LAYER_KV
-PER_KV_HEAD_BYTES = _sizes.PER_KV_HEAD_BYTES
 WEIGHTS_BYTES = _sizes.WEIGHTS_BYTES
 OFF_ROPE = _sizes.OFF_ROPE
-KV_HEADER = _sizes.KV_HEADER
-KCACHE_PADDED = _sizes.KCACHE_PADDED
 DATA_DIR = Path(__file__).parent / "data"
 
 
@@ -123,8 +122,8 @@ def embed_seed_ref(row_i8, embed_sc):
 
 
 def build_fixtures(seed, p0, n_tok):
-    """Random layers and a KV prefix of p0 positions, with room for the n_tok
-    tokens generated from position p0 on."""
+    """Random layers and a T-row KV cache with p0 rows filled, the rows of
+    the n_tok tokens generated from position p0 on left zero."""
     rng = np.random.default_rng(seed)
     x_fp = rng.uniform(-1.6, 1.6, size=D).astype(np.float32)
     res_scale = np.float32(np.maximum(np.abs(x_fp).max(), 1e-12) / 127.0)
@@ -137,14 +136,18 @@ def build_fixtures(seed, p0, n_tok):
         layer = gen_layer_mh(rng)
         layer["lut_exp"] = lut_exp
         layer["lut_silu"] = lut_silu
+        for name in ("kcaches", "vcaches"):
+            layer[name] = [
+                rng.integers(-32, 33, size=T * HEAD_D, dtype=np.int8)
+                for _ in range(N_HEADS_KV)
+            ]
         k_slot = rng.uniform(0.02, 0.08, size=(N_HEADS_KV, T)).astype(np.float32)
         v_slot = rng.uniform(0.02, 0.08, size=(N_HEADS_KV, T)).astype(np.float32)
         for h in range(N_HEADS_KV):
-            for p in range(p0, p0 + n_tok):
-                layer["kcaches"][h][p * HEAD_D : (p + 1) * HEAD_D] = 0
-                layer["vcaches"][h][p * HEAD_D : (p + 1) * HEAD_D] = 0
-                k_slot[h, p] = 0.0
-                v_slot[h, p] = 0.0
+            layer["kcaches"][h][p0 * HEAD_D :] = 0
+            layer["vcaches"][h][p0 * HEAD_D :] = 0
+        k_slot[:, p0:] = 0.0
+        v_slot[:, p0:] = 0.0
         layer["k_scales_slot"] = k_slot
         layer["v_scales_slot"] = v_slot
         layers.append(layer)
@@ -164,6 +167,7 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
             residual_dyn=True,
             attn_perslot=True,
             attn_lut=True,
+            attn_tb=KV_TB,
         )
         layers[L]["scales"] = scales
     xo_i8, xo_scale = x_cur
@@ -188,43 +192,59 @@ def chain_forward_grow(x_i8, res_scale, layers, position, embed_i8, embed_sc, ga
     return tok, xin, scale
 
 
-def pack_kv_prefix(kvblob, t_used):
-    """Overwrite each per-KV-head T_used prefix in a packed kvblob."""
-    out = kvblob.copy()
-    tub = np.frombuffer(np.int32(t_used).tobytes(), dtype=np.int8)
-    for L in range(N_LAYERS):
-        for h in range(N_HEADS_KV):
-            off = L * PER_LAYER_KV + h * PER_KV_HEAD_BYTES
-            out[off : off + 4] = tub
-    return out
-
-
 DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
 LMW_GAMMA_BYTES = 2 * D
 
 
-def dispatch_params(region, t0):
+def dispatch_params(t0):
     """The design's ScratchpadParameters for one dispatch.
 
     Args:
-        region: The half of the KV buffer holding the cache the dispatch
-            starts from. Token t fills from half (region + t) % 2 and drains
-            to the other, so the grown cache ends in (region + PT) % 2.
         t0: The position of the dispatch's first token.
 
     Returns:
-        The parameter values by name.
+        The parameter values by name: t0; its RoPE table row's offset; per
+        token t at position p = t0 + t, the KV blocks it reads (kvb{t}) and
+        its row's word offset within a (layer, half) region (row{t}).
     """
-    return {
-        "kv_even": region * KV_BYTES,
-        "kv_odd": (1 - region) * KV_BYTES,
-        "cs_off": t0 * CS_BYTES,
-    }
+    params = {"t0": t0, "cs_off": t0 * CS_BYTES}
+    for t in range(PT):
+        p = t0 + t
+        params[f"kvb{t}"] = p // KV_TB + 1
+        params[f"row{t}"] = (p // KV_TB) * KV_BLOCK_WORDS + (p % KV_TB) * KV_ROW_WORDS
+    return params
+
+
+def pack_kv(layers):
+    """The device's KV cache holding the oracle's caches.
+
+    Args:
+        layers: Per layer, the oracle's T-row kcaches/vcaches and k/v slot
+            scales.
+
+    Returns:
+        int32 (kv_words(T, N_LAYERS),), block-major as the design reads it.
+    """
+    nb = kv_blocks(T)
+    rows = np.zeros((N_LAYERS, N_HEADS_KV, nb * KV_TB, KV_ROW_WORDS * 4), np.int8)
+    for L, layer in enumerate(layers):
+        for h in range(N_HEADS_KV):
+            rows[L, h, :T, :HEAD_D] = layer["kcaches"][h].reshape(T, HEAD_D)
+            rows[L, h, :T, HEAD_D : 2 * HEAD_D] = layer["vcaches"][h].reshape(T, HEAD_D)
+            for i, name in enumerate(("k_scales_slot", "v_scales_slot")):
+                at = 2 * HEAD_D + 4 * i
+                rows[L, h, :T, at : at + 4] = (
+                    layer[name][h].astype(np.float32).view(np.int8).reshape(T, 4)
+                )
+    blocks = rows.reshape(N_LAYERS, 2, N_HEADS_KV // 2, nb, KV_TB, -1)
+    packed = np.ascontiguousarray(blocks.transpose(0, 1, 3, 2, 4, 5))
+    assert packed.size == kv_words(T, N_LAYERS) * 4
+    return packed.view(np.int32).ravel()
 
 
 def time_decode(session, buffers, params, opts):
-    """Per-token device time + DMA floor (host-ferried grow: KV streamed every
-    token, both directions, so bytes/token includes 2*KV_BYTES)."""
+    """Per-token device time + DMA floor (bytes/token counts the live KV
+    prefix the first token reads)."""
     print(
         f"timing: warmup x{opts.n_warmup}, time x{opts.n_iters}  (PT={PT} tokens/dispatch)",
         flush=True,
@@ -235,9 +255,8 @@ def time_decode(session, buffers, params, opts):
     arr = np.array(times_ms)
     disp_med = float(np.median(arr))
     per_token_ms = disp_med / PT
-    bytes_per_token = (
-        WEIGHTS_BYTES + LMW_GAMMA_BYTES + WLM_TOTAL + 2 * KV_BYTES  # KV in+out
-    )
+    kv_read = 2 * N_LAYERS * params["kvb0"] * KV_BLOCK_WORDS * 4
+    bytes_per_token = WEIGHTS_BYTES + LMW_GAMMA_BYTES + WLM_TOTAL + kv_read
     dma_floor_ms = bytes_per_token / (DDR_BW_GBPS * 1e9) * 1e3
     ratio = per_token_ms / dma_floor_ms
     verdict = (
@@ -273,48 +292,6 @@ def set_pristine(layers, pristine):
         layers[L]["vcaches"] = [c.copy() for c in vcaches[L]]
         layers[L]["k_scales_slot"] = kslot[L].copy()
         layers[L]["v_scales_slot"] = vslot[L].copy()
-
-
-def load_kv(layers, kv):
-    """Give the oracle a device cache (one half of the KV buffer): per KV head,
-    a T_used word and pad, then K's per-slot fp32 scales and int8 body, then V's."""
-    for L in range(N_LAYERS):
-        for h in range(N_HEADS_KV):
-            k_at = L * PER_LAYER_KV + h * PER_KV_HEAD_BYTES + T_USED_BYTES
-            for at, body, scale in (
-                (k_at, "kcaches", "k_scales_slot"),
-                (k_at + KCACHE_PADDED, "vcaches", "v_scales_slot"),
-            ):
-                layers[L][scale][h] = np.frombuffer(
-                    kv[at : at + KV_HEADER].tobytes(), np.float32
-                )
-                layers[L][body][h] = kv[
-                    at + KV_HEADER : at + KV_HEADER + T * HEAD_D
-                ].copy()
-
-
-def check_carry(before, after, pos, n_new):
-    """The cache one dispatch carries to the next: every T_used advanced to
-    pos+n_new, and nothing outside slots pos..pos+n_new-1 changed. Returns the
-    number of failures."""
-    fails = 0
-    appended = np.zeros(KV_BYTES, dtype=bool)
-    for L in range(N_LAYERS):
-        for h in range(N_HEADS_KV):
-            tu = L * PER_LAYER_KV + h * PER_KV_HEAD_BYTES
-            appended[tu : tu + T_USED_BYTES] = True
-            t_used = int(np.frombuffer(after[tu : tu + 4].tobytes(), np.int32)[0])
-            if t_used != pos + n_new:
-                print(f"  L{L} h{h}: T_used={t_used}, want {pos + n_new}")
-                fails += 1
-            for at in (tu + T_USED_BYTES, tu + T_USED_BYTES + KCACHE_PADDED):
-                appended[at + 4 * pos : at + 4 * (pos + n_new)] = True
-                b0 = at + KV_HEADER + HEAD_D * pos
-                appended[b0 : b0 + HEAD_D * n_new] = True
-    changed = int((before[:KV_BYTES] != after[:KV_BYTES])[~appended].sum())
-    if changed:
-        print(f"  {changed} bytes outside the appended slots changed")
-    return fails + changed
 
 
 def replay(dev_tokens, x_i8, res_scale, layers, p0, rope, lm):
@@ -414,7 +391,7 @@ def main():
     n_disp = opts.dispatches
     n_tok = n_disp * PT
     p0 = opts.start_pos if opts.start_pos is not None else min(T // 2, T - n_tok)
-    if p0 < 1 or p0 + n_tok > T:
+    if p0 < 0 or p0 + n_tok > T:
         p.error(f"{n_tok} tokens from position {p0} do not fit in T={T}")
     if n_disp > 1 and opts.repeats > 1:
         p.error("--dispatches and --repeats are separate modes")
@@ -447,14 +424,17 @@ def main():
     # One throwaway oracle pass (greedy argmax trajectory) just to populate
     # layer["scales"] for pack_blobs; the authoritative per-token check is the
     # device-trajectory replay (greedy argmax on random fixtures is brittle near
-    # a near-tie). We don't compare against this trajectory.
+    # a near-tie). We don't compare against this trajectory. The scales are
+    # placeholders the chain recalibrates on chip, so --time, which checks no
+    # token, takes them from position 0 rather than attend a long cache.
     cur_x, cur_sc = x_i8, res_scale
+    first = 0 if opts.time else p0
     for t in range(PT):
         for L in range(N_LAYERS):
-            layers[L]["cos"] = rope[p0 + t, :HEAD_D]
-            layers[L]["sin"] = rope[p0 + t, HEAD_D:]
+            layers[L]["cos"] = rope[first + t, :HEAD_D]
+            layers[L]["sin"] = rope[first + t, HEAD_D:]
         _, nxin, nscale = chain_forward_grow(
-            cur_x, cur_sc, layers, p0 + t, embed_i8, embed_sc, gamma
+            cur_x, cur_sc, layers, first + t, embed_i8, embed_sc, gamma
         )
         cur_x, cur_sc = nxin, nscale
 
@@ -467,24 +447,11 @@ def main():
     wblob[OFF_ROPE : OFF_ROPE + T * CS_BYTES] = rope.view(np.int8).ravel()
     w_t = iron.tensor(wblob, dtype=np.int8)
 
-    # The PRISTINE kvblob (restore caches, pack, T_used=p0 prefix). The
-    # grow-append writes slot=T_used so token 0 writes slot p0 and advances
-    # T_used -> p0+1.
-    for L in range(N_LAYERS):
-        layers[L]["kcaches"] = pristine[0][L]
-        layers[L]["vcaches"] = pristine[1][L]
-        layers[L]["k_scales_slot"] = pristine[2][L]
-        layers[L]["v_scales_slot"] = pristine[3][L]
-    _, kvblob_pristine = pack_blobs(layers, WEIGHTS_BYTES)
-    kv_pristine = pack_kv_prefix(kvblob_pristine, p0)
-
-    # The KV buffer is two halves; the first dispatch's cache starts in the
-    # first (see dispatch_params).
+    set_pristine(layers, pristine)
+    kv0 = pack_kv(layers)
     xin = np.zeros(D + 8, dtype=np.int8)
     xin[:D] = x_i8
     xin[D : D + 4] = np.frombuffer(np.float32(res_scale).tobytes(), dtype=np.int8)
-    kv2 = np.zeros(2 * KV_BYTES, dtype=np.int8)
-    kv2[:KV_BYTES] = kv_pristine
 
     session = DispatchSession(
         build,
@@ -511,11 +478,11 @@ def main():
             [
                 iron.tensor(xin, dtype=np.int8),
                 w_t,
-                iron.tensor(kv2, dtype=np.int8),
+                iron.tensor(kv0, dtype=np.int32),
                 lmw_t,
                 iron.zeros([PT * (D + 12)], dtype=np.int8),
             ],
-            dispatch_params(0, p0),
+            dispatch_params(p0),
             opts,
         )
 
@@ -537,11 +504,9 @@ def main():
         out_t.to("cpu")
         return out_t.numpy().copy()
 
-    # The oracle checks each dispatch from what that dispatch actually started
-    # with -- the pristine cache and fixture seed for the first, the cache and
-    # seed the device carried for the rest -- so dispatch k is held to the same
-    # standard as a single dispatch. (One oracle trajectory over many dispatches
-    # would compound flowkv's documented non-bit-exactness token after token.)
+    # The oracle follows the device's tokens across dispatches, from the
+    # seed each dispatch left; after each, the device's whole KV cache must
+    # equal the oracle's.
     dev_tokens = []
     tok_fails = carry_fails = 0
     if opts.repeats > 1:
@@ -549,8 +514,8 @@ def main():
             toks = tokens_of(
                 dispatch(
                     iron.tensor(xin, dtype=np.int8),
-                    iron.tensor(kv2, dtype=np.int8),
-                    dispatch_params(0, p0),
+                    iron.tensor(kv0, dtype=np.int32),
+                    dispatch_params(p0),
                 )
             )
             if r == 0:
@@ -568,32 +533,26 @@ def main():
         # Like the KV tensor, the seed tensor stays on the device: the host
         # writes the first dispatch's seed, and each dispatch leaves the next
         # one's there.
-        kv_t = iron.tensor(kv2, dtype=np.int8)
+        kv_t = iron.tensor(kv0, dtype=np.int32)
         xin_t = iron.tensor(xin, dtype=np.int8)
-        carried = kv2[:KV_BYTES].copy()
-        x_d, sc_d, region = x_i8, res_scale, 0
+        x_d, sc_d = x_i8, res_scale
+        set_pristine(layers, pristine)
         for d in range(n_disp):
             if d:
                 time.sleep(opts.idle_s)
-            toks_out = dispatch(xin_t, kv_t, dispatch_params(region, p0 + d * PT))
-            region = (region + PT) % 2
+            pos = p0 + d * PT
+            toks_out = dispatch(xin_t, kv_t, dispatch_params(pos))
             toks = tokens_of(toks_out)
             dev_tokens += toks
-            pos = p0 + d * PT
             if n_disp > 1:
                 print(f"dispatch {d} (pos {pos}): tokens {toks}", flush=True)
-            if d == 0:
-                set_pristine(layers, pristine)
-            else:
-                load_kv(layers, carried)
             tok_fails += replay(toks, x_d, sc_d, layers, pos, rope, lm)
-            if n_disp > 1:
-                kv_t.to("cpu")
-                after = kv_t.numpy()[region * KV_BYTES : (region + 1) * KV_BYTES].copy()
-                cf = check_carry(carried, after, pos, PT)
-                print(f"  carry: {'PASS' if not cf else f'{cf} FAIL'}", flush=True)
-                carry_fails += cf
-                carried = after
+            # The device appended exactly the rows the oracle did, and wrote
+            # nothing else.
+            kv_t.to("cpu")
+            wrong = int(np.count_nonzero(kv_t.numpy() != pack_kv(layers)))
+            print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
+            carry_fails += wrong != 0
             # The oracle's next layer-0 input is the last token's seed (body +
             # scale), which the device left in the seed tensor with a zero pad.
             last = (PT - 1) * (D + 12)
