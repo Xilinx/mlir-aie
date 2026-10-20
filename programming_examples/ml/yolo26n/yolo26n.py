@@ -48,10 +48,8 @@ from yolo_spec import (
 # Each run fits one array: a block, or a few, as they were brought up.
 SEGMENTS = (
     (0, 21),
-    (21, 36),
-    (36, 37),
-    (37, 52),
-    (52, 59),
+    (21, 37),
+    (37, 59),
     (59, 73),
     (73, 90),
     (90, 107),
