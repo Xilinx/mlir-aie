@@ -335,9 +335,10 @@ def _mm_nearest_bound(a, b, *, dim_m: int, dim_k: int, dim_n: int):
 
     The core rounds its f32 sum once to nearest even, so C is that cast,
     except where ``A @ B`` lies within the sum's error of a rounding midpoint:
-    there the neighbour, one ulp off, is as right. The sum's error is
+    there C may be off by that error plus a rounding. The sum's error is
     ``dim_k`` f32 ulps of ``|A| @ |B|`` (AIE2P's f32 add has no guard bit),
     and 2^-24 of ``|A @ B|`` covers the reference cast rounding through f32.
+    Under cancellation the error spans several bf16 ulps of a small C.
     """
     dims = dict(dim_m=dim_m, dim_k=dim_k, dim_n=dim_n)
     exact = mm_tile_ref(a, b, **dims)
@@ -348,7 +349,8 @@ def _mm_nearest_bound(a, b, *, dim_m: int, dim_k: int, dim_n: int):
     spacing = ulp_size(exact, bfloat16)
     slack = dim_k * 2.0**-23 * magnitude + 2.0**-24 * np.abs(exact)
     straddles = np.abs(np.abs(exact - cast) - 0.5 * spacing) <= slack
-    return np.where(straddles, np.maximum(spacing, ulp_size(cast, bfloat16)), 0.0)
+    widest = ulp_size(np.abs(exact) + slack, bfloat16)
+    return np.where(straddles, slack + widest, 0.0)
 
 
 class StreamDimsABC(NamedTuple):
