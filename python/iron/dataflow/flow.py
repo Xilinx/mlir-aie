@@ -227,7 +227,7 @@ class _Route(PerDeviceConfigurationResolvable):
                 ip=ip,
             )
         self._op = _route_op(
-            self._end_symbol(0),
+            [self._end_symbol(0)],
             [self._end_symbol(end) for end in range(1, len(self._channels))],
             **route_attrs,
             loc=loc,
@@ -664,8 +664,7 @@ class PacketFlow(_Route):
                 loc,
                 ip,
                 [self._src_port, *self.dst_ports],
-                packet=True,
-                packet_id=self._pkt_id,
+                packet=(0, self._pkt_id),
                 keep_pkt_header=self._keep_pkt_header or None,
             )
             return

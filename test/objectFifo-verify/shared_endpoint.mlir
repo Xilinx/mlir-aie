@@ -12,8 +12,8 @@ module @shared_route_endpoint {
     aie.route_endpoint @host(%shim) DMA
     aie.route_endpoint @a(%mt) DMA
     aie.route_endpoint @b(%mt) DMA
-    aie.route from @a to [@host] {packet, packet_id = 1 : i8}
-    aie.route from @b to [@host] {packet, packet_id = 2 : i8}
+    aie.route from @a to [@host] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @b to [@host] {packet = #aie.packet_info<pkt_id = 2>}
   }
 }
 

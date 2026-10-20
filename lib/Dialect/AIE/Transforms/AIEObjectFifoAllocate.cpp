@@ -8,13 +8,17 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
+#include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/StringMap.h"
 
 #include <set>
 
@@ -48,6 +52,10 @@ struct AIEObjectFifoAllocatePass
   /// The flows each route endpoint is the source of, by its symbol name,
   /// gathered before any flow is lowered.
   DenseMap<StringAttr, SmallVector<RouteOp>> sourcedFlows;
+  llvm::MapVector<ObjectFifoDmaEndpointOp, llvm::StringMap<PacketInfoAttr>>
+      dispatchHeaders;
+  /// Shim ends that take another end's channel, by the end they take it from.
+  llvm::MapVector<Operation *, Operation *> shimChannelSharers;
   DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -820,8 +828,9 @@ struct AIEObjectFifoAllocatePass
     }
     for (auto route : device.getOps<RouteOp>()) {
       graph.add(route);
-      link(route, lookupEndpoint(route.getSourceAttr()), "source");
-      for (auto dest : route.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      for (StringRef source : route.getSourceNames())
+        link(route, lookupEndpoint(source), "source");
+      for (StringRef dest : route.getDestinationNames())
         link(route, lookupEndpoint(dest), "dest");
     }
     DenseMap<Operation *, unsigned> rank = graph.rank();
@@ -908,11 +917,11 @@ struct AIEObjectFifoAllocatePass
     DMAChannelAnalysis channels(device);
     DenseSet<Operation *> packetEndpoints;
     for (auto flow : device.getOps<RouteOp>()) {
-      if (!flow.getPacket() && !clPacketSwObjectFifos)
+      if (!flow.getPacket())
         continue;
-      packetEndpoints.insert(
-          lookupEndpoint(flow.getSourceAttr()).getOperation());
-      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      for (StringRef source : flow.getSourceNames())
+        packetEndpoints.insert(lookupEndpoint(source).getOperation());
+      for (StringRef dest : flow.getDestinationNames())
         packetEndpoints.insert(lookupEndpoint(dest).getOperation());
     }
     bool clash = false;
@@ -955,7 +964,8 @@ struct AIEObjectFifoAllocatePass
       std::optional<int> channel = endpoint.getRouteChannel();
       // A core's stream port is named by the design, not drawn from the tile's
       // DMA channels; checkStreamPorts has claimed it.
-      if (endpoint.getRouteBundle() == WireBundle::Core)
+      if (endpoint.getRouteBundle() == WireBundle::Core ||
+          shimChannelSharers.count(endpoint.getOperation()))
         continue;
 
       if (channel) {
@@ -1049,6 +1059,8 @@ struct AIEObjectFifoAllocatePass
       channelAssignments[endpoint.getOperation()] = channel;
       noteDemand(endpoint, channel);
     }
+    for (auto [sharer, owner] : shimChannelSharers)
+      channelAssignments[sharer] = channelAssignments.lookup(owner);
     // Runtime tasks did not steer the choice, but they hold BDs while they
     // run, which the overcommit warning counts.
     for (auto &[at, bds] : taskBDs)
@@ -1065,6 +1077,96 @@ struct AIEObjectFifoAllocatePass
             endpointTaskBDs(endpoint.getOperation());
     }
     channelDemand = std::move(demand);
+    return success();
+  }
+
+  /// Gives one more shim end of `exhausted` the channel of ends it is never in
+  /// flight with, in the order ShimTransferSpans groups them, so only as many
+  /// ends share as the tile needs. Packet headers tell a shared channel's ends
+  /// apart.
+  bool planShimSharing(TileLike exhausted, DMAChannelDir dir) {
+    ShimTransferSpans spans(
+        device,
+        [&](StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
+          auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
+              device, symbol);
+          if (!endpoint || !endpoint.getFifoName())
+            return std::nullopt;
+          return ShimTransferSpans::End{endpoint.getFifoNameAttr(),
+                                        endpoint.getRouteDirection() ==
+                                            DMAChannelDir::MM2S};
+        });
+    SmallVector<Operation *> candidates;
+    SmallVector<StringAttr> fifos;
+    for (auto endpoint : device.getOps<RouteEndpointOp>()) {
+      if (endpoint.getBundle() != WireBundle::DMA ||
+          endpoint.getChannelIndex() || !endpoint.getFifoName() ||
+          endpoint.getTile() != exhausted->getResult(0) ||
+          endpoint.getRouteDirection() != dir)
+        continue;
+      candidates.push_back(endpoint);
+      fifos.push_back(endpoint.getFifoNameAttr());
+    }
+    for (auto &members : spans.groups(fifos))
+      for (unsigned sharer : llvm::drop_begin(members))
+        if (shimChannelSharers
+                .insert({candidates[sharer], candidates[members.front()]})
+                .second)
+          return true;
+    return false;
+  }
+
+  /// A route reaching or leaving a shared shim channel carries a packet
+  /// header, its id distinct from those of the routes it shares the channel
+  /// with. Other shared channels reuse the same ids: the router keeps flows
+  /// with one id apart wherever their destinations differ.
+  LogicalResult headShimSharingRoutes() {
+    DenseMap<Operation *, Operation *> channelOf;
+    for (auto [sharer, owner] : shimChannelSharers) {
+      channelOf[sharer] = owner;
+      channelOf[owner] = owner;
+    }
+    auto channelsOf = [&](RouteOp route) {
+      SmallVector<Operation *> channels;
+      auto note = [&](StringRef name) {
+        if (auto endpoint = lookupEndpoint(name);
+            endpoint && channelOf.count(endpoint.getOperation()))
+          channels.push_back(channelOf.lookup(endpoint.getOperation()));
+      };
+      llvm::for_each(route.getSourceNames(), note);
+      llvm::for_each(route.getDestinationNames(), note);
+      return channels;
+    };
+    DenseMap<Operation *, DenseSet<int>> idsOn;
+    for (auto route : device.getOps<RouteOp>())
+      if (PacketInfoAttr packet = route.getPacketAttr();
+          packet && packet.isAssigned())
+        for (Operation *channel : channelsOf(route))
+          idsOn[channel].insert(packet.assignedId());
+    PacketIdSpace ids(device);
+    SmallVector<int> reused;
+    for (auto route : device.getOps<RouteOp>()) {
+      SmallVector<Operation *> channels = channelsOf(route);
+      if (route.getPacket() || channels.empty())
+        continue;
+      auto freeOnAll = [&](int id) {
+        return llvm::none_of(channels, [&](Operation *channel) {
+          return idsOn[channel].contains(id);
+        });
+      };
+      std::optional<int> id;
+      if (auto *it = llvm::find_if(reused, freeOnAll); it != reused.end())
+        id = *it;
+      else if ((id = ids.takeLowestFrom()))
+        reused.push_back(*id);
+      else
+        return route.emitOpError("shares a shim channel, but no packet id is "
+                                 "left to tell its transfers apart");
+      for (Operation *channel : channels)
+        idsOn[channel].insert(*id);
+      route.setPacketAttr(PacketInfoAttr::get(builder.getContext(), 0,
+                                              static_cast<uint16_t>(*id)));
+    }
     return success();
   }
 
@@ -1157,34 +1259,26 @@ struct AIEObjectFifoAllocatePass
     return failure();
   }
 
-  /// FIXME: assigning packet IDs does not belong in this pass. The shape it
-  /// wants is an `%id = aie.packet_id` value that `aie.packet_flow` takes as an
-  /// argument, concretized by a pass of its own; this set then becomes that
-  /// pass's analysis.
-  ///
-  /// Packet IDs already spoken for, by an existing packet flow or by a flow
-  /// that pinned one.
-  llvm::SmallDenseSet<int> takenPacketIDs() {
-    llvm::SmallDenseSet<int> taken;
-    device.walk([&](PacketFlowOp flow) { taken.insert(flow.IDInt()); });
-    for (auto flow : device.getOps<RouteOp>()) {
-      if (auto pinned = flow.getPacketId()) {
-        taken.insert(*pinned);
-      }
-    }
-    return taken;
-  }
-
   /// A packet-switched flow shares the stream with others, so every buffer
   /// descriptor the source emits has to carry the packet header. A source that
   /// several flows share has no one header; its BDs state their own.
-  LogicalResult lowerPacketFlow(RouteOp flow, RouteEndpoint source,
-                                int packetID) {
-
-    auto info =
-        PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
-    if (sourcedFlows.at(flow.getSourceAttr().getAttr()).size() == 1)
-      source.setRoutePacket(info);
+  /// One packet flow carries every source of the route: each stamps the same
+  /// header, and their packets share the destination channels.
+  LogicalResult lowerPacketFlow(RouteOp flow, ArrayRef<RouteEndpoint> sources,
+                                PacketInfoAttr header) {
+    int packetID = header.assignedId();
+    for (auto [name, endpoint] : llvm::zip_equal(
+             flow.getSources().getAsRange<FlatSymbolRefAttr>(), sources)) {
+      RouteEndpoint source = endpoint;
+      // Written out in turn order after the last route.
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(*source);
+          dma && dma.getDispatch()) {
+        dispatchHeaders[dma][*flow.getDestinationNames().begin()] = header;
+        continue;
+      }
+      if (sourcedFlows.at(name.getAttr()).size() == 1)
+        source.setRoutePacket(header);
+    }
 
     builder.setInsertionPoint(flow);
     auto packetFlow = PacketFlowOp::create(
@@ -1197,10 +1291,11 @@ struct AIEObjectFifoAllocatePass
     EndOp::create(builder, flow.getLoc());
 
     builder.setInsertionPointToStart(&ports);
-    PacketSourceOp::create(builder, flow.getLoc(), source.getTile(),
-                           source.getRouteBundle(), channelOf(source));
-    for (auto destName :
-         flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+    for (RouteEndpoint source : sources) {
+      PacketSourceOp::create(builder, flow.getLoc(), source.getTile(),
+                             source.getRouteBundle(), channelOf(source));
+    }
+    for (StringRef destName : flow.getDestinationNames()) {
       auto dest = lookupEndpoint(destName);
       PacketDestOp::create(builder, flow.getLoc(), dest.getTile(),
                            dest.getRouteBundle(), channelOf(dest));
@@ -1215,62 +1310,53 @@ struct AIEObjectFifoAllocatePass
     return *channel;
   }
 
-  RouteEndpoint lookupEndpoint(FlatSymbolRefAttr name) {
-    return dyn_cast_or_null<RouteEndpoint>(
-        SymbolTable::lookupNearestSymbolFrom(device, name.getAttr()));
+  RouteEndpoint lookupEndpoint(StringRef name) {
+    return dyn_cast_or_null<RouteEndpoint>(SymbolTable::lookupNearestSymbolFrom(
+        device, StringAttr::get(device.getContext(), name)));
   }
 
   LogicalResult lowerFlows() {
-    int maxPacketID =
-        static_cast<int>(device.getTargetModel().getMaxPacketId());
-    llvm::SmallDenseSet<int> taken = takenPacketIDs();
-    int nextFree = 0;
-    SmallVector<RouteOp> flows(device.getOps<RouteOp>());
-    for (RouteOp flow : flows)
-      sourcedFlows[flow.getSourceAttr().getAttr()].push_back(flow);
-    llvm::stable_sort(flows, [&](RouteOp a, RouteOp b) {
-      return structuralRank.lookup(a) < structuralRank.lookup(b);
-    });
-    for (auto flow : flows) {
-      auto source = lookupEndpoint(flow.getSourceAttr());
+    for (RouteOp flow : device.getOps<RouteOp>())
+      for (auto name : flow.getSources().getAsRange<FlatSymbolRefAttr>())
+        sourcedFlows[name.getAttr()].push_back(flow);
+    for (auto flow : device.getOps<RouteOp>()) {
+      SmallVector<RouteEndpoint> sources;
+      for (StringRef name : flow.getSourceNames()) {
+        sources.push_back(lookupEndpoint(name));
+      }
       loweredFlows.push_back(flow);
 
-      // The pass flag is a default for flows that express no preference, so a
-      // device may mix circuit- and packet-switched connections.
-      if (flow.getPacket() || clPacketSwObjectFifos) {
-        int packetID;
-        if (auto pinned = flow.getPacketId()) {
-          packetID = *pinned;
-          if (packetID > maxPacketID) {
-            return flow.emitOpError("packet_id ")
-                   << packetID << " is out of range (max " << maxPacketID
-                   << ")";
-          }
-        } else {
-          while (taken.contains(nextFree)) {
-            nextFree++;
-          }
-          if (nextFree > maxPacketID) {
-            return flow.emitOpError("max number of packet IDs reached");
-          }
-          packetID = nextFree;
-          taken.insert(packetID);
+      // Which switching a route gets was settled upstream of this pass: the
+      // header is on the route, and --aie-assign-packet-ids gave it its id.
+      if (std::optional<PacketInfoAttr> packet = flow.getPacket()) {
+        if (!packet->isAssigned()) {
+          return flow.emitOpError("has a packet header with no pkt_id; run "
+                                  "--aie-assign-packet-ids before this pass");
         }
-        if (failed(lowerPacketFlow(flow, source, packetID))) {
+        if (failed(lowerPacketFlow(flow, sources, *packet))) {
           return failure();
         }
         continue;
       }
 
+      // The verifier keeps a circuit route to one source.
+      RouteEndpoint source = sources.front();
+
       int sourceChannel = channelOf(source);
       builder.setInsertionPoint(flow);
-      for (auto destName :
-           flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+      for (StringRef destName : flow.getDestinationNames()) {
         auto dest = lookupEndpoint(destName);
         FlowOp::create(builder, flow.getLoc(), source.getTile(),
                        source.getRouteBundle(), sourceChannel, dest.getTile(),
                        dest.getRouteBundle(), channelOf(dest));
       }
+    }
+    for (auto &[endpoint, byDest] : dispatchHeaders) {
+      SmallVector<Attribute> headers;
+      for (StringRef dest :
+           endpoint.getDispatchAttr().getAsValueRange<FlatSymbolRefAttr>())
+        headers.push_back(byDest.lookup(dest));
+      endpoint.setDispatchPacketsAttr(builder.getArrayAttr(headers));
     }
     return success();
   }
@@ -1286,7 +1372,7 @@ struct AIEObjectFifoAllocatePass
       }
       // Split may already have pointed this at the fifo's shim endpoint.
       StringRef name = sym.getValue();
-      if (auto endpoint = lookupEndpoint(sym)) {
+      if (auto endpoint = lookupEndpoint(sym.getValue())) {
         if (auto fifoName = endpoint.getFifoName()) {
           name = *fifoName;
         }
@@ -1372,16 +1458,8 @@ struct AIEObjectFifoAllocatePass
              << start.getEndpoint() << ", but its route makes it "
              << stringifyDMAChannelDir(dir);
     // Only a runtime task's BDs are given the packet header, so a DMA
-    // program can state it only when every flow it sources pins its id.
-    bool packet = !flows.empty() &&
-                  (RouteOp(flows.front()).getPacket() || clPacketSwObjectFifos);
-    if (packet &&
-        llvm::any_of(flows, [](RouteOp flow) { return !flow.getPacketId(); }))
-      return start.emitOpError("names ")
-             << start.getEndpoint()
-             << ", the source of a packet-switched route without a pinned "
-                "packet_id; pin packet_id on each route it sources and state "
-                "that header in each of the program's BDs";
+    // program states it in each BD; --aie-assign-packet-ids made it pin one.
+    bool packet = !flows.empty() && RouteOp(flows.front()).getPacket();
     if (packet) {
       SmallVector<DMABDOp> bds;
       for (Block *block : chainOf(start))
@@ -1486,8 +1564,9 @@ struct AIEObjectFifoAllocatePass
         flows = sourced->second;
       SmallVector<int> ids;
       for (RouteOp flow : flows)
-        if (auto id = flow.getPacketId())
-          ids.push_back(*id);
+        if (std::optional<PacketInfoAttr> packet = flow.getPacket();
+            packet && packet->isAssigned())
+          ids.push_back(packet->assignedId());
       // A shared source has no one header to stamp, so whatever sends on it
       // states each BD's header itself.
       bool shared = flows.size() > 1;
@@ -1512,6 +1591,11 @@ struct AIEObjectFifoAllocatePass
   /// spelled out under the name the sequence refers to.
   void emitShimAllocations() {
     builder.setInsertionPoint(device.getBody()->getTerminator());
+    // A fifo's first shim end takes the name the runtime sequence was pointed
+    // at. Any further shim end of the same fifo, as when a core broadcasts to
+    // two shim tiles, is a different tile and channel and needs a record of
+    // its own; sharing the first would send the runtime to the wrong tile.
+    llvm::StringMap<unsigned> shimEndsSeen;
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       std::optional<StringRef> fifoName = endpoint.getFifoName();
       std::optional<int> channel = endpoint.getRouteChannel();
@@ -1519,8 +1603,19 @@ struct AIEObjectFifoAllocatePass
         continue;
       }
       std::string name = (*fifoName + "_shim_alloc").str();
-      if (!SymbolTable::lookupNearestSymbolFrom<ShimDMAAllocationOp>(
-              device, builder.getStringAttr(name))) {
+      unsigned ordinal = shimEndsSeen[*fifoName]++;
+      bool create = true;
+      if (ordinal == 0) {
+        // A record under this name may already be there, declared by hand.
+        create = !SymbolTable::lookupNearestSymbolFrom<ShimDMAAllocationOp>(
+            device, builder.getStringAttr(name));
+      } else {
+        for (unsigned suffix = ordinal - 1; device.lookupSymbol(name);
+             suffix++) {
+          name = (*fifoName + "_shim_alloc_" + std::to_string(suffix)).str();
+        }
+      }
+      if (create) {
         ShimDMAAllocationOp::create(
             builder, endpoint.getLoc(), builder.getStringAttr(name),
             endpoint.getTile(),
@@ -1680,6 +1775,19 @@ struct AIEObjectFifoAllocatePass
         allocated = planAllocation(demandOrdered, tried);
       }
     }
+    // Out of shim channels, ends never in flight together can take turns on
+    // one, a shim tile and direction at a time.
+    while (failed(allocated) && channelFailure &&
+           tileOf(channelFailure).isShimTile() &&
+           planShimSharing(tileOf(channelFailure),
+                           channelFailure.getRouteDirection())) {
+      localPools.clear();
+      tried.clear();
+      allocated = planAllocation(pools, tried);
+    }
+    if (succeeded(allocated) && !shimChannelSharers.empty() &&
+        failed(headShimSharingRoutes()))
+      return signalPassFailure();
     if (failed(allocated)) {
       localPools.clear();
       if (failed(planBuffers(pools))) {
@@ -1733,11 +1841,4 @@ struct AIEObjectFifoAllocatePass
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEObjectFifoAllocatePass() {
   return std::make_unique<AIEObjectFifoAllocatePass>();
-}
-
-std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched) {
-  AIEObjectFifoAllocateOptions options;
-  options.clPacketSwObjectFifos = packetSwitched;
-  return std::make_unique<AIEObjectFifoAllocatePass>(options);
 }

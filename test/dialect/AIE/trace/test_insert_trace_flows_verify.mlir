@@ -193,7 +193,7 @@ module @shim_full_pinned_objectfifo {
     %tile00 = aie.tile(0, 0)
 
     aie.objectfifo @out0(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @out1(%tile02, {%tile00}, 2 : i32) {cons_dma_channels = array<i32: 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out1(%tile02, {%tile00}, 2 : i32) {cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
 
     aie.trace @trace(%tile02) {
       aie.trace.packet id=1 type=core

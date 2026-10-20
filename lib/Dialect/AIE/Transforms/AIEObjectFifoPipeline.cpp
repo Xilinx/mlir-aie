@@ -38,7 +38,8 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
         if (!options.skipVerify) {
           pm.addPass(createAIEObjectFifoVerifyPass());
         }
-        pm.addPass(createAIEObjectFifoAllocatePass(options.packetSwitched));
+        pm.addPass(createAIEAssignPacketIdsPass(options.packetSwitched));
+        pm.addPass(createAIEObjectFifoAllocatePass());
         pm.addPass(createAIEObjectFifoLowerDMAsPass());
         pm.addPass(createAIEObjectFifoLowerCoresPass());
         pm.addPass(createAIEObjectFifoErasePoolsPass());

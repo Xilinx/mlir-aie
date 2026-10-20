@@ -32,8 +32,9 @@ struct Descriptor {
   BDPadLayoutArrayAttr padding;
   FlatSymbolRefAttr acquireLock;
   FlatSymbolRefAttr releaseLock;
-  /// Index of the buffer's own binary lock, where the device uses those.
-  int64_t binaryLock;
+  /// Which of the pool's objects this moves; also the index of the object's
+  /// own binary lock, where the device uses those.
+  int64_t object;
   /// Lock units taken and given back, where they are not one object's.
   std::optional<int64_t> acquireValue = std::nullopt;
   std::optional<int64_t> releaseValue = std::nullopt;
@@ -184,8 +185,8 @@ struct AIEObjectFifoLowerDMAsPass
   }
 
   void emitDescriptor(ObjectFifoDmaEndpointOp endpoint, ObjectFifoPoolOp pool,
-                      Descriptor &descriptor, Block *successor,
-                      bool binaryLocks, bool drains) {
+                      Descriptor &descriptor, PacketInfoAttr packet,
+                      Block *successor, bool binaryLocks, bool drains) {
     Location loc = endpoint.getLoc();
     int count = drains ? 1 : pool.getRepeatCount().value_or(1);
 
@@ -195,8 +196,8 @@ struct AIEObjectFifoLowerDMAsPass
     if (binaryLocks) {
       // A binary lock's value encodes which side owns the buffer.
       SmallVector<LockOp> locks = pool.getLockOps();
-      if (descriptor.binaryLock < (int64_t)locks.size()) {
-        acquireLock = releaseLock = locks[descriptor.binaryLock];
+      if (descriptor.object < (int64_t)locks.size()) {
+        acquireLock = releaseLock = locks[descriptor.object];
         acquireValue = drains ? 1 : 0;
         releaseValue = drains ? 0 : 1;
         action = LockAction::Acquire;
@@ -215,9 +216,9 @@ struct AIEObjectFifoLowerDMAsPass
     if (acquireLock) {
       UseLockOp::create(builder, loc, acquireLock, action, acquireValue);
     }
-    if (auto packet = endpoint.getPacket()) {
-      DMABDPACKETOp::create(builder, loc, packet->getPktType(),
-                            packet->getPktId());
+    if (packet) {
+      DMABDPACKETOp::create(builder, loc, packet.getPktType(),
+                            packet.assignedId());
     }
 
     DMABDOp bd;
@@ -270,9 +271,25 @@ struct AIEObjectFifoLowerDMAsPass
     std::optional<int32_t> iterCount = endpoint.getIterCount();
 
     bool repeatInHardware = endpoint.repeatsInHardware();
-    int taskCount =
-        iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
+    // A dispatching chain runs until its turns line up with the pool's
+    // objects again, so one run covers that many passes.
+    int64_t passes = endpoint.getDispatchPasses();
+    int taskCount = iterCount ? *iterCount / passes - 1
+                              : (repeatInHardware ? repeat - 1 : 0);
     int64_t copies = repeatInHardware ? 1 : repeat;
+    SmallVector<PacketInfoAttr> turns;
+    if (std::optional<ArrayAttr> headers = endpoint.getDispatchPackets()) {
+      llvm::append_range(turns, headers->getAsRange<PacketInfoAttr>());
+    } else if (endpoint.getDispatch()) {
+      return endpoint.emitOpError(
+          "has no dispatchPackets; run --aie-objectfifo-allocate");
+    }
+    // A contiguous pool's descriptor steps through every object, so it has no
+    // one object for a turn to follow.
+    if (!turns.empty() && pool.getContiguous())
+      return endpoint.emitOpError(
+          "dispatches from a contiguous pool, which has no per-object BDs");
+    int64_t depth = pool.getDepth();
 
     DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
     Block *endBlock = findEndOpBlock(program.getDmaBody());
@@ -290,27 +307,32 @@ struct AIEObjectFifoLowerDMAsPass
 
     bool binaryLocks = !device.getTargetModel().hasProperty(
         AIETargetModel::UsesSemaphoreLocks);
-    size_t total = descriptors.size() * copies;
+    size_t total = descriptors.size() * copies * passes;
     size_t emitted = 0;
     Block *current = bdBlock;
-    for (Descriptor &descriptor : descriptors) {
-      for (int64_t copy = 0; copy < copies; copy++) {
-        Block *successor;
-        if (emitted + 1 < total) {
-          successor = builder.createBlock(endBlock);
-        } else if (iterCount) {
-          // A bounded chain exits after its final iteration.
-          successor = builder.createBlock(endBlock);
-          builder.setInsertionPointToStart(successor);
-          EndOp::create(builder, loc);
-        } else {
-          successor = bdBlock;
+    for (int64_t pass = 0; pass < passes; pass++) {
+      for (Descriptor &descriptor : descriptors) {
+        PacketInfoAttr packet = endpoint.getPacketAttr();
+        if (!turns.empty())
+          packet = turns[(pass * depth + descriptor.object) % turns.size()];
+        for (int64_t copy = 0; copy < copies; copy++) {
+          Block *successor;
+          if (emitted + 1 < total) {
+            successor = builder.createBlock(endBlock);
+          } else if (iterCount) {
+            // A bounded chain exits after its final iteration.
+            successor = builder.createBlock(endBlock);
+            builder.setInsertionPointToStart(successor);
+            EndOp::create(builder, loc);
+          } else {
+            successor = bdBlock;
+          }
+          builder.setInsertionPointToStart(current);
+          emitDescriptor(endpoint, pool, descriptor, packet, successor,
+                         binaryLocks, drains);
+          current = successor;
+          emitted++;
         }
-        builder.setInsertionPointToStart(current);
-        emitDescriptor(endpoint, pool, descriptor, successor, binaryLocks,
-                       drains);
-        current = successor;
-        emitted++;
       }
     }
     return success();

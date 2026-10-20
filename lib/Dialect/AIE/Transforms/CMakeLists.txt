@@ -31,6 +31,7 @@ add_mlir_dialect_library(
   AIEVectorTransferLowering.cpp
   AIEHoistVectorTransferPointers.cpp
   AIEDMAChannelAnalysis.cpp
+  AIEAssignPacketIds.cpp
   AIEObjectFifoAllocate.cpp
   AIECheckAgainstImage.cpp
   AIEObjectFifoLowerDMAs.cpp
@@ -44,6 +45,8 @@ add_mlir_dialect_library(
   AIEGenerateColumnControlOverlay.cpp
   AIETraceToConfig.cpp
   AIEInsertTraceFlows.cpp
+  AIEPacketIdSpace.cpp
+  AIEShimSharing.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 

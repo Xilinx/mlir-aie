@@ -1,4 +1,4 @@
-// RUN: aie-opt --split-input-file --aie-objectfifo-allocate %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -22,9 +22,9 @@
 // CHECK-DAG:   aie.route_endpoint @b_shim({{.*}}) DMA {channelIndex = 1 : i32, fifoName = "b"}
 // CHECK-DAG:   aie.objectfifo.dma_endpoint @b_in({{.*}}) fills @b_l2 {channelIndex = 1 : i32}
 // CHECK-DAG:   aie.objectfifo.dma_endpoint @b_out({{.*}}) drains @b_l2 {channelIndex = 1 : i32}
-// CHECK-DAG:   aie.objectfifo.dma_endpoint @c_core({{.*}}) drains @c_l1 {channelIndex = 0 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 0>}
+// CHECK-DAG:   aie.objectfifo.dma_endpoint @c_core({{.*}}) drains @c_l1 {channelIndex = 0 : i32, packet = #aie.packet_info<pkt_id = 0>}
 // CHECK-DAG:   aie.route_endpoint @c_shim({{.*}}) DMA {channelIndex = 0 : i32, fifoName = "c"}
-// CHECK-DAG:   aie.objectfifo.dma_endpoint @d_core({{.*}}) drains @d_l1 {channelIndex = 0 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+// CHECK-DAG:   aie.objectfifo.dma_endpoint @d_core({{.*}}) drains @d_l1 {channelIndex = 0 : i32, packet = #aie.packet_info<pkt_id = 1>}
 // CHECK-DAG:   aie.route_endpoint @d_shim({{.*}}) DMA {channelIndex = 1 : i32, fifoName = "d"}
 
 // CHECK-LABEL: module @permuted
@@ -40,9 +40,9 @@
 // CHECK-DAG:   aie.route_endpoint @x_shim({{.*}}) DMA {channelIndex = 1 : i32, fifoName = "x"}
 // CHECK-DAG:   aie.objectfifo.dma_endpoint @x_in({{.*}}) fills @x_l2 {channelIndex = 1 : i32}
 // CHECK-DAG:   aie.objectfifo.dma_endpoint @x_out({{.*}}) drains @x_l2 {channelIndex = 1 : i32}
-// CHECK-DAG:   aie.objectfifo.dma_endpoint @w_core({{.*}}) drains @w_l1 {channelIndex = 0 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 0>}
+// CHECK-DAG:   aie.objectfifo.dma_endpoint @w_core({{.*}}) drains @w_l1 {channelIndex = 0 : i32, packet = #aie.packet_info<pkt_id = 0>}
 // CHECK-DAG:   aie.route_endpoint @w_shim({{.*}}) DMA {channelIndex = 0 : i32, fifoName = "w"}
-// CHECK-DAG:   aie.objectfifo.dma_endpoint @v_core({{.*}}) drains @v_l1 {channelIndex = 0 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+// CHECK-DAG:   aie.objectfifo.dma_endpoint @v_core({{.*}}) drains @v_l1 {channelIndex = 0 : i32, packet = #aie.packet_info<pkt_id = 1>}
 // CHECK-DAG:   aie.route_endpoint @v_shim({{.*}}) DMA {channelIndex = 1 : i32, fifoName = "v"}
 
 module @declared {
@@ -86,7 +86,7 @@ module @declared {
     aie.objectfifo.core_endpoint @c_make(%core2) fills @c_l1
     aie.objectfifo.dma_endpoint @c_core(%core2) drains @c_l1
     aie.route_endpoint @c_shim(%shim) DMA {fifoName = "c"}
-    aie.route from @c_core to [@c_shim] {packet}
+    aie.route from @c_core to [@c_shim] {packet = #aie.packet_info<>}
 
     aie.objectfifo.pool @d_l1(%core3) {depth = 2 : i32} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
@@ -94,7 +94,7 @@ module @declared {
     aie.objectfifo.core_endpoint @d_make(%core3) fills @d_l1
     aie.objectfifo.dma_endpoint @d_core(%core3) drains @d_l1
     aie.route_endpoint @d_shim(%shim) DMA {fifoName = "d"}
-    aie.route from @d_core to [@d_shim] {packet}
+    aie.route from @d_core to [@d_shim] {packet = #aie.packet_info<>}
   }
 }
 
@@ -113,7 +113,7 @@ module @permuted {
     aie.objectfifo.core_endpoint @v_make(%core3) fills @v_l1
     aie.route_endpoint @v_shim(%shim) DMA {fifoName = "v"}
     aie.objectfifo.dma_endpoint @v_core(%core3) drains @v_l1
-    aie.route from @v_core to [@v_shim] {packet}
+    aie.route from @v_core to [@v_shim] {packet = #aie.packet_info<>}
 
     aie.objectfifo.pool @x_l1(%core3) {depth = 2 : i32} : memref<64xi32> {
       aie.objectfifo.segment @t {offset = 0 : i32, size = 64 : i32}
@@ -135,7 +135,7 @@ module @permuted {
     aie.objectfifo.dma_endpoint @w_core(%core2) drains @w_l1
     aie.objectfifo.core_endpoint @w_make(%core2) fills @w_l1
     aie.route_endpoint @w_shim(%shim) DMA {fifoName = "w"}
-    aie.route from @w_core to [@w_shim] {packet}
+    aie.route from @w_core to [@w_shim] {packet = #aie.packet_info<>}
 
     aie.objectfifo.pool @y_l1(%core2) {depth = 2 : i32} : memref<64xi32> {
       aie.objectfifo.segment @t {offset = 0 : i32, size = 64 : i32}

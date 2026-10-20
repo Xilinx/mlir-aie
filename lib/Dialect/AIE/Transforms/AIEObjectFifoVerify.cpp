@@ -10,6 +10,10 @@
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/SetVector.h"
+
+#include <limits>
+#include <optional>
 
 using namespace mlir;
 using namespace xilinx;
@@ -26,6 +30,58 @@ struct SegmentActors {
   SmallVector<Operation *> fillers;
   SmallVector<Operation *> drainers;
 };
+
+/// A DMA endpoint with an iteration count moves this many objects through its
+/// pool, then stops.
+struct TransferBudget {
+  ObjectFifoDmaEndpointOp endpoint;
+  int32_t iterations;
+  int64_t objects;
+};
+
+/// A loop the frontend means to run forever has a bound no design counts to:
+/// IRON writes sys.maxsize, hand-written designs 2^32 - 1. From the AIE's
+/// 24-bit BD-loop saturation value up, a trip count is read as "forever"; below
+/// it, as a real bound.
+static constexpr int64_t kRunsForever = (int64_t{1} << 24) - 2;
+
+static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
+  if (forOp.getSingleLowerBound() && forOp.getSingleUpperBound() &&
+      forOp.getSingleStep()) {
+    if (std::optional<llvm::APInt> tc = forOp.getStaticTripCount()) {
+      return tc->getSExtValue();
+    }
+  }
+  return std::nullopt;
+}
+
+/// How many times `op` runs when its core runs to completion, when static loop
+/// bounds alone decide that. Anything conditional between the op and the core,
+/// an `scf.if`, a loop with dynamic bounds or one meant to run forever, a block
+/// reached by branching, makes it unknown.
+static std::optional<int64_t> staticExecutions(Operation *op) {
+  int64_t count = 1;
+  for (Operation *cur = op; !isa<CoreOp>(cur); cur = cur->getParentOp()) {
+    if (cur->getBlock() != &cur->getParentRegion()->front()) {
+      return std::nullopt;
+    }
+    Operation *parent = cur->getParentOp();
+    if (isa<CoreOp>(parent)) {
+      break;
+    }
+    auto forOp = dyn_cast<scf::ForOp>(parent);
+    if (!forOp) {
+      return std::nullopt;
+    }
+    std::optional<int64_t> trip = getStaticTripCount(forOp);
+    if (!trip || *trip >= kRunsForever ||
+        (*trip != 0 && count > std::numeric_limits<int64_t>::max() / *trip)) {
+      return std::nullopt;
+    }
+    count *= *trip;
+  }
+  return count;
+}
 
 struct AIEObjectFifoVerifyPass
     : public xilinx::AIE::impl::AIEObjectFifoVerifyBase<
@@ -65,9 +121,11 @@ struct AIEObjectFifoVerifyPass
   LogicalResult verifyFlows(DeviceOp device) {
     DenseMap<StringRef, int> appearances;
     for (auto flow : device.getOps<RouteOp>()) {
-      appearances[flow.getSource()]++;
-      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
-        appearances[dest.getValue()]++;
+      for (StringRef source : flow.getSourceNames()) {
+        appearances[source]++;
+      }
+      for (StringRef dest : flow.getDestinationNames()) {
+        appearances[dest]++;
       }
     }
 
@@ -77,12 +135,126 @@ struct AIEObjectFifoVerifyPass
       if (count == 0) {
         return endpoint->emitOpError("is not connected by any flow");
       }
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(*endpoint);
+          dma && dma.getDispatch()) {
+        if (failed(verifyDispatch(device, dma)))
+          return failure();
+        continue;
+      }
       // An aie.route_endpoint's own verifier says which flows may share it.
       if (count > 1 && !isa<RouteEndpointOp>(endpoint.getOperation())) {
         return endpoint->emitOpError(
                    "drives one channel, so at most one flow may name it, but "
                    "it is named ")
                << count << " times";
+      }
+    }
+    return success();
+  }
+
+  /// A dispatching endpoint is the one source of one packet-switched route per
+  /// destination it takes turns between, and of nothing else. A second route to
+  /// the same destination is refused there, by the count every endpoint gets.
+  LogicalResult verifyDispatch(DeviceOp device,
+                               ObjectFifoDmaEndpointOp endpoint) {
+    StringRef name = endpoint.getSymName();
+    llvm::SmallSetVector<StringRef, 4> turns;
+    for (StringRef dest :
+         endpoint.getDispatchAttr().getAsValueRange<FlatSymbolRefAttr>())
+      turns.insert(dest);
+    llvm::SmallDenseSet<StringRef, 4> reached;
+    for (auto flow : device.getOps<RouteOp>()) {
+      if (flow.namesAsDestination(name))
+        return flow.emitOpError("names dispatching endpoint @")
+               << name << " as a destination";
+      if (!flow.namesAsSource(name))
+        continue;
+      if (flow.getSources().size() != 1 || flow.getDestinations().size() != 1)
+        return flow.emitOpError("leaves dispatching endpoint @")
+               << name
+               << " for one destination, so it has one source and "
+                  "one destination";
+      if (!flow.getPacket())
+        return flow.emitOpError("leaves dispatching endpoint @")
+               << name << " and needs a packet header to tell its turns apart";
+      StringRef dest = *flow.getDestinationNames().begin();
+      if (!turns.contains(dest))
+        return flow.emitOpError("reaches @")
+               << dest << ", which dispatching endpoint @" << name
+               << " never takes a turn for";
+      reached.insert(dest);
+    }
+    for (StringRef dest : turns)
+      if (!reached.contains(dest))
+        return endpoint.emitOpError("dispatches to @")
+               << dest << ", but no route from it reaches there";
+    return success();
+  }
+
+  /// The elements one pass of an endpoint's chain moves: each selected segment
+  /// once, through its transform where it has one.
+  static int64_t transferElements(ObjectFifoDmaEndpointOp endpoint) {
+    int64_t elements = 0;
+    std::optional<ArrayRef<BDDimLayoutArrayAttr>> dimensions =
+        endpoint.getDimensions();
+    for (auto [index, segment] :
+         llvm::enumerate(endpoint.getSelectedSegments())) {
+      BDDimLayoutArrayAttr dims;
+      if (dimensions && index < dimensions->size()) {
+        dims = (*dimensions)[index];
+      }
+      if (dims && !dims.empty()) {
+        int64_t product = 1;
+        for (BDDimLayoutAttr dim : dims) {
+          product *= dim.getSize();
+        }
+        elements += product;
+      } else {
+        elements += segment.getSize();
+      }
+    }
+    return elements;
+  }
+
+  /// A fan-in's destination fills its next object with whatever packet
+  /// arrives, and a packet is one pass of its sender's chain, so every end has
+  /// to move the same number of elements or two senders share an object. A
+  /// route endpoint's transfers are the runtime's and are not checked here.
+  LogicalResult verifyFanIn(DeviceOp device) {
+    for (auto flow : device.getOps<RouteOp>()) {
+      if (!flow.isFanIn()) {
+        continue;
+      }
+      std::optional<std::pair<StringRef, int64_t>> first;
+      auto check = [&](StringRef name) -> LogicalResult {
+        auto endpoint = dyn_cast_or_null<ObjectFifoDmaEndpointOp>(
+            SymbolTable::lookupNearestSymbolFrom(
+                device, StringAttr::get(device.getContext(), name)));
+        if (!endpoint) {
+          return success();
+        }
+        int64_t elements = transferElements(endpoint);
+        if (!first) {
+          first = {name, elements};
+          return success();
+        }
+        if (elements != first->second) {
+          return flow.emitOpError("fans in, so every end moves one object of "
+                                  "the same size, but @")
+                 << first->first << " moves " << first->second
+                 << " elements and @" << name << " moves " << elements;
+        }
+        return success();
+      };
+      for (StringRef name : flow.getSourceNames()) {
+        if (failed(check(name))) {
+          return failure();
+        }
+      }
+      for (StringRef name : flow.getDestinationNames()) {
+        if (failed(check(name))) {
+          return failure();
+        }
       }
     }
     return success();
@@ -143,6 +315,65 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
+  /// A DMA endpoint with an iteration count stops after `iterCount * depth`
+  /// objects, so a core that must release more through the same pool waits
+  /// forever for the rest. Only releases static loop bounds force are counted,
+  /// so what is reported is certain; a conditional release, or one in a loop
+  /// meant to run forever, is left out, since such a core stalling once the
+  /// data stops is how those designs end.
+  LogicalResult verifyTransferBudgets(DeviceOp device) {
+    DenseMap<Operation *, TransferBudget> budgets;
+    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      std::optional<int32_t> iterations = endpoint.getIterCount();
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      if (!iterations || !pool) {
+        continue;
+      }
+      budgets[pool] = {endpoint, *iterations,
+                       int64_t{*iterations} * pool.getDepth()};
+    }
+    if (budgets.empty()) {
+      return success();
+    }
+
+    DenseMap<StringRef, int64_t> released;
+    DenseMap<StringRef, ObjectFifoReleaseOp> blame;
+    device.walk([&](ObjectFifoReleaseOp release) {
+      std::optional<int64_t> runs = staticExecutions(release);
+      if (!runs) {
+        return;
+      }
+      StringRef key = release.getObjFifoName();
+      released[key] += *runs * release.relNumber();
+      blame.try_emplace(key, release);
+    });
+
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      // A segment-selecting endpoint sees a share of the pool, not the whole.
+      auto budget = budgets.find(endpoint.getPoolOp());
+      if (budget == budgets.end() || endpoint.getSegments()) {
+        continue;
+      }
+      StringRef name = endpoint.getSymName();
+      int64_t count = released.lookup(name);
+      if (count <= budget->second.objects) {
+        continue;
+      }
+      ObjectFifoDmaEndpointOp dma = budget->second.endpoint;
+      InFlightDiagnostic diag =
+          blame.lookup(name).emitOpError("releases ")
+          << count << " objects through @" << name
+          << " over the run, but the pool's DMA endpoint stops after "
+          << budget->second.objects << " (iterCount "
+          << budget->second.iterations << " x depth "
+          << endpoint.getPoolOp().getDepth()
+          << "), so the core would wait forever for the rest";
+      diag.attachNote(dma.getLoc()) << "the DMA endpoint is here";
+      return failure();
+    }
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -178,7 +409,9 @@ struct AIEObjectFifoVerifyPass
       }
     }
 
-    if (failed(verifyFlows(device)) || failed(verifyOverRelease(device))) {
+    if (failed(verifyFlows(device)) || failed(verifyFanIn(device)) ||
+        failed(verifyOverRelease(device)) ||
+        failed(verifyTransferBudgets(device))) {
       return signalPassFailure();
     }
   }

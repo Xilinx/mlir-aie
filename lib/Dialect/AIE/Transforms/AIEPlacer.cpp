@@ -200,6 +200,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   addChannelRequirementsFromFlows(flows, pktFlows, routes, channelRequirements);
   buildStreamDemand(objectFifos);
   buildRuntimeBdProfiles(device, objectFifos);
+  shareableShimEnds = collectShareableShimEnds(device, objectFifos);
+  shimSpans.emplace(
+      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });
+  shimEndsAt.clear();
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
@@ -741,7 +745,8 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
   auto [inChannels, outChannels] =
       channelRequirements.lookup(logicalTile.getOperation());
 
-  if (!hasAvailableChannels(tile, inChannels, outChannels)) {
+  if (!hasAvailableChannels(tile, inChannels, outChannels) &&
+      !fitsSharingShim(tile, logicalTile, {inChannels, outChannels})) {
     int maxIn = logicalTile.getNumDestConnections(WireBundle::DMA);
     int maxOut = logicalTile.getNumSourceConnections(WireBundle::DMA);
     int availIn = maxIn - availability.inputChannelsUsed[tile];
@@ -764,6 +769,7 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
   if (outChannels > 0)
     updateChannelUsage(tile, DmaDir::Out, outChannels);
   recordStreamAndBdUsage(logicalTile, tile);
+  recordShimEnds(tile, logicalTile);
 
   return success();
 }
@@ -851,11 +857,11 @@ SequentialPlacer::buildChannelRequirements(
     if (!linkTileOp)
       continue;
 
-    // Link tile needs:
-    // - Input channels = number of source ObjectFifos
-    // - Output channels = number of dest ObjectFifos
-    int numInputChannels = linkOp.getFifoIns().size();
-    int numOutputChannels = linkOp.getFifoOuts().size();
+    // Link tile needs one input channel per source ObjectFifo and one output
+    // channel per dest ObjectFifo, except that a time link's turns share one.
+    int numInputChannels = linkOp.isMerge() ? 1 : linkOp.getFifoIns().size();
+    int numOutputChannels =
+        linkOp.isDispatch() ? 1 : linkOp.getFifoOuts().size();
 
     channelRequirements[linkTileOp].first += numInputChannels;
     channelRequirements[linkTileOp].second += numOutputChannels;
@@ -1204,6 +1210,43 @@ Placer::buildObjectFifoAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
   return adjacency;
 }
 
+Placer::ShareableShimEnds
+Placer::collectShareableShimEnds(DeviceOp device,
+                                 ArrayRef<ObjectFifoCreateOp> objectFifos) {
+  llvm::DenseSet<std::pair<Operation *, Value>> registered;
+  for (auto reg : device.getOps<ObjectFifoRegisterExternalBuffersOp>())
+    registered.insert({reg.getObjectFifo(), reg.getTile()});
+  ShareableShimEnds ends;
+  auto shareable = [&](ObjectFifoCreateOp fifo, Value tile,
+                       ObjectFifoEndPortAttr port) -> Operation * {
+    auto lt = dyn_cast_or_null<LogicalTileOp>(tile.getDefiningOp());
+    if (!lt || lt.getTileType() != AIETileType::ShimNOCTile || fifo.getPlio() ||
+        (port && port.channelIndex()) || registered.contains({fifo, tile}))
+      return nullptr;
+    return lt;
+  };
+  for (auto fifo : objectFifos) {
+    if (Operation *lt =
+            shareable(fifo, fifo.getProducerTile(), fifo.getProdPortAttr()))
+      ends[lt][1].push_back(fifo.getSymNameAttr());
+    for (auto [i, consumer] : llvm::enumerate(fifo.getConsumerTiles()))
+      if (Operation *lt = shareable(fifo, consumer, fifo.getConsumerPort(i)))
+        ends[lt][0].push_back(fifo.getSymNameAttr());
+  }
+  return ends;
+}
+
+std::optional<ShimTransferSpans::End> Placer::shimEndOf(DeviceOp device,
+                                                        StringAttr symbol) {
+  auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(
+      SymbolTable::lookupNearestSymbolFrom(device, symbol));
+  if (!fifo)
+    return std::nullopt;
+  auto producer =
+      dyn_cast_or_null<TileLike>(fifo.getProducerTile().getDefiningOp());
+  return ShimTransferSpans::End{symbol, producer && producer.isShimTile()};
+}
+
 Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
                                              ArrayRef<PacketFlowOp> pktFlows) {
   Adjacency adjacency;
@@ -1279,18 +1322,19 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
   }
 
   // Packet routes may share an endpoint, which holds one channel however many
-  // routes name it.
+  // routes name it, and a fan-in's sources share one destination channel.
   llvm::DenseSet<Operation *> countedEndpoints;
   for (auto route : routes) {
-    auto count = [&](FlatSymbolRefAttr name, bool isOutput) {
-      auto endpoint =
-          SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(route, name);
+    auto count = [&](StringRef name, bool isOutput) {
+      auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(
+          route, StringAttr::get(route.getContext(), name));
       if (endpoint && countedEndpoints.insert(endpoint).second)
         incIfDMA(endpoint.getTile().getDefiningOp(), endpoint.getRouteBundle(),
                  endpoint.getRouteChannel(), isOutput);
     };
-    count(route.getSourceAttr(), /*isOutput=*/true);
-    for (auto dest : route.getDestinations().getAsRange<FlatSymbolRefAttr>())
+    for (StringRef source : route.getSourceNames())
+      count(source, /*isOutput=*/true);
+    for (StringRef dest : route.getDestinationNames())
       count(dest, /*isOutput=*/false);
   }
 }
@@ -1330,21 +1374,22 @@ SequentialPlacer::FlowMembership SequentialPlacer::buildFlowMembership(
       addEntry(d, srcs);
   }
   for (auto route : routes) {
-    auto tileOf = [&](FlatSymbolRefAttr name) -> Value {
-      auto endpoint =
-          SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(route, name);
+    auto tileOf = [&](StringRef name) -> Value {
+      auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(
+          route, StringAttr::get(route.getContext(), name));
       return endpoint ? endpoint.getTile() : Value();
     };
-    Value src = tileOf(route.getSourceAttr());
-    SmallVector<Value> dsts;
-    for (auto dest : route.getDestinations().getAsRange<FlatSymbolRefAttr>())
+    SmallVector<Value> srcs, dsts;
+    for (StringRef source : route.getSourceNames())
+      if (Value tile = tileOf(source))
+        srcs.push_back(tile);
+    for (StringRef dest : route.getDestinationNames())
       if (Value tile = tileOf(dest))
         dsts.push_back(tile);
-    if (!src)
-      continue;
-    addEntry(src, dsts);
+    for (Value s : srcs)
+      addEntry(s, dsts);
     for (Value d : dsts)
-      addEntry(d, {src});
+      addEntry(d, srcs);
   }
   for (auto of : objectFifos) {
     Value prod = of.getProducerTile();
@@ -1495,6 +1540,23 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
                                      numInputChannels, numOutputChannels,
                                      logicalTile.getTileType(), logicalTile,
                                      /*withinBudgets=*/false);
+  // Exhausted shim tiles are no longer in availability, so look at them all.
+  if (!maybeTile && mergeLogicalTiles &&
+      logicalTile.getTileType() == AIETileType::ShimNOCTile) {
+    std::optional<std::pair<int, int>> bestKey;
+    for (int col = 0, numCols = targetModel->columns(); col < numCols; ++col) {
+      TileID tile{col, 0};
+      if ((colConstraint && col != *colConstraint) ||
+          !fitsSharingShim(tile, logicalTile,
+                           {numInputChannels, numOutputChannels}))
+        continue;
+      std::pair<int, int> key{targetCol ? std::abs(col - *targetCol) : 0, col};
+      if (!bestKey || key < *bestKey) {
+        bestKey = key;
+        maybeTile = tile;
+      }
+    }
+  }
   if (!maybeTile) {
     AIETileType requestedType = logicalTile.getTileType();
     StringRef tileTypeName = stringifyAIETileType(requestedType);
@@ -1550,7 +1612,40 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   if (numOutputChannels > 0)
     updateChannelUsage(*maybeTile, DmaDir::Out, numOutputChannels);
   recordStreamAndBdUsage(logicalTile, *maybeTile);
+  recordShimEnds(*maybeTile, logicalTile);
   return success();
+}
+
+bool SequentialPlacer::fitsSharingShim(TileID tile, Operation *logicalTile,
+                                       std::pair<int, int> required) {
+  if (targetModel->getTileType(tile.col, tile.row) !=
+          AIETileType::ShimNOCTile ||
+      !shimSpans)
+    return false;
+  auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
+  int used[2] = {availability.inputChannelsUsed[tile],
+                 availability.outputChannelsUsed[tile]};
+  int need[2] = {required.first, required.second};
+  int max[2] = {maxIn, maxOut};
+  auto own = shareableShimEnds.lookup(logicalTile);
+  for (int dir : {0, 1}) {
+    if (used[dir] + need[dir] <= max[dir])
+      continue;
+    SmallVector<StringAttr> ends(shimEndsAt[tile][dir]);
+    llvm::append_range(ends, own[dir]);
+    int fixed = used[dir] + need[dir] - static_cast<int>(ends.size());
+    if (fixed + static_cast<int>(shimSpans->groups(ends).size()) > max[dir])
+      return false;
+  }
+  return true;
+}
+
+void SequentialPlacer::recordShimEnds(TileID tile, Operation *logicalTile) {
+  auto own = shareableShimEnds.find(logicalTile);
+  if (own == shareableShimEnds.end())
+    return;
+  for (int dir : {0, 1})
+    llvm::append_range(shimEndsAt[tile][dir], own->second[dir]);
 }
 
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
