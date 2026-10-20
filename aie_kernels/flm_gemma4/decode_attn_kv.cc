@@ -98,18 +98,15 @@ void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
 // through an ObjectFifo, so these functions do not touch the s locks. The
 // design owns the y and l accumulators.
 //
-// v and o use hand-written lock and BD edges. This kernel holds their locks and
-// the v ping/pong parity, which must stay in lockstep with the BD chain.
-static PingPong v_pingpong;
+// v and o use hand-written lock and BD edges. The design acquires the v lock
+// and passes in the buffer that the BD chain filled.
 
 extern "C" {
 
 void attn_kv_begin(float *y, float *l) { attn_kv_begin_impl<8 * DH>(y, l); }
 
 // One round. s is the ObjectFifo object.
-void attn_kv_round(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y, float *l) {
-  bf16 *v = v_pingpong.next(v_ping, v_pong);
-
+void attn_kv_round(bf16 *s, bf16 *v, float *y, float *l) {
   float *c = (float *)(s + Q_HEADS_PADDED_PER_CU * 16);
   calculate_l(s, c, l);
   attn_fv<DH / 8, GQA_R, GQA_S, GQA_T>(s, v, y, c);
