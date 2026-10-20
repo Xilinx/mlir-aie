@@ -14,7 +14,7 @@
 // CTRL-PKT: error: teardown is not implemented for control packet reconfiguration
 
 // @cfg sets a circuit and a packet route in tile (0, 2) and starts the
-// memtile's MM2S channel 1. Its teardown, after the configuration's last sync,
+// memtile's MM2S channel 1. Its teardown, where the next configuration starts,
 // zeroes the circuit's master and slave ports (2355204, 2355480), the packet
 // route's (2355200, 2355484) and its slot (2355824), and pulses the reset bit
 // of the memtile channel (1705528). Only the first configuration keeps its reset, and nothing is
@@ -25,6 +25,7 @@
 // CHECK:     aiex.npu.load_pdi {device_ref = @empty_0
 // CHECK:     aiex.npu.write32(%[[SYNC_ADDR]], %{{.*}})
 // CHECK:     aiex.npu.sync
+// CHECK:     aiex.npu.write32(%[[SYNC_ADDR]], %{{.*}})
 // CHECK-DAG: %[[ZERO:.*]] = arith.constant 0 : i32
 // CHECK-DAG: %[[A0:.*]] = arith.constant 2355204 : i32
 // CHECK:     aiex.npu.write32(%[[A0]], %[[ZERO]])
@@ -40,7 +41,6 @@
 // CHECK-DAG: %[[BIT:.*]] = arith.constant 2 : i32
 // CHECK:     aiex.npu.maskwrite32(%[[RESET]], %[[BIT]], %[[BIT]])
 // CHECK:     aiex.npu.maskwrite32(%[[RESET]], %[[ZERO]], %[[BIT]])
-// CHECK:     aiex.npu.write32(%[[SYNC_ADDR]], %{{.*}})
 // CHECK-NOT: aiex.npu.load_pdi
 // CHECK:     aiex.npu.sync
 // CHECK:     aiex.npu.write32(%{{.*}}, %{{.*}})

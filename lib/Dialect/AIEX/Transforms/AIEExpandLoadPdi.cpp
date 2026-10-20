@@ -286,19 +286,13 @@ struct CtrlPktReload {
   AIE::DeviceOp overlay;
 };
 
-// Set `builder` after the last wait before the next load_pdi, or at that
-// load_pdi (or the block's end) if there is none.
+// Set `builder` at the next load_pdi, or at the block's end if there is none.
 static void setInsertionPointToSegmentEnd(OpBuilder &builder,
                                           NpuLoadPdiOp loadPdiOp) {
-  Operation *lastWait = nullptr;
   Operation *op = loadPdiOp->getNextNode();
-  for (; op && !isa<NpuLoadPdiOp>(op) && !op->hasTrait<OpTrait::IsTerminator>();
-       op = op->getNextNode())
-    if (isa<NpuSyncOp, NpuDmaWaitOp, DMAAwaitTaskOp>(op))
-      lastWait = op;
-  if (lastWait)
-    builder.setInsertionPointAfter(lastWait);
-  else if (op)
+  while (op && !isa<NpuLoadPdiOp>(op) && !op->hasTrait<OpTrait::IsTerminator>())
+    op = op->getNextNode();
+  if (op)
     builder.setInsertionPoint(op);
   else
     builder.setInsertionPointToEnd(loadPdiOp->getBlock());
