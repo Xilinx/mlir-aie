@@ -13,3 +13,9 @@
 // RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights | FileCheck %s
 // CHECK: building synthetic embed/final_norm
 // CHECK: chain_persist_grow_mh: 4/4 tokens PASS
+//
+// Two dispatches with the NPU left idle past its autosuspend delay in between:
+// the KV cache and the next seed carry over in DDR.
+// RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --dispatches 2 --idle-s 6 | FileCheck %s --check-prefix=CARRY
+// CARRY: chain_persist_grow_mh: 8/8 tokens PASS
+// CARRY: carry across 2 dispatches: PASS

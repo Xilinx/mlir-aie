@@ -9,10 +9,9 @@ real autoregressive decode where context accumulates.
 vs the fixed-position test (test_chain_persist_mh): here the KV cache is NOT
 restored between tokens. The growing-append (llama_kv_append_combined_grow) writes
 slot = T_used and advances T_used -> T_used+1 ON-CHIP, so token t appends at slot
-P+t and attends [0, P+t]. The host ping-pongs two KV regions (token t fills
-region t%2, drains region (t+1)%2), carrying the grown cache forward. Rope cos/sin
-is held fixed (position P) this increment -- only the append slot + attention
-window advance.
+P+t and attends [0, P+t]. Each token fills from one half of the KV buffer and
+drains to the other, carrying the grown cache forward; the host names the half a
+dispatch starts from (dispatch_params).
 
 token-0 KV prefix T_used = P (NOT P+1): the grow-append's slot = T_used, so token
 0 writes slot P and sets T_used = P+1 (flowkv attends P+1, incl the new slot).
@@ -27,6 +26,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 import aie.iron as iron
@@ -216,6 +216,20 @@ DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
 LMW_GAMMA_BYTES = 2 * D
 
 
+def dispatch_params(region):
+    """The design's ScratchpadParameters for one dispatch.
+
+    Args:
+        region: The half of the KV buffer holding the cache the dispatch
+            starts from. Token t fills from half (region + t) % 2 and drains
+            to the other, so the grown cache ends in (region + PT) % 2.
+
+    Returns:
+        The parameter values by name.
+    """
+    return {"kv_even": region * KV_BYTES, "kv_odd": (1 - region) * KV_BYTES}
+
+
 def time_decode(session, buffers, opts):
     """Per-token device time + DMA floor (host-ferried grow: KV streamed every
     token, both directions, so bytes/token includes 2*KV_BYTES)."""
@@ -223,9 +237,10 @@ def time_decode(session, buffers, opts):
         f"timing: warmup x{opts.n_warmup}, time x{opts.n_iters}  (PT={PT} tokens/dispatch)",
         flush=True,
     )
+    params = dispatch_params(0)
     for _ in range(opts.n_warmup):
-        session(buffers)
-    times_ms = [session(buffers) for _ in range(opts.n_iters)]
+        session(buffers, **params)
+    times_ms = [session(buffers, **params) for _ in range(opts.n_iters)]
     arr = np.array(times_ms)
     disp_med = float(np.median(arr))
     per_token_ms = disp_med / PT
@@ -270,7 +285,7 @@ def set_pristine(layers, pristine):
 
 
 def load_kv(layers, kv):
-    """Give the oracle a device cache (region A of the KV buffer): per KV head,
+    """Give the oracle a device cache (one half of the KV buffer): per KV head,
     a T_used word and pad, then K's per-slot fp32 scales and int8 body, then V's."""
     for L in range(N_LAYERS):
         for h in range(N_HEADS_KV):
@@ -383,6 +398,13 @@ def main():
         "KV cache and the last token's seed into the next; every token is checked",
     )
     p.add_argument(
+        "--idle-s",
+        type=float,
+        default=0.0,
+        help="seconds to leave the NPU idle before each later dispatch; past "
+        "amdxdna's autosuspend delay (5 s) the device suspends in between",
+    )
+    p.add_argument(
         "--repeats",
         type=int,
         default=1,
@@ -403,8 +425,6 @@ def main():
     p0 = opts.start_pos if opts.start_pos is not None else min(T // 2, T - n_tok)
     if p0 < 1 or p0 + n_tok > T:
         p.error(f"{n_tok} tokens from position {p0} do not fit in T={T}")
-    if n_disp > 1 and PT % 2:
-        p.error("--dispatches needs an even PT: an odd PT ends the cache in region B")
     if n_disp > 1 and opts.repeats > 1:
         p.error("--dispatches and --repeats are separate modes")
 
@@ -474,9 +494,8 @@ def main():
     _, kvblob_pristine = pack_blobs(layers, WEIGHTS_BYTES)
     kv_pristine = pack_kv_prefix(kvblob_pristine, p0)
 
-    # The KV buffer is 2x [regionA | regionB]; token t fills region t%2 and
-    # drains to the other, so after an even PT the grown cache is back in
-    # region A, where the next dispatch's token 0 reads it.
+    # The KV buffer is two halves; the first dispatch's cache starts in the
+    # first (see dispatch_params).
     xin = np.zeros(D + 8, dtype=np.int8)
     xin[:D] = x_i8
     xin[D : D + 4] = np.frombuffer(np.float32(res_scale).tobytes(), dtype=np.int8)
@@ -518,16 +537,17 @@ def main():
     # Each dispatch gets its own input, weight and output tensors; the KV
     # tensor is created once per run of dispatches and stays on the device,
     # so a generation loop's dispatches carry the cache with no host copy.
-    def dispatch(xin_d, w_d, kv_t):
+    def dispatch(xin_t, w_d, kv_t, params):
         out_t = iron.zeros([PT * (D + 12)], dtype=np.int8)
         session(
             [
-                iron.tensor(xin_d, dtype=np.int8),
+                xin_t,
                 iron.tensor(w_d, dtype=np.int8),
                 kv_t,
                 lmw_t,
                 out_t,
-            ]
+            ],
+            **params,
         )
         out_t.to("cpu")
         return out_t.numpy().copy()
@@ -542,7 +562,12 @@ def main():
     if opts.repeats > 1:
         for r in range(opts.repeats):
             toks = tokens_of(
-                dispatch(xin, wblob_for(0), iron.tensor(kv2, dtype=np.int8))
+                dispatch(
+                    iron.tensor(xin, dtype=np.int8),
+                    wblob_for(0),
+                    iron.tensor(kv2, dtype=np.int8),
+                    dispatch_params(0),
+                )
             )
             if r == 0:
                 dev_tokens = toks
@@ -556,11 +581,18 @@ def main():
         set_pristine(layers, pristine)
         tok_fails = replay(dev_tokens, x_i8, res_scale, layers, p0, cs_perpos, lm)
     else:
+        # Like the KV tensor, the seed tensor stays on the device: the host
+        # writes the first dispatch's seed, and each dispatch leaves the next
+        # one's there.
         kv_t = iron.tensor(kv2, dtype=np.int8)
+        xin_t = iron.tensor(xin, dtype=np.int8)
         carried = kv2[:KV_BYTES].copy()
-        x_d, sc_d, xin_d = x_i8, res_scale, xin
+        x_d, sc_d, region = x_i8, res_scale, 0
         for d in range(n_disp):
-            toks_out = dispatch(xin_d, wblob_for(d), kv_t)
+            if d:
+                time.sleep(opts.idle_s)
+            toks_out = dispatch(xin_t, wblob_for(d), kv_t, dispatch_params(region))
+            region = (region + PT) % 2
             toks = tokens_of(toks_out)
             dev_tokens += toks
             pos = p0 + d * PT
@@ -574,18 +606,26 @@ def main():
             tok_fails += replay(toks, x_d, sc_d, layers, pos, rows, lm)
             if n_disp > 1:
                 kv_t.to("cpu")
-                after = kv_t.numpy()[:KV_BYTES].copy()
+                after = kv_t.numpy()[region * KV_BYTES : (region + 1) * KV_BYTES].copy()
                 cf = check_carry(carried, after, pos, PT)
                 print(f"  carry: {'PASS' if not cf else f'{cf} FAIL'}", flush=True)
                 carry_fails += cf
                 carried = after
-            # The next dispatch's layer-0 input is the last token's seed (body +
-            # scale; zero pad), exactly what the chain fed back on-chip.
+            # The oracle's next layer-0 input is the last token's seed (body +
+            # scale), which the device left in the seed tensor with a zero pad.
             last = (PT - 1) * (D + 12)
-            xin_d = np.zeros(D + 8, dtype=np.int8)
-            xin_d[: D + 4] = toks_out[last : last + D + 4]
-            x_d = xin_d[:D].copy()
-            sc_d = float(np.frombuffer(xin_d[D : D + 4].tobytes(), np.float32)[0])
+            x_d = toks_out[last : last + D].copy()
+            sc_d = float(
+                np.frombuffer(toks_out[last + D : last + D + 4].tobytes(), np.float32)[
+                    0
+                ]
+            )
+            xin_t.to("cpu")
+            seed_left = np.zeros(D + 8, dtype=np.int8)
+            seed_left[: D + 4] = toks_out[last : last + D + 4]
+            if not np.array_equal(xin_t.numpy(), seed_left):
+                print(f"  seed carry: FAIL (dispatch {d})", flush=True)
+                carry_fails += 1
 
     n = len(dev_tokens)
     print(

@@ -42,6 +42,7 @@ from aie.iron import (
     ObjectFifo,
     Program,
     Runtime,
+    ScratchpadParameter,
     TaskGroup,
     Worker,
     jit,
@@ -383,6 +384,9 @@ def build(
     PERSIST = PERSIST and ONESTREAM
     PERSIST_GROW = PERSIST_GROW and PERSIST
     PERSIST_RESIDENT = PERSIST_RESIDENT and PERSIST_GROW
+    # The growing decode takes per-dispatch ScratchpadParameters (the resident
+    # variant keeps its compile-time schedule).
+    PER_CALL = PERSIST_GROW and not PERSIST_RESIDENT
     # Tokens per dispatch. PT==1 (default off) makes every PERSIST-aware loop a
     # no-op, so the non-persist paths stay byte-identical.
     PT = PT if PERSIST else 1
@@ -458,6 +462,16 @@ def build(
         # between them and drives of_seed (the router's input).
         of_hostseed = ObjectFifo(t_D8_i8, depth=1, name="hostseed")
         of_feedback = ObjectFifo(t_D8_i8, depth=2, name="feedback")
+    if PER_CALL:
+        # The last token's seed goes back to the host-seed buffer, where the
+        # next dispatch's token 0 reads it. Core memory does not outlive the
+        # NPU's runtime suspend after an idle gap, so the carry lives in DDR.
+        of_carry = ObjectFifo(t_D8_i8, depth=1, name="seed_carry")
+        # Per dispatch: the KV region the even tokens fill from (the odd
+        # tokens' is the other); see dispatch_params in
+        # test_chain_persist_grow_mh.
+        p_kv_even = ScratchpadParameter("kv_even", np.int32)
+        p_kv_odd = ScratchpadParameter("kv_odd", np.int32)
 
     # M3b sample block: final hidden (of_out) -> final_norm rms -> lm_head GEMM
     # -> memtile logits relay -> streamed sampler -> token.
@@ -1156,6 +1170,28 @@ def build(
             c_fb.acquire(1)
             c_fb.release(1)
 
+        # PER_CALL: as w_seedmux, but the last token's seed goes to of_carry.
+        def w_seedmux_carry(c_host, c_fb, p_seed, p_carry):
+            h = c_host.acquire(1)
+            o = p_seed.acquire(1)
+            for i in range_(D + 8):
+                o[i] = h[i]
+            p_seed.release(1)
+            c_host.release(1)
+            for _ in range_(PT - 1):
+                f = c_fb.acquire(1)
+                o = p_seed.acquire(1)
+                for i in range_(D + 8):
+                    o[i] = f[i]
+                p_seed.release(1)
+                c_fb.release(1)
+            f = c_fb.acquire(1)
+            c = p_carry.acquire(1)
+            for i in range_(D + 8):
+                c[i] = f[i]
+            p_carry.release(1)
+            c_fb.release(1)
+
     workers = [
         # Router
         Worker(
@@ -1334,7 +1370,19 @@ def build(
                 )
             ),
         ]
-        if PERSIST:
+        if PER_CALL:
+            workers.append(
+                Worker(
+                    w_seedmux_carry,
+                    [
+                        of_hostseed.cons(),
+                        of_feedback.cons(),
+                        of_seed.prod(),
+                        of_carry.prod(),
+                    ],
+                )
+            )
+        elif PERSIST:
             # seedmux -> of_seed (router input). Free tile (7,4).
             workers += [
                 Worker(
@@ -1427,6 +1475,8 @@ def build(
         ]
     elif PERSIST:
         seq_eps += [of_hostseed.prod()]
+        if PER_CALL:
+            seq_eps += [of_carry.cons()]
     else:
         seq_eps += [of_seed.prod()]
     seq_eps += [
@@ -1468,7 +1518,7 @@ def build(
         # before its own if/elif chain) so every name exists regardless of
         # which branch actually sets it.
         xin = wblob = kvblob = lmw = opacked = token = out = token_in = None
-        token_in_prod = gwlm_prod = hostseed_prod = seed_prod = None
+        token_in_prod = gwlm_prod = hostseed_prod = seed_prod = carry_cons = None
         fgam_prod = opacked_cons = token_cons = out_cons = wlm_prod = None
         kvout_lo_cons = kvout_hi_cons = None
         if ONESTREAM:
@@ -1489,6 +1539,8 @@ def build(
             token_in_prod, gwlm_prod = next(it), next(it)
         elif PERSIST:
             hostseed_prod = next(it)
+            if PER_CALL:
+                carry_cons = next(it)
         else:
             seed_prod = next(it)
         gam_in_prod = next(it)
@@ -1742,7 +1794,13 @@ def build(
 
             # KV region selection per token (see PERSIST_GROW's declaration
             # above for what each mode means):
-            if PERSIST_GROW:
+            kv_fill_param = kv_drain_param = None
+            if PER_CALL:
+                kv_fill_base = kv_drain_base = 0
+                kv_fill_param, kv_drain_param = (
+                    (p_kv_even, p_kv_odd) if tok % 2 == 0 else (p_kv_odd, p_kv_even)
+                )
+            elif PERSIST_GROW:
                 kv_fill_base = (tok % 2) * KV_BYTES
                 kv_drain_base = ((tok + 1) % 2) * KV_BYTES
             elif PERSIST:
@@ -1767,6 +1825,7 @@ def build(
                         ),
                         group=layer_tgs[L],
                         wait=True,
+                        offset_parameter=kv_drain_param,
                     )
                 for (
                     prod,
@@ -1814,6 +1873,7 @@ def build(
                             ),
                             group=layer_tgs[L],
                             wait=True,
+                            offset_parameter=kv_fill_param,
                         )
                 if PERSIST_GROW:
                     # Per-position cos/sin: token `tok` at position P0+tok uses
@@ -1847,6 +1907,11 @@ def build(
 
         for tok in range(PT):
             issue_token(tok)
+
+        if PER_CALL:
+            carry_tg = TaskGroup()
+            tgs.append(carry_tg)
+            carry_cons.drain(xin, wait=True, group=carry_tg)
 
         for tg in tgs:
             tg.finish()
