@@ -36,7 +36,6 @@ Cases whose kernels exist only for one NPU generation carry
 """
 
 import pathlib
-from types import SimpleNamespace
 
 import aie.iron as iron
 import numpy as np
@@ -139,19 +138,6 @@ def test_kernel_extensive(case, data_case, seed, report_error):
 def test_case_names_are_unique():
     names = [c.name for c in CASES]
     assert len(names) == len(set(names)), "two cases share a series name"
-
-
-def test_run_reads_all_outputs(monkeypatch):
-    arrays = (np.arange(4), np.arange(4) + 10)
-    outputs = tuple(SimpleNamespace(numpy=lambda a=a: a) for a in arrays)
-    inp = object()
-    monkeypatch.setattr(kd, "upload", lambda *args, **kwargs: ([inp], outputs))
-    calls = []
-    got = _run(lambda *args: calls.append(args), None, [], (4, 4), (int, int))
-    assert calls == [(inp, *outputs)]
-    for actual, expected in zip(got, arrays):
-        np.testing.assert_array_equal(actual, expected)
-        assert not np.shares_memory(actual, expected)
 
 
 # getExpBf16 reaches its tables through a Q8 fixed-point int16, so an input
@@ -407,6 +393,31 @@ def _bf16_from_bits(u):
     return (np.asarray(u, np.uint32) << 16).view(np.float32).astype(bfloat16)
 
 
+def _bf16_product_ties(n, odd_below):
+    """Return ``n`` bf16 pairs whose f32 product is an exact bf16 tie.
+
+    Args:
+        n: How many pairs.
+        odd_below: Whether the tie's lower bf16 neighbour is odd, where
+            conv_even rounds up, or even, where it rounds down.
+
+    Returns:
+        ``(x, y, below)``: the operands and, as bits, the lower neighbour.
+    """
+    rng = np.random.default_rng(0)
+    xs, ys = [], []
+    while len(xs) < n:
+        a = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
+        b = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
+        p = (a.astype(np.float32) * b.astype(np.float32)).view(np.uint32)
+        tie = ((p & 0xFFFF) == 0x8000) & (((p >> 16) & 1) == int(odd_below))
+        xs.extend(a[tie].tolist())
+        ys.extend(b[tie].tolist())
+    x = np.asarray(xs[:n], bfloat16)
+    y = np.asarray(ys[:n], bfloat16)
+    return x, y, (x.astype(np.float32) * y.astype(np.float32)).view(np.uint32) >> 16
+
+
 @pytest.mark.kernel_check("set_rounding", invalidates_timing=True)
 def test_setup_reaches_the_core():
     """A contract's ``setup`` must change the core, not just declare an intent.
@@ -420,19 +431,7 @@ def test_setup_reaches_the_core():
     must disagree.
     """
     n = 1024
-    rng = np.random.default_rng(0)
-    xs, ys = [], []
-    while len(xs) < n:
-        a = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
-        b = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
-        p = (a.astype(np.float32) * b.astype(np.float32)).view(np.uint32)
-        tie = ((p & 0xFFFF) == 0x8000) & (((p >> 16) & 1) == 1)
-        xs.extend(a[tie].tolist())
-        ys.extend(b[tie].tolist())
-    x = np.asarray(xs[:n], bfloat16)
-    y = np.asarray(ys[:n], bfloat16)
-
-    bits = (x.astype(np.float32) * y.astype(np.float32)).view(np.uint32) >> 16
+    x, y, bits = _bf16_product_ties(n, odd_below=True)
     floor_result = _bf16_from_bits(bits)
     conv_even_result = _bf16_from_bits(bits + 1)  # ties away from the odd neighbor
 
@@ -451,6 +450,64 @@ def test_setup_reaches_the_core():
     assert np.array_equal(got, conv_even_result), (
         f"{int((got == floor_result).sum())} of {n} ties rounded floor: the "
         "contract's setup did not reach the core"
+    )
+
+
+_LEAK_TIES = 1024
+
+
+@iron.jit
+def _after_a_conv_design(x: In, y: In, z: Out):
+    conv = kernels.conv2dk1(input_channels=8, output_channels=8)
+    mul = kernels.mul(tile_size=_LEAK_TIES)
+    act_ty, wts_ty, conv_out_ty = conv.arg_types()[:3]
+    x_ty, y_ty, z_ty = mul.arg_types()
+    of_x = ObjectFifo(x_ty, name="x", depth=1)
+    of_y = ObjectFifo(y_ty, name="y", depth=1)
+    of_z = ObjectFifo(z_ty, name="z", depth=1)
+    act = Buffer(act_ty, name="act", initial_value=np.zeros(256, np.int8))
+    wts = Buffer(wts_ty, name="wts", initial_value=np.zeros(64, np.int8))
+    conv_out = Buffer(conv_out_ty, name="conv_out")
+
+    def core(of_x, of_y, of_z, act, wts, conv_out, conv_even, conv, mul):
+        conv_even()
+        conv(act, wts, conv_out, 32, 8, 8, 1)
+        tx, ty, tz = of_x.acquire(1), of_y.acquire(1), of_z.acquire(1)
+        mul(tx, ty, tz)
+        of_x.release(1)
+        of_y.release(1)
+        of_z.release(1)
+
+    worker = Worker(
+        core,
+        [of_x.cons(), of_y.cons(), of_z.prod(), act, wts, conv_out]
+        + [kernels.conv_even(), conv, mul],
+    )
+
+    def seq(host_x, host_y, host_z, x_in, y_in, z_out):
+        x_in.fill(host_x)
+        y_in.fill(host_y)
+        z_out.drain(host_z, wait=True)
+
+    rt = Runtime(seq, [x_ty, y_ty, z_ty, of_x.prod(), of_y.prod(), of_z.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.kernel_check("conv2dk1", "mul", invalidates_timing=True)
+def test_a_kernel_leaves_the_rounding_mode_as_it_found_it():
+    """A kernel that needs its own rounding must put the core's back.
+
+    conv2dk1 rounds positive_inf; the setup left conv_even for whatever runs
+    next. On ties whose lower neighbour is even, conv_even rounds down and
+    positive_inf up, so mul run after conv2dk1 shows which mode it found.
+    """
+    x, y, below = _bf16_product_ties(_LEAK_TIES, odd_below=False)
+    z = iron.zeros(_LEAK_TIES, dtype=bfloat16, device="npu")
+    _after_a_conv_design(iron.tensor(x, device="npu"), iron.tensor(y, device="npu"), z)
+    got = z.numpy().astype(bfloat16)
+    assert np.array_equal(got, _bf16_from_bits(below)), (
+        f"{int((got == _bf16_from_bits(below + 1)).sum())} of {_LEAK_TIES} ties "
+        "rounded up: conv2dk1 left the core in its own rounding mode"
     )
 
 

@@ -381,11 +381,15 @@ static void k3_stride2_vector(const int8_t *line0, const int8_t *line1,
                               const int32_t check, const int scale,
                               const int channel_offset) {
   event0();
-  aie::set_saturation(aie::saturation_mode::saturate);
-  aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
   if (input_channels == 8) {
     k3_ic1_rows(line0, line1, line2, wts, output, input_width, output_channels,
                 check, scale, channel_offset);
+    aie::set_rounding(saved_rnd);
+    aie::set_saturation(saved_sat);
     event1();
     return;
   }
@@ -425,6 +429,8 @@ static void k3_stride2_vector(const int8_t *line0, const int8_t *line1,
       break;
     }
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P

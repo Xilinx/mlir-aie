@@ -31,6 +31,7 @@ extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c,
 #ifdef MM_FUSED_WHOLE_TILE_MARKERS
   event0();
 #endif
+  const aie::rounding_mode saved_rnd = aie::swap_rounding(round_mode);
   alignas(aie::vector_decl_align) float acc[MM_FUSED_TILE_M * MM_FUSED_TILE_N];
   mm_fused_acc_init(acc);
   for (int k = 0; k < MM_FUSED_TILE_K / MM_FUSED_CT_K; ++k)
@@ -45,6 +46,7 @@ extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c,
       mm_fused_epilogue_chunk(
           c + (outer * MM_FUSED_C_DEPTH + half) * MM_FUSED_OUT_CHUNK, acc,
           outer, half, mode, clamp_min_bits, clamp_max_bits);
+  aie::set_rounding(saved_rnd);
 #ifdef MM_FUSED_WHOLE_TILE_MARKERS
   event1();
 #endif

@@ -50,8 +50,10 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
   const float *w_scales =
       reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
 
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
 
   int32_t sums[kNTile];
   for (int n = 0; n < kNTile; n++) {
@@ -92,8 +94,11 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
       int32_t k = logit_key(logits[n]);
       best = k > best ? k : best;
     }
-    if (best < set_min)
+    if (best < set_min) {
+      aie::set_rounding(saved_rnd);
+      aie::set_saturation(saved_sat);
       return;
+    }
   }
   bool rescan = true;
   int mi = 0;
@@ -133,6 +138,8 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
       set_row[slot * kK + d] = w_row[d];
   }
   *set_len = len;
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
 }
 
 #ifndef LLAMA_LMHEAD_KSET

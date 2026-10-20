@@ -182,6 +182,8 @@ inline float tail_row(Row row) {
 extern "C" void experts(bfloat16 *restrict row, bfloat16 *restrict tile,
                         bfloat16 *restrict y, int32_t step) {
   event0();
+  const aie::rounding_mode saved_rounding =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
   const uint32_t call = (uint32_t)step % row_steps;
   const uint32_t e = call / expert_steps;
   uint32_t s = call - e * expert_steps;
@@ -256,5 +258,6 @@ extern "C" void experts(bfloat16 *restrict row, bfloat16 *restrict tile,
   for (uint32_t o = 0; o < H; o += VH)
     aie::store_v(y + o, aie::accum<accfloat, VH>(aie::load_v<VH>(sum + o))
                             .template to_vector<bfloat16>());
+  aie::set_rounding(saved_rounding);
   event1();
 }

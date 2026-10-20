@@ -49,7 +49,7 @@ void addweighted_aie(const T *__restrict src1, const T *__restrict src2,
                      const int16_t betaFixedPoint, const T gamma) {
   event0();
 
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = ::aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
 
   ::aie::vector<int16_t, N> coeff(alphaFixedPoint, betaFixedPoint);
@@ -77,6 +77,7 @@ void addweighted_aie(const T *__restrict src1, const T *__restrict src2,
     ::aie::store_v(dst, acc.template to_vector<T>(SRS_SHIFT));
     dst += N;
   }
+  aie::set_saturation(saved_sat);
   event1();
 }
 

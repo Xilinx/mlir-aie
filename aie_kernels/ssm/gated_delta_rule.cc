@@ -203,12 +203,13 @@ fold_lanes(acc_t<W> a) {
 // (eps 1e-6) and q scaled by 1 / sqrt(Dk), g = A * softplus(a + dt_bias),
 // beta = sigmoid(b), state = exp(g) * state, then state += outer(k, beta *
 // (v - k @ state)), and y = q @ state. The rows after valid leave the state
-// alone and write zeros; final is the state after this block. The caller
-// sets conv_even.
+// alone and write zeros; final is the state after this block.
 extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
                                  float *restrict final, bfloat16 *restrict y,
                                  int32_t valid, int32_t b_idx) {
   event0();
+  const aie::rounding_mode saved_rounding =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
   const bfloat16 *q = block, *k = q + R * Dk, *v = k + R * Dk;
   const bfloat16 *a = v + R * Dv, *b = a + R;
   const bf_t<L> one = aie::broadcast<bfloat16, L>(1.0f);
@@ -420,5 +421,6 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
     for (int j = 0; j < Dv; j++)
       final[i * Dv + j] = wide[j];
   }
+  aie::set_rounding(saved_rounding);
   event1();
 }

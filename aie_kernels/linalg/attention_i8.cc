@@ -70,8 +70,10 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
                   int8_t *__restrict out_row, int32_t q_mul, int32_t q_shift,
                   int32_t score_shift, int32_t prob_shift, int32_t out_shift) {
   event0();
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
 
 #if __AIE_ARCH__ >= 21
   for (int r = 0; r < 16; r++) {
@@ -187,7 +189,7 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
         rem = take ? rem - steps[b] : rem;
         level |= (int)take << b;
       }
-      level += rem + rem > total || (rem + rem == total && (level & 1));
+      level += (rem + rem > total) || (rem + rem == total && (level & 1));
       // A probability depends only on its gap below the top score, and the
       // table falls, so the rounded probability falls with the gap: walk the
       // levels down, giving each gap the highest one it reaches. A gap
@@ -202,7 +204,7 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
       int64_t bar = 0;
       AIE_LOOP_UNROLL_FULL
       for (int b = 0; b < 8; b++)
-        bar += (2 * level - 1) >> b & 1 ? steps[b] : 0;
+        bar += (((2 * level - 1) >> b) & 1) ? steps[b] : 0;
       // So bar >> k fits 32 bits until it goes below 0, the last level the
       // walk takes, where only its sign counts: a fall of 2**30 or more takes
       // it there as surely as the whole one.
@@ -275,6 +277,8 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
                    acc.template to_vector<int8>(out_shift));
     }
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 

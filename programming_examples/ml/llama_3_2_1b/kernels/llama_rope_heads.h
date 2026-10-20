@@ -23,8 +23,10 @@ static inline void llama_rope_heads(const int8_t *restrict x,
   constexpr int kBody = kHD * kNHeads;
   constexpr int kTail = kNHeads * 8;
   static_assert(kHD % 2 == 0, "head_dim must be even");
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
-  ::aie::set_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
 
   const bfloat16 *cos = cs_packed;
   const bfloat16 *sin = cs_packed + kHD;
@@ -65,6 +67,8 @@ static inline void llama_rope_heads(const int8_t *restrict x,
 
   // Passthrough the per-head scale tail unchanged.
   copy_words<kTail>(out + kBody, x + kBody);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
 }
 
 #endif // LLAMA_ROPE_HEADS_H

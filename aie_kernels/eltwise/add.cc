@@ -145,8 +145,10 @@ void eltwise_vadd_i8(const int8_t *__restrict a, const int8_t *__restrict b,
   constexpr int lanes = 32;
   static_assert(N % lanes == 0, "the int8 add takes whole 32-lane vectors");
   event0();
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < N / lanes; i++) {
     aie::accum<acc32, lanes> sum;
@@ -156,6 +158,8 @@ void eltwise_vadd_i8(const int8_t *__restrict a, const int8_t *__restrict b,
     sum = aie::add(sum, rhs.template to_vector<int32>(0));
     aie::store_v(c + i * lanes, sum.template to_vector<int8>(out_shift));
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif

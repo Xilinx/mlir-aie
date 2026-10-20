@@ -121,13 +121,17 @@ static inline void epilogue(const int8_t *restrict act,
                             int32_t m_count, bool i8, float inv_out_scale) {
   alignas(64) int32_t sums[64];
   half_sums(act, w, half, sums, part);
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
   half_epilogue(::aie::load_v<32>(sums), act, w, out, 0, ostride, row0, m_count,
                 i8, inv_out_scale);
   if (m_count > 4)
     half_epilogue(::aie::load_v<32>(sums + 32), act, w, out, 1, ostride, row0,
                   m_count, i8, inv_out_scale);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
 }
 
 extern "C" {

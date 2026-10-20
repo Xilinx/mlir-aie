@@ -13,6 +13,7 @@
 
 #include "../aie_kernel_utils.h"
 #include "../common/table_i8.h"
+#include "conv_bias.h"
 #include <aie_api/aie.hpp>
 
 #ifndef CONV_INPUT_WIDTH
@@ -37,12 +38,6 @@
 // The factory names each variant's entry point.
 #ifndef CONV2DK1_I8_SYMBOL
 #define CONV2DK1_I8_SYMBOL conv2dk1_i8
-#endif
-
-#ifdef CONV_ROUND_EVEN
-#define CONV2DK1_I8_ROUNDING aie::rounding_mode::conv_even
-#else
-#define CONV2DK1_I8_ROUNDING aie::rounding_mode::symmetric_inf
 #endif
 
 #define REL_WRITE 0
@@ -136,9 +131,9 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
   constexpr int MMUL_MN = MMUL_M * MMUL_N;
 
   using MMUL8x8x8 = aie::mmul<MMUL_M, MMUL_K, MMUL_N, int8, int8>;
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(CONV2DK1_I8_ROUNDING);
+  const aie::rounding_mode saved_rnd = aie::swap_rounding(CONV_BIAS_ROUNDING);
 
   int8_t *restrict out_ptr = output;
 
@@ -271,6 +266,8 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
   } // if(iw_partial_rem > 0)
 
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 
@@ -290,12 +287,7 @@ static inline __attribute__((always_inline)) void conv2dk1_i8_bias_block(
   constexpr int input_channels = CONV_INPUT_CHANNELS;
   using MMUL = aie::mmul<M, 8, 8, int8, int8>;
 
-  aie::vector<int32, M * 8> seed;
-  AIE_LOOP_UNROLL_FULL
-  for (int p = 0; p < M; p++)
-    seed.insert(p, bias);
-  aie::accum<acc32, M * 8> seeded;
-  seeded.from_vector(seed, 0);
+  const aie::accum<acc32, M * 8> seeded = bias_seed<M>(bias);
 
   MMUL acc[NumAcc];
   AIE_LOOP_UNROLL_FULL
@@ -334,8 +326,9 @@ conv2dk1_i8_bias_vector(int8_t *__restrict input, int8_t *__restrict kernels,
                 "conv2dk1_i8 channels come in groups of 8");
   event0();
 
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(CONV2DK1_I8_ROUNDING);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd = aie::swap_rounding(CONV_BIAS_ROUNDING);
 
   for (int oc = 0; oc < output_channels / 8; oc++) {
     const int8_t *w = kernels + oc * (input_channels / 8) * 64;
@@ -351,6 +344,8 @@ conv2dk1_i8_bias_vector(int8_t *__restrict input, int8_t *__restrict kernels,
   }
   if constexpr (Table)
     map_table_i8<output_channels * iw>(output, table);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif // CONV_BIAS

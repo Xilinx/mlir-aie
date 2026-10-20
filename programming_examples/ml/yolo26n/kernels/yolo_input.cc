@@ -31,8 +31,10 @@ extern "C" {
 
 void yolo_input_quant(const uint8_t *__restrict rgb, int8_t *__restrict out) {
   event0();
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
-  ::aie::set_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::positive_inf);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
   alignas(32) int8_t q[YOLO_INPUT_WIDTH * 3];
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < YOLO_INPUT_WIDTH * 3; i += 32)
@@ -50,6 +52,8 @@ void yolo_input_quant(const uint8_t *__restrict rgb, int8_t *__restrict out) {
     dst[4 * p + 2] = w1 >> 16 | (w2 & 0xFF) << 16;
     dst[4 * p + 3] = w2 >> 8;
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 
