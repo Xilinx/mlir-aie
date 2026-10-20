@@ -29,7 +29,6 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import BUILDS, Build, KernelContract
 from aie.iron.kernels.activation import (
-    _GELU_ERF_ONE_ULP,
     _GELU_ERF_ROUNDED,
     _GELU_VTANH_TOLERANCE,
     _LUT_MODEL_TOLERANCE,
@@ -217,21 +216,15 @@ def test_a_norm_built_unbound_keeps_the_bound_measured_where_it_ran(
         assert not fn.judge(off.ravel(), ref, calls=2)
 
 
-def test_gelu_erf_is_judged_correctly_rounded_on_npu2_and_at_one_ulp_on_npu1(
-    no_device,
-):
+def test_gelu_erf_is_judged_correctly_rounded_on_both_npus(no_device):
     fn = kernels.gelu_erf()
     inputs = kd.sample_inputs(fn, calls=2)
-    for device, tolerance, one_ulp_passes in (
-        (NPU1Col1(), _GELU_ERF_ONE_ULP, True),
-        (NPU2Col1(), _GELU_ERF_ROUNDED, False),
-    ):
+    for device in (NPU1Col1(), NPU2Col1()):
         set_current_device(device)
-        assert fn.contract_for().tolerance is tolerance
+        assert fn.contract_for().tolerance is _GELU_ERF_ROUNDED
         ref = fn.expected(inputs)
         assert fn.judge(ref.ravel(), ref, calls=2)
-        assert bool(fn.judge(_nudged(ref, 1).ravel(), ref, calls=2)) is one_ulp_passes
-        assert not fn.judge(_nudged(ref, 2).ravel(), ref, calls=2)
+        assert not fn.judge(_nudged(ref, 1).ravel(), ref, calls=2)
 
 
 def test_an_f32_layer_norm_built_unbound_keeps_its_measured_bound(no_device):
