@@ -14,6 +14,7 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
+#include "../aie_kernel_utils.h"
 #include "../common/exp_f32.h"
 #include "../common/f32_split.h"
 #include "softplus.h"
@@ -108,6 +109,7 @@ extern "C" void selective_scan(bfloat16 *restrict block, float *restrict head,
                             aie::broadcast<bfloat16, L>(sx.lo[q])};
         float *sp = s + (p0 + q) * N;
         acc_t<L> dot = aie::zeros<accfloat, L>();
+        AIE_LOOP_UNROLL_FULL
         for (int n = 0; n < N; n += L) {
           const bf16_t<L> Bn = aie::load_v<L>(B + n);
           const bf16_t<L> Cn = aie::load_v<L>(C + n);
