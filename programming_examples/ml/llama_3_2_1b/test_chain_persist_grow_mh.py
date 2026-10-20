@@ -146,7 +146,8 @@ DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
 
 
 def time_decode(shape, session, buffers, params, opts):
-    """Per-token device time + DMA floor (bytes/token counts the live KV
+    """Print per-token device time and the DMA floor, after main has checked
+    the same dispatch against the oracle (bytes/token counts the live KV
     prefix the first token reads)."""
     passes = params["passes"]
     print(
@@ -175,7 +176,6 @@ def time_decode(shape, session, buffers, params, opts):
         f"bytes/token:  {bytes_per_token/1e6:.1f} MB  DMA floor {dma_floor_ms:.2f} ms"
     )
     print(f"ratio:        {ratio:.2f}x  -> {verdict}")
-    return 0
 
 
 # Device-trajectory replay tolerances: the oracle follows the DEVICE's tokens
@@ -515,21 +515,6 @@ def main():
         f"  dispatches={n_disp} repeats={opts.repeats}",
         flush=True,
     )
-    if opts.time:
-        assert decoder is not None
-        return time_decode(
-            shape,
-            decoder.session,
-            [
-                decoder.w_t,
-                iron.tensor(kv0, dtype=np.int32),
-                decoder.lmw_t,
-                iron.zeros([shape.p_max * REC_BYTES], dtype=np.int8),
-                iron.tensor(stage0, dtype=np.int8),
-            ],
-            shape.params(p0, passes, sample),
-            opts,
-        )
 
     # The KV tensor is created once per run of dispatches and stays on the
     # device, so a generation loop's dispatches carry the cache with no host
@@ -801,7 +786,24 @@ def main():
             f"prompt in batches of {opts.batch} vs {opts.vs_batch}: "
             f"{'PASS' if not vs_fails else 'FAIL'}"
         )
-    return 0 if tok_fails == carry_fails == hidden_fails == vs_fails == 0 else 1
+    if tok_fails or carry_fails or hidden_fails or vs_fails:
+        return 1
+    if opts.time:
+        assert decoder is not None
+        time_decode(
+            shape,
+            decoder.session,
+            [
+                decoder.w_t,
+                iron.tensor(kv0, dtype=np.int32),
+                decoder.lmw_t,
+                iron.zeros([shape.p_max * REC_BYTES], dtype=np.int8),
+                iron.tensor(stage0, dtype=np.int8),
+            ],
+            shape.params(p0, passes, sample),
+            opts,
+        )
+    return 0
 
 
 if __name__ == "__main__":
