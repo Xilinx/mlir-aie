@@ -79,16 +79,16 @@ def selective_scan_ref(
     return final, y.astype(bfloat16).reshape(calls, -1)
 
 
-def _state_bound(reference, *args, **geometry):
-    """1e-6 of the state's range for ``final``; one bf16 ulp of its row's largest for ``y``."""
+def _state_bound(reference, *args, final_frac, y_ulps, **geometry):
+    """Bound ``final`` by ``final_frac`` of its range, ``y`` by ``y_ulps`` bf16 ulps."""
     final, y = reference(*args, **geometry)
     span = np.abs(final).max(axis=1, keepdims=True)
     y = np.abs(y.astype(np.float32)).reshape(len(y), geometry["rows"], -1)
     top = y.max(axis=2, keepdims=True)
     _, k = np.frexp(top)
-    ulp = np.where(top > 0, np.ldexp(np.float32(1), k - 8), 0)
+    ulp = np.where(top > 0, np.ldexp(np.float32(y_ulps), k - 8), 0)
     ulp = np.broadcast_to(ulp, y.shape).reshape(len(y), -1)
-    return np.broadcast_to(1e-6 * span, final.shape), ulp.astype(np.float32)
+    return np.broadcast_to(final_frac * span, final.shape), ulp.astype(np.float32)
 
 
 def selective_scan(
@@ -168,7 +168,13 @@ def selective_scan(
             reference=partial(selective_scan_ref, **geometry),
             sample=partial(selective_scan_sample, **geometry),
             tolerance=Tolerance.bounded(
-                partial(_state_bound, selective_scan_ref, **geometry),
+                partial(
+                    _state_bound,
+                    selective_scan_ref,
+                    final_frac=5e-7,
+                    y_ulps=0,
+                    **geometry,
+                ),
                 note="npu2: y bit for bit, final within 3.7e-7 of its range "
                 "over three seeds",
             ),
@@ -292,10 +298,16 @@ def gated_delta_rule(
             sample=partial(gated_delta_rule_sample, **geometry),
             setup=conv_even,
             tolerance=Tolerance.bounded(
-                partial(_state_bound, gated_delta_rule_ref, **geometry),
-                note="npu2, against a float64 recurrence: final within 2.9e-7 "
-                "of its range (the scalar kernel's 2.6e-7), y one bf16 ulp off "
-                "in 1 of 10240, as the scalar kernel's",
+                partial(
+                    _state_bound,
+                    gated_delta_rule_ref,
+                    final_frac=1e-6,
+                    y_ulps=1,
+                    **geometry,
+                ),
+                note="npu2, against a float64 recurrence over five seeds: final "
+                "within 9.4e-7 of its range at key_dim 2, 5.1e-7 at the default; y "
+                "one bf16 ulp off in 1 of 10240, as the scalar kernel's",
             ),
         ),
     )

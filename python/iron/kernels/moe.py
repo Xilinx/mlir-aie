@@ -383,11 +383,8 @@ def experts(
             reference=partial(experts_ref, **geometry),
             sample=partial(experts_sample, **geometry),
             setup=conv_even,
-            tolerance=Tolerance(
-                ulps=1,
-                range_frac=1e-5,
-                note="npu2: bit for bit, duplicated ids included; the floor is "
-                "for sums that cancel",
+            tolerance=Tolerance.exact(
+                note="npu2: bit for bit, duplicated ids included"
             ),
         ),
     )
