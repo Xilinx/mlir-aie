@@ -1282,7 +1282,7 @@ def flm_gemma4_decode_attn_kv(
         cls=_AttnKvKernel,
     )
     bind = fn.object_file.bind
-    fn.attn_kv_round = bind("attn_kv_round", [t["s"], t["kv"], t["kv"], t["y"], t["l"]])
+    fn.attn_kv_round = bind("attn_kv_round", [t["s"], t["kv"], t["y"], t["l"]])
     fn.attn_kv_finish = bind("attn_kv_finish", [t["y"], t["o"], t["l"]])
     return fn
 
@@ -1463,9 +1463,7 @@ def flm_gemma4_decode_attn_kv_kvh2(
     )
     bind = fn.object_file.bind
     fn.attn_kv_s_begin = bind("attn_kv_s_begin", [t["s"], t["y"], t["l"]])
-    fn.attn_kv_v_half = bind(
-        "attn_kv_v_half", [t["s"], t["kv"], t["kv"], t["y"], np.int32]
-    )
+    fn.attn_kv_v_half = bind("attn_kv_v_half", [t["s"], t["kv"], t["y"], np.int32])
     fn.attn_kv_finish = bind("attn_kv_finish", [t["y"], t["o"], t["l"]])
     return fn
 
@@ -1548,7 +1546,7 @@ def flm_gemma4_decode_attn_qk(
     )
     fn.attn_qk_round = fn.object_file.bind(
         "attn_qk_round",
-        [t["q"], t["kv"], t["kv"], t["s"], t["m"], t["c"], np.int32, np.int32],
+        [t["q"], t["kv"], t["s"], t["m"], t["c"], np.int32, np.int32],
     )
     return fn
 
@@ -1582,17 +1580,7 @@ def flm_gemma4_decode_attn_qk_kvh2(
     bind = fn.object_file.bind
     fn.attn_qk_half = bind(
         "attn_qk_half",
-        [
-            t["q"],
-            t["kv"],
-            t["kv"],
-            t["s"],
-            t["m"],
-            t["c"],
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+        [t["q"], t["kv"], t["s"], t["m"], t["c"], np.int32, np.int32, np.int32],
     )
     fn.attn_qk_store_c = bind("attn_qk_store_c", [t["s"], t["c"]])
     return fn
@@ -1809,9 +1797,7 @@ def flm_gemma4_decode_swa_attn_kv(
         cls=_SwaAttnKvKernel,
     )
     bind = fn.object_file.bind
-    fn.swa_attn_kv_round = bind(
-        "swa_attn_kv_round", [t["s"], t["kv"], t["kv"], t["y"], t["l"]]
-    )
+    fn.swa_attn_kv_round = bind("swa_attn_kv_round", [t["s"], t["kv"], t["y"], t["l"]])
     fn.swa_attn_kv_finish = bind("swa_attn_kv_finish", [t["y"], t["o"], t["l"]])
     return fn
 

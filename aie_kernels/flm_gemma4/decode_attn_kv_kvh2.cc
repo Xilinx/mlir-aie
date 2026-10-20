@@ -77,8 +77,7 @@ void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
 // ---------------------------------------------------------------------------
 // Entry points. See decode_attn_kv.cc. This variant has two KV heads per
 // core, so one s round consumes two v buffers. The Worker calls attn_kv_v_half
-// once per head.
-static PingPong v_pingpong;
+// once per head, with the buffer that head's BD filled.
 
 extern "C" {
 
@@ -93,8 +92,7 @@ void attn_kv_s_begin(bf16 *s, float *y, float *l) {
 }
 
 // Half a round: one of the two KV heads.
-void attn_kv_v_half(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y, int j) {
-  bf16 *v = v_pingpong.next(v_ping, v_pong);
+void attn_kv_v_half(bf16 *s, bf16 *v, float *y, int j) {
   attn_fv<DH / 8, GQA_R, GQA_S, GQA_T>(s, v, y, j == 0);
 }
 
