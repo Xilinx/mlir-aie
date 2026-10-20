@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 #include "../aie_kernel_utils.h"
+#include "../common/table_i8.h"
 #include <aie_api/aie.hpp>
 
 #ifndef ATTN_SEQ
@@ -42,29 +43,6 @@ using MMUL = aie::mmul<4, 8, 8, int8, int8>;
 alignas(64) static int16_t exp_lo_runs[512];
 alignas(64) static int16_t exp_hi_runs[512];
 alignas(64) static int16_t prob_runs[4 * 512];
-
-// The entries of 32 gaps from a table's runs whose entry 128 is at `base`,
-// each lane's offset moved on by `first` (lanes 0 to 15) or `second` (16 to
-// 31) bytes: to its query's table, when a block's queries have one each.
-static inline __attribute__((always_inline)) aie::vector<int16, 32>
-read_runs(const int8_t *base, aie::vector<uint8, 32> gaps,
-          aie::vector<int32, 16> first, aie::vector<int32, 16> second) {
-  // A gap as int8 is gap - 128: entry gap, 4 bytes an entry of offset.
-  aie::accum<acc64, 32> scaled;
-  scaled.from_vector(
-      aie::bit_xor(gaps.cast_to<int8>(), aie::broadcast<int8, 32>(-128)), 2);
-  const aie::vector<int32, 16> lanes0 = aie::add(
-      scaled.template extract<16>(0).template to_vector<int32>(0), first);
-  const aie::vector<int32, 16> lanes1 = aie::add(
-      scaled.template extract<16>(1).template to_vector<int32>(0), second);
-  v64int8 r0, r1, r2, r3;
-  load_lut_2x_int8(base, base, lanes0, r0, r1);
-  load_lut_2x_int8(base, base, lanes1, r2, r3);
-  return aie::vector<int16, 32>(
-      (v32int16)::shuffle(::shuffle(r0, r1, T16_16x4_lo),
-                          ::shuffle(r2, r3, T16_16x4_lo), T256_2x2_lo));
-}
-
 #endif
 
 extern "C" {
@@ -110,12 +88,13 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
   const int8_t *exp_lo = reinterpret_cast<const int8_t *>(exp_lo_runs) + 512;
   const int8_t *exp_hi = reinterpret_cast<const int8_t *>(exp_hi_runs) + 512;
   const int8_t *probs = reinterpret_cast<const int8_t *>(prob_runs) + 512;
-  // Query q's table starts q * 1024 bytes in; see read_runs.
+  // Query q's table starts q * 1024 bytes in.
   alignas(64) static const int32_t query_tables[32] = {
       0,    0,    0,    0,    0,    0,    0,    0,    1024, 1024, 1024,
       1024, 1024, 1024, 1024, 1024, 2048, 2048, 2048, 2048, 2048, 2048,
       2048, 2048, 3072, 3072, 3072, 3072, 3072, 3072, 3072, 3072};
-  const aie::vector<int32, 16> same = aie::zeros<int32, 16>();
+  // A gap as int8 is gap - 128, its entry's index.
+  const aie::vector<int8, 32> flip = aie::broadcast<int8, 32>(-128);
   const aie::vector<int32, 16> tables_lo = aie::load_v<16>(query_tables);
   const aie::vector<int32, 16> tables_hi = aie::load_v<16>(query_tables + 16);
 #endif
@@ -166,11 +145,12 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
     aie::vector<uint32, 32> lo_sum = aie::zeros<uint32, 32>();
     aie::vector<uint32, 32> hi_sum = aie::zeros<uint32, 32>();
     for (int kb = 0; kb < N / 8; kb++) {
-      const aie::vector<uint8, 32> g = aie::load_v<32>(gaps + kb * 32);
-      lo_sum = aie::add(
-          lo_sum, read_runs(exp_lo, g, same, same).cast_to<uint16>().unpack());
-      hi_sum = aie::add(
-          hi_sum, read_runs(exp_hi, g, same, same).cast_to<uint16>().unpack());
+      const aie::vector<int8, 32> g =
+          aie::bit_xor(aie::load_v<32>(gaps + kb * 32).cast_to<int8>(), flip);
+      lo_sum =
+          aie::add(lo_sum, read_runs(exp_lo, g).cast_to<uint16>().unpack());
+      hi_sum =
+          aie::add(hi_sum, read_runs(exp_hi, g).cast_to<uint16>().unpack());
     }
     alignas(64) uint32_t lo_lanes[32], hi_lanes[32];
     aie::store_v(lo_lanes, lo_sum);
@@ -266,17 +246,23 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
       aie::vector<int16, 32> read[GROUP];
       AIE_LOOP_UNROLL_FULL
       for (int j = 0; j < GROUP; j++)
-        read[j] = read_runs(probs, aie::load_v<32>(gaps + (kb + j) * 32),
-                            tables_lo, tables_hi);
+        read[j] = read_runs(
+            probs,
+            aie::bit_xor(aie::load_v<32>(gaps + (kb + j) * 32).cast_to<int8>(),
+                         flip),
+            tables_lo, tables_hi);
       AIE_LOOP_UNROLL_FULL
       for (int j = 0; j < GROUP; j++)
         aie::store_v(p + (kb + j) * 32, read[j].pack());
     }
     for (int kb = N / 8 / GROUP * GROUP; kb < N / 8; kb++)
-      aie::store_v(p + kb * 32,
-                   read_runs(probs, aie::load_v<32>(gaps + kb * 32), tables_lo,
-                             tables_hi)
-                       .pack());
+      aie::store_v(
+          p + kb * 32,
+          read_runs(probs,
+                    aie::bit_xor(
+                        aie::load_v<32>(gaps + kb * 32).cast_to<int8>(), flip),
+                    tables_lo, tables_hi)
+              .pack());
 #endif
 
     for (int g = 0; g < HD / 8; g++) {

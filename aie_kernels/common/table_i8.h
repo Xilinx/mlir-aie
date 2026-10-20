@@ -28,36 +28,45 @@
 // stack array is not reachable by the LUT read, so it lives here.
 alignas(64) static int16_t table_i8_runs[512];
 
+// The entries for 32 int8 indices from runs whose entry 128 is at `base`,
+// each lane's offset moved on by `first` (lanes 0 to 15) or `second` (16 to
+// 31) bytes.
+static inline __attribute__((always_inline)) aie::vector<int16, 32>
+read_runs(const int8_t *base, aie::vector<int8, 32> index,
+          aie::vector<int32, 16> first = aie::zeros<int32, 16>(),
+          aie::vector<int32, 16> second = aie::zeros<int32, 16>()) {
+  // 4 bytes of offset an entry.
+  aie::accum<acc64, 32> scaled;
+  scaled.from_vector(index, 2);
+  const aie::vector<int32, 16> lanes0 = aie::add(
+      scaled.template extract<16>(0).template to_vector<int32>(0), first);
+  const aie::vector<int32, 16> lanes1 = aie::add(
+      scaled.template extract<16>(1).template to_vector<int32>(0), second);
+  v64int8 r0, r1, r2, r3;
+  load_lut_2x_int8(base, base, lanes0, r0, r1);
+  load_lut_2x_int8(base, base, lanes1, r2, r3);
+  return aie::vector<int16, 32>(
+      (v32int16)::shuffle(::shuffle(r0, r1, T16_16x4_lo),
+                          ::shuffle(r2, r3, T16_16x4_lo), T256_2x2_lo));
+}
+
 // Maps K vectors of 32 bytes at `data` in place through the runs, whose entry
 // 128 is at `base`. The LUT reads cannot be told apart from the stores, so all
-// K are loaded and read before any is stored.
+// K are read before any is stored.
 template <unsigned K>
-static inline __attribute__((always_inline)) void map_runs_i8(int8_t *data,
-                                                              int8_t *base) {
+static inline __attribute__((always_inline)) void
+map_runs_i8(int8_t *data, const int8_t *base) {
   aie::vector<int8, 32> x[K];
   AIE_LOOP_UNROLL_FULL
   for (unsigned k = 0; k < K; k++)
     x[k] = aie::load_v<32>(data + 32 * k);
-  aie::vector<int32, 16> offset[2 * K];
+  aie::vector<int16, 32> read[K];
   AIE_LOOP_UNROLL_FULL
-  for (unsigned k = 0; k < K; k++) {
-    aie::accum<acc64, 32> scaled;
-    scaled.from_vector(x[k], 2);
-    offset[2 * k] = scaled.template extract<16>(0).template to_vector<int32>(0);
-    offset[2 * k + 1] =
-        scaled.template extract<16>(1).template to_vector<int32>(0);
-  }
-  v64int8 read[4 * K];
+  for (unsigned k = 0; k < K; k++)
+    read[k] = read_runs(base, x[k]);
   AIE_LOOP_UNROLL_FULL
-  for (unsigned j = 0; j < 2 * K; j++)
-    load_lut_2x_int8(base, base, offset[j], read[2 * j], read[2 * j + 1]);
-  AIE_LOOP_UNROLL_FULL
-  for (unsigned k = 0; k < K; k++) {
-    const v64int8 words = ::shuffle(
-        ::shuffle(read[4 * k], read[4 * k + 1], T16_16x4_lo),
-        ::shuffle(read[4 * k + 2], read[4 * k + 3], T16_16x4_lo), T256_2x2_lo);
-    aie::store_v(data + 32 * k, aie::vector<int8, 32>(::pack((v32int16)words)));
-  }
+  for (unsigned k = 0; k < K; k++)
+    aie::store_v(data + 32 * k, read[k].pack());
 }
 
 // Maps N bytes in place, 128 at a time; `data` and `table` 32-byte aligned.
