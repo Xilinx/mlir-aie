@@ -8,8 +8,11 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-// scalar_exp per lane on f32_split.h's limbs, with 2^k added into the
-// exponent. The caller sets conv_even.
+// exp(x) per lane in float32, on f32_split.h's limbs. x = k ln 2 + r with
+// |r| <= ln 2 / 2 (Cody-Waite: ln 2's high part has 15 significant bits, so
+// k * high is exact for |k| < 512), e^r by its Taylor series to r^7 (6e-9 at
+// the ends), with 2^k added into the exponent. 0 below the smallest normal,
+// infinity past overflow, NaN through. The caller sets conv_even.
 template <unsigned W>
 static inline __attribute__((always_inline)) aie::accum<accfloat, W>
 exp_f32(aie::accum<accfloat, W> x) {
