@@ -25,8 +25,10 @@ from ._common import (
     Trace,
     _conv_act_dtype_info,
     _detect_arch,
+    _include_dirs,
     _kernel_source,
     _make_extern,
+    _runtime_lib_include,
     _tuned_arch,
     dtypes,
 )
@@ -37,6 +39,17 @@ from .linalg import _zero_output
 def _i32s(n: int) -> list:
     """Return a list of *n* ``np.int32`` types — for trailing scalar conv args."""
     return [np.int32] * n
+
+
+def _table_flags(table: bool, copies: int) -> list[str]:
+    """The ``-D`` flags of a conv's table map: none without ``table``.
+
+    Raises:
+        ValueError: When ``copies`` is not 1 or 2.
+    """
+    if copies not in (1, 2):
+        raise ValueError(f"table_copies must be 1 or 2, got {copies}")
+    return ["-DCONV_TABLE", f"-DTABLE_I8_COPIES={copies}"] if table else []
 
 
 def _conv_dimensions(input_width, input_channels, output_channels):
@@ -620,6 +633,7 @@ def conv2dk3(
     table: bool = False,
     stride: int = 1,
     rounding: str = "positive_inf",
+    table_copies: int = 2,
 ) -> ExternalFunction:
     """3x3 convolution kernel.
 
@@ -646,6 +660,9 @@ def conv2dk3(
         rounding: How the shift rounds: ``"positive_inf"`` (the uint8 kernel),
             or with ``bias`` ``"symmetric_inf"`` or ``"conv_even"`` (half to
             even, as ONNX QuantizeLinear).
+        table_copies: With ``table``, how many copies of the table the
+            kernel keeps in data memory: 2 (two banks, the LUT read fetches
+            both halves at once) or 1 (1 KB less, the reads serialize).
 
     Returns:
         ExternalFunction configured for the conv2dk3 kernel.
@@ -665,6 +682,7 @@ def conv2dk3(
             table,
             stride,
             rounding,
+            table_copies,
         )
     if table or stride != 1 or rounding != "positive_inf":
         raise ValueError("conv2dk3: table, stride and rounding need bias")
@@ -692,6 +710,7 @@ def conv2dk3(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels)
         + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
+        include_dirs=[*_include_dirs(), _runtime_lib_include()],
         contract=KernelContract(
             alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
@@ -795,7 +814,14 @@ def conv2dk3_bias_table_ref(
 
 
 def _conv2dk3_bias(
-    input_width, input_channels, output_channels, act_dtype, table, stride, rounding
+    input_width,
+    input_channels,
+    output_channels,
+    act_dtype,
+    table,
+    stride,
+    rounding,
+    table_copies,
 ) -> ExternalFunction:
     """[`conv2dk3`][iron.kernels.conv.conv2dk3]'s ``bias`` variant."""
     if act_dtype != np.int8:
@@ -818,9 +844,8 @@ def _conv2dk3_bias(
         "-DCONV_KERNEL_WIDTH=3",
         "-DCONV_KERNEL_HEIGHT=3",
     ]
-    flags += ["-DCONV_TABLE"] * table + ["-DCONV_ROUND_EVEN"] * (
-        rounding == "conv_even"
-    )
+    flags += _table_flags(table, table_copies)
+    flags += ["-DCONV_ROUND_EVEN"] * (rounding == "conv_even")
     line_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
     wt_ty = np.ndarray[(9 * input_channels * output_channels,), np.dtype[np.int8]]
     extra = [np.ndarray[(output_channels,), np.dtype[np.int32]]]
@@ -838,6 +863,7 @@ def _conv2dk3_bias(
         [line_ty, line_ty, line_ty, wt_ty, *extra, out_ty, *_i32s(8)],
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
+        include_dirs=[*_include_dirs(), _runtime_lib_include()],
         contract=KernelContract(
             # A row of 8k + 4 output pixels is stored 4 pixels (32 bytes) at a
             # time, so its output only needs 32-byte alignment.
@@ -932,6 +958,7 @@ def conv2dk1_i8(
     bias: bool = False,
     table: bool = False,
     rounding: str = "symmetric_inf",
+    table_copies: int = 2,
 ) -> ExternalFunction:
     """1x1 convolution kernel with int8 activations/weights/output.
 
@@ -949,6 +976,9 @@ def conv2dk1_i8(
         table: Take a 256-entry ``int8`` table after the bias. Needs ``bias``.
         rounding: How the shift rounds: ``"symmetric_inf"`` (half away from
             zero) or ``"conv_even"`` (half to even, as ONNX QuantizeLinear).
+        table_copies: With ``table``, how many copies of the table the
+            kernel keeps in data memory: 2 (two banks, the LUT read fetches
+            both halves at once) or 1 (1 KB less, the reads serialize).
 
     Returns:
         ExternalFunction configured for the conv2dk1_i8 kernel.
@@ -969,7 +999,7 @@ def conv2dk1_i8(
     name = "conv2dk1_i8" + "_bias" * bias + "_table" * table
     name += "_even" * (rounding == "conv_even")
     flags = ["-DINT8_ACT", f"-DCONV2DK1_I8_SYMBOL={name}"]
-    flags += ["-DCONV_BIAS"] * bias + ["-DCONV_TABLE"] * table
+    flags += ["-DCONV_BIAS"] * bias + _table_flags(table, table_copies)
     flags += ["-DCONV_ROUND_EVEN"] * (rounding == "conv_even")
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
     wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
@@ -1006,6 +1036,7 @@ def conv2dk1_i8(
         [in_ty, wt_ty, *extra, out_ty, *_i32s(4)],
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
+        include_dirs=[*_include_dirs(), _runtime_lib_include()],
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(
@@ -1638,6 +1669,7 @@ def bn_conv2dk3_dw(
     bias: bool = False,
     table: bool = False,
     rounding: str = "conv_even",
+    table_copies: int = 2,
 ) -> ExternalFunction:
     """Bottleneck depthwise 3x3 conv + ReLU kernel (uint8 in/out).
 
@@ -1657,6 +1689,9 @@ def bn_conv2dk3_dw(
         rounding: With ``bias``, how the shift rounds: ``"conv_even"`` (half
             to even, as ONNX QuantizeLinear) or ``"symmetric_inf"``. The
             uint8 kernel always rounds half to even.
+        table_copies: With ``table``, how many copies of the table the
+            kernel keeps in data memory: 2 (two banks, the LUT read fetches
+            both halves at once) or 1 (1 KB less, the reads serialize).
 
     Returns:
         ExternalFunction configured for the bn_conv2dk3_dw kernel.
@@ -1667,7 +1702,7 @@ def bn_conv2dk3_dw(
     """
     if bias:
         return _bn_conv2dk3_dw_bias(
-            input_width, output_channels, table, stride, rounding
+            input_width, output_channels, table, stride, rounding, table_copies
         )
     if table:
         raise ValueError("bn_conv2dk3_dw(): table needs bias")
@@ -1688,6 +1723,7 @@ def bn_conv2dk3_dw(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"]
         + _conv_dimensions(input_width, input_channels, output_channels),
+        include_dirs=[*_include_dirs(), _runtime_lib_include()],
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
@@ -1778,7 +1814,7 @@ def bn_conv2dk3_dw_bias_table_ref(
     return np.asarray(table, dtype=np.int8)[out.astype(np.int64) + 128]
 
 
-def _bn_conv2dk3_dw_bias(input_width, channels, table, stride, rounding):
+def _bn_conv2dk3_dw_bias(input_width, channels, table, stride, rounding, table_copies):
     """[`bn_conv2dk3_dw`][iron.kernels.conv.bn_conv2dk3_dw]'s ``bias`` variant."""
     if stride != 1:
         raise ValueError("bn_conv2dk3_dw(): bias needs stride 1")
@@ -1791,9 +1827,8 @@ def _bn_conv2dk3_dw_bias(input_width, channels, table, stride, rounding):
     name = "conv2dk3_dw_i8_bias" + "_table" * table
     name += "_even" * (rounding == "conv_even")
     flags = ["-DCONV_BIAS", f"-DDW_BIAS_SYMBOL={name}"]
-    flags += ["-DCONV_TABLE"] * table + ["-DCONV_ROUND_EVEN"] * (
-        rounding == "conv_even"
-    )
+    flags += _table_flags(table, table_copies)
+    flags += ["-DCONV_ROUND_EVEN"] * (rounding == "conv_even")
     line_ty = np.ndarray[(input_width * channels,), np.dtype[np.int8]]
     wt_ty = np.ndarray[(9 * channels,), np.dtype[np.int8]]
     extra = [np.ndarray[(channels,), np.dtype[np.int32]]]
@@ -1808,6 +1843,7 @@ def _bn_conv2dk3_dw_bias(input_width, channels, table, stride, rounding):
         _kernel_source("conv/bn_conv2dk3_dw.cc"),
         [line_ty, line_ty, line_ty, wt_ty, *extra, out_ty, *_i32s(8)],
         compile_flags=flags + _conv_dimensions(input_width, channels, channels),
+        include_dirs=[*_include_dirs(), _runtime_lib_include()],
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, *((Param,) * len(extra)), Out, *((Param,) * 8)),
@@ -2042,6 +2078,7 @@ def bn_conv2dk3_dw_out_split(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"]
         + _conv_dimensions(input_width, input_channels, input_channels),
+        include_dirs=[*_include_dirs(), _runtime_lib_include()],
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, Out, *((Param,) * 8)),

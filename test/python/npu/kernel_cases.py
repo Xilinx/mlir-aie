@@ -1460,6 +1460,20 @@ CASES: list[Case] = [
         calls=4,
         scalars=(80, 64, 80, 12),
     ),
+    # One copy of the table: the LUT read takes both halves from it.
+    check(
+        "conv2dk1_i8",
+        dict(
+            input_width=40,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+            table_copies=1,
+        ),
+        calls=4,
+        scalars=(40, 64, 64, 12),
+        tag="one-table-copy",
+    ),
     # conv2dk1_skip streams three tensors; the harness packs them into one
     # fifo when they share a type, i.e. input_channels == 2 * output_channels
     # with a uint8 residual. An int8 residual goes in a fifo of its own.
@@ -1643,24 +1657,40 @@ CASES: list[Case] = [
     # Rows of fewer than four blocks run as one run and share each input load
     # across 4 (8 px), 2 (16 px) or 1 (24 px) output-channel groups; with 3
     # groups, 8 px falls back to one. 80 px is two runs of four and a run of
-    # two, the first and last at the borders.
+    # two, the first and last at the borders; it takes 32 output channels, as
+    # 64 leave the harness core no room for its rows beside the table copies.
     *[
         Case(
             "conv2dk3",
             dict(
                 input_width=w,
                 input_channels=64,
-                output_channels=64,
+                output_channels=oc,
                 bias=True,
                 table=True,
                 rounding="conv_even",
             ),
             calls=4,
-            scalars=(w, 64, 64, 3, 3, 1, 15, 0),
+            scalars=(w, 64, oc, 3, 3, 1, 15, 0),
             tag=f"bias-width-{w}",
         )
-        for w in (8, 16, 80)
+        for w, oc in ((8, 64), (16, 64), (80, 32))
     ],
+    check(
+        "conv2dk3",
+        dict(
+            input_width=16,
+            input_channels=64,
+            output_channels=64,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+            table_copies=1,
+        ),
+        calls=4,
+        scalars=(16, 64, 64, 3, 3, 1, 15, 0),
+        tag="one-table-copy",
+    ),
     check(
         "conv2dk3",
         dict(
@@ -2033,6 +2063,20 @@ CASES: list[Case] = [
             (2, "bias-pairs-bottom-row"),
         )
     ],
+    check(
+        "bn_conv2dk3_dw",
+        dict(
+            input_width=40,
+            input_channels=80,
+            output_channels=80,
+            bias=True,
+            table=True,
+            table_copies=1,
+        ),
+        calls=4,
+        scalars=(40, 80, 80, 3, 3, 1, 7, 0),
+        tag="one-table-copy",
+    ),
     check(
         "bn_conv2dk3_dw",
         dict(input_width=12, input_channels=16, output_channels=16, bias=True),

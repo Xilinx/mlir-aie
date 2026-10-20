@@ -54,6 +54,10 @@ IMAGE_ROW_BYTES = 640 * 3
 L1_BYTES = 64 * 1024
 # The stack and the core's own sections, and the allocator's alignment slack.
 L1_RESERVE = 3 * 1024
+# A table kernel's second copy of its table, which makes its table map about
+# 1.5x faster. A tile takes it where its plan leaves twice its 1 KB: the copy
+# is pinned to a bank of its own, which the allocator then packs around.
+TABLE_COPY_BYTES = 2 * 1024
 L1_LAG_BYTES = 12 * 1024
 # A memtile channel has 24 buffer descriptors, one per staged row.
 MEMTILE_LAG_ROWS = 8
@@ -896,6 +900,8 @@ class SegmentDesign:
             raise ValueError(
                 f"{op.name}: no output-channel chunk of its weights fits beside {held} B of rows"
             )
+        used = (weights.nbytes + bias.nbytes) * chunk // oc * (1 if chunk == oc else 2)
+        copies = 2 if op.act and free - used >= TABLE_COPY_BYTES else 1
 
         if chunk == oc:
             per = 0
@@ -953,6 +959,7 @@ class SegmentDesign:
                 bias=True,
                 table=op.act,
                 rounding="conv_even",
+                table_copies=copies,
             )
             src.connect(self, depths)
             # After the inputs' handles: the order fifos are made in steers
@@ -976,7 +983,7 @@ class SegmentDesign:
 
         part = reader
         if len(pieces) > 1:
-            self.depthwise_apart(op, pieces, depths, double, shift, table)
+            self.depthwise_apart(op, pieces, depths, double, shift, table, copies)
             return
         if op.groups == 1:
             k = kernels.conv2dk3(
@@ -987,10 +994,17 @@ class SegmentDesign:
                 table=op.act,
                 stride=op.stride,
                 rounding="conv_even",
+                table_copies=copies,
             )
         elif chunk == oc:
             k = kernels.bn_conv2dk3_dw(
-                src_tensor.width, ic, oc, bias=True, table=op.act, rounding="conv_even"
+                src_tensor.width,
+                ic,
+                oc,
+                bias=True,
+                table=op.act,
+                rounding="conv_even",
+                table_copies=copies,
             )
         else:
             raise NotImplementedError(f"{op.name}: a streamed depthwise conv")
@@ -1046,6 +1060,7 @@ class SegmentDesign:
         double: bool,
         shift: int,
         table: np.ndarray | None,
+        copies: int,
     ) -> None:
         """A depthwise 3x3 conv over parts of one stream, each part computed on its own channels."""
         p = self.params
@@ -1069,7 +1084,13 @@ class SegmentDesign:
         if op.act:
             consts.append(Buffer(initial_value=table))
         k = kernels.bn_conv2dk3_dw(
-            width, channels, channels, bias=True, table=op.act, rounding="conv_even"
+            width,
+            channels,
+            channels,
+            bias=True,
+            table=op.act,
+            rounding="conv_even",
+            table_copies=copies,
         )
         source = self.consumer(pieces[0].source, depths[pieces[0].source.name], 3)
         out = self.fifo(op.dst).prod(depth=1 + double)
@@ -1290,6 +1311,8 @@ class SegmentDesign:
             - sum(held.values())
         )
         streamed: dict[str, int] = {}
+        # What the plan leaves of the tile.
+        spare = free
         if free < 0:
             if len(external) > 1:
                 raise NotImplementedError(
@@ -1314,6 +1337,8 @@ class SegmentDesign:
                     f"{group[0].name}: no chunk of {big.name}'s weights fits beside its rows"
                 )
             streamed[big.name] = chunk
+            spare = room - 2 * per_channel * chunk
+        copies = 2 if spare >= TABLE_COPY_BYTES else 1
         calls = {}
         # Per streamed conv: its chunks, each chunk's weight bytes, its channels.
         streams: dict[str, tuple[int, int, int]] = {}
@@ -1360,6 +1385,7 @@ class SegmentDesign:
                             bias=True,
                             table=op.act,
                             rounding="conv_even",
+                            table_copies=copies,
                         )
                     elif op.groups == 1:
                         k = kernels.conv2dk3(
@@ -1370,10 +1396,17 @@ class SegmentDesign:
                             table=op.act,
                             stride=1,
                             rounding="conv_even",
+                            table_copies=copies,
                         )
                     else:
                         k = kernels.bn_conv2dk3_dw(
-                            width, ic, oc, bias=True, table=op.act, rounding="conv_even"
+                            width,
+                            ic,
+                            oc,
+                            bias=True,
+                            table=op.act,
+                            rounding="conv_even",
+                            table_copies=copies,
                         )
                     ((parts, _),) = inputs
                     if len(parts) > 1:
