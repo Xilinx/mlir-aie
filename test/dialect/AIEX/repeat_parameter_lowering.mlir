@@ -113,6 +113,41 @@ aie.device(npu2) {
 
 // -----
 
+// On a mem tile the update is at the channel's start queue, which has the
+// shim's layout (BD id in the low bits, repeat count at 16, token at 31):
+// S2MM 0 of tile (0, 1) is at 0x1A0604 = 1705476 and MM2S 0's at 0x1A0634 =
+// 1705524. The register written back after each is the next channel's
+// control. The S2MM task holds BD 0 (0x1A0000 = 1703936), so the MM2S task's
+// head, a multiple of 4 here too, is BD 4 (0x1A0080 = 1704064).
+
+// CHECK-LABEL: aie.runtime_sequence @memtile
+// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 1703936 : ui32}
+// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 1704064 : ui32}
+// CHECK: aiex.npu.update_from_scratchpad {address = 1705476 : ui32, state_table_idx = 0 : ui8}
+// CHECK: aiex.npu.update_from_scratchpad {address = 1705524 : ui32, func_arg = 4 : ui32, state_table_idx = 0 : ui8}
+// MARK-LABEL: aie.runtime_sequence @memtile
+// MARK: aiex.dma_start_task(%{{.*}}) {repeat_state_table_idx = 0 : ui8}
+// MARK: aiex.dma_start_task(%{{.*}}) {repeat_state_table_idx = 0 : ui8}
+aiex.scratchpad_parameter @runs : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 1)
+  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.runtime_sequence @memtile(%arg0 : memref<1024xi32>) {
+    %in = aiex.dma_configure_task(%t, S2MM, 0) {
+      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      aie.end
+    } {repeat_count = 15 : i32}
+    %out = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      aie.end
+    } {repeat_count = 15 : i32}
+    aiex.dma_start_task(%in) {repeat_parameter = @runs}
+    aiex.dma_start_task(%out) {repeat_parameter = @runs}
+  }
+}
+
+// -----
+
 // A token-issuing task through a shim allocation, repeating one tile (no
 // iteration): the token bit joins the update's func_arg, after the controller
 // id the token needs is set as for any push. The S2MM task holds BD 0, so the

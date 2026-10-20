@@ -799,9 +799,10 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
     if (arch != AIE::AIEArch::AIE2 && arch != AIE::AIEArch::AIE2p)
       return emitOpError("repeat_parameter is only supported on AIE2 and "
                          "AIE2P devices");
-    if (!targetModel.isShimNOCTile(getColumn(), getRow()))
+    if (!targetModel.isShimNOCTile(getColumn(), getRow()) &&
+        !targetModel.isMemTile(getColumn(), getRow()))
       return emitOpError("repeat_parameter is only supported on shim NOC "
-                         "tiles, got tile (")
+                         "and mem tiles, got tile (")
              << getColumn() << ", " << getRow() << ")";
     if (getConstantInt64Operand(getRepeatCount()) != uint64_t{0})
       return emitOpError("takes its repeat count from the scratchpad, so its "

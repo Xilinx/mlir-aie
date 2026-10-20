@@ -187,7 +187,7 @@ carries values from host memory through the command processor into the array.
 | `aiex.npu.rtp_write` | Write `value` at `index` into an `aie.buffer` used to hold runtime parameters. | a buffer used for runtime parameters | `aiex.npu.rtp_write(@rtp_buf, 0, %val) : i32` |
 | `aiex.npu.create_scratchpad` | Allocate a control-code scratchpad of `size` bytes on the host and copy it into the command processor's memory. Values are read from it by `update_from_scratchpad`. | NPU command processor | `aiex.npu.create_scratchpad {size = 128 : ui32}` |
 | `aiex.npu.update_from_scratchpad` | Compute a value from a scratchpad `StateTable` entry (`mul` / `incr` / `decr` by `func_arg`) and add it to an 8-byte location at a resolved address. Always additive; writes both registers of the pair. | resolved address (shim BD address pairs) | `aiex.npu.update_from_scratchpad<incr> {state_table_idx = 0 : ui8, address = 0 : ui32}` |
-| `aiex.dma_start_task {repeat_parameter = @foo}` | Start a task with the repeat count the host writes to `@foo` for each run (at most the task's own repeat count); see `aiex.dma_start_task`. | shim NOC tile channel (AIE2, AIE2P) | `aiex.dma_start_task(%t) {repeat_parameter = @runs}` |
+| `aiex.dma_start_task {repeat_parameter = @foo}` | Start a task with the repeat count the host writes to `@foo` for each run (at most the task's own repeat count); see `aiex.dma_start_task`. | shim NOC or mem tile channel (AIE2, AIE2P) | `aiex.dma_start_task(%t) {repeat_parameter = @runs}` |
 | `aiex.scratchpad_parameter` | Declare a named scratchpad runtime parameter. Declared at **module scope** (outside `aie.device`), not inside the sequence; shared by all PDIs in the module. | module scope (declaration) | `aiex.scratchpad_parameter @foo : i32` |
 | `aiex.read_scratchpad_parameter` | Read a declared scratchpad parameter on a core. Used inside an `aie.core`, not inside the sequence. | core scope (read site) | `%v = aiex.read_scratchpad_parameter @foo : i32` |
 | `aiex.sync_scratchpad_parameters_from_host` | Marker in the sequence for where the host-to-core scratchpad parameter sync should be materialized (expands to create_scratchpad + per-parameter writes + lock releases). | in-sequence marker | `aiex.sync_scratchpad_parameters_from_host` |
@@ -851,12 +851,15 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
     bits of the word it writes, so 'bd_id' must be a constant multiple of 4;
     the runtime-sequence BD allocator gives such an id to the head of a task
     started with a repeat parameter. It also writes back the register after
-    the queue with the value it reads. After MM2S 0's queue and the two S2MM
-    queues that is a channel's control register, which nothing else writes.
-    After MM2S 1's queue it is `DMA_S2MM_Status_0`, whose sticky error bits
-    (16 to 18: AXI decode error, AXI slave error, task queue overflow) are
-    write-1-to-clear: a push on MM2S 1 clears any S2MM 0 error of its tile
-    that is pending. The data moved is unaffected.
+    the queue with the value it reads. On a shim tile, after MM2S 0's queue
+    and the two S2MM queues, and on a mem tile after every queue but MM2S
+    5's, that is the next channel's control register, which nothing else
+    writes. After a shim's MM2S 1 queue or a mem tile's MM2S 5 queue it is
+    `DMA_S2MM_Status_0`, whose sticky error bits (on a shim 16 to 18: AXI
+    decode error, AXI slave error, task queue overflow; on a mem tile the
+    task queue overflow, 18, among them) are write-1-to-clear: such a push
+    clears any S2MM 0 error of its tile that is pending. The data moved is
+    unaffected.
   }];
 }
 
@@ -1529,8 +1532,9 @@ def AIE_DMAStartTaskOp
     `--aie-lower-scratchpad-parameters` rewrites `repeat_parameter` to
     `repeat_state_table_idx`, and the push becomes an
     `aiex.npu.update_from_scratchpad` of the channel's task queue register
-    (see `aiex.npu.push_queue`). On shim MM2S 1 that update also clears the
-    tile's pending S2MM 0 sticky error bits.
+    (see `aiex.npu.push_queue`), on a shim NOC or a mem tile. On shim MM2S 1
+    and mem tile MM2S 5 that update also clears the tile's pending S2MM 0
+    sticky error bits.
 
     Example:
     ```mlir
