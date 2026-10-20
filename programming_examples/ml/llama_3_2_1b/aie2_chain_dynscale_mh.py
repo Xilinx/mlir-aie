@@ -255,8 +255,7 @@ class DerivedSizes:
     OFF_WK: int
     OFF_WV: int
     WEIGHTS_BYTES: int
-    OFF_CS_PERPOS: int
-    CS_PERPOS_TOTAL: int
+    OFF_ROPE: int
     PER_KV_HEAD_BYTES: int
     PER_LAYER_KV: int
     KV_HALF_BYTES: int
@@ -295,19 +294,11 @@ def derived_sizes(*, T=128, N_LAYERS=2, PT=1, PERSIST_GROW=False) -> DerivedSize
     OFF_WV = OFF_WK + WK_TOTAL
     WEIGHTS_BYTES = OFF_WV + WV_TOTAL
 
-    # PERSIST_GROW per-position rope: each of the PT tokens generates at
-    # position P0+t, which needs ITS OWN cos/sin (the rotary phase advances
-    # with position). Append a PT*N_LAYERS*CS_BYTES block to wblob; the of_cs
-    # (q-rope) + kvcs_eps[2] (append rope_k) fills read it at the (tok,L)
-    # offset. CS_BYTES=256 so the whole block is tiny (PT*N_LAYERS*256). Keeps
-    # the runtime at 5 args (folded into the existing wblob). Laid out
-    # [token0: L0..L_{N-1} | token1: ... | ...]. Only EXTEND WEIGHTS_BYTES with
-    # the per-position block when PERSIST_GROW, so the non-grow wblob size is
-    # unchanged.
-    OFF_CS_PERPOS = WEIGHTS_BYTES
-    CS_PERPOS_TOTAL = PT * N_LAYERS * CS_BYTES
+    # PERSIST_GROW: the RoPE table, one CS_BYTES row ([cos | sin] bf16) per
+    # position 0..T-1, shared by every layer (numpy_llama_ref.rope_table).
+    OFF_ROPE = WEIGHTS_BYTES
     if PERSIST_GROW:
-        WEIGHTS_BYTES = OFF_CS_PERPOS + CS_PERPOS_TOTAL
+        WEIGHTS_BYTES = OFF_ROPE + T * CS_BYTES
 
     # kvblob: per-layer block, each containing 8 KV heads' (T_used | k_header |
     # kcache | v_header | vcache) combined slots.
@@ -344,8 +335,7 @@ def derived_sizes(*, T=128, N_LAYERS=2, PT=1, PERSIST_GROW=False) -> DerivedSize
         OFF_WK=OFF_WK,
         OFF_WV=OFF_WV,
         WEIGHTS_BYTES=WEIGHTS_BYTES,
-        OFF_CS_PERPOS=OFF_CS_PERPOS,
-        CS_PERPOS_TOTAL=CS_PERPOS_TOTAL,
+        OFF_ROPE=OFF_ROPE,
         PER_KV_HEAD_BYTES=PER_KV_HEAD_BYTES,
         PER_LAYER_KV=PER_LAYER_KV,
         KV_HALF_BYTES=KV_HALF_BYTES,
@@ -404,7 +394,7 @@ def build(
     OFF_WK = sizes.OFF_WK
     OFF_WV = sizes.OFF_WV
     WEIGHTS_BYTES = sizes.WEIGHTS_BYTES
-    OFF_CS_PERPOS = sizes.OFF_CS_PERPOS
+    OFF_ROPE = sizes.OFF_ROPE
     PER_KV_HEAD_BYTES = sizes.PER_KV_HEAD_BYTES
     PER_LAYER_KV = sizes.PER_LAYER_KV
     KV_HALF_BYTES = sizes.KV_HALF_BYTES
@@ -463,6 +453,10 @@ def build(
         # between them and drives of_seed (the router's input).
         of_hostseed = ObjectFifo(t_D8_i8, depth=1, name="hostseed")
         of_feedback = ObjectFifo(t_D8_i8, depth=2, name="feedback")
+    if PERSIST_GROW:
+        # Per dispatch: the byte offset of token 0's RoPE table row, t0 *
+        # CS_BYTES.
+        p_cs_off = ScratchpadParameter("cs_off", np.int32)
     if PER_CALL:
         # The last token's seed goes back to the host-seed buffer, where the
         # next dispatch's token 0 reads it. Core memory does not outlive the
@@ -554,10 +548,12 @@ def build(
     of_qr = ObjectFifo(t_QR_i8, depth=1, name="qr")
 
     # kvcs: k/v fp32 + cos/sin joined at a memtile (see line 132's pointer).
+    # PERSIST_GROW: the rope worker forwards its cos/sin, so one shim stream
+    # carries them for both q-rope and the append's rope_k.
     of_kvcs = ObjectFifo(t_KVCS_i8, depth=1, name="kvcs")
     kvcs_eps = of_kvcs.prod().join(
         offsets=[0, KFP_ALL, 2 * KFP_ALL],
-        obj_types=[t_KVfp, t_KVfp, _i8(CS_PACK_BYTES)],
+        obj_types=[t_KVfp, t_KVfp, t_CS_bf16 if PERSIST_GROW else _i8(CS_PACK_BYTES)],
         names=["kvcs_k", "kvcs_v", "kvcs_cs"],
     )
 
@@ -956,6 +952,20 @@ def build(
             c_cs.release(1)
             c_out.release(1)
 
+    def w_rope_fwd(c_x, c_cs, c_out, c_fwd, k):
+        for _ in range_(CHAIN_ITERS):
+            x = c_x.acquire(1)
+            cs = c_cs.acquire(1)
+            o = c_out.acquire(1)
+            k(x, cs, o)
+            c_x.release(1)
+            c_out.release(1)
+            f = c_fwd.acquire(1)
+            for i in range_(HEAD_D * 2):
+                f[i] = cs[i]
+            c_fwd.release(1)
+            c_cs.release(1)
+
     # k_proj / v_proj: N_TILES_K iters -> fp32 KV_DIM.
     def w_kv(c_act, c_w, c_out, k):
         for _ in range_(CHAIN_ITERS):
@@ -1216,9 +1226,13 @@ def build(
         ),
         # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
         Worker(w_requant, [of_qfp.cons(), of_qf.prod(), k_qrequant]),
-        Worker(
-            w_rope,
-            [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope],
+        (
+            Worker(
+                w_rope_fwd,
+                [of_qf.cons(), of_cs.cons(), of_qr.prod(), kvcs_eps[2].prod(), k_rope],
+            )
+            if PERSIST_GROW
+            else Worker(w_rope, [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope])
         ),
         # k_proj / v_proj (h1 broadcast); fp32 out -> memtile kvcs join.
         Worker(
@@ -1497,7 +1511,7 @@ def build(
         of_wd.prod(),
         of_wk.prod(),
         of_wv.prod(),
-        kvcs_eps[2].prod(),
+        *([] if PERSIST_GROW else [kvcs_eps[2].prod()]),
         of_kv_lo.prod(),
         of_kv_hi.prod(),
     ]
@@ -1560,7 +1574,7 @@ def build(
         wd_prod = next(it)
         wk_prod = next(it)
         wv_prod = next(it)
-        kvcs2_prod = next(it)
+        kvcs2_prod = None if PERSIST_GROW else next(it)
         kv_lo_prod = next(it)
         kv_hi_prod = next(it)
         if SAMPLE:
@@ -1653,7 +1667,7 @@ def build(
         )
         # cos/sin for q-rope. Non-grow: one pair per layer (OFF_CS, same every
         # token). PERSIST_GROW issues these per-token in issue_token() from the
-        # per-position block, so skip the static fill here.
+        # RoPE table rows, so skip the static fill here.
         if not PERSIST_GROW:
             add_per_layer(cs_prod, wblob, OFF_CS, CS_BYTES, CS_BYTES, 1, WEIGHTS_BYTES)
         add_per_layer(
@@ -1720,7 +1734,7 @@ def build(
             N_TILES_V,
             WEIGHTS_BYTES,
         )
-        # Static fill only when not PERSIST_GROW (see its per-position block above).
+        # PERSIST_GROW: the rope worker forwards these (see of_kvcs).
         if not PERSIST_GROW:
             add_per_layer(
                 kvcs2_prod,
@@ -1881,24 +1895,20 @@ def build(
                             offset_parameter=kv_fill_param,
                         )
                 if PERSIST_GROW:
-                    # Per-position cos/sin: token `tok` at position P0+tok uses
-                    # its own (cos,sin) for both q-rope (cs_prod) and append
-                    # rope_k (kvcs2_prod). Read from the per-position block at
-                    # OFF_CS_PERPOS + (tok*N_LAYERS + L)*CS_BYTES.
-                    cs_off = OFF_CS_PERPOS + (tok * N_LAYERS + L) * CS_BYTES
+                    # Token `tok` is at position t0 + tok: its table row, with
+                    # t0's row offset (cs_off) given per dispatch.
                     cs_prod.fill(
                         wblob,
-                        tap=strided_tap(WEIGHTS_BYTES, cs_off, CS_BYTES, CS_BYTES, 1),
-                        group=layer_tgs[L],
-                        wait=True,
-                    )
-                    kvcs2_prod.fill(
-                        wblob,
                         tap=strided_tap(
-                            WEIGHTS_BYTES, cs_off, CS_PACK_BYTES, CS_PACK_BYTES, 1
+                            WEIGHTS_BYTES,
+                            OFF_ROPE + tok * CS_BYTES,
+                            CS_BYTES,
+                            CS_BYTES,
+                            1,
                         ),
                         group=layer_tgs[L],
                         wait=True,
+                        offset_parameter=p_cs_off,
                     )
                 if L >= PINGPONG_DEPTH:
                     layer_tgs[L - PINGPONG_DEPTH].finish()

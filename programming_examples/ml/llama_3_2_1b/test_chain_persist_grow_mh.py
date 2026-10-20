@@ -53,7 +53,7 @@ from gen_silu_lut import silu_lut
 from llama_npu import DispatchSession
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
-from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw
+from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw, rope_table
 from numpy_topk_sample import topk_sample_reference
 from test_chain_mh import pack_blobs
 from test_flowkv import EXP_QUANT_SCALE as FKV_EXP_QUANT_SCALE
@@ -69,7 +69,7 @@ KV_BYTES = _sizes.KV_BYTES
 PER_LAYER_KV = _sizes.PER_LAYER_KV
 PER_KV_HEAD_BYTES = _sizes.PER_KV_HEAD_BYTES
 WEIGHTS_BYTES = _sizes.WEIGHTS_BYTES
-OFF_CS_PERPOS = _sizes.OFF_CS_PERPOS
+OFF_ROPE = _sizes.OFF_ROPE
 KV_HEADER = _sizes.KV_HEADER
 KCACHE_PADDED = _sizes.KCACHE_PADDED
 DATA_DIR = Path(__file__).parent / "data"
@@ -123,8 +123,8 @@ def embed_seed_ref(row_i8, embed_sc):
 
 
 def build_fixtures(seed, p0, n_tok):
-    """Random layers, a KV prefix of p0 positions, and per-position cos/sin for
-    the n_tok tokens generated from position p0 on."""
+    """Random layers and a KV prefix of p0 positions, with room for the n_tok
+    tokens generated from position p0 on."""
     rng = np.random.default_rng(seed)
     x_fp = rng.uniform(-1.6, 1.6, size=D).astype(np.float32)
     res_scale = np.float32(np.maximum(np.abs(x_fp).max(), 1e-12) / 127.0)
@@ -132,11 +132,7 @@ def build_fixtures(seed, p0, n_tok):
 
     lut_exp = exp_lut(FKV_EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
-    half = HEAD_D // 2
     layers = []
-    # Per-layer base rotary frequencies (random per layer, but the PHASE advances
-    # with position so each token gets a distinct (cos,sin) -- real rope behavior).
-    cs_perpos = np.zeros((n_tok, N_LAYERS, 2 * HEAD_D), dtype=bfloat16)  # [cos|sin]
     for L in range(N_LAYERS):
         layer = gen_layer_mh(rng)
         layer["lut_exp"] = lut_exp
@@ -151,17 +147,8 @@ def build_fixtures(seed, p0, n_tok):
                 v_slot[h, p] = 0.0
         layer["k_scales_slot"] = k_slot
         layer["v_scales_slot"] = v_slot
-        # Per-layer base frequencies; position t's angle = freq * (p0+t).
-        freq = rng.uniform(0.0, 0.2, size=half).astype(np.float32)
-        for t in range(n_tok):
-            ang = (freq * np.float32(p0 + t)).astype(np.float32)
-            cos_half = np.cos(ang).astype(bfloat16)
-            sin_half = np.sin(ang).astype(bfloat16)
-            cos = np.concatenate([cos_half, cos_half])
-            sin = np.concatenate([sin_half, sin_half])
-            cs_perpos[t, L] = np.concatenate([cos, sin])
         layers.append(layer)
-    return x_i8, res_scale, layers, cs_perpos
+    return x_i8, res_scale, layers
 
 
 def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma):
@@ -216,28 +203,32 @@ DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
 LMW_GAMMA_BYTES = 2 * D
 
 
-def dispatch_params(region):
+def dispatch_params(region, t0):
     """The design's ScratchpadParameters for one dispatch.
 
     Args:
         region: The half of the KV buffer holding the cache the dispatch
             starts from. Token t fills from half (region + t) % 2 and drains
             to the other, so the grown cache ends in (region + PT) % 2.
+        t0: The position of the dispatch's first token.
 
     Returns:
         The parameter values by name.
     """
-    return {"kv_even": region * KV_BYTES, "kv_odd": (1 - region) * KV_BYTES}
+    return {
+        "kv_even": region * KV_BYTES,
+        "kv_odd": (1 - region) * KV_BYTES,
+        "cs_off": t0 * CS_BYTES,
+    }
 
 
-def time_decode(session, buffers, opts):
+def time_decode(session, buffers, params, opts):
     """Per-token device time + DMA floor (host-ferried grow: KV streamed every
     token, both directions, so bytes/token includes 2*KV_BYTES)."""
     print(
         f"timing: warmup x{opts.n_warmup}, time x{opts.n_iters}  (PT={PT} tokens/dispatch)",
         flush=True,
     )
-    params = dispatch_params(0)
     for _ in range(opts.n_warmup):
         session(buffers, **params)
     times_ms = [session(buffers, **params) for _ in range(opts.n_iters)]
@@ -326,7 +317,7 @@ def check_carry(before, after, pos, n_new):
     return fails + changed
 
 
-def replay(dev_tokens, x_i8, res_scale, layers, p0, cs_rows, lm):
+def replay(dev_tokens, x_i8, res_scale, layers, p0, rope, lm):
     """Check each device token against the numpy oracle, from the caches the
     caller set and position p0 on, following the device's tokens; returns the
     number that fail."""
@@ -335,8 +326,8 @@ def replay(dev_tokens, x_i8, res_scale, layers, p0, cs_rows, lm):
     cur_x, cur_sc = x_i8, res_scale
     for t, dev_tok in enumerate(dev_tokens):
         for L in range(N_LAYERS):
-            layers[L]["cos"] = cs_rows[t, L, :HEAD_D]
-            layers[L]["sin"] = cs_rows[t, L, HEAD_D:]
+            layers[L]["cos"] = rope[p0 + t, :HEAD_D]
+            layers[L]["sin"] = rope[p0 + t, HEAD_D:]
         logits = chain_forward_logits(
             cur_x, cur_sc, layers, p0 + t, embed_i8, embed_sc, gamma
         )
@@ -440,7 +431,8 @@ def main():
     lmw = pack_lmw(embed_i8, embed_sc, gamma)
     lm = (embed_i8, embed_sc, gamma)
 
-    x_i8, res_scale, layers, cs_perpos = build_fixtures(fseed, p0, n_tok)
+    x_i8, res_scale, layers = build_fixtures(fseed, p0, n_tok)
+    rope = rope_table(T, HEAD_D)
 
     # Snapshot the PRISTINE caches (before any append) so the device gets the same
     # starting KV the numpy loop starts from. The device's growing-append then
@@ -459,8 +451,8 @@ def main():
     cur_x, cur_sc = x_i8, res_scale
     for t in range(PT):
         for L in range(N_LAYERS):
-            layers[L]["cos"] = cs_perpos[t, L, :HEAD_D]
-            layers[L]["sin"] = cs_perpos[t, L, HEAD_D:]
+            layers[L]["cos"] = rope[p0 + t, :HEAD_D]
+            layers[L]["sin"] = rope[p0 + t, HEAD_D:]
         _, nxin, nscale = chain_forward_grow(
             cur_x, cur_sc, layers, p0 + t, embed_i8, embed_sc, gamma
         )
@@ -468,20 +460,12 @@ def main():
 
     # Pack wblob with the (now-populated) real scales; the chain self-calibrates
     # on-device so these are placeholders, but pack_blobs requires the key. The
-    # static OFF_CS cos/sin in wblob is unused by PERSIST_GROW (the per-position
-    # block drives rope), so its value doesn't matter.
+    # static OFF_CS cos/sin in wblob is unused by PERSIST_GROW, whose q-rope
+    # and rope_k read the RoPE table at OFF_ROPE.
     wblob, _ = pack_blobs(layers, WEIGHTS_BYTES)
     assert wblob.size == WEIGHTS_BYTES, (wblob.size, WEIGHTS_BYTES)
-
-    def wblob_for(d):
-        """wblob with dispatch d's per-position cos/sin block at OFF_CS_PERPOS,
-        laid out [token0: L0..L_{N-1} | token1: ... ] matching the chain's fill."""
-        w = wblob.copy()
-        for t in range(PT):
-            for L in range(N_LAYERS):
-                off = OFF_CS_PERPOS + (t * N_LAYERS + L) * CS_BYTES
-                w[off : off + CS_BYTES] = cs_perpos[d * PT + t, L].view(np.int8)
-        return w
+    wblob[OFF_ROPE : OFF_ROPE + T * CS_BYTES] = rope.view(np.int8).ravel()
+    w_t = iron.tensor(wblob, dtype=np.int8)
 
     # The PRISTINE kvblob (restore caches, pack, T_used=p0 prefix). The
     # grow-append writes slot=T_used so token 0 writes slot p0 and advances
@@ -526,23 +510,24 @@ def main():
             session,
             [
                 iron.tensor(xin, dtype=np.int8),
-                iron.tensor(wblob_for(0), dtype=np.int8),
+                w_t,
                 iron.tensor(kv2, dtype=np.int8),
                 lmw_t,
                 iron.zeros([PT * (D + 12)], dtype=np.int8),
             ],
+            dispatch_params(0, p0),
             opts,
         )
 
     # Each dispatch gets its own input, weight and output tensors; the KV
     # tensor is created once per run of dispatches and stays on the device,
     # so a generation loop's dispatches carry the cache with no host copy.
-    def dispatch(xin_t, w_d, kv_t, params):
+    def dispatch(xin_t, kv_t, params):
         out_t = iron.zeros([PT * (D + 12)], dtype=np.int8)
         session(
             [
                 xin_t,
-                iron.tensor(w_d, dtype=np.int8),
+                w_t,
                 kv_t,
                 lmw_t,
                 out_t,
@@ -564,9 +549,8 @@ def main():
             toks = tokens_of(
                 dispatch(
                     iron.tensor(xin, dtype=np.int8),
-                    wblob_for(0),
                     iron.tensor(kv2, dtype=np.int8),
-                    dispatch_params(0),
+                    dispatch_params(0, p0),
                 )
             )
             if r == 0:
@@ -579,7 +563,7 @@ def main():
                 print(f"repeat {r} differs from repeat 0", file=sys.stderr)
                 return 1
         set_pristine(layers, pristine)
-        tok_fails = replay(dev_tokens, x_i8, res_scale, layers, p0, cs_perpos, lm)
+        tok_fails = replay(dev_tokens, x_i8, res_scale, layers, p0, rope, lm)
     else:
         # Like the KV tensor, the seed tensor stays on the device: the host
         # writes the first dispatch's seed, and each dispatch leaves the next
@@ -591,7 +575,7 @@ def main():
         for d in range(n_disp):
             if d:
                 time.sleep(opts.idle_s)
-            toks_out = dispatch(xin_t, wblob_for(d), kv_t, dispatch_params(region))
+            toks_out = dispatch(xin_t, kv_t, dispatch_params(region, p0 + d * PT))
             region = (region + PT) % 2
             toks = tokens_of(toks_out)
             dev_tokens += toks
@@ -602,8 +586,7 @@ def main():
                 set_pristine(layers, pristine)
             else:
                 load_kv(layers, carried)
-            rows = cs_perpos[d * PT : (d + 1) * PT]
-            tok_fails += replay(toks, x_d, sc_d, layers, pos, rows, lm)
+            tok_fails += replay(toks, x_d, sc_d, layers, pos, rope, lm)
             if n_disp > 1:
                 kv_t.to("cpu")
                 after = kv_t.numpy()[region * KV_BYTES : (region + 1) * KV_BYTES].copy()

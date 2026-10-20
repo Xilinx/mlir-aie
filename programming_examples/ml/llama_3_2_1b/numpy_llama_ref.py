@@ -43,6 +43,11 @@ HIDDEN_DIM = 8_192
 Q_DIM = N_HEADS * HEAD_DIM
 KV_DIM = N_KV_GROUPS * HEAD_DIM
 ROPE_BASE = 500_000.0
+# config.json's rope_scaling (rope_type "llama3").
+ROPE_FACTOR = 32.0
+ROPE_LOW_FREQ_FACTOR = 1.0
+ROPE_HIGH_FREQ_FACTOR = 4.0
+ROPE_ORIGINAL_CONTEXT = 8192
 RMS_EPS = 1e-5
 
 
@@ -206,14 +211,50 @@ def silu(x: np.ndarray) -> np.ndarray:
     return (x / (1.0 + np.exp(-x))).astype(np.float32)
 
 
+def rope_inv_freq(head_dim: int) -> np.ndarray:
+    """Llama 3's RoPE frequencies, with its rope_scaling, as HF computes them.
+
+    Args:
+        head_dim: The head dimension.
+
+    Returns:
+        float32 (head_dim // 2,): each rotary pair's angle per position.
+    """
+    inv_freq = (
+        1.0 / (ROPE_BASE ** (np.arange(0, head_dim, 2, dtype=np.float32) / head_dim))
+    ).astype(np.float32)
+    wavelen = (2 * np.pi / inv_freq).astype(np.float32)
+    low_freq_wavelen = ROPE_ORIGINAL_CONTEXT / ROPE_LOW_FREQ_FACTOR
+    high_freq_wavelen = ROPE_ORIGINAL_CONTEXT / ROPE_HIGH_FREQ_FACTOR
+    scaled = np.where(wavelen > low_freq_wavelen, inv_freq / ROPE_FACTOR, inv_freq)
+    smooth = (ROPE_ORIGINAL_CONTEXT / wavelen - ROPE_LOW_FREQ_FACTOR) / (
+        ROPE_HIGH_FREQ_FACTOR - ROPE_LOW_FREQ_FACTOR
+    )
+    smoothed = (1 - smooth) * scaled / ROPE_FACTOR + smooth * scaled
+    medium = (wavelen >= high_freq_wavelen) & (wavelen <= low_freq_wavelen)
+    return np.where(medium, smoothed, scaled).astype(np.float32)
+
+
 def rope_cos_sin(positions: np.ndarray, head_dim: int) -> tuple[np.ndarray, np.ndarray]:
     """Llama-3 RoPE: cos/sin for each (position, dim-pair)."""
-    half = head_dim // 2
-    inv_freq = 1.0 / (ROPE_BASE ** (np.arange(0, half, dtype=np.float32) / half))
-    angles = positions[:, None].astype(np.float32) * inv_freq[None, :]  # (M, half)
+    angles = positions[:, None].astype(np.float32) * rope_inv_freq(head_dim)[None, :]
     cos = np.concatenate([np.cos(angles), np.cos(angles)], axis=-1).astype(np.float32)
     sin = np.concatenate([np.sin(angles), np.sin(angles)], axis=-1).astype(np.float32)
     return cos, sin  # (M, head_dim)
+
+
+def rope_table(n_positions: int, head_dim: int) -> np.ndarray:
+    """The device's RoPE table: per position, cos then sin, in bf16.
+
+    Args:
+        n_positions: Rows, for positions 0 .. n_positions - 1.
+        head_dim: The head dimension.
+
+    Returns:
+        bf16 (n_positions, 2 * head_dim).
+    """
+    cos, sin = rope_cos_sin(np.arange(n_positions), head_dim)
+    return np.concatenate([cos, sin], axis=-1).astype(ml_dtypes.bfloat16)
 
 
 def apply_rope(qk: np.ndarray, cos: np.ndarray, sin: np.ndarray) -> np.ndarray:

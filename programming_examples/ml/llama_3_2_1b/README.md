@@ -13,7 +13,7 @@ prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
 beyond quantization.
 
 > Status: decode is validated on hardware at 91.2 ms/token (10.97 tok/s) at
-> N=16. Prefill, RoPE tables on the device, and a KV cache longer than 128 are
+> N=16. Prefill and a KV cache longer than 128 are
 > the open stages — see [On the device, and on the host](#on-the-device-and-on-the-host)
 > and [What's next](#whats-next).
 
@@ -75,11 +75,12 @@ Key design pieces (each validated bit-exact in isolation before integration):
 Every transformer op, the lm_head, the sampler, the token feedback and the KV
 append run as AI Engine kernels, and one compiled design serves every dispatch.
 The host (`DispatchSession` in `llama_npu.py`) keeps one hardware context and,
-per dispatch, writes the design's ScratchpadParameters. What the host still does,
-each to move to the device in the stages of the one-design restructure:
+per dispatch, writes the design's ScratchpadParameters: the position of the
+dispatch's first token (`cs_off`, its row in the RoPE table the weight blob
+carries, built once with Llama 3's rope scaling) and the KV half. What the host
+still does, each to move to the device in the stages of the one-design
+restructure:
 
-- **RoPE tables.** The test computes each position's cos/sin in numpy and writes
-  them into the weight blob before each dispatch.
 - **The KV half.** The KV buffer is two halves that tokens alternate between;
   the host passes the half a dispatch starts in (`kv_even`/`kv_odd`). A
   block-major cache appended in place replaces this.
@@ -317,7 +318,6 @@ One compiled design for decode, token-by-token prefill and batched prefill, with
 the per-call values (tokens per pass, position, live context, layers) as
 ScratchpadParameters:
 
-- **RoPE on the device**: the table in the weight blob, indexed by position.
 - **A long KV cache**: block-major in DDR up to 128k tokens, appended in place,
   with block-wise attention (`aie2_attn_block.py`).
 - **The shared 8-lane GEMV array** for every projection and the lm_head, with

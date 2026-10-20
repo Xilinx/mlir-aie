@@ -29,7 +29,6 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie.utils import DefaultNPURuntime
 from aie2_chain_dynscale_mh import (
     CS_BYTES,
     HEAD_D,
@@ -47,10 +46,9 @@ from aie2_chain_dynscale_mh import (
 )
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
-from llama_npu import add_artifact_args, design_kernel
-from ml_dtypes import bfloat16
+from llama_npu import DispatchSession
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
-from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw
+from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw, rope_table
 from numpy_topk_sample import topk_sample_reference
 from test_chain_mh import pack_blobs
 from test_flowkv import EXP_QUANT_SCALE as FKV_EXP_QUANT_SCALE
@@ -66,7 +64,7 @@ KV_BYTES = _sizes.KV_BYTES
 PER_LAYER_KV = _sizes.PER_LAYER_KV
 PER_KV_HEAD_BYTES = _sizes.PER_KV_HEAD_BYTES
 WEIGHTS_BYTES = _sizes.WEIGHTS_BYTES
-OFF_CS_PERPOS = _sizes.OFF_CS_PERPOS
+OFF_ROPE = _sizes.OFF_ROPE
 DATA_DIR = Path(__file__).parent / "data"
 
 
@@ -109,11 +107,7 @@ def build_fixtures(seed):
     lut_silu = silu_lut(SILU_GATE_SCALE)
     # Start position P0: leave room for PT appended tokens within T.
     P0 = T // 2
-    half = HEAD_D // 2
     layers = []
-    # Per-layer base rotary frequencies (random per layer, but the PHASE advances
-    # with position so each token gets a distinct (cos,sin) -- real rope behavior).
-    cs_perpos = np.zeros((PT, N_LAYERS, 2 * HEAD_D), dtype=bfloat16)  # [cos|sin]
     for L in range(N_LAYERS):
         layer = gen_layer_mh(rng)
         layer["lut_exp"] = lut_exp
@@ -128,17 +122,8 @@ def build_fixtures(seed):
                 v_slot[h, p] = 0.0
         layer["k_scales_slot"] = k_slot
         layer["v_scales_slot"] = v_slot
-        # Per-layer base frequencies; position t's angle = freq * (P0+t).
-        freq = rng.uniform(0.0, 0.2, size=half).astype(np.float32)
-        for t in range(PT):
-            ang = (freq * np.float32(P0 + t)).astype(np.float32)
-            cos_half = np.cos(ang).astype(bfloat16)
-            sin_half = np.sin(ang).astype(bfloat16)
-            cos = np.concatenate([cos_half, cos_half])
-            sin = np.concatenate([sin_half, sin_half])
-            cs_perpos[t, L] = np.concatenate([cos, sin])
         layers.append(layer)
-    return x_i8, res_scale, layers, P0, cs_perpos
+    return x_i8, res_scale, layers, P0
 
 
 def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma):
@@ -193,7 +178,7 @@ DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s (reference; the DMA floor denominat
 LMW_GAMMA_BYTES = 2 * D  # final_norm gamma bf16[D], prefix of the lm_head blob
 
 
-def time_decode(npu, buffers, opts):
+def time_decode(session, buffers, params, opts):
     """Measure per-token device time and compare to the per-token DMA floor.
 
     The persistent dispatch generates PT tokens, streaming the model from DDR each
@@ -207,11 +192,8 @@ def time_decode(npu, buffers, opts):
         flush=True,
     )
     for _ in range(opts.n_warmup):
-        DefaultNPURuntime.load_and_run(npu, buffers)
-    times_ms = []
-    for _ in range(opts.n_iters):
-        _h, result = DefaultNPURuntime.load_and_run(npu, buffers)
-        times_ms.append(result.npu_time / 1e6)  # ns -> ms
+        session(buffers, **params)
+    times_ms = [session(buffers, **params) for _ in range(opts.n_iters)]
     arr = np.array(times_ms)
     disp_med = float(np.median(arr))
     per_token_ms = disp_med / PT
@@ -246,7 +228,6 @@ def time_decode(npu, buffers, opts):
 
 def main():
     p = argparse.ArgumentParser()
-    add_artifact_args(p)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
         "--time",
@@ -268,7 +249,8 @@ def main():
     print("packing lm_head weights (262 MB) ...", flush=True)
     lmw = pack_lmw(embed_i8, embed_sc, gamma)
 
-    x_i8, res_scale, layers, P0, cs_perpos = build_fixtures(fseed)
+    x_i8, res_scale, layers, P0 = build_fixtures(fseed)
+    rope = rope_table(T, HEAD_D)
 
     # Snapshot the PRISTINE caches (before any append) so the device gets the same
     # starting KV the numpy loop starts from. The device's growing-append then
@@ -286,8 +268,8 @@ def main():
     cur_x, cur_sc = x_i8, res_scale
     for t in range(PT):
         for L in range(N_LAYERS):
-            layers[L]["cos"] = cs_perpos[t, L, :HEAD_D]
-            layers[L]["sin"] = cs_perpos[t, L, HEAD_D:]
+            layers[L]["cos"] = rope[P0 + t, :HEAD_D]
+            layers[L]["sin"] = rope[P0 + t, HEAD_D:]
         _, nxin, nscale = chain_forward_grow(
             cur_x, cur_sc, layers, P0 + t, embed_i8, embed_sc, gamma
         )
@@ -295,16 +277,11 @@ def main():
 
     # Pack wblob with the (now-populated) real scales; the chain self-calibrates
     # on-device so these are placeholders, but pack_blobs requires the key. The
-    # static OFF_CS cos/sin in wblob is unused by PERSIST_GROW (per-position block
-    # below drives rope), so its value doesn't matter.
+    # static OFF_CS cos/sin in wblob is unused by PERSIST_GROW, whose q-rope
+    # and rope_k read the RoPE table at OFF_ROPE.
     wblob, _ = pack_blobs(layers, WEIGHTS_BYTES)
-    # Append the per-position cos/sin block at OFF_CS_PERPOS, laid out
-    # [token0: L0..L_{N-1} | token1: ... ] matching the chain's (tok,L) fill.
     assert wblob.size == WEIGHTS_BYTES, (wblob.size, WEIGHTS_BYTES)
-    for t in range(PT):
-        for L in range(N_LAYERS):
-            off = OFF_CS_PERPOS + (t * N_LAYERS + L) * CS_BYTES
-            wblob[off : off + CS_BYTES] = cs_perpos[t, L].view(np.int8)
+    wblob[OFF_ROPE : OFF_ROPE + T * CS_BYTES] = rope.view(np.int8).ravel()
 
     # Build the PRISTINE kvblob from the snapshot (restore caches, pack, set
     # T_used=P0 prefix). The grow-append writes slot=T_used so token 0 writes
@@ -325,9 +302,8 @@ def main():
     kv2 = np.zeros(KV_BYTES, dtype=np.int8)
     kv2[:] = kv_pristine
 
-    npu = design_kernel(
+    session = DispatchSession(
         build,
-        opts,
         SAMPLE=True,
         ONESTREAM=True,
         PERSIST=True,
@@ -348,15 +324,11 @@ def main():
         f"  temp={SAMPLE_TEMP} topk={SAMPLE_TOPK} seed={SAMPLE_SEED}  fixture_seed={fseed}",
         flush=True,
     )
+    params = {"cs_off": P0 * CS_BYTES}
     if opts.time:
-        return time_decode(npu, [x_t, w_t, kv_t, lmw_t, out_t], opts)
+        return time_decode(session, [x_t, w_t, kv_t, lmw_t, out_t], params, opts)
 
-    rc = DefaultNPURuntime.run_test(
-        npu, [x_t, w_t, kv_t, lmw_t, out_t], {}, verify=False, verbosity=opts.verbosity
-    )
-    if rc != 0:
-        print(f"dispatch returned {rc}", file=sys.stderr)
-        return rc
+    session([x_t, w_t, kv_t, lmw_t, out_t], **params)
     out_t.to("cpu")
     packed = out_t.numpy()
     dev_tokens = [
@@ -388,8 +360,8 @@ def main():
     cur_x, cur_sc = x_i8, res_scale
     for t in range(PT):
         for L in range(N_LAYERS):
-            layers[L]["cos"] = cs_perpos[t, L, :HEAD_D]
-            layers[L]["sin"] = cs_perpos[t, L, HEAD_D:]
+            layers[L]["cos"] = rope[P0 + t, :HEAD_D]
+            layers[L]["sin"] = rope[P0 + t, HEAD_D:]
         logits = chain_forward_logits(
             cur_x, cur_sc, layers, P0 + t, embed_i8, embed_sc, gamma
         )
