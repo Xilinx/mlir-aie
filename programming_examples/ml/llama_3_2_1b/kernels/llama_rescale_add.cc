@@ -18,74 +18,14 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "llama_vec_fp.h"
+
 #ifndef LLAMA_RESCALE_D
 #define LLAMA_RESCALE_D 2048
 #endif
 
 // One 512-bit fp32 register; wider vectors made Peano spill to 3 KB frames.
 static constexpr int kVec = 16;
-
-// Lane-wise round_to_i8 -- (int32)(v + (v >= 0 ? 0.5 : -0.5)) clamped to
-// int8 -- bit-identical to the scalar form, whose `+` is the same vadd.f.
-// float2fix gives floor(t) or ceil(t), not always the nearest; it rounded
-// away from zero exactly when |n| > |t|. Needs saturation_mode::saturate for
-// the clamp. The +-0.5 is an integer select because OR-ing in v's sign bit
-// folds to a vector copysign that Peano cannot legalize on AIE2P.
-static inline ::aie::vector<int8, kVec>
-vec_round_to_i8(::aie::vector<float, kVec> v) {
-  ::aie::vector<int32, kVec> half =
-      ::aie::select(::aie::broadcast<int32, kVec>(0x3f000000),
-                    ::aie::broadcast<int32, kVec>(int32(0xbf000000)),
-                    ::aie::lt(v.template cast_to<int32>(), int32(0)));
-  ::aie::vector<float, kVec> t = ::aie::add(v, half.template cast_to<float>());
-  ::aie::vector<int32, kVec> n = ::aie::to_fixed<int32>(t, 0);
-  ::aie::vector<int32, kVec> n_bits =
-      ::aie::to_float<float>(n, 0).template cast_to<int32>();
-  auto away =
-      ::aie::lt(::aie::bit_and(int32(0x7fffffff), t.template cast_to<int32>()),
-                ::aie::bit_and(int32(0x7fffffff), n_bits));
-  ::aie::vector<int32, kVec> toward_zero = ::aie::select(
-      ::aie::add(n, int32(1)), ::aie::sub(n, int32(1)), ::aie::gt(n, int32(0)));
-  ::aie::accum<acc32, kVec> acc;
-  acc.from_vector(::aie::select(n, toward_zero, away));
-  return acc.template to_vector<int8>(0);
-}
-
-// Lane-wise a * b rounded to nearest-even, as the scalar soft-float `*` is.
-// aie::mul on fp32 vectors is an emulation that is one ulp off on up to ~1.5%
-// of lanes, so the 24-bit significands are multiplied exactly into acc64 and
-// rounded once by srs. Needs rounding_mode::conv_even (set by the caller).
-// Overflow gives +-inf; zero or denormal operands and products below
-// FLT_MIN give +-0 (callers round these to int8 0).
-static inline ::aie::vector<float, kVec>
-vec_mul_rne(::aie::vector<float, kVec> a, ::aie::vector<float, kVec> b) {
-  ::aie::vector<int32, kVec> ai = a.template cast_to<int32>();
-  ::aie::vector<int32, kVec> bi = b.template cast_to<int32>();
-  ::aie::vector<int32, kVec> ea =
-      ::aie::bit_and(int32(0xff), ::aie::downshift(ai, 23));
-  ::aie::vector<int32, kVec> eb =
-      ::aie::bit_and(int32(0xff), ::aie::downshift(bi, 23));
-  ::aie::accum<acc64, kVec> p = ::aie::mul(
-      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), ai)),
-      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bi)));
-  // p is in [2^46, 2^48). A rounded p >> 23 reaching 2^24 means p >= 2^47,
-  // or p rounds up to 2^47 where both shifts give the same float.
-  ::aie::vector<int32, kVec> lo = p.template to_vector<int32>(23);
-  ::aie::vector<int32, kVec> hi = p.template to_vector<int32>(24);
-  auto wide = ::aie::ge(lo, int32(1 << 24));
-  ::aie::vector<int32, kVec> e = ::aie::add(
-      ::aie::add(ea, eb), ::aie::select(int32(-127), int32(-126), wide));
-  // The significand's implicit bit carries into the exponent field.
-  ::aie::vector<int32, kVec> mag = ::aie::add(
-      ::aie::upshift(::aie::sub(e, int32(1)), 23), ::aie::select(lo, hi, wide));
-  mag = ::aie::select(mag, ::aie::broadcast<int32, kVec>(0x7f800000),
-                      ::aie::ge(e, int32(255)));
-  mag = ::aie::select(mag, ::aie::zeros<int32, kVec>(),
-                      ::aie::lt(::aie::min(::aie::min(ea, eb), e), int32(1)));
-  return ::aie::bit_or(
-             ::aie::bit_and(int32(0x80000000), ::aie::bit_xor(ai, bi)), mag)
-      .template cast_to<float>();
-}
 
 // |v| as int32 bits: for non-NaN floats their integer order is the order of
 // the magnitudes, so absmax is an integer max (no emulated f32 compare) and

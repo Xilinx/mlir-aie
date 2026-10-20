@@ -14,8 +14,12 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-// See llama_rescale_add.cc for vec_mul_rne: a * b rounded to nearest-even,
-// exact against the scalar soft-float `*` for normal operands and products.
+// Lane-wise a * b rounded to nearest-even, as the scalar soft-float `*` is.
+// aie::mul on fp32 vectors is an emulation that is one ulp off on up to ~1.5%
+// of lanes, so the 24-bit significands are multiplied exactly into acc64 and
+// rounded once by srs. Needs rounding_mode::conv_even (set by the caller).
+// Overflow gives +-inf; zero or denormal operands and products below
+// FLT_MIN give +-0 where IEEE would keep a denormal.
 template <unsigned kN>
 static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
                                                    ::aie::vector<float, kN> b) {
@@ -28,11 +32,14 @@ static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
   ::aie::accum<acc64, kN> p = ::aie::mul(
       ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), ai)),
       ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bi)));
+  // p is in [2^46, 2^48). A rounded p >> 23 reaching 2^24 means p >= 2^47,
+  // or p rounds up to 2^47 where both shifts give the same float.
   ::aie::vector<int32, kN> lo = p.template to_vector<int32>(23);
   ::aie::vector<int32, kN> hi = p.template to_vector<int32>(24);
   auto wide = ::aie::ge(lo, int32(1 << 24));
   ::aie::vector<int32, kN> e = ::aie::add(
       ::aie::add(ea, eb), ::aie::select(int32(-127), int32(-126), wide));
+  // The significand's implicit bit carries into the exponent field.
   ::aie::vector<int32, kN> mag = ::aie::add(
       ::aie::upshift(::aie::sub(e, int32(1)), 23), ::aie::select(lo, hi, wide));
   mag = ::aie::select(mag, ::aie::broadcast<int32, kN>(0x7f800000),
@@ -44,8 +51,12 @@ static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
       .template cast_to<float>();
 }
 
-// See llama_rescale_add.cc for vec_round_to_i8: (int32)(v + (v >= 0 ? 0.5 :
-// -0.5)) clamped to int8, as the scalar form computes it.
+// Lane-wise round_to_i8 -- (int32)(v + (v >= 0 ? 0.5 : -0.5)) clamped to
+// int8 -- bit-identical to the scalar form, whose `+` is the same vadd.f.
+// float2fix gives floor(t) or ceil(t), not always the nearest; it rounded
+// away from zero exactly when |n| > |t|. Needs saturation_mode::saturate for
+// the clamp. The +-0.5 is an integer select because OR-ing in v's sign bit
+// folds to a vector copysign that Peano cannot legalize on AIE2P.
 template <unsigned kN>
 static inline ::aie::vector<int8, kN>
 vec_round_to_i8(::aie::vector<float, kN> v) {
