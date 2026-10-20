@@ -1287,6 +1287,35 @@ CASES: list[Case] = [
         scalars=(40, 64, 64, 12),
         smoke=True,
     ),
+    # A row of 160 bytes: the table maps 64 bytes at a time, then 32.
+    check(
+        "conv2dk1_i8",
+        dict(
+            input_width=20,
+            input_channels=16,
+            output_channels=8,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(20, 16, 8, 9),
+        tag="table-tail",
+    ),
+    # YOLO26n's Detect P3 class branch 1x1, 64 -> 80 at width 80, with SiLU.
+    Case(
+        "conv2dk1_i8",
+        dict(
+            input_width=80,
+            input_channels=64,
+            output_channels=80,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(80, 64, 80, 12),
+    ),
     # conv2dk1_skip streams three tensors; the harness packs them into one
     # fifo when they share a type, i.e. input_channels == 2 * output_channels
     # with a uint8 residual. An int8 residual goes in a fifo of its own.
@@ -1436,6 +1465,36 @@ CASES: list[Case] = [
         calls=4,
         scalars=(40, 32, 32, 3, 3, 1, 14, 0),
         tag="bias-s2-width-40",
+    ),
+    # YOLO26n's stem conv (RGB padded to 8 channels, 640 wide) and model.1,
+    # both stride 2 with the SiLU table.
+    Case(
+        "conv2dk3",
+        dict(
+            input_width=640,
+            input_channels=8,
+            output_channels=16,
+            bias=True,
+            table=True,
+            stride=2,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(640, 8, 16, 3, 3, 1, 12, 0),
+    ),
+    Case(
+        "conv2dk3",
+        dict(
+            input_width=320,
+            input_channels=16,
+            output_channels=32,
+            bias=True,
+            table=True,
+            stride=2,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(320, 16, 32, 3, 3, 1, 13, 0),
     ),
     Case(
         "conv2dk3",
@@ -1724,6 +1783,19 @@ CASES: list[Case] = [
             (2, "bias-bottom-row"),
         )
     ],
+    # YOLO26n's Detect P3 class branch: 80 channels at width 80, with SiLU.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(
+            input_width=80,
+            input_channels=80,
+            output_channels=80,
+            bias=True,
+            table=True,
+        ),
+        calls=4,
+        scalars=(80, 80, 80, 3, 3, 1, 7, 0),
+    ),
     Case(
         "bn_conv2dk3_dw",
         dict(input_width=56, input_channels=72, output_channels=72, stride=2),

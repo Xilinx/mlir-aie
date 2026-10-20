@@ -712,10 +712,13 @@ bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_ch
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-bottom-row
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-table
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-top-row
+bn_conv2dk3_dw/6400x4/int8/bias=True/input_channels=80/input_width=80/output_channels=80/table=True
 conv2dk1_i8/2048x8/int8/bias=True/rounding=conv_even
 conv2dk1_i8/2048x8/int8/rounding=conv_even/conv-even
 conv2dk1_i8/2560x8/int8/bias=True/input_width=40/rounding=conv_even/table=True
 conv2dk1_i8/320x4/int8/bias=True/input_channels=16/input_width=20/output_channels=16/rounding=conv_even/width-20
+conv2dk1_i8/320x4/int8/bias=True/input_channels=16/input_width=20/output_channels=8/rounding=conv_even/table=True/table-tail
+conv2dk1_i8/5120x4/int8/bias=True/input_channels=64/input_width=80/output_channels=80/rounding=conv_even/table=True
 conv2dk1_i8/5120x4/int8/bias=True/input_width=80/rounding=conv_even/width-80
 conv2dk3/1280x4/int8/bias=True/input_channels=32/input_width=40/output_channels=32/rounding=conv_even/stride=2/table=True/bias-s2-width-40
 conv2dk3/2048x4/int8/bias=True/rounding=conv_even/bias-bottom-row
@@ -725,6 +728,8 @@ conv2dk3/2560x4/int8/bias=True/input_width=40/rounding=conv_even/table=True
 conv2dk3/320x4/int8/bias=True/input_channels=16/input_width=20/output_channels=16/rounding=conv_even/bias-width-20
 conv2dk3/4096x4/int8/bias=True/input_width=64/rounding=conv_even/stride=2
 conv2dk3/4096x4/int8/bias=True/input_width=64/rounding=conv_even/stride=2/bias-s2-top-row
+conv2dk3/5120x4/int8/bias=True/input_channels=16/input_width=320/output_channels=32/rounding=conv_even/stride=2/table=True
+conv2dk3/5120x4/int8/bias=True/input_channels=8/input_width=640/output_channels=16/rounding=conv_even/stride=2/table=True
 maxpool2d/1024x4/int8/channels=16/input_width=64/width-64
 maxpool2d/2560x4/int8/channels=128/input_width=20
 passthrough/1280x4/int8
