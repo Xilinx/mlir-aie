@@ -128,6 +128,16 @@ class Affine:
     def linear(self) -> bool:
         return not (self.down or self.clamped or self.mod is not None)
 
+    def affine(self) -> Affine:
+        """Return this expression where only a linear one will do.
+
+        Raises:
+            TypeError: It floors, is clamped or wraps.
+        """
+        if not self.linear:
+            raise TypeError(f"{self} is not linear in {self.value.name}")
+        return self
+
     def clamp(self, lo: int | None = None, hi: int | None = None) -> Affine:
         """Return this expression held to ``[lo, hi]`` too, a bound of None none."""
         if self.mod is not None:
