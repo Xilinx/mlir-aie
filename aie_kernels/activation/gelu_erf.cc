@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Exact GELU, x * Phi(x); gelu.cc takes the tanh approximation. Within one
-// bf16 ulp of the float64 GELU wherever that is normal; subnormals flush to 0.
+// Exact GELU, x * Phi(x); gelu.cc takes the tanh approximation. The float64
+// GELU correctly rounded to bf16 wherever that is normal (every finite bf16
+// input, on aie2 and aie2p); subnormals flush to 0.
 //
 // With a = |x|, z = a / sqrt 2 and t = 1 / (1 + z / 2), erfc(z) = t exp(-z^2 +
 // P(t)) as in Numerical Recipes' erfcc, with P refit as a degree-6 minimax.
@@ -22,7 +23,7 @@
 using acc_t = aie::accum<accfloat, 32>;
 using bf_t = aie::vector<bfloat16, 32>;
 
-struct Limbs {
+struct HiLo {
   bf_t hi, lo;
 };
 
@@ -30,20 +31,20 @@ static inline __attribute__((always_inline)) acc_t acc(float c) {
   return acc_t(aie::broadcast<float, 32>(c));
 }
 
-static inline __attribute__((always_inline)) Limbs limbs(acc_t v) {
+static inline __attribute__((always_inline)) HiLo limbs(acc_t v) {
   const bf_t hi = v.to_vector<bfloat16>();
   return {hi, aie::msc(v, hi, aie::broadcast<bfloat16, 32>(1.0f))
                   .to_vector<bfloat16>()};
 }
 
 // c + u v, dropping the lo x lo term.
-static inline __attribute__((always_inline)) acc_t mac3(acc_t c, Limbs u,
-                                                        Limbs v) {
+static inline __attribute__((always_inline)) acc_t mac3(acc_t c, HiLo u,
+                                                        HiLo v) {
   return aie::mac(aie::mac(aie::mac(c, u.hi, v.hi), u.hi, v.lo), u.lo, v.hi);
 }
 
-static inline __attribute__((always_inline)) acc_t msc3(acc_t c, Limbs u,
-                                                        Limbs v) {
+static inline __attribute__((always_inline)) acc_t msc3(acc_t c, HiLo u,
+                                                        HiLo v) {
   return aie::msc(aie::msc(aie::msc(c, u.hi, v.hi), u.hi, v.lo), u.lo, v.hi);
 }
 
@@ -64,9 +65,9 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
   // d = 1 + a / (2 sqrt 2). t = 1 / d from the integer-subtraction estimate
   // (within 5.1% on [1, 5.8]) by r + r (1 - d r), whose correction needs one
   // limb: once in bf16, then twice on limbs of r.
-  const Limbs k = limbs(acc(0.35355339f));
+  const HiLo k = limbs(acc(0.35355339f));
   const acc_t d = aie::mac(aie::mac(acc(1.0f), a, k.hi), a, k.lo);
-  const Limbs dl = limbs(d);
+  const HiLo dl = limbs(d);
   const bf_t r0 = acc_t(aie::sub(aie::broadcast<int32_t, 32>(0x7ef311c7),
                                  d.to_vector<float>().cast_to<int32_t>())
                             .cast_to<float>())
@@ -76,11 +77,11 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
   acc_t r = aie::mac(aie::mul(r0, one), r0, e0);
   AIE_LOOP_UNROLL_FULL
   for (int i = 0; i < 2; i++) {
-    const Limbs rl = limbs(r);
+    const HiLo rl = limbs(r);
     const bf_t e = msc3(acc(1.0f), dl, rl).to_vector<bfloat16>();
     r = aie::mac(aie::mac(r, rl.hi, e), rl.lo, e);
   }
-  const Limbs t = limbs(r);
+  const HiLo t = limbs(r);
 
   // -z^2 log2(e) = -a^2 log2(e) / 2, with a^2 exact in two bf16 limbs (a has
   // 8 significant bits) and log2(e) / 2 in three. It starts the accumulator
@@ -95,7 +96,7 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
   acc_t q = aie::msc(aie::msc(acc(kP[0]), sq_hi, l2e0), sq_hi, l2e1);
   q = aie::msc(aie::msc(aie::msc(q, sq_lo, l2e0), sq_hi, l2e2), sq_lo, l2e1);
 
-  const Limbs c6 = {
+  const HiLo c6 = {
       aie::broadcast<int16_t, 32>(int16_t(0xbcc3)).cast_to<bfloat16>(),
       aie::broadcast<int16_t, 32>(int16_t(0xb86f)).cast_to<bfloat16>()};
   acc_t p = mac3(acc(kP[5]), c6, t);
@@ -107,9 +108,9 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
   // h = (t a 2^-9) 2^y, y = log2(e) (P(t) - z^2) + 8. The 8 keeps 2^y normal
   // for every normal h; a lane whose 2^y underflows has a subnormal h.
   const bf_t a_2m9 = aie::mul(a, bfloat16(0.001953125f)).to_vector<bfloat16>();
-  const Limbs ta = limbs(aie::mac(aie::mul(t.hi, a_2m9), t.lo, a_2m9));
+  const HiLo ta = limbs(aie::mac(aie::mul(t.hi, a_2m9), t.lo, a_2m9));
   const Exp2F32 ex = exp2_f32_32(y.to_vector<float>());
-  const Limbs w = limbs(acc_t(ex.bits.cast_to<float>()));
+  const HiLo w = limbs(acc_t(ex.bits.cast_to<float>()));
   const auto h = aie::select(
       aie::mac(aie::mac(aie::mul(ta.hi, w.hi), ta.hi, w.lo), ta.lo, w.hi)
           .to_vector<float>(),
