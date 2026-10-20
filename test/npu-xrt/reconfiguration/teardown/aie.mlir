@@ -48,9 +48,11 @@ module {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %cn = arith.constant 16 : index
-      %cmax = arith.constant 8 : index
+      %true = arith.constant true
       %c100 = arith.constant 100 : i32
-      scf.for %it = %c0 to %cmax step %c1 {
+      scf.while : () -> () {
+        scf.condition(%true)
+      } do {
         %ein = aie.objectfifo.acquire @relay(Consume, 1) : memref<16xi32>
         %eout = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
         scf.for %k = %c0 to %cn step %c1 {
@@ -60,6 +62,7 @@ module {
         }
         aie.objectfifo.release @relay(Consume, 1)
         aie.objectfifo.release @out(Produce, 1)
+        scf.yield
       }
       aie.end
     }
@@ -93,9 +96,11 @@ module {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %cn = arith.constant 16 : index
-      %cmax = arith.constant 8 : index
+      %true = arith.constant true
       %c100 = arith.constant 100 : i32
-      scf.for %it = %c0 to %cmax step %c1 {
+      scf.while : () -> () {
+        scf.condition(%true)
+      } do {
         %ein = aie.objectfifo.acquire @relay(Consume, 1) : memref<16xi32>
         %eout = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
         scf.for %k = %c0 to %cn step %c1 {
@@ -105,6 +110,7 @@ module {
         }
         aie.objectfifo.release @relay(Consume, 1)
         aie.objectfifo.release @out(Produce, 1)
+        scf.yield
       }
       aie.end
     }
@@ -138,9 +144,11 @@ module {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %cn = arith.constant 16 : index
-      %cmax = arith.constant 8 : index
+      %true = arith.constant true
       %c100 = arith.constant 100 : i32
-      scf.for %it = %c0 to %cmax step %c1 {
+      scf.while : () -> () {
+        scf.condition(%true)
+      } do {
         %ein = aie.objectfifo.acquire @relay(Consume, 1) : memref<16xi32>
         %eout = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
         scf.for %k = %c0 to %cn step %c1 {
@@ -150,6 +158,7 @@ module {
         }
         aie.objectfifo.release @relay(Consume, 1)
         aie.objectfifo.release @out(Produce, 1)
+        scf.yield
       }
       aie.end
     }
