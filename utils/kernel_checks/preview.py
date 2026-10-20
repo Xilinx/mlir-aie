@@ -383,7 +383,7 @@ def _sweep_night(rng: random.Random) -> tuple[list, dict]:
 
 
 def _compile_night(rng: random.Random, compile_s: float) -> dict:
-    """A cold and a warm compile's times, staged as the captured profiles were."""
+    """Return a cold and a warm compile's times, staged as the captured profiles were."""
     cold, warm = compile_s * rng.uniform(0.97, 1.05), 0.5 * rng.uniform(0.97, 1.03)
     return {
         "compile_s": round(cold, 1),

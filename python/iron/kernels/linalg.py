@@ -1194,9 +1194,13 @@ def attention_i8_sample(
     ]
 
 
+class _AttentionI8Kernel(ExternalFunction):
+    load_kv: Kernel
+
+
 def attention_i8(
     seq_len: int = 400, key_dim: int = 32, head_dim: int = 64, width: int = 20
-) -> ExternalFunction:
+) -> _AttentionI8Kernel:
     """One head of int8 attention over a 2-D map, one row of queries per call.
 
     YOLO26n's PSA quantized as ONNX QDQ with power-of-two scales: queries
@@ -1261,6 +1265,7 @@ def attention_i8(
             alignments=((0, 32), (1, 64), (2, 64), (4, 32)),
             ops_per_call=2 * width * seq_len * (key_dim + head_dim),
         ),
+        cls=_AttentionI8Kernel,
     )
     fn.load_kv = fn.object_file.bind(
         "attention_i8_load_kv",
