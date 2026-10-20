@@ -696,10 +696,9 @@ def mm(
             tolerance=(
                 Tolerance.bounded(
                     partial(_mm_nearest_bound, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
-                    note="npu2: the f32 sum rounded once to nearest even",
+                    note="the f32 sum rounded once to nearest even",
                 )
-                if arch == "aie2p"
-                and vectorized
+                if vectorized
                 and not bf16_emulated
                 and input_dtype is bfloat16
                 and output_dtype is bfloat16
