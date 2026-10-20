@@ -13,7 +13,7 @@
 // REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings, xrt_python_ctrl_scratchpad_bo
 //
 // From an empty cache: the first tokens attend one partial KV block.
-// RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 0 | FileCheck %s
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 0 | FileCheck %s
 // CHECK: building synthetic embed/final_norm
 // CHECK: KV cache: PASS
 // CHECK: final hidden: PASS
@@ -22,7 +22,7 @@
 // Two dispatches crossing a KV block boundary (position 63 to 64), with the
 // NPU left idle past its autosuspend delay in between: the KV cache and the
 // next seed carry over in DDR.
-// RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 62 --dispatches 2 --idle-s 6 | FileCheck %s --check-prefix=CARRY
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 62 --dispatches 2 --idle-s 6 | FileCheck %s --check-prefix=CARRY
 // CARRY-COUNT-2: KV cache: PASS
 // CARRY: chain_persist_grow_mh: 8/8 tokens PASS
 // CARRY: carry across 2 dispatches: PASS
@@ -30,14 +30,14 @@
 // Three of the four token slots, against the same three tokens one per
 // dispatch: the records, the KV cache and the stage are byte-identical, and
 // the slots that do not run move nothing.
-// RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 62 --passes 3 --split | FileCheck %s --check-prefix=SPLIT
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 62 --passes 3 --split | FileCheck %s --check-prefix=SPLIT
 // SPLIT: KV cache: PASS
 // SPLIT: chain_persist_grow_mh: 3/3 tokens PASS
 // SPLIT: 3 tokens vs 3 x 1: PASS
 //
 // Sampled, with the sampler's settings per dispatch: each token is the
 // oracle's draw.
-// RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 5 --sample-temp 0.7 --sample-topk 4 --sample-seed 1234 | FileCheck %s --check-prefix=SAMPLE
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 5 --sample-temp 0.7 --sample-topk 4 --sample-seed 1234 | FileCheck %s --check-prefix=SAMPLE
 // SAMPLE-COUNT-4: PASS {{.*}} [sampled]
 // SAMPLE: final hidden: PASS
 // SAMPLE: chain_persist_grow_mh: 4/4 tokens PASS
@@ -49,7 +49,7 @@
 // The same prompt a token per dispatch leaves byte-identical sampled
 // records, KV cache, final residuals (the prompt's last and the run's) and
 // seed.
-// RUN: env LLAMA_CHAIN_N=2 %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 60 --prompt-tokens 7 --vs-batch 1 | FileCheck %s --check-prefix=PROMPT
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 60 --prompt-tokens 7 --vs-batch 1 | FileCheck %s --check-prefix=PROMPT
 // PROMPT-COUNT-4: prompt, no sample
 // PROMPT: KV cache: PASS
 // PROMPT: final hidden: PASS

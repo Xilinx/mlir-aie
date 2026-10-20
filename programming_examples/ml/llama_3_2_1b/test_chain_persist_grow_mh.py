@@ -16,14 +16,14 @@ oracle's.
 
 Run (compiles the design, or reuses its JIT cache entry):
   python test_chain_persist_grow_mh.py --synthetic-weights
-  LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --time
+  python test_chain_persist_grow_mh.py --n-layers 16 --time
 """
 
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -56,10 +56,6 @@ from numpy_layer_mh import (
 from numpy_llama_ref import _load_bf16, _load_qw, rope_table
 from numpy_topk_sample import topk_sample_reference
 
-T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
-N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
-ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8"))
-SHAPE = DecodeShape(N_LAYERS, T, ONESTREAM_KSET)
 DATA_DIR = Path(__file__).parent / "data"
 
 
@@ -81,9 +77,9 @@ def synthetic_lm_weights(seed, rows_per_chunk=8192):
     return embed_i8, embed_sc, gamma
 
 
-def build_fixtures(seed, p0, n_tok):
-    """Random layers and a T-row KV cache with p0 rows filled, the rows of
-    the n_tok tokens generated from position p0 on left zero."""
+def build_fixtures(shape, seed, p0, n_tok):
+    """Random layers and a shape.t-row KV cache with p0 rows filled, the rows
+    of the n_tok tokens generated from position p0 on left zero."""
     rng = np.random.default_rng(seed)
     x_fp = rng.uniform(-1.6, 1.6, size=D).astype(np.float32)
     res_scale = np.float32(np.maximum(np.abs(x_fp).max(), 1e-12) / 127.0)
@@ -92,17 +88,17 @@ def build_fixtures(seed, p0, n_tok):
     lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
     layers = []
-    for L in range(N_LAYERS):
+    for L in range(shape.n_layers):
         layer = gen_layer_mh(rng)
         layer["lut_exp"] = lut_exp
         layer["lut_silu"] = lut_silu
         for name in ("kcaches", "vcaches"):
             layer[name] = [
-                rng.integers(-32, 33, size=T * HEAD_D, dtype=np.int8)
+                rng.integers(-32, 33, size=shape.t * HEAD_D, dtype=np.int8)
                 for _ in range(N_HEADS_KV)
             ]
-        k_slot = rng.uniform(0.02, 0.08, size=(N_HEADS_KV, T)).astype(np.float32)
-        v_slot = rng.uniform(0.02, 0.08, size=(N_HEADS_KV, T)).astype(np.float32)
+        k_slot = rng.uniform(0.02, 0.08, size=(N_HEADS_KV, shape.t)).astype(np.float32)
+        v_slot = rng.uniform(0.02, 0.08, size=(N_HEADS_KV, shape.t)).astype(np.float32)
         for h in range(N_HEADS_KV):
             layer["kcaches"][h][p0 * HEAD_D :] = 0
             layer["vcaches"][h][p0 * HEAD_D :] = 0
@@ -124,7 +120,7 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
         (fp32 logits over the vocab, the final residual: int8[D], its scale).
     """
     x_cur = (x_i8.copy(), float(res_scale))
-    for L in range(N_LAYERS):
+    for L in range(len(layers)):
         x_cur, scales = numpy_layer_mh_forward(
             x_cur,
             layers[L],
@@ -149,7 +145,7 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
 DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
 
 
-def time_decode(session, buffers, params, opts):
+def time_decode(shape, session, buffers, params, opts):
     """Per-token device time + DMA floor (bytes/token counts the live KV
     prefix the first token reads)."""
     passes = params["passes"]
@@ -163,9 +159,9 @@ def time_decode(session, buffers, params, opts):
     arr = np.array(times_ms)
     disp_med = float(np.median(arr))
     per_token_ms = disp_med / passes
-    kv_read = 2 * N_LAYERS * params["kvb0"] * KV_BLOCK_WORDS * 4
+    kv_read = 2 * shape.n_layers * params["kvb0"] * KV_BLOCK_WORDS * 4
     bytes_per_token = (
-        wblob_layout(N_LAYERS, T)[1] + LMW_GAMMA_BYTES + WLM_TOTAL + kv_read
+        wblob_layout(shape.n_layers, shape.t)[1] + LMW_GAMMA_BYTES + WLM_TOTAL + kv_read
     )
     dma_floor_ms = bytes_per_token / (DDR_BW_GBPS * 1e9) * 1e3
     ratio = per_token_ms / dma_floor_ms
@@ -195,14 +191,14 @@ TOL_RANK = 5  # dev_tok must be within the oracle top-K
 
 def set_pristine(layers, pristine):
     kcaches, vcaches, kslot, vslot = pristine
-    for L in range(N_LAYERS):
+    for L in range(len(layers)):
         layers[L]["kcaches"] = [c.copy() for c in kcaches[L]]
         layers[L]["vcaches"] = [c.copy() for c in vcaches[L]]
         layers[L]["k_scales_slot"] = kslot[L].copy()
         layers[L]["v_scales_slot"] = vslot[L].copy()
 
 
-def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan):
+def replay(shape, records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan):
     """Check a dispatch's records against the numpy oracle.
 
     The oracle runs from the caches the caller set and position p0 on,
@@ -233,7 +229,7 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan)
     for t, (prompt, rec_at) in enumerate(plan):
         if prompt is not None:
             cur_x, cur_sc = embed_seed_ref(embed_i8[prompt], float(embed_sc[prompt]))
-        for L in range(N_LAYERS):
+        for L in range(len(layers)):
             layers[L]["cos"] = rope[p0 + t, :HEAD_D]
             layers[L]["sin"] = rope[p0 + t, HEAD_D:]
         logits, *hidden = chain_forward_logits(
@@ -245,7 +241,7 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan)
         dev_tok = dev_toks[rec_at]
         if temperature > 0:
             ref = topk_sample_reference(
-                logits, temperature, top_k, seed, k_set=ONESTREAM_KSET
+                logits, temperature, top_k, seed, k_set=shape.kset
             )
             ok = dev_tok == ref
             tag = "sampled"
@@ -278,11 +274,11 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan)
     return fails, hidden
 
 
-def check_final(stage, hidden, row):
+def check_final(shape, stage, hidden, row):
     """Print whether `stage` holds `hidden` as final residual row `row`;
     return 1 if not."""
     xo_i8, xo_scale = hidden
-    at = stage[SHAPE.final_at + row * RROW : SHAPE.final_at + row * RROW + D + 4]
+    at = stage[shape.final_at + row * RROW : shape.final_at + row * RROW + D + 4]
     ok = np.array_equal(at[:D], xo_i8) and at[D:].tobytes() == xo_scale.tobytes()
     print(f"  final hidden: {'PASS' if ok else 'FAIL'}", flush=True)
     return int(not ok)
@@ -290,6 +286,19 @@ def check_final(stage, hidden, row):
 
 def main():
     p = argparse.ArgumentParser()
+    p.add_argument(
+        "--n-layers", type=int, default=2, help="decoder layers (16: the model)"
+    )
+    p.add_argument("--t", type=int, default=128, help="KV cache rows")
+    p.add_argument(
+        "--kset", type=int, default=8, help="the sampler's resident top-k set"
+    )
+    p.add_argument(
+        "--p-max",
+        type=int,
+        default=inspect.signature(DecodeShape).parameters["p_max"].default,
+        help="tokens a dispatch can generate",
+    )
     p.add_argument(
         "--elf",
         help="run this full ELF, built by aie2_decode.py --full-elf-path "
@@ -344,12 +353,11 @@ def main():
         type=int,
         default=None,
         help="KV prefix length before the first generated token "
-        "(default: T//2, or as much as leaves room for every generated token)",
+        "(default: --t // 2, or as much as leaves room for every generated token)",
     )
     p.add_argument(
         "--passes",
         type=int,
-        choices=range(1, SHAPE.p_max + 1),
         help="tokens generated per dispatch (default: DecodeShape.passes_for's, per dispatch)",
     )
     p.add_argument(
@@ -390,12 +398,18 @@ def main():
         help="check a --save-run .npz, saved with the same flags, without the NPU",
     )
     opts = p.parse_args()
+    shape = DecodeShape(opts.n_layers, opts.t, opts.kset, opts.p_max)
+    if opts.passes is not None and not 1 <= opts.passes <= shape.p_max:
+        p.error(f"--passes must be 1 to --p-max ({shape.p_max})")
     fseed = opts.seed
     sample = (opts.sample_temp, opts.sample_topk, opts.sample_seed)
     n_disp = opts.dispatches
     p0 = opts.start_pos
     if p0 is None:
-        p0 = min(T // 2, T - n_disp * (opts.passes or SHAPE.p_max) - opts.prompt_tokens)
+        p0 = min(
+            shape.t // 2,
+            shape.t - n_disp * (opts.passes or shape.p_max) - opts.prompt_tokens,
+        )
     prompt_ids = [
         int(t)
         for t in np.random.default_rng(fseed + 1).integers(0, VOCAB, opts.prompt_tokens)
@@ -413,13 +427,13 @@ def main():
         """
         schedule = []
         pos = p0
-        sizes = SHAPE.batches(p0, opts.prompt_tokens, largest)
+        sizes = shape.batches(p0, opts.prompt_tokens, largest)
         for i, n in enumerate(sizes):
             at = pos - p0
             schedule.append((pos, 1, prompt_ids[at : at + n], i == len(sizes) - 1))
             pos += n
         for _ in range(n_disp):
-            schedule.append((pos, opts.passes or SHAPE.passes_for(pos), [], True))
+            schedule.append((pos, opts.passes or shape.passes_for(pos), [], True))
             pos += schedule[-1][1]
         plans = [
             (
@@ -437,8 +451,8 @@ def main():
     schedule, plans = schedule_of(opts.batch)
     passes = schedule[0][1]
     n_tok = sum(len(b) or n for _, n, b, _ in schedule)
-    if p0 < 0 or p0 + n_tok > T:
-        p.error(f"{n_tok} tokens from position {p0} do not fit in T={T}")
+    if p0 < 0 or p0 + n_tok > shape.t:
+        p.error(f"{n_tok} tokens from position {p0} do not fit in T={shape.t}")
     if (n_disp > 1) + (opts.repeats > 1) + opts.split > 1:
         p.error("--dispatches, --repeats and --split are separate modes")
     if (opts.save_run or opts.from_run or opts.prompt_tokens) and (
@@ -451,9 +465,9 @@ def main():
         p.error("--vs-batch is for a --prompt-tokens run on the NPU")
     config = json.dumps(
         dict(
-            n_layers=N_LAYERS,
-            t=T,
-            kset=ONESTREAM_KSET,
+            n_layers=shape.n_layers,
+            t=shape.t,
+            kset=shape.kset,
             seed=fseed,
             synthetic=opts.synthetic_weights,
             schedule=schedule,
@@ -472,8 +486,8 @@ def main():
         gamma = _load_bf16(DATA_DIR, "final_norm", (D,))
     lm = (embed_i8, embed_sc, gamma)
 
-    x_i8, res_scale, layers = build_fixtures(fseed, p0, n_tok)
-    rope = rope_table(T, HEAD_D)
+    x_i8, res_scale, layers = build_fixtures(shape, fseed, p0, n_tok)
+    rope = rope_table(shape.t, HEAD_D)
 
     # Snapshot the PRISTINE caches (before any append) so the device gets the same
     # starting KV the numpy loop starts from. The device's growing-append then
@@ -485,18 +499,18 @@ def main():
         [lyr["v_scales_slot"].copy() for lyr in layers],
     )
 
-    kv0 = SHAPE.pack_kv(layers)
-    stage0 = SHAPE.pack_stage(layers, gamma, x_i8, res_scale)
+    kv0 = shape.pack_kv(layers)
+    stage0 = shape.pack_stage(layers, gamma, x_i8, res_scale)
 
     # --from-run leaves the NPU alone.
     decoder = None
     if not opts.from_run:
         print("packing the weights ...", flush=True)
-        decoder = Decoder(SHAPE, layers, lm, rope, opts.elf)
+        decoder = Decoder(shape, layers, lm, rope, opts.elf)
     print(
-        f"chain_persist_grow_mh N_LAYERS={N_LAYERS} "
+        f"chain_persist_grow_mh shape.n_layers={shape.n_layers} "
         f"passes={[len(b) or n for _, n, b, _ in schedule]}"
-        f" P0={p0} KSET={ONESTREAM_KSET}"
+        f" P0={p0} KSET={shape.kset}"
         f"  temp={sample[0]} topk={sample[1]} seed={sample[2]}  fixture_seed={fseed}"
         f"  dispatches={n_disp} repeats={opts.repeats}",
         flush=True,
@@ -504,15 +518,16 @@ def main():
     if opts.time:
         assert decoder is not None
         return time_decode(
+            shape,
             decoder.session,
             [
                 decoder.w_t,
                 iron.tensor(kv0, dtype=np.int32),
                 decoder.lmw_t,
-                iron.zeros([SHAPE.p_max * REC_BYTES], dtype=np.int8),
+                iron.zeros([shape.p_max * REC_BYTES], dtype=np.int8),
                 iron.tensor(stage0, dtype=np.int8),
             ],
-            SHAPE.params(p0, passes, sample),
+            shape.params(p0, passes, sample),
             opts,
         )
 
@@ -540,7 +555,7 @@ def main():
             records = dispatch(
                 stage_t,
                 kv_t,
-                SHAPE.params(pos, passes, sample, batch, batch_ends_prompt=ends),
+                shape.params(pos, passes, sample, batch, batch_ends_prompt=ends),
             )
             kv_t.to("cpu")
             stage_t.to("cpu")
@@ -560,14 +575,14 @@ def main():
         # dispatch: a token slot that does not run moves nothing.
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
-        whole = dispatch(stage_t, kv_t, SHAPE.params(p0, passes, sample))
+        whole = dispatch(stage_t, kv_t, shape.params(p0, passes, sample))
         kv_t.to("cpu")
         stage_t.to("cpu")
         kv_whole, stage_whole = kv_t.numpy().copy(), stage_t.numpy().copy()
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
         recs = [
-            dispatch(stage_t, kv_t, SHAPE.params(p0 + t, 1, sample))
+            dispatch(stage_t, kv_t, shape.params(p0 + t, 1, sample))
             for t in range(passes)
         ]
         kv_t.to("cpu")
@@ -589,6 +604,7 @@ def main():
             carry_fails += not same
         dev_tokens = tokens_of(whole, passes)
         tok_fails, hidden = replay(
+            shape,
             whole,
             passes,
             x_i8,
@@ -600,8 +616,8 @@ def main():
             sample,
             [(None, t) for t in range(passes)],
         )
-        hidden_fails += check_final(stage_whole, hidden, 0)
-        wrong = int(np.count_nonzero(kv_whole != SHAPE.pack_kv(layers)))
+        hidden_fails += check_final(shape, stage_whole, hidden, 0)
+        wrong = int(np.count_nonzero(kv_whole != shape.pack_kv(layers)))
         print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
         carry_fails += wrong != 0
     elif opts.repeats > 1:
@@ -610,7 +626,7 @@ def main():
             records = dispatch(
                 iron.tensor(stage0, dtype=np.int8),
                 iron.tensor(kv0, dtype=np.int32),
-                SHAPE.params(p0, passes, sample),
+                shape.params(p0, passes, sample),
             )
             toks = tokens_of(records, passes)
             if r == 0:
@@ -625,6 +641,7 @@ def main():
                 return 1
         set_pristine(layers, pristine)
         tok_fails, _ = replay(
+            shape,
             first,
             passes,
             x_i8,
@@ -681,18 +698,28 @@ def main():
             if len(schedule) > 1:
                 print(f"dispatch {d} (pos {pos}): tokens {toks}", flush=True)
             fails, hidden = replay(
-                toks_out, passes, x_d, sc_d, layers, pos, rope, lm, sample, plans[d]
+                shape,
+                toks_out,
+                passes,
+                x_d,
+                sc_d,
+                layers,
+                pos,
+                rope,
+                lm,
+                sample,
+                plans[d],
             )
             tok_fails += fails
             # The device appended exactly the rows the oracle did, and wrote
             # nothing else.
             kv_dev[kv_idx] = kv_val
-            wrong = int(np.count_nonzero(kv_dev != SHAPE.pack_kv(layers)))
+            wrong = int(np.count_nonzero(kv_dev != shape.pack_kv(layers)))
             print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
             carry_fails += wrong != 0
             # A batch's rows are rows of its one pass; a pass's token is row 0.
             hidden_fails += check_final(
-                stage, hidden, len(schedule[d][2]) - 1 if schedule[d][2] else 0
+                shape, stage, hidden, len(schedule[d][2]) - 1 if schedule[d][2] else 0
             )
             # The oracle's next layer-0 input is the last token's seed (body +
             # scale), which the device left in the stage with a zero pad.
@@ -707,7 +734,7 @@ def main():
                 seed_left = np.zeros(ACT_BYTES, dtype=np.int8)
                 seed_left[: D + 4] = toks_out[last : last + D + 4]
                 if not np.array_equal(
-                    stage[SHAPE.seed_at : SHAPE.seed_at + ACT_BYTES], seed_left
+                    stage[shape.seed_at : shape.seed_at + ACT_BYTES], seed_left
                 ):
                     print(f"  seed carry: FAIL (dispatch {d})", flush=True)
                     carry_fails += 1
@@ -728,7 +755,7 @@ def main():
                 prompt_end = max(d for d, (_, _, b, e) in enumerate(sched) if b and e)
                 end = {}
                 for name, d in (("prompt's", prompt_end), ("last", len(rs) - 1)):
-                    at = SHAPE.final_at + max(len(sched[d][2]) - 1, 0) * RROW
+                    at = shape.final_at + max(len(sched[d][2]) - 1, 0) * RROW
                     end[f"{name} final residual"] = rs[d][1][at : at + D + 4]
                 ends.append(
                     end
@@ -743,7 +770,7 @@ def main():
                         ),
                         "KV cache": kv,
                         "seed left": rs[-1][1][
-                            SHAPE.seed_at : SHAPE.seed_at + ACT_BYTES
+                            shape.seed_at : shape.seed_at + ACT_BYTES
                         ],
                     }
                 )

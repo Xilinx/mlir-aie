@@ -27,7 +27,7 @@ toolchain; ``--pmode`` refuses to measure in any other mode. Exits 1 when
 the run fails or the check refuses, after writing both. Reproduced, from
 programming_examples/ml/llama_3_2_1b, with
 
-    LLAMA_CHAIN_N=16 python3 test_chain_persist_grow_mh.py --time
+    python3 test_chain_persist_grow_mh.py --n-layers 16 --time
 """
 
 import argparse
@@ -71,15 +71,8 @@ _PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}.prj"
 _PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
 _CORE_RE = re.compile(r"\baie\.core\(")
 
-# The design's CompileTime values; the test script reads the same
-# configuration from _CHAIN_ENV at import time and generates P_MAX tokens a
-# dispatch.
-_BUILD_ARGS = [f"--p-max={P_MAX}", "--kset=8", f"--n-layers={N_LAYERS}", "--t=128"]
-_CHAIN_ENV = {
-    "LLAMA_CHAIN_ONESTREAM_KSET": "8",
-    "LLAMA_CHAIN_N": str(N_LAYERS),
-    "LLAMA_CHAIN_T": "128",
-}
+# The design's CompileTime values, which the test script takes too.
+_SHAPE_ARGS = [f"--p-max={P_MAX}", "--kset=8", f"--n-layers={N_LAYERS}", "--t=128"]
 
 
 def _run(cmd: list[str], env: dict) -> subprocess.CompletedProcess:
@@ -112,7 +105,7 @@ def _build_rss(env: dict) -> tuple[subprocess.CompletedProcess, float]:
         [
             sys.executable,
             "aie2_decode.py",
-            *_BUILD_ARGS,
+            *_SHAPE_ARGS,
             "--full-elf-path",
             _ELF,
         ],
@@ -203,6 +196,7 @@ def run_correctness(env: dict) -> subprocess.CompletedProcess:
         [
             sys.executable,
             "test_chain_persist_grow_mh.py",
+            *_SHAPE_ARGS,
             "--elf",
             _ELF,
         ],
@@ -215,6 +209,7 @@ def run_timed(env: dict) -> subprocess.CompletedProcess:
         [
             sys.executable,
             "test_chain_persist_grow_mh.py",
+            *_SHAPE_ARGS,
             "--elf",
             _ELF,
             "--time",
@@ -430,7 +425,7 @@ def main(argv=None) -> int:
         write(args.meta, {**meta, "failed": [], "exitstatus": 1})
         return 1
 
-    env = dict(os.environ, **_CHAIN_ENV)
+    env = dict(os.environ)
     gen = ensure_data(args.weights, args.tokenizer, env)
     compiled = compile_cold_warm(env)
     built = compiled["built"]

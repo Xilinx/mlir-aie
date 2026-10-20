@@ -252,9 +252,9 @@ with `@iron.jit` to a full ELF (cached under `NPU_CACHE_HOME`, so a rerun
 reuses it), or runs a prebuilt one (`--elf`, from
 `python aie2_decode.py ... --full-elf-path X`).
 
-> **Always set `LLAMA_CHAIN_N=16`** for any accuracy/timing/baseline run.
-> `N_LAYERS` defaults to 2 (a fast bring-up toy); a 2-layer run silently produces
-> meaningless quality numbers.
+> **Pass `--n-layers 16`** to the decode test for any accuracy or timing run:
+> it defaults to 2 layers (a fast bring-up check), whose numbers mean nothing
+> for the model. `bench_quality_mh.py` defaults to the model's 16.
 
 ### Accuracy (no device — pure numpy)
 
@@ -263,7 +263,7 @@ reuses it), or runs a prebuilt one (`--elf`, from
 python accuracy_vs_hf.py --max-tokens 128
 
 # 20-prompt greedy bench, INT8 recipe vs true HF bf16
-LLAMA_CHAIN_N=16 python bench_quality_mh.py --bf16-ref --residual-dyn --attn-flowkv
+python bench_quality_mh.py --bf16-ref --residual-dyn --attn-flowkv
 ```
 
 ### On silicon: text, and accuracy vs HF bf16
@@ -276,42 +276,42 @@ Tokenizing needs tiktoken: `pip install tiktoken`.
 python generate.py --prompt "The capital of France is" --max-new 32
 
 # prefill and predict each prompt on the NPU, vs bf16
-LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --bf16-ref
+python bench_quality_mh.py --device --bf16-ref
 ```
 
 ### Decode + timing
 
 ```bash
 # the full 16-layer autoregressive decode (4 tokens a dispatch; --passes picks 1-4)
-LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py
+python test_chain_persist_grow_mh.py --n-layers 16
 
 # a 6-token prompt (seeded random ids) before generating, in batches of up to
 # 4; --vs-batch 1 also runs it a token per dispatch and compares the two
-LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --prompt-tokens 6 --vs-batch 1
+python test_chain_persist_grow_mh.py --n-layers 16 --prompt-tokens 6 --vs-batch 1
 
 # sampled instead of greedy (the sampler's settings are per dispatch)
-LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --sample-temp 0.7 --sample-topk 4
+python test_chain_persist_grow_mh.py --n-layers 16 --sample-temp 0.7 --sample-topk 4
 
 # per-token TPS at full config (reuses the compiled design)
-LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --time
+python test_chain_persist_grow_mh.py --n-layers 16 --time
 
 # a generation loop: 10 dispatches carrying the KV cache and seed, with the
 # NPU left idle (and suspended) between them
-LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --dispatches 10 --idle-s 6
+python test_chain_persist_grow_mh.py --n-layers 16 --dispatches 10 --idle-s 6
 ```
 
 ---
 
 ## Configuration
 
-The decode test and `bench_quality_mh.py` read these from the environment and
-pass them to the design as CompileTime values.
+The decode test takes these flags and passes them to the design as
+CompileTime values; `bench_quality_mh.py` takes the first two.
 
-| Variable | Meaning |
+| Flag | Meaning |
 |---|---|
-| `LLAMA_CHAIN_N` | number of decoder layers (**set 16** for real runs; default 2) |
-| `LLAMA_CHAIN_T` | KV cache length (default 128) |
-| `LLAMA_CHAIN_ONESTREAM_KSET` | the one-stream sampler's resident top-k set size (default 8) |
+| `--n-layers` | decoder layers (**16** for real runs; the test's default is 2) |
+| `--t` | KV cache length (default 128) |
+| `--kset` | the sampler's resident top-k set size (default 8) |
 
 The rest of `build()` in `aie2_decode.py` is on its CLI too: `--p-max`, the
 tokens a dispatch can generate (default 4). `test_compile_time_keys.py` checks

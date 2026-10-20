@@ -22,7 +22,7 @@ Tokenizing needs tiktoken (`pip install tiktoken`).
 
 Run:
   python bench_quality_mh.py                     # numpy only, ~2-3 min
-  LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --bf16-ref
+  python bench_quality_mh.py --device --bf16-ref
 """
 
 from __future__ import annotations
@@ -43,6 +43,7 @@ from llama_config import (
     EXP_QUANT_SCALE,
     HEAD_D,
     INV_ACT_SCALE,
+    N_LAYERS,
     SILU_GATE_SCALE,
 )
 from llama_decode import Decoder, DecodeShape
@@ -56,9 +57,6 @@ from numpy_llama_ref import (
     rope_cos_sin,
     rope_table,
 )
-
-T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
-N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
 
 # Curated set: each prompt has a "naturally correct" next token for a
 # well-tuned Llama 3.2 1B. We let the fp16 ref tell us the ground-truth
@@ -122,8 +120,8 @@ def int8_chain_next_token(
     # output -> lm_head -> argmax = next token.
     last_hidden = None
     for pos, tok in enumerate(token_ids):
-        if pos >= T:
-            print(f"  WARNING: prompt longer than cache T={T}; truncating")
+        if pos >= len(cos_lut):
+            print(f"  WARNING: prompt longer than cache T={len(cos_lut)}; truncating")
             break
         row = model.embed_i8[int(tok)].astype(np.float32) * model.embed_sc[int(tok)]
         if residual_fp32:
@@ -144,7 +142,7 @@ def int8_chain_next_token(
         else:
             assert isinstance(x, np.ndarray)
             xc = x.copy()
-        for L in range(N_LAYERS):
+        for L in range(len(layers)):
             xc, scales = numpy_layer_mh_forward(
                 xc,
                 layers[L],
@@ -241,6 +239,10 @@ def main():
         help="prefill and predict on the NPU (aie2_decode.py) instead of the "
         "numpy INT8 chain",
     )
+    parser.add_argument(
+        "--n-layers", type=int, default=N_LAYERS, help="decoder layers (default: the model's)"
+    )
+    parser.add_argument("--t", type=int, default=128, help="KV cache rows")
     opts = parser.parse_args()
 
     data_dir = Path(opts.data_dir)
@@ -252,23 +254,23 @@ def main():
     lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
     layers = []
-    for L in range(N_LAYERS):
+    for L in range(opts.n_layers):
         layer = gen_real_layer_mh(L, data_dir, rng)
         layer["lut_exp"] = lut_exp
         layer["lut_silu"] = lut_silu
         layers.append(layer)
-    cos_lut, sin_lut = rope_cos_sin(np.arange(T), HEAD_D)
-    print(f"loaded {N_LAYERS} mh layers + lm_head\n", flush=True)
+    cos_lut, sin_lut = rope_cos_sin(np.arange(opts.t), HEAD_D)
+    print(f"loaded {opts.n_layers} mh layers + lm_head\n", flush=True)
 
     decoder = None
     if opts.device:
         decoder = Decoder(
-            DecodeShape(N_LAYERS, T),
+            DecodeShape(opts.n_layers, opts.t),
             layers,
             (model.embed_i8, model.embed_sc, model.final_norm),
-            rope_table(T, HEAD_D),
+            rope_table(opts.t, HEAD_D),
         )
-        print(f"device mode: N={N_LAYERS} decode on the NPU\n", flush=True)
+        print(f"device mode: N={opts.n_layers} decode on the NPU\n", flush=True)
 
     indices = (
         range(len(PROMPTS))
