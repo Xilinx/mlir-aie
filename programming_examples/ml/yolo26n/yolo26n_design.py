@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from math import lcm
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +59,9 @@ L1_LAG_BYTES = 12 * 1024
 MEMTILE_LAG_ROWS = 8
 # What one buffering worker's ring takes of its tile.
 BUFFER_TILE_BYTES = 48 * 1024
+# Runs of operators, as network op index ranges, that one worker computes
+# row by row (see SegmentDesign.fuse): the Detect head's P4 and P5 branches.
+FUSED = ((151, 154), (154, 156), (156, 159), (160, 162), (162, 164), (164, 167))
 # A conv writing more than this per image, mostly through its SiLU table at
 # about 2 cycles a byte, splits its output channels over up to 4 workers.
 SPLIT_BYTES = 400 * 1024
@@ -241,6 +245,9 @@ class SegmentDesign:
         params: Its parameters.
         ops: The run, in network order.
         outputs: Tensors to drain to the host.
+        fused: Runs of operators, as network op index ranges `(first, stop)`,
+            that one worker each computes row by row; see `fuse`. Runs not
+            wholly inside `ops` are ignored.
 
     Attributes:
         inputs: Tensors filled from the host, in fill order; the image when
@@ -257,6 +264,7 @@ class SegmentDesign:
         params: Params,
         ops: Sequence[Op],
         outputs: Sequence[Tensor],
+        fused: Sequence[tuple[int, int]] = FUSED,
     ) -> None:
         self.params = params
         self.producer = {op.dst.name: op for op in network.ops}
@@ -278,7 +286,20 @@ class SegmentDesign:
         # slices: already the output of a link, so a lagging consumer's rows
         # wait in buffering workers instead of a memtile stage.
         self.joined: set[str] = set()
+        index = {op.dst.name: i for i, op in enumerate(network.ops)}
+        mine = {index[op.dst.name] for op in ops}
+        fused = [(a, b) for a, b in fused if set(range(a, b)) <= mine]
+        groups = {first: network.ops[first:stop] for first, stop in fused}
+        inside = {i for first, stop in fused for i in range(first, stop)}
+        drained = {t.name for t in outputs}
         for op in ops:
+            i = index[op.dst.name]
+            if i in groups:
+                later = [o for o in ops if index[o.dst.name] >= i + len(groups[i])]
+                self.fuse(groups[i], later, drained)
+                continue
+            if i in inside:
+                continue
             match op:
                 case InputQuant():
                     self.input_quant(op)
@@ -932,6 +953,294 @@ class SegmentDesign:
             ]
         for body, ins, out, consts in zip(bodies, inputs, outs, constants):
             self.workers.append(Worker(body, [*ins, out, k, *consts]))
+
+    def fuse(self, group: Sequence[Op], later: Sequence[Op], drained: set[str]) -> None:
+        """One worker computing a run of same-height operators row by row.
+
+        Every tensor the run reads or makes for itself waits in a ring of
+        rows in the worker's tile; a row from another worker is copied into
+        its ring as it arrives. A tensor leads the run's outputs by the rows
+        its readers look ahead (a 3x3 conv one, a 1x1 or an add none), and at
+        step s each operator computes its row s - top + lead, in network
+        order. Rings are a power of two rows, so the steady state rolls with
+        a period of the largest and every slot is known.
+        """
+        p = self.params
+        height = group[-1].dst.height
+        made = {op.dst.name: op for op in group}
+        steps: list[tuple[Op, list[tuple[list[Part], int]]]] = []
+        for op in group:
+            match op:
+                case Conv() if op.stride == 1:
+                    steps.append((op, [(self.parts(op.src), op.kernel // 2)]))
+                case Add():
+                    steps.append((op, [(self.parts(op.a), 0), (self.parts(op.b), 0)]))
+                case Slice() | Concat():
+                    pass
+                case _:
+                    raise NotImplementedError(f"{op.name}: not fused yet")
+        tensors: dict[str, Tensor] = {}
+        for op, inputs in steps:
+            if op.dst.height != height:
+                raise NotImplementedError(f"{op.name}: a fused run changes height")
+            tensors[op.dst.name] = op.dst
+            for parts, reach in inputs:
+                if reach and len(parts) > 1:
+                    raise NotImplementedError(f"{op.name}: a 3x3 conv of a concat")
+                for part in parts:
+                    if part.upsample:
+                        raise NotImplementedError(f"{op.name}: a fused upsample")
+                    tensors[part.source.name] = part.source
+
+        outs = drained & made.keys()
+        for op in later:
+            match op:
+                case Conv() | MaxPool():
+                    read = [op.src]
+                case Add():
+                    read = [op.a, op.b]
+                case Attention():
+                    read = [op.qkv]
+                case DetectPost():
+                    read = [*op.scores, *op.boxes]
+                case _:
+                    read = []
+            outs |= {
+                part.source.name
+                for t in read
+                for part in self.parts(t)
+                if part.source.name in made
+            }
+        if not outs <= {op.dst.name for op, _ in steps}:
+            raise NotImplementedError(f"{group[0].name}: a fused run hands on a view")
+
+        lead = dict.fromkeys(outs, 0)
+        for op, inputs in reversed(steps):
+            if op.dst.name not in lead:
+                raise ValueError(f"{op.name}: nothing reads it")
+            for parts, reach in inputs:
+                for part in parts:
+                    name = part.source.name
+                    lead[name] = max(lead.get(name, 0), lead[op.dst.name] + reach)
+        top = max(lead.values())
+        oldest: dict[str, int] = {}
+        for op, inputs in steps:
+            for parts, reach in inputs:
+                for part in parts:
+                    name = part.source.name
+                    oldest[name] = min(
+                        oldest.get(name, lead[name]), lead[op.dst.name] - reach
+                    )
+        need = {name: lead[name] - oldest[name] + 1 for name in oldest}
+        external = [name for name in need if name not in made]
+        # A row another worker sends that is read only as it arrives is read
+        # in place, in the fifo's own element.
+        direct = {name for name in external if need[name] == 1}
+        rings = {name: rows for name, rows in need.items() if name not in direct}
+        period = lcm(*rings.values()) if rings else 1
+        if period > 8:
+            rings = {name: 1 << (rows - 1).bit_length() for name, rows in rings.items()}
+            period = max(rings.values())
+        if len(external) > 2:
+            raise NotImplementedError(f"{group[0].name}: a core has two input channels")
+
+        args: list = []
+        at: dict = {}
+
+        def arg(key, value):
+            if key not in at:
+                at[key] = len(args)
+                args.append(value)
+
+        for name in external:
+            y = np.arange(height)
+            source = tensors[name]
+            depth = max(
+                self.schedule(
+                    tensors[out],
+                    [(source, y + lead[name] - lead[out], y + lead[name] - lead[out])],
+                )[name]
+                for out in outs
+            )
+            arg(("in", name), self.consumer(source, depth, 1))
+            if name not in direct:
+                arg(
+                    ("copy", source.row_bytes),
+                    self.copier(Part(source, 0, source.row_bytes)),
+                )
+        for name in outs:
+            arg(("out", name), self.fifo(tensors[name]).prod(depth=2))
+            if name in rings:
+                size = tensors[name].row_bytes
+                arg(("copy", size), self.copier(Part(tensors[name], 0, size)))
+        for name, rows in rings.items():
+            arg(("ring", name), Buffer(row(rows * tensors[name].row_bytes)))
+        calls = {}
+        for op, inputs in steps:
+            match op:
+                case Conv():
+                    width, ic, oc = op.src.width, op.src.channels8, op.dst.channels8
+                    weights = pack_weights(op, p.of(op.name, "weight"))
+                    bias = np.zeros(oc, np.int32)
+                    bias[: op.dst.channels] = p.of(op.name, "bias")
+                    consts = [Buffer(initial_value=weights), Buffer(initial_value=bias)]
+                    if op.act:
+                        consts.append(
+                            Buffer(initial_value=p.of(op.name, "table").astype(np.int8))
+                        )
+                    if op.kernel == 1:
+                        k = kernels.conv2dk1_i8(
+                            width, ic, oc, bias=True, table=op.act, rounding="conv_even"
+                        )
+                    elif op.groups == 1:
+                        k = kernels.conv2dk3(
+                            width,
+                            ic,
+                            oc,
+                            bias=True,
+                            table=op.act,
+                            stride=1,
+                            rounding="conv_even",
+                        )
+                    else:
+                        k = kernels.bn_conv2dk3_dw(
+                            width, ic, oc, bias=True, table=op.act, rounding="conv_even"
+                        )
+                    ((parts, _),) = inputs
+                    if len(parts) > 1:
+                        arg(("assembled", op.name), Buffer(row(op.src.row_bytes)))
+                        for part in parts:
+                            arg(("copy", part.size), self.copier(part))
+                    scalars = (
+                        [width, ic, oc, int(p.of(op.name, "shift"))]
+                        if op.kernel == 1
+                        else [width, ic, oc, 3, 3, None, int(p.of(op.name, "shift")), 0]
+                    )
+                case Add():
+                    sa, sb, so = (
+                        p.scale(op.a.name),
+                        p.scale(op.b.name),
+                        p.scale(op.dst.name),
+                    )
+                    base = min(sa, sb, so)
+                    k = kernels.add(op.dst.row_bytes, dtype=np.int8)
+                    consts = []
+                    scalars = [sa - base, sb - base, so - base]
+                case _:
+                    raise NotImplementedError(op.name)
+            arg(("kernel", op.name), k)
+            for i, c in enumerate(consts):
+                arg(("const", op.name, i), c)
+            calls[op.name] = (len(consts), scalars)
+
+        def body(*values):
+            arrived = {}
+
+            def slot(name, r, part=None):
+                size = tensors[name].row_bytes
+                offset, length = (0, size) if part is None else (part.offset, part.size)
+                if name in arrived:
+                    element = arrived[name]
+                    return (
+                        element
+                        if part is None or part.whole
+                        else view(element, offset, length)
+                    )
+                return view(
+                    values[at[("ring", name)]],
+                    (r % rings[name]) * size + offset,
+                    length,
+                )
+
+            def step(s, steady):
+                arrived.clear()
+                for name in external:
+                    r = s - top + lead[name]
+                    if steady or 0 <= r < height:
+                        handle = values[at[("in", name)]]
+                        x = handle.acquire(1)
+                        if name in direct:
+                            arrived[name] = x
+                            continue
+                        values[at[("copy", tensors[name].row_bytes)]](x, slot(name, r))
+                        handle.release(1)
+                for op, inputs in steps:
+                    name = op.dst.name
+                    y = s - top + lead[name]
+                    if not (steady or 0 <= y < height):
+                        continue
+                    count, scalars = calls[op.name]
+                    k = values[at[("kernel", op.name)]]
+                    consts = [values[at[("const", op.name, i)]] for i in range(count)]
+                    handle = values[at[("out", name)]] if name in outs else None
+                    o = handle.acquire(1) if handle is not None else None
+                    target = slot(name, y) if name in rings else o
+                    match op:
+                        case Conv() if op.kernel == 3:
+                            (((part,), _),) = inputs
+                            check = (
+                                1
+                                if steady or 0 < y < height - 1
+                                else (0 if y == 0 else 2)
+                            )
+                            above = y if check == 0 else y - 1
+                            below = y if check == 2 else y + 1
+                            rows = [
+                                slot(part.source.name, r, part)
+                                for r in (above, y, below)
+                            ]
+                            k(*rows, *consts, target, *scalars[:5], check, *scalars[6:])
+                        case Conv():
+                            ((parts, _),) = inputs
+                            if len(parts) == 1:
+                                x = slot(parts[0].source.name, y, parts[0])
+                            else:
+                                x = values[at[("assembled", op.name)]]
+                                offset = 0
+                                for part in parts:
+                                    values[at[("copy", part.size)]](
+                                        slot(part.source.name, y, part),
+                                        view(x, offset, part.size),
+                                    )
+                                    offset += part.size
+                            k(x, *consts, target, *scalars)
+                        case Add():
+                            ((pa,), _), ((pb,), _) = inputs
+                            k(
+                                slot(pa.source.name, y, pa),
+                                slot(pb.source.name, y, pb),
+                                target,
+                                *scalars,
+                            )
+                    if handle is not None:
+                        if name in rings:
+                            values[at[("copy", tensors[name].row_bytes)]](
+                                slot(name, y), o
+                            )
+                        handle.release(1)
+                for name in arrived:
+                    values[at[("in", name)]].release(1)
+
+            # Rows every operator computes as a middle row, in every ring.
+            first, last = 0, height - 1 + top
+            for name in external:
+                first = max(first, top - lead[name])
+                last = min(last, height - 1 + top - lead[name])
+            for op, inputs in steps:
+                edge = 1 if isinstance(op, Conv) and op.kernel == 3 else 0
+                first = max(first, edge + top - lead[op.dst.name])
+                last = min(last, height - 1 - edge + top - lead[op.dst.name])
+            groups = max(0, (last - first + 1) // period)
+            for s in range(first):
+                step(s, False)
+            if groups:
+                for _ in range_(groups):
+                    for i in range(period):
+                        step(first + i, True)
+            for s in range(first + groups * period, height + top):
+                step(s, False)
+
+        self.workers.append(Worker(body, args))
 
     def maxpool(self, op: MaxPool) -> None:
         """A 5x5 pool; a pool of a pool carries its input's rows along in front of its own.
