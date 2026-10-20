@@ -15,14 +15,17 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/TypeSize.h"
 
 #include <cstdint>
@@ -364,6 +367,14 @@ bool AIEX::isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
   if (sizes[2] > 1 && strides[2] != sizes[0] * sizes[1])
     return false;
   return true;
+}
+
+bool AIEX::isLinearModeTransfer(const AIE::AIETargetModel &targetModel, int col,
+                                int row, llvm::ArrayRef<int64_t> sizes,
+                                llvm::ArrayRef<int64_t> strides) {
+  return isLinearTransfer(sizes, strides) ||
+         (targetModel.isShimNOCTile(col, row) &&
+          isContiguousTransfer(sizes, strides));
 }
 
 // dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
@@ -717,10 +728,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     // A contiguous row-major ND access is also exempt from the ND wrap-size
     // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0),
     // and LinearizeContiguousTransfer canonicalizes it to explicit linear form.
-    bool skipTransformationChecks =
-        isLinearTransferWithoutTransformation() ||
-        (targetModel.isShimNOCTile(col, row) &&
-         AIEX::isContiguousTransfer(inputSizes, inputStrides));
+    bool skipTransformationChecks = AIEX::isLinearModeTransfer(
+        targetModel, col, row, inputSizes, inputStrides);
     // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
     // split into hardware-legal sub-transfers is also allowed to verify: the
     // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
@@ -1395,6 +1404,298 @@ LogicalResult AIEX::DMAStartTaskOp::verify() {
   return success();
 }
 
+// A BD's static length in bytes: the explicit or implicit (whole-buffer)
+// length, scaled by the element width. Nullopt for a runtime length, or one a
+// scratchpad parameter lengthens at run time (AIEOps.td's "Runtime length").
+static std::optional<int64_t> staticBdLenBytes(AIE::DMABDOp bd) {
+  if (bd.getLengthParameterAttr() || bd.getLengthStateTableIdxAttr())
+    return std::nullopt;
+  int64_t elems;
+  if (std::optional<int32_t> len = bd.getConstantLen()) {
+    // Zero-extended, as DMABDOp::getLenInBytes() reads the length.
+    elems = static_cast<uint32_t>(*len);
+  } else {
+    // With runtime sizes/strides, an omitted len is their inner extent
+    // (AIEDMATasksToNPU), not the whole buffer.
+    if (bd.hasLen() || !bd.getSizes().empty() || !bd.getStrides().empty())
+      return std::nullopt;
+    auto buffer = dyn_cast<MemRefType>(bd.getBuffer().getType());
+    if (!buffer || !buffer.hasStaticShape())
+      return std::nullopt;
+    elems = buffer.getNumElements();
+  }
+  return llvm::checkedMul(
+      elems, static_cast<int64_t>(bd.getBufferElementTypeWidthInBytes()));
+}
+
+// Bytes a task streams per dispatch, or nullopt when any extent, repeat or
+// start count is not static, or the total overflows.
+static std::optional<int64_t>
+staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
+  int64_t starts = 0;
+  for (Operation *user : task.getResult().getUsers()) {
+    auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
+    if (!start) {
+      if (isa<AIEX::DMAAwaitTaskOp, AIEX::DMAFreeTaskOp>(user))
+        continue;
+      // The task value is forwarded (a branch operand, a call, ...), so its
+      // starts elsewhere can't be counted.
+      return std::nullopt;
+    }
+    // A start outside the task's own block may run under a loop or a
+    // mutually-exclusive branch, either of which this static count can't see.
+    if (start->getBlock() != task->getBlock() || start.getRepeatCountAttr() ||
+        start.getRepeatCountVal() || start.hasRepeatParameter())
+      return std::nullopt;
+    ++starts;
+  }
+  if (starts == 0)
+    return 0;
+  std::optional<int64_t> repeat =
+      getConstantIntValue(task.getRepeatCountValue());
+  if (!repeat || *repeat < 0)
+    return std::nullopt;
+
+  Region &body = task.getBody();
+  if (body.empty())
+    return std::nullopt;
+  // The queue starts the chain at the entry block, so only blocks reachable
+  // from it stream. A cycle runs indefinitely, and a next_bd_id continues the
+  // chain outside the body.
+  std::optional<int64_t> moved = 0;
+  for (auto scc = llvm::scc_begin(&body.front()); !scc.isAtEnd(); ++scc) {
+    if (scc.hasCycle())
+      return std::nullopt;
+    for (AIE::DMABDOp bd : scc->front()->getOps<AIE::DMABDOp>()) {
+      std::optional<int64_t> len = staticBdLenBytes(bd);
+      if (!len || bd.getIteration() || bd.getNextBdId())
+        return std::nullopt;
+      moved = llvm::checkedAdd(*moved, *len);
+      if (!moved)
+        return std::nullopt;
+    }
+  }
+  std::optional<int64_t> runs = llvm::checkedAdd(*repeat, int64_t{1});
+  if (runs)
+    runs = llvm::checkedMul(*runs, starts);
+  return runs ? llvm::checkedMul(*moved, *runs) : std::nullopt;
+}
+
+namespace {
+// A far end's cyclic chain of BDs over one object: each segment's BD, in
+// order, sent `copies` times in a row.
+struct BdChain {
+  SmallVector<int64_t> segmentBytes;
+  int64_t copies;
+  int64_t objectBytes;
+
+  // Nullopt when the object's bytes overflow or a segment is empty.
+  static std::optional<BdChain> get(ArrayRef<int64_t> segmentBytes,
+                                    int64_t copies) {
+    if (segmentBytes.size() == 1)
+      copies = 1;
+    std::optional<int64_t> objectBytes = 0;
+    for (int64_t bytes : segmentBytes) {
+      std::optional<int64_t> run = llvm::checkedMul(bytes, copies);
+      if (bytes <= 0 || copies <= 0 || !run)
+        return std::nullopt;
+      objectBytes = llvm::checkedAdd(*objectBytes, *run);
+      if (!objectBytes)
+        return std::nullopt;
+    }
+    if (segmentBytes.empty())
+      return std::nullopt;
+    return BdChain{SmallVector<int64_t>(segmentBytes), copies, *objectBytes};
+  }
+
+  // True when `bytes` through the chain stop where one of its BDs ends.
+  bool endsOnBd(int64_t bytes) const {
+    int64_t rest = bytes % objectBytes;
+    int64_t start = 0;
+    for (int64_t segment : segmentBytes) {
+      if (rest < start + segment * copies)
+        return (rest - start) % segment == 0;
+      start += segment * copies;
+    }
+    return true;
+  }
+
+  bool operator==(const BdChain &other) const {
+    return segmentBytes == other.segmentBytes && copies == other.copies;
+  }
+};
+} // namespace
+
+// The far end of a shim transfer on an objectFIFO receives (or sends) whole
+// objects through BDs sized by the object type, or by its link pool's
+// segments, so transfers ending mid-BD never complete it and the fifo hangs.
+// Several transfers may share an object (concatenating host buffers into it, or
+// splitting it across them), so it is the runtime sequence's static total
+// through the fifo that must stop at a BD boundary.
+static LogicalResult
+verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
+                             AIE::ObjectFifoCreateOp fifo) {
+  if (fifo.getPadDimensions() || fifo.getAieStream())
+    return success();
+  std::optional<int64_t> moved = staticBytesStreamed(task);
+  if (!moved || *moved == 0)
+    return success();
+  DataLayout layout = DataLayout::closest(task);
+  // Bytes an object holds, or nullopt when that overflows.
+  auto objectBytesOf = [&](Type fifoType) -> std::optional<int64_t> {
+    MemRefType elem = cast<AIE::AIEObjectFifoType>(fifoType).getElementType();
+    return llvm::checkedMul(
+        elem.getNumElements(),
+        static_cast<int64_t>(layout.getTypeSize(elem.getElementType())));
+  };
+  // A linked fifo's far end on the link's shared tile is a chain of BDs over
+  // the link's pool, one per pool segment, sized by the pool owner whatever
+  // this fifo's own (or consumer) type. A join's or distribute's combined end
+  // steps through every segment in order, each small end through its own, and
+  // a plain link's single segment is the whole pool object. The link's
+  // repeat_count sends each of its output's segment BDs that many times in a
+  // row.
+  Value linkTile;
+  std::optional<BdChain> linkChain;
+  if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
+    for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
+      std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
+      std::vector<AIE::ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
+      if (!llvm::is_contained(ins, fifo) && !llvm::is_contained(outs, fifo))
+        continue;
+      std::optional<Value> sharedTile = link.getOptionalSharedTile();
+      if (ins.empty() || outs.empty() || !sharedTile)
+        return success();
+      linkTile = *sharedTile;
+      AIE::ObjectFifoCreateOp owner = link.getPoolOwner();
+      MemRefType pool =
+          cast<AIE::AIEObjectFifoType>(owner.getElemType()).getElementType();
+      auto width =
+          static_cast<int64_t>(layout.getTypeSize(pool.getElementType()));
+      SmallVector<std::pair<int64_t, int64_t>> segments =
+          link.getPoolSegments();
+      if (fifo != owner && (link.isJoin() || link.isDistribute())) {
+        std::vector<AIE::ObjectFifoCreateOp> &many = link.isJoin() ? ins : outs;
+        segments = {segments[llvm::find(many, fifo) - many.begin()]};
+      }
+      SmallVector<int64_t> segmentBytes;
+      for (auto [offset, size] : segments) {
+        std::optional<int64_t> bytes = llvm::checkedMul(size, width);
+        if (!bytes)
+          break;
+        segmentBytes.push_back(*bytes);
+      }
+      int64_t copies = llvm::is_contained(outs, fifo)
+                           ? link.getRepeatCount().value_or(1)
+                           : 1;
+      if (segmentBytes.size() == segments.size())
+        linkChain = BdChain::get(segmentBytes, copies);
+      break;
+    }
+  // Every far-end BD chain this transfer must leave at a BD boundary: the
+  // producer's, for a drain, and each consumer's other than the shim's own. A
+  // broadcast stalls on its slowest consumer, so a drain bounds what the
+  // others receive too. An end off the link tile is one BD over its own
+  // object.
+  SmallVector<BdChain> chains;
+  auto addChain = [&](Value tile, Type fifoType) {
+    std::optional<BdChain> chain;
+    if (linkTile && tile == linkTile)
+      chain = linkChain;
+    else if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
+      chain = BdChain::get({*bytes}, 1);
+    if (chain && !llvm::is_contained(chains, *chain))
+      chains.push_back(*chain);
+  };
+  auto producer =
+      dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
+  if (!producer)
+    return success();
+  if (!producer.isShimTile())
+    addChain(fifo.getProducerTile(), fifo.getElemType());
+  for (Value consumer : fifo.getConsumerTiles()) {
+    auto tile = dyn_cast_or_null<AIE::TileLike>(consumer.getDefiningOp());
+    if (!tile || !tile.isShimTile())
+      addChain(consumer, fifo.getConsumerElemTypeOrDefault());
+  }
+  if (chains.empty())
+    return success();
+
+  // Transfers in a loop or branch have no static count to sum.
+  auto sequence = task->getParentOfType<AIE::RuntimeSequenceOp>();
+  if (!sequence || task->getBlock() != &sequence.getBody().front())
+    return success();
+  // A dma_channel_reset_for re-arms the fifo's far ends and drops a partly
+  // filled object. It doesn't block, so which bytes land before it isn't
+  // static, and the transfers around it can't be summed.
+  if (llvm::any_of(task->getBlock()->getOps<AIEX::DmaChannelResetForOp>(),
+                   [&](AIEX::DmaChannelResetForOp reset) {
+                     return reset.getObjfifoAttr() == task.getAlloc();
+                   }))
+    return success();
+  // Segment boundaries don't add up the way whole objects do, so the
+  // sequence's total is checked whatever this transfer moves, once: by the
+  // first transfer through the fifo.
+  for (Operation *prev = task->getPrevNode(); prev; prev = prev->getPrevNode())
+    if (auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(prev);
+        other && other.getAlloc() == task.getAlloc() &&
+        staticBytesStreamed(other) != 0)
+      return success();
+  std::optional<int64_t> total = 0;
+  int64_t sharing = 0;
+  WalkResult walk = sequence.walk([&](Operation *op) {
+    // A dma_memcpy_nd or BD chain through the fifo also shares its objects;
+    // its extent is not summed here, so the sequence's total is unknown.
+    if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
+      return memcpy.getMetadata() == task.getAlloc() ? WalkResult::interrupt()
+                                                     : WalkResult::advance();
+    if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op))
+      return chain.getAllocAttr() == task.getAlloc() ? WalkResult::interrupt()
+                                                     : WalkResult::advance();
+    auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(op);
+    if (!other || other.getAlloc() != task.getAlloc())
+      return WalkResult::advance();
+    std::optional<int64_t> bytes = staticBytesStreamed(other);
+    // A task that is never started streams nothing, wherever it is.
+    if (bytes == 0)
+      return WalkResult::advance();
+    if (!bytes || other->getBlock() != task->getBlock())
+      return WalkResult::interrupt();
+    total = llvm::checkedAdd(*total, *bytes);
+    if (!total)
+      return WalkResult::interrupt();
+    ++sharing;
+    return WalkResult::advance();
+  });
+  if (walk.wasInterrupted())
+    return success();
+  const BdChain *partial = llvm::find_if(
+      chains, [&](const BdChain &chain) { return !chain.endsOnBd(*total); });
+  if (partial == chains.end())
+    return success();
+
+  InFlightDiagnostic error =
+      task.emitOpError() << "moves " << *moved << " bytes through objectFIFO @"
+                         << fifo.getSymName() << ", which";
+  if (sharing > 1)
+    error << ", with this runtime sequence's other transfers through it ("
+          << *total << " bytes in all),";
+  error << " is not a whole number of its " << partial->objectBytes
+        << "-byte objects";
+  if (partial->segmentBytes.size() == 1)
+    return error << "; the far end's buffer descriptor is sized by the "
+                    "object, so a partial one never completes";
+  std::string segments;
+  llvm::raw_string_ostream os(segments);
+  llvm::interleaveComma(partial->segmentBytes, os);
+  error << " and doesn't end on a segment boundary (segments of " << segments
+        << " bytes";
+  if (partial->copies > 1)
+    error << ", each sent " << partial->copies << " times in a row";
+  return error << "); the far end's buffer descriptors are sized by the "
+                  "segments, so a partial one never completes";
+}
+
 // Resolving the allocation symbol through the collection keeps the lookup off
 // the device's linear symbol scan, which a per-op verifier repeats after every
 // pass.
@@ -1426,7 +1727,9 @@ LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
                                  << stringifyWireBundle(endpoint.getBundle())
                                  << " port, not a DMA channel";
           })
-          .Case([](AIE::ObjectFifoCreateOp) { return success(); })
+          .Case([&](AIE::ObjectFifoCreateOp fifo) {
+            return verifyTaskCoversWholeObjects(*this, fifo);
+          })
           .Default([&](Operation *) -> LogicalResult {
             return emitOpError() << getAlloc()
                                  << " must name an aie.shim_dma_allocation, an "

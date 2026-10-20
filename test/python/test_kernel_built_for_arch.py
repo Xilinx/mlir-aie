@@ -49,7 +49,7 @@ from aie.iron.kernels.transformer import (
     _NORM_F32_AIE2,
     _NORM_F32_AIE2P,
 )
-from aie.utils import config, get_current_device
+from aie.utils import config
 from aie.utils.compile.utils import compile_external_kernels
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
@@ -72,22 +72,14 @@ def _peano_available() -> bool:
 
 @pytest.fixture
 def no_device():
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(None)
-    try:
+    with set_current_device(None):
         yield
-    finally:
-        set_current_device(previous)
 
 
 @pytest.fixture
 def npu1_device():
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU1Col1())
-    try:
+    with set_current_device(NPU1Col1()):
         yield
-    finally:
-        set_current_device(previous)
 
 
 def test_a_kernel_built_unbound_refuses_an_aie2p_compile(no_device, tmp_path):

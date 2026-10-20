@@ -34,14 +34,8 @@ def npu2_device():
     the test body crashes mid-assertion. Modules whose every test needs it
     wrap this in an autouse fixture rather than restating it.
     """
-    from aie.utils import get_current_device
-
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU2Col1())
-    try:
+    with set_current_device(NPU2Col1()):
         yield
-    finally:
-        set_current_device(previous)
 
 
 def pytest_configure(config):

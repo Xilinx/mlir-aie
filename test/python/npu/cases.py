@@ -63,11 +63,8 @@ def device_for(devices: tuple[str, ...]):
     if bound in devices:
         yield
         return
-    set_current_device(from_name(devices[0], n_cols=1))
-    try:
+    with set_current_device(from_name(devices[0], n_cols=1)):
         yield
-    finally:
-        set_current_device(previous)
 
 
 def _product_extents(contract) -> tuple[int, ...] | None:

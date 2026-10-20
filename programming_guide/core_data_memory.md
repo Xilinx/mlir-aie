@@ -8,7 +8,10 @@
 # Core Data Memory
 
 Every AIE compute tile has one small block of local data memory, 64 kB on npu2
-for example; IRON reads the size as `dev.core_memory_bytes`. Three things share that block:
+for example; IRON reads the size as `dev.core_memory_bytes`, and the banks the
+buffer allocator places in as `dev.core_memory_banks` of
+`dev.core_memory_bank_bytes` each: four of 16 kB on AIE2 and AIE2P, each two
+hardware banks interleaved. Three things share that block:
 
 - the **stack**, at offset zero by default;
 - the **`aie.buffer`s** that the buffer allocator places on the tile: the L1

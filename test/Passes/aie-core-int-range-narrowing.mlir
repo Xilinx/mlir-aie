@@ -120,6 +120,47 @@ aie.device(npu2) {
     aie.end
   }
 
+  // A core's buffers are defined above it. A loop bounded by a value read
+  // from one is narrowed, and so is the loop nested in it.
+  %tile3 = aie.tile(0, 4)
+  %ctl = aie.buffer(%tile3) : memref<4xi32>
+  %out = aie.buffer(%tile3) : memref<16xi32>
+  %ctl64 = aie.buffer(%tile3) : memref<1xi64>
+  // CHECK: aie.core
+  // CHECK:   %[[N:.*]] = memref.load %{{.*}}[%{{.*}}] : memref<4xi32>
+  // CHECK:   scf.for %{{.*}} = %c0_i32 to %[[N]] step %{{.*}} : i32 {
+  // CHECK:     scf.for %[[L:.*]] = %{{.*}} to %c16_i32 step %{{.*}} : i32 {
+  // CHECK:       %[[LIDX:.*]] = arith.index_castui %[[L]] : i32 to index
+  // CHECK:       memref.store %{{.*}}, %{{.*}}[%[[LIDX]]]
+  // A counter compared with a 64-bit value read from a buffer can pass 2^32,
+  // so it keeps `index`.
+  // CHECK:   scf.while (%[[K:.*]] = %{{.*}}) : (index) -> index {
+  // CHECK:     arith.addi %[[K]], %{{.*}} : index
+  %core3 = aie.core(%tile3) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c16 = arith.constant 16 : index
+    %n = memref.load %ctl[%c0] : memref<4xi32>
+    %ni = arith.index_cast %n : i32 to index
+    scf.for %i = %c0 to %ni step %c1 {
+      scf.for %l = %c0 to %c16 step %c1 {
+        memref.store %n, %out[%l] : memref<16xi32>
+      }
+    }
+    %m = memref.load %ctl64[%c0] : memref<1xi64>
+    %mi = arith.index_cast %m : i64 to index
+    %r = scf.while (%k = %c1) : (index) -> index {
+      %next = arith.addi %k, %c1 : index
+      %cond = arith.cmpi slt, %k, %mi : index
+      scf.condition(%cond) %next : index
+    } do {
+    ^bb0(%a: index):
+      scf.yield %a : index
+    }
+    memref.store %n, %out[%r] : memref<16xi32>
+    aie.end
+  }
+
   // CHECK: aie.runtime_sequence
   // CHECK:   scf.for %[[R:.*]] = %c0 to %c4 step %c1 {
   // CHECK:     arith.addi %[[R]], %c1 : index

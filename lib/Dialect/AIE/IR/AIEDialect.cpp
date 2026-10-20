@@ -524,6 +524,12 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoCreateOp::verify() {
+  for (Type fifoType : {Type(getElemType()), getConsumerElemTypeOrDefault()})
+    if (MemRefType memref = cast<AIEObjectFifoType>(fifoType).getElementType();
+        !memref.hasStaticShape())
+      return emitOpError("type should be static shaped memref, but got ")
+             << memref;
+
   if (isa<ArrayAttr>(getElemNumber())) {
     if (size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
         numDepths != getConsumerTiles().size() + 1) // +1 for producer depth
@@ -1695,6 +1701,51 @@ std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
       if (consumerIn == fifoOut[0].getProducerTile())
         return {fifoOut[0].getProducerTile()};
   return {};
+}
+
+ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
+  std::vector<ObjectFifoCreateOp> ins = getInputObjectFifos();
+  std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+  if (isJoin())
+    return outs[0];
+  if (isDistribute())
+    return ins[0];
+  auto count = [](ObjectFifoCreateOp fifo) {
+    return cast<AIEObjectFifoType>(fifo.getElemType())
+        .getElementType()
+        .getNumElements();
+  };
+  // Padding is applied as the objects leave, so the pool holds what arrives.
+  if (outs[0].getInitValues() ||
+      (count(outs[0]) > count(ins[0]) && !outs[0].getPadDimensions()))
+    return outs[0];
+  return ins[0];
+}
+
+SmallVector<std::pair<int64_t, int64_t>> ObjectFifoLinkOp::getPoolSegments() {
+  auto count = [](ObjectFifoCreateOp fifo) {
+    return cast<AIEObjectFifoType>(fifo.getElemType())
+        .getElementType()
+        .getNumElements();
+  };
+  int64_t whole = count(getPoolOwner());
+  if (!isJoin() && !isDistribute())
+    return {{0, whole}};
+  ArrayAttr offsets = isJoin() ? getSrcOffsets() : getDstOffsets();
+  std::vector<ObjectFifoCreateOp> side =
+      isJoin() ? getInputObjectFifos() : getOutputObjectFifos();
+  SmallVector<std::pair<int64_t, int64_t>> segments;
+  for (auto [index, participant] : llvm::enumerate(side)) {
+    int64_t offset = cast<IntegerAttr>(offsets[index]).getInt();
+    int64_t next = index + 1 < side.size()
+                       ? cast<IntegerAttr>(offsets[index + 1]).getInt()
+                       : whole;
+    int64_t size = next - offset;
+    if (size <= 0)
+      size = count(participant);
+    segments.emplace_back(offset, size);
+  }
+  return segments;
 }
 
 std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
@@ -3976,6 +4027,22 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
       return false;
   }
   return true;
+}
+
+std::optional<SmallVector<BDDimLayoutAttr>>
+xilinx::AIE::normalizedBDDims(ArrayRef<BDDimLayoutAttr> dims, int64_t len) {
+  SmallVector<BDDimLayoutAttr> kept;
+  int64_t product = 1;
+  for (BDDimLayoutAttr dim : dims) {
+    product *= dim.getSize();
+    if (dim.getSize() != 1)
+      kept.push_back(dim);
+  }
+  if (kept.size() == dims.size() || len != product)
+    return std::nullopt;
+  if (isContiguousBDTransfer(kept))
+    return SmallVector<BDDimLayoutAttr>{};
+  return kept;
 }
 
 // The firmware's UPDATE_REG reads the 32-bit length word with its low two bits

@@ -231,6 +231,17 @@ using PacketConflict =
     std::function<bool(const PathEndPoint &, const std::set<int> &,
                        const PathEndPoint &, const std::set<int> &)>;
 
+// Described packet streams, and why the first two conflict.
+struct PacketsApart {
+  std::vector<std::string> flows;
+  std::string why;
+};
+// The most pairwise-conflicting packet streams found crossing from the tiles
+// `low` holds to the others if `up` (else back), searching no further than
+// `limit` + 1; see Pathfinder::cutOverflow.
+using PacketsApartAcross = std::function<PacketsApart(
+    llvm::function_ref<bool(TileID)> low, bool up, size_t limit)>;
+
 // Packets `src` sends with ids `a` and `b` share a master port they leave
 // tile `at` by, which puts them on one arbiter. If `apart` is set, the
 // packets with id `b` for that destination on the tile reach it by a slave
@@ -260,6 +271,9 @@ struct RoutingFaults {
   // in a hold cycle, so their trees should meet: each routes the ids the
   // other does not send as a part of their own from then on.
   std::vector<std::pair<PathEndPoint, PathEndPoint>> together;
+  // Sources whose tree waits on an arbiter it holds itself; they stop
+  // trunking (see RouteState::trunked).
+  std::vector<PathEndPoint> untrunk;
   // Whether the connections all break the overlay's master sets; see
   // RouteState::overlayMasters.
   bool onlyOverlayMasters = false;
@@ -330,6 +344,7 @@ struct PacketConstraints {
   // Packet flows that conflict are steered off each other's master ports; see
   // edgeWeight.
   PacketConflict conflict;
+  PacketsApartAcross apartAcross;
   // The prioritized packet flows from these sources take these trees
   // instead of being routed.
   PacketTrees pinned;
@@ -397,8 +412,9 @@ private:
 
   // Build the dense integer node numbering and per-node adjacency from `graph`
   // and `flows`. Topology is fixed across congestion iterations, so this runs
-  // once. A node's edges are in the order of the PathEndPoints they reach, so
-  // Dijkstra breaks ties the same way every run.
+  // once. A node's crossbar edges come before its wire edges, each in the order
+  // of the PathEndPoints they reach, so Dijkstra breaks ties the same way every
+  // run.
   void buildRoutingGraph();
 
   // The cost of taking `e`, as dijkstraShortestPaths weighs it.
@@ -432,12 +448,16 @@ private:
   int applyRoutingFaults(RouteState &st, const RoutingFaults &faults);
   // A RoutingFailure saying why the last iteration's routing does not fit.
   llvm::Error explainNoRouting(const RouteState &st) const;
+  // A RoutingFailure if the flows crossing some row or column boundary need
+  // more channels across it than it has, however they are routed.
+  llvm::Error cutOverflow() const;
   bool hasRoom(const SwitchboxConnect &sb) const;
   // The steps of relax.
   bool shareAllChannels();
   bool capCrowdedFanOut();
   bool routeIdsApart();
   bool splitSharedIds();
+  bool stopMeeting();
 
   // Flows to be routed
   std::vector<Flow> flows;
@@ -461,6 +481,7 @@ private:
   std::map<PathEndPoint, int> nodeIds;      // PathEndPoint -> dense id
   std::vector<PathEndPoint> nodes;          // dense id -> PathEndPoint
   std::vector<std::vector<Edge>> adjacency; // dense id -> out-edges
+  std::vector<size_t> wireEdgesBegin;       // dense id -> first wire edge
 
   // Dijkstra scratch, indexed by state id (2 * nodes.size()) and reused across
   // calls.
@@ -479,6 +500,14 @@ private:
   // rejected a routing, or packet streams cross a link left overused.
   bool packetsFailed = true;
   bool shareChannels = false, idsApart = false, splitShared = false;
+  // Trees that share destinations no longer meet (see TreeBuilder::meet), so
+  // what is left of their hazard is a hold cycle through those receivers.
+  bool meetApart = false;
+  // Whether a tree met another in any attempt, so stopping meeting can change
+  // anything.
+  bool treesMet = false;
+  // The device's columns and rows; the graph has tiles one past each.
+  int columns = 0, rows = 0;
   size_t relaxStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
 };

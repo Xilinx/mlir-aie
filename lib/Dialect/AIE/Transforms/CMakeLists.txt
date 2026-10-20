@@ -7,6 +7,7 @@
 add_mlir_dialect_library(
   AIETransforms
   AIEPlacer.cpp
+  AIEStructuralRank.cpp
   AIEPlaceTiles.cpp
   AIESAPlacer.cpp
   AIEAssignBufferDescriptorIDs.cpp
@@ -31,6 +32,7 @@ add_mlir_dialect_library(
   AIEHoistVectorTransferPointers.cpp
   AIEDMAChannelAnalysis.cpp
   AIEObjectFifoAllocate.cpp
+  AIECheckAgainstImage.cpp
   AIEObjectFifoLowerDMAs.cpp
   AIEObjectFifoLowerCores.cpp
   AIEObjectFifoErasePools.cpp

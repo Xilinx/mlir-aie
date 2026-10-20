@@ -57,9 +57,19 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
   let description = [{
     The sequential placer maps cores column-major and FIFO-connected Shim/Mem
     tiles nearby, allowing multiple logical tiles per physical tile.
-    It checks DMA demand; memory, locks and spill-dependent channel eligibility
-    are checked by `aie-objectfifo-allocate` after splitting. Allocation failures
+    It checks DMA demand, and among tiles with the DMA channels it prefers one
+    whose North/South stream ports still fit the merged ObjectFifos and, for a
+    Shim tile, whose buffer descriptors still fit the runtime-sequence tasks
+    live at once. Memory, locks and spill-dependent channel eligibility are
+    checked by `aie-objectfifo-allocate` after splitting. Allocation failures
     do not trigger re-placement or undo merges.
+
+    Logical tiles are taken shims first, then MemTiles, then cores, and
+    within those in an order set by the design's structure (what each tile's
+    ops are and connect to) rather than op order or symbol names, so a design
+    declared in another order or under other names is placed alike. Logical
+    tiles whose flows name the same DMA channel by index never share a
+    physical tile.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
@@ -498,7 +508,9 @@ def AIECoreIntRangeNarrowing
     each `func.func` in the device. Where integer range analysis proves the
     values fit, `scf.for` bounds, steps and induction variables become `i32`
     and `index` arithmetic is done in `i32`, with casts back to `index` where
-    an op needs one (such as a `memref.load` index).
+    an op needs one (such as a `memref.load` index). A bound read at run time
+    fits too when its type does: an `i32` loaded from one of the core's
+    buffers and cast to `index`, as in IRON's `range_(buf[i])`.
 
     Only provably safe rewrites are made. A loop whose bounds do not fit, such
     as a `0` to `INT64_MAX` "forever" loop, or whose bounds are unknown, keeps
@@ -575,10 +587,20 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     Existing buffers, locks and pinned channels stay fixed.
 
     A route endpoint that a DMA program or runtime task names is given its
-    channel after the objectFIFOs' endpoints, by the BDs its chains need. Each
+    channel after the objectFIFOs' endpoints, by the BDs its static chains
+    need. Runtime tasks do not steer the choice, so the device image is the
+    same whatever runtime sequence it is built with, and an instruction
+    stream built for another sequence runs on it. Each
     `aie.dma_start` naming it then takes that channel's index, and each
     `aiex.dma_configure_task_for` naming it becomes an
     `aiex.dma_configure_task` on the endpoint's tile and channel.
+
+    Where these rules leave a choice (which of two endpoints takes a tile's
+    first free channel, which pool is packed first, which route gets the next
+    packet ID), it is settled by the design's structure: what each op is and,
+    in turn, what it connects to. Op order and symbol names never decide, so a
+    design declared in another order or under other names gets the same
+    allocation.
 
     MemTile memory checks count each fixed buffer once (including aliased tile
     coordinates), even without new allocations. Pool sizes use BufferOp's
@@ -615,12 +637,37 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
   ];
 }
 
+def AIECheckAgainstImage : Pass<"aie-check-against-image", "mlir::ModuleOp"> {
+  let summary =
+      "Check an instruction stream's static design against its image's";
+  let description = [{
+    An instruction stream built for an image compiled elsewhere programs the
+    resources the image allocated. Run on the stream's resolved module (its
+    input_with_addresses.mlir), this pass compares the stream's static
+    allocation with the image's, given as `image`: each shim end, DMA chain
+    and runtime task channel, the tile holding each buffer, buffer addresses,
+    lock ids, BD ids and switchbox connections, each under a name that does
+    not depend on where it was put. Where they differ, it fails, listing each
+    differing resource and what to pin to keep it stable across shapes.
+  }];
+
+  let options =
+      [Option<"clImage", "image", "std::string", /*default=*/"\"\"",
+              "The image's resolved module (its input_with_addresses.mlir)">,
+  ];
+
+  let constructor = "xilinx::AIE::createAIECheckAgainstImagePass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+}
+
 def AIEObjectFifoLowerDMAs : Pass<"aie-objectfifo-lower-dmas", "DeviceOp"> {
   let summary = "Turn DMA endpoints into buffer descriptor chains";
   let description = [{
     Program each DMA endpoint's channel: for every object in its pool, for
     every segment it is responsible for, a buffer descriptor guarded by that
-    segment's locks.
+    segment's locks. A tile's chains are laid out by direction, then channel,
+    so the BD ids they are later given do not follow the endpoints' op order.
 
     Consumes `aie.objectfifo.dma_endpoint`.
   }];

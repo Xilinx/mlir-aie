@@ -17,6 +17,7 @@ from ..helpers.dialects.func import FuncBase
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
 from .dataflow.endpoint import ObjectFifoEndpoint
+from .dataflow.flow import PacketFlow
 from .dataflow.objectfifo import ObjectFifoLink
 from .device import Device
 from .kernel import Kernel
@@ -187,7 +188,8 @@ class DeviceConfiguration(DeviceResources):
         self._core_trace_mode = core_trace_mode
         self._egress_shim_col = egress_shim_col
 
-    # Unnamed device-local symbols share one namespace inside this configuration.
+    # Device-local symbols share one namespace inside this configuration: an
+    # explicit name may be claimed once, and unnamed ones take fresh names.
     def _name_unnamed(self) -> None:
         fifos = [h._object_fifo for runtime in self._runtimes for h in runtime.fifos]
         fifos += [h._object_fifo for worker in self._workers for h in worker.fifos]
@@ -208,7 +210,24 @@ class DeviceConfiguration(DeviceResources):
             for buffer in worker.buffers
             if buffer._use_write_rtp
         ]
-        taken = {fifo.name for fifo in fifos} | {buffer._name for buffer in rtps}
+        rtps = list(dict.fromkeys(rtps))
+        named = [(fifo.name, "ObjectFifo") for fifo in fifos if fifo.name is not None]
+        named += [(b._name, "Buffer") for b in rtps if b._name is not None]
+        claimed = {}
+        for name, kind in named:
+            if name in claimed:
+                kinds = (
+                    f"two {kind}s"
+                    if claimed[name] == kind
+                    else "an ObjectFifo and a Buffer"
+                )
+                raise ValueError(
+                    f"configuration {self._name!r} names symbol {name!r} twice "
+                    f"({kinds}); leave one unnamed or rename it"
+                )
+            claimed[name] = kind
+        taken = set(claimed)
+        taken.update(flow.name for flow in self._flows if flow.name is not None)
 
         def fresh(prefix):
             name = next(
@@ -225,6 +244,11 @@ class DeviceConfiguration(DeviceResources):
         for buffer in rtps:
             if buffer._name is None:
                 buffer._name = fresh("rtp")
+        for flow in self._flows:
+            if flow.name is None:
+                flow._name = fresh(
+                    "packetflow" if isinstance(flow, PacketFlow) else "flow"
+                )
 
     def resolve(
         self,

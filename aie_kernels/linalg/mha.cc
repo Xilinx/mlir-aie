@@ -60,24 +60,6 @@ block_live(int32_t diagonal, int32_t B_q, int32_t B_kv) {
          (!BAND_BEHIND || diagonal < MHA_WINDOW + B_kv);
 }
 
-// A float multiplies as three bf16 limbs, as in common/f32_split.h.
-template <unsigned N>
-struct Limbs {
-  aie::vector<bfloat16, N> hi, mid, lo;
-};
-
-template <unsigned N>
-static inline __attribute__((always_inline)) Limbs<N>
-bf16_limbs(aie::accum<accfloat, N> x) {
-  const auto one = aie::broadcast<bfloat16, N>(1.0f);
-  Limbs<N> l;
-  l.hi = x.template to_vector<bfloat16>();
-  x = aie::msc(x, l.hi, one);
-  l.mid = x.template to_vector<bfloat16>();
-  l.lo = aie::msc(x, l.mid, one).template to_vector<bfloat16>();
-  return l;
-}
-
 // An 8x8 tile's 64 lanes, lane i holding s[i / 8]: one value per tile row.
 // aie::transpose stops at 512 bits, so each row's lanes are broadcast.
 static inline __attribute__((always_inline)) aie::accum<accfloat, VECTOR_LENGTH>
@@ -593,45 +575,6 @@ static inline void invert_sums_w(float *scale_buffer, int32_t B_q) {
     aie::store_v(scale_buffer + 2 * B_q + i, l_vec);
   }
 }
-
-#ifdef MHA_F32_SCORES
-// One query row of float32 scores: partial_softmax_alias_bf16 with the row's
-// max and A - m in float32 and (A - m) * s as three bf16 limbs times s, so
-// the largest argument is exactly 0 and the rest keep 2^-24 of their size.
-template <unsigned W>
-static inline void
-partial_softmax_row_f32(const float *__restrict A, bfloat16 *__restrict P,
-                        float *__restrict scale_buffer, int32_t n, int32_t row,
-                        int32_t num_rows, bfloat16 scale) {
-  aie::vector<float, W> top =
-      aie::broadcast<float, W>((float)std::numeric_limits<bfloat16>::lowest());
-  AIE_LOOP_MIN_ITERATION_COUNT(1)
-  for (int32_t c = 0; c < n; c += W)
-    top = aie::max(top, aie::load_v<W>(A + c));
-  const float m = aie::max(aie::broadcast<float, 16>(aie::reduce_max(top)),
-                           aie::broadcast<float, 16>(scale_buffer[row]))
-                      .get(0);
-  scale_buffer[num_rows + row] = m;
-
-  const auto s = aie::broadcast<bfloat16, W>(scale);
-  const auto m_vec = aie::broadcast<float, W>(m);
-  aie::accum<accfloat, W> sum = aie::zeros<accfloat, W>();
-  AIE_LOOP_MIN_ITERATION_COUNT(1)
-  for (int32_t c = 0; c < n; c += W) {
-    aie::accum<accfloat, W> d;
-    d.from_vector(aie::load_v<W>(A + c));
-    const Limbs<W> dl = bf16_limbs(aie::sub(d, m_vec));
-    aie::accum<accfloat, W> x = aie::mul(dl.hi, s);
-    x = aie::mac(x, dl.mid, s);
-    x = aie::mac(x, dl.lo, s);
-    const aie::vector<bfloat16, W> p = exp2_bf16(x.template to_vector<float>());
-    sum = aie::add(sum, p);
-    aie::store_v(P + c, p);
-  }
-  scale_buffer[3 * num_rows + row] =
-      aie::reduce_add(sum.template to_vector<float>());
-}
-#endif
 
 extern "C" {
 void partial_softmax_bf16(bfloat16 *input, bfloat16 *output,

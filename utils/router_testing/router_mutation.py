@@ -6,7 +6,7 @@
 
     python utils/router_testing/router_mutation.py --device npu2 --seeds 40 [--first-seed 0]
         [--hops-off] [--only NAME ...] [--shrink] [--repros DIR] [--out DIR]
-        [-v]
+        [--report FILE] [-v]
 
 Each routable design the model generates is routed, then:
 
@@ -28,6 +28,7 @@ Failures are shrunk with router_shrink.py (--shrink) and written to --repros.
 """
 
 import argparse
+import json
 import random
 import subprocess
 import sys
@@ -1451,16 +1452,23 @@ def run_seed(seed, args):
     return rows
 
 
-def shrink_failure(kind, name, payload, hops_on, seed, verbose):
-    """The smallest design that still fails the same way."""
+def shrink_failure(kind, name, payload, hops_on, seed, verbose, deadline):
+    """The smallest design that still fails the same way, and whether
+    shrinking finished by `deadline` (a time.monotonic() value)."""
     if kind == "mutator":
         e, expect = payload
+        # Every judgement routes the design, so none starts once the budget
+        # is spent.
+        if time.monotonic() >= deadline:
+            return e, False
         # "route" rests on the router routing the unmutated design, which a
         # smaller design no longer has, so only the model can vouch for it.
         if expect == "route":
             expect = "model"
             if judge(e, expect, hops_on, seed)[0] == "ok":
-                return e
+                return e, True
+            if time.monotonic() >= deadline:
+                return e, False
         first, _ = judge(e, expect, hops_on, seed)
 
         def holds(x):
@@ -1469,8 +1477,12 @@ def shrink_failure(kind, name, payload, hops_on, seed, verbose):
             except Exception:
                 return False
 
-        return shrinker.shrink(rp.canonical(e), holds)
-    return payload
+        return shrinker.shrink(
+            rp.canonical(e),
+            holds,
+            budget_s=max(0.0, deadline - time.monotonic()),
+        )
+    return payload, True
 
 
 def main():
@@ -1484,8 +1496,13 @@ def main():
     cli.add_argument("--only", nargs="*", default=None)
     cli.add_argument("--jobs", type=int, default=4)
     cli.add_argument("--shrink", action="store_true")
+    # A failure that times out costs aie_opt's whole timeout per candidate.
+    cli.add_argument("--shrink-budget-s", type=float, default=600)
     cli.add_argument("--repros", type=Path, default=Path("repros"))
     cli.add_argument("--out", type=Path, default=None, help="save failing cases")
+    cli.add_argument(
+        "--report", type=Path, default=None, help="write the tally and failures"
+    )
     cli.add_argument("-v", action="store_true")
     args = cli.parse_args()
     t0 = time.monotonic()
@@ -1539,8 +1556,29 @@ def main():
                 )
             )
             (args.out / f"{kind}-{name}-{outcome}-{seed}.mlir").write_text(text)
+    # Written before shrinking, which can outlast the job's timeout.
+    if args.report:
+        args.report.write_text(
+            json.dumps(
+                {
+                    "device": args.device,
+                    "hops": "off" if args.hops_off else "on",
+                    "first_seed": args.first_seed,
+                    "seeds": args.seeds,
+                    "killed": kills["killed"],
+                    "survived": kills["survived"],
+                    "failures": [
+                        {"seed": seed, "kind": kind, "name": name, "outcome": outcome}
+                        for seed, kind, outcome, name, _, _ in failures
+                    ],
+                },
+                indent=1,
+            )
+        )
     if args.shrink:
         done = set()
+        # One deadline for the whole shrink phase, not one per failure.
+        shrink_deadline = time.monotonic() + args.shrink_budget_s
         for seed, kind, outcome, name, detail, payload in failures:
             if (
                 kind != "mutator"
@@ -1549,12 +1587,26 @@ def main():
             ):
                 continue
             done.add((name, outcome))
-            small = shrink_failure(kind, name, payload, not args.hops_off, seed, args.v)
+            small, finished = shrink_failure(
+                kind,
+                name,
+                payload,
+                not args.hops_off,
+                seed,
+                args.v,
+                shrink_deadline,
+            )
             args.repros.mkdir(parents=True, exist_ok=True)
             path = args.repros / f"{name}-{outcome}-{seed}.mlir"
             head = f"// router_mutation.py seed {seed} {args.device}, {name}: {outcome}\n// {detail.strip()[:300]}\n"
+            if not finished:
+                head += (
+                    f"// Shrinking stopped: the run's --shrink-budget-s "
+                    f"{args.shrink_budget_s:.0f} s was spent.\n"
+                )
             path.write_text(head + small.emit())
-            print(f"shrunk to {path} (size {shrinker.size(small)})")
+            stopped = "" if finished else ", budget spent"
+            print(f"shrunk to {path} (size {shrinker.size(small)}{stopped})")
     print(f"total: {time.monotonic() - t0:.1f}s")
     return 1 if failures else 0
 
