@@ -6,7 +6,6 @@
 //===----------------------------------------------------------------------===//
 
 #include <stdint.h>
-#include <string.h>
 #include <type_traits>
 
 #include "../aie_kernel_utils.h"
@@ -36,7 +35,7 @@ template <typename T>
 static inline void _argmax_store(int32_t *restrict out, T value,
                                  int32_t index) {
   const argmax_value_t<T> widened = value;
-  memcpy(out, &widened, sizeof(widened));
+  out[0] = __builtin_bit_cast(int32_t, widened);
   out[1] = index;
 }
 
@@ -52,14 +51,15 @@ static inline T _argmax_seed() {
 
 template <typename T>
 static inline T _argmax_load(const T *in) {
-  T value = in[0];
   if constexpr (std::is_same_v<T, bfloat16>) {
+    // Bits of the loaded value fold into a G_IS_FPCLASS on s16 that llvm-aie
+    // cannot legalize, so the bits get their own load.
     uint16_t bits;
-    memcpy(&bits, &value, sizeof(bits));
+    __builtin_memcpy(&bits, in, sizeof(bits));
     if (bits == 0x8000)
-      value = T(0);
+      return T(0);
   }
-  return value;
+  return in[0];
 }
 
 template <typename T, typename V>
@@ -147,9 +147,8 @@ template <typename TValue>
 void _argmax_combine(int32_t *restrict in1, int32_t *restrict in2,
                      int32_t *restrict out) {
   event0();
-  TValue v1, v2;
-  memcpy(&v1, in1, sizeof(v1));
-  memcpy(&v2, in2, sizeof(v2));
+  const TValue v1 = __builtin_bit_cast(TValue, in1[0]);
+  const TValue v2 = __builtin_bit_cast(TValue, in2[0]);
   const bool take2 = (v2 > v1) || (v2 == v1 && in2[1] < in1[1]);
   out[0] = take2 ? in2[0] : in1[0];
   out[1] = take2 ? in2[1] : in1[1];
