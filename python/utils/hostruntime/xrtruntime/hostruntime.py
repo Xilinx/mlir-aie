@@ -292,8 +292,7 @@ class XRTHostRuntime(HostRuntime):
             kernel, None, context, None, name=kernel_name, is_full_elf=True
         )
 
-    @staticmethod
-    def _run_init_entry(context, init_name: str | None, kernel_name: str) -> None:
+    def _run_init_entry(self, context, init_name: str | None, kernel_name: str) -> None:
         """Run the init entry ``init_name``, if any, on a new hardware context.
 
         Args:
