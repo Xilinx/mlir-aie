@@ -226,6 +226,9 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   static_assert(r * s == MMUL::size_A);
 #if AIE_TUNED_AIE2
   constexpr bool unroll_ij = mm_fused_unroll_ij<colA, colB, r, t>;
+  // Up to eight k blocks straight-line: a block's C loads and stores then
+  // overlap its macs, where a k loop that short fills and drains each block.
+  constexpr bool unroll_i = unroll_ij || colA <= 8;
 #endif
   // Rolled, the z loop does not pipeline and each trip pays the j loop's
   // entry and exit; two trips per body let those overlap.
@@ -259,7 +262,7 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
       // Rolled, for the same reason as the bfp16 form above (llvm-aie#1066).
       AIE_LOOP_MAX_ITERATION_COUNT(colA)
 #if AIE_TUNED_AIE2
-      AIE_LOOP_UNROLL(unroll_ij ? colA : 1)
+      AIE_LOOP_UNROLL(unroll_i ? colA : 1)
 #endif
       for (unsigned i = 0; i < colA; i++) {
         A0 = aie::load_v<MMUL::size_A>(pA1);
