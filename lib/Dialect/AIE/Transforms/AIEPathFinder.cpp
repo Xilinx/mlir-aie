@@ -1301,6 +1301,14 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
       ", and the router found no routing that fits them.");
 }
 
+// The boundary the wires from tile `a` to its neighbour `b` cross: between
+// rows (else columns) `below` and the next, upward (else back).
+static std::tuple<bool, int, bool> boundaryOf(TileID a, TileID b) {
+  bool rows = a.col == b.col;
+  return {rows, rows ? std::min(a.row, b.row) : std::min(a.col, b.col),
+          rows ? b.row > a.row : b.col > a.col};
+}
+
 llvm::Error Pathfinder::cutOverflow() const {
   // Each circuit tree crossing a boundary needs a channel of its own, and the
   // packet flows one more, or one each for streams no two of which may share
@@ -1314,20 +1322,18 @@ llvm::Error Pathfinder::cutOverflow() const {
     auto xbar = graph.find({a, a});
     if (a == b || !onDevice(a) || !onDevice(b) || xbar == graph.end())
       continue;
-    bool rows = a.col == b.col;
-    int below = rows ? std::min(a.row, b.row) : std::min(a.col, b.col);
-    bool up = rows ? b.row > a.row : b.col > a.col;
+    std::tuple<bool, int, bool> cut = boundaryOf(a, b);
     const SwitchboxConnect &x = xbar->second;
     // A boundary with no available channel at all (every one is a fixed
     // connection's) still needs an entry, so flows that must cross it are
     // not skipped as if the boundary did not exist.
-    channels[{rows, below, up}] += 0;
+    channels[cut] += 0;
     for (Port port : sb.srcPorts) {
       int k = x.dstIndex(port);
       if (k >= 0 &&
           llvm::any_of(llvm::seq<size_t>(0, x.srcPorts.size()),
                        [&](size_t i) { return x.at(i, k).available; }))
-        channels[{rows, below, up}]++;
+        channels[cut]++;
     }
   }
   for (const auto &[cut, available] : channels) {
@@ -2495,16 +2501,26 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                          ? "circuit trees routed first stopped helping"
                          : "the overuse stalled")
                  << ")...unable to find routing for flows.\n");
+      // Packet streams took part if they share a switchbox or link with an
+      // overused channel, or cross a boundary one does: a channel they take
+      // across it is one fewer for the rest.
+      auto overused = [](const SwitchboxConnect::Cell &c) {
+        return c.usedCapacity > maxCircuitStreamCapacity;
+      };
+      auto packets = [](const SwitchboxConnect::Cell &c) {
+        return c.packetGroupId >= 0;
+      };
+      std::set<std::tuple<bool, int, bool>> full;
+      for (const auto &[ends, sb] : graph)
+        if (ends.first != ends.second && llvm::any_of(sb.cells, overused))
+          full.insert(boundaryOf(ends.first, ends.second));
       packetsFailed =
-          !checkReason.empty() || llvm::any_of(graph, [](const auto &entry) {
-            ArrayRef<SwitchboxConnect::Cell> cells = entry.second.cells;
-            return llvm::any_of(cells,
-                                [](const SwitchboxConnect::Cell &c) {
-                                  return c.packetGroupId >= 0;
-                                }) &&
-                   llvm::any_of(cells, [](const SwitchboxConnect::Cell &c) {
-                     return c.usedCapacity > maxCircuitStreamCapacity;
-                   });
+          !checkReason.empty() || llvm::any_of(graph, [&](const auto &entry) {
+            const auto &[ends, sb] = entry;
+            return llvm::any_of(sb.cells, packets) &&
+                   (llvm::any_of(sb.cells, overused) ||
+                    (ends.first != ends.second &&
+                     full.count(boundaryOf(ends.first, ends.second))));
           });
       return explainNoRouting(st);
     }
@@ -2593,7 +2609,6 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
         }
       }
     }
-
     // Once the overuse stalls, circuit trees that overuse a circuit-only
     // channel route first, so the same tree stops losing it. Packet-shared
     // overuse is left to the packet steering.

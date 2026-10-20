@@ -497,7 +497,8 @@ private:
   // Why the routing check rejected the last routing it rejected.
   std::string checkReason;
   // Whether packet streams took part in the last failure: the routing check
-  // rejected a routing, or packet streams cross a link left overused.
+  // rejected a routing, or packet streams cross a link left overused, or the
+  // boundary it crosses.
   bool packetsFailed = true;
   bool shareChannels = false, idsApart = false, splitShared = false;
   // Trees that share destinations no longer meet (see TreeBuilder::meet), so
