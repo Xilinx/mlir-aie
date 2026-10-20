@@ -15,18 +15,7 @@
 
 #include "../common/exp_f32.h"
 #include "../common/f32_split.h"
-
-// log_f32.cc's log1p(f) / f for f in [sqrt(1/2) - 1, sqrt(2) - 1).
-static const float log_q[10] = {1.0f,
-                                -0.49999988079071045f,
-                                0.33333346247673035f,
-                                -0.2500157952308655f,
-                                0.20000939071178436f,
-                                -0.1660836935043335f,
-                                0.14199650287628174f,
-                                -0.13266031444072723f,
-                                0.12806610763072968f,
-                                -0.07451186329126358f};
+#include "../common/log_q.h"
 
 // softplus per lane, with exp_f32 for the exponential and each f32 product
 // summed from exact limb products. The caller sets conv_even.
