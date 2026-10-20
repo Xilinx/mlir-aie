@@ -35,7 +35,7 @@ jobs:
     name: Regenerate lockfiles on Dependabot PRs
     # Only Dependabot's own PRs; nothing else should get a write token here.
     if: github.actor == 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
