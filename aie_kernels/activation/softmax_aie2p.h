@@ -97,15 +97,28 @@ softmax_simple_bf16(bfloat16 *restrict input_vector,
   aie::accum<accfloat, SM_VEC_LEN> exp_sum = aie::zeros<accfloat, SM_VEC_LEN>();
   in = input_vector;
   bfloat16 *__restrict out = output_vector;
-  VERSIONED_LOOP(4, elem_iters, [&]() {
+  auto exp_pass = [&]() {
     auto arg = exp2_arg(aie::load_v<SM_VEC_LEN>(in), neg_max);
     auto e = exp2_bf16(arg.to_vector<float>());
+#if AIE_TUNED_AIE2 && defined(EXP2_BF16_ACCURATE)
+    exp_sum = aie::add(exp_sum, e);
+#else
     exp_sum = aie::mac(exp_sum, e, (bfloat16)1.0f);
+#endif
     if constexpr (!recompute)
       aie::store_v(out, e);
     in += SM_VEC_LEN;
     out += SM_VEC_LEN;
-  });
+  };
+  // AIE2 schedules the accurate pass at II 43 as one loop summing by add, and
+  // at II 55 versioned, summing by mac.
+#if AIE_TUNED_AIE2 && defined(EXP2_BF16_ACCURATE)
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  for (int i = 0; i < elem_iters; i++)
+    exp_pass();
+#else
+  VERSIONED_LOOP(4, elem_iters, exp_pass);
+#endif
   const bfloat16 sum_inv =
       (bfloat16)aie::inv(aie::reduce_add(exp_sum.to_vector<float>()));
 
