@@ -1156,8 +1156,7 @@ struct AIEObjectFifoAllocatePass
   }
 
   /// A packet-switched flow shares the stream with others, so every buffer
-  /// descriptor the source emits has to carry the packet header. A source that
-  /// several flows share has no one header; its BDs state their own.
+  /// descriptor the source emits has to carry the packet header.
   LogicalResult lowerPacketFlow(RouteOp flow, RouteEndpoint source,
                                 int packetID) {
 
@@ -1392,9 +1391,8 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// Tasks and BD chains on a shared source are checked BD by BD (programs
-  /// are, in resolveStart); a dma_memcpy_nd must name a header of its own,
-  /// and nothing else may send on one.
+  /// Everything but a DMA program, which resolveStart checks, that sends on a
+  /// shared source must state one of its flows' headers.
   LogicalResult checkSharedSourceUsers(RouteEndpointOp endpoint,
                                        ArrayRef<int> ids) {
     auto uses = SymbolTable::getSymbolUses(endpoint, device);
@@ -1469,8 +1467,6 @@ struct AIEObjectFifoAllocatePass
       for (RouteOp flow : flows)
         if (auto id = flow.getPacketId())
           ids.push_back(*id);
-      // A shared source has no one header to stamp, so whatever sends on it
-      // states each BD's header itself.
       bool shared = flows.size() > 1;
       if (shared && failed(checkSharedSourceUsers(endpoint, ids)))
         return failure();

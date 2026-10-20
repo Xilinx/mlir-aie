@@ -1110,7 +1110,6 @@ LogicalResult RouteEndpointOp::verify() {
       return emitOpError("drives one channel, which a circuit flow owns, but "
                          "it is named ")
              << sharers.size() << " times";
-    // A shared source's BDs state each header, so they must tell them apart.
     llvm::SmallDenseSet<int> ids;
     for (RouteOp flow : sources) {
       auto id = flow.getPacketId();
