@@ -27,7 +27,7 @@ Submodules:
   intended for other models.
 - `linalg` — mm, mv, cascade_mm, mm_bfp (a ``MatrixKernel``: ``.mac_dims``
   and ``.stream_dims`` read the blocking and DMA transforms off the
-  contract's operand layouts)
+  contract's operand layouts), attention_i8 (int8 attention for YOLO26n's PSA)
 - `mm(...).zero` and `mv(...).zero` construct companion zero-fill kernels;
   `mm.mac_dims(...)`, `cascade_mm.mac_dims(...)` and `mha.mac_dims(...)` query
   micro-kernel geometry without constructing a kernel.

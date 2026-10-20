@@ -107,11 +107,11 @@ check, when there is no exact measurement before placement:
 - the probe link fails.
 
 Peano currently builds its compiler-rt builtins (`__divsf3`, `__modsi3` and the
-like), libc (`memcpy`, `memset`, ...) and libm without `.stack_sizes`. `aiecc`
-carries their frames per architecture in a table generated from the pinned
-Peano (`utils/generate_compiler_rt_stack_frames.py`), so a core or kernel that
-calls them still measures exactly. A lit test fails when a Peano update changes
-a frame.
+like) without `.stack_sizes`. `aiecc` carries their frames per architecture in
+a table generated from the pinned Peano
+(`utils/generate_compiler_rt_stack_frames.py`), so a kernel that calls them
+still measures exactly. A lit test fails when a Peano update changes a frame.
+Peano's libc and libm are not in the table.
 
 ### Stack placement: `stack_bank` and `stack_address`
 

@@ -24,7 +24,7 @@ maintaining a slower copy of a kernel that already exists.
 |----------|-----------|-------|
 | copy / passthrough | `kernels.passthrough(tile_size, dtype)` | `dtype` ∈ `uint8`, `int16`, `int32` |
 | multiply by a scalar | `kernels.scale(tile_size, dtype, vectorized=True)` | `dtype` ∈ `int16`, `int32`; see signature note below |
-| element-wise `a+b` / `a*b` | `kernels.add(...)` / `kernels.mul(...)` | **bf16 only**, `tile_size` fixed at 1024 |
+| element-wise `a+b` / `a*b` | `kernels.add(...)` / `kernels.mul(...)` | bf16, `tile_size` fixed at 1024; `add` also takes `dtype=np.int8` (ONNX QLinearAdd on power-of-two scales, `tile_size` a multiple of 32) |
 | ReLU | `kernels.relu(tile_size)` | bf16, `tile_size` a multiple of 32 |
 | softmax / gelu / silu / swiglu / exp | `kernels.softmax`, `.gelu`, `.silu`, `.swiglu`, `.bf16_exp` | bf16, LUT-based |
 | sum / min / max over a tile | `kernels.reduce_add`, `.reduce_min`, `.reduce_max` | |
@@ -70,8 +70,9 @@ surprise people:
   buffer** (`np.ndarray[(1,), np.dtype[np.int32]]`), not a plain Python scalar. Feed it from a
   small `depth=1` ObjectFifo or a `Buffer` — the upside is the factor becomes settable per
   launch without a rebuild.
-- **`kernels.add` / `kernels.mul`** are bare `(in..., out)` with no trailing
-  size, which is why they need `pass_size_to_kernel=False`. `kernels.passthrough` *does* take a
+- **`kernels.add` / `kernels.mul`** on bf16 are bare `(in..., out)` with no trailing
+  size, which is why they need `pass_size_to_kernel=False`. The int8 `add` instead
+  ends with three `int32` shifts, `(a, b, out, a_shift, b_shift, out_shift)`. `kernels.passthrough` *does* take a
   trailing size and wants the default `True`.
 
 When in doubt, ask the kernel. `arg_types` is a **method**, not a property — call it:
@@ -82,8 +83,8 @@ When in doubt, ask the kernel. `arg_types` is a **method**, not a property — c
 ```
 
 Unsupported dtypes fail loudly at construction rather than producing a wrong kernel, e.g.
-`kernels.add(tile_size=1024, dtype=np.int8)` raises
-`ValueError: add() dtype must be bfloat16 ... Only the bf16 variant is available in the
+`kernels.mul(tile_size=1024, dtype=np.int8)` raises
+`ValueError: mul() dtype must be bfloat16 ... Only the bf16 variant is available in the
 installed aie_kernels`. That's your signal to hand-write the kernel.
 
 Two template arguments trip people up:

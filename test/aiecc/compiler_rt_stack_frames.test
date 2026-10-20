@@ -1,8 +1,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// The compiler-rt, libc and libm frames aiecc falls back on match the installed
-// Peano. If a
+// The compiler-rt frames aiecc falls back on match the installed Peano. If a
 // Peano bump changes them, regenerate the table:
 //   python utils/generate_compiler_rt_stack_frames.py > tools/aiecc/CompilerRtStackFrames.inc
 
