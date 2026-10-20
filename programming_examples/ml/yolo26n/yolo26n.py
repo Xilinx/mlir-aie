@@ -7,6 +7,7 @@
     python yolo26n.py --images DIR --n 8          # check images against the oracle
     python yolo26n.py --synthetic 7 --n 2         # seeded weights and images, no checkpoint
     python yolo26n.py --images DIR --n 8 --time   # and time it
+    python yolo26n.py --n 8 --batch 8 --time      # eight images per dispatch
 
 The network runs as a sequence of segments, each a device configuration of
 its own in one full ELF, handing tensors on through a DDR scratch buffer.
@@ -58,6 +59,8 @@ SEGMENTS = (
     (167, 168),
 )
 IMAGE = Tensor("images", 3, 640, 640)
+IMAGE_WORDS = 640 * 640 * 3 // 4
+DETECTION_WORDS = 6 * 300
 
 
 class Plan:
@@ -129,19 +132,21 @@ def yolo26n(
     scratch: InOut,
     detections: Out,
     *,
+    batch: CompileTime[int],
     params_path: CompileTime[str],
     params_digest: CompileTime[str],
 ):
-    """Every segment as a device configuration, and an entry sequence running them in turn."""
+    """Every segment as a device configuration, and an entry sequence running them in turn.
+
+    Each configuration runs all `batch` images before the next is configured.
+    """
     del params_digest  # keys the compile cache on the parameter file's contents
     network = Network.yolo26n()
     params = Params.load(Path(params_path))
     plan = Plan(network)
-    image_words = 640 * 640 * 3 // 4
-    det_words = 6 * 300
-    image_ty = np.ndarray[(image_words,), np.dtype[np.int32]]
-    scratch_ty = np.ndarray[(plan.words,), np.dtype[np.int32]]
-    det_ty = np.ndarray[(det_words,), np.dtype[np.int32]]
+    image_ty = np.ndarray[(batch * IMAGE_WORDS,), np.dtype[np.int32]]
+    scratch_ty = np.ndarray[(batch * plan.words,), np.dtype[np.int32]]
+    det_ty = np.ndarray[(batch * DETECTION_WORDS,), np.dtype[np.int32]]
     configurations, runtimes = [], []
     for k, (a, b) in enumerate(SEGMENTS):
         design = SegmentDesign(network, params, network.ops[a:b], plan.outputs[k])
@@ -151,14 +156,20 @@ def yolo26n(
             )
 
         def sequence(img, scr, det, *handles, design=design):
-            def locate(tensor):
-                if tensor.name == IMAGE.name:
-                    return img, image_words, 0
-                if tensor.name in plan.offset:
-                    return scr, plan.words, plan.offset[tensor.name]
-                return det, det_words, 0
+            for i in range(batch):
 
-            design.transfer(handles, locate)
+                def locate(tensor, i=i):
+                    if tensor.name == IMAGE.name:
+                        return img, batch * IMAGE_WORDS, i * IMAGE_WORDS
+                    if tensor.name in plan.offset:
+                        return (
+                            scr,
+                            batch * plan.words,
+                            i * plan.words + plan.offset[tensor.name],
+                        )
+                    return det, batch * DETECTION_WORDS, i * DETECTION_WORDS
+
+                design.transfer(handles, locate)
 
         runtime = Runtime(
             sequence,
@@ -196,6 +207,9 @@ def main() -> None:
     )
     parser.add_argument("--n", type=int, default=4, help="images to run")
     parser.add_argument(
+        "--batch", type=int, default=1, help="images per dispatch (divides --n)"
+    )
+    parser.add_argument(
         "--params",
         type=Path,
         help="parameter file (default data/yolo26n_params.npz, or with --synthetic "
@@ -212,6 +226,8 @@ def main() -> None:
         "--compile-only", action="store_true", help="build the ELF and stop"
     )
     args = parser.parse_args()
+    if args.batch < 1 or not args.compile_only and args.n % args.batch:
+        parser.error(f"--batch {args.batch} does not divide --n {args.n}")
 
     network = Network.yolo26n()
     plan = Plan(network)
@@ -223,14 +239,15 @@ def main() -> None:
     else:
         params_path = args.params or DATA_DIR / "yolo26n_params.npz"
     kwargs = dict(
+        batch=args.batch,
         params_path=str(params_path),
         params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
     )
     if args.compile_only:
         yolo26n.specialize(
-            image=np.ndarray[(640 * 640 * 3 // 4,), np.dtype[np.int32]],
-            scratch=np.ndarray[(plan.words,), np.dtype[np.int32]],
-            detections=np.ndarray[(6 * 300,), np.dtype[np.int32]],
+            image=np.ndarray[(args.batch * IMAGE_WORDS,), np.dtype[np.int32]],
+            scratch=np.ndarray[(args.batch * plan.words,), np.dtype[np.int32]],
+            detections=np.ndarray[(args.batch * DETECTION_WORDS,), np.dtype[np.int32]],
             **kwargs,
         ).compile()
         return
@@ -249,8 +266,8 @@ def main() -> None:
             (p.name, letterbox(p)) for p in sorted(args.images.glob("*.jpg"))[: args.n]
         ]
     oracle = Oracle(Params.load(params_path), network)
-    scratch = iron.zeros(plan.words, dtype=np.int32)
-    detections = iron.zeros(6 * 300, dtype=np.int32)
+    scratch = iron.zeros(args.batch * plan.words, dtype=np.int32)
+    detections = iron.zeros(args.batch * DETECTION_WORDS, dtype=np.int32)
     session = None
     if args.synthetic is None and args.onnx.exists():
         # Optional: ONNX Runtime only serves the comparison with the ONNX graph.
@@ -261,25 +278,29 @@ def main() -> None:
         )
 
     passed = matched = 0
-    for name, image in images:
-        yolo26n(
-            iron.tensor(image.reshape(-1).view(np.int32)), scratch, detections, **kwargs
-        )
-        mine = detections.numpy().reshape(300, 6)
-        want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
-        bad = int((mine != want).sum())
-        passed += bad == 0
-        print(f"image {name}: {'PASS' if bad == 0 else 'FAIL'} ({bad}/1800 differ)")
-        if session is not None:
-            matched += np.array_equal(
-                mine, onnx_detections(session, image).view(np.int32)
-            )
+    for start in range(0, len(images), args.batch):
+        group = images[start : start + args.batch]
+        pixels = np.concatenate([image.reshape(-1) for _, image in group])
+        yolo26n(iron.tensor(pixels.view(np.int32)), scratch, detections, **kwargs)
+        found = detections.numpy().reshape(args.batch, 300, 6)
+        for (name, image), mine in zip(group, found):
+            want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
+            bad = int((mine != want).sum())
+            passed += bad == 0
+            print(f"image {name}: {'PASS' if bad == 0 else 'FAIL'} ({bad}/1800 differ)")
+            if session is not None:
+                matched += np.array_equal(
+                    mine, onnx_detections(session, image).view(np.int32)
+                )
     print(f"yolo26n: {passed}/{len(images)} images PASS")
     if session is not None:
         print(f"ort: {matched}/{len(images)} images match onnxruntime")
 
     if args.time:
-        tensor = iron.tensor(images[0][1].reshape(-1).view(np.int32))
+        pixels = np.concatenate(
+            [image.reshape(-1) for _, image in images[: args.batch]]
+        )
+        tensor = iron.tensor(pixels.view(np.int32))
         for _ in range(args.n_warmup):
             yolo26n(tensor, scratch, detections, **kwargs)
         samples = []
@@ -287,8 +308,8 @@ def main() -> None:
             start = time.perf_counter()
             yolo26n(tensor, scratch, detections, **kwargs)
             samples.append(time.perf_counter() - start)
-        us = statistics.median(samples) * 1e6
-        print(f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch 1")
+        us = statistics.median(samples) * 1e6 / args.batch
+        print(f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {args.batch}")
     sys.exit(0 if passed == len(images) else 1)
 
 
