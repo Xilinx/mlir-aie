@@ -25,7 +25,7 @@ CHAIN = dict(
 )
 CASES = [
     (aie2_chain_dynscale_mh.build, CHAIN, "SAMPLE_TEMP", 0.0, 0.7, True),
-    (aie2_chain_dynscale_mh.build, CHAIN, "SAMPLE_TOPK", 0, 40, True),
+    (aie2_chain_dynscale_mh.build, CHAIN, "SAMPLE_TOPK", 0, 4, True),
     (aie2_chain_dynscale_mh.build, CHAIN, "SAMPLE_SEED", 0, 1234, True),
     (
         aie2_chain_dynscale_mh.build,
