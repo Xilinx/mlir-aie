@@ -824,6 +824,7 @@ class SegmentDesign:
         bias[: op.dst.channels] = p.of(op.name, "bias")
         table = p.of(op.name, "table").astype(np.int8) if op.act else None
         src_tensor = op.src
+        pieces: list[Part] = []
         while True:
             reader: RowInput | Part
             if op.kernel == 1:
@@ -835,10 +836,18 @@ class SegmentDesign:
                 local_bytes = src_tensor.row_bytes if reader.assembled else 0
             else:
                 parts = self.parts(src_tensor)
-                if len(parts) > 1 or parts[0].upsample:
+                # A depthwise conv computes each part of one stream apart, into
+                # its channels of the output row; others read one whole part.
+                apart = (
+                    op.groups > 1
+                    and len({part.source for part in parts}) == 1
+                    and not any(part.upsample for part in parts)
+                )
+                if not apart and (len(parts) > 1 or parts[0].upsample):
                     src_tensor = self.assemble(src_tensor)
                     continue
-                (reader,) = parts
+                pieces = parts
+                reader = parts[0]
                 y = np.arange(op.dst.height)
                 lo = np.maximum(op.stride * y - 1, 0)
                 windows = [(reader.source, lo, op.stride * y + 1)]
@@ -962,6 +971,9 @@ class SegmentDesign:
             return
 
         part = reader
+        if len(pieces) > 1:
+            self.depthwise_apart(op, pieces, depths, double, shift, table)
+            return
         if op.groups == 1:
             k = kernels.conv2dk3(
                 src_tensor.width,
@@ -1021,6 +1033,78 @@ class SegmentDesign:
                 src.release(1)
 
         self.workers.append(Worker(body3, [source, out, k, *constants]))
+
+    def depthwise_apart(
+        self,
+        op: Conv,
+        pieces: list[Part],
+        depths: dict[str, int],
+        double: bool,
+        shift: int,
+        table: np.ndarray | None,
+    ) -> None:
+        """A depthwise 3x3 conv over parts of one stream, each part computed on its own channels."""
+        p = self.params
+        width = op.src.width
+        sizes = {part.size for part in pieces}
+        if len(sizes) > 1 or op.stride != 1:
+            raise NotImplementedError(
+                f"{op.name}: depthwise parts of unequal size, or strided"
+            )
+        channels = sizes.pop() // width
+        weights = pack_weights(op, p.of(op.name, "weight"))
+        bias = np.zeros(op.dst.channels8, np.int32)
+        bias[: op.dst.channels] = p.of(op.name, "bias")
+        per = 9 * channels
+        consts = []
+        for i in range(len(pieces)):
+            consts += [
+                Buffer(initial_value=weights[i * per : (i + 1) * per]),
+                Buffer(initial_value=bias[i * channels : (i + 1) * channels]),
+            ]
+        if op.act:
+            consts.append(Buffer(initial_value=table))
+        k = kernels.bn_conv2dk3_dw(
+            width, channels, channels, bias=True, table=op.act, rounding="conv_even"
+        )
+        source = self.consumer(pieces[0].source, depths[pieces[0].source.name], 3)
+        out = self.fifo(op.dst).prod(depth=1 + double)
+        size = channels * width
+
+        def body(src, out, k, *consts):
+            weights, rest = consts[: 2 * len(pieces)], consts[2 * len(pieces) :]
+
+            def step(rows, check):
+                o = out.acquire(1)
+                for i, part in enumerate(pieces):
+                    k(
+                        *[view(r, part.offset, part.size) for r in rows],
+                        weights[2 * i],
+                        weights[2 * i + 1],
+                        *rest,
+                        view(o, i * size, size),
+                        width,
+                        channels,
+                        channels,
+                        3,
+                        3,
+                        check,
+                        shift,
+                        0,
+                    )
+                out.release(1)
+
+            rows = src.acquire(2)
+            step([rows[0], rows[0], rows[1]], 0)
+            for _ in range_(op.dst.height - 2):
+                rows = src.acquire(3)
+                step([rows[0], rows[1], rows[2]], 1)
+                src.release(1)
+            rows = src.acquire(2)
+            step([rows[0], rows[1], rows[1]], 2)
+            src.release(2)
+
+        self.workers.append(Worker(body, [source, out, k, *consts]))
 
     def fuse(self, group: Sequence[Op], later: Sequence[Op], drained: set[str]) -> None:
         """One worker computing a run of same-height operators row by row.
