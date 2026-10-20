@@ -318,6 +318,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   LogicalResult validate(AIE::RuntimeSequenceOp seq) {
+    WalkResult unplaced = seq.walk([](DMAConfigureTaskOp cfg) {
+      if (cfg.getTile().getDefiningOp<AIE::TileOp>())
+        return WalkResult::advance();
+      cfg.emitOpError("Cannot assign buffer descriptor ids to a DMA task "
+                      "whose tile is not placed; run placement first.");
+      return WalkResult::interrupt();
+    });
+    if (unplaced.wasInterrupted())
+      return failure();
     // Reject runtime control flow first, so the token-balance pass below runs
     // on straight-line IR and needs no control-flow reasoning.
     if (failed(rejectRuntimeControlFlow(seq)))
