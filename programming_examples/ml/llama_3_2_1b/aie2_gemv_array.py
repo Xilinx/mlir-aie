@@ -78,8 +78,15 @@ DOWN_CHUNKS = HD // D
 DOWN_ROWS_PER_CORE = D // N_CORES
 
 
-def prefill_act_bytes(m):
-    return m * M_STRIDE
+def prefill_act_bytes(m, mmul=False):
+    """An M-row activation object: M_STRIDE rows, or mmul's 8-activation
+    groups of transposed 8x8 tiles plus the M act_scales."""
+    return ((m + 7) // 8 * 8 * D + 64) if mmul else m * M_STRIDE
+
+
+def prefill_down_passes(m, mmul=False):
+    """Passes over down's rows that keep M x rows int32 partials in L1."""
+    return 2 if mmul and m > 8 else 1
 
 
 def prefill_out_bytes(m):
@@ -670,9 +677,17 @@ def build_prefill(
     M: CompileTime[int] = 4,
     ACT_DEPTH: CompileTime[int] = 2,
     GATE_INV: CompileTime[float] = 20.0,
+    MMUL: CompileTime[bool] = False,
+    OUT_DEPTH: CompileTime[int] = 2,
 ):
     """M activations per pass (S6 batched prefill): every weight slot streams
     once and serves all M rows.
+
+    With MMUL the cores run aie::mmul (kernels/llama_gemv_prefill_mmul.cc):
+    slots and activation objects (`prefill_act_bytes(M, MMUL)`) are in its
+    tile layouts, and above M=8 down runs in `prefill_down_passes(M, MMUL)`
+    passes over its rows, each re-reading the four activation chunks, to keep
+    the int32 partial sums in L1.
 
     Activation objects are `prefill_act_bytes(M)`: M rows of `M_STRIDE` bytes
     ([int8 x 2048 | act_scale f32 | pad]); down takes four of them, one per
@@ -684,9 +699,11 @@ def build_prefill(
     n_slots = lane_slots(ORDER)
     lane_bytes = n_slots * SLOT
     w_total = N_CORES * N_LAYERS * lane_bytes
-    acts_per_layer = sum(DOWN_CHUNKS if p == "d" else 1 for p in ORDER)
+    passes = prefill_down_passes(M, MMUL)
+    pass_rows = DOWN_ROWS_PER_CORE // passes
+    acts_per_layer = sum(DOWN_CHUNKS * passes if p == "d" else 1 for p in ORDER)
     outs_per_layer = sum(PROJECTIONS[p][1] // N_CORES // OUT_ROWS for p in ORDER)
-    act_bytes = prefill_act_bytes(M)
+    act_bytes = prefill_act_bytes(M, MMUL)
     out_bytes = prefill_out_bytes(M)
     n_acts = N_LAYERS * acts_per_layer
     n_outs = N_LAYERS * outs_per_layer
@@ -696,19 +713,23 @@ def build_prefill(
     t_slot = _i8(SLOT)
     t_act = _i8(act_bytes)
     t_out = _i8(out_bytes)
-    t_part = _i32a(M * DOWN_ROWS_PER_CORE)
+    t_part = _i32a(M * pass_rows)
     of_act = ObjectFifo(t_act, depth=ACT_DEPTH, name="pact")
     of_w = [ObjectFifo(t_slot, depth=2, name=f"pw{c}") for c in range(N_CORES)]
-    of_out = [ObjectFifo(t_out, depth=2, name=f"pout{c}") for c in range(N_CORES)]
+    of_out = [
+        ObjectFifo(t_out, depth=OUT_DEPTH, name=f"pout{c}") for c in range(N_CORES)
+    ]
 
-    KO = llama_kernels.gemv_prefill(m=M)
-    k_f = KO.bind("llama_gemv_array_m_f32", [t_act, t_slot, t_out, np.int32])
-    k_i = KO.bind("llama_gemv_array_m_i8", [t_act, t_slot, t_out, np.int32, np.float32])
+    KO = llama_kernels.gemv_prefill(m=M, mmul=MMUL)
+    pre = "llama_gemv_mmul" if MMUL else "llama_gemv_array_m"
+    k_f = KO.bind(f"{pre}_f32", [t_act, t_slot, t_out, np.int32])
+    k_i = KO.bind(f"{pre}_i8", [t_act, t_slot, t_out, np.int32, np.float32])
     k_chunk = KO.bind(
-        "llama_gemv_array_m_kchunk", [t_act, t_slot, t_part, np.int32, np.int32]
+        f"{pre}_kchunk", [t_act, t_slot, t_part, np.int32, np.int32, np.int32]
     )
     k_final = KO.bind(
-        "llama_gemv_array_m_kfinal", [t_act, t_slot, t_part, t_out, np.int32, np.int32]
+        f"{pre}_kfinal",
+        [t_act, t_slot, t_part, t_out, np.int32, np.int32, np.int32],
     )
     slots_per_out = OUT_ROWS // 4
 
@@ -716,29 +737,31 @@ def build_prefill(
         for _ in range_(N_LAYERS):
             for proj in ORDER:
                 if proj == "d":
-                    for chunk in range_(DOWN_CHUNKS - 1):
+                    for _p in range_(passes):
+                        for chunk in range_(DOWN_CHUNKS - 1):
+                            a = c_act.acquire(1)
+                            for s in range_(pass_rows // 4):
+                                w = c_w.acquire(1)
+                                kc(a, w, part, _i32(s), _i32(chunk), pass_rows)
+                                c_w.release(1)
+                            c_act.release(1)
                         a = c_act.acquire(1)
-                        for s in range_(DOWN_ROWS_PER_CORE // 4):
-                            w = c_w.acquire(1)
-                            kc(a, w, part, _i32(s), _i32(chunk))
-                            c_w.release(1)
+                        for oc in range_(pass_rows // OUT_ROWS):
+                            o = c_out.acquire(1)
+                            for s in range_(slots_per_out):
+                                w = c_w.acquire(1)
+                                kfin(
+                                    a,
+                                    w,
+                                    part,
+                                    o,
+                                    _i32(oc) * slots_per_out + _i32(s),
+                                    _i32(s),
+                                    pass_rows,
+                                )
+                                c_w.release(1)
+                            c_out.release(1)
                         c_act.release(1)
-                    a = c_act.acquire(1)
-                    for oc in range_(DOWN_ROWS_PER_CORE // OUT_ROWS):
-                        o = c_out.acquire(1)
-                        for s in range_(slots_per_out):
-                            w = c_w.acquire(1)
-                            kfin(
-                                a,
-                                w,
-                                part,
-                                o,
-                                _i32(oc) * slots_per_out + _i32(s),
-                                _i32(s),
-                            )
-                            c_w.release(1)
-                        c_out.release(1)
-                    c_act.release(1)
                     continue
                 a = c_act.acquire(1)
                 for _oc in range_(PROJECTIONS[proj][1] // N_CORES // OUT_ROWS):

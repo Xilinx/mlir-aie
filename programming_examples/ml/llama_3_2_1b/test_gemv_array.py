@@ -44,7 +44,6 @@ from aie.utils import DefaultNPURuntime
 from aie2_gemv_array import (
     ACT_BYTES,
     COMB_BYTES,
-    DOWN_CHUNKS,
     LM_OUT_BYTES,
     LM_SEED_BYTES,
     LM_SLOT,
@@ -65,6 +64,7 @@ from aie2_gemv_array import (
     build_prefill,
     lane_slots,
     layer_units,
+    prefill_down_passes,
     prefill_out_bytes,
     rows_per_slot,
 )
@@ -172,31 +172,61 @@ def rescale_reference(proj, resid, resid_scale):
     return np.concatenate([body, np.array([scale, 0.0], np.float32).view(np.int8)])
 
 
-def pack_lane_prefill(layer_w, order, core):
+def pack_lane_prefill(layer_w, order, core, mmul=False, passes=1):
     """pack_lane for build_prefill: down's slots are 4 rows by 2048 columns,
-    chunk-major (all row groups of columns 0-2047, then 2048-4095, ...), each
-    with the four rows' bias and scales."""
+    chunk-major (all row groups of columns 0-2047, then 2048-4095, ...) within
+    each of `passes` row passes, each with the four rows' bias and scales.
+    With `mmul` every slot's weights are in kt-major 4x8 tiles (weight
+    W[n][8kt + i] at kt*32 + n*8 + i)."""
     parts = []
     for p in order:
         k, rows, _ = PROJECTIONS[p]
-        if k == D:
-            parts.append(pack_lane(layer_w, p, core))
-            continue
         w, bias, sc = layer_w[p]
         rc = rows // N_CORES
         lo = core * rc
-        slots = np.zeros((DOWN_CHUNKS, rc // 4, SLOT), np.int8)
-        for ch in range(DOWN_CHUNKS):
-            blk = w[lo : lo + rc, ch * D : (ch + 1) * D].reshape(rc // 4, 4 * D)
-            slots[ch, :, : 4 * D] = blk
-            slots[ch, :, 4 * D : 4 * D + 16] = (
-                bias[lo : lo + rc].reshape(-1, 4).view(np.int8)
-            )
-            slots[ch, :, 4 * D + 16 : 4 * D + 32] = (
-                sc[lo : lo + rc].reshape(-1, 4).view(np.int8)
-            )
+        groups = rc // 4
+        chunks = k // D
+        n_pass = passes if chunks > 1 else 1
+        per_pass = groups // n_pass
+        slots = np.zeros((n_pass, chunks, per_pass, SLOT), np.int8)
+        for ps in range(n_pass):
+            for ch in range(chunks):
+                r0 = lo + ps * per_pass * 4
+                blk = w[r0 : r0 + per_pass * 4, ch * D : (ch + 1) * D]
+                blk = blk.reshape(per_pass, 4, D)
+                if mmul:
+                    blk = blk.reshape(per_pass, 4, D // 8, 8).transpose(0, 2, 1, 3)
+                slots[ps, ch, :, : 4 * D] = blk.reshape(per_pass, 4 * D)
+                slots[ps, ch, :, 4 * D : 4 * D + 16] = (
+                    bias[r0 : r0 + per_pass * 4].reshape(-1, 4).view(np.int8)
+                )
+                slots[ps, ch, :, 4 * D + 16 : 4 * D + 32] = (
+                    sc[r0 : r0 + per_pass * 4].reshape(-1, 4).view(np.int8)
+                )
         parts.append(slots.reshape(-1))
     return np.concatenate(parts)
+
+
+def prefill_act_object(rows_m, ch, mmul):
+    """One build_prefill activation object from M (activation, scale) pairs,
+    column chunk `ch`: M_STRIDE rows, or with `mmul` 8-activation groups of
+    transposed tiles (a[8g + m][8kt + i] at g*16384 + kt*64 + i*8 + m) and
+    then 16 scales, those past M 1.0."""
+    m = len(rows_m)
+    if not mmul:
+        obj = np.zeros((m, M_STRIDE), np.int8)
+        for i, (a, s) in enumerate(rows_m):
+            obj[i, :D] = a[ch * D : (ch + 1) * D]
+            obj[i, D : D + 4] = np.frombuffer(np.float32(s).tobytes(), np.int8)
+        return obj.reshape(-1)
+    groups = (m + 7) // 8
+    a = np.zeros((groups * 8, D), np.int8)
+    for i, (row, _s) in enumerate(rows_m):
+        a[i] = row[ch * D : (ch + 1) * D]
+    tiles = a.reshape(groups, 8, D // 8, 8).transpose(0, 2, 3, 1)
+    scales = np.ones(16, np.float32)
+    scales[:m] = [s for _a, s in rows_m]
+    return np.concatenate([tiles.reshape(-1), scales.view(np.int8)])
 
 
 def run_prefill(opts):
@@ -218,7 +248,9 @@ def run_prefill(opts):
     for li, lw in enumerate(layers):
         for c in range(N_CORES):
             off = (li * N_CORES + c) * lane_bytes
-            wblob[off : off + lane_bytes] = pack_lane_prefill(lw, order, c)
+            wblob[off : off + lane_bytes] = pack_lane_prefill(
+                lw, order, c, opts.mmul, prefill_down_passes(m, opts.mmul)
+            )
 
     act_objs = []
     unit_acts = []
@@ -226,13 +258,14 @@ def run_prefill(opts):
         for proj in order:
             k = PROJECTIONS[proj][0]
             rows_m = [make_act(rng, k) for _ in range(m)]
+            if opts.tiny_scale:
+                # Outside the vector epilogue's guarded range: its scalar path.
+                rows_m[0] = (rows_m[0][0], np.float32(1e-30))
             unit_acts.append(rows_m)
-            for ch in range(k // D):
-                obj = np.zeros((m, M_STRIDE), np.int8)
-                for i, (a, s) in enumerate(rows_m):
-                    obj[i, :D] = a[ch * D : (ch + 1) * D]
-                    obj[i, D : D + 4] = np.frombuffer(np.float32(s).tobytes(), np.int8)
-                act_objs.append(obj.reshape(-1))
+            n_pass = prefill_down_passes(m, opts.mmul) if k > D else 1
+            for _p in range(n_pass):
+                for ch in range(k // D):
+                    act_objs.append(prefill_act_object(rows_m, ch, opts.mmul))
     acts_blob = np.concatenate(act_objs)
     out_bytes = prefill_out_bytes(m)
     n_outs = n_layers * sum(PROJECTIONS[p][1] // N_CORES // OUT_ROWS for p in order)
@@ -248,6 +281,8 @@ def run_prefill(opts):
         M=m,
         ACT_DEPTH=opts.act_depth,
         GATE_INV=opts.gate_inv,
+        MMUL=opts.mmul,
+        OUT_DEPTH=opts.out_depth,
     )
     buffers = [w_t, a_t, o_t]
     DefaultNPURuntime.load_and_run(npu, buffers)
@@ -440,6 +475,13 @@ def main():
         help="run build_prefill with this many activations per pass",
     )
     p.add_argument("--act-depth", type=int, default=2)
+    p.add_argument("--out-depth", type=int, default=2)
+    p.add_argument(
+        "--tiny-scale",
+        action="store_true",
+        help="give each unit's first activation a 1e-30 act_scale",
+    )
+    p.add_argument("--mmul", action="store_true", help="prefill on the mmul kernel")
     p.add_argument("--lm-tiles", type=int, default=32064)
     p.add_argument("--kset", type=int, default=8)
     p.add_argument("--temperature", type=float, default=0.0)
