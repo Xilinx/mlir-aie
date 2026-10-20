@@ -5274,8 +5274,8 @@ FailureOr<int32_t> UseLockOp::getConstantValue() {
 LogicalResult UseLockOp::canonicalize(UseLockOp op, PatternRewriter &rewriter) {
   // An AcquireGreaterEqual by a compile-time-constant 0 is a no-op: the lock is
   // already >= 0 (semaphore values are non-negative) and it decrements the lock
-  // by 0.
-  if (op.acquireGE()) {
+  // by 0. A buffer descriptor's acquire is kept: its release needs the pair.
+  if (op.acquireGE() && op->getBlock()->getOps<DMABDOp>().empty()) {
     if (auto value = getConstantLockValue(op); value && *value == 0) {
       rewriter.eraseOp(op);
       return success();
