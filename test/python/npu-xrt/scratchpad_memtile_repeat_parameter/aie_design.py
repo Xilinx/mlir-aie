@@ -1,19 +1,9 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# IRON design: a mem tile channel's repeat count set at runtime via
-# repeat_parameter.
-#
-# The fill steps through up to 16 tiles of 64 values and runs @reps + 1 of
-# them into a mem tile buffer, whose S2MM task steps a BD iteration through
-# the buffer as many times; once it is done, the mem tile's MM2S task steps
-# back through @reps + 1 tiles and the drain moves @tiles tiles to the host
-# (length_parameter):
-#
-#   reps = 0, tiles = 1  -> 64 values: 0..63
-#   reps = 6, tiles = 7  -> 448 values: 0..447
-#
-# A mem tile task that ran its configured 16 runs instead would wait for data
+# A mem tile's S2MM and MM2S tasks each run @reps + 1 of up to 16 tiles of
+# 64 values, and the drain moves @tiles tiles back: reps = 6, tiles = 7 gives
+# 0..447. A mem tile task that ran its configured 16 runs would wait for data
 # the fill never sends, and the call would not finish.
 #
 # Usage:
