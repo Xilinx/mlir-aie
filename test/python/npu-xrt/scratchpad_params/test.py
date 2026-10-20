@@ -87,10 +87,10 @@ def test_a_run_drains_into_another_runs_scratchpad_alias(kernel_setup):
 
     # The run's first output element lands in the low half of word 0: the
     # parameter params.txt gives index 0 (entries are "name index type kind
-    # min max" after the count).
+    # min max" after the parameter and slot counts).
     with open("params.txt") as f:
         words = f.read().split()
-    entries = [words[i : i + 6] for i in range(1, 1 + 6 * int(words[0]), 6)]
+    entries = [words[i : i + 6] for i in range(2, 2 + 6 * int(words[0]), 6)]
     (first,) = [name for name, index, *_ in entries if index == "0"]
     target.sync_from_device()
     assert target.read(first) & 0xFFFF == int(bfloat16(12.0).view(np.uint16))

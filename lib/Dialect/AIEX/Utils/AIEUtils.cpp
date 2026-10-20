@@ -251,11 +251,20 @@ LogicalResult AIEX::emitUpdateBdLengthFromParameter(
   return success();
 }
 
+std::string AIEX::scratchpadCommandName(AIE::RuntimeSequenceOp seq) {
+  auto device = seq->getParentOfType<AIE::DeviceOp>();
+  return (device.getSymName() + ":" + seq.getSymName()).str();
+}
+
 void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
   SmallVector<AIEX::ScratchpadParameterOp> allParams;
   moduleOp.walk([&](AIEX::ScratchpadParameterOp p) { allParams.push_back(p); });
 
-  os << allParams.size() << "\n";
+  unsigned numSlots = 0;
+  for (auto p : allParams)
+    if (auto idx = p.getStateTableIdx())
+      numSlots = std::max(numSlots, static_cast<unsigned>(*idx) + 1);
+  os << allParams.size() << " " << numSlots << "\n";
   for (auto p : allParams) {
     std::string typeStr;
     llvm::raw_string_ostream ts(typeStr);
@@ -291,6 +300,20 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
   for (auto [length, bound] : jointBounds)
     os << length << " " << bound.getOffset().getValue() << " "
        << bound.getLengthStep() << " " << bound.getMax() << "\n";
+
+  SmallVector<AIE::RuntimeSequenceOp> commands;
+  moduleOp.walk([&](AIE::RuntimeSequenceOp seq) {
+    if (seq.getScratchpadParametersAttr())
+      commands.push_back(seq);
+  });
+  os << commands.size() << "\n";
+  for (AIE::RuntimeSequenceOp seq : commands) {
+    ArrayAttr reads = seq.getScratchpadParametersAttr();
+    os << scratchpadCommandName(seq) << " " << reads.size();
+    for (auto ref : reads.getAsRange<FlatSymbolRefAttr>())
+      os << " " << ref.getValue();
+    os << "\n";
+  }
 }
 
 bool AIEX::getReachableConfigures(

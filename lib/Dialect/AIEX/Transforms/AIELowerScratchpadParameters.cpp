@@ -22,6 +22,8 @@
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <numeric>
@@ -258,6 +260,55 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp,
     }
   });
   return found;
+}
+
+// The command processor's state table: one entry per parameter a command reads.
+constexpr unsigned kMaxStateTableEntries = 32;
+
+/// The parameters each runtime sequence no `aiex.run` calls reads, in walk
+/// order: those its transfers and task starts use, directly or through the
+/// sequences it runs, and the core parameters of every device it reaches.
+/// Each such sequence is a command, which a host runs with a scratchpad of
+/// its own.
+static llvm::MapVector<RuntimeSequenceOp, llvm::SetVector<StringRef>>
+commandParameters(ModuleOp moduleOp) {
+  DenseMap<Operation *, llvm::SetVector<StringRef>> coreReads;
+  moduleOp.walk([&](ReadScratchpadParameterOp op) {
+    coreReads[op->getParentOfType<DeviceOp>()].insert(op.getParameter());
+  });
+  DenseMap<Operation *, llvm::SetVector<StringRef>> uses;
+  DenseMap<Operation *, SmallVector<RuntimeSequenceOp>> callees;
+  DenseSet<Operation *> called;
+  DenseMap<Operation *, NamedOpTable> names;
+  moduleOp.walk([&](RuntimeSequenceOp seq) {
+    seq.walk([&](Operation *op) {
+      for (StringRef attr :
+           {"offset_parameter", "length_parameter", "repeat_parameter"})
+        if (auto ref = op->getAttrOfType<FlatSymbolRefAttr>(attr))
+          uses[seq].insert(ref.getValue());
+      if (auto run = dyn_cast<RunOp>(op))
+        if (RuntimeSequenceOp callee = run.getCalleeRuntimeSequenceOp(&names)) {
+          callees[seq].push_back(callee);
+          called.insert(callee);
+        }
+    });
+  });
+  llvm::MapVector<RuntimeSequenceOp, llvm::SetVector<StringRef>> commands;
+  moduleOp.walk([&](RuntimeSequenceOp seq) {
+    if (called.contains(seq))
+      return;
+    llvm::SetVector<StringRef> &reads = commands[seq];
+    // In call order: a sequence, then those it runs.
+    llvm::SetVector<RuntimeSequenceOp> reached;
+    reached.insert(seq);
+    for (unsigned i = 0; i < reached.size(); i++) {
+      RuntimeSequenceOp at = reached[i];
+      reads.insert_range(uses.lookup(at));
+      reads.insert_range(coreReads.lookup(at->getParentOfType<DeviceOp>()));
+      reached.insert_range(callees.lookup(at));
+    }
+  });
+  return commands;
 }
 
 struct AIELowerScratchpadParametersPass
@@ -555,19 +606,24 @@ struct AIELowerScratchpadParametersPass
         solver.reset();
     }
 
-    // Step 1: collect every parameter in the module.
+    // Step 1: collect every parameter in the module, and the ones each
+    // command reads.
     SmallVector<ScratchpadParameterOp> allParams;
     moduleOp.walk([&](ScratchpadParameterOp p) { allParams.push_back(p); });
-
-    if (allParams.size() > 32) {
+    llvm::MapVector<RuntimeSequenceOp, llvm::SetVector<StringRef>> commands =
+        commandParameters(moduleOp);
+    for (auto &[seq, reads] : commands) {
+      if (reads.size() <= kMaxStateTableEntries)
+        continue;
       InFlightDiagnostic diag =
-          moduleOp.emitError("Module declares ")
-          << allParams.size()
-          << " parameters but the scratchpad supports at most 32. The "
-             "scratchpad is a single hardware resource shared by all PDIs "
-             "loaded by a runtime sequence.";
-      for (auto p : allParams)
-        diag.attachNote(p.getLoc()) << "parameter '" << p.getSymName() << "'";
+          seq.emitError("runtime sequence '")
+          << scratchpadCommandName(seq) << "' reads " << reads.size()
+          << " parameters but its scratchpad holds at most "
+          << kMaxStateTableEntries
+          << ": each parameter a command reads takes one of the command "
+             "processor's state-table entries";
+      for (StringRef name : reads)
+        diag.attachNote(seq.getLoc()) << "parameter '" << name << "'";
       return signalPassFailure();
     }
 
@@ -639,10 +695,57 @@ struct AIELowerScratchpadParametersPass
                              : ScratchpadParameterKind::Core));
     }
 
-    // Step 3: assign global state_table_idx in walk order, 0..N-1.
-    for (auto [i, p] : llvm::enumerate(allParams)) {
+    // Step 3: assign state-table slots in walk order, each the lowest no
+    // parameter of a command reading it holds. A command has a scratchpad of
+    // its own, so parameters no one command reads together share a slot; one
+    // no command reads takes a slot of its own. A module of one command gets
+    // 0..N-1.
+    DenseMap<StringRef, SmallVector<unsigned>> readers;
+    for (auto [k, entry] : llvm::enumerate(commands))
+      for (StringRef name : entry.second)
+        readers[name].push_back(k);
+    // The slots each command's parameters hold, those every parameter holds,
+    // and those of parameters no command reads, which no other may share.
+    SmallVector<llvm::SmallBitVector> held(commands.size());
+    llvm::SmallBitVector anyHeld, unread;
+    unsigned numSlots = 0;
+    for (ScratchpadParameterOp p : allParams) {
+      SmallVector<unsigned> mine = readers.lookup(p.getSymName());
+      llvm::SmallBitVector taken = mine.empty() ? anyHeld : unread;
+      for (unsigned k : mine) {
+        if (taken.size() < held[k].size())
+          taken.resize(held[k].size());
+        taken |= held[k];
+      }
+      unsigned slot = 0;
+      while (slot < taken.size() && taken.test(slot))
+        slot++;
+      if (slot >= kMaxStateTableEntries) {
+        p.emitError("parameter '")
+            << p.getSymName() << "' finds no free state-table entry among "
+            << kMaxStateTableEntries
+            << ": the commands reading it hold every one";
+        return signalPassFailure();
+      }
+      auto hold = [slot](llvm::SmallBitVector &bits) {
+        if (bits.size() <= slot)
+          bits.resize(slot + 1);
+        bits.set(slot);
+      };
+      for (unsigned k : mine)
+        hold(held[k]);
+      hold(anyHeld);
+      if (mine.empty())
+        hold(unread);
+      numSlots = std::max(numSlots, slot + 1);
       p.setStateTableIdxAttr(builder.getIntegerAttr(
-          builder.getIntegerType(8, /*isSigned=*/false), i));
+          builder.getIntegerType(8, /*isSigned=*/false), slot));
+    }
+    for (auto &[seq, reads] : commands) {
+      SmallVector<Attribute> refs;
+      for (StringRef name : reads)
+        refs.push_back(FlatSymbolRefAttr::get(&getContext(), name));
+      seq.setScratchpadParametersAttr(builder.getArrayAttr(refs));
     }
 
     // Step 3b: rewrite DMA `offset_parameter` / `length_parameter` symbol
@@ -849,7 +952,7 @@ struct AIELowerScratchpadParametersPass
       if (failed(emitCorePreambles(d, builder, syncLocks)) ||
           failed(emitSequencePreambles(d, builder, !syncLocks.empty())))
         return signalPassFailure();
-      uint32_t scratchpadSize = static_cast<uint32_t>(allParams.size() * 4);
+      uint32_t scratchpadSize = numSlots * 4;
       lowerSyncParametersOps(d, scratchpadSize, paramEntries, syncLocks);
 
       lowerReadParameters(d, builder);

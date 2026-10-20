@@ -83,7 +83,7 @@ struct AIECtrlPacketToDmaPass
 
       auto newSeq = AIE::RuntimeSequenceOp::create(
           builder, loc, f.getSymNameAttr(), BoolAttr{}, f.getTraceBufferAttr(),
-          f.getTraceSlicesAttr());
+          f.getTraceSlicesAttr(), f.getScratchpadParametersAttr());
       newSeq.getBody().push_back(new Block);
 
       // Copy the arguments from the old sequence to the new one.

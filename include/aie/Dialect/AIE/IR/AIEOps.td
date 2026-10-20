@@ -3039,7 +3039,11 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [AIESymbol, NoTerminator,
       OptionalAttr<TraceBufferAttr>:$trace_buffer,
       // If this runtime sequence produces multiple traces, `trace_slices`
       // states which slice of the trace buffer corresponds to which trace.
-      OptionalAttr<TraceSliceArrayAttr>:$trace_slices);
+      OptionalAttr<TraceSliceArrayAttr>:$trace_slices,
+      // Set by `--aie-lower-scratchpad-parameters` on a sequence no `aiex.run`
+      // calls, a command of its own with its own scratchpad: the parameters
+      // its run reads, whose state-table slots are distinct.
+      OptionalAttr<FlatSymbolRefArrayAttr>:$scratchpad_parameters);
   let regions = (region AnyRegion:$body);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;

@@ -106,17 +106,30 @@ bool getReachableConfigures(Value task,
 // as above, or null if there is none or more than one.
 DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
 
+// `device:sequence`, the name a host runs `seq` by.
+std::string scratchpadCommandName(AIE::RuntimeSequenceOp seq);
+
 // Emit the params.txt description of every `aiex.scratchpad_parameter` in
 // `moduleOp` (with their assigned `state_table_idx`/`kind`) to `os`.
 //
 // Format (one entry per line, easily parsed with std::ifstream >>):
-//   <num_parameters>
+//   <num_parameters> <num_slots>
 //   <name> <state_table_idx> <type> <kind> <min> <max>
 //   ...
-// where kind is "core" (shift-2 encoded, for read_scratchpad_parameter) or
+//   <num_joint_bounds>
+//   <length> <offset> <length_step> <max>
+//   ...
+//   <num_commands>
+//   <device>:<sequence> <num_read> <name> ...
+//   ...
+// where kind is "core" (shift-2 encoded, for read_scratchpad_parameter),
 // "addr" (raw, for offset_parameter on DMA ops; also for a length_parameter
-// with no core use), and <min> <max> is the range a DMA offset or length
-// parameter must stay in, or "- -" for any other parameter.
+// with no core use) or "repeat", and <min> <max> is the range a DMA offset or
+// length parameter must stay in, or "- -" for any other parameter. A joint
+// bound requires offset + length_step * length <= max. Each command, a
+// runtime sequence no `aiex.run` calls, lists the parameters it reads, whose
+// slots are distinct; parameters of different commands may share a slot, so a
+// command's scratchpad is written with its own parameters only.
 void emitScratchpadParamsFile(mlir::ModuleOp moduleOp, llvm::raw_ostream &os);
 } // namespace AIEX
 } // namespace xilinx
