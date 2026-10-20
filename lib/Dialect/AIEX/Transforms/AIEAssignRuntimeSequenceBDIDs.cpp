@@ -147,6 +147,61 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return it->second;
   }
 
+  // Each device's static aie.dma_starts whose BD chain never ends, by channel.
+  llvm::DenseMap<Operation *,
+                 std::map<DmaQueueModel::ChannelKey, AIE::DMAStartOp>>
+      loopingStarts;
+  // Channels an aiex.dma_channel_reset drained since the latest load.
+  std::set<DmaQueueModel::ChannelKey> resetChannels;
+
+  std::map<DmaQueueModel::ChannelKey, AIE::DMAStartOp> &
+  loopingStartsOf(AIE::DeviceOp device) {
+    auto [it, inserted] = loopingStarts.try_emplace(device);
+    if (!inserted)
+      return it->second;
+    for (AIE::DmaBody program : device.getOps<AIE::DmaBody>()) {
+      AIE::TileID tile = program.getTileID();
+      program->walk([&](AIE::DMAStartOp start) {
+        if (start.getEndpoint())
+          return;
+        llvm::SmallPtrSet<Block *, 8> visited;
+        Block *bd = start.getDest();
+        while (bd && visited.insert(bd).second)
+          bd = bd->getNumSuccessors() == 1 ? bd->getSuccessor(0) : nullptr;
+        if (bd)
+          it->second.try_emplace(
+              {tile.col, tile.row, static_cast<int>(start.getChannelDir()),
+               start.getChannelIndex()},
+              start);
+      });
+    }
+    return it->second;
+  }
+
+  // A task pushed behind a static program that never ends never runs. Only
+  // a named load tells which programs run; the sequence's own device does
+  // until the first load.
+  LogicalResult checkNotBehindLoop(DMAStartTaskOp start,
+                                   DMAConfigureTaskOp cfg) {
+    if (opaqueLoad)
+      return success();
+    DmaQueueModel::ChannelKey key = channelOf(cfg);
+    if (resetChannels.count(key))
+      return success();
+    auto &starts =
+        loopingStartsOf(loadedDevice ? loadedDevice : getOperation());
+    auto it = starts.find(key);
+    if (it == starts.end())
+      return success();
+    InFlightDiagnostic diag =
+        start.emitOpError("starts a task on a channel whose static DMA "
+                          "program loops forever, so the task never runs; "
+                          "end that program's BD chain, or reset the channel "
+                          "with aiex.dma_channel_reset first");
+    diag.attachNote(it->second.getLoc()) << "the program starts here";
+    return diag;
+  }
+
   // The device the latest aiex.npu.load_pdi configured. A sequence that
   // aie-materialize-runtime-sequences inlined runs on that device's static
   // DMAs, which stay in it rather than in the device that holds the sequence.
@@ -165,6 +220,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         loadedDevice =
             SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(parent, ref);
     opaqueLoad = loadedDevice ? NpuLoadPdiOp() : load;
+    resetChannels.clear();
     for (auto &[tile, tasks] : liveByTile)
       for (DMAConfigureTaskOp task : tasks)
         unloaded.insert(task);
@@ -800,11 +856,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     loadedDevice = {};
     opaqueLoad = {};
     unloaded.clear();
+    resetChannels.clear();
   }
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
     staticBdIds.clear();
+    loopingStarts.clear();
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
       // Skip sequences already handled by the dynamic free-list pool path
@@ -859,12 +917,17 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                   "last start instead.");
               return WalkResult::interrupt();
             }
+            if (failed(checkNotBehindLoop(start, cfg)))
+              return WalkResult::interrupt();
             knownComplete.erase(cfg);
             pollProven.erase(cfg);
             notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg));
           }
         } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
           noteLoadPdi(load);
+        } else if (auto reset = dyn_cast<DmaChannelResetOp>(op)) {
+          resetChannels.insert(DmaQueueModel::keyOf(
+              reset.getTileOp(), reset.getDirection(), reset.getChannel()));
         } else if (auto poll = dyn_cast<NpuMaskPollOp>(op)) {
           notePoll(poll);
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {

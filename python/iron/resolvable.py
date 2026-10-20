@@ -14,9 +14,6 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 if TYPE_CHECKING:
     from .configuration import DeviceConfiguration
 
-    # tile_dma imports this module.
-    from .dataflow.tile_dma import DmaEndpoint
-
 
 # Structural typing via @runtime_checkable Protocol: any class with both
 # .resolve() and .tiles() passes isinstance(x, Resolvable).  The two-method
@@ -138,36 +135,6 @@ class DeviceResources:
                         )
         for program in self._resolved_tile_dmas:
             program.resolve()
-
-    def static_channel(self, endpoint: DmaEndpoint) -> bool:
-        """Return whether a resolved TileDma program may run ``endpoint``'s channel.
-
-        Tiles match as `Tile.is_same_tile` says. A channel the compiler
-        assigns is one endpoint object, so it matches only itself; a channel
-        given by index also matches a program's channel in that direction
-        that the compiler has yet to assign, which may get that index.
-
-        Args:
-            endpoint: The `DmaEndpoint` a dispatch-time task would run on.
-
-        Returns:
-            Whether a dispatch-time write to that channel could rewrite a
-            TileDma program.
-        """
-        return any(
-            program.tile.is_same_tile(endpoint.tile)
-            and any(
-                channel.channel is endpoint
-                or endpoint.channel is not None
-                and channel.direction == endpoint.direction
-                and (
-                    channel._key[1] == endpoint.channel
-                    or not isinstance(channel._key[1], int)
-                )
-                for channel in program.channels
-            )
-            for program in self._resolved_tile_dmas or ()
-        )
 
     @property
     def flows(self) -> list:

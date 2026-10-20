@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
 from aie.dialects.aie import DeviceOp
-from aie.ir import Context, Module, StringAttr
+from aie.ir import Context, MLIRError, Module, StringAttr
 from aie.iron import (
     Bd,
     Buffer,
@@ -34,6 +34,7 @@ from aie.iron import (
     sync_parameters,
 )
 from aie.iron.device import NPU2Col1, Tile
+from aie.passmanager import PassManager
 from aie.utils.compile.jit.context import compile_context
 
 Tensor = np.ndarray[(4,), np.dtype[np.int32]]
@@ -477,11 +478,11 @@ def mem_tile():
     return Tile(0, 1, tile_type=AIETileType.MemTile)
 
 
-def static_program(name, tile, direction, channel):
+def static_program(name, tile, direction, channel, loop=True):
     """A Runtime that adds a TileDma running one channel of ``tile``."""
     rt = runtime(name)
     bd = Bd(Buffer(Tensor, tile=tile))
-    rt.add_tile_dma(TileDma(tile, [DmaChannel(direction, channel, [bd])]))
+    rt.add_tile_dma(TileDma(tile, [DmaChannel(direction, channel, [bd], loop=loop)]))
     return rt
 
 
@@ -499,6 +500,15 @@ def control_route(tile):
 def program(*runtimes):
     config = DeviceConfiguration("pack", NPU2Col1(), runtimes=runtimes)
     return Program.compose([config], entry=runtimes[0]).resolve_program()
+
+
+def compile_tasks(module):
+    """Place, give channels and assign runtime BD ids, as aiecc does."""
+    PassManager.parse(
+        "builtin.module(aie.device(aie-place-tiles,aie-objectfifo-allocate,"
+        "aie-assign-runtime-sequence-bd-ids))",
+        context=module.context,
+    ).run(module.operation)
 
 
 def test_co_resident_runtimes_run_static_programs_on_one_tile():
@@ -544,17 +554,14 @@ def test_co_resident_runtimes_may_share_one_control_route():
     assert str(program(first, second)).count("aie.packet_flow(") == 1
 
 
-def test_a_task_on_a_channel_a_static_program_runs_is_refused():
+def test_a_task_on_a_channel_a_looping_static_program_runs_fails():
     mem = mem_tile()
-    with pytest.raises(
-        ValueError,
-        match=r"A task on MM2S channel 0 on Tile<MemTile>\(0, 1\) would rewrite "
-        "the channel a TileDma program runs",
-    ):
-        program(
-            static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
-            task_on("seq_1", mem, DMAChannelDir.MM2S, 0),
-        )
+    module = program(
+        static_program("seq_0", mem, DMAChannelDir.MM2S, 0),
+        task_on("seq_1", mem, DMAChannelDir.MM2S, 0),
+    )
+    with pytest.raises(MLIRError, match="static DMA program loops forever"):
+        compile_tasks(module)
 
 
 def gathered(mem):
@@ -598,7 +605,7 @@ def test_a_route_sharing_a_channel_gives_the_owners_endpoint():
         )
 
 
-def test_a_task_through_a_sharing_route_on_a_static_channel_is_refused():
+def test_a_task_through_a_sharing_route_on_a_looping_static_channel_fails():
     mem = mem_tile()
     owner, sharer = gathered(mem)
     static = static_on("seq_0", mem, owner.endpoint(mem), (owner, sharer))
@@ -607,25 +614,27 @@ def test_a_task_through_a_sharing_route_on_a_static_channel_is_refused():
         [],
         name="seq_1",
     )
-    with pytest.raises(ValueError, match="would rewrite the channel a TileDma program"):
-        program(static, task)
+    with pytest.raises(MLIRError, match="static DMA program loops forever"):
+        compile_tasks(program(static, task))
 
 
-@pytest.mark.parametrize(
-    "direction, refused", [(DMAChannelDir.S2MM, True), (DMAChannelDir.MM2S, False)]
-)
-def test_an_indexed_task_meets_a_static_channel_left_for_the_compiler(
-    direction, refused
-):
+def test_the_compiler_keeps_a_static_channel_off_an_indexed_task():
     mem = mem_tile()
     owner, sharer = gathered(mem)
     static = static_on("seq_0", mem, owner.endpoint(mem), (owner, sharer))
-    task = task_on("seq_1", mem, direction, 0)
-    if refused:
-        with pytest.raises(ValueError, match="would rewrite the channel"):
-            program(static, task)
-    else:
-        assert str(program(static, task)).count("aiex.dma_configure_task(") == 1
+    module = program(static, task_on("seq_1", mem, DMAChannelDir.S2MM, 0))
+    compile_tasks(module)
+    assert "aie.dma_start(S2MM, 0" not in str(module)
+
+
+def test_a_task_may_follow_a_static_program_that_ends():
+    mem = mem_tile()
+    compile_tasks(
+        program(
+            static_program("seq_0", mem, DMAChannelDir.MM2S, 0, loop=False),
+            task_on("seq_1", mem, DMAChannelDir.MM2S, 0),
+        )
+    )
 
 
 def test_tiles_pinned_to_one_column_alone_are_two_tiles():
