@@ -147,10 +147,9 @@ extern "C" void selective_scan(bfloat16 *restrict block, float *restrict head,
           dot = aie::add(dot, mul_limbs(bf16_limbs(next), Cn));
         }
         if constexpr (L == 32)
-          aie::store_v(halves + q * 16,
-                       aie::add(dot.template extract<16>(0),
-                                dot.template extract<16>(1))
-                           .template to_vector<float>());
+          aie::store_v(halves + q * 16, aie::add(dot.template extract<16>(0),
+                                                 dot.template extract<16>(1))
+                                            .template to_vector<float>());
         else
           aie::store_v(halves + q * 16, dot.template to_vector<float>());
       }
