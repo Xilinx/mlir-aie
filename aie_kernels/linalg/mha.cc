@@ -182,6 +182,13 @@ static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
   ::aie::set_rounding(saved_rounding);
 }
 
+// QK^T with B^T and at most 8 k steps runs with its reduction unrolled; at 16
+// the unrolled body spills, and a row-major B measured slower unrolled.
+#if AIE_ARCH_AIE2P && !defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16) &&    \
+    !defined(MHA_F32_SCORES) && defined(B_COL_MAJ) && DIM_K <= 64
+#define MHA_QK_UNROLL_K 1
+#endif
+
 extern "C" {
 
 void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
@@ -663,6 +670,10 @@ void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, score_t *c_out,
 
 #ifdef MHA_F32_SCORES
   matmul_bf16_f32(a_in, b_in, c_out);
+#elif defined(MHA_QK_UNROLL_K)
+  matmul_vectorized_2x2_mmul<bfloat16, bfloat16, DIM_M / 4, DIM_K / 8,
+                             DIM_N / 8, 4, 8, 8, is_b_row_maj, is_c_row_maj,
+                             true>(a_in, b_in, c_out);
 #else
   matmul_bf16_bf16(a_in, b_in, c_out);
 #endif
