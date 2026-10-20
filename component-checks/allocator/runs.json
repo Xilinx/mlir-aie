@@ -113,6 +113,32 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "39364666031",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39364666031",
+   "date": "2026-10-20T03:30:37+00:00",
+   "commit": {
+    "id": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/1a647f100e50c3f526d5e3c97eaba1327558e0f8",
+    "message": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile the cores (#3933)",
+    "timestamp": "2026-10-20T01:03:35Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "1a647f100e"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

@@ -1,21 +1,21 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "39195230650",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39195230650",
- "date": "2026-10-19T03:33:17+00:00",
+ "id": "39364666031",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39364666031",
+ "date": "2026-10-20T03:30:37+00:00",
  "commit": {
-  "id": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/943cbc47e2da9b0238421c4e30a12a8a858efd0e",
-  "message": "[programming_examples] transposes: add dyn, a runtime-shape strategy [LOW] (#3627)",
-  "timestamp": "2026-10-18T16:01:33Z"
+  "id": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/1a647f100e50c3f526d5e3c97eaba1327558e0f8",
+  "message": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile the cores (#3933)",
+  "timestamp": "2026-10-20T01:03:35Z"
  },
  "event": "schedule",
  "pmode": null,
  "device": null,
  "device_raw": null,
  "provenance": {
-  "commit": "943cbc47e2"
+  "commit": "1a647f100e"
  },
  "sane": true,
  "published": true,
@@ -46,7 +46,7 @@
     "unit": "pairs"
    },
    "wall_s": {
-    "value": 135.7,
+    "value": 234.1,
     "unit": "s"
    }
   }
@@ -100,7 +100,7 @@
   {
    "name": "stress",
    "ok": true,
-   "detail": "300/300 placed in 0.0s (max 30s)"
+   "detail": "300/300 placed in 0.1s (max 30s)"
   }
  ]
 }

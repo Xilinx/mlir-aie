@@ -1,27 +1,30 @@
 {
  "schema": 1,
  "target": "router",
- "id": "39195230650",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39195230650",
- "date": "2026-10-19T03:33:17+00:00",
+ "id": "39364666031",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39364666031",
+ "date": "2026-10-20T03:30:37+00:00",
  "commit": {
-  "id": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/943cbc47e2da9b0238421c4e30a12a8a858efd0e",
-  "message": "[programming_examples] transposes: add dyn, a runtime-shape strategy [LOW] (#3627)",
-  "timestamp": "2026-10-18T16:01:33Z"
+  "id": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/1a647f100e50c3f526d5e3c97eaba1327558e0f8",
+  "message": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile the cores (#3933)",
+  "timestamp": "2026-10-20T01:03:35Z"
  },
  "event": "schedule",
  "pmode": null,
  "device": null,
  "device_raw": null,
  "provenance": {
-  "commit": "943cbc47e2"
+  "commit": "1a647f100e"
  },
  "sane": true,
  "published": true,
  "n_rows": 24,
- "exitstatus": 0,
- "failed": [],
+ "exitstatus": 1,
+ "failed": [
+  "npu1/hops-on/seed=207460330+1/mutator port-cap completeness",
+  "npu1/hops-off/seed=207460330+1/mutator port-cap completeness"
+ ],
  "truncated": [],
  "rows": {
   "npu1": {
@@ -42,15 +45,15 @@
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.023,
+    "value": 14.84,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 18.01,
+    "value": 13.02,
     "unit": "ms"
    },
    "failed_mutations": {
-    "value": 0,
+    "value": 2,
     "unit": "cases"
    },
    "survived_corruptions": {
@@ -72,15 +75,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.013,
+    "value": 1.0116,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.062,
+    "value": 14.905,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 24.31,
+    "value": 13.69,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -106,15 +109,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0113,
+    "value": 1.0099,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 17.606,
+    "value": 18.094,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 132.16,
+    "value": 162.81,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -136,75 +139,75 @@
   {
    "device": "npu1",
    "run": "properties",
-   "first_seed": 207450000,
+   "first_seed": 207460000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu1",
    "run": "hops-on",
-   "first_seed": 207450000,
+   "first_seed": 207460000,
    "seeds": 400,
-   "killed": 1909,
+   "killed": 1874,
    "survived": 0,
-   "failures": 0
+   "failures": 1
   },
   {
    "device": "npu1",
    "run": "hops-off",
-   "first_seed": 207450000,
+   "first_seed": 207460000,
    "seeds": 400,
-   "killed": 1901,
+   "killed": 1864,
    "survived": 0,
-   "failures": 0
+   "failures": 1
   },
   {
    "device": "npu2",
    "run": "properties",
-   "first_seed": 207450000,
+   "first_seed": 207460000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu2",
    "run": "hops-on",
-   "first_seed": 207450000,
+   "first_seed": 207460000,
    "seeds": 400,
-   "killed": 1890,
+   "killed": 1873,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "hops-off",
-   "first_seed": 207450000,
+   "first_seed": 207460000,
    "seeds": 400,
-   "killed": 1882,
+   "killed": 1863,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "properties",
-   "first_seed": 207450000,
+   "first_seed": 207460000,
    "seeds": 500,
    "failed": []
   },
   {
    "device": "xcvc1902",
    "run": "hops-on",
-   "first_seed": 207450000,
+   "first_seed": 207460000,
    "seeds": 100,
-   "killed": 406,
+   "killed": 405,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "hops-off",
-   "first_seed": 207450000,
+   "first_seed": 207460000,
    "seeds": 100,
-   "killed": 405,
+   "killed": 404,
    "survived": 0,
    "failures": 0
   }
