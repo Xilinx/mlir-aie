@@ -1,389 +1,53 @@
 {
  "edges": [
-  {
-   "end_ms": 0,
-   "ms": 0,
-   "name": "input.mlir",
-   "peak_mib": 86.4296875,
-   "rss_after_mib": 86.4296875,
-   "start_ms": 0
-  },
-  {
-   "end_ms": 31,
-   "ms": 31,
-   "name": "default_stack_size.mlir",
-   "peak_mib": 103.1171875,
-   "rss_after_mib": 95.1171875,
-   "start_ms": 0
-  },
-  {
-   "end_ms": 993,
-   "ms": 961,
-   "name": "placed.mlir",
-   "peak_mib": 112.4609375,
-   "rss_after_mib": 100.6875,
-   "start_ms": 32
-  },
-  {
-   "end_ms": 995,
-   "ms": 2,
-   "name": "traced.mlir",
-   "peak_mib": 112.4609375,
-   "rss_after_mib": 100.6875,
-   "start_ms": 993
-  },
-  {
-   "end_ms": 1150,
-   "ms": 154,
-   "name": "input_with_symbols.mlir",
-   "peak_mib": 119.0625,
-   "rss_after_mib": 112.8515625,
-   "start_ms": 996
-  },
-  {
-   "end_ms": 1168,
-   "ms": 17,
-   "name": "input_physical.mlir",
-   "peak_mib": 119.0625,
-   "rss_after_mib": 113.0390625,
-   "start_ms": 1151
-  },
-  {
-   "end_ms": 16894,
-   "ms": 15725,
-   "name": "awaitLinkFiles",
-   "peak_mib": 119.0625,
-   "rss_after_mib": 113.0390625,
-   "start_ms": 1169
-  },
-  {
-   "end_ms": 16927,
-   "ms": 33,
-   "name": "deviceCacheLookup",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 114.08984375,
-   "start_ms": 16894
-  },
-  {
-   "end_ms": 16927,
-   "ms": 0,
-   "name": "perCore_{0}.mlir",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 114.08984375,
-   "start_ms": 16927
-  },
-  {
-   "end_ms": 17035,
-   "ms": 107,
-   "name": "lowered_{0}.mlir",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 115.21484375,
-   "start_ms": 16928
-  },
-  {
-   "end_ms": 17035,
-   "ms": 0,
-   "name": "perCoreInDevice",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 115.21484375,
-   "start_ms": 17035
-  },
-  {
-   "end_ms": 17051,
-   "ms": 15,
-   "name": "llvmIR_{0}.ll",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 117.08984375,
-   "start_ms": 17036
-  },
-  {
-   "end_ms": 17051,
-   "ms": 0,
-   "name": "perCoreCompile",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 117.08984375,
-   "start_ms": 17051
-  },
-  {
-   "end_ms": 17052,
-   "ms": 0,
-   "name": "preBakedCores",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 117.08984375,
-   "start_ms": 17052
-  },
-  {
-   "end_ms": 17058,
-   "ms": 6,
-   "name": "peano-compat_{0}.ll",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 117.08984375,
-   "start_ms": 17052
-  },
-  {
-   "end_ms": 17058,
-   "ms": 0,
-   "name": "perCoreStackSpace_{0}.txt",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 117.08984375,
-   "start_ms": 17058
-  },
-  {
-   "end_ms": 17059,
-   "ms": 0,
-   "name": "perCoreArches_{0}.txt",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 117.08984375,
-   "start_ms": 17059
-  },
-  {
-   "end_ms": 17059,
-   "ms": 0,
-   "name": "perCoreIRLinkFiles_{0}.txt",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 117.08984375,
-   "start_ms": 17059
-  },
-  {
-   "end_ms": 17060,
-   "ms": 0,
-   "name": "peano-linked_{0}.ll",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 117.27734375,
-   "start_ms": 17060
-  },
-  {
-   "end_ms": 17062,
-   "ms": 2,
-   "name": "probeScripts_{0}.ld.script",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 119.5859375,
-   "start_ms": 17060
-  },
-  {
-   "end_ms": 17210,
-   "ms": 150,
-   "name": "objects_{0}.o",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 121.8359375,
-   "start_ms": 17060
-  },
-  {
-   "end_ms": 17222,
-   "ms": 80,
-   "name": "probeElfs_{0}.elf",
-   "peak_mib": 126.85546875,
-   "rss_after_mib": 121.8359375,
-   "start_ms": 17142
-  },
-  {
-   "end_ms": 17251,
-   "ms": 28,
-   "name": "input_with_addresses.mlir",
-   "peak_mib": 145.4609375,
-   "rss_after_mib": 145.4609375,
-   "start_ms": 17223
-  },
-  {
-   "end_ms": 17251,
-   "ms": 0,
-   "name": "placedCore_{0}.mlir",
-   "peak_mib": 145.4609375,
-   "rss_after_mib": 145.4609375,
-   "start_ms": 17251
-  },
-  {
-   "end_ms": 17251,
-   "ms": 0,
-   "name": "sequencePlacement",
-   "peak_mib": 145.4609375,
-   "rss_after_mib": 145.4609375,
-   "start_ms": 17251
-  },
-  {
-   "end_ms": 17251,
-   "ms": 0,
-   "name": "placedCoreCompile",
-   "peak_mib": 145.4609375,
-   "rss_after_mib": 145.4609375,
-   "start_ms": 17251
-  },
-  {
-   "end_ms": 17255,
-   "ms": 3,
-   "name": "npu_materialized.mlir",
-   "peak_mib": 145.4609375,
-   "rss_after_mib": 145.4609375,
-   "start_ms": 17252
-  },
-  {
-   "end_ms": 17258,
-   "ms": 2,
-   "name": "ldScripts_{0}.ld.script",
-   "peak_mib": 145.65234375,
-   "rss_after_mib": 145.65234375,
-   "start_ms": 17256
-  },
-  {
-   "end_ms": 17269,
-   "ms": 11,
-   "name": "npu_dma_lowered.mlir",
-   "peak_mib": 145.65234375,
-   "rss_after_mib": 145.65234375,
-   "start_ms": 17258
-  },
-  {
-   "end_ms": 17297,
-   "ms": 0,
-   "name": "npu_lowered.mlir",
-   "peak_mib": 145.65234375,
-   "rss_after_mib": 145.65234375,
-   "start_ms": 17297
-  },
-  {
-   "end_ms": 17298,
-   "ms": 0,
-   "name": "npu_seq_{0}.mlir",
-   "peak_mib": 145.65234375,
-   "rss_after_mib": 145.65234375,
-   "start_ms": 17298
-  },
-  {
-   "end_ms": 17298,
-   "ms": 0,
-   "name": "perSeqMatching",
-   "peak_mib": 145.65234375,
-   "rss_after_mib": 145.65234375,
-   "start_ms": 17298
-  },
-  {
-   "end_ms": 17298,
-   "ms": 0,
-   "name": "npu_program_{0}.bin",
-   "peak_mib": 145.65234375,
-   "rss_after_mib": 145.65234375,
-   "start_ms": 17298
-  },
-  {
-   "end_ms": 17298,
-   "ms": 0,
-   "name": "insts.bin",
-   "peak_mib": 145.65234375,
-   "rss_after_mib": 145.65234375,
-   "start_ms": 17298
-  },
-  {
-   "end_ms": 17314,
-   "ms": 58,
-   "name": "elfs_{0}.elf",
-   "peak_mib": 145.65234375,
-   "rss_after_mib": 145.65234375,
-   "start_ms": 17256
-  },
-  {
-   "end_ms": 17318,
-   "ms": 4,
-   "name": "measured_stack_sizes.mlir",
-   "peak_mib": 146.96484375,
-   "rss_after_mib": 146.96484375,
-   "start_ms": 17314
-  },
-  {
-   "end_ms": 17320,
-   "ms": 2,
-   "name": "measured_data_sizes.mlir",
-   "peak_mib": 148.27734375,
-   "rss_after_mib": 148.27734375,
-   "start_ms": 17318
-  },
-  {
-   "end_ms": 17323,
-   "ms": 2,
-   "name": "checked_bank_placement.mlir",
-   "peak_mib": 149.58984375,
-   "rss_after_mib": 149.58984375,
-   "start_ms": 17321
-  },
-  {
-   "end_ms": 17345,
-   "ms": 21,
-   "name": "physical_with_elfs.mlir",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 162.66796875,
-   "start_ms": 17324
-  },
-  {
-   "end_ms": 17345,
-   "ms": 0,
-   "name": "perDevice_{0}.mlir",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 162.66796875,
-   "start_ms": 17345
-  },
-  {
-   "end_ms": 17345,
-   "ms": 0,
-   "name": "perDeviceMatching",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 162.66796875,
-   "start_ms": 17345
-  },
-  {
-   "end_ms": 17378,
-   "ms": 32,
-   "name": "cdo_{0}",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 162.85546875,
-   "start_ms": 17346
-  },
-  {
-   "end_ms": 17378,
-   "ms": 0,
-   "name": "memTopology_{0}.json",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 162.85546875,
-   "start_ms": 17378
-  },
-  {
-   "end_ms": 17378,
-   "ms": 0,
-   "name": "kernels_{0}.json",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 162.85546875,
-   "start_ms": 17378
-  },
-  {
-   "end_ms": 17378,
-   "ms": 0,
-   "name": "bif_{0}.bif",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 162.85546875,
-   "start_ms": 17378
-  },
-  {
-   "end_ms": 17384,
-   "ms": 5,
-   "name": "{0}.pdi",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 168.29296875,
-   "start_ms": 17379
-  },
-  {
-   "end_ms": 17384,
-   "ms": 0,
-   "name": "partition_{0}.json",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 168.29296875,
-   "start_ms": 17384
-  },
-  {
-   "end_ms": 17417,
-   "ms": 32,
-   "name": "final.xclbin",
-   "peak_mib": 170.58984375,
-   "rss_after_mib": 168.29296875,
-   "start_ms": 17385
-  }
+  {"end_ms": 0, "ms": 0, "name": "input.mlir", "peak_mib": 86.4296875, "rss_after_mib": 86.4296875, "start_ms": 0},
+  {"end_ms": 31, "ms": 31, "name": "default_stack_size.mlir", "peak_mib": 103.1171875, "rss_after_mib": 95.1171875, "start_ms": 0},
+  {"end_ms": 993, "ms": 961, "name": "placed.mlir", "peak_mib": 112.4609375, "rss_after_mib": 100.6875, "start_ms": 32},
+  {"end_ms": 995, "ms": 2, "name": "traced.mlir", "peak_mib": 112.4609375, "rss_after_mib": 100.6875, "start_ms": 993},
+  {"end_ms": 1150, "ms": 154, "name": "input_with_symbols.mlir", "peak_mib": 119.0625, "rss_after_mib": 112.8515625, "start_ms": 996},
+  {"end_ms": 1168, "ms": 17, "name": "input_physical.mlir", "peak_mib": 119.0625, "rss_after_mib": 113.0390625, "start_ms": 1151},
+  {"end_ms": 16894, "ms": 15725, "name": "awaitLinkFiles", "peak_mib": 119.0625, "rss_after_mib": 113.0390625, "start_ms": 1169},
+  {"end_ms": 16927, "ms": 33, "name": "deviceCacheLookup", "peak_mib": 126.85546875, "rss_after_mib": 114.08984375, "start_ms": 16894},
+  {"end_ms": 16927, "ms": 0, "name": "perCore_{0}.mlir", "peak_mib": 126.85546875, "rss_after_mib": 114.08984375, "start_ms": 16927},
+  {"end_ms": 17035, "ms": 107, "name": "lowered_{0}.mlir", "peak_mib": 126.85546875, "rss_after_mib": 115.21484375, "start_ms": 16928},
+  {"end_ms": 17035, "ms": 0, "name": "perCoreInDevice", "peak_mib": 126.85546875, "rss_after_mib": 115.21484375, "start_ms": 17035},
+  {"end_ms": 17051, "ms": 15, "name": "llvmIR_{0}.ll", "peak_mib": 126.85546875, "rss_after_mib": 117.08984375, "start_ms": 17036},
+  {"end_ms": 17051, "ms": 0, "name": "perCoreCompile", "peak_mib": 126.85546875, "rss_after_mib": 117.08984375, "start_ms": 17051},
+  {"end_ms": 17052, "ms": 0, "name": "preBakedCores", "peak_mib": 126.85546875, "rss_after_mib": 117.08984375, "start_ms": 17052},
+  {"end_ms": 17058, "ms": 6, "name": "peano-compat_{0}.ll", "peak_mib": 126.85546875, "rss_after_mib": 117.08984375, "start_ms": 17052},
+  {"end_ms": 17058, "ms": 0, "name": "perCoreStackSpace_{0}.txt", "peak_mib": 126.85546875, "rss_after_mib": 117.08984375, "start_ms": 17058},
+  {"end_ms": 17059, "ms": 0, "name": "perCoreArches_{0}.txt", "peak_mib": 126.85546875, "rss_after_mib": 117.08984375, "start_ms": 17059},
+  {"end_ms": 17059, "ms": 0, "name": "perCoreIRLinkFiles_{0}.txt", "peak_mib": 126.85546875, "rss_after_mib": 117.08984375, "start_ms": 17059},
+  {"end_ms": 17060, "ms": 0, "name": "peano-linked_{0}.ll", "peak_mib": 126.85546875, "rss_after_mib": 117.27734375, "start_ms": 17060},
+  {"end_ms": 17062, "ms": 2, "name": "probeScripts_{0}.ld.script", "peak_mib": 126.85546875, "rss_after_mib": 119.5859375, "start_ms": 17060},
+  {"end_ms": 17210, "ms": 150, "name": "objects_{0}.o", "peak_mib": 126.85546875, "rss_after_mib": 121.8359375, "start_ms": 17060},
+  {"end_ms": 17222, "ms": 80, "name": "probeElfs_{0}.elf", "peak_mib": 126.85546875, "rss_after_mib": 121.8359375, "start_ms": 17142},
+  {"end_ms": 17251, "ms": 28, "name": "input_with_addresses.mlir", "peak_mib": 145.4609375, "rss_after_mib": 145.4609375, "start_ms": 17223},
+  {"end_ms": 17251, "ms": 0, "name": "placedCore_{0}.mlir", "peak_mib": 145.4609375, "rss_after_mib": 145.4609375, "start_ms": 17251},
+  {"end_ms": 17251, "ms": 0, "name": "sequencePlacement", "peak_mib": 145.4609375, "rss_after_mib": 145.4609375, "start_ms": 17251},
+  {"end_ms": 17251, "ms": 0, "name": "placedCoreCompile", "peak_mib": 145.4609375, "rss_after_mib": 145.4609375, "start_ms": 17251},
+  {"end_ms": 17255, "ms": 3, "name": "npu_materialized.mlir", "peak_mib": 145.4609375, "rss_after_mib": 145.4609375, "start_ms": 17252},
+  {"end_ms": 17258, "ms": 2, "name": "ldScripts_{0}.ld.script", "peak_mib": 145.65234375, "rss_after_mib": 145.65234375, "start_ms": 17256},
+  {"end_ms": 17269, "ms": 11, "name": "npu_dma_lowered.mlir", "peak_mib": 145.65234375, "rss_after_mib": 145.65234375, "start_ms": 17258},
+  {"end_ms": 17297, "ms": 0, "name": "npu_lowered.mlir", "peak_mib": 145.65234375, "rss_after_mib": 145.65234375, "start_ms": 17297},
+  {"end_ms": 17298, "ms": 0, "name": "npu_seq_{0}.mlir", "peak_mib": 145.65234375, "rss_after_mib": 145.65234375, "start_ms": 17298},
+  {"end_ms": 17298, "ms": 0, "name": "perSeqMatching", "peak_mib": 145.65234375, "rss_after_mib": 145.65234375, "start_ms": 17298},
+  {"end_ms": 17298, "ms": 0, "name": "npu_program_{0}.bin", "peak_mib": 145.65234375, "rss_after_mib": 145.65234375, "start_ms": 17298},
+  {"end_ms": 17298, "ms": 0, "name": "insts.bin", "peak_mib": 145.65234375, "rss_after_mib": 145.65234375, "start_ms": 17298},
+  {"end_ms": 17314, "ms": 58, "name": "elfs_{0}.elf", "peak_mib": 145.65234375, "rss_after_mib": 145.65234375, "start_ms": 17256},
+  {"end_ms": 17318, "ms": 4, "name": "measured_stack_sizes.mlir", "peak_mib": 146.96484375, "rss_after_mib": 146.96484375, "start_ms": 17314},
+  {"end_ms": 17320, "ms": 2, "name": "measured_data_sizes.mlir", "peak_mib": 148.27734375, "rss_after_mib": 148.27734375, "start_ms": 17318},
+  {"end_ms": 17323, "ms": 2, "name": "checked_bank_placement.mlir", "peak_mib": 149.58984375, "rss_after_mib": 149.58984375, "start_ms": 17321},
+  {"end_ms": 17345, "ms": 21, "name": "physical_with_elfs.mlir", "peak_mib": 170.58984375, "rss_after_mib": 162.66796875, "start_ms": 17324},
+  {"end_ms": 17345, "ms": 0, "name": "perDevice_{0}.mlir", "peak_mib": 170.58984375, "rss_after_mib": 162.66796875, "start_ms": 17345},
+  {"end_ms": 17345, "ms": 0, "name": "perDeviceMatching", "peak_mib": 170.58984375, "rss_after_mib": 162.66796875, "start_ms": 17345},
+  {"end_ms": 17378, "ms": 32, "name": "cdo_{0}", "peak_mib": 170.58984375, "rss_after_mib": 162.85546875, "start_ms": 17346},
+  {"end_ms": 17378, "ms": 0, "name": "memTopology_{0}.json", "peak_mib": 170.58984375, "rss_after_mib": 162.85546875, "start_ms": 17378},
+  {"end_ms": 17378, "ms": 0, "name": "kernels_{0}.json", "peak_mib": 170.58984375, "rss_after_mib": 162.85546875, "start_ms": 17378},
+  {"end_ms": 17378, "ms": 0, "name": "bif_{0}.bif", "peak_mib": 170.58984375, "rss_after_mib": 162.85546875, "start_ms": 17378},
+  {"end_ms": 17384, "ms": 5, "name": "{0}.pdi", "peak_mib": 170.58984375, "rss_after_mib": 168.29296875, "start_ms": 17379},
+  {"end_ms": 17384, "ms": 0, "name": "partition_{0}.json", "peak_mib": 170.58984375, "rss_after_mib": 168.29296875, "start_ms": 17384},
+  {"end_ms": 17417, "ms": 32, "name": "final.xclbin", "peak_mib": 170.58984375, "rss_after_mib": 168.29296875, "start_ms": 17385}
  ],
  "version": 1,
  "wall_ms": 17417
