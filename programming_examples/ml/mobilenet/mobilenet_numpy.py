@@ -308,7 +308,7 @@ def _banker_round_div(numer, denom):
 
 # ---------------------------------------------------------------------------
 # Kernel: post_l2 FC (1x1 conv on uint16 inputs)
-# Translated from conv2dk1_ui16_scalar_pad.
+# The arithmetic of post_L2_fc_ui16_ic_chunk (aie_kernels/conv).
 # Output stored as uint16 but clamped to [0, 255] (UMAX) — i.e. uint8 value
 # zero-extended into uint16 memory.
 # ---------------------------------------------------------------------------

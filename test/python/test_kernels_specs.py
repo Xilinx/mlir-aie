@@ -782,11 +782,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
     ),
     KernelSpec(
-        name="bn_fc_relu_ui16_pad",
-        factory=kernels.bn_fc_relu_ui16_pad,
+        name="bn_fc_relu_ui16_ic_chunk",
+        factory=kernels.bn_fc_relu_ui16_ic_chunk,
         kwargs=dict(),
-        arg_count=8,
-        expected_name="post_L2_conv2dk1_relu_i16_ui16_pad",
+        arg_count=6,
+        expected_name="post_L2_fc_ui16_ic_chunk",
     ),
     KernelSpec(
         name="bn_conv2dk1_partial_put_i8",
