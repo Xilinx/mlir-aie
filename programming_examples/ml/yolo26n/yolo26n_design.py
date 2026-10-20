@@ -30,6 +30,7 @@ from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.iron import Buffer, ExternalFunction, ObjectFifo, TaskGroup, Worker, kernels
+from aie.iron.algorithms import sliding_3row
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.objectfifo import ObjectFifoHandle
 from aie.utils.config import aie_kernels_dir
@@ -998,10 +999,10 @@ class SegmentDesign:
         out = self.fifo(op.dst).prod(depth=1 + double)
 
         def body3(src, out, k, *consts):
-            def step(rows, check):
+            def step(top, mid, bot, o, _wts, check):
+                rows = [top, mid, bot]
                 if not part.whole:
                     rows = [view(r, part.offset, part.size) for r in rows]
-                o = out.acquire(1)
                 call(
                     k,
                     rows,
@@ -1016,25 +1017,22 @@ class SegmentDesign:
                     shift,
                     0,
                 )
-                out.release(1)
 
-            rows = src.acquire(2)
-            step([rows[0], rows[0], rows[1]], 0)
             if op.stride == 1:
-                for _ in range_(op.dst.height - 2):
-                    rows = src.acquire(3)
-                    step([rows[0], rows[1], rows[2]], 1)
-                    src.release(1)
-                rows = src.acquire(2)
-                step([rows[0], rows[1], rows[1]], 2)
+                sliding_3row(src, out, n_out_rows=op.dst.height, do_kernel=step)
+                return
+            rows = src.acquire(2)
+            o = out.acquire(1)
+            step(rows[0], rows[0], rows[1], o, None, 0)
+            out.release(1)
+            src.release(1)
+            for _ in range_(op.dst.height - 1):
+                rows = src.acquire(3)
+                o = out.acquire(1)
+                step(rows[0], rows[1], rows[2], o, None, 1)
+                out.release(1)
                 src.release(2)
-            else:
-                src.release(1)
-                for _ in range_(op.dst.height - 1):
-                    rows = src.acquire(3)
-                    step([rows[0], rows[1], rows[2]], 1)
-                    src.release(2)
-                src.release(1)
+            src.release(1)
 
         self.workers.append(Worker(body3, [source, out, k, *constants]))
 
