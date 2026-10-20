@@ -12,10 +12,16 @@ is read into a ``Declaration`` as its body finishes.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import MISSING
 from enum import Enum
 from types import FunctionType
-from typing import Any, ClassVar, Self, dataclass_transform
+from typing import Any, ClassVar
+
+if sys.version_info >= (3, 11):
+    from typing import Self, dataclass_transform
+else:
+    from typing_extensions import Self, dataclass_transform
 
 import numpy as np
 

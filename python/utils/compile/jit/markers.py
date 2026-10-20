@@ -52,7 +52,13 @@ instead.
 from __future__ import annotations
 
 import math
-from typing import Annotated, Any, NoReturn, Self, TypeVar
+import sys
+from typing import Annotated, Any, NoReturn, TypeVar
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 import numpy as np
 from ml_dtypes import bfloat16
