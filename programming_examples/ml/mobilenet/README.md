@@ -37,6 +37,7 @@ python3 -m mobilenet.aie2_mobilenet_iron                  # compile, 20 warmup +
 python3 -m mobilenet.aie2_mobilenet_iron -w 2 -i 20       # warmup / timed launches
 python3 -m mobilenet.aie2_mobilenet_iron --batch 16       # 16 images per launch
 python3 -m mobilenet.aie2_mobilenet_iron --dynamic 1 4 16 64  # one compile, any batch per launch
+python3 -m mobilenet.aie2_mobilenet_iron --batch 16 --trace_size 67108864  # trace 31 cores to trace_mobilenet_b16.json
 python3 -m mobilenet.test_e2e block bn3                   # one bottleneck standalone
 python3 -m mobilenet.test_e2e chain cascade               # bn13 -> bn14
 ```
