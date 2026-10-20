@@ -22,6 +22,7 @@ Run (compiles the design, or reuses its JIT cache entry):
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -550,6 +551,15 @@ def main():
         help="also generate the first dispatch's tokens one per dispatch, from the "
         "same inputs; the records, KV cache and stage must be byte-identical",
     )
+    p.add_argument(
+        "--save-run",
+        help="run the dispatches and save what the device left to this .npz, "
+        "without the oracle (which takes about 30 min a token at 128k)",
+    )
+    p.add_argument(
+        "--from-run",
+        help="check a --save-run .npz, saved with the same flags, without the NPU",
+    )
     opts = p.parse_args()
     fseed = opts.seed
     sample = (opts.sample_temp, opts.sample_topk, opts.sample_seed)
@@ -568,6 +578,21 @@ def main():
         p.error(f"{n_tok} tokens from position {p0} do not fit in T={T}")
     if (n_disp > 1) + (opts.repeats > 1) + opts.split > 1:
         p.error("--dispatches, --repeats and --split are separate modes")
+    if (opts.save_run or opts.from_run) and (
+        opts.time or opts.split or opts.repeats > 1
+    ):
+        p.error("--save-run and --from-run check a run of --dispatches")
+    config = json.dumps(
+        dict(
+            n_layers=N_LAYERS,
+            t=T,
+            kset=ONESTREAM_KSET,
+            seed=fseed,
+            synthetic=opts.synthetic_weights,
+            schedule=schedule,
+            sample=sample,
+        )
+    )
 
     assert VOCAB == VOCAB_SIZE and D == EMB_DIM
     if opts.synthetic_weights:
@@ -594,20 +619,23 @@ def main():
         [lyr["v_scales_slot"].copy() for lyr in layers],
     )
 
-    w_t = iron.tensor(pack_wblob(layers, rope), dtype=np.int8)
     kv0 = pack_kv(layers)
     stage0 = pack_stage(layers, gamma, x_i8, res_scale)
 
-    session = DispatchSession(
-        build,
-        opts.elf,
-        P_MAX=P_MAX,
-        N_LAYERS=N_LAYERS,
-        T=T,
-        KSET=ONESTREAM_KSET,
-        ATTN_CORES=ATTN_CORES,
-    )
-    lmw_t = iron.tensor(lmw, dtype=np.int8)
+    # --from-run leaves the NPU alone.
+    session = w_t = lmw_t = None
+    if not opts.from_run:
+        w_t = iron.tensor(pack_wblob(layers, rope), dtype=np.int8)
+        session = DispatchSession(
+            build,
+            opts.elf,
+            P_MAX=P_MAX,
+            N_LAYERS=N_LAYERS,
+            T=T,
+            KSET=ONESTREAM_KSET,
+            ATTN_CORES=ATTN_CORES,
+        )
+        lmw_t = iron.tensor(lmw, dtype=np.int8)
     print(
         f"chain_persist_grow_mh N_LAYERS={N_LAYERS} passes={[n for _, n in schedule]}"
         f" P0={p0} KSET={ONESTREAM_KSET}"
@@ -616,6 +644,7 @@ def main():
         flush=True,
     )
     if opts.time:
+        assert session is not None
         return time_decode(
             session,
             [
@@ -633,6 +662,7 @@ def main():
     # tensor is created once per run of dispatches and stays on the device,
     # so a generation loop's dispatches carry the cache with no host copy.
     def dispatch(stage_t, kv_t, params):
+        assert session is not None
         out_t = iron.zeros([P_MAX * REC_BYTES], dtype=np.int8)
         session([w_t, kv_t, lmw_t, out_t, stage_t], **params)
         out_t.to("cpu")
@@ -709,14 +739,51 @@ def main():
     else:
         # Like the KV tensor, the stage tensor stays on the device: the host
         # writes the first dispatch's seed into it, and each dispatch leaves
-        # the next one's there.
-        kv_t = iron.tensor(kv0, dtype=np.int32)
-        stage_t = iron.tensor(stage0, dtype=np.int8)
+        # the next one's there. Per dispatch, the device's records, stage and
+        # the KV words it changed; then the checks, which --save-run and
+        # --from-run split off.
+        if opts.from_run:
+            saved = np.load(opts.from_run)
+            if str(saved["config"]) != config:
+                p.error(f"{opts.from_run} was run as {saved['config']}, not {config}")
+            runs = [
+                tuple(
+                    saved[f"{k}{d}"] for k in ("records", "stage", "kv_idx", "kv_val")
+                )
+                for d in range(n_disp)
+            ]
+        else:
+            kv_t = iron.tensor(kv0, dtype=np.int32)
+            stage_t = iron.tensor(stage0, dtype=np.int8)
+            kv_prev = kv0
+            runs = []
+            for d, (pos, passes) in enumerate(schedule):
+                if d:
+                    time.sleep(opts.idle_s)
+                records = dispatch(stage_t, kv_t, dispatch_params(pos, passes, sample))
+                kv_t.to("cpu")
+                stage_t.to("cpu")
+                kv_now = kv_t.numpy()
+                kv_idx = np.flatnonzero(kv_now != kv_prev)
+                runs.append((records, stage_t.numpy().copy(), kv_idx, kv_now[kv_idx]))
+                kv_prev = kv_now.copy()
+            if opts.save_run:
+                np.savez(
+                    opts.save_run,
+                    config=config,
+                    **{
+                        f"{k}{d}": v
+                        for d, run in enumerate(runs)
+                        for k, v in zip(("records", "stage", "kv_idx", "kv_val"), run)
+                    },
+                )
+                print(f"saved the device's run to {opts.save_run}")
+                return 0
+        kv_dev = kv0.copy()
         x_d, sc_d = x_i8, res_scale
-        for d, (pos, passes) in enumerate(schedule):
-            if d:
-                time.sleep(opts.idle_s)
-            toks_out = dispatch(stage_t, kv_t, dispatch_params(pos, passes, sample))
+        for d, ((pos, passes), (toks_out, stage, kv_idx, kv_val)) in enumerate(
+            zip(schedule, runs)
+        ):
             toks = tokens_of(toks_out, passes)
             dev_tokens += toks
             if n_disp > 1:
@@ -727,12 +794,12 @@ def main():
             tok_fails += fails
             # The device appended exactly the rows the oracle did, and wrote
             # nothing else.
-            kv_t.to("cpu")
-            wrong = int(np.count_nonzero(kv_t.numpy() != pack_kv(layers)))
+            kv_dev[kv_idx] = kv_val
+            wrong = int(np.count_nonzero(kv_dev != pack_kv(layers)))
             print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
             carry_fails += wrong != 0
             # The oracle's next layer-0 input is the last token's seed (body +
-            # scale), which the device left in the seed tensor with a zero pad.
+            # scale), which the device left in the stage with a zero pad.
             last = (passes - 1) * REC_BYTES
             x_d = toks_out[last : last + D].copy()
             sc_d = float(
@@ -740,13 +807,10 @@ def main():
                     0
                 ]
             )
-            stage_t.to("cpu")
-            hidden_fails += check_final(stage_t.numpy(), hidden)
+            hidden_fails += check_final(stage, hidden)
             seed_left = np.zeros(ACT_BYTES, dtype=np.int8)
             seed_left[: D + 4] = toks_out[last : last + D + 4]
-            if not np.array_equal(
-                stage_t.numpy()[SEED_AT : SEED_AT + ACT_BYTES], seed_left
-            ):
+            if not np.array_equal(stage[SEED_AT : SEED_AT + ACT_BYTES], seed_left):
                 print(f"  seed carry: FAIL (dispatch {d})", flush=True)
                 carry_fails += 1
 
