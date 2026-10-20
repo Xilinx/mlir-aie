@@ -561,8 +561,9 @@ class SegmentDesign:
         )
         if base is None or base[1] < lag:
             source, held = (self.fifo(tensor), 0) if base is None else base
-            if lag >= tensor.height:
-                # The consumer waits for the whole map: hold it in DDR.
+            if depth >= tensor.height - 1:
+                # The consumer waits for the whole map (its last row clamped,
+                # all but one): hold it in DDR.
                 staged = self.spill(
                     self.fifo(tensor),
                     Tensor(f"{tensor.name}/spill", *tensor.shape),
@@ -1578,29 +1579,33 @@ class SegmentDesign:
             upstream[name] = np.full(height, rows[height - 1])
         if height % 2:
             raise NotImplementedError(f"{op.name}: an odd number of query rows")
-        heads = []
+        # A memtile joins every worker's rows into pairs of the whole output
+        # row, the heads side by side; consumers take a row at a time.
+        self.need[op.dst.name] = upstream
+        self.heights[op.dst.name] = height
+        self.heights[qkv.name] = height
+        size = hd * width
+        whole = op.dst.row_bytes
+        self.fifos[op.dst.name] = ObjectFifo(
+            row(2 * whole), name=f"t{len(self.fifos)}", consumer_obj_type=row(whole)
+        )
+        self.joined.add(op.dst.name)
+        name = self.fifo(op.dst).name
+        # In offset order: a join's inputs fill its object in turn.
+        rows = (
+            self.fifo(op.dst)
+            .prod(depth=2)
+            .join(
+                [j * whole + h * size for j in range(2) for h in range(op.heads)],
+                obj_types=[row(size)] * (2 * op.heads),
+                depths=[2] * (2 * op.heads),
+                names=[
+                    f"{name}_head{h}_rows{j}" for j in range(2) for h in range(op.heads)
+                ],
+            )
+        )
         for h in range(op.heads):
-            out = Tensor(f"{op.name}/head{h}", hd, height, width)
-            self.local.add(out.name)
-            self.need[out.name] = upstream
-            self.heights[out.name] = height
-            self.heights[qkv.name] = height
-            heads.append(out)
-            size = out.row_bytes
-            self.fifos[out.name] = ObjectFifo(
-                row(2 * size), name=f"t{len(self.fifos)}", consumer_obj_type=row(size)
-            )
-            self.joined.add(out.name)
-            halves = (
-                self.fifo(out)
-                .prod(depth=2)
-                .join(
-                    [0, size],
-                    obj_types=[row(size)] * 2,
-                    depths=[2, 2],
-                    names=[f"{self.fifo(out).name}_rows{j}" for j in range(2)],
-                )
-            )
+            halves = rows[h :: op.heads]
             # Queries wait for every key, in DDR.
             queries = self.spill(
                 pieces[2 * h], Tensor(f"{op.name}/head{h}/queries", kd, height, width)
@@ -1651,7 +1656,6 @@ class SegmentDesign:
                         ],
                     )
                 )
-        self.virtual[op.dst.name] = [Part(t, 0, t.row_bytes) for t in heads]
         self.virtual[op.values.name] = [
             Part(qkv, h * per_head + 2 * kd * width, hd * width)
             for h in range(op.heads)
