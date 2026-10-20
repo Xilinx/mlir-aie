@@ -88,7 +88,8 @@ store_table_i8(int8_t *__restrict dst, aie::vector<int8, N> values,
       aie::bit_xor(values, aie::broadcast<int8, N>(-128))
           .template cast_to<uint8>();
   const uint8_t *__restrict t = reinterpret_cast<const uint8_t *>(table);
-  uint32_t *__restrict out = reinterpret_cast<uint32_t *>(dst);
+  using word = uint32_t __attribute__((may_alias));
+  word *__restrict out = reinterpret_cast<word *>(dst);
   AIE_LOOP_UNROLL_FULL
   for (unsigned i = 0; i < N / 4; i++)
     out[i] = (uint32_t)t[index[4 * i]] | (uint32_t)t[index[4 * i + 1]] << 8 |
