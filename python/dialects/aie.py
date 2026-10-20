@@ -819,6 +819,7 @@ class object_fifo(ObjectFifoCreateOp):
         disable_synchronization=None,
         iter_count=None,
         consumer_datatype=None,
+        out_of_order=None,
         loc=None,
         ip=None,
     ):
@@ -879,6 +880,7 @@ class object_fifo(ObjectFifoCreateOp):
             transport=(
                 Transport.coerce(transport).to_attr() if transport is not None else None
             ),
+            out_of_order=out_of_order,
             loc=loc,
             ip=ip,
         )
