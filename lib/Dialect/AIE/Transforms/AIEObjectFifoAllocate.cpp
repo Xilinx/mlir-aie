@@ -908,6 +908,26 @@ struct AIEObjectFifoAllocatePass
     return failure(clash);
   }
 
+  /// Whether this endpoint shares its pinned channel with other claimants.
+  ///
+  /// Only a packet-switched shim source. The runtime writes such a channel's
+  /// descriptors one transfer at a time, each under its own header, so the
+  /// streams stay apart. A channel whose descriptors are a fixed BD chain
+  /// holds no per-stream state, and sharing it needs the DMA's out-of-order
+  /// packet mode.
+  bool sharesPinnedChannel(RouteEndpoint endpoint, DMAChannelDir dir) {
+    if (dir != DMAChannelDir::MM2S || !tileOf(endpoint).isShimTile())
+      return false;
+    for (auto flow : device.getOps<RouteOp>()) {
+      if (!flow.getPacket() && !clPacketSwObjectFifos)
+        continue;
+      if (lookupEndpoint(flow.getSourceAttr()).getOperation() ==
+          endpoint.getOperation())
+        return true;
+    }
+    return false;
+  }
+
   LogicalResult assignChannels(DMAChannelAnalysis &channels,
                                bool diagnose = true) {
     channelAssignments.clear();
@@ -947,8 +967,9 @@ struct AIEObjectFifoAllocatePass
                  << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
                  << " cannot access adjacent MemTile buffers or locks";
         }
-        if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel,
-                                          endpoint.getOperation()) < 0) {
+        if (channels.reservePinnedChannel(
+                tileOf(endpoint), dir, *channel, endpoint.getOperation(),
+                sharesPinnedChannel(endpoint, dir)) < 0) {
           if (!diagnose)
             return failure();
           auto diag = endpoint->emitOpError("pinned ");

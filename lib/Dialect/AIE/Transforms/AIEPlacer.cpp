@@ -741,6 +741,54 @@ SequentialPlacer::buildChannelRequirements(
         linkedAsDest.insert(sym.getValue());
   }
 
+  // Producer endpoints that pin the same shim MM2S channel share it, so the
+  // tile pays for that channel once. The runtime writes a shim channel's
+  // descriptors one transfer at a time, each carrying its own packet header,
+  // so several packet-switched fifos leave on one channel and the switchbox
+  // tells them apart by id.
+  //
+  // Only that case. A channel whose descriptors are a fixed BD chain -- any
+  // S2MM channel, or an MM2S channel of a core or MemTile -- holds no per-fifo
+  // state, so two fifos on it would interleave into one ring. Sharing those
+  // needs the DMA's out-of-order packet mode, which no ObjectFifo lowering
+  // emits.
+  // Keyed on the physical tile, not the logical one: each endpoint pinned to a
+  // tile gets a logical tile of its own, and they share the channel all the
+  // same. An unpinned logical tile has no physical tile yet and cannot share.
+  llvm::DenseMap<std::tuple<int, int, int>, ObjectFifoCreateOp> sharedOut;
+  auto sharesProducerChannel = [&](ObjectFifoCreateOp fifo,
+                                   LogicalTileOp logicalTile) -> bool {
+    std::optional<int> pinned = fifo.getProdDmaChannel();
+    if (!pinned || !logicalTile)
+      return false;
+    std::optional<uint32_t> col = logicalTile.getCol();
+    std::optional<uint32_t> row = logicalTile.getRow();
+    if (!col || !row)
+      return false;
+    AIETileType type = logicalTile.getTileType();
+    if (type != AIETileType::ShimNOCTile && type != AIETileType::ShimPLTile)
+      return false;
+    auto [it, fresh] = sharedOut.try_emplace(
+        {static_cast<int>(*col), static_cast<int>(*row), *pinned}, fifo);
+    if (fresh)
+      return false;
+    ObjectFifoCreateOp other = it->second;
+    auto reject = [&](const Twine &why) {
+      fifo.emitError() << "shares MM2S channel " << *pinned << " with @"
+                       << other.getSymName() << ", but " << why;
+      return false;
+    };
+    if (!fifo.getPacket() || !other.getPacket())
+      return reject("a shared channel carries both at once, which only "
+                    "packet-switched routes tell apart");
+    std::optional<uint8_t> id = fifo.getPacketId();
+    std::optional<uint8_t> otherId = other.getPacketId();
+    if (id && otherId && *id == *otherId)
+      return reject(Twine("both pin packet id ") +
+                    Twine(static_cast<unsigned>(*id)));
+    return true;
+  };
+
   // Count channels for every ObjectFifo, omitting only the link-tile side of
   // linked fifos. The off-link-tile endpoint still needs DMA: a shim that
   // produces a linked source fifo consumes an MM2S channel; a core that
@@ -776,8 +824,10 @@ SequentialPlacer::buildChannelRequirements(
     }
 
     // Producer needs ONE output channel if any consumer needs DMA (unless the
-    // producer IS the link tile of an outgoing linked dest fifo).
-    if (producerNeedsDMA && producerOp && !skipProducerSide)
+    // producer IS the link tile of an outgoing linked dest fifo, or it shares
+    // an already-counted shim channel).
+    if (producerNeedsDMA && producerOp && !skipProducerSide &&
+        !sharesProducerChannel(ofOp, producerLogicalTile))
       channelRequirements[producerOp].second++; // output++
   }
 
