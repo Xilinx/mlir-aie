@@ -56,9 +56,6 @@ struct RuntimeCallGraphCyclicityAnalysis {
     // A cycle exists if we encounter a sequence already on the current path
     llvm::DenseSet<AIE::RuntimeSequenceOp> callStack;
     llvm::DenseSet<AIE::RuntimeSequenceOp> visited;
-    // A device named by many aiex.run ops across this walk (e.g. a callee
-    // reused across model layers) would otherwise have its symbol table
-    // rescanned per call.
     llvm::DenseMap<Operation *, AIE::NamedOpTable> calleeNames;
 
     std::function<bool(AIE::RuntimeSequenceOp)> hasCycle =
@@ -77,7 +74,7 @@ struct RuntimeCallGraphCyclicityAnalysis {
       bool foundCycle = false;
       seq.walk([&](RunOp runOp) {
         if (AIE::RuntimeSequenceOp callee =
-                runOp.getCalleeRuntimeSequenceOp(calleeNames)) {
+                runOp.getCalleeRuntimeSequenceOp(&calleeNames)) {
           if (hasCycle(callee)) {
             foundCycle = true;
             return WalkResult::interrupt();
@@ -478,7 +475,7 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 
     AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
     AIE::RuntimeSequenceOp calleeRuntimeSequence =
-        runOp.getCalleeRuntimeSequenceOp(calleeNames);
+        runOp.getCalleeRuntimeSequenceOp(&calleeNames);
     if (!calleeDevice || !calleeRuntimeSequence) {
       return failure();
     }
@@ -597,8 +594,6 @@ static LogicalResult verifyRunOpsInConfigureOp(
     llvm::DenseMap<Operation *, AIE::NamedOpTable> &referencedDevNames) {
   if (configureOp.getBody().empty())
     return success();
-  // See RuntimeCallGraphCyclicityAnalysis's calleeNames for why this caches
-  // a symbol table across calls instead of rescanning per aiex.run.
   AIE::NamedOpTable &devNames =
       referencedDevNames.try_emplace(referencedDev, referencedDev)
           .first->second;
@@ -681,8 +676,6 @@ struct AIEMaterializeRuntimeSequencesPass
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
-    // Shared across every device's verification below -- see
-    // RuntimeCallGraphCyclicityAnalysis's calleeNames for why.
     llvm::DenseMap<Operation *, AIE::NamedOpTable> referencedDevNames;
 
     // Process each device in the module

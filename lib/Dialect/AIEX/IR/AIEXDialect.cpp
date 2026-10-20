@@ -2106,34 +2106,8 @@ AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
   return referencedDevice;
 }
 
-AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
-  AIEX::ConfigureOp configureOp =
-      getOperation()->getParentOfType<AIEX::ConfigureOp>();
-  if (!configureOp) {
-    return nullptr;
-  }
-  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
-  if (!referencedDevice) {
-    return nullptr;
-  }
-
-  Operation *maybeRuntimeSequence =
-      SymbolTable::lookupSymbolIn(referencedDevice, getRuntimeSequenceSymbol());
-
-  if (!maybeRuntimeSequence) {
-    return nullptr;
-  }
-  AIE::RuntimeSequenceOp runtimeSequence =
-      llvm::dyn_cast<AIE::RuntimeSequenceOp>(maybeRuntimeSequence);
-  if (!runtimeSequence) {
-    return nullptr;
-  }
-
-  return runtimeSequence;
-}
-
 AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp(
-    llvm::DenseMap<Operation *, AIE::NamedOpTable> &cache) {
+    llvm::DenseMap<Operation *, AIE::NamedOpTable> *cache) {
   AIEX::ConfigureOp configureOp =
       getOperation()->getParentOfType<AIEX::ConfigureOp>();
   if (!configureOp) {
@@ -2144,10 +2118,12 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp(
     return nullptr;
   }
 
-  AIE::NamedOpTable &names =
-      cache.try_emplace(referencedDevice, referencedDevice).first->second;
-  return names.lookup<AIE::RuntimeSequenceOp>(
-      getRuntimeSequenceSymbolAttr().getAttr());
+  StringAttr name = getRuntimeSequenceSymbolAttr().getAttr();
+  if (!cache) {
+    return AIE::lookupNamedOpIn<AIE::RuntimeSequenceOp>(referencedDevice, name);
+  }
+  return cache->try_emplace(referencedDevice, referencedDevice)
+      .first->second.lookup<AIE::RuntimeSequenceOp>(name);
 }
 
 //===----------------------------------------------------------------------===//
