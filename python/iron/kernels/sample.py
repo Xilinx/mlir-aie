@@ -312,6 +312,31 @@ def order_keys(logits) -> np.ndarray:
     return np.where(negative, ~bits, bits | np.uint16(0x8000)).astype(np.uint16)
 
 
+def select_summary_ref(logits, k_max: int) -> np.ndarray:
+    """Return the summary ``sample_select`` writes for one column of bf16 ``logits`` at top_k ``k_max``.
+
+    Words as ``sample.h`` lays them out: tau (the k-th largest key), the
+    count of keys above it, the largest key, its first index and the count
+    of keys equal to tau, three zero words, an (index, key) pair per key
+    above tau in index order, zeros for the unused pairs (the device leaves
+    them as they were), then the bitmap of the indices holding tau.
+    """
+    keys = order_keys(logits).astype(np.int64)
+    n = keys.size
+    _check_slice("select_summary_ref", n, k_max)
+    tau = np.partition(keys, n - k_max)[n - k_max]
+    above = np.flatnonzero(keys > tau)
+    tied = keys == tau
+    words = np.zeros(summary_words(n, k_max), np.int32)
+    words[:5] = (tau, above.size, keys.max(), np.argmax(keys), tied.sum())
+    words[SUMMARY_HEADER : SUMMARY_HEADER + 2 * above.size : 2] = above
+    words[SUMMARY_HEADER + 1 : SUMMARY_HEADER + 2 * above.size : 2] = keys[above]
+    bitmap = np.packbits(tied, bitorder="little")
+    bitmap = np.pad(bitmap, (0, 4 * ((n + 31) // 32) - bitmap.size))
+    words[SUMMARY_HEADER + 2 * k_max :] = bitmap.view("<i4")
+    return words
+
+
 def check_order_preserving(temperature) -> None:
     """Raise unless ``l -> fl32(l / T)`` strictly increases over every finite bf16 l with a finite image.
 

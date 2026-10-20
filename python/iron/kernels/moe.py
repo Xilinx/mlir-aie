@@ -35,10 +35,12 @@ from ._common import (
 )
 from .core import conv_even
 from .sample import (
+    SUMMARY_HEADER,
     _check_slice,
     _positive,
     exp64_ref,
     order_keys,
+    select_summary_ref,
     summary_words,
 )
 
@@ -74,6 +76,12 @@ def router_top_k(*, slice_size=32, top_k=8) -> ExternalFunction:
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Out, Out),
+            reference=partial(router_top_k_summary_ref, top_k=top_k),
+            sample=partial(router_top_k_sample, slice_size=slice_size, top_k=top_k),
+            tolerance=Tolerance.exact(
+                note="ids and weights bit for bit: the weights are the float64 "
+                "softmax rounded once to bf16"
+            ),
         ),
     )
 
@@ -105,14 +113,77 @@ def router_top_k_ref(logits, top_k: int) -> tuple[np.ndarray, np.ndarray]:
     ties = np.flatnonzero(keys == tau)  # ascending index
     needed = top_k - above.size
     ids = np.concatenate([above, ties[:needed]]).astype(np.int32)
-    max_value = row[int(np.argmax(keys))].astype(np.float32)
-    values = row[ids].astype(np.float32)
-    shifted = (values - max_value).astype(np.float32)
+    return ids, _router_weights(row[ids], row[int(np.argmax(keys))])
+
+
+def _router_weights(values, max_value) -> np.ndarray:
+    """Return ``router_top_k``'s padded weights: the softmax of bf16 ``values`` against ``max_value``."""
+    values = np.asarray(values, bfloat16).astype(np.float32)
+    shifted = (values - np.float32(max_value)).astype(np.float32)
     w = exp64_ref(shifted.astype(np.float64))
-    packed = (w / w.sum()).astype(np.float32).astype(bfloat16)
-    weights = np.zeros(2 * top_k, dtype=bfloat16)
-    weights[0::2] = packed
+    weights = np.zeros(2 * values.size, dtype=bfloat16)
+    weights[0::2] = (w / w.sum()).astype(np.float32).astype(bfloat16)
+    return weights
+
+
+def _key_values(keys) -> np.ndarray:
+    """Return the bf16 logits of ``order_keys`` keys (+0 for the zero key)."""
+    keys = np.asarray(keys, np.int64)
+    bits = np.where(keys & 0x8000, keys & 0x7FFF, ~keys & 0xFFFF)
+    return bits.astype(np.uint16).view(bfloat16)
+
+
+def router_top_k_summary_ref(summary, *, top_k: int) -> tuple[np.ndarray, np.ndarray]:
+    """``(ids, weights)`` per call, as ``router_top_k`` writes them from each call's summary.
+
+    The summary's entries in order, then its lowest-index ties at tau, up to
+    ``top_k``; the softmax is ``router_top_k_ref``'s.
+    """
+    summary = np.asarray(summary, np.int32).reshape(-1, np.shape(summary)[-1])
+    ids = np.zeros((len(summary), top_k), np.int32)
+    weights = np.zeros((len(summary), 2 * top_k), bfloat16)
+    for c, words in enumerate(summary):
+        entries = int(words[1])
+        pairs = words[SUMMARY_HEADER : SUMMARY_HEADER + 2 * entries]
+        bitmap = words[SUMMARY_HEADER + 2 * top_k :].view(np.uint32)
+        tied = np.flatnonzero(np.unpackbits(bitmap.view(np.uint8), bitorder="little"))
+        ids[c] = np.concatenate([pairs[0::2], tied[: top_k - entries]])
+        keys = np.concatenate([pairs[1::2], np.full(top_k - entries, words[0])])
+        weights[c] = _router_weights(_key_values(keys), _key_values(words[2]))
     return ids, weights
+
+
+def router_top_k_sample(
+    rng: np.random.Generator, calls: int, *, slice_size: int, top_k: int
+) -> list[np.ndarray]:
+    """One ``sample_select`` summary per call, of rows chosen where a ranking can go wrong.
+
+    Random rows, then by turns: ties at the k-th value, one value everywhere,
+    signed zeros, exactly ``top_k`` finite logits among -inf, and the largest
+    value last among the winners.
+    """
+    n = slice_size
+    rows = []
+    for c in range(calls):
+        kind = c % 8
+        logits = rng.normal(0, 2, n)
+        if kind == 1:
+            logits = rng.normal(0, 0.5, n)
+            logits[rng.choice(n, top_k, replace=False)] = np.sort(logits)[
+                -1 - top_k // 2
+            ]
+        elif kind == 2:
+            logits = np.full(n, 1.5)
+        elif kind == 3:
+            logits = np.where(rng.random(n) < 0.5, -0.0, 0.0)
+            logits[rng.choice(n, min(3, n), replace=False)] = 1.0
+        elif kind == 4:
+            logits = np.full(n, -np.inf)
+            logits[rng.choice(n, top_k, replace=False)] = rng.normal(0, 1, top_k)
+        elif kind == 5:
+            logits = np.arange(n) / 16.0
+        rows.append(select_summary_ref(np.asarray(logits, bfloat16), top_k))
+    return [np.stack(rows)]
 
 
 def _experts_steps(hidden, width, rows, cols):

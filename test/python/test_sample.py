@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 from aie.iron import In, InOut, Out, kernels
 from aie.iron.device import from_name
-from aie.iron.kernels import sample
+from aie.iron.kernels import moe, sample
 from aie.iron.kernels._common import ARCH_TRAITS
 from aie.utils import config
 from aie.utils.compile.utils import compile_cxx_core_function
@@ -597,3 +597,25 @@ def test_kernels_build_for_every_architecture(arch, factory, kwargs, tmp_path):
         compile_args=list(fn._compile_flags),
     )
     assert (tmp_path / f"{fn.name}.o").stat().st_size > 0
+
+
+@pytest.mark.parametrize("slice_size, top_k", [(32, 8), (70, 4), (64, 16)])
+def test_a_summary_routes_as_the_logits_it_summarizes(slice_size, top_k):
+    # The device cases feed router_top_k summaries built on the host.
+    rng = np.random.default_rng(slice_size + top_k)
+    rows = [rng.normal(0, 2, slice_size) for _ in range(8)]
+    rows.append(np.full(slice_size, 1.5))
+    rows.append(np.where(rng.random(slice_size) < 0.5, -0.0, 0.0))
+    rows.append(np.arange(slice_size) / 16.0)
+    ties = rng.normal(0, 0.5, slice_size)
+    ties[rng.choice(slice_size, top_k, replace=False)] = np.sort(ties)[-1 - top_k // 2]
+    rows.append(ties)
+    for logits in rows:
+        logits = np.asarray(logits, bfloat16)
+        summary = sample.select_summary_ref(logits, top_k)
+        ids, weights = moe.router_top_k_summary_ref(summary, top_k=top_k)
+        want_ids, want_weights = moe.router_top_k_ref(logits, top_k)
+        np.testing.assert_array_equal(ids[0], want_ids)
+        np.testing.assert_array_equal(
+            weights[0].view(np.uint16), want_weights.view(np.uint16)
+        )

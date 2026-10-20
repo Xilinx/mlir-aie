@@ -467,6 +467,11 @@ CASES: list[Case] = [
         calls=2,
         tag="overlap",
     ),
+    # Granite-3.1-MoE's router, 8 of 32 experts, a summary a call
+    # (router_top_k_sample); 70 experts end the bitmap mid-word.
+    Case("router_top_k", calls=16, smoke=True),
+    check("router_top_k", dict(slice_size=70, top_k=4), calls=16, tag="bitmap-tail"),
+    check("router_top_k", dict(slice_size=64, top_k=16), calls=16, tag="k16"),
     # A row is four experts of 16 gate_up tiles and 8 down tiles each; three
     # rows check that each one starts its sum again, and the third repeats an
     # id (experts_sample).

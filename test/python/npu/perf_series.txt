@@ -521,6 +521,9 @@ rope/1024x16/bfloat16/cols=1024/two_halves=True
 rope/112x16/bfloat16/cols=112/row-tail
 rope/64x16/bfloat16/cols=64/two_halves=True/llama
 rope/96x16/bfloat16/cols=96/two_halves=True/row-tail
+router_top_k/19x16/int32_int32+bfloat16/slice_size=70/top_k=4/bitmap-tail
+router_top_k/25x16/int32_int32+bfloat16
+router_top_k/42x16/int32_int32+bfloat16/slice_size=64/top_k=16/k16
 row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/bit-48
 row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/carry
 row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/unsigned-words
