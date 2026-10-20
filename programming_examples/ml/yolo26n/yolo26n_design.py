@@ -22,9 +22,9 @@ from pathlib import Path
 
 import numpy as np
 from aie.dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
-from aie.dialects.arith import (
+from aie.dialects.arith import (  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
     index_cast,
-)  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+)
 from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
