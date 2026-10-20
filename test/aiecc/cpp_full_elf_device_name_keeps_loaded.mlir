@@ -11,7 +11,7 @@
 // REQUIRES: peano
 
 // RUN: rm -rf %t && mkdir -p %t
-// RUN: cd %t && aiecc --get-full-elf --device-name=main --tmpdir=%t %s 2>&1
+// RUN: cd %t && %aiecc --get-full-elf --device-name=main --tmpdir=%t %s 2>&1
 // RUN: cat %t/full_elf_config.json | FileCheck %s --implicit-check-not=unrelated.pdi
 
 // CHECK-DAG: main.pdi

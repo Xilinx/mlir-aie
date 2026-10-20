@@ -179,14 +179,17 @@ module @adjacency_allocate_delegate {
 // CHECK-LABEL: @adjacency_consumer_follows_owner
 module @adjacency_consumer_follows_owner {
   aie.device(npu2_1col) {
-    // CHECK: %[[OWNER:.*]] = aie.tile(0, 2)
-    // CHECK: aie.buffer(%[[OWNER]])
+    // CHECK-DAG: %[[CONSUMER:.*]] = aie.tile(0, 3)
+    // CHECK-DAG: %[[F0:.*]] = aie.tile(0, 4)
+    // CHECK-DAG: %[[F1:.*]] = aie.tile(0, 5)
+    // CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 2)
+    // CHECK: %[[BUF:.*]] = aie.buffer(%[[OWNER]])
     // CHECK: aie.core(%[[OWNER]])
-    // CHECK: aie.core(%tile_0_4)
-    // CHECK: aie.core(%tile_0_5)
-    // CHECK: aie.core(%tile_0_3)
+    // CHECK: aie.core(%[[F0]])
+    // CHECK: aie.core(%[[F1]])
+    // CHECK: aie.core(%[[CONSUMER]])
     // CHECK-NEXT: arith.constant
-    // CHECK-NEXT: memref.load %buffer_0_2
+    // CHECK-NEXT: memref.load %[[BUF]]
     %owner = aie.logical_tile<CoreTile>(?, ?)
     %buf = aie.buffer(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }

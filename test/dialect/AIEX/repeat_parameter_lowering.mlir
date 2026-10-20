@@ -57,7 +57,7 @@ aie.device(npu2) {
 // of tile (1, 1) at 0x21A060C = 35259916, with head BD 24 (odd channels own
 // BDs 24-47), and MM2S 2 at 0x21A0644 = 35259972, with head BD 0.
 
-// CHECK-LABEL: aie.runtime_sequence @memtile
+// CHECK-LABEL: aie.runtime_sequence @memtile_s2mm1
 // CHECK: aiex.npu.create_scratchpad {size = 4 : ui32}
 // CHECK: aiex.npu.update_from_scratchpad {address = 35259916 : ui32, func_arg = 24 : ui32, state_table_idx = 0 : ui8}
 // CHECK: aiex.npu.update_from_scratchpad {address = 35259972 : ui32, state_table_idx = 0 : ui8}
@@ -65,7 +65,7 @@ aiex.scratchpad_parameter @ring : i32
 aie.device(npu2) {
   %t = aie.tile(1, 1)
   %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
-  aie.runtime_sequence @memtile(%arg0 : memref<1024xi32>) {
+  aie.runtime_sequence @memtile_s2mm1(%arg0 : memref<1024xi32>) {
     %fill = aiex.dma_configure_task(%t, S2MM, 1) {
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
       aie.end
@@ -148,19 +148,19 @@ aie.device(npu2) {
 // control. The S2MM task holds BD 0 (0x1A0000 = 1703936), so the MM2S task's
 // head, a multiple of 4 here too, is BD 4 (0x1A0080 = 1704064).
 
-// CHECK-LABEL: aie.runtime_sequence @memtile
+// CHECK-LABEL: aie.runtime_sequence @memtile_runs
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 1703936 : ui32}
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 1704064 : ui32}
 // CHECK: aiex.npu.update_from_scratchpad {address = 1705476 : ui32, state_table_idx = 0 : ui8}
 // CHECK: aiex.npu.update_from_scratchpad {address = 1705524 : ui32, func_arg = 4 : ui32, state_table_idx = 0 : ui8}
-// MARK-LABEL: aie.runtime_sequence @memtile
+// MARK-LABEL: aie.runtime_sequence @memtile_runs
 // MARK: aiex.dma_start_task(%{{.*}}) {repeat_state_table_idx = 0 : ui8}
 // MARK: aiex.dma_start_task(%{{.*}}) {repeat_state_table_idx = 0 : ui8}
 aiex.scratchpad_parameter @runs : i32
 aie.device(npu2) {
   %t = aie.tile(0, 1)
   %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
-  aie.runtime_sequence @memtile(%arg0 : memref<1024xi32>) {
+  aie.runtime_sequence @memtile_runs(%arg0 : memref<1024xi32>) {
     %in = aiex.dma_configure_task(%t, S2MM, 0) {
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
       aie.end

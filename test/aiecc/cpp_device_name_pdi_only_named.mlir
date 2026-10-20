@@ -11,7 +11,7 @@
 // REQUIRES: peano
 
 // RUN: rm -rf %t && mkdir -p %t
-// RUN: cd %t && aiecc --get-pdi --pdi-name=design.pdi --device-name=main --tmpdir=%t/prj %s
+// RUN: cd %t && %aiecc --get-pdi --pdi-name=design.pdi --device-name=main --tmpdir=%t/prj %s
 // RUN: ls %t | FileCheck %s --implicit-check-not=.pdi
 
 // CHECK: design.pdi

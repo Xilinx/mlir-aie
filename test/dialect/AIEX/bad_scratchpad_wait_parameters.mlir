@@ -15,7 +15,6 @@
 
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
-  %t = aie.tile(0, 0)
   aie.runtime_sequence(%arg0 : memref<16xi32>) {
     // expected-error @+1 {{'aiex.wait_scratchpad_parameters' op must be inside an aie.core}}
     aiex.wait_scratchpad_parameters
@@ -37,6 +36,24 @@ aie.device(npu2) {
       aiex.wait_scratchpad_parameters
       %v = aiex.read_scratchpad_parameter @n : i32
     }
+    aie.end
+  }
+}
+
+// -----
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t02 = aie.tile(0, 2)
+  aie.core(%t02) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c4 = arith.constant 4 : index
+    scf.for %i = %c0 to %c4 step %c1 {
+      aiex.wait_scratchpad_parameters
+    }
+    // expected-error @+1 {{'aiex.read_scratchpad_parameter' op reads @n where no aiex.wait_scratchpad_parameters of its core comes first, so it may read a previous dispatch's value}}
+    %late = aiex.read_scratchpad_parameter @n : i32
     aie.end
   }
 }
