@@ -8,12 +8,8 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-// scalar_exp's algorithm per lane: x = k ln 2 + r by Cody-Waite (k ln 2's
-// high part is exact), e^r by its Taylor series to r^7, then 2^k added into
-// the exponent. Each f32 product is summed from exact limb products and each
-// sum rounded once, as the scalar f32 operations are. Lanes below -87.33654
-// give 0, above 88.72283 infinity (the ends of f32's normal range), and NaN
-// itself. The caller sets conv_even.
+// scalar_exp per lane on f32_split.h's limbs, with 2^k added into the
+// exponent. The caller sets conv_even.
 template <unsigned W>
 static inline __attribute__((always_inline)) aie::accum<accfloat, W>
 exp_f32(aie::accum<accfloat, W> x) {

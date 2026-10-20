@@ -102,11 +102,10 @@ inline Limbs<VI> splat_limbs(float c) {
   return bf16_limbs(AccI(aie::broadcast<float, VI>(c)));
 }
 
-// silu(g) * u, each product taken on exact bf16 limbs, so within a few
-// float32 ulps: exp(-g) the way scalar_exp takes it (Cody-Waite, then
-// Taylor to r^7, times 2^k), and 1 / (1 + e) from aie::inv and one Newton
-// step on an exact residual. Past -g = 88 or below -g = -80, sigmoid(g) is
-// 0 or 1 to float32, and the clamp keeps 2^k p normal.
+// silu(g) * u within a few float32 ulps: exp(-g) as scalar_exp takes it, on
+// bf16 limbs, and 1 / (1 + e) from aie::inv and one Newton step on an exact
+// residual. Past -g = 88 or below -g = -80, sigmoid(g) is 0 or 1 to float32,
+// and the clamp keeps 2^k p normal.
 inline AccI silu_mul(aie::vector<float, VI> g, aie::vector<float, VI> u) {
   const aie::vector<float, VI> x =
       aie::min(aie::max(aie::sub(aie::zeros<float, VI>(), g),
