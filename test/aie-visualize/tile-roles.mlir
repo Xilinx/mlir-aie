@@ -21,18 +21,19 @@
 
 // The two tiles running matmul twice plus zero share a role, so both carry the
 // same class marker and the same fill. The odd tile out keeps its kind fill
-// and carries no marker.
-// ROLES: tile_0_2 [shape=box{{.*}}label="(0,2)  A x2\nmatmul x2\nzero"
+// and carries no marker. A headline opens with a blank line, which keeps it
+// off the tile's top border.
+// ROLES: tile_0_2 [shape=box{{.*}}label="\n(0,2)  A x2\nmatmul x2\nzero"
 // ROLES-SAME: labelloc="t"
 // ROLES-SAME: fillcolor="#cfe3f7"
-// ROLES: tile_0_3 [shape=box{{.*}}label="(0,3)  A x2\nmatmul x2\nzero"
+// ROLES: tile_0_3 [shape=box{{.*}}label="\n(0,3)  A x2\nmatmul x2\nzero"
 // ROLES-SAME: fillcolor="#cfe3f7"
-// ROLES: tile_0_4 [shape=box{{.*}}label="(0,4)\nreduce"
+// ROLES: tile_0_4 [shape=box{{.*}}label="\n(0,4)\nreduce"
 // ROLES-SAME: fillcolor="#eef7ee"
 // ROLES-NOT: tile_0_4 {{.*}}x2
 
 // A headline longer than the cap counts the kernels it does not name.
-// CAPPED: tile_0_2 [shape=box{{.*}}label="(0,2)  A x2\nmatmul x2\n+1 more"
+// CAPPED: tile_0_2 [shape=box{{.*}}label="\n(0,2)  A x2\nmatmul x2\n+1 more"
 
 module {
   aie.device(npu1_1col) {

@@ -50,14 +50,30 @@ struct LayoutGeometry {
            (preLaidOut ? "" : "!");
   }
 
+  /// The band a row reserves, which is as tall as its tallest tile. Tiles
+  /// hang from the top of their band and switchboxes sit below it, so both
+  /// line up across a row however tall any one tile turns out to be.
+  double rowTop(int row) const {
+    return rowCenters.at(row) + rowHeights.at(row) / 2;
+  }
+  double rowBottom(int row) const {
+    return rowCenters.at(row) - rowHeights.at(row) / 2;
+  }
+
   double tileLeft(int col) const { return tileCenterX(col) - tileWidth / 2; }
   double tileRight(int col) const { return tileCenterX(col) + tileWidth / 2; }
+  double tileTop(int col, int row) const { return rowTop(row); }
   double tileBottom(int col, int row) const {
-    return tileCenterY(row) - tileHeight(col, row) / 2;
+    return rowTop(row) - tileHeight(col, row);
   }
-  double tileTop(int col, int row) const {
-    return tileCenterY(row) + tileHeight(col, row) / 2;
+  double tileCenterY(int col, int row) const {
+    return rowTop(row) - tileHeight(col, row) / 2;
   }
+
+  /// The free span between two columns, and between two rows, that arrows may
+  /// run in without touching a tile.
+  double channelX(int col) const { return tileLeft(col) - tileGapX / 2; }
+  double channelY(int row) const { return rowBottom(row) - tileGapY / 2; }
 };
 
 } // namespace xilinx::AIE

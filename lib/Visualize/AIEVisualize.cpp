@@ -1395,7 +1395,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     unsigned lines = role == roles.end()
                          ? 1
                          : 1 + role->second.lines(options.maxHeadlineKernels);
-    return 0.30 + 0.17 * static_cast<double>(lines);
+    // One line of padding above the headline and one below it.
+    return 0.34 + 0.17 * static_cast<double>(lines + 1);
   };
 
   std::unique_ptr<ArrowRenderer> arrows =
@@ -1437,8 +1438,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                              layout.rowHeights[row - 1] / 2 + gapY +
                              layout.rowHeights[row] / 2;
   auto localNodeY = [&](int col, int row, unsigned index) {
-    return layout.tileCenterY(row) + layout.tileHeight(col, row) / 2 -
-           headroom({col, row}) - index * options.localSpacing;
+    return layout.tileTop(col, row) - headroom({col, row}) -
+           index * options.localSpacing;
   };
   // Arrows are laid out together: separating the ones that share a channel,
   // and ordering them to cross less, are properties of the whole set.
@@ -1452,10 +1453,13 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   for (const PortNode &port : ports) {
     std::pair<int, int> tile{port.col, port.row};
     bool dma = port.bundle == AIE::WireBundle::DMA;
-    portEnds[port] = {portNodeID(port), tile,
+    portEnds[port] = {portNodeID(port),
+                      tile,
                       dma ? AIE::EndKind::DMA : AIE::EndKind::Switch,
                       dma ? dmaSlots[tile]++ : switchSlots[tile]++,
-                      portPosition(port, layout)};
+                      portPosition(port, layout),
+                      dma ? 0.41 : 0.045,
+                      dma ? 0.09 : 0.045};
   }
 
   SmallVector<ArrowRequest> arrowRequests;
@@ -1502,7 +1506,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   auto bufferPoint = [&](Operation *buffer, int col, int row) -> Point {
     auto index = bufferLocalIndices.find(buffer);
     return {layout.tileCenterX(col), index == bufferLocalIndices.end()
-                                         ? layout.tileCenterY(row)
+                                         ? layout.tileCenterY(col, row)
                                          : localNodeY(col, row, index->second)};
   };
   for (const auto &[segment, segmentRoutes] : bufferSegments) {
@@ -1536,12 +1540,16 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                          {call.col, call.row},
                          AIE::EndKind::Content,
                          0,
-                         bufferPoint(buffer, call.col, call.row)};
+                         bufferPoint(buffer, call.col, call.row),
+                         localNodeWidth / 2,
+                         0.17};
       AIE::ArrowEnd to{callNodeID(call.id),
                        {call.col, call.row},
                        AIE::EndKind::Content,
                        1,
-                       callAt};
+                       callAt,
+                       localNodeWidth / 2,
+                       0.15};
       callArrowIDs[{call.id, buffer}] = addArrow(from, to, 0);
     }
   }
@@ -1557,7 +1565,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                             {col, row},
                             AIE::EndKind::External,
                             0,
-                            argumentPoint(index)};
+                            argumentPoint(index),
+                            localNodeWidth / 2,
+                            0.15};
       AIE::ArrowEnd at =
           portEnds.count(port) ? portEnds[port] : AIE::ArrowEnd{};
       unsigned group =
@@ -1650,9 +1660,11 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       output << ", fixedsize=true, width=" << dotCoordinate(options.tileWidth)
              << ", height=" << dotCoordinate(layout.tileHeight(col, row))
              << ", pos=\""
-             << layout.pos(layout.tileCenterX(col), layout.tileCenterY(row))
+             << layout.pos(layout.tileCenterX(col),
+                           layout.tileCenterY(col, row))
              << '"';
-      output << ", label=\"(" << col << ',' << row << ')';
+      output << ", label=\"" << (options.tileRoles ? "\\n" : "") << '(' << col
+             << ',' << row << ')';
       if (options.tileRoles) {
         if (roleClass != roleClasses.end())
           output << "  " << roleClass->second.label;
@@ -1840,8 +1852,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << layout.pos(x, y) << "\", label=\""
              << escapeDotLabel(call.callee) << "\", class=\""
              << flowClasses(callFlowGroups[call.id], "call detail-calls")
-             << "\", fontsize=8, style=filled, fillcolor=\"#f7f7f7\", "
-                "color=\"#555555\"];\n";
+             << "\", fontsize=8, style=\"rounded,filled\", "
+                "fillcolor=\"#f7f7f7\", color=\"#555555\"];\n";
       if (semanticView)
         continue;
       for (AIE::BufferOp buffer : call.buffers) {

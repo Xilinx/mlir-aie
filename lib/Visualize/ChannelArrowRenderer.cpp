@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <tuple>
 
@@ -40,12 +41,14 @@ constexpr double kArcControl = 0.5523;
 
 constexpr double kCornerRadius = 0.06;
 /// Space between parallel runs sharing a channel, and between stacked ports.
-constexpr double kTrackPitch = 0.07;
-constexpr double kPortPitch = 0.13;
+constexpr double kTrackPitch = 0.085;
+constexpr double kPortPitch = 0.155;
 /// How far a DMA port sits off the tile's west edge.
-constexpr double kDMAOffset = 0.30;
+constexpr double kDMAOffset = 0.46;
 /// Tracks past this share a line rather than widening the channel for ever.
 constexpr unsigned kMaxTracks = 10;
+/// How far a track keeps off the tiles either side of its channel.
+constexpr double kChannelMargin = 0.16;
 
 /// Appends the Bezier triple for a straight run ending at `to`.
 void lineTo(SmallVectorImpl<Point> &out, Point to) {
@@ -99,8 +102,22 @@ SmallVector<Point> toBezier(ArrayRef<Point> corners, double radius) {
 /// Where a tile's switchbox ports gather: the junction off its south-west
 /// corner, where the channel west of the tile meets the channel below it.
 Point junction(const LayoutGeometry &layout, int col, int row) {
-  return {layout.tileLeft(col) - layout.tileGapX / 2,
-          layout.tileBottom(col, row) - layout.tileGapY / 2};
+  return {layout.channelX(col), layout.channelY(row)};
+}
+
+/// Pulls an arrow's end back from a node's middle to the edge it arrives at,
+/// so that it stops at the box rather than crossing the text inside it.
+Point onEdge(const ArrowEnd &end, Point centre, Point toward) {
+  double dx = toward.first - centre.first;
+  double dy = toward.second - centre.second;
+  if (std::abs(dx) < 1e-9 && std::abs(dy) < 1e-9)
+    return centre;
+  double scaleX = std::abs(dx) < 1e-9 ? std::numeric_limits<double>::infinity()
+                                      : end.halfWidth / std::abs(dx);
+  double scaleY = std::abs(dy) < 1e-9 ? std::numeric_limits<double>::infinity()
+                                      : end.halfHeight / std::abs(dy);
+  double scale = std::min({scaleX, scaleY, 1.0});
+  return {centre.first + dx * scale, centre.second + dy * scale};
 }
 
 /// A stretch arrows share, so the ones running together can be spread apart.
@@ -119,7 +136,7 @@ public:
   std::optional<double> preferredTileGap() const override {
     // Room for a column of switchbox ports, the DMA stubs beside it, and the
     // tracks that run between them.
-    return 1.3;
+    return 1.9;
   }
 
   std::map<std::string, Point>
@@ -230,9 +247,11 @@ ChannelArrowRenderer::route(ArrayRef<ArrowRequest> requests,
       corners.append(via.begin(), via.end());
     } else if (sameTile && request.from.kind == EndKind::Content &&
                request.to.kind == EndKind::Content) {
-      // Two things stacked inside one tile: out to a lane beside the stack and
-      // back, rather than straight through whatever sits between them.
-      double lane = layout.tileRight(col) - 0.22 - track;
+      // Two things stacked inside one tile: out to a lane clear of the stack
+      // and back, rather than straight through whatever sits between them.
+      double lane = std::min(layout.tileCenterX(col) + request.from.halfWidth +
+                                 0.16 + track,
+                             layout.tileRight(col) - 0.08);
       corners.push_back({lane, from.second});
       corners.push_back({lane, to.second});
     } else if (sameTile) {
@@ -240,18 +259,35 @@ ChannelArrowRenderer::route(ArrayRef<ArrowRequest> requests,
       corners.push_back({from.first, to.second});
     } else {
       // Neighbouring switchboxes share a channel, so one turn reaches it.
+      // Tracks stay inside the channel, clear of the tiles either side of it.
       bool vertical = request.from.tile.second != request.to.tile.second;
       if (vertical) {
-        double lane = from.first - track;
+        int col = std::min(request.from.tile.first, request.to.tile.first);
+        // The channel left of the first column is open, so only a channel
+        // with a tile on both sides has a far edge to stay clear of.
+        double far = col > 0 ? layout.tileRight(col - 1) + kChannelMargin
+                             : layout.tileLeft(col) - layout.tileGapX;
+        double lane = std::clamp(from.first - track, far,
+                                 layout.tileLeft(col) - kChannelMargin);
         corners.push_back({lane, from.second});
         corners.push_back({lane, to.second});
       } else {
-        double lane = from.second - track;
+        int row = std::min(request.from.tile.second, request.to.tile.second);
+        double far = row > 0 ? layout.rowTop(row - 1) + kChannelMargin
+                             : layout.rowBottom(row) - layout.tileGapY;
+        double lane = std::clamp(from.second - track, far,
+                                 layout.rowBottom(row) - kChannelMargin);
         corners.push_back({from.first, lane});
         corners.push_back({to.first, lane});
       }
     }
     corners.push_back(to);
+
+    if (corners.size() >= 2) {
+      corners.front() = onEdge(request.from, corners.front(), corners[1]);
+      corners.back() =
+          onEdge(request.to, corners.back(), corners[corners.size() - 2]);
+    }
 
     SmallVector<Point> tidy;
     for (Point p : corners)

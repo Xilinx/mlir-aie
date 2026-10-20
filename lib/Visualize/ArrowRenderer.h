@@ -47,6 +47,10 @@ struct ArrowEnd {
   int slot = 0;
   /// Where the caller would have put it, used when a renderer places nothing.
   Point pinned{0, 0};
+  /// Half the box drawn there, so an arrow can stop at its edge rather than
+  /// run to the middle and over the text.
+  double halfWidth = 0.0;
+  double halfHeight = 0.0;
 };
 
 /// One arrow to draw.
