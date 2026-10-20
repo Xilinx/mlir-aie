@@ -279,6 +279,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-S")
       .input()
       .output("-o");
+  for (const std::string &a : xoptArgs) {
+    optCmd.arg(a);
+  }
   auto &peanoCompat =
       llvmIR.map<std::string>("peano-compat_{0}.ll", [](llvm::StringRef ir) {
         return downgradeIRForPeano(ir);
@@ -358,6 +361,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .value("-aie-stack-addrspace=", "", /*omitIfEmpty=*/true)
       .arg("--filetype=obj")
       .output("-o");
+  for (const std::string &a : xllcArgs) {
+    llcCmd.arg(a);
+  }
   // Cores that run one program over different buffers compile it once. The
   // first core of each canonical module (canonicalizeCoreIR) runs opt and llc
   // on it; every core then takes that object with the canonical symbols, and
@@ -2737,6 +2743,12 @@ int main(int argc, char **argv) {
   if (checkLutBanks && (xchesscc || xbridge)) {
     llvm::errs() << "aiecc: --check-lut-banks requires Peano compilation and "
                     "linking; it cannot verify Chess LLVM IR\n";
+    return 1;
+  }
+
+  if (xchesscc && (!xoptArgs.empty() || !xllcArgs.empty())) {
+    llvm::errs() << "aiecc: -Xopt and -Xllc require Peano compilation; Chess "
+                    "compiles the cores with --xchesscc\n";
     return 1;
   }
 
