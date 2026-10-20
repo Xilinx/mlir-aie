@@ -486,6 +486,28 @@ CASES: list[Case] = [
         scalars=(1,),
         tag="one-row-state128",
     ),
+    # An odd row count leaves B and C 32 bytes off the 64-byte line the
+    # 32-lane state loads need: IRON's decode block is one row.
+    *(
+        check(
+            "selective_scan",
+            dict(rows=rows, state=state, blocks=2),
+            calls=4,
+            scalars=(rows,),
+            tag=f"odd-rows{rows}-state{state}",
+        )
+        for rows, state in ((1, 32), (1, 64), (1, 128), (3, 64))
+    ),
+    # Granite 4.0-H's decode slice as IRON's SelectiveScan calls it: one row,
+    # its state loaded every call.
+    Case(
+        "selective_scan",
+        dict(rows=1, state=128),
+        calls=4,
+        scalars=(1,),
+        tag="iron-decode-one-row",
+        devices=("npu2",),
+    ),
     # Two rows of the smallest state each kernel takes, and more valid rows
     # than the block holds.
     *(
