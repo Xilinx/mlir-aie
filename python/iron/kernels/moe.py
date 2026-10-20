@@ -244,7 +244,17 @@ def experts_sample(
     return [rows_in, tiles.astype(bfloat16)]
 
 
-def experts_ref(row, tile, *, hidden, width, num_experts, top_k, rows, cols):
+def experts_ref(
+    row: np.ndarray,
+    tile: np.ndarray,
+    *,
+    hidden: int,
+    width: int,
+    num_experts: int,
+    top_k: int,
+    rows: int,
+    cols: int,
+) -> np.ndarray:
     """Numpy reference for [`experts`][iron.kernels.moe.experts].
 
     Args:

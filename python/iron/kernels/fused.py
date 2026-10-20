@@ -53,23 +53,23 @@ def _bf16_round(x, rounding):
 
 def fused_mm(
     *,
-    dim_m=32,
-    dim_k=32,
-    dim_n=16,
-    band_m=16,
-    chunk_k=16,
-    out_chunk=64,
-    epilogue="none",
-    clamp=None,
-    bfp16_b=False,
-    b_col_maj=False,
-    emulate_bf16_mmul_with_bfp16=False,
-    epilogue_modes=None,
-    rounding="conv_even",
-    gelu="fp32",
-    mmul_shape=None,
-    c_depth=2,
-    step_markers=False,
+    dim_m: int = 32,
+    dim_k: int = 32,
+    dim_n: int = 16,
+    band_m: int = 16,
+    chunk_k: int = 16,
+    out_chunk: int = 64,
+    epilogue: str = "none",
+    clamp: tuple[float, float] | None = None,
+    bfp16_b: bool = False,
+    b_col_maj: bool = False,
+    emulate_bf16_mmul_with_bfp16: bool = False,
+    epilogue_modes: tuple[str, ...] | None = None,
+    rounding: str = "conv_even",
+    gelu: str = "fp32",
+    mmul_shape: tuple[int, int, int] | None = None,
+    c_depth: int = 2,
+    step_markers: bool = False,
 ) -> _FusedMMKernel:
     """Compute one bf16 ``A @ B`` tile, with an f32 reduction and fused epilogue.
 
@@ -180,7 +180,7 @@ def fused_mm(
     if clamp is not None:
         if len(clamp) != 2 or not np.isfinite(clamp).all() or clamp[0] > clamp[1]:
             raise ValueError("clamp must be a finite (min, max) pair with min <= max")
-        clamp = tuple(float(v) for v in clamp)
+        clamp = (float(clamp[0]), float(clamp[1]))
 
     def pack_a(a):
         return (

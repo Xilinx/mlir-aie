@@ -141,7 +141,11 @@ def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction
 
 
 def sample_combine(
-    *, columns=4, slice_size=32064, k_max=64, last_slice=None
+    *,
+    columns: int = 4,
+    slice_size: int = 32064,
+    k_max: int = 64,
+    last_slice: int | None = None,
 ) -> ExternalFunction:
     """Draw from ``columns`` summaries of ``sample_select``, as ``sample_ref`` does.
 

@@ -9,6 +9,7 @@ import hashlib
 import logging
 import re
 import tempfile
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, get_origin
@@ -604,7 +605,7 @@ class ExternalFunction(Kernel):
     _instances: set = set()  # Registry of all live ExternalFunction instances.
 
     @staticmethod
-    def unregistered():
+    def unregistered() -> AbstractContextManager[dict]:
         """Return a context whose new kernels no build compiles.
 
         A kernel made only to be read, for its ``frame_bytes`` or its
