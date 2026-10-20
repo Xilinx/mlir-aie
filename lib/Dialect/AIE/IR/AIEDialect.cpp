@@ -1637,12 +1637,14 @@ LogicalResult ObjectFifoLinkOp::verify() {
                cast<AIEObjectFifoType>(objectFifoType).getElementType())
         .getNumElements();
   };
-  auto bytesOf = [](Type objectFifoType, int64_t elements) {
+  // The data layout sizes block-float elements too, which have no bit width.
+  DataLayout dataLayout = DataLayout::closest(getOperation());
+  auto bytesOf = [&](Type objectFifoType, int64_t elements) {
     return elements *
-           cast<MemRefType>(
-               cast<AIEObjectFifoType>(objectFifoType).getElementType())
-               .getElementTypeBitWidth() /
-           8;
+           static_cast<int64_t>(dataLayout.getTypeSize(
+               cast<MemRefType>(
+                   cast<AIEObjectFifoType>(objectFifoType).getElementType())
+                   .getElementType()));
   };
   // What a fifo's producer sends for `elements`: padding widens each
   // dimension it streams, as the DMA lowering's paddedSize does.

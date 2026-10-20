@@ -139,3 +139,31 @@ aie.device(npu2) {
   aie.objectfifo @pad_d(%m5 dimensionsToStream [<size = 16, stride = 1>], {%c51}, 1 : i32) {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 2, const_pad_after = 2>]>} : !aie.objectfifo<memref<20xi32>>
   aie.objectfifo.link [@pad_in] -> [@pad_c, @pad_d]([] [0, 16])
 }
+
+// -----
+
+// A block-float element is sized by the data layout: a v8bfp16ebs8 block is 9 B.
+aie.device(npu2) {
+  %shim = aie.tile(0, 0)
+  %mem = aie.tile(0, 1)
+  %a = aie.tile(0, 2)
+  %b = aie.tile(0, 3)
+  aie.objectfifo @of_a(%a, {%mem}, 1 : i32) : !aie.objectfifo<memref<6x!aiex.bfp<"v8bfp16ebs8">>>
+  aie.objectfifo @of_b(%b, {%mem}, 1 : i32) : !aie.objectfifo<memref<8x!aiex.bfp<"v8bfp16ebs8">>>
+  aie.objectfifo @of_out(%mem, {%shim}, 1 : i32) : !aie.objectfifo<memref<16x!aiex.bfp<"v8bfp16ebs8">>>
+  // expected-error@+1 {{input @of_a has 54 B objects, but its 72 B slot in @of_out from offsets [0, 8] is not a whole number of them}}
+  aie.objectfifo.link [@of_a, @of_b] -> [@of_out]([0, 8] [])
+}
+
+// -----
+
+aie.device(npu2) {
+  %shim = aie.tile(0, 0)
+  %mem = aie.tile(0, 1)
+  %a = aie.tile(0, 2)
+  %b = aie.tile(0, 3)
+  aie.objectfifo @of_a(%a, {%mem}, 1 : i32) : !aie.objectfifo<memref<8x!aiex.bfp<"v8bfp16ebs8">>>
+  aie.objectfifo @of_b(%b, {%mem}, 1 : i32) : !aie.objectfifo<memref<8x!aiex.bfp<"v8bfp16ebs8">>>
+  aie.objectfifo @of_out(%mem, {%shim}, 1 : i32) : !aie.objectfifo<memref<16x!aiex.bfp<"v8bfp16ebs8">>>
+  aie.objectfifo.link [@of_a, @of_b] -> [@of_out]([0, 8] [])
+}
