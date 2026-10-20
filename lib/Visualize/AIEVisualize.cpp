@@ -9,6 +9,9 @@
 
 #include "aie/Visualize/AIEVisualize.h"
 
+#include "ArrowRenderer.h"
+#include "LayoutGeometry.h"
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
@@ -33,6 +36,13 @@ using namespace mlir;
 using namespace xilinx;
 
 namespace {
+
+using xilinx::AIE::ArrowPath;
+using xilinx::AIE::ArrowRenderer;
+using xilinx::AIE::ArrowRequest;
+using xilinx::AIE::createStraightArrowRenderer;
+using xilinx::AIE::LayoutGeometry;
+using xilinx::AIE::Point;
 
 struct PortNode {
   int col;
@@ -105,27 +115,6 @@ struct RuntimeArgumentInfo {
   std::string name;
   std::vector<DMAChannelKey> channels;
   std::set<unsigned> flowGroups;
-};
-
-struct LayoutGeometry {
-  double tileWidth = 0.0;
-  double tileGapX = 0.0;
-  std::vector<double> rowHeights;
-  std::vector<double> rowCenters;
-  std::map<std::pair<int, int>, double> ownHeights;
-
-  double tileCenterX(int col) const { return col * (tileWidth + tileGapX); }
-  double tileCenterY(int row) const { return rowCenters.at(row); }
-  double tileHeight(int row) const { return rowHeights.at(row); }
-
-  /// A tile is only as tall as its own contents. Sizing every tile to the
-  /// tallest one in its row shrinks the text in all the others to fit a
-  /// neighbour's buffer list. Rows still reserve the tallest tile's height so
-  /// that boxes never overlap.
-  double tileHeight(int col, int row) const {
-    auto found = ownHeights.find({col, row});
-    return found == ownHeights.end() ? rowHeights.at(row) : found->second;
-  }
 };
 
 struct CallInfo {
@@ -1408,9 +1397,20 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     return 0.30 + 0.17 * static_cast<double>(lines);
   };
 
+  std::unique_ptr<ArrowRenderer> arrows = createStraightArrowRenderer();
+  // A renderer that needs room between tiles to put arrows in says so here,
+  // rather than the caller having to know which style wants what spacing.
+  double gapX = options.tileGapX;
+  double gapY = options.tileGapY;
+  if (std::optional<double> wanted = arrows->preferredTileGap()) {
+    gapX = std::max(gapX, *wanted);
+    gapY = std::max(gapY, *wanted);
+  }
+
   LayoutGeometry layout;
   layout.tileWidth = options.tileWidth;
-  layout.tileGapX = options.tileGapX;
+  layout.tileGapX = gapX;
+  layout.tileGapY = gapY;
   layout.rowHeights.assign(model.rows(), options.minimumTileHeight);
   for (const std::pair<int, int> &coordinate : designTiles) {
     auto count = localCounts.find(coordinate);
@@ -1427,7 +1427,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   layout.rowCenters.assign(model.rows(), 0.0);
   for (int row = 1; row < model.rows(); ++row)
     layout.rowCenters[row] = layout.rowCenters[row - 1] +
-                             layout.rowHeights[row - 1] / 2 + options.tileGapY +
+                             layout.rowHeights[row - 1] / 2 + gapY +
                              layout.rowHeights[row] / 2;
   auto localNodeY = [&](int col, int row, unsigned index) {
     return layout.tileCenterY(row) + layout.tileHeight(col, row) / 2 -
@@ -1878,6 +1878,37 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     output << "}\n";
     return success();
   }
+  // Arrows are laid out together: separating the ones that share a channel,
+  // and ordering them to cross less, are properties of the whole set.
+  SmallVector<ArrowRequest> arrowRequests;
+  std::map<Segment, unsigned> arrowIDs;
+  for (const auto &[segment, segmentRoutes] : segments) {
+    unsigned id = arrowRequests.size();
+    arrowIDs[segment] = id;
+    arrowRequests.push_back({id,
+                             {{segment.source.col, segment.source.row},
+                              {segment.dest.col, segment.dest.row}},
+                             portPosition(segment.source, layout),
+                             portPosition(segment.dest, layout),
+                             groups.routeGroups[segmentRoutes.front()->id],
+                             weightScale.width(edgeBytes(segmentRoutes))});
+  }
+  std::map<unsigned, ArrowPath> arrowPaths;
+  for (ArrowPath &path : arrows->route(arrowRequests, layout))
+    arrowPaths[path.id] = std::move(path);
+  auto writeGeometry = [&](const Segment &segment) {
+    auto found = arrowPaths.find(arrowIDs.at(segment));
+    if (found == arrowPaths.end())
+      return;
+    output << ", pos=\"";
+    for (auto [index, point] : llvm::enumerate(found->second.points)) {
+      if (index)
+        output << ' ';
+      output << dotCoordinate(point.first) << ','
+             << dotCoordinate(point.second);
+    }
+    output << '"';
+  };
   for (const auto &[segment, segmentRoutes] : segments) {
     std::vector<const FlowRoute *> labels;
     for (const FlowRoute *route : segmentRoutes) {
@@ -1894,6 +1925,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       kind += " detail-vias";
     output << "\", class=\"" << flowClasses(segmentRoutes, groups, kind) << '"';
     writeWeight(segmentRoutes);
+    writeGeometry(segment);
     if (!labels.empty()) {
       output << ", label=<";
       for (auto [index, route] : llvm::enumerate(labels)) {

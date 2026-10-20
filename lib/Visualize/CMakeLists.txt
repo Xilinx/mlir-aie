@@ -5,6 +5,7 @@
 
 add_mlir_library(AIEVisualize
   AIEVisualize.cpp
+  ArrowRenderer.cpp
 
   PARTIAL_SOURCES_INTENDED
   ENABLE_AGGREGATION
