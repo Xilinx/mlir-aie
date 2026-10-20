@@ -30,6 +30,8 @@ constexpr int CLASSES = 80;
 constexpr int KEEP = 300;
 constexpr int RANKS = 768;
 constexpr int ANCHORS = 6400 + 1600 + 400;
+// Bytes of picked bits, with room for a chunk's word read past the last.
+constexpr int PICKED = ANCHORS / 8 + 4;
 constexpr int CHUNK = YOLO_DETECT_CHUNK;
 static_assert(6400 % CHUNK == 0 && 8000 % CHUNK == 0,
               "a chunk stays within one level");
@@ -84,17 +86,20 @@ static int popcount8(uint32_t byte) {
 
 extern "C" {
 
-// top: per anchor, a class logit with its best score. ONNX Runtime's
-// float32 sigmoid is not monotonic where it saturates, so the scores'
-// ranks, not the logits, are compared. `rank` holds each level's ranks of
-// the 256 logits, then their peaks (the highest rank of any logit up to
-// each): an anchor's highest logit has its best score when its rank is the
-// peak, otherwise every class is ranked.
+// best: per anchor, the rank of its best class score; hist counts them per
+// rank (zeroed at chunk 0). ONNX Runtime's float32 sigmoid is not monotonic
+// where it saturates, so the scores' ranks, not the logits, are compared.
+// `rank` holds each level's ranks of the 256 logits, then their peaks (the
+// highest rank of any logit up to each): an anchor's highest logit has its
+// best score when its rank is the peak, otherwise every class is ranked.
 void yolo_detect_max(const int8_t *__restrict records,
-                     const int16_t *__restrict rank, int8_t *__restrict top,
-                     int32_t chunk) {
+                     const int16_t *__restrict rank, int16_t *__restrict best,
+                     int32_t *__restrict hist, int32_t chunk) {
   event0();
   static_assert(CHUNK * 8 % 32 == 0, "a chunk's group is whole vectors");
+  if (chunk == 0)
+    for (int r = 0; r < RANKS; r++)
+      hist[r] = 0;
   const int level = level_of(chunk * CHUNK);
   const int16_t *ranks = rank + level * 256 + 128;
   const int16_t *peaks = rank + (3 + level) * 256 + 128;
@@ -111,41 +116,58 @@ void yolo_detect_max(const int8_t *__restrict records,
     aie::store_v(most + j * 32, m);
   }
   for (int a = 0; a < CHUNK; a++) {
-    int8_t m = most[a * 8];
-    if (ranks[m] != peaks[m]) {
-      int16_t best = -1;
+    const int8_t m = most[a * 8];
+    int16_t top = ranks[m];
+    if (top != peaks[m])
       for (int g = 0; g < CLASSES / 8; g++) {
         const int8_t *group = records + (g * CHUNK + a) * 8;
         AIE_LOOP_UNROLL_FULL
         for (int l = 0; l < 8; l++) {
           const int16_t r = ranks[group[l]];
-          m = r > best ? group[l] : m;
-          best = r > best ? r : best;
+          top = r > top ? r : top;
         }
       }
-    }
-    top[chunk * CHUNK + a] = m;
+    best[chunk * CHUNK + a] = top;
+    hist[top]++;
   }
   event1();
 }
 
-// first: the KEEP anchors in score order. picked: one bit per anchor.
-// row: for the k-th picked anchor by index, its place in `first`.
-// count: the gather's running count of picked anchors, reset here.
-void yolo_detect_select(const int8_t *__restrict top,
-                        const int16_t *__restrict rank,
+// first: the KEEP anchors in score order, from max's ranks and their
+// counts. picked: one bit per anchor. row: for the k-th picked anchor by
+// index, its place in `first`. count: the gather's running count of picked
+// anchors, reset here.
+void yolo_detect_select(const int16_t *__restrict best,
                         int32_t *__restrict hist, int16_t *__restrict first,
                         uint8_t *__restrict picked, int16_t *__restrict row,
                         int32_t *__restrict count) {
   event0();
   static_assert(ANCHORS / 8 <= 2 * RANKS, "the prefix counts reuse hist");
-  top_keep(
-      [&](auto visit) {
-        for (int a = 0; a < ANCHORS; a++)
-          visit(a, rank[level_of(a) * 256 + top[a] + 128]);
-      },
-      hist, first);
-  for (int i = 0; i < ANCHORS / 8; i++)
+  static_assert(ANCHORS % 16 == 0, "ranks are scanned 16 at a time");
+  // hist[r] becomes the first place of rank r, ranks taken from the top;
+  // only anchors of rank `low` or higher take a place below KEEP.
+  int32_t place = 0;
+  int16_t low = 0;
+  for (int r = RANKS - 1; r >= 0; r--) {
+    const int32_t n = hist[r];
+    hist[r] = place;
+    if (place < KEEP)
+      low = r;
+    place += n;
+  }
+  for (int i = 0; i < ANCHORS; i += 16) {
+    uint32_t bits =
+        aie::ge(aie::load_v<16>(best + i), aie::broadcast<int16_t, 16>(low))
+            .to_uint32();
+    while (bits) {
+      const int a = i + __builtin_ctz(bits);
+      bits &= bits - 1;
+      const int32_t at = hist[best[a]]++;
+      if (at < KEEP)
+        first[at] = a;
+    }
+  }
+  for (int i = 0; i < PICKED; i++)
     picked[i] = 0;
   for (int k = 0; k < KEEP; k++)
     picked[first[k] / 8] |= 1 << (first[k] % 8);
@@ -175,15 +197,26 @@ void yolo_detect_gather(const int8_t *__restrict records,
                         int8_t *__restrict distances, int32_t *__restrict count,
                         int32_t chunk) {
   event0();
-  for (int i = 0; i < CHUNK; i++) {
-    const int a = chunk * CHUNK + i;
-    if (!(picked[a / 8] >> (a % 8) & 1))
-      continue;
+  static_assert(CHUNK <= 24, "a chunk's bits are within one word");
+  const int base = chunk * CHUNK;
+  const uint8_t *bytes = picked + base / 8;
+  uint32_t bits =
+      (bytes[0] | bytes[1] << 8 | bytes[2] << 16 | uint32_t(bytes[3]) << 24) >>
+      (base % 8);
+  bits &= (1u << CHUNK) - 1;
+  // A picked anchor's classes, eight at a time, and its four distances.
+  uint64_t *cand = reinterpret_cast<uint64_t *>(candidates);
+  const uint64_t *rec = reinterpret_cast<const uint64_t *>(records);
+  uint32_t *dist = reinterpret_cast<uint32_t *>(distances);
+  const uint32_t *box = reinterpret_cast<const uint32_t *>(boxes);
+  while (bits) {
+    const int i = __builtin_ctz(bits);
+    bits &= bits - 1;
     const int r = row[count[0]++];
-    for (int c = 0; c < CLASSES; c++)
-      candidates[r * CLASSES + c] = records[(c / 8 * CHUNK + i) * 8 + c % 8];
-    for (int d = 0; d < 4; d++)
-      distances[r * 4 + d] = boxes[i * 8 + d];
+    AIE_LOOP_UNROLL_FULL
+    for (int g = 0; g < CLASSES / 8; g++)
+      cand[r * CLASSES / 8 + g] = rec[g * CHUNK + i];
+    dist[r] = box[i * 2];
   }
   event1();
 }

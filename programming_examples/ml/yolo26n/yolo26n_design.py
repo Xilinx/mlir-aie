@@ -1692,27 +1692,23 @@ class SegmentDesign:
             np.ndarray[(6 * op.dst.height,), np.dtype[np.int32]], name="detections"
         )
         flags = [f"-DYOLO_DETECT_CHUNK={chunk}"]
-        top_t = row(anchors)
+        best_t = np.ndarray[(anchors,), np.dtype[np.int16]]
+        ranks_t = np.ndarray[(2 * 768,), np.dtype[np.int16]]
+        words_t = np.ndarray[(768,), np.dtype[np.int32]]
         k_max = self.function(
             "yolo_detect_max",
             "yolo_detect.cc",
-            [
-                row(chunk * 80),
-                np.ndarray[(2 * 768,), np.dtype[np.int16]],
-                top_t,
-                np.int32,
-            ],
+            [row(chunk * 80), ranks_t, best_t, words_t, np.int32],
             flags,
         )
         bind = k_max.object_file.bind
-        ranks_t = np.ndarray[(2 * 768,), np.dtype[np.int16]]
-        words_t = np.ndarray[(768,), np.dtype[np.int32]]
         keep_t = np.ndarray[(300,), np.dtype[np.int16]]
         count_t = np.ndarray[(4,), np.dtype[np.int32]]
-        picked_t = np.ndarray[(anchors // 8,), np.dtype[np.uint8]]
+        # A chunk's picked bits are read as a word, past the last byte.
+        picked_t = np.ndarray[(anchors // 8 + 4,), np.dtype[np.uint8]]
         k_select = bind(
             "yolo_detect_select",
-            [top_t, ranks_t, words_t, keep_t, picked_t, keep_t, count_t],
+            [best_t, words_t, keep_t, picked_t, keep_t, count_t],
         )
         k_gather = bind(
             "yolo_detect_gather",
@@ -1749,12 +1745,15 @@ class SegmentDesign:
         n = anchors // chunk
 
         def body(cls, box, out, k_max, k_select, k_gather, k_finish, *b):
-            top, ranks, hist, first, picked, rows, count, cand, dist, sigmoid, best = b
+            ranks, hist, first, picked, rows, count, cand, dist, sigmoid, best = b
+            # Each anchor's best rank waits in the candidates' memory, which
+            # the gather fills only after the select has read it.
+            top = view(cand, 0, anchors, np.int16)
             for i in range_(n):
                 r = cls.acquire(1)
-                k_max(r, ranks, top, index_cast(i32(), i))
+                k_max(r, ranks, top, hist, index_cast(i32(), i))
                 cls.release(1)
-            k_select(top, ranks, hist, first, picked, rows, count)
+            k_select(top, hist, first, picked, rows, count)
             for i in range_(n):
                 r = cls.acquire(1)
                 d = box.acquire(1)
@@ -1766,7 +1765,6 @@ class SegmentDesign:
             out.release(1)
 
         buffers = [
-            Buffer(top_t),
             Buffer(initial_value=rank_table),
             Buffer(words_t),
             Buffer(keep_t),
