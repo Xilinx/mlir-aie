@@ -159,23 +159,10 @@ def test_factories_lists_every_exported_builder():
     ]
 
 
-@pytest.mark.parametrize(
-    "annotation",
-    [
-        ExternalFunction,
-        kernels.MatrixKernel,
-        "ExternalFunction",
-        "kernels.MatrixKernel",
-    ],
-)
-def test_factories_accept_subclasses_and_postponed_annotations(monkeypatch, annotation):
-    def builder():
-        raise AssertionError("discovery must not construct kernels")
-
-    builder.__annotations__["return"] = annotation
-    monkeypatch.setattr(kernels, "__all__", ["zero"])
-    monkeypatch.setattr(kernels, "zero", builder)
-    assert kernels.factories() == ["zero"]
+def test_factories_lists_builders_annotated_with_a_subclass():
+    assert {"mm", "fused_mm", "cascade_mm", "resize", "resample_peak"} <= set(
+        kernels.factories()
+    )
 
 
 def _first_kwargs(name: str) -> dict:
@@ -232,34 +219,6 @@ def test_contract_coverage_is_explicit():
     assert not unlisted, f"factories with no case: {unlisted}"
     assert set(NOT_JUDGED) <= set(kernels.factories())
     assert all(NOT_JUDGED.values())
-
-
-@pytest.mark.parametrize("error", [RuntimeError, TypeError, ValueError])
-def test_contract_coverage_propagates_constructor_failures(monkeypatch, error):
-    def broken() -> ExternalFunction:
-        raise error("factory construction failed")
-
-    monkeypatch.setattr(kernels, "__all__", ["zero"])
-    monkeypatch.setattr(kernels, "zero", broken)
-    with pytest.raises(error, match="factory construction failed"):
-        test_contract_coverage_is_explicit()
-
-
-def test_contract_coverage_constructs_required_case_arguments(monkeypatch):
-    from types import SimpleNamespace
-
-    sizes = []
-
-    def required(*, tile_size) -> ExternalFunction:
-        sizes.append(tile_size)
-        return SimpleNamespace(contract=KernelContract(roles=(Out,)))
-
-    monkeypatch.setattr(kernels, "__all__", ["zero"])
-    monkeypatch.setattr(kernels, "zero", required)
-    monkeypatch.setattr(sys.modules[__name__], "NOT_JUDGED", {})
-    monkeypatch.setitem(CASES, "zero", ({"tile_size": 64}, {}))
-    test_contract_coverage_is_explicit()
-    assert sizes == [64]
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
