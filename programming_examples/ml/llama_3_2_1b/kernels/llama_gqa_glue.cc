@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "llama_kv_row.h"
 #include "llama_vec_fp.h"
 
 #ifndef LLAMA_GQA_HEAD_DIM
@@ -138,6 +139,37 @@ extern "C" void llama_qkv_combine(int8_t *restrict qr, int8_t *restrict kvcs,
     memcpy(dst + kChunk, kfp + g * kKfpHead, kKfpHead);
     memcpy(dst + kChunk + kKfpHead, vfp + g * kKfpHead, kKfpHead);
     memcpy(dst + kChunk + 2 * kKfpHead, cs, kCsBytes);
+  }
+  event1();
+}
+
+// qkv_combine_rows (the growing decode): per-head chunks [q_chunk 288 B |
+// row 136 B] whose row is the head's new K/V cache row, [k int8 | v int8 |
+// k_scale f32 | v_scale f32] (llama_kv_row.h), from the same inputs.
+static constexpr int kRowBytes = 2 * kHD + 8;        // 136
+static constexpr int kRowChunk = kChunk + kRowBytes; // 424
+
+extern "C" void llama_qkv_combine_rows(int8_t *restrict qr,
+                                       int8_t *restrict kvcs,
+                                       int8_t *restrict out_lo,
+                                       int8_t *restrict out_hi) {
+  event0();
+  constexpr int kKfpRegion = kNHeadsKV * kKfpHead;
+  alignas(16) int8_t kvfp[2 * kKfpHead + kCsBytes];
+  memcpy(kvfp + 2 * kKfpHead, kvcs + 2 * kKfpRegion, kCsBytes);
+  for (int g = 0; g < kNHeadsKV; g++) {
+    int8_t *base = (g < kHalfKV) ? out_lo : out_hi;
+    int local = (g < kHalfKV) ? g : (g - kHalfKV);
+    int8_t *dst = base + local * kRowChunk;
+    memcpy(dst, qr + g * kBodyChunk, kBodyChunk);
+    memcpy(dst + kBodyChunk, qr + kQD + g * kTailChunk, kTailChunk);
+    memcpy(kvfp, kvcs + g * kKfpHead, kKfpHead);
+    memcpy(kvfp + kKfpHead, kvcs + kKfpRegion + g * kKfpHead, kKfpHead);
+    int8_t *row = dst + kChunk;
+    float ks, vs;
+    llama_kv_row_quant<kHD>(kvfp, row, row + kHD, &ks, &vs);
+    memcpy(row + 2 * kHD, &ks, 4);
+    memcpy(row + 2 * kHD + 4, &vs, 4);
   }
   event1();
 }

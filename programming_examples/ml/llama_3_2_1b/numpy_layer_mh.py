@@ -40,6 +40,7 @@ from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
 from ml_dtypes import bfloat16
+from numpy_attn_block import attention as attn_block_attention
 from test_flowkv import EXP_QUANT_SCALE, numpy_attention, quant_shifted
 from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 from test_rope_int8 import numpy_rope_dyn
@@ -393,6 +394,7 @@ def numpy_layer_mh_forward(
     residual_dyn=False,
     attn_perslot=None,
     attn_lut=False,
+    attn_tb=None,
 ):
     """Multi-head GQA single-layer forward + per-Q-head scale calibration.
 
@@ -409,6 +411,10 @@ def numpy_layer_mh_forward(
     unchanged, so a quality recovery here pins the residual as the cause.
     `x` is fp32 in and fp32 out when this flag is set. The int8 path (flag
     False) preserves the device-test bit-exact contract.
+
+    attn_tb: attend in blocks of this many rows, one core per KV head, as the
+    growing decode's llama_attn_block does (numpy_attn_block.attention);
+    needs `position`.
     """
     lut_exp = layer["lut_exp"]
     lut_silu = layer["lut_silu"]
@@ -559,77 +565,99 @@ def numpy_layer_mh_forward(
     sv_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
     sv_inv_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
     sv_i8_per_head = []
-    for h_q in range(N_HEADS_Q):
-        kvh = h_q // REP
-        q_h = qr[h_q * HEAD_DIM : (h_q + 1) * HEAD_DIM]
-        k_slice = kcaches[kvh][: t_used * HEAD_DIM]
-        v_slice = vcaches[kvh][: t_used * HEAD_DIM]
-        if attn_perslot or attn_lut:
-            # attn_lut=True is the DEVICE-FAITHFUL path: exp-LUT softmax
-            # (bit-exact mirror of flowkv_mh). attn_lut=False keeps the fp32
-            # np.exp softmax (the quality golden). Both use per-slot scales.
-            ksl = layer["k_scales_slot"][kvh]
-            vsl = layer["v_scales_slot"][kvh]
-            attn_fn = (
-                partial(numpy_attention_perslot_lut, lut=lut_exp)
-                if attn_lut
-                else attention_perslot
+    if attn_tb is not None:
+        for kvh in range(N_HEADS_KV):
+            heads = slice(kvh * REP, (kvh + 1) * REP)
+            out, scales, _ = attn_block_attention(
+                qr[kvh * REP * HEAD_DIM : (kvh + 1) * REP * HEAD_DIM].reshape(
+                    REP, HEAD_DIM
+                ),
+                q_out_scales[heads],
+                kcaches[kvh][: t_used * HEAD_DIM].reshape(t_used, HEAD_DIM),
+                vcaches[kvh][: t_used * HEAD_DIM].reshape(t_used, HEAD_DIM),
+                layer["k_scales_slot"][kvh][:t_used],
+                layer["v_scales_slot"][kvh][:t_used],
+                t_used,
+                attn_tb,
+                1,
+                lut_exp,
             )
-            # First pass to derive this head's sv_out_scale.
-            _, sv_fp_h = attn_fn(
+            sv_out_scales[heads] = scales
+            for r in range(REP):
+                sv_inv_out_scales[kvh * REP + r] = aie_fp.sw_recip(scales[r])
+                sv_i8_per_head.append(out[r])
+    else:
+        for h_q in range(N_HEADS_Q):
+            kvh = h_q // REP
+            q_h = qr[h_q * HEAD_DIM : (h_q + 1) * HEAD_DIM]
+            k_slice = kcaches[kvh][: t_used * HEAD_DIM]
+            v_slice = vcaches[kvh][: t_used * HEAD_DIM]
+            if attn_perslot or attn_lut:
+                # attn_lut=True is the DEVICE-FAITHFUL path: exp-LUT softmax
+                # (bit-exact mirror of flowkv_mh). attn_lut=False keeps the fp32
+                # np.exp softmax (the quality golden). Both use per-slot scales.
+                ksl = layer["k_scales_slot"][kvh]
+                vsl = layer["v_scales_slot"][kvh]
+                attn_fn = (
+                    partial(numpy_attention_perslot_lut, lut=lut_exp)
+                    if attn_lut
+                    else attention_perslot
+                )
+                # First pass to derive this head's sv_out_scale.
+                _, sv_fp_h = attn_fn(
+                    q_h,
+                    k_slice,
+                    v_slice,
+                    HEAD_DIM,
+                    t_used,
+                    float(q_out_scales[h_q]),
+                    ksl,
+                    vsl,
+                    1.0,
+                )
+                s = _dyn_scale(sv_fp_h)
+                sv_out_scales[h_q] = np.float32(s)
+                sv_inv_out_scales[h_q] = aie_fp.sw_recip(s)
+                sv_i8, _ = attn_fn(
+                    q_h,
+                    k_slice,
+                    v_slice,
+                    HEAD_DIM,
+                    t_used,
+                    float(q_out_scales[h_q]),
+                    ksl,
+                    vsl,
+                    float(sv_inv_out_scales[h_q]),
+                )
+                sv_i8_per_head.append(sv_i8)
+                continue
+            sv_fp_h = compute_sv_fp(
                 q_h,
                 k_slice,
                 v_slice,
                 HEAD_DIM,
                 t_used,
                 float(q_out_scales[h_q]),
-                ksl,
-                vsl,
-                1.0,
+                float(k_scales[kvh]),
+                float(v_scales[kvh]),
+                lut_exp,
             )
-            s = _dyn_scale(sv_fp_h)
+            s = float(np.maximum(np.abs(sv_fp_h).max(), 1e-12)) / 127.0
             sv_out_scales[h_q] = np.float32(s)
-            sv_inv_out_scales[h_q] = aie_fp.sw_recip(s)
-            sv_i8, _ = attn_fn(
+            sv_inv_out_scales[h_q] = np.float32(1.0) / np.float32(s)
+            sv_i8 = numpy_attention(
                 q_h,
                 k_slice,
                 v_slice,
                 HEAD_DIM,
                 t_used,
                 float(q_out_scales[h_q]),
-                ksl,
-                vsl,
+                float(k_scales[kvh]),
+                float(v_scales[kvh]),
                 float(sv_inv_out_scales[h_q]),
+                lut_exp,
             )
             sv_i8_per_head.append(sv_i8)
-            continue
-        sv_fp_h = compute_sv_fp(
-            q_h,
-            k_slice,
-            v_slice,
-            HEAD_DIM,
-            t_used,
-            float(q_out_scales[h_q]),
-            float(k_scales[kvh]),
-            float(v_scales[kvh]),
-            lut_exp,
-        )
-        s = float(np.maximum(np.abs(sv_fp_h).max(), 1e-12)) / 127.0
-        sv_out_scales[h_q] = np.float32(s)
-        sv_inv_out_scales[h_q] = np.float32(1.0) / np.float32(s)
-        sv_i8 = numpy_attention(
-            q_h,
-            k_slice,
-            v_slice,
-            HEAD_DIM,
-            t_used,
-            float(q_out_scales[h_q]),
-            float(k_scales[kvh]),
-            float(v_scales[kvh]),
-            float(sv_inv_out_scales[h_q]),
-            lut_exp,
-        )
-        sv_i8_per_head.append(sv_i8)
 
     # 6) af-concat: per-head dequant (using each head's sv_out_scale),
     #    concat to Q_DIM fp32, then global requant with o_act_scale.

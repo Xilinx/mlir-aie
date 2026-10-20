@@ -12,9 +12,9 @@ reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % 
 prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
 beyond quantization.
 
-> Status: decode is validated on hardware at 91.2 ms/token (10.97 tok/s) at
-> N=16. Prefill and a KV cache longer than 128 are
-> the open stages — see [On the device, and on the host](#on-the-device-and-on-the-host)
+> Status: decode is validated on hardware at 86.8 ms/token (11.5 tok/s) at
+> N=16 at short context, with a KV cache of up to 128k tokens. Prefill is the
+> open stage — see [On the device, and on the host](#on-the-device-and-on-the-host)
 > and [What's next](#whats-next).
 
 ---
@@ -58,11 +58,14 @@ Key design pieces (each validated bit-exact in isolation before integration):
   it; the host writes the seed buffer only for the first dispatch. (DDR, not core
   memory: after the driver's 5 s autosuspend the cores come back reset.)
 
-- **Growing KV cache** (`--persist-grow`). Each token appends its K/V
-  on-chip at an advancing position (the append writes slot `T_used` and bumps it,
-  so **position advances on-device**; the host never computes a position) and
-  attention widens to include the new slot. Rope advances with position too. This
-  is real autoregressive decode — context accumulates.
+- **Growing KV cache** (`--persist-grow`). The cache lives in DDR, int32
+  `[layer][half][block][head][64 rows]`, a row being one token's quantized K and V
+  and their scales, for up to `T` tokens. Each layer, a token's attention reads
+  only the live blocks of its 8 KV heads, one linear transfer per half, and its
+  attention workers fold them block by block (`llama_attn_block.cc`, an exact
+  online softmax); the token's own new row joins its last block on chip and is
+  the one row written back. Rope advances with position too. This is real
+  autoregressive decode — context accumulates.
 
 - **Resident KV cache** (`--persist-resident`). The KV body lives in
   worker-local buffers on the attention tiles, seeded once on token 0 then
@@ -75,15 +78,13 @@ Key design pieces (each validated bit-exact in isolation before integration):
 Every transformer op, the lm_head, the sampler, the token feedback and the KV
 append run as AI Engine kernels, and one compiled design serves every dispatch.
 The host (`DispatchSession` in `llama_npu.py`) keeps one hardware context and,
-per dispatch, writes the design's ScratchpadParameters: the position of the
-dispatch's first token (`cs_off`, its row in the RoPE table the weight blob
-carries, built once with Llama 3's rope scaling) and the KV half. What the host
-still does, each to move to the device in the stages of the one-design
-restructure:
+per dispatch, writes the design's ScratchpadParameters (`dispatch_params` in
+`test_chain_persist_grow_mh.py`): the position of the dispatch's first token,
+which the attention workers read; its row in the RoPE table the weight blob
+carries, built once with Llama 3's rope scaling; and per token, how many KV
+blocks to read and where its row goes. What the host still does, each to move
+to the device in the stages of the one-design restructure:
 
-- **The KV half.** The KV buffer is two halves that tokens alternate between;
-  the host passes the half a dispatch starts in (`kv_even`/`kv_odd`). A
-  block-major cache appended in place replaces this.
 - **Prefill.** There is none yet: the starting 64-token context is a fixture the
   numpy oracle builds.
 - **Tokenization**, which stays on the host.
@@ -104,18 +105,23 @@ restructure:
 ## 2. Performance
 
 Measured on NPU2 (Strix) with `test_chain_persist_grow_mh.py --time`
-(`taskset -c 2-4`, 5 warmup + 10 timed dispatches, median); per-token =
-dispatch time / PT, PT=4.
+(`taskset -c 2-4`, median of 10 timed dispatches after warmup); per-token =
+dispatch time / PT. N=16, PT=4 unless noted:
 
-| Config | per-token | tok/s | bytes/token |
-|---|---|---|---|
-| **N=16 (full model)** | **91.2 ms** | **10.97** | 1253 MB |
-| N=2 (bring-up) | 30.3 ms | 33.0 | 389 MB |
+| Context (position of the first token) | per-token | tok/s |
+|---|---|---|
+| **64** | **86.8 ms** | **11.5** |
+| 1024 | 105.1 ms | 9.5 |
+| 4096 | 163.5 ms | 6.1 |
+| 32768 | 708 ms | 1.4 |
+| 131071 (PT=1) | 2575 ms | 0.39 |
 
 N=16 went from 452 ms/token to 212 ms by vectorizing the kernels, then to
 91.2 ms by moving the remaining scalar fp32 epilogues onto vectors (bit-exact),
 taking the lm_head's top-k insert off soft float, and double-buffering the
-up-projection weights.
+up-projection weights, then to 86.8 ms by reading only the live KV blocks.
+Past a few thousand tokens attention dominates: each KV head's blocks fold on
+one core, about 18 ms per 1k tokens of context.
 
 **What bounds it now.** With every kernel replaced by a no-op, a token still
 takes 69 ms at N=16: each weight stream has one shim lane (about 13.7 GB/s) and
@@ -318,9 +324,10 @@ One compiled design for decode, token-by-token prefill and batched prefill, with
 the per-call values (tokens per pass, position, live context, layers) as
 ScratchpadParameters:
 
-- **A long KV cache**: block-major in DDR up to 128k tokens, appended in place,
-  with block-wise attention (`aie2_attn_block.py`).
 - **The shared 8-lane GEMV array** for every projection and the lm_head, with
   the glue fused into its epilogues; the old chain modes retire with it.
+- **Attention across cores**: each KV head's blocks split over the cores the
+  array frees, merged exactly (`llama_attn_merge_selfcal`, measured standalone
+  in `aie2_attn_block.py`), for long contexts.
 - **Prefill** on the device, token by token and then batched, with TTFT and
   tok/s measured end to end.
