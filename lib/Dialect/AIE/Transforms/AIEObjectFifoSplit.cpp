@@ -86,6 +86,14 @@ bool requiresDMAs(ObjectFifoCreateOp createOp,
     auto consumerTileOp =
         cast<TileOp>(createOp.getConsumerTiles()[0].getDefiningOp());
     shared = sharedMemory(createOp.getProducerTileOp(), consumerTileOp);
+    // A delegate both ends reach holds the objects even where the ends share
+    // no memory of their own.
+    if (shared == AIETargetModel::SharedMemory::None) {
+      if (auto alloc = getOptionalAllocateOp(createOp);
+          alloc &&
+          delegateReachesBothEnds(createOp, alloc->getDelegateTileOp()))
+        shared = AIETargetModel::SharedMemory::Either;
+    }
   }
 
   if (shared == AIETargetModel::SharedMemory::None) {
