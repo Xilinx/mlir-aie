@@ -501,13 +501,12 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
     // A walk over the stream reads across the objects of one image, so the
     // pool holds the image's objects side by side.
     bool window = linkOp.walksStream();
-    FailureOr<StreamWindow> walk = failure();
+    StreamWindow walk;
     if (window) {
-      walk = linkOp.getStreamWindow();
-      if (failed(walk))
+      if (failed(linkOp.getStreamWindow(walk)))
         return failure();
       name = (owner.name().getValue() + "_cons_pool").str();
-      depth = walk->objects;
+      depth = walk.objects;
     } else if (ownerIsOutput) {
       name = (owner.name().getValue() + "_pool").str();
       depth = owner.size();
@@ -531,10 +530,9 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
       pool.setContiguous(true);
       // The padding objects sit in the buffer as zeros, since a MemTile
       // descriptor walking four dimensions ignores its padding.
-      if (walk->top || walk->bottom)
-        pool.setZeroObjects(
-            SmallVector<int32_t>{static_cast<int32_t>(walk->top),
-                                 static_cast<int32_t>(walk->bottom)});
+      if (walk.top || walk.bottom)
+        pool.setZeroObjects(SmallVector<int32_t>{
+            static_cast<int32_t>(walk.top), static_cast<int32_t>(walk.bottom)});
     }
     linkPoolOwner.insert(owner);
 

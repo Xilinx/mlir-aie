@@ -134,7 +134,9 @@ struct AIEObjectFifoLowerDMAsPass
                BDIterationAttr::get(context, pool.getDepth(), object, 0)}};
     }
 
-    StreamWindow window = *endpoint.getStreamWindow();
+    StreamWindow window;
+    if (failed(endpoint.getStreamWindow(window)))
+      return {};
     BDDimLayoutArrayAttr dims =
         BDDimLayoutArrayAttr::get(context, window.inner);
     SmallVector<Descriptor> descriptors;

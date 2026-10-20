@@ -2667,7 +2667,7 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     // objects of the output's size, the outer dimension stepping outputs.
     bool walksStream();
     // The window a stream walk reads, in input objects.
-    mlir::FailureOr<StreamWindow> getStreamWindow();
+    mlir::LogicalResult getStreamWindow(StreamWindow &window);
   }];
 }
 
@@ -2911,7 +2911,7 @@ def AIE_ObjectFifoDmaEndpointOp
     /// Whether this end drains a contiguous pool by a walk over its stream.
     bool walksStream();
     /// The window a stream walk reads, in the pool's objects.
-    mlir::FailureOr<StreamWindow> getStreamWindow();
+    mlir::LogicalResult getStreamWindow(StreamWindow &window);
     /// Times the chain runs per pass: the pool's repeat count at the draining
     /// end, once at the filling end.
     int64_t getRepeat();

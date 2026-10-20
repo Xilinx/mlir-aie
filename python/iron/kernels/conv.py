@@ -42,7 +42,7 @@ def _i32s(n: int) -> list:
 
 
 def _table_flags(table: bool, copies: int) -> list[str]:
-    """The ``-D`` flags of a conv's table map: none without ``table``.
+    """Return the ``-D`` flags of a conv's table map: none without ``table``.
 
     Raises:
         ValueError: When ``copies`` is not 1 or 2.

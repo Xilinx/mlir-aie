@@ -346,9 +346,10 @@ int64_t xilinx::AIE::StreamWindow::transfer() const {
   return elements;
 }
 
-FailureOr<StreamWindow> xilinx::AIE::inferStreamWindow(
+LogicalResult xilinx::AIE::inferStreamWindow(
     ArrayRef<BDDimLayoutAttr> dims, ArrayRef<BDPadLayoutAttr> pads,
-    int64_t objectSize, function_ref<InFlightDiagnostic()> emitError) {
+    int64_t objectSize, function_ref<InFlightDiagnostic()> emitError,
+    StreamWindow &window) {
   if (dims.size() < 2)
     return emitError() << "a walk over a stream needs an outer dimension of "
                           "outputs and at least one inner dimension";
@@ -397,7 +398,8 @@ FailureOr<StreamWindow> xilinx::AIE::inferStreamWindow(
     return emitError() << "a walk over a stream of " << w.objects
                        << " objects with " << w.top << " and " << w.bottom
                        << " padding objects leaves an output without data";
-  return w;
+  window = w;
+  return success();
 }
 
 SmallVector<StreamWindowStep>
@@ -1069,8 +1071,8 @@ int64_t ObjectFifoDmaEndpointOp::getNumDescriptors() {
   if (pool.getContiguous()) {
     if (!walksStream())
       return 1;
-    FailureOr<StreamWindow> window = getStreamWindow();
-    return succeeded(window) ? window->outputs : 0;
+    StreamWindow window;
+    return succeeded(getStreamWindow(window)) ? window.outputs : 0;
   }
   return pool.getDepth() * getSelectedSegments().size();
 }
@@ -1082,13 +1084,16 @@ bool ObjectFifoDmaEndpointOp::walksStream() {
          !(*dims)[0].getValue().empty();
 }
 
-FailureOr<StreamWindow> ObjectFifoDmaEndpointOp::getStreamWindow() {
+LogicalResult ObjectFifoDmaEndpointOp::getStreamWindow(StreamWindow &window) {
+  auto dims = getDimensions();
+  if (!dims || dims->empty())
+    return emitOpError("walks no stream: it has no dimensions");
   ArrayRef<BDPadLayoutAttr> pads;
   if (auto padding = getPadDimensions(); padding && !padding->empty())
     pads = (*padding)[0].getValue();
-  return inferStreamWindow((*getDimensions())[0].getValue(), pads,
+  return inferStreamWindow((*dims)[0].getValue(), pads,
                            getPoolOp().getObjectSize(),
-                           [&] { return emitOpError(); });
+                           [&] { return emitOpError(); }, window);
 }
 
 int64_t ObjectFifoDmaEndpointOp::getRepeat() {
@@ -1155,8 +1160,9 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
   }
 
   // A walk over the stream reads across the pool's objects, outputs apart.
+  StreamWindow window;
   if (walksStream())
-    return success(succeeded(getStreamWindow()));
+    return getStreamWindow(window);
 
   std::vector<ObjectFifoSegmentOp> selected = getSelectedSegments();
   for (size_t position = 0; position < selectedCount; ++position) {
@@ -1928,8 +1934,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
   }
 
   if (walksStream()) {
-    FailureOr<StreamWindow> window = getStreamWindow();
-    if (failed(window))
+    StreamWindow window;
+    if (failed(getStreamWindow(window)))
       return failure();
     if (!tile.isMemTile())
       return emitOpError("a walk over a stream needs a MemTile link point");
@@ -1942,16 +1948,16 @@ LogicalResult ObjectFifoLinkOp::verify() {
     const AIETargetModel &target = getTargetModel(getOperation());
     // Its pool counts the stream's objects on one lock pair, and each output
     // is a descriptor of its own on a MemTile channel.
-    if (window->objects > static_cast<int64_t>(target.getMaxLockValue()))
-      return emitOpError() << "a walk over a stream of " << window->objects
+    if (window.objects > static_cast<int64_t>(target.getMaxLockValue()))
+      return emitOpError() << "a walk over a stream of " << window.objects
                            << " objects needs a lock counting that many, "
                               "but locks count to "
                            << target.getMaxLockValue();
     int64_t bds = target.getNumBDs(AIETileType::MemTile) / 2;
-    if (window->outputs > bds)
+    if (window.outputs > bds)
       return emitOpError() << "a walk over a stream lowers to one descriptor "
                               "per output, "
-                           << window->outputs << ", but a MemTile channel has "
+                           << window.outputs << ", but a MemTile channel has "
                            << bds;
   }
 
@@ -2007,17 +2013,18 @@ bool ObjectFifoLinkOp::walksStream() {
                       .getNumElements();
 }
 
-FailureOr<StreamWindow> ObjectFifoLinkOp::getStreamWindow() {
+LogicalResult ObjectFifoLinkOp::getStreamWindow(StreamWindow &window) {
   ObjectFifoCreateOp in = getInputObjectFifos()[0];
   ObjectFifoCreateOp out = getOutputObjectFifos()[0];
   ArrayRef<BDPadLayoutAttr> pads;
   if (auto padding = out.getPadDimensions())
     pads = *padding;
-  return inferStreamWindow(out.getDimensionsToStream(), pads,
-                           cast<AIEObjectFifoType>(in.getElemType())
-                               .getElementType()
-                               .getNumElements(),
-                           [&] { return emitOpError(); });
+  return inferStreamWindow(
+      out.getDimensionsToStream(), pads,
+      cast<AIEObjectFifoType>(in.getElemType())
+          .getElementType()
+          .getNumElements(),
+      [&] { return emitOpError(); }, window);
 }
 
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {

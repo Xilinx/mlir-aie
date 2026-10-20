@@ -518,11 +518,12 @@ mlir::LogicalResult verifyBdLockPair(mlir::Block &block, bool outOfOrder,
 // the outermost dimension only) describe over objects of `objectSize`
 // elements. The outermost dimension steps whole objects between outputs; at
 // most one inner dimension steps whole objects, by one; the others stay
-// within an object.
-mlir::FailureOr<StreamWindow>
+// within an object. Fills `window` on success.
+mlir::LogicalResult
 inferStreamWindow(llvm::ArrayRef<BDDimLayoutAttr> dims,
                   llvm::ArrayRef<BDPadLayoutAttr> pads, int64_t objectSize,
-                  llvm::function_ref<mlir::InFlightDiagnostic()> emitError);
+                  llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+                  StreamWindow &window);
 
 // Each output's step: it takes the objects up to the newest it reads and gives
 // back those no later output reads, the last one all that are left.
