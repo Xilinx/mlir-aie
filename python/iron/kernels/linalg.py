@@ -12,6 +12,7 @@ import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.accuracy import ulp_size
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.verify import Tolerance
@@ -329,6 +330,27 @@ def _linalg_tolerance(input_dtype) -> Tolerance:
     )
 
 
+def _mm_nearest_bound(a, b, *, dim_m: int, dim_k: int, dim_n: int):
+    """How far a bf16 C may sit from the reference cast to bf16.
+
+    The core rounds its f32 sum once to nearest even, so C is that cast,
+    except where ``A @ B`` lies within the sum's error of a rounding midpoint:
+    there the neighbour, one ulp off, is as right. The sum's error is
+    ``dim_k`` f32 ulps of ``|A| @ |B|`` (AIE2P's f32 add has no guard bit),
+    and 2^-24 of ``|A @ B|`` covers the reference cast rounding through f32.
+    """
+    dims = dict(dim_m=dim_m, dim_k=dim_k, dim_n=dim_n)
+    exact = mm_tile_ref(a, b, **dims)
+    magnitude = mm_tile_ref(
+        np.abs(np.asarray(a, np.float64)), np.abs(np.asarray(b, np.float64)), **dims
+    )
+    cast = exact.astype(bfloat16).astype(np.float64)
+    spacing = ulp_size(exact, bfloat16)
+    slack = dim_k * 2.0**-23 * magnitude + 2.0**-24 * np.abs(exact)
+    straddles = np.abs(np.abs(exact - cast) - 0.5 * spacing) <= slack
+    return np.where(straddles, np.maximum(spacing, ulp_size(cast, bfloat16)), 0.0)
+
+
 class StreamDimsABC(NamedTuple):
     """The three ``to_stream`` a matmul design needs, one per operand.
 
@@ -633,9 +655,9 @@ def mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            # mm_aie2p.h sets conv_even itself and restores it; mm_aie2.h
-            # does so only under round_conv_even, and otherwise stores bf16
-            # in whatever mode the core is in.
+            # mm_aie2p.h's entry points set conv_even for a bf16 C and restore
+            # the caller's mode; mm_aie2.h does so only under round_conv_even,
+            # and otherwise stores bf16 in whatever mode the core is in.
             setup=(
                 conv_even
                 if arch != "aie2p" and output_dtype is bfloat16 and not self_rounding
@@ -646,7 +668,18 @@ def mm(
             initializers=((2, _zero_output),),
             acc_dtype=mm_acc_dtype(input_dtype),
             reduction=dim_k,
-            tolerance=_linalg_tolerance(input_dtype),
+            tolerance=(
+                Tolerance.bounded(
+                    partial(_mm_nearest_bound, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
+                    note="npu2: the f32 sum rounded once to nearest even",
+                )
+                if arch == "aie2p"
+                and vectorized
+                and not bf16_emulated
+                and input_dtype is bfloat16
+                and output_dtype is bfloat16
+                else _linalg_tolerance(input_dtype)
+            ),
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
