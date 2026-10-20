@@ -11,10 +11,12 @@ on:
         required: false
         type: string
   schedule:
-    # Weekly on Sunday night US Mountain (Monday 05:53 UTC ≈ Sun 22:53/23:53 MT).
+    # Weekly, early Monday US Mountain (07:53 UTC ≈ 00:53/01:53 MT).
     # A bad nightly is quarantined in the un-merged bump PR rather than landing
-    # on main; weekly keeps each diff small enough to bisect.
-    - cron: '53 5 * * 1'
+    # on main; weekly keeps each diff small enough to bisect. After the 06:00
+    # kernel checks nightly publishes, so the PR's kernel report compares
+    # with that morning's nightly rather than the day before's.
+    - cron: '53 7 * * 1'
 
 permissions:
   contents: write
@@ -39,12 +41,8 @@ jobs:
         id: update
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ -n "${{ inputs.peano_version }}" ]; then
-            python3 utils/update_peano_version.py --peano-version "${{ inputs.peano_version }}"
-          else
-            python3 utils/update_peano_version.py
-          fi
+          PEANO_VERSION: ${{ inputs.peano_version }}
+        run: python3 utils/update_peano_version.py --peano-version "$PEANO_VERSION"
 
       - name: Check for changes
         id: check_changes
@@ -103,6 +101,8 @@ jobs:
             Bumps the pinned llvm-aie (Peano) nightly in `utils/peano-requirements.txt`.
 
             Reason: ${{ steps.update.outputs.bump_reason }}
+
+            llvm-aie changes: ${{ steps.update.outputs.compare_url }}
 
             The on-device NPU test workflows run on this PR; do not merge unless they
             are green. A red run here means the new nightly miscompiles and is

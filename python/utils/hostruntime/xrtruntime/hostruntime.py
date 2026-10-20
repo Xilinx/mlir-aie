@@ -62,6 +62,50 @@ _QUERY_RESOURCE_INFO = 12
 logger = logging.getLogger(__name__)
 
 
+class _KernelRun:
+    """The one `pyxrt.run` a loaded kernel is dispatched through.
+
+    A fresh `pyxrt.run` reconfigures a full ELF's device on its first start
+    (about 3 ms for MobileNet, 70 us for a pass-through design); a run rebound
+    with `set_arg`, even to other buffers, does not.
+    """
+
+    def __init__(self, kernel):
+        """Initialize the run slot.
+
+        Args:
+            kernel: The `pyxrt` kernel the run dispatches.
+        """
+        self.kernel = kernel
+        self.run = None
+
+    def dispatch(self, args) -> "pyxrt.ert_cmd_state":
+        """Bind `args` and run the kernel to completion.
+
+        Args:
+            args: The kernel's arguments in order, `pyxrt.bo`s and ints. A
+                `None` leaves its slot unbound.
+
+        Returns:
+            The run's final command state. A run that does not complete, or
+            raises, is dropped so the next dispatch starts a fresh one.
+        """
+        if self.run is None:
+            self.run = pyxrt.run(self.kernel)
+        try:
+            for i, arg in enumerate(args):
+                if arg is not None:
+                    self.run.set_arg(i, arg)
+            self.run.start()
+            state = self.run.wait()
+        except BaseException:
+            self.run = None
+            raise
+        if state != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            self.run = None
+        return state
+
+
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
 class XRTKernelHandle(KernelHandle):
     """Handle for a loaded XRT kernel."""
@@ -76,6 +120,7 @@ class XRTKernelHandle(KernelHandle):
         name=None,
         is_full_elf=False,
         num_args=None,
+        kernel_run=None,
     ):
         """Initialize the XRTKernelHandle.
 
@@ -95,6 +140,9 @@ class XRTKernelHandle(KernelHandle):
                 for the loaded kernel, opcode and instructions included;
                 ``run()`` refuses more host buffers than they leave. ``None``
                 skips the check. Defaults to None.
+            kernel_run (optional): The run slot `kernel` is dispatched
+                through, shared by every handle of the same kernel. Defaults
+                to a slot of this handle's own.
         """
         super().__init__(needs_dispatch_insts=insts is None and not is_full_elf)
         self.kernel = kernel
@@ -105,6 +153,7 @@ class XRTKernelHandle(KernelHandle):
         self.name = name
         self.is_full_elf = is_full_elf
         self.num_args = num_args
+        self.kernel_run = kernel_run if kernel_run is not None else _KernelRun(kernel)
 
 
 class XRTKernelResult(KernelResult):
@@ -465,8 +514,7 @@ class XRTHostRuntime(HostRuntime):
                         ).buffer_object()
 
             start = time.perf_counter_ns()
-            h = kernel_handle.kernel(3, insts_bo, insts_bytes, *buffers)
-            r = h.wait()
+            r = kernel_handle.kernel_run.dispatch([3, insts_bo, insts_bytes, *buffers])
             stop = time.perf_counter_ns()
 
             if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
@@ -491,15 +539,8 @@ class XRTHostRuntime(HostRuntime):
         buffer the trace lowering appended) is bound positionally with
         ``set_arg``.
         """
-        run = pyxrt.run(kernel_handle.kernel)
-        for i, buf in enumerate(buffers):
-            run.set_arg(i, buf)
-
         start = time.perf_counter_ns()
-        run.start()
-        # run.wait() returns the ert_cmd_state; run.wait2() returns None, so it
-        # cannot be checked against ERT_CMD_STATE_COMPLETED.
-        r = run.wait()
+        r = kernel_handle.kernel_run.dispatch(buffers)
         stop = time.perf_counter_ns()
 
         if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
@@ -539,6 +580,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
         name=None,
         is_full_elf=False,
         num_args=None,
+        kernel_run=None,
     ):
         """Initialize the CachedXRTKernelHandle.
 
@@ -552,6 +594,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
             is_full_elf (bool, optional): True when loaded from a full ELF.
                 Defaults to False.
             num_args (optional): See `XRTKernelHandle`. Defaults to None.
+            kernel_run (optional): See `XRTKernelHandle`. Defaults to None.
         """
         super().__init__(
             kernel,
@@ -562,6 +605,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
             name=name,
             is_full_elf=is_full_elf,
             num_args=num_args,
+            kernel_run=kernel_run,
         )
         self._is_valid = True
 
@@ -570,6 +614,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
         self._is_valid = False
         # Instruction BOs and kernels depend on the hardware context. Those must
         # be released before dropping the handle's context reference.
+        self.kernel_run = None
         if hasattr(self, "insts_bo"):
             del self.insts_bo
         if hasattr(self, "kernel"):
@@ -712,6 +757,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         self._cleanup_entry_insts(entry)
 
         # Clear kernel cache so pyxrt.kernel objects are released with the context
+        entry["runs"].clear()
         entry["kernels"].clear()
 
         # Release the hw_context by removing its strong reference from the entry dict.
@@ -921,6 +967,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                     "context": context,
                     "xclbin": None,
                     "kernels": {},
+                    "runs": {},
                     "handles": [],
                     "insts_keys": set(),
                     "uuid": None,
@@ -928,11 +975,19 @@ class CachedXRTRuntime(XRTHostRuntime):
                 self._context_cache[context_key] = entry
 
             if kernel_name not in entry["kernels"]:
-                entry["kernels"][kernel_name] = pyxrt.ext.kernel(context, kernel_name)
+                kernel = pyxrt.ext.kernel(context, kernel_name)
+                entry["kernels"][kernel_name] = kernel
+                entry["runs"][kernel_name] = _KernelRun(kernel)
             kernel = entry["kernels"][kernel_name]
 
             kernel_handle = CachedXRTKernelHandle(
-                kernel, None, context, None, name=kernel_name, is_full_elf=True
+                kernel,
+                None,
+                context,
+                None,
+                name=kernel_name,
+                is_full_elf=True,
+                kernel_run=entry["runs"][kernel_name],
             )
             entry["handles"].append(weakref.ref(kernel_handle))
             return kernel_handle
@@ -1033,6 +1088,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                     "context": context,
                     "xclbin": xclbin,
                     "kernels": {},  # kernel_name -> pyxrt.kernel (strong ref, tied to context)
+                    "runs": {},
                     "kernel_args": {
                         k.get_name(): k.get_num_args() for k in xclbin.get_kernels()
                     },
@@ -1051,18 +1107,19 @@ class CachedXRTRuntime(XRTHostRuntime):
                 else None
             )
             insts_bo = None
-            if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
-                ext_kernel_key = (kernel_name, insts_file)
-                if ext_kernel_key not in entry["kernels"]:
-                    entry["kernels"][ext_kernel_key] = pyxrt.ext.kernel(
-                        context, insts, kernel_name
-                    )
-                kernel = entry["kernels"][ext_kernel_key]
-            else:
-                if kernel_name not in entry["kernels"]:
-                    entry["kernels"][kernel_name] = pyxrt.kernel(context, kernel_name)
-                kernel = entry["kernels"][kernel_name]
-
+            is_module = hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module)
+            kernel_key = (kernel_name, insts_file) if is_module else kernel_name
+            if kernel_key not in entry["kernels"]:
+                kernel = (
+                    pyxrt.ext.kernel(context, insts, kernel_name)
+                    if is_module
+                    else pyxrt.kernel(context, kernel_name)
+                )
+                entry["kernels"][kernel_key] = kernel
+                entry["runs"][kernel_key] = _KernelRun(kernel)
+            kernel = entry["kernels"][kernel_key]
+            kernel_run = entry["runs"][kernel_key]
+            if not is_module:
                 if insts_file is None:
                     # DispatchTime[T] design: no static insts to cache --
                     # run() allocates a per-call BO from dispatch_insts.
@@ -1074,6 +1131,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                         None,
                         name=kernel_name,
                         num_args=num_args,
+                        kernel_run=kernel_run,
                     )
                     entry["handles"].append(weakref.ref(kernel_handle))
                     return kernel_handle
@@ -1113,6 +1171,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 insts_bo,
                 name=kernel_name,
                 num_args=num_args,
+                kernel_run=kernel_run,
             )
             entry["handles"].append(weakref.ref(kernel_handle))
 

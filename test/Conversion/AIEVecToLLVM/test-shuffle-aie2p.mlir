@@ -40,4 +40,3 @@ func.func @shuffle_t256_2x2_lo(%a : vector<16xi32>) -> vector<16xi32> {
   %o = vector.bitcast %r : vector<2xi256> to vector<16xi32>
   return %o : vector<16xi32>
 }
-

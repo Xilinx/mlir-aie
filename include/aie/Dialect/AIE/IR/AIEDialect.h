@@ -172,6 +172,14 @@ private:
 std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
                                      llvm::StringRef prefix, unsigned &counter);
 
+/// Same, against a symbol table the caller builds once. The `Operation *` form
+/// probes with `SymbolTable::lookupSymbolIn`, which scans every top-level op
+/// per probe, so naming N operations costs O(N * ops). `counter` is monotonic,
+/// so a snapshot answers every probe: only symbols that already existed can
+/// collide.
+std::string generateUniqueSymbolName(mlir::SymbolTable &symbolTable,
+                                     llvm::StringRef prefix, unsigned &counter);
+
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 

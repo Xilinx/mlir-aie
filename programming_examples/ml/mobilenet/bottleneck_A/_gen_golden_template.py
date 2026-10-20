@@ -4,19 +4,18 @@
 #
 """Shared brevitas-reference generator for bottleneck_A per-block fixtures.
 
-Five sibling ``gen_golden_bn{1,2,3,6,7}.py`` scripts shared an identical
-3-conv-1×1+3×3+1×1 quantized bottleneck recipe, differing only in:
+The ``gen_golden_bn{1,2,3,6,7,8}.py`` scripts share one 3-conv
+1×1+3×3+1×1 quantized bottleneck recipe, differing only in:
 
 * the per-block shape constants (``tensor{In,Out}{W,H,C}``, depthwise
   stride / channels);
 * whether a residual skip-add is added after conv3;
-* whether the model is calibrated against an ImageNet subset (bn1, bn2)
-  or with the seeded random input alone (bn3, bn6, bn7).
+* whether the model is calibrated on the calibration images (bn1, bn2)
+  or on the seeded random input alone (bn3, bn6, bn7, bn8).
 
-This module collapses that recipe into ``generate_bottleneck_fixtures``.
-Each per-block wrapper supplies the constants + the two flags and
-delegates here.  ``bn0`` and ``bn8_9`` have meaningfully different
-forward graphs and stay separate.
+Each wrapper supplies its ``BottleneckSpec`` and calls
+``generate_bottleneck_fixtures``, which writes the block's fixtures and its
+``scale_factors_per_bn.json`` entry into ``data/``.
 """
 
 from __future__ import annotations
@@ -39,11 +38,20 @@ from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports
     Int8WeightPerTensorFixedPoint,
     Uint8ActPerTensorFixedPoint,
 )
+from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
+    calibrate,
+)
+from torchvision import transforms  # pyright: ignore[reportMissingImports]
+
+from .. import mb_utils
+from ..calibration import calibration_loader
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 
 VECTOR_SIZE = 8
+DATA_DIR = Path(__file__).parent / "data"
+PER_BN_SCALES = DATA_DIR / "scale_factors_per_bn.json"
 
 
 @dataclass
@@ -58,7 +66,7 @@ class BottleneckSpec:
     depthwise_stride: int
     depthwise_channels: int
     has_skip: bool
-    calibrate_imagenet: bool
+    calibrate_images: bool
 
 
 def _build_model(spec: BottleneckSpec):
@@ -164,58 +172,35 @@ def _build_model(spec: BottleneckSpec):
     return QuantBottleneckA()
 
 
-def _calibrate_with_imagenet(model, expand_to_channels: int) -> None:
-    """Calibrate ``model`` over 32 ImageNet samples (bn1, bn2 path).
-
-    Matches the original scripts bit-for-bit: same transforms, same
-    ImageFolder path, same DataLoader settings.
-    """
-    import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
-    import torchvision  # pyright: ignore[reportMissingImports]
-    from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
-        calibrate,
-    )
-    from mb_utils import ExpandChannels
-    from torchvision import transforms  # pyright: ignore[reportMissingImports]
-
+def _calibrate(model, expand_to_channels: int) -> None:
+    """Calibrate ``model`` on the calibration images (bn1, bn2)."""
     transform = transforms.Compose(
         [
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ExpandChannels(target_channels=expand_to_channels),
+            mb_utils.ExpandChannels(target_channels=expand_to_channels),
         ]
     )
 
-    src_data = "/group/xrlabs2/imagenet/calibration"
-    dataset = torchvision.datasets.ImageFolder(src_data, transform)
-    indices = torch.arange(4)
-    val_sub = data_utils.Subset(dataset, indices)
-    calib_loader = torch.utils.data.DataLoader(
-        dataset=val_sub, batch_size=32, shuffle=False
-    )
-    calibrate(calib_loader, model)
+    calibrate(calibration_loader(transform), model)
 
 
-def generate_bottleneck_fixtures(spec: BottleneckSpec, *, log_dir: str | Path) -> None:
-    """Run the brevitas model and emit ``log/`` fixtures for ``spec``.
+def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
+    """Run the brevitas model and write ``spec``'s fixtures into ``data/``.
 
-    Emits the canonical filenames each downstream test expects:
+    Writes, for ``spec.name`` ``bnN``:
 
-    * ``golden_output.txt`` — quantized brevitas output (CHW int8).
-    * ``before_ifm_mem_fmt_1x1.txt`` — pre-reorder input (int8).
-    * ``after_ifm_mem_fmt.txt`` — input reordered ``YCXC8 → CYX``.
-    * ``after_weights_mem_fmt_final.txt`` — concatenated reordered
-      weights for conv1 / conv2 (depthwise) / conv3.
-
-    No return value; everything lands in ``log_dir``.
+    * ``golden_output_bnN_single.txt``: quantized brevitas output (CHW int8).
+    * ``input_bnN_single.txt``: the quantized input (int8).
+    * ``bnN_single.txt``: conv1 / conv2 (depthwise) / conv3 weights,
+      reordered and concatenated.
+    * the ``BNN`` entry of ``scale_factors_per_bn.json``.
     """
     print(
         f"Running torch reference model for bottleneck_A_subblocks for {spec.name} ..."
     )
-    log_dir = Path(log_dir)
-    log_dir.mkdir(parents=True, exist_ok=True)
 
     dtype_in = np.dtype("int8")
     dtype_wts = np.dtype("int8")
@@ -248,8 +233,8 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec, *, log_dir: str | Path) -
     input = torch.randn(1, in_c1_vec * VECTOR_SIZE, spec.tensor_in_h, spec.tensor_in_w)
 
     model = _build_model(spec)
-    if spec.calibrate_imagenet:
-        _calibrate_with_imagenet(model, expand_to_channels=spec.tensor_in_c)
+    if spec.calibrate_images:
+        _calibrate(model, expand_to_channels=spec.tensor_in_c)
     model.eval()
 
     q_bottleneck_out = model(input)
@@ -260,7 +245,6 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec, *, log_dir: str | Path) -
     q_inp = model.quant_id_1(input)
     int_inp = q_inp.int(float_datatype=True)
 
-    # Combined-scale prints — informational; the originals always emitted these.
     # No-skip variants divide cs3 by bn_quant_id_2's scale; skip variants
     # divide by the input quant_id_1's scale (because the skip path routes
     # conv3 → quant_id_1 → + out_q → bn_add).
@@ -282,29 +266,41 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec, *, log_dir: str | Path) -
     print("combined_scale after conv1x1:", cs1.item())
     print("combined_scale after conv3x3:", cs2.item())
     print("combined_scale after conv1x1:", cs3.item())
+    skip_add = 0
     if spec.has_skip:
         skip_scale = model.bn_add.act_quant.scale()
         skip_cs = -torch.log2(init_scale / skip_scale)
         print("combined_scale after skip add:", skip_cs.item())
+        skip_add = int(skip_cs.item())
     print(banner)
+
+    scales = (
+        mb_utils.read_scale_factors(PER_BN_SCALES) if PER_BN_SCALES.exists() else {}
+    )
+    scales[spec.name.upper()] = {
+        "conv1x1_1": int(cs1.item()),
+        "conv3x3": int(cs2.item()),
+        "conv1x1_2": int(cs3.item()),
+        "skip_add": skip_add,
+    }
+    mb_utils.write_scale_factors(PER_BN_SCALES, dict(sorted(scales.items())))
 
     int_w1 = model.bn_quant_conv1.quant_weight().int(float_datatype=True)
     int_w2 = model.bn_quant_conv2.quant_weight().int(float_datatype=True)
     int_w3 = model.bn_quant_conv3.quant_weight().int(float_datatype=True)
 
-    # Emit the .txt fixtures (canonical filenames — overwritten per-run).
     print("Writing golden output txt file.")
-    golden_output.tofile(str(log_dir / "golden_output.txt"), sep=",", format="%d")
+    golden_output.tofile(
+        DATA_DIR / f"golden_output_{spec.name}_single.txt", sep=",", format="%d"
+    )
 
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
 
     print("Writing input txt file.")
     before_input.tofile(
-        str(log_dir / "before_ifm_mem_fmt_1x1.txt"), sep=",", format="%d"
+        DATA_DIR / f"input_{spec.name}_single.txt", sep=",", format="%d"
     )
-    ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
-    ifm_mem_fmt.tofile(str(log_dir / "after_ifm_mem_fmt.txt"), sep=",", format="%d")
 
     wts1 = ds.reorder_mat(int_w1.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX")
     wts2 = ds.reorder_mat(int_w2.data.numpy().astype(dtype_wts), "OIYXI1O8", "OIYX")
@@ -312,9 +308,7 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec, *, log_dir: str | Path) -
     total_wts = np.concatenate((wts1, wts2, wts3), axis=None)
 
     print("Writing weights txt files.")
-    total_wts.tofile(
-        str(log_dir / "after_weights_mem_fmt_final.txt"), sep=",", format="%d"
-    )
+    total_wts.tofile(DATA_DIR / f"{spec.name}_single.txt", sep=",", format="%d")
 
     print("{}+{}+{}".format(wts1.shape, wts2.shape, wts3.shape))
     print(shape_total_wts)

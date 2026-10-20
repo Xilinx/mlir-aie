@@ -49,7 +49,7 @@ class ScratchpadParameter(Resolvable):
         ```
     """
 
-    def __init__(self, name: str, dtype: NpuDType):
+    def __init__(self, name: str, dtype: type[NpuDType]):
         """Create a ScratchpadParameter.
 
         Args:
@@ -88,7 +88,7 @@ class ScratchpadParameter(Resolvable):
         if dtype is None:
             raise TypeError(f"No NumPy dtype for scratchpad parameter {type_}.")
         parameter = cls(
-            ir.StringAttr(op.attributes["sym_name"]).value, cast(NpuDType, dtype)
+            ir.StringAttr(op.attributes["sym_name"]).value, cast(type[NpuDType], dtype)
         )
         parameter._attributes = {
             name: str(op.attributes[name])
@@ -103,7 +103,7 @@ class ScratchpadParameter(Resolvable):
         return self._name
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """The numpy scalar type of this parameter."""
         return self._dtype
 

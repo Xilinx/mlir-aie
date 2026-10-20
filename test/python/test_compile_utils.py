@@ -7,6 +7,7 @@
 """How compile_mlir_module and _run_aiecc drive the real aiecc."""
 
 import importlib.util
+import json
 import logging
 import os
 import shutil
@@ -113,6 +114,30 @@ def test_compile_writes_outputs_through_work_dir(
         assert (work_dir / name).stat().st_size > 0
     assert (output.read_bytes()[:4] == b"\x7fELF") == full_elf
     assert (work_dir / "design.xclbin").is_file() != full_elf
+
+
+@pytest.mark.parametrize("relative", [False, True])
+def test_compile_profiles_aiecc_into_work_dir(
+    compile_utils, monkeypatch, tmp_path, relative
+):
+    monkeypatch.chdir(tmp_path)
+    work_dir = tmp_path / "build dir"
+    work_dir.mkdir()
+
+    compile_utils.compile_mlir_module(
+        DESIGN,
+        work_dir=os.path.relpath(work_dir) if relative else work_dir,
+        xclbin_path="design.xclbin",
+        insts_path="insts.bin",
+    )
+
+    profile = json.loads((work_dir / compile_utils.AIECC_PROFILE_NAME).read_text())
+    assert profile["version"] == 1
+    names = [edge["name"] for edge in profile["edges"]]
+    assert "placed.mlir" in names
+    assert "design.xclbin" in names
+    assert profile["wall_ms"] == max(edge["end_ms"] for edge in profile["edges"])
+    assert not (tmp_path / compile_utils.AIECC_PROFILE_NAME).exists()
 
 
 @pytest.mark.skipif(shutil.which("xchesscc") is None, reason="xchesscc")

@@ -41,7 +41,12 @@ PASS!
 def load(name):
     spec = importlib.util.spec_from_file_location(name, CHECKS / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # The checks import their siblings, as when run as scripts.
+    sys.path.insert(0, str(CHECKS))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(str(CHECKS))
     return module
 
 
@@ -192,49 +197,150 @@ def test_a_mobilenet_run_fails_without_a_pass_or_a_latency(hw, out, returncode):
     assert not hw.parse_run(out, returncode, 1)["passed"]
 
 
+def test_a_dynamic_run_splits_into_each_batch(hw):
+    out = (
+        "compiling...\nbatch=1\n"
+        + MOBILENET_OUTPUT
+        + "batch=16\n"
+        + MOBILENET_B16_OUTPUT.replace("PASS!", "")
+        + "FAIL: max abs error 40 > 9\n"
+    )
+    segments = hw.split_batches(out)
+    assert sorted(segments) == [1, 16]
+    assert hw.parse_run(segments[1], 0, 1)["us_per_image"] == 384.4
+    # The run stops at the first wrong answer: that batch fails, and a batch
+    # after it, never run, has no output to pass on.
+    assert not hw.parse_run(segments[16], 0, 16)["passed"]
+    assert not hw.parse_run(segments.get(64, ""), 0, 64)["passed"]
+
+
 def test_only_passing_runs_chart_their_times(hw):
     runs = [
-        {"seed": seed, "batch": batch, **hw.parse_run(out, 0, batch), "compile_s": s}
-        for seed, batch, out, s in [
-            (3, 1, MOBILENET_OUTPUT, 41.2),
-            (3, 16, MOBILENET_B16_OUTPUT, 43.0),
+        {
+            "seed": seed,
+            "batch": batch,
+            "effort_label": "default",
+            **hw.parse_run(out, 0, batch),
+        }
+        for seed, batch, out in [
+            (3, 1, MOBILENET_OUTPUT),
+            (3, 16, MOBILENET_B16_OUTPUT),
             # A wrong answer at batch 1 leaves seed 2 with nothing to
             # stream against.
-            (2, 1, MOBILENET_OUTPUT.replace("PASS!", "FAIL!"), 40.9),
-            (2, 16, MOBILENET_B16_OUTPUT, 42.5),
-            (7, 16, "", None),
+            (2, 1, MOBILENET_OUTPUT.replace("PASS!", "FAIL!")),
+            (2, 16, MOBILENET_B16_OUTPUT),
         ]
     ]
-    placements = [
-        {"seed": 3, "placement": "0123456789ab", "placement_cost": 300},
-        {"seed": 2, "placement": "fedcba987654", "placement_cost": None},
+    compile_stats = dict(
+        compile_peak_rss_mb=2100.0, compile_s_warm=6.2, compile_peak_rss_mb_warm=1800.0
+    )
+    compiles = [
+        {
+            "seed": 3,
+            "effort_label": "default",
+            "passed": True,
+            "compile_s": 21.4,
+            **compile_stats,
+        },
+        {
+            "seed": 2,
+            "effort_label": "default",
+            "passed": True,
+            "compile_s": 20.9,
+            **compile_stats,
+        },
+        # A seed whose compile failed charts no compile, and counts as failed.
+        {
+            "seed": 7,
+            "effort_label": "default",
+            "passed": False,
+            "compile_s": None,
+            "compile_peak_rss_mb": None,
+            "compile_s_warm": None,
+            "compile_peak_rss_mb_warm": None,
+        },
     ]
-    rows = hw.aggregate(runs, placements)
+    placements = [
+        {
+            "seed": 3,
+            "effort_label": "default",
+            "placement": "0123456789ab",
+            "placement_cost": 300,
+        },
+        {
+            "seed": 2,
+            "effort_label": "default",
+            "placement": "fedcba987654",
+            "placement_cost": None,
+        },
+    ]
+    rows = hw.aggregate(runs, compiles, placements)
     assert {r["name"]: r["value"] for r in rows} == {
         "mobilenet/failed_seeds": 2,
-        "mobilenet/seed=3/placement_cost": 300,
-        "mobilenet/seed=3/batch=1/us_per_image": 384.4,
-        "mobilenet/seed=3/batch=1/e2e_us_per_image": 480.9,
-        "mobilenet/seed=3/batch=1/compile_s": 41.2,
-        "mobilenet/seed=3/batch=16/us_per_image": 81.48,
-        "mobilenet/seed=3/batch=16/streaming_us": 61.29,
-        "mobilenet/seed=3/batch=16/e2e_us_per_image": 89.47,
-        "mobilenet/seed=3/batch=16/compile_s": 43.0,
-        "mobilenet/seed=2/batch=1/compile_s": 40.9,
-        "mobilenet/seed=2/batch=16/us_per_image": 81.48,
-        "mobilenet/seed=2/batch=16/e2e_us_per_image": 89.47,
-        "mobilenet/seed=2/batch=16/compile_s": 42.5,
+        "mobilenet/seed=3/effort=default/placement_cost": 300,
+        # One compile per seed and effort serves every batch.
+        "mobilenet/seed=3/effort=default/compile_s": 21.4,
+        "mobilenet/seed=3/effort=default/compile_peak_rss_mb": 2100.0,
+        "mobilenet/seed=3/effort=default/compile_s_warm": 6.2,
+        "mobilenet/seed=3/effort=default/compile_peak_rss_mb_warm": 1800.0,
+        "mobilenet/seed=2/effort=default/compile_s": 20.9,
+        "mobilenet/seed=2/effort=default/compile_peak_rss_mb": 2100.0,
+        "mobilenet/seed=2/effort=default/compile_s_warm": 6.2,
+        "mobilenet/seed=2/effort=default/compile_peak_rss_mb_warm": 1800.0,
+        "mobilenet/seed=3/batch=1/effort=default/us_per_image": 384.4,
+        "mobilenet/seed=3/batch=1/effort=default/e2e_us_per_image": 480.9,
+        "mobilenet/seed=3/batch=16/effort=default/us_per_image": 81.48,
+        "mobilenet/seed=3/batch=16/effort=default/streaming_us": 61.29,
+        "mobilenet/seed=3/batch=16/effort=default/e2e_us_per_image": 89.47,
+        "mobilenet/seed=2/batch=16/effort=default/us_per_image": 81.48,
+        "mobilenet/seed=2/batch=16/effort=default/e2e_us_per_image": 89.47,
     }
     ranges = {r["name"]: r.get("range") for r in rows}
-    assert ranges["mobilenet/seed=3/placement_cost"] == "placement 0123456789ab"
     assert (
-        ranges["mobilenet/seed=3/batch=16/streaming_us"]
+        ranges["mobilenet/seed=3/effort=default/placement_cost"]
+        == "placement 0123456789ab"
+    )
+    assert (
+        ranges["mobilenet/seed=3/batch=16/effort=default/streaming_us"]
         == "from b1 384.4 and b16 1303.7"
     )
     assert (
-        ranges["mobilenet/seed=3/batch=16/us_per_image"]
+        ranges["mobilenet/seed=3/batch=16/effort=default/us_per_image"]
         == "median 83.98, MAD 1.43, p95 86.31"
     )
+
+
+def test_each_compile_charts_its_stages_cold_and_warm(hw):
+    stages = load("aiecc_stages")
+    cold = str(CHECKS / "fixtures/aiecc_profile_mobilenet.json")
+    warm = str(CHECKS / "fixtures/aiecc_profile_shim.json")
+    compiles = [
+        {
+            "seed": 3,
+            "effort_label": effort,
+            "passed": True,
+            "compile_s": 19.8,
+            "compile_s_warm": 0.5,
+            **stages.stage_rows(cold, 19.8, ""),
+            **stages.stage_rows(warm, 0.5, "_warm"),
+        }
+        for effort in ("default", "full")
+    ]
+    rows = {r["name"]: r for r in hw.aggregate([], compiles, [])}
+    case = "mobilenet/seed=3/effort=full"
+    # The fixture's SA placement edge and the wait on its kernel objects.
+    assert rows[f"{case}/compile_place_s"]["value"] == 0.96
+    assert rows[f"{case}/compile_kernels_s"]["value"] == 15.72
+    assert rows[f"{case}/compile_outside_aiecc_s"]["value"] == 2.38
+    assert rows[f"{case}/compile_aiecc_wall_s_warm"]["value"] == 0.13
+    assert {
+        f"mobilenet/seed=3/effort={e}/{m}{suffix}"
+        for e in ("default", "full")
+        for m in stages.STAGE_METRICS
+        for suffix in ("", "_warm")
+    } <= rows.keys()
+    timed = [r for n, r in rows.items() if "/compile_" in n and "_rss_" not in n]
+    assert {r["unit"] for r in timed} == {"s"}
 
 
 @pytest.mark.parametrize("batches", ["0", "-3", "two"])
@@ -262,22 +368,26 @@ def test_a_replayed_placement_matches_placing_the_design(hw, aie_opt):
     ).stdout
     digest = hw.placement_of(placed)
     assert digest and len(digest) == 12
-    assert hw.replay_placement(aie_opt, str(SMALL), 1) == (digest, 12)
+    assert hw.replay_placement(aie_opt, str(SMALL), 1, 1.0) == (digest, 12)
     assert hw.placement_of(SMALL.read_text()) is None
 
-    runs = [
-        {"seed": 1, "batch": batch, "placement": placement}
-        for batch, placement in [(1, digest), (4, digest), (16, "0" * 12), (64, None)]
+    compiles = [
+        {"seed": 1, "effort_label": "full", "placement": digest},
+        # A compile that placed apart from the replay records no cost.
+        {"seed": 1, "effort_label": "full", "placement": "0" * 12},
+        # A compile whose placement was not read takes the replay's.
+        {"seed": 1, "effort_label": "full", "placement": None},
     ]
-    assert hw.place_seed(runs, aie_opt, str(SMALL)) == {
+    placed = hw.place_seed(compiles, aie_opt, str(SMALL))
+    assert placed[0] == {
         "seed": 1,
+        "effort_label": "full",
         "placement": digest,
         "placement_cost": 12,
         "replay_matches": True,
-        "placed_apart": [16],
     }
-    # A cost is only recorded for the placement the compile made.
-    assert hw.place_seed(runs[2:], aie_opt, str(SMALL))["placement_cost"] is None
+    assert placed[1]["placement_cost"] is None and not placed[1]["replay_matches"]
+    assert placed[2]["placement"] == digest and placed[2]["placement_cost"] == 12
 
 
 def collect(tmp_path, check, *reports, lits=()):
@@ -442,4 +552,4 @@ def test_the_allocator_report_is_one_case_named_by_its_failed_properties(tmp_pat
 def test_a_placement_that_fails_to_replay_has_no_cost(hw, aie_opt, tmp_path):
     bad = tmp_path / "bad.mlir"
     bad.write_text("not MLIR\n")
-    assert hw.replay_placement(aie_opt, str(bad), 1) == (None, None)
+    assert hw.replay_placement(aie_opt, str(bad), 1, 1.0) == (None, None)

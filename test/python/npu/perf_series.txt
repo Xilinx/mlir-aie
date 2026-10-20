@@ -134,12 +134,11 @@ bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width
 bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240/arg3@32
 bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240/top-row
 bn_conv2dk3_dw_out_split/480x8/uint8_uint8+uint8/input_channels=80/input_width=6/output_split_channels=40/bottom-row
-bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16/two-blocks
-bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8
-bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/arg1@16
-bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/fc1
-bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail
-bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short
+bn_fc_relu_ui16_ic_chunk/10240x1/int8_uint16/chunk_input_channels=1280/chunk_output_channels=8/one-chunk
+bn_fc_relu_ui16_ic_chunk/10240x3/int8_uint16/fc1
+bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16
+bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16/arg0@16
+bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16/max_images=4/images
 clamp/1024x16/bfloat16
 clamp/1024x256/bfloat16
 clamp/1024x4/bfloat16/one-point

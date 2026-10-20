@@ -4,7 +4,6 @@
 #
 
 import math
-import os
 from pathlib import Path
 
 import numpy as np
@@ -24,13 +23,14 @@ from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports
 from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
     calibrate,
 )
+from torchvision import transforms  # pyright: ignore[reportMissingImports]
 
 from .. import mb_utils
+from ..calibration import calibration_loader
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 
-log_dir = str(Path(__file__).parent / "log") + "/"
 data_dir = str(Path(__file__).parent / "data") + "/"
 
 # Read the existing scale factors
@@ -94,9 +94,6 @@ wts_size = (
 def main():
 
     print("Running torch reference model for bottleneck_B ...")
-
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
 
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
@@ -333,10 +330,6 @@ def main():
     )
     quant_bottleneck_model.eval()
 
-    import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
-    import torchvision  # pyright: ignore[reportMissingImports]
-    from torchvision import transforms  # pyright: ignore[reportMissingImports]
-
     # Define the image preprocessing pipeline
     transform = transforms.Compose(
         [
@@ -350,21 +343,7 @@ def main():
         ]
     )
 
-    # test_dataset = torchvision.datasets.ImageNet(
-    #     root=data_dir, train=False, transform=transform, download=True)
-
-    # # Create a subset and DataLoader for the single image
-    # indices = torch.arange(32)
-    # val_sub = data_utils.Subset(test_dataset, indices)
-    # calib_loader = torch.utils.data.DataLoader(dataset=val_sub, batch_size=32, shuffle=False)
-
-    src_data = "/group/xrlabs2/imagenet/calibration"
-    dataset = torchvision.datasets.ImageFolder(src_data, transform)
-    indices = torch.arange(4)
-    val_sub = data_utils.Subset(dataset, indices)
-    calib_loader = torch.utils.data.DataLoader(
-        dataset=val_sub, batch_size=32, shuffle=False
-    )
+    calib_loader = calibration_loader(transform)
     calibrate(calib_loader, quant_bottleneck_model)
     quant_bottleneck_model.eval()
     for name, param in quant_bottleneck_model.named_parameters():
@@ -492,7 +471,7 @@ def main():
     scale_factors["BN12"]["conv3x3"] = int(block_12_combined_scale2.item())
     scale_factors["BN12"]["conv1x1_2"] = int(block_12_combined_scale3.item())
 
-    mb_utils.write_scale_factors(log_dir + scale_factor_file, scale_factors)
+    mb_utils.write_scale_factors(data_dir + scale_factor_file, scale_factors)
     # ------------------------------------------------------
     # Reorder input data-layout
     # ------------------------------------------------------
@@ -527,11 +506,11 @@ def main():
     )
 
     print("Writing golden output txt file.")
-    golden_output.tofile(log_dir + "/golden_output.txt", sep=",", format="%d")
+    golden_output.tofile(data_dir + "golden_output.txt", sep=",", format="%d")
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)  # JL
     print("Writing input txt file.")
-    before_input.tofile(log_dir + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
+    before_input.tofile(data_dir + "before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
 
     # **************************** bn10 ****************************
     bn10_wts1 = ds.reorder_mat(
@@ -568,18 +547,18 @@ def main():
     bn12_wts2_3 = np.concatenate((bn12_wts2, bn12_wts3), axis=None)
 
     print("Writing weights txt files.")
-    bn10_wts1.tofile(log_dir + "/bn10_1_chain.txt", sep=",", format="%d")
-    bn10_wts2.tofile(log_dir + "/bn10_2_chain.txt", sep=",", format="%d")
-    bn10_wts3.tofile(log_dir + "/bn10_3_chain.txt", sep=",", format="%d")
+    bn10_wts1.tofile(data_dir + "bn10_1_chain.txt", sep=",", format="%d")
+    bn10_wts2.tofile(data_dir + "bn10_2_chain.txt", sep=",", format="%d")
+    bn10_wts3.tofile(data_dir + "bn10_3_chain.txt", sep=",", format="%d")
 
-    bn11_wts1.tofile(log_dir + "/bn11_1_chain.txt", sep=",", format="%d")
-    bn11_wts2.tofile(log_dir + "/bn11_2_chain.txt", sep=",", format="%d")
-    bn11_wts3.tofile(log_dir + "/bn11_3_chain.txt", sep=",", format="%d")
+    bn11_wts1.tofile(data_dir + "bn11_1_chain.txt", sep=",", format="%d")
+    bn11_wts2.tofile(data_dir + "bn11_2_chain.txt", sep=",", format="%d")
+    bn11_wts3.tofile(data_dir + "bn11_3_chain.txt", sep=",", format="%d")
 
-    bn12_wts1.tofile(log_dir + "/bn12_1_chain.txt", sep=",", format="%d")
-    bn12_wts2.tofile(log_dir + "/bn12_2_chain.txt", sep=",", format="%d")
-    bn12_wts3.tofile(log_dir + "/bn12_3_chain.txt", sep=",", format="%d")
-    bn12_wts2_3.tofile(log_dir + "/bn12_2_3_chain.txt", sep=",", format="%d")
+    bn12_wts1.tofile(data_dir + "bn12_1_chain.txt", sep=",", format="%d")
+    bn12_wts2.tofile(data_dir + "bn12_2_chain.txt", sep=",", format="%d")
+    bn12_wts3.tofile(data_dir + "bn12_3_chain.txt", sep=",", format="%d")
+    bn12_wts2_3.tofile(data_dir + "bn12_2_3_chain.txt", sep=",", format="%d")
 
     print("Done.")
 

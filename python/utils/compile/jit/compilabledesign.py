@@ -52,6 +52,9 @@ from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
     DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
+    ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from aie.helpers.npdtypes import np_ndarray_type_of
 from aie.ir import (  # pyright: ignore[reportMissingImports]
@@ -141,6 +144,7 @@ class CacheEntry:
     xclbin: Path | None
     insts: Path | None
     elf: Path | None
+    full_elf_kernel: str | None
     pdis: tuple[Path, ...]
     params: Path | None
     lowered_mlir: Path | None
@@ -174,6 +178,7 @@ class _GeneratedDesign:
     configuration_count: int
     expand_load_pdis: bool | None
     devices: tuple
+    scratchpad_parameters: bool
 
     @classmethod
     def from_module(
@@ -195,14 +200,20 @@ class _GeneratedDesign:
                 for op in module.body.operations
                 if isinstance(op, DeviceOp)
             ),
+            scratchpad_parameters=any(
+                isinstance(op, ScratchpadParameterOp) for op in module.body.operations
+            ),
         )
 
     @property
     def aiecc_options(self) -> list[str]:
-        """The aiecc flags the program's own attributes ask for."""
-        if self.expand_load_pdis is None:
-            return []
-        return [f"--expand-load-pdis={str(self.expand_load_pdis).lower()}"]
+        """The aiecc flags the program's own attributes and declarations ask for."""
+        options = []
+        if self.expand_load_pdis is not None:
+            options.append(f"--expand-load-pdis={str(self.expand_load_pdis).lower()}")
+        if self.scratchpad_parameters:
+            options.append("--get-scratchpad-parameters")
+        return options
 
     @property
     def entry_stream_options(self) -> list[str]:
@@ -1383,7 +1394,7 @@ class CompilableDesign:
 
         One accessor for the whole entry, whether it sits in the JIT cache
         (``<NPU_CACHE_HOME>/<hash>/``) or beside caller-supplied outputs
-        (``<stem>.prj/``): the image (xclbin or full ELF) and its
+        (``<stem>.prj/``): the image (xclbin, or full ELF and its kernel name), its
         instructions, the PDIs, the kernel objects, the manifest, and the
         two graph outputs aiecc writes into the work directory when asked
         for them -- ``params.txt`` (``--get-scratchpad-parameters``) and
@@ -1404,6 +1415,7 @@ class CompilableDesign:
             xclbin=present(self._xclbin_path),
             insts=present(self._inst_path),
             elf=present(self._elf_path),
+            full_elf_kernel=self._full_elf_kernel_name,
             pdis=tuple(self.get_pdi_paths()),
             params=present(directory / "params.txt"),
             lowered_mlir=present(directory / "input_with_addresses.mlir"),

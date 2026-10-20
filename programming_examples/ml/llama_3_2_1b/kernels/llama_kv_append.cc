@@ -1,0 +1,88 @@
+//===- llama_kv_append.cc -----------------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// On-chip KV append: computes this token's K/V cache slot ON-DEVICE and
+// writes it at `position`, so the device owns the cache. Bit-exact
+// mirror of numpy_layer_mh.py:426-465 (the `position=` path):
+//   k_rope = rotate_half(k_fp) * cos/sin; ks = max(|k_rope|,1e-12)/127
+//   cache_k[pos] = round(k_rope / ks); k_slot_scales[pos] = ks
+//   (v: no rope, same per-slot-scale quant)
+// Cache buffer: position (int32) + pad, k_slot_scales (T fp32), k body
+// (T*HD int8), v_slot_scales (T fp32), v body.
+//===----------------------------------------------------------------------===//
+
+#include <stdint.h>
+#include <string.h>
+
+#include "llama_kv_row.h"
+
+#ifndef LLAMA_KVA_HEAD_DIM
+#define LLAMA_KVA_HEAD_DIM 64
+#endif
+#ifndef LLAMA_KVA_T
+#define LLAMA_KVA_T 128
+#endif
+
+static constexpr int kHD = LLAMA_KVA_HEAD_DIM;
+static constexpr int kT = LLAMA_KVA_T;
+static constexpr int kPrefix = 8;
+static constexpr int kScaleBytes = kT * 4;
+static constexpr int kBodyBytes = kT * kHD;
+
+extern "C" {
+
+// Co-located variant: the attn tile holds one COMBINED per-head chunk
+//   [q_chunk 288 B | k_fp 256 B | v_fp 256 B | cs 256 B]
+// The append step reads [k_fp|v_fp|cs] at offset 288 (= kQChunkBytes). This
+// wrapper lets the same tile feed flowkv_mh_kvc(combined, ...) (which reads
+// only the first 288 B) and append(combined+288, ...) without pointer math
+// in the IRON worker body. kQChunkBytes = REP*HEAD_DIM (256) + REP*8 (32).
+void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
+                          int8_t *restrict kv_out);
+void llama_kv_append_combined(int8_t *restrict combined, int8_t *restrict kv_in,
+                              int8_t *restrict kv_out) {
+  constexpr int kREP = 4; // N_HEADS_Q / N_HEADS_KV for Llama 3.2 1B
+  constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
+  llama_kv_append_head(combined + kQChunkBytes, kv_in, kv_out);
+}
+
+// One KV head. kvfp_packed packs [k_fp fp32[HEAD_DIM] | v_fp fp32[HEAD_DIM] |
+// cs bf16[2*HEAD_DIM]] into ONE input fifo to stay within the 2-in/2-out
+// compute-tile DMA budget. kv_out is a copy of kv_in with slot[pos]
+// overwritten (separate buffers: IRON object-fifos give distinct in/out
+// instances); it fans to flowkv_mh AND the host drain.
+static inline void append_head_impl(int8_t *restrict kvfp_packed,
+                                    int8_t *restrict kv_in,
+                                    int8_t *restrict kv_out, int32_t pos) {
+  constexpr int kPerHead = kPrefix + 2 * (kScaleBytes + kBodyBytes);
+
+  if (pos < 0)
+    pos = 0;
+  if (pos >= kT)
+    pos = kT - 1;
+
+  for (int i = 0; i < kPerHead; i++)
+    kv_out[i] = kv_in[i];
+
+  int8_t *k_slot_scales = kv_out + kPrefix;
+  int8_t *k_body = k_slot_scales + kScaleBytes;
+  int8_t *v_slot_scales = k_body + kBodyBytes;
+  int8_t *v_body = v_slot_scales + kScaleBytes;
+  float ks, vs;
+  llama_kv_row_quant<kHD>(kvfp_packed, k_body + pos * kHD, v_body + pos * kHD,
+                          &ks, &vs);
+  memcpy(k_slot_scales + pos * 4, &ks, 4);
+  memcpy(v_slot_scales + pos * 4, &vs, 4);
+}
+
+// slot = T_used-1, prefix copied unchanged.
+void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
+                          int8_t *restrict kv_out) {
+  int32_t t_used;
+  memcpy(&t_used, kv_in, 4);
+  append_head_impl(kvfp_packed, kv_in, kv_out, t_used - 1);
+}
+
+} // extern "C"

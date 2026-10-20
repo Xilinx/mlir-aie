@@ -56,6 +56,10 @@ struct RuntimeCallGraphCyclicityAnalysis {
     // A cycle exists if we encounter a sequence already on the current path
     llvm::DenseSet<AIE::RuntimeSequenceOp> callStack;
     llvm::DenseSet<AIE::RuntimeSequenceOp> visited;
+    // A device named by many aiex.run ops across this walk (e.g. a callee
+    // reused across model layers) would otherwise have its symbol table
+    // rescanned per call.
+    llvm::DenseMap<Operation *, AIE::NamedOpTable> calleeNames;
 
     std::function<bool(AIE::RuntimeSequenceOp)> hasCycle =
         [&](AIE::RuntimeSequenceOp seq) -> bool {
@@ -73,7 +77,7 @@ struct RuntimeCallGraphCyclicityAnalysis {
       bool foundCycle = false;
       seq.walk([&](RunOp runOp) {
         if (AIE::RuntimeSequenceOp callee =
-                runOp.getCalleeRuntimeSequenceOp()) {
+                runOp.getCalleeRuntimeSequenceOp(calleeNames)) {
           if (hasCycle(callee)) {
             foundCycle = true;
             return WalkResult::interrupt();
@@ -474,7 +478,7 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 
     AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
     AIE::RuntimeSequenceOp calleeRuntimeSequence =
-        runOp.getCalleeRuntimeSequenceOp();
+        runOp.getCalleeRuntimeSequenceOp(calleeNames);
     if (!calleeDevice || !calleeRuntimeSequence) {
       return failure();
     }
@@ -588,13 +592,20 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 /// Placing this validation in RunOp::verify() is unsafe: MLIR's pass manager
 /// may invoke op verifiers concurrently on sibling DeviceOps, causing a data
 /// race on the referenced device's symbol table.
-static LogicalResult verifyRunOpsInConfigureOp(ConfigureOp configureOp,
-                                               AIE::DeviceOp referencedDev) {
+static LogicalResult verifyRunOpsInConfigureOp(
+    ConfigureOp configureOp, AIE::DeviceOp referencedDev,
+    llvm::DenseMap<Operation *, AIE::NamedOpTable> &referencedDevNames) {
   if (configureOp.getBody().empty())
     return success();
+  // See RuntimeCallGraphCyclicityAnalysis's calleeNames for why this caches
+  // a symbol table across calls instead of rescanning per aiex.run.
+  AIE::NamedOpTable &devNames =
+      referencedDevNames.try_emplace(referencedDev, referencedDev)
+          .first->second;
   for (RunOp runOp : configureOp.getBody().front().getOps<RunOp>()) {
     auto seqName = runOp.getRuntimeSequenceSymbol();
-    Operation *maybeSeq = SymbolTable::lookupSymbolIn(referencedDev, seqName);
+    Operation *maybeSeq =
+        devNames.lookup(runOp.getRuntimeSequenceSymbolAttr().getAttr());
     if (!maybeSeq) {
       auto err = runOp.emitError()
                  << "No such runtime sequence for device '"
@@ -670,6 +681,10 @@ struct AIEMaterializeRuntimeSequencesPass
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
+    // Shared across every device's verification below -- see
+    // RuntimeCallGraphCyclicityAnalysis's calleeNames for why.
+    llvm::DenseMap<Operation *, AIE::NamedOpTable> referencedDevNames;
+
     // Process each device in the module
     for (AIE::DeviceOp deviceOp : moduleOp.getOps<AIE::DeviceOp>()) {
 
@@ -694,7 +709,8 @@ struct AIEMaterializeRuntimeSequencesPass
             // this is a safety net if verification was disabled.
             return signalPassFailure();
           }
-          if (failed(verifyRunOpsInConfigureOp(configureOp, referencedDev)))
+          if (failed(verifyRunOpsInConfigureOp(configureOp, referencedDev,
+                                               referencedDevNames)))
             return signalPassFailure();
         }
       }

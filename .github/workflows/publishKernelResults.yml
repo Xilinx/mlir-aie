@@ -123,29 +123,3 @@ jobs:
 
       - name: Push
         run: git push origin gh-pages:gh-pages
-
-      # Cache exactly what was just published, per NPU, for the PR
-      # comparisons; the report job restores it under the same path.
-      - name: Collect baselines
-        run: |
-          for npu in npu1 npu2; do
-            file="kernel-checks/$npu/latest.json"
-            mkdir -p "baselines/$npu/baseline"
-            if git cat-file -e "gh-pages:$file" 2>/dev/null; then
-              git show "gh-pages:$file" > "baselines/$npu/baseline/latest.json"
-            else
-              echo "no gh-pages:$file yet -- nothing to cache as a baseline"
-            fi
-          done
-      - name: Select npu1 baseline
-        run: rm -rf baseline && cp -r baselines/npu1/baseline baseline
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: baseline
-          key: kernel-checks-baseline-npu1-${{ github.run_id }}-${{ github.run_attempt }}
-      - name: Select npu2 baseline
-        run: rm -rf baseline && cp -r baselines/npu2/baseline baseline
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: baseline
-          key: kernel-checks-baseline-npu2-${{ github.run_id }}-${{ github.run_attempt }}

@@ -545,6 +545,12 @@ def AIE_RunOp : AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
   let extraClassDeclaration = [{
     AIE::DeviceOp getCalleeDeviceOp();
     AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp();
+    // Same, against a cache of each referenced device's NamedOpTable the
+    // caller builds once: a device named by many aiex.run ops (e.g. a callee
+    // reused across model layers) would otherwise have its symbol table
+    // rescanned per call.
+    AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp(
+        ::llvm::DenseMap<::mlir::Operation *, ::xilinx::AIE::NamedOpTable> &cache);
   }];
 
   let summary = "Execute a runtime sequence";
@@ -1377,7 +1383,8 @@ def AIE_DMAConfigureTaskOp
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<ConfinedAttr<I32Attr, [IntNonNegative]>,
+                                "0">:$repeat_count,
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
@@ -1448,6 +1455,17 @@ def AIE_DMAConfigureTaskForOp
     one the endpoint's route gives it. A shim endpoint with a `fifoName` is
     instead renamed to the `aie.shim_dma_allocation` allocation records for it.
 
+    Before the objectFIFO lowering, `alloc` may also name an `aie.objectfifo`
+    with a shim end. Its far ends then move whole objects through buffer
+    descriptors sized by the object, or by the segments of a link's pool, so
+    the verifier requires the runtime sequence's static total through the
+    fifo to stop at a descriptor boundary of every far end. Several tasks may
+    share an object. The check defers wherever that total isn't static: a
+    runtime extent or repeat, a looped, branched or forwarded task, a
+    `dma_memcpy_nd` or BD chain through the same fifo, or a
+    `dma_channel_reset_for` of it. It is not a liveness check, and it doesn't
+    cover buffer reuse or repeated dispatch.
+
     Example:
     ```
       aie.route_endpoint @b_in(%memtile) DMA
@@ -1464,7 +1482,8 @@ def AIE_DMAConfigureTaskForOp
 
   let arguments = (ins SymbolRefAttr:$alloc,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<ConfinedAttr<I32Attr, [IntNonNegative]>,
+                                "0">:$repeat_count,
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val);
 
   let regions = (region AnyRegion:$body);
@@ -2026,6 +2045,51 @@ def AIEX_ReadScratchpadParameterOp : AIEX_Op<"read_scratchpad_parameter", []> {
       OptionalAttr<FlatSymbolRefAttr>:$buffer);
   let results = (outs AnyType:$result);
   let assemblyFormat = [{ $parameter `:` type($result) attr-dict }];
+  let hasVerifier = 1;
+}
+
+def AIEX_WaitScratchpadParametersOp
+    : AIEX_Op<"wait_scratchpad_parameters", []> {
+  let summary = "Wait on an AIE core for this dispatch's scratchpad parameters";
+  let description = [{
+    Blocks the core until the runtime sequence of the current dispatch has
+    written its scratchpad parameters, so the `aiex.read_scratchpad_parameter`
+    ops after it read this dispatch's values rather than a previous one's.
+
+    Without it, `--aie-lower-scratchpad-parameters` acquires the core's
+    parameter-sync lock once, at the top of the core body. A core whose body
+    is a loop that runs once per dispatch (a persistent worker) passes that
+    point only on its first dispatch, so on later dispatches it can read the
+    parameters before the host has rewritten them. Place this op at the top of
+    each iteration that begins a dispatch instead.
+
+    Protocol, per core: the pass gives the core one parameter-sync lock,
+    initialized to 0, and replaces each `aiex.wait_scratchpad_parameters` with
+    an acquire of that lock (`aie.use_lock(AcquireGreaterEqual, 1)`: wait
+    until it is at least 1, then decrement). Each runtime sequence's
+    `aiex.sync_scratchpad_parameters_from_host` writes every core-kind
+    parameter and then sets the lock to 1. A dispatch therefore releases
+    exactly one wait, after its values are in place; a core that is still busy
+    with the previous dispatch passes its next wait as soon as it reaches it,
+    since the lock is set, not incremented, and a dispatch whose core never
+    waits leaves the lock at 1 for the next. A core containing this op gets no
+    top-of-body acquire, and each of its reads must come after a wait.
+    Read each parameter right after the wait it belongs to: a later dispatch's
+    sync may rewrite the values while the core is still working.
+
+    Example:
+    ```mlir
+    aie.core(%tile) {
+      scf.for %i = %c0 to %cmax step %c1 {
+        aiex.wait_scratchpad_parameters
+        %n = aiex.read_scratchpad_parameter @n : i32
+        ...
+      }
+      aie.end
+    }
+    ```
+  }];
+  let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
 }
 

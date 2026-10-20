@@ -2313,6 +2313,16 @@ def test_program_attributes_select_aiecc_options(tmp_path, expand_load_pdis, exp
     assert design._generated_for(full_elf=True).aiecc_options == expected
 
 
+def test_scratchpad_parameters_ask_for_their_params_file(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module { aiex.scratchpad_parameter @n : i32 }")
+    design = CompilableDesign(mlir_path)
+
+    assert design._generated_for(full_elf=True).aiecc_options == [
+        "--get-scratchpad-parameters"
+    ]
+
+
 def test_full_elf_kernel_name_selects_explicit_entry(tmp_path):
     (tmp_path / "full_elf_config.json").write_text(
         json.dumps(
@@ -2472,6 +2482,7 @@ def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
     cd = CompilableDesign(gen)
     cd._kernel_dir = tmp_path
     cd._elf_path = tmp_path / "design.elf"
+    cd._full_elf_kernel_name = "main:sequence"
     cd._xclbin_path = tmp_path / "final.xclbin"  # never written: left out
     for name in ("design.elf", "params.txt", "input_with_addresses.mlir", "main.pdi"):
         (tmp_path / name).write_bytes(b"x")
@@ -2480,6 +2491,7 @@ def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
     entry = cd.get_cache_entry()
     assert entry.directory == tmp_path
     assert entry.elf == tmp_path / "design.elf" and entry.xclbin is None
+    assert entry.full_elf_kernel == "main:sequence"
     assert entry.insts is None and entry.dispatch_library is None
     assert entry.pdis == (tmp_path / "main.pdi",)
     assert entry.params == tmp_path / "params.txt"

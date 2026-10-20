@@ -279,6 +279,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-S")
       .input()
       .output("-o");
+  for (const std::string &a : xoptArgs) {
+    optCmd.arg(a);
+  }
   auto &peanoCompat =
       llvmIR.map<std::string>("peano-compat_{0}.ll", [](llvm::StringRef ir) {
         return downgradeIRForPeano(ir);
@@ -358,6 +361,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .value("-aie-stack-addrspace=", "", /*omitIfEmpty=*/true)
       .arg("--filetype=obj")
       .output("-o");
+  for (const std::string &a : xllcArgs) {
+    llcCmd.arg(a);
+  }
   // Cores that run one program over different buffers compile it once. The
   // first core of each canonical module (canonicalizeCoreIR) runs opt and llc
   // on it; every core then takes that object with the canonical symbols, and
@@ -2740,6 +2746,12 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  if (xchesscc && (!xoptArgs.empty() || !xllcArgs.empty())) {
+    llvm::errs() << "aiecc: -Xopt and -Xllc require Peano compilation; Chess "
+                    "compiles the cores with --xchesscc\n";
+    return 1;
+  }
+
   // Exact edge selectors also request C++ output, including a checkpoint cut.
   // On resume these selectors may change while the recorded C++ options remain.
   bool wantNpuCpp = generateNpuCpp ||
@@ -2968,7 +2980,8 @@ int main(int argc, char **argv) {
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile,
-                 enableRepeaterScripts && !disableRepeaterScripts});
+                 enableRepeaterScripts && !disableRepeaterScripts,
+                 profileJson});
   // --cut stops the build at the cut point: only the prefix up to the cut
   // edges is produced (as work-dir intermediates) and snapshotted by
   // --checkpoint; the requested final artifacts are NOT built here (the

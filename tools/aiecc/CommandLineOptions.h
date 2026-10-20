@@ -155,6 +155,16 @@ inline cl::opt<unsigned> optLevel("O", cl::Prefix,
                                   cl::init(2));
 inline cl::alias optLevelAlias("opt-level", cl::desc("Alias for -O"),
                                cl::aliasopt(optLevel));
+// Arguments for the Peano `opt` and `llc` that compile each core's program,
+// as clang's -Xclang: one argument per occurrence, never split at commas
+// (`-Xopt -opt-disable=licm,loop-unroll-full`), appended after aiecc's own, so
+// an option that aiecc sets takes the value given here.
+inline cl::list<std::string>
+    xoptArgs("Xopt", cl::value_desc("arg"),
+             cl::desc("Pass <arg> to opt when compiling a core (Peano only)"));
+inline cl::list<std::string>
+    xllcArgs("Xllc", cl::value_desc("arg"),
+             cl::desc("Pass <arg> to llc when compiling a core (Peano only)"));
 inline cl::opt<bool> expandLoadPdis(
     "expand-load-pdis",
     cl::desc("Expand `load_pdi { device_ref }` into explicit write sequences "
@@ -539,6 +549,11 @@ inline cl::opt<bool> dryRun("n", cl::desc("Dry run"));
 inline cl::opt<bool> profile(
     "profile",
     cl::desc("Print a per-edge time and resident-memory summary at the end"));
+inline cl::opt<std::string> profileJson(
+    "profile-json",
+    cl::desc("Write the per-edge time and resident-memory summary --profile "
+             "prints to this file, as JSON"),
+    cl::value_desc("path"), cl::init(""));
 inline cl::opt<bool> progress(
     "progress",
     cl::desc("Show single-line execution progress: overwrite one status line "

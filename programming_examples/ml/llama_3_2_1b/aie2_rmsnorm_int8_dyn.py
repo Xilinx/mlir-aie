@@ -1,0 +1,83 @@
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+"""Dynamic-output-scale RMSNorm (int8 in, int8+fp32-scale-tail out).
+
+Mirrors aie2_rmsnorm_int8.py but binds the `_dyn` kernel variant: the
+kernel computes per-token absmax of its fp32 output, requants to int8
+with inv_dyn = 127/absmax, and writes the fp32 dynamic scale into the
+last 4 bytes of the output buffer. Output buffer is int8[D+8] (4 B scale
++ 4 B pad to keep the next 64 B-aligned slot start clean).
+"""
+
+import argparse
+import sys
+
+import llama_kernels
+import numpy as np
+from aie.iron import CompileTime, ObjectFifo, Program, Runtime, TaskGroup, Worker, jit
+from aie.iron.device import NPU2, Tile
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
+from ml_dtypes import bfloat16
+
+RMS_COL, RMS_ROW = 5, 4
+
+# Fixed across the chain (the residual interlayer scale); only the output
+# scale is dynamic here.
+ACT_SCALE_IN = 0.05
+
+
+@jit
+def build(*, D: CompileTime[int] = 2048):
+    x_ty = np.ndarray[(D,), np.dtype[np.int8]]
+    g_ty = np.ndarray[(D,), np.dtype[bfloat16]]
+    y_ty = np.ndarray[(D + 8,), np.dtype[np.int8]]  # +8 B for scale tail
+
+    of_x = ObjectFifo(x_ty, name="x")
+    of_g = ObjectFifo(g_ty, name="gamma")
+    of_y = ObjectFifo(y_ty, name="y")
+
+    kernel = llama_kernels.rmsnorm(cols=D).bind(
+        "llama_rmsnorm_int8_dyn",
+        [x_ty, g_ty, y_ty, np.float32],
+    )
+
+    def core_fn(c_x, c_g, c_y, k):
+        x = c_x.acquire(1)
+        g = c_g.acquire(1)
+        y = c_y.acquire(1)
+        k(x, g, y, ACT_SCALE_IN)
+        c_x.release(1)
+        c_g.release(1)
+        c_y.release(1)
+
+    worker = Worker(
+        core_fn,
+        [of_x.cons(), of_g.cons(), of_y.prod(), kernel],
+        tile=Tile(RMS_COL, RMS_ROW),
+    )
+
+    def sequence(x, g, y, x_prod, g_prod, y_cons):
+        tg = TaskGroup()
+        x_prod.fill(x, group=tg)
+        g_prod.fill(g, group=tg)
+        y_cons.drain(y, wait=True, group=tg)
+        tg.finish()
+
+    rt = Runtime(sequence, [x_ty, g_ty, y_ty, of_x.prod(), of_g.prod(), of_y.cons()])
+
+    return Program(NPU2(), rt, workers=[worker]).resolve_program()
+
+
+def main():
+    p = argparse.ArgumentParser()
+    add_compile_args(p, with_dev=True, default_dev="npu2", dev_choices=("npu2",))
+    p.add_argument("-D", type=int, default=2048)
+    opts = p.parse_args(sys.argv[1:])
+    run_design_cli(build, opts, compile_kwargs={"D": opts.D}, device=NPU2())
+
+
+if __name__ == "__main__":
+    main()

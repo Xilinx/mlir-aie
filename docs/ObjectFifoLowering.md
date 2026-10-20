@@ -247,8 +247,9 @@ aie.objectfifo.dma_endpoint @drain_all(%t21) drains @out_pool {segments = [@s0, 
 ```
 
 Two DMAs fill different segments of one pool, each ordered by its own locks, and
-one DMA drains the whole object. Distribute is the same picture reversed: one
-endpoint fills the whole object and N endpoints each drain one segment.
+one DMA drains the whole object, through one BD per segment with that segment's
+locks. Distribute is the same picture reversed: one endpoint fills the whole
+object and N endpoints each drain one segment.
 
 ## The pipeline
 

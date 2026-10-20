@@ -35,6 +35,7 @@ include = [
   "programming_examples/ml/dwconv1d/**/*.py",
   "programming_examples/ml/eltwise/**/*.py",
   "programming_examples/ml/eltwise_unary/**/*.py",
+  "programming_examples/ml/llama_3_2_1b/**/*.py",
   "programming_examples/ml/magika/**/*.py",
   "programming_examples/ml/mm_activation_epilogue/**/*.py",
   "programming_examples/ml/norm/**/*.py",
