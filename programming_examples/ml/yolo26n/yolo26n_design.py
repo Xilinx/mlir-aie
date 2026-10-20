@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 import numpy as np
@@ -115,27 +116,37 @@ class Part:
         )
 
 
+class Layout(Enum):
+    """How a `Fill` sends its tensor.
+
+    `ROWS` sends the tensor's rows as they are. `ANCHOR_CLASSES` sends a row
+    `chunk` pixels at a time, each 8-channel group of those pixels in turn:
+    the per-anchor records the Detect postprocess reads. `REPEAT` sends the
+    whole tensor `chunk` times, as a conv's weights go once an output row.
+    """
+
+    ROWS = "rows"
+    ANCHOR_CLASSES = "anchor_classes"
+    REPEAT = "repeat"
+
+
 @dataclass(frozen=True)
 class Fill:
     """One host transfer into a fifo: a tensor, in `layout`, at sequence step `step`.
 
-    `rows` sends the tensor's rows as they are. `anchor_classes` sends a
-    row `chunk` pixels at a time, each 8-channel group of those pixels in
-    turn: the per-anchor records the Detect postprocess reads. `repeat`
-    sends the whole tensor `chunk` times, as a conv's weights go once an
-    output row. A step's transfers finish before the next step's start.
+    A step's transfers finish before the next step's start.
     """
 
     fifo: ObjectFifo
     tensor: Tensor
-    layout: str = "rows"
+    layout: Layout = Layout.ROWS
     step: int = 0
     chunk: int = 1
 
     def tap(self, total: int, offset: int) -> TensorAccessPattern:
         """The pattern over a host buffer of `total` int32 words with the tensor at word `offset`."""
         t = self.tensor
-        if self.layout == "anchor_classes":
+        if self.layout is Layout.ANCHOR_CLASSES:
             groups = t.channels8 // 8
             return TensorAccessPattern(
                 (total,),
@@ -144,7 +155,7 @@ class Fill:
                 [groups * t.width * 2, 2 * self.chunk, t.width * 2, 1],
             )
         size = (IMAGE_ROW_BYTES if t.name == "images" else t.row_bytes) * t.height // 4
-        if self.layout == "repeat":
+        if self.layout is Layout.REPEAT:
             return TensorAccessPattern(
                 (total,), offset, [1, self.chunk, 1, size], [0, 0, 0, 1]
             )
@@ -604,7 +615,7 @@ class SegmentDesign:
         fifo = ObjectFifo(row(chunk_bytes), name=f"weights{len(self.loads)}")
         tensor = Tensor(f"{op.name}/weights", 8, 1, packed.size // 8)
         self.loads.append((tensor, packed))
-        self.fills.append(Fill(fifo, tensor, "repeat", chunk=op.dst.height))
+        self.fills.append(Fill(fifo, tensor, Layout.REPEAT, chunk=op.dst.height))
         return fifo
 
     def spill(self, source: ObjectFifo, rows: Tensor) -> ObjectFifo:
@@ -1784,7 +1795,7 @@ class SegmentDesign:
         for step in (first, first + 1):
             for tensor in op.scores:
                 self.fills.append(
-                    Fill(records, tensor, "anchor_classes", step, chunk=chunk)
+                    Fill(records, tensor, Layout.ANCHOR_CLASSES, step, chunk=chunk)
                 )
         for tensor in op.boxes:
             self.fills.append(Fill(boxes, tensor, step=first + 1))
