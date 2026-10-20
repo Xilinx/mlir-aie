@@ -114,6 +114,21 @@ _MM_EMULATED_BF16_MAC_DIMS_AIE2P = {
     (bfloat16, np.float32): (8, 8, 8),
 }
 
+# Micro-tiles each vectorized loop trip covers in m and n, as the
+# static_asserts in mm_aie2.h and mm_aie2p.h require.
+_MM_TILE_STEPS = {
+    "aie2": {
+        (np.int8, np.int8): (4, 2),
+        (np.int8, np.int16): (4, 2),
+        (np.int8, np.int32): (4, 2),
+        (np.int16, np.int16): (2, 2),
+        (np.int16, np.int32): (2, 2),
+        (bfloat16, bfloat16): (4, 4),
+        (bfloat16, np.float32): (4, 4),
+    },
+    "aie2p": {key: (2, 2) for key in _MM_MAC_DIMS["aie2p"]},
+}
+
 
 def mm_acc_dtype(input_dtype):
     """Return what ``mm.cc`` accumulates in for ``input_dtype``.
@@ -581,7 +596,8 @@ def mm(
         and ``.k_tail``.
 
     Raises:
-        ValueError: When ``(input_dtype, output_dtype)`` is not a supported combination.
+        ValueError: When ``(input_dtype, output_dtype)`` is not a supported
+            combination, or the vectorized kernel's loops cannot step the tile.
     """
     key = (input_dtype, output_dtype)
     if key not in _MM_COMBOS:
@@ -624,6 +640,13 @@ def mm(
         emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
         vectorized=vectorized,
     )
+    if vectorized:
+        step_m, step_n = _MM_TILE_STEPS[arch][key]
+        if dim_m % (step_m * r) or dim_k % s or dim_n % (step_n * t):
+            raise ValueError(
+                f"mm(): on {arch} a {input_dtype.__name__} tile is a multiple of "
+                f"{step_m * r} x {s} x {step_n * t}, got {dim_m} x {dim_k} x {dim_n}"
+            )
     streams = mm_stream_dims(
         dim_m, dim_k, dim_n, (r, s, t), b_col_maj=b_col_maj, c_col_maj=c_col_maj
     )

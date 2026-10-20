@@ -125,7 +125,6 @@ CASES: list[Case] = [
         calls=2,
         scalars=(91, 6, 8, 7, 7),
         smoke=True,
-        devices=("npu2",),
     ),
     # YOLO26n's SPPF pool: a 20-pixel row (4 at a time) and a 64-pixel one.
     Case("maxpool2d", dict(input_width=20, channels=128), calls=4, smoke=True),
@@ -498,7 +497,6 @@ CASES: list[Case] = [
             calls=2 * blocks,
             scalars=(valid,),
             tag=f"iron-{phase}",
-            devices=("npu2",),
         )
         for kernel, dims in (
             ("selective_scan", dict(state=128)),
@@ -535,7 +533,6 @@ CASES: list[Case] = [
         calls=4,
         scalars=(1,),
         tag="iron-decode-one-row",
-        devices=("npu2",),
     ),
     # Two rows of the smallest state each kernel takes, and more valid rows
     # than the block holds.
@@ -736,7 +733,6 @@ CASES: list[Case] = [
                 mmul_shape=(8, 8, 8),
             ),
             calls=4,
-            devices=("npu1",),
         )
         for n in (16, 32)
     ],
@@ -760,7 +756,6 @@ CASES: list[Case] = [
             mmul_shape=(8, 8, 8),
             b_col_maj=True,
         ),
-        devices=("npu2",),
         tag="long-k",
     ),
     # IRON's exact-precision tile on aie2p (8x8x8, row-major B): bf16 macs,
@@ -777,7 +772,6 @@ CASES: list[Case] = [
             mmul_shape=(8, 8, 8),
         ),
         calls=4,
-        devices=("npu2",),
     ),
     # B stored transposed, as IRON's aie2 flm GEMM reads a checkpoint's
     # (n, k) weights: its N64 k step, then two k chunks and two bands at
@@ -2074,7 +2068,6 @@ CASES: list[Case] = [
             calls=8,
             scalars=(w, c, c, 3, 3, row, 7, 0),
             tag=tag,
-            devices=("npu2",),
         )
         for w, c, row, tag in (
             (7, 24, 0, "top-row"),
@@ -2214,11 +2207,12 @@ CASES: list[Case] = [
         calls=4,
         scalars=(1, 11),
         arg_byte_offsets=((0, 16),),
-        devices=("npu2",),
     ),
     # Weights 16 bytes past a 64-byte boundary, as MobileNet's packed weight
     # views handed them before 7c1cde46072; AIE2P's 64-byte weight loads
-    # would read the words below them.
+    # would read the words below them. AIE2's builds load the weights as
+    # 32-byte vectors, as their contracts declare, so npu1 runs these
+    # kernels only on aligned weights.
     *[
         check(
             f,
@@ -2275,7 +2269,6 @@ CASES: list[Case] = [
             calls=8,
             scalars=s,
             arg_byte_offsets=((3, 32),),
-            devices=("npu2",),
         )
         for f, kw, s in (
             (
@@ -2524,7 +2517,6 @@ CASES: list[Case] = [
         ),
         calls=16,
         tag="llama-prefill",
-        devices=("npu2",),
         data_cases=("random", "zeros", "ones", "alternating"),
     ),
     # prefill LM head GEMM, B column-major
@@ -2541,7 +2533,6 @@ CASES: list[Case] = [
         ),
         calls=16,
         tag="llama-prefill-lm-head",
-        devices=("npu2",),
         data_cases=("random", "zeros", "ones", "alternating"),
     ),
     # ffn gate activation
@@ -2688,7 +2679,6 @@ CASES += [
             dict(dim_k=d, b_col_maj=True, accurate_exp2=True) | pv,
             calls=4,
             tag=f"iron-prefill-d{d}",
-            devices=("npu2",),
         )
         for d in (64, 128)
         for pv in ({}, {"pv": True})
@@ -2709,7 +2699,6 @@ CASES += [
             ),
             calls=4,
             tag=f"iron-{phase}-d{d}",
-            devices=("npu2",),
         )
         for b_q, phase in ((64, "prefill"), (16, "decode"), (8, "decode8"))
         for d in (64, 128)
@@ -2721,7 +2710,6 @@ CASES += [
             dict(dim_m=b_q, dim_k=d, b_col_maj=True, accurate_exp2=True),
             calls=4,
             tag=f"iron-{phase}-d{d}",
-            devices=("npu2",),
         )
         for b_q, phase in ((16, "decode"), (8, "decode8"))
         for d in (64, 128)
@@ -2745,7 +2733,7 @@ CASES += [
         scalars=(64, 64),
         tag="diagonal",
     ),
-    # A decode step's block on npu2: 16 packed rows past every one of the 64
+    # A decode step's block: 16 packed rows past every one of the 64
     # keys, so nothing is masked.
     *[
         Case(
@@ -2755,7 +2743,6 @@ CASES += [
             params=((0, 0, 64),),
             scalars=(b_q, 128),
             tag=tag,
-            devices=("npu2",),
         )
         for b_q, tag in ((16, "iron-decode"), (8, "iron-decode8"))
     ],
@@ -2766,7 +2753,6 @@ CASES += [
         params=((0, 0, 64),),
         scalars=(3, 128),
         tag="decode8-padded",
-        devices=("npu2",),
     ),
     # ...and its last key block, 36 of whose 64 keys exist.
     check(
@@ -2775,7 +2761,6 @@ CASES += [
         params=((1, 0, 127),),
         scalars=(3, 100),
         tag="decode8-tail",
-        devices=("npu2",),
     ),
     check(
         "mha_softmax",
