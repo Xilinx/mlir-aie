@@ -193,31 +193,6 @@ def rescale_add():
     )
 
 
-def sample_streamed():
-    return KernelSource(
-        "llama_sample_streamed.cc",
-        [
-            "-ffp-contract=off",
-            f"-DLLAMA_SAMPLE_EXP_QUANT_SCALE={EXP_QUANT_SCALE}f",
-            "-DLLAMA_SAMPLE_VOCAB=128256",
-            "-DLLAMA_SAMPLE_CHUNK_N=2004",
-        ],
-        [generated_include_dir({"exp_lut.h": exp_lut_header(EXP_QUANT_SCALE)})],
-    )
-
-
-def embed_select():
-    return KernelSource(
-        "llama_embed_select.cc",
-        [
-            "-ffp-contract=off",
-            "-DLLAMA_EMBED_D=2048",
-            "-DLLAMA_EMBED_NTILE=4",
-            "-DLLAMA_EMBED_PREFIX=64",
-        ],
-    )
-
-
 def topk_sample(*, dim=2048, kset=8):
     return KernelSource(
         "llama_topk_sample.cc",

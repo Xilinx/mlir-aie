@@ -9,7 +9,7 @@ activation: qkv (fused, each core giving its KV group's combined chunk), o
 and down (fused with the residual add, finished by a glue core), gate and up.
 The other work runs on glue cores: one RMSNorm core (both norms of every
 layer, then the final norm), the RoPE + KV-row core, eight attention cores
-over the DDR KV cache (aie2_chain_dynscale_mh.py's growing decode, S3), the
+over the DDR KV cache (two a KV head, block by block), the
 sv merge and af concat cores, the up-requant + SiLU core, and the lm_head +
 sampler core.
 
@@ -39,7 +39,9 @@ from aie.dialects.arith import (
     divsi,
     index_cast,
     muli,
+    ori,
     remsi,
+    shli,
 )
 from aie.extras.types import i32
 from aie.helpers.taplib import TensorAccessPattern
@@ -59,31 +61,6 @@ from aie.iron.controlflow import else_, if_, range_
 from aie.iron.device import NPU2, Tile
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
-from aie2_chain_dynscale_mh import (
-    ATTN_STATE_BYTES,
-    CS_BYTES,
-    HD,
-    KV_BLOCK_WORDS,
-    KV_HEAD_BLOCK_WORDS,
-    KV_ROW_WORDS,
-    KV_TB,
-    LM_N_TILES,
-    LM_SLOTS_PER_TASK,
-    N_HEADS_KV,
-    QCHUNK_BYTES,
-    SAMPLE_SEED,
-    SAMPLE_TEMP,
-    SAMPLE_TOPK,
-    SILU_GATE_SCALE,
-    SVCHUNK_BYTES,
-    SVFULL_BYTES,
-    WLM_SLOT,
-    WLM_TOTAL,
-    D,
-    _onestream_params_init,
-    kv_blocks,
-    kv_words,
-)
 from aie2_gemv_array import (
     COMB_BYTES,
     CORE_TILES,
@@ -94,10 +71,70 @@ from aie2_gemv_array import (
     RESID_ACT_BYTES,
     RESID_BLOCK,
     RESID_OFF,
+    SAMPLE_PARAMS,
     SLOT,
     lane_slots,
     slots_per_core,
 )
+from aie2_layer_mh import (
+    CS_BYTES,
+    HEAD_D,
+    N_HEADS_KV,
+    N_TILE,
+    QCHUNK_BYTES,
+    REP,
+    SILU_GATE_SCALE,
+    SVCHUNK_BYTES,
+    SVFULL_BYTES,
+    D,
+    HD,
+)
+
+# The lm_head's weights: per 4-row tile a prefix, the rows and per-row
+# scales and biases; one shim task streams LM_SLOTS_PER_TASK of them (at
+# most 1023, a BD dimension's limit, dividing LM_N_TILES).
+VOCAB = 128256
+LM_N_TILES = VOCAB // N_TILE
+WLM_SLOT = 64 + N_TILE * D + N_TILE * 4 + N_TILE * 4
+WLM_TOTAL = LM_N_TILES * WLM_SLOT
+LM_SLOTS_PER_TASK = 1002
+assert LM_N_TILES % LM_SLOTS_PER_TASK == 0
+
+# The KV cache (llama_attn_block.cc's layout): int32
+# [layer][half][block][head][KV_TB rows], a row being [k int8[HEAD_D] | v
+# int8[HEAD_D] | k_scale f32 | v_scale f32]. One (layer, half)'s blocks are
+# contiguous, so its live prefix is one linear transfer.
+KV_TB = 64
+KV_ROW_WORDS = (2 * HEAD_D + 8) // 4
+KV_HEAD_BLOCK_WORDS = KV_TB * KV_ROW_WORDS
+KV_BLOCK_WORDS = (N_HEADS_KV // 2) * KV_HEAD_BLOCK_WORDS
+ATTN_STATE_BYTES = 64 + REP * (64 + 4 * HEAD_D)
+
+
+def kv_blocks(T):
+    """Blocks per (layer, half) in the KV cache.
+
+    Args:
+        `T`: The cache's rows.
+
+    Returns:
+        ceil(T / KV_TB).
+    """
+    return -(-T // KV_TB)
+
+
+def kv_words(T, N_LAYERS):
+    """The KV cache's size.
+
+    Args:
+        `T`: The cache's rows.
+        `N_LAYERS`: Layers.
+
+    Returns:
+        The size in int32 words.
+    """
+    return N_LAYERS * 2 * kv_blocks(T) * KV_BLOCK_WORDS
+
 
 UNITS = ["qkv", "o", "g", "u", "d"]
 LANE_BYTES = lane_slots(LAYER) * SLOT
@@ -221,16 +258,9 @@ def build(
     N_LAYERS: CompileTime[int] = 2,
     T: CompileTime[int] = 128,
     KSET: CompileTime[int] = 8,
-    SAMPLE_TEMP: CompileTime[float] = SAMPLE_TEMP,
-    SAMPLE_TOPK: CompileTime[int] = SAMPLE_TOPK,
-    SAMPLE_SEED: CompileTime[int] = SAMPLE_SEED,
     SILU_GATE_SCALE: CompileTime[float] = SILU_GATE_SCALE,
     ATTN_CORES: CompileTime[int] = 2,
 ):
-    if not 0 <= SAMPLE_TOPK <= KSET:
-        raise ValueError(
-            f"SAMPLE_TOPK must be 0 (whole set) or 1..{KSET}, got {SAMPLE_TOPK}"
-        )
     slots, outs, final_slot, discard, stage_total = stage_layout(N_LAYERS)
     off_lanes, off_rope, w_total = wblob_layout(N_LAYERS, T)
     kv_total = kv_words(T, N_LAYERS)
@@ -267,6 +297,8 @@ def build(
     p_on = [ScratchpadParameter(f"pass{t}", np.int32) for t in range(P_MAX)]
     p_kvb = [ScratchpadParameter(f"kvb{t}", np.int32) for t in range(P_MAX)]
     p_row = [ScratchpadParameter(f"row{t}", np.int32) for t in range(P_MAX)]
+    # The sampler's, as aie2_gemv_array.sample_param_values gives them.
+    p_sample = [ScratchpadParameter(name, np.int32) for name in SAMPLE_PARAMS]
 
     # --- the array ---
     of_act = ObjectFifo(t_act, depth=2, name="act")
@@ -729,7 +761,14 @@ def build(
         [_f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1), _i32a(3), t_rec],
     )
 
-    def w_lm(c_h, c_w, c_rec, c_seed, sl, sg, ss, sr, slen, pr, n, ki, kf):
+    def w_lm(c_h, c_w, c_rec, c_seed, sl, sg, ss, sr, slen, pr, n, ki, kf, *sample):
+        # The scratchpad keeps 30 bits a word, so the 32-bit temperature bits
+        # and seed arrive as 16-bit halves.
+        t_lo, t_hi, top_k, s_lo, s_hi = (p.read() for p in sample)
+        c16 = _const_i32(16)
+        pr[0] = ori(shli(t_hi, c16), t_lo)
+        pr[1] = top_k
+        pr[2] = ori(shli(s_hi, c16), s_lo)
         for _ in range_(index_cast(IndexType.get(), n.read())):
             for _ in range_(2 * N_LAYERS):
                 c_h.acquire(1)
@@ -767,16 +806,11 @@ def build(
                 Buffer(
                     _i32a(1), initial_value=np.zeros(1, np.int32), name="lm_set_len"
                 ),
-                Buffer(
-                    _i32a(3),
-                    initial_value=_onestream_params_init(
-                        SAMPLE_TEMP, SAMPLE_TOPK, SAMPLE_SEED
-                    ),
-                    name="lm_params",
-                ),
+                Buffer(_i32a(3), name="lm_params"),
                 p_passes,
                 k_insert,
                 k_sample,
+                *p_sample,
             ],
             wait_for_parameters=True,
         )

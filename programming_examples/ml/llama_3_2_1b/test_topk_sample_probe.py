@@ -27,7 +27,7 @@ from numpy_topk_sample import topk_sample_reference
 
 
 def embed_seed_ref(row_i8: np.ndarray, embed_sc: float):
-    """Mirror llama_topk_finalize's requant (== llama_embed_select)."""
+    """Mirror llama_topk_finalize's requant."""
     D = row_i8.size
     amax = int(np.max(np.abs(row_i8.astype(np.int32))))
     if amax < 1:

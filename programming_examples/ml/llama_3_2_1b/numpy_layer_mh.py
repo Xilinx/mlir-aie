@@ -348,8 +348,8 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
         bfloat16
     )
 
-    # Phase 8a: wk/wv drawn LAST so adding them doesn't shift earlier rng
-    # consumers (kcaches/vcaches/gammas) -- preserves test_chain_mh BIT-EXACT.
+    # wk/wv drawn LAST so the earlier rng consumers (kcaches/vcaches/gammas)
+    # keep their draws.
     wk_fp = random_w(KV_DIM, D)
     wv_fp = random_w(KV_DIM, D)
     wk_i8, wk_sc = quant_int8_perchan_absmax(wk_fp)

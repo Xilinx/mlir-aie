@@ -11,9 +11,9 @@ test_chain_persist_grow_mh.py already uses), and run at the expected
 throughput on real hardware. Shells out to the existing
 test_chain_persist_grow_mh.py CLI (no new Python API), compiling once with the
 design's own CLI (aie2_decode.py) and then invoking the test script
-with that full ELF for both the correctness run and the ``--time`` run. One run, no seed sweep: unlike mobilenet this design has no SA-
-placer-seed dimension (Phase 7 unplaced it onto the plain default
-sequential placer, which has no seed concept).
+with that full ELF for both the correctness run and the ``--time`` run. One
+run, no seed sweep: the design pins its SA placer seed (aie2_decode.build's
+aiecc flags).
 
 Needs the real Llama 3.2 1B checkpoint where amd/IRON's examples keep it,
 ``$IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/`` (default ``/srv``; see

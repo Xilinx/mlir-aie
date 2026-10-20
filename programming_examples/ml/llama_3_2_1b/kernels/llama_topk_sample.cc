@@ -333,8 +333,8 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
 
   token[0] = set_gidx[winner];
 
-  // Embed gather: requant the winner's resident row. embed_sc cancels, same
-  // math as llama_embed_select.cc.
+  // Embed gather: requant the winner's resident row. embed_sc cancels
+  // (test_chain_persist_grow_mh.embed_seed_ref).
   const int8_t *row = set_row + winner * kD;
   ::aie::vector<int8, kVec> hi = ::aie::load_unaligned_v<kVec>(row);
   ::aie::vector<int8, kVec> lo = hi;

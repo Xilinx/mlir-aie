@@ -293,11 +293,6 @@ void llama_attn_block_own(int8_t *restrict q_chunk, int32_t *restrict block_i32,
   llama_attn_block(q_chunk, block_i32, state, n_rows);
 }
 
-// The token's own row, for the cache write-back.
-void llama_attn_own_row(int8_t *restrict q_chunk, int32_t *restrict row_i32) {
-  memcpy(row_i32, q_chunk + kQChunkBytes, kRowBytes);
-}
-
 // Folds n_parts states (each kStateBytes, in core order; empty ones are
 // skipped) and requantizes each Q head's sv with its own scale:
 // out_chunk = kREP*kHD int8, then kREP f32 sv_out_scales.

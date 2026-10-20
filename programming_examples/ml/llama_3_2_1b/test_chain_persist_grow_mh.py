@@ -2,19 +2,17 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Persistent-loop GROWING-KV test (capstone increment 2): `--passes` tokens in ONE
-dispatch, token feeding back on-chip, AND the KV cache GROWS across tokens --
-real autoregressive decode where context accumulates.
+"""The decode (aie2_decode.py) against the numpy oracle.
 
-vs the fixed-position test (test_chain_persist_mh): here the KV cache is NOT
-restored between tokens. The growing-append (llama_kv_append_combined_grow) writes
-slot = T_used and advances T_used -> T_used+1 ON-CHIP, so token t appends at slot
-P+t and attends [0, P+t]. Each token fills from one half of the KV buffer and
-drains to the other, carrying the grown cache forward; the host names the half a
-dispatch starts from (dispatch_params).
-
-token-0 KV prefix T_used = P (NOT P+1): the grow-append's slot = T_used, so token
-0 writes slot P and sets T_used = P+1 (flowkv attends P+1, incl the new slot).
+Each dispatch generates up to P_MAX tokens from a position t0, each token's
+embed seed feeding the next through the stage, and appends each token's KV row
+to the DDR cache the next tokens attend. The layers are a seeded random fixture
+with a random KV prefix of t0 rows; the lm_head is the real embed table (or
+a seeded synthetic one). The oracle follows the device's tokens: every token
+must be the oracle's (greedy: its argmax or a near-tie; sampled: its draw),
+every record's seed the oracle's embed seed of that token, the last token's
+final residual in the stage the oracle's, and the whole KV cache the
+oracle's.
 
 Run (compiles the design, or reuses its JIT cache entry):
   python test_chain_persist_grow_mh.py --synthetic-weights
@@ -31,34 +29,31 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie2_chain_dynscale_mh import (
-    CS_BYTES,
-    HEAD_D,
-    KV_BLOCK_WORDS,
-    KV_ROW_WORDS,
-    KV_TB,
-    N_HEADS_KV,
-    N_TILE,
-    SAMPLE_SEED,
-    SAMPLE_TEMP,
-    SAMPLE_TOPK,
-    SILU_GATE_SCALE,
-    VOCAB,
-    WLM_TOTAL,
-    D,
-    kv_blocks,
-    kv_words,
-)
 from aie2_decode import (
     ACT_BYTES,
     GAMMA_AT,
+    KV_BLOCK_WORDS,
+    KV_ROW_WORDS,
+    KV_TB,
     LANE_BYTES,
     REC_BYTES,
+    VOCAB,
+    WLM_TOTAL,
     build,
+    kv_blocks,
+    kv_words,
     stage_layout,
     wblob_layout,
 )
-from aie2_gemv_array import LAYER, N_CORES, RESID_OFF
+from aie2_gemv_array import LAYER, N_CORES, RESID_OFF, sample_param_values
+from aie2_layer_mh import (
+    CS_BYTES,
+    HEAD_D,
+    N_HEADS_KV,
+    N_TILE,
+    SILU_GATE_SCALE,
+    D,
+)
 from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
@@ -66,6 +61,7 @@ from llama_npu import DispatchSession
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw, rope_table
+from numpy_topk_sample import topk_sample_reference
 from test_flowkv import EXP_QUANT_SCALE as FKV_EXP_QUANT_SCALE
 from test_gemv_array import pack_lane
 from test_layer_mh import pack_perchan_slots
@@ -160,9 +156,14 @@ def build_fixtures(seed, p0, n_tok):
 
 
 def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma):
-    """One token's forward at `position` (caches NOT restored -> grow), attends
-    [0, position]. Returns the fp32 logits over the vocab + populates
-    layer['scales']. The append at `position` mutates the caches in place."""
+    """One token's forward at `position`, attending [0, position].
+
+    Appends the token's KV row to the layers' caches and sets each layer's
+    `scales`.
+
+    Returns:
+        (fp32 logits over the vocab, the final residual: int8[D], its scale).
+    """
     x_cur = (x_i8.copy(), float(res_scale))
     for L in range(N_LAYERS):
         x_cur, scales = numpy_layer_mh_forward(
@@ -183,28 +184,37 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
     logits = (
         acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(np.float32)
     ).astype(np.float32)
-    return logits
+    return logits, xo_i8, np.float32(xo_scale)
 
 
 SEED_AT = stage_layout(N_LAYERS)[0][0, "o"] + RESID_OFF
+FINAL_AT = stage_layout(N_LAYERS)[2] + RESID_OFF
 DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
 LMW_GAMMA_BYTES = 2 * D
 
 
-def dispatch_params(t0, passes):
+def dispatch_params(t0, passes, sample):
     """The design's ScratchpadParameters for one dispatch.
 
     Args:
         t0: The position of the dispatch's first token.
         passes: The tokens it generates, 1..P_MAX.
+        sample: The sampler's (temperature, top_k, seed).
 
     Returns:
         The parameter values by name: passes; t0; its RoPE table row's
         offset; per token slot t < P_MAX, whether it runs (pass{t}) and, for
         a token at position p = t0 + t, the KV blocks it reads (kvb{t}) and
-        its row's word offset within a (layer, half) region (row{t}).
+        its row's word offset within a (layer, half) region (row{t}); the
+        sampler's.
     """
-    params = {"passes": passes, "t0": t0, "cs_off": t0 * CS_BYTES}
+    temperature, top_k, seed = sample
+    params = {
+        "passes": passes,
+        "t0": t0,
+        "cs_off": t0 * CS_BYTES,
+        **sample_param_values(temperature, top_k, seed, ONESTREAM_KSET),
+    }
     for t in range(P_MAX):
         p = t0 + t
         on = t < passes
@@ -383,40 +393,79 @@ def set_pristine(layers, pristine):
         layers[L]["v_scales_slot"] = vslot[L].copy()
 
 
-def replay(dev_tokens, x_i8, res_scale, layers, p0, rope, lm):
-    """Check each device token against the numpy oracle, from the caches the
-    caller set and position p0 on, following the device's tokens; returns the
-    number that fail."""
+def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample):
+    """Check a dispatch's records against the numpy oracle.
+
+    The oracle runs from the caches the caller set and position p0 on,
+    following the device's tokens.
+
+    Args:
+        records: The dispatch's packed records.
+        passes: The tokens it generated.
+        x_i8, res_scale: The first token's seed.
+        layers: The oracle's layers, their caches as the dispatch found them.
+        p0: The first token's position.
+        rope: The RoPE table.
+        lm: (embed_i8, embed_sc, final_norm gamma).
+        sample: The sampler's (temperature, top_k, seed).
+
+    Returns:
+        (failed tokens, the last token's final residual and its scale).
+    """
     embed_i8, embed_sc, gamma = lm
+    temperature, top_k, seed = sample
     fails = 0
+    hidden = None
     cur_x, cur_sc = x_i8, res_scale
-    for t, dev_tok in enumerate(dev_tokens):
+    for t, dev_tok in enumerate(tokens_of(records, passes)):
         for L in range(N_LAYERS):
             layers[L]["cos"] = rope[p0 + t, :HEAD_D]
             layers[L]["sin"] = rope[p0 + t, HEAD_D:]
-        logits = chain_forward_logits(
+        logits, *hidden = chain_forward_logits(
             cur_x, cur_sc, layers, p0 + t, embed_i8, embed_sc, gamma
         )
-        true_max = np.float32(logits.max())
-        ref_argmax = int(np.argmax(logits))
-        gap = float(true_max - logits[dev_tok])
-        spread = float(logits.std())
-        order = np.argsort(logits)[::-1]
-        rank = int(np.where(order == dev_tok)[0][0])
-        near_tie = (gap / spread <= TOL_GAP_STD) and (rank < TOL_RANK)
-        ok = (dev_tok == ref_argmax) or near_tie
-        fails += not ok
-        if dev_tok == ref_argmax:
-            tag = "exact"
+        if temperature > 0:
+            ref = topk_sample_reference(
+                logits, temperature, top_k, seed, k_set=ONESTREAM_KSET
+            )
+            ok = dev_tok == ref
+            tag = "sampled"
         else:
-            tag = f"near-tie gap/std={gap/spread:.3f} rank={rank}"
+            ref = int(np.argmax(logits))
+            gap = float(logits.max() - logits[dev_tok])
+            spread = float(logits.std())
+            rank = int(np.where(np.argsort(logits)[::-1] == dev_tok)[0][0])
+            near_tie = (gap / spread <= TOL_GAP_STD) and (rank < TOL_RANK)
+            ok = dev_tok == ref or near_tie
+            tag = (
+                "exact"
+                if dev_tok == ref
+                else f"near-tie gap/std={gap/spread:.3f} rank={rank}"
+            )
+        cur_x, cur_sc = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
+        rec = records[t * REC_BYTES : (t + 1) * REC_BYTES]
+        seed_ok = np.array_equal(rec[:D], cur_x) and rec[D : D + 4].tobytes() == (
+            np.float32(cur_sc).tobytes()
+        )
+        if not seed_ok:
+            tag += ", seed DIFF"
+        ok = ok and seed_ok
+        fails += not ok
         print(
             f"  token {t} (pos {p0+t}): {'PASS' if ok else 'FAIL'}  "
-            f"dev={dev_tok} ref_argmax={ref_argmax}  [{tag}]",
+            f"dev={dev_tok} ref={ref}  [{tag}]",
             flush=True,
         )
-        cur_x, cur_sc = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
-    return fails
+    return fails, hidden
+
+
+def check_final(stage, hidden):
+    """Print whether `stage` holds `hidden` as the final residual; return 1 if not."""
+    xo_i8, xo_scale = hidden
+    at = stage[FINAL_AT : FINAL_AT + D + 4]
+    ok = np.array_equal(at[:D], xo_i8) and at[D:].tobytes() == xo_scale.tobytes()
+    print(f"  final hidden: {'PASS' if ok else 'FAIL'}", flush=True)
+    return int(not ok)
 
 
 def tokens_of(packed, passes):
@@ -435,9 +484,22 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument(
         "--elf",
-        help="run this full ELF, built by aie2_chain_dynscale_mh.py --full-elf-path "
+        help="run this full ELF, built by aie2_decode.py --full-elf-path "
         "at this test's configuration, instead of the JIT cache's",
     )
+    p.add_argument(
+        "--sample-temp",
+        type=float,
+        default=0.0,
+        help="the sampler's temperature (0: greedy)",
+    )
+    p.add_argument(
+        "--sample-topk",
+        type=int,
+        default=0,
+        help="sample from the resident set's best k (0: the whole set)",
+    )
+    p.add_argument("--sample-seed", type=int, default=0, help="the sampler's seed")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--time", action="store_true", help="measure per-token device time")
     p.add_argument("--n-iters", type=int, default=1)
@@ -490,6 +552,7 @@ def main():
     )
     opts = p.parse_args()
     fseed = opts.seed
+    sample = (opts.sample_temp, opts.sample_topk, opts.sample_seed)
     n_disp = opts.dispatches
     p0 = opts.start_pos
     if p0 is None:
@@ -548,7 +611,7 @@ def main():
     print(
         f"chain_persist_grow_mh N_LAYERS={N_LAYERS} passes={[n for _, n in schedule]}"
         f" P0={p0} KSET={ONESTREAM_KSET}"
-        f"  temp={SAMPLE_TEMP} topk={SAMPLE_TOPK} seed={SAMPLE_SEED}  fixture_seed={fseed}"
+        f"  temp={sample[0]} topk={sample[1]} seed={sample[2]}  fixture_seed={fseed}"
         f"  dispatches={n_disp} repeats={opts.repeats}",
         flush=True,
     )
@@ -562,7 +625,7 @@ def main():
                 iron.zeros([P_MAX * REC_BYTES], dtype=np.int8),
                 iron.tensor(stage0, dtype=np.int8),
             ],
-            dispatch_params(p0, passes),
+            dispatch_params(p0, passes, sample),
             opts,
         )
 
@@ -579,20 +642,21 @@ def main():
     # seed each dispatch left; after each, the device's whole KV cache must
     # equal the oracle's.
     dev_tokens = []
-    tok_fails = carry_fails = 0
+    tok_fails = carry_fails = hidden_fails = 0
     if opts.split:
         # One dispatch of `passes` tokens, then the same tokens one per
         # dispatch: a token slot that does not run moves nothing.
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
-        whole = dispatch(stage_t, kv_t, dispatch_params(p0, passes))
+        whole = dispatch(stage_t, kv_t, dispatch_params(p0, passes, sample))
         kv_t.to("cpu")
         stage_t.to("cpu")
         kv_whole, stage_whole = kv_t.numpy().copy(), stage_t.numpy().copy()
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
         recs = [
-            dispatch(stage_t, kv_t, dispatch_params(p0 + t, 1)) for t in range(passes)
+            dispatch(stage_t, kv_t, dispatch_params(p0 + t, 1, sample))
+            for t in range(passes)
         ]
         kv_t.to("cpu")
         stage_t.to("cpu")
@@ -612,21 +676,24 @@ def main():
             )
             carry_fails += not same
         dev_tokens = tokens_of(whole, passes)
-        tok_fails = replay(dev_tokens, x_i8, res_scale, layers, p0, rope, lm)
+        tok_fails, hidden = replay(
+            whole, passes, x_i8, res_scale, layers, p0, rope, lm, sample
+        )
+        hidden_fails += check_final(stage_whole, hidden)
         wrong = int(np.count_nonzero(kv_whole != pack_kv(layers)))
         print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
         carry_fails += wrong != 0
     elif opts.repeats > 1:
+        first = None
         for r in range(opts.repeats):
-            toks = tokens_of(
-                dispatch(
-                    iron.tensor(stage0, dtype=np.int8),
-                    iron.tensor(kv0, dtype=np.int32),
-                    dispatch_params(p0, passes),
-                ),
-                passes,
+            records = dispatch(
+                iron.tensor(stage0, dtype=np.int8),
+                iron.tensor(kv0, dtype=np.int32),
+                dispatch_params(p0, passes, sample),
             )
+            toks = tokens_of(records, passes)
             if r == 0:
+                first = records
                 dev_tokens = toks
             same = toks == dev_tokens
             print(
@@ -636,7 +703,9 @@ def main():
                 print(f"repeat {r} differs from repeat 0", file=sys.stderr)
                 return 1
         set_pristine(layers, pristine)
-        tok_fails = replay(dev_tokens, x_i8, res_scale, layers, p0, rope, lm)
+        tok_fails, _ = replay(
+            first, passes, x_i8, res_scale, layers, p0, rope, lm, sample
+        )
     else:
         # Like the KV tensor, the stage tensor stays on the device: the host
         # writes the first dispatch's seed into it, and each dispatch leaves
@@ -647,12 +716,15 @@ def main():
         for d, (pos, passes) in enumerate(schedule):
             if d:
                 time.sleep(opts.idle_s)
-            toks_out = dispatch(stage_t, kv_t, dispatch_params(pos, passes))
+            toks_out = dispatch(stage_t, kv_t, dispatch_params(pos, passes, sample))
             toks = tokens_of(toks_out, passes)
             dev_tokens += toks
             if n_disp > 1:
                 print(f"dispatch {d} (pos {pos}): tokens {toks}", flush=True)
-            tok_fails += replay(toks, x_d, sc_d, layers, pos, rope, lm)
+            fails, hidden = replay(
+                toks_out, passes, x_d, sc_d, layers, pos, rope, lm, sample
+            )
+            tok_fails += fails
             # The device appended exactly the rows the oracle did, and wrote
             # nothing else.
             kv_t.to("cpu")
@@ -669,6 +741,7 @@ def main():
                 ]
             )
             stage_t.to("cpu")
+            hidden_fails += check_final(stage_t.numpy(), hidden)
             seed_left = np.zeros(ACT_BYTES, dtype=np.int8)
             seed_left[: D + 4] = toks_out[last : last + D + 4]
             if not np.array_equal(
@@ -690,7 +763,7 @@ def main():
         print(
             f"carry across {n_disp} dispatches: {'PASS' if not carry_fails else 'FAIL'}"
         )
-    return 0 if tok_fails == 0 and carry_fails == 0 else 1
+    return 0 if tok_fails == carry_fails == hidden_fails == 0 else 1
 
 
 if __name__ == "__main__":

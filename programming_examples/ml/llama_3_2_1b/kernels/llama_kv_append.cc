@@ -41,62 +41,21 @@ extern "C" {
 // in the IRON worker body. kQChunkBytes = REP*HEAD_DIM (256) + REP*8 (32).
 void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
                           int8_t *restrict kv_out);
-void llama_kv_append_head_grow(int8_t *restrict kvfp_packed,
-                               int8_t *restrict kv_in, int8_t *restrict kv_out);
 void llama_kv_append_combined(int8_t *restrict combined, int8_t *restrict kv_in,
                               int8_t *restrict kv_out) {
   constexpr int kREP = 4; // N_HEADS_Q / N_HEADS_KV for Llama 3.2 1B
   constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
   llama_kv_append_head(combined + kQChunkBytes, kv_in, kv_out);
 }
-// Persistent growing-cache variant (see llama_kv_append_head_grow).
-void llama_kv_append_combined_grow(int8_t *restrict combined,
-                                   int8_t *restrict kv_in,
-                                   int8_t *restrict kv_out) {
-  constexpr int kREP = 4;
-  constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
-  llama_kv_append_head_grow(combined + kQChunkBytes, kv_in, kv_out);
-}
-
-// Resident variants (see aie2_chain_dynscale_mh.py's PERSIST_RESIDENT
-// comment): kv_base + layer*kPerHead indexes this worker's per-layer
-// slot; kPerHead matches the host's PER_KV_HEAD_BYTES.
-//   _seed: token 0, copies the host pristine cache -> resident slot, then
-//          appends + advances T_used (grow contract). One DMA/head/layer.
-//   (no _seed): tokens 1..PT-1, in-place (kv_in == kv_out == resident slot);
-//          the self-copy is a harmless no-op, then append + advance.
-// kResPerHead = per-head resident cache size (== PER_KV_HEAD_BYTES on the
-// host).
-static constexpr int kResPerHead = kPrefix + 2 * (kScaleBytes + kBodyBytes);
-void llama_kv_append_combined_resident_seed(int8_t *restrict combined,
-                                            int8_t *restrict kv_in_host,
-                                            int8_t *restrict kv_base,
-                                            int32_t layer) {
-  constexpr int kREP = 4;
-  constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
-  llama_kv_append_head_grow(combined + kQChunkBytes, kv_in_host,
-                            kv_base + layer * kResPerHead);
-}
-void llama_kv_append_combined_resident(int8_t *restrict combined,
-                                       int8_t *restrict kv_base,
-                                       int32_t layer) {
-  constexpr int kREP = 4;
-  constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
-  int8_t *slot = kv_base + layer * kResPerHead;
-  llama_kv_append_head_grow(combined + kQChunkBytes, slot, slot);
-}
 
 // One KV head. kvfp_packed packs [k_fp fp32[HEAD_DIM] | v_fp fp32[HEAD_DIM] |
 // cs bf16[2*HEAD_DIM]] into ONE input fifo to stay within the 2-in/2-out
 // compute-tile DMA budget. kv_out is a copy of kv_in with slot[pos]
 // overwritten (separate buffers: IRON object-fifos give distinct in/out
-// instances); it fans to flowkv_mh AND the host drain. If advance!=0,
-// writes kv_out.T_used = pos+1 (the growing-cache contract: position
-// advances ON-CHIP); advance==0 copies the prefix through unchanged.
+// instances); it fans to flowkv_mh AND the host drain.
 static inline void append_head_impl(int8_t *restrict kvfp_packed,
                                     int8_t *restrict kv_in,
-                                    int8_t *restrict kv_out, int32_t pos,
-                                    int advance) {
+                                    int8_t *restrict kv_out, int32_t pos) {
   constexpr int kPerHead = kPrefix + 2 * (kScaleBytes + kBodyBytes);
 
   if (pos < 0)
@@ -106,11 +65,6 @@ static inline void append_head_impl(int8_t *restrict kvfp_packed,
 
   for (int i = 0; i < kPerHead; i++)
     kv_out[i] = kv_in[i];
-
-  if (advance) {
-    int32_t t_used_out = pos + 1;
-    memcpy(kv_out, &t_used_out, 4);
-  }
 
   int8_t *k_slot_scales = kv_out + kPrefix;
   int8_t *k_body = k_slot_scales + kScaleBytes;
@@ -123,26 +77,12 @@ static inline void append_head_impl(int8_t *restrict kvfp_packed,
   memcpy(v_slot_scales + pos * 4, &vs, 4);
 }
 
-// Original single-token contract: slot = T_used-1, prefix copied unchanged.
+// slot = T_used-1, prefix copied unchanged.
 void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
                           int8_t *restrict kv_out) {
   int32_t t_used;
   memcpy(&t_used, kv_in, 4);
-  append_head_impl(kvfp_packed, kv_in, kv_out, t_used - 1, /*advance=*/0);
-}
-
-// Persistent growing-cache contract: slot = T_used (NOT -1), and kv_out.T_used
-// = T_used+1 so the next token (carrying this cache) appends at the next slot
-// and flowkv attends one more position -- the cache GROWS, position advances
-// ON-CHIP. host token-0 prefix = P (slots already valid before this token);
-// flowkv is UNCHANGED (reads kv_out.T_used = P+1 -> attends [0, P+1) incl the
-// new slot).
-void llama_kv_append_head_grow(int8_t *restrict kvfp_packed,
-                               int8_t *restrict kv_in,
-                               int8_t *restrict kv_out) {
-  int32_t t_used;
-  memcpy(&t_used, kv_in, 4);
-  append_head_impl(kvfp_packed, kv_in, kv_out, t_used, /*advance=*/1);
+  append_head_impl(kvfp_packed, kv_in, kv_out, t_used - 1);
 }
 
 } // extern "C"

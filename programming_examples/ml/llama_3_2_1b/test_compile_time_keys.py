@@ -9,33 +9,17 @@ compile flags, so for it the cache key is what differs."""
 
 import sys
 
-import aie2_chain_dynscale_mh
+import aie2_decode
 import aie2_layer_mh
 import aie2_silu_mul_int8
 
-CHAIN = dict(
-    SAMPLE=True,
-    ONESTREAM=True,
-    PERSIST=True,
-    PERSIST_GROW=True,
-    PT=4,
-    N_LAYERS=2,
-    T=128,
-    ONESTREAM_KSET=8,
-)
 CASES = [
-    (aie2_chain_dynscale_mh.build, CHAIN, "SAMPLE_TEMP", 0.0, 0.7, True),
-    (aie2_chain_dynscale_mh.build, CHAIN, "SAMPLE_TOPK", 0, 4, True),
-    (aie2_chain_dynscale_mh.build, CHAIN, "SAMPLE_SEED", 0, 1234, True),
-    (
-        aie2_chain_dynscale_mh.build,
-        {**CHAIN, "N_LAYERS": 4},
-        "PINGPONG_DEPTH",
-        2,
-        3,
-        True,
-    ),
-    (aie2_chain_dynscale_mh.build, CHAIN, "SILU_GATE_SCALE", 0.05, 0.04, True),
+    (aie2_decode.build, {}, "P_MAX", 4, 3, True),
+    (aie2_decode.build, {}, "N_LAYERS", 2, 3, True),
+    (aie2_decode.build, {}, "T", 128, 256, True),
+    (aie2_decode.build, {}, "KSET", 8, 4, True),
+    (aie2_decode.build, {}, "SILU_GATE_SCALE", 0.05, 0.04, True),
+    (aie2_decode.build, {}, "ATTN_CORES", 2, 1, True),
     (aie2_layer_mh.build, {}, "SILU_GATE_SCALE", 0.05, 0.04, True),
     (aie2_silu_mul_int8.build, {"SELFCAL": True}, "GATE_SCALE", 0.05, 0.04, False),
 ]

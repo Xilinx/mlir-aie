@@ -21,57 +21,56 @@ beyond quantization.
 
 ## 1. Decode design
 
-### The autoregressive loop, on-chip
+### The autoregressive loop, on the device
 
 Decode generates one token at a time: `token → embedding → 16 layers → lm_head →
 sample → next token`. The whole loop runs on the AI Engine array within a single
-device dispatch; the only thing crossing the host boundary per token is the weight
-stream from DDR (fundamental — a 1 GB model can't live on-chip) and, at the end,
-the generated token ids.
+device dispatch (`aie2_decode.py`), for up to 4 tokens; what crosses the DDR
+boundary per token is the weight stream (fundamental — a 1 GB model can't live
+on-chip), the live KV blocks, and the activations staged between the GEMV array
+and the cores around it.
 
 ```
-                       ┌──────────────── one device dispatch, P tokens ─────────────────┐
-  DDR: seed(token0) ──►│ seed-mux ─► router ─► [ rmsnorm ─ q/k/v ─ rope ─ KV-append ─    │
-                       │     ▲                   flowkv-attn ─ o_proj ─ +res ─ rmsnorm ─  │
-                       │     │                   gate/up ─ silu ─ down ─ +res ] ×16 ─►    │
-                       │     │                 final_norm ─► lm_head GEMM + top-k insert  │
-                       │     │                            ─► sample ─► (token, embed seed)│
-                       │     └──────────── embed seed feeds back on-chip ────────────────┤
-  host: weights (DDR) ─────────────────────────► streamed per token ─────────────────────►
-  host: tokens out  ◄───────────────────────────── P packed records ◄─────────────────────┘
-  DDR: next seed    ◄──────────────────────────── last token's seed ◄──────────────────────┘
+                    ┌──────────────── one device dispatch, P ≤ 4 tokens ────────────────┐
+ DDR stage: seed ──►│ [ rmsnorm ─ qkv ─ rope + KV row ─ attention ─ o + residual ─      │
+                    │   rmsnorm ─ gate, up ─ silu ─ down + residual ] × N ─ final norm ─ │
+                    │   lm_head + top-k insert ─ sample ─► token, embed seed ─┐         │
+                    │   ▲                                                      │         │
+                    │   └────────── next token's seed, through the stage ──────┘         │
+ DDR: weights ─────►│ 8 lanes into the GEMV array's 8 cores; the lm_head on one lane    │
+ DDR: KV cache ◄───►│ each token's live blocks in, its new row out                      │
+ host: records ◄────│ P packed [seed | scale | token]                                   │
+                    └───────────────────────────────────────────────────────────────────┘
 ```
 
 Key design pieces (each validated bit-exact in isolation before integration):
+
+- **Shared 8-lane GEMV array** (`aie2_gemv_array.py`). Eight cores run every
+  projection as units on one broadcast activation: qkv (fused, each core giving
+  its KV group's chunk), o and down (fused with the residual add), gate and up.
+  The layers' weights stream over eight shim lanes, one per core.
 
 - **One-stream sampler + embed gather** (`kernels/llama_topk_sample.cc`). The
   lm_head must stream the full 262 MB tied embed table every token. Rather than
   stream it twice (once for logits, once to fetch the sampled token's embedding),
   the sampler keeps a **resident top-k set** of `{logit, index, embed_sc, embed
   row}` as the table flows by **once**, then emits both the token id and the
-  next-token embedding seed. No second pass, one shim channel.
+  next-token embedding seed. No second pass, one shim channel. Its temperature,
+  top-k and seed are set per dispatch.
 
-- **On-chip token feedback** (`--persist`). The sampled token's embed seed feeds
-  back to layer 0 **on-chip** via a depth-2 self-feedback fifo + a seed-mux (the
-  seed buffer for token 0, on-chip feedback for tokens 1..P-1). The last token's
-  seed goes back to the seed buffer in DDR, so the next dispatch continues from
-  it; the host writes the seed buffer only for the first dispatch. (DDR, not core
-  memory: after the driver's 5 s autosuspend the cores come back reset.)
+- **Token feedback.** The sampled token's embed seed goes to the seed slot of
+  the `stage` buffer in DDR, where the next token's first RMSNorm reads it, in
+  the same dispatch or the next; the host writes it only for the first token.
+  (DDR, not core memory: after the driver's 5 s autosuspend the cores come back
+  reset.)
 
-- **Growing KV cache** (`--persist-grow`). The cache lives in DDR, int32
+- **Growing KV cache.** The cache lives in DDR, int32
   `[layer][half][block][head][64 rows]`, a row being one token's quantized K and V
   and their scales, for up to `T` tokens. Each layer, a token's attention reads
-  only the live blocks of its 8 KV heads, one linear transfer per half, and its
-  attention workers fold them block by block (`llama_attn_block.cc`, an exact
-  online softmax); the token's own new row joins its last block on chip and is
-  the one row written back. Rope advances with position too. This is real
-  autoregressive decode — context accumulates.
-
-- **Resident KV cache** (`--persist-resident`). The KV body lives in
-  worker-local buffers on the attention tiles, seeded once on token 0 then
-  read-modify-written in place — **zero per-token KV DMA, host streams only
-  weights**. Fits a compute tile at small `N_LAYERS` (32 KB/head at N=2); the full
-  16-layer cache (256 KB/head) needs a memtile (the one remaining residency item).
+  only the live blocks of its 8 KV heads, one linear transfer per half; two cores
+  per KV head fold them block by block, alternating (`llama_attn_block.cc`, an
+  exact online softmax), and the token's own new row joins its last block on chip
+  and is the one row written back. Rope advances with position too.
 
 ### On the device, and on the host
 
@@ -82,12 +81,14 @@ per dispatch, writes the design's ScratchpadParameters (`dispatch_params` in
 `test_chain_persist_grow_mh.py`): how many tokens it generates, which every
 worker reads; the position of the dispatch's first token, which the attention
 workers read; its row in the RoPE table the weight blob carries, built once
-with Llama 3's rope scaling; and per token slot, whether it runs (a slot that
-does not run moves nothing), how many KV blocks to read and where its row goes. What the host still does, each to move
-to the device in the stages of the one-design restructure:
+with Llama 3's rope scaling; per token slot, whether it runs (a slot that does
+not run moves nothing), how many KV blocks to read and where its row goes; and
+the sampler's settings. What the host still does, each to move to the device in
+the stages of the one-design restructure:
 
-- **Prefill.** There is none yet: the starting 64-token context is a fixture the
-  numpy oracle builds.
+- **Prefill.** `bench_quality_mh.py --device` prefills on the device one token a
+  dispatch, the host writing each prompt token's embed seed into the stage; the
+  decode test's starting context is a fixture the numpy oracle builds.
 - **Tokenization**, which stays on the host.
 
 ### INT8 recipe (W8A8-dynamic)
@@ -228,7 +229,7 @@ override it. The INT8 weights live in `data/`, generated from it by
 Each test compiles the design it checks with `@iron.jit` (cached under
 `NPU_CACHE_HOME`, so a rerun reuses it). The decode test,
 `test_chain_persist_grow_mh.py`, runs a full ELF (or a prebuilt one, `--elf`,
-from `python aie2_chain_dynscale_mh.py ... --full-elf-path X`); the others run
+from `python aie2_decode.py ... --full-elf-path X`); the others run
 an xclbin (or a prebuilt one, `--xclbin`/`--instr`, from a design CLI's
 `--xclbin-path X --insts-path Y`).
 
@@ -249,15 +250,18 @@ LLAMA_CHAIN_N=16 python bench_quality_mh.py --bf16-ref --residual-dyn --attn-lut
 ### Accuracy on silicon (NPU vs HF bf16)
 
 ```bash
-# compile the N=16 decode chain, then score the device vs bf16
-LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --self-prefill --bf16-ref
+# prefill and predict each prompt on the NPU, one token a dispatch, vs bf16
+LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --bf16-ref
 ```
 
-### Full persistent decode (on-chip loop + growing KV) + timing
+### Decode + timing
 
 ```bash
 # the full 16-layer autoregressive decode (4 tokens a dispatch; --passes picks 1-4)
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py
+
+# sampled instead of greedy (the sampler's settings are per dispatch)
+LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --sample-temp 0.7 --sample-topk 4
 
 # per-token TPS at full config (reuses the compiled design)
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --time
@@ -267,17 +271,12 @@ LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --time
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --dispatches 10 --idle-s 6
 ```
 
-### Resident-KV decode (host streams only weights, N=2)
-
-```bash
-python test_chain_persist_resident_mh.py
-```
-
 ### Primitive / kernel validation (bit-exact, isolation)
 
 ```bash
 python test_topk_sample_probe.py    # one-stream sampler + embed gather
-python test_chain_onestream_mh.py   # fused chain + lm_head + sampler
+python test_gemv_array.py           # the 8-lane GEMV array
+python test_layer_mh.py             # one decoder layer
 python test_rmsnorm_int8.py         # also test_rmsnorm_int8_dyn, test_rope_int8
 python test_silu_mul_int8.py --selfcal   # and test_flowkv.py --dyn, ...
 ```
@@ -286,23 +285,22 @@ python test_silu_mul_int8.py --selfcal   # and test_flowkv.py --dyn, ...
 
 ## Configuration
 
-The chain tests read these from the environment and pass them to the design as
-CompileTime values; each test picks its own mode.
+The decode test and `bench_quality_mh.py` read these from the environment and
+pass them to the design as CompileTime values.
 
 | Variable | Meaning |
 |---|---|
 | `LLAMA_CHAIN_N` | number of decoder layers (**set 16** for real runs; default 2) |
-| `LLAMA_CHAIN_PT` | tokens generated per dispatch (persistent loop; default 4) |
 | `LLAMA_CHAIN_T` | KV cache length (default 128) |
 | `LLAMA_CHAIN_ONESTREAM_KSET` | the one-stream sampler's resident top-k set size (default 8) |
 
-Everything else that changes the build is a CompileTime value of `build()` in
-`aie2_chain_dynscale_mh.py`, also on its CLI: the chain modes (`--sample`,
-`--onestream`, `--persist`, `--persist-grow`, `--persist-resident`; each
-`PERSIST*` flag a strict superset of the one above), the sampler
-(`--sample-temp`, `--sample-topk`, `--sample-seed`; temp ≤ 0 is greedy) and
-`--pingpong-depth`. `test_compile_time_keys.py` checks that each value is part
-of the JIT cache key.
+The rest of `build()` in `aie2_decode.py` is on its CLI too: `--p-max`, the
+tokens a dispatch can generate (default 4). `test_compile_time_keys.py` checks
+that each CompileTime value is part of the JIT cache key. Per dispatch, as
+ScratchpadParameters, go the tokens it generates (`--passes`, default by
+`passes_for`), the first token's position (`--start-pos`) and the sampler's
+temperature, top-k and seed (`--sample-temp`, `--sample-topk`, `--sample-seed`;
+temperature ≤ 0 is greedy, top-k 0 the whole set).
 
 ---
 
@@ -316,11 +314,11 @@ Real constraints learned during bring-up — apply preemptively to skip build cy
    auto-placer otherwise piles fifos on col 0 and overflows the shim.
 3. **`run_test` segfaults past ~5 XRT kernel args.** Keep to a few consolidated
    buffers and dispatch sub-regions via `TensorAccessPattern` taps. (This is why
-   the persistent loop packs token+seed into one output buffer.)
+   the decode packs each token's seed and id into one record buffer.)
 4. **One `Kernel` object per unique C symbol.** Share it across same-signature
    workers; use a distinct symbol per shape.
-5. **L1 is 64 KB/tile.** Resident KV (32 KB/head at N=2) fits beside the worker
-   stack aiecc measures; the full 16-layer cache (256 KB/head) needs a memtile.
+5. **L1 is 64 KB/tile.** The KV cache lives in DDR; an attention core holds a
+   block of 64 rows at a time.
 6. **Peano AIE2P codegen quirks** (see `kernels/`): `1.0f/x` is a ~10-bit HW
    reciprocal (use the NR `sw_recip`); fp32 stack arrays kept across loops can be
    corrupted (stash int LUT indices instead); `G_ROTL` fails to legalize (use a
@@ -335,10 +333,10 @@ accumulators, and full-precision fp32 glue chains.
 ## What's next
 
 One compiled design for decode, token-by-token prefill and batched prefill, with
-the per-call values (tokens per pass, position, live context, layers) as
-ScratchpadParameters:
+the per-call values (tokens per dispatch, position, live context, the sampler's
+settings) as ScratchpadParameters:
 
-- **The shared 8-lane GEMV array** for every projection and the lm_head, with
-  the glue fused into its epilogues; the old chain modes retire with it.
+- **The lm_head over more lanes** (it streams over one, about 19 ms a token),
+  and the glue fused into the GEMV array's epilogues.
 - **Prefill** on the device, token by token and then batched, with TTFT and
   tok/s measured end to end.
