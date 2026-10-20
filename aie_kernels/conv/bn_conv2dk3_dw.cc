@@ -1494,6 +1494,49 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 #define DW_BIAS_ROUNDING aie::rounding_mode::symmetric_inf
 #endif
 
+// NB neighbouring blocks of M pixels from x0, for one group of 8 channels:
+// each tap an mmul by its diagonal 8x8 weight matrix, each matrix loaded
+// once for all the blocks, each input vector once for the blocks it spans.
+template <int M, int NB>
+static inline __attribute__((always_inline)) void
+dw_i8_bias_blocks(const int8_t *const *rows, const int8_t *__restrict diag,
+                  aie::accum<acc32, M * 8> seeded, int8_t *__restrict output,
+                  const int x0, const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int V = M * 8;
+  using MMUL = aie::mmul<M, 8, 8, int8, int8>;
+  const aie::vector<int8, V> zeros = aie::zeros<int8, V>();
+
+  MMUL acc[NB];
+  AIE_LOOP_UNROLL_FULL
+  for (int b = 0; b < NB; b++)
+    acc[b] = seeded;
+  AIE_LOOP_UNROLL_FULL
+  for (int r = 0; r < 3; r++) {
+    const int8_t *row = rows[r];
+    aie::vector<int8, 64> w0 = aie::load_v<64>(diag + (r * 3) * 64);
+    aie::vector<int8, 64> w1 = aie::load_v<64>(diag + (r * 3 + 1) * 64);
+    aie::vector<int8, 64> w2 = aie::load_v<64>(diag + (r * 3 + 2) * 64);
+    // in[b] holds pixels x0 + (b - 1) * M onwards.
+    aie::vector<int8, V> in[NB + 2];
+    in[0] = x0 > 0 ? aie::load_v<V>(row + (x0 - M) * 8) : zeros;
+    AIE_LOOP_UNROLL_FULL
+    for (int b = 0; b < NB; b++)
+      in[b + 1] = aie::load_v<V>(row + (x0 + b * M) * 8);
+    in[NB + 1] =
+        x0 + NB * M < iw ? aie::load_v<V>(row + (x0 + NB * M) * 8) : zeros;
+    AIE_LOOP_UNROLL_FULL
+    for (int b = 0; b < NB; b++) {
+      acc[b].mac(aie::shuffle_down_fill(in[b], in[b + 1], V - 8), w0);
+      acc[b].mac(in[b + 1], w1);
+      acc[b].mac(aie::shuffle_down_fill(in[b + 1], in[b + 2], 8), w2);
+    }
+  }
+  AIE_LOOP_UNROLL_FULL
+  for (int b = 0; b < NB; b++)
+    aie::store_v(output + b * V, acc[b].template to_vector<int8>(scale));
+}
+
 template <bool Table>
 static void
 dw_i8_bias_vector(const int8_t *line0, const int8_t *line1, const int8_t *line2,
@@ -1502,9 +1545,13 @@ dw_i8_bias_vector(const int8_t *line0, const int8_t *line1, const int8_t *line2,
                   const int32_t check, const int scale) {
   constexpr int iw = CONV_INPUT_WIDTH;
   constexpr int channels = CONV_OUTPUT_CHANNELS;
-  constexpr int M = 4;
+  // 8 pixels a vector where every row starts 64-byte aligned.
+  constexpr int M = iw % 8 == 0 ? 8 : 4;
   constexpr int V = M * 8;
-  static_assert(iw % M == 0, "the depthwise bias kernel tiles the row by 4");
+  constexpr int NB = 2;
+  constexpr int groups = iw / M / NB;
+  constexpr int singles = iw / M % NB;
+  static_assert(iw % 4 == 0, "the depthwise bias kernel tiles the row by 4");
   event0();
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -1512,47 +1559,40 @@ dw_i8_bias_vector(const int8_t *line0, const int8_t *line1, const int8_t *line2,
 
   const int row_start = check == top ? 1 : 0;
   const int row_end = check == bottom ? 2 : 3;
-  const aie::vector<int8, V> zeros = aie::zeros<int8, V>();
-
-  // Odd words: the second half of each pixel's 8 channels.
-  static_assert(V / 4 <= 32, "one word of mask bits");
-  const auto odd = aie::mask<V / 4>::from_uint32(0xaaaaaaaau);
+  const int8_t *lines[3] = {line0, line1, line2};
+  // Lane ic * 8 + oc of a tap's matrix holds that tap's channel-oc weight
+  // where ic == oc; a border row's matrices are zero.
+  const auto on_diagonal = aie::mask<64>::from_uint64(0x8040201008040201ull);
+  const auto odd = aie::mask<16>::from_uint32(0xaaaaaaaau);
+  alignas(64) int8_t diag[9 * 64];
   for (int c = 0; c < channels / 8; c++) {
-    // Each tap's 8 channel weights, repeated for the M pixels.
-    aie::vector<int8, V> w[9];
     AIE_LOOP_UNROLL_FULL
     for (int t = 0; t < 9; t++) {
       const int32_t *tap =
           reinterpret_cast<const int32_t *>(wts + (c * 9 + t) * 8);
-      w[t] = aie::vector_cast<int8>(
-          aie::select(aie::broadcast<int32, V / 4>(tap[0]),
-                      aie::broadcast<int32, V / 4>(tap[1]), odd));
+      const bool live = t / 3 >= row_start && t / 3 < row_end;
+      aie::vector<int8, 64> taps = aie::vector_cast<int8>(
+          aie::select(aie::broadcast<int32, 16>(tap[0]),
+                      aie::broadcast<int32, 16>(tap[1]), odd));
+      aie::store_v(diag + t * 64,
+                   live ? aie::select(aie::zeros<int8, 64>(), taps, on_diagonal)
+                        : aie::zeros<int8, 64>());
     }
     aie::vector<int32, V> seed;
     AIE_LOOP_UNROLL_FULL
     for (int p = 0; p < M; p++)
       seed.insert(p, aie::load_v<8>(bias + c * 8));
-
-    for (int xb = 0; xb < iw / M; xb++) {
-      const int x0 = xb * M;
-      aie::accum<acc32, V> acc;
-      acc.from_vector(seed, 0);
-      for (int r = row_start; r < row_end; r++) {
-        const int8_t *row =
-            (r == 0 ? line0 : (r == 1 ? line1 : line2)) + c * iw * 8;
-        aie::vector<int8, V> cur = aie::load_v<V>(row + x0 * 8);
-        aie::vector<int8, V> prev =
-            x0 > 0 ? aie::load_v<V>(row + (x0 - M) * 8) : zeros;
-        aie::vector<int8, V> next =
-            x0 + M < iw ? aie::load_v<V>(row + (x0 + M) * 8) : zeros;
-        acc = aie::mac(acc, aie::shuffle_down_fill(prev, cur, V - 8),
-                       w[r * 3 + 0]);
-        acc = aie::mac(acc, cur, w[r * 3 + 1]);
-        acc = aie::mac(acc, aie::shuffle_down_fill(cur, next, 8), w[r * 3 + 2]);
-      }
-      aie::store_v(output + c * iw * 8 + x0 * 8,
-                   acc.template to_vector<int8>(scale));
-    }
+    aie::accum<acc32, V> seeded;
+    seeded.from_vector(seed, 0);
+    const int8_t *rows[3] = {lines[0] + c * iw * 8, lines[1] + c * iw * 8,
+                             lines[2] + c * iw * 8};
+    int8_t *out = output + c * iw * 8;
+    for (int g = 0; g < groups; g++)
+      dw_i8_bias_blocks<M, NB>(rows, diag, seeded, out + g * NB * V, g * NB * M,
+                               scale);
+    for (int x = 0; x < singles; x++)
+      dw_i8_bias_blocks<M, 1>(rows, diag, seeded, out + (groups * NB + x) * V,
+                              (groups * NB + x) * M, scale);
   }
   if constexpr (Table)
     map_table_i8<channels * iw>(output, table);
