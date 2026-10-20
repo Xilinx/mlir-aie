@@ -886,6 +886,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       tokens_passed: 'decoded tokens that matched the numpy oracle\'s, of those the dispatch generated',
       xclbin_bytes: 'size of the xclbin the compile wrote',
       instr_bytes: 'size of the runtime-sequence instruction stream the host submits with each dispatch',
+      elf_bytes: 'size of the full ELF the compile wrote: the device image and the runtime sequence\'s control code',
       pdi_bytes: 'size of the device image the xclbin carries: every core\'s ELF plus the array configuration',
       n_cores: 'compute cores the placed design uses',
       failed_properties: 'properties of the model-based test that did not hold',
@@ -915,7 +916,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       bank_pair_sharing: 'Bank sharing', wall_s: 'Wall time', unrouted: 'Unrouted', hop_ratio: 'Hops ÷ constructed',
       amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
       survived_corruptions: 'Missed corruptions', tok_s: 'Tokens / s', ms_per_token: 'Time / token', dma_floor_ratio: 'Over the DMA floor',
-      tokens_passed: 'Tokens verified', xclbin_bytes: 'xclbin', instr_bytes: 'Instructions', pdi_bytes: 'Device image', n_cores: 'Cores',
+      tokens_passed: 'Tokens verified', xclbin_bytes: 'xclbin', instr_bytes: 'Instructions', elf_bytes: 'Full ELF', pdi_bytes: 'Device image', n_cores: 'Cores',
       ...Object.fromEntries(['', '_warm'].flatMap(suffix => [
         ...COMPILE_STAGES.map(([key, name]) => [`compile_${key}_s${suffix}`, `Compile: ${name} (${suffix ? 'warm' : 'cold'})`]),
         [`compile_aiecc_wall_s${suffix}`, `Compile: aiecc wall (${suffix ? 'warm' : 'cold'})`],
@@ -934,7 +935,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       performance: { title: 'Performance', about: 'MobileNet and Llama 3.2 1B compiled, run and verified on an NPU2: time per image, tokens per second, compile time and memory, cold and warm, and what the compile wrote.',
                      metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'tok_s', 'ms_per_token', 'dma_floor_ratio', 'tokens_passed',
                                'compile_s', 'compile_peak_rss_mb', 'compile_s_warm', 'compile_peak_rss_mb_warm',
-                               'xclbin_bytes', 'instr_bytes', 'pdi_bytes', 'n_cores'] },
+                               'xclbin_bytes', 'instr_bytes', 'elf_bytes', 'pdi_bytes', 'n_cores'] },
       routing: { title: 'Routing', about: 'The packet router against its model on npu1, npu2 and xcvc1902: legal routes, their cost, and mutation testing.',
                  metrics: ['failed_properties', 'unrouted', 'illegal', 'failed_mutations', 'survived_corruptions', 'hop_ratio', 'amsels_per_design', 'ms_per_design'] },
       placement: { title: 'Placement', about: 'The SA placer: every seed placed, the placements\' cost, CPU time and memory. The buffer allocator against its model.',
@@ -1027,7 +1028,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true}, "xclbin_bytes": {"pct": 2}, "instr_bytes": {"pct": 2}, "pdi_bytes": {"pct": 2}, "n_cores": {"pct": 1}, "compile_place_s": {"pct": 15}, "compile_lower_s": {"pct": 15}, "compile_kernels_s": {"pct": 15}, "compile_codegen_s": {"pct": 15}, "compile_link_s": {"pct": 15}, "compile_package_s": {"pct": 15}, "compile_other_s": {"pct": 15}, "compile_outside_aiecc_s": {"pct": 15}, "compile_aiecc_wall_s": {"pct": 15}, "compile_place_s_warm": {"pct": 15}, "compile_lower_s_warm": {"pct": 15}, "compile_kernels_s_warm": {"pct": 15}, "compile_codegen_s_warm": {"pct": 15}, "compile_link_s_warm": {"pct": 15}, "compile_package_s_warm": {"pct": 15}, "compile_other_s_warm": {"pct": 15}, "compile_outside_aiecc_s_warm": {"pct": 15}, "compile_aiecc_wall_s_warm": {"pct": 15}, "compile_route_s": {"pct": 15}, "compile_route_s_warm": {"pct": 15}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true}, "xclbin_bytes": {"pct": 2}, "instr_bytes": {"pct": 2}, "elf_bytes": {"pct": 2}, "pdi_bytes": {"pct": 2}, "n_cores": {"pct": 1}, "compile_place_s": {"pct": 15}, "compile_lower_s": {"pct": 15}, "compile_kernels_s": {"pct": 15}, "compile_codegen_s": {"pct": 15}, "compile_link_s": {"pct": 15}, "compile_package_s": {"pct": 15}, "compile_other_s": {"pct": 15}, "compile_outside_aiecc_s": {"pct": 15}, "compile_aiecc_wall_s": {"pct": 15}, "compile_place_s_warm": {"pct": 15}, "compile_lower_s_warm": {"pct": 15}, "compile_kernels_s_warm": {"pct": 15}, "compile_codegen_s_warm": {"pct": 15}, "compile_link_s_warm": {"pct": 15}, "compile_package_s_warm": {"pct": 15}, "compile_other_s_warm": {"pct": 15}, "compile_outside_aiecc_s_warm": {"pct": 15}, "compile_aiecc_wall_s_warm": {"pct": 15}, "compile_route_s": {"pct": 15}, "compile_route_s_warm": {"pct": 15}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
@@ -3238,8 +3239,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           componentCell('dma_floor_ratio', label('dma_floor_ratio'), [lane('dma_floor_ratio')]),
           componentCell('tokens_passed', label('tokens_passed'),
                         [{ ...lane('tokens_passed'), bad: Boolean(passed && run.tokens_total && passed.value < run.tokens_total) }]),
-          componentCell('xclbin_bytes', 'Compiled sizes',
-                        [lane('xclbin_bytes', 'xclbin'), lane('pdi_bytes', 'image', 'series-2'), lane('instr_bytes', 'insts', 'series-3')]),
+          componentCell('elf_bytes', 'Compiled sizes', [lane('elf_bytes', 'ELF'), lane('pdi_bytes', 'image', 'series-2')]),
           componentCell('n_cores', label('n_cores'), [lane('n_cores')]),
         ]);
         card.kase = kase;

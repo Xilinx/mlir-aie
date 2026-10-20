@@ -11,7 +11,7 @@ test_chain_persist_grow_mh.py already uses), and run at the expected
 throughput on real hardware. Shells out to the existing
 test_chain_persist_grow_mh.py CLI (no new Python API), compiling once with the
 design's own CLI (aie2_chain_dynscale_mh.py) and then invoking the test script
-with that xclbin for both the correctness run and the ``--time`` run. One run, no seed sweep: unlike mobilenet this design has no SA-
+with that full ELF for both the correctness run and the ``--time`` run. One run, no seed sweep: unlike mobilenet this design has no SA-
 placer-seed dimension (Phase 7 unplaced it onto the plain default
 sequential placer, which has no seed concept).
 
@@ -61,9 +61,8 @@ _SUMMARY_RE = re.compile(
 )
 _PER_TOKEN_RE = re.compile(r"per-token:\s+([\d.]+) ms\s+\(([\d.]+) tok/s\)")
 _RATIO_RE = re.compile(r"ratio:\s+([\d.]+)x\s+->\s+(\S+)")
-_XCLBIN = f"build/final_chain_persist_grow_N{N_LAYERS}_PT{PT}.xclbin"
-_INSTR = f"build/insts_chain_persist_grow_N{N_LAYERS}_PT{PT}.bin"
-_PROJ_DIR = f"build/final_chain_persist_grow_N{N_LAYERS}_PT{PT}.prj"
+_ELF = f"build/chain_persist_grow_N{N_LAYERS}_PT{PT}.elf"
+_PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{PT}.prj"
 _PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
 _CORE_RE = re.compile(r"\baie\.core\(")
 
@@ -121,10 +120,8 @@ def _build_rss(env: dict) -> tuple[subprocess.CompletedProcess, float]:
             sys.executable,
             "aie2_chain_dynscale_mh.py",
             *_BUILD_ARGS,
-            "--xclbin-path",
-            _XCLBIN,
-            "--insts-path",
-            _INSTR,
+            "--full-elf-path",
+            _ELF,
         ],
         cwd=_LLAMA_DIR,
         env=env,
@@ -141,15 +138,14 @@ def _build_rss(env: dict) -> tuple[subprocess.CompletedProcess, float]:
 
 
 def _clean_build_outputs() -> None:
-    """Remove this config's xclbin, instructions and project dir.
+    """Remove this config's full ELF and project dir.
 
     The design CLI writes into the persistent build/ dir and rebuilds only
     outputs that are out of date, so without this it would not recompile.
     """
-    for rel in (_XCLBIN, _INSTR):
-        path = os.path.join(_LLAMA_DIR, rel)
-        if os.path.exists(path):
-            os.remove(path)
+    path = os.path.join(_LLAMA_DIR, _ELF)
+    if os.path.exists(path):
+        os.remove(path)
     proj = os.path.join(_LLAMA_DIR, _PROJ_DIR)
     if os.path.isdir(proj):
         shutil.rmtree(proj)
@@ -214,10 +210,8 @@ def run_correctness(env: dict) -> subprocess.CompletedProcess:
         [
             sys.executable,
             "test_chain_persist_grow_mh.py",
-            "--xclbin",
-            _XCLBIN,
-            "--instr",
-            _INSTR,
+            "--elf",
+            _ELF,
         ],
         env,
     )
@@ -228,10 +222,8 @@ def run_timed(env: dict) -> subprocess.CompletedProcess:
         [
             sys.executable,
             "test_chain_persist_grow_mh.py",
-            "--xclbin",
-            _XCLBIN,
-            "--instr",
-            _INSTR,
+            "--elf",
+            _ELF,
             "--time",
             "--n-iters",
             str(N_ITERS),
@@ -263,8 +255,7 @@ def artifact_stats() -> dict:
     PDI's size stands in for them, and the placed MLIR gives the core count.
     """
     paths = {
-        "xclbin_bytes": os.path.join(_LLAMA_DIR, _XCLBIN),
-        "instr_bytes": os.path.join(_LLAMA_DIR, _INSTR),
+        "elf_bytes": os.path.join(_LLAMA_DIR, _ELF),
         "pdi_bytes": os.path.join(_LLAMA_DIR, _PROJ_DIR, "main.pdi"),
     }
     out: dict = {
@@ -322,8 +313,7 @@ def aggregate(
             }
         )
     for metric, unit in (
-        ("xclbin_bytes", "bytes"),
-        ("instr_bytes", "bytes"),
+        ("elf_bytes", "bytes"),
         ("pdi_bytes", "bytes"),
         ("n_cores", "cores"),
     ):

@@ -31,7 +31,6 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie.utils import DefaultNPURuntime
 from aie2_chain_dynscale_mh import (
     CS_BYTES,
     HEAD_D,
@@ -51,7 +50,7 @@ from aie2_chain_dynscale_mh import (
 from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
-from llama_npu import add_artifact_args, design_kernel
+from llama_npu import DispatchSession
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw
@@ -217,7 +216,7 @@ DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
 LMW_GAMMA_BYTES = 2 * D
 
 
-def time_decode(npu, buffers, opts):
+def time_decode(session, buffers, opts):
     """Per-token device time + DMA floor (host-ferried grow: KV streamed every
     token, both directions, so bytes/token includes 2*KV_BYTES)."""
     print(
@@ -225,11 +224,8 @@ def time_decode(npu, buffers, opts):
         flush=True,
     )
     for _ in range(opts.n_warmup):
-        DefaultNPURuntime.load_and_run(npu, buffers)
-    times_ms = []
-    for _ in range(opts.n_iters):
-        _h, result = DefaultNPURuntime.load_and_run(npu, buffers)
-        times_ms.append(result.npu_time / 1e6)
+        session(buffers)
+    times_ms = [session(buffers) for _ in range(opts.n_iters)]
     arr = np.array(times_ms)
     disp_med = float(np.median(arr))
     per_token_ms = disp_med / PT
@@ -364,7 +360,11 @@ def tokens_of(packed):
 
 def main():
     p = argparse.ArgumentParser()
-    add_artifact_args(p)
+    p.add_argument(
+        "--elf",
+        help="run this full ELF, built by aie2_chain_dynscale_mh.py --full-elf-path "
+        "at this test's configuration, instead of the JIT cache's",
+    )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--time", action="store_true", help="measure per-token device time")
     p.add_argument("--n-iters", type=int, default=1)
@@ -483,9 +483,9 @@ def main():
     kv2 = np.zeros(2 * KV_BYTES, dtype=np.int8)
     kv2[:KV_BYTES] = kv_pristine
 
-    npu = design_kernel(
+    session = DispatchSession(
         build,
-        opts,
+        opts.elf,
         SAMPLE=True,
         ONESTREAM=True,
         PERSIST=True,
@@ -504,7 +504,7 @@ def main():
     )
     if opts.time:
         return time_decode(
-            npu,
+            session,
             [
                 iron.tensor(xin, dtype=np.int8),
                 iron.tensor(wblob_for(0), dtype=np.int8),
@@ -520,15 +520,14 @@ def main():
     # so a generation loop's dispatches carry the cache with no host copy.
     def dispatch(xin_d, w_d, kv_t):
         out_t = iron.zeros([PT * (D + 12)], dtype=np.int8)
-        DefaultNPURuntime.load_and_run(
-            npu,
+        session(
             [
                 iron.tensor(xin_d, dtype=np.int8),
                 iron.tensor(w_d, dtype=np.int8),
                 kv_t,
                 lmw_t,
                 out_t,
-            ],
+            ]
         )
         out_t.to("cpu")
         return out_t.numpy().copy()

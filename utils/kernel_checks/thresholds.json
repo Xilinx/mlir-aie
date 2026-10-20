@@ -64,6 +64,7 @@
   "tokens_passed": {"pct": 1, "higher_is_better": true},
   "xclbin_bytes": {"pct": 2},
   "instr_bytes": {"pct": 2},
+  "elf_bytes": {"pct": 2},
   "pdi_bytes": {"pct": 2},
   "n_cores": {"pct": 1},
   "compile_place_s": {"pct": 15},

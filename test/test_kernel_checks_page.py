@@ -1215,8 +1215,7 @@ const llamaRecord = (id, date, tok_s, extra) => ({
     tok_s: { value: tok_s, unit: 'tok/s' },
     ms_per_token: { value: 1000 / tok_s, unit: 'ms' },
     dma_floor_ratio: { value: 20.36, unit: 'x', range: 'COMPUTE-bound' },
-    xclbin_bytes: { value: 249839, unit: 'bytes' },
-    instr_bytes: { value: 21192696, unit: 'bytes' },
+    elf_bytes: { value: 21460224, unit: 'bytes' },
     pdi_bytes: { value: 243376, unit: 'bytes' },
     n_cores: { value: 30, unit: 'cores' },
     compile_s: { value: 60.5, unit: 's' },
@@ -1310,14 +1309,14 @@ const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.
 assert.deepEqual(chip(grid.children[0]), ['chg worse']);
 assert.deepEqual(chip(grid.children[1]), ['chg worse']);
 assert.equal(grid.children[0].text, 'Tokens / s4.37 tok/s −7.0%');
-assert.equal(grid.children[4].text, 'Compiled sizesxclbin244.0 KiB ±0.0 KiBimage237.7 KiB ±0.0 KiBinsts20.2 MiB ±0.0 KiB');
+assert.equal(grid.children[4].text, 'Compiled sizesELF20.5 MiB ±0.0 KiBimage237.7 KiB ±0.0 KiB');
 assert.deepEqual(card.cards[0].children[2].children.filter(r => r.className === 'stage-row').slice(0, 2).map(r => r.text),
   ['cold60.5 s 0.0% · 2,502.4 MB peak', 'warm1.2 s 0.0% · 410 MB peak']);
 assert.equal(grid.children[0].href, '#view=performance&metric=tok_s');
 fillSparks(card.cards, collect(historiesOf('llama-chain-hw', [llamaBefore, llamaAfter])));
 assert.deepEqual(['compile_s', 'compile_s_warm'].map(m => card.cards[0].sparks.get(m).lines.map(([color, , dashed]) => [color, dashed])),
   [[['muted', false]], [['muted', true]]]);
-assert.ok(card.cards[0].sparks.get('xclbin_bytes').innerHTML.includes('var(--series-3)'));
+assert.ok(card.cards[0].sparks.get('elf_bytes').innerHTML.includes('var(--series-2)'));
 // One case: no batch chart.
 assert.equal(all(card, n => n.className === 'charts').length, 0);
 """)

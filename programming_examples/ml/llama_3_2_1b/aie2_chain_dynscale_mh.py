@@ -1857,7 +1857,9 @@ def build(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="Llama 3.2 1B decode chain (multi-head)")
-    add_compile_args(p, with_dev=True, default_dev="npu2", dev_choices=("npu2",))
+    add_compile_args(
+        p, with_dev=True, default_dev="npu2", dev_choices=("npu2",), with_full_elf=True
+    )
     p.add_argument(
         "--sample",
         type=int,
