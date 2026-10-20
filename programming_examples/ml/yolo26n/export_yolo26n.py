@@ -21,7 +21,6 @@ Quantization choices, each measured on coco128 (mAP50-95, FP32 0.474):
 """
 
 import argparse
-import os
 from pathlib import Path
 
 import numpy as np
@@ -41,8 +40,8 @@ from ultralytics import YOLO  # pyright: ignore[reportMissingImports]
 from ultralytics.utils.downloads import (  # pyright: ignore[reportMissingImports]
     safe_download,
 )
+from yolo_params import WEIGHTS_DIR
 
-WEIGHTS_DIR = Path(os.environ.get("IRON_EXAMPLE_WEIGHTS_DIR", "/srv")) / "yolo26n"
 COCO128_URL = (
     "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128.zip"
 )
