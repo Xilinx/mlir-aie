@@ -177,6 +177,68 @@ void llama_topk_insert(int8_t *restrict slot, float *restrict set_logit,
   }
 }
 
+// Merge per-core top-k sets into this resident set, for a vocabulary split
+// across cores that each ran llama_lmhead_topk_insert over their own slice.
+// Each call takes one round: lo and hi hold four candidates each (cores 0-3
+// and 4-7), every candidate kCandBytes long:
+//   [logit f32 | gidx i32 | embed_sc f32 | valid i32 | pad to 64 | row i8 x kD]
+// Insertion is llama_topk_insert's. Whenever the vocabulary's kKset-th and
+// (kKset+1)-th largest logits differ, the merged set is the one a single
+// pass over the whole vocabulary keeps. set_len is int32[2]: the occupancy,
+// then the largest logit dropped so far (as fp32 bits), which equals the
+// final minimum exactly when that boundary is tied (llama_topk_finalize_merged
+// reports it).
+static constexpr int kCandHeader = 64;
+static constexpr int kCandBytes = kCandHeader + kD;
+
+void llama_topk_merge_insert(int8_t *restrict lo, int8_t *restrict hi,
+                             float *restrict set_logit,
+                             int32_t *restrict set_gidx,
+                             float *restrict set_scale,
+                             int8_t *restrict set_row,
+                             int32_t *restrict set_len, int32_t round) {
+  float *dropped = reinterpret_cast<float *>(set_len + 1);
+  if (round == 0) {
+    set_len[0] = 0;
+    set_len[1] = (int32_t)0xff800000; // -inf
+  }
+  for (int c = 0; c < 8; c++) {
+    const int8_t *cand = (c < 4 ? lo : hi) + (c % 4) * kCandBytes;
+    const int32_t *hdr = reinterpret_cast<const int32_t *>(cand);
+    if (hdr[3] == 0)
+      continue;
+    const float lg = reinterpret_cast<const float *>(cand)[0];
+    const float sc = reinterpret_cast<const float *>(cand)[2];
+    int len = set_len[0];
+    if (len < kKset) {
+      set_logit[len] = lg;
+      set_gidx[len] = hdr[1];
+      set_scale[len] = sc;
+      vec_copy_row(set_row + len * kD, cand + kCandHeader);
+      set_len[0] = len + 1;
+      continue;
+    }
+    int mi = 0;
+    float mv = set_logit[0];
+    for (int i = 1; i < kKset; i++) {
+      if (set_logit[i] < mv) {
+        mv = set_logit[i];
+        mi = i;
+      }
+    }
+    if (lg > mv) {
+      if (mv > *dropped)
+        *dropped = mv;
+      set_logit[mi] = lg;
+      set_gidx[mi] = hdr[1];
+      set_scale[mi] = sc;
+      vec_copy_row(set_row + mi * kD, cand + kCandHeader);
+    } else if (lg > *dropped) {
+      *dropped = lg;
+    }
+  }
+}
+
 // Finalize: sample over the resident set -> token id + next-token embed seed.
 //   params : [temperature bits f32 | top_k i32 | seed u32]
 //   token  : out int32[1] (global token id)
@@ -324,6 +386,27 @@ void llama_topk_finalize_packed(float *restrict set_logit,
   llama_topk_finalize(set_logit, set_gidx, set_scale, set_row, set_len, params,
                       &token, out);
   memcpy(out + kD + 4, &token, 4);
+}
+
+// llama_topk_finalize_packed over a merged set (llama_topk_merge_insert's
+// set_len), with out[kD+8..kD+12) = 1 when the vocabulary's kKset-th and
+// (kKset+1)-th largest logits tie, where a single pass would have kept
+// whichever tied index its slot history favoured.
+void llama_topk_finalize_merged(float *restrict set_logit,
+                                int32_t *restrict set_gidx,
+                                float *restrict set_scale,
+                                int8_t *restrict set_row,
+                                int32_t *restrict set_len,
+                                uint32_t *restrict params,
+                                int8_t *restrict out) {
+  llama_topk_finalize_packed(set_logit, set_gidx, set_scale, set_row, set_len,
+                             params, out);
+  float mv = set_logit[0];
+  for (int i = 1; i < set_len[0]; i++)
+    if (set_logit[i] < mv)
+      mv = set_logit[i];
+  int32_t tie = reinterpret_cast<const float *>(set_len + 1)[0] == mv;
+  memcpy(out + kD + 8, &tie, 4);
 }
 
 } // extern "C"

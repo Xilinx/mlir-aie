@@ -22,6 +22,13 @@ Interfaces, per layer unit and core c (one output object of OUT_BYTES each):
   at `RESID_OFF`. Those units send no rows to the host; the glue core
   returns llama_rescale_add_D's output (`RESID_OUT_BYTES`: int8[2048], the
   new scale, 4 zero bytes) per unit, in unit order.
+- `--lm`: each core's KSET set (`LM_OUT_BYTES`, as before) and the glue
+  core's merged result (`LM_SEED_BYTES`): the next token's embed seed
+  int8[2048], its fp32 scale, the token id and a flag that is 1 when the
+  vocabulary's KSET-th and (KSET+1)-th logits tie (the one case where a
+  single pass may keep a different tied index). Checked against the
+  single-pass oracle (numpy_topk_sample) for the token and against the
+  winner's requanted row for the seed.
 """
 
 import argparse
@@ -36,6 +43,7 @@ from aie2_gemv_array import (
     ACT_BYTES,
     COMB_BYTES,
     LM_OUT_BYTES,
+    LM_SEED_BYTES,
     LM_SLOT,
     N_CORES,
     OUT_BYTES,
@@ -53,6 +61,8 @@ from aie2_gemv_array import (
     rows_per_slot,
 )
 from llama_npu import add_artifact_args, design_kernel
+from numpy_topk_sample import topk_sample_reference, topk_set_reference
+from test_topk_sample_probe import embed_seed_ref
 
 DATA_DIR = Path(__file__).parent / "data"
 FILES = {"q": "wq", "k": "wk", "v": "wv", "o": "wo", "g": "wg", "u": "wu", "d": "wd"}
@@ -179,26 +189,46 @@ def run_lm(opts):
         embed_sc = (rng.random(vocab, dtype=np.float32) * 2e-3 + 1e-4).astype(
             np.float32
         )
-    tbl = np.zeros((opts.lm_tiles, LM_SLOT), np.int8)
-    tbl[:, 64 : 64 + 4 * D] = embed.reshape(opts.lm_tiles, 4 * D)
-    tbl[:, 64 + 4 * D + 16 :] = embed_sc.reshape(opts.lm_tiles, 4).view(np.int8)
     act, act_scale = make_act(rng, D)
     act = act[: D + 8]
 
-    logits = np.empty(vocab, np.float32)
-    for r0 in range(0, vocab, 8192):
-        acc = embed[r0 : r0 + 8192].astype(np.int32) @ act[:D].astype(np.int32)
-        logits[r0 : r0 + 8192] = (
-            acc.astype(np.float32) * np.float32(act_scale)
-        ).astype(np.float32) * embed_sc[r0 : r0 + 8192]
+    def lm_logits():
+        out = np.empty(vocab, np.float32)
+        for r0 in range(0, vocab, 8192):
+            acc = embed[r0 : r0 + 8192].astype(np.int32) @ act[:D].astype(np.int32)
+            out[r0 : r0 + 8192] = (
+                acc.astype(np.float32) * np.float32(act_scale)
+            ).astype(np.float32) * embed_sc[r0 : r0 + 8192]
+        return out
+
+    logits = lm_logits()
+    if opts.force_tie:
+        # A copy of the KSET-th largest logit's row ties the set boundary.
+        order = np.argsort(-logits, kind="stable")
+        src, dst = order[opts.kset - 1], order[-1]
+        embed[dst], embed_sc[dst] = embed[src], embed_sc[src]
+        logits = lm_logits()
+    tbl = np.zeros((opts.lm_tiles, LM_SLOT), np.int8)
+    tbl[:, 64 : 64 + 4 * D] = embed.reshape(opts.lm_tiles, 4 * D)
+    tbl[:, 64 + 4 * D + 16 :] = embed_sc.reshape(opts.lm_tiles, 4).view(np.int8)
 
     w_t = iron.tensor(tbl.reshape(-1), dtype=np.int8)
     a_t = iron.tensor(act, dtype=np.int8)
     s_t = iron.zeros([N_CORES * LM_OUT_BYTES], dtype=np.int8)
-    npu = design_kernel(build_lm, opts, LM_TILES=opts.lm_tiles, KSET=opts.kset)
-    buffers = [w_t, a_t, s_t]
+    seed_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
+    npu = design_kernel(
+        build_lm,
+        opts,
+        LM_TILES=opts.lm_tiles,
+        KSET=opts.kset,
+        TEMPERATURE=opts.temperature,
+        TOP_K=opts.kset,
+        SEED=opts.sample_seed,
+    )
+    buffers = [w_t, a_t, s_t, seed_t]
     DefaultNPURuntime.load_and_run(npu, buffers)
     s_t.to("cpu")
+    seed_t.to("cpu")
     sets = s_t.numpy().reshape(N_CORES, LM_OUT_BYTES)
 
     ok = True
@@ -227,6 +257,27 @@ def run_lm(opts):
     print(f"merged argmax: dev={best} ref={ref_best}")
     ok &= best == ref_best
 
+    out = seed_t.numpy()
+    token = int(out[D + 4 : D + 8].view(np.int32)[0])
+    tie = int(out[D + 8 : D + 12].view(np.int32)[0])
+    ref_set = topk_set_reference(logits, k)
+    ref_sorted = np.sort(logits)[::-1]
+    ref_tie = int(ref_sorted[k - 1] == ref_sorted[k])
+    ref_token = topk_sample_reference(
+        logits, opts.temperature, k, opts.sample_seed, k_set=k
+    )
+    ref_xin, ref_scale = embed_seed_ref(embed[ref_token], float(embed_sc[ref_token]))
+    seed_ok = np.array_equal(out[:D], ref_xin) and np.array_equal(
+        out[D : D + 4].view(np.int32), np.array([ref_scale], np.float32).view(np.int32)
+    )
+    print(
+        f"merged token: dev={token} ref={ref_token} (single-pass set {sorted(ref_set)})  "
+        f"seed {'BIT-EXACT' if seed_ok else 'DIFF'}  boundary tie dev={tie} ref={ref_tie}"
+    )
+    # On a tied boundary a single pass keeps whichever tied index its slot
+    # history favoured, so only the flag is checked there.
+    ok &= tie == ref_tie and (ref_tie or (token == ref_token and seed_ok))
+
     if opts.time:
         for _ in range(opts.n_warmup):
             DefaultNPURuntime.load_and_run(npu, buffers)
@@ -249,6 +300,9 @@ def main():
     p.add_argument("--lm", action="store_true", help="run lm_head instead of a layer")
     p.add_argument("--lm-tiles", type=int, default=32064)
     p.add_argument("--kset", type=int, default=8)
+    p.add_argument("--temperature", type=float, default=0.0)
+    p.add_argument("--sample-seed", type=int, default=0)
+    p.add_argument("--force-tie", action="store_true")
     p.add_argument("--weights", choices=("synthetic", "real"), default="synthetic")
     p.add_argument("--layers", type=int, nargs="+", default=[0])
     p.add_argument("--order", default="qkvogud")

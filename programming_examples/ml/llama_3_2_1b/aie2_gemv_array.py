@@ -54,6 +54,8 @@ ACT_BYTES = HD + 8
 OUT_BYTES = 4096
 LM_SLOT = 64 + 4 * D + 4 * 4 + 4 * 4
 LM_OUT_BYTES = 128
+LM_CAND_BYTES = 64 + D
+LM_SEED_BYTES = D + 12
 PROJECTIONS = {
     "q": (D, D, "f32"),
     "k": (D, 512, "f32"),
@@ -356,7 +358,24 @@ def build(
 
 
 @jit
-def build_lm(*, LM_TILES: CompileTime[int] = 32064, KSET: CompileTime[int] = 8):
+def build_lm(
+    *,
+    LM_TILES: CompileTime[int] = 32064,
+    KSET: CompileTime[int] = 8,
+    TEMPERATURE: CompileTime[float] = 0.0,
+    TOP_K: CompileTime[int] = 8,
+    SEED: CompileTime[int] = 0,
+):
+    """lm_head over the array, then the token on a glue core.
+
+    Each core keeps a KSET top-k set over its eighth of the vocabulary and
+    sends it, one candidate per object, through two 4-way joins to a glue
+    core that merges the sets (llama_topk_merge_insert) and samples as
+    llama_topk_finalize_packed does, giving `LM_SEED_BYTES`: the next
+    token's embed seed, its scale, the token id and a boundary-tie flag.
+    TEMPERATURE, TOP_K and SEED are the sampler's params (S4 makes them
+    per-call).
+    """
     per_core = LM_TILES // N_CORES
     per_task = next(n for n in range(min(per_core, 1023), 0, -1) if per_core % n == 0)
     n_tasks = per_core // per_task
@@ -386,8 +405,33 @@ def build_lm(*, LM_TILES: CompileTime[int] = 32064, KSET: CompileTime[int] = 8):
     k_pack = KO.bind(
         "llama_gemv_array_topk_pack", [t_sl, t_sg, t_ss, t_len, _i8(LM_OUT_BYTES)]
     )
+    t_cand = _i8(LM_CAND_BYTES)
+    k_cand = KO.bind(
+        "llama_gemv_array_topk_cand", [t_sl, t_sg, t_ss, t_sr, t_len, t_cand, np.int32]
+    )
+    t_join = _i8(4 * LM_CAND_BYTES)
+    t_mlen = _i32a(2)
+    t_params = np.ndarray[(3,), np.dtype[np.uint32]]
+    t_seed = _i8(LM_SEED_BYTES)
+    KS = llama_kernels.topk_sample(kset=KSET)
+    k_merge = KS.bind(
+        "llama_topk_merge_insert",
+        [t_join, t_join, t_sl, t_sg, t_ss, t_sr, t_mlen, np.int32],
+    )
+    k_final = KS.bind(
+        "llama_topk_finalize_merged", [t_sl, t_sg, t_ss, t_sr, t_mlen, t_params, t_seed]
+    )
+    of_clo = ObjectFifo(t_join, depth=1, name="lm_cand_lo")
+    of_chi = ObjectFifo(t_join, depth=1, name="lm_cand_hi")
+    cand_offsets = [i * LM_CAND_BYTES for i in range(4)]
+    cand_fifos = of_clo.prod().join(
+        cand_offsets, obj_types=[t_cand] * 4, names=[f"lm_cand{c}" for c in range(4)]
+    ) + of_chi.prod().join(
+        cand_offsets, obj_types=[t_cand] * 4, names=[f"lm_cand{c}" for c in range(4, 8)]
+    )
+    of_seed = ObjectFifo(t_seed, depth=1, name="lm_seed")
 
-    def w_lm(c_act, c_w, c_out, sl, sg, ss, sr, slen, ki, kr, kp, base):
+    def w_lm(c_act, c_w, c_out, c_cand, sl, sg, ss, sr, slen, ki, kr, kp, kc, base):
         kr(slen)
         a = c_act.acquire(1)
         for s in range_(per_core):
@@ -398,6 +442,21 @@ def build_lm(*, LM_TILES: CompileTime[int] = 32064, KSET: CompileTime[int] = 8):
         o = c_out.acquire(1)
         kp(sl, sg, ss, slen, o)
         c_out.release(1)
+        for i in range_(KSET):
+            b = c_cand.acquire(1)
+            kc(sl, sg, ss, sr, slen, b, _i32(i))
+            c_cand.release(1)
+
+    def w_merge(c_lo, c_hi, c_seed, sl, sg, ss, sr, slen, params, km, kf):
+        for r in range_(KSET):
+            lo = c_lo.acquire(1)
+            hi = c_hi.acquire(1)
+            km(lo, hi, sl, sg, ss, sr, slen, _i32(r))
+            c_hi.release(1)
+            c_lo.release(1)
+        o = c_seed.acquire(1)
+        kf(sl, sg, ss, sr, slen, params, o)
+        c_seed.release(1)
 
     workers = [
         Worker(
@@ -406,6 +465,7 @@ def build_lm(*, LM_TILES: CompileTime[int] = 32064, KSET: CompileTime[int] = 8):
                 of_act.cons(),
                 of_w[c].cons(),
                 of_out[c].prod(),
+                cand_fifos[c].prod(),
                 Buffer(t_sl, name=f"set_logit{c}"),
                 Buffer(t_sg, name=f"set_gidx{c}"),
                 Buffer(t_ss, name=f"set_scale{c}"),
@@ -414,18 +474,41 @@ def build_lm(*, LM_TILES: CompileTime[int] = 32064, KSET: CompileTime[int] = 8):
                 k_insert,
                 k_reset,
                 k_pack,
+                k_cand,
                 c * per_core,
             ],
             tile=Tile(*CORE_TILES[c]),
         )
         for c in range(N_CORES)
     ]
+    params = np.array(
+        [np.float32(TEMPERATURE).view(np.uint32), TOP_K, SEED & 0xFFFFFFFF], np.uint32
+    )
+    workers.append(
+        Worker(
+            w_merge,
+            [
+                of_clo.cons(),
+                of_chi.cons(),
+                of_seed.prod(),
+                Buffer(t_sl, name="merge_logit"),
+                Buffer(t_sg, name="merge_gidx"),
+                Buffer(t_ss, name="merge_scale"),
+                Buffer(t_sr, name="merge_row"),
+                Buffer(t_mlen, initial_value=np.zeros(2, np.int32), name="merge_len"),
+                Buffer(t_params, initial_value=params, name="sample_params"),
+                k_merge,
+                k_final,
+            ],
+        )
+    )
 
-    def sequence(wblob, act, sets, *eps):
+    def sequence(wblob, act, sets, seed, *eps):
         w_prods = eps[:N_CORES]
         act_prod = eps[N_CORES]
-        out_conss = eps[N_CORES + 1 :]
+        out_conss = eps[N_CORES + 1 : 2 * N_CORES + 1]
         out_tg = TaskGroup()
+        eps[2 * N_CORES + 1].drain(seed, wait=True, group=out_tg)
         for c in range(N_CORES):
             out_conss[c].drain(
                 sets,
@@ -463,9 +546,11 @@ def build_lm(*, LM_TILES: CompileTime[int] = 32064, KSET: CompileTime[int] = 8):
             _i8(w_total),
             t_act,
             _i8(N_CORES * LM_OUT_BYTES),
+            t_seed,
             *[of.prod() for of in of_w],
             of_act.prod(),
             *[of.cons() for of in of_out],
+            of_seed.cons(),
         ],
     )
     return Program(NPU2(), rt, workers=workers).resolve_program()
