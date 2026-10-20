@@ -73,6 +73,14 @@ void llama_gemv_array_qkv_comb(int8_t *restrict fp, int8_t *restrict out) {
   event1();
 }
 
+// llama_gemv_array_qkv_comb with the position's RoPE cos/sin, which ride the
+// head of the core's weight lane each layer (cs: 256 B), in the cs region.
+void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
+                                  int8_t *restrict out) {
+  llama_gemv_array_qkv_comb(fp, out);
+  memcpy(out + 800, cs, 256);
+}
+
 // Core `core`'s half of llama_rescale_add_D: x_fp = resid * resid_scale +
 // proj on its rows (proj is the unit's fp32 output in fp[0..256)), and the
 // rows' magnitude max as int32 bits, which the glue core's

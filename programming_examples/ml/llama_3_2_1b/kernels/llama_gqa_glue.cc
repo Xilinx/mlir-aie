@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "llama_kv_row.h"
+#include "llama_rope_heads.h"
 #include "llama_vec_fp.h"
 
 #ifndef LLAMA_GQA_HEAD_DIM
@@ -170,6 +171,42 @@ extern "C" void llama_qkv_combine_rows(int8_t *restrict qr,
     llama_kv_row_quant<kHD>(kvfp, row, row + kHD, &ks, &vs);
     memcpy(row + 2 * kHD, &ks, 4);
     memcpy(row + 2 * kHD + 4, &vs, 4);
+  }
+  event1();
+}
+
+// comb_rope_rows (the GEMV array decode): the array's per-KV-group chunks
+// [q body 256 B | q tail 32 B | k fp32 x64 | v fp32 x64 | cs 256 B]
+// (llama_gemv_array_qkv_comb_cs), all 8 groups in comb, to the attention's
+// [q roped 288 B | row 136 B] chunks, lo (groups 0-3) and hi (4-7), each
+// half followed by its 4 rows again, for the cache write-back.
+static constexpr int kArrayChunk = kChunk + 3 * kKfpHead; // 1056
+
+extern "C" void llama_comb_rope_rows(int8_t *restrict comb,
+                                     int8_t *restrict out_lo,
+                                     int8_t *restrict out_hi) {
+  event0();
+  for (int g = 0; g < kNHeadsKV; g++) {
+    int8_t *base = (g < kHalfKV) ? out_lo : out_hi;
+    int local = (g < kHalfKV) ? g : (g - kHalfKV);
+    int8_t *dst = base + local * kRowChunk;
+    const int8_t *src = comb + g * kArrayChunk;
+    const int8_t *kvfp = src + kChunk;
+    // Rope's vector loads and stores need 64-byte alignment, which neither
+    // the chunks here (1056 B apart) nor the outputs (424 B apart) keep.
+    alignas(64) int8_t q[kChunk];
+    alignas(64) bfloat16 cs[2 * kHD];
+    alignas(64) int8_t roped[kChunk];
+    memcpy(q, src, kChunk);
+    memcpy(cs, kvfp + 2 * kKfpHead, kCsBytes);
+    llama_rope_heads<kHD, kREP>(q, cs, roped);
+    memcpy(dst, roped, kChunk);
+    int8_t *row = dst + kChunk;
+    float ks, vs;
+    llama_kv_row_quant<kHD>(kvfp, row, row + kHD, &ks, &vs);
+    memcpy(row + 2 * kHD, &ks, 4);
+    memcpy(row + 2 * kHD + 4, &vs, 4);
+    memcpy(base + kHalfKV * kRowChunk + local * kRowBytes, row, kRowBytes);
   }
   event1();
 }

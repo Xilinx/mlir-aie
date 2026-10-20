@@ -236,4 +236,13 @@ void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x,
   event1();
 }
 
+// x and gamma in one buffer: x int8[kCols + 8] at 0, gamma at kCols + 64
+// (the GEMV array decode stages the two together).
+void llama_rmsnorm_int8_dyn_acttail_packed(int8_t *restrict xg,
+                                           int8_t *restrict y) {
+  constexpr int kCols = LLAMA_RMSNORM_COLS;
+  llama_rmsnorm_int8_dyn_acttail(
+      xg, reinterpret_cast<bfloat16 *>(xg + kCols + 64), y);
+}
+
 } // extern "C"
