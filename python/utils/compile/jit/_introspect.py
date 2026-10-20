@@ -21,7 +21,7 @@ from typing import Annotated, Callable, get_args, get_origin
 
 from .declaration import Declaration
 from .markers import In, InOut, Out
-from .params import Member, Param, PerCallMember, param
+from .params import Member, OperatorParam, PerCallMember, param
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ def declare(generator: Callable) -> Declaration:
             for n, p in sig.parameters.items()
         ]
     )
-    params: dict[str, Param] = {}
+    params: dict[str, OperatorParam] = {}
     members: list[Member] = []
     scalars: list[str] = []
     for name, p in sig.parameters.items():
@@ -121,7 +121,7 @@ def declare(generator: Callable) -> Declaration:
             scalars.append(name)
             continue
         member.__set_name__(None, name)
-        if isinstance(member, Param):
+        if isinstance(member, OperatorParam):
             params[name] = member
         else:
             members.append(member)

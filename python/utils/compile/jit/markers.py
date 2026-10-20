@@ -66,8 +66,7 @@ from ml_dtypes import bfloat16
 from ....helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from ....helpers.taplib import PerCall
 from ... import bfp
-from .params import Member, _text, resolve
-from .params import Param as _Param
+from .params import Member, OperatorParam, _text, resolve
 
 T = TypeVar("T")
 
@@ -132,7 +131,7 @@ class _Operand(Member):
         per: Any = None,
         depth: int = 2,
         replicate: bool = False,
-        when: _Param | None = None,
+        when: OperatorParam | None = None,
         like: _Operand | None = None,
     ):
         if replicate and per is None:
@@ -169,7 +168,9 @@ class _Operand(Member):
     @property
     def dtype(self):
         dtype = self.declared_dtype
-        return getattr(self.op, dtype.name) if isinstance(dtype, _Param) else dtype
+        return (
+            getattr(self.op, dtype.name) if isinstance(dtype, OperatorParam) else dtype
+        )
 
     @property
     def elements(self) -> int:

@@ -30,7 +30,7 @@ else:
 import numpy as np
 
 
-class Param:
+class OperatorParam:
     """What ``param()`` and ``tunable()`` return: a parameter of its class.
 
     Attributes:
@@ -109,7 +109,7 @@ def param(
         raise TypeError(
             f"param(default={default!r}) would be shared by every instance; give default=lambda op: {default!r}"
         )
-    return Param(
+    return OperatorParam(
         default=default,
         derive=derive,
         array=array,
@@ -156,7 +156,7 @@ def tunable(
             f"tunable(domain={domain!r}): give a tuple, an Enum or a function "
             f"(op, dev, start) -> tuple"
         )
-    return Param(
+    return OperatorParam(
         default=default,
         derive=None,
         array=True,
@@ -175,7 +175,7 @@ class Member:
 
     name: str = ""
     owner: type | None = None
-    when: Param | None = None
+    when: OperatorParam | None = None
 
     def __set_name__(self, owner: type | None, name: str) -> None:
         self.name = name
@@ -228,7 +228,7 @@ def per_call(
     dtype: Any = np.int32,
     *,
     derive: Callable[[Any], Any] | None = None,
-    bounds: Param | None = None,
+    bounds: OperatorParam | None = None,
 ) -> Any:
     """Declare a value the cores read that may change every call without a rebuild.
 
@@ -263,7 +263,7 @@ class Select:
     ``Select(b_col_maj, (N, K), (K, N))``.
     """
 
-    flag: Param
+    flag: OperatorParam
     when_true: tuple
     when_false: tuple
 
@@ -297,7 +297,7 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
     for d in dims:
         if isinstance(d, Select):
             out.extend(resolve(d.branch(op), op))
-        elif not isinstance(d, Param):
+        elif not isinstance(d, OperatorParam):
             out.append(int(d))
         elif (value := getattr(op, d.name)) is not None:
             out.append(int(value))
@@ -319,7 +319,7 @@ def _text(d) -> str:
             map(_text, d.when_false)
         )
         return f"Select({d.flag.name}, ({true}), ({false}))"
-    return d.name if isinstance(d, Param) else repr(d)
+    return d.name if isinstance(d, OperatorParam) else repr(d)
 
 
 def widths(op, dev, start: int) -> tuple[int, ...]:
