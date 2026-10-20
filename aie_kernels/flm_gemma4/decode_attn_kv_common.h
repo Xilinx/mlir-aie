@@ -57,6 +57,9 @@ void calculate_y(float *__restrict y, float *__restrict c) {
   else
     CORRECT = C8;
 
+  // The emulated multiply's chain is longer than the pipeliner takes, so two
+  // 64-lane steps a trip overlap; two 128-lane steps spill.
+  AIE_LOOP_UNROLL(LANES == 64 ? 2 : 1)
   for (int i = 0; i < N / LANES; i++) {
     aie::vector<float, LANES> y_vec = aie::load_v<LANES>(y);
     aie::accum<accfloat, LANES> y_acc = aie::mul(y_vec, CORRECT);
