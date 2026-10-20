@@ -8,6 +8,15 @@ Every projection of every layer is checked byte for byte: fp32 outputs as
 `float(acc + bias) * act_scale * w_scale`, gate as that times `GATE_INV`
 rounded the way the kernels round. `--time` reports device time and the
 achieved weight bandwidth.
+
+Interfaces, per layer unit and core c (one output object of OUT_BYTES each):
+- an unfused projection: its fp32 rows (or int8 for gate) for rows
+  [c * rows/8, (c + 1) * rows/8), at offset 0;
+- `--fuse-qkv`, one unit on one activation: KV group c's combined chunk
+  (`COMB_BYTES`), as llama_qkv_combine lays it out: Q heads 4c..4c+3
+  requanted as llama_q_requant does (256 B body, 4 x 8 B scale tail), then
+  KV head c's k and v fp32 rows (256 B each), then 256 B reserved for S2's
+  RoPE cos/sin (zeros). RoPE itself is not applied yet.
 """
 
 import argparse
@@ -20,6 +29,7 @@ import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie2_gemv_array import (
     ACT_BYTES,
+    COMB_BYTES,
     LM_OUT_BYTES,
     LM_SLOT,
     N_CORES,
@@ -30,6 +40,7 @@ from aie2_gemv_array import (
     build,
     build_lm,
     lane_slots,
+    layer_units,
     rows_per_slot,
 )
 from llama_npu import add_artifact_args, design_kernel
@@ -97,6 +108,30 @@ def reference(layer_w, p, act, act_scale, gate_inv):
     if kind == "i8":
         return aie_fp.round_to_i8((fp * np.float32(gate_inv)).astype(np.float32))
     return fp.astype(np.float32)
+
+
+def comb_reference(layer_w, act, act_scale, core):
+    """KV group `core`'s combined chunk: llama_q_requant on its four Q heads, then k, v fp32."""
+    q = reference(layer_w, "q", act, act_scale, 0.0)[core * 256 : (core + 1) * 256]
+    k = reference(layer_w, "k", act, act_scale, 0.0)[core * 64 : (core + 1) * 64]
+    v = reference(layer_w, "v", act, act_scale, 0.0)[core * 64 : (core + 1) * 64]
+    body = np.empty(256, np.int8)
+    tail = np.zeros((4, 2), np.float32)
+    for h in range(4):
+        head = q[h * 64 : (h + 1) * 64]
+        absmax = np.float32(max(float(np.abs(head).max()), 1e-12))
+        scale = np.float32(absmax * np.float32(1.0 / 127.0))
+        body[h * 64 : (h + 1) * 64] = aie_fp.round_to_i8(head * aie_fp.sw_recip(scale))
+        tail[h, 0] = scale
+    return np.concatenate(
+        [
+            body,
+            tail.view(np.int8).reshape(-1),
+            k.view(np.int8),
+            v.view(np.int8),
+            np.zeros(256, np.int8),
+        ]
+    )
 
 
 def topk_reference(logits, gidx_base, kset):
@@ -199,6 +234,7 @@ def main():
     p.add_argument("--order", default="qkvogud")
     p.add_argument("--gate-inv", type=float, default=20.0)
     p.add_argument("--memtile-depth", type=int, default=0)
+    p.add_argument("--fuse-qkv", action="store_true")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--time", action="store_true")
     p.add_argument("--no-check", action="store_true")
@@ -227,15 +263,16 @@ def main():
             off = (li * N_CORES + c) * lane_bytes
             wblob[off : off + lane_bytes] = pack_lane(lw, order, c)
 
+    units = layer_units(order, opts.fuse_qkv)
     acts = []
     scales = []
     for li in range(n_layers):
-        for proj in order:
-            a, s = make_act(rng, PROJECTIONS[proj][0])
+        for unit in units:
+            a, s = make_act(rng, PROJECTIONS[unit[0]][0])
             acts.append(a)
             scales.append(s)
     acts_blob = np.concatenate(acts)
-    n_steps = n_layers * len(order)
+    n_steps = n_layers * len(units)
 
     w_t = iron.tensor(wblob, dtype=np.int8)
     a_t = iron.tensor(acts_blob, dtype=np.int8)
@@ -247,6 +284,7 @@ def main():
         ORDER=order,
         GATE_INV=opts.gate_inv,
         MEMTILE_DEPTH=opts.memtile_depth,
+        FUSE_QKV=opts.fuse_qkv,
     )
     buffers = [w_t, a_t, o_t]
     _h, result = DefaultNPURuntime.load_and_run(npu, buffers)
@@ -257,7 +295,20 @@ def main():
         out = o_t.numpy().reshape(N_CORES, n_steps, OUT_BYTES)
         step = 0
         for li, lw in enumerate(layers):
-            for proj in order:
+            for proj in units:
+                if proj == "qkv":
+                    ref = np.stack(
+                        [
+                            comb_reference(lw, acts[step], scales[step], c)
+                            for c in range(N_CORES)
+                        ]
+                    )
+                    bad = int(np.count_nonzero(out[:, step, :COMB_BYTES] != ref))
+                    tag = "BIT-EXACT" if bad == 0 else f"MISMATCH {bad} B"
+                    print(f"layer {opts.layers[li]:2d} qkv: 8 combined chunks  {tag}")
+                    ok &= bad == 0
+                    step += 1
+                    continue
                 k, rows, kind = PROJECTIONS[proj]
                 ref = reference(lw, proj, acts[step], scales[step], opts.gate_inv)
                 rc = rows // N_CORES

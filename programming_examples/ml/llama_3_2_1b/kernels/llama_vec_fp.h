@@ -13,6 +13,7 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
+#include <string.h>
 
 // Lane-wise a * b rounded to nearest-even, as the scalar soft-float `*` is.
 // aie::mul on fp32 vectors is an emulation that is one ulp off on up to ~1.5%
@@ -76,6 +77,73 @@ vec_round_to_i8(::aie::vector<float, kN> v) {
   ::aie::accum<acc32, kN> acc;
   acc.from_vector(::aie::select(n, toward_zero, away));
   return acc.template to_vector<int8>(0);
+}
+
+// sw_recip (see llama_flowkv.cc) on kN lanes: the same seed and Newton
+// steps, with the scalar form's soft-float products as vec_mul_rne and its
+// `-` as the same vsub.f.
+template <unsigned kN>
+static inline ::aie::vector<float, kN>
+vec_sw_recip(::aie::vector<float, kN> a) {
+  ::aie::vector<float, kN> two = ::aie::broadcast<float, kN>(2.0f);
+  ::aie::vector<float, kN> x =
+      ::aie::sub(::aie::broadcast<int32, kN>(0x7EF477D5),
+                 a.template cast_to<int32>())
+          .template cast_to<float>();
+  for (int i = 0; i < 4; i++)
+    x = vec_mul_rne(x, ::aie::sub(two, vec_mul_rne(a, x)));
+  return x;
+}
+
+// Per-head requant of kHeads heads of kHD fp32 values (llama_q_requant):
+// each head's scale is max(absmax, 1e-12) * (1/127), its body int8
+// round(q * sw_recip(scale)); tail[h*8..+4] gets the scale, [+4..+8] zero.
+template <int kHeads, int kHD>
+static inline void q_requant_heads(const float *restrict q_fp,
+                                   int8_t *restrict body,
+                                   int8_t *restrict tail) {
+  constexpr int kV = 16;
+  constexpr int kPadded = (kHeads + kV - 1) / kV * kV;
+  // q_scale holds each head's absmax until the scales are computed in place.
+  alignas(64) float q_scale[kPadded];
+  alignas(64) float q_inv[kPadded];
+  for (int h = kHeads; h < kPadded; h++)
+    q_scale[h] = 0.0f;
+  for (int h = 0; h < kHeads; h++) {
+    const float *src = q_fp + h * kHD;
+    ::aie::vector<int32, kV> mag = ::aie::zeros<int32, kV>();
+    for (int c = 0; c < kHD / kV; c++)
+      mag = ::aie::max(
+          mag, ::aie::bit_and(
+                   int32(0x7fffffff),
+                   ::aie::load_v<kV>(src + c * kV).template cast_to<int32>()));
+    q_scale[h] = __builtin_bit_cast(float, ::aie::reduce_max(mag));
+  }
+  // Every head's scale and reciprocal at once. max(absmax, 1e-12f) is an
+  // integer max of the non-negative bits.
+  for (int g = 0; g < kPadded / kV; g++) {
+    ::aie::vector<float, kV> absmax =
+        ::aie::max(
+            ::aie::load_v<kV>(q_scale + g * kV).template cast_to<int32>(),
+            int32(0x2b8cbccc))
+            .template cast_to<float>();
+    ::aie::vector<float, kV> scale =
+        vec_mul_rne(absmax, ::aie::broadcast<float, kV>(1.0f / 127.0f));
+    ::aie::store_v(q_scale + g * kV, scale);
+    ::aie::store_v(q_inv + g * kV, vec_sw_recip(scale));
+  }
+  for (int h = 0; h < kHeads; h++) {
+    const float *src = q_fp + h * kHD;
+    int8_t *dst = body + h * kHD;
+    ::aie::vector<float, kV> q_inv_v = ::aie::broadcast<float, kV>(q_inv[h]);
+    for (int c = 0; c < kHD / kV; c++)
+      ::aie::store_v(dst + c * kV,
+                     vec_round_to_i8(vec_mul_rne(
+                         ::aie::load_v<kV>(src + c * kV), q_inv_v)));
+    memcpy(tail + h * 8 + 0, &q_scale[h], 4);
+    int32_t zero = 0;
+    memcpy(tail + h * 8 + 4, &zero, 4);
+  }
 }
 
 // True when the vector epilogue equals the scalar soft-float one: every
