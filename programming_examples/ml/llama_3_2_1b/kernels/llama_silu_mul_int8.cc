@@ -24,20 +24,8 @@
 #define LLAMA_SILU_MUL_COLS 8192 // HIDDEN_DIM
 #endif
 
-static constexpr int32_t I8_MAX = 127;
-static constexpr int32_t I8_MIN = -128;
-static constexpr int kVec = 64;
-
-static inline int8_t round_to_i8(float v) {
-  int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
-  if (r > I8_MAX)
-    r = I8_MAX;
-  if (r < I8_MIN)
-    r = I8_MIN;
-  return (int8_t)r;
-}
-
-// See llama_rescale_add.cc for the lane width and vec_round_to_i8.
+// One 512-bit fp32 register; see llama_rescale_add.cc for vec_round_to_i8
+// and vec_mul_rne.
 static constexpr int kLanes = 16;
 
 static inline ::aie::vector<int8, kLanes>
@@ -61,11 +49,31 @@ vec_round_to_i8(::aie::vector<float, kLanes> v) {
   return acc.template to_vector<int8>(0);
 }
 
-static inline bfloat16 silu_lookup(int8_t g) {
-  uint16_t raw = llama_silu_lut_raw[(int)g + 128];
-  bfloat16 bf;
-  memcpy(&bf, &raw, 2);
-  return bf;
+static inline ::aie::vector<float, kLanes>
+vec_mul_rne(::aie::vector<float, kLanes> a, ::aie::vector<float, kLanes> b) {
+  ::aie::vector<int32, kLanes> ai = a.template cast_to<int32>();
+  ::aie::vector<int32, kLanes> bi = b.template cast_to<int32>();
+  ::aie::vector<int32, kLanes> ea =
+      ::aie::bit_and(int32(0xff), ::aie::downshift(ai, 23));
+  ::aie::vector<int32, kLanes> eb =
+      ::aie::bit_and(int32(0xff), ::aie::downshift(bi, 23));
+  ::aie::accum<acc64, kLanes> p = ::aie::mul(
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), ai)),
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bi)));
+  ::aie::vector<int32, kLanes> lo = p.template to_vector<int32>(23);
+  ::aie::vector<int32, kLanes> hi = p.template to_vector<int32>(24);
+  auto wide = ::aie::ge(lo, int32(1 << 24));
+  ::aie::vector<int32, kLanes> e = ::aie::add(
+      ::aie::add(ea, eb), ::aie::select(int32(-127), int32(-126), wide));
+  ::aie::vector<int32, kLanes> mag = ::aie::add(
+      ::aie::upshift(::aie::sub(e, int32(1)), 23), ::aie::select(lo, hi, wide));
+  mag = ::aie::select(mag, ::aie::broadcast<int32, kLanes>(0x7f800000),
+                      ::aie::ge(e, int32(255)));
+  mag = ::aie::select(mag, ::aie::zeros<int32, kLanes>(),
+                      ::aie::lt(::aie::min(::aie::min(ea, eb), e), int32(1)));
+  return ::aie::bit_or(
+             ::aie::bit_and(int32(0x80000000), ::aie::bit_xor(ai, bi)), mag)
+      .template cast_to<float>();
 }
 
 // Software fp32 reciprocal (see llama_flowkv.cc); matches the other
@@ -83,28 +91,20 @@ static inline float sw_recip(float a) {
   return x;
 }
 
-// s_f * (up_i8 * up_scale), kVec lanes at a time. The LUT gather has no
-// AIE2P vector form, so it stays a short scalar loop into a chunk-local
-// buffer; everything after that load is an exact widening or an
-// elementwise map, so this is bit-identical to the scalar chain per lane
-// (see llama_rmsnorm_int8.cc's vec_normalize_chunk for why that holds).
-static inline ::aie::vector<float, kVec>
-vec_silu_chunk(const int8_t *restrict gate, const int8_t *restrict up,
-               ::aie::vector<float, kVec> up_scale_v) {
-  bfloat16 s_buf[kVec];
-  for (int i = 0; i < kVec; i++)
-    s_buf[i] = silu_lookup(gate[i]);
-  ::aie::vector<bfloat16, kVec> sv = ::aie::load_v<kVec>(s_buf);
-  ::aie::accum<accfloat, kVec> s_acc;
-  s_acc.from_vector(sv);
-  ::aie::vector<float, kVec> s_f = s_acc.template to_vector<float>();
-
-  ::aie::vector<int8, kVec> uv = ::aie::load_v<kVec>(up);
-  ::aie::vector<float, kVec> u_i = ::aie::to_float<float>(uv);
-  ::aie::vector<float, kVec> u_f =
-      ::aie::mul(u_i, up_scale_v).template to_vector<float>();
-
-  return ::aie::mul(s_f, u_f).template to_vector<float>();
+// s_f * (up_i8 * up_scale), kLanes columns at a time, each product rounded
+// once as the scalar `*` does. The LUT gather has no AIE2P vector form, so a
+// short scalar loop widens each bf16 entry to its fp32 bits.
+static inline ::aie::vector<float, kLanes>
+vec_silu_lanes(const int8_t *restrict gate, const int8_t *restrict up,
+               ::aie::vector<float, kLanes> up_scale_v) {
+  alignas(64) uint32_t s_bits[kLanes];
+  for (int i = 0; i < kLanes; i++)
+    s_bits[i] = (uint32_t)llama_silu_lut_raw[(int)gate[i] + 128] << 16;
+  ::aie::vector<float, kLanes> s_f =
+      ::aie::load_v<kLanes>(s_bits).template cast_to<float>();
+  ::aie::vector<float, kLanes> u_f = vec_mul_rne(
+      ::aie::to_float<float>(::aie::load_v<kLanes>(up)), up_scale_v);
+  return vec_mul_rne(s_f, u_f);
 }
 
 extern "C" {
@@ -116,29 +116,33 @@ extern "C" {
 void llama_silu_mul_int8_dyn(int8_t *restrict gate, int8_t *restrict up,
                              int8_t *restrict out) {
   event0();
+  const ::aie::saturation_mode prev_sat =
+      ::aie::swap_saturation(::aie::saturation_mode::saturate);
+  const ::aie::rounding_mode prev_rnd =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 
   constexpr int kCols = LLAMA_SILU_MUL_COLS;
-  static_assert(kCols % kVec == 0,
-                "LLAMA_SILU_MUL_COLS must be a multiple of 64");
-  constexpr int kChunks = kCols / kVec;
+  static_assert(kCols % kLanes == 0,
+                "LLAMA_SILU_MUL_COLS must be a multiple of 16");
+  constexpr int kChunks = kCols / kLanes;
 
   float up_scale, inv_out_scale;
   memcpy(&up_scale, up + kCols, 4);
   memcpy(&inv_out_scale, up + kCols + 4, 4);
-  ::aie::vector<float, kVec> up_scale_v =
-      ::aie::broadcast<float, kVec>(up_scale);
-  ::aie::vector<float, kVec> inv_out_scale_v =
-      ::aie::broadcast<float, kVec>(inv_out_scale);
+  ::aie::vector<float, kLanes> up_scale_v =
+      ::aie::broadcast<float, kLanes>(up_scale);
+  ::aie::vector<float, kLanes> inv_out_scale_v =
+      ::aie::broadcast<float, kLanes>(inv_out_scale);
 
-  for (int c = 0; c < kChunks; c++) {
-    ::aie::vector<float, kVec> su =
-        vec_silu_chunk(gate + c * kVec, up + c * kVec, up_scale_v);
-    ::aie::vector<float, kVec> out_f =
-        ::aie::mul(su, inv_out_scale_v).template to_vector<float>();
-    for (int i = 0; i < kVec; i++)
-      out[c * kVec + i] = round_to_i8(out_f[i]);
-  }
+  for (int c = 0; c < kChunks; c++)
+    ::aie::store_v(
+        out + c * kLanes,
+        vec_round_to_i8(vec_mul_rne(
+            vec_silu_lanes(gate + c * kLanes, up + c * kLanes, up_scale_v),
+            inv_out_scale_v)));
 
+  ::aie::set_rounding(prev_rnd);
+  ::aie::set_saturation(prev_sat);
   event1();
 }
 
@@ -152,48 +156,53 @@ void llama_silu_mul_int8_dyn(int8_t *restrict gate, int8_t *restrict up,
 void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
                                  int8_t *restrict out) {
   event0();
+  const ::aie::saturation_mode prev_sat =
+      ::aie::swap_saturation(::aie::saturation_mode::saturate);
+  const ::aie::rounding_mode prev_rnd =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 
   constexpr int kCols = LLAMA_SILU_MUL_COLS;
-  static_assert(kCols % kVec == 0,
-                "LLAMA_SILU_MUL_COLS must be a multiple of 64");
-  constexpr int kChunks = kCols / kVec;
+  static_assert(kCols % kLanes == 0,
+                "LLAMA_SILU_MUL_COLS must be a multiple of 16");
+  constexpr int kChunks = kCols / kLanes;
 
   float up_scale;
   memcpy(&up_scale, up + kCols, 4);
-  ::aie::vector<float, kVec> up_scale_v =
-      ::aie::broadcast<float, kVec>(up_scale);
+  ::aie::vector<float, kLanes> up_scale_v =
+      ::aie::broadcast<float, kLanes>(up_scale);
 
-  // Pass A: absmax of s_f * u_f (see llama_rmsnorm_int8_dyn for why no
-  // fp32 array is kept across loops here).
-  float absmax = 0.0f;
-  for (int c = 0; c < kChunks; c++) {
-    ::aie::vector<float, kVec> su =
-        vec_silu_chunk(gate + c * kVec, up + c * kVec, up_scale_v);
-    float chunk_max = ::aie::reduce_max(::aie::abs(su));
-    if (chunk_max > absmax)
-      absmax = chunk_max;
-  }
+  // Pass A: absmax of s_f * u_f as an integer max of the magnitude bits.
+  ::aie::vector<int32, kLanes> mag = ::aie::zeros<int32, kLanes>();
+  for (int c = 0; c < kChunks; c++)
+    mag = ::aie::max(mag,
+                     ::aie::bit_and(int32(0x7fffffff),
+                                    vec_silu_lanes(gate + c * kLanes,
+                                                   up + c * kLanes, up_scale_v)
+                                        .template cast_to<int32>()));
+  int32_t absmax_bits = ::aie::reduce_max(mag);
+  float absmax;
+  memcpy(&absmax, &absmax_bits, 4);
   if (absmax < 1e-12f)
     absmax = 1e-12f;
   float out_scale = absmax * (1.0f / 127.0f);
   float inv_out_scale = sw_recip(out_scale);
-  ::aie::vector<float, kVec> inv_out_scale_v =
-      ::aie::broadcast<float, kVec>(inv_out_scale);
+  ::aie::vector<float, kLanes> inv_out_scale_v =
+      ::aie::broadcast<float, kLanes>(inv_out_scale);
 
   // Pass B: recompute + round.
-  for (int c = 0; c < kChunks; c++) {
-    ::aie::vector<float, kVec> su =
-        vec_silu_chunk(gate + c * kVec, up + c * kVec, up_scale_v);
-    ::aie::vector<float, kVec> out_f =
-        ::aie::mul(su, inv_out_scale_v).template to_vector<float>();
-    for (int i = 0; i < kVec; i++)
-      out[c * kVec + i] = round_to_i8(out_f[i]);
-  }
+  for (int c = 0; c < kChunks; c++)
+    ::aie::store_v(
+        out + c * kLanes,
+        vec_round_to_i8(vec_mul_rne(
+            vec_silu_lanes(gate + c * kLanes, up + c * kLanes, up_scale_v),
+            inv_out_scale_v)));
 
   memcpy(out + kCols, &out_scale, 4);
   int32_t zero = 0;
   memcpy(out + kCols + 4, &zero, 4);
 
+  ::aie::set_rounding(prev_rnd);
+  ::aie::set_saturation(prev_sat);
   event1();
 }
 
@@ -205,6 +214,8 @@ void llama_up_requant(float *restrict up_fp, int8_t *restrict out) {
   event0();
   const ::aie::saturation_mode prev_sat =
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
+  const ::aie::rounding_mode prev_rnd =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 
   constexpr int kCols = LLAMA_SILU_MUL_COLS;
   static_assert(kCols % kLanes == 0,
@@ -230,15 +241,14 @@ void llama_up_requant(float *restrict up_fp, int8_t *restrict out) {
       ::aie::broadcast<float, kLanes>(up_inv);
 
   for (int c = 0; c < kChunks; c++)
-    ::aie::store_v(
-        out + c * kLanes,
-        vec_round_to_i8(
-            ::aie::mul(::aie::load_v<kLanes>(up_fp + c * kLanes), up_inv_v)
-                .template to_vector<float>()));
+    ::aie::store_v(out + c * kLanes,
+                   vec_round_to_i8(vec_mul_rne(
+                       ::aie::load_v<kLanes>(up_fp + c * kLanes), up_inv_v)));
 
   memcpy(out + kCols, &up_scale, 4);
   int32_t zero = 0;
   memcpy(out + kCols + 4, &zero, 4);
+  ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   event1();
 }
