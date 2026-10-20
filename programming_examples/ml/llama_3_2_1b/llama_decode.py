@@ -40,8 +40,8 @@ from test_layer_mh import pack_perchan_slots
 # measurements: the lm_head, then per layer its weights and its attention
 # over p rows. amdxdna times a dispatch out after about 5 s.
 LM_HEAD_MS = 19.0
-LAYER_MS = 1.85
-LAYER_MS_PER_ROW = 0.0006
+LAYER_MS = 1.80
+LAYER_MS_PER_ROW = 0.000163
 DISPATCH_BUDGET_MS = 4000.0
 
 

@@ -12,10 +12,10 @@ reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % 
 prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
 beyond quantization.
 
-> Status: decode is validated on hardware at 48.6 ms/token (20.6 tok/s) at
-> N=16 at short context, with a KV cache of up to 128k tokens. Prefill runs on
-> the device token by token (`generate.py`: prompt in, text out); batched
-> prefill is next — see [On the device, and on the host](#on-the-device-and-on-the-host)
+> Status: decode is validated on hardware at 47.9 ms/token (20.9 tok/s) at
+> N=16 at short context and 389 ms/token at 128k. Prefill runs on the device
+> token by token (`generate.py`: prompt in, text out); batched prefill is
+> next — see [On the device, and on the host](#on-the-device-and-on-the-host)
 > and [What's next](#whats-next).
 
 ---
@@ -115,34 +115,32 @@ dispatch time / tokens per dispatch. N=16, 4 tokens a dispatch unless noted:
 
 | Context (position of the first token) | per-token | tok/s |
 |---|---|---|
-| **64** | **48.7 ms** | **20.5** |
-| 1024 | 57.5 ms | 17.4 |
-| 4096 | 86.9 ms | 11.5 |
-| 32768 | 362 ms | 2.8 |
-| 131068 (3 tokens a dispatch) | 1303 ms | 0.77 |
+| **64** | **47.9 ms** | **20.9** |
+| 4096 | 60.1 ms | 16.6 |
+| 32768 | 132.9 ms | 7.5 |
+| 65536 | 218.2 ms | 4.6 |
+| 131068 | 388.8 ms | 2.6 |
 
 N=16 went from 452 ms/token to 212 ms by vectorizing the kernels, then to
 91.2 ms by moving the remaining scalar fp32 epilogues onto vectors (bit-exact),
 taking the lm_head's top-k insert off soft float, and double-buffering the
 up-projection weights, then to 86.8 ms by reading only the live KV blocks,
 then to 48.6 ms by running every projection on the shared 8-lane GEMV array
-(`aie2_decode.py`). Two cores attend each KV head's blocks, alternating, which
-halves the cost of context.
-Past a few thousand tokens attention dominates: each KV head's blocks fold on
-one core, about 18 ms per 1k tokens of context.
+(`aie2_decode.py`, now on aie::mmul, `kernels/llama_gemv_mma.cc`). Two cores
+attend each KV head's blocks, alternating, and the vectorized block kernel
+(`llama_attn_block.cc`, 3.76x per block) took 32k from 362 to 133 ms/token.
 
 **What bounds it now.** The layers' weights stream over the array's eight
 lanes (about 52 GB/s), but the lm_head's 262 MB still stream over one lane
-(about 19 ms a token), and past a few thousand tokens attention dominates,
-about 9.5 ms per 1k tokens of context.
+(about 19 ms a token), and attention adds about 2.6 ms per 1k tokens of
+context.
 
-**Tokens per dispatch.** amdxdna times a dispatch out after about 5 s, and at
-128k a 4-token dispatch takes about 5.2 s. The host picks each dispatch's
-token count from its first position (`DecodeShape.passes_for` in
-`llama_decode.py`): as many of the 4 as fit a 4 s budget by a
-cost model fit to the table above (19 ms of lm_head a token, plus per layer
-1.85 ms and 0.6 ms per 1k rows of context). At 16 layers that is 4 tokens from
-positions up to 99102 and 3 beyond, to 128k (3.9 s a dispatch).
+**Tokens per dispatch.** amdxdna times a dispatch out after about 5 s. The host
+picks each dispatch's token count from its first position
+(`DecodeShape.passes_for` in `llama_decode.py`): as many of the 4 as fit a 4 s
+budget by a cost model fit to the table above (19 ms of lm_head a token, plus
+per layer 1.80 ms and 0.163 ms per 1k rows of context). At 16 layers that is
+4 tokens all the way to 128k (1.56 s a dispatch there).
 The array's activations and outputs pass through a DDR `stage` buffer
 between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
 60–89 tok/s on this model.
