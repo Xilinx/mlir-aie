@@ -25,7 +25,6 @@ Key changes vs single-head:
 
 from __future__ import annotations
 
-from functools import partial
 from typing import cast
 
 import aie_fp
@@ -41,6 +40,7 @@ from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
 from ml_dtypes import bfloat16
 from numpy_attn_block import attention as attn_block_attention
+from numpy_attn_block import exp_nonpos
 from test_flowkv import EXP_QUANT_SCALE, numpy_attention, quant_shifted
 from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 from test_rope_int8 import numpy_rope_dyn
@@ -143,7 +143,7 @@ def compute_sv_fp(qr, kcache, vcache, head_dim, t, q_scale, k_scale, v_scale, lu
     return (acc * np.float32(v_scale)).astype(np.float32)
 
 
-def numpy_attention_perslot_lut(
+def numpy_attention_perslot_flowkv(
     q_i8,
     k_i8,
     v_i8,
@@ -153,15 +153,15 @@ def numpy_attention_perslot_lut(
     k_slot_scales,
     v_slot_scales,
     inv_out_scale,
-    lut,
 ):
     """Bit-exact mirror of the device flowkv_mh per-slot kernel.
 
-    Per-cache-slot k/v scales (fixes the per-head-scalar bug) AND the exp-LUT
-    softmax (matches the device kernel, unlike the fp32-softmax attention_perslot
-    which is the QUALITY golden). Op order replicates llama_flowkv_mh exactly:
+    Per-cache-slot k/v scales (fixes the per-head-scalar bug) AND the device's
+    softmax, e = exp_nonpos(score - max) (matches the device kernel, unlike
+    the np.exp attention_perslot which is the QUALITY golden). Op order
+    replicates llama_flowkv_mh exactly:
       score[i] = dot_i32 * (q_scale*0.125 * k_slot[i])     (strict fp32)
-      sv[j]   += (lut_exp*inv_sum) * v_slot[i] * v[i,j]    (strict fp32)
+      sv[j]   += (e*inv_sum) * v_slot[i] * v[i,j]          (strict fp32)
     q_i8: (head_dim,); k_i8/v_i8: (t*head_dim,); *_slot_scales: (>=t,).
     """
     qs = np.float32(q_scale)
@@ -171,15 +171,12 @@ def numpy_attention_perslot_lut(
     dots = (k_mat @ q_i8.astype(np.int32)).astype(np.int32)  # (t,)
     ksl = np.asarray(k_slot_scales, dtype=np.float32)[:t]
     # Scale order (q_scale * k_slot[i]) * 0.125 mirrors the kernel and the
-    # bit-exact per-head predecessor; (q*0.125)*k diverges ~1 ULP and flips
-    # LUT-quant boundaries.
+    # bit-exact per-head predecessor; (q*0.125)*k diverges ~1 ULP.
     qk = ((qs * ksl).astype(np.float32) * inv_sqrt).astype(np.float32)
     scores = (dots.astype(np.float32) * qk).astype(np.float32)
 
     max_s = np.float32(scores.max())
-    shifted = aie_fp.aie_add(scores, -max_s)
-    q = quant_shifted(shifted)
-    exp_v = lut[q + 128].astype(np.float32)
+    exp_v = exp_nonpos(aie_fp.aie_add(scores, -max_s))
 
     sum_e = np.float32(0.0)
     for i in range(t):
@@ -393,7 +390,7 @@ def numpy_layer_mh_forward(
     residual_fp32=False,
     residual_dyn=False,
     attn_perslot=None,
-    attn_lut=False,
+    attn_flowkv=False,
     attn_tb=None,
     attn_cores=1,
     attn_interleaved=False,
@@ -561,8 +558,8 @@ def numpy_layer_mh_forward(
     # attn_perslot selects the per-cache-slot-scale fp32-softmax attention
     # (the KV-fix path). It defaults to follow residual_dyn so the quality
     # bench gets both fixes, but is decoupled so the device single-layer test
-    # (whose flowkv_mh is still the legacy per-head-scalar exp-LUT kernel) can
-    # validate the residual fix in isolation with attn_perslot=False.
+    # (which checks flowkv_mh through attn_flowkv) can validate the residual
+    # fix in isolation with attn_perslot=False.
     if attn_perslot is None:
         attn_perslot = residual_dyn
     sv_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
@@ -583,7 +580,6 @@ def numpy_layer_mh_forward(
                 t_used,
                 attn_tb,
                 attn_cores,
-                lut_exp,
                 attn_interleaved,
             )
             sv_out_scales[heads] = scales
@@ -596,16 +592,14 @@ def numpy_layer_mh_forward(
             q_h = qr[h_q * HEAD_DIM : (h_q + 1) * HEAD_DIM]
             k_slice = kcaches[kvh][: t_used * HEAD_DIM]
             v_slice = vcaches[kvh][: t_used * HEAD_DIM]
-            if attn_perslot or attn_lut:
-                # attn_lut=True is the DEVICE-FAITHFUL path: exp-LUT softmax
-                # (bit-exact mirror of flowkv_mh). attn_lut=False keeps the fp32
+            if attn_perslot or attn_flowkv:
+                # attn_flowkv=True is the DEVICE-FAITHFUL path: the device's
+                # softmax (bit-exact mirror of flowkv_mh). attn_flowkv=False keeps the fp32
                 # np.exp softmax (the quality golden). Both use per-slot scales.
                 ksl = layer["k_scales_slot"][kvh]
                 vsl = layer["v_scales_slot"][kvh]
                 attn_fn = (
-                    partial(numpy_attention_perslot_lut, lut=lut_exp)
-                    if attn_lut
-                    else attention_perslot
+                    numpy_attention_perslot_flowkv if attn_flowkv else attention_perslot
                 )
                 # First pass to derive this head's sv_out_scale.
                 _, sv_fp_h = attn_fn(

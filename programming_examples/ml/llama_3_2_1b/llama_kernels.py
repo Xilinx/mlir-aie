@@ -109,9 +109,7 @@ def attn_block(*, tb=64):
             "-DLLAMA_ATTN_HEAD_DIM=64",
             f"-DLLAMA_ATTN_TB={tb}",
             "-DLLAMA_ATTN_REP=4",
-            f"-DLLAMA_ATTN_EXP_QUANT_SCALE={EXP_QUANT_SCALE}f",
         ],
-        [generated_include_dir({"exp_lut.h": exp_lut_header(EXP_QUANT_SCALE)})],
     )
 
 
@@ -166,9 +164,7 @@ def flowkv_mh(*, T=128):
             "-DLLAMA_FLOWKV_HEAD_DIM=64",
             f"-DLLAMA_FLOWKV_T={T}",
             "-DLLAMA_FLOWKV_REP=4",
-            f"-DLLAMA_FLOWKV_EXP_QUANT_SCALE={EXP_QUANT_SCALE}f",
         ],
-        [generated_include_dir({"exp_lut.h": exp_lut_header(EXP_QUANT_SCALE)})],
     )
 
 

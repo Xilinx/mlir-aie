@@ -6,7 +6,7 @@
 
 Every live length and core count must match numpy_attn_block byte for byte;
 at T <= TB with one core the mirror itself must equal today's flowkv_mh
-reference (numpy_attention_perslot_lut + per-head self-calibration).
+reference (numpy_attention_perslot_flowkv + per-head self-calibration).
 """
 
 import argparse
@@ -26,11 +26,9 @@ from aie2_attn_block import (
     build,
     kv_words,
 )
-from gen_exp_lut import exp_lut
-from llama_kernels import EXP_QUANT_SCALE
 from llama_npu import add_artifact_args, design_kernel
 from numpy_attn_block import attention
-from numpy_layer_mh import numpy_attention_perslot_lut
+from numpy_layer_mh import numpy_attention_perslot_flowkv
 
 N_LAYERS, N_HEADS, LAYER, HALF, HEAD = 2, 4, 1, 1, 2
 
@@ -54,11 +52,11 @@ def cache(rng, t):
     return k, v, k_slot, v_slot, blob
 
 
-def flowkv_reference(q, q_scales, k, v, k_slot, v_slot, lut):
+def flowkv_reference(q, q_scales, k, v, k_slot, v_slot):
     out = np.zeros((REP, HEAD_DIM), np.int8)
     for h in range(REP):
-        _, sv = numpy_attention_perslot_lut(
-            q[h], k, v, HEAD_DIM, len(k), q_scales[h], k_slot, v_slot, 1.0, lut
+        _, sv = numpy_attention_perslot_flowkv(
+            q[h], k, v, HEAD_DIM, len(k), q_scales[h], k_slot, v_slot, 1.0
         )
         absmax = np.float32(max(float(np.abs(sv).max()), 1e-12))
         out[h] = aie_fp.round_to_i8(
@@ -79,7 +77,6 @@ def main():
     p.add_argument("-C", type=int, nargs="+", default=[1, 2, 4], choices=(1, 2, 4))
     p.add_argument("--seed", type=int, default=0)
     opts = p.parse_args()
-    lut = exp_lut(EXP_QUANT_SCALE)
     fails = 0
     for t in opts.T:
         rng = np.random.default_rng(opts.seed + t)
@@ -95,16 +92,16 @@ def main():
             ]
         )
         if t <= TB:
-            ref1, _, _ = attention(q, q_scales, k, v, k_slot, v_slot, t, TB, 1, lut)
+            ref1, _, _ = attention(q, q_scales, k, v, k_slot, v_slot, t, TB, 1)
             same = np.array_equal(
-                ref1, flowkv_reference(q, q_scales, k, v, k_slot, v_slot, lut)
+                ref1, flowkv_reference(q, q_scales, k, v, k_slot, v_slot)
             )
             print(
                 f"T={t}: one-block mirror vs flowkv_mh reference: {'EQUAL' if same else 'DIFFERENT'}"
             )
             fails += not same
         for c in opts.C:
-            ref, scales, _ = attention(q, q_scales, k, v, k_slot, v_slot, t, TB, c, lut)
+            ref, scales, _ = attention(q, q_scales, k, v, k_slot, v_slot, t, TB, c)
             expect = np.concatenate([ref.reshape(-1), scales.view(np.int8)])
             out = iron.zeros((OUT_BYTES,), dtype=np.int8)
             npu = design_kernel(build, opts, T=t, C=c)

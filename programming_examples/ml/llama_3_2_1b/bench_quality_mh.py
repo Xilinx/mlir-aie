@@ -96,7 +96,7 @@ def int8_chain_next_token(
     token_ids,
     residual_fp32=False,
     residual_dyn=False,
-    attn_lut=False,
+    attn_flowkv=False,
 ):
     """Run our INT8 chain over `token_ids`. Returns the predicted next
     token id. Resets layer caches before running (so prompts are
@@ -146,7 +146,7 @@ def int8_chain_next_token(
                 position=pos,
                 residual_fp32=residual_fp32,
                 residual_dyn=residual_dyn,
-                attn_lut=attn_lut,
+                attn_flowkv=attn_flowkv,
             )
             layers[L]["scales"] = scales
             layers[L]["t_used"] = pos + 1
@@ -216,11 +216,11 @@ def main():
         "tail; o_proj/down dynamic-out, rescale-add) — the Phase B target",
     )
     parser.add_argument(
-        "--attn-lut",
+        "--attn-flowkv",
         action="store_true",
-        help="device-faithful per-slot KV attention with the exp-LUT softmax "
+        help="device-faithful per-slot KV attention with the device's softmax "
         "(flowkv_mh mirror) instead of the fp32-softmax golden — measures "
-        "whether the LUT ULP noise affects top-1",
+        "whether its fp32 rounding affects top-1",
     )
     parser.add_argument(
         "--bf16-ref",
@@ -295,7 +295,7 @@ def main():
                 ids,
                 residual_fp32=opts.residual_fp32,
                 residual_dyn=opts.residual_dyn,
-                attn_lut=opts.attn_lut,
+                attn_flowkv=opts.attn_flowkv,
             )
         t_int8 = time.time() - t0
         match = ref_tok == our_tok

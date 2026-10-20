@@ -265,7 +265,7 @@ an xclbin (or a prebuilt one, `--xclbin`/`--instr`, from a design CLI's
 python accuracy_vs_hf.py --max-tokens 128
 
 # 20-prompt greedy bench, INT8 recipe vs true HF bf16
-LLAMA_CHAIN_N=16 python bench_quality_mh.py --bf16-ref --residual-dyn --attn-lut
+LLAMA_CHAIN_N=16 python bench_quality_mh.py --bf16-ref --residual-dyn --attn-flowkv
 ```
 
 ### On silicon: text, and accuracy vs HF bf16

@@ -15,18 +15,8 @@ import aie_fp
 import numpy as np
 
 FLT_MIN = np.float32(np.finfo(np.float32).tiny)
-EXP2_TAYLOR = [
-    "1.017808628e-07",
-    "1.321548666e-06",
-    "1.525273365e-05",
-    "1.540352969e-04",
-    "1.333355787e-03",
-    "9.618128650e-03",
-    "5.550410971e-02",
-    "2.402265072e-01",
-    "6.931471825e-01",
-    "1.0",
-]
+# 2^-g on [0, 1] in Q29 for g in Q23, highest degree first; c0 = 1 exactly.
+EXP2_NEG_Q29 = [58465, -684167, 5142538, -29791239, 128969442, -372130494, 536870912]
 
 
 def mul_rne(a, b):
@@ -46,27 +36,51 @@ def mul_rne(a, b):
     return np.where(tiny, np.copysign(np.float32(0), exact), (a * b)).astype(np.float32)
 
 
-def sw_exp_nonpos(x):
-    """Mirrors the kernel's `sw_exp_nonpos` (e^x for x <= 0).
+def srs_rne(p, shift):
+    """Mirrors an acc64 srs by `shift` under rounding_mode::conv_even.
 
     Args:
-        `x`: fp32 scalar, at most 0.
+        `p`: int64 array.
+        `shift`: bits to drop, at least 1.
 
     Returns:
-        The fp32 value the device computes.
+        p / 2^shift rounded half to even, as int64.
     """
-    t = np.float32(np.float32(x) * np.float32("1.442695022"))
-    if t < np.float32(-125.0):
-        return np.float32(0.0)
-    k = int(np.trunc(t))
-    f = aie_fp.aie_add(t, -np.float32(k))
-    p = np.float32(EXP2_TAYLOR[0])
-    for c in EXP2_TAYLOR[1:]:
-        p = aie_fp.aie_add(np.float32(p * f), np.float32(c))
-    return (np.float32(p).view(np.int32) + np.int32(k << 23)).view(np.float32)
+    q = p >> shift
+    r = p & ((1 << shift) - 1)
+    half = 1 << (shift - 1)
+    return q + ((r > half) | ((r == half) & ((q & 1) == 1))).astype(np.int64)
 
 
-def attend_block(q_i8, q_scale, k_i8, v_i8, k_slot, v_slot, lut_exp):
+def exp_nonpos(x):
+    """Mirrors the kernel's `vec_exp_nonpos` (e^x for x <= 0), lane-wise.
+
+    With t = x * log2(e), k = trunc(t) and f = t - k in (-1, 0], e^x = 2^k *
+    2^-g for g = -f rounded to Q23 by the vadd.f of 1 - f; 2^-g is a degree-6
+    Q29 polynomial whose Horner products round half to even. 0 below t = -125.
+
+    Args:
+        `x`: fp32 scalar or array, at most 0.
+
+    Returns:
+        The fp32 values the device computes, shaped like `x`.
+    """
+    t = mul_rne(x, np.float32("1.442695022"))
+    under = t < np.float32(-125.0)
+    t = np.where(under, np.float32(0.0), t)
+    k = np.trunc(t).astype(np.int32)
+    f = aie_fp.aie_add(t, -k.astype(np.float32))
+    g = np.asarray(aie_fp.aie_add(np.float32(1.0), -f), np.float32).view(np.int32)
+    g = g.astype(np.int64) - 0x3F800000
+    p = np.full(g.shape, EXP2_NEG_Q29[0], np.int64)
+    for c in EXP2_NEG_Q29[1:]:
+        p = srs_rne(p * g, 23) + c
+    e = (p.astype(np.float64) / 2.0**29).astype(np.float32)
+    e = (e.view(np.int32) + (k << 23)).view(np.float32)
+    return np.where(under, np.float32(0.0), e).astype(np.float32)[()]
+
+
+def attend_block(q_i8, q_scale, k_i8, v_i8, k_slot, v_slot):
     """One Q head over one block's rows, as `llama_attn_block` computes it.
 
     Args:
@@ -76,7 +90,6 @@ def attend_block(q_i8, q_scale, k_i8, v_i8, k_slot, v_slot, lut_exp):
         `v_i8`: int8 (n, head_dim).
         `k_slot`: fp32 (n,) per-row K scales.
         `v_slot`: fp32 (n,) per-row V scales.
-        `lut_exp`: fp32 (256,) exp LUT.
 
     Returns:
         (block max, block sum, normalized sv fp32 (head_dim,)).
@@ -85,9 +98,7 @@ def attend_block(q_i8, q_scale, k_i8, v_i8, k_slot, v_slot, lut_exp):
     qk = mul_rne(mul_rne(np.float32(q_scale), k_slot), np.float32(0.125))
     scores = mul_rne(dots, qk)
     m = np.float32(scores.max())
-    inv_q = np.float32(1.0) / np.float32(0.05)
-    q = aie_fp.round_to_i8(mul_rne(aie_fp.aie_add(scores, -m), inv_q))
-    e = lut_exp[q.astype(np.int32) + 128].astype(np.float32)
+    e = exp_nonpos(aie_fp.aie_add(scores, -m))
     s = np.float32(0.0)
     for ei in e:
         s = aie_fp.aie_add(s, ei)
@@ -114,8 +125,8 @@ def fold(state, m_b, s_b, sv_b):
         return m_b, s_b, sv_b
     m, s, sv = state
     big = max(m, m_b)
-    a = np.float32(s * sw_exp_nonpos(aie_fp.aie_add(m, -big)))
-    b = np.float32(s_b * sw_exp_nonpos(aie_fp.aie_add(m_b, -big)))
+    a = np.float32(s * exp_nonpos(aie_fp.aie_add(m, -big)))
+    b = np.float32(s_b * exp_nonpos(aie_fp.aie_add(m_b, -big)))
     den = aie_fp.aie_add(a, b)
     inv = aie_fp.sw_recip(den)
     wa = np.float32(a * inv)
@@ -148,7 +159,6 @@ def attention(
     t,
     tb,
     n_cores,
-    lut_exp,
     interleaved=False,
 ):
     """`llama_attn_block` over the cache's blocks, then `llama_attn_merge_selfcal`.
@@ -163,7 +173,6 @@ def attention(
         `t`: live rows.
         `tb`: rows per block.
         `n_cores`: cores the blocks are split across.
-        `lut_exp`: fp32 (256,) exp LUT.
         `interleaved`: core c takes blocks c, c + n_cores, ... instead of a
             contiguous range (the array decode's split, where every core sees
             every block).
@@ -196,7 +205,6 @@ def attention(
                         v_i8[rows],
                         k_slot[rows],
                         v_slot[rows],
-                        lut_exp,
                     ),
                 )
             if state is not None:

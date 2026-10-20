@@ -5,19 +5,17 @@
 //
 // Multi-head GQA flowkv -- REP Q heads sharing 1 KV head, fused qk+sv per
 // head in one kernel call. Arithmetic mirrors llama_flowkv.cc's qk+sv
-// exactly (quant_shifted/lookup_exp/sw_recip/round_to_i8 copied verbatim)
-// so per-head output is bit-identical to running the single-head kernel
-// REP times. q_chunk carries REP*kHD body + a REP*8 B per-head
-// [q_scale, sv_inv_out_scale] tail; k_one/v_one each carry a 4 B scale +
-// kT*kHD B cache. One worker's cache (k+v, T=128 HD=64) fits the 64 KB
-// AIE2P L1 budget comfortably.
+// (sw_recip/round_to_i8 copied verbatim), but takes the softmax's exp from
+// exp_nonpos, as llama_attn_block does, where llama_flowkv.cc indexes an exp
+// LUT; numpy_attention_perslot_flowkv mirrors it. q_chunk carries REP*kHD
+// body + a REP*8 B per-head [q_scale, sv_inv_out_scale] tail; k_one/v_one each
+// carry a 4 B scale + kT*kHD B cache. One worker's cache (k+v, T=128 HD=64)
+// fits the 64 KB AIE2P L1 budget comfortably.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 #include <string.h>
-
-#include "exp_lut.h"
 
 #ifndef LLAMA_FLOWKV_HEAD_DIM
 #define LLAMA_FLOWKV_HEAD_DIM 64
@@ -28,15 +26,10 @@
 #ifndef LLAMA_FLOWKV_REP
 #define LLAMA_FLOWKV_REP 4
 #endif
-#ifndef LLAMA_FLOWKV_EXP_QUANT_SCALE
-#define LLAMA_FLOWKV_EXP_QUANT_SCALE 0.05f
-#endif
 
 static constexpr int kHD = LLAMA_FLOWKV_HEAD_DIM;
 static constexpr int kT = LLAMA_FLOWKV_T;
 static constexpr int kREP = LLAMA_FLOWKV_REP;
-static constexpr float kExpQuantScale = LLAMA_FLOWKV_EXP_QUANT_SCALE;
-static constexpr float kInvExpQuantScale = 1.0f / LLAMA_FLOWKV_EXP_QUANT_SCALE;
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -50,21 +43,37 @@ static inline int8_t round_to_i8(float v) {
   return (int8_t)r;
 }
 
-static inline int32_t quant_shifted(float shifted) {
-  float v = shifted * kInvExpQuantScale;
-  int32_t q = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
-  if (q > 0)
-    q = 0;
-  if (q < -128)
-    q = -128;
-  return q;
-}
-
-static inline float lookup_exp(int32_t q) {
-  uint32_t raw = llama_exp_lut_raw[q + 128];
-  float v;
-  memcpy(&v, &raw, 4);
-  return v;
+// llama_attn_block.cc's vec_exp_nonpos on one lane (e^x for x <= 0): with
+// t = x * log2(e), k = trunc(t) and f = t - k, e^x = 2^k * 2^-g for g = -f in
+// Q23 (from 1 - f), 2^-g a degree-6 Q29 polynomial whose Horner products
+// round half to even. 0 below t = -125.
+static inline float exp_nonpos(float x) {
+  static constexpr int32_t kC[] = {-684167,   5142538,    -29791239,
+                                   128969442, -372130494, 536870912};
+  float t = x * 1.442695022f;
+  if (t < -125.0f)
+    return 0.0f;
+  int32_t k = (int32_t)t;
+  float f = t - (float)k;
+  float u = 1.0f - f;
+  int32_t g;
+  memcpy(&g, &u, 4);
+  g -= 0x3f800000;
+  int32_t p = 58465;
+  for (int i = 0; i < 6; i++) {
+    int64_t m = (int64_t)p * g;
+    int64_t q = m >> 23;
+    int64_t r = m & ((1 << 23) - 1);
+    if (r > (1 << 22) || (r == (1 << 22) && (q & 1)))
+      q += 1;
+    p = (int32_t)q + kC[i];
+  }
+  float e = (float)p * (1.0f / 536870912.0f);
+  int32_t bits;
+  memcpy(&bits, &e, 4);
+  bits += k << 23;
+  memcpy(&e, &bits, 4);
+  return e;
 }
 
 // Software fp32 reciprocal (see llama_flowkv.cc for why Peano's `/` needs
@@ -134,11 +143,11 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
   //                             tail[h*8+4..h*8+8] = sv_inv_out_scale_h.
   int8_t *tail = q_chunk + kREP * kHD;
 
-  // Declared once, reused (overwritten) across all REP iterations. qvals
-  // (not a stored float exp_v) is the same stack-corruption workaround
-  // llama_flowkv.cc uses -- see its comment there.
+  // Declared once, reused (overwritten) across all REP iterations. ebits
+  // holds exp_v as int32 bits, not floats: the same stack-corruption
+  // workaround llama_flowkv.cc uses -- see its comment there.
   float scores[kT];
-  int32_t qvals[kT];
+  int32_t ebits[kT];
 
   for (int h = 0; h < kREP; h++) {
     float q_scale, sv_inv_out_scale;
@@ -172,12 +181,12 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
         max_s = s;
     }
 
-    // 2) Shift, quantize via LUT-step, sum.
+    // 2) Shift, exp in place, sum.
     float sum = 0.0f;
     for (int i = 0; i < T_used; i++) {
-      int32_t q = quant_shifted(scores[i] - max_s);
-      qvals[i] = q;
-      sum += lookup_exp(q);
+      const float e = exp_nonpos(scores[i] - max_s);
+      ebits[i] = __builtin_bit_cast(int32_t, e);
+      sum += e;
     }
     const float inv_sum = sw_recip(sum);
 
@@ -190,7 +199,7 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
     ::aie::accum<accfloat, kHD> acc;
     acc.from_vector(::aie::zeros<float, kHD>());
     for (int i = 0; i < T_used; i++) {
-      float p = lookup_exp(qvals[i]) * inv_sum;
+      float p = __builtin_bit_cast(float, ebits[i]) * inv_sum;
       float pv_i = p * v_slot[i];
       ::aie::vector<int8, kHD> vv =
           ::aie::load_unaligned_v<kHD>(v_body + i * kHD);
@@ -233,7 +242,7 @@ llama_flowkv_mh_selfcal(int8_t *restrict q_chunk, float *restrict k_slot,
   int8_t *out_tail = out_chunk + kREP * kHD; // per-head sv_out_scale (REP*4)
 
   float scores[kT];
-  int32_t qvals[kT];
+  int32_t ebits[kT];
 
   for (int h = 0; h < kREP; h++) {
     float q_scale;
@@ -258,12 +267,12 @@ llama_flowkv_mh_selfcal(int8_t *restrict q_chunk, float *restrict k_slot,
         max_s = s;
     }
 
-    // 2) shift, LUT-quantize, sum.
+    // 2) shift, exp in place, sum.
     float sum = 0.0f;
     for (int i = 0; i < T_used; i++) {
-      int32_t q = quant_shifted(scores[i] - max_s);
-      qvals[i] = q;
-      sum += lookup_exp(q);
+      const float e = exp_nonpos(scores[i] - max_s);
+      ebits[i] = __builtin_bit_cast(int32_t, e);
+      sum += e;
     }
     const float inv_sum = sw_recip(sum);
 
@@ -275,7 +284,7 @@ llama_flowkv_mh_selfcal(int8_t *restrict q_chunk, float *restrict k_slot,
       ::aie::accum<accfloat, kHD> acc;
       acc.from_vector(::aie::zeros<float, kHD>());
       for (int i = 0; i < T_used; i++) {
-        float p = lookup_exp(qvals[i]) * inv_sum;
+        float p = __builtin_bit_cast(float, ebits[i]) * inv_sum;
         float pv_i = p * v_slot[i];
         ::aie::vector<int8, kHD> vv =
             ::aie::load_unaligned_v<kHD>(v_body + i * kHD);
@@ -296,7 +305,7 @@ llama_flowkv_mh_selfcal(int8_t *restrict q_chunk, float *restrict k_slot,
       ::aie::accum<accfloat, kHD> acc;
       acc.from_vector(::aie::zeros<float, kHD>());
       for (int i = 0; i < T_used; i++) {
-        float p = lookup_exp(qvals[i]) * inv_sum;
+        float p = __builtin_bit_cast(float, ebits[i]) * inv_sum;
         float pv_i = p * v_slot[i];
         ::aie::vector<int8, kHD> vv =
             ::aie::load_unaligned_v<kHD>(v_body + i * kHD);

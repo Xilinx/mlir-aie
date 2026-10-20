@@ -314,14 +314,14 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
 
     # Golden: position=P makes numpy do real k/v_proj + rope_k + append at
     # slot P (overwriting layer["kcaches"]/k_scales_slot in place), then
-    # attention over 0..P. Device-faithful: residual_dyn + attn_lut.
+    # attention over 0..P. Device-faithful: residual_dyn + attn_flowkv.
     (xo_i8, xo_scale), scales = numpy_layer_mh_forward(
         (x_i8, res_scale),
         layer,
         position=P,
         residual_dyn=True,
         attn_perslot=True,
-        attn_lut=True,
+        attn_flowkv=True,
     )
     y_ref = xo_i8
     layer["scales"] = scales
