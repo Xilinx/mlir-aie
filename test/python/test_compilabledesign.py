@@ -2176,14 +2176,10 @@ def test_compute_hash_changes_when_active_device_changes_arch():
     gen = _gemm_gen()
     cd = CompilableDesign(gen, compile_kwargs={"M": 64, "K": 64, "N": 64})
 
-    set_current_device(NPU1Col1())
-    h_phx = cd._compute_cache_hash()
-
-    set_current_device(NPU2Col1())
-    h_strix = cd._compute_cache_hash()
-
-    # Restore Phoenix as the active device for any later test.
-    set_current_device(NPU1Col1())
+    with set_current_device(NPU1Col1()):
+        h_phx = cd._compute_cache_hash()
+    with set_current_device(NPU2Col1()):
+        h_strix = cd._compute_cache_hash()
 
     assert (
         h_phx != h_strix
@@ -2202,17 +2198,14 @@ def test_kernels_mm_mac_dims_per_arch():
     import aie.iron.kernels as kernels
     import numpy as np
 
-    set_current_device(NPU1Col1())
-    mm_aie2 = kernels.mm(
-        dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
-    )
-
-    set_current_device(NPU2Col1())
-    mm_aie2p = kernels.mm(
-        dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
-    )
-
-    set_current_device(NPU1Col1())
+    with set_current_device(NPU1Col1()):
+        mm_aie2 = kernels.mm(
+            dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
+        )
+    with set_current_device(NPU2Col1()):
+        mm_aie2p = kernels.mm(
+            dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
+        )
 
     assert mm_aie2.mac_dims == (
         4,
