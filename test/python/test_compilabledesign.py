@@ -683,11 +683,14 @@ def test_tensor_type_binds_and_keys_the_design():
     large = np.ndarray[(32, 32), np.dtype[np.int16]]
     design = CompilableDesign(gen).specialize(a=small)
     design.generate_mlir()
-    assert observed == [small]
+    (a,) = observed
+    assert isinstance(a, In) and a.name == "a"
+    assert (a.shape, a.dtype, a.ndarray_type) == ((16, 32), np.int16, small)
     assert design.split_runtime_args(("tensor",), {}) == (["tensor"], {})
     assert (
         design._compute_cache_hash()
         == CompilableDesign(gen, compile_kwargs={"a": small})._compute_cache_hash()
+        == CompilableDesign(gen).specialize(a=a)._compute_cache_hash()
     )
     assert (
         design._compute_cache_hash() != design.specialize(a=large)._compute_cache_hash()

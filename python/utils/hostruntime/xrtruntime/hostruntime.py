@@ -22,6 +22,7 @@ import numpy as np
 import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
+from ..npulock import npu_lock
 from .device import acquire_device, xrt_smi_path
 
 if TYPE_CHECKING:
@@ -34,19 +35,17 @@ if sys.platform == "linux":
     import fcntl  # amdxdna's ioctls; Windows has neither
 
 
-# amdxdna_accel.h: struct amdxdna_drm_query_clock and its clock metadata, read
-# by DRM_IOCTL_AMDXDNA_GET_INFO (DRM_IOWR(DRM_COMMAND_BASE + 7, struct
-# amdxdna_drm_get_info)) with param DRM_AMDXDNA_QUERY_CLOCK_METADATA.
-class _Clock(ctypes.Structure):
+# amdxdna_accel.h: struct amdxdna_drm_get_resource_info, read by
+# DRM_IOCTL_AMDXDNA_GET_INFO (DRM_IOWR(DRM_COMMAND_BASE + 7, struct
+# amdxdna_drm_get_info)) with param DRM_AMDXDNA_QUERY_RESOURCE_INFO.
+class _ResourceInfo(ctypes.Structure):
     _fields_ = [
-        ("name", ctypes.c_char * 16),
-        ("freq_mhz", ctypes.c_uint32),
-        ("pad", ctypes.c_uint32),
+        ("npu_clk_max", ctypes.c_uint64),
+        ("npu_tops_max", ctypes.c_uint64),
+        ("npu_task_max", ctypes.c_uint64),
+        ("npu_tops_curr", ctypes.c_uint64),
+        ("npu_task_curr", ctypes.c_uint64),
     ]
-
-
-class _ClockMetadata(ctypes.Structure):
-    _fields_ = [("mp_npu_clock", _Clock), ("h_clock", _Clock)]
 
 
 class _GetInfo(ctypes.Structure):
@@ -58,7 +57,7 @@ class _GetInfo(ctypes.Structure):
 
 
 _GET_INFO = 0xC0106447
-_QUERY_CLOCK_METADATA = 3
+_QUERY_RESOURCE_INFO = 12
 
 logger = logging.getLogger(__name__)
 
@@ -247,32 +246,41 @@ class XRTHostRuntime(HostRuntime):
 
     @property
     def core_mhz(self) -> int:
-        """The AIE core (H) clock of this runtime's NPU, in MHz, at its current power mode.
+        """The highest AIE core (H) clock this runtime's NPU runs at, in MHz.
 
-        Read from amdxdna's clock metadata on the device's accel node, so it
-        follows the power mode ``xrt-smi`` sets.
+        Read from amdxdna's resource info on the device's accel node. The
+        current H clock drops with load (792 MHz idle against 1800 under load
+        on a Strix), so a cycles-to-time bound wants this maximum.
 
         Raises:
             NotImplementedError: The host is not Linux, where amdxdna runs.
-            OSError: The accel node refuses the query.
+            OSError: XRT holds no descriptor for the accel node, or the
+                driver refuses the query.
         """
         if sys.platform != "linux":
             raise NotImplementedError("The NPU clock is read from amdxdna, on Linux.")
         bdf = self._device.get_info(pyxrt.xrt_info_device.bdf)
         (node,) = os.listdir(f"/sys/bus/pci/devices/{bdf}/accel")
-        clocks = _ClockMetadata()
+        accel = f"/dev/accel/{node}"
+        # amdxdna can refuse a second open of the node (EBUSY) in a process that
+        # already has it open, so query through the descriptor XRT holds.
+        held = []
+        for fd in os.listdir("/proc/self/fd"):
+            try:
+                if os.readlink(f"/proc/self/fd/{fd}") == accel:
+                    held.append(int(fd))
+            except OSError:
+                continue
+        if not held:
+            raise OSError(f"XRT holds no open descriptor for {accel}")
+        resources = _ResourceInfo()
         request = _GetInfo(
-            _QUERY_CLOCK_METADATA, ctypes.sizeof(clocks), ctypes.addressof(clocks)
+            _QUERY_RESOURCE_INFO,
+            ctypes.sizeof(resources),
+            ctypes.addressof(resources),
         )
-        # amdxdna refuses a process's second open of the node (EBUSY), so query
-        # through the descriptor XRT already holds.
-        accel = [
-            int(fd)
-            for fd in os.listdir("/proc/self/fd")
-            if os.path.realpath(f"/proc/self/fd/{fd}") == f"/dev/accel/{node}"
-        ]
-        fcntl.ioctl(accel[0], _GET_INFO, request)
-        return clocks.h_clock.freq_mhz
+        fcntl.ioctl(held[0], _GET_INFO, request)
+        return resources.npu_clk_max
 
     @classmethod
     def read_insts(cls, insts_path: Path):
@@ -291,6 +299,19 @@ class XRTHostRuntime(HostRuntime):
             return pyxrt.module(elf)
         else:
             return super().read_insts(insts_path)
+
+    def _hw_context(self, source) -> "pyxrt.hw_context":
+        """Create a hardware context from an xclbin uuid or a ``pyxrt.elf``, under `npu_lock`."""
+        npu_lock.acquire(self)
+        return pyxrt.hw_context(self._device, source)
+
+    def cleanup(self) -> None:
+        """Release this runtime's hold on `npu_lock`.
+
+        Contexts are owned by the kernel handles ``load()`` returned, so drop
+        those first.
+        """
+        npu_lock.release(self)
 
     def load(
         self,
@@ -330,7 +351,7 @@ class XRTHostRuntime(HostRuntime):
         xclbin = pyxrt.xclbin(str(xclbin_path))
         self._device.register_xclbin(xclbin)
         xclbin_uuid = xclbin.get_uuid()
-        context = pyxrt.hw_context(self._device, xclbin_uuid)
+        context = self._hw_context(xclbin_uuid)
 
         kernel_args = {k.get_name(): k.get_num_args() for k in xclbin.get_kernels()}
         kernel_name = self._kernel_name(kernel_name, kernel_args)
@@ -392,7 +413,7 @@ class XRTHostRuntime(HostRuntime):
             )
 
         elf = pyxrt.elf(str(elf_path))
-        context = pyxrt.hw_context(self._device, elf)
+        context = self._hw_context(elf)
         kernel = pyxrt.ext.kernel(context, kernel_name)
 
         return XRTKernelHandle(
@@ -689,13 +710,14 @@ class CachedXRTRuntime(XRTHostRuntime):
         atexit.register(self.cleanup)
 
     def cleanup(self):
-        """Clean up cached XRT resources in dependency order."""
+        """Clean up cached XRT resources in dependency order, then release `npu_lock`."""
         while self._insts_cache:
             self._evict_insts()
         while self._context_cache:
             self._evict()
         self._insts_content_cache.clear()
         gc.collect()  # Make sure contexts are garbage collected.
+        super().cleanup()
 
     def evict_context(self, xclbin_path: Path) -> None:
         """Evict a stale cached hw_context (after an IOCTL EINVAL).
@@ -933,7 +955,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 max_retries = len(self._context_cache) if retry else 0
                 while context is None:
                     try:
-                        context = pyxrt.hw_context(self._device, elf)
+                        context = self._hw_context(elf)
                     except RuntimeError as e:
                         if self._context_cache and retries < max_retries:
                             self._evict()
@@ -1052,7 +1074,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 max_retries = len(self._context_cache) if retry else 0
                 while context is None:
                     try:
-                        context = pyxrt.hw_context(self._device, xclbin_uuid)
+                        context = self._hw_context(xclbin_uuid)
                     except RuntimeError as e:
                         # Context-slot exhaustion is reported differently across XRT backends.
                         # Evict cached contexts and retry, but only while cached entries remain.

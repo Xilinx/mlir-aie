@@ -91,12 +91,13 @@ static inline void silu_impl(bfloat16 *restrict input_vector,
 static inline void silu_aie2(bfloat16 *restrict input_vector,
                              bfloat16 *restrict output_vector,
                              const int32_t vector_size) {
-  lut_map_bf16(input_vector, output_vector, SILU_ELEMS,
-               [](aie::vector<bfloat16, 16> x) {
-                 return aie::vector<bfloat16, 16>(
-                     aie::mul(aie::max(x, bfloat16(-8.0f)), sigmoid_lut_bf16(x))
-                         .to_vector<bfloat16>());
-               });
+  // Three vectors a trip pipeline (II 38, two stages); four left II 70 flat.
+  lut_map_bf16<3>(
+      input_vector, output_vector, SILU_ELEMS, [](aie::vector<bfloat16, 16> x) {
+        return aie::vector<bfloat16, 16>(
+            aie::mul(aie::max(x, bfloat16(-8.0f)), sigmoid_lut_bf16(x))
+                .to_vector<bfloat16>());
+      });
 }
 #endif
 

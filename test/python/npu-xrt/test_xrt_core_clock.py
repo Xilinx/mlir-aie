@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %run_on_npu2% %pytest %s
-# REQUIRES: xrt_python_bindings
+# REQUIRES: xrt_python_bindings, system-linux
 
 """On-device test that XRTHostRuntime reads the AIE core clock from amdxdna."""
 

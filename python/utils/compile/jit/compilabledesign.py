@@ -56,6 +56,7 @@ from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
     ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
+from aie.helpers.npdtypes import np_ndarray_type_of
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     IntegerAttr,  # pyright: ignore[reportAttributeAccessIssue]
 )
@@ -379,6 +380,11 @@ class CompilableDesign:
                             f"range for {declared.__name__} [{lower}, {upper}]."
                         )
                     normalized_kwargs[name] = value
+            for name in self.tensor_params:
+                if name in normalized_kwargs:
+                    normalized_kwargs[name] = np_ndarray_type_of(
+                        normalized_kwargs[name]
+                    )
             self.compile_kwargs = MappingProxyType(normalized_kwargs)
             # The wrapped T of each DispatchTime[T], in declaration order, so
             # the build can check the generated C parameters against what was
@@ -2029,6 +2035,11 @@ class CompilableDesign:
             _gen_call_kwargs[name] = self._dispatch_types[name](
                 self.compile_kwargs[name]
             )
+        for operand in self.declaration.operands:
+            if get_origin(tensor := _gen_call_kwargs[operand.name]) is np.ndarray:
+                _gen_call_kwargs[operand.name] = type(operand).for_tensor(
+                    operand.name, tensor
+                )
 
         # The generation's kernels register here, not in the process-wide
         # registry another thread's manual compile reads. ExternalFunction

@@ -53,6 +53,34 @@ aie.device(npu2) {
 
 // -----
 
+// A mem tile channel's push updates its own task queue the same way: S2MM 1
+// of tile (1, 1) at 0x21A060C = 35259916, with head BD 24 (odd channels own
+// BDs 24-47), and MM2S 2 at 0x21A0644 = 35259972, with head BD 0.
+
+// CHECK-LABEL: aie.runtime_sequence @memtile
+// CHECK: aiex.npu.create_scratchpad {size = 4 : ui32}
+// CHECK: aiex.npu.update_from_scratchpad {address = 35259916 : ui32, func_arg = 24 : ui32, state_table_idx = 0 : ui8}
+// CHECK: aiex.npu.update_from_scratchpad {address = 35259972 : ui32, state_table_idx = 0 : ui8}
+aiex.scratchpad_parameter @ring : i32
+aie.device(npu2) {
+  %t = aie.tile(1, 1)
+  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.runtime_sequence @memtile(%arg0 : memref<1024xi32>) {
+    %fill = aiex.dma_configure_task(%t, S2MM, 1) {
+      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      aie.end
+    } {repeat_count = 15 : i32}
+    %drain = aiex.dma_configure_task(%t, MM2S, 2) {
+      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      aie.end
+    } {repeat_count = 15 : i32}
+    aiex.dma_start_task(%fill) {repeat_parameter = @ring}
+    aiex.dma_start_task(%drain) {repeat_parameter = @ring}
+  }
+}
+
+// -----
+
 // The xclbin form of the first task: the repeat count is a dispatch-time
 // scalar (the start's repeat_count_val), the push a write32 of a word computed
 // per dispatch, range-checked on the host. The head BD needs no alignment.
@@ -108,6 +136,41 @@ aie.device(npu2) {
     aiex.dma_start_task(%out)
     aiex.dma_start_task(%in) {repeat_parameter = @runs}
     aiex.dma_await_task(%out)
+  }
+}
+
+// -----
+
+// On a mem tile the update is at the channel's start queue, which has the
+// shim's layout (BD id in the low bits, repeat count at 16, token at 31):
+// S2MM 0 of tile (0, 1) is at 0x1A0604 = 1705476 and MM2S 0's at 0x1A0634 =
+// 1705524. The register written back after each is the next channel's
+// control. The S2MM task holds BD 0 (0x1A0000 = 1703936), so the MM2S task's
+// head, a multiple of 4 here too, is BD 4 (0x1A0080 = 1704064).
+
+// CHECK-LABEL: aie.runtime_sequence @memtile
+// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 1703936 : ui32}
+// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 1704064 : ui32}
+// CHECK: aiex.npu.update_from_scratchpad {address = 1705476 : ui32, state_table_idx = 0 : ui8}
+// CHECK: aiex.npu.update_from_scratchpad {address = 1705524 : ui32, func_arg = 4 : ui32, state_table_idx = 0 : ui8}
+// MARK-LABEL: aie.runtime_sequence @memtile
+// MARK: aiex.dma_start_task(%{{.*}}) {repeat_state_table_idx = 0 : ui8}
+// MARK: aiex.dma_start_task(%{{.*}}) {repeat_state_table_idx = 0 : ui8}
+aiex.scratchpad_parameter @runs : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 1)
+  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.runtime_sequence @memtile(%arg0 : memref<1024xi32>) {
+    %in = aiex.dma_configure_task(%t, S2MM, 0) {
+      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      aie.end
+    } {repeat_count = 15 : i32}
+    %out = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      aie.end
+    } {repeat_count = 15 : i32}
+    aiex.dma_start_task(%in) {repeat_parameter = @runs}
+    aiex.dma_start_task(%out) {repeat_parameter = @runs}
   }
 }
 

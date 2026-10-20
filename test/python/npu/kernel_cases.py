@@ -190,6 +190,7 @@ CASES: list[Case] = [
     # test_kernels_specs checks a tanh GELU fails on this case's inputs.
     Case("gelu_erf", calls=16, smoke=True),
     check("gelu_erf", dict(tile_size=32), tag="edge-one-vector"),
+    check("gelu_erf", dict(tile_size=96), tag="unroll-tail"),
     check("gelu_erf", calls=64, data_cases=("all_bf16",), tag="all-bf16"),
     Case("silu", calls=16, smoke=True),
     Case(
@@ -415,7 +416,6 @@ CASES: list[Case] = [
         calls=2,
         tag="overlap",
     ),
-    # Scalar first passes, timed as the baseline their vectorization beats.
     # A row is four experts of 16 gate_up tiles and 8 down tiles each; three
     # rows check that each one starts its sum again, and the third repeats an
     # id (experts_sample).
@@ -436,7 +436,35 @@ CASES: list[Case] = [
     Case("gated_delta_rule", dict(blocks=2), calls=6, scalars=(16,), smoke=True),
     check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(5,), tag="partial"),
     check("gated_delta_rule", dict(blocks=2), calls=4, scalars=(0,), tag="none-valid"),
-    # Two rows of a 2x2 state, and more valid rows than the block holds.
+    # IRON's slices: a 32-row prefill block and a decode step's one valid row
+    # (two rows keep the block 4-byte whole), over Mamba2's 128-wide state and
+    # Gated DeltaNet's 128-wide keys, 16 state columns a call.
+    *[
+        Case(
+            kernel,
+            dims | dict(rows=rows, blocks=blocks),
+            calls=2 * blocks,
+            scalars=(valid,),
+            tag=f"iron-{phase}",
+            devices=("npu2",),
+        )
+        for kernel, dims in (
+            ("selective_scan", dict(state=128)),
+            ("gated_delta_rule", dict(key_dim=128)),
+        )
+        for phase, rows, blocks, valid in (("prefill", 32, 2, 32), ("decode", 2, 4, 1))
+    ],
+    # One valid row a call, as in decode, over Mamba2's 128-wide state, as
+    # IRON's SelectiveScan slices it (two rows keep the block 4-byte whole).
+    check(
+        "selective_scan",
+        dict(rows=2, state=128, blocks=4),
+        calls=8,
+        scalars=(1,),
+        tag="one-row-state128",
+    ),
+    # Two rows of the smallest state each kernel takes, and more valid rows
+    # than the block holds.
     *(
         check(
             name,
@@ -446,10 +474,19 @@ CASES: list[Case] = [
             tag=f"edge-tiny-valid{valid}",
         )
         for name, dims in (
-            ("selective_scan", dict(head_dim=2, state=2)),
+            ("selective_scan", dict(head_dim=16, state=16)),
             ("gated_delta_rule", dict(key_dim=2, value_dim=2)),
         )
         for valid in (2, 17)
+    ),
+    # An odd key_dim leaves a row over after gated_delta_rule's paired rows,
+    # and a value_dim of 20 a partly padded second column block.
+    check(
+        "gated_delta_rule",
+        dict(rows=4, key_dim=17, value_dim=20, blocks=2),
+        calls=4,
+        scalars=(3,),
+        tag="edge-odd-dims",
     ),
     # EmbeddingGemma 2's image budget: 42x57 patches in 10 blocks, padded.
     Case("patch_positions", {}, calls=10, scalars=(10, 672, 912), smoke=True),
@@ -506,6 +543,14 @@ CASES: list[Case] = [
         )
     ],
     check("mm", _mm_bf16, calls=1, tag="edge-single-tile"),
+    # The long-k fused_mm cases' shape on mm (Precision.HIGHEST's kernel).
+    check(
+        "mm",
+        dict(
+            dim_m=16, dim_k=512, dim_n=16, input_dtype=bfloat16, output_dtype=bfloat16
+        ),
+        tag="long-k",
+    ),
     # Bounded fused composition: two A bands and multiple K/drain chunks.
     Case("fused_mm", calls=4, smoke=True),
     *[
@@ -621,6 +666,45 @@ CASES: list[Case] = [
         )
         for n in (16, 32)
     ],
+    # Eight k steps into one accumulator, as ProjectionGEMM's k loop drives
+    # mm_fused_k_step: the f32 sum is rounded once, so the error bound stays
+    # K f32 ulps (Precision.HIGHEST), not a bf16 rounding per step.
+    check(
+        "fused_mm",
+        dict(dim_m=16, band_m=16, dim_k=512, dim_n=16, chunk_k=64, out_chunk=128),
+        tag="long-k",
+    ),
+    check(
+        "fused_mm",
+        dict(
+            dim_m=16,
+            band_m=16,
+            dim_k=512,
+            dim_n=16,
+            chunk_k=64,
+            out_chunk=128,
+            mmul_shape=(8, 8, 8),
+            b_col_maj=True,
+        ),
+        devices=("npu2",),
+        tag="long-k",
+    ),
+    # IRON's exact-precision tile on aie2p (8x8x8, row-major B): bf16 macs,
+    # each 8-row block run as two 4-row halves.
+    Case(
+        "fused_mm",
+        dict(
+            dim_m=16,
+            band_m=16,
+            dim_k=128,
+            dim_n=64,
+            chunk_k=128,
+            out_chunk=512,
+            mmul_shape=(8, 8, 8),
+        ),
+        calls=4,
+        devices=("npu2",),
+    ),
     # B stored transposed, as IRON's aie2 flm GEMM reads a checkpoint's
     # (n, k) weights: its N64 k step, then two k chunks and two bands at
     # N32, an N16 tile whose i and j loops unroll, and a CT_K below N. On
@@ -703,7 +787,7 @@ CASES: list[Case] = [
                 dict(epilogue="silu", clamp=(-0.125, 0.75)),
                 ("npu1", "npu2"),
             ),
-            ((4, 8, 8), dict(epilogue="gelu"), ("npu1",)),
+            ((4, 8, 8), dict(epilogue="gelu"), ("npu1", "npu2")),
         )
     ],
     # B^T on aie2p's bfp16 macs, converted on the core: IRON's two aie2p flm
@@ -1043,6 +1127,20 @@ CASES: list[Case] = [
         calls=256,
         tag="llama-decode-ffn-down",
     ),
+    # Llama 3.2 3B's decode projections: two rows of K=3072 a call
+    # (tile_size_input=2 in IRON's npu2 profile).
+    Case(
+        "mv",
+        dict(
+            dim_m=2,
+            dim_k=3072,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+            vec_size=64,
+        ),
+        calls=16,
+        tag="llama-3b-decode",
+    ),
     # The column-major bf16 matvec, a whole K per call: llama 3.2 1B's
     # attention context shape (64 head dims, 128 cached positions per call),
     # and the narrowest output block at the narrowest VEC_SIZE. Calls that
@@ -1152,6 +1250,8 @@ CASES: list[Case] = [
     # A patch's 16 outputs to a chunk, as amd/IRON's Resample reads them.
     Case("resample_peak", dict(words=356, slots=16), scalars=(3024, 672, 5, 3)),
     check("resample_peak", calls=2, scalars=(17, 1008, 4, 2), tag="upsample"),
+    # Core 0 owns the left edge, where a tap's offset is not the last plus 1.
+    check("resample_peak", calls=2, scalars=(44, 395, 0, 1), tag="upsample-left-edge"),
     # A peak of 0: a core past the outputs, too few chunks, no window fits.
     check("resample_peak", calls=2, scalars=(1, 48, 15, 1), tag="idle-core"),
     check("resample_peak", calls=2, scalars=(4032, 912, 0, 2), tag="too-few-chunks"),
@@ -1917,6 +2017,17 @@ CASES: list[Case] = [
     # transformer blocks: one row per call
     Case("rms_norm", dict(cols=1024), calls=16, smoke=True),
     Case("rms_norm_eps", dict(cols=1024), calls=16, scalars=(1e-5,), smoke=True),
+    # Llama 3.2 1B's and 3B's hidden sizes, one row a call as IRON's RMSNorm.
+    *[
+        Case(
+            "rms_norm_eps",
+            dict(cols=cols),
+            calls=16,
+            scalars=(1e-5,),
+            tag=f"llama-hidden-{cols}",
+        )
+        for cols in (2048, 3072)
+    ],
     # 200 is too short for the pipelined loops and 1000 has an odd chunk
     # count; both end in a scalar tail.
     check("rms_norm", dict(cols=200), calls=16, tag="row-tail"),
@@ -2275,28 +2386,106 @@ CASES += [
     # different micro-tile and so a different blocked operand order, which is
     # the part a shared case could not check.
     Case("mha", dict(pv=True), calls=4, smoke=True),
+    # As IRON's MHA operator builds them on npu2: B column-major and the
+    # accurate exp2 (operators/mha.py), at head_dim 64 (Llama 3.2 1B) and 128.
+    *[
+        Case(
+            "mha",
+            dict(dim_k=d, b_col_maj=True, accurate_exp2=True) | pv,
+            calls=4,
+            tag=f"iron-prefill-d{d}",
+            devices=("npu2",),
+        )
+        for d in (64, 128)
+        for pv in ({}, {"pv": True})
+    ],
+    # The P*V call IRON's MHA makes, matmul_PV into the float32 O, at
+    # prefill's 64-row query blocks and a decode step's 16 packed rows; and
+    # decode's QK^T, at 16 rows.
+    *[
+        Case(
+            "mha",
+            dict(
+                dim_m=b_q,
+                dim_k=d,
+                b_col_maj=True,
+                accurate_exp2=True,
+                pv=True,
+                float_o=True,
+            ),
+            calls=4,
+            tag=f"iron-{phase}-d{d}",
+            devices=("npu2",),
+        )
+        for b_q, phase in ((64, "prefill"), (16, "decode"), (8, "decode8"))
+        for d in (64, 128)
+    ],
+    # A decode step's KV group of up to 8 heads in an 8-row block.
+    *[
+        Case(
+            "mha",
+            dict(dim_m=b_q, dim_k=d, b_col_maj=True, accurate_exp2=True),
+            calls=4,
+            tag=f"iron-{phase}-d{d}",
+            devices=("npu2",),
+        )
+        for b_q, phase in ((16, "decode"), (8, "decode8"))
+        for d in (64, 128)
+    ],
     # The toolkit's online softmax over one key block: params is (key block,
-    # query block), scalars the two sequence lengths. The padded diagonal
-    # block takes every branch the full one skips (the causal mask, masked
-    # tail keys, padded query rows), so the two smoke cases cover the kernel;
-    # the plain diagonal block is its own cycle series.
+    # query block, row offset), scalars the two sequence lengths. The padded
+    # diagonal block takes every branch the full one skips (the causal mask,
+    # masked tail keys, padded query rows), so the two smoke cases cover the
+    # kernel; the plain diagonal block is its own cycle series.
     Case(
         "mha_softmax",
         calls=4,
-        params=((0, 1),),
+        params=((0, 1, 0),),
         scalars=(128, 64),
         smoke=True,
     ),
     Case(
         "mha_softmax",
         calls=4,
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(64, 64),
         tag="diagonal",
     ),
+    # A decode step's block on npu2: 16 packed rows past every one of the 64
+    # keys, so nothing is masked.
+    *[
+        Case(
+            "mha_softmax",
+            dict(dim_m=b_q, accurate_exp2=True),
+            calls=4,
+            params=((0, 0, 64),),
+            scalars=(b_q, 128),
+            tag=tag,
+            devices=("npu2",),
+        )
+        for b_q, tag in ((16, "iron-decode"), (8, "iron-decode8"))
+    ],
+    # Three of the 8 rows a query, as Llama 3.2 3B's KV groups: the rest pad.
     check(
         "mha_softmax",
-        params=((0, 0),),
+        dict(dim_m=8, accurate_exp2=True),
+        params=((0, 0, 64),),
+        scalars=(3, 128),
+        tag="decode8-padded",
+        devices=("npu2",),
+    ),
+    # ...and its last key block, 36 of whose 64 keys exist.
+    check(
+        "mha_softmax",
+        dict(dim_m=8, accurate_exp2=True),
+        params=((1, 0, 127),),
+        scalars=(3, 100),
+        tag="decode8-tail",
+        devices=("npu2",),
+    ),
+    check(
+        "mha_softmax",
+        params=((0, 0, 0),),
         scalars=(37, 37),
         tag="diagonal-padded",
         smoke=True,
@@ -2305,7 +2494,7 @@ CASES += [
         "mha_softmax",
         dict(accurate_exp2=True),
         calls=4,
-        params=((0, 1),),
+        params=((0, 1, 0),),
         scalars=(128, 64),
         tag="accurate",
         smoke=True,
@@ -2313,7 +2502,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(accurate_exp2=True),
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(37, 37),
         tag="accurate-diagonal-padded",
         smoke=True,
@@ -2324,7 +2513,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(dim_m=32),
-        params=((0, 1),),
+        params=((0, 1, 0),),
         scalars=(64, 64),
         tag="half-block-diagonal",
         smoke=True,
@@ -2332,7 +2521,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(causal=False),
-        params=((1, 0),),
+        params=((1, 0, 0),),
         scalars=(100, 100),
         tag="bidirectional-padded",
         smoke=True,
@@ -2340,16 +2529,37 @@ CASES += [
     check(
         "mha_softmax",
         dict(causal=False, window=64),
-        params=((1, 2),),
+        params=((1, 2, 0),),
         scalars=(192, 192),
         tag="window",
+        smoke=True,
+    ),
+    # A window that ends inside the block on the row-group path: rows 21 to
+    # 63 of query block 1 keep no key of key block 0. From the zeroed state
+    # their weights are 0 anyway, so the dead-row suffix itself is only
+    # observable from a lowest running maximum, as in test_mha_e2e.py.
+    check(
+        "mha_softmax",
+        dict(window=21),
+        params=((0, 1, 0),),
+        scalars=(128, 128),
+        tag="window-dead-rows",
+        smoke=True,
+    ),
+    # Decode rows, each one query at key 99: the window keeps keys 49 to 63.
+    check(
+        "mha_softmax",
+        dict(packed=True, window=50),
+        params=((0, 0, 0),),
+        scalars=(64, 100),
+        tag="packed-window",
         smoke=True,
     ),
     # 16- and 32-key blocks take the per-row path, a row read a block wide.
     check(
         "mha_softmax",
         dict(dim_m=16, dim_n=16),
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(13, 13),
         tag="diagonal-padded",
         smoke=True,
@@ -2357,7 +2567,7 @@ CASES += [
     check(
         "mha_softmax",
         dict(dim_m=16, dim_n=16, accurate_exp2=True),
-        params=((0, 0),),
+        params=((0, 0, 0),),
         scalars=(13, 13),
         tag="accurate-diagonal-padded",
         smoke=True,
@@ -2365,9 +2575,34 @@ CASES += [
     check(
         "mha_softmax",
         dict(dim_m=16, dim_n=32, causal=False, window=32),
-        params=((0, 2),),
+        params=((0, 2, 0),),
         scalars=(45, 45),
         tag="window-padded",
+        smoke=True,
+    ),
+    # Queries starting mid-block: the row offset moves the causal diagonal
+    # and the window's edge off the block's, on both paths.
+    check(
+        "mha_softmax",
+        params=((0, 0, 14),),
+        scalars=(37, 51),
+        tag="offset-diagonal-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(dim_m=16, dim_n=16),
+        params=((1, 1, 5),),
+        scalars=(29, 34),
+        tag="offset-diagonal-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(causal=False, window=64),
+        params=((1, 1, 27),),
+        scalars=(128, 192),
+        tag="offset-window",
         smoke=True,
     ),
     # P*V's product at a head dimension past the key block.

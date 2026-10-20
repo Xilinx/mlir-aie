@@ -5,6 +5,7 @@
 #define AIE_KERNELS_COMMON_EXP2_BF16_H
 
 #include "../aie_arch.h"
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -135,7 +136,10 @@ static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
   if constexpr (N < 32) {
     return exp2_bf16_32(x.template grow<32>()).template extract<N>(0);
   } else {
+    // Each 32-lane polynomial is one serial chain; unrolled, the chains of a
+    // wider vector share one schedule.
     aie::vector<bfloat16, N> out;
+    AIE_LOOP_UNROLL_FULL
     for (unsigned i = 0; i < N / 32; i++)
       out.insert(i, exp2_bf16_32(x.template extract<32>(i)));
     return out;

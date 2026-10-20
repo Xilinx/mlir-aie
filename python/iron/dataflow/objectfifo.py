@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 
@@ -23,6 +23,7 @@ from ...helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
+    np_ndarray_type_of,
     pack_pad_value,
     single_elem_or_list_to_list,
 )
@@ -34,6 +35,9 @@ from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from .endpoint import ObjectFifoEndpoint
+
+if TYPE_CHECKING:
+    from ...utils.compile.jit.markers import _Operand
 
 
 def _object_walk(
@@ -102,7 +106,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
 
     def __init__(
         self,
-        obj_type: type[np.ndarray],
+        obj_type: type[np.ndarray] | _Operand,
         *,
         depth: int | None = 2,
         name: str | None = None,
@@ -115,7 +119,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         delegate_tile: Tile | None = None,
         via_DMA: bool = False,
         init_values: list[np.ndarray] | None = None,
-        consumer_obj_type: type[np.ndarray] | None = None,
+        consumer_obj_type: type[np.ndarray] | _Operand | None = None,
         aie_stream: tuple[int, int] | None = None,
         packet: bool = False,
         packet_id: int | None = None,
@@ -123,7 +127,8 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         """Construct an ObjectFifo.
 
         Args:
-            obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
+            obj_type (type[np.ndarray] | _Operand): The type of each buffer in the
+                ObjectFifo, or a generator's tensor operand.
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is
                 given, its DeviceConfiguration names it. Defaults to None.
@@ -195,8 +200,10 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
             raise ValueError(
                 f"Default ObjectFifo depth must be > 0, but got {self._depth}"
             )
-        self._obj_type = obj_type
-        self._consumer_obj_type: type[np.ndarray] | None = consumer_obj_type
+        self._obj_type = np_ndarray_type_of(obj_type)
+        self._consumer_obj_type: type[np.ndarray] | None = (
+            None if consumer_obj_type is None else np_ndarray_type_of(consumer_obj_type)
+        )
         self._to_stream = _object_walk(to_stream, "to_stream", can_pad=True)
         self._from_stream_per_cons = _object_walk(
             from_stream_per_cons, "from_stream_per_cons"

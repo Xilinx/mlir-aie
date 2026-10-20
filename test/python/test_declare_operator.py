@@ -13,6 +13,7 @@ from enum import Enum
 
 import numpy as np
 import pytest
+from aie.helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
 from aie.iron.device import NPU1Col1, NPU2Col4
 from aie.utils import hostruntime
 from aie.utils.compile.jit.markers import In, Out
@@ -230,6 +231,16 @@ def test_a_key_holds_one_spelling_of_each_value():
         for key in (Operator.array_key, Operator.design_key):
             assert key(a) == key(b) and hash(key(a)) == hash(key(b))
             assert repr(key(a)) == repr(key(b))
+
+
+def test_a_block_float_type_keys_as_its_class():
+    a, b = Typed(M=8, dtype=v8bfp16ebs8), Typed(M=8, dtype=v8bfp16ebs8)
+    wider = Typed(M=8, dtype=v16bfp16ebs16)
+    assert ("dtype", v8bfp16ebs8) in a.array_key()
+    assert ("dtype", v8bfp16ebs8) in a.design_key()[1]
+    for key in (Operator.array_key, Operator.design_key):
+        assert key(a) == key(b) and hash(key(a)) == hash(key(b))
+        assert key(a) != key(wider)
 
 
 def test_an_operator_prints_its_shown_parameters():

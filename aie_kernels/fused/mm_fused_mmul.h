@@ -16,8 +16,9 @@
 // buffer across z slices; B is column-major over blocks, block (i, j) at
 // (j * colA + i), except in the B^T forms. One definition below per B storage
 // format and mac: bfp16ebs8 (AIE2P only -- AIE2's aie_api has an empty
-// placeholder that won't compile), bf16, bf16 B^T on bfp16 macs (AIE2P), and
-// bf16 B^T on bf16 macs.
+// placeholder that won't compile), bf16 or bf16 B^T on AIE2P's bf16 macs, bf16
+// on AIE2's macs or AIE2P's bfp16 macs, bf16 B^T on bfp16 macs (AIE2P), and
+// bf16 B^T on AIE2's macs.
 #ifdef MM_FUSED_BFP16_B
 using mm_fused_b_elem_t = bfp16ebs8;
 #else
@@ -131,10 +132,91 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   }
 }
 
+#elif AIE_ARCH_AIE2P && !defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16)
+
+// AIE2P has no bf16 matrix unit: aie_api emulates mmul<4, 8, 8> on eight
+// 32-lane macs and mmul<8, 8, 8> as two of those, its accumulator two
+// registers wide. So an r = 8 row block runs as its two contiguous 4-row
+// halves, and the 2x2 register tile is (half, column block): four one-register
+// accumulators, as in mm.cc's (4, 8, 8) tile, where four mmul<8, 8, 8> would
+// hold eight. r = 4 pairs row blocks as the other forms do. The macs and
+// their k order are those of mmul<r, 8, 8> either way. Under
+// MM_FUSED_B_COL_MAJ B is B^T, laid out as in the AIE2 form below, and each
+// block is transposed once as loaded.
+template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
+          unsigned t>
+__aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
+                                    const bfloat16 *__restrict pB,
+                                    float *__restrict pC) {
+  using MMUL = aie::mmul<4, s, t, bfloat16, bfloat16, accauto>;
+  static_assert(r == 4 || r == 8);
+  constexpr unsigned sizeA = r * s;
+  constexpr unsigned sizeB = s * t;
+  constexpr unsigned sizeC = r * t;
+#ifdef MM_FUSED_B_COL_MAJ
+  constexpr bool b_t = true;
+#else
+  constexpr bool b_t = false;
+#endif
+  // Where the second 4-row operand starts: the block's lower half, or the
+  // next row block.
+  constexpr unsigned rows = r == 8 ? 1 : 2;
+  constexpr unsigned a2 = r == 8 ? MMUL::size_A : colA * sizeA;
+  constexpr unsigned c2 = r == 8 ? MMUL::size_C : colB * sizeC;
+  AIE_LOOP_MAX_ITERATION_COUNT(rowA / rows)
+  AIE_LOOP_UNROLL(2)
+  for (unsigned z = 0; z < rowA; z += rows) {
+    float *__restrict pC1 = pC + (z * colB) * sizeC;
+    const bfloat16 *__restrict pA_cur = pA + (z * colA) * sizeA;
+
+    AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
+    for (unsigned j = 0; j < colB; j += 2) {
+      const bfloat16 *__restrict pA1 = pA_cur;
+      const bfloat16 *__restrict pA2 = pA_cur + a2;
+      const bfloat16 *__restrict pB1 = pB + (b_t ? j : j * colA) * sizeB;
+      const bfloat16 *__restrict pB2 =
+          pB + (b_t ? j + 1 : (j + 1) * colA) * sizeB;
+      float *__restrict pC2 = pC1 + c2;
+
+      MMUL C00(aie::load_v<MMUL::size_C>(pC1));
+      MMUL C01(aie::load_v<MMUL::size_C>(pC1 + sizeC));
+      MMUL C10(aie::load_v<MMUL::size_C>(pC2));
+      MMUL C11(aie::load_v<MMUL::size_C>(pC2 + sizeC));
+
+      // Rolled, for the bfp16 form's reason (llvm-aie#1066).
+      AIE_LOOP_MAX_ITERATION_COUNT(colA)
+      for (unsigned i = 0; i < colA; i++) {
+        aie::vector<bfloat16, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
+        pA1 += sizeA;
+        aie::vector<bfloat16, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
+        pA2 += sizeA;
+        aie::vector<bfloat16, MMUL::size_B> B0 = aie::load_v<MMUL::size_B>(pB1);
+        aie::vector<bfloat16, MMUL::size_B> B1 = aie::load_v<MMUL::size_B>(pB2);
+        if constexpr (b_t) {
+          B0 = aie::transpose(B0, t, s);
+          B1 = aie::transpose(B1, t, s);
+          pB1 += colB * sizeB;
+          pB2 += colB * sizeB;
+        } else {
+          pB1 += sizeB;
+          pB2 += sizeB;
+        }
+
+        C00.mac(A0, B0);
+        C01.mac(A0, B1);
+        C10.mac(A1, B0);
+        C11.mac(A1, B1);
+      }
+      mm_fused_store_2x2<sizeC>(pC1, pC2, C00, C01, C10, C11);
+      pC1 += 2 * sizeC;
+    }
+  }
+}
+
 #elif !defined(MM_FUSED_B_COL_MAJ)
 
-// B arrives as plain bf16, in row-major s x t blocks. Used on AIE2, which has
-// no bfp16 hardware and composes this shape from four native 4x8x4 macs.
+// B arrives as plain bf16, in row-major s x t blocks. Used on AIE2, which
+// composes this shape from native 4x8x4 macs, and for AIE2P's bfp16 macs.
 template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
           unsigned t>
 __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,

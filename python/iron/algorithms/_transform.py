@@ -5,9 +5,10 @@
 #
 """Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON."""
 
-from typing import get_origin
+from typing import get_args, get_origin
 
 import numpy as np
+from aie.helpers.npdtypes import np_ndarray_type_of
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
@@ -406,12 +407,13 @@ def make_param_descriptor(tensor_ty):
     because params (e.g. a 1-element ``factor`` tensor) are passed through
     a dedicated ObjectFifo and aren't tiled.
     """
+    tensor_ty = np_ndarray_type_of(tensor_ty)
     try:
-        shape_arg, dtype_arg = tensor_ty.__args__
+        shape_arg, dtype_arg = get_args(tensor_ty)
         num_elements = 1
         for dim in shape_arg:
             num_elements *= dim
-        dtype = dtype_arg.__args__[0]
+        dtype = get_args(dtype_arg)[0]
     except Exception as exc:
         raise TypeError(
             f"make_param_descriptor expects a numpy ndarray type such as "
@@ -431,7 +433,8 @@ def make_param_descriptor(tensor_ty):
 
 
 def _expand_param(param):
-    """Allow callers to pass either a real tensor or a numpy ndarray type."""
+    """Allow callers to pass a real tensor, a numpy ndarray type or an operand."""
+    param = np_ndarray_type_of(param)
     if get_origin(param) is np.ndarray:
         return make_param_descriptor(param)
     return param
@@ -455,12 +458,13 @@ def _make_fake_tensor(tensor_ty, tile_size, fn_name):
     Returns:
         An object with ``.shape``, ``.size``, and ``.dtype``.
     """
+    tensor_ty = np_ndarray_type_of(tensor_ty)
     try:
-        shape_arg, dtype_arg = tensor_ty.__args__
+        shape_arg, dtype_arg = get_args(tensor_ty)
         num_elements = 1
         for dim in shape_arg:
             num_elements *= dim
-        dtype = dtype_arg.__args__[0]
+        dtype = get_args(dtype_arg)[0]
     except Exception as exc:
         raise TypeError(
             f"{fn_name} expects a numpy ndarray type such as "

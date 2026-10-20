@@ -102,10 +102,14 @@ even across many `.compile()` / `__call__` / `.as_mlir()` invocations.
 The first call:
 
 1. Opens a fresh MLIR `Context` and `Location` via `mlir_mod_ctx()`.
-2. Builds tensor placeholders for the `In`/`Out`/`InOut` parameters (a
-   variadic `*tensors: In` gets an empty tuple: the generator decides how
-   many tensors the design takes from its `CompileTime[T]` parameters).
-3. Calls the generator with `(**placeholders, **compile_kwargs)`.
+2. Gives each `In`/`Out`/`InOut` parameter its operand: an `In`/`Out`/
+   `InOut` with the shape and dtype of the bound tensor type (`a.shape`,
+   `a.dtype`, `a.ndarray_type`), which every API taking a tensor type
+   accepts in its place. A parameter with no type bound gets a placeholder
+   that raises on use, and a variadic `*tensors: In` gets an empty tuple: the
+   generator decides how many tensors the design takes from its
+   `CompileTime[T]` parameters.
+3. Calls the generator with those operands and the `compile_kwargs`.
 4. Captures the resulting `Module` (either the generator's return
    value, or `ctx.module` if it returned `None` — "placed" vs
    "unplaced" generator style).

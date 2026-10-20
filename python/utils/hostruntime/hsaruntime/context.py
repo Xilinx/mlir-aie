@@ -17,6 +17,7 @@ import os
 import threading
 import time
 
+from ..npulock import npu_lock
 from ._bindings import (
     _DISPATCH_HEADER,
     _HSA_WAIT_FOREVER,
@@ -130,6 +131,8 @@ class HSAContext:
             ),
             "hsa_agent_get_info(QUEUE_MIN_SIZE)",
         )
+        # The queue is never destroyed, so npu_lock is held from here to exit.
+        npu_lock.acquire(self)
         qptr = ctypes.POINTER(HsaQueue)()
         _check(
             lib.hsa_queue_create(

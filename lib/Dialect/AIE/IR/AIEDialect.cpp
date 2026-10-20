@@ -1642,6 +1642,55 @@ LogicalResult ObjectFifoLinkOp::verify() {
                        "semaphore locks, which this device lacks");
   }
 
+  // A join or distribute slot must hold a whole number of its participant's
+  // objects; otherwise an object straddles two shared objects and the DMA
+  // stalls. A whole-multiple slot can still hang if the producer sends fewer
+  // objects per shared object than the slot holds, but that depends on the
+  // core's loop, which the verifier can't see: this catches non-multiples only.
+  auto elementsOf = [](Type objectFifoType) {
+    return cast<MemRefType>(
+               cast<AIEObjectFifoType>(objectFifoType).getElementType())
+        .getNumElements();
+  };
+  // The data layout sizes block-float elements too, which have no bit width.
+  DataLayout dataLayout = DataLayout::closest(getOperation());
+  auto bytesOf = [&](Type objectFifoType, int64_t elements) {
+    return elements *
+           static_cast<int64_t>(dataLayout.getTypeSize(
+               cast<MemRefType>(
+                   cast<AIEObjectFifoType>(objectFifoType).getElementType())
+                   .getElementType()));
+  };
+  // What a fifo's producer sends for `elements`: padding widens each
+  // dimension it streams, as the DMA lowering's paddedSize does.
+  auto sentElements = [](ObjectFifoCreateOp fifo, int64_t elements) {
+    std::optional<ArrayRef<BDPadLayoutAttr>> pads = fifo.getPadDimensions();
+    ArrayRef<BDDimLayoutAttr> dims = fifo.getDimensionsToStream();
+    if (!pads || pads->empty() || dims.empty())
+      return elements;
+    int64_t padded = 1;
+    for (auto [dim, pad] : llvm::zip(dims, *pads))
+      padded *=
+          dim.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
+    return padded;
+  };
+  auto checkSlot = [&](StringRef role, ObjectFifoCreateOp participant,
+                       int64_t object, ObjectFifoCreateOp shared,
+                       int64_t slotBytes, ArrayAttr offsets) -> LogicalResult {
+    if (slotBytes <= 0 || slotBytes % object == 0)
+      return success();
+    std::string offsetText;
+    llvm::raw_string_ostream os(offsetText);
+    llvm::interleaveComma(offsets, os, [&](Attribute offset) {
+      os << *getConstantIntValue(offset);
+    });
+    return emitOpError() << role << " @" << participant.name().getValue()
+                         << " has " << object << " B objects, but its "
+                         << slotBytes << " B slot in @"
+                         << shared.name().getValue() << " from offsets ["
+                         << offsetText << "] is not a whole number of them";
+  };
+
   if (isJoin()) {
     if (getFifoIns().size() != getSrcOffsets().size())
       return emitOpError("number of provided src offsets must be equal "
@@ -1651,6 +1700,21 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitOpError("dst offsets should be empty for join");
 
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
+    // A slot that comes out empty or negative (offsets not ascending) is sized
+    // from its participant by the lowering, so it cannot mismatch.
+    for (auto [fifoIn, slot] :
+         llvm::zip(getInputObjectFifos(), getJoinTransferLengths())) {
+      int64_t object =
+          fifoIn.getConsumerElemType()
+              ? bytesOf(fifoIn.getConsumerElemTypeOrDefault(),
+                        elementsOf(fifoIn.getConsumerElemTypeOrDefault()))
+              : bytesOf(fifoIn.getElemType(),
+                        sentElements(fifoIn, elementsOf(fifoIn.getElemType())));
+      if (failed(checkSlot("input", fifoIn, object, fifoOut,
+                           bytesOf(fifoOut.getElemType(), slot),
+                           getSrcOffsets())))
+        return failure();
+    }
     if (!fifoOut.getDimensionsToStream().empty()) {
       int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
       int64_t minInputBufferSize = -1;
@@ -1676,6 +1740,19 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitOpError("src offsets should be empty for distribute");
 
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
+    for (auto [fifoOut, slot] :
+         llvm::zip(getOutputObjectFifos(), getDistributeTransferLengths())) {
+      // The memtile sends the slot, padded if the output pads.
+      if (failed(checkSlot(
+              "output", fifoOut,
+              bytesOf(fifoOut.getElemType(), elementsOf(fifoOut.getElemType())),
+              fifoIn,
+              slot > 0
+                  ? bytesOf(fifoIn.getElemType(), sentElements(fifoOut, slot))
+                  : 0,
+              getDstOffsets())))
+        return failure();
+    }
     if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
       int64_t maxIdx =
           getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));

@@ -35,6 +35,7 @@ from ...dialects.aiex import (
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from ...helpers.npdtypes import np_ndarray_type_of
 from ...helpers.sourceloc import SourceSite, traced_body
 from ...helpers.util import (
     flatten_fn_args,
@@ -54,6 +55,9 @@ from .taskgroup import TaskGroup
 
 if TYPE_CHECKING:
     from ..configuration import DeviceConfiguration
+
+    # tile_dma imports the runtime package, which imports this module.
+    from ..dataflow.tile_dma import DmaEndpoint
     from ..device import Device
 
 logger = logging.getLogger(__name__)
@@ -106,7 +110,7 @@ class ActiveSequence:
                 self._device.resolve_tile(resolvable.tile)
             resolvable.resolve()
 
-    def static_channel(self, endpoint) -> bool:
+    def static_channel(self, endpoint: DmaEndpoint) -> bool:
         """Return whether the device's TileDma programs may run ``endpoint``'s channel.
 
         Args:
@@ -234,8 +238,9 @@ class Runtime(DeviceResources, Resolvable):
         * an unbound **DispatchTime parameter**: replaced with its live SSA
           scalar. Forward each parameter once, in any order; parameter identity
           determines the host binding, not its position in ``fn_args``.
-        * a **type** (a tensor type or a scalar type like ``np.int32``): declares
-          a runtime input and is replaced with a live SSA value bound to a new
+        * a **type** (a tensor type, a generator's ``In``/``Out``/``InOut``
+          operand, or a scalar type like ``np.int32``): declares a runtime
+          input and is replaced with a live SSA value bound to a new
           ``runtime_sequence`` block arg -- a tensor type becomes a
           ``RuntimeData`` (``fill``/``drain`` target), a scalar type becomes the
           bare SSA value (``scf`` survives to the dynamic EmitC path).
@@ -267,7 +272,7 @@ class Runtime(DeviceResources, Resolvable):
         self._name = name
         self._configuration: DeviceConfiguration | None = None
         self._seq_fn: Callable = seq_fn
-        self._fn_args = list(fn_args) if fn_args is not None else []
+        self._fn_args = [np_ndarray_type_of(arg) for arg in fn_args or ()]
         self._dispatch_binding = object()
         dispatch_args = [
             arg for arg in self._fn_args if isinstance(arg, _DispatchParameter)

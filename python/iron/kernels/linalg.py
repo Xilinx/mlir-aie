@@ -12,6 +12,7 @@ import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.accuracy import ulp_size
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.verify import Tolerance
@@ -329,6 +330,29 @@ def _linalg_tolerance(input_dtype) -> Tolerance:
     )
 
 
+def _mm_nearest_bound(a, b, *, dim_m: int, dim_k: int, dim_n: int):
+    """How far a bf16 C may sit from the reference cast to bf16.
+
+    The core rounds its f32 sum once to nearest even, so C is that cast,
+    except where ``A @ B`` lies within the sum's error of a rounding midpoint:
+    there C may be off by that error plus a rounding. The sum's error is
+    ``dim_k`` f32 ulps of ``|A| @ |B|`` (AIE2P's f32 add has no guard bit),
+    and 2^-24 of ``|A @ B|`` covers the reference cast rounding through f32.
+    Under cancellation the error spans several bf16 ulps of a small C.
+    """
+    dims = dict(dim_m=dim_m, dim_k=dim_k, dim_n=dim_n)
+    exact = mm_tile_ref(a, b, **dims)
+    magnitude = mm_tile_ref(
+        np.abs(np.asarray(a, np.float64)), np.abs(np.asarray(b, np.float64)), **dims
+    )
+    cast = exact.astype(bfloat16).astype(np.float64)
+    spacing = ulp_size(exact, bfloat16)
+    slack = dim_k * 2.0**-23 * magnitude + 2.0**-24 * np.abs(exact)
+    straddles = np.abs(np.abs(exact - cast) - 0.5 * spacing) <= slack
+    widest = ulp_size(np.abs(exact) + slack, bfloat16)
+    return np.where(straddles, slack + widest, 0.0)
+
+
 class StreamDimsABC(NamedTuple):
     """The three ``to_stream`` a matmul design needs, one per operand.
 
@@ -633,9 +657,9 @@ def mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            # mm_aie2p.h sets conv_even itself and restores it; mm_aie2.h
-            # does so only under round_conv_even, and otherwise stores bf16
-            # in whatever mode the core is in.
+            # mm_aie2p.h's entry points set conv_even for a bf16 C and restore
+            # the caller's mode; mm_aie2.h does so only under round_conv_even,
+            # and otherwise stores bf16 in whatever mode the core is in.
             setup=(
                 conv_even
                 if arch != "aie2p" and output_dtype is bfloat16 and not self_rounding
@@ -646,7 +670,18 @@ def mm(
             initializers=((2, _zero_output),),
             acc_dtype=mm_acc_dtype(input_dtype),
             reduction=dim_k,
-            tolerance=_linalg_tolerance(input_dtype),
+            tolerance=(
+                Tolerance.bounded(
+                    partial(_mm_nearest_bound, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
+                    note="npu2: the f32 sum rounded once to nearest even",
+                )
+                if arch == "aie2p"
+                and vectorized
+                and not bf16_emulated
+                and input_dtype is bfloat16
+                and output_dtype is bfloat16
+                else _linalg_tolerance(input_dtype)
+            ),
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
@@ -1081,6 +1116,7 @@ def mha(
     window: int = 0,
     packed: bool = False,
     f32_scores: bool = False,
+    float_o: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1092,14 +1128,15 @@ def mha(
     [`mm`][iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
     ``matmul_bf16_bf16_wrapper``, ``mm_aie2p.h``'s bf16 product on its 4x8x8
     micro-tile behind an ``idx_buffer`` gate (the call runs when key block
-    ``idx[0]`` holds a key some row of query block ``idx[1]`` keeps) bound
-    here to ``[0, 0]``. With ``pv`` it is the
+    ``idx[0]`` holds a key some row of query block ``idx[1]``, its first row
+    ``idx[2]`` positions past the block's start, keeps) bound here to
+    ``[0, 0, 0]``. With ``pv`` it is the
     ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
-    the native 8x8x8 micro-tile and ungated. ``matmul_PV`` is that same
-    product into a float32 ``O``, preceded by a row rescale, which needs the
-    online softmax's running state and so is exercised by
-    ``test_mha_e2e.py`` instead; ``rescale_O`` divides that ``O`` by the row
-    sums into a bf16 tile.
+    the native 8x8x8 micro-tile and ungated. With ``float_o`` it is
+    ``matmul_PV``, that product added into a float32 ``O`` after ``O``'s
+    rows are rescaled by the running state's factor, here 1 on a block every
+    row keeps; ``test_mha_e2e.py`` exercises it across key blocks.
+    ``rescale_O`` divides that ``O`` by the row sums into a bf16 tile.
     ``mha.mac_dims(pv=...)`` answers either product's micro-tile without
     building a kernel, as ``mm.mac_dims`` does.
 
@@ -1111,7 +1148,10 @@ def mha(
     ``passthrough(dtype=np.int32)``, as IRON's MHA operator does.
 
     Args:
-        dim_m: Rows of the micro-tile (multiple of 16).
+        dim_m: Rows of the micro-tile (multiple of 8, or of 16 with
+            ``emulate_bf16_mmul_with_bfp16``). An 8-row block, a decode
+            step's KV group of up to 8 heads, runs the online state 8 lanes
+            wide.
         dim_k: Depth of the micro-tile (multiple of 8).
         dim_n: Columns of the micro-tile (multiple of 16).
         pv: If ``True`` return the ``P*V`` product instead of ``QK^T``.
@@ -1137,17 +1177,22 @@ def mha(
             reads, a float32 tile, held to float32 summation order. AIE2P
             only, and not with ``emulate_bf16_mmul_with_bfp16``. At 64-key
             blocks a design places only with ``P V`` split over two cores.
+        float_o: With ``pv``, return ``matmul_PV``: ``P``, ``dim_m`` by
+            ``dim_n``, times ``V``, ``dim_n`` by ``dim_k``, into a float32
+            ``O``, as IRON's MHA operator binds it.
 
     Returns:
-        MatrixKernel for ``matmul_bf16_bf16_wrapper``, or with ``pv``
-        ``matmul_bf16_bf16_rowmaj``.
+        MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
+        ``matmul_bf16_bf16_rowmaj``, or with ``float_o`` ``matmul_PV``.
 
     Raises:
-        ValueError: A tile dimension that is not a positive multiple, or a
-            negative window.
+        ValueError: A tile dimension that is not a positive multiple, a
+            negative window, or ``float_o`` without ``pv``.
     """
+    if float_o and not pv:
+        raise ValueError("mha: float_o is the P*V product's, so it needs pv")
     for name, v, mult in (
-        ("dim_m", dim_m, 16),
+        ("dim_m", dim_m, 16 if emulate_bf16_mmul_with_bfp16 else 8),
         ("dim_k", dim_k, 8),
         ("dim_n", dim_n, 16),
     ):
@@ -1166,7 +1211,7 @@ def mha(
     tile = np.ndarray[(dim_m * dim_n,), np.dtype[score]]
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
-    idx = np.ndarray[(2,), np.dtype[np.int32]]
+    idx = np.ndarray[(3,), np.dtype[np.int32]]
     # mha.cc only calls mm.cc's bf16 products, so build none of the others.
     flags = [
         f"-DDIM_M={dim_m}",
@@ -1192,6 +1237,57 @@ def mha(
     r, s, t = _MhaFactory.mac_dims(
         pv=pv, emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16
     )
+    if float_o:
+        streams = mm_stream_dims(dim_m, dim_n, dim_k, (r, s, t))
+        state = np.zeros(4 * dim_m, np.float32)
+        state[3 * dim_m :] = 1
+        return _make_extern(
+            "matmul_PV",
+            _kernel_source("linalg/mha.cc"),
+            [
+                np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
+                np.ndarray[(dim_n * dim_k,), np.dtype[bfloat16]],
+                np.ndarray[(dim_m * dim_k,), np.dtype[np.float32]],
+                np.ndarray[(4 * dim_m,), np.dtype[np.float32]],
+                np.int32,
+                np.int32,
+                idx,
+                np.int32,
+            ],
+            compile_flags=flags,
+            cls=MatrixKernel,
+            contract=KernelContract(
+                trace=Trace.whole_call(),
+                layouts=(
+                    _tile_layout((dim_m, dim_n), streams.A, block=(r, s)),
+                    _tile_layout((dim_n, dim_k), streams.B, block=(s, t)),
+                    _tile_layout((dim_m, dim_k), streams.C, inverse=True, block=(r, t)),
+                    *([None] * 5),
+                ),
+                roles=(In, In, InOut, *([Param] * 5)),
+                # A later key block (first_iter 1) of a block every row keeps:
+                # the rescale runs, by 1, and so does the whole product.
+                parameter_bindings=(
+                    (3, state),
+                    (4, dim_m),
+                    (5, 1),
+                    (6, np.array([0, 0, 0], np.int32)),
+                    (7, dim_n),
+                ),
+                reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_n, dim_n=dim_k),
+                initializers=((2, _zero_output),),
+                acc_dtype=np.float32,
+                reduction=dim_n,
+                tolerance=Tolerance.bounded(
+                    partial(
+                        _f32_sum_order_bound, dim_m=dim_m, dim_k=dim_n, dim_n=dim_k
+                    ),
+                    note="float32 O: f32 summation order over dim_n exact bf16 "
+                    "products",
+                ),
+                ops_per_call=2 * dim_m * dim_k * dim_n,
+            ),
+        )
     streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t), b_col_maj=b_col_maj)
     return _make_extern(
         "matmul_bf16_bf16_rowmaj" if pv else "matmul_bf16_bf16_wrapper",
@@ -1213,7 +1309,7 @@ def mha(
                 *(() if pv else (None,)),
             ),
             roles=(In, In, InOut) if pv else (In, In, InOut, Param),
-            parameter_bindings=(() if pv else ((3, np.array([0, 0], np.int32)),)),
+            parameter_bindings=(() if pv else ((3, np.array([0, 0, 0], np.int32)),)),
             reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
             initializers=((2, _zero_output),),
             acc_dtype=np.float32,
@@ -1302,10 +1398,12 @@ def mha_softmax(
     kernel masks by overwriting ``A``'s masked entries in place.
 
     Which block it is stays a runtime operand, as in the kernel: ``idx`` is
-    ``(key block, query block)``, a block no query row keeps a key of is
-    skipped, and ``S_q_eff``/``S_kv_eff`` are the sequence lengths whose
-    tails pad the block. A 64-key block of a multiple of 8 rows, at least
-    16, takes the kernel's row-group path; any other shape the per-row one.
+    ``(key block, query block, row offset)``, the query block's first row at
+    position ``query block * dim_m + row offset``, so the queries may start
+    anywhere among the keys. A block no query row keeps a key of is skipped,
+    and ``S_q_eff``/``S_kv_eff`` are the query rows (in blocks' rows, from
+    the offset) and keys whose tails pad the block. A 64-key block of a multiple of 8 rows, at least
+    16 or exactly 8, takes the kernel's row-group path; any other shape the per-row one.
 
     Args:
         accurate_exp2: Take 2^x from a polynomial within 2.8e-6 before its
@@ -1313,7 +1411,7 @@ def mha_softmax(
             exp2 instruction, which is off by up to 6.15%, or AIE2's cubic,
             0.74% with the bf16 store. ``s`` stays the bf16 scalar the
             kernel takes, 1.8e-3 from log2(e) / 8.
-        dim_m: Query rows of the block (``B_q``), a multiple of 16.
+        dim_m: Query rows of the block (``B_q``), a multiple of 8.
         dim_n: Keys of the block (``B_kv``), a multiple of 16.
         causal: A query keeps no key past its own position.
         window: A query keeps no key more than ``window`` positions before
@@ -1321,7 +1419,7 @@ def mha_softmax(
             self-attention, where every query row keeps its own position.
         packed: Every row is one query at the last key, ``S_kv_eff - 1``,
             as for one decode step with a KV group's heads as the rows;
-            ``idx``'s query block is then unused.
+            ``idx``'s query block and row offset are then unused.
         scale: The log2-domain factor ``s``, rounded to bf16: ``log2(e)``
             over the square root of the head dimension. Positive and finite,
             so a masked score, ``A``'s lowest times ``s``, stays below every
@@ -1332,13 +1430,13 @@ def mha_softmax(
 
     Raises:
         ValueError: A block dimension that is not a positive multiple of
-            16, a ``scale`` that is not positive and finite, or a negative
-            window.
+            8 (``dim_m``) or 16 (``dim_n``), a ``scale`` that is not positive
+            and finite, or a negative window.
     """
-    for name, v in (("dim_m", dim_m), ("dim_n", dim_n)):
-        if v <= 0 or v % 16:
+    for name, v, mult in (("dim_m", dim_m, 8), ("dim_n", dim_n, 16)):
+        if v <= 0 or v % mult:
             raise ValueError(
-                f"mha_softmax: {name} must be a positive multiple of 16, got {v}"
+                f"mha_softmax: {name} must be a positive multiple of {mult}, got {v}"
             )
     scale = float(bfloat16(scale))
     if not 0 < scale < np.inf:
@@ -1347,15 +1445,18 @@ def mha_softmax(
     band = dict(dim_m=dim_m, dim_n=dim_n, causal=causal, window=window, packed=packed)
     tile = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
     state = np.ndarray[(4 * dim_m,), np.dtype[np.float32]]
-    idx = np.ndarray[(2,), np.dtype[np.int32]]
+    idx = np.ndarray[(3,), np.dtype[np.int32]]
     return _make_extern(
         "partial_softmax",
         _kernel_source("linalg/mha.cc"),
         [tile, tile, state, idx, bfloat16, *([np.int32] * 4)],
+        # mha.cc calls only mm.cc's bf16 products; the others assert on an
+        # 8-row block.
         compile_flags=[
             f"-DDIM_M={dim_m}",
             "-DDIM_K=64",
             f"-DDIM_N={dim_n}",
+            "-Dbf16_bf16_ONLY",
             *(["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else []),
             *band_flags,
         ],
@@ -1433,9 +1534,9 @@ def mha_softmax_ref(
     padded row keeps ``m = l = 0``; a skipped or wholly padded block leaves
     the state untouched.
     """
-    kv, q = (int(i) for i in np.asarray(idx).ravel())
+    kv, q, offset = (int(i) for i in np.asarray(idx).ravel())
     rows, cols = np.indices((dim_m, dim_n))
-    key = kv * dim_n + cols - (s_kv_eff - 1 if packed else q * dim_m + rows)
+    key = kv * dim_n + cols - (s_kv_eff - 1 if packed else q * dim_m + offset + rows)
     keep = (rows < s_q_eff - q * dim_m) & (cols < s_kv_eff - kv * dim_n)
     if causal or window:
         keep &= key <= (0 if causal else window)

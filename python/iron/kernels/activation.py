@@ -701,12 +701,19 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-_GELU_ERF_TOLERANCE = Tolerance.bf16_ulps(
+# gelu_erf has no tuned branch, so the arch alone picks its bound.
+_GELU_ERF_ROUNDED = Tolerance.bf16_ulps(
+    0,
+    atol=2.0**-126,
+    note="npu2, every finite bf16 input: correctly rounded wherever GELU is a "
+    "normal bf16 (0 of 48853 misrounded); atol admits the subnormal results the "
+    "core flushes to 0",
+)
+_GELU_ERF_ONE_ULP = Tolerance.bf16_ulps(
     1,
     atol=2.0**-126,
-    note="npu2, every finite bf16 input: within one ulp wherever GELU rounds "
-    "to a normal bf16; atol admits the subnormal results the core flushes to 0. "
-    "Not yet measured on npu1",
+    note="npu1, not yet measured on a device: one ulp of the correctly rounded "
+    "GELU wherever that is a normal bf16; atol admits the flushed subnormals",
 )
 
 
@@ -730,8 +737,14 @@ def gelu_erf(tile_size: int = 1024) -> ExternalFunction:
             trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
-            reference=gelu_erf_ref,
-            tolerance=_GELU_ERF_TOLERANCE,
+            per_build=tuple(
+                (
+                    build,
+                    gelu_erf_ref,
+                    _GELU_ERF_ROUNDED if build.arch == "aie2p" else _GELU_ERF_ONE_ULP,
+                )
+                for build in BUILDS
+            ),
             acc_dtype=np.float32,
         ),
     )
@@ -922,7 +935,15 @@ def log_f32(tile_size: int = 1024) -> ExternalFunction:
             np.int32,
             np.float32,
         ],
-        compile_flags=[f"-DLOG_ELEMS={tile_size}"],
+        compile_flags=[f"-DLOG_ELEMS={tile_size}"]
+        # log_f32.cc stages tiles of whole 256-element blocks, whose passes need
+        # eight stages to pipeline; under that cap Peano miscompiled one-trip
+        # passes, so other tiles keep the nested loop and the default cap.
+        + (
+            ["-mllvm", "--aie-pipeliner-max-stagecount=8"]
+            if tile_size % 256 == 0
+            else []
+        ),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Out, Param, Param),

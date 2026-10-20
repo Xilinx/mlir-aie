@@ -12,16 +12,23 @@ is read into a ``Declaration`` as its body finishes.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import MISSING
 from enum import Enum
 from types import FunctionType
-from typing import Any, ClassVar, Self, dataclass_transform
+from typing import Any, ClassVar
+
+if sys.version_info >= (3, 11):
+    from typing import Self, dataclass_transform
+else:
+    from typing_extensions import Self, dataclass_transform
 
 import numpy as np
+from aie.helpers.npdtypes import is_block_float
 
 from ...hostruntime import set_current_device
 from .declaration import Declaration
-from .params import param, tunable
+from .params import Member, param, tunable
 
 
 def _key_value(value: Any) -> Any:
@@ -29,11 +36,16 @@ def _key_value(value: Any) -> Any:
 
     An Enum is its value, so renaming a member moves no key; a NumPy scalar
     type is its dtype and a NumPy integer its int, so ``np.float32`` and
-    ``np.dtype(np.float32)``, or ``np.int64(64)`` and ``64``, share a key.
+    ``np.dtype(np.float32)``, or ``np.int64(64)`` and ``64``, share a key. A
+    block-float type, which NumPy has no dtype for, is its class.
     """
     if isinstance(value, Enum):
         return value.value
-    if isinstance(value, type) and issubclass(value, np.generic):
+    if (
+        isinstance(value, type)
+        and issubclass(value, np.generic)
+        and not is_block_float(value)
+    ):
         return np.dtype(value)
     if isinstance(value, np.integer):
         return int(value)
@@ -249,7 +261,10 @@ class Operator:
             {n: vars(self)[n] for n in self.declaration.key},
             # Bound to the view, a member's dims read through it, so a
             # parameter outside the key raises there too.
-            _bound={name: m.of(view) for name, m in self._bound.items()},
+            _bound={
+                name: m.of(view) if isinstance(m, Member) else m
+                for name, m in self._bound.items()
+            },
             trace=self.trace,
         )
         return view

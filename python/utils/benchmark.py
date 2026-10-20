@@ -210,9 +210,13 @@ def other_npu_users(holding: bool = False) -> set[int]:
         The other holders' pids, in the host's namespace.
 
     Raises:
+        NotImplementedError: The host is not Linux; the test above needs
+            ``/proc``.
         FileNotFoundError: This host has no ``xrt-smi``.
         subprocess.CalledProcessError: ``xrt-smi`` failed.
     """
+    if sys.platform != "linux":
+        raise NotImplementedError("NPU users are found through /proc, on Linux.")
     with tempfile.TemporaryDirectory() as d:
         report = Path(d) / "partitions.json"
         subprocess.run(
@@ -252,6 +256,7 @@ def wait_idle(log: Callable[[str], None] = print, holding: bool = False) -> None
     Raises:
         TimeoutError: Another has held one for ``IDLE_WAIT`` seconds. Two
             processes measuring at once would each wait for the other.
+        NotImplementedError: The host is not Linux.
         FileNotFoundError: This host has no ``xrt-smi``.
         subprocess.CalledProcessError: ``xrt-smi`` failed.
     """

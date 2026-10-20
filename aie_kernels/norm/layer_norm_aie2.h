@@ -20,9 +20,11 @@ static inline void normalize_16(const T *restrict in, T *restrict out,
                           mac_elem_16_2(bf16_pair(x, x), inv_std, c))));
 }
 
+// Inlined into each entry point so layer_norm's default epsilon folds.
 template <typename T>
-void layer_norm(const T *restrict input, T *restrict output, int32_t cols,
-                float epsilon = 1e-5f) {
+__attribute__((always_inline)) inline void
+layer_norm(const T *restrict input, T *restrict output, int32_t cols,
+           float epsilon = 1e-5f) {
   event0();
   constexpr unsigned N = 32;
   // cols is a multiple of 16: whole 32-lane chunks, then maybe one half.
@@ -34,7 +36,14 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols,
   const bool pipelined = vector_chunks >= MIN_CHUNKS;
   // 1 / n from a Q31 quotient; a row fits in 64 KB, so it keeps 17+ bits.
   // Divided first: no vector state is live across the call.
+  // NORM_COLS, the row length the factory built for, folds the divide.
+#ifdef NORM_COLS
+  const int32_t inv_n_q31 =
+      (int32_t)((uint32_t)cols == NORM_COLS ? 0x80000000u / NORM_COLS
+                                            : 0x80000000u / (uint32_t)cols);
+#else
   const int32_t inv_n_q31 = (int32_t)(0x80000000u / (uint32_t)cols);
+#endif
 
   // Sum and sum of squares, each product exact and summed in f32: against
   // ones a mac adds two elements into each of its 16 lanes, against itself

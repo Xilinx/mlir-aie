@@ -15,9 +15,15 @@ captures ``M`` itself and ``GEMM.M`` names the parameter. On an instance,
 from __future__ import annotations
 
 import copy
+import sys
 from dataclasses import MISSING, dataclass
 from enum import Enum
-from typing import Any, Callable, Self, overload
+from typing import Any, Callable, overload
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 import numpy as np
 

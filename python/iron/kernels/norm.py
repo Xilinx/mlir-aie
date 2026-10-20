@@ -62,9 +62,17 @@ _LAYER_NORM_TOLERANCE = {"aie2": _LAYER_NORM_BF16_AIE2, "aie2p": _LAYER_NORM_BF1
 
 
 def _norm_extern(
-    func_name: str, filename: str, arg_types: list, contract: KernelContract
+    func_name: str,
+    filename: str,
+    arg_types: list,
+    contract: KernelContract,
+    row: int,
 ) -> ExternalFunction:
-    """Norm kernel with aie_runtime_lib (the arch's vec_math.h) on the include path."""
+    """Norm kernel with aie_runtime_lib (the arch's vec_math.h) on the include path.
+
+    ``row`` is the row length the contract binds ``cols`` to; as ``NORM_COLS``
+    it folds the kernel's divide by ``cols``.
+    """
     from aie.utils import config
 
     runtime_dir = Path(config.aie_runtime_lib_dir()) / _detect_arch().upper()
@@ -72,7 +80,7 @@ def _norm_extern(
         func_name,
         _kernel_source(f"norm/{filename}"),
         arg_types,
-        compile_flags=[f"-I{runtime_dir}"],
+        compile_flags=[f"-I{runtime_dir}", f"-DNORM_COLS={row}"],
         contract=contract,
     )
 
@@ -126,6 +134,7 @@ def _norm(
             reduction=tile_size,
             ops_per_call=(6 if layer else 4) * tile_size,
         ),
+        tile_size,
     )
 
 

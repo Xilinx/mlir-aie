@@ -928,8 +928,12 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs={},
         arg_count=6,  # block, head, final, y, valid, block index
         expected_name="selective_scan",
-        invalid_kwargs=[(dict(state=0), "state must be a positive integer")],
-        shape_checks=[(dict(rows=4, head_dim=8, state=16), 0, (164,))],
+        invalid_kwargs=[
+            (dict(state=0), "state must be a positive integer"),
+            (dict(head_dim=8), "multiples of 16"),
+            (dict(state=24), "multiples of 16"),
+        ],
+        shape_checks=[(dict(rows=4, head_dim=16, state=16), 0, (196,))],
     ),
     KernelSpec(
         name="gated_delta_rule",
@@ -1384,7 +1388,7 @@ def test_gelu_erf_refuses_a_tile_with_a_tail():
         kernels.gelu_erf(tile_size=48)
 
 
-def test_gelu_erf_device_case_fails_a_tanh_gelu():
+def test_gelu_erf_device_case_fails_a_tanh_gelu(kernel_arch):
     fn = kernels.gelu_erf()
     for seed in range(1000, 1004):  # the device test's random seeds
         (x,) = kd.sample_inputs(fn, calls=16, rng=np.random.default_rng(seed))

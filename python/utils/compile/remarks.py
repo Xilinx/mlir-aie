@@ -1245,13 +1245,17 @@ def main(argv=None) -> int:
         a.build = [parse_build(spec) for spec in a.build or ()]
     except ValueError as e:
         ap.error(str(e))
-    if not a.sources:
-        return _run(a)
-    with kernel_sources(a.sources):
-        return _run(a)
+    with contextlib.ExitStack() as stack:
+        if a.sources:
+            stack.enter_context(kernel_sources(a.sources))
+        workdir = Path(
+            a.keep
+            or stack.enter_context(tempfile.TemporaryDirectory(prefix="aie-static-"))
+        )
+        return _run(a, workdir)
 
 
-def _run(a: argparse.Namespace) -> int:
+def _run(a: argparse.Namespace, workdir: Path) -> int:
     from aie.iron.device import from_name
     from aie.utils.benchmark import provenance
     from aie.utils.hostruntime import set_current_device
@@ -1261,7 +1265,6 @@ def _run(a: argparse.Namespace) -> int:
     device = from_name(generation, n_cols=1)
     set_current_device(device)
     extra = provenance(target=a.target)
-    workdir = Path(a.keep or tempfile.mkdtemp(prefix="aie-static-"))
     print(f"compiling into {workdir}")
     source_root = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
     current_sources, suspect = (
@@ -1307,7 +1310,11 @@ def _run(a: argparse.Namespace) -> int:
             meta["kernels"][name] = {
                 "source": source,
                 "symbol": entry_symbol(ef),
-                "object": str(workdir / f"build{index}" / f"{ef.name}.o"),
+                **(
+                    {"object": str(workdir / f"build{index}" / f"{ef.name}.o")}
+                    if a.keep
+                    else {}
+                ),
                 "loops": {
                     f"{fn}/{bb}": vars(loop) for (fn, bb), loop in rep.loops.items()
                 },

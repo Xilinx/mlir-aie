@@ -28,7 +28,10 @@ from .sample import _positive
 def selective_scan_sample(
     rng, calls: int, *, rows: int, head_dim: int, state: int, blocks: int
 ):
-    """Return heads of ``blocks`` blocks, A < 0 so the state decays, each from a random state."""
+    """Return heads of ``blocks`` blocks, each from a random state.
+
+    A < 0, so the state decays.
+    """
     block = rng.standard_normal((calls, rows * (head_dim + 2 * state + 1))) * 0.5
     heads = [
         np.concatenate(
@@ -48,9 +51,9 @@ def selective_scan_sample(
 def selective_scan_ref(
     block, head, valid, *, rows: int, head_dim: int, state: int, blocks: int
 ):
-    """Numpy reference for [`selective_scan`][iron.kernels.ssm.selective_scan]: call ``b`` is block ``b``.
+    """Numpy reference for [`selective_scan`][iron.kernels.ssm.selective_scan].
 
-    Returns ``(final, y)`` per call.
+    Call ``b`` is block ``b``. Returns ``(final, y)`` per call.
     """
     head = np.asarray(head, np.float32).reshape(-1, 3 + head_dim * state)
     calls = len(head)
@@ -97,17 +100,28 @@ def selective_scan(
     ``(dt_bias, A, D)`` then the state before the head's first block,
     ``(head_dim, state)``. ``b`` counts blocks from 0, ``blocks`` to a head,
     and block ``b`` loads the state from ``head`` when it is a head's first.
-    Each block runs its first ``valid`` rows: ``step = softplus(dt + dt_bias)``, ``state = exp(step *
-    A) * state + step * outer(x, B)`` and ``y = state @ C + D * x``, rounded
+    Each block runs its first ``valid`` rows:
+    ``step = softplus(dt + dt_bias)``,
+    ``state = exp(step * A) * state + step * outer(x, B)`` and
+    ``y = state @ C + D * x``, rounded
     once to bf16; rows from ``valid`` on leave the state alone and write
     zero ``y``. The state stays in the core between blocks, and ``final``
     is it after this one. The caller gathers head ``h``'s x and dt and
     group ``h // (heads // groups)``'s B and C into ``block``, so each
     group's B and C stream ``heads // groups`` times. ``head_dim`` may be a
     slice of the head's: the rows of state are independent.
+
+    Raises:
+        ValueError: A dimension is not a positive integer, or ``head_dim`` or
+            ``state`` is not a multiple of 16, the kernel's vector width.
     """
     geometry = dict(rows=rows, head_dim=head_dim, state=state, blocks=blocks)
     _positive("selective_scan", **geometry)
+    if head_dim % 16 or state % 16:
+        raise ValueError(
+            f"selective_scan: head_dim ({head_dim}) and state ({state}) must be "
+            "multiples of 16"
+        )
     return _make_extern(
         "selective_scan",
         _kernel_source("ssm/selective_scan.cc"),
@@ -121,6 +135,12 @@ def selective_scan(
         ],
         compile_flags=_STRICT_FP_ROLLED
         + [
+            # Scheduling the row update past the default pressure limits
+            # measured 8% fewer cycles at IRON's prefill slice.
+            "-mllvm",
+            "--aie-premisched-reg-pressure-instr-threshold=10000",
+            "-mllvm",
+            "--aie-premisched-finer-rp-tracking=false",
             f"-DSCAN_ROWS={rows}",
             f"-DSCAN_HEAD_DIM={head_dim}",
             f"-DSCAN_STATE={state}",
@@ -133,10 +153,9 @@ def selective_scan(
             call_index=5,
             reference=partial(selective_scan_ref, **geometry),
             sample=partial(selective_scan_sample, **geometry),
-            setup=conv_even,
             tolerance=Tolerance.bounded(
                 partial(_state_bound, selective_scan_ref, **geometry),
-                note="npu2: y bit for bit, final within 4.9e-7 of its range "
+                note="npu2: y bit for bit, final within 3.7e-7 of its range "
                 "over three seeds",
             ),
         ),
@@ -251,8 +270,9 @@ def gated_delta_rule(
             setup=conv_even,
             tolerance=Tolerance.bounded(
                 partial(_state_bound, gated_delta_rule_ref, **geometry),
-                note="npu2: y bit for bit, final within 4.9e-7 of its range "
-                "over three seeds",
+                note="npu2, against a float64 recurrence: final within 2.9e-7 "
+                "of its range (the scalar kernel's 2.6e-7), y one bf16 ulp off "
+                "in 1 of 10240, as the scalar kernel's",
             ),
         ),
     )

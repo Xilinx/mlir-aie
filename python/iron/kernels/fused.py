@@ -90,12 +90,13 @@ def fused_mm(
     ``rounding`` mode, as IRON's ``pack_b`` does, and the reference
     multiplies both operands as the core sees them.
 
-    ``b_col_maj`` (with an ``(r, 8, 8)`` mmul, r 8 on aie2p) takes B as stored
-    transposed, the ``(n, k)`` layout of a checkpoint's weights: each k chunk
-    holds k panels of ``s`` rows, every n row of a panel ``s`` contiguous k,
-    a layout a DMA builds from ``(n, k)`` storage in 16-byte runs. On bf16
-    macs the core transposes each half block in one shuffle; on bfp16 macs
-    it converts each block as loaded.
+    ``b_col_maj`` (with an ``(r, 8, 8)`` mmul, r 8 on bfp16 macs) takes B as
+    stored transposed, the ``(n, k)`` layout of a checkpoint's weights: each k
+    chunk holds k panels of ``s`` rows, every n row of a panel ``s``
+    contiguous k, a layout a DMA builds from ``(n, k)`` storage in 16-byte
+    runs. On aie2's macs the core transposes each half block in one shuffle,
+    on aie2p's bf16 macs each whole block, and on bfp16 macs it converts each
+    block as loaded.
 
     ``emulate_bf16_mmul_with_bfp16`` (aie2p) multiplies on bfp16 macs, as
     aie_api's emulated bf16 mmul does: the core converts A and B to
@@ -149,8 +150,8 @@ def fused_mm(
         r, s, t = mmul_shape
     if b_col_maj and (s, t) != (8, 8):
         raise ValueError("fused_mm: b_col_maj needs an (r, 8, 8) mmul_shape")
-    if b_col_maj and arch == "aie2p" and r != 8:
-        raise ValueError("fused_mm: b_col_maj on aie2p needs mmul (8, 8, 8)")
+    if b_col_maj and emulated and r != 8:
+        raise ValueError("fused_mm: b_col_maj on bfp16 macs needs mmul (8, 8, 8)")
     dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk, c_depth, r, s, t)
     if any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in dims):
         raise ValueError("fused_mm dimensions must be positive integers")

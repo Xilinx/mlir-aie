@@ -63,7 +63,7 @@ env:
 jobs:
   seed-sweep:
     name: SA placer seed sweep (CPU-only)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-component-checks-${{ github.run_id }}
@@ -272,7 +272,7 @@ jobs:
     needs: [seed-sweep, hw-checks]
     # Publish whichever check produced results, even if the other failed.
     if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.seeds }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: read  # the workflow's runs, to date each record by its start

@@ -5,7 +5,7 @@
 #
 
 import math
-from typing import Sequence, get_origin
+from typing import TYPE_CHECKING, Sequence, get_origin
 
 import numpy as np
 
@@ -18,20 +18,25 @@ from ...helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
+    np_ndarray_type_of,
 )
 from ...helpers.taplib import TensorAccessPattern
+
+if TYPE_CHECKING:
+    from ...utils.compile.jit.markers import _Operand
 
 
 class RuntimeData:
     """A handle to I/O data in the Runtime."""
 
-    def __init__(self, arr_type: type[np.ndarray]):
+    def __init__(self, arr_type: "type[np.ndarray] | _Operand"):
         """Construct a handle to a Runtime buffer.
 
         Args:
-            arr_type (type[np.ndarray]): The type of the I/O data.
+            arr_type: The type of the I/O data, or a generator's tensor
+                operand.
         """
-        self._arr_type = arr_type
+        self._arr_type = np_ndarray_type_of(arr_type)
         self._op = None
 
     @property
