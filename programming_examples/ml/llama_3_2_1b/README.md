@@ -6,15 +6,16 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 An INT8 decode of Llama 3.2 1B on an AMD NPU2 (AIE2P), written in the IRON
 Python API and compiled with `@iron.jit` to one full ELF. Each dispatch runs the
 whole per-token decode on the AI Engine array for 1 to 4 tokens, chosen per
-dispatch: all 16 transformer layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
+dispatch, each a prompt token or a generated one: all 16 transformer layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
 and the token→embedding feedback. The W8A8-dynamic INT8 recipe tracks the
 reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % on
 prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
 beyond quantization.
 
 > Status: decode is validated on hardware at 48.6 ms/token (20.6 tok/s) at
-> N=16 at short context, with a KV cache of up to 128k tokens. Prefill is the
-> open stage — see [On the device, and on the host](#on-the-device-and-on-the-host)
+> N=16 at short context, with a KV cache of up to 128k tokens. Prefill runs on
+> the device token by token (`generate.py`: prompt in, text out); batched
+> prefill is next — see [On the device, and on the host](#on-the-device-and-on-the-host)
 > and [What's next](#whats-next).
 
 ---
@@ -77,8 +78,8 @@ Key design pieces (each validated bit-exact in isolation before integration):
 Every transformer op, the lm_head, the sampler, the token feedback and the KV
 append run as AI Engine kernels, and one compiled design serves every dispatch.
 The host (`DispatchSession` in `llama_npu.py`) keeps one hardware context and,
-per dispatch, writes the design's ScratchpadParameters (`dispatch_params` in
-`test_chain_persist_grow_mh.py`): how many tokens it generates, which every
+per dispatch, writes the design's ScratchpadParameters (`DecodeShape.params` in
+`llama_decode.py`): how many tokens it generates, which every
 worker reads; the position of the dispatch's first token, which the attention
 workers read; its row in the RoPE table the weight blob carries, built once
 with Llama 3's rope scaling; per token slot, whether it runs (a slot that does
@@ -86,9 +87,11 @@ not run moves nothing), how many KV blocks to read and where its row goes; and
 the sampler's settings. What the host still does, each to move to the device in
 the stages of the one-design restructure:
 
-- **Prefill.** `bench_quality_mh.py --device` prefills on the device one token a
-  dispatch, the host writing each prompt token's embed seed into the stage; the
-  decode test's starting context is a fixture the numpy oracle builds.
+- **Prefill** runs on the device token by token: a prompt token is a token slot
+  whose input is the seed the lm_head core makes of the token's embed row, which
+  it fetches from the lm_head's weights (`gat{t}`, `rows`), rather than the
+  previous token's sample; the host only says which tokens are the prompt's.
+  Batched prefill, many prompt rows a pass, is the next stage.
 - **Tokenization**, which stays on the host.
 
 ### INT8 recipe (W8A8-dynamic)
@@ -135,8 +138,8 @@ about 9.5 ms per 1k tokens of context.
 
 **Tokens per dispatch.** amdxdna times a dispatch out after about 5 s, and at
 128k a 4-token dispatch takes about 5.2 s. The host picks each dispatch's
-token count from its first position (`passes_for` in
-`test_chain_persist_grow_mh.py`): as many of the 4 as fit a 4 s budget by a
+token count from its first position (`DecodeShape.passes_for` in
+`llama_decode.py`): as many of the 4 as fit a 4 s budget by a
 cost model fit to the table above (19 ms of lm_head a token, plus per layer
 1.85 ms and 0.6 ms per 1k rows of context). At 16 layers that is 4 tokens from
 positions up to 99102 and 3 beyond, to 128k (3.9 s a dispatch).
@@ -145,7 +148,9 @@ between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
 60–89 tok/s on this model.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
-> **TTFT** (time to first token) and is a separate, not-yet-built phase.
+> **TTFT** (time to first token). `generate.py --prompt "The capital of France
+> is"` (6 prompt tokens, N=16): TTFT 286 ms (21 prompt tok/s, token by token),
+> then 20.97 tok/s.
 
 ---
 
@@ -157,39 +162,45 @@ the real model. We compare against the true HF Llama 3.2 1B **bf16** weights
 (loaded full-precision from the safetensors — no torch/transformers needed).
 
 Evidence chain: `device == numpy-int8` (bit-exact) → `numpy-int8 == NPU silicon`
-(identical 15/20 below) → `int8 == HF bf16` (next).
+(identical 15/20 below, old chain) → `int8 == HF bf16` (next).
 
-### Next-token greedy agreement, NPU vs HF bf16 (20 hard prompts, N=16)
+### Next-token greedy agreement on 20 hard prompts (N=16)
 
-The N=16 decode chain on silicon, scored against the true bf16 model:
+`bench_quality_mh.py`. The bf16 column and the old chain's column are from an
+earlier run, of the old chain design (the bf16 checkpoint is not on the box the
+current decode was measured on, so they are not re-measured); the last column is
+the current decode (`aie2_decode.py`), prefilling each prompt on the device:
 
-| Prompt | HF bf16 | NPU int8 | |
+| Prompt | HF bf16 (old run) | NPU, old chain vs bf16 | NPU, aie2_decode |
 |---|---|---|---|
-| The capital of France is | ` Paris` | ` Paris` | ✓ |
-| The capital of Italy is | ` Rome` | ` Rome` | ✓ |
-| The capital of Japan is | ` Tokyo` | ` Tokyo` | ✓ |
-| The capital of Germany is | ` Berlin` | ` Berlin` | ✓ |
-| The author of Hamlet is | ` not` | ` a` | ✗ |
-| The largest planet in our solar system is | ` called` | ` the` | ✗ |
-| The chemical symbol for water is | ` H` | ` H` | ✓ |
-| The first president of the United States was | ` George` | ` George` | ✓ |
-| The opposite of black is | ` white` | ` white` | ✓ |
-| The number of legs on a spider is | `:\n` | `\n` | ✗ |
-| Two plus two equals | ` four` | ` four` | ✓ |
-| The sun rises in the | ` east` | ` east` | ✓ |
-| Romeo and Juliet was written by | ` William` | ` William` | ✓ |
-| Mount Everest is in the country of | ` Nepal` | ` Nepal` | ✓ |
-| The Eiffel Tower is located in | ` the` | ` the` | ✓ |
-| The boiling point of water in Celsius is | ` ` | ` ` | ✓ |
-| The smallest prime number is | ` ` | ` ` | ✓ |
-| Shakespeare wrote in the | ` ` | ` ` | ✓ |
-| The currency of Japan is the | ` yen` | ` Yen` | ✗ |
-| The Great Wall is in | ` China` | ` the` | ✗ |
+| The capital of France is | ` Paris` | ` Paris` ✓ | ` Paris` |
+| The capital of Italy is | ` Rome` | ` Rome` ✓ | ` Rome` |
+| The capital of Japan is | ` Tokyo` | ` Tokyo` ✓ | ` Tokyo` |
+| The capital of Germany is | ` Berlin` | ` Berlin` ✓ | ` Berlin` |
+| The author of Hamlet is | ` not` | ` a` ✗ | ` a` |
+| The largest planet in our solar system is | ` called` | ` the` ✗ | ` the` |
+| The chemical symbol for water is | ` H` | ` H` ✓ | ` H` |
+| The first president of the United States was | ` George` | ` George` ✓ | ` George` |
+| The opposite of black is | ` white` | ` white` ✓ | ` white` |
+| The number of legs on a spider is | `:\n` | `\n` ✗ | ` a` |
+| Two plus two equals | ` four` | ` four` ✓ | ` four` |
+| The sun rises in the | ` east` | ` east` ✓ | ` east` |
+| Romeo and Juliet was written by | ` William` | ` William` ✓ | ` William` |
+| Mount Everest is in the country of | ` Nepal` | ` Nepal` ✓ | ` Nepal` |
+| The Eiffel Tower is located in | ` the` | ` the` ✓ | ` the` |
+| The boiling point of water in Celsius is | ` ` | ` ` ✓ | ` ` |
+| The smallest prime number is | ` ` | ` ` ✓ | ` ` |
+| Shakespeare wrote in the | ` ` | ` ` ✓ | ` ` |
+| The currency of Japan is the | ` yen` | ` Yen` ✗ | ` Yen` |
+| The Great Wall is in | ` China` | ` the` ✗ | ` China` |
 
-**NPU vs HF bf16: 15/20 = 75 % top-1** — identical to the numpy INT8 recipe's
-15/20, confirming the device adds no error beyond quantization. The 5 misses are
-benign near-ties (` Yen`/` yen` casing; ` the`/` China`; ` a`/` not`), not
-garbage — the INT8 logits cluster the right answers at the top.
+**Old chain vs HF bf16: 15/20 = 75 % top-1**, identical to the numpy INT8
+recipe's 15/20; its 5 misses are benign near-ties (` Yen`/` yen` casing;
+` the`/` China`; ` a`/` not`), not garbage. **aie2_decode vs the INT8 recipe's
+reference forward (`numpy_llama_ref.forward_full`): 16/20 = 80 %**; it differs
+from the old chain on two prompts (` China` for the Great Wall, ` a` for the
+spider), its prompt inputs now being the device's own embed seeds. Its bf16 score
+awaits the checkpoint.
 
 ### Perplexity / agreement on prose (N=16)
 
@@ -247,10 +258,16 @@ python accuracy_vs_hf.py --max-tokens 128
 LLAMA_CHAIN_N=16 python bench_quality_mh.py --bf16-ref --residual-dyn --attn-lut
 ```
 
-### Accuracy on silicon (NPU vs HF bf16)
+### On silicon: text, and accuracy vs HF bf16
+
+Tokenizing needs tiktoken: `pip install tiktoken`.
 
 ```bash
-# prefill and predict each prompt on the NPU, one token a dispatch, vs bf16
+# prompt in, text out, with TTFT and tok/s (--check scores each token against
+# numpy_llama_ref's argmax, teacher-forced)
+python generate.py --prompt "The capital of France is" --max-new 32
+
+# prefill and predict each prompt on the NPU, vs bf16
 LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --bf16-ref
 ```
 
@@ -259,6 +276,9 @@ LLAMA_CHAIN_N=16 python bench_quality_mh.py --device --bf16-ref
 ```bash
 # the full 16-layer autoregressive decode (4 tokens a dispatch; --passes picks 1-4)
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py
+
+# a 6-token prompt (seeded random ids) before generating
+LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --prompt-tokens 6
 
 # sampled instead of greedy (the sampler's settings are per dispatch)
 LLAMA_CHAIN_N=16 python test_chain_persist_grow_mh.py --sample-temp 0.7 --sample-topk 4
@@ -338,5 +358,4 @@ settings) as ScratchpadParameters:
 
 - **The lm_head over more lanes** (it streams over one, about 19 ms a token),
   and the glue fused into the GEMV array's epilogues.
-- **Prefill** on the device, token by token and then batched, with TTFT and
-  tok/s measured end to end.
+- **Batched prefill**, many prompt rows a pass through the GEMV array, for TTFT.

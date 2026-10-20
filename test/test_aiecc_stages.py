@@ -100,7 +100,11 @@ def test_llama_publishes_each_stage_cold_and_warm(checks):
     }
     assert stages.stage_rows(str(MOBILENET), None, "") == {}
     rows = llama.aggregate(
-        {"tokens_passed": 4, "tokens_total": 4}, llama.parse_timing(""), {}, compiled
+        {"tokens_passed": 4, "tokens_total": 4},
+        llama.parse_timing(""),
+        llama.parse_generate(""),
+        {},
+        compiled,
     )
     by_name = {r["name"].rsplit("/", 1)[1]: r for r in rows}
     assert by_name["compile_place_s"]["value"] == 0.96
@@ -109,3 +113,26 @@ def test_llama_publishes_each_stage_cold_and_warm(checks):
     assert by_name["compile_outside_aiecc_s"]["value"] == 2.38
     assert by_name["compile_place_s_warm"]["unit"] == "s"
     assert {f"{m}_warm" for m in stages.STAGE_METRICS} <= by_name.keys()
+
+
+def test_llama_publishes_generate_rows(checks):
+    _, llama = checks
+    out = (
+        "The capital of France is Paris, which is the most visited city\n"
+        "prompt 6 tokens, generated 32: TTFT 286.0 ms (21.0 prompt tok/s), "
+        "decode 20.97 tok/s\n"
+        "check: 22/32 tokens are numpy_llama_ref's argmax\n"
+    )
+    rows = llama.aggregate(
+        {"tokens_passed": 4, "tokens_total": 4},
+        llama.parse_timing(""),
+        llama.parse_generate(out),
+        {},
+        {},
+    )
+    by_name = {r["name"].rsplit("/", 1)[1]: r for r in rows}
+    assert by_name["ttft_ms"]["value"] == 286.0
+    assert by_name["prompt_tok_s"]["value"] == 21.0
+    assert by_name["decode_tok_s"]["value"] == 20.97
+    assert by_name["greedy_agree"]["value"] == 22
+    assert by_name["greedy_agree"]["range"].startswith("of 32")

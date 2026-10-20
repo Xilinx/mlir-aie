@@ -61,6 +61,13 @@ _SUMMARY_RE = re.compile(
 )
 _PER_TOKEN_RE = re.compile(r"per-token:\s+([\d.]+) ms\s+\(([\d.]+) tok/s\)")
 _RATIO_RE = re.compile(r"ratio:\s+([\d.]+)x\s+->\s+(\S+)")
+_GENERATE_RE = re.compile(
+    r"TTFT ([\d.]+) ms \(([\d.]+) prompt tok/s\), decode ([\d.]+) tok/s"
+)
+_CHECK_RE = re.compile(r"check: (\d+)/(\d+) tokens")
+# generate.py's prompt and length, the same every night.
+GENERATE_PROMPT = "The capital of France is"
+GENERATE_NEW = 32
 _ELF = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}.elf"
 _PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}.prj"
 _PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
@@ -222,6 +229,35 @@ def run_timed(env: dict) -> subprocess.CompletedProcess:
     )
 
 
+def run_generate(env: dict) -> subprocess.CompletedProcess:
+    return _run(
+        [
+            sys.executable,
+            "generate.py",
+            "--elf",
+            _ELF,
+            "--prompt",
+            GENERATE_PROMPT,
+            "--max-new",
+            str(GENERATE_NEW),
+            "--check",
+        ],
+        env,
+    )
+
+
+def parse_generate(out: str) -> dict:
+    timing = _GENERATE_RE.search(out)
+    check = _CHECK_RE.search(out)
+    return {
+        "ttft_ms": float(timing.group(1)) if timing else None,
+        "prompt_tok_s": float(timing.group(2)) if timing else None,
+        "decode_tok_s": float(timing.group(3)) if timing else None,
+        "greedy_agree": int(check.group(1)) if check else None,
+        "greedy_total": int(check.group(2)) if check else None,
+    }
+
+
 def parse_correctness(out: str, returncode: int) -> dict:
     tokens = _TOKEN_LINE_RE.findall(out)
     summary = _SUMMARY_RE.search(out)
@@ -270,7 +306,11 @@ def parse_timing(out: str) -> dict:
 
 
 def aggregate(
-    correctness: dict, timing: dict, artifacts: dict, compile_stats: dict
+    correctness: dict,
+    timing: dict,
+    generated: dict,
+    artifacts: dict,
+    compile_stats: dict,
 ) -> list[dict]:
     case = f"llama/persist_grow/N={N_LAYERS}"
     out = [
@@ -298,6 +338,24 @@ def aggregate(
                 "unit": "x",
                 "value": timing["ratio"],
                 "range": timing["bound"],
+            }
+        )
+    for metric, unit in (
+        ("ttft_ms", "ms"),
+        ("prompt_tok_s", "tok/s"),
+        ("decode_tok_s", "tok/s"),
+    ):
+        if generated.get(metric) is not None:
+            out.append(
+                {"name": f"{case}/{metric}", "unit": unit, "value": generated[metric]}
+            )
+    if generated.get("greedy_agree") is not None:
+        out.append(
+            {
+                "name": f"{case}/greedy_agree",
+                "unit": "tokens",
+                "value": generated["greedy_agree"],
+                "range": f"of {generated['greedy_total']} vs numpy_llama_ref",
             }
         )
     for metric, unit in (
@@ -380,6 +438,7 @@ def main(argv=None) -> int:
     built = compiled["built"]
     correctness = parse_correctness("", 1)
     timing = parse_timing("")
+    generated = parse_generate("")
     artifacts: dict = {}
     log = (gen.stdout + gen.stderr) if gen else ""
     log += compiled["log"]
@@ -393,12 +452,15 @@ def main(argv=None) -> int:
             timed = run_timed(env)
             timing = parse_timing(timed.stdout + timed.stderr)
             log += timed.stdout + timed.stderr
+            gen_ran = run_generate(env)
+            generated = parse_generate(gen_ran.stdout + gen_ran.stderr)
+            log += gen_ran.stdout + gen_ran.stderr
 
     print(log)
     case = f"llama/persist_grow/N={N_LAYERS}"
     failed = [] if correctness["passed"] else [case]
 
-    write(args.out, aggregate(correctness, timing, artifacts, compiled))
+    write(args.out, aggregate(correctness, timing, generated, artifacts, compiled))
     write(
         args.meta,
         {
@@ -409,6 +471,7 @@ def main(argv=None) -> int:
                     "case": case,
                     **correctness,
                     **timing,
+                    **generated,
                     **artifacts,
                     **{k: v for k, v in compiled.items() if k not in ("built", "log")},
                 }

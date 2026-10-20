@@ -23,7 +23,9 @@ up and qkv outputs go to `stage` too, where the SiLU and RoPE cores fill
 from. Each layer the RoPE row of the token's position rides the head of
 every weight lane. `stage` persists across dispatches: the sampled token's
 seed goes to the residual position of layer 0's o slot, where the next
-token's first norm reads it.
+token's first norm reads it. A prompt token's slot starts instead with the
+seed the lm_head core makes of the token's embed row (llama_embed_seed), which
+it fetches from the lm_head's weights, drained to the same place.
 """
 
 import argparse
@@ -34,6 +36,7 @@ import numpy as np
 from aie.dialects.arith import (
     CmpIPredicate,
     addi,
+    andi,
     cmpi,
     constant,
     divsi,
@@ -42,6 +45,7 @@ from aie.dialects.arith import (
     ori,
     remsi,
     shli,
+    shrui,
 )
 from aie.extras.types import i32, index
 from aie.helpers.taplib import TensorAccessPattern
@@ -284,7 +288,7 @@ def build(
     t_wlm = _i8(WLM_SLOT)
     t_rec = _i8(REC_BYTES)
 
-    # Per dispatch (see test_chain_persist_grow_mh.dispatch_params): the
+    # Per dispatch (see llama_decode.DecodeShape.params): the
     # tokens it generates, read by every core; t0, read by the attention
     # cores; the RoPE row offset of t0; per token slot t < P_MAX, whether it
     # runs (pass{t} is 1 or 0, and every transfer of slot t moves that many
@@ -298,6 +302,15 @@ def build(
     p_row = [ScratchpadParameter(f"row{t}", np.int32) for t in range(P_MAX)]
     # The sampler's, as aie2_gemv_array.sample_param_values gives them.
     p_sample = [ScratchpadParameter(name, np.int32) for name in SAMPLE_PARAMS]
+    # Each token slot starts from an embed seed the lm_head core makes of one
+    # row of an lm_head weight slot: for a prompt token, its row (gat{t} the
+    # weight slot's offset in lmw, bits 2t..2t+1 of `rows` the row), which
+    # goes to the stage's seed slot (sd{t}) as the token's input; for a
+    # generated token, any row, which goes to the stage's discard slot, the
+    # previous token's sample being its input.
+    p_gat = [ScratchpadParameter(f"gat{t}", np.int32) for t in range(P_MAX)]
+    p_sd = [ScratchpadParameter(f"sd{t}", np.int32) for t in range(P_MAX)]
+    p_rows = ScratchpadParameter("rows", np.int32)
 
     # --- the array ---
     of_act = ObjectFifo(t_act, depth=2, name="act")
@@ -743,12 +756,16 @@ def build(
         [t_vec, t_wlm, _f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1)]
         + [np.int32],
     )
-    k_sample = llama_kernels.topk_sample(kset=KSET).bind(
+    KTS = llama_kernels.topk_sample(kset=KSET)
+    k_embed = KTS.bind("llama_embed_seed", [t_wlm, t_vec, np.int32])
+    k_sample = KTS.bind(
         "llama_topk_finalize_packed",
         [_f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1), _i32a(3), t_rec],
     )
 
-    def w_lm(c_h, c_w, c_rec, c_seed, sl, sg, ss, sr, slen, pr, n, ki, kf, *sample):
+    def w_lm(
+        c_h, c_w, c_rec, c_seed, sl, sg, ss, sr, slen, pr, n, rows, ki, kf, ke, *sample
+    ):
         # The scratchpad keeps 30 bits a word, so the 32-bit temperature bits
         # and seed arrive as 16-bit halves.
         t_lo, t_hi, top_k, s_lo, s_hi = (p.read() for p in sample)
@@ -756,7 +773,19 @@ def build(
         pr[0] = ori(shli(t_hi, c16), t_lo)
         pr[1] = top_k
         pr[2] = ori(shli(s_hi, c16), s_lo)
-        for _ in range_(index_cast(index(), n.read())):
+        row_bits = rows.read()
+        for tok in range_(index_cast(index(), n.read())):
+            w = c_w.acquire(1)
+            s = c_seed.acquire(1)
+            ke(
+                w,
+                s,
+                andi(shrui(row_bits, muli(_i32(tok), _const_i32(2))), _const_i32(3)),
+            )
+            for i in range_(D + 8, ACT_BYTES):
+                s[i] = 0
+            c_seed.release(1)
+            c_w.release(1)
             for _ in range_(2 * N_LAYERS):
                 c_h.acquire(1)
                 c_h.release(1)
@@ -795,8 +824,10 @@ def build(
                 ),
                 Buffer(_i32a(3), name="lm_params"),
                 p_passes,
+                p_rows,
                 k_insert,
                 k_sample,
+                k_embed,
                 *p_sample,
             ],
             wait_for_parameters=True,
@@ -875,6 +906,26 @@ def build(
 
         for tok in range(P_MAX):
             on = p_on[tok]
+            step(
+                on,
+                (
+                    wlm.fill,
+                    dict(
+                        source=lmw,
+                        tap=linear_tap(lmw_total, 0, WLM_SLOT),
+                        offset_parameter=p_gat[tok],
+                    ),
+                ),
+                (
+                    seed.drain,
+                    dict(
+                        dest=stage,
+                        tap=linear_tap(stage_total, 0, ACT_BYTES),
+                        offset_parameter=p_sd[tok],
+                        wait=True,
+                    ),
+                ),
+            )
             for L in range(N_LAYERS):
                 o_at = slots[L, "o"]
                 d_at = slots[L, "d"]

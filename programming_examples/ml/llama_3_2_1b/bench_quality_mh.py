@@ -16,9 +16,9 @@ For each prompt:
 
 Numpy-only by default (orders of magnitude faster than device for 20
 prompts). Pass --device to run each prompt through the NPU decode
-(aie2_decode.py) instead, one token a dispatch from an empty KV cache: the
-host writes each prompt token's embed seed into the stage, and the device's
-token after the last one is the prediction.
+(aie2_decode.py) instead, from an empty KV cache: the prompt's tokens are the
+device's input tokens, and its token after the last one is the prediction.
+Tokenizing needs tiktoken (`pip install tiktoken`).
 
 Run:
   python bench_quality_mh.py                     # numpy only, ~2-3 min
@@ -33,15 +33,13 @@ import sys
 import time
 from pathlib import Path
 
-import aie.iron as iron
 import numpy as np
 from accuracy_vs_hf import RefModel, ref_forward_logits
-from aie2_decode import ACT_BYTES, REC_BYTES, build, kv_words
-from aie2_layer_mh import ACT_SCALE, HEAD_D, INV_ACT_SCALE, SILU_GATE_SCALE, D
+from aie2_layer_mh import ACT_SCALE, HEAD_D, INV_ACT_SCALE, SILU_GATE_SCALE
 from gen_exp_lut import exp_lut
 from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
 from gen_silu_lut import silu_lut
-from llama_npu import DispatchSession
+from llama_decode import Decoder, DecodeShape
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_real_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import (
@@ -51,18 +49,6 @@ from numpy_llama_ref import (
     load_tokenizer,
     rope_cos_sin,
     rope_table,
-)
-from test_chain_persist_grow_mh import (
-    ATTN_CORES,
-    ONESTREAM_KSET,
-    P_MAX,
-    SEED_AT,
-    dispatch_params,
-    embed_seed_ref,
-    pack_lmw,
-    pack_stage,
-    pack_wblob,
-    tokens_of,
 )
 from test_flowkv import EXP_QUANT_SCALE
 
@@ -205,74 +191,6 @@ def bf16_ref_next_token(token_ids):
     return int(np.argmax(logits[-1]))
 
 
-def device_setup(model, layers):
-    """Compile the decode and load its weights, for `device_next_token`.
-
-    Args:
-        model: numpy_llama_ref's model (the lm_head and final norm).
-        layers: The layers' weights and norms (gen_real_layer_mh).
-
-    Returns:
-        The session and the weight, lm_head and stage tensors.
-    """
-    return {
-        "session": DispatchSession(
-            build,
-            None,
-            P_MAX=P_MAX,
-            N_LAYERS=N_LAYERS,
-            T=T,
-            KSET=ONESTREAM_KSET,
-            ATTN_CORES=ATTN_CORES,
-        ),
-        "w": iron.tensor(pack_wblob(layers, rope_table(T, HEAD_D)), dtype=np.int8),
-        "lmw": iron.tensor(
-            pack_lmw(model.embed_i8, model.embed_sc, model.final_norm), dtype=np.int8
-        ),
-        "stage": pack_stage(
-            layers, model.final_norm, np.zeros(D, np.int8), np.float32(0)
-        ),
-    }
-
-
-def device_next_token(model, token_ids, dev):
-    """The NPU decode's next token after `token_ids`.
-
-    One dispatch a prompt token, from an empty KV cache: the host writes the
-    token's embed seed into the stage's seed slot (the seed the device's
-    sampler feeds back for its own tokens), and the device appends the
-    token's KV row; its token after the last prompt token is the prediction.
-
-    Args:
-        model: numpy_llama_ref's model (its embed table).
-        token_ids: The prompt's token ids.
-        dev: `device_setup`'s.
-
-    Returns:
-        The predicted token id.
-
-    Raises:
-        ValueError: The prompt does not fit the KV cache.
-    """
-    if len(token_ids) > T:
-        raise ValueError(f"{len(token_ids)} prompt tokens do not fit in T={T}")
-    kv_t = iron.tensor(np.zeros(kv_words(T, N_LAYERS), np.int32), dtype=np.int32)
-    stage_t = iron.tensor(dev["stage"], dtype=np.int8)
-    out_t = iron.zeros([P_MAX * REC_BYTES], dtype=np.int8)
-    for pos, tok in enumerate(token_ids):
-        xin, sc = embed_seed_ref(model.embed_i8[tok], float(model.embed_sc[tok]))
-        seed = np.zeros(ACT_BYTES, np.int8)
-        seed[:D] = xin
-        seed[D : D + 4] = np.frombuffer(np.float32(sc).tobytes(), np.int8)
-        stage_t[SEED_AT : SEED_AT + ACT_BYTES] = seed
-        dev["session"](
-            [dev["w"], kv_t, dev["lmw"], out_t, stage_t],
-            **dispatch_params(pos, 1, (0.0, 0, 0)),
-        )
-    out_t.to("cpu")
-    return tokens_of(out_t.numpy(), 1)[0]
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -315,8 +233,8 @@ def main():
     parser.add_argument(
         "--device",
         action="store_true",
-        help="prefill and predict on the NPU (aie2_decode.py, one token a "
-        "dispatch) instead of the numpy INT8 chain",
+        help="prefill and predict on the NPU (aie2_decode.py) instead of the "
+        "numpy INT8 chain",
     )
     opts = parser.parse_args()
 
@@ -337,9 +255,14 @@ def main():
     cos_lut, sin_lut = rope_cos_sin(np.arange(T), HEAD_D)
     print(f"loaded {N_LAYERS} mh layers + lm_head\n", flush=True)
 
-    dev = None
+    decoder = None
     if opts.device:
-        dev = device_setup(model, layers)
+        decoder = Decoder(
+            DecodeShape(N_LAYERS, T),
+            layers,
+            (model.embed_i8, model.embed_sc, model.final_norm),
+            rope_table(T, HEAD_D),
+        )
         print(f"device mode: N={N_LAYERS} decode on the NPU\n", flush=True)
 
     indices = (
@@ -361,8 +284,8 @@ def main():
             ref_tok = fp16_ref_next_token(model, ids)
         t_fp16 = time.time() - t0
         t0 = time.time()
-        if dev is not None:
-            our_tok = device_next_token(model, ids, dev)
+        if decoder is not None:
+            our_tok = decoder.generate(ids, 1, (0.0, 0, 0))[0][0]
         else:
             our_tok = int8_chain_next_token(
                 model,

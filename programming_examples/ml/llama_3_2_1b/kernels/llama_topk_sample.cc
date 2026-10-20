@@ -127,6 +127,45 @@ static inline float xoshiro_uniform(Xoshiro128 &g) {
   return (float)(r >> 8) * (1.0f / 16777216.0f);
 }
 
+// The embed seed of one embed row: the row requantized to its own absmax,
+// out[kD + 8] = [int8 row | f32 scale | 0]. embed_sc cancels
+// (test_chain_persist_grow_mh.embed_seed_ref).
+static void embed_seed(const int8_t *restrict row, float embed_sc,
+                       int8_t *restrict seed) {
+  ::aie::vector<int8, kVec> hi = ::aie::load_unaligned_v<kVec>(row);
+  ::aie::vector<int8, kVec> lo = hi;
+  for (int c = 1; c < kD / kVec; c++) {
+    ::aie::vector<int8, kVec> v = ::aie::load_unaligned_v<kVec>(row + c * kVec);
+    hi = ::aie::max(hi, v);
+    lo = ::aie::min(lo, v);
+  }
+  int32_t amax = ::aie::reduce_max(hi);
+  if (-(int32_t)::aie::reduce_min(lo) > amax)
+    amax = -(int32_t)::aie::reduce_min(lo);
+  if (amax < 1)
+    amax = 1;
+  float inv = sw_recip((float)amax) * 127.0f; // 127/amax
+  // (float)row * inv and round_to_i8 on 16 lanes: vec_mul_rne is the soft
+  // `*`, and vec_round_to_i8 rounds as round_to_i8 does.
+  const ::aie::saturation_mode prev_sat =
+      ::aie::swap_saturation(::aie::saturation_mode::saturate);
+  const ::aie::rounding_mode prev_rnd =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+  ::aie::vector<float, 16> inv_v = ::aie::broadcast<float, 16>(inv);
+  for (int c = 0; c < kD / 16; c++)
+    ::aie::store_v(
+        seed + c * 16,
+        vec_round_to_i8(vec_mul_rne(
+            ::aie::to_float<float>(::aie::load_unaligned_v<16>(row + c * 16)),
+            inv_v)));
+  ::aie::set_rounding(prev_rnd);
+  ::aie::set_saturation(prev_sat);
+  float scale = (float)amax * embed_sc * (1.0f / 127.0f);
+  memcpy(seed + kD, &scale, 4);
+  int32_t zero = 0;
+  memcpy(seed + kD + 4, &zero, 4);
+}
+
 extern "C" {
 
 // Insert one streamed slot of kNTile rows into the resident top-k set
@@ -333,41 +372,7 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
 
   token[0] = set_gidx[winner];
 
-  // Embed gather: requant the winner's resident row. embed_sc cancels
-  // (test_chain_persist_grow_mh.embed_seed_ref).
-  const int8_t *row = set_row + winner * kD;
-  ::aie::vector<int8, kVec> hi = ::aie::load_unaligned_v<kVec>(row);
-  ::aie::vector<int8, kVec> lo = hi;
-  for (int c = 1; c < kD / kVec; c++) {
-    ::aie::vector<int8, kVec> v = ::aie::load_unaligned_v<kVec>(row + c * kVec);
-    hi = ::aie::max(hi, v);
-    lo = ::aie::min(lo, v);
-  }
-  int32_t amax = ::aie::reduce_max(hi);
-  if (-(int32_t)::aie::reduce_min(lo) > amax)
-    amax = -(int32_t)::aie::reduce_min(lo);
-  if (amax < 1)
-    amax = 1;
-  float inv = sw_recip((float)amax) * 127.0f; // 127/amax
-  // (float)row * inv and round_to_i8 on 16 lanes: vec_mul_rne is the soft
-  // `*`, and vec_round_to_i8 rounds as round_to_i8 does.
-  const ::aie::saturation_mode prev_sat =
-      ::aie::swap_saturation(::aie::saturation_mode::saturate);
-  const ::aie::rounding_mode prev_rnd =
-      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-  ::aie::vector<float, 16> inv_v = ::aie::broadcast<float, 16>(inv);
-  for (int c = 0; c < kD / 16; c++)
-    ::aie::store_v(
-        seed + c * 16,
-        vec_round_to_i8(vec_mul_rne(
-            ::aie::to_float<float>(::aie::load_unaligned_v<16>(row + c * 16)),
-            inv_v)));
-  ::aie::set_rounding(prev_rnd);
-  ::aie::set_saturation(prev_sat);
-  float scale = (float)amax * set_scale[winner] * (1.0f / 127.0f);
-  memcpy(seed + kD, &scale, 4);
-  int32_t zero = 0;
-  memcpy(seed + kD + 4, &zero, 4);
+  embed_seed(set_row + winner * kD, set_scale[winner], seed);
 }
 
 // Packed-output finalize: identical sampling, but writes BOTH the next-token
@@ -391,6 +396,17 @@ void llama_topk_finalize_packed(float *restrict set_logit,
   llama_topk_finalize(set_logit, set_gidx, set_scale, set_row, set_len, params,
                       &token, out);
   memcpy(out + kD + 4, &token, 4);
+}
+
+// The embed seed of row `row` of one lm_head weight slot, [64 B prefix |
+// kNTile int8 rows | kNTile i32 bias | kNTile f32 embed_sc]: a prompt
+// token's layer-0 input.
+void llama_embed_seed(int8_t *restrict slot, int8_t *restrict seed,
+                      int32_t row) {
+  constexpr int kPrefix = 64;
+  float embed_sc;
+  memcpy(&embed_sc, slot + kPrefix + kNTile * kD + kNTile * 4 + row * 4, 4);
+  embed_seed(slot + kPrefix + row * kD, embed_sc, seed);
 }
 
 } // extern "C"

@@ -4,7 +4,7 @@
 #
 """The decode (aie2_decode.py) against the numpy oracle.
 
-Each dispatch generates up to P_MAX tokens from a position t0, each token's
+Each dispatch generates up to 4 tokens from a position t0, each token's
 embed seed feeding the next through the stage, and appends each token's KV row
 to the DDR cache the next tokens attend. The layers are a seeded random fixture
 with a random KV prefix of t0 rows; the lm_head is the real embed table (or
@@ -32,47 +32,35 @@ import aie.iron as iron
 import numpy as np
 from aie2_decode import (
     ACT_BYTES,
-    GAMMA_AT,
     KV_BLOCK_WORDS,
-    KV_ROW_WORDS,
     KV_TB,
-    LANE_BYTES,
+    LMW_GAMMA_BYTES,
     REC_BYTES,
     VOCAB,
     WLM_TOTAL,
-    build,
-    kv_blocks,
-    kv_words,
-    stage_layout,
     wblob_layout,
 )
-from aie2_gemv_array import LAYER, N_CORES, RESID_OFF, sample_param_values
 from aie2_layer_mh import (
-    CS_BYTES,
     HEAD_D,
     N_HEADS_KV,
-    N_TILE,
     SILU_GATE_SCALE,
     D,
 )
 from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
 from gen_silu_lut import silu_lut
-from llama_npu import DispatchSession
+from llama_decode import Decoder, DecodeShape, embed_seed_ref, tokens_of
 from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import EMB_DIM, VOCAB_SIZE, _load_bf16, _load_qw, rope_table
 from numpy_topk_sample import topk_sample_reference
 from test_flowkv import EXP_QUANT_SCALE as FKV_EXP_QUANT_SCALE
-from test_gemv_array import pack_lane
-from test_layer_mh import pack_perchan_slots
 from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
 
 T = int(os.environ.get("LLAMA_CHAIN_T", "128"))
 N_LAYERS = int(os.environ.get("LLAMA_CHAIN_N", "2"))
 ONESTREAM_KSET = int(os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "8"))
-P_MAX = 4
-ATTN_CORES = 2
+SHAPE = DecodeShape(N_LAYERS, T, ONESTREAM_KSET)
 DATA_DIR = Path(__file__).parent / "data"
 
 
@@ -92,35 +80,6 @@ def synthetic_lm_weights(seed, rows_per_chunk=8192):
         embed_i8[r0:r1], embed_sc[r0:r1] = quant_int8_perchan_absmax(rows)
     gamma = rng.normal(2.35, 0.28, size=D).astype(bfloat16)
     return embed_i8, embed_sc, gamma
-
-
-def pack_lmw(embed_i8, embed_sc, gamma):
-    bias = np.zeros(VOCAB, np.int32)
-    wpacked = pack_perchan_slots(
-        embed_i8, embed_sc.astype(np.float32), bias, N_TILE, prefix_bytes=b"\x00" * 64
-    )
-    assert wpacked.size == WLM_TOTAL, (wpacked.size, WLM_TOTAL)
-    gbytes = np.frombuffer(gamma.tobytes(), dtype=np.int8)
-    blob = np.zeros(gbytes.size + WLM_TOTAL, dtype=np.int8)
-    blob[: gbytes.size] = gbytes
-    blob[gbytes.size :] = wpacked
-    return blob
-
-
-def embed_seed_ref(row_i8, embed_sc):
-    amax = int(np.max(np.abs(row_i8.astype(np.int32))))
-    if amax < 1:
-        amax = 1
-    inv = (np.float32(127.0) / np.float32(amax)).astype(np.float32)
-    xin = np.empty(D, np.int8)
-    for i in range(D):
-        v = np.float32(np.float32(row_i8[i]) * inv)
-        r = np.floor(v + 0.5) if v >= 0 else np.ceil(v - 0.5)
-        xin[i] = np.int8(np.clip(r, -128, 127))
-    scale = np.float32(
-        np.float32(amax) * np.float32(embed_sc) * np.float32(1.0 / 127.0)
-    )
-    return xin, scale
 
 
 def build_fixtures(seed, p0, n_tok):
@@ -175,7 +134,7 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
             attn_perslot=True,
             attn_lut=True,
             attn_tb=KV_TB,
-            attn_cores=ATTN_CORES,
+            attn_cores=SHAPE.attn_cores,
             attn_interleaved=True,
         )
         layers[L]["scales"] = scales
@@ -188,155 +147,7 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
     return logits, xo_i8, np.float32(xo_scale)
 
 
-SEED_AT = stage_layout(N_LAYERS)[0][0, "o"] + RESID_OFF
-FINAL_AT = stage_layout(N_LAYERS)[2] + RESID_OFF
 DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
-LMW_GAMMA_BYTES = 2 * D
-
-
-def dispatch_params(t0, passes, sample):
-    """The design's ScratchpadParameters for one dispatch.
-
-    Args:
-        t0: The position of the dispatch's first token.
-        passes: The tokens it generates, 1..P_MAX.
-        sample: The sampler's (temperature, top_k, seed).
-
-    Returns:
-        The parameter values by name: passes; t0; its RoPE table row's
-        offset; per token slot t < P_MAX, whether it runs (pass{t}) and, for
-        a token at position p = t0 + t, the KV blocks it reads (kvb{t}) and
-        its row's word offset within a (layer, half) region (row{t}); the
-        sampler's.
-    """
-    temperature, top_k, seed = sample
-    params = {
-        "passes": passes,
-        "t0": t0,
-        "cs_off": t0 * CS_BYTES,
-        **sample_param_values(temperature, top_k, seed, ONESTREAM_KSET),
-    }
-    for t in range(P_MAX):
-        p = t0 + t
-        on = t < passes
-        params[f"pass{t}"] = int(on)
-        params[f"kvb{t}"] = p // KV_TB + 1 if on else 0
-        params[f"row{t}"] = (
-            (p // KV_TB) * KV_BLOCK_WORDS + (p % KV_TB) * KV_ROW_WORDS if on else 0
-        )
-    return params
-
-
-# The decode's time a token at position p, fit to the README's N=16
-# measurements: the lm_head, then per layer its weights and its attention
-# over p rows. amdxdna times a dispatch out after about 5 s.
-LM_HEAD_MS = 19.0
-LAYER_MS = 1.85
-LAYER_MS_PER_ROW = 0.0006
-DISPATCH_BUDGET_MS = 4000.0
-
-
-def passes_for(t0):
-    """The tokens a dispatch from position t0 generates.
-
-    Args:
-        t0: The position of its first token.
-
-    Returns:
-        As many as P_MAX allows, the cache has room for and the dispatch
-        budget fits, and at least one.
-    """
-    n, ms = 0, 0.0
-    while n < min(P_MAX, T - t0):
-        ms += LM_HEAD_MS + N_LAYERS * (LAYER_MS + LAYER_MS_PER_ROW * (t0 + n))
-        if n and ms > DISPATCH_BUDGET_MS:
-            break
-        n += 1
-    return max(n, 1)
-
-
-def pack_wblob(layers, rope):
-    """The array decode's weight blob: each layer's eight weight lanes, then
-    the RoPE table.
-
-    Args:
-        layers: The oracle's layers.
-        rope: bf16 (T, 2 * HEAD_D), numpy_llama_ref.rope_table.
-
-    Returns:
-        int8, wblob_layout(N_LAYERS, T)'s.
-    """
-    off_lanes, off_rope, total = wblob_layout(N_LAYERS, T)
-    w = np.zeros(total, np.int8)
-    for L, layer in enumerate(layers):
-        weights = {
-            p: (
-                layer[f"w{p}_i8"],
-                layer.get(f"b{p}", np.zeros(layer[f"w{p}_i8"].shape[0], np.int32)),
-                layer[f"w{p}_sc"],
-            )
-            for p in LAYER
-        }
-        for c in range(N_CORES):
-            at = off_lanes + (L * N_CORES + c) * LANE_BYTES
-            w[at : at + LANE_BYTES] = pack_lane(weights, LAYER, c)
-    w[off_rope : off_rope + T * CS_BYTES] = rope.view(np.int8).ravel()
-    return w
-
-
-def pack_stage(layers, final_gamma, x_i8, res_scale):
-    """The array decode's stage buffer at the start of a generation: each
-    norm's gamma after the residual it norms, and the first token's seed.
-
-    Args:
-        layers: The oracle's layers.
-        final_gamma: The final norm's bf16 gamma.
-        x_i8: The first token's seed, int8[D].
-        res_scale: Its scale.
-
-    Returns:
-        int8, stage_layout(N_LAYERS)'s.
-    """
-    slots, _, final, _, total = stage_layout(N_LAYERS)
-    st = np.zeros(total, np.int8)
-    gammas = [(slots[L, "o"], layer["gamma_in"]) for L, layer in enumerate(layers)]
-    gammas += [(slots[L, "d"], layer["gamma_post"]) for L, layer in enumerate(layers)]
-    gammas.append((final, final_gamma))
-    for at, g in gammas:
-        at += RESID_OFF + GAMMA_AT
-        st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
-    st[SEED_AT : SEED_AT + D] = x_i8
-    st[SEED_AT + D : SEED_AT + D + 4] = np.frombuffer(
-        np.float32(res_scale).tobytes(), np.int8
-    )
-    return st
-
-
-def pack_kv(layers):
-    """The device's KV cache holding the oracle's caches.
-
-    Args:
-        layers: Per layer, the oracle's T-row kcaches/vcaches and k/v slot
-            scales.
-
-    Returns:
-        int32 (kv_words(T, N_LAYERS),), block-major as the design reads it.
-    """
-    nb = kv_blocks(T)
-    rows = np.zeros((N_LAYERS, N_HEADS_KV, nb * KV_TB, KV_ROW_WORDS * 4), np.int8)
-    for L, layer in enumerate(layers):
-        for h in range(N_HEADS_KV):
-            rows[L, h, :T, :HEAD_D] = layer["kcaches"][h].reshape(T, HEAD_D)
-            rows[L, h, :T, HEAD_D : 2 * HEAD_D] = layer["vcaches"][h].reshape(T, HEAD_D)
-            for i, name in enumerate(("k_scales_slot", "v_scales_slot")):
-                at = 2 * HEAD_D + 4 * i
-                rows[L, h, :T, at : at + 4] = (
-                    layer[name][h].astype(np.float32).view(np.int8).reshape(T, 4)
-                )
-    blocks = rows.reshape(N_LAYERS, 2, N_HEADS_KV // 2, nb, KV_TB, -1)
-    packed = np.ascontiguousarray(blocks.transpose(0, 1, 3, 2, 4, 5))
-    assert packed.size == kv_words(T, N_LAYERS) * 4
-    return packed.view(np.int32).ravel()
 
 
 def time_decode(session, buffers, params, opts):
@@ -394,7 +205,7 @@ def set_pristine(layers, pristine):
         layers[L]["v_scales_slot"] = vslot[L].copy()
 
 
-def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample):
+def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, prompt):
     """Check a dispatch's records against the numpy oracle.
 
     The oracle runs from the caches the caller set and position p0 on,
@@ -409,6 +220,8 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample):
         rope: The RoPE table.
         lm: (embed_i8, embed_sc, final_norm gamma).
         sample: The sampler's (temperature, top_k, seed).
+        prompt: Per token, the prompt token it inputs, or None to input the
+            previous token's sample (the first token: x_i8).
 
     Returns:
         (failed tokens, the last token's final residual and its scale).
@@ -419,6 +232,10 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample):
     hidden = None
     cur_x, cur_sc = x_i8, res_scale
     for t, dev_tok in enumerate(tokens_of(records, passes)):
+        if prompt[t] is not None:
+            cur_x, cur_sc = embed_seed_ref(
+                embed_i8[prompt[t]], float(embed_sc[prompt[t]])
+            )
         for L in range(N_LAYERS):
             layers[L]["cos"] = rope[p0 + t, :HEAD_D]
             layers[L]["sin"] = rope[p0 + t, HEAD_D:]
@@ -463,22 +280,10 @@ def replay(records, passes, x_i8, res_scale, layers, p0, rope, lm, sample):
 def check_final(stage, hidden):
     """Print whether `stage` holds `hidden` as the final residual; return 1 if not."""
     xo_i8, xo_scale = hidden
-    at = stage[FINAL_AT : FINAL_AT + D + 4]
+    at = stage[SHAPE.final_at : SHAPE.final_at + D + 4]
     ok = np.array_equal(at[:D], xo_i8) and at[D:].tobytes() == xo_scale.tobytes()
     print(f"  final hidden: {'PASS' if ok else 'FAIL'}", flush=True)
     return int(not ok)
-
-
-def tokens_of(packed, passes):
-    return [
-        int(
-            np.frombuffer(
-                packed[t * REC_BYTES + D + 4 : t * REC_BYTES + D + 8].tobytes(),
-                np.int32,
-            )[0]
-        )
-        for t in range(passes)
-    ]
 
 
 def main():
@@ -542,14 +347,21 @@ def main():
     p.add_argument(
         "--passes",
         type=int,
-        choices=range(1, P_MAX + 1),
-        help="tokens generated per dispatch (default: passes_for's, per dispatch)",
+        choices=range(1, SHAPE.p_max + 1),
+        help="tokens generated per dispatch (default: DecodeShape.passes_for's, per dispatch)",
     )
     p.add_argument(
         "--split",
         action="store_true",
         help="also generate the first dispatch's tokens one per dispatch, from the "
         "same inputs; the records, KV cache and stage must be byte-identical",
+    )
+    p.add_argument(
+        "--prompt-tokens",
+        type=int,
+        default=0,
+        help="the first this many tokens are a prompt's (seeded random ids), each "
+        "input from its own embed row as the device gathers it, not the sample before",
     )
     p.add_argument(
         "--save-run",
@@ -566,22 +378,34 @@ def main():
     n_disp = opts.dispatches
     p0 = opts.start_pos
     if p0 is None:
-        p0 = min(T // 2, T - n_disp * (opts.passes or P_MAX))
+        p0 = min(T // 2, T - n_disp * (opts.passes or SHAPE.p_max))
     schedule = []
     pos = p0
     for _ in range(n_disp):
-        schedule.append((pos, opts.passes or passes_for(pos)))
+        schedule.append((pos, opts.passes or SHAPE.passes_for(pos)))
         pos += schedule[-1][1]
     passes = schedule[0][1]
     n_tok = pos - p0
+    prompt_ids = np.random.default_rng(fseed + 1).integers(0, VOCAB, opts.prompt_tokens)
+    prompts = [
+        [
+            int(prompt_ids[at - p0]) if at - p0 < opts.prompt_tokens else None
+            for at in range(start, start + n)
+        ]
+        for start, n in schedule
+    ]
     if p0 < 0 or p0 + n_tok > T:
         p.error(f"{n_tok} tokens from position {p0} do not fit in T={T}")
     if (n_disp > 1) + (opts.repeats > 1) + opts.split > 1:
         p.error("--dispatches, --repeats and --split are separate modes")
-    if (opts.save_run or opts.from_run) and (
+    if (opts.save_run or opts.from_run or opts.prompt_tokens) and (
         opts.time or opts.split or opts.repeats > 1
     ):
-        p.error("--save-run and --from-run check a run of --dispatches")
+        p.error(
+            "--save-run, --from-run and --prompt-tokens are for runs of --dispatches"
+        )
+    if opts.prompt_tokens > n_tok:
+        p.error(f"--prompt-tokens {opts.prompt_tokens} is past the {n_tok} tokens")
     config = json.dumps(
         dict(
             n_layers=N_LAYERS,
@@ -591,6 +415,7 @@ def main():
             synthetic=opts.synthetic_weights,
             schedule=schedule,
             sample=sample,
+            prompt_tokens=opts.prompt_tokens,
         )
     )
 
@@ -602,8 +427,6 @@ def main():
         print(f"loading embed/final_norm from {DATA_DIR} ...", flush=True)
         embed_i8, embed_sc = _load_qw(DATA_DIR, "embed", (VOCAB, D))
         gamma = _load_bf16(DATA_DIR, "final_norm", (D,))
-    print("packing lm_head weights (262 MB) ...", flush=True)
-    lmw = pack_lmw(embed_i8, embed_sc, gamma)
     lm = (embed_i8, embed_sc, gamma)
 
     x_i8, res_scale, layers = build_fixtures(fseed, p0, n_tok)
@@ -619,23 +442,14 @@ def main():
         [lyr["v_scales_slot"].copy() for lyr in layers],
     )
 
-    kv0 = pack_kv(layers)
-    stage0 = pack_stage(layers, gamma, x_i8, res_scale)
+    kv0 = SHAPE.pack_kv(layers)
+    stage0 = SHAPE.pack_stage(layers, gamma, x_i8, res_scale)
 
     # --from-run leaves the NPU alone.
-    session = w_t = lmw_t = None
+    decoder = None
     if not opts.from_run:
-        w_t = iron.tensor(pack_wblob(layers, rope), dtype=np.int8)
-        session = DispatchSession(
-            build,
-            opts.elf,
-            P_MAX=P_MAX,
-            N_LAYERS=N_LAYERS,
-            T=T,
-            KSET=ONESTREAM_KSET,
-            ATTN_CORES=ATTN_CORES,
-        )
-        lmw_t = iron.tensor(lmw, dtype=np.int8)
+        print("packing the weights ...", flush=True)
+        decoder = Decoder(SHAPE, layers, lm, rope, opts.elf)
     print(
         f"chain_persist_grow_mh N_LAYERS={N_LAYERS} passes={[n for _, n in schedule]}"
         f" P0={p0} KSET={ONESTREAM_KSET}"
@@ -644,29 +458,26 @@ def main():
         flush=True,
     )
     if opts.time:
-        assert session is not None
+        assert decoder is not None
         return time_decode(
-            session,
+            decoder.session,
             [
-                w_t,
+                decoder.w_t,
                 iron.tensor(kv0, dtype=np.int32),
-                lmw_t,
-                iron.zeros([P_MAX * REC_BYTES], dtype=np.int8),
+                decoder.lmw_t,
+                iron.zeros([SHAPE.p_max * REC_BYTES], dtype=np.int8),
                 iron.tensor(stage0, dtype=np.int8),
             ],
-            dispatch_params(p0, passes, sample),
+            SHAPE.params(p0, passes, sample),
             opts,
         )
 
-    # Each dispatch gets its own input, weight and output tensors; the KV
-    # tensor is created once per run of dispatches and stays on the device,
-    # so a generation loop's dispatches carry the cache with no host copy.
+    # The KV tensor is created once per run of dispatches and stays on the
+    # device, so a generation loop's dispatches carry the cache with no host
+    # copy.
     def dispatch(stage_t, kv_t, params):
-        assert session is not None
-        out_t = iron.zeros([P_MAX * REC_BYTES], dtype=np.int8)
-        session([w_t, kv_t, lmw_t, out_t, stage_t], **params)
-        out_t.to("cpu")
-        return out_t.numpy().copy()
+        assert decoder is not None
+        return decoder.dispatch(kv_t, stage_t, params)[0]
 
     # The oracle follows the device's tokens across dispatches, from the
     # seed each dispatch left; after each, the device's whole KV cache must
@@ -678,14 +489,14 @@ def main():
         # dispatch: a token slot that does not run moves nothing.
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
-        whole = dispatch(stage_t, kv_t, dispatch_params(p0, passes, sample))
+        whole = dispatch(stage_t, kv_t, SHAPE.params(p0, passes, sample))
         kv_t.to("cpu")
         stage_t.to("cpu")
         kv_whole, stage_whole = kv_t.numpy().copy(), stage_t.numpy().copy()
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
         recs = [
-            dispatch(stage_t, kv_t, dispatch_params(p0 + t, 1, sample))
+            dispatch(stage_t, kv_t, SHAPE.params(p0 + t, 1, sample))
             for t in range(passes)
         ]
         kv_t.to("cpu")
@@ -707,10 +518,19 @@ def main():
             carry_fails += not same
         dev_tokens = tokens_of(whole, passes)
         tok_fails, hidden = replay(
-            whole, passes, x_i8, res_scale, layers, p0, rope, lm, sample
+            whole,
+            passes,
+            x_i8,
+            res_scale,
+            layers,
+            p0,
+            rope,
+            lm,
+            sample,
+            [None] * passes,
         )
         hidden_fails += check_final(stage_whole, hidden)
-        wrong = int(np.count_nonzero(kv_whole != pack_kv(layers)))
+        wrong = int(np.count_nonzero(kv_whole != SHAPE.pack_kv(layers)))
         print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
         carry_fails += wrong != 0
     elif opts.repeats > 1:
@@ -719,7 +539,7 @@ def main():
             records = dispatch(
                 iron.tensor(stage0, dtype=np.int8),
                 iron.tensor(kv0, dtype=np.int32),
-                dispatch_params(p0, passes, sample),
+                SHAPE.params(p0, passes, sample),
             )
             toks = tokens_of(records, passes)
             if r == 0:
@@ -734,7 +554,16 @@ def main():
                 return 1
         set_pristine(layers, pristine)
         tok_fails, _ = replay(
-            first, passes, x_i8, res_scale, layers, p0, rope, lm, sample
+            first,
+            passes,
+            x_i8,
+            res_scale,
+            layers,
+            p0,
+            rope,
+            lm,
+            sample,
+            [None] * passes,
         )
     else:
         # Like the KV tensor, the stage tensor stays on the device: the host
@@ -760,7 +589,9 @@ def main():
             for d, (pos, passes) in enumerate(schedule):
                 if d:
                     time.sleep(opts.idle_s)
-                records = dispatch(stage_t, kv_t, dispatch_params(pos, passes, sample))
+                records = dispatch(
+                    stage_t, kv_t, SHAPE.params(pos, passes, sample, prompts[d])
+                )
                 kv_t.to("cpu")
                 stage_t.to("cpu")
                 kv_now = kv_t.numpy()
@@ -789,13 +620,13 @@ def main():
             if n_disp > 1:
                 print(f"dispatch {d} (pos {pos}): tokens {toks}", flush=True)
             fails, hidden = replay(
-                toks_out, passes, x_d, sc_d, layers, pos, rope, lm, sample
+                toks_out, passes, x_d, sc_d, layers, pos, rope, lm, sample, prompts[d]
             )
             tok_fails += fails
             # The device appended exactly the rows the oracle did, and wrote
             # nothing else.
             kv_dev[kv_idx] = kv_val
-            wrong = int(np.count_nonzero(kv_dev != pack_kv(layers)))
+            wrong = int(np.count_nonzero(kv_dev != SHAPE.pack_kv(layers)))
             print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
             carry_fails += wrong != 0
             # The oracle's next layer-0 input is the last token's seed (body +
@@ -810,7 +641,9 @@ def main():
             hidden_fails += check_final(stage, hidden)
             seed_left = np.zeros(ACT_BYTES, dtype=np.int8)
             seed_left[: D + 4] = toks_out[last : last + D + 4]
-            if not np.array_equal(stage[SEED_AT : SEED_AT + ACT_BYTES], seed_left):
+            if not np.array_equal(
+                stage[SHAPE.seed_at : SHAPE.seed_at + ACT_BYTES], seed_left
+            ):
                 print(f"  seed carry: FAIL (dispatch {d})", flush=True)
                 carry_fails += 1
 
