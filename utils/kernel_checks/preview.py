@@ -404,11 +404,11 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
     ran += "chain_persist_grow_mh: 4/4 tokens PASS\n"
     timed = (
         f"per-token: {ms:.2f} ms ({1000 / ms:.2f} tok/s)\n"
-        "ratio:        1.84x  -> COMPUTE-bound (vectorization is the lever)\n"
+        "ratio:        1.84x  -> compute-bound\n"
     )
     generated = (
         f"prompt 6 tokens, generated 32: TTFT {ttft:.1f} ms "
-        f"({6000 / ttft:.1f} prompt tok/s), decode {1000 / ms:.2f} tok/s\n"
+        f"({6000 / ttft:.1f} prompt tok/s), decode {970 / ms:.2f} tok/s\n"
         "check: 22/32 tokens are numpy_llama_ref's argmax\n"
     )
     correctness = llama_chain_hw.parse_correctness(ran, 0)

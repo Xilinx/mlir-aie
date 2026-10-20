@@ -172,9 +172,7 @@ def time_decode(session, buffers, params, opts):
     )
     dma_floor_ms = bytes_per_token / (DDR_BW_GBPS * 1e9) * 1e3
     ratio = per_token_ms / dma_floor_ms
-    verdict = (
-        "DMA-bound" if ratio < 1.5 else "COMPUTE-bound (vectorization is the lever)"
-    )
+    verdict = "DMA-bound" if ratio < 1.5 else "compute-bound"
     print(
         f"per-dispatch: n={opts.n_iters} median={disp_med:.2f} ms "
         f"min={arr.min():.2f} max={arr.max():.2f} std={arr.std():.2f}"

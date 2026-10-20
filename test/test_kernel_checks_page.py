@@ -1214,7 +1214,7 @@ const llamaRecord = (id, date, tok_s, extra) => ({
     tokens_passed: { value: 4, unit: 'tokens', range: 'of 4' },
     tok_s: { value: tok_s, unit: 'tok/s' },
     ms_per_token: { value: 1000 / tok_s, unit: 'ms' },
-    dma_floor_ratio: { value: 20.36, unit: 'x', range: 'COMPUTE-bound' },
+    dma_floor_ratio: { value: 20.36, unit: 'x', range: 'compute-bound' },
     elf_bytes: { value: 21460224, unit: 'bytes' },
     pdi_bytes: { value: 243376, unit: 'bytes' },
     n_cores: { value: 30, unit: 'cores' },
@@ -1296,12 +1296,12 @@ def test_the_llama_card_reads_decode_rate_higher_as_better(page):
 assert.equal(llama.section, 'performance');
 const card = componentBand(llama, llamaIndex, llamaAfter, NOW, llamaBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every decoded token matched the oracle. 16 layers decode at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (COMPUTE-bound).');
+             'Every decoded token matched the oracle. 16 layers decode at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
 // Fewer tokens per second is the regression; time per token repeats it and is not listed twice.
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:persist_grow, N 16 tokens / s −7.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [LLAMA]);
 const [header, grid] = card.cards[0].children;
-assert.equal(header.text, '16 layerspersistent decode, 4 tokens per dispatchCOMPUTE-bound');
+assert.equal(header.text, '16 layerspersistent decode, 4 tokens per dispatchcompute-bound');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['Tokens / s', 'Time / token', 'Over the DMA floor', 'Tokens verified',
   'Compiled sizes', 'Cores']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);
@@ -1438,6 +1438,38 @@ assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n'), [
   '# every run, as the nightly runs them:',
   'python utils/component_checks/yolo26n_hw.py --out perf.json --meta meta.json',
 ]);
+""")
+
+
+def test_llama_and_yolo26n_chart_their_trends_beside_the_compile_tabs(page):
+    page(COMPONENT_RUNS + LLAMA_NIGHTS + YOLO_NIGHTS + """
+// The latest llama night also ran generate.py and profiled its compile's stages.
+const staged = { decode_tok_s: { value: 4.2, unit: 'tok/s' }, compile_place_s: { value: 1, unit: 's' },
+                 compile_route_s: { value: 0.03, unit: 's' }, compile_package_s: { value: 0.07, unit: 's' } };
+const llamaData = collect(historiesOf('llama-chain-hw', [llamaBefore, { ...llamaAfter, rows: { [LLAMA]: { ...llamaAfter.rows[LLAMA], ...staged } } }]));
+// A tab with no history is left out; generate's rate is a second line beside the timed decode's.
+const box = trendBox(llamaData, llama.trend, '');
+assert.deepEqual(box.children[0].children[0].children.map(b => b.textContent),
+                 ['Tokens / s', 'Time / token', 'Compile time', 'Compile memory', 'Compile stages']);
+const rate = trendConfig(llamaData, llama.trend[0]);
+assert.deepEqual(rate.data.datasets.map(d => [d.label, d.data]), [['timed decode', [4.7, 4.37]], ['generate', [null, 4.2]]]);
+// One line needs no legend; two do.
+assert.equal(trendConfig(llamaData, llama.trend[1]).options.plugins.legend.display, false);
+assert.equal(rate.options.plugins.legend.display, true);
+// A tab's nights are those that published its metrics; the small stages fold into one line.
+const stages = trendConfig(llamaData, COMPILE_TABS[2]);
+assert.deepEqual(stages.data.datasets.map(d => [d.label, d.data]), [['place', [1]], ['route, package and other', [0.1]]]);
+// Stages sit decades apart, so on a log axis; two batches' times do not.
+assert.equal(stages.options.scales.y.type, 'logarithmic');
+// YOLO26n: batch 1 beside batch 8, per image and per second, then the compile tabs.
+const yoloData = collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter]));
+const perImage = trendConfig(yoloData, yolo.trend[0]);
+assert.deepEqual(perImage.data.datasets.map(d => [d.label, d.data]), [['batch 1', [5000, 5400]], ['batch 8', [3000, 3000]]]);
+assert.equal(perImage.options.scales.y.title.text, 'Time per image (µs)');
+assert.equal(perImage.options.scales.y.type, 'linear');
+const yoloBox = trendBox(yoloData, yolo.trend, 'fps_b8');
+assert.equal(yoloBox.metric(), 'fps_b1');
+assert.ok(yoloBox.children[1].textContent.startsWith('Images / s: images per second at batch 1 and batch 8'), yoloBox.children[1].textContent);
 """)
 
 
@@ -1732,9 +1764,9 @@ const compiled = data.series.find(s => s.kase === 'mobilenet/effort=default' && 
 assert.deepEqual(compiled.byMode.get('turbo').map(p => p.row.value), [40, 40]);
 // Series that are not per seed pass through.
 assert.ok(data.series.some(s => s.kase === 'mobilenet' && s.metric === 'failed_seeds'));
-// The trend chart's compile line is that one series, named for every batch.
-const trend = seedTrendConfig(read, 'compile_s');
-assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]), [['every batch', [40, 40]]]);
+// The trend chart's compile tab draws that series cold beside warm.
+const trend = trendConfig(read, COMPILE_TABS[0]);
+assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]), [['cold', [40, 40]], ['warm', [4.6, 4.6]]]);
 // Charted like a kernel case: one chart per batch, the mean moved +3.5%, under 5%.
 const groups = chartGroups(perImage);
 assert.equal(groups.length, 2);
@@ -1758,7 +1790,7 @@ componentBand(hw, hwIndex, after, NOW, before);
 const seed3 = chart.data.datasets.find(d => d.label === 'seed 3');
 assert.deepEqual(seed3.data, [{ x: 1, y: 295.7 }, { x: 16, y: 120 }]);
 // So does the trend chart, a line per batch.
-const trend = seedTrendConfig(collect(historiesOf('sa-placer-hw', [before, after])), 'us_per_image');
+const trend = trendConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend[0]);
 assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => d.label), ['batch 1', 'batch 16']);
 """)
 
@@ -1999,13 +2031,14 @@ assert.equal(jobName('build-and-test (aie2p-8col)', 'Linux hardware tests'), 'bu
 def test_performance_is_one_chart_a_line_per_batch(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
-const config = seedTrendConfig(data, 'us_per_image');
+const config = trendConfig(data, hw.trend[0]);
 // A line per batch, the mean over the seeds, each with its seed range shaded.
 const lines = config.data.datasets.filter(d => !d.band);
-// The caption says so; a compile metric is one line, since one compile serves every batch.
-const caption = m => seedTrendBox(data, m).children[1].textContent;
+// The caption says so; a compile tab's lines are each the one compile that serves every batch.
+const caption = m => trendBox(data, hw.trend, m).children[1].textContent;
 assert.ok(caption('us_per_image').includes('. A line per batch, the mean over the seeds at default effort;'), caption('us_per_image'));
-assert.ok(caption('compile_s').includes('. One line: a single compile serves every batch, the mean over the seeds'), caption('compile_s'));
+assert.ok(caption('compile_s').startsWith('Compile time: wall time of the whole compile'), caption('compile_s'));
+assert.ok(caption('compile_s').includes('. A single compile serves every batch: the mean over the seeds'), caption('compile_s'));
 assert.deepEqual(lines.map(d => d.label), ['batch 1', 'batch 16']);
 assert.deepEqual(lines[1].data, [98.5, 101.95]);
 assert.equal(config.data.datasets.filter(d => d.band).length, 4);
@@ -2028,22 +2061,27 @@ assert.equal(tips.footer([{ dataIndex: 1 }]), 'Click for the commit');
 config.options.onClick(null, [{ index: 1 }]);
 assert.deepEqual(opened, ['https://github.com/Xilinx/mlir-aie/commit/abcdef123456', '_blank', 'noopener']);
 assert.equal(commitLine({ id: '0123456789abcdef', message: 'x'.repeat(100) + '\\nbody' }), `0123456 ${'x'.repeat(71)}…`);
-// Compile time, seconds, on a plain axis.
-assert.equal(seedTrendConfig(data, 'compile_s').options.scales.y.type, 'linear');
-assert.equal(seedTrendConfig(data, 'compile_s').options.scales.y.title.text, 'Compile time, cold (s)');
+// Compile time, seconds, on a plain axis, cold beside warm, each shaded over the seeds.
+const compile = trendConfig(data, COMPILE_TABS[0]);
+assert.equal(compile.options.scales.y.type, 'linear');
+assert.equal(compile.options.scales.y.title.text, 'Compile time (s)');
+assert.deepEqual(compile.data.datasets.filter(d => !d.band).map(d => d.label), ['cold', 'warm']);
 // Compile peak memory, MB, also on a plain axis.
-assert.equal(seedTrendConfig(data, 'compile_peak_rss_mb').options.scales.y.type, 'linear');
-assert.equal(seedTrendConfig(data, 'compile_peak_rss_mb').options.scales.y.title.text, 'Compile peak memory, cold (MB)');
-// The box: a switch for the measure, drawn once on screen, redrawn on a switch.
-const box = seedTrendBox(data, 'compile_s');
+const memory = trendConfig(data, COMPILE_TABS[1]);
+assert.equal(memory.options.scales.y.type, 'linear');
+assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MB)');
+// The box: a switch for the tab, drawn once on screen, redrawn on a switch.
+// A link to a warm metric opens the tab that draws it; a tab with no history is left out.
+const box = trendBox(data, hw.trend, 'compile_s_warm');
 assert.equal(box.metric(), 'compile_s');
 const seg = box.children[0].children[0];
-assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb', 'compile_s_warm', 'compile_peak_rss_mb_warm']);
+assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb']);
+assert.deepEqual(seg.children.map(b => b.textContent), ['Per image', 'Streaming', 'End-to-end / image', 'Compile time', 'Compile memory']);
 assert.equal(chart.options.scales.y.type, 'linear');
 seg.children[0].on.click();
 assert.equal(box.metric(), 'us_per_image');
 assert.equal(chart.options.scales.y.type, 'logarithmic');
-assert.equal(seedTrendBox(collect([]), '').text, 'No history published yet.');
+assert.equal(trendBox(collect([]), hw.trend, '').text, 'No history published yet.');
 """)
 
 
@@ -2063,7 +2101,7 @@ const canvas = document.createElement('canvas');
 canvas.parentNode = holder;
 holder.append(canvas);
 const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
-const drawn = svgChart(canvas, seedTrendConfig(data, 'us_per_image'));
+const drawn = svgChart(canvas, trendConfig(data, hw.trend[0]));
 // A line and a shaded band per batch, the legend naming the batches.
 assert.deepEqual(drawn.legend, ['batch 1', 'batch 16']);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polyline')).length, 2);

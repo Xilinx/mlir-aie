@@ -894,9 +894,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       ms_per_token: 'NPU time per decoded token, the median dispatch over the tokens it generates',
       dma_floor_ratio: 'time per token over the time its weight and KV bytes take at 120 GB/s of DDR bandwidth; under 1.5× it is DMA-bound, else compute-bound, as the card\'s header says',
       tokens_passed: 'decoded tokens that matched the numpy oracle\'s, of those the dispatch generated',
+      ttft_ms: 'time to the first generated token, from generate.py\'s prompt run through the decode',
+      prompt_tok_s: 'prompt tokens per second as generate.py runs them; higher is better',
+      decode_tok_s: 'generated tokens per second as generate.py decodes; higher is better',
+      greedy_agree: 'generated tokens that matched the argmax of numpy_llama_ref, the INT8 recipe\'s plain-numpy forward',
       xclbin_bytes: 'size of the xclbin the compile wrote',
       instr_bytes: 'size of the runtime-sequence instruction stream the host submits with each dispatch',
-      elf_bytes: 'size of the full ELF the compile wrote: the device image and the runtime sequence\'s control code',
       pdi_bytes: 'size of the device image the xclbin carries: every core\'s ELF plus the array configuration',
       n_cores: 'compute cores the placed design uses',
       us_per_image_b1: 'time of one dispatch of one image, from the host, the median of 5, as yolo26n.py --time reports it',
@@ -933,7 +936,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       bank_pair_sharing: 'Bank sharing', wall_s: 'Wall time', unrouted: 'Unrouted', hop_ratio: 'Hops ÷ constructed',
       amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
       survived_corruptions: 'Missed corruptions', tok_s: 'Tokens / s', ms_per_token: 'Time / token', dma_floor_ratio: 'Over the DMA floor',
-      tokens_passed: 'Tokens verified', xclbin_bytes: 'xclbin', instr_bytes: 'Instructions', pdi_bytes: 'Device image', n_cores: 'Cores',
+      tokens_passed: 'Tokens verified', ttft_ms: 'Time to first token', prompt_tok_s: 'Prompt tokens / s',
+      decode_tok_s: 'Generate tokens / s', greedy_agree: 'Greedy agreement', xclbin_bytes: 'xclbin', instr_bytes: 'Instructions', pdi_bytes: 'Device image', n_cores: 'Cores',
       us_per_image_b1: 'Per image (b1)', us_per_image_b8: 'Per image (b8)', fps_b1: 'Images / s (b1)', fps_b8: 'Images / s (b8)',
       images_passed: 'Images verified', ort_matches: 'Match onnxruntime', elf_bytes: 'Full ELF',
       ...Object.fromEntries(['', '_warm'].flatMap(suffix => [
@@ -953,6 +957,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const SECTIONS = {
       performance: { title: 'Performance', about: 'MobileNet, Llama 3.2 1B and YOLO26n compiled, run and verified on an NPU2: time per image, tokens per second, compile time and memory, cold and warm, and what the compile wrote.',
                      metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'tok_s', 'ms_per_token', 'dma_floor_ratio', 'tokens_passed',
+                               'ttft_ms', 'prompt_tok_s', 'decode_tok_s', 'greedy_agree',
                                'us_per_image_b1', 'us_per_image_b8', 'fps_b1', 'fps_b8', 'images_passed', 'ort_matches',
                                'compile_s', 'compile_peak_rss_mb', 'compile_s_warm', 'compile_peak_rss_mb_warm',
                                'xclbin_bytes', 'instr_bytes', 'elf_bytes', 'pdi_bytes', 'n_cores'] },
@@ -977,6 +982,19 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         `cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed ${seed} --sa-effort ${EFFORT_VALUES[effort] ?? effort} --batch ${batch}`,
       say: (seed, batch, effort) => `seed ${seed} at batch ${batch}, ${effort} effort`,
     };
+    // The tabs every design's trend chart ends with: compile time and memory,
+    // cold beside warm, and the cold compile's time per aiecc stage, the
+    // small stages folded into one line so each keeps a color of its own.
+    const COMPILE_TABS = [
+      { id: 'compile_s', name: 'Compile time', axis: 'Compile time (s)', lines: [['cold', ['compile_s']], ['warm', ['compile_s_warm']]],
+        about: 'wall time of the whole compile: cold, from a fresh NPU_CACHE_HOME, and warm, keeping only the cold compile\'s kernel objects' },
+      { id: 'compile_peak_rss_mb', name: 'Compile memory', axis: 'Compile peak memory (MB)',
+        lines: [['cold', ['compile_peak_rss_mb']], ['warm', ['compile_peak_rss_mb_warm']]], about: 'peak memory of the whole compile, cold and warm' },
+      { id: 'compile_stages', name: 'Compile stages', axis: 'Cold compile time per stage (s)', log: true,
+        about: 'the cold compile\'s time in each aiecc stage and outside aiecc; the stages overlap, so they can add up past its wall time',
+        lines: [...['place', 'lower', 'kernels', 'codegen', 'link', 'outside_aiecc'].map(k => [COMPILE_STAGES.find(s => s[0] === k)[1], [`compile_${k}_s`]]),
+                ['route, package and other', ['compile_route_s', 'compile_package_s', 'compile_other_s']]] },
+    ];
     // A band is one nightly check's latest record in one section: `id` is
     // its directory under component-checks/, which two bands may share. A
     // failed id ("<fixture>/seed<N>" in the sweep,
@@ -1000,7 +1018,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         cards: placementCards, charts: () => [], summary: placementSummary },
       { id: 'sa-placer-hw', section: 'performance', title: 'MobileNet on NPU2', short: 'MobileNet', ...HW_RUNS, passed: 'Every run passed.',
         about: 'mobilenet placed with seeds 3, 2 and 7, then compiled once and run and verified on an NPU2 at batch 1, 2, 4, 8, 16, 32 and 64, at both the design\'s real default effort and a full-effort baseline -- one card per seed per effort, so a runtime difference between them would show up here, not just in placement cost.',
-        cards: seedCards, trend: true, charts: batchCharts, summary: hardwareSummary },
+        cards: seedCards, charts: batchCharts, summary: hardwareSummary,
+        trend: [{ id: 'us_per_image', axis: 'Time per image (µs)', batches: true },
+                { id: 'streaming_us', axis: 'Streaming time per image (µs)', batches: true },
+                { id: 'e2e_us_per_image', axis: 'End-to-end time per image (µs)', batches: true }, ...COMPILE_TABS] },
       { id: 'llama-chain-hw', section: 'performance', title: 'Llama 3.2 1B decode on NPU2', short: 'Llama 3.2 1B', failure: 'run',
         passed: 'Every decoded token matched the oracle.',
         about: 'the 16-layer persistent decode loop, growing its KV cache on chip and sampling 4 tokens per dispatch, compiled cold and then warm, '
@@ -1010,7 +1031,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         failedId: /^llama\/persist_grow\/N=(\d+)$/,
         repro: (n = '16') => `cd programming_examples/ml/llama_3_2_1b && python aie2_decode.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --full-elf-path build/chain_persist_grow_N${n}_PT4.elf && LLAMA_CHAIN_N=${n} LLAMA_CHAIN_T=128 LLAMA_CHAIN_ONESTREAM_KSET=8 python test_chain_persist_grow_mh.py --elf build/chain_persist_grow_N${n}_PT4.elf`,
         say: n => `the ${n}-layer decode`,
-        cards: llamaCards, charts: () => [], summary: llamaSummary },
+        cards: llamaCards, charts: () => [], summary: llamaSummary,
+        trend: [{ id: 'tok_s', name: 'Tokens / s', axis: 'Tokens per second', lines: [['timed decode', ['tok_s']], ['generate', ['decode_tok_s']]],
+                  about: 'decoded tokens per second: the timed run\'s median dispatch, and generate.py\'s decode' },
+                { id: 'ms_per_token', axis: 'Time per token (ms)', lines: [['', ['ms_per_token']]] },
+                { id: 'ttft_ms', axis: 'Time to first token (ms)', lines: [['', ['ttft_ms']]] }, ...COMPILE_TABS] },
       { id: 'yolo26n-hw', section: 'performance', title: 'YOLO26n detection on NPU2', short: 'YOLO26n', failure: 'run',
         passed: 'Every image matched the oracle.',
         about: 'the whole 640×640 int8 detector, backbone through the Detect head\'s postprocess, compiled cold and then warm, '
@@ -1021,7 +1046,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         failedId: /^yolo26n\/640$/,
         repro: () => 'cd programming_examples/ml/yolo26n && python yolo26n.py --images $IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/coco128/images/train2017 --n 8',
         say: () => 'the 640x640 detector',
-        cards: yoloCards, charts: () => [], summary: yoloSummary },
+        cards: yoloCards, charts: () => [], summary: yoloSummary,
+        trend: [{ id: 'us_per_image_b1', name: 'Per image', axis: 'Time per image (µs)', lines: [['batch 1', ['us_per_image_b1']], ['batch 8', ['us_per_image_b8']]],
+                  about: 'time per image of one dispatch, from the host, the median of 5, at batch 1 and batch 8' },
+                { id: 'fps_b1', name: 'Images / s', axis: 'Images per second', lines: [['batch 1', ['fps_b1']], ['batch 8', ['fps_b8']]],
+                  about: 'images per second at batch 1 and batch 8, from the time per image; higher is better' }, ...COMPILE_TABS] },
       { id: 'router', section: 'routing', title: 'Router model-based tests', short: 'Router', failure: 'check',
         passed: 'Every property held and every mutation was answered right.',
         about: 'router_properties.py and router_mutation.py (hops on and off) on npu1, npu2 and xcvc1902, on a hosted runner with an assertions build; '
@@ -1059,7 +1088,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true}, "xclbin_bytes": {"pct": 2}, "instr_bytes": {"pct": 2}, "elf_bytes": {"pct": 2}, "pdi_bytes": {"pct": 2}, "n_cores": {"pct": 1}, "us_per_image_b1": {"pct": 5}, "us_per_image_b8": {"pct": 5}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "images_passed": {"pct": 1, "higher_is_better": true}, "ort_matches": {"pct": 1, "higher_is_better": true}, "compile_place_s": {"pct": 15}, "compile_route_s": {"pct": 15}, "compile_lower_s": {"pct": 15}, "compile_kernels_s": {"pct": 15}, "compile_codegen_s": {"pct": 15}, "compile_link_s": {"pct": 15}, "compile_package_s": {"pct": 15}, "compile_other_s": {"pct": 15}, "compile_outside_aiecc_s": {"pct": 15}, "compile_aiecc_wall_s": {"pct": 15}, "compile_place_s_warm": {"pct": 15}, "compile_route_s_warm": {"pct": 15}, "compile_lower_s_warm": {"pct": 15}, "compile_kernels_s_warm": {"pct": 15}, "compile_codegen_s_warm": {"pct": 15}, "compile_link_s_warm": {"pct": 15}, "compile_package_s_warm": {"pct": 15}, "compile_other_s_warm": {"pct": 15}, "compile_outside_aiecc_s_warm": {"pct": 15}, "compile_aiecc_wall_s_warm": {"pct": 15}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true}, "ttft_ms": {"pct": 10}, "prompt_tok_s": {"pct": 10, "derived": "ttft_ms", "higher_is_better": true}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true}, "xclbin_bytes": {"pct": 2}, "instr_bytes": {"pct": 2}, "elf_bytes": {"pct": 2}, "pdi_bytes": {"pct": 2}, "n_cores": {"pct": 1}, "us_per_image_b1": {"pct": 5}, "us_per_image_b8": {"pct": 5}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "images_passed": {"pct": 1, "higher_is_better": true}, "ort_matches": {"pct": 1, "higher_is_better": true}, "compile_place_s": {"pct": 15}, "compile_route_s": {"pct": 15}, "compile_lower_s": {"pct": 15}, "compile_kernels_s": {"pct": 15}, "compile_codegen_s": {"pct": 15}, "compile_link_s": {"pct": 15}, "compile_package_s": {"pct": 15}, "compile_other_s": {"pct": 15}, "compile_outside_aiecc_s": {"pct": 15}, "compile_aiecc_wall_s": {"pct": 15}, "compile_place_s_warm": {"pct": 15}, "compile_route_s_warm": {"pct": 15}, "compile_lower_s_warm": {"pct": 15}, "compile_kernels_s_warm": {"pct": 15}, "compile_codegen_s_warm": {"pct": 15}, "compile_link_s_warm": {"pct": 15}, "compile_package_s_warm": {"pct": 15}, "compile_other_s_warm": {"pct": 15}, "compile_outside_aiecc_s_warm": {"pct": 15}, "compile_aiecc_wall_s_warm": {"pct": 15}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
@@ -2997,46 +3026,55 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return `${c.id.slice(0, 7)}${msg ? ` ${msg.length > 72 ? `${msg.slice(0, 71)}…` : msg}` : ''}`;
     }
 
-    // Each measure's y axis, with its unit.
-    const AXIS_TITLES = {
-      us_per_image: 'Time per image (µs)', streaming_us: 'Streaming time per image (µs)',
-      e2e_us_per_image: 'End-to-end time per image (µs)', compile_s: 'Compile time, cold (s)',
-      compile_peak_rss_mb: 'Compile peak memory, cold (MB)', compile_s_warm: 'Compile time, warm (s)',
-      compile_peak_rss_mb_warm: 'Compile peak memory, warm (MB)',
-    };
-
-    // The hardware check's chart: a line per batch, each nightly's mean over
-    // the seeds of `metric` at the design's real default effort (so the
-    // chart tracks what ships, not a 2x-wider batch x effort grid; the
-    // full-effort baseline is under Placement, and charted here only when
-    // it is all there is -- see chartedEffort), the fastest-to-slowest seed
-    // shaded behind it, so every batch's trend reads on one chart. A
-    // Chart.js config.
-    function seedTrendConfig(data, metric) {
-      const mine = seedMeans(data).series.filter(s => s.metric === metric);
+    // One trend tab's chart. A tab with `batches` draws a line per batch of
+    // its one metric; any other draws each of its `lines`, a [name, metrics]
+    // pair, as the sum of those metrics, in the color of its place in
+    // `lines`. Per-seed series chart as the mean over the seeds at the
+    // design's real default effort (so the chart tracks what ships; the
+    // full-effort baseline is under Placement, and charted here only when it
+    // is all there is -- see chartedEffort), the fastest-to-slowest seed
+    // shaded behind a line of one metric. A Chart.js config.
+    function trendConfig(data, tab) {
+      const metrics = tab.batches ? [tab.id] : tab.lines.flatMap(([, ms]) => ms);
+      const mine = seedMeans(data).series.filter(s => metrics.includes(s.metric));
       const effort = chartedEffort(mine.map(s => s.kase));
-      const series = mine.filter(s => s.kase.endsWith(`/effort=${effort}`))
-        .sort((a, b) => a.kase.localeCompare(b.kase, 'en', { numeric: true }));
-      const mode = series.some(s => s.byMode.has(EXPECTED_PMODE)) ? EXPECTED_PMODE
-        : series.length ? [...series[0].byMode.keys()][0] : EXPECTED_PMODE;
-      const runs = [...new Map(series.flatMap(s => (s.byMode.get(mode) || []).map(p => [p.id, p]))).values()].sort((a, b) => a.date - b.date);
+      const charted = mine.filter(s => !/\/effort=\w+$/.test(s.kase) || s.kase.endsWith(`/effort=${effort}`));
+      const lines = tab.batches
+        ? charted.sort((a, b) => a.kase.localeCompare(b.kase, 'en', { numeric: true })).map((s, color) => {
+          const batch = /\/batch=(\d+)\//.exec(s.kase);
+          return { name: batch ? `batch ${batch[1]}` : 'every batch', color, parts: [s] };
+        })
+        : tab.lines.map(([name, ms], color) => ({ name, color, parts: charted.filter(s => ms.includes(s.metric)) })).filter(l => l.parts.length);
+      const parts = lines.flatMap(l => l.parts);
+      const mode = parts.some(s => s.byMode.has(EXPECTED_PMODE)) ? EXPECTED_PMODE
+        : parts.length ? [...parts[0].byMode.keys()][0] : EXPECTED_PMODE;
+      const runs = [...new Map(parts.flatMap(s => (s.byMode.get(mode) || []).map(p => [p.id, p]))).values()].sort((a, b) => a.date - b.date);
       // Each run's commit, from the run it was measured in.
       const observed = new Map((data.order || []).map(o => [o.id, o]));
       const commits = runs.map(p => (observed.get(p.id) || {}).commit || {});
       const at = new Map(runs.map((p, i) => [p.id, i]));
-      const unit = series.length ? series[0].unit : 'us';
+      const unit = parts.length ? parts[0].unit : 'us';
+      // A log axis where the lines sit decades apart (batch 1 to 64, the
+      // compile's stages), so each line's moves read the same size there.
+      const log = (tab.batches && unit === 'us') || Boolean(tab.log);
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
       const datasets = [];
-      series.forEach((s, i) => {
-        const color = cssVar(`--series-${i % 7 + 1}`, '#5b6475');
+      for (const line of lines) {
+        const color = cssVar(`--series-${line.color % 7 + 1}`, '#5b6475');
         const values = new Array(runs.length).fill(null), rows = new Array(runs.length).fill(null);
-        for (const p of s.byMode.get(mode) || []) { values[at.get(p.id)] = p.row.value; rows[at.get(p.id)] = p.row; }
+        for (const s of line.parts) {
+          for (const p of s.byMode.get(mode) || []) {
+            const i = at.get(p.id);
+            values[i] = (values[i] ?? 0) + p.row.value;
+            if (line.parts.length === 1) rows[i] = p.row;
+          }
+        }
+        if (log) values.forEach((v, i) => { if (v !== null && v <= 0) values[i] = null; });
         datasets.push(...band(values, rows, color));
-        const batch = /\/batch=(\d+)\//.exec(s.kase);
-        datasets.push({ label: batch ? `batch ${batch[1]}` : 'every batch', data: values, rows, borderColor: color, backgroundColor: color,
+        datasets.push({ label: line.name, data: values, rows, borderColor: color, backgroundColor: color,
                         borderWidth: 2, pointRadius: runs.map(p => p.manual ? 4 : 2.5), pointStyle: runs.map(p => p.manual ? 'rectRot' : 'circle'),
                         tension: 0, spanGaps: true });
-      });
+      }
       const tick = v => formatNumber(v, unit);
       const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
       return { type: 'line', data: { labels: runs.map(p => shortDate(p.date)), datasets, commits, runs }, options: {
@@ -3048,12 +3086,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         },
         scales: {
           x: { title: title('Nightly run'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
-          // Per-image times span batches 1 to 64: a log axis keeps each line's moves the same size.
-          y: { type: unit === 'us' ? 'logarithmic' : 'linear', grid: { color: grid }, title: title(AXIS_TITLES[metric] || label(metric)),
+          y: { type: log ? 'logarithmic' : 'linear', grid: { color: grid }, title: title(tab.axis),
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
         },
         plugins: {
-          legend: { display: true, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 12 }, filter: item => !datasets[item.datasetIndex].band } },
+          legend: { display: lines.length > 1, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 12 }, filter: item => !datasets[item.datasetIndex].band } },
           tooltip: { filter: item => !item.dataset.band, callbacks: {
             title: items => items.length ? `${formatWhen(runs[items[0].dataIndex].date)}${runs[items[0].dataIndex].manual ? ', started by hand' : ''}` : '',
             afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
@@ -3061,7 +3098,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             label: item => {
               const row = item.dataset.rows[item.dataIndex];
               const m = /^seeds ([\d.]+) to ([\d.]+)/.exec((row && row.range) || '');
-              return `${item.dataset.label}: ${tick(item.raw)}${m ? ` (seeds ${tick(Number(m[1]))} to ${tick(Number(m[2]))})` : ''}`;
+              const name = item.dataset.label || tab.name || label(tab.id);
+              return `${name}: ${tick(item.raw)}${m ? ` (seeds ${tick(Number(m[1]))} to ${tick(Number(m[2]))})` : ''}`;
             },
           } },
         },
@@ -3165,40 +3203,42 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // A Chart.js chart, or the SVG one when Chart.js is not there.
     const lineChart = (canvas, config) => typeof Chart === 'function' ? new Chart(canvas, config) : svgChart(canvas, config);
 
-    // The chart's box: the measure to show, a line saying what it is, the
-    // chart, drawn once it is on screen and redrawn when the measure changes.
-    function seedTrendBox(data, want) {
-      const metrics = SECTIONS.performance.metrics.filter(m => data.series.some(s => s.metric === m));
-      if (!metrics.length) return el('p', { className: 'dim' }, 'No history published yet.');
-      let metric = metrics.includes(want) ? want : metrics[0], drawn = null;
+    // The chart's box: the tab to show, a line saying what it is, the chart,
+    // drawn once it is on screen and redrawn when the tab changes. `want` is
+    // a metric a link names; its tab opens first.
+    function trendBox(data, tabs, want) {
+      const shown = tabs.filter(t => (t.batches ? [t.id] : t.lines.flatMap(([, ms]) => ms)).some(m => data.series.some(s => s.metric === m)));
+      if (!shown.length) return el('p', { className: 'dim' }, 'No history published yet.');
+      const named = id => shown.find(t => t.id === id);
+      let tab = shown.find(t => t.id === want || (t.lines || []).some(([, ms]) => ms.includes(want))) || shown[0], drawn = null;
       const seg = el('span', { className: 'seg', role: 'group', ariaLabel: 'measure' });
       const about = el('p', { className: 'note' });
-      const canvas = el('canvas', { ariaLabel: 'MobileNet over recent nightlies, a line per batch' });
+      const canvas = el('canvas', { ariaLabel: 'over recent nightlies' });
       const box = el('div', { className: 'chart trend' }, el('div', { className: 'trend-head' }, seg), about, el('div', { className: 'canvas' }, canvas));
-      const say = m => {
-        const effort = chartedEffort(data.series.filter(s => s.metric === m).map(s => s.kase));
-        const lines = m.startsWith('compile_')
-          ? 'One line: a single compile serves every batch'
-          : 'A line per batch';
-        about.textContent = `${label(m)}: ${COMPONENT_METRICS[m]}. ${lines}, the mean over the seeds at ${effort} effort; the shading runs from the fastest seed to the slowest.`;
+      const say = t => {
+        const kases = data.series.filter(s => (t.batches ? [t.id] : t.lines.flatMap(([, ms]) => ms)).includes(s.metric)).map(s => s.kase);
+        const seeded = kases.some(k => /\/seed=\d+/.test(k));
+        const lines = t.batches ? 'A line per batch, the mean' : t.id.startsWith('compile_') ? 'A single compile serves every batch: the mean' : 'The mean';
+        const seeds = seeded ? ` ${lines} over the seeds at ${chartedEffort(kases)} effort; the shading runs from the fastest seed to the slowest.` : '';
+        about.textContent = `${t.name || label(t.id)}: ${t.about || COMPONENT_METRICS[t.id]}.${seeds}`;
       };
-      const draw = m => {
-        metric = m;
-        segment(seg, metrics, m, draw);
-        say(m);
+      const draw = id => {
+        tab = named(id);
+        segment(seg, shown.map(t => t.id), id, draw, v => named(v).name || label(v));
+        say(tab);
         if (drawn) drawn.destroy();
-        drawn = lineChart(canvas, seedTrendConfig(data, m));
+        drawn = lineChart(canvas, trendConfig(data, tab));
         componentCharts.push(drawn);
       };
-      segment(seg, metrics, metric, draw);
-      say(metric);
+      segment(seg, shown.map(t => t.id), tab.id, draw, v => named(v).name || label(v));
+      say(tab);
       const seen = new IntersectionObserver(entries => {
         if (!entries.some(e => e.isIntersecting)) return;
         seen.disconnect();
-        draw(metric);
+        draw(tab.id);
       }, { rootMargin: '400px' });
       seen.observe(box);
-      box.metric = () => metric;
+      box.metric = () => tab.id;
       return box;
     }
 
@@ -3657,7 +3697,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       mine.forEach((l, i) => checkHistories(l).then(data => {
         if (token !== componentToken) return;
         fillSparks(bands[i].cards, data);
-        if (bands[i].trend) bands[i].trend.replaceChildren(seedTrendBox(data, readHash().metric));
+        if (bands[i].trend) bands[i].trend.replaceChildren(trendBox(data, l.check.trend, readHash().metric));
       }));
       const listed = new Set(mine.flatMap(l => (readable(l.index) && l.index.metrics) || []));
       const metrics = SECTIONS[section].metrics.filter(m => !listed.size || listed.has(m));
