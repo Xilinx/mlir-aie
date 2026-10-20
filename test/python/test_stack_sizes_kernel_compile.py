@@ -18,6 +18,9 @@ import os
 import subprocess
 import tempfile
 
+import numpy as np
+from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit._object_cache import KernelObjectCache
 from aie.utils.compile.utils import compile_cxx_core_function
 
 _KERNEL_SOURCE = """
@@ -61,3 +64,48 @@ def test_compile_cxx_core_function_inline_ir_has_no_stack_sizes_section():
         assert os.path.exists(ir)
         with open(ir) as f:
             assert "stack_sizes" not in f.read()
+
+
+def _table_kernel(words):
+    """Return a kernel whose only static data is a ``words``-int table."""
+    return ExternalFunction(
+        f"table_{words}",
+        source_string=f"""
+static int table[{words}];
+extern "C" void table_{words}(int *a, int n) {{
+  for (int i = 0; i < n; i++)
+    table[i % {words}] += a[i % 64];
+  a[0] = table[n % {words}];
+}}
+""",
+        arg_types=[np.ndarray[(64,), np.dtype[np.int32]], np.int32],
+    )
+
+
+def test_measure_reads_a_kernels_static_data(tmp_path):
+    """Doubling a 4 KiB table adds exactly its 4096 bytes to the data.
+
+    The stack is unchanged.
+    """
+    small, large = (
+        _table_kernel(words).measure(
+            "aie2p", KernelObjectCache(tmp_path / str(words), 60)
+        )
+        for words in (1024, 2048)
+    )
+    assert small.data >= 4096
+    assert large.data - small.data == 4096
+    assert large.stack == small.stack
+
+
+def test_frame_bytes_is_data_and_stack_or_its_declared_override():
+    kernel = _table_kernel(1024)
+    found = kernel.measure("aie2p")
+    assert kernel.frame_bytes("aie2p") == found.data + (found.stack or 0)
+    declared = ExternalFunction(
+        "table_1024",
+        source_string=kernel.source_string,
+        arg_types=kernel.arg_types(),
+        stack_size_override=96,
+    )
+    assert declared.frame_bytes("aie2p") == found.data + 96
