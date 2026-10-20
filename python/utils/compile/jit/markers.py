@@ -64,7 +64,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 from ....helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
-from ....helpers.taplib._per_call import PerCall
+from ....helpers.taplib import PerCall
 from ... import bfp
 from .params import Member, _text, resolve
 from .params import Param as _Param
