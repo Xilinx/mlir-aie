@@ -63,6 +63,8 @@ bool fast_weights(const float *d, bfloat16 *weights) {
   }
   aie::set_rounding(saved);
   float sum = e[0];
+  // Rolled: unrolled K times, these loops overflow program memory at top_k 16.
+#pragma clang loop unroll(disable)
   for (int i = 1; i < K; ++i)
     sum = __addsf3(sum, e[i]);
   uint32_t bits[K];
@@ -70,9 +72,11 @@ bool fast_weights(const float *d, bfloat16 *weights) {
     bits[i] = __builtin_bit_cast(uint32_t, __divsf3(e[i], sum));
     const uint32_t low = bits[i] & 0xffffu;
     const uint32_t from_mid = low >= 0x8000u ? low - 0x8000u : 0x8000u - low;
-    if ((bits[i] >> 23) < 27 || from_mid <= ROUTER_MARGIN_ULPS)
+    // Under 2^-100 a weight nears the subnormals, where the margin fails.
+    if ((bits[i] >> 23) < 127 - 100 || from_mid <= ROUTER_MARGIN_ULPS)
       return false;
   }
+#pragma clang loop unroll(disable)
   for (int i = 0; i < K; ++i) {
     const uint16_t rounded = (bits[i] + 0x7fffu + ((bits[i] >> 16) & 1u)) >> 16;
     weights[2 * i] = __builtin_bit_cast(bfloat16, rounded);
@@ -121,6 +125,7 @@ void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
   double w[SAMPLE_K_MAX];
   double sum = 0.0;
   float d[SAMPLE_K_MAX];
+#pragma clang loop unroll(disable)
   for (int32_t i = 0; i < SAMPLE_K_MAX; ++i)
     d[i] = __subsf3(values[i], max_value);
   if (fast_weights(d, weights)) {
@@ -131,6 +136,7 @@ void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
     w[i] = exp64((double)d[i]);
     sum += w[i];
   }
+#pragma clang loop unroll(disable)
   for (int32_t i = 0; i < SAMPLE_K_MAX; ++i) {
     weights[2 * i] = f32_to_bf16((float)(w[i] / sum));
     weights[2 * i + 1] = (bfloat16)0.0f;
