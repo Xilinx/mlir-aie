@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-20T12:59:46+00:00",
+ "generated_at": "2026-10-20T18:55:11+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 426,
+   "runs": 419,
    "main": {
     "passed": 11,
     "failed": 0,
@@ -245,19 +245,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 106,
-    "failed": 64,
-    "rate": 0.624
+    "passed": 98,
+    "failed": 63,
+    "rate": 0.609
    },
    "merge_queue": {
-    "passed": 55,
-    "failed": 11,
-    "rate": 0.833
+    "passed": 54,
+    "failed": 10,
+    "rate": 0.844
    },
    "flaky": {
-    "commits": 410,
-    "flaky": 29,
-    "rate": 0.071
+    "commits": 403,
+    "flaky": 24,
+    "rate": 0.06
    },
    "minutes_median": 62.1,
    "minutes_p90": 162.0,
@@ -269,7 +269,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 426,
+   "runs": 419,
    "main": {
     "passed": 11,
     "failed": 3,
@@ -480,21 +480,21 @@
     }
    ],
    "pull_requests": {
-    "passed": 114,
+    "passed": 108,
     "failed": 79,
-    "rate": 0.591
+    "rate": 0.578
    },
    "merge_queue": {
-    "passed": 56,
+    "passed": 54,
     "failed": 12,
-    "rate": 0.824
+    "rate": 0.818
    },
    "flaky": {
-    "commits": 410,
-    "flaky": 22,
-    "rate": 0.054
+    "commits": 403,
+    "flaky": 20,
+    "rate": 0.05
    },
-   "minutes_median": 64.0,
+   "minutes_median": 62.9,
    "minutes_p90": 101.0,
    "queued_median": 0.0
   },
@@ -504,38 +504,50 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 483,
+   "runs": 475,
    "main": {
-    "passed": 69,
+    "passed": 68,
     "failed": 1,
     "rate": 0.986
    },
    "latest_main": {
-    "id": 39362945440,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39362945440",
+    "id": 39440969970,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39440969970",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-20T03:11:05Z",
-    "run_started_at": "2026-10-20T03:11:05Z",
-    "updated_at": "2026-10-20T03:20:27Z",
-    "head_sha": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
-    "title": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile t\u2026",
+    "created_at": "2026-10-20T14:37:46Z",
+    "run_started_at": "2026-10-20T14:37:46Z",
+    "updated_at": "2026-10-20T15:01:40Z",
+    "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "title": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
     "attempt": 1
    },
    "newest_main": {
-    "id": 39362945440,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39362945440",
+    "id": 39440969970,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39440969970",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-20T03:11:05Z",
-    "run_started_at": "2026-10-20T03:11:05Z",
-    "updated_at": "2026-10-20T03:20:27Z",
-    "head_sha": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
-    "title": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile t\u2026",
+    "created_at": "2026-10-20T14:37:46Z",
+    "run_started_at": "2026-10-20T14:37:46Z",
+    "updated_at": "2026-10-20T15:01:40Z",
+    "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "title": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 39440969970,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39440969970",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-20T14:37:46Z",
+     "run_started_at": "2026-10-20T14:37:46Z",
+     "updated_at": "2026-10-20T15:01:40Z",
+     "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+     "title": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
+     "attempt": 1
+    },
     {
      "id": 39362945440,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39362945440",
@@ -1003,37 +1015,25 @@
      "head_sha": "5bbd7520badf2e318a811a55a7cf14a8044d0154",
      "title": "ci: remove binfmt-dependent container action (#3913)",
      "attempt": 1
-    },
-    {
-     "id": 38010252474,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38010252474",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-10T00:43:15Z",
-     "run_started_at": "2026-10-10T00:43:15Z",
-     "updated_at": "2026-10-10T00:51:01Z",
-     "head_sha": "2623c901ecd4408a456a4895572cf4647c762078",
-     "title": "Compile across platforms",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 221,
+    "passed": 216,
     "failed": 42,
-    "rate": 0.84
+    "rate": 0.837
    },
    "merge_queue": {
-    "passed": 66,
+    "passed": 64,
     "failed": 1,
     "rate": 0.985
    },
    "flaky": {
-    "commits": 410,
-    "flaky": 35,
-    "rate": 0.085
+    "commits": 404,
+    "flaky": 30,
+    "rate": 0.074
    },
-   "minutes_median": 9.7,
-   "minutes_p90": 24.0,
+   "minutes_median": 9.8,
+   "minutes_p90": 24.1,
    "queued_median": 0.0
   },
   {
@@ -1042,38 +1042,50 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 483,
+   "runs": 475,
    "main": {
-    "passed": 71,
+    "passed": 70,
     "failed": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 39362945514,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39362945514",
+    "id": 39440969780,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39440969780",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-20T03:11:05Z",
-    "run_started_at": "2026-10-20T03:11:05Z",
-    "updated_at": "2026-10-20T03:20:25Z",
-    "head_sha": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
-    "title": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile t\u2026",
+    "created_at": "2026-10-20T14:37:46Z",
+    "run_started_at": "2026-10-20T14:37:46Z",
+    "updated_at": "2026-10-20T14:58:05Z",
+    "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "title": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
     "attempt": 1
    },
    "newest_main": {
-    "id": 39362945514,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39362945514",
+    "id": 39440969780,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39440969780",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-20T03:11:05Z",
-    "run_started_at": "2026-10-20T03:11:05Z",
-    "updated_at": "2026-10-20T03:20:25Z",
-    "head_sha": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
-    "title": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile t\u2026",
+    "created_at": "2026-10-20T14:37:46Z",
+    "run_started_at": "2026-10-20T14:37:46Z",
+    "updated_at": "2026-10-20T14:58:05Z",
+    "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "title": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 39440969780,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39440969780",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-20T14:37:46Z",
+     "run_started_at": "2026-10-20T14:37:46Z",
+     "updated_at": "2026-10-20T14:58:05Z",
+     "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+     "title": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
+     "attempt": 1
+    },
     {
      "id": 39362945514,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39362945514",
@@ -1541,36 +1553,24 @@
      "head_sha": "5bbd7520badf2e318a811a55a7cf14a8044d0154",
      "title": "ci: remove binfmt-dependent container action (#3913)",
      "attempt": 1
-    },
-    {
-     "id": 38009276624,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38009276624",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-10T00:29:36Z",
-     "run_started_at": "2026-10-10T00:29:36Z",
-     "updated_at": "2026-10-10T00:37:51Z",
-     "head_sha": "2623c901ecd4408a456a4895572cf4647c762078",
-     "title": "Make multiple device configurations expressible in high-level IRON (#\u2026",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 228,
+    "passed": 224,
     "failed": 45,
-    "rate": 0.835
+    "rate": 0.833
    },
    "merge_queue": {
-    "passed": 68,
+    "passed": 66,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 410,
-    "flaky": 36,
-    "rate": 0.088
+    "commits": 404,
+    "flaky": 31,
+    "rate": 0.077
    },
-   "minutes_median": 9.1,
+   "minutes_median": 9.2,
    "minutes_p90": 18.5,
    "queued_median": 0.0
   },
@@ -1580,7 +1580,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 426,
+   "runs": 419,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -1782,19 +1782,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 218,
-    "failed": 81,
-    "rate": 0.729
+    "passed": 206,
+    "failed": 86,
+    "rate": 0.705
    },
    "merge_queue": {
-    "passed": 68,
+    "passed": 66,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 411,
-    "flaky": 38,
-    "rate": 0.092
+    "commits": 404,
+    "flaky": 33,
+    "rate": 0.082
    },
    "minutes_median": 4.1,
    "minutes_p90": 7.2,
@@ -1802,9 +1802,9 @@
   }
  ],
  "merge_time": {
-  "merged": 58,
-  "hours_median": 26.0,
-  "hours_p90": 896.0,
+  "merged": 59,
+  "hours_median": 23.5,
+  "hours_p90": 615.4,
   "open": 69,
   "open_drafts": 25,
   "open_over_30_days": 48
@@ -2749,6 +2749,18 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 39456190655,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39456190655",
+     "status": "in_progress",
+     "conclusion": null,
+     "created_at": "2026-10-20T16:17:56Z",
+     "run_started_at": "2026-10-20T16:17:56Z",
+     "updated_at": "2026-10-20T16:18:43Z",
+     "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 39422004440,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39422004440",
      "status": "completed",
@@ -2877,18 +2889,6 @@
      "run_started_at": "2026-10-18T20:14:20Z",
      "updated_at": "2026-10-18T20:42:49Z",
      "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 39144164161,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39144164161",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-18T16:15:20Z",
-     "run_started_at": "2026-10-18T16:15:20Z",
-     "updated_at": "2026-10-18T18:32:43Z",
-     "head_sha": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
      "title": "MLIR Distro",
      "attempt": 1
     }
