@@ -97,9 +97,12 @@ extern "C" void selective_scan(bfloat16 *restrict block, float *restrict head,
   const bfloat16 *x = block;
   const bfloat16 *bc = x + SCAN_ROWS * P;
   const bfloat16 *dt = bc + SCAN_ROWS * 2 * N;
-  if (b % SCAN_BLOCKS == 0)
-    for (int i = 0; i < P * N; i += L)
-      aie::store_v(s + i, aie::load_unaligned_v<L>(head + 3 + i));
+  if (b % SCAN_BLOCKS == 0) {
+    const float *h = head + 3;
+    float *to = s;
+    for (int i = 0; i < P * N / L; i++, h += L, to += L)
+      aie::store_v(to, aie::load_unaligned_v<L>(h));
+  }
   const Limbs<32> A = bf16_limbs(acc_t<32>(aie::broadcast<float, 32>(head[1])));
   const Limbs<16> d = bf16_limbs(acc_t<16>(aie::broadcast<float, 16>(head[2])));
   for (int t = 0; t < SCAN_ROWS; t++)
@@ -161,8 +164,10 @@ extern "C" void selective_scan(bfloat16 *restrict block, float *restrict head,
       aie::store_v(yt + p, yp.to_vector<bfloat16>());
     }
   }
-  for (int i = 0; i < P * N; i += L)
-    aie::store_v(final + i, aie::load_v<L>(s + i));
+  const float *from = s;
+  float *to = final;
+  for (int i = 0; i < P * N / L; i++, from += L, to += L)
+    aie::store_v(to, aie::load_v<L>(from));
   aie::set_rounding(saved_rounding);
   event1();
 }
