@@ -60,8 +60,14 @@ LM_SEED_BYTES = D + 12
 SAMPLE_PARAMS = ("temp_lo", "temp_hi", "top_k", "seed_lo", "seed_hi")
 
 
-def sample_param_values(temperature, top_k, seed):
-    """build_lm(PER_CALL=True)'s ScratchpadParameter values for one dispatch."""
+def sample_param_values(temperature, top_k, seed, kset):
+    """build_lm(PER_CALL=True)'s ScratchpadParameter values for one dispatch.
+
+    Raises:
+        ValueError: top_k is not 0 (the whole set) or 1..kset.
+    """
+    if not 0 <= top_k <= kset:
+        raise ValueError(f"top_k must be 0 (the whole set) or 1..{kset}, got {top_k}")
     t = int(np.float32(temperature).view(np.uint32))
     s = int(seed) & 0xFFFFFFFF
     return dict(
@@ -411,7 +417,8 @@ def build_lm(
     llama_topk_finalize_packed, giving `LM_SEED_BYTES`: the next token's
     embed seed, its scale and the token id. Sets are ordered by logit, then
     by lower token id, so the merged set is the one a single pass keeps.
-    TEMPERATURE, TOP_K and SEED are the sampler's params. With PER_CALL they
+    TEMPERATURE, TOP_K and SEED are the sampler's params: it draws from the
+    merged set's best TOP_K (0: all KSET) members. With PER_CALL they
     come instead from per-dispatch ScratchpadParameters (`SAMPLE_PARAMS`, see
     `sample_param_values`), which the glue core reads behind the dispatch fence.
     """
@@ -527,6 +534,8 @@ def build_lm(
         )
         for c in range(N_CORES)
     ]
+    if not 0 <= TOP_K <= KSET:
+        raise ValueError(f"TOP_K must be 0 (the whole set) or 1..{KSET}, got {TOP_K}")
     params = np.array(
         [np.float32(TEMPERATURE).view(np.uint32), TOP_K, SEED & 0xFFFFFFFF], np.uint32
     )
@@ -657,6 +666,8 @@ def build_lm_single(
         kf(sl, sg, ss, sr, slen, params, o)
         c_seed.release(1)
 
+    if not 0 <= TOP_K <= KSET:
+        raise ValueError(f"TOP_K must be 0 (the whole set) or 1..{KSET}, got {TOP_K}")
     params = np.array(
         [np.float32(TEMPERATURE).view(np.uint32), TOP_K, SEED & 0xFFFFFFFF], np.uint32
     )

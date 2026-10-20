@@ -36,8 +36,11 @@ Interfaces, per layer unit and core c (one output object of OUT_BYTES each):
   ScratchpadParameters `sample_param_values` gives (the float32 temperature
   bits and the 32-bit seed as 16-bit halves, since the scratchpad keeps 30
   bits a word; top_k as is), and its token and seed must equal the
-  CompileTime build's for those values. The sampler draws from the whole
-  KSET set, so top_k does not change the result yet.
+  CompileTime build's for those values and the oracle's. The sampler draws
+  from the merged set's best top_k members (by logit, then lower id); top_k
+  0 means the whole set and values past KSET are rejected. `--topk-sweep`
+  samples many seeds at top_k = 1, 2, 4 and KSET at a high temperature, each
+  dispatch matching the oracle.
 """
 
 import argparse
@@ -344,11 +347,12 @@ PER_CALL_SAMPLES = [
     (0.0, 8, 0),
     (0.8, 8, 1),
     (500.0, 8, 2),
-    (0.0, 8, 0xDEADBEEF),
+    (0.0, 1, 0xDEADBEEF),
     (500.0, 4, 3),
-    (500.0, 8, 4),
+    (500.0, 2, 4),
+    (500.0, 0, 5),
     (50.0, 8, 0xDEADBEEF),
-    (2.0, 8, 0x7FFFFFFF),
+    (2.0, 1, 0x7FFFFFFF),
 ]
 
 
@@ -362,7 +366,9 @@ def check_per_call(opts, tensors, logits, embed, embed_sc):
     ok = True
     for temperature, top_k, seed in PER_CALL_SAMPLES:
         out_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
-        ms = session([*tensors, out_t], **sample_param_values(temperature, top_k, seed))
+        ms = session(
+            [*tensors, out_t], **sample_param_values(temperature, top_k, seed, k)
+        )
         out_t.to("cpu")
         fixed_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
         npu = design_kernel(
@@ -377,7 +383,7 @@ def check_per_call(opts, tensors, logits, embed, embed_sc):
         DefaultNPURuntime.load_and_run(npu, [*tensors, fixed_t])
         fixed_t.to("cpu")
         dev, fixed = out_t.numpy()[: D + 8], fixed_t.numpy()[: D + 8]
-        ref_token = topk_sample_reference(logits, temperature, k, seed, k_set=k)
+        ref_token = topk_sample_reference(logits, temperature, top_k, seed, k_set=k)
         ref_xin, _ = embed_seed_ref(embed[ref_token], float(embed_sc[ref_token]))
         token = int(dev[D + 4 : D + 8].view(np.int32)[0])
         same = np.array_equal(dev, fixed) and token == ref_token
@@ -388,6 +394,41 @@ def check_per_call(opts, tensors, logits, embed, embed_sc):
             f"  ({ms:.2f} ms)"
         )
         ok &= same
+    return ok
+
+
+def topk_sweep(opts, tensors, logits):
+    """Many sampler seeds per top_k on one PER_CALL build, against the oracle."""
+    k = opts.kset
+    session = DispatchSession(
+        build_lm, None, LM_TILES=opts.lm_tiles, KSET=k, PER_CALL=True
+    )
+    ok = True
+    picks = {}
+    for top_k in sorted({1, 2, 4, k}):
+        tokens = []
+        for seed in range(opts.sweep_seeds):
+            out_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
+            session(
+                [*tensors, out_t],
+                **sample_param_values(opts.sweep_temp, top_k, seed, k),
+            )
+            out_t.to("cpu")
+            token = int(out_t.numpy()[D + 4 : D + 8].view(np.int32)[0])
+            ref = topk_sample_reference(logits, opts.sweep_temp, top_k, seed, k_set=k)
+            ok &= token == ref
+            tokens.append(token)
+        ids, counts = np.unique(tokens, return_counts=True)
+        picks[top_k] = set(ids.tolist())
+        print(
+            f"top_k={top_k} temp={opts.sweep_temp}: {len(ids)} distinct tokens over "
+            f"{opts.sweep_seeds} seeds {dict(zip(ids.tolist(), counts.tolist()))}"
+        )
+    best = sorted(range(len(logits)), key=lambda g: (-logits[g], g))
+    for top_k, ids in picks.items():
+        ok &= ids <= set(best[:top_k])
+    ok &= len(picks[1]) == 1 and len(picks[k]) > len(picks[2])
+    print(f"top-k sweep: {'every dispatch matches the oracle' if ok else 'FAIL'}")
     return ok
 
 
@@ -492,6 +533,8 @@ def run_lm(opts):
         ok &= tied
     if opts.per_call:
         ok &= check_per_call(opts, [w_t, a_t, s_t], logits, embed, embed_sc)
+    if opts.topk_sweep:
+        ok &= topk_sweep(opts, [w_t, a_t, s_t], logits)
     if opts.single_pass:
         one_t = iron.zeros([LM_SEED_BYTES], dtype=np.int8)
         npu1 = design_kernel(
@@ -553,6 +596,9 @@ def main():
         action="store_true",
         help="also dispatch one PER_CALL build with several sampler params",
     )
+    p.add_argument("--topk-sweep", action="store_true")
+    p.add_argument("--sweep-seeds", type=int, default=32)
+    p.add_argument("--sweep-temp", type=float, default=500.0)
     p.add_argument(
         "--single-pass",
         action="store_true",

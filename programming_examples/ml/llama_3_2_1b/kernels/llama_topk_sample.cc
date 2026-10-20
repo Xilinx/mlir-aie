@@ -232,6 +232,9 @@ void llama_topk_merge_insert(int8_t *restrict lo, int8_t *restrict hi,
 
 // Finalize: sample over the resident set -> token id + next-token embed seed.
 //   params : [temperature bits f32 | top_k i32 | seed u32]
+// Sampling draws from the set's best top_k members (by logit, then lower
+// gidx); top_k 0, or past the set, means the whole set (hosts reject values
+// past KSET). Greedy (temperature <= 0) is the argmax whatever top_k is.
 //   token  : out int32[1] (global token id)
 //   seed   : out int8[kD + 8] (requant'd winner embed row + fp32 scale tail)
 void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
@@ -260,6 +263,17 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
       }
     }
   } else {
+    int32_t top_k = (int32_t)params[1];
+    if (top_k < 1 || top_k > len)
+      top_k = len;
+    bool keep[kKset];
+    for (int i = 0; i < len; i++) {
+      int better = 0;
+      for (int j = 0; j < len; j++)
+        better += set_logit[j] > set_logit[i] ||
+                  (set_logit[j] == set_logit[i] && set_gidx[j] < set_gidx[i]);
+      keep[i] = better < top_k;
+    }
     const float inv_temp = sw_recip(temperature);
     float max_z = set_logit[0] * inv_temp;
     for (int i = 1; i < len; i++) {
@@ -275,11 +289,11 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
     // selection over indices (len <= kKset is small, no extra storage).
     float sum_exp = 0.0f;
     int prev_g = -1;
-    for (int step = 0; step < len; step++) {
+    for (int step = 0; step < top_k; step++) {
       int si = -1;
       int32_t sg = 0;
       for (int i = 0; i < len; i++) {
-        if (set_gidx[i] > prev_g && (si < 0 || set_gidx[i] < sg)) {
+        if (keep[i] && set_gidx[i] > prev_g && (si < 0 || set_gidx[i] < sg)) {
           si = i;
           sg = set_gidx[i];
         }
@@ -296,12 +310,12 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
     float cum = 0.0f;
     winner = -1;
     prev_g = -1;
-    for (int step = 0; step < len; step++) {
+    for (int step = 0; step < top_k; step++) {
       // next smallest gidx strictly greater than prev_g
       int si = -1;
       int32_t sg = 0;
       for (int i = 0; i < len; i++) {
-        if (set_gidx[i] > prev_g && (si < 0 || set_gidx[i] < sg)) {
+        if (keep[i] && set_gidx[i] > prev_g && (si < 0 || set_gidx[i] < sg)) {
           si = i;
           sg = set_gidx[i];
         }
