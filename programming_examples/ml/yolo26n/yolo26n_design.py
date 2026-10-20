@@ -58,6 +58,9 @@ L1_LAG_BYTES = 12 * 1024
 MEMTILE_LAG_ROWS = 8
 # What one buffering worker's ring takes of its tile.
 BUFFER_TILE_BYTES = 48 * 1024
+# A conv writing more than this per image, mostly through its SiLU table at
+# about 2 cycles a byte, splits its output channels over up to 4 workers.
+SPLIT_BYTES = 400 * 1024
 
 
 def row(size: int) -> type[np.ndarray]:
@@ -271,6 +274,10 @@ class SegmentDesign:
         self.heights: dict[str, int] = {}
         # need[t][u][y]: the row of upstream stream u that row y of stream t waits for.
         self.need: dict[str, dict[str, np.ndarray]] = {}
+        # Tensors whose rows a memtile joins from several workers' channel
+        # slices: already the output of a link, so a lagging consumer's rows
+        # wait in buffering workers instead of a memtile stage.
+        self.joined: set[str] = set()
         for op in ops:
             match op:
                 case InputQuant():
@@ -449,7 +456,11 @@ class SegmentDesign:
         )
         if base is None or base[1] < lag:
             source, held = (self.fifo(tensor), 0) if base is None else base
-            if not stages and lag <= MEMTILE_LAG_ROWS:
+            if (
+                not stages
+                and lag <= MEMTILE_LAG_ROWS
+                and tensor.name not in self.joined
+            ):
                 staged = source.cons(depth=lag).forward(
                     depth=2, name=f"lag{sum(map(len, self.stages.values()))}"
                 )
@@ -484,13 +495,23 @@ class SegmentDesign:
                     copy(view(ring, (r % held) * size, size), o)
                     dst.release(1)
 
-                # The schedule is static and the rows are few, so it unrolls.
-                for r in range(height):
+                def take(r):
                     i = src.acquire(1)
                     copy(i, view(ring, (r % held) * size, size))
                     src.release(1)
                     if r >= held - 1:
                         emit(r - held + 1)
+
+                # Row r's slot repeats every `held` rows, so the steady state
+                # rolls a group of `held` rows with every slot known.
+                steady = (height - held + 1) // held
+                for r in range(held - 1):
+                    take(r)
+                for _ in range_(steady):
+                    for r in range(held - 1, 2 * held - 1):
+                        take(r)
+                for r in range(held - 1 + steady * held, height):
+                    take(r)
                 for r in range(height - held + 1, height):
                     emit(r)
 
@@ -650,11 +671,7 @@ class SegmentDesign:
         weights = pack_weights(op, p.of(op.name, "weight"))
         bias = np.zeros(oc, np.int32)
         bias[: op.dst.channels] = p.of(op.name, "bias")
-        table = (
-            [Buffer(initial_value=p.of(op.name, "table").astype(np.int8))]
-            if op.act
-            else []
-        )
+        table = p.of(op.name, "table").astype(np.int8) if op.act else None
         src_tensor = op.src
         while True:
             reader: RowInput | Part
@@ -716,13 +733,28 @@ class SegmentDesign:
                 f"{op.name}: no output-channel chunk of its weights fits beside {held} B of rows"
             )
 
+        # Split over workers by output channel: each slice of a [C/8][W][8]
+        # row is contiguous, and a memtile joins them.
+        split = 1
+        while (
+            chunk == oc
+            and op.groups == 1
+            and split < 2
+            and oc % (16 * split) == 0
+            and op.dst.height * op.dst.row_bytes // split > SPLIT_BYTES
+        ):
+            split *= 2
+        channels = chunk // split
         if chunk == oc:
+            per = weights.nbytes // split
             constants = [
-                Buffer(initial_value=weights),
-                Buffer(initial_value=bias),
-                *table,
+                [
+                    Buffer(initial_value=weights[w * per : (w + 1) * per]),
+                    Buffer(initial_value=bias[w * channels : (w + 1) * channels]),
+                    *([Buffer(initial_value=table)] if op.act else []),
+                ]
+                for w in range(split)
             ]
-            per = 0
         else:
             n = oc // chunk
             per = weights.nbytes // n
@@ -746,8 +778,9 @@ class SegmentDesign:
                 init_values=[packed],
             )
             wts.prod().endpoint = ObjectFifoEndpoint(AnyMemTile.copy())
-            constants = [wts.cons(depth=2), *table]
-        out = self.fifo(op.dst).prod(depth=1 + double)
+            constants = [
+                [wts.cons(depth=2), *([Buffer(initial_value=table)] if op.act else [])]
+            ]
         out_part = op.dst.width * chunk
 
         def call(k, x, consts, o, *scalars):
@@ -769,91 +802,121 @@ class SegmentDesign:
                 wts.release(1)
 
         if isinstance(reader, RowInput):
-            src = reader
             k = kernels.conv2dk1_i8(
                 src_tensor.width,
                 ic,
-                chunk,
+                channels,
                 bias=True,
                 table=op.act,
                 rounding="conv_even",
             )
-            src.connect(self, depths)
+            readers = [reader, *(RowInput(self, src_tensor) for _ in range(split - 1))]
+            bodies = []
+            for src in readers:
+                src.connect(self, depths)
 
-            def body1(*args):
-                args = list(args)
-                inp = src.bind(args)
-                out, k, *consts = args
-                for _ in range_(op.dst.height // src.period):
-                    for phase in range(src.period):
-                        x = inp.acquire(phase)
-                        o = out.acquire(1)
-                        call(k, [x], consts, o, src_tensor.width, ic, chunk, shift)
-                        inp.release(phase)
-                        out.release(1)
+                def body1(*args, src=src):
+                    args = list(args)
+                    inp = src.bind(args)
+                    out, k, *consts = args
+                    for _ in range_(op.dst.height // src.period):
+                        for phase in range(src.period):
+                            x = inp.acquire(phase)
+                            o = out.acquire(1)
+                            call(
+                                k, [x], consts, o, src_tensor.width, ic, channels, shift
+                            )
+                            inp.release(phase)
+                            out.release(1)
 
-            self.workers.append(Worker(body1, [*src.fn_args, out, k, *constants]))
-            return
-
-        part = reader
-        if op.groups == 1:
-            k = kernels.conv2dk3(
-                src_tensor.width,
-                ic,
-                chunk,
-                bias=True,
-                table=op.act,
-                stride=op.stride,
-                rounding="conv_even",
-            )
-        elif chunk == oc:
-            k = kernels.bn_conv2dk3_dw(
-                src_tensor.width, ic, oc, bias=True, table=op.act, rounding="conv_even"
-            )
+                bodies.append(body1)
+            inputs = [src.fn_args for src in readers]
         else:
-            raise NotImplementedError(f"{op.name}: a streamed depthwise conv")
-        source = self.consumer(part.source, depths[part.source.name], 3)
-
-        def body3(src, out, k, *consts):
-            def step(rows, check):
-                if not part.whole:
-                    rows = [view(r, part.offset, part.size) for r in rows]
-                o = out.acquire(1)
-                call(
-                    k,
-                    rows,
-                    consts,
-                    o,
+            part = reader
+            if op.groups == 1:
+                k = kernels.conv2dk3(
                     src_tensor.width,
                     ic,
-                    chunk,
-                    3,
-                    3,
-                    check,
-                    shift,
-                    0,
+                    channels,
+                    bias=True,
+                    table=op.act,
+                    stride=op.stride,
+                    rounding="conv_even",
                 )
-                out.release(1)
-
-            rows = src.acquire(2)
-            step([rows[0], rows[0], rows[1]], 0)
-            if op.stride == 1:
-                for _ in range_(op.dst.height - 2):
-                    rows = src.acquire(3)
-                    step([rows[0], rows[1], rows[2]], 1)
-                    src.release(1)
-                rows = src.acquire(2)
-                step([rows[0], rows[1], rows[1]], 2)
-                src.release(2)
+            elif chunk == oc:
+                k = kernels.bn_conv2dk3_dw(
+                    src_tensor.width,
+                    ic,
+                    oc,
+                    bias=True,
+                    table=op.act,
+                    rounding="conv_even",
+                )
             else:
-                src.release(1)
-                for _ in range_(op.dst.height - 1):
-                    rows = src.acquire(3)
-                    step([rows[0], rows[1], rows[2]], 1)
-                    src.release(2)
-                src.release(1)
+                raise NotImplementedError(f"{op.name}: a streamed depthwise conv")
 
-        self.workers.append(Worker(body3, [source, out, k, *constants]))
+            def body3(src, out, k, *consts):
+                def step(rows, check):
+                    if not part.whole:
+                        rows = [view(r, part.offset, part.size) for r in rows]
+                    o = out.acquire(1)
+                    call(
+                        k,
+                        rows,
+                        consts,
+                        o,
+                        src_tensor.width,
+                        ic,
+                        channels,
+                        3,
+                        3,
+                        check,
+                        shift,
+                        0,
+                    )
+                    out.release(1)
+
+                rows = src.acquire(2)
+                step([rows[0], rows[0], rows[1]], 0)
+                if op.stride == 1:
+                    for _ in range_(op.dst.height - 2):
+                        rows = src.acquire(3)
+                        step([rows[0], rows[1], rows[2]], 1)
+                        src.release(1)
+                    rows = src.acquire(2)
+                    step([rows[0], rows[1], rows[1]], 2)
+                    src.release(2)
+                else:
+                    src.release(1)
+                    for _ in range_(op.dst.height - 1):
+                        rows = src.acquire(3)
+                        step([rows[0], rows[1], rows[2]], 1)
+                        src.release(2)
+                    src.release(1)
+
+            bodies = [body3] * split
+            inputs = [
+                [self.consumer(part.source, depths[part.source.name], 3)]
+                for _ in range(split)
+            ]
+
+        dst = self.fifo(op.dst)
+        if split == 1:
+            outs = [dst.prod(depth=1 + double)]
+        else:
+            self.joined.add(op.dst.name)
+            size = op.dst.width * channels
+            outs = [
+                sub.prod()
+                for sub in dst.prod(depth=1 + double).join(
+                    [w * size for w in range(split)],
+                    obj_types=[row(size)] * split,
+                    depths=[1 + double] * split,
+                    names=[f"{dst.name}_part{w}" for w in range(split)],
+                )
+            ]
+        for body, ins, out, consts in zip(bodies, inputs, outs, constants):
+            self.workers.append(Worker(body, [*ins, out, k, *consts]))
 
     def maxpool(self, op: MaxPool) -> None:
         """A 5x5 pool; a pool of a pool carries its input's rows along in front of its own.
