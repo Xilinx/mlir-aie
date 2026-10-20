@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // --profile-json writes --profile's per-edge table as JSON, without --profile's
-// stderr table.
+// stderr table, and fails the build when it can't.
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: %aiecc --get-npu-insts --no-progress --profile-json=%t.d/profile.json --output-dir=%t.d --tmpdir=%t.d/work %s 2>&1 | FileCheck %s --check-prefix=STDERR --allow-empty
 // RUN: FileCheck %s --input-file=%t.d/profile.json
+// RUN: not %aiecc --get-npu-insts --no-progress --profile-json=%t.d/no/dir/profile.json --output-dir=%t.d --tmpdir=%t.d/work %s 2>&1 | FileCheck %s --check-prefix=NOWRITE
+
+// NOWRITE: aiecc: --profile-json: cannot write '{{.*}}profile.json'
 
 // STDERR-NOT: aiecc: profile
 
