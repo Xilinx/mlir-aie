@@ -57,9 +57,9 @@ def _object_walk(
 
 
 def _check_walk_size(
-    tap: TensorAccessPattern | None, sizes: list[int], emits: int, what: str
+    tap: TensorAccessPattern | None, sizes: list[int], emits: int | None, what: str
 ) -> None:
-    """Check that `tap` walks a tensor of each of `sizes` elements, padded to `emits`."""
+    """Check that `tap` walks a tensor of each of `sizes` elements, padded to `emits` unless None."""
     if tap is None:
         return
     numel = sprod(tap.tensor_dims)
@@ -70,7 +70,7 @@ def _check_walk_size(
                 f"but each transfer moves {size} elements"
             )
     padded = sprod(tap.padded_sizes)
-    if tap.padding is not None and padded != emits:
+    if emits is not None and tap.padding is not None and padded != emits:
         raise ValueError(
             f"{what} {tap!r} emits {padded} elements, "
             f"but each object it fills has {emits}"
@@ -136,7 +136,9 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 walks each object onto the AXI stream: a pattern over a tensor the
                 size of one object (of each input's object, for a join's output),
                 at offset 0. A padded one (from ``.pad()``) also pads the stream,
-                on a MemTile. Defaults to None (a linear walk).
+                on a MemTile. A forwarded fifo's pattern may instead walk the whole
+                stream of input objects (see ``forward()``). Defaults to None (a
+                linear walk).
             from_stream_per_cons (TensorAccessPattern | None, optional): How each
                 consumer's DMA writes the stream into its object (into each
                 output's object, for a distribute's input), as for ``to_stream``
@@ -480,7 +482,16 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         if isinstance(link, ObjectFifoLink):
             sizes = link._transfer_sizes(self)
         emits = math.prod(np_ndarray_type_get_shape(self.consumer_obj_type))
-        _check_walk_size(self._to_stream, sizes, emits, f"{self.name} to_stream")
+        # A walk over the stream pads with whole objects, not within each output.
+        walks_stream = (
+            isinstance(link, ObjectFifoLink) and link._walked_objects() is not None
+        )
+        _check_walk_size(
+            self._to_stream,
+            sizes,
+            None if walks_stream else emits,
+            f"{self.name} to_stream",
+        )
         for con in self._cons:
             sizes = [emits]
             if isinstance(con.endpoint, ObjectFifoLink):
@@ -1115,7 +1126,16 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             name (str | None, optional): The name of the new ObjectFifo. If None is given, it
                 is named after this one, or by the Program if this one is unnamed. Defaults to None.
             to_stream (TensorAccessPattern | None, optional): The new ObjectFifo's ``to_stream``;
-                a padded one pads the forwarded stream. Defaults to None.
+                a padded one pads the forwarded stream. On a MemTile it may walk
+                the whole stream of this fifo's objects, e.g. overlapping windows
+                of rows: its tensor is the stream (a whole number of objects), the
+                outer dimension enumerates the new fifo's objects and steps whole
+                input objects, and the inner dimensions are one new object, at
+                most one of them stepping by one input object. Padding only the
+                outer dimension, by ``(before, after)``, adds that many zero
+                objects ahead of and behind the stream; walk coordinates start at
+                the first of them. The MemTile then holds the whole stream.
+                Defaults to None.
             from_stream (TensorAccessPattern | None, optional): The new ObjectFifo's
                 ``from_stream_per_cons``. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
@@ -1231,6 +1251,45 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
             tile.tile_type = AIETileType.MemTile
         ObjectFifoEndpoint.__init__(self, tile)
 
+    def _walked_objects(self) -> int | None:
+        """Return how many input objects a 1:1 link's output walks, or None for a walk within one object.
+
+        A `to_stream` that reaches past one input object walks the whole
+        stream of them: its outer dimension enumerates the outputs and steps
+        whole input objects, its inner dimensions are one output's transfer,
+        and padding the outer dimension by `(before, after)` adds that many
+        zero objects ahead of and behind the stream. The tensor it walks is
+        the stream itself.
+
+        Raises:
+            ValueError: If the walk's tensor does not hold the objects it walks.
+        """
+        if len(self._srcs) != 1 or len(self._dsts) != 1:
+            return None
+        out = self._dsts[0]._object_fifo
+        tap = out.to_stream
+        if tap is None:
+            return None
+        in_size = math.prod(self._srcs[0]._object_fifo.shape)
+        dims = tap.transformation_dims
+        reach = sum((size - 1) * stride for size, stride in dims)
+        inner = math.prod(size for size, _ in dims[1:])
+        if len(dims) < 2 or dims[0][0] < 2 or reach < in_size:
+            return None
+        if inner != math.prod(out.shape) or dims[0][1] % in_size:
+            return None
+        rows = [size for size, stride in dims[1:] if size > 1 and stride == in_size]
+        before, after = (0, 0) if tap.padding is None else tap.padding[0]
+        span = rows[0] if rows else 1
+        objects = (dims[0][0] - 1) * (dims[0][1] // in_size) + span - before - after
+        if sprod(tap.tensor_dims) != objects * in_size:
+            raise ValueError(
+                f"{out.name} to_stream {tap!r} walks a stream of {objects} "
+                f"objects of {in_size} elements, but its tensor has shape "
+                f"{tuple(tap.tensor_dims)}"
+            )
+        return objects
+
     def _transfer_sizes(self, of: ObjectFifo) -> list[int]:
         """Return the elements each transfer of `of`'s end of the link moves, per segment it walks.
 
@@ -1243,6 +1302,9 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
         dsts = [h._object_fifo for h in self._dsts]
         if len(srcs) == len(dsts) == 1:
             in_size, out_size = math.prod(srcs[0].shape), math.prod(dsts[0].shape)
+            objects = self._walked_objects()
+            if objects is not None:
+                return [objects * in_size if of is dsts[0] else in_size]
             padded = dsts[0].to_stream is not None and dsts[0].to_stream.padding
             return [out_size if out_size > in_size and not padded else in_size]
         shared, side, offsets = (
