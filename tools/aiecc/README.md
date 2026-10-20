@@ -2,7 +2,7 @@
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// 
+//
 //===----------------------------------------------------------===//-->
 
 # `aiecc`: the MLIR-AIE compiler driver
@@ -44,9 +44,9 @@ bundled into a single loadable ELF instead of an xclbin plus loose binaries:
 aiecc --get-full-elf design.mlir   # -> aie.elf
 ```
 
-You can override these output file names with `--npu-insts-name`, 
-`--xclbin-name`, and `--full-elf-name`. You can filter which devices and 
-runtime sequences are compiled with `--device-name` and `--sequence-name`. 
+You can override these output file names with `--npu-insts-name`,
+`--xclbin-name`, and `--full-elf-name`. You can filter which devices and
+runtime sequences are compiled with `--device-name` and `--sequence-name`.
 
 ### Parameterized C++ transaction builders
 
@@ -190,10 +190,10 @@ annotations, IR-retention options and verification limitations.
 ### Seeing what the compiler will do / dry-running: `--emit-dot`
 
 The compiler builds its execution plan from the flags you pass.
-Adding `--emit-dot` prints that plan (as a GraphViz graph) for exactly the 
+Adding `--emit-dot` prints that plan (as a GraphViz graph) for exactly the
 requested outputs and options and exits without compiling anything. You omit
 the input file when you pass `--emit-dot`, as no compilation actually takes
-place. For example, this shows the plan for the NPU-instruction flow and 
+place. For example, this shows the plan for the NPU-instruction flow and
 renders it to an image:
 
 ```bash
@@ -265,7 +265,7 @@ aiecc --get-npu-insts --cut=input_physical.mlir --checkpoint=cp \
 
 ![NPU-instruction flow with a checkpoint cut](docs/npu_insts_cut.svg)
 
-If an error occurs during compilation, `aiecc` will dump a checkpoint 
+If an error occurs during compilation, `aiecc` will dump a checkpoint
 capturing the state up to the first failing edge. This allows you to submit
 a checkpoint as a reproducer, or investigate the issue yourself using the
 exact inputs the failing step saw.
@@ -304,22 +304,22 @@ to verify after every pass and learn which one it was.
 ## Developer guide
 
 `aiecc` captures the build steps required for each requested output artifact
-as a static graph: every kind of intermediate is a `Node`, every 
+as a static graph: every kind of intermediate is a `Node`, every
 transformation an edge, and the engine runs only the edges needed for the
 artifacts you asked for.
 
 ### Edge, Node, Item — and keys
 
-- **`Item<T>`** — one typed intermediate or output artifact; a payload of type 
+- **`Item<T>`** — one typed intermediate or output artifact; a payload of type
   `T` (e.g., JSON, IR module, vector of bytes) plus a `key`, which uniquely
-  identifies the payload among its peers. Items are materialized to disk 
-  lazily, i.e., only when a downstream edge needs them on disk. Payload types 
+  identifies the payload among its peers. Items are materialized to disk
+  lazily, i.e., only when a downstream edge needs them on disk. Payload types
   and their disk serializers live in `Items.h`.
-- **`Node<T>`** — the collection of all `Item<T>` artifacts produced by one 
+- **`Node<T>`** — the collection of all `Item<T>` artifacts produced by one
   edge; for many edges this wraps a single item (e.g. `aie.elf`), but for
   some it contains many (e.g. the per-AIE-core `.o` files).
-- **`Edge`** — a transformation from input node(s) to an output node, 
-  performing some action (a lambda, a `PassPipeline`, or a `ShellCommand`). 
+- **`Edge`** — a transformation from input node(s) to an output node,
+  performing some action (a lambda, a `PassPipeline`, or a `ShellCommand`).
   Edges may change the cardinality of the input/output nodes, e.g. split or
   join, or apply a transform to each item (map) -- see below.
 
@@ -338,9 +338,9 @@ read inputs or write outputs out-of-band.
 
 #### Why this matters
 
-- **The graph is declared unconditionally.** No guards around edge construction 
-  — every edge always exists. The engine prunes backward from the requested 
-  outputs, so unrequested work never runs. `--emit-dot`, `--checkpoint`, and 
+- **The graph is declared unconditionally.** No guards around edge construction
+  — every edge always exists. The engine prunes backward from the requested
+  outputs, so unrequested work never runs. `--emit-dot`, `--checkpoint`, and
   `--resume` rely on this static shape.
 - **`Item` owns materialization.** An `Item<T>` holds a typed payload and only
   writes it to disk when a *downstream* edge asks for its path via `asFile()`.
