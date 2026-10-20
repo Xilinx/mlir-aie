@@ -507,9 +507,7 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
       logits[n] = (float)sums[n] * act_scale * w_scales[n];
   }
 
-  // The set is ordered by logit, then by lower gidx on equal logits, so it
-  // holds the vocabulary's top kKset under that order whatever the
-  // insertion order, which is what lets per-core sets merge exactly.
+  // Same set order as llama_topk_insert (llama_topk_sample.cc).
   int len = *set_len;
   if (len == kKset) {
     // Almost every call inserts nothing: compare the call's best key with the

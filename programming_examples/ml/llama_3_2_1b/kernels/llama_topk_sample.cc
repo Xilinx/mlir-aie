@@ -222,8 +222,7 @@ void llama_topk_insert(int8_t *restrict slot, float *restrict set_logit,
 // Each call takes one round: lo and hi hold four candidates each (cores 0-3
 // and 4-7), every candidate kCandBytes long:
 //   [logit f32 | gidx i32 | embed_sc f32 | valid i32 | pad to 64 | row i8 x kD]
-// Insertion is llama_topk_insert's, so under its order the merged set is the
-// one a single pass over the whole vocabulary keeps, ties included.
+// Insertion is llama_topk_insert's, so the merge equals a single pass.
 static constexpr int kCandHeader = 64;
 static constexpr int kCandBytes = kCandHeader + kD;
 
