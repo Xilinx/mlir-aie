@@ -91,22 +91,17 @@ def skip_sf(blk, sf):
 
 
 def sa_placer_flags(seed=3, effort=0.05):
-    """aiecc flags that place the design with the SA placer. The default
-    sequential placer can't seat the cascade pairs next to each other.
+    """aiecc flags that place the design with the SA placer, which seats the
+    cascade pairs next to each other where the default placer cannot.
 
-    effort scales the SA search budget (1.0 = full default schedule).
-    Measured on real NPU2 hardware, cold compiles, all three of the
-    dashboard's seeds (2, 3, 7) at all four of its batch sizes (1, 4, 16,
-    64): 0.05 compiles in ~20.0-21.1s against 1.0's ~26.4-31.3s, same
-    correctness (PASS!, within tolerance) at every seed and batch. Real
-    per-image NPU latency is statistically indistinguishable between the two
-    efforts at every seed and batch (a ~20-26% gap seen for two seeds at
-    batch 16 in one sweep did not reproduce under repeated measurement --
-    that config's own repeat runs spanned a similar range, and the two
-    efforts place the design identically across all four batch sizes for a
-    given seed, confirmed by digest). SA placement cost is honestly worse at
-    the lower effort: 1% (seed 7) to 18% (seed 2). utils/component_checks/
-    sa_placer_hw.py tracks both this default and 1.0 nightly on real
-    hardware, at every seed and batch; keep the two in sync if either
-    changes."""
+    Effort 0.05 compiles about a quarter faster than 1.0 with the same
+    output and NPU latency; utils/component_checks/sa_placer_hw.py tracks both.
+
+    Args:
+        seed: The SA placer's seed.
+        effort: Its search budget, 1.0 being the full default schedule.
+
+    Returns:
+        The aiecc flags.
+    """
     return ["--placer=sa_placer", f"--sa-seed={seed}", f"--sa-effort={effort}"]

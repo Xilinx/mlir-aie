@@ -101,8 +101,8 @@ def _make_argparser():
     p.add_argument(
         "--sa-effort",
         type=float,
-        help="SA placer search budget scale (default: 1.0; lower trades "
-        "placement cost for compile time)",
+        help="SA placer search budget scale (default: 0.05; 1.0 is the full "
+        "schedule, which compiles slower for a placement no faster on the NPU)",
     )
     # The NPU takes 6-13 launches after load to reach its steady latency.
     add_benchmark_args(p, default_warmup=20, default_iters=1)
