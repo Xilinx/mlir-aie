@@ -34,6 +34,7 @@ import numpy as np
 from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
+    CompileTime,
     DispatchTime,
     In,
     InOut,
@@ -49,10 +50,13 @@ from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
     add_compile_args,
+    add_trace_arg,
     device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.ml import DataShaper
+from aie.utils.trace import TraceConfig
+from aie.utils.trace.events import CoreEvent
 from aie.utils.verify import Tolerance, compare
 
 from . import mb_utils
@@ -99,7 +103,14 @@ out_sz_i32 = post_L1_OutW * post_L1_OutH * post_L2_OutC * 2 // 4
 # Design top-level function
 # ---------------------------------------------------------------------------
 @iron.jit(aiecc_flags=sa_placer_flags())
-def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: DispatchTime[np.int32]):
+def mobilenet_iron(
+    inp: In,
+    scratch: InOut,
+    out: Out,
+    *,
+    batch: DispatchTime[np.int32],
+    trace_config: CompileTime[TraceConfig | None] = None,
+):
     """Build the full mobilenet IRON design and return the resolved Program.
 
     Runtime args (declared via In/Out so @iron.jit knows the design takes
@@ -281,7 +292,24 @@ def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: DispatchTime[np.
     # ------------------------------------------------------------------
     # Generate MLIR
     # ------------------------------------------------------------------
-    return Program(iron.get_current_device(), rt, workers=all_workers).resolve_program()
+    prog = Program(iron.get_current_device(), rt, workers=all_workers)
+    if trace_config:
+        # Trace packet ids are 5 bits, so 31 tiles at most; the last FC split
+        # runs the same work as its three siblings.
+        prog.enable_trace(
+            trace_config.trace_size,
+            workers=all_workers[:-1],
+            coretile_events=[
+                CoreEvent.ACTIVE,
+                CoreEvent.LOCK_STALL,
+                CoreEvent.STREAM_STALL,
+                CoreEvent.CASCADE_STALL,
+                CoreEvent.MEMORY_STALL,
+                CoreEvent.INSTR_CALL,
+                CoreEvent.INSTR_RETURN,
+            ],
+        )
+    return prog.resolve_program()
 
 
 def _positive_int(text):
@@ -328,6 +356,7 @@ def _make_argparser():
     )
     # The NPU takes 6-13 launches after load to reach its steady latency.
     add_benchmark_args(p, default_warmup=20, default_iters=5)
+    add_trace_arg(p, with_short=False)
     return p
 
 
@@ -350,6 +379,7 @@ def _run_and_verify(design, opts):
         dtype=np.int32,
     )
     scratch = iron.zeros((post_L2_OutC * 2 // 4 * 2,), dtype=np.int32)
+    trace = TraceConfig(trace_size=opts.trace_size) if opts.trace_size else None
 
     for n in batches:
         # A fresh output per batch, so no image passes on an earlier batch's result.
@@ -358,6 +388,8 @@ def _run_and_verify(design, opts):
         if opts.dynamic:
             print(f"batch={n}")
             dispatch = dict(batch=n)
+        if trace:
+            dispatch["trace_config"] = trace
         bench = run_iters(
             design,
             inp,
@@ -365,8 +397,17 @@ def _run_and_verify(design, opts):
             out,
             **dispatch,
             warmup=opts.warmup,
-            iters=opts.iters,
+            iters=1 if trace else opts.iters,
         )
+        if trace:
+            if trace.physical_mlir_path is None:
+                sys.exit("the JIT runtime did not record the traced design's MLIR")
+            print(
+                "trace:",
+                *trace.trace_to_json(
+                    trace.physical_mlir_path, output_name=f"trace_mobilenet_b{n}.json"
+                ),
+            )
 
         actual = np.concatenate(
             [
