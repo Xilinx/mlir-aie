@@ -188,7 +188,7 @@ def compile_cold_warm(env: dict) -> dict:
             round(rss_cold, 1) if built_cold.returncode == 0 else None
         ),
         "compile_s_warm": (
-            round(compile_s_warm, 1) if built_warm.returncode == 0 else None
+            round(compile_s_warm, 2) if built_warm.returncode == 0 else None
         ),
         "compile_peak_rss_mb_warm": (
             round(rss_warm, 1) if built_warm.returncode == 0 else None
