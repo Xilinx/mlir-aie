@@ -420,15 +420,9 @@ verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
     // write_teardown's verifier checks this too, but inline-config leaves no
     // write_teardown to verify.
     auto dev = module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
-    if (dev && dev.walk([](AIE::DMAStartOp start) {
-                    if (!isa<AIE::ShimDMAOp>(start->getParentOp()))
-                      return WalkResult::advance();
-                    start.emitOpError("starts a shim DMA channel, which "
-                                      "teardown cannot stop");
-                    return WalkResult::interrupt();
-                  })
-                   .wasInterrupted())
-      return failure();
+    if (Operation *start = dev ? AIEX::findShimDmaStart(dev) : nullptr)
+      return start->emitOpError(
+          "starts a shim DMA channel, which teardown cannot stop");
   }
   return success();
 }

@@ -1967,18 +1967,24 @@ AIEX::NpuWriteTeardownOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       symbolTable.lookupSymbolIn(scope, getDeviceRefAttr()));
   if (!device)
     return emitOpError() << getDeviceRefAttr() << " is not a device";
-  AIE::DMAStartOp shimStart;
-  device.walk([&](AIE::DMAStartOp start) {
-    if (!isa<AIE::ShimDMAOp>(start->getParentOp()))
-      return WalkResult::advance();
-    shimStart = start;
-    return WalkResult::interrupt();
-  });
+  Operation *shimStart = AIEX::findShimDmaStart(device);
   if (!shimStart)
     return success();
   InFlightDiagnostic diag =
       emitOpError() << getDeviceRefAttr()
                     << " starts a shim DMA channel, which teardown cannot stop";
-  diag.attachNote(shimStart.getLoc()) << "started here";
+  diag.attachNote(shimStart->getLoc()) << "started here";
   return diag;
+}
+
+Operation *AIEX::findShimDmaStart(AIE::DeviceOp device) {
+  Operation *found = nullptr;
+  device.walk([&](Operation *op) {
+    if (!isa<AIE::DMAStartOp, AIE::DMAOp>(op) ||
+        !isa<AIE::ShimDMAOp>(op->getParentOp()))
+      return WalkResult::advance();
+    found = op;
+    return WalkResult::interrupt();
+  });
+  return found;
 }
