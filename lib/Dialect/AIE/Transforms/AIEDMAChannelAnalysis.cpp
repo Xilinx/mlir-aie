@@ -164,18 +164,23 @@ bool DMAChannelAnalysis::isChannelFree(TileLike tile, DMAChannelDir dir,
 }
 
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
-                                             int channel, Operation *owner) {
+                                             int channel, Operation *owner,
+                                             bool shareable) {
   int maxChannelNum = getDMAChannelLimit(tile, dir, false);
   if (channel < 0 || channel >= maxChannelNum) {
     return -1;
   }
-  return usedChannels
-                 .try_emplace(std::make_tuple(getTileKey(tile->getResult(0)),
-                                              dir, channel),
-                              owner)
-                 .second
-             ? channel
-             : -1;
+  auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
+  if (usedChannels.try_emplace(key, owner).second) {
+    if (shareable)
+      sharedChannels.insert(key);
+    return channel;
+  }
+  // Packet-switched sources share a channel: the runtime writes its
+  // descriptors one transfer at a time, each under its own header.
+  if (shareable && sharedChannels.contains(key))
+    return channel;
+  return -1;
 }
 
 Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
