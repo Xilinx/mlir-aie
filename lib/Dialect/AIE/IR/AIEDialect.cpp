@@ -1650,6 +1650,13 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
+    // Each input's transfer runs to the next input's offset, so the offsets
+    // must increase; otherwise the lengths come out wrong and the link hangs.
+    for (auto [idx, len] : llvm::enumerate(getJoinTransferLengths()))
+      if (len <= 0)
+        return emitOpError("src offsets must increase: input objectFifo ")
+               << idx << " would transfer " << len << " elements";
+
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     if (!fifoOut.getDimensionsToStream().empty()) {
       int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
@@ -1674,6 +1681,11 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     if (!getSrcOffsets().empty())
       return emitOpError("src offsets should be empty for distribute");
+
+    for (auto [idx, len] : llvm::enumerate(getDistributeTransferLengths()))
+      if (len <= 0)
+        return emitOpError("dst offsets must increase: output objectFifo ")
+               << idx << " would transfer " << len << " elements";
 
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
