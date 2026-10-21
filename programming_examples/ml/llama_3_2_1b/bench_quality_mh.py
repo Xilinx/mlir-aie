@@ -12,15 +12,15 @@ For each prompt:
       decode last prompt token's hidden -> argmax = predicted token
   - Report match (== fp16) per prompt and overall rate.
 
-Numpy-only by default (orders of magnitude faster than device for 20
-prompts). Pass --device to run each prompt through the NPU decode
-(aie2_decode.py) instead, from an empty KV cache: the prompt's tokens are the
-device's input tokens, and its token after the last one is the prediction.
+By default each prompt runs through the NPU decode (aie2_decode.py), from an
+empty KV cache: the prompt's tokens are the device's input tokens, and its
+token after the last one is the prediction. --path numpy runs the numpy INT8
+chain instead (orders of magnitude faster, for exploring its options).
 Tokenizing needs tiktoken (`pip install tiktoken`).
 
 Run:
-  python bench_quality_mh.py                     # numpy only, ~2-3 min
-  python bench_quality_mh.py --device --bf16-ref
+  python bench_quality_mh.py --bf16-ref
+  python bench_quality_mh.py --path numpy        # ~2-3 min
 """
 
 from __future__ import annotations
@@ -227,10 +227,11 @@ def main():
         "the int8 recipe (device-vs-recipe).",
     )
     parser.add_argument(
-        "--device",
-        action="store_true",
-        help="prefill and predict on the NPU (aie2_decode.py) instead of the "
-        "numpy INT8 chain",
+        "--path",
+        choices=("device", "numpy"),
+        default="device",
+        help="prefill and predict on the NPU (aie2_decode.py), or in the numpy "
+        "INT8 chain",
     )
     parser.add_argument(
         "--n-layers",
@@ -252,7 +253,7 @@ def main():
     print(f"loaded {opts.n_layers} mh layers + lm_head\n", flush=True)
 
     decoder = None
-    if opts.device:
+    if opts.path == "device":
         decoder = Decoder(
             DecodeShape(opts.n_layers, opts.t),
             layers,
@@ -300,7 +301,7 @@ def main():
         results.append((prompt, ref_tok, our_tok, match))
         mark = "OK" if match else "FAIL"
         reflbl = "bf16" if opts.bf16_ref else "ref"
-        devlbl = "npu" if opts.device else "int8"
+        devlbl = "npu" if opts.path == "device" else "int8"
         print(
             f"  [{mark}] {prompt!r:50} -> {reflbl}={enc.decode([ref_tok])!r} "
             f"{devlbl}={enc.decode([our_tok])!r}  "
@@ -309,7 +310,7 @@ def main():
         )
 
     refname = "true HF bf16" if opts.bf16_ref else "int8 recipe"
-    devname = "NPU" if opts.device else "numpy int8"
+    devname = "NPU" if opts.path == "device" else "numpy int8"
     print(
         f"\n{devname} vs {refname} top-1 agreement: {n_match}/{n_total} = "
         f"{100.0 * n_match / max(1, n_total):.1f}%"
