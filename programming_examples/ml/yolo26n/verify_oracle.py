@@ -86,7 +86,7 @@ def main() -> None:
 
     outcomes: Counter[str] = Counter()
     for path in paths:
-        image = letterbox(path)
+        image, _ = letterbox(path)
         ours = oracle.run(image)
         x = (image.transpose(2, 0, 1)[None] / np.float32(255)).astype(np.float32)
         theirs = {

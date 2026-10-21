@@ -199,7 +199,7 @@ def main() -> None:
         # Optional: only a real image needs OpenCV.
         from letterbox import letterbox
 
-        image = letterbox(args.image)
+        image, _ = letterbox(args.image)
     else:
         image = np.random.default_rng(args.synthetic or 0).integers(
             0, 256, (IMAGE_SIZE, IMAGE_SIZE, 3), dtype=np.uint8

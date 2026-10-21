@@ -324,6 +324,39 @@ def test_a_run_of_the_earlier_format_publishes_no_time(yolo):
     assert yolo.parse_timing(YOLO_IMAGES + old) == {}
 
 
+def test_map50_is_read_from_the_runs_own_line(yolo):
+    out = "map50: 0.5859 over 128 images (929 labelled objects)\n"
+    assert yolo.parse_map50(out) == {
+        "map50_coco128": 0.5859,
+        "map50_coco128_objects": 929,
+    }
+
+
+def test_a_run_whose_weights_dir_has_no_labels_publishes_no_map50(yolo):
+    assert yolo.parse_map50(YOLO_TIMED_OUTPUT) == {}
+
+
+def test_map50_is_aggregated_as_one_row_with_its_object_count_in_range(yolo):
+    timing = {"map50_coco128": 0.5859, "map50_coco128_objects": 929}
+    correctness = yolo.parse_correctness(YOLO_IMAGES, 0)
+    rows = yolo.aggregate(correctness, timing, {}, {})
+    assert [(r["name"], r["unit"], r["value"], r.get("range")) for r in rows] == [
+        ("yolo26n/640/images_passed", "images", 8, "of 8"),
+        ("yolo26n/640/map50_coco128", "mAP", 0.5859, "929 labelled objects"),
+    ]
+
+
+def test_batch_1_and_batch_8_runs_must_agree_on_map50(yolo):
+    correctness = yolo.parse_correctness(YOLO_BATCHED_OUTPUT + ORT_LINE, 0)
+    timing = yolo.parse_timing(YOLO_TIMED_OUTPUT) | yolo.parse_timing(
+        YOLO_BATCHED_OUTPUT
+    )
+    sane_timing = timing | {"map50_coco128_disagrees": False}
+    assert yolo.measurement_sane(correctness, sane_timing, [1, 8])
+    insane_timing = timing | {"map50_coco128_disagrees": True}
+    assert not yolo.measurement_sane(correctness, insane_timing, [1, 8])
+
+
 def test_a_passing_run_timed_in_full_is_sane(yolo):
     correctness = yolo.parse_correctness(YOLO_BATCHED_OUTPUT + ORT_LINE, 0)
     timing = yolo.parse_timing(YOLO_TIMED_OUTPUT) | yolo.parse_timing(
@@ -438,3 +471,137 @@ def test_a_run_that_cuts_a_fused_run_is_refused(yolo_modules):
         design.SegmentDesign(
             network, params.Params(), network.ops[: stop - 1], [network.ops[0].dst]
         )
+
+
+@pytest.fixture(scope="module")
+def coco_map():
+    sys.path.insert(0, str(YOLO))
+    try:
+        module = importlib.import_module("coco_map")
+    finally:
+        sys.path.remove(str(YOLO))
+    return module
+
+
+def test_labels_are_read_into_the_letterboxed_frame(coco_map, tmp_path):
+    # A 1280x720 image letterboxed to 640: ratio 0.5, top padding 140, no
+    # left padding. One normalized box at its centre, a quarter wide and half
+    # tall, lands at (240, 230, 400, 410) by hand.
+    path = tmp_path / "labels.txt"
+    path.write_text("0 0.5 0.5 0.25 0.5\n")
+    labels = coco_map.Labels.read(
+        path, height=720, width=1280, ratio=0.5, left=0, top=140
+    )
+    assert labels.classes.tolist() == [0]
+    np.testing.assert_allclose(labels.boxes, [[240.0, 230.0, 400.0, 410.0]])
+
+
+def test_an_image_with_no_objects_has_no_label_file(coco_map, tmp_path):
+    # The YOLO convention: a zero-object image has no file, not an empty one.
+    labels = coco_map.Labels.read(
+        tmp_path / "missing.txt", height=720, width=1280, ratio=0.5, left=0, top=140
+    )
+    assert labels.classes.tolist() == [] and labels.boxes.shape == (0, 4)
+
+
+def test_multiple_objects_and_classes_are_read_in_file_order(coco_map, tmp_path):
+    path = tmp_path / "labels.txt"
+    path.write_text("0 0.5 0.5 0.25 0.5\n3 0.25 0.25 0.5 0.5\n")
+    labels = coco_map.Labels.read(path, height=100, width=100, ratio=1.0, left=0, top=0)
+    assert labels.classes.tolist() == [0, 3]
+    np.testing.assert_allclose(
+        labels.boxes, [[37.5, 25.0, 62.5, 75.0], [0.0, 0.0, 50.0, 50.0]]
+    )
+
+
+def _detection(x1, y1, x2, y2, score, cls):
+    return [x1, y1, x2, y2, score, cls]
+
+
+def test_a_perfect_detector_scores_near_one(coco_map):
+    # Two labels, both matched exactly (IoU 1) in descending confidence: the
+    # 101-point interpolation's last sentinel (recall 1.0 -> precision 0, by
+    # construction) costs the curve its last half-step, 0.005 of the 0.01
+    # spacing -- a known property of this AP formula, not a bug here.
+    scored = coco_map.MeanAP50()
+    labels = coco_map.Labels(
+        classes=np.array([0, 0]),
+        boxes=np.array([[0, 0, 10, 10], [20, 20, 30, 30]], np.float32),
+    )
+    detections = np.array(
+        [
+            _detection(0, 0, 10, 10, 0.9, 0),
+            _detection(20, 20, 30, 30, 0.8, 0),
+        ],
+        np.float32,
+    )
+    scored.add(detections, labels)
+    assert scored.value() == pytest.approx(0.995)
+    assert scored.images == 1 and scored.objects == 2
+
+
+def test_a_detection_with_no_overlap_scores_zero(coco_map):
+    scored = coco_map.MeanAP50()
+    labels = coco_map.Labels(
+        classes=np.array([0]), boxes=np.array([[0, 0, 10, 10]], np.float32)
+    )
+    detections = np.array([_detection(100, 100, 110, 110, 0.9, 0)], np.float32)
+    scored.add(detections, labels)
+    assert scored.value() == 0.0
+
+
+def test_a_detection_of_the_wrong_class_cannot_match(coco_map):
+    # Same box, same confidence, a different class: no match, so no TP.
+    scored = coco_map.MeanAP50()
+    labels = coco_map.Labels(
+        classes=np.array([0]), boxes=np.array([[0, 0, 10, 10]], np.float32)
+    )
+    detections = np.array([_detection(0, 0, 10, 10, 0.9, 1)], np.float32)
+    scored.add(detections, labels)
+    assert scored.value() == 0.0
+
+
+def test_the_first_detection_in_model_order_claims_an_overlapped_label(coco_map):
+    # Two detections overlap the same one label, in descending confidence as
+    # the model emits them (add()'s documented order): the first claims it,
+    # the second is a false positive, not a second match.
+    scored = coco_map.MeanAP50()
+    labels = coco_map.Labels(
+        classes=np.array([0]), boxes=np.array([[0, 0, 10, 10]], np.float32)
+    )
+    detections = np.array(
+        [
+            _detection(0, 0, 10, 10, 0.9, 0),
+            _detection(0, 0, 10, 10, 0.5, 0),
+        ],
+        np.float32,
+    )
+    scored.add(detections, labels)
+    # recall=[1,1], precision=[1,0.5]: the envelope holds precision at 1
+    # until recall reaches 1, so the AP is the same 0.995 as a single match.
+    assert scored.value() == pytest.approx(0.995)
+
+
+def test_detections_at_or_below_the_confidence_floor_are_dropped(coco_map):
+    scored = coco_map.MeanAP50()
+    labels = coco_map.Labels(
+        classes=np.array([0]), boxes=np.array([[0, 0, 10, 10]], np.float32)
+    )
+    detections = np.array([_detection(0, 0, 10, 10, coco_map.CONF, 0)], np.float32)
+    scored.add(detections, labels)
+    assert scored.value() == 0.0
+
+
+def test_mean_ap50_accumulates_over_several_images(coco_map):
+    scored = coco_map.MeanAP50()
+    labels_a = coco_map.Labels(
+        classes=np.array([0]), boxes=np.array([[0, 0, 10, 10]], np.float32)
+    )
+    labels_b = coco_map.Labels(
+        classes=np.array([0]), boxes=np.array([[0, 0, 10, 10]], np.float32)
+    )
+    scored.add(np.array([_detection(0, 0, 10, 10, 0.9, 0)], np.float32), labels_a)
+    scored.add(np.array([_detection(100, 100, 110, 110, 0.8, 0)], np.float32), labels_b)
+    assert scored.images == 2 and scored.objects == 2
+    # One of two labels matched: recall tops out at 0.5.
+    assert 0 < scored.value() < 1

@@ -87,7 +87,7 @@ class CalibrationImages(CalibrationDataReader):
         self.batches = [
             {
                 "images": (
-                    letterbox(p).transpose(2, 0, 1)[None] / np.float32(255)
+                    letterbox(p)[0].transpose(2, 0, 1)[None] / np.float32(255)
                 ).astype(np.float32)
             }
             for p in paths

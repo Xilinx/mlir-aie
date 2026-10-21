@@ -19,11 +19,26 @@ objects for the warm one, as llama_chain_hw.py does; then a ``--time`` run
 from that cache and one at ``--batch 8``, each checking every image, their
 timing kept only when every image matched in both.
 
-Needs the quantized model and the COCO128 images where amd/IRON's examples
-keep them, ``$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/`` (default ``/srv``), or
-``--weights-dir``: ``yolo26n_xint8.onnx`` and ``coco128/images/train2017``.
-Extracts the parameters from the model into ``--params-cache``, under a name
-keyed by the sha256 of the model and the extractor, unless already there.
+The device's detections (already verified bit-exact against the numpy
+oracle) are also scored against coco128's own labels as mAP@0.5
+(``map50_coco128``), when the weights dir carries ``coco128/labels/``
+beside the images: a host-side, numpy mAP matching Ultralytics 8.4's
+validator (``yolo26n/coco_map.py``). ``--n-images`` defaults to all 128
+coco128 images, not 8: mAP on 8 images (30 labelled objects) is noise (the
+int8 model scores higher than fp32 there); on all 128 it costs about a
+minute of extra host time per run (two runs: batch 1 and batch 8), each
+still the oracle check it already did. The fp32 ONNX model's own mAP50
+on the same 128 images, 0.6365, is a fixed reference the page shows beside
+the nightly's: see ``utils/kernel_checks/index.html``'s ``map50_coco128``
+description for how it was computed and from where.
+
+Needs the quantized model and the COCO128 images and labels where amd/IRON's
+examples keep them, ``$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/`` (default
+``/srv``), or ``--weights-dir``: ``yolo26n_xint8.onnx``,
+``coco128/images/train2017`` and, for ``map50_coco128``,
+``coco128/labels/train2017``. Extracts the parameters from the model into
+``--params-cache``, under a name keyed by the sha256 of the model and the
+extractor, unless already there.
 
 Writes rows and a meta file in the kernel checks' format
 (utils/kernel_checks/publish.py), with the device's power mode and the
@@ -90,6 +105,10 @@ _IMAGE_LINE_RE = re.compile(
 )
 _SUMMARY_RE = re.compile(r"^yolo26n: (\d+)/(\d+) images PASS", re.MULTILINE)
 _ORT_RE = re.compile(r"^ort: (\d+)/(\d+) images match onnxruntime", re.MULTILINE)
+_MAP50_RE = re.compile(
+    r"^map50: (?P<map50>[\d.]+) over \d+ images \((?P<objects>\d+) labelled objects\)$",
+    re.MULTILINE,
+)
 _PER_IMAGE_RE = re.compile(
     r"^per-image: (?P<us>[\d.]+) us \((?P<fps>[\d.]+) fps\) at batch (?P<batch>\d+), "
     r"fastest of (?P<n>\d+) after \d+ warmups; "
@@ -317,6 +336,29 @@ def parse_correctness(out: str, returncode: int, ort_mismatches: int = 0) -> dic
     }
 
 
+def parse_map50(out: str) -> dict:
+    """Read a run's ``map50:`` line: its detections' mAP@0.5 against coco128's labels.
+
+    Args:
+        out: the run's stdout and stderr.
+
+    Returns:
+        ``map50_coco128`` and ``map50_coco128_objects`` (how many labelled
+        objects it was scored over); empty when the run printed no such
+        line, which means the weights dir's ``coco128/`` carries no
+        ``labels/`` (yolo26n.py scores only when it finds them).
+    """
+    m = _MAP50_RE.search(out)
+    return (
+        {
+            "map50_coco128": round(float(m["map50"]), 4),
+            "map50_coco128_objects": int(m["objects"]),
+        }
+        if m
+        else {}
+    )
+
+
 def parse_timing(out: str) -> dict:
     """Read a ``--time`` run: per batch, one image's time and the frame rate.
 
@@ -384,9 +426,13 @@ def measurement_sane(correctness: dict, timing: dict, batches: list[int]) -> boo
     Returns:
         True when every image matched and each batch was timed over
         ``N_ITERS`` calls, its fastest call positive and no slower than the
-        median, and its dispatch timed apart.
+        median, its dispatch timed apart, and, when any run printed a
+        ``map50:`` line, every run that printed one agreed with the rest
+        (the same bit-exact detections, the same labels, so the same score).
     """
     if not correctness["passed"]:
+        return False
+    if timing.get("map50_coco128_disagrees"):
         return False
     for batch in batches:
         fastest = timing.get(f"us_per_image_b{batch}")
@@ -440,6 +486,9 @@ def aggregate(
             out.append(row(CASE, metric, value, "us", spread))
         elif metric.startswith("fps_b"):
             out.append(row(CASE, metric, value, "fps"))
+        elif metric == "map50_coco128":
+            objects = timing.get("map50_coco128_objects")
+            out.append(row(CASE, metric, value, "mAP", f"{objects} labelled objects"))
     for metric, unit in (
         ("elf_bytes", "bytes"),
         ("xclbin_bytes", "bytes"),
@@ -461,16 +510,18 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--n-images",
         type=int,
-        default=8,
-        help="COCO images to run, a multiple of 8 (default: 8)",
+        default=128,
+        help="COCO images to run, a multiple of 8 (default: 128, all of coco128: "
+        "mAP50 on 8 images is noise -- the int8 model even beats fp32 there)",
     )
     parser.add_argument(
         "--ort-mismatches",
         type=int,
-        default=0,
+        default=4,
         help="of those, how many are known to differ from onnxruntime where its "
         "float32 softmax rounds off a boundary, as verify_oracle.py attributes "
-        "them; fewer matches fail the check (default: 0)",
+        "them; fewer matches fail the check (default: 4, calibrated for all 128 "
+        "images; pass 0 with a smaller --n-images that excludes them)",
     )
     parser.add_argument(
         "--params-cache",
@@ -551,6 +602,13 @@ def main(argv=None) -> int:
                 )
                 if in_batches["passed"]:
                     timing = parse_timing(ran.stdout) | parse_timing(batched.stdout)
+                    map50_b1, map50_b8 = (
+                        parse_map50(ran.stdout),
+                        parse_map50(batched.stdout),
+                    )
+                    if map50_b1 or map50_b8:
+                        timing["map50_coco128_disagrees"] = map50_b1 != map50_b8
+                        timing |= map50_b1 or map50_b8
                 else:
                     correctness = in_batches
     finally:

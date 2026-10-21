@@ -137,7 +137,7 @@ assert.equal(changeClass(100, 114, 'compile_s'), '');
 assert.equal(changeClass(100, 115, 'compile_s'), 'worse');
 assert.equal(changeClass(1000, 1009, 'final_cost_mean'), '');
 assert.equal(changeClass(1000, 1010, 'final_cost_mean'), 'worse');
-assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes', 'max_ulp_bfloat16', 'max_ulp_float32', 'not_correctly_rounded_bfloat16', 'not_correctly_rounded_float32']);
+assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes', 'max_ulp_bfloat16', 'max_ulp_float32', 'not_correctly_rounded_bfloat16', 'not_correctly_rounded_float32', 'map50_coco128']);
 """)
 
 
@@ -2064,7 +2064,7 @@ const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open && card.children.includes(repro));
 assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n'), [
   'git checkout abcdef123456',
-  'cd programming_examples/ml/yolo26n && python yolo26n.py --images $IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/coco128/images/train2017 --n 8',
+  'cd programming_examples/ml/yolo26n && python yolo26n.py --images $IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/coco128/images/train2017 --n 128',
   '# every run, as the nightly runs them:',
   'python utils/component_checks/yolo26n_hw.py --out perf.json --meta meta.json',
 ]);
@@ -2094,12 +2094,16 @@ assert.equal(stages.options.scales.y.type, 'logarithmic');
 // YOLO26n: batch 1 beside batch 8, the NPU time, the dispatch and the host
 // overhead around it leading, then end to end, per second and the compile tabs.
 // The first night predates the empty-dispatch baseline: the NPU tab starts after it.
-const split = (npu, dispatch, host) => ({ ...(npu ? { npu_us_per_image_b1: { value: npu, unit: 'us' }, npu_us_per_image_b8: { value: 2850, unit: 'us' } } : {}),
+const split = (npu, dispatch, host, map50) => ({ ...(npu ? { npu_us_per_image_b1: { value: npu, unit: 'us' }, npu_us_per_image_b8: { value: 2850, unit: 'us' } } : {}),
                                           dispatch_us_per_image_b1: { value: dispatch, unit: 'us' }, dispatch_us_per_image_b8: { value: 2900, unit: 'us' },
-                                          host_overhead_us_per_image_b1: { value: host, unit: 'us' }, host_overhead_us_per_image_b8: { value: 100, unit: 'us' } });
-const withSplit = (record, npu, dispatch, host) => ({ ...record, rows: { [YOLO]: { ...record.rows[YOLO], ...split(npu, dispatch, host) } } });
-const yoloData = collect(historiesOf('yolo26n-hw', [withSplit(yoloBefore, null, 4400, 600), withSplit(yoloAfter, 4310, 4400, 1000)]));
-assert.deepEqual(yolo.trend.slice(0, 5).map(t => t.name), ['NPU time / image', 'Dispatch / image', 'Host overhead', 'End-to-end / image', 'Images / s']);
+                                          host_overhead_us_per_image_b1: { value: host, unit: 'us' }, host_overhead_us_per_image_b8: { value: 100, unit: 'us' },
+                                          ...(map50 !== undefined ? { map50_coco128: { value: map50, unit: 'mAP' } } : {}) });
+const withSplit = (record, npu, dispatch, host, map50) => ({ ...record, rows: { [YOLO]: { ...record.rows[YOLO], ...split(npu, dispatch, host, map50) } } });
+// map50_coco128 is itself a newly added metric: its history, like the NPU
+// tab's, starts partway through.
+const yoloData = collect(historiesOf('yolo26n-hw', [withSplit(yoloBefore, null, 4400, 600), withSplit(yoloAfter, 4310, 4400, 1000, 0.5859)]));
+assert.deepEqual(yolo.trend.slice(0, 6).map(t => t.name),
+                 ['NPU time / image', 'Dispatch / image', 'Host overhead', 'End-to-end / image', 'Images / s', 'mAP@0.5']);
 const npu = trendConfig(yoloData, yolo.trend[0]);
 assert.deepEqual(npu.data.datasets.map(d => [d.label, d.data]), [['batch 1', [4310]], ['batch 8', [2850]]]);
 assert.equal(npu.options.scales.y.title.text, 'NPU time per image (µs, fastest dispatch less the empty one) · ↓ better');
@@ -2116,6 +2120,16 @@ assert.equal(perImage.options.scales.y.type, 'linear');
 const yoloBox = trendBox(yoloData, yolo.trend, 'fps_b8');
 assert.equal(yoloBox.metric(), 'fps_b1');
 assert.ok(yoloBox.children[1].textContent.startsWith('Images / s: images per second at batch 1 and batch 8'), yoloBox.children[1].textContent);
+// mAP@0.5: the metric's own nights (only the second one published it, as
+// every tab's x-axis already does), plus a flat dashed reference line over
+// the same nights, with its own label.
+const map = trendConfig(yoloData, yolo.trend[5]);
+assert.deepEqual(map.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
+                 [['device (int8)', [0.5859]], ['fp32 ONNX (offline, same 128 images)', [0.6365]]]);
+const ref = map.data.datasets.find(d => d.label === 'fp32 ONNX (offline, same 128 images)');
+assert.deepEqual(ref.borderDash, [6, 4]);
+assert.equal(ref.pointRadius, 0);
+assert.equal(map.options.scales.y.title.text, 'Mean average precision at IoU 0.5 (coco128) · ↑ better');
 """)
 
 
