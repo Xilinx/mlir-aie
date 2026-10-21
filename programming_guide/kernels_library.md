@@ -530,7 +530,7 @@ aiecc's measured stack also counts. aiecc sizes the core's stack from its own
 measurement of the linked core, so the row is for comparing builds. Each build
 prints its entry symbol and source file, and `--meta` names its object (kept
 with `--keep DIR`). The record shapes and the regression rules are documented on the module
-([API](../api/kernels.md#static-checks)). These checks run on demand; there
+([API](../docs/api/kernels.md#static-checks)). These checks run on demand; there
 is no static-check CI workflow. When invoked in GitHub Actions, the tool
 emits a warning annotation for a dropped pragma and an error annotation
 for a kernel that fails to compile. With
