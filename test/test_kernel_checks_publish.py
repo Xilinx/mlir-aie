@@ -221,16 +221,30 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     ]
 
 
-def test_a_timed_case_is_charted_with_its_worst_error(publish, tmp_path):
-    entry = dict(output=0, max_ulp=1, not_correctly_rounded=3, n=1024)
+def test_a_timed_case_is_charted_with_its_worst_error_per_dtype(publish, tmp_path):
+    bf16 = dict(
+        output=0,
+        dtype="bfloat16",
+        reference="float64",
+        modeled=False,
+        max_ulp=1,
+        not_correctly_rounded=3,
+        n=1024,
+    )
+    f32 = dict(bf16, output=1, dtype="float32", max_ulp=40, not_correctly_rounded=1)
     errors = {
-        "add/1024x16/bfloat16/random/s0": {"passed": True, "outputs": [entry]},
-        "add/1024x16/bfloat16/edges/s1": {
+        "add/1024x16/bfloat16/random/s0": {"passed": True, "outputs": [bf16, f32]},
+        "add/1024x16/bfloat16/large/s1": {
             "passed": True,
-            "outputs": [dict(entry, max_ulp=2, not_correctly_rounded=1)],
+            "outputs": [dict(bf16, max_ulp=2, not_correctly_rounded=1, modeled=True)],
+        },
+        # All-zero data is right or wrong as one: left out of the pool.
+        "add/1024x16/bfloat16/zeros/s0": {
+            "passed": True,
+            "outputs": [dict(bf16, max_ulp=9, not_correctly_rounded=1024)],
         },
         # An untimed case has no row to stand beside.
-        "relu/1024/bf16/random/s0": {"passed": True, "outputs": [entry]},
+        "relu/1024/bf16/random/s0": {"passed": True, "outputs": [bf16]},
     }
     results = results_dir(tmp_path)
     (results / "error.json").write_text(json.dumps(errors))
@@ -250,11 +264,22 @@ def test_a_timed_case_is_charted_with_its_worst_error(publish, tmp_path):
     )
     record = json.loads((out / "runs/1.json").read_text())
     add = record["rows"]["add/1024x16/bfloat16"]
-    assert add["max_ulp"] == {"value": 2, "unit": "ulp"}
-    assert add["not_correctly_rounded"] == {"value": 0.195, "unit": "%"}
+    modeled = (
+        "vs the float64 correctly rounded reference; the check judges this build"
+        " by a model of the kernel"
+    )
+    # A float32 output's ulps never mix with a bfloat16 one's.
+    assert add["max_ulp_bfloat16"] == {"value": 2, "unit": "ulp", "range": modeled}
+    assert add["not_correctly_rounded_bfloat16"]["value"] == 0.195
+    assert add["max_ulp_float32"] == {
+        "value": 40,
+        "unit": "ulp",
+        "range": "vs the float64 correctly rounded reference",
+    }
+    assert add["not_correctly_rounded_float32"]["value"] == 0.098
     assert "relu/1024/bf16" not in record["rows"]
-    ulps = json.loads((out / "history/max_ulp.json").read_text())
-    assert ulps["series"] == {"add/1024x16/bfloat16": {"values": [2]}}
+    ulps = json.loads((out / "history/max_ulp_bfloat16.json").read_text())
+    assert ulps["series"]["add/1024x16/bfloat16"]["values"] == [2]
 
 
 def test_each_timed_case_names_its_kernel_build(publish, tmp_path):
