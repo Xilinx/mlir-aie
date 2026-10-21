@@ -22,8 +22,9 @@ rebuilt or reinstalled.
 
 The Python a generator reaches is identified by what is running, which is
 not always what is on disk, and cheaply, since the key is taken on every
-call. A module imported from a file is named by its source's mtime and size
-when the key first reaches that import; a reload looks again. The script
+call. A module imported from a file is named by its source's content when
+the key first reaches that import, read once per import; a reload looks
+again. The script
 being run counts as that kind of module, under the name it is imported as.
 Code with no file behind it (a notebook cell, the REPL) is identified by its
 code and the plain constants it reads, since those can change without any
@@ -238,7 +239,7 @@ def _stamped_module(value) -> ModuleType | None:
 
 
 # Per import of a file-backed module: the spec it was imported under, its
-# source's "mtime_ns:size" when the key first reached it, and the modules its
+# source's content digest when the key first reached it, and the modules its
 # globals reach. A reload brings a new spec, so the module is looked at again.
 _IMPORTS: dict[str, tuple[Any, str, tuple[str, ...]]] = {}
 
@@ -246,11 +247,7 @@ _IMPORTS: dict[str, tuple[Any, str, tuple[str, ...]]] = {}
 def _import_identity(module: ModuleType) -> tuple[str, tuple[str, ...]]:
     entry = _IMPORTS.get(module.__name__)
     if entry is None or entry[0] is not module.__spec__:
-        try:
-            stat = os.stat(module.__file__ or "")
-            stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
-        except OSError as exc:
-            stamp = f"<unreadable:{type(exc).__name__}>"
+        stamp = _content_digest(module.__file__ or "")
         # Importing a submodule binds it on its package, so a package's
         # namespace grows with whatever else the process imports. Its
         # submodules are reached through what they define, or by the code that

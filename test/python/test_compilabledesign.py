@@ -1372,7 +1372,11 @@ def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
 
 
 def test_a_design_run_as_a_script_keys_as_its_import(tmp_path):
-    """Running a design's file, by path or with -m, keys it as importing it does."""
+    """Running a design's file, by path or with -m, keys it as importing it does.
+
+    The file is keyed by its bytes: rewriting them with a later mtime is a
+    hit, an edit a miss.
+    """
     (tmp_path / "scaled.py").write_text(
         "from aie.iron.device import NPU2Col1\n"
         "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
@@ -1401,6 +1405,11 @@ def test_a_design_run_as_a_script_keys_as_its_import(tmp_path):
     imported = key("importer.py")
     assert key("scaled.py") == imported
     assert key("-m", "scaled") == imported
+    scaled = tmp_path / "scaled.py"
+    stat = scaled.stat()
+    scaled.write_text(scaled.read_text())
+    os.utime(scaled, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**10))
+    assert key("scaled.py") == key("importer.py") == imported
     (tmp_path / "scaled.py").write_text(
         (tmp_path / "scaled.py").read_text().replace("FACTOR = 3", "FACTOR = 4")
     )
