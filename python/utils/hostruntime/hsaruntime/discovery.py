@@ -10,10 +10,10 @@ Locates ``libhsa-runtime64.so`` inside a ROCm installation. Performs no
 heavier ctypes bindings import.
 
 The recommended way to provide ROCm is TheRock's pip wheel (``pip install
---index-url https://rocm.nightlies.amd.com/whl-multi-arch/ rocm``, see
-https://github.com/ROCm/TheRock/blob/main/RELEASES.md); the base ``rocm``
+--index-url https://nightly.repo.amd.com/rocm/whl-next/ "rocm>=10.2.0a20261020"``,
+see https://github.com/ROCm/TheRock/blob/main/RELEASES.md); the base ``rocm``
 package pulls ``rocm-sdk-core``, which carries the HSA runtime with AIE
-support. It needs no configuration -- it is found in site-packages.
+support. Earlier nightlies predate its AIE hsaco loading. It needs no configuration -- it is found in site-packages.
 
 ROCm installations are looked for in three places, in this order:
 

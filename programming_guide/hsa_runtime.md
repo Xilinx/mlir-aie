@@ -12,9 +12,11 @@ the AMD XDNA NPU through **ROCR** (`libhsa-runtime64.so`), using ROCR's native
 AIE support (`HSA_DEVICE_TYPE_AIE`, `hsa_amd_aie_kernel_dispatch_packet_t`). It
 needs no XRT userspace at runtime.
 
-Unlike the [XRT](iron_configuration.md) and [HRX](hrx_runtime.md) backends,
-which load `final.xclbin` + `insts.bin`, HSA loads the **PDI** (`main.pdi`) +
-`insts.bin` produced by the same `aiecc` build. Designs are unchanged: the
+HSA consumes the same `aiecc` artifacts as the [XRT](iron_configuration.md) and
+[HRX](hrx_runtime.md) backends — `final.xclbin` + `insts.bin`, or a full ELF —
+but packs them into an **hsaco** (HSA code object) with the
+[`aie-hsaco`](../python/compiler/hsaco/README.md) packer and loads that through
+ROCR's code-object loader. Designs are unchanged: the
 backend plugs into the same [`aie.utils.Tensor`](../python/utils/hostruntime/tensor_class.py)
 and [`HostRuntime`](../python/utils/hostruntime/hostruntime.py) abstractions, so
 it is chosen by an environment variable, not by editing sources.
@@ -25,10 +27,12 @@ and no build-system component.
 ## Requirements
 
 - An AMD XDNA NPU with the `amdxdna` kernel driver loaded.
-- A ROCm providing `libhsa-runtime64.so` **with AIE support** (ROCR must expose
-  `HSA_DEVICE_TYPE_AIE`). Install it from a wheel — see below.
-- The usual IRON toolchain to build designs (`aiecc`), including `xclbinutil` —
-  `aiecc` always builds the xclbin edge even though HSA consumes the PDI.
+- A ROCm providing `libhsa-runtime64.so` **that loads AIE hsacos**: a TheRock
+  nightly `10.2.0a20261020` or later, or ROCR built from `rocm-systems`
+  `develop` at or after `7a71bfb`. Install it from a wheel — see below; the
+  older `whl-multi-arch` index stops at `10.1.0` nightlies, which predate it.
+- The usual IRON toolchain to build designs (`aiecc`), including `xclbinutil`,
+  which the packer uses to read the PDI out of the xclbin.
 
 Linux only: ROCR's AIE agent exists on no other platform today, so the backend
 reports itself unavailable elsewhere.
@@ -44,7 +48,7 @@ recommended way to get one is the pip wheel from
 the environment you run designs from:
 
 ```bash
-pip install --index-url https://rocm.nightlies.amd.com/whl-multi-arch/ rocm
+pip install --index-url https://nightly.repo.amd.com/rocm/whl-next/ "rocm>=10.2.0a20261020"
 NPU_RUNTIME=hsa python my_design.py
 ```
 
@@ -79,16 +83,28 @@ print(discovery.find_libhsa())"
 ## Architecture
 
 `HSAContext` is a process-wide singleton owning the ROCR objects: the AIE and
-CPU agents, two memory pools, one in-order AIE queue, and one completion signal.
+CPU agents, one memory pool, one in-order AIE queue, and one completion signal.
 
 | Resource | Allocation | Why |
 |----------|-----------|-----|
-| PDI, `insts.bin` | Device-heap pool (`hsa_amd_memory_pool_allocate`) | The kernel driver's `aie2_config_cu` accepts only `AMDXDNA_BO_DEV` buffer objects for a CU's PDI; ROCR produces those only from the DEVICE_SVM pool. Anything else fails the submit ioctl with `EIO`. |
+| PDI, instructions | An HSA executable loaded from the hsaco | ROCR places the kernel's PDIs and instructions in device memory itself, and releases them when the executable is destroyed. |
 | I/O tensors | vmem, mapped for CPU + AIE | Zero-copy: `HSATensor` is a numpy view over the mapped VA, so there is no host staging copy and the sync hooks are no-ops. |
 | Kernargs | Fixed slot pool, one slot per queue ring slot | Removes an allocation from every dispatch. Slot *i* belongs to ring slot *i*, so reuse is safe for free — a ring slot is only rewritten once the device has consumed its previous packet, which is exactly when it has finished reading those kernargs. |
 
-A dispatch fills an AIE packet (instruction address/size, PDI address, kernarg
-pointer), publishes it at the queue's write index, and rings the doorbell.
+### Loading a design
+
+`load` packs the design into an hsaco holding a single kernel, in the section
+for the agent's architecture (`aie2` or `aie2p`), loads it as an HSA executable,
+and keeps that executable's kernel object:
+
+| Design | Kernel |
+|--------|--------|
+| `final.xclbin` + `insts.bin` | A PDI plus instruction sequence. The PDI and the partition's column count come from the xclbin's `AIE_PARTITION` section. |
+| Full ELF (`NPUKernel.elf_path`, aie2p only) | The ELF's kernel named by `NPUKernel.kernel_name`; its PDIs, control code and column count all come from the ELF. |
+| `DispatchTime[T]` | No static instruction sequence: each distinct per-call sequence is packed and loaded as an executable of its own, and the 16 most recently used are kept per loaded design. |
+
+A dispatch fills an AIE packet (the kernel object and the kernarg pointer),
+publishes it at the queue's write index, and rings the doorbell.
 
 > **The ROCR AIE doorbell is synchronous.** Ringing it submits the pending
 > packets *and blocks* until they complete (`SubmitPackets` → `SubmitCmdChain`,
@@ -113,20 +129,15 @@ The single in-order AIE queue and its doorbell are **not** safe for concurrent
 dispatch from multiple threads; callers must serialize dispatches. This is the
 same constraint the HRX backend documents.
 
-## Limitations
-
-- **Trace capture is not supported.** A design carrying a `trace_config` is
-  rejected before anything is dispatched; use `NPU_RUNTIME=xrt` for trace.
-
 ## Troubleshooting
 
 | Symptom | Cause |
 |---------|-------|
 | `ImportError: NPU_RUNTIME=hsa was requested but libhsa-runtime64.so could not be located` | No ROCm found in any of the three roots. Install the wheel, or set `ROCM_PATH`. |
 | `HSAError: No HSA AIE agent found` | The ROCm that was found has no AIE support, or the `amdxdna` driver is not loaded. Check which library was picked (see [Running a design](#running-a-design)); if it is an old `/opt/rocm`, install the wheel. |
+| `HSAError` from `hsa_executable_load_agent_code_object` | The ROCm that was found has AIE support but predates AIE hsacos. Install a newer wheel (see [Requirements](#requirements)). |
 | `HSAError: Cannot map HSA AIE agent name ... to a device generation` | An agent name this code does not recognize. Override with `IRON_HSA_DEVICE=npu1\|npu2`. |
 | Dispatch hangs, then the kernel log shows `aie2_tdr_work: Device isn't making progress` | The design was compiled for the wrong NPU generation. Check `IRON_HSA_DEVICE` and the `aie.device(...)` in the generated `aie.mlir`. |
-| Submit fails with `EIO`; kernel log shows `aie2_config_cu: Invalid BO type` | The PDI was not allocated from the device heap. |
 
 ## Package layout
 
@@ -137,9 +148,9 @@ The backend lives in
 |------|----------------|
 | `discovery.py` | Locate a ROCm install and its `libhsa-runtime64.so`. No `dlopen`, so it doubles as the cheap `has_hsa` probe. |
 | `_bindings.py` | The raw C ABI: constants, ctypes structs, and the lazily-bound `lib` handle. Importing the package performs no `dlopen` and no device init. |
-| `context.py` | `HSAContext` — the process-wide singleton owning agents, memory pools, the queue, the kernarg slot pool, and the completion signal; fills and enqueues dispatch packets. |
+| `context.py` | `HSAContext` — the process-wide singleton owning agents, the memory pool, the queue, the kernarg slot pool, and the completion signal; loads hsacos as `HSAExecutable`s, and fills and enqueues dispatch packets. |
 | `tensor.py` | `HSATensor` — a vmem allocation mapped for CPU + AIE, exposed as a zero-copy numpy view. |
-| `hostruntime.py` | `HSAHostRuntime` / `CachedHSAHostRuntime` — the IRON `HostRuntime` interface: load a design's PDI + insts, run it, run chains. |
+| `hostruntime.py` | `HSAHostRuntime` / `CachedHSAHostRuntime` — the IRON `HostRuntime` interface: pack a design into an hsaco and load it, run it, run chains. |
 
 ## Further reading
 

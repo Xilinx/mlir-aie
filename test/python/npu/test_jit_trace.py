@@ -4,9 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu1% %pytest %s
-# RUN: %run_on_npu2% %pytest %s
-# REQUIRES: xrt_python_bindings
+# RUN: %run_on_npu1_xrt% %pytest %s
+# RUN: %run_on_npu2_xrt% %pytest %s
+# RUN: %run_on_npu_hsa% %pytest %s
+# REQUIRES: xrt_python_bindings || hsa_npu
 
 import pytest
 import numpy as np
@@ -59,7 +60,11 @@ def design(
     )
     prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:
-        prog.enable_trace(trace_config.trace_size, workers=[worker])
+        prog.enable_trace(
+            trace_config.trace_size,
+            workers=[worker],
+            reuse_output_buffer=trace_config.reuse_output_buffer,
+        )
     return prog.resolve_program()
 
 

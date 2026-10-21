@@ -212,9 +212,9 @@ library in-process; it does not launch a compiler.
 ## Host-runtime backend selection (`NPU_RUNTIME`)
 
 IRON dispatches designs through a host runtime that consumes the `aiecc`
-artifacts. XRT and HRX load `final.xclbin` + `insts.bin`; HSA loads the PDI
-(`main.pdi`) + `insts.bin` from the same build. `NPU_RUNTIME` selects which
-backend is used:
+artifacts. XRT and HRX load `final.xclbin` + `insts.bin`; HSA packs the same
+artifacts, or a full ELF, into an hsaco and loads that. `NPU_RUNTIME` selects
+which backend is used:
 
 | Value | Behavior |
 |-------|----------|
@@ -288,11 +288,13 @@ The recommended source is the pip wheel from
 the environment you run designs from:
 
 ```bash
-pip install --index-url https://rocm.nightlies.amd.com/whl-multi-arch/ rocm
+pip install --index-url https://nightly.repo.amd.com/rocm/whl-next/ "rocm>=10.2.0a20261020"
 ```
 
 The base `rocm` package is enough: it pulls `rocm-sdk-core`, which carries
-`libhsa-runtime64.so` with the AIE support this backend needs. The
+`libhsa-runtime64.so` with the AIE support this backend needs: loading AIE
+hsacos takes a nightly `10.2.0a20261020` or later, which the older
+`whl-multi-arch` index does not carry. The
 `[libraries]` and `[device-gfx…]` extras are for GPU workloads and are not
 required for the NPU. Discovery finds it in site-packages with nothing to
 configure.
