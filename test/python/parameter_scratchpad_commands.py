@@ -5,10 +5,11 @@
 # RUN: %python %s %t.params | FileCheck %s
 
 # Two commands, each a runtime sequence of its own with its own scratchpad:
-# @a, which only `first` reads, and @b, which only `second` reads, share slot
-# 0. Each command's scratchpad holds its own parameters, and refuses another
-# command's, whose slot it may share. A scratchpad made without a command name
-# is refused, since the module has two.
+# @shared, which both read, takes slot 0, and @a, which only `first` reads, and
+# @b, which only `second` reads, share slot 1. Each command's scratchpad holds
+# its own parameters, and refuses another command's, whose slot it may share,
+# and @unused, which no command reads and so has no slot. A scratchpad made
+# without a command name is refused, since the module has two.
 
 import argparse
 
@@ -23,6 +24,7 @@ SOURCE = """
 aiex.scratchpad_parameter @a : i32
 aiex.scratchpad_parameter @b : i32
 aiex.scratchpad_parameter @shared : i32
+aiex.scratchpad_parameter @unused : i32
 aie.device(npu2) @design_a {
   %t = aie.tile(0, 0)
   aie.shim_dma_allocation @in_a (%t, MM2S, 0)
@@ -70,8 +72,8 @@ def main():
             f"{{output-params-file={args.params}}})"
         ).run(module.operation)
 
-    # CHECK: first ['a', 'shared'] a=7 at 0 shared=9 at 1
-    # CHECK: second ['b', 'shared'] b=8 at 0 shared=9 at 1
+    # CHECK: first ['a', 'shared'] a=7 at 1 shared=9 at 0
+    # CHECK: second ['b', 'shared'] b=8 at 1 shared=9 at 0
     for command, name, value in (("first", "a", 7), ("second", "b", 8)):
         table = np.zeros(2, dtype=np.uint32)
         params = ParameterScratchpad(table, args.params, f"main:{command}")
@@ -89,6 +91,12 @@ def main():
     params = ParameterScratchpad(table, args.params, "main:first")
     try:
         params.write_bytes("b", np.int32(8).tobytes())
+    except RuntimeError as error:
+        print("refused:", error)
+
+    # CHECK: refused: ParameterScratchpad: no command reads parameter 'unused', so it has no slot
+    try:
+        params.write_bytes("unused", np.int32(1).tobytes())
     except RuntimeError as error:
         print("refused:", error)
 

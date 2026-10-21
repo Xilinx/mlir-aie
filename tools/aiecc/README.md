@@ -224,14 +224,16 @@ invocation will actually do. The command above produces this graph:
 
 ### Timing a build: `--profile` and `--profile-json`
 
-`--profile` prints, at the end of the run, each edge's time and the
-resident memory after it, with the peak. `--profile-json=PATH` writes the
-same summary to `PATH` as JSON, with or without `--profile`:
+`--profile` prints, at the end of the run, each edge's time, the change in
+resident memory since the edge before it (dRSS) and the peak resident memory
+so far. `--profile-json=PATH` writes the same summary to `PATH` as JSON, with
+or without `--profile`:
 
 ```json
 {
   "version": 1,
   "wall_ms": 7412,
+  "process_ms": 7690,
   "edges": [
     {"name": "...", "ms": 120, "start_ms": 0, "end_ms": 120,
      "rss_after_mib": 312.5, "peak_mib": 340.1}
@@ -239,8 +241,13 @@ same summary to `PATH` as JSON, with or without `--profile`:
 }
 ```
 
-`rss_after_mib` and `peak_mib` are `null` where the platform does not report
-them. A path that cannot be written fails the build.
+`wall_ms` runs from the graph's start to its last edge's end, and each edge's
+`start_ms` and `end_ms` count from the graph's start. `process_ms` counts from
+aiecc's `main()` to the writing of this file, so `process_ms - wall_ms` is the
+time aiecc spends outside the graph: reading its options, building the graph
+and writing the outputs. `rss_after_mib` is the resident memory after the
+edge; it and `peak_mib` are `null` where the platform does not report them. A
+path that cannot be written fails the build.
 
 ### Stopping and restarting a build: `--checkpoint` and `--resume`
 

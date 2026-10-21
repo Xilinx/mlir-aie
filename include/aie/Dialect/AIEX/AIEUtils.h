@@ -122,14 +122,15 @@ std::string scratchpadCommandName(AIE::RuntimeSequenceOp seq);
 //   <num_commands>
 //   <device>:<sequence> <num_read> <name> ...
 //   ...
-// where kind is "core" (shift-2 encoded, for read_scratchpad_parameter),
-// "addr" (raw, for offset_parameter on DMA ops; also for a length_parameter
-// with no core use) or "repeat", and <min> <max> is the range a DMA offset or
-// length parameter must stay in, or "- -" for any other parameter. A joint
-// bound requires offset + length_step * length <= max. Each command, a
-// runtime sequence no `aiex.run` calls, lists the parameters it reads, whose
-// slots are distinct; parameters of different commands may share a slot, so a
-// command's scratchpad is written with its own parameters only.
+// where <state_table_idx> is "-" for a parameter with no slot, which no
+// command reads, kind is "core" (shift-2 encoded, for
+// read_scratchpad_parameter), "addr" (raw, for offset_parameter on DMA ops;
+// also for a length_parameter with no core use) or "repeat", and <min> <max> is
+// the range a DMA offset or length parameter must stay in, or "- -" for any
+// other parameter. A joint bound requires offset + length_step * length <= max.
+// Each command, a runtime sequence no `aiex.run` calls, lists the parameters it
+// reads, whose slots are distinct; parameters of different commands may share a
+// slot, so a command's scratchpad is written with its own parameters only.
 void emitScratchpadParamsFile(mlir::ModuleOp moduleOp, llvm::raw_ostream &os);
 } // namespace AIEX
 } // namespace xilinx

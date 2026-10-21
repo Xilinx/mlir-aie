@@ -1984,7 +1984,9 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
     `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op, or as a DMA length via the `length_parameter` attribute and nothing else).
-    Indices are unique across the entire module.
+    Each runtime sequence no `aiex.run` calls is a command with a scratchpad of its own, so
+    only the parameters one command reads have distinct indices; a parameter no command reads
+    gets none, and one that already has an index keeps it.
     For a parameter used as a DMA offset or length, the pass also sets `min_value` and `max_value`:
     the range of values that keeps every such transfer within its buffer, judging each transfer
     with any other parameter it uses at 0. The host library rejects a value outside the range.
@@ -2063,8 +2065,10 @@ def AIEX_WaitScratchpadParametersOp
     parameters, then sets (not increments) the lock to 1.
 
     Each read of a core that waits must come after a wait, and the core must
-    keep its sync preamble. Read right after the wait: a later dispatch may
-    rewrite the values while the core is still working.
+    keep its sync preamble. A read in a loop needs a wait inside the outermost
+    loop around it, since a wait before that loop passes only once. Read
+    right after the wait: a later dispatch may rewrite the values while the
+    core is still working.
 
     Example:
     ```mlir

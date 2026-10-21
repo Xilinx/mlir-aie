@@ -42,17 +42,17 @@ aie.device(npu2) @d {
 
 // -----
 
-// CHECK: aiex.scratchpad_parameter @a : i32 {{.*}}state_table_idx = 0 : ui8}
-// CHECK: aiex.scratchpad_parameter @b : i32 {{.*}}state_table_idx = 0 : ui8}
-// CHECK: aiex.scratchpad_parameter @c : i32 {{.*}}state_table_idx = 1 : ui8}
-// CHECK: aiex.scratchpad_parameter @shared : i32 {{.*}}state_table_idx = 2 : ui8}
+// CHECK: aiex.scratchpad_parameter @a : i32 {{.*}}state_table_idx = 1 : ui8}
+// CHECK: aiex.scratchpad_parameter @b : i32 {{.*}}state_table_idx = 1 : ui8}
+// CHECK: aiex.scratchpad_parameter @c : i32 {{.*}}state_table_idx = 2 : ui8}
+// CHECK: aiex.scratchpad_parameter @shared : i32 {{.*}}state_table_idx = 0 : ui8}
 // CHECK: aie.runtime_sequence @seq_a
-// CHECK: offset_state_table_idx = 0 : ui8
+// CHECK: offset_state_table_idx = 1 : ui8
 // CHECK: aie.runtime_sequence @seq_b
-// CHECK: aiex.npu.update_from_scratchpad {{.*}}state_table_idx = 1 : ui8
-// CHECK: offset_state_table_idx = 0 : ui8
+// CHECK: aiex.npu.update_from_scratchpad {{.*}}state_table_idx = 2 : ui8
+// CHECK: offset_state_table_idx = 1 : ui8
 // CHECK: aie.runtime_sequence @seq_s
-// CHECK: offset_state_table_idx = 2 : ui8
+// CHECK: offset_state_table_idx = 0 : ui8
 // CHECK: aie.runtime_sequence @first
 // CHECK-SAME: scratchpad_parameters = [@a, @shared]
 // CHECK: aie.runtime_sequence @second
