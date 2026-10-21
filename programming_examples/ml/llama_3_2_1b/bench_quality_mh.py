@@ -64,9 +64,7 @@ PROMPTS = [
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--data-dir", type=Path, default=Path(__file__).parent / "data"
-    )
+    parser.add_argument("--data-dir", type=Path, default=Path(__file__).parent / "data")
     parser.add_argument(
         "--prompts",
         type=int,

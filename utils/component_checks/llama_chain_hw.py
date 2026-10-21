@@ -105,9 +105,7 @@ def _run(cmd: list[str], env: dict) -> subprocess.CompletedProcess:
 def missing_data() -> list[str]:
     """Return the files in data/ the runs read that it lacks."""
     return [
-        f
-        for f in DATA_FILES
-        if not os.path.exists(os.path.join(_LLAMA_DIR, "data", f))
+        f for f in DATA_FILES if not os.path.exists(os.path.join(_LLAMA_DIR, "data", f))
     ]
 
 

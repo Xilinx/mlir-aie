@@ -32,7 +32,6 @@ from aie2_decode import (
 from aie2_gemv_array import LAYER, MMA_SLOT, N_CORES, sample_param_values
 from llama_config import (
     CS_BYTES,
-    HEAD_D,
     KV_TB,
     N_HEADS_KV,
     N_TILE,

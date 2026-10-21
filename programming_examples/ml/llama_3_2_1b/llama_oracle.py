@@ -31,6 +31,7 @@ from llama_config import (
 )
 from ml_dtypes import bfloat16
 
+
 def sw_invsqrt(a):
     """Mirrors the kernels' `sw_invsqrt`: Quake-III guess plus 2 Newton steps.
 
@@ -208,7 +209,9 @@ def rope_q(q_fp, cos_bf, sin_bf):
     out[:, :half] = aie_add(
         mul_rne(x[:, :half], c[:half]), -mul_rne(x[:, half:], s[:half])
     )
-    out[:, half:] = aie_add(mul_rne(x[:, half:], c[half:]), mul_rne(x[:, :half], s[half:]))
+    out[:, half:] = aie_add(
+        mul_rne(x[:, half:], c[half:]), mul_rne(x[:, :half], s[half:])
+    )
     return out.ravel()
 
 
@@ -226,7 +229,9 @@ def silu_mul(gate, up):
     neg = np.signbit(g)
     e = np.asarray(exp_nonpos(np.where(neg, g, aie_add(np.float32(0), -g))), np.float32)
     d = aie_add(np.float32(1), e)
-    y = aie_add(np.float32(24) / np.float32(17), -mul_rne(np.float32(8) / np.float32(17), d))
+    y = aie_add(
+        np.float32(24) / np.float32(17), -mul_rne(np.float32(8) / np.float32(17), d)
+    )
     for _ in range(3):
         y = aie_add(y, mul_rne(y, aie_add(np.float32(1), -mul_rne(d, y))))
     s = np.where(neg, mul_rne(e, y), y)
@@ -258,7 +263,9 @@ def fold(state, m_b, s_b, sv_b):
     return (
         big,
         den,
-        aie_add(mul_rne(sv, np.expand_dims(wa, -1)), mul_rne(sv_b, np.expand_dims(wb, -1))),
+        aie_add(
+            mul_rne(sv, np.expand_dims(wa, -1)), mul_rne(sv_b, np.expand_dims(wb, -1))
+        ),
     )
 
 
@@ -435,7 +442,9 @@ class Layer:
         sf = np.asarray(sin, np.float32)
         kh = self.project("k", h1, act1).reshape(N_HEADS_KV, HEAD_D)
         k_rope = np.empty_like(kh)
-        k_rope[:, :half] = aie_add(kh[:, :half] * cf[:half], -(kh[:, half:] * sf[:half]))
+        k_rope[:, :half] = aie_add(
+            kh[:, :half] * cf[:half], -(kh[:, half:] * sf[:half])
+        )
         k_rope[:, half:] = aie_add(kh[:, half:] * cf[half:], kh[:, :half] * sf[half:])
         vh = self.project("v", h1, act1).reshape(N_HEADS_KV, HEAD_D)
         for cache, slot, rows in (
