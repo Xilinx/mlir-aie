@@ -160,6 +160,9 @@ class KernelContract:
             each arch. ``reference`` and ``tolerance`` are then ``None``, and
             ``for_build`` picks the row of the build that produced an output,
             once that is known.
+        true_function: The function the kernel approximates, for error
+            reports, where the reference (or a build's row) models the kernel
+            instead, as a LUT build's does. ``None``: the reference is it.
         ops_per_call: Arithmetic operations per call; ``None`` means one
             per output element.
         out_valid: Meaningful leading elements of a DMA-padded output tile;
@@ -211,6 +214,7 @@ class KernelContract:
     roles: tuple[type, ...]
     reference: Callable[..., np.ndarray | tuple[np.ndarray, ...]] | None = None
     tolerance: Tolerance | None = None
+    true_function: Callable[..., np.ndarray | tuple[np.ndarray, ...]] | None = None
     ops_per_call: int | None = None
     out_valid: int | None = None
     sample: Callable[..., list] | None = None
