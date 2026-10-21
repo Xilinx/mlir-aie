@@ -315,6 +315,37 @@ def test_a_compile_time_must_also_move_its_floor(read_leg, before, after, listed
     assert bool(leg.other) is listed
 
 
+@pytest.mark.parametrize(
+    "metric, unit, before, after, where",
+    [
+        # Gated on any rise of a whole ulp, from zero too.
+        ("max_ulp_bfloat16", "ulp", 0, 1, "regressed"),
+        ("max_ulp_bfloat16", "ulp", 5, 4, "improved"),
+        ("not_correctly_rounded_float32", "%", 1.0, 1.05, None),
+        # A count that takes abs 1 is judged from zero; one thresholds.json
+        # doesn't name is not.
+        ("failed_seeds", "seeds", 0, 2, "other"),
+        ("an_unnamed_count", "seeds", 0, 2, None),
+        # Shown, never judged.
+        ("ort_matches", "images", 8, 6, None),
+    ],
+)
+def test_each_metric_is_judged_by_its_own_rule(
+    read_leg, report, metric, unit, before, after, where
+):
+    leg = read_leg(
+        {f"c/1/i8/{metric}": (unit, after)},
+        _record({f"c/1/i8/{metric}": (unit, before)}),
+    )
+    moved = {
+        name: [c.metric for c in getattr(leg, name)]
+        for name in ("regressed", "improved", "other")
+    }
+    assert moved == {name: [metric] if name == where else [] for name in moved}
+    if where and not before:
+        assert f"+{after} {unit}" in report.render([leg])
+
+
 def test_a_test_that_passed_on_a_retry_is_listed(read_leg, report):
     retried = '<properties><property name="reruns" value="1" /></properties>'
     leg = read_leg(

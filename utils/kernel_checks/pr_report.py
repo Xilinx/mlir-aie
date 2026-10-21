@@ -19,6 +19,7 @@ metrics thresholds.json marks ``across_parts`` are compared.
 
 import argparse
 import json
+import math
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -39,20 +40,14 @@ THRESHOLDS = {
     if not metric.startswith("_")
 }
 # Stable run to run, so a move is the compiler's: the regressions that count.
-GATED = {m: s["pct"] / 100 for m, s in THRESHOLDS.items() if s.get("gated")}
-# Derived from another metric, so it would repeat that metric's rows.
-DERIVED = {m for m, s in THRESHOLDS.items() if s.get("derived")}
-# Everything else (host timing moves with the machine) is listed past this.
-OTHER = {
-    m: s["pct"] / 100
-    for m, s in THRESHOLDS.items()
-    if m not in GATED and m not in DERIVED
-}
-DEFAULT_THRESHOLD = 0.10  # a metric thresholds.json does not name
+GATED = {m for m, s in THRESHOLDS.items() if s.get("gated")}
+# Derived from another metric, so it would repeat that metric's rows; or
+# shown but never judged.
+UNJUDGED = {m for m, s in THRESHOLDS.items() if s.get("derived") or s.get("neutral")}
+# A metric thresholds.json does not name.
+DEFAULT_THRESHOLD = {"pct": 10}
 # A change must also exceed this many MADs, per metric (npu_us).
 MAD = {m: s["mad"] for m, s in THRESHOLDS.items() if s.get("mad")}
-# A change must also be at least this much, in the metric's unit.
-ABS = {m: s["abs"] for m, s in THRESHOLDS.items() if s.get("abs")}
 # The same on every part of an NPU generation: compared even across parts.
 ACROSS_PARTS = {m for m, s in THRESHOLDS.items() if s.get("across_parts")}
 SCHEMA = 1  # the newest publish.py record format this reads
@@ -82,7 +77,17 @@ class Change:
 
     @property
     def ratio(self) -> float:
+        """The change over the old value; from zero, infinite its way."""
+        if not self.before:
+            return math.copysign(math.inf, self.after - self.before)
         return (self.after - self.before) / self.before
+
+    @property
+    def text(self) -> str:
+        """The change in percent, or from zero in the metric's unit."""
+        if not self.before:
+            return f"{self.after - self.before:+g} {self.unit}".rstrip()
+        return f"{100 * self.ratio:+.1f}%"
 
 
 @dataclass
@@ -264,15 +269,21 @@ def _mad(cell: dict) -> float | None:
     return float(match[1]) if match else None
 
 
-def moved(metric: str, threshold: float, before: dict, after: dict) -> bool:
+def moved(metric: str, before: dict, after: dict) -> bool:
     """Whether a change from ``before`` to ``after`` counts for ``metric``.
 
-    At least ``threshold`` of the old value and the metric's ``abs`` floor,
-    and for a metric with a MAD factor, more than that many of the larger of
-    the two rows' MADs too.
+    By its thresholds.json entry: at least ``pct`` percent of the old value
+    (from a zero one, only ``abs`` decides, and without it nothing counts),
+    at least ``abs`` in the metric's unit, and for a metric with a MAD
+    factor, more than that many of the larger of the two rows' MADs.
     """
+    spec = THRESHOLDS.get(metric, DEFAULT_THRESHOLD)
     change = abs(after["value"] - before["value"])
-    if change < threshold * abs(before["value"]) or change < ABS.get(metric, 0):
+    if not change or change < spec.get("abs", 0):
+        return False
+    if not before["value"]:
+        return "abs" in spec
+    if change < spec.get("pct", 0) / 100 * abs(before["value"]):
         return False
     factor = MAD.get(metric)
     if factor:
@@ -280,6 +291,17 @@ def moved(metric: str, threshold: float, before: dict, after: dict) -> bool:
         if spread and change <= factor * max(spread):
             return False
     return True
+
+
+def rule(metric: str) -> str:
+    """Say what change counts for ``metric``: "15% and 0.5 s", "1 ulp"."""
+    spec = THRESHOLDS.get(metric, DEFAULT_THRESHOLD)
+    parts = [f"{spec['pct']:g}%"] if "pct" in spec else []
+    if "abs" in spec:
+        parts.append(f"{spec['abs']:g} in its unit")
+    if "mad" in spec:
+        parts.append(f"{spec['mad']:g}\u00d7 its MAD")
+    return " and ".join(parts)
 
 
 def _split(name: str) -> tuple[str, str]:
@@ -340,21 +362,23 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     for row in rows:
         case, metric = _split(row["name"])
         old = before.get(row["name"])
-        if metric in DERIVED or not old or not old["value"]:
+        if metric in UNJUDGED or not old:
             continue
         if not same_part and metric not in ACROSS_PARTS:
             result.other_part += 1
             continue
+        if not moved(metric, old, row):
+            continue
         change = Change(case, metric, row["unit"], old["value"], row["value"])
-        if metric in GATED:
-            if abs(change.after - change.before) < ABS.get(metric, 0):
-                continue
-            if change.ratio >= GATED[metric]:
-                result.regressed.append(change)
-            elif change.ratio <= -GATED[metric]:
-                result.improved.append(change)
-        elif moved(metric, OTHER.get(metric, DEFAULT_THRESHOLD), old, row):
+        worse = (change.after > change.before) != bool(
+            THRESHOLDS.get(metric, {}).get("higher_is_better")
+        )
+        if metric not in GATED:
             result.other.append(change)
+        elif worse:
+            result.regressed.append(change)
+        else:
+            result.improved.append(change)
     for changes in (result.regressed, result.other):
         changes.sort(key=lambda c: -c.ratio)
     result.improved.sort(key=lambda c: c.ratio)
@@ -392,7 +416,7 @@ def _changes(legs: list[Leg], attr: str) -> list[list[str]]:
             c.metric,
             _value(c.before, c.unit),
             _value(c.after, c.unit),
-            f"{100 * c.ratio:+.1f}%",
+            c.text,
         ]
         for leg in legs
         for c in getattr(leg, attr)
@@ -438,12 +462,12 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
         title += f", {' and '.join(refused)} not timed"
     if retried := sum(len(leg.flaky) for leg in legs):
         title += f", {retried} passed on a retry"
-    gated = " or ".join(f"`{m}` {100 * t:g}%" for m, t in GATED.items())
+    gated = " or ".join(f"`{m}` {rule(m)}" for m in sorted(GATED))
     links = [f"[run]({run_url})"] if run_url else []
     links.append(f"[nightly history]({PAGE})")
     lead = (
         f"Compared with the last nightly on main. Regressed: {gated} or more "
-        "worse. Both are stable run to run, so a move is the compiler's. "
+        "worse. Each is stable run to run, so a move is the compiler's. "
         if compared
         else "Not compared with a nightly on main; the table says why. "
     )
@@ -567,12 +591,7 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
         # Only the metrics listed: thresholds.json names the component
         # checks' too.
         listed = {row[2] for row in rows}
-        thresholds = ", ".join(
-            f"`{m}` {100 * t:g}%"
-            + (f" and {MAD[m]:g}\u00d7 its MAD" if m in MAD else "")
-            for m, t in OTHER.items()
-            if m in listed
-        )
+        thresholds = ", ".join(f"`{m}` {rule(m)}" for m in sorted(listed))
         note = (
             f"Listed past {thresholds}. `npu_us` is timed on the host and "
             "moves with the machine; the byte counts do not."

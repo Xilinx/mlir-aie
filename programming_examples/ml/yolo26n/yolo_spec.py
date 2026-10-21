@@ -182,6 +182,31 @@ class Network:
         self.ops.append(op)
         return op.dst
 
+    def span(self, first: str, last: str) -> tuple[int, int]:
+        """The index range `(start, stop)` of the ops from `first` through `last`.
+
+        Args:
+            first: The name of the range's first op.
+            last: The name of its last op.
+
+        Returns:
+            `ops[start:stop]` is the range, `last` included.
+
+        Raises:
+            KeyError: If either name is no op's.
+            ValueError: If two ops share a name, or `last` comes before `first`.
+        """
+        index = {op.name: i for i, op in enumerate(self.ops)}
+        if len(index) != len(self.ops):
+            raise ValueError("the network's op names are not unique")
+        missing = [name for name in (first, last) if name not in index]
+        if missing:
+            raise KeyError(f"no op is named {', '.join(missing)}")
+        start, stop = index[first], index[last] + 1
+        if stop <= start:
+            raise ValueError(f"{last} comes before {first}")
+        return start, stop
+
     def conv(
         self,
         scope: str,

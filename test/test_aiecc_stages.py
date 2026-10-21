@@ -18,9 +18,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "utils/component_checks"
 # A shim-only design (test/aiecc/profile_json.mlir's shape), a cold
-# mobilenet JIT compile at SA effort 0.05, and test/aiecc/
-# cpp_full_elf_generation.mlir built with --get-full-elf, all captured from
-# aiecc as is.
+# mobilenet JIT compile at SA effort 0.05, and a five-device full-ELF design
+# built with --get-txn and --get-locmap by an aiecc that records process_ms,
+# all captured from aiecc as is.
 SHIM = CHECKS / "fixtures/aiecc_profile_shim.json"
 MOBILENET = CHECKS / "fixtures/aiecc_profile_mobilenet.json"
 FULL_ELF = CHECKS / "fixtures/aiecc_profile_full_elf.json"
@@ -84,7 +84,6 @@ def test_mobilenet_stages_are_its_edges_summed(checks):
         ("{0}_transaction.mlir", "package"),
         ("input_aie_partition_{0}.json", "package"),
         ("insts_{0}.bin.locmap.json", "package"),
-        ("linked.mlir", "link"),
         ("a_new_aiecc_edge", "other"),
     ],
 )
@@ -120,6 +119,52 @@ def test_an_unknown_edge_is_counted_as_other(checks, tmp_path):
     path = tmp_path / "profile.json"
     path.write_text(json.dumps(profile))
     assert stages.stage_seconds(str(path))["other"] == 0.25
+
+
+def test_aieccs_own_time_is_told_apart_when_the_profile_records_it(checks):
+    stages, _ = checks
+    rows = stages.stage_rows(str(FULL_ELF), 2.0, "")
+    # process_ms 137 against a graph span of 123 ms.
+    assert rows["compile_aiecc_wall_s"] == 0.12
+    assert rows[stages.AIECC_OWN_METRIC] == 0.01
+    assert rows["compile_outside_aiecc_s"] == round(2.0 - 0.137, 2)
+    # Longer than the compile counting aiecc's whole run, not just its graph.
+    (problem,) = stages.stage_rows(str(FULL_ELF), 0.13, "_warm").values()
+    assert "spans 0.14 s of a 0.13 s compile" in problem
+    # A profile without process_ms has no such row.
+    assert stages.AIECC_OWN_METRIC not in stages.stage_rows(str(SHIM), 2.0, "")
+
+
+def test_the_kernel_objects_compile_time_comes_from_the_jits_profile(checks, tmp_path):
+    stages, _ = checks
+    profile = tmp_path / "kernel_profile.json"
+    kernels = [
+        {"object": f"k{i}.o", "symbols": [f"k{i}"], "seconds": s, "cached": c}
+        for i, (s, c) in enumerate(
+            [(8.55, False), (0.01, True), (3.2, False), (1.0, False), (5.0, False)]
+            + [(0.4, False), (2.0, False)]
+        )
+    ]
+    profile.write_text(json.dumps({"wall_s": 16.823, "jobs": 8, "kernels": kernels}))
+    rows = stages.kernel_rows(str(profile), 43.0, "")
+    assert rows[stages.KERNEL_OBJECTS_METRIC] == 16.82
+    detail = rows["kernel_objects"]
+    assert (detail["jobs"], detail["compiled"], detail["cached"]) == (8, 6, 1)
+    assert [k["object"] for k in detail["slowest"]] == [
+        "k0.o",
+        "k4.o",
+        "k2.o",
+        "k6.o",
+        "k3.o",
+    ]
+    assert stages.kernel_rows(str(profile), None, "") == {}
+    missing = str(tmp_path / "missing.json")
+    assert stages.kernel_rows(missing, 1.0, "_warm") == {
+        "kernel_profile_problem_warm": f"no profile at {missing}"
+    }
+    # A compile's rows carry it beside the stages.
+    rows = stages.compile_rows("c", {"compile_s": 43.0, **rows})
+    assert {r["name"]: r["value"] for r in rows}["c/compile_kernel_objects_s"] == 16.82
 
 
 def test_a_profile_that_is_not_the_compiles_gives_no_stages(checks, tmp_path):
@@ -252,9 +297,6 @@ def test_yolo26n_reads_the_newest_build_in_its_cache(checks, tmp_path):
     newest = yolo.newest_build(str(tmp_path))
     assert newest == str(tmp_path / "newer")
     (tmp_path / "newer" / "design.elf").write_bytes(b"\0" * 4096)
-    (tmp_path / "newer" / "input_with_addresses.mlir").write_text(
-        "%c = aie.core(%t0) {\n}\n%d = aie.core(%t1) {\n}\n"
-    )
-    assert yolo.artifact_stats(newest) == {"elf_bytes": 4096, "n_cores": 2}
+    assert yolo.artifact_stats(newest) == {"elf_bytes": 4096}
     assert yolo.artifact_stats(str(tmp_path / "older")) == {}
     assert yolo.artifact_stats(None) == {}

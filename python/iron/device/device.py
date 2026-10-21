@@ -6,6 +6,7 @@
 
 import math
 import re
+from typing import ClassVar
 
 import numpy as np
 
@@ -36,6 +37,8 @@ class Device(Resolvable):
     objects. A DeviceConfiguration reconstructs this descriptor before it emits
     an ``aie.device``, so the descriptor does not own one configuration's IR.
     """
+
+    _bd_context: ClassVar[ir.Context | None] = None
 
     def __init__(self, device: AIEDevice) -> None:
         self._device = device
@@ -224,7 +227,11 @@ class Device(Resolvable):
             strides = [0] * pad + list(tap.strides)
         if len(sizes) > 4:
             return False
-        with ir.Context(), ir.Location.unknown():
+        # A fresh context costs ~4 ms, and resolving a design calls this thousands of times.
+        context = Device._bd_context
+        if context is None:
+            context = Device._bd_context = ir.Context()
+        with context, ir.Location.unknown():
             return dma_bd_fits(
                 self._device.value,
                 col,

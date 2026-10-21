@@ -23,7 +23,9 @@ The JIT writes one beside every build it runs aiecc for. Stages:
   vanishing.
 
 Edges run in parallel, so a stage's time (its edges' summed time) can add up,
-over the stages, to more than ``wall_s``.
+over the stages, to more than ``wall_s``, the graph's span. An aiecc that
+records ``process_ms`` (main() to the profile's writing) also gives its own
+time outside the graph: option parsing, building the graph, writing outputs.
 
 Every subprocess a check runs goes through ``run_measured``, which streams its
 output as it comes and kills it past a timeout, and every check writes
@@ -47,14 +49,21 @@ from typing import NamedTuple
 STAGES = ("place", "route", "lower", "kernels", "codegen", "link", "package", "other")
 # What the JIT names the file, in each build's ``<xclbin stem>.prj`` dir.
 PROFILE_NAME = "aiecc_profile.json"
-# A compile's rows: each stage's time, aiecc's wall time, and the rest of the
-# compile's (the Python trace, the external kernels' compile it overlapped
-# with, and anything driving it).
+# A compile's rows: each stage's time, aiecc's graph span, and the rest of the
+# compile's (Python's import and trace, the dispatch bridge's build, and
+# aiecc's own time outside its graph when the profile can't tell it apart).
 STAGE_METRICS = (
     *(f"compile_{stage}_s" for stage in STAGES),
     "compile_aiecc_wall_s",
     "compile_outside_aiecc_s",
 )
+# aiecc's own time outside its graph, from a profile with process_ms.
+AIECC_OWN_METRIC = "compile_aiecc_outside_graph_s"
+# The wall time of compiling the external kernel objects, from the JIT's
+# kernel profile: the "kernels" stage shows only what aiecc waited of it.
+KERNEL_OBJECTS_METRIC = "compile_kernel_objects_s"
+# How many of the slowest kernel objects a compile's detail names.
+SLOWEST_KERNELS = 5
 # A cold then warm compile's rows, as every check names them.
 COMPILE_METRICS = (
     "compile_s",
@@ -63,6 +72,10 @@ COMPILE_METRICS = (
     "compile_peak_rss_mb_warm",
     *STAGE_METRICS,
     *(f"{m}_warm" for m in STAGE_METRICS),
+    AIECC_OWN_METRIC,
+    f"{AIECC_OWN_METRIC}_warm",
+    KERNEL_OBJECTS_METRIC,
+    f"{KERNEL_OBJECTS_METRIC}_warm",
 )
 # xrt-smi's power modes, and "any" to accept whichever is set.
 PMODES = ("any", "default", "powersaver", "balanced", "performance", "turbo")
@@ -82,7 +95,7 @@ _RULES = [
     ("place", r"placed\.mlir"),
     ("route", r"input_physical\.mlir"),
     ("kernels", r"awaitLinkFiles"),
-    ("link", r"deviceCacheLookup|preBakedCores|placedCoreCompile|linked\.mlir"),
+    ("link", r"deviceCacheLookup|preBakedCores|placedCoreCompile"),
     (
         "link",
         r"(probeElfs|elfs|preBakedElfs)_\{0\}\.elf|(probeScripts|ldScripts)_\{0\}\.ld\.script"
@@ -133,7 +146,8 @@ def stage_seconds(profile_path: str) -> dict:
         profile_path: an aiecc ``--profile-json`` file.
 
     Returns:
-        ``{stage: seconds for each of STAGES, "wall_s": seconds}``.
+        ``{stage: seconds for each of STAGES, "wall_s": seconds}``, and
+        ``"process_s"`` when the profile records aiecc's whole run.
 
     Raises:
         ProfileError: The file is missing (an aiecc without
@@ -152,6 +166,8 @@ def stage_seconds(profile_path: str) -> dict:
     for edge in profile["edges"]:
         out[stage_of(edge["name"])] += edge["ms"] / 1000.0
     out["wall_s"] = profile["wall_ms"] / 1000.0
+    if "process_ms" in profile:
+        out["process_s"] = profile["process_ms"] / 1000.0
     return out
 
 
@@ -173,9 +189,10 @@ def stage_rows(profile_path: str, compile_s: float | None, suffix: str) -> dict:
         return {}
     try:
         stages = stage_seconds(profile_path)
-        if stages["wall_s"] > compile_s:
+        aiecc_s = stages.get("process_s", stages["wall_s"])
+        if aiecc_s > compile_s:
             raise ProfileError(
-                f"{profile_path} spans {stages['wall_s']:.2f} s of a "
+                f"{profile_path} spans {aiecc_s:.2f} s of a "
                 f"{compile_s:.2f} s compile: not this compile's"
             )
     except ProfileError as e:
@@ -183,8 +200,48 @@ def stage_rows(profile_path: str, compile_s: float | None, suffix: str) -> dict:
         return {f"profile_problem{suffix}": str(e)}
     seconds = {f"compile_{stage}_s": stages[stage] for stage in STAGES}
     seconds["compile_aiecc_wall_s"] = stages["wall_s"]
-    seconds["compile_outside_aiecc_s"] = compile_s - stages["wall_s"]
+    seconds["compile_outside_aiecc_s"] = compile_s - aiecc_s
+    if "process_s" in stages:
+        seconds[AIECC_OWN_METRIC] = stages["process_s"] - stages["wall_s"]
     return {f"{k}{suffix}": round(v, 2) for k, v in seconds.items()}
+
+
+def kernel_rows(profile_path: str, compile_s: float | None, suffix: str) -> dict:
+    """Return one compile's kernel-object compile time and what took it.
+
+    Args:
+        profile_path: the JIT's kernel profile for the compile
+            (``aie.utils.compile.utils.KERNEL_PROFILE_NAME``, beside aiecc's).
+        compile_s: the whole compile's wall time, or None if it failed.
+        suffix: ``""`` for a cold compile, ``"_warm"`` for a warm one.
+
+    Returns:
+        ``{KERNEL_OBJECTS_METRIC + suffix: wall seconds, "kernel_objects" +
+        suffix: {jobs, compiled, cached, slowest}}``, ``slowest`` naming the
+        ``SLOWEST_KERNELS`` objects that took longest; empty when the compile
+        failed, and ``{"kernel_profile_problem" + suffix: why}`` without a
+        profile.
+    """
+    if compile_s is None:
+        return {}
+    if not os.path.exists(profile_path):
+        print(f"no kernel compile time{suffix}: no profile at {profile_path}")
+        return {f"kernel_profile_problem{suffix}": f"no profile at {profile_path}"}
+    with open(profile_path) as f:
+        profile = json.load(f)
+    kernels = sorted(profile["kernels"], key=lambda k: -k["seconds"])
+    return {
+        f"{KERNEL_OBJECTS_METRIC}{suffix}": round(profile["wall_s"], 2),
+        f"kernel_objects{suffix}": {
+            "jobs": profile["jobs"],
+            "compiled": sum(not k["cached"] for k in kernels),
+            "cached": sum(k["cached"] for k in kernels),
+            "slowest": [
+                {"object": k["object"], "seconds": round(k["seconds"], 2)}
+                for k in kernels[:SLOWEST_KERNELS]
+            ],
+        },
+    }
 
 
 class Measured(NamedTuple):

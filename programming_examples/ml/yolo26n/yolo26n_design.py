@@ -61,35 +61,56 @@ L1_LAG_BYTES = 12 * 1024
 MEMTILE_LAG_ROWS = 8
 # What one buffering worker's ring takes of its tile.
 BUFFER_TILE_BYTES = 48 * 1024
-# Runs of operators, as network op index ranges, that one worker computes
-# row by row (see SegmentDesign.fuse): the bottlenecks of model.2, 4 and
+# Runs of operators, by the names of their first and last ops, that one
+# worker computes row by row (see SegmentDesign.fuse): the bottlenecks of model.2, 4 and
 # 8, the C3k blocks of model.6, 13, 16 and 19, the PSA blocks' FFNs, and
 # the Detect head's P3 box branch and P4 and P5 branches. P3's class
 # branch stays apart: fused, its run is its segment's slowest worker.
 FUSED = (
-    (6, 9),
-    (15, 18),
-    (24, 28),
-    (28, 34),
-    (41, 44),
-    (44, 47),
-    (65, 67),
-    (68, 71),
-    (78, 82),
-    (82, 88),
-    (95, 99),
-    (99, 105),
-    (112, 116),
-    (116, 122),
-    (135, 137),
-    (138, 141),
-    (143, 146),
-    (151, 154),
-    (154, 156),
-    (156, 159),
-    (160, 162),
-    (162, 164),
-    (164, 167),
+    ("/model.2/m.0/cv1/conv/Conv", "/model.2/m.0/Add"),
+    ("/model.4/m.0/cv1/conv/Conv", "/model.4/m.0/Add"),
+    ("/model.6/m.0/cv1/conv/Conv", "/model.6/m.0/m/m.0/Add"),
+    ("/model.6/m.0/m/m.1/cv1/conv/Conv", "/model.6/m.0/cv3/conv/Conv"),
+    ("/model.8/m.0/m/m.0/cv1/conv/Conv", "/model.8/m.0/m/m.0/Add"),
+    ("/model.8/m.0/m/m.1/cv1/conv/Conv", "/model.8/m.0/m/m.1/Add"),
+    ("/model.10/m/m.0/attn/Add", "/model.10/m/m.0/attn/proj/conv/Conv"),
+    ("/model.10/m/m.0/ffn/ffn.0/conv/Conv", "/model.10/m/m.0/Add_1"),
+    ("/model.13/m.0/cv1/conv/Conv", "/model.13/m.0/m/m.0/Add"),
+    ("/model.13/m.0/m/m.1/cv1/conv/Conv", "/model.13/m.0/cv3/conv/Conv"),
+    ("/model.16/m.0/cv1/conv/Conv", "/model.16/m.0/m/m.0/Add"),
+    ("/model.16/m.0/m/m.1/cv1/conv/Conv", "/model.16/m.0/cv3/conv/Conv"),
+    ("/model.19/m.0/cv1/conv/Conv", "/model.19/m.0/m/m.0/Add"),
+    ("/model.19/m.0/m/m.1/cv1/conv/Conv", "/model.19/m.0/cv3/conv/Conv"),
+    ("/model.22/m.0/m.0.1/attn/Add", "/model.22/m.0/m.0.1/attn/proj/conv/Conv"),
+    ("/model.22/m.0/m.0.1/ffn/ffn.0/conv/Conv", "/model.22/m.0/m.0.1/Add_1"),
+    (
+        "/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv",
+        "/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv",
+    ),
+    (
+        "/model.23/one2one_cv2.1/one2one_cv2.1.0/conv/Conv",
+        "/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.0/conv/Conv",
+        "/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.1/conv/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.1/one2one_cv3.1.1/one2one_cv3.1.1.0/conv/Conv",
+        "/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv",
+    ),
+    (
+        "/model.23/one2one_cv2.2/one2one_cv2.2.1/conv/Conv",
+        "/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.0/conv/Conv",
+        "/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.1/conv/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.2/one2one_cv3.2.1/one2one_cv3.2.1.0/conv/Conv",
+        "/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv",
+    ),
 )
 
 
@@ -286,9 +307,9 @@ class SegmentDesign:
         params: Its parameters.
         ops: The run, in network order.
         outputs: Tensors to drain to the host.
-        fused: Runs of operators, as network op index ranges `(first, stop)`,
-            that one worker each computes row by row; see `fuse`. Runs not
-            wholly inside `ops` are ignored.
+        fused: Runs of operators, each by its first and last op's names,
+            that one worker each computes row by row; see `fuse`. Runs
+            wholly outside `ops` are left to the runs that hold them.
 
     Attributes:
         inputs: Tensors filled from the host, in fill order; the image when
@@ -297,6 +318,10 @@ class SegmentDesign:
             fifos they fill, in order.
         out_fifos: The fifo of each host output tensor.
         workers: Every worker of the run.
+
+    Raises:
+        KeyError: If a fused run names an op the network lacks.
+        ValueError: If `ops` holds part of a fused run but not all of it.
     """
 
     def __init__(
@@ -305,7 +330,7 @@ class SegmentDesign:
         params: Params,
         ops: Sequence[Op],
         outputs: Sequence[Tensor],
-        fused: Sequence[tuple[int, int]] = FUSED,
+        fused: Sequence[tuple[str, str]] = FUSED,
     ) -> None:
         self.params = params
         self.producer = {op.dst.name: op for op in network.ops}
@@ -339,9 +364,16 @@ class SegmentDesign:
         self.loads: list[tuple[Tensor, np.ndarray]] = []
         index = {op.dst.name: i for i, op in enumerate(network.ops)}
         mine = {index[op.dst.name] for op in ops}
-        fused = [(a, b) for a, b in fused if set(range(a, b)) <= mine]
-        groups = {first: network.ops[first:stop] for first, stop in fused}
-        inside = {i for first, stop in fused for i in range(first, stop)}
+        spans = [network.span(first, last) for first, last in fused]
+        for a, b in spans:
+            if set(range(a, b)) & mine and not set(range(a, b)) <= mine:
+                raise ValueError(
+                    f"the run {ops[0].name} .. {ops[-1].name} cuts the fused run "
+                    f"{network.ops[a].name} .. {network.ops[b - 1].name}"
+                )
+        runs = [(a, b) for a, b in spans if set(range(a, b)) <= mine]
+        groups = {first: network.ops[first:stop] for first, stop in runs}
+        inside = {i for first, stop in runs for i in range(first, stop)}
         drained = {t.name for t in outputs}
         for op in ops:
             i = index[op.dst.name]
@@ -1767,22 +1799,38 @@ class SegmentDesign:
         """The end-to-end postprocess on one worker, from per-anchor records the host sends twice.
 
         The first pass finds each anchor's best class score and picks the
-        300 best anchors; the second gathers those anchors' class logits and
-        box distances; the worker then picks the 300 best (anchor, class)
-        scores and writes their boxes, scores and classes. See
-        kernels/yolo_detect.cc.
+        `op.dst.height` (300) best anchors; the second gathers those anchors'
+        class logits and box distances; the worker then picks as many best
+        (anchor, class) scores and writes their boxes, scores and classes.
+        The model's sizes reach kernels/yolo_detect.cc as -D flags.
+
+        Raises:
+            NotImplementedError: If the Detect levels are not three square
+                grids, each half as wide at twice the power-of-two stride.
         """
         p = self.params
+        classes = op.scores[0].channels
+        keep = op.dst.height
+        grid = op.scores[0].width
+        if (
+            [(t.channels, t.height, t.width) for t in op.scores]
+            != [(classes, grid >> i, grid >> i) for i in range(3)]
+            or [t.shape[1:] for t in op.boxes] != [t.shape[1:] for t in op.scores]
+            or list(op.strides) != [op.strides[0] << i for i in range(3)]
+            or op.strides[0] & (op.strides[0] - 1)
+        ):
+            raise NotImplementedError(
+                f"{op.name}: the kernel takes three square levels, each half as "
+                "wide at twice the power-of-two stride"
+            )
+        # One rank per entry of each level's int8 sigmoid table.
+        ranks = 256 * len(op.scores)
         tables = p.of(op.name, "sigmoid").astype(np.float32)
         values = np.unique(tables)
         rank = np.searchsorted(values, tables).astype(np.int16)
-        if values.size > 768:
-            raise ValueError(
-                f"{op.name}: {values.size} distinct scores, the kernel ranks 768"
-            )
         chunk = 20
         anchors = sum(t.height * t.width for t in op.scores)
-        records = ObjectFifo(row(chunk * 80), name="detect_classes")
+        records = ObjectFifo(row(chunk * classes), name="detect_classes")
         boxes = ObjectFifo(row(chunk * 8), name="detect_boxes")
         # Made here, the Detect outputs go to DDR first, and the records come
         # back once they all have, after the run's own inputs (step 0).
@@ -1810,18 +1858,25 @@ class SegmentDesign:
         for level in rank:
             for m in np.nonzero(level != np.maximum.accumulate(level))[0]:
                 reach = max(reach, int(m - np.nonzero(level[:m] > level[m])[0].min()))
-        flags = [f"-DYOLO_DETECT_CHUNK={chunk}", f"-DYOLO_DETECT_REACH={reach}"]
+        flags = [
+            f"-DYOLO_DETECT_CHUNK={chunk}",
+            f"-DYOLO_DETECT_REACH={reach}",
+            f"-DYOLO_DETECT_CLASSES={classes}",
+            f"-DYOLO_DETECT_KEEP={keep}",
+            f"-DYOLO_DETECT_GRID={grid}",
+            f"-DYOLO_DETECT_LOG2_STRIDE={op.strides[0].bit_length() - 1}",
+        ]
         best_t = np.ndarray[(anchors,), np.dtype[np.int16]]
-        ranks_t = np.ndarray[(2 * 768,), np.dtype[np.int16]]
-        words_t = np.ndarray[(768,), np.dtype[np.int32]]
+        ranks_t = np.ndarray[(2 * ranks,), np.dtype[np.int16]]
+        words_t = np.ndarray[(ranks,), np.dtype[np.int32]]
         k_max = self.function(
             "yolo_detect_max",
             "yolo_detect.cc",
-            [row(chunk * 80), ranks_t, best_t, np.int32],
+            [row(chunk * classes), ranks_t, best_t, np.int32],
             flags,
         )
         bind = k_max.object_file.bind
-        keep_t = np.ndarray[(300,), np.dtype[np.int16]]
+        keep_t = np.ndarray[(keep,), np.dtype[np.int16]]
         count_t = np.ndarray[(4,), np.dtype[np.int32]]
         # A chunk's picked bits are read as a word, past the last byte.
         picked_t = np.ndarray[(anchors // 8 + 4,), np.dtype[np.uint8]]
@@ -1832,19 +1887,20 @@ class SegmentDesign:
         k_gather = bind(
             "yolo_detect_gather",
             [
-                row(chunk * 80),
+                row(chunk * classes),
                 row(chunk * 8),
                 picked_t,
                 keep_t,
-                row(300 * 80),
-                row(300 * 4),
+                row(keep * classes),
+                row(keep * 4),
                 count_t,
                 np.int32,
             ],
         )
         k_finish = bind(
             "yolo_detect_finish",
-            [row(300 * 80), row(300 * 4), keep_t, ranks_t, words_t, words_t, keep_t]
+            [row(keep * classes), row(keep * 4), keep_t, ranks_t, words_t, words_t]
+            + [keep_t]
             + [
                 np.ndarray[(6 * op.dst.height,), np.dtype[np.int32]],
                 np.int32,
@@ -1853,12 +1909,12 @@ class SegmentDesign:
             ],
         )
         shifts = [p.scale(t.name) for t in op.boxes]
-        bits = np.zeros(768, np.int32)
+        bits = np.zeros(ranks, np.int32)
         bits[: tables.size] = tables.view(np.int32).reshape(-1)
         # Each level's ranks, then its peaks: the highest rank of any logit up to each.
-        rank_table = np.zeros(2 * 768, np.int16)
+        rank_table = np.zeros(2 * ranks, np.int16)
         rank_table[: rank.size] = rank.reshape(-1)
-        rank_table[768 : 768 + rank.size] = np.maximum.accumulate(
+        rank_table[ranks : ranks + rank.size] = np.maximum.accumulate(
             rank, axis=-1
         ).reshape(-1)
         n = anchors // chunk
@@ -1890,8 +1946,8 @@ class SegmentDesign:
             Buffer(picked_t),
             Buffer(keep_t),
             Buffer(count_t),
-            Buffer(row(300 * 80)),
-            Buffer(row(300 * 4)),
+            Buffer(row(keep * classes)),
+            Buffer(row(keep * 4)),
             Buffer(initial_value=bits),
             Buffer(keep_t),
         ]

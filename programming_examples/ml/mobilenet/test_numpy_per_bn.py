@@ -6,8 +6,8 @@
 already checked into bottleneck_A/B/C/data/.
 
 Usage:
-    python3 test_numpy_per_bn.py
-    # all 11 verified blocks should report 100.0% BIT-EXACT.
+    python3 -m mobilenet.test_numpy_per_bn    # from programming_examples/ml
+    # every check should report 100.0% BIT-EXACT.
 
 The fixtures use their OWN scales (bottleneck_A's scale_factors_per_bn.json
 and each chain's scale_factors.json). This proves every kernel
@@ -15,7 +15,6 @@ arithmetic matches brevitas; mobilenet_numpy's docstring explains the full
 network's gap to its golden (max 3, in post_l1's average pool).
 """
 
-import dataclasses
 import json
 import os
 import shutil
@@ -71,9 +70,7 @@ def main():
         in_shape, out_shape = SHAPES[name]
         H, W, IC = in_shape
         OH, OW, OC = out_shape
-        # Per-bn block reads bnN_chain.txt (NOT bnN_single.txt — _run_block expects the chain naming).
-        # We symlink in a temp dir... actually simpler: rename single -> chain at load.
-        # Workaround: create a small staging dir with `bnN_chain.txt` -> single.
+        # _run_block reads bnN_chain.txt, so stage bnN_single.txt under that name.
         with tempfile.TemporaryDirectory() as tmp:
             shutil.copy(
                 A_DATA + f"bn{name[2:]}_single.txt", tmp + f"/bn{name[2:]}_chain.txt"
@@ -103,8 +100,7 @@ def main():
             all_ok &= ok
 
     # ------------------------------------------------------------------
-    # bottleneck_A: bn0 → bn9 chain, against a golden generated without
-    # bn5's residual (the device and the other checks keep it).
+    # bottleneck_A: bn0 → bn9 chain
     # ------------------------------------------------------------------
     print("\n=== bottleneck_A (bn0 -> bn9 chain) ===")
     with open(A_DATA + "scale_factors_fused.json") as f:
@@ -118,10 +114,7 @@ def main():
         112,
     )
     for name in ("bn0", "bn1", "bn2", "bn3", "bn4", "bn5", "bn6", "bn7", "bn8", "bn9"):
-        blk = nsblock(name)
-        if name == "bn5":
-            blk = dataclasses.replace(blk, skip=False)
-        x = _run_block(blk, x, fused_sf, A_DATA)
+        x = _run_block(nsblock(name), x, fused_sf, A_DATA)
     gold = _hwc(
         np.loadtxt(A_DATA + "golden_output.txt", delimiter=",", dtype=np.int64)
         .astype(np.uint8)
@@ -130,7 +123,7 @@ def main():
         14,
         14,
     )
-    all_ok &= _check("bn0->bn9 chain, bn5 unskipped", x, gold)
+    all_ok &= _check("bn0->bn9 chain", x, gold)
 
     # ------------------------------------------------------------------
     # bottleneck_B: bn10 → bn11 → bn12 chain

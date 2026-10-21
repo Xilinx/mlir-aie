@@ -137,7 +137,7 @@ assert.equal(changeClass(100, 114, 'compile_s'), '');
 assert.equal(changeClass(100, 115, 'compile_s'), 'worse');
 assert.equal(changeClass(1000, 1009, 'final_cost_mean'), '');
 assert.equal(changeClass(1000, 1010, 'final_cost_mean'), 'worse');
-assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes']);
+assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes', 'max_ulp_bfloat16', 'max_ulp_float32', 'not_correctly_rounded_bfloat16', 'not_correctly_rounded_float32']);
 """)
 
 
@@ -162,32 +162,26 @@ assert.equal(axisTitle('Cycles per call', 'cycles'), 'Cycles per call · ↓ bet
 
 
 def test_timing_labels_name_the_statistic_the_checks_take(page):
-    checks = ROOT / "utils/component_checks"
     mobilenet = re.search(
         r'"--iters", type=int, default=(\d+)',
-        (checks / "sa_placer_hw.py").read_text(encoding="utf-8"),
+        (ROOT / "utils/component_checks/sa_placer_hw.py").read_text(encoding="utf-8"),
     )[1]
-    n_iters = {
-        name: re.search(
-            r"^N_ITERS = (\d+)$",
-            (checks / f"{name}.py").read_text(encoding="utf-8"),
-            re.MULTILINE,
-        )[1]
-        for name in ("yolo26n_hw", "llama_chain_hw")
-    }
     page(f"""
 const trendOf = id => BANDS.find(b => b.id === id && b.trend).trend;
-// MobileNet takes the fastest of its timed calls; so does yolo26n.py --time.
+// MobileNet takes the fastest of its timed calls; so does yolo26n.py --time,
+// whose row's range gives its count, median and MAD.
 assert.ok(COMPONENT_METRICS.us_per_image.includes('the fastest of {mobilenet}'));
 assert.ok(COMPONENT_METRICS.e2e_us_per_image.includes('the fastest of {mobilenet}'));
 assert.ok(trendOf('sa-placer-hw').every(t => !/per image/.test(t.axis) || t.axis.includes('fastest')));
-assert.ok(COMPONENT_METRICS.us_per_image_b1.includes('the fastest of {n_iters["yolo26n_hw"]}'));
-assert.ok(trendOf('yolo26n-hw')[0].axis.includes('fastest of {n_iters["yolo26n_hw"]}'));
-assert.ok(!/median/.test(COMPONENT_METRICS.us_per_image_b1 + trendOf('yolo26n-hw')[0].about));
-assert.ok(COMPONENT_METRICS.tok_s.includes('the median of {n_iters["llama_chain_hw"]}'));
-assert.ok(trendOf('llama-chain-hw')[1].axis.includes('median of {n_iters["llama_chain_hw"]}'));
-// The host clock is never called NPU time.
-assert.ok(!Object.values(COMPONENT_METRICS).some(about => /NPU time/.test(about)));
+assert.ok(COMPONENT_METRICS.us_per_image_b1.includes('the fastest of its timed calls'));
+assert.ok(trendOf('yolo26n-hw')[0].axis.includes('fastest call'));
+assert.ok(!/the median of/.test(COMPONENT_METRICS.us_per_image_b1 + trendOf('yolo26n-hw')[0].about));
+// Llama's timed run takes the median dispatch.
+assert.ok(COMPONENT_METRICS.tok_s.includes('median 4-token dispatch'));
+assert.ok(trendOf('llama-chain-hw')[1].axis.includes('median dispatch'));
+// A host-observed dispatch is never called NPU time; NPU time is the dispatch less its baseline.
+assert.ok(!/NPU time/.test(COMPONENT_METRICS.us_per_image + COMPONENT_METRICS.ms_per_token));
+assert.ok(COMPONENT_METRICS.npu_us_per_image.includes("less the same run's empty-dispatch baseline"));
 // Every timing tab's axis names its statistic.
 for (const band of BANDS.filter(b => b.trend)) {{
   for (const t of band.trend) {{
@@ -322,7 +316,7 @@ assert.equal(changeClass(10, 10.6, 'compile_place_s'), '');
 // 2 -> 0 better, and a metric with no floor is not judged from zero.
 assert.equal(changeClass(0, 2, 'failed_mutations'), 'worse');
 assert.equal(changeClass(2, 0, 'failed_mutations'), 'better');
-assert.equal(changeClass(0, 2, 'unrouted'), '');
+assert.equal(changeClass(0, 2, 'cpu_ms_mean'), '');
 // A metric with only a floor: any whole ulp counts, from any baseline.
 assert.equal(changeClass(30, 31, 'max_ulp'), 'worse');
 assert.equal(changeClass(0, 1, 'max_ulp'), 'worse');
@@ -345,26 +339,30 @@ assert.equal(relative(0, 0), 0);
 
 def test_the_error_metrics_are_shown_and_a_zero_baseline_compares(page):
     page(KERNELS + """
-// publish.py writes them per case beside the timing rows.
+// publish.py writes them per case and output type beside the timing rows.
 const err = (id, day, ulp, pctOff) => rec(id, Date.parse(`2026-10-0${day}T06:00:00Z`), 'turbo', {
   'softmax/1024/bfloat16/cycles': ['cycles', 1000],
-  'softmax/1024/bfloat16/max_ulp': ['ulp', ulp], 'softmax/1024/bfloat16/not_correctly_rounded': ['%', pctOff] });
+  'softmax/1024/bfloat16/max_ulp_bfloat16': ['ulp', ulp, 'vs the float64 correctly rounded reference'],
+  'softmax/1024/bfloat16/not_correctly_rounded_bfloat16': ['%', pctOff] });
 db = fromRecords({ npu2: [err('1', 1, 0, 0), err('2', 2, 0, 0), err('3', 3, 5, 49.2)] });
-// The kernel page offers both, labelled, on an axis that says which way is better.
-assert.ok(ALL_METRICS.includes('max_ulp') && ALL_METRICS.includes('not_correctly_rounded'));
-assert.deepEqual(['max_ulp', 'not_correctly_rounded'].map(label), ['Max error (ULP)', 'Not correctly rounded (%)']);
-assert.ok(METRICS.max_ulp.includes('correctly rounded value of the function'));
-const ulp = kernelTrendConfig(db, 'npu2', 'softmax', 'max_ulp');
-assert.equal(ulp.options.scales.y.title.text, 'Max error (ULP, worst result) · ↓ better');
+// The kernel page offers each, labelled, on an axis that says which way is better.
+assert.deepEqual(ERROR_METRICS, ['max_ulp_bfloat16', 'not_correctly_rounded_bfloat16', 'max_ulp_float32', 'not_correctly_rounded_float32']);
+assert.ok(ERROR_METRICS.every(m => ALL_METRICS.includes(m) && GATED.includes(m)));
+assert.deepEqual(['max_ulp_bfloat16', 'not_correctly_rounded_float32'].map(label), ['Max error (ULP, bfloat16)', 'Not correctly rounded (%, float32)']);
+assert.ok(METRICS.max_ulp_bfloat16.includes('correctly rounded value of the function the kernel computes'));
+assert.ok(METRICS.max_ulp_bfloat16.includes("never a LUT build's model of itself"));
+const ulp = kernelTrendConfig(db, 'npu2', 'softmax', 'max_ulp_bfloat16');
+assert.equal(ulp.options.scales.y.title.text, 'Max error (ULP, bfloat16, worst result) · ↓ better');
 assert.deepEqual(ulp.data.datasets[0].data, [0, 0, 5]);
+// Hover says which reference the error is against.
+assert.equal(ulp.options.plugins.tooltip.callbacks.label({ dataset: ulp.data.datasets[0], dataIndex: 2, raw: 5 }),
+             '1024/bfloat16: 5 ulp (vs the float64 correctly rounded reference)');
 assert.equal(ulp.options.scales.y.ticks.callback(5), '5 ulp');
-assert.equal(kernelTrendConfig(db, 'npu2', 'softmax', 'not_correctly_rounded').options.scales.y.ticks.callback(49.2), '49.2%');
-// With a floor, 0 -> 5 ulp is a move from a zero baseline, said as "+5 ulp".
-THRESHOLDS.max_ulp = { abs: 1, gated: true };
-THRESHOLDS.not_correctly_rounded = { abs: 0.1, gated: true };
-GATED.push('max_ulp', 'not_correctly_rounded');
+assert.equal(kernelTrendConfig(db, 'npu2', 'softmax', 'not_correctly_rounded_bfloat16').options.scales.y.ticks.callback(49.2), '49.2%');
+// Their floors (1 ulp, 0.1 points) make 0 -> 5 ulp a move from a zero baseline, said "+5 ulp".
 const moved = movedSeries(db, 'npu2');
-assert.deepEqual(moved.regressed.map(x => [x.series.metric, x.before, x.after]), [['max_ulp', 0, 5], ['not_correctly_rounded', 0, 49.2]]);
+assert.deepEqual(moved.regressed.map(x => [x.series.metric, x.before, x.after]),
+  [['max_ulp_bfloat16', 0, 5], ['not_correctly_rounded_bfloat16', 0, 49.2]]);
 assert.equal(formatChange(moved.regressed[0].change, 5, 'ulp'), '+5 ulp');
 // Gated, they read in the verdict as their own kind of move.
 const night = nightOf('npu2', null, db, cat2);
@@ -375,6 +373,12 @@ const mixed = { ...night, moved: { regressed: [
 assert.equal(verdictOf(mixed, Date.parse('2026-10-03T07:00:00Z')).headline, '1 case slower, 1 bigger vs 2 Oct.');
 const item = attentionFor(night, Date.parse('2026-10-03T07:00:00Z')).find(i => i.level === 'bad');
 assert.ok(item.body[0].startsWith('1 case got less accurate past its threshold vs 2 Oct:'));
+// The Summary's table gains a column for an error metric only when one moved.
+location.hash = '#view=night';
+renderWindowChanges(db, ['npu2']);
+const head = $('window-changes').children[0].children[0].children[0].children[0];
+assert.deepEqual(head.children.map(c => c.text.split('1 Oct')[0].split('2 Oct')[0]),
+  ['Case', 'NPU', 'Cycles', 'Object size', 'Max error (ULP, bfloat16)', 'Not correctly rounded (%, bfloat16)']);
 """)
 
 
@@ -413,6 +417,52 @@ assert.ok(slot.scrolled);
 """)
 
 
+def test_a_check_that_did_not_finish_says_so_with_its_run(page):
+    page(COMPONENT_RUNS + LLAMA_NIGHTS + """
+// The placeholder record a check writes before its first device run: no rows.
+const stopped = night('8', '2026-10-03T06:30:00Z', 'turbo', { published: false, reason: 'did not finish', failed: [LLAMA] });
+const index = { target: 'llama-chain-hw', runs: [night('6', llamaBefore.date, 'turbo'), night('7', llamaAfter.date, 'turbo'), stopped] };
+const card = componentBand(llama, index, llamaAfter, Date.parse('2026-10-03T09:00:00Z'), llamaBefore);
+assert.equal(card.className, 'verdict bad');
+assert.equal(one(card, n => n.className === 'headline').text, 'Did not finish: the 16-layer decode.');
+// The run is a click away, and its last numbers are said to be older.
+assert.ok(one(card, n => n.className === 'repro').text.includes('run 8'));
+assert.ok(card.text.includes('Numbers from the run of 2 Oct, 06:30 UTC'));
+assert.ok(nightTitle(stopped).endsWith('did not finish: published no numbers'));
+""")
+
+
+def test_a_change_of_measurement_is_marked_and_never_compared_across(page):
+    page(KERNELS + """
+// The 10-02 trace-decoder fix: measurement "1" before, "2" since.
+const night = (id, day, cycles, measurement) => ({ ...rec(id, Date.parse(`2026-10-0${day}T06:00:00Z`), 'turbo', {
+  'bn_conv2dk3/1792x8/int8/cycles': ['cycles', cycles] }), provenance: { measurement, peano: 'p' } });
+db = fromRecords({ npu2: [night('1', 1, 293058, '1'), night('2', 2, 301, '2'), night('3', 3, 305, '2')] });
+const conv = db.series[0];
+// Last night compares with the night before, on the same measurement.
+assert.equal(latestMove(conv, ['turbo']).since, Date.parse('2026-10-02T06:00:00Z'));
+// The window starts at the change: 301 -> 305, not 293058 -> 305.
+assert.deepEqual(windowChanges(db, 'npu2', 'cycles').map(x => [x.then, x.now]), [[301, 305]]);
+// A change of measurement alone is no comparison at all, and is marked.
+const two = fromRecords({ npu2: [night('1', 1, 293058, '1'), night('2', 2, 301, '2')] });
+assert.equal(latestMove(two.series[0], ['turbo']), null);
+assert.equal(movedSeries(two, 'npu2').improved.length, 0);
+assert.deepEqual(kernelTrendConfig(two, 'npu2', 'bn_conv2dk3', 'cycles').options.plugins.markers.at, [{ index: 1, label: 'measurement 2' }]);
+""")
+
+
+def test_static_dispatch_records_are_not_spliced_into_the_trend(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+// publish.py keeps an old static record's per-batch times under mobilenet/seed=S/batch=B.
+const old = { ...hwBefore, id: '5', date: '2026-09-30T06:30:00Z', provenance: { dispatch: 'static' },
+  rows: { 'mobilenet/seed=3/batch=1': { us_per_image: { value: 500, unit: 'us' } }, 'mobilenet/seed=3/batch=16': { us_per_image: { value: 150, unit: 'us' } } } };
+const data = collect(historiesOf('sa-placer-hw', [old, hwBefore, hwAfter]));
+const trend = trendConfig(data, hw.trend.find(t => t.id === 'us_per_image'));
+assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
+  [['batch 1', [295.7, 295.7]], ['batch 16', [98.5, 101.95]]]);
+""")
+
+
 def test_llama_decode_by_context_is_a_line_per_context(page):
     page(COMPONENT_RUNS + LLAMA_NIGHTS + """
 // The context sweep: one compile, timed at each start position; a series per context.
@@ -427,9 +477,15 @@ const data = collect(historiesOf('llama-chain-hw', [swept('6', llamaBefore.date,
 const tab = llama.trend.find(t => t.id === 'decode_by_context');
 assert.equal(tab.name, 'Decode by context');
 const config = trendConfig(data, tab);
-assert.deepEqual(config.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
-  [['1k context', [52, 57.2]], ['8k context', [70, 77]], ['128k context', [390, 429]]]);
+// Decode tokens per second, higher is better, as mlir-air and FastFlowLM tabulate it.
+const lines = config.data.datasets.filter(d => !d.band);
+assert.deepEqual(lines.map(d => [d.label, d.data.map(v => Math.round(v * 100) / 100)]),
+  [['1k context', [19.23, 17.48]], ['8k context', [14.29, 12.99]], ['128k context', [2.56, 2.33]]]);
 assert.equal(config.options.scales.y.type, 'logarithmic');
+assert.equal(config.options.scales.y.title.text, 'Decode tokens per second (median dispatch) · ↑ better');
+// The time per token on hover.
+assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[2], dataIndex: 1, raw: 1000 / 429 }),
+             '128k context: 2.33 tok/s, dispatch / token 429 ms');
 // The plain decode tab charts the timed run alone, not the sweep summed in.
 assert.deepEqual(trendConfig(data, llama.trend.find(t => t.id === 'ms_per_token')).data.datasets.filter(d => !d.band).map(d => d.data),
   [[1000 / 4.37, 1000 / 4.37]]);
@@ -477,8 +533,7 @@ assert.ok(sharing.min > 0.28 && sharing.max < 0.36, JSON.stringify(sharing));
 const flat = yRange([{ data: [100, 100] }], 'npu_us');
 assert.deepEqual(flat, { min: 87.5, max: 112.5 });
 // An abs-only metric pads by its floor; all zeros still draw an axis.
-THRESHOLDS.max_ulp = { abs: 1 };
-assert.deepEqual(yRange([{ data: [0, 0] }], 'max_ulp'), { min: 0, max: 1.25 });
+assert.deepEqual(yRange([{ data: [0, 0] }], 'max_ulp_float32'), { min: 0, max: 1.25 });
 assert.deepEqual(yRange([{ data: [0, 0] }], 'cycles'), { min: 0, max: 1 });
 """)
 
@@ -632,21 +687,28 @@ def test_every_metric_the_checks_publish_has_a_label_and_a_description(page):
             )
         )
         published |= set(re.findall(r'cells\["([a-z][a-z0-9_]*)"\] = \(', text))
+        for block in re.findall(r"^TIMED = \(([^)]*)\)", text, re.MULTILINE):
+            published |= set(re.findall(r'"([a-z][a-z0-9_]*)"', block))
         for block in re.findall(r"_COUNTS = \{([^}]*)\}", text):
             published |= set(re.findall(r'"([a-z][a-z0-9_]*)":', block))
     publish = (ROOT / "utils/kernel_checks/publish.py").read_text(encoding="utf-8")
     published |= set(re.findall(r'"([a-z][a-z0-9_]*)": \{"value"', publish))
+    for stem in re.findall(r'f"([a-z_]+)_\{dtype\}"', publish):
+        published |= {f"{stem}_bfloat16", f"{stem}_float32"}
     # The timing checks' per-batch YOLO rows, named by the batch they ran.
     published |= {"us_per_image_b1", "us_per_image_b8", "fps_b1", "fps_b8"}
     # n_cores is dropped (the author's call): the page shows the layout as words.
     published -= {"n_cores"}
     assert {
-        "max_ulp",
+        "max_ulp_float32",
+        "not_correctly_rounded_bfloat16",
         "compile_s",
         "unrouted",
         "tok_s",
         "placement_cost",
         "failed_mutations",
+        "npu_us_per_image",
+        "host_overhead_us_per_image",
     } <= published
     page(f"""
 const published = {json.dumps(sorted(published))};
@@ -1350,7 +1412,7 @@ assert.deepEqual(config.data.labels, ['1 Jan', '1 Jan']);
 // Each case's actual cycles, night by night.
 assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['64/bfloat16', [50, null]], ['1024/bfloat16', [1000, 1100]]]);
 const tips = config.options.plugins.tooltip.callbacks;
-assert.equal(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }), '1024/bfloat16: 1,100');
+assert.equal(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }), '1024/bfloat16: 1,100 (median 1150 max 1200 n=16)');
 assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
 assert.equal(config.options.scales.y.title.text, 'Cycles per call (fastest traced call) · ↓ better');
 // 50 and 1,100 differ over ten times: a log axis, so both lines' moves show.
@@ -1555,7 +1617,8 @@ const card = componentBand(sweep, sweepIndex, after, NOW, before);
 assert.equal(one(card, n => n.className === 'headline').text, '1 seed failed: mobilenet/seed4.');
 // The worst cost moved 10%, past its 1%; CPU time 5%, within its 25%.
 const moves = one(card, n => n.className === 'moves');
-assert.equal(moves.text, 'Since 1 Oct:mobilenet SA final cost (worst) +10.0%mobilenet SA final cost (mean) +3.3%');
+// A seed that failed is a count from zero: its floor of 1 flags it.
+assert.equal(moves.text, 'Since 1 Oct:mobilenet failed seeds +1mobilenet SA final cost (worst) +10.0%mobilenet SA final cost (mean) +3.3%');
 const [header, grid] = card.cards[0].children;
 assert.ok(header.text.includes('utils/component_checks/fixtures/mobilenet.mlir'));
 assert.ok(header.text.includes('4 seeds'));
@@ -1605,8 +1668,9 @@ const hwRecord = (id, date, b16, extra) => {
       for (const [batch, us] of [[1, 295.7], [16, effort === 'default' && seed === 3 ? b16 : (effort === 'default' ? 99 : 120)]]) {
         rows[`mobilenet/seed=${seed}/batch=${batch}/effort=${effort}`] = {
           us_per_image: { value: us, unit: 'us', range: `median ${us + 1}, MAD 0.20, p95 ${us + 2}` },
+          npu_us_per_image: { value: Math.round((us - 47 / batch) * 10) / 10, unit: 'us', range: 'median 1, MAD 0.20, p95 2' },
+          host_overhead_us_per_image: { value: 100, unit: 'us', range: 'median 101, MAD 0.40, p95 103' },
           e2e_us_per_image: { value: us + 100, unit: 'us' },
-          ...(batch > 1 ? { streaming_us: { value: (us * 16 - 295.7) / 15, unit: 'us' } } : {}),
         };
       }
     }
@@ -1628,7 +1692,7 @@ const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 // Every run passed, but seed 3's batch 16 got slower: a warning, not "all passing".
 assert.equal(card.className, 'verdict warn');
 assert.equal(one(card, n => n.className === 'headline').text,
-             "Every run passed, but 1 measure got worse vs 1 Oct. Seed 3 streams at 92.2 µs per image; one image's dispatch takes 295.7 µs.");
+             "Every run passed, but 2 measures got worse vs 1 Oct. Seed 3's NPU time is 248.7 µs per image at batch 1, 102 µs at batch 16.");
 const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open);
 // Shown: the verdict, what moved, and the trend chart's slot. Behind
@@ -1657,7 +1721,7 @@ def test_hardware_seed_cards_show_each_batch_against_the_nightly_before(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(one(card, n => n.className === 'moves').text,
-             'Since 1 Oct:seed 3, batch 16, default effort dispatch / image +7.0%');
+             'Since 1 Oct:seed 3, batch 16, default effort NPU time / image +7.3%seed 3, batch 16, default effort dispatch / image +7.0%');
 assert.deepEqual(card.cards.map(c => c.kase), ['mobilenet/seed=3/effort=default', 'mobilenet/seed=3/effort=full', 'mobilenet/seed=7/effort=default', 'mobilenet/seed=7/effort=full']);
 const [header, grid] = card.cards[0].children;
 assert.equal(header.children[0].text, "seed 3the design's default");
@@ -1665,20 +1729,21 @@ assert.equal(header.children[0].text, "seed 3the design's default");
 assert.equal(header.children[1].text, 'placement 0123456789ab');
 assert.equal(header.children[1].href, '#view=placement&metric=placement_cost');
 assert.equal(header.children.at(-1).text, 'b16 ÷ b1 per image 0.35×');
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Dispatch / image', 'Streaming', 'End-to-end / image']);
-// A lane per batch, colored past the threshold only; streaming has no b1.
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['NPU time / image', 'Host overhead / image', 'Dispatch / image', 'End-to-end / image']);
+// A lane per batch, colored past the threshold only.
 const perImage = grid.children[0];
-assert.equal(perImage.text, 'Dispatch / imageb1295.7 µs 0.0%b16104.9 µs +7.0%');
+assert.equal(perImage.text, 'NPU time / imageb1248.7 µs 0.0%b16102 µs +7.3%');
 assert.deepEqual(perImage.children.slice(1, 3).map(r => r.children[0].className), ['npu n-series-1', 'npu n-series-2']);
 assert.deepEqual(all(perImage, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg flat', 'chg worse']);
-assert.equal(grid.children[1].children.length, 3);
+// End-to-end too: its label, a lane per batch and its trend line.
+assert.equal(grid.children[1].children.length, 4);
 // One compile serves every batch: its block, below the batches, reads the
 // seed/effort case. These runs have no stage profile, so each compile is
 // its total and peak memory, with no bar and no key.
 const block = card.cards[0].children[2];
 assert.equal(block.className, 'stages');
 const compiles = block.children.filter(r => r.className === 'stage-row');
-assert.deepEqual(compiles.map(r => r.text), ['cold40 s 0.0% · 850 MiB peak', 'warm4.6 s 0.0% · 700 MiB peak']);
+assert.deepEqual(compiles.map(r => r.text), ['cold40 s 0.0% · 850 MiB largest process', 'warm4.6 s 0.0% · 700 MiB largest process']);
 assert.equal(block.children[0].text, 'Compile');
 assert.equal(all(block, n => /^stage-seg /.test(n.className || '')).length, 0);
 assert.equal(all(block, n => n.className === 'stage-key').length, 0);
@@ -1686,7 +1751,7 @@ assert.equal(all(block, n => n.className === 'stage-key').length, 0);
 assert.deepEqual(['compile_s', 'compile_s_warm'].map(m => card.cards[0].sparks.get(m).lines.map(([color, key, dashed]) => [color, key, dashed])), [
   [['muted', 'sa-placer-hw|mobilenet/seed=3/effort=default|compile_s', false]],
   [['muted', 'sa-placer-hw|mobilenet/seed=3/effort=default|compile_s_warm', true]]]);
-assert.equal(perImage.href, '#view=performance&metric=us_per_image');
+assert.equal(perImage.href, '#view=performance&metric=npu_us_per_image');
 // The trend lines, a line per batch.
 fillSparks(card.cards, collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter])));
 const spark = card.cards[0].sparks.get('us_per_image');
@@ -1711,7 +1776,7 @@ assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: see
 assert.ok(card.children.some(c => c.className === 'repro'));
 const seed7default = card.cards.find(c => c.kase === 'mobilenet/seed=7/effort=default');
 const lanes = seed7default.children[1].children[0];
-assert.equal(lanes.text, 'Dispatch / imageb1295.7 µs 0.0%b16failed');
+assert.equal(lanes.text, 'NPU time / imageb1248.7 µs 0.0%b16failed');
 // No ratio from the failed batch's number of the night before.
 assert.ok(!seed7default.children[0].text.includes('÷'));
 const seed3default = card.cards.find(c => c.kase === 'mobilenet/seed=3/effort=default');
@@ -1796,7 +1861,7 @@ assert.equal(segs(cold)[6].title.split('\\n')[0], 'package, cold compile: 0.07 s
 const wall = row => row.children[1].children.find(n => n.className === 'wall');
 assert.equal(wall(cold).style, 'left: 99.469%');
 assert.equal(wall(warm).title, 'the whole warm compile, wall clock: 4.30 s');
-assert.equal(cold.children[2].text, '20.6 s · 864.6 MiB peak');
+assert.equal(cold.children[2].text, '20.6 s · 864.6 MiB largest process');
 assert.deepEqual(axis.children[1].children.map(n => n.text), ['0 s', '5 s', '10 s', '15 s', '20 s']);
 // The key is the table of every stage's seconds, slivers included.
 const key = block.children.find(n => n.className === 'stage-key');
@@ -1817,6 +1882,20 @@ assert.deepEqual(mixed.children.find(n => n.className === 'stage-key').children[
   ['warm', '—', '—', '—', '—', '—', '—', '—', '—']);
 // No compile at all: no block.
 assert.equal(compileStages(() => undefined, metric => metric, '#'), null);
+// An aiecc that reports its own run: its time outside the graph is a segment
+// of its own, before the time outside aiecc.
+const own = { ...latest, compile_aiecc_outside_graph_s: 0.4, compile_outside_aiecc_s: 2.39 };
+const withOwn = compileStages(metric => metric in own ? { value: own[metric], unit: 's' } : undefined, metric => metric, '#');
+const [ownCold] = withOwn.children.filter(r => r.className === 'stage-row');
+assert.deepEqual(segs(ownCold).map(n => n.className.slice(13)).slice(-2), ['aiecc_outside_graph', 'outside_aiecc']);
+assert.equal(label('compile_aiecc_outside_graph_s'), 'Compile: aiecc outside its graph (cold)');
+// The kernel objects' own compile wall is said beside the bar, not stacked in it.
+const objects = { ...latest, compile_kernel_objects_s: 18.35 };
+const withObjects = compileStages(metric => metric in objects ? { value: objects[metric], unit: metric.includes('_rss_') ? 'MiB' : 's' } : undefined, metric => metric, '#');
+const [objCold] = withObjects.children.filter(r => r.className === 'stage-row');
+assert.equal(objCold.children[2].text, '20.6 s · 864.6 MiB largest process · kernel objects 18.4 s');
+assert.ok(!segs(objCold).some(n => n.className.includes('kernel_objects')));
+assert.equal(label('compile_kernel_objects_s_warm'), 'Kernel objects (parallel compile wall, warm)');
 """)
 
 
@@ -1845,7 +1924,7 @@ assert.equal(grid.children[0].text, 'Decode tokens / s—');
 assert.equal(grid.children[1].text, 'Dispatch rate4.37 tok/s −7.0%');
 assert.equal(grid.children[5].text, 'Compiled sizesELF20.5 MiB ±0.0 KiBimage237.7 KiB ±0.0 KiB');
 assert.deepEqual(card.cards[0].children[2].children.filter(r => r.className === 'stage-row').slice(0, 2).map(r => r.text),
-  ['cold60.5 s 0.0% · 2,502.4 MiB peak', 'warm1.2 s 0.0% · 410 MiB peak']);
+  ['cold60.5 s 0.0% · 2,502.4 MiB largest process', 'warm1.2 s 0.0% · 410 MiB largest process']);
 assert.equal(grid.children[1].href, '#view=performance&metric=tok_s');
 fillSparks(card.cards, collect(historiesOf('llama-chain-hw', [llamaBefore, llamaAfter])));
 assert.deepEqual(['compile_s', 'compile_s_warm'].map(m => card.cards[0].sparks.get(m).lines.map(([color, , dashed]) => [color, dashed])),
@@ -1919,7 +1998,7 @@ assert.equal(one(card, n => n.className === 'headline').text,
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n end-to-end / image (b1) +8.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [YOLO]);
 const [header, grid] = card.cards[0].children;
-assert.equal(header.text, '640 × 6408 COCO imagesfour device configurations in one full ELF, run one after anotherb8 ÷ b1 per image 0.56×');
+assert.equal(header.text, '640 × 6408 COCO images4 device configurations run in sequence in one full ELF, each fitting the 4×8 arrayb8 ÷ b1 per image 0.56×');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['End-to-end / image', 'Images / s', 'Images verified', 'Match onnxruntime',
   'Compiled size']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);
@@ -1932,7 +2011,7 @@ assert.deepEqual(chip(grid.children[1]), ['chg worse', 'chg flat']);
 assert.equal(grid.children[4].text, 'Compiled sizeELF3.0 MiB ±0.0 KiB');
 assert.equal(grid.children[0].href, '#view=performance&metric=us_per_image_b1');
 assert.deepEqual(card.cards[0].children[2].children.filter(r => r.className === 'stage-row').slice(0, 2).map(r => r.text),
-  ['cold95.5 s 0.0% · 3,100 MiB peak', 'warm12.5 s 0.0% · 1,200 MiB peak']);
+  ['cold95.5 s 0.0% · 3,100 MiB largest process', 'warm12.5 s 0.0% · 1,200 MiB largest process']);
 fillSparks(card.cards, collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter])));
 const perImage = card.cards[0].sparks.get('us_per_image_b1').innerHTML;
 assert.ok(perImage.includes('var(--series-1)') && perImage.includes('var(--series-2)'));
@@ -1992,15 +2071,15 @@ assert.equal(trendConfig(llamaData, llama.trend[1]).options.plugins.legend.displ
 assert.equal(rate.options.plugins.legend.display, true);
 // A tab's nights are those that published its metrics; the small stages fold into one line.
 const stages = trendConfig(llamaData, COMPILE_TABS[2]);
-assert.deepEqual(stages.data.datasets.map(d => [d.label, d.data]), [['place', [1]], ['route, package and other', [0.1]]]);
+assert.deepEqual(stages.data.datasets.map(d => [d.label, d.data]), [['place', [1]], ["route, package and aiecc's own", [0.1]]]);
 // Stages sit decades apart, so on a log axis; two batches' times do not.
 assert.equal(stages.options.scales.y.type, 'logarithmic');
 // YOLO26n: batch 1 beside batch 8, per image and per second, then the compile tabs.
 const yoloData = collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter]));
 const perImage = trendConfig(yoloData, yolo.trend[0]);
 assert.deepEqual(perImage.data.datasets.map(d => [d.label, d.data]), [['batch 1', [5000, 5400]], ['batch 8', [3000, 3000]]]);
-assert.equal(perImage.options.scales.y.title.text, 'End-to-end time per image (µs, fastest of 5) · ↓ better');
-assert.equal(trendConfig(yoloData, yolo.trend[1]).options.scales.y.title.text, 'Images per second (from the fastest of 5) · ↑ better');
+assert.equal(perImage.options.scales.y.title.text, 'End-to-end time per image (µs, fastest call) · ↓ better');
+assert.equal(trendConfig(yoloData, yolo.trend[1]).options.scales.y.title.text, 'Images per second (from the fastest call) · ↑ better');
 assert.equal(perImage.options.scales.y.type, 'linear');
 const yoloBox = trendBox(yoloData, yolo.trend, 'fps_b8');
 assert.equal(yoloBox.metric(), 'fps_b1');
@@ -2232,7 +2311,7 @@ assert.equal(grid.children[2].text, 'Qualitycrossings0sharing0.253 +4.1%');
 // The counts both sections chart link to this one's trends.
 assert.equal(grid.children[0].href, '#view=placement&metric=failed_properties');
 const quiet = componentBand(allocator, { target: 'allocator', runs: [night('6', before.date, null)] }, before, NOW);
-assert.ok(one(quiet, n => n.className === 'headline').text.endsWith('Bank sharing 0.243 (0 the most even split); the run took 103 s.'));
+assert.ok(one(quiet, n => n.className === 'headline').text.endsWith('Bank sharing 0.243 (0 = most even split); the run took 103 s.'));
 assert.equal(plural(2, 'property'), '2 properties');
 assert.equal(plural(2, 'day'), '2 days');
 """)
@@ -2272,16 +2351,16 @@ const [ciTile, kernels, perf, routing, placement] = tiles;
 assert.equal(ciTile.children[1].text, 'Loading…');
 // A slower night is a warning on the overview too, not "All passing".
 assert.equal(perf.level, 'warn');
-assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['Warnings', 'MobileNet: Every run passed, but 1 measure got worse vs 1 Oct.']);
+assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['Warnings', 'MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.']);
 // The whole of each line is in the row's tooltip.
-assert.ok(perf.title.includes('MobileNet: Every run passed, but 1 measure got worse vs 1 Oct.'));
+assert.ok(perf.title.includes('MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.'));
 // A check that has not published yet: says so instead of a verdict.
 assert.equal(routing.level, 'none');
 assert.equal(routing.children[1].text, 'No results yet');
 // Two days without a run: late and red, the line says so first.
 const late = overviewTiles(null, loaded, NOW + 2 * 86400 * 1000);
 assert.equal(late[2].level, 'bad');
-assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed, but 1 measure got worse vs 1 Oct.');
+assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed, but 2 measures got worse vs 1 Oct.');
 assert.equal(late[1].children[1].text, 'Loading…');
 // The band says it above its verdict.
 const lateBand = componentBand(hw, hwIndex, hwAfter, NOW + 2 * 86400 * 1000, hwBefore);
@@ -2342,9 +2421,9 @@ const before = fullOnly(hwBefore), after = fullOnly(hwAfter);
 assert.equal(chartedEffort(Object.keys(after.rows)), 'full');
 assert.equal(chartedEffort(Object.keys(hwAfter.rows)), 'default');
 const summary = hardwareSummary(after.rows);
-assert.ok(summary.includes("one image's dispatch takes 295.7 µs") && summary.endsWith('(full effort).'), summary);
+assert.equal(summary, " Seed 3's NPU time is 248.7 µs per image at batch 1, 117.1 µs at batch 16 (full effort).");
 // The trend chart draws the full-effort lines.
-const trend = trendConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend[0]);
+const trend = trendConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend.find(t => t.id === 'us_per_image'));
 assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => d.label), ['batch 1', 'batch 16']);
 """)
 
@@ -2361,7 +2440,7 @@ const perImage = card.children[1].children[0];
 assert.deepEqual(perImage.children.slice(1, 8).map(r => r.children[0].className), batches.map((_, i) => `npu n-series-${i + 1}`));
 // The trend draws batch 1 and batch 64 only, each in its card lane's color.
 const powersOn = id => ({ ...powers, id, date: id === '6' ? hwBefore.date : hwAfter.date });
-const trend = trendConfig(collect(historiesOf('sa-placer-hw', [powersOn('6'), powersOn('7')])), hw.trend[0]);
+const trend = trendConfig(collect(historiesOf('sa-placer-hw', [powersOn('6'), powersOn('7')])), hw.trend.find(t => t.id === 'us_per_image'));
 const lines = trend.data.datasets.filter(d => !d.band);
 assert.deepEqual(lines.map(d => d.label), ['batch 1', 'batch 64']);
 assert.deepEqual(lines.map(d => d.borderColor), [cssVar('--series-1', '#5b6475'), cssVar('--series-7', '#5b6475')]);
@@ -2574,6 +2653,30 @@ assert.ok(!loadCi.toString().includes('history.json'));
 """)
 
 
+def test_ci_health_reads_the_outcome_ci_health_judged(page):
+    page(CI_RUNS + """
+// ci_health.py judges a run on main from its jobs: outcome, waited, took.
+const judged = (id, h, outcome, waited, took) => ({ ...run(id, h, 'completed', outcome === 'passed' ? 'success' : 'failure'),
+  updated_at: at(h - 1), outcome, waited, took });
+let v = criticalVerdict(crit({ latest_main: judged(30, 3, 'timed_out', 7, 30) }), NOW);
+assert.deepEqual([v.level, v.notes[0]], ['bad', 'its latest run on main timed out']);
+v = criticalVerdict(crit({ latest_main: judged(30, 3, 'runner_lost', 1, 15) }), NOW);
+assert.deepEqual([v.level, v.notes[0]], ['warn', 'its latest run on main lost its runner: the machine, not the tests']);
+v = criticalVerdict(crit({ latest_main: judged(30, 3, 'no_runner', 0, 0) }), NOW);
+assert.deepEqual([v.level, v.notes[0]], ['warn', 'no runner took its latest run on main']);
+// Cancelled by hand or by a newer run: not a problem.
+assert.equal(criticalVerdict(crit({ latest_main: { ...judged(30, 3, 'cancelled', 0, 5), conclusion: 'cancelled' } }), NOW).level, 'ok');
+// A leg that lost its runner says so, not "failed".
+const legs = ciLegs([{ ...job('Kernel checks (aie2p-8col)', 6, 'completed', 'failure'), outcome: 'runner_lost', runner: 'aie9' }], NOW);
+assert.deepEqual(legs.map(l => [l.level, l.text]), [['warn', 'runner lost']]);
+// The chart: the real runner wait and the run without it; timed out red, runner lost amber.
+const config = latencyConfig([judged(3, 2, 'runner_lost', 12, 10), judged(2, 26, 'timed_out', 7.3, 30), judged(1, 50, 'passed', 0.5, 43.5)], 'Run on main');
+assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['Run time', [43.5, 30, 10]], ['Wait to start', [0.5, 7.3, 12]]]);
+assert.deepEqual(config.data.datasets[0].pointBackgroundColor,
+                 [cssVar('--series-1', '#5b6475'), cssVar('--bad', '#bf2c37'), cssVar('--warn', '#9a5c00')]);
+""")
+
+
 def test_ci_health_reads_at_a_glance(page):
     page(CI_RUNS + """
 // All clear: one sentence, the counts beside it, how fresh.
@@ -2622,7 +2725,7 @@ assert.equal(jobName('build-and-test (aie2p-8col)', 'Linux hardware tests'), 'bu
 def test_performance_is_one_chart_a_line_per_batch(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
-const config = trendConfig(data, hw.trend[0]);
+const config = trendConfig(data, hw.trend.find(t => t.id === 'us_per_image'));
 // A line per batch, the mean over the seeds, each with its seed range shaded.
 const lines = config.data.datasets.filter(d => !d.band);
 // The caption says so; a compile tab's lines are each the one compile that serves every batch.
@@ -2661,18 +2764,23 @@ assert.deepEqual(compile.data.datasets.filter(d => !d.band).map(d => d.label), [
 // Compile peak memory, MB, also on a plain axis.
 const memory = trendConfig(data, COMPILE_TABS[1]);
 assert.equal(memory.options.scales.y.type, 'linear');
-assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MiB, one compile each) · ↓ better');
+assert.equal(memory.options.scales.y.title.text, 'Largest process peak (MiB, one compile each) · ↓ better');
 // The box: a switch for the tab, drawn once on screen, redrawn on a switch.
 // A link to a warm metric opens the tab that draws it; a tab with no history is left out.
 const box = trendBox(data, hw.trend, 'compile_s_warm');
 assert.equal(box.metric(), 'compile_s');
 const seg = box.children[0].children[0];
-// Streaming is computed from the per-image times, so it has no tab of its own.
-assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb']);
-assert.deepEqual(seg.children.map(b => b.textContent), ['Dispatch / image', 'End-to-end / image', 'Compile time', 'Compile memory']);
+// NPU time and host overhead lead (the author's view), then the dispatch they
+// split and the whole call, then the compile.
+assert.deepEqual(seg.children.map(b => b.value),
+  ['npu_us_per_image', 'host_overhead_us_per_image', 'us_per_image', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb']);
+assert.deepEqual(seg.children.map(b => b.textContent),
+  ['NPU time', 'Host overhead', 'Dispatch / image', 'End-to-end / image', 'Compile time', 'Compile memory']);
 assert.equal(chart.options.scales.y.type, 'linear');
 seg.children[0].on.click();
-assert.equal(box.metric(), 'us_per_image');
+assert.equal(box.metric(), 'npu_us_per_image');
+assert.deepEqual(chart.data.datasets.filter(d => !d.band).map(d => d.label), ['batch 1', 'batch 16']);
+assert.equal(chart.options.scales.y.title.text, 'NPU time per image (µs, fastest of 20 less the empty dispatch) · ↓ better');
 assert.equal(chart.options.scales.y.type, 'logarithmic');
 assert.equal(trendBox(collect([]), hw.trend, '').text, 'No history published yet.');
 """)
@@ -2694,7 +2802,7 @@ const canvas = document.createElement('canvas');
 canvas.parentNode = holder;
 holder.append(canvas);
 const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
-const drawn = svgChart(canvas, trendConfig(data, hw.trend[0]));
+const drawn = svgChart(canvas, trendConfig(data, hw.trend.find(t => t.id === 'us_per_image')));
 // A line and a shaded band per batch, the legend naming the batches.
 assert.deepEqual(drawn.legend, ['batch 1', 'batch 16']);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polyline')).length, 2);
@@ -2706,6 +2814,10 @@ assert.ok(drawn.svg.some(p => p.includes('>Nightly run (weekly past 90 days)<'))
 assert.ok(drawn.svg.some(p => p.includes('<title>2 Oct, 06:30 UTC\\nabcdef1 same revision\\nbatch 16: ') && p.includes('href="https://github.com/Xilinx/mlir-aie/commit/abcdef123456"')));
 assert.ok(canvas.hidden);
 assert.equal(outer.children[0].className, 'note svg-legend');
+// A log axis with nothing on it (every stage 0 s) draws an empty chart.
+const empty = svgChart(canvas, { data: { labels: ['1 Oct'], datasets: [{ label: 'kernels', data: [0] }] },
+                                 options: { scales: { y: { type: 'logarithmic' } } } });
+assert.ok(empty.svg.length < 20);
 // Chart.js loaded: lineChart uses it.
 assert.ok(lineChart(canvas, { data: { labels: [], datasets: [] }, options: { scales: {} } }) instanceof Chart);
 """)

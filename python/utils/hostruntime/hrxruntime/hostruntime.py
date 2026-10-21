@@ -28,8 +28,9 @@ import logging
 import os
 import time
 from collections import OrderedDict
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from . import HRXContext, HRXError, control_code_from_elf
@@ -301,6 +302,7 @@ class HRXHostRuntime(HostRuntime):
         fail_on_error: bool = True,
         only_if_loaded: bool = False,
         dispatch_insts=None,
+        parameters: Mapping[str, Any] | None = None,
         **kwargs,
     ) -> HRXKernelResult:
         """Dispatch a single loaded kernel and wait for it to finish.
@@ -319,14 +321,16 @@ class HRXHostRuntime(HostRuntime):
             only_if_loaded (bool, optional): Accepted for API compatibility.
             dispatch_insts (np.ndarray | None, optional): Per-call instruction
                 words. Builds a fresh executable and releases it after the run.
+            parameters (Mapping[str, Any] | None, optional): Must be empty:
+                HRX writes no ScratchpadParameters.
             **kwargs: Accepted for API compatibility; ignored by HRX.
 
         Returns:
             HRXKernelResult: Wraps the elapsed dispatch time and success flag.
 
         Raises:
-            HostRuntimeError: If ``trace_config`` is set, or the dispatch fails
-                and ``fail_on_error`` is True.
+            HostRuntimeError: If ``trace_config`` or ``parameters`` is set, or
+                the dispatch fails and ``fail_on_error`` is True.
         """
         assert isinstance(kernel_handle, HRXKernelHandle)
         # HRX does not implement trace capture; fail loudly rather than silently
@@ -334,6 +338,10 @@ class HRXHostRuntime(HostRuntime):
         # trace). Matches the C++ wrapper's reject_unsupported_features.
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
+        if parameters:
+            raise HostRuntimeError(
+                f"HRX writes no ScratchpadParameters; got {sorted(parameters)}"
+            )
         self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
 
@@ -442,7 +450,9 @@ class HRXHostRuntime(HostRuntime):
 
         return HRXKernelResult(stop - start, success=True)
 
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
+    def load_and_run(
+        self, npu_kernel, run_args, dispatch_scalars=None, parameters=None, **kwargs
+    ):
         """Reject trace up front, then defer to the base load/run pipeline.
 
         The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
@@ -452,7 +462,9 @@ class HRXHostRuntime(HostRuntime):
         """
         if getattr(npu_kernel, "trace_config", None) is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(npu_kernel, run_args, dispatch_scalars, **kwargs)
+        return super().load_and_run(
+            npu_kernel, run_args, dispatch_scalars, parameters, **kwargs
+        )
 
     def device(self) -> "Device":
         from aie.iron.device import from_name

@@ -8,9 +8,9 @@
 // YOLO26n's end-to-end postprocess, bit-exact with its ONNX graph; see
 // SegmentDesign.detect. Scores compare by their rank among the sigmoid
 // tables' float32 values, ties to the lower index as in ONNX TopK. Anchors
-// run level by level, row by row (80x80 at stride 8, 40x40 at 16, 20x20 at
-// 32). Class logits come CHUNK anchors at a time, [CLASSES / 8][CHUNK][8];
-// box distances [CHUNK][8], the first 4 of each anchor's 8 bytes.
+// run level by level, row by row, each level half as wide as the last.
+// Class logits come CHUNK anchors at a time, [CLASSES / 8][CHUNK][8]; box
+// distances [CHUNK][8], the first 4 of each anchor's 8 bytes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,18 +30,39 @@
     "YOLO_DETECT_REACH (how far below a logit a higher score lies) must be defined"
 #endif
 
-constexpr int CLASSES = 80;
-constexpr int KEEP = 300;
-constexpr int RANKS = 768;
-constexpr int ANCHORS = 6400 + 1600 + 400;
+#ifndef YOLO_DETECT_CLASSES
+#error "YOLO_DETECT_CLASSES (class logits per anchor) must be defined"
+#endif
+#ifndef YOLO_DETECT_KEEP
+#error "YOLO_DETECT_KEEP (detections kept) must be defined"
+#endif
+#ifndef YOLO_DETECT_GRID
+#error "YOLO_DETECT_GRID (anchors per row at the finest level) must be defined"
+#endif
+#ifndef YOLO_DETECT_LOG2_STRIDE
+#error                                                                         \
+    "YOLO_DETECT_LOG2_STRIDE (the finest level's stride, log2) must be defined"
+#endif
+
+constexpr int CLASSES = YOLO_DETECT_CLASSES;
+constexpr int KEEP = YOLO_DETECT_KEEP;
+constexpr int GRID = YOLO_DETECT_GRID;
+constexpr int LEVELS = 3;
+// One rank per entry of each level's int8 sigmoid table.
+constexpr int RANKS = LEVELS * 256;
+// Where levels 1 and 2 start, in anchors.
+constexpr int LEVEL1 = GRID * GRID;
+constexpr int LEVEL2 = LEVEL1 + GRID * GRID / 4;
+constexpr int ANCHORS = LEVEL2 + GRID * GRID / 16;
 // Bytes of picked bits, with room for a chunk's word read past the last.
 constexpr int PICKED = ANCHORS / 8 + 4;
 constexpr int CHUNK = YOLO_DETECT_CHUNK;
-static_assert(6400 % CHUNK == 0 && 8000 % CHUNK == 0,
+static_assert(GRID % 4 == 0, "each level halves the grid");
+static_assert(LEVEL1 % CHUNK == 0 && LEVEL2 % CHUNK == 0,
               "a chunk stays within one level");
 
 static int level_of(int anchor) {
-  return anchor < 6400 ? 0 : (anchor < 8000 ? 1 : 2);
+  return anchor < LEVEL1 ? 0 : (anchor < LEVEL2 ? 1 : 2);
 }
 
 // value = num * 2**exp2 as float32 bits; |num| < 2**24, so exact.
@@ -79,8 +100,15 @@ static void top_keep(ForEach for_each, int32_t *__restrict hist,
   });
 }
 
-// x / 80 for 0 <= x < 81920, without a division libcall.
-static int div80(int x) { return ((uint32_t)x * 52429u) >> 22; }
+// x / D for 0 <= x < LIMIT, without a division libcall: x * ceil(2**22 / D)
+// >> 22 is exact while x times the multiplier's excess stays below 2**22.
+template <int D, int LIMIT>
+static int div_const(int x) {
+  constexpr uint64_t M = ((1u << 22) + D - 1) / D;
+  static_assert((LIMIT - 1) * M < (1ull << 32), "x * M fits 32 bits");
+  static_assert(LIMIT * (M * D - (1u << 22)) < (1u << 22), "exact below LIMIT");
+  return ((uint32_t)x * (uint32_t)M) >> 22;
+}
 
 // Whether any byte of `word` is v.
 static bool has_byte(uint64_t word, int8_t v) {
@@ -111,7 +139,7 @@ void yolo_detect_max(const int8_t *__restrict records,
   static_assert(CHUNK <= 32, "a chunk's anchors are one word of bits");
   const int level = level_of(chunk * CHUNK);
   const int16_t *ranks = rank + level * 256 + 128;
-  const int16_t *peaks = rank + (3 + level) * 256 + 128;
+  const int16_t *peaks = rank + (LEVELS + level) * 256 + 128;
   // Lane 8a of `most` ends up the highest logit of anchor a.
   alignas(32) int8_t most[CHUNK * 8];
   for (int j = 0; j < CHUNK * 8 / 32; j++) {
@@ -332,18 +360,17 @@ void yolo_detect_finish(const int8_t *__restrict candidates,
       hist, best);
   const int32_t shifts[3] = {box_shift0, box_shift1, box_shift2};
   for (int k = 0; k < KEEP; k++) {
-    static_assert(CLASSES == 80, "div80");
-    const int r = div80(best[k]);
+    const int r = div_const<CLASSES, KEEP * CLASSES>(best[k]);
     const int c = best[k] - r * CLASSES;
     const int a = first[r];
     const int level = level_of(a);
-    const int local = a - (level == 0 ? 0 : (level == 1 ? 6400 : 8000));
-    const int width = 80 >> level;
-    const int log2_stride = 3 + level;
+    const int local = a - (level == 0 ? 0 : (level == 1 ? LEVEL1 : LEVEL2));
+    const int width = GRID >> level;
+    const int log2_stride = YOLO_DETECT_LOG2_STRIDE + level;
     // In units of 2**-frac: an anchor centre is x + 1/2, a distance d * 2**s.
     const int s = shifts[level];
     const int frac = -s > 1 ? -s : 1;
-    const int y = div80(local << level);
+    const int y = div_const<GRID, GRID * GRID>(local << level);
     const int32_t ax = (2 * (local - y * width) + 1) << (frac - 1);
     const int32_t ay = (2 * y + 1) << (frac - 1);
     const int8_t *d = distances + r * 4;

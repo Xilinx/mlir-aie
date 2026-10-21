@@ -6,8 +6,6 @@
 // per-bn fixtures already checked in under bottleneck_A/B/C/data/.
 // No hardware required — runs on any host with python+numpy.
 //
-// REQUIRES: peano
-//
 // RUN: cd %S/.. && %python -X utf8 -m mobilenet.test_numpy_per_bn > %t.log
 // RUN: FileCheck --check-prefix=NUMPY %s < %t.log
 //
@@ -17,7 +15,7 @@
 // NUMPY: bn6 (per-bn){{.*}}BIT-EXACT
 // NUMPY: bn7 (per-bn){{.*}}BIT-EXACT
 // NUMPY: bn8 (per-bn){{.*}}BIT-EXACT
-// NUMPY: bn0->bn9 chain, bn5 unskipped{{.*}}BIT-EXACT
+// NUMPY: bn0->bn9 chain{{.*}}BIT-EXACT
 // NUMPY: bn10->bn11->bn12 chain{{.*}}BIT-EXACT
 // NUMPY: bn13->bn14 cascade chain{{.*}}BIT-EXACT
 // NUMPY: ALL VERIFIED BLOCKS BIT-EXACT

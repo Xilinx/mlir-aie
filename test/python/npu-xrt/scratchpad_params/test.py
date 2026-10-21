@@ -10,12 +10,12 @@
 # RUN: %run_on_npu2% %pytest %s
 #
 # This is the Python equivalent of the C++ test in ../scratchpad_params/.
-# It exercises the full flow:
-#   1. aiecc compiles aie.mlir → aie.elf + params.txt
-#   2. This script loads the ELF, creates a ParameterScratchpad from params.txt,
-#      writes bf16 parameters, and verifies the core computes foo * bar.
-#   3. A second parametrized case with different values tests parameter re-use
-#      across runs.
+# The design's core computes foo * bar from two bf16 ScratchpadParameters.
+#   1. Through iron.jit: a call's parameters= writes them through the run's
+#      ctrl scratchpad, from the build's own params.txt; two calls with
+#      different values reuse the run.
+#   2. Through pyxrt: aiecc compiles aie.mlir to aie.elf + params.txt, and a
+#      run drains into another run's scratchpad alias.
 
 import numpy as np
 import pytest
@@ -23,16 +23,42 @@ import pyxrt
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.utils.hostruntime.xrtruntime.hostruntime import XRTHostRuntime
+from aie.iron import Out
+from aie.utils.hostruntime.xrtruntime.device import acquire_device
 from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
     ParameterScratchpad,
 )
 
+import aie_design
+
+
+@iron.jit(full_elf=True)
+def multiply(out: Out):
+    return aie_design.program().resolve_program()
+
+
+@pytest.mark.parametrize(
+    "foo,bar",
+    [
+        (bfloat16(3.0), bfloat16(4.0)),
+        (bfloat16(2.0), bfloat16(5.0)),
+    ],
+)
+def test_a_call_writes_its_parameters(foo, bar):
+    out = iron.zeros((2,), dtype=bfloat16)
+    multiply(out, parameters={"foo": foo, "bar": bar})
+    assert float(out.numpy()[0]) == float(foo) * float(bar)
+
+
+def test_a_parameter_the_design_does_not_declare_is_refused():
+    out = iron.zeros((2,), dtype=bfloat16)
+    with pytest.raises(RuntimeError, match="baz"):
+        multiply(out, parameters={"foo": bfloat16(1.0), "baz": bfloat16(2.0)})
+
 
 @pytest.fixture(scope="module")
 def kernel_setup():
-    runtime = XRTHostRuntime()
-    device = runtime._device
+    device = acquire_device()
     elf = pyxrt.elf("aie.elf")
     context = pyxrt.hw_context(device, elf)
     kernel = pyxrt.ext.kernel(context, "test:sequence")
@@ -43,41 +69,15 @@ def kernel_setup():
     run = pyxrt.run(kernel)
     run.set_arg(0, out_tensor.buffer_object())
 
-    params = ParameterScratchpad(run, "params.txt")
+    params = ParameterScratchpad(run, "params.txt", device=device)
     return run, params, out_tensor, kernel
-
-
-@pytest.mark.parametrize(
-    "foo,bar",
-    [
-        (bfloat16(3.0), bfloat16(4.0)),
-        (bfloat16(2.0), bfloat16(5.0)),
-    ],
-)
-def test_scratchpad_param_multiply(kernel_setup, foo, bar):
-    run, params, out_tensor, _ = kernel_setup
-
-    out_tensor.data.fill(0)
-    out_tensor.to("npu")
-
-    params.write("foo", foo)
-    params.write("bar", bar)
-    params.sync()
-
-    run.start()
-    run.wait2()
-
-    out_tensor.to("cpu")
-    result = float(out_tensor.numpy()[0])
-    expected = float(foo) * float(bar)
-    assert result == expected
 
 
 def test_a_run_drains_into_another_runs_scratchpad_alias(kernel_setup):
     _, target, _, kernel = kernel_setup
     run = pyxrt.run(kernel)
     run.set_arg(0, target.alias())
-    params = ParameterScratchpad(run, "params.txt")
+    params = ParameterScratchpad(run, "params.txt", device=acquire_device())
     params.write("foo", bfloat16(3.0))
     params.write("bar", bfloat16(4.0))
     params.sync()

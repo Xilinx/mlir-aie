@@ -20,13 +20,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import sys
-import time
 from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
 from aie.iron import CompileTime, DeviceConfiguration, In, InOut, Out, Program, Runtime
 from aie.iron.device import NPU2
+from aie.utils.benchmark import print_benchmark, run_iters
 from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
 from yolo_params import DATA_DIR, WEIGHTS_DIR, Params, synthetic_params
@@ -47,12 +47,13 @@ from yolo_spec import (
     Upsample,
 )
 
-# Each run fits one array: a block, or a few, as they were brought up.
+# Each run fits one array: a block, or a few, as they were brought up. Each
+# is named by its first and last op, and together they cover the network.
 SEGMENTS = (
-    (0, 59),
-    (59, 90),
-    (90, 143),
-    (143, 168),
+    ("images", "/model.9/Add"),
+    ("/model.10/cv1/conv/Conv", "/model.13/cv2/conv/Conv"),
+    ("/model.14/Resize", "/model.22/cv2/conv/Conv"),
+    ("/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv", "/model.23"),
 )
 IMAGE = Tensor("images", 3, IMAGE_SIZE, IMAGE_SIZE)
 IMAGE_WORDS = IMAGE_SIZE * IMAGE_SIZE * 3 // 4
@@ -60,15 +61,28 @@ DETECTION_WORDS = 6 * MAX_DETECTIONS
 
 
 class Plan:
-    """Which tensors each segment reads and hands on, and where each waits in the scratch buffer."""
+    """Which tensors each segment reads and hands on, and where each waits in the scratch buffer.
+
+    Attributes:
+        spans: Each segment's `(start, stop)` range of `network.ops`.
+
+    Raises:
+        KeyError: If a segment names an op the network lacks.
+        ValueError: If the segments do not cover the network, each starting
+            where the one before it stops.
+    """
 
     def __init__(self, network: Network, params: Params) -> None:
         self.network = network
+        self.spans = [network.span(first, last) for first, last in SEGMENTS]
+        starts = [0] + [stop for _, stop in self.spans]
+        if [a for a, _ in self.spans] != starts[:-1] or starts[-1] != len(network.ops):
+            raise ValueError(f"SEGMENTS {self.spans} do not cover the network's ops")
         self.producer = {op.dst.name: op for op in network.ops}
-        self.inputs = [self.reads(network.ops[a:b]) for a, b in SEGMENTS]
+        self.inputs = [self.reads(network.ops[a:b]) for a, b in self.spans]
         detections = network.ops[-1].dst
         self.outputs = []
-        for k, (a, b) in enumerate(SEGMENTS):
+        for k, (a, b) in enumerate(self.spans):
             made = {op.dst.name for op in network.ops[a:b]}
             later = {t.name: t for inputs in self.inputs[k + 1 :] for t in inputs}
             outputs = [later[n] for n in later if n in made]
@@ -84,7 +98,7 @@ class Plan:
                     self.words += t.row_bytes * t.height // 4
         self.weight_offset: dict[str, int] = {}
         weights: list[np.ndarray] = []
-        for k, (a, b) in enumerate(SEGMENTS):
+        for k, (a, b) in enumerate(self.spans):
             design = SegmentDesign(network, params, network.ops[a:b], self.outputs[k])
             for tensor in design.in_ddr:
                 self.offset[tensor.name] = self.words
@@ -158,7 +172,7 @@ def yolo26n(
     det_ty = np.ndarray[(batch * DETECTION_WORDS,), np.dtype[np.int32]]
     weights_ty = np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]]
     configurations, runtimes = [], []
-    for k, (a, b) in enumerate(SEGMENTS):
+    for k, (a, b) in enumerate(plan.spans):
         design = SegmentDesign(network, params, network.ops[a:b], plan.outputs[k])
         if {t.name for t in design.inputs} != {t.name for t in plan.inputs[k]}:
             raise ValueError(
@@ -237,15 +251,22 @@ def main() -> None:
     parser.add_argument(
         "--synthetic", type=int, metavar="SEED", help="seeded weights and random images"
     )
-    parser.add_argument("--time", action="store_true", help="also time the dispatch")
-    parser.add_argument("--n-iters", type=int, default=5)
-    parser.add_argument("--n-warmup", type=int, default=2)
+    parser.add_argument(
+        "--time",
+        action="store_true",
+        help="also time the dispatch; the per-image time is the fastest call",
+    )
+    parser.add_argument("--n-iters", type=int, default=20, help="timed calls (>= 1)")
+    # The NPU takes about ten calls after a load to reach its steady latency.
+    parser.add_argument("--n-warmup", type=int, default=10, help="untimed calls first")
     parser.add_argument(
         "--compile-only", action="store_true", help="build the ELF and stop"
     )
     args = parser.parse_args()
     if args.batch < 1 or not args.compile_only and args.n % args.batch:
         parser.error(f"--batch {args.batch} does not divide --n {args.n}")
+    if args.n_iters < 1 or args.n_warmup < 0:
+        parser.error("--n-iters must be at least 1 and --n-warmup at least 0")
     paths = sorted(args.images.glob("*.jpg"))[: args.n]
     if args.synthetic is None and not args.compile_only and len(paths) < args.n:
         parser.error(f"{args.images} holds {len(paths)} .jpg images, not --n {args.n}")
@@ -296,11 +317,9 @@ def main() -> None:
     session = None
     if args.synthetic is None and args.onnx.exists():
         # Optional: ONNX Runtime only serves the comparison with the ONNX graph.
-        import onnxruntime as ort  # pyright: ignore[reportMissingImports]
+        from gen_yolo_data import ort_session
 
-        session = ort.InferenceSession(
-            str(args.onnx), providers=["CPUExecutionProvider"]
-        )
+        session = ort_session(str(args.onnx))
 
     passed = matched = 0
     first: list[np.ndarray] = []
@@ -334,15 +353,25 @@ def main() -> None:
             [image.reshape(-1) for _, image in images[: args.batch]]
         )
         tensor = iron.tensor(pixels.view(np.int32))
-        for _ in range(args.n_warmup):
-            yolo26n(tensor, scratch, detections, weights, **kwargs)
-        samples = []
-        for _ in range(args.n_iters):
-            start = time.perf_counter()
-            yolo26n(tensor, scratch, detections, weights, **kwargs)
-            samples.append(time.perf_counter() - start)
-        us = min(samples) * 1e6 / args.batch
-        print(f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {args.batch}")
+        bench = run_iters(
+            yolo26n,
+            tensor,
+            scratch,
+            detections,
+            weights,
+            warmup=args.n_warmup,
+            iters=args.n_iters,
+            **kwargs,
+        )
+        print_benchmark(bench)
+        e2e = bench.e2e
+        us = e2e.min_us / args.batch
+        print(
+            f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {args.batch}, "
+            f"fastest of {e2e.n} after {args.n_warmup} warmups; "
+            f"median {e2e.median_us / args.batch:.1f} us, "
+            f"MAD {e2e.mad_us / args.batch:.1f} us"
+        )
         timed = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
         same = all(np.array_equal(t, w) for t, w in zip(timed, first))
         print(f"timed dispatch: {'PASS' if same else 'FAIL'}")

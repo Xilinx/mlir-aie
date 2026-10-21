@@ -37,10 +37,11 @@ the page, where the package is not installed.
 
 ``perf`` reads the timing step's ``perf.json`` and ``meta.json``, the
 correctness step's ``error.json`` (``--report-error``) and the catalogue.
-Each timed case's error is charted as two more metrics over every data case,
-seed and output: ``max_ulp``, the furthest any result fell from the correctly
-rounded reference, and ``not_correctly_rounded``, the percentage of all those
-results, pooled, that were not. ``builds`` maps each timed case to its kernel's
+Each timed case's error is charted as two more metrics per output dtype,
+over its data cases (but the all-zero and all-one edge data) and seeds:
+``max_ulp_<dtype>``, the furthest any result fell from the correctly rounded
+mathematical reference, and ``not_correctly_rounded_<dtype>``, the
+percentage of all those results, pooled, that were not. ``builds`` maps each timed case to its kernel's
 ``ExternalFunction.recipe_key``, so a design that calls the same kernel finds
 its row. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
@@ -228,30 +229,56 @@ def rows_by_case(rows: list[dict]) -> dict[str, dict[str, dict]]:
     return out
 
 
+# Edge data whose every result is right or wrong together: pooled with the
+# rest, it would swamp the percentage.
+TRIVIAL_DATA = ("zeros", "ones")
+
+
 def error_rows(report: dict) -> dict[str, dict[str, dict]]:
     """Each case's error metrics in a ``--report-error`` report.
 
-    The report is keyed ``<case>/<data>/s<seed>``. Per case, ``max_ulp`` is
-    the worst over its data cases, seeds and outputs, and
-    ``not_correctly_rounded`` is pooled over all of them.
+    The report is keyed ``<case>/<data>/s<seed>``, and each run lists its
+    outputs. Per case and output dtype, ``max_ulp_<dtype>`` is the worst
+    over its data cases, seeds and outputs, and ``not_correctly_rounded_
+    <dtype>`` is pooled over all of them; ``TRIVIAL_DATA`` is left out. A
+    row's range names the reference it was measured against, and says when
+    the check itself judges the build by a model of the kernel.
     """
-    totals: dict[str, list[int]] = {}
+    totals: dict[tuple[str, str], dict] = {}
     for key, run in report.items():
-        case = key.rsplit("/", 2)[0]
-        ulp, wrong, n = totals.setdefault(case, [0, 0, 0])
+        case, data, _ = key.rsplit("/", 2)
+        if data in TRIVIAL_DATA:
+            continue
         for entry in run["outputs"]:
-            ulp = max(ulp, entry["max_ulp"])
-            wrong += entry["not_correctly_rounded"]
-            n += entry["n"]
-        totals[case] = [ulp, wrong, n]
-    return {
-        case: {
-            "max_ulp": {"value": ulp, "unit": "ulp"},
-            "not_correctly_rounded": {"value": round(100 * wrong / n, 3), "unit": "%"},
-        }
-        for case, (ulp, wrong, n) in totals.items()
-        if n
-    }
+            t = totals.setdefault(
+                (case, entry["dtype"]),
+                {"ulp": 0, "wrong": 0, "n": 0, "references": set(), "modeled": False},
+            )
+            t["ulp"] = max(t["ulp"], entry["max_ulp"])
+            t["wrong"] += entry["not_correctly_rounded"]
+            t["n"] += entry["n"]
+            t["references"].add(entry["reference"])
+            t["modeled"] |= entry["modeled"]
+    rows: dict[str, dict[str, dict]] = {}
+    for (case, dtype), t in totals.items():
+        if not t["n"]:
+            continue
+        spread = (
+            f"vs the {', '.join(sorted(t['references']))} correctly rounded reference"
+        )
+        if t["modeled"]:
+            spread += "; the check judges this build by a model of the kernel"
+        rows.setdefault(case, {}).update(
+            {
+                f"max_ulp_{dtype}": {"value": t["ulp"], "unit": "ulp", "range": spread},
+                f"not_correctly_rounded_{dtype}": {
+                    "value": round(100 * t["wrong"] / t["n"], 3),
+                    "unit": "%",
+                    "range": spread,
+                },
+            }
+        )
+    return rows
 
 
 def _load(path: Path, default):
@@ -342,7 +369,14 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
             for case, d in cases.items()
             if case in record["rows"] and "build" in d
         }
-    for key in ("correctness_error", "refused", "reason", "efforts", "detail"):
+    for key in (
+        "correctness_error",
+        "refused",
+        "reason",
+        "efforts",
+        "iters",
+        "detail",
+    ):
         if key in meta:
             record[key] = meta[key]
     if catalogue:
@@ -383,6 +417,9 @@ def upgrade(record: dict) -> bool:
     a static design's times are not the dynamic one's. Its runs get
     ``effort_label`` ``full``.
 
+    A record with a ``device_raw`` but no ``device`` in its provenance gets
+    it there, where the page keeps each part's times apart.
+
     A kernel check's record gets the ``measurement`` that took its cycles:
     ``1`` before ``DECODER_FIXED``, ``2`` since. An npu2 record from before
     it loses the cycles of the ``UNDERSTATED`` cases.
@@ -393,6 +430,11 @@ def upgrade(record: dict) -> bool:
     target = record.get("target")
     provenance = record.get("provenance") or {}
     rows = record.get("rows", {})
+    if record.get("device_raw") and "device" not in provenance:
+        provenance = record["provenance"] = {
+            **provenance,
+            "device": record["device_raw"],
+        }
     if target == "sa-placer-hw" and "dispatch" not in provenance:
         record["provenance"] = {**provenance, "dispatch": "static"}
         upgraded: dict[str, dict] = {}
