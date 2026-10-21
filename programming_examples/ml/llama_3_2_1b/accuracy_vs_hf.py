@@ -2,18 +2,20 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Accuracy of our INT8 W8A8-dynamic recipe vs the TRUE HF Llama 3.2 1B weights.
+"""Accuracy of the INT8 decode vs the bf16 HF Llama 3.2 1B weights.
 
-The device decode is already bit-exact vs the numpy int8 forward (numpy_llama_ref).
-The open question is upstream: does the int8 RECIPE track the real (bf16) model?
-Here the reference is the UNQUANTIZED bf16 safetensors (gen_llama_data.WEIGHTS_DIR,
+The scored model is the device's arithmetic (--model device, the default:
+llama_oracle.teacher_forced_logits, which the NPU matches bit for bit) or
+the INT8 recipe it follows (--model recipe: numpy_llama_ref.forward_full).
+The reference is the unquantized bf16 safetensors (gen_llama_data.WEIGHTS_DIR,
 or --hf-weights), loaded as fp32 -- no torch/transformers needed
 (SafetensorsReader + numpy_llama_ref's fp32 ops).
 
-We run both forwards on a real text sample (teacher-forced) and report:
-  - next-token top-1 agreement (int8 argmax == bf16 argmax), per position
-  - top-5 agreement (int8 argmax in bf16 top-5)
-  - perplexity of each model on the text (lower=better; the GAP is the recipe cost)
+Both run teacher-forced on a text sample; per position, against bf16:
+  - next-token top-1 agreement (the scored argmax == bf16's)
+  - top-5 agreement (the scored argmax in bf16's top-5)
+  - KL(bf16 || scored) of the next-token distributions, mean over positions
+  - perplexity of each on the text (lower is better; the gap is the cost)
 
 Run:
   python accuracy_vs_hf.py [--text-file F | --prompt STR] [--max-tokens N]
@@ -28,6 +30,7 @@ from pathlib import Path
 import numpy as np
 from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
 from llama_config import HEAD_D, KV_DIM, N_HEADS_KV, N_HEADS_Q, N_LAYERS, Q_DIM
+from llama_oracle import Layer, teacher_forced_logits
 from numpy_llama_ref import (
     apply_rope,
     attention_full_gqa,
@@ -36,6 +39,7 @@ from numpy_llama_ref import (
     load_tokenizer,
     rmsnorm,
     rope_cos_sin,
+    rope_table,
     silu,
 )
 
@@ -131,6 +135,13 @@ def main():
         help="path to the bf16 HF Llama 3.2 1B model.safetensors (reference; "
         "default: $IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/).",
     )
+    p.add_argument(
+        "--model",
+        choices=("device", "recipe"),
+        default="device",
+        help="score the device's arithmetic (llama_oracle) or the INT8 recipe "
+        "(numpy_llama_ref)",
+    )
     opts = p.parse_args()
 
     if opts.text_file:
@@ -159,8 +170,16 @@ def main():
     print(f"loading bf16 HF reference from {opts.hf_weights} ...", flush=True)
     ref_model = RefModel(SafetensorsReader(opts.hf_weights))
 
-    print("running int8 forward ...", flush=True)
-    int8_logits = forward_full(int8_model, ids)  # (M, V)
+    print(f"running the {opts.model}'s forward ...", flush=True)
+    if opts.model == "device":
+        int8_logits = teacher_forced_logits(
+            [Layer.real(L, DATA_DIR, M) for L in range(N_LAYERS)],
+            (int8_model.embed_i8, int8_model.embed_sc, int8_model.final_norm),
+            rope_table(M, HEAD_D),
+            ids.tolist(),
+        )
+    else:
+        int8_logits = forward_full(int8_model, ids)  # (M, V)
     print("running bf16 reference forward ...", flush=True)
     ref_logits = ref_forward_logits(ref_model, ids)  # (M, V)
 
@@ -176,12 +195,22 @@ def main():
 
     ppl_int8 = teacher_forced_perplexity(int8_logits, ids)
     ppl_ref = teacher_forced_perplexity(ref_logits, ids)
+    ref_lp = log_softmax(ref_logits.astype(np.float64))
+    kl = float(
+        np.mean(
+            np.sum(
+                np.exp(ref_lp) * (ref_lp - log_softmax(int8_logits.astype(np.float64))),
+                axis=-1,
+            )
+        )
+    )
 
-    print("\n=== INT8 recipe vs bf16 HF Llama 3.2 1B ===")
+    print(f"\n=== INT8 {opts.model} vs bf16 HF Llama 3.2 1B ===")
     print(
         f"next-token top-1 agreement: {top1*100:.1f}%  ({int((int8_arg==ref_arg).sum())}/{M})"
     )
     print(f"int8-argmax in bf16 top-5 : {top5*100:.1f}%")
+    print(f"mean KL(bf16 || int8)     : {kl:.4f}")
     print(
         f"perplexity  int8={ppl_int8:.3f}  bf16={ppl_ref:.3f}  "
         f"(ratio {ppl_int8/ppl_ref:.3f}x)"
