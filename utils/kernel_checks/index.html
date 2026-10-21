@@ -1700,7 +1700,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const gated = xs => (xs || []).filter(x => GATED.includes(x.series.metric));
       const worse = gated(moved && moved.regressed), better = gated(moved && moved.improved);
       // "1 case slower, 2 less accurate": distinct cases per kind of move.
-      const said = (xs, side) => [...new Set(xs.map(x => moveWord(x.series.metric, side)))].map((word, i) => {
+      const said = (xs, side) => [...new Set([...new Set([...Object.keys(MOVE_WORDS), ...GATED])]
+        .filter(m => xs.some(x => x.series.metric === m)).map(m => moveWord(m, side)))].map((word, i) => {
         const n = new Set(xs.filter(x => moveWord(x.series.metric, side) === word).map(x => x.series.kase)).size;
         return `${i || side ? n : plural(n, 'case')} ${word}`;
       });

@@ -360,6 +360,10 @@ assert.equal(formatChange(moved.regressed[0].change, 5, 'ulp'), '+5 ulp');
 // Gated, they read in the verdict as their own kind of move.
 const night = nightOf('npu2', null, db, cat2);
 assert.equal(verdictOf(night, Date.parse('2026-10-03T07:00:00Z')).headline, '1 case less accurate vs 2 Oct.');
+// Cycles lead the sentence, whatever order the moves came in.
+const mixed = { ...night, moved: { regressed: [
+  { series: { metric: 'kernel_object_bytes', kase: 'a/1' } }, { series: { metric: 'cycles', kase: 'b/1' } }], improved: [] } };
+assert.equal(verdictOf(mixed, Date.parse('2026-10-03T07:00:00Z')).headline, '1 case slower, 1 bigger vs 2 Oct.');
 const item = attentionFor(night, Date.parse('2026-10-03T07:00:00Z')).find(i => i.level === 'bad');
 assert.ok(item.body[0].startsWith('1 case got less accurate past its threshold vs 2 Oct:'));
 """)
