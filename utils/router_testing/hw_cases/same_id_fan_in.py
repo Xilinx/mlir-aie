@@ -249,10 +249,4 @@ class Case(HwCase):
         ]
 
     def check(self, outputs: list[np.ndarray]) -> list[str]:
-        wants = [[A, C, D], [A], [C, D], [C, D]]
-        problems = []
-        for k, (got, want) in enumerate(zip(outputs, wants)):
-            chunks = sorted(tuple(c) for c in got.reshape(-1, CHUNK))
-            if chunks != sorted(tuple(p) for p in want):
-                problems.append(f"output {k}: packets differ from the expected set")
-        return problems
+        return self.check_packets(outputs, [[A, C, D], [A], [C, D], [C, D]], CHUNK)

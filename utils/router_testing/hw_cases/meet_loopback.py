@@ -219,13 +219,4 @@ class Case(HwCase):
         ]
 
     def check(self, outputs: list[np.ndarray]) -> list[str]:
-        # Packets from different sources reach a receiver in either order, so
-        # each output must hold every expected packet once, in any order.
-        want = sorted(tuple(p) for p in PACKETS)
-        problems = []
-        for k, got in enumerate(outputs):
-            chunks = sorted(tuple(c) for c in got.reshape(-1, CHUNK))
-            if chunks != want:
-                missing = len(set(want) - set(chunks))
-                problems.append(f"output {k}: {missing} expected packets missing")
-        return problems
+        return self.check_packets(outputs, [PACKETS] * len(self.outputs), CHUNK)

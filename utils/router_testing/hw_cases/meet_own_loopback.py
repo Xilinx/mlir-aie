@@ -239,14 +239,5 @@ class Case(HwCase):
         ]
 
     def check(self, outputs: list[np.ndarray]) -> list[str]:
-        wants = [
-            sorted(tuple(p) for p in [A[CHUNK:], OWN]),
-            sorted(tuple(p) for p in [A[:CHUNK], A[CHUNK:], OWN]),
-        ]
-        problems = []
-        for k, (got, want) in enumerate(zip(outputs, wants)):
-            chunks = sorted(tuple(c) for c in got.reshape(-1, CHUNK))
-            if chunks != want:
-                missing = len(set(want) - set(chunks))
-                problems.append(f"output {k}: {missing} expected packets missing")
-        return problems
+        wants = [[A[CHUNK:], OWN], [A[:CHUNK], A[CHUNK:], OWN]]
+        return self.check_packets(outputs, wants, CHUNK)
