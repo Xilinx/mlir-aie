@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from dataclasses import MISSING
 from enum import Enum
 from types import FunctionType, MappingProxyType
-from typing import Any, Callable, ClassVar
+from typing import TYPE_CHECKING, Any, Callable, ClassVar
 
 if sys.version_info >= (3, 11):
     from typing import Self, dataclass_transform
@@ -31,6 +31,10 @@ from aie.helpers.npdtypes import is_block_float
 from ...hostruntime import set_current_device
 from .declaration import Declaration
 from .params import Member, param, tunable
+
+if TYPE_CHECKING:
+    # aie.iron imports this module.
+    from aie.iron.device import Device
 
 
 def _key_value(value: Any) -> Any:
@@ -213,7 +217,7 @@ class Operator:
         return self._resolved
 
     @property
-    def resolved_for(self) -> Any:
+    def resolved_for(self) -> Device | None:
         """The device this operator's tunables were resolved for, or None."""
         return self._resolved_for
 
@@ -226,7 +230,7 @@ class Operator:
         Runs on the copy ``resolved`` returns.
         """
 
-    def resolve(self, dev) -> Self:
+    def resolve(self, dev: Device) -> Self:
         """Return a copy with every tunable filled for ``dev``.
 
         Args:
@@ -240,7 +244,7 @@ class Operator:
         """
         return self.replace()
 
-    def resolved(self, dev) -> Self:
+    def resolved(self, dev: Device) -> Self:
         """Return this operator resolved for ``dev``, which is current while it resolves and is checked.
 
         One already resolved for ``dev`` is itself. One that came from an

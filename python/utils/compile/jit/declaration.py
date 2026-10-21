@@ -15,7 +15,7 @@ from __future__ import annotations
 import functools
 import inspect
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import MISSING
 from enum import Enum
 from types import FunctionType
@@ -283,7 +283,12 @@ class Declaration:
         ]
         return "\n".join(lines)
 
-    def infer(self, inputs: Mapping[str, Any], outputs=(), **kwargs) -> dict[str, Any]:
+    def infer(
+        self,
+        inputs: Mapping[str, Any],
+        outputs: Sequence[Any] = (),
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         """Return the parameters the operands' shapes give.
 
         Each declared dimension is a ``param()`` or a literal, so this is a
