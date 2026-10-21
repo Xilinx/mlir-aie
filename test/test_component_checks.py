@@ -25,16 +25,23 @@ POSIX_SWEEP = pytest.mark.skipif(
     reason="sa_placer.py measures each seed with os.wait4, which is POSIX-only",
 )
 
-# What aie2_mobilenet_iron.py printed on an npu2, verbatim, at batch 1 and 16.
+# What aie2_mobilenet_iron.py printed on an npu2 at batch 1 and 16, in
+# print_benchmark's dispatch/NPU split: the Dispatch and End-to-end lines are
+# a run's own, the empty-dispatch baseline is Strix's (~47 us) and NPU the
+# dispatch less it.
 MOBILENET_OUTPUT = """\
-NPU time     (avg/min/max us): 399.9 / 384.4 / 420.2   [median 399.6, MAD 13.3, p95 416.1]
-End-to-end   (avg/min/max us): 499.7 / 480.9 / 533.8   [median 498.4, MAD 13.2, p95 519.2]
+Dispatch          (avg/min/max us): 399.9 / 384.4 / 420.2   [median 399.6, MAD 13.3, p95 416.1]
+Dispatch overhead (avg/min/max us): 47.3 / 46.5 / 49.0   [median 47.1, MAD 0.4, p95 48.2]
+NPU               (avg/min/max us): 352.8 / 337.3 / 373.1   [median 352.5, MAD 13.2, p95 368.9]
+End-to-end        (avg/min/max us): 499.7 / 480.9 / 533.8   [median 498.4, MAD 13.2, p95 519.2]
 max_difference: 2
 PASS!
 """
 MOBILENET_B16_OUTPUT = """\
-NPU time     (avg/min/max us): 1343.6 / 1303.7 / 1475.0   [median 1343.7, MAD 22.9, p95 1380.9]
-End-to-end   (avg/min/max us): 1681.5 / 1431.5 / 2075.9   [median 1737.1, MAD 220.9, p95 1985.1]
+Dispatch          (avg/min/max us): 1343.6 / 1303.7 / 1475.0   [median 1343.7, MAD 22.9, p95 1380.9]
+Dispatch overhead (avg/min/max us): 47.4 / 46.6 / 49.3   [median 47.2, MAD 0.5, p95 48.4]
+NPU               (avg/min/max us): 1296.2 / 1256.9 / 1427.7   [median 1296.5, MAD 22.8, p95 1333.4]
+End-to-end        (avg/min/max us): 1681.5 / 1431.5 / 2075.9   [median 1737.1, MAD 220.9, p95 1985.1]
 max_difference: 2
 PASS!
 """
@@ -232,10 +239,17 @@ def test_the_mobilenet_fixture_is_still_valid_and_unplaced(aie_opt):
 def test_a_mobilenet_run_reports_its_times_per_image(hw):
     assert hw.parse_run(MOBILENET_B16_OUTPUT, 0, 16) == {
         "passed": True,
+        "dispatch_overhead_us": 46.6,
+        # The dispatch, as the "NPU time" line printed it before the split.
         "us_per_image": 81.48,
         "us_per_image_range": "median 83.98, MAD 1.43, p95 86.31",
+        "npu_us_per_image": 78.56,
+        "npu_us_per_image_range": "median 81.03, MAD 1.43, p95 83.34",
+        # The fastest end-to-end call less the fastest dispatch.
+        "host_overhead_us_per_image": 7.99,
+        "host_overhead_us_per_image_range": "median 24.59, MAD 15.24, p95 37.76",
         "e2e_us_per_image": 89.47,
-        "e2e_range": "median 108.57, MAD 13.81, p95 124.07",
+        "e2e_us_per_image_range": "median 108.57, MAD 13.81, p95 124.07",
     }
 
 
@@ -244,7 +258,7 @@ def test_a_mobilenet_run_reports_its_times_per_image(hw):
     [
         (MOBILENET_OUTPUT, 1),
         (MOBILENET_OUTPUT.replace("PASS!", "FAIL!"), 0),
-        (MOBILENET_OUTPUT.replace("NPU time ", "NPU wall time "), 0),
+        (MOBILENET_OUTPUT.replace("Dispatch    ", "Dispatched  "), 0),
     ],
 )
 def test_a_mobilenet_run_fails_without_a_pass_or_a_latency(hw, out, returncode):
@@ -341,10 +355,16 @@ def test_only_passing_runs_chart_their_times(hw):
         "mobilenet/seed=2/effort=default/compile_s_warm": 6.2,
         "mobilenet/seed=2/effort=default/compile_peak_rss_mb_warm": 1800.0,
         "mobilenet/seed=3/batch=1/effort=default/us_per_image": 384.4,
+        "mobilenet/seed=3/batch=1/effort=default/npu_us_per_image": 337.3,
+        "mobilenet/seed=3/batch=1/effort=default/host_overhead_us_per_image": 96.5,
         "mobilenet/seed=3/batch=1/effort=default/e2e_us_per_image": 480.9,
         "mobilenet/seed=3/batch=16/effort=default/us_per_image": 81.48,
+        "mobilenet/seed=3/batch=16/effort=default/npu_us_per_image": 78.56,
+        "mobilenet/seed=3/batch=16/effort=default/host_overhead_us_per_image": 7.99,
         "mobilenet/seed=3/batch=16/effort=default/e2e_us_per_image": 89.47,
         "mobilenet/seed=2/batch=16/effort=default/us_per_image": 81.48,
+        "mobilenet/seed=2/batch=16/effort=default/npu_us_per_image": 78.56,
+        "mobilenet/seed=2/batch=16/effort=default/host_overhead_us_per_image": 7.99,
         "mobilenet/seed=2/batch=16/effort=default/e2e_us_per_image": 89.47,
     }
     ranges = {r["name"]: r.get("range") for r in rows}

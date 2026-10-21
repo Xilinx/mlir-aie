@@ -18,10 +18,12 @@ compile-only mode) and every batch runs from it. It compiles twice in the
 same fresh NPU_CACHE_HOME: cold (every cache empty, same as any first-time
 compile), then warm, after aiecc_stages.clear_for_warm (only the kernel
 objects and their precompiled headers kept), which is what an edit to the
-design, not its kernels, costs. Both record wall time and the largest
-process's peak RSS. Per batch it records, per image, the minimum NPU time of
-a launch and of the host's end-to-end call; the run builds its own copy of
-the design through the JIT path, from the warm caches, unmeasured. Per seed,
+design, not its kernels, costs. Both record wall time, the largest
+process's peak RSS, aiecc's stages and the kernel objects' compile time. Per batch it records, per image, the fastest launch's
+dispatch time, the NPU time (the dispatch less the same run's empty-dispatch
+baseline), the host overhead around it and the host's whole end-to-end call
+(parse_run); the run builds its own copy of the design through the JIT path,
+from the warm caches, unmeasured. Per seed,
 per effort, it records the placement: aiecc's placed tiles as a digest, and
 its SA cost, from replaying the placement with aie-opt on the design's MLIR
 (aiecc does not report it).
@@ -51,12 +53,13 @@ import sys
 import tempfile
 
 from aie.utils.benchmark import preflight, provenance
-from aie.utils.compile.utils import AIECC_PROFILE_NAME
+from aie.utils.compile.utils import AIECC_PROFILE_NAME, KERNEL_PROFILE_NAME
 from aiecc_stages import (
     add_pmode_argument,
     clear_for_warm,
     compile_rows,
     compile_stats,
+    kernel_rows,
     refuse,
     row,
     run_measured,
@@ -73,12 +76,27 @@ from mobilenet.bottleneck._common import sa_placer_flags  # noqa: E402
 
 _PASS_RE = re.compile(r"^PASS!$", re.MULTILINE)
 _BATCH_RE = re.compile(r"^batch=(\d+)$", re.MULTILINE)
-_TIME_RE = (
-    r"\s+\(avg/min/max us\):\s*[\d.]+\s*/\s*(?P<min>[\d.]+)\s*/\s*[\d.]+\s*"
-    r"\[median (?P<median>[\d.]+), MAD (?P<mad>[\d.]+), p95 (?P<p95>[\d.]+)\]"
+# aie.utils.benchmark.print_benchmark's lines, by the field each one times.
+_TIME_RES = {
+    field: re.compile(
+        rf"^{label}\s+\(avg/min/max us\):\s*[\d.]+\s*/\s*(?P<min>[\d.]+)\s*/\s*[\d.]+\s*"
+        r"\[median (?P<median>[\d.]+), MAD (?P<mad>[\d.]+), p95 (?P<p95>[\d.]+)\]",
+        re.MULTILINE,
+    )
+    for field, label in (
+        ("dispatch", "Dispatch"),
+        ("dispatch_overhead", "Dispatch overhead"),
+        ("npu", "NPU"),
+        ("e2e", "End-to-end"),
+    )
+}
+# Each per-image row, from the run's field of the same name.
+TIMED = (
+    "us_per_image",
+    "npu_us_per_image",
+    "host_overhead_us_per_image",
+    "e2e_us_per_image",
 )
-_NPU_TIME_RE = re.compile(r"NPU time" + _TIME_RE)
-_E2E_TIME_RE = re.compile(r"End-to-end" + _TIME_RE)
 _COST_RE = re.compile(r"\(S\)\s+(\d+)\s+sa-final-cost")
 _TILE_RE = re.compile(r"aie\.tile\(\d+, \d+\)")
 EFFORTS = {
@@ -119,32 +137,44 @@ def replay_placement(
     return placement_of(proc.stdout), int(cost.group(1))
 
 
-def _per_image(match: re.Match | None, batch: int) -> tuple[float, str] | None:
-    if not match:
-        return None
-    t = {k: float(v) / batch for k, v in match.groupdict().items()}
-    return (
-        round(t["min"], 2),
-        f"median {t['median']:.2f}, MAD {t['mad']:.2f}, p95 {t['p95']:.2f}",
-    )
-
-
 def parse_run(out: str, returncode: int, batch: int) -> dict:
-    """Read a run of the mobilenet CLI: whether it passed, and its times per image."""
-    npu = _NPU_TIME_RE.search(out)
+    """Read a run of the mobilenet CLI: whether it passed, and its times per image.
+
+    Each time is the fastest call over the batch, its range the median, MAD
+    and p95 over the batch too: us_per_image is the dispatch (submit to
+    completion), npu_us_per_image the dispatch less the empty-dispatch
+    baseline, e2e_us_per_image the whole Python call, and
+    host_overhead_us_per_image the fastest end-to-end call less the fastest
+    dispatch (its median likewise, its MAD the sum of both).
+    dispatch_overhead_us is the baseline itself, per launch.
+    """
+    t = {}
+    for field, pattern in _TIME_RES.items():
+        if match := pattern.search(out):
+            t[field] = {k: float(v) for k, v in match.groupdict().items()}
     # Time is what this check tracks, so a run that stops printing it (the
     # output format drifted, say) fails rather than publishing nothing.
-    per_image = _per_image(npu, batch)
-    e2e = _per_image(_E2E_TIME_RE.search(out), batch)
-    return {
-        "passed": returncode == 0 and _PASS_RE.search(out) is not None and bool(npu),
+    run = {
+        "passed": returncode == 0
+        and _PASS_RE.search(out) is not None
+        and "dispatch" in t,
+        "dispatch_overhead_us": t.get("dispatch_overhead", {}).get("min"),
+    }
+    if "dispatch" in t and "e2e" in t:
+        t["host_overhead"] = {
+            k: t["e2e"][k] - t["dispatch"][k] for k in ("min", "median", "p95")
+        } | {"mad": t["e2e"]["mad"] + t["dispatch"]["mad"]}
+    for metric, field in zip(TIMED, ("dispatch", "npu", "host_overhead", "e2e")):
         # min, not avg: a single busy neighbor call inflates the mean far
         # more than it moves the min.
-        "us_per_image": per_image[0] if per_image else None,
-        "us_per_image_range": per_image[1] if per_image else None,
-        "e2e_us_per_image": e2e[0] if e2e else None,
-        "e2e_range": e2e[1] if e2e else None,
-    }
+        x = {k: v / batch for k, v in t[field].items()} if field in t else None
+        run[metric] = round(x["min"], 2) if x else None
+        run[f"{metric}_range"] = (
+            f"median {x['median']:.2f}, MAD {x['mad']:.2f}, p95 {x['p95']:.2f}"
+            if x
+            else None
+        )
+    return run
 
 
 def split_batches(out: str) -> dict[int, str]:
@@ -169,9 +199,9 @@ def compile_cold_warm(
     ]
     cold = run_measured(cmd, _ML_DIR, env, timeout)
     profile = os.path.join(cache_dir, "final.prj", AIECC_PROFILE_NAME)
-    stages_cold = stage_rows(
-        profile, cold.seconds if cold.process.returncode == 0 else None, ""
-    )
+    kernels = os.path.join(cache_dir, "final.prj", KERNEL_PROFILE_NAME)
+    cold_s = cold.seconds if cold.process.returncode == 0 else None
+    stages_cold = stage_rows(profile, cold_s, "") | kernel_rows(kernels, cold_s, "")
     placed = sorted(glob.glob(os.path.join(cache_dir, "devices", "*", "placed.mlir")))
     placement = None
     if placed:
@@ -179,8 +209,9 @@ def compile_cold_warm(
             placement = placement_of(f.read())
     clear_for_warm(cache_dir)
     warm = run_measured(cmd, _ML_DIR, env, timeout)
-    stages_warm = stage_rows(
-        profile, warm.seconds if warm.process.returncode == 0 else None, "_warm"
+    warm_s = warm.seconds if warm.process.returncode == 0 else None
+    stages_warm = stage_rows(profile, warm_s, "_warm") | kernel_rows(
+        kernels, warm_s, "_warm"
     )
     return {
         **stages_cold,
@@ -294,26 +325,13 @@ def aggregate(
             f"mobilenet/seed={r['seed']}/batch={r['batch']}"
             f"/effort={r['effort_label']}"
         )
-        if r["passed"] and r["us_per_image"] is not None:
-            out.append(
-                row(
-                    case,
-                    "us_per_image",
-                    r["us_per_image"],
-                    "us",
-                    r["us_per_image_range"],
-                )
-            )
-            if r["e2e_us_per_image"] is not None:
-                out.append(
-                    row(
-                        case,
-                        "e2e_us_per_image",
-                        r["e2e_us_per_image"],
-                        "us",
-                        r["e2e_range"],
-                    )
-                )
+        if not r["passed"]:
+            continue
+        out += [
+            row(case, metric, r[metric], "us", r[f"{metric}_range"])
+            for metric in TIMED
+            if r[metric] is not None
+        ]
     return out
 
 
@@ -351,7 +369,7 @@ def print_table(runs: list[dict], compiles: list[dict], placements: list[dict]) 
             f"{cell(case, 'us_per_image'):>9}  {cell(case, 'e2e_us_per_image'):>9}"
         )
         if not r["passed"] and r["us_per_image"] is None:
-            print("no 'NPU time (avg/min/max us)' line in this batch's output")
+            print("no 'Dispatch (avg/min/max us)' line in this batch's output")
     for p in placements:
         print(
             f"seed {p['seed']} effort {p['effort_label']}: "
@@ -486,8 +504,8 @@ def main(argv=None) -> int:
                 "batch",
                 "effort_label",
                 "passed",
-                "us_per_image",
-                "e2e_us_per_image",
+                *TIMED,
+                "dispatch_overhead_us",
                 "placement",
             )
         }
