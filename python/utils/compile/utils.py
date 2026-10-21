@@ -1613,7 +1613,9 @@ def compile_external_kernels(
     "kernels": [{"object": "x.o", "symbols": [...], "seconds": s,
     "cached": bool}, ...]}``. ``seconds`` is the time spent producing the
     object, compile or copy, and ``cached`` says no compiler ran for it (it
-    was already in ``kernel_dir`` or came from ``object_cache``).
+    was already in ``kernel_dir`` or came from ``object_cache``). A design
+    with a dispatch library adds ``"dispatch_bridge_s"``, its host compile
+    (see ``compile_dispatch_bridge``).
 
     Raises:
         ValueError: When a library kernel was built for another architecture

@@ -100,8 +100,12 @@ def param(
         repr: It is in the operator's repr and device symbols.
         init: It is a constructor argument.
 
+    Returns:
+        The ``OperatorParam`` the class body binds to the parameter's name.
+
     Raises:
-        TypeError: Both `default` and `derive` are given.
+        TypeError: Both `default` and `derive` are given, or `default` is a
+            list, dict or set, which every instance would share.
     """
     if default is not MISSING and derive is not None:
         raise TypeError("param(default=, derive=): give one, not both")
@@ -142,6 +146,9 @@ def tunable(
             is not searched.
         repr: It is in the operator's repr and device symbols.
         init: It is a constructor argument.
+
+    Returns:
+        The ``OperatorParam`` the class body binds to the parameter's name.
 
     Raises:
         TypeError: `domain` is none of those.
@@ -241,6 +248,9 @@ def per_call(
         derive: A function of the operator computing it once per build.
         bounds: A ``param()`` this value bounds per call: ``valid =
             per_call(bounds=M)``.
+
+    Returns:
+        The ``PerCallMember`` the class body binds to the value's name.
 
     Raises:
         TypeError: `dtype` is not an integer type, or both `derive` and
