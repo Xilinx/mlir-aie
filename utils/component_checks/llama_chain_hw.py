@@ -172,7 +172,7 @@ def compile_cold_warm(env: dict, cache_dir: str) -> dict:
         _ELF,
     ]
     _clean_build_outputs()
-    cold = run_measured(build, _LLAMA_DIR, run_env, COMPILE_TIMEOUT)
+    cold = run_measured(build, _LLAMA_DIR, run_env, COMPILE_TIMEOUT, tree_peak=True)
     stages_cold = stage_rows(
         profile, cold.seconds if cold.process.returncode == 0 else None, ""
     )
@@ -180,7 +180,7 @@ def compile_cold_warm(env: dict, cache_dir: str) -> dict:
     _clean_build_outputs()
     for layer in ("builds", "devices"):
         shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
-    warm = run_measured(build, _LLAMA_DIR, run_env, COMPILE_TIMEOUT)
+    warm = run_measured(build, _LLAMA_DIR, run_env, COMPILE_TIMEOUT, tree_peak=True)
     stages_warm = stage_rows(
         profile, warm.seconds if warm.process.returncode == 0 else None, "_warm"
     )
