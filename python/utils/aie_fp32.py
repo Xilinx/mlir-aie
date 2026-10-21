@@ -31,5 +31,7 @@ def aie_add(u: ArrayLike, v: ArrayLike) -> np.ndarray:
     u_bigger = np.abs(u) >= np.abs(v)
     big = np.where(u_bigger, u, v)
     small = np.where(u_bigger, v, u)
-    ulp = np.spacing(np.abs(big).astype(np.float32)).astype(np.float64)
+    # From the exponent: np.spacing on a float32 overflows at its maximum.
+    _, exponent = np.frexp(np.abs(big))
+    ulp = np.ldexp(1.0, np.maximum(exponent - 24, -149))
     return (big + np.round(small / ulp) * ulp).astype(np.float32)
