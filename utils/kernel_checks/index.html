@@ -1097,16 +1097,23 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // A label mid-sentence: "SA final cost", not "sa final cost".
     const inSentence = m => label(m).replace(/^[A-Z](?![A-Z])/, c => c.toLowerCase());
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
-    // Per-metric change thresholds, in percent of the previous value; kept
-    // equal to thresholds.json (which pr_report.py reads) by the page test.
+    // Per-metric change thresholds: `pct`, in percent of the previous value,
+    // and `abs`, a floor in the metric's unit that a change must also reach
+    // (and the only test from a zero baseline). Kept equal to thresholds.json
+    // (which pr_report.py reads) by the page test.
     const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true}, "ttft_ms": {"pct": 10}, "prompt_tok_s": {"pct": 10, "derived": "ttft_ms", "higher_is_better": true}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true}, "xclbin_bytes": {"pct": 2}, "instr_bytes": {"pct": 2}, "elf_bytes": {"pct": 2}, "pdi_bytes": {"pct": 2}, "n_cores": {"pct": 1}, "us_per_image_b1": {"pct": 5}, "us_per_image_b8": {"pct": 5}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "images_passed": {"pct": 1, "higher_is_better": true}, "ort_matches": {"pct": 1, "higher_is_better": true}, "compile_place_s": {"pct": 15}, "compile_route_s": {"pct": 15}, "compile_lower_s": {"pct": 15}, "compile_kernels_s": {"pct": 15}, "compile_codegen_s": {"pct": 15}, "compile_link_s": {"pct": 15}, "compile_package_s": {"pct": 15}, "compile_other_s": {"pct": 15}, "compile_outside_aiecc_s": {"pct": 15}, "compile_aiecc_wall_s": {"pct": 15}, "compile_place_s_warm": {"pct": 15}, "compile_route_s_warm": {"pct": 15}, "compile_lower_s_warm": {"pct": 15}, "compile_kernels_s_warm": {"pct": 15}, "compile_codegen_s_warm": {"pct": 15}, "compile_link_s_warm": {"pct": 15}, "compile_package_s_warm": {"pct": 15}, "compile_other_s_warm": {"pct": 15}, "compile_outside_aiecc_s_warm": {"pct": 15}, "compile_aiecc_wall_s_warm": {"pct": 15}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
-    const threshold = metric => pct(metric) / 100;
+    const threshold = metric => (pct(metric) || 0) / 100;
+    // A change relative to `a`; from a zero baseline, ±Infinity (or 0).
+    const relative = (a, b) => a ? (b - a) / a : Math.sign(b - a) * (b === a ? 0 : Infinity);
     const higherIsBetter = metric => Boolean(THRESHOLDS[metric] && THRESHOLDS[metric].higher_is_better);
     const worseSign = metric => higherIsBetter(metric) ? -1 : 1;
-    const thresholdText = metric => `counts past ${pct(metric)}%` +
-      (THRESHOLDS[metric] && THRESHOLDS[metric].mad ? ` and ${THRESHOLDS[metric].mad}× its spread` : '');
+    const thresholdText = metric => {
+      const t = THRESHOLDS[metric] || { pct: DEFAULT_THRESHOLD };
+      const past = [t.pct !== undefined ? `${t.pct}%` : '', t.abs !== undefined ? `a change of ${t.abs}` : '', t.mad ? `${t.mad}× its spread` : ''];
+      return `counts past ${past.filter(Boolean).join(' and ')}`;
+    };
     // A metric in a "what each run records" list: lower is better unless it says otherwise.
     const termOf = (metric, about) => `${about}; ${higherIsBetter(metric) ? 'higher is better; ' : ''}${thresholdText(metric)}`;
     const axisTitle = (text, metric) => `${text} · ${higherIsBetter(metric) ? '↑' : '↓'} better`;
@@ -1250,8 +1257,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const base = pts && pts.length > 1 ? baselineOf(pts, s.unit) : null;
         if (!base) continue;
         const [a, b] = [base.row, pts.at(-1).row];
-        if (!a.value) continue;
-        const change = (b.value - a.value) / a.value;
+        // Zero then and now: nothing to say.
+        if (!a.value && !b.value) continue;
+        const change = relative(a.value, b.value);
         if (worst === null || change * worseSign(s.metric) > worst.change * worseSign(s.metric)) {
           worst = { change, delta: b.value - a.value, cls: verdict(s.metric, a, b), since: base.date };
         }
@@ -1270,8 +1278,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // metric's threshold and, for a metric with a MAD factor (npu_us), past
     // that many of the larger of the two rows' MADs, so noise is not a move.
     function verdict(metric, a, b) {
-      if (!a || !b || !a.value) return '';
-      const cls = changeClass((b.value - a.value) / a.value, metric);
+      if (!a || !b) return '';
+      const cls = changeClass(a.value, b.value, metric);
       const factor = THRESHOLDS[metric] && THRESHOLDS[metric].mad;
       if (!cls || !factor) return cls;
       const spread = [madOf(a), madOf(b)].filter(v => v !== null);
@@ -1314,9 +1322,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const base = baselineOf(pts, s.unit);
         if (!base) continue;
         const [a, b] = [base.row, pts.at(-1).row];
-        if (!a.value) continue;
         const cls = verdict(s.metric, a, b);
-        const item = { series: s, before: a.value, after: b.value, change: (b.value - a.value) / a.value, cls };
+        const item = { series: s, before: a.value, after: b.value, change: relative(a.value, b.value), cls };
         if (cls === 'worse') regressed.push(item);
         else if (cls === 'better') improved.push(item);
       }
@@ -1327,11 +1334,18 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return { last, regressed, improved };
     }
 
-    // Colored only past the metric's threshold: a 3% move is a regression
-    // in cycles and noise in npu_us.
-    function changeClass(d, metric) {
-      const t = threshold(metric), w = d * worseSign(metric);
-      return w >= t ? 'worse' : w <= -t ? 'better' : '';
+    // 'worse', 'better' or '' for a move from a to b, colored only past the
+    // metric's threshold (a 3% move is a regression in cycles and noise in
+    // npu_us) and its floor (0.13 s → 0.15 s of a compile stage is not news).
+    // From a zero baseline there is no percentage: the floor alone decides,
+    // so 0 → 2 failures counts, and a metric without one is not judged.
+    function changeClass(a, b, metric) {
+      const t = THRESHOLDS[metric] || { pct: DEFAULT_THRESHOLD };
+      const d = b - a;
+      if (!d || (!a && t.abs === undefined)) return '';
+      if (t.abs !== undefined && Math.abs(d) < t.abs) return '';
+      if (a && t.pct !== undefined && Math.abs(d / a) < t.pct / 100) return '';
+      return d * worseSign(metric) > 0 ? 'worse' : 'better';
     }
 
 
@@ -1456,8 +1470,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return value.toLocaleString('en-US', { maximumFractionDigits: unit === 'cycles' ? 0 : 1 });
     }
 
-    function formatChange(d) {
-      const text = `${Math.abs(100 * d).toFixed(1)}%`;
+    // A change as a percentage; from a zero baseline, as the signed
+    // difference in the metric's unit ("+2").
+    function formatChange(d, delta, unit) {
+      const text = Number.isFinite(d) ? `${Math.abs(100 * d).toFixed(1)}%` : formatNumber(Math.abs(delta), unit);
       return d > 0 ? `+${text}` : d < 0 ? `−${text}` : text;
     }
 
@@ -1533,8 +1549,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // A change beside a value: colored only past the metric's threshold,
     // gray when the value is from an earlier night than the latest.
-    function changeSpan(d, cls, current, metric) {
-      return el('span', { className: `chg ${toneOf(d, cls, current, metric)}`, textContent: formatChange(d) });
+    function changeSpan(d, cls, current, metric, delta, unit) {
+      return el('span', { className: `chg ${toneOf(d, cls, current, metric)}`, textContent: formatChange(d, delta, unit) });
     }
 
     // A change's classes: 'flat' within the threshold, 'worse' or 'better'
@@ -1631,9 +1647,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const better = moves.filter(x => x.cls === 'better').sort((a, b) => a.change - b.change);
       const truncated = (night.run.truncated || []).filter(mine);
       const failed = k.failed || [], timing = k.timing_failed || [], flaky = k.flaky || [];
-      const describe = xs => xs.map(x => `${x.series.kase} ${inSentence(x.series.metric)} ${formatChange(x.change)}`).join('\n');
+      const describe = xs => xs.map(x => `${x.series.kase} ${inSentence(x.series.metric)} ${formatChange(x.change, x.after - x.before, x.series.unit)}`).join('\n');
       if (failed.length) return { level: 'bad', text: `${failed.length} fail`, title: `fails correctness:\n${failed.join('\n')}` };
-      if (worse.length) return { level: 'bad', text: formatChange(worse[0].change), title: `worse since the previous nightly:\n${describe(worse)}` };
+      if (worse.length) return { level: 'bad', text: formatChange(worse[0].change, worse[0].after - worse[0].before, worse[0].series.unit), title: `worse since the previous nightly:\n${describe(worse)}` };
       if (timing.length) return { level: 'warn', text: 'timing', title: `passed correctness, failed the timing run:\n${timing.join('\n')}` };
       if (flaky.length) return { level: 'warn', text: 'flaky', title: `passed only on a retry:\n${flaky.join('\n')}` };
       if (truncated.length) return { level: 'warn', text: 'trace', title: `trace buffer filled before every call:\n${truncated.join('\n')}` };
@@ -1641,7 +1657,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const pass = `${plural(k.passed, 'case')} pass, ${k.timed || 0} timed`;
       const refused = night.catalogue.timing_refused;
       if (refused) return { level: 'untimed', text: '', title: `${plural(k.passed, 'case')} pass; not timed: ${refused}` };
-      if (better.length) return { level: 'better', text: formatChange(better[0].change), title: `${pass}\nbetter since the previous nightly:\n${describe(better)}` };
+      if (better.length) return { level: 'better', text: formatChange(better[0].change, better[0].after - better[0].before, better[0].series.unit), title: `${pass}\nbetter since the previous nightly:\n${describe(better)}` };
       return { level: 'ok', text: '', title: pass };
     }
 
@@ -1852,7 +1868,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         // Each regression named, with how far it moved, its kernel a click away.
         const ul = el('ul', { className: 'cases' });
         worse.slice(0, LIST).forEach(x => ul.append(el('li', {}, caseName(x.series.kase, kernelLink(x.series.factory)), ' ',
-          el('span', { className: 'dim' }, inSentence(x.series.metric)), ' ', changeSpan(x.change, x.cls, true, x.series.metric))));
+          el('span', { className: 'dim' }, inSentence(x.series.metric)), ' ', changeSpan(x.change, x.cls, true, x.series.metric, x.after - x.before, x.series.unit))));
         if (worse.length > LIST) ul.append(el('li', {}, link(hashFor({ view: 'kernels', problems: '1' }), `and ${worse.length - LIST} more`)));
         const vs = night.since ? ` vs ${shortDate(night.since)}` : '';
         items.push({ level: 'bad', npu, body: [`${plural(worse.length, 'case')} got slower or bigger past ${worse.length === 1 ? 'its' : 'their'} threshold${vs}:`, ul] });
@@ -2006,8 +2022,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const tone = toneOf(m.change, m.cls, current, metric);
       const was = `was ${formatNumber(m.value - m.delta, m.unit)} ${Number.isFinite(m.since) ? `on ${shortDate(m.since)}` : 'the nightly before'}`;
       const change = m.unit === 'bytes'
-        ? el('span', { className: `chg ${tone}`, title: `${formatChange(m.change)}; ${was}` }, formatBytesDelta(m.delta))
-        : el('span', { className: `chg ${tone}`, title: was }, formatChange(m.change));
+        ? el('span', { className: `chg ${tone}`, title: `${formatChange(m.change, m.delta, m.unit)}; ${was}` }, formatBytesDelta(m.delta))
+        : el('span', { className: `chg ${tone}`, title: was }, formatChange(m.change, m.delta, m.unit));
       return el('span', { className: 'vals', title: [after.title, was].filter(Boolean).join('\n') }, after, ' ', change);
     }
 
@@ -2114,14 +2130,16 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         if (seen.length < 2 || (compare === 'last' && seen.at(-1) !== runs.at(-1))) continue;
         const before = compare === 'last' ? seen.at(-2) : seen[0];
         const then = before.values.get(kase), now = seen.at(-1).values.get(kase);
-        if (!then) continue;
-        const change = (now - then) / then, cls = changeClass(change, metric);
-        const moved = cls ? seen.slice(seen.indexOf(before) + 1).find(r => changeClass((r.values.get(kase) - then) / then, metric) === cls) : null;
+        const change = relative(then, now), cls = changeClass(then, now, metric);
+        const moved = cls ? seen.slice(seen.indexOf(before) + 1).find(r => changeClass(then, r.values.get(kase), metric) === cls) : null;
         out.push({ kase, factory: kase.split('/')[0], npu, metric, unit, then, thenDate: before.date, now, nowDate: seen.at(-1).date,
                    change, cls, movedOn: moved ? moved.date : null });
       }
-      return out.sort((x, y) => Math.abs(Math.log(y.now / y.then)) - Math.abs(Math.log(x.now / x.then)));
+      return out.sort((x, y) => moveSize(y) - moveSize(x));
     }
+
+    // How far a change moved, a halving as far as a doubling.
+    const moveSize = x => Number.isFinite(x.change) ? Math.abs(Math.log1p(x.change)) : Infinity;
 
     // The nightlies compared on these NPUs (`compare` as for windowChanges),
     // for saying what is compared with what: {first, last, nights}.
@@ -2166,14 +2184,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           }
         }
       }
-      const biggest = xs => xs.reduce((a, b) => Math.abs(Math.log(b.now / b.then)) > Math.abs(Math.log(a.now / a.then)) ? b : a);
+      const biggest = xs => xs.reduce((a, b) => moveSize(b) > moveSize(a) ? b : a);
       const moved = xs => xs.filter(x => x.cls);
       const groups = [...rowsBy.values()].filter(g => order.some(m => moved(g.by.get(m)).length));
       // Slower first, then bigger, then faster, then smaller; the largest first.
       const rank = g => {
         for (const [i, [m, cls]] of [['cycles', 'worse'], ['kernel_object_bytes', 'worse'], ['cycles', 'better'], ['kernel_object_bytes', 'better']].entries()) {
           const xs = (g.by.get(m) || []).filter(x => x.cls === cls);
-          if (xs.length) return [i, -Math.abs(Math.log(biggest(xs).now / biggest(xs).then))];
+          if (xs.length) return [i, -moveSize(biggest(xs))];
         }
         return [9, 0];
       };
@@ -2184,9 +2202,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const quiet = !moved(xs).length;
         // The case that moved most, in plain numbers; how many moved under
         // it when the kernel has more than one; every case on hover.
-        const td = el('td', { className: `num${quiet ? ' quiet' : ''}`, title: xs.map(x => `${x.kase}: ${formatNumber(x.then, x.unit)} → ${formatNumber(x.now, x.unit)} (${formatChange(x.change)})`).join('\n') },
+        const td = el('td', { className: `num${quiet ? ' quiet' : ''}`, title: xs.map(x => `${x.kase}: ${formatNumber(x.then, x.unit)} → ${formatNumber(x.now, x.unit)} (${formatChange(x.change, x.now - x.then, x.unit)})`).join('\n') },
           `${formatNumber(shown.then, shown.unit)} → `, el('b', {}, formatNumber(shown.now, shown.unit)), ' (',
-          quiet ? formatChange(shown.change) : changeSpan(shown.change, shown.cls, true, metric), ')');
+          quiet ? formatChange(shown.change, shown.now - shown.then, shown.unit) : changeSpan(shown.change, shown.cls, true, metric, shown.now - shown.then, shown.unit), ')');
         if (xs.length > 1) td.append(el('span', { className: 'sub' }, quiet ? `none of ${xs.length} cases moved` : `${moved(xs).length} of ${xs.length} cases moved`));
         return td;
       };
@@ -2415,7 +2433,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const why = caseVerdict(n, kase);
         if (!runs.length) return [el('td', { colSpan: 2, className: `npu-start note ${why ? why.cls : ''}`, title: why ? why.title : '' }, why ? why.text : '—')];
         const last = runs.at(-1).values.get(kase), first = runs[0].values.get(kase);
-        const change = (last - first) / first;
+        const change = relative(first, last);
         const stale = runs.at(-1) !== per[i].at(-1);
         // The calls behind the fastest, and whether the trace held them all.
         const spread = cyclesSpread(runs.at(-1).ranges.get(kase));
@@ -2424,7 +2442,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const value = el('td', { className: `num cyc npu-start${stale ? ' stale' : ''}`, title }, formatNumber(last, 'cycles'));
         if (spread && spread.truncated) value.append(el('span', { className: 'note warn', title: `the trace buffer filled after ${spread.n} calls; the fastest is over those` }, ' trace'));
         const then = el('td', { className: 'num', title: `on ${shortDate(runs[0].date)}` });
-        if (runs.length > 1) then.append(formatNumber(first, 'cycles'), ' ', changeSpan(change, changeClass(change, 'cycles'), !stale, 'cycles'));
+        if (runs.length > 1) then.append(formatNumber(first, 'cycles'), ' ', changeSpan(change, changeClass(first, last, 'cycles'), !stale, 'cycles', last - first, 'cycles'));
         else then.append(el('span', { className: 'faint' }, 'one nightly'));
         return [value, then];
       })));
@@ -2735,7 +2753,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const div = el('div', { className: 'chart' });
         const chips = el('span', {});
         for (const [npu, m] of moves.get(g.key)) {
-          chips.append(' ', el('span', { className: `chg ${m.cls || 'flat'}`, title: `${npu}, vs ${shortDate(m.since)}` }, `${npu} ${formatChange(m.change)}`));
+          chips.append(' ', el('span', { className: `chg ${m.cls || 'flat'}`, title: `${npu}, vs ${shortDate(m.since)}` }, `${npu} ${formatChange(m.change, m.delta, g.unit)}`));
         }
         div.append(el('h3', {}, caseName(g.kase, null), chips));
         const holder = el('div', { className: 'canvas' });
@@ -3671,7 +3689,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             const c = caseParts(x.series.kase);
             list.append(el('span', { className: 'move', title: x.series.kase },
               `${c.params.length ? c.params.join(', ') : c.factory} ${inSentence(x.series.metric)} `,
-              changeSpan(x.change, x.cls, true, x.series.metric)));
+              changeSpan(x.change, x.cls, true, x.series.metric, x.after - x.before, x.series.unit)));
           }
           if (moved.length > 8) list.append(el('span', { className: 'dim' }, `and ${moved.length - 8} more`));
           // A move is news; "nothing moved" is detail.

@@ -116,15 +116,15 @@ def test_thresholds_match_the_report_and_color_only_past_them(page):
     expected = {m: s for m, s in shared.items() if not m.startswith("_")}
     assert json.loads(match[1]) == expected
     page("""
-assert.equal(changeClass(0.019, 'cycles'), '');
-assert.equal(changeClass(0.02, 'cycles'), 'worse');
-assert.equal(changeClass(-0.02, 'kernel_object_bytes'), 'better');
-assert.equal(changeClass(0.09, 'npu_us'), '');
-assert.equal(changeClass(0.1, 'npu_us'), 'worse');
-assert.equal(changeClass(0.14, 'compile_s'), '');
-assert.equal(changeClass(0.15, 'compile_s'), 'worse');
-assert.equal(changeClass(0.009, 'final_cost_mean'), '');
-assert.equal(changeClass(0.01, 'final_cost_mean'), 'worse');
+assert.equal(changeClass(100, 101.9, 'cycles'), '');
+assert.equal(changeClass(100, 102, 'cycles'), 'worse');
+assert.equal(changeClass(100, 98, 'kernel_object_bytes'), 'better');
+assert.equal(changeClass(100, 109, 'npu_us'), '');
+assert.equal(changeClass(100, 110, 'npu_us'), 'worse');
+assert.equal(changeClass(100, 114, 'compile_s'), '');
+assert.equal(changeClass(100, 115, 'compile_s'), 'worse');
+assert.equal(changeClass(1000, 1009, 'final_cost_mean'), '');
+assert.equal(changeClass(1000, 1010, 'final_cost_mean'), 'worse');
 assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes']);
 """)
 
@@ -283,6 +283,42 @@ assert.deepEqual(cycles.data.datasets.map(d => [d.label, d.data]), [['1024/bfloa
 assert.deepEqual(cycles.options.plugins.tooltip.callbacks.title([{ dataIndex: 2 }]), ['3 Oct, 06:00 UTC', 'changed: device NPU Strix, kernels b']);
 // The window compares a time on one part only.
 assert.deepEqual(windowChanges(db, 'npu2', 'npu_us').map(x => [x.then, x.now]), [[80, 81]]);
+""")
+
+
+def test_an_absolute_floor_and_a_zero_baseline(page):
+    page(COMPONENT_RUNS + MODEL_NIGHTS + """
+// The schema: `pct` of the previous value and `abs`, a floor in the unit.
+THRESHOLDS.compile_place_s = { pct: 15, abs: 0.5 };
+THRESHOLDS.failed_mutations = { pct: 1, abs: 1 };
+THRESHOLDS.max_ulp = { abs: 1 };
+// A 15% move of a 0.13 s stage is 20 ms: under the floor, not a move.
+assert.equal(changeClass(0.13, 0.15, 'compile_place_s'), '');
+assert.equal(changeClass(3, 3.6, 'compile_place_s'), 'worse');
+// Past the floor but under the percentage: not a move either.
+assert.equal(changeClass(10, 10.6, 'compile_place_s'), '');
+// From zero there is no percentage; the floor decides: 0 -> 2 failures is worse,
+// 2 -> 0 better, and a metric with no floor is not judged from zero.
+assert.equal(changeClass(0, 2, 'failed_mutations'), 'worse');
+assert.equal(changeClass(2, 0, 'failed_mutations'), 'better');
+assert.equal(changeClass(0, 2, 'unrouted'), '');
+// A metric with only a floor: any whole ulp counts, from any baseline.
+assert.equal(changeClass(30, 31, 'max_ulp'), 'worse');
+assert.equal(changeClass(0, 1, 'max_ulp'), 'worse');
+assert.equal(changeClass(4, 4, 'max_ulp'), '');
+assert.equal(thresholdText('compile_place_s'), 'counts past 15% and a change of 0.5');
+assert.equal(thresholdText('max_ulp'), 'counts past a change of 1');
+assert.equal(thresholdText('npu_us'), 'counts past 10% and 3× its spread');
+// The router's failed mutations went 0 -> 2: flagged, said as "+2", not a percentage.
+const before = routerRecord('6', '2026-10-01T03:17:00Z', 0);
+before.rows.npu1.failed_mutations = cell(0, 'cases');
+const after = routerRecord('7', '2026-10-02T03:17:00Z', 0);
+const routerBand = componentBand(router, { target: 'router', runs: [night('6', before.date, null), night('7', after.date, null)] }, after, NOW, before);
+assert.equal(one(routerBand, n => n.className === 'moves').text, 'Since 1 Oct:npu1 failed mutations +2');
+assert.equal(one(routerBand.cards[0], n => /^chg /.test(n.className || '') && n.text === '+2').className, 'chg worse strong');
+assert.equal(formatChange(relative(0, 2), 2, 'cases'), '+2');
+assert.equal(formatChange(relative(2, 0), -2, 'cases'), '−100.0%');
+assert.equal(relative(0, 0), 0);
 """)
 
 
