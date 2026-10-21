@@ -158,7 +158,12 @@ expected to move.
 
 **What bounds it.** The layers' weights stream over the array's eight lanes
 (about 52 GB/s), the lm_head's 262 MB over one lane (about 19 ms a token), and
-attention adds about 3.3 ms per 1k tokens of context.
+attention adds about 3.3 ms per 1k tokens of context. That is up from about
+2.5 ms/1k measured just before the Oct-20 restructure (#3947), whose
+score-to-probability step moved from an int8-quantized exp lookup table to
+the oracle's exact polynomial (`vec_exp_nonpos`, called 16 times a 64-row
+block): the per-context cost of the bit-exactness the checks above need,
+not reverted.
 
 **Tokens per dispatch.** amdxdna times a dispatch out after about 5 s. The host
 picks each dispatch's token count from its first position
