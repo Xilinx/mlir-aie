@@ -772,7 +772,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         invalid_kwargs=[
             (dict(rounding="nearest"), "rounding"),
-            (dict(table=True), "needs bias"),
+            (dict(table=True), "need bias"),
+            (dict(input_slice=8), "need bias"),
             (dict(input_width=20), "multiple of 32"),
             (dict(input_width=18, bias=True), "multiple of 4"),
         ],
