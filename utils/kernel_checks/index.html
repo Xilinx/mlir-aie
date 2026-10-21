@@ -8,16 +8,15 @@
   and modelBasedTests.yml (kernel-checks/index.html is a redirect here that
   keeps its #view= links).
 
-  Sections, each a tab: an overview of every section's latest night; CI
-  health (the other scheduled workflows, from ../ci-health/status.json, which
-  publishCiHealth.yml writes every six hours); Kernels
-  (the IRON kernel library); Placement (the SA placer and the buffer
-  allocator); Design performance (whole designs on hardware: MobileNet,
-  Llama 3.2 1B and YOLO26n); Routing (the packet router). A section other than Kernels is a list
-  of bands in BANDS, each one nightly check's latest record, and the trends
-  of the metrics the section
-  names in SECTIONS; one check (sa-placer-hw) feeds both Placement and Design
-  performance. To add a section, add it to SECTIONS and its markup below, and
+  Sections, each a tab, in this order: Overview (every section's latest
+  run); CI health (the merge-gating tests and the other scheduled workflows,
+  from ../ci-health/status.json, which publishCiHealth.yml writes every six
+  hours); Kernels (the IRON kernel library); Performance (whole designs on
+  npu2: MobileNet, Llama 3.2 1B and YOLO26n); Routing (the packet router);
+  Placement (the SA placer and the buffer allocator). A section other than
+  Kernels is a list of bands in BANDS, each one nightly check's latest record
+  with its trends; one check (sa-placer-hw) feeds both Placement and
+  Performance. To add a section, add it to SECTIONS and its markup below, and
   give its checks bands.
 
   Kernels: per NPU it reads, from ../kernel-checks/<npu>/ (written by
@@ -36,11 +35,11 @@
 
   The other sections read ../component-checks/<check>/ in the same format.
 
-  Every view is in the URL hash so a link reproduces one. Kernels has four:
-  last night (a verdict per NPU, what needs attention, a map of every kernel,
-  what moved), the kernels table (every case's cycles, npu1 beside npu2), one
-  kernel's page, and trends. Cycles lead everywhere; object size follows;
-  host time (npu_us) is noisy and kept to the kernel page and trends.
+  Every view is in the URL hash so a link reproduces one. Kernels has three:
+  Summary (a verdict per NPU, what needs a look, what moved), All kernels (a
+  line per kernel, its state and cycles per NPU) and one kernel's page (its
+  trends and its cases). Cycles lead everywhere; object size follows; host
+  time (npu_us) and the error metrics are on the kernel page.
 
   No build step: one file plus Chart.js from a CDN. Preview it locally with
   utils/kernel_checks/preview.py. test/test_kernel_checks_page.py runs the
@@ -111,7 +110,6 @@
     .top .links button { background: none; border: 1px solid var(--rule); border-radius: 6px; padding: 3px 9px; cursor: pointer; color: var(--muted); }
 
     main { max-width: 1320px; margin: 0 auto; padding: 8px 20px 48px; }
-    #status { font-size: 13px; color: var(--muted); padding: 10px 0 0; }
     .block { margin-top: 36px; }
     .block-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 12px; }
     .block-head h3 { font-size: 18px; }
@@ -151,7 +149,7 @@
     .night.manual { height: 11px; opacity: 0.55; }
     th .sub { display: block; font-weight: 400; font-size: 11px; color: var(--faint); }
 
-    /* Needs attention: only there when something is wrong. */
+    /* Needs a look: only there when something is wrong. */
     #attention ul { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
     #attention li { display: grid; grid-template-columns: 58px 1fr; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--rule); }
     #attention li:first-child { border-top: 0; }
@@ -171,19 +169,6 @@
     .moves .move { white-space: nowrap; }
     details.repro pre { margin: 0; padding: 8px 10px; background: var(--none-soft); border-radius: 6px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
 
-    /* The kernel map: every kernel as a tile, its two halves npu1 and npu2. */
-    .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); align-items: center; }
-    .legend .sw { display: inline-block; width: 18px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
-    #map { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 6px 16px; }
-    .family { display: grid; grid-template-columns: 112px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--rule); }
-    .family:first-child { border-top: 0; }
-    .family h3 { font-size: 13px; font-weight: 600; color: var(--muted); padding-top: 4px; }
-    .tiles { display: flex; flex-wrap: wrap; gap: 6px; }
-    a.tile { display: flex; flex-direction: column; gap: 3px; width: 138px; padding: 5px 6px 6px; border-radius: 6px; border: 1px solid var(--rule); color: var(--ink); background: var(--paper); }
-    a.tile:hover { border-color: var(--ink); text-decoration: none; }
-    .tile .name { font-size: 12px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .halves { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
-    .half { height: 17px; border-radius: 3px; font-size: 10.5px; line-height: 17px; text-align: center; font-weight: 650; overflow: hidden; white-space: nowrap; }
     .s-ok { background: var(--ok-soft); color: var(--ok); }
     .s-better { background: var(--ok); color: #fff; }
     .s-bad { background: var(--bad); color: #fff; }
@@ -216,18 +201,12 @@
     .stale { color: var(--faint); }
     .case-name { overflow-wrap: anywhere; }
     .case-name .rest { color: var(--muted); }
-    tr.kernel-row td { background: var(--paper); border-top: 2px solid var(--rule); padding-top: 9px; }
-    tr.kernel-row .kname { font-weight: 650; font-size: 14px; }
-    tr.kernel-row .summary { color: var(--muted); font-size: 12.5px; margin-left: 8px; }
-    tr.case-row td:first-child { padding-left: 28px; }
     .pill { display: inline-block; font-size: 11.5px; font-weight: 600; border-radius: 10px; padding: 0 8px; white-space: nowrap; }
     .pill.s-absent { border: 0; box-shadow: none; padding: 0; font-weight: 500; }
     .tag { display: inline-block; font-size: 11.5px; color: var(--muted); border: 1px solid var(--rule); border-radius: 10px; padding: 0 7px; margin-left: 6px; font-weight: 500; }
     .note { font-size: 12px; color: var(--muted); }
     .note.bad { color: var(--bad); font-weight: 600; }
     .note.warn { color: var(--warn); font-weight: 600; }
-    canvas.spark { display: block; width: 110px; height: 26px; }
-    tr.divider td { background: var(--paper); font-size: 12px; font-weight: 600; color: var(--muted); padding: 4px 12px; }
 
     /* Controls */
     .controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin: 20px 0 14px; font-size: 13px; }
@@ -256,7 +235,6 @@
     .chart h3 { font-size: 13px; font-weight: 600; margin: 0 0 6px; display: flex; justify-content: space-between; gap: 8px; }
     .chart h3 .case-name { font-family: var(--mono); font-weight: 500; font-size: 12px; }
     .chart .canvas { position: relative; height: 200px; }
-    details.group { margin: 0 0 14px; }
 
     /* Kernel page: a card per case, the four metrics side by side. */
     .glance { display: grid; gap: 12px; }
@@ -277,8 +255,6 @@
     .glance-row.solo { grid-template-columns: 1fr; }
     .glance-row .npu { font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
     .glance-row .npu::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--lane, transparent); flex: none; }
-    .glance-row .npu.n-npu1 { --lane: var(--npu1); }
-    .glance-row .npu.n-npu2 { --lane: var(--npu2); }
     .glance-row .npu.n-muted { --lane: var(--muted); }
     .glance-row .npu.n-series-1 { --lane: var(--series-1); }
     .glance-row .npu.n-series-2 { --lane: var(--series-2); }
@@ -334,11 +310,6 @@
     table.stage-key .chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--seg); vertical-align: -1px; margin-right: 5px; }
     .key { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; }
     .key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
-    .key i.n-npu1 { background: var(--npu1); }
-    .key i.n-npu2 { background: var(--npu2); }
-    details.group > summary { cursor: pointer; padding: 6px 0; font-size: 14px; }
-    details.group > summary .factory { font-weight: 650; font-family: var(--mono); }
-    details.group > .charts { margin-top: 8px; }
     .empty { padding: 28px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--rule); border-radius: 10px; }
     .empty button { background: none; border: 0; color: var(--link); cursor: pointer; padding: 0; }
 
@@ -496,11 +467,7 @@
 
     @media (max-width: 700px) {
       .top-inner, main { padding-left: 12px; padding-right: 12px; }
-      .family { grid-template-columns: 1fr; gap: 4px; }
-      a.tile { width: calc(50% - 3px); }
       .headline { font-size: 18px; }
-      /* Only prose: hiding a column would slide the NPU group headers. */
-      #kernels .summary.wide { display: none; }
       .glance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .glance-metric:nth-child(2n+1) { border-left: 0; padding-left: 0; }
       .stage-row { grid-template-columns: 40px minmax(0, 1fr); }
@@ -704,7 +671,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
     <section id="performance" hidden>
       <div class="section-head">
         <h2>Performance</h2>
-        <p>MobileNet, Llama 3.2 1B and YOLO26n, compiled, run and verified nightly on an NPU2.</p>
+        <p>MobileNet, Llama 3.2 1B and YOLO26n, compiled, run and verified nightly on an npu2.</p>
         <span class="runs">
           <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyComponentChecks.yml">Actions runs</a>
           <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/mobilenet">MobileNet design</a>
@@ -717,7 +684,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
         <summary>How these checks work</summary>
         <div>
           <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/sa_placer_hw.py"><code>utils/component_checks/sa_placer_hw.py</code></a>
-            runs in <code>nightlyComponentChecks.yml</code> at 06:30 UTC on an NPU2 bench runner. The
+            runs in <code>nightlyComponentChecks.yml</code> at 06:30 UTC on an npu2 bench runner (Strix or Krackan; each run names its part). The
             <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/mobilenet">MobileNet</a> design is placed with the SA placer at seeds 3
             (the design's default), 2 and 7, then compiled once per seed and effort and run and verified at every power of two from 1 to 64 images per launch, every image checked. A publishing run refuses to time
             unless the NPU is in turbo mode.</p>
@@ -825,7 +792,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             the SA placer's final cost (mean and worst), and the CPU time and peak memory of a placement.</p>
           <pre>aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=N sa-effort=1.0' \
     --mlir-pass-statistics utils/component_checks/fixtures/mobilenet.mlir</pre>
-          <h3>MobileNet placements on hardware (NPU2)</h3>
+          <h3>MobileNet placements on hardware (npu2)</h3>
           <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/sa_placer_hw.py"><code>utils/component_checks/sa_placer_hw.py</code></a>:
             MobileNet is placed with seeds 3 (the design's default), 2 and 7, then compiled once per seed and effort and run and verified at every power of two from 1 to 64 images per launch, every image checked.
             For each seed it records the placement aiecc chose (a digest of the placed tiles) and its SA cost, replayed with <code>aie-opt</code>.
@@ -917,7 +884,6 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       xclbin_bytes: 'size of the xclbin the compile wrote',
       instr_bytes: 'size of the runtime-sequence instruction stream the host submits with each dispatch',
       pdi_bytes: 'size of the device image the xclbin carries: every core\'s ELF plus the array configuration',
-      n_cores: 'compute cores the placed design uses',
       us_per_image_b1: 'host wall time of one yolo26n(...) call on one image (the jit call\'s own work, the dispatch and its wait; not the image\'s decode or the readback), the fastest of 5 after 2 warm-ups, as yolo26n.py --time reports it',
       us_per_image_b8: 'the same for one call on 8 images, over the 8, as yolo26n.py --time --batch 8 reports it',
       fps_b1: 'images per second at batch 1, from the time per image',
@@ -954,7 +920,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
       survived_corruptions: 'Missed corruptions', tok_s: 'Dispatch rate', ms_per_token: 'Dispatch / token', dma_floor_ratio: 'Over the DMA floor',
       tokens_passed: 'Tokens verified', ttft_ms: 'Time to first token', prompt_tok_s: 'Prompt tokens / s',
-      decode_tok_s: 'Decode tokens / s', greedy_agree: 'Greedy agreement', xclbin_bytes: 'xclbin', instr_bytes: 'Instructions', pdi_bytes: 'Device image', n_cores: 'Cores',
+      decode_tok_s: 'Decode tokens / s', greedy_agree: 'Greedy agreement', xclbin_bytes: 'xclbin', instr_bytes: 'Instructions', pdi_bytes: 'Device image',
       us_per_image_b1: 'End-to-end / image (b1)', us_per_image_b8: 'End-to-end / image (b8)', fps_b1: 'Images / s (b1)', fps_b8: 'Images / s (b8)',
       images_passed: 'Images verified', ort_matches: 'Match onnxruntime', elf_bytes: 'Full ELF',
       ...Object.fromEntries(['', '_warm'].flatMap(suffix => [
@@ -972,12 +938,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // the ones their Trends offer, in order. One with no bands in BANDS says
     // it has no checks yet.
     const SECTIONS = {
-      performance: { title: 'Performance', about: 'MobileNet, Llama 3.2 1B and YOLO26n compiled, run and verified on an NPU2: time per image, tokens per second, compile time and memory, cold and warm, and what the compile wrote.',
+      performance: { title: 'Performance', about: 'MobileNet, Llama 3.2 1B and YOLO26n compiled, run and verified on an npu2: time per image, tokens per second, compile time and memory, cold and warm, and what the compile wrote.',
                      metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'tok_s', 'ms_per_token', 'dma_floor_ratio', 'tokens_passed',
                                'ttft_ms', 'prompt_tok_s', 'decode_tok_s', 'greedy_agree',
                                'us_per_image_b1', 'us_per_image_b8', 'fps_b1', 'fps_b8', 'images_passed', 'ort_matches',
                                'compile_s', 'compile_peak_rss_mb', 'compile_s_warm', 'compile_peak_rss_mb_warm',
-                               'xclbin_bytes', 'instr_bytes', 'elf_bytes', 'pdi_bytes', 'n_cores'] },
+                               'xclbin_bytes', 'instr_bytes', 'elf_bytes', 'pdi_bytes'] },
       routing: { title: 'Routing', about: 'The packet router against its model on npu1, npu2 and xcvc1902: legal routes, their cost, and mutation testing.',
                  metrics: ['failed_properties', 'unrouted', 'illegal', 'failed_mutations', 'survived_corruptions', 'hop_ratio', 'amsels_per_design', 'ms_per_design'] },
       placement: { title: 'Placement', about: 'The SA placer: every seed placed, the placements\' cost, CPU time and memory. The buffer allocator against its model.',
@@ -1043,19 +1009,19 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         repro: (_record, fixture, seed = 'N') => `aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=${seed} sa-effort=1.0' --mlir-pass-statistics ${SA_FIXTURES[fixture] || '<fixture>'}`,
         say: (fixture, seed) => `${fixture}/seed${seed}`,
         cards: fixtureCards, charts: seedCharts, summary: sweepSummary },
-      { id: 'sa-placer-hw', section: 'placement', title: 'MobileNet placements on hardware', short: 'MobileNet on NPU2', ...HW_RUNS,
+      { id: 'sa-placer-hw', section: 'placement', title: 'MobileNet placements on hardware', short: 'MobileNet on npu2', ...HW_RUNS,
         passed: 'Every seed placed, compiled and verified.',
-        about: 'aiecc places mobilenet with seeds 3, 2 and 7 for an NPU2, at the design\'s real default effort and at full effort: the placement each chose, its SA cost, how long it took to compile, and whether the design then ran.',
+        about: 'aiecc places mobilenet with seeds 3, 2 and 7 for an npu2, at the design\'s real default effort and at full effort: the placement each chose, its SA cost, how long it took to compile, and whether the design then ran.',
         cards: placementCards, charts: () => [], summary: placementSummary },
-      { id: 'sa-placer-hw', section: 'performance', title: 'MobileNet on NPU2', short: 'MobileNet', ...HW_RUNS, passed: 'Every run passed.',
-        about: 'mobilenet placed with seeds 3, 2 and 7, then compiled once and run and verified on an NPU2 at batch 1, 2, 4, 8, 16, 32 and 64, at both the design\'s real default effort and a full-effort baseline -- one card per seed per effort, so a runtime difference between them would show up here, not just in placement cost.',
+      { id: 'sa-placer-hw', section: 'performance', title: 'MobileNet on npu2', short: 'MobileNet', ...HW_RUNS, passed: 'Every run passed.',
+        about: 'mobilenet placed with seeds 3, 2 and 7, then compiled once and run and verified on an npu2 at batch 1, 2, 4, 8, 16, 32 and 64, at both the design\'s real default effort and a full-effort baseline -- one card per seed per effort, so a runtime difference between them would show up here, not just in placement cost.',
         cards: seedCards, charts: () => [], summary: hardwareSummary,
         trend: [{ id: 'us_per_image', axis: 'Dispatch time per image (µs, fastest of 20)', per: 'batch' },
                 { id: 'e2e_us_per_image', axis: 'End-to-end time per image (µs, fastest of 20)', per: 'batch' }, ...COMPILE_TABS] },
-      { id: 'llama-chain-hw', section: 'performance', title: 'Llama 3.2 1B decode on NPU2', short: 'Llama 3.2 1B', failure: 'run',
+      { id: 'llama-chain-hw', section: 'performance', title: 'Llama 3.2 1B decode on npu2', short: 'Llama 3.2 1B', failure: 'run',
         passed: 'Every decoded token matched the oracle.',
         about: 'the 16-layer persistent decode loop, growing its KV cache on chip and sampling 4 tokens per dispatch, compiled cold and then warm, '
-          + 'run and verified token by token against the numpy oracle on an NPU2, then timed. Embedding and lm_head weights are the real model\'s.',
+          + 'run and verified token by token against the numpy oracle on an npu2, then timed. Embedding and lm_head weights are the real model\'s.',
         script: 'utils/component_checks/llama_chain_hw.py',
         whole: 'python utils/component_checks/llama_chain_hw.py --out perf.json --meta meta.json',
         failedId: /^llama\/persist_grow\/N=(\d+)$/,
@@ -1070,16 +1036,16 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                   axis: 'Dispatch time per token (ms, median of 3)',
                   about: 'the dispatch time per token with the KV cache filled to each context length, all from the one compile for the longest' },
                 { id: 'ttft_ms', axis: 'Time to first token (ms, one run)', lines: [['', ['ttft_ms']]] }, ...COMPILE_TABS] },
-      { id: 'yolo26n-hw', section: 'performance', title: 'YOLO26n detection on NPU2', short: 'YOLO26n', failure: 'run',
+      { id: 'yolo26n-hw', section: 'performance', title: 'YOLO26n detection on npu2', short: 'YOLO26n', failure: 'run',
         passed: 'Every image matched the oracle.',
         about: 'the whole 640×640 int8 detector, backbone through the Detect head\'s postprocess, compiled cold and then warm, '
-          + 'run on real COCO128 images and checked image by image against the numpy oracle (and, for information, onnxruntime) on an NPU2, '
+          + 'run on real COCO128 images and checked image by image against the numpy oracle (and, for information, onnxruntime) on an npu2, '
           + 'then timed at batch 1 and checked and timed again at batch 8.',
         script: 'utils/component_checks/yolo26n_hw.py',
         whole: 'python utils/component_checks/yolo26n_hw.py --out perf.json --meta meta.json',
         failedId: /^yolo26n\/640$/,
         repro: () => 'cd programming_examples/ml/yolo26n && python yolo26n.py --images $IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/coco128/images/train2017 --n 8',
-        say: () => 'the 640x640 detector',
+        say: () => 'the 640×640 detector',
         cards: yoloCards, charts: () => [], summary: yoloSummary,
         trend: [{ id: 'us_per_image_b1', name: 'End-to-end / image', axis: 'End-to-end time per image (µs, fastest of 5)', lines: [['batch 1', ['us_per_image_b1']], ['batch 8', ['us_per_image_b8']]],
                   about: 'host wall time per image of one yolo26n(...) call, the fastest of 5, at batch 1 and batch 8' },
@@ -1262,13 +1228,6 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return null;
     }
 
-    // Relative change between the last two points of each shown mode; the
-    // largest one, so a regression in any mode sorts the chart up.
-    function latestChange(s, modes) {
-      const move = latestMove(s, modes);
-      return move ? move.change : null;
-    }
-
     // The point the last of `pts` is compared with: the one before it, on
     // the same part for a part-bound unit (a point with no part recorded
     // matches any), or null.
@@ -1280,8 +1239,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return null;
     }
 
-    // The same, with the verdict on it and the date of the point it is
-    // against: {change, delta, cls, since}, or null.
+    // The change into each given mode's last point from its baseline, the
+    // worst, with its verdict and the date it is against: {change, delta,
+    // cls, since}, or null.
     function latestMove(s, modes) {
       let worst = null;
       for (const mode of modes) {
@@ -1370,11 +1330,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // metric's threshold (a 3% move is a regression in cycles and noise in
     // npu_us) and its floor (0.13 s → 0.15 s of a compile stage is not news).
     // From a zero baseline there is no percentage: the floor alone decides,
-    // so 0 → 2 failures counts, and a metric without one is not judged.
+    // so 0 → 2 failures counts, and a metric without one is not judged. A
+    // `neutral` metric (information only) is never worse or better.
     function changeClass(a, b, metric) {
       const t = THRESHOLDS[metric] || { pct: DEFAULT_THRESHOLD };
       const d = b - a;
-      if (!d || (!a && t.abs === undefined)) return '';
+      if (!d || t.neutral || (!a && t.abs === undefined)) return '';
       if (t.abs !== undefined && Math.abs(d) < t.abs) return '';
       if (a && t.pct !== undefined && Math.abs(d / a) < t.pct / 100) return '';
       return d * worseSign(metric) > 0 ? 'worse' : 'better';
@@ -1432,7 +1393,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function warningsFor(npu, run, now) {
       const out = [];
       if (run.newer) out.push({ level: 'bad', text: 'the results were published by a newer version of this page: reload it' });
-      if (run.date === null) { out.push({ level: 'bad', text: run.unread ? run.unread.text : `${npu}: no results have been published` }); return out; }
+      if (run.date === null) { out.push({ level: 'bad', text: run.unread ? run.unread.text : `${npu}: no results published yet` }); return out; }
       if (now - run.date > STALE_AFTER_MS) out.push({ level: 'bad', text: `no run since ${formatWhen(run.date)}`, stale: true });
       if (run.refused) out.push({ level: 'bad', text: `the run refused to measure: ${run.refused}` });
       else if (run.sane === false) out.push({ level: 'bad', text: 'the measurement sanity check failed: no numbers were published from this run' });
@@ -1787,7 +1748,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       band.append(el('p', { className: 'headline' }, v.headline, v.quiet ? el('span', { className: 'quiet' }, v.quiet) : ''));
       if (run.date === null) return band;
       // The counts and the run's provenance are detail: the headline and
-      // Needs attention say what matters.
+      // Needs a look say what matters.
       const more = el('details', { className: 'band-more' }, el('summary', {}, 'Run details'));
       band.append(more);
       if (counts.known) {
@@ -1948,7 +1909,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return [...rows.values()].sort((a, b) => a.family.localeCompare(b.family) || a.factory.localeCompare(b.factory));
     }
 
-    function renderDashboard(npus, recent, catalogues, runsIndexes, now, hist) {
+    function renderDashboard(npus, recent, catalogues, runsIndexes, now) {
       const nights = npus.map(npu => nightOf(npu, runsIndexes.get(npu) || null, recent, catalogues.get(npu) || null));
       $('verdicts').replaceChildren(...nights.map(n => verdictBand(n, now)));
       renderAttention(nights, now);
@@ -2429,13 +2390,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           if (c && (c.url || c.id)) window.open(c.url || `${REPO}/commit/${c.id}`, '_blank', 'noopener');
         },
         scales: {
-          x: { title: title('Nightly run'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
+          x: { title: title('Nightly run (weekly past 90 days)'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
           y: { type: log ? 'logarithmic' : 'linear', title: title(axisTitle(AXIS_OF[metric] || label(metric), metric)), grid: { color: grid },
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
         },
         plugins: {
           legend: { display: datasets.length > 1, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 } } },
-          markers: { at: markers, color: cssVar('--faint', '#8a93a3') },
+          markers: { at: markers, color: cssVar('--faint', '#68717f') },
           tooltip: { callbacks: {
             title: items => items.length ? changedTitle(formatWhen(runs[items[0].dataIndex].date, years), markers, items[0].dataIndex) : '',
             afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
@@ -2696,7 +2657,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             // tells power modes apart.
             legend: { display: mixed && datasets.filter(d => !d.band).length > 1, align: 'end',
                       labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 }, filter: (item, d) => !d.datasets[item.datasetIndex].band } },
-            markers: { at: markers, color: cssVar('--faint', '#8a93a3') },
+            markers: { at: markers, color: cssVar('--faint', '#68717f') },
             tooltip: {
               filter: item => !item.dataset.band,
               callbacks: {
@@ -3234,14 +3195,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           if (c && (c.url || c.id)) window.open(c.url || `${REPO}/commit/${c.id}`, '_blank', 'noopener');
         },
         scales: {
-          x: { title: title('Nightly run'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
+          x: { title: title('Nightly run (weekly past 90 days)'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
           y: { type: log ? 'logarithmic' : 'linear', grid: { color: grid }, title: title(axisTitle(tab.axis, metrics[0])),
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
         },
         plugins: {
           legend: { display: datasets.filter(d => !d.band).length > 1, align: 'end',
                     labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 12 }, filter: item => !datasets[item.datasetIndex].band } },
-          markers: { at: markers, color: cssVar('--faint', '#8a93a3') },
+          markers: { at: markers, color: cssVar('--faint', '#68717f') },
           tooltip: { filter: item => !item.dataset.band, callbacks: {
             title: items => items.length ? changedTitle(`${formatWhen(runs[items[0].dataIndex].date, years)}${runs[items[0].dataIndex].manual ? ', started by hand' : ''}`,
                                                         markers, items[0].dataIndex) : '',
@@ -3453,7 +3414,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                                                                     m: c && c.metrics.get(metric), current: c && c.current });
         const header = el('header', {}, el('span', { className: 'case-title', title: kase },
           el('span', { className: 'shape' }, `${n} layers`),
-          el('span', { className: 'params' }, run.tokens_total ? `persistent decode, ${plural(run.tokens_total, 'token')} per dispatch` : 'persistent decode'), onPart(record)));
+          el('span', { className: 'params' }, run.tokens_total ? `persistent decode, ${plural(run.tokens_total, 'token')} per dispatch` : 'persistent decode'),
+          el('span', { className: 'params' }, 'every layer on one shared 8-core GEMV array'), onPart(record)));
         const ratio = c && c.metrics.get('dma_floor_ratio');
         if (ratio && ratio.range) header.append(el('span', { className: 'ratio', title: COMPONENT_METRICS.dma_floor_ratio }, ratio.range));
         const passed = c && c.metrics.get('tokens_passed');
@@ -3465,7 +3427,6 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           componentCell('tokens_passed', label('tokens_passed'),
                         [{ ...lane('tokens_passed'), bad: Boolean(passed && run.tokens_total && passed.value < run.tokens_total) }]),
           componentCell('elf_bytes', 'Compiled sizes', [lane('elf_bytes', 'ELF'), lane('pdi_bytes', 'image', 'series-2')]),
-          componentCell('n_cores', label('n_cores'), [lane('n_cores')]),
         ]);
         card.kase = kase;
         const block = compileStages(metric => c && c.metrics.get(metric), metric => `${target}|${kase}|${metric}`,
@@ -3504,7 +3465,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                                                                     m: c && c.metrics.get(metric), current: c && c.current });
         const header = el('header', {}, el('span', { className: 'case-title', title: kase },
           el('span', { className: 'shape' }, `${side} × ${side}`),
-          el('span', { className: 'params' }, run.images_total ? plural(run.images_total, 'COCO image') : 'COCO images'), onPart(record)));
+          el('span', { className: 'params' }, run.images_total ? plural(run.images_total, 'COCO image') : 'COCO images'),
+          el('span', { className: 'params' }, 'four device configurations in one full ELF, run one after another'), onPart(record)));
         const [b1, b8] = ['us_per_image_b1', 'us_per_image_b8'].map(m => c && c.metrics.get(m));
         if (b1 && b8 && b1.value) {
           header.append(el('span', { className: 'ratio', title: 'time per image at batch 8 over batch 1' },
@@ -3520,7 +3482,6 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                         [{ ...lane('images_passed'), bad: Boolean(passed && run.images_total && passed.value < run.images_total) }]),
           componentCell('ort_matches', label('ort_matches'), [lane('ort_matches')]),
           componentCell(sizes[0].metric, 'Compiled size', sizes),
-          componentCell('n_cores', label('n_cores'), [lane('n_cores')]),
         ]);
         card.kase = kase;
         const block = compileStages(metric => c && c.metrics.get(metric), metric => `${target}|${kase}|${metric}`,
@@ -3651,9 +3612,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             { type: 'line', label: 'final cost', data: costs, showLine: false, pointStyle: 'circle', pointRadius: 4,
               backgroundColor: cssVar('--series-1', '#1f6fb8'), borderColor: cssVar('--series-1', '#1f6fb8'), order: 2 },
             { type: 'line', label: 'the nightly before', data: old, showLine: false, pointStyle: 'line', pointRadius: 8,
-              borderColor: cssVar('--faint', '#8a93a3'), borderWidth: 2, order: 1 },
+              borderColor: cssVar('--faint', '#68717f'), borderWidth: 2, order: 1 },
             { type: 'line', label: 'failed', data: mine.map(d => d.passed ? null : floor), showLine: false, pointStyle: 'crossRot',
-              pointRadius: 6, borderColor: cssVar('--bad', '#c62f3c'), borderWidth: 2, order: 0 },
+              pointRadius: 6, borderColor: cssVar('--bad', '#bf2c37'), borderWidth: 2, order: 0 },
           ];
           return lineChart(canvas, {
             type: 'line',
@@ -3786,7 +3747,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return el('div', { className: 'placeholder' }, el('h3', {}, `No ${SECTIONS[section].title.toLowerCase()} checks yet`),
         el('p', {}, 'Nothing publishes to this section yet. A nightly check that does shows here as the performance and placement checks do: ',
           'a verdict on its latest run, a card per case against the nightly before, its trends, and the command that reproduces a failure.'),
-        el('p', {}, 'How to add one is under “How to add a check here” below.'));
+        el('p', {}, 'How to add one is in “How these checks work” below and in the About text on the Overview.'));
     }
 
     // A link named a metric: open the section's Trends toggle, if it has
@@ -4064,7 +4025,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function latencyConfig(runs, axis) {
       runs = [...(runs || [])].filter(r => r.status === 'completed' && r.updated_at && r.run_started_at).reverse();
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
-      const bad = cssVar('--bad', '#c62f3a');
+      const bad = cssVar('--bad', '#bf2c37');
       const warn = cssVar('--warn', '#9a5c00');
       // A failed run's point is red; a cancelled one (timed out, or never
       // picked up) amber: neither is an ordinary slow run.
@@ -4302,7 +4263,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     const LEVEL_RANK = { bad: 0, warn: 1, ok: 2, none: 3 };
     const worstLevel = levels => levels.reduce((a, b) => (LEVEL_RANK[b] ?? 3) < (LEVEL_RANK[a] ?? 3) ? b : a, 'none');
-    const STATE_WORDS = { bad: 'Needs attention', warn: 'Warnings', ok: 'All passing', none: 'No results yet' };
+    const STATE_WORDS = { bad: 'Needs a look', warn: 'Warnings', ok: 'All passing', none: 'No results yet' };
 
     // An area's row on the overview: its name, one status word, and one
     // line saying what is wrong (or that nothing is), the whole of it on
@@ -4322,9 +4283,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return tile;
     }
 
-    const lastRunText = dates => {
+    const lastRunText = (dates, now) => {
       const known = dates.filter(Number.isFinite);
-      return known.length ? `${ago(Math.max(...known), Date.now())} ago` : '';
+      return known.length ? `${ago(Math.max(...known), now)} ago` : '';
     };
 
     // A tile per section, in the order of the tabs: CI health's workflows
@@ -4343,7 +4304,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         return { level: v.level, who: n.npu, text: `${v.stale ? `${v.stale.short} ` : ''}${v.headline}` };
       });
       tiles.push(sectionTile('night', 'Kernels', 'The IRON kernel library on npu1 and npu2: correctness, cycles and object size per case.',
-        kernelLines, lastRunText((kernelNights || []).map(n => n.run.date)), kernelNights ? '' : 'Loading…',
+        kernelLines, lastRunText((kernelNights || []).map(n => n.run.date), now), kernelNights ? '' : 'Loading…',
         kernelNights ? kernelSummary(kernelNights, now) : ''));
       for (const [id, s] of Object.entries(SECTIONS)) {
         const mine = (loaded || []).filter(l => l.check.section === id);
@@ -4351,7 +4312,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const lines = verdicts.map((v, i) => ({ level: v.level, who: mine[i].check.short || mine[i].check.title,
                                                 text: `${v.stale ? `${v.stale.short} ` : ''}${v.headline}` }));
         const has = BANDS.some(b => b.section === id);
-        tiles.push(sectionTile(id, s.title, s.about, lines, lastRunText(verdicts.map(v => v.run.date)),
+        tiles.push(sectionTile(id, s.title, s.about, lines, lastRunText(verdicts.map(v => v.run.date), now),
           !has ? 'Not tracked yet' : loaded ? '' : 'Loading…'));
       }
       return tiles;
@@ -4542,7 +4503,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       hist = histories;
       const published = NPUS.map((n, i) => [n, [previous[i], latests[i]].filter(Boolean)]).filter(([, r]) => r.length);
       recent = collect(published.flatMap(([n, records]) => historiesOf(n, records)));
-      nights = renderDashboard(shown, published.length ? recent : null, new Map(catalogues.map(c => [c.npu, c])), indexes, Date.now(), hist);
+      nights = renderDashboard(shown, published.length ? recent : null, new Map(catalogues.map(c => [c.npu, c])), indexes, Date.now());
       renderWindowChanges(hist, shown);
       renderKernelList(nights, hist);
       started = true;

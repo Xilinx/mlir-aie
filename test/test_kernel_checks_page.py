@@ -5,12 +5,14 @@
 
 """Exercise the page's real data, chart and table code under node, without a browser."""
 
+import importlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -504,7 +506,7 @@ global.fetch = async url => {
   assert.equal(ciStatus(ci, NOW).text, 'Could not read ci-health/status.json (HTTP 502): reload the page.');
   assert.equal(ciVerdictBand(ci, NOW).className, 'verdict bad');
   const [tile] = overviewTiles(null, [], NOW, ci);
-  assert.deepEqual([tile.level, tile.children[1].text], ['bad', 'Needs attention']);
+  assert.deepEqual([tile.level, tile.children[1].text], ['bad', 'Needs a look']);
 })().catch(e => { console.error(e); process.exit(1); });
 """)
 
@@ -594,13 +596,46 @@ assert.ok(strip.children[1].ariaLabel.startsWith('1 Oct, 06:30 UTC'));
 """)
 
 
-def test_narrow_screens_hide_no_kernels_table_column():
-    # Each NPU's header spans its columns; hiding one slides the headers.
-    css = (
-        PAGE.read_text(encoding="utf-8").split("<style>", 1)[1].split("</style>", 1)[0]
-    )
-    rules = re.findall(r"#kernels[^{]*\{[^}]*display:\s*none", css)
-    assert all(".summary" in r for r in rules), rules
+def test_every_metric_the_checks_publish_has_a_label_and_a_description(page):
+    sys.path.insert(0, str(ROOT / "utils/component_checks"))
+    try:
+        stages = importlib.import_module("aiecc_stages")
+    finally:
+        sys.path.remove(str(ROOT / "utils/component_checks"))
+    published = set(stages.COMPILE_METRICS)
+    for source in (ROOT / "utils/component_checks").glob("*.py"):
+        text = source.read_text(encoding="utf-8")
+        # row(case, "metric", ...), ("metric", "unit") pairs, cells["metric"] and
+        # *_COUNTS entries.
+        published |= set(re.findall(r'row\(\s*[^,()]+,\s*"([a-z][a-z0-9_]*)"', text))
+        published |= set(re.findall(r'\(\s*"([a-z][a-z0-9_]*)",\s*"(?:bytes|cores|ms|s|us|tok/s|fps)"\s*\)', text))
+        published |= set(re.findall(r'cells\["([a-z][a-z0-9_]*)"\] = \(', text))
+        for block in re.findall(r"_COUNTS = \{([^}]*)\}", text):
+            published |= set(re.findall(r'"([a-z][a-z0-9_]*)":', block))
+    publish = (ROOT / "utils/kernel_checks/publish.py").read_text(encoding="utf-8")
+    published |= set(re.findall(r'"([a-z][a-z0-9_]*)": \{"value"', publish))
+    # The timing checks' per-batch YOLO rows, named by the batch they ran.
+    published |= {"us_per_image_b1", "us_per_image_b8", "fps_b1", "fps_b8"}
+    # n_cores is dropped (the author's call): the page shows the layout as words.
+    published -= {"n_cores"}
+    assert {"max_ulp", "compile_s", "unrouted", "tok_s", "placement_cost", "failed_mutations"} <= published
+    page(f"""
+const published = {json.dumps(sorted(published))};
+for (const m of [...published, ...ALL_METRICS]) {{
+  assert.ok(m in LABELS, `${{m}} has no label`);
+  assert.ok(m in METRICS || m in COMPONENT_METRICS, `${{m}} has no description`);
+}}
+// A chart's tooltip formats its value as its ticks do.
+db = fromRecords({{ npu1: [rec('1', 1, 'turbo', {{ 'a/1/i8/npu_us': ['us', 80.25] }}), rec('2', 2, 'turbo', {{ 'a/1/i8/npu_us': ['us', 81] }})] }});
+draw(el0, groupOf(db), ['turbo'], db);
+const tick = chart.options.scales.y.ticks.callback(81);
+assert.equal(chart.options.plugins.tooltip.callbacks.label({{ dataset: chart.data.datasets[0], dataIndex: 1, raw: 81 }}), `npu1: ${{tick}}`);
+// Information only: never worse or better.
+THRESHOLDS.ort_matches = {{ ...THRESHOLDS.ort_matches, neutral: true }};
+assert.equal(changeClass(8, 6, 'ort_matches'), '');
+// The removed helpers stay removed.
+assert.equal(typeof latestChange, 'undefined');
+""")
 
 
 def test_repeated_commits_stay_separate_runs(page):
@@ -610,8 +645,8 @@ assert.equal(new Set(db.order.map(p => p.id)).size, 7);
 assert.deepEqual(db.order.filter(o => o.npu === 'npu1').map(o => o.run), ['t1', 'p1', 't2', 't25', 'p25', 't3']);
 assert.deepEqual(s.byMode.get('turbo').map(p => p.row.value), [100, 110, 121]);
 assert.equal(s.factory, 'softmax');
-assert.equal(latestChange(s, ['turbo']), 0.1);
-assert.equal(latestChange(s, ['turbo', 'performance']), 0.1);
+assert.equal(latestMove(s, ['turbo']).change, 0.1);
+assert.equal(latestMove(s, ['turbo', 'performance']).change, 0.1);
 """)
 
 
@@ -727,7 +762,7 @@ db = fromRecords({ npu1: [rec('1', 100000, 'turbo', sm(100)), rec('2', 200000, '
 draw(el0, groupOf(db), ['performance', 'turbo'], db);
 assert.equal(chart.data.datasets.length, 1);
 assert.deepEqual(chart.data.datasets[0].data, [100, 110]);
-assert.equal(latestChange(db.series[0], ['performance']), null);
+assert.equal(latestMove(db.series[0], ['performance']), null);
 """)
 
 
@@ -1051,7 +1086,7 @@ assert.deepEqual(items.map(li => [li.className, li.children[0].text]),
   [['bad', 'npu1'], ['bad', 'npu1'], ['bad', 'npu2'], ['warn', 'npu1']]);
 assert.ok(items[0].text.includes('failed correctness'));
 assert.equal(items[0].children[1].children[1].children[0].children[0].title, 'mm/64/i8');
-assert.equal(items[2].children[1].text, 'No results have been published.');
+assert.equal(items[2].children[1].text, 'No results published yet.');
 
 // A regression is named in Needs a look with how far it moved; its kernel a click away.
 const worse = items[1];
@@ -1769,9 +1804,10 @@ assert.equal(llamaSummary({ [LLAMA]: { ...llamaAfter.rows[LLAMA], decode_tok_s: 
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:persist_grow, N 16 dispatch rate −7.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [LLAMA]);
 const [header, grid] = card.cards[0].children;
-assert.equal(header.text, '16 layerspersistent decode, 4 tokens per dispatchcompute-bound');
+// The layout is words on the card, not a metric.
+assert.equal(header.text, '16 layerspersistent decode, 4 tokens per dispatchevery layer on one shared 8-core GEMV arraycompute-bound');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['Decode tokens / s', 'Dispatch rate', 'Dispatch / token', 'Over the DMA floor',
-  'Tokens verified', 'Compiled sizes', 'Cores']);
+  'Tokens verified', 'Compiled sizes']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);
 // Down is worse for tokens per second, up is worse for time per token.
 assert.deepEqual(chip(grid.children[1]), ['chg worse']);
@@ -1854,9 +1890,9 @@ assert.equal(one(card, n => n.className === 'headline').text,
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n end-to-end / image (b1) +8.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [YOLO]);
 const [header, grid] = card.cards[0].children;
-assert.equal(header.text, '640 × 6408 COCO imagesb8 ÷ b1 per image 0.56×');
+assert.equal(header.text, '640 × 6408 COCO imagesfour device configurations in one full ELF, run one after anotherb8 ÷ b1 per image 0.56×');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['End-to-end / image', 'Images / s', 'Images verified', 'Match onnxruntime',
-  'Compiled size', 'Cores']);
+  'Compiled size']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);
 // A lane per batch; up is worse for time per image, down for images per second.
 assert.equal(grid.children[0].text, 'End-to-end / imageb15,400 µs +8.0%b83,000 µs 0.0%');
@@ -1896,7 +1932,7 @@ const index = { target: 'yolo26n-hw', runs: [night('6', yoloBefore.date, 'turbo'
   night('7', yoloAfter.date, 'turbo', { failed: [YOLO] })] };
 const card = componentBand(yolo, index, failedAt, NOW, yoloBefore);
 assert.equal(card.className, 'verdict bad');
-assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: the 640x640 detector.');
+assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: the 640×640 detector.');
 const verified = card.cards[0].children[1].children[2];
 assert.equal(verified.children[1].children[0].className, 'vals worse');
 const repro = one(card, n => n.className === 'repro');
@@ -2415,7 +2451,7 @@ const config = latencyConfig(runs, 'Run on main');
 assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['Run time', [84, 80, 90]], ['Wait to start', [2, 1, 5]]]);
 // A failed run's point is red and larger.
 assert.deepEqual(config.data.datasets[0].pointRadius, [2.5, 2.5, 4]);
-assert.equal(config.data.datasets[0].pointBackgroundColor[2], cssVar('--bad', '#c62f3a'));
+assert.equal(config.data.datasets[0].pointBackgroundColor[2], cssVar('--bad', '#bf2c37'));
 // Labelled axes; hover names the commit, a click opens the run.
 assert.equal(config.options.scales.y.title.text, 'Minutes');
 assert.equal(config.options.scales.x.title.text, 'Run on main');
@@ -2494,7 +2530,7 @@ assert.equal(criticalTile(crit({ latest_main: ended }), NOW).text, 'Failed on ma
 const done = (id, h, conclusion) => ({ ...run(id, h, 'completed', conclusion), updated_at: at(h - 1) });
 const config = latencyConfig([done(3, 2, 'cancelled'), done(2, 26, 'failure'), done(1, 50, 'success')], 'Run on main');
 assert.deepEqual(config.data.datasets[0].pointBackgroundColor,
-                 [cssVar('--series-1', '#5b6475'), cssVar('--bad', '#c62f3a'), cssVar('--warn', '#9a5c00')]);
+                 [cssVar('--series-1', '#5b6475'), cssVar('--bad', '#bf2c37'), cssVar('--warn', '#9a5c00')]);
 // Stale data: a gap is judged as of the publisher's last answer (plus the
 // staleness limit), not the reader's clock. Published at NOW - 0.5 h, read 14 h later:
 const fresh = status({ workflows: [{ ...nightly, runs: [run(1, 26, 'completed', 'success')], jobs: [] }] });
@@ -2579,7 +2615,8 @@ assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[1],
              'batch 16: 102 µs (seeds 99 µs to 104.9 µs)');
 // Both axes say what they are, the y axis with its unit.
 assert.equal(config.options.scales.y.title.text, 'Dispatch time per image (µs, fastest of 20) · ↓ better');
-assert.equal(config.options.scales.x.title.text, 'Nightly run');
+// Runs older than 90 days are thinned to weekly: the axis says so.
+assert.equal(config.options.scales.x.title.text, 'Nightly run (weekly past 90 days)');
 // Hover names the run's commit; a click opens it.
 const tips = config.options.plugins.tooltip.callbacks;
 assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
@@ -2635,7 +2672,7 @@ assert.equal(drawn.svg.filter(p => p.startsWith('<polyline')).length, 2);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polygon')).length, 2);
 // The axis titles, as the Chart.js chart has them.
 assert.ok(drawn.svg.some(p => p.includes('rotate(-90)') && p.includes('Dispatch time per image (µs, fastest of 20) · ↓ better')));
-assert.ok(drawn.svg.some(p => p.includes('>Nightly run<')));
+assert.ok(drawn.svg.some(p => p.includes('>Nightly run (weekly past 90 days)<')));
 // Each point: hover text with the commit, and a link to it.
 assert.ok(drawn.svg.some(p => p.includes('<title>2 Oct, 06:30 UTC\\nabcdef1 same revision\\nbatch 16: ') && p.includes('href="https://github.com/Xilinx/mlir-aie/commit/abcdef123456"')));
 assert.ok(canvas.hidden);
