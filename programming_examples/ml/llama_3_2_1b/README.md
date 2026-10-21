@@ -362,8 +362,7 @@ CompileTime values; `bench_quality_mh.py` takes the first two.
 | `--kset` | the sampler's resident top-k set size (default 8) |
 
 The rest of `build()` in `aie2_decode.py` is on its CLI too: `--p-max`, the
-tokens a dispatch can generate (1 to 4, default 4). `test_compile_time_keys.py`
-checks that each CompileTime value is part of the JIT cache key. Per dispatch,
+tokens a dispatch can generate (1 to 4, default 4). Per dispatch,
 as ScratchpadParameters, go the tokens it generates (`--passes`, default by
 `passes_for`), the first token's position (`--start-pos`) and the sampler's
 temperature, top-k and seed (`--sample-temp`, `--sample-topk`, `--sample-seed`;
