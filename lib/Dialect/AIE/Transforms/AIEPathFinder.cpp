@@ -2256,6 +2256,36 @@ void Pathfinder::TreeBuilder::claim() {
       }
     }
   }
+  // A circuit from or to a switchbox port (as --aie-split-flow-vias leaves a
+  // via) takes the wire that port is fed by or drives, though no hop of its
+  // tree crosses it.
+  auto takeWire = [](SwitchboxConnect &link, int k) {
+    if (k < 0)
+      return;
+    SwitchboxConnect::Cell &c = link.at(k, k);
+    c.usedCapacity++;
+    SwitchboxConnect::bumpDemand(c);
+  };
+  // A via's next segment starts where the last one ended, on the wire that
+  // one already takes.
+  if (!packetId && isDirectional(part.src.port.bundle))
+    for (auto &[ends, link] : pf.graph) {
+      int k = link.dstIndex(part.src.port);
+      if (ends.second != part.src.coords || ends.first == ends.second || k < 0)
+        continue;
+      PathEndPoint feeder{ends.first, link.srcPorts[k]};
+      if (llvm::none_of(pf.flows, [&](const Flow &f) {
+            return llvm::is_contained(f.dsts, feeder);
+          }))
+        takeWire(link, k);
+    }
+  for (const PathEndPoint &dst : part.dsts)
+    if (!packetId && isDirectional(dst.port.bundle)) {
+      int node = pf.nodeIds.at(dst);
+      for (const Edge &e : ArrayRef<Edge>(pf.adjacency[node])
+                               .drop_front(pf.wireEdgesBegin[node]))
+        takeWire(*e.sb, e.i);
+    }
   if (packetId) {
     st.treeDsts[flow].append(reached.begin(), reached.end());
     st.treeDsts[flow].append(met.begin(), met.end());
