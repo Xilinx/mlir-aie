@@ -28,14 +28,14 @@ using mm_fused_b_elem_t = bfloat16;
 // Write one 2x2 block of accumulators back to C. Templated on the accumulator
 // type because the two forms hold it differently -- aie::mmul in one,
 // aie::accum in the other -- while presenting the same to_vector.
-template <unsigned sizeC, typename Acc>
-__aie_inline void
-mm_fused_store_2x2(float *__restrict pC1, float *__restrict pC2, const Acc &C00,
-                   const Acc &C01, const Acc &C10, const Acc &C11) {
-  aie::store_v(pC1, C00.template to_vector<float>());
-  aie::store_v(pC1 + sizeC, C01.template to_vector<float>());
-  aie::store_v(pC2, C10.template to_vector<float>());
-  aie::store_v(pC2 + sizeC, C11.template to_vector<float>());
+template <unsigned sizeC, typename C, typename Acc>
+__aie_inline void mm_fused_store_2x2(C *__restrict pC1, C *__restrict pC2,
+                                     const Acc &C00, const Acc &C01,
+                                     const Acc &C10, const Acc &C11) {
+  aie::store_v(pC1, C00.template to_vector<C>());
+  aie::store_v(pC1 + sizeC, C01.template to_vector<C>());
+  aie::store_v(pC2, C10.template to_vector<C>());
+  aie::store_v(pC2 + sizeC, C11.template to_vector<C>());
 }
 
 #if AIE_TUNED_AIE2
@@ -47,6 +47,81 @@ mm_fused_store_2x2(float *__restrict pC1, float *__restrict pC2, const Acc &C00,
 template <unsigned colA, unsigned colB, unsigned r, unsigned t>
 constexpr bool mm_fused_unroll_ij =
     colA <= 4 && colB <= 4 && 2 * colB * r * t <= 256;
+#endif
+
+#if AIE_ARCH_AIE2P && !defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16)
+
+// AIE2P has no bf16 matrix unit: aie_api emulates mmul<4, 8, 8> on eight
+// 32-lane macs and mmul<8, 8, 8> as two of those, its accumulator two
+// registers wide. So an r = 8 row block runs as its two contiguous 4-row
+// halves, and the 2x2 register tile is (half, column block): four one-register
+// accumulators, as in mm.cc's (4, 8, 8) tile, where four mmul<8, 8, 8> would
+// hold eight. r = 4 pairs row blocks as the other forms do. The macs and
+// their k order are those of mmul<r, 8, 8> either way. B's s x t
+// blocks are row-major (block (i, j) at i * colB + j) when by_row, else
+// column-major; with b_t each holds B^T and is transposed once as loaded.
+template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
+          unsigned t, bool b_t, bool by_row, typename C>
+__aie_inline void mm_bf16_2x2_aie2p(const bfloat16 *__restrict pA,
+                                    const bfloat16 *__restrict pB,
+                                    C *__restrict pC) {
+  using MMUL = aie::mmul<4, s, t, bfloat16, bfloat16, accauto>;
+  static_assert(r == 4 || r == 8);
+  constexpr unsigned sizeA = r * s;
+  constexpr unsigned sizeB = s * t;
+  constexpr unsigned sizeC = r * t;
+  // Where the second 4-row operand starts: the block's lower half, or the
+  // next row block.
+  constexpr unsigned rows = r == 8 ? 1 : 2;
+  constexpr unsigned a2 = r == 8 ? MMUL::size_A : colA * sizeA;
+  constexpr unsigned c2 = r == 8 ? MMUL::size_C : colB * sizeC;
+  AIE_LOOP_MAX_ITERATION_COUNT(rowA / rows)
+  AIE_LOOP_UNROLL(2)
+  for (unsigned z = 0; z < rowA; z += rows) {
+    C *__restrict pC1 = pC + (z * colB) * sizeC;
+    const bfloat16 *__restrict pA_cur = pA + (z * colA) * sizeA;
+
+    AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
+    for (unsigned j = 0; j < colB; j += 2) {
+      const bfloat16 *__restrict pA1 = pA_cur;
+      const bfloat16 *__restrict pA2 = pA_cur + a2;
+      const bfloat16 *__restrict pB1 = pB + (by_row ? j : j * colA) * sizeB;
+      const bfloat16 *__restrict pB2 =
+          pB + (by_row ? j + 1 : (j + 1) * colA) * sizeB;
+      C *__restrict pC2 = pC1 + c2;
+
+      MMUL C00(aie::load_v<MMUL::size_C>(pC1));
+      MMUL C01(aie::load_v<MMUL::size_C>(pC1 + sizeC));
+      MMUL C10(aie::load_v<MMUL::size_C>(pC2));
+      MMUL C11(aie::load_v<MMUL::size_C>(pC2 + sizeC));
+
+      // Rolled, for the bfp16 form's reason (llvm-aie#1066).
+      AIE_LOOP_MAX_ITERATION_COUNT(colA)
+      for (unsigned i = 0; i < colA; i++) {
+        aie::vector<bfloat16, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
+        pA1 += sizeA;
+        aie::vector<bfloat16, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
+        pA2 += sizeA;
+        aie::vector<bfloat16, MMUL::size_B> B0 = aie::load_v<MMUL::size_B>(pB1);
+        aie::vector<bfloat16, MMUL::size_B> B1 = aie::load_v<MMUL::size_B>(pB2);
+        if constexpr (b_t) {
+          B0 = aie::transpose(B0, t, s);
+          B1 = aie::transpose(B1, t, s);
+        }
+        pB1 += by_row ? colB * sizeB : sizeB;
+        pB2 += by_row ? colB * sizeB : sizeB;
+
+        C00.mac(A0, B0);
+        C01.mac(A0, B1);
+        C10.mac(A1, B0);
+        C11.mac(A1, B1);
+      }
+      mm_fused_store_2x2<sizeC>(pC1, pC2, C00, C01, C10, C11);
+      pC1 += 2 * sizeC;
+    }
+  }
+}
+
 #endif
 
 #ifdef MM_FUSED_BFP16_B
@@ -134,83 +209,18 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
 
 #elif AIE_ARCH_AIE2P && !defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16)
 
-// AIE2P has no bf16 matrix unit: aie_api emulates mmul<4, 8, 8> on eight
-// 32-lane macs and mmul<8, 8, 8> as two of those, its accumulator two
-// registers wide. So an r = 8 row block runs as its two contiguous 4-row
-// halves, and the 2x2 register tile is (half, column block): four one-register
-// accumulators, as in mm.cc's (4, 8, 8) tile, where four mmul<8, 8, 8> would
-// hold eight. r = 4 pairs row blocks as the other forms do. The macs and
-// their k order are those of mmul<r, 8, 8> either way. Under
-// MM_FUSED_B_COL_MAJ B is B^T, laid out as in the AIE2 form below, and each
-// block is transposed once as loaded.
+// Under MM_FUSED_B_COL_MAJ B is B^T, laid out as in the AIE2 form below.
 template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
           unsigned t>
 __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
                                     const bfloat16 *__restrict pB,
                                     float *__restrict pC) {
-  using MMUL = aie::mmul<4, s, t, bfloat16, bfloat16, accauto>;
-  static_assert(r == 4 || r == 8);
-  constexpr unsigned sizeA = r * s;
-  constexpr unsigned sizeB = s * t;
-  constexpr unsigned sizeC = r * t;
 #ifdef MM_FUSED_B_COL_MAJ
   constexpr bool b_t = true;
 #else
   constexpr bool b_t = false;
 #endif
-  // Where the second 4-row operand starts: the block's lower half, or the
-  // next row block.
-  constexpr unsigned rows = r == 8 ? 1 : 2;
-  constexpr unsigned a2 = r == 8 ? MMUL::size_A : colA * sizeA;
-  constexpr unsigned c2 = r == 8 ? MMUL::size_C : colB * sizeC;
-  AIE_LOOP_MAX_ITERATION_COUNT(rowA / rows)
-  AIE_LOOP_UNROLL(2)
-  for (unsigned z = 0; z < rowA; z += rows) {
-    float *__restrict pC1 = pC + (z * colB) * sizeC;
-    const bfloat16 *__restrict pA_cur = pA + (z * colA) * sizeA;
-
-    AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
-    for (unsigned j = 0; j < colB; j += 2) {
-      const bfloat16 *__restrict pA1 = pA_cur;
-      const bfloat16 *__restrict pA2 = pA_cur + a2;
-      const bfloat16 *__restrict pB1 = pB + (b_t ? j : j * colA) * sizeB;
-      const bfloat16 *__restrict pB2 =
-          pB + (b_t ? j + 1 : (j + 1) * colA) * sizeB;
-      float *__restrict pC2 = pC1 + c2;
-
-      MMUL C00(aie::load_v<MMUL::size_C>(pC1));
-      MMUL C01(aie::load_v<MMUL::size_C>(pC1 + sizeC));
-      MMUL C10(aie::load_v<MMUL::size_C>(pC2));
-      MMUL C11(aie::load_v<MMUL::size_C>(pC2 + sizeC));
-
-      // Rolled, for the bfp16 form's reason (llvm-aie#1066).
-      AIE_LOOP_MAX_ITERATION_COUNT(colA)
-      for (unsigned i = 0; i < colA; i++) {
-        aie::vector<bfloat16, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
-        pA1 += sizeA;
-        aie::vector<bfloat16, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
-        pA2 += sizeA;
-        aie::vector<bfloat16, MMUL::size_B> B0 = aie::load_v<MMUL::size_B>(pB1);
-        aie::vector<bfloat16, MMUL::size_B> B1 = aie::load_v<MMUL::size_B>(pB2);
-        if constexpr (b_t) {
-          B0 = aie::transpose(B0, t, s);
-          B1 = aie::transpose(B1, t, s);
-          pB1 += colB * sizeB;
-          pB2 += colB * sizeB;
-        } else {
-          pB1 += sizeB;
-          pB2 += sizeB;
-        }
-
-        C00.mac(A0, B0);
-        C01.mac(A0, B1);
-        C10.mac(A1, B0);
-        C11.mac(A1, B1);
-      }
-      mm_fused_store_2x2<sizeC>(pC1, pC2, C00, C01, C10, C11);
-      pC1 += 2 * sizeC;
-    }
-  }
+  mm_bf16_2x2_aie2p<rowA, colA, colB, r, s, t, b_t, b_t>(pA, pB, pC);
 }
 
 #elif !defined(MM_FUSED_B_COL_MAJ)
