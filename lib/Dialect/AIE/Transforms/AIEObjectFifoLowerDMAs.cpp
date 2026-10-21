@@ -219,6 +219,29 @@ struct AIEObjectFifoLowerDMAsPass
         iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
     int64_t copies = repeatInHardware ? 1 : repeat;
 
+    // An out-of-order channel takes the pool's order out of its descriptors,
+    // and with it the chain that would carry the channel round again: it
+    // accepts the number of objects its queue was armed for and then stops.
+    // So the arming counts every object the fifo will receive, and a fifo
+    // with no count of its own has nothing to arm for.
+    if (endpoint.getOutOfOrder() &&
+        endpoint.getRouteDirection() == DMAChannelDir::S2MM) {
+      if (!iterCount)
+        return endpoint.emitOpError(
+            "receives out of order, so its channel accepts the objects it was "
+            "armed for and then stops; set iter_count to the number of passes "
+            "the fifo receives");
+      int64_t objects =
+          static_cast<int64_t>(descriptors.size()) * copies * *iterCount;
+      uint32_t maxRepeat = device.getTargetModel().getMaxRepeatCount();
+      if (objects - 1 > static_cast<int64_t>(maxRepeat))
+        return endpoint.emitOpError("receives ")
+               << objects << " objects out of order, but a channel arms for at "
+               << "most " << (maxRepeat + 1) << " before it has to be armed "
+               << "again";
+      taskCount = objects - 1;
+    }
+
     DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
     Block *endBlock = findEndOpBlock(program.getDmaBody());
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
