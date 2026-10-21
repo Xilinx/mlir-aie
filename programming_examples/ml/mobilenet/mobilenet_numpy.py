@@ -24,15 +24,19 @@ Kernel sources (translated into numpy below):
     aie_kernels/conv/bn_conv2dk3_dw.cc    (DW 3x3, ui8 -> ui8)
     aie_kernels/conv/bn_conv2dk3.cc       (init: 3x3 stride-2)
 
-STATUS — reference outputs to compare against:
+Reference outputs to compare against:
 
-    1. data/golden_output.txt        — brevitas-quantized reference (the
-                                        "ground truth" target). The full AIE
-                                        design matches this within atol=9
-                                        (a known-acceptable gap tracked in
-                                        mlir-aie issue #3009).
-    2. mobilenet_numpy.run() output  — this file. 929/1280 bit-exact vs
-                                        golden (max=2, mean=0.30).
+    1. mobilenet_numpy.run() output  — this file. The AIE design matches it
+                                        bit-exactly, every image of a batch.
+    2. data/golden_output.txt        — brevitas-quantized reference. This
+                                        file matches 959/1280 outputs, max 3,
+                                        mean 0.28 (python3 -m
+                                        mobilenet.mobilenet_numpy).
+
+The whole full-network gap is post_l1's average pool. The kernel rounds the
+pooled value at post_relu's scale, while the golden carries one more fractional
+bit through it: rounding the pool to nearest at half that scale and shifting
+FC1 by one more bit matches the golden in 1280/1280 outputs.
 
 Per-bn / per-chain bit-exactness (verified against brevitas fixtures in
 bottleneck_A/B/C with their own scale_factors.json):
@@ -42,9 +46,6 @@ bottleneck_A/B/C with their own scale_factors.json):
     bn13 → bn14 cascade chain          → 100% BIT-EXACT (bottleneck_C)
 
 So all conv1x1, conv1x1_skip, dw3x3, conv3x3, and cascade kernels are correct.
-The remaining max=2 / mean=0.30 gap on the FULL network most likely comes from
-init / bn0 (the unique 2-layer skip block) / post_l1 / post_l2 — blocks for
-which no per-bn brevitas fixture exists in this repo.
 """
 
 import json
@@ -507,25 +508,33 @@ def run(
     weights_dir,
     scales,
     return_intermediates=False,
+    start_at=None,
     stop_after=None,
     verbose=True,
 ):
-    """Run mobilenet end-to-end.
+    """Run mobilenet end-to-end, or a contiguous range of its blocks.
 
     Args:
-        input_i8: The (H, W, C) int8 input image.
-        weights_dir: The directory of the ``*_chain.txt`` weight files.
+        input_i8: The (H, W, C) input of the first block run: the int8 image,
+            or `start_at`'s input in its own dtype (uint8 for bn0).
+        weights_dir: The directory of the `*_chain.txt` weight files.
         scales: scale_factors_final.json's contents.
         return_intermediates: Also return each block's output by name.
+        start_at: A block name to start at, or None to start at init.
         stop_after: A block name to stop after, or None for the whole network.
         verbose: Print each block's output shape and range.
 
     Returns:
-        The final (1, 1, 1280) uint16 output, and the intermediates if asked.
+        The last block's output ((1, 1, 1280) uint16 for the whole network),
+        and the intermediates if asked.
+
+    Raises:
+        ValueError: If `start_at` names no block of the network.
     """
     x = input_i8
     intermediates = {}
-    for blk in NETWORK:
+    first = [blk.name for blk in NETWORK].index(start_at) if start_at else 0
+    for blk in NETWORK[first:]:
         if blk.name == "post_l1":
             chain = _load_chain(weights_dir, "post_conv_chain.txt")
             x = post_l1_avgpool_conv1x1(x, chain, scales["POST"]["conv1x1_1"])
@@ -583,8 +592,7 @@ def _main():
     assert isinstance(inter, dict)
     print(f"\nFinal: shape={out.shape}, dtype={out.dtype}")
 
-    # Compare against both references: brevitas golden + actual AIE output.
-    # See module docstring re: known issue #3009 (AIE-vs-golden delta=9).
+    # The module docstring explains the gap to the brevitas golden.
     ours = out.flatten().astype(np.int32)
     ours[ours > 127] -= 256  # interpret uint8-in-uint16 as int8 for fair cmp
 
