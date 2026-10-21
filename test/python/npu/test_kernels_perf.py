@@ -46,6 +46,7 @@ from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
+from aie.utils.compile.readobj import linked
 from aie.utils.compile.remarks import current_kernel_sources
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
@@ -231,11 +232,18 @@ def _grow_trace_size(trace_size: int, *, seen: int, expected: int) -> int:
 
 
 def _kernel_object_size(design, fn) -> int | None:
-    """Return only the tested kernel's object size, excluding harness objects."""
+    """Return the bytes of code and initialized data the tested entry point links.
+
+    What the entry reaches in its object (``readobj.linked``): not the
+    object's sibling entry points, symbol tables, or the bitcode
+    ``--check-lut-banks`` embeds.
+    """
     if Path(fn.object_file_name).suffix != ".o":
         return None
-    entry = design.compilable.get_cache_entry()
-    return (entry.directory / fn.object_file_name).stat().st_size
+    obj = design.compilable.get_cache_entry().directory / fn.object_file_name
+    reached = linked(obj, fn.name)
+    assert fn.name in reached.functions, f"{obj} does not define {fn.name}"
+    return reached.linked_bytes
 
 
 def _cycles_span(traced: kd.CallCycles) -> str:
