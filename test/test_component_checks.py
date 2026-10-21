@@ -17,6 +17,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "utils/component_checks"
 SMALL = ROOT / "test/place-tiles/sa_placer/test_sa_effort.mlir"
+MOBILENET = CHECKS / "fixtures/mobilenet.mlir"
+PUBLISH = ROOT / "utils/kernel_checks/publish.py"
 AIE_OPT = shutil.which("aie-opt")
 POSIX_SWEEP = pytest.mark.skipif(
     sys.platform == "win32",
@@ -193,6 +195,59 @@ def test_a_seed_that_does_not_place_fails_the_sweep(aie_opt, tmp_path):
     assert "custom op 'this' is unknown" in result.stdout
 
 
+@POSIX_SWEEP
+def test_a_seed_past_its_timeout_fails_and_publishes_as_a_failure(aie_opt, tmp_path):
+    result, rows, meta = sweep(
+        tmp_path,
+        "--aie-opt",
+        aie_opt,
+        "--seeds",
+        1,
+        "--fixture",
+        MOBILENET,
+        "--timeout",
+        0.01,
+    )
+    assert result.returncode == 1
+    assert meta["failed"] == ["mobilenet/seed1"] and meta["exitstatus"] == 1
+    assert [(d["passed"], d["timed_out"]) for d in meta["detail"]] == [(False, True)]
+    assert "timed out after 0.01 s" in result.stdout
+    record = publish_results(tmp_path, "sa-placer")
+    assert record["failed"] == ["mobilenet/seed1"] and record["exitstatus"] == 1
+    # The CPU it ran on stands in for the part host time is kept apart by.
+    assert record["device"] == record["provenance"]["cpu"] != "unknown"
+
+
+@POSIX_SWEEP
+def test_a_sweep_stopped_part_way_publishes_as_unfinished(aie_opt, tmp_path):
+    stages = load("aiecc_stages")
+    stopped = stages.run_measured(
+        [sys.executable, CHECKS / "sa_placer.py", "--aie-opt", aie_opt]
+        + ["--seeds", "1000", "--fixture", MOBILENET]
+        + ["--out", tmp_path / "perf.json", "--meta", tmp_path / "meta.json"],
+        None,
+        None,
+        5,
+        echo=False,
+    )
+    assert stopped.process.returncode == stages.TIMED_OUT
+    record = publish_results(tmp_path, "sa-placer")
+    assert record["failed"] == ["seed sweep"] and record["reason"] == "did not finish"
+    assert record["exitstatus"] == 1 and not record["published"]
+    assert record["provenance"]["fixtures"]
+
+
+def publish_results(results, target):
+    out = results / "published"
+    subprocess.run(
+        [sys.executable, PUBLISH, "perf", "--target", target, "--results", results]
+        + ["--run-id", "1", "--out", out, "--commit", "0123456789"],
+        check=True,
+        capture_output=True,
+    )
+    return json.loads((out / "runs/1.json").read_text())
+
+
 def test_the_fixture_digest_follows_the_fixtures_content(tmp_path):
     sa_placer = load("sa_placer")
     copy = tmp_path / SMALL.name
@@ -226,7 +281,6 @@ def test_the_mobilenet_fixture_is_still_valid_and_unplaced(aie_opt):
 def test_a_mobilenet_run_reports_its_times_per_image(hw):
     assert hw.parse_run(MOBILENET_B16_OUTPUT, 0, 16) == {
         "passed": True,
-        "launch_us": 1303.7,
         "us_per_image": 81.48,
         "us_per_image_range": "median 83.98, MAD 1.43, p95 86.31",
         "e2e_us_per_image": 89.47,
@@ -274,8 +328,7 @@ def test_only_passing_runs_chart_their_times(hw):
         for seed, batch, out in [
             (3, 1, MOBILENET_OUTPUT),
             (3, 16, MOBILENET_B16_OUTPUT),
-            # A wrong answer at batch 1 leaves seed 2 with nothing to
-            # stream against.
+            # A wrong answer charts no time.
             (2, 1, MOBILENET_OUTPUT.replace("PASS!", "FAIL!")),
             (2, 16, MOBILENET_B16_OUTPUT),
         ]
@@ -339,7 +392,6 @@ def test_only_passing_runs_chart_their_times(hw):
         "mobilenet/seed=3/batch=1/effort=default/us_per_image": 384.4,
         "mobilenet/seed=3/batch=1/effort=default/e2e_us_per_image": 480.9,
         "mobilenet/seed=3/batch=16/effort=default/us_per_image": 81.48,
-        "mobilenet/seed=3/batch=16/effort=default/streaming_us": 61.29,
         "mobilenet/seed=3/batch=16/effort=default/e2e_us_per_image": 89.47,
         "mobilenet/seed=2/batch=16/effort=default/us_per_image": 81.48,
         "mobilenet/seed=2/batch=16/effort=default/e2e_us_per_image": 89.47,
@@ -348,10 +400,6 @@ def test_only_passing_runs_chart_their_times(hw):
     assert (
         ranges["mobilenet/seed=3/effort=default/placement_cost"]
         == "placement 0123456789ab"
-    )
-    assert (
-        ranges["mobilenet/seed=3/batch=16/effort=default/streaming_us"]
-        == "from b1 384.4 and b16 1303.7"
     )
     assert (
         ranges["mobilenet/seed=3/batch=16/effort=default/us_per_image"]
@@ -476,7 +524,7 @@ def test_timed_yolo26n_runs_report_each_batch(yolo):
         ("yolo26n/640/elf_bytes", "bytes", 1_234_567, None),
         ("yolo26n/640/n_cores", "cores", 32, None),
         ("yolo26n/640/compile_s", "s", 95.1, None),
-        ("yolo26n/640/compile_peak_rss_mb", "MB", 3100.0, None),
+        ("yolo26n/640/compile_peak_rss_mb", "MiB", 3100.0, None),
     ]
     # Every metric the check publishes has a threshold the page and the PR
     # report share.
@@ -529,6 +577,12 @@ def test_an_untimed_llama_run_has_no_timing(llama):
     assert set(llama.parse_timing(LLAMA_OUTPUT).values()) == {None}
 
 
+def test_the_hardware_check_places_at_the_designs_own_default_effort(hw):
+    # The flags the design compiles with when nothing overrides them.
+    assert f"--sa-effort={hw.EFFORTS['default']}" in hw.sa_placer_flags()
+    assert hw.EFFORTS["full"] == 1.0
+
+
 @pytest.mark.parametrize("batches", ["0", "-3", "two"])
 def test_the_hardware_check_refuses_a_batch_that_is_not_positive(batches, tmp_path):
     result = subprocess.run(
@@ -554,7 +608,7 @@ def test_a_replayed_placement_matches_placing_the_design(hw, aie_opt):
     ).stdout
     digest = hw.placement_of(placed)
     assert digest and len(digest) == 12
-    assert hw.replay_placement(aie_opt, str(SMALL), 1, 1.0) == (digest, 12)
+    assert hw.replay_placement(aie_opt, str(SMALL), 1, 1.0, 60) == (digest, 12)
     assert hw.placement_of(SMALL.read_text()) is None
 
     compiles = [
@@ -564,7 +618,7 @@ def test_a_replayed_placement_matches_placing_the_design(hw, aie_opt):
         # A compile whose placement was not read takes the replay's.
         {"seed": 1, "effort_label": "full", "placement": None},
     ]
-    placed = hw.place_seed(compiles, aie_opt, str(SMALL))
+    placed = hw.place_seed(compiles, aie_opt, str(SMALL), 60)
     assert placed[0] == {
         "seed": 1,
         "effort_label": "full",
@@ -726,7 +780,7 @@ def test_the_allocator_report_is_one_case_named_by_its_failed_properties(tmp_pat
         "allocator/unsolved": (2, "designs"),
         "allocator/illegal": (0, "designs"),
         "allocator/avoidable_crossings": (1, "crossings"),
-        "allocator/bank_pair_sharing": (0.25, "pairs"),
+        "allocator/bank_pair_sharing": (0.25, "fraction"),
         "allocator/wall_s": (103.0, "s"),
     }
     # A crash before the report: a failure, and no rows to chart.
@@ -738,4 +792,6 @@ def test_the_allocator_report_is_one_case_named_by_its_failed_properties(tmp_pat
 def test_a_placement_that_fails_to_replay_has_no_cost(hw, aie_opt, tmp_path):
     bad = tmp_path / "bad.mlir"
     bad.write_text("not MLIR\n")
-    assert hw.replay_placement(aie_opt, str(bad), 1, 1.0) == (None, None)
+    assert hw.replay_placement(aie_opt, str(bad), 1, 1.0, 60) == (None, None)
+    # Nor does one that runs past its timeout.
+    assert hw.replay_placement(aie_opt, str(MOBILENET), 3, 1.0, 0.01) == (None, None)

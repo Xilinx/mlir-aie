@@ -413,7 +413,8 @@ def run_interleaved(
 
     Raises:
         TimeoutError: With `idle`, another process held the NPU for
-            ``IDLE_WAIT`` seconds.
+            ``IDLE_WAIT`` seconds, or used it during more than ``3 * rounds``
+            rounds; the message names its pids.
         RuntimeError: A callable's median call waited for a CPU past
             `max_cpu_wait_us` (`cpu_wait_us`) in its median round: the host was
             busy enough to hold the timing thread off its core, so the
@@ -435,7 +436,7 @@ def run_interleaved(
     live = set(range(len(fns)))
     if idle:
         wait_idle(log, holding=True)
-    r = 0
+    r = retries = 0
     with CompletionCores(before) if completion_cores else nullcontext():
         while r < rounds:
             timed = {}
@@ -456,6 +457,12 @@ def run_interleaved(
                     float(np.median(waits)) if waits else 0.0,
                 )
             if idle and (held := other_npu_users(holding=True)):
+                retries += 1
+                if retries > rounds * 3:
+                    raise TimeoutError(
+                        f"pid {sorted(held)} used the NPU during {retries} rounds; "
+                        "time with the NPU otherwise idle"
+                    )
                 log(
                     f"    pid {sorted(held)} used the NPU during a round: timing it again"
                 )

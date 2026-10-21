@@ -173,9 +173,10 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
         total += block;
       }
 #endif
-      // A probability's quotient is at most 128, so the top gap's divides by
-      // restoring division on total * 2**b: 64-bit division is a libcall
-      // Peano lacks.
+      // The top gap's quotient, exp_table[0] * 2**prob_shift / total, divides
+      // by restoring division on total * 2**b: 64-bit division is a libcall
+      // Peano lacks. Eight bits are enough because a probability saturates at
+      // 127: a quotient of 256 or more takes every bit and rounds to 256.
       int64_t steps[8];
       AIE_LOOP_UNROLL_FULL
       for (int b = 0; b < 8; b++)
@@ -190,6 +191,9 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
         level |= (int)take << b;
       }
       level += (rem + rem > total) || (rem + rem == total && (level & 1));
+      // A gap reaching 127 or more takes 127, so the walk starts there, and
+      // 2 * level - 1 below has no bit past steps[7].
+      level = level > 127 ? 127 : level;
       // A probability depends only on its gap below the top score, and the
       // table falls, so the rounded probability falls with the gap: walk the
       // levels down, giving each gap the highest one it reaches. A gap
@@ -206,11 +210,12 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
       for (int b = 0; b < 8; b++)
         bar += (((2 * level - 1) >> b) & 1) ? steps[b] : 0;
       // So bar >> k fits 32 bits until it goes below 0, the last level the
-      // walk takes, where only its sign counts: a fall of 2**30 or more takes
-      // it there as surely as the whole one.
+      // walk takes, where only its sign counts. It starts below 2**29, so a
+      // fall of 2**29 or more takes it there as surely as the whole one, and
+      // the walk's two falls from there stay above -2**31. k is at most 31.
       const uint32_t mask = (uint32_t)(unit - 1);
       const int64_t fall = steps[1] >> k;
-      const int32_t fall_high = fall > (1 << 30) ? (1 << 30) : (int32_t)fall;
+      const int32_t fall_high = fall > (1 << 29) ? (1 << 29) : (int32_t)fall;
       const uint32_t fall_low = (uint32_t)steps[1] & mask;
       int32_t bar_high = (int32_t)(bar >> k);
       uint32_t bar_low = (uint32_t)bar & mask;
@@ -220,9 +225,8 @@ void attention_i8(const int8_t *__restrict q_row, const int8_t *__restrict kt,
       for (int d = 0; level > 0 && d < 256; level--) {
         const int32_t bound =
             bar_high < 0 ? -1 : bar_high - (bar_low == 0 && (level & 1) == 0);
-        const int8_t value = level > 127 ? 127 : level;
         while (d < 256 && exp_table[d] > bound)
-          by_gap[d++] = value;
+          by_gap[d++] = level;
         // One level down, bar falls by 2 * total.
         bar_high -= fall_high + (bar_low < fall_low);
         bar_low = (bar_low - fall_low) & mask;

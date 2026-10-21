@@ -108,8 +108,9 @@ def main():
     with open(A_DATA + "scale_factors_fused.json") as f:
         fused_sf = json.load(f)
     x = _hwc(
-        np.loadtxt(A_DATA + "before_ifm_mem_fmt_1x1.txt", delimiter=",", dtype=np.int64)
-        .astype(np.uint8),
+        np.loadtxt(
+            A_DATA + "before_ifm_mem_fmt_1x1.txt", delimiter=",", dtype=np.int64
+        ).astype(np.uint8),
         16,
         112,
         112,

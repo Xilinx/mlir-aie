@@ -457,21 +457,33 @@ _LEAK_TIES = 1024
 
 
 @iron.jit
-def _after_a_conv_design(x: In, y: In, z: Out):
-    conv = kernels.conv2dk1(input_channels=8, output_channels=8)
+def _after_a_kernel_design(x: In, y: In, z: Out, *, first: CompileTime[str]):
     mul = kernels.mul(tile_size=_LEAK_TIES)
-    act_ty, wts_ty, conv_out_ty = conv.arg_types()[:3]
     x_ty, y_ty, z_ty = mul.arg_types()
     of_x = ObjectFifo(x_ty, name="x", depth=1)
     of_y = ObjectFifo(y_ty, name="y", depth=1)
     of_z = ObjectFifo(z_ty, name="z", depth=1)
-    act = Buffer(act_ty, name="act", initial_value=np.zeros(256, np.int8))
-    wts = Buffer(wts_ty, name="wts", initial_value=np.zeros(64, np.int8))
-    conv_out = Buffer(conv_out_ty, name="conv_out")
+    if first == "conv2dk1":
+        conv = kernels.conv2dk1(input_channels=8, output_channels=8)
+        act_ty, wts_ty, conv_out_ty = conv.arg_types()[:3]
+        bufs = [
+            Buffer(act_ty, name="act", initial_value=np.zeros(256, np.int8)),
+            Buffer(wts_ty, name="wts", initial_value=np.zeros(64, np.int8)),
+            Buffer(conv_out_ty, name="conv_out"),
+        ]
+        kernel, scalars = conv, (32, 8, 8, 1)
+    else:
+        fused = kernels.fused_mm(rounding="floor")
+        kernel = fused.mm_fused_k_step
+        bufs = [
+            Buffer(t, name=f"k_step_{i}", initial_value=np.zeros(*kd.shape_dtype(t)))
+            for i, t in enumerate(kernel.arg_types()[:3])
+        ]
+        scalars = (0,)
 
-    def core(of_x, of_y, of_z, act, wts, conv_out, conv_even, conv, mul):
+    def core(of_x, of_y, of_z, a, b, c, conv_even, kernel, mul):
         conv_even()
-        conv(act, wts, conv_out, 32, 8, 8, 1)
+        kernel(a, b, c, *scalars)
         tx, ty, tz = of_x.acquire(1), of_y.acquire(1), of_z.acquire(1)
         mul(tx, ty, tz)
         of_x.release(1)
@@ -480,8 +492,8 @@ def _after_a_conv_design(x: In, y: In, z: Out):
 
     worker = Worker(
         core,
-        [of_x.cons(), of_y.cons(), of_z.prod(), act, wts, conv_out]
-        + [kernels.conv_even(), conv, mul],
+        [of_x.cons(), of_y.cons(), of_z.prod(), *bufs]
+        + [kernels.conv_even(), kernel, mul],
     )
 
     def seq(host_x, host_y, host_z, x_in, y_in, z_out):
@@ -493,21 +505,29 @@ def _after_a_conv_design(x: In, y: In, z: Out):
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
-@pytest.mark.kernel_check("conv2dk1", "mul", invalidates_timing=True)
-def test_a_kernel_leaves_the_rounding_mode_as_it_found_it():
+@pytest.mark.kernel_check("conv2dk1", "fused_mm", "mul", invalidates_timing=True)
+@pytest.mark.parametrize(
+    "first, odd_below", [("conv2dk1", False), ("mm_fused_k_step", True)]
+)
+def test_a_kernel_leaves_the_rounding_mode_as_it_found_it(first, odd_below):
     """A kernel that needs its own rounding must put the core's back.
 
-    conv2dk1 rounds positive_inf; the setup left conv_even for whatever runs
-    next. On ties whose lower neighbour is even, conv_even rounds down and
-    positive_inf up, so mul run after conv2dk1 shows which mode it found.
+    The setup leaves conv_even for whatever runs next. conv2dk1 rounds
+    positive_inf, which rounds a tie up where conv_even rounds it down (an
+    even lower neighbour); a floor build of fused_mm's k step rounds down
+    where conv_even rounds up (an odd one). mul run after either shows which
+    mode it found.
     """
-    x, y, below = _bf16_product_ties(_LEAK_TIES, odd_below=False)
+    x, y, below = _bf16_product_ties(_LEAK_TIES, odd_below=odd_below)
+    want = below + int(odd_below)
     z = iron.zeros(_LEAK_TIES, dtype=bfloat16, device="npu")
-    _after_a_conv_design(iron.tensor(x, device="npu"), iron.tensor(y, device="npu"), z)
+    _after_a_kernel_design(
+        iron.tensor(x, device="npu"), iron.tensor(y, device="npu"), z, first=first
+    )
     got = z.numpy().astype(bfloat16)
-    assert np.array_equal(got, _bf16_from_bits(below)), (
-        f"{int((got == _bf16_from_bits(below + 1)).sum())} of {_LEAK_TIES} ties "
-        "rounded up: conv2dk1 left the core in its own rounding mode"
+    assert np.array_equal(got, _bf16_from_bits(want)), (
+        f"{int((got != _bf16_from_bits(want)).sum())} of {_LEAK_TIES} ties "
+        f"rounded the other way: {first} left the core in its own rounding mode"
     )
 
 

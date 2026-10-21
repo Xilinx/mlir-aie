@@ -1,18 +1,24 @@
 <!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
-# Operators and declarations (`aie.utils.compile.jit`)
+# Operators and declarations
 
 An operator class declares what it takes in its body: its parameters
 (`param`), the choices a device resolves (`tunable`), its operands (`In`,
 `Out`, `InOut`) and the values each call supplies (`per_call`). The class
 body is read into a `Declaration` when it finishes, so the shapes, the cache
-keys and the per-call words all come from one place. A library's operator
-base (IRON's) subclasses `Operator` with `library=True` and adds building,
-tuning and dispatch.
+keys and the per-call words all come from one place. An operator library
+subclasses `Operator` with `library=True` and adds building, tuning and
+dispatch; amd/IRON's `iron.common.declare.Operator` does
+([amd/IRON#222](https://github.com/amd/IRON/pull/222)).
+
+`Operator` and `Unresolvable` live in `aie.utils.compile.jit.operator`;
+`param`, `tunable`, `per_call` and `Select` in `aie.utils.compile.jit.params`;
+`In`, `Out` and `InOut` are exported from `aie.utils.compile.jit`.
 
 ```python
-from aie.utils.compile.jit.markers import In, Out
+from aie.iron.device import NPU2
+from aie.utils.compile.jit import In, Out
 from aie.utils.compile.jit.operator import Operator
 from aie.utils.compile.jit.params import param, per_call, tunable
 
@@ -29,9 +35,21 @@ class Scale(Operator):
         return self.replace(tile=self.tile or 16)
 
 
+device = NPU2()
 op = Scale(M=1024)          # Scale(M=1024, factor=1.0, tile=None)
-done = op.resolved(device)  # tile=16; done.is_resolved, done.resolved_for
+done = op.resolved(device)  # Scale(M=1024, factor=1.0, tile=16)
 ```
+
+`replace` returns a copy with the parameters it names changed. A parameter
+the caller never gave, computed by a `derive` or a function default, is
+computed again from the new values; one the caller gave, a `derive` one
+included, keeps its value (pass `None` to compute it again).
+
+`In`, `Out` and `InOut` take the same arguments: the host `dims` (integers,
+`param()`s and `Select`s), then `dtype`, `obj_shape` (what one ObjectFifo
+element holds), `per` (the `param()` the stream is split over), `depth`,
+`replicate`, `when` (a bool `param()` the tensor exists under) and `like`
+(an input whose shape this one takes on each call).
 
 A per-call value is an expression in one integer the host gives each call
 (`PerCall` and `Affine` in `aie.helpers.taplib`). The host evaluates it, and

@@ -96,16 +96,16 @@
     },
     {
       "id": 6,
-      "name": "int8-add-library-gap",
-      "prompt": "Write an IRON design for elementwise add of two int8 vectors (32768 elements each) on NPU2, saturating on overflow.",
-      "expected_output": "kernels.add is bfloat16-only, so the library does not cover int8 add. The correct answer hand-writes a vectorized int8 C++ kernel with saturation enabled, and says why the built-in was not usable. It should not silently call kernels.add with an int8 dtype.",
+      "name": "int32-add-library-gap",
+      "prompt": "Write an IRON design for elementwise add of two int32 vectors (32768 elements each) on NPU2, saturating on overflow.",
+      "expected_output": "kernels.add covers bf16 and int8 only, and no other factory adds int32 vectors (add_weighted takes uint8 or int16), so the library does not cover a saturating int32 add. The correct answer hand-writes a vectorized int32 C++ kernel with saturation enabled, and says why the built-in was not usable. It should not call kernels.add with an int32 dtype.",
       "files": [],
       "assertions": [
-        "The design does NOT call kernels.add for the int8 data (kernels.add is bf16-only and would be wrong here)",
-        "A hand-written C++ kernel is provided for the int8 elementwise add",
-        "The response explains that the built-in add kernel does not support int8, rather than silently hand-writing without comment",
-        "The C++ kernel calls aie::set_saturation(aie::saturation_mode::saturate) (or equivalent) to get saturating overflow behavior",
-        "The C++ kernel uses fixed-width types (int8_t) and AIE API vector operations rather than bare int and scalar loops",
+        "The design does NOT call kernels.add for the int32 data (kernels.add takes only bf16 and int8 and would raise here)",
+        "A hand-written C++ kernel is provided for the int32 elementwise add",
+        "The response explains that the built-in add kernel does not support int32, rather than silently hand-writing without comment",
+        "The C++ kernel calls aie::set_saturation(aie::saturation_mode::saturate) (or equivalent) and adds in an accumulator wide enough to hold the overflow before converting back to int32",
+        "The C++ kernel uses fixed-width types (int32_t) and AIE API vector operations rather than bare int and scalar loops",
         "Kernel pointers passed into the hot loop are marked __restrict"
       ]
     },

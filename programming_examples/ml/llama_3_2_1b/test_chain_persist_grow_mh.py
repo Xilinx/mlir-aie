@@ -50,6 +50,7 @@ from llama_oracle import (
     greedy_verdict,
     requant,
     topk_sample_reference,
+    xoshiro_seed,
 )
 from ml_dtypes import bfloat16
 from numpy_llama_ref import _load_bf16, _load_qw, rope_table
@@ -150,7 +151,7 @@ def set_pristine(layers, pristine):
         layers[L]["v_scales_slot"] = vslot[L].copy()
 
 
-def replay(shape, records, passes, residual, layers, p0, rope, lm, sample, plan):
+def replay(shape, records, passes, residual, layers, p0, rope, lm, sampler, rng, plan):
     """Check a dispatch's records against the numpy oracle.
 
     The oracle runs from the caches the caller set and position p0 on,
@@ -164,16 +165,18 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sample, plan)
         p0: The first token's position.
         rope: The RoPE table.
         lm: (embed_i8, embed_sc, final_norm gamma).
-        sample: The sampler's (temperature, top_k, seed).
+        sampler: The sampler's (temperature, top_k).
+        rng: The generation's xoshiro state as the dispatch found it.
         plan: Per token, (the prompt token it inputs, or None to input the
             previous token's sample (the first token: residual); the index of
             the record the lm_head and sampler left for it, or None).
 
     Returns:
-        (failed tokens, the last token's final residual).
+        (failed tokens, the last token's final residual, the xoshiro state
+        the dispatch leaves).
     """
     embed_i8, embed_sc, gamma = lm
-    temperature, top_k, seed = sample
+    temperature, top_k = sampler
     fails = 0
     hidden = None
     cur = residual
@@ -192,11 +195,11 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sample, plan)
             continue
         dev_tok = dev_toks[rec_at]
         if temperature > 0:
-            ref = topk_sample_reference(
-                logits, temperature, top_k, seed, k_set=shape.kset
+            ref, rng = topk_sample_reference(
+                logits, temperature, top_k, rng, k_set=shape.kset
             )
             ok = dev_tok == ref
-            tag = "sampled"
+            tag = f"sampled, state {int(rng[0]):08x}"
         else:
             ok, ref, tag = greedy_verdict(logits, dev_tok)
         cur = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
@@ -213,7 +216,14 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sample, plan)
             f"dev={dev_tok} ref={ref}  [{tag}]",
             flush=True,
         )
-    return fails, hidden
+    return fails, hidden, rng
+
+
+def check_rng(shape, stage, rng):
+    """Print whether `stage` holds the xoshiro state `rng`; return 1 if not."""
+    ok = shape.rng_state(stage) == list(rng)
+    print(f"  sampler state: {'PASS' if ok else 'FAIL'}", flush=True)
+    return int(not ok)
 
 
 def check_final(shape, stage, hidden, row):
@@ -349,6 +359,8 @@ def main(argv=None):
         p.error(f"--passes must be 1 to --p-max ({shape.p_max})")
     fseed = opts.seed
     sample = (opts.sample_temp, opts.sample_topk, opts.sample_seed)
+    sampler = sample[:2]
+    rng0 = xoshiro_seed(opts.sample_seed)
     n_disp = opts.dispatches
     p0 = opts.start_pos
     if p0 is None:
@@ -446,7 +458,7 @@ def main(argv=None):
     )
 
     kv0 = shape.pack_kv(layers)
-    stage0 = shape.pack_stage(layers, gamma, residual0)
+    stage0 = shape.pack_stage(layers, gamma, residual0, opts.sample_seed)
 
     # --from-run leaves the NPU alone.
     decoder = None
@@ -486,7 +498,7 @@ def main(argv=None):
             records = dispatch(
                 stage_t,
                 kv_t,
-                shape.params(pos, passes, sample, batch, batch_ends_prompt=ends),
+                shape.params(pos, passes, sampler, batch, batch_ends_prompt=ends),
             )
             kv_t.to("cpu")
             stage_t.to("cpu")
@@ -506,14 +518,14 @@ def main(argv=None):
         # dispatch: a token slot that does not run moves nothing.
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
-        whole = dispatch(stage_t, kv_t, shape.params(p0, passes, sample))
+        whole = dispatch(stage_t, kv_t, shape.params(p0, passes, sampler))
         kv_t.to("cpu")
         stage_t.to("cpu")
         kv_whole, stage_whole = kv_t.numpy().copy(), stage_t.numpy().copy()
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
         recs = [
-            dispatch(stage_t, kv_t, shape.params(p0 + t, 1, sample))
+            dispatch(stage_t, kv_t, shape.params(p0 + t, 1, sampler))
             for t in range(passes)
         ]
         kv_t.to("cpu")
@@ -534,7 +546,7 @@ def main(argv=None):
             )
             carry_fails += not same
         dev_tokens = tokens_of(whole, passes)
-        tok_fails, hidden = replay(
+        tok_fails, hidden, rng = replay(
             shape,
             whole,
             passes,
@@ -543,10 +555,12 @@ def main(argv=None):
             p0,
             rope,
             lm,
-            sample,
+            sampler,
+            rng0,
             [(None, t) for t in range(passes)],
         )
         hidden_fails += check_final(shape, stage_whole, hidden, 0)
+        carry_fails += check_rng(shape, stage_whole, rng)
         wrong = int(np.count_nonzero(kv_whole != shape.pack_kv(layers)))
         print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
         carry_fails += wrong != 0
@@ -556,7 +570,7 @@ def main(argv=None):
             records = dispatch(
                 iron.tensor(stage0, dtype=np.int8),
                 iron.tensor(kv0, dtype=np.int32),
-                shape.params(p0, passes, sample),
+                shape.params(p0, passes, sampler),
             )
             toks = tokens_of(records, passes)
             if r == 0:
@@ -570,7 +584,7 @@ def main(argv=None):
                 print(f"repeat {r} differs from repeat 0", file=sys.stderr)
                 return 1
         set_pristine(layers, pristine)
-        tok_fails, _ = replay(
+        tok_fails, _, _ = replay(
             shape,
             first,
             passes,
@@ -579,7 +593,8 @@ def main(argv=None):
             p0,
             rope,
             lm,
-            sample,
+            sampler,
+            rng0,
             [(None, t) for t in range(passes)],
         )
     else:
@@ -614,6 +629,7 @@ def main(argv=None):
                 return 0
         kv_dev = kv0.copy()
         residual_d = residual0
+        rng = rng0
         for d, ((pos, passes, _, _), (toks_out, stage, kv_idx, kv_val)) in enumerate(
             zip(schedule, runs)
         ):
@@ -626,7 +642,7 @@ def main(argv=None):
             dev_tokens += toks
             if len(schedule) > 1:
                 print(f"dispatch {d} (pos {pos}): tokens {toks}", flush=True)
-            fails, hidden = replay(
+            fails, hidden, rng = replay(
                 shape,
                 toks_out,
                 passes,
@@ -635,10 +651,12 @@ def main(argv=None):
                 pos,
                 rope,
                 lm,
-                sample,
+                sampler,
+                rng,
                 plans[d],
             )
             tok_fails += fails
+            carry_fails += check_rng(shape, stage, rng)
             # The device appended exactly the rows the oracle did, and wrote
             # nothing else.
             kv_dev[kv_idx] = kv_val
@@ -748,7 +766,7 @@ def main(argv=None):
                 iron.zeros([shape.p_max * REC_BYTES], dtype=np.int8),
                 iron.tensor(stage0, dtype=np.int8),
             ],
-            shape.params(p0, passes, sample),
+            shape.params(p0, passes, sampler),
             opts,
         )
     return 0

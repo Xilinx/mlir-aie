@@ -748,6 +748,7 @@ gated_delta_rule/1312x4/bfloat16_float32+bfloat16/blocks=2/partial
 gated_delta_rule/1312x6/bfloat16_float32+bfloat16/blocks=2
 gated_delta_rule/16x6/bfloat16_float32+bfloat16/blocks=3/key_dim=2/rows=2/value_dim=2/edge-tiny-valid17
 gated_delta_rule/16x6/bfloat16_float32+bfloat16/blocks=3/key_dim=2/rows=2/value_dim=2/edge-tiny-valid2
+gated_delta_rule/208x4/bfloat16_float32+bfloat16/blocks=2/key_dim=17/rows=4/value_dim=16/edge-unaligned-v
 gated_delta_rule/224x4/bfloat16_float32+bfloat16/blocks=2/key_dim=17/rows=4/value_dim=20/edge-odd-dims
 gated_delta_rule/548x8/bfloat16_float32+bfloat16/blocks=4/key_dim=128/rows=2/iron-decode
 gated_delta_rule/8768x4/bfloat16_float32+bfloat16/blocks=2/key_dim=128/rows=32/iron-prefill
@@ -767,6 +768,10 @@ add/2560x4/int8
 add/64x4/int8/no-down-shift
 attention_i8/640x2/int8
 attention_i8/1024x2/int8/head_dim=32/key_dim=64/seq_len=256/width=16/keys-wider
+attention_i8/640x2/int8/prob-shift-8
+attention_i8/640x2/int8/prob-shift-10
+attention_i8/640x2/int8/prob-shift-30
+attention_i8/640x2/int8/out-shift-clip
 bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128
 bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128/rounding=symmetric_inf/bias-symmetric-inf
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-bottom-row

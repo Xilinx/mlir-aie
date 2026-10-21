@@ -157,9 +157,7 @@ def main():
         "YCXD",
     ).reshape(out_c, out_h, out_w)
     golden = _loadtxt_i8(fix + f"golden_output{single}.txt")
-    references = [
-        ("brevitas", golden.reshape(out_c, out_h, out_w), _tolerance(key))
-    ]
+    references = [("brevitas", golden.reshape(out_c, out_h, out_w), _tolerance(key))]
     if key == "chain:regular":
         with open(fix + CHAINS[opts.target][1]) as f:
             scales = json.load(f)

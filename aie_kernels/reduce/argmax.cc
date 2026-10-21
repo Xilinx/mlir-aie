@@ -9,6 +9,7 @@
 #include <type_traits>
 
 #include "../aie_kernel_utils.h"
+#include "reduce_identity.h"
 #include <aie_api/aie.hpp>
 
 #ifdef ARGMAX_ELEMS
@@ -37,16 +38,6 @@ static inline void _argmax_store(int32_t *restrict out, T value,
   const argmax_value_t<T> widened = value;
   out[0] = __builtin_bit_cast(int32_t, widened);
   out[1] = index;
-}
-
-// -inf rather than lowest(), so a tile of -inf (or of lowest()) still
-// resolves to its first element.
-template <typename T>
-static inline T _argmax_seed() {
-  if constexpr (std::numeric_limits<T>::has_infinity)
-    return -std::numeric_limits<T>::infinity();
-  else
-    return std::numeric_limits<T>::lowest();
 }
 
 template <typename T>
@@ -92,7 +83,7 @@ void _argmax_vector(T *restrict in, int32_t *restrict out,
     lane_init[k] = (int16_t)k;
   const Idx lane = aie::load_v<N>(lane_init);
 
-  V running_max = aie::broadcast<T, N>(_argmax_seed<T>());
+  V running_max = aie::broadcast<T, N>(max_identity<T>());
   Idx running_off = aie::zeros<int16_t, N>();
   Idx offset = aie::zeros<int16_t, N>();
   const Idx step = aie::broadcast<int16_t, N>((int16_t)N);
@@ -130,7 +121,7 @@ template <typename T>
 void _argmax_scalar(T *restrict in, int32_t *restrict out,
                     const int32_t input_size, const int32_t index_offset) {
   event0();
-  T best = _argmax_seed<T>();
+  T best = max_identity<T>();
   int32_t best_index = 0;
   for (int32_t i = 0; i < ARGMAX_ELEMS; i++) {
     const T value = _argmax_load(in + i);

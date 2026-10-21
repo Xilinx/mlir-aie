@@ -36,18 +36,17 @@ N_CORES = 8
 CORE_TILES = [(c, r) for c in (0, 1, 6, 7) for r in (2, 3)]
 OUT_BYTES = 4096
 # The scratchpad keeps 30 bits a word, so the sampler's 32-bit temperature
-# bits and seed take one word each for their low 30 bits, and a third word
-# holds both their top two bits and top_k.
-SAMPLE_PARAMS = ("samp0", "samp1", "samp2")
+# bits take one word for their low 30 bits, and a second holds their top two
+# bits and top_k.
+SAMPLE_PARAMS = ("samp0", "samp1")
 
 
-def sample_param_values(temperature, top_k, seed, kset):
+def sample_param_values(temperature, top_k, kset):
     """The sampler's ScratchpadParameter values for one dispatch.
 
     Args:
         temperature: float32; at or below 0 the sampler is greedy.
         top_k: 0 (the whole set) or 1..kset.
-        seed: The 32-bit seed.
         kset: The resident set's size.
 
     Returns:
@@ -59,23 +58,15 @@ def sample_param_values(temperature, top_k, seed, kset):
     if not 0 <= top_k <= kset:
         raise ValueError(f"top_k must be 0 (the whole set) or 1..{kset}, got {top_k}")
     t = int(np.float32(temperature).view(np.uint32))
-    s = int(seed) & 0xFFFFFFFF
-    low = (1 << 30) - 1
-    return dict(
-        samp0=t & low,
-        samp1=s & low,
-        samp2=(t >> 30) | (s >> 30) << 2 | int(top_k) << 4,
-    )
+    return dict(samp0=t & ((1 << 30) - 1), samp1=(t >> 30) | int(top_k) << 2)
 
 
 def read_sample_params(params, words):
-    """In a core body: the sampler's [temperature bits, top_k, seed] into
-    params[0..2] from the `SAMPLE_PARAMS` words."""
-    w0, w1, w2 = (p.read() for p in words)
-    c3, c30 = constant(i32(), 3), constant(i32(), 30)
-    params[0] = ori(w0, shli(andi(w2, c3), c30))
-    params[1] = shrui(w2, constant(i32(), 4))
-    params[2] = ori(w1, shli(andi(shrui(w2, constant(i32(), 2)), c3), c30))
+    """In a core body: the sampler's [temperature bits, top_k] into
+    params[0..1] from the `SAMPLE_PARAMS` words."""
+    w0, w1 = (p.read() for p in words)
+    params[0] = ori(w0, shli(andi(w1, constant(i32(), 3)), constant(i32(), 30)))
+    params[1] = shrui(w1, constant(i32(), 2))
 
 
 PROJECTIONS = {

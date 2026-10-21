@@ -1,3 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 # Exact pin: PEP 440 forbids the +cpu local label with range operators (>=).
 torch==2.14.1+cpu
+# llama_3_2_1b's generate.py tokenizes its prompt.
+tiktoken==0.14.0

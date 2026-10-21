@@ -47,7 +47,7 @@ def test_a_producer_run_sets_the_consumers_dma_offset(kernels, start):
     consume = pyxrt.run(consume_kernel)
     consume.set_arg(0, values.buffer_object())
     consume.set_arg(1, out.buffer_object())
-    params = ParameterScratchpad(consume, "params.txt")
+    params = ParameterScratchpad(consume, "params.txt", "test:consume")
     params.write("start", np.int32(0))
     params.sync()
 

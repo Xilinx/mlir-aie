@@ -10,6 +10,11 @@ accumulator adder, and `aie::add` uses the same adder. It is not IEEE
 round-to-nearest: it first rounds the smaller-magnitude operand onto the
 larger operand's ulp grid, then rounds the sum. Multiplies are IEEE, so only
 adds need modelling.
+
+Both roundings are to nearest, ties to even, as under
+`aie::rounding_mode::conv_even`; on npu2 the core's reset mode adds the same.
+Subnormals are out of scope: the core flushes a subnormal sum to zero, and
+this model does not.
 """
 
 import numpy as np

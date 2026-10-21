@@ -121,6 +121,9 @@ def test_a_clamp_is_carried_through_sums_products_and_floors():
             bad()
     with pytest.raises(ValueError, match="holds no value"):
         (p + 0).clamp(lo=5, hi=2)
+    assert (p + 1).clamp(hi=3).clamp(lo=5) == 5
+    assert (p - 1).clamp(lo=10).clamp(hi=4) == 4
+    assert (p - 1).clamp(lo=10).clamp(lo=-2, hi=4) == 4
 
 
 def test_an_expression_divides_by_the_raw_per_call_value_it_is_a_multiple_of():

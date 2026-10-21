@@ -597,9 +597,15 @@ class CompilableDesign:
                 if named
                 else []
             )
+            sources = design.source_files
             if index % cls.XCLBIN_KERNELS:
                 flags.append(f"--xclbin-input={images[-1]}")
-            design = design.specialize(aiecc_flags=[*design.aiecc_flags, *flags])
+                # Its content keys this design, so an image rebuilt in place
+                # rebuilds every image chained onto it.
+                sources = (*sources, images[-1])
+            design = design.specialize(
+                aiecc_flags=[*design.aiecc_flags, *flags], source_files=sources
+            )
             xclbin, _ = design.compile()
             assert xclbin is not None
             images.append(Path(xclbin).resolve())
@@ -1109,10 +1115,7 @@ class CompilableDesign:
         try:
             generated = self._generated_for(full_elf=True)
             for kind in generated.devices:
-                device_type = next(
-                    c for c in NamedDevice.__subclasses__() if c.aie_device == kind
-                )
-                if not device_type().can_dispatch_full_elf:
+                if not NamedDevice.of(kind).can_dispatch_full_elf:
                     raise ValueError(f"{kind.name} does not dispatch a full ELF.")
             external_kernels = generated.external_kernels
             use_chess = self._resolve_use_chess(external_kernels)
