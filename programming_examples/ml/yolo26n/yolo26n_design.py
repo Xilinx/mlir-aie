@@ -48,7 +48,7 @@ from aie.iron import (
 from aie.iron.controlflow import else_, if_, range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.dataflow.objectfifo import ObjectFifoHandle
-from aie.iron.device import AnyMemTile, Tile
+from aie.iron.device import AnyComputeTile, AnyMemTile, Tile
 from aie.utils.config import aie_kernels_dir
 from yolo_params import Params
 from yolo_spec import (
@@ -314,7 +314,7 @@ class SegmentDesign:
             wholly inside `ops` are ignored.
         attention_split: Workers per attention head, off chip.
         on_chip: Whether rows that wait stay in memtiles rather than DDR.
-        holds: Rows each tensor's chain of memtile holds takes, from an
+        holds: Rows each of a tensor's held readers waits for, from an
             earlier build; see `planned`.
         resident_bytes: The largest step of a fused worker's weight chunks a
             memtile holds on chip.
@@ -339,7 +339,7 @@ class SegmentDesign:
         fused: Sequence[tuple[int, int]] = FUSED,
         attention_split: int = 2,
         on_chip: bool = False,
-        holds: dict[str, int] | None = None,
+        holds: dict[str, set[int]] | None = None,
         resident_bytes: int = 0,
         reads: dict[str, tuple[int, int]] | None = None,
     ) -> None:
@@ -354,11 +354,11 @@ class SegmentDesign:
         # held in memtiles rather than in DDR or in buffering workers.
         self.on_chip = on_chip
         self.holds = 0
-        # Rows each tensor's chain of holds takes, from an earlier build of the
-        # same run, so the first consumer makes the whole chain; and what this
-        # build asks for.
+        # Rows each of a tensor's held readers waits for, from an earlier build
+        # of the same run, so the first consumer makes the whole chain; and
+        # what this build asks for.
         self.planned_holds = dict(holds or {})
-        self.hold_rows: dict[str, int] = {}
+        self.hold_rows: dict[str, set[int]] = {}
         self.read_stages: set[ObjectFifo] = set()
         # The memtile each chain of holds ends in, where a worker's own.
         self.stage_hubs: dict[ObjectFifo, Tile | None] = {}
@@ -471,9 +471,8 @@ class SegmentDesign:
         **options,
     ) -> SegmentDesign:
         """The run built twice when on chip: the second time every tensor's chain
-        of holds is made whole by its first consumer, so every consumer reads
-        the chain's last stage and no stage both feeds a core and the next,
-        and every producer makes the fifos its readers take."""
+        of holds is made whole by its first consumer, a stage ending at each
+        reader's rows, and every producer makes the fifos its readers take."""
         design = cls(network, params, ops, outputs, **options)
         if not options.get("on_chip"):
             return design
@@ -790,11 +789,24 @@ class SegmentDesign:
         """A stage of `tensor`'s one chain of memtile holds holding at least `rows`.
 
         The first stage holding enough, more being only room to spare, or a
-        new one extending the chain: a fifo feeds one link at most.
+        new one extending the chain: a fifo feeds one link at most. The first
+        reader makes the chain whole, a stage ending at each planned reader's
+        rows: a stage's rows go on to every branch at once, so a reader taking
+        them early must leave the chain before the rows a later one waits for.
         """
-        self.hold_rows[tensor.name] = max(self.hold_rows.get(tensor.name, 0), rows)
-        rows = max(rows, self.planned_holds.get(tensor.name, 0))
+        self.hold_rows.setdefault(tensor.name, set()).add(rows)
         stages = self.stages.setdefault(tensor.name, [])
+        if not stages:
+            source, before = self.reader(tensor), 0
+            for want in sorted(self.planned_holds.get(tensor.name, set()) | {rows}):
+                source = self.hold(
+                    source,
+                    want - before,
+                    stream_bytes_of(tensor),
+                    hub=hub if want == rows else None,
+                )
+                stages.append((source, want))
+                before = want
         fit = min(
             (st for st in stages if st[1] >= rows), key=lambda st: st[1], default=None
         )
@@ -2648,15 +2660,19 @@ class SegmentDesign:
             self.heights[add.dst.name] = height
             self.heights[qkv.name] = height
             self.fifo(add.dst)
+            # A walk over the map's stream of rows: its memtile holds them all.
             queries = (
-                self.held(qkv, height)
-                .cons(depth=2)
+                self.reader(qkv)
+                .cons(depth=height)
                 .forward(
                     depth=2,
                     name=f"queries{self.holds}",
                     obj_type=row(op.heads * kd * width),
                     to_stream=TensorAccessPattern(
-                        (qkv.row_bytes,), 0, [op.heads, kd * width], [per_head, 1]
+                        (height * qkv.row_bytes,),
+                        0,
+                        [height, op.heads, kd * width],
+                        [qkv.row_bytes, per_head, 1],
                     ),
                 )
             )
@@ -2673,16 +2689,20 @@ class SegmentDesign:
             base = min(sa, sb, so)
             k_add = kernels.add(add.dst.row_bytes, dtype=np.int8)
             attended_first = add.a.name == op.dst.name
-            # Keys and values in tiles of their own fifo, which placement may
-            # put in a neighbour's memory: the map's stores outgrow one tile.
+            # The map's stores outgrow one tile: the keys stay in the worker's
+            # own, the values go to a neighbour that runs no core. Placement
+            # cannot see a core's pinned tables before it is compiled, so a
+            # store beside another worker could overfill that tile.
+            home, store = AnyComputeTile.copy(), AnyComputeTile.copy()
             stores = [
                 ObjectFifo(
                     np.ndarray[(height * width * n,), np.dtype[np.int8]],
                     depth=1,
                     name=f"{name}{h}_{self.holds}",
                     disable_synchronization=True,
+                    delegate_tile=tile,
                 )
-                for name, n in (("keys", kd), ("values", hd))
+                for name, n, tile in (("keys", kd, home), ("values", hd, store))
                 for h in range(op.heads)
             ]
 
@@ -2788,10 +2808,10 @@ class SegmentDesign:
                         ),
                     ],
                     # aiecc measures a 6.4 KB stack and 6.1 KB of the kernel's
-                    # own tables; stated, placement counts them when it moves
-                    # the stores to neighbours.
+                    # own tables; stated, placement counts them beside the keys.
                     stack_size=7 * 1024,
                     data_size=13 * 512,
+                    tile=home,
                 )
             )
             return
