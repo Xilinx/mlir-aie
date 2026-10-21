@@ -1381,6 +1381,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         truncated: recorded ? recorded.truncated : [],
         correctnessError: recorded ? recorded.correctness_error : undefined,
         refused: recorded ? recorded.refused : undefined,
+        reason: recorded ? recorded.reason : undefined,
         manual: isManual(recorded),
         manualSince,
         previous,
@@ -1668,7 +1669,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     function nightTitle(r) {
       const what = r.pmode && r.pmode !== EXPECTED_PMODE ? `${r.pmode} mode, not compared`
-        : !r.published ? (r.refused ? `refused: ${r.refused}` : 'published no numbers')
+        : !r.published ? (r.refused ? `refused: ${r.refused}` : r.reason ? `${r.reason}: published no numbers` : 'published no numbers')
         : r.cases ? `${r.cases.timed} timed, ${r.cases.failed} failing, ${r.cases.timing_failed} timing failed${r.cases.flaky ? `, ${r.cases.flaky} passed on a retry` : ''}`
         : r.n_rows ? `${r.n_rows} numbers published` : 'published';
       const commit = r.commit && r.commit.id ? ` on ${r.commit.id.slice(0, 7)}` : '';
@@ -3672,6 +3673,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const ids = failed.map(id => check.failedId.exec(id));
       const names = failed.map((id, i) => ids[i] ? check.say(...ids[i].slice(1)) : id);
       const headline = run.date === null ? (run.unread ? `${cap(run.unread.text)}.` : 'No results published yet.')
+        // A check that stopped before it measured anything says why (the
+        // placeholder record it wrote first, e.g. "did not finish").
+        : run.reason && failed.length ? `${cap(run.reason)}: ${names.join(', ')}.`
         : failed.length ? `${plural(failed.length, check.failure)} failed: ${names.slice(0, 4).join(', ')}${failed.length > 4 ? ` and ${failed.length - 4} more` : ''}.`
         : hard ? `${hard.text[0].toUpperCase()}${hard.text.slice(1)}.`
         : worse.length ? `${check.passed.replace(/\.$/, '')}, but ${plural(worse.length, 'measure')} got worse vs ${shortDate(own.at(-2).date)}.`

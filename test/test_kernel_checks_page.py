@@ -411,6 +411,21 @@ assert.ok(slot.scrolled);
 """)
 
 
+def test_a_check_that_did_not_finish_says_so_with_its_run(page):
+    page(COMPONENT_RUNS + LLAMA_NIGHTS + """
+// The placeholder record a check writes before its first device run: no rows.
+const stopped = night('8', '2026-10-03T06:30:00Z', 'turbo', { published: false, reason: 'did not finish', failed: [LLAMA] });
+const index = { target: 'llama-chain-hw', runs: [night('6', llamaBefore.date, 'turbo'), night('7', llamaAfter.date, 'turbo'), stopped] };
+const card = componentBand(llama, index, llamaAfter, Date.parse('2026-10-03T09:00:00Z'), llamaBefore);
+assert.equal(card.className, 'verdict bad');
+assert.equal(one(card, n => n.className === 'headline').text, 'Did not finish: the 16-layer decode.');
+// The run is a click away, and its last numbers are said to be older.
+assert.ok(one(card, n => n.className === 'repro').text.includes('run 8'));
+assert.ok(card.text.includes('Numbers from the run of 2 Oct, 06:30 UTC'));
+assert.ok(nightTitle(stopped).endsWith('did not finish: published no numbers'));
+""")
+
+
 def test_static_dispatch_records_are_not_spliced_into_the_trend(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 // publish.py keeps an old static record's per-batch times under mobilenet/seed=S/batch=B.
