@@ -114,7 +114,7 @@ static void fold_weights(int8_t *state, const float *m_b, const float *s_b,
       ::aie::load_v<kLanes>(x + kLanes), vec_exp_nonpos(::aie::sub(m, big)));
   ::aie::vector<float, kLanes> den =
       ::aie::add(ab, ::aie::shuffle_down(ab, kREP));
-  ::aie::vector<float, kLanes> inv = vec_sw_recip(den);
+  ::aie::vector<float, kLanes> inv = vec_recip(den);
   ::aie::store_v(w, vec_mul_rne(ab, ::aie::select(::aie::shuffle_up(inv, kREP),
                                                   inv, low)));
   ::aie::store_v(x, big);
@@ -179,7 +179,7 @@ static void requant_selfcal(int8_t *state, int8_t *out) {
   alignas(64) float scale_a[kLanes];
   alignas(64) float inv_a[kLanes];
   ::aie::store_v(scale_a, scale);
-  ::aie::store_v(inv_a, vec_sw_recip(scale));
+  ::aie::store_v(inv_a, vec_recip(scale));
   __builtin_memcpy(out + kREP * kHD, scale_a, kREP * 4);
 #pragma clang loop unroll(disable)
   for (int i = 0; i < kREP * kSlices; i++)
@@ -347,7 +347,7 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     }
   }
   alignas(64) float inv_a[kLanes];
-  ::aie::store_v(inv_a, vec_sw_recip(sum_v));
+  ::aie::store_v(inv_a, vec_recip(sum_v));
   ::aie::store_v(lanes + kLanes, sum_v);
   alignas(64) float w[kLanes];
   if (count == 0) {

@@ -33,22 +33,6 @@ def aie_add(u, v):
     return (big + np.round(small / ulp) * ulp).astype(np.float32)
 
 
-def sw_recip(a):
-    """Mirrors the kernels' `sw_recip`: magic-constant guess plus 4 Newton steps.
-
-    Args:
-        `a`: fp32 scalar.
-
-    Returns:
-        The fp32 reciprocal the device computes.
-    """
-    a = np.float32(a)
-    x = (np.int32(0x7EF477D5) - a.view(np.int32)).view(np.float32)
-    for _ in range(4):
-        x = np.float32(x * aie_add(np.float32(2.0), -np.float32(a * x)))
-    return x
-
-
 def sw_invsqrt(a):
     """Mirrors the kernels' `sw_invsqrt`: Quake-III guess plus 2 Newton steps.
 

@@ -27,18 +27,6 @@ static constexpr int kVec =
 // One 512-bit fp32 register.
 static constexpr int kLanes = 16;
 
-// See vec_sw_recip in llama_vec_fp.h; this is its scalar form.
-static inline float sw_recip(float a) {
-  int32_t bits = __builtin_bit_cast(int32_t, a);
-  bits = (int32_t)0x7EF477D5 - bits;
-  float x = __builtin_bit_cast(float, bits);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  return x;
-}
-
 // Pure IEEE fp32 invsqrt: Quake-III magic-constant initial guess + 2
 // Newton-Raphson refinement iterations. Bit-identical to the numpy
 // reference's sw_invsqrt -- no HW intrinsic approximation gap.
@@ -136,7 +124,7 @@ void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x,
   if (absmax < 1e-12f)
     absmax = 1e-12f;
   float scale_dyn = absmax * (1.0f / 127.0f);
-  float inv_dyn = sw_recip(scale_dyn);
+  float inv_dyn = recip_rne(scale_dyn);
   float combined = pre * inv_dyn;
   vec_requant(x, gamma, y, ::aie::broadcast<float, kLanes>(combined), kCols);
 

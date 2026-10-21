@@ -31,3 +31,6 @@ GATE_INV_OUT_SCALE = 1.0 / SILU_GATE_SCALE
 
 # The softmax and sampler exp LUT's resolution.
 EXP_QUANT_SCALE = 0.05
+# The sampler's exp table reaches e^(-512 * 0.05) < 1e-11, which cannot change
+# a float32 sum of weights that is at least 1.
+SAMPLE_EXP_LOW = -512

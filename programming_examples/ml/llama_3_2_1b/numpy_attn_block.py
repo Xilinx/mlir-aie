@@ -102,7 +102,7 @@ def attend_block(q_i8, q_scale, k_i8, v_i8, k_slot, v_slot):
     s = np.float32(0.0)
     for ei in e:
         s = aie_fp.aie_add(s, ei)
-    pv = mul_rne(mul_rne(e, aie_fp.sw_recip(s)), v_slot)
+    pv = mul_rne(mul_rne(e, np.float32(1) / np.float32(s)), v_slot)
     acc = np.zeros(q_i8.shape[0], np.float32)
     for r in range(len(e)):
         acc = aie_fp.aie_add(acc, mul_rne(v_i8[r].astype(np.float32), pv[r]))
@@ -128,7 +128,7 @@ def fold(state, m_b, s_b, sv_b):
     a = np.float32(s * exp_nonpos(aie_fp.aie_add(m, -big)))
     b = np.float32(s_b * exp_nonpos(aie_fp.aie_add(m_b, -big)))
     den = aie_fp.aie_add(a, b)
-    inv = aie_fp.sw_recip(den)
+    inv = np.float32(1) / np.float32(den)
     wa = np.float32(a * inv)
     wb = np.float32(b * inv)
     return big, den, aie_fp.aie_add(mul_rne(sv, wa), mul_rne(sv_b, wb))
@@ -214,7 +214,7 @@ def attention(
         sv = merged[2]
         absmax = np.float32(max(float(np.abs(sv).max()), 1e-12))
         scale = np.float32(absmax * np.float32(1.0 / 127.0))
-        out[h] = aie_fp.round_to_i8(mul_rne(sv, aie_fp.sw_recip(scale)))
+        out[h] = aie_fp.round_to_i8(mul_rne(sv, np.float32(1) / np.float32(scale)))
         scales[h] = scale
         svs[h] = sv
     return out, scales, svs

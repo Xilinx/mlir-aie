@@ -41,18 +41,6 @@ static constexpr int kHalfKV = kNHeadsKV / 2;          // 4
 static constexpr int kVec = 16;
 static_assert(kHD % kVec == 0, "LLAMA_GQA_HEAD_DIM must be a multiple of 16");
 
-// See vec_sw_recip in llama_vec_fp.h; this is its scalar form.
-static inline float sw_recip(float a) {
-  int32_t bits = __builtin_bit_cast(int32_t, a);
-  bits = (int32_t)0x7EF477D5 - bits;
-  float x = __builtin_bit_cast(float, bits);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  return x;
-}
-
 static inline float bits_to_float(int32_t bits) {
   float f = __builtin_bit_cast(float, bits);
   return f;
@@ -160,7 +148,7 @@ extern "C" void llama_af_concat_selfcal2(int8_t *restrict sv,
   if (absmax < 1e-12f)
     absmax = 1e-12f;
   float o_act_scale = absmax * (1.0f / 127.0f);
-  float o_inv_act_scale = sw_recip(o_act_scale);
+  float o_inv_act_scale = recip_rne(o_act_scale);
 
   // Pass B: requant with combined = sv_out_scale[h] * o_inv_act_scale.
   alignas(64) float combined[kNHeadsQ];

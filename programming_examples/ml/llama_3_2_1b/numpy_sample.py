@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 """Numpy reference for llama_sample.cc -- bit-exact, matches the kernel's
-xoshiro128++ PRNG, splitmix64-style seed expansion, exp LUT, sw_recip,
+xoshiro128++ PRNG, splitmix64-style seed expansion, exp LUT, IEEE reciprocal,
 and inverse-CDF draw.
 
 NOT the same as cautious-eureka/npu2/sampling.py: that file is the
@@ -13,10 +13,9 @@ Here we reproduce the kernel's bitwise arithmetic.
 
 from __future__ import annotations
 
-import aie_fp
 import numpy as np
 from gen_exp_lut import exp_lut
-from llama_config import EXP_QUANT_SCALE
+from llama_config import EXP_QUANT_SCALE, SAMPLE_EXP_LOW
 
 MASK_SENTINEL = np.float32(-1.0e9)
 
@@ -78,11 +77,11 @@ def quant_shifted(shifted_f32: np.ndarray) -> np.ndarray:
     q = np.where(
         v >= 0, np.floor(v + np.float32(0.5)), np.ceil(v - np.float32(0.5))
     ).astype(np.int32)
-    return np.clip(q, -128, 0)
+    return np.clip(q, SAMPLE_EXP_LOW, 0)
 
 
 def lookup_exp(q: np.ndarray, lut: np.ndarray) -> np.ndarray:
-    return lut[(q + 128).astype(np.int32)].astype(np.float32)
+    return lut[(q - SAMPLE_EXP_LOW).astype(np.int32)].astype(np.float32)
 
 
 def sample_reference(
@@ -108,9 +107,9 @@ def sample_reference(
         return best_v
 
     if lut is None:
-        lut = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
+        lut = exp_lut(EXP_QUANT_SCALE, SAMPLE_EXP_LOW).astype(np.float32)
 
-    inv_temp = aie_fp.sw_recip(temperature)
+    inv_temp = np.float32(1) / np.float32(temperature)
 
     # Pass 1: z[i] = logits[i] * inv_temp, fp32. Stored as raw fp32 (we
     # don't need the bit-cast game the kernel plays -- numpy preserves

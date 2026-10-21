@@ -28,18 +28,6 @@
 // One 512-bit fp32 register.
 static constexpr int kLanes = 16;
 
-// See vec_sw_recip in llama_vec_fp.h; this is its scalar form.
-static inline float sw_recip(float a) {
-  int32_t bits = __builtin_bit_cast(int32_t, a);
-  bits = (int32_t)0x7EF477D5 - bits;
-  float x = __builtin_bit_cast(float, bits);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  return x;
-}
-
 // s_f * (up_i8 * up_scale), kLanes columns at a time, each product rounded
 // once as the scalar `*` does. The LUT gather has no AIE2P vector form, so a
 // short scalar loop widens each bf16 entry to its fp32 bits.
@@ -61,8 +49,8 @@ extern "C" {
 // Self-calibrating variant: computes its OWN output scale on-chip (the
 // per-token silu_out_scale = down's act_scale) instead of reading
 // inv_out_scale from the up tail. Two-pass over s_f*u_f (it holds the whole
-// HD vector): pass A finds absmax, pass B requants with inv=sw_recip(absmax/
-// 127). Writes silu_out_scale to out[kCols..kCols+4] (out is int8[kCols+8])
+// HD vector): pass A finds absmax, pass B requants with inv = 127 /
+// absmax. Writes silu_out_scale to out[kCols..kCols+4] (out is int8[kCols+8])
 // so the downstream down gemm reads its act_scale from the sf tail. Still
 // reads up_scale (= up_out_scale, a Phase-2 tiled scale) from the up tail.
 void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
@@ -96,7 +84,7 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
   if (absmax < 1e-12f)
     absmax = 1e-12f;
   float out_scale = absmax * (1.0f / 127.0f);
-  float inv_out_scale = sw_recip(out_scale);
+  float inv_out_scale = recip_rne(out_scale);
   ::aie::vector<float, kLanes> inv_out_scale_v =
       ::aie::broadcast<float, kLanes>(inv_out_scale);
 
@@ -144,7 +132,7 @@ void llama_up_requant(float *restrict up_fp, int8_t *restrict out) {
   if (absmax < 1e-12f)
     absmax = 1e-12f;
   float up_scale = absmax * (1.0f / 127.0f);
-  float up_inv = sw_recip(up_scale);
+  float up_inv = recip_rne(up_scale);
   ::aie::vector<float, kLanes> up_inv_v =
       ::aie::broadcast<float, kLanes>(up_inv);
 

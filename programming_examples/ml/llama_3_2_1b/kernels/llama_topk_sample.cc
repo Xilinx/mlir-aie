@@ -9,8 +9,8 @@
 // resident top-k of {logit, global index, embed_sc, embed ROW} -- the
 // winner's embedding is already resident when sampling finishes. Clean
 // top-k renorm (can't re-touch all V logits); numpy_topk_sample.py is
-// the oracle. top_k==0 unsupported (see README). Peano AIE2P: sw_recip
-// not `1.0f/x`; rotl via concat-shift; no fp32 array live across loops.
+// the oracle. top_k==0 unsupported (see README). Peano AIE2P: rotl via
+// concat-shift; no fp32 array live across loops.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
@@ -28,15 +28,11 @@
 #ifndef LLAMA_TOPK_KSET
 #define LLAMA_TOPK_KSET 64
 #endif
-#ifndef LLAMA_TOPK_EXP_QUANT_SCALE
-#define LLAMA_TOPK_EXP_QUANT_SCALE 0.05f
-#endif
 
 static constexpr int kD = LLAMA_TOPK_D;
 static constexpr int kNTile = LLAMA_TOPK_NTILE;
 static constexpr int kKset = LLAMA_TOPK_KSET;
-static constexpr float kExpQuantScale = LLAMA_TOPK_EXP_QUANT_SCALE;
-static constexpr float kInvExpQuantScale = 1.0f / LLAMA_TOPK_EXP_QUANT_SCALE;
+static constexpr float kInvExpQuantScale = 1.0f / LLAMA_EXP_QUANT_SCALE;
 static constexpr int kVec = 64;
 
 static inline int32_t quant_shifted(float shifted) {
@@ -44,26 +40,15 @@ static inline int32_t quant_shifted(float shifted) {
   int32_t q = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
   if (q > 0)
     q = 0;
-  if (q < -128)
-    q = -128;
+  if (q < LLAMA_EXP_LUT_LOW)
+    q = LLAMA_EXP_LUT_LOW;
   return q;
 }
 
 static inline float lookup_exp(int32_t q) {
-  uint32_t raw = llama_exp_lut_raw[q + 128];
+  uint32_t raw = llama_exp_lut_raw[q - LLAMA_EXP_LUT_LOW];
   float v = __builtin_bit_cast(float, raw);
   return v;
-}
-
-static inline float sw_recip(float a) {
-  int32_t bits = __builtin_bit_cast(int32_t, a);
-  bits = (int32_t)0x7EF477D5 - bits;
-  float x = __builtin_bit_cast(float, bits);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  return x;
 }
 
 // --- xoshiro128++ (must match llama_sample.cc / numpy_topk_sample.py) ---
@@ -118,7 +103,7 @@ static void embed_seed(const int8_t *restrict row, float embed_sc,
     amax = -(int32_t)::aie::reduce_min(lo);
   if (amax < 1)
     amax = 1;
-  float inv = sw_recip((float)amax) * 127.0f; // 127/amax
+  float inv = recip_rne((float)amax) * 127.0f; // 127/amax
   // (float)row * inv and round_to_i8 on 16 lanes: vec_mul_rne is the soft
   // `*`, and vec_round_to_i8 rounds as round_to_i8 does.
   const ::aie::saturation_mode prev_sat =
@@ -186,7 +171,7 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
                   (set_logit[j] == set_logit[i] && set_gidx[j] < set_gidx[i]);
       keep[i] = better < top_k;
     }
-    const float inv_temp = sw_recip(temperature);
+    const float inv_temp = recip_rne(temperature);
     float max_z = set_logit[0] * inv_temp;
     for (int i = 1; i < len; i++) {
       float z = set_logit[i] * inv_temp;

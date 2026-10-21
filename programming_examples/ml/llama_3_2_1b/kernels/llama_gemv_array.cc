@@ -109,7 +109,7 @@ void llama_gemv_array_rescale_finalize(int8_t *restrict lo, int8_t *restrict hi,
   }
   float x_scale = __builtin_bit_cast(float, absmax_bits) * (1.0f / 127.0f);
   ::aie::vector<float, 16> inv_v = ::aie::broadcast<float, 16>(
-      vec_sw_recip(::aie::broadcast<float, 16>(x_scale)).get(0));
+      vec_recip(::aie::broadcast<float, 16>(x_scale)).get(0));
   for (int c = 0; c < 8; c++) {
     const float *x = reinterpret_cast<const float *>((c < 4 ? lo : hi) +
                                                      (c % 4) * kResidBlock);

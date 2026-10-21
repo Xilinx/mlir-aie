@@ -338,10 +338,9 @@ Real constraints learned during bring-up — apply preemptively to skip build cy
    workers; use a distinct symbol per shape.
 5. **L1 is 64 KB/tile.** The KV cache lives in DDR; an attention core holds a
    block of 64 rows at a time.
-6. **Peano AIE2P codegen quirks** (see `kernels/`): `1.0f/x` is a ~10-bit HW
-   reciprocal (use the NR `sw_recip`); fp32 stack arrays kept across loops can be
-   corrupted (stash int LUT indices instead); `G_ROTL` fails to legalize (use a
-   64-bit concat-shift rotate).
+6. **Peano AIE2P codegen quirks** (see `kernels/`): fp32 stack arrays kept across
+   loops can be corrupted (stash int LUT indices instead); `G_ROTL` fails to
+   legalize (use a 64-bit concat-shift rotate).
 
 Bit-exactness techniques: LUT-based transcendentals (kernel and numpy index the
 same generated LUT), software invsqrt (Quake-III + NR), exact int-domain

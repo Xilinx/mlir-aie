@@ -108,25 +108,42 @@ vec_residual_sum(const int8_t *restrict resid, const float *restrict proj,
       ::aie::load_v<16>(proj));
 }
 
-// A reciprocal on kN lanes from a bit-trick seed and Newton steps, which
-// aie_fp.sw_recip mirrors; the kernels' scalar sw_recip takes the same steps,
-// with these soft-float products as vec_mul_rne and `-` as the same vsub.f.
+// 1 / a rounded to nearest even, as IEEE division rounds it (checked against
+// it for every positive normal a below 2^126, the domain it needs), by
+// restoring division of the mantissa: __divsf3 overflows the decode cores'
+// program memory.
+static inline float recip_rne(float a) {
+  const uint32_t bits = __builtin_bit_cast(uint32_t, a);
+  const uint32_t e = bits >> 23;
+  const uint32_t m = (bits & 0x7fffffu) | 0x800000u;
+  uint32_t rem = 1u << 24, q = 0;
+  for (int i = 0; i < 24; i++) {
+    q <<= 1;
+    if (rem >= m) {
+      rem -= m;
+      q |= 1;
+    }
+    rem <<= 1;
+  }
+  if (q == 1u << 23 && rem == 0)
+    return __builtin_bit_cast(float, (254u - e) << 23);
+  if (rem > m || (rem == m && (q & 1)))
+    q++;
+  return __builtin_bit_cast(float, ((253u - e) << 23) + (q - (1u << 23)));
+}
+
 template <unsigned kN>
-static inline ::aie::vector<float, kN>
-vec_sw_recip(::aie::vector<float, kN> a) {
-  ::aie::vector<float, kN> two = ::aie::broadcast<float, kN>(2.0f);
-  ::aie::vector<float, kN> x =
-      ::aie::sub(::aie::broadcast<int32, kN>(0x7EF477D5),
-                 a.template cast_to<int32>())
-          .template cast_to<float>();
-  for (int i = 0; i < 4; i++)
-    x = vec_mul_rne(x, ::aie::sub(two, vec_mul_rne(a, x)));
-  return x;
+static inline ::aie::vector<float, kN> vec_recip(::aie::vector<float, kN> a) {
+  alignas(64) float lanes[kN];
+  ::aie::store_v(lanes, a);
+  for (unsigned i = 0; i < kN; i++)
+    lanes[i] = recip_rne(lanes[i]);
+  return ::aie::load_v<kN>(lanes);
 }
 
 // Per-head requant of kHeads heads of kHD fp32 values:
 // each head's scale is max(absmax, 1e-12) * (1/127), its body int8
-// round(q * sw_recip(scale)); tail[h*8..+4] gets the scale, [+4..+8] zero.
+// round(q * (1 / scale)); tail[h*8..+4] gets the scale, [+4..+8] zero.
 template <int kHeads, int kHD>
 static inline void q_requant_heads(const float *restrict q_fp,
                                    int8_t *restrict body,
@@ -159,7 +176,7 @@ static inline void q_requant_heads(const float *restrict q_fp,
     ::aie::vector<float, kV> scale =
         vec_mul_rne(absmax, ::aie::broadcast<float, kV>(1.0f / 127.0f));
     ::aie::store_v(q_scale + g * kV, scale);
-    ::aie::store_v(q_inv + g * kV, vec_sw_recip(scale));
+    ::aie::store_v(q_inv + g * kV, vec_recip(scale));
   }
   for (int h = 0; h < kHeads; h++) {
     const float *src = q_fp + h * kHD;

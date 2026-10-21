@@ -19,7 +19,7 @@ from aie.iron.kernel import ExternalFunction
 from aie.utils.compile import NPU_CACHE_HOME
 from gen_exp_lut import exp_lut_header
 from gen_silu_lut import silu_lut_header
-from llama_config import EXP_QUANT_SCALE
+from llama_config import EXP_QUANT_SCALE, SAMPLE_EXP_LOW
 
 KERNELS_DIR = Path(__file__).parent / "kernels"
 
@@ -130,5 +130,9 @@ def topk_sample(*, dim=2048, kset=8):
             "-DLLAMA_TOPK_NTILE=4",
             f"-DLLAMA_TOPK_KSET={kset}",
         ],
-        [generated_include_dir({"exp_lut.h": exp_lut_header(EXP_QUANT_SCALE)})],
+        [
+            generated_include_dir(
+                {"exp_lut.h": exp_lut_header(EXP_QUANT_SCALE, SAMPLE_EXP_LOW)}
+            )
+        ],
     )

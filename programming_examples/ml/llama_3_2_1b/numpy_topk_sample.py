@@ -13,16 +13,15 @@ and the inverse-CDF picks a filtered token most of the time -- a latent bug
 (see project_topk_masked_tail_bug memory). Clean renorm is the correct top-k
 semantics and the only one a single resident-set pass can express.
 
-Reuses the xoshiro PRNG / exp LUT / quant_shifted / sw_recip from numpy_sample.
+Reuses the xoshiro PRNG / exp LUT / quant_shifted from numpy_sample.
 """
 
 from __future__ import annotations
 
-import aie_fp
 import numpy as np
 from gen_exp_lut import exp_lut
+from llama_config import EXP_QUANT_SCALE, SAMPLE_EXP_LOW
 from numpy_sample import (
-    EXP_QUANT_SCALE,
     lookup_exp,
     quant_shifted,
     xoshiro_seed,
@@ -83,8 +82,8 @@ def topk_sample_reference(
         return int(min(winners))
 
     if lut is None:
-        lut = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
-    inv_temp = aie_fp.sw_recip(temperature)
+        lut = exp_lut(EXP_QUANT_SCALE, SAMPLE_EXP_LOW).astype(np.float32)
+    inv_temp = np.float32(1) / np.float32(temperature)
 
     # The survivors: the set's best top_k by logit, then lower id.
     by_logit = sorted(set_idx, key=lambda g: (-logits[g], g))
