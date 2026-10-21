@@ -748,6 +748,7 @@ gated_delta_rule/1312x4/bfloat16_float32+bfloat16/blocks=2/partial
 gated_delta_rule/1312x6/bfloat16_float32+bfloat16/blocks=2
 gated_delta_rule/16x6/bfloat16_float32+bfloat16/blocks=3/key_dim=2/rows=2/value_dim=2/edge-tiny-valid17
 gated_delta_rule/16x6/bfloat16_float32+bfloat16/blocks=3/key_dim=2/rows=2/value_dim=2/edge-tiny-valid2
+gated_delta_rule/208x4/bfloat16_float32+bfloat16/blocks=2/key_dim=17/rows=4/value_dim=16/edge-unaligned-v
 gated_delta_rule/224x4/bfloat16_float32+bfloat16/blocks=2/key_dim=17/rows=4/value_dim=20/edge-odd-dims
 gated_delta_rule/548x8/bfloat16_float32+bfloat16/blocks=4/key_dim=128/rows=2/iron-decode
 gated_delta_rule/8768x4/bfloat16_float32+bfloat16/blocks=2/key_dim=128/rows=32/iron-prefill

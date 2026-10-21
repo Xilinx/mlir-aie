@@ -1420,11 +1420,12 @@ def bn_fc_relu_ui16_ic_chunk_ref(
 
     Call ``k`` of ``weights`` (``(calls, n)``, one ``[OC/8][ICc][8]`` chunk
     each) adds input channels ``[k * ICc, (k + 1) * ICc)`` of each of the
-    first ``images`` images in ``x`` to their running sums, and stores
-    ``sat_u8(round_even(sum, scale))`` as ``uint16``.
+    first ``images`` images in ``x`` (at most ``max_images``) to their
+    running sums, and stores ``sat_u8(round_even(sum, scale))`` as
+    ``uint16``.
     """
     IC, ICc, OCc = input_channels, chunk_input_channels, chunk_output_channels
-    n = int(images)
+    n = min(int(images), max_images)
     w = np.asarray(weights, dtype=np.int8).astype(np.int64)
     calls = w.shape[0]
     w = w.reshape(calls, OCc // 8, ICc, 8).transpose(0, 2, 1, 3)
@@ -2170,15 +2171,23 @@ def bn_fc_relu_ui16_ic_chunk(
         input_channels: Input channels per image in ``input``.
         chunk_input_channels: Input channels per call.
         chunk_output_channels: Output channels per call.
-        max_images: Images the buffers hold; ``images`` may be fewer.
+        max_images: Images the buffers hold; ``images`` may be fewer, and
+            more run as ``max_images``.
 
     Returns:
         ExternalFunction for ``post_L2_fc_ui16_ic_chunk``.
 
     Raises:
         ValueError: When a channel count is not a multiple of the vector
-            width (32 inputs, 8 outputs) or ``max_images`` is below 1.
+            width (32 inputs, 8 outputs), ``chunk_input_channels`` does not
+            divide ``input_channels`` or ``max_images`` is below 1.
     """
+    if input_channels % chunk_input_channels:
+        raise ValueError(
+            f"bn_fc_relu_ui16_ic_chunk: chunk_input_channels "
+            f"({chunk_input_channels}) must divide input_channels "
+            f"({input_channels}), or the last chunk reads past each image"
+        )
     if (
         input_channels % 32
         or chunk_input_channels % 32
@@ -2215,11 +2224,8 @@ def bn_fc_relu_ui16_ic_chunk(
             roles=(Param, In, Out, Param, Param, Param),
             parameter_bindings=((3, 0),),
             call_index=3,
-            reference=lambda x, weights, images, scale: bn_fc_relu_ui16_ic_chunk_ref(
-                x,
-                weights,
-                images,
-                scale,
+            reference=partial(
+                bn_fc_relu_ui16_ic_chunk_ref,
                 input_channels=input_channels,
                 chunk_input_channels=chunk_input_channels,
                 chunk_output_channels=chunk_output_channels,

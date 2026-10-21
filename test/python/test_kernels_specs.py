@@ -861,6 +861,9 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(),
         arg_count=6,
         expected_name="post_L2_fc_ui16_ic_chunk",
+        invalid_kwargs=[
+            (dict(input_channels=1280, chunk_input_channels=384), "must divide"),
+        ],
     ),
     KernelSpec(
         name="bn_conv2dk1_partial_put_i8",
@@ -991,8 +994,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         invalid_kwargs=[
             (dict(top_k=0), "top_k must be a positive integer"),
             (dict(rows=3), "rows must divide"),
-            (dict(top_k=5), "top_k at most num_experts"),
-            (dict(hidden=33, rows=1, cols=1), "hidden must be even"),
+            (dict(top_k=5), "top_k must be at most num_experts"),
+            (dict(cols=8, rows=8, hidden=64, width=32), "multiple of 16"),
         ],
         shape_checks=[(dict(hidden=128, top_k=4), 0, (144,))],
     ),
@@ -1015,7 +1018,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs={},
         arg_count=6,  # block, head, final, y, valid, block index
         expected_name="gated_delta_rule",
-        invalid_kwargs=[(dict(key_dim=0), "key_dim must be a positive integer")],
+        invalid_kwargs=[
+            (dict(key_dim=0), "key_dim must be a positive integer"),
+            (dict(rows=1, key_dim=2, value_dim=1), "must be even"),
+            (dict(rows=3, key_dim=16, value_dim=17), "must be even"),
+        ],
         shape_checks=[(dict(rows=4, key_dim=8, value_dim=4), 0, (88,))],
     ),
     KernelSpec(
