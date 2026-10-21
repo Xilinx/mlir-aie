@@ -372,7 +372,8 @@ def _sweep_night(rng: random.Random) -> tuple[list, dict]:
             "final_cost": base + costs.randint(0, base // 20),
             "cpu_ms": cpu_ms * rng.uniform(0.9, 1.15),
             "peak_rss_mb": rss + rng.uniform(0, 1),
-            "stderr": "",
+            "timed_out": False,
+            "output": "",
         }
         for fixture, (base, cpu_ms, rss) in zip(
             sa_placer.FIXTURES, ((12, 780, 63), (290, 25000, 67))

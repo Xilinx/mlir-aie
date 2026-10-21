@@ -6,34 +6,37 @@ r"""Compile + run full mobilenet on NPU2 for a few SA placer seeds and batch siz
 Complements sa_placer.py's CPU-only seed sweep (placement pass alone, no
 hardware) with the thing that actually matters: does the placed design still
 compile, verify, and run at the expected speed on real hardware for a
-handful of seeds. Shells out to the existing aie2_mobilenet_iron.py CLI (no
-new Python API) from programming_examples/ml, one fresh NPU_CACHE_HOME per
-seed and effort so they don't share a JIT cache (test/python/npu's
-isolation convention).
+handful of seeds. Shells out to the existing aie2_mobilenet_iron.py CLI
+from programming_examples/ml, one fresh NPU_CACHE_HOME per seed and effort
+so they don't share a JIT cache (test/python/npu's isolation convention).
 
 Each seed runs at both of _EFFORTS (the design's real default, and full
 effort as a placement-quality baseline -- see
 mobilenet.bottleneck._common.sa_placer_flags, which the default must keep
-matching). The batch is a dispatch-time parameter, so per seed and effort
-the design compiles once (the CLI's ``--dynamic`` compile-only mode) and
-every batch runs from it. It compiles twice in the same fresh
-NPU_CACHE_HOME: cold (every cache empty, same as any first-time compile),
-then warm, keeping only the cold compile's kernel objects (the whole-build
-and per-device caches and the outputs are cleared first), which is what an
-edit to the design, not its kernels, costs. Both record wall time and peak
-RSS. Per batch it records, per image, the minimum NPU time of a launch and
-of the host's end-to-end call; the run builds its own copy of the design
-through the JIT path, from the warm caches, unmeasured.
+matching). The batch is a dispatch-time parameter, so
+per seed and effort the design compiles once (the CLI's ``--dynamic``
+compile-only mode) and every batch runs from it. It compiles twice in the
+same fresh NPU_CACHE_HOME: cold (every cache empty, same as any first-time
+compile), then warm, keeping only the cold compile's kernel objects (the
+whole-build and per-device caches and the outputs are cleared first), which
+is what an edit to the design, not its kernels, costs. Both record wall time and the largest
+process's peak RSS. Per batch it records, per image, the minimum NPU time of
+a launch and of the host's end-to-end call; the run builds its own copy of
+the design through the JIT path, from the warm caches, unmeasured.
 From a seed's batch 1 and batch N it records the streaming time: what one
 more image in a launch costs, (T(N) - T(1)) / (N - 1), with the launch's
 fixed cost taken out. Per seed, per effort, it records the placement:
 aiecc's placed tiles as a digest, and its SA cost, from replaying the
 placement with aie-opt on the design's MLIR (aiecc does not report it).
+
 Writes rows and a meta file in the kernel checks' format
 (utils/kernel_checks/publish.py), with the device's power mode, the
-toolchain and the dispatch mode; ``--pmode`` refuses to measure in any
-other mode. Exits 1 when a run fails or the check refuses, after writing
-both. One seed and effort is reproduced, from programming_examples/ml, with
+toolchain, the dispatch mode and the efforts; ``--pmode`` refuses to measure
+in any other mode. Before the first compile it writes a placeholder that
+fails the check, so a run stopped part way still publishes as a failure.
+Every command has a timeout and its output is echoed as it comes. Exits 1
+when a run fails or the check refuses, after writing both. One seed and
+effort is reproduced, from programming_examples/ml, with
 
     python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort E \
         --dynamic 1 2 4 8 16 32 64
@@ -59,6 +62,7 @@ from aiecc_stages import (
     run_measured,
     stage_rows,
     write,
+    write_unfinished,
 )
 
 _PASS_RE = re.compile(r"^PASS!$", re.MULTILINE)
@@ -76,20 +80,11 @@ _TILE_RE = re.compile(r"aie\.tile\(\d+, \d+\)")
 # shells out to the CLI (see the module docstring); a change to either is a
 # prompt to check the other.
 _EFFORTS = {"default": 0.05, "full": 1.0}
+_MOBILENET = [sys.executable, "-m", "mobilenet.aie2_mobilenet_iron"]
 
 _ML_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "programming_examples", "ml"
 )
-
-
-def _mobilenet(*args: str, env: dict | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "-m", "mobilenet.aie2_mobilenet_iron", *args],
-        cwd=_ML_DIR,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
 
 
 def placement_of(mlir: str) -> str | None:
@@ -99,19 +94,24 @@ def placement_of(mlir: str) -> str | None:
 
 
 def replay_placement(
-    aie_opt: str, design: str, seed: int, effort: float
+    aie_opt: str, design: str, seed: int, effort: float, timeout: float
 ) -> tuple[str | None, int | None]:
     """Place ``design`` as aiecc does for ``seed``/``effort``: (digest, SA cost)."""
-    proc = subprocess.run(
-        [
-            aie_opt,
-            f"--aie-place-tiles=placer=sa_placer sa-seed={seed} sa-effort={effort}",
-            "--mlir-pass-statistics",
-            design,
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            [
+                aie_opt,
+                f"--aie-place-tiles=placer=sa_placer sa-seed={seed} sa-effort={effort}",
+                "--mlir-pass-statistics",
+                design,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"aie-opt replaying seed {seed} timed out after {timeout:g} s")
+        return None, None
     cost = _COST_RE.search(proc.stderr)
     if proc.returncode or not cost:
         return None, None
@@ -154,70 +154,82 @@ def split_batches(out: str) -> dict[int, str]:
     return {int(m.group(1)): out[m.end() : end] for m, end in zip(marks, ends)}
 
 
-def compile_cold_warm(flags: list[str], batches: list[int], cache_dir: str) -> dict:
+def compile_cold_warm(
+    flags: list[str], batches: list[int], cache_dir: str, timeout: float
+) -> dict:
     """Compile the dispatch-time design cold, then warm, into ``cache_dir``."""
     env = dict(os.environ, NPU_CACHE_HOME=cache_dir)
-    xclbin = os.path.join(cache_dir, "final.xclbin")
     cmd = [
-        sys.executable,
-        "-m",
-        "mobilenet.aie2_mobilenet_iron",
+        *_MOBILENET,
         *flags,
         "--dynamic",
         *map(str, batches),
         "--xclbin-path",
-        xclbin,
+        os.path.join(cache_dir, "final.xclbin"),
     ]
-    cold = run_measured(cmd, _ML_DIR, env)
+    cold = run_measured(cmd, _ML_DIR, env, timeout)
     profile = os.path.join(cache_dir, "final.prj", PROFILE_NAME)
-    stages_cold = stage_rows(profile, cold[1] if cold[0].returncode == 0 else None, "")
+    stages_cold = stage_rows(
+        profile, cold.seconds if cold.process.returncode == 0 else None, ""
+    )
     placed = sorted(glob.glob(os.path.join(cache_dir, "devices", "*", "placed.mlir")))
     placement = None
     if placed:
         with open(placed[0]) as f:
             placement = placement_of(f.read())
-    if os.path.exists(xclbin):
-        os.remove(xclbin)
-    for layer in ("final.prj", "builds", "devices"):
-        shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
-    warm = run_measured(cmd, _ML_DIR, env)
+    for name in ("final.xclbin", "final.prj", "builds", "devices"):
+        path = os.path.join(cache_dir, name)
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        elif os.path.exists(path):
+            os.remove(path)
+    warm = run_measured(cmd, _ML_DIR, env, timeout)
     stages_warm = stage_rows(
-        profile, warm[1] if warm[0].returncode == 0 else None, "_warm"
+        profile, warm.seconds if warm.process.returncode == 0 else None, "_warm"
     )
     return {
         **stages_cold,
         **stages_warm,
-        "passed": cold[0].returncode == 0 and warm[0].returncode == 0,
+        "passed": cold.process.returncode == 0 and warm.process.returncode == 0,
         **compile_stats(cold, warm),
         "placement": placement,
-        "log": cold[0].stdout + warm[0].stdout,
     }
 
 
 def run_seed(
-    seed: int, effort_label: str, batches: list[int], warmup: int, iters: int
+    seed: int,
+    effort_label: str,
+    batches: list[int],
+    warmup: int,
+    iters: int,
+    compile_timeout: float,
+    run_timeout: float,
 ) -> tuple[dict, list[dict]]:
     """Compile mobilenet once for one SA seed and effort, and run every batch."""
     cache_dir = tempfile.mkdtemp(prefix=f"component-checks-sa{seed}-{effort_label}-")
     flags = ["--sa-seed", str(seed), "--sa-effort", str(_EFFORTS[effort_label])]
     try:
-        compiled = compile_cold_warm(flags, batches, cache_dir)
-        ran = _mobilenet(
-            *flags,
-            "--dynamic",
-            *map(str, batches),
-            "-w",
-            str(warmup),
-            "-i",
-            str(iters),
-            env=dict(os.environ, NPU_CACHE_HOME=cache_dir),
-        )
+        compiled = compile_cold_warm(flags, batches, cache_dir, compile_timeout)
+        ran = run_measured(
+            [
+                *_MOBILENET,
+                *flags,
+                "--dynamic",
+                *map(str, batches),
+                "-w",
+                str(warmup),
+                "-i",
+                str(iters),
+            ],
+            _ML_DIR,
+            dict(os.environ, NPU_CACHE_HOME=cache_dir),
+            run_timeout,
+        ).process
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
 
-    out = ran.stdout + ran.stderr
+    out = ran.stdout
     compiled = {"seed": seed, "effort_label": effort_label, **compiled}
-    compiled["log"] += out
     segments = split_batches(out)
     runs = [
         {
@@ -237,12 +249,14 @@ def run_seed(
     return compiled, runs
 
 
-def place_seed(compiles: list[dict], aie_opt: str, design: str) -> list[dict]:
+def place_seed(
+    compiles: list[dict], aie_opt: str, design: str, timeout: float
+) -> list[dict]:
     """Replay each of one seed's compiles' placement: digest and SA cost."""
     out = []
     for c in compiles:
         replayed, cost = replay_placement(
-            aie_opt, design, c["seed"], _EFFORTS[c["effort_label"]]
+            aie_opt, design, c["seed"], _EFFORTS[c["effort_label"]], timeout
         )
         first = c["placement"] or replayed
         out.append(
@@ -368,13 +382,6 @@ def print_table(runs: list[dict], compiles: list[dict], placements: list[dict]) 
         )
         if not r["passed"] and r["launch_us"] is None:
             print("no 'NPU time (avg/min/max us)' line in this batch's output")
-    for c in compiles:
-        if not c["passed"] or any(
-            not r["passed"]
-            for r in runs
-            if (r["seed"], r["effort_label"]) == (c["seed"], c["effort_label"])
-        ):
-            print(c["log"])
     for p in placements:
         print(
             f"seed {p['seed']} effort {p['effort_label']}: "
@@ -384,9 +391,18 @@ def print_table(runs: list[dict], compiles: list[dict], placements: list[dict]) 
             print("aie-opt placed the design differently from aiecc; no cost recorded")
 
 
-def emit_design(path: str) -> None:
+def emit_design(path: str, timeout: float) -> None:
     """Write mobilenet's MLIR, before placement, to ``path``."""
-    proc = _mobilenet("--emit-mlir")
+    try:
+        proc = subprocess.run(
+            [*_MOBILENET, "--emit-mlir"],
+            cwd=_ML_DIR,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        sys.exit(f"mobilenet --emit-mlir timed out after {timeout:g} s")
     if proc.returncode:
         sys.exit(f"mobilenet --emit-mlir failed:\n{proc.stdout}{proc.stderr}")
     with open(path, "w") as f:
@@ -420,6 +436,19 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--iters", type=int, default=20)
+    parser.add_argument(
+        "--compile-timeout",
+        type=_positive_int,
+        default=1200,
+        help="seconds before a compile is killed and fails (default: 1200)",
+    )
+    parser.add_argument(
+        "--run-timeout",
+        type=_positive_int,
+        default=900,
+        help="seconds before a seed's run of every batch is killed and fails "
+        "(default: 900)",
+    )
     add_pmode_argument(parser)
     parser.add_argument(
         "--aie-opt",
@@ -451,21 +480,28 @@ def main(argv=None) -> int:
             args.meta,
         )
 
+    write_unfinished(meta, "mobilenet", args.out, args.meta)
     batches = sorted(set(args.batches))
     with tempfile.TemporaryDirectory(prefix="component-checks-design-") as d:
         design = os.path.join(d, "mobilenet.mlir")
-        emit_design(design)
+        emit_design(design, args.compile_timeout)
         runs, compiles, placements = [], [], []
         for seed in args.seeds:
             mine = []
             for effort_label in _EFFORTS:
                 compiled, seed_runs = run_seed(
-                    seed, effort_label, batches, args.warmup, args.iters
+                    seed,
+                    effort_label,
+                    batches,
+                    args.warmup,
+                    args.iters,
+                    args.compile_timeout,
+                    args.run_timeout,
                 )
                 mine.append(compiled)
                 runs += seed_runs
             compiles += mine
-            placements += place_seed(mine, args.aie_opt, design)
+            placements += place_seed(mine, args.aie_opt, design, args.compile_timeout)
     print_table(runs, compiles, placements)
 
     failed = [
@@ -495,7 +531,7 @@ def main(argv=None) -> int:
             **meta,
             "batches": batches,
             "measurement_sane": True,
-            "compiles": [{k: v for k, v in c.items() if k != "log"} for c in compiles],
+            "compiles": compiles,
             "placements": placements,
             "detail": detail,
             "failed": failed,
