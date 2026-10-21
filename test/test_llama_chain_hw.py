@@ -130,14 +130,38 @@ def test_generate_rows_publish_only_after_its_oracle_passed(llama):
         correctness, timing, llama.parse_generate(output("generate_pass"), 1), {}, {}
     )
     names = {r["name"].rsplit("/", 1)[1]: r for r in passed}
-    assert names["ttft_ms"]["value"] == 125.9
-    assert names["decode_tok_s"]["value"] == 20.77
-    assert names["greedy_agree"]["value"] == 29
+    assert names["ttft_ms"]["value"] == 124.6
+    assert names["ttft_min_ms"]["value"] == 124.3
+    assert names["ttft_npu_dispatch_ms"]["value"] == 119.4
+    assert names["ttft_host_ms"]["value"] == 5.2
+    assert names["decode_tok_s"]["value"] == 22.14
+    assert names["ttft_ms"]["range"] == "median of 5"
+    assert names["ttft_min_ms"]["range"] == "fastest of 5"
+    assert names["greedy_agree"]["value"] == 28
     assert names["greedy_agree"]["range"].startswith("of 32")
-    assert not {"ttft_ms", "decode_tok_s", "greedy_agree"} & {
-        r["name"].rsplit("/", 1)[1] for r in failed
-    }
+    assert "prompt_tok_s" not in names
+    generate_rows = {"ttft_ms", "ttft_min_ms", "decode_tok_s", "greedy_agree"}
+    assert not generate_rows & {r["name"].rsplit("/", 1)[1] for r in failed}
     assert "n_cores" not in names
+
+
+def test_the_context_sweep_publishes_every_context(llama):
+    out = output("decode_contexts_pass")
+    correctness = llama.parse_correctness(out, 0)
+    assert correctness["passed"]
+    assert (correctness["tokens_passed"], correctness["tokens_total"]) == (36, 36)
+    timing = llama.parse_timing(out, 0)
+    assert set(timing) == {llama.DISPATCH_RATE_AT, *llama.CONTEXTS}
+    assert llama.timing_sane(timing)
+    rows = llama.aggregate(correctness, timing, llama.parse_generate("", 1), {}, {})
+    case = f"llama/persist_grow/N={llama.N_LAYERS}"
+    names = {r["name"]: r["value"] for r in rows}
+    assert names[f"{case}/ms_per_token"] == 47.23
+    assert names[f"{case}/tok_s"] == 21.17
+    for at in llama.CONTEXTS:
+        assert names[f"{case}/ctx={at}/ms_per_token"] == timing[at]["ms_per_token"]
+        assert names[f"{case}/ctx={at}/decode_tok_s"] == timing[at]["tok_s"]
+    assert names[f"{case}/ctx=131068/decode_tok_s"] == 2.09
 
 
 def test_this_checkout_has_the_data_the_runs_read_or_names_what_it_lacks(llama):
