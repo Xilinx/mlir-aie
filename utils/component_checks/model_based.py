@@ -38,7 +38,7 @@ ALLOCATOR_COUNTS = {
     "unsolved": "designs",
     "illegal": "designs",
     "avoidable_crossings": "crossings",
-    "bank_pair_sharing": "pairs",
+    "bank_pair_sharing": "fraction",
     "wall_s": "s",
 }
 LIT_FAILURES = {"FAIL", "XPASS", "UNRESOLVED", "TIMEOUT"}

@@ -779,7 +779,7 @@ def test_the_allocator_report_is_one_case_named_by_its_failed_properties(tmp_pat
         "allocator/unsolved": (2, "designs"),
         "allocator/illegal": (0, "designs"),
         "allocator/avoidable_crossings": (1, "crossings"),
-        "allocator/bank_pair_sharing": (0.25, "pairs"),
+        "allocator/bank_pair_sharing": (0.25, "fraction"),
         "allocator/wall_s": (103.0, "s"),
     }
     # A crash before the report: a failure, and no rows to chart.
