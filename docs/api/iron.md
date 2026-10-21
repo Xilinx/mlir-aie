@@ -98,6 +98,13 @@ such as `kernels.zero(...)` own their own objects.
 
 ### ScratchpadParameter
 
+A design that declares `ScratchpadParameter`s and compiles to a full ELF
+(`@iron.jit(full_elf=True)`) takes their values per call:
+`design(out, parameters={"foo": bfloat16(3.0), "bar": bfloat16(4.0)})`. The
+values go through the run's ctrl scratchpad, laid out by the build's own
+`params.txt`. A design without `ScratchpadParameter`s refuses `parameters=`,
+and so do the HSA and HRX runtimes.
+
 ::: iron.scratchpad_parameter
     options:
       show_root_heading: false

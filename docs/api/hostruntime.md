@@ -128,4 +128,4 @@ mkdocstrings, for example:
 | `CachedXRTRuntime` | [`xrtruntime.hostruntime`](../../python/utils/hostruntime/xrtruntime/hostruntime.py) | Cached `XRTHostRuntime` that reuses contexts for the same xclbin. |
 | `XRTTensor` | [`xrtruntime.tensor`](../../python/utils/hostruntime/xrtruntime/tensor.py) | Tensor backed by NPU/CPU-accessible memory managed with PyXRT. |
 | `XrtTransport` | [`xrtruntime.tensor`](../../python/utils/hostruntime/xrtruntime/tensor.py) | `Transport` for an XRT allocation; reconciles a range through a derived sub-buffer. |
-| `ParameterScratchpad` | [`xrtruntime.parameter_scratchpad`](../../python/utils/hostruntime/xrtruntime/parameter_scratchpad.py) | Write named runtime parameters to the NPU scratchpad buffer. |
+| `ParameterScratchpad` | [`xrtruntime.parameter_scratchpad`](../../python/utils/hostruntime/xrtruntime/parameter_scratchpad.py) | Write named runtime parameters to a run's ctrl scratchpad; the lower-level form of an `iron.jit` call's `parameters=`. |
