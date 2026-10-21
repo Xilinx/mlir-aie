@@ -139,11 +139,8 @@ def _build_model(spec: BottleneckSpec):
                 bit_width=8,
                 return_quant_tensor=True,
             )
-            # bn_quant_id_2 is constructed in every variant for state-parity
-            # with the original per-bn scripts, but is only *used* in the
-            # forward graph for the no-skip variants.  Skip variants route
-            # the conv3 output through ``quant_id_1`` (re-applying the input
-            # quant) and into ``bn_add`` instead.
+            # Only the no-skip forward reads bn_quant_id_2: a skip variant
+            # requantizes conv3 at the input's scale (quant_id_1) for bn_add.
             self.bn_quant_id_2 = QuantIdentity(
                 act_quant=Int8ActPerTensorFixedPoint,
                 bit_width=8,
@@ -189,6 +186,27 @@ def _calibrate(model, expand_to_channels: int) -> None:
     calibrate(calibration_loader(transform), model)
 
 
+def shift_of(combined: torch.Tensor, what: str) -> int:
+    """The integer shift a combined scale, ``-log2`` of a scale ratio, stands for.
+
+    Args:
+        combined: The ``-log2`` of a ratio of power-of-two scales.
+        what: The layer it shifts, for the error.
+
+    Returns:
+        ``combined`` rounded to the nearest integer.
+
+    Raises:
+        ValueError: If ``combined`` is not an integer to within float error,
+            so no shift implements the ratio.
+    """
+    value = combined.item()
+    shift = round(value)
+    if abs(value - shift) > 1e-6:
+        raise ValueError(f"{what}: combined scale {value} is not an integer shift")
+    return shift
+
+
 def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
     """Run the brevitas model and write ``spec``'s fixtures into ``data/``.
 
@@ -209,27 +227,6 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
     dtype_out = np.dtype("int8")
 
     in_c1_vec = math.floor(spec.tensor_in_c / VECTOR_SIZE)
-    out_c3_vec = math.floor(spec.tensor_out_c / VECTOR_SIZE)
-    in_w3 = spec.tensor_in_w // spec.depthwise_stride
-    in_h3 = spec.tensor_in_h // spec.depthwise_stride
-
-    # Shape banners that the original scripts printed — preserved so any
-    # downstream check that reads the log still sees the same shape lines.
-    shape_total_wts = (
-        spec.tensor_in_c * spec.depthwise_channels
-        + 3 * 3 * spec.depthwise_channels
-        + spec.depthwise_channels * spec.tensor_out_c,
-        1,
-    )
-    shape_in_act = (
-        spec.tensor_in_h,
-        in_c1_vec,
-        spec.tensor_in_w,
-        VECTOR_SIZE,
-    )  # YCXC8 → CYX
-    shape_out = (in_h3, out_c3_vec, in_w3, VECTOR_SIZE)  # HCWC8
-    shape_out_final = (out_c3_vec * VECTOR_SIZE, in_h3, in_w3)  # CHW
-    del shape_in_act, shape_out, shape_out_final  # computed for parity with originals
 
     # Seeded random input (matches torch.manual_seed(0) at module load).
     input = torch.randn(1, in_c1_vec * VECTOR_SIZE, spec.tensor_in_h, spec.tensor_in_w)
@@ -247,9 +244,6 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
     q_inp = model.quant_id_1(input)
     int_inp = q_inp.int(float_datatype=True)
 
-    # No-skip variants divide cs3 by bn_quant_id_2's scale; skip variants
-    # divide by the input quant_id_1's scale (because the skip path routes
-    # conv3 → quant_id_1 → + out_q → bn_add).
     init_scale = model.quant_id_1.act_quant.scale()
     relu_1 = model.bn_quant_relu1.act_quant.scale()
     relu_2 = model.bn_quant_relu2.act_quant.scale()
@@ -259,32 +253,23 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
     w1 = model.bn_quant_conv1.weight_quant.scale()
     w2 = model.bn_quant_conv2.weight_quant.scale()
     w3 = model.bn_quant_conv3.weight_quant.scale()
-    cs1 = -torch.log2(init_scale * w1 / relu_1)
-    cs2 = -torch.log2(relu_1 * w2 / relu_2)
-    cs3 = -torch.log2(relu_2 * w3 / post_conv3_scale)
-
-    banner = "*" * 20 + spec.name.upper() + "*" * 23
-    print(banner)
-    print("combined_scale after conv1x1:", cs1.item())
-    print("combined_scale after conv3x3:", cs2.item())
-    print("combined_scale after conv1x1:", cs3.item())
-    skip_add = 0
+    shifts = {
+        "conv1x1_1": shift_of(-torch.log2(init_scale * w1 / relu_1), "conv1x1_1"),
+        "conv3x3": shift_of(-torch.log2(relu_1 * w2 / relu_2), "conv3x3"),
+        "conv1x1_2": shift_of(
+            -torch.log2(relu_2 * w3 / post_conv3_scale), "conv1x1_2"
+        ),
+        "skip_add": 0,
+    }
     if spec.has_skip:
         skip_scale = model.bn_add.act_quant.scale()
-        skip_cs = -torch.log2(init_scale / skip_scale)
-        print("combined_scale after skip add:", skip_cs.item())
-        skip_add = int(skip_cs.item())
-    print(banner)
+        shifts["skip_add"] = shift_of(-torch.log2(init_scale / skip_scale), "skip_add")
+    print(f"{spec.name} shifts: {shifts}")
 
     scales = (
         mb_utils.read_scale_factors(PER_BN_SCALES) if PER_BN_SCALES.exists() else {}
     )
-    scales[spec.name.upper()] = {
-        "conv1x1_1": int(cs1.item()),
-        "conv3x3": int(cs2.item()),
-        "conv1x1_2": int(cs3.item()),
-        "skip_add": skip_add,
-    }
+    scales[spec.name.upper()] = shifts
     mb_utils.write_scale_factors(PER_BN_SCALES, dict(sorted(scales.items())))
 
     int_w1 = model.bn_quant_conv1.quant_weight().int(float_datatype=True)
@@ -313,7 +298,6 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
     total_wts.tofile(DATA_DIR / f"{spec.name}_single.txt", sep=",", format="%d")
 
     print("{}+{}+{}".format(wts1.shape, wts2.shape, wts3.shape))
-    print(shape_total_wts)
     print(total_wts.shape)
 
     print("Done.")
