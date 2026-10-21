@@ -51,6 +51,9 @@ from aie.utils.compile.remarks import current_kernel_sources
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
 
+# Bump with any change to how a published metric is taken: publish.py and the
+# page compare a series only within one measurement.
+MEASUREMENT = "3"
 TRACE_SIZE = 16384
 # The add/256 case filled 16 KB after 91 intervals (180 B each) when every
 # default core event was traced; markers alone take about 5 B. Size for
@@ -353,7 +356,9 @@ def _preflight(request):
             "(set it with xrt-smi configure --pmode, or pass --pmode any)"
         )
     config._perf_meta["preflight"] = dict(vars(pre))
-    config._perf_meta["provenance"] = provenance(device=pre.device, pmode=pre.pmode)
+    config._perf_meta["provenance"] = provenance(
+        device=pre.device, pmode=pre.pmode, measurement=MEASUREMENT
+    )
     return pre
 
 
