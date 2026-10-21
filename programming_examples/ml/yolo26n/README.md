@@ -31,8 +31,9 @@ with the same layout, and random images.
 ## Quick start
 
 ```bash
-pip install -r ../../../python/requirements_ml.txt  # torch (CPU), onnx, onnxruntime, opencv
-pip install -r requirements.txt     # export only: ultralytics, amd-quark (Python 3.11-3.13)
+pip install -r requirements.txt    # onnx, onnxruntime, opencv
+pip install -r ../../../python/requirements_ml.txt  # torch, CPU build (export only)
+pip install -r requirements_export.txt  # ultralytics, amd-quark (Python 3.11-3.13)
 export IRON_EXAMPLE_WEIGHTS_DIR=$HOME/models
 make export                 # checkpoint, FP32 and XINT8 ONNX, coco128
 make data                   # data/yolo26n_params.npz

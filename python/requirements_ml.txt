@@ -3,10 +3,3 @@
 torch==2.14.1+cpu
 # llama_3_2_1b's generate.py tokenizes its prompt.
 tiktoken==0.14.0
-# yolo26n reads and checks its quantized ONNX model. onnx and onnxruntime are
-# pinned exactly: the parameters gen_yolo_data.py extracts are ONNX Runtime's
-# own outputs.
-onnx==1.22.0
-onnxruntime==1.28.0
-# yolo26n letterboxes real images.
-opencv-python>=4.10

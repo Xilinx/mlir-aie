@@ -146,7 +146,9 @@ jobs:
           submodules: "true"
 
       - name: Setup virtual environment / prerequisites
-        run: source ./utils/env_install.sh aie-venv --dev --extras
+        run: |
+          source ./utils/env_install.sh aie-venv --dev --extras
+          python3 -m pip install -r programming_examples/ml/yolo26n/requirements.txt
 
       # Each compile runs in a systemd-run --user scope whose memory.peak is
       # its whole tree's; the runner's lingering user manager is found here.

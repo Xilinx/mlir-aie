@@ -1,9 +1,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Extras for export_yolo26n.py only, on top of python/requirements_ml.txt
-# (which has torch, onnx, onnxruntime and opencv-python): it fetches the
-# AGPL-3.0 checkpoint and quantizes it. amd-quark needs Python 3.11 to 3.13,
-# and 0.13 is the newest that accepts the onnx and onnxruntime pins.
-ultralytics==8.4.182
-amd-quark==0.13
+# What running the yolo26n example needs, on top of python/requirements.txt.
+# onnx and onnxruntime are pinned: the parameters gen_yolo_data.py extracts
+# are ONNX Runtime's own outputs. Exporting the model needs
+# requirements_export.txt too.
+onnx==1.22.0
+onnxruntime==1.28.0
+opencv-python>=4.10
