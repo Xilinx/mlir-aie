@@ -764,11 +764,13 @@ add/64x4/int8/no-down-shift
 attention_i8/640x2/int8
 attention_i8/1024x2/int8/head_dim=32/key_dim=64/seq_len=256/width=16/keys-wider
 bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128
+bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128/rounding=symmetric_inf/bias-symmetric-inf
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-bottom-row
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-table
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-top-row
 bn_conv2dk3_dw/6400x4/int8/bias=True/input_channels=80/input_width=80/output_channels=80/table=True
 conv2dk1_i8/2048x8/int8/bias=True/rounding=conv_even
+conv2dk1_i8/2048x8/int8/bias=True/rounding=symmetric_inf/bias-symmetric-inf
 conv2dk1_i8/2048x8/int8/rounding=conv_even/conv-even
 conv2dk1_i8/2560x8/int8/bias=True/input_width=40/rounding=conv_even/table=True
 conv2dk1_i8/320x4/int8/bias=True/input_channels=16/input_width=20/output_channels=16/rounding=conv_even/width-20
@@ -779,6 +781,7 @@ conv2dk3/1280x4/int8/bias=True/input_channels=32/input_width=40/output_channels=
 conv2dk3/2048x4/int8/bias=True/rounding=conv_even/bias-bottom-row
 conv2dk3/2048x4/int8/bias=True/rounding=conv_even/bias-top-row
 conv2dk3/2048x8/int8/bias=True/rounding=conv_even
+conv2dk3/2048x8/int8/bias=True/rounding=symmetric_inf/bias-symmetric-inf
 conv2dk3/2560x4/int8/bias=True/input_width=40/rounding=conv_even/table=True
 conv2dk3/320x4/int8/bias=True/input_channels=16/input_width=20/output_channels=16/rounding=conv_even/bias-width-20
 conv2dk3/4096x4/int8/bias=True/input_width=64/rounding=conv_even/stride=2

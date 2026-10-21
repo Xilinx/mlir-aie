@@ -1414,6 +1414,13 @@ CASES: list[Case] = [
     ),
     check(
         "conv2dk1_i8",
+        dict(bias=True, rounding="symmetric_inf"),
+        calls=8,
+        scalars=(32, 64, 64, 12),
+        tag="bias-symmetric-inf",
+    ),
+    check(
+        "conv2dk1_i8",
         dict(input_width=80, bias=True, rounding="conv_even"),
         calls=4,
         scalars=(80, 64, 64, 12),
@@ -1558,6 +1565,13 @@ CASES: list[Case] = [
         calls=8,
         scalars=(32, 64, 64, 3, 3, 1, 15, 0),
         smoke=True,
+    ),
+    check(
+        "conv2dk3",
+        dict(bias=True, rounding="symmetric_inf"),
+        calls=8,
+        scalars=(32, 64, 64, 3, 3, 1, 15, 0),
+        tag="bias-symmetric-inf",
     ),
     *[
         check(
@@ -1914,6 +1928,19 @@ CASES: list[Case] = [
         calls=4,
         scalars=(20, 128, 128, 3, 3, 1, 7, 0),
         smoke=True,
+    ),
+    check(
+        "bn_conv2dk3_dw",
+        dict(
+            input_width=20,
+            input_channels=128,
+            output_channels=128,
+            bias=True,
+            rounding="symmetric_inf",
+        ),
+        calls=4,
+        scalars=(20, 128, 128, 3, 3, 1, 7, 0),
+        tag="bias-symmetric-inf",
     ),
     *[
         check(
