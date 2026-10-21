@@ -162,30 +162,23 @@ assert.equal(axisTitle('Cycles per call', 'cycles'), 'Cycles per call · ↓ bet
 
 
 def test_timing_labels_name_the_statistic_the_checks_take(page):
-    checks = ROOT / "utils/component_checks"
     mobilenet = re.search(
         r'"--iters", type=int, default=(\d+)',
-        (checks / "sa_placer_hw.py").read_text(encoding="utf-8"),
+        (ROOT / "utils/component_checks/sa_placer_hw.py").read_text(encoding="utf-8"),
     )[1]
-    n_iters = {
-        name: re.search(
-            r"^N_ITERS = (\d+)$",
-            (checks / f"{name}.py").read_text(encoding="utf-8"),
-            re.MULTILINE,
-        )[1]
-        for name in ("yolo26n_hw", "llama_chain_hw")
-    }
     page(f"""
 const trendOf = id => BANDS.find(b => b.id === id && b.trend).trend;
-// MobileNet takes the fastest of its timed calls; so does yolo26n.py --time.
+// MobileNet takes the fastest of its timed calls; so does yolo26n.py --time,
+// whose row's range gives its count, median and MAD.
 assert.ok(COMPONENT_METRICS.us_per_image.includes('the fastest of {mobilenet}'));
 assert.ok(COMPONENT_METRICS.e2e_us_per_image.includes('the fastest of {mobilenet}'));
 assert.ok(trendOf('sa-placer-hw').every(t => !/per image/.test(t.axis) || t.axis.includes('fastest')));
-assert.ok(COMPONENT_METRICS.us_per_image_b1.includes('the fastest of {n_iters["yolo26n_hw"]}'));
-assert.ok(trendOf('yolo26n-hw')[0].axis.includes('fastest of {n_iters["yolo26n_hw"]}'));
-assert.ok(!/median/.test(COMPONENT_METRICS.us_per_image_b1 + trendOf('yolo26n-hw')[0].about));
-assert.ok(COMPONENT_METRICS.tok_s.includes('the median of {n_iters["llama_chain_hw"]}'));
-assert.ok(trendOf('llama-chain-hw')[1].axis.includes('median of {n_iters["llama_chain_hw"]}'));
+assert.ok(COMPONENT_METRICS.us_per_image_b1.includes('the fastest of its timed calls'));
+assert.ok(trendOf('yolo26n-hw')[0].axis.includes('fastest call'));
+assert.ok(!/the median of/.test(COMPONENT_METRICS.us_per_image_b1 + trendOf('yolo26n-hw')[0].about));
+// Llama's timed run takes the median dispatch.
+assert.ok(COMPONENT_METRICS.tok_s.includes('median 4-token dispatch'));
+assert.ok(trendOf('llama-chain-hw')[1].axis.includes('median dispatch'));
 // The host clock is never called NPU time.
 assert.ok(!Object.values(COMPONENT_METRICS).some(about => /NPU time/.test(about)));
 // Every timing tab's axis names its statistic.
@@ -351,7 +344,7 @@ db = fromRecords({ npu2: [err('1', 1, 0, 0), err('2', 2, 0, 0), err('3', 3, 5, 4
 // The kernel page offers both, labelled, on an axis that says which way is better.
 assert.ok(ALL_METRICS.includes('max_ulp') && ALL_METRICS.includes('not_correctly_rounded'));
 assert.deepEqual(['max_ulp', 'not_correctly_rounded'].map(label), ['Max error (ULP)', 'Not correctly rounded (%)']);
-assert.ok(METRICS.max_ulp.includes('correctly rounded value of the function'));
+assert.ok(METRICS.max_ulp.includes('correctly rounded value of the mathematics'));
 const ulp = kernelTrendConfig(db, 'npu2', 'softmax', 'max_ulp');
 assert.equal(ulp.options.scales.y.title.text, 'Max error (ULP, worst result) · ↓ better');
 assert.deepEqual(ulp.data.datasets[0].data, [0, 0, 5]);
@@ -1687,7 +1680,7 @@ assert.equal(grid.children[1].children.length, 4);
 const block = card.cards[0].children[2];
 assert.equal(block.className, 'stages');
 const compiles = block.children.filter(r => r.className === 'stage-row');
-assert.deepEqual(compiles.map(r => r.text), ['cold40 s 0.0% · 850 MiB peak', 'warm4.6 s 0.0% · 700 MiB peak']);
+assert.deepEqual(compiles.map(r => r.text), ['cold40 s 0.0% · 850 MiB largest process', 'warm4.6 s 0.0% · 700 MiB largest process']);
 assert.equal(block.children[0].text, 'Compile');
 assert.equal(all(block, n => /^stage-seg /.test(n.className || '')).length, 0);
 assert.equal(all(block, n => n.className === 'stage-key').length, 0);
@@ -1805,7 +1798,7 @@ assert.equal(segs(cold)[6].title.split('\\n')[0], 'package, cold compile: 0.07 s
 const wall = row => row.children[1].children.find(n => n.className === 'wall');
 assert.equal(wall(cold).style, 'left: 99.469%');
 assert.equal(wall(warm).title, 'the whole warm compile, wall clock: 4.30 s');
-assert.equal(cold.children[2].text, '20.6 s · 864.6 MiB peak');
+assert.equal(cold.children[2].text, '20.6 s · 864.6 MiB largest process');
 assert.deepEqual(axis.children[1].children.map(n => n.text), ['0 s', '5 s', '10 s', '15 s', '20 s']);
 // The key is the table of every stage's seconds, slivers included.
 const key = block.children.find(n => n.className === 'stage-key');
@@ -1854,7 +1847,7 @@ assert.equal(grid.children[0].text, 'Decode tokens / s—');
 assert.equal(grid.children[1].text, 'Dispatch rate4.37 tok/s −7.0%');
 assert.equal(grid.children[5].text, 'Compiled sizesELF20.5 MiB ±0.0 KiBimage237.7 KiB ±0.0 KiB');
 assert.deepEqual(card.cards[0].children[2].children.filter(r => r.className === 'stage-row').slice(0, 2).map(r => r.text),
-  ['cold60.5 s 0.0% · 2,502.4 MiB peak', 'warm1.2 s 0.0% · 410 MiB peak']);
+  ['cold60.5 s 0.0% · 2,502.4 MiB largest process', 'warm1.2 s 0.0% · 410 MiB largest process']);
 assert.equal(grid.children[1].href, '#view=performance&metric=tok_s');
 fillSparks(card.cards, collect(historiesOf('llama-chain-hw', [llamaBefore, llamaAfter])));
 assert.deepEqual(['compile_s', 'compile_s_warm'].map(m => card.cards[0].sparks.get(m).lines.map(([color, , dashed]) => [color, dashed])),
@@ -1941,7 +1934,7 @@ assert.deepEqual(chip(grid.children[1]), ['chg worse', 'chg flat']);
 assert.equal(grid.children[4].text, 'Compiled sizeELF3.0 MiB ±0.0 KiB');
 assert.equal(grid.children[0].href, '#view=performance&metric=us_per_image_b1');
 assert.deepEqual(card.cards[0].children[2].children.filter(r => r.className === 'stage-row').slice(0, 2).map(r => r.text),
-  ['cold95.5 s 0.0% · 3,100 MiB peak', 'warm12.5 s 0.0% · 1,200 MiB peak']);
+  ['cold95.5 s 0.0% · 3,100 MiB largest process', 'warm12.5 s 0.0% · 1,200 MiB largest process']);
 fillSparks(card.cards, collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter])));
 const perImage = card.cards[0].sparks.get('us_per_image_b1').innerHTML;
 assert.ok(perImage.includes('var(--series-1)') && perImage.includes('var(--series-2)'));
@@ -2008,8 +2001,8 @@ assert.equal(stages.options.scales.y.type, 'logarithmic');
 const yoloData = collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter]));
 const perImage = trendConfig(yoloData, yolo.trend[0]);
 assert.deepEqual(perImage.data.datasets.map(d => [d.label, d.data]), [['batch 1', [5000, 5400]], ['batch 8', [3000, 3000]]]);
-assert.equal(perImage.options.scales.y.title.text, 'End-to-end time per image (µs, fastest of 5) · ↓ better');
-assert.equal(trendConfig(yoloData, yolo.trend[1]).options.scales.y.title.text, 'Images per second (from the fastest of 5) · ↑ better');
+assert.equal(perImage.options.scales.y.title.text, 'End-to-end time per image (µs, fastest call) · ↓ better');
+assert.equal(trendConfig(yoloData, yolo.trend[1]).options.scales.y.title.text, 'Images per second (from the fastest call) · ↑ better');
 assert.equal(perImage.options.scales.y.type, 'linear');
 const yoloBox = trendBox(yoloData, yolo.trend, 'fps_b8');
 assert.equal(yoloBox.metric(), 'fps_b1');
@@ -2241,7 +2234,7 @@ assert.equal(grid.children[2].text, 'Qualitycrossings0sharing0.253 +4.1%');
 // The counts both sections chart link to this one's trends.
 assert.equal(grid.children[0].href, '#view=placement&metric=failed_properties');
 const quiet = componentBand(allocator, { target: 'allocator', runs: [night('6', before.date, null)] }, before, NOW);
-assert.ok(one(quiet, n => n.className === 'headline').text.endsWith('Bank sharing 0.243 (0 the most even split); the run took 103 s.'));
+assert.ok(one(quiet, n => n.className === 'headline').text.endsWith('Bank sharing 0.243 (0 = most even split); the run took 103 s.'));
 assert.equal(plural(2, 'property'), '2 properties');
 assert.equal(plural(2, 'day'), '2 days');
 """)
@@ -2670,7 +2663,7 @@ assert.deepEqual(compile.data.datasets.filter(d => !d.band).map(d => d.label), [
 // Compile peak memory, MB, also on a plain axis.
 const memory = trendConfig(data, COMPILE_TABS[1]);
 assert.equal(memory.options.scales.y.type, 'linear');
-assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MiB, one compile each) · ↓ better');
+assert.equal(memory.options.scales.y.title.text, 'Largest process peak (MiB, one compile each) · ↓ better');
 // The box: a switch for the tab, drawn once on screen, redrawn on a switch.
 // A link to a warm metric opens the tab that draws it; a tab with no history is left out.
 const box = trendBox(data, hw.trend, 'compile_s_warm');

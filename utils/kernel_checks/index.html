@@ -639,7 +639,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
       <details id="about" class="howto">
         <summary>How these checks work</summary>
         <div>
-          <p><a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyKernelChecks.yml"><code>nightlyKernelChecks.yml</code></a> runs at 06:00 UTC on an npu1 (AIE2) and an npu2 (AIE2P) bench runner,
+          <p><a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyKernelChecks.yml"><code>nightlyKernelChecks.yml</code></a> runs at 06:00 UTC on an npu1 (AIE2) and an npu2 (AIE2P; Strix or Krackan, which each run names) bench runner,
             on pull requests that bump the Peano pin, and on demand. Each run checks every case in
             <a href="https://github.com/Xilinx/mlir-aie/blob/main/test/python/npu/kernel_cases.py"><code>test/python/npu/kernel_cases.py</code></a> for correctness
             (<code>test_kernels_e2e.py -m extensive</code>: every case, every edge-data case, three random seeds), then times the cases that passed with
@@ -836,12 +836,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const STALE_AFTER_MS = 36 * 3600 * 1000;
     // What test_kernels_perf.py records per case, as the page names them.
     const METRICS = {
-      cycles: 'core cycles per kernel call, the fastest traced call; stable to well under 1% night to night',
-      cycles_per_kop: 'cycles per 1,000 of the kernel\'s operations, from cycles',
-      kernel_object_bytes: 'size of the compiled kernel object (.o), excluding the harness',
+      cycles: 'core cycles of the kernel\'s fastest traced call (the rest is the core waiting); for a kernel whose calls do unequal work (resample_quantize), the median call',
+      cycles_per_kop: 'cycles per 1,000 operations as each kernel\'s contract counts them: a multiply-accumulate is 2 for conv and mm, norms count 4 to 6 per element, kernels that declare nothing count one per output element, and those that declare 0 have no row; compare within one kernel, not across kernels',
+      kernel_object_bytes: 'bytes of code and initialized data the tested entry point links from its object: not its sibling entry points, symbol tables, or the LLVM IR the harness embeds for LUT kernels',
       npu_us: 'host time to submit a run and wait for it, median of 50; moves with the machine',
-      max_ulp: 'the furthest any float result of the correctness sweep fell from the correctly rounded value of the function the kernel computes, in units in the last place of its type',
-      not_correctly_rounded: 'the share of the correctness sweep\'s float results that are not the correctly rounded value of the function the kernel computes',
+      max_ulp: 'the furthest any float result of the correctness sweep fell from the correctly rounded value of the mathematics (the contract\'s base reference, for LUT builds too), in units in the last place of its output type; per output type, edge data (zeros, ones) left out',
+      not_correctly_rounded: 'the share of the correctness sweep\'s float results that are not the correctly rounded value of the mathematics; per output type, edge data left out',
     };
     // What the component checks record per case (utils/component_checks/).
     // A compile's aiecc stages in pipeline order (aiecc_stages.py names
@@ -864,16 +864,16 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       final_cost_max: 'the worst seed\'s SA final cost on the fixture',
       cpu_ms_mean: 'CPU time of one aie-opt placement, mean over the seeds',
       cpu_ms_max: 'CPU time of the slowest seed',
-      peak_rss_mb_max: 'peak memory of the hungriest seed',
+      peak_rss_mb_max: 'peak resident memory of the hungriest seed\'s aie-opt',
       us_per_image: 'dispatch time of one call, host-observed (submit to completion, so a dispatch\'s fixed cost is in it), the fastest of 20, over the images in its batch',
       e2e_us_per_image: 'host time of one call, from Python, the fastest of 20, over the images in its batch',
       compile_s: 'wall time of the whole compile, from Python to xclbin, cold (a fresh NPU_CACHE_HOME, kernel objects built from scratch)',
-      compile_peak_rss_mb: 'peak resident memory of the largest single process of the cold compile (Python, aiecc or one kernel\'s compile), not of them all together',
-      compile_s_warm: 'wall time of the same compile again, keeping only the cold compile\'s kernel objects (the whole-build and per-device caches and the outputs cleared first) -- what an edit to the design, not its kernels, costs',
+      compile_peak_rss_mb: 'peak resident memory of the largest single process in the cold compile (Python, aiecc or one kernel compile), not of them all together',
+      compile_s_warm: 'wall time of the same compile again, keeping the cold compile\'s kernel objects and their precompiled headers (the whole-build and per-device caches and the outputs cleared first) -- what an edit to the design, not its kernels, costs',
       compile_peak_rss_mb_warm: 'the same for the warm compile',
       placement_cost: 'the SA cost (sa-final-cost) of the placement aiecc chose for the design the nightly runs, replayed with aie-opt; the tooltip names the placement',
-      tok_s: 'dispatch rate: tokens per second from the timed run\'s median 4-token dispatch, the median of 3 (submit to completion, host-observed; the host work between dispatches is left out)',
-      ms_per_token: 'dispatch time per decoded token, host-observed: the timed run\'s median 4-token dispatch, the median of 3, over its 4 tokens',
+      tok_s: 'dispatch rate: tokens per second from the timed run\'s median 4-token dispatch (submit to completion, host-observed; the host work between dispatches is left out)',
+      ms_per_token: 'dispatch time per decoded token, host-observed: the timed run\'s median 4-token dispatch over its 4 tokens',
       dma_floor_ratio: 'time per token over the time its weight and KV bytes take at 120 GB/s of DDR bandwidth; under 1.5× it is DMA-bound, else compute-bound, as the card\'s header says',
       tokens_passed: 'decoded tokens that matched the numpy oracle\'s, of those the dispatch generated',
       ttft_ms: 'time to the first generated token, from generate.py\'s prompt run through the decode',
@@ -883,7 +883,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       xclbin_bytes: 'size of the xclbin the compile wrote',
       instr_bytes: 'size of the runtime-sequence instruction stream the host submits with each dispatch',
       pdi_bytes: 'size of the device image the xclbin carries: every core\'s ELF plus the array configuration',
-      us_per_image_b1: 'host wall time of one yolo26n(...) call on one image (the jit call\'s own work, the dispatch and its wait; not the image\'s decode or the readback), the fastest of 5 after 2 warm-ups, as yolo26n.py --time reports it',
+      us_per_image_b1: 'host wall time of one yolo26n(...) call on one image (the jit call\'s own work, the dispatch and its wait; not the image\'s decode or the readback), the fastest of its timed calls after warm-ups (the row gives how many, their median and MAD), as yolo26n.py --time reports it',
       us_per_image_b8: 'the same for one call on 8 images, over the 8, as yolo26n.py --time --batch 8 reports it',
       fps_b1: 'images per second at batch 1, from the time per image',
       fps_b8: 'images per second at batch 8, from the time per image',
@@ -894,7 +894,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       unsolved: 'generated designs, each known to fit, that the allocator left unplaced',
       illegal: 'placements or routings the model\'s verifier rejected',
       avoidable_crossings: 'buffers placed across a bank boundary when a placement within one bank was free',
-      bank_pair_sharing: 'how far each design\'s buffers sit from the most even split over the banks toward all in one bank (0 the most even split, 1 one bank), mean over the designs',
+      bank_pair_sharing: 'how far each design\'s buffers sit from the most even bank split toward all in one bank (0 = most even, 1 = one bank), mean over designs',
       wall_s: 'wall time of the whole run, on a shared hosted runner',
       unrouted: 'routable designs the router failed to route, over both hop settings',
       hop_ratio: 'switchbox hops over the hops of the routing the generator constructed',
@@ -912,8 +912,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       max_ulp: 'Max error (ULP)', not_correctly_rounded: 'Not correctly rounded (%)',
       failed_seeds: 'Failed seeds', final_cost_mean: 'SA final cost (mean)', final_cost_max: 'SA final cost (worst)', cpu_ms_mean: 'CPU time (mean)',
       cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', us_per_image: 'Dispatch / image',
-      e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time (cold)', compile_peak_rss_mb: 'Compile peak memory (cold)',
-      compile_s_warm: 'Compile time (warm)', compile_peak_rss_mb_warm: 'Compile peak memory (warm)', placement_cost: 'Placement cost',
+      e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time (cold)', compile_peak_rss_mb: 'Largest process peak (cold)',
+      compile_s_warm: 'Compile time (warm)', compile_peak_rss_mb_warm: 'Largest process peak (warm)', placement_cost: 'Placement cost',
       failed_properties: 'Failed properties', unsolved: 'Unplaced', illegal: 'Illegal', avoidable_crossings: 'Avoidable crossings',
       bank_pair_sharing: 'Bank sharing (0–1)', wall_s: 'Wall time', unrouted: 'Unrouted', hop_ratio: 'Hops ÷ constructed',
       amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
@@ -975,8 +975,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // small stages folded into one line so each keeps a color of its own.
     const COMPILE_TABS = [
       { id: 'compile_s', name: 'Compile time', axis: 'Compile time (s, one compile each)', lines: [['cold', ['compile_s']], ['warm', ['compile_s_warm']]],
-        about: 'wall time of the whole compile: cold, from a fresh NPU_CACHE_HOME, and warm, keeping only the cold compile\'s kernel objects' },
-      { id: 'compile_peak_rss_mb', name: 'Compile memory', axis: 'Compile peak memory (MiB, one compile each)',
+        about: 'wall time of the whole compile: cold, from a fresh NPU_CACHE_HOME, and warm, keeping the cold compile\'s kernel objects and their precompiled headers' },
+      { id: 'compile_peak_rss_mb', name: 'Compile memory', axis: 'Largest process peak (MiB, one compile each)',
         lines: [['cold', ['compile_peak_rss_mb']], ['warm', ['compile_peak_rss_mb_warm']]], about: 'peak resident memory of the compile\'s largest single process, cold and warm' },
       { id: 'compile_stages', name: 'Compile stages', axis: 'Cold compile time per stage (s, one compile)', log: true,
         about: 'the cold compile\'s time in each aiecc stage and outside aiecc; the stages overlap, so they can add up past its wall time',
@@ -1027,12 +1027,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         repro: (_record, n = '16') => `cd programming_examples/ml/llama_3_2_1b && python aie2_decode.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --full-elf-path build/chain_persist_grow_N${n}_PT4.elf && python test_chain_persist_grow_mh.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --elf build/chain_persist_grow_N${n}_PT4.elf`,
         say: n => `the ${n}-layer decode`,
         cards: llamaCards, charts: () => [], summary: llamaSummary,
-        trend: [{ id: 'tok_s', name: 'Tokens / s', axis: 'Tokens per second (decode: one run; dispatch: median of 3)',
+        trend: [{ id: 'tok_s', name: 'Tokens / s', axis: 'Tokens per second (decode: generate.py; dispatch: median)',
                   lines: [['decode (generate.py)', ['decode_tok_s']], ['dispatch rate', ['tok_s']]],
                   about: 'tokens per second as generate.py decodes them, end to end, and the dispatch rate of the timed run\'s median dispatch, which leaves out the host work between dispatches' },
-                { id: 'ms_per_token', axis: 'Dispatch time per token (ms, median of 3)', lines: [['', ['ms_per_token']]] },
+                { id: 'ms_per_token', axis: 'Dispatch time per token (ms, median dispatch)', lines: [['', ['ms_per_token']]] },
                 { id: 'decode_by_context', metric: 'ms_per_token', per: 'ctx', name: 'Decode by context', log: true,
-                  axis: 'Dispatch time per token (ms, median of 3)',
+                  axis: 'Dispatch time per token (ms, median dispatch)',
                   about: 'the dispatch time per token with the KV cache filled to each context length, all from the one compile for the longest' },
                 { id: 'ttft_ms', axis: 'Time to first token (ms, one run)', lines: [['', ['ttft_ms']]] }, ...COMPILE_TABS] },
       { id: 'yolo26n-hw', section: 'performance', title: 'YOLO26n detection on npu2', short: 'YOLO26n', failure: 'run',
@@ -1046,9 +1046,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         repro: () => 'cd programming_examples/ml/yolo26n && python yolo26n.py --images $IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/coco128/images/train2017 --n 8',
         say: () => 'the 640×640 detector',
         cards: yoloCards, charts: () => [], summary: yoloSummary,
-        trend: [{ id: 'us_per_image_b1', name: 'End-to-end / image', axis: 'End-to-end time per image (µs, fastest of 5)', lines: [['batch 1', ['us_per_image_b1']], ['batch 8', ['us_per_image_b8']]],
-                  about: 'host wall time per image of one yolo26n(...) call, the fastest of 5, at batch 1 and batch 8' },
-                { id: 'fps_b1', name: 'Images / s', axis: 'Images per second (from the fastest of 5)', lines: [['batch 1', ['fps_b1']], ['batch 8', ['fps_b8']]],
+        trend: [{ id: 'us_per_image_b1', name: 'End-to-end / image', axis: 'End-to-end time per image (µs, fastest call)', lines: [['batch 1', ['us_per_image_b1']], ['batch 8', ['us_per_image_b8']]],
+                  about: 'host wall time per image of one yolo26n(...) call, the fastest of its timed calls, at batch 1 and batch 8' },
+                { id: 'fps_b1', name: 'Images / s', axis: 'Images per second (from the fastest call)', lines: [['batch 1', ['fps_b1']], ['batch 8', ['fps_b8']]],
                   about: 'images per second at batch 1 and batch 8, from the time per image' }, ...COMPILE_TABS] },
       { id: 'router', section: 'routing', title: 'Router model-based tests', short: 'Router', failure: 'check',
         passed: 'Every property held and every mutation was answered right.',
@@ -1457,7 +1457,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (['tok/s', 'fps'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unit}`;
       if (['x', '×'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 3 })}×`;
       if (unit === 'us') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} µs`;
-      if (unit === 'MB') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} MiB`;
+      if (['MB', 'MiB'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} MiB`;
       if (['s', 'ms'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`;
       if (['pairs', 'fraction'].includes(unit)) return value.toLocaleString('en-US', { maximumFractionDigits: 3 });
       if (unit === '%') return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
@@ -2905,7 +2905,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         }
         const total = el('span', { className: 'total' }, c.total ? glanceValues(c.total, `compile_s${c.suffix}`, c.total.current) : '—',
                          c.peak ? el('span', { className: 'peak', title: COMPONENT_METRICS[`compile_peak_rss_mb${c.suffix}`] },
-                                     ` · ${formatNumber(c.peak.value, 'MB')} peak`) : '');
+                                     ` · ${formatNumber(c.peak.value, c.peak.unit)} largest process`) : '');
         const spark = el('span', { className: 'spark' });
         spark.lines = [['muted', keyOf(`compile_s${c.suffix}`), c.suffix === '_warm']];
         block.sparks.set(`compile_s${c.suffix}`, spark);
@@ -3577,7 +3577,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function allocatorSummary(rows) {
       const r = rows.allocator;
       if (!r || !r.bank_pair_sharing || !r.wall_s) return '';
-      return ` Bank sharing ${formatNumber(r.bank_pair_sharing.value, r.bank_pair_sharing.unit)} (0 the most even split); the run took ${formatNumber(r.wall_s.value, 's')}.`;
+      return ` Bank sharing ${formatNumber(r.bank_pair_sharing.value, r.bank_pair_sharing.unit)} (0 = most even split); the run took ${formatNumber(r.wall_s.value, 's')}.`;
     }
 
     // A chart box in a band, drawn once it scrolls into view.
@@ -3637,7 +3637,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                     label: item => item.dataset.label === 'failed' ? 'did not place' : `${item.dataset.label}: ${formatNumber(item.raw, 'cost')}`,
                     afterBody: items => {
                       const d = items.length && mine[items[0].dataIndex];
-                      return d ? `CPU ${formatNumber(d.cpu_ms, 'ms')}, peak ${formatNumber(d.peak_rss_mb, 'MB')}` : '';
+                      return d ? `CPU ${formatNumber(d.cpu_ms, 'ms')}, peak ${formatNumber(d.peak_rss_mb, 'MiB')}` : '';
                     },
                   },
                 },
