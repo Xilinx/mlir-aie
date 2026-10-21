@@ -31,11 +31,20 @@ def page():
     setup = """
 const assert = require('node:assert/strict');
 // Disable the automatic data fetch and capture the Chart.js configuration.
-global.fetch = async () => ({ ok: false });
+global.fetch = async () => ({ ok: false, status: 404 });
 // Just enough DOM for the page to build its cards and tables.
 class El {
   constructor(tag) { this.tag = tag; this.children = []; this.on = {}; this.hidden = false; }
-  append(...nodes) { this.children.push(...nodes); }
+  append(...nodes) {
+    for (const n of nodes) if (n instanceof El) n.parentNode = this;
+    this.children.push(...nodes);
+  }
+  insertBefore(node, before) {
+    const at = this.children.indexOf(before);
+    this.children.splice(at < 0 ? this.children.length : at, 0, node);
+    node.parentNode = this;
+  }
+  remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(c => c !== this); }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(type, f) { this.on[type] = f; }
   querySelectorAll() { return []; }
@@ -428,6 +437,71 @@ assert.deepEqual(flat, { min: 87.5, max: 112.5 });
 THRESHOLDS.max_ulp = { abs: 1 };
 assert.deepEqual(yRange([{ data: [0, 0] }], 'max_ulp'), { min: 0, max: 1.25 });
 assert.deepEqual(yRange([{ data: [0, 0] }], 'cycles'), { min: 0, max: 1 });
+""")
+
+
+def test_an_unreadable_file_is_not_taken_for_an_unpublished_one(page):
+    page(RUNS + COMPONENT_RUNS + """
+const answers = {
+  'missing.json': { ok: false, status: 404 },
+  'busy.json': { ok: false, status: 503 },
+  'broken.json': { ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected token'); } },
+  'good.json': { ok: true, status: 200, json: async () => ({ schema: 1, runs: [] }) },
+};
+global.fetch = async url => {
+  if (url === 'offline.json') throw new TypeError('Failed to fetch');
+  return answers[url];
+};
+(async () => {
+  assert.equal(await fetchJson('missing.json'), null);
+  assert.deepEqual(await fetchJson('good.json'), { schema: 1, runs: [] });
+  const [busy, broken, offline] = await Promise.all(['busy.json', 'broken.json', 'offline.json'].map(fetchJson));
+  assert.deepEqual([busy.reason, broken.reason, offline.reason], ['HTTP 503', 'not valid JSON', 'the request failed']);
+  // An unread file is never data, nor "a newer version".
+  assert.equal(readable(busy), null);
+  const unread = new Unread('../kernel-checks/npu2/runs.json', 'HTTP 503');
+  const run = latestRun('npu2', unread, null, null);
+  assert.equal(run.newer, false);
+  // The kernels' verdict: could not read, reload; not "no results published".
+  const verdict = verdictOf({ npu: 'npu2', run, counts: catalogueCounts(null), moved: null, latest: { cases: new Map() } }, 0);
+  assert.deepEqual([verdict.level, verdict.headline], ['bad', 'Could not read kernel-checks/npu2/runs.json (HTTP 503): reload the page.']);
+  assert.equal(verdictOf({ npu: 'npu2', run: latestRun('npu2', null, null, null), counts: catalogueCounts(null), moved: null, latest: { cases: new Map() } }, 0).headline,
+               'No results published yet.');
+  // A component band.
+  const band = componentBand(hw, new Unread('../component-checks/sa-placer-hw/runs.json', 'the request failed'), null, NOW);
+  assert.equal(band.className, 'verdict bad');
+  assert.equal(one(band, n => n.className === 'headline').text, 'Could not read component-checks/sa-placer-hw/runs.json (the request failed): reload the page.');
+  // CI health.
+  const ci = { status: null, unread: new Unread('../ci-health/status.json', 'HTTP 502'), newer: false, results: [], critical: [], merge: null };
+  assert.equal(ciStatus(ci, NOW).text, 'Could not read ci-health/status.json (HTTP 502): reload the page.');
+  assert.equal(ciVerdictBand(ci, NOW).className, 'verdict bad');
+  const [tile] = overviewTiles(null, [], NOW, ci);
+  assert.deepEqual([tile.level, tile.children[1].text], ['bad', 'Needs attention']);
+})().catch(e => { console.error(e); process.exit(1); });
+""")
+
+
+def test_without_chartjs_every_chart_is_drawn_as_svg(page):
+    page(COMPONENT_RUNS + SWEEP_NIGHTS + """
+global.Chart = undefined;
+// The sweep's Seeds chart: dots, the nightly before as ticks, no lines between seeds.
+const card = componentBand(sweep, sweepIndex, after, NOW, before);
+const seeds = all(card, n => n.className === 'chart')[0];
+const svg = all(seeds, n => n.className === 'svg-chart')[0];
+assert.ok(svg.innerHTML.startsWith('<svg'));
+assert.ok(!svg.innerHTML.includes('<polyline'));
+// Three seeds placed, four the night before, one failed.
+assert.equal((svg.innerHTML.match(/<circle/g) || []).length, 3 + 4 + 1);
+// A Placement or Routing trend chart (draw).
+const data = collect(historiesOf('sa-placer', [before, after]));
+const holder = document.createElement('div');
+const canvas = document.createElement('canvas');
+holder.append(canvas);
+document.createElement('div').append(holder);
+const drawn = draw(canvas, chartGroups(data.series).find(g => g.metric === 'final_cost_max'), ['unknown'], data);
+assert.ok(drawn.svg.some(p => p.startsWith('<polyline')));
+assert.deepEqual(drawn.legend, ['sa-placer']);
+assert.ok(canvas.hidden);
 """)
 
 

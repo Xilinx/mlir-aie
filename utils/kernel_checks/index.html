@@ -853,7 +853,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // The newest publish.py format this page reads; a newer file is set aside
     // (and said so) rather than misread.
     const SCHEMA = 1;
-    const readable = x => x && (x.schema || 1) <= SCHEMA ? x : null;
+    // A published file the page could not read (a failed request, a server
+    // error, broken JSON), as against one that is not there: a 404 is "not
+    // published yet", this is "reload".
+    class Unread {
+      constructor(url, reason) { this.url = url; this.reason = reason; }
+      get text() { return `could not read ${this.url.replace(/^\.\.\//, '')} (${this.reason}): reload the page`; }
+    }
+    const readable = x => x && !(x instanceof Unread) && (x.schema || 1) <= SCHEMA ? x : null;
     const EXPECTED_PMODE = 'turbo';
     const STALE_AFTER_MS = 36 * 3600 * 1000;
     // What test_kernels_perf.py records per case, as the page names them.
@@ -1152,11 +1159,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // Data
     // ------------------------------------------------------------------
 
+    // A published file's JSON; null when it is not there (404); an Unread
+    // when it is there but could not be read.
     async function fetchJson(url) {
-      try {
-        const res = await fetch(url, { cache: 'no-cache' });
-        return res.ok ? await res.json() : null;
-      } catch (e) { return null; }
+      let res;
+      try { res = await fetch(url, { cache: 'no-cache' }); } catch (e) { return new Unread(url, 'the request failed'); }
+      if (res.status === 404) return null;
+      if (!res.ok) return new Unread(url, `HTTP ${res.status}`);
+      try { return await res.json(); } catch (e) { return new Unread(url, 'not valid JSON'); }
     }
 
     // One run record per rows: {case: {metric: {value, unit, range}}} ->
@@ -1364,8 +1374,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // The latest run of one NPU: its runs.json entry, else what the series
     // and catalogue say about it (a leg whose runs.json is not there yet).
     function latestRun(npu, runsIndex, db, catalogue) {
-      const newer = Boolean(runsIndex) && !readable(runsIndex);
-      if (newer) runsIndex = null;
+      const unread = runsIndex instanceof Unread ? runsIndex : null;
+      const newer = Boolean(runsIndex) && !unread && !readable(runsIndex);
+      if (!readable(runsIndex)) runsIndex = null;
       const runs = runsIndex && runsIndex.runs ? runsIndex.runs : [];
       // The latest nightly; with no published nightly yet, the latest run.
       const nightly = runs.filter(r => !isManual(r));
@@ -1391,6 +1402,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         device: recorded ? recorded.device : last ? last.provenance.device : null,
         deviceRaw: recorded ? recorded.device_raw : null,
         newer,
+        unread,
         // Unknown (null) when only the catalogue says a run happened.
         sane: recorded ? recorded.sane : last ? true : null,
         published: recorded ? recorded.published : Boolean(last),
@@ -1410,7 +1422,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function warningsFor(npu, run, now) {
       const out = [];
       if (run.newer) out.push({ level: 'bad', text: 'the results were published by a newer version of this page: reload it' });
-      if (run.date === null) { out.push({ level: 'bad', text: `${npu}: no results have been published` }); return out; }
+      if (run.date === null) { out.push({ level: 'bad', text: run.unread ? run.unread.text : `${npu}: no results have been published` }); return out; }
       if (now - run.date > STALE_AFTER_MS) out.push({ level: 'bad', text: `no run since ${formatWhen(run.date)}`, stale: true });
       if (run.refused) out.push({ level: 'bad', text: `the run refused to measure: ${run.refused}` });
       else if (run.sane === false) out.push({ level: 'bad', text: 'the measurement sanity check failed: no numbers were published from this run' });
@@ -1724,7 +1736,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       // Lateness is said above the verdict; the verdict is the run's own.
       const stale = staleness(run.date, now);
       const hard = warnings.find(w => w.level === 'bad' && !/^no run since /.test(w.text));
-      if (run.date === null) return { level: 'none', headline: 'No results published yet.', quiet: '' };
+      if (run.date === null) return run.unread ? { level: 'bad', headline: `${cap(run.unread.text)}.`, quiet: '' } : { level: 'none', headline: 'No results published yet.', quiet: '' };
       const v = verdictOfRun();
       return stale ? { ...v, level: 'bad', stale } : v;
       function verdictOfRun() {
@@ -2653,7 +2665,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         ticks: { color: split ? npuColor(npu) : fg, maxTicksLimit: 4, font: { size: 11 }, callback: v => formatNumber(v, g.unit) } });
       const markers = nightMarkers(data, npus, index);
       const first = i => [...nights[i].byNpu.values()][0];
-      const chart = new Chart(target, {
+      const chart = lineChart(target, {
         type: 'line',
         data: { labels, datasets },
         options: {
@@ -3281,7 +3293,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       for (const d of datasets) {
         if (d.band) continue;
         const idx = labels.map((_, i) => i).filter(i => shown(d.data[i]));
-        if (idx.length > 1) parts.push(`<polyline points="${idx.map(i => `${x(i)},${y(d.data[i])}`).join(' ')}" fill="none" stroke="${d.borderColor}" stroke-width="2"/>`);
+        if (idx.length > 1 && d.showLine !== false) parts.push(`<polyline points="${idx.map(i => `${x(i)},${y(d.data[i])}`).join(' ')}" fill="none" stroke="${d.borderColor}" stroke-width="2"/>`);
         for (const i of idx) {
           // Hover says when, which commit and the value; a click opens the commit.
           const c = (config.data.commits || [])[i] || {};
@@ -3294,7 +3306,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         }
       }
       const legendFilter = config.options.plugins && config.options.plugins.legend && config.options.plugins.legend.labels && config.options.plugins.legend.labels.filter;
-      const keys = datasets.map((d, datasetIndex) => ({ d, datasetIndex })).filter(k => !k.d.band && (!legendFilter || legendFilter({ datasetIndex: k.datasetIndex })));
+      const keys = datasets.map((d, datasetIndex) => ({ d, datasetIndex })).filter(k => !k.d.band && (!legendFilter || legendFilter({ datasetIndex: k.datasetIndex }, config.data)));
       const legend = el('p', { className: 'note svg-legend' }, ...keys.map(k => {
         const key = el('span', { className: 'key' });
         key.innerHTML = `<i style="background:${k.d.borderColor}"></i>${esc(k.d.label)}`;
@@ -3629,7 +3641,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             { type: 'line', label: 'failed', data: mine.map(d => d.passed ? null : floor), showLine: false, pointStyle: 'crossRot',
               pointRadius: 6, borderColor: cssVar('--bad', '#c62f3c'), borderWidth: 2, order: 0 },
           ];
-          return new Chart(canvas, {
+          return lineChart(canvas, {
             type: 'line',
             data: { labels: mine.map(d => String(d.seed)), datasets },
             options: {
@@ -3673,12 +3685,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       // Lateness is said above the verdict, as on the kernels'.
       const stale = staleness(run.date, now);
       const hard = warnings.find(w => w.level === 'bad' && !w.stale);
-      const level = run.date === null ? 'none' : stale || hard || failed.length ? 'bad'
+      const level = run.date === null ? (run.unread ? 'bad' : 'none') : stale || hard || failed.length ? 'bad'
         : warnings.some(w => w.level === 'warn' && !/changed since the previous run/.test(w.text)) ? 'warn' : 'ok';
       const shown = failed.length ? null : hard;
       const ids = failed.map(id => check.failedId.exec(id));
       const names = failed.map((id, i) => ids[i] ? check.say(...ids[i].slice(1)) : id);
-      const headline = run.date === null ? 'No results published yet.'
+      const headline = run.date === null ? (run.unread ? `${cap(run.unread.text)}.` : 'No results published yet.')
         : failed.length ? `${plural(failed.length, check.failure)} failed: ${names.slice(0, 4).join(', ')}${failed.length > 4 ? ` and ${failed.length - 4} more` : ''}.`
         : hard ? `${hard.text[0].toUpperCase()}${hard.text.slice(1)}.`
         : check.passed;
@@ -3910,7 +3922,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       ciLoad ||= Promise.all([fetchJson(`${CI_DIR}/status.json`), fetchJson(`${CI_DIR}/history.json`)]).then(([raw, hist]) => {
         const status = readable(raw);
         const results = ((status && status.workflows) || []).map(w => ({ wf: w, runs: w.runs, jobs: w.jobs, error: w.error }));
-        return { status, newer: Boolean(raw) && !status, results, critical: (status && status.critical) || [],
+        const unread = raw instanceof Unread ? raw : null;
+        return { status, unread, newer: Boolean(raw) && !unread && !status, results, critical: (status && status.critical) || [],
                  merge: (status && status.merge_time) || null, history: readable(hist) };
       });
       return ciLoad;
@@ -3918,7 +3931,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // What the published file says about itself: {level, text}.
     function ciStatus(loaded, now) {
-      const { status, newer, results } = loaded;
+      const { status, newer, results, unread } = loaded;
+      if (unread) return { level: 'bad', text: `${cap(unread.text)}.` };
       if (newer) return { level: 'bad', text: 'The CI health file was written by a newer version of this page: reload it.' };
       if (!status) return { level: 'bad', text: 'Nothing published yet: publishCiHealth.yml writes ci-health/status.json every six hours.' };
       const at = Date.parse(status.generated_at);
@@ -4167,10 +4181,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function ciVerdictBand(loaded, now) {
       const p = ciProblems(loaded, now);
       const fresh = ciStatus(loaded, now);
-      const level = !loaded.status ? 'none' : p.problems.some(x => x.level === 'bad') ? 'bad' : p.problems.length ? 'warn' : fresh.level === 'bad' ? 'warn' : 'ok';
+      const level = loaded.unread ? 'bad' : !loaded.status ? 'none' : p.problems.some(x => x.level === 'bad') ? 'bad' : p.problems.length ? 'warn' : fresh.level === 'bad' ? 'warn' : 'ok';
       const band = el('article', { className: `verdict ${level}` });
       const n = p.problems.length;
-      const headline = !loaded.status ? 'No CI health published yet.'
+      const headline = loaded.unread ? `${cap(loaded.unread.text)}.` : !loaded.status ? 'No CI health published yet.'
         : n ? `${plural(n, 'workflow')} need${n === 1 ? 's' : ''} a look.` : 'All clear.';
       band.append(el('p', { className: 'headline' }, headline, n || !loaded.status ? '' : el('span', { className: 'quiet' }, ` ${ciRest(p)}`)));
       if (n) {
@@ -4281,7 +4295,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const reached = Boolean(ci && ci.status);
       const at = reached ? Date.parse(ci.status.generated_at) : NaN;
       tiles.push(sectionTile('ci', 'CI health', 'The tests that gate a merge, the other scheduled jobs, and how long merging takes.',
-        reached ? ciLines(ci, now) : [], Number.isFinite(at) ? `read ${ago(at, now)} ago` : '', !ci ? 'Loading…' : reached ? '' : 'Not published yet',
+        reached ? ciLines(ci, now) : ci && ci.unread ? [{ level: 'bad', who: 'CI health', text: `${cap(ci.unread.text)}.` }] : [],
+        Number.isFinite(at) ? `read ${ago(at, now)} ago` : '', !ci ? 'Loading…' : reached || ci.unread ? '' : 'Not published yet',
         reached ? ciSummary(ci, now) : ''));
       const kernelLines = (kernelNights || []).map(n => {
         const v = verdictOf(n, now);
@@ -4472,7 +4487,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         Promise.all(NPUS.map(n => fetchJson(`${KERNELS_DIR}/${n}/catalogue.json`))),
         Promise.all(NPUS.map(n => fetchJson(`${KERNELS_DIR}/${n}/runs.json`))),
         Promise.all(NPUS.map(n => fetchJson(`${KERNELS_DIR}/${n}/latest.json`))),
-      ]).then(([c, r, l]) => [c.filter(Boolean), new Map(NPUS.map((n, i) => [n, r[i]])), l.map(readable)]);
+      ]).then(([c, r, l]) => [c.map(readable).filter(Boolean), new Map(NPUS.map((n, i) => [n, r[i]])), l.map(readable)]);
       const npus = NPUS.filter(n => catalogues.some(c => c.npu === n) || indexes.get(n));
       const shown = npus.length ? npus : NPUS;
       // The run before each latest one, in its power mode, for what moved;
