@@ -366,6 +366,16 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
         assert required == ("turbo" if publishes else "any")
 
 
+def test_the_hardware_checks_install_nothing_mid_run():
+    steps = component_steps("hw-checks")
+    for step in steps:
+        if step.get("name") != "Setup virtual environment / prerequisites":
+            assert "pip install" not in step.get("run", ""), step["name"]
+    requirements = (WORKFLOWS.parents[1] / "python/requirements_ml.txt").read_text()
+    assert "\ntiktoken==" in requirements
+    assert "--extras" in steps[1]["run"]
+
+
 MODEL_INPUTS = (
     "allocator_seeds",
     "allocator_bankres_seeds",
@@ -697,6 +707,7 @@ def test_ci_health_publishes_its_files_and_the_page(tmp_path):
     assert job["permissions"] == {
         "contents": "write",
         "actions": "read",
+        "checks": "read",
         "pull-requests": "read",
     }
     run = next(step["run"] for step in job["steps"] if step.get("name") == "Publish")
@@ -752,3 +763,23 @@ def test_ci_health_publishes_its_files_and_the_page(tmp_path):
         capture_output=True,
     )
     assert git(repo, "rev-list", "--count", "gh-pages").strip() == "2"
+
+    # The next publish reads the published files back: the history to extend
+    # and the status whose judged runs on main need not be asked about again.
+    read = next(
+        step["run"]
+        for step in job["steps"]
+        if step.get("name") == "Read the workflows' runs and the pull requests"
+    )
+    result = subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", 'python3() { printf "%s\\n" "$@"; }\n' + read],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    args = result.stdout.splitlines()
+    assert args[args.index("--previous") + 1] == f"{temp}/status.json"
+    assert (temp / "status.json").read_text() == '{"schema": 1}'
+    assert args[args.index("--history") + 1] == f"{temp}/history.json"

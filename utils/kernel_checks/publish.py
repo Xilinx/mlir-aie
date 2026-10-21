@@ -20,7 +20,8 @@ the branch, ``kernel-checks/<npu>/``, and each component check
     latest.json            the newest nightly record that published rows; the
                            PR report's baseline
     history/<metric>.json  one series per case for that metric, a value per
-                           run, for the charts
+                           run, for the charts; each run names its part
+                           (``device``), which host time is compared within
 
 Standard library only: publishKernelResults.yml runs it from a copy beside
 the page, where the package is not installed.
@@ -43,9 +44,9 @@ results, pooled, that were not. ``builds`` maps each timed case to its kernel's
 ``ExternalFunction.recipe_key``, so a design that calls the same kernel finds
 its row. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
-removed), upgrades any run record still using older case ids (an
-``sa-placer-hw`` record from before the SA effort sweep becomes
-``effort=full``), rebuilds ``runs.json``, ``latest.json`` and the history from
+removed), upgrades any older run record (``upgrade``: a static
+``sa-placer-hw`` record's cases, a kernel check's ``measurement``), rebuilds
+``runs.json``, ``latest.json`` and the history from
 the run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
 ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
 also deletes the records of every run measured in ``MODE``, for retiring a
@@ -117,6 +118,8 @@ HISTORY_PROVENANCE = (
     "kernels",
     "device",
     "fixtures",
+    "dispatch",
+    "measurement",
 )
 # The component checks' rows from before they were published here, renamed to
 # what they are called now. Their other rows (wall time and RSS over the one
@@ -127,12 +130,32 @@ LEGACY_ROWS = (
     (r"sa_placer/hw_fail_count", "mobilenet/failed_seeds"),
     (
         r"sa_placer/hw_seed(\d+)_latency_us",
-        r"mobilenet/seed=\1/batch=1/effort=full/us_per_image",
+        r"mobilenet/seed=\1/batch=1/us_per_image",
     ),
 )
-# An sa-placer-hw case from before the check swept the SA effort. Every one of
-# those runs placed at effort 1.0, the page's "full".
-PRE_EFFORT_CASE = re.compile(r"^(mobilenet/seed=\d+(?:/batch=\d+)?)$")
+# An sa-placer-hw case from before the check swept the SA effort and compiled
+# a static design per batch. Every one of those runs placed at effort 1.0, the
+# page's "full".
+STATIC_CASE = re.compile(r"mobilenet/seed=(?P<seed>\d+)(?:/batch=(?P<batch>\d+))?")
+# The night #3807's trace decoder, which counts every timer wrap an Event_Sync
+# repeat folds in, first measured npu2. Before it, the cases below, whose
+# calls run past two wraps, decoded 1.5 to 7.2 times too few cycles; the
+# wraps lost can't be recovered, so their points are dropped.
+DECODER_FIXED = "2026-10-02"
+UNDERSTATED = frozenset(
+    {
+        "bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80",
+        "bn_conv2dk1_relu/1792x8/int8_uint8/input_channels=16/input_width=112/output_channels=64",
+        "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=120",
+        "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8",
+        "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
+        "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
+        "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_channels=184",
+        "bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8",
+        "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=240/input_width=14/output_channels=80",
+        "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16",
+    }
+)
 # The part a runtime's device name means, first match wins. XRT names the
 # same NPU differently across drivers ("RyzenAI-npu1", "NPU Phoenix"); the
 # raw name stays in the record as ``device_raw``.
@@ -286,15 +309,17 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
     errors = error_rows(_load(results / "error.json", {}))
     catalogue = _load(results / "catalogue.json", None)
     preflight = meta.get("preflight") or {}
+    provenance = provenance_fields(meta.get("provenance", ""))
     cases = meta.get("cases") or {}
     record = {
         "schema": SCHEMA,
         "target": target,
         **run,
         "pmode": preflight.get("pmode"),
-        "device": device_part(preflight.get("device")),
+        # A check without an NPU times the CPU it ran on.
+        "device": device_part(preflight.get("device")) or provenance.get("cpu"),
         "device_raw": preflight.get("device"),
-        "provenance": provenance_fields(meta.get("provenance", "")),
+        "provenance": provenance,
         "sane": meta.get("measurement_sane"),
         "published": meta.get("measurement_sane") is True and bool(rows),
         "n_rows": len(rows),
@@ -317,7 +342,7 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
             for case, d in cases.items()
             if case in record["rows"] and "build" in d
         }
-    for key in ("correctness_error", "refused", "reason", "detail"):
+    for key in ("correctness_error", "refused", "reason", "efforts", "detail"):
         if key in meta:
             record[key] = meta[key]
     if catalogue:
@@ -348,25 +373,62 @@ def _current_name(name: str) -> str | None:
 def upgrade(record: dict) -> bool:
     """Bring an older run record up to the current case ids; return whether it changed.
 
-    An ``sa-placer-hw`` record from before the check swept the SA effort names
-    its cases ``mobilenet/seed=S[/batch=B]`` and its runs carry no
-    ``effort_label``; they become ``.../effort=full``. Other records, and
-    records already current, are left as they are.
+    An ``sa-placer-hw`` record from before the check swept the SA effort and
+    compiled one ``--dynamic`` design for every batch has no ``dispatch`` in
+    its provenance; it gets ``dispatch static``. Its placement cost
+    (``mobilenet/seed=S``) and failures become ``.../effort=full``, and its
+    batch 1 compile time becomes ``mobilenet/seed=S/effort=full``'s, the one
+    compile a seed takes now. Its other per-batch compile times go, and its
+    per-batch times stay under their own ids (``mobilenet/seed=S/batch=B``):
+    a static design's times are not the dynamic one's. Its runs get
+    ``effort_label`` ``full``.
+
+    A kernel check's record gets the ``measurement`` that took its cycles:
+    ``1`` before ``DECODER_FIXED``, ``2`` since. An npu2 record from before
+    it loses the cycles of the ``UNDERSTATED`` cases.
+
+    Other records, and records already current, are left as they are.
     """
-    if record.get("target") != "sa-placer-hw":
-        return False
     before = json.dumps(record, sort_keys=True)
-    if "rows" in record:
-        record["rows"] = {
-            PRE_EFFORT_CASE.sub(r"\1/effort=full", case): cells
-            for case, cells in record["rows"].items()
-        }
-    if "failed" in record:
+    target = record.get("target")
+    provenance = record.get("provenance") or {}
+    rows = record.get("rows", {})
+    if target == "sa-placer-hw" and "dispatch" not in provenance:
+        record["provenance"] = {**provenance, "dispatch": "static"}
+        upgraded: dict[str, dict] = {}
+        for case, cells in rows.items():
+            static = STATIC_CASE.fullmatch(case)
+            if not static:
+                upgraded[case] = cells
+                continue
+            seed = f"mobilenet/seed={static['seed']}/effort=full"
+            if static["batch"] is None:
+                upgraded.setdefault(seed, {}).update(cells)
+                continue
+            cells = dict(cells)
+            compiled = cells.pop("compile_s", None)
+            if compiled and static["batch"] == "1":
+                upgraded.setdefault(seed, {})["compile_s"] = compiled
+            if cells:
+                upgraded[case] = cells
+        if "rows" in record:
+            record["rows"] = upgraded
         record["failed"] = [
-            PRE_EFFORT_CASE.sub(r"\1/effort=full", case) for case in record["failed"]
+            f"{case}/effort=full" if STATIC_CASE.fullmatch(case) else case
+            for case in record.get("failed", [])
         ]
-    for run in record.get("detail", []):
-        run.setdefault("effort_label", "full")
+        for run in record.get("detail", []):
+            run.setdefault("effort_label", "full")
+    if target in ("npu1", "npu2") and "measurement" not in provenance:
+        decoded_before = record["date"] < DECODER_FIXED
+        record["provenance"] = {
+            **provenance,
+            "measurement": "1" if decoded_before else "2",
+        }
+        if target == "npu2" and decoded_before:
+            for case in UNDERSTATED & rows.keys():
+                for metric in ("cycles", "cycles_per_kop"):
+                    rows[case].pop(metric, None)
     return json.dumps(record, sort_keys=True) != before
 
 
@@ -532,6 +594,7 @@ def rebuild(
             "date": r["date"],
             "commit": r.get("commit", {}),
             "pmode": r.get("pmode"),
+            "device": r.get("device"),
             **({"event": r["event"]} if r.get("event") else {}),
             "provenance": {
                 k: v
