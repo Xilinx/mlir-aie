@@ -473,9 +473,11 @@ struct AIEObjectFifoSplitPass
     return success();
   }
 
-  /// Ends of a linked fifo that resolve to the link's shared pool.
+  /// Ends of a linked fifo that resolve to the link's shared pool. Each link
+  /// reading a fifo takes the next of its consumer ends on the link's tile.
   DenseMap<Operation *, PoolRef> linkedProducerEnd;
-  DenseMap<Operation *, PoolRef> linkedConsumerEnd;
+  DenseMap<std::pair<Operation *, Value>, SmallVector<PoolRef>>
+      linkedConsumerEnd;
   /// Fifos whose own objects a link's shared pool holds.
   DenseSet<Operation *> linkPoolOwner;
   /// Shim endpoint each fifo is driven through, where it has one.
@@ -547,8 +549,11 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
       depth = owner.size();
     } else {
       auto consumers = owner.getConsumerTiles();
-      int index =
-          std::distance(consumers.begin(), llvm::find(consumers, *sharedTile));
+      size_t earlier = linkedConsumerEnd.lookup({owner, *sharedTile}).size();
+      int index = -1;
+      for (size_t seen = 0; seen <= earlier;)
+        if (consumers[++index] == *sharedTile)
+          seen++;
       name = (owner.name().getValue() +
               (consumers.size() > 1 ? "_" + std::to_string(index) + "_cons_pool"
                                     : "_cons_pool"))
@@ -576,9 +581,9 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
       allSegments.push_back(index);
     }
     for (auto [index, in] : llvm::enumerate(ins)) {
-      linkedConsumerEnd[in] = PoolRef{
+      linkedConsumerEnd[{in, *sharedTile}].push_back(PoolRef{
           pool, isJoin ? SmallVector<int32_t>{static_cast<int32_t>(index)}
-                       : allSegments};
+                       : allSegments});
     }
     for (auto [index, out] : llvm::enumerate(outs)) {
       linkedProducerEnd[out] = PoolRef{
@@ -677,9 +682,10 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       if (auto linked = linkedProducerEnd.find(fifo);
           linked != linkedProducerEnd.end()) {
         ref = linked->second;
-      } else if (auto linked = linkedConsumerEnd.find(fifo);
+      } else if (auto linked =
+                     linkedConsumerEnd.find({fifo, fifo.getConsumerTiles()[0]});
                  linked != linkedConsumerEnd.end()) {
-        ref = linked->second;
+        ref = linked->second.front();
       } else {
         Value tile = sharedModule == AIETargetModel::SharedMemory::Second
                          ? fifo.getConsumerTiles()[0]
@@ -782,6 +788,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     ArrayRef<BDDimLayoutArrayAttr> consumerDims =
         fifo.getDimensionsFromStreamPerConsumer();
     int consumerIndex = 0;
+    DenseMap<Value, unsigned> linkedOn;
     for (Value consumerTile : fifo.getConsumerTiles()) {
       std::string suffix = fifo.getConsumerTiles().size() > 1
                                ? ("_" + std::to_string(consumerIndex) + "_cons")
@@ -789,10 +796,10 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       bool consIsShim = cast<TileOp>(consumerTile.getDefiningOp()).isShimTile();
 
       std::optional<PoolRef> consRef;
-      if (auto linked = linkedConsumerEnd.find(fifo);
+      if (auto linked = linkedConsumerEnd.find({fifo, consumerTile});
           linked != linkedConsumerEnd.end() &&
-          consumerTile == linked->second.pool.getTile()) {
-        consRef = linked->second;
+          linkedOn[consumerTile] < linked->second.size()) {
+        consRef = linked->second[linkedOn[consumerTile]++];
       } else if (consIsShim) {
         if (!fifo.getPlio()) {
           consRef =

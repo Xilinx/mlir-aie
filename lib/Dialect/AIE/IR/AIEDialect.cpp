@@ -1952,34 +1952,34 @@ LogicalResult ObjectFifoLinkOp::verify() {
     }
   }
 
-  auto participants = [](ObjectFifoLinkOp link) {
-    std::vector<ObjectFifoCreateOp> all = link.getInputObjectFifos();
-    std::vector<ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
-    all.insert(all.end(), outs.begin(), outs.end());
-    return all;
-  };
+  auto sharedTile = getOptionalSharedTile();
+  if (!sharedTile)
+    return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
+                     "shared tile between objectFifos");
 
-  // A fifo passes its objects to exactly one place, so it belongs to at most
-  // one link.
+  // A fifo has one producer, so one link at most fills it; each link reading
+  // it takes one of its consumer ends on the link's tile. A fifo out of one
+  // link may go into the next, as a chain of mem tile holds does.
+  DenseMap<Operation *, size_t> reads;
   for (auto other :
        (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
     if (other == *this) {
       break;
     }
-    for (ObjectFifoCreateOp mine : participants(*this)) {
-      for (ObjectFifoCreateOp theirs : participants(other)) {
-        if (mine == theirs) {
-          return mine.emitOpError(
-              "objectfifo cannot be in more than one ObjectFifoLinkOp");
-        }
-      }
-    }
+    for (ObjectFifoCreateOp fifo : getOutputObjectFifos())
+      if (llvm::is_contained(other.getOutputObjectFifos(), fifo))
+        return fifo.emitOpError(
+            "objectfifo cannot be filled by more than one ObjectFifoLinkOp");
+    for (ObjectFifoCreateOp fifo : getInputObjectFifos())
+      if (llvm::is_contained(other.getInputObjectFifos(), fifo) &&
+          other.getOptionalSharedTile() == sharedTile)
+        reads[fifo]++;
   }
-
-  auto sharedTile = getOptionalSharedTile();
-  if (!sharedTile)
-    return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
-                     "shared tile between objectFifos");
+  for (ObjectFifoCreateOp fifo : getInputObjectFifos())
+    if (reads.lookup(fifo) >=
+        static_cast<size_t>(llvm::count(fifo.getConsumerTiles(), *sharedTile)))
+      return fifo.emitOpError("objectfifo is read by more ObjectFifoLinkOps "
+                              "on a tile than it has consumer ends there");
 
   TileLike tile = llvm::dyn_cast<TileLike>(sharedTile.value().getDefiningOp());
   if (!tile)
