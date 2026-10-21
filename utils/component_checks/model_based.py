@@ -47,6 +47,7 @@ ROUTER_COUNTS = {
     "hop_ratio": "×",
     "amsels_per_design": "amsels",
     "ms_per_design": "ms",
+    "strict_misses": "designs",
 }
 
 

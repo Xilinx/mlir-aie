@@ -746,7 +746,8 @@ REPORTED = {
 def judge(e, expect, hops_on, seed):
     """Route `e` and hold the router to `expect`. Returns (outcome, detail),
     outcome one of ok, completeness, soundness, illegal, crash, known,
-    model-limit."""
+    model-limit, strict-miss (tallied, not failed: the properties ratchet it,
+    see max_strict_misses)."""
     why = must_reject(e)
     try:
         e = rp.canonical(e)
@@ -791,6 +792,11 @@ def judge(e, expect, hops_on, seed):
         if rp.known_bug(e, problems):
             return "known", problems[0][:200]
         return "illegal", problems[0][:300]
+    # Without allow-deadlock-prone the router would fail on that hold cycle;
+    # a routing without it means it should not have.
+    if rp.shared_receiver_warning(p.stderr) is not None:
+        if rp.strict_witness(e, rp.Analysis(e)) is not None:
+            return "strict-miss", "routes only with a shared-receiver hold cycle"
     return "ok", f"routed ({expect})"
 
 

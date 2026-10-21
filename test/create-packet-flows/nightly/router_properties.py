@@ -30,7 +30,8 @@ Designs come in three tiers:
    runtime sequence and pre-placed switchbox configuration. The router has
    to succeed with allow-deadlock-prone, and its output is checked hop by
    hop; without it, it has to fail exactly where the model says the flows
-   can deadlock.
+   can deadlock. Where it fails on a hold cycle through receivers flows
+   share, strict_witness looks for a routing without one: a miss.
  * unroutable: more pairwise conflicting streams must take an arbiter at a
    tile than it has (the router's message is predicted exactly), more
    circuit flows must cross a port than it has channels, or conflicting
@@ -43,6 +44,7 @@ verify.
 """
 
 import argparse
+import copy
 import itertools
 import json
 import os
@@ -90,6 +92,12 @@ PARAMS = dict(
     max_hop_ratio=1.10,
     max_amsels=dict(npu1=19.5, npu2=19.5, xcvc1902=21.0),
     max_low_priority=0.05,
+    # Routable designs the router fails without allow-deadlock-prone on a
+    # shared-receiver hold cycle though strict_witness finds a routing without
+    # one: at most this share of them plus the allowance. Measured 2026-10-20:
+    # 2-4 per 2000 designs on npu1 and npu2, up to 2 of lit's 170.
+    max_strict_misses=0.003,
+    strict_miss_allowance=2,
     max_ms_per_design=dict(npu1=250, npu2=250, xcvc1902=600),
     # Generator knobs: share of routable designs given pre-placed switchbox
     # configuration, and parallel aie-opt runs.
@@ -4746,6 +4754,460 @@ def verdict(d, hops_on=True, seed=0):
     return out
 
 
+# Strict witnesses: where the router fails without allow-deadlock-prone on a
+# hold cycle through receivers trees share, a routing without one may still
+# exist. strict_witness searches for one the way the router avoids the cycle:
+# packet sources that share two or more receivers meet, the ids they meet on
+# leave their source switchbox apart from the rest, and packet trees share
+# links where their ids are disjoint and their streams do not conflict. Only a
+# routing lowered to switchbox configuration that the C++ verifier accepts,
+# verify() clears and --aie-find-flows lifts back to the requested flows
+# counts.
+
+
+def tree_reach(tree, port):
+    """The destinations a Construction tree reaches below `port`: a master
+    port of it, or a slave port it enters by."""
+    if port in tree["ends"]:
+        return {tree["ends"][port]}
+    if port in tree["next"]:
+        return tree_reach(tree, tree["next"][port])
+    out = set()
+    for m in tree["children"].get(port, []):
+        out |= tree_reach(tree, m)
+    return out
+
+
+def shared_receiver_pairs(d):
+    """Pairs of packet sources sharing two or more receivers, and those."""
+    reached = defaultdict(set)
+    for f in d.packet_flows:
+        for s in f["srcs"]:
+            reached[s] |= set(f["dsts"])
+    srcs = sorted(reached)
+    return [
+        (a, b, reached[a] & reached[b])
+        for i, a in enumerate(srcs)
+        for b in srcs[i + 1 :]
+        if len(reached[a] & reached[b]) > 1
+    ]
+
+
+class StrictSearch:
+    """One attempt at a strict witness, from a Construction `con` of `d`."""
+
+    def __init__(self, d, an, con, rng):
+        self.d, self.an, self.rng, self.t = d, an, rng, con.t
+        self.con = copy.deepcopy(con, {id(con.t): con.t, id(con.rng): rng})
+        self.con.rng = rng
+        self.ids = defaultdict(set)
+        self.dsts = defaultdict(lambda: defaultdict(set))
+        self.prioritized = set()
+        for f in d.packet_flows:
+            for s in f["srcs"]:
+                self.ids[s].add(f["id"])
+                self.dsts[s][f["id"]].update(f["dsts"])
+                if f["priority"]:
+                    self.prioritized.add(s)
+        self.streams = defaultdict(list)
+        for i, st in enumerate(an.streams[: an.num_requested]):
+            self.streams[st.src].append(i)
+        # The packet trees on each port, as (source, ids); circuits own theirs.
+        self.users = defaultdict(list)
+        # The source whose ports the tree being routed may not share.
+        self.avoid = None
+        for src, tree in self.con.trees.items():
+            if src in self.ids:
+                for port in self.ports(tree):
+                    self.users[port].append((src, frozenset(self.ids[src])))
+
+    @staticmethod
+    def ports(tree):
+        out = {tree["root"]}
+        for s, ms in tree["children"].items():
+            out.add(s)
+            out.update(ms)
+            out.update(tree["next"][m] for m in ms if m in tree["next"])
+        return out
+
+    def shareable(self, port, src, ids):
+        users = self.users.get(port)
+        return bool(users) and all(
+            u != src
+            and u != self.avoid
+            and not ids & uids
+            and not any(
+                self.an.conflict(i, j)
+                for i in self.streams[src]
+                for j in self.streams[u]
+            )
+            for u, uids in users
+        )
+
+    def release(self, src):
+        tree = self.con.trees.pop(src)
+        for port in self.ports(tree):
+            self.users[port] = [(u, i) for u, i in self.users[port] if u != src]
+            if self.con.owner_m.get(port) == src:
+                del self.con.owner_m[port]
+            if self.con.owner_s.get(port) == src:
+                del self.con.owner_s[port]
+        for m in tree["ends"]:
+            if not any(m in t["ends"] for t in self.con.trees.values()):
+                self.con.owner_m.pop(m, None)
+
+    def search(self, tree, src, ids, dst=None, slave=None):
+        """Hops from the tree to the destination `dst`, or into the slave port
+        `slave`, as [(slave, master, next slave or None)]; None if none."""
+        t = self.t
+        target = phys_dst(dst) if dst is not None else None
+        starts = [tree["root"], *tree["next"].values()]
+        parent = dict.fromkeys(starts)
+        queue = deque(starts)
+        while queue:
+            s = queue.popleft()
+            tile = s[:2]
+            ports = t.master_ports(tile)
+            self.rng.shuffle(ports)
+            for port in ports:
+                m = (*tile, *port)
+                if not t.legal(tile, s[2:], port):
+                    continue
+                if m == target and self.con.owner_m.get(m) in (None, ("dst", dst)):
+                    return self.unwind(parent, s) + [(s, m, None)]
+                if port[0] not in DIRECTIONAL or (tile[1] == 0 and port[0] == SOUTH):
+                    continue
+                if m in self.con.owner_m and not self.shareable(m, src, ids):
+                    continue
+                ntile, nport = linked_input(tile, port)
+                if not t.exists(ntile) or nport[1] >= t.slaves[ntile][nport[0]]:
+                    continue
+                nxt = (*ntile, *nport)
+                if nxt in parent:
+                    continue
+                parent[nxt] = (s, m)
+                if nxt == slave:
+                    return self.unwind(parent, nxt)
+                if nxt not in self.con.owner_s or self.shareable(nxt, src, ids):
+                    queue.append(nxt)
+        return None
+
+    @staticmethod
+    def unwind(parent, s):
+        hops = []
+        while parent[s] is not None:
+            ps, pm = parent[s]
+            hops.append((ps, pm, s))
+            s = ps
+        return hops[::-1]
+
+    def claim(self, tree, src, ids, hops):
+        for s, m, nxt in hops:
+            if m not in tree["children"][s]:
+                tree["children"][s].append(m)
+            if nxt is None:
+                continue
+            tree["next"][m] = nxt
+            self.con.owner_m.setdefault(m, src)
+            self.con.owner_s.setdefault(nxt, src)
+            self.users[m].append((src, ids))
+            self.users[nxt].append((src, ids))
+
+    def new_tree(self, key, src):
+        root = phys_src(src)
+        tree = dict(src=src, root=root, children=defaultdict(list), next={}, ends={})
+        self.con.trees[key] = tree
+        self.con.owner_s.setdefault(root, src)
+        return tree
+
+    def route_part(self, key, src, ids, dsts):
+        tree = self.new_tree(key, src)
+        for x in sorted(dsts):
+            hops = self.search(tree, src, ids, dst=x)
+            if hops is None:
+                return False
+            s, m, _ = hops[-1]
+            self.claim(tree, src, ids, hops[:-1])
+            tree["children"][s].append(m)
+            tree["ends"][m] = x
+            self.con.owner_m[m] = ("dst", x)
+        return True
+
+    def join(self, key, src, ids, owner, shared):
+        """Route `src` into a slave port at a switchbox the owner's tree
+        passes on its way to every receiver in `shared`, and on from there by
+        the owner's master ports toward those receivers."""
+        t = self.t
+        meets = [
+            s
+            for s in [owner["root"], *owner["next"].values()]
+            if shared <= tree_reach(owner, s)
+        ]
+        self.rng.shuffle(meets)
+        root = phys_src(src)
+        for s in meets:
+            tile = s[:2]
+            masters = [m for m in owner["children"][s] if tree_reach(owner, m) & shared]
+            slaves = [
+                (*tile, b, c) for b in DIRECTIONAL for c in range(t.slaves[tile][b])
+            ]
+            self.rng.shuffle(slaves)
+            if root[:2] == tile:
+                slaves.insert(0, root)
+            for j in slaves:
+                if (j != root and j in self.con.owner_s) or not all(
+                    t.legal(tile, j[2:], m[2:]) for m in masters
+                ):
+                    continue
+                tree = self.new_tree(key, src)
+                self.avoid = owner["src"]
+                hops = [] if j == root else self.search(tree, src, ids, slave=j)
+                self.avoid = None
+                if hops is None:
+                    del self.con.trees[key]
+                    continue
+                self.claim(tree, src, ids, hops)
+                for m in masters:
+                    tree["children"][j].append(m)
+                    self.follow(tree, owner, m, shared)
+                return True
+        return False
+
+    @staticmethod
+    def follow(tree, owner, m, shared):
+        if m in owner["ends"]:
+            tree["ends"][m] = owner["ends"][m]
+            return
+        nxt = tree["next"][m] = owner["next"][m]
+        for below in owner["children"].get(nxt, []):
+            if tree_reach(owner, below) & shared:
+                if below not in tree["children"][nxt]:
+                    tree["children"][nxt].append(below)
+                StrictSearch.follow(tree, owner, below, shared)
+
+    def run(self):
+        """The trees as a solution plan_routing takes, or why none."""
+        pairs = shared_receiver_pairs(self.d)
+        # A prioritized tree keeps the route it takes alone (see
+        # priority_trees); trees with an id of its own may still join it.
+        pairs = [
+            (a, b, x)
+            for a, b, x in pairs
+            if not {a, b} & self.prioritized or self.ids[a] & self.ids[b]
+        ]
+        affected = sorted({s for a, b, _ in pairs for s in (a, b)} - self.prioritized)
+        for src in affected:
+            if src in self.con.trees:
+                self.release(src)
+        parts = {}
+        for src in affected:
+            shared = set().union(*(x for a, b, x in pairs if src in (a, b)))
+            meet = frozenset(i for i, ds in self.dsts[src].items() if ds & shared)
+            rest = frozenset(self.ids[src] - meet)
+            parts[src] = {
+                k: set().union(*(self.dsts[src][i] for i in k))
+                for k in (meet, rest)
+                if k
+            }
+        for src in self.prioritized:
+            parts[src] = {frozenset(self.ids[src]): None}
+        owner_of = {src: src for src in self.prioritized}
+        trees = {
+            (src, k): self.con.trees.get(src)
+            for src in self.prioritized
+            for k in parts[src]
+        }
+        order = list(pairs)
+        self.rng.shuffle(order)
+        for a, b, shared in order:
+            if a in owner_of and b in owner_of:
+                continue
+            if b in owner_of or (a not in owner_of and self.rng.random() < 0.5):
+                a, b = b, a
+            if a not in owner_of:
+                owner_of[a] = a
+                k = next(k for k in parts[a] if parts[a][k] & shared)
+                if not self.route_part((a, k), a, k, parts[a][k]):
+                    return "no room for an owner's tree"
+                trees[(a, k)] = self.con.trees[(a, k)]
+            o = owner_of[b] = owner_of[a]
+            # The tree `a` joined need not reach what `a` and `b` share.
+            okey = next(
+                (k for k in parts[o] if parts[o][k] is None or parts[o][k] & shared),
+                None,
+            )
+            bkey = next(k for k in parts[b] if parts[b][k] & shared)
+            if trees.get((o, okey)) is None or not self.join(
+                (b, bkey), b, bkey, trees[(o, okey)], shared
+            ):
+                return "no way to meet"
+        rest = [
+            (s, k) for s in affected for k in parts[s] if (s, k) not in self.con.trees
+        ]
+        self.rng.shuffle(rest)
+        for s, k in rest:
+            if not self.route_part((s, k), s, k, parts[s][k]):
+                return "no room for a tree"
+        out = defaultdict(lambda: defaultdict(list))
+        for tree in self.con.trees.values():
+            src = tree["src"]
+            for s, ms in tree["children"].items():
+                for m in ms:
+                    if not self.t.legal(s[:2], s[2:], m[2:]):
+                        return "illegal hop"
+                    hop = (
+                        src[2:] if s == tree["root"] else s[2:],
+                        tree["ends"][m][2:] if m in tree["ends"] else m[2:],
+                    )
+                    if hop not in out[src][s[:2]]:
+                        out[src][s[:2]].append(hop)
+        return {src: dict(v) for src, v in out.items()}
+
+
+def lower_witness(d, con, plan):
+    """`d` without its flows, with the routing `con` and its arbiter `plan`
+    (plan_routing) as switchbox configuration: connects for the circuit trees,
+    amsels, master sets and exact rules for the packet trees. None if a slave
+    port needs more rules than it has."""
+    t, na = d.target, PARAMS["arbiters"]
+    out = d.copy()
+    out.flows, out.packet_flows = [], []
+    circuit = {s for s, _ in d.flows}
+
+    def physical(tile, port, sending):
+        if t.kind(tile) != "shim" or port[0] != DMA:
+            return port
+        return (phys_src if sending else phys_dst)((*tile, *port))[2:]
+
+    for tree in con.trees.values():
+        src = tree["src"]
+        if src not in circuit:
+            continue
+        for s, ms in tree["children"].items():
+            for m in ms:
+                out.boxes.setdefault(s[:2], []).append(("connect", s[2:], m[2:]))
+        if t.kind(src[:2]) == "shim":
+            out.muxes.setdefault(src[:2], []).append(
+                ((DMA, src[3]), (NORTH, tree["root"][3]))
+            )
+        for m, dst in tree["ends"].items():
+            if t.kind(dst[:2]) == "shim":
+                out.muxes.setdefault(dst[:2], []).append(((NORTH, m[3]), (DMA, dst[3])))
+    keep = last_keep(d)
+    ctrl = {f["id"] for f in d.packet_flows if f["priority"]}
+    muxed = set()
+    for tile, (by_flow, masters_of) in plan["plans"].items():
+        box = out.boxes.setdefault(tile, [])
+        name = {a: f"w{a}" for a in sorted(masters_of)}
+        for a in sorted(masters_of):
+            box.append(("amsel", name[a], a % na, a // na))
+        dsts = {x[2:]: x for f in d.packet_flows for x in f["dsts"] if x[:2] == tile}
+        ctrl_amsels = {a for (_, pid), a in by_flow.items() if pid in ctrl}
+        sets = defaultdict(list)
+        for a, ms in masters_of.items():
+            for m in ms:
+                sets[m].append(a)
+        for m, amsels in sorted(sets.items()):
+            pm = physical(tile, m, False)
+            box.append(
+                (
+                    "masterset",
+                    pm,
+                    sorted(name[a] for a in amsels),
+                    keep.get(dsts[m]) if m in dsts else None,
+                    any(a in ctrl_amsels for a in amsels),
+                )
+            )
+            if pm != m:
+                muxed.add((tile, ((NORTH, pm[1]), m)))
+        rules = defaultdict(list)
+        for (slave, pid), a in sorted(by_flow.items()):
+            ps = physical(tile, slave, True)
+            if ps != slave:
+                muxed.add((tile, (slave, (NORTH, ps[1]))))
+            rules[ps].append((PARAMS["max_id"], pid, name[a], pid in ctrl))
+        for ps, rs in sorted(rules.items()):
+            if len(rs) > PARAMS["rule_slots"]:
+                return None
+            box.append(("rules", ps, [r[:3] for r in rs], any(r[3] for r in rs)))
+    for tile, pair in sorted(muxed):
+        out.muxes.setdefault(tile, []).append(pair)
+    return out.emit()
+
+
+def witness_problem(d, an, text):
+    """None if the lowered routing `text` of `d` passes the C++ verifier,
+    verify() with no shared-receiver cycle, and --aie-find-flows lifts it back
+    to exactly the requested flows; else what fails."""
+    # With nothing left to route, the router only adds the wires find-flows
+    # follows.
+    wired = subprocess.run(
+        [aie_opt_path(), "--aie-create-pathfinder-flows", "-"],
+        input=text,
+        capture_output=True,
+        text=True,
+    )
+    if wired.returncode:
+        return "C++ verifier: " + first_error(wired.stderr)[:120]
+    problems, stats = verify(d, an, text, hops_on=False)
+    if problems or stats.get("shared_receiver_cycle") is not None:
+        return "verify: " + (problems[0][:80] if problems else "shared-receiver cycle")
+    lifted = subprocess.run(
+        [aie_opt_path(), "--aie-find-flows=keep-partial-flows=true", "-"],
+        input=wired.stdout,
+        capture_output=True,
+        text=True,
+    )
+    if lifted.returncode:
+        return "find-flows: " + first_error(lifted.stderr)[:120]
+    got = load_design(lifted.stdout)
+
+    def requested(design, ctrl_too):
+        # find-flows keeps the control overlay's TileControl flows as they are.
+        return sorted(
+            (s, x, f["id"])
+            for f in design.packet_flows
+            for s in f["srcs"]
+            for x in f["dsts"]
+            if ctrl_too or CTRL not in (s[2], x[2])
+        )
+
+    if sorted(got.flows) != sorted(d.flows) or requested(got, True) != requested(
+        d, False
+    ):
+        return "find-flows lifts other flows than requested"
+    return None
+
+
+def strict_witness(d, an, witnesses=2, tries=10):
+    """A routing of `d` with no shared-receiver hold cycle, lowered to
+    switchbox configuration, or None if the search found none."""
+    if not shared_receiver_pairs(d):
+        return None
+    for w in range(witnesses):
+        c = d.copy()
+        before = design_signature(c)
+        built = construct(c, w)
+        if built is None or design_signature(c) != before:
+            continue
+        for k in range(tries):
+            search = StrictSearch(d, an, built[0], random.Random(f"strict-{w}-{k}"))
+            sol = search.run()
+            if isinstance(sol, str):
+                continue
+            try:
+                plan = plan_routing(d, an, sol, hops_on=False)
+            except RecursionError:
+                # Shared links can close a loop in one source's settings.
+                continue
+            if plan["reason"] is not None or plan["shared_receiver_cycle"] is not None:
+                continue
+            text = lower_witness(d, search.con, plan)
+            if text is not None and witness_problem(d, an, text) is None:
+                return text
+    return None
+
+
 # The route space: what a design asks of the router and what the router did,
 # as values along a few dimensions, next to every value the TargetModel
 # allows. route_space() places one design; space_domain() is the denominator.
@@ -5764,6 +6226,7 @@ def main(argv=None):
     inherent, inherent_wrong = Counter(), []
     shared, shared_wrong = Counter(), []
     strict, strict_wrong = Counter(), []
+    strict_shared = {}
 
     def check_strict(tag, c, hops_on, allowed, warned, out, err):
         """Without allow-deadlock-prone, flows that can deadlock however they
@@ -5789,6 +6252,8 @@ def main(argv=None):
                 problems, stats = verify(c["design"], c["analysis"], out, hops_on)
                 ok = not problems and stats["shared_receiver_cycle"] is None
         strict[kind] += 1
+        if kind == "shared" and ok:
+            strict_shared.setdefault(c["seed"], c)
         if not ok:
             got = "routed" if out is not None else first_error(err)[:300]
             strict_wrong.append(f"{tag}: {kind}: {got}")
@@ -6056,6 +6521,25 @@ def main(argv=None):
         f"hold cycle, {strict['shared']} fail on one, {strict['inherent']} fail "
         f"on flows that deadlock however they are routed)",
     )
+    misses = []
+    for seed, c in sorted(strict_shared.items()):
+        witness = strict_witness(c["design"], c["analysis"])
+        if witness is not None:
+            misses.append(seed)
+            save(c, "strict-miss", c["design"].emit())
+            save(c, "strict-witness", witness)
+    for seed in misses[:10]:
+        print(f"STRICT MISS: seed {seed}")
+    report(
+        "strict-completeness",
+        len(misses)
+        <= PARAMS["max_strict_misses"] * totals["designs"]
+        + PARAMS["strict_miss_allowance"],
+        f"{len(misses)}/{len(strict_shared)} designs that fail without "
+        f"allow-deadlock-prone on a shared-receiver hold cycle have a routing "
+        f"without one (max {PARAMS['max_strict_misses']} per design + "
+        f"{PARAMS['strict_miss_allowance']})",
+    )
 
     for label, count in sorted(known.items()):
         print(f"known: {count} {label}")
@@ -6120,6 +6604,7 @@ def main(argv=None):
             "unrouted": len(failed),
             "illegal": len(illegal) + len(unknown_illegal),
             "unstable": nondet,
+            "strict_misses": len(misses),
             "hop_ratio": round(ratio, 4),
             "amsels_per_design": round(totals["amsels"] / n, 3),
             "ms_per_design": round(per_design, 2),
