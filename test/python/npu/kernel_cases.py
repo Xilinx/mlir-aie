@@ -126,6 +126,15 @@ CASES: list[Case] = [
         scalars=(91, 6, 8, 7, 7),
         smoke=True,
     ),
+    # Wider keys than values, the other way round from YOLO's head.
+    check(
+        "attention_i8",
+        dict(seq_len=256, key_dim=64, head_dim=32, width=16),
+        calls=2,
+        scalars=(91, 6, 8, 7, 7),
+        tag="keys-wider",
+        smoke=True,
+    ),
     # YOLO26n's SPPF pool: a 20-pixel row (4 at a time) and a 64-pixel one.
     Case("maxpool2d", dict(input_width=20, channels=128), calls=4, smoke=True),
     check("maxpool2d", dict(input_width=64, channels=16), calls=4, tag="width-64"),
