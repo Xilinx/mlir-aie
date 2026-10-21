@@ -95,9 +95,9 @@ PARAMS = dict(
     max_low_priority=0.05,
     # Routable designs the router fails without allow-deadlock-prone on a
     # shared-receiver hold cycle though strict_witness finds a routing without
-    # one: at most this share of them plus the allowance. Measured 2026-10-20:
-    # 2-4 per 2000 designs on npu1 and npu2, up to 2 of lit's 170.
-    max_strict_misses=0.003,
+    # one: at most this share of them plus the allowance. Measured 2026-10-21:
+    # 0-1 per 2000 designs on npu1 and npu2, none of lit's 170.
+    max_strict_misses=0.001,
     strict_miss_allowance=2,
     max_ms_per_design=dict(npu1=250, npu2=250, xcvc1902=600),
     # Generator knobs: share of routable designs given pre-placed switchbox
