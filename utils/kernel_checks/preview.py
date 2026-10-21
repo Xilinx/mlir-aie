@@ -66,6 +66,12 @@ STAGE_PROFILES = (
     ROOT / "utils/component_checks/fixtures/aiecc_profile_mobilenet.json",
     ROOT / "utils/component_checks/fixtures/aiecc_profile_shim.json",
 )
+# YOLO26n's own, from a cold then warm compile of yolo26n.py --synthetic 7 on
+# Strix: 27.89 s and 6.01 s.
+YOLO_STAGE_PROFILES = (
+    ROOT / "utils/component_checks/fixtures/aiecc_profile_yolo26n_cold.json",
+    ROOT / "utils/component_checks/fixtures/aiecc_profile_yolo26n_warm.json",
+)
 HW_DETAIL = (
     "seed",
     "batch",
@@ -393,16 +399,32 @@ def _sweep_night(rng: random.Random) -> tuple[list, dict]:
     return sa_placer.aggregate(rows), sa_placer.meta(rows, sa_placer.FIXTURES, 20, 1.0)
 
 
-def _compile_night(rng: random.Random, compile_s: float) -> dict:
-    """Return a cold and a warm compile's times, staged as the captured profiles were."""
-    cold, warm = compile_s * rng.uniform(0.97, 1.05), 0.5 * rng.uniform(0.97, 1.03)
+def _compile_night(
+    rng: random.Random, cold_s: float, warm_s: float, profiles: tuple[Path, Path]
+) -> dict:
+    """Return a cold and a warm compile's times and memory, staged as ``profiles`` were.
+
+    Args:
+        rng: The night's random source.
+        cold_s: The cold compile's typical wall time.
+        warm_s: The warm compile's.
+        profiles: The cold and the warm compile's captured aiecc profiles;
+            each must span less than its compile.
+
+    Returns:
+        compile_stats' rows and stage_rows' for both compiles.
+    """
+    cold, warm = cold_s * rng.uniform(0.97, 1.05), warm_s * rng.uniform(0.97, 1.03)
+    rss, rss_warm = rng.uniform(2000, 2200), rng.uniform(1700, 1900)
     return {
         "compile_s": round(cold, 1),
-        "compile_peak_rss_mb": round(rng.uniform(2000, 2200), 1),
+        "compile_peak_mib": round(2 * rss, 1),
+        "compile_peak_rss_mb": round(rss, 1),
         "compile_s_warm": round(warm, 1),
-        "compile_peak_rss_mb_warm": round(rng.uniform(1700, 1900), 1),
-        **aiecc_stages.stage_rows(str(STAGE_PROFILES[0]), cold, ""),
-        **aiecc_stages.stage_rows(str(STAGE_PROFILES[1]), warm, "_warm"),
+        "compile_peak_mib_warm": round(1.2 * rss_warm, 1),
+        "compile_peak_rss_mb_warm": round(rss_warm, 1),
+        **aiecc_stages.stage_rows(str(profiles[0]), cold, ""),
+        **aiecc_stages.stage_rows(str(profiles[1]), warm, "_warm"),
     }
 
 
@@ -431,7 +453,7 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
     timing = llama_chain_hw.parse_timing(ran, 0)
     gen = llama_chain_hw.parse_generate(generated, 0)
     artifacts = {"elf_bytes": 1_843_200, "pdi_bytes": 412_160}
-    compiled = _compile_night(rng, 19.8)
+    compiled = _compile_night(rng, 19.8, 0.5, STAGE_PROFILES)
     case = f"llama/persist_grow/N={n}"
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
@@ -467,16 +489,25 @@ def _yolo_night(rng: random.Random) -> tuple[list, dict]:
     ran += f"ort: {len(images)}/{len(images)} images match onnxruntime\n"
     one = 12700 * rng.uniform(0.98, 1.03)
     batched = 6150 * rng.uniform(0.98, 1.03)
-    timed = "".join(
-        f"per-image: {us:.1f} us ({1e6 / us:.1f} fps) at batch {b}, fastest of "
-        f"{yolo26n_hw.N_ITERS} after {yolo26n_hw.N_WARMUP} warmups; "
-        f"median {us * 1.02:.1f} us, MAD {us * 0.01:.1f} us\n"
-        for us, b in ((one, 1), (batched, yolo26n_hw.BATCH))
-    )
+    # One run per batch, as the check makes them; the dispatch is ~98.6% of
+    # the call at batch 1, as on Strix.
+    timing = {}
+    for us, b in ((one, 1), (batched, yolo26n_hw.BATCH)):
+        call, dispatch = us * b, us * b - 157 * rng.uniform(0.95, 1.05)
+        timing |= yolo26n_hw.parse_timing(
+            "".join(
+                f"{label:<18}(avg/min/max us): {t * 1.01:.1f} / {t:.1f} / "
+                f"{t * 1.1:.1f}   [median {t * 1.02:.1f}, MAD {t * 0.005:.1f}, "
+                f"p95 {t * 1.08:.1f}]\n"
+                for label, t in (("Dispatch", dispatch), ("End-to-end", call))
+            )
+            + f"per-image: {us:.1f} us ({1e6 / us:.1f} fps) at batch {b}, fastest of "
+            f"{yolo26n_hw.N_ITERS} after {yolo26n_hw.N_WARMUP} warmups; "
+            f"median {us * 1.02:.1f} us, MAD {us * 0.01:.1f} us\n"
+        )
     correctness = yolo26n_hw.parse_correctness(ran, 0)
-    timing = yolo26n_hw.parse_timing(timed)
     artifacts = {"elf_bytes": 2_621_440}
-    compiled = _compile_night(rng, 12.0)
+    compiled = _compile_night(rng, 27.9, 6.0, YOLO_STAGE_PROFILES)
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
         "measurement_sane": True,
