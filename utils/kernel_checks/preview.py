@@ -71,8 +71,8 @@ HW_DETAIL = (
     "batch",
     "effort_label",
     "passed",
-    "us_per_image",
-    "e2e_us_per_image",
+    *sa_placer_hw.TIMED,
+    "dispatch_overhead_us",
     "placement",
 )
 
@@ -328,17 +328,24 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
             )
             for batch in (1, 4, 16, 64):
                 launch = (one + streaming * (batch - 1)) * rng.uniform(0.99, 1.02)
-                per, e2e = launch / batch, (launch + 75) / batch
+                overhead = 47 * rng.uniform(0.99, 1.02)
+                printed = "".join(
+                    f"{label:<18}(avg/min/max us): {t * 1.01:.1f} / {t:.1f} / "
+                    f"{t * 1.1:.1f}   [median {t * 1.02:.1f}, MAD {t * 0.005:.1f}, "
+                    f"p95 {t * 1.08:.1f}]\n"
+                    for label, t in (
+                        ("Dispatch", launch),
+                        ("Dispatch overhead", overhead),
+                        ("NPU", launch - overhead),
+                        ("End-to-end", launch + 75),
+                    )
+                )
                 runs.append(
                     {
                         "seed": seed,
                         "batch": batch,
                         "effort_label": effort_label,
-                        "passed": True,
-                        "us_per_image": round(per, 2),
-                        "us_per_image_range": f"median {per * 1.02:.2f}, MAD {per * 0.005:.2f}, p95 {per * 1.08:.2f}",
-                        "e2e_us_per_image": round(e2e, 2),
-                        "e2e_range": f"median {e2e * 1.05:.2f}, MAD {e2e * 0.01:.2f}, p95 {e2e * 1.15:.2f}",
+                        **sa_placer_hw.parse_run(printed + "PASS!\n", 0, batch),
                         "placement": digest,
                     }
                 )
