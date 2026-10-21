@@ -597,9 +597,15 @@ class CompilableDesign:
                 if named
                 else []
             )
+            sources = design.source_files
             if index % cls.XCLBIN_KERNELS:
                 flags.append(f"--xclbin-input={images[-1]}")
-            design = design.specialize(aiecc_flags=[*design.aiecc_flags, *flags])
+                # Its content keys this design, so an image rebuilt in place
+                # rebuilds every image chained onto it.
+                sources = (*sources, images[-1])
+            design = design.specialize(
+                aiecc_flags=[*design.aiecc_flags, *flags], source_files=sources
+            )
             xclbin, _ = design.compile()
             assert xclbin is not None
             images.append(Path(xclbin).resolve())

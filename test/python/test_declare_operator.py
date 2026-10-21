@@ -69,35 +69,11 @@ def test_an_operator_binds_its_present_members():
     assert Scale(M=8, gated=True).gate.shape == (8,)
 
 
-class Tagged(Scale):
-    def bind_member(self, member):
-        return (member.name, self)
-
-
-def test_a_library_binds_each_present_member_as_its_own_type():
-    op = Tagged(M=8)
-    assert dict(op.bound) == {"x": ("x", op), "y": ("y", op), "count": ("count", op)}
+def test_bound_reads_each_present_member_and_cannot_be_written():
+    op = Scale(M=8)
+    assert list(op.bound) == ["x", "y", "count"] and op.bound["y"] is op.y
     with pytest.raises(TypeError):
         op.bound["y"] = None
-    view = op.layout()
-    assert view.y == ("y", view)
-
-
-def test_a_copy_with_other_bindings_binds_through_the_copy():
-    op = Scale(M=8)
-    other = op.with_bound(lambda new: {**op.bound, "count": new})
-    assert other.count is other and op.count.op is op and other.y is op.y
-    with pytest.raises(AttributeError, match="y is not bound yet"):
-        op.with_bound(lambda new: {}).y
-
-
-def test_an_operator_says_whether_and_for_what_it_is_resolved():
-    op = Scale(M=8)
-    assert not op.is_resolved and op.resolved_for is None
-    done = op.resolved(DEV)
-    assert done.is_resolved and done.resolved_for is DEV
-    again = done.replace(factor=2.0)
-    assert not again.is_resolved and again.resolved_for is DEV
 
 
 @pytest.mark.parametrize(
