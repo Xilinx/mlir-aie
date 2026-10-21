@@ -5,10 +5,11 @@
 """The decode on NPU2, against its numpy oracle and the bf16 model.
 
 The default tier runs the decode test's cases at 2 layers on synthetic
-weights. The extensive tier needs data/ and the bf16 safetensors: at 16
-layers, on a small, a medium and a large prompt, the oracle's next-token
-distribution must stay within a mean KL of the bf16 model's, and every token
-the device generates must be the oracle's greedy pick.
+weights, plus one case on the model's real layer 0 and 1 (skipped where
+data/ is missing). The extensive tier needs data/ and the bf16 safetensors:
+at 16 layers, on a small, a medium and a large prompt, the oracle's
+next-token distribution must stay within a mean KL of the bf16 model's, and
+every token the device generates must be the oracle's greedy pick.
 """
 
 import re
@@ -66,6 +67,19 @@ def test_decode_matches_the_oracle(case, capsys):
         assert len(states) == tokens
         assert len(set(states)) == tokens, "a draw reused the sampler's state"
         assert out.count("sampler state: PASS") == 2
+
+
+def test_decode_matches_the_oracle_on_real_layer_weights(capsys):
+    """The exactness checks above run on random layers (`Layer.random`); this
+    runs them on the model's real quantized layer 0 and 1 (`--n-layers`'s
+    default), which a kernel's rounding can treat differently than synthetic
+    data (a saturating product, a tie the rounding mode breaks a fixed way)."""
+    if not (chain.DATA_DIR / "embed.i8.bin").exists():
+        pytest.skip(f"needs {chain.DATA_DIR} (gen_llama_data.py)")
+    assert chain.main(["--start-pos", "62"]) == 0
+    out = capsys.readouterr().out
+    assert "chain_persist_grow_mh: 4/4 tokens PASS" in out
+    assert "KV cache: PASS" in out
 
 
 DATA_DIR = chain.DATA_DIR
