@@ -108,8 +108,8 @@ class BenchmarkResult:
         dispatch_overhead: Submit to completion of a dispatch that does
             nothing, on the same hardware context, one after each timed call;
             or None where the runtime has no empty dispatch for the kernel
-            (``KernelHandle.empty_dispatch_ns``), as for a full ELF or an ELF
-            module, whose control code is in the ELF.
+            (``KernelHandle.empty_dispatch_ns``), as for an ELF module, or a
+            full ELF without aiecc's empty sequence.
         npu: Each dispatch less the overhead's median: the time the NPU
             spent on the call's work. None without both.
     """

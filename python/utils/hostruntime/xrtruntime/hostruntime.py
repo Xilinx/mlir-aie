@@ -61,6 +61,10 @@ class _GetInfo(ctypes.Structure):
 _GET_INFO = 0xC0106447
 _QUERY_RESOURCE_INFO = 12
 
+# aiecc's kEmptySequenceName: the runtime sequence that does nothing, which a
+# full ELF carries on each device with a runtime sequence.
+EMPTY_SEQUENCE = "aiecc_empty"
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,6 +86,9 @@ class _KernelRun:
         command: The ``device:sequence`` the kernel runs, whose parameters
             its scratchpad holds.
         device: The device the kernel's hardware context is on.
+        empty: For a full ELF's kernel, the run of the empty sequence aiecc
+            puts on the same device of the ELF (`EMPTY_SEQUENCE`); None
+            otherwise, or for an ELF without one.
     """
 
     def __init__(
@@ -90,6 +97,7 @@ class _KernelRun:
         params_path: Path | None = None,
         command: str = "",
         device: "pyxrt.device | None" = None,
+        empty: "_KernelRun | None" = None,
     ):
         self.kernel = kernel
         self.run = None
@@ -97,6 +105,7 @@ class _KernelRun:
         self.params_path = params_path
         self.command = command
         self.device = device
+        self.empty = empty
         self._scratchpad: ParameterScratchpad | None = None
         # The 4-word header of the last transaction dispatched through the run.
         self.txn_header: np.ndarray | None = None
@@ -156,19 +165,28 @@ class _KernelRun:
             return state, stop - start
 
     def empty_dispatch_ns(self) -> int | None:
-        """Time one dispatch of a transaction with no operations, through this run.
+        """Time one dispatch that does nothing, on this kernel's hardware context.
 
-        The transaction is the header of the last one dispatched, with no
-        operations; the run keeps that call's buffers bound.
+        For a full ELF's kernel it is the ELF's empty sequence (`empty`).
+        Otherwise it is a transaction with the header of the last one
+        dispatched and no operations, through this run, which keeps that
+        call's buffers bound.
 
         Returns:
             Nanoseconds from submit to completion, timed as a call is; None
-            before a transaction has been dispatched, as for a full ELF or an
-            ELF module, which carry their own control code.
+            for a full ELF without an empty sequence, and before a transaction
+            has been dispatched, as for an ELF module, which carries its own
+            control code.
 
         Raises:
             HostRuntimeError: The empty dispatch did not complete.
         """
+        if self.empty is not None:
+            with self.lock:
+                state, ns = self.empty.dispatch([])
+            if state != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+                raise HostRuntimeError(f"An empty dispatch returned {state}")
+            return ns
         if self.txn_header is None:
             return None
         if self._empty_txn is None:
@@ -187,6 +205,23 @@ class _KernelRun:
         if state != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise HostRuntimeError(f"An empty dispatch returned {state}")
         return ns
+
+
+def _full_elf_empty_run(context, kernel_name: str) -> _KernelRun | None:
+    """Return the run of the empty sequence on `kernel_name`'s device of a full ELF.
+
+    Args:
+        context: The ELF's hardware context.
+        kernel_name: The ``"<device>:<sequence>"`` kernel loaded from the ELF.
+
+    Returns:
+        The run, or None for an ELF with no empty sequence on that device.
+    """
+    name = f"{kernel_name.partition(':')[0]}:{EMPTY_SEQUENCE}"
+    try:
+        return _KernelRun(pyxrt.ext.kernel(context, name), command=name)
+    except RuntimeError:
+        return None
 
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
@@ -497,7 +532,11 @@ class XRTHostRuntime(HostRuntime):
             name=kernel_name,
             is_full_elf=True,
             kernel_run=_KernelRun(
-                kernel, npu_kernel.params_path, kernel_name, self._device
+                kernel,
+                npu_kernel.params_path,
+                kernel_name,
+                self._device,
+                empty=_full_elf_empty_run(context, kernel_name),
             ),
         )
 
@@ -1072,7 +1111,11 @@ class CachedXRTRuntime(XRTHostRuntime):
                 kernel = pyxrt.ext.kernel(context, kernel_name)
                 entry["kernels"][kernel_name] = kernel
                 entry["runs"][kernel_name] = _KernelRun(
-                    kernel, npu_kernel.params_path, kernel_name, self._device
+                    kernel,
+                    npu_kernel.params_path,
+                    kernel_name,
+                    self._device,
+                    empty=_full_elf_empty_run(context, kernel_name),
                 )
             kernel = entry["kernels"][kernel_name]
 
