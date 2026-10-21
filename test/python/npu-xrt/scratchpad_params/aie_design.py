@@ -7,6 +7,8 @@
 #
 # Usage:
 #   python3 aie_design.py > aie.mlir
+#
+# test.py also builds program() through iron.jit.
 
 import numpy as np
 from ml_dtypes import bfloat16
@@ -27,7 +29,7 @@ from aie.dialects.memref import store
 from aie.ir import IndexType, IntegerAttr
 
 
-def design():
+def program() -> Program:
     device_name = "test"
 
     # Output type: 2 x bf16
@@ -75,8 +77,8 @@ def design():
         device_name, NPU2Col1(), workers=[worker], runtimes=[rt]
     )
     empty = DeviceConfiguration("empty", NPU2Col1())
-    return str(Program.compose([empty, config], entry=rt).resolve_program())
+    return Program.compose([empty, config], entry=rt)
 
 
-mlir_text = design()
-print(mlir_text)
+if __name__ == "__main__":
+    print(program().resolve_program())

@@ -23,8 +23,9 @@ import logging
 import os
 import time
 from collections import OrderedDict
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from ._bindings import HSA_SIGNAL_CONDITION_EQ, HSA_WAIT_STATE_BLOCKED, lib
@@ -276,6 +277,7 @@ class HSAHostRuntime(HostRuntime):
         fail_on_error=True,
         only_if_loaded=False,
         dispatch_insts=None,
+        parameters: Mapping[str, Any] | None = None,
         **kwargs,
     ) -> HSAKernelResult:
         """Dispatch one packet for ``kernel_handle`` and wait for it to complete.
@@ -288,10 +290,15 @@ class HSAHostRuntime(HostRuntime):
         ``dispatch_insts`` (np.ndarray | None): Per-call instruction words,
         copied into a fresh device buffer retained until completion. Failed
         submissions are rechecked on subsequent dispatches and during cleanup.
+        ``parameters`` must be empty: HSA writes no ScratchpadParameters.
         """
         assert isinstance(kernel_handle, HSAKernelHandle)
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
+        if parameters:
+            raise HostRuntimeError(
+                f"HSA writes no ScratchpadParameters; got {sorted(parameters)}"
+            )
         self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
         self._reclaim_dispatch_insts()
@@ -406,7 +413,9 @@ class HSAHostRuntime(HostRuntime):
         self._mark_device_resident(tensors)
         return HSAKernelResult(stop - start, success=True)
 
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
+    def load_and_run(
+        self, npu_kernel, run_args, dispatch_scalars=None, parameters=None, **kwargs
+    ):
         """Reject trace up front, then defer to the base load/run pipeline.
 
         The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
@@ -416,7 +425,9 @@ class HSAHostRuntime(HostRuntime):
         """
         if getattr(npu_kernel, "trace_config", None) is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(npu_kernel, run_args, dispatch_scalars, **kwargs)
+        return super().load_and_run(
+            npu_kernel, run_args, dispatch_scalars, parameters, **kwargs
+        )
 
     def device(self) -> "Device":
         from aie.iron.device import from_name

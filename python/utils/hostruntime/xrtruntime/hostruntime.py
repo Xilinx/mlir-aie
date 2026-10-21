@@ -16,14 +16,16 @@ import threading
 import time
 import weakref
 from collections import OrderedDict
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from .device import acquire_device, xrt_smi_path
+from .parameter_scratchpad import ParameterScratchpad
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
@@ -72,39 +74,83 @@ class _KernelRun:
     take turns. The run keeps the last dispatch's buffers bound, holding
     their device memory, until the kernel's next dispatch or until the run is
     dropped with its handle.
+
+    Args:
+        kernel: The loaded kernel.
+        params_path: The lowering's ``params.txt``, for a kernel whose design
+            declares ScratchpadParameters; None for one that declares none.
+        command: The ``device:sequence`` the kernel runs, whose parameters
+            its scratchpad holds.
+        device: The device the kernel's hardware context is on.
     """
 
-    def __init__(self, kernel):
+    def __init__(
+        self,
+        kernel,
+        params_path: Path | None = None,
+        command: str = "",
+        device: "pyxrt.device | None" = None,
+    ):
         self.kernel = kernel
         self.run = None
         self.lock = threading.Lock()
+        self.params_path = params_path
+        self.command = command
+        self.device = device
+        self._scratchpad: ParameterScratchpad | None = None
 
-    def dispatch(self, args) -> "pyxrt.ert_cmd_state":
-        """Bind `args` and run the kernel to completion.
+    def dispatch(
+        self, args, parameters: Mapping[str, Any] | None = None
+    ) -> tuple["pyxrt.ert_cmd_state", int]:
+        """Bind `args`, write `parameters` and run the kernel to completion.
 
         Args:
             args: The kernel's arguments in order, `pyxrt.bo`s and ints. A
                 `None` leaves its slot unbound.
+            parameters: ScratchpadParameter values by name, written to the
+                run's ctrl scratchpad before it starts.
 
         Returns:
-            The run's final command state. A run that does not complete, or
-            raises, is dropped so the next dispatch starts a fresh one.
+            The run's final command state, and the nanoseconds from its start
+            to the end of the wait. A run that does not complete, or raises,
+            is dropped so the next dispatch starts a fresh one.
+
+        Raises:
+            HostRuntimeError: `parameters` for a kernel that declares no
+                ScratchpadParameter.
         """
+        if parameters and self.params_path is None:
+            raise HostRuntimeError(
+                f"{self.command or 'this kernel'} declares no ScratchpadParameter "
+                f"to write {sorted(parameters)} to"
+            )
         with self.lock:
             if self.run is None:
                 self.run = pyxrt.run(self.kernel)
+                self._scratchpad = None
             try:
                 for i, arg in enumerate(args):
                     if arg is not None:
                         self.run.set_arg(i, arg)
+                if parameters:
+                    if self._scratchpad is None:
+                        assert self.params_path is not None
+                        self._scratchpad = ParameterScratchpad(
+                            self.run, self.params_path, self.command, self.device
+                        )
+                    for name, value in parameters.items():
+                        self._scratchpad.write(name, value)
+                    self._scratchpad.sync()
+                start = time.perf_counter_ns()
                 self.run.start()
                 state = self.run.wait()
+                stop = time.perf_counter_ns()
             except BaseException:
                 self.run = None
                 raise
             if state != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
                 self.run = None
-            return state
+            return state, stop - start
 
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
@@ -405,7 +451,15 @@ class XRTHostRuntime(HostRuntime):
         kernel = pyxrt.ext.kernel(context, kernel_name)
 
         return XRTKernelHandle(
-            kernel, None, context, None, name=kernel_name, is_full_elf=True
+            kernel,
+            None,
+            context,
+            None,
+            name=kernel_name,
+            is_full_elf=True,
+            kernel_run=_KernelRun(
+                kernel, npu_kernel.params_path, kernel_name, self._device
+            ),
         )
 
     def run(
@@ -416,6 +470,7 @@ class XRTHostRuntime(HostRuntime):
         fail_on_error: bool = True,
         only_if_loaded: bool = False,
         dispatch_insts=None,
+        parameters: Mapping[str, Any] | None = None,
         **kwargs,
     ) -> XRTKernelResult:
         """Run a loaded XRT kernel.
@@ -428,6 +483,9 @@ class XRTHostRuntime(HostRuntime):
             only_if_loaded (bool, optional): Accepted for API compatibility with the runtime base class.
             dispatch_insts (np.ndarray | None, optional): Per-call instruction
                 words, submitted in a fresh BO instead of static instructions.
+            parameters (Mapping[str, Any] | None, optional): ScratchpadParameter
+                values by name, written to the run's ctrl scratchpad before it
+                starts; a full ELF's kernel takes them.
             **kwargs: Additional arguments.
 
         Returns:
@@ -449,7 +507,7 @@ class XRTHostRuntime(HostRuntime):
         buffers = [a.buffer_object() for a in args]
 
         if kernel_handle.is_full_elf:
-            return self._run_full_elf(kernel_handle, buffers, fail_on_error)
+            return self._run_full_elf(kernel_handle, buffers, fail_on_error, parameters)
 
         # Validate BO count against xclbin metadata before calling into XRT.
         # XRT's validate_bo_at_index segfaults if the index exceeds the count
@@ -499,9 +557,9 @@ class XRTHostRuntime(HostRuntime):
                             xrt_device=self._device,
                         ).buffer_object()
 
-            start = time.perf_counter_ns()
-            r = kernel_handle.kernel_run.dispatch([3, insts_bo, insts_bytes, *buffers])
-            stop = time.perf_counter_ns()
+            r, ns = kernel_handle.kernel_run.dispatch(
+                [3, insts_bo, insts_bytes, *buffers], parameters
+            )
 
             if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
                 raise HostRuntimeError(f"Kernel returned {str(r)}")
@@ -510,13 +568,14 @@ class XRTHostRuntime(HostRuntime):
             if insts_bo and not kernel_handle.insts_bo:
                 del insts_bo
 
-        return XRTKernelResult(r, stop - start)
+        return XRTKernelResult(r, ns)
 
     def _run_full_elf(
         self,
         kernel_handle: "XRTKernelHandle",
         buffers,
         fail_on_error: bool,
+        parameters: Mapping[str, Any] | None,
     ) -> XRTKernelResult:
         """Execute a full-ELF kernel via the ``run.set_arg`` / ``start`` path.
 
@@ -525,14 +584,12 @@ class XRTHostRuntime(HostRuntime):
         buffer the trace lowering appended) is bound positionally with
         ``set_arg``.
         """
-        start = time.perf_counter_ns()
-        r = kernel_handle.kernel_run.dispatch(buffers)
-        stop = time.perf_counter_ns()
+        r, ns = kernel_handle.kernel_run.dispatch(buffers, parameters)
 
         if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise HostRuntimeError(f"Kernel returned {str(r)}")
 
-        return XRTKernelResult(r, stop - start)
+        return XRTKernelResult(r, ns)
 
     def device(self) -> "Device":
         """Get the device associated with this runtime.
@@ -821,6 +878,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         fail_on_error: bool = True,
         only_if_loaded: bool = False,
         dispatch_insts=None,
+        parameters: Mapping[str, Any] | None = None,
         **kwargs,
     ) -> XRTKernelResult:
         """Run a loaded XRT kernel.
@@ -832,6 +890,8 @@ class CachedXRTRuntime(XRTHostRuntime):
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): If True, only run if the kernel is currently loaded in the cache. Defaults to False.
             dispatch_insts (np.ndarray | None, optional): See
+                ``XRTHostRuntime.run()``.
+            parameters (Mapping[str, Any] | None, optional): See
                 ``XRTHostRuntime.run()``.
             **kwargs: Additional arguments.
 
@@ -854,10 +914,13 @@ class CachedXRTRuntime(XRTHostRuntime):
             trace_config,
             fail_on_error,
             dispatch_insts=dispatch_insts,
+            parameters=parameters,
             **kwargs,
         )
 
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
+    def load_and_run(
+        self, npu_kernel, run_args, dispatch_scalars=None, parameters=None, **kwargs
+    ):
         """Wrap the base implementation to paper over a Phoenix firmware-state quirk.
 
         A trace-on run leaves the amdxdna firmware in
@@ -882,7 +945,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         contexts are about to be touched next.
         """
         handle, ret = super().load_and_run(
-            npu_kernel, run_args, dispatch_scalars, **kwargs
+            npu_kernel, run_args, dispatch_scalars, parameters, **kwargs
         )
         if (
             npu_kernel.trace_config is not None
@@ -962,7 +1025,9 @@ class CachedXRTRuntime(XRTHostRuntime):
             if kernel_name not in entry["kernels"]:
                 kernel = pyxrt.ext.kernel(context, kernel_name)
                 entry["kernels"][kernel_name] = kernel
-                entry["runs"][kernel_name] = _KernelRun(kernel)
+                entry["runs"][kernel_name] = _KernelRun(
+                    kernel, npu_kernel.params_path, kernel_name, self._device
+                )
             kernel = entry["kernels"][kernel_name]
 
             kernel_handle = CachedXRTKernelHandle(
