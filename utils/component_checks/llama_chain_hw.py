@@ -18,7 +18,11 @@ that one full ELF through:
 - generate.py --prompt-tokens, no --check: the same TTFT split, 5 requests
   each, at PROMPT_LENGTHS (batched prefill's own exactness is already
   covered by the --contexts sweep's and test_llama's batched cases; this
-  only times it, at prompt lengths long enough to need many batches).
+  only times it, at prompt lengths long enough to need many batches);
+- accuracy_vs_hf.py: the device's arithmetic (llama_oracle) against the
+  true bf16 checkpoint, teacher-forced on a small fixed prompt (mean KL,
+  top-1 agreement). Refuses (not skips) when the bf16 safetensors are
+  missing, the same as for the INT8 weights.
 Every run must exit 0 and pass every token. One run, no seed sweep: the
 design pins its SA placer seed (aie2_decode.build's aiecc flags).
 
@@ -52,6 +56,7 @@ import re
 import shutil
 import sys
 import tempfile
+from pathlib import Path
 
 from aiecc_stages import (
     PROFILE_NAME,
@@ -108,6 +113,9 @@ GENERATE_NEW = 32
 # Prefill's own TTFT, at prompt lengths long enough to need many batches
 # (mlir-air/FastFlowLM report TTFT by prompt length the same way).
 PROMPT_LENGTHS = (512, 1024, 2048)
+# accuracy_vs_hf.py's own default text, cut short (~28 s, 9.3 GB peak):
+# small enough to run every night beside everything else above.
+ACCURACY_MAX_TOKENS = 24
 _ELF = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}_T{T}.elf"
 _PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}_T{T}.prj"
 _PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
@@ -129,6 +137,22 @@ def missing_data() -> list[str]:
     return [
         f for f in DATA_FILES if not os.path.exists(os.path.join(_LLAMA_DIR, "data", f))
     ]
+
+
+def missing_bf16(weights: str | None) -> bool:
+    """Whether accuracy_vs_hf.py's bf16 reference model.safetensors is absent.
+
+    Args:
+        weights: ``--weights``, or None for gen_llama_data.WEIGHTS_DIR's default
+            ($IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/, /srv if unset).
+    """
+    path = (
+        Path(weights)
+        if weights
+        else (Path(os.environ.get("IRON_EXAMPLE_WEIGHTS_DIR", "/srv")) / "llama3.2-1b")
+        / "model.safetensors"
+    )
+    return not path.exists()
 
 
 def ensure_data(
@@ -284,6 +308,34 @@ def parse_prefill(out: str, returncode: int) -> dict:
     }
 
 
+def run_accuracy_bf16(env: dict, weights: str | None) -> Measured:
+    """Run accuracy_vs_hf.py: the device's arithmetic vs the true bf16 model."""
+    args = [
+        sys.executable,
+        "accuracy_vs_hf.py",
+        "--max-tokens",
+        str(ACCURACY_MAX_TOKENS),
+    ]
+    if weights:
+        args += ["--hf-weights", weights]
+    return run_measured(args, _LLAMA_DIR, env, GENERATE_TIMEOUT)
+
+
+_ACCURACY_TOP1_RE = re.compile(r"next-token top-1 agreement: ([\d.]+)%")
+_ACCURACY_KL_RE = re.compile(r"mean KL\(bf16 \|\| int8\)\s*: ([\d.]+)")
+
+
+def parse_accuracy_bf16(out: str, returncode: int) -> dict:
+    """Return accuracy_vs_hf.py's mean KL and top-1 agreement against bf16."""
+    top1 = _ACCURACY_TOP1_RE.search(out)
+    kl = _ACCURACY_KL_RE.search(out)
+    return {
+        "accuracy_passed": returncode == 0 and bool(top1) and bool(kl),
+        "top1_bf16": float(top1.group(1)) if top1 else None,
+        "kl_bf16": float(kl.group(1)) if kl else None,
+    }
+
+
 def parse_generate(out: str, returncode: int) -> dict:
     """Return generate.py --check's numbers and whether its oracle gate passed.
 
@@ -396,6 +448,7 @@ def aggregate(
     timing: dict,
     generated: dict,
     prefill: dict,
+    accuracy: dict,
     artifacts: dict,
     compile_stats: dict,
 ) -> list[dict]:
@@ -453,6 +506,10 @@ def aggregate(
             out.append(
                 row(prompt, metric, p[metric], unit, f"{stat} of {p['ttft_runs']}")
             )
+    if accuracy.get("accuracy_passed"):
+        note = f"{ACCURACY_MAX_TOKENS} tokens, teacher-forced"
+        out.append(row(case, "kl_bf16", accuracy["kl_bf16"], "nats", note))
+        out.append(row(case, "top1_bf16", accuracy["top1_bf16"], "%", note))
     for metric, unit in (
         ("elf_bytes", "bytes"),
         ("pdi_bytes", "bytes"),
@@ -517,12 +574,21 @@ def main(argv=None) -> int:
             args.out,
             args.meta,
         )
+    if missing_bf16(args.weights):
+        return refuse(
+            "accuracy_vs_hf.py's bf16 reference model.safetensors is missing "
+            "(pass --weights or set IRON_EXAMPLE_WEIGHTS_DIR)",
+            meta,
+            args.out,
+            args.meta,
+        )
     cache_dir = tempfile.mkdtemp(prefix="component-checks-llama-chain-")
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
     correctness = parse_correctness("", 1)
     timing: dict = {}
     generated = parse_generate("", 1)
     prefill: dict = {}
+    accuracy = parse_accuracy_bf16("", 1)
     artifacts: dict = {}
     try:
         compiled = compile_cold_warm(env, cache_dir)
@@ -537,6 +603,8 @@ def main(argv=None) -> int:
                 for length in PROMPT_LENGTHS:
                     pre_ran = run_prefill(run_env, length).process
                     prefill[length] = parse_prefill(pre_ran.stdout, pre_ran.returncode)
+                acc_ran = run_accuracy_bf16(env, args.weights).process
+                accuracy = parse_accuracy_bf16(acc_ran.stdout, acc_ran.returncode)
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
 
@@ -549,12 +617,15 @@ def main(argv=None) -> int:
         and timed
         and generated["generate_passed"]
         and prefill_timed
+        and accuracy["accuracy_passed"]
     )
     failed = [] if passed else [case]
 
     write(
         args.out,
-        aggregate(correctness, timing, generated, prefill, artifacts, compiled),
+        aggregate(
+            correctness, timing, generated, prefill, accuracy, artifacts, compiled
+        ),
     )
     write(
         args.meta,
@@ -568,6 +639,7 @@ def main(argv=None) -> int:
                     "timing": {str(at): t for at, t in timing.items()},
                     **generated,
                     "prefill": {str(length): p for length, p in prefill.items()},
+                    **accuracy,
                     **artifacts,
                     **{k: v for k, v in compiled.items() if k != "built"},
                 }

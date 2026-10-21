@@ -137,7 +137,7 @@ assert.equal(changeClass(100, 114, 'compile_s'), '');
 assert.equal(changeClass(100, 115, 'compile_s'), 'worse');
 assert.equal(changeClass(1000, 1009, 'final_cost_mean'), '');
 assert.equal(changeClass(1000, 1010, 'final_cost_mean'), 'worse');
-assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes', 'max_ulp_bfloat16', 'max_ulp_float32', 'not_correctly_rounded_bfloat16', 'not_correctly_rounded_float32']);
+assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes', 'max_ulp_bfloat16', 'max_ulp_float32', 'not_correctly_rounded_bfloat16', 'not_correctly_rounded_float32', 'kl_bf16', 'top1_bf16']);
 """)
 
 

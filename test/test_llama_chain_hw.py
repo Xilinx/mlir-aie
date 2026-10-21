@@ -89,6 +89,7 @@ def test_the_timed_decode_publishes_its_statistic(llama):
         {},
         {},
         {},
+        {},
     )
     names = {r["name"].rsplit("/", 1)[1]: r for r in rows}
     assert names["ms_per_token"]["value"] == t["ms_per_token"]
@@ -131,11 +132,13 @@ def test_generate_rows_publish_only_after_its_oracle_passed(llama):
         {},
         {},
         {},
+        {},
     )
     failed = llama.aggregate(
         correctness,
         timing,
         llama.parse_generate(output("generate_pass"), 1),
+        {},
         {},
         {},
         {},
@@ -164,7 +167,9 @@ def test_the_context_sweep_publishes_every_context(llama):
     timing = llama.parse_timing(out, 0)
     assert set(timing) == {llama.DISPATCH_RATE_AT, *llama.CONTEXTS}
     assert llama.timing_sane(timing)
-    rows = llama.aggregate(correctness, timing, llama.parse_generate("", 1), {}, {}, {})
+    rows = llama.aggregate(
+        correctness, timing, llama.parse_generate("", 1), {}, {}, {}, {}
+    )
     case = f"llama/persist_grow/N={llama.N_LAYERS}"
     names = {r["name"]: r["value"] for r in rows}
     assert names[f"{case}/ms_per_token"] == 47.23
@@ -195,7 +200,7 @@ def test_the_prefill_sweep_publishes_a_row_per_prompt_length(llama):
     timing = llama.parse_timing(output("timed_pass"), 0)
     prefill = {512: llama.parse_prefill(output("prefill_pass"), 0)}
     rows = llama.aggregate(
-        correctness, timing, llama.parse_generate("", 1), prefill, {}, {}
+        correctness, timing, llama.parse_generate("", 1), prefill, {}, {}, {}
     )
     case = f"llama/persist_grow/N={llama.N_LAYERS}"
     names = {
@@ -214,8 +219,51 @@ def test_the_prefill_sweep_publishes_a_row_per_prompt_length(llama):
         {512: llama.parse_prefill(output("prefill_pass"), 1)},
         {},
         {},
+        {},
     )
     assert not any("/prompt=512/" in r["name"] for r in failed_rows)
+
+
+def test_accuracy_bf16_passes_and_publishes_kl_and_top1(llama):
+    got = llama.parse_accuracy_bf16(output("accuracy_pass"), 0)
+    assert got["accuracy_passed"]
+    assert got["kl_bf16"] == 0.0250
+    assert got["top1_bf16"] == 91.7
+
+
+def test_accuracy_bf16_fails_on_its_exit_status(llama):
+    assert not llama.parse_accuracy_bf16(output("accuracy_pass"), 1)["accuracy_passed"]
+
+
+def test_missing_bf16_weights_is_named_explicitly(llama, tmp_path):
+    assert llama.missing_bf16(str(tmp_path / "nope.safetensors"))
+    real = tmp_path / "model.safetensors"
+    real.write_bytes(b"")
+    assert not llama.missing_bf16(str(real))
+
+
+def test_the_accuracy_rows_publish_only_after_the_oracle_passed(llama):
+    correctness = llama.parse_correctness(output("decode_pass"), 0)
+    timing = llama.parse_timing(output("timed_pass"), 0)
+    accuracy = llama.parse_accuracy_bf16(output("accuracy_pass"), 0)
+    rows = llama.aggregate(
+        correctness, timing, llama.parse_generate("", 1), {}, accuracy, {}, {}
+    )
+    case = f"llama/persist_grow/N={llama.N_LAYERS}"
+    names = {r["name"]: r for r in rows}
+    assert names[f"{case}/kl_bf16"]["value"] == 0.0250
+    assert names[f"{case}/top1_bf16"]["value"] == 91.7
+    failed_rows = llama.aggregate(
+        correctness,
+        timing,
+        llama.parse_generate("", 1),
+        {},
+        llama.parse_accuracy_bf16(output("accuracy_pass"), 1),
+        {},
+        {},
+    )
+    assert not any(r["name"].endswith("kl_bf16") for r in failed_rows)
+    assert not any(r["name"].endswith("top1_bf16") for r in failed_rows)
 
 
 def test_this_checkout_has_the_data_the_runs_read_or_names_what_it_lacks(llama):
