@@ -98,27 +98,7 @@ class _Operand(Member):
     """A tensor declared in an operator's class body.
 
     On an instance, ``op.a`` is the operand the operator bound (`of`).
-
-    Args:
-        dims: The host shape: integers, ``param()``s and ``Select``s. A
-            ``param()`` that is None on an instance is a dimension the shape
-            leaves out there.
-        dtype: The element type, or a ``param()`` holding it.
-        obj_shape: What one ObjectFifo element holds. With one the tensor
-            streams into the array; without one a hand-written sequence
-            moves it.
-        per: The ``param()`` (or several, multiplied) the stream is split
-            over, one ObjectFifo each.
-        depth: The ObjectFifo depth.
-        replicate: Every ``per=`` lane gets the whole tensor, not a share.
-        when: A bool ``param()``; the tensor exists only where it is true.
-        like: An input whose dims these are; a caller gives this tensor the
-            shape that input has on the call, so ``Out(like=x)`` of a flat
-            ``x`` is ``(rows, cols)`` where ``x`` is.
-
-    Raises:
-        TypeError: ``replicate`` without ``per``, or both ``dims`` and
-            ``like``.
+    ``In`` documents the arguments.
     """
 
     fills = drains = False
@@ -226,19 +206,49 @@ class _Operand(Member):
 
 
 class In(_Operand):
-    """Runtime input tensor (host → NPU, DMA each call)."""
+    """Runtime input tensor (host → NPU, DMA each call).
+
+    ``Out`` and ``InOut`` take the same arguments.
+
+    Args:
+        dims: The host shape: integers, ``param()``s and ``Select``s. A
+            ``param()`` that is None on an instance is a dimension the shape
+            leaves out there.
+        dtype: The element type, or a ``param()`` holding it.
+        obj_shape: What one ObjectFifo element holds. With one the tensor
+            streams into the array; without one a hand-written sequence
+            moves it.
+        per: The ``param()`` (or several, multiplied) the stream is split
+            over, one ObjectFifo each.
+        depth: The ObjectFifo depth.
+        replicate: Every ``per=`` lane gets the whole tensor, not a share.
+        when: A bool ``param()``; the tensor exists only where it is true.
+        like: An input whose dims these are; a caller gives this tensor the
+            shape that input has on the call, so ``Out(like=x)`` of a flat
+            ``x`` is ``(rows, cols)`` where ``x`` is.
+
+    Raises:
+        TypeError: ``replicate`` without ``per``, or both ``dims`` and
+            ``like``.
+    """
 
     fills = True
 
 
 class Out(_Operand):
-    """Runtime output tensor (NPU → host, DMA each call)."""
+    """Runtime output tensor (NPU → host, DMA each call).
+
+    Takes the arguments ``In`` documents.
+    """
 
     drains = True
 
 
 class InOut(_Operand):
-    """Runtime bidirectional tensor (DMA in both directions each call)."""
+    """Runtime bidirectional tensor (DMA in both directions each call).
+
+    Takes the arguments ``In`` documents.
+    """
 
     fills = drains = True
 
