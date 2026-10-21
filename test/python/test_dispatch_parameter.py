@@ -129,6 +129,14 @@ def test_a_numpy_integer_scales_a_dispatch_parameter_from_either_side(npu2_devic
         CompilableDesign(gen).generate_mlir()
 
 
+def test_an_expression_of_a_dispatch_parameter_is_not_a_numpy_dtype(npu2_device):
+    def gen(*, count: DispatchTime[np.int32]):
+        np.dtype(count * 64 + 64)
+
+    with pytest.raises(TypeError, match="Cannot interpret 'Affine.* as a data type"):
+        CompilableDesign(gen).generate_mlir()
+
+
 def test_dispatch_cannot_be_used_as_numpy_dtype(npu2_device):
     def gen(*, count: DispatchTime[np.int32]):
         np.dtype(count)
