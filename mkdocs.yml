@@ -266,6 +266,7 @@ nav:
       - IRON (aie.iron): api/iron.md
       - Dialect op wrappers: api/dialect_wrappers.md
       - Tensor Access Patterns (taplib): api/taplib.md
+      - Operators and declarations: api/operators.md
       - Python Kernel Library: api/kernels.md
       - Host Runtime: api/hostruntime.md
       - C++ AIE kernels: api/aie_kernels.md
