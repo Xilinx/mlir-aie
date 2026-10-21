@@ -287,15 +287,17 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
     errors = error_rows(_load(results / "error.json", {}))
     catalogue = _load(results / "catalogue.json", None)
     preflight = meta.get("preflight") or {}
+    provenance = provenance_fields(meta.get("provenance", ""))
     cases = meta.get("cases") or {}
     record = {
         "schema": SCHEMA,
         "target": target,
         **run,
         "pmode": preflight.get("pmode"),
-        "device": device_part(preflight.get("device")),
+        # A check without an NPU times the CPU it ran on.
+        "device": device_part(preflight.get("device")) or provenance.get("cpu"),
         "device_raw": preflight.get("device"),
-        "provenance": provenance_fields(meta.get("provenance", "")),
+        "provenance": provenance,
         "sane": meta.get("measurement_sane"),
         "published": meta.get("measurement_sane") is True and bool(rows),
         "n_rows": len(rows),

@@ -214,6 +214,8 @@ def test_a_seed_past_its_timeout_fails_and_publishes_as_a_failure(aie_opt, tmp_p
     assert "timed out after 0.01 s" in result.stdout
     record = publish_results(tmp_path, "sa-placer")
     assert record["failed"] == ["mobilenet/seed1"] and record["exitstatus"] == 1
+    # The CPU it ran on stands in for the part host time is kept apart by.
+    assert record["device"] == record["provenance"]["cpu"] != "unknown"
 
 
 @POSIX_SWEEP

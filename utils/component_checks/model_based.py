@@ -31,7 +31,7 @@ import json
 import sys
 from pathlib import Path
 
-from aiecc_stages import row
+from aiecc_stages import cpu_model, row
 from sa_placer import commit
 
 ALLOCATOR_COUNTS = {
@@ -174,7 +174,7 @@ def main(argv=None) -> int:
         json.dump(rows, f, indent=1)
     meta = {
         "preflight": {},
-        "provenance": f"commit {commit()}",
+        "provenance": f"commit {commit()} | cpu {cpu_model()}",
         "measurement_sane": True,
         "detail": detail,
         "failed": failed,

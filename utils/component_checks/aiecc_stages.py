@@ -371,6 +371,19 @@ def write_unfinished(meta: dict, case: str, out_path: str, meta_path: str) -> No
     )
 
 
+def cpu_model() -> str:
+    """Return the CPU's model name, from /proc/cpuinfo, or "unknown"."""
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                key, _, value = line.partition(":")
+                if key.strip() == "model name":
+                    return value.strip()
+    except OSError:
+        pass
+    return "unknown"
+
+
 def add_pmode_argument(parser: argparse.ArgumentParser) -> None:
     """Add ``--pmode``, the power mode a check refuses to measure outside of."""
     parser.add_argument(
