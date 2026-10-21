@@ -103,7 +103,7 @@ half_epilogue(::aie::vector<int32, 32> sums, const int8_t *restrict act,
           float f = (float)sums.get(lane) * act_scales[m] * w_scales[n];
           float scaled = f * inv_out_scale;
           int32_t r = (int32_t)(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
-          v = (int8_t)(r > I8_MAX ? I8_MAX : r < I8_MIN ? I8_MIN : r);
+          v = (int8_t)(r > INT8_MAX ? INT8_MAX : r < INT8_MIN ? INT8_MIN : r);
         }
         out[at] = v;
       } else {
