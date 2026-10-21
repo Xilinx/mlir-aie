@@ -1533,9 +1533,10 @@ const hwIndex = { target: 'sa-placer-hw', runs: [night('6', hwBefore.date, 'turb
 def test_a_passing_check_says_so_and_how_to_run_it(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
-assert.equal(card.className, 'verdict ok');
+// Every run passed, but seed 3's batch 16 got slower: a warning, not "all passing".
+assert.equal(card.className, 'verdict warn');
 assert.equal(one(card, n => n.className === 'headline').text,
-             "Every run passed. Seed 3 streams at 92.2 µs per image; one image's dispatch takes 295.7 µs.");
+             "Every run passed, but 2 measures got worse vs 1 Oct. Seed 3 streams at 92.2 µs per image; one image's dispatch takes 295.7 µs.");
 const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open);
 // Shown: the verdict, what moved, and the trend chart's slot. Behind
@@ -1550,6 +1551,7 @@ assert.equal(card.trend.className, 'trend-slot');
 // A quiet night: "nothing moved" is detail too.
 const quiet = componentBand(hw, hwIndex, hwRecord('7', hwAfter.date, 98), NOW, hwBefore);
 assert.deepEqual(quiet.children.map(c => c.className), ['verdict-top', 'headline', 'trend-slot', 'band-more']);
+assert.equal(quiet.className, 'verdict ok');
 assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 0.05 --dynamic 1 16 -w 20 -i 20'));
 assert.ok(card.text.includes('turbo mode'));
 // Nothing published yet.
@@ -1731,7 +1733,7 @@ def test_the_llama_card_reads_decode_rate_higher_as_better(page):
 assert.equal(llama.section, 'performance');
 const card = componentBand(llama, llamaIndex, llamaAfter, NOW, llamaBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every decoded token matched the oracle. 16 layers: a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
+             'Every decoded token matched the oracle, but 1 measure got worse vs 1 Oct. 16 layers: a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
 // generate.py's end-to-end decode rate leads when the night has it; the dispatch rate follows.
 assert.equal(llamaSummary({ [LLAMA]: { ...llamaAfter.rows[LLAMA], decode_tok_s: { value: 4.2, unit: 'tok/s' } } }),
              ' 16 layers decode at 4.2 tok/s end to end; a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
@@ -1819,7 +1821,7 @@ def test_the_yolo26n_card_shows_each_batch_and_what_it_verified(page):
 assert.equal(yolo.section, 'performance');
 const card = componentBand(yolo, yoloIndex, yoloAfter, NOW, yoloBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every image matched the oracle. End to end, one image takes 5,400 µs (185.19 fps) at batch 1, 3,000 µs at batch 8.');
+             'Every image matched the oracle, but 1 measure got worse vs 1 Oct. End to end, one image takes 5,400 µs (185.19 fps) at batch 1, 3,000 µs at batch 8.');
 // The frame rate repeats the time per image and is not listed twice.
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n end-to-end / image (b1) +8.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [YOLO]);
@@ -2175,17 +2177,18 @@ assert.deepEqual(tiles.map(t => t.children[0].text), ['CI health', 'Kernels', 'P
 const [ciTile, kernels, perf, routing, placement] = tiles;
 // GitHub not asked yet.
 assert.equal(ciTile.children[1].text, 'Loading…');
-assert.equal(perf.level, 'ok');
-assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['All passing', 'Every run passed.']);
+// A slower night is a warning on the overview too, not "All passing".
+assert.equal(perf.level, 'warn');
+assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['Warnings', 'MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.']);
 // The whole of each line is in the row's tooltip.
-assert.ok(perf.title.includes('MobileNet: Every run passed.'));
+assert.ok(perf.title.includes('MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.'));
 // A check that has not published yet: says so instead of a verdict.
 assert.equal(routing.level, 'none');
 assert.equal(routing.children[1].text, 'No results yet');
 // Two days without a run: late and red, the line says so first.
 const late = overviewTiles(null, loaded, NOW + 2 * 86400 * 1000);
 assert.equal(late[2].level, 'bad');
-assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed.');
+assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed, but 2 measures got worse vs 1 Oct.');
 assert.equal(late[1].children[1].text, 'Loading…');
 // The band says it above its verdict.
 const lateBand = componentBand(hw, hwIndex, hwAfter, NOW + 2 * 86400 * 1000, hwBefore);
@@ -2443,6 +2446,38 @@ const fine = ciLines(loadedOf(status()), NOW);
 assert.deepEqual(fine[0], { level: 'ok', who: 'All workflows', text: '1 of 1 merge-gating test healthy; 1 of 1 other scheduled job passed their last run.' });
 // Nothing published: says so rather than "no results".
 assert.equal(overviewTiles(null, [], NOW, loadedOf(null))[0].children[1].text, 'Not published yet');
+""")
+
+
+def test_ci_health_does_not_read_a_timeout_or_a_stale_file_as_passing(page):
+    page(CI_RUNS + """
+// A job past its timeout ends the run "cancelled": a warning, not a pass.
+let v = criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'cancelled') }), NOW);
+assert.deepEqual([v.level, v.notes], ['warn', ['its latest run on main was cancelled: it timed out, or no runner took it']]);
+assert.equal(criticalTile(crit({ latest_main: run(30, 3, 'completed', 'cancelled') }), NOW).text,
+             'Its latest run on main was cancelled: it timed out, or no runner took it');
+// A dead runner: the newest run on main has sat queued for a day.
+v = criticalVerdict(crit({ newest_main: run(31, 26, 'queued', null) }), NOW);
+assert.deepEqual([v.level, v.notes.at(-1)], ['warn', 'its newest run on main is waiting for a runner for 1 day 2 h']);
+// "Failed on main" counts from the run's end, not its start.
+const ended = { ...run(30, 3, 'completed', 'failure'), updated_at: at(1) };
+assert.equal(criticalTile(crit({ latest_main: ended }), NOW).text, 'Failed on main 1 h ago');
+// The run-time chart: a failed run red, a cancelled one amber.
+const done = (id, h, conclusion) => ({ ...run(id, h, 'completed', conclusion), updated_at: at(h - 1) });
+const config = latencyConfig([done(3, 2, 'cancelled'), done(2, 26, 'failure'), done(1, 50, 'success')], 'Run on main');
+assert.deepEqual(config.data.datasets[0].pointBackgroundColor,
+                 [cssVar('--series-1', '#5b6475'), cssVar('--bad', '#c62f3a'), cssVar('--warn', '#9a5c00')]);
+// Stale data: a gap is judged as of the publisher's last answer (plus the
+// staleness limit), not the reader's clock. Published at NOW - 0.5 h, read 14 h later:
+const fresh = status({ workflows: [{ ...nightly, runs: [run(1, 26, 'completed', 'success')], jobs: [] }] });
+assert.equal(ciNow(loadedOf(fresh), NOW + 14 * H), NOW + 12.5 * H);
+const row = nightlyRow(loadedOf(fresh).results[0], ciNow(loadedOf(fresh), NOW + 14 * H));
+assert.equal(row.children[2].text, 'No run for 1 day 15 h');
+// A late job whose last run is still going says so in a sentence.
+v = ciVerdict(nightly, [run(1, 40, 'in_progress', null)], [], NOW);
+assert.equal(v.headline, 'No scheduled run for 1 day 16 h. Its last is still running.');
+// history.json is not fetched: the page never charted it.
+assert.ok(!loadCi.toString().includes('history.json'));
 """)
 
 

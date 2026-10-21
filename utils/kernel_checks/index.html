@@ -597,9 +597,10 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
           <p><a href="https://github.com/Xilinx/mlir-aie/actions/workflows/publishCiHealth.yml"><code>publishCiHealth.yml</code></a> runs every six hours:
             <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/ci_health.py"><code>utils/kernel_checks/ci_health.py</code></a> asks GitHub's API,
             with the workflow's own token, for each workflow's recent scheduled runs on main and, for those on the NPU and bench machines, the jobs of the latest run,
-            and writes <code>ci-health/status.json</code> beside this page. Pull-request, merge-queue and hand-started runs are left out.</p>
+            and writes <code>ci-health/status.json</code> beside this page. The scheduled jobs are judged on their scheduled runs on main alone; the tests
+            that gate a merge on their runs on main, and on how often a pull-request or merge-queue commit needed a re-run to pass.</p>
           <p>Every workflow is listed once, in one of two kinds. <b>Tests that gate a merge</b> are the workflows the merge queue runs, listed under
-            <code>critical</code> in the file below. They also run on main, after each push and nightly; each is judged on its latest run there,
+            <code>critical</code> in the file below. They also run on main, nightly and for some after each push; each is judged on its latest run there,
             names the jobs that failed in it, and is late when main has not run it for 36 hours. Over the last two weeks, main passing under 90%
             of its runs, or one pull-request or merge-queue commit in ten needing a re-run to pass, also wants a look.</p>
           <p><b>Nightly and scheduled jobs</b> are judged on their latest scheduled run on main, and are late when it started more than one and a half
@@ -3683,32 +3684,38 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // and the command that runs a failure again.
     // One band's verdict on its check's latest run: {run, level, headline,
     // quiet, warnings, shown (the warning the headline already says), ids}.
-    function componentVerdict(check, index, latest, now) {
+    function componentVerdict(check, index, latest, now, previous) {
       const run = latestRun(check.id, index, null, null);
       const failed = run.failed || [];
       const warnings = warningsFor(check.title, { ...run, failed: [] }, now);
       // Lateness is said above the verdict, as on the kernels'.
       const stale = staleness(run.date, now);
       const hard = warnings.find(w => w.level === 'bad' && !w.stale);
+      // The moves since the nightly before, of the metrics this band's section charts.
+      const ours = SECTIONS[check.section] ? SECTIONS[check.section].metrics : null;
+      const counted = x => !ours || !ours.length || ours.includes(x.series.metric);
+      const recent = latest && latest.rows ? collect(historiesOf(check.id, [previous, latest].filter(Boolean))) : null;
+      const own = recent ? recent.order.filter(o => o.npu === check.id) : [];
+      const { regressed, improved } = own.length > 1 ? movedSeries(recent, check.id) : { regressed: [], improved: [] };
+      const worse = regressed.filter(counted);
       const level = run.date === null ? (run.unread ? 'bad' : 'none') : stale || hard || failed.length ? 'bad'
-        : warnings.some(w => w.level === 'warn' && !/changed since the previous run/.test(w.text)) ? 'warn' : 'ok';
+        : worse.length || warnings.some(w => w.level === 'warn' && !/changed since the previous run/.test(w.text)) ? 'warn' : 'ok';
       const shown = failed.length ? null : hard;
       const ids = failed.map(id => check.failedId.exec(id));
       const names = failed.map((id, i) => ids[i] ? check.say(...ids[i].slice(1)) : id);
       const headline = run.date === null ? (run.unread ? `${cap(run.unread.text)}.` : 'No results published yet.')
         : failed.length ? `${plural(failed.length, check.failure)} failed: ${names.slice(0, 4).join(', ')}${failed.length > 4 ? ` and ${failed.length - 4} more` : ''}.`
         : hard ? `${hard.text[0].toUpperCase()}${hard.text.slice(1)}.`
+        : worse.length ? `${check.passed.replace(/\.$/, '')}, but ${plural(worse.length, 'measure')} got worse vs ${shortDate(own.at(-2).date)}.`
         : check.passed;
       const quiet = run.date !== null && !failed.length && !hard && latest && latest.rows ? check.summary(latest.rows) : '';
-      return { run, level, headline, quiet, warnings: warnings.filter(w => !w.stale), shown, ids, stale };
+      return { run, level, headline, quiet, warnings: warnings.filter(w => !w.stale), shown, ids, stale,
+               recent, own, moved: [...worse, ...improved.filter(counted)] };
     }
 
     function componentBand(check, index, latest, now, previous) {
-      const { run, level, headline, quiet, warnings, shown, ids, stale } = componentVerdict(check, index, latest, now);
+      const { run, level, headline, quiet, warnings, shown, ids, stale, recent, own, moved } = componentVerdict(check, index, latest, now, previous);
       const runs = (readable(index) && index.runs) || [];
-      // The moves of the metrics this band's section charts.
-      const ours = SECTIONS[check.section] ? SECTIONS[check.section].metrics : null;
-      const counted = x => !ours || !ours.length || ours.includes(x.series.metric);
       const band = el('article', { className: `verdict ${level}` });
       band.cards = [];
       band.append(el('div', { className: 'verdict-top' },
@@ -3726,11 +3733,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         band.append(el('p', { className: `note ${w.level}` }, `${w.text[0].toUpperCase()}${w.text.slice(1)}.`));
       }
       if (latest && latest.rows) {
-        const recent = collect(historiesOf(check.id, [previous, latest].filter(Boolean)));
-        const own = recent.order.filter(o => o.npu === check.id);
         if (own.length > 1) {
-          const { regressed, improved } = movedSeries(recent, check.id);
-          const moved = [...regressed, ...improved].filter(counted);
           const list = el('p', { className: 'moves' }, el('span', { className: 'dim' }, `Since ${shortDate(own[own.length - 2].date)}:`));
           if (!moved.length) list.append(el('span', { className: 'dim' }, 'nothing moved past its threshold.'));
           for (const x of moved.slice(0, 8)) {
@@ -3845,6 +3848,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const CI_QUEUED_TOO_LONG_MS = 6 * HOUR_MS;
 
     const startOf = r => Date.parse(r.run_started_at || r.started_at || r.created_at);
+    const endOf = r => r.updated_at ? Date.parse(r.updated_at) : startOf(r);
 
     // One run's or job's state: {level, text}, level one of ok, bad, warn,
     // running and none.
@@ -3888,7 +3892,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (legs.some(l => l.level === 'warn') && ['ok', 'running', 'none'].includes(level)) level = 'warn';
       if (late) {
         level = 'bad';
-        headline = `No scheduled run for ${ago(startOf(latest), now)}. Its last ${state.text}.`;
+        headline = `No scheduled run for ${ago(startOf(latest), now)}. ${state.level === 'running' ? `Its last is still ${state.text}` : `Its last ${state.text}`}.`;
       }
       return { level, headline, legs, latest, late };
     }
@@ -3924,12 +3928,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // format than this page reads).
     let ciLoad = null;
     function loadCi() {
-      ciLoad ||= Promise.all([fetchJson(`${CI_DIR}/status.json`), fetchJson(`${CI_DIR}/history.json`)]).then(([raw, hist]) => {
+      ciLoad ||= fetchJson(`${CI_DIR}/status.json`).then(raw => {
         const status = readable(raw);
         const results = ((status && status.workflows) || []).map(w => ({ wf: w, runs: w.runs, jobs: w.jobs, error: w.error }));
         const unread = raw instanceof Unread ? raw : null;
         return { status, unread, newer: Boolean(raw) && !unread && !status, results, critical: (status && status.critical) || [],
-                 merge: (status && status.merge_time) || null, history: readable(hist) };
+                 merge: (status && status.merge_time) || null };
       });
       return ciLoad;
     }
@@ -3950,6 +3954,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       }
       if (errors.length) parts.push(`GitHub did not answer for ${plural(errors.length, 'workflow')}: ${errors.map(r => r.wf.title).join(', ')}.`);
       return { level: now - at > CI_STALE_AFTER_MS || errors.length ? 'bad' : '', text: parts.join(' ') };
+    }
+
+    // When the published answers are judged: now, or, once the publisher
+    // has stopped, the last moment its answers stood (its run plus the
+    // staleness limit), so a gap it never saw is not claimed as one.
+    function ciNow(loaded, now) {
+      const at = loaded.status ? Date.parse(loaded.status.generated_at) : NaN;
+      return Number.isFinite(at) ? Math.min(now, at + CI_STALE_AFTER_MS) : now;
     }
 
     function renderCi(loaded, now) {
@@ -3992,11 +4004,20 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (latest && FAILED_CONCLUSIONS.includes(latest.conclusion)) {
         level = 'bad';
         notes.push(`its latest run on main failed${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}`);
+      } else if (latest && latest.conclusion === 'cancelled') {
+        // A job past timeout-minutes, or one no runner picked up, ends cancelled.
+        level = 'warn';
+        notes.push('its latest run on main was cancelled: it timed out, or no runner took it');
       }
       // Main runs it at least nightly: no run for 1.5 of that is a stopped nightly.
       const newest = w.newest_main || w.latest_main;
       const late = Boolean(newest && w.every && now - startOf(newest) > 1.5 * w.every * HOUR_MS);
       if (late) { level = 'bad'; notes.unshift(`no run on main for ${ago(startOf(newest), now)}`); }
+      const waiting = newest && newest !== latest ? ciRunLevel(newest, now) : null;
+      if (waiting && waiting.level === 'warn') {
+        if (level === 'ok') level = 'warn';
+        notes.push(`its newest run on main is ${waiting.text}`);
+      }
       const main = w.main || {};
       if (main.rate !== null && main.rate !== undefined && main.rate < CI_MAIN_PASS_WARN) {
         if (level === 'ok') level = 'warn';
@@ -4036,11 +4057,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       runs = [...(runs || [])].filter(r => r.status === 'completed' && r.updated_at && r.run_started_at).reverse();
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
       const bad = cssVar('--bad', '#c62f3a');
-      const failed = runs.map(r => FAILED_CONCLUSIONS.includes(r.conclusion));
+      const warn = cssVar('--warn', '#9a5c00');
+      // A failed run's point is red; a cancelled one (timed out, or never
+      // picked up) amber: neither is an ordinary slow run.
+      const marked = runs.map(r => FAILED_CONCLUSIONS.includes(r.conclusion) ? bad : r.conclusion === 'cancelled' ? warn : null);
       const line = (label, data, i) => {
         const color = cssVar(`--series-${i}`, '#5b6475');
         return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, tension: 0, spanGaps: true,
-                 pointRadius: failed.map(f => f ? 4 : 2.5), pointBackgroundColor: failed.map(f => f ? bad : color) };
+                 pointRadius: marked.map(m => m ? 4 : 2.5), pointBackgroundColor: marked.map(m => m || color) };
       };
       const datasets = [line('Run time', runs.map(r => Math.round(runMinutes(r) * 10) / 10), 1),
                         line('Wait to start', runs.map(r => Math.round(waitMinutes(r) * 10) / 10), 4)];
@@ -4103,6 +4127,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     function renderCiDetails(loaded, now) {
+      now = ciNow(loaded, now);
       $('ci-merge').replaceChildren(...mergeFigures(loaded.merge));
       $('ci-board').replaceChildren(...ciBoard(loaded, now));
       const rows = loaded.results.map(r => nightlyRow(r, now));
@@ -4133,6 +4158,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // scheduled ones that are failing, late or waiting. [{level, who, text,
     // url}], and the counts behind "the rest".
     function ciProblems(loaded, now) {
+      now = ciNow(loaded, now);
       const { results, critical } = loaded;
       const rank = { bad: 0, warn: 1 };
       const crit = (critical || []).map(w => ({ w, v: criticalVerdict(w, now) }));
@@ -4207,6 +4233,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function ciHealthyLine(loaded, now) {
       const p = ciProblems(loaded, now);
       if (!p.problems.length) return '';
+      now = ciNow(loaded, now);
       const names = loaded.critical.filter(w => criticalVerdict(w, now).level === 'ok').map(w => w.title || w.file);
       const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names.join('');
       const parts = [];
@@ -4222,7 +4249,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const main = w.main || {};
       const text = w.error ? 'GitHub did not answer'
         : v.late ? cap(v.notes[0])
-        : v.level === 'bad' ? `Failed on main ${ago(startOf(latest), now)} ago${v.failedJobs.length ? `: ${v.failedJobs.join(', ')}` : ''}`
+        : v.level === 'bad' ? `Failed on main ${ago(endOf(latest), now)} ago${v.failedJobs.length ? `: ${v.failedJobs.join(', ')}` : ''}`
         : v.level === 'warn' ? cap(v.notes[0])
         : v.level === 'none' ? 'No run on main lately'
         : `Passing: ${percent(main.rate)} on main, ${formatMinutes(w.minutes_median)} a run`;
@@ -4312,7 +4339,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         kernelNights ? kernelSummary(kernelNights, now) : ''));
       for (const [id, s] of Object.entries(SECTIONS)) {
         const mine = (loaded || []).filter(l => l.check.section === id);
-        const verdicts = mine.map(l => componentVerdict(l.check, l.index, l.latest, now));
+        const verdicts = mine.map(l => componentVerdict(l.check, l.index, l.latest, now, l.previous));
         const lines = verdicts.map((v, i) => ({ level: v.level, who: mine[i].check.short || mine[i].check.title,
                                                 text: `${v.stale ? `${v.stale.short} ` : ''}${v.headline}` }));
         const has = BANDS.some(b => b.section === id);
