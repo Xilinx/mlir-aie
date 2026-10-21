@@ -32,18 +32,25 @@ struct AIEObjectFifoVerifyPass
           AIEObjectFifoVerifyPass> {
 
   /// Every segment needs an actor at each end, so that what one writes another
-  /// reads. A segment may go unfilled when the pool's objects start full.
+  /// reads. A segment may go unfilled when the pool's objects start full, and
+  /// may name no endpoint at an end its `manualFill` or `manualDrain` hands to
+  /// a DMA program the author writes.
   LogicalResult verifyActors(ObjectFifoPoolOp pool,
                              ArrayRef<SegmentActors> actors) {
     bool external = llvm::any_of(pool.getBufferOps(), [](BufferLike buffer) {
       return isa<ExternalBufferOp>(buffer.getOperation());
     });
+    std::vector<ObjectFifoSegmentOp> segmentOps = pool.getSegmentOps();
     for (auto [index, segment] : llvm::enumerate(actors)) {
-      if (segment.fillers.size() > 1) {
+      ObjectFifoSegmentOp segmentOp = segmentOps[index];
+      bool manualFill = segmentOp.getManualFill();
+      bool manualDrain = segmentOp.getManualDrain();
+      if (segment.fillers.size() > 1 || (manualFill && !segment.fillers.empty())) {
         return pool.emitOpError("segment ")
                << index << " is filled by more than one endpoint";
       }
-      if (segment.drainers.size() > 1) {
+      if (segment.drainers.size() > 1 ||
+          (manualDrain && !segment.drainers.empty())) {
         return pool.emitOpError("segment ")
                << index << " is drained by more than one endpoint";
       }
@@ -51,10 +58,11 @@ struct AIEObjectFifoVerifyPass
       // this device does not program.
       bool hostDrains = external && !segment.fillers.empty();
       bool hostFills = external && !segment.drainers.empty();
-      if (segment.drainers.empty() && !hostDrains) {
+      if (segment.drainers.empty() && !hostDrains && !manualDrain) {
         return pool.emitOpError("segment ") << index << " has no drainer";
       }
-      if (segment.fillers.empty() && !pool.getInitValues() && !hostFills) {
+      if (segment.fillers.empty() && !pool.getInitValues() && !hostFills &&
+          !manualFill) {
         return pool.emitOpError("segment ") << index << " has no filler";
       }
     }
