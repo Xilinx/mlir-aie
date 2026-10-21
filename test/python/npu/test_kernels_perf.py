@@ -287,7 +287,7 @@ def _detail(case: Case, m: dict) -> dict:
             "truncated": traced.truncated,
             "trace_size": m.get("trace_size"),
         }
-    if (wall := m.get("wall")) and (s := wall.npu):
+    if (wall := m.get("wall")) and (s := wall.dispatch):
         detail["npu_us"] = {
             "median": round(s.median_us, 2),
             "mad": round(s.mad_us, 2),
@@ -317,7 +317,7 @@ def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
                 "cycles/1k-ops",
                 round(1000.0 * cycles * case.kernel_calls() / ops, 3),
             )
-    if (wall := m.get("wall")) and (s := wall.npu):
+    if (wall := m.get("wall")) and (s := wall.dispatch):
         record(
             case.name,
             "npu_us",
@@ -459,7 +459,7 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
         return {"min": min(k), "max": max(k), "n": len(k)}
 
     def npu_us(m):
-        if "wall" not in m or not (s := m["wall"].npu):
+        if "wall" not in m or not (s := m["wall"].dispatch):
             return None
         return {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
 

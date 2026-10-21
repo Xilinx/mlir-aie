@@ -38,6 +38,18 @@ class KernelHandle(ABC):
     def __init__(self, *, needs_dispatch_insts: bool = False):
         self.needs_dispatch_insts = needs_dispatch_insts
 
+    def empty_dispatch_ns(self) -> int | None:
+        """Time one dispatch that does nothing on this kernel's hardware context.
+
+        It is the fixed cost each dispatch of the kernel carries, on the host
+        clock a run's ``npu_time`` is measured with.
+
+        Returns:
+            Nanoseconds from submit to completion, or None where the runtime
+            cannot dispatch an empty transaction for this kernel.
+        """
+        return None
+
 
 class KernelResult(ABC):
     """A wrapper around data produced as the result of running a kernel."""

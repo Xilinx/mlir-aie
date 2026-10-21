@@ -98,6 +98,9 @@ class _KernelRun:
         self.command = command
         self.device = device
         self._scratchpad: ParameterScratchpad | None = None
+        # The 4-word header of the last transaction dispatched through the run.
+        self.txn_header: np.ndarray | None = None
+        self._empty_txn: XrtTransport | None = None
 
     def dispatch(
         self, args, parameters: Mapping[str, Any] | None = None
@@ -152,6 +155,39 @@ class _KernelRun:
                 self.run = None
             return state, stop - start
 
+    def empty_dispatch_ns(self) -> int | None:
+        """Time one dispatch of a transaction with no operations, through this run.
+
+        The transaction is the header of the last one dispatched, with no
+        operations; the run keeps that call's buffers bound.
+
+        Returns:
+            Nanoseconds from submit to completion, timed as a call is; None
+            before a transaction has been dispatched, as for a full ELF or an
+            ELF module, which carry their own control code.
+
+        Raises:
+            HostRuntimeError: The empty dispatch did not complete.
+        """
+        if self.txn_header is None:
+            return None
+        if self._empty_txn is None:
+            words = self.txn_header.copy()
+            words[2:4] = (0, words.nbytes)
+            self._empty_txn = XrtTransport(
+                acquire_device(),
+                words.nbytes,
+                pyxrt.bo.cacheable,
+                self.kernel.group_id(1),
+            )
+            self._empty_txn.host_bytes[:] = words.view(np.uint8)
+            self._empty_txn.to_device(0, words.nbytes)
+        nbytes = self._empty_txn.nbytes
+        state, ns = self.dispatch([3, self._empty_txn.handle(0, nbytes), nbytes])
+        if state != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            raise HostRuntimeError(f"An empty dispatch returned {state}")
+        return ns
+
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
 class XRTKernelHandle(KernelHandle):
@@ -201,6 +237,9 @@ class XRTKernelHandle(KernelHandle):
         self.is_full_elf = is_full_elf
         self.num_args = num_args
         self.kernel_run = kernel_run if kernel_run is not None else _KernelRun(kernel)
+
+    def empty_dispatch_ns(self) -> int | None:
+        return self.kernel_run.empty_dispatch_ns()
 
 
 class XRTKernelResult(KernelResult):
@@ -527,8 +566,10 @@ class XRTHostRuntime(HostRuntime):
 
         insts_bo = None
         insts_bytes = 0
+        txn = None
         try:
             if dispatch_insts is not None:
+                txn = dispatch_insts
                 insts_bytes = dispatch_insts.nbytes
                 # Keep the owning transport alive through submission and wait.
                 dispatch_storage = XrtTransport(
@@ -546,6 +587,7 @@ class XRTHostRuntime(HostRuntime):
                 is_module = isinstance(kernel_handle.insts, pyxrt.module)
                 if not is_module:
                     assert kernel_handle.insts is not None
+                    txn = kernel_handle.insts
                     insts_bytes = kernel_handle.insts.nbytes
                     if kernel_handle.insts_bo:
                         insts_bo = kernel_handle.insts_bo
@@ -563,6 +605,10 @@ class XRTHostRuntime(HostRuntime):
 
             if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
                 raise HostRuntimeError(f"Kernel returned {str(r)}")
+            if txn is not None and kernel_handle.kernel_run.txn_header is None:
+                kernel_handle.kernel_run.txn_header = (
+                    np.ascontiguousarray(txn).view(np.uint32)[:4].copy()
+                )
         finally:
             # delete insts buffer if it was created locally
             if insts_bo and not kernel_handle.insts_bo:
