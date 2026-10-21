@@ -2543,6 +2543,17 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
       st.splitOwnIds(pair);
   }
   for (const auto &pair : faults.together) {
+    // Trees with one id that share a single receiver wait on each other
+    // wherever they join above it, so they fan in at that receiver alone.
+    for (int x : st.partsOf[pair.first])
+      for (int y : st.partsOf[pair.second])
+        if (llvm::is_contained(st.sameId[x], y) &&
+            llvm::count_if(st.parts[x].dsts, [&](const PathEndPoint &dst) {
+              return llvm::is_contained(st.parts[y].dsts, dst);
+            }) < 2) {
+          st.noJoin.insert({x, y});
+          st.noJoin.insert({y, x});
+        }
     if (!st.togetherSources.insert(pair).second)
       continue;
     related = true;
