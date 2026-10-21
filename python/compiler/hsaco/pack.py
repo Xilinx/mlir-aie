@@ -676,7 +676,7 @@ def main(argv=None):
     """Pack the kernels named on the command line into an hsaco."""
     ap = argparse.ArgumentParser(
         prog="aie-hsaco",
-        description="Inject an aie2/aie2p kernel section into an hsaco.",
+        description="Inject an aie2/aie2p/aie4 kernel section into an hsaco.",
     )
     ap.add_argument("--hsaco", required=True, help="hsaco to write; created if absent")
     ap.add_argument("--arch", required=True, choices=ARCHES)
