@@ -43,10 +43,18 @@ def _key_value(value: Any) -> Any:
     An Enum is its value, so renaming a member moves no key; a NumPy scalar
     type is its dtype and a NumPy integer its int, so ``np.float32`` and
     ``np.dtype(np.float32)``, or ``np.int64(64)`` and ``64``, share a key. A
-    block-float type, which NumPy has no dtype for, is its class.
+    block-float type, which NumPy has no dtype for, is its class. A tuple or
+    list is the tuple of its items' keys. A bool and a float are tagged,
+    since ``True == 1`` and ``-0.0 == 0.0`` while their designs differ.
     """
     if isinstance(value, Enum):
-        return value.value
+        return _key_value(value.value)
+    if isinstance(value, (bool, np.bool_)):
+        return ("bool", bool(value))
+    if isinstance(value, (float, np.floating)):
+        return ("float", float(value).hex())
+    if isinstance(value, (tuple, list)):
+        return tuple(_key_value(v) for v in value)
     if (
         isinstance(value, type)
         and issubclass(value, np.generic)
@@ -110,6 +118,7 @@ class Operator:
         if missing:
             raise TypeError(f"{type(self).__name__}() needs {missing}")
         self.trace = trace
+        self._given = frozenset(n for n, v in given.items() if v is not None)
         self._set(given)
 
     def _set(self, given: dict[str, Any]) -> None:
@@ -120,7 +129,8 @@ class Operator:
         given ``derive`` parameter must equal what it computes.
 
         Raises:
-            TypeError: An ``Enum``-domain tunable holds another type.
+            TypeError: An ``Enum``-domain tunable holds another type, or a
+                value no key can hash.
             ValueError: A computed parameter is None, or a given ``derive``
                 one disagrees.
         """
@@ -156,6 +166,13 @@ class Operator:
                 raise TypeError(
                     f"{type(self).__name__}: {n} ({value!r}) must be a {domain.__name__}"
                 )
+        for n in params:
+            try:
+                hash(_key_value(vars(self)[n]))
+            except TypeError:
+                raise TypeError(
+                    f"{type(self).__name__}: {n} ({vars(self)[n]!r}) is unhashable, so no key can hold it"
+                ) from None
         for n in computed:
             p = params[n]
             if (
@@ -283,20 +300,29 @@ class Operator:
     def replace(self, **changes: Any) -> Self:
         """Return a copy with ``changes``, which may name any parameter.
 
-        A ``derive`` parameter not in ``changes`` is computed again; every
-        other keeps its value, so pass a function-default one again when you
-        change what it reads. The copy is not resolved, but its keys keep
-        naming the device its tunables were resolved for, and a copy of a
-        resolved operator resolves for another device from the unresolved
-        one, with ``changes`` applied, as the original does.
+        A parameter not in ``changes`` that a ``derive`` or a function default
+        computed is computed again; one a caller gave, a ``derive`` one
+        included, keeps its value (give it None to compute it again). The
+        copy is not resolved, but its keys keep naming the device its
+        tunables were resolved for, and a copy of a resolved operator
+        resolves for another device from the unresolved one, with
+        ``changes`` applied, as the original does.
         """
         params = self.declaration.params
         unknown = [n for n in changes if n not in params]
         if unknown:
             raise TypeError(f"{type(self).__name__} has no parameter {unknown}")
-        kept = {n: vars(self)[n] for n, p in params.items() if p.derive is None}
+        kept = {
+            n: vars(self)[n]
+            for n, p in params.items()
+            if n in self._given
+            or (p.derive is None and not isinstance(p.default, FunctionType))
+        }
         new = object.__new__(type(self))
         new.trace = self.trace
+        new._given = self._given.difference(changes) | {
+            n for n, v in changes.items() if v is not None
+        }
         new._set(kept | changes)
         new._resolved_for = self._resolved_for
         if self._unresolved is not self:
