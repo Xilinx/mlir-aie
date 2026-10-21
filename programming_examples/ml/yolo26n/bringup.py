@@ -4,8 +4,11 @@
 #
 """Run a contiguous run of yolo26n operators on the NPU and check it against the oracle.
 
-    python bringup.py --ops 0:2                  # the input quantizer and the stem conv
-    python bringup.py --ops 0:2 --synthetic 7    # the same on seeded synthetic weights
+    python bringup.py --ops 0:11                 # the stem and model.2's C3k2
+    python bringup.py --ops 0:11 --synthetic 7   # the same on seeded synthetic weights
+
+A run starts and ends on the boundaries of the fused runs (`FUSED`), as the
+whole network is built from them.
 
 The run's inputs come from the oracle on one letterboxed image (a seeded
 random one with --synthetic, or --image), its outputs are drained and
@@ -49,7 +52,7 @@ def from_rows(tensor: Tensor, rows: np.ndarray) -> np.ndarray:
     )[: tensor.channels]
 
 
-@iron.jit
+@iron.jit(aiecc_flags=["--placer=sa_placer", "--sa-seed=1", "--sa-effort=3"])
 def segment(
     inputs: In,
     outputs: Out,
@@ -64,7 +67,7 @@ def segment(
     del params_digest  # keys the compile cache on the parameter file's contents
     network = Network.yolo26n()
     tensors = {op.dst.name: op.dst for op in network.ops}
-    design = SegmentDesign(
+    design = SegmentDesign.planned(
         network,
         Params.load(Path(params_path)),
         network.ops[first:last],
@@ -83,10 +86,7 @@ def segment(
     for tensor in design.outputs:
         outputs_at[tensor.name] = at
         at += design.host_bytes(tensor) // 4
-    # Rows the run holds in DDR (SegmentDesign.spill, .staged), after its outputs.
-    for _, _, rows in design.spills:
-        outputs_at[rows.name] = at
-        at += rows.row_bytes * rows.height // 4
+    # Rows the run reads back from DDR (SegmentDesign.staged), after its outputs.
     for _, tensor in design.staged:
         outputs_at[tensor.name] = at
         at += tensor.row_bytes * tensor.height // 4
@@ -165,7 +165,9 @@ def main() -> None:
     tensors = {op.dst.name: op.dst for op in network.ops} | {
         "images": Tensor("images", 3, 640, 640)
     }
-    plan = SegmentDesign(network, params, ops, [tensors[n] for n in drained.split(",")])
+    plan = SegmentDesign.planned(
+        network, params, ops, [tensors[n] for n in drained.split(",")]
+    )
     packed_in = np.concatenate(
         [
             (
@@ -178,11 +180,9 @@ def main() -> None:
         + [packed for _, packed in plan.loads]
     )
     sizes = [plan.host_bytes(t) for t in plan.outputs]
-    spilled = sum(rows.row_bytes * rows.height for _, _, rows in plan.spills) + sum(
-        t.row_bytes * t.height for _, t in plan.staged
-    )
+    staged = sum(t.row_bytes * t.height for _, t in plan.staged)
     inputs = iron.tensor(packed_in.view(np.int32))
-    outputs = iron.zeros((sum(sizes) + spilled) // 4, dtype=np.int32)
+    outputs = iron.zeros((sum(sizes) + staged) // 4, dtype=np.int32)
     kwargs = dict(
         first=first,
         last=stop,

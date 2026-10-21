@@ -41,38 +41,40 @@ make run_blocks_synthetic   # one range of each block kind on the NPU, no checkp
 make run N=8                # the whole model on coco128 images
 ```
 
-`make run_block BLOCK=52:59` runs any range of `Network.yolo26n().ops` on
-the NPU against the oracle (`SYNTHETIC=7` for seeded weights, `OUTPUTS=a,b`
-to drain more than the last op's output).
+`make run_block BLOCK=57:73` runs a range of `Network.yolo26n().ops` that
+starts and ends on fused-run boundaries on the NPU against the oracle
+(`SYNTHETIC=7` for seeded weights, `OUTPUTS=a,b` to drain more than the last
+op's output).
 
 ## Design
 
 - `yolo_spec.py` lays out the network as 168 integer operators, each named
   after the ONNX node it stands for. `yolo26n_numpy.py` is the oracle,
   `gen_yolo_data.py` binds parameters by those names.
-- `yolo26n_design.py` lowers any contiguous range of operators onto one
-  array. Activations stream one image row at a time as `[C/8][W][8]` int8
-  through ObjectFifos, from the producing worker to each consumer.
+- `yolo26n_design.py` maps the whole network onto NPU2's 32 tiles in one
+  device configuration: 30 workers and two tiles that only store attention
+  values. Activations stream one image row at a time as `[C/8][W][8]` int8
+  through ObjectFifos, from the producing worker to each consumer. Any range
+  of operators that starts and ends on fused-run boundaries builds the same
+  way, for bring-up.
+- Runs of operators (`FUSED`, `SegmentDesign.fuse`) run fused, one worker
+  each, every operator at its own rate on one clock; the run's steps roll
+  into one loop, with guards on the rows each step takes and makes.
 - Where two paths rejoin (a residual add, a concat), a schedule over which
   upstream rows each output row waits for sizes the fifo depths so neither
-  path stalls the other. Rows held longer than a compute tile can buffer are
-  staged in a memtile, or in a ring buffer on chained workers when they need
-  more buffer descriptors than a memtile channel has; rows a consumer holds
-  for the whole map, as across an attention barrier, go to DDR and back.
-- Runs of operators (the C3k blocks and bottlenecks, the PSA FFNs, the
-  Detect branches) run fused, one worker each, their rows in rings in its
-  tile (`FUSED`, `SegmentDesign.fuse`).
-- A conv whose weights do not fit beside its rows streams them from the
-  host's weights buffer one output-channel chunk at a time, each chunk
-  followed by its bias, once an output row.
-- C2PSA attention runs two workers per head, each answering every other row
-  of queries; a memtile splits each qkv row into the heads' queries, keys
-  and values, and another joins every worker's rows into the output.
+  path stalls the other. Rows a consumer holds past its own window wait in
+  chains of memtile holds, a stage ending at each reader's lag; rows between
+  neighbouring workers go over shared memory.
+- Each fused worker reads one stream of weight chunks: resident in a memtile
+  where a step's chunks fit, else streamed from the host's weights buffer.
+- C2PSA attention runs on one worker per block for every head, which also
+  makes PSA's positional conv and add. Its keys stay in its own tile, its
+  values in a neighbour that runs no core, and its queries wait in a memtile
+  that walks the stream of qkv rows.
 - The Detect postprocess (best class per anchor, top 300 anchors, top 300
-  anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`.
-- `yolo26n.py` runs the network as four such segments (`SEGMENTS`), each its
-  own device configuration in one full ELF, handing tensors on through a DDR
-  scratch buffer, in one dispatch.
+  anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`,
+  reading the Detect outputs back from a DDR scratch buffer.
+- `yolo26n.py` runs the network in one dispatch.
 
 ## Accuracy
 
@@ -88,8 +90,7 @@ changes a detection above 0.25 confidence.
 
 ## Performance
 
-On Strix Halo (NPU2), one 640x640 image takes 12.7 ms (79 fps) at batch 1
-and 6.15 ms per image (163 fps) at batch 8 (`python yolo26n.py --n 8 --batch
-8 --time`), in four device configurations of one full ELF and 92 workers.
-A batch-1 dispatch configures every segment's workers again, at roughly
-60-110 us a worker, which a batch shares. Compiling takes about 12 s.
+On Strix Halo (NPU2), one 640x640 image takes 10.9 ms (92 fps) at batch 1
+and 9.6 ms per image (104 fps) at batch 8 (`python yolo26n.py --n 8 --batch
+8 --time`), in one device configuration of 30 workers. Compiling takes about
+7 minutes, nearly all of it placing the workers.

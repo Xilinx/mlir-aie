@@ -35,7 +35,8 @@ SYNTHETIC_PARAMS := ${BUILD}/yolo26n_params_synthetic${SEED}.npz
 verify_oracle:
 	cd ${srcdir} && python3 verify_oracle.py --n ${N} $(if ${IMAGES},--images ${IMAGES})
 
-# One operator range on the real weights, e.g. BLOCK=52:59; OUTPUTS names the
+# One operator range on the real weights, e.g. BLOCK=57:73, starting and ending
+# on fused-run boundaries (FUSED in yolo26n_design.py); OUTPUTS names the
 # tensors to drain when the range ends in more than one, SYNTHETIC=SEED swaps
 # in seeded weights.
 run_block:
@@ -44,11 +45,12 @@ run_block:
 		$(if ${OUTPUTS},--outputs ${OUTPUTS}) \
 		$(if ${SYNTHETIC},--synthetic ${SYNTHETIC} --params ${BUILD}/yolo26n_params_synthetic${SYNTHETIC}.npz)
 
-# One range of each block kind: the stem and C3k2, SPPF, C2PSA attention, an
-# upsample/concat neck stage, one Detect level with both branches, and the
-# postprocess. FIRST:STOP=T1,T2 drains T1 and T2 instead of the last op's output.
+# One range of each block kind: the stem and C3k2, SPPF's pools, SPPF's cv2
+# and C2PSA attention, an upsample/concat neck stage, one Detect level with
+# both branches, and the postprocess. FIRST:STOP=T1,T2 drains T1 and T2
+# instead of the last op's output.
 DETECT0 := /model.23/one2one_cv2.0/one2one_cv2.0.2/Conv,/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv
-SYNTHETIC_BLOCKS := 0:11 52:59 59:73 90:107 143:151=${DETECT0} 167:168
+SYNTHETIC_BLOCKS := 0:11 47:56 57:73 90:107 143:151=${DETECT0} 167:168
 
 run_blocks_synthetic:
 	@cd ${srcdir} && passed=0 && total=0 && \
