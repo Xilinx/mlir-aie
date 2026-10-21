@@ -63,14 +63,14 @@ import yolo26n_hw  # noqa: E402
 HW_SEEDS = {3: (316.0, 65.0, 290), 2: (309.0, 65.0, 295), 7: (313.0, 72.0, 295)}
 # A cold and a warm compile's aiecc profiles, for the stage times.
 STAGE_PROFILES = (
-    ROOT / "utils/component_checks/fixtures/aiecc_profile_mobilenet.json",
-    ROOT / "utils/component_checks/fixtures/aiecc_profile_shim.json",
+    ROOT / "test/fixtures/aiecc_profile_mobilenet.json",
+    ROOT / "test/fixtures/aiecc_profile_shim.json",
 )
 # YOLO26n's own, from a cold then warm compile of yolo26n.py --synthetic 7 on
 # Strix: 27.89 s and 6.01 s.
 YOLO_STAGE_PROFILES = (
-    ROOT / "utils/component_checks/fixtures/aiecc_profile_yolo26n_cold.json",
-    ROOT / "utils/component_checks/fixtures/aiecc_profile_yolo26n_warm.json",
+    ROOT / "test/fixtures/aiecc_profile_yolo26n_cold.json",
+    ROOT / "test/fixtures/aiecc_profile_yolo26n_warm.json",
 )
 HW_DETAIL = (
     "seed",

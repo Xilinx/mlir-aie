@@ -380,8 +380,8 @@ def test_only_passing_runs_chart_their_times(hw):
 
 def test_each_compile_charts_its_stages_cold_and_warm(hw):
     stages = load("aiecc_stages")
-    cold = str(CHECKS / "fixtures/aiecc_profile_mobilenet.json")
-    warm = str(CHECKS / "fixtures/aiecc_profile_shim.json")
+    cold = str(ROOT / "test/fixtures/aiecc_profile_mobilenet.json")
+    warm = str(ROOT / "test/fixtures/aiecc_profile_shim.json")
     compiles = [
         {
             "seed": 3,

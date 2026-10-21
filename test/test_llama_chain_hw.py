@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "utils/component_checks"
 # Captured on Strix (npu2) as the scripts printed them, minus aiecc's
 # runtime-offset warnings; tracebacks have the checkout's path as <repo>.
-FIXTURES = CHECKS / "fixtures"
+FIXTURES = ROOT / "test/fixtures"
 
 
 def output(name):

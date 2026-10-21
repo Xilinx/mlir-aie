@@ -21,9 +21,9 @@ CHECKS = ROOT / "utils/component_checks"
 # mobilenet JIT compile at SA effort 0.05, and a five-device full-ELF design
 # built with --get-txn and --get-locmap by an aiecc that records process_ms,
 # all captured from aiecc as is.
-SHIM = CHECKS / "fixtures/aiecc_profile_shim.json"
-MOBILENET = CHECKS / "fixtures/aiecc_profile_mobilenet.json"
-FULL_ELF = CHECKS / "fixtures/aiecc_profile_full_elf.json"
+SHIM = ROOT / "test/fixtures/aiecc_profile_shim.json"
+MOBILENET = ROOT / "test/fixtures/aiecc_profile_mobilenet.json"
+FULL_ELF = ROOT / "test/fixtures/aiecc_profile_full_elf.json"
 AIECC = shutil.which("aiecc")
 
 
