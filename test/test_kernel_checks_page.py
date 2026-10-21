@@ -1858,6 +1858,13 @@ assert.deepEqual(mixed.children.find(n => n.className === 'stage-key').children[
   ['warm', '—', '—', '—', '—', '—', '—', '—', '—']);
 // No compile at all: no block.
 assert.equal(compileStages(() => undefined, metric => metric, '#'), null);
+// An aiecc that reports its own run: its time outside the graph is a segment
+// of its own, before the time outside aiecc.
+const own = { ...latest, compile_aiecc_outside_graph_s: 0.4, compile_outside_aiecc_s: 2.39 };
+const withOwn = compileStages(metric => metric in own ? { value: own[metric], unit: 's' } : undefined, metric => metric, '#');
+const [ownCold] = withOwn.children.filter(r => r.className === 'stage-row');
+assert.deepEqual(segs(ownCold).map(n => n.className.slice(13)).slice(-2), ['aiecc_outside_graph', 'outside_aiecc']);
+assert.equal(label('compile_aiecc_outside_graph_s'), 'Compile: aiecc outside its graph (cold)');
 """)
 
 
@@ -2033,7 +2040,7 @@ assert.equal(trendConfig(llamaData, llama.trend[1]).options.plugins.legend.displ
 assert.equal(rate.options.plugins.legend.display, true);
 // A tab's nights are those that published its metrics; the small stages fold into one line.
 const stages = trendConfig(llamaData, COMPILE_TABS[2]);
-assert.deepEqual(stages.data.datasets.map(d => [d.label, d.data]), [['place', [1]], ['route, package and other', [0.1]]]);
+assert.deepEqual(stages.data.datasets.map(d => [d.label, d.data]), [['place', [1]], ["route, package and aiecc's own", [0.1]]]);
 // Stages sit decades apart, so on a log axis; two batches' times do not.
 assert.equal(stages.options.scales.y.type, 'logarithmic');
 // YOLO26n: batch 1 beside batch 8, per image and per second, then the compile tabs.
