@@ -40,8 +40,8 @@ from llama_config import (
     N_LAYERS,
 )
 from llama_decode import Decoder, DecodeShape
+from llama_oracle import gen_real_layer_mh, numpy_layer_mh_forward, requant
 from ml_dtypes import bfloat16
-from numpy_layer_mh import gen_real_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import (
     forward_full,
     lm_head_logits,

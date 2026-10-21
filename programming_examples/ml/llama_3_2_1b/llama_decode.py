@@ -287,7 +287,7 @@ class DecodeShape:
         """The weight blob: each layer's eight weight lanes, then the RoPE table.
 
         Args:
-            layers: The layers' weights (numpy_layer_mh's dicts).
+            layers: The layers' weights (llama_oracle's layer dicts).
             rope: bf16 (t, 2 * HEAD_D), numpy_llama_ref.rope_table.
 
         Returns:
@@ -375,7 +375,7 @@ class Decoder:
 
     Args:
         shape: The build.
-        layers: The layers' weights and norms (numpy_layer_mh's dicts).
+        layers: The layers' weights and norms (llama_oracle's layer dicts).
         lm: (embed_i8, embed_sc, final norm gamma).
         rope: bf16 (shape.t, 2 * HEAD_D), numpy_llama_ref.rope_table.
         elf: A prebuilt full ELF of `shape`'s build, or None for the JIT's.

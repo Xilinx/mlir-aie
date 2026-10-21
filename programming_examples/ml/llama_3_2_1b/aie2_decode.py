@@ -618,7 +618,7 @@ def build(
     # of the pass's rows (the batch's queries) together; whoever holds the
     # last block, the rows' own, first sets the batch's new rows into it.
     # The second merges the first's state, then its own, per row
-    # (numpy_attn_block.attention with interleaved=True).
+    # (llama_oracle.attn_block_attention with interleaved=True).
     def w_attn(
         c_rc,
         c_kvb,

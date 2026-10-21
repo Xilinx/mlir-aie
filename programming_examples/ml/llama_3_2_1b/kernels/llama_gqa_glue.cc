@@ -7,7 +7,7 @@
 // int8 Q), qkv_combine (per-KV-head chunks for the on-chip KV append),
 // sv_merge_selfcal (de-interleave the attention output) and af_concat
 // (per-Q-head dequant + global self-calibrated requant), mirroring
-// numpy_layer_mh's steps.
+// llama_oracle's steps.
 //===---------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>

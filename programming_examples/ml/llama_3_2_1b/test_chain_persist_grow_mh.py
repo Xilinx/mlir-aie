@@ -43,14 +43,15 @@ from aie2_decode import (
 from gen_llama_data import quant_int8_perchan_absmax
 from llama_config import HEAD_D, N_HEADS_KV, VOCAB, D
 from llama_decode import Decoder, DecodeShape, embed_seed_ref, tokens_of
-from llama_oracle import chain_forward_logits, greedy_verdict
-from ml_dtypes import bfloat16
-from numpy_layer_mh import (
+from llama_oracle import (
+    chain_forward_logits,
     gen_layer_mh,
+    greedy_verdict,
     requant,
+    topk_sample_reference,
 )
+from ml_dtypes import bfloat16
 from numpy_llama_ref import _load_bf16, _load_qw, rope_table
-from numpy_topk_sample import topk_sample_reference
 
 DATA_DIR = Path(__file__).parent / "data"
 

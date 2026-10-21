@@ -10,7 +10,7 @@ dispatch, or a batch of up to 4 prompt tokens together: all 16 transformer
 layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
 and the token→embedding feedback. The W8A8-dynamic INT8 recipe tracks the
 reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % on
-prose); the device is bit-exact to its numpy oracle (`numpy_layer_mh.py`), which
+prose); the device is bit-exact to its numpy oracle (`llama_oracle.py`), which
 follows the INT8 recipe up to the recipe's approximations (see Accuracy).
 
 > Status: decode is validated on hardware at 47.5 ms/token (21.1 tok/s) at
@@ -160,7 +160,7 @@ between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
 
 ## 3. Accuracy / quality
 
-The device is **bit-exact to its numpy oracle** (`numpy_layer_mh.py`; the
+The device is **bit-exact to its numpy oracle** (`llama_oracle.py`; the
 decode test checks every token, KV row and record against it). The oracle
 follows the INT8 recipe (`numpy_llama_ref.py`) but not bit for bit: its inverse
 square root and attention exp are approximations, so teacher-forced on "The

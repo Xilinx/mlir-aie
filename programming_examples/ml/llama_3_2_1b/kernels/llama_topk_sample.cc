@@ -8,7 +8,7 @@
 // wastes ~25% of decode's bandwidth; this streams it ONCE, keeping a
 // resident top-k of {logit, global index, embed_sc, embed ROW} -- the
 // winner's embedding is already resident when sampling finishes. Clean
-// top-k renorm (can't re-touch all V logits); numpy_topk_sample.py is
+// top-k renorm (can't re-touch all V logits); llama_oracle.py is
 // the oracle.
 //===----------------------------------------------------------------------===//
 
@@ -50,7 +50,7 @@ static inline float lookup_exp(int32_t q) {
   return v;
 }
 
-// xoshiro128++, as numpy_sample.py draws it.
+// xoshiro128++, as llama_oracle draws it.
 struct Xoshiro128 {
   uint32_t s[4];
 };
@@ -146,7 +146,8 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
 
   int winner;
   if (temperature <= 0.0f) {
-    // Greedy (see numpy_topk_sample.py's matching tie-break rule).
+    // Greedy (see llama_oracle.topk_sample_reference's matching tie-break
+    // rule).
     float wv = set_logit[0];
     for (int i = 1; i < len; i++)
       if (set_logit[i] > wv)

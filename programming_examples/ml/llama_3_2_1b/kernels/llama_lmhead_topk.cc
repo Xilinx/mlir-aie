@@ -26,7 +26,7 @@ static inline int32_t logit_key(float f) {
 // layout and kKset must match. The set is unsorted, ordered by logit, then by
 // lower gidx: append until full, then replace the lowest member when a higher
 // one arrives, which leaves the vocabulary's top kKset under that order
-// whatever the insertion order (numpy_topk_sample.topk_set_reference).
+// whatever the insertion order (llama_oracle.topk_set_reference).
 template <int kKset>
 static inline void
 lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,

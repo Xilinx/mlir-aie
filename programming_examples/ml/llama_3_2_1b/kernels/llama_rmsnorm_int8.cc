@@ -27,8 +27,8 @@ static constexpr int kVec =
 // One 512-bit fp32 register.
 static constexpr int kLanes = 16;
 
-// 1/sqrt(a) from the Quake-III seed and two Newton steps, as aie_fp.sw_invsqrt
-// mirrors it (not the correctly rounded value).
+// 1/sqrt(a) from the Quake-III seed and two Newton steps, as
+// llama_oracle.sw_invsqrt mirrors it (not the correctly rounded value).
 static inline float sw_invsqrt(float a) {
   int32_t bits = __builtin_bit_cast(int32_t, a);
   bits = (int32_t)0x5f3759df - (bits >> 1);

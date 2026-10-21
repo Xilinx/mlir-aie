@@ -16,9 +16,8 @@ import os
 from pathlib import Path
 
 from aie.iron.kernel import ExternalFunction
+from aie.iron.kernels.tables import exp_lut_header, silu_lut_header
 from aie.utils.compile import NPU_CACHE_HOME
-from gen_exp_lut import exp_lut_header
-from gen_silu_lut import silu_lut_header
 from llama_config import EXP_QUANT_SCALE, SAMPLE_EXP_LOW
 
 KERNELS_DIR = Path(__file__).parent / "kernels"

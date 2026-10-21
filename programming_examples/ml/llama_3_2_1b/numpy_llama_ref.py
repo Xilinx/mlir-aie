@@ -7,7 +7,7 @@ weights, with per-channel int8 weights, per-token int8 activations, int32
 accumulation and fp32 dequant, silu, softmax and rmsnorm.
 
 The device follows this recipe but not bit for bit (its reciprocal square
-root, softmax exp and adder differ); numpy_layer_mh.py is the oracle it
+root, softmax exp and adder differ); llama_oracle.py is the oracle it
 matches exactly. This is the quality reference the device is scored against.
 """
 

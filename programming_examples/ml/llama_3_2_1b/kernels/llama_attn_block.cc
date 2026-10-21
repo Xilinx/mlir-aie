@@ -7,7 +7,7 @@
 // kTB-row blocks, a row being [k int8[kHD] | v int8[kHD] | k_scale | v_scale].
 // Each block is attended as a whole cache would be, then folded into a
 // running (max, sum, normalized sv) state; products round once as the scalar
-// `*` does and sums are vadd.f, so numpy_attn_block.py mirrors it exactly.
+// `*` does and sums are vadd.f, so llama_oracle.py mirrors it exactly.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
@@ -53,7 +53,7 @@ static inline float *head_record(int8_t *state, int h) {
   return reinterpret_cast<float *>(state + kStateHeader + h * kHeadStride);
 }
 
-// e^x for x <= 0 on kLanes lanes, as numpy_attn_block.exp_nonpos: with
+// e^x for x <= 0 on kLanes lanes, as llama_oracle.exp_nonpos: with
 // t = x * log2(e) (vec_mul_rne), k = trunc(t) and f = t - k in (-1, 0],
 // e = 2^k * 2^f where 2^f = 2^-g, g = -f rounded to Q23 by the vadd.f that
 // forms 1 - f, is a degree-6 Q29 polynomial in Horner form whose products

@@ -22,8 +22,7 @@ from pathlib import Path
 import numpy as np
 from llama_config import HEAD_D, N_LAYERS
 from llama_decode import Decoder, DecodeShape, embed_seed_ref
-from llama_oracle import chain_forward_logits, greedy_verdict
-from numpy_layer_mh import gen_real_layer_mh
+from llama_oracle import chain_forward_logits, gen_real_layer_mh, greedy_verdict
 from numpy_llama_ref import forward_full, load_model, load_tokenizer, rope_table
 
 BOS = 128000
