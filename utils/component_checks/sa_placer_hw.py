@@ -17,9 +17,9 @@ matching). The batch is a dispatch-time parameter, so
 per seed and effort the design compiles once (the CLI's ``--dynamic``
 compile-only mode) and every batch runs from it. It compiles twice in the
 same fresh NPU_CACHE_HOME: cold (every cache empty, same as any first-time
-compile), then warm, keeping only the cold compile's kernel objects (the
-whole-build and per-device caches and the outputs are cleared first), which
-is what an edit to the design, not its kernels, costs. Both record wall time and the largest
+compile), then warm, after aiecc_stages.clear_for_warm (only the kernel
+objects and their precompiled headers kept), which is what an edit to the
+design, not its kernels, costs. Both record wall time and the largest
 process's peak RSS. Per batch it records, per image, the minimum NPU time of
 a launch and of the host's end-to-end call; the run builds its own copy of
 the design through the JIT path, from the warm caches, unmeasured.
@@ -52,9 +52,10 @@ import subprocess
 import sys
 import tempfile
 
+from aie.utils.compile.utils import AIECC_PROFILE_NAME
 from aiecc_stages import (
-    PROFILE_NAME,
     add_pmode_argument,
+    clear_for_warm,
     compile_rows,
     compile_stats,
     refuse,
@@ -168,7 +169,7 @@ def compile_cold_warm(
         os.path.join(cache_dir, "final.xclbin"),
     ]
     cold = run_measured(cmd, _ML_DIR, env, timeout)
-    profile = os.path.join(cache_dir, "final.prj", PROFILE_NAME)
+    profile = os.path.join(cache_dir, "final.prj", AIECC_PROFILE_NAME)
     stages_cold = stage_rows(
         profile, cold.seconds if cold.process.returncode == 0 else None, ""
     )
@@ -177,12 +178,7 @@ def compile_cold_warm(
     if placed:
         with open(placed[0]) as f:
             placement = placement_of(f.read())
-    for name in ("final.xclbin", "final.prj", "builds", "devices"):
-        path = os.path.join(cache_dir, name)
-        if os.path.isdir(path):
-            shutil.rmtree(path)
-        elif os.path.exists(path):
-            os.remove(path)
+    clear_for_warm(cache_dir)
     warm = run_measured(cmd, _ML_DIR, env, timeout)
     stages_warm = stage_rows(
         profile, warm.seconds if warm.process.returncode == 0 else None, "_warm"
