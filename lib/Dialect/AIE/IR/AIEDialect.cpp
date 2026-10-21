@@ -547,6 +547,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
     return emitOpError("packet_id is only meaningful on a packet objectfifo");
   }
 
+  if (getOutOfOrder() && !getPacket()) {
+    return emitOpError("out_of_order names each object's buffer in the packet "
+                       "header, so it needs a packet objectfifo");
+  }
+
   // Helper to get tile interface from Value
   auto getTileLikeFromValue = [](Value v) -> TileLike {
     return llvm::dyn_cast<TileLike>(v.getDefiningOp());
@@ -3143,6 +3148,27 @@ LogicalResult PacketFlowOp::verify() {
 //===----------------------------------------------------------------------===//
 // CoreOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult DmaRearmOp::verify() {
+  auto core = (*this)->getParentOfType<CoreOp>();
+  TileOp tile = core.getTileOp();
+  const AIETargetModel &targetModel = getTargetModel(*this);
+  int col = tile.getCol(), row = tile.getRow();
+  bool send = getDirection() == DMAChannelDir::MM2S;
+  uint32_t channels = send ? targetModel.getNumSourceSwitchboxConnections(
+                                 col, row, WireBundle::DMA)
+                           : targetModel.getNumDestSwitchboxConnections(
+                                 col, row, WireBundle::DMA);
+  if (getChannel() >= static_cast<int32_t>(channels))
+    return emitOpError("arms ") << stringifyDMAChannelDir(getDirection())
+                                << " channel " << getChannel() << ", but tile ("
+                                << col << ", " << row << ") has " << channels;
+  uint32_t maxRepeat = targetModel.getMaxRepeatCount();
+  if (getRepeatCount() < 0 ||
+      static_cast<uint32_t>(getRepeatCount()) > maxRepeat)
+    return emitOpError("repeat_count must be in [0, ") << maxRepeat << "]";
+  return success();
+}
 
 LogicalResult CoreOp::verify() {
   if (getBody().empty())

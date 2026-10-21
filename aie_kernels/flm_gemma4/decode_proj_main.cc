@@ -23,8 +23,6 @@ constexpr int w_prod_lock = FLM_GEMMA4_DECODE_PROJ_MAIN_W_PROD_LOCK;
 constexpr int w_cons_lock = FLM_GEMMA4_DECODE_PROJ_MAIN_W_CONS_LOCK;
 constexpr int y_prod_ping_lock = FLM_GEMMA4_DECODE_PROJ_MAIN_Y_PROD_PING_LOCK;
 constexpr int y_prod_pong_lock = FLM_GEMMA4_DECODE_PROJ_MAIN_Y_PROD_PONG_LOCK;
-constexpr int rtp_available_lock =
-    FLM_GEMMA4_DECODE_PROJ_MAIN_RTP_AVAILABLE_LOCK;
 constexpr int y_cons_ping_lock = FLM_GEMMA4_DECODE_PROJ_MAIN_Y_CONS_PING_LOCK;
 constexpr int y_cons_pong_lock = FLM_GEMMA4_DECODE_PROJ_MAIN_Y_CONS_PONG_LOCK;
 // proj_main runs the projections of one layer in order: qkv (to RoPE), o (to
@@ -108,7 +106,6 @@ void proj_main(bf16 *y_ping, q4k_block_t *w_ping, bf16 *x_ping, bf16 *y_pong,
       bfloat16 b_col_reduce_add[INTERMEDIATE_SIZE / Q4NX_GROUP_SIZE];
 #endif
 
-  _lock_acquire_p(IS_SWA, rtp_available_lock);
   if (IS_SWA[0]) {
     if (SKIP_KV[0] == 0) {
       static_assert(

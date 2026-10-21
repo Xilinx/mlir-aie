@@ -119,6 +119,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         aie_stream: tuple[int, int] | None = None,
         packet: bool = False,
         packet_id: int | None = None,
+        out_of_order: bool = False,
     ):
         """Construct an ObjectFifo.
 
@@ -183,6 +184,13 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 designs that route on the id (e.g. a MemTile dispatching to one of several
                 cores). Requires ``packet``; when absent, allocation picks an id no other
                 flow is using. Defaults to None.
+            out_of_order (bool, optional): Receive each object into the buffer its sender
+                names in the packet header's ``out_of_order_id`` field, rather than walking
+                the pool in a fixed BD chain. The consumer's channel then carries no order
+                of its own, which is what lets several fifos share one S2MM channel. The
+                field is 6 bits and separate from ``packet_id``, so a pool costs ids out of
+                its own space, not out of the 5-bit routing one. Requires ``packet``.
+                Defaults to False.
 
         Raises:
             TypeError: If a stream walk is not a ``TensorAccessPattern``.
@@ -220,6 +228,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         self._aie_stream: tuple[int, int] | None = aie_stream
         self._packet: bool = packet
         self._packet_id: int | None = packet_id
+        self._out_of_order: bool = out_of_order
 
     @property
     def depth(self) -> int | None:
@@ -519,6 +528,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 consumer_datatype=consumer_datatype,
                 packet=self._packet or None,
                 packet_id=self._packet_id,
+                out_of_order=self._out_of_order or None,
                 loc=ir.Location.name(self.name, childLoc=loc or self._site.location()),
                 ip=ip,
             )
@@ -758,6 +768,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
         repeat_parameter: ScratchpadParameter | str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Shared body for fill()/drain().
 
@@ -794,6 +805,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             length_parameter=length_parameter,
             length_unit=length_unit,
             repeat_parameter=repeat_parameter,
+            out_of_order_id=out_of_order_id,
         )
 
     def fill(
@@ -808,8 +820,13 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
         repeat_parameter: ScratchpadParameter | str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
+
+        An ``out_of_order`` fifo takes ``out_of_order_id``: the buffer of the
+        pool this transfer lands in. One transfer carries one header, so it
+        carries one object; walk the pool by cycling the id across transfers.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body on a producer
         handle. See ``_emit_transfer`` for the shared arguments; returns a
@@ -818,6 +835,11 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
 
+        if self._object_fifo._out_of_order and out_of_order_id is None:
+            raise ValueError(
+                f"ObjectFifo '{self.name}' is out_of_order, so each fill names "
+                "the buffer it lands in: pass out_of_order_id"
+            )
         return self._emit_transfer(
             source,
             tap,
@@ -829,6 +851,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             length_parameter,
             length_unit,
             repeat_parameter,
+            out_of_order_id,
         )
 
     def drain(

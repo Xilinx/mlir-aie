@@ -16,18 +16,10 @@ void rms_residual(bf16 *restrict y, bf16 *restrict x_ping,
                   bf16 *restrict x_pong, bf16 *restrict y_final,
                   bf16 *restrict w, bf16 *restrict x_temp_buf, int *IS_SWA,
                   int *SKIP_KV) {
-  constexpr int w_prod_lock = FLM_GEMMA4_DECODE_RMS_RESIDUAL_W_PROD_LOCK;
-  constexpr int w_cons_lock = FLM_GEMMA4_DECODE_RMS_RESIDUAL_W_CONS_LOCK;
   constexpr int y_prod_lock = FLM_GEMMA4_DECODE_RMS_RESIDUAL_Y_PROD_LOCK;
   constexpr int y_cons_lock = FLM_GEMMA4_DECODE_RMS_RESIDUAL_Y_CONS_LOCK;
   constexpr int x_prod_lock = FLM_GEMMA4_DECODE_RMS_RESIDUAL_X_PROD_LOCK;
   constexpr int x_cons_lock = FLM_GEMMA4_DECODE_RMS_RESIDUAL_X_CONS_LOCK;
-  constexpr int rtp_available_lock =
-      FLM_GEMMA4_DECODE_RMS_RESIDUAL_RTP_AVAILABLE_LOCK;
-  constexpr int lm_head_out_prod_lock =
-      FLM_GEMMA4_DECODE_RMS_RESIDUAL_LM_HEAD_OUT_PROD_LOCK;
-  constexpr int lm_head_out_cons_lock =
-      FLM_GEMMA4_DECODE_RMS_RESIDUAL_LM_HEAD_OUT_CONS_LOCK;
   uint32_t *pkt_id_ptr = reinterpret_cast<uint32_t *>(y + 14);
   bf16 *x;
   bf16 *w_input_layernorm = w;
@@ -39,11 +31,8 @@ void rms_residual(bf16 *restrict y, bf16 *restrict x_ping,
 
   static PingPong x_pingpong;
 
-  _lock_acquire_p(IS_SWA, rtp_available_lock);
-  // core-local, so it may precede the lock acquire
   x = x_pingpong.next(x_ping, x_pong);
   _lock_acquire_p(x, x_cons_lock);
-  _lock_acquire_p(w, w_cons_lock);
   if (IS_SWA[0] == 0) {
     // input layernorm
     *pkt_id_ptr = 0;
@@ -115,11 +104,8 @@ void rms_residual(bf16 *restrict y, bf16 *restrict x_ping,
   _lock_acquire_p(y, y_prod_lock, UP_GATE_REPEATS);
 #endif
   x = x_pingpong.next(x_ping, x_pong);
-  _lock_acquire_p(y_final, lm_head_out_prod_lock, 1);
   rms_norm<MODEL_DIM>(temp_buf, x, w_post_feedforward_layer_norm);
   residual_add<MODEL_DIM>(y_final, x_buf, temp_buf);
-  _lock_release_p(w, w_prod_lock);
   _lock_release_p(x, x_prod_lock);
-  _lock_release_p(y_final, lm_head_out_cons_lock, 1);
 }
 }

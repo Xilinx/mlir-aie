@@ -908,6 +908,32 @@ struct AIEObjectFifoAllocatePass
     return failure(clash);
   }
 
+  /// Whether this endpoint shares its pinned channel with other claimants.
+  ///
+  /// Only a packet-switched shim source. The runtime writes such a channel's
+  /// descriptors one transfer at a time, each under its own header, so the
+  /// streams stay apart. A channel whose descriptors are a fixed BD chain
+  /// holds no per-stream state, and sharing it needs the DMA's out-of-order
+  /// packet mode.
+  bool sharesPinnedChannel(RouteEndpoint endpoint, DMAChannelDir dir) {
+    // An out-of-order receiver takes each object into the buffer its header
+    // names, so its channel keeps no order its fifos would have to agree on.
+    if (dir == DMAChannelDir::S2MM) {
+      auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+      return dma && dma.getOutOfOrder();
+    }
+    if (!tileOf(endpoint).isShimTile())
+      return false;
+    for (auto flow : device.getOps<RouteOp>()) {
+      if (!flow.getPacket() && !clPacketSwObjectFifos)
+        continue;
+      if (lookupEndpoint(flow.getSourceAttr()).getOperation() ==
+          endpoint.getOperation())
+        return true;
+    }
+    return false;
+  }
+
   LogicalResult assignChannels(DMAChannelAnalysis &channels,
                                bool diagnose = true) {
     channelAssignments.clear();
@@ -928,6 +954,31 @@ struct AIEObjectFifoAllocatePass
         bds = endpointBDs(endpoint.getOperation());
       demand[{*col, *row, channel}] += bds;
     };
+    // An out-of-order pool starts where the channel's earlier pools end, so
+    // the fifos sharing it take disjoint runs of bd ids. The sender names a
+    // buffer by its id, so the fifo's other end takes the same base.
+    auto noteBdIdBase =
+        [&](RouteEndpoint endpoint, int channel,
+            DenseMap<std::tuple<int, int, int>, int64_t> &demand) {
+          auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+          if (!dma || !dma.getOutOfOrder() ||
+              endpoint.getRouteDirection() != DMAChannelDir::S2MM)
+            return;
+          TileLike tile = tileOf(endpoint);
+          auto col = tile.tryGetCol(), row = tile.tryGetRow();
+          if (!col || !row)
+            return;
+          int64_t base = demand.lookup({*col, *row, channel});
+          dma.setBdIdBase(base);
+          for (auto flow : device.getOps<RouteOp>())
+            for (auto destName :
+                 flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+              if (lookupEndpoint(destName).getOperation() == dma.getOperation())
+                if (auto src = dyn_cast<ObjectFifoDmaEndpointOp>(
+                        lookupEndpoint(flow.getSourceAttr()).getOperation()))
+                  src.setBdIdBase(base);
+        };
+
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       std::optional<int> channel = endpoint.getRouteChannel();
@@ -947,8 +998,9 @@ struct AIEObjectFifoAllocatePass
                  << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
                  << " cannot access adjacent MemTile buffers or locks";
         }
-        if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel,
-                                          endpoint.getOperation()) < 0) {
+        if (channels.reservePinnedChannel(
+                tileOf(endpoint), dir, *channel, endpoint.getOperation(),
+                sharesPinnedChannel(endpoint, dir)) < 0) {
           if (!diagnose)
             return failure();
           auto diag = endpoint->emitOpError("pinned ");
@@ -959,6 +1011,7 @@ struct AIEObjectFifoAllocatePass
             noteChannelOwner(diag, owner, channel);
           return failure();
         }
+        noteBdIdBase(endpoint, *channel, demand);
         noteDemand(endpoint, *channel);
         continue;
       }
@@ -1162,11 +1215,19 @@ struct AIEObjectFifoAllocatePass
         PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
     source.setRoutePacket(info);
 
+    // An out-of-order receiver reads the buffer it should fill out of the
+    // header, so the header has to reach its DMA.
+    bool keepHeader = false;
+    for (auto destName : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(
+              lookupEndpoint(destName).getOperation()))
+        keepHeader |= dma.getOutOfOrder();
+
     builder.setInsertionPoint(flow);
     auto packetFlow = PacketFlowOp::create(
         builder, flow.getLoc(),
-        builder.getIntegerAttr(builder.getI8Type(), packetID), nullptr,
-        nullptr);
+        builder.getIntegerAttr(builder.getI8Type(), packetID),
+        keepHeader ? builder.getBoolAttr(true) : BoolAttr(), nullptr);
     OpBuilder::InsertionGuard g(builder);
     Block &ports = packetFlow.getRegion().emplaceBlock();
     builder.setInsertionPointToStart(&ports);
@@ -1178,6 +1239,11 @@ struct AIEObjectFifoAllocatePass
     for (auto destName :
          flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
       auto dest = lookupEndpoint(destName);
+      // An out-of-order receiver matches on the header rather than walking a
+      // chain, so its descriptors carry the id too.
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(dest.getOperation()))
+        if (dma.getOutOfOrder())
+          dest.setRoutePacket(info);
       PacketDestOp::create(builder, flow.getLoc(), dest.getTile(),
                            dest.getRouteBundle(), channelOf(dest));
     }
