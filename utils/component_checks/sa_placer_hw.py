@@ -42,16 +42,24 @@ both. One seed and effort is reproduced, from programming_examples/ml, with
 import argparse
 import glob
 import hashlib
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
 
-from aiecc_stages import PROFILE_NAME, STAGE_METRICS, stage_rows
+from aiecc_stages import (
+    PROFILE_NAME,
+    add_pmode_argument,
+    compile_rows,
+    compile_stats,
+    refuse,
+    row,
+    run_measured,
+    stage_rows,
+    write,
+)
 
 _PASS_RE = re.compile(r"^PASS!$", re.MULTILINE)
 _BATCH_RE = re.compile(r"^batch=(\d+)$", re.MULTILINE)
@@ -82,33 +90,6 @@ def _mobilenet(*args: str, env: dict | None = None) -> subprocess.CompletedProce
         capture_output=True,
         text=True,
     )
-
-
-def _mobilenet_rss(
-    *args: str, env: dict | None = None
-) -> tuple[subprocess.CompletedProcess, float]:
-    """Like ``_mobilenet``, plus the process's own peak RSS in MB.
-
-    Uses os.wait4 (not resource.getrusage(RUSAGE_CHILDREN), which is a running
-    max across every reaped child -- see sa_placer.py's run_seed), so this
-    call's peak RSS is its own, not a stale max from an earlier, bigger case.
-    stdout and stderr are merged (rather than piped separately and read with
-    two blocking .read() calls, which can deadlock once either pipe fills).
-    """
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "mobilenet.aie2_mobilenet_iron", *args],
-        cwd=_ML_DIR,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    out = proc.stdout.read() if proc.stdout else ""
-    _, status, ru = os.wait4(proc.pid, 0)
-    result = subprocess.CompletedProcess(
-        proc.args, os.waitstatus_to_exitcode(status), out, ""
-    )
-    return result, ru.ru_maxrss / 1024.0
 
 
 def placement_of(mlir: str) -> str | None:
@@ -177,12 +158,19 @@ def compile_cold_warm(flags: list[str], batches: list[int], cache_dir: str) -> d
     """Compile the dispatch-time design cold, then warm, into ``cache_dir``."""
     env = dict(os.environ, NPU_CACHE_HOME=cache_dir)
     xclbin = os.path.join(cache_dir, "final.xclbin")
-    args = (*flags, "--dynamic", *map(str, batches), "--xclbin-path", xclbin)
-    start = time.perf_counter()
-    cold, rss_cold = _mobilenet_rss(*args, env=env)
-    compile_s = time.perf_counter() - start
+    cmd = [
+        sys.executable,
+        "-m",
+        "mobilenet.aie2_mobilenet_iron",
+        *flags,
+        "--dynamic",
+        *map(str, batches),
+        "--xclbin-path",
+        xclbin,
+    ]
+    cold = run_measured(cmd, _ML_DIR, env)
     profile = os.path.join(cache_dir, "final.prj", PROFILE_NAME)
-    stages_cold = stage_rows(profile, compile_s if cold.returncode == 0 else None, "")
+    stages_cold = stage_rows(profile, cold[1] if cold[0].returncode == 0 else None, "")
     placed = sorted(glob.glob(os.path.join(cache_dir, "devices", "*", "placed.mlir")))
     placement = None
     if placed:
@@ -192,24 +180,17 @@ def compile_cold_warm(flags: list[str], batches: list[int], cache_dir: str) -> d
         os.remove(xclbin)
     for layer in ("final.prj", "builds", "devices"):
         shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
-    start = time.perf_counter()
-    warm, rss_warm = _mobilenet_rss(*args, env=env)
-    compile_s_warm = time.perf_counter() - start
+    warm = run_measured(cmd, _ML_DIR, env)
     stages_warm = stage_rows(
-        profile, compile_s_warm if warm.returncode == 0 else None, "_warm"
+        profile, warm[1] if warm[0].returncode == 0 else None, "_warm"
     )
     return {
         **stages_cold,
         **stages_warm,
-        "passed": cold.returncode == 0 and warm.returncode == 0,
-        "compile_s": round(compile_s, 1) if cold.returncode == 0 else None,
-        "compile_peak_rss_mb": round(rss_cold, 1) if cold.returncode == 0 else None,
-        "compile_s_warm": round(compile_s_warm, 1) if warm.returncode == 0 else None,
-        "compile_peak_rss_mb_warm": (
-            round(rss_warm, 1) if warm.returncode == 0 else None
-        ),
+        "passed": cold[0].returncode == 0 and warm[0].returncode == 0,
+        **compile_stats(cold, warm),
         "placement": placement,
-        "log": cold.stdout + warm.stdout,
+        "log": cold[0].stdout + warm[0].stdout,
     }
 
 
@@ -287,34 +268,20 @@ def aggregate(
     runs: list[dict], compiles: list[dict], placements: list[dict]
 ) -> list[dict]:
     failed_seeds = {r["seed"] for r in runs + compiles if not r["passed"]}
-    out = [
-        {"name": "mobilenet/failed_seeds", "unit": "seeds", "value": len(failed_seeds)}
-    ]
+    out = [row("mobilenet", "failed_seeds", len(failed_seeds), "seeds")]
     for p in placements:
         if p["placement_cost"] is not None:
             out.append(
-                {
-                    "name": f"mobilenet/seed={p['seed']}/effort={p['effort_label']}"
-                    "/placement_cost",
-                    "unit": "cost",
-                    "value": p["placement_cost"],
-                    "range": f"placement {p['placement']}",
-                }
+                row(
+                    f"mobilenet/seed={p['seed']}/effort={p['effort_label']}",
+                    "placement_cost",
+                    p["placement_cost"],
+                    "cost",
+                    f"placement {p['placement']}",
+                )
             )
     for c in compiles:
-        case = f"mobilenet/seed={c['seed']}/effort={c['effort_label']}"
-        for metric, unit in (
-            ("compile_s", "s"),
-            ("compile_peak_rss_mb", "MB"),
-            ("compile_s_warm", "s"),
-            ("compile_peak_rss_mb_warm", "MB"),
-            *((m, "s") for m in STAGE_METRICS),
-            *((f"{m}_warm", "s") for m in STAGE_METRICS),
-        ):
-            if c.get(metric) is not None:
-                out.append(
-                    {"name": f"{case}/{metric}", "unit": unit, "value": c[metric]}
-                )
+        out += compile_rows(f"mobilenet/seed={c['seed']}/effort={c['effort_label']}", c)
     # A failed run's times (say, a run that printed timing but produced the
     # wrong answer) are not a measurement of the design, so only passing runs
     # contribute a time point; the failure shows up in the count. Keyed by
@@ -332,33 +299,35 @@ def aggregate(
         )
         if r["passed"] and r["us_per_image"] is not None:
             out.append(
-                {
-                    "name": f"{case}/us_per_image",
-                    "unit": "us",
-                    "value": r["us_per_image"],
-                    "range": r["us_per_image_range"],
-                }
+                row(
+                    case,
+                    "us_per_image",
+                    r["us_per_image"],
+                    "us",
+                    r["us_per_image_range"],
+                )
             )
             key = (r["seed"], r["effort_label"])
             if r["batch"] > 1 and key in one:
                 b1 = one[key]
                 out.append(
-                    {
-                        "name": f"{case}/streaming_us",
-                        "unit": "us",
-                        "value": streaming_us(b1, r),
-                        "range": f"from b1 {b1['launch_us']:g} and "
-                        f"b{r['batch']} {r['launch_us']:g}",
-                    }
+                    row(
+                        case,
+                        "streaming_us",
+                        streaming_us(b1, r),
+                        "us",
+                        f"from b1 {b1['launch_us']:g} and b{r['batch']} {r['launch_us']:g}",
+                    )
                 )
             if r["e2e_us_per_image"] is not None:
                 out.append(
-                    {
-                        "name": f"{case}/e2e_us_per_image",
-                        "unit": "us",
-                        "value": r["e2e_us_per_image"],
-                        "range": r["e2e_range"],
-                    }
+                    row(
+                        case,
+                        "e2e_us_per_image",
+                        r["e2e_us_per_image"],
+                        "us",
+                        r["e2e_range"],
+                    )
                 )
     return out
 
@@ -424,11 +393,6 @@ def emit_design(path: str) -> None:
         f.write(proc.stdout)
 
 
-def write(path: str, data) -> None:
-    with open(path, "w") as f:
-        json.dump(data, f, indent=1)
-
-
 def _positive_int(text: str) -> int:
     value = int(text)
     if value <= 0:
@@ -456,11 +420,7 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--iters", type=int, default=20)
-    parser.add_argument(
-        "--pmode",
-        default="any",
-        help="refuse to measure unless the NPU is in this power mode " "(default: any)",
-    )
+    add_pmode_argument(parser)
     parser.add_argument(
         "--aie-opt",
         default=shutil.which("aie-opt"),
@@ -484,13 +444,12 @@ def main(argv=None) -> int:
         "iters": args.iters,
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
-        meta["refused"] = (
-            f"power mode is {pre.pmode or 'unreadable'}, required '{args.pmode}'"
+        return refuse(
+            f"power mode is {pre.pmode or 'unreadable'}, required '{args.pmode}'",
+            meta,
+            args.out,
+            args.meta,
         )
-        print(f"refusing to measure: {meta['refused']}")
-        write(args.out, [])
-        write(args.meta, {**meta, "failed": [], "exitstatus": 1})
-        return 1
 
     batches = sorted(set(args.batches))
     with tempfile.TemporaryDirectory(prefix="component-checks-design-") as d:

@@ -31,6 +31,8 @@ import statistics
 import subprocess
 import sys
 
+from aiecc_stages import row
+
 _COST_RE = re.compile(r"\(S\)\s+(\d+)\s+sa-final-cost")
 _HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = [
@@ -96,19 +98,20 @@ def aggregate(rows: list[dict]) -> list[dict]:
         costs = [
             r["final_cost"] for r in mine if r["passed"] and r["final_cost"] is not None
         ]
-
-        def row(metric, value, unit):
-            return {"name": f"{case}/{metric}", "unit": unit, "value": value}
-
         out += [
-            row("failed_seeds", sum(not r["passed"] for r in mine), "seeds"),
-            row("cpu_ms_mean", round(statistics.mean(cpu_ms), 1), "ms"),
-            row("cpu_ms_max", round(max(cpu_ms), 1), "ms"),
-            row("peak_rss_mb_max", round(max(r["peak_rss_mb"] for r in mine), 1), "MB"),
+            row(case, "failed_seeds", sum(not r["passed"] for r in mine), "seeds"),
+            row(case, "cpu_ms_mean", round(statistics.mean(cpu_ms), 1), "ms"),
+            row(case, "cpu_ms_max", round(max(cpu_ms), 1), "ms"),
+            row(
+                case,
+                "peak_rss_mb_max",
+                round(max(r["peak_rss_mb"] for r in mine), 1),
+                "MB",
+            ),
         ]
         if costs:
-            out.append(row("final_cost_mean", statistics.mean(costs), "cost"))
-            out.append(row("final_cost_max", max(costs), "cost"))
+            out.append(row(case, "final_cost_mean", statistics.mean(costs), "cost"))
+            out.append(row(case, "final_cost_max", max(costs), "cost"))
     return out
 
 

@@ -1,6 +1,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Group an aiecc ``--profile-json`` file's edges into compile stages.
+"""What the component checks share: compile stages, measured runs and rows.
+
+An aiecc ``--profile-json`` file's edges group into compile stages.
 
 The JIT writes one beside every build it runs aiecc for. Stages:
 
@@ -24,9 +26,12 @@ Edges run in parallel, so a stage's time (its edges' summed time) can add up,
 over the stages, to more than ``wall_s``.
 """
 
+import argparse
 import json
 import os
 import re
+import subprocess
+import time
 
 STAGES = ("place", "route", "lower", "kernels", "codegen", "link", "package", "other")
 # What the JIT names the file, in each build's ``<xclbin stem>.prj`` dir.
@@ -39,6 +44,17 @@ STAGE_METRICS = (
     "compile_aiecc_wall_s",
     "compile_outside_aiecc_s",
 )
+# A cold then warm compile's rows, as every check names them.
+COMPILE_METRICS = (
+    "compile_s",
+    "compile_peak_rss_mb",
+    "compile_s_warm",
+    "compile_peak_rss_mb_warm",
+    *STAGE_METRICS,
+    *(f"{m}_warm" for m in STAGE_METRICS),
+)
+# xrt-smi's power modes, and "any" to accept whichever is set.
+PMODES = ("any", "default", "powersaver", "balanced", "performance", "turbo")
 
 # First match wins; output names chosen on aiecc's command line (xclbin, pdi,
 # instructions) are matched by extension.
@@ -123,3 +139,123 @@ def stage_rows(profile_path: str, compile_s: float | None, suffix: str) -> dict:
     seconds["compile_aiecc_wall_s"] = stages["wall_s"]
     seconds["compile_outside_aiecc_s"] = max(compile_s - stages["wall_s"], 0.0)
     return {f"{k}{suffix}": round(v, 2) for k, v in seconds.items()}
+
+
+def run_measured(
+    cmd: list[str], cwd: str, env: dict
+) -> tuple[subprocess.CompletedProcess, float, float]:
+    """Run ``cmd`` and return it with its wall seconds and its own peak RSS.
+
+    Uses os.wait4, not resource.getrusage(RUSAGE_CHILDREN), which is a
+    running max over every reaped child, so the peak is this run's. stdout
+    and stderr are merged, as two blocking reads of separate pipes can
+    deadlock once either fills.
+
+    Args:
+        cmd: The command line.
+        cwd: Where to run it.
+        env: Its environment.
+
+    Returns:
+        (the finished process, its output in ``stdout``; wall seconds; peak
+        RSS in MB).
+    """
+    start = time.perf_counter()
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    out = proc.stdout.read() if proc.stdout else ""
+    _, status, ru = os.wait4(proc.pid, 0)
+    seconds = time.perf_counter() - start
+    done = subprocess.CompletedProcess(
+        proc.args, os.waitstatus_to_exitcode(status), out, ""
+    )
+    return done, seconds, ru.ru_maxrss / 1024.0
+
+
+def compile_stats(
+    cold: tuple[subprocess.CompletedProcess, float, float],
+    warm: tuple[subprocess.CompletedProcess, float, float],
+) -> dict:
+    """Return a cold and a warm compile's times and peak RSS, None where one failed.
+
+    Args:
+        cold: ``run_measured``'s result for the cold compile.
+        warm: Its result for the warm compile.
+
+    Returns:
+        compile_s, compile_peak_rss_mb and their ``_warm`` twins.
+    """
+    (cold_run, cold_s, cold_rss), (warm_run, warm_s, warm_rss) = cold, warm
+    cold_ok, warm_ok = cold_run.returncode == 0, warm_run.returncode == 0
+    return {
+        "compile_s": round(cold_s, 1) if cold_ok else None,
+        "compile_peak_rss_mb": round(cold_rss, 1) if cold_ok else None,
+        "compile_s_warm": round(warm_s, 2) if warm_ok else None,
+        "compile_peak_rss_mb_warm": round(warm_rss, 1) if warm_ok else None,
+    }
+
+
+def row(case: str, metric: str, value, unit: str, range: str | None = None) -> dict:
+    """Return one perf.json row, ``case/metric``, with an optional range note."""
+    out = {"name": f"{case}/{metric}", "unit": unit, "value": value}
+    if range is not None:
+        out["range"] = range
+    return out
+
+
+def compile_rows(case: str, stats: dict) -> list[dict]:
+    """Return ``case``'s rows for each COMPILE_METRICS value ``stats`` holds.
+
+    Args:
+        case: The row names' prefix.
+        stats: The compile's values, by metric name; a missing or None one
+            gets no row.
+
+    Returns:
+        The rows, in COMPILE_METRICS order.
+    """
+    return [
+        row(case, metric, stats[metric], "MB" if "_rss_" in metric else "s")
+        for metric in COMPILE_METRICS
+        if stats.get(metric) is not None
+    ]
+
+
+def write(path: str, data) -> None:
+    """Write ``data`` to ``path`` as JSON."""
+    with open(path, "w") as f:
+        json.dump(data, f, indent=1)
+
+
+def add_pmode_argument(parser: argparse.ArgumentParser) -> None:
+    """Add ``--pmode``, the power mode a check refuses to measure outside of."""
+    parser.add_argument(
+        "--pmode",
+        choices=PMODES,
+        default="any",
+        help="refuse to measure unless the NPU is in this power mode (default: any)",
+    )
+
+
+def refuse(reason: str, meta: dict, out_path: str, meta_path: str) -> int:
+    """Record why a check did not measure, write empty results, and fail.
+
+    Args:
+        reason: Why, for the meta's ``refused``.
+        meta: The run's meta so far.
+        out_path: The perf.json to write, empty.
+        meta_path: The meta.json to write.
+
+    Returns:
+        The exit status, 1.
+    """
+    print(f"refusing to measure: {reason}")
+    write(out_path, [])
+    write(meta_path, {**meta, "refused": reason, "failed": [], "exitstatus": 1})
+    return 1

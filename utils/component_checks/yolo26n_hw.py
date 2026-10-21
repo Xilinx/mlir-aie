@@ -28,17 +28,25 @@ programming_examples/ml/yolo26n, with
 
 import argparse
 import glob
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
-from aiecc_stages import PROFILE_NAME, STAGE_METRICS, stage_rows
+from aiecc_stages import (
+    PROFILE_NAME,
+    add_pmode_argument,
+    compile_rows,
+    compile_stats,
+    refuse,
+    row,
+    run_measured,
+    stage_rows,
+    write,
+)
 
 CASE = "yolo26n/640"
 N_ITERS = 5
@@ -72,38 +80,6 @@ def ensure_data(onnx: Path, env: dict) -> subprocess.CompletedProcess | None:
     return _run([sys.executable, "gen_yolo_data.py", "--onnx", str(onnx)], env)
 
 
-def _compile_rss(
-    images: Path, onnx: Path, env: dict
-) -> tuple[subprocess.CompletedProcess, float]:
-    """Compile once, returning the run and its own peak RSS in MB.
-
-    Uses os.wait4, as llama_chain_hw.py's _build_rss does, so this call's
-    peak RSS is its own rather than a running max over every reaped child.
-    """
-    proc = subprocess.Popen(
-        [
-            sys.executable,
-            "yolo26n.py",
-            "--compile-only",
-            "--images",
-            str(images),
-            "--onnx",
-            str(onnx),
-        ],
-        cwd=_YOLO_DIR,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    out = proc.stdout.read() if proc.stdout else ""
-    _, status, ru = os.wait4(proc.pid, 0)
-    result = subprocess.CompletedProcess(
-        proc.args, os.waitstatus_to_exitcode(status), out, ""
-    )
-    return result, ru.ru_maxrss / 1024.0
-
-
 def newest_build(cache_dir: str) -> str | None:
     """Return the JIT build directory under ``cache_dir`` aiecc last profiled.
 
@@ -129,45 +105,41 @@ def compile_cold_warm(images: Path, onnx: Path, env: dict, cache_dir: str) -> di
     (not its kernels) costs.
     """
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
-    start = time.perf_counter()
-    built_cold, rss_cold = _compile_rss(images, onnx, run_env)
-    compile_s = time.perf_counter() - start
+    compile_only = [
+        sys.executable,
+        "yolo26n.py",
+        "--compile-only",
+        "--images",
+        str(images),
+        "--onnx",
+        str(onnx),
+    ]
+    cold = run_measured(compile_only, _YOLO_DIR, run_env)
     build = newest_build(cache_dir)
     stages_cold = stage_rows(
         os.path.join(build or cache_dir, PROFILE_NAME),
-        compile_s if built_cold.returncode == 0 else None,
+        cold[1] if cold[0].returncode == 0 else None,
         "",
     )
 
     for entry in os.listdir(cache_dir):
         if entry != "objects":
             shutil.rmtree(os.path.join(cache_dir, entry), ignore_errors=True)
-    start = time.perf_counter()
-    built_warm, rss_warm = _compile_rss(images, onnx, run_env)
-    compile_s_warm = time.perf_counter() - start
+    warm = run_measured(compile_only, _YOLO_DIR, run_env)
     build = newest_build(cache_dir)
     stages_warm = stage_rows(
         os.path.join(build or cache_dir, PROFILE_NAME),
-        compile_s_warm if built_warm.returncode == 0 else None,
+        warm[1] if warm[0].returncode == 0 else None,
         "_warm",
     )
 
     return {
         **stages_cold,
         **stages_warm,
-        "built": built_warm if built_warm.returncode == 0 else built_cold,
+        "built": warm[0] if warm[0].returncode == 0 else cold[0],
         "build_dir": build,
-        "compile_s": round(compile_s, 1) if built_cold.returncode == 0 else None,
-        "compile_peak_rss_mb": (
-            round(rss_cold, 1) if built_cold.returncode == 0 else None
-        ),
-        "compile_s_warm": (
-            round(compile_s_warm, 2) if built_warm.returncode == 0 else None
-        ),
-        "compile_peak_rss_mb_warm": (
-            round(rss_warm, 1) if built_warm.returncode == 0 else None
-        ),
-        "log": built_cold.stdout + built_warm.stdout,
+        **compile_stats(cold, warm),
+        "log": cold[0].stdout + warm[0].stdout,
     }
 
 
@@ -277,26 +249,14 @@ def artifact_stats(build_dir: str | None) -> dict:
 def aggregate(
     correctness: dict, timing: dict, artifacts: dict, compile_stats: dict
 ) -> list[dict]:
-    out = [
-        {
-            "name": f"{CASE}/images_passed",
-            "unit": "images",
-            "value": correctness["images_passed"],
-            "range": f"of {correctness['images_total']}",
-        }
-    ]
+    of = f"of {correctness['images_total']}"
+    out = [row(CASE, "images_passed", correctness["images_passed"], "images", of)]
     if correctness["ort_matches"] is not None:
-        out.append(
-            {
-                "name": f"{CASE}/ort_matches",
-                "unit": "images",
-                "value": correctness["ort_matches"],
-                "range": f"of {correctness['images_total']}",
-            }
-        )
+        out.append(row(CASE, "ort_matches", correctness["ort_matches"], "images", of))
     for metric, value in timing.items():
-        unit = "fps" if metric.startswith("fps_") else "us"
-        out.append({"name": f"{CASE}/{metric}", "unit": unit, "value": value})
+        out.append(
+            row(CASE, metric, value, "fps" if metric.startswith("fps_") else "us")
+        )
     for metric, unit in (
         ("elf_bytes", "bytes"),
         ("xclbin_bytes", "bytes"),
@@ -304,32 +264,8 @@ def aggregate(
         ("n_cores", "cores"),
     ):
         if artifacts.get(metric) is not None:
-            out.append(
-                {"name": f"{CASE}/{metric}", "unit": unit, "value": artifacts[metric]}
-            )
-    for metric in (
-        "compile_s",
-        "compile_peak_rss_mb",
-        "compile_s_warm",
-        "compile_peak_rss_mb_warm",
-        *STAGE_METRICS,
-        *(f"{m}_warm" for m in STAGE_METRICS),
-    ):
-        if compile_stats.get(metric) is not None:
-            unit = "MB" if "_rss_" in metric else "s"
-            out.append(
-                {
-                    "name": f"{CASE}/{metric}",
-                    "unit": unit,
-                    "value": compile_stats[metric],
-                }
-            )
-    return out
-
-
-def write(path: str, data) -> None:
-    with open(path, "w") as f:
-        json.dump(data, f, indent=1)
+            out.append(row(CASE, metric, artifacts[metric], unit))
+    return out + compile_rows(CASE, compile_stats)
 
 
 def main(argv=None) -> int:
@@ -346,11 +282,7 @@ def main(argv=None) -> int:
         default=8,
         help="COCO images to run, a multiple of 8 (default: 8)",
     )
-    parser.add_argument(
-        "--pmode",
-        default="any",
-        help="refuse to measure unless the NPU is in this power mode (default: any)",
-    )
+    add_pmode_argument(parser)
     parser.add_argument("--out", required=True, help="perf.json to write")
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
@@ -368,20 +300,25 @@ def main(argv=None) -> int:
         "n_images": args.n_images,
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
-        meta["refused"] = (
-            f"power mode is {pre.pmode or 'unreadable'}, required '{args.pmode}'"
+        return refuse(
+            f"power mode is {pre.pmode or 'unreadable'}, required '{args.pmode}'",
+            meta,
+            args.out,
+            args.meta,
         )
-    elif not onnx.is_file() or not images.is_dir():
+    if not onnx.is_file() or not images.is_dir():
         missing = onnx if not onnx.is_file() else images
-        meta["refused"] = f"{missing} is missing; see --weights-dir"
-    if "refused" in meta:
-        print(f"refusing to measure: {meta['refused']}")
-        write(args.out, [])
-        write(args.meta, {**meta, "failed": [], "exitstatus": 1})
-        return 1
+        return refuse(
+            f"{missing} is missing; see --weights-dir", meta, args.out, args.meta
+        )
 
     env = dict(os.environ)
     gen = ensure_data(onnx, env)
+    if gen is not None and gen.returncode != 0:
+        print(gen.stdout + gen.stderr)
+        return refuse(
+            f"gen_yolo_data.py exited {gen.returncode}", meta, args.out, args.meta
+        )
     cache_dir = tempfile.mkdtemp(prefix="component-checks-yolo26n-")
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
     correctness = parse_correctness("", 1)

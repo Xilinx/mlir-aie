@@ -31,16 +31,24 @@ programming_examples/ml/llama_3_2_1b, with
 """
 
 import argparse
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
 
-from aiecc_stages import PROFILE_NAME, STAGE_METRICS, stage_rows
+from aiecc_stages import (
+    PROFILE_NAME,
+    add_pmode_argument,
+    compile_rows,
+    compile_stats,
+    refuse,
+    row,
+    run_measured,
+    stage_rows,
+    write,
+)
 
 N_LAYERS = 16
 P_MAX = 4
@@ -93,36 +101,6 @@ def ensure_data(
     return _run(args, env)
 
 
-def _build_rss(env: dict) -> tuple[subprocess.CompletedProcess, float]:
-    """Like ``build``, plus the process's own peak RSS in MB.
-
-    Uses os.wait4 (not resource.getrusage(RUSAGE_CHILDREN), a running max
-    across every reaped child), so this call's peak RSS is its own -- see
-    sa_placer_hw.py's _mobilenet_rss, which this mirrors.
-    """
-    os.makedirs(os.path.join(_LLAMA_DIR, "build"), exist_ok=True)
-    proc = subprocess.Popen(
-        [
-            sys.executable,
-            "aie2_decode.py",
-            *_SHAPE_ARGS,
-            "--full-elf-path",
-            _ELF,
-        ],
-        cwd=_LLAMA_DIR,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    out = proc.stdout.read() if proc.stdout else ""
-    _, status, ru = os.wait4(proc.pid, 0)
-    result = subprocess.CompletedProcess(
-        proc.args, os.waitstatus_to_exitcode(status), out, ""
-    )
-    return result, ru.ru_maxrss / 1024.0
-
-
 def _clean_build_outputs() -> None:
     """Remove this config's full ELF and project dir.
 
@@ -150,22 +128,26 @@ def compile_cold_warm(env: dict) -> dict:
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
     profile = os.path.join(_LLAMA_DIR, _PROFILE)
     try:
+        os.makedirs(os.path.join(_LLAMA_DIR, "build"), exist_ok=True)
+        build = [
+            sys.executable,
+            "aie2_decode.py",
+            *_SHAPE_ARGS,
+            "--full-elf-path",
+            _ELF,
+        ]
         _clean_build_outputs()
-        start = time.perf_counter()
-        built_cold, rss_cold = _build_rss(run_env)
-        compile_s = time.perf_counter() - start
+        cold = run_measured(build, _LLAMA_DIR, run_env)
         stages_cold = stage_rows(
-            profile, compile_s if built_cold.returncode == 0 else None, ""
+            profile, cold[1] if cold[0].returncode == 0 else None, ""
         )
 
         _clean_build_outputs()
         for layer in ("builds", "devices"):
             shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
-        start = time.perf_counter()
-        built_warm, rss_warm = _build_rss(run_env)
-        compile_s_warm = time.perf_counter() - start
+        warm = run_measured(build, _LLAMA_DIR, run_env)
         stages_warm = stage_rows(
-            profile, compile_s_warm if built_warm.returncode == 0 else None, "_warm"
+            profile, warm[1] if warm[0].returncode == 0 else None, "_warm"
         )
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
@@ -173,21 +155,9 @@ def compile_cold_warm(env: dict) -> dict:
     return {
         **stages_cold,
         **stages_warm,
-        "built": built_warm if built_warm.returncode == 0 else built_cold,
-        "compile_s": round(compile_s, 1) if built_cold.returncode == 0 else None,
-        "compile_peak_rss_mb": (
-            round(rss_cold, 1) if built_cold.returncode == 0 else None
-        ),
-        "compile_s_warm": (
-            round(compile_s_warm, 2) if built_warm.returncode == 0 else None
-        ),
-        "compile_peak_rss_mb_warm": (
-            round(rss_warm, 1) if built_warm.returncode == 0 else None
-        ),
-        "log": built_cold.stdout
-        + built_cold.stderr
-        + built_warm.stdout
-        + built_warm.stderr,
+        "built": warm[0] if warm[0].returncode == 0 else cold[0],
+        **compile_stats(cold, warm),
+        "log": cold[0].stdout + warm[0].stdout,
     }
 
 
@@ -307,49 +277,36 @@ def aggregate(
 ) -> list[dict]:
     case = f"llama/persist_grow/N={N_LAYERS}"
     out = [
-        {
-            "name": f"{case}/tokens_passed",
-            "unit": "tokens",
-            "value": correctness["tokens_passed"],
-            "range": f"of {correctness['tokens_total']}",
-        }
+        row(
+            case,
+            "tokens_passed",
+            correctness["tokens_passed"],
+            "tokens",
+            f"of {correctness['tokens_total']}",
+        )
     ]
     if timing["tok_s"] is not None:
-        out.append({"name": f"{case}/tok_s", "unit": "tok/s", "value": timing["tok_s"]})
+        out.append(row(case, "tok_s", timing["tok_s"], "tok/s"))
     if timing["ms_per_token"] is not None:
-        out.append(
-            {
-                "name": f"{case}/ms_per_token",
-                "unit": "ms",
-                "value": timing["ms_per_token"],
-            }
-        )
+        out.append(row(case, "ms_per_token", timing["ms_per_token"], "ms"))
     if timing["ratio"] is not None:
-        out.append(
-            {
-                "name": f"{case}/dma_floor_ratio",
-                "unit": "x",
-                "value": timing["ratio"],
-                "range": timing["bound"],
-            }
-        )
+        out.append(row(case, "dma_floor_ratio", timing["ratio"], "x", timing["bound"]))
     for metric, unit in (
         ("ttft_ms", "ms"),
         ("prompt_tok_s", "tok/s"),
         ("decode_tok_s", "tok/s"),
     ):
         if generated.get(metric) is not None:
-            out.append(
-                {"name": f"{case}/{metric}", "unit": unit, "value": generated[metric]}
-            )
+            out.append(row(case, metric, generated[metric], unit))
     if generated.get("greedy_agree") is not None:
         out.append(
-            {
-                "name": f"{case}/greedy_agree",
-                "unit": "tokens",
-                "value": generated["greedy_agree"],
-                "range": f"of {generated['greedy_total']} vs numpy_llama_ref",
-            }
+            row(
+                case,
+                "greedy_agree",
+                generated["greedy_agree"],
+                "tokens",
+                f"of {generated['greedy_total']} vs numpy_llama_ref",
+            )
         )
     for metric, unit in (
         ("elf_bytes", "bytes"),
@@ -357,35 +314,8 @@ def aggregate(
         ("n_cores", "cores"),
     ):
         if artifacts.get(metric) is not None:
-            out.append(
-                {"name": f"{case}/{metric}", "unit": unit, "value": artifacts[metric]}
-            )
-    # Reuses sa_placer_hw.py's metric names (compile_s, compile_peak_rss_mb,
-    # ...) so the dashboard's existing labels/tooltips/thresholds for them
-    # apply here with no new Layer-3 vocabulary.
-    for metric in (
-        "compile_s",
-        "compile_peak_rss_mb",
-        "compile_s_warm",
-        "compile_peak_rss_mb_warm",
-        *STAGE_METRICS,
-        *(f"{m}_warm" for m in STAGE_METRICS),
-    ):
-        if compile_stats.get(metric) is not None:
-            unit = "MB" if "_rss_" in metric else "s"
-            out.append(
-                {
-                    "name": f"{case}/{metric}",
-                    "unit": unit,
-                    "value": compile_stats[metric],
-                }
-            )
-    return out
-
-
-def write(path: str, data) -> None:
-    with open(path, "w") as f:
-        json.dump(data, f, indent=1)
+            out.append(row(case, metric, artifacts[metric], unit))
+    return out + compile_rows(case, compile_stats)
 
 
 def main(argv=None) -> int:
@@ -398,11 +328,7 @@ def main(argv=None) -> int:
         "--tokenizer",
         help="path to tokenizer.model (default: beside the weights)",
     )
-    parser.add_argument(
-        "--pmode",
-        default="any",
-        help="refuse to measure unless the NPU is in this power mode (default: any)",
-    )
+    add_pmode_argument(parser)
     parser.add_argument("--out", required=True, help="perf.json to write")
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
@@ -417,13 +343,12 @@ def main(argv=None) -> int:
         "pt": P_MAX,
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
-        meta["refused"] = (
-            f"power mode is {pre.pmode or 'unreadable'}, required '{args.pmode}'"
+        return refuse(
+            f"power mode is {pre.pmode or 'unreadable'}, required '{args.pmode}'",
+            meta,
+            args.out,
+            args.meta,
         )
-        print(f"refusing to measure: {meta['refused']}")
-        write(args.out, [])
-        write(args.meta, {**meta, "failed": [], "exitstatus": 1})
-        return 1
 
     env = dict(os.environ)
     gen = ensure_data(args.weights, args.tokenizer, env)

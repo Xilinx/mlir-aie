@@ -31,6 +31,7 @@ import json
 import sys
 from pathlib import Path
 
+from aiecc_stages import row
 from sa_placer import commit
 
 ALLOCATOR_COUNTS = {
@@ -48,10 +49,6 @@ ROUTER_COUNTS = {
     "amsels_per_design": "amsels",
     "ms_per_design": "ms",
 }
-
-
-def row(case: str, metric: str, value, unit: str) -> dict:
-    return {"name": f"{case}/{metric}", "unit": unit, "value": value}
 
 
 def allocator(reports: dict[str, dict | None]) -> tuple[list, list, list]:
