@@ -27,11 +27,9 @@ programming_examples/ml for the options.
 import argparse
 import os
 import sys
-from typing import get_origin
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
@@ -135,15 +133,15 @@ def mobilenet_iron(
         in_ty = np.ndarray[(capacity * in_sz_i32,), np.dtype[np.int32]]
         out_ty = np.ndarray[(capacity * out_sz_i32,), np.dtype[np.int32]]
     else:
-        if get_origin(inp) is not np.ndarray or get_origin(out) is not np.ndarray:
+        if not isinstance(inp, In) or not isinstance(out, Out):
             raise ValueError(
                 "a dispatch-time batch sizes its host buffers from the input "
                 "and output tensor types; call the design with tensors or "
                 "specialize inp and out"
             )
-        in_ty, out_ty = inp, out
-        (in_elems,) = np_ndarray_type_get_shape(in_ty)
-        (out_elems,) = np_ndarray_type_get_shape(out_ty)
+        in_ty, out_ty = inp.ndarray_type, out.ndarray_type
+        (in_elems,) = inp.shape
+        (out_elems,) = out.shape
         capacity = in_elems // in_sz_i32
         if capacity < 1 or in_elems != capacity * in_sz_i32:
             raise ValueError(
