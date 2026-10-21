@@ -21,8 +21,8 @@ from pathlib import Path
 
 import numpy as np
 from llama_config import HEAD_D, N_LAYERS
-from llama_decode import Decoder, DecodeShape, embed_seed_ref
-from llama_oracle import chain_forward_logits, gen_real_layer_mh, greedy_verdict
+from llama_decode import Decoder, DecodeShape
+from llama_oracle import gen_real_layer_mh, greedy_verdict, teacher_forced_logits
 from numpy_llama_ref import forward_full, load_model, load_tokenizer, rope_table
 
 BOS = 128000
@@ -83,24 +83,21 @@ def main():
 
     # The gate: the device's tokens through the oracle of its own arithmetic,
     # from empty caches, each generated token its greedy pick.
-    rope = rope_table(opts.t, HEAD_D)
     tokens = prompt + out
+    oracle = teacher_forced_logits(
+        layers,
+        (model.embed_i8, model.embed_sc, model.final_norm),
+        rope_table(opts.t, HEAD_D),
+        tokens[:-1],
+    )
     fails = 0
-    for pos, tok in enumerate(tokens[:-1]):
-        x, sc = embed_seed_ref(model.embed_i8[tok], float(model.embed_sc[tok]))
-        for layer in layers:
-            layer["cos"] = rope[pos, :HEAD_D]
-            layer["sin"] = rope[pos, HEAD_D:]
-        logits, *_ = chain_forward_logits(
-            x, sc, layers, pos, model.embed_i8, model.embed_sc, model.final_norm
-        )
-        if pos >= len(prompt) - 1:
-            ok, oracle_tok, tag = greedy_verdict(logits, tokens[pos + 1])
-            if not ok:
-                print(
-                    f"  position {pos + 1}: {tokens[pos + 1]}, oracle {oracle_tok} [{tag}]"
-                )
-            fails += not ok
+    for pos in range(len(prompt) - 1, len(tokens) - 1):
+        ok, oracle_tok, tag = greedy_verdict(oracle[pos], tokens[pos + 1])
+        if not ok:
+            print(
+                f"  position {pos + 1}: {tokens[pos + 1]}, oracle {oracle_tok} [{tag}]"
+            )
+        fails += not ok
     print(f"oracle: {len(out) - fails}/{len(out)} generated tokens pass")
     return 1 if fails else 0
 

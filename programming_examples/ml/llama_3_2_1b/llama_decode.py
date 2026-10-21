@@ -126,31 +126,6 @@ def pack_lmw(embed_i8, embed_sc, gamma):
     return blob
 
 
-def embed_seed_ref(row_i8, embed_sc):
-    """A token's embed seed, as llama_topk_sample.cc's embed_seed makes it.
-
-    Args:
-        row_i8: The token's int8 embed row.
-        embed_sc: Its scale.
-
-    Returns:
-        (int8[D], f32 scale).
-    """
-    amax = int(np.max(np.abs(row_i8.astype(np.int32))))
-    if amax < 1:
-        amax = 1
-    inv = (np.float32(127.0) / np.float32(amax)).astype(np.float32)
-    xin = np.empty(D, np.int8)
-    for i in range(D):
-        v = np.float32(np.float32(row_i8[i]) * inv)
-        r = np.floor(v + 0.5) if v >= 0 else np.ceil(v - 0.5)
-        xin[i] = np.int8(np.clip(r, -128, 127))
-    scale = np.float32(
-        np.float32(amax) * np.float32(embed_sc) * np.float32(1.0 / 127.0)
-    )
-    return xin, scale
-
-
 def tokens_of(records, passes):
     """The token ids of a dispatch's first `passes` records."""
     return [

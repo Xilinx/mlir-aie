@@ -1290,3 +1290,53 @@ def greedy_verdict(logits, token):
         ref,
         f"near-tie gap/std={gap:.3f} rank={rank}",
     )
+
+
+def embed_seed_ref(row_i8, embed_sc):
+    """A token's embed seed, as llama_topk_sample.cc's embed_seed makes it.
+
+    Args:
+        row_i8: The token's int8 embed row.
+        embed_sc: Its scale.
+
+    Returns:
+        (int8[D], f32 scale).
+    """
+    amax = max(int(np.max(np.abs(row_i8.astype(np.int32)))), 1)
+    inv = np.float32(np.float32(1) / np.float32(amax)) * np.float32(127)
+    xin = np.empty(D, np.int8)
+    for i in range(D):
+        v = np.float32(np.float32(row_i8[i]) * inv)
+        r = np.floor(v + 0.5) if v >= 0 else np.ceil(v - 0.5)
+        xin[i] = np.int8(np.clip(r, -128, 127))
+    scale = np.float32(
+        np.float32(amax) * np.float32(embed_sc) * np.float32(1.0 / 127.0)
+    )
+    return xin, scale
+
+
+def teacher_forced_logits(layers, lm, rope, tokens):
+    """The oracle's next-token logits at each position of `tokens`.
+
+    Each position's input is its token's embed seed, as the device makes it
+    for a prompt token; the layers' caches grow as the device's do.
+
+    Args:
+        layers: The oracle's layers, their caches empty.
+        lm: (embed_i8, embed_sc, final_norm gamma).
+        rope: The RoPE table, a row per position.
+        tokens: The token ids, from position 0.
+
+    Returns:
+        fp32 logits, (len(tokens), vocab): row p predicts tokens[p + 1].
+    """
+    embed_i8, embed_sc, gamma = lm
+    rows = []
+    for pos, tok in enumerate(tokens):
+        x, sc = embed_seed_ref(embed_i8[tok], float(embed_sc[tok]))
+        for layer in layers:
+            layer["cos"] = rope[pos, :HEAD_D]
+            layer["sin"] = rope[pos, HEAD_D:]
+        logits, *_ = chain_forward_logits(x, sc, layers, pos, embed_i8, embed_sc, gamma)
+        rows.append(logits)
+    return np.stack(rows)

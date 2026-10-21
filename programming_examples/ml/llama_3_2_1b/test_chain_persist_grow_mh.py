@@ -42,9 +42,10 @@ from aie2_decode import (
 )
 from gen_llama_data import quant_int8_perchan_absmax
 from llama_config import HEAD_D, N_HEADS_KV, VOCAB, D
-from llama_decode import Decoder, DecodeShape, embed_seed_ref, tokens_of
+from llama_decode import Decoder, DecodeShape, tokens_of
 from llama_oracle import (
     chain_forward_logits,
+    embed_seed_ref,
     gen_layer_mh,
     greedy_verdict,
     requant,
@@ -224,7 +225,7 @@ def check_final(shape, stage, hidden, row):
     return int(not ok)
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument(
         "--n-layers", type=int, default=2, help="decoder layers (16: the model)"
@@ -337,7 +338,7 @@ def main():
         "--from-run",
         help="check a --save-run .npz, saved with the same flags, without the NPU",
     )
-    opts = p.parse_args()
+    opts = p.parse_args(argv)
     shape = DecodeShape(opts.n_layers, opts.t, opts.kset, opts.p_max)
     if opts.passes is not None and not 1 <= opts.passes <= shape.p_max:
         p.error(f"--passes must be 1 to --p-max ({shape.p_max})")

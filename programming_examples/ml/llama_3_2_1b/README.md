@@ -248,6 +248,18 @@ with `@iron.jit` to a full ELF (cached under `NPU_CACHE_HOME`, so a rerun
 reuses it), or runs a prebuilt one (`--elf`, from
 `python aie2_decode.py ... --full-elf-path X`).
 
+`test_llama.py` is the pytest over it. Its default tier (what lit runs) is
+the decode test's cases at 2 layers on synthetic weights. `-m extensive`
+needs data/ and the bf16 safetensors: at 16 layers, on a small, a medium and
+a large prompt (24, 60 and 104 tokens), the oracle's next-token distribution
+must stay within a mean KL of the bf16 model's, and every token the device
+generates must be the oracle's greedy pick.
+
+```bash
+python -m pytest test_llama.py -m "not extensive"
+IRON_EXAMPLE_WEIGHTS_DIR=/path/to/models python -m pytest test_llama.py -m extensive
+```
+
 > **Pass `--n-layers 16`** to the decode test for any accuracy or timing run:
 > it defaults to 2 layers (a fast bring-up check), whose numbers mean nothing
 > for the model. `bench_quality_mh.py` defaults to the model's 16.
@@ -259,7 +271,7 @@ reuses it), or runs a prebuilt one (`--elf`, from
 python accuracy_vs_hf.py --max-tokens 128
 
 # 20-prompt greedy bench, INT8 recipe vs true HF bf16
-python bench_quality_mh.py --bf16-ref --residual-dyn --attn-flowkv
+python bench_quality_mh.py --path numpy --bf16-ref --residual-dyn --attn-flowkv
 ```
 
 ### On silicon: text, and accuracy vs HF bf16
@@ -267,12 +279,12 @@ python bench_quality_mh.py --bf16-ref --residual-dyn --attn-flowkv
 Tokenizing needs tiktoken: `pip install tiktoken`.
 
 ```bash
-# prompt in, text out, with TTFT and tok/s (--check scores each token against
-# numpy_llama_ref's argmax, teacher-forced)
+# prompt in, text out, with TTFT and tok/s (--check fails unless each generated
+# token is the oracle's pick, and reports agreement with numpy_llama_ref)
 python generate.py --prompt "The capital of France is" --max-new 32
 
 # prefill and predict each prompt on the NPU, vs bf16
-python bench_quality_mh.py --device --bf16-ref
+python bench_quality_mh.py --bf16-ref
 ```
 
 ### Decode + timing
