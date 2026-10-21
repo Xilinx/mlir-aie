@@ -107,7 +107,7 @@ inline __attribute__((always_inline)) Limbs<2 * N> twice(const Limbs<N> &x) {
 
 // Pairs of state rows a trip of the update. Peano orders a trip's state
 // loads after the previous trip's stores, so a trip loads all its pairs
-// before storing any (#1337).
+// before storing any (llvm-aie#1337).
 constexpr int PB = 3;
 
 // One pair of the state's rows decayed by G and given outer(k, d), added to

@@ -54,7 +54,6 @@ static inline float lookup_exp(int32_t q) {
 struct Xoshiro128 {
   uint32_t s[4];
 };
-// A 64-bit concat-shift: Peano cannot legalize G_ROTL.
 static inline uint32_t rotl(uint32_t x, int k) {
   uint64_t y = ((uint64_t)x << 32) | (uint64_t)x;
   return (uint32_t)(y >> (32 - k));

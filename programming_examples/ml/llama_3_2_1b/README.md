@@ -343,8 +343,6 @@ Real constraints learned during bring-up — apply preemptively to skip build cy
    workers; use a distinct symbol per shape.
 4. **L1 is 64 KB/tile.** The KV cache lives in DDR; an attention core holds a
    block of 64 rows at a time.
-5. **Peano AIE2P:** `G_ROTL` fails to legalize (use a 64-bit concat-shift
-   rotate).
 
 ---
 

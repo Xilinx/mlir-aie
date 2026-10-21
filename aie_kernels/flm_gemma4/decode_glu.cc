@@ -13,7 +13,7 @@
 // over [-4, 4), each offset + slope * x with x itself unclamped, so the end
 // segments extend the curve. linear_approx offsets the table pointers by the
 // centring bias; it goes on the index instead, the same address, because an
-// offset table pointer loses the reads' memory operands.
+// offset table pointer loses the reads' memory operands (llvm-aie#1330).
 static inline __attribute__((always_inline)) aie::vector<bfloat16, 32>
 gelu_lut(aie::vector<bfloat16, 32> x) {
   constexpr int bias_bytes = 32 << 4;
