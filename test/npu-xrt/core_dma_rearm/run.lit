@@ -1,0 +1,38 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// RUN: mkdir -p %t.prj
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+//
+// The arming is lowered onto the stores the core makes to its own tile.
+// RUN: aie-opt --aie-lower-core-dma-rearm aie_arch.mlir -o armed.mlir
+// RUN: FileCheck %s --check-prefix=ARMED < armed.mlir
+// ARMED: func.func private @llvm.aie2{{p?}}.write.tm
+// ARMED: func.call @llvm.aie2{{p?}}.write.tm
+//
+// RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.gen.h \
+// RUN:   --output-dir=%t.prj \
+// RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj armed.mlir
+//
+// RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
+// RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \
+// RUN:   -I%S/../../../include %xrt_flags %host_link_flags
+//
+// RUN: %run_on_npu1% %t.exe
+// RUN: %run_on_npu2% %t.exe
+//
+// Without the arming the channel takes one buffer and stops, the core never
+// returns from its second wait, and the run never completes.
+// RUN: sed '/aie.dma_rearm/d' aie_arch.mlir > noarm.mlir
+// RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.noarm.h \
+// RUN:   --output-dir=%t.prj.noarm \
+// RUN:   --xclbin-name=%t.noarm.xclbin --tmpdir=%t.prj.noarm noarm.mlir
+// RUN: %host_clang %S/test.cpp -o %t.noarm.exe -std=c++17 -Wall \
+// RUN:   -DGEN_HDR='"%t.noarm.h"' -DXCLBIN='std::string("%/t.noarm.xclbin")' \
+// RUN:   -I%S/../../../include %xrt_flags %host_link_flags
+// RUN: %run_on_npu1% not %t.noarm.exe
+// RUN: %run_on_npu2% not %t.noarm.exe

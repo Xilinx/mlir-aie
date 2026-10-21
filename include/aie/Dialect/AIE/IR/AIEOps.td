@@ -2011,6 +2011,36 @@ def AIE_EventOp : AIE_Op<"event", []> {
   }];
 }
 
+def AIE_DmaRearmOp : AIE_Op<"dma_rearm", [HasParent<"CoreOp">]> {
+  let summary = "Arm a DMA channel of this core's own tile for more objects";
+  let description = [{
+    Push `bd_id` onto the task queue of `channel` in `direction`, on the tile
+    whose core runs this op, so a channel that has taken the objects it was
+    armed for goes on taking them.
+
+    A channel that walks a BD chain needs none of this: its last descriptor
+    names the first and it comes round on its own. One receiving out of order
+    has no chain to come round -- each object names the descriptor that takes
+    it -- so it stops after `repeat_count` + 1 of them, and only an arming
+    carries it further.
+
+    The core writes its own tile's registers over the processor bus, which the
+    configuration enables for a tile holding one of these. An access made
+    while that bus is disabled stalls the core.
+  }];
+  let arguments = (ins DMAChannelDir:$direction,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$bd_id,
+      // repeat_count==0 means "take one object", as it does on aie.dma_start.
+      DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
+      UnitAttr:$out_of_order);
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $direction `:` $channel `)` `bd_id` $bd_id attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
 def AIE_GetStreamOp : AIE_Op<"get_stream", [HasParent<"CoreOp">]>,
                       Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
   let summary = "An op to read from a stream channel/port of a switchbox";
