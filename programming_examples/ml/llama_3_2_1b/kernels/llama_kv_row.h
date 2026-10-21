@@ -12,6 +12,8 @@
 
 #include <stdint.h>
 
+#include "llama_vec_fp.h"
+
 static inline int8_t llama_kv_row_round(float v) {
   int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
   if (r > 127)
@@ -19,18 +21,6 @@ static inline int8_t llama_kv_row_round(float v) {
   if (r < -128)
     r = -128;
   return (int8_t)r;
-}
-
-// Pure IEEE fp32 reciprocal (Peano AIE2P `/` is a HW approximation, Bug 1).
-static inline float llama_kv_row_recip(float a) {
-  int32_t bits = __builtin_bit_cast(int32_t, a);
-  bits = (int32_t)0x7EF477D5 - bits;
-  float x = __builtin_bit_cast(float, bits);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  return x;
 }
 
 // kvfp_packed is [k fp32[kHD] | v fp32[kHD] | cos bf16[kHD] | sin bf16[kHD]];
@@ -70,7 +60,7 @@ llama_kv_row_quant(const int8_t *restrict kvfp_packed, int8_t *restrict k_out,
   if (k_absmax < 1e-12f)
     k_absmax = 1e-12f;
   float ks = k_absmax * (1.0f / 127.0f);
-  float k_inv = llama_kv_row_recip(ks);
+  float k_inv = recip_rne(ks);
 
   // V's scale, the same way.
   float v_absmax = 0.0f;
@@ -82,7 +72,7 @@ llama_kv_row_quant(const int8_t *restrict kvfp_packed, int8_t *restrict k_out,
   if (v_absmax < 1e-12f)
     v_absmax = 1e-12f;
   float vs = v_absmax * (1.0f / 127.0f);
-  float v_inv = llama_kv_row_recip(vs);
+  float v_inv = recip_rne(vs);
 
   for (int i = 0; i < kHD; i++) {
     k_out[i] = llama_kv_row_round(k_rope[i] * k_inv);
