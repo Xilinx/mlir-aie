@@ -7,6 +7,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
+#include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
@@ -54,8 +55,9 @@ struct AIEObjectFifoAllocatePass
   DenseMap<StringAttr, SmallVector<RouteOp>> sourcedFlows;
   llvm::MapVector<ObjectFifoDmaEndpointOp, llvm::StringMap<PacketInfoAttr>>
       dispatchHeaders;
-  /// Shim ends that take another end's channel, by the end they take it from.
-  llvm::MapVector<Operation *, Operation *> shimChannelSharers;
+  /// Ends that take another end's channel, by the end they take it from:
+  /// shim ends never in flight together, and ends taking turns.
+  llvm::MapVector<Operation *, Operation *> channelSharers;
   DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -965,7 +967,7 @@ struct AIEObjectFifoAllocatePass
       // A core's stream port is named by the design, not drawn from the tile's
       // DMA channels; checkStreamPorts has claimed it.
       if (endpoint.getRouteBundle() == WireBundle::Core ||
-          shimChannelSharers.count(endpoint.getOperation()))
+          channelSharers.count(endpoint.getOperation()))
         continue;
 
       if (channel) {
@@ -1059,7 +1061,7 @@ struct AIEObjectFifoAllocatePass
       channelAssignments[endpoint.getOperation()] = channel;
       noteDemand(endpoint, channel);
     }
-    for (auto [sharer, owner] : shimChannelSharers)
+    for (auto [sharer, owner] : channelSharers)
       channelAssignments[sharer] = channelAssignments.lookup(owner);
     // Runtime tasks did not steer the choice, but they hold BDs while they
     // run, which the overcommit warning counts.
@@ -1109,10 +1111,121 @@ struct AIEObjectFifoAllocatePass
     }
     for (auto &members : spans.groups(fifos))
       for (unsigned sharer : llvm::drop_begin(members))
-        if (shimChannelSharers
+        if (channelSharers
                 .insert({candidates[sharer], candidates[members.front()]})
                 .second)
           return true;
+    return false;
+  }
+
+  /// The other end of the one route naming `endpoint`, when that route is a
+  /// circuit between two objectFIFO DMA endpoints.
+  ObjectFifoDmaEndpointOp circuitPeer(ObjectFifoDmaEndpointOp endpoint) {
+    ObjectFifoDmaEndpointOp peer;
+    StringRef name = endpoint.getSymName();
+    for (RouteOp route : device.getOps<RouteOp>()) {
+      SmallVector<StringRef> sources = llvm::to_vector(route.getSourceNames());
+      SmallVector<StringRef> dests =
+          llvm::to_vector(route.getDestinationNames());
+      bool source = llvm::is_contained(sources, name);
+      if (!source && !llvm::is_contained(dests, name))
+        continue;
+      if (peer || route.getPacket() || sources.size() != 1 || dests.size() != 1)
+        return {};
+      RouteEndpoint other = lookupEndpoint(source ? dests[0] : sources[0]);
+      peer = other ? dyn_cast<ObjectFifoDmaEndpointOp>(other.getOperation())
+                   : ObjectFifoDmaEndpointOp();
+      if (!peer)
+        return {};
+    }
+    return peer;
+  }
+
+  /// The one core endpoint working through `endpoint`'s pool from the other
+  /// side.
+  ObjectFifoCoreEndpointOp coreEndOf(ObjectFifoDmaEndpointOp endpoint) {
+    ObjectFifoCoreEndpointOp found;
+    for (auto core : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      if (core.getPool() != endpoint.getPool())
+        continue;
+      if (found || core.drains() == endpoint.drains())
+        return {};
+      found = core;
+    }
+    return found;
+  }
+
+  static bool canTakeTurns(ObjectFifoDmaEndpointOp endpoint) {
+    return endpoint && !endpoint.getChannelIndex() && !endpoint.getDispatch() &&
+           !endpoint.getPacketAttr() && !endpoint.getIterCount() &&
+           endpoint.getRepeat() == 1 && !endpoint.getPoolOp().getContiguous();
+  }
+
+  /// Gives `ends` one channel, the k-th object belonging to `ends[order[k]]`.
+  void takeTurns(MutableArrayRef<ObjectFifoDmaEndpointOp> ends,
+                 ArrayRef<unsigned> order) {
+    SmallVector<Attribute> names;
+    for (unsigned i : order)
+      names.push_back(FlatSymbolRefAttr::get(ends[i].getSymNameAttr()));
+    ArrayAttr turns = builder.getArrayAttr(names);
+    Operation *owner = ends[order.front()];
+    channelSharers.erase(owner);
+    for (ObjectFifoDmaEndpointOp end : ends) {
+      end.setTurnsAttr(turns);
+      if (end != owner)
+        channelSharers[end] = owner;
+    }
+  }
+
+  /// Gives one more end of `exhausted` the channel of others whose objects
+  /// the same core needs in a fixed order, read off its program, so only as
+  /// many ends share as the tile needs. A circuit carries one stream, so the
+  /// ends at the routes' other ends take the same turns.
+  bool planTurnSharing(TileLike exhausted, DMAChannelDir dir) {
+    SmallVector<ObjectFifoDmaEndpointOp> candidates;
+    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
+      if (sameTile(dma.getTile(), exhausted->getResult(0)) &&
+          dma.getRouteDirection() == dir && coreEndOf(dma) &&
+          canTakeTurns(dma.getTurns() ? turnEndpoints(dma).front() : dma) &&
+          canTakeTurns(circuitPeer(dma)))
+        candidates.push_back(dma);
+    llvm::stable_sort(candidates, [&](Operation *a, Operation *b) {
+      return structuralRank.lookup(a) < structuralRank.lookup(b);
+    });
+    auto groupOf = [](ObjectFifoDmaEndpointOp end) {
+      SmallVector<ObjectFifoDmaEndpointOp> group = turnEndpoints(end);
+      return group.empty() ? SmallVector<ObjectFifoDmaEndpointOp>{end} : group;
+    };
+    for (auto [i, a] : llvm::enumerate(candidates)) {
+      for (ObjectFifoDmaEndpointOp b : llvm::drop_begin(candidates, i + 1)) {
+        SmallVector<ObjectFifoDmaEndpointOp> group = groupOf(a);
+        if (llvm::is_contained(group, b))
+          continue;
+        llvm::append_range(group, groupOf(b));
+        SmallVector<ObjectFifoCoreEndpointOp> cores;
+        SmallVector<ObjectFifoDmaEndpointOp> peers;
+        SmallVector<int64_t> depths;
+        for (ObjectFifoDmaEndpointOp end : group) {
+          cores.push_back(coreEndOf(end));
+          peers.push_back(circuitPeer(end));
+          depths.push_back(end.getPoolOp().getDepth());
+        }
+        if (llvm::any_of(peers, [&](ObjectFifoDmaEndpointOp peer) {
+              return !sameTile(peer.getTile(), peers.front().getTile()) ||
+                     llvm::any_of(turnEndpoints(peer), [&](auto other) {
+                       return !llvm::is_contained(peers, other);
+                     });
+            }))
+          continue;
+        CoreTurns turns;
+        std::string reason;
+        if (failed(turns.read(cores, reason)) || !turns.keepsUp(depths))
+          continue;
+        takeTurns(group, turns.turns());
+        takeTurns(peers, turns.turns());
+        return true;
+      }
+    }
     return false;
   }
 
@@ -1122,7 +1235,9 @@ struct AIEObjectFifoAllocatePass
   /// with one id apart wherever their destinations differ.
   LogicalResult headShimSharingRoutes() {
     DenseMap<Operation *, Operation *> channelOf;
-    for (auto [sharer, owner] : shimChannelSharers) {
+    for (auto [sharer, owner] : channelSharers) {
+      if (!tileOf(cast<RouteEndpoint>(owner)).isShimTile())
+        continue;
       channelOf[sharer] = owner;
       channelOf[owner] = owner;
     }
@@ -1316,6 +1431,7 @@ struct AIEObjectFifoAllocatePass
   }
 
   LogicalResult lowerFlows() {
+    DenseSet<std::tuple<Value, int, Value, int>> circuits;
     for (RouteOp flow : device.getOps<RouteOp>())
       for (auto name : flow.getSources().getAsRange<FlatSymbolRefAttr>())
         sourcedFlows[name.getAttr()].push_back(flow);
@@ -1346,6 +1462,12 @@ struct AIEObjectFifoAllocatePass
       builder.setInsertionPoint(flow);
       for (StringRef destName : flow.getDestinationNames()) {
         auto dest = lookupEndpoint(destName);
+        // Ends taking turns share one circuit for all their routes.
+        if (!circuits
+                 .insert({source.getTile(), sourceChannel, dest.getTile(),
+                          channelOf(dest)})
+                 .second)
+          continue;
         FlowOp::create(builder, flow.getLoc(), source.getTile(),
                        source.getRouteBundle(), sourceChannel, dest.getTile(),
                        dest.getRouteBundle(), channelOf(dest));
@@ -1775,17 +1897,20 @@ struct AIEObjectFifoAllocatePass
         allocated = planAllocation(demandOrdered, tried);
       }
     }
-    // Out of shim channels, ends never in flight together can take turns on
-    // one, a shim tile and direction at a time.
+    // Out of channels, ends that never need theirs at once take turns on one,
+    // a tile and direction at a time: on a shim tile, ends never in flight
+    // together; elsewhere, ends whose objects one core needs in a fixed order.
     while (failed(allocated) && channelFailure &&
-           tileOf(channelFailure).isShimTile() &&
-           planShimSharing(tileOf(channelFailure),
-                           channelFailure.getRouteDirection())) {
+           (tileOf(channelFailure).isShimTile()
+                ? planShimSharing(tileOf(channelFailure),
+                                  channelFailure.getRouteDirection())
+                : planTurnSharing(tileOf(channelFailure),
+                                  channelFailure.getRouteDirection()))) {
       localPools.clear();
       tried.clear();
       allocated = planAllocation(pools, tried);
     }
-    if (succeeded(allocated) && !shimChannelSharers.empty() &&
+    if (succeeded(allocated) && !channelSharers.empty() &&
         failed(headShimSharingRoutes()))
       return signalPassFailure();
     if (failed(allocated)) {

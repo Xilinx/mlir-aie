@@ -1162,9 +1162,36 @@ int64_t ObjectFifoDmaEndpointOp::getDispatchPasses() {
   return std::lcm(depth, static_cast<int64_t>(turns->size())) / depth;
 }
 
+SmallVector<ObjectFifoDmaEndpointOp>
+xilinx::AIE::turnEndpoints(ObjectFifoDmaEndpointOp endpoint) {
+  SmallVector<ObjectFifoDmaEndpointOp> ends;
+  if (std::optional<ArrayAttr> turns = endpoint.getTurns())
+    for (auto name : turns->getAsRange<FlatSymbolRefAttr>())
+      if (auto end =
+              SymbolTable::lookupNearestSymbolFrom<ObjectFifoDmaEndpointOp>(
+                  endpoint, name);
+          end && !llvm::is_contained(ends, end))
+        ends.push_back(end);
+  return ends;
+}
+
 int64_t ObjectFifoDmaEndpointOp::getNumBDs() {
-  return getNumDescriptors() * (repeatsInHardware() ? 1 : getRepeat()) *
-         getDispatchPasses();
+  SmallVector<ObjectFifoDmaEndpointOp> ends = turnEndpoints(*this);
+  if (ends.empty())
+    return getNumDescriptors() * (repeatsInHardware() ? 1 : getRepeat()) *
+           getDispatchPasses();
+  if (ends.front() != *this)
+    return 0;
+  // Unrolled until every endpoint is back at its first descriptor.
+  ArrayRef<Attribute> turns = getTurnsAttr().getValue();
+  int64_t periods = 1;
+  for (ObjectFifoDmaEndpointOp end : ends) {
+    int64_t appearances =
+        llvm::count(turns, FlatSymbolRefAttr::get(end.getSymNameAttr()));
+    int64_t count = std::max<int64_t>(end.getNumDescriptors(), 1);
+    periods = std::lcm(periods, count / std::gcd(count, appearances));
+  }
+  return periods * static_cast<int64_t>(turns.size());
 }
 
 DMAChannelDir ObjectFifoDmaEndpointOp::getRouteDirection() {
@@ -1217,6 +1244,25 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
     for (auto header : headers->getAsRange<PacketInfoAttr>())
       if (failed(verifyAssignedPacket(*this, header, "dispatchPackets")))
         return failure();
+  }
+  if (std::optional<ArrayAttr> turns = getTurns()) {
+    if (!llvm::is_contained(*turns, FlatSymbolRefAttr::get(getSymNameAttr())))
+      return emitOpError("takes no turn of its own in `turns`");
+    for (auto name : turns->getAsRange<FlatSymbolRefAttr>())
+      if (!SymbolTable::lookupNearestSymbolFrom<ObjectFifoDmaEndpointOp>(*this,
+                                                                         name))
+        return emitOpError("turns names ")
+               << name << ", which is no objectfifo.dma_endpoint";
+    if (getDispatch() || getPacketAttr() || getIterCount() || getRepeat() > 1)
+      return emitOpError("taking turns on a channel, it cannot also dispatch, "
+                         "carry a header, stop after iterCount or repeat");
+    for (ObjectFifoDmaEndpointOp end : turnEndpoints(*this))
+      if (end.getTile() != getTile() || end.getRole() != getRole() ||
+          end.getTurnsAttr() != getTurnsAttr() ||
+          end.getChannelIndexAttr() != getChannelIndexAttr())
+        return emitOpError("takes turns with ")
+               << end.getSymNameAttr()
+               << ", which is not on this tile and channel with the same turns";
   }
 
   std::optional<ArrayAttr> segmentNames = getSegments();

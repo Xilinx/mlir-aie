@@ -2969,12 +2969,22 @@ def AIE_ObjectFifoDmaEndpointOp
     fixed order. `--aie-objectfifo-allocate` records the headers in
     `dispatchPackets`, one per entry of `dispatch`.
 
+    Endpoints with `turns` share one channel: its k-th object belongs to the
+    endpoint `turns[k mod n]`, and each endpoint keeps its own pool and locks.
+    Every endpoint named lists the same `turns`, on one tile, one way. The
+    order tells their objects apart, so a circuit route carries them, and the
+    endpoints at its other end take the same turns.
+    `--aie-objectfifo-allocate` shares channels this way when a tile has too
+    few, in the order the core working through the pools needs their objects.
+
     Example:
     ```
       aie.objectfifo.dma_endpoint @out(%tile) drains @pool {channelIndex = 0}
       aie.objectfifo.dma_endpoint @hub(%mem) drains @y {dispatch = [@a_in, @b_in]}
       aie.route from @hub to [@a_in] {packet = #aie.packet_info<>}
       aie.route from @hub to [@b_in] {packet = #aie.packet_info<>}
+      aie.objectfifo.dma_endpoint @a_in(%core) fills @a {turns = [@a_in, @a_in, @b_in]}
+      aie.objectfifo.dma_endpoint @b_in(%core) fills @b {turns = [@a_in, @a_in, @b_in]}
     ```
   }];
 
@@ -2993,7 +3003,8 @@ def AIE_ObjectFifoDmaEndpointOp
       // ObjectFifo name used by runtime records.
       OptionalAttr<StrAttr>:$fifoName,
       OptionalAttr<FlatSymbolRefArrayAttr>:$dispatch,
-      OptionalAttr<PacketInfoArrayAttr>:$dispatchPackets);
+      OptionalAttr<PacketInfoArrayAttr>:$dispatchPackets,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$turns);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict
@@ -3029,7 +3040,8 @@ def AIE_ObjectFifoDmaEndpointOp
     int64_t getDispatchPasses();
     /// Buffer descriptors `--aie-objectfifo-lower-dmas` emits for this
     /// endpoint: the pass's descriptors, copied per repeat unless the
-    /// repeat runs in hardware, for every dispatch pass.
+    /// repeat runs in hardware, for every dispatch pass. The one chain of
+    /// endpoints taking turns is counted at the first one `turns` names.
     int64_t getNumBDs();
   }];
 }

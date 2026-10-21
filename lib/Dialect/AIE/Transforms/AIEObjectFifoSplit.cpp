@@ -296,7 +296,7 @@ struct AIEObjectFifoSplitPass
         iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()), /*dispatch=*/ArrayAttr(),
-        /*dispatchPackets=*/ArrayAttr());
+        /*dispatchPackets=*/ArrayAttr(), /*turns=*/ArrayAttr());
   }
 
   /// An end with no pool behind it: a shim whose transfers the runtime issues,

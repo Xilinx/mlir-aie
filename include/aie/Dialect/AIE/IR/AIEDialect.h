@@ -425,6 +425,11 @@ struct StreamWindowStep {
 
 namespace xilinx::AIE {
 
+// The endpoints `end`'s `turns` names, each once, in order of first turn;
+// none when it takes no turns.
+llvm::SmallVector<ObjectFifoDmaEndpointOp>
+turnEndpoints(ObjectFifoDmaEndpointOp end);
+
 // Whether packets leave `master` of `tile` with their header: not into a DMA,
 // nor down the shim's South to one, unless `keep` says.
 bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep);

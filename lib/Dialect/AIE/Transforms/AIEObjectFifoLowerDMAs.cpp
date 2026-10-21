@@ -244,6 +244,71 @@ struct AIEObjectFifoLowerDMAsPass
     NextBDOp::create(builder, loc, successor);
   }
 
+  /// A `dma_start` of `channel` on the endpoint's tile, chained after the
+  /// tile's others; returns the first BD's block and the program's end block.
+  std::pair<Block *, Block *> startChain(ObjectFifoDmaEndpointOp endpoint,
+                                         int channel, int taskCount) {
+    Location loc = endpoint.getLoc();
+    DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
+    Block *endBlock = findEndOpBlock(program.getDmaBody());
+    Block *lastDmaBlock = endBlock->getSinglePredecessor();
+    Block *dmaBlock = builder.createBlock(endBlock);
+    Block *bdBlock = builder.createBlock(endBlock);
+
+    builder.setInsertionPointToStart(dmaBlock);
+    DMAStartOp::create(builder, loc, endpoint.getRouteDirection(), channel,
+                       taskCount, endpoint.getPadValue(),
+                       /*out_of_order=*/false, bdBlock, endBlock);
+    if (lastDmaBlock) {
+      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+    }
+    return {bdBlock, endBlock};
+  }
+
+  /// Endpoints taking turns on one channel share one chain: the k-th BD moves
+  /// the next object of the endpoint `turns` names k-th, through its own pool.
+  LogicalResult lowerTurns(ObjectFifoDmaEndpointOp first, int channel) {
+    SmallVector<ObjectFifoDmaEndpointOp> ends = turnEndpoints(first);
+    SmallVector<SmallVector<Descriptor>> descriptors;
+    for (ObjectFifoDmaEndpointOp end : ends) {
+      descriptors.push_back(
+          descriptorsFor(end, buffersOf(end.getPoolOp()), end.drains()));
+      if (static_cast<int64_t>(descriptors.back().size()) !=
+              end.getNumDescriptors() ||
+          descriptors.back().empty())
+        return end.emitOpError("takes turns, but lowers to ")
+               << descriptors.back().size() << " descriptors per pass for "
+               << end.getNumDescriptors();
+    }
+    SmallVector<unsigned> turns;
+    for (auto name : first.getTurnsAttr().getAsRange<FlatSymbolRefAttr>())
+      turns.push_back(llvm::find_if(ends,
+                                    [&](ObjectFifoDmaEndpointOp end) {
+                                      return end.getSymNameAttr() ==
+                                             name.getAttr();
+                                    }) -
+                      ends.begin());
+
+    auto [bdBlock, endBlock] = startChain(first, channel, /*taskCount=*/0);
+    bool binaryLocks = !device.getTargetModel().hasProperty(
+        AIETargetModel::UsesSemaphoreLocks);
+    SmallVector<size_t> next(ends.size(), 0);
+    int64_t total = first.getNumBDs();
+    Block *current = bdBlock;
+    for (int64_t k = 0; k < total; k++) {
+      unsigned i = turns[k % turns.size()];
+      Block *successor =
+          k + 1 < total ? builder.createBlock(endBlock) : bdBlock;
+      builder.setInsertionPointToStart(current);
+      emitDescriptor(ends[i], ends[i].getPoolOp(), descriptors[i][next[i]],
+                     PacketInfoAttr(), successor, binaryLocks,
+                     ends[i].drains());
+      next[i] = (next[i] + 1) % descriptors[i].size();
+      current = successor;
+    }
+    return success();
+  }
+
   LogicalResult lowerEndpoint(ObjectFifoDmaEndpointOp endpoint, int channel) {
     bool drains = endpoint.drains();
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
@@ -291,20 +356,7 @@ struct AIEObjectFifoLowerDMAsPass
           "dispatches from a contiguous pool, which has no per-object BDs");
     int64_t depth = pool.getDepth();
 
-    DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
-    Block *endBlock = findEndOpBlock(program.getDmaBody());
-    Block *lastDmaBlock = endBlock->getSinglePredecessor();
-    Block *dmaBlock = builder.createBlock(endBlock);
-    Block *bdBlock = builder.createBlock(endBlock);
-
-    builder.setInsertionPointToStart(dmaBlock);
-    DMAStartOp::create(builder, loc, endpoint.getRouteDirection(), channel,
-                       taskCount, endpoint.getPadValue(),
-                       /*out_of_order=*/false, bdBlock, endBlock);
-    if (lastDmaBlock) {
-      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
-    }
-
+    auto [bdBlock, endBlock] = startChain(endpoint, channel, taskCount);
     bool binaryLocks = !device.getTargetModel().hasProperty(
         AIETargetModel::UsesSemaphoreLocks);
     size_t total = descriptors.size() * copies * passes;
@@ -364,10 +416,14 @@ struct AIEObjectFifoLowerDMAsPass
         endpoint.emitOpError("has no channel; run --aie-objectfifo-allocate");
         return signalPassFailure();
       }
-      if (failed(lowerEndpoint(endpoint, *channel)))
+      SmallVector<ObjectFifoDmaEndpointOp> turns = turnEndpoints(endpoint);
+      if (turns.empty() ? failed(lowerEndpoint(endpoint, *channel))
+                        : turns.front() == endpoint &&
+                              failed(lowerTurns(endpoint, *channel)))
         return signalPassFailure();
-      endpoint.erase();
     }
+    for (ObjectFifoDmaEndpointOp endpoint : endpoints)
+      endpoint.erase();
 
     // Nothing to program at the far end of these; the routes they asked for
     // have been drawn.

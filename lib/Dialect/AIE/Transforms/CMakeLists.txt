@@ -47,6 +47,7 @@ add_mlir_dialect_library(
   AIEInsertTraceFlows.cpp
   AIEPacketIdSpace.cpp
   AIEShimSharing.cpp
+  AIEChannelTurns.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 

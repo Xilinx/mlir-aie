@@ -196,6 +196,22 @@ aie.route from @hub to [@a_in] {packet = #aie.packet_info<>}
 aie.route from @hub to [@b_in] {packet = #aie.packet_info<>}
 ```
 
+DMA endpoints with `turns` share one channel the other way around: its k-th
+object belongs to the endpoint `turns[k mod n]`, each endpoint keeping its own
+pool and locks. Every endpoint named lists the same `turns`, on one tile, one
+way. The order tells their objects apart, so one circuit route carries them
+all, and the endpoints at its other end take the same turns. Allocation
+writes `turns` itself when a tile runs out of channels (below).
+
+```mlir
+aie.objectfifo.dma_endpoint @b_out(%mem) drains @mb {turns = [@b_out, @c_out]}
+aie.objectfifo.dma_endpoint @c_out(%mem) drains @mc {turns = [@b_out, @c_out]}
+aie.objectfifo.dma_endpoint @b_in(%core) fills @b {turns = [@b_in, @c_in]}
+aie.objectfifo.dma_endpoint @c_in(%core) fills @c {turns = [@b_in, @c_in]}
+aie.route from @b_out to [@b_in]
+aie.route from @c_out to [@c_in]
+```
+
 A flow carrying a `packet` header becomes an `aie.packet_flow` and shares the
 stream; circuit flows reserve theirs. Both kinds coexist in one device. The
 header is the same `#aie.packet_info` the endpoints and buffer descriptors
@@ -461,6 +477,23 @@ router keeps flows with one id apart wherever their destinations differ. Each
 end keeps its own `aie.shim_dma_allocation`, so every transfer stamps its own
 header. A design that fits without sharing is lowered exactly as before.
 
+When a compute or mem tile runs out of channels, DMA endpoints whose objects
+one core needs in a fixed order take turns on one channel instead, in that
+order. The core's period is the innermost loop around every acquire and
+release on their pools, with the loops of static trip count inside it
+unrolled; each acquire needs the objects it does not already hold, and the
+order of a draining core's needs (or of a filling core's releases) once its
+holdings settle is `turns`. An end used under a branch, or in a loop of
+unknown trip count inside the period, has no fixed order and never shares.
+Each end must be one circuit route from another DMA endpoint, and those
+endpoints, on one tile, take the same turns. The turns are taken only if a
+chain moving objects in their order forever, through the pools' depths, never
+leaves the channel and the core both waiting: a window over one pool beside
+a one-deep pool would, as the chain's next object of the second waits for a
+slot the core frees only after it has the window's last. Only as many ends
+share as the tile needs, and a design that fits without sharing is lowered
+exactly as before.
+
 `--aie-place-tiles` counts shim channels by the same rule (`ShimTransferSpans`):
 logical shim tiles are placed one channel per end as before, and only when no
 shim tile has room does it count the ends that can take turns once, so a pack
@@ -479,6 +512,10 @@ for each buffer b in pool.buffers:
     dma_bd(b, s.offset, s.size)
     release( drains ? s.produceLock : s.consumeLock )
 ```
+
+Endpoints taking turns lower to one chain: the k-th BD moves the next object
+of the endpoint `turns` names k-th, through its own pool's locks, unrolled
+until every endpoint is back at its first object.
 
 ```mlir
 %mem_0_2 = aie.mem(%tile_0_2) {
@@ -564,6 +601,13 @@ Links walking the whole stream (windows):
 - the link point is a MemTile, and the output has no repeat or iteration count
 - the stream's objects fit one lock's count (63), and its outputs one MemTile
   channel's descriptors (24)
+
+Endpoints taking turns:
+
+- `turns` names the endpoint itself, and every name is a DMA endpoint on the
+  same tile and channel, one way, listing the same `turns`
+- an endpoint taking turns does not also dispatch, carry a header, stop after
+  an `iterCount` or repeat its objects
 
 ### By `--aie-objectfifo-verify`
 
