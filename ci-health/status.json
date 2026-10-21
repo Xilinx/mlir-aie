@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-21T13:01:03+00:00",
+ "generated_at": "2026-10-21T18:55:58+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 411,
+   "runs": 416,
    "main": {
     "passed": 11,
     "failed": 0,
@@ -245,22 +245,22 @@
     }
    ],
    "pull_requests": {
-    "passed": 97,
-    "failed": 60,
-    "rate": 0.618
+    "passed": 92,
+    "failed": 61,
+    "rate": 0.601
    },
    "merge_queue": {
-    "passed": 47,
+    "passed": 46,
     "failed": 10,
-    "rate": 0.825
+    "rate": 0.821
    },
    "flaky": {
-    "commits": 396,
-    "flaky": 25,
-    "rate": 0.063
+    "commits": 398,
+    "flaky": 26,
+    "rate": 0.065
    },
-   "minutes_median": 54.9,
-   "minutes_p90": 119.8,
+   "minutes_median": 52.2,
+   "minutes_p90": 114.2,
    "queued_median": 0.0
   },
   {
@@ -269,7 +269,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 411,
+   "runs": 416,
    "main": {
     "passed": 12,
     "failed": 2,
@@ -480,17 +480,17 @@
     }
    ],
    "pull_requests": {
-    "passed": 107,
-    "failed": 74,
-    "rate": 0.591
+    "passed": 109,
+    "failed": 69,
+    "rate": 0.612
    },
    "merge_queue": {
     "passed": 55,
-    "failed": 4,
-    "rate": 0.932
+    "failed": 3,
+    "rate": 0.948
    },
    "flaky": {
-    "commits": 396,
+    "commits": 398,
     "flaky": 21,
     "rate": 0.053
    },
@@ -504,38 +504,50 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 460,
+   "runs": 464,
    "main": {
     "passed": 60,
     "failed": 2,
     "rate": 0.968
    },
    "latest_main": {
-    "id": 39579544946,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39579544946",
+    "id": 39641569196,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569196",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T09:46:25Z",
-    "run_started_at": "2026-10-21T09:46:25Z",
-    "updated_at": "2026-10-21T10:10:47Z",
-    "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
-    "title": "Remove AMD email addresses (#3944)",
+    "created_at": "2026-10-21T17:11:30Z",
+    "run_started_at": "2026-10-21T17:11:30Z",
+    "updated_at": "2026-10-21T17:35:33Z",
+    "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
+    "title": "[hsaco] Add aie4 as a supported arch (#3938)",
     "attempt": 1
    },
    "newest_main": {
-    "id": 39579544946,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39579544946",
+    "id": 39641569196,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569196",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T09:46:25Z",
-    "run_started_at": "2026-10-21T09:46:25Z",
-    "updated_at": "2026-10-21T10:10:47Z",
-    "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
-    "title": "Remove AMD email addresses (#3944)",
+    "created_at": "2026-10-21T17:11:30Z",
+    "run_started_at": "2026-10-21T17:11:30Z",
+    "updated_at": "2026-10-21T17:35:33Z",
+    "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
+    "title": "[hsaco] Add aie4 as a supported arch (#3938)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 39641569196,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569196",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T17:11:30Z",
+     "run_started_at": "2026-10-21T17:11:30Z",
+     "updated_at": "2026-10-21T17:35:33Z",
+     "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
+     "title": "[hsaco] Add aie4 as a supported arch (#3938)",
+     "attempt": 1
+    },
     {
      "id": 39579544946,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39579544946",
@@ -1003,34 +1015,22 @@
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Compile across platforms",
      "attempt": 1
-    },
-    {
-     "id": 38096872445,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38096872445",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-10T23:59:13Z",
-     "run_started_at": "2026-10-10T23:59:13Z",
-     "updated_at": "2026-10-11T00:23:05Z",
-     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
-     "title": "[AIEX] Support the iteration attribute in dma_configure_task [MED] (#\u2026",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 211,
-    "failed": 40,
-    "rate": 0.841
+    "passed": 220,
+    "failed": 39,
+    "rate": 0.849
    },
    "merge_queue": {
-    "passed": 57,
+    "passed": 56,
     "failed": 1,
-    "rate": 0.983
+    "rate": 0.982
    },
    "flaky": {
-    "commits": 396,
-    "flaky": 30,
-    "rate": 0.076
+    "commits": 400,
+    "flaky": 31,
+    "rate": 0.077
    },
    "minutes_median": 9.9,
    "minutes_p90": 24.1,
@@ -1042,38 +1042,50 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 460,
+   "runs": 464,
    "main": {
-    "passed": 63,
+    "passed": 62,
     "failed": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 39579544908,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39579544908",
+    "id": 39641569223,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569223",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T09:46:25Z",
-    "run_started_at": "2026-10-21T09:46:25Z",
-    "updated_at": "2026-10-21T10:05:33Z",
-    "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
-    "title": "Remove AMD email addresses (#3944)",
+    "created_at": "2026-10-21T17:11:30Z",
+    "run_started_at": "2026-10-21T17:11:30Z",
+    "updated_at": "2026-10-21T17:32:08Z",
+    "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
+    "title": "[hsaco] Add aie4 as a supported arch (#3938)",
     "attempt": 1
    },
    "newest_main": {
-    "id": 39579544908,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39579544908",
+    "id": 39641569223,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569223",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T09:46:25Z",
-    "run_started_at": "2026-10-21T09:46:25Z",
-    "updated_at": "2026-10-21T10:05:33Z",
-    "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
-    "title": "Remove AMD email addresses (#3944)",
+    "created_at": "2026-10-21T17:11:30Z",
+    "run_started_at": "2026-10-21T17:11:30Z",
+    "updated_at": "2026-10-21T17:32:08Z",
+    "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
+    "title": "[hsaco] Add aie4 as a supported arch (#3938)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 39641569223,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569223",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T17:11:30Z",
+     "run_started_at": "2026-10-21T17:11:30Z",
+     "updated_at": "2026-10-21T17:32:08Z",
+     "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
+     "title": "[hsaco] Add aie4 as a supported arch (#3938)",
+     "attempt": 1
+    },
     {
      "id": 39579544908,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39579544908",
@@ -1541,37 +1553,25 @@
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Build and Test across Python versions",
      "attempt": 1
-    },
-    {
-     "id": 38096872414,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38096872414",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-10T23:59:13Z",
-     "run_started_at": "2026-10-10T23:59:13Z",
-     "updated_at": "2026-10-11T00:17:11Z",
-     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
-     "title": "[AIEX] Support the iteration attribute in dma_configure_task [MED] (#\u2026",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 218,
-    "failed": 44,
-    "rate": 0.832
+    "passed": 225,
+    "failed": 43,
+    "rate": 0.84
    },
    "merge_queue": {
-    "passed": 59,
+    "passed": 58,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 396,
+    "commits": 400,
     "flaky": 31,
-    "rate": 0.078
+    "rate": 0.077
    },
    "minutes_median": 9.4,
-   "minutes_p90": 18.8,
+   "minutes_p90": 18.9,
    "queued_median": 0.0
   },
   {
@@ -1580,7 +1580,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 411,
+   "runs": 417,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -1782,31 +1782,31 @@
     }
    ],
    "pull_requests": {
-    "passed": 194,
-    "failed": 97,
-    "rate": 0.667
+    "passed": 197,
+    "failed": 101,
+    "rate": 0.661
    },
    "merge_queue": {
-    "passed": 59,
+    "passed": 58,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 396,
-    "flaky": 33,
-    "rate": 0.083
+    "commits": 400,
+    "flaky": 32,
+    "rate": 0.08
    },
    "minutes_median": 4.1,
-   "minutes_p90": 7.2,
+   "minutes_p90": 7.3,
    "queued_median": 0.0
   }
  ],
  "merge_time": {
-  "merged": 52,
-  "hours_median": 24.7,
+  "merged": 51,
+  "hours_median": 25.5,
   "hours_p90": 615.4,
-  "open": 69,
-  "open_drafts": 26,
+  "open": 72,
+  "open_drafts": 24,
   "open_over_30_days": 48
  },
  "workflows": [
@@ -2749,13 +2749,25 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
-     "id": 39599266607,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39599266607",
+     "id": 39633241554,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39633241554",
      "status": "in_progress",
      "conclusion": null,
+     "created_at": "2026-10-21T16:16:12Z",
+     "run_started_at": "2026-10-21T16:16:12Z",
+     "updated_at": "2026-10-21T16:17:03Z",
+     "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 39599266607,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39599266607",
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-21T12:23:54Z",
      "run_started_at": "2026-10-21T12:23:54Z",
-     "updated_at": "2026-10-21T12:24:39Z",
+     "updated_at": "2026-10-21T14:34:54Z",
      "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
      "title": "MLIR Distro",
      "attempt": 1
@@ -2876,18 +2888,6 @@
      "created_at": "2026-10-19T20:16:27Z",
      "run_started_at": "2026-10-19T20:16:27Z",
      "updated_at": "2026-10-20T00:53:19Z",
-     "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 39284391204,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39284391204",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-19T16:18:18Z",
-     "run_started_at": "2026-10-19T16:18:18Z",
-     "updated_at": "2026-10-19T19:43:22Z",
      "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
      "title": "MLIR Distro",
      "attempt": 1
