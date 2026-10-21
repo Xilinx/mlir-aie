@@ -308,39 +308,43 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
 _FLOATS = {np.dtype(t) for t in (bfloat16, np.float16, np.float32, np.float64)}
 
 
-def _reference_outputs(fn, inputs, scalars, widen: bool) -> list[np.ndarray]:
+def _reference_outputs(fn, reference, inputs, scalars, widen: bool) -> list[np.ndarray]:
     wide = [
         a.astype(np.float64) if widen and a.dtype in _FLOATS else a
         for a in map(np.asarray, inputs)
     ]
-    result = fn.contract_for().reference(*fn._reference_args(wide, tuple(scalars)))
+    result = reference(*fn._reference_args(wide, tuple(scalars)))
     multiple = len(fn.contract.out_indices) > 1
     return [np.asarray(r) for r in (result if multiple else (result,))]
 
 
 def error_report(fn, got, inputs, *, calls: int, scalars=()) -> list[dict]:
-    """Error stats of each floating output against the contract's reference.
+    """Error stats of each floating output against the function the kernel computes.
 
-    The reference is run on the inputs widened to float64. ``reference`` in
-    each entry names what its values fit: ``float64``, or ``float32`` when
-    every value is a float32 (a reference that computes in float32, or an
-    exact result). A reference that cannot take float64 inputs, or returns
-    other shapes for them, runs on the inputs as given and is named by the
-    dtype it returns. Where the reference models the kernel (a LUT), this
-    measures against that model; ``reference_max_ulp`` is how far the
-    reference ``judge`` uses (the contract's, on the inputs as given, in the
-    output dtype) is from the one measured against. ``got`` is what
-    ``judge`` takes, normalized the same way: decoded, per call, padding
+    That is the contract's ``true_function`` where the reference models the
+    kernel (a LUT build's), else the reference, run on the inputs widened to
+    float64. ``reference`` in each entry names what its values fit:
+    ``float64``, or ``float32`` when every value is a float32 (a reference
+    that computes in float32, or an exact result). A reference that cannot
+    take float64 inputs, or returns other shapes for them, runs on the inputs
+    as given and is named by the dtype it returns. ``modeled`` says whether
+    ``judge`` holds this build to a model of the kernel instead, and
+    ``reference_max_ulp`` is how far that judged reference (on the inputs as
+    given, in the output dtype) is from the one measured against. ``got`` is
+    what ``judge`` takes, normalized the same way: decoded, per call, padding
     trimmed.
     """
     c = fn.contract
-    plain = _reference_outputs(fn, inputs, scalars, widen=False)
+    judged_by = fn.contract_for().reference
+    function = judged_by if c.true_function is None else c.true_function
+    plain = _reference_outputs(fn, judged_by, inputs, scalars, widen=False)
+    as_given = _reference_outputs(fn, function, inputs, scalars, widen=False)
     try:
-        refs = _reference_outputs(fn, inputs, scalars, widen=True)
-        if [r.shape for r in refs] != [r.shape for r in plain]:
-            refs = plain
+        refs = _reference_outputs(fn, function, inputs, scalars, widen=True)
+        if [r.shape for r in refs] != [r.shape for r in as_given]:
+            refs = as_given
     except Exception:  # noqa: BLE001 - a reference written for its own dtype
-        refs = plain
+        refs = as_given
     actuals = got if len(c.out_indices) > 1 else (got,)
     entries = []
     for k, (i, actual, ref, own) in enumerate(zip(c.out_indices, actuals, refs, plain)):
@@ -372,6 +376,7 @@ def error_report(fn, got, inputs, *, calls: int, scalars=()) -> list[dict]:
                 output=k,
                 arg=i,
                 reference=precision,
+                modeled=judged_by is not function,
                 reference_max_ulp=judged.max_ulp,
                 **stats.as_dict(),
             )

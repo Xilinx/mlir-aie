@@ -50,6 +50,7 @@ from ml_dtypes import bfloat16, finfo
 # device test runs (test/python/npu/kernel_cases.py), so a kernel is either
 # in that table or named in NOT_JUDGED with a reason.
 sys.path.insert(0, str(Path(__file__).parent / "npu"))
+from cases import error_report  # noqa: E402
 from kernel_cases import CASES as DEVICE_CASES  # noqa: E402
 
 
@@ -1619,6 +1620,17 @@ def test_attention_i8_refuses_scalars_the_kernel_does_not_take(scalars):
     ins = fn.contract.sample(np.random.default_rng(0), 1)
     with pytest.raises(ValueError, match="int8 and prob_shift"):
         fn.contract.reference(*ins, *scalars)
+
+
+@pytest.mark.parametrize("use_lut", [False, True])
+def test_error_report_measures_a_lut_build_against_the_function(use_lut):
+    """A LUT build that matches its model exactly is still off the true tanh."""
+    fn = kernels.tanh(use_lut=use_lut)
+    inputs = kd.sample_inputs(fn, calls=4, rng=np.random.default_rng(0))
+    model = fn.expected(inputs)
+    (entry,) = error_report(fn, model, inputs, calls=4)
+    assert entry["modeled"] == use_lut
+    assert (entry["max_ulp"] > 0) == use_lut
 
 
 def test_input_limit_is_bounded_by_the_accumulator_only():

@@ -320,6 +320,7 @@ def _unary_lut_contract(
         parameter_bindings=((2, count),) if count else (),
         reference=None if per_build else ref,
         tolerance=None if per_build else tolerance,
+        true_function=ref if per_build else None,
         per_build=tuple(per_build),
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
         setup=setup,
@@ -786,6 +787,7 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, In, Out),
+            true_function=swiglu_ref,
             per_build=tuple(
                 (
                     (build, swiglu_table_ref, _LUT_MODEL_TOLERANCE)
