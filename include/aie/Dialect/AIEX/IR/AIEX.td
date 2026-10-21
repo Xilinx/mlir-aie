@@ -2065,8 +2065,10 @@ def AIEX_WaitScratchpadParametersOp
     parameters, then sets (not increments) the lock to 1.
 
     Each read of a core that waits must come after a wait, and the core must
-    keep its sync preamble. Read right after the wait: a later dispatch may
-    rewrite the values while the core is still working.
+    keep its sync preamble. A read in a loop needs a wait inside the outermost
+    loop around it, since a wait before that loop passes only once. Read
+    right after the wait: a later dispatch may rewrite the values while the
+    core is still working.
 
     Example:
     ```mlir

@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dominance.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/MapVector.h"
@@ -512,8 +513,9 @@ struct AIELowerScratchpadParametersPass
   // acquire it: in place of each aiex.wait_scratchpad_parameters if the core
   // has any, else once at the top of the core body. Appends the lock values
   // created (one per qualifying core, in walk order) to `syncLocks`. Fails if
-  // a core with waits reads a parameter no wait comes before, or if a core
-  // without the preamble waits.
+  // a core with waits reads a parameter no wait dominates, or no wait inside
+  // the outermost loop around the read, or if a core without the preamble
+  // waits.
   LogicalResult emitCorePreambles(DeviceOp device, OpBuilder &builder,
                                   SmallVector<Value> &syncLocks) {
     WalkResult result = device.walk([&](CoreOp coreOp) {
@@ -530,14 +532,32 @@ struct AIELowerScratchpadParametersPass
       if (!waits.empty()) {
         DominanceInfo dominance(coreOp);
         WalkResult unordered = coreOp.walk([&](ReadScratchpadParameterOp read) {
-          if (llvm::any_of(waits, [&](WaitScratchpadParametersOp wait) {
-                return dominance.properlyDominates(wait, read);
-              }))
-            return WalkResult::advance();
-          read.emitOpError("reads @")
-              << read.getParameter()
-              << " where no aiex.wait_scratchpad_parameters of its core "
-                 "comes first, so it may read a previous dispatch's value";
+          // A loop serving several dispatches is the outermost one around the
+          // read; a wait outside it passes once, on the first.
+          Operation *outerLoop = nullptr;
+          for (Operation *op = read->getParentOp(); op != coreOp;
+               op = op->getParentOp())
+            if (isa<LoopLikeOpInterface>(op))
+              outerLoop = op;
+          bool dominated = false;
+          for (WaitScratchpadParametersOp wait : waits) {
+            if (!dominance.properlyDominates(wait, read))
+              continue;
+            dominated = true;
+            if (!outerLoop || outerLoop->isProperAncestor(wait))
+              return WalkResult::advance();
+          }
+          if (dominated)
+            read.emitOpError("reads @")
+                << read.getParameter()
+                << " in a loop with no aiex.wait_scratchpad_parameters "
+                   "inside it before the read, so after the loop's first "
+                   "iteration it may read a previous dispatch's value";
+          else
+            read.emitOpError("reads @")
+                << read.getParameter()
+                << " where no aiex.wait_scratchpad_parameters of its core "
+                   "dominates it, so it may read a previous dispatch's value";
           return WalkResult::interrupt();
         });
         if (unordered.wasInterrupted())
