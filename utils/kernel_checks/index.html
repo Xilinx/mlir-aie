@@ -891,9 +891,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       streaming_us: 'the time each image past the first adds, (T(N) − T(1)) ÷ (N − 1) from the fastest batch-1 and batch-N calls: the dispatch left out',
       e2e_us_per_image: 'host time of one call, from Python, the fastest of 20, over the images in its batch',
       compile_s: 'wall time of the whole compile, from Python to xclbin, cold (a fresh NPU_CACHE_HOME, kernel objects built from scratch)',
-      compile_peak_rss_mb: 'peak memory of the whole compile, cold (always a fresh NPU_CACHE_HOME), from Python to xclbin',
+      compile_peak_rss_mb: 'peak resident memory of the largest single process of the cold compile (Python, aiecc or one kernel\'s compile), not of them all together',
       compile_s_warm: 'wall time of the same compile again, keeping only the cold compile\'s kernel objects (the whole-build and per-device caches and the outputs cleared first) -- what an edit to the design, not its kernels, costs',
-      compile_peak_rss_mb_warm: 'peak memory of that warm compile',
+      compile_peak_rss_mb_warm: 'the same for the warm compile',
       placement_cost: 'the SA cost (sa-final-cost) of the placement aiecc chose for the design the nightly runs, replayed with aie-opt; the tooltip names the placement',
       tok_s: 'dispatch rate: tokens per second from the timed run\'s median 4-token dispatch, the median of 3 (submit to completion, host-observed; the host work between dispatches is left out)',
       ms_per_token: 'dispatch time per decoded token, host-observed: the timed run\'s median 4-token dispatch, the median of 3, over its 4 tokens',
@@ -1000,8 +1000,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const COMPILE_TABS = [
       { id: 'compile_s', name: 'Compile time', axis: 'Compile time (s, one compile each)', lines: [['cold', ['compile_s']], ['warm', ['compile_s_warm']]],
         about: 'wall time of the whole compile: cold, from a fresh NPU_CACHE_HOME, and warm, keeping only the cold compile\'s kernel objects' },
-      { id: 'compile_peak_rss_mb', name: 'Compile memory', axis: 'Compile peak memory (MB, one compile each)',
-        lines: [['cold', ['compile_peak_rss_mb']], ['warm', ['compile_peak_rss_mb_warm']]], about: 'peak memory of the whole compile, cold and warm' },
+      { id: 'compile_peak_rss_mb', name: 'Compile memory', axis: 'Compile peak memory (MiB, one compile each)',
+        lines: [['cold', ['compile_peak_rss_mb']], ['warm', ['compile_peak_rss_mb_warm']]], about: 'peak resident memory of the compile\'s largest single process, cold and warm' },
       { id: 'compile_stages', name: 'Compile stages', axis: 'Cold compile time per stage (s, one compile)', log: true,
         about: 'the cold compile\'s time in each aiecc stage and outside aiecc; the stages overlap, so they can add up past its wall time',
         lines: [...['place', 'lower', 'kernels', 'codegen', 'link', 'outside_aiecc'].map(k => [COMPILE_STAGES.find(s => s[0] === k)[1], [`compile_${k}_s`]]),
@@ -1411,7 +1411,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const out = [];
       if (run.newer) out.push({ level: 'bad', text: 'the results were published by a newer version of this page: reload it' });
       if (run.date === null) { out.push({ level: 'bad', text: `${npu}: no results have been published` }); return out; }
-      if (now - run.date > STALE_AFTER_MS) out.push({ level: 'bad', text: `no run since ${formatDate(run.date)}`, stale: true });
+      if (now - run.date > STALE_AFTER_MS) out.push({ level: 'bad', text: `no run since ${formatWhen(run.date)}`, stale: true });
       if (run.refused) out.push({ level: 'bad', text: `the run refused to measure: ${run.refused}` });
       else if (run.sane === false) out.push({ level: 'bad', text: 'the measurement sanity check failed: no numbers were published from this run' });
       else if (!run.published) out.push({ level: 'bad', text: run.recorded ? 'this run published no numbers' : 'no numbers have been published yet' });
@@ -1424,7 +1424,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const since = run.manualSince || [];
       if (since.length) {
         const latest = since[since.length - 1];
-        out.push({ level: 'info', text: `${plural(since.length, 'run')} started by hand since, the latest ${formatDate(Date.parse(latest.date))}: charted in Trends, not compared here` });
+        out.push({ level: 'info', text: `${plural(since.length, 'run')} started by hand since, the latest ${formatWhen(Date.parse(latest.date))}: charted in Trends, not compared here` });
       }
       const prev = run.previous;
       if (prev && prev.provenance && run.published) {
@@ -1464,21 +1464,18 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const casesUrl = commit => `${REPO}/blob/${commit || 'main'}/test/python/npu/kernel_cases.py`;
     const kernelLink = factory => hashFor({ view: 'kernel', kernel: factory });
 
-    function formatValue(value, unit) {
-      if (unit === 'bytes') return `${(value / 1024).toFixed(1)} KiB`;
-      if (unit === 'cost') return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
-      if (unit === 'seeds') return value === 1 ? '1 seed' : `${value} seeds`;
-      return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unit}`;
-    }
-
-    // A value in a column that already names its unit.
+    // Every number on the page, in its unit: a time or a size with its
+    // symbol (µs, ms, s, KiB, MiB), a ratio with ×, a count, cost or
+    // fraction bare, since its label names it. The checks' "MB" is
+    // ru_maxrss / 1024, so MiB.
     function formatNumber(value, unit) {
       if (unit === 'bytes') return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MiB` : `${(value / 1024).toFixed(1)} KiB`;
       if (['tok/s', 'fps'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unit}`;
-      if (unit === 'x') return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}×`;
+      if (['x', '×'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 3 })}×`;
       if (unit === 'us') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} µs`;
-      if (['s', 'ms', 'MB'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`;
-      if (['×', 'pairs', 'fraction'].includes(unit)) return value.toLocaleString('en-US', { maximumFractionDigits: 3 });
+      if (unit === 'MB') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} MiB`;
+      if (['s', 'ms'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`;
+      if (['pairs', 'fraction'].includes(unit)) return value.toLocaleString('en-US', { maximumFractionDigits: 3 });
       if (unit === '%') return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
       if (unit === 'ulp') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ulp`;
       return value.toLocaleString('en-US', { maximumFractionDigits: unit === 'cycles' ? 0 : 1 });
@@ -1498,18 +1495,18 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return a && a < 102.4 ? `${sign}${a} B` : `${sign}${(a / 1024).toFixed(1)} KiB`;
     }
 
-    function formatDate(ms) {
-      if (!Number.isFinite(ms)) return '?';
-      return new Date(ms).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-    }
-
+    // One date format: "20 Oct", "20 Oct, 06:00 UTC" with the time, and the
+    // year after the month where the dates shown span more than one.
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    function formatWhen(ms) {
-      if (!Number.isFinite(ms)) return '?';
+    function shortDate(ms, year = false) {
       const d = new Date(ms);
-      return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}, ${d.toISOString().slice(11, 16)} UTC`;
+      return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}${year ? ` ${d.getUTCFullYear()}` : ''}`;
     }
-    const shortDate = ms => { const d = new Date(ms); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
+    function formatWhen(ms, year = false) {
+      if (!Number.isFinite(ms)) return '?';
+      return `${shortDate(ms, year)}, ${new Date(ms).toISOString().slice(11, 16)} UTC`;
+    }
+    const spansYears = dates => new Set(dates.map(ms => new Date(ms).getUTCFullYear())).size > 1;
     // How long ago, roughly: "5 h", "1 day 12 h", "3 days".
     function ago(ms, now) {
       const min = Math.max(0, (now - ms) / 60000);
@@ -1692,7 +1689,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         : r.cases ? `${r.cases.timed} timed, ${r.cases.failed} failing, ${r.cases.timing_failed} timing failed${r.cases.flaky ? `, ${r.cases.flaky} passed on a retry` : ''}`
         : r.n_rows ? `${r.n_rows} numbers published` : 'published';
       const commit = r.commit && r.commit.id ? ` on ${r.commit.id.slice(0, 7)}` : '';
-      return `${formatDate(Date.parse(r.date))}${commit}\n${what}`;
+      return `${formatWhen(Date.parse(r.date))}${commit}\n${what}`;
     }
 
     function nightStrip(night) {
@@ -2401,7 +2398,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const commits = runs.map(r => r.commit || {});
       const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
       const tick = v => formatNumber(v, unit);
-      return { type: 'line', data: { labels: runs.map(r => shortDate(r.date)), datasets, commits, runs }, options: {
+      const years = spansYears(runs.map(r => r.date));
+      return { type: 'line', data: { labels: runs.map(r => shortDate(r.date, years)), datasets, commits, runs }, options: {
         animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
         onClick: (_event, elements) => {
           const c = elements && elements.length ? commits[elements[0].index] : null;
@@ -2416,7 +2414,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           legend: { display: datasets.length > 1, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 } } },
           markers: { at: markers, color: cssVar('--faint', '#8a93a3') },
           tooltip: { callbacks: {
-            title: items => items.length ? changedTitle(formatWhen(runs[items[0].dataIndex].date), markers, items[0].dataIndex) : '',
+            title: items => items.length ? changedTitle(formatWhen(runs[items[0].dataIndex].date, years), markers, items[0].dataIndex) : '',
             afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
             label: item => `${item.dataset.label}: ${tick(item.raw)}`,
             footer: () => 'Click for the commit',
@@ -2618,7 +2616,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const mixed = modes.filter(m => [...g.byNpu.values()].some(s => s.byMode.has(m))).length > 1;
       const { nights, index } = nightsOf(data, npus, modes);
       // Dates on the axis, once a day; the time is in the tooltip.
-      const labels = nights.map(n => shortDate(n.date));
+      const years = spansYears(nights.map(n => n.date));
+      const labels = nights.map(n => shortDate(n.date, years));
       const datasets = [];
       for (const [npu, s] of g.byNpu) {
         for (const mode of modes.filter(m => s.byMode.has(m))) {
@@ -2681,7 +2680,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                 title: items => {
                   if (!items.length) return '';
                   const i = items[0].dataIndex, m = markers.find(x => x.index === i);
-                  return [formatDate(nights[i].date), ...(m ? [`changed: ${m.label}`] : [])];
+                  return [formatWhen(nights[i].date, years), ...(m ? [`changed: ${m.label}`] : [])];
                 },
                 afterTitle: items => {
                   const o = items.length && first(items[0].dataIndex);
@@ -2689,7 +2688,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                 },
                 label: item => {
                   const b = item.dataset.rows[item.dataIndex];
-                  return `${item.dataset.label}: ${formatValue(item.raw, g.unit)}` + (b && b.range ? ` (${b.range})` : '');
+                  return `${item.dataset.label}: ${formatNumber(item.raw, g.unit)}` + (b && b.range ? ` (${b.range})` : '');
                 },
                 footer: items => {
                   if (!items.length) return '';
@@ -3201,7 +3200,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       }
       const tick = v => formatNumber(v, unit);
       const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
-      return { type: 'line', data: { labels: runs.map(p => shortDate(p.date)), datasets, commits, runs }, options: {
+      const years = spansYears(runs.map(p => p.date));
+      return { type: 'line', data: { labels: runs.map(p => shortDate(p.date, years)), datasets, commits, runs }, options: {
         animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
         // A point opens its run's commit.
         onClick: (_event, elements) => {
@@ -3218,7 +3218,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                     labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 12 }, filter: item => !datasets[item.datasetIndex].band } },
           markers: { at: markers, color: cssVar('--faint', '#8a93a3') },
           tooltip: { filter: item => !item.dataset.band, callbacks: {
-            title: items => items.length ? changedTitle(`${formatWhen(runs[items[0].dataIndex].date)}${runs[items[0].dataIndex].manual ? ', started by hand' : ''}`,
+            title: items => items.length ? changedTitle(`${formatWhen(runs[items[0].dataIndex].date, years)}${runs[items[0].dataIndex].manual ? ', started by hand' : ''}`,
                                                         markers, items[0].dataIndex) : '',
             afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
             footer: items => items.length && (commits[items[0].dataIndex].url || commits[items[0].dataIndex].id) ? 'Click for the commit' : '',
@@ -3566,7 +3566,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const device = rows.npu2 ? 'npu2' : Object.keys(rows)[0];
       const r = device && rows[device];
       if (!r || !r.hop_ratio) return '';
-      return ` ${device}: ${formatNumber(r.hop_ratio.value, '×')}× the constructed hops, ${formatNumber(r.ms_per_design.value, 'ms')} per design.`;
+      return ` ${device}: ${formatNumber(r.hop_ratio.value, '×')} the constructed hops, ${formatNumber(r.ms_per_design.value, 'ms')} per design.`;
     }
 
     // The allocator's card: failures, placement quality and the run's time.
@@ -4027,7 +4027,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                         line('Wait to start', runs.map(r => Math.round(waitMinutes(r) * 10) / 10), 4)];
       const commits = runs.map(r => ({ id: r.head_sha, message: r.title, url: r.url }));
       const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
-      return { type: 'line', data: { labels: runs.map(r => shortDate(startOf(r))), datasets, commits, runs: runs.map(r => ({ date: startOf(r) })) }, options: {
+      const years = spansYears(runs.map(startOf));
+      return { type: 'line', data: { labels: runs.map(r => shortDate(startOf(r), years)), datasets, commits, runs: runs.map(r => ({ date: startOf(r) })) }, options: {
         animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
         onClick: (_event, elements) => {
           const r = elements && elements.length ? runs[elements[0].index] : null;

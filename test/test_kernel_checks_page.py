@@ -532,9 +532,10 @@ assert.equal(chart.options.scales.y1.position, 'right');
 assert.equal(chart.options.scales.y.title.text, 'Cycles per call (fastest traced call) · ↓ better');
 assert.equal(chart.options.scales.y1.title.display, false);
 const cb = chart.options.plugins.tooltip.callbacks;
-assert.deepEqual(cb.title([{ dataIndex: 5 }]), ['1970-01-01 00:05 UTC']);
+assert.deepEqual(cb.title([{ dataIndex: 5 }]), ['1 Jan, 00:05 UTC']);
 assert.equal(cb.afterTitle([{ dataIndex: 5 }]), 'abcdef1 same revision');
-assert.equal(cb.label({ dataset: lines[0], dataIndex: 5, raw: 121 }), 'npu1 turbo: 121 cycles');
+// The tooltip formats as the ticks do; the axis title names the unit.
+assert.equal(cb.label({ dataset: lines[0], dataIndex: 5, raw: 121 }), 'npu1 turbo: 121');
 assert.deepEqual(cb.footer([{ dataIndex: 0 }]), ['npu1: turbo', 'npu2: turbo']);
 chart.options.onClick(null, [{ index: 5 }]);
 assert.deepEqual(opened, [commit.url, '_blank', 'noopener']);
@@ -589,7 +590,7 @@ assert.deepEqual([0, 1, 2].map(i => chart.options.plugins.legend.labels.filter({
 assert.deepEqual([0, 1, 2].map(i => chart.options.plugins.tooltip.filter({ dataset: data.datasets[i] })),
                  [true, false, false]);
 assert.equal(chart.options.plugins.tooltip.callbacks.label({ dataset: line, dataIndex: 1, raw: 40 }),
-             'npu1: 40 us (± 2.5; min 38.0 max 45.0 n=50)');
+             'npu1: 40 µs (± 2.5; min 38.0 max 45.0 n=50)');
 """)
 
 
@@ -828,7 +829,7 @@ assert.equal(fallback.commit, 'abcdef123456');
 assert.equal(fallback.pmode, 'turbo');
 assert.deepEqual(warningsFor('npu1', fallback, now), []);
 assert.deepEqual(warningsFor('npu1', fallback, now + 48 * 3600 * 1000),
-                 [{ level: 'bad', text: 'no run since 1970-01-01 00:00 UTC', stale: true }]);
+                 [{ level: 'bad', text: 'no run since 1 Jan, 00:00 UTC', stale: true }]);
 // Only the catalogue (every run dropped): nothing published, nothing failed.
 const empty = latestRun('npu1', { schema: 1, runs: [] }, fromRecords({}), catalogue);
 assert.equal(empty.sane, null);
@@ -1347,7 +1348,7 @@ assert.deepEqual(bars.data, [100, 110, 100, null]);
 assert.deepEqual(ticks.data, [100, 100, 100, 100]);
 assert.deepEqual(crosses.data.map(v => v !== null), [false, false, false, true]);
 assert.equal(crosses.data[3], chart.options.scales.y.min);
-assert.equal(chart.options.plugins.tooltip.callbacks.afterBody([{ dataIndex: 1 }]), 'CPU 2,100 ms, peak 200 MB');
+assert.equal(chart.options.plugins.tooltip.callbacks.afterBody([{ dataIndex: 1 }]), 'CPU 2,100 ms, peak 200 MiB');
 assert.equal(chart.options.plugins.tooltip.callbacks.label({ dataset: crosses, raw: 0 }), 'did not place');
 // The trend lines: a line each for the mean and the worst cost.
 fillSparks(card.cards, collect(historiesOf('sa-placer', [before, after])));
@@ -1448,7 +1449,7 @@ assert.equal(grid.children[1].children.length, 3);
 const block = card.cards[0].children[2];
 assert.equal(block.className, 'stages');
 const compiles = block.children.filter(r => r.className === 'stage-row');
-assert.deepEqual(compiles.map(r => r.text), ['cold40 s 0.0% · 850 MB peak', 'warm4.6 s 0.0% · 700 MB peak']);
+assert.deepEqual(compiles.map(r => r.text), ['cold40 s 0.0% · 850 MiB peak', 'warm4.6 s 0.0% · 700 MiB peak']);
 assert.equal(block.children[0].text, 'Compile');
 assert.equal(all(block, n => /^stage-seg /.test(n.className || '')).length, 0);
 assert.equal(all(block, n => n.className === 'stage-key').length, 0);
@@ -1566,7 +1567,7 @@ assert.equal(segs(cold)[6].title.split('\\n')[0], 'package, cold compile: 0.07 s
 const wall = row => row.children[1].children.find(n => n.className === 'wall');
 assert.equal(wall(cold).style, 'left: 99.469%');
 assert.equal(wall(warm).title, 'the whole warm compile, wall clock: 4.30 s');
-assert.equal(cold.children[2].text, '20.6 s · 864.6 MB peak');
+assert.equal(cold.children[2].text, '20.6 s · 864.6 MiB peak');
 assert.deepEqual(axis.children[1].children.map(n => n.text), ['0 s', '5 s', '10 s', '15 s', '20 s']);
 // The key is the table of every stage's seconds, slivers included.
 const key = block.children.find(n => n.className === 'stage-key');
@@ -1614,7 +1615,7 @@ assert.equal(grid.children[0].text, 'Decode tokens / s—');
 assert.equal(grid.children[1].text, 'Dispatch rate4.37 tok/s −7.0%');
 assert.equal(grid.children[5].text, 'Compiled sizesELF20.5 MiB ±0.0 KiBimage237.7 KiB ±0.0 KiB');
 assert.deepEqual(card.cards[0].children[2].children.filter(r => r.className === 'stage-row').slice(0, 2).map(r => r.text),
-  ['cold60.5 s 0.0% · 2,502.4 MB peak', 'warm1.2 s 0.0% · 410 MB peak']);
+  ['cold60.5 s 0.0% · 2,502.4 MiB peak', 'warm1.2 s 0.0% · 410 MiB peak']);
 assert.equal(grid.children[1].href, '#view=performance&metric=tok_s');
 fillSparks(card.cards, collect(historiesOf('llama-chain-hw', [llamaBefore, llamaAfter])));
 assert.deepEqual(['compile_s', 'compile_s_warm'].map(m => card.cards[0].sparks.get(m).lines.map(([color, , dashed]) => [color, dashed])),
@@ -1701,7 +1702,7 @@ assert.deepEqual(chip(grid.children[1]), ['chg worse', 'chg flat']);
 assert.equal(grid.children[4].text, 'Compiled sizeELF3.0 MiB ±0.0 KiB');
 assert.equal(grid.children[0].href, '#view=performance&metric=us_per_image_b1');
 assert.deepEqual(card.cards[0].children[2].children.filter(r => r.className === 'stage-row').slice(0, 2).map(r => r.text),
-  ['cold95.5 s 0.0% · 3,100 MB peak', 'warm12.5 s 0.0% · 1,200 MB peak']);
+  ['cold95.5 s 0.0% · 3,100 MiB peak', 'warm12.5 s 0.0% · 1,200 MiB peak']);
 fillSparks(card.cards, collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter])));
 const perImage = card.cards[0].sparks.get('us_per_image_b1').innerHTML;
 assert.ok(perImage.includes('var(--series-1)') && perImage.includes('var(--series-2)'));
@@ -1829,12 +1830,34 @@ const loaded = [
 """)
 
 
-def test_component_values_read_as_counts_and_costs(page):
+def test_one_formatter_reads_every_unit_the_checks_emit(page):
     page("""
-assert.equal(formatValue(1, 'seeds'), '1 seed');
-assert.equal(formatValue(0, 'seeds'), '0 seeds');
-assert.equal(formatValue(12345.678, 'cost'), '12,345.68');
-assert.equal(formatValue(295.7, 'us'), '295.7 us');
+// Every unit a check publishes, as tick, tooltip, card and table all show it.
+assert.equal(formatNumber(295.7, 'us'), '295.7 µs');
+assert.equal(formatNumber(3 * 1048576, 'bytes'), '3.0 MiB');
+assert.equal(formatNumber(3072, 'bytes'), '3.0 KiB');
+// ru_maxrss / 1024 is MiB, whatever the check names it.
+assert.equal(formatNumber(850, 'MB'), '850 MiB');
+// Both ratio spellings read as one.
+assert.equal(formatNumber(1.3, 'x'), '1.3×');
+assert.equal(formatNumber(1.0125, '×'), '1.013×');
+assert.equal(formatNumber(12345.678, 'cost'), '12,345.7');
+assert.equal(formatNumber(1, 'seeds'), '1');
+assert.equal(formatNumber(0.2434, 'pairs'), '0.243');
+assert.equal(formatNumber(4.37, 'tok/s'), '4.37 tok/s');
+assert.equal(formatNumber(49.2, '%'), '49.2%');
+assert.equal(formatNumber(1100.4, 'cycles'), '1,100');
+assert.equal(typeof formatValue, 'undefined');
+// One date format; the year once a chart's dates span two.
+assert.equal(shortDate(Date.parse('2026-10-20T06:00:00Z')), '20 Oct');
+assert.equal(shortDate(Date.parse('2026-10-20T06:00:00Z'), true), '20 Oct 2026');
+assert.equal(formatWhen(Date.parse('2026-10-20T06:00:00Z')), '20 Oct, 06:00 UTC');
+assert.equal(formatWhen(Date.parse('2026-10-20T06:00:00Z'), true), '20 Oct 2026, 06:00 UTC');
+assert.ok(spansYears([Date.parse('2025-12-30T00:00:00Z'), Date.parse('2026-01-02T00:00:00Z')]));
+const across = fromRecords({ npu1: [rec('1', Date.parse('2025-12-30T06:00:00Z'), 'turbo', sm(100)), rec('2', Date.parse('2026-01-02T06:00:00Z'), 'turbo', sm(101))] });
+assert.deepEqual(kernelTrendConfig(across, 'npu1', 'softmax', 'cycles').data.labels, ['30 Dec 2025', '2 Jan 2026']);
+draw(el0, groupOf(across), ['turbo'], across);
+assert.deepEqual(chart.data.labels, ['30 Dec 2025', '2 Jan 2026']);
 """)
 
 
@@ -1924,7 +1947,7 @@ assert.equal(header.children.at(-1).text, 'kill rate 1.000');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['Failures', 'Unrouted / illegal', 'Missed corruptions', 'Route cost', 'Time / design']);
 assert.equal(grid.children[0].text, 'Failuresproperties0mutations2');
 assert.deepEqual(all(grid.children[0], n => /^vals/.test(n.className || '')).map(n => n.className), ['vals', 'vals worse']);
-assert.equal(grid.children[3].text, 'Route costhops1.012msels14.9');
+assert.equal(grid.children[3].text, 'Route costhops1.012×msels14.9');
 assert.equal(grid.children[0].href, '#view=routing&metric=failed_properties');
 const [, grid2] = card.cards[1].children;
 assert.equal(all(grid2.children[1], n => /^vals/.test(n.className || ''))[1].className, 'vals worse');
@@ -2374,7 +2397,7 @@ assert.deepEqual(compile.data.datasets.filter(d => !d.band).map(d => d.label), [
 // Compile peak memory, MB, also on a plain axis.
 const memory = trendConfig(data, COMPILE_TABS[1]);
 assert.equal(memory.options.scales.y.type, 'linear');
-assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MB, one compile each) · ↓ better');
+assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MiB, one compile each) · ↓ better');
 // The box: a switch for the tab, drawn once on screen, redrawn on a switch.
 // A link to a warm metric opens the tab that draws it; a tab with no history is left out.
 const box = trendBox(data, hw.trend, 'compile_s_warm');
