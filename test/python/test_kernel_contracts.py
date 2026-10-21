@@ -74,6 +74,14 @@ CASES = {
     for case in NPU2_CASES
 }
 assert len(CASES) == len(NPU2_CASES), "two device cases map to one host id"
+# A check of the contract alone sees the factory and its arguments, so it
+# runs once for the cases that differ only in calls, scalars or tag.
+FACTORY_CASES = list(
+    {
+        (case_id.split("/")[0], repr(sorted(fkw.items()))): case_id
+        for case_id, (fkw, _) in reversed(CASES.items())
+    }.values()
+)
 
 # Exported factories the generic builder does not judge, each with its reason.
 # Anything else exported must carry a contract and appear in the case table.
@@ -220,7 +228,7 @@ def test_contract_coverage_is_explicit():
     assert all(NOT_JUDGED.values())
 
 
-@pytest.mark.parametrize("case_id", list(CASES))
+@pytest.mark.parametrize("case_id", FACTORY_CASES)
 def test_roles_match_arg_types(case_id):
     fkw, _ = CASES[case_id]
     fn = _factory(case_id)(**fkw)
@@ -232,7 +240,7 @@ def test_roles_match_arg_types(case_id):
     assert set(c.roles) <= {In, Out, InOut, Param}
 
 
-@pytest.mark.parametrize("case_id", list(CASES))
+@pytest.mark.parametrize("case_id", FACTORY_CASES)
 def test_reference_takes_what_the_contract_hands_it(case_id):
     fkw, _ = CASES[case_id]
     c = _factory(case_id)(**fkw).contract
@@ -247,7 +255,7 @@ def test_reference_takes_what_the_contract_hands_it(case_id):
         assert len(params) == len(c.reference_indices()), build
 
 
-@pytest.mark.parametrize("case_id", list(CASES))
+@pytest.mark.parametrize("case_id", FACTORY_CASES)
 def test_tolerance_is_declared_with_its_evidence(case_id):
     fkw, _ = CASES[case_id]
     c = _factory(case_id)(**fkw).contract
@@ -2131,7 +2139,7 @@ def test_declared_dtype_combinations_build(name, combo):
             assert np.dtype(v) in tensor_dts, f"{name}: {v} not among {tensor_dts}"
 
 
-@pytest.mark.parametrize("case_id", list(CASES))
+@pytest.mark.parametrize("case_id", FACTORY_CASES)
 def test_accumulating_kernels_declare_their_accumulator(case_id):
     """A kernel that sums more than one term says what it sums in."""
     fkw, _ = CASES[case_id]
