@@ -8,10 +8,9 @@
 // YOLO26n's end-to-end postprocess, bit-exact with its ONNX graph; see
 // SegmentDesign.detect. Scores compare by their rank among the sigmoid
 // tables' float32 values, ties to the lower index as in ONNX TopK. Anchors
-// run level by level, row by row: GRID x GRID at the finest stride, then
-// half and a quarter as wide at twice and four times it. Class logits come
-// CHUNK anchors at a time, [CLASSES / 8][CHUNK][8]; box distances
-// [CHUNK][8], the first 4 of each anchor's 8 bytes.
+// run level by level, row by row, each level half as wide as the last.
+// Class logits come CHUNK anchors at a time, [CLASSES / 8][CHUNK][8]; box
+// distances [CHUNK][8], the first 4 of each anchor's 8 bytes.
 //
 //===----------------------------------------------------------------------===//
 
