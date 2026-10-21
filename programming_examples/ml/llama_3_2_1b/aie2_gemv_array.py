@@ -30,7 +30,7 @@ from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
 )
 from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.iron.controlflow import range_
-from llama_config import HD, D
+from llama_config import HD, PROJECTIONS, D
 
 N_CORES = 8
 CORE_TILES = [(c, r) for c in (0, 1, 6, 7) for r in (2, 3)]
@@ -69,16 +69,6 @@ def read_sample_params(params, words):
     params[1] = shrui(w1, constant(i32(), 2))
 
 
-# Each projection's (K, rows).
-PROJECTIONS = {
-    "q": (D, D),
-    "k": (D, 512),
-    "v": (D, 512),
-    "o": (D, D),
-    "g": (D, HD),
-    "u": (D, HD),
-    "d": (HD, D),
-}
 LAYER = "qkvogud"
 COMB_BYTES = 1056
 RESID_BLOCK = 256 * 4 + 64
@@ -96,7 +86,7 @@ MMA_ACT_BYTES = 8 * D + 64
 def lane_slots(order):
     """MMA_SLOTs one core's lane holds for a layer: per projection, each row
     group of eight takes one slot per 1024 columns."""
-    return sum(PROJECTIONS[p][1] // N_CORES * PROJECTIONS[p][0] // 8192 for p in order)
+    return sum(PROJECTIONS[p][0] // N_CORES * PROJECTIONS[p][1] // 8192 for p in order)
 
 
 def mma_rows(
@@ -128,7 +118,7 @@ def mma_rows(
         groups: Row groups of eight to run (default: all the core's).
     """
     k_acc, k_f = kernels
-    for g in range_(groups or PROJECTIONS[proj][1] // N_CORES // 8):
+    for g in range_(groups or PROJECTIONS[proj][0] // N_CORES // 8):
         w = c_w.acquire(1)
         k_acc(tile, w, part, 0, 0, 1)
         c_w.release(1)
@@ -153,7 +143,7 @@ def mma_down(tile, c_w, part, out, kernels, spread_chunk, m_count=1):
         m_count: Activations (an MLIR i32 value or an int).
     """
     k_acc, k_f = kernels
-    groups = PROJECTIONS["d"][1] // N_CORES // 8
+    groups = PROJECTIONS["d"][0] // N_CORES // 8
     for chunk in range_(DOWN_CHUNKS - 1):
         ci = _i32(chunk)
         spread_chunk(ci)

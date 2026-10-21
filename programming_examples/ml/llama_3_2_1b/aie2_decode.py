@@ -83,6 +83,7 @@ from llama_config import (
     CS_BYTES,
     HD,
     HEAD_D,
+    KV_TB,
     N_HEADS_KV,
     N_TILE,
     QCHUNK_BYTES,
@@ -104,7 +105,6 @@ assert LM_N_TILES % LM_SLOTS_PER_TASK == 0
 
 # Rows as llama_attn_block.cc lays them out, ordered [layer][half][block]
 # [head], so one (layer, half)'s live prefix is one linear transfer.
-KV_TB = 64
 KV_ROW_WORDS = (2 * HEAD_D + 8) // 4
 KV_HEAD_BLOCK_WORDS = KV_TB * KV_ROW_WORDS
 KV_BLOCK_WORDS = (N_HEADS_KV // 2) * KV_HEAD_BLOCK_WORDS
@@ -627,7 +627,7 @@ def build(
     # of the pass's rows (the batch's queries) together; whoever holds the
     # last block, the rows' own, first sets the batch's new rows into it.
     # The second merges the first's state, then its own, per row
-    # (llama_oracle.attn_block_attention with interleaved=True).
+    # (llama_oracle.attention_blocks).
     def w_attn(
         c_rc,
         c_kvb,

@@ -14,7 +14,6 @@ import numpy as np
 from aie2_decode import (
     KV_BLOCK_WORDS,
     KV_ROW_WORDS,
-    KV_TB,
     LANE_BYTES,
     LMW_GAMMA_BYTES,
     M_MAX,
@@ -30,14 +29,17 @@ from aie2_decode import (
     kv_words,
     wblob_layout,
 )
-from aie2_gemv_array import (
-    LAYER,
-    MMA_SLOT,
-    N_CORES,
+from aie2_gemv_array import LAYER, MMA_SLOT, N_CORES, sample_param_values
+from llama_config import (
+    CS_BYTES,
+    HEAD_D,
+    KV_TB,
+    N_HEADS_KV,
+    N_TILE,
     PROJECTIONS,
-    sample_param_values,
+    VOCAB,
+    D,
 )
-from llama_config import CS_BYTES, HEAD_D, N_HEADS_KV, N_TILE, VOCAB, D
 from llama_npu import DispatchSession
 from llama_oracle import xoshiro_seed
 from ml_dtypes import bfloat16
@@ -82,11 +84,11 @@ def pack_lane_mma(layer_w, order, core):
     its row groups of eight rows, each as two `MMA_SLOT` slots, one per half
     of 2048 columns (down: per 2048-column chunk, chunk-major), with weight
     W[n][8kt + i] of a slot's half at kt*64 + i*8 + n, then the eight rows'
-    int32 biases and fp32 scales."""
+    int32 biases (zero) and fp32 scales."""
     parts = []
     for p in order:
-        k, rows = PROJECTIONS[p]
-        w, bias, sc = layer_w[p]
+        rows, k = PROJECTIONS[p]
+        w, sc = layer_w[p]
         rc = rows // N_CORES
         lo = core * rc
         groups = rc // 8
@@ -95,9 +97,6 @@ def pack_lane_mma(layer_w, order, core):
         tiles = blk.transpose(2, 0, 3, 4, 5, 1).reshape(chunks, groups, 2, D * 4)
         slots = np.zeros((chunks, groups, 2, MMA_SLOT), np.int8)
         slots[..., : D * 4] = tiles
-        slots[..., D * 4 : D * 4 + 32] = (
-            bias[lo : lo + rc].reshape(1, groups, 1, 8).view(np.int8)
-        )
         slots[..., D * 4 + 32 : D * 4 + 64] = (
             sc[lo : lo + rc].reshape(1, groups, 1, 8).view(np.int8)
         )
@@ -264,7 +263,7 @@ class DecodeShape:
         """The weight blob: each layer's eight weight lanes, then the RoPE table.
 
         Args:
-            layers: The layers' weights (llama_oracle's layer dicts).
+            layers: The llama_oracle.Layers.
             rope: bf16 (t, 2 * HEAD_D), numpy_llama_ref.rope_table.
 
         Returns:
@@ -273,17 +272,9 @@ class DecodeShape:
         off_lanes, off_rope, total = wblob_layout(self.n_layers, self.t)
         w = np.zeros(total, np.int8)
         for L, layer in enumerate(layers):
-            weights = {
-                p: (
-                    layer[f"w{p}_i8"],
-                    layer.get(f"b{p}", np.zeros(layer[f"w{p}_i8"].shape[0], np.int32)),
-                    layer[f"w{p}_sc"],
-                )
-                for p in LAYER
-            }
             for c in range(N_CORES):
                 at = off_lanes + (L * N_CORES + c) * LANE_BYTES
-                w[at : at + LANE_BYTES] = pack_lane_mma(weights, LAYER, c)
+                w[at : at + LANE_BYTES] = pack_lane_mma(layer.weights, LAYER, c)
         w[off_rope : off_rope + self.t * CS_BYTES] = rope.view(np.int8).ravel()
         return w
 
@@ -291,7 +282,7 @@ class DecodeShape:
         """The stage buffer at the start of a generation.
 
         Args:
-            layers: The layers' norms (gamma_in, gamma_post).
+            layers: The llama_oracle.Layers, for their norms' gammas.
             final_gamma: The final norm's bf16 gamma.
             seed: The first token's layer-0 residual (int8[D], f32 scale,
                 fp32[D]), if it is not a prompt token.
@@ -303,10 +294,8 @@ class DecodeShape:
         """
         slots = self.stage.slots
         st = np.zeros(self.stage.total, np.int8)
-        gammas = [(slots[L, "o"], layer["gamma_in"]) for L, layer in enumerate(layers)]
-        gammas += [
-            (slots[L, "d"], layer["gamma_post"]) for L, layer in enumerate(layers)
-        ]
+        gammas = [(slots[L, "o"], layer.gamma_in) for L, layer in enumerate(layers)]
+        gammas += [(slots[L, "d"], layer.gamma_post) for L, layer in enumerate(layers)]
         gammas.append((self.stage.final, final_gamma))
         for at, g in gammas:
             at += STAGE_RESID + M_MAX * RROW
@@ -330,35 +319,58 @@ class DecodeShape:
             for w in stage[self.stage.rng : self.stage.rng + 16].view(np.uint32)
         ]
 
+    def kv_row_words(self, layer, positions):
+        """A layer's cache rows at `positions`, as KV words.
+
+        Args:
+            layer: A llama_oracle.Layer.
+            positions: Rows of its cache.
+
+        Returns:
+            int32 (N_HEADS_KV, len(positions), KV_ROW_WORDS): per head and
+            row, [k int8 | v int8 | k scale | v scale].
+        """
+        rows = np.concatenate(
+            [
+                layer.kcache[:, positions],
+                layer.vcache[:, positions],
+                layer.k_slot[:, positions, None].view(np.int8),
+                layer.v_slot[:, positions, None].view(np.int8),
+            ],
+            axis=2,
+        )
+        return np.ascontiguousarray(rows).view(np.int32)
+
+    def kv_word_index(self, L, positions):
+        """Where layer L's rows at `positions` sit in the KV cache.
+
+        Returns:
+            int64 (N_HEADS_KV, len(positions), KV_ROW_WORDS) word indices,
+            matching kv_row_words.
+        """
+        p = np.asarray(positions)
+        h = np.arange(N_HEADS_KV)[:, None]
+        row = (
+            ((L * 2 + h // (N_HEADS_KV // 2)) * kv_blocks(self.t) + p // KV_TB)
+            * (N_HEADS_KV // 2)
+            + h % (N_HEADS_KV // 2)
+        ) * KV_TB + p % KV_TB
+        return (row * KV_ROW_WORDS)[..., None] + np.arange(KV_ROW_WORDS)
+
     def pack_kv(self, layers):
         """A KV cache holding the layers' caches.
 
         Args:
-            layers: Per layer, t-row kcaches/vcaches and k/v slot scales.
+            layers: The llama_oracle.Layers.
 
         Returns:
             int32 (kv_words,), block-major as the design reads it.
         """
-        nb = kv_blocks(self.t)
-        rows = np.zeros(
-            (self.n_layers, N_HEADS_KV, nb * KV_TB, KV_ROW_WORDS * 4), np.int8
-        )
-        t = self.t
+        kv = np.zeros(self.kv_words, np.int32)
+        positions = np.arange(self.t)
         for L, layer in enumerate(layers):
-            for h in range(N_HEADS_KV):
-                rows[L, h, :t, :HEAD_D] = layer["kcaches"][h].reshape(t, HEAD_D)
-                rows[L, h, :t, HEAD_D : 2 * HEAD_D] = layer["vcaches"][h].reshape(
-                    t, HEAD_D
-                )
-                for i, name in enumerate(("k_scales_slot", "v_scales_slot")):
-                    at = 2 * HEAD_D + 4 * i
-                    rows[L, h, :t, at : at + 4] = (
-                        layer[name][h].astype(np.float32).view(np.int8).reshape(t, 4)
-                    )
-        blocks = rows.reshape(self.n_layers, 2, N_HEADS_KV // 2, nb, KV_TB, -1)
-        packed = np.ascontiguousarray(blocks.transpose(0, 1, 3, 2, 4, 5))
-        assert packed.size == self.kv_words * 4
-        return packed.view(np.int32).ravel()
+            kv[self.kv_word_index(L, positions)] = self.kv_row_words(layer, positions)
+        return kv
 
 
 class Decoder:
@@ -366,7 +378,7 @@ class Decoder:
 
     Args:
         shape: The build.
-        layers: The layers' weights and norms (llama_oracle's layer dicts).
+        layers: The llama_oracle.Layers.
         lm: (embed_i8, embed_sc, final norm gamma).
         rope: bf16 (shape.t, 2 * HEAD_D), numpy_llama_ref.rope_table.
         elf: A prebuilt full ELF of `shape`'s build, or None for the JIT's.

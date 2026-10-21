@@ -20,7 +20,7 @@ from accuracy_vs_hf import RefModel, ref_forward_logits
 from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
 from llama_config import HEAD_D, N_LAYERS
 from llama_decode import Decoder, DecodeShape
-from llama_oracle import gen_real_layer_mh, greedy_verdict, teacher_forced_logits
+from llama_oracle import Layer, greedy_verdict, teacher_forced_logits
 from numpy_llama_ref import load_model, load_tokenizer, rope_table
 
 SYNTHETIC = ["--synthetic-weights"]
@@ -32,6 +32,7 @@ CASES = {
         8,
         ["carry across 2 dispatches: PASS"],
     ),
+    "cache-end": (["--start-pos", "124"], 4, []),
     "split": (
         ["--start-pos", "62", "--passes", "3", "--split"],
         3,
@@ -101,8 +102,7 @@ def real_model():
     model = load_model(DATA_DIR)
     lm = (model.embed_i8, model.embed_sc, model.final_norm)
     rope = rope_table(128, HEAD_D)
-    rng = np.random.default_rng(0)
-    layers = [gen_real_layer_mh(L, DATA_DIR, rng) for L in range(N_LAYERS)]
+    layers = [Layer.real(L, DATA_DIR, 128) for L in range(N_LAYERS)]
     decoder = Decoder(DecodeShape(N_LAYERS, 128), layers, lm, rope)
     return {
         "enc": load_tokenizer(DATA_DIR / "tokenizer.model"),
@@ -119,8 +119,7 @@ def test_real_weights_track_the_model_and_the_oracle(size, real_model):
     text, kl_limit = PROMPTS[size]
     prompt = [128000] + real_model["enc"].encode(text)
     out, _, _ = real_model["decoder"].generate(prompt, GENERATED, (0.0, 0, 0))
-    rng = np.random.default_rng(0)
-    layers = [gen_real_layer_mh(L, DATA_DIR, rng) for L in range(N_LAYERS)]
+    layers = [Layer.real(L, DATA_DIR, 128) for L in range(N_LAYERS)]
     oracle = teacher_forced_logits(
         layers, real_model["lm"], real_model["rope"], prompt + out[:-1]
     )

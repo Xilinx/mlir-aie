@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 from llama_config import HEAD_D, N_LAYERS
 from llama_decode import Decoder, DecodeShape
-from llama_oracle import gen_real_layer_mh, greedy_verdict, teacher_forced_logits
+from llama_oracle import Layer, greedy_verdict, teacher_forced_logits
 from numpy_llama_ref import forward_full, load_model, load_tokenizer, rope_table
 
 BOS = 128000
@@ -54,8 +54,7 @@ def main():
     enc = load_tokenizer(data_dir / "tokenizer.model")
     prompt = [BOS] + enc.encode(opts.prompt)
     model = load_model(data_dir)
-    rng = np.random.default_rng(0)
-    layers = [gen_real_layer_mh(L, data_dir, rng) for L in range(N_LAYERS)]
+    layers = [Layer.real(L, data_dir, opts.t) for L in range(N_LAYERS)]
     decoder = Decoder(
         DecodeShape(N_LAYERS, opts.t),
         layers,
