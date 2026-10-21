@@ -849,8 +849,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       npu_us: 'host time to submit a run and wait for it, median of 50; moves with the machine',
       // Per output type: a kernel with two float outputs has both.
       ...Object.fromEntries(ERROR_DTYPES.flatMap(dtype => [
-        [`max_ulp_${dtype}`, `the furthest any ${dtype} result of the correctness sweep fell from the correctly rounded value of the mathematics (the contract\'s base reference, for LUT builds too), in units in the last place; edge data (zeros, ones) left out`],
-        [`not_correctly_rounded_${dtype}`, `the share of the correctness sweep\'s ${dtype} results that are not the correctly rounded value of the mathematics; edge data left out`],
+        [`max_ulp_${dtype}`, `the furthest any ${dtype} result of the correctness sweep fell from the correctly rounded value of the function the kernel computes (evaluated in float64 and rounded to ${dtype}; never a LUT build\'s model of itself), in units in the last place, over every seed and data case but zeros and ones; the row says which reference it used`],
+        [`not_correctly_rounded_${dtype}`, `the share of the correctness sweep\'s ${dtype} results that are not the correctly rounded value of the function the kernel computes, over every seed and data case but zeros and ones`],
       ])),
     };
     // What the component checks record per case (utils/component_checks/).
@@ -2404,7 +2404,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const name = kase.slice(factory.length + 1) || kase;
         return (parts.length ? parts : [null]).map((part, j) => ({
           label: part ? `${name} · ${partName(part)}` : name,
-          data: runs.map(r => r.values.has(kase) && (!part || r.device === part) ? r.values.get(kase) : null),
+          data: runs.map(r => r.values.has(kase) && (!part || r.device === part) ? r.values.get(kase) : null), kase,
           borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 2.5, tension: 0, spanGaps: true, borderDash: j ? [5, 4] : [] }));
       });
       const markers = markersFor(runs);
@@ -2431,7 +2431,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           tooltip: { callbacks: {
             title: items => items.length ? changedTitle(formatWhen(runs[items[0].dataIndex].date, years), markers, items[0].dataIndex) : '',
             afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
-            label: item => `${item.dataset.label}: ${tick(item.raw)}`,
+            // The row's range: a cycles spread, or which reference an error was against.
+            label: item => {
+              const range = runs[item.dataIndex].ranges.get(item.dataset.kase);
+              return `${item.dataset.label}: ${tick(item.raw)}${range ? ` (${range})` : ''}`;
+            },
             footer: () => 'Click for the commit',
           } },
         },

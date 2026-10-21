@@ -349,10 +349,14 @@ db = fromRecords({ npu2: [err('1', 1, 0, 0), err('2', 2, 0, 0), err('3', 3, 5, 4
 assert.deepEqual(ERROR_METRICS, ['max_ulp_bfloat16', 'not_correctly_rounded_bfloat16', 'max_ulp_float32', 'not_correctly_rounded_float32']);
 assert.ok(ERROR_METRICS.every(m => ALL_METRICS.includes(m) && GATED.includes(m)));
 assert.deepEqual(['max_ulp_bfloat16', 'not_correctly_rounded_float32'].map(label), ['Max error (ULP, bfloat16)', 'Not correctly rounded (%, float32)']);
-assert.ok(METRICS.max_ulp_bfloat16.includes('correctly rounded value of the mathematics'));
+assert.ok(METRICS.max_ulp_bfloat16.includes('correctly rounded value of the function the kernel computes'));
+assert.ok(METRICS.max_ulp_bfloat16.includes("never a LUT build's model of itself"));
 const ulp = kernelTrendConfig(db, 'npu2', 'softmax', 'max_ulp_bfloat16');
 assert.equal(ulp.options.scales.y.title.text, 'Max error (ULP, bfloat16, worst result) · ↓ better');
 assert.deepEqual(ulp.data.datasets[0].data, [0, 0, 5]);
+// Hover says which reference the error is against.
+assert.equal(ulp.options.plugins.tooltip.callbacks.label({ dataset: ulp.data.datasets[0], dataIndex: 2, raw: 5 }),
+             '1024/bfloat16: 5 ulp (vs the float64 correctly rounded reference)');
 assert.equal(ulp.options.scales.y.ticks.callback(5), '5 ulp');
 assert.equal(kernelTrendConfig(db, 'npu2', 'softmax', 'not_correctly_rounded_bfloat16').options.scales.y.ticks.callback(49.2), '49.2%');
 // Their floors (1 ulp, 0.1 points) make 0 -> 5 ulp a move from a zero baseline, said "+5 ulp".
@@ -1408,7 +1412,7 @@ assert.deepEqual(config.data.labels, ['1 Jan', '1 Jan']);
 // Each case's actual cycles, night by night.
 assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['64/bfloat16', [50, null]], ['1024/bfloat16', [1000, 1100]]]);
 const tips = config.options.plugins.tooltip.callbacks;
-assert.equal(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }), '1024/bfloat16: 1,100');
+assert.equal(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }), '1024/bfloat16: 1,100 (median 1150 max 1200 n=16)');
 assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
 assert.equal(config.options.scales.y.title.text, 'Cycles per call (fastest traced call) · ↓ better');
 // 50 and 1,100 differ over ten times: a log axis, so both lines' moves show.
