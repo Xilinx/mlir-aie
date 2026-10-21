@@ -1234,19 +1234,8 @@ assert.equal(perImage.href, '#view=performance&metric=us_per_image');
 fillSparks(card.cards, collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter])));
 const spark = card.cards[0].sparks.get('us_per_image');
 assert.ok(spark.innerHTML.includes('var(--series-1)') && spark.innerHTML.includes('var(--series-2)'));
-// The batch scaling chart: a line per seed, the nightly before dashed and out of the legend.
-const sets = chart.data.datasets;
-assert.deepEqual(sets.map(d => [d.label, d.borderDash ? d.borderDash.length : 0]), [
-  ['seed 3', 0], ['seed 3, the nightly before', 2], ['seed 7', 0], ['seed 7, the nightly before', 2]]);
-assert.deepEqual(sets[0].data, [{ x: 1, y: 295.7 }, { x: 16, y: 104.9 }]);
-assert.equal(chart.options.scales.x.type, 'logarithmic');
-const axis = {};
-chart.options.scales.x.afterBuildTicks(axis);
-assert.deepEqual(axis.ticks.map(t => t.value), [1, 16]);
-assert.equal(chart.options.scales.x.ticks.callback(16), 'b16');
-assert.deepEqual(sets.map((d, datasetIndex) => chart.options.plugins.legend.labels.filter({ datasetIndex })), [true, false, true, false]);
-assert.equal(chart.options.plugins.tooltip.callbacks.label({ dataset: sets[0], parsed: { x: 16, y: 104.9 } }),
-             'seed 3: 104.9 µs per image, 9,533 images/s');
+// The trend tabs are the view over nights: no batch-scaling snapshot chart.
+assert.equal(all(card, n => n.className === 'charts').length, 0);
 """)
 
 
@@ -1873,11 +1862,7 @@ assert.equal(chartedEffort(Object.keys(after.rows)), 'full');
 assert.equal(chartedEffort(Object.keys(hwAfter.rows)), 'default');
 const summary = hardwareSummary(after.rows);
 assert.ok(summary.includes("one image's dispatch takes 295.7 µs") && summary.endsWith('(full effort).'), summary);
-// The batch scaling chart draws the full-effort curves.
-componentBand(hw, hwIndex, after, NOW, before);
-const seed3 = chart.data.datasets.find(d => d.label === 'seed 3');
-assert.deepEqual(seed3.data, [{ x: 1, y: 295.7 }, { x: 16, y: 120 }]);
-// So does the trend chart, a line per batch.
+// The trend chart draws the full-effort lines.
 const trend = trendConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend[0]);
 assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => d.label), ['batch 1', 'batch 16']);
 """)
@@ -1893,7 +1878,12 @@ const card = componentBand(hw, hwIndex, powers, NOW, hwBefore).cards[0];
 // Seven lanes, seven colors: none wraps back onto batch 1's.
 const perImage = card.children[1].children[0];
 assert.deepEqual(perImage.children.slice(1, 8).map(r => r.children[0].className), batches.map((_, i) => `npu n-series-${i + 1}`));
-assert.deepEqual(chart.data.datasets[0].data.map(p => p.x), batches);
+// The trend draws batch 1 and batch 64 only, each in its card lane's color.
+const powersOn = id => ({ ...powers, id, date: id === '6' ? hwBefore.date : hwAfter.date });
+const trend = trendConfig(collect(historiesOf('sa-placer-hw', [powersOn('6'), powersOn('7')])), hw.trend[0]);
+const lines = trend.data.datasets.filter(d => !d.band);
+assert.deepEqual(lines.map(d => d.label), ['batch 1', 'batch 64']);
+assert.deepEqual(lines.map(d => d.borderColor), [cssVar('--series-1', '#5b6475'), cssVar('--series-7', '#5b6475')]);
 """)
 
 
@@ -2124,7 +2114,7 @@ const config = trendConfig(data, hw.trend[0]);
 const lines = config.data.datasets.filter(d => !d.band);
 // The caption says so; a compile tab's lines are each the one compile that serves every batch.
 const caption = m => trendBox(data, hw.trend, m).children[1].textContent;
-assert.ok(caption('us_per_image').includes('. A line per batch, the mean over the seeds at default effort;'), caption('us_per_image'));
+assert.ok(caption('us_per_image').includes('. A line for the smallest and the largest batch, each the mean over the seeds at default effort;'), caption('us_per_image'));
 assert.ok(caption('compile_s').startsWith('Compile time: wall time of the whole compile'), caption('compile_s'));
 assert.ok(caption('compile_s').includes('. A single compile serves every batch: the mean over the seeds'), caption('compile_s'));
 assert.deepEqual(lines.map(d => d.label), ['batch 1', 'batch 16']);
@@ -2163,8 +2153,9 @@ assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MB, one c
 const box = trendBox(data, hw.trend, 'compile_s_warm');
 assert.equal(box.metric(), 'compile_s');
 const seg = box.children[0].children[0];
-assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb']);
-assert.deepEqual(seg.children.map(b => b.textContent), ['Dispatch / image', 'Streaming', 'End-to-end / image', 'Compile time', 'Compile memory']);
+// Streaming is computed from the per-image times, so it has no tab of its own.
+assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb']);
+assert.deepEqual(seg.children.map(b => b.textContent), ['Dispatch / image', 'End-to-end / image', 'Compile time', 'Compile memory']);
 assert.equal(chart.options.scales.y.type, 'linear');
 seg.children[0].on.click();
 assert.equal(box.metric(), 'us_per_image');
