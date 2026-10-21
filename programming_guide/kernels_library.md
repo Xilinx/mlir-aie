@@ -135,7 +135,6 @@ on each submodule's `__doc__`:
 | [`kernels.sample`](../python/iron/kernels/sample.py) | exact top-k next-token sampling split across columns: sample_select, sample_combine |
 | [`kernels.moe`](../python/iron/kernels/moe.py) | mixture of experts: router_top_k, experts |
 | [`kernels.ssm`](../python/iron/kernels/ssm.py) | state space models: selective_scan (Mamba2), gated_delta_rule (Gated DeltaNet) |
-| [`kernels.tables`](../python/iron/kernels/tables.py) | lookup tables a kernel compiles in: exp_lut, silu_lut and their C headers |
 | [`kernels.flm_gemma4`](../python/iron/kernels/flm_gemma4.py) | FastFlowLM's Gemma 4 cores (prefill attention, the q4nx LM head, the decode layer); not general building blocks |
 | [`kernels.vision`](../python/iron/kernels/vision.py) | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted, resample_peak, resample_quantize, resize |
 
