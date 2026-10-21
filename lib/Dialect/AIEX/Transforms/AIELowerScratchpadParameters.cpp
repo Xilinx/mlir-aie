@@ -355,7 +355,7 @@ public:
   std::optional<unsigned> slot(unsigned param) const { return slots[param]; }
 
   /// The parameter the first descent found no slot for, after a failed solve.
-  unsigned stuck() const { return *firstStuck; }
+  unsigned stuck() const { return firstStuck; }
 
 private:
   SmallVector<SmallVector<unsigned>> conflicts;
@@ -366,7 +366,8 @@ private:
   SmallVector<unsigned> saturation;
   int maxSlot = -1;
   unsigned steps = 0;
-  std::optional<unsigned> firstStuck;
+  bool deadEnd = false;
+  unsigned firstStuck = 0;
 
   void assign(unsigned param, unsigned slot) {
     slots[param] = slot;
@@ -375,8 +376,7 @@ private:
         saturation[other]++;
   }
 
-  void unassign(unsigned param) {
-    unsigned slot = *slots[param];
+  void unassign(unsigned param, unsigned slot) {
     slots[param].reset();
     for (unsigned other : conflicts[param])
       if (--neighbourSlots[other][slot] == 0)
@@ -400,7 +400,7 @@ private:
     for (unsigned s = 0; s < limit; s++) {
       if (neighbourSlots[*next][s] != 0)
         continue;
-      if (firstStuck && steps-- == 0)
+      if (deadEnd && steps-- == 0)
         return Result::GaveUp;
       int previousMax = maxSlot;
       maxSlot = std::max<int>(maxSlot, s);
@@ -408,11 +408,13 @@ private:
       Result result = search();
       if (result != Result::Infeasible)
         return result;
-      unassign(*next);
+      unassign(*next, s);
       maxSlot = previousMax;
     }
-    if (!firstStuck)
+    if (!deadEnd) {
+      deadEnd = true;
       firstStuck = *next;
+    }
     return Result::Infeasible;
   }
 };
