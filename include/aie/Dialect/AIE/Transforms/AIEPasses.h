@@ -71,6 +71,7 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECoreToStandardPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECoreToStandardPass(const AIECoreToStandardOptions &options);
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIECoreDMARearmPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEFindFlowsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIESplitFlowViasPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELocalizeLocksPass();
