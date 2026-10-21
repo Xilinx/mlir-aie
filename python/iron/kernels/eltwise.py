@@ -58,7 +58,18 @@ def add_i8_ref(a, b, a_shift, b_shift, out_shift):
     """Numpy reference for [`add`][iron.kernels.eltwise.add] on int8.
 
     ``sat_i8(round_half_even(((a << a_shift) + (b << b_shift)) / 2**out_shift))``.
+
+    Raises:
+        ValueError: A shift is outside what the kernel takes: ``a_shift`` and
+            ``b_shift`` in [0, 23], so a shifted int8 fits the int32
+            accumulator, and ``out_shift`` in [0, 31].
     """
+    if not (0 <= int(a_shift) <= 23 and 0 <= int(b_shift) <= 23):
+        raise ValueError(
+            f"add: a_shift ({a_shift}) and b_shift ({b_shift}) must be in [0, 23]"
+        )
+    if not 0 <= int(out_shift) <= 31:
+        raise ValueError(f"add: out_shift ({out_shift}) must be in [0, 31]")
     total = (np.asarray(a, np.int64) << int(a_shift)) + (
         np.asarray(b, np.int64) << int(b_shift)
     )
@@ -215,7 +226,10 @@ def add(
     The int8 kernel is ONNX QLinearAdd with power-of-two scales: it takes
     ``a_shift``, ``b_shift`` and ``out_shift`` after the output tile, shifts
     each operand up by its shift onto a common scale, and the sum down by
-    ``out_shift``, rounding half to even and saturating.
+    ``out_shift``, rounding half to even and saturating. ``a_shift`` and
+    ``b_shift`` are in [0, 23], so a shifted int8 fits the int32
+    accumulator, and ``out_shift`` in [0, 31]: an output scale finer than
+    both inputs' (a negative ``out_shift``) is not supported.
 
     Args:
         tile_size: Elements per tile: 1024 for bf16 (hard-coded in C++); a
