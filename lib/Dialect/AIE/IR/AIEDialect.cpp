@@ -1382,7 +1382,7 @@ LogicalResult RouteEndpointOp::verify() {
     // A shared source's BDs state each header, so they must tell them apart.
     llvm::SmallDenseSet<int> ids;
     for (RouteOp flow : sources) {
-      std::optional<uint16_t> id = flow.getPacket()->getPktId();
+      std::optional<uint16_t> id = flow.getPacketAttr().getPktId();
       if (!id)
         return emitOpError("sends several packet flows, so each must pin its "
                            "pkt_id for the BDs to state it");

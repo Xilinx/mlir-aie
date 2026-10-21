@@ -56,8 +56,7 @@ struct AIEAssignPacketIdsPass
         unpinned.push_back(route);
     }
     if (unpinned.size() > 1) {
-      DenseMap<Operation *, unsigned> rank =
-          StructuralGraph::of(device).rank();
+      DenseMap<Operation *, unsigned> rank = StructuralGraph::of(device).rank();
       llvm::stable_sort(unpinned, [&](RouteOp a, RouteOp b) {
         return rank.lookup(a) < rank.lookup(b);
       });
