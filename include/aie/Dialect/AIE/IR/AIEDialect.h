@@ -405,6 +405,11 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
+// The elements a BD streaming `dims` with `pads` sends, each dimension widened
+// by its padding; `fallback` unless it has both.
+int64_t paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
+                   llvm::ArrayRef<BDPadLayoutAttr> pads, int64_t fallback);
+
 // The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
 // dimensions (outermost first) and its length in elements: none when it
 // becomes one linear transfer, else its size-1 dimensions dropped. nullopt
