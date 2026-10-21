@@ -233,6 +233,59 @@ assert.equal(vals.title, 'was 100 on 19 Oct');
 """)
 
 
+def test_times_compare_and_chart_per_part_and_provenance_is_marked(page):
+    page(COMPONENT_RUNS + LLAMA_NIGHTS + """
+// Llama on alternating parts: Strix 4.7, Krackan 4.0, Strix 4.37 (-7%), Krackan 4.0.
+const part = (id, day, tok_s, device) => ({ ...llamaRecord(id, `2026-10-0${day}T06:30:00Z`, tok_s), device: device.replace('NPU ', ''),
+  device_raw: device, provenance: { device, peano: 'p1', kernels: `k${day}` } });
+const swaps = [part('1', 1, 4.7, 'NPU Strix'), part('2', 2, 4.0, 'NPU Krackan 1'), part('3', 3, 4.37, 'NPU Strix')];
+const data = collect(historiesOf('llama-chain-hw', swaps));
+// A time compares with the last night on its own part; a size with the night before.
+const series = m => data.series.find(s => s.metric === m);
+assert.deepEqual(latestMove(series('tok_s'), ['turbo']).since, Date.parse(swaps[0].date));
+assert.equal(latestMove(series('tok_s'), ['turbo']).cls, 'worse');
+assert.deepEqual(latestMove(series('elf_bytes'), ['turbo']).since, Date.parse(swaps[1].date));
+assert.deepEqual(movedSeries(data, 'llama-chain-hw').regressed.map(x => x.series.metric), ['tok_s']);
+// The trend: a line per part, the second dashed; each provenance change marked.
+const rate = trendConfig(data, llama.trend[0]);
+const lines = rate.data.datasets.filter(d => !d.band);
+assert.deepEqual(lines.map(d => [d.label, d.data, d.borderDash.length > 0]), [
+  ['dispatch rate · Strix', [4.7, null, 4.37], false], ['dispatch rate · Krackan 1', [null, 4, null], true]]);
+assert.deepEqual(rate.plugins, [MARKERS]);
+assert.deepEqual(rate.options.plugins.markers.at.map(m => m.label), ['device NPU Krackan 1, kernels k2', 'device NPU Strix, kernels k3']);
+assert.deepEqual(rate.options.plugins.tooltip.callbacks.title([{ dataIndex: 1 }]), ['2 Oct, 06:30 UTC', 'changed: device NPU Krackan 1, kernels k2']);
+// Compile time moves with the part's host too.
+assert.deepEqual(trendConfig(data, COMPILE_TABS[0]).data.datasets.filter(d => !d.band).map(d => d.label),
+                 ['cold · Strix', 'cold · Krackan 1', 'warm · Strix', 'warm · Krackan 1']);
+// Sparklines of a time follow the latest night's part.
+const card = componentBand(llama, { target: 'llama-chain-hw', runs: swaps.map(n => night(n.id, n.date, 'turbo', { device: n.device, provenance: n.provenance })) },
+                           swaps[2], NOW, swaps[1]);
+fillSparks(card.cards, data);
+assert.equal((card.cards[0].sparks.get('tok_s').innerHTML.match(/<circle/g) || []).length, 1);
+assert.equal(card.cards[0].sparks.get('tok_s').title, 'the last 2 nightlies');
+// The part is named on the band and its card, and the swap is said once, as a warning.
+assert.ok(card.children[0].text.includes('on Strix'));
+assert.ok(card.cards[0].children[0].text.includes('on Strix'));
+assert.ok(card.text.includes('Device changed since the previous run: NPU Krackan 1 → NPU Strix.'));
+assert.ok(!card.text.includes('kernels changed'));
+""")
+    page(KERNELS + """
+// The kernel page marks provenance changes and splits a time by part.
+const k = (id, day, us, device, kernels) => ({ ...rec(id, Date.parse(`2026-10-0${day}T06:00:00Z`), 'turbo', {
+  'softmax/1024/bfloat16/npu_us': ['us', us], 'softmax/1024/bfloat16/cycles': ['cycles', 1000] }), provenance: { device, kernels } });
+db = fromRecords({ npu2: [k('1', 1, 80, 'NPU Strix', 'a'), k('2', 2, 77, 'NPU Krackan 1', 'a'), k('3', 3, 81, 'NPU Strix', 'b')] });
+const us = kernelTrendConfig(db, 'npu2', 'softmax', 'npu_us');
+assert.deepEqual(us.data.datasets.map(d => d.label), ['1024/bfloat16 · Strix', '1024/bfloat16 · Krackan 1']);
+assert.deepEqual(us.plugins, [MARKERS]);
+assert.deepEqual(us.options.plugins.markers.at.map(m => m.index), [1, 2]);
+const cycles = kernelTrendConfig(db, 'npu2', 'softmax', 'cycles');
+assert.deepEqual(cycles.data.datasets.map(d => [d.label, d.data]), [['1024/bfloat16', [1000, 1000, 1000]]]);
+assert.deepEqual(cycles.options.plugins.tooltip.callbacks.title([{ dataIndex: 2 }]), ['3 Oct, 06:00 UTC', 'changed: device NPU Strix, kernels b']);
+// The window compares a time on one part only.
+assert.deepEqual(windowChanges(db, 'npu2', 'npu_us').map(x => [x.then, x.now]), [[80, 81]]);
+""")
+
+
 def test_narrow_screens_hide_no_kernels_table_column():
     # Each NPU's header spans its columns; hiding one slides the headers.
     css = (
@@ -421,19 +474,19 @@ db = fromRecords({ npu1: [
   rec('1', 100000, 'performance', sm(5), a), rec('2', 200000, 'performance', sm(null)),
   rec('3', 300000, 'performance', sm(6), b), rec('4', 400000, 'performance', sm(7), c),
 ]});
-// The run without provenance is skipped; kernel digests are not marked.
+// The run without provenance is skipped; the commit is not marked, the kernels' digest is.
 assert.deepEqual(markersFor(db.order), [
-  { index: 2, label: 'peano 22.0.0+bbbb' },
-  { index: 3, label: 'host bench-2, runtime XRTHostRuntime, xrt 2.20.0' },
+  { index: 2, label: 'peano 22.0.0+bbbb, kernels k2' },
+  { index: 3, label: 'host bench-2, runtime XRTHostRuntime, xrt 2.20.0, kernels k3' },
 ]);
 draw(el0, groupOf(db), ['performance'], db);
 assert.deepEqual(chart.options.plugins.markers.at, [
-  { index: 2, label: 'npu1: peano 22.0.0+bbbb' },
-  { index: 3, label: 'npu1: host bench-2, runtime XRTHostRuntime, xrt 2.20.0' },
+  { index: 2, label: 'npu1: peano 22.0.0+bbbb, kernels k2' },
+  { index: 3, label: 'npu1: host bench-2, runtime XRTHostRuntime, xrt 2.20.0, kernels k3' },
 ]);
 const footer = chart.options.plugins.tooltip.callbacks.footer;
 // What changed is in the tooltip, not drawn over the chart.
-assert.equal(chart.options.plugins.tooltip.callbacks.title([{ dataIndex: 2 }])[1], 'changed: npu1: peano 22.0.0+bbbb');
+assert.equal(chart.options.plugins.tooltip.callbacks.title([{ dataIndex: 2 }])[1], 'changed: npu1: peano 22.0.0+bbbb, kernels k2');
 assert.deepEqual(footer([{ dataIndex: 3 }]), ['npu1: Peano 22.0.0+bbbb, performance']);
 assert.deepEqual(footer([{ dataIndex: 1 }]), ['npu1: performance']);
 assert.equal(footer([]), '');
@@ -673,7 +726,7 @@ assert.deepEqual(figures.children.map(li => [li.className || '', li.text]), [
 ]);
 const meta = runMore.children.find(c => c.className === 'meta');
 assert.deepEqual(meta.children.map(c => c.text), [
-  '1 Jan, 00:00 UTC', 'abcdef1 same revision', 'Peano 22.0.0+bbbb', 'XRT 2.20.0, driver 2.20.0_1',
+  '1 Jan, 00:00 UTC', 'abcdef1 same revision', 'Strix NPU', 'Peano 22.0.0+bbbb', 'XRT 2.20.0, driver 2.20.0_1',
   'host bench-2', 'turbo mode',
 ]);
 assert.equal(meta.children[0].children[0].href, 'https://example.com/runs/2');

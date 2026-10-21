@@ -1111,8 +1111,16 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const termOf = (metric, about) => `${about}; ${higherIsBetter(metric) ? 'higher is better; ' : ''}${thresholdText(metric)}`;
     const axisTitle = (text, metric) => `${text} · ${higherIsBetter(metric) ? '↑' : '↓'} better`;
     const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
-    // Provenance fields whose change between runs is marked on the charts.
-    const MARKED = ['peano', 'host', 'runtime', 'xrt', 'xdna', 'fixtures'];
+    // Provenance fields whose change between runs is marked on the charts:
+    // the toolchain, the machine and its part, how cycles are taken
+    // (measurement), and the kernel sources' digest.
+    const MARKED = ['peano', 'device', 'host', 'runtime', 'xrt', 'xdna', 'measurement', 'fixtures', 'kernels'];
+    // Times and rates move with the NPU part and its host, so they are
+    // compared and charted per part; counts, sizes, costs and core cycles
+    // are not.
+    const PART_BOUND_UNITS = ['us', 'ms', 's', 'tok/s', 'fps'];
+    const partBound = unit => PART_BOUND_UNITS.includes(unit);
+    const partName = device => (device || '').replace(/^NPU /, '');
     // Runs started by hand (publish.py records the GitHub event). They are
     // charted, but the overview and the change columns compare nightly with
     // nightly; a run without the field predates it and counts as nightly.
@@ -1178,7 +1186,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             const o = observations.get(ids[i]);
             if (!s.byMode.has(o.mode)) s.byMode.set(o.mode, []);
             const range = sv.ranges && sv.ranges[i];
-            s.byMode.get(o.mode).push({ id: o.id, date: o.date, manual: o.manual, row: { value, unit: h.unit, ...(range ? { range } : {}) } });
+            s.byMode.get(o.mode).push({ id: o.id, date: o.date, manual: o.manual, device: o.provenance.device,
+                                        row: { value, unit: h.unit, ...(range ? { range } : {}) } });
           });
         }
       }
@@ -1221,18 +1230,30 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return move ? move.change : null;
     }
 
+    // The point the last of `pts` is compared with: the one before it, on
+    // the same part for a part-bound unit (a point with no part recorded
+    // matches any), or null.
+    function baselineOf(pts, unit) {
+      const last = pts.at(-1);
+      for (let i = pts.length - 2; i >= 0; i--) {
+        if (!partBound(unit) || !pts[i].device || !last.device || pts[i].device === last.device) return pts[i];
+      }
+      return null;
+    }
+
     // The same, with the verdict on it and the date of the point it is
     // against: {change, delta, cls, since}, or null.
     function latestMove(s, modes) {
       let worst = null;
       for (const mode of modes) {
         const pts = s.byMode.get(mode);
-        if (!pts || pts.length < 2) continue;
-        const [a, b] = pts.slice(-2).map(p => p.row);
+        const base = pts && pts.length > 1 ? baselineOf(pts, s.unit) : null;
+        if (!base) continue;
+        const [a, b] = [base.row, pts.at(-1).row];
         if (!a.value) continue;
         const change = (b.value - a.value) / a.value;
         if (worst === null || change * worseSign(s.metric) > worst.change * worseSign(s.metric)) {
-          worst = { change, delta: b.value - a.value, cls: verdict(s.metric, a, b), since: pts.at(-2).date };
+          worst = { change, delta: b.value - a.value, cls: verdict(s.metric, a, b), since: base.date };
         }
       }
       return worst;
@@ -1290,7 +1311,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         if (s.npu !== npu || (THRESHOLDS[s.metric] && THRESHOLDS[s.metric].derived)) continue;
         const pts = s.byMode.get(last.mode);
         if (!pts || pts.length < 2 || pts[pts.length - 1].id !== last.id) continue;
-        const [a, b] = pts.slice(-2).map(p => p.row);
+        const base = baselineOf(pts, s.unit);
+        if (!base) continue;
+        const [a, b] = [base.row, pts.at(-1).row];
         if (!a.value) continue;
         const cls = verdict(s.metric, a, b);
         const item = { series: s, before: a.value, after: b.value, change: (b.value - a.value) / a.value, cls };
@@ -1379,7 +1402,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       }
       const prev = run.previous;
       if (prev && prev.provenance && run.published) {
-        for (const k of MARKED) {
+        // The kernels' digest is the code under test: marked on the charts, not warned of.
+        for (const k of MARKED.filter(k => k !== 'kernels')) {
           const a = prev.provenance[k], b = (run.provenance || {})[k];
           if (a !== b && (a || b)) out.push({ level: k === 'peano' ? 'info' : 'warn', text: `${k} changed since the previous run: ${a || '?'} → ${b || '?'}` });
         }
@@ -1742,6 +1766,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           run.commitUrl ? link(run.commitUrl, el('code', {}, run.commit.slice(0, 7))) : el('code', {}, run.commit.slice(0, 7)),
           run.message ? ` ${run.message}` : ''));
       }
+      if (run.device) meta.append(el('span', { title: run.deviceRaw || '' }, `${partName(run.device)} NPU`));
       if (p.peano) meta.append(el('span', {}, `Peano ${p.peano}`));
       if (p.xrt || p.xdna) meta.append(el('span', {}, `XRT ${p.xrt || '?'}, driver ${p.xdna || '?'}`));
       if (p.host) meta.append(el('span', {}, `host ${p.host}`));
@@ -2018,7 +2043,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
 
     // Draws each card's trend lines from loaded histories, nightlies only
-    // (all runs for a series with no nightly), turbo when there is any.
+    // (all runs for a series with no nightly), turbo when there is any, a
+    // part-bound one on the latest night's part.
     function fillSparks(cards, data) {
       const nightly = nightlies(data);
       const index = new Map();
@@ -2026,7 +2052,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const valuesOf = s => {
         if (!s) return [];
         const pts = s.byMode.get(EXPECTED_PMODE) || [...s.byMode.values()][0] || [];
-        return pts.slice(-WINDOW_NIGHTS).map(p => p.row.value);
+        const part = pts.length ? pts.at(-1).device : null;
+        return pts.filter(p => !partBound(s.unit) || !p.device || !part || p.device === part).slice(-WINDOW_NIGHTS).map(p => p.row.value);
       };
       for (const card of cards) {
         for (const [metric, holder] of card.sparks) {
@@ -2045,9 +2072,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
 
     // One NPU's nightlies of `metric` in turbo (of one factory, if given),
-    // oldest first, the last WINDOW_NIGHTS: [{id, date, commit, values:
-    // Map(case -> value), ranges: Map(case -> range)}]. Runs started by
-    // hand are left out.
+    // oldest first, the last WINDOW_NIGHTS: [{id, date, commit, provenance,
+    // device, values: Map(case -> value), ranges: Map(case -> range)}].
+    // Runs started by hand are left out.
     function nightValues(db, npu, metric, factory) {
       const data = nightlies(db);
       if (!data) return [];
@@ -2056,7 +2083,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       for (const s of data.series) {
         if (s.npu !== npu || s.metric !== metric || (factory && s.factory !== factory)) continue;
         for (const p of s.byMode.get(EXPECTED_PMODE) || []) {
-          if (!runs.has(p.id)) runs.set(p.id, { id: p.id, date: p.date, commit: (order.get(p.id) || {}).commit || {}, values: new Map(), ranges: new Map() });
+          const o = order.get(p.id) || {};
+          if (!runs.has(p.id)) runs.set(p.id, { id: p.id, date: p.date, commit: o.commit || {}, provenance: o.provenance || {}, device: p.device, values: new Map(), ranges: new Map() });
           runs.get(p.id).values.set(s.kase, p.row.value);
           if (p.row.range) runs.get(p.id).ranges.set(s.kase, p.row.range);
         }
@@ -2079,7 +2107,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const unit = (db && (db.series.find(x => x.metric === metric) || {}).unit) || '';
       const out = [];
       for (const kase of new Set(runs.flatMap(r => [...r.values.keys()]))) {
-        const seen = runs.filter(r => r.values.has(kase));
+        const measured = runs.filter(r => r.values.has(kase));
+        const part = measured.length ? measured.at(-1).device : null;
+        const seen = measured.filter(r => !partBound(unit) || !r.device || !part || r.device === part);
         // Last night's change is only a case's that ran last night.
         if (seen.length < 2 || (compare === 'last' && seen.at(-1) !== runs.at(-1))) continue;
         const before = compare === 'last' ? seen.at(-2) : seen[0];
@@ -2305,7 +2335,16 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // One kernel's chart and cases
     // ------------------------------------------------------------------
 
-    // One kernel on one NPU: a line per case, its actual value each nightly;
+    // The parts a chart's runs were measured on, when its unit moves with
+    // the part and there is more than one: each gets its own line, the
+    // first solid and the rest dashed. [] otherwise.
+    function chartParts(runs, unit) {
+      const parts = [...new Set(runs.map(r => r.device).filter(Boolean))];
+      return partBound(unit) && parts.length > 1 ? parts : [];
+    }
+
+    // One kernel on one NPU: a line per case (per case and part, for a
+    // time), its actual value each nightly, the provenance changes marked;
     // a log axis when the cases differ more than ten times over, so each
     // line's moves stay visible.
     function kernelTrendConfig(db, npu, factory, metric) {
@@ -2313,11 +2352,16 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const runs = nightValues(db, npu, metric, factory);
       const cases = [...new Set(runs.flatMap(r => [...r.values.keys()]))].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
       const unit = (db.series.find(s => s.metric === metric) || {}).unit || '';
-      const datasets = cases.map((kase, i) => {
+      const parts = chartParts(runs, unit);
+      const datasets = cases.flatMap((kase, i) => {
         const color = cssVar(`--series-${i % 7 + 1}`, '#5b6475');
-        return { label: kase.slice(factory.length + 1) || kase, data: runs.map(r => r.values.has(kase) ? r.values.get(kase) : null),
-                 borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 2.5, tension: 0, spanGaps: true };
+        const name = kase.slice(factory.length + 1) || kase;
+        return (parts.length ? parts : [null]).map((part, j) => ({
+          label: part ? `${name} · ${partName(part)}` : name,
+          data: runs.map(r => r.values.has(kase) && (!part || r.device === part) ? r.values.get(kase) : null),
+          borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 2.5, tension: 0, spanGaps: true, borderDash: j ? [5, 4] : [] }));
       });
+      const markers = markersFor(runs);
       const all = datasets.flatMap(d => d.data).filter(v => v > 0);
       const log = all.length && Math.max(...all) / Math.min(...all) > 10;
       const commits = runs.map(r => r.commit || {});
@@ -2335,15 +2379,22 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
         },
         plugins: {
-          legend: { display: cases.length > 1, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 } } },
+          legend: { display: datasets.length > 1, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 } } },
+          markers: { at: markers, color: cssVar('--faint', '#8a93a3') },
           tooltip: { callbacks: {
-            title: items => items.length ? formatWhen(runs[items[0].dataIndex].date) : '',
+            title: items => items.length ? changedTitle(formatWhen(runs[items[0].dataIndex].date), markers, items[0].dataIndex) : '',
             afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
             label: item => `${item.dataset.label}: ${tick(item.raw)}`,
             footer: () => 'Click for the commit',
           } },
         },
-      } };
+      }, plugins: [MARKERS] };
+    }
+
+    // A tooltip's title: when, and what changed that night if anything did.
+    function changedTitle(when, markers, index) {
+      const m = markers.find(x => x.index === index);
+      return m ? [when, `changed: ${m.label}`] : when;
     }
 
     // A charted metric's y axis: its unit and, for a timing, its statistic.
@@ -2841,6 +2892,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return block;
     }
 
+    // The part a Performance card's numbers were measured on, for its header.
+    const onPart = record => record.device ? el('span', { className: 'params', title: record.device_raw || '' }, `on ${partName(record.device)}`) : '';
+
     // The hardware check's runs as seeds, efforts and batches: {seeds:
     // Map(seed -> Map(effort -> [batch])), efforts: every effort label seen,
     // failed: Set of run ids, every: every batch, sorted}.
@@ -2950,7 +3004,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         });
         const header = el('header', {}, el('span', { className: 'case-title', title: kase(batches[0] ?? 1) },
           el('span', { className: 'shape' }, `seed ${seed}`),
-          el('span', { className: 'params' }, seed === '3' && effort === 'default' ? 'the design\'s default' : `${effort} effort`)));
+          el('span', { className: 'params' }, seed === '3' && effort === 'default' ? 'the design\'s default' : `${effort} effort`), onPart(record)));
         const placed = cases.get(`mobilenet/seed=${seed}/effort=${effort}`);
         const cost = placed && placed.metrics.get('placement_cost');
         const digest = placementOf(record, seed, effort) || (/placement (\w+)/.exec((cost && cost.range) || '') || [])[1];
@@ -3014,7 +3068,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             if (!byMode.has(mode)) byMode.set(mode, new Map());
             const runs = byMode.get(mode);
             for (const p of pts) {
-              if (!runs.has(p.id)) runs.set(p.id, { id: p.id, date: p.date, manual: p.manual, values: [] });
+              if (!runs.has(p.id)) runs.set(p.id, { id: p.id, date: p.date, manual: p.manual, device: p.device, values: [] });
               runs.get(p.id).values.push(p.row.value);
             }
           }
@@ -3023,7 +3077,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           const mean = r.values.reduce((a, b) => a + b, 0) / r.values.length;
           const round2 = x => Math.round(x * 100) / 100;
           const [lo, hi] = [Math.min(...r.values), Math.max(...r.values)];
-          return { id: r.id, date: r.date, manual: r.manual,
+          return { id: r.id, date: r.date, manual: r.manual, device: r.device,
                    row: { value: round2(mean), unit: g.unit, range: `seeds ${round2(lo)} to ${round2(hi)}, n=${r.values.length}` } };
         })]));
         const { parts, ...rest } = g;
@@ -3047,7 +3101,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // design's real default effort (so the chart tracks what ships; the
     // full-effort baseline is under Placement, and charted here only when it
     // is all there is -- see chartedEffort), the fastest-to-slowest seed
-    // shaded behind a line of one metric. A Chart.js config.
+    // shaded behind a line of one metric. A time measured on more than one
+    // part draws a line per part; provenance changes are marked. A Chart.js
+    // config.
     function trendConfig(data, tab) {
       const metrics = tab.batches ? [tab.id] : tab.lines.flatMap(([, ms]) => ms);
       const mine = seedMeans(data).series.filter(s => metrics.includes(s.metric));
@@ -3073,22 +3129,28 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       // compile's stages), so each line's moves read the same size there.
       const log = (tab.batches && unit === 'us') || Boolean(tab.log);
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
+      const devices = chartParts(runs, unit);
+      const markers = markersFor(runs.map(p => observed.get(p.id) || {}));
       const datasets = [];
       for (const line of lines) {
         const color = cssVar(`--series-${line.color % 7 + 1}`, '#5b6475');
-        const values = new Array(runs.length).fill(null), rows = new Array(runs.length).fill(null);
-        for (const s of line.parts) {
-          for (const p of s.byMode.get(mode) || []) {
-            const i = at.get(p.id);
-            values[i] = (values[i] ?? 0) + p.row.value;
-            if (line.parts.length === 1) rows[i] = p.row;
+        (devices.length ? devices : [null]).forEach((part, j) => {
+          const values = new Array(runs.length).fill(null), rows = new Array(runs.length).fill(null);
+          for (const s of line.parts) {
+            for (const p of s.byMode.get(mode) || []) {
+              const i = at.get(p.id);
+              if (part && runs[i].device !== part) continue;
+              values[i] = (values[i] ?? 0) + p.row.value;
+              if (line.parts.length === 1) rows[i] = p.row;
+            }
           }
-        }
-        if (log) values.forEach((v, i) => { if (v !== null && v <= 0) values[i] = null; });
-        datasets.push(...band(values, rows, color));
-        datasets.push({ label: line.name, data: values, rows, borderColor: color, backgroundColor: color,
-                        borderWidth: 2, pointRadius: runs.map(p => p.manual ? 4 : 2.5), pointStyle: runs.map(p => p.manual ? 'rectRot' : 'circle'),
-                        tension: 0, spanGaps: true });
+          if (log) values.forEach((v, i) => { if (v !== null && v <= 0) values[i] = null; });
+          datasets.push(...band(values, rows, color));
+          datasets.push({ label: part ? [line.name, partName(part)].filter(Boolean).join(' · ') : line.name, data: values, rows,
+                          borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: j ? [5, 4] : [],
+                          pointRadius: runs.map(p => p.manual ? 4 : 2.5), pointStyle: runs.map(p => p.manual ? 'rectRot' : 'circle'),
+                          tension: 0, spanGaps: true });
+        });
       }
       const tick = v => formatNumber(v, unit);
       const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
@@ -3105,9 +3167,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
         },
         plugins: {
-          legend: { display: lines.length > 1, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 12 }, filter: item => !datasets[item.datasetIndex].band } },
+          legend: { display: datasets.filter(d => !d.band).length > 1, align: 'end',
+                    labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 12 }, filter: item => !datasets[item.datasetIndex].band } },
+          markers: { at: markers, color: cssVar('--faint', '#8a93a3') },
           tooltip: { filter: item => !item.dataset.band, callbacks: {
-            title: items => items.length ? `${formatWhen(runs[items[0].dataIndex].date)}${runs[items[0].dataIndex].manual ? ', started by hand' : ''}` : '',
+            title: items => items.length ? changedTitle(`${formatWhen(runs[items[0].dataIndex].date)}${runs[items[0].dataIndex].manual ? ', started by hand' : ''}`,
+                                                        markers, items[0].dataIndex) : '',
             afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
             footer: items => items.length && (commits[items[0].dataIndex].url || commits[items[0].dataIndex].id) ? 'Click for the commit' : '',
             label: item => {
@@ -3118,7 +3183,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             },
           } },
         },
-      } };
+      }, plugins: [MARKERS] };
     }
 
     // A line chart's config drawn as plain SVG, for when Chart.js did not
@@ -3315,7 +3380,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                                                                     m: c && c.metrics.get(metric), current: c && c.current });
         const header = el('header', {}, el('span', { className: 'case-title', title: kase },
           el('span', { className: 'shape' }, `${n} layers`),
-          el('span', { className: 'params' }, run.tokens_total ? `persistent decode, ${plural(run.tokens_total, 'token')} per dispatch` : 'persistent decode')));
+          el('span', { className: 'params' }, run.tokens_total ? `persistent decode, ${plural(run.tokens_total, 'token')} per dispatch` : 'persistent decode'), onPart(record)));
         const ratio = c && c.metrics.get('dma_floor_ratio');
         if (ratio && ratio.range) header.append(el('span', { className: 'ratio', title: COMPONENT_METRICS.dma_floor_ratio }, ratio.range));
         const passed = c && c.metrics.get('tokens_passed');
@@ -3366,7 +3431,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                                                                     m: c && c.metrics.get(metric), current: c && c.current });
         const header = el('header', {}, el('span', { className: 'case-title', title: kase },
           el('span', { className: 'shape' }, `${side} × ${side}`),
-          el('span', { className: 'params' }, run.images_total ? plural(run.images_total, 'COCO image') : 'COCO images')));
+          el('span', { className: 'params' }, run.images_total ? plural(run.images_total, 'COCO image') : 'COCO images'), onPart(record)));
         const [b1, b8] = ['us_per_image_b1', 'us_per_image_b8'].map(m => c && c.metrics.get(m));
         if (b1 && b8 && b1.value) {
           header.append(el('span', { className: 'ratio', title: 'time per image at batch 8 over batch 1' },
@@ -3581,7 +3646,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const band = el('article', { className: `verdict ${level}` });
       band.cards = [];
       band.append(el('div', { className: 'verdict-top' },
-        el('div', { className: 'npu-name' }, el('strong', {}, check.title), link(`${REPO}/blob/main/${check.script}`, check.script)),
+        el('div', { className: 'npu-name' }, el('strong', {}, check.title), link(`${REPO}/blob/main/${check.script}`, check.script),
+          run.device ? ` on ${partName(run.device)}` : ''),
         nightStrip({ runs, run })));
       if (stale) band.append(el('p', { className: 'stale-line' }, stale.text));
       band.append(el('p', { className: 'headline' }, headline, quiet ? el('span', { className: 'quiet' }, quiet) : ''));
