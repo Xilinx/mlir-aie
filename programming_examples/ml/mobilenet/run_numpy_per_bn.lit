@@ -15,7 +15,7 @@
 // NUMPY: bn6 (per-bn){{.*}}BIT-EXACT
 // NUMPY: bn7 (per-bn){{.*}}BIT-EXACT
 // NUMPY: bn8 (per-bn){{.*}}BIT-EXACT
-// NUMPY: bn0->bn9 chain, bn5 unskipped{{.*}}BIT-EXACT
+// NUMPY: bn0->bn9 chain{{.*}}BIT-EXACT
 // NUMPY: bn10->bn11->bn12 chain{{.*}}BIT-EXACT
 // NUMPY: bn13->bn14 cascade chain{{.*}}BIT-EXACT
 // NUMPY: ALL VERIFIED BLOCKS BIT-EXACT

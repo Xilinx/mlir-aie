@@ -83,7 +83,7 @@ call around it (`aie.utils.benchmark` prints both, with the median and MAD).
 | Lit test | Hardware? | What it covers |
 |---|---|---|
 | [`run_mobilenet.lit`](run_mobilenet.lit) | yes | Full mobilenet end-to-end, three launches: bit-exact against `mobilenet_numpy`, within 3 of brevitas |
-| [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone (atol=0), pipeline (bn10..12) + cascade (bn13..14) chains (atol=0), plus the regular bn0..bn9 chain: bit-exact against `mobilenet_numpy`, and within 14 of its checked-in brevitas golden, which was generated without bn5's residual (`mobilenet_numpy` without that residual matches it exactly; `bottleneck_A/gen_golden.py` models the residual, so regenerating the fixture makes the check exact) |
+| [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone (atol=0), pipeline (bn10..12) + cascade (bn13..14) chains (atol=0), plus the regular bn0..bn9 chain, bit-exact against both `mobilenet_numpy` and its brevitas golden |
 | [`run_numpy_per_bn.lit`](run_numpy_per_bn.lit) | no | numpy reference vs brevitas — every kernel arithmetic verified bit-exact |
 
 The bit-exact per-block / per-chain results prove the IRON wrapper + AIE
