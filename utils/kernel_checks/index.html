@@ -698,8 +698,8 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
             oracle and, for information, onnxruntime, then timed at batch 1 and checked and timed again at batch 8.</p>
           <h3>What each run records</h3>
           <dl id="performance-metrics"></dl>
-          <p>Dispatch and end-to-end per image are the fastest of 20 launches. Streaming, <code>(T(N) − T(1)) ÷ (N − 1)</code>, is what one more image in a launch costs
-            with the launch's fixed cost taken out, so it is recorded above batch 1 only.</p>
+          <p>Dispatch and end-to-end per image are the fastest of 20 launches, over the images in the launch. Records from before one
+            dispatch-time compile served every batch (each batch compiled on its own) are not charted beside them.</p>
           <p>To compile one seed at one effort and run every batch as the nightly does, from <code>programming_examples/ml</code>, with
             <code>E</code> 0.05 for the design's default effort or 1.0 for full effort:</p>
           <pre>python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort E --dynamic 1 2 4 8 16 32 64 -w 20 -i 20</pre>
@@ -866,7 +866,6 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       cpu_ms_max: 'CPU time of the slowest seed',
       peak_rss_mb_max: 'peak memory of the hungriest seed',
       us_per_image: 'dispatch time of one call, host-observed (submit to completion, so a dispatch\'s fixed cost is in it), the fastest of 20, over the images in its batch',
-      streaming_us: 'the time each image past the first adds, (T(N) − T(1)) ÷ (N − 1) from the fastest batch-1 and batch-N calls: the dispatch left out',
       e2e_us_per_image: 'host time of one call, from Python, the fastest of 20, over the images in its batch',
       compile_s: 'wall time of the whole compile, from Python to xclbin, cold (a fresh NPU_CACHE_HOME, kernel objects built from scratch)',
       compile_peak_rss_mb: 'peak resident memory of the largest single process of the cold compile (Python, aiecc or one kernel\'s compile), not of them all together',
@@ -912,7 +911,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', npu_us: 'Host time',
       max_ulp: 'Max error (ULP)', not_correctly_rounded: 'Not correctly rounded (%)',
       failed_seeds: 'Failed seeds', final_cost_mean: 'SA final cost (mean)', final_cost_max: 'SA final cost (worst)', cpu_ms_mean: 'CPU time (mean)',
-      cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', us_per_image: 'Dispatch / image', streaming_us: 'Streaming',
+      cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', us_per_image: 'Dispatch / image',
       e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time (cold)', compile_peak_rss_mb: 'Compile peak memory (cold)',
       compile_s_warm: 'Compile time (warm)', compile_peak_rss_mb_warm: 'Compile peak memory (warm)', placement_cost: 'Placement cost',
       failed_properties: 'Failed properties', unsolved: 'Unplaced', illegal: 'Illegal', avoidable_crossings: 'Avoidable crossings',
@@ -939,7 +938,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // it has no checks yet.
     const SECTIONS = {
       performance: { title: 'Performance', about: 'MobileNet, Llama 3.2 1B and YOLO26n compiled, run and verified on an npu2: time per image, tokens per second, compile time and memory, cold and warm, and what the compile wrote.',
-                     metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'tok_s', 'ms_per_token', 'dma_floor_ratio', 'tokens_passed',
+                     metrics: ['us_per_image', 'e2e_us_per_image', 'tok_s', 'ms_per_token', 'dma_floor_ratio', 'tokens_passed',
                                'ttft_ms', 'prompt_tok_s', 'decode_tok_s', 'greedy_agree',
                                'us_per_image_b1', 'us_per_image_b8', 'fps_b1', 'fps_b8', 'images_passed', 'ort_matches',
                                'compile_s', 'compile_peak_rss_mb', 'compile_s_warm', 'compile_peak_rss_mb_warm',
@@ -3019,8 +3018,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // The hardware check's cards, one per seed per effort (small multiples,
     // not interleaved lanes, so a reader compares the design's real default
     // against the full-effort baseline card-by-card rather than untangling
-    // double-width lanes): its batches are the lanes of per image,
-    // streaming and end-to-end; the one compile that serves them all is the
+    // double-width lanes): its batches are the lanes of dispatch and
+    // end-to-end time per image; the one compile that serves them all is the
     // cold and warm lanes of compile time and memory. The header names the
     // placement (its cost is under Placement).
     function seedCards(record, cases, target) {
@@ -3028,7 +3027,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return [...seeds].flatMap(([seed, effortMap]) => [...effortMap].map(([effort, batches]) => {
         const kase = b => `mobilenet/seed=${seed}/batch=${b}/effort=${effort}`;
         const caseOf = b => !failed.has(kase(b)) && cases.get(kase(b));
-        const lanes = metric => batches.filter(b => metric !== 'streaming_us' || b > 1).map(b => {
+        const lanes = metric => batches.map(b => {
           const c = caseOf(b);
           return { name: `b${b}`, color: `series-${every.indexOf(b) % 7 + 1}`, key: `${target}|${kase(b)}|${metric}`, metric,
                    m: c && c.metrics.get(metric), current: c && c.current,
@@ -3051,7 +3050,6 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         }
         const card = glanceGrid(header, [
           componentCell('us_per_image', label('us_per_image'), lanes('us_per_image')),
-          componentCell('streaming_us', label('streaming_us'), lanes('streaming_us')),
           componentCell('e2e_us_per_image', label('e2e_us_per_image'), lanes('e2e_us_per_image')),
         ]);
         card.kase = `mobilenet/seed=${seed}/effort=${effort}`;
@@ -3141,7 +3139,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const metrics = tabMetrics(tab);
       const mine = seedMeans(data).series.filter(s => metrics.includes(s.metric));
       const effort = chartedEffort(mine.map(s => s.kase));
-      const charted = mine.filter(s => (!/\/effort=\w+$/.test(s.kase) || s.kase.endsWith(`/effort=${effort}`))
+      // A series still keyed by seed has no effort: a static-dispatch record's
+      // per-batch time, not the design the nightly runs now.
+      const charted = mine.filter(s => !/\/seed=\d+/.test(s.kase) && (!/\/effort=\w+$/.test(s.kase) || s.kase.endsWith(`/effort=${effort}`))
         && (tab.per ? caseKey(s.kase, tab.per) !== null : caseKey(s.kase, 'ctx') === null));
       const sorted = charted.sort((a, b) => a.kase.localeCompare(b.kase, 'en', { numeric: true }));
       const lines = tab.per
@@ -3387,21 +3387,18 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       });
     }
 
-    // The hardware check in a sentence: the default seed's best streaming
-    // time and one image's time, at the charted effort.
+    // The hardware check in a sentence: the default seed's dispatch time
+    // per image at its smallest and largest batch, at the charted effort.
     function hardwareSummary(rows) {
       const effort = chartedEffort(Object.keys(rows));
       const runs = Object.keys(rows).map(k => /^mobilenet\/seed=(\d+)\/batch=(\d+)\/effort=(\w+)$/.exec(k)).filter(m => m && m[3] === effort);
       const seeds = [...new Set(runs.map(m => m[1]))];
       const seed = seeds.includes('3') ? '3' : seeds[0];
-      const streaming = runs.filter(m => m[1] === seed).map(m => rows[m[0]].streaming_us).filter(Boolean)
-        .sort((a, b) => a.value - b.value)[0];
-      const b1 = rows[`mobilenet/seed=${seed}/batch=1/effort=${effort}`];
-      const one = b1 && b1.us_per_image;
-      const parts = [streaming ? `seed ${seed} streams at ${formatNumber(streaming.value, 'us')} per image` : '',
-                     one ? `${streaming ? 'one' : `seed ${seed}: one`} image's dispatch takes ${formatNumber(one.value, 'us')}` : ''].filter(Boolean);
-      const text = parts.join('; ') + (parts.length && effort === 'full' ? ' (full effort)' : '');
-      return text ? ` ${text[0].toUpperCase()}${text.slice(1)}.` : '';
+      const timed = runs.filter(m => m[1] === seed && rows[m[0]].us_per_image).sort((a, b) => a[2] - b[2]);
+      if (!timed.length) return '';
+      const at = (m, per = '') => `${formatNumber(rows[m[0]].us_per_image.value, 'us')}${per} at batch ${m[2]}`;
+      const ends = timed.length > 1 ? `${at(timed[0], ' per image')}, ${at(timed.at(-1))}` : at(timed[0], ' per image');
+      return ` Seed ${seed}'s dispatch takes ${ends}${effort === 'full' ? ' (full effort)' : ''}.`;
     }
 
     // The llama check's card, one per case: decode rate, verification,

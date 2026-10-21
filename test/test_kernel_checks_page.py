@@ -411,6 +411,18 @@ assert.ok(slot.scrolled);
 """)
 
 
+def test_static_dispatch_records_are_not_spliced_into_the_trend(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+// publish.py keeps an old static record's per-batch times under mobilenet/seed=S/batch=B.
+const old = { ...hwBefore, id: '5', date: '2026-09-30T06:30:00Z', provenance: { dispatch: 'static' },
+  rows: { 'mobilenet/seed=3/batch=1': { us_per_image: { value: 500, unit: 'us' } }, 'mobilenet/seed=3/batch=16': { us_per_image: { value: 150, unit: 'us' } } } };
+const data = collect(historiesOf('sa-placer-hw', [old, hwBefore, hwAfter]));
+const trend = trendConfig(data, hw.trend[0]);
+assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
+  [['batch 1', [295.7, 295.7]], ['batch 16', [98.5, 101.95]]]);
+""")
+
+
 def test_llama_decode_by_context_is_a_line_per_context(page):
     page(COMPONENT_RUNS + LLAMA_NIGHTS + """
 // The context sweep: one compile, timed at each start position; a series per context.
@@ -1588,7 +1600,6 @@ const hwRecord = (id, date, b16, extra) => {
         rows[`mobilenet/seed=${seed}/batch=${batch}/effort=${effort}`] = {
           us_per_image: { value: us, unit: 'us', range: `median ${us + 1}, MAD 0.20, p95 ${us + 2}` },
           e2e_us_per_image: { value: us + 100, unit: 'us' },
-          ...(batch > 1 ? { streaming_us: { value: (us * 16 - 295.7) / 15, unit: 'us' } } : {}),
         };
       }
     }
@@ -1610,7 +1621,7 @@ const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 // Every run passed, but seed 3's batch 16 got slower: a warning, not "all passing".
 assert.equal(card.className, 'verdict warn');
 assert.equal(one(card, n => n.className === 'headline').text,
-             "Every run passed, but 1 measure got worse vs 1 Oct. Seed 3 streams at 92.2 µs per image; one image's dispatch takes 295.7 µs.");
+             "Every run passed, but 1 measure got worse vs 1 Oct. Seed 3's dispatch takes 295.7 µs per image at batch 1, 104.9 µs at batch 16.");
 const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open);
 // Shown: the verdict, what moved, and the trend chart's slot. Behind
@@ -1647,13 +1658,14 @@ assert.equal(header.children[0].text, "seed 3the design's default");
 assert.equal(header.children[1].text, 'placement 0123456789ab');
 assert.equal(header.children[1].href, '#view=placement&metric=placement_cost');
 assert.equal(header.children.at(-1).text, 'b16 ÷ b1 per image 0.35×');
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Dispatch / image', 'Streaming', 'End-to-end / image']);
-// A lane per batch, colored past the threshold only; streaming has no b1.
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Dispatch / image', 'End-to-end / image']);
+// A lane per batch, colored past the threshold only.
 const perImage = grid.children[0];
 assert.equal(perImage.text, 'Dispatch / imageb1295.7 µs 0.0%b16104.9 µs +7.0%');
 assert.deepEqual(perImage.children.slice(1, 3).map(r => r.children[0].className), ['npu n-series-1', 'npu n-series-2']);
 assert.deepEqual(all(perImage, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg flat', 'chg worse']);
-assert.equal(grid.children[1].children.length, 3);
+// End-to-end too: its label, a lane per batch and its trend line.
+assert.equal(grid.children[1].children.length, 4);
 // One compile serves every batch: its block, below the batches, reads the
 // seed/effort case. These runs have no stage profile, so each compile is
 // its total and peak memory, with no bar and no key.
@@ -2324,7 +2336,7 @@ const before = fullOnly(hwBefore), after = fullOnly(hwAfter);
 assert.equal(chartedEffort(Object.keys(after.rows)), 'full');
 assert.equal(chartedEffort(Object.keys(hwAfter.rows)), 'default');
 const summary = hardwareSummary(after.rows);
-assert.ok(summary.includes("one image's dispatch takes 295.7 µs") && summary.endsWith('(full effort).'), summary);
+assert.equal(summary, " Seed 3's dispatch takes 295.7 µs per image at batch 1, 120 µs at batch 16 (full effort).");
 // The trend chart draws the full-effort lines.
 const trend = trendConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend[0]);
 assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => d.label), ['batch 1', 'batch 16']);
