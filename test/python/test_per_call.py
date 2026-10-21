@@ -108,6 +108,8 @@ def test_a_clamp_is_carried_through_sums_products_and_floors():
         start + 5: lambda v: max(v - 3, 0) + 5,
         start * -2: lambda v: -2 * max(v - 3, 0),
         (p + 1).clamp(hi=9) // 4: lambda v: min(v + 1, 9) // 4,
+        (p + 1).clamp(hi=9) // -4: lambda v: min(v + 1, 9) // -4,
+        ceildiv((p + 1).clamp(hi=512), 64): lambda v: ceildiv(min(v + 1, 512), 64),
         (p - 3).clamp(lo=0).clamp(lo=-5, hi=6): lambda v: min(max(v - 3, 0), 6),
     }
     for e, want in cases.items():

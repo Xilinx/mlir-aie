@@ -211,8 +211,10 @@ class Affine:
             if isinstance(d, bool) or not isinstance(d, (int, np.integer))
             else int(d)
         )
-        if self.mod is not None or self.clamped and (c is None or c <= 0):
+        if self.mod is not None or self.clamped and not c:
             raise TypeError(f"no expression for ({self}) // {d}")
+        if c is not None and c < 0:
+            return (-self) // -c
         if self.clamped:
             # A positive divisor keeps the bounds' order.
             return self._reclamped(lambda e: e // c, lambda b: b // c)
@@ -225,8 +227,6 @@ class Affine:
             raise TypeError(f"no expression for ({self}) // ({d})")
         if c is None:
             return NotImplemented
-        if c < 0:
-            return (-self) // -c
         if c == 0 or c & (c - 1):
             raise TypeError(f"no expression for a floor division by {c}")
         if self.mul != 1:
