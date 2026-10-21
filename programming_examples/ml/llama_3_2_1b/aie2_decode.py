@@ -6,7 +6,7 @@
 
 Every projection runs on the array's eight cores, as units on one broadcast
 activation: qkv (fused, each core giving its KV group's combined chunk), o
-and down (fused with the residual add, finished by a glue core), gate and up.
+and down (whose outputs a glue core adds to the fp32 residual), gate and up.
 The other work runs on glue cores: one RMSNorm core (both norms of every
 layer, then the final norm), the RoPE + KV-row core, eight attention cores
 over the DDR KV cache (two a KV head, block by block), the
@@ -16,9 +16,10 @@ sampler core.
 The array's activations and outputs are staged through DDR: a glue core
 drains the activation for a unit into its slot in the `stage` buffer, and
 the array fills it from there; a slot of a residual unit (o, down) also
-holds the residual its add needs at `STAGE_RESID`, drained there by the core
-that last wrote the residual, and right after it the RMSNorm gamma the norm
-of that residual reads, so the norm fills both at once. The array's gate,
+holds the residual at `STAGE_RESID`, drained there by the core that last
+wrote it: the int8 form the norm reads, then the fp32 form the residual core
+adds the unit's output to; right after the rows the RMSNorm gamma of that
+residual's norm, so the norm fills both at once. The array's gate,
 up and qkv outputs go to `stage` too, where the SiLU and RoPE cores fill
 from. Each layer the RoPE row of the token's position rides the head of
 every weight lane. `stage` persists across dispatches: the sampled token's
@@ -155,9 +156,10 @@ LMW_GAMMA_BYTES = 2 * D
 M_MAX = 4
 # stage: per layer the four activation slots (qkv, o, gu, d), each M_MAX
 # activation rows of ROW bytes (room for down's), then at STAGE_RESID M_MAX
-# rows of RROW bytes holding the residual the unit adds (o, down) or its norm
-# reads, then that norm's gamma (the o slot's residual is normed by
-# gamma_in, the d slot's by gamma_post); then the array outputs of one
+# residual rows of RROW bytes, then the gamma of that residual's norm (the o
+# slot's residual is normed by gamma_in, the d slot's by gamma_post). A
+# residual row is what its norm reads, [int8 x | scale | pad] (RQ bytes),
+# then x in fp32, which the unit (o, down) adds to; then the array outputs of one
 # layer's qkv (per row), gate and up (four row chunks) units (8 cores x
 # OUT_BYTES each); then the final residuals' slot, with the final norm's
 # gamma; then a slot for outputs nothing reads.
@@ -165,9 +167,10 @@ SLOTS = ("qkv", "o", "gu", "d")
 OUT_REGION = N_CORES * OUT_BYTES
 OUTS = {"qkv": M_MAX, "g": 1, "u": HD // N_CORES // 256}
 ROW = HACT_BYTES
-RROW = 2112
+RQ = D + 64
+RROW = RQ + 4 * D
 STAGE_RESID = M_MAX * ROW
-GAMMA_AT = RROW  # gamma's offset in a norm input [x int8[D + 8] | pad | gamma]
+GAMMA_AT = RQ  # gamma's offset in a norm input [x int8[D + 8] | pad | gamma]
 NORM_IN_BYTES = GAMMA_AT + 2 * D
 SLOT_STRIDE = STAGE_RESID + M_MAX * RROW + 2 * D
 # The array's input object: M_MAX rows' 2048 columns, then their scales.
@@ -284,6 +287,7 @@ def build(
     t_slot = _i8(MMA_SLOT)
     t_out = _i8(OUT_BYTES)
     t_vec = _i8(ACT_BYTES)
+    t_res = _i8(RROW)
     t_comb = _i8(N_CORES * COMB_BYTES)
     t_rc = _i8(ROW_CHUNK)
     t_rc_half = _i8(NH * (ROW_CHUNK + KV_ROW_WORDS * 4))
@@ -348,19 +352,23 @@ def build(
     ) + of_outhi.prod().join(
         out_offsets, obj_types=[t_out] * 4, names=[f"out{c}" for c in range(4, 8)]
     )
-    of_rlo = ObjectFifo(_i8(4 * RESID_BLOCK), depth=1, name="rlo")
+    # The residual core's two inputs: cores 0-3's blocks then the fp32
+    # residual they add to (from stage), and cores 4-7's blocks.
+    t_lo = _i8(4 * RESID_BLOCK + 4 * D)
+    of_rlo = ObjectFifo(t_lo, depth=1, name="rlo")
     of_rhi = ObjectFifo(_i8(4 * RESID_BLOCK), depth=1, name="rhi")
     blk_offsets = [i * RESID_BLOCK for i in range(4)]
-    blk_eps = of_rlo.prod().join(
-        blk_offsets,
-        obj_types=[_i8(RESID_BLOCK)] * 4,
-        names=[f"rblk{c}" for c in range(4)],
-    ) + of_rhi.prod().join(
+    lo_eps = of_rlo.prod().join(
+        blk_offsets + [4 * RESID_BLOCK],
+        obj_types=[_i8(RESID_BLOCK)] * 4 + [_i8(4 * D)],
+        names=[f"rblk{c}" for c in range(4)] + ["rin"],
+    )
+    blk_eps = lo_eps[:4] + of_rhi.prod().join(
         blk_offsets,
         obj_types=[_i8(RESID_BLOCK)] * 4,
         names=[f"rblk{c}" for c in range(4, 8)],
     )
-    of_res = ObjectFifo(t_vec, depth=1, name="res")
+    of_res = ObjectFifo(t_res, depth=1, name="res")
 
     KA = llama_kernels.gemv_array()
     t_scratch = _i8(M_MAX * 384 * 4)
@@ -375,12 +383,10 @@ def build(
         [t_scratch, _i8(M_MAX * CS_BYTES), t_out, np.int32],
     )
     k_resid = KA.bind(
-        "llama_gemv_array_resid_partial",
-        [t_act, t_scratch, _i8(RESID_BLOCK)] + [np.int32] * 3,
+        "llama_gemv_array_proj_block", [t_scratch, _i8(RESID_BLOCK), np.int32]
     )
     k_final = KA.bind(
-        "llama_gemv_array_rescale_finalize",
-        [_i8(4 * RESID_BLOCK), _i8(4 * RESID_BLOCK), t_vec],
+        "llama_gemv_array_residual_add", [t_lo, _i8(4 * RESID_BLOCK), t_res]
     )
     gate_inv = 1.0 / SILU_GATE_SCALE
     u_chunks = OUTS["u"]
@@ -421,13 +427,11 @@ def build(
                     c_act.release(1)
 
                 def resid():
-                    # The unit's rows, in scratch, plus each row's residual.
-                    a = c_act.acquire(1)
+                    # The unit's rows, in scratch, to the residual core.
                     for r in range_(mi):
                         b = c_blk.acquire(1)
-                        kr(a, scratch, b, core, 0, _i32(r))
+                        kr(scratch, b, _i32(r))
                         c_blk.release(1)
-                    c_act.release(1)
 
                 def spread_chunk(chunk):
                     spread()
@@ -493,8 +497,6 @@ def build(
             hi = c_hi.acquire(1)
             r = c_res.acquire(1)
             k(lo, hi, r)
-            for i in range_(D + 8, ACT_BYTES):
-                r[i] = 0
             c_res.release(1)
             c_hi.release(1)
             c_lo.release(1)
@@ -502,7 +504,14 @@ def build(
     workers.append(
         Worker(
             w_resid,
-            [of_rlo.cons(), of_rhi.cons(), of_res.prod(), p_passes, p_m0, k_final],
+            [
+                of_rlo.cons(),
+                of_rhi.cons(),
+                of_res.prod(),
+                p_passes,
+                p_m0,
+                k_final,
+            ],
             wait_for_parameters=True,
         )
     )
@@ -753,33 +762,31 @@ def build(
     ]
 
     # up requant + SiLU, a row each
-    of_gate = ObjectFifo(_i8(HD), depth=1, name="gate")
-    of_up = ObjectFifo(_f32(HD), depth=1, name="up")
+    # A row's up (fp32) then gate (int8), one object on one shim channel.
+    t_gu = _i8(4 * HD + HD)
+    of_gu = ObjectFifo(t_gu, depth=1, name="gu")
     of_sf = ObjectFifo(_i8(HACT_BYTES), depth=1, name="sf")
     KS = llama_kernels.silu_mul(gate_scale=SILU_GATE_SCALE)
-    k_uprequant = KS.bind("llama_up_requant", [_f32(HD), t_hd8])
-    k_silu = KS.bind("llama_silu_mul_int8_selfcal", [_i8(HD), t_hd8, _i8(HACT_BYTES)])
+    k_uprequant = KS.bind("llama_up_requant", [t_gu, t_hd8])
+    k_silu = KS.bind("llama_silu_mul_int8_selfcal", [t_gu, t_hd8, _i8(HACT_BYTES)])
 
-    def w_silu(c_g, c_u, c_out, uf, n, m0p, kq, ks):
+    def w_silu(c_gu, c_out, uf, n, m0p, kq, ks):
         rows = total_rows(n.read(), m0p.read())
         for _ in range_(index_cast(index(), muli(rows, _const_i32(N_LAYERS)))):
-            u = c_u.acquire(1)
-            kq(u, uf)
-            c_u.release(1)
-            g = c_g.acquire(1)
+            gu = c_gu.acquire(1)
+            kq(gu, uf)
             o = c_out.acquire(1)
-            ks(g, uf, o)
+            ks(gu, uf, o)
             for i in range_(HD + 8, HACT_BYTES):
                 o[i] = 0
             c_out.release(1)
-            c_g.release(1)
+            c_gu.release(1)
 
     workers.append(
         Worker(
             w_silu,
             [
-                of_gate.cons(),
-                of_up.cons(),
+                of_gu.cons(),
                 of_sf.prod(),
                 Buffer(t_hd8, name="uf"),
                 p_passes,
@@ -795,7 +802,7 @@ def build(
     # core's other outputs pass by.
     of_wlm = ObjectFifo(t_wlm, depth=2, name="wlm")
     of_rec = ObjectFifo(t_rec, depth=1, name="rec")
-    of_seed = ObjectFifo(t_vec, depth=1, name="seed")
+    of_seed = ObjectFifo(t_res, depth=1, name="seed")
     KL = llama_kernels.lmhead(kset=KSET)
     k_insert = KL.bind(
         "llama_lmhead_topk_insert",
@@ -803,12 +810,12 @@ def build(
         + [np.int32],
     )
     KTS = llama_kernels.topk_sample(kset=KSET)
-    k_embed = KTS.bind("llama_embed_seed", [t_wlm, t_vec, np.int32])
+    k_embed = KTS.bind("llama_embed_seed", [t_wlm, t_res, np.int32])
     k_sample = KTS.bind(
         "llama_topk_finalize_packed",
         [_f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1), _i32a(3), t_rec],
     )
-    k_seed = KTS.bind("llama_seed_from_record", [t_rec, t_vec])
+    k_seed = KTS.bind("llama_seed_from_record", [t_rec, t_res])
 
     def w_lm(
         c_h,
@@ -851,8 +858,6 @@ def build(
                     w = c_w.acquire(1)
                     s = c_seed.acquire(1)
                     ke(w, s, andi(shrui(bits, muli(ri, _const_i32(2))), _const_i32(3)))
-                    for i in range_(D + 8, ACT_BYTES):
-                        s[i] = 0
                     c_seed.release(1)
                     c_w.release(1)
             skip = addi(muli(m, _const_i32(2 * N_LAYERS + 1)), _const_i32(-1))
@@ -916,6 +921,7 @@ def build(
         *[f.prod() for f in of_w],
         of_outlo.cons(),
         of_outhi.cons(),
+        lo_eps[4].prod(),
         of_res.cons(),
         of_x.prod(),
         of_h.cons(),
@@ -923,8 +929,7 @@ def build(
         *[f.prod() for f in of_kvb],
         *[ep.cons() for ep in rows_eps],
         of_af.cons(),
-        of_gate.prod(),
-        of_up.prod(),
+        of_gu.prod(),
         of_sf.cons(),
         of_wlm.prod(),
         of_rec.cons(),
@@ -935,12 +940,12 @@ def build(
         it = iter(e)
         act = next(it)
         w = [next(it) for _ in range(N_CORES)]
-        outlo, outhi, res = next(it), next(it), next(it)
+        outlo, outhi, rin, res = next(it), next(it), next(it), next(it)
         x, h = next(it), next(it)
         comb = next(it)
         kvb = [next(it), next(it)]
         kvrow = [next(it), next(it)]
-        af, gate, up, sf = next(it), next(it), next(it), next(it)
+        af, gu, sf = next(it), next(it), next(it)
         wlm, rec_c, seed = next(it), next(it), next(it)
 
         def step(*transfers):
@@ -969,7 +974,7 @@ def build(
             """Slot slot_at's residual row r through the norm with the slot's
             gamma, to h_at."""
             step(
-                fill(on, x, linear_tap(stage_total, resid_row(slot_at, r), RROW)),
+                fill(on, x, linear_tap(stage_total, resid_row(slot_at, r), RQ)),
                 fill(on, x, linear_tap(stage_total, resid_row(slot_at, M_MAX), 2 * D)),
                 drain(on, h, linear_tap(stage_total, h_at, ACT_BYTES)),
             )
@@ -982,16 +987,15 @@ def build(
                 fill(on, act, tap(slot_at + k, [1, 1, M_MAX, 16], [0, 0, ROW, 1])),
             )
 
-        def resids(on, slot_at):
-            """The array's residual object: slot_at's residual rows."""
-            return (
+        def resids(rows, gates, slot_at):
+            """Each row's fp32 residual in slot_at, for the residual core."""
+            return tuple(
                 fill(
-                    on,
-                    act,
-                    tap(
-                        resid_row(slot_at, 0), [1, 1, M_MAX, ACT_BYTES], [0, 0, RROW, 1]
-                    ),
-                ),
+                    gates[r],
+                    rin,
+                    linear_tap(stage_total, resid_row(slot_at, r) + RQ, 4 * D),
+                )
+                for r in rows
             )
 
         def outs_drain(on, name, region):
@@ -1026,7 +1030,7 @@ def build(
                         drain(
                             p_pg[r],
                             seed,
-                            linear_tap(stage_total, seed_at + r * RROW, ACT_BYTES),
+                            linear_tap(stage_total, seed_at + r * RROW, RROW),
                         ),
                     )
             for L in range(N_LAYERS):
@@ -1122,12 +1126,12 @@ def build(
                         drain(
                             gate_of[r],
                             res,
-                            linear_tap(stage_total, resid_row(d_at, r), ACT_BYTES),
+                            linear_tap(stage_total, resid_row(d_at, r), RROW),
                         )
                         for r in rows
                     ),
                     *acts(on, o_at),
-                    *resids(on, o_at),
+                    *resids(rows, gate_of, o_at),
                 )
                 for r in rows:
                     norm(gate_of[r], d_at, r, gu_at + r * ROW)
@@ -1140,22 +1144,22 @@ def build(
                     step(
                         fill(
                             gate_of[r],
-                            gate,
+                            gu,
+                            tap(
+                                outs["u"] + r * 1024,
+                                [1, N_CORES, OUTS["u"], 1024],
+                                [0, OUT_BYTES, OUT_REGION, 1],
+                            ),
+                        ),
+                        fill(
+                            gate_of[r],
+                            gu,
                             gather_tap(
                                 stage_total,
                                 outs["g"] + r * (HD // N_CORES),
                                 N_CORES,
                                 OUT_BYTES,
                                 HD // N_CORES,
-                            ),
-                        ),
-                        fill(
-                            gate_of[r],
-                            up,
-                            tap(
-                                outs["u"] + r * 1024,
-                                [1, N_CORES, OUTS["u"], 1024],
-                                [0, OUT_BYTES, OUT_REGION, 1],
                             ),
                         ),
                         drain(
@@ -1170,12 +1174,12 @@ def build(
                         drain(
                             gate_of[r],
                             res,
-                            linear_tap(stage_total, resid_row(next_at, r), ACT_BYTES),
+                            linear_tap(stage_total, resid_row(next_at, r), RROW),
                         )
                         for r in rows
                     ),
                     *(t for c in range(HD // D) for t in acts(on, d_at, c * D, HD)),
-                    *resids(on, d_at),
+                    *resids(rows, gate_of, d_at),
                 )
                 w_tg.finish()
 
@@ -1191,7 +1195,7 @@ def build(
             )
             seed.drain(
                 stage,
-                tap=linear_tap(stage_total, seed_at, ACT_BYTES),
+                tap=linear_tap(stage_total, seed_at, RROW),
                 length_parameter=p_lm[tok],
                 group=out_tg,
                 wait=True,

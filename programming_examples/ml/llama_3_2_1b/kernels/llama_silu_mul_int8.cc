@@ -52,8 +52,9 @@ extern "C" {
 // HD vector): pass A finds absmax, pass B requants with inv = 127 /
 // absmax. Writes silu_out_scale to out[kCols..kCols+4] (out is int8[kCols+8])
 // so the downstream down gemm reads its act_scale from the sf tail; up_scale
-// comes from the up tail.
-void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
+// comes from the up tail. gate_up is the row's [up fp32[kCols] | gate
+// int8[kCols]], one object so the two share a DMA channel.
+void llama_silu_mul_int8_selfcal(int8_t *restrict gate_up, int8_t *restrict up,
                                  int8_t *restrict out) {
   event0();
   const ::aie::saturation_mode prev_sat =
@@ -65,6 +66,7 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
   static_assert(kCols % kLanes == 0,
                 "LLAMA_SILU_MUL_COLS must be a multiple of 16");
   constexpr int kChunks = kCols / kLanes;
+  const int8_t *gate = gate_up + 4 * kCols;
 
   float up_scale;
   __builtin_memcpy(&up_scale, up + kCols, 4);

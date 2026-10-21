@@ -49,7 +49,8 @@ Key design pieces:
 
 - **Shared 8-lane GEMV array** (`aie2_gemv_array.py`). Eight cores run every
   projection as units on one broadcast activation: qkv (fused, each core giving
-  its KV group's chunk), o and down (fused with the residual add), gate and up.
+  its KV group's chunk), o and down (whose outputs a glue core adds to the fp32
+  residual), gate and up.
   The layers' weights stream over eight shim lanes, one per core, on
   `aie::mmul<8, 8, 8>` (`kernels/llama_gemv_mma.cc`): a prefill batch's up to 4
   activations share one pass of the weights.
@@ -106,9 +107,11 @@ the stages of the one-design restructure:
 
 - **Weights:** symmetric per-output-channel INT8 (`gen_llama_data.py`), streamed
   from DDR per token.
-- **Activations:** per-token dynamic INT8 (absmax) at each matmul input; the
-  residual and KV carriers also carry per-token scales (a static residual scale
-  scores 0/20 on the greedy prompts below).
+- **Activations:** per-token dynamic INT8 (absmax) at each matmul input; the KV
+  carriers also carry per-token scales.
+- **Residual stream in fp32:** each add is fp32, and each norm reads the
+  residual requantized per token. An int8 residual let BOS's massive
+  activation (|x| ~ 146) crush the token's other channels.
 - **Glue in fp32:** rmsnorm, rope, softmax and silu, each written so the numpy
   oracle reproduces it exactly: SiLU and the sampler's exp read generated
   tables, attention's exp is a fixed-point polynomial, the inverse square root

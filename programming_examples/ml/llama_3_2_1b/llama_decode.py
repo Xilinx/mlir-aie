@@ -19,6 +19,7 @@ from aie2_decode import (
     LMW_GAMMA_BYTES,
     M_MAX,
     REC_BYTES,
+    RQ,
     RROW,
     STAGE_RESID,
     WLM_SLOT,
@@ -285,14 +286,14 @@ class DecodeShape:
         w[off_rope : off_rope + self.t * CS_BYTES] = rope.view(np.int8).ravel()
         return w
 
-    def pack_stage(self, layers, final_gamma, x_i8, res_scale):
+    def pack_stage(self, layers, final_gamma, seed):
         """The stage buffer at the start of a generation.
 
         Args:
             layers: The layers' norms (gamma_in, gamma_post).
             final_gamma: The final norm's bf16 gamma.
-            x_i8: The first token's seed, int8[D], if it is not a prompt token.
-            res_scale: Its scale.
+            seed: The first token's layer-0 residual (int8[D], f32 scale,
+                fp32[D]), if it is not a prompt token.
 
         Returns:
             int8, stage_layout(n_layers)'s: each norm's gamma after the
@@ -308,10 +309,13 @@ class DecodeShape:
         for at, g in gammas:
             at += STAGE_RESID + M_MAX * RROW
             st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
+        x_i8, res_scale, x_fp = seed
         st[self.seed_at : self.seed_at + D] = x_i8
         st[self.seed_at + D : self.seed_at + D + 4] = np.frombuffer(
             np.float32(res_scale).tobytes(), np.int8
         )
+        fp_at = self.seed_at + RQ
+        st[fp_at : fp_at + 4 * D] = np.asarray(x_fp, np.float32).view(np.int8)
         return st
 
     def pack_kv(self, layers):
@@ -361,7 +365,9 @@ class Decoder:
         self.session = DispatchSession(build, elf, **shape.compile_kwargs)
         self.w_t = iron.tensor(shape.pack_wblob(layers, rope), dtype=np.int8)
         self.lmw_t = iron.tensor(pack_lmw(*lm), dtype=np.int8)
-        self._stage0 = shape.pack_stage(layers, lm[2], np.zeros(D, np.int8), 0.0)
+        self._stage0 = shape.pack_stage(
+            layers, lm[2], (np.zeros(D, np.int8), 0.0, np.zeros(D, np.float32))
+        )
 
     def dispatch(self, kv_t, stage_t, params):
         """Run one dispatch on a KV cache and stage.

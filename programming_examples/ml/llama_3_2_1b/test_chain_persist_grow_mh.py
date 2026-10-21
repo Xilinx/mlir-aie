@@ -31,11 +31,11 @@ from pathlib import Path
 import aie.iron as iron
 import numpy as np
 from aie2_decode import (
-    ACT_BYTES,
     KV_BLOCK_WORDS,
     LMW_GAMMA_BYTES,
     M_MAX,
     REC_BYTES,
+    RQ,
     RROW,
     WLM_TOTAL,
     wblob_layout,
@@ -76,8 +76,9 @@ def synthetic_lm_weights(seed, rows_per_chunk=8192):
 
 
 def build_fixtures(shape, seed, p0, n_tok):
-    """Random layers and a shape.t-row KV cache with p0 rows filled, the rows
-    of the n_tok tokens generated from position p0 on left zero."""
+    """A random layer-0 residual (int8[D], f32 scale, fp32[D]), and random
+    layers with a shape.t-row KV cache with p0 rows filled, the rows of the
+    n_tok tokens generated from position p0 on left zero."""
     rng = np.random.default_rng(seed)
     x_fp = rng.uniform(-1.6, 1.6, size=D).astype(np.float32)
     res_scale = np.float32(np.maximum(np.abs(x_fp).max(), 1e-12) / 127.0)
@@ -101,7 +102,7 @@ def build_fixtures(shape, seed, p0, n_tok):
         layer["k_scales_slot"] = k_slot
         layer["v_scales_slot"] = v_slot
         layers.append(layer)
-    return x_i8, res_scale, layers
+    return (x_i8, res_scale, x_fp), layers
 
 
 DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
@@ -149,7 +150,7 @@ def set_pristine(layers, pristine):
         layers[L]["v_scales_slot"] = vslot[L].copy()
 
 
-def replay(shape, records, passes, x_i8, res_scale, layers, p0, rope, lm, sample, plan):
+def replay(shape, records, passes, residual, layers, p0, rope, lm, sample, plan):
     """Check a dispatch's records against the numpy oracle.
 
     The oracle runs from the caches the caller set and position p0 on,
@@ -158,33 +159,33 @@ def replay(shape, records, passes, x_i8, res_scale, layers, p0, rope, lm, sample
     Args:
         records: The dispatch's packed records.
         passes: Its passes.
-        x_i8, res_scale: The first token's seed.
+        residual: The first token's layer-0 residual.
         layers: The oracle's layers, their caches as the dispatch found them.
         p0: The first token's position.
         rope: The RoPE table.
         lm: (embed_i8, embed_sc, final_norm gamma).
         sample: The sampler's (temperature, top_k, seed).
         plan: Per token, (the prompt token it inputs, or None to input the
-            previous token's sample (the first token: x_i8); the index of
+            previous token's sample (the first token: residual); the index of
             the record the lm_head and sampler left for it, or None).
 
     Returns:
-        (failed tokens, the last token's final residual and its scale).
+        (failed tokens, the last token's final residual).
     """
     embed_i8, embed_sc, gamma = lm
     temperature, top_k, seed = sample
     fails = 0
     hidden = None
-    cur_x, cur_sc = x_i8, res_scale
+    cur = residual
     dev_toks = tokens_of(records, passes)
     for t, (prompt, rec_at) in enumerate(plan):
         if prompt is not None:
-            cur_x, cur_sc = embed_seed_ref(embed_i8[prompt], float(embed_sc[prompt]))
+            cur = embed_seed_ref(embed_i8[prompt], float(embed_sc[prompt]))
         for L in range(len(layers)):
             layers[L]["cos"] = rope[p0 + t, :HEAD_D]
             layers[L]["sin"] = rope[p0 + t, HEAD_D:]
-        logits, *hidden = chain_forward_logits(
-            cur_x, cur_sc, layers, p0 + t, embed_i8, embed_sc, gamma
+        logits, hidden = chain_forward_logits(
+            cur, layers, p0 + t, embed_i8, embed_sc, gamma
         )
         if rec_at is None:
             print(f"  token {t} (pos {p0+t}): prompt, no sample", flush=True)
@@ -198,11 +199,11 @@ def replay(shape, records, passes, x_i8, res_scale, layers, p0, rope, lm, sample
             tag = "sampled"
         else:
             ok, ref, tag = greedy_verdict(logits, dev_tok)
-        cur_x, cur_sc = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
+        cur = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
         rec = records[rec_at * REC_BYTES : (rec_at + 1) * REC_BYTES]
-        seed_ok = np.array_equal(rec[:D], cur_x) and rec[D : D + 4].tobytes() == (
-            np.float32(cur_sc).tobytes()
-        )
+        seed_ok = np.array_equal(rec[:D], embed_i8[dev_tok]) and rec[
+            D : D + 4
+        ].tobytes() == (np.float32(embed_sc[dev_tok]).tobytes())
         if not seed_ok:
             tag += ", seed DIFF"
         ok = ok and seed_ok
@@ -218,9 +219,13 @@ def replay(shape, records, passes, x_i8, res_scale, layers, p0, rope, lm, sample
 def check_final(shape, stage, hidden, row):
     """Print whether `stage` holds `hidden` as final residual row `row`;
     return 1 if not."""
-    xo_i8, xo_scale = hidden
-    at = stage[shape.final_at + row * RROW : shape.final_at + row * RROW + D + 4]
-    ok = np.array_equal(at[:D], xo_i8) and at[D:].tobytes() == xo_scale.tobytes()
+    xo_i8, xo_scale, xo_fp = hidden
+    at = stage[shape.final_at + row * RROW : shape.final_at + (row + 1) * RROW]
+    ok = (
+        np.array_equal(at[:D], xo_i8)
+        and at[D : D + 4].tobytes() == np.float32(xo_scale).tobytes()
+        and at[RQ:].tobytes() == np.asarray(xo_fp, np.float32).tobytes()
+    )
     print(f"  final hidden: {'PASS' if ok else 'FAIL'}", flush=True)
     return int(not ok)
 
@@ -427,7 +432,7 @@ def main(argv=None):
         gamma = _load_bf16(DATA_DIR, "final_norm", (D,))
     lm = (embed_i8, embed_sc, gamma)
 
-    x_i8, res_scale, layers = build_fixtures(shape, fseed, p0, n_tok)
+    residual0, layers = build_fixtures(shape, fseed, p0, n_tok)
     rope = rope_table(shape.t, HEAD_D)
 
     # Snapshot the PRISTINE caches (before any append) so the device gets the same
@@ -441,7 +446,7 @@ def main(argv=None):
     )
 
     kv0 = shape.pack_kv(layers)
-    stage0 = shape.pack_stage(layers, gamma, x_i8, res_scale)
+    stage0 = shape.pack_stage(layers, gamma, residual0)
 
     # --from-run leaves the NPU alone.
     decoder = None
@@ -533,8 +538,7 @@ def main(argv=None):
             shape,
             whole,
             passes,
-            x_i8,
-            res_scale,
+            residual0,
             layers,
             p0,
             rope,
@@ -570,8 +574,7 @@ def main(argv=None):
             shape,
             first,
             passes,
-            x_i8,
-            res_scale,
+            residual0,
             layers,
             p0,
             rope,
@@ -610,7 +613,7 @@ def main(argv=None):
                 print(f"saved the device's run to {opts.save_run}")
                 return 0
         kv_dev = kv0.copy()
-        x_d, sc_d = x_i8, res_scale
+        residual_d = residual0
         for d, ((pos, passes, _, _), (toks_out, stage, kv_idx, kv_val)) in enumerate(
             zip(schedule, runs)
         ):
@@ -627,8 +630,7 @@ def main(argv=None):
                 shape,
                 toks_out,
                 passes,
-                x_d,
-                sc_d,
+                residual_d,
                 layers,
                 pos,
                 rope,
@@ -647,20 +649,27 @@ def main(argv=None):
             hidden_fails += check_final(
                 shape, stage, hidden, len(schedule[d][2]) - 1 if schedule[d][2] else 0
             )
-            # The oracle's next layer-0 input is the last token's seed (body +
-            # scale), which the device left in the stage with a zero pad.
+            # The oracle's next layer-0 input is the residual the device made
+            # of the last token's embed row (in its record) and left in the
+            # stage.
             if plan[-1][1] is not None:
                 last = plan[-1][1] * REC_BYTES
-                x_d = toks_out[last : last + D].copy()
-                sc_d = float(
-                    np.frombuffer(
-                        toks_out[last + D : last + D + 4].tobytes(), np.float32
-                    )[0]
+                residual_d = embed_seed_ref(
+                    toks_out[last : last + D].copy(),
+                    float(
+                        np.frombuffer(
+                            toks_out[last + D : last + D + 4].tobytes(), np.float32
+                        )[0]
+                    ),
                 )
-                seed_left = np.zeros(ACT_BYTES, dtype=np.int8)
-                seed_left[: D + 4] = toks_out[last : last + D + 4]
+                seed_left = np.zeros(RROW, dtype=np.int8)
+                seed_left[:D] = residual_d[0]
+                seed_left[D : D + 4] = np.frombuffer(
+                    np.float32(residual_d[1]).tobytes(), np.int8
+                )
+                seed_left[RQ:] = residual_d[2].view(np.int8)
                 if not np.array_equal(
-                    stage[shape.seed_at : shape.seed_at + ACT_BYTES], seed_left
+                    stage[shape.seed_at : shape.seed_at + RROW], seed_left
                 ):
                     print(f"  seed carry: FAIL (dispatch {d})", flush=True)
                     carry_fails += 1
@@ -682,7 +691,7 @@ def main(argv=None):
                 end = {}
                 for name, d in (("prompt's", prompt_end), ("last", len(rs) - 1)):
                     at = shape.final_at + max(len(sched[d][2]) - 1, 0) * RROW
-                    end[f"{name} final residual"] = rs[d][1][at : at + D + 4]
+                    end[f"{name} final residual"] = rs[d][1][at : at + RROW]
                 ends.append(
                     end
                     | {
@@ -695,9 +704,7 @@ def main(argv=None):
                             ]
                         ),
                         "KV cache": kv,
-                        "seed left": rs[-1][1][
-                            shape.seed_at : shape.seed_at + ACT_BYTES
-                        ],
+                        "seed left": rs[-1][1][shape.seed_at : shape.seed_at + RROW],
                     }
                 )
             for name, ours in ends[0].items():

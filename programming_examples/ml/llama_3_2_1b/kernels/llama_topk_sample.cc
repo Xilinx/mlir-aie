@@ -33,6 +33,8 @@ static constexpr int kNTile = LLAMA_TOPK_NTILE;
 static constexpr int kKset = LLAMA_TOPK_KSET;
 static constexpr float kInvExpQuantScale = 1.0f / LLAMA_EXP_QUANT_SCALE;
 static constexpr int kVec = 64;
+// A residual row: [int8 x | scale | pad], then x in fp32 here.
+static constexpr int kFpAt = kD + 64;
 
 static inline int32_t quant_shifted(float shifted) {
   float v = shifted * kInvExpQuantScale;
@@ -85,11 +87,11 @@ static inline float xoshiro_uniform(Xoshiro128 &g) {
   return (float)(r >> 8) * (1.0f / 16777216.0f);
 }
 
-// The embed seed of one embed row: the row requantized to its own absmax,
-// out[kD + 8] = [int8 row | f32 scale | 0]. embed_sc cancels
-// (test_chain_persist_grow_mh.embed_seed_ref).
-static void embed_seed(const int8_t *restrict row, float embed_sc,
-                       int8_t *restrict seed) {
+// A token's layer-0 residual row from its embed row (row, embed_sc): the
+// row requantized to its own absmax for the first norm, [int8 | scale | 0],
+// then the row in fp32 (row * embed_sc) at kFpAt for the residual adds.
+static void residual_seed(const int8_t *restrict row, float embed_sc,
+                          int8_t *restrict seed) {
   ::aie::vector<int8, kVec> hi = ::aie::load_unaligned_v<kVec>(row);
   ::aie::vector<int8, kVec> lo = hi;
   for (int c = 1; c < kD / kVec; c++) {
@@ -116,12 +118,18 @@ static void embed_seed(const int8_t *restrict row, float embed_sc,
         vec_round_to_i8(vec_mul_rne(
             ::aie::to_float<float>(::aie::load_unaligned_v<16>(row + c * 16)),
             inv_v)));
+  ::aie::vector<float, 16> sc_v = ::aie::broadcast<float, 16>(embed_sc);
+  float *x = reinterpret_cast<float *>(seed + kFpAt);
+  for (int c = 0; c < kD / 16; c++)
+    ::aie::store_v(x + c * 16,
+                   vec_mul_rne(::aie::to_float<float>(
+                                   ::aie::load_unaligned_v<16>(row + c * 16)),
+                               sc_v));
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   float scale = (float)amax * embed_sc * (1.0f / 127.0f);
   __builtin_memcpy(seed + kD, &scale, 4);
-  int32_t zero = 0;
-  __builtin_memcpy(seed + kD + 4, &zero, 4);
+  zero_words<kFpAt - kD - 4>(seed + kD + 4);
 }
 
 extern "C" {
@@ -132,11 +140,11 @@ extern "C" {
 // gidx); top_k 0, or past the set, means the whole set (hosts reject values
 // past KSET). Greedy (temperature <= 0) is the argmax whatever top_k is.
 //   token  : out int32[1] (global token id)
-//   seed   : out int8[kD + 8] (requant'd winner embed row + fp32 scale tail)
+//   record : out int8[kD + 4] (the winner's embed row, then its embed_sc)
 void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
                          float *restrict set_scale, int8_t *restrict set_row,
                          int32_t *restrict set_len, uint32_t *restrict params,
-                         int32_t *restrict token, int8_t *restrict seed) {
+                         int32_t *restrict token, int8_t *restrict record) {
   const int len = *set_len;
   float temperature;
   uint32_t tbits = params[0];
@@ -230,13 +238,14 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
 
   token[0] = set_gidx[winner];
 
-  embed_seed(set_row + winner * kD, set_scale[winner], seed);
+  copy_words<kD>(record, set_row + winner * kD);
+  __builtin_memcpy(record + kD, &set_scale[winner], 4);
 }
 
-// Packed-output finalize: identical sampling, but writes BOTH the next-token
-// embed seed AND the token id into ONE buffer out[kD + 12]:
-//   [0..kD)        int8 embed row (requant'd)
-//   [kD..kD+4)     fp32 per-token scale
+// Packed-output finalize: identical sampling, but writes the winner's embed
+// row AND the token id into ONE buffer out[kD + 12]:
+//   [0..kD)        int8 embed row
+//   [kD..kD+4)     fp32 embed_sc
 //   [kD+4..kD+8)   int32 token id
 //   [kD+8..kD+12)  pad
 // The seed feeds back as the next layer-0 input and the token rides along for
@@ -252,13 +261,15 @@ void llama_topk_finalize_packed(float *restrict set_logit,
   llama_topk_finalize(set_logit, set_gidx, set_scale, set_row, set_len, params,
                       &token, out);
   __builtin_memcpy(out + kD + 4, &token, 4);
+  int32_t zero = 0;
+  __builtin_memcpy(out + kD + 8, &zero, 4);
 }
 
-// The next token's layer-0 input from a packed record: the embed row and its
-// scale, then zeros to the activation's kD + 16 bytes.
+// The next token's layer-0 residual row from a packed record.
 void llama_seed_from_record(int8_t *restrict record, int8_t *restrict seed) {
-  copy_words<kD + 4>(seed, record);
-  zero_words<12>(seed + kD + 4);
+  float embed_sc;
+  __builtin_memcpy(&embed_sc, record + kD, 4);
+  residual_seed(record, embed_sc, seed);
 }
 
 // The embed seed of row `row` of one lm_head weight slot, [64 B prefix |
@@ -270,7 +281,7 @@ void llama_embed_seed(int8_t *restrict slot, int8_t *restrict seed,
   float embed_sc;
   __builtin_memcpy(&embed_sc,
                    slot + kPrefix + kNTile * kD + kNTile * 4 + row * 4, 4);
-  embed_seed(slot + kPrefix + row * kD, embed_sc, seed);
+  residual_seed(slot + kPrefix + row * kD, embed_sc, seed);
 }
 
 } // extern "C"

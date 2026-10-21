@@ -121,7 +121,7 @@ def int8_chain_next_token(
             x = row.astype(np.float32)
         elif residual_dyn:
             sc = np.float32(max(float(np.abs(row).max()), 1e-12) / 127.0)
-            x = (requant(row, np.float32(1.0) / sc), float(sc))
+            x = (requant(row, np.float32(1.0) / sc), sc, row.astype(np.float32))
         else:
             x = embed_token_to_int8(model, int(tok))
         c = cos_lut[pos].astype(bfloat16)
@@ -131,7 +131,7 @@ def int8_chain_next_token(
             layer["sin"] = s
         if residual_dyn:
             assert isinstance(x, tuple)
-            xc = (x[0].copy(), x[1])
+            xc = (x[0].copy(), x[1], x[2].copy())
         else:
             assert isinstance(x, np.ndarray)
             xc = x.copy()
@@ -153,7 +153,7 @@ def int8_chain_next_token(
         hidden_fp = last_hidden
     elif residual_dyn:
         assert isinstance(last_hidden, tuple)
-        hidden_fp = last_hidden[0].astype(np.float32) * np.float32(last_hidden[1])
+        hidden_fp = last_hidden[2]
     else:
         assert isinstance(last_hidden, np.ndarray)
         hidden_fp = last_hidden.astype(np.float32) * ACT_SCALE

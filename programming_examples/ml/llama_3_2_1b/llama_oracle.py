@@ -720,8 +720,11 @@ def numpy_layer_mh_forward(
     residual grows to ~6.7 per-token by layer 15). All OTHER mh quantizations
     (per-Q-head, per-KV-head, silu LUT, af-concat, gate/up/down perchan) are
     unchanged, so a quality recovery here pins the residual as the cause.
-    `x` is fp32 in and fp32 out when this flag is set. The int8 path (flag
-    False) preserves the device-test bit-exact contract.
+    `x` is fp32 in and fp32 out when this flag is set.
+
+    residual_dyn: the device's form. `x` is (int8[D], f32 scale, fp32[D]) in
+    and out: the int8 form each norm reads and the fp32 residual both adds
+    use, as the decode's stage rows hold them.
 
     attn_tb: attend in blocks of this many rows, as the growing decode's
     llama_attn_block does (attn_block_attention), split across
@@ -758,10 +761,9 @@ def numpy_layer_mh_forward(
     # fp32 (residual_fp32), or int8 with its own per-token scale (residual_dyn,
     # the device's form).
     if residual_dyn:
-        x_i8, res_scale = x  # int8[D], fp32
+        # The norm's int8 form and its scale, and the fp32 residual the adds use.
+        x_i8, res_scale, x_resid_fp = x
         x_i8 = np.asarray(x_i8, dtype=np.int8)
-        res_scale = np.float32(res_scale)
-        x_resid_fp = x_i8.astype(np.float32) * res_scale  # for fp32 adds below
         rms_in_scale = float(res_scale)
     elif residual_fp32:
         x_resid_fp = x.astype(np.float32)
@@ -1051,13 +1053,10 @@ def numpy_layer_mh_forward(
             * np.float32(down_act_scale)
             * wd_sc.astype(np.float32)
         )
-        # The device's add rebuilds the residual from the quantized x1
-        # (x1_i8 * x1_scale), not x1_fp.
-        x1_resid_fp = x1_i8.astype(np.float32) * np.float32(x1_scale)
-        xo_fp = aie_add(x1_resid_fp, df_fp)
+        xo_fp = aie_add(x1_fp, df_fp)
         xo_scale = _dyn_scale(xo_fp)
         xo_i8 = requant(xo_fp, np.float32(1) / np.float32(xo_scale))
-        x_out = (xo_i8, float(xo_scale))  # (int8[D], fp32) per-token residual
+        x_out = (xo_i8, np.float32(xo_scale), xo_fp)
     elif residual_fp32:
         df_acc = wd_i8.astype(np.int32) @ sf.astype(np.int32) + bd
         df_fp = (
@@ -1238,16 +1237,20 @@ TOL_GAP_STD = 0.15
 TOL_RANK = 5
 
 
-def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma):
+def chain_forward_logits(residual, layers, position, embed_i8, embed_sc, gamma):
     """One token's forward at `position`, attending [0, position].
 
     Appends the token's KV row to the layers' caches and sets each layer's
     `scales`.
 
+    Args:
+        residual: The layer-0 residual, (int8[D], f32 scale, fp32[D]).
+
     Returns:
-        (fp32 logits over the vocab, the final residual: int8[D], its scale).
+        (fp32 logits over the vocab, the final residual in the same form).
     """
-    x_cur = (x_i8.copy(), float(res_scale))
+    x_i8, res_scale, x_fp = residual
+    x_cur = (x_i8.copy(), np.float32(res_scale), x_fp.copy())
     for L in range(len(layers)):
         x_cur, scales = numpy_layer_mh_forward(
             x_cur,
@@ -1261,13 +1264,13 @@ def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, 
             attn_interleaved=True,
         )
         layers[L]["scales"] = scales
-    xo_i8, xo_scale = x_cur
+    xo_i8, xo_scale, _ = x_cur
     normed_i8, norm_scale = numpy_rmsnorm_int8_dyn(xo_i8, gamma, np.float32(xo_scale))
     acc = embed_i8.astype(np.int64) @ normed_i8.astype(np.int64)
     logits = (
         acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(np.float32)
     ).astype(np.float32)
-    return logits, xo_i8, np.float32(xo_scale)
+    return logits, x_cur
 
 
 def greedy_verdict(logits, token):
@@ -1293,14 +1296,15 @@ def greedy_verdict(logits, token):
 
 
 def embed_seed_ref(row_i8, embed_sc):
-    """A token's embed seed, as llama_topk_sample.cc's embed_seed makes it.
+    """A token's layer-0 residual, as llama_topk_sample.cc's residual_seed makes it.
 
     Args:
         row_i8: The token's int8 embed row.
         embed_sc: Its scale.
 
     Returns:
-        (int8[D], f32 scale).
+        (int8[D], f32 scale, fp32[D]): the row requantized for the first norm,
+        and the row itself, row * embed_sc, for the residual adds.
     """
     amax = max(int(np.max(np.abs(row_i8.astype(np.int32)))), 1)
     inv = np.float32(np.float32(1) / np.float32(amax)) * np.float32(127)
@@ -1312,7 +1316,7 @@ def embed_seed_ref(row_i8, embed_sc):
     scale = np.float32(
         np.float32(amax) * np.float32(embed_sc) * np.float32(1.0 / 127.0)
     )
-    return xin, scale
+    return xin, scale, row_i8.astype(np.float32) * np.float32(embed_sc)
 
 
 def teacher_forced_logits(layers, lm, rope, tokens):
@@ -1333,10 +1337,10 @@ def teacher_forced_logits(layers, lm, rope, tokens):
     embed_i8, embed_sc, gamma = lm
     rows = []
     for pos, tok in enumerate(tokens):
-        x, sc = embed_seed_ref(embed_i8[tok], float(embed_sc[tok]))
+        seed = embed_seed_ref(embed_i8[tok], float(embed_sc[tok]))
         for layer in layers:
             layer["cos"] = rope[pos, :HEAD_D]
             layer["sin"] = rope[pos, HEAD_D:]
-        logits, *_ = chain_forward_logits(x, sc, layers, pos, embed_i8, embed_sc, gamma)
+        logits, _ = chain_forward_logits(seed, layers, pos, embed_i8, embed_sc, gamma)
         rows.append(logits)
     return np.stack(rows)
