@@ -862,6 +862,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       cycles_per_kop: 'cycles per 1,000 of the kernel\'s operations, from cycles',
       kernel_object_bytes: 'size of the compiled kernel object (.o), excluding the harness',
       npu_us: 'host time to submit a run and wait for it, median of 50; moves with the machine',
+      max_ulp: 'the furthest any float result of the correctness sweep fell from the correctly rounded value of the function the kernel computes, in units in the last place of its type',
+      not_correctly_rounded: 'the share of the correctness sweep\'s float results that are not the correctly rounded value of the function the kernel computes',
     };
     // What the component checks record per case (utils/component_checks/).
     // A compile's aiecc stages in pipeline order (aiecc_stages.py names
@@ -931,6 +933,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     };
     const LABELS = {
       cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', npu_us: 'Host time',
+      max_ulp: 'Max error (ULP)', not_correctly_rounded: 'Not correctly rounded (%)',
       failed_seeds: 'Failed seeds', final_cost_mean: 'SA final cost (mean)', final_cost_max: 'SA final cost (worst)', cpu_ms_mean: 'CPU time (mean)',
       cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', us_per_image: 'Dispatch / image', streaming_us: 'Streaming',
       e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time (cold)', compile_peak_rss_mb: 'Compile peak memory (cold)',
@@ -1096,7 +1099,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const label = m => LABELS[m] || m;
     // A label mid-sentence: "SA final cost", not "sa final cost".
     const inSentence = m => label(m).replace(/^[A-Z](?![A-Z])/, c => c.toLowerCase());
-    const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
+    const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us', 'max_ulp', 'not_correctly_rounded'];
+    // How a gated metric's moves read in a verdict: [worse, better].
+    const MOVE_WORDS = { cycles: ['slower', 'faster'], kernel_object_bytes: ['bigger', 'smaller'],
+                         max_ulp: ['less accurate', 'more accurate'], not_correctly_rounded: ['less accurate', 'more accurate'] };
+    const moveWord = (metric, side) => (MOVE_WORDS[metric] || [`worse in ${inSentence(metric)}`, `better in ${inSentence(metric)}`])[side];
     // Per-metric change thresholds: `pct`, in percent of the previous value,
     // and `abs`, a floor in the metric's unit that a change must also reach
     // (and the only test from a zero baseline). Kept equal to thresholds.json
@@ -1467,6 +1474,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (unit === 'us') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} µs`;
       if (['s', 'ms', 'MB'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`;
       if (['×', 'pairs', 'fraction'].includes(unit)) return value.toLocaleString('en-US', { maximumFractionDigits: 3 });
+      if (unit === '%') return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
+      if (unit === 'ulp') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ulp`;
       return value.toLocaleString('en-US', { maximumFractionDigits: unit === 'cycles' ? 0 : 1 });
     }
 
@@ -1705,7 +1714,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const warnings = warningsFor(night.npu, run, now);
       const gated = xs => (xs || []).filter(x => GATED.includes(x.series.metric));
       const worse = gated(moved && moved.regressed), better = gated(moved && moved.improved);
-      const cases = (xs, m) => new Set(xs.filter(x => x.series.metric === m).map(x => x.series.kase)).size;
+      // "1 case slower, 2 less accurate": distinct cases per kind of move.
+      const said = (xs, side) => [...new Set(xs.map(x => moveWord(x.series.metric, side)))].map((word, i) => {
+        const n = new Set(xs.filter(x => moveWord(x.series.metric, side) === word).map(x => x.series.kase)).size;
+        return `${i || side ? n : plural(n, 'case')} ${word}`;
+      });
       // Lateness is said above the verdict; the verdict is the run's own.
       const stale = staleness(run.date, now);
       const hard = warnings.find(w => w.level === 'bad' && !/^no run since /.test(w.text));
@@ -1714,16 +1727,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return stale ? { ...v, level: 'bad', stale } : v;
       function verdictOfRun() {
         const vs = night.since ? ` vs ${shortDate(night.since)}` : '';
-        const moves = [];
-        if (cases(worse, 'cycles')) moves.push(`${plural(cases(worse, 'cycles'), 'case')} slower`);
-        if (cases(worse, 'kernel_object_bytes')) moves.push(`${cases(worse, 'kernel_object_bytes')} bigger`);
+        const moves = said(worse, 0);
         const problems = moves.length ? [`${moves.join(', ')}${vs}`] : [];
         if (counts.failing.length) problems.push(`${counts.failing.length} failing correctness`);
         if (counts.timingFailed.length) problems.push(`${counts.timingFailed.length} failed timing`);
         if (counts.flaky.length) problems.push(`${counts.flaky.length} passed on a retry`);
-        const gains = [];
-        if (cases(better, 'cycles')) gains.push(`${cases(better, 'cycles')} faster`);
-        if (cases(better, 'kernel_object_bytes')) gains.push(`${cases(better, 'kernel_object_bytes')} smaller`);
+        const gains = said(better, 1);
         const quiet = gains.length ? ` ${gains.join(', ')}.` : '';
         if (hard) return { level: 'bad', headline: `${hard.text[0].toUpperCase()}${hard.text.slice(1)}.`, quiet: '' };
         const onlyTiming = !worse.length && !counts.failing.length;
@@ -1871,7 +1880,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           el('span', { className: 'dim' }, inSentence(x.series.metric)), ' ', changeSpan(x.change, x.cls, true, x.series.metric, x.after - x.before, x.series.unit))));
         if (worse.length > LIST) ul.append(el('li', {}, link(hashFor({ view: 'kernels', problems: '1' }), `and ${worse.length - LIST} more`)));
         const vs = night.since ? ` vs ${shortDate(night.since)}` : '';
-        items.push({ level: 'bad', npu, body: [`${plural(worse.length, 'case')} got slower or bigger past ${worse.length === 1 ? 'its' : 'their'} threshold${vs}:`, ul] });
+        const kinds = [...new Set(worse.map(x => moveWord(x.series.metric, 0)))].join(' or ');
+        const n = new Set(worse.map(x => x.series.kase)).size;
+        items.push({ level: 'bad', npu, body: [`${plural(n, 'case')} got ${kinds} past ${n === 1 ? 'its' : 'their'} threshold${vs}:`, ul] });
       }
       if (counts.timingFailed.length) items.push({ level: 'warn', npu, body: [`${plural(counts.timingFailed.length, 'case')} passed correctness but failed the timing run, so ${counts.timingFailed.length === 1 ? 'its chart has' : 'their charts have'} a gap:`, cases(counts.timingFailed), repro('test_kernel_perf', counts.timingFailed)].filter(Boolean) });
       if (counts.flaky.length) items.push({ level: 'warn', npu, body: [`${plural(counts.flaky.length, 'case')} failed, then passed when the runner retried ${counts.flaky.length === 1 ? 'it' : 'them'}; a soak would tell how often:`, cases(counts.flaky)] });
@@ -2417,6 +2428,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // A charted metric's y axis: its unit and, for a timing, its statistic.
     const AXIS_OF = { cycles: 'Cycles per call (fastest traced call)', cycles_per_kop: 'Cycles per 1,000 operations (fastest call)', kernel_object_bytes: 'Object size',
+                      max_ulp: 'Max error (ULP, worst result)', not_correctly_rounded: 'Not correctly rounded (% of results)',
                       npu_us: 'Host time per run (µs, median of 50)', cpu_ms_mean: 'CPU time per placement (ms, mean over seeds)',
                       cpu_ms_max: 'CPU time per placement (ms, slowest seed)', ms_per_design: 'Routing time per design (ms, mean)', wall_s: 'Wall time (s, one run)' };
 

@@ -322,6 +322,37 @@ assert.equal(relative(0, 0), 0);
 """)
 
 
+def test_the_error_metrics_are_shown_and_a_zero_baseline_compares(page):
+    page(KERNELS + """
+// publish.py writes them per case beside the timing rows.
+const err = (id, day, ulp, pctOff) => rec(id, Date.parse(`2026-10-0${day}T06:00:00Z`), 'turbo', {
+  'softmax/1024/bfloat16/cycles': ['cycles', 1000],
+  'softmax/1024/bfloat16/max_ulp': ['ulp', ulp], 'softmax/1024/bfloat16/not_correctly_rounded': ['%', pctOff] });
+db = fromRecords({ npu2: [err('1', 1, 0, 0), err('2', 2, 0, 0), err('3', 3, 5, 49.2)] });
+// The kernel page offers both, labelled, on an axis that says which way is better.
+assert.ok(ALL_METRICS.includes('max_ulp') && ALL_METRICS.includes('not_correctly_rounded'));
+assert.deepEqual(['max_ulp', 'not_correctly_rounded'].map(label), ['Max error (ULP)', 'Not correctly rounded (%)']);
+assert.ok(METRICS.max_ulp.includes('correctly rounded value of the function'));
+const ulp = kernelTrendConfig(db, 'npu2', 'softmax', 'max_ulp');
+assert.equal(ulp.options.scales.y.title.text, 'Max error (ULP, worst result) · ↓ better');
+assert.deepEqual(ulp.data.datasets[0].data, [0, 0, 5]);
+assert.equal(ulp.options.scales.y.ticks.callback(5), '5 ulp');
+assert.equal(kernelTrendConfig(db, 'npu2', 'softmax', 'not_correctly_rounded').options.scales.y.ticks.callback(49.2), '49.2%');
+// With a floor, 0 -> 5 ulp is a move from a zero baseline, said as "+5 ulp".
+THRESHOLDS.max_ulp = { abs: 1, gated: true };
+THRESHOLDS.not_correctly_rounded = { abs: 0.1, gated: true };
+GATED.push('max_ulp', 'not_correctly_rounded');
+const moved = movedSeries(db, 'npu2');
+assert.deepEqual(moved.regressed.map(x => [x.series.metric, x.before, x.after]), [['max_ulp', 0, 5], ['not_correctly_rounded', 0, 49.2]]);
+assert.equal(formatChange(moved.regressed[0].change, 5, 'ulp'), '+5 ulp');
+// Gated, they read in the verdict as their own kind of move.
+const night = nightOf('npu2', null, db, cat2);
+assert.equal(verdictOf(night, Date.parse('2026-10-03T07:00:00Z')).headline, '1 case less accurate vs 2 Oct.');
+const item = attentionFor(night, Date.parse('2026-10-03T07:00:00Z')).find(i => i.level === 'bad');
+assert.ok(item.body[0].startsWith('1 case got less accurate past its threshold vs 2 Oct:'));
+""")
+
+
 def test_narrow_screens_hide_no_kernels_table_column():
     # Each NPU's header spans its columns; hiding one slides the headers.
     css = (
@@ -782,7 +813,7 @@ assert.equal(items[2].children[1].text, 'No results have been published.');
 
 // A regression is named in Needs a look with how far it moved; its kernel a click away.
 const worse = items[1];
-assert.ok(worse.text.startsWith('npu11 case got slower or bigger past its threshold vs 1 Jan:'));
+assert.ok(worse.text.startsWith('npu11 case got slower past its threshold vs 1 Jan:'));
 assert.ok(worse.text.includes('relu/1024/bf16 cycles +3.0%'));
 assert.equal(all(worse, n => n.tag === 'a')[0].href, '#view=kernel&kernel=relu');
 
