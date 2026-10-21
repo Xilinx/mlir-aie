@@ -9,7 +9,8 @@ component check still in github-action-benchmark's format as its nightly's
 next publish will, and serves it as the nightlies publish it (the page at ``dashboard/``, a redirect
 at ``kernel-checks/``), except that the page itself is read from this
 working tree on every request: edit ``utils/kernel_checks/index.html``,
-reload the browser.
+reload the browser. It reads synthetic nights through the checks' own code,
+so it runs where mlir_aie imports (``source utils/env_setup.sh``).
 
     python3 utils/kernel_checks/preview.py                 # real data
     python3 utils/kernel_checks/preview.py --fetch         # git fetch it first
@@ -372,7 +373,8 @@ def _sweep_night(rng: random.Random) -> tuple[list, dict]:
             "final_cost": base + costs.randint(0, base // 20),
             "cpu_ms": cpu_ms * rng.uniform(0.9, 1.15),
             "peak_rss_mb": rss + rng.uniform(0, 1),
-            "stderr": "",
+            "timed_out": False,
+            "output": "",
         }
         for fixture, (base, cpu_ms, rss) in zip(
             sa_placer.FIXTURES, ((12, 780, 63), (290, 25000, 67))
