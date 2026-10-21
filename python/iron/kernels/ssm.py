@@ -303,7 +303,7 @@ def gated_delta_rule(
                     y_ulps=1,
                     **geometry,
                 ),
-                note="npu2, against a float64 recurrence over five seeds: final "
+                note="npu2, against the float32 reference over five seeds: final "
                 "within 9.4e-7 of its range at key_dim 2, 5.1e-7 at the default; y "
                 "one bf16 ulp off in 1 of 10240, as the scalar kernel's",
             ),

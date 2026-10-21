@@ -24,7 +24,8 @@ static inline float scalar_mul_sub(float a, float b, float c) {
       .to_vector<float>()[0];
 }
 
-// AIE2P has a scalar invsqrt, within 1 ulp of 1/sqrt(x) as measured on npu2.
+// AIE2P has a scalar invsqrt, within 0.88 ulp of 1/sqrt(x) on npu2 (16k
+// inputs over 2^-20..2^20) but not correctly rounded: 11% land past 0.5 ulp.
 // On AIE2 a scalar aie::invsqrt lowers to sqrtf, which does not link. The
 // vector one is a bit-trick estimate good to 6.5e-4, so one Newton step,
 // y * (1.5 - x / 2 * y * y), brings it to f32 accuracy.
