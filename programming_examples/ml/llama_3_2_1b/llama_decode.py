@@ -457,7 +457,9 @@ class Decoder:
         end = len(prompt) + max_new - 1
         while pos < end and out[-1] not in stop:
             n = min(self.shape.passes_for(pos), end - pos)
-            records, _ = self.dispatch(kv_t, stage_t, self.shape.params(pos, n, sampler))
+            records, _ = self.dispatch(
+                kv_t, stage_t, self.shape.params(pos, n, sampler)
+            )
             for tok in tokens_of(records, n):
                 out.append(tok)
                 if tok in stop:
