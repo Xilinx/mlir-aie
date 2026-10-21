@@ -543,6 +543,20 @@ def test_full_elf32_names_every_comdat_group(tmp_path):
     assert all(k["insts"] == blob for k in kernels)
 
 
+def test_aie4_section_holds_a_full_elf(tmp_path):
+    """aie4 (npu3) has no xclbin/PDI flow: its kernels come from an ELF32 full ELF."""
+    blob = make_full_elf([("_Z4mainPcPcPc", "sequence")], elf_class=32)
+    path = _write(tmp_path / "aie.elf", blob)
+
+    section = pack.build_section(
+        "aie4", pack.kernels_from_full_elf(path, kernarg_size=32, num_cols=1)
+    )
+    info = dump.parse_section(section)
+    assert [k["name"] for k in info["kernels"]] == ["main:sequence"]
+    assert all(k["kind_name"] == "FullElf" for k in info["kernels"])
+    assert all(not k["has_pdi"] for k in info["kernels"])
+
+
 def test_elf_with_an_unrecognised_class_is_rejected(tmp_path):
     """EI_CLASS is the one byte that picks the layout; a third value has none."""
     blob = bytearray(make_full_elf([("k", "i")], elf_class=32))
@@ -1529,7 +1543,7 @@ def test_dump_main_reports_a_malformed_hsaco_instead_of_crashing(tmp_path, capsy
     """Reporting on malformed input is this tool's job, not a crash."""
     bare = _write(tmp_path / "bare.hsaco", elf.make_empty_elf64())
     assert dump.main(["--hsaco", bare]) == 1
-    assert "no aie2/aie2p section found" in capsys.readouterr().err
+    assert "no aie2/aie2p/aie4 section found" in capsys.readouterr().err
 
     missing = str(tmp_path / "nope.hsaco")
     assert dump.main(["--hsaco", missing]) == 1
@@ -1538,22 +1552,28 @@ def test_dump_main_reports_a_malformed_hsaco_instead_of_crashing(tmp_path, capsy
 
 def test_read_sections_from_hsaco_without_an_arch_section(tmp_path):
     path = _write(tmp_path / "bare.hsaco", elf.make_empty_elf64())
-    with pytest.raises(ValueError, match="no aie2/aie2p section found"):
+    with pytest.raises(ValueError, match="no aie2/aie2p/aie4 section found"):
         dump.read_sections_from_hsaco(path)
 
 
 @needs_objcopy
 def test_every_arch_section_is_reported(tmp_path):
     """One hsaco can carry a section per arch; none of them may be hidden."""
-    path = str(tmp_path / "both.hsaco")
+    path = str(tmp_path / "all.hsaco")
     pack.ensure_hsaco(path)
     aie2 = pack.build_section("aie2", [_kernel("on_aie2", b"\x01")])
     aie2p = pack.build_section("aie2p", [_kernel("on_aie2p", b"\x02\x03")])
+    aie4 = pack.build_section("aie4", [_kernel("on_aie4", b"\x04")])
+    pack.inject(path, "aie4", aie4)
     pack.inject(path, "aie2p", aie2p)
     pack.inject(path, "aie2", aie2)
 
     # Reported in ARCHES order, whatever order they were injected in.
-    assert dump.read_sections_from_hsaco(path) == [("aie2", aie2), ("aie2p", aie2p)]
+    assert dump.read_sections_from_hsaco(path) == [
+        ("aie2", aie2),
+        ("aie2p", aie2p),
+        ("aie4", aie4),
+    ]
 
 
 @needs_objcopy
