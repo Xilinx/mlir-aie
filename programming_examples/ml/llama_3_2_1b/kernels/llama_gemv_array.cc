@@ -27,27 +27,47 @@ static constexpr int kFpAt = 2048 + 64;
 
 extern "C" {
 
-void llama_gemv_array_qkv_comb(int8_t *restrict fp, int8_t *restrict out) {
+// The fused qkv combine for activation `row` of fp ([row][q 256 | k 64 | v
+// 64] fp32), with its position's RoPE cos/sin, which ride the head of the
+// core's weight lane each layer (cs: 256 B a position, bf16 cos[64] then
+// sin[64]), in the cs region: the core's 4 Q heads roped in fp32 as
+// llama_kv_row.h ropes k, then requantized per head; then k and v in fp32
+// and the cos/sin for the KV row's rope.
+void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
+                                  int8_t *restrict out, int32_t row) {
   event0();
+  constexpr int kHD = 64;
+  constexpr int kHalf = kHD / 2;
+  const float *q = reinterpret_cast<const float *>(fp + row * 384 * 4);
+  const uint16_t *cs_bits = reinterpret_cast<const uint16_t *>(cs + row * 256);
+  alignas(64) float cs_f[2 * kHD];
+  for (int i = 0; i < 2 * kHD; i++)
+    cs_f[i] = __builtin_bit_cast(float, (uint32_t)cs_bits[i] << 16);
   const ::aie::saturation_mode prev_sat =
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-  q_requant_heads<4, 64>(reinterpret_cast<const float *>(fp), out, out + 256);
+  alignas(64) float roped[4 * kHD];
+  for (int h = 0; h < 4; h++)
+    for (int j = 0; j < kHalf; j += 16) {
+      ::aie::vector<float, 16> x1 = ::aie::load_v<16>(q + h * kHD + j);
+      ::aie::vector<float, 16> x2 = ::aie::load_v<16>(q + h * kHD + kHalf + j);
+      ::aie::store_v(
+          roped + h * kHD + j,
+          ::aie::sub(vec_mul_rne(x1, ::aie::load_v<16>(cs_f + j)),
+                     vec_mul_rne(x2, ::aie::load_v<16>(cs_f + kHD + j))));
+      ::aie::store_v(
+          roped + h * kHD + kHalf + j,
+          ::aie::add(
+              vec_mul_rne(x2, ::aie::load_v<16>(cs_f + kHalf + j)),
+              vec_mul_rne(x1, ::aie::load_v<16>(cs_f + kHD + kHalf + j))));
+    }
+  q_requant_heads<4, kHD>(roped, out, out + 256);
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
-  copy_words<512>(out + 288, fp + 1024);
-  zero_words<256>(out + 800);
-  event1();
-}
-
-// llama_gemv_array_qkv_comb for activation `row` of fp ([row][q 256 | k 64 |
-// v 64] fp32) with its position's RoPE cos/sin, which ride the head of the
-// core's weight lane each layer (cs: 256 B a position), in the cs region.
-void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
-                                  int8_t *restrict out, int32_t row) {
-  llama_gemv_array_qkv_comb(fp + row * 384 * 4, out);
+  copy_words<512>(out + 288, q + 256);
   copy_words<256>(out + 800, cs + row * 256);
+  event1();
 }
 
 // The first `rows` positions' RoPE cos/sin (256 B each) from the head of the

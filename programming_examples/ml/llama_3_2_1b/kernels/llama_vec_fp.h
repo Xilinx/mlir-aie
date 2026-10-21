@@ -141,6 +141,42 @@ static inline ::aie::vector<float, kN> vec_recip(::aie::vector<float, kN> a) {
   return ::aie::load_v<kN>(lanes);
 }
 
+// e^x for x <= 0 on 16 lanes, as llama_oracle.exp_nonpos: with
+// t = x * log2(e) (vec_mul_rne), k = trunc(t) and f = t - k in (-1, 0],
+// e = 2^k * 2^f where 2^f = 2^-g, g = -f rounded to Q23 by the vadd.f that
+// forms 1 - f, is a degree-6 Q29 polynomial in Horner form whose products
+// round half to even (acc64 srs). 0 below t = -125. float2fix gives floor(t)
+// or ceil(t); trunc(t) for t <= 0 is the ceiling, so a negative n below t
+// (compared as sign-magnitude bits) is bumped by one.
+__attribute__((noinline)) static ::aie::vector<float, 16>
+vec_exp_nonpos(::aie::vector<float, 16> x) {
+  static constexpr int32_t kC[] = {-684167,   5142538,    -29791239,
+                                   128969442, -372130494, 536870912};
+  ::aie::vector<float, 16> t =
+      vec_mul_rne(x, ::aie::broadcast<float, 16>(1.442695022f));
+  ::aie::vector<int32, 16> tb = t.template cast_to<int32>();
+  ::aie::vector<int32, 16> n = ::aie::to_fixed<int32>(t, 0);
+  ::aie::vector<int32, 16> nb =
+      ::aie::to_float<float>(n, 0).template cast_to<int32>();
+  ::aie::vector<int32, 16> k = ::aie::select(
+      n, ::aie::add(n, int32(1)), ::aie::gt(nb, tb) & ::aie::lt(nb, int32(0)));
+  ::aie::vector<float, 16> f = ::aie::sub(t, ::aie::to_float<float>(k, 0));
+  ::aie::vector<int32, 16> g =
+      ::aie::sub(::aie::sub(::aie::broadcast<float, 16>(1.0f), f)
+                     .template cast_to<int32>(),
+                 int32(0x3f800000));
+  ::aie::vector<int32, 16> p = ::aie::broadcast<int32, 16>(58465);
+  for (int i = 0; i < 6; i++)
+    p = ::aie::add(::aie::mul(p, g).template to_vector<int32>(23), kC[i]);
+  return ::aie::select(
+             ::aie::add(::aie::to_float<float>(p, 29).template cast_to<int32>(),
+                        ::aie::upshift(k, 23)),
+             ::aie::zeros<int32, 16>(),
+             ::aie::lt(tb, int32(0)) &
+                 ::aie::gt(tb, __builtin_bit_cast(int32_t, -125.0f)))
+      .template cast_to<float>();
+}
+
 // Per-head requant of kHeads heads of kHD fp32 values:
 // each head's scale is max(absmax, 1e-12) * (1/127), its body int8
 // round(q * (1 / scale)); tail[h*8..+4] gets the scale, [+4..+8] zero.

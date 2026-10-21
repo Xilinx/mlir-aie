@@ -14,7 +14,6 @@ CASES = [
     ("N_LAYERS", 2, 3),
     ("T", 128, 256),
     ("KSET", 8, 4),
-    ("SILU_GATE_SCALE", 0.05, 0.04),
 ]
 
 

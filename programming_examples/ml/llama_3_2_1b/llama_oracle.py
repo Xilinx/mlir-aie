@@ -19,14 +19,13 @@ INT8 recipe, a different reference.
 from __future__ import annotations
 
 import numpy as np
-from aie.iron.kernels.tables import exp_lut, silu_lut
+from aie.iron.kernels.tables import exp_lut
 from aie.utils.aie_fp32 import aie_add
 from aie2_decode import KV_TB
 from gen_llama_data import quant_int8_perchan_absmax
 from llama_config import (
     ACT_SCALE,
     EXP_QUANT_SCALE,
-    GATE_INV_OUT_SCALE,
     HD,
     HEAD_D,
     INV_ACT_SCALE,
@@ -36,7 +35,6 @@ from llama_config import (
     Q_DIM,
     REP,
     SAMPLE_EXP_LOW,
-    SILU_GATE_SCALE,
     D,
 )
 from ml_dtypes import bfloat16
@@ -364,25 +362,48 @@ def numpy_rmsnorm_int8_dyn(
     return y_i8, float(scale_dyn)
 
 
-def numpy_rope_dyn(x_i8, cos_bf, sin_bf, n_heads, head_dim):
-    """RoPE over `n_heads` int8 heads, as kernels/llama_rope_heads.h."""
-    half = head_dim // 2
-    x_f = x_i8.astype(np.float32).reshape(n_heads, head_dim)
-    c = cos_bf.astype(np.float32)
-    s = sin_bf.astype(np.float32)
-    out = np.empty_like(x_f)
-    out[:, :half] = aie_add(x_f[:, :half] * c[:half], -(x_f[:, half:] * s[:half]))
-    out[:, half:] = aie_add(x_f[:, half:] * c[half:], x_f[:, :half] * s[half:])
-    return round_to_i8(out.flatten())
+def rope_q(q_fp, cos_bf, sin_bf):
+    """RoPE over fp32 Q heads, as llama_gemv_array_qkv_comb_cs.
+
+    Args:
+        q_fp: fp32 (N_HEADS_Q * HEAD_D,).
+        cos_bf: bf16 (HEAD_D,), the position's cos.
+        sin_bf: bf16 (HEAD_D,), its sin.
+
+    Returns:
+        fp32 (N_HEADS_Q * HEAD_D,), each pair rotated in fp32.
+    """
+    half = HEAD_D // 2
+    x = np.asarray(q_fp, np.float32).reshape(-1, HEAD_D)
+    c = np.asarray(cos_bf, np.float32)
+    s = np.asarray(sin_bf, np.float32)
+    out = np.empty_like(x)
+    out[:, :half] = aie_add(
+        mul_rne(x[:, :half], c[:half]), -mul_rne(x[:, half:], s[:half])
+    )
+    out[:, half:] = aie_add(mul_rne(x[:, half:], c[half:]), mul_rne(x[:, :half], s[half:]))
+    return out.ravel()
 
 
-def numpy_silu_mul(gate, up, lut, up_scale, inv_out_scale):
-    """SiLU(gate) * up through the gate's LUT, as llama_silu_mul_int8."""
-    silu_bf = lut[(gate.astype(np.int32) + 128)]
-    s_f = silu_bf.astype(np.float32)
-    u_f = up.astype(np.float32) * up_scale
-    out_f = s_f * u_f * inv_out_scale
-    return round_to_i8(out_f)
+def silu_mul(gate, up):
+    """SiLU(gate) * up in fp32, as llama_silu_gate.
+
+    Args:
+        gate: fp32 (HD,).
+        up: fp32 (HD,).
+
+    Returns:
+        fp32 (HD,).
+    """
+    g = np.asarray(gate, np.float32)
+    neg = np.signbit(g)
+    e = np.asarray(exp_nonpos(np.where(neg, g, aie_add(np.float32(0), -g))), np.float32)
+    d = aie_add(np.float32(1), e)
+    y = aie_add(np.float32(24) / np.float32(17), -mul_rne(np.float32(8) / np.float32(17), d))
+    for _ in range(3):
+        y = aie_add(y, mul_rne(y, aie_add(np.float32(1), -mul_rne(d, y))))
+    s = np.where(neg, mul_rne(e, y), y)
+    return mul_rne(mul_rne(g, s), np.asarray(up, np.float32))
 
 
 def _dyn_scale(fp):
@@ -577,7 +598,6 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
 
     return dict(
         lut_exp=exp_lut(EXP_QUANT_SCALE).astype(np.float32),
-        lut_silu=silu_lut(SILU_GATE_SCALE),
         wq_i8=wq_i8,
         wq_sc=wq_sc,
         bq=bq,
@@ -664,7 +684,6 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
 
     return dict(
         lut_exp=exp_lut(EXP_QUANT_SCALE).astype(np.float32),
-        lut_silu=silu_lut(SILU_GATE_SCALE),
         wq_i8=wq_i8,
         wq_sc=wq_sc,
         bq=bq,
@@ -732,7 +751,6 @@ def numpy_layer_mh_forward(
     block by block; needs `position`.
     """
     lut_exp = layer["lut_exp"]
-    lut_silu = layer["lut_silu"]
     gamma_in = layer["gamma_in"]
     gamma_post = layer["gamma_post"]
     wq_i8 = layer["wq_i8"]
@@ -843,19 +861,17 @@ def numpy_layer_mh_forward(
         * wq_sc.astype(np.float32)
     )
 
-    # 3) Per-Q-head requant. qf shape (Q_DIM,).
+    # 3) rope in fp32, then 4) the per-Q-head requant.
+    q_roped = rope_q(fp_q_full, cos, sin)
     q_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
     q_inv_outs = np.zeros(N_HEADS_Q, dtype=np.float32)
-    qf = np.zeros(Q_DIM, dtype=np.int8)
+    qr = np.zeros(Q_DIM, dtype=np.int8)
     for h in range(N_HEADS_Q):
-        slice_h = fp_q_full[h * HEAD_D : (h + 1) * HEAD_D]
+        slice_h = q_roped[h * HEAD_D : (h + 1) * HEAD_D]
         s = _dyn_scale(slice_h)
         q_out_scales[h] = np.float32(s)
         q_inv_outs[h] = np.float32(1) / np.float32(s)
-        qf[h * HEAD_D : (h + 1) * HEAD_D] = requant(slice_h, q_inv_outs[h])
-
-    # 4) rope (per-head). numpy_rope_dyn reshapes to (n_heads, head_dim) internally.
-    qr = numpy_rope_dyn(qf, cos, sin, N_HEADS_Q, HEAD_D)
+        qr[h * HEAD_D : (h + 1) * HEAD_D] = round_to_i8(mul_rne(slice_h, q_inv_outs[h]))
 
     # 5) Per-Q-head attention (kvh = h_q // REP), each head with its own
     #    sv_out_scale. With a position, only slots 0..position (causal);
@@ -1011,32 +1027,21 @@ def numpy_layer_mh_forward(
     if _cap is not None:
         _cap["x1"] = x1_fp.copy() if residual_dyn else np.asarray(x1, np.float32).copy()
 
-    # 9) gate (closure-baked GATE_INV_OUT_SCALE = 1/SILU_GATE_SCALE)
+    # 9) gate and 10) up, in fp32, then 11) SiLU(gate) * up, requantized.
     fp_gate = (
         (wg_i8.astype(np.int32) @ h2.astype(np.int32) + bg).astype(np.float32)
         * np.float32(act_scale2)
         * wg_sc.astype(np.float32)
     )
-    gf = requant(fp_gate, GATE_INV_OUT_SCALE)
-
-    # 10) up (dynamic out scale)
     fp_up = (
         (wu_i8.astype(np.int32) @ h2.astype(np.int32) + bu).astype(np.float32)
         * np.float32(act_scale2)
         * wu_sc.astype(np.float32)
     )
-    up_out_scale = float(_dyn_scale(fp_up))
-    up_inv_out = float(np.float32(1) / np.float32(up_out_scale))
-    uf = requant(fp_up, up_inv_out)
-
-    # 11) silu_mul
-    silu_up_scale = up_out_scale
-    s_gate_fp = lut_silu[gf.astype(np.int32) + 128].astype(np.float32)
-    s_up_fp = uf.astype(np.float32) * np.float32(silu_up_scale)
-    sf_fp = s_gate_fp * s_up_fp
+    sf_fp = silu_mul(fp_gate, fp_up)
     silu_out_scale = float(_dyn_scale(sf_fp))
     silu_inv_out_scale = float(np.float32(1) / np.float32(silu_out_scale))
-    sf = numpy_silu_mul(gf, uf, lut_silu, silu_up_scale, silu_inv_out_scale)
+    sf = round_to_i8(mul_rne(sf_fp, np.float32(silu_inv_out_scale)))
 
     if _cap is not None:
         _cap["h2_fp"] = h2.astype(np.float32) * np.float32(act_scale2)
@@ -1079,9 +1084,6 @@ def numpy_layer_mh_forward(
         o_inv_act_scale=o_inv_act_scale,
         k_scales=k_scales,
         v_scales=v_scales,
-        up_out_scale=up_out_scale,
-        up_inv_out=up_inv_out,
-        silu_up_scale=silu_up_scale,
         silu_inv_out_scale=silu_inv_out_scale,
         down_act_scale=down_act_scale,
     )

@@ -26,8 +26,6 @@ CS_BYTES = HEAD_D * 2 * 2
 
 ACT_SCALE = 0.05
 INV_ACT_SCALE = 1.0 / ACT_SCALE
-SILU_GATE_SCALE = 0.05
-GATE_INV_OUT_SCALE = 1.0 / SILU_GATE_SCALE
 
 # The softmax and sampler exp LUT's resolution.
 EXP_QUANT_SCALE = 0.05

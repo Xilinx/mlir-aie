@@ -42,26 +42,22 @@ __attribute__((noinline)) static void half_sums(const int8_t *restrict act,
   }
 }
 
-// The f32 or (i8) gate epilogue on activations 4h..4h+3's 32 sums (lane
-// (m - 4h)*8 + n), bias added, written to out[m*ostride + row0 + n] for the
-// first m_count activations: the GEMV epilogue's arithmetic per element, on
-// all 32 lanes at once where the GEMV's guards hold for every lane (see
+// The f32 epilogue on activations 4h..4h+3's 32 sums (lane (m - 4h)*8 + n),
+// bias added, written to out[m*ostride + row0 + n] for the first m_count
+// activations: the GEMV epilogue's arithmetic per element, on all 32 lanes
+// at once where the GEMV's guards hold for every lane (see
 // vec_epilogue_exact), else its scalar code per element.
 __attribute__((noinline)) static void
 half_epilogue(::aie::vector<int32, 32> sums, const int8_t *restrict act,
               const int8_t *restrict w, int8_t *restrict out, int h,
-              int32_t ostride, int32_t row0, int32_t m_count, bool i8,
-              float inv_out_scale) {
+              int32_t ostride, int32_t row0, int32_t m_count) {
   const int32_t *bias = reinterpret_cast<const int32_t *>(w + kTrailer);
   const float *w_scales = reinterpret_cast<const float *>(w + kTrailer + 32);
   const float *act_scales =
       reinterpret_cast<const float *>(act + kScalesOff) + 4 * h;
   const int m_end = m_count - 4 * h < 4 ? m_count - 4 * h : 4;
-  const uint32_t kLo = i8 ? 96 : 80, kHi = i8 ? 158 : 174;
-  bool ok =
-      !i8 ||
-      (uint32_t)(((__builtin_bit_cast(int32_t, inv_out_scale) >> 23) & 0xff) -
-                 kLo) <= kHi - kLo;
+  const uint32_t kLo = 80, kHi = 174;
+  bool ok = true;
   for (int i = 0; i < 4 + 8; i++) {
     float f = i < 4 ? act_scales[i] : w_scales[i - 4];
     ok &= (uint32_t)(((__builtin_bit_cast(int32_t, f) >> 23) & 0xff) - kLo) <=
@@ -80,37 +76,14 @@ half_epilogue(::aie::vector<int32, 32> sums, const int8_t *restrict act,
       (::aie::ge(sums, int32(-(1 << 23) + 1)) & ::aie::lt(sums, int32(1 << 23)))
           .count() == 32;
   ::aie::vector<float, 32> fp;
-  if (ok) {
+  if (ok)
     fp = vec_mul_rne(vec_mul_rne(::aie::to_float<float>(sums, 0), a_v), w_v);
-    if (i8) {
-      fp = vec_mul_rne(fp, ::aie::broadcast<float, 32>(inv_out_scale));
-      ok = ::aie::reduce_max(::aie::bit_and(
-               int32(0x7fffffff), fp.template cast_to<int32>())) < 0x4f000000;
-    }
-  }
-  ::aie::vector<int8, 32> r8;
-  if (i8 && ok)
-    r8 = vec_round_to_i8(fp);
   for (int m = 0; m < m_end; m++)
     for (int n = 0; n < 8; n++) {
       const int lane = m * 8 + n;
-      const int at = (4 * h + m) * ostride + row0 + n;
-      if (i8) {
-        int8_t v;
-        if (ok) {
-          v = r8.get(lane);
-        } else {
-          float f = (float)sums.get(lane) * act_scales[m] * w_scales[n];
-          float scaled = f * inv_out_scale;
-          int32_t r = (int32_t)(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
-          v = (int8_t)(r > INT8_MAX ? INT8_MAX : r < INT8_MIN ? INT8_MIN : r);
-        }
-        out[at] = v;
-      } else {
-        reinterpret_cast<float *>(out)[at] =
-            ok ? fp.get(lane)
-               : (float)sums.get(lane) * act_scales[m] * w_scales[n];
-      }
+      reinterpret_cast<float *>(out)[(4 * h + m) * ostride + row0 + n] =
+          ok ? fp.get(lane)
+             : (float)sums.get(lane) * act_scales[m] * w_scales[n];
     }
 }
 
@@ -118,18 +91,18 @@ static inline void epilogue(const int8_t *restrict act,
                             const int8_t *restrict w,
                             const int32_t *restrict part, int8_t *restrict out,
                             int32_t half, int32_t ostride, int32_t row0,
-                            int32_t m_count, bool i8, float inv_out_scale) {
+                            int32_t m_count) {
   alignas(64) int32_t sums[64];
   half_sums(act, w, half, sums, part);
   const aie::saturation_mode saved_sat =
       ::aie::swap_saturation(aie::saturation_mode::saturate);
   const aie::rounding_mode saved_rnd =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
-  half_epilogue(::aie::load_v<32>(sums), act, w, out, 0, ostride, row0, m_count,
-                i8, inv_out_scale);
+  half_epilogue(::aie::load_v<32>(sums), act, w, out, 0, ostride, row0,
+                m_count);
   if (m_count > 4)
     half_epilogue(::aie::load_v<32>(sums + 32), act, w, out, 1, ostride, row0,
-                  m_count, i8, inv_out_scale);
+                  m_count);
   aie::set_rounding(saved_rnd);
   aie::set_saturation(saved_sat);
 }
@@ -193,8 +166,7 @@ void llama_mma_f32(int8_t *restrict act, int8_t *restrict w,
                    int32_t half, int32_t ostride, int32_t row0,
                    int32_t m_count) {
   event0();
-  epilogue(act, w, part + 64 * g, out, half, ostride, row0, m_count, false,
-           0.0f);
+  epilogue(act, w, part + 64 * g, out, half, ostride, row0, m_count);
   event1();
 }
 
@@ -205,17 +177,6 @@ void llama_mma_f32_to(int8_t *restrict act, int8_t *restrict w,
                       int32_t half, int32_t ostride, int32_t row0,
                       int32_t m_count) {
   llama_mma_f32(act, w, part, out, g, half, ostride, row0, m_count);
-}
-
-// As llama_mma_f32, through the int8 (gate) epilogue: out is int8.
-void llama_mma_i8(int8_t *restrict act, int8_t *restrict w,
-                  int32_t *restrict part, int8_t *restrict out, int32_t g,
-                  int32_t half, int32_t ostride, int32_t row0, int32_t m_count,
-                  float inv_out_scale) {
-  event0();
-  epilogue(act, w, part + 64 * g, out, half, ostride, row0, m_count, true,
-           inv_out_scale);
-  event1();
 }
 
 } // extern "C"

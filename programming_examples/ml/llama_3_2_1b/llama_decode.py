@@ -85,7 +85,7 @@ def pack_lane_mma(layer_w, order, core):
     int32 biases and fp32 scales."""
     parts = []
     for p in order:
-        k, rows, _ = PROJECTIONS[p]
+        k, rows = PROJECTIONS[p]
         w, bias, sc = layer_w[p]
         rc = rows // N_CORES
         lo = core * rc

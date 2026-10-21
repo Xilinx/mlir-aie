@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 
 from aie.iron.kernel import ExternalFunction
-from aie.iron.kernels.tables import exp_lut_header, silu_lut_header
+from aie.iron.kernels.tables import exp_lut_header
 from aie.utils.compile import NPU_CACHE_HOME
 from llama_config import EXP_QUANT_SCALE, SAMPLE_EXP_LOW
 
@@ -71,11 +71,14 @@ def rmsnorm(*, cols=2048):
     )
 
 
-def silu_mul(*, cols=8192, gate_scale=0.05):
+def silu_mul(*, cols=8192, chunk=1024):
     return KernelSource(
         "llama_silu_mul_int8.cc",
-        ["-ffp-contract=off", f"-DLLAMA_SILU_MUL_COLS={cols}"],
-        [generated_include_dir({"silu_lut.h": silu_lut_header(gate_scale)})],
+        [
+            "-ffp-contract=off",
+            f"-DLLAMA_SILU_MUL_COLS={cols}",
+            f"-DLLAMA_SILU_CHUNK={chunk}",
+        ],
     )
 
 

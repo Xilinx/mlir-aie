@@ -5,4 +5,4 @@
 // MLIR modules. Generation only; no NPU.
 //
 // RUN: %python %S/test_compile_time_keys.py | FileCheck %s
-// CHECK: compile_time_keys: 5/5 PASS
+// CHECK: compile_time_keys: 4/4 PASS
