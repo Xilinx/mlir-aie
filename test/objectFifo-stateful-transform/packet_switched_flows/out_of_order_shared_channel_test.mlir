@@ -32,8 +32,8 @@ module @shared_s2mm {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_3 = aie.tile(0, 3)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, packet_id = 3 : i8, out_of_order, cons_dma_channels = array<i32: 1>} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%tile_0_3, {%tile_0_5}, 2 : i32) {packet, packet_id = 4 : i8, out_of_order, cons_dma_channels = array<i32: 1>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, packet_id = 3 : i8, out_of_order, iter_count = 1 : i32, cons_dma_channels = array<i32: 1>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%tile_0_3, {%tile_0_5}, 2 : i32) {packet, packet_id = 4 : i8, out_of_order, iter_count = 1 : i32, cons_dma_channels = array<i32: 1>} : !aie.objectfifo<memref<16xi32>>
     %core_0_2 = aie.core(%tile_0_2) {
       %1 = aie.objectfifo.acquire @a(Produce, 1) : memref<16xi32>
       aie.objectfifo.release @a(Produce, 1)
@@ -53,4 +53,3 @@ module @shared_s2mm {
     }
   }
 }
-
