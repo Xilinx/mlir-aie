@@ -384,7 +384,8 @@ public:
   // source sends that a source it must keep apart from does not as a part of
   // their own, which restarts sharing and caps; then share and cap again;
   // route each other source of a cluster that has to meet first, one per
-  // attempt (see rotateLeads); then stop meeting, which runs the steps again.
+  // attempt (see rotateLeads); meet ahead of same-id partners; then stop
+  // meeting, which runs the steps before rotating again.
   bool relax();
 
 private:

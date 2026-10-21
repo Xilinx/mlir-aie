@@ -282,9 +282,9 @@ void Pathfinder::initialize(int maxCol, int maxRow,
                             const AIETargetModel &targetModel) {
   // Reset the graph and flows so a Pathfinder can be reused across analyses
   // and devices; the dense-graph cache must be rebuilt for the new topology.
-  // The relax state (shareChannels, idsApart, meetApart, relaxStep,
-  // cappedTiles, crowdedTiles) survives, so the ladder advances across
-  // attempts.
+  // The relax state (shareChannels, idsApart, meetApart, meetAheadOfPartners,
+  // relaxStep, leads, leadStep, cappedTiles, crowdedTiles) survives, so the
+  // ladder advances across attempts.
   graph.clear();
   flows.clear();
   packetIdsTo.clear();
@@ -2545,8 +2545,8 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
   for (const auto &pair : faults.together) {
     // Trees with one id that share a single receiver wait on each other
     // wherever they join above it, so they fan in at that receiver alone.
-    for (int x : st.partsOf[pair.first])
-      for (int y : st.partsOf[pair.second])
+    for (int x : st.partsOf.at(pair.first))
+      for (int y : st.partsOf.at(pair.second))
         if (llvm::is_contained(st.sameId[x], y) &&
             llvm::count_if(st.parts[x].dsts, [&](const PathEndPoint &dst) {
               return llvm::is_contained(st.parts[y].dsts, dst);
