@@ -135,6 +135,38 @@ def test_aieccs_own_time_is_told_apart_when_the_profile_records_it(checks):
     assert stages.AIECC_OWN_METRIC not in stages.stage_rows(str(SHIM), 2.0, "")
 
 
+def test_the_kernel_objects_compile_time_comes_from_the_jits_profile(checks, tmp_path):
+    stages, _ = checks
+    profile = tmp_path / "kernel_profile.json"
+    kernels = [
+        {"object": f"k{i}.o", "symbols": [f"k{i}"], "seconds": s, "cached": c}
+        for i, (s, c) in enumerate(
+            [(8.55, False), (0.01, True), (3.2, False), (1.0, False), (5.0, False)]
+            + [(0.4, False), (2.0, False)]
+        )
+    ]
+    profile.write_text(json.dumps({"wall_s": 16.823, "jobs": 8, "kernels": kernels}))
+    rows = stages.kernel_rows(str(profile), 43.0, "")
+    assert rows[stages.KERNEL_OBJECTS_METRIC] == 16.82
+    detail = rows["kernel_objects"]
+    assert (detail["jobs"], detail["compiled"], detail["cached"]) == (8, 6, 1)
+    assert [k["object"] for k in detail["slowest"]] == [
+        "k0.o",
+        "k4.o",
+        "k2.o",
+        "k6.o",
+        "k3.o",
+    ]
+    assert stages.kernel_rows(str(profile), None, "") == {}
+    missing = str(tmp_path / "missing.json")
+    assert stages.kernel_rows(missing, 1.0, "_warm") == {
+        "kernel_profile_problem_warm": f"no profile at {missing}"
+    }
+    # A compile's rows carry it beside the stages.
+    rows = stages.compile_rows("c", {"compile_s": 43.0, **rows})
+    assert {r["name"]: r["value"] for r in rows}["c/compile_kernel_objects_s"] == 16.82
+
+
 def test_a_profile_that_is_not_the_compiles_gives_no_stages(checks, tmp_path):
     stages, _ = checks
     missing = str(tmp_path / "missing.json")

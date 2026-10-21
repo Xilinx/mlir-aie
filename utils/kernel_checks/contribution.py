@@ -170,11 +170,24 @@ def factories(tree: Tree) -> dict[str, Factory]:
     every: dict[str, Factory] = {}
     public = []
     for module, mod in modules.items():
+        # The factories the module lists in its DTYPES table:
+        # DTYPES["<factory>"] = (...).
+        tabled = {
+            target.slice.value
+            for node in mod.body
+            if isinstance(node, ast.Assign)
+            for target in node.targets
+            if isinstance(target, ast.Subscript)
+            and ast.unparse(target.value) == "DTYPES"
+            and isinstance(target.slice, ast.Constant)
+        }
         for fn in mod.body:
             if not isinstance(fn, ast.FunctionDef):
                 continue
             text = ast.get_source_segment(texts[module] or "", fn) or ""
-            every.setdefault(fn.name, _describe(fn, module, text))
+            if fn.name not in every:
+                every[fn.name] = _describe(fn, module, text)
+                every[fn.name].dtypes_table = fn.name in tabled
             returns = ast.unparse(fn.returns) if fn.returns else ""
             if not fn.name.startswith("_") and set(re.findall(r"\w+", returns)) & kinds:
                 public.append(fn.name)
@@ -238,9 +251,6 @@ def _describe(fn: ast.FunctionDef, module: str, text: str) -> Factory:
     f = Factory(fn.name, module, text, fn)
     f.docstring = bool(ast.get_docstring(fn))
     f.takes_dtype = any(a.arg == "dtype" for a in fn.args.args + fn.args.kwonlyargs)
-    f.dtypes_table = any(
-        isinstance(d, ast.Call) and _callee(d) == "dtypes" for d in fn.decorator_list
-    )
     calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)]
     contracts = [c for c in calls if _callee(c) == "KernelContract"]
     passes = any(k.arg == "contract" for c in calls for k in c.keywords)
@@ -529,7 +539,10 @@ def advice(f: Factory, c: Cases | None, new: bool, ctx: Context) -> list[str]:
             "in `Tolerance(..., note=...)`"
         )
     if new and f.takes_dtype and not f.dtypes_table:
-        note.append("if it builds more than one dtype, list them with `@dtypes(...)`")
+        note.append(
+            "if it builds more than one dtype, list them in its module's "
+            f'`DTYPES["{f.name}"]`'
+        )
     return [f"⚠️ {w}" for w in warn] + [f"ℹ️ {n}" for n in note]
 
 

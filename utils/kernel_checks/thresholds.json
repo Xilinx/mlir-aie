@@ -126,6 +126,7 @@
   "compile_outside_aiecc_s": {"pct": 15, "abs": 0.5},
   "compile_aiecc_wall_s": {"pct": 15, "abs": 0.5},
   "compile_aiecc_outside_graph_s": {"pct": 15, "abs": 0.5},
+  "compile_kernel_objects_s": {"pct": 15, "abs": 0.5},
   "compile_place_s_warm": {"pct": 15, "abs": 0.5},
   "compile_route_s_warm": {"pct": 15, "abs": 0.5},
   "compile_lower_s_warm": {"pct": 15, "abs": 0.5},
@@ -136,5 +137,6 @@
   "compile_other_s_warm": {"pct": 15, "abs": 0.5},
   "compile_outside_aiecc_s_warm": {"pct": 15, "abs": 0.5},
   "compile_aiecc_wall_s_warm": {"pct": 15, "abs": 0.5},
-  "compile_aiecc_outside_graph_s_warm": {"pct": 15, "abs": 0.5}
+  "compile_aiecc_outside_graph_s_warm": {"pct": 15, "abs": 0.5},
+  "compile_kernel_objects_s_warm": {"pct": 15, "abs": 0.5}
 }
