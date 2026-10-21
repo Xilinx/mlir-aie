@@ -726,10 +726,11 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
             oracle and, for information, onnxruntime, then timed at batch 1 and checked and timed again at batch 8.</p>
           <h3>What each run records</h3>
           <dl id="performance-metrics"></dl>
-          <p>Per image and end-to-end are the fastest of 20 launches. Streaming, <code>(T(N) − T(1)) ÷ (N − 1)</code>, is what one more image in a launch costs
-            with the launch's fixed cost taken out, so it is recorded above batch 1 only. A seed whose batches placed differently is flagged on its card.</p>
-          <p>To run one seed at one batch, from <code>programming_examples/ml</code>:</p>
-          <pre>python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0 --batch B</pre>
+          <p>Dispatch and end-to-end per image are the fastest of 20 launches. Streaming, <code>(T(N) − T(1)) ÷ (N − 1)</code>, is what one more image in a launch costs
+            with the launch's fixed cost taken out, so it is recorded above batch 1 only.</p>
+          <p>To compile one seed at one effort and run every batch as the nightly does, from <code>programming_examples/ml</code>, with
+            <code>E</code> 0.05 for the design's default effort or 1.0 for full effort:</p>
+          <pre>python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort E --dynamic 1 2 4 8 16 32 64 -w 20 -i 20</pre>
           <p>and every seed and batch, as the nightly does:</p>
           <pre>python utils/component_checks/sa_placer_hw.py --out perf.json --meta meta.json</pre>
           <p>The Llama decode, from <code>programming_examples/ml/llama_3_2_1b</code> after <code>gen_llama_data.py</code> has built <code>data/</code> from the model's weights:</p>
@@ -970,17 +971,23 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     };
     // The view a component metric's trends are in.
     const sectionOfMetric = metric => Object.keys(SECTIONS).find(s => SECTIONS[s].metrics.includes(metric)) || 'placement';
-    // sa_placer_hw.py's _EFFORTS -- the design's real default (chosen for
-    // compile speed) and full effort (a placement-quality baseline), both
-    // measured nightly on real hardware. Kept in sync with that file by eye.
+    // sa_placer_hw.py's _EFFORTS (the page test keeps them equal), for a
+    // record that does not carry its own `efforts`.
     const EFFORT_VALUES = { default: 0.05, full: 1.0 };
-    // How the hardware check's failures read and rerun, in either section.
+    // How the hardware check's failures read and rerun, in either section:
+    // one dispatch-time compile per seed and effort serves every batch, so
+    // a batch's failure reruns the nightly's whole batch list.
     const HW_RUNS = {
       failure: 'run', script: 'utils/component_checks/sa_placer_hw.py',
       whole: 'python utils/component_checks/sa_placer_hw.py --out perf.json --meta meta.json',
       failedId: /^mobilenet\/seed=(\d+)\/batch=(\d+)\/effort=(\w+)$/,
-      repro: (seed = 'N', batch = 'B', effort = 'default') =>
-        `cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed ${seed} --sa-effort ${EFFORT_VALUES[effort] ?? effort} --batch ${batch}`,
+      repro: (record, seed = 'N', batch = '', effort = 'default') => {
+        const efforts = (record && record.efforts) || EFFORT_VALUES;
+        const every = record ? hardwareRuns(record).every : [];
+        const batches = every.length ? every.join(' ') : '1 2 4 8 16 32 64';
+        return `cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed ${seed} --sa-effort ${efforts[effort] ?? effort} `
+          + `--dynamic ${batches} -w 20 -i ${(record && record.iters) || 20}${batch ? `   # batch ${batch} failed` : ''}`;
+      },
       say: (seed, batch, effort) => `seed ${seed} at batch ${batch}, ${effort} effort`,
     };
     // The tabs every design's trend chart ends with: compile time and memory,
@@ -1000,8 +1007,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // its directory under component-checks/, which two bands may share. A
     // failed id ("<fixture>/seed<N>" in the sweep,
     // "mobilenet/seed=<S>/batch=<N>/effort=<E>" on hardware) matches
-    // `failedId`, whose groups `repro` runs again (with none, any one) and
-    // `say` words; `passed` is the headline when nothing failed; `short`
+    // `failedId`, whose groups `repro` runs again (after the latest record;
+    // with no groups, any one) and `say` words; `passed` is the headline when nothing failed; `short`
     // names it on the overview; `cards`, `charts` and `summary` show the
     // latest record.
     const BANDS = [
@@ -1010,7 +1017,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         script: 'utils/component_checks/sa_placer.py',
         whole: 'python utils/component_checks/sa_placer.py --aie-opt "$(which aie-opt)" --out perf.json --meta meta.json',
         failedId: /^(.*)\/seed(\d+)$/,
-        repro: (fixture, seed = 'N') => `aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=${seed} sa-effort=1.0' --mlir-pass-statistics ${SA_FIXTURES[fixture] || '<fixture>'}`,
+        repro: (_record, fixture, seed = 'N') => `aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=${seed} sa-effort=1.0' --mlir-pass-statistics ${SA_FIXTURES[fixture] || '<fixture>'}`,
         say: (fixture, seed) => `${fixture}/seed${seed}`,
         cards: fixtureCards, charts: seedCharts, summary: sweepSummary },
       { id: 'sa-placer-hw', section: 'placement', title: 'MobileNet placements on hardware', short: 'MobileNet on NPU2', ...HW_RUNS,
@@ -1030,7 +1037,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         script: 'utils/component_checks/llama_chain_hw.py',
         whole: 'python utils/component_checks/llama_chain_hw.py --out perf.json --meta meta.json',
         failedId: /^llama\/persist_grow\/N=(\d+)$/,
-        repro: (n = '16') => `cd programming_examples/ml/llama_3_2_1b && python aie2_decode.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --full-elf-path build/chain_persist_grow_N${n}_PT4.elf && python test_chain_persist_grow_mh.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --elf build/chain_persist_grow_N${n}_PT4.elf`,
+        repro: (_record, n = '16') => `cd programming_examples/ml/llama_3_2_1b && python aie2_decode.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --full-elf-path build/chain_persist_grow_N${n}_PT4.elf && python test_chain_persist_grow_mh.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --elf build/chain_persist_grow_N${n}_PT4.elf`,
         say: n => `the ${n}-layer decode`,
         cards: llamaCards, charts: () => [], summary: llamaSummary,
         trend: [{ id: 'tok_s', name: 'Tokens / s', axis: 'Tokens per second (decode: one run; dispatch: median of 3)',
@@ -1063,7 +1070,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                 '# and the same on npu1, and on xcvc1902 with a quarter of the seeds'].join('\n'),
         // A script's failure, or a test of the nightly lit suite (`lit/<path>`).
         failedId: /^(?:(\w+)\/(properties|hops-on|hops-off)\/seed=(\d+)\+(\d+)\/(.+)|lit\/(.+))$/,
-        repro: (device, run, first = 'N', count = 2000, what = '', test) => {
+        repro: (_record, device, run, first = 'N', count = 2000, what = '', test) => {
           if (test) return `lit -sv -D router_nightly=1 build/test/${test}`;
           if (!device || run === 'properties') {
             return `python test/create-packet-flows/nightly/router_properties.py --device ${device || 'npu2'} --seeds ${count} --first-seed ${first}`;
@@ -2852,12 +2859,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return { seeds, efforts: [...efforts].sort(), failed, every };
     }
 
-    // The placement a seed's compiles chose at one effort (the first
-    // batch's), and the batches whose compile placed differently.
+    // The placement a seed's one compile chose at one effort, or null.
     function placementOf(record, seed, effort) {
-      const mine = (record.detail || []).filter(d => String(d.seed) === String(seed) && d.effort_label === effort && d.placement);
-      return { digest: mine.length ? mine[0].placement : null, first: mine.length ? mine[0].batch : null,
-               apart: mine.filter(d => d.placement !== mine[0].placement).map(d => d.batch) };
+      const mine = (record.detail || []).find(d => String(d.seed) === String(seed) && d.effort_label === effort && d.placement);
+      return mine ? mine.placement : null;
     }
 
     // The hardware check's placements, one card with a lane per seed per
@@ -2884,11 +2889,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       });
       const placed = pairs.map(pair => {
         const [seed, effort] = pair;
-        const p = placementOf(record, seed, effort);
-        const digest = p.digest || (/placement (\w+)/.exec(((cases.get(kase(pair)) || { metrics: new Map() }).metrics.get('placement_cost') || {}).range || '') || [])[1];
+        const digest = placementOf(record, seed, effort) || (/placement (\w+)/.exec(((cases.get(kase(pair)) || { metrics: new Map() }).metrics.get('placement_cost') || {}).range || '') || [])[1];
         return { name: name(pair), color: color(pair),
-                 missing: el('span', { className: 'vals' }, digest ? el('code', {}, digest) : el('span', { className: 'faint' }, '—'),
-                   p.apart.length ? el('span', { className: 'note warn', title: `placed as ${p.digest} at batch ${p.first}` }, ` apart at b${p.apart.join(', b')}`) : '') };
+                 missing: el('span', { className: 'vals' }, digest ? el('code', {}, digest) : el('span', { className: 'faint' }, '—')) };
       });
       const runs = pairs.map(pair => {
         const [seed, effort] = pair;
@@ -2905,7 +2908,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const card = glanceGrid(header, [
         componentCell('placement_cost', label('placement_cost'), costs),
         componentCell('compile_s', label('compile_s'), compileTimes),
-        { text: 'Placement', href: hashFor({ view: 'placement', metric: 'placement_cost' }), title: 'a digest of the placed tiles of the first batch\'s compile', lanes: placed },
+        { text: 'Placement', href: hashFor({ view: 'placement', metric: 'placement_cost' }), title: 'a digest of the placed tiles of the compile that serves every batch', lanes: placed },
         { text: 'Runs', href: hashFor({ view: 'performance' }), title: 'whether the placed design compiled, ran and verified at each batch\nClick for its performance.', lanes: runs },
         componentCell('failed_seeds', label('failed_seeds'), [{ name: 'all', color: 'series-5', key: `${target}|mobilenet|failed_seeds`, metric: 'failed_seeds',
           m: count, current: c && c.current, bad: Boolean(count && count.value) }]),
@@ -2927,9 +2930,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // double-width lanes): its batches are the lanes of per image,
     // streaming and end-to-end; the one compile that serves them all is the
     // cold and warm lanes of compile time and memory. The header names the
-    // placement (its cost is under Placement), and, in a record from before
-    // one compile served every batch, any batch whose compile placed
-    // differently.
+    // placement (its cost is under Placement).
     function seedCards(record, cases, target) {
       const { seeds, failed, every } = hardwareRuns(record);
       return [...seeds].flatMap(([seed, effortMap]) => [...effortMap].map(([effort, batches]) => {
@@ -2946,15 +2947,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           el('span', { className: 'params' }, seed === '3' && effort === 'default' ? 'the design\'s default' : `${effort} effort`)));
         const placed = cases.get(`mobilenet/seed=${seed}/effort=${effort}`);
         const cost = placed && placed.metrics.get('placement_cost');
-        const p = placementOf(record, seed, effort);
-        const digest = p.digest || (/placement (\w+)/.exec((cost && cost.range) || '') || [])[1];
+        const digest = placementOf(record, seed, effort) || (/placement (\w+)/.exec((cost && cost.range) || '') || [])[1];
         if (digest) {
           header.append(link(hashFor({ view: 'placement', metric: 'placement_cost' }), `placement ${digest}`,
             { className: 'params', title: 'the placement this seed/effort chose; its cost and compile time are under Placement' }));
-        }
-        if (p.apart.length) {
-          header.append(el('span', { className: 'why note warn', title: `placed as ${p.digest} at batch ${p.first}` },
-            `placed differently at batch ${p.apart.join(', ')}`));
         }
         const [one, many] = [batches[0], batches[batches.length - 1]].map(b => caseOf(b) && caseOf(b).metrics.get('us_per_image'));
         if (batches.length > 1 && one && many) {
@@ -3675,7 +3671,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       }
       const lines = run.commit ? [`git checkout ${run.commit.slice(0, 12)}`] : [];
       const found = ids.filter(Boolean);
-      lines.push(...new Set(found.length ? found.slice(0, 6).map(m => check.repro(...m.slice(1))) : [check.repro()]));
+      lines.push(...new Set(found.length ? found.slice(0, 6).map(m => check.repro(latest, ...m.slice(1))) : [check.repro(latest)]));
       lines.push(`# every ${check.failure}, as the nightly runs them:`, check.whole);
       const intro = [];
       if (run.url) intro.push('Logs: ', link(run.url, `run ${run.id}`), `, artifact component-checks-${check.id}-${run.id}. `);

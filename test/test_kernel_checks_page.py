@@ -171,7 +171,7 @@ assert.ok(COMPONENT_METRICS.e2e_us_per_image.includes('the fastest of {mobilenet
 assert.ok(trendOf('sa-placer-hw').every(t => !/per image/.test(t.axis) || t.axis.includes('fastest')));
 assert.ok(COMPONENT_METRICS.us_per_image_b1.includes('the fastest of {n_iters["yolo26n_hw"]}'));
 assert.ok(trendOf('yolo26n-hw')[0].axis.includes('fastest of {n_iters["yolo26n_hw"]}'));
-assert.ok(!Object.values(COMPONENT_METRICS).some(about => /median of {n_iters["yolo26n_hw"]}\b/.test(about) && about.includes('yolo')));
+assert.ok(!/median/.test(COMPONENT_METRICS.us_per_image_b1 + trendOf('yolo26n-hw')[0].about));
 assert.ok(COMPONENT_METRICS.tok_s.includes('the median of {n_iters["llama_chain_hw"]}'));
 assert.ok(trendOf('llama-chain-hw')[1].axis.includes('median of {n_iters["llama_chain_hw"]}'));
 // The host clock is never called NPU time.
@@ -179,9 +179,33 @@ assert.ok(!Object.values(COMPONENT_METRICS).some(about => /NPU time/.test(about)
 // Every timing tab's axis names its statistic.
 for (const band of BANDS.filter(b => b.trend)) {{
   for (const t of band.trend) {{
-    if (/\((µs|ms|s)\b/.test(t.axis)) assert.match(t.axis, /fastest|median|mean|one (run|compile)/, t.axis);
+    if (/\\((µs|ms|s)\\b/.test(t.axis)) assert.match(t.axis, /fastest|median|mean|one (run|compile)/, t.axis);
   }}
 }}
+""")
+
+
+def test_the_mobilenet_repro_builds_what_the_nightly_builds(page):
+    producer = (ROOT / "utils/component_checks/sa_placer_hw.py").read_text(
+        encoding="utf-8"
+    )
+    efforts = json.loads(re.search(r"^_EFFORTS = (\{.*\})$", producer, re.M)[1])
+    run_seed = producer.split("def run_seed(", 1)[1].split("\ndef ", 1)[0]
+    flags = sorted(set(re.findall(r'"(-{1,2}[a-z][\w-]*)"', run_seed)))
+    html = PAGE.read_text(encoding="utf-8")
+    help_text = re.search(
+        r"<pre>(python -m mobilenet\.aie2_mobilenet_iron [^<]*)</pre>", html
+    )[1]
+    page(f"""
+assert.deepEqual(EFFORT_VALUES, {json.dumps(efforts)});
+const repro = HW_RUNS.repro(null, '3', '64', 'full');
+for (const flag of {json.dumps(flags)}) {{
+  assert.ok(repro.split(' ').includes(flag), flag);
+  assert.ok({json.dumps(help_text)}.split(' ').includes(flag), flag);
+}}
+// --batch builds a static design the nightly no longer runs.
+assert.ok(!repro.includes('--batch'));
+assert.equal(Number(repro.split('--sa-effort ')[1].split(' ')[0]), {efforts["full"]});
 """)
 
 
@@ -1163,7 +1187,7 @@ assert.equal(card.trend.className, 'trend-slot');
 // A quiet night: "nothing moved" is detail too.
 const quiet = componentBand(hw, hwIndex, hwRecord('7', hwAfter.date, 98), NOW, hwBefore);
 assert.deepEqual(quiet.children.map(c => c.className), ['verdict-top', 'headline', 'trend-slot', 'band-more']);
-assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 0.05 --batch B'));
+assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 0.05 --dynamic 1 16 -w 20 -i 20'));
 assert.ok(card.text.includes('turbo mode'));
 // Nothing published yet.
 const empty = componentBand(hw, null, null, NOW);
@@ -1223,11 +1247,6 @@ assert.equal(chart.options.scales.x.ticks.callback(16), 'b16');
 assert.deepEqual(sets.map((d, datasetIndex) => chart.options.plugins.legend.labels.filter({ datasetIndex })), [true, false, true, false]);
 assert.equal(chart.options.plugins.tooltip.callbacks.label({ dataset: sets[0], parsed: { x: 16, y: 104.9 } }),
              'seed 3: 104.9 µs per image, 9,533 images/s');
-// A batch placed apart from the first is noted on its seed's card.
-const apart = hwRecord('7', hwAfter.date, 104.9);
-apart.detail[1].placement = 'fedcba987654';
-const noted = componentBand(hw, hwIndex, apart, NOW, hwBefore).cards[0].children[0];
-assert.ok(noted.text.includes('placed differently at batch 16'));
 """)
 
 
@@ -1256,9 +1275,14 @@ const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open && card.children.includes(repro));
 assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n').slice(0, 3), [
   'git checkout abcdef123456',
-  'cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed 7 --sa-effort 0.05 --batch 16',
+  'cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed 7 --sa-effort 0.05 --dynamic 1 16 -w 20 -i 20   # batch 16 failed',
   '# every run, as the nightly runs them:',
 ]);
+// A record that carries its efforts and iterations is rerun with its own.
+failedAt.efforts = { default: 0.1, full: 1.0 };
+failedAt.iters = 30;
+assert.equal(hw.repro(failedAt, '7', '16', 'default'),
+  'cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed 7 --sa-effort 0.1 --dynamic 1 16 -w 20 -i 30   # batch 16 failed');
 """)
 
 
