@@ -70,6 +70,31 @@ class _Route(PerDeviceConfigurationResolvable):
     _shim_ends: set[int]
     _channels: "list[int | None | FlowEndpoint]"
     _endpoints: "dict[int, FlowEndpoint]"
+    _src_port: WireBundle
+    _site: SourceSite
+    # The aie.route attributes a routed lowering adds for this kind of route.
+    _route_attrs: "dict[str, Any]" = {}
+
+    def _single_op(self, loc: ir.Location, ip: ir.InsertionPoint | None) -> Any:
+        """Return the one op this route lowers to when it is not routed."""
+        raise NotImplementedError
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        if self._op is not None:
+            return
+        loc = loc or self._site.location(self._name)
+        if self._routed:
+            self._resolve_route(
+                loc, ip, [self._src_port, *self.dst_ports], **self._route_attrs
+            )
+            return
+        self._op = self._single_op(loc, ip)
+        if self._shim_symbol is not None or self._shim_ends:
+            self._emit_shim_dma_alloc(loc, ip)
 
     def _endpoint_tiles(self):
         return [self._src, *self._dsts]
@@ -473,19 +498,9 @@ class Flow(_Route):
         """
         return self._transfer(source, DMAChannelDir.MM2S, **kwargs)
 
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        if self._op is not None:
-            return
-        loc = loc or self._site.location(self._name)
-        if self._routed:
-            self._resolve_route(loc, ip, [self._src_port, *self.dst_ports])
-            return
+    def _single_op(self, loc: ir.Location, ip: ir.InsertionPoint | None):
         if self._vias:
-            self._op = _FlowOp(
+            return _FlowOp(
                 self._src.op,
                 self._src_port,
                 self._channels[0],
@@ -500,19 +515,16 @@ class Flow(_Route):
                 loc=loc,
                 ip=ip,
             )
-        else:
-            self._op = _flow_op(
-                self._src.op,
-                self._src_port,
-                self._channels[0],
-                self._dsts[0].op,
-                self._dst_port,
-                self._channels[1],
-                loc=loc,
-                ip=ip,
-            )
-        if self._shim_symbol is not None or self._shim_ends:
-            self._emit_shim_dma_alloc(loc, ip)
+        return _flow_op(
+            self._src.op,
+            self._src_port,
+            self._channels[0],
+            self._dsts[0].op,
+            self._dst_port,
+            self._channels[1],
+            loc=loc,
+            ip=ip,
+        )
 
 
 @dataclass
@@ -619,6 +631,9 @@ class PacketFlow(_Route):
         self._extra_dsts: list[PacketDest] = list(extra_dsts)
         self._endpoints: dict[int, FlowEndpoint] = {}
         self._keep_pkt_header = keep_pkt_header
+        self._route_attrs = dict(
+            packet=True, packet_id=pkt_id, keep_pkt_header=keep_pkt_header or None
+        )
         self._shim_symbol = shim_symbol
         self._shim_ends: set[int] = set()
         self._name = name
@@ -651,24 +666,7 @@ class PacketFlow(_Route):
             source, DMAChannelDir.MM2S, packet=(pkt_type, self._pkt_id), **kwargs
         )
 
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        if self._op is not None:
-            return
-        loc = loc or self._site.location(self._name)
-        if self._routed:
-            self._resolve_route(
-                loc,
-                ip,
-                [self._src_port, *self.dst_ports],
-                packet=True,
-                packet_id=self._pkt_id,
-                keep_pkt_header=self._keep_pkt_header or None,
-            )
-            return
+    def _single_op(self, loc: ir.Location, ip: ir.InsertionPoint | None):
         dests = [
             {
                 "dest": self._dsts[0].op,
@@ -678,7 +676,7 @@ class PacketFlow(_Route):
         ]
         for d in self._extra_dsts:
             dests.append({"dest": d.tile.op, "port": d.port, "channel": d.channel})
-        self._op = _packetflow_op(
+        return _packetflow_op(
             pkt_id=self._pkt_id,
             source=self._src.op,
             source_port=self._src_port,
@@ -688,5 +686,3 @@ class PacketFlow(_Route):
             loc=loc,
             ip=ip,
         )
-        if self._shim_symbol is not None or self._shim_ends:
-            self._emit_shim_dma_alloc(loc, ip)
