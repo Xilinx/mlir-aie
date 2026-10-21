@@ -5,7 +5,9 @@ r"""Build + run the YOLO26n 640x640 detector on NPU2 over real COCO images.
 
 The whole detector end to end: does it still build, does every image's
 detection match the numpy oracle (and, as information, onnxruntime), and how
-long one image takes at batch 1 and at batch 8. Shells out to the example's
+long one image takes at batch 1 and at batch 8: the fastest of ``N_ITERS``
+calls after ``N_WARMUP``, host wall time of the whole ``yolo26n(...)`` call,
+with the median and MAD beside it. Shells out to the example's
 own yolo26n.py CLI (no new Python API): ``--compile-only`` twice into one
 fresh NPU_CACHE_HOME, cold then warm, keeping only the cold compile's kernel
 objects for the warm one, as llama_chain_hw.py does; then a ``--time`` run
@@ -49,8 +51,8 @@ from aiecc_stages import (
 )
 
 CASE = "yolo26n/640"
-N_ITERS = 5
-N_WARMUP = 2
+N_ITERS = 20
+N_WARMUP = 10
 BATCH = 8
 
 _YOLO_DIR = os.path.join(
@@ -64,9 +66,11 @@ _IMAGE_LINE_RE = re.compile(
 _SUMMARY_RE = re.compile(r"^yolo26n: (\d+)/(\d+) images PASS", re.MULTILINE)
 _ORT_RE = re.compile(r"^ort: (\d+)/(\d+) images match onnxruntime", re.MULTILINE)
 _PER_IMAGE_RE = re.compile(
-    r"^per-image: ([\d.]+) us \(([\d.]+) fps\) at batch (\d+)", re.MULTILINE
+    r"^per-image: (?P<us>[\d.]+) us \((?P<fps>[\d.]+) fps\) at batch (?P<batch>\d+), "
+    r"fastest of (?P<n>\d+) after \d+ warmups; "
+    r"median (?P<median>[\d.]+) us, MAD (?P<mad>[\d.]+) us$",
+    re.MULTILINE,
 )
-_CORE_RE = re.compile(r"\baie\.core\(")
 
 
 def _run(cmd: list[str], env: dict) -> subprocess.CompletedProcess:
@@ -208,29 +212,60 @@ def parse_timing(out: str) -> dict:
         out: the run's stdout and stderr.
 
     Returns:
-        ``{"us_per_image_b<B>": us, "fps_b<B>": fps}`` for each batch ``B``
-        the run timed, in the order it printed them; empty when it timed none.
+        For each batch ``B`` the run timed, in the order it printed them:
+        ``us_per_image_b<B>`` (the fastest call, per image), ``fps_b<B>``
+        (from it), ``timed_calls_b<B>``, and the per-image
+        ``median_us_per_image_b<B>`` and ``mad_us_per_image_b<B>``. Empty
+        when it timed none.
     """
     timing: dict = {}
-    for us, fps, batch in _PER_IMAGE_RE.findall(out):
-        timing[f"us_per_image_b{batch}"] = float(us)
-        timing[f"fps_b{batch}"] = float(fps)
+    for m in _PER_IMAGE_RE.finditer(out):
+        batch = m["batch"]
+        timing[f"us_per_image_b{batch}"] = float(m["us"])
+        timing[f"fps_b{batch}"] = float(m["fps"])
+        timing[f"timed_calls_b{batch}"] = int(m["n"])
+        timing[f"median_us_per_image_b{batch}"] = float(m["median"])
+        timing[f"mad_us_per_image_b{batch}"] = float(m["mad"])
     return timing
 
 
-def artifact_stats(build_dir: str | None) -> dict:
-    """Sizes/counts of the files the warm build actually produced.
+def measurement_sane(correctness: dict, timing: dict, batches: list[int]) -> bool:
+    """Whether a run's numbers may stand as the published baseline.
 
-    A full-ELF build's one ``.elf`` carries every core and the runtime
+    Args:
+        correctness: The final ``parse_correctness`` result.
+        timing: The merged ``parse_timing`` results.
+        batches: The batches the check timed.
+
+    Returns:
+        True when every image matched and each batch was timed over
+        ``N_ITERS`` calls, its fastest call positive and no slower than the
+        median.
+    """
+    if not correctness["passed"]:
+        return False
+    for batch in batches:
+        fastest = timing.get(f"us_per_image_b{batch}")
+        median = timing.get(f"median_us_per_image_b{batch}")
+        if timing.get(f"timed_calls_b{batch}") != N_ITERS or fastest is None:
+            return False
+        if median is None or not 0 < fastest <= median:
+            return False
+    return True
+
+
+def artifact_stats(build_dir: str | None) -> dict:
+    """Sizes of the files the warm build actually produced.
+
+    A full-ELF build's ``design.elf`` carries every core and the runtime
     sequence; otherwise the xclbin and instruction stream stand in for it.
-    The placed MLIR gives the core count.
     """
     if build_dir is None:
         return {}
     out: dict = {}
-    elfs = sorted(glob.glob(os.path.join(build_dir, "*.elf")))
-    if elfs:
-        out["elf_bytes"] = os.path.getsize(elfs[0])
+    elf = os.path.join(build_dir, "design.elf")
+    if os.path.exists(elf):
+        out["elf_bytes"] = os.path.getsize(elf)
     else:
         for metric, name in (
             ("xclbin_bytes", "final.xclbin"),
@@ -239,10 +274,6 @@ def artifact_stats(build_dir: str | None) -> dict:
             path = os.path.join(build_dir, name)
             if os.path.exists(path):
                 out[metric] = os.path.getsize(path)
-    placed = os.path.join(build_dir, "input_with_addresses.mlir")
-    if os.path.exists(placed):
-        with open(placed) as f:
-            out["n_cores"] = len(_CORE_RE.findall(f.read()))
     return out
 
 
@@ -254,14 +285,20 @@ def aggregate(
     if correctness["ort_matches"] is not None:
         out.append(row(CASE, "ort_matches", correctness["ort_matches"], "images", of))
     for metric, value in timing.items():
-        out.append(
-            row(CASE, metric, value, "fps" if metric.startswith("fps_") else "us")
-        )
+        if metric.startswith("us_per_image_b"):
+            batch = metric.removeprefix("us_per_image_b")
+            spread = (
+                f"fastest of {timing[f'timed_calls_b{batch}']}; median "
+                f"{timing[f'median_us_per_image_b{batch}']:.1f}, MAD "
+                f"{timing[f'mad_us_per_image_b{batch}']:.1f}"
+            )
+            out.append(row(CASE, metric, value, "us", spread))
+        elif metric.startswith("fps_b"):
+            out.append(row(CASE, metric, value, "fps"))
     for metric, unit in (
         ("elf_bytes", "bytes"),
         ("xclbin_bytes", "bytes"),
         ("instr_bytes", "bytes"),
-        ("n_cores", "cores"),
     ):
         if artifacts.get(metric) is not None:
             out.append(row(CASE, metric, artifacts[metric], unit))
@@ -286,6 +323,8 @@ def main(argv=None) -> int:
     parser.add_argument("--out", required=True, help="perf.json to write")
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
+    if args.n_images < BATCH or args.n_images % BATCH:
+        parser.error(f"--n-images {args.n_images} is not a positive multiple of {BATCH}")
 
     # Deferred so that the tests can import this module's parsers without an NPU runtime.
     from aie.utils.benchmark import preflight, provenance
@@ -356,7 +395,7 @@ def main(argv=None) -> int:
         args.meta,
         {
             **meta,
-            "measurement_sane": True,
+            "measurement_sane": measurement_sane(correctness, timing, [1, BATCH]),
             "detail": [
                 {
                     "case": CASE,

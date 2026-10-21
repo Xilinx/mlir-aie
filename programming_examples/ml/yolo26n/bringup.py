@@ -16,15 +16,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import statistics
 import sys
-import time
 from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
 from aie.iron import CompileTime, In, Out, Program, Runtime
 from aie.iron.device import NPU2
+from aie.utils.benchmark import print_benchmark, run_iters
 from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
 from yolo_params import DATA_DIR, Params, synthetic_params
@@ -47,6 +46,42 @@ def from_rows(tensor: Tensor, rows: np.ndarray) -> np.ndarray:
     return grouped.transpose(1, 3, 0, 2).reshape(
         tensor.channels8, tensor.height, tensor.width
     )[: tensor.channels]
+
+
+def check(
+    drained: list[Tensor],
+    sizes: list[int],
+    reference: dict[str, np.ndarray],
+    words: np.ndarray,
+) -> bool:
+    """Compare each drained tensor with the oracle, printing a PASS/FAIL line for it.
+
+    Args:
+        drained: The tensors the run drains, in the order they are packed.
+        sizes: Each one's packed size in bytes.
+        reference: The oracle's tensors by name.
+        words: The output buffer as the NPU wrote it.
+
+    Returns:
+        Whether every drained tensor matched bit for bit.
+    """
+    got = words.view(np.int8)
+    passed = True
+    at = 0
+    for tensor, size in zip(drained, sizes):
+        want = reference[tensor.name]
+        if want.dtype == np.float32:
+            mine = got[at : at + size].view(np.int32).reshape(want.shape)
+            want = want.view(np.int32)
+        else:
+            mine = from_rows(tensor, got[at : at + size]).astype(np.int64)
+        bad = int((mine != want).sum())
+        print(
+            f"{tensor.name}: {'PASS' if bad == 0 else 'FAIL'} ({bad}/{want.size} differ)"
+        )
+        passed &= bad == 0
+        at += size
+    return passed
 
 
 @iron.jit
@@ -128,10 +163,17 @@ def main() -> None:
     parser.add_argument(
         "--outputs", help="comma-separated tensors to drain (default: the last op's)"
     )
-    parser.add_argument("--time", action="store_true", help="also time the dispatch")
-    parser.add_argument("--n-iters", type=int, default=5)
-    parser.add_argument("--n-warmup", type=int, default=2)
+    parser.add_argument(
+        "--time",
+        action="store_true",
+        help="also time the dispatch, report the fastest call and check its output",
+    )
+    parser.add_argument("--n-iters", type=int, default=20, help="timed calls (>= 1)")
+    # The NPU takes about ten calls after a load to reach its steady latency.
+    parser.add_argument("--n-warmup", type=int, default=10, help="untimed calls first")
     args = parser.parse_args()
+    if args.n_iters < 1 or args.n_warmup < 0:
+        parser.error("--n-iters must be at least 1 and --n-warmup at least 0")
 
     first, stop = (int(v) for v in args.ops.split(":"))
     network = Network.yolo26n()
@@ -185,34 +227,27 @@ def main() -> None:
         drained=drained,
     )
     segment(inputs, outputs, **kwargs)
-    got = outputs.numpy().view(np.int8)
-    failed = False
-    at = 0
-    for tensor, size in zip(plan.outputs, sizes):
-        want = reference[tensor.name]
-        if want.dtype == np.float32:
-            mine = got[at : at + size].view(np.int32).reshape(want.shape)
-            want = want.view(np.int32)
-        else:
-            mine = from_rows(tensor, got[at : at + size]).astype(np.int64)
-        bad = int((mine != want).sum())
-        print(
-            f"{tensor.name}: {'PASS' if bad == 0 else 'FAIL'} ({bad}/{want.size} differ)"
-        )
-        failed |= bad != 0
-        at += size
+    passed = check(plan.outputs, sizes, reference, outputs.numpy())
 
     if args.time:
-        for _ in range(args.n_warmup):
-            segment(inputs, outputs, **kwargs)
-        samples = []
-        for _ in range(args.n_iters):
-            start = time.perf_counter()
-            segment(inputs, outputs, **kwargs)
-            samples.append(time.perf_counter() - start)
-        us = statistics.median(samples) * 1e6
-        print(f"ops {first}:{stop}: {us:.1f} us")
-    sys.exit(1 if failed else 0)
+        bench = run_iters(
+            segment,
+            inputs,
+            outputs,
+            warmup=args.n_warmup,
+            iters=args.n_iters,
+            **kwargs,
+        )
+        print_benchmark(bench)
+        e2e = bench.e2e
+        print(
+            f"ops {first}:{stop}: {e2e.min_us:.1f} us, fastest of {e2e.n} after "
+            f"{args.n_warmup} warmups; median {e2e.median_us:.1f} us, "
+            f"MAD {e2e.mad_us:.1f} us"
+        )
+        print("timed dispatch:")
+        passed &= check(plan.outputs, sizes, reference, outputs.numpy())
+    sys.exit(0 if passed else 1)
 
 
 if __name__ == "__main__":

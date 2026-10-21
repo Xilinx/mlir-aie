@@ -20,13 +20,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import sys
-import time
 from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
 from aie.iron import CompileTime, DeviceConfiguration, In, InOut, Out, Program, Runtime
 from aie.iron.device import NPU2
+from aie.utils.benchmark import print_benchmark, run_iters
 from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
 from yolo_params import DATA_DIR, WEIGHTS_DIR, Params, synthetic_params
@@ -237,15 +237,22 @@ def main() -> None:
     parser.add_argument(
         "--synthetic", type=int, metavar="SEED", help="seeded weights and random images"
     )
-    parser.add_argument("--time", action="store_true", help="also time the dispatch")
-    parser.add_argument("--n-iters", type=int, default=5)
-    parser.add_argument("--n-warmup", type=int, default=2)
+    parser.add_argument(
+        "--time",
+        action="store_true",
+        help="also time the dispatch; the per-image time is the fastest call",
+    )
+    parser.add_argument("--n-iters", type=int, default=20, help="timed calls (>= 1)")
+    # The NPU takes about ten calls after a load to reach its steady latency.
+    parser.add_argument("--n-warmup", type=int, default=10, help="untimed calls first")
     parser.add_argument(
         "--compile-only", action="store_true", help="build the ELF and stop"
     )
     args = parser.parse_args()
     if args.batch < 1 or not args.compile_only and args.n % args.batch:
         parser.error(f"--batch {args.batch} does not divide --n {args.n}")
+    if args.n_iters < 1 or args.n_warmup < 0:
+        parser.error("--n-iters must be at least 1 and --n-warmup at least 0")
     paths = sorted(args.images.glob("*.jpg"))[: args.n]
     if args.synthetic is None and not args.compile_only and len(paths) < args.n:
         parser.error(f"{args.images} holds {len(paths)} .jpg images, not --n {args.n}")
@@ -334,15 +341,25 @@ def main() -> None:
             [image.reshape(-1) for _, image in images[: args.batch]]
         )
         tensor = iron.tensor(pixels.view(np.int32))
-        for _ in range(args.n_warmup):
-            yolo26n(tensor, scratch, detections, weights, **kwargs)
-        samples = []
-        for _ in range(args.n_iters):
-            start = time.perf_counter()
-            yolo26n(tensor, scratch, detections, weights, **kwargs)
-            samples.append(time.perf_counter() - start)
-        us = min(samples) * 1e6 / args.batch
-        print(f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {args.batch}")
+        bench = run_iters(
+            yolo26n,
+            tensor,
+            scratch,
+            detections,
+            weights,
+            warmup=args.n_warmup,
+            iters=args.n_iters,
+            **kwargs,
+        )
+        print_benchmark(bench)
+        e2e = bench.e2e
+        us = e2e.min_us / args.batch
+        print(
+            f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {args.batch}, "
+            f"fastest of {e2e.n} after {args.n_warmup} warmups; "
+            f"median {e2e.median_us / args.batch:.1f} us, "
+            f"MAD {e2e.mad_us / args.batch:.1f} us"
+        )
         timed = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
         same = all(np.array_equal(t, w) for t, w in zip(timed, first))
         print(f"timed dispatch: {'PASS' if same else 'FAIL'}")
