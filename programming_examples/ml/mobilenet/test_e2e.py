@@ -67,17 +67,6 @@ CHAINS = {
 }
 
 
-def _tolerance(key):
-    if key == "chain:regular":
-        return Tolerance.lsb(
-            14,
-            note="bottleneck_A's golden was generated without bn5's residual; "
-            "measured max 14 against mobilenet_numpy, which is exact once "
-            "that residual is dropped",
-        )
-    return Tolerance.exact()
-
-
 def _loadtxt_i8(path):
     # bottleneck_A's IFM is in [0,255]; numpy 2.x rejects direct dtype=int8.
     return (
@@ -157,7 +146,7 @@ def main():
         "YCXD",
     ).reshape(out_c, out_h, out_w)
     golden = _loadtxt_i8(fix + f"golden_output{single}.txt")
-    references = [("brevitas", golden.reshape(out_c, out_h, out_w), _tolerance(key))]
+    references = [("brevitas", golden.reshape(out_c, out_h, out_w), Tolerance.exact())]
     if key == "chain:regular":
         with open(fix + CHAINS[opts.target][1]) as f:
             scales = json.load(f)
