@@ -278,11 +278,20 @@ const card = componentBand(llama, { target: 'llama-chain-hw', runs: swaps.map(n 
 fillSparks(card.cards, data);
 assert.equal((card.cards[0].sparks.get('tok_s').innerHTML.match(/<circle/g) || []).length, 1);
 assert.equal(card.cards[0].sparks.get('tok_s').title, 'the last 2 nightlies');
-// The part is named on the band and its card, and the swap is said once, as a warning.
+// The part is named on the band and its card. A runner that alternates
+// parts is compared with its own part's last night: no change to warn of.
 assert.ok(card.children[0].text.includes('on Strix'));
 assert.ok(card.cards[0].children[0].text.includes('on Strix'));
-assert.ok(card.text.includes('Device changed since the previous run: NPU Krackan 1 → NPU Strix.'));
+assert.ok(!card.text.includes('changed since the previous run'));
 assert.ok(!card.text.includes('kernels changed'));
+// A part's first night is compared with the night before it, and says so.
+const first = componentBand(llama, { target: 'llama-chain-hw', runs: swaps.slice(0, 2).map(n => night(n.id, n.date, 'turbo', { device: n.device, provenance: n.provenance })) },
+                            swaps[1], NOW, swaps[0]);
+assert.ok(first.text.includes('Device changed since the previous run: NPU Strix → NPU Krackan 1.'));
+// And what moved is read against the same part's night.
+const index3 = { runs: swaps.map(n => night(n.id, n.date, 'turbo', { device: n.device, provenance: n.provenance })) };
+assert.equal(previousPublished(index3, { ...swaps[2], pmode: 'turbo' }).id, '1');
+assert.equal(previousPublished(index3, { ...swaps[1], pmode: 'turbo' }).id, '1');
 """)
     page(KERNELS + """
 // The kernel page marks provenance changes and splits a time by part.

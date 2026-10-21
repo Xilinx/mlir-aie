@@ -1262,10 +1262,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function previousPublished(index, latest) {
       const runs = (index && index.runs) || [];
       const at = runs.findIndex(r => r.id === latest.id);
-      for (let i = (at < 0 ? runs.length : at) - 1; i >= 0; i--) {
-        if (runs[i].published && runs[i].pmode === latest.pmode && !isManual(runs[i])) return runs[i];
-      }
-      return null;
+      const before = runs.slice(0, at < 0 ? runs.length : at).reverse()
+        .filter(r => r.published && r.pmode === latest.pmode && !isManual(r));
+      // The last run on the same part, else the last: a check whose runner
+      // alternates parts compares a part with itself, and a part's first run
+      // with the run before it.
+      return before.find(r => latest.device && r.device === latest.device) || before[0] || null;
     }
 
     // Whether two points were measured the same way: a change of how cycles
@@ -1398,9 +1400,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const nightly = runs.filter(r => !isManual(r));
       const pool = nightly.some(r => r.published) ? nightly : runs;
       const recorded = pool.length ? pool[pool.length - 1] : null;
-      // Provenance is compared with the last run that measured anything: a
-      // refused or failed run records little of it.
-      const previous = pool.slice(0, -1).reverse().find(r => r.published) || null;
+      // Provenance is compared with the last run on the same part that
+      // measured anything: a refused or failed run records little of it.
+      const earlier = pool.slice(0, -1).reverse().filter(r => r.published);
+      const previous = earlier.find(r => recorded.device && r.device === recorded.device) || earlier[0] || null;
       // Runs started by hand after it: charted, not compared.
       const manualSince = recorded ? runs.slice(runs.indexOf(recorded) + 1).filter(isManual) : [];
       const last = db ? latestCases(db, npu).last : null;
