@@ -209,6 +209,30 @@ assert.equal(Number(repro.split('--sa-effort ')[1].split(' ')[0]), {efforts["ful
 """)
 
 
+def test_slower_since_names_the_night_it_moved_not_the_window_start(page):
+    page(RUNS + """
+// bn_conv2dk1_skip on npu1, as published: flat from 10 Oct, a step on 20 Oct.
+const day = d => Date.parse(`2026-10-${String(d).padStart(2, '0')}T06:00:00Z`);
+const cyclesOn = values => fromRecords({ npu1: values.map(([d, v], i) => rec(String(i), day(d), 'turbo', { 'skip/1/i8/cycles': ['cycles', v] })) });
+let w = kernelWindow(cyclesOn([[10, 1556], [11, 1556], [15, 1556], [19, 1556], [20, 1621]]), 'npu1', 'skip');
+assert.deepEqual([w.worse, shortDate(w.since)], [1, '20 Oct']);
+assert.deepEqual(w.moves, ['skip/1/i8: 1,556 on 10 Oct → 1,621, past the threshold from 20 Oct']);
+// A move that held since an earlier night is dated from that night.
+w = kernelWindow(cyclesOn([[10, 100], [12, 120], [14, 121], [20, 122]]), 'npu1', 'skip');
+assert.equal(shortDate(w.since), '12 Oct');
+// Nothing moved: no date.
+assert.equal(kernelWindow(cyclesOn([[10, 100], [20, 101]]), 'npu1', 'skip').since, null);
+// One constant for the strip, the sparklines and the window.
+assert.equal(WINDOW_NIGHTS, 30);
+const many = { target: 'npu1', runs: Array.from({ length: 40 }, (_, i) => summary(String(i), new Date(day(1) + i * 3600e3).toISOString(), 'turbo', {})) };
+const strip = nightStrip({ runs: many.runs, run: { id: '39' } });
+assert.equal(strip.children.length - 1, WINDOW_NIGHTS);
+// A card's change says what it is against on hover.
+const vals = glanceValues({ value: 110, unit: 'cycles', change: 0.1, delta: 10, cls: 'worse', since: day(19) }, 'cycles', true);
+assert.equal(vals.title, 'was 100 on 19 Oct');
+""")
+
+
 def test_narrow_screens_hide_no_kernels_table_column():
     # Each NPU's header spans its columns; hiding one slides the headers.
     css = (
@@ -430,7 +454,7 @@ const { last, cases } = latestCases(db, 'npu1');
 assert.equal(last.mode, 'turbo');
 const big = cases.get('softmax/1024/bfloat16');
 assert.ok(big.current);
-assert.deepEqual(big.metrics.get('cycles'), { value: 110, unit: 'cycles', change: 0.1, delta: 10, cls: 'worse', range: 'median 112 max 130 n=16' });
+assert.deepEqual(big.metrics.get('cycles'), { value: 110, unit: 'cycles', change: 0.1, delta: 10, cls: 'worse', since: 1, range: 'median 112 max 130 n=16' });
 assert.equal(big.metrics.get('kernel_object_bytes').change, null);
 assert.ok(!cases.get('softmax/64/bfloat16').current);
 assert.equal(latestCases(db, 'npu2').cases.size, 0);
@@ -636,7 +660,8 @@ assert.deepEqual(shownNights.map(n => n.npu), ['npu1', 'npu2']);
 const [v1, v2] = $('verdicts').children;
 assert.equal(v1.className, 'verdict bad');
 const headline = v1.children.find(c => c.className === 'headline');
-assert.equal(headline.text, '1 case slower, 1 failing correctness, 1 failed timing. 1 faster.');
+// The comparison names its baseline.
+assert.equal(headline.text, '1 case slower vs 1 Jan, 1 failing correctness, 1 failed timing. 1 faster.');
 // The counts are under Run details, shut.
 const runMore = v1.children.find(c => c.className === 'band-more');
 assert.ok(!runMore.open);
@@ -668,7 +693,7 @@ assert.equal(items[2].children[1].text, 'No results have been published.');
 
 // A regression is named in Needs a look with how far it moved; its kernel a click away.
 const worse = items[1];
-assert.ok(worse.text.startsWith('npu11 case got slower or bigger past its threshold:'));
+assert.ok(worse.text.startsWith('npu11 case got slower or bigger past its threshold vs 1 Jan:'));
 assert.ok(worse.text.includes('relu/1024/bf16 cycles +3.0%'));
 assert.equal(all(worse, n => n.tag === 'a')[0].href, '#view=kernel&kernel=relu');
 
@@ -824,7 +849,8 @@ assert.deepEqual(rows[1].children.slice(1, 3).map(c => c.text), ['npu1not run', 
 // Plain dots and words: not the old map's filled halves.
 assert.deepEqual(rows[0].children.slice(1, 3).map(c => c.className), ['k-npu k-bad', 'k-npu k-ok']);
 // Its cases' cycles now, and how many moved since the first nightly shown.
-assert.deepEqual(kernelWindow(db, 'npu1', 'softmax'), { cycles: [50, 1100], since: 1, worse: 1, better: 0 });
+assert.deepEqual(kernelWindow(db, 'npu1', 'softmax'), { cycles: [50, 1100], since: 2, worse: 1, better: 0,
+  moves: ['softmax/1024/bfloat16: 1,000 on 1 Jan → 1,100, past the threshold from 1 Jan'] });
 assert.equal(kernelWindow(db, 'npu1', 'relu'), null);
 assert.equal(cyclesWords([50, 1100]), '50 and 1,100 cycles');
 assert.equal(cyclesWords([5, 50, 1100]), '5 to 1,100 cycles');
@@ -980,7 +1006,7 @@ const { cases } = latestCases(db, 'npu1');
 assert.equal(cases.get('noisy/1/bf16').metrics.get('npu_us').cls, '');
 assert.equal(cases.get('steady/1/bf16').metrics.get('npu_us').cls, 'worse');
 const move = latestMove(db.series.find(s => s.kase === 'noisy/1/bf16'), ['performance']);
-assert.deepEqual(move, { change: 0.25, delta: 25, cls: '' });
+assert.deepEqual(move, { change: 0.25, delta: 25, cls: '', since: 1000 });
 """)
 
 
