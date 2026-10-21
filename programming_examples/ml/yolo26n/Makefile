@@ -44,11 +44,18 @@ run_block:
 		$(if ${OUTPUTS},--outputs ${OUTPUTS}) \
 		$(if ${SYNTHETIC},--synthetic ${SYNTHETIC} --params ${BUILD}/yolo26n_params_synthetic${SYNTHETIC}.npz)
 
-# One range of each block kind: the stem and C3k2, SPPF, C2PSA attention, an
-# upsample/concat neck stage, one Detect level with both branches, and the
-# postprocess. FIRST:STOP=T1,T2 drains T1 and T2 instead of the last op's output.
+# One range of each block kind, by its first and last op's names: the stem
+# and C3k2, SPPF, C2PSA attention, an upsample/concat neck stage, one Detect
+# level with both branches, and the postprocess. FIRST:LAST=T1,T2 drains T1
+# and T2 instead of the last op's output.
 DETECT0 := /model.23/one2one_cv2.0/one2one_cv2.0.2/Conv,/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv
-SYNTHETIC_BLOCKS := 0:11 52:59 59:73 90:107 143:151=${DETECT0} 167:168
+SYNTHETIC_BLOCKS := \
+	images:/model.2/cv2/conv/Conv \
+	/model.9/cv1/conv/Conv:/model.9/Add \
+	/model.10/cv1/conv/Conv:/model.10/cv2/conv/Conv \
+	/model.14/Resize:/model.16/cv2/conv/Conv \
+	/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv:/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv=${DETECT0} \
+	/model.23:/model.23
 
 run_blocks_synthetic:
 	@cd ${srcdir} && passed=0 && total=0 && \
@@ -57,8 +64,9 @@ run_blocks_synthetic:
 			*=*) set -- --outputs "$${block#*=}" ;; \
 			*) set -- ;; \
 		esac; \
-		echo "--- ops $${block%%=*}"; \
-		if python3 bringup.py --ops "$${block%%=*}" --synthetic ${SEED} --params ${SYNTHETIC_PARAMS} "$$@"; then \
+		span="$${block%%=*}"; \
+		echo "--- ops $$span"; \
+		if python3 bringup.py --span "$${span%%:*}" "$${span#*:}" --synthetic ${SEED} --params ${SYNTHETIC_PARAMS} "$$@"; then \
 			passed=$$((passed + 1)); \
 		fi; \
 		total=$$((total + 1)); \

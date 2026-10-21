@@ -61,35 +61,35 @@ L1_LAG_BYTES = 12 * 1024
 MEMTILE_LAG_ROWS = 8
 # What one buffering worker's ring takes of its tile.
 BUFFER_TILE_BYTES = 48 * 1024
-# Runs of operators, as network op index ranges, that one worker computes
-# row by row (see SegmentDesign.fuse): the bottlenecks of model.2, 4 and
+# Runs of operators, by the names of their first and last ops, that one
+# worker computes row by row (see SegmentDesign.fuse): the bottlenecks of model.2, 4 and
 # 8, the C3k blocks of model.6, 13, 16 and 19, the PSA blocks' FFNs, and
 # the Detect head's P3 box branch and P4 and P5 branches. P3's class
 # branch stays apart: fused, its run is its segment's slowest worker.
 FUSED = (
-    (6, 9),
-    (15, 18),
-    (24, 28),
-    (28, 34),
-    (41, 44),
-    (44, 47),
-    (65, 67),
-    (68, 71),
-    (78, 82),
-    (82, 88),
-    (95, 99),
-    (99, 105),
-    (112, 116),
-    (116, 122),
-    (135, 137),
-    (138, 141),
-    (143, 146),
-    (151, 154),
-    (154, 156),
-    (156, 159),
-    (160, 162),
-    (162, 164),
-    (164, 167),
+    ("/model.2/m.0/cv1/conv/Conv", "/model.2/m.0/Add"),
+    ("/model.4/m.0/cv1/conv/Conv", "/model.4/m.0/Add"),
+    ("/model.6/m.0/cv1/conv/Conv", "/model.6/m.0/m/m.0/Add"),
+    ("/model.6/m.0/m/m.1/cv1/conv/Conv", "/model.6/m.0/cv3/conv/Conv"),
+    ("/model.8/m.0/m/m.0/cv1/conv/Conv", "/model.8/m.0/m/m.0/Add"),
+    ("/model.8/m.0/m/m.1/cv1/conv/Conv", "/model.8/m.0/m/m.1/Add"),
+    ("/model.10/m/m.0/attn/Add", "/model.10/m/m.0/attn/proj/conv/Conv"),
+    ("/model.10/m/m.0/ffn/ffn.0/conv/Conv", "/model.10/m/m.0/Add_1"),
+    ("/model.13/m.0/cv1/conv/Conv", "/model.13/m.0/m/m.0/Add"),
+    ("/model.13/m.0/m/m.1/cv1/conv/Conv", "/model.13/m.0/cv3/conv/Conv"),
+    ("/model.16/m.0/cv1/conv/Conv", "/model.16/m.0/m/m.0/Add"),
+    ("/model.16/m.0/m/m.1/cv1/conv/Conv", "/model.16/m.0/cv3/conv/Conv"),
+    ("/model.19/m.0/cv1/conv/Conv", "/model.19/m.0/m/m.0/Add"),
+    ("/model.19/m.0/m/m.1/cv1/conv/Conv", "/model.19/m.0/cv3/conv/Conv"),
+    ("/model.22/m.0/m.0.1/attn/Add", "/model.22/m.0/m.0.1/attn/proj/conv/Conv"),
+    ("/model.22/m.0/m.0.1/ffn/ffn.0/conv/Conv", "/model.22/m.0/m.0.1/Add_1"),
+    ("/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv", "/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv"),
+    ("/model.23/one2one_cv2.1/one2one_cv2.1.0/conv/Conv", "/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv"),
+    ("/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.0/conv/Conv", "/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.1/conv/Conv"),
+    ("/model.23/one2one_cv3.1/one2one_cv3.1.1/one2one_cv3.1.1.0/conv/Conv", "/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv"),
+    ("/model.23/one2one_cv2.2/one2one_cv2.2.1/conv/Conv", "/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv"),
+    ("/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.0/conv/Conv", "/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.1/conv/Conv"),
+    ("/model.23/one2one_cv3.2/one2one_cv3.2.1/one2one_cv3.2.1.0/conv/Conv", "/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv"),
 )
 
 
@@ -286,9 +286,9 @@ class SegmentDesign:
         params: Its parameters.
         ops: The run, in network order.
         outputs: Tensors to drain to the host.
-        fused: Runs of operators, as network op index ranges `(first, stop)`,
-            that one worker each computes row by row; see `fuse`. Runs not
-            wholly inside `ops` are ignored.
+        fused: Runs of operators, each by its first and last op's names,
+            that one worker each computes row by row; see `fuse`. Runs
+            wholly outside `ops` are left to the runs that hold them.
 
     Attributes:
         inputs: Tensors filled from the host, in fill order; the image when
@@ -297,6 +297,10 @@ class SegmentDesign:
             fifos they fill, in order.
         out_fifos: The fifo of each host output tensor.
         workers: Every worker of the run.
+
+    Raises:
+        KeyError: If a fused run names an op the network lacks.
+        ValueError: If `ops` holds part of a fused run but not all of it.
     """
 
     def __init__(
@@ -305,7 +309,7 @@ class SegmentDesign:
         params: Params,
         ops: Sequence[Op],
         outputs: Sequence[Tensor],
-        fused: Sequence[tuple[int, int]] = FUSED,
+        fused: Sequence[tuple[str, str]] = FUSED,
     ) -> None:
         self.params = params
         self.producer = {op.dst.name: op for op in network.ops}
@@ -339,9 +343,16 @@ class SegmentDesign:
         self.loads: list[tuple[Tensor, np.ndarray]] = []
         index = {op.dst.name: i for i, op in enumerate(network.ops)}
         mine = {index[op.dst.name] for op in ops}
-        fused = [(a, b) for a, b in fused if set(range(a, b)) <= mine]
-        groups = {first: network.ops[first:stop] for first, stop in fused}
-        inside = {i for first, stop in fused for i in range(first, stop)}
+        spans = [network.span(first, last) for first, last in fused]
+        for a, b in spans:
+            if set(range(a, b)) & mine and not set(range(a, b)) <= mine:
+                raise ValueError(
+                    f"the run {ops[0].name} .. {ops[-1].name} cuts the fused run "
+                    f"{network.ops[a].name} .. {network.ops[b - 1].name}"
+                )
+        runs = [(a, b) for a, b in spans if set(range(a, b)) <= mine]
+        groups = {first: network.ops[first:stop] for first, stop in runs}
+        inside = {i for first, stop in runs for i in range(first, stop)}
         drained = {t.name for t in outputs}
         for op in ops:
             i = index[op.dst.name]

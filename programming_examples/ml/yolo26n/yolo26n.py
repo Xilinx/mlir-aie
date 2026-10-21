@@ -47,12 +47,13 @@ from yolo_spec import (
     Upsample,
 )
 
-# Each run fits one array: a block, or a few, as they were brought up.
+# Each run fits one array: a block, or a few, as they were brought up. Each
+# is named by its first and last op, and together they cover the network.
 SEGMENTS = (
-    (0, 59),
-    (59, 90),
-    (90, 143),
-    (143, 168),
+    ("images", "/model.9/Add"),
+    ("/model.10/cv1/conv/Conv", "/model.13/cv2/conv/Conv"),
+    ("/model.14/Resize", "/model.22/cv2/conv/Conv"),
+    ("/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv", "/model.23"),
 )
 IMAGE = Tensor("images", 3, IMAGE_SIZE, IMAGE_SIZE)
 IMAGE_WORDS = IMAGE_SIZE * IMAGE_SIZE * 3 // 4
@@ -60,15 +61,28 @@ DETECTION_WORDS = 6 * MAX_DETECTIONS
 
 
 class Plan:
-    """Which tensors each segment reads and hands on, and where each waits in the scratch buffer."""
+    """Which tensors each segment reads and hands on, and where each waits in the scratch buffer.
+
+    Attributes:
+        spans: Each segment's `(start, stop)` range of `network.ops`.
+
+    Raises:
+        KeyError: If a segment names an op the network lacks.
+        ValueError: If the segments do not cover the network, each starting
+            where the one before it stops.
+    """
 
     def __init__(self, network: Network, params: Params) -> None:
         self.network = network
+        self.spans = [network.span(first, last) for first, last in SEGMENTS]
+        starts = [0] + [stop for _, stop in self.spans]
+        if [a for a, _ in self.spans] != starts[:-1] or starts[-1] != len(network.ops):
+            raise ValueError(f"SEGMENTS {self.spans} do not cover the network's ops")
         self.producer = {op.dst.name: op for op in network.ops}
-        self.inputs = [self.reads(network.ops[a:b]) for a, b in SEGMENTS]
+        self.inputs = [self.reads(network.ops[a:b]) for a, b in self.spans]
         detections = network.ops[-1].dst
         self.outputs = []
-        for k, (a, b) in enumerate(SEGMENTS):
+        for k, (a, b) in enumerate(self.spans):
             made = {op.dst.name for op in network.ops[a:b]}
             later = {t.name: t for inputs in self.inputs[k + 1 :] for t in inputs}
             outputs = [later[n] for n in later if n in made]
@@ -84,7 +98,7 @@ class Plan:
                     self.words += t.row_bytes * t.height // 4
         self.weight_offset: dict[str, int] = {}
         weights: list[np.ndarray] = []
-        for k, (a, b) in enumerate(SEGMENTS):
+        for k, (a, b) in enumerate(self.spans):
             design = SegmentDesign(network, params, network.ops[a:b], self.outputs[k])
             for tensor in design.in_ddr:
                 self.offset[tensor.name] = self.words
@@ -158,7 +172,7 @@ def yolo26n(
     det_ty = np.ndarray[(batch * DETECTION_WORDS,), np.dtype[np.int32]]
     weights_ty = np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]]
     configurations, runtimes = [], []
-    for k, (a, b) in enumerate(SEGMENTS):
+    for k, (a, b) in enumerate(plan.spans):
         design = SegmentDesign(network, params, network.ops[a:b], plan.outputs[k])
         if {t.name for t in design.inputs} != {t.name for t in plan.inputs[k]}:
             raise ValueError(

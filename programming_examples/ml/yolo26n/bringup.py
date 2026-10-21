@@ -6,6 +6,7 @@
 
     python bringup.py --ops 0:2                  # the input quantizer and the stem conv
     python bringup.py --ops 0:2 --synthetic 7    # the same on seeded synthetic weights
+    python bringup.py --span /model.9/cv1/conv/Conv /model.9/Add   # SPPF, by op names
 
 The run's inputs come from the oracle on one letterboxed image (a seeded
 random one with --synthetic, or --image), its outputs are drained and
@@ -15,6 +16,7 @@ compared with the oracle bit for bit. Prints one PASS/FAIL line per output.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import sys
 from pathlib import Path
@@ -142,8 +144,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument(
-        "--ops", required=True, help="FIRST:STOP indexes into Network.yolo26n().ops"
+    run = parser.add_mutually_exclusive_group(required=True)
+    run.add_argument("--ops", help="FIRST:STOP indexes into Network.yolo26n().ops")
+    run.add_argument(
+        "--span",
+        nargs=2,
+        metavar=("FIRST", "LAST"),
+        help="the names of the run's first and last ops",
     )
     parser.add_argument(
         "--params",
@@ -175,8 +182,11 @@ def main() -> None:
     if args.n_iters < 1 or args.n_warmup < 0:
         parser.error("--n-iters must be at least 1 and --n-warmup at least 0")
 
-    first, stop = (int(v) for v in args.ops.split(":"))
     network = Network.yolo26n()
+    if args.span:
+        first, stop = network.span(*args.span)
+    else:
+        first, stop = (int(v) for v in args.ops.split(":"))
     if args.synthetic is not None:
         params_path = synthetic_params(
             args.synthetic,
@@ -231,12 +241,11 @@ def main() -> None:
 
     if args.time:
         bench = run_iters(
-            segment,
+            functools.partial(segment, **kwargs),
             inputs,
             outputs,
             warmup=args.n_warmup,
             iters=args.n_iters,
-            **kwargs,
         )
         print_benchmark(bench)
         e2e = bench.e2e

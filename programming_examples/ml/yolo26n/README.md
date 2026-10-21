@@ -43,7 +43,8 @@ make run N=8                # the whole model on coco128 images
 
 `make run_block BLOCK=52:59` runs any range of `Network.yolo26n().ops` on
 the NPU against the oracle (`SYNTHETIC=7` for seeded weights, `OUTPUTS=a,b`
-to drain more than the last op's output).
+to drain more than the last op's output); `python bringup.py --span FIRST
+LAST` names the range by its first and last ops instead.
 
 ## Design
 

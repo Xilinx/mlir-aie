@@ -334,3 +334,46 @@ def test_n_images_must_be_a_positive_multiple_of_the_batch(
     assert exited.value.code == 2
     assert "positive multiple of 8" in capsys.readouterr().err
     assert not (tmp_path / "meta.json").exists()
+
+
+@pytest.fixture(scope="module")
+def yolo_modules():
+    sys.path.insert(0, str(YOLO))
+    try:
+        spec = importlib.import_module("yolo_spec")
+        design = importlib.import_module("yolo26n_design")
+        params = importlib.import_module("yolo_params")
+    finally:
+        sys.path.remove(str(YOLO))
+    return spec, design, params
+
+
+def test_a_span_is_named_by_its_first_and_last_ops(yolo_modules):
+    spec, _, _ = yolo_modules
+    network = spec.Network.yolo26n()
+    start, stop = network.span("/model.9/cv1/conv/Conv", "/model.9/Add")
+    assert network.ops[start].name == "/model.9/cv1/conv/Conv"
+    assert network.ops[stop - 1].name == "/model.9/Add"
+    with pytest.raises(KeyError, match="/model.9/Ad"):
+        network.span("/model.9/cv1/conv/Conv", "/model.9/Ad")
+    with pytest.raises(ValueError, match="comes before"):
+        network.span("/model.9/Add", "/model.9/cv1/conv/Conv")
+
+
+def test_every_fused_run_names_ops_in_order(yolo_modules):
+    spec, design, _ = yolo_modules
+    network = spec.Network.yolo26n()
+    spans = [network.span(first, last) for first, last in design.FUSED]
+    assert all(a < b for a, b in spans)
+    assert all(b <= c for (_, b), (c, _) in zip(spans, spans[1:]))
+
+
+def test_a_run_that_cuts_a_fused_run_is_refused(yolo_modules):
+    spec, design, params = yolo_modules
+    network = spec.Network.yolo26n()
+    first, last = design.FUSED[0]
+    start, stop = network.span(first, last)
+    with pytest.raises(ValueError, match="cuts the fused run"):
+        design.SegmentDesign(
+            network, params.Params(), network.ops[: stop - 1], [network.ops[0].dst]
+        )
