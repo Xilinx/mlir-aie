@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import functools
 import inspect
-import logging
+import re
 import typing
 from dataclasses import MISSING
 from types import FunctionType
@@ -23,10 +23,10 @@ from .declaration import Declaration
 from .markers import In, InOut, Out
 from .params import Member, OperatorParam, PerCallMember, param
 
-logger = logging.getLogger(__name__)
-
 # Annotation origins that represent runtime tensor directions.
 _TENSOR_ANNOTATIONS = (In, Out, InOut)
+
+_MARKER_NAME = re.compile(r"\b(?:In|Out|InOut|CompileTime|DispatchTime)\b")
 
 
 def _tagged_type(annotation, tag):
@@ -78,15 +78,29 @@ def declare(generator: Callable) -> Declaration:
     Memoised: ``typing.get_type_hints`` and ``inspect.signature`` together
     cost ~40us, and the JIT hot path asks per call.
     """
+    sig = inspect.signature(generator)
     try:
         # include_extras=True: without it, get_type_hints strips Annotated
         # metadata and CompileTime[T] becomes indistinguishable from T.
         hints = typing.get_type_hints(generator, include_extras=True)
-    except Exception as exc:
-        logger.debug("get_type_hints failed for %r: %s", generator, exc)
+    except Exception:
+        # One unresolvable annotation (e.g. a TYPE_CHECKING-only import) must
+        # not demote the others to scalars, so resolve each on its own.
         hints = {}
+        namespace = generator.__globals__ if isinstance(generator, FunctionType) else {}
+        for name, p in sig.parameters.items():
+            if not isinstance(p.annotation, str):
+                continue
+            try:
+                hints[name] = eval(p.annotation, namespace)
+            except Exception as exc:
+                if _MARKER_NAME.search(p.annotation):
+                    raise TypeError(
+                        f"Parameter {name!r} of {generator!r}: annotation "
+                        f"{p.annotation!r} names an iron marker but does not "
+                        f"resolve ({type(exc).__name__}: {exc})"
+                    ) from exc
 
-    sig = inspect.signature(generator)
     sig = sig.replace(
         parameters=[
             p.replace(annotation=hints.get(n, p.annotation))
