@@ -504,6 +504,34 @@ assert.deepEqual(card.cards.map(c => c.kase), [LLAMA]);
 """)
 
 
+def test_llama_ttft_by_prompt_is_a_line_per_prompt_length(page):
+    page(COMPONENT_RUNS + LLAMA_NIGHTS + """
+// The prefill sweep: one compile, TTFT timed at each prompt length; a series per length.
+const swept = (id, date, night) => {
+  const r = llamaRecord(id, date, 4.37);
+  r.rows[LLAMA].ttft_ms = { value: 124.6, unit: 'ms', range: 'median of 5' };
+  for (const [len, ...ms] of [[512, 8060, 8100], [1024, 17110, 17200], [2048, 37430, 37600]]) {
+    r.rows[`${LLAMA}/prompt=${len}`] = {
+      ttft_ms: { value: ms[night], unit: 'ms', range: 'median of 5' },
+      ttft_npu_dispatch_ms: { value: ms[night] - 150, unit: 'ms', range: 'median of 5' },
+    };
+  }
+  return r;
+};
+const data = collect(historiesOf('llama-chain-hw', [swept('6', llamaBefore.date, 0), swept('7', llamaAfter.date, 1)]));
+const tab = llama.trend.find(t => t.id === 'ttft_by_prompt');
+assert.equal(tab.name, 'TTFT by prompt length');
+const config = trendConfig(data, tab);
+const lines = config.data.datasets.filter(d => !d.band);
+assert.deepEqual(lines.map(d => d.label), ['512 tokens', '1k tokens', '2k tokens']);
+assert.deepEqual(lines.map(d => d.data), [[8060, 8100], [17110, 17200], [37430, 37600]]);
+assert.equal(config.options.scales.y.type, 'logarithmic');
+// The plain TTFT tab charts the fixed-prompt run alone, not the sweep summed in.
+assert.deepEqual(trendConfig(data, llama.trend.find(t => t.id === 'ttft_ms')).data.datasets.filter(d => !d.band).map(d => d.data),
+  [[124.6, 124.6]]);
+""")
+
+
 def test_a_link_to_a_performance_metric_lands_on_its_trend(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const files = {

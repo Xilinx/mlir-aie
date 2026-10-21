@@ -71,15 +71,18 @@ def synthetic_lm_weights(seed, rows_per_chunk=8192):
     return embed_i8, embed_sc, gamma
 
 
-def build_fixtures(shape, seed, filled):
-    """A random fp32 (D,) layer-0 residual, and random layers whose
-    shape.t-row KV caches hold random rows below `filled`."""
+def build_fixtures(shape, seed, filled, data_dir=None):
+    """A random fp32 (D,) layer-0 residual, and layers (real from `data_dir`,
+    or seeded random) whose shape.t-row KV caches hold random rows below
+    `filled`."""
     rng = np.random.default_rng(seed)
     x_fp = rng.uniform(-1.6, 1.6, size=D).astype(np.float32)
 
     layers = []
-    for _ in range(shape.n_layers):
-        layer = Layer.random(rng, shape.t)
+    for i in range(shape.n_layers):
+        layer = (
+            Layer.real(i, data_dir, shape.t) if data_dir else Layer.random(rng, shape.t)
+        )
         for cache in (layer.kcache, layer.vcache):
             cache[:, :filled] = rng.integers(
                 -32, 33, size=(N_HEADS_KV, filled, HEAD_D), dtype=np.int8
@@ -455,7 +458,10 @@ def main(argv=None):
     lm = (embed_i8, embed_sc, gamma)
 
     residual0, layers = build_fixtures(
-        shape, fseed, max(at for at, _ in sweep) if sweep else p0
+        shape,
+        fseed,
+        max(at for at, _ in sweep) if sweep else p0,
+        data_dir=None if opts.synthetic_weights else DATA_DIR,
     )
     rope = rope_table(shape.t, HEAD_D)
     kv0 = shape.pack_kv(layers)

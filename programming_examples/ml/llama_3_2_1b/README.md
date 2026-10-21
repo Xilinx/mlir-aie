@@ -183,6 +183,22 @@ model on a Ryzen AI 7 350 (Krackan)
 > 6-token prompt: TTFT 124.6 ms (119.4 ms of prefill dispatches, 5.2 ms on the
 > host), then 22.1 tok/s.
 
+By prompt length (`generate.py --prompt-tokens`, median of 5), prefill runs
+one dispatch of up to 4 tokens at a time, each a full N=16-layer pass, so
+TTFT scales with the number of dispatches rather than with one big batched
+op:
+
+| Prompt length | TTFT |
+|---|---|
+| 512 | 8.16 s |
+| 1024 | 17.08 s |
+| 2048 | 37.05 s |
+
+For comparison, FastFlowLM reports 2136 tok/s prefill at 2k
+([benchmarks](https://fastflowlm.com/docs/benchmarks/llama3_results/)), about
+960 ms for a 2048-token prompt; larger prefill batches (What's next) are the
+lever to close this gap, not a change to TTFT's measurement.
+
 ---
 
 ## 3. Accuracy / quality
@@ -396,5 +412,7 @@ settings) as ScratchpadParameters. Next:
   and the glue fused into the GEMV array's epilogues.
 - **Larger prefill batches**: the mma tile has 8 activation slots and the
   design fills 4, its per-row parameters (`pg{m}`, `gat{m}`) sharing the
-  32-parameter budget with the passes'.
+  32-parameter budget with the passes'. This is most of TTFT's gap to
+  FastFlowLM above: one dispatch per 4 prompt tokens means a 2048-token
+  prompt pays 512 dispatches' worth of per-dispatch overhead.
 - **Long-context attention**: at 128k it takes about 90 % of a token's time.

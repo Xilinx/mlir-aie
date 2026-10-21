@@ -6,8 +6,10 @@
 // growing KV. Every token, its record's seed, the last token's final residual
 // and the whole KV cache match the numpy oracle, from an empty cache, across
 // dispatches with the NPU idle between them, into the cache's last rows, for
-// a split dispatch, sampled, and for a prompt in batches. --synthetic-weights swaps the embedding table
-// for a seeded one with the same layout. The real weights at 16 layers are the
+// a split dispatch, sampled, and for a prompt in batches. --synthetic-weights
+// swaps the embedding table and the layers' own weights for seeded ones in
+// the same layout; one case (skipped where data/ is missing) runs the above
+// on the model's real layer 0 and 1 instead. 16 real layers are the
 // extensive tier and the nightly component check.
 //
 // REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings, xrt_python_ctrl_scratchpad_bo
