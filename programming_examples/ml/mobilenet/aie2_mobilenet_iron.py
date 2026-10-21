@@ -294,9 +294,10 @@ def mobilenet_iron(
     if trace_config:
         # Trace packet ids are 5 bits, so 31 tiles at most; the last FC split
         # runs the same work as its three siblings.
+        untraced = l2_workers[-1]
         prog.enable_trace(
             trace_config.trace_size,
-            workers=all_workers[:-1],
+            workers=[w for w in all_workers if w is not untraced],
             coretile_events=[
                 CoreEvent.ACTIVE,
                 CoreEvent.LOCK_STALL,

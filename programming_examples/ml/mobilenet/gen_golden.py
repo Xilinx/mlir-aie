@@ -2,7 +2,6 @@
 # Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-import json
 import math
 from pathlib import Path
 
@@ -24,9 +23,10 @@ from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports
 from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
     calibrate,
 )
-from calibration import calibration_loader
-from mb_utils import ExpandChannels
 from torchvision import transforms  # pyright: ignore[reportMissingImports]
+
+from . import mb_utils
+from .calibration import calibration_loader
 
 
 def chunk_weights_depth_cascade(int_weight, InC, WeightChunks):
@@ -96,18 +96,6 @@ def pad_tensor(tensor, target_shape):
     return padded_tensor
 
 
-# Function to read scale factors from JSON file
-def read_scale_factors(file_path):
-    with open(file_path, "r") as file:
-        return json.load(file)
-
-
-# Function to write scale factors to JSON file
-def write_scale_factors(file_path, scale_factors):
-    with open(file_path, "w") as file:
-        json.dump(scale_factors, file, indent=4)
-
-
 def pad_weights(weights, target_shape):
     if isinstance(weights, np.ndarray):
         weights = torch.from_numpy(weights)
@@ -130,7 +118,7 @@ data_dir = str(Path(__file__).parent / "data") + "/"
 
 # Read the existing scale factors
 scale_factor_file = "scale_factors_final.json"
-scale_factors = read_scale_factors(data_dir + scale_factor_file)
+scale_factors = mb_utils.read_scale_factors(data_dir + scale_factor_file)
 
 vectorSize = 8
 
@@ -1558,7 +1546,7 @@ def main():
             transforms.CenterCrop(tensorInW),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ExpandChannels(target_channels=tensorInC),  # Expand to 80 channels
+            mb_utils.ExpandChannels(target_channels=tensorInC),  # Expand to 80 channels
         ]
     )
 
@@ -2073,7 +2061,7 @@ def main():
 
     # print("combined_scale after conv1x1:", ( block_0_relu_2 * block_0_weight_scale3).item())
     # Write the updated scale factors back to the file
-    write_scale_factors(data_dir + scale_factor_file, scale_factors)
+    mb_utils.write_scale_factors(data_dir + scale_factor_file, scale_factors)
 
     # ------------------------------------------------------
     # Reorder input data-layout

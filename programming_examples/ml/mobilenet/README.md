@@ -73,11 +73,12 @@ NOT IRON-specific. To regenerate them:
 
 ```bash
 pip install -r requirements_gen_golden.txt    # PyTorch + brevitas + onnx
-python3 gen_golden.py                          # writes data/scale_factors_final.json
+cd ..                                          # programming_examples/ml
+python3 -m mobilenet.gen_golden                # writes data/scale_factors_final.json
                                                # + data/{bn*,init,post,FC*}_chain.txt
                                                # + data/golden_output.txt
                                                # + data/before_ifm_mem_fmt_1x1.txt
-cd .. && for g in bottleneck_A.gen_golden bottleneck_B.gen_golden bottleneck_C.gen_golden; do
+for g in bottleneck_A.gen_golden bottleneck_B.gen_golden bottleneck_C.gen_golden; do
   python3 -m mobilenet.$g
 done
 for b in bn1 bn2 bn3 bn6 bn7 bn8; do
