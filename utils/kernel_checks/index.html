@@ -39,7 +39,7 @@
   Summary (a verdict per NPU, what needs a look, what moved), All kernels (a
   line per kernel, its state and cycles per NPU) and one kernel's page (its
   trends and its cases). Cycles lead everywhere; object size follows; host
-  time (npu_us) and the error metrics are on the kernel page.
+  times (dispatch_us, npu_us) and the error metrics are on the kernel page.
 
   No build step: one file plus Chart.js from a CDN. Preview it locally with
   utils/kernel_checks/preview.py. test/test_kernel_checks_page.py runs the
@@ -846,7 +846,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       cycles: 'core cycles of the kernel\'s fastest traced call (the rest is the core waiting); for a kernel whose calls do unequal work (resample_quantize), the median call',
       cycles_per_kop: 'cycles per 1,000 operations as each kernel\'s contract counts them: a multiply-accumulate is 2 for conv and mm, norms count 4 to 6 per element, kernels that declare nothing count one per output element, and those that declare 0 have no row; compare within one kernel, not across kernels',
       kernel_object_bytes: 'bytes of code and initialized data the tested entry point links from its object: not its sibling entry points, symbol tables, or the LLVM IR the harness embeds for LUT kernels',
-      npu_us: 'host time to submit a run and wait for it, median of 50; moves with the machine',
+      dispatch_us: 'host time to submit a run and wait for it, median of 50, the dispatch\'s fixed cost included; moves with the machine',
+      dispatch_overhead_us: 'host time to submit an empty run on the same hardware context and wait for it, median of 50: the fixed cost every dispatch carries; the host\'s and the runtime\'s, not the kernel\'s',
+      npu_us: 'each run\'s dispatch less the empty run\'s median, median of 50: the time the NPU spent on the kernel\'s calls',
       // Per output type: a kernel with two float outputs has both.
       ...Object.fromEntries(ERROR_DTYPES.flatMap(dtype => [
         [`max_ulp_${dtype}`, `the furthest any ${dtype} result of the correctness sweep fell from the correctly rounded value of the function the kernel computes (evaluated in float64 and rounded to ${dtype}; never a LUT build\'s model of itself), in units in the last place, over every seed and data case but zeros and ones; the row says which reference it used`],
@@ -930,7 +932,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       ])),
     };
     const LABELS = {
-      cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', npu_us: 'Host time',
+      cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', dispatch_us: 'Dispatch time', dispatch_overhead_us: 'Dispatch overhead', npu_us: 'NPU time',
       ...Object.fromEntries(ERROR_DTYPES.flatMap(dtype => [[`max_ulp_${dtype}`, `Max error (ULP, ${dtype})`],
                                                          [`not_correctly_rounded_${dtype}`, `Not correctly rounded (%, ${dtype})`]])),
       failed_seeds: 'Failed seeds', final_cost_mean: 'SA final cost (mean)', final_cost_max: 'SA final cost (worst)', cpu_ms_mean: 'CPU time (mean)',
@@ -1124,7 +1126,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const label = m => LABELS[m] || m;
     // A label mid-sentence: "SA final cost", not "sa final cost".
     const inSentence = m => label(m).replace(/^[A-Z](?![A-Z])/, c => c.toLowerCase());
-    const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us', ...ERROR_METRICS];
+    const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us', 'dispatch_us', 'dispatch_overhead_us', ...ERROR_METRICS];
     // How a gated metric's moves read in a verdict: [worse, better].
     const MOVE_WORDS = { cycles: ['slower', 'faster'], kernel_object_bytes: ['bigger', 'smaller'],
                          ...Object.fromEntries(ERROR_METRICS.map(m => [m, ['less accurate', 'more accurate']])) };
@@ -1133,7 +1135,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // and `abs`, a floor in the metric's unit that a change must also reach
     // (and the only test from a zero baseline). Kept equal to thresholds.json
     // (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true, "across_parts": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles", "across_parts": true}, "kernel_object_bytes": {"pct": 2, "gated": true, "across_parts": true}, "max_ulp_bfloat16": {"abs": 1, "gated": true, "across_parts": true}, "max_ulp_float32": {"abs": 1, "gated": true, "across_parts": true}, "not_correctly_rounded_bfloat16": {"abs": 0.1, "gated": true, "across_parts": true}, "not_correctly_rounded_float32": {"abs": 0.1, "gated": true, "across_parts": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "npu_us_per_image": {"pct": 5, "mad": 3}, "host_overhead_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15, "abs": 0.5}, "compile_peak_mib": {"pct": 10}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15, "abs": 0.5}, "compile_peak_mib_warm": {"pct": 10}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1, "across_parts": true}, "final_cost_mean": {"pct": 1, "across_parts": true}, "final_cost_max": {"pct": 1, "across_parts": true}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1, "across_parts": true}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1, "across_parts": true}, "amsels_per_design": {"pct": 10, "across_parts": true}, "ms_per_design": {"pct": 50}, "avoidable_crossings": {"abs": 1, "across_parts": true}, "failed_properties": {"abs": 1, "across_parts": true}, "illegal": {"abs": 1, "across_parts": true}, "unsolved": {"abs": 1, "across_parts": true}, "failed_mutations": {"abs": 1, "across_parts": true}, "survived_corruptions": {"abs": 1, "across_parts": true}, "unrouted": {"abs": 1, "across_parts": true}, "failed_seeds": {"abs": 1, "across_parts": true}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ttft_ms": {"pct": 10}, "ttft_min_ms": {"pct": 10}, "ttft_npu_dispatch_ms": {"pct": 10}, "ttft_host_ms": {"pct": 25, "abs": 1}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true, "across_parts": true}, "xclbin_bytes": {"pct": 2, "across_parts": true}, "instr_bytes": {"pct": 2, "across_parts": true}, "elf_bytes": {"pct": 2, "across_parts": true}, "pdi_bytes": {"pct": 2, "across_parts": true}, "us_per_image_b1": {"pct": 5, "mad": 3}, "us_per_image_b8": {"pct": 5, "mad": 3}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "dispatch_us_per_image_b1": {"pct": 5, "mad": 3}, "dispatch_us_per_image_b8": {"pct": 5, "mad": 3}, "host_overhead_us_per_image_b1": {"pct": 10, "mad": 3}, "host_overhead_us_per_image_b8": {"pct": 10, "mad": 3}, "images_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ort_matches": {"pct": 1, "higher_is_better": true, "across_parts": true, "neutral": true}, "compile_place_s": {"pct": 15, "abs": 0.5}, "compile_route_s": {"pct": 15, "abs": 0.5}, "compile_lower_s": {"pct": 15, "abs": 0.5}, "compile_kernels_s": {"pct": 15, "abs": 0.5}, "compile_codegen_s": {"pct": 15, "abs": 0.5}, "compile_link_s": {"pct": 15, "abs": 0.5}, "compile_package_s": {"pct": 15, "abs": 0.5}, "compile_other_s": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s": {"pct": 15, "abs": 0.5}, "compile_place_s_warm": {"pct": 15, "abs": 0.5}, "compile_route_s_warm": {"pct": 15, "abs": 0.5}, "compile_lower_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernels_s_warm": {"pct": 15, "abs": 0.5}, "compile_codegen_s_warm": {"pct": 15, "abs": 0.5}, "compile_link_s_warm": {"pct": 15, "abs": 0.5}, "compile_package_s_warm": {"pct": 15, "abs": 0.5}, "compile_other_s_warm": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s_warm": {"pct": 15, "abs": 0.5}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true, "across_parts": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles", "across_parts": true}, "kernel_object_bytes": {"pct": 2, "gated": true, "across_parts": true}, "max_ulp_bfloat16": {"abs": 1, "gated": true, "across_parts": true}, "max_ulp_float32": {"abs": 1, "gated": true, "across_parts": true}, "not_correctly_rounded_bfloat16": {"abs": 0.1, "gated": true, "across_parts": true}, "not_correctly_rounded_float32": {"abs": 0.1, "gated": true, "across_parts": true}, "dispatch_overhead_us": {"neutral": true}, "dispatch_us": {"pct": 10, "mad": 3}, "npu_us": {"pct": 10, "mad": 3, "abs": 2}, "us_per_image": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "npu_us_per_image": {"pct": 5, "mad": 3}, "host_overhead_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15, "abs": 0.5}, "compile_peak_mib": {"pct": 10}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15, "abs": 0.5}, "compile_peak_mib_warm": {"pct": 10}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1, "across_parts": true}, "final_cost_mean": {"pct": 1, "across_parts": true}, "final_cost_max": {"pct": 1, "across_parts": true}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1, "across_parts": true}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1, "across_parts": true}, "amsels_per_design": {"pct": 10, "across_parts": true}, "ms_per_design": {"pct": 50}, "avoidable_crossings": {"abs": 1, "across_parts": true}, "failed_properties": {"abs": 1, "across_parts": true}, "illegal": {"abs": 1, "across_parts": true}, "unsolved": {"abs": 1, "across_parts": true}, "failed_mutations": {"abs": 1, "across_parts": true}, "survived_corruptions": {"abs": 1, "across_parts": true}, "unrouted": {"abs": 1, "across_parts": true}, "failed_seeds": {"abs": 1, "across_parts": true}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ttft_ms": {"pct": 10}, "ttft_min_ms": {"pct": 10}, "ttft_npu_dispatch_ms": {"pct": 10}, "ttft_host_ms": {"pct": 25, "abs": 1}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true, "across_parts": true}, "xclbin_bytes": {"pct": 2, "across_parts": true}, "instr_bytes": {"pct": 2, "across_parts": true}, "elf_bytes": {"pct": 2, "across_parts": true}, "pdi_bytes": {"pct": 2, "across_parts": true}, "us_per_image_b1": {"pct": 5, "mad": 3}, "us_per_image_b8": {"pct": 5, "mad": 3}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "dispatch_us_per_image_b1": {"pct": 5, "mad": 3}, "dispatch_us_per_image_b8": {"pct": 5, "mad": 3}, "host_overhead_us_per_image_b1": {"pct": 10, "mad": 3}, "host_overhead_us_per_image_b8": {"pct": 10, "mad": 3}, "images_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ort_matches": {"pct": 1, "higher_is_better": true, "across_parts": true, "neutral": true}, "compile_place_s": {"pct": 15, "abs": 0.5}, "compile_route_s": {"pct": 15, "abs": 0.5}, "compile_lower_s": {"pct": 15, "abs": 0.5}, "compile_kernels_s": {"pct": 15, "abs": 0.5}, "compile_codegen_s": {"pct": 15, "abs": 0.5}, "compile_link_s": {"pct": 15, "abs": 0.5}, "compile_package_s": {"pct": 15, "abs": 0.5}, "compile_other_s": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s": {"pct": 15, "abs": 0.5}, "compile_place_s_warm": {"pct": 15, "abs": 0.5}, "compile_route_s_warm": {"pct": 15, "abs": 0.5}, "compile_lower_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernels_s_warm": {"pct": 15, "abs": 0.5}, "compile_codegen_s_warm": {"pct": 15, "abs": 0.5}, "compile_link_s_warm": {"pct": 15, "abs": 0.5}, "compile_package_s_warm": {"pct": 15, "abs": 0.5}, "compile_other_s_warm": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s_warm": {"pct": 15, "abs": 0.5}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => (pct(metric) || 0) / 100;
@@ -1302,7 +1304,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return worst;
     }
 
-    // A row's median absolute deviation: the \u00b1 that starts an npu_us
+    // A row's median absolute deviation: the \u00b1 that starts a host-timed
     // range, or the "MAD d" of a "median M, MAD d, p95 P" one.
     function madOf(row) {
       const m = /^\u00b1 ([\d.]+)|\bMAD ([\d.]+)/.exec((row && row.range) || '');
@@ -1310,7 +1312,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     // 'worse', 'better' or '' for a move from row a to row b: past the
-    // metric's threshold and, for a metric with a MAD factor (npu_us), past
+    // metric's threshold and, for a metric with a MAD factor (the host-timed ones), past
     // that many of the larger of the two rows' MADs, so noise is not a move.
     function verdict(metric, a, b) {
       if (!a || !b) return '';
@@ -1371,7 +1373,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // 'worse', 'better' or '' for a move from a to b, colored only past the
     // metric's threshold (a 3% move is a regression in cycles and noise in
-    // npu_us) and its floor (0.13 s → 0.15 s of a compile stage is not news).
+    // dispatch_us) and its floor (0.13 s → 0.15 s of a compile stage is not news).
     // From a zero baseline there is no percentage: the floor alone decides,
     // so 0 → 2 failures counts, and a metric without one is not judged. A
     // `neutral` metric (information only) is never worse or better.
@@ -2471,7 +2473,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const AXIS_OF = { cycles: 'Cycles per call (fastest traced call)', cycles_per_kop: 'Cycles per 1,000 operations (fastest call)', kernel_object_bytes: 'Object size',
                       ...Object.fromEntries(ERROR_DTYPES.flatMap(dtype => [[`max_ulp_${dtype}`, `Max error (ULP, ${dtype}, worst result)`],
                                                                          [`not_correctly_rounded_${dtype}`, `Not correctly rounded (% of ${dtype} results)`]])),
-                      npu_us: 'Host time per run (µs, median of 50)', cpu_ms_mean: 'CPU time per placement (ms, mean over seeds)',
+                      dispatch_us: 'Dispatch time per run (µs, median of 50)', dispatch_overhead_us: 'Empty dispatch per run (µs, median of 50)', npu_us: 'NPU time per run (µs, median of 50, less the empty dispatch)', cpu_ms_mean: 'CPU time per placement (ms, mean over seeds)',
                       cpu_ms_max: 'CPU time per placement (ms, slowest seed)', ms_per_design: 'Routing time per design (ms, mean)', wall_s: 'Wall time (s, one run)' };
 
     // Its cases: per NPU the cycles now, and on the first nightly shown
@@ -2550,7 +2552,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     // The [low, high] shaded behind a row's point: value ± d for a range
-    // starting "± d" (npu_us), and min to median call for a cycles range or
+    // starting "± d" (a host-timed row), and min to median call for a cycles range or
     // a component's "median M, MAD d, p95 P". The max is left to the
     // tooltip: one stalled call would dwarf the band.
     function spreadOf(value, row) {

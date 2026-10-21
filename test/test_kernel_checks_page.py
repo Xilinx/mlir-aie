@@ -131,8 +131,8 @@ def test_thresholds_match_the_report_and_color_only_past_them(page):
 assert.equal(changeClass(100, 101.9, 'cycles'), '');
 assert.equal(changeClass(100, 102, 'cycles'), 'worse');
 assert.equal(changeClass(100, 98, 'kernel_object_bytes'), 'better');
-assert.equal(changeClass(100, 109, 'npu_us'), '');
-assert.equal(changeClass(100, 110, 'npu_us'), 'worse');
+assert.equal(changeClass(100, 109, 'dispatch_us'), '');
+assert.equal(changeClass(100, 110, 'dispatch_us'), 'worse');
 assert.equal(changeClass(100, 114, 'compile_s'), '');
 assert.equal(changeClass(100, 115, 'compile_s'), 'worse');
 assert.equal(changeClass(1000, 1009, 'final_cost_mean'), '');
@@ -153,7 +153,7 @@ for (const m of SECTIONS.performance.metrics) {
   assert.equal(termOf(m, COMPONENT_METRICS[m]).includes('higher is better'), up.includes(m), m);
 }
 assert.equal(termOf('tok_s', 'x'), 'x; higher is better; counts past 5%');
-assert.equal(termOf('npu_us', 'x'), 'x; counts past 10% and 3× its spread');
+assert.equal(termOf('dispatch_us', 'x'), 'x; counts past 10% and 3× its spread');
 // No description says it on its own any more: the list adds it.
 assert.ok(Object.values(COMPONENT_METRICS).every(about => !about.includes('higher is better')));
 assert.equal(axisTitle('Tokens per second', 'tok_s'), 'Tokens per second · ↑ better');
@@ -287,9 +287,9 @@ assert.ok(!card.text.includes('kernels changed'));
     page(KERNELS + """
 // The kernel page marks provenance changes and splits a time by part.
 const k = (id, day, us, device, kernels) => ({ ...rec(id, Date.parse(`2026-10-0${day}T06:00:00Z`), 'turbo', {
-  'softmax/1024/bfloat16/npu_us': ['us', us], 'softmax/1024/bfloat16/cycles': ['cycles', 1000] }), provenance: { device, kernels } });
+  'softmax/1024/bfloat16/dispatch_us': ['us', us], 'softmax/1024/bfloat16/cycles': ['cycles', 1000] }), provenance: { device, kernels } });
 db = fromRecords({ npu2: [k('1', 1, 80, 'NPU Strix', 'a'), k('2', 2, 77, 'NPU Krackan 1', 'a'), k('3', 3, 81, 'NPU Strix', 'b')] });
-const us = kernelTrendConfig(db, 'npu2', 'softmax', 'npu_us');
+const us = kernelTrendConfig(db, 'npu2', 'softmax', 'dispatch_us');
 assert.deepEqual(us.data.datasets.map(d => d.label), ['1024/bfloat16 · Strix', '1024/bfloat16 · Krackan']);
 assert.deepEqual(us.plugins, [MARKERS]);
 assert.deepEqual(us.options.plugins.markers.at.map(m => m.index), [1, 2]);
@@ -297,7 +297,7 @@ const cycles = kernelTrendConfig(db, 'npu2', 'softmax', 'cycles');
 assert.deepEqual(cycles.data.datasets.map(d => [d.label, d.data]), [['1024/bfloat16', [1000, 1000, 1000]]]);
 assert.deepEqual(cycles.options.plugins.tooltip.callbacks.title([{ dataIndex: 2 }]), ['3 Oct, 06:00 UTC', 'changed: device NPU Strix, kernels b']);
 // The window compares a time on one part only.
-assert.deepEqual(windowChanges(db, 'npu2', 'npu_us').map(x => [x.then, x.now]), [[80, 81]]);
+assert.deepEqual(windowChanges(db, 'npu2', 'dispatch_us').map(x => [x.then, x.now]), [[80, 81]]);
 """)
 
 
@@ -323,7 +323,14 @@ assert.equal(changeClass(0, 1, 'max_ulp'), 'worse');
 assert.equal(changeClass(4, 4, 'max_ulp'), '');
 assert.equal(thresholdText('compile_place_s'), 'counts past 15% and a change of 0.5');
 assert.equal(thresholdText('max_ulp'), 'counts past a change of 1');
-assert.equal(thresholdText('npu_us'), 'counts past 10% and 3× its spread');
+assert.equal(thresholdText('dispatch_us'), 'counts past 10% and 3× its spread');
+// The NPU time keeps the dispatch's rule with a floor: a small kernel's is a few µs.
+assert.equal(thresholdText('npu_us'), 'counts past 10% and a change of 2 and 3× its spread');
+assert.equal(changeClass(5, 6.5, 'npu_us'), '');
+assert.equal(changeClass(50, 60, 'npu_us'), 'worse');
+// The empty dispatch is the host's and the runtime's: shown, never judged.
+assert.equal(changeClass(90, 300, 'dispatch_overhead_us'), '');
+assert.deepEqual(['dispatch_us', 'dispatch_overhead_us', 'npu_us'].map(label), ['Dispatch time', 'Dispatch overhead', 'NPU time']);
 // The router's failed mutations went 0 -> 2: flagged, said as "+2", not a percentage.
 const before = routerRecord('6', '2026-10-01T03:17:00Z', 0);
 before.rows.npu1.failed_mutations = cell(0, 'cases');
@@ -529,8 +536,8 @@ assert.ok(hops.max - hops.min >= 1.035 * 0.01 * 2.5);
 // Bank sharing, 0.31 to 0.33: not 0 to 1.33.
 const sharing = yRange([{ data: [0.31, 0.33] }], 'bank_pair_sharing');
 assert.ok(sharing.min > 0.28 && sharing.max < 0.36, JSON.stringify(sharing));
-// A flat series still spans its threshold: npu_us at 100, 10%.
-const flat = yRange([{ data: [100, 100] }], 'npu_us');
+// A flat series still spans its threshold: dispatch_us at 100, 10%.
+const flat = yRange([{ data: [100, 100] }], 'dispatch_us');
 assert.deepEqual(flat, { min: 87.5, max: 112.5 });
 // An abs-only metric pads by its floor; all zeros still draw an axis.
 assert.deepEqual(yRange([{ data: [0, 0] }], 'max_ulp_float32'), { min: 0, max: 1.25 });
@@ -726,7 +733,7 @@ for (const m of [...published, ...ALL_METRICS]) {{
   assert.ok(m in METRICS || m in COMPONENT_METRICS, `${{m}} has no description`);
 }}
 // A chart's tooltip formats its value as its ticks do.
-db = fromRecords({{ npu1: [rec('1', 1, 'turbo', {{ 'a/1/i8/npu_us': ['us', 80.25] }}), rec('2', 2, 'turbo', {{ 'a/1/i8/npu_us': ['us', 81] }})] }});
+db = fromRecords({{ npu1: [rec('1', 1, 'turbo', {{ 'a/1/i8/dispatch_us': ['us', 80.25] }}), rec('2', 2, 'turbo', {{ 'a/1/i8/dispatch_us': ['us', 81] }})] }});
 draw(el0, groupOf(db), ['turbo'], db);
 const tick = chart.options.scales.y.ticks.callback(81);
 assert.equal(chart.options.plugins.tooltip.callbacks.label({{ dataset: chart.data.datasets[0], dataIndex: 1, raw: 81 }}), `npu1: ${{tick}}`);
@@ -771,7 +778,7 @@ assert.deepEqual(add.byMode.get('default').map(p => p.row), [{ value: 78, unit: 
 assert.deepEqual(add.byMode.get('performance').map(p => p.row), [{ value: 80, unit: 'cycles' }]);
 assert.deepEqual([...db.series.find(s => s.kase === 'relu/1024/bf16').byMode.keys()], ['performance']);
 // A second metric's file over the same runs adds series, not runs.
-db = collect([history, { ...history, metric: 'npu_us', unit: 'us', series: { 'add/1024x16/bfloat16': { values: [1, 2] } } }]);
+db = collect([history, { ...history, metric: 'dispatch_us', unit: 'us', series: { 'add/1024x16/bfloat16': { values: [1, 2] } } }]);
 assert.equal(db.order.length, 2);
 assert.equal(db.series.length, 3);
 """)
@@ -789,10 +796,10 @@ global.fetch = async url => {
   }) };
 };
 (async () => {
-  let h = await loadHistories(['npu1'], ['cycles', 'npu_us']);
+  let h = await loadHistories(['npu1'], ['cycles', 'dispatch_us']);
   assert.equal(h.series.length, 1);
   h = await loadHistories(['npu1'], ['cycles']);
-  assert.deepEqual(fetched, ['../kernel-checks/npu1/history/cycles.json', '../kernel-checks/npu1/history/npu_us.json']);
+  assert.deepEqual(fetched, ['../kernel-checks/npu1/history/cycles.json', '../kernel-checks/npu1/history/dispatch_us.json']);
 
   const index = { runs: [
     { id: 'a', pmode: 'default', published: true },
@@ -868,7 +875,7 @@ assert.equal(latestMove(db.series[0], ['performance']), null);
 
 def test_npu_us_deviation_is_a_band_outside_the_legend_and_tooltip(page):
     page("""
-const us = (v, range) => ({ 'softmax/1024x16/bfloat16/npu_us': ['us', v, range] });
+const us = (v, range) => ({ 'softmax/1024x16/bfloat16/dispatch_us': ['us', v, range] });
 db = fromRecords({ npu1: [
   rec('1', 100000, 'turbo', us(50, 'min 40.0 max 60.0 n=50')),
   rec('2', 200000, 'turbo', us(40, '± 2.5; min 38.0 max 45.0 n=50')),
@@ -1039,13 +1046,13 @@ assert.equal(plain.title, 'fastest 78, median 87, slowest 131 over 16 calls');
 MOVED = """
 const r1 = rec('1', 1000, 'turbo', {
   'relu/1024/bf16/cycles': ['cycles', 1000], 'relu/1024/bf16/cycles_per_kop': ['cycles/1k-ops', 10],
-  'relu/1024/bf16/npu_us': ['us', 100], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
+  'relu/1024/bf16/dispatch_us': ['us', 100], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
   'gelu/1024/bf16/cycles': ['cycles', 2000], 'gone/1/i8/cycles': ['cycles', 10],
   'flat/1/i8/cycles': ['cycles', 500],
 });
 const r2 = rec('2', 2000, 'turbo', {
   'relu/1024/bf16/cycles': ['cycles', 1030], 'relu/1024/bf16/cycles_per_kop': ['cycles/1k-ops', 10.3],
-  'relu/1024/bf16/npu_us': ['us', 150], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
+  'relu/1024/bf16/dispatch_us': ['us', 150], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
   'gelu/1024/bf16/cycles': ['cycles', 1500], 'flat/1/i8/cycles': ['cycles', 505],
   'fresh/1/i8/cycles': ['cycles', 5],
 });
@@ -1060,7 +1067,7 @@ const moved = movedSeries(db, 'npu1');
 // latest point, fresh/ no previous one, flat/ moved 1%.
 assert.deepEqual(moved.regressed.map(x => [x.series.kase, x.series.metric, x.before, x.after]), [
   ['relu/1024/bf16', 'cycles', 1000, 1030],
-  ['relu/1024/bf16', 'npu_us', 100, 150],
+  ['relu/1024/bf16', 'dispatch_us', 100, 150],
 ]);
 assert.deepEqual(moved.improved.map(x => [x.series.kase, x.series.metric]), [['gelu/1024/bf16', 'cycles']]);
 assert.equal(movedSeries(db, 'npu2').regressed.length, 0);
@@ -1482,26 +1489,26 @@ def test_npu_us_moves_only_past_its_noise(page):
     page("""
 const us = (value, mad) => ({ value, unit: 'us', ...(mad === undefined ? {} : { range: `± ${mad}; min 1 max 2 n=50` }) });
 // 20% moves: past 3x a 1 us MAD; not past 3x 10 us (either run's); no MAD, the percentage alone.
-assert.equal(verdict('npu_us', us(100, 1), us(120, 1)), 'worse');
-assert.equal(verdict('npu_us', us(100, 10), us(120, 1)), '');
-assert.equal(verdict('npu_us', us(100, 1), us(120, 7)), '');
-assert.equal(verdict('npu_us', us(100), us(120)), 'worse');
-assert.equal(verdict('npu_us', us(120, 1), us(100, 1)), 'better');
+assert.equal(verdict('dispatch_us', us(100, 1), us(120, 1)), 'worse');
+assert.equal(verdict('dispatch_us', us(100, 10), us(120, 1)), '');
+assert.equal(verdict('dispatch_us', us(100, 1), us(120, 7)), '');
+assert.equal(verdict('dispatch_us', us(100), us(120)), 'worse');
+assert.equal(verdict('dispatch_us', us(120, 1), us(100, 1)), 'better');
 // Many MADs but under 10%.
-assert.equal(verdict('npu_us', us(100, 0.1), us(105, 0.1)), '');
+assert.equal(verdict('dispatch_us', us(100, 0.1), us(105, 0.1)), '');
 // Other metrics ignore the range.
 assert.equal(verdict('cycles', { value: 100, range: '± 50' }, { value: 103 }), 'worse');
 
 db = fromRecords({ npu1: [
-  rec('1', 1000, 'performance', { 'noisy/1/bf16/npu_us': ['us', 100, '± 10.0; min 1 max 2 n=50'],
-                                   'steady/1/bf16/npu_us': ['us', 100, '± 1.0; min 1 max 2 n=50'] }),
-  rec('2', 2000, 'performance', { 'noisy/1/bf16/npu_us': ['us', 125, '± 10.0; min 1 max 2 n=50'],
-                                  'steady/1/bf16/npu_us': ['us', 125, '± 1.0; min 1 max 2 n=50'] }),
+  rec('1', 1000, 'performance', { 'noisy/1/bf16/dispatch_us': ['us', 100, '± 10.0; min 1 max 2 n=50'],
+                                   'steady/1/bf16/dispatch_us': ['us', 100, '± 1.0; min 1 max 2 n=50'] }),
+  rec('2', 2000, 'performance', { 'noisy/1/bf16/dispatch_us': ['us', 125, '± 10.0; min 1 max 2 n=50'],
+                                  'steady/1/bf16/dispatch_us': ['us', 125, '± 1.0; min 1 max 2 n=50'] }),
 ]});
 assert.deepEqual(movedSeries(db, 'npu1').regressed.map(x => x.series.kase), ['steady/1/bf16']);
 const { cases } = latestCases(db, 'npu1');
-assert.equal(cases.get('noisy/1/bf16').metrics.get('npu_us').cls, '');
-assert.equal(cases.get('steady/1/bf16').metrics.get('npu_us').cls, 'worse');
+assert.equal(cases.get('noisy/1/bf16').metrics.get('dispatch_us').cls, '');
+assert.equal(cases.get('steady/1/bf16').metrics.get('dispatch_us').cls, 'worse');
 const move = latestMove(db.series.find(s => s.kase === 'noisy/1/bf16'), ['performance']);
 assert.deepEqual(move, { change: 0.25, delta: 25, cls: '', since: 1000 });
 """)

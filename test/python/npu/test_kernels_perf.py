@@ -287,8 +287,8 @@ def _detail(case: Case, m: dict) -> dict:
             "truncated": traced.truncated,
             "trace_size": m.get("trace_size"),
         }
-    if (wall := m.get("wall")) and (s := wall.dispatch):
-        detail["npu_us"] = {
+    for metric, s in _wall_stats(m).items():
+        detail[metric] = {
             "median": round(s.median_us, 2),
             "mad": round(s.mad_us, 2),
             "p95": round(s.p95_us, 2),
@@ -299,6 +299,32 @@ def _detail(case: Case, m: dict) -> dict:
     return detail
 
 
+def _wall_stats(m: dict) -> dict:
+    """Return the host-clock timings of a measurement, by metric name.
+
+    ``dispatch_us`` is submit to completion of each call, the dispatch's
+    fixed cost included; ``dispatch_overhead_us`` is that cost alone, an
+    empty dispatch on the same hardware context after each call; ``npu_us``
+    is each call's dispatch less the overhead's median. A runtime with no
+    empty dispatch for the kernel gives neither of the last two.
+
+    Args:
+        m: ``_measure``'s result.
+
+    Returns:
+        Each present timing's ``Stats``, in series-name order.
+    """
+    wall = m.get("wall")
+    if wall is None:
+        return {}
+    found = {
+        "dispatch_overhead_us": wall.dispatch_overhead,
+        "dispatch_us": wall.dispatch,
+        "npu_us": wall.npu,
+    }
+    return {metric: s for metric, s in found.items() if s is not None}
+
+
 def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     """Emit the rows one measurement contributes, in series-name order.
 
@@ -307,26 +333,21 @@ def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     """
     if meta is not None:
         meta.setdefault("cases", {})[case.name] = _detail(case, m)
+    rows = []
     if (traced := m.get("cycles")) is not None:
         cycles = _cycles(case, traced)
-        record(case.name, "cycles", "cycles", cycles, _cycles_span(case, traced))
+        rows.append(("cycles", "cycles", cycles, _cycles_span(case, traced)))
         if ops := case.work():
-            record(
-                case.name,
-                "cycles_per_kop",
-                "cycles/1k-ops",
-                round(1000.0 * cycles * case.kernel_calls() / ops, 3),
-            )
-    if (wall := m.get("wall")) and (s := wall.dispatch):
-        record(
-            case.name,
-            "npu_us",
-            "us",
-            round(s.median_us, 2),
-            f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}",
-        )
+            per_kop = round(1000.0 * cycles * case.kernel_calls() / ops, 3)
+            rows.append(("cycles_per_kop", "cycles/1k-ops", per_kop, None))
+    for metric, s in _wall_stats(m).items():
+        # The MAD leads the range text: the page and pr_report read it there.
+        span = f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}"
+        rows.append((metric, "us", round(s.median_us, 2), span))
     if (size := m.get("kernel_object_bytes")) is not None:
-        record(case.name, "kernel_object_bytes", "bytes", size)
+        rows.append(("kernel_object_bytes", "bytes", size, None))
+    for metric, unit, value, span in sorted(rows, key=lambda row: row[0]):
+        record(case.name, metric, unit, value, span)
 
 
 @pytest.fixture(scope="module")
@@ -430,7 +451,7 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
     exactly. Both arms are judged by this tree's contract and only recorded
     here: the caller fails the current arm, and the baseline's miss can be a
     tolerance tightened along with the kernel. Returns the pair of each
-    arm's cycles and npu_us (min, and min, max and n), each arm's error
+    arm's cycles, dispatch_us and npu_us (min, and min, max and n), each arm's error
     against the reference (``cases.error_report``), the differing words and
     each arm's verdict. The baseline is timed only if ``current`` was.
     """
@@ -458,21 +479,26 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
         k = m["cycles"].kernel
         return {"min": min(k), "max": max(k), "n": len(k)}
 
-    def npu_us(m):
-        if "wall" not in m or not (s := m["wall"].dispatch):
-            return None
-        return {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
-
     words = [
         _differing_words(a, b) for a, b in zip(base["outputs"], current["outputs"])
     ]
     cycles_range = [cycles(base), cycles(current)]
-    npu_us_range = [npu_us(base), npu_us(current)]
+    timed_ranges = {
+        metric: [
+            (s := _wall_stats(m).get(metric))
+            and {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
+            for m in (base, current)
+        ]
+        for metric in ("dispatch_us", "npu_us")
+    }
     return {
         "cycles": [r and r["min"] for r in cycles_range],
-        "npu_us_min": [r and r["min"] for r in npu_us_range],
+        **{
+            f"{metric}_min": [r and r["min"] for r in ranges]
+            for metric, ranges in timed_ranges.items()
+        },
         "cycles_range": cycles_range,
-        "npu_us_range": npu_us_range,
+        **{f"{metric}_range": ranges for metric, ranges in timed_ranges.items()},
         "differing_words": sum(words),
         "accuracy": [base["error"], current["error"]],
         "baseline_failed": base["failed"],

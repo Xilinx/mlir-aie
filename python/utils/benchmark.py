@@ -589,7 +589,7 @@ def provenance(**extra: str | None) -> str:
     (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),
     the selected runtime's provenance, the runner the job ran
     on (``RUNNER_NAME``, under GitHub Actions: nightly runs move between
-    hosts of a generation, and a host swap moves ``npu_us`` as a regression
+    hosts of a generation, and a host swap moves ``dispatch_us`` as a regression
     would), and any ``extra`` fields (``device="NPU Strix"``,
     ``pmode="performance"``) as ``key value`` pairs. A benchmark row records
     it so a number can be traced to a toolchain, the kernel sources and
