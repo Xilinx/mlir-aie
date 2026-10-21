@@ -135,6 +135,16 @@ CASES: list[Case] = [
         tag="keys-wider",
         smoke=True,
     ),
+    # Finer probability steps than YOLO's: quotients past 128 saturate at 127.
+    *(
+        check(
+            "attention_i8",
+            calls=2,
+            scalars=(91, 6, 8, prob_shift, out_shift),
+            tag=f"prob-shift-{prob_shift}",
+        )
+        for prob_shift, out_shift in ((8, 8), (10, 10), (30, 14))
+    ),
     # YOLO26n's SPPF pool: a 20-pixel row (4 at a time) and a 64-pixel one.
     Case("maxpool2d", dict(input_width=20, channels=128), calls=4, smoke=True),
     check("maxpool2d", dict(input_width=64, channels=16), calls=4, tag="width-64"),

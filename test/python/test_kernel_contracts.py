@@ -1601,6 +1601,14 @@ def test_conv2dk1_i8_and_skip_references():
     assert set(out.tolist()) == {255}
 
 
+@pytest.mark.parametrize("scalars", [(128, 6, 8, 7, 7), (91, 6, 8, 31, 7)])
+def test_attention_i8_refuses_scalars_the_kernel_does_not_take(scalars):
+    fn = kernels.attention_i8()
+    ins = fn.contract.sample(np.random.default_rng(0), 1)
+    with pytest.raises(ValueError, match="int8 and prob_shift"):
+        fn.contract.reference(*ins, *scalars)
+
+
 def test_input_limit_is_bounded_by_the_accumulator_only():
     # conv2dk1 requantizes by >> 12: bounding its inputs by the uint8 output
     # would leave every random output at 0 or 1. The accumulator is the only

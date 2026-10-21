@@ -1150,7 +1150,16 @@ def attention_i8_ref(
     Every requantization rounds half to even and saturates; each probability
     is ``2**prob_shift * e / sum(e)`` rounded exactly, ``e`` the exp table at
     the score's distance below the row's maximum.
+
+    Raises:
+        ValueError: ``q_mul`` is not an int8 or ``prob_shift`` is not in
+            [0, 30], which the kernel does not take.
     """
+    if not -128 <= int(q_mul) <= 127 or not 0 <= int(prob_shift) <= 30:
+        raise ValueError(
+            f"attention_i8: q_mul ({q_mul}) must be an int8 and prob_shift "
+            f"({prob_shift}) in [0, 30]"
+        )
     N, KD, HD, W = int(seq_len), int(key_dim), int(head_dim), int(width)
     q = np.asarray(q_row, np.int64)
     lead = q.shape[:-1]
@@ -1215,8 +1224,9 @@ def attention_i8(
     ``[seq_len/8][key_dim][8]``, the values ``[head_dim/8][seq_len][8]``, the
     256-entry int32 exp table (non-increasing, as an exp table is, and each
     entry from 0 to below ``2**29``), the output row, then
-    ``q_mul, q_shift, score_shift, prob_shift, out_shift`` (``prob_shift`` at
-    most 30).
+    ``q_mul, q_shift, score_shift, prob_shift, out_shift``: ``q_mul`` an
+    int8, which the kernel multiplies int8 queries by, and ``prob_shift``
+    from 0 to 30.
     ``fn.load_kv(k_row, v_row, kt, v, row)`` stores one row of the map's keys
     and values in those layouts.
 
