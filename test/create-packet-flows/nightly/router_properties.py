@@ -5162,17 +5162,18 @@ def witness_problem(d, an, text):
         return "find-flows: " + first_error(lifted.stderr)[:120]
     got = load_design(lifted.stdout)
 
-    sent = {f["id"] for f in d.packet_flows}
+    sent = {(s, f["id"]) for f in d.packet_flows for s in f["srcs"]}
 
     def requested(design, ctrl_too):
         # find-flows keeps the control overlay's TileControl flows as they are,
-        # and lifts the ids a widened rule claims though nothing sends them.
+        # and lifts the ids a widened rule claims though their source does not
+        # send them.
         return sorted(
             (s, x, f["id"])
             for f in design.packet_flows
             for s in f["srcs"]
             for x in f["dsts"]
-            if (ctrl_too or CTRL not in (s[2], x[2])) and f["id"] in sent
+            if (ctrl_too or CTRL not in (s[2], x[2])) and (s, f["id"]) in sent
         )
 
     if sorted(got.flows) != sorted(d.flows) or requested(got, True) != requested(
