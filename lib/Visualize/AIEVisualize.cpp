@@ -1017,6 +1017,7 @@ static std::string tileNodeID(int col, int row) {
 
 static SemanticGraph buildSemanticGraph(
     ArrayRef<FlowRoute> routes, const FlowGroups &groups,
+    ArrayRef<ArbitrationRule> arbitrationRules,
     const DMAChannelBuffers &channelBuffers,
     const std::map<DMAChannelKey, std::set<unsigned>> &channelFlowGroups,
     ArrayRef<BufferInfo> buffers,
@@ -1060,6 +1061,24 @@ static SemanticGraph buildSemanticGraph(
     addPort(route.points.back());
     addTile(route.points.front().col, route.points.front().row);
     addTile(route.points.back().col, route.points.back().row);
+  }
+
+  // A packet merge -- two ingress ports sharing an arbiter slot -- has no
+  // expression as a flow, so aie-find-flows leaves it in the switchbox
+  // rather than lifting it. Reading it here is what keeps a flow arriving at
+  // such a port from looking as though it stops there.
+  for (const ArbitrationRule &rule : arbitrationRules) {
+    std::string sourceID = portNodeID(rule.segment.source);
+    std::string destID = portNodeID(rule.segment.dest);
+    if (sourceID == destID)
+      continue;
+    std::set<unsigned> arriving;
+    for (const SemanticEdge &edge : graph.edges)
+      if (edge.dest == sourceID)
+        arriving.insert(edge.flowGroup);
+    for (unsigned group : arriving)
+      graph.addEdge(addPort(rule.segment.source), addPort(rule.segment.dest),
+                    group);
   }
 
   std::map<Operation *, unsigned> bufferIDs;
@@ -1448,8 +1467,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   // One graph describes the design; a view is a choice of what to contract
   // out of it. Drawing every hop is contracting nothing.
   SemanticGraph semanticGraph =
-      buildSemanticGraph(*routes, groups, channelBuffers, channelFlowGroups,
-                         *buffers, runtimeArguments, calls,
+      buildSemanticGraph(*routes, groups, arbitrationRules, channelBuffers,
+                         channelFlowGroups, *buffers, runtimeArguments, calls,
                          bufferSourceFlowGroups, bufferDestFlowGroups, only);
   std::set<SemanticEdge> topologyEdges = semanticGraph.contract(contractKinds);
   std::set<std::string> topologyNodes;
@@ -1478,7 +1497,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                  << " segments=" << segments.size()
                  << " bufferSegments=" << bufferSegments.size() << '\n';
   }
-
 
   std::map<std::pair<int, int>, TileRole> roles;
   std::map<std::pair<int, int>, RoleClass> roleClasses;
