@@ -52,6 +52,7 @@ from ._common import (
     Build,
     KernelContract,
     Param,
+    SaturationMode,
     TensorLayout,
     Trace,
 )
@@ -319,6 +320,7 @@ __all__ = [
     "Trace",
     "Param",
     "RoundingMode",
+    "SaturationMode",
     "conv_even",
     "set_rounding",
     "zero",

@@ -22,6 +22,7 @@ from ._common import (
     BUILDS,
     KernelContract,
     Param,
+    SaturationMode,
     TensorLayout,
     Trace,
     _arch_traits,
@@ -246,6 +247,8 @@ def _tile_layout(shape, dims=None, *, axes=None, inverse=False, block=None):
         unpack=lambda x: x[:, undo].reshape(len(x), *shape),
         stream=dims,
         block=block,
+        axes=None if axes is None else tuple(axes),
+        inverse=inverse,
     )
 
 
@@ -1362,6 +1365,12 @@ def mha_softmax(
             *band_flags,
         ],
         contract=KernelContract(
+            # mha.cc's aie2 exp2 (no EXP2_BF16_ACCURATE) swaps to saturate and restores.
+            saturation=(
+                SaturationMode.SATURATE
+                if not accurate_exp2 and _detect_arch() == "aie2"
+                else None
+            ),
             trace=Trace.whole_call(),
             roles=(In, Out, InOut, *([Param] * 6)),
             parameter_bindings=((4, scale), (5, dim_m), (6, dim_n)),
@@ -1662,6 +1671,8 @@ def cascade_mm(
         use_chess=use_chess,
         cls=_CascadeMatrixKernel,
         contract=KernelContract(
+            # cascade_mm.cc swaps to none and restores; the scalar path wraps in C.
+            saturation=SaturationMode.NONE,
             trace=Trace.whole_call(),
             roles=(In, In, InOut),
             # Row-major operands on both targets, nothing streamed

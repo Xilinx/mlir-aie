@@ -41,7 +41,7 @@ from collections import OrderedDict
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, get_origin
+from typing import TYPE_CHECKING, Any, Callable, Mapping, get_origin
 
 import numpy as np
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
@@ -82,6 +82,9 @@ from ._introspect import (
 from ._object_cache import KernelObjectCache
 from ._serialization import _decode_kwarg, _encode_kwarg, _TensorPlaceholder
 from .context import compile_context
+
+if TYPE_CHECKING:
+    from aie.iron.program import Program
 
 # A waiter on this lock is waiting out someone else's *compile*, not just an
 # acquisition, so the bound has to exceed a full build rather than a handshake.
@@ -165,10 +168,11 @@ class _GeneratedDesign:
     entry: str | None
     configuration_count: int
     expand_load_pdis: bool | None
+    program: Program | None = None
 
     @classmethod
     def from_module(
-        cls, module, mlir_text: str, external_kernels: list
+        cls, module, mlir_text: str, external_kernels: list, program=None
     ) -> "_GeneratedDesign":
         """Record `mlir_text` with the IRON attributes of `module`, its parse."""
         attributes = module.operation.attributes
@@ -181,6 +185,7 @@ class _GeneratedDesign:
             entry=entry.value if entry is not None else None,
             configuration_count=count.value if count is not None else 1,
             expand_load_pdis=expand.value if expand is not None else None,
+            program=program,
         )
 
     @property
@@ -199,7 +204,8 @@ class CompilableDesign:
             either returns an MLIR module (e.g., built inside an
             ``mlir_mod_ctx()`` block) or returns ``None`` after building the
             module into the active MLIR context (e.g., via
-            ``Program(...).resolve_program()``),
+            ``Program(...).resolve_program()``), or returns an unresolved
+            ``Program``, which is resolved here and kept as `program`,
             OR a ``pathlib.Path`` to a pre-written ``.mlir`` file.
         use_cache: When ``True`` (default), a file-system cache keyed by the
             bytecode+kwargs hash is consulted before recompiling.
@@ -1500,6 +1506,21 @@ class CompilableDesign:
         with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
             return _Module.parse(generated.mlir_text)
 
+    @property
+    def program(self) -> Program:
+        """The resolved Program the generator returned, with its live objects.
+
+        Raises:
+            TypeError: If the generator returned a module rather than a `Program`.
+        """
+        program = self._generated.program
+        if program is None:
+            raise TypeError(
+                f"{self.generator_name!r} returns a module; return its Program "
+                "unresolved to inspect it."
+            )
+        return program
+
     def validate_tensor_args(
         self,
         tensor_args: list,
@@ -1860,6 +1881,7 @@ class CompilableDesign:
     def _generate_uncached(self, *, full_elf: bool = False) -> _GeneratedDesign:
         """Run the generator and collect generated MLIR text and external kernels."""
         from aie.iron.kernel import ExternalFunction
+        from aie.iron.program import Program
 
         if isinstance(self.mlir_generator, Path):
             # Static .mlir file: text already on disk; no kernels to collect.
@@ -1956,6 +1978,10 @@ class CompilableDesign:
                 bound = inspect.BoundArguments(sig, OrderedDict(_gen_call_kwargs))
                 bound.apply_defaults()
                 result = self.mlir_generator(*bound.args, **bound.kwargs)
+                program = None
+                if isinstance(result, Program):
+                    program = result
+                    result = program.resolve_program()
                 for parameter in _dispatch_placeholders.values():
                     if parameter._binding is None:
                         raise TypeError(
@@ -1977,6 +2003,7 @@ class CompilableDesign:
                     # str() drops locations, and aiecc reports against this text.
                     module.operation.get_asm(enable_debug_info=True),
                     list(registry),
+                    program,
                 )
 
         return generated
