@@ -157,7 +157,11 @@ each, so the rows in between are carried from the pre-fix sweep and are not
 expected to move.
 
 **What bounds it.** The layers' weights stream over the array's eight lanes
-(about 52 GB/s), the lm_head's 262 MB over one lane (about 19 ms a token), and
+(52.3 GB/s, the box's 8-lane peak, measured on the standalone array design
+(`9a050ea84b8`) before it was wired into the chain: a different Strix box
+(xcoradaie211), `taskset 2-4`, min of 10 after 5 warm-ups; not re-measured
+on this box or through the integrated chain), the lm_head's 262 MB over one
+lane (about 19 ms a token), and
 attention adds about 3.3 ms per 1k tokens of context. That is up from about
 2.5 ms/1k measured just before the Oct-20 restructure (#3947), whose
 score-to-probability step moved from an int8-quantized exp lookup table to
