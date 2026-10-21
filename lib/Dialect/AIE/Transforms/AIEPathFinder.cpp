@@ -1694,8 +1694,7 @@ void Pathfinder::TreeBuilder::findJoins() {
       continue;
     SmallVector<int, 4> dsts;
     for (int dst : st.treeDsts[k])
-      if (isPending(dst) && dst != dstState(part.src) &&
-          !sameIdDsts.count(dst) && st.treeOf[k].count(dst))
+      if (isPending(dst) && !sameIdDsts.count(dst) && st.treeOf[k].count(dst))
         dsts.push_back(dst);
     if (dsts.size() < 2)
       continue;
