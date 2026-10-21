@@ -33,7 +33,6 @@ import numpy as np
 from aie2_decode import (
     ACT_BYTES,
     KV_BLOCK_WORDS,
-    KV_TB,
     LMW_GAMMA_BYTES,
     M_MAX,
     REC_BYTES,
@@ -41,16 +40,13 @@ from aie2_decode import (
     WLM_TOTAL,
     wblob_layout,
 )
-from gen_exp_lut import exp_lut
 from gen_llama_data import quant_int8_perchan_absmax
-from gen_silu_lut import silu_lut
-from llama_config import EXP_QUANT_SCALE, HEAD_D, N_HEADS_KV, SILU_GATE_SCALE, VOCAB, D
+from llama_config import HEAD_D, N_HEADS_KV, VOCAB, D
 from llama_decode import Decoder, DecodeShape, embed_seed_ref, tokens_of
+from llama_oracle import chain_forward_logits, greedy_verdict
 from ml_dtypes import bfloat16
 from numpy_layer_mh import (
     gen_layer_mh,
-    numpy_layer_mh_forward,
-    numpy_rmsnorm_int8_dyn,
     requant,
 )
 from numpy_llama_ref import _load_bf16, _load_qw, rope_table
@@ -85,13 +81,9 @@ def build_fixtures(shape, seed, p0, n_tok):
     res_scale = np.float32(np.maximum(np.abs(x_fp).max(), 1e-12) / 127.0)
     x_i8 = requant(x_fp, np.float32(1.0) / res_scale)
 
-    lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
-    lut_silu = silu_lut(SILU_GATE_SCALE)
     layers = []
     for L in range(shape.n_layers):
         layer = gen_layer_mh(rng)
-        layer["lut_exp"] = lut_exp
-        layer["lut_silu"] = lut_silu
         for name in ("kcaches", "vcaches"):
             layer[name] = [
                 rng.integers(-32, 33, size=shape.t * HEAD_D, dtype=np.int8)
@@ -108,38 +100,6 @@ def build_fixtures(shape, seed, p0, n_tok):
         layer["v_scales_slot"] = v_slot
         layers.append(layer)
     return x_i8, res_scale, layers
-
-
-def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma):
-    """One token's forward at `position`, attending [0, position].
-
-    Appends the token's KV row to the layers' caches and sets each layer's
-    `scales`.
-
-    Returns:
-        (fp32 logits over the vocab, the final residual: int8[D], its scale).
-    """
-    x_cur = (x_i8.copy(), float(res_scale))
-    for L in range(len(layers)):
-        x_cur, scales = numpy_layer_mh_forward(
-            x_cur,
-            layers[L],
-            position=position,
-            residual_dyn=True,
-            attn_perslot=True,
-            attn_flowkv=True,
-            attn_tb=KV_TB,
-            attn_cores=2,
-            attn_interleaved=True,
-        )
-        layers[L]["scales"] = scales
-    xo_i8, xo_scale = x_cur
-    normed_i8, norm_scale = numpy_rmsnorm_int8_dyn(xo_i8, gamma, np.float32(xo_scale))
-    acc = embed_i8.astype(np.int64) @ normed_i8.astype(np.int64)
-    logits = (
-        acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(np.float32)
-    ).astype(np.float32)
-    return logits, xo_i8, np.float32(xo_scale)
 
 
 DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
@@ -176,17 +136,6 @@ def time_decode(shape, session, buffers, params, opts):
         f"bytes/token:  {bytes_per_token/1e6:.1f} MB  DMA floor {dma_floor_ms:.2f} ms"
     )
     print(f"ratio:        {ratio:.2f}x  -> {verdict}")
-
-
-# Device-trajectory replay tolerances: the oracle follows the DEVICE's tokens
-# (not its own greedy trajectory) since the token feeds back ON-CHIP. A device
-# token passes if it is the oracle argmax OR a near-tie judged RELATIVE to the
-# logit spread (gap/std): the vector fp32 multiplies the oracle does not mirror
-# yet (rmsnorm, silu, up_requant) leave rare 1-ULP differences that grow with
-# depth. A flip within the top cluster is quality-neutral; one far down would be
-# real drift.
-TOL_GAP_STD = 0.15  # gap as a fraction of the logit std
-TOL_RANK = 5  # dev_tok must be within the oracle top-K
 
 
 def set_pristine(layers, pristine):
@@ -246,17 +195,7 @@ def replay(shape, records, passes, x_i8, res_scale, layers, p0, rope, lm, sample
             ok = dev_tok == ref
             tag = "sampled"
         else:
-            ref = int(np.argmax(logits))
-            gap = float(logits.max() - logits[dev_tok])
-            spread = float(logits.std())
-            rank = int(np.where(np.argsort(logits)[::-1] == dev_tok)[0][0])
-            near_tie = (gap / spread <= TOL_GAP_STD) and (rank < TOL_RANK)
-            ok = dev_tok == ref or near_tie
-            tag = (
-                "exact"
-                if dev_tok == ref
-                else f"near-tie gap/std={gap/spread:.3f} rank={rank}"
-            )
+            ok, ref, tag = greedy_verdict(logits, dev_tok)
         cur_x, cur_sc = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
         rec = records[rec_at * REC_BYTES : (rec_at + 1) * REC_BYTES]
         seed_ok = np.array_equal(rec[:D], cur_x) and rec[D : D + 4].tobytes() == (

@@ -21,7 +21,8 @@ from pathlib import Path
 
 import numpy as np
 from llama_config import HEAD_D, N_LAYERS
-from llama_decode import Decoder, DecodeShape
+from llama_decode import Decoder, DecodeShape, embed_seed_ref
+from llama_oracle import chain_forward_logits, greedy_verdict
 from numpy_layer_mh import gen_real_layer_mh
 from numpy_llama_ref import forward_full, load_model, load_tokenizer, rope_table
 
@@ -42,8 +43,9 @@ def main():
     p.add_argument(
         "--check",
         action="store_true",
-        help="score each generated token against numpy_llama_ref's argmax, "
-        "teacher-forced on the device's tokens (the INT8 recipe, not bit-exact)",
+        help="replay the device's tokens through the oracle of its arithmetic and "
+        "fail unless each is its greedy pick (or a near-tie); also report "
+        "agreement with numpy_llama_ref's argmax (the INT8 recipe, not bit-exact)",
     )
     opts = p.parse_args()
     if opts.check and opts.sample_temp > 0:
@@ -79,7 +81,29 @@ def main():
     ref = np.argmax(logits[len(prompt) - 1 :], axis=-1)
     agree = int(np.count_nonzero(ref == np.array(out)))
     print(f"check: {agree}/{len(out)} tokens are numpy_llama_ref's argmax")
-    return 0
+
+    # The gate: the device's tokens through the oracle of its own arithmetic,
+    # from empty caches, each generated token its greedy pick.
+    rope = rope_table(opts.t, HEAD_D)
+    tokens = prompt + out
+    fails = 0
+    for pos, tok in enumerate(tokens[:-1]):
+        x, sc = embed_seed_ref(model.embed_i8[tok], float(model.embed_sc[tok]))
+        for layer in layers:
+            layer["cos"] = rope[pos, :HEAD_D]
+            layer["sin"] = rope[pos, HEAD_D:]
+        logits, *_ = chain_forward_logits(
+            x, sc, layers, pos, model.embed_i8, model.embed_sc, model.final_norm
+        )
+        if pos >= len(prompt) - 1:
+            ok, oracle_tok, tag = greedy_verdict(logits, tokens[pos + 1])
+            if not ok:
+                print(
+                    f"  position {pos + 1}: {tokens[pos + 1]}, oracle {oracle_tok} [{tag}]"
+                )
+            fails += not ok
+    print(f"oracle: {len(out) - fails}/{len(out)} generated tokens pass")
+    return 1 if fails else 0
 
 
 if __name__ == "__main__":

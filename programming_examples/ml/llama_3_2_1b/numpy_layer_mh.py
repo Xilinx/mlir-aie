@@ -346,6 +346,8 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     v_scales = np.full(N_HEADS_KV, 1e-6, dtype=np.float32)
 
     return dict(
+        lut_exp=exp_lut(EXP_QUANT_SCALE).astype(np.float32),
+        lut_silu=silu_lut(SILU_GATE_SCALE),
         wq_i8=wq_i8,
         wq_sc=wq_sc,
         bq=bq,
@@ -431,6 +433,8 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
     wv_i8, wv_sc = quant_int8_perchan_absmax(wv_fp)
 
     return dict(
+        lut_exp=exp_lut(EXP_QUANT_SCALE).astype(np.float32),
+        lut_silu=silu_lut(SILU_GATE_SCALE),
         wq_i8=wq_i8,
         wq_sc=wq_sc,
         bq=bq,
@@ -871,8 +875,6 @@ def _selftest():
     matches, no NaNs, scale magnitudes are plausible."""
     rng = np.random.default_rng(0)
     layer = gen_layer_mh(rng)
-    layer["lut_exp"] = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
-    layer["lut_silu"] = silu_lut(SILU_GATE_SCALE)
 
     x = rng.integers(-32, 33, size=D, dtype=np.int8)
     # residual_dyn defaults False, so x_out is always the plain-array form

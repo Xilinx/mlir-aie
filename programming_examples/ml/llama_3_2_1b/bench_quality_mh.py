@@ -34,16 +34,12 @@ from pathlib import Path
 
 import numpy as np
 from accuracy_vs_hf import RefModel, ref_forward_logits
-from gen_exp_lut import exp_lut
 from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
-from gen_silu_lut import silu_lut
 from llama_config import (
     ACT_SCALE,
-    EXP_QUANT_SCALE,
     HEAD_D,
     INV_ACT_SCALE,
     N_LAYERS,
-    SILU_GATE_SCALE,
 )
 from llama_decode import Decoder, DecodeShape
 from ml_dtypes import bfloat16
@@ -253,14 +249,7 @@ def main():
     enc = load_tokenizer(data_dir / "tokenizer.model")
 
     rng = np.random.default_rng(opts.rng_seed)
-    lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
-    lut_silu = silu_lut(SILU_GATE_SCALE)
-    layers = []
-    for L in range(opts.n_layers):
-        layer = gen_real_layer_mh(L, data_dir, rng)
-        layer["lut_exp"] = lut_exp
-        layer["lut_silu"] = lut_silu
-        layers.append(layer)
+    layers = [gen_real_layer_mh(L, data_dir, rng) for L in range(opts.n_layers)]
     cos_lut, sin_lut = rope_cos_sin(np.arange(opts.t), HEAD_D)
     print(f"loaded {opts.n_layers} mh layers + lm_head\n", flush=True)
 
