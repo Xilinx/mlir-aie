@@ -197,7 +197,7 @@ def compile_cold_warm(
         "--xclbin-path",
         os.path.join(cache_dir, "final.xclbin"),
     ]
-    cold = run_measured(cmd, _ML_DIR, env, timeout)
+    cold = run_measured(cmd, _ML_DIR, env, timeout, tree_peak=True)
     profile = os.path.join(cache_dir, "final.prj", AIECC_PROFILE_NAME)
     kernels = os.path.join(cache_dir, "final.prj", KERNEL_PROFILE_NAME)
     cold_s = cold.seconds if cold.process.returncode == 0 else None
@@ -208,7 +208,7 @@ def compile_cold_warm(
         with open(placed[0]) as f:
             placement = placement_of(f.read())
     clear_for_warm(cache_dir)
-    warm = run_measured(cmd, _ML_DIR, env, timeout)
+    warm = run_measured(cmd, _ML_DIR, env, timeout, tree_peak=True)
     warm_s = warm.seconds if warm.process.returncode == 0 else None
     stages_warm = stage_rows(profile, warm_s, "_warm") | kernel_rows(
         kernels, warm_s, "_warm"
