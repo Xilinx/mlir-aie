@@ -78,6 +78,10 @@ def test_mobilenet_stages_are_its_edges_summed(checks):
         # Edges a full-ELF, multi-device, transaction or locmap build adds.
         ("perDeviceNPULowered_{0}.mlir", "lower"),
         ("perDeviceCompile_{0}.mlir", "lower"),
+        ("npu_seq_full_elf_{0}.mlir", "lower"),
+        ("perSeqFullElfMatching", "lower"),
+        ("perDeviceNPULoweredFullElf_{0}.mlir", "lower"),
+        ("perDeviceNPULoweredFullElfMatching", "lower"),
         ("perDeviceCompileMatching", "lower"),
         ("perDeviceArches_{0}.txt", "lower"),
         ("ctrlPktSeqs", "lower"),
