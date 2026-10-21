@@ -10,10 +10,10 @@ dispatch, or a batch of up to 4 prompt tokens together: all 16 transformer
 layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
 and the token→embedding feedback. The W8A8-dynamic INT8 recipe tracks the
 reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % on
-prose); the device is bit-exact to the numpy INT8 oracle, so it adds no error
-beyond quantization.
+prose); the device is bit-exact to its numpy oracle (`numpy_layer_mh.py`), which
+follows the INT8 recipe up to the recipe's approximations (see Accuracy).
 
-> Status: decode is validated on hardware at 48.3 ms/token (20.7 tok/s) at
+> Status: decode is validated on hardware at 47.5 ms/token (21.1 tok/s) at
 > N=16 at short context and 389 ms/token at 128k. Prefill runs on the device
 > in batches of up to 4 prompt tokens (`generate.py`: prompt in, text out) —
 > see [On the device, and on the host](#on-the-device-and-on-the-host) and
@@ -107,39 +107,34 @@ the stages of the one-design restructure:
 - **Weights:** symmetric per-output-channel INT8 (`gen_llama_data.py`), streamed
   from DDR per token.
 - **Activations:** per-token dynamic INT8 (absmax) at each matmul input; the
-  residual and KV carriers also carry per-token scales (the self-calibration work
-  — an earlier int8-everywhere version with a static residual scale collapsed to
-  0/20, fixed by dynamic per-token scales).
-- **Glue in bf16/fp32:** rmsnorm, rope, softmax, silu use full-precision internal
-  chains with LUTs for transcendentals (so the kernels are bit-exact to numpy).
+  residual and KV carriers also carry per-token scales (a static residual scale
+  scores 0/20 on the greedy prompts below).
+- **Glue in fp32:** rmsnorm, rope, softmax and silu, each written so the numpy
+  oracle reproduces it exactly: SiLU and the sampler's exp read generated
+  tables, attention's exp is a fixed-point polynomial, the inverse square root
+  a Quake seed and two Newton steps, and reciprocals round as IEEE division.
 
 ---
 
 ## 2. Performance
 
-Measured on NPU2 (Strix) with `test_chain_persist_grow_mh.py --time`
-(`taskset -c 2-4`, median of 10 timed dispatches after warmup); per-token =
-dispatch time / tokens per dispatch. N=16, 4 tokens a dispatch unless noted:
+Measured on NPU2 (Strix) with `test_chain_persist_grow_mh.py --n-layers 16
+--time --n-warmup 10 --n-iters 20` under `taskset`, the median dispatch over
+the tokens it runs (4 a dispatch), after the run checks that dispatch against
+the oracle:
 
 | Context (position of the first token) | per-token | tok/s |
 |---|---|---|
-| **64** | **48.3 ms** | **20.7** |
+| **64** | **47.5 ms** | **21.1** |
 | 4096 | 60.1 ms | 16.6 |
 | 32768 | 132.9 ms | 7.5 |
 | 65536 | 218.2 ms | 4.6 |
 | 131068 | 388.8 ms | 2.6 |
 
-The longer contexts were measured before the design took prompt batches,
-which cost 0.35 ms a token at 64 (47.9 ms before).
-
-N=16 went from 452 ms/token to 212 ms by vectorizing the kernels, then to
-91.2 ms by moving the remaining scalar fp32 epilogues onto vectors (bit-exact),
-taking the lm_head's top-k insert off soft float, and double-buffering the
-up-projection weights, then to 86.8 ms by reading only the live KV blocks,
-then to 48.6 ms by running every projection on the shared 8-lane GEMV array
-(`aie2_decode.py`, now on aie::mmul, `kernels/llama_gemv_mma.cc`). Two cores
-attend each KV head's blocks, alternating, and the vectorized block kernel
-(`llama_attn_block.cc`, 3.76x per block) took 32k from 362 to 133 ms/token.
+The longer contexts are from an earlier build of this design and are not
+re-measured. Every projection runs on a shared 8-lane GEMV array
+(`kernels/llama_gemv_mma.cc`), and two cores attend each KV head's blocks,
+alternating (`llama_attn_block.cc`).
 
 **What bounds it now.** The layers' weights stream over the array's eight
 lanes (about 52 GB/s), but the lm_head's 262 MB still stream over one lane
@@ -159,20 +154,21 @@ between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
 > **TTFT** (time to first token). `generate.py` at N=16, the prompt in batches
 > of up to 4 tokens, only the last batch running the lm_head: 6 prompt tokens,
-> TTFT 122 ms (49.2 prompt tok/s); 27, 429 ms (62.9); then 20.8 tok/s. Token
-> by token, the same prompts took 190 and 782 ms.
+> TTFT 117 ms (51 prompt tok/s), then 21.2 tok/s.
 
 ---
 
 ## 3. Accuracy / quality
 
-The device is **bit-exact to the numpy INT8 oracle** (`numpy_layer_mh.py`; the
-decode test checks every token, KV row and record against it). The remaining question is whether the INT8 **recipe** tracks
-the real model. We compare against the true HF Llama 3.2 1B **bf16** weights
+The device is **bit-exact to its numpy oracle** (`numpy_layer_mh.py`; the
+decode test checks every token, KV row and record against it). The oracle
+follows the INT8 recipe (`numpy_llama_ref.py`) but not bit for bit: its inverse
+square root and attention exp are approximations, so teacher-forced on "The
+capital of France is" the device picks the recipe's argmax on 27 of 32 tokens.
+The question below is whether the INT8 recipe tracks the real model. We compare against the true HF Llama 3.2 1B **bf16** weights
 (loaded full-precision from the safetensors — no torch/transformers needed).
 
-Evidence chain: `device == numpy-int8` (bit-exact) → `numpy-int8 == NPU silicon`
-(identical 15/20 below, old chain) → `int8 == HF bf16` (next).
+
 
 ### Next-token greedy agreement on 20 hard prompts (N=16)
 
@@ -292,8 +288,8 @@ python test_chain_persist_grow_mh.py --n-layers 16 --prompt-tokens 6 --vs-batch 
 # sampled instead of greedy (the sampler's settings are per dispatch)
 python test_chain_persist_grow_mh.py --n-layers 16 --sample-temp 0.7 --sample-topk 4
 
-# per-token TPS at full config (reuses the compiled design)
-python test_chain_persist_grow_mh.py --n-layers 16 --time
+# per-token TPS at full config, after checking the timed dispatch
+python test_chain_persist_grow_mh.py --n-layers 16 --time --n-warmup 10 --n-iters 20
 
 # a generation loop: 10 dispatches carrying the KV cache and seed, with the
 # NPU left idle (and suspended) between them
@@ -331,20 +327,12 @@ Real constraints learned during bring-up — apply preemptively to skip build cy
    (weights + bias + scale) into one `ObjectFifo` payload.
 2. **`Worker(tile=Tile(col, row))` required for multi-column designs** — the
    auto-placer otherwise piles fifos on col 0 and overflows the shim.
-3. **`run_test` segfaults past ~5 XRT kernel args.** Keep to a few consolidated
-   buffers and dispatch sub-regions via `TensorAccessPattern` taps. (This is why
-   the decode packs each token's seed and id into one record buffer.)
-4. **One `Kernel` object per unique C symbol.** Share it across same-signature
+3. **One `Kernel` object per unique C symbol.** Share it across same-signature
    workers; use a distinct symbol per shape.
-5. **L1 is 64 KB/tile.** The KV cache lives in DDR; an attention core holds a
+4. **L1 is 64 KB/tile.** The KV cache lives in DDR; an attention core holds a
    block of 64 rows at a time.
-6. **Peano AIE2P codegen quirks** (see `kernels/`): fp32 stack arrays kept across
-   loops can be corrupted (stash int LUT indices instead); `G_ROTL` fails to
-   legalize (use a 64-bit concat-shift rotate).
-
-Bit-exactness techniques: LUT-based transcendentals (kernel and numpy index the
-same generated LUT), software invsqrt (Quake-III + NR), exact int-domain
-accumulators, and full-precision fp32 glue chains.
+5. **Peano AIE2P:** `G_ROTL` fails to legalize (use a 64-bit concat-shift
+   rotate).
 
 ---
 
