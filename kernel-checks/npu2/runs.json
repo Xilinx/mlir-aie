@@ -1658,6 +1658,52 @@
     "offered": 130,
     "checked": 114
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "39554554307",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39554554307",
+   "date": "2026-10-21T06:17:58+00:00",
+   "commit": {
+    "id": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "message": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
+    "timestamp": "2026-10-20T13:56:37Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "7f36a183bf",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "8ee515753dca",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 951,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 628,
+    "failed": 0,
+    "timed": 244,
+    "timing_failed": 0,
+    "untimed": 384,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 130,
+    "checked": 114
+   }
   }
  ]
 }

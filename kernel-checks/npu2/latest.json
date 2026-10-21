@@ -1,28 +1,28 @@
 {
  "schema": 1,
  "target": "npu2",
- "id": "39379556786",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39379556786",
- "date": "2026-10-20T06:17:47+00:00",
+ "id": "39554554307",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39554554307",
+ "date": "2026-10-21T06:17:58+00:00",
  "commit": {
-  "id": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/1a647f100e50c3f526d5e3c97eaba1327558e0f8",
-  "message": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile the cores (#3933)",
-  "timestamp": "2026-10-20T01:03:35Z"
+  "id": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/7f36a183bf70b36e6ec4228887ff2be59c58585a",
+  "message": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
+  "timestamp": "2026-10-20T13:56:37Z"
  },
  "event": "schedule",
  "pmode": "turbo",
- "device": "Strix",
- "device_raw": "NPU Strix",
+ "device": "Krackan",
+ "device_raw": "NPU Krackan 1",
  "provenance": {
-  "commit": "1a647f100e",
+  "commit": "7f36a183bf",
   "peano": "22.0.0+4f5df13d",
   "kernels": "8ee515753dca",
   "runtime": "CachedXRTRuntime",
-  "xdna": "2.26.0_20261008",
-  "xrt": "2.26.0",
-  "host": "aie9",
-  "device": "NPU Strix",
+  "xdna": "2.25.0_20260902",
+  "xrt": "2.25.0",
+  "host": "aie8",
+  "device": "NPU Krackan 1",
   "pmode": "turbo"
  },
  "sane": true,
@@ -43,9 +43,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 89.76,
+    "value": 89.23,
     "unit": "us",
-    "range": "\u00b1 0.3; min 81.0 max 92.4 n=50"
+    "range": "\u00b1 0.7; min 75.6 max 111.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 1884,
@@ -59,9 +59,9 @@
     "range": "median 262 max 262 n=4"
    },
    "npu_us": {
-    "value": 79.33,
+    "value": 77.28,
     "unit": "us",
-    "range": "\u00b1 0.5; min 72.6 max 90.5 n=50"
+    "range": "\u00b1 0.7; min 66.6 max 80.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 3004,
@@ -79,9 +79,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 237.86,
+    "value": 236.76,
     "unit": "us",
-    "range": "\u00b1 0.9; min 223.8 max 243.9 n=50"
+    "range": "\u00b1 1.4; min 234.5 max 324.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 1884,
@@ -99,9 +99,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 94.19,
+    "value": 91.54,
     "unit": "us",
-    "range": "\u00b1 0.5; min 77.0 max 99.2 n=50"
+    "range": "\u00b1 1.0; min 76.2 max 94.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 1884,
@@ -119,9 +119,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.3,
+    "value": 82.34,
     "unit": "us",
-    "range": "\u00b1 0.5; min 80.4 max 93.6 n=50"
+    "range": "\u00b1 0.7; min 74.8 max 84.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 1884,
@@ -139,9 +139,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.6,
+    "value": 78.65,
     "unit": "us",
-    "range": "\u00b1 0.5; min 70.0 max 86.3 n=50"
+    "range": "\u00b1 0.8; min 70.0 max 83.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 1884,
@@ -159,9 +159,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.51,
+    "value": 80.77,
     "unit": "us",
-    "range": "\u00b1 0.3; min 75.6 max 87.2 n=50"
+    "range": "\u00b1 0.9; min 68.9 max 84.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 2552,
@@ -179,9 +179,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 118.1,
+    "value": 122.6,
     "unit": "us",
-    "range": "\u00b1 0.6; min 110.3 max 127.2 n=50"
+    "range": "\u00b1 0.7; min 112.2 max 126.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 2552,
@@ -199,9 +199,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.99,
+    "value": 82.53,
     "unit": "us",
-    "range": "\u00b1 0.6; min 73.7 max 87.4 n=50"
+    "range": "\u00b1 0.9; min 72.0 max 90.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 2632,
@@ -219,9 +219,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.86,
+    "value": 81.65,
     "unit": "us",
-    "range": "\u00b1 0.4; min 81.1 max 89.2 n=50"
+    "range": "\u00b1 0.8; min 74.3 max 84.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 3224,
@@ -239,9 +239,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 159.21,
+    "value": 156.12,
     "unit": "us",
-    "range": "\u00b1 0.5; min 156.7 max 163.2 n=50"
+    "range": "\u00b1 1.8; min 147.1 max 196.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 3224,
@@ -259,9 +259,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.9,
+    "value": 79.19,
     "unit": "us",
-    "range": "\u00b1 0.5; min 79.4 max 88.5 n=50"
+    "range": "\u00b1 0.7; min 68.0 max 95.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 3144,
@@ -279,9 +279,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 158.22,
+    "value": 153.62,
     "unit": "us",
-    "range": "\u00b1 0.7; min 145.1 max 165.6 n=50"
+    "range": "\u00b1 0.6; min 141.6 max 157.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 3144,
@@ -299,9 +299,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.69,
+    "value": 77.7,
     "unit": "us",
-    "range": "\u00b1 0.5; min 69.1 max 88.8 n=50"
+    "range": "\u00b1 0.9; min 66.0 max 82.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 2388,
@@ -319,9 +319,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 117.76,
+    "value": 120.88,
     "unit": "us",
-    "range": "\u00b1 0.4; min 108.2 max 136.4 n=50"
+    "range": "\u00b1 4.5; min 110.9 max 137.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 2388,
@@ -339,9 +339,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.46,
+    "value": 78.45,
     "unit": "us",
-    "range": "\u00b1 0.3; min 70.4 max 87.5 n=50"
+    "range": "\u00b1 0.9; min 70.7 max 84.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 1132,
@@ -359,9 +359,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 117.6,
+    "value": 112.68,
     "unit": "us",
-    "range": "\u00b1 0.4; min 113.0 max 127.9 n=50"
+    "range": "\u00b1 0.8; min 105.4 max 132.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 1132,
@@ -379,9 +379,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.14,
+    "value": 79.01,
     "unit": "us",
-    "range": "\u00b1 0.4; min 76.3 max 87.1 n=50"
+    "range": "\u00b1 0.9; min 66.9 max 101.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 3316,
@@ -399,9 +399,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 158.42,
+    "value": 152.9,
     "unit": "us",
-    "range": "\u00b1 0.6; min 144.7 max 163.8 n=50"
+    "range": "\u00b1 0.6; min 139.7 max 161.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 3316,
@@ -419,9 +419,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.41,
+    "value": 78.15,
     "unit": "us",
-    "range": "\u00b1 0.4; min 73.6 max 91.6 n=50"
+    "range": "\u00b1 0.8; min 68.5 max 83.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 3316,
@@ -439,9 +439,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 117.28,
+    "value": 111.58,
     "unit": "us",
-    "range": "\u00b1 0.5; min 104.8 max 120.5 n=50"
+    "range": "\u00b1 0.7; min 98.7 max 114.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 3316,
@@ -459,9 +459,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.84,
+    "value": 88.5,
     "unit": "us",
-    "range": "\u00b1 0.4; min 80.1 max 88.5 n=50"
+    "range": "\u00b1 7.4; min 66.7 max 134.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 4336,
@@ -479,9 +479,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 158.5,
+    "value": 155.52,
     "unit": "us",
-    "range": "\u00b1 0.3; min 146.1 max 164.3 n=50"
+    "range": "\u00b1 0.3; min 142.8 max 157.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 4336,
@@ -499,9 +499,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.82,
+    "value": 78.52,
     "unit": "us",
-    "range": "\u00b1 0.7; min 71.0 max 142.8 n=50"
+    "range": "\u00b1 1.2; min 67.0 max 82.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 4336,
@@ -519,9 +519,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 117.6,
+    "value": 114.45,
     "unit": "us",
-    "range": "\u00b1 0.4; min 99.1 max 120.1 n=50"
+    "range": "\u00b1 0.6; min 107.0 max 119.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 4336,
@@ -539,9 +539,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.21,
+    "value": 79.7,
     "unit": "us",
-    "range": "\u00b1 0.7; min 71.7 max 93.3 n=50"
+    "range": "\u00b1 1.4; min 67.1 max 117.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 3688,
@@ -559,9 +559,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 158.71,
+    "value": 152.53,
     "unit": "us",
-    "range": "\u00b1 0.5; min 144.9 max 168.6 n=50"
+    "range": "\u00b1 0.3; min 148.4 max 159.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 3688,
@@ -579,9 +579,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.54,
+    "value": 88.6,
     "unit": "us",
-    "range": "\u00b1 0.6; min 70.9 max 90.1 n=50"
+    "range": "\u00b1 1.9; min 75.5 max 129.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 3688,
@@ -599,9 +599,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 117.31,
+    "value": 111.91,
     "unit": "us",
-    "range": "\u00b1 0.5; min 104.3 max 128.2 n=50"
+    "range": "\u00b1 0.6; min 99.1 max 118.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 3688,
@@ -619,9 +619,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.17,
+    "value": 79.64,
     "unit": "us",
-    "range": "\u00b1 0.4; min 72.1 max 96.0 n=50"
+    "range": "\u00b1 1.1; min 76.2 max 85.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 6160,
@@ -639,9 +639,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 162.22,
+    "value": 155.68,
     "unit": "us",
-    "range": "\u00b1 1.1; min 149.4 max 166.6 n=50"
+    "range": "\u00b1 0.5; min 141.9 max 158.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 6160,
@@ -659,9 +659,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.78,
+    "value": 90.79,
     "unit": "us",
-    "range": "\u00b1 0.4; min 76.7 max 93.7 n=50"
+    "range": "\u00b1 0.6; min 77.3 max 96.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 6160,
@@ -679,9 +679,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 166.41,
+    "value": 160.76,
     "unit": "us",
-    "range": "\u00b1 0.4; min 152.4 max 176.1 n=50"
+    "range": "\u00b1 0.5; min 147.1 max 164.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 6160,
@@ -699,9 +699,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.15,
+    "value": 80.86,
     "unit": "us",
-    "range": "\u00b1 0.7; min 72.2 max 85.4 n=50"
+    "range": "\u00b1 1.0; min 67.9 max 84.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 7576,
@@ -719,9 +719,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.65,
+    "value": 81.56,
     "unit": "us",
-    "range": "\u00b1 0.7; min 70.7 max 139.2 n=50"
+    "range": "\u00b1 1.1; min 74.9 max 112.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 7576,
@@ -732,16 +732,16 @@
    "cycles": {
     "value": 337,
     "unit": "cycles",
-    "range": "median 337 max 342 n=16"
+    "range": "median 337 max 343 n=16"
    },
    "cycles_per_kop": {
     "value": 329.102,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.91,
+    "value": 81.17,
     "unit": "us",
-    "range": "\u00b1 0.4; min 67.3 max 84.6 n=50"
+    "range": "\u00b1 1.1; min 69.7 max 103.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 15656,
@@ -752,16 +752,16 @@
    "cycles": {
     "value": 337,
     "unit": "cycles",
-    "range": "median 337 max 342 n=256"
+    "range": "median 337 max 344 n=256"
    },
    "cycles_per_kop": {
     "value": 329.102,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 133.65,
+    "value": 134.17,
     "unit": "us",
-    "range": "\u00b1 0.4; min 120.3 max 139.8 n=50"
+    "range": "\u00b1 0.6; min 121.2 max 143.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 15656,
@@ -779,9 +779,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 95.61,
+    "value": 94.76,
     "unit": "us",
-    "range": "\u00b1 0.3; min 89.9 max 99.7 n=50"
+    "range": "\u00b1 0.9; min 89.5 max 119.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 47744,
@@ -799,9 +799,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.64,
+    "value": 80.67,
     "unit": "us",
-    "range": "\u00b1 0.5; min 72.4 max 83.9 n=50"
+    "range": "\u00b1 0.9; min 66.7 max 88.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 19468,
@@ -819,9 +819,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.27,
+    "value": 80.13,
     "unit": "us",
-    "range": "\u00b1 0.6; min 69.8 max 87.3 n=50"
+    "range": "\u00b1 0.9; min 68.0 max 84.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 40204,
@@ -839,9 +839,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 114.79,
+    "value": 116.29,
     "unit": "us",
-    "range": "\u00b1 0.5; min 113.6 max 128.2 n=50"
+    "range": "\u00b1 0.9; min 107.3 max 130.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 19468,
@@ -859,9 +859,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 95.46,
+    "value": 94.04,
     "unit": "us",
-    "range": "\u00b1 0.3; min 82.3 max 98.9 n=50"
+    "range": "\u00b1 1.3; min 89.5 max 99.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 16032,
@@ -879,9 +879,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 357.23,
+    "value": 366.65,
     "unit": "us",
-    "range": "\u00b1 0.7; min 342.3 max 363.6 n=50"
+    "range": "\u00b1 1.1; min 356.8 max 476.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 16032,
@@ -899,9 +899,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.66,
+    "value": 78.28,
     "unit": "us",
-    "range": "\u00b1 0.5; min 79.3 max 89.9 n=50"
+    "range": "\u00b1 0.9; min 58.6 max 84.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 6284,
@@ -919,9 +919,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 114.86,
+    "value": 123.59,
     "unit": "us",
-    "range": "\u00b1 0.4; min 113.9 max 119.9 n=50"
+    "range": "\u00b1 1.7; min 109.9 max 138.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 6284,
@@ -939,9 +939,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.54,
+    "value": 81.63,
     "unit": "us",
-    "range": "\u00b1 0.6; min 78.9 max 86.6 n=50"
+    "range": "\u00b1 2.2; min 68.1 max 103.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 28652,
@@ -959,9 +959,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.45,
+    "value": 89.11,
     "unit": "us",
-    "range": "\u00b1 0.5; min 72.8 max 84.1 n=50"
+    "range": "\u00b1 0.6; min 78.8 max 94.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 7376,
@@ -979,9 +979,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.4,
+    "value": 81.82,
     "unit": "us",
-    "range": "\u00b1 0.5; min 69.0 max 95.3 n=50"
+    "range": "\u00b1 1.2; min 76.8 max 88.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 30440,
@@ -999,9 +999,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 112.5,
+    "value": 113.22,
     "unit": "us",
-    "range": "\u00b1 0.5; min 110.6 max 122.3 n=50"
+    "range": "\u00b1 1.1; min 99.7 max 128.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 7376,
@@ -1019,9 +1019,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 91.17,
+    "value": 88.63,
     "unit": "us",
-    "range": "\u00b1 0.4; min 79.0 max 94.8 n=50"
+    "range": "\u00b1 1.3; min 72.6 max 91.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 50000,
@@ -1039,9 +1039,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 227.65,
+    "value": 226.78,
     "unit": "us",
-    "range": "\u00b1 0.7; min 214.4 max 231.9 n=50"
+    "range": "\u00b1 1.2; min 224.5 max 241.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 50000,
@@ -1059,9 +1059,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 124.83,
+    "value": 118.12,
     "unit": "us",
-    "range": "\u00b1 0.4; min 115.5 max 130.5 n=50"
+    "range": "\u00b1 4.5; min 100.2 max 126.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 51144,
@@ -1079,9 +1079,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.71,
+    "value": 78.18,
     "unit": "us",
-    "range": "\u00b1 0.5; min 67.8 max 102.0 n=50"
+    "range": "\u00b1 0.7; min 65.3 max 80.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 2016,
@@ -1099,9 +1099,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 115.05,
+    "value": 124.8,
     "unit": "us",
-    "range": "\u00b1 0.6; min 102.9 max 125.2 n=50"
+    "range": "\u00b1 7.2; min 111.5 max 168.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 2016,
@@ -1119,9 +1119,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 98.75,
+    "value": 98.62,
     "unit": "us",
-    "range": "\u00b1 0.4; min 87.2 max 104.4 n=50"
+    "range": "\u00b1 0.9; min 86.6 max 129.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 3088,
@@ -1139,9 +1139,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 403.8,
+    "value": 404.9,
     "unit": "us",
-    "range": "\u00b1 0.7; min 402.8 max 408.4 n=50"
+    "range": "\u00b1 1.0; min 390.1 max 409.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 3088,
@@ -1159,9 +1159,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.23,
+    "value": 78.33,
     "unit": "us",
-    "range": "\u00b1 0.5; min 69.7 max 87.2 n=50"
+    "range": "\u00b1 0.7; min 66.0 max 82.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 2388,
@@ -1172,16 +1172,16 @@
    "cycles": {
     "value": 337,
     "unit": "cycles",
-    "range": "median 337 max 343 n=16"
+    "range": "median 337 max 342 n=16"
    },
    "cycles_per_kop": {
     "value": 329.102,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.07,
+    "value": 77.93,
     "unit": "us",
-    "range": "\u00b1 0.6; min 72.3 max 84.6 n=50"
+    "range": "\u00b1 0.7; min 65.2 max 84.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 15656,
@@ -1192,16 +1192,16 @@
    "cycles": {
     "value": 55,
     "unit": "cycles",
-    "range": "median 59 max 77 n=16"
+    "range": "median 60 max 77 n=16"
    },
    "cycles_per_kop": {
     "value": 26.855,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.52,
+    "value": 92.99,
     "unit": "us",
-    "range": "\u00b1 0.6; min 79.5 max 86.6 n=50"
+    "range": "\u00b1 0.8; min 80.5 max 106.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 2112,
@@ -1219,9 +1219,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 156.76,
+    "value": 156.88,
     "unit": "us",
-    "range": "\u00b1 0.7; min 155.6 max 160.7 n=50"
+    "range": "\u00b1 0.7; min 141.8 max 167.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 2112,
@@ -1239,9 +1239,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.4,
+    "value": 81.89,
     "unit": "us",
-    "range": "\u00b1 0.5; min 70.9 max 91.4 n=50"
+    "range": "\u00b1 0.8; min 63.5 max 86.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 1456,
@@ -1259,9 +1259,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 156.49,
+    "value": 155.8,
     "unit": "us",
-    "range": "\u00b1 0.7; min 155.3 max 161.2 n=50"
+    "range": "\u00b1 2.0; min 141.4 max 224.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 1456,
@@ -1279,9 +1279,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.8,
+    "value": 79.14,
     "unit": "us",
-    "range": "\u00b1 0.6; min 76.6 max 86.9 n=50"
+    "range": "\u00b1 1.2; min 65.9 max 88.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 1228,
@@ -1299,9 +1299,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 150.98,
+    "value": 148.16,
     "unit": "us",
-    "range": "\u00b1 0.6; min 144.1 max 155.9 n=50"
+    "range": "\u00b1 0.4; min 136.2 max 151.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 1228,
@@ -1319,9 +1319,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.22,
+    "value": 78.87,
     "unit": "us",
-    "range": "\u00b1 0.4; min 67.9 max 85.9 n=50"
+    "range": "\u00b1 1.3; min 61.6 max 105.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 1228,
@@ -1339,9 +1339,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 220.24,
+    "value": 218.84,
     "unit": "us",
-    "range": "\u00b1 1.0; min 206.2 max 224.6 n=50"
+    "range": "\u00b1 0.5; min 214.4 max 221.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 1796,
@@ -1359,9 +1359,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 2273.73,
+    "value": 2312.37,
     "unit": "us",
-    "range": "\u00b1 2.8; min 2263.0 max 2290.6 n=50"
+    "range": "\u00b1 3.0; min 2296.9 max 2355.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 1796,
@@ -1379,9 +1379,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 102.93,
+    "value": 101.71,
     "unit": "us",
-    "range": "\u00b1 0.3; min 95.7 max 106.7 n=50"
+    "range": "\u00b1 0.6; min 98.0 max 106.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 1644,
@@ -1399,9 +1399,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 479.1,
+    "value": 479.86,
     "unit": "us",
-    "range": "\u00b1 0.8; min 466.1 max 483.3 n=50"
+    "range": "\u00b1 7.5; min 462.6 max 494.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 1644,
@@ -1412,16 +1412,16 @@
    "cycles": {
     "value": 11786,
     "unit": "cycles",
-    "range": "median 11786 max 11788 n=16"
+    "range": "median 11786 max 11787 n=16"
    },
    "cycles_per_kop": {
     "value": 1918.294,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 190.26,
+    "value": 185.9,
     "unit": "us",
-    "range": "\u00b1 2.0; min 177.2 max 257.1 n=50"
+    "range": "\u00b1 0.5; min 182.2 max 200.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 1408,
@@ -1439,9 +1439,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.86,
+    "value": 80.59,
     "unit": "us",
-    "range": "\u00b1 0.6; min 67.7 max 85.8 n=50"
+    "range": "\u00b1 0.8; min 67.8 max 83.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 1352,
@@ -1459,9 +1459,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 114.33,
+    "value": 111.79,
     "unit": "us",
-    "range": "\u00b1 0.4; min 100.4 max 116.2 n=50"
+    "range": "\u00b1 0.5; min 107.0 max 115.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 1352,
@@ -1475,9 +1475,9 @@
     "range": "median 31 max 31 n=16"
    },
    "npu_us": {
-    "value": 80.82,
+    "value": 78.19,
     "unit": "us",
-    "range": "\u00b1 0.5; min 67.2 max 85.7 n=50"
+    "range": "\u00b1 0.7; min 66.2 max 80.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 948,
@@ -1491,9 +1491,9 @@
     "range": "median 1665 max 1665 n=16"
    },
    "npu_us": {
-    "value": 95.67,
+    "value": 96.65,
     "unit": "us",
-    "range": "\u00b1 0.4; min 83.1 max 99.3 n=50"
+    "range": "\u00b1 0.8; min 88.0 max 99.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 1448,
@@ -1507,9 +1507,9 @@
     "range": "median 2459 max 2536 n=32"
    },
    "npu_us": {
-    "value": 126.74,
+    "value": 126.64,
     "unit": "us",
-    "range": "\u00b1 0.6; min 114.2 max 153.5 n=50"
+    "range": "\u00b1 0.5; min 113.5 max 131.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 1596,
@@ -1523,9 +1523,9 @@
     "range": "median 1245 max 1278 n=6"
    },
    "npu_us": {
-    "value": 81.79,
+    "value": 78.88,
     "unit": "us",
-    "range": "\u00b1 0.6; min 68.4 max 85.0 n=50"
+    "range": "\u00b1 0.9; min 66.8 max 82.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 1596,
@@ -1539,9 +1539,9 @@
     "range": "median 9636 max 9787 n=10"
    },
    "npu_us": {
-    "value": 123.3,
+    "value": 124.14,
     "unit": "us",
-    "range": "\u00b1 0.4; min 110.2 max 128.9 n=50"
+    "range": "\u00b1 0.5; min 112.2 max 129.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 3132,
@@ -1555,9 +1555,9 @@
     "range": "median 9636 max 9787 n=8"
    },
    "npu_us": {
-    "value": 108.25,
+    "value": 107.01,
     "unit": "us",
-    "range": "\u00b1 0.3; min 95.7 max 112.9 n=50"
+    "range": "\u00b1 1.9; min 98.1 max 144.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 3132,
@@ -1571,9 +1571,9 @@
     "range": "median 755 max 1174 n=4"
    },
    "npu_us": {
-    "value": 79.38,
+    "value": 79.61,
     "unit": "us",
-    "range": "\u00b1 0.6; min 65.5 max 83.8 n=50"
+    "range": "\u00b1 1.1; min 68.2 max 82.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 3088,
@@ -1587,9 +1587,9 @@
     "range": "median 116 max 116 n=16"
    },
    "npu_us": {
-    "value": 80.56,
+    "value": 79.36,
     "unit": "us",
-    "range": "\u00b1 0.4; min 69.2 max 85.5 n=50"
+    "range": "\u00b1 0.7; min 70.3 max 85.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 2516,
@@ -1603,9 +1603,9 @@
     "range": "median 119 max 119 n=16"
    },
    "npu_us": {
-    "value": 80.84,
+    "value": 81.04,
     "unit": "us",
-    "range": "\u00b1 0.6; min 67.4 max 86.0 n=50"
+    "range": "\u00b1 0.8; min 67.7 max 96.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 2516,
@@ -1619,9 +1619,9 @@
     "range": "median 63 max 63 n=16"
    },
    "npu_us": {
-    "value": 81.01,
+    "value": 81.16,
     "unit": "us",
-    "range": "\u00b1 0.5; min 67.7 max 85.2 n=50"
+    "range": "\u00b1 0.8; min 66.6 max 84.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 2628,
@@ -1635,9 +1635,9 @@
     "range": "median 148 max 148 n=16"
    },
    "npu_us": {
-    "value": 82.71,
+    "value": 82.25,
     "unit": "us",
-    "range": "\u00b1 0.6; min 77.7 max 89.6 n=50"
+    "range": "\u00b1 0.9; min 70.3 max 88.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 2676,
@@ -1655,9 +1655,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 140.83,
+    "value": 140.66,
     "unit": "us",
-    "range": "\u00b1 0.5; min 127.7 max 143.7 n=50"
+    "range": "\u00b1 0.6; min 126.2 max 144.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 5972,
@@ -1668,16 +1668,16 @@
    "cycles": {
     "value": 5497,
     "unit": "cycles",
-    "range": "median 5503 max 5753 n=256; init[2] min 262"
+    "range": "median 5502 max 5753 n=256; init[2] min 262"
    },
    "cycles_per_kop": {
     "value": 20.969,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 992.37,
+    "value": 1001.22,
     "unit": "us",
-    "range": "\u00b1 0.6; min 977.5 max 995.1 n=50"
+    "range": "\u00b1 0.6; min 988.9 max 1005.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 5972,
@@ -1688,16 +1688,16 @@
    "cycles": {
     "value": 11425,
     "unit": "cycles",
-    "range": "median 11425 max 11425 n=16; init[2] min 262"
+    "range": "median 11425 max 11426 n=16; init[2] min 262"
    },
    "cycles_per_kop": {
     "value": 21.791,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 206.72,
+    "value": 207.25,
     "unit": "us",
-    "range": "\u00b1 0.5; min 194.5 max 215.3 n=50"
+    "range": "\u00b1 0.9; min 194.9 max 211.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 6076,
@@ -1715,9 +1715,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 106.2,
+    "value": 102.89,
     "unit": "us",
-    "range": "\u00b1 0.5; min 101.7 max 110.9 n=50"
+    "range": "\u00b1 0.7; min 93.9 max 106.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 5172,
@@ -1735,9 +1735,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 97.21,
+    "value": 97.12,
     "unit": "us",
-    "range": "\u00b1 0.4; min 86.5 max 99.7 n=50"
+    "range": "\u00b1 0.7; min 83.9 max 102.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 5984,
@@ -1755,9 +1755,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.09,
+    "value": 82.23,
     "unit": "us",
-    "range": "\u00b1 0.8; min 71.0 max 146.2 n=50"
+    "range": "\u00b1 1.3; min 69.8 max 89.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 4580,
@@ -1775,9 +1775,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 93.72,
+    "value": 93.58,
     "unit": "us",
-    "range": "\u00b1 0.5; min 79.7 max 97.6 n=50"
+    "range": "\u00b1 1.0; min 78.8 max 98.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 4812,
@@ -1795,9 +1795,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 98.23,
+    "value": 92.88,
     "unit": "us",
-    "range": "\u00b1 0.5; min 80.4 max 102.2 n=50"
+    "range": "\u00b1 2.3; min 78.0 max 97.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 4900,
@@ -1815,9 +1815,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 136.65,
+    "value": 133.22,
     "unit": "us",
-    "range": "\u00b1 0.7; min 132.2 max 139.5 n=50"
+    "range": "\u00b1 0.6; min 120.2 max 139.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 5488,
@@ -1835,9 +1835,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 138.53,
+    "value": 135.37,
     "unit": "us",
-    "range": "\u00b1 0.5; min 128.4 max 142.4 n=50"
+    "range": "\u00b1 0.5; min 115.9 max 146.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 28008,
@@ -1855,9 +1855,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 140.17,
+    "value": 137.9,
     "unit": "us",
-    "range": "\u00b1 0.6; min 125.5 max 149.2 n=50"
+    "range": "\u00b1 0.7; min 130.3 max 143.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 28224,
@@ -1875,9 +1875,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 93.96,
+    "value": 90.34,
     "unit": "us",
-    "range": "\u00b1 0.7; min 85.6 max 102.4 n=50"
+    "range": "\u00b1 1.7; min 74.0 max 102.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 4784,
@@ -1895,9 +1895,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 97.97,
+    "value": 95.48,
     "unit": "us",
-    "range": "\u00b1 0.7; min 88.2 max 101.2 n=50"
+    "range": "\u00b1 0.3; min 92.4 max 102.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 6488,
@@ -1915,9 +1915,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.98,
+    "value": 79.92,
     "unit": "us",
-    "range": "\u00b1 0.6; min 70.5 max 88.8 n=50"
+    "range": "\u00b1 0.9; min 66.4 max 87.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 3528,
@@ -1928,16 +1928,16 @@
    "cycles": {
     "value": 951,
     "unit": "cycles",
-    "range": "median 951 max 979 n=16; init[2] min 78"
+    "range": "median 951 max 980 n=16; init[2] min 78"
    },
    "cycles_per_kop": {
     "value": 1.814,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 95.83,
+    "value": 93.59,
     "unit": "us",
-    "range": "\u00b1 0.3; min 91.4 max 99.7 n=50"
+    "range": "\u00b1 0.9; min 81.1 max 108.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 2160,
@@ -1951,9 +1951,9 @@
     "range": "median 4850 max 4851 n=4"
    },
    "npu_us": {
-    "value": 91.11,
+    "value": 88.83,
     "unit": "us",
-    "range": "\u00b1 0.3; min 83.6 max 98.1 n=50"
+    "range": "\u00b1 0.6; min 78.8 max 90.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 4688,
@@ -1967,9 +1967,9 @@
     "range": "median 6017 max 6018 n=4"
    },
    "npu_us": {
-    "value": 95.83,
+    "value": 93.36,
     "unit": "us",
-    "range": "\u00b1 0.4; min 83.6 max 121.1 n=50"
+    "range": "\u00b1 2.8; min 85.6 max 99.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 4688,
@@ -1983,9 +1983,9 @@
     "range": "median 2466 max 2467 n=4"
    },
    "npu_us": {
-    "value": 84.29,
+    "value": 83.54,
     "unit": "us",
-    "range": "\u00b1 0.5; min 79.4 max 89.9 n=50"
+    "range": "\u00b1 0.7; min 80.0 max 86.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 4688,
@@ -1999,9 +1999,9 @@
     "range": "median 3057 max 3058 n=4"
    },
    "npu_us": {
-    "value": 84.87,
+    "value": 83.04,
     "unit": "us",
-    "range": "\u00b1 0.7; min 71.5 max 89.9 n=50"
+    "range": "\u00b1 0.7; min 79.5 max 88.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 4688,
@@ -2019,9 +2019,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.46,
+    "value": 79.98,
     "unit": "us",
-    "range": "\u00b1 0.6; min 69.8 max 87.4 n=50"
+    "range": "\u00b1 1.0; min 69.4 max 82.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 2144,
@@ -2039,9 +2039,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.0,
+    "value": 81.02,
     "unit": "us",
-    "range": "\u00b1 0.5; min 70.8 max 88.4 n=50"
+    "range": "\u00b1 1.1; min 75.0 max 92.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 8740,
@@ -2059,9 +2059,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.04,
+    "value": 81.3,
     "unit": "us",
-    "range": "\u00b1 0.5; min 71.0 max 88.2 n=50"
+    "range": "\u00b1 0.9; min 66.8 max 84.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 7008,
@@ -2079,9 +2079,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.53,
+    "value": 79.56,
     "unit": "us",
-    "range": "\u00b1 0.5; min 68.8 max 85.1 n=50"
+    "range": "\u00b1 0.8; min 69.7 max 90.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 8340,
@@ -2099,9 +2099,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.49,
+    "value": 79.8,
     "unit": "us",
-    "range": "\u00b1 0.5; min 72.2 max 111.6 n=50"
+    "range": "\u00b1 1.0; min 73.9 max 84.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 8340,
@@ -2119,9 +2119,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 95.74,
+    "value": 93.34,
     "unit": "us",
-    "range": "\u00b1 0.3; min 83.4 max 100.7 n=50"
+    "range": "\u00b1 0.8; min 85.8 max 95.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 8340,
@@ -2139,9 +2139,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.95,
+    "value": 80.65,
     "unit": "us",
-    "range": "\u00b1 0.5; min 70.9 max 88.1 n=50"
+    "range": "\u00b1 1.3; min 66.5 max 180.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 12392,
@@ -2159,9 +2159,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.56,
+    "value": 67.78,
     "unit": "us",
-    "range": "\u00b1 0.5; min 63.0 max 83.4 n=50"
+    "range": "\u00b1 1.7; min 64.2 max 86.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 8740,
@@ -2179,9 +2179,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.52,
+    "value": 72.09,
     "unit": "us",
-    "range": "\u00b1 1.1; min 67.2 max 101.3 n=50"
+    "range": "\u00b1 3.2; min 63.1 max 83.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 12392,
@@ -2199,9 +2199,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.78,
+    "value": 79.76,
     "unit": "us",
-    "range": "\u00b1 0.5; min 77.5 max 85.5 n=50"
+    "range": "\u00b1 1.1; min 72.0 max 85.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 34676,
@@ -2219,9 +2219,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.98,
+    "value": 78.06,
     "unit": "us",
-    "range": "\u00b1 0.5; min 67.3 max 88.0 n=50"
+    "range": "\u00b1 1.2; min 64.4 max 83.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 38208,
@@ -2239,9 +2239,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 92.63,
+    "value": 89.82,
     "unit": "us",
-    "range": "\u00b1 0.3; min 75.6 max 99.7 n=50"
+    "range": "\u00b1 1.0; min 73.1 max 96.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 9788,
@@ -2259,9 +2259,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 86.03,
+    "value": 81.99,
     "unit": "us",
-    "range": "\u00b1 0.7; min 84.5 max 95.1 n=50"
+    "range": "\u00b1 1.0; min 74.0 max 89.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 9756,
@@ -2279,9 +2279,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.01,
+    "value": 81.42,
     "unit": "us",
-    "range": "\u00b1 0.5; min 80.9 max 92.1 n=50"
+    "range": "\u00b1 0.9; min 69.2 max 93.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 9788,
@@ -2299,9 +2299,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 99.48,
+    "value": 96.13,
     "unit": "us",
-    "range": "\u00b1 0.3; min 92.1 max 105.7 n=50"
+    "range": "\u00b1 0.6; min 83.9 max 99.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 12760,
@@ -2312,16 +2312,16 @@
    "cycles": {
     "value": 1774,
     "unit": "cycles",
-    "range": "median 1774 max 1781 n=4"
+    "range": "median 1774 max 1775 n=4"
    },
    "cycles_per_kop": {
     "value": 13.535,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 87.21,
+    "value": 83.11,
     "unit": "us",
-    "range": "\u00b1 0.9; min 77.5 max 94.9 n=50"
+    "range": "\u00b1 0.9; min 70.8 max 99.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 9664,
@@ -2339,9 +2339,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.49,
+    "value": 81.5,
     "unit": "us",
-    "range": "\u00b1 0.8; min 75.5 max 151.6 n=50"
+    "range": "\u00b1 1.0; min 69.1 max 181.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 9664,
@@ -2359,9 +2359,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 87.68,
+    "value": 84.65,
     "unit": "us",
-    "range": "\u00b1 0.7; min 83.2 max 91.4 n=50"
+    "range": "\u00b1 1.1; min 78.4 max 93.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 12480,
@@ -2379,9 +2379,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 99.89,
+    "value": 96.06,
     "unit": "us",
-    "range": "\u00b1 0.8; min 97.9 max 109.4 n=50"
+    "range": "\u00b1 0.7; min 83.0 max 100.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 11612,
@@ -2399,9 +2399,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 100.88,
+    "value": 98.41,
     "unit": "us",
-    "range": "\u00b1 0.3; min 88.2 max 106.5 n=50"
+    "range": "\u00b1 0.8; min 85.7 max 102.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 15784,
@@ -2419,9 +2419,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 102.84,
+    "value": 101.12,
     "unit": "us",
-    "range": "\u00b1 0.3; min 98.8 max 109.7 n=50"
+    "range": "\u00b1 0.9; min 88.1 max 116.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 17020,
@@ -2432,16 +2432,16 @@
    "cycles": {
     "value": 4455,
     "unit": "cycles",
-    "range": "median 4486 max 4507 n=4"
+    "range": "median 4485 max 4507 n=4"
    },
    "cycles_per_kop": {
     "value": 65.918,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 92.82,
+    "value": 102.09,
     "unit": "us",
-    "range": "\u00b1 0.3; min 87.0 max 98.3 n=50"
+    "range": "\u00b1 0.7; min 86.8 max 185.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 15480,
@@ -2452,12 +2452,12 @@
    "cycles": {
     "value": 1587,
     "unit": "cycles",
-    "range": "median 1589 max 1604 n=4"
+    "range": "median 1587 max 1604 n=4"
    },
    "npu_us": {
-    "value": 80.56,
+    "value": 77.44,
     "unit": "us",
-    "range": "\u00b1 0.6; min 67.3 max 85.8 n=50"
+    "range": "\u00b1 0.9; min 72.5 max 82.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 12820,
@@ -2471,9 +2471,9 @@
     "range": "median 1588 max 1605 n=4"
    },
    "npu_us": {
-    "value": 80.18,
+    "value": 77.48,
     "unit": "us",
-    "range": "\u00b1 0.5; min 65.7 max 83.9 n=50"
+    "range": "\u00b1 0.9; min 73.8 max 83.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 15912,
@@ -2491,9 +2491,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.1,
+    "value": 83.31,
     "unit": "us",
-    "range": "\u00b1 0.4; min 83.2 max 88.3 n=50"
+    "range": "\u00b1 0.8; min 70.5 max 88.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 12820,
@@ -2511,9 +2511,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.92,
+    "value": 83.68,
     "unit": "us",
-    "range": "\u00b1 0.4; min 76.2 max 88.3 n=50"
+    "range": "\u00b1 1.0; min 78.9 max 92.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 15912,
@@ -2531,9 +2531,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 93.16,
+    "value": 90.05,
     "unit": "us",
-    "range": "\u00b1 0.3; min 86.9 max 96.8 n=50"
+    "range": "\u00b1 0.7; min 76.4 max 95.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 12820,
@@ -2551,9 +2551,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 98.46,
+    "value": 94.84,
     "unit": "us",
-    "range": "\u00b1 0.6; min 83.9 max 103.9 n=50"
+    "range": "\u00b1 0.8; min 84.5 max 101.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 15912,
@@ -2571,9 +2571,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 111.54,
+    "value": 107.15,
     "unit": "us",
-    "range": "\u00b1 0.5; min 104.4 max 113.7 n=50"
+    "range": "\u00b1 0.9; min 98.4 max 111.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 12820,
@@ -2591,9 +2591,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 113.01,
+    "value": 112.26,
     "unit": "us",
-    "range": "\u00b1 0.8; min 105.2 max 117.4 n=50"
+    "range": "\u00b1 0.7; min 100.0 max 116.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 15912,
@@ -2611,9 +2611,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 98.15,
+    "value": 106.89,
     "unit": "us",
-    "range": "\u00b1 0.7; min 84.3 max 103.2 n=50"
+    "range": "\u00b1 11.1; min 85.6 max 191.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 1596,
@@ -2631,9 +2631,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.98,
+    "value": 81.83,
     "unit": "us",
-    "range": "\u00b1 0.5; min 70.0 max 88.3 n=50"
+    "range": "\u00b1 1.3; min 68.9 max 113.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 3880,
@@ -2651,9 +2651,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 98.94,
+    "value": 98.53,
     "unit": "us",
-    "range": "\u00b1 0.6; min 93.3 max 105.4 n=50"
+    "range": "\u00b1 1.0; min 88.9 max 106.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 5600,
@@ -2671,9 +2671,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.95,
+    "value": 92.69,
     "unit": "us",
-    "range": "\u00b1 0.6; min 78.4 max 86.7 n=50"
+    "range": "\u00b1 1.1; min 80.0 max 133.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 4880,
@@ -2691,9 +2691,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 98.99,
+    "value": 96.06,
     "unit": "us",
-    "range": "\u00b1 0.6; min 85.2 max 104.6 n=50"
+    "range": "\u00b1 0.8; min 86.9 max 99.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 5568,
@@ -2711,9 +2711,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 381.25,
+    "value": 371.47,
     "unit": "us",
-    "range": "\u00b1 0.7; min 367.3 max 386.6 n=50"
+    "range": "\u00b1 0.6; min 358.0 max 381.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 5568,
@@ -2731,9 +2731,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 89.89,
+    "value": 85.56,
     "unit": "us",
-    "range": "\u00b1 1.4; min 82.3 max 95.6 n=50"
+    "range": "\u00b1 0.7; min 80.1 max 91.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 2924,
@@ -2751,9 +2751,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.73,
+    "value": 78.94,
     "unit": "us",
-    "range": "\u00b1 0.5; min 72.7 max 85.9 n=50"
+    "range": "\u00b1 0.6; min 67.2 max 83.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 3560,
@@ -2771,9 +2771,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.76,
+    "value": 78.3,
     "unit": "us",
-    "range": "\u00b1 0.5; min 73.0 max 85.2 n=50"
+    "range": "\u00b1 0.9; min 64.8 max 83.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 3560,
@@ -2791,9 +2791,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 86.79,
+    "value": 84.79,
     "unit": "us",
-    "range": "\u00b1 0.9; min 72.7 max 96.5 n=50"
+    "range": "\u00b1 0.9; min 72.0 max 90.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 16696,
@@ -2804,16 +2804,16 @@
    "cycles": {
     "value": 842,
     "unit": "cycles",
-    "range": "median 861 max 880 n=16"
+    "range": "median 861 max 879 n=16"
    },
    "cycles_per_kop": {
     "value": 137.044,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 91.24,
+    "value": 88.95,
     "unit": "us",
-    "range": "\u00b1 0.4; min 87.6 max 98.4 n=50"
+    "range": "\u00b1 0.8; min 79.1 max 99.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 39704,
@@ -2831,9 +2831,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 215.9,
+    "value": 213.88,
     "unit": "us",
-    "range": "\u00b1 0.7; min 210.0 max 220.4 n=50"
+    "range": "\u00b1 0.7; min 200.1 max 229.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 16696,
@@ -2851,9 +2851,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 86.65,
+    "value": 83.98,
     "unit": "us",
-    "range": "\u00b1 0.9; min 75.1 max 92.9 n=50"
+    "range": "\u00b1 0.6; min 73.1 max 87.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 5640,
@@ -2871,9 +2871,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 90.97,
+    "value": 88.69,
     "unit": "us",
-    "range": "\u00b1 0.5; min 74.0 max 109.2 n=50"
+    "range": "\u00b1 0.9; min 75.3 max 91.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 3876,
@@ -2891,9 +2891,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.49,
+    "value": 79.28,
     "unit": "us",
-    "range": "\u00b1 0.7; min 67.3 max 84.0 n=50"
+    "range": "\u00b1 0.9; min 68.1 max 87.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 8068,
@@ -2911,9 +2911,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.41,
+    "value": 80.85,
     "unit": "us",
-    "range": "\u00b1 0.7; min 69.2 max 144.7 n=50"
+    "range": "\u00b1 0.9; min 68.1 max 94.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 4644,
@@ -2931,9 +2931,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.76,
+    "value": 78.65,
     "unit": "us",
-    "range": "\u00b1 0.5; min 74.5 max 89.6 n=50"
+    "range": "\u00b1 0.9; min 64.2 max 81.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 1752,
@@ -2944,16 +2944,16 @@
    "cycles": {
     "value": 40,
     "unit": "cycles",
-    "range": "median 40 max 61 n=16"
+    "range": "median 44 max 61 n=16"
    },
    "cycles_per_kop": {
     "value": 20.833,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.09,
+    "value": 79.53,
     "unit": "us",
-    "range": "\u00b1 0.5; min 70.1 max 95.3 n=50"
+    "range": "\u00b1 0.7; min 62.0 max 84.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 1756,
@@ -2971,9 +2971,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.3,
+    "value": 79.18,
     "unit": "us",
-    "range": "\u00b1 0.5; min 72.6 max 91.4 n=50"
+    "range": "\u00b1 0.7; min 70.4 max 82.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 1924,
@@ -2991,9 +2991,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 86.0,
+    "value": 82.97,
     "unit": "us",
-    "range": "\u00b1 0.7; min 72.6 max 94.9 n=50"
+    "range": "\u00b1 0.7; min 70.3 max 89.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 2700,
@@ -3004,16 +3004,16 @@
    "cycles": {
     "value": 2175,
     "unit": "cycles",
-    "range": "median 2236 max 2264 n=16"
+    "range": "median 2238 max 2264 n=16"
    },
    "cycles_per_kop": {
     "value": 1132.812,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 99.23,
+    "value": 96.77,
     "unit": "us",
-    "range": "\u00b1 0.3; min 90.2 max 103.0 n=50"
+    "range": "\u00b1 0.7; min 86.1 max 100.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 33400,
@@ -3027,9 +3027,9 @@
     "range": "median 2511723 max 2511723 n=2"
    },
    "npu_us": {
-    "value": 2637.4,
+    "value": 2710.8,
     "unit": "us",
-    "range": "\u00b1 3.4; min 2605.2 max 2700.5 n=50"
+    "range": "\u00b1 4.0; min 2415.5 max 2731.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 5624,
@@ -3043,9 +3043,9 @@
     "range": "median 87425443 max 87425443 n=2"
    },
    "npu_us": {
-    "value": 96433.45,
+    "value": 95929.73,
     "unit": "us",
-    "range": "\u00b1 5.5; min 96253.4 max 96456.5 n=50"
+    "range": "\u00b1 58.7; min 95716.6 max 96211.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 5608,
@@ -3059,9 +3059,9 @@
     "range": "median 2429261 max 2429261 n=1"
    },
    "npu_us": {
-    "value": 1263.7,
+    "value": 1254.21,
     "unit": "us",
-    "range": "\u00b1 2.9; min 1188.1 max 1272.4 n=50"
+    "range": "\u00b1 2.0; min 1247.2 max 1262.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 5608,
@@ -3075,9 +3075,9 @@
     "range": "median 1015028 max 1443079 n=4"
    },
    "npu_us": {
-    "value": 2013.93,
+    "value": 2098.7,
     "unit": "us",
-    "range": "\u00b1 3.0; min 2010.6 max 2041.5 n=50"
+    "range": "\u00b1 42.7; min 2053.8 max 2749.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 5336,
@@ -3091,9 +3091,9 @@
     "range": "median 1642175 max 1649783 n=80"
    },
    "npu_us": {
-    "value": 67807.84,
+    "value": 68425.01,
     "unit": "us",
-    "range": "\u00b1 1.1; min 67792.9 max 67817.0 n=50"
+    "range": "\u00b1 19.5; min 68375.2 max 68648.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 5336,
@@ -3107,9 +3107,9 @@
     "range": "median 1122142 max 1122826 n=3"
    },
    "npu_us": {
-    "value": 1945.14,
+    "value": 1989.39,
     "unit": "us",
-    "range": "\u00b1 1.6; min 1941.9 max 1969.7 n=50"
+    "range": "\u00b1 2.3; min 1984.7 max 2492.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 5320,
@@ -3120,16 +3120,16 @@
    "cycles": {
     "value": 324,
     "unit": "cycles",
-    "range": "median 338 max 350 n=8"
+    "range": "median 338 max 349 n=8"
    },
    "cycles_per_kop": {
     "value": 1.236,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.83,
+    "value": 86.58,
     "unit": "us",
-    "range": "\u00b1 0.5; min 69.0 max 83.8 n=50"
+    "range": "\u00b1 0.8; min 75.7 max 91.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 1712,
@@ -3147,9 +3147,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.86,
+    "value": 80.0,
     "unit": "us",
-    "range": "\u00b1 0.4; min 68.1 max 84.0 n=50"
+    "range": "\u00b1 0.7; min 74.3 max 84.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 1988,
@@ -3167,9 +3167,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.13,
+    "value": 85.07,
     "unit": "us",
-    "range": "\u00b1 0.5; min 71.6 max 87.5 n=50"
+    "range": "\u00b1 1.4; min 79.7 max 168.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 1812,
@@ -3180,16 +3180,16 @@
    "cycles": {
     "value": 777,
     "unit": "cycles",
-    "range": "median 791 max 793 n=8"
+    "range": "median 791 max 796 n=8"
    },
    "cycles_per_kop": {
     "value": 1.476,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.76,
+    "value": 81.78,
     "unit": "us",
-    "range": "\u00b1 0.9; min 81.4 max 99.6 n=50"
+    "range": "\u00b1 0.8; min 69.3 max 98.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 1812,
@@ -3207,9 +3207,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.42,
+    "value": 79.6,
     "unit": "us",
-    "range": "\u00b1 0.5; min 69.8 max 87.9 n=50"
+    "range": "\u00b1 1.1; min 66.4 max 98.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 1696,
@@ -3227,9 +3227,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.65,
+    "value": 81.74,
     "unit": "us",
-    "range": "\u00b1 0.7; min 74.2 max 88.5 n=50"
+    "range": "\u00b1 1.1; min 68.6 max 97.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 1696,
@@ -3240,16 +3240,16 @@
    "cycles": {
     "value": 431,
     "unit": "cycles",
-    "range": "median 431 max 432 n=4"
+    "range": "median 431 max 431 n=4"
    },
    "cycles_per_kop": {
     "value": 1.074,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.7,
+    "value": 80.15,
     "unit": "us",
-    "range": "\u00b1 0.6; min 74.1 max 86.9 n=50"
+    "range": "\u00b1 0.8; min 67.9 max 86.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 1964,
@@ -3260,16 +3260,16 @@
    "cycles": {
     "value": 343,
     "unit": "cycles",
-    "range": "median 346 max 351 n=8"
+    "range": "median 343 max 351 n=8"
    },
    "cycles_per_kop": {
     "value": 1.308,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.17,
+    "value": 80.06,
     "unit": "us",
-    "range": "\u00b1 0.4; min 76.0 max 90.0 n=50"
+    "range": "\u00b1 0.9; min 76.4 max 95.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 1716,
@@ -3287,9 +3287,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 96.98,
+    "value": 94.92,
     "unit": "us",
-    "range": "\u00b1 0.3; min 83.3 max 102.4 n=50"
+    "range": "\u00b1 0.4; min 81.5 max 112.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 2068,
@@ -3307,9 +3307,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 94.97,
+    "value": 95.11,
     "unit": "us",
-    "range": "\u00b1 0.4; min 87.5 max 97.8 n=50"
+    "range": "\u00b1 0.4; min 86.2 max 109.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 2072,
@@ -3320,16 +3320,16 @@
    "cycles": {
     "value": 447,
     "unit": "cycles",
-    "range": "median 457 max 465 n=8"
+    "range": "median 458 max 465 n=8"
    },
    "cycles_per_kop": {
     "value": 1.663,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.1,
+    "value": 78.89,
     "unit": "us",
-    "range": "\u00b1 0.6; min 67.9 max 141.7 n=50"
+    "range": "\u00b1 0.8; min 65.1 max 83.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 2776,
@@ -3347,9 +3347,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.39,
+    "value": 79.21,
     "unit": "us",
-    "range": "\u00b1 0.6; min 77.8 max 84.7 n=50"
+    "range": "\u00b1 0.6; min 61.8 max 89.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 2616,
@@ -3367,9 +3367,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.87,
+    "value": 81.75,
     "unit": "us",
-    "range": "\u00b1 0.6; min 70.6 max 90.1 n=50"
+    "range": "\u00b1 0.8; min 73.2 max 85.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 3304,
@@ -3387,9 +3387,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.18,
+    "value": 79.12,
     "unit": "us",
-    "range": "\u00b1 0.4; min 68.1 max 85.6 n=50"
+    "range": "\u00b1 0.8; min 65.5 max 81.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 2880,
@@ -3407,9 +3407,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 92.08,
+    "value": 91.14,
     "unit": "us",
-    "range": "\u00b1 0.4; min 75.0 max 96.2 n=50"
+    "range": "\u00b1 2.6; min 83.8 max 106.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 2936,
@@ -3418,18 +3418,18 @@
   },
   "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=240": {
    "cycles": {
-    "value": 745,
+    "value": 729,
     "unit": "cycles",
     "range": "median 758 max 765 n=8"
    },
    "cycles_per_kop": {
-    "value": 1.386,
+    "value": 1.356,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.01,
+    "value": 79.86,
     "unit": "us",
-    "range": "\u00b1 0.6; min 80.8 max 86.7 n=50"
+    "range": "\u00b1 1.0; min 68.1 max 93.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 2776,
@@ -3447,9 +3447,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.08,
+    "value": 78.42,
     "unit": "us",
-    "range": "\u00b1 0.4; min 67.9 max 89.9 n=50"
+    "range": "\u00b1 0.8; min 64.4 max 85.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 2584,
@@ -3467,9 +3467,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.41,
+    "value": 83.64,
     "unit": "us",
-    "range": "\u00b1 0.6; min 71.2 max 87.2 n=50"
+    "range": "\u00b1 0.9; min 70.6 max 86.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 3288,
@@ -3487,9 +3487,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.03,
+    "value": 78.64,
     "unit": "us",
-    "range": "\u00b1 0.5; min 80.2 max 83.9 n=50"
+    "range": "\u00b1 0.9; min 65.2 max 82.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 3224,
@@ -3507,9 +3507,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.86,
+    "value": 78.82,
     "unit": "us",
-    "range": "\u00b1 0.4; min 79.4 max 85.0 n=50"
+    "range": "\u00b1 0.8; min 65.7 max 81.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 3096,
@@ -3520,16 +3520,16 @@
    "cycles": {
     "value": 302,
     "unit": "cycles",
-    "range": "median 304 max 314 n=8"
+    "range": "median 304 max 313 n=8"
    },
    "cycles_per_kop": {
     "value": 1.755,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 80.67,
+    "value": 79.0,
     "unit": "us",
-    "range": "\u00b1 0.5; min 67.1 max 91.4 n=50"
+    "range": "\u00b1 0.6; min 71.3 max 84.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 2984,
@@ -3547,9 +3547,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.27,
+    "value": 80.92,
     "unit": "us",
-    "range": "\u00b1 0.6; min 73.0 max 89.8 n=50"
+    "range": "\u00b1 0.8; min 69.7 max 97.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 3272,
@@ -3567,9 +3567,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.16,
+    "value": 80.02,
     "unit": "us",
-    "range": "\u00b1 0.5; min 69.5 max 86.1 n=50"
+    "range": "\u00b1 0.7; min 65.0 max 85.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 3400,
@@ -3587,9 +3587,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.46,
+    "value": 82.56,
     "unit": "us",
-    "range": "\u00b1 0.5; min 82.3 max 89.0 n=50"
+    "range": "\u00b1 4.2; min 66.9 max 95.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 3420,
@@ -3607,9 +3607,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.74,
+    "value": 80.56,
     "unit": "us",
-    "range": "\u00b1 0.6; min 69.7 max 99.7 n=50"
+    "range": "\u00b1 0.8; min 71.8 max 92.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 3020,
@@ -3620,16 +3620,16 @@
    "cycles": {
     "value": 308,
     "unit": "cycles",
-    "range": "median 322 max 330 n=8"
+    "range": "median 319 max 331 n=8"
    },
    "cycles_per_kop": {
     "value": 1.58,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.77,
+    "value": 80.17,
     "unit": "us",
-    "range": "\u00b1 0.5; min 81.5 max 90.6 n=50"
+    "range": "\u00b1 0.8; min 65.8 max 89.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 3512,
@@ -3647,9 +3647,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.45,
+    "value": 82.06,
     "unit": "us",
-    "range": "\u00b1 0.6; min 69.1 max 87.6 n=50"
+    "range": "\u00b1 1.0; min 68.0 max 97.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 4356,
@@ -3667,9 +3667,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.74,
+    "value": 81.25,
     "unit": "us",
-    "range": "\u00b1 0.6; min 80.7 max 92.7 n=50"
+    "range": "\u00b1 0.8; min 67.4 max 89.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 3292,
@@ -3687,9 +3687,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.72,
+    "value": 81.27,
     "unit": "us",
-    "range": "\u00b1 0.6; min 82.8 max 90.8 n=50"
+    "range": "\u00b1 0.8; min 72.4 max 84.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 3020,
@@ -3700,16 +3700,16 @@
    "cycles": {
     "value": 749,
     "unit": "cycles",
-    "range": "median 750 max 754 n=8"
+    "range": "median 750 max 753 n=8"
    },
    "cycles_per_kop": {
     "value": 1.668,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.65,
+    "value": 82.94,
     "unit": "us",
-    "range": "\u00b1 0.5; min 71.9 max 90.7 n=50"
+    "range": "\u00b1 0.7; min 68.5 max 99.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 3180,
@@ -3727,9 +3727,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.87,
+    "value": 84.16,
     "unit": "us",
-    "range": "\u00b1 0.7; min 79.3 max 93.4 n=50"
+    "range": "\u00b1 0.8; min 77.1 max 90.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 3292,
@@ -3747,9 +3747,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.8,
+    "value": 78.43,
     "unit": "us",
-    "range": "\u00b1 0.4; min 78.2 max 84.9 n=50"
+    "range": "\u00b1 0.8; min 63.9 max 82.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 5912,
@@ -3767,9 +3767,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 96.22,
+    "value": 93.79,
     "unit": "us",
-    "range": "\u00b1 0.3; min 95.4 max 181.2 n=50"
+    "range": "\u00b1 0.5; min 87.6 max 99.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 5436,
@@ -3780,16 +3780,16 @@
    "cycles": {
     "value": 1030,
     "unit": "cycles",
-    "range": "median 1033 max 1035 n=8"
+    "range": "median 1033 max 1037 n=8"
    },
    "cycles_per_kop": {
     "value": 17.03,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 90.95,
+    "value": 86.16,
     "unit": "us",
-    "range": "\u00b1 2.1; min 83.3 max 97.2 n=50"
+    "range": "\u00b1 0.8; min 75.6 max 90.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 5016,
@@ -3807,9 +3807,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 87.16,
+    "value": 86.04,
     "unit": "us",
-    "range": "\u00b1 1.6; min 77.8 max 94.3 n=50"
+    "range": "\u00b1 0.6; min 82.1 max 90.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 4072,
@@ -3820,16 +3820,16 @@
    "cycles": {
     "value": 1512,
     "unit": "cycles",
-    "range": "median 1550 max 1567 n=8"
+    "range": "median 1549 max 1567 n=8"
    },
    "cycles_per_kop": {
     "value": 35.714,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 91.5,
+    "value": 89.03,
     "unit": "us",
-    "range": "\u00b1 0.4; min 90.4 max 101.3 n=50"
+    "range": "\u00b1 0.7; min 76.5 max 91.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 5156,
@@ -3838,18 +3838,18 @@
   },
   "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72": {
    "cycles": {
-    "value": 845,
+    "value": 846,
     "unit": "cycles",
     "range": "median 865 max 875 n=8"
    },
    "cycles_per_kop": {
-    "value": 11.643,
+    "value": 11.657,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 90.64,
+    "value": 83.81,
     "unit": "us",
-    "range": "\u00b1 1.0; min 77.4 max 93.8 n=50"
+    "range": "\u00b1 0.8; min 70.4 max 91.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 4464,
@@ -3860,16 +3860,16 @@
    "cycles": {
     "value": 1809,
     "unit": "cycles",
-    "range": "median 1820 max 1830 n=8"
+    "range": "median 1819 max 1828 n=8"
    },
    "cycles_per_kop": {
     "value": 29.911,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 96.55,
+    "value": 95.32,
     "unit": "us",
-    "range": "\u00b1 0.4; min 90.2 max 108.1 n=50"
+    "range": "\u00b1 1.3; min 83.5 max 101.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 4900,
@@ -3880,16 +3880,16 @@
    "cycles": {
     "value": 977,
     "unit": "cycles",
-    "range": "median 1031 max 1040 n=8"
+    "range": "median 1031 max 1042 n=8"
    },
    "cycles_per_kop": {
     "value": 15.144,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 96.64,
+    "value": 89.18,
     "unit": "us",
-    "range": "\u00b1 1.1; min 78.9 max 98.7 n=50"
+    "range": "\u00b1 0.7; min 81.4 max 95.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 5020,
@@ -3907,9 +3907,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 86.81,
+    "value": 85.73,
     "unit": "us",
-    "range": "\u00b1 0.6; min 82.9 max 91.9 n=50"
+    "range": "\u00b1 1.6; min 72.4 max 106.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 4516,
@@ -3927,9 +3927,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 95.23,
+    "value": 91.25,
     "unit": "us",
-    "range": "\u00b1 0.7; min 91.6 max 101.9 n=50"
+    "range": "\u00b1 0.9; min 88.5 max 187.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 7952,
@@ -3947,9 +3947,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.77,
+    "value": 78.0,
     "unit": "us",
-    "range": "\u00b1 0.5; min 73.7 max 88.3 n=50"
+    "range": "\u00b1 0.8; min 64.8 max 80.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 4848,
@@ -3967,9 +3967,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.82,
+    "value": 82.37,
     "unit": "us",
-    "range": "\u00b1 0.5; min 84.6 max 94.6 n=50"
+    "range": "\u00b1 1.1; min 70.6 max 96.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 16088,
@@ -3987,9 +3987,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.83,
+    "value": 79.11,
     "unit": "us",
-    "range": "\u00b1 0.6; min 69.7 max 87.5 n=50"
+    "range": "\u00b1 0.6; min 74.7 max 95.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 16088,
@@ -4007,9 +4007,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.85,
+    "value": 79.48,
     "unit": "us",
-    "range": "\u00b1 0.5; min 79.7 max 89.5 n=50"
+    "range": "\u00b1 0.8; min 66.9 max 95.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 16088,
@@ -4027,9 +4027,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 86.52,
+    "value": 82.77,
     "unit": "us",
-    "range": "\u00b1 0.5; min 82.2 max 90.8 n=50"
+    "range": "\u00b1 0.9; min 77.8 max 121.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 16088,
@@ -4047,9 +4047,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.5,
+    "value": 79.06,
     "unit": "us",
-    "range": "\u00b1 0.5; min 81.4 max 85.2 n=50"
+    "range": "\u00b1 0.6; min 66.2 max 94.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 2836,
@@ -4067,9 +4067,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.31,
+    "value": 80.45,
     "unit": "us",
-    "range": "\u00b1 0.4; min 69.4 max 92.2 n=50"
+    "range": "\u00b1 1.0; min 71.0 max 86.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 2836,
@@ -4080,16 +4080,16 @@
    "cycles": {
     "value": 52,
     "unit": "cycles",
-    "range": "median 52 max 71 n=16"
+    "range": "median 57 max 71 n=16"
    },
    "cycles_per_kop": {
     "value": 50.781,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.16,
+    "value": 82.0,
     "unit": "us",
-    "range": "\u00b1 0.5; min 70.4 max 88.2 n=50"
+    "range": "\u00b1 1.0; min 73.4 max 86.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 2948,
@@ -4100,16 +4100,16 @@
    "cycles": {
     "value": 52,
     "unit": "cycles",
-    "range": "median 56 max 74 n=16"
+    "range": "median 57 max 74 n=16"
    },
    "cycles_per_kop": {
     "value": 50.781,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.41,
+    "value": 89.98,
     "unit": "us",
-    "range": "\u00b1 0.4; min 77.6 max 88.7 n=50"
+    "range": "\u00b1 0.5; min 81.4 max 92.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 2948,
@@ -4127,9 +4127,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.24,
+    "value": 78.19,
     "unit": "us",
-    "range": "\u00b1 0.4; min 81.0 max 90.5 n=50"
+    "range": "\u00b1 0.6; min 65.3 max 81.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 4704,
@@ -4147,9 +4147,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.41,
+    "value": 78.42,
     "unit": "us",
-    "range": "\u00b1 0.5; min 81.3 max 87.3 n=50"
+    "range": "\u00b1 1.3; min 70.2 max 87.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 4704,
@@ -4158,18 +4158,18 @@
   },
   "layer_norm/1024x16/bfloat16/cols=1024": {
    "cycles": {
-    "value": 381,
+    "value": 380,
     "unit": "cycles",
     "range": "median 381 max 381 n=16"
    },
    "cycles_per_kop": {
-    "value": 62.012,
+    "value": 61.849,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 82.19,
+    "value": 78.48,
     "unit": "us",
-    "range": "\u00b1 0.5; min 78.1 max 86.3 n=50"
+    "range": "\u00b1 0.9; min 64.9 max 128.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 3868,
@@ -4187,9 +4187,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 92.42,
+    "value": 91.14,
     "unit": "us",
-    "range": "\u00b1 0.3; min 87.3 max 94.3 n=50"
+    "range": "\u00b1 1.9; min 73.5 max 125.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 9148,
@@ -4207,9 +4207,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 98.53,
+    "value": 94.79,
     "unit": "us",
-    "range": "\u00b1 0.5; min 97.4 max 106.8 n=50"
+    "range": "\u00b1 0.5; min 81.7 max 97.2 n=50"
    },
    "kernel_object_bytes": {
     "value": 9148,
@@ -4227,9 +4227,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.79,
+    "value": 79.18,
     "unit": "us",
-    "range": "\u00b1 0.4; min 72.2 max 88.2 n=50"
+    "range": "\u00b1 1.1; min 70.3 max 89.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 4168,
@@ -4247,9 +4247,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.76,
+    "value": 90.88,
     "unit": "us",
-    "range": "\u00b1 0.5; min 80.8 max 86.8 n=50"
+    "range": "\u00b1 1.0; min 77.6 max 180.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 4436,
@@ -4267,9 +4267,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 92.27,
+    "value": 89.08,
     "unit": "us",
-    "range": "\u00b1 0.4; min 86.8 max 100.4 n=50"
+    "range": "\u00b1 0.6; min 75.1 max 90.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 4436,
@@ -4287,9 +4287,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 92.19,
+    "value": 91.71,
     "unit": "us",
-    "range": "\u00b1 0.4; min 84.6 max 95.7 n=50"
+    "range": "\u00b1 0.7; min 75.5 max 97.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 4436,
@@ -4307,9 +4307,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.89,
+    "value": 82.84,
     "unit": "us",
-    "range": "\u00b1 0.3; min 79.9 max 90.8 n=50"
+    "range": "\u00b1 1.2; min 63.5 max 108.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 4436,
@@ -4327,9 +4327,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.84,
+    "value": 83.11,
     "unit": "us",
-    "range": "\u00b1 0.5; min 74.9 max 96.3 n=50"
+    "range": "\u00b1 0.8; min 69.9 max 101.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 2068,
@@ -4347,9 +4347,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 86.12,
+    "value": 80.87,
     "unit": "us",
-    "range": "\u00b1 0.4; min 84.3 max 95.9 n=50"
+    "range": "\u00b1 0.6; min 66.7 max 92.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 2068,
@@ -4360,16 +4360,16 @@
    "cycles": {
     "value": 75,
     "unit": "cycles",
-    "range": "median 81 max 82 n=16"
+    "range": "median 81 max 83 n=16"
    },
    "cycles_per_kop": {
     "value": 29.297,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 84.76,
+    "value": 82.25,
     "unit": "us",
-    "range": "\u00b1 0.4; min 78.0 max 89.3 n=50"
+    "range": "\u00b1 1.2; min 79.5 max 95.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 1424,
@@ -4387,9 +4387,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 103.74,
+    "value": 102.33,
     "unit": "us",
-    "range": "\u00b1 0.3; min 90.0 max 107.8 n=50"
+    "range": "\u00b1 1.4; min 100.1 max 152.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 4984,
@@ -4407,9 +4407,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 106.15,
+    "value": 103.14,
     "unit": "us",
-    "range": "\u00b1 0.3; min 93.7 max 109.9 n=50"
+    "range": "\u00b1 0.7; min 98.5 max 117.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 4888,
@@ -4427,9 +4427,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 91.93,
+    "value": 89.91,
     "unit": "us",
-    "range": "\u00b1 0.4; min 90.8 max 99.7 n=50"
+    "range": "\u00b1 0.7; min 88.0 max 103.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 19468,
@@ -4447,9 +4447,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 100.13,
+    "value": 96.68,
     "unit": "us",
-    "range": "\u00b1 0.4; min 91.5 max 105.1 n=50"
+    "range": "\u00b1 0.8; min 79.4 max 111.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 40204,
@@ -4467,9 +4467,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.64,
+    "value": 78.38,
     "unit": "us",
-    "range": "\u00b1 0.4; min 73.9 max 86.3 n=50"
+    "range": "\u00b1 0.8; min 65.2 max 96.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 19468,
@@ -4487,9 +4487,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 98.0,
+    "value": 94.06,
     "unit": "us",
-    "range": "\u00b1 0.5; min 90.6 max 104.2 n=50"
+    "range": "\u00b1 0.7; min 89.9 max 104.8 n=50"
    },
    "kernel_object_bytes": {
     "value": 2588,
@@ -4500,16 +4500,16 @@
    "cycles": {
     "value": 78,
     "unit": "cycles",
-    "range": "median 78 max 129 n=16"
+    "range": "median 88 max 129 n=16"
    },
    "cycles_per_kop": {
     "value": 38.086,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 92.25,
+    "value": 88.4,
     "unit": "us",
-    "range": "\u00b1 0.2; min 88.9 max 96.7 n=50"
+    "range": "\u00b1 0.9; min 71.7 max 101.5 n=50"
    },
    "kernel_object_bytes": {
     "value": 2588,
@@ -4520,16 +4520,16 @@
    "cycles": {
     "value": 46,
     "unit": "cycles",
-    "range": "median 46 max 65 n=16"
+    "range": "median 50 max 65 n=16"
    },
    "cycles_per_kop": {
     "value": 44.922,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.16,
+    "value": 79.01,
     "unit": "us",
-    "range": "\u00b1 0.6; min 71.4 max 87.2 n=50"
+    "range": "\u00b1 0.7; min 66.7 max 87.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 2588,
@@ -4547,9 +4547,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.81,
+    "value": 78.88,
     "unit": "us",
-    "range": "\u00b1 0.4; min 77.3 max 90.0 n=50"
+    "range": "\u00b1 0.8; min 65.6 max 93.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 2540,
@@ -4560,16 +4560,16 @@
    "cycles": {
     "value": 78,
     "unit": "cycles",
-    "range": "median 78 max 132 n=16"
+    "range": "median 88 max 132 n=16"
    },
    "cycles_per_kop": {
     "value": 38.086,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 92.07,
+    "value": 89.35,
     "unit": "us",
-    "range": "\u00b1 0.4; min 91.1 max 96.1 n=50"
+    "range": "\u00b1 0.8; min 81.2 max 104.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 2668,
@@ -4587,9 +4587,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.67,
+    "value": 78.95,
     "unit": "us",
-    "range": "\u00b1 0.4; min 71.8 max 85.9 n=50"
+    "range": "\u00b1 0.6; min 65.3 max 83.4 n=50"
    },
    "kernel_object_bytes": {
     "value": 2620,
@@ -4607,9 +4607,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 96.98,
+    "value": 93.7,
     "unit": "us",
-    "range": "\u00b1 0.5; min 96.0 max 100.5 n=50"
+    "range": "\u00b1 0.5; min 89.4 max 101.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 50000,
@@ -4620,16 +4620,16 @@
    "cycles": {
     "value": 55,
     "unit": "cycles",
-    "range": "median 55 max 56 n=16"
+    "range": "median 55 max 55 n=16"
    },
    "cycles_per_kop": {
     "value": 286.458,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 81.77,
+    "value": 78.36,
     "unit": "us",
-    "range": "\u00b1 0.7; min 72.3 max 86.9 n=50"
+    "range": "\u00b1 0.9; min 70.9 max 81.1 n=50"
    },
    "kernel_object_bytes": {
     "value": 4168,
@@ -4643,9 +4643,9 @@
     "range": "median 880 max 880 n=16"
    },
    "npu_us": {
-    "value": 105.4,
+    "value": 106.22,
     "unit": "us",
-    "range": "\u00b1 0.6; min 92.1 max 117.8 n=50"
+    "range": "\u00b1 1.0; min 93.4 max 118.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 2692,
@@ -4656,16 +4656,16 @@
    "cycles": {
     "value": 9785,
     "unit": "cycles",
-    "range": "median 9801 max 10302 n=4; init[2] min 134"
+    "range": "median 9800 max 10301 n=4; init[2] min 134"
    },
    "cycles_per_kop": {
     "value": 18.663,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 104.04,
+    "value": 101.16,
     "unit": "us",
-    "range": "\u00b1 0.4; min 102.8 max 108.7 n=50"
+    "range": "\u00b1 0.7; min 88.0 max 103.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 33688,
@@ -4683,9 +4683,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 107.41,
+    "value": 103.89,
     "unit": "us",
-    "range": "\u00b1 0.4; min 96.3 max 112.3 n=50"
+    "range": "\u00b1 0.5; min 101.5 max 118.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 32972,
@@ -4703,9 +4703,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 103.56,
+    "value": 101.29,
     "unit": "us",
-    "range": "\u00b1 0.4; min 98.6 max 109.8 n=50"
+    "range": "\u00b1 0.7; min 94.1 max 106.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 33688,
@@ -4716,16 +4716,16 @@
    "cycles": {
     "value": 1619,
     "unit": "cycles",
-    "range": "median 1622 max 1628 n=4; init[2] min 16"
+    "range": "median 1621 max 1624 n=4; init[2] min 16"
    },
    "cycles_per_kop": {
     "value": 372.013,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 83.78,
+    "value": 83.39,
     "unit": "us",
-    "range": "\u00b1 0.5; min 80.4 max 89.2 n=50"
+    "range": "\u00b1 1.1; min 71.7 max 115.7 n=50"
    },
    "kernel_object_bytes": {
     "value": 41948,
@@ -4743,9 +4743,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 85.22,
+    "value": 81.78,
     "unit": "us",
-    "range": "\u00b1 0.5; min 82.6 max 88.4 n=50"
+    "range": "\u00b1 1.2; min 69.0 max 140.6 n=50"
    },
    "kernel_object_bytes": {
     "value": 41948,
@@ -4754,18 +4754,18 @@
   },
   "mha_softmax/4096x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate": {
    "cycles": {
-    "value": 16551,
+    "value": 16552,
     "unit": "cycles",
-    "range": "median 16560 max 16568 n=4; init[2] min 16"
+    "range": "median 16563 max 16568 n=4; init[2] min 16"
    },
    "cycles_per_kop": {
-    "value": 3803.079,
+    "value": 3803.309,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 126.82,
+    "value": 114.56,
     "unit": "us",
-    "range": "\u00b1 3.7; min 113.7 max 186.0 n=50"
+    "range": "\u00b1 0.8; min 101.5 max 127.0 n=50"
    },
    "kernel_object_bytes": {
     "value": 42352,
@@ -4776,16 +4776,16 @@
    "cycles": {
     "value": 1265,
     "unit": "cycles",
-    "range": "median 1387 max 1393 n=4; init[0] min 262"
+    "range": "median 1376 max 1393 n=4; init[0] min 262"
    },
    "cycles_per_kop": {
     "value": 19.302,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 87.1,
+    "value": 82.44,
     "unit": "us",
-    "range": "\u00b1 0.5; min 74.2 max 91.4 n=50"
+    "range": "\u00b1 0.7; min 69.2 max 103.3 n=50"
    },
    "kernel_object_bytes": {
     "value": 11304,
@@ -4803,9 +4803,9 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 93.73,
+    "value": 90.3,
     "unit": "us",
-    "range": "\u00b1 1.1; min 80.7 max 110.7 n=50"
+    "range": "\u00b1 1.9; min 76.6 max 100.9 n=50"
    },
    "kernel_object_bytes": {
     "value": 13328,
