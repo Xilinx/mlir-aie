@@ -26,11 +26,13 @@ maintaining a slower copy of a kernel that already exists.
 | multiply by a scalar | `kernels.scale(tile_size, dtype, vectorized=True)` | `dtype` ∈ `int16`, `int32`; see signature note below |
 | element-wise `a+b` / `a*b` | `kernels.add(...)` / `kernels.mul(...)` | bf16, `tile_size` fixed at 1024; `add` also takes `dtype=np.int8` (ONNX QLinearAdd on power-of-two scales, `tile_size` a multiple of 32) |
 | ReLU | `kernels.relu(tile_size)` | bf16, `tile_size` a multiple of 32 |
-| softmax / gelu / silu / swiglu / exp | `kernels.softmax`, `.gelu`, `.silu`, `.swiglu`, `.bf16_exp` | bf16, LUT-based |
+| softmax | `kernels.softmax(tile_size)` | bf16 or float32 in, bf16 out; `tile_size` a multiple of 32, trailing size |
+| gelu / silu | `kernels.gelu(tile_size)`, `.silu(tile_size)`, `.gelu_erf(tile_size)` | bf16, any whole-vector `tile_size` (multiple of 16 on AIE2, 32 on AIE2P), trailing size; AIE2P's `vtanh` unless `use_lut=True`; `gelu_erf` is exact GELU, `tile_size` a multiple of 32 |
+| swiglu / exp | `kernels.swiglu`, `.bf16_exp` | bf16, `tile_size` fixed at 1024, LUT-based |
 | sum / min / max over a tile | `kernels.reduce_add`, `.reduce_min`, `.reduce_max` | |
 | running max | `kernels.compute_max(dtype)` | |
 | matrix multiply `C += A*B` | `kernels.mm(dim_m, dim_k, dim_n, input_dtype, output_dtype)` | see MMUL geometry below |
-| matrix–vector `c += A*b` | `kernels.mv(dim_m, dim_k, ...)` | int16 in → int32 out only |
+| matrix–vector `c += A*b` | `kernels.mv(dim_m, dim_k, input_dtype, output_dtype)` | int16 in → int32 out, or bf16 → bf16 |
 | cascade-accumulated matmul | `kernels.cascade_mm(...)` | pairs with `CascadeFlow` |
 | conv2d 1×1 / 3×3 / skip / batchnorm | `kernels.conv2dk1`, `.conv2dk3`, `.conv2dk1_skip`, `.bn_*` | |
 | RGBA↔gray/hue, threshold, filter2d, bitwise | `kernels.rgba2gray`, `.threshold`, `.filter2d`, … | vision ops |
@@ -104,6 +106,8 @@ directly in the function signature, rather than closing over module-level consta
 
 ```python
 import numpy as np
+from ml_dtypes import bfloat16
+
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_parallel
@@ -220,8 +224,8 @@ produces silently wrong output, not an error.
 
 Write your own kernel (and your own topology) when:
 
-- the dtype or tile size you need isn't in the supported set above — e.g. `kernels.add` is
-  bf16-only with a fixed 1024 tile, so an int8 add needs a hand-written kernel;
+- the dtype or tile size you need isn't in the supported set above, e.g. `kernels.mul` is
+  bf16-only with a fixed 1024 tile;
 - the op fuses several stages that the library exposes only separately, and the intermediate
   would otherwise round-trip through L1 for no reason;
 - the access pattern is a stencil/sliding window or anything where the "one tile in, one tile
