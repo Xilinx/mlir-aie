@@ -295,7 +295,7 @@ class XRTHostRuntime(HostRuntime):
         """
         # Overload the function in the generic class so we can use xrt-specific handling of elf files.
         ext = insts_path.suffix.lower()
-        if ext == ".elf" and hasattr(pyxrt, "module"):
+        if ext == ".elf":
             elf = pyxrt.elf(str(insts_path))
             return pyxrt.module(elf)
         else:
@@ -345,7 +345,7 @@ class XRTHostRuntime(HostRuntime):
         kernel_name = self._kernel_name(kernel_name, kernel_args)
 
         insts = self.read_insts(insts_path) if insts_path is not None else None
-        if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
+        if isinstance(insts, pyxrt.module):
             kernel = pyxrt.ext.kernel(context, insts, kernel_name)
         else:
             kernel = pyxrt.kernel(context, kernel_name)
@@ -485,9 +485,7 @@ class XRTHostRuntime(HostRuntime):
                 dispatch_storage.to_device(0, insts_bytes)
                 insts_bo = dispatch_storage.handle(0, insts_bytes)
             else:
-                is_module = hasattr(pyxrt, "module") and isinstance(
-                    kernel_handle.insts, pyxrt.module
-                )
+                is_module = isinstance(kernel_handle.insts, pyxrt.module)
                 if not is_module:
                     assert kernel_handle.insts is not None
                     insts_bytes = kernel_handle.insts.nbytes
@@ -1094,7 +1092,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 else None
             )
             insts_bo = None
-            is_module = insts is not None and not isinstance(insts, np.ndarray)
+            is_module = isinstance(insts, pyxrt.module)
             kernel_key = (kernel_name, insts_file) if is_module else kernel_name
             if kernel_key not in entry["kernels"]:
                 kernel = (

@@ -45,11 +45,9 @@ MAX_CHUNKS = 8
 
 @pytest.fixture
 def runtime():
-    rt = CachedXRTRuntime()
-    old = aie.utils.DefaultNPURuntime
-    aie.utils.DefaultNPURuntime = rt
+    rt = aie.utils.DefaultNPURuntime
+    assert isinstance(rt, CachedXRTRuntime)
     yield rt
-    aie.utils.DefaultNPURuntime = old
     rt.cleanup()
 
 
@@ -139,10 +137,9 @@ def test_loads_of_one_kernel_share_a_run(runtime):
     design = _design(4, True)
     a = iron.tensor(np.arange(N, dtype=np.int32), dtype=np.int32)
     b = iron.zeros((N,), dtype=np.int32)
-    design(a, b)
-    kernel = design._kernel_cache[next(iter(design._kernel_cache))]
-    first, second = runtime.load(kernel), runtime.load(kernel)
-    assert first.kernel_run is second.kernel_run
+    first, _ = design(a, b)
+    second, _ = design(a, b)
+    assert first is not second and first.kernel_run is second.kernel_run
     run = first.kernel_run.run
     assert run is not None
     design(a, b)
@@ -180,9 +177,7 @@ def test_run_dropped_after_a_failed_dispatch(runtime, full_elf):
     x = np.arange(N, dtype=np.int32)
     a = iron.tensor(x, dtype=np.int32)
     b = iron.zeros((N,), dtype=np.int32)
-    design(a, b)
-    kernel = design._kernel_cache[next(iter(design._kernel_cache))]
-    handle = runtime.load(kernel)
+    handle, _ = design(a, b)
     with pytest.raises(TypeError):
         handle.kernel_run.dispatch([object()])
     assert handle.kernel_run.run is None
