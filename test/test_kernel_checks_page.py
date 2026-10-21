@@ -149,6 +149,42 @@ assert.equal(axisTitle('Cycles per call', 'cycles'), 'Cycles per call · ↓ bet
 """)
 
 
+def test_timing_labels_name_the_statistic_the_checks_take(page):
+    checks = ROOT / "utils/component_checks"
+    mobilenet = re.search(
+        r'"--iters", type=int, default=(\d+)',
+        (checks / "sa_placer_hw.py").read_text(encoding="utf-8"),
+    )[1]
+    n_iters = {
+        name: re.search(
+            r"^N_ITERS = (\d+)$",
+            (checks / f"{name}.py").read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )[1]
+        for name in ("yolo26n_hw", "llama_chain_hw")
+    }
+    page(f"""
+const trendOf = id => BANDS.find(b => b.id === id && b.trend).trend;
+// MobileNet takes the fastest of its timed calls; so does yolo26n.py --time.
+assert.ok(COMPONENT_METRICS.us_per_image.includes('the fastest of {mobilenet}'));
+assert.ok(COMPONENT_METRICS.e2e_us_per_image.includes('the fastest of {mobilenet}'));
+assert.ok(trendOf('sa-placer-hw').every(t => !/per image/.test(t.axis) || t.axis.includes('fastest')));
+assert.ok(COMPONENT_METRICS.us_per_image_b1.includes('the fastest of {n_iters["yolo26n_hw"]}'));
+assert.ok(trendOf('yolo26n-hw')[0].axis.includes('fastest of {n_iters["yolo26n_hw"]}'));
+assert.ok(!Object.values(COMPONENT_METRICS).some(about => /median of {n_iters["yolo26n_hw"]}\b/.test(about) && about.includes('yolo')));
+assert.ok(COMPONENT_METRICS.tok_s.includes('the median of {n_iters["llama_chain_hw"]}'));
+assert.ok(trendOf('llama-chain-hw')[1].axis.includes('median of {n_iters["llama_chain_hw"]}'));
+// The host clock is never called NPU time.
+assert.ok(!Object.values(COMPONENT_METRICS).some(about => /NPU time/.test(about)));
+// Every timing tab's axis names its statistic.
+for (const band of BANDS.filter(b => b.trend)) {{
+  for (const t of band.trend) {{
+    if (/\((µs|ms|s)\b/.test(t.axis)) assert.match(t.axis, /fastest|median|mean|one (run|compile)/, t.axis);
+  }}
+}}
+""")
+
+
 def test_narrow_screens_hide_no_kernels_table_column():
     # Each NPU's header spans its columns; hiding one slides the headers.
     css = (
@@ -247,7 +283,7 @@ assert.deepEqual(lines.map(d => d.borderDash.length > 0), [false, true, false]);
 assert.equal(lines[2].yAxisID, 'y1');
 assert.equal(chart.options.scales.y1.position, 'right');
 // The left axis says what it charts and which way is better.
-assert.equal(chart.options.scales.y.title.text, 'Cycles · ↓ better');
+assert.equal(chart.options.scales.y.title.text, 'Cycles per call (fastest traced call) · ↓ better');
 assert.equal(chart.options.scales.y1.title.display, false);
 const cb = chart.options.plugins.tooltip.callbacks;
 assert.deepEqual(cb.title([{ dataIndex: 5 }]), ['1970-01-01 00:05 UTC']);
@@ -840,7 +876,7 @@ assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['64/bfloat1
 const tips = config.options.plugins.tooltip.callbacks;
 assert.equal(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }), '1024/bfloat16: 1,100');
 assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
-assert.equal(config.options.scales.y.title.text, 'Cycles per call · ↓ better');
+assert.equal(config.options.scales.y.title.text, 'Cycles per call (fastest traced call) · ↓ better');
 // 50 and 1,100 differ over ten times: a log axis, so both lines' moves show.
 assert.equal(config.options.scales.y.type, 'logarithmic');
 assert.equal(kernelTrendConfig(db, 'npu2', 'softmax', 'cycles').options.scales.y.type, 'linear');
@@ -992,7 +1028,7 @@ assert.ok(!card.text.includes('power mode'));
 // A card per fixture; a nonzero failed-seeds count is red.
 assert.deepEqual(card.cards.map(c => c.kase), ['test_sa_effort', 'mobilenet']);
 const [, grid] = card.cards[1].children;
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Failed seeds', 'Placement cost', 'CPU time', label('peak_rss_mb_max')]);
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Failed seeds', 'SA final cost', 'CPU time', label('peak_rss_mb_max')]);
 assert.equal(grid.children[0].children[1].className, 'glance-row solo');
 assert.equal(grid.children[0].children[1].children[0].className, 'vals worse');
 assert.equal(grid.children[2].text, 'CPU timemean—max21,000 ms');
@@ -1043,13 +1079,13 @@ const card = componentBand(sweep, sweepIndex, after, NOW, before);
 assert.equal(one(card, n => n.className === 'headline').text, '1 seed failed: mobilenet/seed4.');
 // The worst cost moved 10%, past its 1%; CPU time 5%, within its 25%.
 const moves = one(card, n => n.className === 'moves');
-assert.equal(moves.text, 'Since 1 Oct:mobilenet cost (worst) +10.0%mobilenet cost (mean) +3.3%');
+assert.equal(moves.text, 'Since 1 Oct:mobilenet SA final cost (worst) +10.0%mobilenet SA final cost (mean) +3.3%');
 const [header, grid] = card.cards[0].children;
 assert.ok(header.text.includes('utils/component_checks/fixtures/mobilenet.mlir'));
 assert.ok(header.text.includes('4 seeds'));
 assert.equal(header.children.at(-1).text, 'worst ÷ mean cost 1.06×');
 const cost = grid.children[1];
-assert.equal(cost.text, 'Placement costmean103.3 +3.3%worst110 +10.0%');
+assert.equal(cost.text, 'SA final costmean103.3 +3.3%worst110 +10.0%');
 assert.deepEqual(all(cost, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg worse strong', 'chg worse strong']);
 assert.equal(all(grid.children[2], n => /^chg /.test(n.className || ''))[0].className, 'chg flat');
 assert.equal(cost.href, '#view=placement&metric=final_cost_mean');
@@ -1112,7 +1148,7 @@ def test_a_passing_check_says_so_and_how_to_run_it(page):
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(card.className, 'verdict ok');
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every run passed. Seed 3 streams at 92.2 µs per image; one image takes 295.7 µs.');
+             "Every run passed. Seed 3 streams at 92.2 µs per image; one image's dispatch takes 295.7 µs.");
 const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open);
 // Shown: the verdict, what moved, and the trend chart's slot. Behind
@@ -1140,7 +1176,7 @@ def test_hardware_seed_cards_show_each_batch_against_the_nightly_before(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(one(card, n => n.className === 'moves').text,
-             'Since 1 Oct:seed 3, batch 16, default effort streaming +8.7%seed 3, batch 16, default effort per image +7.0%');
+             'Since 1 Oct:seed 3, batch 16, default effort streaming +8.7%seed 3, batch 16, default effort dispatch / image +7.0%');
 assert.deepEqual(card.cards.map(c => c.kase), ['mobilenet/seed=3/effort=default', 'mobilenet/seed=3/effort=full', 'mobilenet/seed=7/effort=default', 'mobilenet/seed=7/effort=full']);
 const [header, grid] = card.cards[0].children;
 assert.equal(header.children[0].text, "seed 3the design's default");
@@ -1148,10 +1184,10 @@ assert.equal(header.children[0].text, "seed 3the design's default");
 assert.equal(header.children[1].text, 'placement 0123456789ab');
 assert.equal(header.children[1].href, '#view=placement&metric=placement_cost');
 assert.equal(header.children.at(-1).text, 'b16 ÷ b1 per image 0.35×');
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Per image', 'Streaming', 'End-to-end / image']);
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Dispatch / image', 'Streaming', 'End-to-end / image']);
 // A lane per batch, colored past the threshold only; streaming has no b1.
 const perImage = grid.children[0];
-assert.equal(perImage.text, 'Per imageb1295.7 µs 0.0%b16104.9 µs +7.0%');
+assert.equal(perImage.text, 'Dispatch / imageb1295.7 µs 0.0%b16104.9 µs +7.0%');
 assert.deepEqual(perImage.children.slice(1, 3).map(r => r.children[0].className), ['npu n-series-1', 'npu n-series-2']);
 assert.deepEqual(all(perImage, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg flat', 'chg worse']);
 assert.equal(grid.children[1].children.length, 3);
@@ -1210,7 +1246,7 @@ assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: see
 assert.ok(card.children.some(c => c.className === 'repro'));
 const seed7default = card.cards.find(c => c.kase === 'mobilenet/seed=7/effort=default');
 const lanes = seed7default.children[1].children[0];
-assert.equal(lanes.text, 'Per imageb1295.7 µs 0.0%b16failed');
+assert.equal(lanes.text, 'Dispatch / imageb1295.7 µs 0.0%b16failed');
 // No ratio from the failed batch's number of the night before.
 assert.ok(!seed7default.children[0].text.includes('÷'));
 const seed3default = card.cards.find(c => c.kase === 'mobilenet/seed=3/effort=default');
@@ -1319,23 +1355,27 @@ def test_the_llama_card_reads_decode_rate_higher_as_better(page):
 assert.equal(llama.section, 'performance');
 const card = componentBand(llama, llamaIndex, llamaAfter, NOW, llamaBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every decoded token matched the oracle. 16 layers decode at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
+             'Every decoded token matched the oracle. 16 layers: a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
+// generate.py's end-to-end decode rate leads when the night has it; the dispatch rate follows.
+assert.equal(llamaSummary({ [LLAMA]: { ...llamaAfter.rows[LLAMA], decode_tok_s: { value: 4.2, unit: 'tok/s' } } }),
+             ' 16 layers decode at 4.2 tok/s end to end; a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
 // Fewer tokens per second is the regression; time per token repeats it and is not listed twice.
-assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:persist_grow, N 16 tokens / s −7.0%');
+assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:persist_grow, N 16 dispatch rate −7.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [LLAMA]);
 const [header, grid] = card.cards[0].children;
 assert.equal(header.text, '16 layerspersistent decode, 4 tokens per dispatchcompute-bound');
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Tokens / s', 'Time / token', 'Over the DMA floor', 'Tokens verified',
-  'Compiled sizes', 'Cores']);
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Decode tokens / s', 'Dispatch rate', 'Dispatch / token', 'Over the DMA floor',
+  'Tokens verified', 'Compiled sizes', 'Cores']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);
 // Down is worse for tokens per second, up is worse for time per token.
-assert.deepEqual(chip(grid.children[0]), ['chg worse']);
 assert.deepEqual(chip(grid.children[1]), ['chg worse']);
-assert.equal(grid.children[0].text, 'Tokens / s4.37 tok/s −7.0%');
-assert.equal(grid.children[4].text, 'Compiled sizesELF20.5 MiB ±0.0 KiBimage237.7 KiB ±0.0 KiB');
+assert.deepEqual(chip(grid.children[2]), ['chg worse']);
+assert.equal(grid.children[0].text, 'Decode tokens / s—');
+assert.equal(grid.children[1].text, 'Dispatch rate4.37 tok/s −7.0%');
+assert.equal(grid.children[5].text, 'Compiled sizesELF20.5 MiB ±0.0 KiBimage237.7 KiB ±0.0 KiB');
 assert.deepEqual(card.cards[0].children[2].children.filter(r => r.className === 'stage-row').slice(0, 2).map(r => r.text),
   ['cold60.5 s 0.0% · 2,502.4 MB peak', 'warm1.2 s 0.0% · 410 MB peak']);
-assert.equal(grid.children[0].href, '#view=performance&metric=tok_s');
+assert.equal(grid.children[1].href, '#view=performance&metric=tok_s');
 fillSparks(card.cards, collect(historiesOf('llama-chain-hw', [llamaBefore, llamaAfter])));
 assert.deepEqual(['compile_s', 'compile_s_warm'].map(m => card.cards[0].sparks.get(m).lines.map(([color, , dashed]) => [color, dashed])),
   [[['muted', false]], [['muted', true]]]);
@@ -1355,7 +1395,7 @@ const index = { target: 'llama-chain-hw', runs: [night('6', llamaBefore.date, 't
 const card = componentBand(llama, index, failedAt, NOW, llamaBefore);
 assert.equal(card.className, 'verdict bad');
 assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: the 16-layer decode.');
-const verified = card.cards[0].children[1].children[3];
+const verified = card.cards[0].children[1].children[4];
 assert.equal(verified.children[1].children[0].className, 'vals worse');
 const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open && card.children.includes(repro));
@@ -1403,17 +1443,17 @@ def test_the_yolo26n_card_shows_each_batch_and_what_it_verified(page):
 assert.equal(yolo.section, 'performance');
 const card = componentBand(yolo, yoloIndex, yoloAfter, NOW, yoloBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every image matched the oracle. One image takes 5,400 µs (185.19 fps) at batch 1, 3,000 µs at batch 8.');
+             'Every image matched the oracle. End to end, one image takes 5,400 µs (185.19 fps) at batch 1, 3,000 µs at batch 8.');
 // The frame rate repeats the time per image and is not listed twice.
-assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n per image (b1) +8.0%');
+assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n end-to-end / image (b1) +8.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [YOLO]);
 const [header, grid] = card.cards[0].children;
 assert.equal(header.text, '640 × 6408 COCO imagesb8 ÷ b1 per image 0.56×');
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Per image', 'Images / s', 'Images verified', 'Match onnxruntime',
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['End-to-end / image', 'Images / s', 'Images verified', 'Match onnxruntime',
   'Compiled size', 'Cores']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);
 // A lane per batch; up is worse for time per image, down for images per second.
-assert.equal(grid.children[0].text, 'Per imageb15,400 µs +8.0%b83,000 µs 0.0%');
+assert.equal(grid.children[0].text, 'End-to-end / imageb15,400 µs +8.0%b83,000 µs 0.0%');
 assert.deepEqual(chip(grid.children[0]), ['chg worse', 'chg flat']);
 assert.equal(grid.children[1].text, 'Images / sb1185.19 fps −7.4%b8333.33 fps 0.0%');
 assert.deepEqual(chip(grid.children[1]), ['chg worse', 'chg flat']);
@@ -1430,10 +1470,10 @@ assert.equal(all(card, n => n.className === 'charts').length, 0);
 // A run that timed batch 1 alone says so, and its card has no ratio.
 const b1Only = yoloRecord('7', yoloAfter.date, 78365.1);
 for (const m of ['us_per_image_b8', 'fps_b8']) delete b1Only.rows[YOLO][m];
-assert.equal(yoloSummary(b1Only.rows), ' One image takes 78,365.1 µs (12.76 fps) at batch 1.');
+assert.equal(yoloSummary(b1Only.rows), ' End to end, one image takes 78,365.1 µs (12.76 fps) at batch 1.');
 const alone = componentBand(yolo, yoloIndex, b1Only, NOW).cards[0];
 assert.ok(!alone.children[0].text.includes('÷'));
-assert.equal(alone.children[1].children[0].text, 'Per imageb178,365.1 µsb8—');
+assert.equal(alone.children[1].children[0].text, 'End-to-end / imageb178,365.1 µsb8—');
 // A run that was not timed has no sentence to say.
 const untimed = yoloRecord('7', yoloAfter.date, 5000);
 delete untimed.rows[YOLO].us_per_image_b1;
@@ -1473,9 +1513,9 @@ const llamaData = collect(historiesOf('llama-chain-hw', [llamaBefore, { ...llama
 // A tab with no history is left out; generate's rate is a second line beside the timed decode's.
 const box = trendBox(llamaData, llama.trend, '');
 assert.deepEqual(box.children[0].children[0].children.map(b => b.textContent),
-                 ['Tokens / s', 'Time / token', 'Compile time', 'Compile memory', 'Compile stages']);
+                 ['Tokens / s', 'Dispatch / token', 'Compile time', 'Compile memory', 'Compile stages']);
 const rate = trendConfig(llamaData, llama.trend[0]);
-assert.deepEqual(rate.data.datasets.map(d => [d.label, d.data]), [['timed decode', [4.7, 4.37]], ['generate', [null, 4.2]]]);
+assert.deepEqual(rate.data.datasets.map(d => [d.label, d.data]), [['decode (generate.py)', [null, 4.2]], ['dispatch rate', [4.7, 4.37]]]);
 // One line needs no legend; two do.
 assert.equal(trendConfig(llamaData, llama.trend[1]).options.plugins.legend.display, false);
 assert.equal(rate.options.plugins.legend.display, true);
@@ -1488,8 +1528,8 @@ assert.equal(stages.options.scales.y.type, 'logarithmic');
 const yoloData = collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter]));
 const perImage = trendConfig(yoloData, yolo.trend[0]);
 assert.deepEqual(perImage.data.datasets.map(d => [d.label, d.data]), [['batch 1', [5000, 5400]], ['batch 8', [3000, 3000]]]);
-assert.equal(perImage.options.scales.y.title.text, 'Time per image (µs) · ↓ better');
-assert.equal(trendConfig(yoloData, yolo.trend[1]).options.scales.y.title.text, 'Images per second · ↑ better');
+assert.equal(perImage.options.scales.y.title.text, 'End-to-end time per image (µs, fastest of 5) · ↓ better');
+assert.equal(trendConfig(yoloData, yolo.trend[1]).options.scales.y.title.text, 'Images per second (from the fastest of 5) · ↑ better');
 assert.equal(perImage.options.scales.y.type, 'linear');
 const yoloBox = trendBox(yoloData, yolo.trend, 'fps_b8');
 assert.equal(yoloBox.metric(), 'fps_b1');
@@ -1570,7 +1610,7 @@ assert.equal(one(card, n => n.className === 'headline').text,
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:nothing moved past its threshold.');
 assert.equal(card.cards.length, 1);
 const [, grid] = card.cards[0].children;
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Placement cost', 'Compile time (cold)', 'Placement', 'Runs', 'Failed runs']);
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Placement cost', 'Compile time (cold)', 'Placement', 'Runs', 'Failed seeds']);
 assert.equal(grid.children[0].text, 'Placement costseed 3 (default)303 0.0%seed 3 (full)403 0.0%seed 7 (default)307 0.0%seed 7 (full)407 0.0%');
 assert.equal(grid.children[2].text, 'Placementseed 3 (default)0123456789abseed 3 (full)0123456789abseed 7 (default)0123456789abseed 7 (full)0123456789ab');
 assert.equal(grid.children[3].text, 'Runsseed 3 (default)2 of 2 passedseed 3 (full)2 of 2 passedseed 7 (default)2 of 2 passedseed 7 (full)2 of 2 passed');
@@ -1684,7 +1724,7 @@ const index = { target: 'allocator', runs: [night('6', before.date, null), night
 const card = componentBand(allocator, index, after, NOW, before);
 assert.equal(one(card, n => n.className === 'headline').text, '2 properties failed: bank-sharing, legality.');
 // Sharing moved 4.1%, past its threshold.
-assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:allocator bank sharing +4.1%');
+assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:allocator bank sharing (0–1) +4.1%');
 // One repro line however many properties failed: the script has no per-property switch.
 assert.deepEqual(one(card, n => n.tag === 'pre').text.split('\\n'), [
   'git checkout abcdef123456',
@@ -1699,7 +1739,7 @@ assert.equal(grid.children[2].text, 'Qualitycrossings0sharing0.253 +4.1%');
 // The counts both sections chart link to this one's trends.
 assert.equal(grid.children[0].href, '#view=placement&metric=failed_properties');
 const quiet = componentBand(allocator, { target: 'allocator', runs: [night('6', before.date, null)] }, before, NOW);
-assert.ok(one(quiet, n => n.className === 'headline').text.endsWith('0.243 bank pairs shared per design; the run took 103 s.'));
+assert.ok(one(quiet, n => n.className === 'headline').text.endsWith('Bank sharing 0.243 (0 the most even split); the run took 103 s.'));
 assert.equal(plural(2, 'property'), '2 properties');
 assert.equal(plural(2, 'day'), '2 days');
 """)
@@ -1808,7 +1848,7 @@ const before = fullOnly(hwBefore), after = fullOnly(hwAfter);
 assert.equal(chartedEffort(Object.keys(after.rows)), 'full');
 assert.equal(chartedEffort(Object.keys(hwAfter.rows)), 'default');
 const summary = hardwareSummary(after.rows);
-assert.ok(summary.includes('one image takes 295.7 µs') && summary.endsWith('(full effort).'), summary);
+assert.ok(summary.includes("one image's dispatch takes 295.7 µs") && summary.endsWith('(full effort).'), summary);
 // The batch scaling chart draws the full-effort curves.
 componentBand(hw, hwIndex, after, NOW, before);
 const seed3 = chart.data.datasets.find(d => d.label === 'seed 3');
@@ -2076,7 +2116,7 @@ assert.equal(config.options.scales.y.type, 'logarithmic');
 assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[1], dataIndex: 1, raw: 101.95 }),
              'batch 16: 102 µs (seeds 99 µs to 104.9 µs)');
 // Both axes say what they are, the y axis with its unit.
-assert.equal(config.options.scales.y.title.text, 'Time per image (µs) · ↓ better');
+assert.equal(config.options.scales.y.title.text, 'Dispatch time per image (µs, fastest of 20) · ↓ better');
 assert.equal(config.options.scales.x.title.text, 'Nightly run');
 // Hover names the run's commit; a click opens it.
 const tips = config.options.plugins.tooltip.callbacks;
@@ -2088,19 +2128,19 @@ assert.equal(commitLine({ id: '0123456789abcdef', message: 'x'.repeat(100) + '\\
 // Compile time, seconds, on a plain axis, cold beside warm, each shaded over the seeds.
 const compile = trendConfig(data, COMPILE_TABS[0]);
 assert.equal(compile.options.scales.y.type, 'linear');
-assert.equal(compile.options.scales.y.title.text, 'Compile time (s) · ↓ better');
+assert.equal(compile.options.scales.y.title.text, 'Compile time (s, one compile each) · ↓ better');
 assert.deepEqual(compile.data.datasets.filter(d => !d.band).map(d => d.label), ['cold', 'warm']);
 // Compile peak memory, MB, also on a plain axis.
 const memory = trendConfig(data, COMPILE_TABS[1]);
 assert.equal(memory.options.scales.y.type, 'linear');
-assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MB) · ↓ better');
+assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MB, one compile each) · ↓ better');
 // The box: a switch for the tab, drawn once on screen, redrawn on a switch.
 // A link to a warm metric opens the tab that draws it; a tab with no history is left out.
 const box = trendBox(data, hw.trend, 'compile_s_warm');
 assert.equal(box.metric(), 'compile_s');
 const seg = box.children[0].children[0];
 assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s', 'compile_peak_rss_mb']);
-assert.deepEqual(seg.children.map(b => b.textContent), ['Per image', 'Streaming', 'End-to-end / image', 'Compile time', 'Compile memory']);
+assert.deepEqual(seg.children.map(b => b.textContent), ['Dispatch / image', 'Streaming', 'End-to-end / image', 'Compile time', 'Compile memory']);
 assert.equal(chart.options.scales.y.type, 'linear');
 seg.children[0].on.click();
 assert.equal(box.metric(), 'us_per_image');
@@ -2131,7 +2171,7 @@ assert.deepEqual(drawn.legend, ['batch 1', 'batch 16']);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polyline')).length, 2);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polygon')).length, 2);
 // The axis titles, as the Chart.js chart has them.
-assert.ok(drawn.svg.some(p => p.includes('rotate(-90)') && p.includes('Time per image (µs) · ↓ better')));
+assert.ok(drawn.svg.some(p => p.includes('rotate(-90)') && p.includes('Dispatch time per image (µs, fastest of 20) · ↓ better')));
 assert.ok(drawn.svg.some(p => p.includes('>Nightly run<')));
 // Each point: hover text with the commit, and a link to it.
 assert.ok(drawn.svg.some(p => p.includes('<title>2 Oct, 06:30 UTC\\nabcdef1 same revision\\nbatch 16: ') && p.includes('href="https://github.com/Xilinx/mlir-aie/commit/abcdef123456"')));
