@@ -256,33 +256,13 @@ static inline void epilogue_body(bfloat16 *__restrict y_out,
 #endif
   }
 }
-} // namespace
 
-extern "C" {
-
-// Zero the f32 accumulator, before the k loop starts accumulating into it.
-//
-// A bias is deliberately not supported: initialising the accumulator from one
-// would mean consuming an extra object through the handshake the B ObjectFifo
-// owns, which desynchronises that fifo and hangs rather than mis-computing.
-void mm_fused_acc_init(float *y_acc) {
-  zero_vectorized<float, M, N, step_markers>(y_acc);
-}
-
-// One step of the k loop: one B chunk multiplied against one A band,
-// accumulated into y_acc.
-//
-// Takes no locks. A is a single object spanning every z slice of the mmul, and
-// the A and B fifos own the handshake, so the core body acquires around this
-// call rather than the kernel acquiring inside it.
-// mm_fused_b_elem_t is bfp16ebs8 or bfloat16 depending on how B is stored,
-// which mm_fused_mmul.h selects from the architecture. One signature either
-// way, so the design's Kernel declaration does not have to care.
-void mm_fused_k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
-                     int32_t band) {
+// mm_fused_k_step and mm_fused_epilogue_chunk without the rounding mode,
+// which fused_mm_tile sets once around all of them.
+inline void k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
+                   int32_t band) {
   if constexpr (step_markers)
     event0();
-  ::aie::set_rounding(round_mode);
   // The accumulator is [row-block][col-block][r*t], so band b starts at
   // b * MA * N -- b*(MA/R) row-blocks in, each colB*(r*t) wide.
   mm_fused_mmul_2x2<(MA / R), (CT_K / S), (N / T), R, S, T>(
@@ -291,25 +271,11 @@ void mm_fused_k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
     event1();
 }
 
-// Output stage: convert chunk (outer * C_DEPTH + half) of the f32 accumulator
-// to a bf16 C object, applying an activation and clamp on the way out. Fusing
-// here is the point -- the values are already in registers, so the activation
-// costs one more vector op per 16 elements instead of a separate pass over L1.
-//
-// The mode is runtime, tested once per chunk so the inner loops stay
-// branch-free; the cost is program memory, since every mode in the mask is
-// compiled in. The bounds arrive as raw int32 because npu_write_rtp only
-// writes i32 words. The chunk index is split (outer, half) because the core
-// body unrolls the drain by the C fifo depth to keep the acquired buffer index
-// a compile-time constant.
-void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
-                             int32_t half, int32_t mode, int32_t clamp_min_bits,
-                             int32_t clamp_max_bits) {
-  // The store below is a conversion, so it obeys the same rounding mode the
-  // mmul does and must agree with it.
+inline void epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
+                           int32_t half, int32_t mode, int32_t clamp_min_bits,
+                           int32_t clamp_max_bits) {
   if constexpr (step_markers)
     event0();
-  ::aie::set_rounding(round_mode);
   const float *__restrict src = y_acc + (outer * C_DEPTH + half) * CHUNK;
   // __builtin_bit_cast, not memcpy: memcpy leaves an unresolved external
   // call here rather than folding to a register move.
@@ -340,5 +306,55 @@ void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
   }
   if constexpr (step_markers)
     event1();
+}
+} // namespace
+
+extern "C" {
+
+// Zero the f32 accumulator, before the k loop starts accumulating into it.
+//
+// A bias is deliberately not supported: initialising the accumulator from one
+// would mean consuming an extra object through the handshake the B ObjectFifo
+// owns, which desynchronises that fifo and hangs rather than mis-computing.
+void mm_fused_acc_init(float *y_acc) {
+  zero_vectorized<float, M, N, step_markers>(y_acc);
+}
+
+// One step of the k loop: one B chunk multiplied against one A band,
+// accumulated into y_acc.
+//
+// Takes no locks. A is a single object spanning every z slice of the mmul, and
+// the A and B fifos own the handshake, so the core body acquires around this
+// call rather than the kernel acquiring inside it.
+// mm_fused_b_elem_t is bfp16ebs8 or bfloat16 depending on how B is stored,
+// which mm_fused_mmul.h selects from the architecture. One signature either
+// way, so the design's Kernel declaration does not have to care.
+void mm_fused_k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
+                     int32_t band) {
+  const ::aie::rounding_mode saved_rnd = ::aie::swap_rounding(round_mode);
+  k_step(a_buf, b_buf, y_acc, band);
+  ::aie::set_rounding(saved_rnd);
+}
+
+// Output stage: convert chunk (outer * C_DEPTH + half) of the f32 accumulator
+// to a bf16 C object, applying an activation and clamp on the way out. Fusing
+// here is the point -- the values are already in registers, so the activation
+// costs one more vector op per 16 elements instead of a separate pass over L1.
+//
+// The mode is runtime, tested once per chunk so the inner loops stay
+// branch-free; the cost is program memory, since every mode in the mask is
+// compiled in. The bounds arrive as raw int32 because npu_write_rtp only
+// writes i32 words. The chunk index is split (outer, half) because the core
+// body unrolls the drain by the C fifo depth to keep the acquired buffer index
+// a compile-time constant.
+void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
+                             int32_t half, int32_t mode, int32_t clamp_min_bits,
+                             int32_t clamp_max_bits) {
+  // The store is a conversion, so it obeys the same rounding mode the mmul
+  // does and must agree with it.
+  const ::aie::rounding_mode saved_rnd = ::aie::swap_rounding(round_mode);
+  epilogue_chunk(y_out, y_acc, outer, half, mode, clamp_min_bits,
+                 clamp_max_bits);
+  ::aie::set_rounding(saved_rnd);
 }
 }
