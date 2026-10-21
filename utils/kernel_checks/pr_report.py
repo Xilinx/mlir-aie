@@ -12,8 +12,7 @@ keeps it as one comment. Standard library only, so it runs on any runner.
 
 ``results/<npu>/`` holds a leg's artifact (meta.json, perf.json,
 correctness.xml); ``baselines/<npu>/latest.json`` is the record publish.py
-wrote for the last nightly that published rows, which the publish job
-caches. The thresholds are ``thresholds.json``'s, shared with the page.
+wrote to gh-pages for the last nightly that published rows. The thresholds are ``thresholds.json``'s, shared with the page.
 """
 
 import argparse
@@ -26,7 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MARKER = "<!-- kernel-checks-report -->"
-PAGE = "https://xilinx.github.io/mlir-aie/kernel-checks/"
+PAGE = "https://xilinx.github.io/mlir-aie/dashboard/#view=night"
+REPO = "https://github.com/Xilinx/mlir-aie"
 THRESHOLDS = {
     metric: spec
     for metric, spec in json.loads(
@@ -233,8 +233,8 @@ def baseline(path: Path, run_id: str = "") -> dict | None:
     """Return the last nightly's record (``latest.json``), or None.
 
     None without rows, in a newer format than this reads, or from this very
-    run: the publish job of a nightly can cache its record before a re-run
-    of the report restores it, and a run compared with itself shows nothing.
+    run: a re-run of a nightly's report reads the record its own publish job
+    already wrote, and a run compared with itself shows nothing.
     """
     if not path.exists():
         return None
@@ -399,11 +399,15 @@ def _coverage(legs: list[Leg]) -> str:
     )
 
 
-def render(legs: list[Leg], run_url: str = "") -> str:
+def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
     failing = sum(len(leg.failures) for leg in legs)
     regressed = sum(len(leg.regressed) for leg in legs)
+    compared = any(not leg.uncompared for leg in legs)
     if not legs:
         title = "no NPU produced results"
+    elif not compared:
+        title = f"{failing} failing" if failing else "all passed"
+        title += ", not compared with a nightly"
     elif failing or regressed:
         title = f"{failing} failing, {regressed} regressed"
     else:
@@ -415,15 +419,33 @@ def render(legs: list[Leg], run_url: str = "") -> str:
     gated = " or ".join(f"`{m}` {100 * t:g}%" for m, t in GATED.items())
     links = [f"[run]({run_url})"] if run_url else []
     links.append(f"[nightly history]({PAGE})")
+    lead = (
+        f"Compared with the last nightly on main. Regressed: {gated} or more "
+        "worse. Both are stable run to run, so a move is the compiler's. "
+        if compared
+        else "Not compared with a nightly on main; the table says why. "
+    )
     out = [
         MARKER,
         f"## Kernel checks: {title}",
         "",
-        f"Compared with the last nightly on main. Regressed: {gated} or more "
-        "worse. Both are stable run to run, so a move is the compiler's. "
-        + " \u00b7 ".join(links),
+        lead + " \u00b7 ".join(links),
         "",
     ]
+    nightlies = {
+        leg.baseline_commit["id"]
+        for leg in legs
+        if leg.baseline_commit and leg.baseline_commit.get("id")
+    }
+    if commit and (others := sorted(nightlies - {commit})):
+        ranges = ", ".join(
+            f"[{n[:7]}...{commit[:7]}]({REPO}/compare/{n}...{commit})" for n in others
+        )
+        out += [
+            f"This run is on a different commit than the nightly ({ranges}): "
+            "a change there can move these numbers too, not only the compiler.",
+            "",
+        ]
     if coverage := _coverage(legs):
         out += [coverage, ""]
 
@@ -437,9 +459,9 @@ def render(legs: list[Leg], run_url: str = "") -> str:
         peano = leg.peano or "?"
         if leg.baseline_peano and leg.baseline_peano != leg.peano:
             peano += f" (nightly: {leg.baseline_peano})"
-        commit = leg.baseline_commit
-        if commit and commit.get("id"):
-            base = f"[{commit['id'][:7]}]({commit.get('url', '')})"
+        nightly = leg.baseline_commit
+        if nightly and nightly.get("id"):
+            base = f"[{nightly['id'][:7]}]({nightly.get('url', '')})"
         else:
             base = leg.uncompared or "\u2014"
         summary.append(
@@ -449,8 +471,8 @@ def render(legs: list[Leg], run_url: str = "") -> str:
                 base,
                 str(leg.cases),
                 str(len(leg.failures)),
-                str(len(leg.regressed)) if commit else "\u2014",
-                str(len(leg.improved)) if commit else "\u2014",
+                str(len(leg.regressed)) if nightly else "\u2014",
+                str(len(leg.improved)) if nightly else "\u2014",
             ]
         )
     out += _table(
@@ -528,6 +550,9 @@ def main(argv=None) -> int:
     parser.add_argument("--baselines", required=True, type=Path)
     parser.add_argument("--run-url", default="")
     parser.add_argument(
+        "--commit", default="", help="the mlir-aie commit this run is on"
+    )
+    parser.add_argument(
         "--run-id", default="", help="ignore a baseline this run published itself"
     )
     parser.add_argument("--out", type=Path)
@@ -541,7 +566,7 @@ def main(argv=None) -> int:
         if args.results.is_dir()
         else []
     )
-    report = render(legs, args.run_url)
+    report = render(legs, args.run_url, args.commit)
     if args.out:
         args.out.write_text(report)
     else:

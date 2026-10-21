@@ -21,7 +21,9 @@ MAGIC = 0x4B454941
 VERSION_MAJOR = 1
 VERSION_MINOR = 0
 
-ARCHES = ("aie2", "aie2p")
+# "aie4" (npu3) dispatches through a user-mode queue and has no xclbin/PDI flow, so only the
+# full-ELF kernel form applies to it.
+ARCHES = ("aie2", "aie2p", "aie4")
 
 # aie_section_header: magic, version_major, version_minor, header_size, kernel_count,
 # kernel_entry_size, string_table_offset, string_table_size, blob_pool_offset, reserved[4].

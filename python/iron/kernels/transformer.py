@@ -21,6 +21,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    BUILDS,
     KernelContract,
     Param,
     Trace,
@@ -28,7 +29,6 @@ from ._common import (
     _kernel_source,
     _make_extern,
     _runtime_lib_include,
-    _tuned_arch,
 )
 from .activation import _bf16, tanh_lut_ref
 from .core import conv_even
@@ -72,6 +72,12 @@ _EPILOGUE_LUT_TOLERANCE = Tolerance.exact(
     note="model of the aie2 build; measured bit-exact on npu1 over every "
     "extensive data case, 3 seeds"
 )
+_EPILOGUE_TOLERANCE = Tolerance.relative(
+    0.128,
+    0.05,
+    note="programming_examples/ml/mm_activation_epilogue: atol 0.05 "
+    "for the bf16-internal SiLU / GELU, identity and ReLU are exact",
+)
 
 
 def _cols(name: str, cols: int) -> None:
@@ -86,12 +92,10 @@ def _row_kernel(
     cols: int,
     in_dt,
     out_dt,
-    ref,
-    tol,
+    per_build,
     ops,
     *,
     setup=None,
-    stack_bytes=None,
 ) -> ExternalFunction:
     _cols(name, cols)
     in_ty = np.ndarray[(cols,), np.dtype[in_dt]]
@@ -104,13 +108,11 @@ def _row_kernel(
             trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, cols),),
-            reference=ref,
-            tolerance=tol,
+            per_build=per_build,
             ops_per_call=ops,
             acc_dtype=np.float32,
             reduction=cols,
             setup=setup,
-            stack_bytes=stack_bytes,
         ),
     )
 
@@ -134,8 +136,10 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         cols,
         np.float32,
         np.float32,
-        layer_norm_f32_ref,
-        _NORM_F32_TOLERANCE.get(_tuned_arch(), _NORM_F32),
+        tuple(
+            (build, layer_norm_f32_ref, _NORM_F32_TOLERANCE.get(build.tuned, _NORM_F32))
+            for build in BUILDS
+        ),
         6 * cols,
         # 896 B tuned for aie2p, 160 B tuned for aie2, 832 B untuned on aie2p
         # (672 B on aie2); the 1024 B default covers every build.
@@ -164,10 +168,16 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
             trace=Trace.whole_call(),
             roles=(In, Param, Out, Param),
             parameter_bindings=((3, cols),),
-            reference=layer_norm_affine_cast_ref,
+            per_build=tuple(
+                (
+                    build,
+                    layer_norm_affine_cast_ref,
+                    _AFFINE_TOLERANCE.get(build.tuned, _NORM_BF16),
+                )
+                for build in BUILDS
+            ),
             acc_dtype=np.float32,
             reduction=cols,
-            tolerance=_AFFINE_TOLERANCE.get(_tuned_arch(), _NORM_BF16),
             ops_per_call=8 * cols,
         ),
     )
@@ -191,7 +201,6 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
     tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
     source = _kernel_source("transformer/mm_activation_epilogue.cc")
     lut = not _arch_traits().native_tanh
-    lut_model = _tuned_arch() == "aie2"
     flags = None
     if lut:
         # lut_kernel.cc compiles the source next to lut_based_ops.cpp, whose
@@ -208,23 +217,16 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
             setup=conv_even,
             roles=(In, Out, Param, Param),
             parameter_bindings=((2, tile_size),),
-            reference=(
-                mm_activation_epilogue_lut_ref
-                if lut_model
-                else mm_activation_epilogue_ref
+            per_build=tuple(
+                (
+                    (build, mm_activation_epilogue_lut_ref, _EPILOGUE_LUT_TOLERANCE)
+                    if build.tuned == "aie2"
+                    else (build, mm_activation_epilogue_ref, _EPILOGUE_TOLERANCE)
+                )
+                for build in BUILDS
             ),
             acc_dtype=np.float32,
             reduction=1,
-            tolerance=(
-                _EPILOGUE_LUT_TOLERANCE
-                if lut_model
-                else Tolerance.relative(
-                    0.128,
-                    0.05,
-                    note="programming_examples/ml/mm_activation_epilogue: atol 0.05 "
-                    "for the bf16-internal SiLU / GELU, identity and ReLU are exact",
-                )
-            ),
             ops_per_call=8 * tile_size,
             uses_lut=lut,
         ),

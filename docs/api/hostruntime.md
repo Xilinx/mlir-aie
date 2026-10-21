@@ -43,6 +43,7 @@ record of which agent currently holds each range of them, belong to the
       members:
         - NpuTensor
         - set_current_device
+        - DeviceSelection
         - bfloat16_safe_allclose
       docstring_options:
         warn_missing_types: false

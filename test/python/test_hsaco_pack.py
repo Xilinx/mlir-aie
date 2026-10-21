@@ -449,6 +449,23 @@ def test_full_elf_names_every_comdat_group(tmp_path):
     assert all((k["kernarg_size"], k["num_cols"]) == (64, 4) for k in kernels)
 
 
+def test_full_elf_names_select_kernels(tmp_path):
+    # An MLIR-AIR full ELF also carries an internal sequence that is not meant to
+    # be dispatched; the caller names the kernels to keep, in its own order.
+    blob = make_full_elf([("k0", "i0"), ("k1", "i1"), ("k2", "i2")], num_cols=4)
+    path = _write(tmp_path / "final.elf", blob)
+
+    kernels = pack.kernels_from_full_elf(path, names=["k2:i2", "k0:i0"])
+    assert [k["name"] for k in kernels] == ["k2:i2", "k0:i0"]
+    assert all(k["insts"] == blob for k in kernels)
+
+
+def test_full_elf_unknown_name_is_rejected(tmp_path):
+    path = _write(tmp_path / "final.elf", make_full_elf([("k0", "i0")], num_cols=4))
+    with pytest.raises(ValueError, match=r"no kernel named 'k1:i1'.*'k0:i0'"):
+        pack.kernels_from_full_elf(path, names=["k1:i1"])
+
+
 def test_full_elf_image_is_embedded_once(tmp_path):
     blob = make_full_elf([("k0", "i0"), ("k1", "i1"), ("k2", "i2")], num_cols=8)
     path = _write(tmp_path / "final.elf", blob)
@@ -524,6 +541,20 @@ def test_full_elf32_names_every_comdat_group(tmp_path):
     kernels = pack.kernels_from_full_elf(path, kernarg_size=32, num_cols=1)
     assert [k["name"] for k in kernels] == ["main:sequence"]
     assert all(k["insts"] == blob for k in kernels)
+
+
+def test_aie4_section_holds_a_full_elf(tmp_path):
+    """aie4 (npu3) has no xclbin/PDI flow: its kernels come from an ELF32 full ELF."""
+    blob = make_full_elf([("_Z4mainPcPcPc", "sequence")], elf_class=32)
+    path = _write(tmp_path / "aie.elf", blob)
+
+    section = pack.build_section(
+        "aie4", pack.kernels_from_full_elf(path, kernarg_size=32, num_cols=1)
+    )
+    info = dump.parse_section(section)
+    assert [k["name"] for k in info["kernels"]] == ["main:sequence"]
+    assert all(k["kind_name"] == "FullElf" for k in info["kernels"])
+    assert all(not k["has_pdi"] for k in info["kernels"])
 
 
 def test_elf_with_an_unrecognised_class_is_rejected(tmp_path):
@@ -1056,6 +1087,40 @@ def test_long_form_full_elf(tmp_path):
     assert all((k["kernarg_size"], k["num_cols"]) == (96, 4) for k in kernels)
 
 
+def test_long_form_full_elf_kernel_name(tmp_path):
+    path = _write(tmp_path / "final.elf", make_full_elf([("k0", "i0"), ("k1", "i1")]))
+    # One name per --kernel-elf; a second kernel of the same ELF repeats it, and
+    # the image is still embedded once.
+    kernels = pack.kernels_from_options(
+        [
+            ("kernel_elf", path),
+            ("kernel_elf_name", "k1:i1"),
+            ("kernel_cols", 4),
+            ("kernel_elf", path),
+            ("kernel_elf_name", "k0:i0"),
+            ("kernel_cols", 4),
+        ]
+    )
+    assert [k["name"] for k in kernels] == ["k1:i1", "k0:i0"]
+    with pytest.raises(argparse.ArgumentTypeError, match="no kernel named 'k2:i2'"):
+        pack.kernels_from_options(
+            [("kernel_elf", path), ("kernel_elf_name", "k2:i2"), ("kernel_cols", 4)]
+        )
+
+
+def test_kernel_elf_name_needs_a_full_elf(tmp_path):
+    insts = _write(tmp_path / "insts.bin", b"\x01")
+    with pytest.raises(argparse.ArgumentTypeError, match="--kernel-elf-name selects"):
+        pack.kernels_from_options(
+            [
+                ("kernel_name", "k"),
+                ("kernel_insts", insts),
+                ("kernel_cols", 1),
+                ("kernel_elf_name", "k:i"),
+            ]
+        )
+
+
 @needs_posix
 def test_long_form_xclbin(tmp_path, monkeypatch):
     _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path))
@@ -1478,7 +1543,7 @@ def test_dump_main_reports_a_malformed_hsaco_instead_of_crashing(tmp_path, capsy
     """Reporting on malformed input is this tool's job, not a crash."""
     bare = _write(tmp_path / "bare.hsaco", elf.make_empty_elf64())
     assert dump.main(["--hsaco", bare]) == 1
-    assert "no aie2/aie2p section found" in capsys.readouterr().err
+    assert "no aie2/aie2p/aie4 section found" in capsys.readouterr().err
 
     missing = str(tmp_path / "nope.hsaco")
     assert dump.main(["--hsaco", missing]) == 1
@@ -1487,22 +1552,28 @@ def test_dump_main_reports_a_malformed_hsaco_instead_of_crashing(tmp_path, capsy
 
 def test_read_sections_from_hsaco_without_an_arch_section(tmp_path):
     path = _write(tmp_path / "bare.hsaco", elf.make_empty_elf64())
-    with pytest.raises(ValueError, match="no aie2/aie2p section found"):
+    with pytest.raises(ValueError, match="no aie2/aie2p/aie4 section found"):
         dump.read_sections_from_hsaco(path)
 
 
 @needs_objcopy
 def test_every_arch_section_is_reported(tmp_path):
     """One hsaco can carry a section per arch; none of them may be hidden."""
-    path = str(tmp_path / "both.hsaco")
+    path = str(tmp_path / "all.hsaco")
     pack.ensure_hsaco(path)
     aie2 = pack.build_section("aie2", [_kernel("on_aie2", b"\x01")])
     aie2p = pack.build_section("aie2p", [_kernel("on_aie2p", b"\x02\x03")])
+    aie4 = pack.build_section("aie4", [_kernel("on_aie4", b"\x04")])
+    pack.inject(path, "aie4", aie4)
     pack.inject(path, "aie2p", aie2p)
     pack.inject(path, "aie2", aie2)
 
     # Reported in ARCHES order, whatever order they were injected in.
-    assert dump.read_sections_from_hsaco(path) == [("aie2", aie2), ("aie2p", aie2p)]
+    assert dump.read_sections_from_hsaco(path) == [
+        ("aie2", aie2),
+        ("aie2p", aie2p),
+        ("aie4", aie4),
+    ]
 
 
 @needs_objcopy

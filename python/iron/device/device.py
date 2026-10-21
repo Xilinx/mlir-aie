@@ -4,7 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import math
 import re
+
+import numpy as np
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -15,9 +18,13 @@ from ...dialects.aie import (
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     LogicalTileOp,
     WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
+    dma_bd_fits,  # pyright: ignore[reportAttributeAccessIssue]
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
+from ...dialects.aiex import _shim_dims
+from ...helpers.taplib import TensorAccessPattern
+from ...helpers.util import np_dtype_to_mlir_type
 from ..resolvable import Resolvable
 from .tile import Tile
 
@@ -25,8 +32,9 @@ from .tile import Tile
 class Device(Resolvable):
     """A representation of a device of a specific type.
 
-    Provides device metadata (column/row counts) and emits
-    aie.logical_tile ops for Tile objects during resolve.
+    Provides device metadata and emits ``aie.logical_tile`` operations for Tile
+    objects. A DeviceConfiguration reconstructs this descriptor before it emits
+    an ``aie.device``, so the descriptor does not own one configuration's IR.
     """
 
     def __init__(self, device: AIEDevice) -> None:
@@ -65,6 +73,19 @@ class Device(Resolvable):
     def core_memory_bytes(self) -> int:
         """Data memory local to one compute tile."""
         return self._tm.get_local_memory_size()
+
+    @property
+    def core_memory_banks(self) -> int:
+        """Banks a compute tile's data memory is divided into, as the buffer allocator places buffers.
+
+        Each is two interleaved hardware banks on AIE2 and AIE2P (AM020, AM027).
+        """
+        return self._tm.get_num_banks(0, self.core_rows[0])
+
+    @property
+    def core_memory_bank_bytes(self) -> int:
+        """Bytes in one of `core_memory_banks`."""
+        return self.core_memory_bytes // self.core_memory_banks
 
     @property
     def default_core_stack_bytes(self) -> int:
@@ -143,6 +164,61 @@ class Device(Resolvable):
         self._validate_coordinates(col, row)
         return self._tm.get_dma_bd_iter_bits(col, row)
 
+    def dma_bd_fits(
+        self, col: int, row: int, tap: TensorAccessPattern, dtype: type
+    ) -> bool:
+        """Whether one DMA buffer descriptor of the tile at (`col`, `row`) holds `tap`.
+
+        Decided as the DMA lowerings verify a descriptor: a linear transfer,
+        or a contiguous one on a shim tile, in linear mode past the wrap
+        limits, and any other within the wrap, step and iteration limits;
+        either way, the three inner dimensions within the tile's buffer
+        length field. On a shim tile the tap is laid out as
+        `shim_dma_single_bd_task` lays it out: coalesced, and a leading
+        re-read kept in the iteration dimension. Elsewhere a tap of fewer
+        than four dimensions is padded in front with unit ones. The
+        descriptor's length is its three inner dimensions, and where that
+        is all of it, its unit dimensions go as `aie-normalize-dma-bd-dims`
+        drops them, which can move a large one into a wrap field.
+
+        Args:
+            col: Column of the tile.
+            row: Row of the tile.
+            tap: The access pattern, in elements of `dtype`.
+            dtype: The numpy element type the pattern moves.
+
+        Returns:
+            bool: False for more than four dimensions (after coalescing, on a
+            shim tile), padding on a shim tile, an offset that is not whole
+            address granules, or a pattern past the descriptor's limits.
+
+        Raises:
+            ValueError: The coordinates are outside the device.
+        """
+        self._validate_coordinates(col, row)
+        if self._tm.is_shim_noc_or_pl_tile(col, row):
+            if tap.padding is not None:
+                return False
+            offset, sizes, strides = _shim_dims(tap)
+        else:
+            pad = 4 - len(tap.sizes)
+            offset = tap.offset
+            sizes = [1] * pad + list(tap.sizes)
+            strides = [0] * pad + list(tap.strides)
+        if len(sizes) > 4:
+            return False
+        with ir.Context(), ir.Location.unknown():
+            return dma_bd_fits(
+                self._device.value,
+                col,
+                row,
+                np_dtype_to_mlir_type(np.dtype(dtype).type),
+                offset,
+                sizes,
+                strides,
+                math.prod(sizes[1:]),
+            )
+
     @property
     def address_gen_granularity(self) -> int:
         """Address-generation granularity of the device, in bits."""
@@ -218,7 +294,7 @@ class Device(Resolvable):
             tile_type,
             col=tile.col,
             row=tile.row,
-            loc=loc,
+            loc=loc or tile._site.location(),
             ip=ip,
             packet_type=tile.packet_type,
             packet_id=tile.packet_id,

@@ -239,6 +239,8 @@ struct Engine {
     bool keepIntermediates = false;
     unsigned numThreads = 1; // 0 = auto-detect; 1 = sequential
     bool profile = false; // print a per-edge execution-time summary at the end
+    // No edge owns its input: the on-failure reproducer reads intermediates.
+    bool keepInputs = false;
   };
 
   Options opts;
@@ -303,10 +305,13 @@ struct Engine {
     struct EdgeCost {
       std::string name;
       int64_t ms = 0;
+      int64_t endMs = 0; // since the scheduler started
       uint64_t rssAfter = 0;
       uint64_t peakAfter = 0;
     };
     std::vector<EdgeCost> edgeTimings;
+    std::chrono::steady_clock::time_point schedulerStart =
+        std::chrono::steady_clock::now();
 
     std::mutex mtx;
     std::condition_variable cv;
@@ -387,8 +392,7 @@ struct Engine {
         if (item->filePath.empty())
           continue;
         if (!seenPaths.insert(item->filePath).second) {
-          if (opts.progress)
-            llvm::errs() << '\n';
+          auto log = endProgressLine();
           llvm::errs() << "aiecc: edge '" << displayName(e)
                        << "' produced duplicate output path '" << item->filePath
                        << "'\n";
@@ -447,6 +451,7 @@ struct Engine {
       llvm::errs() << '\r' << line << std::string(pad, ' ');
       llvm::errs().flush();
       progressPrevLen = line.size();
+      progressLineOpen() = true;
     }
 
     // Re-scan the reachable edges and enqueue every task that is now runnable.
@@ -617,10 +622,14 @@ struct Engine {
           if (opts.verbose)
             logEdgeFinished(s);
           if (opts.profile) {
+            auto now = std::chrono::steady_clock::now();
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - s.startTime)
+                          now - s.startTime)
                           .count();
-            edgeTimings.push_back({displayName(s.edge).str(), ms,
+            auto endMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             now - schedulerStart)
+                             .count();
+            edgeTimings.push_back({displayName(s.edge).str(), ms, endMs,
                                    processRSSBytes(), processPeakRSSBytes()});
           }
           if (!recordPaths(task.edge))
@@ -684,8 +693,7 @@ struct Engine {
       }
 
       // Terminate the single progress line before any further output.
-      if (opts.progress)
-        llvm::errs() << '\n';
+      endProgressLine();
 
       if (failed) {
         if (stalled)
@@ -754,6 +762,27 @@ struct Engine {
       return std::find(outputs.begin(), outputs.end(), e) != outputs.end();
     };
 
+    // An edge may take its input only as that node's one reader, and only if
+    // nothing writes the node out after the run: not an output, a `buildAlso`
+    // root (a --cut frontier is captured afterwards) or a kept intermediate.
+    llvm::DenseMap<NodeBase *, unsigned> readers;
+    for (EdgeBase *e : reachable)
+      if (!satisfied.count(e))
+        for (NodeBase *n : e->inputNodes())
+          ++readers[n];
+    for (auto &e : g.edges) {
+      std::vector<NodeBase *> ins = e->inputNodes();
+      NodeBase *src = ins.size() == 1 ? ins.front() : nullptr;
+      e->ownsInput = e->mayTakeInput && reachable.count(e.get()) &&
+                     !opts.keepIntermediates && !opts.keepInputs && src &&
+                     src->producer && readers.lookup(src) == 1 &&
+                     !isOutput(src->producer) &&
+                     !llvm::is_contained(buildAlso, src->producer);
+      if (opts.verbose && e->ownsInput)
+        llvm::errs() << "aiecc: edge '" << llvm::sys::path::filename(e->name)
+                     << "' takes its input\n";
+    }
+
     for (auto &e : g.edges) {
       bool out = isOutput(e.get());
       e->outputDir = out ? opts.outputDir : opts.workDir;
@@ -802,8 +831,9 @@ struct Engine {
       int64_t total = 0;
       uint64_t peak = 0, prevRSS = baselineRSS;
       llvm::errs() << "aiecc: profile (per-edge time and resident memory):\n";
-      llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  {3}\n", "ms",
-                                    "dRSS MiB", "peak MiB", "edge");
+      llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  {4}\n",
+                                    "ms", "end ms", "dRSS MiB", "peak MiB",
+                                    "edge");
       for (const Scheduler::EdgeCost &e : edgeTimings) {
         total += e.ms;
         peak = std::max(peak, e.peakAfter);
@@ -813,12 +843,13 @@ struct Engine {
                 : llvm::formatv("{0:F1}", (int64_t)(e.rssAfter - prevRSS) /
                                               (1024.0 * 1024.0))
                       .str();
-        llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  {3}\n", e.ms,
-                                      delta, formatMiB(e.peakAfter), e.name);
+        llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  {4}\n",
+                                      e.ms, e.endMs, delta,
+                                      formatMiB(e.peakAfter), e.name);
         prevRSS = e.rssAfter;
       }
-      llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  total\n", total,
-                                    "", formatMiB(peak));
+      llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  total\n",
+                                    total, "", "", formatMiB(peak));
     }
     return mlir::success();
   }

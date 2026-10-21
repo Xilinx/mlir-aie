@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/STLExtras.h"
@@ -394,12 +395,35 @@ void squeezeUnitDims(NdDmaPattern &pattern) {
   }
 }
 
+// `op`'s pattern, innermost first and padded to kNdDmaDims, when it has no
+// padding and a constant offset, length, sizes and strides.
+std::optional<NdDmaPattern> constantPattern(AIE::DMABDOp op) {
+  if (op.getPadDimensions().has_value() ||
+      (op.getOffset() && !op.getConstantOffset()) ||
+      (op.getLen() && !op.getConstantLen()))
+    return std::nullopt;
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<SmallVector<int64_t>> strides =
+      getConstantIntValues(op.getMixedStrides());
+  if (!sizes || !strides || sizes->empty())
+    return std::nullopt;
+  NdDmaPattern pattern;
+  pattern.sizes.assign(sizes->rbegin(), sizes->rend());
+  pattern.strides.assign(strides->rbegin(), strides->rend());
+  pattern.sizes.resize(std::max<size_t>(pattern.sizes.size(), kNdDmaDims), 1);
+  pattern.strides.resize(pattern.sizes.size(), 0);
+  pattern.offsets.assign(pattern.sizes.size(), 0);
+  return pattern;
+}
+
 } // namespace
 
 bool AIEX::patternPassesVerification(Operation *forOp,
                                      BaseMemRefType referencedBufType,
                                      const AIE::AIETargetModel &tm, int tileCol,
-                                     int tileRow, const NdDmaPattern &pattern) {
+                                     int tileRow, const NdDmaPattern &pattern,
+                                     bool skipTransformationChecks) {
   if (pattern.sizes.size() != kNdDmaDims)
     return false;
   SmallVector<int64_t, kNdDmaDims> hwSizes(kNdDmaDims);
@@ -407,12 +431,13 @@ bool AIEX::patternPassesVerification(Operation *forOp,
   getHardwareStridesWraps(tm, forOp, referencedBufType, pattern.sizes,
                           pattern.strides, hwSizes, hwStrides);
 
+  // Location-only: an op diagnostic prints the whole enclosing sequence.
   ScopedDiagnosticHandler handler(forOp->getContext(),
                                   [](Diagnostic &) { return success(); });
-  return succeeded(verifyStridesWraps(forOp, referencedBufType, tileCol,
-                                      tileRow, pattern.sizes, pattern.strides,
-                                      hwSizes, hwStrides,
-                                      /*skipTransformationChecks=*/false));
+  return succeeded(verifyStridesWraps(
+      forOp, [&] { return mlir::emitError(forOp->getLoc()); },
+      referencedBufType, tileCol, tileRow, pattern.sizes, pattern.strides,
+      hwSizes, hwStrides, skipTransformationChecks));
 }
 
 bool AIEX::isDecomposableNdDmaPattern(Operation *forOp,
@@ -513,4 +538,46 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
 
   return decompose4d(forOp, referencedBufType, targetModel, tileCol, tileRow,
                      pattern);
+}
+
+FailureOr<TaskBdDecomposition>
+AIEX::decomposeTaskBdPattern(AIE::DMABDOp bd,
+                             const AIE::AIETargetModel &targetModel,
+                             int tileCol, int tileRow) {
+  std::optional<NdDmaPattern> pattern = constantPattern(bd);
+  if (!pattern)
+    return failure();
+  auto bufferType = cast<BaseMemRefType>(bd.getBuffer().getType());
+  // See contiguousAndFits for why only d3 can make one too long.
+  auto lowerable = [&](const NdDmaPattern &p) {
+    if (p.sizes.size() != kNdDmaDims)
+      return false;
+    if (isContiguousTransfer(p.sizes, p.strides))
+      return p.sizes[3] <= maxIterations(targetModel, tileCol, tileRow);
+    return patternPassesVerification(bd, bufferType, targetModel, tileCol,
+                                     tileRow, p);
+  };
+
+  TaskBdDecomposition plan;
+  plan.pass = *pattern;
+  if (lowerable(plan.pass)) {
+    plan.legal = true;
+    return plan;
+  }
+
+  // Outer dimensions that only re-read the same data repeat, as the task's
+  // repeat count does, so they go and the pieces restart instead.
+  for (unsigned d = plan.pass.sizes.size();
+       d-- > 3 && (plan.pass.sizes[d] == 1 || plan.pass.strides[d] == 0);)
+    plan.pass.sizes[d] = 1;
+  if (lowerable(plan.pass)) {
+    plan.pieces = {plan.pass};
+    return plan;
+  }
+  FailureOr<SmallVector<NdDmaPattern>> pieces = decomposeNdDmaPattern(
+      bd, bufferType, plan.pass, targetModel, tileCol, tileRow);
+  if (succeeded(pieces))
+    plan.pieces =
+        std::move(*pieces); // NOLINT(bugprone-unchecked-optional-access)
+  return plan;
 }

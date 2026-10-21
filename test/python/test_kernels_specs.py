@@ -32,7 +32,6 @@ import pytest
 from aie.iron import kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
-from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -60,6 +59,8 @@ class KernelSpec:
     # (kwargs_overrides, expected_tile_size_at_arg_0)
     tile_size_checks: list[tuple[dict, int]] = field(default_factory=list)
 
+
+_MERGE = dict(audio_token=7, image_token=8, audio_at=100, vision_at=200)
 
 KERNEL_SPECS: list[KernelSpec] = [
     KernelSpec(
@@ -170,6 +171,23 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="relu_bf16_size",
+    ),
+    KernelSpec(
+        name="clamp",
+        factory=kernels.clamp,
+        kwargs=dict(tile_size=1024),
+        arg_count=5,  # in, out, size, low, high
+        expected_name="clamp_bf16",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+    ),
+    KernelSpec(
+        name="magnitude_f32",
+        factory=kernels.magnitude_f32,
+        kwargs=dict(tile_size=320),
+        arg_count=3,  # [re | im] in, magnitudes out, size
+        expected_name="magnitude_f32",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        shape_checks=[(dict(tile_size=64), 0, (128,)), (dict(tile_size=64), 1, (64,))],
     ),
     # ----- reduce -----
     KernelSpec(
@@ -447,6 +465,15 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=32), 0, (32,)),
         ],
     ),
+    KernelSpec(
+        name="log_f32",
+        factory=kernels.log_f32,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # f32 in, bf16 out, size, offset
+        expected_name="log_f32_bf16",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        shape_checks=[(dict(tile_size=128), 1, (128,))],
+    ),
     # ----- vision -----
     KernelSpec(
         name="rgba2hue",
@@ -550,6 +577,47 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(line_width=1920, dtype=np.int32), "no int32 build"),
         ],
         shape_checks=[(dict(line_width=640, dtype=np.uint8), 0, (640,))],
+    ),
+    KernelSpec(
+        name="resample_peak",
+        factory=kernels.resample_peak,
+        kwargs={},
+        arg_count=5,  # peak, in, out, core, chunks
+        expected_name="resample_peak",
+        invalid_kwargs=[
+            (dict(words=8), "words >= 9"),
+            (dict(cores=0), "cores >= 1"),
+            (dict(slots=0), "slots None or >= 1"),
+        ],
+        shape_checks=[(dict(), 0, (2,))],
+    ),
+    KernelSpec(
+        name="resample_quantize",
+        factory=kernels.resample_quantize,
+        kwargs={},
+        arg_count=7,  # peak, chunk, in, out, core, k, chunks
+        expected_name="resample_quantize",
+        invalid_kwargs=[
+            (dict(words=8), "words >= 9"),
+            (dict(cores=0), "cores >= 1"),
+            (dict(slots=0), "slots None or >= 1"),
+        ],
+        shape_checks=[(dict(words=356), 1, (356,))],
+    ),
+    KernelSpec(
+        name="resize",
+        factory=kernels.resize,
+        kwargs={},
+        arg_count=2,  # image chunk, height chunk
+        expected_name="resize_consume",
+        invalid_kwargs=[
+            (dict(words=51), "words from 52 to 563"),
+            (dict(words=564), "words from 52 to 563"),
+            (dict(chunk=6), "chunk a multiple of 4"),
+            (dict(patch_columns=0), "patch_columns >= 1"),
+            (dict(cores=0), "cores >= 1"),
+        ],
+        shape_checks=[(dict(chunk=64), 0, (64,)), (dict(words=100), 1, (100,))],
     ),
     # ----- linalg -----
     KernelSpec(
@@ -828,6 +896,47 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
     ),
     KernelSpec(
+        name="row_addresses",
+        factory=kernels.row_addresses,
+        kwargs=dict(rows=8, table_rows=1024, row_bytes=4096),
+        arg_count=4,  # ids, address words, lo, hi
+        expected_name="row_addresses",
+        invalid_kwargs=[
+            (dict(rows=0), "positive multiple of 4"),
+            (dict(row_bytes=6), "positive multiple of 4"),
+            (dict(low_bits=-1), "low_bits from 0 to 30"),
+            (dict(low_bits=31), "low_bits from 0 to 30"),
+        ],
+        shape_checks=[(dict(rows=3), 1, (6,))],
+    ),
+    KernelSpec(
+        name="merge_rows",
+        factory=kernels.merge_rows,
+        kwargs=_MERGE,
+        arg_count=3,  # ids, rows, block index
+        expected_name="merge_rows",
+        invalid_kwargs=[
+            (dict(_MERGE, block=0), "block >= 1"),
+            (dict(_MERGE, image_token=7), "distinct placeholders"),
+            (dict(_MERGE, vision_at=-1), "rows >= 0"),
+        ],
+        shape_checks=[(dict(_MERGE, block=32), 1, (32,))],
+    ),
+    KernelSpec(
+        name="patch_positions",
+        factory=kernels.patch_positions,
+        kwargs={},
+        arg_count=5,  # record, block index, block count, height, width
+        expected_name="patch_positions",
+        invalid_kwargs=[
+            (dict(block=0), "block, side, pool and cores >= 1"),
+            (dict(pool=0), "block, side, pool and cores >= 1"),
+            (dict(positions=-1), "2 \\* positions < 2\\*\\*31"),
+            (dict(positions=2**30), "2 \\* positions < 2\\*\\*31"),
+        ],
+        shape_checks=[(dict(block=32), 0, (160,))],
+    ),
+    KernelSpec(
         name="convert_copy",
         factory=kernels.convert_copy,
         kwargs=dict(tile_size=1024),
@@ -836,6 +945,15 @@ KERNEL_SPECS: list[KernelSpec] = [
         # Binds datamovement/cast_f32_bf16.cc (upstream's cast, chosen over the dropped
         # IRON convert_copy.cc — see KERNEL_DEDUP_REPORT §4.1).
         invalid_kwargs=[(dict(tile_size=1000), "multiple of 16")],
+    ),
+    KernelSpec(
+        name="limbs_f32",
+        factory=kernels.limbs_f32,
+        kwargs=dict(tile_size=320),
+        arg_count=3,  # f32 in, six bf16 planes out, size
+        expected_name="limbs_f32",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        shape_checks=[(dict(tile_size=160), 1, (960,))],
     ),
     KernelSpec(
         name="rope",
@@ -926,9 +1044,7 @@ def test_source_locatable(spec: KernelSpec):
     ids=lambda s: s.name,
 )
 def test_lut_source_selection(spec: KernelSpec, device, arch):
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(device())
-    try:
+    with set_current_device(device()):
         ef = spec.factory(**spec.kwargs)
         assert ef.source_string is None
         assert Path(ef.source_file).is_file()
@@ -946,8 +1062,6 @@ def test_lut_source_selection(spec: KernelSpec, device, arch):
         else:
             assert not selectors
             assert Path(ef.source_file).name == spec.lut_source
-    finally:
-        set_current_device(previous)
 
 
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
@@ -1092,12 +1206,8 @@ def test_arg_dtype_out_of_range_raises():
 
 @pytest.fixture(params=["aie2", "aie2p"])
 def kernel_arch(request):
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU1Col1() if request.param == "aie2" else NPU2Col1())
-    try:
+    with set_current_device(NPU1Col1() if request.param == "aie2" else NPU2Col1()):
         yield request.param
-    finally:
-        set_current_device(previous)
 
 
 @pytest.mark.parametrize("name", ["rms_norm", "rms_norm_eps", "layer_norm", "rope"])
@@ -1147,7 +1257,7 @@ def test_norm_tail_and_vector_constraints(kernel_arch):
     assert kernels.rms_norm(cols=33).contract.setup is expected_setup
     x = np.ones((2, 33), dtype=bfloat16)
     np.testing.assert_array_equal(
-        fn.contract.reference(x, 0.5), kernels.rms_norm_ref(x, eps=0.5)
+        fn.contract_for().reference(x, 0.5), kernels.rms_norm_ref(x, eps=0.5)
     )
     for cols in (16, 208):
         assert kernels.layer_norm(cols=cols).arg_shape(0) == (cols,)
@@ -1189,11 +1299,13 @@ def test_sized_factory_contracts(name, kernel_arch):
     binary = name in ("add_sized", "mul_sized")
     assert fn.contract.roles == ((In, In, Out, Param) if binary else (In, Out, Param))
     assert fn.contract.parameter_bindings == ((3 if binary else 2, 1024),)
-    assert fn.contract.tolerance.note
+    assert fn.contract_for().tolerance.note
     inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
     reference_name = name.replace("_sized", "_ref")
+    if name == "silu_sized" and kernel_arch == "aie2":
+        reference_name = "silu_table_ref"
     expected = getattr(kernels, reference_name)(*inputs)
-    np.testing.assert_array_equal(fn.contract.reference(*inputs), expected)
+    np.testing.assert_array_equal(fn.contract_for().reference(*inputs), expected)
     with pytest.raises(ValueError):
         getattr(kernels, name)(tile_size=0)
     if binary:

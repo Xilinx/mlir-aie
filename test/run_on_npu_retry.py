@@ -24,6 +24,7 @@ _SPEC.loader.exec_module(run_on_npu)
         "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5): Input/output error",
         "DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=-2): No such file or directory",
         "DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=-22): Invalid argument",
+        "DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=-110): Connection timed out",
         "idx 7: 42 != 42",
     ],
 )

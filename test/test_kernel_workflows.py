@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,29 +32,49 @@ def workflow(name):
 BASH = shutil.which("bash") or "bash"
 
 
-def test_baseline_cache_key_is_unique_per_attempt_and_restorable():
-    publish = workflow("publishKernelResults.yml")["jobs"]["publish"]["steps"]
-    report = workflow("nightlyKernelChecks.yml")["jobs"]["report"]["steps"]
-    saved = [
-        step["with"]
-        for step in publish
-        if step.get("uses", "").startswith("actions/cache/save@")
-    ]
-    restored = [
-        step["with"]
-        for step in report
-        if step.get("uses", "").startswith("actions/cache/restore@")
-    ]
-    assert saved and restored
-    for save in saved:
-        assert "${{ github.run_id }}" in save["key"]
-        assert "${{ github.run_attempt }}" in save["key"]
-        assert any(
-            save["key"].startswith(prefix) and save["path"] == restore["path"]
-            for restore in restored
-            for prefix in restore["restore-keys"].splitlines()
-            if prefix
-        )
+def matrix_pairs(job):
+    return {
+        (entry["python_version"], entry["ENABLE_RTTI"])
+        for entry in job["strategy"]["matrix"]["include"]
+    }
+
+
+def test_ryzen_wheel_publish_workflow_gates_on_both_os_builds():
+    publish = workflow("buildRyzenWheels.yml")
+    assert "pull_request" not in publish["on"]
+
+    jobs = publish["jobs"]
+    assert (
+        jobs["linux-wheels"]["uses"] == "./.github/workflows/buildRyzenWheelsLinux.yml"
+    )
+    assert (
+        jobs["windows-wheels"]["uses"]
+        == "./.github/workflows/buildRyzenWheelsWindows.yml"
+    )
+    assert set(jobs["publish"]["needs"]) == {"linux-wheels", "windows-wheels"}
+
+
+def test_ryzen_linux_npu_smoke_depends_only_on_its_wheel():
+    jobs = workflow("buildRyzenWheelsLinux.yml")["jobs"]
+
+    assert jobs["build-linux-npu-wheel"]["env"] == {
+        "BUILD_PYTHON_VERSION": "3.12",
+        "ENABLE_RTTI": "ON",
+    }
+    assert ("3.12", "ON") not in matrix_pairs(jobs["build-linux-wheels"])
+    assert jobs["smoke-test-npu"]["needs"] == "build-linux-npu-wheel"
+
+
+def test_ryzen_windows_smoke_tests_are_per_wheel():
+    jobs = workflow("buildRyzenWheelsWindows.yml")["jobs"]
+
+    assert jobs["build-windows-npu-wheel"]["env"] == {
+        "BUILD_PYTHON_VERSION": "3.13",
+        "ENABLE_RTTI": "ON",
+    }
+    assert ("3.13", "ON") not in matrix_pairs(jobs["build-windows"])
+    assert "smoke-test-wheels-windows" not in jobs
+    assert jobs["smoke-test-wheels-npu-windows"]["needs"] == "build-windows-npu-wheel"
 
 
 @pytest.mark.parametrize("only", ["", "softmax", "softmax and not large", "$(false)"])
@@ -80,7 +101,7 @@ def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path
 
 @pytest.mark.parametrize("soak", [{}, {"ITERS": "5000"}, {"SEEDS": "50"}])
 def test_a_soak_does_not_retry_a_failure(soak, tmp_path):
-    """The runner retries a failed NPU test once, which hides a failure that
+    """The runner retries a failed NPU test, which hides a failure that
     comes and goes: the kind a soak is run to find."""
     steps = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
     run = next(step["run"] for step in steps if step.get("id") == "perf")
@@ -208,20 +229,33 @@ def test_only_turbo_mode_is_published_and_the_other_npu_still_is(pmode, tmp_path
     assert (tmp_path / "results/npu2/meta.json").exists()
 
 
-def test_report_uses_restored_baseline_and_updates_summary(tmp_path):
+def test_report_reads_the_published_baseline_and_updates_summary(tmp_path):
+    """The report job's steps, in a checkout whose origin has a gh-pages
+    branch holding npu2's latest record and none for npu1."""
     steps = workflow("nightlyKernelChecks.yml")["jobs"]["report"]["steps"]
-    results = tmp_path / "results/npu2"
+    pages = tmp_path / "pages"
+    (pages / "kernel-checks/npu2").mkdir(parents=True)
+    baseline = {
+        "id": "baseline-run",
+        "pmode": "performance",
+        "commit": {"id": "abcdef0123", "url": "https://example.com/abcdef0"},
+        "rows": {"synthetic/1/i8": {"cycles": {"unit": "cycles", "value": 100}}},
+    }
+    (pages / "kernel-checks/npu2/latest.json").write_text(json.dumps(baseline))
+    git(pages, "init", "-q", "-b", "gh-pages")
+    git(pages, "add", "-A")
+    git(pages, "commit", "-q", "-m", "pages")
+
+    checkout = tmp_path / "checkout"
+    results = checkout / "results/npu2"
     results.mkdir(parents=True)
     write_meta(results / "meta.json", "performance")
     (results / "perf.json").write_text(
         json.dumps([{"name": "synthetic/1/i8/cycles", "unit": "cycles", "value": 150}])
     )
-    baseline = {
-        "id": "baseline-run",
-        "pmode": "performance",
-        "rows": {"synthetic/1/i8": {"cycles": {"unit": "cycles", "value": 100}}},
-    }
-    (tmp_path / "utils").symlink_to(WORKFLOWS.parents[1] / "utils")
+    (checkout / "utils").symlink_to(WORKFLOWS.parents[1] / "utils")
+    git(checkout, "init", "-q")
+    git(checkout, "remote", "add", "origin", pages.as_uri())
     summary = tmp_path / "summary.md"
     env = {
         **os.environ,
@@ -229,23 +263,27 @@ def test_report_uses_restored_baseline_and_updates_summary(tmp_path):
         "GITHUB_SERVER_URL": "https://github.com",
         "GITHUB_REPOSITORY": "example/synthetic",
         "GITHUB_RUN_ID": "7",
+        "COMMIT": "fedcba9876",
     }
+    ran = []
     for step in steps:
-        if step.get("uses", "").startswith("actions/cache/restore@"):
-            if "npu2-" in step["with"]["key"]:
-                (tmp_path / "baseline").mkdir()
-                (tmp_path / "baseline/latest.json").write_text(json.dumps(baseline))
-        elif "run" in step and "gh api" not in step["run"]:
-            subprocess.run(
+        if "run" in step and "gh api" not in step["run"]:
+            result = subprocess.run(
                 [BASH, "-eo", "pipefail", "-c", step["run"]],
-                cwd=tmp_path,
+                cwd=checkout,
                 env=env,
                 check=True,
+                capture_output=True,
+                text=True,
             )
+            ran.append(result.stdout)
+    assert "::warning::no gh-pages:kernel-checks/npu1/latest.json" in "".join(ran)
+    assert not (checkout / "baselines/npu1").exists()
     text = summary.read_text()
-    assert text == (tmp_path / "report.md").read_text()
+    assert text == (checkout / "report.md").read_text()
     assert "1 regressed" in text
-    assert "synthetic/1/i8" in text
+    assert "| [abcdef0](https://example.com/abcdef0) |" in text
+    assert "compare/abcdef0123...fedcba9876" in text
     assert "https://github.com/example/synthetic/actions/runs/7" in text
 
 
@@ -323,6 +361,148 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
     assert required == ("turbo" if publishes else "any")
 
 
+MODEL_INPUTS = (
+    "allocator_seeds",
+    "allocator_bankres_seeds",
+    "router_seeds",
+    "mutation_seeds",
+    "first_seed",
+)
+
+
+@pytest.mark.parametrize(
+    "event, ref",
+    [
+        ("schedule", "refs/heads/main"),
+        ("workflow_dispatch", "refs/heads/main"),
+        ("workflow_dispatch", "refs/heads/topic"),
+    ],
+)
+@pytest.mark.parametrize("given", ["", *MODEL_INPUTS])
+def test_model_based_tests_publish_only_an_unfiltered_run_on_main(event, ref, given):
+    jobs = workflow("modelBasedTests.yml")["jobs"]
+    context = {"github.ref": ref}
+    context.update(
+        {f"inputs.{name}": "7" if name == given else "" for name in MODEL_INPUTS}
+    )
+    assert set(
+        workflow("modelBasedTests.yml")["on"]["workflow_dispatch"]["inputs"]
+    ) == set(MODEL_INPUTS)
+    assert evaluate(jobs["publish"]["if"], context) == (
+        ref == "refs/heads/main" and not given
+    )
+
+
+def test_model_based_tests_collect_every_router_leg_and_no_other():
+    jobs = workflow("modelBasedTests.yml")["jobs"]
+    matrix = jobs["router"]["strategy"]["matrix"]
+    leg = next(s for s in jobs["router"]["steps"] if s.get("env", {}).get("RUN"))
+    assert 'report="results/router/reports/$DEVICE-$RUN.json"' in leg["run"]
+    collect = next(s["run"] for s in jobs["collect"]["steps"] if "run" in s)
+    devices = re.search(r"for device in ([^;]+); do", collect).group(1).split()
+    runs = re.search(r"for run in ([^;]+); do", collect).group(1).split()
+    assert devices == matrix["device"]
+    assert runs == matrix["run"]
+    assert set(jobs["collect"]["needs"]) == {"build", "router"}
+    assert jobs["collect"]["if"] == "always()"
+
+
+def test_model_based_tests_publish_both_checks_and_the_page(tmp_path):
+    """modelBasedTests.yml's Publish step, on a local repository, with what
+    model_based.py makes of the scripts' reports."""
+    root = WORKFLOWS.parents[1]
+    job = workflow("modelBasedTests.yml")["jobs"]["publish"]
+    assert job["concurrency"] == {
+        "group": "gh-pages-publish",
+        "cancel-in-progress": "false",
+        "queue": "max",
+    }
+    run = next(s["run"] for s in job["steps"] if s.get("name") == "Publish results")
+    repo = tmp_path / "repo"
+    (repo / "utils/kernel_checks").mkdir(parents=True)
+    for name in ("index.html", "publish.py"):
+        (repo / "utils/kernel_checks" / name).write_bytes(
+            (root / "utils/kernel_checks" / name).read_bytes()
+        )
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "main")
+    git(repo, "switch", "-q", "--orphan", "gh-pages")
+    (repo / "kernel-checks").mkdir()
+    (repo / "kernel-checks/index.html").write_text("redirect")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "pages")
+    git(repo, "switch", "-q", "main")
+
+    allocator = tmp_path / "allocator.json"
+    allocator.write_text(
+        json.dumps(
+            {
+                "properties": [{"name": "legality", "ok": True, "detail": ""}],
+                "counts": {
+                    "unsolved": 0,
+                    "illegal": 0,
+                    "avoidable_crossings": 0,
+                    "bank_pair_sharing": 0.24,
+                    "wall_s": 103.0,
+                },
+            }
+        )
+    )
+    collector = root / "utils/component_checks/model_based.py"
+    for check, report in (("allocator", allocator), ("router", tmp_path / "gone.json")):
+        out = repo / "results" / check
+        out.mkdir(parents=True)
+        subprocess.run(
+            [sys.executable, collector, check, "--report", report]
+            + ["--out", out / "perf.json", "--meta", out / "meta.json"],
+            capture_output=True,
+            check=False,
+        )
+    temp = tmp_path / "runner-temp"
+    temp.mkdir()
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        cwd=repo,
+        env={
+            **os.environ,
+            "RUNNER_TEMP": str(temp),
+            "GITHUB_RUN_ID": "42",
+            "GITHUB_SHA": "0123456789abcdef",
+            "RUN_URL": "https://example.com/runs/42",
+            "RUN_STARTED_AT": "2026-10-10T03:17:00Z",
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+        },
+        check=True,
+        capture_output=True,
+    )
+    assert git(repo, "branch", "--show-current").strip() == "main"
+    files = set(git(repo, "ls-tree", "-r", "--name-only", "gh-pages").split())
+    assert {
+        "dashboard/index.html",
+        "component-checks/allocator/runs/42.json",
+        "component-checks/allocator/history/bank_pair_sharing.json",
+        "component-checks/allocator/index.html",
+        "component-checks/router/runs/42.json",
+        "component-checks/router/index.html",
+    } <= files
+
+    record = json.loads(
+        git(repo, "show", "gh-pages:component-checks/allocator/runs/42.json")
+    )
+    assert record["target"] == "allocator" and record["failed"] == []
+    assert record["rows"]["allocator"]["bank_pair_sharing"]["value"] == 0.24
+    # A router that wrote no report still publishes a record saying so.
+    record = json.loads(
+        git(repo, "show", "gh-pages:component-checks/router/runs/42.json")
+    )
+    assert record["failed"] == ["gone: no report"] and record["exitstatus"] == 1
+    assert 'url=../../dashboard/#view=routing"' in git(
+        repo, "show", "gh-pages:component-checks/router/index.html"
+    )
+
+
 def test_every_path_that_triggers_a_pull_request_run_exists():
     root = WORKFLOWS.parents[1]
     paths = workflow("nightlyComponentChecks.yml")["on"]["pull_request"]["paths"]
@@ -337,6 +517,7 @@ def git(cwd, *args):
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     ).stdout
 
 
@@ -430,6 +611,7 @@ def test_publishing_migrates_records_and_leaves_redirects(tmp_path):
     files = set(git(repo, "ls-tree", "-r", "--name-only", "gh-pages").split())
     assert "component-checks/sa-placer/data.js" not in files
     assert {
+        "dashboard/index.html",
         "kernel-checks/index.html",
         "component-checks/index.html",
         "component-checks/sa-placer/index.html",
@@ -444,10 +626,13 @@ def test_publishing_migrates_records_and_leaves_redirects(tmp_path):
     def show(path):
         return git(repo, "show", f"gh-pages:{path}")
 
-    assert 'url=../kernel-checks/#view=components"' in show(
-        "component-checks/index.html"
-    )
-    assert 'url=../../kernel-checks/#view=components"' in show(
+    # The dashboard is the page; every old address redirects to its view.
+    assert show("dashboard/index.html") == (
+        WORKFLOWS.parents[1] / "utils/kernel_checks/index.html"
+    ).read_text(encoding="utf-8")
+    assert 'url=../dashboard/#view=night"' in show("kernel-checks/index.html")
+    assert 'url=../dashboard/#view=placement"' in show("component-checks/index.html")
+    assert 'url=../../dashboard/#view=placement"' in show(
         "component-checks/sa-placer/index.html"
     )
     index = json.loads(show("component-checks/sa-placer/runs.json"))
@@ -466,3 +651,99 @@ def test_a_hosted_job_runs_the_page_tests_instead_of_skipping_them():
     job = workflow("buildAndTestPythons.yml")["jobs"]["build-repo"]
     assert job["runs-on"].startswith("ubuntu-")
     assert job["env"]["MLIR_AIE_REQUIRE_NODE"] == "1"
+
+
+def test_the_docs_deploy_keeps_what_the_nightlies_publish(tmp_path):
+    """The docs deploy clears the gh-pages root of everything mike does not
+    own; the nightlies' directories must survive it."""
+    steps = workflow("generateDocs.yml")["jobs"]["build-docs"]["steps"]
+    run = next(s["run"] for s in steps if "git ls-files -z" in s.get("run", ""))
+    clean = run[run.index("git ls-files -z") : run.index("cd -")]
+    repo = tmp_path / "pages"
+    kept = [
+        "dashboard/index.html",
+        "kernel-checks/index.html",
+        "kernel-checks/npu1/runs.json",
+        "component-checks/sa-placer/runs.json",
+        "ci-health/status.json",
+        "dev/index.html",
+        "index.html",
+        "versions.json",
+    ]
+    for f in kept + ["bench/data.js", "old.html"]:
+        (repo / f).parent.mkdir(parents=True, exist_ok=True)
+        (repo / f).write_text("x")
+    git(repo, "init", "-q")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "pages")
+    subprocess.run([BASH, "-eo", "pipefail", "-c", clean], cwd=repo, check=True)
+    left = set(git(repo, "ls-files").split())
+    assert left == set(kept)
+
+
+def test_ci_health_publishes_its_files_and_the_page(tmp_path):
+    """publishCiHealth.yml's Publish step, on a local repository."""
+    job = workflow("publishCiHealth.yml")["jobs"]["publish"]
+    assert job["concurrency"] == {
+        "group": "gh-pages-publish",
+        "cancel-in-progress": "false",
+        "queue": "max",
+    }
+    assert job["permissions"] == {
+        "contents": "write",
+        "actions": "read",
+        "pull-requests": "read",
+    }
+    run = next(step["run"] for step in job["steps"] if step.get("name") == "Publish")
+    repo = tmp_path / "repo"
+    (repo / "utils/kernel_checks").mkdir(parents=True)
+    page = WORKFLOWS.parents[1] / "utils/kernel_checks/index.html"
+    (repo / "utils/kernel_checks/index.html").write_bytes(page.read_bytes())
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "main")
+    git(repo, "switch", "-q", "--orphan", "gh-pages")
+    (repo / "kernel-checks").mkdir()
+    (repo / "kernel-checks/index.html").write_text("redirect")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "pages")
+    git(repo, "switch", "-q", "main")
+    temp = tmp_path / "runner-temp"
+    (temp / "ci-health").mkdir(parents=True)
+    (temp / "ci-health/status.json").write_text('{"schema": 1}')
+    (temp / "ci-health/history.json").write_text('{"schema": 1, "points": []}')
+    env = {
+        **os.environ,
+        "RUNNER_TEMP": str(temp),
+        "GITHUB_SHA": "0123456789abcdef",
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+    }
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+    assert git(repo, "branch", "--show-current").strip() == "main"
+    files = set(git(repo, "ls-tree", "-r", "--name-only", "gh-pages").split())
+    assert files == {
+        "kernel-checks/index.html",
+        "ci-health/status.json",
+        "ci-health/history.json",
+        "dashboard/index.html",
+    }
+    assert (
+        git(repo, "log", "-1", "--format=%s", "gh-pages").strip()
+        == "Publish CI health for 0123456789"
+    )
+    # Nothing new: nothing committed.
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+    assert git(repo, "rev-list", "--count", "gh-pages").strip() == "2"

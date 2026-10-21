@@ -228,6 +228,8 @@ jobs:
             lib/Dialect/AIE/Transforms/AIEPlacer.cpp
             lib/Dialect/AIE/Transforms/AIEPlaceTiles.cpp
             lib/Dialect/AIE/Transforms/AIESAPlacer.cpp
+            lib/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.cpp
+            lib/Dialect/AIE/Transforms/AIEStructuralRank.cpp
             lib/Dialect/AIE/Transforms/AIETraceToConfig.cpp
             lib/Dialect/AIE/Transforms/AIEVectorToPointerLoops.cpp
             lib/Dialect/AIE/Transforms/AIEVectorTransferLowering.cpp
@@ -328,7 +330,7 @@ jobs:
 
     name: Check code format
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: write
@@ -398,7 +400,7 @@ jobs:
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@4553543bea739d9d503379d786148cfd561de5fa  # v1.25.0
+        uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7  # v1.26.1
         with:
           tool_name: clang-format
           level: error
@@ -421,7 +423,7 @@ jobs:
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@4553543bea739d9d503379d786148cfd561de5fa  # v1.25.0
+        uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7  # v1.26.1
         with:
           tool_name: black
           level: error
@@ -431,7 +433,7 @@ jobs:
 
     name: Check for AI comment slop
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     # Scoped to actual PR commits only. merge_group's HEAD carries commits from
     # every PR ahead of this one in the queue, so the diff would compare comments
@@ -475,7 +477,7 @@ jobs:
 
   license-compliance:
     name: License Compliance Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout Repository
@@ -501,7 +503,7 @@ jobs:
 
   docs-build:
     name: Docs site build (mkdocs --strict)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Get the project repository

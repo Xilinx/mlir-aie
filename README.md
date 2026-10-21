@@ -329,7 +329,7 @@ Examples with a separate native host, explicit artifact builds, or multi-stage w
 
 1. AIE API header library documentation for single-core AIE programming in C++ is available [here](https://xilinx.github.io/aie_api/topics.html)
 
-1. If you are a university researcher or student and interested in trying these tools on our Ryzen™ AI AUP Cloud systems, please contact the [AMD University Program](mailto:aup@amd.com)
+1. If you are a university researcher or student and interested in trying these tools on our Ryzen™ AI AUP Cloud systems, please visit the [AMD University Program](https://www.amd.com/en/corporate/university-program/learning-cloud.html)
 
 1. Have a question or want to talk with the team and other users? Join the [ROCm Discord](https://discord.gg/UbXzGdXsR5) and look for the **ROCm-NPU** channel
 

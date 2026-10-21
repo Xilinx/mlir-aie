@@ -19,6 +19,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     ARCH_TRAITS,
+    BUILDS,
     KernelContract,
     Param,
     TensorLayout,
@@ -27,7 +28,6 @@ from ._common import (
     _detect_arch,
     _kernel_source,
     _make_extern,
-    _tuned_arch,
     dtypes,
 )
 from .core import conv_even
@@ -371,6 +371,10 @@ class MatrixKernel(_ZeroInitializedKernel):
         return StreamDimsABC(A=a.stream, B=b.stream, C=c.stream)
 
 
+class _MatMulKernel(MatrixKernel):
+    k_tail: Kernel
+
+
 class _CascadeMatrixKernel(MatrixKernel):
     get_only: MatrixKernel
     put_only: Kernel
@@ -507,12 +511,18 @@ def mm(
     use_chess: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
     round_conv_even: bool = False,
-) -> MatrixKernel:
+) -> _MatMulKernel:
     """Matrix-multiply kernel: C += A * B.
 
     ``.zero`` initializes the accumulator using the independent, reusable
     ``kernels.zero(dim_m * dim_n, output_dtype)`` kernel. The contract declares
     the same initializer for the generic harness.
+
+    ``.k_tail(A, B, k_valid)`` zeroes A's columns and B's rows from
+    ``k_valid`` (clamped to ``[0, dim_k]``) on, in the blocking this kernel
+    reads, so a call after it sums only the first ``k_valid`` of the tile's
+    K, whatever the rest holds: the last tile of a reduction whose length is
+    not a multiple of ``dim_k``.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -543,7 +553,8 @@ def mm(
             kernel always does this, so it is ignored there.
 
     Returns:
-        ExternalFunction configured for the matmul kernel.
+        ExternalFunction configured for the matmul kernel, with its ``.zero``
+        and ``.k_tail``.
 
     Raises:
         ValueError: When ``(input_dtype, output_dtype)`` is not a supported combination.
@@ -612,39 +623,16 @@ def mm(
             block=(r, t),
         ),
     )
-    return _make_extern(
+    extern = _make_extern(
         f"{prefix}_{suffix}",
         _kernel_source("linalg/mm.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=compile_flags,
         use_chess=use_chess,
-        cls=MatrixKernel,
+        cls=_MatMulKernel,
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            # Tuned or not: at most 512 B on aie2
-            # and 192 B on aie2p, except aie2p's int8 -> int32 kernel, whose
-            # fully unrolled K loop spills about 16 B per unit of K (c_col_maj:
-            # 1088 B at K = 56, 6208 B at K = 384, at most 1024 B up to K =
-            # 48). mm_aie2p.h rolls K from K = 416 (192 B), and a 16x16 tile
-            # does not spill (640 B). The fit covers only that kernel over 48 <
-            # dim_k < 416 (787 M/N/K/layout combos, see 0c60e6be3f2); the rest
-            # fit the 1024 B default. Too small a value fails the aiecc build
-            # loudly, as checkStackSizeRequirements reads the real
-            # .stack_sizes. A chess core cannot be measured, so use_chess keeps
-            # the matrix_multiplication examples' constant.
-            stack_bytes=(
-                0xD00
-                if use_chess
-                else (
-                    16 * dim_k + 256
-                    if arch == "aie2p"
-                    and vectorized
-                    and key == (np.int8, np.int32)
-                    and 48 < dim_k < 416
-                    else None
-                )
-            ),
             # mm_aie2p.h sets conv_even itself and restores it; mm_aie2.h
             # does so only under round_conv_even, and otherwise stores bf16
             # in whatever mode the core is in.
@@ -662,6 +650,10 @@ def mm(
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
+    extern.k_tail = extern.object_file.bind(
+        f"{prefix}_{suffix}_k_tail", [a_ty, b_ty, np.int32]
+    )
+    return extern
 
 
 mm.mac_dims = _MatMulFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
@@ -854,12 +846,6 @@ def _mv_bf16(
     else:
         prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
         symbol = f"{prefix}_bf16_bf16"
-        if not use_chess:
-            # Peano's outer-loop pointer optimizer turns three of the second
-            # row group's offset loads into post-modify loads from the
-            # unoffset base, so rows 4-6 come out wrong. Drop the flag once
-            # llvm-aie fixes the pass.
-            flags += ["-mllvm", "--aie-enable-outer-loop-pointer-opt=false"]
         arg_types = [
             np.int32,
             np.int32,
@@ -1090,6 +1076,10 @@ def mha(
     pv: bool = False,
     b_col_maj: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
+    accurate_exp2: bool = False,
+    causal: bool = True,
+    window: int = 0,
+    f32_scores: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1100,12 +1090,15 @@ def mha(
     [`MatrixKernel`][iron.kernels.linalg.MatrixKernel] judged like
     [`mm`][iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
     ``matmul_bf16_bf16_wrapper``, ``mm_aie2p.h``'s bf16 product on its 4x8x8
-    micro-tile behind an ``idx_buffer`` gate (the call runs when
-    ``idx[0] <= idx[1]``) bound here to ``[0, 0]``. With ``pv`` it is the
+    micro-tile behind an ``idx_buffer`` gate (the call runs when key block
+    ``idx[0]`` holds a key some row of query block ``idx[1]`` keeps) bound
+    here to ``[0, 0]``. With ``pv`` it is the
     ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
     the native 8x8x8 micro-tile and ungated. ``matmul_PV`` is that same
-    product preceded by a row rescale, which needs the online softmax's
-    running state and so is exercised by ``test_mha_e2e.py`` instead.
+    product into a float32 ``O``, preceded by a row rescale, which needs the
+    online softmax's running state and so is exercised by
+    ``test_mha_e2e.py`` instead; ``rescale_O`` divides that ``O`` by the row
+    sums into a bf16 tile.
     ``mha.mac_dims(pv=...)`` answers either product's micro-tile without
     building a kernel, as ``mm.mac_dims`` does.
 
@@ -1127,6 +1120,27 @@ def mha(
         emulate_bf16_mmul_with_bfp16: As for [`mm`][iron.kernels.linalg.mm]:
             both products use BFP16-based emulation, and ``QK^T``'s
             micro-tile becomes (8, 8, 8).  Ignored on AIE2.
+        accurate_exp2: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]:
+            ``partial_softmax`` and the running-state update take 2^x from a
+            polynomial rather than AIE2P's exp2 instruction or AIE2's cubic.
+        causal: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
+            query keeps no key past its own position.
+        window: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
+            query keeps no key more than ``window`` positions from it; 0 is
+            no window.
+        f32_scores: Keep the ``QK^T`` scores in float32 (``-DMHA_F32_SCORES``):
+            ``matmul_bf16_bf16_wrapper`` writes, and ``partial_softmax``
+            reads, a float32 tile, held to float32 summation order. AIE2P
+            only, and not with ``emulate_bf16_mmul_with_bfp16``. At 64-key
+            blocks a design places only with ``P V`` split over two cores.
+
+    Returns:
+        MatrixKernel for ``matmul_bf16_bf16_wrapper``, or with ``pv``
+        ``matmul_bf16_bf16_rowmaj``.
+
+    Raises:
+        ValueError: A tile dimension that is not a positive multiple, or a
+            window the band cannot hold (see ``mha_softmax``).
     """
     for name, v, mult in (
         ("dim_m", dim_m, 16),
@@ -1137,7 +1151,15 @@ def mha(
             raise ValueError(
                 f"mha: {name} must be a positive multiple of {mult}, got {v}"
             )
-    tile = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
+    if f32_scores and _arch_traits().name == "aie2":
+        raise NotImplementedError("mha: f32_scores is written for AIE2P only")
+    if f32_scores and emulate_bf16_mmul_with_bfp16:
+        raise ValueError(
+            "mha: f32_scores keeps the scores to float32 summation order, which "
+            "a bfp16-emulated product gives up"
+        )
+    score = np.float32 if f32_scores and not pv else bfloat16
+    tile = np.ndarray[(dim_m * dim_n,), np.dtype[score]]
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
@@ -1146,10 +1168,17 @@ def mha(
         f"-DDIM_M={dim_m}",
         f"-DDIM_K={dim_k}",
         f"-DDIM_N={dim_n}",
-        "-Dbf16_bf16_ONLY",
+        *(
+            ["-DMHA_F32_SCORES", "-Dbf16_f32_ONLY"]
+            if f32_scores
+            else ["-Dbf16_bf16_ONLY"]
+        ),
     ]
     if b_col_maj:
         flags.append("-DB_COL_MAJ")
+    if accurate_exp2:
+        flags.append("-DEXP2_BF16_ACCURATE=1")
+    flags += _mha_band_flags("mha", dim_m, dim_n, causal, window)
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
@@ -1185,7 +1214,17 @@ def mha(
             initializers=((2, _zero_output),),
             acc_dtype=np.float32,
             reduction=dim_k,
-            tolerance=_linalg_tolerance(bfloat16),
+            tolerance=(
+                Tolerance.bounded(
+                    partial(
+                        _f32_sum_order_bound, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n
+                    ),
+                    note="float32 scores: f32 summation order over dim_k exact "
+                    "bf16 products",
+                )
+                if f32_scores and not pv
+                else _linalg_tolerance(bfloat16)
+            ),
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
@@ -1194,48 +1233,139 @@ def mha(
 mha.mac_dims = _MhaFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
 
 
-_MHA_BLOCK = 64  # partial_softmax's fast path needs 64 keys per block
+def _mha_band_flags(name, dim_m, dim_n, causal, window):
+    """Return the ``-D`` flags that select ``mha.cc``'s band, after checking it.
+
+    Raises:
+        ValueError: A negative ``window``, or a ``window`` that is not a
+            multiple of ``dim_m`` or with a ``dim_n`` that ``dim_m`` does
+            not divide.
+    """
+    if window < 0:
+        raise ValueError(f"{name}: window must be 0 (none) or positive, got {window}")
+    # A row whose band misses a key block another row of its query block
+    # keeps, with no key of its own before it, would weigh its masked keys 1;
+    # whole query blocks per window and per key block rule that row out.
+    if window and (window % dim_m or dim_n % dim_m):
+        raise ValueError(
+            f"{name}: a window needs window and dim_n multiples of dim_m, "
+            f"got window={window}, dim_m={dim_m}, dim_n={dim_n}"
+        )
+    return [
+        *([] if causal else ["-DMHA_CAUSAL=0"]),
+        *([f"-DMHA_WINDOW={window}"] if window else []),
+    ]
 
 
-def mha_softmax() -> ExternalFunction:
-    """One 64x64 block of ``mha.cc``'s online softmax, ``partial_softmax``.
+def _mha_softmax_accurate_bound(
+    a, idx, s_q_eff, s_kv_eff, *, scale, half_ulp_p, **band
+):
+    """One bf16 ulp per stored value; l, P summed in float32, half of P's each.
 
-    Writes the block's unnormalized weights ``P = exp2(A * s - m)``, with
-    ``s = log2(e) / 8`` and ``m`` each query row's running maximum, and
-    updates the running state ``scale_buffer``: ``[m, m, l, exp2(m_prev -
-    m)]``, 64 rows each. The state is zeroed before every call, so each call
-    is a first key block against a running maximum of 0; the carry across
-    blocks is ``test_mha_e2e.py``'s. The kernel masks by overwriting
-    ``A``'s masked entries in place.
+    exp2's fit is within 2.8e-6 of 2^f, but an f32 f reaches it as two bf16
+    limbs, 2^-19 short, and the Horner limbs round: P measured 6.2e-6 past
+    half an ulp on npu1, held here to 1e-5. 2^x flushes to +0 below -125.5.
+    With `half_ulp_p`, P is held to half an ulp plus that of the unrounded P,
+    so the bound adds back the judged reference's own rounding to bf16.
+    """
+    p, state = mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, scale=scale, **band)
+    m, n = band["dim_m"], band["dim_n"]
+    p_ulp = np.where(
+        p == 0, 0, np.maximum(np.ldexp(1.0, np.frexp(p)[1] - 8), 2.0**-125)
+    )
+    p_err = p_ulp / 2 + 1e-5 * p
+    p_rounding = np.abs(p.astype(bfloat16).astype(np.float64) - p)
+    p_bound = (
+        np.where(p == 0, 0, np.maximum(p_rounding + p_err, 2.0**-125))
+        if half_ulp_p
+        else p_ulp
+    )
+    state_bound = np.ldexp(1.0, np.frexp(state)[1] - 8) * (state != 0)
+    state_bound[:, 2 * m : 3 * m] = p_err.reshape(len(p), m, n).sum(axis=2)
+    return p_bound, state_bound
+
+
+def mha_softmax(
+    accurate_exp2: bool = False,
+    dim_m: int = 64,
+    dim_n: int = 64,
+    causal: bool = True,
+    window: int = 0,
+    scale: float = np.log2(np.e) / 8,
+) -> ExternalFunction:
+    """One block of ``mha.cc``'s online softmax, ``partial_softmax``.
+
+    Writes the block's unnormalized weights ``P = exp2(A * s - m * s)``,
+    with ``s`` the bf16 ``scale`` and ``m`` each query row's running maximum
+    of ``A``, unscaled, and updates the running state ``scale_buffer``:
+    ``[m, m, l, exp2((m_prev - m) * s)]``, ``dim_m`` float32 rows each. Both
+    products are of bf16s, so exact in float32, and the key that sets a row's
+    running maximum takes an exponent of exactly 0. The state is zeroed
+    before every call, so each call is a first key block against a running
+    maximum of 0; the carry across blocks is ``test_mha_e2e.py``'s. The
+    kernel masks by overwriting ``A``'s masked entries in place.
 
     Which block it is stays a runtime operand, as in the kernel: ``idx`` is
-    ``(key block, query block)`` (equal on the causal diagonal, key block
-    past query block skipped), and ``S_q_eff``/``S_kv_eff`` are the
-    sequence lengths whose tails pad the block.
+    ``(key block, query block)``, a block no query row keeps a key of is
+    skipped, and ``S_q_eff``/``S_kv_eff`` are the sequence lengths whose
+    tails pad the block. A 64-key block of a multiple of 8 rows, at least
+    16, takes the kernel's row-group path; any other shape the per-row one.
+
+    Args:
+        accurate_exp2: Take 2^x from a polynomial within 2.8e-6 before its
+            bf16 rounding (``-DEXP2_BF16_ACCURATE``), in place of AIE2P's
+            exp2 instruction, which is off by up to 6.15%, or AIE2's cubic,
+            0.74% with the bf16 store. ``s`` stays the bf16 scalar the
+            kernel takes, 1.8e-3 from log2(e) / 8.
+        dim_m: Query rows of the block (``B_q``), a multiple of 16.
+        dim_n: Keys of the block (``B_kv``), a multiple of 16.
+        causal: A query keeps no key past its own position.
+        window: A query keeps no key more than ``window`` positions before
+            it, nor, when not causal, after it; 0 is no window. A multiple of
+            ``dim_m``, as ``dim_n`` must then be, and for self-attention,
+            where every query row keeps its own position.
+        scale: The log2-domain factor ``s``, rounded to bf16: ``log2(e)``
+            over the square root of the head dimension. Positive and finite,
+            so a masked score, ``A``'s lowest times ``s``, stays below every
+            kept one.
+
+    Returns:
+        ExternalFunction for ``partial_softmax``.
+
+    Raises:
+        ValueError: A block dimension that is not a positive multiple of
+            16, a ``scale`` that is not positive and finite, or a window
+            the band cannot hold.
     """
-    b = _MHA_BLOCK
-    tile = np.ndarray[(b * b,), np.dtype[bfloat16]]
-    state = np.ndarray[(4 * b,), np.dtype[bfloat16]]
+    for name, v in (("dim_m", dim_m), ("dim_n", dim_n)):
+        if v <= 0 or v % 16:
+            raise ValueError(
+                f"mha_softmax: {name} must be a positive multiple of 16, got {v}"
+            )
+    scale = float(bfloat16(scale))
+    if not 0 < scale < np.inf:
+        raise ValueError(f"mha_softmax: scale must be positive and finite, got {scale}")
+    band_flags = _mha_band_flags("mha_softmax", dim_m, dim_n, causal, window)
+    band = dict(dim_m=dim_m, dim_n=dim_n, causal=causal, window=window)
+    tile = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
+    state = np.ndarray[(4 * dim_m,), np.dtype[np.float32]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
-    scale = float(bfloat16(np.log2(np.e) / np.sqrt(b)))
     return _make_extern(
         "partial_softmax",
         _kernel_source("linalg/mha.cc"),
         [tile, tile, state, idx, bfloat16, *([np.int32] * 4)],
-        compile_flags=[f"-DDIM_M={b}", f"-DDIM_K={b}", f"-DDIM_N={b}"],
+        compile_flags=[
+            f"-DDIM_M={dim_m}",
+            "-DDIM_K=64",
+            f"-DDIM_N={dim_n}",
+            *(["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else []),
+            *band_flags,
+        ],
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Out, InOut, *([Param] * 6)),
-            parameter_bindings=((4, scale), (5, b), (6, b)),
+            parameter_bindings=((4, scale), (5, dim_m), (6, dim_n)),
             initializers=((2, _zero_output),),
-            reference=partial(mha_softmax_ref, scale=scale),
-            # The untuned loop on aie2, where a whole 64-lane row spills; the
-            # tuned one fits the default.
-            stack_bytes=(
-                1376
-                if _detect_arch() == "aie2" and _tuned_arch() == "portable"
-                else None
-            ),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
             # (test_mha_e2e.py's _RTOL_EXP2). This form's rtol multiplies
@@ -1244,56 +1374,80 @@ def mha_softmax() -> ExternalFunction:
             # exp2_bf16.h's cubic instead, 0.74% from exp2 at worst with the
             # bf16 store on npu1 (0.37% of |a| + |b|), so its rtol is 0.4% of
             # |a| + |b| and its floor only admits the underflow to 0.
-            tolerance=(
-                Tolerance.relative(
-                    0.004,
-                    2.0**-120,
-                    note="exp2_bf16.h cubic, 0.74% worst element on npu1",
+            per_build=tuple(
+                (
+                    build,
+                    partial(mha_softmax_ref, scale=scale, **band),
+                    (
+                        Tolerance.bounded(
+                            partial(
+                                _mha_softmax_accurate_bound,
+                                scale=scale,
+                                # npu1 measured P within 0.5012 ulp, and 0.63
+                                # with exp2's f_lo term dropped; npu2 measured
+                                # 0.73.
+                                half_ulp_p=build.arch == "aie2",
+                                **band,
+                            ),
+                            note="exp2 1e-5 past half an ulp, then each store's "
+                            "rounding; P measured 0.5012 ulp on npu1, 0.73 on npu2",
+                        )
+                        if accurate_exp2
+                        else (
+                            Tolerance.relative(
+                                0.004,
+                                2.0**-120,
+                                note="exp2_bf16.h cubic, 0.74% worst element on npu1",
+                            )
+                            if not ARCH_TRAITS[build.arch].native_exp2
+                            else Tolerance.relative(
+                                0.035,
+                                4 * 2.0**-7,
+                                note="aie::exp2 interpolant envelope, 6.98% "
+                                "(test_mha_e2e.py)",
+                            )
+                        )
+                    ),
                 )
-                if not _arch_traits().native_exp2
-                else Tolerance.relative(
-                    0.035,
-                    4 * 2.0**-7,
-                    note="aie::exp2 interpolant envelope, 6.98% (test_mha_e2e.py)",
-                )
+                for build in BUILDS
             ),
         ),
     )
 
 
-def mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, *, scale):
+def mha_softmax_ref(
+    a, idx, s_q_eff, s_kv_eff, *, scale, dim_m=64, dim_n=64, causal=True, window=0
+):
     """Numpy reference for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: ``(P, scale_buffer)``.
 
     True ``exp2`` rather than the device's interpolant, from a zeroed
-    running state. ``m`` is rounded to bf16 before ``P`` uses it, as the
-    kernel stores it. A padded row keeps ``m = l = 0``; a skipped or wholly
-    padded block leaves the state untouched.
+    running state. ``m`` is the unscaled maximum, as the kernel stores it. A
+    padded row keeps ``m = l = 0``; a skipped or wholly padded block leaves
+    the state untouched.
     """
-    b = _MHA_BLOCK
     kv, q = (int(i) for i in np.asarray(idx).ravel())
-    rows, cols = np.indices((b, b))
-    keep = (rows < s_q_eff - q * b) & (cols < s_kv_eff - kv * b)
-    if kv == q:
-        keep &= cols <= rows
-    if kv > q or not keep.any():
-        return np.zeros((len(a), b * b)), np.zeros((len(a), 4 * b))
-    scaled = a.astype(np.float32).reshape(-1, b, b) * np.float32(scale)
-    m = np.where(keep, scaled, -np.inf).max(axis=2)
-    m = np.maximum(m.astype(bfloat16).astype(np.float32), 0)
-    p = np.exp2(np.where(keep, scaled - m[..., None], -np.inf))
-    state = np.concatenate([m, m, p.sum(axis=2), np.exp2(-m)], axis=1)
+    rows, cols = np.indices((dim_m, dim_n))
+    key = kv * dim_n + cols - (q * dim_m + rows)
+    keep = (rows < s_q_eff - q * dim_m) & (cols < s_kv_eff - kv * dim_n)
+    if causal or window:
+        keep &= key <= (0 if causal else window)
+    if window:
+        keep &= key >= -window
+    if not keep.any():
+        return np.zeros((len(a), dim_m * dim_n)), np.zeros(
+            (len(a), 4 * dim_m), np.float32
+        )
+    scores = a.astype(np.float32).reshape(-1, dim_m, dim_n)
+    m = np.maximum(np.where(keep, scores, -np.inf).max(axis=2), 0)
+    s = np.float32(scale)
+    p = np.exp2(np.where(keep, scores * s - (m * s)[..., None], -np.inf))
+    state = np.concatenate([m, m, p.sum(axis=2), np.exp2(-m * s)], axis=1)
     return p.reshape(len(p), -1), state
 
 
-# head_dim -> (LQ, LK, stack_bytes) for flash_attn_prefill.h's PrefillGeom
-# specializations: 512 is global attention, 256 sliding-window. The stack is
-# aiecc's measured_stack_size: fv_step -> sv_row_block is the deepest call the
-# five entry points reach, and both geometries share sv_row_block's frame, so
-# they need the same stack. On aie2 both need _PREFILL_STACK_AIE2, measured
-# with all five entry points on one core (test_flash_attn_prefill_e2e.py);
-# prefill_epilogue is the deepest.
-_PREFILL_GEOM = {512: (8, 8, 1984), 256: (16, 16, 1984)}
-_PREFILL_STACK_AIE2 = 1152
+# head_dim -> (LQ, LK) for flash_attn_prefill.h's PrefillGeom
+# specializations: 512 is global attention, 256 sliding-window.
+_PREFILL_GEOM = {512: (8, 8), 256: (16, 16)}
 
 
 def prefill_fv(head_dim: int = 512) -> ExternalFunction:
@@ -1324,9 +1478,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     """
     if head_dim not in _PREFILL_GEOM:
         raise ValueError(f"prefill_fv: head_dim must be 512 or 256, got {head_dim}")
-    lq, lk, stack_bytes = _PREFILL_GEOM[head_dim]
-    if _detect_arch() == "aie2":
-        stack_bytes = _PREFILL_STACK_AIE2
+    lq, lk = _PREFILL_GEOM[head_dim]
     # flash_attn_prefill.h's MMUL is aie::mmul<8, 8, 8, bf16, bf16>, the native
     # bf16 micro-tile, not the (4, 8, 8) _MM_MAC_DIMS records for mm.cc.
     r = s = t = 8
@@ -1357,10 +1509,8 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             roles=(InOut, In, In, Param),
             parameter_bindings=((3, 0),),
             initializers=((0, partial(_zero_output, index=0)),),
-            reference=partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
             acc_dtype=np.float32,
             reduction=lk,
-            stack_bytes=stack_bytes,
             # Derived, not inherited: _linalg_tolerance(bfloat16)'s 0.05/0.5 is
             # for a kernel that narrows C back to bf16, and y here is float32.
             # bf16 mantissas are 8 bits, so every product is exact in f32
@@ -1371,20 +1521,33 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             # tuned branch the mmul sums in a different order, and on large inputs whose
             # products cancel that order error exceeds any relative bound, so
             # it is judged against the order bound itself.
-            tolerance=(
-                Tolerance.bounded(
-                    partial(_prefill_fv_bound, dim_m=lq, dim_k=lk, dim_n=head_dim),
-                    note="f32 summation order over lk exact bf16 products, in "
-                    "the kernel and the reference; measured worst 0.12 of it "
-                    "on npu1",
+            per_build=tuple(
+                (
+                    build,
+                    partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
+                    (
+                        Tolerance.bounded(
+                            partial(
+                                _f32_sum_order_bound,
+                                dim_m=lq,
+                                dim_k=lk,
+                                dim_n=head_dim,
+                            ),
+                            note="f32 summation order over lk exact bf16 products, "
+                            "in the kernel and the reference; measured worst 0.12 "
+                            "of it on npu1",
+                        )
+                        if build.tuned != "aie2p"
+                        else Tolerance.relative(
+                            1e-5,
+                            1e-5,
+                            note="f32 accumulation order over lk<=16 exact bf16 "
+                            "products: lk * 2**-24 ~ 1e-6; verified on npu2 at "
+                            "this bound",
+                        )
+                    ),
                 )
-                if _tuned_arch() != "aie2p"
-                else Tolerance.relative(
-                    1e-5,
-                    1e-5,
-                    note="f32 accumulation order over lk<=16 exact bf16 "
-                    "products: lk * 2**-24 ~ 1e-6; verified on npu2 at this bound",
-                )
+                for build in BUILDS
             ),
             ops_per_call=2 * lq * lk * head_dim,
         ),
@@ -1414,12 +1577,12 @@ def prefill_fv_ref(s, v, *, dim_m: int, dim_k: int, dim_n: int):
     return (s @ v).reshape(len(s), dim_m * dim_n)
 
 
-def _prefill_fv_bound(s, v, *, dim_m: int, dim_k: int, dim_n: int):
-    """Per-output bound on ``|y - prefill_fv_ref|`` from summation order alone.
+def _f32_sum_order_bound(s, v, *, dim_m: int, dim_k: int, dim_n: int):
+    """Per-output bound on a bf16 matmul's float32 result from summation order alone.
 
-    Every product is exact in float32, so a ``dim_k``-term float32 sum in any
-    order is within ``dim_k * 2**-24 * sum|s*v|`` of the exact dot product.
-    The kernel and the float32 reference each carry that error, hence 2.
+    Every bf16 product is exact in float32, so a ``dim_k``-term float32 sum in
+    any order is within ``dim_k * 2**-24 * sum|s*v|`` of the exact dot
+    product. The kernel and a float32 reference each carry that error, hence 2.
     """
     s = np.abs(np.asarray(s, np.float64)).reshape(-1, dim_m, dim_k)
     v = np.abs(np.asarray(v, np.float64)).reshape(-1, dim_k, dim_n)

@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Element-wise kernel factories: passthrough, scale, add, mul, relu."""
+"""Element-wise kernel factories: passthrough, scale, add, mul, relu, clamp, magnitude_f32."""
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
@@ -369,3 +369,150 @@ def relu_sized(tile_size: int = 1024) -> ExternalFunction:
             ops_per_call=tile_size,
         ),
     )
+
+
+def clamp(tile_size: int = 1024) -> ExternalFunction:
+    """Element-wise bf16 clamp to ``[low, high]``, with a compiled-in element count.
+
+    The design passes ``(in, out, size, low, high)``, each bound as its bf16
+    bits in an int32 (``int(np.array(b, bfloat16).view(np.uint16))``), the
+    type a runtime parameter word holds, so the bounds stay runtime values.
+
+    Args:
+        tile_size: Elements per call, a positive multiple of 32.
+
+    Returns:
+        ExternalFunction for ``clamp_bf16``.
+
+    Raises:
+        ValueError: When ``tile_size`` is not a positive multiple of 32.
+    """
+    _require_vector_alignment("clamp", tile_size, 32)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "clamp_bf16",
+        _kernel_source("eltwise/clamp.cc"),
+        [tile_ty, tile_ty, np.int32, np.int32, np.int32],
+        compile_flags=[f"-DCLAMP_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=clamp_ref,
+            tolerance=Tolerance.exact(note="selection: min and max are exact in bf16"),
+            ops_per_call=tile_size,
+        ),
+    )
+
+
+def clamp_ref(x, low, high):
+    """Numpy reference for [`clamp`][iron.kernels.eltwise.clamp]: ``min(max(x, low), high)``.
+
+    ``low`` and ``high`` are the bounds' bf16 bits, as the kernel takes them.
+    """
+    low, high = (np.uint16(b).view(bfloat16).astype(np.float32) for b in (low, high))
+    return np.minimum(np.maximum(x.astype(np.float32), low), high)
+
+
+def magnitude_f32(tile_size: int = 320) -> ExternalFunction:
+    """``sqrt(re^2 + im^2)`` of complex float32, float32-accurate.
+
+    Takes ``(x, y, size)``: ``x`` holds ``tile_size`` real parts then as many
+    imaginary parts, and ``y`` gets ``tile_size`` float32 magnitudes. Every
+    product is of bf16 limbs, exact in the float32 accumulator, and the
+    square root is three Newton steps from a bit-trick estimate. Defined for
+    ``|z|`` zero or from ``2**-51`` to below ``2**63``, where ``|z|^2`` and
+    the steps' residuals stay normal and finite float32.
+
+    The source sets ``conv_even`` itself and restores the core's mode on
+    exit, and builds for aie2 and aie2p.
+
+    Args:
+        tile_size: Magnitudes per call, a positive multiple of 32.
+
+    Returns:
+        ExternalFunction for ``magnitude_f32``.
+
+    Raises:
+        ValueError: When ``tile_size`` is not a positive multiple of 32.
+    """
+    _require_vector_alignment("magnitude_f32", tile_size, 32)
+    return _make_extern(
+        "magnitude_f32",
+        _kernel_source("eltwise/magnitude_f32.cc"),
+        [
+            np.ndarray[(2 * tile_size,), np.dtype[np.float32]],
+            np.ndarray[(tile_size,), np.dtype[np.float32]],
+            np.int32,
+        ],
+        compile_flags=[f"-DMAGNITUDE_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=magnitude_f32_ref,
+            sample=lambda rng, calls: magnitude_f32_sample(
+                rng, calls, tile_size=tile_size
+            ),
+            tolerance=_MAGNITUDE_F32_TOLERANCE,
+            ops_per_call=tile_size,
+        ),
+    )
+
+
+def _magnitude_f32_bound(x):
+    """Bound on magnitude_f32.cc's error: one ulp from the correctly rounded float32."""
+    t = magnitude_f32_ref(x)
+    r = t.astype(np.float32)
+    return np.abs(t - r) + np.spacing(r).astype(np.float64)
+
+
+_MAGNITUDE_F32_TOLERANCE = Tolerance.bounded(
+    _magnitude_f32_bound,
+    note="one float32 ulp from correctly rounded; npu2 measured 1 ulp "
+    "(1.23 ulp from the exact hypot) on 13% of 261,504 results",
+)
+
+
+def magnitude_f32_ref(x):
+    """Numpy reference for [`magnitude_f32`][iron.kernels.eltwise.magnitude_f32].
+
+    ``hypot`` of each call's two halves, in float64.
+    """
+    re, im = np.split(np.asarray(x, np.float64), 2, axis=-1)
+    return np.hypot(re, im)
+
+
+def magnitude_f32_sample(rng, calls: int, *, tile_size: int) -> list:
+    """Complex float32 of every phase over the whole domain, the first call led by edges.
+
+    Magnitudes are log-uniform from ``2**-51`` to ``2**62``, and one in
+    eight is a zero bin. The edges are zero, the axes, ``3 + 4i`` in
+    each quadrant, the domain's ends, and parts far apart in scale.
+    """
+    n = calls * tile_size
+    r = np.exp2(rng.uniform(-51, 62, n)) * (rng.uniform(size=n) >= 0.125)
+    phase = rng.uniform(0, 2 * np.pi, n)
+    re, im = r * np.cos(phase), r * np.sin(phase)
+    edges = [
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (0.0, -1.0),
+        (3.0, 4.0),
+        (-3.0, 4.0),
+        (-3.0, -4.0),
+        (3.0, -4.0),
+        (2.0**-51, 0.0),
+        (0.0, 2.0**-51),
+        (2.0**63 * (1 - 2.0**-24), 0.0),
+        (0.0, -(2.0**63) * (1 - 2.0**-24)),
+        (1e15, 1e-15),
+        (1e-15, 1e15),
+        (1e15, 1e15),
+        (1e-15, 1e-15),
+        (1.0, 2.0**-12),
+    ]
+    k = min(len(edges), n)
+    re[:k], im[:k] = np.array(edges[:k]).T
+    re, im = re.reshape(calls, tile_size), im.reshape(calls, tile_size)
+    return [np.concatenate((re, im), axis=-1).astype(np.float32)]

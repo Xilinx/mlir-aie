@@ -214,8 +214,8 @@ module @cascade_chain_unsatisfiable {
 // one row North or one column West of dst (rows increase upward).
 module @cascade_pinned_wrong_direction {
   aie.device(npu1) {
-    // CHECK: error: tile (0, 5) violates cascade adjacency
-    // CHECK: note: cascade source peer placed at (0, 4)
+    // CHECK: error: tile (0, 4) violates cascade adjacency
+    // CHECK: note: cascade destination peer placed at (0, 5)
     // CHECK: note: cascade adjacency requires the destination tile to be one row South or one column East of the source tile
     %dst = aie.logical_tile<CoreTile>(0, 5)
     %src = aie.logical_tile<CoreTile>(0, 4)

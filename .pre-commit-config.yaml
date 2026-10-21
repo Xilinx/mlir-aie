@@ -13,7 +13,7 @@ repos:
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: e2b496dc2bd8340c2524cb9a2d2a943cde1bb6df  # frozen: v23.1.1
+  rev: a9a8a861f30ed207ead7d5a3b7e8032283ba5da7  # frozen: v23.1.2
   hooks:
     - id: clang-format
       # Keep this extension list in sync with lintAndFormat.yml's clang-format
@@ -53,7 +53,7 @@ repos:
         )$
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: e8f7d69b957a30acb2c875078d5fd012de24b64c  # frozen: v0.16.7
+  rev: f12be1ebaa5351c1fc76472de98db2c3446c8253  # frozen: v0.16.10
   hooks:
     - id: ruff-check
       stages: [pre-push]
@@ -210,6 +210,8 @@ repos:
           lib/Dialect/AIE/Transforms/AIEPlacer\.cpp|
           lib/Dialect/AIE/Transforms/AIEPlaceTiles\.cpp|
           lib/Dialect/AIE/Transforms/AIESAPlacer\.cpp|
+          lib/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis\.cpp|
+          lib/Dialect/AIE/Transforms/AIEStructuralRank\.cpp|
           lib/Dialect/AIE/Transforms/AIETraceToConfig\.cpp|
           lib/Dialect/AIE/Transforms/AIEVectorToPointerLoops\.cpp|
           lib/Dialect/AIE/Transforms/AIEVectorTransferLowering\.cpp|

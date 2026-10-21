@@ -274,7 +274,7 @@ jobs:
     # on the page says the same against the previous nightly, but the
     # summary is what a red run's notification links to.
     if: ${{ !cancelled() && needs.checks.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write   # the one report comment on a Peano PR
@@ -290,30 +290,29 @@ jobs:
         with:
           pattern: kernel-checks-npu2-${{ github.run_id }}
           path: results/npu2
-      # publishKernelResults.yml saves each NPU's latest published record
-      # (latest.json) under this path.
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: baseline
-          key: kernel-checks-baseline-npu1-
-          restore-keys: kernel-checks-baseline-npu1-
-      - name: Keep npu1 baseline
+      # Each NPU's latest published record, as publishKernelResults.yml wrote
+      # it to the page.
+      - name: Fetch nightly baselines
         run: |
-          mkdir -p baselines
-          if [[ -d baseline ]]; then mv baseline baselines/npu1; fi
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: baseline
-          key: kernel-checks-baseline-npu2-
-          restore-keys: kernel-checks-baseline-npu2-
-      - name: Keep npu2 baseline
-        run: |
-          if [[ -d baseline ]]; then mv baseline baselines/npu2; fi
+          git fetch -q --depth=1 origin gh-pages
+          for npu in npu1 npu2; do
+            file="kernel-checks/$npu/latest.json"
+            if git cat-file -e "FETCH_HEAD:$file" 2>/dev/null; then
+              mkdir -p "baselines/$npu"
+              git show "FETCH_HEAD:$file" > "baselines/$npu/latest.json"
+            else
+              echo "::warning::no gh-pages:$file; $npu is not compared"
+            fi
+          done
 
       - name: Write report
+        env:
+          # A PR runs on its merge into this base.
+          COMMIT: ${{ github.event.pull_request.base.sha || github.sha }}
         run: |
           python3 utils/kernel_checks/pr_report.py --results results \
             --baselines baselines --out report.md --run-id "$GITHUB_RUN_ID" \
+            --commit "$COMMIT" \
             --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           cat report.md >> "$GITHUB_STEP_SUMMARY"
 
@@ -337,8 +336,8 @@ jobs:
           fi
 
   publish:
-    # After the report: publishing caches tonight's record as the baseline the
-    # report restores, so running first would compare the night with itself.
+    # After the report: publishing writes tonight's record as the baseline the
+    # report reads, so running first would compare the night with itself.
     # `!cancelled()` still publishes when the report job fails.
     needs: [checks, report]
     # Publish whichever NPUs produced results, even if the other leg failed.

@@ -31,6 +31,19 @@ inline std::pair<int, int> getDMACapacity(const AIETargetModel &tm,
       tm.getNumSourceSwitchboxConnections(tile.col, tile.row, WireBundle::DMA)};
 }
 
+// Streams through the North and South ports of a tile's stream switch.
+struct StreamDemand {
+  int northIn = 0, northOut = 0, southIn = 0, southOut = 0;
+
+  StreamDemand &operator+=(const StreamDemand &other) {
+    northIn += other.northIn;
+    northOut += other.northOut;
+    southIn += other.southIn;
+    southOut += other.southOut;
+    return *this;
+  }
+};
+
 // maps logical tile operations to physical coordinates
 using PlacementResult = llvm::DenseMap<mlir::Operation *, TileID>;
 
@@ -50,6 +63,13 @@ struct TileAvailability {
 
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;
+  llvm::DenseMap<TileID, StreamDemand> streamsUsed;
+  // Live runtime-sequence BDs after each task event, as in
+  // SequentialPlacer::runtimeBdProfiles.
+  llvm::DenseMap<TileID, llvm::SmallVector<int>> runtimeBdsUsed;
+  // DMA channels, as (output, index), that flows of the logical tiles placed
+  // here name by index.
+  llvm::DenseMap<TileID, llvm::DenseSet<std::pair<int, int>>> namedChannelsUsed;
 
   void removeTile(TileID tile, AIETileType type);
 };
@@ -203,8 +223,9 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
 //   4. Place each remaining non-core (mem/shim) LTO near the column
 //      centroid of its placed-core peers. With mergeLogicalTiles == true
 //      (default) several non-core LTOs may share one physical tile when
-//      DMA capacity allows; with mergeLogicalTiles == false each non-core
-//      LTO claims its own physical tile.
+//      DMA capacity allows, preferring tiles whose North/South stream ports
+//      and runtime-sequence BDs also fit; with mergeLogicalTiles == false
+//      each non-core LTO claims its own physical tile.
 //
 // Greedy: once a tile is chosen the decision is final, with no backtracking.
 // If a later LTO's constraints become unsatisfiable given prior placements,
@@ -250,12 +271,13 @@ private:
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
   // targetCol == nullopt means no routing anchor is known, so candidates are
-  // ranked by DMA load rather than by distance to a column.
-  std::optional<TileID> findTileWithCapacity(std::optional<int> targetCol,
-                                             llvm::ArrayRef<TileID> tiles,
-                                             int requiredInputChannels,
-                                             int requiredOutputChannels,
-                                             AIETileType requestedType);
+  // ranked by DMA load rather than by distance to a column. `withinBudgets`
+  // also requires fitsStreamAndBdBudgets.
+  std::optional<TileID>
+  findTileWithCapacity(std::optional<int> targetCol,
+                       llvm::ArrayRef<TileID> tiles, int requiredInputChannels,
+                       int requiredOutputChannels, AIETileType requestedType,
+                       mlir::Operation *logicalTile, bool withinBudgets);
 
   // Diagnosis for a failed findTileWithCapacity() call. `findTileWithCapacity`
   // scans every tile of `requestedType` on the device -- `targetCol` orders
@@ -276,6 +298,29 @@ private:
                                                int requiredOutputChannels);
 
   void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
+
+  // North/South streams of each non-core LTO's ObjectFifos: a memtile has 6
+  // DMA inputs but only 4 streams from the core above, and no East/West.
+  llvm::DenseMap<mlir::Operation *, StreamDemand> streamDemand;
+  void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // Live runtime-sequence BDs of each ShimNOCTile LTO after every task event,
+  // counting each descriptor as aie-decompose-large-dma-bd splits it.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<int>> runtimeBdProfiles;
+
+  // DMA channels, as (output, index), that each logical tile's flows name by
+  // index. Two logical tiles naming the same one cannot share a physical tile.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
+      namedChannels;
+  void buildRuntimeBdProfiles(DeviceOp device,
+                              llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // True if `tile`'s stream ports and BDs still fit `logicalTile`'s demand on
+  // top of what earlier placements use.
+  bool fitsStreamAndBdBudgets(mlir::Operation *logicalTile, TileID tile) const;
+  // Records the streams, BDs and named DMA channels `logicalTile` takes on
+  // `tile`.
+  void recordStreamAndBdUsage(mlir::Operation *logicalTile, TileID tile);
 
   bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels);
 

@@ -37,7 +37,8 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence
 import numpy as np
 from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
-from aie.utils.hostruntime.tensor_class import NpuTensor
+from aie.utils.hostruntime.tensor_class import NpuTensor, TensorRegion
+from aie.utils.trace.parse import DEFAULT_KERNEL
 
 if TYPE_CHECKING:
     from aie.utils.npukernel import NPUKernel
@@ -216,7 +217,7 @@ class CallableDesign:
             if n != self.compilable.variadic_tensor_param
         ]
         for name, tensor in zip(named, tensor_args):
-            if isinstance(tensor, (NpuTensor, np.ndarray)):
+            if isinstance(tensor, (NpuTensor, TensorRegion, np.ndarray)):
                 call_compile_kwargs[name] = np.ndarray[
                     tuple(tensor.shape), np.dtype[np.dtype(tensor.dtype).type]
                 ]
@@ -237,13 +238,14 @@ class CallableDesign:
             physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
                 trace_config.physical_mlir_path = str(physical_mlir)
+            trace_config.kernel = compilable._full_elf_kernel_name or DEFAULT_KERNEL
         # The lowered runtime_sequence operand list is the true host-buffer
         # contract (one operand per host BO, including any trace/ctrl-packet
         # buffer the lowering appended). Its length is floor-independent, unlike
         # the kernels.json boN slot count which aiecc floors to the firmware
         # command-chain minimum -- so this is what host buffer counts are
         # validated against.
-        expected_sizes = compilable._expected_tensor_sizes
+        expected_sizes = compilable.expected_tensor_sizes
         num_host_bos = len(expected_sizes) if expected_sizes is not None else None
         if compilable.full_elf:
             # Full-ELF: compile() returns (elf_path, None). The kernel is loaded
@@ -270,8 +272,6 @@ class CallableDesign:
                 dispatch_params=compilable.dispatch_params,
                 dispatch_lib_path=compilable.get_dispatch_lib_path(),
             )
-        if compilable.use_cache and cache_key is not None:
-            self._kernel_cache[cache_key] = kernel
         return kernel
 
     def __call__(self, *runtime_args, **runtime_kwargs):
@@ -363,6 +363,10 @@ class CallableDesign:
             runtime_args, scalar_runtime_kwargs
         )
         compilable = self._build_compilable(call_compile_kwargs, tensor_args)
+        from aie.utils.npukernel import NPUKernel
+
+        # A misspelled keyword fails here, not after a fresh design compiles.
+        NPUKernel.check_keywords(compilable.dispatch_params, remaining_scalars)
 
         generator = compilable.mlir_generator
         if callable(generator):
@@ -377,7 +381,9 @@ class CallableDesign:
             cache_fn,
             tuple(tensor_args),
             cache_compile_kwargs,
-            extra_key=compilable._generation_cache_key(),
+            extra_key=compilable._generation_cache_key(
+                full_elf=compilable.full_elf_requested
+            ),
         )
 
         # A traced call skips the in-process cache. Decoding a trace needs the
@@ -388,7 +394,7 @@ class CallableDesign:
         use_kernel_cache = compilable.use_cache and trace_config is None
         kernel = self._kernel_cache.get(cache_key) if use_kernel_cache else None
         if kernel is not None:
-            if compilable.full_elf:
+            if kernel.elf_path is not None:
                 artifacts_present = Path(kernel.elf_path).is_file()
             elif compilable.dispatch_params:
                 # A dispatch design has no insts.bin at all -- the instruction
@@ -410,8 +416,10 @@ class CallableDesign:
                 kernel = None
         if kernel is None:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
+            if use_kernel_cache:
+                self._kernel_cache[cache_key] = kernel
 
-        # After compile(): validation reads _expected_tensor_sizes.
+        # After compile(): validation reads expected_tensor_sizes.
         implicit_tensor_count = 0
         if trace_config is not None:
             if not trace_config.reuse_output_buffer:
@@ -456,6 +464,8 @@ class CallableDesign:
             if DefaultNPURuntime is not None:
                 DefaultNPURuntime.evict_context(primary_artifact)
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
+            if use_kernel_cache:
+                self._kernel_cache[cache_key] = kernel
             return kernel(*tensor_args, **remaining_scalars)
 
     def specialize(self, **overrides) -> "CallableDesign":

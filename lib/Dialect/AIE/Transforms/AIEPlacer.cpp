@@ -6,6 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
@@ -79,6 +82,15 @@ Placer::CollectedOps Placer::collectOperations(DeviceOp device) {
         .Case<FlowOp>([&](auto f) { ops.flows.push_back(f); })
         .Case<PacketFlowOp>([&](auto pf) { ops.pktFlows.push_back(pf); })
         .Case<RouteOp>([&](auto route) { ops.routes.push_back(route); });
+  });
+  // Every later tie between logical tiles falls back on this order, so it is
+  // the design's structure rather than the order the tiles were written in:
+  // shim tiles, which have the fewest places to go, then MemTiles, then cores.
+  DenseMap<Operation *, unsigned> rank = StructuralGraph::of(device).rank();
+  llvm::stable_sort(ops.logicalTiles, [&](LogicalTileOp a, LogicalTileOp b) {
+    if (a.getTileType() != b.getTileType())
+      return a.getTileType() > b.getTileType();
+    return rank.lookup(a) < rank.lookup(b);
   });
   return ops;
 }
@@ -183,6 +195,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
   addChannelRequirementsFromFlows(flows, pktFlows, routes, channelRequirements);
+  buildStreamDemand(objectFifos);
+  buildRuntimeBdProfiles(device, objectFifos);
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
@@ -693,6 +707,7 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     updateChannelUsage(tile, DmaDir::In, inChannels);
   if (outChannels > 0)
     updateChannelUsage(tile, DmaDir::Out, outChannels);
+  recordStreamAndBdUsage(logicalTile, tile);
 
   return success();
 }
@@ -1167,6 +1182,7 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements) {
 
   llvm::DenseSet<std::tuple<Operation *, int>> seenSrc, seenDst;
+  namedChannels.clear();
 
   auto incIfDMA = [&](Operation *tileOp, WireBundle bundle,
                       std::optional<int> channel, bool isOutput) {
@@ -1177,6 +1193,8 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     auto &seen = isOutput ? seenSrc : seenDst;
     if (channel && !seen.insert({tileOp, *channel}).second)
       return;
+    if (channel)
+      namedChannels[tileOp].push_back({isOutput, *channel});
     if (isOutput)
       channelRequirements[tileOp].second++;
     else
@@ -1410,7 +1428,13 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
 
   auto maybeTile = findTileWithCapacity(targetCol, availability.nonCompTiles,
                                         numInputChannels, numOutputChannels,
-                                        logicalTile.getTileType());
+                                        logicalTile.getTileType(), logicalTile,
+                                        /*withinBudgets=*/true);
+  if (!maybeTile)
+    maybeTile = findTileWithCapacity(targetCol, availability.nonCompTiles,
+                                     numInputChannels, numOutputChannels,
+                                     logicalTile.getTileType(), logicalTile,
+                                     /*withinBudgets=*/false);
   if (!maybeTile) {
     AIETileType requestedType = logicalTile.getTileType();
     StringRef tileTypeName = stringifyAIETileType(requestedType);
@@ -1465,13 +1489,14 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
     updateChannelUsage(*maybeTile, DmaDir::In, numInputChannels);
   if (numOutputChannels > 0)
     updateChannelUsage(*maybeTile, DmaDir::Out, numOutputChannels);
+  recordStreamAndBdUsage(logicalTile, *maybeTile);
   return success();
 }
 
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     std::optional<int> targetCol, llvm::ArrayRef<TileID> tiles,
     int requiredInputChannels, int requiredOutputChannels,
-    AIETileType requestedType) {
+    AIETileType requestedType, Operation *logicalTile, bool withinBudgets) {
   // Choose a physical tile by lexicographic minimum of
   //   (|col - targetCol|, current load, col, row).
   // Distance-from-centroid comes first to preserve routing locality: a tile
@@ -1500,6 +1525,12 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     // non-core aie.logical_tile is off-limits even if it has spare DMA
     // capacity.
     if (!mergeLogicalTiles && assignedNonCoreTiles.contains(tile))
+      continue;
+    if (withinBudgets && !fitsStreamAndBdBudgets(logicalTile, tile))
+      continue;
+    if (llvm::any_of(namedChannels.lookup(logicalTile), [&](auto named) {
+          return availability.namedChannelsUsed[tile].contains(named);
+        }))
       continue;
     int dist = targetCol ? std::abs(tile.col - *targetCol) : 0;
     int load;
@@ -1574,6 +1605,162 @@ bool SequentialPlacer::hasAvailableChannels(TileID tile, int inputChannels,
 
   return (currentIn + inputChannels <= maxIn) &&
          (currentOut + outputChannels <= maxOut);
+}
+
+void SequentialPlacer::buildStreamDemand(
+    ArrayRef<ObjectFifoCreateOp> objectFifos) {
+  // Rows rise from shims through memtiles to cores, so a stream to a higher
+  // rank leaves through the North port and arrives through the South port.
+  auto rank = [](Operation *op) -> std::optional<int> {
+    auto tile = dyn_cast_or_null<TileLike>(op);
+    if (!tile)
+      return std::nullopt;
+    if (tile.isShimTile())
+      return 0;
+    return tile.isMemTile() ? 1 : 2;
+  };
+  for (auto of : objectFifos) {
+    Operation *producer = of.getProducerTile().getDefiningOp();
+    std::optional<int> producerRank = rank(producer);
+    if (!producerRank)
+      continue;
+    bool north = false, south = false;
+    for (Value consumerTile : of.getConsumerTiles()) {
+      Operation *consumer = consumerTile.getDefiningOp();
+      std::optional<int> consumerRank = rank(consumer);
+      if (!consumerRank || *consumerRank == *producerRank)
+        continue;
+      if (*consumerRank > *producerRank) {
+        north = true;
+        streamDemand[consumer].southIn++;
+      } else {
+        south = true;
+        streamDemand[consumer].northIn++;
+      }
+    }
+    if (north)
+      streamDemand[producer].northOut++;
+    if (south)
+      streamDemand[producer].southOut++;
+  }
+}
+
+void SequentialPlacer::buildRuntimeBdProfiles(
+    DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos) {
+  llvm::StringMap<Operation *> shimOfFifo;
+  for (auto of : objectFifos) {
+    SmallVector<Value> ends{of.getProducerTile()};
+    llvm::append_range(ends, of.getConsumerTiles());
+    for (Value end : ends) {
+      auto lt = dyn_cast_or_null<LogicalTileOp>(end.getDefiningOp());
+      if (lt && lt.getTileType() == AIETileType::ShimNOCTile)
+        shimOfFifo[of.getSymName()] = lt;
+    }
+  }
+  if (shimOfFifo.empty())
+    return;
+  // How a descriptor splits depends on the tile type, not on its column.
+  auto shimTile = llvm::find_if(availability.nonCompTiles, [&](TileID t) {
+    return targetModel->getTileType(t.col, t.row) == AIETileType::ShimNOCTile;
+  });
+  if (shimTile == availability.nonCompTiles.end())
+    return;
+
+  // (shim LTO, change in live BDs) in program order; a task holds its BDs from
+  // configure to await or free, else to the end of its sequence.
+  SmallVector<std::pair<Operation *, int>> events;
+  device.walk([&](RuntimeSequenceOp seq) {
+    llvm::MapVector<Value, std::pair<Operation *, int>> live;
+    seq.walk([&](Operation *op) {
+      if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
+        Operation *shim =
+            shimOfFifo.lookup(task.getAlloc().getRootReference().getValue());
+        if (!shim)
+          return;
+        int bds = 0;
+        task.getBody().walk([&](DMABDOp bd) {
+          auto plan = AIEX::decomposeTaskBdPattern(
+              bd, *targetModel, shimTile->col, shimTile->row);
+          bds += succeeded(plan) && !plan->pieces.empty() ? plan->pieces.size()
+                                                          : 1;
+        });
+        live[task.getResult()] = {shim, bds};
+        events.push_back({shim, bds});
+        return;
+      }
+      Value released;
+      if (auto await = dyn_cast<AIEX::DMAAwaitTaskOp>(op))
+        released = await.getTask();
+      else if (auto free = dyn_cast<AIEX::DMAFreeTaskOp>(op))
+        released = free.getTask();
+      auto *it = live.find(released);
+      if (it == live.end())
+        return;
+      events.push_back({it->second.first, -it->second.second});
+      live.erase(it);
+    });
+    for (auto &[task, held] : live)
+      events.push_back({held.first, -held.second});
+  });
+
+  llvm::MapVector<Operation *, int> running;
+  for (auto &[shim, delta] : events)
+    if (running.insert({shim, 0}).second)
+      runtimeBdProfiles[shim].assign(events.size(), 0);
+  for (auto [idx, event] : llvm::enumerate(events)) {
+    running[event.first] += event.second;
+    for (auto &[shim, n] : running)
+      runtimeBdProfiles[shim][idx] = n;
+  }
+}
+
+bool SequentialPlacer::fitsStreamAndBdBudgets(Operation *logicalTile,
+                                              TileID tile) const {
+  // Only the ports this LTO adds to: a tile a fallback already overfilled
+  // stays open to LTOs that use none of its streams.
+  StreamDemand demand = streamDemand.lookup(logicalTile);
+  StreamDemand streams = availability.streamsUsed.lookup(tile);
+  streams += demand;
+  const AIETargetModel &tm = *targetModel;
+  if ((demand.northIn &&
+       streams.northIn > static_cast<int>(tm.getNumSourceSwitchboxConnections(
+                             tile.col, tile.row, WireBundle::North))) ||
+      (demand.southIn &&
+       streams.southIn > static_cast<int>(tm.getNumSourceSwitchboxConnections(
+                             tile.col, tile.row, WireBundle::South))) ||
+      (demand.northOut &&
+       streams.northOut > static_cast<int>(tm.getNumDestSwitchboxConnections(
+                              tile.col, tile.row, WireBundle::North))) ||
+      (demand.southOut &&
+       streams.southOut > static_cast<int>(tm.getNumDestSwitchboxConnections(
+                              tile.col, tile.row, WireBundle::South))))
+    return false;
+
+  auto profile = runtimeBdProfiles.find(logicalTile);
+  if (profile == runtimeBdProfiles.end())
+    return true;
+  SmallVector<int> used = availability.runtimeBdsUsed.lookup(tile);
+  used.resize(profile->second.size(), 0);
+  int numBDs = tm.getNumBDs(tile.col, tile.row);
+  return llvm::all_of(llvm::zip(profile->second, used), [&](auto live) {
+    return !std::get<0>(live) ||
+           std::get<0>(live) + std::get<1>(live) <= numBDs;
+  });
+}
+
+void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
+                                              TileID tile) {
+  for (auto named : namedChannels.lookup(logicalTile))
+    availability.namedChannelsUsed[tile].insert(named);
+  if (auto it = streamDemand.find(logicalTile); it != streamDemand.end())
+    availability.streamsUsed[tile] += it->second;
+  auto profile = runtimeBdProfiles.find(logicalTile);
+  if (profile == runtimeBdProfiles.end())
+    return;
+  SmallVector<int> &used = availability.runtimeBdsUsed[tile];
+  used.resize(profile->second.size(), 0);
+  for (auto [idx, live] : llvm::enumerate(profile->second))
+    used[idx] += live;
 }
 
 void TileAvailability::removeTile(TileID tile, AIETileType type) {

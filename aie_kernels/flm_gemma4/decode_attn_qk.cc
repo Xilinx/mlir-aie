@@ -43,10 +43,9 @@ extern "C" {
 // arrives only after the host writes the RTPs, so the Worker may read L only
 // after this function returns. The kv tile waits for the l_cons_lock release.
 void attn_qk_begin(bf16 *m) {
-  // Peano miscompiles a function-local `static const aie::vector`, so a loop
-  // fills m.
-  for (int _z = 0; _z < 16; _z++)
-    m[_z] = (bf16)(-0x1.FEp127f);
+  static const aie::vector<bf16, 16> neg_inf =
+      aie::broadcast<bf16, 16>(-0x1.FEp127f);
+  aie::store_v(m, neg_inf);
   _lock_release_p(m, l_cons_lock);
 }
 

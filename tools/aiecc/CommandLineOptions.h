@@ -68,6 +68,12 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
 
+inline cl::opt<bool> allowDeadlockProneRouting(
+    "allow-deadlock-prone-routing",
+    cl::desc("Warn of, rather than fail on, flows the router finds can "
+             "deadlock however they are routed or through receivers packet "
+             "flows share"));
+
 // Out of BD ids, the compiler may take them back from a started task it can
 // prove finished by polling its channel. The poll hangs if that task's
 // completion depends on a push issued after it, which the compiler cannot see.
@@ -81,7 +87,9 @@ inline cl::opt<bool> verifyEach(
     cl::desc("Verify the IR after every pass, not once per pass pipeline "
              "(slower; names the pass that produced invalid IR)"));
 
-inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
+inline cl::opt<bool>
+    verbose("verbose",
+            cl::desc("Verbose execution, with the compiler's remarks"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose));
 inline cl::opt<bool>
@@ -147,6 +155,16 @@ inline cl::opt<unsigned> optLevel("O", cl::Prefix,
                                   cl::init(2));
 inline cl::alias optLevelAlias("opt-level", cl::desc("Alias for -O"),
                                cl::aliasopt(optLevel));
+// Arguments for the Peano `opt` and `llc` that compile each core's program,
+// as clang's -Xclang: one argument per occurrence, never split at commas
+// (`-Xopt -opt-disable=licm,loop-unroll-full`), appended after aiecc's own, so
+// an option that aiecc sets takes the value given here.
+inline cl::list<std::string>
+    xoptArgs("Xopt", cl::value_desc("arg"),
+             cl::desc("Pass <arg> to opt when compiling a core (Peano only)"));
+inline cl::list<std::string>
+    xllcArgs("Xllc", cl::value_desc("arg"),
+             cl::desc("Pass <arg> to llc when compiling a core (Peano only)"));
 inline cl::opt<bool> expandLoadPdis(
     "expand-load-pdis",
     cl::desc("Expand `load_pdi { device_ref }` into explicit write sequences "
@@ -215,6 +233,14 @@ inline cl::opt<int> defaultStackSize(
 inline cl::opt<std::string>
     sequenceName("sequence-name",
                  cl::desc("Runtime sequence name to compile (default: all)"));
+
+// The resolved module (input_with_addresses.mlir) of the image an instruction
+// stream will run on: the stream's static design must be that image's
+// (aie-check-against-image).
+inline cl::opt<std::string> checkAgainstImage(
+    "check-against-image",
+    cl::desc("Fail unless the static design matches that of the image "
+             "compiled to this resolved module, naming what to pin"));
 
 // Skip the aie-materialize-runtime-sequences pass in NPU lowering.
 inline cl::opt<bool> noMaterialize(
@@ -538,6 +564,15 @@ inline cl::opt<std::string> deviceCacheDir(
              "earlier build stored in this dir, and store the ones this build "
              "compiles (Peano only)"),
     cl::value_desc("dir"), cl::init(""));
+inline cl::opt<bool> noShareCoreObjects(
+    "no-share-core-objects",
+    cl::desc("Compile each core's program on its own, even where other cores "
+             "run the same program over their own buffers"));
+inline cl::opt<bool> awaitLinkFiles(
+    "await-link-files",
+    cl::desc("Lower the design, but read no file a core links (link_with, "
+             "link_files) until a line arrives on stdin, so a caller can build "
+             "them meanwhile; stdin closing first fails the build"));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
 // selected by `--cut` plus a `manifest.json` describing them into <dir> after a
 // successful run — a "prefix" of the build. `--resume=<manifest.json>` rebuilds

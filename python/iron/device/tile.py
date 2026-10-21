@@ -10,9 +10,11 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
 )
 from ...dialects.aie import LogicalTileOp
+from ...helpers.sourceloc import SourceSite
+from ..resolvable import PerDeviceConfiguration
 
 
-class Tile:
+class Tile(PerDeviceConfiguration):
     """An object representing a tile on a device.
 
     A tile can be:
@@ -48,16 +50,20 @@ class Tile:
         self.packet_type: int = packet_type
         self.packet_id: int | None = packet_id
         self._op: LogicalTileOp | None = None
+        self._site = SourceSite.capture()
 
     def copy(self) -> Tile:
         """Return a copy of this Tile, including its control-packet id."""
-        return Tile(
+        clone = Tile(
             self.col,
             self.row,
             tile_type=self.tile_type,
             packet_type=self.packet_type,
             packet_id=self.packet_id,
         )
+        if self._site.filename is not None:
+            clone._site = self._site
+        return clone
 
     def with_type(
         self,
@@ -75,13 +81,16 @@ class Tile:
                 mismatch_msg
                 or f"Expected a {tile_type} tile, but got tile_type={self.tile_type}"
             )
-        return Tile(
+        clone = Tile(
             self.col,
             self.row,
             tile_type=tile_type,
             packet_type=self.packet_type,
             packet_id=self.packet_id,
         )
+        if self._site.filename is not None:
+            clone._site = self._site
+        return clone
 
     @property
     def effective_tile_type(self) -> AIETileType | None:
@@ -127,3 +136,7 @@ class Tile:
 AnyShimTile = Tile(tile_type=AIETileType.ShimNOCTile)
 AnyMemTile = Tile(tile_type=AIETileType.MemTile)
 AnyComputeTile = Tile(tile_type=AIETileType.CoreTile)
+
+# Declared at import, so a clone takes the site of the user code that made it.
+for _singleton in (AnyShimTile, AnyMemTile, AnyComputeTile):
+    _singleton._site = SourceSite(None)
