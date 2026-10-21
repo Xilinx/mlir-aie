@@ -19,6 +19,7 @@ MODE_LABELS = {
     "separate-dispatch": "separate dispatches",
     "load-pdi": "single-dispatch load_pdi",
     "expand-load-pdis": "single-dispatch write32s",
+    "expand-load-pdis-teardown": "single-dispatch write32s + teardown",
     "control-packets": "single-dispatch ctrlpackets",
 }
 SEABORN_MAKO = (
@@ -26,6 +27,7 @@ SEABORN_MAKO = (
     "#395d9c",
     "#3497a9",
     "#60ceac",
+    "#def5e5",
 )
 
 

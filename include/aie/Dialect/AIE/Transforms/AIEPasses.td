@@ -634,6 +634,10 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
       [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
               /*default=*/"false",
               "Flag to enable aie.packetflow lowering from objectfifos.">,
+       Option<"clReserveControllerPacketIds", "reserve-controller-packet-ids",
+              "bool", /*default=*/"false",
+              "Give no packet flow a tile controller's packet ID, for a "
+              "design whose column control overlay is added afterwards.">,
   ];
 }
 
@@ -782,12 +786,68 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
   ];
 }
 
+def AIEAutoPacketizeShimInput
+    : Pass<"aie-auto-packetize-shim-input", "mlir::ModuleOp"> {
+  let summary = "Share a shim MM2S channel between data and control packets";
+  let description = [{
+    Gives control packets a shim MM2S channel in every column whose objectFIFO
+    inputs leave none free across the module's devices. The control channel is
+    the lowest one no device holds with circuit-switched data. In each device an
+    objectFIFO input already packet-switched there is pinned to it; otherwise
+    the input with the fewest consumers is made packet-switched and pinned to
+    it. The other inputs are pinned to the other channels. An input this pass
+    makes packet-switched that went straight to a compute tile is relayed by the
+    column's memory tile, so past the shim the data stays circuit-switched. The
+    channel is recorded on the column's shim tiles (`ctrl_pkt_shim_chan`) for
+    aie-generate-column-control-overlay. Runs before objectFIFO lowering.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAutoPacketizeShimInputPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+  let options = [ListOption<"clControlChannels", "control-channels",
+                            "std::string",
+                            "<column>:<channel> entries choosing the control "
+                            "channel of a column "
+                            "this pass acts on. aiecc retries a column on its "
+                            "other channels when "
+                            "the design does not route.">,
+  ];
+}
+
+def AIEControlOverlayAvoidData
+    : Pass<"aie-control-overlay-avoid-data", "mlir::ModuleOp"> {
+  let summary = "Record the switch ports the configurations' data takes, for "
+                "the control overlay to avoid";
+  let description = [{
+    Routes each configuration's data without the control overlay and records the
+    switchbox output ports it takes, across all configurations, as
+    `ctrl_pkt_avoid` on @ctrl_pkt_overlay and on each configuration.
+    aie-create-pathfinder-flows then routes the overlay off those ports where it
+    can, the same way in every device. Runs before routing; does nothing without
+    @ctrl_pkt_overlay.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEControlOverlayAvoidDataPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+}
+
 def AIEGenerateColumnControlOverlay
     : Pass<"aie-generate-column-control-overlay", "mlir::ModuleOp"> {
   let summary = "Spawns streaming interconnect network for column control";
   let description = [{
     For each column of AIE tiles being employed in the design, spawn a network of control packet
     streaming interconnects which overlay on top of the design.
+
+    With route-shim-to-tile-ctrl, each covered column's control packets enter
+    through one shim MM2S DMA channel, the lowest one no device of the module
+    moves data through (or the one aie-auto-packetize-shim-input recorded
+    on the column's shim tile), and reach every row of the column.
+
+    With `multicast-span=w` (w >= 1), each group of w columns with two or more
+    core tiles gets a control multicast: one packet flow from the control
+    channel of the group's lowest core column to all of their TileControl
+    ports, on a packet ID nothing else uses. The group's core tiles are stamped
+    `aie.ctrl_pkt_multicast_id` with that ID.
   }];
 
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
@@ -809,6 +869,13 @@ def AIEGenerateColumnControlOverlay
               "Emit a standalone @ctrl_pkt_overlay device (and tag source "
               "devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When "
               "false, the pass applies the overlay in place only.">,
+       ListOption<"clCoverColumns", "cover-columns", "int",
+                  "With route-shim-to-tile-ctrl, also cover these columns. "
+                  "aiecc adds each column outside the occupied range that the "
+                  "design's routes need.">,
+       Option<"clMulticastSpan", "multicast-span", "int", /*default=*/"0",
+              "With route-shim-to-tile-ctrl, w >= 1 adds a control multicast "
+              "to the core tiles of each group of w columns; 0 adds none">,
   ];
 }
 

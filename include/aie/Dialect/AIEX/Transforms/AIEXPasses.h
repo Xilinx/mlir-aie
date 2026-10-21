@@ -65,6 +65,8 @@ createAIESubstituteShimDMAAllocationsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIECtrlPacketToDmaPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIECtrlPacketToDmaPass(const AIECtrlPacketToDmaOptions &options);
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIECtrlPacketInferTilesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerSetLockPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
@@ -80,6 +82,23 @@ createAIETxnToControlPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELegalizeControlPacketPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEReorderControlPacketsByTilePass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEReorderControlPacketsByTilePass(
+    const AIEReorderControlPacketsByTileOptions &options);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECheckCoreStartGatingPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECheckCtrlPacketDeliveryPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECheckCtrlPacketDeliveryPass(
+    const AIECheckCtrlPacketDeliveryOptions &options);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEDedupCtrlPacketMulticastPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEDedupCtrlPacketMulticastPass(
+    const AIEDedupCtrlPacketMulticastOptions &options);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEXInlineTraceConfigPass();
@@ -92,6 +111,9 @@ createAIELowerScratchpadParametersPass(
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+
+/// Name of the runtime sequence aie-expand-load-pdi{init-entry} adds.
+inline constexpr llvm::StringLiteral initEntrySequenceName = "reconfig_init";
 
 } // namespace xilinx::AIEX
 

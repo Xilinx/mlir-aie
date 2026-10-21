@@ -37,6 +37,7 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <array>
 #include <map>
 #include <set>
 
@@ -285,10 +286,55 @@ struct CtrlPktReload {
   AIE::DeviceOp overlay;
 };
 
-// Helper to transform a single load_pdi operation
+// The ops after `before` up to `end`, in `end`'s block; from its start if
+// `before` is null.
+static iterator_range<Block::iterator> opsBetween(Operation *before,
+                                                  Operation *end) {
+  return llvm::make_range(before ? std::next(before->getIterator())
+                                 : end->getBlock()->begin(),
+                          end->getIterator());
+}
+
+// Stamps each control packet in `ops` with the device it configures, for the
+// passes that read that device's analyses.
+static void stampDevice(iterator_range<Block::iterator> ops,
+                        AIE::DeviceOp device) {
+  AIEXDialect::CtrlPktDeviceAttrHelper deviceStamp(device.getContext());
+  for (Operation &op : ops)
+    if (isa<NpuControlPacketOp>(op))
+      deviceStamp.setAttr(&op, FlatSymbolRefAttr::get(device.getSymNameAttr()));
+}
+
+// Set `builder` after the last wait before the next load_pdi, or at that
+// load_pdi (or the block's end) if there is none.
+static void setInsertionPointToSegmentEnd(OpBuilder &builder,
+                                          NpuLoadPdiOp loadPdiOp) {
+  Operation *lastWait = nullptr;
+  Operation *op = loadPdiOp->getNextNode();
+  for (; op && !isa<NpuLoadPdiOp>(op) && !op->hasTrait<OpTrait::IsTerminator>();
+       op = op->getNextNode())
+    if (isa<NpuSyncOp, NpuDmaWaitOp, DMAAwaitTaskOp>(op))
+      lastWait = op;
+  if (lastWait)
+    builder.setInsertionPointAfter(lastWait);
+  else if (op)
+    builder.setInsertionPoint(op);
+  else
+    builder.setInsertionPointToEnd(loadPdiOp->getBlock());
+}
+
+// Helper to transform a single load_pdi operation. Without `keepPreload` the
+// reset or overlay load is left out. With `teardownData` the configuration's
+// writes go in here, in program order, since aiex.npu.write_config needs a
+// reset ahead of it and masked writes fold onto the control packets before
+// them; its teardown goes where it ends. Without teardown, control packets go
+// in once every load_pdi is known (`ctrlPktReloads`), so a sequence's loads
+// share them.
 static LogicalResult
 transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
-                 AIEX::ExpandMode defaultMode,
+                 AIEX::ExpandMode defaultMode, bool keepPreload,
+                 AIEX::BlockwriteData *configData,
+                 AIEX::BlockwriteData *teardownData,
                  SmallVectorImpl<CtrlPktReload> &ctrlPktReloads) {
   OpBuilder builder(loadPdiOp);
 
@@ -311,62 +357,107 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
     return failure();
   }
 
-  FlatSymbolRefAttr preloadRef;
-  AIE::DeviceOp overlay;
+  // The overlay its preload loads, or with no preload, any an earlier one may
+  // have loaded.
+  SmallVector<AIE::DeviceOp, 2> overlays;
   if (ctrlPkt) {
-    // Overlay device PDI
-    // Alternate between the original overlay and a clone of it on every
-    // other load. Loading the same PDI twice in a row gets cached by the
-    // firmware (the second load becomes a no-op), so we need two distinct
-    // PDI addresses that carry the same overlay configuration.
-    StringRef overlayName =
-        (index % 2 == 0) ? kCtrlPktOverlayName : kCtrlPktOverlayCopyName;
-    if (index % 2 != 0) {
+    auto overlay = moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayName);
+    if (!overlay) {
+      loadPdiOp.emitError("ctrl-pkt mode requires a `@")
+          << kCtrlPktOverlayName << "` device in the module";
+      return failure();
+    }
+    if (keepPreload && index % 2 != 0)
       overlay =
           getOrCreateCtrlPktOverlayCopy(moduleOp, loadPdiOp.getOperation());
-      if (!overlay)
+    overlays.push_back(overlay);
+    if (!keepPreload)
+      if (auto copy =
+              moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayCopyName))
+        overlays.push_back(copy);
+    for (AIE::DeviceOp overlay : overlays)
+      if (failed(verifyReloadKeepsOverlay(referencedDevice, overlay)))
         return failure();
+  }
+
+  // Consecutive preloads alternate between two PDIs with the same contents,
+  // since the firmware skips a load of the PDI it loaded last.
+  if (keepPreload) {
+    FlatSymbolRefAttr preloadRef;
+    if (ctrlPkt) {
+      preloadRef = FlatSymbolRefAttr::get(overlays.front().getSymNameAttr());
     } else {
-      overlay = moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayName);
-      if (!overlay) {
-        loadPdiOp.emitError("ctrl-pkt mode requires a `@")
-            << kCtrlPktOverlayName << "` device in the module";
-        return failure();
-      }
+      AIE::DeviceOp emptyDevice =
+          getOrCreateEmptyDevice(moduleOp, referencedDevice.getDevice(),
+                                 index % 2, loadPdiOp.getLoc());
+      preloadRef = FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr());
     }
-    if (failed(verifyReloadKeepsOverlay(referencedDevice, overlay)))
-      return failure();
-    preloadRef = FlatSymbolRefAttr::get(builder.getContext(), overlayName);
-  } else {
-    // Empty device PDI (triggers firmware reset)
-    AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
-        moduleOp, referencedDevice.getDevice(), index % 2, loadPdiOp.getLoc());
-    preloadRef = FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr());
+    auto expandNone =
+        AIEX::ExpandModeAttr::get(builder.getContext(), AIEX::ExpandMode::none);
+    if (ctrlPkt)
+      NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
+                           /*id=*/nullptr, /*size=*/nullptr,
+                           /*address=*/nullptr, expandNone);
+    else
+      NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
+                           loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
+                           loadPdiOp.getAddressAttr(), expandNone);
   }
+  Operation *beforeConfig = loadPdiOp->getPrevNode();
 
-  builder.setInsertionPoint(loadPdiOp);
-
-  // Emit the preload load_pdi (either empty-device reset or ctrl_pkt_overlay).
-  if (ctrlPkt) {
-    NpuLoadPdiOp preload =
-        NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
-                             /*id=*/nullptr, /*size=*/nullptr,
-                             /*address=*/nullptr,
-                             /*expand_mode=*/
-                             AIEX::ExpandModeAttr::get(builder.getContext(),
-                                                       AIEX::ExpandMode::none));
-    // The control packets go in once every reload is known, so that a
-    // sequence's reloads share their constants.
-    ctrlPktReloads.push_back({loadPdiOp, referencedDevice, preload, overlay});
+  auto outputType = ctrlPkt ? AIEToConfigurationOutputType::ControlPacket
+                            : AIEToConfigurationOutputType::Transaction;
+  if (!teardownData && !ctrlPkt) {
+    NpuWriteConfigOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
+  } else if (!teardownData) {
+    ctrlPktReloads.push_back({loadPdiOp, referencedDevice,
+                              cast<NpuLoadPdiOp>(beforeConfig),
+                              overlays.front()});
     return success();
+  } else {
+    if (failed(xilinx::AIE::generateAndInsertConfigOps(
+            builder, referencedDevice, *configData, /*clElfDir=*/"", outputType,
+            /*skipCtrlPktOverlay=*/ctrlPkt))) {
+      loadPdiOp.emitError("Failed to generate configuration operations");
+      return failure();
+    }
+    auto config = opsBetween(beforeConfig, loadPdiOp);
+    if (ctrlPkt) {
+      if (failed(
+              verifyOverlayReachesTiles(loadPdiOp, overlays.front(), config)))
+        return failure();
+      stampDevice(config, referencedDevice);
+    }
   }
-  NpuLoadPdiOp::create(
-      builder, loadPdiOp.getLoc(), preloadRef, loadPdiOp.getIdAttr(),
-      loadPdiOp.getSizeAttr(), loadPdiOp.getAddressAttr(),
-      /*expand_mode=*/
-      AIEX::ExpandModeAttr::get(builder.getContext(), AIEX::ExpandMode::none));
-  NpuWriteConfigOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
+
+  // Erase the load_pdi before inserting the teardown, so the teardown's masked
+  // writes fold onto the configuration's writes instead of stopping at it.
+  Location loc = loadPdiOp.getLoc();
+  if (teardownData)
+    setInsertionPointToSegmentEnd(builder, loadPdiOp);
   loadPdiOp.erase();
+  if (!teardownData)
+    return success();
+
+  Block *block = builder.getInsertionBlock();
+  Operation *end = builder.getInsertionPoint() == block->end()
+                       ? nullptr
+                       : &*builder.getInsertionPoint();
+  Operation *beforeTeardown = end              ? end->getPrevNode()
+                              : block->empty() ? nullptr
+                                               : &block->back();
+  if (failed(xilinx::AIE::generateAndInsertTeardownOps(
+          builder, referencedDevice, *teardownData, outputType,
+          /*skipCtrlPktOverlay=*/ctrlPkt))) {
+    emitError(loc, "Failed to generate teardown operations");
+    return failure();
+  }
+  if (ctrlPkt)
+    stampDevice(llvm::make_range(beforeTeardown
+                                     ? std::next(beforeTeardown->getIterator())
+                                     : block->begin(),
+                                 end ? end->getIterator() : block->end()),
+                referencedDevice);
   return success();
 }
 
@@ -391,33 +482,66 @@ struct AIEExpandLoadPdiPass
     module.walk(
         [&](NpuLoadPdiOp loadPdiOp) { loadPdiOps.push_back(loadPdiOp); });
 
-    // Per enclosing runtime sequence: the parity of its FIRST and LAST reset,
-    // plus the device type to reset. `transformLoadPdi` picks the empty device
-    // as `index % 2` over the module-wide op order, and that order includes
-    // ops this pass skips, so a sequence's first reset is not necessarily
-    // `@empty_0` and its parity cannot be recovered from a count. Captured
-    // BEFORE transforming, which erases the ops.
-    struct ResetParity {
+    // Map the legacy bool option to the new ExpandMode enum.
+    AIEX::ExpandMode defaultMode =
+        clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
+
+    if (clInitEntry && !clTeardown) {
+      module.emitError("aie-expand-load-pdi: init-entry requires teardown");
+      return signalPassFailure();
+    }
+    auto expandMode = [&](NpuLoadPdiOp loadPdiOp) {
+      return loadPdiOp.getDeviceRefAttr()
+                 ? loadPdiOp.getExpandMode().value_or(defaultMode)
+                 : AIEX::ExpandMode::none;
+    };
+
+    // A shim DMA channel has no reset, so no teardown can stop one a
+    // configuration starts itself.
+    if (clTeardown)
+      for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
+        auto dev = expandMode(loadPdiOp) != AIEX::ExpandMode::none
+                       ? module.lookupSymbol<AIE::DeviceOp>(
+                             loadPdiOp.getDeviceRefAttr())
+                       : nullptr;
+        if (dev && dev.walk([](AIE::DMAStartOp start) {
+                        if (!isa<AIE::ShimDMAOp>(start->getParentOp()))
+                          return WalkResult::advance();
+                        start.emitOpError("starts a shim DMA channel, which "
+                                          "teardown cannot stop");
+                        return WalkResult::interrupt();
+                      })
+                       .wasInterrupted())
+          return signalPassFailure();
+      }
+
+    // Per enclosing runtime sequence, the parity of the FIRST and LAST of its
+    // empty-device resets and of its overlay loads, plus the device type.
+    // `transformLoadPdi` picks the preload as `index % 2` over the module-wide
+    // op order, and that order includes ops this pass skips, so a sequence's
+    // first preload is not necessarily the even one and its parity cannot be
+    // recovered from a count. Captured BEFORE transforming, which erases the
+    // ops.
+    struct PreloadParity {
       unsigned firstParity = 0;
       unsigned lastParity = 0;
       bool seen = false;
       AIE::AIEDevice device = {};
     };
-    llvm::MapVector<AIE::RuntimeSequenceOp, ResetParity> resetsPerSequence;
+    llvm::MapVector<AIE::RuntimeSequenceOp, std::array<PreloadParity, 2>>
+        preloadsPerSequence;
     for (auto [index, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
       auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
       if (!deviceRefAttr)
         continue;
-      if (loadPdiOp.getExpandMode().value_or(clCtrlPkt
-                                                 ? AIEX::ExpandMode::ctrlpkt
-                                                 : AIEX::ExpandMode::write32) !=
-          AIEX::ExpandMode::write32)
+      AIEX::ExpandMode mode = loadPdiOp.getExpandMode().value_or(defaultMode);
+      if (mode == AIEX::ExpandMode::none)
         continue;
       auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
       auto dev = module.lookupSymbol<AIE::DeviceOp>(deviceRefAttr);
       if (!seq || !dev)
         continue;
-      auto &entry = resetsPerSequence[seq];
+      auto &entry = preloadsPerSequence[seq][mode == AIEX::ExpandMode::ctrlpkt];
       if (!entry.seen) {
         entry.firstParity = index % 2;
         entry.seen = true;
@@ -426,19 +550,68 @@ struct AIEExpandLoadPdiPass
       entry.device = dev.getDevice();
     }
 
-    // Map the legacy bool option to the new ExpandMode enum.
-    AIEX::ExpandMode defaultMode =
-        clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
+    // Teardown leaves the array ready for the next configuration of the same
+    // kind, so a load needs its preload only at the start of a sequence or
+    // after a load of another kind. With an init entry and every load of a
+    // device of one kind, `reconfig_init` holds the device's preload and its
+    // sequences start in that state; with both kinds, every sequence keeps its
+    // first preload and the device gets no init entry.
+    struct InitEntry {
+      AIEX::ExpandMode kind;
+      AIE::AIEDevice deviceType;
+      bool oneKind = true;
+    };
+    llvm::MapVector<AIE::DeviceOp, InitEntry> initEntries;
+    if (clInitEntry) {
+      for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
+        auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
+        auto dev = expandMode(loadPdiOp) != AIEX::ExpandMode::none
+                       ? module.lookupSymbol<AIE::DeviceOp>(
+                             loadPdiOp.getDeviceRefAttr())
+                       : nullptr;
+        if (seq && dev)
+          initEntries.try_emplace(
+              seq->getParentOfType<AIE::DeviceOp>(),
+              InitEntry{expandMode(loadPdiOp), dev.getDevice()});
+      }
+      for (NpuLoadPdiOp loadPdiOp : loadPdiOps)
+        if (auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>()) {
+          auto *it = initEntries.find(seq->getParentOfType<AIE::DeviceOp>());
+          if (it != initEntries.end())
+            it->second.oneKind &= expandMode(loadPdiOp) == it->second.kind;
+        }
+    }
 
+    // Transform load_pdi ops
     SmallVector<CtrlPktReload> ctrlPktReloads;
-    unsigned idx = 0;
-    for (auto loadPdiOp : loadPdiOps) {
+    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> configData,
+        teardownData;
+    llvm::DenseMap<Operation *, std::optional<AIEX::ExpandMode>> arrayState;
+    for (auto [idx, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
+      auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
+      std::optional<AIEX::ExpandMode> start;
+      if (auto *it = initEntries.find(
+              seq ? seq->getParentOfType<AIE::DeviceOp>() : nullptr);
+          it != initEntries.end() && it->second.oneKind)
+        start = it->second.kind;
+      std::optional<AIEX::ExpandMode> &state =
+          arrayState.try_emplace(seq, start).first->second;
+      bool keepPreload = !clTeardown || state != expandMode(loadPdiOp);
+      state = expandMode(loadPdiOp);
+      AIEX::BlockwriteData *config = nullptr, *teardown = nullptr;
+      if (clTeardown) {
+        auto device = loadPdiOp->getParentOfType<AIE::DeviceOp>();
+        config =
+            &configData.try_emplace(device, device, "loadpdi_").first->second;
+        teardown = &teardownData.try_emplace(device, device, "teardown_")
+                        .first->second;
+      }
       if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
+                                  keepPreload, config, teardown,
                                   ctrlPktReloads))) {
         signalPassFailure();
         return;
       }
-      idx++;
     }
 
     SmallVector<std::pair<Operation *, AIE::DeviceOp>> ctrlPktSites;
@@ -450,50 +623,102 @@ struct AIEExpandLoadPdiPass
       return;
     }
     for (CtrlPktReload &reload : ctrlPktReloads) {
-      if (failed(verifyOverlayReachesTiles(
-              reload.load, reload.overlay,
-              {std::next(reload.preload->getIterator()),
-               reload.load->getIterator()}))) {
+      auto config = opsBetween(reload.preload, reload.load);
+      if (failed(
+              verifyOverlayReachesTiles(reload.load, reload.overlay, config))) {
         signalPassFailure();
         return;
       }
+      stampDevice(config, reload.device);
       reload.load.erase();
     }
 
-    // The `index % 2` alternation above keeps two consecutive resets on
-    // different PDIs WITHIN a sequence. But the host re-runs the whole sequence
-    // on every dispatch, so the alternation has to hold across that boundary
-    // too: when a sequence's last reset lands on the same empty PDI as its
-    // first, the firmware caches the address and no-ops the next dispatch's
-    // first load, and the configuration that follows lands on a device that was
-    // never reset. That is silent -- the first dispatch is correct and later
-    // ones return non-deterministic garbage.
-    //
-    // Append one more reset, of the parity opposite the last one, so the
-    // sequence ends somewhere its own start will not repeat. The empty PDI is a
-    // few hundred bytes, so the cost is negligible next to the configuration it
-    // guards.
-    for (auto &[seq, info] : resetsPerSequence) {
-      if (!info.seen || info.firstParity != info.lastParity)
+    for (auto [device, entry] : initEntries) {
+      if (!entry.oneKind)
         continue;
-      AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
-          module, info.device, 1 - info.lastParity, seq.getLoc());
-      OpBuilder builder(seq.getContext());
-      Block &body = seq.getBody().front();
-      if (!body.empty() && body.back().hasTrait<OpTrait::IsTerminator>())
-        builder.setInsertionPoint(&body.back());
-      else
-        builder.setInsertionPointToEnd(&body);
-      NpuLoadPdiOp::create(
-          builder, seq.getLoc(),
-          FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
-          /*id=*/nullptr, /*size=*/nullptr, /*address=*/nullptr,
-          /*expand_mode=*/
-          AIEX::ExpandModeAttr::get(seq.getContext(), AIEX::ExpandMode::none));
+      if (Operation *existing = device.lookupSymbol(initEntrySequenceName)) {
+        existing->emitOpError()
+            << "is named '" << initEntrySequenceName
+            << "', which aie-expand-load-pdi needs for the device's init entry";
+        return signalPassFailure();
+      }
+      FlatSymbolRefAttr preloadRef =
+          entry.kind == AIEX::ExpandMode::ctrlpkt
+              ? FlatSymbolRefAttr::get(module.getContext(), kCtrlPktOverlayName)
+              : FlatSymbolRefAttr::get(
+                    getOrCreateEmptyDevice(module, entry.deviceType, 0,
+                                           device.getLoc())
+                        .getSymNameAttr());
+      OpBuilder builder(device.getContext());
+      builder.setInsertionPoint(
+          *device.getOps<AIE::RuntimeSequenceOp>().begin());
+      auto init = AIE::RuntimeSequenceOp::create(
+          builder, device.getLoc(),
+          builder.getStringAttr(initEntrySequenceName), BoolAttr{},
+          AIE::TraceBufferAttr{}, ArrayAttr{});
+      builder.setInsertionPointToStart(&init.getBody().emplaceBlock());
+      NpuLoadPdiOp::create(builder, device.getLoc(), preloadRef,
+                           /*id=*/nullptr, /*size=*/nullptr,
+                           /*address=*/nullptr,
+                           /*expand_mode=*/
+                           AIEX::ExpandModeAttr::get(builder.getContext(),
+                                                     AIEX::ExpandMode::none));
     }
 
     if (clInlineConfig && failed(AIE::inlineWriteConfigs(module)))
-      signalPassFailure();
+      return signalPassFailure();
+
+    // Under teardown each sequence loads at most one reset, so none needs the
+    // append.
+    if (clTeardown)
+      return;
+
+    // The `index % 2` alternation above keeps two consecutive preloads on
+    // different PDIs WITHIN a sequence. But the host re-runs the whole sequence
+    // on every dispatch, so the alternation has to hold across that boundary
+    // too. When a sequence's last preload lands on the same PDI as its first,
+    // the firmware caches the address and no-ops the next dispatch's first
+    // load, and the configuration that follows lands on a device that was never
+    // reset. That is silent -- the first dispatch is correct and later ones
+    // return non-deterministic garbage.
+    //
+    // Append one more preload, of the parity opposite the last one, so the
+    // sequence ends somewhere its own start will not repeat. The empty PDI is a
+    // few hundred bytes, so the cost is negligible next to the configuration it
+    // guards.
+    for (auto &[seq, kinds] : preloadsPerSequence) {
+      for (auto [ctrlPkt, info] : llvm::enumerate(kinds)) {
+        if (!info.seen || info.firstParity != info.lastParity)
+          continue;
+        unsigned parity = 1 - info.lastParity;
+        FlatSymbolRefAttr preloadRef;
+        if (ctrlPkt) {
+          if (parity == 1 && !getOrCreateCtrlPktOverlayCopy(module, seq)) {
+            signalPassFailure();
+            return;
+          }
+          preloadRef = FlatSymbolRefAttr::get(
+              seq.getContext(),
+              parity == 0 ? kCtrlPktOverlayName : kCtrlPktOverlayCopyName);
+        } else {
+          AIE::DeviceOp emptyDevice =
+              getOrCreateEmptyDevice(module, info.device, parity, seq.getLoc());
+          preloadRef = FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr());
+        }
+        OpBuilder builder(seq.getContext());
+        Block &body = seq.getBody().front();
+        if (!body.empty() && body.back().hasTrait<OpTrait::IsTerminator>())
+          builder.setInsertionPoint(&body.back());
+        else
+          builder.setInsertionPointToEnd(&body);
+        NpuLoadPdiOp::create(builder, seq.getLoc(), preloadRef,
+                             /*id=*/nullptr, /*size=*/nullptr,
+                             /*address=*/nullptr,
+                             /*expand_mode=*/
+                             AIEX::ExpandModeAttr::get(seq.getContext(),
+                                                       AIEX::ExpandMode::none));
+      }
+    }
   }
 };
 

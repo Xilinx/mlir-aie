@@ -28,7 +28,7 @@ using namespace xilinx::AIE;
 namespace {
 // A connection's demand, the cost Dijkstra weighs it by, is
 // (demandBase + overCapacityCoeff * iterations it was over capacity) *
-// (demandBase + usedCapacityCoeff * streams using it).
+// (demandBase + usedCapacityCoeff * streams using it), plus its avoidance.
 constexpr double overCapacityCoeff = 0.1;
 constexpr double usedCapacityCoeff = 0.02;
 constexpr double demandBase = 1.0;
@@ -39,6 +39,9 @@ constexpr double priorityDemandCoeff =
     static_cast<double>(std::numeric_limits<int>::max());
 constexpr int maxCircuitStreamCapacity = 1;
 constexpr int maxPacketStreamCapacity = 32;
+// Demand added to a connection into an avoided port. It exceeds what a long
+// detour costs, so a route takes the port only when every other is taken.
+constexpr double avoidedPortDemand = 100.0;
 // History added to a connection each time the routing check rejects it.
 constexpr int routingCheckPenalty = 5;
 // Iterations spent steering away from a usable routing the check rejects.
@@ -81,7 +84,8 @@ constexpr int stallHistory = 4;
 void SwitchboxConnect::updateDemand() {
   for (Cell &c : cells)
     c.demand = (demandBase + overCapacityCoeff * c.overCapacity) *
-               (demandBase + usedCapacityCoeff * c.usedCapacity);
+                   (demandBase + usedCapacityCoeff * c.usedCapacity) +
+               c.avoidance;
 }
 
 void SwitchboxConnect::bumpDemand(Cell &c) {
@@ -99,6 +103,38 @@ void RoutingFailure::log(llvm::raw_ostream &os) const {
     os << ": " << reason;
 }
 
+Attribute xilinx::AIE::encodeAvoidedPorts(
+    MLIRContext *ctx, const std::set<std::pair<TileID, Port>> &ports) {
+  SmallVector<int32_t> flat;
+  for (const auto &[coords, port] : ports)
+    flat.append({coords.col, coords.row, static_cast<int32_t>(port.bundle),
+                 port.channel});
+  return DenseI32ArrayAttr::get(ctx, flat);
+}
+
+bool xilinx::AIE::touchesTileControl(PacketFlowOp flow) {
+  auto control = [](auto end) {
+    return end.getBundle() == WireBundle::TileControl;
+  };
+  return llvm::any_of(flow.getPorts().getOps<PacketSourceOp>(), control) ||
+         llvm::any_of(flow.getPorts().getOps<PacketDestOp>(), control);
+}
+
+std::optional<std::vector<std::pair<TileID, Port>>>
+xilinx::AIE::decodeAvoidedPorts(Attribute attr) {
+  auto flat = dyn_cast_or_null<DenseI32ArrayAttr>(attr);
+  if (!flat || flat.size() % 4)
+    return std::nullopt;
+  std::vector<std::pair<TileID, Port>> ports;
+  for (size_t k = 0; k < static_cast<size_t>(flat.size()); k += 4) {
+    std::optional<WireBundle> bundle = symbolizeWireBundle(flat[k + 2]);
+    if (!bundle || flat[k] < 0 || flat[k + 1] < 0 || flat[k + 3] < 0)
+      return std::nullopt;
+    ports.push_back({{flat[k], flat[k + 1]}, {*bundle, flat[k + 3]}});
+  }
+  return ports;
+}
+
 llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow
@@ -106,6 +142,8 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   maxRow = device.getTargetModel().rows();
 
   pathfinder.initialize(maxCol, maxRow, device.getTargetModel());
+  for (const auto &[coords, port] : avoidedPorts)
+    pathfinder.avoidPort(coords, port);
 
   // For each flow (circuit + packet) in the device, add it to pathfinder. Each
   // source can map to multiple different destinations (fanout). Control packet
@@ -715,6 +753,18 @@ void Pathfinder::excludeTile(TileID coords) {
   for (size_t i = 0; i < sb.srcPorts.size(); i++)
     for (size_t j = 0; j < sb.dstPorts.size(); j++)
       sb.at(i, j).available = false;
+}
+
+void Pathfinder::avoidPort(TileID coords, Port port) {
+  auto it = graph.find({coords, coords});
+  if (it == graph.end())
+    return;
+  SwitchboxConnect &sb = it->second;
+  int j = sb.dstIndex(port);
+  if (j < 0)
+    return;
+  for (size_t i = 0; i < sb.srcPorts.size(); i++)
+    sb.at(i, j).avoidance = avoidedPortDemand;
 }
 
 static constexpr double INF = std::numeric_limits<double>::max();

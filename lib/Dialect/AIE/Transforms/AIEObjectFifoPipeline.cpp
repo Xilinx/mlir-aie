@@ -22,6 +22,10 @@ struct ObjectFifoLoweringOptions
       llvm::cl::desc(
           "Flag to enable aie.packetflow lowering from objectfifos."),
       llvm::cl::init(false)};
+  Option<bool> reserveControllerPacketIds{
+      *this, "reserve-controller-packet-ids",
+      llvm::cl::desc("Give no packet flow a tile controller's packet ID."),
+      llvm::cl::init(false)};
   Option<bool> skipVerify{
       *this, "skip-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR."),
@@ -38,7 +42,8 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
         if (!options.skipVerify) {
           pm.addPass(createAIEObjectFifoVerifyPass());
         }
-        pm.addPass(createAIEObjectFifoAllocatePass(options.packetSwitched));
+        pm.addPass(createAIEObjectFifoAllocatePass(
+            options.packetSwitched, options.reserveControllerPacketIds));
         pm.addPass(createAIEObjectFifoLowerDMAsPass());
         pm.addPass(createAIEObjectFifoLowerCoresPass());
         pm.addPass(createAIEObjectFifoErasePoolsPass());

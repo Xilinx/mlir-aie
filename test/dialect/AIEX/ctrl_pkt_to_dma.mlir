@@ -49,6 +49,7 @@ aie.device(npu1_1col) {
 // CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 9][1, 1, 1, 3][0, 0, 0, 1])
 // CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 12][1, 1, 1, 3][0, 0, 0, 1])
 aie.device(npu1) {
+  %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence() {
     aiex.control_packet {address = 0 : ui32, data = array<i32: 100>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 4 : ui32, data = array<i32: 200>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -56,6 +57,7 @@ aie.device(npu1) {
     aiex.control_packet {address = 12 : ui32, data = array<i32: 400>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 16 : ui32, data = array<i32: 500>, opcode = 0 : i32, stream_id = 0 : i32}
   }
+  aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0)
 }
 
 // -----
@@ -65,6 +67,7 @@ aie.device(npu1) {
 // CHECK-LABEL: aie.device(npu2) {
 // CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 15][0, 0, 0, 1])
 aie.device(npu2) {
+  %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence() {
     aiex.control_packet {address = 0 : ui32, data = array<i32: 100>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 4 : ui32, data = array<i32: 200>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -72,6 +75,7 @@ aie.device(npu2) {
     aiex.control_packet {address = 12 : ui32, data = array<i32: 400>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 16 : ui32, data = array<i32: 500>, opcode = 0 : i32, stream_id = 0 : i32}
   }
+  aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0)
 }
 
 // -----
@@ -85,6 +89,7 @@ aie.device(npu2) {
 // CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 6][1, 1, 1, 9][0, 0, 0, 1])
 // CHECK: aiex.npu.sync
 aie.device(npu2) {
+  %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence() {
     aiex.control_packet {address = 0 : ui32, data = array<i32: 100>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 4 : ui32, data = array<i32: 200>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -96,4 +101,25 @@ aie.device(npu2) {
     aiex.control_packet {address = 12 : ui32, data = array<i32: 400>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 16 : ui32, data = array<i32: 500>, opcode = 0 : i32, stream_id = 0 : i32}
   }
+  aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0)
+}
+// -----
+
+// Control packets take the channel of their column's control packet shim DMA
+// allocation, whatever the row they address.
+
+// CHECK-LABEL: aie.device(npu2) {
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan1}
+// CHECK: %[[ROW:.*]] = arith.constant 0 : i32
+// CHECK: %[[COL:.*]] = arith.constant 0 : i32
+// CHECK: %[[DIR:.*]] = arith.constant 1 : i32
+// CHECK: %[[CHAN:.*]] = arith.constant 1 : i32
+// CHECK: aiex.npu.sync(%[[COL]], %[[ROW]], %[[DIR]], %[[CHAN]], %{{.*}}, %{{.*}})
+aie.device(npu2) {
+  %tile_0_0 = aie.tile(0, 0)
+  %tile_0_2 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+  aie.runtime_sequence() {
+    aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+  }
+  aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1 (%tile_0_0, MM2S, 1)
 }

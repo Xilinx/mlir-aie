@@ -45,6 +45,7 @@ class XRTKernelHandle(KernelHandle):
         name=None,
         is_full_elf=False,
         num_args=None,
+        init_name=None,
     ):
         """Initialize the XRTKernelHandle.
 
@@ -64,6 +65,9 @@ class XRTKernelHandle(KernelHandle):
                 for the loaded kernel, opcode and instructions included;
                 ``run()`` refuses more host buffers than they leave. ``None``
                 skips the check. Defaults to None.
+            init_name (optional): The full ELF's init entry, which ``run()``
+                runs first whenever the kernel's context is not the one it last
+                dispatched. Defaults to None.
         """
         super().__init__(needs_dispatch_insts=insts is None and not is_full_elf)
         self.kernel = kernel
@@ -74,6 +78,7 @@ class XRTKernelHandle(KernelHandle):
         self.name = name
         self.is_full_elf = is_full_elf
         self.num_args = num_args
+        self.init_name = init_name
 
 
 class XRTKernelResult(KernelResult):
@@ -125,6 +130,8 @@ class XRTHostRuntime(HostRuntime):
                 break
         if not self.npu_str:
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")
+        # The hardware context of the last dispatch; see `run`.
+        self._dispatched_context = None
 
     def provenance(self) -> dict[str, str]:
         """Add XRT's version from the shared, cached stack probe."""
@@ -286,8 +293,38 @@ class XRTHostRuntime(HostRuntime):
         kernel = pyxrt.ext.kernel(context, kernel_name)
 
         return XRTKernelHandle(
-            kernel, None, context, None, name=kernel_name, is_full_elf=True
+            kernel,
+            None,
+            context,
+            None,
+            name=kernel_name,
+            is_full_elf=True,
+            init_name=getattr(npu_kernel, "init_kernel_name", None),
         )
+
+    @staticmethod
+    def _run_init_entry(context, init_name: str | None, kernel_name: str) -> None:
+        """Run the init entry ``init_name``, if any, before ``kernel_name``.
+
+        ``init_name`` is ``NPUKernel.init_kernel_name``, set only when the
+        build added the entry, never for a design's own sequence named
+        ``reconfig_init``.
+
+        Args:
+            context: The hardware context about to run ``kernel_name``.
+            init_name: The ``"<device>:reconfig_init"`` entry, or ``None``.
+            kernel_name: The ``"<device>:<sequence>"`` kernel about to run.
+
+        Raises:
+            HostRuntimeError: If the init entry does not complete.
+        """
+        if init_name is None or init_name == kernel_name:
+            return
+        run = pyxrt.run(pyxrt.ext.kernel(context, init_name))
+        run.start()
+        r = run.wait()
+        if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            raise HostRuntimeError(f"{init_name} returned {r}")
 
     def run(
         self,
@@ -328,6 +365,15 @@ class XRTHostRuntime(HostRuntime):
             )
         [a.to("npu") for a in args]
         buffers = [a.buffer_object() for a in args]
+
+        # Another context's dispatch may have reset the array since this
+        # context last ran, so a full ELF's init entry runs again.
+        if kernel_handle.context is not self._dispatched_context:
+            if kernel_handle.is_full_elf:
+                self._run_init_entry(
+                    kernel_handle.context, kernel_handle.init_name, kernel_handle.name
+                )
+            self._dispatched_context = kernel_handle.context
 
         if kernel_handle.is_full_elf:
             return self._run_full_elf(kernel_handle, buffers, fail_on_error)
@@ -457,6 +503,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
         name=None,
         is_full_elf=False,
         num_args=None,
+        init_name=None,
     ):
         """Initialize the CachedXRTKernelHandle.
 
@@ -470,6 +517,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
             is_full_elf (bool, optional): True when loaded from a full ELF.
                 Defaults to False.
             num_args (optional): See `XRTKernelHandle`. Defaults to None.
+            init_name (optional): See `XRTKernelHandle`. Defaults to None.
         """
         super().__init__(
             kernel,
@@ -480,6 +528,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
             name=name,
             is_full_elf=is_full_elf,
             num_args=num_args,
+            init_name=init_name,
         )
         self._is_valid = True
 
@@ -630,6 +679,8 @@ class CachedXRTRuntime(XRTHostRuntime):
 
         # Clear kernel cache so pyxrt.kernel objects are released with the context
         entry["kernels"].clear()
+        if self._dispatched_context is entry["context"]:
+            self._dispatched_context = None
 
         # Release the hw_context by removing its strong reference from the entry dict.
         # Simply assigning a local `context = entry["context"]` and then `del context`
@@ -797,7 +848,8 @@ class CachedXRTRuntime(XRTHostRuntime):
 
         Full ELFs carry their own PDIs + control code, so the context is built
         from ``pyxrt.elf`` (no xclbin, no instruction BO cache).  Context reuse
-        follows the same LRU + Phoenix-drain policy as the xclbin path.
+        follows the same LRU + Phoenix-drain policy as the xclbin path.  A new
+        context first runs the kernel's init entry, if it has one.
         """
         elf_path = Path(npu_kernel.elf_path)
         kernel_name = npu_kernel.kernel_name
@@ -849,7 +901,13 @@ class CachedXRTRuntime(XRTHostRuntime):
             kernel = entry["kernels"][kernel_name]
 
             kernel_handle = CachedXRTKernelHandle(
-                kernel, None, context, None, name=kernel_name, is_full_elf=True
+                kernel,
+                None,
+                context,
+                None,
+                name=kernel_name,
+                is_full_elf=True,
+                init_name=getattr(npu_kernel, "init_kernel_name", None),
             )
             entry["handles"].append(weakref.ref(kernel_handle))
             return kernel_handle

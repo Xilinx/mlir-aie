@@ -2,7 +2,7 @@
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// 
+//
 //===----------------------------------------------------------===//-->
 
 # `aiecc`: the MLIR-AIE compiler driver
@@ -44,9 +44,70 @@ bundled into a single loadable ELF instead of an xclbin plus loose binaries:
 aiecc --get-full-elf design.mlir   # -> aie.elf
 ```
 
-You can override these output file names with `--npu-insts-name`, 
-`--xclbin-name`, and `--full-elf-name`. You can filter which devices and 
-runtime sequences are compiled with `--device-name` and `--sequence-name`. 
+You can override these output file names with `--npu-insts-name`,
+`--xclbin-name`, and `--full-elf-name`. You can filter which devices and
+runtime sequences are compiled with `--device-name` and `--sequence-name`.
+
+### Full-ELF entries of a reconfiguring design
+
+Each runtime sequence is a full-ELF entry named `<device>:<sequence>`, e.g.
+`main:sequence` for a sequence that runs its configurations with
+`aiex.configure`. Two options cut the resets between its configurations; each
+requires a full ELF:
+
+- `--reconfig-teardown` (with `--expand-load-pdis` or `--load-pdi-to-ctrl-pkt`):
+  after its last wait, each configuration disables the stream-switch circuits
+  and packet ports it set, disables its cores and resets the memtile and
+  core-tile DMA channels it started. A sequence then keeps only its first reset
+  or overlay load. A device that starts a shim DMA channel itself is refused,
+  since shim channels have no reset. On by default under
+  `--load-pdi-to-ctrl-pkt`; under it, the teardown is sent as control packets
+  and leaves the control overlay in place.
+- `--reconfig-init-entry` (with `--reconfig-teardown`): the reset moves into an
+  argument-free `<device>:reconfig_init` entry; under `--load-pdi-to-ctrl-pkt` it
+  also installs the control overlay. The host runs it before the first entry on a
+  hardware context, and again whenever another context ran in between, since
+  that may have reset the array. IRON's host runtime does so itself; a host
+  that shares the NPU with another process runs it before each entry.
+
+For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
+
+| Options              | Entries                               |
+|----------------------|---------------------------------------|
+| none, or teardown    | `main:sequence`                       |
+| teardown, init entry | `main:reconfig_init`, `main:sequence` |
+
+`--sequence-name` always keeps the `reconfig_init` entry.
+
+### Control packet reconfiguration
+
+`--load-pdi-to-ctrl-pkt` sends each configuration as control packets through
+the control overlay (`@ctrl_pkt_overlay`), which every configuration keeps on
+the same routes. These options adjust it; each requires it:
+
+- `--ctrlpkt-auto-packetize` (on by default): where a column's objectFIFO
+  inputs take every shim MM2S channel, one input becomes packet-switched and
+  shares its channel with the control packets (`aie-auto-packetize-shim-input`).
+- `--ctrlpkt-adaptive-pin` (off by default): the overlay routes around the
+  switch ports the configurations' data takes
+  (`aie-control-overlay-avoid-data`; see [routing](../../programming_guide/routing.md#priority-routes-and-the-control-overlay)).
+- `--ctrlpkt-reorder-by-tile` (on by default): each tile's control packets go
+  in one transfer, and channel starts and core enables go last
+  (`aie-reorder-control-packets-by-tile`).
+- `--ctrlpkt-chain-bds` (on by default): each run of transfers on one shim
+  channel is one buffer descriptor chain with one await
+  (`aie-ctrl-packet-to-dma`).
+- `--ctrlpkt-parallel-shims` (on by default): every column's control packets
+  go at once (`aie-ctrl-packet-to-dma`, with `aie-check-core-start-gating`).
+- `--ctrlpkt-gated-enable` (on by default; requires `--ctrlpkt-chain-bds`): a
+  core proved gated is enabled with its column's control packets
+  (`aie-reorder-control-packets-by-tile`).
+- `--ctrlpkt-multicast-span=<w>` (1 by default, 0 off; requires
+  `--ctrlpkt-reorder-by-tile`): the control packets the core tiles of each
+  group of w columns share go once, on a control multicast
+  (`aie-dedup-ctrl-packet-multicast`).
+
+`aie-check-ctrl-packet-delivery` checks every delivery order these produce.
 
 ### Parameterized C++ transaction builders
 
@@ -190,10 +251,10 @@ annotations, IR-retention options and verification limitations.
 ### Seeing what the compiler will do / dry-running: `--emit-dot`
 
 The compiler builds its execution plan from the flags you pass.
-Adding `--emit-dot` prints that plan (as a GraphViz graph) for exactly the 
+Adding `--emit-dot` prints that plan (as a GraphViz graph) for exactly the
 requested outputs and options and exits without compiling anything. You omit
 the input file when you pass `--emit-dot`, as no compilation actually takes
-place. For example, this shows the plan for the NPU-instruction flow and 
+place. For example, this shows the plan for the NPU-instruction flow and
 renders it to an image:
 
 ```bash
@@ -265,7 +326,7 @@ aiecc --get-npu-insts --cut=input_physical.mlir --checkpoint=cp \
 
 ![NPU-instruction flow with a checkpoint cut](docs/npu_insts_cut.svg)
 
-If an error occurs during compilation, `aiecc` will dump a checkpoint 
+If an error occurs during compilation, `aiecc` will dump a checkpoint
 capturing the state up to the first failing edge. This allows you to submit
 a checkpoint as a reproducer, or investigate the issue yourself using the
 exact inputs the failing step saw.
@@ -304,22 +365,22 @@ to verify after every pass and learn which one it was.
 ## Developer guide
 
 `aiecc` captures the build steps required for each requested output artifact
-as a static graph: every kind of intermediate is a `Node`, every 
+as a static graph: every kind of intermediate is a `Node`, every
 transformation an edge, and the engine runs only the edges needed for the
 artifacts you asked for.
 
 ### Edge, Node, Item — and keys
 
-- **`Item<T>`** — one typed intermediate or output artifact; a payload of type 
+- **`Item<T>`** — one typed intermediate or output artifact; a payload of type
   `T` (e.g., JSON, IR module, vector of bytes) plus a `key`, which uniquely
-  identifies the payload among its peers. Items are materialized to disk 
-  lazily, i.e., only when a downstream edge needs them on disk. Payload types 
+  identifies the payload among its peers. Items are materialized to disk
+  lazily, i.e., only when a downstream edge needs them on disk. Payload types
   and their disk serializers live in `Items.h`.
-- **`Node<T>`** — the collection of all `Item<T>` artifacts produced by one 
+- **`Node<T>`** — the collection of all `Item<T>` artifacts produced by one
   edge; for many edges this wraps a single item (e.g. `aie.elf`), but for
   some it contains many (e.g. the per-AIE-core `.o` files).
-- **`Edge`** — a transformation from input node(s) to an output node, 
-  performing some action (a lambda, a `PassPipeline`, or a `ShellCommand`). 
+- **`Edge`** — a transformation from input node(s) to an output node,
+  performing some action (a lambda, a `PassPipeline`, or a `ShellCommand`).
   Edges may change the cardinality of the input/output nodes, e.g. split or
   join, or apply a transform to each item (map) -- see below.
 
@@ -338,9 +399,9 @@ read inputs or write outputs out-of-band.
 
 #### Why this matters
 
-- **The graph is declared unconditionally.** No guards around edge construction 
-  — every edge always exists. The engine prunes backward from the requested 
-  outputs, so unrequested work never runs. `--emit-dot`, `--checkpoint`, and 
+- **The graph is declared unconditionally.** No guards around edge construction
+  — every edge always exists. The engine prunes backward from the requested
+  outputs, so unrequested work never runs. `--emit-dot`, `--checkpoint`, and
   `--resume` rely on this static shape.
 - **`Item` owns materialization.** An `Item<T>` holds a typed payload and only
   writes it to disk when a *downstream* edge asks for its path via `asFile()`.

@@ -66,6 +66,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1382,7 +1383,9 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     mlir::MLIRContext *ctx, mlir::ModuleOp mod, bool dynamicObjFifos,
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
-    bool skipObjectFifoVerify = false, bool assignAddresses = true) {
+    bool skipObjectFifoVerify = false, bool assignAddresses = true,
+    llvm::ArrayRef<int> coverColumns = {}, bool autoPacketize = false,
+    const std::map<int, int> &controlChannels = {}) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1408,22 +1411,18 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // buffers need addresses). params.txt is materialized as a separate graph
   // edge, so no `outputParamsFile` is set here.
   pm->addPass(X::createAIELowerScratchpadParametersPass());
-
-  // The control-overlay pass is module-level (it may emit a standalone
-  // `@ctrl_pkt_overlay` device). With `ctrlPktOverlay` it must run BEFORE
-  // objectFIFO lowering so the overlay claims its shim DMA channels first and
-  // the objectFIFO transform (DMAChannelAnalysis) works around them. Otherwise
-  // it runs after objectFIFO + tile-ctrl-id assignment (below).
-  if (ctrlPktOverlay) {
+  // Before objectFIFO lowering, which assigns the shim channels it pins.
+  if (autoPacketize) {
+    std::string controlChanOption;
+    for (auto [col, chan] : controlChannels)
+      controlChanOption += llvm::formatv(
+          "{0}{1}:{2}", controlChanOption.empty() ? "{control-channels=" : ",",
+          col, chan);
+    if (!controlChanOption.empty())
+      controlChanOption += "}";
     if (mlir::failed(mlir::parsePassPipeline(
-            llvm::formatv(
-                "aie-generate-column-control-overlay{{route-shim-to-tile-ctrl="
-                "true emit-standalone-overlay={0}}",
-                loadPdiToCtrlPkt)
-                .str(),
-            *pm))) {
+            "aie-auto-packetize-shim-input" + controlChanOption, *pm)))
       return nullptr;
-    }
   }
 
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
@@ -1435,8 +1434,8 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   if (mlir::failed(mlir::parsePassPipeline(
           llvm::formatv(
               "aie-objectFifo-stateful-transform{{packet-sw-objFifos={0} "
-              "skip-verify={1}}",
-              packetSwObjFifos, skipObjectFifoVerify)
+              "skip-verify={1} reserve-controller-packet-ids={2}}",
+              packetSwObjFifos, skipObjectFifoVerify, ctrlPktOverlay)
               .str(),
           dpm))) {
     return nullptr;
@@ -1461,11 +1460,29 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());
   dpm.addPass(X::createAIELowerMulticastPass());
-  dpm.addPass(createAIEAssignTileCtrlIDsPass());
 
-  // Without `ctrlPktOverlay`, the (module-level) overlay pass runs here, after
-  // tile-ctrl-id assignment. Break out of the device nest to run it, then
-  // resume with a new device nest for the remaining per-device passes.
+  // The control-overlay pass is module-level (it may emit a standalone
+  // `@ctrl_pkt_overlay` device). With `ctrlPktOverlay` it runs after objectFIFO
+  // lowering, to take a shim DMA channel the data leaves free, and before
+  // tile-ctrl-id assignment, so its tiles get controller ids.
+  if (ctrlPktOverlay) {
+    std::string cover;
+    for (int col : coverColumns)
+      cover += (cover.empty() ? " cover-columns=" : ",") + std::to_string(col);
+    if (mlir::failed(mlir::parsePassPipeline(
+            llvm::formatv(
+                "aie-generate-column-control-overlay{{route-shim-to-tile-ctrl="
+                "true emit-standalone-overlay={0}{1} multicast-span={2}}",
+                loadPdiToCtrlPkt, cover,
+                loadPdiToCtrlPkt ? cli::ctrlpktMulticastSpan.getValue() : 0)
+                .str(),
+            *pm))) {
+      return nullptr;
+    }
+  }
+  pm->nest<DeviceOp>().addPass(createAIEAssignTileCtrlIDsPass());
+
+  // Without `ctrlPktOverlay`, the control-overlay pass runs here instead.
   if (!ctrlPktOverlay) {
     if (mlir::failed(
             mlir::parsePassPipeline("aie-generate-column-control-overlay{route-"
@@ -1660,15 +1677,19 @@ getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
   return pm;
 }
 
-// Routing (`aie-create-pathfinder-flows`), nested under DeviceOp.
+// Routing (`aie-create-pathfinder-flows`), nested under DeviceOp, with the
+// control overlay routed around the data under --ctrlpkt-adaptive-pin.
 inline std::unique_ptr<mlir::PassManager>
 getRoutingPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  mlir::OpPassManager &dpm = pm->nest<xilinx::AIE::DeviceOp>();
-  dpm.addPass(xilinx::AIE::createAIESplitFlowViasPass());
+  pm->nest<xilinx::AIE::DeviceOp>().addPass(
+      xilinx::AIE::createAIESplitFlowViasPass());
+  if (cli::ctrlpktAdaptivePin)
+    pm->addPass(xilinx::AIE::createAIEControlOverlayAvoidDataPass());
   xilinx::AIE::AIERoutePathfinderFlowsOptions options;
   options.clAllowDeadlockProne = cli::allowDeadlockProneRouting;
-  dpm.addPass(xilinx::AIE::createAIEPathfinderPass(options));
+  pm->nest<xilinx::AIE::DeviceOp>().addPass(
+      xilinx::AIE::createAIEPathfinderPass(options));
   return pm;
 }
 
@@ -1997,18 +2018,38 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 // With `ctrlPkt=false` the referenced device's configuration is emitted as
 // `write32`/`blockwrite` ops; with `ctrlPkt=true` it is emitted as
 // `aiex.npu.control_packet` ops (which a later ctrl-packet-to-dma pass streams
-// in), preceded by a `load_pdi @ctrl_pkt_overlay`.
+// in), preceded by a `load_pdi @ctrl_pkt_overlay`. Without
+// --ctrlpkt-reorder-by-tile, --ctrlpkt-parallel-shims still runs the reorder
+// pass, with by-tile=false.
 inline std::unique_ptr<mlir::PassManager>
 getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  std::string expandPipeline = std::string("aie-expand-load-pdi{ctrl-pkt=") +
-                               (ctrlPkt ? "true" : "false") + "}";
+  auto flag = [](bool b) { return b ? "true" : "false"; };
+  std::string expandPipeline =
+      llvm::formatv("aie-expand-load-pdi{{ctrl-pkt={0} teardown={1} "
+                    "init-entry={2}}",
+                    flag(ctrlPkt), flag(cli::reconfigTeardown),
+                    flag(cli::reconfigInitEntry))
+          .str();
   if (mlir::failed(mlir::parsePassPipeline(expandPipeline, *pm))) {
     return nullptr;
   }
   if (ctrlPkt) {
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
         xilinx::AIEX::createAIELegalizeControlPacketPass());
+    if (cli::ctrlpktReorderByTile || cli::ctrlpktParallelShims) {
+      xilinx::AIEX::AIEReorderControlPacketsByTileOptions opts;
+      opts.byTile = cli::ctrlpktReorderByTile;
+      opts.gatedEnable = cli::ctrlpktGatedEnable;
+      pm->addPass(xilinx::AIEX::createAIEReorderControlPacketsByTilePass(opts));
+    }
+    if (cli::ctrlpktMulticastSpan)
+      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());
+    if (cli::ctrlpktReorderByTile || cli::ctrlpktParallelShims) {
+      xilinx::AIEX::AIECheckCtrlPacketDeliveryOptions check;
+      check.parallelShims = cli::ctrlpktParallelShims;
+      pm->addPass(xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass(check));
+    }
   }
   return pm;
 }
@@ -2056,8 +2097,11 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 inline std::unique_ptr<mlir::PassManager>
 getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
+  xilinx::AIEX::AIECtrlPacketToDmaOptions opts;
+  opts.chainBds = cli::ctrlpktChainBds;
+  opts.parallelShims = cli::ctrlpktParallelShims;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
-      xilinx::AIEX::createAIECtrlPacketToDmaPass());
+      xilinx::AIEX::createAIECtrlPacketToDmaPass(opts));
   return pm;
 }
 

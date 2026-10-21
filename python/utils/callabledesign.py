@@ -259,6 +259,7 @@ class CallableDesign:
             kernel = NPUKernel(
                 elf_path=compilable._elf_path,
                 kernel_name=compilable._full_elf_kernel_name,
+                init_entry=compilable._full_elf_init_entry,
                 trace_config=trace_config,
                 num_host_bos=num_host_bos,
             )

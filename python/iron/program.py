@@ -37,6 +37,9 @@ class Program:
         workers: "list | None" = None,
         *,
         expand_load_pdis: bool | None = None,
+        load_pdi_to_ctrl_pkt: bool | None = None,
+        reconfig_teardown: bool | None = None,
+        reconfig_init_entry: bool | None = None,
     ):
         """Construct a Program with all design information needed to run the design on a device.
 
@@ -56,6 +59,13 @@ class Program:
             expand_load_pdis: The value passed to aiecc's
                 ``--expand-load-pdis`` option during full-ELF compilation.
                 ``None`` omits the option.
+            load_pdi_to_ctrl_pkt: The value passed to aiecc's
+                ``--load-pdi-to-ctrl-pkt`` option during full-ELF compilation.
+                ``None`` omits the option.
+            reconfig_teardown: The value passed to aiecc's
+                ``--reconfig-teardown`` option. ``None`` omits the option.
+            reconfig_init_entry: The value passed to aiecc's
+                ``--reconfig-init-entry`` option. ``None`` omits the option.
 
         Raises:
             ValueError: If ``device`` is None (no NPU device was selected/detected).
@@ -72,7 +82,12 @@ class Program:
         self._configurations = [configuration]
         self._entry = rt
         self._implicit_configuration = True
-        self._expand_load_pdis = expand_load_pdis
+        self._reconfiguration_options = {
+            "expand_load_pdis": expand_load_pdis,
+            "load_pdi_to_ctrl_pkt": load_pdi_to_ctrl_pkt,
+            "reconfig_teardown": reconfig_teardown,
+            "reconfig_init_entry": reconfig_init_entry,
+        }
         self._site = SourceSite.capture()
         self._assign_names()
 
@@ -83,12 +98,34 @@ class Program:
         *,
         entry: Runtime,
         expand_load_pdis: bool | None = None,
+        load_pdi_to_ctrl_pkt: bool | None = None,
+        reconfig_teardown: bool | None = None,
+        reconfig_init_entry: bool | None = None,
     ) -> "Program":
+        """Compose configurations into one Program run from ``entry``.
+
+        Args:
+            configurations: The device configurations, each one ``aie.device``.
+            entry: The runtime that orchestrates one run.
+            expand_load_pdis: The value passed to aiecc's
+                ``--expand-load-pdis`` option. ``None`` omits the option.
+            load_pdi_to_ctrl_pkt: The value passed to aiecc's
+                ``--load-pdi-to-ctrl-pkt`` option. ``None`` omits the option.
+            reconfig_teardown: The value passed to aiecc's
+                ``--reconfig-teardown`` option. ``None`` omits the option.
+            reconfig_init_entry: The value passed to aiecc's
+                ``--reconfig-init-entry`` option. ``None`` omits the option.
+        """
         program = cls.__new__(cls)
         program._configurations = list(configurations)
         program._entry = entry
         program._implicit_configuration = False
-        program._expand_load_pdis = expand_load_pdis
+        program._reconfiguration_options = {
+            "expand_load_pdis": expand_load_pdis,
+            "load_pdi_to_ctrl_pkt": load_pdi_to_ctrl_pkt,
+            "reconfig_teardown": reconfig_teardown,
+            "reconfig_init_entry": reconfig_init_entry,
+        }
         program._site = SourceSite.capture()
         program._assign_names()
         program._validate_composition()
@@ -275,10 +312,11 @@ class Program:
                     )
                 )
 
-            if self._expand_load_pdis is not None:
-                ctx.module.operation.attributes["iron.expand_load_pdis"] = (
-                    ir.BoolAttr.get(self._expand_load_pdis)
-                )
+            for name, value in self._reconfiguration_options.items():
+                if value is not None:
+                    ctx.module.operation.attributes[f"iron.{name}"] = ir.BoolAttr.get(
+                        value
+                    )
 
             self._print_verify(ctx)
             return ctx.module

@@ -489,6 +489,33 @@ def AIESubstituteShimDMAAllocations
 
 def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
   let summary = "Lowers npu.control_packet op to npu.dma_memcpy_nd op";
+  let description = [{
+    Streams each runtime sequence's control packets through their column's
+    control channel. Consecutive packets to one tile go in one transfer where
+    the target supports it. Each transfer gets its own buffer descriptor, since
+    a descriptor ends its stream packet and the switches route each to its
+    tile.
+
+    By default each transfer is an `aiex.npu.dma_memcpy_nd` and an
+    `aiex.npu.sync`. With `chain-bds`, consecutive transfers on one channel with
+    no op between them are one `aiex.dma_configure_task_for` with chained
+    descriptors and one await, split into several chains when longer than the
+    shim tile's descriptor count.
+
+    With `parallel-shims`, a run's channels send at once, phase by phase: the
+    packets stamped `aiex.ctrl_pkt_base_phase`, the rest, then the same two
+    among those stamped `aiex.ctrl_pkt_enable_phase`. A phase starts every
+    channel's transfers before awaiting any. Each channel keeps at most one
+    chain, or as many single transfers as its task queue holds, outstanding.
+  }];
+
+  let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
+                        "Chain each run of transfers on one shim channel into "
+                        "one task with one await">,
+                 Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false",
+                        "Send a run's shim channels at once, phase by phase">,
+  ];
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
@@ -640,6 +667,153 @@ def AIELegalizeControlPacket
   ];
 }
 
+def AIEReorderControlPacketsByTile
+    : Pass<"aie-reorder-control-packets-by-tile", "mlir::ModuleOp"> {
+  let summary = "Group each run of control packets by destination tile";
+  let description = [{
+    In every runtime sequence, reorders each maximal run of consecutive
+    `aiex.npu.control_packet` ops so every tile's packets are contiguous,
+    keeping each tile's order, which lets `aie-ctrl-packet-to-dma` send them in
+    one transfer.
+
+    A run splits into the configuration and the enable phase, each stably sorted
+    by tile (column, then row). The enable phase, stamped
+    `aiex.ctrl_pkt_enable_phase`, holds the pushes to an MM2S channel's start
+    (task) queue and then the core enables (writes setting `Core_Control`'s
+    enable bit). A push starts its channel, which streams at once if its lock
+    allows, so its route has to be configured first; cores start last. A
+    channel's control register (its reset and enable) stays in place, and the
+    push, written before the enable, still starts the channel.
+
+    A push stays in the configuration when its channel's `aie.dma_start`, in the
+    device the packet's `aiex.ctrl_pkt_device` names, carries
+    `aiex.ctrl_pkt_gated` (see `aie-check-core-start-gating`). With
+    `gated-enable`, so does the enable of a core whose `aie.core` carries it,
+    last among its column's packets. With `by-tile=false` the enable phase still
+    moves behind the configuration, but nothing is sorted by tile. The pass
+    needs the target's register database.
+  }];
+
+  let options = [Option<"byTile", "by-tile", "bool", /*default=*/"true",
+                        "Sort each part of a run by tile">,
+                 Option<"gatedEnable", "gated-enable", "bool",
+                        /*default=*/"false",
+                        "Send the enables of proved cores with their column's "
+                        "configuration">,
+  ];
+
+  let constructor = "xilinx::AIEX::createAIEReorderControlPacketsByTilePass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEDedupCtrlPacketMulticast
+    : Pass<"aie-dedup-ctrl-packet-multicast", "mlir::ModuleOp"> {
+  let summary = "Send the control packets a multicast group's tiles share "
+                "once";
+  let description = [{
+    For each run of control packets and each multicast group (the core tiles
+    `aie-generate-column-control-overlay` stamps with one
+    `aie.ctrl_pkt_multicast_id`) in the device a packet's `aiex.ctrl_pkt_device`
+    names, compares the group's tiles' packets position by position, the enable
+    phase apart from the rest. The leading packets that make the same write on
+    every tile (apart from the address's column and row bits) and come first on
+    the lowest tile, the base, stay only there, stamped
+    `aiex.ctrl_pkt_multicast_id`; the other tiles' copies go. A group with a tile
+    that has no packets in the run is left alone. Run it after
+    `aie-reorder-control-packets-by-tile`.
+
+    A group spanning columns gets its base from its lowest tile's shim channel,
+    which `aie-ctrl-packet-to-dma` with `parallel-shims` does not order against
+    the other columns. When another packet of the same phase on a group tile
+    does not commute with the base, the base is stamped
+    `aiex.ctrl_pkt_base_phase`, which that lowering sends first. Two packets do
+    not commute when they write a common register or one starts a DMA channel or
+    enables the core. With `drain-merge=false` the base is stamped whenever the
+    group spans columns.
+  }];
+
+  let options = [Option<
+                     "drainMerge", "drain-merge", "bool",
+                     /*default=*/"true",
+                     "Leave a cross-column group's base in its phase when no "
+                     "other packet writes its registers">,
+  ];
+
+  let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECheckCtrlPacketDelivery
+    : Pass<"aie-check-ctrl-packet-delivery", "mlir::ModuleOp"> {
+  let summary = "Check the order control packets land in";
+  let description = [{
+    Checks the control packets of every runtime sequence against the order
+    `aie-ctrl-packet-to-dma` delivers them in. Other ops separate runs and wait
+    for them. Within a run delivery is serial, or with `parallel-shims` phase by
+    phase, each shim channel in order within a phase.
+
+    It checks two rules. First, the packets that reach a tile (its own and those
+    on a multicast id its configured device stamps it with) land in program
+    order, except that two packets may swap when they share no address and
+    neither starts a DMA channel or enables the core.
+
+    Second, a packet that starts an MM2S channel not proved gated may send a
+    stream that stalls at a receiver nothing has started yet, holding the switch
+    arbiters on its way until its last word, so no control packet that may land
+    after it may take one of those arbiters.
+
+    An error names the packet that breaks a rule.
+  }];
+
+  let options = [Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false",
+                        "Check against parallel-shims delivery">,
+  ];
+
+  let constructor = "xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECheckCoreStartGating
+    : Pass<"aie-check-core-start-gating", "mlir::ModuleOp"> {
+  let summary = "Prove which DMA channels cannot start moving data during "
+                "their configuration";
+  let description = [{
+    `aie-ctrl-packet-to-dma` with `parallel-shims` sends every column's
+    configuration at once, so an MM2S channel that streams as soon as its queue
+    push lands could send data before another column's switches are configured. This pass stamps `aiex.ctrl_pkt_gated` on the
+    `aie.dma_start` of each channel that cannot, and on each core that cannot
+    act before the rest of its configuration lands, and remarks on the others
+    with the reason.
+
+    An MM2S channel is proved gated when its first buffer descriptor waits (a
+    blocking acquire, on a lock of its own tile, at a value the lock's initial
+    value does not reach) and every buffer descriptor that releases that lock is
+    an MM2S descriptor of a proved channel, or a stream-to-memory descriptor (of
+    known nonzero length) fed only by proved channels, cores, or shim channels
+    only the runtime sequence starts. Neither cores nor the host run during a
+    configuration; cores are enabled after it and the host's writes follow it.
+
+    A core is proved gated when, until it passes an acquire that cannot succeed
+    early (blocking, on an own-tile lock, at a value the initial value does not
+    reach, released only as above), it releases no lock, runs no loop that may
+    not run, touches only its own tile's buffers that only idle descriptors
+    otherwise use, and calls external functions only when it sends on no stream
+    or cascade. A core given as `elf_file` is not proved.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIECheckCoreStartGatingPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
   let summary =
       "Expand load_pdi operations to explicit configuration sequences";
@@ -667,6 +841,16 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     This pass is intended to run after runtime sequence materialization
     (i.e., after `aiex.configure` ops have been turned into
     `aiex.npu.load_pdi`).
+
+    With `teardown = true`, each configuration undoes what it enabled after its
+    last `aiex.npu.sync`, so only a sequence's first configuration keeps its
+    reset. With `init-entry = true` as well, that reset moves into an
+    argument-free `reconfig_init` runtime sequence, which the host runs once
+    before the others.
+
+    A sequence whose first and last reset (or overlay load) name the same PDI
+    gets one more of the other, so the next dispatch's first load is not skipped
+    as cached. Under teardown no sequence needs this.
   }];
 
   let constructor = "xilinx::AIEX::createAIEExpandLoadPdiPass()";
@@ -683,6 +867,13 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
        Option<"clInlineConfig", "inline-config", "bool", /*default=*/"false",
               "If true, write each reloaded device's configuration as "
               "write32/blockwrite ops rather than an aiex.npu.write_config.">,
+       Option<"clTeardown", "teardown", "bool", /*default=*/"false",
+              "If true, each configuration undoes what it enabled once it is "
+              "done, and only the first configuration of a runtime sequence "
+              "keeps its reset.">,
+       Option<"clInitEntry", "init-entry", "bool", /*default=*/"false",
+              "If true (requires teardown), the one reset moves to an "
+              "argument-free `reconfig_init` runtime sequence per device.">,
   ];
 }
 

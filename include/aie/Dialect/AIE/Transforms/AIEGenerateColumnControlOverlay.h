@@ -10,17 +10,22 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
+#include <optional>
+#include <string>
+
 using namespace mlir;
 using namespace xilinx::AIE;
 
 // Populate column control streaming interconnect overlay
 void populateAIEColumnControlOverlay(DeviceOp &device);
 
-// AIE arch-specific row id to shim dma mm2s channel mapping. All shim mm2s
-// channels were assumed to be available for control packet flow routing (i.e.
-// not reserved by any aie.flow circuit-switched routing).
-DenseMap<int, int> getRowToShimChanMap(const AIETargetModel &targetModel,
-                                       WireBundle bundle);
+// Name of the shim DMA allocation the runtime sequence issues or receives
+// control packets through.
+std::string getCtrlPktAllocName(int col, bool isShimMM2S, int chan);
+
+// The `<chan>` of `device`'s `ctrlpkt_col<col>_mm2s_chan<chan>` allocation, or
+// nullopt.
+std::optional<int> getCtrlPktShimChan(DeviceOp device, int col);
 
 // AIE arch-specific tile id to controller id mapping. Users can use those
 // packet ids for design but run into risk of deadlocking control packet flows.

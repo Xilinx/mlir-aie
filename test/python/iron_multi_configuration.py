@@ -82,16 +82,22 @@ Program.compose([explicit_config, generated_config], entry=explicit_runtime)
 assert generated_config.name == "device_1"
 assert generated_runtime.name == "sequence_1"
 
-for expand_load_pdis in (None, False, True):
-    option_runtime = Runtime(lambda: None, [])
-    option_module = Program(
-        NPU2Col1(), option_runtime, expand_load_pdis=expand_load_pdis
-    ).resolve_program()
-    option_attr = option_module.operation.attributes.get("iron.expand_load_pdis")
-    if expand_load_pdis is None:
-        assert option_attr is None
-    else:
-        assert option_attr.value == expand_load_pdis
+for option in (
+    "expand_load_pdis",
+    "load_pdi_to_ctrl_pkt",
+    "reconfig_teardown",
+    "reconfig_init_entry",
+):
+    for value in (None, False, True):
+        option_runtime = Runtime(lambda: None, [])
+        option_module = Program(
+            NPU2Col1(), option_runtime, **{option: value}
+        ).resolve_program()
+        option_attr = option_module.operation.attributes.get(f"iron.{option}")
+        if value is None:
+            assert option_attr is None
+        else:
+            assert option_attr.value == value
 
 flow_a = object()
 flow_b = object()

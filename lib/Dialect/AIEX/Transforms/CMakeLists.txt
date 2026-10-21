@@ -32,6 +32,10 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerScratchpadParameters.cpp
   AIETransformBfpTypes.cpp
   AIETxnToControlPacket.cpp
+  AIEReorderControlPacketsByTile.cpp
+  AIECheckCoreStartGating.cpp
+  AIEDedupCtrlPacketMulticast.cpp
+  AIECheckCtrlPacketDelivery.cpp
   AIEExpandLoadPdi.cpp
   AIEInlineTraceConfig.cpp
   AIEFuseTraceBuffers.cpp

@@ -33,9 +33,12 @@ def AIE_Dialect : Dialect {
   // opt out of upstream's strict-properties default until they migrate.
   let useStrictPropertiesInAssemblyFormat = 0;
   // Marks on switchbox ops: is_ctrl_pkt_overlay for the control-packet
-  // overlay's, priority_route for rules that carry a prioritized flow.
+  // overlay's, priority_route for rules that carry a prioritized flow. On a
+  // tile, ctrl_pkt_multicast_id is the packet id of the overlay's control
+  // multicast that reaches it.
   let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_pkt_overlay,
-      "::mlir::UnitAttr":$priority_route);
+      "::mlir::UnitAttr":$priority_route,
+      "::mlir::IntegerAttr":$ctrl_pkt_multicast_id);
 }
 
 #endif // AIE_BASE
