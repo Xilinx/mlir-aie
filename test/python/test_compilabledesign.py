@@ -38,6 +38,14 @@ from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 from aie.utils.hostruntime import set_current_device
 
+
+@pytest.fixture(autouse=True)
+def bound_device():
+    """Bind a device for each test, so none opens the NPU to find one."""
+    with set_current_device(NPU2Col1()):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Shared generator factories
 # ---------------------------------------------------------------------------
