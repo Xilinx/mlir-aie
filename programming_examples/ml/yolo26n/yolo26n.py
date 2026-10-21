@@ -248,6 +248,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.batch < 1 or not args.compile_only and args.n % args.batch:
         parser.error(f"--batch {args.batch} does not divide --n {args.n}")
+    # The design targets NPU2 alone: a compile-only run builds for it without
+    # asking the runtime, so it works on a host without the device.
+    if args.compile_only:
+        iron.set_current_device(NPU2())
 
     network = Network.yolo26n()
     if args.synthetic is not None:
