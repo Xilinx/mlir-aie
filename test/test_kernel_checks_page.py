@@ -1885,6 +1885,13 @@ const withOwn = compileStages(metric => metric in own ? { value: own[metric], un
 const [ownCold] = withOwn.children.filter(r => r.className === 'stage-row');
 assert.deepEqual(segs(ownCold).map(n => n.className.slice(13)).slice(-2), ['aiecc_outside_graph', 'outside_aiecc']);
 assert.equal(label('compile_aiecc_outside_graph_s'), 'Compile: aiecc outside its graph (cold)');
+// The kernel objects' own compile wall is said beside the bar, not stacked in it.
+const objects = { ...latest, compile_kernel_objects_s: 18.35 };
+const withObjects = compileStages(metric => metric in objects ? { value: objects[metric], unit: metric.includes('_rss_') ? 'MiB' : 's' } : undefined, metric => metric, '#');
+const [objCold] = withObjects.children.filter(r => r.className === 'stage-row');
+assert.equal(objCold.children[2].text, '20.6 s · 864.6 MiB largest process · kernel objects 18.4 s');
+assert.ok(!segs(objCold).some(n => n.className.includes('kernel_objects')));
+assert.equal(label('compile_kernel_objects_s_warm'), 'Kernel objects (parallel compile wall, warm)');
 """)
 
 
