@@ -34,7 +34,11 @@ with the same layout, and random images.
 
 ## Quick start
 
+amd-quark needs Python 3.11 to 3.13. Install torch from the CPU index first,
+so ultralytics does not pull in CUDA:
+
 ```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 make export                 # checkpoint, FP32 and XINT8 ONNX, coco128
 make data                   # data/yolo26n_params.npz
@@ -85,7 +89,9 @@ the same 128 images, so its number is optimistic.
 
 On the NPU, the whole model's detections match the oracle bit for bit on
 all 128 coco128 images, and ONNX Runtime's on 126. The oracle agrees with
-ONNX Runtime on those 126 in all 169 tensors. In the other 2, the oracle's
+ONNX Runtime on those 126 in all 169 int8 tensors the spec names (the
+outputs of every operator but the float postprocess, and both attentions'
+values). In the other 2, the oracle's
 softmax and ONNX Runtime's float32 one round an attention probability (4 of
 82 million) to opposite sides of a rounding boundary; neither changes a
 detection above 0.25 confidence.
@@ -98,8 +104,19 @@ exits 0 only when every image passes.
 
 ## Performance
 
-On Strix Halo (NPU2), one 640x640 image takes 12.7 ms (79 fps) at batch 1
-and 6.15 ms per image (163 fps) at batch 8 (`python yolo26n.py --n 8 --batch
-8 --time`), in four device configurations of one full ELF and 92 workers.
-A batch-1 dispatch configures every segment's workers again, at roughly
-60-110 us a worker, which a batch shares. Compiling takes about 12 s.
+On Strix (NPU2), one 640x640 image takes 11.3 ms (88.5 fps) at batch 1 and
+6.22 ms per image (161 fps) at batch 8:
+
+```bash
+python yolo26n.py --synthetic 7 --n 8 --time              # batch 1
+python yolo26n.py --synthetic 7 --n 8 --batch 8 --time    # batch 8
+```
+
+Each number is the fastest of 20 calls after 10 warm-up calls, the host's
+wall time of the whole `yolo26n(...)` call divided by the batch; the line
+also prints the median and its MAD (medians 11.5 ms and 6.37 ms here). The
+weights and images are synthetic, so no checkpoint is needed; real ones move
+the same data, but the postprocess's work depends on the scores, so their
+time can differ a little. The design runs as four device configurations of
+one full ELF. A batch-1 dispatch configures every segment's workers again,
+at roughly 60-110 us a worker, which a batch shares.

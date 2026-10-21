@@ -8,6 +8,11 @@ of mem tiles), implemented in the high-level IRON Python API. The full network
 runs depth-first across the array — `init → bn0..bn14 → avgpool → FC1 → FC2` —
 keeping intermediate activations on-chip.
 
+The weights are a seeded random initialization (`gen_golden.py`,
+`torch.manual_seed(0)`), quantized with brevitas, not a trained checkpoint.
+Accuracy here therefore means bit-exactness against the integer reference,
+not ImageNet top-1.
+
 <p align="center">
  <picture>
   <source media="(prefers-color-scheme: light)" srcset="./mobilenet_dataflow.png">
@@ -52,6 +57,26 @@ also checks image 0 against the brevitas golden, which differs by at most 3
 through post_l1's average pool than the kernel does (`mobilenet_numpy.py`
 explains). `MLIR_AIE_KERNEL_SOURCES=<tree>` builds the kernels from another
 source tree, for an A/B of kernel changes on the same design.
+
+## Performance
+
+On Strix (NPU2), one launch of the full network takes, at each batch of one
+`--dynamic` compile:
+
+| Batch | Per launch | Per image |
+|---|---|---|
+| 1 | 306 us | 306 us |
+| 4 | 519 us | 130 us |
+| 16 | 1386 us | 87 us |
+| 64 | 4815 us | 75 us |
+
+```bash
+python3 -m mobilenet.aie2_mobilenet_iron --dynamic 1 4 16 64 -w 20 -i 20
+```
+
+Each is the fastest of 20 launches after 20 warm-up launches, NPU time: the
+host's clock around the dispatch's submit and completion, without the Python
+call around it (`aie.utils.benchmark` prints both, with the median and MAD).
 
 ## Lit-driven verification
 
