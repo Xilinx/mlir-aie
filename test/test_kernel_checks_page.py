@@ -201,7 +201,14 @@ def test_the_mobilenet_repro_builds_what_the_nightly_builds(page):
     producer = (ROOT / "utils/component_checks/sa_placer_hw.py").read_text(
         encoding="utf-8"
     )
-    efforts = json.loads(re.search(r"^_EFFORTS = (\{.*\})$", producer, re.M)[1])
+    # The design's default effort is sa_placer_flags' own; full is 1.0.
+    common = (ROOT / "programming_examples/ml/mobilenet/bottleneck/_common.py").read_text(
+        encoding="utf-8"
+    )
+    efforts = {
+        "default": float(re.search(r"def sa_placer_flags\(.*effort=([\d.]+)", common)[1]),
+        "full": float(re.search(r'^\s+"full": ([\d.]+),$', producer, re.M)[1]),
+    }
     run_seed = producer.split("def run_seed(", 1)[1].split("\ndef ", 1)[0]
     flags = sorted(set(re.findall(r'"(-{1,2}[a-z][\w-]*)"', run_seed)))
     html = PAGE.read_text(encoding="utf-8")
@@ -262,13 +269,13 @@ assert.deepEqual(movedSeries(data, 'llama-chain-hw').regressed.map(x => x.series
 const rate = trendConfig(data, llama.trend[0]);
 const lines = rate.data.datasets.filter(d => !d.band);
 assert.deepEqual(lines.map(d => [d.label, d.data, d.borderDash.length > 0]), [
-  ['dispatch rate · Strix', [4.7, null, 4.37], false], ['dispatch rate · Krackan 1', [null, 4, null], true]]);
+  ['dispatch rate · Strix', [4.7, null, 4.37], false], ['dispatch rate · Krackan', [null, 4, null], true]]);
 assert.deepEqual(rate.plugins, [MARKERS]);
 assert.deepEqual(rate.options.plugins.markers.at.map(m => m.label), ['device NPU Krackan 1, kernels k2', 'device NPU Strix, kernels k3']);
 assert.deepEqual(rate.options.plugins.tooltip.callbacks.title([{ dataIndex: 1 }]), ['2 Oct, 06:30 UTC', 'changed: device NPU Krackan 1, kernels k2']);
 // Compile time moves with the part's host too.
 assert.deepEqual(trendConfig(data, COMPILE_TABS[0]).data.datasets.filter(d => !d.band).map(d => d.label),
-                 ['cold · Strix', 'cold · Krackan 1', 'warm · Strix', 'warm · Krackan 1']);
+                 ['cold · Strix', 'cold · Krackan', 'warm · Strix', 'warm · Krackan']);
 // Sparklines of a time follow the latest night's part.
 const card = componentBand(llama, { target: 'llama-chain-hw', runs: swaps.map(n => night(n.id, n.date, 'turbo', { device: n.device, provenance: n.provenance })) },
                            swaps[2], NOW, swaps[1]);
@@ -287,7 +294,7 @@ const k = (id, day, us, device, kernels) => ({ ...rec(id, Date.parse(`2026-10-0$
   'softmax/1024/bfloat16/npu_us': ['us', us], 'softmax/1024/bfloat16/cycles': ['cycles', 1000] }), provenance: { device, kernels } });
 db = fromRecords({ npu2: [k('1', 1, 80, 'NPU Strix', 'a'), k('2', 2, 77, 'NPU Krackan 1', 'a'), k('3', 3, 81, 'NPU Strix', 'b')] });
 const us = kernelTrendConfig(db, 'npu2', 'softmax', 'npu_us');
-assert.deepEqual(us.data.datasets.map(d => d.label), ['1024/bfloat16 · Strix', '1024/bfloat16 · Krackan 1']);
+assert.deepEqual(us.data.datasets.map(d => d.label), ['1024/bfloat16 · Strix', '1024/bfloat16 · Krackan']);
 assert.deepEqual(us.plugins, [MARKERS]);
 assert.deepEqual(us.options.plugins.markers.at.map(m => m.index), [1, 2]);
 const cycles = kernelTrendConfig(db, 'npu2', 'softmax', 'cycles');
@@ -1603,7 +1610,7 @@ const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 // Every run passed, but seed 3's batch 16 got slower: a warning, not "all passing".
 assert.equal(card.className, 'verdict warn');
 assert.equal(one(card, n => n.className === 'headline').text,
-             "Every run passed, but 2 measures got worse vs 1 Oct. Seed 3 streams at 92.2 µs per image; one image's dispatch takes 295.7 µs.");
+             "Every run passed, but 1 measure got worse vs 1 Oct. Seed 3 streams at 92.2 µs per image; one image's dispatch takes 295.7 µs.");
 const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open);
 // Shown: the verdict, what moved, and the trend chart's slot. Behind
@@ -1632,7 +1639,7 @@ def test_hardware_seed_cards_show_each_batch_against_the_nightly_before(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(one(card, n => n.className === 'moves').text,
-             'Since 1 Oct:seed 3, batch 16, default effort streaming +8.7%seed 3, batch 16, default effort dispatch / image +7.0%');
+             'Since 1 Oct:seed 3, batch 16, default effort dispatch / image +7.0%');
 assert.deepEqual(card.cards.map(c => c.kase), ['mobilenet/seed=3/effort=default', 'mobilenet/seed=3/effort=full', 'mobilenet/seed=7/effort=default', 'mobilenet/seed=7/effort=full']);
 const [header, grid] = card.cards[0].children;
 assert.equal(header.children[0].text, "seed 3the design's default");
@@ -2247,16 +2254,16 @@ const [ciTile, kernels, perf, routing, placement] = tiles;
 assert.equal(ciTile.children[1].text, 'Loading…');
 // A slower night is a warning on the overview too, not "All passing".
 assert.equal(perf.level, 'warn');
-assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['Warnings', 'MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.']);
+assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['Warnings', 'MobileNet: Every run passed, but 1 measure got worse vs 1 Oct.']);
 // The whole of each line is in the row's tooltip.
-assert.ok(perf.title.includes('MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.'));
+assert.ok(perf.title.includes('MobileNet: Every run passed, but 1 measure got worse vs 1 Oct.'));
 // A check that has not published yet: says so instead of a verdict.
 assert.equal(routing.level, 'none');
 assert.equal(routing.children[1].text, 'No results yet');
 // Two days without a run: late and red, the line says so first.
 const late = overviewTiles(null, loaded, NOW + 2 * 86400 * 1000);
 assert.equal(late[2].level, 'bad');
-assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed, but 2 measures got worse vs 1 Oct.');
+assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed, but 1 measure got worse vs 1 Oct.');
 assert.equal(late[1].children[1].text, 'Loading…');
 // The band says it above its verdict.
 const lateBand = componentBand(hw, hwIndex, hwAfter, NOW + 2 * 86400 * 1000, hwBefore);

@@ -1096,7 +1096,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // and `abs`, a floor in the metric's unit that a change must also reach
     // (and the only test from a zero baseline). Kept equal to thresholds.json
     // (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true}, "ttft_ms": {"pct": 10}, "prompt_tok_s": {"pct": 10, "derived": "ttft_ms", "higher_is_better": true}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true}, "xclbin_bytes": {"pct": 2}, "instr_bytes": {"pct": 2}, "elf_bytes": {"pct": 2}, "pdi_bytes": {"pct": 2}, "n_cores": {"pct": 1}, "us_per_image_b1": {"pct": 5}, "us_per_image_b8": {"pct": 5}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "images_passed": {"pct": 1, "higher_is_better": true}, "ort_matches": {"pct": 1, "higher_is_better": true}, "compile_place_s": {"pct": 15}, "compile_route_s": {"pct": 15}, "compile_lower_s": {"pct": 15}, "compile_kernels_s": {"pct": 15}, "compile_codegen_s": {"pct": 15}, "compile_link_s": {"pct": 15}, "compile_package_s": {"pct": 15}, "compile_other_s": {"pct": 15}, "compile_outside_aiecc_s": {"pct": 15}, "compile_aiecc_wall_s": {"pct": 15}, "compile_place_s_warm": {"pct": 15}, "compile_route_s_warm": {"pct": 15}, "compile_lower_s_warm": {"pct": 15}, "compile_kernels_s_warm": {"pct": 15}, "compile_codegen_s_warm": {"pct": 15}, "compile_link_s_warm": {"pct": 15}, "compile_package_s_warm": {"pct": 15}, "compile_other_s_warm": {"pct": 15}, "compile_outside_aiecc_s_warm": {"pct": 15}, "compile_aiecc_wall_s_warm": {"pct": 15}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true, "across_parts": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles", "across_parts": true}, "kernel_object_bytes": {"pct": 2, "gated": true, "across_parts": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15, "abs": 0.5}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15, "abs": 0.5}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1, "across_parts": true}, "final_cost_mean": {"pct": 1, "across_parts": true}, "final_cost_max": {"pct": 1, "across_parts": true}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1, "across_parts": true}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1, "across_parts": true}, "amsels_per_design": {"pct": 10, "across_parts": true}, "ms_per_design": {"pct": 50}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ttft_ms": {"pct": 10}, "prompt_tok_s": {"pct": 10, "derived": "ttft_ms", "higher_is_better": true}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true, "across_parts": true}, "xclbin_bytes": {"pct": 2, "across_parts": true}, "instr_bytes": {"pct": 2, "across_parts": true}, "elf_bytes": {"pct": 2, "across_parts": true}, "pdi_bytes": {"pct": 2, "across_parts": true}, "n_cores": {"pct": 1}, "us_per_image_b1": {"pct": 5}, "us_per_image_b8": {"pct": 5}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "images_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ort_matches": {"pct": 1, "higher_is_better": true, "across_parts": true}, "compile_place_s": {"pct": 15, "abs": 0.5}, "compile_route_s": {"pct": 15, "abs": 0.5}, "compile_lower_s": {"pct": 15, "abs": 0.5}, "compile_kernels_s": {"pct": 15, "abs": 0.5}, "compile_codegen_s": {"pct": 15, "abs": 0.5}, "compile_link_s": {"pct": 15, "abs": 0.5}, "compile_package_s": {"pct": 15, "abs": 0.5}, "compile_other_s": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s": {"pct": 15, "abs": 0.5}, "compile_place_s_warm": {"pct": 15, "abs": 0.5}, "compile_route_s_warm": {"pct": 15, "abs": 0.5}, "compile_lower_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernels_s_warm": {"pct": 15, "abs": 0.5}, "compile_codegen_s_warm": {"pct": 15, "abs": 0.5}, "compile_link_s_warm": {"pct": 15, "abs": 0.5}, "compile_package_s_warm": {"pct": 15, "abs": 0.5}, "compile_other_s_warm": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s_warm": {"pct": 15, "abs": 0.5}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => (pct(metric) || 0) / 100;
@@ -1116,13 +1116,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // Provenance fields whose change between runs is marked on the charts:
     // the toolchain, the machine and its part, how cycles are taken
     // (measurement), and the kernel sources' digest.
-    const MARKED = ['peano', 'device', 'host', 'runtime', 'xrt', 'xdna', 'measurement', 'fixtures', 'kernels'];
-    // Times and rates move with the NPU part and its host, so they are
-    // compared and charted per part; counts, sizes, costs and core cycles
-    // are not.
-    const PART_BOUND_UNITS = ['us', 'ms', 's', 'tok/s', 'fps'];
-    const partBound = unit => PART_BOUND_UNITS.includes(unit);
-    const partName = device => (device || '').replace(/^NPU /, '');
+    const MARKED = ['peano', 'device', 'cpu', 'host', 'runtime', 'xrt', 'xdna', 'measurement', 'dispatch', 'fixtures', 'kernels'];
+    // Only an `across_parts` metric (cycles, sizes, costs, counts) compares
+    // between parts of one generation; the rest move with the machine, so
+    // they are compared and charted per part (per CPU for a CPU-only check).
+    const partBound = metric => !(THRESHOLDS[metric] && THRESHOLDS[metric].across_parts);
+    // "Krackan" for a runtime's "NPU Krackan 1".
+    const partName = device => (device || '').replace(/^NPU /, '').replace(/ \d+$/, '');
     // Runs started by hand (publish.py records the GitHub event). They are
     // charted, but the overview and the change columns compare nightly with
     // nightly; a run without the field predates it and counts as nightly.
@@ -1149,7 +1149,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // the history-file shape collect() reads, one entry per metric.
     function historiesOf(npu, records) {
       const byMetric = new Map();
-      const runs = records.map(r => ({ id: r.id, date: r.date, commit: r.commit || {}, pmode: r.pmode, event: r.event, provenance: r.provenance || {} }));
+      const runs = records.map(r => ({ id: r.id, date: r.date, commit: r.commit || {}, pmode: r.pmode, event: r.event, device: r.device, provenance: r.provenance || {} }));
       records.forEach((r, i) => {
         for (const [kase, cells] of Object.entries(r.rows || {})) {
           for (const [metric, cell] of Object.entries(cells)) {
@@ -1178,7 +1178,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           const id = `${npu}|${r.id}`;
           if (!observations.has(id)) {
             observations.set(id, { id, npu, run: r.id, mode: r.pmode || 'unknown', commit: r.commit || {},
-                                   date: Date.parse(r.date), provenance: r.provenance || {}, manual: isManual(r) });
+                                   date: Date.parse(r.date), provenance: r.provenance || {}, manual: isManual(r),
+                                   device: r.device || partName((r.provenance || {}).device) || null });
           }
           return id;
         });
@@ -1191,7 +1192,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             const o = observations.get(ids[i]);
             if (!s.byMode.has(o.mode)) s.byMode.set(o.mode, []);
             const range = sv.ranges && sv.ranges[i];
-            s.byMode.get(o.mode).push({ id: o.id, date: o.date, manual: o.manual, device: o.provenance.device,
+            s.byMode.get(o.mode).push({ id: o.id, date: o.date, manual: o.manual, device: o.device,
                                         row: { value, unit: h.unit, ...(range ? { range } : {}) } });
           });
         }
@@ -1229,12 +1230,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     // The point the last of `pts` is compared with: the one before it, on
-    // the same part for a part-bound unit (a point with no part recorded
+    // the same part for a part-bound metric (a point with no part recorded
     // matches any), or null.
-    function baselineOf(pts, unit) {
+    function baselineOf(pts, metric) {
       const last = pts.at(-1);
       for (let i = pts.length - 2; i >= 0; i--) {
-        if (!partBound(unit) || !pts[i].device || !last.device || pts[i].device === last.device) return pts[i];
+        if (!partBound(metric) || !pts[i].device || !last.device || pts[i].device === last.device) return pts[i];
       }
       return null;
     }
@@ -1246,7 +1247,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       let worst = null;
       for (const mode of modes) {
         const pts = s.byMode.get(mode);
-        const base = pts && pts.length > 1 ? baselineOf(pts, s.unit) : null;
+        const base = pts && pts.length > 1 ? baselineOf(pts, s.metric) : null;
         if (!base) continue;
         const [a, b] = [base.row, pts.at(-1).row];
         // Zero then and now: nothing to say.
@@ -1311,7 +1312,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         if (s.npu !== npu || (THRESHOLDS[s.metric] && THRESHOLDS[s.metric].derived)) continue;
         const pts = s.byMode.get(last.mode);
         if (!pts || pts.length < 2 || pts[pts.length - 1].id !== last.id) continue;
-        const base = baselineOf(pts, s.unit);
+        const base = baselineOf(pts, s.metric);
         if (!base) continue;
         const [a, b] = [base.row, pts.at(-1).row];
         const cls = verdict(s.metric, a, b);
@@ -2066,7 +2067,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         if (!s) return [];
         const pts = s.byMode.get(EXPECTED_PMODE) || [...s.byMode.values()][0] || [];
         const part = pts.length ? pts.at(-1).device : null;
-        return pts.filter(p => !partBound(s.unit) || !p.device || !part || p.device === part).slice(-WINDOW_NIGHTS).map(p => p.row.value);
+        return pts.filter(p => !partBound(s.metric) || !p.device || !part || p.device === part).slice(-WINDOW_NIGHTS).map(p => p.row.value);
       };
       for (const card of cards) {
         for (const [metric, holder] of card.sparks) {
@@ -2122,7 +2123,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       for (const kase of new Set(runs.flatMap(r => [...r.values.keys()]))) {
         const measured = runs.filter(r => r.values.has(kase));
         const part = measured.length ? measured.at(-1).device : null;
-        const seen = measured.filter(r => !partBound(unit) || !r.device || !part || r.device === part);
+        const seen = measured.filter(r => !partBound(metric) || !r.device || !part || r.device === part);
         // Last night's change is only a case's that ran last night.
         if (seen.length < 2 || (compare === 'last' && seen.at(-1) !== runs.at(-1))) continue;
         const before = compare === 'last' ? seen.at(-2) : seen[0];
@@ -2351,12 +2352,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // One kernel's chart and cases
     // ------------------------------------------------------------------
 
-    // The parts a chart's runs were measured on, when its unit moves with
+    // The parts a chart's runs were measured on, when its metric moves with
     // the part and there is more than one: each gets its own line, the
     // first solid and the rest dashed. [] otherwise.
-    function chartParts(runs, unit) {
+    function chartParts(runs, metric) {
       const parts = [...new Set(runs.map(r => r.device).filter(Boolean))];
-      return partBound(unit) && parts.length > 1 ? parts : [];
+      return partBound(metric) && parts.length > 1 ? parts : [];
     }
 
     // One kernel on one NPU: a line per case (per case and part, for a
@@ -2368,7 +2369,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const runs = nightValues(db, npu, metric, factory);
       const cases = [...new Set(runs.flatMap(r => [...r.values.keys()]))].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
       const unit = (db.series.find(s => s.metric === metric) || {}).unit || '';
-      const parts = chartParts(runs, unit);
+      const parts = chartParts(runs, metric);
       const datasets = cases.flatMap((kase, i) => {
         const color = cssVar(`--series-${i % 7 + 1}`, '#5b6475');
         const name = kase.slice(factory.length + 1) || kase;
@@ -3162,7 +3163,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       // compile's stages), so each line's moves read the same size there.
       const log = (tab.per === 'batch' && unit === 'us') || Boolean(tab.log);
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
-      const devices = chartParts(runs, unit);
+      const devices = chartParts(runs, metrics[0]);
       const markers = markersFor(runs.map(p => observed.get(p.id) || {}));
       const datasets = [];
       for (const line of lines) {
