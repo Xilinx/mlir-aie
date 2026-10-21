@@ -35,11 +35,13 @@ import argparse
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterable
 from typing import NamedTuple
 
 STAGES = ("place", "route", "lower", "kernels", "codegen", "link", "package", "other")
@@ -64,9 +66,15 @@ COMPILE_METRICS = (
 )
 # xrt-smi's power modes, and "any" to accept whichever is set.
 PMODES = ("any", "default", "powersaver", "balanced", "performance", "turbo")
+# The --profile-json format this reads.
+PROFILE_VERSION = 1
 # What a command killed for running past its timeout exits with, as coreutils'
 # timeout(1) does.
 TIMED_OUT = 124
+# What a warm compile keeps of the cold one's NPU_CACHE_HOME: the kernel
+# objects and the precompiled headers they were built with, the two caches an
+# edit to the design, not its kernels, leaves valid.
+WARM_KEEPS = ("objects", "pch")
 
 # First match wins; output names chosen on aiecc's command line (xclbin, pdi,
 # instructions) are matched by extension.
@@ -111,20 +119,32 @@ def stage_of(edge: str) -> str:
     return "other"
 
 
-def stage_seconds(profile_path: str) -> dict | None:
-    """Return seconds per stage plus ``wall_s``, or None without a profile.
+class ProfileError(Exception):
+    """A profile this cannot read as the compile's own."""
+
+
+def stage_seconds(profile_path: str) -> dict:
+    """Return seconds per stage plus ``wall_s``.
 
     Args:
         profile_path: an aiecc ``--profile-json`` file.
 
     Returns:
-        ``{stage: seconds for each of STAGES, "wall_s": seconds}``, or None
-        when the file does not exist (an aiecc without ``--profile-json``).
+        ``{stage: seconds for each of STAGES, "wall_s": seconds}``.
+
+    Raises:
+        ProfileError: The file is missing (an aiecc without
+            ``--profile-json``) or in a format other than ``PROFILE_VERSION``.
     """
     if not os.path.exists(profile_path):
-        return None
+        raise ProfileError(f"no profile at {profile_path}")
     with open(profile_path) as f:
         profile = json.load(f)
+    if profile.get("version") != PROFILE_VERSION:
+        raise ProfileError(
+            f"{profile_path} is version {profile.get('version')}, "
+            f"this reads {PROFILE_VERSION}"
+        )
     out: dict[str, float] = dict.fromkeys(STAGES, 0.0)
     for edge in profile["edges"]:
         out[stage_of(edge["name"])] += edge["ms"] / 1000.0
@@ -141,15 +161,26 @@ def stage_rows(profile_path: str, compile_s: float | None, suffix: str) -> dict:
         suffix: ``""`` for a cold compile, ``"_warm"`` for a warm one.
 
     Returns:
-        ``{metric + suffix: seconds}``, empty when the compile failed or
-        wrote no profile.
+        ``{metric + suffix: seconds}``; empty when the compile failed. When
+        the profile can't be the compile's (missing, an unknown format, or
+        longer than the whole compile, so from another one), no stage rows
+        but ``{"profile_problem" + suffix: why}``, which a check records.
     """
-    stages = stage_seconds(profile_path)
-    if stages is None or compile_s is None:
+    if compile_s is None:
         return {}
+    try:
+        stages = stage_seconds(profile_path)
+        if stages["wall_s"] > compile_s:
+            raise ProfileError(
+                f"{profile_path} spans {stages['wall_s']:.2f} s of a "
+                f"{compile_s:.2f} s compile: not this compile's"
+            )
+    except ProfileError as e:
+        print(f"no compile stages{suffix}: {e}")
+        return {f"profile_problem{suffix}": str(e)}
     seconds = {f"compile_{stage}_s": stages[stage] for stage in STAGES}
     seconds["compile_aiecc_wall_s"] = stages["wall_s"]
-    seconds["compile_outside_aiecc_s"] = max(compile_s - stages["wall_s"], 0.0)
+    seconds["compile_outside_aiecc_s"] = compile_s - stages["wall_s"]
     return {f"{k}{suffix}": round(v, 2) for k, v in seconds.items()}
 
 
@@ -292,6 +323,26 @@ def compile_rows(case: str, stats: dict) -> list[dict]:
         for metric in COMPILE_METRICS
         if stats.get(metric) is not None
     ]
+
+
+def clear_for_warm(cache_dir: str, outputs: Iterable[str] = ()) -> None:
+    """Clear what a warm compile must redo: everything but ``WARM_KEEPS``.
+
+    Args:
+        cache_dir: The cold compile's NPU_CACHE_HOME.
+        outputs: Files or directories the compile wrote outside it (an
+            explicit output and its work dir), removed too.
+    """
+    doomed = [
+        os.path.join(cache_dir, name)
+        for name in os.listdir(cache_dir)
+        if name not in WARM_KEEPS
+    ]
+    for path in [*doomed, *outputs]:
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        elif os.path.lexists(path):
+            os.remove(path)
 
 
 def write(path: str, data) -> None:
