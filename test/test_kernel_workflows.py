@@ -314,6 +314,10 @@ def test_the_sweep_takes_its_seed_count_from_the_environment(seeds, expected, tm
     assert args[args.index("--seeds") + 1] == expected
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the step runs on the Linux bench runner; Windows has no uid",
+)
 def test_the_hardware_checks_find_the_runners_user_manager(tmp_path):
     run = next(
         step["run"]

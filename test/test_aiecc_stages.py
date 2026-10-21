@@ -25,6 +25,10 @@ SHIM = ROOT / "test/fixtures/aiecc_profile_shim.json"
 MOBILENET = ROOT / "test/fixtures/aiecc_profile_mobilenet.json"
 FULL_ELF = ROOT / "test/fixtures/aiecc_profile_full_elf.json"
 AIECC = shutil.which("aiecc")
+POSIX_MEASURE = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="run_measured waits with os.wait4 and kills a process group, which are POSIX-only",
+)
 
 
 @pytest.fixture
@@ -192,6 +196,7 @@ def test_a_profile_that_is_not_the_compiles_gives_no_stages(checks, tmp_path):
     assert stages.stage_rows(missing, None, "") == {}
 
 
+@POSIX_MEASURE
 def test_a_command_is_echoed_as_it_runs_and_measured(checks, capfd):
     stages, _ = checks
     measured = stages.run_measured(
@@ -205,6 +210,7 @@ def test_a_command_is_echoed_as_it_runs_and_measured(checks, capfd):
     assert measured.seconds > 0 and measured.peak_rss_mib > 0 and measured.cpu_s > 0
 
 
+@POSIX_MEASURE
 def test_a_command_past_its_timeout_is_killed_with_its_children(checks, capfd):
     stages, _ = checks
     start = time.perf_counter()
@@ -231,6 +237,7 @@ TWO_CHILDREN = [
 ]
 
 
+@POSIX_MEASURE
 def test_a_compile_in_its_own_scope_reports_its_whole_trees_peak(checks):
     stages, _ = checks
     if (why := stages.scope_unavailable(None)) is not None:
@@ -248,6 +255,7 @@ def test_a_compile_in_its_own_scope_reports_its_whole_trees_peak(checks):
     assert rows["c/compile_peak_mib_warm"]["unit"] == "MiB"
 
 
+@POSIX_MEASURE
 def test_without_a_user_manager_a_compile_has_no_peak_row_and_says_why(checks):
     stages, _ = checks
     env = {
