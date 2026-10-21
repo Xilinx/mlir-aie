@@ -2178,6 +2178,26 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getSrcOffsets().empty() && !getDstOffsets().empty())
       return emitOpError("all offsets should be empty if there is no "
                          "join or distribute");
+    // Each pool object leaves whole in one descriptor, so a walk that covers
+    // less would run its outer dimension on past the walk.
+    std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+    if (!isTime() && !walksStream() && !outs.empty()) {
+      ArrayRef<BDDimLayoutAttr> dims = outs[0].getDimensionsToStream();
+      std::optional<ArrayRef<BDPadLayoutAttr>> pads =
+          outs[0].getPadDimensions();
+      int64_t walked = 1;
+      for (BDDimLayoutAttr dim : dims)
+        walked *= dim.getSize();
+      int64_t object = elementsOf(getPoolOwner().getElemType());
+      if (!dims.empty() && (!pads || pads->empty()) && walked != object)
+        return emitOpError()
+               << "@" << outs[0].name().getValue() << "'s walk covers "
+               << walked << " elements, but each transfer sends a whole "
+               << object
+               << "-element object; to send part of each input object, walk "
+                  "the stream (an outer dimension stepping whole input "
+                  "objects)";
+    }
   }
 
   if (walksStream()) {

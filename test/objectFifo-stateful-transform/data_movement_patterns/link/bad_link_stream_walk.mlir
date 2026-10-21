@@ -112,3 +112,17 @@ aie.device(npu2) {
   // expected-error@+1 {{a walk over a stream runs without an iter_count}}
   aie.objectfifo.link [@rows] -> [@windows] ([] [])
 }
+
+// -----
+
+// Part of each object, walked within one object: the object still leaves
+// whole, so the walk would run on past itself.
+aie.device(npu2) {
+  %shim = aie.tile(0, 0)
+  %mem = aie.tile(0, 1)
+  %core = aie.tile(0, 2)
+  aie.objectfifo @rows(%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+  aie.objectfifo @heads(%mem dimensionsToStream [<size = 2, stride = 16>, <size = 4, stride = 1>], {%core}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
+  // expected-error@+1 {{@heads's walk covers 8 elements, but each transfer sends a whole 32-element object; to send part of each input object, walk the stream}}
+  aie.objectfifo.link [@rows] -> [@heads] ([] [])
+}
