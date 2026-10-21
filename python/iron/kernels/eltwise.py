@@ -496,13 +496,13 @@ def _magnitude_f32_bound(x, power=1):
 _MAGNITUDE_F32_TOLERANCE = Tolerance.bounded(
     _magnitude_f32_bound,
     note="one float32 ulp from correctly rounded; npu2 measured 1 ulp "
-    "(1.23 ulp from the exact hypot) on 13% of 261,504 results",
+    "(1.23 ulp from the exact hypot) on 13% of 261,504 results; npu1: unmeasured",
 )
 
 _POWER_F32_TOLERANCE = Tolerance.bounded(
     partial(_magnitude_f32_bound, power=2),
     note="one float32 ulp from correctly rounded; npu2 measured 1.18 ulps "
-    "from the exact power over 6,144,000 spectrum bins",
+    "from the exact power over 6,144,000 spectrum bins; npu1: unmeasured",
 )
 
 

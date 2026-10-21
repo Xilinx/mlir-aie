@@ -366,8 +366,8 @@ def affine_cast(rows: int = 96, cols: int = 32) -> ExternalFunction:
                 atol=2.0**-126,
                 note="aie::mul emulates the float32 product in bf16 terms and "
                 "can land one float32 ulp off, which tips a bf16 tie: 3 of "
-                "1769472 outputs one ulp off on npu2. atol is the smallest "
-                "normal bf16, for the device's subnormal flush to zero",
+                "1769472 outputs one ulp off on npu2 (npu1: unmeasured). atol is "
+                "the smallest normal bf16, for the device's subnormal flush to zero",
             ),
             ops_per_call=2 * rows * cols,
         ),

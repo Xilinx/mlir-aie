@@ -523,7 +523,8 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
                 2**-8,
                 0.0,
                 note="one bf16 ulp from the single narrowing store; the f32 "
-                "5-term sum contributes 5 * 2**-24. Verified on npu2",
+                "5-term sum contributes 5 * 2**-24. Verified on npu2; npu1: "
+                "unmeasured",
             ),
             ops_per_call=2 * _TAPS * channels,
         ),
@@ -1440,7 +1441,8 @@ def bn_fc_relu_ui16_ic_chunk_ref(
 
 
 _BN_EXACT = Tolerance.exact(
-    note="round-half-even integer reference of the scalar source; bit-exact on npu1"
+    note="round-half-even integer reference of the scalar source; bit-exact on "
+    "npu1 and npu2"
 )
 
 
