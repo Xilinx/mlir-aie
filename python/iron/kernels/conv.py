@@ -72,6 +72,18 @@ def _requant(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.uint8
     return np.clip(out, lo, hi).astype(dtype)
 
 
+def _requant_bias(acc, scale, rounding: str):
+    """``acc / 2**scale`` saturated to int8, rounding as ``rounding`` names.
+
+    Half to even for ``conv_even``, half away from zero for ``symmetric_inf``.
+    """
+    if rounding == "conv_even":
+        return _requant_even(acc, scale, -128, 127, np.int8)
+    half = (1 << (int(scale) - 1)) if int(scale) > 0 else 0
+    out = np.sign(acc) * ((np.abs(acc) + half) >> int(scale))
+    return np.clip(out, -128, 127).astype(np.int8)
+
+
 def _conv1x1_acc(x, weights, W: int, IC: int, OC: int):
     """int64 ``[OC/8][W][8]`` sums of a 1x1 conv over ``[IC/8][W][8]`` activations.
 
@@ -129,13 +141,7 @@ def conv2dk1_i8_bias_ref(
     W, IC, OC = int(input_width), int(input_channels), int(output_channels)
     acc, lead = _conv1x1_acc(x, weights, W, IC, OC)
     acc = acc + np.asarray(bias, dtype=np.int64).reshape(OC // 8, 1, 8)
-    if rounding == "conv_even":
-        out = _requant_even(acc, scale, -128, 127, np.int8)
-    else:
-        half = (1 << (int(scale) - 1)) if int(scale) > 0 else 0
-        out = np.sign(acc) * ((np.abs(acc) + half) >> int(scale))
-        out = np.clip(out, -128, 127).astype(np.int8)
-    return out.reshape(*lead, W * OC)
+    return _requant_bias(acc, scale, rounding).reshape(*lead, W * OC)
 
 
 def conv2dk1_i8_even_ref(
@@ -746,12 +752,7 @@ def conv2dk3_bias_ref(
     )
     del kernel_height
     acc = acc + np.asarray(bias, dtype=np.int64).reshape(OC // 8, 1, 8)
-    if rounding == "conv_even":
-        out = _requant_even(acc, scale, -128, 127, np.int8)
-    else:
-        half = (1 << (int(scale) - 1)) if int(scale) > 0 else 0
-        out = np.clip(np.sign(acc) * ((np.abs(acc) + half) >> int(scale)), -128, 127)
-    return out.astype(np.int8).reshape(*lead, W * OC)
+    return _requant_bias(acc, scale, rounding).reshape(*lead, W * OC)
 
 
 def conv2dk3_bias_table_ref(
@@ -1732,12 +1733,7 @@ def bn_conv2dk3_dw_bias_ref(
     C = int(output_channels)
     acc, lead, Wo = _dw3x3_acc((line0, line1, line2), weights, input_width, C, check)
     acc = acc + np.asarray(bias, dtype=np.int64).reshape(C // 8, 1, 8)
-    if rounding == "conv_even":
-        out = _requant_even(acc, scale, -128, 127, np.int8)
-    else:
-        half = (1 << (int(scale) - 1)) if int(scale) > 0 else 0
-        out = np.clip(np.sign(acc) * ((np.abs(acc) + half) >> int(scale)), -128, 127)
-    return out.astype(np.int8).reshape(*lead, Wo * C)
+    return _requant_bias(acc, scale, rounding).reshape(*lead, Wo * C)
 
 
 def bn_conv2dk3_dw_bias_table_ref(
