@@ -269,9 +269,10 @@ def attention_full_gqa(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarra
     for h in range(N_HEADS_Q):
         kvh = h // rep
         s = (q[:, h, :] @ k[:, kvh, :].T) * scale  # (M, Mc)
-        # Causal: only attend to positions <= my position; for decode M=1
-        # against an already-prefilled cache, just no mask (cache already
-        # truncated to the right length by caller).
+        # Query row i sits at position Mc - M + i and sees keys up to it.
+        s = np.where(
+            np.arange(Mc)[None, :] > np.arange(Mc - M, Mc)[:, None], -np.inf, s
+        )
         s_max = s.max(axis=-1, keepdims=True)
         e = np.exp(s - s_max)
         p = (e / e.sum(axis=-1, keepdims=True)).astype(np.float32)
