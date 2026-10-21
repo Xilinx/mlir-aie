@@ -109,7 +109,7 @@ class Declaration:
         return tuple(m for m in self.members if isinstance(m, PerCallMember))
 
     @staticmethod
-    def of_class(owner: type, library: type) -> Declaration:
+    def _of_class(owner: type, library: type) -> Declaration:
         """Return what class ``owner``'s body, just run, declares.
 
         Args:

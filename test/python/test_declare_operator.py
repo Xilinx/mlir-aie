@@ -69,35 +69,11 @@ def test_an_operator_binds_its_present_members():
     assert Scale(M=8, gated=True).gate.shape == (8,)
 
 
-class Tagged(Scale):
-    def bind_member(self, member):
-        return (member.name, self)
-
-
-def test_a_library_binds_each_present_member_as_its_own_type():
-    op = Tagged(M=8)
-    assert dict(op.bound) == {"x": ("x", op), "y": ("y", op), "count": ("count", op)}
+def test_bound_reads_each_present_member_and_cannot_be_written():
+    op = Scale(M=8)
+    assert list(op.bound) == ["x", "y", "count"] and op.bound["y"] is op.y
     with pytest.raises(TypeError):
         op.bound["y"] = None
-    view = op.layout()
-    assert view.y == ("y", view)
-
-
-def test_a_copy_with_other_bindings_binds_through_the_copy():
-    op = Scale(M=8)
-    other = op.with_bound(lambda new: {**op.bound, "count": new})
-    assert other.count is other and op.count.op is op and other.y is op.y
-    with pytest.raises(AttributeError, match="y is not bound yet"):
-        op.with_bound(lambda new: {}).y
-
-
-def test_an_operator_says_whether_and_for_what_it_is_resolved():
-    op = Scale(M=8)
-    assert not op.is_resolved and op.resolved_for is None
-    done = op.resolved(DEV)
-    assert done.is_resolved and done.resolved_for is DEV
-    again = done.replace(factor=2.0)
-    assert not again.is_resolved and again.resolved_for is DEV
 
 
 @pytest.mark.parametrize(
@@ -130,10 +106,15 @@ def test_a_computed_default_of_none_must_be_given_unless_nullable():
     assert Nullable().M is None
 
 
-def test_a_copy_recomputes_a_derive_and_keeps_every_other_value():
+def test_a_copy_recomputes_what_was_computed_and_keeps_what_was_given():
     op = Scale(M=8).replace(M=4)
-    assert (op.M, op.rows, op.pad) == (4, 16, 5)
+    assert (op.M, op.rows, op.pad) == (4, 8, 5)
+    assert Scale(M=8, rows=3).replace(M=4).rows == 3
+    assert Scale(M=8, rows=3).replace(rows=None).replace(M=4).rows == 8
     assert Scale(M=8).replace(lanes=2).lanes == 2
+    with pytest.raises(ValueError, match="pad \\(9\\) must be 5"):
+        Scale(M=8, pad=9).replace(M=4)
+    assert Scale(M=8, pad=9).replace(M=4, pad=None).pad == 5
     with pytest.raises(TypeError, match="Scale has no parameter \\['K'\\]"):
         Scale(M=8).replace(K=1)
 
@@ -235,7 +216,7 @@ def test_the_keys_are_the_layout_for_cores_and_every_parameter_for_a_build():
     assert op.array_key() == (
         Scale,
         ("device", "npu2_4col"),
-        ("factor", 1.0),
+        ("factor", ("float", "0x1.0000000000000p+0")),
         ("tile", 16),
         ("placement", 1),
         ("lanes", 4),
@@ -262,6 +243,48 @@ def test_a_key_holds_one_spelling_of_each_value():
         for key in (Operator.array_key, Operator.design_key):
             assert key(a) == key(b) and hash(key(a)) == hash(key(b))
             assert repr(key(a)) == repr(key(b))
+
+
+class Chunked(Operator):
+    K: int = param()
+    chunk: int = param(default=lambda op: op.K // 4)
+    sizes: tuple = param(default=(1,))
+    x = In(K)
+
+
+def test_a_copy_recomputes_a_function_default_it_was_not_given():
+    assert Chunked(K=64).replace(K=128).chunk == 32
+    assert Chunked(K=64).replace(K=128).design_key() == Chunked(K=128).design_key()
+
+
+@pytest.mark.parametrize(
+    "a, b",
+    [
+        ([3, 3], (3, 3)),
+        ((np.int64(3), [np.int32(4)]), (3, (4,))),
+        ((np.float32(0.5),), (0.5,)),
+    ],
+)
+def test_a_key_holds_one_spelling_of_each_nested_value(a, b):
+    one, other = Chunked(K=8, sizes=a), Chunked(K=8, sizes=b)
+    assert one.design_key() == other.design_key()
+    assert hash(one.design_key()) == hash(other.design_key())
+
+
+@pytest.mark.parametrize(
+    "a, b",
+    [((1, True), (1, 1)), ((0.0,), (-0.0,)), ((1.0,), (1,)), ((np.bool_(True),), (1,))],
+)
+def test_a_key_tells_apart_values_python_calls_equal(a, b):
+    assert Chunked(K=8, sizes=a).design_key() != Chunked(K=8, sizes=b).design_key()
+
+
+@pytest.mark.parametrize("sizes", [np.arange(2), (1, {}), [[1], {2}]])
+def test_an_unhashable_parameter_is_refused_by_name(sizes):
+    with pytest.raises(TypeError, match="Chunked: sizes .* is unhashable"):
+        Chunked(K=8, sizes=sizes)
+    with pytest.raises(TypeError, match="Chunked: sizes .* is unhashable"):
+        Chunked(K=8).replace(sizes=sizes)
 
 
 def test_a_block_float_type_keys_as_its_class():

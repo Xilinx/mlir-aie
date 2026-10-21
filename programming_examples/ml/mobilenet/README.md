@@ -44,23 +44,26 @@ python3 -m mobilenet.test_e2e chain cascade               # bn13 -> bn14
 
 Each command compiles the design with `@iron.jit` (cached under
 `NPU_CACHE_HOME`), times the launches with `aie.utils.benchmark` and checks the
-last output with `aie.utils.verify` against the brevitas golden. Per
-Xilinx/mlir-aie issue #3009 the full network currently differs from brevitas by
-up to 9 (atol=9). `MLIR_AIE_KERNEL_SOURCES=<tree>` builds the kernels from
-another source tree, for an A/B of kernel changes on the same design.
+last output with `aie.utils.verify`. The full network checks every image of
+the batch bit-exact against `mobilenet_numpy`; each image is the input rolled
+by a different offset, so an image answered with another's output fails. It
+also checks image 0 against the brevitas golden, which differs by at most 3
+(959 of 1280 outputs exact): the golden carries one more fractional bit
+through post_l1's average pool than the kernel does (`mobilenet_numpy.py`
+explains). `MLIR_AIE_KERNEL_SOURCES=<tree>` builds the kernels from another
+source tree, for an A/B of kernel changes on the same design.
 
 ## Lit-driven verification
 
 | Lit test | Hardware? | What it covers |
 |---|---|---|
-| [`run_mobilenet.lit`](run_mobilenet.lit) | yes | Full mobilenet end-to-end, three launches (atol=9 per #3009) |
-| [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone (atol=0), pipeline (bn10..12) + cascade (bn13..14) chains (atol=0), plus the regular bn0..bn9 chain (atol=14, matches the original perf-benchmark tolerance — see #3009) |
+| [`run_mobilenet.lit`](run_mobilenet.lit) | yes | Full mobilenet end-to-end, three launches: bit-exact against `mobilenet_numpy`, within 3 of brevitas |
+| [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone (atol=0), pipeline (bn10..12) + cascade (bn13..14) chains (atol=0), plus the regular bn0..bn9 chain: bit-exact against `mobilenet_numpy`, and within 14 of its checked-in brevitas golden, which was generated without bn5's residual (`mobilenet_numpy` without that residual matches it exactly; `bottleneck_A/gen_golden.py` models the residual, so regenerating the fixture makes the check exact) |
 | [`run_numpy_per_bn.lit`](run_numpy_per_bn.lit) | no | numpy reference vs brevitas — every kernel arithmetic verified bit-exact |
 
 The bit-exact per-block / per-chain results prove the IRON wrapper + AIE
-kernel object files are correct on hardware; the residual gap on the full
-network comes from cross-block effects in `init` / `bn0` / `post_l1` / `post_l2`
-(blocks without a standalone brevitas fixture).
+kernel object files are correct on hardware; the gap on the full network is
+post_l1's average-pool rounding, explained in `mobilenet_numpy.py`.
 
 ## Regenerating brevitas fixtures
 

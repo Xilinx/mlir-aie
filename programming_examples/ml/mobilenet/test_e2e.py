@@ -5,7 +5,8 @@
 """End-to-end hardware test for one IRON block or chain design.
 
 Compiles the design with @iron.jit, runs it on the NPU, and compares the output
-against the matching brevitas golden fixture.
+against the matching brevitas golden fixture. The regular chain is also checked
+bit-exact against mobilenet_numpy.
 
   block <bn>          per-block standalone (bn1, bn2, bn3, bn6, bn7, bn8), with
                       the per-bn fixtures and weights from bottleneck_A/data/.
@@ -20,6 +21,7 @@ Usage (from programming_examples/ml):
 
 import argparse
 import functools
+import json
 import os
 import sys
 
@@ -35,6 +37,7 @@ from aie.utils.hostruntime.argparse import (
 from aie.utils.ml import DataShaper
 from aie.utils.verify import Tolerance, compare
 
+from . import mobilenet_numpy
 from .aie2_iron_chain import chain_design
 from .aie2_iron_per_block import per_block_design
 from .bottleneck._common import sa_placer_flags
@@ -66,8 +69,12 @@ CHAINS = {
 
 def _tolerance(key):
     if key == "chain:regular":
-        # The placed-API bottleneck_A chain test accepted the same drift (#3009).
-        return Tolerance.lsb(14, note="bottleneck_A chain drift, #3009")
+        return Tolerance.lsb(
+            14,
+            note="bottleneck_A's golden was generated without bn5's residual; "
+            "measured max 14 against mobilenet_numpy, which is exact once "
+            "that residual is dropped",
+        )
     return Tolerance.exact()
 
 
@@ -143,28 +150,51 @@ def main():
         iters=opts.iters,
     )
 
-    # HCWC8 -> CHW, compared against the brevitas golden.
+    # HCWC8 -> CHW, compared against the references.
     actual = ds.reorder_mat(
         out.numpy().view(np.int8).reshape(out_h, out_c // VEC, out_w, VEC),
         "CDYX",
         "YCXD",
     ).reshape(out_c, out_h, out_w)
     golden = _loadtxt_i8(fix + f"golden_output{single}.txt")
-    golden = golden.reshape(out_c, out_h, out_w)
-    diff = np.abs(actual.astype(np.int32) - golden.astype(np.int32))
-    verdict = compare(actual.astype(np.int32), golden.astype(np.int32), _tolerance(key))
+    references = [
+        ("brevitas", golden.reshape(out_c, out_h, out_w), _tolerance(key))
+    ]
+    if key == "chain:regular":
+        with open(fix + CHAINS[opts.target][1]) as f:
+            scales = json.load(f)
+        oracle = mobilenet_numpy.run(
+            chw.view(np.uint8).transpose(1, 2, 0),
+            fix,
+            scales,
+            start_at="bn0",
+            stop_after="bn9",
+            verbose=False,
+        )
+        references.insert(
+            0,
+            (
+                "mobilenet_numpy",
+                oracle.transpose(2, 0, 1),
+                Tolerance.exact(note="mobilenet_numpy mirrors the kernels' arithmetic"),
+            ),
+        )
 
     print_benchmark(bench)
-    n_total = diff.size
-    n_match = int((diff == 0).sum())
-    status = "PASS_E2E" if verdict.ok else "FAIL_E2E"
-    print(
-        f"{status} {key} {n_match}/{n_total} ({100.0 * n_match / n_total:.1f}%)  "
-        f"max={int(diff.max())}  mean={diff.mean():.3f}"
-    )
-    if not verdict.ok:
-        print(verdict.detail)
-    return 0 if verdict.ok else 1
+    failed = False
+    for name, expected, tol in references:
+        diff = np.abs(actual.astype(np.int32) - expected.astype(np.int32))
+        verdict = compare(actual.astype(np.int32), expected.astype(np.int32), tol)
+        n_match = int((diff == 0).sum())
+        print(
+            f"vs {name}: {n_match}/{diff.size} ({100.0 * n_match / diff.size:.1f}%)  "
+            f"max={int(diff.max())}  mean={diff.mean():.3f}"
+        )
+        if not verdict.ok:
+            print(verdict.detail)
+            failed = True
+    print(f"{'FAIL_E2E' if failed else 'PASS_E2E'} {key}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

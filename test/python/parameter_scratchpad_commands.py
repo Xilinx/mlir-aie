@@ -7,7 +7,8 @@
 # Two commands, each a runtime sequence of its own with its own scratchpad:
 # @a, which only `first` reads, and @b, which only `second` reads, share slot
 # 0. Each command's scratchpad holds its own parameters, and refuses another
-# command's, whose slot it may share.
+# command's, whose slot it may share. A scratchpad made without a command name
+# is refused, since the module has two.
 
 import argparse
 
@@ -90,6 +91,12 @@ def main():
         params.write_bytes("b", np.int32(8).tobytes())
     except RuntimeError as error:
         print("refused:", error)
+
+    # CHECK: unnamed: ParameterScratchpad: '{{.*}}' lists 2 commands, whose parameters may share slots: name the one this scratchpad is for, of main:first, main:second
+    try:
+        ParameterScratchpad(np.zeros(2, dtype=np.uint32), args.params)
+    except RuntimeError as error:
+        print("unnamed:", error)
 
 
 if __name__ == "__main__":

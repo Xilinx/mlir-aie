@@ -17,7 +17,8 @@
 // A module of several commands, runtime sequences no `aiex.run` calls, gives
 // each its own scratchpad, in which parameters of different commands may
 // share a slot: construct each command's with its `device:sequence` name, and
-// write it with that command's parameters (`names()`) only.
+// write it with that command's parameters (`names()`) only. With no name, the
+// module must have one command.
 //
 //===----------------------------------------------------------------------===//
 
@@ -54,7 +55,8 @@ class ParameterScratchpad {
 public:
 #if TEST_UTILS_USE_XRT
   /// Construct from an XRT run handle (C++ usage), for the parameters of
-  /// `command` (`device:sequence`), or of the whole module when it is empty.
+  /// `command` (`device:sequence`), or of the module's one command when it
+  /// is empty.
   ParameterScratchpad(xrt::run &run, const std::string &paramsPath,
                       const std::string &command = "") {
     parseParams(paramsPath);
@@ -185,7 +187,7 @@ public:
   }
 #endif
 
-  /// The parameters this scratchpad holds: its command's, or all.
+  /// The parameters this scratchpad holds: its command's.
   std::vector<std::string> names() const {
     return std::vector<std::string>(members.begin(), members.end());
   }
@@ -218,17 +220,30 @@ private:
   std::vector<JointBound> jointBounds;
   // Each command's parameters, by `device:sequence`.
   std::unordered_map<std::string, std::unordered_set<std::string>> commands;
+  std::vector<std::string> commandNames; // in params.txt order
   std::string command;
   std::unordered_set<std::string> members;
 
   void selectCommand(const std::string &name, const std::string &path) {
     command = name;
     if (name.empty()) {
-      for (const auto &entry : paramMap)
-        members.insert(entry.first);
-      return;
+      if (commandNames.empty())
+        throw std::runtime_error("ParameterScratchpad: '" + path +
+                                 "' lists no command to hold parameters for");
+      if (commandNames.size() > 1) {
+        std::string available;
+        for (const std::string &entry : commandNames)
+          available += (available.empty() ? "" : ", ") + entry;
+        throw std::runtime_error(
+            "ParameterScratchpad: '" + path + "' lists " +
+            std::to_string(commandNames.size()) +
+            " commands, whose parameters may share slots: name the one this "
+            "scratchpad is for, of " +
+            available);
+      }
+      command = commandNames.front();
     }
-    auto it = commands.find(name);
+    auto it = commands.find(command);
     if (it == commands.end())
       throw std::runtime_error("ParameterScratchpad: '" + path +
                                "' has no command '" + name + "'");
@@ -333,6 +348,7 @@ private:
       std::string name;
       unsigned numRead = 0;
       file >> name >> numRead;
+      commandNames.push_back(name);
       std::unordered_set<std::string> &reads = commands[name];
       for (unsigned j = 0; j < numRead; j++) {
         std::string param;

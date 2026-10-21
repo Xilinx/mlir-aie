@@ -101,9 +101,9 @@ returned `ExternalFunction` (`fn.contract`). The field-by-field account is in
 [Kernel Library](../programming_guide/kernels_library.md#what-a-signature-cannot-say);
 the reference below is generated from the dataclass, so it cannot drift from
 it. Multi-dtype factories publish the combinations they support as
-`factory.dtypes`, and the factories above export their references as `*_ref`
-functions (`add_ref`, `reduce_max_ref`, `mm_ref`, ...), so host code never
-reimplements the math.
+`factory.dtypes`, and each factory's submodule defines its references as
+`*_ref` functions (`eltwise.add_ref`, `eltwise.add_i8_ref`,
+`reduce.reduce_max_ref`, ...), so host code never reimplements the math.
 
 ::: iron.kernels._common
     options:
@@ -127,7 +127,6 @@ the add-a-kernel procedure and the test tiers built on it.
 
 Import the builder with `from aie.iron.algorithms import kernel_design as kd`
 and call `kd.design(...)`, or import `design` directly from `aie.iron.algorithms`.
-The former `aie.utils.kernel_harness` module has been removed.
 
 ::: iron.algorithms.kernel_design
     options:

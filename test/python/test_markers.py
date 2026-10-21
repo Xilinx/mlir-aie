@@ -9,7 +9,7 @@
 
 import inspect
 import json
-from typing import Annotated, get_args, get_origin
+from typing import TYPE_CHECKING, Annotated, get_args, get_origin
 
 import numpy as np
 import pytest
@@ -20,6 +20,9 @@ from aie.utils.compile.jit._introspect import (
     declare,
 )
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # ---------------------------------------------------------------------------
 # CompileTime[T] — Annotated[T, ...] parameterisation
@@ -328,3 +331,25 @@ def test_declare_sorts_a_generators_parameters(
     assert [m.name for m in d.operands] == tensors
     assert [m.name for m in d.per_calls] == dispatch
     assert list(d.scalars) == scalars
+
+
+def _checker_only_scalar(
+    a: "In", b: "Out", *, M: "CompileTime[int]", cfg: "Sequence[int] | None" = None
+):
+    pass
+
+
+def _checker_only_marker(a: "In", *, M: "CompileTime[Sequence[int]]"):
+    pass
+
+
+def test_declare_keeps_markers_beside_a_checker_only_annotation():
+    d = declare(_checker_only_scalar)
+    assert list(d.params) == ["M"]
+    assert [m.name for m in d.operands] == ["a", "b"]
+    assert list(d.scalars) == ["cfg"]
+
+
+def test_declare_names_the_parameter_whose_marker_does_not_resolve():
+    with pytest.raises(TypeError, match="Parameter 'M'.*CompileTime\\[Sequence"):
+        declare(_checker_only_marker)

@@ -25,6 +25,9 @@ There are a number of example designs available [here](../../programming_example
 |-|-|-|
 |[bottleneck](../../programming_examples/ml/bottleneck/)|ui8|A Bottleneck Residual Block is a variant of the residual block that utilizes three convolutions, using 1x1, 3x3, and 1x1 filter sizes, respectively. The implementation features fusing of multiple kernels and dataflow optimizations, highlighting the unique architectural capabilities of AI Engines|
 |[resnet](../../programming_examples/ml/resnet/)|ui8|ResNet with offloaded conv2_x layers. The implementation features depth-first implementation of multiple bottleneck blocks across multiple NPU columns.|
+|[MobileNet V3](../../programming_examples/ml/mobilenet/)|ui8 / i8|End-to-end MobileNet V3 inference, depth-first across the 4x8 array of the Strix NPU2. NPU time per launch: 342.5 / 527.1 / 1402.3 / 4890.1 us at batch 1 / 4 / 16 / 64, every image bit-exact against the numpy reference.|
+|[YOLO26n](../../programming_examples/ml/yolo26n/)|int8|Stock Ultralytics YOLO26n object detection at 640x640, the whole graph on the NPU2, from a uint8 image to the (300, 6) detections. 12.9 ms an image on Strix (synthetic weights, fastest of 10).|
+|[Llama 3.2 1B](../../programming_examples/ml/llama_3_2_1b/)|int8|Llama 3.2 1B decode and prompt on the NPU2, all 16 layers, with on-chip token feedback and a growing KV cache. 47.47 ms a token (21.1 tok/s) at T=128 on Strix; time to first token about 120 ms for a 6-token prompt.|
 
 ## Exercises
 1. In [bottleneck](../../programming_examples/ml/bottleneck/) design, how many different types of fused computations do you observe?

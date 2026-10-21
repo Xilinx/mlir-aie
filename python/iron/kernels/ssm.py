@@ -9,6 +9,7 @@ from functools import partial
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.accuracy import round_to
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -76,6 +77,60 @@ def selective_scan_ref(
             y[c, t] = s @ C + D * x[c, t]
         final[c] = s.reshape(-1)
     return final, y.astype(bfloat16).reshape(calls, -1)
+
+
+def _selective_scan_bound(
+    block, head, valid, *, rows: int, head_dim: int, state: int, blocks: int
+):
+    """Bound on selective_scan's error against its float32 reference.
+
+    The recurrence runs in float64 for the exact state and y, and alongside
+    them each state element's magnitude ``m`` (the recurrence on absolute
+    values) and ``e``, how far a float32 pipeline's state may sit from the
+    exact one. Each row adds to ``e``, in units of 2^-24 relative: 8 of the
+    decayed state (exp_f32, the limb product) plus 24 for each unit of
+    ``|step * A|`` (softplus's and the product's error, through the
+    exponent), 24 of the input term (softplus, two limb products) and 1 of
+    the sum. ``final`` may be ``2 e`` off: the kernel's error and the
+    reference's. y's float32 sum may be off by ``gap``: ``e @ |C|`` plus
+    ``state + 2`` units of ``m @ |C| + |D x|``, the products and a sum in
+    any order. y rounds once to bf16, so the kernel's and the reference's
+    agree unless the exact y lies within ``gap`` of a rounding midpoint;
+    there they may be the two bf16 around it.
+    """
+    u = 2.0**-24
+    head = np.asarray(head, np.float64).reshape(-1, 3 + head_dim * state)
+    calls = len(head)
+    block = np.asarray(block, np.float64).reshape(calls, -1)
+    x = block[:, : rows * head_dim].reshape(calls, rows, head_dim)
+    end = rows * (head_dim + 2 * state)
+    bc = block[:, rows * head_dim : end].reshape(calls, rows, 2, state)
+    dt = block[:, end : end + rows]
+    final = np.zeros((calls, head_dim * state))
+    y = np.zeros((calls, rows, head_dim))
+    gap = np.zeros_like(y)
+    for c in range(calls):
+        if c % blocks == 0:
+            s = head[c, 3:].reshape(head_dim, state).copy()
+            m, e = np.abs(s), np.zeros_like(s)
+        dt_bias, A, D = head[c, :3]
+        for t in range(min(int(valid), rows)):
+            B, C = bc[c, t]
+            step = np.logaddexp(0.0, dt[c, t] + dt_bias)
+            decay = np.exp(step * A)
+            gain = np.outer(step * x[c, t], B)
+            kept = decay * m
+            s = decay * s + gain
+            m = kept + np.abs(gain)
+            e = decay * e + u * (
+                (8 + 24 * abs(step * A)) * kept + 24 * np.abs(gain) + m
+            )
+            dx = D * x[c, t]
+            y[c, t] = s @ C + dx
+            gap[c, t] = e @ np.abs(C) + (state + 2) * u * (m @ np.abs(C) + np.abs(dx))
+        final[c] = 2 * e.reshape(-1)
+    y_bound = round_to(y + gap, bfloat16) - round_to(y - gap, bfloat16)
+    return final, y_bound.reshape(calls, -1)
 
 
 def _state_bound(reference, *args, final_frac, y_ulps, **geometry):
@@ -167,15 +222,10 @@ def selective_scan(
             reference=partial(selective_scan_ref, **geometry),
             sample=partial(selective_scan_sample, **geometry),
             tolerance=Tolerance.bounded(
-                partial(
-                    _state_bound,
-                    selective_scan_ref,
-                    final_frac=5e-7,
-                    y_ulps=0,
-                    **geometry,
-                ),
-                note="npu2: y bit for bit, final within 3.7e-7 of its range "
-                "over three seeds",
+                partial(_selective_scan_bound, **geometry),
+                note="derived: y exact but at a near tie, final within the "
+                "float32 recurrence's error bound; npu2: within it on every "
+                "case over three seeds; npu1: unmeasured",
             ),
         ),
     )

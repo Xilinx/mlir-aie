@@ -6,11 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // A command's scratchpad parameters each take one of the command processor's
-// 32 state-table entries, so one command reading 33 is refused.
+// 32 state-table entries, so one command reading 33 is refused. Two
+// parameters one command reads may not keep the same entry from before.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-lower-scratchpad-parameters %s 2>&1 | FileCheck %s --check-prefix=ERR
+// RUN: not aie-opt --split-input-file --aie-lower-scratchpad-parameters %s 2>&1 | FileCheck %s --check-prefix=ERR
 
 // ERR: error: runtime sequence 'main:seq' reads 33 parameters but its scratchpad holds at most 32
 module {
@@ -86,6 +87,24 @@ module {
       aie.end
     }
     aie.runtime_sequence @seq() {
+    }
+  }
+}
+
+// -----
+
+// ERR: error: parameter 'b' and another parameter command 'main:seq' reads both have state-table entry 0
+module {
+  aiex.scratchpad_parameter @a : i32 {state_table_idx = 0 : ui8}
+  aiex.scratchpad_parameter @b : i32 {state_table_idx = 0 : ui8}
+  aie.device(npu2) @main {
+    %t02 = aie.tile(0, 2)
+    aie.core(%t02) {
+      %a = aiex.read_scratchpad_parameter @a : i32
+      %b = aiex.read_scratchpad_parameter @b : i32
+      aie.end
+    }
+    aie.runtime_sequence @seq(%arg0 : memref<16xi32>) {
     }
   }
 }
