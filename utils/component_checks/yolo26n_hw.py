@@ -8,7 +8,10 @@ detection match the numpy oracle and onnxruntime (all but ``--ort-mismatches``
 images, the ones known to land off a softmax rounding boundary), and how
 long one image takes at batch 1 and at batch 8: the fastest of ``N_ITERS``
 calls after ``N_WARMUP``, host wall time of the whole ``yolo26n(...)`` call,
-with the median and MAD beside it. Shells out to the example's
+with the median and MAD beside it, and that time split into the dispatch
+(submit to completion) and the host overhead around it. A full ELF has no
+empty dispatch to time, so unlike MobileNet there is no NPU time apart from
+the dispatch's fixed cost. Shells out to the example's
 own yolo26n.py CLI (no new Python API): ``--compile-only`` twice into one
 fresh NPU_CACHE_HOME, cold then warm, keeping only the cold compile's kernel
 objects for the warm one, as llama_chain_hw.py does; then a ``--time`` run
@@ -57,6 +60,12 @@ from aiecc_stages import (
 )
 
 CASE = "yolo26n/640"
+# Each per-image time, by the prefix its per-batch rows take.
+_TIMED_PREFIXES = (
+    "us_per_image_b",
+    "dispatch_us_per_image_b",
+    "host_overhead_us_per_image_b",
+)
 N_ITERS = 20
 N_WARMUP = 10
 BATCH = 8
@@ -85,6 +94,19 @@ _PER_IMAGE_RE = re.compile(
     r"median (?P<median>[\d.]+) us, MAD (?P<mad>[\d.]+) us$",
     re.MULTILINE,
 )
+# aie.utils.benchmark.print_benchmark's lines for one call, by the field each times.
+_BENCH_RES = {
+    field: re.compile(
+        rf"^{label}\s+\(avg/min/max us\):\s*[\d.]+\s*/\s*(?P<min>[\d.]+)\s*/\s*[\d.]+\s*"
+        r"\[median (?P<median>[\d.]+), MAD (?P<mad>[\d.]+), p95 [\d.]+\]",
+        re.MULTILINE,
+    )
+    for field, label in (
+        ("dispatch", "Dispatch"),
+        ("dispatch_overhead", "Dispatch overhead"),
+        ("e2e", "End-to-end"),
+    )
+}
 
 
 def params_key(onnx: Path, sources: list[Path], packages: dict[str, str]) -> str:
@@ -298,10 +320,21 @@ def parse_timing(out: str) -> dict:
         For each batch ``B`` the run timed, in the order it printed them:
         ``us_per_image_b<B>`` (the fastest call, per image), ``fps_b<B>``
         (from it), ``timed_calls_b<B>``, and the per-image
-        ``median_us_per_image_b<B>`` and ``mad_us_per_image_b<B>``. Empty
-        when it timed none.
+        ``median_us_per_image_b<B>`` and ``mad_us_per_image_b<B>``. From
+        print_benchmark's lines, per image too: ``dispatch_us_per_image_b<B>``
+        (the fastest dispatch) and ``host_overhead_us_per_image_b<B>`` (the
+        fastest call less the fastest dispatch), each with its
+        ``median_``/``mad_`` pair (the overhead's MAD the two's summed, a
+        bound), and ``dispatch_overhead_us_b<B>``, the empty dispatch's
+        fastest per call, None when the runtime has none to time. Empty when
+        it timed none.
     """
     timing: dict = {}
+    bench = {
+        field: {k: float(v) for k, v in m.groupdict().items()}
+        for field, pattern in _BENCH_RES.items()
+        if (m := pattern.search(out))
+    }
     for m in _PER_IMAGE_RE.finditer(out):
         batch = m["batch"]
         timing[f"us_per_image_b{batch}"] = float(m["us"])
@@ -309,6 +342,22 @@ def parse_timing(out: str) -> dict:
         timing[f"timed_calls_b{batch}"] = int(m["n"])
         timing[f"median_us_per_image_b{batch}"] = float(m["median"])
         timing[f"mad_us_per_image_b{batch}"] = float(m["mad"])
+        timing[f"dispatch_overhead_us_b{batch}"] = bench.get(
+            "dispatch_overhead", {}
+        ).get("min")
+        if "dispatch" not in bench or "e2e" not in bench:
+            continue
+        dispatch, e2e = bench["dispatch"], bench["e2e"]
+        host = {k: e2e[k] - dispatch[k] for k in ("min", "median")} | {
+            "mad": e2e["mad"] + dispatch["mad"]
+        }
+        for metric, t in (
+            ("dispatch_us_per_image", dispatch),
+            ("host_overhead_us_per_image", host),
+        ):
+            timing[f"{metric}_b{batch}"] = round(t["min"] / int(batch), 2)
+            timing[f"median_{metric}_b{batch}"] = round(t["median"] / int(batch), 2)
+            timing[f"mad_{metric}_b{batch}"] = round(t["mad"] / int(batch), 2)
     return timing
 
 
@@ -323,7 +372,7 @@ def measurement_sane(correctness: dict, timing: dict, batches: list[int]) -> boo
     Returns:
         True when every image matched and each batch was timed over
         ``N_ITERS`` calls, its fastest call positive and no slower than the
-        median.
+        median, and its dispatch timed apart.
     """
     if not correctness["passed"]:
         return False
@@ -333,6 +382,8 @@ def measurement_sane(correctness: dict, timing: dict, batches: list[int]) -> boo
         if timing.get(f"timed_calls_b{batch}") != N_ITERS or fastest is None:
             return False
         if median is None or not 0 < fastest <= median:
+            return False
+        if timing.get(f"dispatch_us_per_image_b{batch}") is None:
             return False
     return True
 
@@ -368,12 +419,11 @@ def aggregate(
     if correctness["ort_matches"] is not None:
         out.append(row(CASE, "ort_matches", correctness["ort_matches"], "images", of))
     for metric, value in timing.items():
-        if metric.startswith("us_per_image_b"):
-            batch = metric.removeprefix("us_per_image_b")
+        if metric.startswith(_TIMED_PREFIXES):
+            calls = timing[f"timed_calls_{metric.rsplit('_', 1)[1]}"]
             spread = (
-                f"fastest of {timing[f'timed_calls_b{batch}']}; median "
-                f"{timing[f'median_us_per_image_b{batch}']:.1f}, MAD "
-                f"{timing[f'mad_us_per_image_b{batch}']:.1f}"
+                f"fastest of {calls}; median {timing[f'median_{metric}']:.1f}, "
+                f"MAD {timing[f'mad_{metric}']:.1f}"
             )
             out.append(row(CASE, metric, value, "us", spread))
         elif metric.startswith("fps_b"):

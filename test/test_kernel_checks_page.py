@@ -173,14 +173,14 @@ const trendOf = id => BANDS.find(b => b.id === id && b.trend).trend;
 assert.ok(COMPONENT_METRICS.us_per_image.includes('the fastest of {mobilenet}'));
 assert.ok(COMPONENT_METRICS.e2e_us_per_image.includes('the fastest of {mobilenet}'));
 assert.ok(trendOf('sa-placer-hw').every(t => !/per image/.test(t.axis) || t.axis.includes('fastest')));
-assert.ok(COMPONENT_METRICS.us_per_image_b1.includes('the fastest of its timed calls'));
-assert.ok(trendOf('yolo26n-hw')[0].axis.includes('fastest call'));
+assert.ok(['us_per_image_b1', 'dispatch_us_per_image_b1'].every(m => COMPONENT_METRICS[m].includes('the fastest of its timed calls')));
+assert.ok(trendOf('yolo26n-hw').every(t => !/per image/.test(t.axis) || t.axis.includes('fastest')));
 assert.ok(!/the median of/.test(COMPONENT_METRICS.us_per_image_b1 + trendOf('yolo26n-hw')[0].about));
 // Llama's timed run takes the median dispatch.
 assert.ok(COMPONENT_METRICS.tok_s.includes('median 4-token dispatch'));
 assert.ok(trendOf('llama-chain-hw')[1].axis.includes('median dispatch'));
 // A host-observed dispatch is never called NPU time; NPU time is the dispatch less its baseline.
-assert.ok(!/NPU time/.test(COMPONENT_METRICS.us_per_image + COMPONENT_METRICS.ms_per_token));
+assert.ok(!/NPU time/.test(COMPONENT_METRICS.us_per_image + COMPONENT_METRICS.ms_per_token + COMPONENT_METRICS.dispatch_us_per_image_b1));
 assert.ok(COMPONENT_METRICS.npu_us_per_image.includes("less the same run's empty-dispatch baseline"));
 // Every timing tab's axis names its statistic.
 for (const band of BANDS.filter(b => b.trend)) {{
@@ -696,7 +696,16 @@ def test_every_metric_the_checks_publish_has_a_label_and_a_description(page):
     for stem in re.findall(r'f"([a-z_]+)_\{dtype\}"', publish):
         published |= {f"{stem}_bfloat16", f"{stem}_float32"}
     # The timing checks' per-batch YOLO rows, named by the batch they ran.
-    published |= {"us_per_image_b1", "us_per_image_b8", "fps_b1", "fps_b8"}
+    published |= {
+        f"{metric}_b{batch}"
+        for metric in (
+            "us_per_image",
+            "dispatch_us_per_image",
+            "host_overhead_us_per_image",
+            "fps",
+        )
+        for batch in (1, 8)
+    }
     # n_cores is dropped (the author's call): the page shows the layout as words.
     published -= {"n_cores"}
     assert {
@@ -2074,12 +2083,22 @@ const stages = trendConfig(llamaData, COMPILE_TABS[2]);
 assert.deepEqual(stages.data.datasets.map(d => [d.label, d.data]), [['place', [1]], ["route, package and aiecc's own", [0.1]]]);
 // Stages sit decades apart, so on a log axis; two batches' times do not.
 assert.equal(stages.options.scales.y.type, 'logarithmic');
-// YOLO26n: batch 1 beside batch 8, per image and per second, then the compile tabs.
-const yoloData = collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter]));
-const perImage = trendConfig(yoloData, yolo.trend[0]);
+// YOLO26n: batch 1 beside batch 8, the dispatch and the host overhead around
+// it leading, then end to end, per second and the compile tabs.
+const split = (dispatch, host) => ({ dispatch_us_per_image_b1: { value: dispatch, unit: 'us' }, dispatch_us_per_image_b8: { value: 2900, unit: 'us' },
+                                     host_overhead_us_per_image_b1: { value: host, unit: 'us' }, host_overhead_us_per_image_b8: { value: 100, unit: 'us' } });
+const withSplit = (record, dispatch, host) => ({ ...record, rows: { [YOLO]: { ...record.rows[YOLO], ...split(dispatch, host) } } });
+const yoloData = collect(historiesOf('yolo26n-hw', [withSplit(yoloBefore, 4400, 600), withSplit(yoloAfter, 4400, 1000)]));
+assert.deepEqual(yolo.trend.slice(0, 4).map(t => t.name), ['Dispatch / image', 'Host overhead', 'End-to-end / image', 'Images / s']);
+const dispatch = trendConfig(yoloData, yolo.trend[0]);
+assert.deepEqual(dispatch.data.datasets.map(d => [d.label, d.data]), [['batch 1', [4400, 4400]], ['batch 8', [2900, 2900]]]);
+assert.equal(dispatch.options.scales.y.title.text, 'Dispatch time per image (µs, fastest call) · ↓ better');
+const host = trendConfig(yoloData, yolo.trend[1]);
+assert.deepEqual(host.data.datasets.map(d => [d.label, d.data]), [['batch 1', [600, 1000]], ['batch 8', [100, 100]]]);
+const perImage = trendConfig(yoloData, yolo.trend[2]);
 assert.deepEqual(perImage.data.datasets.map(d => [d.label, d.data]), [['batch 1', [5000, 5400]], ['batch 8', [3000, 3000]]]);
 assert.equal(perImage.options.scales.y.title.text, 'End-to-end time per image (µs, fastest call) · ↓ better');
-assert.equal(trendConfig(yoloData, yolo.trend[1]).options.scales.y.title.text, 'Images per second (from the fastest call) · ↑ better');
+assert.equal(trendConfig(yoloData, yolo.trend[3]).options.scales.y.title.text, 'Images per second (from the fastest call) · ↑ better');
 assert.equal(perImage.options.scales.y.type, 'linear');
 const yoloBox = trendBox(yoloData, yolo.trend, 'fps_b8');
 assert.equal(yoloBox.metric(), 'fps_b1');

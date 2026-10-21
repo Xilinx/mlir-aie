@@ -24,15 +24,15 @@ YOLO_IMAGES = (
     + "yolo26n: 8/8 images PASS\n"
 )
 YOLO_TIMED_OUTPUT = YOLO_IMAGES + """\
-NPU time     (avg/min/max us): 11569.1 / 11255.0 / 11950.5   [median 11461.5, MAD 107.9, p95 11893.7]
-End-to-end   (avg/min/max us): 12163.4 / 11386.1 / 12739.0   [median 12115.9, MAD 331.1, p95 12677.8]
-per-image: 11386.1 us (87.83 fps) at batch 1, fastest of 20 after 10 warmups; median 12115.9 us, MAD 331.1 us
+Dispatch          (avg/min/max us): 11367.0 / 11156.0 / 12927.1   [median 11236.2, MAD 67.5, p95 12296.9]
+End-to-end        (avg/min/max us): 11634.2 / 11312.9 / 13317.1   [median 11497.0, MAD 174.7, p95 12447.8]
+per-image: 11312.9 us (88.39 fps) at batch 1, fastest of 20 after 10 warmups; median 11497.0 us, MAD 174.7 us
 timed dispatch: PASS
 """
 YOLO_BATCHED_OUTPUT = YOLO_IMAGES + """\
-NPU time     (avg/min/max us): 47910.0 / 47656.1 / 48316.0   [median 47898.6, MAD 174.8, p95 48128.4]
-End-to-end   (avg/min/max us): 48656.1 / 48370.6 / 49110.0   [median 48624.9, MAD 172.8, p95 48945.5]
-per-image: 6046.3 us (165.39 fps) at batch 8, fastest of 20 after 10 warmups; median 6078.1 us, MAD 21.6 us
+Dispatch          (avg/min/max us): 47489.9 / 47159.3 / 48736.6   [median 47297.1, MAD 134.5, p95 48047.8]
+End-to-end        (avg/min/max us): 48241.4 / 47512.8 / 49359.8   [median 48235.6, MAD 321.9, p95 49263.8]
+per-image: 5939.1 us (168.38 fps) at batch 8, fastest of 20 after 10 warmups; median 6029.5 us, MAD 40.2 us
 timed dispatch: PASS
 """
 ORT_LINE = "ort: 8/8 images match onnxruntime\n"
@@ -220,17 +220,33 @@ def test_timed_runs_report_the_fastest_call_with_its_spread(yolo):
     timing = yolo.parse_timing(YOLO_TIMED_OUTPUT) | yolo.parse_timing(
         YOLO_BATCHED_OUTPUT
     )
+    # A full ELF has no empty dispatch, so no dispatch overhead; the host
+    # overhead is the fastest call less the fastest dispatch, per image.
     assert timing == {
-        "us_per_image_b1": 11386.1,
-        "fps_b1": 87.83,
+        "us_per_image_b1": 11312.9,
+        "fps_b1": 88.39,
         "timed_calls_b1": 20,
-        "median_us_per_image_b1": 12115.9,
-        "mad_us_per_image_b1": 331.1,
-        "us_per_image_b8": 6046.3,
-        "fps_b8": 165.39,
+        "median_us_per_image_b1": 11497.0,
+        "mad_us_per_image_b1": 174.7,
+        "dispatch_overhead_us_b1": None,
+        "dispatch_us_per_image_b1": 11156.0,
+        "median_dispatch_us_per_image_b1": 11236.2,
+        "mad_dispatch_us_per_image_b1": 67.5,
+        "host_overhead_us_per_image_b1": 156.9,
+        "median_host_overhead_us_per_image_b1": 260.8,
+        "mad_host_overhead_us_per_image_b1": 242.2,
+        "us_per_image_b8": 5939.1,
+        "fps_b8": 168.38,
         "timed_calls_b8": 20,
-        "median_us_per_image_b8": 6078.1,
-        "mad_us_per_image_b8": 21.6,
+        "median_us_per_image_b8": 6029.5,
+        "mad_us_per_image_b8": 40.2,
+        "dispatch_overhead_us_b8": None,
+        "dispatch_us_per_image_b8": 5894.91,
+        "median_dispatch_us_per_image_b8": 5912.14,
+        "mad_dispatch_us_per_image_b8": 16.81,
+        "host_overhead_us_per_image_b8": 44.19,
+        "median_host_overhead_us_per_image_b8": 117.31,
+        "mad_host_overhead_us_per_image_b8": 57.05,
     }
     rows = yolo.aggregate(
         yolo.parse_correctness(YOLO_TIMED_OUTPUT + ORT_LINE, 0),
@@ -238,23 +254,23 @@ def test_timed_runs_report_the_fastest_call_with_its_spread(yolo):
         {"elf_bytes": 1_234_567},
         {"compile_s": 95.1, "compile_peak_rss_mb": 3100.0},
     )
+    spread = "fastest of 20; median {}, MAD {}".format
     assert [(r["name"], r["unit"], r["value"], r.get("range")) for r in rows] == [
         ("yolo26n/640/images_passed", "images", 8, "of 8"),
         ("yolo26n/640/ort_matches", "images", 8, "of 8"),
+        ("yolo26n/640/us_per_image_b1", "us", 11312.9, spread(11497.0, 174.7)),
+        ("yolo26n/640/fps_b1", "fps", 88.39, None),
+        ("yolo26n/640/dispatch_us_per_image_b1", "us", 11156.0, spread(11236.2, 67.5)),
         (
-            "yolo26n/640/us_per_image_b1",
+            "yolo26n/640/host_overhead_us_per_image_b1",
             "us",
-            11386.1,
-            "fastest of 20; median 12115.9, MAD 331.1",
+            156.9,
+            spread(260.8, 242.2),
         ),
-        ("yolo26n/640/fps_b1", "fps", 87.83, None),
-        (
-            "yolo26n/640/us_per_image_b8",
-            "us",
-            6046.3,
-            "fastest of 20; median 6078.1, MAD 21.6",
-        ),
-        ("yolo26n/640/fps_b8", "fps", 165.39, None),
+        ("yolo26n/640/us_per_image_b8", "us", 5939.1, spread(6029.5, 40.2)),
+        ("yolo26n/640/fps_b8", "fps", 168.38, None),
+        ("yolo26n/640/dispatch_us_per_image_b8", "us", 5894.91, spread(5912.1, 16.8)),
+        ("yolo26n/640/host_overhead_us_per_image_b8", "us", 44.19, spread(117.3, 57.0)),
         ("yolo26n/640/elf_bytes", "bytes", 1_234_567, None),
         ("yolo26n/640/compile_s", "s", 95.1, None),
         ("yolo26n/640/compile_peak_rss_mb", "MiB", 3100.0, None),
@@ -288,11 +304,19 @@ def test_a_passing_run_timed_in_full_is_sane(yolo):
         # Fewer timed calls than the check asked for.
         (("fastest of 20 after 10", "fastest of 5 after 2"), 0),
         # A fastest call slower than the median cannot come from one sample set.
-        (("median 6078.1 us", "median 6000.0 us"), 0),
+        (("median 6029.5 us", "median 5900.0 us"), 0),
         # A batch that printed no time.
-        (("per-image: 6046.3", "per image: 6046.3"), 0),
+        (("per-image: 5939.1", "per image: 5939.1"), 0),
+        # A batch whose dispatch was not timed apart from the call.
+        (("Dispatch          (avg", "NPU time          (avg"), 0),
     ],
-    ids=["failed-image", "too-few-calls", "min-above-median", "untimed-batch"],
+    ids=[
+        "failed-image",
+        "too-few-calls",
+        "min-above-median",
+        "untimed-batch",
+        "untimed-dispatch",
+    ],
 )
 def test_a_run_whose_numbers_cannot_stand_is_not_sane(yolo, edit, returncode):
     batched = YOLO_BATCHED_OUTPUT.replace(*edit)
