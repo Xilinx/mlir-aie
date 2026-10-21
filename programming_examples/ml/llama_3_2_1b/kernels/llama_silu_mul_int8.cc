@@ -3,19 +3,10 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Llama silu_mul: SiLU(gate) * up in fp32 from the fp32 gate and up, then
-// requantized to int8 by its own absmax for down.
-//
-//   e = exp_nonpos(-|g|), r = 1 / (1 + e)
-//   silu(g) = g * r for g >= 0, g * (e * r) below
-//   h = silu(g) * u
-//   out = round(h * 127 / max|h|), with the scale max|h| / 127 after it
-//
-// A row arrives as kCols / kChunk chunks of gate, then as many of up: each
-// gate chunk leaves its SiLU in h, and each up chunk turns its part of h
-// into the product.
-// llama_oracle.silu_mul mirrors it: products round once (vec_mul_rne), sums
-// are vadd.f, and 1 / (1 + e) is a Newton reciprocal from a linear guess.
+// Llama silu_mul: h = SiLU(g) * u in fp32, requantized to int8 by max|h|.
+// SiLU(g) = g / (1 + e) for g >= 0, else g e / (1 + e), e = exp_nonpos(-|g|).
+// A row arrives as all its gate chunks, then its up chunks, so SiLU overlaps
+// the array's up. llama_oracle.silu_mul mirrors every rounding.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
