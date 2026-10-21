@@ -12,13 +12,12 @@ is read into a ``Declaration`` as its body finishes.
 
 from __future__ import annotations
 
-import copy
 import sys
 from collections.abc import Mapping
 from dataclasses import MISSING
 from enum import Enum
 from types import FunctionType, MappingProxyType
-from typing import TYPE_CHECKING, Any, Callable, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if sys.version_info >= (3, 11):
     from typing import Self, dataclass_transform
@@ -30,7 +29,7 @@ from aie.helpers.npdtypes import is_block_float
 
 from ...hostruntime import set_current_device
 from .declaration import Declaration
-from .params import Member, param, tunable
+from .params import param, tunable
 
 if TYPE_CHECKING:
     # aie.iron imports this module.
@@ -91,7 +90,7 @@ class Operator:
             cls._library = cls
             return
         library_cls = cls._library or Operator
-        cls.declaration = Declaration.of_class(cls, library_cls)
+        cls.declaration = Declaration._of_class(cls, library_cls)
         if cls.reference_only:
             kernel = [
                 n
@@ -188,55 +187,15 @@ class Operator:
 
     def _bind(self) -> None:
         self._bound = {
-            m.name: self.bind_member(m)
+            m.name: m.of(self)
             for m in self.declaration.members
             if m.when is None or vars(self)[m.when.name]
         }
-
-    def bind_member(self, member: Member) -> Any:
-        """Return what ``member`` reads as on this operator.
-
-        Construction and ``layout`` bind each present member through it, so a
-        view's members bind as this operator's do. Override it to bind a
-        member as another type.
-
-        Args:
-            member: A declared member whose ``when`` holds here.
-
-        Returns:
-            ``member`` bound to this operator.
-        """
-        return member.of(self)
 
     @property
     def bound(self) -> Mapping[str, Any]:
         """What each present member reads as on this operator."""
         return MappingProxyType(self._bound)
-
-    def with_bound(self, bind: Callable[[Self], Mapping[str, Any]]) -> Self:
-        """Return a shallow copy whose members read as ``bind`` says.
-
-        Args:
-            bind: Called with the copy, so what it binds reads through the
-                copy; returns each member's binding by name. A member it
-                leaves out reads as not bound.
-
-        Returns:
-            The copy, sharing every other attribute with this operator.
-        """
-        new = copy.copy(self)
-        vars(new)["_bound"] = bind(new)
-        return new
-
-    @property
-    def is_resolved(self) -> bool:
-        """Whether ``resolved`` made this operator, for ``resolved_for``."""
-        return self._resolved
-
-    @property
-    def resolved_for(self) -> Device | None:
-        """The device this operator's tunables were resolved for, or None."""
-        return self._resolved_for
 
     def validate(self) -> None:
         """Check the parameters on their own; raise ``ValueError``. Runs at construction."""
@@ -345,7 +304,7 @@ class Operator:
         # Bound to the view, a member's dims read through it, so a parameter
         # outside the key raises there too.
         view._bound = {
-            m.name: view.bind_member(m)
+            m.name: m.of(view)
             for m in self.declaration.members
             if m.name in self._bound
         }
