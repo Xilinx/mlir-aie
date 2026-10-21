@@ -295,6 +295,7 @@ def test_llama_publishes_each_stage_cold_and_warm(checks):
         llama.parse_generate("", 1),
         {},
         {},
+        {},
         compiled,
     )
     by_name = {r["name"].rsplit("/", 1)[1]: r for r in rows}

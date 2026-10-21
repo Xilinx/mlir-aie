@@ -461,6 +461,11 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
             f"{pre_ttft - 30:.1f}, host 30.0), decode n/a\n"
         )
         prefill[length] = llama_chain_hw.parse_prefill(pre, 0)
+    accuracy_out = (
+        f"next-token top-1 agreement: {91.7 * rng.uniform(0.99, 1.01):.1f}%  (22/24)\n"
+        f"mean KL(bf16 || int8)     : {0.0250 * rng.uniform(0.95, 1.05):.4f}\n"
+    )
+    accuracy = llama_chain_hw.parse_accuracy_bf16(accuracy_out, 0)
     artifacts = {"elf_bytes": 1_843_200, "pdi_bytes": 412_160}
     compiled = _compile_night(rng, 19.8, 0.5, STAGE_PROFILES)
     case = f"llama/persist_grow/N={n}"
@@ -479,6 +484,7 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
                 "timing": {str(at): t for at, t in timing.items()},
                 **gen,
                 "prefill": {str(length): p for length, p in prefill.items()},
+                **accuracy,
                 **artifacts,
                 **compiled,
             }
@@ -488,7 +494,7 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
     }
     return (
         llama_chain_hw.aggregate(
-            correctness, timing, gen, prefill, artifacts, compiled
+            correctness, timing, gen, prefill, accuracy, artifacts, compiled
         ),
         meta,
     )

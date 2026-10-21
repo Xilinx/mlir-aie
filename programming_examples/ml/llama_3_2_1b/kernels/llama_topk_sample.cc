@@ -3,13 +3,9 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// One-stream sampler + embed-gather. Streaming the lm_head's 262 MB tied
-// embed table TWICE per token (logits, then gather the winner's embed)
-// wastes ~25% of decode's bandwidth; this streams it ONCE, keeping a
-// resident top-k of {logit, global index, embed_sc, embed ROW} -- the
-// winner's embedding is already resident when sampling finishes. Clean
-// top-k renorm (can't re-touch all V logits); llama_oracle.py is
-// the oracle.
+// Samples the resident top-k set llama_lmhead_topk.cc builds (see there for
+// why it carries the embed row), and gathers the next token's embed seed
+// from the winner's row already in it. llama_oracle.py is the oracle.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>

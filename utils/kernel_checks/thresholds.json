@@ -125,6 +125,8 @@
   "ttft_host_ms": {"pct": 25, "abs": 1},
   "decode_tok_s": {"pct": 10, "higher_is_better": true},
   "greedy_agree": {"pct": 1, "higher_is_better": true, "across_parts": true},
+  "kl_bf16": {"pct": 15, "abs": 0.005, "gated": true},
+  "top1_bf16": {"abs": 5, "higher_is_better": true, "gated": true},
   "xclbin_bytes": {"pct": 2, "across_parts": true},
   "instr_bytes": {"pct": 2, "across_parts": true},
   "elf_bytes": {"pct": 2, "across_parts": true},
