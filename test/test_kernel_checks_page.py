@@ -1927,7 +1927,7 @@ assert.equal(one(card, n => n.className === 'headline').text,
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n end-to-end / image (b1) +8.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [YOLO]);
 const [header, grid] = card.cards[0].children;
-assert.equal(header.text, '640 × 6408 COCO imagesfour device configurations in one full ELF, run one after anotherb8 ÷ b1 per image 0.56×');
+assert.equal(header.text, '640 × 6408 COCO images4 device configurations run in sequence in one full ELF, each fitting the 4×8 arrayb8 ÷ b1 per image 0.56×');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['End-to-end / image', 'Images / s', 'Images verified', 'Match onnxruntime',
   'Compiled size']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);

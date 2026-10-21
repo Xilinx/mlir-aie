@@ -3475,7 +3475,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const header = el('header', {}, el('span', { className: 'case-title', title: kase },
           el('span', { className: 'shape' }, `${side} × ${side}`),
           el('span', { className: 'params' }, run.images_total ? plural(run.images_total, 'COCO image') : 'COCO images'),
-          el('span', { className: 'params' }, 'four device configurations in one full ELF, run one after another'), onPart(record)));
+          el('span', { className: 'params' }, '4 device configurations run in sequence in one full ELF, each fitting the 4×8 array'), onPart(record)));
         const [b1, b8] = ['us_per_image_b1', 'us_per_image_b8'].map(m => c && c.metrics.get(m));
         if (b1 && b8 && b1.value) {
           header.append(el('span', { className: 'ratio', title: 'time per image at batch 8 over batch 1' },
