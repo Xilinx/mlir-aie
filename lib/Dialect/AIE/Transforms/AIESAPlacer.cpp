@@ -544,8 +544,11 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       }
     }
 
-    // DMA contribution — shared-memory connections use no DMA
-    if (prodPos != consPos && !isSharedMem) {
+    // DMA contribution — shared-memory connections use no DMA. A mem tile has
+    // no core, so a fifo from one back to itself, between two links there,
+    // runs through its DMAs.
+    bool loopsBack = prodPos == consPos && !prodIsCore && !prodIsShim;
+    if ((prodPos != consPos || loopsBack) && !isSharedMem) {
       currentDMAUsage[consPos].first += sign;
       prodNeedsDMA = true;
     }
@@ -769,6 +772,9 @@ int SAPlacer::computeMemSpilloverPenalty() const {
 int SAPlacer::computeCoreOverflowPenalty() const {
   int64_t coreCapacity = targetModel->getLocalMemorySize();
   int penalty = 0;
+  // Room a neighbour gives one overflowing tile is gone for the next, as
+  // generateAllocates hands it out.
+  llvm::DenseMap<TileID, int64_t> lent;
 
   for (auto &[tilePos, used] : currentMemUsage) {
     if (targetModel->getTileType(tilePos.col, tilePos.row) !=
@@ -779,15 +785,17 @@ int SAPlacer::computeCoreOverflowPenalty() const {
     int64_t overflow = used - coreCapacity;
 
     // Build accessible neighbor spare capacities.
-    llvm::SmallVector<int64_t, 4> nbrSpares;
+    llvm::SmallVector<std::pair<int64_t, TileID>, 4> nbrSpares;
     for (TileID nbr : getMemAffinityNeighbors(*targetModel, tilePos)) {
       auto it = currentMemUsage.find(nbr);
       int64_t nbrUsed = (it != currentMemUsage.end()) ? it->second : 0;
-      int64_t spare = std::max(coreCapacity - nbrUsed, int64_t{0});
+      int64_t spare =
+          std::max(coreCapacity - nbrUsed - lent.lookup(nbr), int64_t{0});
       if (spare > 0)
-        nbrSpares.push_back(spare);
+        nbrSpares.push_back({spare, nbr});
     }
-    llvm::sort(nbrSpares, std::greater<int64_t>());
+    llvm::sort(nbrSpares,
+               [](const auto &a, const auto &b) { return a.first > b.first; });
 
     // Collect relocatable intratile fifo sizes on this tile.
     int64_t unresolved = overflow;
@@ -822,9 +830,10 @@ int SAPlacer::computeCoreOverflowPenalty() const {
         // Greedy packing: assign each fifo to the first neighbor that fits.
         int64_t totalAbsorbed = 0;
         for (int64_t sz : fifoSizes) {
-          for (int64_t &spare : nbrSpares) {
+          for (auto &[spare, nbr] : nbrSpares) {
             if (spare >= sz) {
               spare -= sz;
+              lent[nbr] += sz;
               totalAbsorbed += sz;
               break;
             }
@@ -930,6 +939,24 @@ int SAPlacer::computeAdjacencyPenalty(
     }
     if (minDist > 0)
       penalty += weight * minDist;
+  }
+  return penalty;
+}
+
+int SAPlacer::computePairingPenalty() const {
+  int penalty = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
+                                        config.cascadeWeightPerDist);
+  for (auto [first, second] : sharedMemAdjacency.edges) {
+    auto firstIt = currentPlacement.find(first.getOperation());
+    auto secondIt = currentPlacement.find(second.getOperation());
+    if (firstIt == currentPlacement.end() || secondIt == currentPlacement.end())
+      continue;
+    TileID a = firstIt->second, b = secondIt->second;
+    if (a == b || targetModel->isLegalMemAffinity(a.col, a.row, b.col, b.row) ||
+        targetModel->isLegalMemAffinity(b.col, b.row, a.col, a.row))
+      continue;
+    int distance = std::abs(a.col - b.col) + std::abs(a.row - b.row);
+    penalty += config.sharedMemWeightPerDist * std::max(1, distance - 1);
   }
   return penalty;
 }
@@ -1367,13 +1394,18 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
             : bytes;
   });
 
-  // Collect core stack sizes (reserved by assign-buffer-addresses pass)
+  // Collect core stack and data regions (reserved by assign-buffer-addresses)
   device.walk([&](CoreOp coreOp) {
     auto *tileOp = coreOp.getTile().getDefiningOp();
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
+    // The data region a core sets aside for its own sections is as much its
+    // memory as the stack.
     stackSizes[tileOp] = alignedBufferBytes(*targetModel, AIETileType::CoreTile,
-                                            coreOp.getEffectiveStackSize());
+                                            coreOp.getEffectiveStackSize()) +
+                         alignedBufferBytes(*targetModel, AIETileType::CoreTile,
+                                            coreOp.getDataSize().value_or(
+                                                config.coreSectionsBytes));
   });
 
   // Build net model, fifo buffer info, and cascade groups
@@ -1386,6 +1418,10 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
   LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "
                           << cascadeAdjacency.edges.size() << " edges\n");
+  for (ObjectFifoCreateOp fifo : objectFifos)
+    if (fifo.forcesSharedMemory() && fifo.getConsumerTiles().size() == 1)
+      sharedMemAdjacency.addEdgeFromValues(fifo.getProducerTile(),
+                                           fifo.getConsumerTiles()[0]);
 
   return success();
 }
@@ -1703,8 +1739,7 @@ void SAPlacer::initializeSAState() {
   initBoundingBoxes();
   initResourceTracking();
 
-  cascadePen = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
-                                       config.cascadeWeightPerDist);
+  cascadePen = computePairingPenalty();
   int memPressure = computeMemoryPressure();
   totalCost =
       computeTotalHPWL() + getResourcePenalty() + cascadePen + memPressure;
@@ -1799,8 +1834,7 @@ void SAPlacer::runSAMainLoop() {
     if (schedule.getIteration() % config.fullRecomputeInterval == 0 &&
         schedule.getIteration() > 0) {
       initResourceTracking();
-      cascadePen = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
-                                           config.cascadeWeightPerDist);
+      cascadePen = computePairingPenalty();
       totalCost = computeTotalHPWL() + getResourcePenalty() + cascadePen +
                   computeMemoryPressure();
     }
@@ -1840,8 +1874,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   int oldCascade = cascadePen;
   int oldPressure = computeMemoryPressure();
   int newResPenalty = updateResourcePenalty(oldPlacements);
-  int newCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
-                                           config.cascadeWeightPerDist);
+  int newCascade = computePairingPenalty();
   int newPressure = computeMemoryPressure();
   int delta = hpwlDelta + (newResPenalty - oldResPenalty) +
               (newCascade - oldCascade) + (newPressure - oldPressure);
@@ -1903,8 +1936,7 @@ void SAPlacer::printPlacementStats(int64_t elapsedMs) const {
   int finalHPWL = computeTotalHPWL();
   int finalHardPenalty = getResourcePenalty();
   int finalPressure = computeMemoryPressure();
-  int finalCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
-                                             config.cascadeWeightPerDist);
+  int finalCascade = computePairingPenalty();
   bool isLegal = (finalHardPenalty == 0 && finalCascade == 0);
 
   llvm::dbgs() << "[SA] seed=" << rngSeed << " Final HPWL=" << finalHPWL
@@ -1997,18 +2029,17 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
 
   // SA optimizes for legality but is not guaranteed to reach it (e.g. a very
   // low --sa-effort can starve the greedy stage that normally drives hard
-  // violations to zero). Cascade adjacency and delegate reach are exact, and a
-  // placement breaking them would only fail later and less clearly, so they
-  // fail here. Memory, DMA channel and BD use are this pass's estimates of what
-  // later passes allocate, and those passes check them exactly, so an overrun
-  // here is a warning.
-  int finalCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
-                                             config.cascadeWeightPerDist);
+  // violations to zero). Cascade and shared memory pairs and delegate reach
+  // are exact, and a placement breaking them would only fail later and less
+  // clearly, so they fail here. Memory, DMA channel and BD use are this pass's
+  // estimates of what later passes allocate, and those passes check them
+  // exactly, so an overrun here is a warning.
+  int finalPairing = computePairingPenalty();
   int finalDelegate = computeDelegatePenalty();
-  if (finalCascade != 0 || finalDelegate != 0) {
-    device.emitError("SA placer failed to find a legal placement (cascade "
-                     "penalty=")
-        << finalCascade << ", delegate penalty=" << finalDelegate
+  if (finalPairing != 0 || finalDelegate != 0) {
+    device.emitError("SA placer failed to find a legal placement (cascade and "
+                     "shared memory penalty=")
+        << finalPairing << ", delegate penalty=" << finalDelegate
         << "); try increasing --sa-effort";
     return failure();
   }

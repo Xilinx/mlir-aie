@@ -587,6 +587,13 @@ struct SAConfig {
 
   // Cascade penalty (cost 3)
   int cascadeWeightPerDist = 30; // per Manhattan distance to valid position
+  // A shared-memory pair apart, per distance past a neighbour: above a
+  // fifo's worth of memory overflow, which a neighbour's spare room absorbs.
+  int sharedMemWeightPerDist = 300;
+
+  // The core's own sections (tables, constants) a core that declares no
+  // data_size is taken to need, before aiecc measures them after placement.
+  int coreSectionsBytes = 3 * 1024;
 
   // Memory pressure (cost 4)
   int pressurePerKB = 3;           // quadratic pressure above threshold
@@ -758,6 +765,8 @@ private:
   // Cascade
   Adjacency cascadeAdjacency;
   static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
+  // Ends of fifos that ask for shared memory, which must share a module.
+  Adjacency sharedMemAdjacency;
 
   // SA loop state
   int totalCost = 0;
@@ -798,6 +807,9 @@ private:
   int computeAdjacencyPenalty(const Adjacency &adj,
                               llvm::ArrayRef<std::pair<int, int>> validOffsets,
                               int weight) const;
+  /// Cascade neighbours placed apart, and shared-memory ends placed on
+  /// tiles sharing no memory module, by how far.
+  int computePairingPenalty() const;
   void generateAllocates();
 
   // Move methods
