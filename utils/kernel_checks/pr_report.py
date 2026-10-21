@@ -27,7 +27,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from publish import device_part
+from publish import device_part, upgrade
 
 MARKER = "<!-- kernel-checks-report -->"
 PAGE = "https://xilinx.github.io/mlir-aie/dashboard/#view=night"
@@ -252,13 +252,17 @@ def baseline(path: Path, run_id: str = "") -> dict | None:
 
     None without rows, in a newer format than this reads, or from this very
     run: a re-run of a nightly's report reads the record its own publish job
-    already wrote, and a run compared with itself shows nothing.
+    already wrote, and a run compared with itself shows nothing. An older
+    record is brought up to the current rows as publish.py's ``upgrade``
+    brings it on its next publish, so a renamed metric is compared under its
+    current name.
     """
     if not path.exists():
         return None
     record = json.loads(path.read_text())
     if record.get("schema", 1) > SCHEMA:
         return None
+    upgrade(record)
     if run_id and str(record.get("id", "")) == str(run_id):
         return None
     return record if record.get("rows") else None

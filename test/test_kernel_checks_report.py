@@ -112,6 +112,28 @@ def test_comparison_classifies_changes_and_coverage(read_leg):
     assert leg.new == ["fresh/1/i8"]
 
 
+def test_a_baseline_from_before_the_split_compares_as_dispatch_time(read_leg):
+    # A nightly published before dispatch_us: its npu_us was the dispatch.
+    nightly = _record(
+        {"add/1024x16/bfloat16/npu_us": ("us", (76.77, "± 0.5; min 70 max 90 n=50"))},
+        target="npu2",
+        date="2026-10-21T06:17:58+00:00",
+    )
+    current = {
+        "add/1024x16/bfloat16/dispatch_us": (
+            "us",
+            (100.0, "± 0.5; min 95 max 110 n=50"),
+        ),
+        "add/1024x16/bfloat16/dispatch_overhead_us": ("us", (44.8, "± 0.4")),
+        "add/1024x16/bfloat16/npu_us": ("us", (55.2, "± 0.5; min 50 max 65 n=50")),
+    }
+    leg = read_leg(current, nightly)
+    assert [(c.metric, c.before, c.after) for c in leg.other] == [
+        ("dispatch_us", 76.77, 100.0)
+    ]
+    assert not leg.regressed and not leg.improved
+
+
 def test_failures_combine_sweep_and_timing_without_counting_skips(read_leg):
     leg = read_leg(
         {},
