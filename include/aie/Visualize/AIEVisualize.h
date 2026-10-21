@@ -37,8 +37,9 @@ enum class ColorScheme {
   Mako,
 };
 
-/// What to draw and how large to draw it. Physical views need flows that carry
-/// `via` data; run `aie-find-flows=emit-vias=true` first.
+/// What to draw and how large to draw it. Drawing a flow's switchbox hops
+/// needs flows that carry `via` data; run `aie-find-flows=emit-vias=true`
+/// first, or contract ports away.
 struct VisualizeOptions {
   /// Select one `aie.device` by symbol when the input holds several.
   std::string deviceName;
@@ -49,8 +50,8 @@ struct VisualizeOptions {
 
   /// Draw only these grouped flows; empty draws all of them.
   std::vector<unsigned> onlyFlows;
-  /// Semantic node kinds to contract: tile, port, buffer, runtime-argument,
-  /// call. A non-empty list selects a semantic view over a physical one.
+  /// Node kinds to contract out of the graph: tile, port, dma, buffer,
+  /// runtime-argument, call. Contracting nothing draws every hop.
   std::vector<std::string> contractedNodeKinds;
   /// Keep flows that share a buffer or an endpoint in separate groups.
   bool noFollowBuffers = false;

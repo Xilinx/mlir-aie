@@ -20,22 +20,24 @@
 // ALL: runtime_arg_1 {{.*}} label="%allocated_input"{{.*}} class="runtime-argument flow flow-0"
 // ALL: runtime_arg_2 {{.*}} label="%endpoint_input"{{.*}} class="runtime-argument flow flow-0"
 // ALL: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow flow-1"
-// ALL: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow flow-0"
-// ALL: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow flow-4"
-// ALL-NOT: runtime_arg_4
-// ALL: runtime_arg_1 -> p_0_0_1_0_m
-// ALL: runtime_arg_2 -> p_0_0_1_0_m
-// ALL: p_0_0_1_0_s -> runtime_arg_2
-// ALL: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="runtime-link flow flow-1"
-// ALL-NOT: runtime_task_
 // ALL: call_0 {{.*}} label="kernel"
 // ALL-SAME: class="call detail-calls flow flow-2"
-// ALL: buffer_0 -> call_0
 // ALL: call_1 {{.*}} label="view_kernel"
 // ALL-SAME: class="call detail-calls flow flow-2 flow-3"
-// ALL: buffer_0 -> call_1 {{.*}}class="call-link detail-calls detail-buffers flow flow-2"
-// ALL: buffer_1 -> call_1 {{.*}}class="call-link detail-calls detail-buffers flow flow-3"
-// ALL: class="route flow flow-0"
+// ALL-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow flow-0"
+// ALL-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow flow-4"
+// ALL-DAG: runtime_arg_1 -> p_0_0_1_0_m
+// ALL-DAG: runtime_arg_2 -> p_0_0_1_0_m
+// A route endpoint states no direction, so the argument reaches both.
+// ALL-DAG: p_0_0_1_0_s -> runtime_arg_2
+// ALL-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="runtime-link flow flow-1"
+// A kernel that writes a buffer is what feeds the flow leaving it.
+// ALL-DAG: call_0 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow flow-2"
+// ALL-DAG: call_1 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow flow-2"
+// ALL-DAG: call_1 -> buffer_1 {{.*}}class="call-link detail-calls detail-buffers flow flow-3"
+// ALL-DAG: class="route flow flow-0"
+// ALL-NOT: runtime_arg_4
+// ALL-NOT: runtime_task_
 
 // SKIP: label="MM2S0"
 // SKIP: label="S2MM1"
@@ -48,21 +50,25 @@
 // TOPOLOGY: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow flow-1"
 // TOPOLOGY: call_0 {{.*}} label="kernel"{{.*}} class="call detail-calls flow flow-2"
 // TOPOLOGY: call_1 {{.*}} label="view_kernel"{{.*}} class="call detail-calls flow flow-2 flow-3"
-// TOPOLOGY-DAG: call_0 -> buffer_0 {{.*}}class="route detail-packet-ids detail-calls flow flow-2"
-// TOPOLOGY-DAG: call_1 -> buffer_0 {{.*}}class="route detail-packet-ids detail-calls flow flow-2"
+// A kernel writing a buffer is what feeds the flow that leaves it.
+// TOPOLOGY-DAG: call_0 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow flow-2"
+// TOPOLOGY-DAG: call_1 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow flow-2"
 // A DMA channel stands between a buffer and the tile it leaves for.
-// TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}class="route detail-packet-ids detail-calls flow flow-2"{{.*}}label=<<FONT COLOR="#1a9850">F2</FONT>>
-// TOPOLOGY-DAG: p_0_2_1_0_m -> tile_0_3 {{.*}}class="route detail-packet-ids detail-calls flow flow-2"
-// TOPOLOGY-DAG: call_1 -> p_0_2_1_1_m {{.*}}class="route detail-packet-ids detail-calls flow flow-3"
-// TOPOLOGY-DAG: p_0_2_1_1_m -> tile_0_4 {{.*}}class="route detail-packet-ids detail-calls flow flow-3"
-// TOPOLOGY-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="route detail-packet-ids flow flow-0"
-// TOPOLOGY-DAG: runtime_arg_1 -> p_0_0_1_0_m {{.*}}class="route detail-packet-ids flow flow-0"
-// TOPOLOGY-DAG: runtime_arg_2 -> p_0_0_1_0_m {{.*}}class="route detail-packet-ids flow flow-0"
+// TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}class="buffer-link detail-buffers flow flow-2"
+// TOPOLOGY-DAG: p_0_2_1_0_m -> tile_0_3 {{.*}}class="route detail-packet-ids flow flow-2"{{.*}}label=<<FONT COLOR="#1a9850">F2</FONT>>
+// TOPOLOGY-DAG: call_1 -> p_0_2_1_1_m {{.*}}class="call-link detail-calls detail-buffers flow flow-3"
+// TOPOLOGY-DAG: p_0_2_1_1_m -> tile_0_4 {{.*}}class="route detail-packet-ids flow flow-3"
+// TOPOLOGY-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow flow-0"
+// TOPOLOGY-DAG: runtime_arg_1 -> p_0_0_1_0_m {{.*}}class="runtime-link flow flow-0"
+// TOPOLOGY-DAG: runtime_arg_2 -> p_0_0_1_0_m {{.*}}class="runtime-link flow flow-0"
 // TOPOLOGY-DAG: p_0_0_1_0_m -> p_0_2_0_0 {{.*}}class="route detail-packet-ids flow flow-0"{{.*}}label=<<FONT COLOR="#d73027">F0</FONT>>
-// TOPOLOGY-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="route detail-packet-ids flow flow-4"
+// TOPOLOGY-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow flow-4"
 // TOPOLOGY-DAG: p_1_0_1_0_m -> tile_1_2 {{.*}}class="route detail-packet-ids flow flow-4"
 // TOPOLOGY-DAG: p_0_2_0_0 -> p_0_0_1_1_s {{.*}}class="route detail-packet-ids flow flow-1"
-// TOPOLOGY-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="route detail-packet-ids flow flow-1"
+// TOPOLOGY-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="runtime-link flow flow-1"
+// A flow whose source states nothing beyond a core port is anchored to the
+// tile it leaves, rather than starting out of nowhere.
+// TOPOLOGY-DAG: tile_0_2 -> p_0_2_0_0 {{.*}}class="route flow flow-1"
 // TOPOLOGY-NOT: topology_junction_
 
 module {

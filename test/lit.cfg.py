@@ -211,6 +211,11 @@ tools = [
 if os.name != "nt":
     tools.extend(["txn2mlir.py"])
 
+# Built only when AIE_BUILD_VISUALIZE is on, so the tests that need it say so.
+if shutil.which("aie-visualize", path=config.aie_tools_dir):
+    config.available_features.add("aie-visualize")
+    tools.append("aie-visualize")
+
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
 if os.name == "nt":

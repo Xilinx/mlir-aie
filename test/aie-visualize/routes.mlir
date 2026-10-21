@@ -18,7 +18,7 @@
 // RUN: not aie-visualize --emit-dot --contract=unknown %s 2>&1 | FileCheck %s --check-prefix=BAD-KIND
 
 // ALL: digraph aie_routes
-// ALL: graph [layout=neato, overlap=true, outputorder=nodesfirst
+// ALL: graph [layout=neato, overlap=true, splines=curved, outputorder=nodesfirst
 // ALL: tile_0_2 {{.*}} pos="0.000000,6.000000!"
 // ALL: tile_0_3 {{.*}} pos="0.000000,9.000000!"
 // ALL-NOT: tile_1_2
@@ -26,18 +26,14 @@
 // ALL-SAME: class="buffer detail-buffers flow flow-0 flow-1"
 // ALL: buffer_1 {{.*}} label="dest"
 // ALL-NOT: memref
-// ALL: p_0_2_5_0 -> p_0_3_3_0 [color="#d73027:#4575b4"
-// ALL-SAME: class="route detail-packet-ids detail-vias flow flow-0 flow-1"
-// ALL-SAME: label=<<FONT COLOR="#d73027">F0 pkt=3/31</FONT><BR/><FONT COLOR="#4575b4">F1 pkt=4/31</FONT>>
-// ALL: p_0_3_1_0_m -> p_0_3_1_1_s {{.*}} label=<<FONT COLOR="#984ea3">F3 pkt=6/31</FONT>>
+// ALL-DAG: p_0_2_5_0 -> p_0_3_3_0 [color="#d73027:#4575b4", class="route detail-packet-ids detail-vias flow flow-0 flow-1", penwidth="2.4", label=<<FONT COLOR="#d73027">F0 pkt=3/31</FONT><BR/><FONT COLOR="#4575b4">F1 pkt=4/31</FONT>>]
+// ALL-DAG: p_0_3_1_0_m -> p_0_3_1_1_s {{.*}} label=<<FONT COLOR="#984ea3">F3 pkt=6/31</FONT>>
 // ALL-DAG: p_0_4_0_0 -> p_0_4_3_2
 // ALL-DAG: p_0_4_3_2 -> p_0_3_5_2 {{.*}} label=<<FONT COLOR="#ff7f00">F4</FONT>>
 // ALL-DAG: p_0_3_5_2 -> p_0_3_0_0
+// ALL-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}class="buffer-link{{.*}}];
+// ALL-DAG: p_0_3_1_0_s -> buffer_1 {{.*}}class="buffer-link{{.*}}];
 // ALL-NOT: p_0_2_0_0
-// ALL: buffer_0 -> p_0_2_1_0_m {{.*}}class="buffer-link{{.*}}];
-// ALL: p_0_3_1_0_s -> buffer_1 {{.*}}class="buffer-link{{.*}}];
-// ALL-NOT: MM2S
-// ALL-NOT: S2MM
 
 // VIAS: p_0_2_5_0 [shape=point, width=0.09, {{.*}} xlabel="N0"
 // VIAS-SAME: class="port detail-vias
