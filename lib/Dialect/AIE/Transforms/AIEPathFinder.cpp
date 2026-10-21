@@ -944,6 +944,10 @@ struct Pathfinder::RouteState {
   // Sources a tree had to meet this iteration but whose other ids conflict
   // with it (see TreeBuilder::meet), which route together from then on.
   std::set<std::pair<PathEndPoint, PathEndPoint>> meetBlocked;
+  // Ids a source routes as a part of their own so the rest of its tree can
+  // meet another source's, by that pair (see TreeBuilder::findJoins).
+  std::set<std::pair<std::pair<PathEndPoint, PathEndPoint>, std::set<int>>>
+      meetSplits;
   // The packet ids each flow carries, in all and to each destination.
   std::vector<std::set<int>> flowIds;
   std::vector<SmallVector<int, 4>> sameId;
@@ -1479,6 +1483,10 @@ struct Pathfinder::TreeBuilder {
   // The destinations it shares with trees it could meet but for the other
   // ids those trees carry.
   llvm::MapVector<int, SmallVector<int, 4>> blockedDsts;
+  // The destinations it shares with trees with other ids it could meet but
+  // for its own ids that go elsewhere, and those ids.
+  llvm::MapVector<int, std::pair<SmallVector<int, 4>, std::set<int>>>
+      blockedIds;
   llvm::DenseSet<int> disagree, foreign;
   // The destinations the flow reaches where it meets another tree.
   SmallVector<int, 4> met;
@@ -1629,17 +1637,33 @@ void Pathfinder::TreeBuilder::findJoins() {
     int k = other;
     if (k == flow || o.src == part.src || !o.packetId || o.isPriorityFlow ||
         st.treeDsts[k].empty() || llvm::is_contained(st.sameId[flow], k) ||
-        st.conflicting[flow].test(k) || st.noJoin.count({flow, k}))
+        st.noJoin.count({flow, k}))
       continue;
     SmallVector<int, 4> dsts;
     for (int dst : st.treeDsts[k])
       if (isPending(dst) && dst != dstState(part.src) &&
           !sameIdDsts.count(dst) && st.treeOf[k].count(dst))
         dsts.push_back(dst);
-    if (dsts.size() > 1) {
+    if (dsts.size() < 2)
+      continue;
+    if (!st.conflicting[flow].test(k)) {
       sharedDsts[k] = std::move(dsts);
       foreign.insert(k);
+      continue;
     }
+    // Where only ids the flow sends elsewhere conflict with the tree, those
+    // can leave as a part of their own and the rest meet it.
+    std::set<int> meeting, rest;
+    for (int dst : dsts)
+      for (int id : st.idsTo(flow, dst))
+        meeting.insert(id);
+    for (int id : st.flowIds[flow])
+      if (!meeting.count(id))
+        rest.insert(id);
+    if (!rest.empty() && pf.constraints.conflict &&
+        !st.apartSources.count(std::minmax(part.src, o.src)) &&
+        !pf.constraints.conflict(part.src, meeting, o.src, st.flowIds[k]))
+      blockedIds[k] = {std::move(dsts), std::move(rest)};
   }
 }
 
@@ -1670,6 +1694,9 @@ void Pathfinder::TreeBuilder::meet() {
   for (const auto &[other, dsts] : blockedDsts)
     if (spans(flow, dsts) && spans(other, dsts))
       st.meetBlocked.insert({part.src, st.parts[other].src});
+  for (const auto &[other, blocked] : blockedIds)
+    if (spans(flow, blocked.first) && spans(other, blocked.first))
+      st.meetSplits.insert({{part.src, st.parts[other].src}, blocked.second});
   SmallVector<int, 4> owners;
   for (int other : llvm::make_first_range(sharedDsts))
     if (!disagree.count(other) && mustMeet(other))
@@ -2632,6 +2659,26 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
         split = true;
       }
     st.meetBlocked.clear();
+    for (const auto &[pair, ids] : st.meetSplits)
+      for (int k : SmallVector<int, 2>(st.partsOf.at(pair.first)))
+        if (!st.parts[k].isPriorityFlow && ids.size() < st.flowIds[k].size() &&
+            llvm::all_of(ids,
+                         [&](int id) { return st.flowIds[k].count(id); })) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Route apart to meet: "
+                     << describeTilePort(pair.first.coords, pair.first.port)
+                     << " and "
+                     << describeTilePort(pair.second.coords, pair.second.port)
+                     << "\n");
+          st.splitPart(k, ids);
+          for (int a : st.partsOf.at(pair.first))
+            for (int b : st.partsOf.at(pair.second)) {
+              st.trunked.erase({a, b});
+              st.trunked.erase({b, a});
+            }
+          split = true;
+        }
+    st.meetSplits.clear();
     if (split) {
       st.relateParts();
       illegalEdges++;
