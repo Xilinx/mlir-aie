@@ -14,15 +14,23 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "utils/kernel_checks/pr_report.py"
-META = {"preflight": {"npu": "npu2", "pmode": "performance"}, "failed": []}
+META = {
+    "preflight": {"npu": "npu2", "pmode": "performance", "device": "NPU Strix"},
+    "failed": [],
+}
 
 
 @pytest.fixture(scope="module")
 def report():
-    spec = importlib.util.spec_from_file_location("pr_report", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    # pr_report imports publish, its neighbour, as it does when run.
+    sys.path.insert(0, str(SCRIPT.parent))
+    try:
+        spec = importlib.util.spec_from_file_location("pr_report", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
     return module
 
 
@@ -45,6 +53,7 @@ def _record(values, **overrides):
     return {
         "id": "baseline-run",
         "pmode": "performance",
+        "device": "Strix",
         "rows": rows,
         **overrides,
     }
@@ -229,7 +238,7 @@ def test_baseline_requires_matching_known_power_modes(
     read_leg, current_mode, baseline_mode, compared
 ):
     baseline = _record({"synthetic/1/i8/cycles": ("cycles", 100)})
-    preflight = {}
+    preflight = {"device": "NPU Strix"}
     if current_mode is not None:
         preflight["pmode"] = current_mode
     if baseline_mode is None:
@@ -267,7 +276,32 @@ def test_a_refused_run_reports_one_reason_not_a_failure_per_case(read_leg, repor
     comment = report.render([leg])
     assert "all passed, not compared with a nightly, npu2 not timed" in comment
     assert "Not compared with a nightly on main; the table says why." in comment
-    assert f"| npu2 | ? | not timed: {refusal} | 1 | 0 | \u2014 |" in comment
+    assert f"| npu2 | ? | ? | not timed: {refusal} | 1 | 0 | \u2014 |" in comment
+
+
+def test_host_time_is_compared_only_on_the_same_part(read_leg, report):
+    values = {
+        "synthetic/1/i8/cycles": ("cycles", 150),
+        "synthetic/1/i8/npu_us": ("us", 200.0),
+    }
+    baseline = _record(
+        {
+            "synthetic/1/i8/cycles": ("cycles", 100),
+            "synthetic/1/i8/npu_us": ("us", 100.0),
+        }
+    )
+    same = read_leg(values, baseline)
+    assert [c.metric for c in same.regressed + same.other] == ["cycles", "npu_us"]
+    assert same.other_part == 0
+
+    other = read_leg(values, dict(baseline, device="Krackan"))
+    assert [c.metric for c in other.regressed] == ["cycles"]
+    assert other.other == [] and other.other_part == 1
+    comment = report.render([other])
+    assert "| npu2 | Strix (nightly: Krackan) |" in comment
+    assert "this run is on Strix, the nightly on Krackan, so 1 host-timed rows" in (
+        comment
+    )
 
 
 def test_a_test_that_passed_on_a_retry_is_listed(read_leg, report):

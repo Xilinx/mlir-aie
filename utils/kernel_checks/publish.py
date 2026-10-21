@@ -20,7 +20,8 @@ the branch, ``kernel-checks/<npu>/``, and each component check
     latest.json            the newest nightly record that published rows; the
                            PR report's baseline
     history/<metric>.json  one series per case for that metric, a value per
-                           run, for the charts
+                           run, for the charts; each run names its part
+                           (``device``), which host time is compared within
 
 Standard library only: publishKernelResults.yml runs it from a copy beside
 the page, where the package is not installed.
@@ -532,6 +533,7 @@ def rebuild(
             "date": r["date"],
             "commit": r.get("commit", {}),
             "pmode": r.get("pmode"),
+            "device": r.get("device"),
             **({"event": r["event"]} if r.get("event") else {}),
             "provenance": {
                 k: v

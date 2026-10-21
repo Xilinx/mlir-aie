@@ -13,6 +13,8 @@ keeps it as one comment. Standard library only, so it runs on any runner.
 ``results/<npu>/`` holds a leg's artifact (meta.json, perf.json,
 correctness.xml); ``baselines/<npu>/latest.json`` is the record publish.py
 wrote to gh-pages for the last nightly that published rows. The thresholds are ``thresholds.json``'s, shared with the page.
+The report names the part each side ran on; when they differ, only the
+metrics thresholds.json marks ``across_parts`` are compared.
 """
 
 import argparse
@@ -23,6 +25,8 @@ import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from publish import device_part
 
 MARKER = "<!-- kernel-checks-report -->"
 PAGE = "https://xilinx.github.io/mlir-aie/dashboard/#view=night"
@@ -47,6 +51,8 @@ OTHER = {
 DEFAULT_THRESHOLD = 0.10  # a metric thresholds.json does not name
 # A change must also exceed this many MADs, per metric (npu_us).
 MAD = {m: s["mad"] for m, s in THRESHOLDS.items() if s.get("mad")}
+# The same on every part of an NPU generation: compared even across parts.
+ACROSS_PARTS = {m for m, s in THRESHOLDS.items() if s.get("across_parts")}
 SCHEMA = 1  # the newest publish.py record format this reads
 MAX_ROWS = 50
 
@@ -83,6 +89,11 @@ class Leg:
     measured: bool
     peano: str = ""
     baseline_peano: str = ""
+    # The part this run and the nightly ran on ("Strix", "Krackan").
+    part: str = ""
+    baseline_part: str = ""
+    # Rows not compared because the parts differ.
+    other_part: int = 0
     baseline_commit: dict | None = None
     # Why there is no comparison, when there is none.
     uncompared: str = ""
@@ -292,6 +303,7 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     result.runs = int(meta.get("runs_per_case") or 0)
     failing = {f.case for f in result.failures}
     result.peano = _peano(rows, meta.get("provenance", ""))
+    result.part = device_part((meta.get("preflight") or {}).get("device")) or ""
     measured = {_split(row["name"])[0] for row in rows}
     result.cases = len(measured | swept)
 
@@ -315,6 +327,8 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
         return result
     result.baseline_commit = record.get("commit") or None
     result.baseline_peano = record.get("provenance", {}).get("peano", "")
+    result.baseline_part = record.get("device") or ""
+    same_part = bool(result.part) and result.part == result.baseline_part
     before = {
         f"{case}/{metric}": cell
         for case, cells in record["rows"].items()
@@ -324,6 +338,9 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
         case, metric = _split(row["name"])
         old = before.get(row["name"])
         if metric in DERIVED or not old or not old["value"]:
+            continue
+        if not same_part and metric not in ACROSS_PARTS:
+            result.other_part += 1
             continue
         change = Change(case, metric, row["unit"], old["value"], row["value"])
         if metric in GATED:
@@ -453,12 +470,24 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
     for leg in legs:
         if not leg.measured and not leg.failures and not leg.cases:
             summary.append(
-                [leg.npu, leg.peano or "?", "\u2014", "no results", "", "", ""]
+                [
+                    leg.npu,
+                    leg.part or "?",
+                    leg.peano or "?",
+                    "\u2014",
+                    "no results",
+                    "",
+                    "",
+                    "",
+                ]
             )
             continue
         peano = leg.peano or "?"
         if leg.baseline_peano and leg.baseline_peano != leg.peano:
             peano += f" (nightly: {leg.baseline_peano})"
+        part = leg.part or "?"
+        if leg.baseline_part and leg.baseline_part != leg.part:
+            part += f" (nightly: {leg.baseline_part})"
         nightly = leg.baseline_commit
         if nightly and nightly.get("id"):
             base = f"[{nightly['id'][:7]}]({nightly.get('url', '')})"
@@ -467,6 +496,7 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
         summary.append(
             [
                 leg.npu,
+                part,
                 peano,
                 base,
                 str(leg.cases),
@@ -476,9 +506,26 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
             ]
         )
     out += _table(
-        ["NPU", "Peano", "Nightly", "Cases", "Failing", "Regressed", "Improved"],
+        [
+            "NPU",
+            "Part",
+            "Peano",
+            "Nightly",
+            "Cases",
+            "Failing",
+            "Regressed",
+            "Improved",
+        ],
         summary,
     )
+    for leg in legs:
+        if leg.other_part:
+            out += [
+                "",
+                f"{leg.npu}: this run is on {leg.part or 'an unknown part'}, the "
+                f"nightly on {leg.baseline_part or 'an unknown part'}, so "
+                f"{leg.other_part} host-timed rows (`npu_us`) are not compared.",
+            ]
 
     rows = [
         [

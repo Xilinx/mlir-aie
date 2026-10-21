@@ -194,6 +194,8 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     cycles = json.loads((out / "history/cycles.json").read_text())
     assert cycles["metric"] == "cycles" and cycles["unit"] == "cycles"
     assert [r["id"] for r in cycles["runs"]] == ["100"]
+    # The part each run measured on, so a chart can keep parts apart.
+    assert cycles["runs"][0]["device"] == "Phoenix"
     assert cycles["runs"][0]["provenance"] == {
         "peano": "22.0.0+0006955e",
         "kernels": "0857407c3322",
