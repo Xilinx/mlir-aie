@@ -115,7 +115,10 @@ def main() -> None:
             for h, i, j in zip(*np.nonzero(probs != ort_probs)):
                 verdicts[
                     arbiter.verdict(
-                        scores[h, i], int(j), int(probs[h, i, j]), int(ort_probs[h, i, j])
+                        scores[h, i],
+                        int(j),
+                        int(probs[h, i, j]),
+                        int(ort_probs[h, i, j]),
                     )
                 ] += 1
             followed[op.name] = ort_probs

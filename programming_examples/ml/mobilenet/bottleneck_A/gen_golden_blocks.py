@@ -256,9 +256,7 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
     shifts = {
         "conv1x1_1": shift_of(-torch.log2(init_scale * w1 / relu_1), "conv1x1_1"),
         "conv3x3": shift_of(-torch.log2(relu_1 * w2 / relu_2), "conv3x3"),
-        "conv1x1_2": shift_of(
-            -torch.log2(relu_2 * w3 / post_conv3_scale), "conv1x1_2"
-        ),
+        "conv1x1_2": shift_of(-torch.log2(relu_2 * w3 / post_conv3_scale), "conv1x1_2"),
         "skip_add": 0,
     }
     if spec.has_skip:

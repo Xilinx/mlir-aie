@@ -40,7 +40,8 @@
 #error "YOLO_DETECT_GRID (anchors per row at the finest level) must be defined"
 #endif
 #ifndef YOLO_DETECT_LOG2_STRIDE
-#error "YOLO_DETECT_LOG2_STRIDE (the finest level's stride, log2) must be defined"
+#error                                                                         \
+    "YOLO_DETECT_LOG2_STRIDE (the finest level's stride, log2) must be defined"
 #endif
 
 constexpr int CLASSES = YOLO_DETECT_CLASSES;
@@ -101,7 +102,8 @@ static void top_keep(ForEach for_each, int32_t *__restrict hist,
 
 // x / D for 0 <= x < LIMIT, without a division libcall: x * ceil(2**22 / D)
 // >> 22 is exact while x times the multiplier's excess stays below 2**22.
-template <int D, int LIMIT> static int div_const(int x) {
+template <int D, int LIMIT>
+static int div_const(int x) {
   constexpr uint64_t M = ((1u << 22) + D - 1) / D;
   static_assert((LIMIT - 1) * M < (1ull << 32), "x * M fits 32 bits");
   static_assert(LIMIT * (M * D - (1u << 22)) < (1u << 22), "exact below LIMIT");

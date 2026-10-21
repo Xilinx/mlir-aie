@@ -106,7 +106,10 @@ class SoftmaxArbiter:
         step = Fraction(2) ** self.score_scale
         with localcontext() as ctx:
             ctx.prec = self.digits
-            terms = [Fraction((-Decimal(g * step.numerator) / step.denominator).exp()) for g in gaps]
+            terms = [
+                Fraction((-Decimal(g * step.numerator) / step.denominator).exp())
+                for g in gaps
+            ]
         value = terms[index] / sum(terms) / Fraction(2) ** self.prob_scale
         rounded = math.floor(value)
         excess = value - rounded - Fraction(1, 2)

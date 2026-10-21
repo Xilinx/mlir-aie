@@ -83,13 +83,34 @@ FUSED = (
     ("/model.19/m.0/m/m.1/cv1/conv/Conv", "/model.19/m.0/cv3/conv/Conv"),
     ("/model.22/m.0/m.0.1/attn/Add", "/model.22/m.0/m.0.1/attn/proj/conv/Conv"),
     ("/model.22/m.0/m.0.1/ffn/ffn.0/conv/Conv", "/model.22/m.0/m.0.1/Add_1"),
-    ("/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv", "/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv"),
-    ("/model.23/one2one_cv2.1/one2one_cv2.1.0/conv/Conv", "/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv"),
-    ("/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.0/conv/Conv", "/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.1/conv/Conv"),
-    ("/model.23/one2one_cv3.1/one2one_cv3.1.1/one2one_cv3.1.1.0/conv/Conv", "/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv"),
-    ("/model.23/one2one_cv2.2/one2one_cv2.2.1/conv/Conv", "/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv"),
-    ("/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.0/conv/Conv", "/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.1/conv/Conv"),
-    ("/model.23/one2one_cv3.2/one2one_cv3.2.1/one2one_cv3.2.1.0/conv/Conv", "/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv"),
+    (
+        "/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv",
+        "/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv",
+    ),
+    (
+        "/model.23/one2one_cv2.1/one2one_cv2.1.0/conv/Conv",
+        "/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.0/conv/Conv",
+        "/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.1/conv/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.1/one2one_cv3.1.1/one2one_cv3.1.1.0/conv/Conv",
+        "/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv",
+    ),
+    (
+        "/model.23/one2one_cv2.2/one2one_cv2.2.1/conv/Conv",
+        "/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.0/conv/Conv",
+        "/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.1/conv/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.2/one2one_cv3.2.1/one2one_cv3.2.1.0/conv/Conv",
+        "/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv",
+    ),
 )
 
 

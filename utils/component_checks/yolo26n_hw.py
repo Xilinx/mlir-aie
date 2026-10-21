@@ -88,7 +88,7 @@ _PER_IMAGE_RE = re.compile(
 
 
 def params_key(onnx: Path, sources: list[Path], packages: dict[str, str]) -> str:
-    """The sha256 that names the parameters extracted from ``onnx``.
+    """Return the sha256 that names the parameters extracted from ``onnx``.
 
     Args:
         onnx: The quantized model.
@@ -111,7 +111,7 @@ def params_key(onnx: Path, sources: list[Path], packages: dict[str, str]) -> str
 
 
 def ensure_params(onnx: Path, cache: Path, env: dict) -> tuple[Path, Measured | None]:
-    """The parameter file for ``onnx``, generated into ``cache`` unless already there.
+    """Return ``onnx``'s parameter file, generated into ``cache`` if missing.
 
     Args:
         onnx: The quantized model.
@@ -424,7 +424,9 @@ def main(argv=None) -> int:
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
     if args.n_images < BATCH or args.n_images % BATCH:
-        parser.error(f"--n-images {args.n_images} is not a positive multiple of {BATCH}")
+        parser.error(
+            f"--n-images {args.n_images} is not a positive multiple of {BATCH}"
+        )
     if not 0 <= args.ort_mismatches <= args.n_images:
         parser.error(f"--ort-mismatches {args.ort_mismatches} is not in 0..--n-images")
 

@@ -19,9 +19,10 @@ YOLO = ROOT / "programming_examples/ml/yolo26n"
 
 # What yolo26n.py --synthetic 7 --n 8 --time printed on a Strix npu2, at
 # batch 1 and at batch 8.
-YOLO_IMAGES = "".join(
-    f"image random{i}: PASS (0/1800 differ)\n" for i in range(8)
-) + "yolo26n: 8/8 images PASS\n"
+YOLO_IMAGES = (
+    "".join(f"image random{i}: PASS (0/1800 differ)\n" for i in range(8))
+    + "yolo26n: 8/8 images PASS\n"
+)
 YOLO_TIMED_OUTPUT = YOLO_IMAGES + """\
 NPU time     (avg/min/max us): 11569.1 / 11255.0 / 11950.5   [median 11461.5, MAD 107.9, p95 11893.7]
 End-to-end   (avg/min/max us): 12163.4 / 11386.1 / 12739.0   [median 12115.9, MAD 331.1, p95 12677.8]
