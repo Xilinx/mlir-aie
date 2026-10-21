@@ -269,7 +269,8 @@ constexpr unsigned kMaxStateTableEntries = 32;
 /// order: those its transfers and task starts use, directly or through the
 /// sequences it runs, and the core parameters of every device it reaches.
 /// Each such sequence is a command, which a host runs with a scratchpad of
-/// its own.
+/// its own. The `scratchpad_parameters` of a command a previous run lowered
+/// come first, since that run dropped the uses they were found from.
 static llvm::MapVector<RuntimeSequenceOp, llvm::SetVector<StringRef>>
 commandParameters(ModuleOp moduleOp) {
   DenseMap<Operation *, llvm::SetVector<StringRef>> coreReads;
@@ -298,6 +299,9 @@ commandParameters(ModuleOp moduleOp) {
     if (called.contains(seq))
       return;
     llvm::SetVector<StringRef> &reads = commands[seq];
+    if (ArrayAttr lowered = seq.getScratchpadParametersAttr())
+      for (auto ref : lowered.getAsRange<FlatSymbolRefAttr>())
+        reads.insert(ref.getValue());
     // In call order: a sequence, then those it runs.
     llvm::SetVector<RuntimeSequenceOp> reached;
     reached.insert(seq);
@@ -699,7 +703,7 @@ struct AIELowerScratchpadParametersPass
     // parameter of a command reading it holds. A command has a scratchpad of
     // its own, so parameters no one command reads together share a slot; one
     // no command reads takes a slot of its own. A module of one command gets
-    // 0..N-1.
+    // 0..N-1. A parameter that has a slot, from a previous run, keeps it.
     DenseMap<StringRef, SmallVector<unsigned>> readers;
     for (auto [k, entry] : llvm::enumerate(commands))
       for (StringRef name : entry.second)
@@ -709,7 +713,34 @@ struct AIELowerScratchpadParametersPass
     SmallVector<llvm::SmallBitVector> held(commands.size());
     llvm::SmallBitVector anyHeld, unread;
     unsigned numSlots = 0;
+    auto hold = [](llvm::SmallBitVector &bits, unsigned slot) {
+      if (bits.size() <= slot)
+        bits.resize(slot + 1);
+      bits.set(slot);
+    };
     for (ScratchpadParameterOp p : allParams) {
+      std::optional<uint8_t> slot = p.getStateTableIdx();
+      if (!slot)
+        continue;
+      SmallVector<unsigned> mine = readers.lookup(p.getSymName());
+      for (unsigned k : mine) {
+        if (*slot < held[k].size() && held[k].test(*slot)) {
+          p.emitError("parameter '")
+              << p.getSymName() << "' and another parameter command '"
+              << scratchpadCommandName(commands.begin()[k].first)
+              << "' reads both have state-table entry " << *slot;
+          return signalPassFailure();
+        }
+        hold(held[k], *slot);
+      }
+      hold(anyHeld, *slot);
+      if (mine.empty())
+        hold(unread, *slot);
+      numSlots = std::max(numSlots, *slot + 1u);
+    }
+    for (ScratchpadParameterOp p : allParams) {
+      if (p.getStateTableIdx())
+        continue;
       SmallVector<unsigned> mine = readers.lookup(p.getSymName());
       llvm::SmallBitVector taken = mine.empty() ? anyHeld : unread;
       for (unsigned k : mine) {
@@ -727,16 +758,11 @@ struct AIELowerScratchpadParametersPass
             << ": the commands reading it hold every one";
         return signalPassFailure();
       }
-      auto hold = [slot](llvm::SmallBitVector &bits) {
-        if (bits.size() <= slot)
-          bits.resize(slot + 1);
-        bits.set(slot);
-      };
       for (unsigned k : mine)
-        hold(held[k]);
-      hold(anyHeld);
+        hold(held[k], slot);
+      hold(anyHeld, slot);
       if (mine.empty())
-        hold(unread);
+        hold(unread, slot);
       numSlots = std::max(numSlots, slot + 1);
       p.setStateTableIdxAttr(builder.getIntegerAttr(
           builder.getIntegerType(8, /*isSigned=*/false), slot));
