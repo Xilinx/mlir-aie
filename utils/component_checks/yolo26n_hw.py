@@ -9,9 +9,10 @@ images, the ones known to land off a softmax rounding boundary), and how
 long one image takes at batch 1 and at batch 8: the fastest of ``N_ITERS``
 calls after ``N_WARMUP``, host wall time of the whole ``yolo26n(...)`` call,
 with the median and MAD beside it, and that time split into the dispatch
-(submit to completion) and the host overhead around it. A full ELF has no
-empty dispatch to time, so unlike MobileNet there is no NPU time apart from
-the dispatch's fixed cost. Shells out to the example's
+(submit to completion), its NPU time (the dispatch less the same run's
+empty-dispatch baseline, which a full ELF carries as its own empty runtime
+sequence) and the host overhead around it, as MobileNet's are. Shells out
+to the example's
 own yolo26n.py CLI (no new Python API): ``--compile-only`` twice into one
 fresh NPU_CACHE_HOME, cold then warm, keeping only the cold compile's kernel
 objects for the warm one, as llama_chain_hw.py does; then a ``--time`` run
@@ -64,6 +65,7 @@ CASE = "yolo26n/640"
 _TIMED_PREFIXES = (
     "us_per_image_b",
     "dispatch_us_per_image_b",
+    "npu_us_per_image_b",
     "host_overhead_us_per_image_b",
 )
 N_ITERS = 20
@@ -104,6 +106,7 @@ _BENCH_RES = {
     for field, label in (
         ("dispatch", "Dispatch"),
         ("dispatch_overhead", "Dispatch overhead"),
+        ("npu", "NPU"),
         ("e2e", "End-to-end"),
     )
 }
@@ -326,11 +329,13 @@ def parse_timing(out: str) -> dict:
         (from it), ``timed_calls_b<B>``, and the per-image
         ``median_us_per_image_b<B>`` and ``mad_us_per_image_b<B>``. From
         print_benchmark's lines, per image too: ``dispatch_us_per_image_b<B>``
-        (the fastest dispatch) and ``host_overhead_us_per_image_b<B>`` (the
-        fastest call less the fastest dispatch), each with its
+        (the fastest dispatch), ``npu_us_per_image_b<B>`` (the fastest
+        dispatch less the empty dispatch's median; absent for an ELF built
+        without the empty sequence) and ``host_overhead_us_per_image_b<B>``
+        (the fastest call less the fastest dispatch), each with its
         ``median_``/``mad_`` pair (the overhead's MAD the two's summed, a
         bound), and ``dispatch_overhead_us_b<B>``, the empty dispatch's
-        fastest per call, None when the runtime has none to time. Empty when
+        fastest per call, None when the run had none to time. Empty when
         it timed none.
     """
     timing: dict = {}
@@ -357,8 +362,11 @@ def parse_timing(out: str) -> dict:
         }
         for metric, t in (
             ("dispatch_us_per_image", dispatch),
+            ("npu_us_per_image", bench.get("npu")),
             ("host_overhead_us_per_image", host),
         ):
+            if t is None:
+                continue
             timing[f"{metric}_b{batch}"] = round(t["min"] / int(batch), 2)
             timing[f"median_{metric}_b{batch}"] = round(t["median"] / int(batch), 2)
             timing[f"mad_{metric}_b{batch}"] = round(t["mad"] / int(batch), 2)

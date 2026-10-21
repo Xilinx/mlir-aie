@@ -708,6 +708,7 @@ def test_every_metric_the_checks_publish_has_a_label_and_a_description(page):
         for metric in (
             "us_per_image",
             "dispatch_us_per_image",
+            "npu_us_per_image",
             "host_overhead_us_per_image",
             "fps",
         )
@@ -2090,22 +2091,27 @@ const stages = trendConfig(llamaData, COMPILE_TABS[2]);
 assert.deepEqual(stages.data.datasets.map(d => [d.label, d.data]), [['place', [1]], ["route, package and aiecc's own", [0.1]]]);
 // Stages sit decades apart, so on a log axis; two batches' times do not.
 assert.equal(stages.options.scales.y.type, 'logarithmic');
-// YOLO26n: batch 1 beside batch 8, the dispatch and the host overhead around
-// it leading, then end to end, per second and the compile tabs.
-const split = (dispatch, host) => ({ dispatch_us_per_image_b1: { value: dispatch, unit: 'us' }, dispatch_us_per_image_b8: { value: 2900, unit: 'us' },
-                                     host_overhead_us_per_image_b1: { value: host, unit: 'us' }, host_overhead_us_per_image_b8: { value: 100, unit: 'us' } });
-const withSplit = (record, dispatch, host) => ({ ...record, rows: { [YOLO]: { ...record.rows[YOLO], ...split(dispatch, host) } } });
-const yoloData = collect(historiesOf('yolo26n-hw', [withSplit(yoloBefore, 4400, 600), withSplit(yoloAfter, 4400, 1000)]));
-assert.deepEqual(yolo.trend.slice(0, 4).map(t => t.name), ['Dispatch / image', 'Host overhead', 'End-to-end / image', 'Images / s']);
-const dispatch = trendConfig(yoloData, yolo.trend[0]);
+// YOLO26n: batch 1 beside batch 8, the NPU time, the dispatch and the host
+// overhead around it leading, then end to end, per second and the compile tabs.
+// The first night predates the empty-dispatch baseline: the NPU tab starts after it.
+const split = (npu, dispatch, host) => ({ ...(npu ? { npu_us_per_image_b1: { value: npu, unit: 'us' }, npu_us_per_image_b8: { value: 2850, unit: 'us' } } : {}),
+                                          dispatch_us_per_image_b1: { value: dispatch, unit: 'us' }, dispatch_us_per_image_b8: { value: 2900, unit: 'us' },
+                                          host_overhead_us_per_image_b1: { value: host, unit: 'us' }, host_overhead_us_per_image_b8: { value: 100, unit: 'us' } });
+const withSplit = (record, npu, dispatch, host) => ({ ...record, rows: { [YOLO]: { ...record.rows[YOLO], ...split(npu, dispatch, host) } } });
+const yoloData = collect(historiesOf('yolo26n-hw', [withSplit(yoloBefore, null, 4400, 600), withSplit(yoloAfter, 4310, 4400, 1000)]));
+assert.deepEqual(yolo.trend.slice(0, 5).map(t => t.name), ['NPU time / image', 'Dispatch / image', 'Host overhead', 'End-to-end / image', 'Images / s']);
+const npu = trendConfig(yoloData, yolo.trend[0]);
+assert.deepEqual(npu.data.datasets.map(d => [d.label, d.data]), [['batch 1', [4310]], ['batch 8', [2850]]]);
+assert.equal(npu.options.scales.y.title.text, 'NPU time per image (µs, fastest dispatch less the empty one) · ↓ better');
+const dispatch = trendConfig(yoloData, yolo.trend[1]);
 assert.deepEqual(dispatch.data.datasets.map(d => [d.label, d.data]), [['batch 1', [4400, 4400]], ['batch 8', [2900, 2900]]]);
 assert.equal(dispatch.options.scales.y.title.text, 'Dispatch time per image (µs, fastest call) · ↓ better');
-const host = trendConfig(yoloData, yolo.trend[1]);
+const host = trendConfig(yoloData, yolo.trend[2]);
 assert.deepEqual(host.data.datasets.map(d => [d.label, d.data]), [['batch 1', [600, 1000]], ['batch 8', [100, 100]]]);
-const perImage = trendConfig(yoloData, yolo.trend[2]);
+const perImage = trendConfig(yoloData, yolo.trend[3]);
 assert.deepEqual(perImage.data.datasets.map(d => [d.label, d.data]), [['batch 1', [5000, 5400]], ['batch 8', [3000, 3000]]]);
 assert.equal(perImage.options.scales.y.title.text, 'End-to-end time per image (µs, fastest call) · ↓ better');
-assert.equal(trendConfig(yoloData, yolo.trend[3]).options.scales.y.title.text, 'Images per second (from the fastest call) · ↑ better');
+assert.equal(trendConfig(yoloData, yolo.trend[4]).options.scales.y.title.text, 'Images per second (from the fastest call) · ↑ better');
 assert.equal(perImage.options.scales.y.type, 'linear');
 const yoloBox = trendBox(yoloData, yolo.trend, 'fps_b8');
 assert.equal(yoloBox.metric(), 'fps_b1');

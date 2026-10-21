@@ -489,17 +489,23 @@ def _yolo_night(rng: random.Random) -> tuple[list, dict]:
     ran += f"ort: {len(images)}/{len(images)} images match onnxruntime\n"
     one = 12700 * rng.uniform(0.98, 1.03)
     batched = 6150 * rng.uniform(0.98, 1.03)
-    # One run per batch, as the check makes them; the dispatch is ~98.6% of
-    # the call at batch 1, as on Strix.
+    # One run per batch, as the check makes them: the dispatch ~157 us under
+    # the call and the empty dispatch ~88 us, as on Strix.
     timing = {}
     for us, b in ((one, 1), (batched, yolo26n_hw.BATCH)):
         call, dispatch = us * b, us * b - 157 * rng.uniform(0.95, 1.05)
+        empty = 88 * rng.uniform(0.95, 1.05)
         timing |= yolo26n_hw.parse_timing(
             "".join(
                 f"{label:<18}(avg/min/max us): {t * 1.01:.1f} / {t:.1f} / "
                 f"{t * 1.1:.1f}   [median {t * 1.02:.1f}, MAD {t * 0.005:.1f}, "
                 f"p95 {t * 1.08:.1f}]\n"
-                for label, t in (("Dispatch", dispatch), ("End-to-end", call))
+                for label, t in (
+                    ("Dispatch", dispatch),
+                    ("Dispatch overhead", empty),
+                    ("NPU", dispatch - empty),
+                    ("End-to-end", call),
+                )
             )
             + f"per-image: {us:.1f} us ({1e6 / us:.1f} fps) at batch {b}, fastest of "
             f"{yolo26n_hw.N_ITERS} after {yolo26n_hw.N_WARMUP} warmups; "
