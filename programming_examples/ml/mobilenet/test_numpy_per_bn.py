@@ -15,7 +15,6 @@ arithmetic matches brevitas; mobilenet_numpy's docstring explains the full
 network's gap to its golden (max 3, in post_l1's average pool).
 """
 
-import dataclasses
 import json
 import os
 import shutil
@@ -101,8 +100,7 @@ def main():
             all_ok &= ok
 
     # ------------------------------------------------------------------
-    # bottleneck_A: bn0 → bn9 chain, against a golden generated without
-    # bn5's residual (the device and the other checks keep it).
+    # bottleneck_A: bn0 → bn9 chain
     # ------------------------------------------------------------------
     print("\n=== bottleneck_A (bn0 -> bn9 chain) ===")
     with open(A_DATA + "scale_factors_fused.json") as f:
@@ -116,10 +114,7 @@ def main():
         112,
     )
     for name in ("bn0", "bn1", "bn2", "bn3", "bn4", "bn5", "bn6", "bn7", "bn8", "bn9"):
-        blk = nsblock(name)
-        if name == "bn5":
-            blk = dataclasses.replace(blk, skip=False)
-        x = _run_block(blk, x, fused_sf, A_DATA)
+        x = _run_block(nsblock(name), x, fused_sf, A_DATA)
     gold = _hwc(
         np.loadtxt(A_DATA + "golden_output.txt", delimiter=",", dtype=np.int64)
         .astype(np.uint8)
@@ -128,7 +123,7 @@ def main():
         14,
         14,
     )
-    all_ok &= _check("bn0->bn9 chain, bn5 unskipped", x, gold)
+    all_ok &= _check("bn0->bn9 chain", x, gold)
 
     # ------------------------------------------------------------------
     # bottleneck_B: bn10 → bn11 → bn12 chain
