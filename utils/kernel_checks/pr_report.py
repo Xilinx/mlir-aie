@@ -27,7 +27,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from publish import device_part
+from publish import device_part, upgrade
 
 MARKER = "<!-- kernel-checks-report -->"
 PAGE = "https://xilinx.github.io/mlir-aie/dashboard/#view=night"
@@ -46,7 +46,7 @@ GATED = {m for m, s in THRESHOLDS.items() if s.get("gated")}
 UNJUDGED = {m for m, s in THRESHOLDS.items() if s.get("derived") or s.get("neutral")}
 # A metric thresholds.json does not name.
 DEFAULT_THRESHOLD = {"pct": 10}
-# A change must also exceed this many MADs, per metric (npu_us).
+# A change must also exceed this many MADs, per metric (the host-timed ones).
 MAD = {m: s["mad"] for m, s in THRESHOLDS.items() if s.get("mad")}
 # The same on every part of an NPU generation: compared even across parts.
 ACROSS_PARTS = {m for m, s in THRESHOLDS.items() if s.get("across_parts")}
@@ -252,13 +252,17 @@ def baseline(path: Path, run_id: str = "") -> dict | None:
 
     None without rows, in a newer format than this reads, or from this very
     run: a re-run of a nightly's report reads the record its own publish job
-    already wrote, and a run compared with itself shows nothing.
+    already wrote, and a run compared with itself shows nothing. An older
+    record is brought up to the current rows as publish.py's ``upgrade``
+    brings it on its next publish, so a renamed metric is compared under its
+    current name.
     """
     if not path.exists():
         return None
     record = json.loads(path.read_text())
     if record.get("schema", 1) > SCHEMA:
         return None
+    upgrade(record)
     if run_id and str(record.get("id", "")) == str(run_id):
         return None
     return record if record.get("rows") else None
@@ -553,7 +557,7 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
                 "",
                 f"{leg.npu}: this run is on {leg.part or 'an unknown part'}, the "
                 f"nightly on {leg.baseline_part or 'an unknown part'}, so "
-                f"{leg.other_part} host-timed rows (`npu_us`) are not compared.",
+                f"{leg.other_part} host-timed rows (`dispatch_us`, `npu_us`) are not compared.",
             ]
 
     rows = [
@@ -593,8 +597,8 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
         listed = {row[2] for row in rows}
         thresholds = ", ".join(f"`{m}` {rule(m)}" for m in sorted(listed))
         note = (
-            f"Listed past {thresholds}. `npu_us` is timed on the host and "
-            "moves with the machine; the byte counts do not."
+            f"Listed past {thresholds}. `dispatch_us` and `npu_us` are timed "
+            "on the host and move with the machine; the byte counts do not."
         )
         out += [""] + _details(
             f"Other metrics that moved ({len(rows)})",

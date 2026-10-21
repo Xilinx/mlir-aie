@@ -127,7 +127,7 @@ def main():
         t_ref = time.time() - t0
         t0 = time.time()
         if decoder is not None:
-            our_tok = decoder.generate(ids, 1, (0.0, 0, 0))[0][0]
+            our_tok = decoder.generate(ids, 1, (0.0, 0, 0)).tokens[0]
         else:
             fresh = [Layer(x.weights, x.gamma_in, x.gamma_post, opts.t) for x in layers]
             our_tok = int(np.argmax(teacher_forced_logits(fresh, lm, rope, ids)[-1]))

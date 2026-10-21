@@ -73,11 +73,8 @@ def lmhead(*, kset=16):
     )
 
 
-def gemv_array(*, kset=8):
-    return KernelSource(
-        "llama_gemv_array.cc",
-        ["-ffp-contract=off", f"-DLLAMA_GEMV_ARRAY_KSET={kset}"],
-    )
+def gemv_array():
+    return KernelSource("llama_gemv_array.cc", ["-ffp-contract=off"])
 
 
 def gemv_mma():
@@ -88,6 +85,7 @@ def gqa_glue():
     return KernelSource(
         "llama_gqa_glue.cc",
         [
+            "-ffp-contract=off",
             "-DLLAMA_GQA_HEAD_DIM=64",
             "-DLLAMA_GQA_N_HEADS_Q=32",
             "-DLLAMA_GQA_N_HEADS_KV=8",

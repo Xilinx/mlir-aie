@@ -3,9 +3,8 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Production-shaped RMSNorm: int8 in, int8 out, bf16-internal. AIE2P DMA
-// cannot type-convert, so the int8<->bf16 dequant/requant live inside the
-// kernel rather than at the DMA boundary.
+// RMSNorm: int8 in, int8 out, fp32 inside. AIE2P DMA cannot type-convert,
+// so the dequant and requant live inside the kernel.
 //
 //   combined = act_scale_in * invsqrt(mean(x_f^2) + eps) * inv_act_scale_out
 //   y_i8     = clamp(round(x_i8 * combined * gamma[i]), -128, 127)

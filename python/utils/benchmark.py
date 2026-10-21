@@ -108,8 +108,8 @@ class BenchmarkResult:
         dispatch_overhead: Submit to completion of a dispatch that does
             nothing, on the same hardware context, one after each timed call;
             or None where the runtime has no empty dispatch for the kernel
-            (``KernelHandle.empty_dispatch_ns``), as for a full ELF or an ELF
-            module, whose control code is in the ELF.
+            (``KernelHandle.empty_dispatch_ns``), as for an ELF module, or a
+            full ELF without aiecc's empty sequence.
         npu: Each dispatch less the overhead's median: the time the NPU
             spent on the call's work. None without both.
     """
@@ -589,7 +589,7 @@ def provenance(**extra: str | None) -> str:
     (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),
     the selected runtime's provenance, the runner the job ran
     on (``RUNNER_NAME``, under GitHub Actions: nightly runs move between
-    hosts of a generation, and a host swap moves ``npu_us`` as a regression
+    hosts of a generation, and a host swap moves ``dispatch_us`` as a regression
     would), and any ``extra`` fields (``device="NPU Strix"``,
     ``pmode="performance"``) as ``key value`` pairs. A benchmark row records
     it so a number can be traced to a toolchain, the kernel sources and

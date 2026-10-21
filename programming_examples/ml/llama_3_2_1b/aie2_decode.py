@@ -93,6 +93,9 @@ from llama_config import (
     VOCAB,
     D,
 )
+from llama_config import (
+    N_LAYERS as MODEL_LAYERS,
+)
 
 # The lm_head's weights: per 4-row tile a prefix, the rows and per-row
 # scales and biases; one shim task streams LM_SLOTS_PER_TASK of them (at
@@ -230,26 +233,6 @@ def wblob_layout(n_layers, t):
     return 0, rope, rope + t * CS_BYTES + MMA_SLOT
 
 
-def _i8(n):
-    return np.ndarray[(int(n),), np.dtype[np.int8]]
-
-
-def _f32(n):
-    return np.ndarray[(int(n),), np.dtype[np.float32]]
-
-
-def _i32a(n):
-    return np.ndarray[(int(n),), np.dtype[np.int32]]
-
-
-def _i32(idx):
-    return index_cast(i32(), idx)
-
-
-def _const_i32(v):
-    return constant(i32(), v)
-
-
 def linear_tap(total, offset, nbytes):
     """One contiguous run of `nbytes` at `offset` in a buffer of `total`."""
     inner = next(i for i in range(1020, 0, -4) if nbytes % i == 0)
@@ -291,22 +274,22 @@ def build(
     lmw_total = LMW_GAMMA_BYTES + WLM_TOTAL
     rec_total = P_MAX * REC_BYTES
 
-    t_act = _i8(ARRAY_ACT_BYTES)
-    t_slot = _i8(MMA_SLOT)
-    t_out = _i8(OUT_BYTES)
-    t_vec = _i8(ACT_BYTES)
-    t_res = _i8(RROW)
-    t_comb = _i8(N_CORES * COMB_BYTES)
-    t_rc = _i8(ROW_CHUNK)
-    t_rc_half = _i8(NH * (ROW_CHUNK + KV_ROW_WORDS * 4))
-    t_kvb = _i32a(KV_BLOCK_WORDS)
-    t_kvhb = _i32a(KV_HEAD_BLOCK_WORDS)
-    t_rows = _i32a(NH * KV_ROW_WORDS)
-    t_sv = _i8(SVCHUNK_BYTES)
-    t_sv_half = _i8(NH * SVCHUNK_BYTES)
-    t_state = _i8(ATTN_STATE_BYTES)
-    t_wlm = _i8(WLM_SLOT)
-    t_rec = _i8(REC_BYTES)
+    t_act = np.ndarray[(ARRAY_ACT_BYTES,), np.dtype[np.int8]]
+    t_slot = np.ndarray[(MMA_SLOT,), np.dtype[np.int8]]
+    t_out = np.ndarray[(OUT_BYTES,), np.dtype[np.int8]]
+    t_vec = np.ndarray[(ACT_BYTES,), np.dtype[np.int8]]
+    t_res = np.ndarray[(RROW,), np.dtype[np.int8]]
+    t_comb = np.ndarray[(N_CORES * COMB_BYTES,), np.dtype[np.int8]]
+    t_rc = np.ndarray[(ROW_CHUNK,), np.dtype[np.int8]]
+    t_rc_half = np.ndarray[(NH * (ROW_CHUNK + KV_ROW_WORDS * 4),), np.dtype[np.int8]]
+    t_kvb = np.ndarray[(KV_BLOCK_WORDS,), np.dtype[np.int32]]
+    t_kvhb = np.ndarray[(KV_HEAD_BLOCK_WORDS,), np.dtype[np.int32]]
+    t_rows = np.ndarray[(NH * KV_ROW_WORDS,), np.dtype[np.int32]]
+    t_sv = np.ndarray[(SVCHUNK_BYTES,), np.dtype[np.int8]]
+    t_sv_half = np.ndarray[(NH * SVCHUNK_BYTES,), np.dtype[np.int8]]
+    t_state = np.ndarray[(ATTN_STATE_BYTES,), np.dtype[np.int8]]
+    t_wlm = np.ndarray[(WLM_SLOT,), np.dtype[np.int8]]
+    t_rec = np.ndarray[(REC_BYTES,), np.dtype[np.int8]]
 
     # Per dispatch (see llama_decode.DecodeShape.params): the passes it runs,
     # read by every core, and the rows of its first pass (m0: one, or a batch
@@ -338,21 +321,15 @@ def build(
     p_lm = [ScratchpadParameter(f"lm{t}", np.int32) for t in range(P_MAX)]
     p_rows = ScratchpadParameter("rows", np.int32)
 
-    def pass_rows(tok, m0):
-        """Pass tok's rows: m0 for the first pass, else one."""
-        return select(
-            cmpi(CmpIPredicate.eq, _i32(tok), _const_i32(0)), m0, _const_i32(1)
-        )
-
-    def total_rows(n, m0):
-        """Rows across a dispatch's n passes (m0 > 1 only when n is 1)."""
-        return addi(m0, addi(n, _const_i32(-1)))
-
     # the array
     of_act = ObjectFifo(t_act, depth=1, name="act")
     of_w = [ObjectFifo(t_slot, depth=2, name=f"w{c}") for c in range(N_CORES)]
-    of_outlo = ObjectFifo(_i8(4 * OUT_BYTES), depth=1, name="outlo")
-    of_outhi = ObjectFifo(_i8(4 * OUT_BYTES), depth=1, name="outhi")
+    of_outlo = ObjectFifo(
+        np.ndarray[(4 * OUT_BYTES,), np.dtype[np.int8]], depth=1, name="outlo"
+    )
+    of_outhi = ObjectFifo(
+        np.ndarray[(4 * OUT_BYTES,), np.dtype[np.int8]], depth=1, name="outhi"
+    )
     out_offsets = [i * OUT_BYTES for i in range(4)]
     out_eps = of_outlo.prod().join(
         out_offsets, obj_types=[t_out] * 4, names=[f"out{c}" for c in range(4)]
@@ -361,39 +338,50 @@ def build(
     )
     # The residual core's two inputs: cores 0-3's blocks then the fp32
     # residual they add to (from stage), and cores 4-7's blocks.
-    t_lo = _i8(4 * RESID_BLOCK + 4 * D)
+    t_lo = np.ndarray[(4 * RESID_BLOCK + 4 * D,), np.dtype[np.int8]]
     of_rlo = ObjectFifo(t_lo, depth=1, name="rlo")
-    of_rhi = ObjectFifo(_i8(4 * RESID_BLOCK), depth=1, name="rhi")
+    of_rhi = ObjectFifo(
+        np.ndarray[(4 * RESID_BLOCK,), np.dtype[np.int8]], depth=1, name="rhi"
+    )
     blk_offsets = [i * RESID_BLOCK for i in range(4)]
     lo_eps = of_rlo.prod().join(
         blk_offsets + [4 * RESID_BLOCK],
-        obj_types=[_i8(RESID_BLOCK)] * 4 + [_i8(4 * D)],
+        obj_types=[np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]]] * 4
+        + [np.ndarray[(4 * D,), np.dtype[np.int8]]],
         names=[f"rblk{c}" for c in range(4)] + ["rin"],
     )
     blk_eps = lo_eps[:4] + of_rhi.prod().join(
         blk_offsets,
-        obj_types=[_i8(RESID_BLOCK)] * 4,
+        obj_types=[np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]]] * 4,
         names=[f"rblk{c}" for c in range(4, 8)],
     )
     of_res = ObjectFifo(t_res, depth=1, name="res")
 
     KA = llama_kernels.gemv_array()
-    t_scratch = _i8(M_MAX * 384 * 4)
+    t_scratch = np.ndarray[(M_MAX * 384 * 4,), np.dtype[np.int8]]
     k_spread, k_mma, k_mma_s, t_tile, t_part = mma_kernels(
         t_act, t_slot, t_out, t_scratch
     )
     k_take_cs = KA.bind(
-        "llama_gemv_array_take_cs", [t_slot, _i8(M_MAX * CS_BYTES), np.int32]
+        "llama_gemv_array_take_cs",
+        [t_slot, np.ndarray[(M_MAX * CS_BYTES,), np.dtype[np.int8]], np.int32],
     )
     k_comb = KA.bind(
         "llama_gemv_array_qkv_comb_cs",
-        [t_scratch, _i8(M_MAX * CS_BYTES), t_out, np.int32],
+        [
+            t_scratch,
+            np.ndarray[(M_MAX * CS_BYTES,), np.dtype[np.int8]],
+            t_out,
+            np.int32,
+        ],
     )
     k_resid = KA.bind(
-        "llama_gemv_array_proj_block", [t_scratch, _i8(RESID_BLOCK), np.int32]
+        "llama_gemv_array_proj_block",
+        [t_scratch, np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]], np.int32],
     )
     k_final = KA.bind(
-        "llama_gemv_array_residual_add", [t_lo, _i8(4 * RESID_BLOCK), t_res]
+        "llama_gemv_array_residual_add",
+        [t_lo, np.ndarray[(4 * RESID_BLOCK,), np.dtype[np.int8]], t_res],
     )
     u_chunks = OUTS["u"]
 
@@ -419,7 +407,11 @@ def build(
     ):
         m0 = m0p.read()
         for tok in range_(index_cast(index(), n.read())):
-            m = pass_rows(tok, m0)
+            m = select(
+                cmpi(CmpIPredicate.eq, index_cast(i32(), tok), constant(i32(), 0)),
+                m0,
+                constant(i32(), 1),
+            )
             mi = index_cast(index(), m)
             for _ in range_(N_LAYERS):
                 hdr = c_w.acquire(1)
@@ -435,7 +427,7 @@ def build(
                     # The unit's rows, in scratch, to the residual core.
                     for r in range_(mi):
                         b = c_blk.acquire(1)
-                        kr(scratch, b, _i32(r))
+                        kr(scratch, b, index_cast(i32(), r))
                         c_blk.release(1)
 
                 def spread_chunk(chunk):
@@ -448,7 +440,7 @@ def build(
                 mma_rows("q", tile, c_w, part, scratch, k_mma_s, 0, m, 384, 48)
                 for r in range_(mi):
                     o = c_out.acquire(1)
-                    kc(scratch, cs, o, _i32(r))
+                    kc(scratch, cs, o, index_cast(i32(), r))
                     c_out.release(1)
                 spread()
                 mma_rows("o", tile, c_w, part, scratch, k_mma_s, 0, m, 256)
@@ -471,7 +463,9 @@ def build(
                 out_eps[c].prod(),
                 blk_eps[c].prod(),
                 Buffer(t_scratch, name=f"scratch{c}"),
-                Buffer(_i8(M_MAX * CS_BYTES), name=f"cs{c}"),
+                Buffer(
+                    np.ndarray[(M_MAX * CS_BYTES,), np.dtype[np.int8]], name=f"cs{c}"
+                ),
                 Buffer(t_part, name=f"part{c}"),
                 Buffer(t_tile, name=f"tile{c}"),
                 c,
@@ -491,8 +485,9 @@ def build(
     ]
 
     def w_resid(c_lo, c_hi, c_res, n, m0p, k):
-        rows = total_rows(n.read(), m0p.read())
-        for _ in range_(index_cast(index(), muli(rows, _const_i32(2 * N_LAYERS)))):
+        passes, m0 = n.read(), m0p.read()
+        rows = addi(m0, addi(passes, constant(i32(), -1)))
+        for _ in range_(index_cast(index(), muli(rows, constant(i32(), 2 * N_LAYERS)))):
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
             r = c_res.acquire(1)
@@ -517,7 +512,7 @@ def build(
     )
 
     # RMSNorm: both norms of each layer, then the final norm, a row each
-    t_norm_in = _i8(NORM_IN_BYTES)
+    t_norm_in = np.ndarray[(NORM_IN_BYTES,), np.dtype[np.int8]]
     of_x = ObjectFifo(t_norm_in, depth=1, name="x")
     of_h = ObjectFifo(t_vec, depth=1, name="h")
     k_rms = llama_kernels.rmsnorm().bind(
@@ -525,8 +520,11 @@ def build(
     )
 
     def w_rms(c_x, c_h, n, m0p, k):
-        rows = total_rows(n.read(), m0p.read())
-        for _ in range_(index_cast(index(), muli(rows, _const_i32(2 * N_LAYERS + 1)))):
+        passes, m0 = n.read(), m0p.read()
+        rows = addi(m0, addi(passes, constant(i32(), -1)))
+        for _ in range_(
+            index_cast(index(), muli(rows, constant(i32(), 2 * N_LAYERS + 1)))
+        ):
             x = c_x.acquire(1)
             h = c_h.acquire(1)
             k(x, h)
@@ -564,8 +562,9 @@ def build(
     k_rope_rows = KG.bind("llama_comb_rope_rows", [t_comb, t_rc_half, t_rc_half])
 
     def w_rope_rows(c_comb, c_lo, c_hi, n, m0p, k):
-        rows = total_rows(n.read(), m0p.read())
-        for _ in range_(index_cast(index(), muli(rows, _const_i32(N_LAYERS)))):
+        passes, m0 = n.read(), m0p.read()
+        rows = addi(m0, addi(passes, constant(i32(), -1)))
+        for _ in range_(index_cast(index(), muli(rows, constant(i32(), N_LAYERS)))):
             cb = c_comb.acquire(1)
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
@@ -615,8 +614,8 @@ def build(
         )
     ]
     KT = llama_kernels.attn_block(tb=KV_TB)
-    t_chunks = _i8(M_MAX * ROW_CHUNK_STRIDE)
-    t_states = _i8(M_MAX * ATTN_STATE_BYTES)
+    t_chunks = np.ndarray[(M_MAX * ROW_CHUNK_STRIDE,), np.dtype[np.int8]]
+    t_states = np.ndarray[(M_MAX * ATTN_STATE_BYTES,), np.dtype[np.int8]]
     k_take = KT.bind("llama_attn_take_q", [t_rc, t_chunks, t_states, np.int32])
     k_blk = KT.bind("llama_attn_block_q", [t_chunks, t_kvhb, t_states] + [np.int32] * 2)
     k_put = KT.bind("llama_attn_put_q", [t_states, t_state, np.int32])
@@ -646,40 +645,46 @@ def build(
         t0 = t0p.read()
         m0 = m0p.read()
         for tok in range_(index_cast(index(), n.read())):
-            m = pass_rows(tok, m0)
+            m = select(
+                cmpi(CmpIPredicate.eq, index_cast(i32(), tok), constant(i32(), 0)),
+                m0,
+                constant(i32(), 1),
+            )
             mi = index_cast(index(), m)
-            p = addi(t0, _i32(tok))
-            nb = addi(divsi(p, _const_i32(KV_TB)), _const_i32(1))
-            last = addi(nb, _const_i32(-1))
-            row0 = remsi(p, _const_i32(KV_TB))
+            p = addi(t0, index_cast(i32(), tok))
+            nb = addi(divsi(p, constant(i32(), KV_TB)), constant(i32(), 1))
+            last = addi(nb, constant(i32(), -1))
+            row0 = remsi(p, constant(i32(), KV_TB))
             for _ in range_(N_LAYERS):
                 for r in range_(mi):
                     rc = c_rc.acquire(1)
-                    k_q_take(rc, chunks, states, _i32(r))
+                    k_q_take(rc, chunks, states, index_cast(i32(), r))
                     c_rc.release(1)
                 for b in range_(index_cast(index(), nb)):
-                    bi = _i32(b)
+                    bi = index_cast(i32(), b)
                     kb = c_kvb.acquire(1)
                     with if_(
                         cmpi(
                             CmpIPredicate.eq,
-                            remsi(bi, _const_i32(2)),
-                            _const_i32(mine),
+                            remsi(bi, constant(i32(), 2)),
+                            constant(i32(), mine),
                         )
                     ):
                         own_row0 = select(
-                            cmpi(CmpIPredicate.eq, bi, last), row0, _const_i32(-1)
+                            cmpi(CmpIPredicate.eq, bi, last), row0, constant(i32(), -1)
                         )
                         for r in range_(mi):
-                            k_q_block(chunks, kb, states, own_row0, _i32(r))
+                            k_q_block(
+                                chunks, kb, states, own_row0, index_cast(i32(), r)
+                            )
                     c_kvb.release(1)
                 for r in range_(mi):
                     part = c_part.acquire(1)
                     if mine == 0:
-                        k_q_out(states, part, _i32(r))
+                        k_q_out(states, part, index_cast(i32(), r))
                     else:
                         sv = c_sv.acquire(1)
-                        k_q_out(part, states, sv, _i32(r))
+                        k_q_out(part, states, sv, index_cast(i32(), r))
                         c_sv.release(1)
                     c_part.release(1)
 
@@ -710,18 +715,26 @@ def build(
                 )
             )
 
-    of_svfull = ObjectFifo(_i8(SVFULL_BYTES), depth=1, name="sv_full")
-    of_af = ObjectFifo(_i8(ACT_BYTES), depth=1, name="af")
+    of_svfull = ObjectFifo(
+        np.ndarray[(SVFULL_BYTES,), np.dtype[np.int8]], depth=1, name="sv_full"
+    )
+    of_af = ObjectFifo(np.ndarray[(ACT_BYTES,), np.dtype[np.int8]], depth=1, name="af")
     k_svmerge = KG.bind(
-        "llama_sv_merge_selfcal", [t_sv_half, t_sv_half, _i8(SVFULL_BYTES)]
+        "llama_sv_merge_selfcal",
+        [t_sv_half, t_sv_half, np.ndarray[(SVFULL_BYTES,), np.dtype[np.int8]]],
     )
     k_afconcat = KG.bind(
-        "llama_af_concat_selfcal2", [_i8(SVFULL_BYTES), _i8(ACT_BYTES)]
+        "llama_af_concat_selfcal2",
+        [
+            np.ndarray[(SVFULL_BYTES,), np.dtype[np.int8]],
+            np.ndarray[(ACT_BYTES,), np.dtype[np.int8]],
+        ],
     )
 
     def w_svmerge(c_lo, c_hi, c_out, n, m0p, k):
-        rows = total_rows(n.read(), m0p.read())
-        for _ in range_(index_cast(index(), muli(rows, _const_i32(N_LAYERS)))):
+        passes, m0 = n.read(), m0p.read()
+        rows = addi(m0, addi(passes, constant(i32(), -1)))
+        for _ in range_(index_cast(index(), muli(rows, constant(i32(), N_LAYERS)))):
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
             o = c_out.acquire(1)
@@ -731,8 +744,9 @@ def build(
             c_lo.release(1)
 
     def w_afconcat(c_in, c_out, n, m0p, k):
-        rows = total_rows(n.read(), m0p.read())
-        for _ in range_(index_cast(index(), muli(rows, _const_i32(N_LAYERS)))):
+        passes, m0 = n.read(), m0p.read()
+        rows = addi(m0, addi(passes, constant(i32(), -1)))
+        for _ in range_(index_cast(index(), muli(rows, constant(i32(), N_LAYERS)))):
             x = c_in.acquire(1)
             o = c_out.acquire(1)
             k(x, o)
@@ -763,22 +777,25 @@ def build(
 
     # SiLU(gate) * up in fp32, a row each: the row's gate, then its up, in
     # SILU_CHUNK chunks on one shim channel.
-    t_chunk = _i8(4 * SILU_CHUNK)
+    t_chunk = np.ndarray[(4 * SILU_CHUNK,), np.dtype[np.int8]]
     of_gu = ObjectFifo(t_chunk, depth=2, name="gu")
-    of_sf = ObjectFifo(_i8(HACT_BYTES), depth=1, name="sf")
+    of_sf = ObjectFifo(np.ndarray[(HACT_BYTES,), np.dtype[np.int8]], depth=1, name="sf")
     KS = llama_kernels.silu_mul(chunk=SILU_CHUNK)
-    t_h = _f32(HD)
+    t_h = np.ndarray[(HD,), np.dtype[np.float32]]
     k_gate = KS.bind("llama_silu_gate", [t_chunk, t_h, np.int32])
     k_up = KS.bind("llama_silu_up", [t_chunk, t_h, np.int32])
-    k_quant = KS.bind("llama_silu_quant", [t_h, _i8(HACT_BYTES)])
+    k_quant = KS.bind(
+        "llama_silu_quant", [t_h, np.ndarray[(HACT_BYTES,), np.dtype[np.int8]]]
+    )
 
     def w_silu(c_gu, c_out, h, n, m0p, k_g, k_u, k_q):
-        rows = total_rows(n.read(), m0p.read())
-        for _ in range_(index_cast(index(), muli(rows, _const_i32(N_LAYERS)))):
+        passes, m0 = n.read(), m0p.read()
+        rows = addi(m0, addi(passes, constant(i32(), -1)))
+        for _ in range_(index_cast(index(), muli(rows, constant(i32(), N_LAYERS)))):
             for kernel in (k_g, k_u):
                 for i in range_(HD // SILU_CHUNK):
                     x = c_gu.acquire(1)
-                    kernel(x, h, _i32(i))
+                    kernel(x, h, index_cast(i32(), i))
                     c_gu.release(1)
             o = c_out.acquire(1)
             k_q(h, o)
@@ -811,15 +828,30 @@ def build(
     KL = llama_kernels.lmhead(kset=KSET)
     k_insert = KL.bind(
         "llama_lmhead_topk_insert",
-        [t_vec, t_wlm, _f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1)]
+        [
+            t_vec,
+            t_wlm,
+            np.ndarray[(KSET,), np.dtype[np.float32]],
+            np.ndarray[(KSET,), np.dtype[np.int32]],
+            np.ndarray[(KSET,), np.dtype[np.float32]],
+            np.ndarray[(KSET * D,), np.dtype[np.int8]],
+            np.ndarray[(1,), np.dtype[np.int32]],
+        ]
         + [np.int32],
     )
     KTS = llama_kernels.topk_sample(kset=KSET)
-    t_lm_params = _i32a(6)
+    t_lm_params = np.ndarray[(6,), np.dtype[np.int32]]
     k_embed = KTS.bind("llama_embed_seed", [t_wlm, t_res, np.int32])
     k_sample = KTS.bind(
         "llama_topk_finalize_packed",
-        [_f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1), t_lm_params]
+        [
+            np.ndarray[(KSET,), np.dtype[np.float32]],
+            np.ndarray[(KSET,), np.dtype[np.int32]],
+            np.ndarray[(KSET,), np.dtype[np.float32]],
+            np.ndarray[(KSET * D,), np.dtype[np.int8]],
+            np.ndarray[(1,), np.dtype[np.int32]],
+            t_lm_params,
+        ]
         + [t_rec],
     )
     k_seed = KTS.bind("llama_seed_from_record", [t_rec, t_res])
@@ -855,39 +887,53 @@ def build(
         bits = rows.read()
         m0 = m0p.read()
         for tok in range_(index_cast(index(), n.read())):
-            ti = _i32(tok)
-            m = pass_rows(tok, m0)
-            first_pass = cmpi(CmpIPredicate.eq, ti, _const_i32(0))
+            ti = index_cast(i32(), tok)
+            m = select(
+                cmpi(CmpIPredicate.eq, index_cast(i32(), tok), constant(i32(), 0)),
+                m0,
+                constant(i32(), 1),
+            )
+            first_pass = cmpi(CmpIPredicate.eq, ti, constant(i32(), 0))
             for r in range_(index_cast(index(), m)):
-                ri = _i32(r)
+                ri = index_cast(i32(), r)
                 prompt_on = andi(
                     first_pass,
                     cmpi(
                         CmpIPredicate.ne,
-                        andi(shrui(bits, addi(ri, _const_i32(8))), _const_i32(1)),
-                        _const_i32(0),
+                        andi(
+                            shrui(bits, addi(ri, constant(i32(), 8))),
+                            constant(i32(), 1),
+                        ),
+                        constant(i32(), 0),
                     ),
                 )
                 with if_(prompt_on):
                     w = c_w.acquire(1)
                     s = c_seed.acquire(1)
-                    ke(w, s, andi(shrui(bits, muli(ri, _const_i32(2))), _const_i32(3)))
+                    ke(
+                        w,
+                        s,
+                        andi(
+                            shrui(bits, muli(ri, constant(i32(), 2))),
+                            constant(i32(), 3),
+                        ),
+                    )
                     c_seed.release(1)
                     c_w.release(1)
-            skip = addi(muli(m, _const_i32(2 * N_LAYERS + 1)), _const_i32(-1))
+            skip = addi(muli(m, constant(i32(), 2 * N_LAYERS + 1)), constant(i32(), -1))
             for _ in range_(index_cast(index(), skip)):
                 c_h.acquire(1)
                 c_h.release(1)
             a = c_h.acquire(1)
             lm_bit = cmpi(
                 CmpIPredicate.ne,
-                andi(shrui(bits, addi(ti, _const_i32(12))), _const_i32(1)),
-                _const_i32(0),
+                andi(shrui(bits, addi(ti, constant(i32(), 12))), constant(i32(), 1)),
+                constant(i32(), 0),
             )
             with if_(lm_bit) as lm_on:
                 for t in range_(LM_N_TILES):
                     w = c_w.acquire(1)
-                    ki(a, w, sl, sg, ss, sr, slen, _i32(t))
+                    ki(a, w, sl, sg, ss, sr, slen, index_cast(i32(), t))
                     c_w.release(1)
                 c_h.release(1)
                 o = c_rec.acquire(1)
@@ -912,12 +958,14 @@ def build(
                 of_wlm.cons(),
                 of_rec.prod(),
                 of_seed.prod(),
-                Buffer(_f32(KSET), name="lm_set_logit"),
-                Buffer(_i32a(KSET), name="lm_set_gidx"),
-                Buffer(_f32(KSET), name="lm_set_scale"),
-                Buffer(_i8(KSET * D), name="lm_set_row"),
+                Buffer(np.ndarray[(KSET,), np.dtype[np.float32]], name="lm_set_logit"),
+                Buffer(np.ndarray[(KSET,), np.dtype[np.int32]], name="lm_set_gidx"),
+                Buffer(np.ndarray[(KSET,), np.dtype[np.float32]], name="lm_set_scale"),
+                Buffer(np.ndarray[(KSET * D,), np.dtype[np.int8]], name="lm_set_row"),
                 Buffer(
-                    _i32a(1), initial_value=np.zeros(1, np.int32), name="lm_set_len"
+                    np.ndarray[(1,), np.dtype[np.int32]],
+                    initial_value=np.zeros(1, np.int32),
+                    name="lm_set_len",
                 ),
                 Buffer(t_lm_params, name="lm_params"),
                 p_passes,
@@ -1247,11 +1295,11 @@ def build(
     rt = Runtime(
         sequence,
         [
-            _i8(w_total),
-            _i32a(kv_total),
-            _i8(lmw_total),
-            _i8(rec_total),
-            _i8(stage_total),
+            np.ndarray[(w_total,), np.dtype[np.int8]],
+            np.ndarray[(kv_total,), np.dtype[np.int32]],
+            np.ndarray[(lmw_total,), np.dtype[np.int8]],
+            np.ndarray[(rec_total,), np.dtype[np.int8]],
+            np.ndarray[(stage_total,), np.dtype[np.int8]],
             *eps,
         ],
     )
@@ -1263,8 +1311,11 @@ def main():
     add_compile_args(
         p, with_dev=True, default_dev="npu2", dev_choices=("npu2",), with_full_elf=True
     )
-    p.add_argument("--p-max", type=int, default=4)
-    p.add_argument("--n-layers", type=int, default=2)
+    # Four passes fill the design's 32 ScratchpadParameters.
+    p.add_argument("--p-max", type=int, choices=range(1, 5), default=4)
+    p.add_argument(
+        "--n-layers", type=int, choices=range(1, MODEL_LAYERS + 1), default=2
+    )
     p.add_argument("--t", type=int, default=128)
     p.add_argument("--kset", type=int, default=8)
     opts = p.parse_args(sys.argv[1:])

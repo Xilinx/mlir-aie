@@ -46,7 +46,7 @@ class KernelHandle(ABC):
 
         Returns:
             Nanoseconds from submit to completion, or None where the runtime
-            cannot dispatch an empty transaction for this kernel.
+            has nothing empty to dispatch for this kernel.
         """
         return None
 

@@ -12,16 +12,14 @@ Per-channel symmetric absmax quant for every (out, in) linear weight:
   scale[n] = max(|W[n, :]|) / 127     # fp32, one per output channel
   w_i8[n,k] = round(W[n,k] / scale[n]).clip(-127, 127)
 
-Per-tensor INT8 conversion for embed_tokens (treated as a (V, D) linear
-serving both embedding lookup AND lm_head; Llama 3.2 1B has tied embeddings).
+The same per-row INT8 for embed_tokens (a (V, D) linear serving both the
+embedding lookup and the lm_head; Llama 3.2 1B has tied embeddings).
 
 Layernorm gamma vectors stay as bf16 (tiny, no quant benefit).
 
 Output layout:
   data/embed.i8.bin              (V*D int8, row-major (V, D))
   data/embed.scales.f32.bin      (V fp32; one scale per vocab entry)
-  data/lm_head.i8.bin            (same bytes as embed.i8 — symlinked)
-  data/lm_head.scales.f32.bin    (same bytes as embed.scales)
   data/final_norm.bf16.bin       (D bf16)
   data/layer_{L:02d}/gamma_in.bf16.bin           (D bf16)
                     /gamma_post.bf16.bin         (D bf16)
@@ -179,15 +177,6 @@ def main():
     embed_f32 = reader.load_f32("model.embed_tokens.weight")
     print(f"  embed_tokens: shape={embed_f32.shape} dtype=fp32")
     dump_quantized(args.out_dir, "embed", embed_f32, expected_shape=(VOCAB, D))
-
-    # tied -> lm_head shares the same bytes. Use a symlink to avoid duplicating
-    # the ~125 MB blob.
-    for suffix in ("i8.bin", "scales.f32.bin"):
-        src = args.out_dir / f"embed.{suffix}"
-        dst = args.out_dir / f"lm_head.{suffix}"
-        if dst.exists() or dst.is_symlink():
-            dst.unlink()
-        dst.symlink_to(src.name)  # relative symlink within data/
 
     # --- Final RMSNorm gamma (bf16, no quant) ---
     final_norm_bf16 = reader.load_bf16("model.norm.weight")

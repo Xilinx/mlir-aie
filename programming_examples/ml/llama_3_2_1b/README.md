@@ -8,16 +8,19 @@ Python API and compiled with `@iron.jit` to one full ELF. Each dispatch runs the
 whole per-token decode on the AI Engine array for 1 to 4 tokens, chosen per
 dispatch, or a batch of up to 4 prompt tokens together: all 16 transformer
 layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
-and the token→embedding feedback. The W8A8-dynamic INT8 recipe tracks the
-reference bf16 HF model (75 % greedy top-1 on hard one-word prompts, 94–100 % on
-prose); the device is bit-exact to its numpy oracle (`llama_oracle.py`), which
-follows the INT8 recipe up to the recipe's approximations (see Accuracy).
+and the token→embedding feedback. The device is bit-exact to its numpy oracle
+(`llama_oracle.py`), and against the bf16 Hugging Face model that arithmetic
+agrees on 88–92 % of next tokens at a mean KL of 0.041–0.071 (see Accuracy).
 
-> Status: decode is validated on hardware at 47.5 ms/token (21.1 tok/s) at
-> N=16 at short context and 389 ms/token at 128k. Prefill runs on the device
-> in batches of up to 4 prompt tokens (`generate.py`: prompt in, text out) —
-> see [On the device, and on the host](#on-the-device-and-on-the-host) and
-> [What's next](#whats-next).
+This example started from PR #3161, @hunhoffe's Llama 3.2 1B bring-up, whose
+kernels, recipe and multi-head attention layer it carries forward into one
+compiled design.
+
+> Status: on NPU2 (Strix), decode runs at 47.2 ms/token (21.2 tok/s) at
+> position 64 and 478 ms/token (2.1 tok/s) at 128k, every token checked
+> against the oracle. Prefill runs on the device in batches of up to 4 prompt
+> tokens (`generate.py`: prompt in, text out): a 6-token prompt's first token
+> takes 124.6 ms.
 
 ---
 
@@ -28,9 +31,9 @@ follows the INT8 recipe up to the recipe's approximations (see Accuracy).
 Decode generates one token at a time: `token → embedding → 16 layers → lm_head →
 sample → next token`. The whole loop runs on the AI Engine array within a single
 device dispatch (`aie2_decode.py`), for up to 4 tokens; what crosses the DDR
-boundary per token is the weight stream (fundamental — a 1 GB model can't live
-on-chip), the live KV blocks, and the activations staged between the GEMV array
-and the cores around it.
+boundary per token is the weight stream (a 1 GB model cannot live on-chip), the
+live KV blocks, and the activations staged between the GEMV array and the cores
+around it.
 
 ```
                     ┌──────────────── one device dispatch, P ≤ 4 tokens ────────────────┐
@@ -61,7 +64,8 @@ Key design pieces:
   the sampler keeps a **resident top-k set** of `{logit, index, embed_sc, embed
   row}` as the table flows by **once**, then emits both the token id and the
   next-token embedding seed. No second pass, one shim channel. Its temperature,
-  top-k and seed are set per dispatch.
+  top-k and seed are set per dispatch; its xoshiro state carries across tokens
+  in the stage buffer.
 
 - **Token feedback.** The sampled token's embed seed goes to the seed slot of
   the `stage` buffer in DDR, where the next token's first RMSNorm reads it, in
@@ -77,7 +81,8 @@ Key design pieces:
   exact online softmax), and the token's own new row joins its last block on chip
   and is the one row written back. A batch's queries read each block once, the
   batch's rows joining its block in turn so each query sees its own prefix. Rope
-  advances with position too.
+  advances with position too. Since attention reads only the live prefix, one
+  build at a large `T` serves every context.
 
 ### On the device, and on the host
 
@@ -90,18 +95,16 @@ has (one, or a prompt batch of up to 4), which every worker reads; the position
 of the dispatch's first token, which the attention workers read; its row in the
 RoPE table the weight blob carries, built once with Llama 3's rope scaling; per
 pass, whether it runs (a pass that does not run moves nothing), how many KV
-blocks to read and where its rows go; and the sampler's settings. What the host still does, each to move to the device in
-the stages of the one-design restructure:
+blocks to read and where its rows go; and the sampler's settings.
 
-- **Prefill** runs on the device in batches: a dispatch's one pass takes up to
-  4 prompt tokens as its rows, within one KV block, each row's input being the
-  seed the lm_head core makes of the token's embed row, which it fetches from
-  the lm_head's weights (`gat{m}`, `pg{m}`, `rows`). The GEMV array runs each
-  projection once for all the rows; the norms, RoPE, attention and SiLU take
-  them a row at a time. Only the prompt's last batch runs the lm_head and
-  sampler (`lm{t}`), for its last row; the host only splits the prompt into
-  batches (`DecodeShape.batches`).
-- **Tokenization**, which stays on the host.
+Prefill runs on the device in batches: a dispatch's one pass takes up to 4
+prompt tokens as its rows, within one KV block, each row's input being the seed
+the lm_head core makes of the token's embed row, which it fetches from the
+lm_head's weights (`gat{m}`, `pg{m}`, `rows`). The GEMV array runs each
+projection once for all the rows; the norms, RoPE, attention and SiLU take them
+a row at a time. Only the prompt's last batch runs the lm_head and sampler
+(`lm{t}`), for its last row. The host's part is tokenization and splitting the
+prompt into batches (`DecodeShape.batches`).
 
 ### INT8 recipe (W8A8-dynamic)
 
@@ -110,120 +113,124 @@ the stages of the one-design restructure:
 - **Activations:** per-token dynamic INT8 (absmax) at each matmul input; the KV
   carriers also carry per-token scales.
 - **Residual stream in fp32:** each add is fp32, and each norm reads the
-  residual requantized per token. An int8 residual let BOS's massive
+  residual requantized per token. An int8 residual would let BOS's massive
   activation (|x| ~ 146) crush the token's other channels.
+- **Gate, up and Q in fp32:** SiLU runs on the fp32 gate (`exp_nonpos` and a
+  Newton reciprocal) times the fp32 up, and Q is roped in fp32 before its
+  per-head quantization.
 - **Glue in fp32:** rmsnorm, rope, softmax and silu, each written so the numpy
-  oracle reproduces it exactly: SiLU and the sampler's exp read generated
-  tables, attention's exp is a fixed-point polynomial, the inverse square root
-  a Quake seed and two Newton steps, and reciprocals round as IEEE division.
+  oracle reproduces it exactly: attention's and the sampler's exp is
+  `exp_nonpos`, the inverse square root a Quake seed and two Newton steps, and
+  reciprocals round as IEEE division.
+- **Where the device departs from the recipe:** each RMSNorm reads the residual
+  requantized to int8 rather than in fp32, and the attention output is
+  quantized twice (per head, then for the o projection). These are the main
+  part of the device's gap to the recipe in the KL table below.
 
 ---
 
 ## 2. Performance
 
-Measured on NPU2 (Strix) with `test_chain_persist_grow_mh.py --n-layers 16
---time --n-warmup 10 --n-iters 20` under `taskset`, the median dispatch over
-the tokens it runs (4 a dispatch), after the run checks that dispatch against
-the oracle:
+Measured on NPU2 (Strix) by the nightly's own run
+(`utils/component_checks/llama_chain_hw.py`, under `taskset -c 2-23`): one
+build at a 128k-row KV cache, then at each context one 4-token dispatch,
+checked against the oracle (every token, KV row, sampler state and final
+residual), then timed as the fastest of 20 after 10 warm-ups:
 
 | Context (position of the first token) | per-token | tok/s |
 |---|---|---|
-| **64** | **47.5 ms** | **21.1** |
-| 4096 | 60.1 ms | 16.6 |
-| 32768 | 132.9 ms | 7.5 |
-| 65536 | 218.2 ms | 4.6 |
-| 131068 | 388.8 ms | 2.6 |
+| **64** | **47.23 ms** | **21.17** |
+| 1024 | 51.14 ms | 19.55 |
+| 2048 | 52.27 ms | 19.13 |
+| 4096 | 60.39 ms | 16.56 |
+| 8192 | 73.58 ms | 13.59 |
+| 16384 | 101.13 ms | 9.89 |
+| 32768 | 153.23 ms | 6.53 |
+| 65536 | 260.48 ms | 3.84 |
+| 131068 | 478.29 ms | 2.09 |
 
-The longer contexts are from an earlier build of this design and are not
-re-measured. Every projection runs on a shared 8-lane GEMV array
-(`kernels/llama_gemv_mma.cc`), and two cores attend each KV head's blocks,
-alternating (`llama_attn_block.cc`).
-
-**What bounds it now.** The layers' weights stream over the array's eight
-lanes (about 52 GB/s), but the lm_head's 262 MB still stream over one lane
-(about 19 ms a token), and attention adds about 2.6 ms per 1k tokens of
-context.
+**What bounds it.** The layers' weights stream over the array's eight lanes
+(about 52 GB/s), the lm_head's 262 MB over one lane (about 19 ms a token), and
+attention adds about 3.3 ms per 1k tokens of context.
 
 **Tokens per dispatch.** amdxdna times a dispatch out after about 5 s. The host
 picks each dispatch's token count from its first position
 (`DecodeShape.passes_for` in `llama_decode.py`): as many of the 4 as fit a 4 s
-budget by a cost model fit to the table above (19 ms of lm_head a token, plus
-per layer 1.80 ms and 0.163 ms per 1k rows of context). At 16 layers that is
-4 tokens all the way to 128k (1.56 s a dispatch there).
+budget by a cost model (19 ms of lm_head a token, plus per layer 1.80 ms and
+0.163 ms per 1k rows of context). At 16 layers that is 4 tokens all the way to
+128k, where a dispatch measures 1.91 s.
 The array's activations and outputs pass through a DDR `stage` buffer
-between it and the cores around it (see `aie2_decode.py`). FastFlowLM reaches
-60–89 tok/s on this model.
+between it and the cores around it (see `aie2_decode.py`). For comparison,
+FastFlowLM v0.9.30 reports 64.5 tok/s at 1k and 13.6 tok/s at 128k for this
+model on a Ryzen AI 7 350 (Krackan)
+([benchmarks](https://fastflowlm.com/docs/benchmarks/llama3_results/)).
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
-> **TTFT** (time to first token). `generate.py` at N=16, the prompt in batches
-> of up to 4 tokens, only the last batch running the lm_head: 6 prompt tokens,
-> TTFT 117 ms (51 prompt tok/s), then 21.2 tok/s.
+> **TTFT** (time to first token). `generate.py` at N=16, from before
+> tokenization to the first generated token, the median of 5 requests on a
+> 6-token prompt: TTFT 124.6 ms (119.4 ms of prefill dispatches, 5.2 ms on the
+> host), then 22.1 tok/s.
 
 ---
 
 ## 3. Accuracy / quality
 
-The device is **bit-exact to its numpy oracle** (`llama_oracle.py`; the
-decode test checks every token, KV row and record against it). The oracle
-follows the INT8 recipe (`numpy_llama_ref.py`) but not bit for bit: its inverse
-square root and attention exp are approximations, so teacher-forced on "The
-capital of France is" the device picks the recipe's argmax on 27 of 32 tokens.
-The question below is whether the INT8 recipe tracks the real model. We compare against the true HF Llama 3.2 1B **bf16** weights
-(loaded full-precision from the safetensors — no torch/transformers needed).
+The device is **bit-exact to its numpy oracle** (`llama_oracle.py`): the
+decode test checks every token, KV row, sampler state and final residual
+against it, and a greedy token must be the oracle's argmax. So scoring the
+oracle against the bf16 Hugging Face model scores the device. The INT8 recipe
+(`numpy_llama_ref.py`) is shown beside it for scale; teacher-forced on "The
+capital of France is", the device picks the recipe's argmax on 28 of 32
+generated tokens. The reference is the true Llama 3.2 1B **bf16** checkpoint,
+loaded from the safetensors (no torch or transformers).
 
+### KL and top-1 against bf16
 
+`test_llama.py -m extensive`'s three prompts (the opening of *King Lear*,
+teacher-forced), mean KL(bf16 ‖ model) of the next-token distributions:
+
+| Prompt | tokens | device KL | device top-1 | recipe KL | recipe top-1 |
+|---|---|---|---|---|---|
+| small | 25 | 0.0713 | 92.0 % | 0.0409 | 88.0 % |
+| medium | 61 | 0.0473 | 91.8 % | 0.0301 | 88.5 % |
+| large | 105 | 0.0409 | 87.6 % | 0.0228 | 91.4 % |
+
+On running prose (`accuracy_vs_hf.py`'s default sample, 47 positions):
+
+| Metric | device | recipe |
+|---|---|---|
+| next-token top-1 agreement | 89.4 % | 89.4 % |
+| argmax in bf16's top 5 | 100 % | 100 % |
+| mean KL(bf16 ‖ model) | 0.0272 | 0.0159 |
+| perplexity ratio (model / bf16) | 1.015× | 0.987× |
 
 ### Next-token greedy agreement on 20 hard prompts (N=16)
 
-`bench_quality_mh.py`. The bf16 column and the old chain's column are from an
-earlier run, of the old chain design (the bf16 checkpoint is not on the box the
-current decode was measured on, so they are not re-measured); the last column is
-the current decode (`aie2_decode.py`), prefilling each prompt on the device:
+`bench_quality_mh.py --path numpy --bf16-ref` (the device's arithmetic,
+prefilling each prompt as the device does), **18/20 = 90 %** against bf16:
 
-| Prompt | HF bf16 (old run) | NPU, old chain vs bf16 | NPU, aie2_decode |
-|---|---|---|---|
-| The capital of France is | ` Paris` | ` Paris` ✓ | ` Paris` |
-| The capital of Italy is | ` Rome` | ` Rome` ✓ | ` Rome` |
-| The capital of Japan is | ` Tokyo` | ` Tokyo` ✓ | ` Tokyo` |
-| The capital of Germany is | ` Berlin` | ` Berlin` ✓ | ` Berlin` |
-| The author of Hamlet is | ` not` | ` a` ✗ | ` a` |
-| The largest planet in our solar system is | ` called` | ` the` ✗ | ` the` |
-| The chemical symbol for water is | ` H` | ` H` ✓ | ` H` |
-| The first president of the United States was | ` George` | ` George` ✓ | ` George` |
-| The opposite of black is | ` white` | ` white` ✓ | ` white` |
-| The number of legs on a spider is | `:\n` | `\n` ✗ | ` a` |
-| Two plus two equals | ` four` | ` four` ✓ | ` four` |
-| The sun rises in the | ` east` | ` east` ✓ | ` east` |
-| Romeo and Juliet was written by | ` William` | ` William` ✓ | ` William` |
-| Mount Everest is in the country of | ` Nepal` | ` Nepal` ✓ | ` Nepal` |
-| The Eiffel Tower is located in | ` the` | ` the` ✓ | ` the` |
-| The boiling point of water in Celsius is | ` ` | ` ` ✓ | ` ` |
-| The smallest prime number is | ` ` | ` ` ✓ | ` ` |
-| Shakespeare wrote in the | ` ` | ` ` ✓ | ` ` |
-| The currency of Japan is the | ` yen` | ` Yen` ✗ | ` Yen` |
-| The Great Wall is in | ` China` | ` the` ✗ | ` China` |
-
-**Old chain vs HF bf16: 15/20 = 75 % top-1**, identical to the numpy INT8
-recipe's 15/20; its 5 misses are benign near-ties (` Yen`/` yen` casing;
-` the`/` China`; ` a`/` not`), not garbage. **aie2_decode vs the INT8 recipe's
-reference forward (`numpy_llama_ref.forward_full`): 16/20 = 80 %**; it differs
-from the old chain on two prompts (` China` for the Great Wall, ` a` for the
-spider), its prompt inputs now being the device's own embed seeds. Its bf16 score
-awaits the checkpoint.
-
-### Perplexity / agreement on prose (N=16)
-
-`accuracy_vs_hf.py` (numpy INT8 vs true bf16, teacher-forced on running text):
-
-| Metric | Value |
-|---|---|
-| next-token top-1 agreement | 94–100 % |
-| int8-argmax in bf16 top-5 | 100 % |
-| perplexity ratio (int8 / bf16) | 1.02–1.08× |
-
-Sub-10 % perplexity degradation and 94–100 % greedy agreement is solid for INT8
-PTQ; the recipe faithfully tracks the real model on natural text. (Hard one-word
-prompts are the harder case — hence 75 % there.)
+| Prompt | bf16 | device |
+|---|---|---|
+| The capital of France is | ` Paris` | ` Paris` |
+| The capital of Italy is | ` Rome` | ` Rome` |
+| The capital of Japan is | ` Tokyo` | ` Tokyo` |
+| The capital of Germany is | ` Berlin` | ` Berlin` |
+| The author of Hamlet is | ` a` | ` a` |
+| The largest planet in our solar system is | ` a` | ` a` |
+| The chemical symbol for water is | ` H` | ` H` |
+| The first president of the United States was | ` George` | ` George` |
+| The opposite of black is | ` white` | ` white` |
+| The number of legs on a spider is | `:\n` | `\n` ✗ |
+| Two plus two equals | ` four` | ` four` |
+| The sun rises in the | ` east` | ` east` |
+| Romeo and Juliet was written by | ` William` | ` William` |
+| Mount Everest is in the country of | ` Nepal` | ` Nepal` |
+| The Eiffel Tower is located in | ` the` | ` the` |
+| The boiling point of water in Celsius is | ` ` | ` ` |
+| The smallest prime number is | ` ` | ` ` |
+| Shakespeare wrote in the | ` ` | ` ` |
+| The currency of Japan is the | ` Japanese` | ` Yen` ✗ |
+| The Great Wall is in | ` the` | ` the` |
 
 ---
 
@@ -236,6 +243,7 @@ cd <mlir-aie>
 source /opt/xilinx/xrt/setup.sh
 source ironenv/bin/activate
 source utils/env_setup.sh install/
+pip install tiktoken          # the tokenizer generate.py and the benches use
 cd programming_examples/ml/llama_3_2_1b
 ```
 
@@ -243,20 +251,25 @@ The gated `meta-llama/Llama-3.2-1B` checkpoint is found where amd/IRON's example
 find it: `model.safetensors` and `tokenizer.model` in
 `$IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/` (`IRON_EXAMPLE_WEIGHTS_DIR` defaults to
 `/srv`); `--weights`/`--tokenizer` (`--hf-weights` for the bf16 reference)
-override it. The INT8 weights live in `data/`, generated from it by
-`gen_llama_data.py`. The bf16 reference reads the safetensors directly.
+override it. The INT8 weights live in `data/`, generated from it once:
+
+```bash
+python gen_llama_data.py      # writes data/: INT8 weights, scales, gammas, tokenizer
+```
+
+The bf16 reference reads the safetensors directly.
 
 The decode test, `test_chain_persist_grow_mh.py`, compiles `aie2_decode.py`
 with `@iron.jit` to a full ELF (cached under `NPU_CACHE_HOME`, so a rerun
 reuses it), or runs a prebuilt one (`--elf`, from
-`python aie2_decode.py ... --full-elf-path X`).
+`python aie2_decode.py ... --full-elf-path X`, which the same JIT key reuses).
 
 `test_llama.py` is the pytest over it. Its default tier (what lit runs) is
 the decode test's cases at 2 layers on synthetic weights. `-m extensive`
 needs data/ and the bf16 safetensors: at 16 layers, on a small, a medium and
-a large prompt (24, 60 and 104 tokens), the oracle's next-token distribution
+a large prompt (25, 61 and 105 tokens), the oracle's next-token distribution
 must stay within a mean KL of the bf16 model's, and every token the device
-generates must be the oracle's greedy pick.
+generates must be the oracle's argmax.
 
 ```bash
 python -m pytest test_llama.py -m "not extensive"
@@ -267,24 +280,24 @@ IRON_EXAMPLE_WEIGHTS_DIR=/path/to/models python -m pytest test_llama.py -m exten
 > it defaults to 2 layers (a fast bring-up check), whose numbers mean nothing
 > for the model. `bench_quality_mh.py` defaults to the model's 16.
 
-### Accuracy (no device — pure numpy)
+### Accuracy (no device: numpy)
 
 ```bash
-# INT8 recipe vs true HF bf16: top-1/top-5 agreement + perplexity on prose
+# the device's arithmetic vs bf16 on prose: top-1/top-5, KL, perplexity
+# (--model recipe scores the INT8 recipe instead)
 python accuracy_vs_hf.py --max-tokens 128
 
-# 20-prompt greedy bench, INT8 recipe vs true HF bf16
-python bench_quality_mh.py --path numpy --bf16-ref --residual-dyn --attn-flowkv
+# 20-prompt greedy bench, the device's arithmetic vs bf16
+python bench_quality_mh.py --path numpy --bf16-ref
 ```
 
-### On silicon: text, and accuracy vs HF bf16
-
-Tokenizing needs tiktoken: `pip install tiktoken`.
+### On silicon: text, and accuracy vs bf16
 
 ```bash
-# prompt in, text out, with TTFT and tok/s (--check fails unless each generated
-# token is the oracle's pick, and reports agreement with numpy_llama_ref)
-python generate.py --prompt "The capital of France is" --max-new 32
+# prompt in, text out, 5 requests timed (--repeats); --check fails unless each
+# generated token is the oracle's argmax, and reports agreement with
+# numpy_llama_ref
+python generate.py --prompt "The capital of France is" --max-new 32 --check
 
 # prefill and predict each prompt on the NPU, vs bf16
 python bench_quality_mh.py --bf16-ref
@@ -304,7 +317,13 @@ python test_chain_persist_grow_mh.py --n-layers 16 --prompt-tokens 6 --vs-batch 
 python test_chain_persist_grow_mh.py --n-layers 16 --sample-temp 0.7 --sample-topk 4
 
 # per-token TPS at full config, after checking the timed dispatch
-python test_chain_persist_grow_mh.py --n-layers 16 --time --n-warmup 10 --n-iters 20
+taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --time
+
+# the context sweep of section 2: one build at 128k, each context checked
+# and timed (the oracle takes about 100 s a token at 128k)
+python aie2_decode.py --n-layers 16 --t 131072 --full-elf-path build/X.elf
+taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --t 131072 \
+    --elf build/X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 131068 --time
 
 # a generation loop: 10 dispatches carrying the KV cache and seed, with the
 # NPU left idle (and suspended) between them
@@ -325,9 +344,9 @@ CompileTime values; `bench_quality_mh.py` takes the first two.
 | `--kset` | the sampler's resident top-k set size (default 8) |
 
 The rest of `build()` in `aie2_decode.py` is on its CLI too: `--p-max`, the
-tokens a dispatch can generate (default 4). `test_compile_time_keys.py` checks
-that each CompileTime value is part of the JIT cache key. Per dispatch, as
-ScratchpadParameters, go the tokens it generates (`--passes`, default by
+tokens a dispatch can generate (1 to 4, default 4). `test_compile_time_keys.py`
+checks that each CompileTime value is part of the JIT cache key. Per dispatch,
+as ScratchpadParameters, go the tokens it generates (`--passes`, default by
 `passes_for`), the first token's position (`--start-pos`) and the sampler's
 temperature, top-k and seed (`--sample-temp`, `--sample-topk`, `--sample-seed`;
 temperature ≤ 0 is greedy, top-k 0 the whole set).
@@ -336,16 +355,21 @@ temperature ≤ 0 is greedy, top-k 0 the whole set).
 
 ## Hardware constraints (AIE2P / IRON)
 
-Real constraints learned during bring-up — apply preemptively to skip build cycles:
+Constraints that shape the design:
 
 1. **Compute-tile DMA budget: 2 in + 2 out per tile.** Pack per-call constants
    (weights + bias + scale) into one `ObjectFifo` payload.
-2. **`Worker(tile=Tile(col, row))` required for multi-column designs** — the
-   auto-placer otherwise piles fifos on col 0 and overflows the shim.
+2. **Placement.** The GEMV array's 8 cores are pinned
+   (`Worker(tile=Tile(...))`, `CORE_TILES`) so each sits above its weight
+   lane's shim column; the SA placer (`--placer=sa_placer`, its seed pinned)
+   places the other cores, since the sequential placer leaves their flows
+   unroutable along the shim row.
 3. **One `Kernel` object per unique C symbol.** Share it across same-signature
    workers; use a distinct symbol per shape.
 4. **L1 is 64 KB/tile.** The KV cache lives in DDR; an attention core holds a
    block of 64 rows at a time.
+5. **32 ScratchpadParameters per design.** The per-pass and per-row
+   parameters share them, which is what holds a dispatch at 4 passes.
 
 ---
 
@@ -360,3 +384,4 @@ settings) as ScratchpadParameters. Next:
 - **Larger prefill batches**: the mma tile has 8 activation slots and the
   design fills 4, its per-row parameters (`pg{m}`, `gat{m}`) sharing the
   32-parameter budget with the passes'.
+- **Long-context attention**: at 128k it takes about 90 % of a token's time.

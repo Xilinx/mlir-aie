@@ -8,6 +8,7 @@ ScratchpadParameters, and a session that prefills and generates."""
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 
 import aie.iron as iron
 import numpy as np
@@ -372,6 +373,26 @@ class DecodeShape:
         return kv
 
 
+@dataclass
+class Generation:
+    """A generation's tokens and times.
+
+    Attributes:
+        tokens: The generated token ids.
+        ttft_s: Seconds from the request's start to the first generated
+            token's readback.
+        prefill_dispatch_s: Of those, the prefill dispatches' start-to-wait
+            time, summed.
+        decode_tok_s: Generated tokens per second after the first, or None
+            when the first one stopped the generation.
+    """
+
+    tokens: list[int]
+    ttft_s: float
+    prefill_dispatch_s: float
+    decode_tok_s: float | None
+
+
 class Decoder:
     """The decode on the NPU: one compiled build, its weights loaded.
 
@@ -388,6 +409,7 @@ class Decoder:
         self.session = DispatchSession(build, elf, **shape.compile_kwargs)
         self.w_t = iron.tensor(shape.pack_wblob(layers, rope), dtype=np.int8)
         self.lmw_t = iron.tensor(pack_lmw(*lm), dtype=np.int8)
+        self.kv_t = None
         self.layers = layers
         self.final_gamma = lm[2]
 
@@ -407,12 +429,12 @@ class Decoder:
         out_t.to("cpu")
         return out_t.numpy().copy(), ms
 
-    def generate(self, prompt, max_new, sample, stop=()):
-        """Prefill `prompt` from an empty KV cache, then generate.
+    def generate(self, prompt, max_new, sample, stop=(), started=None):
+        """Prefill `prompt` into the session's KV cache, then generate.
 
-        The prompt runs in batches (shape.batches), the last one's sample
-        being the first generated token; then each dispatch runs
-        shape.passes_for's many tokens.
+        The first call allocates the KV cache. The prompt runs in batches
+        (shape.batches), the last one's sample being the first generated
+        token; then each dispatch runs shape.passes_for's many tokens.
 
         Args:
             prompt: The prompt's token ids.
@@ -420,11 +442,11 @@ class Decoder:
             sample: The sampler's (temperature, top_k, seed), seeded once
                 for the generation.
             stop: Token ids that end the generation (kept).
+            started: The request's start (time.perf_counter), as early as
+                its tokenization; None starts it here.
 
         Returns:
-            (the generated token ids, seconds to the first one, generated
-            tokens per second after it, or None when the first one stopped
-            the generation).
+            The Generation.
 
         Raises:
             ValueError: The prompt and max_new do not fit the KV cache.
@@ -434,9 +456,15 @@ class Decoder:
                 f"{len(prompt)} prompt tokens and {max_new} more do not fit "
                 f"in t={self.shape.t}"
             )
+        start = time.perf_counter() if started is None else started
+        # A generation reads only the KV rows it wrote, so a stale cache
+        # needs no clearing between requests.
+        if self.kv_t is None:
+            self.kv_t = iron.tensor(
+                np.zeros(self.shape.kv_words, np.int32), dtype=np.int32
+            )
         temperature, top_k, rng_seed = sample
         sampler = (temperature, top_k)
-        kv_t = iron.tensor(np.zeros(self.shape.kv_words, np.int32), dtype=np.int32)
         stage_t = iron.tensor(
             self.shape.pack_stage(
                 self.layers,
@@ -446,13 +474,13 @@ class Decoder:
             ),
             dtype=np.int8,
         )
-        start = time.perf_counter()
         pos = 0
         out = []
+        prefill_ms = 0.0
         sizes = self.shape.batches(0, len(prompt))
         for i, n in enumerate(sizes):
-            records, _ = self.dispatch(
-                kv_t,
+            records, ms = self.dispatch(
+                self.kv_t,
                 stage_t,
                 self.shape.params(
                     pos,
@@ -462,6 +490,7 @@ class Decoder:
                     batch_ends_prompt=i == len(sizes) - 1,
                 ),
             )
+            prefill_ms += ms
             pos += n
             out = tokens_of(records, 1)[:max_new]
         first_at = time.perf_counter()
@@ -470,7 +499,7 @@ class Decoder:
         while pos < end and out[-1] not in stop:
             n = min(self.shape.passes_for(pos), end - pos)
             records, _ = self.dispatch(
-                kv_t, stage_t, self.shape.params(pos, n, sampler)
+                self.kv_t, stage_t, self.shape.params(pos, n, sampler)
             )
             for tok in tokens_of(records, n):
                 out.append(tok)
@@ -478,5 +507,9 @@ class Decoder:
                     break
             pos += n
         done = time.perf_counter()
-        tps = (len(out) - 1) / (done - first_at) if len(out) > 1 else None
-        return out, first_at - start, tps
+        return Generation(
+            out,
+            first_at - start,
+            prefill_ms / 1e3,
+            (len(out) - 1) / (done - first_at) if len(out) > 1 else None,
+        )

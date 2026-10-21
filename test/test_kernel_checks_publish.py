@@ -52,10 +52,17 @@ ROWS = [
         "extra": "x",
     },
     {
-        "name": "add/1024x16/bfloat16/npu_us",
+        "name": "add/1024x16/bfloat16/dispatch_us",
         "unit": "us",
         "value": 193.5,
         "range": "± 1.6; min 172.8 max 202.2 n=50",
+        "extra": "x",
+    },
+    {
+        "name": "add/1024x16/bfloat16/npu_us",
+        "unit": "us",
+        "value": 101.2,
+        "range": "± 1.6; min 80.5 max 109.9 n=50",
         "extra": "x",
     },
     {
@@ -160,7 +167,7 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     assert record["pmode"] == "performance" and record["device"] == "Phoenix"
     assert record["device_raw"] == "RyzenAI-npu1" and record["schema"] == 1
     assert record["provenance"]["host"] == "bench-1"
-    assert record["sane"] and record["published"] and record["n_rows"] == 4
+    assert record["sane"] and record["published"] and record["n_rows"] == 5
     assert record["failed"] == META["failed"]
     assert record["truncated"] == ["swiglu/1024x256/bfloat16"]
     assert record["cases"] == {
@@ -217,6 +224,7 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     assert sorted(p.stem for p in (out / "history").glob("*.json")) == [
         "core_elf_bytes",
         "cycles",
+        "dispatch_us",
         "npu_us",
     ]
 
@@ -944,7 +952,7 @@ def kernel_record(target, date, cycles):
             case: {
                 "cycles": {"value": cycles, "unit": "cycles"},
                 "cycles_per_kop": {"value": 1.5, "unit": "cycles"},
-                "npu_us": {"value": 3378.0, "unit": "us"},
+                "dispatch_us": {"value": 3378.0, "unit": "us"},
             }
             for case in sorted(KERNEL_CASES)
         },
@@ -964,8 +972,8 @@ def test_cycles_the_old_trace_decoder_understated_are_dropped(publish):
     assert publish.upgrade(record)
     assert record["provenance"] == {"peano": "22.0.0+e1", "measurement": "1"}
     wrapped, unwrapped = sorted(KERNEL_CASES)
-    assert record["rows"][wrapped] == {"npu_us": {"value": 3378.0, "unit": "us"}}
-    assert set(record["rows"][unwrapped]) == {"cycles", "cycles_per_kop", "npu_us"}
+    assert record["rows"][wrapped] == {"dispatch_us": {"value": 3378.0, "unit": "us"}}
+    assert set(record["rows"][unwrapped]) == {"cycles", "cycles_per_kop", "dispatch_us"}
     assert not publish.upgrade(record)
 
     # From the fix on, and on npu1, every point stays.
@@ -1004,3 +1012,23 @@ def test_a_redirect_keeps_the_links_own_view(publish, tmp_path):
     assert (
         '<meta http-equiv="refresh" content="0; url=../dashboard/#view=night">' in page
     )
+
+
+def test_a_host_time_from_before_the_split_is_its_dispatch_time(publish):
+    old = kernel_record("npu1", "2026-10-20T06:16:12+00:00", 900)
+    old["provenance"]["measurement"] = "2"
+    for cells in old["rows"].values():
+        cells["npu_us"] = cells.pop("dispatch_us")
+    assert publish.upgrade(old)
+    for cells in old["rows"].values():
+        assert "npu_us" not in cells
+        assert cells["dispatch_us"] == {"value": 3378.0, "unit": "us"}
+    assert not publish.upgrade(old)
+
+    new = kernel_record("npu1", "2026-10-22T06:16:12+00:00", 900)
+    new["provenance"]["measurement"] = "2"
+    for cells in new["rows"].values():
+        cells["npu_us"] = {"value": 3290.5, "unit": "us"}
+    assert not publish.upgrade(new)
+    for cells in new["rows"].values():
+        assert cells["npu_us"]["value"] == 3290.5

@@ -38,6 +38,14 @@ from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 from aie.utils.hostruntime import set_current_device
 
+
+@pytest.fixture(autouse=True)
+def bound_device():
+    """Bind a device for each test, so none opens the NPU to find one."""
+    with set_current_device(NPU2Col1()):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Shared generator factories
 # ---------------------------------------------------------------------------
@@ -1361,6 +1369,42 @@ def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
     assert seen == {
         _compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ())
     }
+
+
+def test_a_design_run_as_a_script_keys_as_its_import(tmp_path):
+    """Running a design's file, by path or with -m, keys it as importing it does."""
+    (tmp_path / "scaled.py").write_text(
+        "from aie.iron.device import NPU2Col1\n"
+        "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "FACTOR = 3\n\n\n"
+        "def scale(x):\n"
+        "    return x * FACTOR\n\n\n"
+        "def design(a, b):\n"
+        "    return scale(a), NPU2Col1()\n\n\n"
+        "def key():\n"
+        "    return _compute_recipe_hash(design, {}, (), ())\n\n\n"
+        "if __name__ == '__main__':\n"
+        "    device = NPU2Col1()\n"
+        "    print(key())\n"
+    )
+    (tmp_path / "importer.py").write_text("import scaled\n\nprint(scaled.key())\n")
+
+    def key(*args):
+        return subprocess.run(
+            [sys.executable, *args],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    imported = key("importer.py")
+    assert key("scaled.py") == imported
+    assert key("-m", "scaled") == imported
+    (tmp_path / "scaled.py").write_text(
+        (tmp_path / "scaled.py").read_text().replace("FACTOR = 3", "FACTOR = 4")
+    )
+    assert key("scaled.py") == key("importer.py") != imported
 
 
 _LAZY_FILES = {

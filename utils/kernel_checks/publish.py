@@ -422,7 +422,11 @@ def upgrade(record: dict) -> bool:
 
     A kernel check's record gets the ``measurement`` that took its cycles:
     ``1`` before ``DECODER_FIXED``, ``2`` since. An npu2 record from before
-    it loses the cycles of the ``UNDERSTATED`` cases.
+    it loses the cycles of the ``UNDERSTATED`` cases. A kernel check's
+    ``npu_us`` from before the check published ``dispatch_us`` was submit to
+    completion, the dispatch's fixed cost included, so it becomes that
+    case's ``dispatch_us``; ``npu_us`` is now the dispatch less an empty
+    one's.
 
     Other records, and records already current, are left as they are.
     """
@@ -471,6 +475,10 @@ def upgrade(record: dict) -> bool:
             for case in UNDERSTATED & rows.keys():
                 for metric in ("cycles", "cycles_per_kop"):
                     rows[case].pop(metric, None)
+    if target in ("npu1", "npu2"):
+        for cells in rows.values():
+            if "npu_us" in cells and "dispatch_us" not in cells:
+                cells["dispatch_us"] = cells.pop("npu_us")
     return json.dumps(record, sort_keys=True) != before
 
 

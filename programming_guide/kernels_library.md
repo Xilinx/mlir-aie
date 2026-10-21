@@ -497,7 +497,12 @@ check prevents publication for the whole run. Each passing case records:
 
 - `cycles`: minimum kernel-call cycles for `Trace.whole_call()` contracts,
   excluding initializers; `cycles_per_kop` normalizes by work.
-- `npu_us`: median host-runtime timing, with median absolute deviation (MAD).
+- `dispatch_us`: median host time from submit to completion of a run, with
+  its median absolute deviation (MAD); the dispatch's fixed cost is in it.
+- `dispatch_overhead_us`: the same for an empty run on the same hardware
+  context, the fixed cost alone.
+- `npu_us`: each run's dispatch less the empty run's median, the time the NPU
+  spent on the kernel's calls.
 - `kernel_object_bytes`: the tested kernel's compiled `.o` size, excluding
   harness, initializer, instruction and runtime-container files. Inline-only
   kernels have no object-size row. This starts a new series rather than

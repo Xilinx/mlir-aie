@@ -2255,13 +2255,59 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //--------------------------------------------------------------------------//
   // Combined full ELF (joins the static configuration + NPU branches)
   //--------------------------------------------------------------------------//
+  // The full ELF's runtime sequences are `npuLowered`'s plus an empty one per
+  // device (`addEmptySequences`), split as `perSeq` and `npuLoweredPerDevice`
+  // are; a device's empty sequence is kept with the sequence --sequence-name
+  // keeps on it.
+  auto &npuLoweredFullElf =
+      npuLowered
+          .map<ModRef>("npu_lowered_full_elf.mlir",
+                       [&context](auto &&item,
+                                  Item<ModRef> &out) -> mlir::LogicalResult {
+                         ModRef mod = asModule(
+                             std::forward<decltype(item)>(item), &context);
+                         if (mlir::failed(addEmptySequences(*mod))) {
+                           return mlir::failure();
+                         }
+                         out.value = std::move(mod);
+                         return mlir::success();
+                       })
+          .takesInput();
+  auto &perSeqFullElf =
+      npuLoweredFullElf
+          .split<OpInModule<RuntimeSequenceOp>>(
+              "npu_seq_full_elf_{0}.mlir",
+              SplitIRAction<RuntimeSequenceOp>([](RuntimeSequenceOp s) {
+                return npuSeqKey(s->getParentOfType<DeviceOp>().getSymName(),
+                                 s.getSymName());
+              }))
+          .filter("perSeqFullElfMatching",
+                  [matchesDeviceFilter, seqFilter = sequenceName.getValue()](
+                      const OpInModule<RuntimeSequenceOp> &x) {
+                    RuntimeSequenceOp seq = x.op;
+                    DeviceOp device = seq->getParentOfType<DeviceOp>();
+                    if (!matchesDeviceFilter(device)) {
+                      return false;
+                    }
+                    if (seqFilter.empty() || seq.getSymName() == seqFilter) {
+                      return true;
+                    }
+                    return seq.getSymName() == kEmptySequenceName &&
+                           RuntimeSequenceOp::getForSymbolInDevice(device,
+                                                                   seqFilter);
+                  });
+  auto &npuLoweredPerDeviceFullElf =
+      splitPerDevice(npuLoweredFullElf, "perDeviceNPULoweredFullElf_{0}.mlir",
+                     "perDeviceNPULoweredFullElfMatching");
+
   // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
   // the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
   // offset for every arg itself. cl::opt defaults to true, so only pass the
   // flag when unfolding is requested.
-  auto &npuProgramFullElf = buildNpuProgramSubgraph(
-      perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false,
-      /*withLocmap=*/false, npuConfigs);
+  auto &npuProgramFullElf =
+      buildNpuProgramSubgraph(perSeqFullElf, "npu_program_full_elf_{0}.bin",
+                              /*foldDDRAddrOffset=*/false,
+                              /*withLocmap=*/false, npuConfigs);
   auto &npuInstsFullElf =
       npuProgramFullElf
           .map<std::vector<char>>(
@@ -2372,7 +2418,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Combined ELF: all PDIs + NPU insts bundled
   // + control packet data, if any.
   auto &fullElfConfig =
-      bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out,
+      bundle(npuLoweredPerDeviceFullElf.out, pdi.out, npuInstsFullElf.out,
              fullElfCtrlpkt.out, fullElfPatchInfo.out)
           .join<llvm::json::Value>(
               "full_elf_config.json",

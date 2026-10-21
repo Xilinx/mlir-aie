@@ -131,8 +131,8 @@ def test_thresholds_match_the_report_and_color_only_past_them(page):
 assert.equal(changeClass(100, 101.9, 'cycles'), '');
 assert.equal(changeClass(100, 102, 'cycles'), 'worse');
 assert.equal(changeClass(100, 98, 'kernel_object_bytes'), 'better');
-assert.equal(changeClass(100, 109, 'npu_us'), '');
-assert.equal(changeClass(100, 110, 'npu_us'), 'worse');
+assert.equal(changeClass(100, 109, 'dispatch_us'), '');
+assert.equal(changeClass(100, 110, 'dispatch_us'), 'worse');
 assert.equal(changeClass(100, 114, 'compile_s'), '');
 assert.equal(changeClass(100, 115, 'compile_s'), 'worse');
 assert.equal(changeClass(1000, 1009, 'final_cost_mean'), '');
@@ -153,7 +153,7 @@ for (const m of SECTIONS.performance.metrics) {
   assert.equal(termOf(m, COMPONENT_METRICS[m]).includes('higher is better'), up.includes(m), m);
 }
 assert.equal(termOf('tok_s', 'x'), 'x; higher is better; counts past 5%');
-assert.equal(termOf('npu_us', 'x'), 'x; counts past 10% and 3× its spread');
+assert.equal(termOf('dispatch_us', 'x'), 'x; counts past 10% and 3× its spread');
 // No description says it on its own any more: the list adds it.
 assert.ok(Object.values(COMPONENT_METRICS).every(about => !about.includes('higher is better')));
 assert.equal(axisTitle('Tokens per second', 'tok_s'), 'Tokens per second · ↑ better');
@@ -176,9 +176,12 @@ assert.ok(trendOf('sa-placer-hw').every(t => !/per image/.test(t.axis) || t.axis
 assert.ok(['us_per_image_b1', 'dispatch_us_per_image_b1'].every(m => COMPONENT_METRICS[m].includes('the fastest of its timed calls')));
 assert.ok(trendOf('yolo26n-hw').every(t => !/per image/.test(t.axis) || t.axis.includes('fastest')));
 assert.ok(!/the median of/.test(COMPONENT_METRICS.us_per_image_b1 + trendOf('yolo26n-hw')[0].about));
-// Llama's timed run takes the median dispatch.
-assert.ok(COMPONENT_METRICS.tok_s.includes('median 4-token dispatch'));
-assert.ok(trendOf('llama-chain-hw')[1].axis.includes('median dispatch'));
+// Llama's timed run takes the fastest of 20 dispatches; generate.py's decode the median of 5 requests.
+assert.ok(COMPONENT_METRICS.tok_s.includes('fastest 4-token dispatch of 20'));
+assert.ok(COMPONENT_METRICS.ms_per_token.includes('fastest 4-token dispatch of 20'));
+assert.ok(COMPONENT_METRICS.decode_tok_s.includes('the median of its 5 requests'));
+assert.ok(trendOf('llama-chain-hw')[1].axis.includes('fastest of 20 dispatches'));
+assert.ok(!/median dispatch|dispatch: median/.test(trendOf('llama-chain-hw').map(t => t.axis + ' ' + (t.about || '')).join(' ')));
 // A host-observed dispatch is never called NPU time; NPU time is the dispatch less its baseline.
 assert.ok(!/NPU time/.test(COMPONENT_METRICS.us_per_image + COMPONENT_METRICS.ms_per_token + COMPONENT_METRICS.dispatch_us_per_image_b1));
 assert.ok(COMPONENT_METRICS.npu_us_per_image.includes("less the same run's empty-dispatch baseline"));
@@ -278,18 +281,27 @@ const card = componentBand(llama, { target: 'llama-chain-hw', runs: swaps.map(n 
 fillSparks(card.cards, data);
 assert.equal((card.cards[0].sparks.get('tok_s').innerHTML.match(/<circle/g) || []).length, 1);
 assert.equal(card.cards[0].sparks.get('tok_s').title, 'the last 2 nightlies');
-// The part is named on the band and its card, and the swap is said once, as a warning.
+// The part is named on the band and its card. A runner that alternates
+// parts is compared with its own part's last night: no change to warn of.
 assert.ok(card.children[0].text.includes('on Strix'));
 assert.ok(card.cards[0].children[0].text.includes('on Strix'));
-assert.ok(card.text.includes('Device changed since the previous run: NPU Krackan 1 → NPU Strix.'));
+assert.ok(!card.text.includes('changed since the previous run'));
 assert.ok(!card.text.includes('kernels changed'));
+// A part's first night is compared with the night before it, and says so.
+const first = componentBand(llama, { target: 'llama-chain-hw', runs: swaps.slice(0, 2).map(n => night(n.id, n.date, 'turbo', { device: n.device, provenance: n.provenance })) },
+                            swaps[1], NOW, swaps[0]);
+assert.ok(first.text.includes('Device changed since the previous run: NPU Strix → NPU Krackan 1.'));
+// And what moved is read against the same part's night.
+const index3 = { runs: swaps.map(n => night(n.id, n.date, 'turbo', { device: n.device, provenance: n.provenance })) };
+assert.equal(previousPublished(index3, { ...swaps[2], pmode: 'turbo' }).id, '1');
+assert.equal(previousPublished(index3, { ...swaps[1], pmode: 'turbo' }).id, '1');
 """)
     page(KERNELS + """
 // The kernel page marks provenance changes and splits a time by part.
 const k = (id, day, us, device, kernels) => ({ ...rec(id, Date.parse(`2026-10-0${day}T06:00:00Z`), 'turbo', {
-  'softmax/1024/bfloat16/npu_us': ['us', us], 'softmax/1024/bfloat16/cycles': ['cycles', 1000] }), provenance: { device, kernels } });
+  'softmax/1024/bfloat16/dispatch_us': ['us', us], 'softmax/1024/bfloat16/cycles': ['cycles', 1000] }), provenance: { device, kernels } });
 db = fromRecords({ npu2: [k('1', 1, 80, 'NPU Strix', 'a'), k('2', 2, 77, 'NPU Krackan 1', 'a'), k('3', 3, 81, 'NPU Strix', 'b')] });
-const us = kernelTrendConfig(db, 'npu2', 'softmax', 'npu_us');
+const us = kernelTrendConfig(db, 'npu2', 'softmax', 'dispatch_us');
 assert.deepEqual(us.data.datasets.map(d => d.label), ['1024/bfloat16 · Strix', '1024/bfloat16 · Krackan']);
 assert.deepEqual(us.plugins, [MARKERS]);
 assert.deepEqual(us.options.plugins.markers.at.map(m => m.index), [1, 2]);
@@ -297,7 +309,7 @@ const cycles = kernelTrendConfig(db, 'npu2', 'softmax', 'cycles');
 assert.deepEqual(cycles.data.datasets.map(d => [d.label, d.data]), [['1024/bfloat16', [1000, 1000, 1000]]]);
 assert.deepEqual(cycles.options.plugins.tooltip.callbacks.title([{ dataIndex: 2 }]), ['3 Oct, 06:00 UTC', 'changed: device NPU Strix, kernels b']);
 // The window compares a time on one part only.
-assert.deepEqual(windowChanges(db, 'npu2', 'npu_us').map(x => [x.then, x.now]), [[80, 81]]);
+assert.deepEqual(windowChanges(db, 'npu2', 'dispatch_us').map(x => [x.then, x.now]), [[80, 81]]);
 """)
 
 
@@ -323,7 +335,14 @@ assert.equal(changeClass(0, 1, 'max_ulp'), 'worse');
 assert.equal(changeClass(4, 4, 'max_ulp'), '');
 assert.equal(thresholdText('compile_place_s'), 'counts past 15% and a change of 0.5');
 assert.equal(thresholdText('max_ulp'), 'counts past a change of 1');
-assert.equal(thresholdText('npu_us'), 'counts past 10% and 3× its spread');
+assert.equal(thresholdText('dispatch_us'), 'counts past 10% and 3× its spread');
+// The NPU time keeps the dispatch's rule with a floor: a small kernel's is a few µs.
+assert.equal(thresholdText('npu_us'), 'counts past 10% and a change of 2 and 3× its spread');
+assert.equal(changeClass(5, 6.5, 'npu_us'), '');
+assert.equal(changeClass(50, 60, 'npu_us'), 'worse');
+// The empty dispatch is the host's and the runtime's: shown, never judged.
+assert.equal(changeClass(90, 300, 'dispatch_overhead_us'), '');
+assert.deepEqual(['dispatch_us', 'dispatch_overhead_us', 'npu_us'].map(label), ['Dispatch time', 'Dispatch overhead', 'NPU time']);
 // The router's failed mutations went 0 -> 2: flagged, said as "+2", not a percentage.
 const before = routerRecord('6', '2026-10-01T03:17:00Z', 0);
 before.rows.npu1.failed_mutations = cell(0, 'cases');
@@ -451,25 +470,13 @@ assert.deepEqual(kernelTrendConfig(two, 'npu2', 'bn_conv2dk3', 'cycles').options
 """)
 
 
-def test_static_dispatch_records_are_not_spliced_into_the_trend(page):
-    page(COMPONENT_RUNS + HW_NIGHTS + """
-// publish.py keeps an old static record's per-batch times under mobilenet/seed=S/batch=B.
-const old = { ...hwBefore, id: '5', date: '2026-09-30T06:30:00Z', provenance: { dispatch: 'static' },
-  rows: { 'mobilenet/seed=3/batch=1': { us_per_image: { value: 500, unit: 'us' } }, 'mobilenet/seed=3/batch=16': { us_per_image: { value: 150, unit: 'us' } } } };
-const data = collect(historiesOf('sa-placer-hw', [old, hwBefore, hwAfter]));
-const trend = trendConfig(data, hw.trend.find(t => t.id === 'us_per_image'));
-assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
-  [['batch 1', [295.7, 295.7]], ['batch 16', [98.5, 101.95]]]);
-""")
-
-
 def test_llama_decode_by_context_is_a_line_per_context(page):
     page(COMPONENT_RUNS + LLAMA_NIGHTS + """
 // The context sweep: one compile, timed at each start position; a series per context.
 const swept = (id, date, night) => {
   const r = llamaRecord(id, date, 4.37);
   for (const [ctx, ...ms] of [[1024, 52, 57.2], [8192, 70, 77], [131072, 390, 429]]) {
-    r.rows[`${LLAMA}/ctx=${ctx}`] = { ms_per_token: { value: ms[night], unit: 'ms' }, decode_tok_s: { value: 1000 / ms[night], unit: 'tok/s' } };
+    r.rows[`${LLAMA}/ctx=${ctx}`] = { ms_per_token: { value: ms[night], unit: 'ms' }, tok_s: { value: 1000 / ms[night], unit: 'tok/s' } };
   }
   return r;
 };
@@ -477,12 +484,12 @@ const data = collect(historiesOf('llama-chain-hw', [swept('6', llamaBefore.date,
 const tab = llama.trend.find(t => t.id === 'decode_by_context');
 assert.equal(tab.name, 'Decode by context');
 const config = trendConfig(data, tab);
-// Decode tokens per second, higher is better, as mlir-air and FastFlowLM tabulate it.
+// The dispatch rate per context, higher is better, as mlir-air and FastFlowLM tabulate decode.
 const lines = config.data.datasets.filter(d => !d.band);
 assert.deepEqual(lines.map(d => [d.label, d.data.map(v => Math.round(v * 100) / 100)]),
   [['1k context', [19.23, 17.48]], ['8k context', [14.29, 12.99]], ['128k context', [2.56, 2.33]]]);
 assert.equal(config.options.scales.y.type, 'logarithmic');
-assert.equal(config.options.scales.y.title.text, 'Decode tokens per second (median dispatch) · ↑ better');
+assert.equal(config.options.scales.y.title.text, 'Dispatch rate, tokens per second (fastest of 20 dispatches) · ↑ better');
 // The time per token on hover.
 assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[2], dataIndex: 1, raw: 1000 / 429 }),
              '128k context: 2.33 tok/s, dispatch / token 429 ms');
@@ -529,8 +536,8 @@ assert.ok(hops.max - hops.min >= 1.035 * 0.01 * 2.5);
 // Bank sharing, 0.31 to 0.33: not 0 to 1.33.
 const sharing = yRange([{ data: [0.31, 0.33] }], 'bank_pair_sharing');
 assert.ok(sharing.min > 0.28 && sharing.max < 0.36, JSON.stringify(sharing));
-// A flat series still spans its threshold: npu_us at 100, 10%.
-const flat = yRange([{ data: [100, 100] }], 'npu_us');
+// A flat series still spans its threshold: dispatch_us at 100, 10%.
+const flat = yRange([{ data: [100, 100] }], 'dispatch_us');
 assert.deepEqual(flat, { min: 87.5, max: 112.5 });
 // An abs-only metric pads by its floor; all zeros still draw an axis.
 assert.deepEqual(yRange([{ data: [0, 0] }], 'max_ulp_float32'), { min: 0, max: 1.25 });
@@ -727,7 +734,7 @@ for (const m of [...published, ...ALL_METRICS]) {{
   assert.ok(m in METRICS || m in COMPONENT_METRICS, `${{m}} has no description`);
 }}
 // A chart's tooltip formats its value as its ticks do.
-db = fromRecords({{ npu1: [rec('1', 1, 'turbo', {{ 'a/1/i8/npu_us': ['us', 80.25] }}), rec('2', 2, 'turbo', {{ 'a/1/i8/npu_us': ['us', 81] }})] }});
+db = fromRecords({{ npu1: [rec('1', 1, 'turbo', {{ 'a/1/i8/dispatch_us': ['us', 80.25] }}), rec('2', 2, 'turbo', {{ 'a/1/i8/dispatch_us': ['us', 81] }})] }});
 draw(el0, groupOf(db), ['turbo'], db);
 const tick = chart.options.scales.y.ticks.callback(81);
 assert.equal(chart.options.plugins.tooltip.callbacks.label({{ dataset: chart.data.datasets[0], dataIndex: 1, raw: 81 }}), `npu1: ${{tick}}`);
@@ -772,7 +779,7 @@ assert.deepEqual(add.byMode.get('default').map(p => p.row), [{ value: 78, unit: 
 assert.deepEqual(add.byMode.get('performance').map(p => p.row), [{ value: 80, unit: 'cycles' }]);
 assert.deepEqual([...db.series.find(s => s.kase === 'relu/1024/bf16').byMode.keys()], ['performance']);
 // A second metric's file over the same runs adds series, not runs.
-db = collect([history, { ...history, metric: 'npu_us', unit: 'us', series: { 'add/1024x16/bfloat16': { values: [1, 2] } } }]);
+db = collect([history, { ...history, metric: 'dispatch_us', unit: 'us', series: { 'add/1024x16/bfloat16': { values: [1, 2] } } }]);
 assert.equal(db.order.length, 2);
 assert.equal(db.series.length, 3);
 """)
@@ -790,10 +797,10 @@ global.fetch = async url => {
   }) };
 };
 (async () => {
-  let h = await loadHistories(['npu1'], ['cycles', 'npu_us']);
+  let h = await loadHistories(['npu1'], ['cycles', 'dispatch_us']);
   assert.equal(h.series.length, 1);
   h = await loadHistories(['npu1'], ['cycles']);
-  assert.deepEqual(fetched, ['../kernel-checks/npu1/history/cycles.json', '../kernel-checks/npu1/history/npu_us.json']);
+  assert.deepEqual(fetched, ['../kernel-checks/npu1/history/cycles.json', '../kernel-checks/npu1/history/dispatch_us.json']);
 
   const index = { runs: [
     { id: 'a', pmode: 'default', published: true },
@@ -869,7 +876,7 @@ assert.equal(latestMove(db.series[0], ['performance']), null);
 
 def test_npu_us_deviation_is_a_band_outside_the_legend_and_tooltip(page):
     page("""
-const us = (v, range) => ({ 'softmax/1024x16/bfloat16/npu_us': ['us', v, range] });
+const us = (v, range) => ({ 'softmax/1024x16/bfloat16/dispatch_us': ['us', v, range] });
 db = fromRecords({ npu1: [
   rec('1', 100000, 'turbo', us(50, 'min 40.0 max 60.0 n=50')),
   rec('2', 200000, 'turbo', us(40, '± 2.5; min 38.0 max 45.0 n=50')),
@@ -1040,13 +1047,13 @@ assert.equal(plain.title, 'fastest 78, median 87, slowest 131 over 16 calls');
 MOVED = """
 const r1 = rec('1', 1000, 'turbo', {
   'relu/1024/bf16/cycles': ['cycles', 1000], 'relu/1024/bf16/cycles_per_kop': ['cycles/1k-ops', 10],
-  'relu/1024/bf16/npu_us': ['us', 100], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
+  'relu/1024/bf16/dispatch_us': ['us', 100], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
   'gelu/1024/bf16/cycles': ['cycles', 2000], 'gone/1/i8/cycles': ['cycles', 10],
   'flat/1/i8/cycles': ['cycles', 500],
 });
 const r2 = rec('2', 2000, 'turbo', {
   'relu/1024/bf16/cycles': ['cycles', 1030], 'relu/1024/bf16/cycles_per_kop': ['cycles/1k-ops', 10.3],
-  'relu/1024/bf16/npu_us': ['us', 150], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
+  'relu/1024/bf16/dispatch_us': ['us', 150], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
   'gelu/1024/bf16/cycles': ['cycles', 1500], 'flat/1/i8/cycles': ['cycles', 505],
   'fresh/1/i8/cycles': ['cycles', 5],
 });
@@ -1061,7 +1068,7 @@ const moved = movedSeries(db, 'npu1');
 // latest point, fresh/ no previous one, flat/ moved 1%.
 assert.deepEqual(moved.regressed.map(x => [x.series.kase, x.series.metric, x.before, x.after]), [
   ['relu/1024/bf16', 'cycles', 1000, 1030],
-  ['relu/1024/bf16', 'npu_us', 100, 150],
+  ['relu/1024/bf16', 'dispatch_us', 100, 150],
 ]);
 assert.deepEqual(moved.improved.map(x => [x.series.kase, x.series.metric]), [['gelu/1024/bf16', 'cycles']]);
 assert.equal(movedSeries(db, 'npu2').regressed.length, 0);
@@ -1483,26 +1490,26 @@ def test_npu_us_moves_only_past_its_noise(page):
     page("""
 const us = (value, mad) => ({ value, unit: 'us', ...(mad === undefined ? {} : { range: `± ${mad}; min 1 max 2 n=50` }) });
 // 20% moves: past 3x a 1 us MAD; not past 3x 10 us (either run's); no MAD, the percentage alone.
-assert.equal(verdict('npu_us', us(100, 1), us(120, 1)), 'worse');
-assert.equal(verdict('npu_us', us(100, 10), us(120, 1)), '');
-assert.equal(verdict('npu_us', us(100, 1), us(120, 7)), '');
-assert.equal(verdict('npu_us', us(100), us(120)), 'worse');
-assert.equal(verdict('npu_us', us(120, 1), us(100, 1)), 'better');
+assert.equal(verdict('dispatch_us', us(100, 1), us(120, 1)), 'worse');
+assert.equal(verdict('dispatch_us', us(100, 10), us(120, 1)), '');
+assert.equal(verdict('dispatch_us', us(100, 1), us(120, 7)), '');
+assert.equal(verdict('dispatch_us', us(100), us(120)), 'worse');
+assert.equal(verdict('dispatch_us', us(120, 1), us(100, 1)), 'better');
 // Many MADs but under 10%.
-assert.equal(verdict('npu_us', us(100, 0.1), us(105, 0.1)), '');
+assert.equal(verdict('dispatch_us', us(100, 0.1), us(105, 0.1)), '');
 // Other metrics ignore the range.
 assert.equal(verdict('cycles', { value: 100, range: '± 50' }, { value: 103 }), 'worse');
 
 db = fromRecords({ npu1: [
-  rec('1', 1000, 'performance', { 'noisy/1/bf16/npu_us': ['us', 100, '± 10.0; min 1 max 2 n=50'],
-                                   'steady/1/bf16/npu_us': ['us', 100, '± 1.0; min 1 max 2 n=50'] }),
-  rec('2', 2000, 'performance', { 'noisy/1/bf16/npu_us': ['us', 125, '± 10.0; min 1 max 2 n=50'],
-                                  'steady/1/bf16/npu_us': ['us', 125, '± 1.0; min 1 max 2 n=50'] }),
+  rec('1', 1000, 'performance', { 'noisy/1/bf16/dispatch_us': ['us', 100, '± 10.0; min 1 max 2 n=50'],
+                                   'steady/1/bf16/dispatch_us': ['us', 100, '± 1.0; min 1 max 2 n=50'] }),
+  rec('2', 2000, 'performance', { 'noisy/1/bf16/dispatch_us': ['us', 125, '± 10.0; min 1 max 2 n=50'],
+                                  'steady/1/bf16/dispatch_us': ['us', 125, '± 1.0; min 1 max 2 n=50'] }),
 ]});
 assert.deepEqual(movedSeries(db, 'npu1').regressed.map(x => x.series.kase), ['steady/1/bf16']);
 const { cases } = latestCases(db, 'npu1');
-assert.equal(cases.get('noisy/1/bf16').metrics.get('npu_us').cls, '');
-assert.equal(cases.get('steady/1/bf16').metrics.get('npu_us').cls, 'worse');
+assert.equal(cases.get('noisy/1/bf16').metrics.get('dispatch_us').cls, '');
+assert.equal(cases.get('steady/1/bf16').metrics.get('dispatch_us').cls, 'worse');
 const move = latestMove(db.series.find(s => s.kase === 'noisy/1/bf16'), ['performance']);
 assert.deepEqual(move, { change: 0.25, delta: 25, cls: '', since: 1000 });
 """)
@@ -2450,6 +2457,31 @@ assert.equal(summary, " Seed 3's NPU time is 248.7 µs per image at batch 1, 117
 // The trend chart draws the full-effort lines.
 const trend = trendConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend.find(t => t.id === 'us_per_image'));
 assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => d.label), ['batch 1', 'batch 16']);
+""")
+
+
+def test_a_static_design_s_history_charts_as_its_own_line(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+// A night from before the effort sweep: a static design per batch, its
+// times still keyed by seed and batch (publish.py's upgrade keeps them so).
+const staticRows = { mobilenet: { failed_seeds: { value: 0, unit: 'seeds' } } };
+for (const [seed, batch, us] of [[3, 1, 300], [7, 1, 310], [3, 16, 100], [7, 16, 104]]) {
+  staticRows[`mobilenet/seed=${seed}/batch=${batch}`] = { us_per_image: { value: us, unit: 'us' } };
+}
+const old = { ...hwBefore, id: '5', date: '2026-09-30T06:30:00Z', rows: staticRows, detail: [] };
+const read = collect(historiesOf('sa-placer-hw', [old, hwBefore, hwAfter]));
+const statics = seedMeans(read).series.filter(s => s.kase.endsWith('/dispatch=static'));
+assert.deepEqual(statics.map(s => [s.kase, s.byMode.get('turbo').map(p => p.row.value)]).sort(),
+                 [['mobilenet/batch=1/dispatch=static', [305]], ['mobilenet/batch=16/dispatch=static', [102]]]);
+// Beside the current design's lines, never joined to them.
+const trend = trendConfig(read, hw.trend.find(t => t.id === 'us_per_image'));
+const lines = trend.data.datasets.filter(d => !d.band);
+assert.deepEqual(lines.map(d => [d.label, d.data]), [
+  ['batch 1, static design', [305, null, null]], ['batch 1', [null, 295.7, 295.7]],
+  ['batch 16, static design', [102, null, null]], ['batch 16', [null, 98.5, 101.95]]]);
+// Only the static history: its lines alone, and the note names no effort.
+const onlyOld = trendConfig(collect(historiesOf('sa-placer-hw', [old])), hw.trend.find(t => t.id === 'us_per_image'));
+assert.deepEqual(onlyOld.data.datasets.filter(d => !d.band).map(d => d.label), ['batch 1, static design', 'batch 16, static design']);
 """)
 
 

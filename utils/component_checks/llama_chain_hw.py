@@ -4,14 +4,19 @@
 r"""Build and run the Llama 3.2 1B decode on NPU2.
 
 Does the full N=16 persistent, growing-KV decode still build, match its
-numpy oracle and run at the expected rate on real hardware. Compiles once
-with the design's own CLI (aie2_decode.py), then runs that full ELF through
-test_chain_persist_grow_mh.py (every token, KV row and final residual
-against the oracle, then ``--time``) and generate.py ``--check`` (a prompt
-in, tokens out, each generated token the oracle's greedy pick). Every run
-must exit 0, and generate.py's ``oracle:`` line must pass every token. One
-run, no seed sweep: the design pins its SA placer seed (aie2_decode.build's
-aiecc flags).
+numpy oracle and run at the expected rate on real hardware. Compiles once,
+at a 128k-row KV cache, with the design's own CLI (aie2_decode.py), then runs
+that one full ELF through:
+- test_chain_persist_grow_mh.py --contexts: a dispatch of 4 tokens at
+  DISPATCH_RATE_AT and at each of CONTEXTS, from one random KV prefix, every
+  token, KV row and final residual checked against the oracle, then timed
+  (the fastest of 20 after 10 warmups). Attention reads only the live
+  prefix, so the one build times every context;
+- generate.py --check: a prompt in, tokens out, 5 requests, each generated
+  token the oracle's greedy pick; its time to first token runs from before
+  tokenization, split into the prefill dispatches and the host's rest.
+Every run must exit 0 and pass every token. One run, no seed sweep: the
+design pins its SA placer seed (aie2_decode.build's aiecc flags).
 
 Needs the real Llama 3.2 1B checkpoint where amd/IRON's examples keep it,
 ``$IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/`` (default ``/srv``; see
@@ -28,20 +33,24 @@ toolchain; ``--pmode`` refuses to measure in any other mode. Exits 1 when
 any run fails or the check refuses, after writing both. Reproduced, from
 programming_examples/ml/llama_3_2_1b, with
 
-    python3 test_chain_persist_grow_mh.py --n-layers 16 --time
-    python3 generate.py --prompt "The capital of France is" --check
+    python3 aie2_decode.py --n-layers 16 --t 131072 --full-elf-path X.elf
+    python3 test_chain_persist_grow_mh.py --n-layers 16 --t 131072 \
+        --elf X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 \
+        131068 --time
+    python3 generate.py --t 131072 --elf X.elf \
+        --prompt "The capital of France is" --check
 """
 
 import argparse
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 
 from aiecc_stages import (
     PROFILE_NAME,
+    Measured,
     add_pmode_argument,
     compile_rows,
     compile_stats,
@@ -50,14 +59,22 @@ from aiecc_stages import (
     run_measured,
     stage_rows,
     write,
+    write_unfinished,
 )
 
 N_LAYERS = 16
 P_MAX = 4
+T = 131072
+# The positions of the timed dispatches' first tokens: 64 for the dispatch
+# rate the earlier nightlies charted, then the contexts of the sweep.
+DISPATCH_RATE_AT = 64
+CONTEXTS = (1024, 2048, 4096, 8192, 16384, 32768, 65536, 131068)
 N_ITERS = 20
 N_WARMUP = 10
-# The position of the timed dispatch's first token.
-DISPATCH_RATE_AT = 64
+DATA_TIMEOUT = 1800
+COMPILE_TIMEOUT = 1800
+DECODE_TIMEOUT = 2400
+GENERATE_TIMEOUT = 900
 
 _LLAMA_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "programming_examples", "ml", "llama_3_2_1b"
@@ -75,15 +92,16 @@ _DECODE_RE = re.compile(
     re.MULTILINE,
 )
 _GENERATE_RE = re.compile(
-    r"TTFT ([\d.]+) ms \(([\d.]+) prompt tok/s\), decode (?:([\d.]+) tok/s|n/a)"
+    r"median of (\d+): TTFT ([\d.]+) ms \(min ([\d.]+); NPU dispatch ([\d.]+), "
+    r"host ([\d.]+)\), decode (?:([\d.]+) tok/s|n/a)"
 )
 _CHECK_RE = re.compile(r"check: (\d+)/(\d+) tokens")
 _ORACLE_RE = re.compile(r"^oracle: (\d+)/(\d+) generated tokens pass", re.MULTILINE)
 # generate.py's prompt and length, the same every night.
 GENERATE_PROMPT = "The capital of France is"
 GENERATE_NEW = 32
-_ELF = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}.elf"
-_PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}.prj"
+_ELF = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}_T{T}.elf"
+_PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}_T{T}.prj"
 _PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
 # What generate.py and the decode test read from data/.
 DATA_FILES = (
@@ -95,11 +113,7 @@ DATA_FILES = (
 )
 
 # The design's CompileTime values, which the test script takes too.
-_SHAPE_ARGS = [f"--p-max={P_MAX}", "--kset=8", f"--n-layers={N_LAYERS}", "--t=128"]
-
-
-def _run(cmd: list[str], env: dict) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=_LLAMA_DIR, env=env, capture_output=True, text=True)
+_SHAPE_ARGS = [f"--p-max={P_MAX}", "--kset=8", f"--n-layers={N_LAYERS}", f"--t={T}"]
 
 
 def missing_data() -> list[str]:
@@ -111,7 +125,7 @@ def missing_data() -> list[str]:
 
 def ensure_data(
     weights: str | None, tokenizer: str | None, env: dict
-) -> subprocess.CompletedProcess | None:
+) -> Measured | None:
     """Generate data/ once, if this checkout doesn't already have all of it."""
     if not missing_data():
         return None
@@ -120,7 +134,7 @@ def ensure_data(
         args += ["--weights", weights]
     if tokenizer:
         args += ["--tokenizer", tokenizer]
-    return _run(args, env)
+    return run_measured(args, _LLAMA_DIR, env, DATA_TIMEOUT)
 
 
 def _clean_build_outputs() -> None:
@@ -137,90 +151,78 @@ def _clean_build_outputs() -> None:
         shutil.rmtree(proj)
 
 
-def compile_cold_warm(env: dict) -> dict:
-    """Compile twice into one fresh NPU_CACHE_HOME: cold, then warm.
+def compile_cold_warm(env: dict, cache_dir: str) -> dict:
+    """Compile twice into the fresh NPU_CACHE_HOME ``cache_dir``: cold, then warm.
 
     Cold: every cache empty, same as any first-time compile. Warm: only the
     cold compile's kernel objects (NPU_CACHE_HOME/objects) are kept -- the
     whole-build and per-device caches and the outputs are cleared first, so
     the warm compile reruns the full pipeline, which is what an edit to the
-    design (not its kernels) costs.
+    design (not its kernels) costs. The warm compile's build stays in
+    ``cache_dir`` for the runs.
     """
-    cache_dir = tempfile.mkdtemp(prefix="component-checks-llama-chain-")
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
     profile = os.path.join(_LLAMA_DIR, _PROFILE)
-    try:
-        os.makedirs(os.path.join(_LLAMA_DIR, "build"), exist_ok=True)
-        build = [
-            sys.executable,
-            "aie2_decode.py",
-            *_SHAPE_ARGS,
-            "--full-elf-path",
-            _ELF,
-        ]
-        _clean_build_outputs()
-        cold = run_measured(build, _LLAMA_DIR, run_env)
-        stages_cold = stage_rows(
-            profile, cold[1] if cold[0].returncode == 0 else None, ""
-        )
+    os.makedirs(os.path.join(_LLAMA_DIR, "build"), exist_ok=True)
+    build = [
+        sys.executable,
+        "aie2_decode.py",
+        *_SHAPE_ARGS,
+        "--full-elf-path",
+        _ELF,
+    ]
+    _clean_build_outputs()
+    cold = run_measured(build, _LLAMA_DIR, run_env, COMPILE_TIMEOUT, tree_peak=True)
+    stages_cold = stage_rows(
+        profile, cold.seconds if cold.process.returncode == 0 else None, ""
+    )
 
-        _clean_build_outputs()
-        for layer in ("builds", "devices"):
-            shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
-        warm = run_measured(build, _LLAMA_DIR, run_env)
-        stages_warm = stage_rows(
-            profile, warm[1] if warm[0].returncode == 0 else None, "_warm"
-        )
-    finally:
-        shutil.rmtree(cache_dir, ignore_errors=True)
+    _clean_build_outputs()
+    for layer in ("builds", "devices"):
+        shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
+    warm = run_measured(build, _LLAMA_DIR, run_env, COMPILE_TIMEOUT, tree_peak=True)
+    stages_warm = stage_rows(
+        profile, warm.seconds if warm.process.returncode == 0 else None, "_warm"
+    )
 
     return {
         **stages_cold,
         **stages_warm,
-        "built": warm[0] if warm[0].returncode == 0 else cold[0],
+        "built": warm.process if warm.process.returncode == 0 else cold.process,
         **compile_stats(cold, warm),
-        "log": cold[0].stdout + warm[0].stdout,
     }
 
 
-def run_correctness(env: dict) -> subprocess.CompletedProcess:
-    return _run(
+def run_decode(env: dict) -> Measured:
+    """Run the checked and timed dispatches at DISPATCH_RATE_AT and CONTEXTS."""
+    return run_measured(
         [
             sys.executable,
             "test_chain_persist_grow_mh.py",
             *_SHAPE_ARGS,
             "--elf",
             _ELF,
-        ],
-        env,
-    )
-
-
-def run_timed(env: dict) -> subprocess.CompletedProcess:
-    return _run(
-        [
-            sys.executable,
-            "test_chain_persist_grow_mh.py",
-            *_SHAPE_ARGS,
-            "--elf",
-            _ELF,
-            "--start-pos",
-            str(DISPATCH_RATE_AT),
+            "--contexts",
+            *(str(at) for at in (DISPATCH_RATE_AT, *CONTEXTS)),
             "--time",
             "--n-iters",
             str(N_ITERS),
             "--n-warmup",
             str(N_WARMUP),
         ],
+        _LLAMA_DIR,
         env,
+        DECODE_TIMEOUT,
     )
 
 
-def run_generate(env: dict) -> subprocess.CompletedProcess:
-    return _run(
+def run_generate(env: dict) -> Measured:
+    """Run generate.py --check on GENERATE_PROMPT."""
+    return run_measured(
         [
             sys.executable,
             "generate.py",
+            f"--t={T}",
             "--elf",
             _ELF,
             "--prompt",
@@ -229,7 +231,9 @@ def run_generate(env: dict) -> subprocess.CompletedProcess:
             str(GENERATE_NEW),
             "--check",
         ],
+        _LLAMA_DIR,
         env,
+        GENERATE_TIMEOUT,
     )
 
 
@@ -241,11 +245,13 @@ def parse_generate(out: str, returncode: int) -> dict:
         returncode: Its exit status.
 
     Returns:
-        TTFT, the prompt and decode rates (None when its run printed none:
-        a stop as the first token leaves no decode rate), its agreement with
-        numpy_llama_ref, the oracle's count of passing generated tokens, and
-        `generate_passed`: it exited 0 and the oracle passed every one of at
-        least one generated token.
+        Over its requests, the median time to first token, the fastest, and
+        the median one's NPU dispatch and host parts (ms), and the median
+        decode rate (None when its run printed none: a stop as the first
+        token leaves no decode rate); its agreement with numpy_llama_ref, the
+        oracle's count of passing generated tokens, and `generate_passed`: it
+        exited 0 and the oracle passed every one of at least one generated
+        token.
     """
     timing = _GENERATE_RE.search(out)
     check = _CHECK_RE.search(out)
@@ -256,10 +262,13 @@ def parse_generate(out: str, returncode: int) -> dict:
         "generate_passed": returncode == 0 and 0 < oracle_passed == oracle_total,
         "oracle_passed": oracle_passed,
         "oracle_total": oracle_total,
-        "ttft_ms": float(timing.group(1)) if timing else None,
-        "prompt_tok_s": float(timing.group(2)) if timing else None,
+        "ttft_runs": int(timing.group(1)) if timing else None,
+        "ttft_ms": float(timing.group(2)) if timing else None,
+        "ttft_min_ms": float(timing.group(3)) if timing else None,
+        "ttft_npu_dispatch_ms": float(timing.group(4)) if timing else None,
+        "ttft_host_ms": float(timing.group(5)) if timing else None,
         "decode_tok_s": (
-            float(timing.group(3)) if timing and timing.group(3) else None
+            float(timing.group(6)) if timing and timing.group(6) else None
         ),
         "greedy_agree": int(check.group(1)) if check else None,
         "greedy_total": int(check.group(2)) if check else None,
@@ -352,18 +361,26 @@ def aggregate(
             f"of {correctness['tokens_total']}",
         )
     ]
-    if DISPATCH_RATE_AT in timing:
-        t = timing[DISPATCH_RATE_AT]
+    for at, t in timing.items():
         note = f"fastest of {t['n_iters']}, {t['tokens_per_dispatch']} tokens/dispatch"
-        out.append(row(case, "ms_per_token", t["ms_per_token"], "ms", note))
-        out.append(row(case, "tok_s", t["tok_s"], "tok/s", note))
+        if at == DISPATCH_RATE_AT:
+            out.append(row(case, "ms_per_token", t["ms_per_token"], "ms", note))
+            out.append(row(case, "tok_s", t["tok_s"], "tok/s", note))
+        elif at in CONTEXTS:
+            ctx = f"{case}/ctx={at}"
+            out.append(row(ctx, "ms_per_token", t["ms_per_token"], "ms", note))
+            out.append(row(ctx, "tok_s", t["tok_s"], "tok/s", note))
     for metric, unit in (
         ("ttft_ms", "ms"),
-        ("prompt_tok_s", "tok/s"),
+        ("ttft_min_ms", "ms"),
+        ("ttft_npu_dispatch_ms", "ms"),
+        ("ttft_host_ms", "ms"),
         ("decode_tok_s", "tok/s"),
     ):
         if generated["generate_passed"] and generated[metric] is not None:
-            out.append(row(case, metric, generated[metric], unit))
+            stat = "fastest" if metric == "ttft_min_ms" else "median"
+            note = f"{stat} of {generated['ttft_runs']}"
+            out.append(row(case, metric, generated[metric], unit, note))
     if generated["generate_passed"] and generated["greedy_agree"] is not None:
         out.append(
             row(
@@ -407,6 +424,8 @@ def main(argv=None) -> int:
         "provenance": provenance(device=pre.device, pmode=pre.pmode),
         "n_layers": N_LAYERS,
         "pt": P_MAX,
+        "t": T,
+        "contexts": [DISPATCH_RATE_AT, *CONTEXTS],
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
         return refuse(
@@ -416,14 +435,14 @@ def main(argv=None) -> int:
             args.meta,
         )
 
+    case = f"llama/persist_grow/N={N_LAYERS}"
+    write_unfinished(meta, case, args.out, args.meta)
     env = dict(os.environ)
     gen = ensure_data(args.weights, args.tokenizer, env)
-    log = (gen.stdout + gen.stderr) if gen else ""
-    if gen is not None and gen.returncode != 0:
-        print(log)
-        reason = (gen.stderr.strip().splitlines() or [""])[-1]
+    if gen is not None and gen.process.returncode != 0:
+        reason = (gen.process.stdout.strip().splitlines() or [""])[-1]
         return refuse(
-            f"gen_llama_data.py exited {gen.returncode}: {reason}",
+            f"gen_llama_data.py exited {gen.process.returncode}: {reason}",
             meta,
             args.out,
             args.meta,
@@ -435,34 +454,27 @@ def main(argv=None) -> int:
             args.out,
             args.meta,
         )
-    compiled = compile_cold_warm(env)
-    built = compiled["built"]
+    cache_dir = tempfile.mkdtemp(prefix="component-checks-llama-chain-")
+    run_env = dict(env, NPU_CACHE_HOME=cache_dir)
     correctness = parse_correctness("", 1)
     timing: dict = {}
     generated = parse_generate("", 1)
     artifacts: dict = {}
-    log += compiled["log"]
-    timed_ok = True
+    try:
+        compiled = compile_cold_warm(env, cache_dir)
+        if compiled["built"].returncode == 0:
+            artifacts = artifact_stats()
+            ran = run_decode(run_env).process
+            correctness = parse_correctness(ran.stdout, ran.returncode)
+            timing = parse_timing(ran.stdout, ran.returncode)
+            if correctness["passed"]:
+                gen_ran = run_generate(run_env).process
+                generated = parse_generate(gen_ran.stdout, gen_ran.returncode)
+    finally:
+        shutil.rmtree(cache_dir, ignore_errors=True)
 
-    if built.returncode == 0:
-        artifacts = artifact_stats()
-        ran = run_correctness(env)
-        correctness = parse_correctness(ran.stdout + ran.stderr, ran.returncode)
-        log += ran.stdout + ran.stderr
-        if correctness["passed"]:
-            timed = run_timed(env)
-            timing = parse_timing(timed.stdout + timed.stderr, timed.returncode)
-            timed_ok = DISPATCH_RATE_AT in timing
-            log += timed.stdout + timed.stderr
-            gen_ran = run_generate(env)
-            generated = parse_generate(
-                gen_ran.stdout + gen_ran.stderr, gen_ran.returncode
-            )
-            log += gen_ran.stdout + gen_ran.stderr
-
-    print(log)
-    case = f"llama/persist_grow/N={N_LAYERS}"
-    passed = correctness["passed"] and timed_ok and generated["generate_passed"]
+    timed = set(timing) == {DISPATCH_RATE_AT, *CONTEXTS}
+    passed = correctness["passed"] and timed and generated["generate_passed"]
     failed = [] if passed else [case]
 
     write(args.out, aggregate(correctness, timing, generated, artifacts, compiled))
@@ -478,7 +490,7 @@ def main(argv=None) -> int:
                     "timing": {str(at): t for at, t in timing.items()},
                     **generated,
                     **artifacts,
-                    **{k: v for k, v in compiled.items() if k not in ("built", "log")},
+                    **{k: v for k, v in compiled.items() if k != "built"},
                 }
             ],
             "failed": failed,
