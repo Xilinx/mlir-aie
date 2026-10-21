@@ -332,6 +332,12 @@ class NamedDevice(Device):
     def __init__(self) -> None:
         super().__init__(device=self.aie_device)
 
+    @staticmethod
+    def of(kind: AIEDevice) -> "NamedDevice":
+        """Return the named device of ``kind``, e.g. ``NPU2()`` for ``AIEDevice.npu2``."""
+        (named,) = (c for c in NamedDevice.__subclasses__() if c.aie_device == kind)
+        return named()
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}()"
 

@@ -170,10 +170,7 @@ class DeviceConfiguration(DeviceResources):
             # The device's reads verify against the declarations, so the text
             # parsed again at resolution keeps them; only the device is cloned.
             text = "\n".join([*(str(op) for op in declarations), str(device_op)])
-        device_type = next(
-            c for c in NamedDevice.__subclasses__() if c.aie_device == kind
-        )
-        configuration = cls(name, device_type(), runtimes=runtimes)
+        configuration = cls(name, NamedDevice.of(kind), runtimes=runtimes)
         configuration._prebuilt = text
         configuration._scratchpad_parameters = parameters
         return configuration

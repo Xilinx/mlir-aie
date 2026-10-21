@@ -1115,10 +1115,7 @@ class CompilableDesign:
         try:
             generated = self._generated_for(full_elf=True)
             for kind in generated.devices:
-                device_type = next(
-                    c for c in NamedDevice.__subclasses__() if c.aie_device == kind
-                )
-                if not device_type().can_dispatch_full_elf:
+                if not NamedDevice.of(kind).can_dispatch_full_elf:
                     raise ValueError(f"{kind.name} does not dispatch a full ELF.")
             external_kernels = generated.external_kernels
             use_chess = self._resolve_use_chess(external_kernels)
