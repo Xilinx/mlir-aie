@@ -19,7 +19,6 @@ from aie2_decode import (
     LMW_GAMMA_BYTES,
     M_MAX,
     REC_BYTES,
-    RQ,
     RROW,
     STAGE_RESID,
     WLM_SLOT,
@@ -284,8 +283,8 @@ class DecodeShape:
         Args:
             layers: The llama_oracle.Layers, for their norms' gammas.
             final_gamma: The final norm's bf16 gamma.
-            seed: The first token's layer-0 residual (int8[D], f32 scale,
-                fp32[D]), if it is not a prompt token.
+            seed: The first token's fp32 (D,) layer-0 residual, if it is not
+                a prompt token.
             rng_seed: The sampler's 32-bit seed for the generation.
 
         Returns:
@@ -300,13 +299,9 @@ class DecodeShape:
         for at, g in gammas:
             at += STAGE_RESID + M_MAX * RROW
             st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
-        x_i8, res_scale, x_fp = seed
-        st[self.seed_at : self.seed_at + D] = x_i8
-        st[self.seed_at + D : self.seed_at + D + 4] = np.frombuffer(
-            np.float32(res_scale).tobytes(), np.int8
+        st[self.seed_at : self.seed_at + RROW] = np.asarray(seed, np.float32).view(
+            np.int8
         )
-        fp_at = self.seed_at + RQ
-        st[fp_at : fp_at + 4 * D] = np.asarray(x_fp, np.float32).view(np.int8)
         st[self.stage.rng : self.stage.rng + 16] = np.array(
             xoshiro_seed(rng_seed), np.uint32
         ).view(np.int8)
@@ -469,7 +464,7 @@ class Decoder:
             self.shape.pack_stage(
                 self.layers,
                 self.final_gamma,
-                (np.zeros(D, np.int8), 0.0, np.zeros(D, np.float32)),
+                np.zeros(D, np.float32),
                 rng_seed,
             ),
             dtype=np.int8,

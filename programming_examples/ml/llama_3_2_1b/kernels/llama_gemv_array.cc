@@ -18,8 +18,6 @@
 // vector stores.
 static constexpr int kResidRows = 256;
 static constexpr int kResidBlock = kResidRows * 4 + 64;
-// A residual row: the norm's [int8 x | scale | pad], then x in fp32 here.
-static constexpr int kFpAt = 2048 + 64;
 
 extern "C" {
 
@@ -82,44 +80,24 @@ void llama_gemv_array_proj_block(int8_t *restrict fp, int8_t *restrict blk,
 }
 
 // The glue core's residual add over the joined blocks (lo: cores 0-3, then
-// the fp32[2048] residual; hi: cores 4-7): x = resid + proj in fp32, at
-// out + kFpAt, and x requantized for the next norm at out ([int8[2048] |
-// scale | 0]).
+// the fp32[2048] residual; hi: cores 4-7): out = resid + proj in fp32, the
+// next norm's input and the next unit's residual.
 void llama_gemv_array_residual_add(int8_t *restrict lo, int8_t *restrict hi,
                                    int8_t *restrict out) {
   event0();
-  const ::aie::saturation_mode prev_sat =
-      ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   const float *r = reinterpret_cast<const float *>(lo + 4 * kResidBlock);
-  float *x = reinterpret_cast<float *>(out + kFpAt);
-  ::aie::vector<int32, 16> mag = ::aie::zeros<int32, 16>();
+  float *x = reinterpret_cast<float *>(out);
   for (int c = 0; c < 8; c++) {
     const float *proj = reinterpret_cast<const float *>((c < 4 ? lo : hi) +
                                                         (c % 4) * kResidBlock);
-    for (int i = 0; i < kResidRows / 16; i++) {
-      ::aie::vector<float, 16> xf =
-          ::aie::add(::aie::load_v<16>(r + c * kResidRows + i * 16),
-                     ::aie::load_v<16>(proj + i * 16));
-      ::aie::store_v(x + c * kResidRows + i * 16, xf);
-      mag = ::aie::max(
-          mag, ::aie::bit_and(int32(0x7fffffff), xf.template cast_to<int32>()));
-    }
+    for (int i = 0; i < kResidRows / 16; i++)
+      ::aie::store_v(x + c * kResidRows + i * 16,
+                     ::aie::add(::aie::load_v<16>(r + c * kResidRows + i * 16),
+                                ::aie::load_v<16>(proj + i * 16)));
   }
-  int32_t absmax_bits = ::aie::reduce_max(mag);
-  if (absmax_bits < 0x2b8cbccc)
-    absmax_bits = 0x2b8cbccc;
-  float x_scale = __builtin_bit_cast(float, absmax_bits) * (1.0f / 127.0f);
-  ::aie::vector<float, 16> inv_v =
-      ::aie::broadcast<float, 16>(recip_rne(x_scale));
-  for (int i = 0; i < 8 * kResidRows / 16; i++)
-    ::aie::store_v(out + i * 16, vec_round_to_i8(vec_mul_rne(
-                                     ::aie::load_v<16>(x + i * 16), inv_v)));
-  *reinterpret_cast<float *>(out + 2048) = x_scale;
-  zero_words<kFpAt - 2052>(out + 2052);
   ::aie::set_rounding(prev_rnd);
-  ::aie::set_saturation(prev_sat);
   event1();
 }
 

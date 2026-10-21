@@ -36,16 +36,14 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie2_decode import M_MAX, REC_BYTES, RQ, RROW
+from aie2_decode import M_MAX, REC_BYTES, RROW
 from gen_llama_data import quant_int8_perchan_absmax
 from llama_config import HEAD_D, N_HEADS_KV, N_LAYERS, VOCAB, D
 from llama_decode import Decoder, DecodeShape, tokens_of
 from llama_oracle import (
     Layer,
     chain_forward_logits,
-    dyn_scale,
     embed_seed_ref,
-    requant,
     topk_sample_reference,
     xoshiro_seed,
 )
@@ -74,12 +72,10 @@ def synthetic_lm_weights(seed, rows_per_chunk=8192):
 
 
 def build_fixtures(shape, seed, filled):
-    """A random layer-0 residual (int8[D], f32 scale, fp32[D]), and random
-    layers whose shape.t-row KV caches hold random rows below `filled`."""
+    """A random fp32 (D,) layer-0 residual, and random layers whose
+    shape.t-row KV caches hold random rows below `filled`."""
     rng = np.random.default_rng(seed)
     x_fp = rng.uniform(-1.6, 1.6, size=D).astype(np.float32)
-    res_scale = dyn_scale(x_fp)
-    x_i8 = requant(x_fp, np.float32(1.0) / res_scale)
 
     layers = []
     for _ in range(shape.n_layers):
@@ -91,7 +87,7 @@ def build_fixtures(shape, seed, filled):
         for slot in (layer.k_slot, layer.v_slot):
             slot[:, :filled] = rng.uniform(0.02, 0.08, size=(N_HEADS_KV, filled))
         layers.append(layer)
-    return (x_i8, res_scale, x_fp), layers
+    return x_fp, layers
 
 
 def time_dispatches(session, buffers, params, opts):
@@ -222,13 +218,8 @@ def check_rng(shape, stage, rng):
 def check_final(shape, stage, hidden, row):
     """Print whether `stage` holds `hidden` as final residual row `row`;
     return 1 if not."""
-    xo_i8, xo_scale, xo_fp = hidden
     at = stage[shape.final_at + row * RROW : shape.final_at + (row + 1) * RROW]
-    ok = (
-        np.array_equal(at[:D], xo_i8)
-        and at[D : D + 4].tobytes() == np.float32(xo_scale).tobytes()
-        and at[RQ:].tobytes() == np.asarray(xo_fp, np.float32).tobytes()
-    )
+    ok = at.tobytes() == np.asarray(hidden, np.float32).tobytes()
     print(f"  final hidden: {'PASS' if ok else 'FAIL'}", flush=True)
     return int(not ok)
 
@@ -765,12 +756,7 @@ def main(argv=None):
                         )[0]
                     ),
                 )
-                seed_left = np.zeros(RROW, dtype=np.int8)
-                seed_left[:D] = residual_d[0]
-                seed_left[D : D + 4] = np.frombuffer(
-                    np.float32(residual_d[1]).tobytes(), np.int8
-                )
-                seed_left[RQ:] = residual_d[2].view(np.int8)
+                seed_left = np.asarray(residual_d, np.float32).view(np.int8)
                 if not np.array_equal(
                     stage[shape.seed_at : shape.seed_at + RROW], seed_left
                 ):

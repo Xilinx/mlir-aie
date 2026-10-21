@@ -31,8 +31,6 @@ static constexpr int kD = LLAMA_TOPK_D;
 static constexpr int kNTile = LLAMA_TOPK_NTILE;
 static constexpr int kKset = LLAMA_TOPK_KSET;
 static constexpr int kVec = 64;
-// A residual row: [int8 x | scale | pad], then x in fp32 here.
-static constexpr int kFpAt = kD + 64;
 
 // xoshiro128++, as llama_oracle draws it.
 struct Xoshiro128 {
@@ -58,39 +56,17 @@ static inline float xoshiro_uniform(Xoshiro128 &g) {
   return (float)(r >> 8) * (1.0f / 16777216.0f);
 }
 
-// A token's layer-0 residual row from its embed row (row, embed_sc): the
-// row requantized to its own absmax for the first norm, [int8 | scale | 0],
-// then the row in fp32 (row * embed_sc) at kFpAt for the residual adds.
+// A token's layer-0 residual row from its embed row (row, embed_sc): the row
+// in fp32, row * embed_sc, which the first norm reads and the residual adds
+// add to.
 static void residual_seed(const int8_t *restrict row, float embed_sc,
                           int8_t *restrict seed) {
-  ::aie::vector<int8, kVec> hi = ::aie::load_unaligned_v<kVec>(row);
-  ::aie::vector<int8, kVec> lo = hi;
-  for (int c = 1; c < kD / kVec; c++) {
-    ::aie::vector<int8, kVec> v = ::aie::load_unaligned_v<kVec>(row + c * kVec);
-    hi = ::aie::max(hi, v);
-    lo = ::aie::min(lo, v);
-  }
-  int32_t amax = ::aie::reduce_max(hi);
-  if (-(int32_t)::aie::reduce_min(lo) > amax)
-    amax = -(int32_t)::aie::reduce_min(lo);
-  if (amax < 1)
-    amax = 1;
-  float inv = recip_rne((float)amax) * 127.0f; // 127/amax
-  // (float)row * inv and round_to_i8 on 16 lanes: vec_mul_rne is the soft
-  // `*`, and vec_round_to_i8 rounds as round_to_i8 does.
   const ::aie::saturation_mode prev_sat =
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-  ::aie::vector<float, 16> inv_v = ::aie::broadcast<float, 16>(inv);
-  for (int c = 0; c < kD / 16; c++)
-    ::aie::store_v(
-        seed + c * 16,
-        vec_round_to_i8(vec_mul_rne(
-            ::aie::to_float<float>(::aie::load_unaligned_v<16>(row + c * 16)),
-            inv_v)));
   ::aie::vector<float, 16> sc_v = ::aie::broadcast<float, 16>(embed_sc);
-  float *x = reinterpret_cast<float *>(seed + kFpAt);
+  float *x = reinterpret_cast<float *>(seed);
   for (int c = 0; c < kD / 16; c++)
     ::aie::store_v(x + c * 16,
                    vec_mul_rne(::aie::to_float<float>(
@@ -98,9 +74,6 @@ static void residual_seed(const int8_t *restrict row, float embed_sc,
                                sc_v));
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
-  float scale = (float)amax * embed_sc * (1.0f / 127.0f);
-  __builtin_memcpy(seed + kD, &scale, 4);
-  zero_words<kFpAt - kD - 4>(seed + kD + 4);
 }
 
 extern "C" {
@@ -252,7 +225,7 @@ void llama_rng_take(int8_t *restrict slot, uint32_t *restrict params) {
 
 void llama_rng_put(uint32_t *restrict params, int8_t *restrict row) {
   copy_words<16>(row, params + 2);
-  zero_words<kFpAt + 4 * kD - 16>(row + 16);
+  zero_words<4 * kD - 16>(row + 16);
 }
 
 // The next token's layer-0 residual row from a packed record.
