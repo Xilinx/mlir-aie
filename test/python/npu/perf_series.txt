@@ -771,6 +771,7 @@ attention_i8/1024x2/int8/head_dim=32/key_dim=64/seq_len=256/width=16/keys-wider
 attention_i8/640x2/int8/prob-shift-8
 attention_i8/640x2/int8/prob-shift-10
 attention_i8/640x2/int8/prob-shift-30
+attention_i8/640x2/int8/out-shift-clip
 bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128
 bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128/rounding=symmetric_inf/bias-symmetric-inf
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-bottom-row
