@@ -129,6 +129,26 @@ assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes']);
 """)
 
 
+def test_the_direction_of_better_is_said_where_it_is_up(page):
+    html = PAGE.read_text(encoding="utf-8")
+    assert "Every metric is smaller-is-better" not in html
+    assert "Lower is better, except where a metric says higher is better" in html
+    page("""
+const up = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].higher_is_better);
+assert.ok(up.includes('tok_s') && up.includes('fps_b1') && up.includes('images_passed'));
+// Every metric a section lists says so when higher is better, and only then.
+for (const m of SECTIONS.performance.metrics) {
+  assert.equal(termOf(m, COMPONENT_METRICS[m]).includes('higher is better'), up.includes(m), m);
+}
+assert.equal(termOf('tok_s', 'x'), 'x; higher is better; counts past 5%');
+assert.equal(termOf('npu_us', 'x'), 'x; counts past 10% and 3× its spread');
+// No description says it on its own any more: the list adds it.
+assert.ok(Object.values(COMPONENT_METRICS).every(about => !about.includes('higher is better')));
+assert.equal(axisTitle('Tokens per second', 'tok_s'), 'Tokens per second · ↑ better');
+assert.equal(axisTitle('Cycles per call', 'cycles'), 'Cycles per call · ↓ better');
+""")
+
+
 def test_narrow_screens_hide_no_kernels_table_column():
     # Each NPU's header spans its columns; hiding one slides the headers.
     css = (
@@ -226,6 +246,9 @@ assert.deepEqual(lines.map(d => d.borderDash.length > 0), [false, true, false]);
 // npu2 sits ~10x above npu1, so it gets its own axis on the right.
 assert.equal(lines[2].yAxisID, 'y1');
 assert.equal(chart.options.scales.y1.position, 'right');
+// The left axis says what it charts and which way is better.
+assert.equal(chart.options.scales.y.title.text, 'Cycles · ↓ better');
+assert.equal(chart.options.scales.y1.title.display, false);
 const cb = chart.options.plugins.tooltip.callbacks;
 assert.deepEqual(cb.title([{ dataIndex: 5 }]), ['1970-01-01 00:05 UTC']);
 assert.equal(cb.afterTitle([{ dataIndex: 5 }]), 'abcdef1 same revision');
@@ -817,7 +840,7 @@ assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['64/bfloat1
 const tips = config.options.plugins.tooltip.callbacks;
 assert.equal(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }), '1024/bfloat16: 1,100');
 assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
-assert.equal(config.options.scales.y.title.text, 'Cycles per call');
+assert.equal(config.options.scales.y.title.text, 'Cycles per call · ↓ better');
 // 50 and 1,100 differ over ten times: a log axis, so both lines' moves show.
 assert.equal(config.options.scales.y.type, 'logarithmic');
 assert.equal(kernelTrendConfig(db, 'npu2', 'softmax', 'cycles').options.scales.y.type, 'linear');
@@ -1465,7 +1488,8 @@ assert.equal(stages.options.scales.y.type, 'logarithmic');
 const yoloData = collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter]));
 const perImage = trendConfig(yoloData, yolo.trend[0]);
 assert.deepEqual(perImage.data.datasets.map(d => [d.label, d.data]), [['batch 1', [5000, 5400]], ['batch 8', [3000, 3000]]]);
-assert.equal(perImage.options.scales.y.title.text, 'Time per image (µs)');
+assert.equal(perImage.options.scales.y.title.text, 'Time per image (µs) · ↓ better');
+assert.equal(trendConfig(yoloData, yolo.trend[1]).options.scales.y.title.text, 'Images per second · ↑ better');
 assert.equal(perImage.options.scales.y.type, 'linear');
 const yoloBox = trendBox(yoloData, yolo.trend, 'fps_b8');
 assert.equal(yoloBox.metric(), 'fps_b1');
@@ -2052,7 +2076,7 @@ assert.equal(config.options.scales.y.type, 'logarithmic');
 assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[1], dataIndex: 1, raw: 101.95 }),
              'batch 16: 102 µs (seeds 99 µs to 104.9 µs)');
 // Both axes say what they are, the y axis with its unit.
-assert.equal(config.options.scales.y.title.text, 'Time per image (µs)');
+assert.equal(config.options.scales.y.title.text, 'Time per image (µs) · ↓ better');
 assert.equal(config.options.scales.x.title.text, 'Nightly run');
 // Hover names the run's commit; a click opens it.
 const tips = config.options.plugins.tooltip.callbacks;
@@ -2064,12 +2088,12 @@ assert.equal(commitLine({ id: '0123456789abcdef', message: 'x'.repeat(100) + '\\
 // Compile time, seconds, on a plain axis, cold beside warm, each shaded over the seeds.
 const compile = trendConfig(data, COMPILE_TABS[0]);
 assert.equal(compile.options.scales.y.type, 'linear');
-assert.equal(compile.options.scales.y.title.text, 'Compile time (s)');
+assert.equal(compile.options.scales.y.title.text, 'Compile time (s) · ↓ better');
 assert.deepEqual(compile.data.datasets.filter(d => !d.band).map(d => d.label), ['cold', 'warm']);
 // Compile peak memory, MB, also on a plain axis.
 const memory = trendConfig(data, COMPILE_TABS[1]);
 assert.equal(memory.options.scales.y.type, 'linear');
-assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MB)');
+assert.equal(memory.options.scales.y.title.text, 'Compile peak memory (MB) · ↓ better');
 // The box: a switch for the tab, drawn once on screen, redrawn on a switch.
 // A link to a warm metric opens the tab that draws it; a tab with no history is left out.
 const box = trendBox(data, hw.trend, 'compile_s_warm');
@@ -2107,7 +2131,7 @@ assert.deepEqual(drawn.legend, ['batch 1', 'batch 16']);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polyline')).length, 2);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polygon')).length, 2);
 // The axis titles, as the Chart.js chart has them.
-assert.ok(drawn.svg.some(p => p.includes('rotate(-90)') && p.includes('Time per image (µs)')));
+assert.ok(drawn.svg.some(p => p.includes('rotate(-90)') && p.includes('Time per image (µs) · ↓ better')));
 assert.ok(drawn.svg.some(p => p.includes('>Nightly run<')));
 // Each point: hover text with the commit, and a link to it.
 assert.ok(drawn.svg.some(p => p.includes('<title>2 Oct, 06:30 UTC\\nabcdef1 same revision\\nbatch 16: ') && p.includes('href="https://github.com/Xilinx/mlir-aie/commit/abcdef123456"')));

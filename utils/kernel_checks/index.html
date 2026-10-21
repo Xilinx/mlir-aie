@@ -549,7 +549,8 @@
             the kernel checks' pull-request report compares against it) and <code>history/&lt;metric&gt;.json</code> (every run's value of one metric per case).
             A kernel NPU also has <code>catalogue.json</code>, every kernel factory and how its cases fared. Runs older than 90 days thin to weekly.
             Files carry a schema number, and the page sets aside a newer one rather than misread it.</p>
-          <p>Every metric is smaller-is-better. A change counts once it passes the metric's threshold in
+          <p>Lower is better, except where a metric says higher is better: rates such as tokens or images per second, and verified counts.
+            A change is colored by whether it is worse, not by its sign, and each chart's axis says which way is better. A change counts once it passes the metric's threshold in
             <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/thresholds.json"><code>utils/kernel_checks/thresholds.json</code></a>,
             which the pull-request report reads too; a noisy timing also has to pass a multiple of its run-to-run spread.
             Runs started by hand are charted but never compared against.</p>
@@ -890,13 +891,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       compile_s_warm: 'wall time of the same compile again, keeping only the cold compile\'s kernel objects (the whole-build and per-device caches and the outputs cleared first) -- what an edit to the design, not its kernels, costs',
       compile_peak_rss_mb_warm: 'peak memory of that warm compile',
       placement_cost: 'the SA cost of the placement aiecc chose, replayed with aie-opt; the tooltip names the placement',
-      tok_s: 'decoded tokens per second, from the median dispatch of the timed run; higher is better',
+      tok_s: 'decoded tokens per second, from the median dispatch of the timed run',
       ms_per_token: 'NPU time per decoded token, the median dispatch over the tokens it generates',
       dma_floor_ratio: 'time per token over the time its weight and KV bytes take at 120 GB/s of DDR bandwidth; under 1.5× it is DMA-bound, else compute-bound, as the card\'s header says',
       tokens_passed: 'decoded tokens that matched the numpy oracle\'s, of those the dispatch generated',
       ttft_ms: 'time to the first generated token, from generate.py\'s prompt run through the decode',
-      prompt_tok_s: 'prompt tokens per second as generate.py runs them; higher is better',
-      decode_tok_s: 'generated tokens per second as generate.py decodes; higher is better',
+      prompt_tok_s: 'prompt tokens per second as generate.py runs them',
+      decode_tok_s: 'generated tokens per second as generate.py decodes',
       greedy_agree: 'generated tokens that matched the argmax of numpy_llama_ref, the INT8 recipe\'s plain-numpy forward',
       xclbin_bytes: 'size of the xclbin the compile wrote',
       instr_bytes: 'size of the runtime-sequence instruction stream the host submits with each dispatch',
@@ -904,8 +905,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       n_cores: 'compute cores the placed design uses',
       us_per_image_b1: 'time of one dispatch of one image, from the host, the median of 5, as yolo26n.py --time reports it',
       us_per_image_b8: 'time per image of one dispatch of 8 images, from the host, the median of 5, as yolo26n.py --time --batch 8 reports it',
-      fps_b1: 'images per second at batch 1, from the time per image; higher is better',
-      fps_b8: 'images per second at batch 8, from the time per image; higher is better',
+      fps_b1: 'images per second at batch 1, from the time per image',
+      fps_b8: 'images per second at batch 8, from the time per image',
       images_passed: 'COCO images whose every detection output matched the numpy oracle, of those run',
       ort_matches: 'COCO images whose detections matched onnxruntime\'s, of those run; information only, since the oracle decides pass or fail',
       elf_bytes: 'size of the full ELF the compile wrote: every core\'s program, the array configuration and the runtime sequence in one file',
@@ -1050,7 +1051,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         trend: [{ id: 'us_per_image_b1', name: 'Per image', axis: 'Time per image (µs)', lines: [['batch 1', ['us_per_image_b1']], ['batch 8', ['us_per_image_b8']]],
                   about: 'time per image of one dispatch, from the host, the median of 5, at batch 1 and batch 8' },
                 { id: 'fps_b1', name: 'Images / s', axis: 'Images per second', lines: [['batch 1', ['fps_b1']], ['batch 8', ['fps_b8']]],
-                  about: 'images per second at batch 1 and batch 8, from the time per image; higher is better' }, ...COMPILE_TABS] },
+                  about: 'images per second at batch 1 and batch 8, from the time per image' }, ...COMPILE_TABS] },
       { id: 'router', section: 'routing', title: 'Router model-based tests', short: 'Router', failure: 'check',
         passed: 'Every property held and every mutation was answered right.',
         about: 'router_properties.py and router_mutation.py (hops on and off) on npu1, npu2 and xcvc1902, on a hosted runner with an assertions build; '
@@ -1092,9 +1093,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
-    const worseSign = metric => THRESHOLDS[metric] && THRESHOLDS[metric].higher_is_better ? -1 : 1;
+    const higherIsBetter = metric => Boolean(THRESHOLDS[metric] && THRESHOLDS[metric].higher_is_better);
+    const worseSign = metric => higherIsBetter(metric) ? -1 : 1;
     const thresholdText = metric => `counts past ${pct(metric)}%` +
       (THRESHOLDS[metric] && THRESHOLDS[metric].mad ? ` and ${THRESHOLDS[metric].mad}× its spread` : '');
+    // A metric in a "what each run records" list: lower is better unless it says otherwise.
+    const termOf = (metric, about) => `${about}; ${higherIsBetter(metric) ? 'higher is better; ' : ''}${thresholdText(metric)}`;
+    const axisTitle = (text, metric) => `${text} · ${higherIsBetter(metric) ? '↑' : '↓'} better`;
     const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
     // Provenance fields whose change between runs is marked on the charts.
     const MARKED = ['peano', 'host', 'runtime', 'xrt', 'xdna', 'fixtures'];
@@ -2310,7 +2315,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         },
         scales: {
           x: { title: title('Nightly run'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
-          y: { type: log ? 'logarithmic' : 'linear', title: title(AXIS_OF[metric] || label(metric)), grid: { color: grid },
+          y: { type: log ? 'logarithmic' : 'linear', title: title(axisTitle(AXIS_OF[metric] || label(metric), metric)), grid: { color: grid },
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
         },
         plugins: {
@@ -2537,8 +2542,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const split = npus.length === 2 && mids.every(m => m > 0) && Math.max(...mids) / Math.min(...mids) > 3;
       if (split) for (const d of datasets) if (d.npu === npus[1]) d.yAxisID = 'y1';
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
-      // Split axes take their NPU's color instead of a title.
-      const axis = (sets, npu, extra) => ({ ...yRange(sets), ...extra, title: { display: false },
+      // Split axes take their NPU's color; the left one also says what is charted.
+      const axis = (sets, npu, extra) => ({ ...yRange(sets), title: { display: false }, ...extra,
         ticks: { color: split ? npuColor(npu) : fg, maxTicksLimit: 4, font: { size: 11 }, callback: v => formatNumber(v, g.unit) } });
       const markers = nightMarkers(data, npus, index);
       const first = i => [...nights[i].byNpu.values()][0];
@@ -2553,7 +2558,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           scales: {
             x: { ticks: { color: fg, maxRotation: 0, autoSkip: true, maxTicksLimit: 6, font: { size: 11 },
                           callback: (_v, i) => i > 0 && labels[i] === labels[i - 1] ? '' : labels[i] }, grid: { display: false } },
-            y: axis(datasets.filter(d => d.yAxisID !== 'y1'), npus[0], { grid: { color: grid } }),
+            y: axis(datasets.filter(d => d.yAxisID !== 'y1'), npus[0], { grid: { color: grid },
+              title: { display: true, text: axisTitle(label(g.metric), g.metric), color: fg, font: { size: 12, weight: '600' } } }),
             ...(split ? { y1: axis(datasets.filter(d => d.yAxisID === 'y1'), npus[1], { position: 'right', grid: { display: false } }) } : {}),
           },
           plugins: {
@@ -3086,7 +3092,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         },
         scales: {
           x: { title: title('Nightly run'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
-          y: { type: log ? 'logarithmic' : 'linear', grid: { color: grid }, title: title(tab.axis),
+          y: { type: log ? 'logarithmic' : 'linear', grid: { color: grid }, title: title(axisTitle(tab.axis, metrics[0])),
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
         },
         plugins: {
@@ -4371,10 +4377,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       showView();
       $('verdicts').replaceChildren(el('p', { className: 'dim' }, 'Loading the latest nights…'));
       for (const [m, about] of Object.entries(METRICS)) {
-        $('key-metrics').append(el('dt', {}, label(m)), el('dd', {}, `${about}; ${thresholdText(m)}`));
+        $('key-metrics').append(el('dt', {}, label(m)), el('dd', {}, termOf(m, about)));
       }
       for (const m of SECTIONS.performance.metrics) {
-        $('performance-metrics').append(el('dt', {}, label(m)), el('dd', {}, `${COMPONENT_METRICS[m]}; ${thresholdText(m)}`));
+        $('performance-metrics').append(el('dt', {}, label(m)), el('dd', {}, termOf(m, COMPONENT_METRICS[m])));
       }
       const [catalogues, indexes, latests] = await Promise.all([
         Promise.all(NPUS.map(n => fetchJson(`${KERNELS_DIR}/${n}/catalogue.json`))),
