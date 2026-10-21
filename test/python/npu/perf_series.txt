@@ -478,6 +478,10 @@ reduce_max/16x4/float32/edge-one-vector
 reduce_max/16x4/int32/edge-one-vector
 reduce_max/32x4/bfloat16/edge-one-vector
 reduce_max/4000x16/float32
+reduce_max/64x4/bfloat16/vectorized=False/all-neg-inf
+reduce_max/64x4/bfloat16/vectorized=True/all-neg-inf
+reduce_max/64x4/float32/vectorized=False/all-neg-inf
+reduce_max/64x4/float32/vectorized=True/all-neg-inf
 reduce_max/96x4/float32/whisper-peaks
 reduce_min/1024x16/bfloat16
 reduce_min/1024x16/int32

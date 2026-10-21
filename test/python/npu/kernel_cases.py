@@ -191,6 +191,17 @@ CASES: list[Case] = [
     check("reduce_max", dict(tile_size=96, dtype=np.float32), tag="whisper-peaks"),
     check("reduce_max", dict(tile_size=16, dtype=np.float32), tag="edge-one-vector"),
     check("reduce_max", dict(tile_size=32, dtype=bfloat16), tag="edge-one-vector"),
+    # A fully masked tile's max is -inf, not the largest finite negative.
+    *[
+        check(
+            "reduce_max",
+            dict(tile_size=64, dtype=dt, vectorized=vec),
+            data_cases=("neg_inf",),
+            tag="all-neg-inf",
+        )
+        for dt in (np.float32, bfloat16)
+        for vec in (True, False)
+    ],
     Case("argmax", calls=16, scalars=(0,), smoke=True),
     Case("argmax", calls=256, scalars=(0,)),
     Case(

@@ -17,12 +17,21 @@
 #define REDUCE_MAX_ELEMS input_size
 #endif
 
+// -inf rather than lowest(), so an all -inf tile reduces to -inf.
+template <typename T>
+static inline T _reduce_max_identity() {
+  if constexpr (std::numeric_limits<T>::has_infinity)
+    return -std::numeric_limits<T>::infinity();
+  else
+    return std::numeric_limits<T>::lowest();
+}
+
 template <typename T, typename V>
 void _reduce_max_vector(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
   constexpr int32_t VECTOR_SIZE = V::size();
-  V tiny = aie::broadcast<T>(std::numeric_limits<T>::lowest());
+  V tiny = aie::broadcast<T>(_reduce_max_identity<T>());
   V running_max = tiny;
 
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
@@ -68,7 +77,7 @@ template <typename T>
 void _reduce_max_scalar(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
-  T running_max = std::numeric_limits<T>::lowest();
+  T running_max = _reduce_max_identity<T>();
   for (int32_t i = 0; i < REDUCE_MAX_ELEMS; i++) {
     if (in[i] > running_max)
       running_max = in[i];

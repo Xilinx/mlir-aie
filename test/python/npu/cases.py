@@ -279,6 +279,8 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
                 edge = rng.standard_normal(shape)
                 edge.flat[0], edge.flat[-1] = np.nan, np.inf
                 edge.flat[edge.size // 2] = -np.inf
+            elif data_case == "neg_inf":
+                edge = np.full(shape, -np.inf)
             elif data_case == "large":
                 edge = rng.standard_normal(shape) * 1e4
             elif data_case == "all_bf16":
