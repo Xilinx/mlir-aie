@@ -110,26 +110,28 @@ def _selective_scan_bound(
     final = np.zeros((calls, head_dim * state))
     y = np.zeros((calls, rows, head_dim))
     gap = np.zeros_like(y)
-    for c in range(calls):
-        if c % blocks == 0:
-            s = head[c, 3:].reshape(head_dim, state).copy()
-            m, e = np.abs(s), np.zeros_like(s)
-        dt_bias, A, D = head[c, :3]
-        for t in range(min(int(valid), rows)):
-            B, C = bc[c, t]
-            step = np.logaddexp(0.0, dt[c, t] + dt_bias)
-            decay = np.exp(step * A)
-            gain = np.outer(step * x[c, t], B)
-            kept = decay * m
-            s = decay * s + gain
-            m = kept + np.abs(gain)
-            e = decay * e + u * (
-                (8 + 24 * abs(step * A)) * kept + 24 * np.abs(gain) + m
-            )
-            dx = D * x[c, t]
-            y[c, t] = s @ C + dx
-            gap[c, t] = e @ np.abs(C) + (state + 2) * u * (m @ np.abs(C) + np.abs(dx))
-        final[c] = 2 * e.reshape(-1)
+    for first in range(0, calls, blocks):
+        s = head[first, 3:].reshape(head_dim, state).copy()
+        m, e = np.abs(s), np.zeros_like(s)
+        for c in range(first, min(first + blocks, calls)):
+            dt_bias, A, D = head[c, :3]
+            for t in range(min(int(valid), rows)):
+                B, C = bc[c, t]
+                step = np.logaddexp(0.0, dt[c, t] + dt_bias)
+                decay = np.exp(step * A)
+                gain = np.outer(step * x[c, t], B)
+                kept = decay * m
+                s = decay * s + gain
+                m = kept + np.abs(gain)
+                e = decay * e + u * (
+                    (8 + 24 * abs(step * A)) * kept + 24 * np.abs(gain) + m
+                )
+                dx = D * x[c, t]
+                y[c, t] = s @ C + dx
+                gap[c, t] = e @ np.abs(C) + (state + 2) * u * (
+                    m @ np.abs(C) + np.abs(dx)
+                )
+            final[c] = 2 * e.reshape(-1)
     y_bound = round_to(y + gap, bfloat16) - round_to(y - gap, bfloat16)
     return final, y_bound.reshape(calls, -1)
 
