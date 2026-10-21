@@ -202,6 +202,8 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
         "xrt": "2.20.0",
         "host": "bench-1",
         "device": "RyzenAI-npu1",
+        # Dated before DECODER_FIXED.
+        "measurement": "1",
     }
     assert cycles["series"] == {
         "add/1024x16/bfloat16": {"values": [78], "ranges": ["median 87 max 131 n=16"]},
@@ -894,9 +896,7 @@ def test_a_static_hardware_run_keeps_its_times_and_gives_full_effort_its_compile
     assert {p.name: p.read_text() for p in out.rglob("*.json")} == before
 
 
-@pytest.mark.parametrize(
-    "target", ["sa-placer", "llama-chain-hw", "yolo26n-hw", "npu2"]
-)
+@pytest.mark.parametrize("target", ["sa-placer", "llama-chain-hw", "yolo26n-hw"])
 def test_only_the_hardware_check_has_its_cases_upgraded(publish, target):
     record = {**hardware_record("r", "2026-10-16T06:52:54+00:00"), "target": target}
     assert not publish.upgrade(record)
@@ -904,6 +904,55 @@ def test_only_the_hardware_check_has_its_cases_upgraded(publish, target):
         **hardware_record("r", "2026-10-16T06:52:54+00:00"),
         "target": target,
     }
+
+
+def kernel_record(target, date, cycles):
+    return {
+        "target": target,
+        "id": "r",
+        "date": date,
+        "provenance": {"peano": "22.0.0+e1"},
+        "rows": {
+            case: {
+                "cycles": {"value": cycles, "unit": "cycles"},
+                "cycles_per_kop": {"value": 1.5, "unit": "cycles"},
+                "npu_us": {"value": 3378.0, "unit": "us"},
+            }
+            for case in sorted(KERNEL_CASES)
+        },
+    }
+
+
+KERNEL_CASES = {
+    # Over two timer wraps per call before the 10-02 decoder fix.
+    "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16",
+    # Under them: decoded right either way.
+    "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120",
+}
+
+
+def test_cycles_the_old_trace_decoder_understated_are_dropped(publish):
+    record = kernel_record("npu2", "2026-10-01T06:16:12+00:00", 293058)
+    assert publish.upgrade(record)
+    assert record["provenance"] == {"peano": "22.0.0+e1", "measurement": "1"}
+    wrapped, unwrapped = sorted(KERNEL_CASES)
+    assert record["rows"][wrapped] == {"npu_us": {"value": 3378.0, "unit": "us"}}
+    assert set(record["rows"][unwrapped]) == {"cycles", "cycles_per_kop", "npu_us"}
+    assert not publish.upgrade(record)
+
+    # From the fix on, and on npu1, every point stays.
+    for target, date in (
+        ("npu2", "2026-10-02T06:16:12+00:00"),
+        ("npu1", "2026-09-30T06:16:12+00:00"),
+    ):
+        record = kernel_record(target, date, 301)
+        assert publish.upgrade(record)
+        assert all(len(cells) == 3 for cells in record["rows"].values())
+    assert record["provenance"]["measurement"] == "1"
+    # A record that names its measurement keeps it.
+    record = kernel_record("npu2", "2026-09-30T06:16:12+00:00", 293058)
+    record["provenance"]["measurement"] = "3"
+    assert not publish.upgrade(record)
 
 
 def test_an_unknown_target_is_refused(tmp_path):

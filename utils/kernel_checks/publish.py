@@ -45,8 +45,8 @@ results, pooled, that were not. ``builds`` maps each timed case to its kernel's
 its row. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
 removed), upgrades any older run record (``upgrade``: a static
-``sa-placer-hw`` record's cases), rebuilds ``runs.json``, ``latest.json`` and
-the history from
+``sa-placer-hw`` record's cases, a kernel check's ``measurement``), rebuilds
+``runs.json``, ``latest.json`` and the history from
 the run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
 ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
 also deletes the records of every run measured in ``MODE``, for retiring a
@@ -119,6 +119,7 @@ HISTORY_PROVENANCE = (
     "device",
     "fixtures",
     "dispatch",
+    "measurement",
 )
 # The component checks' rows from before they were published here, renamed to
 # what they are called now. Their other rows (wall time and RSS over the one
@@ -136,6 +137,25 @@ LEGACY_ROWS = (
 # a static design per batch. Every one of those runs placed at effort 1.0, the
 # page's "full".
 STATIC_CASE = re.compile(r"mobilenet/seed=(?P<seed>\d+)(?:/batch=(?P<batch>\d+))?")
+# The night #3807's trace decoder, which counts every timer wrap an Event_Sync
+# repeat folds in, first measured npu2. Before it, the cases below, whose
+# calls run past two wraps, decoded 1.5 to 7.2 times too few cycles; the
+# wraps lost can't be recovered, so their points are dropped.
+DECODER_FIXED = "2026-10-02"
+UNDERSTATED = frozenset(
+    {
+        "bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80",
+        "bn_conv2dk1_relu/1792x8/int8_uint8/input_channels=16/input_width=112/output_channels=64",
+        "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=120",
+        "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8",
+        "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
+        "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
+        "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_channels=184",
+        "bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8",
+        "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=240/input_width=14/output_channels=80",
+        "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16",
+    }
+)
 # The part a runtime's device name means, first match wins. XRT names the
 # same NPU differently across drivers ("RyzenAI-npu1", "NPU Phoenix"); the
 # raw name stays in the record as ``device_raw``.
@@ -363,6 +383,10 @@ def upgrade(record: dict) -> bool:
     a static design's times are not the dynamic one's. Its runs get
     ``effort_label`` ``full``.
 
+    A kernel check's record gets the ``measurement`` that took its cycles:
+    ``1`` before ``DECODER_FIXED``, ``2`` since. An npu2 record from before
+    it loses the cycles of the ``UNDERSTATED`` cases.
+
     Other records, and records already current, are left as they are.
     """
     before = json.dumps(record, sort_keys=True)
@@ -395,6 +419,16 @@ def upgrade(record: dict) -> bool:
         ]
         for run in record.get("detail", []):
             run.setdefault("effort_label", "full")
+    if target in ("npu1", "npu2") and "measurement" not in provenance:
+        decoded_before = record["date"] < DECODER_FIXED
+        record["provenance"] = {
+            **provenance,
+            "measurement": "1" if decoded_before else "2",
+        }
+        if target == "npu2" and decoded_before:
+            for case in UNDERSTATED & rows.keys():
+                for metric in ("cycles", "cycles_per_kop"):
+                    rows[case].pop(metric, None)
     return json.dumps(record, sort_keys=True) != before
 
 
