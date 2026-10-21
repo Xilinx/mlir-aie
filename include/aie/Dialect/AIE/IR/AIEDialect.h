@@ -168,6 +168,22 @@ private:
   llvm::DenseMap<mlir::StringAttr, mlir::Operation *> ops;
 };
 
+// The NamedOpTables of several symbol tables, each indexed on first use, as
+// mlir::SymbolTableCollection is for symbols.
+class NamedOpTableCollection {
+public:
+  NamedOpTable &getTable(mlir::Operation *symbolTableOp) {
+    return tables.try_emplace(symbolTableOp, symbolTableOp).first->second;
+  }
+  template <typename OpTy>
+  OpTy lookupIn(mlir::Operation *symbolTableOp, mlir::StringAttr name) {
+    return getTable(symbolTableOp).lookup<OpTy>(name);
+  }
+
+private:
+  llvm::DenseMap<mlir::Operation *, NamedOpTable> tables;
+};
+
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 
