@@ -15,7 +15,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 if TYPE_CHECKING:
-    from ..utils.compile.jit.markers import _Operand
+    from ..utils.compile.jit.markers import In, InOut, Out
 
 
 class _BlockFloat(np.generic):
@@ -83,7 +83,7 @@ def ceildiv(a, b):
 _T = TypeVar("_T")
 
 
-def np_ndarray_type_of(tensor: "_T | _Operand") -> "_T | type[np.ndarray]":
+def np_ndarray_type_of(tensor: "_T | In | Out | InOut") -> "_T | type[np.ndarray]":
     """Return ``tensor``'s type, ``np.ndarray[shape, np.dtype[T]]``.
 
     Args:
@@ -94,13 +94,13 @@ def np_ndarray_type_of(tensor: "_T | _Operand") -> "_T | type[np.ndarray]":
         The operand's tensor type, or ``tensor``.
     """
     # Imported lazily: JIT type introspection itself uses this module.
-    from ..utils.compile.jit.markers import _Operand
+    from ..utils.compile.jit.markers import In, InOut, Out
 
-    return tensor.ndarray_type if isinstance(tensor, _Operand) else tensor
+    return tensor.ndarray_type if isinstance(tensor, (In, Out, InOut)) else tensor
 
 
 def np_ndarray_type_get_shape(
-    ndarray_type: "type[np.ndarray] | _Operand",
+    ndarray_type: "type[np.ndarray] | In | Out | InOut",
 ) -> tuple[int, ...]:
     shape = get_args(np_ndarray_type_of(ndarray_type))[0]
     # Imported lazily: JIT type introspection itself uses this module.
@@ -124,7 +124,7 @@ def np_ndarray_type_get_shape(
 
 
 def np_ndarray_type_get_dtype(
-    ndarray_type: "type[np.ndarray] | _Operand",
+    ndarray_type: "type[np.ndarray] | In | Out | InOut",
 ) -> type[NpuDType]:
     return get_args(get_args(np_ndarray_type_of(ndarray_type))[1])[0]
 
