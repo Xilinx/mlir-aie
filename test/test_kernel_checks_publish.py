@@ -732,6 +732,7 @@ def test_a_component_check_migrates_and_keeps_its_redirect(publish, tmp_path):
         "provenance": "commit 0123456789 | peano 22.0.0+0006955e | pmode turbo"
         " | dispatch dynamic",
         "efforts": {"default": 0.05, "full": 1.0},
+        "iters": 20,
         "measurement_sane": True,
         "detail": [
             {
@@ -782,7 +783,9 @@ def test_a_component_check_migrates_and_keeps_its_redirect(publish, tmp_path):
     assert record["published"]
     assert record["detail"] == meta["detail"]
     # The page reads the efforts the check ran from the record.
-    assert record["efforts"] == meta["efforts"]
+    assert record["efforts"] == meta["efforts"] and record["iters"] == 20
+    # The raw device name is where the page keeps each part's times apart.
+    assert record["provenance"]["device"] == "NPU Strix Halo"
     assert record["device"] == "Strix Halo" and record["pmode"] == "turbo"
     index = json.loads((out / "runs.json").read_text())
     assert index["metrics"] == ["failed_seeds", "placement_cost", "us_per_image"]

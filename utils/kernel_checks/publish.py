@@ -342,7 +342,14 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
             for case, d in cases.items()
             if case in record["rows"] and "build" in d
         }
-    for key in ("correctness_error", "refused", "reason", "efforts", "detail"):
+    for key in (
+        "correctness_error",
+        "refused",
+        "reason",
+        "efforts",
+        "iters",
+        "detail",
+    ):
         if key in meta:
             record[key] = meta[key]
     if catalogue:
@@ -383,6 +390,9 @@ def upgrade(record: dict) -> bool:
     a static design's times are not the dynamic one's. Its runs get
     ``effort_label`` ``full``.
 
+    A record with a ``device_raw`` but no ``device`` in its provenance gets
+    it there, where the page keeps each part's times apart.
+
     A kernel check's record gets the ``measurement`` that took its cycles:
     ``1`` before ``DECODER_FIXED``, ``2`` since. An npu2 record from before
     it loses the cycles of the ``UNDERSTATED`` cases.
@@ -393,6 +403,11 @@ def upgrade(record: dict) -> bool:
     target = record.get("target")
     provenance = record.get("provenance") or {}
     rows = record.get("rows", {})
+    if record.get("device_raw") and "device" not in provenance:
+        provenance = record["provenance"] = {
+            **provenance,
+            "device": record["device_raw"],
+        }
     if target == "sa-placer-hw" and "dispatch" not in provenance:
         record["provenance"] = {**provenance, "dispatch": "static"}
         upgraded: dict[str, dict] = {}
