@@ -53,21 +53,6 @@ def _tagged_type(annotation, tag):
     return None
 
 
-def _is_compile_param(annotation) -> bool:
-    """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
-    return _tagged_type(annotation, "aie.compile_time") is not None
-
-
-def _is_tensor_param(annotation) -> bool:
-    """Return True if *annotation* is ``In``, ``Out``, or ``InOut``."""
-    return annotation in _TENSOR_ANNOTATIONS
-
-
-def _dispatch_param_type(annotation):
-    """Return the wrapped ``T`` of a ``DispatchTime[T]``, else ``None``."""
-    return _tagged_type(annotation, "aie.dispatch_time")
-
-
 @functools.lru_cache(maxsize=None)
 def declare(generator: Callable) -> Declaration:
     """Return the declaration a generator's signature makes.
@@ -115,7 +100,7 @@ def declare(generator: Callable) -> Declaration:
         if ann is inspect.Parameter.empty:
             scalars.append(name)
             continue
-        if _is_compile_param(ann):
+        if _tagged_type(ann, "aie.compile_time") is not None:
             default = MISSING if p.default is p.empty else p.default
             # A function default is the value, so the record computes it as
             # itself; so is a list, dict or set, which param() would reject as
@@ -127,9 +112,9 @@ def declare(generator: Callable) -> Declaration:
                     else default
                 )
             )
-        elif _is_tensor_param(ann):
+        elif ann in _TENSOR_ANNOTATIONS:
             member = ann()
-        elif (dtype := _dispatch_param_type(ann)) is not None:
+        elif (dtype := _tagged_type(ann, "aie.dispatch_time")) is not None:
             member = PerCallMember(dtype, None, None)
         else:
             scalars.append(name)
