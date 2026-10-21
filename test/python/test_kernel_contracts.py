@@ -1572,6 +1572,11 @@ def test_conv2dk1_i8_and_skip_references():
     x[0] = -100
     out = kernels.conv2dk1_i8_ref(x.ravel(), ident.ravel(), W, IC, OC, 0)
     assert set(out.tolist()) == {-128}
+    # The vector kernel's srs rounds half away from zero.
+    ident[0, 0] //= 2
+    x[0, 0] = [-24, -8, 8, 24, -12, 12, 0, 0]
+    out = kernels.conv2dk1_i8_ref(x.ravel(), ident.ravel(), W, IC, OC, 4)
+    assert out[:8].tolist() == [-2, -1, 1, 2, -1, 1, 0, 0]
     # conv2dk1_skip: x0 holds channels 0..7, x1 channels 8..15. Weights on the
     # upper half only read x1; the conv saturates to int8 before the residual
     # is added, and the total to uint8 after its own shift.

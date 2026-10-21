@@ -739,7 +739,7 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(stride=2), "need bias"),
             (dict(bias=True, act_dtype=np.uint8, rounding="conv_even"), "act_dtype"),
             (dict(bias=True, stride=3, rounding="conv_even"), "stride"),
-            (dict(bias=True, rounding="positive_inf"), "needs no bias"),
+            (dict(bias=True, rounding="positive_inf"), "with bias, rounding must be"),
             (
                 dict(bias=True, input_width=36, stride=2, rounding="conv_even"),
                 "multiple of 8",
@@ -767,7 +767,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         name_variants=[
             (dict(rounding="conv_even"), "conv2dk1_i8_even"),
             (dict(bias=True, rounding="conv_even"), "conv2dk1_i8_bias_even"),
-            (dict(bias=True, table=True), "conv2dk1_i8_bias_table"),
+            (dict(bias=True, table=True), "conv2dk1_i8_bias_table_even"),
+            (dict(bias=True, rounding="symmetric_inf"), "conv2dk1_i8_bias"),
         ],
         invalid_kwargs=[
             (dict(rounding="nearest"), "rounding"),
