@@ -20,8 +20,10 @@ namespace xilinx::AIE {
 /// The order one core moves objects through several pools, read off its
 /// program, so that one DMA channel can serve those pools in turn. The core's
 /// period is the innermost loop holding every acquire and release on the
-/// pools, with the loops of static trip count inside it unrolled; its order
-/// through them must not depend on data.
+/// pools, with the loops of static trip count inside it unrolled and the
+/// branches on their counters folded; where a branch depends on that loop's
+/// own counter, the next loop out. Its order through them must not depend on
+/// data.
 class CoreTurns {
 public:
   /// Reads the order off the program of the core working through `ends`, all

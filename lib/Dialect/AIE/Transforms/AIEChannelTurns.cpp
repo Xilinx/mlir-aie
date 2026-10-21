@@ -8,7 +8,10 @@
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 
@@ -99,20 +102,38 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
         loops.push_back(parent);
     return loops;
   };
-  Operation *loop = nullptr;
+  SmallVector<Operation *> candidates;
   for (Operation *candidate : loopsAround(uses.front()))
     if (llvm::all_of(uses, [&](Operation *use) {
           return candidate->isProperAncestor(use);
-        })) {
-      loop = candidate;
-      break;
-    }
-  if (!loop) {
+        }))
+      candidates.push_back(candidate);
+  if (candidates.empty()) {
     reason = "no loop repeats the core's use of them";
     return failure();
   }
 
-  period.clear();
+  // The counters of the unrolled loops, so that branches on them fold.
+  DenseMap<Value, Attribute> counters;
+  std::function<Attribute(Value)> evaluate = [&](Value value) -> Attribute {
+    Attribute attr = counters.lookup(value);
+    Operation *def = value.getDefiningOp();
+    if (attr || !def || matchPattern(value, m_Constant(&attr)))
+      return attr;
+    if (!isPure(def) || def->getNumResults() != 1)
+      return {};
+    SmallVector<Attribute> operands;
+    for (Value operand : def->getOperands())
+      if (!operands.emplace_back(evaluate(operand)))
+        return {};
+    SmallVector<OpFoldResult> folded;
+    if (failed(def->fold(operands, folded)) || folded.size() != 1)
+      return {};
+    if (auto result = dyn_cast<Attribute>(folded.front()))
+      return result;
+    return evaluate(cast<Value>(folded.front()));
+  };
+
   std::function<LogicalResult(Block &)> unroll = [&](Block &block) {
     for (Operation &op : block) {
       if (std::optional<unsigned> end = endOf(&op)) {
@@ -130,6 +151,16 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
       if (!llvm::any_of(
               uses, [&](Operation *use) { return op.isProperAncestor(use); }))
         continue;
+      if (auto ifOp = dyn_cast<scf::IfOp>(op)) {
+        if (auto taken =
+                dyn_cast_or_null<BoolAttr>(evaluate(ifOp.getCondition()))) {
+          for (Block &branch :
+               taken.getValue() ? ifOp.getThenRegion() : ifOp.getElseRegion())
+            if (failed(unroll(branch)))
+              return failure();
+          continue;
+        }
+      }
       auto forOp = dyn_cast<scf::ForOp>(op);
       std::optional<APInt> trips =
           forOp ? forOp.getStaticTripCount() : std::nullopt;
@@ -141,17 +172,37 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
         reason = "the core's period uses them too many times";
         return failure();
       }
-      for (int64_t trip = 0; trip < trips->getSExtValue(); trip++)
+      std::optional<int64_t> lower = getConstantIntValue(forOp.getLowerBound());
+      std::optional<int64_t> step = getConstantIntValue(forOp.getStep());
+      for (int64_t trip = 0; trip < trips->getSExtValue(); trip++) {
+        if (lower && step)
+          counters[forOp.getInductionVar()] = IntegerAttr::get(
+              forOp.getInductionVar().getType(), *lower + trip * *step);
         if (failed(unroll(*forOp.getBody())))
           return failure();
+      }
     }
     return success();
   };
-  // The loop's own body: an scf.while's condition region holds no uses.
-  for (Region *region : cast<LoopLikeOpInterface>(loop).getLoopRegions())
-    for (Block &block : *region)
-      if (failed(unroll(block)))
-        return failure();
+  // The innermost loop whose body unrolls, branches folded, is the period. An
+  // scf.while's condition region holds no uses.
+  Operation *loop = nullptr;
+  for (Operation *candidate : candidates) {
+    period.clear();
+    counters.clear();
+    if (llvm::all_of(cast<LoopLikeOpInterface>(candidate).getLoopRegions(),
+                     [&](Region *region) {
+                       return llvm::all_of(*region, [&](Block &block) {
+                         return succeeded(unroll(block));
+                       });
+                     })) {
+      loop = candidate;
+      reason.clear();
+      break;
+    }
+  }
+  if (!loop)
+    return failure();
   LLVM_DEBUG({
     llvm::dbgs() << "period of " << names.size() << " ends in "
                  << loop->getName() << " at " << loop->getLoc() << ": "
