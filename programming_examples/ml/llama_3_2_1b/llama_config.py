@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Llama 3.2 1B's layer shape and the decode's record sizes and tables."""
+"""Llama 3.2 1B's layer shape and the decode's record sizes."""
 
 D = 2048
 HD = 8192
@@ -37,9 +37,3 @@ CS_BYTES = HEAD_D * 2 * 2
 # KV cache rows a block holds: attention reads and folds the cache a block
 # at a time.
 KV_TB = 64
-
-# The sampler's exp table's resolution.
-EXP_QUANT_SCALE = 0.05
-# The sampler's exp table reaches e^(-512 * 0.05) < 1e-11, which cannot change
-# a float32 sum of weights that is at least 1.
-SAMPLE_EXP_LOW = -512

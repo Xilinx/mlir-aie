@@ -7,8 +7,8 @@
 One Llama 3.2 1B GQA layer (32 Q heads, 8 KV heads, per-head and per-token
 dynamic scales) as the decode's kernels compute it, the block-wise attention
 of llama_attn_block.cc, the one-stream sampler of llama_topk_sample.cc
-(xoshiro128++, the exp table, top-k renormalized over exactly the
-survivors), and a token through the layers and the lm_head. Scalar and
+(xoshiro128++, top-k renormalized over exactly the survivors), and a token
+through the layers and the lm_head. Scalar and
 vector fp32 adds go through aie.utils.aie_fp32's model of the AIE2P adder.
 numpy_llama_ref.py is the INT8 recipe, a different reference.
 """
@@ -18,18 +18,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from aie.iron.kernels.tables import exp_lut
 from aie.utils.aie_fp32 import aie_add
 from gen_llama_data import quant_int8_perchan_absmax
 from llama_config import (
-    EXP_QUANT_SCALE,
     HEAD_D,
     KV_TB,
     N_HEADS_KV,
     N_HEADS_Q,
     PROJECTIONS,
     REP,
-    SAMPLE_EXP_LOW,
     D,
 )
 from ml_dtypes import bfloat16
@@ -557,19 +554,6 @@ def xoshiro_uniform(s: list) -> tuple:
     return u, s
 
 
-def sample_quant_shifted(shifted_f32: np.ndarray) -> np.ndarray:
-    inv = np.float32(1.0) / np.float32(EXP_QUANT_SCALE)
-    v = (shifted_f32.astype(np.float32) * inv).astype(np.float32)
-    q = np.where(
-        v >= 0, np.floor(v + np.float32(0.5)), np.ceil(v - np.float32(0.5))
-    ).astype(np.int32)
-    return np.clip(q, SAMPLE_EXP_LOW, 0)
-
-
-def sample_lookup_exp(q: np.ndarray, lut: np.ndarray) -> np.ndarray:
-    return lut[(q - SAMPLE_EXP_LOW).astype(np.int32)].astype(np.float32)
-
-
 def topk_set_reference(logits_f32: np.ndarray, k_set: int):
     """Mirror llama_lmhead_topk_insert's set: an unsorted set of capacity
     k_set streamed in index order, ordered by logit and then by lower index on
@@ -600,14 +584,14 @@ def topk_sample_reference(
     top_k: int,
     state: list,
     k_set: int = 64,
-    lut: np.ndarray | None = None,
 ) -> tuple[int, list]:
     """The sampled global token id, and the generation's xoshiro state after it.
 
     k_set is the resident-set capacity (the kernel's kKset); sampling draws
     one uniform from `state` over the set's best top_k members (by logit, then
-    lower id), and top_k 0 means the whole set. Greedy (temperature <= 0) is
-    the argmax whatever top_k is, and leaves `state` as it was.
+    lower id), weighted e^(z - max z) with z = logit / temperature, and top_k
+    0 means the whole set. Greedy (temperature <= 0) is the argmax whatever
+    top_k is, and leaves `state` as it was.
 
     Raises:
         ValueError: top_k is outside 0..k_set.
@@ -624,30 +608,25 @@ def topk_sample_reference(
         winners = [g for g in set_idx if logits[g] == wv]
         return int(min(winners)), state
 
-    if lut is None:
-        lut = exp_lut(EXP_QUANT_SCALE, SAMPLE_EXP_LOW).astype(np.float32)
     inv_temp = np.float32(1) / np.float32(temperature)
-
-    # The survivors: the set's best top_k by logit, then lower id.
+    max_z = max(np.float32(logits[g] * inv_temp) for g in set_idx)
+    # The survivors, in ascending global index, the order the kernel sums in.
     by_logit = sorted(set_idx, key=lambda g: (-logits[g], g))
-    survivors = sorted(by_logit[:top_k])  # ascending global-index order
-
-    zs = [np.float32(logits[g] * inv_temp) for g in survivors]
-    max_z = np.float32(max(zs))
+    survivors = sorted(by_logit[:top_k])
+    weights = exp_nonpos(
+        aie_add((logits[survivors] * inv_temp).astype(np.float32), -max_z)
+    )
 
     sum_exp = np.float32(0.0)
-    for z in zs:
-        q = sample_quant_shifted(np.array([z - max_z], dtype=np.float32))[0]
-        sum_exp = np.float32(sum_exp + sample_lookup_exp(np.array([q]), lut)[0])
-
+    for w in weights:
+        sum_exp = aie_add(sum_exp, w)
     u_unit, state = xoshiro_uniform(list(state))
     u = np.float32(u_unit * sum_exp)
 
     c = np.float32(0.0)
     pick = survivors[-1]  # fallback if u falls off the end (fp roundoff)
-    for gi, z in zip(survivors, zs):
-        q = sample_quant_shifted(np.array([z - max_z], dtype=np.float32))[0]
-        c = np.float32(c + sample_lookup_exp(np.array([q]), lut)[0])
+    for gi, w in zip(survivors, weights):
+        c = aie_add(c, w)
         if c > u:
             pick = gi
             break

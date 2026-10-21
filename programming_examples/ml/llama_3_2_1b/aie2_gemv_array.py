@@ -53,11 +53,16 @@ def sample_param_values(temperature, top_k, kset):
         `SAMPLE_PARAMS`' values by name, as `read_sample_params` reads them.
 
     Raises:
-        ValueError: top_k is not 0 (the whole set) or 1..kset.
+        ValueError: top_k is not 0 (the whole set) or 1..kset, or the
+            temperature is positive but not a normal float32 below 2^126,
+            the domain of the sampler's reciprocal.
     """
     if not 0 <= top_k <= kset:
         raise ValueError(f"top_k must be 0 (the whole set) or 1..{kset}, got {top_k}")
-    t = int(np.float32(temperature).view(np.uint32))
+    temperature = np.float32(temperature)
+    if not (temperature <= 0 or np.finfo(np.float32).tiny <= temperature < 2.0**126):
+        raise ValueError(f"temperature {temperature} is not a sampler temperature")
+    t = int(temperature.view(np.uint32))
     return dict(samp0=t & ((1 << 30) - 1), samp1=(t >> 30) | int(top_k) << 2)
 
 
