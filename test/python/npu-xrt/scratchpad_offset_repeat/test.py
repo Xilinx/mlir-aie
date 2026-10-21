@@ -17,7 +17,7 @@ import pytest
 import pyxrt
 
 import aie.iron as iron
-from aie.utils.hostruntime.xrtruntime.hostruntime import XRTHostRuntime
+from aie.utils.hostruntime.xrtruntime.device import acquire_device
 from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
     ParameterScratchpad,
 )
@@ -29,7 +29,7 @@ ROW = 128
 
 @pytest.fixture(scope="module")
 def setup():
-    device = XRTHostRuntime()._device
+    device = acquire_device()
     context = pyxrt.hw_context(device, pyxrt.elf("aie.elf"))
     kernel = pyxrt.ext.kernel(context, "test:sequence")
     src = iron.tensor(np.arange(N, dtype=np.int32), device="cpu")
