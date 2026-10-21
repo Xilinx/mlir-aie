@@ -14,7 +14,11 @@ that one full ELF through:
   prefix, so the one build times every context;
 - generate.py --check: a prompt in, tokens out, 5 requests, each generated
   token the oracle's greedy pick; its time to first token runs from before
-  tokenization, split into the prefill dispatches and the host's rest.
+  tokenization, split into the prefill dispatches and the host's rest;
+- generate.py --prompt-tokens, no --check: the same TTFT split, 5 requests
+  each, at PROMPT_LENGTHS (batched prefill's own exactness is already
+  covered by the --contexts sweep's and test_llama's batched cases; this
+  only times it, at prompt lengths long enough to need many batches).
 Every run must exit 0 and pass every token. One run, no seed sweep: the
 design pins its SA placer seed (aie2_decode.build's aiecc flags).
 
@@ -22,10 +26,9 @@ Needs the real Llama 3.2 1B checkpoint where amd/IRON's examples keep it,
 ``$IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/`` (default ``/srv``; see
 gen_llama_data.WEIGHTS_DIR), or ``--weights``/``--tokenizer``, unless
 ``data/`` already holds the INT8 weights and the tokenizer: the decode test
-loads the real embed table and final_norm gamma even for its timing (its
-transformer layers are a random fixture), and generate.py loads every
-layer. Generates ``data/`` once if it isn't complete, and refuses to measure
-when that fails.
+and generate.py both load every layer's real weights (run without
+--synthetic-weights). Generates ``data/`` once if it isn't complete, and
+refuses to measure when that fails.
 
 Writes rows and a meta file in the kernel checks' format
 (utils/kernel_checks/publish.py), with the device's power mode and the
@@ -39,6 +42,8 @@ programming_examples/ml/llama_3_2_1b, with
         131068 --time
     python3 generate.py --t 131072 --elf X.elf \
         --prompt "The capital of France is" --check
+    python3 generate.py --t 131072 --elf X.elf --prompt-tokens 2048 \
+        --max-new 1
 """
 
 import argparse
@@ -100,6 +105,9 @@ _ORACLE_RE = re.compile(r"^oracle: (\d+)/(\d+) generated tokens pass", re.MULTIL
 # generate.py's prompt and length, the same every night.
 GENERATE_PROMPT = "The capital of France is"
 GENERATE_NEW = 32
+# Prefill's own TTFT, at prompt lengths long enough to need many batches
+# (mlir-air/FastFlowLM report TTFT by prompt length the same way).
+PROMPT_LENGTHS = (512, 1024, 2048)
 _ELF = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}_T{T}.elf"
 _PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}_T{T}.prj"
 _PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
@@ -237,6 +245,45 @@ def run_generate(env: dict) -> Measured:
     )
 
 
+def run_prefill(env: dict, prompt_tokens: int) -> Measured:
+    """Run generate.py --prompt-tokens for its TTFT alone, one generated token."""
+    return run_measured(
+        [
+            sys.executable,
+            "generate.py",
+            f"--t={T}",
+            "--elf",
+            _ELF,
+            "--prompt-tokens",
+            str(prompt_tokens),
+            "--max-new",
+            "1",
+        ],
+        _LLAMA_DIR,
+        env,
+        GENERATE_TIMEOUT,
+    )
+
+
+def parse_prefill(out: str, returncode: int) -> dict:
+    """Return a run_prefill run's TTFT, and whether its requests agreed.
+
+    Returns:
+        `prefill_passed`: it exited 0 (every repeat generated the same
+        token; generate.py's own gate, no oracle here); the TTFT split, as
+        `parse_generate`'s.
+    """
+    timing = _GENERATE_RE.search(out)
+    return {
+        "prefill_passed": returncode == 0 and bool(timing),
+        "ttft_runs": int(timing.group(1)) if timing else None,
+        "ttft_ms": float(timing.group(2)) if timing else None,
+        "ttft_min_ms": float(timing.group(3)) if timing else None,
+        "ttft_npu_dispatch_ms": float(timing.group(4)) if timing else None,
+        "ttft_host_ms": float(timing.group(5)) if timing else None,
+    }
+
+
 def parse_generate(out: str, returncode: int) -> dict:
     """Return generate.py --check's numbers and whether its oracle gate passed.
 
@@ -348,6 +395,7 @@ def aggregate(
     correctness: dict,
     timing: dict,
     generated: dict,
+    prefill: dict,
     artifacts: dict,
     compile_stats: dict,
 ) -> list[dict]:
@@ -391,6 +439,20 @@ def aggregate(
                 f"of {generated['greedy_total']} vs numpy_llama_ref",
             )
         )
+    for length, p in prefill.items():
+        if not p["prefill_passed"]:
+            continue
+        prompt = f"{case}/prompt={length}"
+        for metric, unit in (
+            ("ttft_ms", "ms"),
+            ("ttft_min_ms", "ms"),
+            ("ttft_npu_dispatch_ms", "ms"),
+            ("ttft_host_ms", "ms"),
+        ):
+            stat = "fastest" if metric == "ttft_min_ms" else "median"
+            out.append(
+                row(prompt, metric, p[metric], unit, f"{stat} of {p['ttft_runs']}")
+            )
     for metric, unit in (
         ("elf_bytes", "bytes"),
         ("pdi_bytes", "bytes"),
@@ -426,6 +488,7 @@ def main(argv=None) -> int:
         "pt": P_MAX,
         "t": T,
         "contexts": [DISPATCH_RATE_AT, *CONTEXTS],
+        "prompt_lengths": list(PROMPT_LENGTHS),
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
         return refuse(
@@ -459,6 +522,7 @@ def main(argv=None) -> int:
     correctness = parse_correctness("", 1)
     timing: dict = {}
     generated = parse_generate("", 1)
+    prefill: dict = {}
     artifacts: dict = {}
     try:
         compiled = compile_cold_warm(env, cache_dir)
@@ -470,14 +534,28 @@ def main(argv=None) -> int:
             if correctness["passed"]:
                 gen_ran = run_generate(run_env).process
                 generated = parse_generate(gen_ran.stdout, gen_ran.returncode)
+                for length in PROMPT_LENGTHS:
+                    pre_ran = run_prefill(run_env, length).process
+                    prefill[length] = parse_prefill(pre_ran.stdout, pre_ran.returncode)
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
 
     timed = set(timing) == {DISPATCH_RATE_AT, *CONTEXTS}
-    passed = correctness["passed"] and timed and generated["generate_passed"]
+    prefill_timed = set(prefill) == set(PROMPT_LENGTHS) and all(
+        p["prefill_passed"] for p in prefill.values()
+    )
+    passed = (
+        correctness["passed"]
+        and timed
+        and generated["generate_passed"]
+        and prefill_timed
+    )
     failed = [] if passed else [case]
 
-    write(args.out, aggregate(correctness, timing, generated, artifacts, compiled))
+    write(
+        args.out,
+        aggregate(correctness, timing, generated, prefill, artifacts, compiled),
+    )
     write(
         args.meta,
         {
@@ -489,6 +567,7 @@ def main(argv=None) -> int:
                     **correctness,
                     "timing": {str(at): t for at, t in timing.items()},
                     **generated,
+                    "prefill": {str(length): p for length, p in prefill.items()},
                     **artifacts,
                     **{k: v for k, v in compiled.items() if k != "built"},
                 }

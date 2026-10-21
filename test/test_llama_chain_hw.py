@@ -88,6 +88,7 @@ def test_the_timed_decode_publishes_its_statistic(llama):
         llama.parse_generate("", 1),
         {},
         {},
+        {},
     )
     names = {r["name"].rsplit("/", 1)[1]: r for r in rows}
     assert names["ms_per_token"]["value"] == t["ms_per_token"]
@@ -124,10 +125,20 @@ def test_generate_rows_publish_only_after_its_oracle_passed(llama):
     correctness = llama.parse_correctness(output("decode_pass"), 0)
     timing = llama.parse_timing(output("timed_pass"), 0)
     passed = llama.aggregate(
-        correctness, timing, llama.parse_generate(output("generate_pass"), 0), {}, {}
+        correctness,
+        timing,
+        llama.parse_generate(output("generate_pass"), 0),
+        {},
+        {},
+        {},
     )
     failed = llama.aggregate(
-        correctness, timing, llama.parse_generate(output("generate_pass"), 1), {}, {}
+        correctness,
+        timing,
+        llama.parse_generate(output("generate_pass"), 1),
+        {},
+        {},
+        {},
     )
     names = {r["name"].rsplit("/", 1)[1]: r for r in passed}
     assert names["ttft_ms"]["value"] == 124.6
@@ -153,7 +164,7 @@ def test_the_context_sweep_publishes_every_context(llama):
     timing = llama.parse_timing(out, 0)
     assert set(timing) == {llama.DISPATCH_RATE_AT, *llama.CONTEXTS}
     assert llama.timing_sane(timing)
-    rows = llama.aggregate(correctness, timing, llama.parse_generate("", 1), {}, {})
+    rows = llama.aggregate(correctness, timing, llama.parse_generate("", 1), {}, {}, {})
     case = f"llama/persist_grow/N={llama.N_LAYERS}"
     names = {r["name"]: r["value"] for r in rows}
     assert names[f"{case}/ms_per_token"] == 47.23
@@ -163,6 +174,48 @@ def test_the_context_sweep_publishes_every_context(llama):
         assert names[f"{case}/ctx={at}/tok_s"] == timing[at]["tok_s"]
         assert f"{case}/ctx={at}/decode_tok_s" not in names
     assert names[f"{case}/ctx=131068/tok_s"] == 2.09
+
+
+def test_prefill_passes_and_publishes_ttft_at_its_prompt_length(llama):
+    got = llama.parse_prefill(output("prefill_pass"), 0)
+    assert got["prefill_passed"]
+    assert got["ttft_runs"] == 5
+    assert got["ttft_ms"] == 8158.5
+    assert got["ttft_min_ms"] == 8135.6
+    assert got["ttft_npu_dispatch_ms"] == 8024.6
+    assert got["ttft_host_ms"] == 133.9
+
+
+def test_prefill_fails_on_its_exit_status(llama):
+    assert not llama.parse_prefill(output("prefill_pass"), 1)["prefill_passed"]
+
+
+def test_the_prefill_sweep_publishes_a_row_per_prompt_length(llama):
+    correctness = llama.parse_correctness(output("decode_pass"), 0)
+    timing = llama.parse_timing(output("timed_pass"), 0)
+    prefill = {512: llama.parse_prefill(output("prefill_pass"), 0)}
+    rows = llama.aggregate(
+        correctness, timing, llama.parse_generate("", 1), prefill, {}, {}
+    )
+    case = f"llama/persist_grow/N={llama.N_LAYERS}"
+    names = {
+        r["name"].rsplit("/", 1)[1]: r for r in rows if f"/prompt=512/" in r["name"]
+    }
+    assert names["ttft_ms"]["value"] == 8158.5
+    assert names["ttft_min_ms"]["value"] == 8135.6
+    assert names["ttft_ms"]["range"] == "median of 5"
+    assert names["ttft_min_ms"]["range"] == "fastest of 5"
+    assert f"{case}/prompt=512/ttft_ms" in {r["name"] for r in rows}
+    # A failed length publishes nothing for it.
+    failed_rows = llama.aggregate(
+        correctness,
+        timing,
+        llama.parse_generate("", 1),
+        {512: llama.parse_prefill(output("prefill_pass"), 1)},
+        {},
+        {},
+    )
+    assert not any("/prompt=512/" in r["name"] for r in failed_rows)
 
 
 def test_this_checkout_has_the_data_the_runs_read_or_names_what_it_lacks(llama):

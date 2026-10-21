@@ -452,6 +452,15 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
     correctness = llama_chain_hw.parse_correctness(ran, 0)
     timing = llama_chain_hw.parse_timing(ran, 0)
     gen = llama_chain_hw.parse_generate(generated, 0)
+    prefill = {}
+    for length in llama_chain_hw.PROMPT_LENGTHS:
+        pre_ttft = (15.6 * length + 180) * drift
+        pre = (
+            f"prompt {length + 1} tokens, generated 1, median of 5: TTFT "
+            f"{pre_ttft:.1f} ms (min {pre_ttft - 20:.1f}; NPU dispatch "
+            f"{pre_ttft - 30:.1f}, host 30.0), decode n/a\n"
+        )
+        prefill[length] = llama_chain_hw.parse_prefill(pre, 0)
     artifacts = {"elf_bytes": 1_843_200, "pdi_bytes": 412_160}
     compiled = _compile_night(rng, 19.8, 0.5, STAGE_PROFILES)
     case = f"llama/persist_grow/N={n}"
@@ -461,6 +470,7 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
         "pt": llama_chain_hw.P_MAX,
         "t": llama_chain_hw.T,
         "contexts": [llama_chain_hw.DISPATCH_RATE_AT, *llama_chain_hw.CONTEXTS],
+        "prompt_lengths": list(llama_chain_hw.PROMPT_LENGTHS),
         "measurement_sane": True,
         "detail": [
             {
@@ -468,6 +478,7 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
                 **correctness,
                 "timing": {str(at): t for at, t in timing.items()},
                 **gen,
+                "prefill": {str(length): p for length, p in prefill.items()},
                 **artifacts,
                 **compiled,
             }
@@ -476,7 +487,9 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
         "exitstatus": 0,
     }
     return (
-        llama_chain_hw.aggregate(correctness, timing, gen, artifacts, compiled),
+        llama_chain_hw.aggregate(
+            correctness, timing, gen, prefill, artifacts, compiled
+        ),
         meta,
     )
 

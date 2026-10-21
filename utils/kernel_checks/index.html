@@ -1068,10 +1068,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                   lines: [['decode (generate.py)', ['decode_tok_s']], ['dispatch rate', ['tok_s']]],
                   about: 'tokens per second as generate.py decodes them, end to end, the median of its 5 requests, and the dispatch rate of the timed run\'s fastest dispatch of 20, which leaves out the host work between dispatches' },
                 { id: 'ms_per_token', axis: 'Dispatch time per token (ms, fastest of 20 dispatches)', lines: [['', ['ms_per_token']]] },
-                { id: 'decode_by_context', metric: 'tok_s', beside: 'ms_per_token', per: 'ctx', name: 'Decode by context', log: true,
+                { id: 'decode_by_context', metric: 'tok_s', beside: 'ms_per_token', per: 'ctx', perWord: 'context', name: 'Decode by context', log: true,
                   axis: 'Dispatch rate, tokens per second (fastest of 20 dispatches)',
                   about: 'the dispatch rate with the KV cache filled to each context length, all from the one compile for the longest; hover for the time per token' },
-                { id: 'ttft_ms', axis: 'Time to first token (ms, median of 5)', lines: [['median', ['ttft_ms']], ['fastest', ['ttft_min_ms']], ['prefill dispatches', ['ttft_npu_dispatch_ms']], ['host', ['ttft_host_ms']]] }, ...COMPILE_TABS] },
+                { id: 'ttft_ms', axis: 'Time to first token (ms, median of 5)', lines: [['median', ['ttft_ms']], ['fastest', ['ttft_min_ms']], ['prefill dispatches', ['ttft_npu_dispatch_ms']], ['host', ['ttft_host_ms']]] },
+                { id: 'ttft_by_prompt', metric: 'ttft_ms', per: 'prompt', perWord: 'tokens', name: 'TTFT by prompt length', log: true,
+                  axis: 'Time to first token (ms, median of 5)',
+                  about: 'time to first token at each prompt length, all from the one compile for the longest context; hover for the NPU dispatch and host split' },
+                ...COMPILE_TABS] },
       { id: 'yolo26n-hw', section: 'performance', title: 'YOLO26n detection on npu2', short: 'YOLO26n', failure: 'run',
         passed: 'Every image matched the oracle.',
         about: 'the whole 640×640 int8 detector, backbone through the Detect head\'s postprocess, compiled cold and then warm, '
@@ -3220,7 +3224,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       // A static design's per-batch time charts beside the current design's,
       // never joined to it; a series still keyed by seed is neither.
       const charted = mine.filter(s => !/\/seed=\d+/.test(s.kase) && (!/\/effort=\w+$/.test(s.kase) || s.kase.endsWith(`/effort=${effort}`))
-        && (tab.per ? caseKey(s.kase, tab.per) !== null : caseKey(s.kase, 'ctx') === null));
+        && (tab.per ? caseKey(s.kase, tab.per) !== null : caseKey(s.kase, 'ctx') === null && caseKey(s.kase, 'prompt') === null));
       const sorted = charted.sort((a, b) => a.kase.localeCompare(b.kase, 'en', { numeric: true }));
       const batches = [...new Set(sorted.map(s => caseKey(s.kase, 'batch')))].filter(n => n !== null).sort((a, b) => a - b);
       const ends = [batches[0], batches.at(-1)];
@@ -3232,7 +3236,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         : tab.per
           ? sorted.map((s, color) => {
             const n = caseKey(s.kase, tab.per);
-            return { name: `${n % 1024 ? n : `${n / 1024}k`} context`, color, parts: [s] };
+            const word = tab.perWord || tab.per;
+            return { name: `${n % 1024 ? n : `${n / 1024}k`} ${word}`, color, parts: [s] };
           })
           : tab.lines.map(([name, ms], color) => ({ name, color, parts: charted.filter(s => ms.includes(s.metric)) })).filter(l => l.parts.length);
       const parts = lines.flatMap(l => l.parts);
