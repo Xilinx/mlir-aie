@@ -111,7 +111,7 @@ def aggregate(rows: list[dict]) -> list[dict]:
                 case,
                 "peak_rss_mb_max",
                 round(max(r["peak_rss_mb"] for r in mine), 1),
-                "MB",
+                "MiB",
             ),
         ]
         if costs:

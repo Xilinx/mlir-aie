@@ -319,7 +319,7 @@ def compile_rows(case: str, stats: dict) -> list[dict]:
         The rows, in COMPILE_METRICS order.
     """
     return [
-        row(case, metric, stats[metric], "MB" if "_rss_" in metric else "s")
+        row(case, metric, stats[metric], "MiB" if "_rss_" in metric else "s")
         for metric in COMPILE_METRICS
         if stats.get(metric) is not None
     ]

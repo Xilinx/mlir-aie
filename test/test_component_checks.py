@@ -529,7 +529,7 @@ def test_timed_yolo26n_runs_report_each_batch(yolo):
         ("yolo26n/640/elf_bytes", "bytes", 1_234_567, None),
         ("yolo26n/640/n_cores", "cores", 32, None),
         ("yolo26n/640/compile_s", "s", 95.1, None),
-        ("yolo26n/640/compile_peak_rss_mb", "MB", 3100.0, None),
+        ("yolo26n/640/compile_peak_rss_mb", "MiB", 3100.0, None),
     ]
     # Every metric the check publishes has a threshold the page and the PR
     # report share.
