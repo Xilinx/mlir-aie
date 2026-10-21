@@ -2,13 +2,9 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Numpy reference for llama_sample.cc -- bit-exact, matches the kernel's
-xoshiro128++ PRNG, splitmix64-style seed expansion, exp LUT, IEEE reciprocal,
-and inverse-CDF draw.
-
-NOT the same as cautious-eureka/npu2/sampling.py: that file is the
-algorithmic spec and uses numpy default_rng + np.exp + np.partition.
-Here we reproduce the kernel's bitwise arithmetic.
+"""The sampler's building blocks as llama_topk_sample.cc computes them, bit for
+bit: the xoshiro128++ PRNG, its splitmix64-style seeding, the exp table, the
+IEEE reciprocal and the inverse-CDF draw.
 """
 
 from __future__ import annotations
@@ -18,9 +14,6 @@ from gen_exp_lut import exp_lut
 from llama_config import EXP_QUANT_SCALE, SAMPLE_EXP_LOW
 
 MASK_SENTINEL = np.float32(-1.0e9)
-
-
-# --- xoshiro128++ PRNG (uint32 arithmetic, must match the C kernel) ---
 
 
 def _u32(x):
@@ -66,9 +59,6 @@ def xoshiro_uniform(s: list) -> tuple:
     r, s = xoshiro_next(s)
     u = np.float32(np.float32(int(r) >> 8) * np.float32(1.0 / 16777216.0))
     return u, s
-
-
-# --- Kernel building blocks (mirror llama_sample.cc one-for-one) ---
 
 
 def quant_shifted(shifted_f32: np.ndarray) -> np.ndarray:

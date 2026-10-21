@@ -2,24 +2,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Phase 6c.5a: pure-numpy INT8 forward pass for Llama 3.2 1B.
+"""The int8 recipe in numpy: Llama 3.2 1B's forward pass on gen_llama_data.py's
+weights, with per-channel int8 weights, per-token int8 activations, int32
+accumulation and fp32 dequant, silu, softmax and rmsnorm.
 
-Loads the .bin files produced by gen_llama_data.py, runs a decoder
-layer (or the full N-layer + lm_head + sample stack) with:
-  - per-channel symmetric INT8 weights
-  - per-token INT8 activations (one fp32 scale per row; for decode
-    M=1 it's one scalar per dispatch)
-  - INT32 GEMM accumulate + fp32 dequant + fp32 silu/softmax/rmsnorm
-    invsqrt, re-quantized to INT8 between ops.
-
-This is the numpy ORACLE for the kernel refactor (6c.5b): every kernel
-the NPU runs has to match what this script computes, bit-for-bit on
-INT8 inputs that came from the same .bin files.
-
-It's also the QUALITY reference for the BF16 PyTorch baseline (6c.5a
-Track 2): compare layer outputs cos-sim.
-
-Single forward pass only; no decode loop.
+The device follows this recipe but not bit for bit (its reciprocal square
+root, softmax exp and adder differ); numpy_layer_mh.py is the oracle it
+matches exactly. This is the quality reference the device is scored against.
 """
 
 from __future__ import annotations
@@ -43,7 +32,6 @@ from llama_config import (
     D,
 )
 
-# --- Llama 3.2 1B spec ---
 ROPE_BASE = 500_000.0
 # config.json's rope_scaling (rope_type "llama3").
 ROPE_FACTOR = 32.0
@@ -53,9 +41,6 @@ ROPE_ORIGINAL_CONTEXT = 8192
 RMS_EPS = 1e-5
 
 
-# ---------------------------------------------------------------------------
-# Loading: pull .bin files into numpy arrays of the right shape.
-# ---------------------------------------------------------------------------
 @dataclass
 class LayerW:
     gamma_in: np.ndarray  # (D,) bf16
@@ -165,9 +150,6 @@ def load_tokenizer(tokenizer_path: Path):
     )
 
 
-# ---------------------------------------------------------------------------
-# INT8 ops (per-token activation scale, per-channel weight scale).
-# ---------------------------------------------------------------------------
 def quant_act_per_token(x_f32: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Per-row symmetric INT8 quantization. x_f32 is (M, D); returns
     (q_i8, scale_f32) where scale has shape (M,)."""
@@ -180,8 +162,8 @@ def quant_act_per_token(x_f32: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def linear_int8(x_f32: np.ndarray, w_i8: np.ndarray, w_sc: np.ndarray) -> np.ndarray:
     """y = x @ W.T with per-token x quant and per-row w scale, return fp32.
 
-    Mirrors what 6c.5b's NPU GEMM kernel will do: quant x per-token,
-    int32 accumulate, fp32 dequant with x_scale * w_sc[n] per output.
+    Quantizes x per token, accumulates in int32 and dequantizes with
+    x_scale * w_sc[n] per output.
     """
     if x_f32.ndim == 1:
         x_f32 = x_f32[None, :]  # (1, D) for uniform handling
@@ -297,9 +279,6 @@ def attention_full_gqa(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarra
     return out.reshape(M, Q_DIM)
 
 
-# ---------------------------------------------------------------------------
-# One decoder layer, INT8 dataflow.
-# ---------------------------------------------------------------------------
 def forward_layer_int8(
     x_f32: np.ndarray,
     W: LayerW,
@@ -375,9 +354,6 @@ def forward_full(model: ModelW, token_ids: np.ndarray) -> np.ndarray:
     return lm_head_logits(model, x)
 
 
-# ---------------------------------------------------------------------------
-# CLI sanity: load weights, run one forward pass, report shape + a stat.
-# ---------------------------------------------------------------------------
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--data-dir", type=Path, default=Path(__file__).parent / "data")

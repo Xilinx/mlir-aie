@@ -4,11 +4,8 @@
 #
 """Codegen: emit a static const bf16[256] SiLU LUT header.
 
-Used to make llama_silu_mul_int8.cc bit-exact against the numpy
-reference: both compute silu(i * gate_scale) for i in int8, and look
-up the same bf16 entry. The output header is included by the kernel
-and the same LUT (recomputed in numpy with the same arithmetic) is
-what numpy_layer_mh.numpy_silu_mul reads.
+llama_silu_mul_int8.cc and numpy_layer_mh read the same bf16 silu(i *
+gate_scale) entries, so the kernel matches its numpy mirror exactly.
 """
 
 import argparse

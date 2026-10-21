@@ -2,18 +2,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Codegen: emit a static const float[256] exp LUT header.
-
-Used by llama_flowkv_qk to compute softmax without aie::exp2 (which
-isn't bit-exact vs numpy). After subtract-max all scores are <= 0;
-the kernel quantizes them to int8 with a fixed `exp_quant_scale` and
-looks up the LUT:
-
-  q[i]   = clamp(round((shifted[i]) * (1/exp_quant_scale)), -128, 0)
-  exp_v  = exp_lut[q[i] + 128]   # = exp(q[i] * exp_quant_scale)
-
-The LUT is generated here with the same arithmetic the test reference
-replays, so both compute identical exp values.
+"""The exp table the sampler (and numpy_layer_mh's flowkv path) reads: a max-
+shifted score is quantized to q = clamp(round(shifted / exp_quant_scale),
+low, 0) and read as exp(q * exp_quant_scale). The kernel's header and the
+numpy mirrors come from the same entries, so both read identical values.
 """
 
 import argparse

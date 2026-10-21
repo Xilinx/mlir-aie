@@ -49,8 +49,6 @@ DEFAULT_TEXT = (
     "engines to self-driving cars and medical diagnosis."
 )
 
-# --- True bf16 reference: load HF weights as fp32, full-precision forward ---
-
 
 class RefModel:
     """Unquantized (bf16->fp32) HF weights for a full-precision numpy forward."""
@@ -105,9 +103,6 @@ def ref_forward_logits(model: RefModel, token_ids: np.ndarray) -> np.ndarray:
         x = x + d
     h = rmsnorm(x, model.final_norm)
     return h @ model.embed.T  # tied lm_head, (M, V)
-
-
-# --- metrics ---
 
 
 def log_softmax(logits: np.ndarray) -> np.ndarray:

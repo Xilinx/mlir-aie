@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Phase 6c.5a: BF16 -> per-channel-INT8 weight extractor for Llama 3.2 1B.
+"""BF16 -> per-channel-INT8 weight extractor for Llama 3.2 1B.
 
 Loads model.safetensors (146 BF16 tensors, 2.4 GB; from WEIGHTS_DIR, or pass
 --weights) and dumps INT8 weights + fp32 per-output-channel
@@ -58,7 +58,6 @@ from llama_config import (
     D,
 )
 
-# --- Llama 3.2 1B spec (mirrors cautious-eureka/npu2/llama_spec.py) ---
 # The gated checkpoint's directory, as amd/IRON's examples find it
 # (iron/lm/testing.py): model.safetensors and tokenizer.model.
 WEIGHTS_DIR = Path(os.environ.get("IRON_EXAMPLE_WEIGHTS_DIR", "/srv")) / "llama3.2-1b"
@@ -115,8 +114,6 @@ def quant_int8_perchan_absmax(w_f32: np.ndarray) -> tuple[np.ndarray, np.ndarray
     HF Linear weight shape is (out_dim, in_dim). One scale per output row.
     Returns (q_i8, scale_f32) where scale_f32 has shape (out_dim,) and
     q_i8 has the same shape as the input.
-
-    Recipe verbatim from cautious-eureka/npu2/measure_weight_compressibility.py.
     """
     assert w_f32.ndim == 2, f"expected 2D weight, got {w_f32.shape}"
     absmax = np.maximum(np.abs(w_f32).max(axis=1, keepdims=True), 1e-12)

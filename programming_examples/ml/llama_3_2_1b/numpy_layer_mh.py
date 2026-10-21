@@ -37,7 +37,6 @@ from ml_dtypes import bfloat16
 from numpy_attn_block import attention as attn_block_attention
 from numpy_attn_block import exp_nonpos
 
-# --- Multi-head GQA shape constants ---
 T = 128
 
 
@@ -157,14 +156,10 @@ def _dyn_scale(fp):
 def attention_perslot(
     q_i8, k_i8, v_i8, head_dim, t, q_scale, k_slot_scales, v_slot_scales, inv_out_scale
 ):
-    """Per-cache-slot-scale attention (the correct multi-token decode path).
+    """Attention with each cached position dequantized by its own k/v scale.
 
-    Each cached position is dequantized by ITS OWN k/v scale, fixing the
-    per-head-scalar bug where the whole cache was dequantized with the latest
-    token's scale. fp32 softmax (no exp-LUT) — this defines the NEW on-device
-    target (the flowkv kernel + KV fifo format must carry a per-slot scale).
-    q_i8: (head_dim,) int8; k_i8/v_i8: (t*head_dim,) int8; *_slot_scales: (t,).
-    Returns int8[head_dim] at inv_out_scale.
+    fp32 softmax. q_i8: (head_dim,) int8; k_i8/v_i8: (t*head_dim,) int8;
+    *_slot_scales: (t,). Returns int8[head_dim] at inv_out_scale.
     """
     qf = q_i8.astype(np.float32) * np.float32(q_scale)
     k_mat = k_i8.astype(np.float32).reshape(t, head_dim) * k_slot_scales[:t, None]
@@ -250,8 +245,8 @@ def numpy_attention_perslot_flowkv(
     k_mat = k_i8.astype(np.int32).reshape(t, head_dim)
     dots = (k_mat @ q_i8.astype(np.int32)).astype(np.int32)  # (t,)
     ksl = np.asarray(k_slot_scales, dtype=np.float32)[:t]
-    # Scale order (q_scale * k_slot[i]) * 0.125 mirrors the kernel and the
-    # bit-exact per-head predecessor; (q*0.125)*k diverges ~1 ULP.
+    # Scale order (q_scale * k_slot[i]) * 0.125 mirrors the kernel;
+    # (q*0.125)*k diverges ~1 ULP.
     qk = ((qs * ksl).astype(np.float32) * inv_sqrt).astype(np.float32)
     scores = (dots.astype(np.float32) * qk).astype(np.float32)
 
@@ -276,10 +271,8 @@ def numpy_attention_perslot_flowkv(
 
 
 def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
-    """Phase 7a real-weight loader: full Q_DIM/KV_DIM Llama 3.2 1B weights
-    sliced into the 8 KV-head layout the mh xclbin expects. KV cache stays
-    random per-seed (chain doesn't model real k_proj/v_proj yet).
-    """
+    """Layer L's Llama 3.2 1B weights from data_dir, in the 8-KV-head layout,
+    with empty KV caches."""
     from pathlib import Path
 
     ld = Path(data_dir) / f"layer_{L:02d}"
@@ -307,7 +300,6 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     wq_sc = _f32("wq.scales.f32.bin", (Q_DIM,))
     bq = np.zeros(Q_DIM, np.int32)
 
-    # k_proj, v_proj: (KV_DIM, D) -- Phase 8a real K/V projection.
     wk_i8 = _i8("wk.i8.bin", (KV_DIM, D))
     wk_sc = _f32("wk.scales.f32.bin", (KV_DIM,))
     wv_i8 = _i8("wv.i8.bin", (KV_DIM, D))
@@ -337,9 +329,7 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     cos = np.concatenate([cos_half, cos_half])
     sin = np.concatenate([sin_half, sin_half])
 
-    # Phase 8a: empty caches; the host harness fills slots 0..t_cur as
-    # tokens are processed. k/v_scales start at a tiny epsilon and get
-    # overwritten per token by numpy_layer_mh_forward(position=...).
+    # numpy_layer_mh_forward(position=...) fills a slot, and its scales, a token.
     kcaches = [np.zeros(T * HEAD_D, dtype=np.int8) for _ in range(N_HEADS_KV)]
     vcaches = [np.zeros(T * HEAD_D, dtype=np.int8) for _ in range(N_HEADS_KV)]
     k_scales = np.full(N_HEADS_KV, 1e-6, dtype=np.float32)
@@ -524,10 +514,9 @@ def numpy_layer_mh_forward(
     k_scales = layer["k_scales"]
     v_scales = layer["v_scales"]
 
-    # Residual entering this layer. Three modes: int8 static (default,
-    # baked ACT_SCALE=0.05, the old quality-collapsing bit-exact path);
-    # residual_fp32 (fp32, quantized per-token here); residual_dyn (the
-    # on-device target -- see the rescale-add note below for its contract).
+    # The residual entering the layer: int8 at the fixed ACT_SCALE (default),
+    # fp32 (residual_fp32), or int8 with its own per-token scale (residual_dyn,
+    # the device's form).
     if residual_dyn:
         x_i8, res_scale = x  # int8[D], fp32
         x_i8 = np.asarray(x_i8, dtype=np.int8)
@@ -546,9 +535,8 @@ def numpy_layer_mh_forward(
     # 1) rmsnorm1 -> h1 (per-token dynamic output scale).
     h1, act_scale1 = numpy_rmsnorm_int8_dyn(x_i8, gamma_in, rms_in_scale)
 
-    # 1b) Phase 8a: real K/V projection + rope_k + per-KV-head requant +
-    # cache append at `position`. Only runs when caller passes position;
-    # otherwise the test-fixture caches are used as-is (Phase 7 behavior).
+    # 1b) With a position: K/V projection, rope_k, per-KV-head requant and the
+    # cache append there; without one the given caches are used as they are.
     if position is not None:
         wk_i8 = layer["wk_i8"]
         wk_sc = layer["wk_sc"]
@@ -572,9 +560,7 @@ def numpy_layer_mh_forward(
         k_rope = np.empty_like(k_fp)
         for h in range(N_HEADS_KV):
             kh = k_fp[h * HEAD_D : (h + 1) * HEAD_D]
-            # Snapshot both halves as COPIES — x1/x2 must not be views of kh,
-            # or writing the first half corrupts x1 before the second half
-            # reads it (in-place rotate-half aliasing bug).
+            # Copies: as views of kh, the first half's write would change x1.
             x1 = kh[:half].copy()
             x2 = kh[half:].copy()
             out = np.empty(HEAD_D, dtype=np.float32)
@@ -629,12 +615,9 @@ def numpy_layer_mh_forward(
     # 4) rope (per-head). numpy_rope_dyn reshapes to (n_heads, head_dim) internally.
     qr = numpy_rope_dyn(qf, cos, sin, N_HEADS_Q, HEAD_D)
 
-    # 5) Per-Q-head attention. GQA: kvh = h_q // REP. Each Q head gets
-    #    its own sv_out_scale + sv_inv_out_scale. T_used (Phase 8c):
-    #    when caller passes position, only the first position+1 cache
-    #    slots are considered (causal mask). Otherwise attend over all
-    #    T slots (Phase 7 / 8a behavior, preserves BIT-EXACT for
-    #    random-fixture tests).
+    # 5) Per-Q-head attention (kvh = h_q // REP), each head with its own
+    #    sv_out_scale. With a position, only slots 0..position (causal);
+    #    otherwise all T.
     t_used = (position + 1) if position is not None else T
     # attn_perslot selects the per-cache-slot-scale fp32-softmax attention;
     # it follows residual_dyn unless set.
@@ -768,10 +751,8 @@ def numpy_layer_mh_forward(
         # per-token residual scale. (Device: o_proj emits dynamic int8+scale,
         # rescale-add kernel reconstructs both and requants.)
         x1_fp = aie_fp.aie_add(x_resid_fp, op_fp)
-        # Scale computed EXACTLY as the device rescale-add kernel:
-        # absmax (fp32, 1e-12 floor) * (1.0f/127.0f), and its IEEE inverse.
-        # The /127.0-in-float64 form diverges by ~1 ULP and flips dozens of
-        # knife-edge requant roundings (matches the dyn-rmsnorm HW mirror).
+        # As the device: absmax (1e-12 floor) * (1.0f/127.0f) in fp32; /127.0
+        # in float64 is 1 ULP off and flips knife-edge requant roundings.
         x1_scale = _dyn_scale(x1_fp)
         x1_i8 = requant(x1_fp, np.float32(1) / np.float32(x1_scale))
         h2, act_scale2 = numpy_rmsnorm_int8_dyn(x1_i8, gamma_post, float(x1_scale))
@@ -830,12 +811,10 @@ def numpy_layer_mh_forward(
             * np.float32(down_act_scale)
             * wd_sc.astype(np.float32)
         )
-        # The device add2 reconstructs the residual from the int8+scale that
-        # flowed through the of_x1 fifo (x1_i8 * x1_scale), NOT the exact
-        # pre-quant x1_fp. Mirror that: reconstruct from the quantized x1.
+        # The device's add rebuilds the residual from the quantized x1
+        # (x1_i8 * x1_scale), not x1_fp.
         x1_resid_fp = x1_i8.astype(np.float32) * np.float32(x1_scale)
         xo_fp = aie_fp.aie_add(x1_resid_fp, df_fp)
-        # Scale computed EXACTLY as the device rescale-add kernel (see add1).
         xo_scale = _dyn_scale(xo_fp)
         xo_i8 = requant(xo_fp, np.float32(1) / np.float32(xo_scale))
         x_out = (xo_i8, float(xo_scale))  # (int8[D], fp32) per-token residual

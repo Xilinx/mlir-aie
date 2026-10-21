@@ -337,7 +337,7 @@ def build(
         """Rows across a dispatch's n passes (m0 > 1 only when n is 1)."""
         return addi(m0, addi(n, _const_i32(-1)))
 
-    # --- the array ---
+    # the array
     of_act = ObjectFifo(t_act, depth=1, name="act")
     of_w = [ObjectFifo(t_slot, depth=2, name=f"w{c}") for c in range(N_CORES)]
     of_outlo = ObjectFifo(_i8(4 * OUT_BYTES), depth=1, name="outlo")
@@ -507,7 +507,7 @@ def build(
         )
     )
 
-    # --- RMSNorm: both norms of each layer, then the final norm, a row each ---
+    # RMSNorm: both norms of each layer, then the final norm, a row each
     t_norm_in = _i8(NORM_IN_BYTES)
     of_x = ObjectFifo(t_norm_in, depth=1, name="x")
     of_h = ObjectFifo(t_vec, depth=1, name="h")
@@ -534,7 +534,7 @@ def build(
         )
     )
 
-    # --- RoPE + the KV row, a row each, then attention over the DDR cache ---
+    # RoPE + the KV row, a row each, then attention over the DDR cache
     of_comb = ObjectFifo(t_comb, depth=1, name="comb")
     of_rc = [ObjectFifo(t_rc_half, depth=1, name=f"rchalf_{h}") for h in range(2)]
     # Each half: its 4 heads' chunks to their attention cores, then the
@@ -752,7 +752,7 @@ def build(
         ),
     ]
 
-    # --- up requant + SiLU, a row each ---
+    # up requant + SiLU, a row each
     of_gate = ObjectFifo(_i8(HD), depth=1, name="gate")
     of_up = ObjectFifo(_f32(HD), depth=1, name="up")
     of_sf = ObjectFifo(_i8(HACT_BYTES), depth=1, name="sf")
@@ -791,8 +791,8 @@ def build(
         )
     )
 
-    # --- lm_head + sampler: of a pass's last row's final norm output; the
-    # norm core's other outputs pass by ---
+    # lm_head + sampler: of a pass's last row's final norm output; the norm
+    # core's other outputs pass by.
     of_wlm = ObjectFifo(t_wlm, depth=2, name="wlm")
     of_rec = ObjectFifo(t_rec, depth=1, name="rec")
     of_seed = ObjectFifo(t_vec, depth=1, name="seed")

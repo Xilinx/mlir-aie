@@ -2,17 +2,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Phase 6c.5a Track 2: PTQ quality validation.
+"""PTQ quality validation.
 
 Loads BF16 Llama 3.2 1B from safetensors, also loads our quantized INT8
 .bin files (from gen_llama_data.py). Runs BOTH paths on the same input
 and reports cosine similarity per layer + max-abs delta normalized.
 
-This is the QUALITY check on the quantization scheme — not a
-correctness check on any NPU code. Failing here means the quant scheme
-needs tuning before we touch kernels.
-
-Pass criteria (per cautious-eureka quality findings):
+It checks the quantization scheme, not any NPU code. Pass criteria:
   - per-layer cos-sim >= 0.99   (per-token activation should clear this)
   - end-to-end token-overlap >= 4/5 in top-5 at last position
 """
@@ -44,10 +40,6 @@ from numpy_llama_ref import (
 )
 
 
-# ---------------------------------------------------------------------------
-# BF16 (fp32-compute) reference — same math as numpy_llama_ref but with
-# direct fp32 weights from safetensors (no quantization).
-# ---------------------------------------------------------------------------
 def _load_w_f32(reader: SafetensorsReader, name: str) -> np.ndarray:
     return reader.load_f32(name)
 
@@ -107,7 +99,6 @@ def forward_layer_fp32(
     return x_f32, k_full, v_full
 
 
-# ---------------------------------------------------------------------------
 def cos_sim(a: np.ndarray, b: np.ndarray) -> float:
     a, b = a.ravel().astype(np.float64), b.ravel().astype(np.float64)
     return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))

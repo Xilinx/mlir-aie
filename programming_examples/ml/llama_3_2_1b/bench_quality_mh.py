@@ -2,10 +2,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Phase 8 quality benchmark: top-1 token agreement between fp16
-numpy_llama_ref and our INT8 multi-head chain on a curated factoid
-prompt set. Use this to track quantization-quality work (static scales,
-mixed precision, etc.).
+"""Top-1 token agreement between numpy_llama_ref (or, with --bf16-ref, the
+bf16 model) and the int8 multi-head chain on a curated factoid prompt set.
 
 For each prompt:
   - fp16 ref:  numpy_llama_ref.forward_full -> argmax = "right" token
@@ -205,13 +203,13 @@ def main():
         "--residual-fp32",
         action="store_true",
         help="carry the residual stream in fp32 (per-token dynamic) instead "
-        "of int8@static-0.05 — proof-of-concept for the residual-format fix",
+        "of int8 at the fixed 0.05 scale",
     )
     parser.add_argument(
         "--residual-dyn",
         action="store_true",
         help="device-faithful per-token int8 residual (int8 + fp32 scale "
-        "tail; o_proj/down dynamic-out, rescale-add) — the Phase B target",
+        "tail; o_proj/down dynamic-out, rescale-add), as the device runs it",
     )
     parser.add_argument(
         "--attn-flowkv",
