@@ -496,12 +496,49 @@ bool Pathfinder::stopMeeting() {
   return true;
 }
 
+// Which tree routes first decides where the others meet it, and a switchbox
+// takes trees in to one master set only by slave ports of matching channels,
+// so the first a cluster routes can leave the rest no switchbox to meet at.
+bool Pathfinder::rotateLeads() {
+  std::map<PathEndPoint, std::map<PathEndPoint, std::set<int>>> to;
+  for (const auto &[ends, ids] : packetIdsTo)
+    to[ends.first][ends.second].insert(ids.begin(), ids.end());
+  // Whether `a` sends some id to two or more receivers `b` reaches too.
+  auto spans = [&](const PathEndPoint &a, const PathEndPoint &b) {
+    std::map<int, int> shared;
+    for (const auto &[dst, ids] : to[a])
+      if (to[b].count(dst))
+        for (int id : ids)
+          if (++shared[id] > 1)
+            return true;
+    return false;
+  };
+  SmallVector<PathEndPoint, 8> srcs(llvm::make_first_range(to));
+  llvm::IntEqClasses clusters(srcs.size());
+  for (auto [i, a] : llvm::enumerate(srcs))
+    for (auto [j, b] : llvm::enumerate(srcs))
+      if (i < j && spans(a, b) && spans(b, a))
+        clusters.join(i, j);
+  clusters.compress();
+  std::vector<SmallVector<PathEndPoint, 4>> members(clusters.getNumClasses());
+  for (auto [i, src] : llvm::enumerate(srcs))
+    members[clusters[i]].push_back(src);
+  // The first member of each cluster leads already.
+  ++leadStep;
+  leads.clear();
+  for (const auto &cluster : members)
+    if (leadStep < cluster.size())
+      leads.insert(cluster[leadStep]);
+  return !leads.empty();
+}
+
 namespace {
 enum class RelaxStep {
   ShareChannels,
   CapCrowdedTiles,
   RouteIdsApart,
   SplitSharedIds,
+  RotateLeads,
   StopMeeting
 };
 // Stopping meetings comes last, and runs the ladder once more: what it routes
@@ -511,7 +548,8 @@ constexpr RelaxStep relaxLadder[] = {
     RelaxStep::RouteIdsApart,   RelaxStep::ShareChannels,
     RelaxStep::CapCrowdedTiles, RelaxStep::SplitSharedIds,
     RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles,
-    RelaxStep::StopMeeting};
+    RelaxStep::RotateLeads,     RelaxStep::StopMeeting};
+constexpr size_t rotateLeadsStep = std::size(relaxLadder) - 2;
 } // namespace
 
 bool Pathfinder::relax() {
@@ -538,15 +576,26 @@ bool Pathfinder::relax() {
         LLVM_DEBUG(llvm::dbgs() << "Relax: route ids apart\n");
         return true;
       }
-      // With one id per source, the steps up to the last would only repeat.
-      relaxStep = std::size(relaxLadder) - 1;
+      // With one id per source, the steps up to the last two would only
+      // repeat.
+      relaxStep = rotateLeadsStep;
       break;
     case RelaxStep::SplitSharedIds:
       if (splitSharedIds()) {
         LLVM_DEBUG(llvm::dbgs() << "Relax: split shared ids\n");
         return true;
       }
-      relaxStep = std::size(relaxLadder) - 1;
+      relaxStep = rotateLeadsStep;
+      break;
+    case RelaxStep::RotateLeads:
+      // Each member of a cluster leads in turn, the step repeating till all
+      // have.
+      if (rotateLeads()) {
+        --relaxStep;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Relax: route cluster member " << leadStep << " first\n");
+        return true;
+      }
       break;
     case RelaxStep::StopMeeting:
       if (stopMeeting()) {
@@ -595,8 +644,8 @@ void Pathfinder::sortFlows() {
     return 2;
   };
   llvm::sort(flows, [&](const Flow &lhs, const Flow &rhs) {
-    return std::make_pair(flowRank(lhs), lhs.src) <
-           std::make_pair(flowRank(rhs), rhs.src);
+    return std::make_tuple(flowRank(lhs), !leads.count(lhs.src), lhs.src) <
+           std::make_tuple(flowRank(rhs), !leads.count(rhs.src), rhs.src);
   });
 }
 

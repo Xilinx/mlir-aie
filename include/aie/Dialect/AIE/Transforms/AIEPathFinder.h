@@ -382,7 +382,9 @@ public:
   // direction; route the second id of an unbranchable split apart, which
   // restarts sharing and caps; then share and cap again; route the ids a
   // source sends that a source it must keep apart from does not as a part of
-  // their own, which restarts sharing and caps; then share and cap again.
+  // their own, which restarts sharing and caps; then share and cap again;
+  // route each other source of a cluster that has to meet first, one per
+  // attempt (see rotateLeads); then stop meeting, which runs the steps again.
   bool relax();
 
 private:
@@ -458,6 +460,7 @@ private:
   bool routeIdsApart();
   bool splitSharedIds();
   bool stopMeeting();
+  bool rotateLeads();
 
   // Flows to be routed
   std::vector<Flow> flows;
@@ -510,6 +513,10 @@ private:
   // The device's columns and rows; the graph has tiles one past each.
   int columns = 0, rows = 0;
   size_t relaxStep = 0;
+  // The sources that route first among those that have to meet, and how many
+  // turns of rotateLeads they have taken.
+  std::set<PathEndPoint> leads;
+  size_t leadStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
 };
 
