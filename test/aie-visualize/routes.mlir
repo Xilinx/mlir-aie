@@ -57,14 +57,14 @@
 // TOPOLOGY-NOT: tile_1_2
 // TOPOLOGY: buffer_0 {{.*}}label="source"{{.*}}class="buffer detail-buffers flow flow-0 flow-1"
 // TOPOLOGY: buffer_1 {{.*}}label="dest"{{.*}}class="buffer detail-buffers flow flow-0 flow-1"
-// Contracting ports removes a switchbox hop only where it carries one flow.
-// A hop two flows share is where they meet, so it stays, and so do the DMA
-// channels either end of the route.
-// TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}&#215;2
-// TOPOLOGY-DAG: p_0_2_1_0_m -> p_0_2_5_0 {{.*}}flow-0 flow-1
-// TOPOLOGY-DAG: p_0_2_5_0 -> p_0_3_3_0 {{.*}}flow-0 flow-1
-// TOPOLOGY-DAG: p_0_3_3_0 -> p_0_3_1_0_s {{.*}}flow-0 flow-1
-// TOPOLOGY-DAG: p_0_3_1_0_s -> buffer_1 {{.*}}&#215;2
+// A switchbox hop that only passes things through is contracted away even
+// when several flows share it: they enter it from the same place and leave
+// it for the same place, so the edge that replaces it says what the hop
+// said, in both their colours. The DMA channels either end stay.
+// TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}flow-0 flow-1
+// TOPOLOGY-DAG: p_0_2_1_0_m -> p_0_3_1_0_s {{.*}}flow-0 flow-1
+// TOPOLOGY-DAG: p_0_3_1_0_s -> buffer_1 {{.*}}flow-0 flow-1
+// TOPOLOGY-NOT: p_0_2_5_0 ->
 // TOPOLOGY-NOT: tile_0_2 -> buffer_0
 // TOPOLOGY-NOT: buffer_1 -> tile_0_3
 // TOPOLOGY: tile_0_4 -> tile_0_3

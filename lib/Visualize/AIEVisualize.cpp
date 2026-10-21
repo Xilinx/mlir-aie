@@ -162,75 +162,107 @@ struct SemanticNode {
   std::optional<std::pair<int, int>> tile;
 };
 
-struct SemanticEdge {
+/// Which two things an edge joins. That is its whole identity: what it
+/// carries is an attribute, so that contraction can merge two edges by
+/// merging what they carry rather than by deciding they are the same.
+struct EdgeKey {
   std::string source;
   std::string dest;
-  unsigned flowGroup;
-  unsigned count = 1;
 
-  bool operator<(const SemanticEdge &other) const {
-    return std::tie(source, dest, flowGroup) <
-           std::tie(other.source, other.dest, other.flowGroup);
+  bool operator<(const EdgeKey &other) const {
+    return std::tie(source, dest) < std::tie(other.source, other.dest);
   }
 };
 
+/// What an edge carries. Contraction unions these, so an edge that stands
+/// for a chain says everything the chain said.
+struct EdgeAttributes {
+  /// The flows using this edge, and the routes they took.
+  std::set<unsigned> groups;
+  std::set<unsigned> routes;
+  /// How many equivalent paths this edge stands for.
+  unsigned count = 1;
+
+  void absorb(const EdgeAttributes &other) {
+    groups.insert(other.groups.begin(), other.groups.end());
+    routes.insert(other.routes.begin(), other.routes.end());
+  }
+};
+
+using SemanticEdges = std::map<EdgeKey, EdgeAttributes>;
+
 struct SemanticGraph {
   std::map<std::string, SemanticNode> nodes;
-  std::set<SemanticEdge> edges;
+  SemanticEdges edges;
 
   void addNode(StringRef id, SemanticNodeKind kind,
                std::optional<std::pair<int, int>> tile = std::nullopt) {
     nodes.try_emplace(id.str(), SemanticNode{kind, tile});
   }
 
-  void addEdge(StringRef source, StringRef dest, unsigned flowGroup) {
-    edges.insert({source.str(), dest.str(), flowGroup});
+  void addEdge(StringRef source, StringRef dest, unsigned group,
+               std::optional<unsigned> route = std::nullopt) {
+    EdgeAttributes &attributes = edges[{source.str(), dest.str()}];
+    attributes.groups.insert(group);
+    if (route)
+      attributes.routes.insert(*route);
   }
 
-  bool hasIncoming(StringRef node, unsigned flowGroup) const {
-    return llvm::any_of(edges, [&](const SemanticEdge &edge) {
-      return edge.dest == node && edge.flowGroup == flowGroup;
+  bool hasIncoming(StringRef node, unsigned group) const {
+    return llvm::any_of(edges, [&](const auto &entry) {
+      return entry.first.dest == node && entry.second.groups.count(group);
     });
   }
 
-  bool hasOutgoing(StringRef node, unsigned flowGroup) const {
-    return llvm::any_of(edges, [&](const SemanticEdge &edge) {
-      return edge.source == node && edge.flowGroup == flowGroup;
+  bool hasOutgoing(StringRef node, unsigned group) const {
+    return llvm::any_of(edges, [&](const auto &entry) {
+      return entry.first.source == node && entry.second.groups.count(group);
     });
   }
 
-  std::set<SemanticEdge>
-  contract(const std::set<SemanticNodeKind> &hiddenKinds) const {
-    std::set<SemanticEdge> result = edges;
+  /// Splices out every node of a hidden kind that only passes things through:
+  /// one way in, one way out, and not back to where it came from. A node
+  /// where things branch, join, or start has a degree above one and stays,
+  /// which is what keeps the shape of the design visible however much detail
+  /// is asked away.
+  SemanticEdges contract(const std::set<SemanticNodeKind> &hiddenKinds) const {
+    SemanticEdges result = edges;
     bool changed = true;
     while (changed) {
       changed = false;
       for (const auto &[id, node] : nodes) {
         if (!hiddenKinds.count(node.kind))
           continue;
-        SmallVector<SemanticEdge> incoming;
-        SmallVector<SemanticEdge> outgoing;
-        for (const SemanticEdge &edge : result) {
-          if (edge.dest == id)
-            incoming.push_back(edge);
-          if (edge.source == id)
-            outgoing.push_back(edge);
+        const EdgeKey *incoming = nullptr;
+        const EdgeKey *outgoing = nullptr;
+        unsigned incomingCount = 0;
+        unsigned outgoingCount = 0;
+        for (const auto &[key, attributes] : result) {
+          if (key.dest == id) {
+            incoming = &key;
+            ++incomingCount;
+          }
+          if (key.source == id) {
+            outgoing = &key;
+            ++outgoingCount;
+          }
         }
-        if (incoming.size() != 1 || outgoing.size() != 1 ||
-            incoming.front().flowGroup != outgoing.front().flowGroup ||
-            incoming.front().source == outgoing.front().dest)
+        if (incomingCount != 1 || outgoingCount != 1 ||
+            incoming->source == outgoing->dest)
           continue;
-        result.erase(incoming.front());
-        result.erase(outgoing.front());
-        SemanticEdge contracted{incoming.front().source, outgoing.front().dest,
-                                incoming.front().flowGroup,
-                                incoming.front().count *
-                                    outgoing.front().count};
-        auto [edge, inserted] = result.insert(contracted);
+        EdgeAttributes merged = result.at(*incoming);
+        const EdgeAttributes &after = result.at(*outgoing);
+        merged.absorb(after);
+        merged.count = result.at(*incoming).count * after.count;
+        EdgeKey spliced{incoming->source, outgoing->dest};
+        result.erase(*incoming);
+        result.erase(*outgoing);
+        auto [entry, inserted] = result.try_emplace(spliced, merged);
         if (!inserted) {
-          contracted.count += edge->count;
-          result.erase(edge);
-          result.insert(contracted);
+          // Two paths now say the same thing, which is worth saying once
+          // and counting.
+          entry->second.absorb(merged);
+          entry->second.count += merged.count;
         }
         changed = true;
         break;
@@ -1073,9 +1105,9 @@ static SemanticGraph buildSemanticGraph(
     if (sourceID == destID)
       continue;
     std::set<unsigned> arriving;
-    for (const SemanticEdge &edge : graph.edges)
-      if (edge.dest == sourceID)
-        arriving.insert(edge.flowGroup);
+    for (const auto &[key, attributes] : graph.edges)
+      if (key.dest == sourceID)
+        arriving.insert(attributes.groups.begin(), attributes.groups.end());
     for (unsigned group : arriving)
       graph.addEdge(addPort(rule.segment.source), addPort(rule.segment.dest),
                     group);
@@ -1470,12 +1502,12 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       buildSemanticGraph(*routes, groups, arbitrationRules, channelBuffers,
                          channelFlowGroups, *buffers, runtimeArguments, calls,
                          bufferSourceFlowGroups, bufferDestFlowGroups, only);
-  std::set<SemanticEdge> topologyEdges = semanticGraph.contract(contractKinds);
+  SemanticEdges topologyEdges = semanticGraph.contract(contractKinds);
   std::set<std::string> topologyNodes;
   if (semanticView) {
     topologyTiles.clear();
-    for (const SemanticEdge &edge : topologyEdges) {
-      for (StringRef nodeID : {StringRef(edge.source), StringRef(edge.dest)}) {
+    for (const auto &[key, attributes] : topologyEdges) {
+      for (StringRef nodeID : {StringRef(key.source), StringRef(key.dest)}) {
         topologyNodes.insert(nodeID.str());
         const SemanticNode &node = semanticGraph.nodes.at(nodeID.str());
         if (node.tile)
@@ -1967,9 +1999,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
         continue;
       auto [x, y] = portPoint(port);
       std::set<unsigned> nodeGroups;
-      for (const SemanticEdge &edge : topologyEdges)
-        if (edge.source == id || edge.dest == id)
-          nodeGroups.insert(edge.flowGroup);
+      for (const auto &[key, attributes] : topologyEdges)
+        if (key.source == id || key.dest == id)
+          nodeGroups.insert(attributes.groups.begin(), attributes.groups.end());
       output << "  " << id
              << " [shape=box, fixedsize=true, width=0.82, height=0.18, pos=\""
              << layout.pos(x, y) << "\", label=\"" << shortPortName(port)
@@ -2130,35 +2162,38 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     }
     std::map<std::pair<std::string, std::string>, std::set<unsigned>> edges;
     std::map<std::pair<std::string, std::string>, unsigned> edgeCounts;
-    for (const SemanticEdge &edge : topologyEdges) {
-      edges[{edge.source, edge.dest}].insert(edge.flowGroup);
-      edgeCounts[{edge.source, edge.dest}] += edge.count;
+    for (const auto &[key, attributes] : topologyEdges) {
+      edges[{key.source, key.dest}] = attributes.groups;
+      edgeCounts[{key.source, key.dest}] = attributes.count;
     }
     std::map<std::pair<std::string, std::string>, std::set<unsigned>>
         labeledEdgeGroups;
+    // A flow is named once, where it branches or joins if it does either,
+    // since that is the edge a reader is asking about. Where it merely
+    // passes through, the name would repeat down the whole chain.
     for (unsigned group = 0; group < groups.count; ++group) {
-      auto selected =
-          llvm::find_if(topologyEdges, [&](const SemanticEdge &edge) {
-            if (edge.flowGroup != group)
-              return false;
-            unsigned outgoing = llvm::count_if(
-                topologyEdges, [&](const SemanticEdge &candidate) {
-                  return candidate.flowGroup == group &&
-                         candidate.source == edge.dest;
-                });
-            unsigned incoming = llvm::count_if(
-                topologyEdges, [&](const SemanticEdge &candidate) {
-                  return candidate.flowGroup == group &&
-                         candidate.dest == edge.source;
-                });
-            return outgoing > 1 || incoming > 1;
-          });
-      if (selected == topologyEdges.end())
-        selected = llvm::find_if(topologyEdges, [&](const SemanticEdge &edge) {
-          return edge.flowGroup == group;
+      auto fans = [&](const EdgeKey &key) {
+        unsigned leaving = llvm::count_if(topologyEdges, [&](const auto &e) {
+          return e.second.groups.count(group) && e.first.source == key.dest;
         });
-      if (selected != topologyEdges.end())
-        labeledEdgeGroups[{selected->source, selected->dest}].insert(group);
+        unsigned arriving = llvm::count_if(topologyEdges, [&](const auto &e) {
+          return e.second.groups.count(group) && e.first.dest == key.source;
+        });
+        return leaving > 1 || arriving > 1;
+      };
+      const EdgeKey *chosen = nullptr;
+      for (const auto &[key, attributes] : topologyEdges) {
+        if (!attributes.groups.count(group))
+          continue;
+        if (!chosen)
+          chosen = &key;
+        if (fans(key)) {
+          chosen = &key;
+          break;
+        }
+      }
+      if (chosen)
+        labeledEdgeGroups[{chosen->source, chosen->dest}].insert(group);
     }
     std::set<unsigned> callDependentGroups;
     for (const auto &[call, callGroups] : callFlowGroups)
