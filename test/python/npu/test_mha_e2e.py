@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu1_xrt% %pytest %s
-# RUN: %run_on_npu2_xrt% %pytest %s
-# RUN: %run_on_npu2_hrx% %pytest %s
+# RUN: %run_on_npu1_xrt% %pytest -m "not extensive" %s
+# RUN: %run_on_npu2_xrt% %pytest -m "not extensive" %s
+# RUN: %run_on_npu2_hrx% %pytest -m "not extensive" %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
 """Numeric gates for mha.cc's softmax entry points, alone and as one round.
 
@@ -27,6 +27,8 @@ Not covered: a key block that is all padding inside the causal region.
 ``partial_softmax`` returns early there and leaves the previous correction
 factor in ``scale_buffer``; that is existing kernel behaviour, not frozen here.
 """
+
+import itertools
 
 import ml_dtypes
 import numpy as np
@@ -58,6 +60,33 @@ I32 = np.dtype[np.int32]
 # The key block and the head, which mha.cc is compiled for. A round's query
 # block is these 64 rows or a narrower multiple of 16.
 _B = 64
+
+
+def _tiered(geometries, **variants):
+    """Each geometry crossed with every variant, one cross per geometry per PR.
+
+    Geometry i runs its i-th variant (cycling) in the default run; the rest
+    are marked extensive, for the nightly sweep, so every geometry and every
+    variant run on each PR and the whole product nightly.
+
+    Args:
+        geometries: Tuples of the test's geometry arguments.
+        **variants: Each flag's values, e.g. accurate_exp2=[False, True].
+
+    Returns:
+        pytest.param per (geometry, variant), the variant's values last.
+    """
+    combos = list(itertools.product(*variants.values()))
+    return [
+        pytest.param(
+            *geometry,
+            *combo,
+            marks=[] if j == i % len(combos) else [pytest.mark.extensive],
+        )
+        for i, geometry in enumerate(geometries)
+        for j, combo in enumerate(combos)
+    ]
+
 
 # log2(e) / sqrt(d) as the bf16 scalar the kernel takes.
 _INV_SCALE = float(bfloat16(np.log2(np.e) / np.sqrt(_B)))
@@ -297,16 +326,18 @@ def _softmax_case_data(q_block, kv_first, kv_second, s_q_eff, s_kv_eff):
 
 
 @pytest.mark.parametrize(
-    "q_block,kv_first,kv_second,s_q_eff,s_kv_eff",
-    [
-        (1, 0, 1, 128, 128),  # unmasked block, then the diagonal
-        (0, 0, 1, 64, 128),  # diagonal, then a block the kernel must skip
-        (1, 0, 1, 100, 100),  # query and key tails both mid-vector
-        (2, 1, 2, 192, 150),  # key tail alone
-        (1, 0, 1, 100, 70),  # short key tail under padded query rows
-    ],
+    "q_block,kv_first,kv_second,s_q_eff,s_kv_eff,accurate_exp2",
+    _tiered(
+        [
+            (1, 0, 1, 128, 128),  # unmasked block, then the diagonal
+            (0, 0, 1, 64, 128),  # diagonal, then a block the kernel must skip
+            (1, 0, 1, 100, 100),  # query and key tails both mid-vector
+            (2, 1, 2, 192, 150),  # key tail alone
+            (1, 0, 1, 100, 70),  # short key tail under padded query rows
+        ],
+        accurate_exp2=[False, True],
+    ),
 )
-@pytest.mark.parametrize("accurate_exp2", [False, True])
 def test_partial_softmax_matches_masked_attention(
     q_block, kv_first, kv_second, s_q_eff, s_kv_eff, accurate_exp2
 ):
@@ -688,23 +719,25 @@ def _check_round(
 
 
 @pytest.mark.parametrize(
-    "q_block,n_kv,s_q_eff,s_kv_eff,b_q",
-    [
-        (0, 1, _B, _B, _B),  # the pure diagonal
-        (1, 2, 2 * _B, 2 * _B, _B),  # a real correction carried between blocks
-        (1, 2, 100, 100, _B),  # query and key tails both mid-vector
-        (0, 1, 100, 40, _B),  # key tail cutting before the diagonal for most rows
-        (1, 3, 2 * _B, 3 * _B, _B),  # a block past the diagonal, which must drop
-        (1, 1, _B, _B, 32),  # a narrower query block, its diagonal mid-block
-        (3, 2, 4 * 32, 2 * _B, 32),  # carried across key blocks, then mid-block
-        (1, 2, 2 * 32, 2 * _B, 32),  # a key block past every row, which must drop
-        (3, 1, 4 * 16, _B, 16),  # the 16-row state walk
-        (7, 1, 8 * 8, _B, 8),  # the 8-row block: one row group, 8-lane state
-        (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
-    ],
+    "q_block,n_kv,s_q_eff,s_kv_eff,b_q,accurate_exp2,f32_scores",
+    _tiered(
+        [
+            (0, 1, _B, _B, _B),  # the pure diagonal
+            (1, 2, 2 * _B, 2 * _B, _B),  # a real correction carried between blocks
+            (1, 2, 100, 100, _B),  # query and key tails both mid-vector
+            (0, 1, 100, 40, _B),  # key tail cutting before the diagonal for most rows
+            (1, 3, 2 * _B, 3 * _B, _B),  # a block past the diagonal, which must drop
+            (1, 1, _B, _B, 32),  # a narrower query block, its diagonal mid-block
+            (3, 2, 4 * 32, 2 * _B, 32),  # carried across key blocks, then mid-block
+            (1, 2, 2 * 32, 2 * _B, 32),  # a key block past every row, which must drop
+            (3, 1, 4 * 16, _B, 16),  # the 16-row state walk
+            (7, 1, 8 * 8, _B, 8),  # the 8-row block: one row group, 8-lane state
+            (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
+        ],
+        accurate_exp2=[False, True],
+        f32_scores=[False, True],
+    ),
 )
-@pytest.mark.parametrize("accurate_exp2", [False, True])
-@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
 def test_mha_round_matches_masked_attention(
     q_block, n_kv, s_q_eff, s_kv_eff, b_q, accurate_exp2, f32_scores
 ):
@@ -713,35 +746,37 @@ def test_mha_round_matches_masked_attention(
 
 # Self-attention, so every live row keeps a key of its own.
 @pytest.mark.parametrize(
-    "q_block,n_kv,s_eff,shape",
-    [
-        # Two query blocks to a key block, the diagonal mid-block, over d=256.
-        (5, 3, 90, dict(b_q=16, b_kv=32, d=256)),
-        # A window on both sides, cutting the first and last key blocks.
-        (2, 3, 90, dict(b_q=16, b_kv=32, d=256, causal=False, window=32)),
-        # Bidirectional: keys after the queries, the last block a key tail.
-        (1, 2, 100, dict(b_q=32, d=128, causal=False)),
-        # The row-group path's window: the first key block drops, the last
-        # is kept past the diagonal.
-        (2, 4, 4 * _B, dict(causal=False, window=_B)),
-        # A causal sliding window, as a sliding layer of a decoder runs.
-        (2, 3, 3 * _B, dict(window=_B)),
-        # 16-key blocks, a row one 16-lane vector.
-        (3, 6, 90, dict(b_q=16, b_kv=16, causal=False, window=16)),
-        # Windows of no whole number of query blocks, as Gemma's 511: the last
-        # row keeps no key of a block the others keep, and none before it.
-        (2, 3, 3 * _B, dict(window=_B - 1)),
-        (5, 3, 90, dict(b_q=16, b_kv=32, d=256, window=21)),
-        # One decode step, a KV group's heads as the rows at the last key,
-        # the window dropping the first key block and cutting the second.
-        (0, 4, 200, dict(b_q=16, packed=True, window=100)),
-        (0, 4, 100, dict(b_q=16, b_kv=32, packed=True, window=50)),
-        # ...as an 8-row block, the last key block a tail.
-        (0, 3, 150, dict(b_q=8, packed=True)),
-    ],
+    "q_block,n_kv,s_eff,shape,accurate_exp2,f32_scores",
+    _tiered(
+        [
+            # Two query blocks to a key block, the diagonal mid-block, over d=256.
+            (5, 3, 90, dict(b_q=16, b_kv=32, d=256)),
+            # A window on both sides, cutting the first and last key blocks.
+            (2, 3, 90, dict(b_q=16, b_kv=32, d=256, causal=False, window=32)),
+            # Bidirectional: keys after the queries, the last block a key tail.
+            (1, 2, 100, dict(b_q=32, d=128, causal=False)),
+            # The row-group path's window: the first key block drops, the last
+            # is kept past the diagonal.
+            (2, 4, 4 * _B, dict(causal=False, window=_B)),
+            # A causal sliding window, as a sliding layer of a decoder runs.
+            (2, 3, 3 * _B, dict(window=_B)),
+            # 16-key blocks, a row one 16-lane vector.
+            (3, 6, 90, dict(b_q=16, b_kv=16, causal=False, window=16)),
+            # Windows of no whole number of query blocks, as Gemma's 511: the last
+            # row keeps no key of a block the others keep, and none before it.
+            (2, 3, 3 * _B, dict(window=_B - 1)),
+            (5, 3, 90, dict(b_q=16, b_kv=32, d=256, window=21)),
+            # One decode step, a KV group's heads as the rows at the last key,
+            # the window dropping the first key block and cutting the second.
+            (0, 4, 200, dict(b_q=16, packed=True, window=100)),
+            (0, 4, 100, dict(b_q=16, b_kv=32, packed=True, window=50)),
+            # ...as an 8-row block, the last key block a tail.
+            (0, 3, 150, dict(b_q=8, packed=True)),
+        ],
+        accurate_exp2=[False, True],
+        f32_scores=[False, True],
+    ),
 )
-@pytest.mark.parametrize("accurate_exp2", [False, True])
-@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
 def test_mha_round_keeps_its_band(
     q_block, n_kv, s_eff, shape, accurate_exp2, f32_scores
 ):
@@ -751,21 +786,23 @@ def test_mha_round_keeps_its_band(
 # Queries starting mid-block, as a prompt call from any position runs: the
 # last valid row is the last key's, each row offset positions past its block's.
 @pytest.mark.parametrize(
-    "q_block,n_kv,s_q_eff,offset,shape",
-    [
-        # The diagonal mid-block, the query rows padded.
-        (0, 1, 50, 14, {}),
-        # Carried across key blocks to a last one cut partway.
-        (1, 3, 2 * _B, 37, {}),
-        # A narrower query block, on the row-group path.
-        (3, 2, 4 * 32 - 5, 5, dict(b_q=32)),
-        # A causal sliding window, its edge off the key blocks'.
-        (2, 3, 3 * _B - 20, 20, dict(window=_B)),
-        # 16-key blocks, a row one 16-lane vector.
-        (3, 6, 60, 30, dict(b_q=16, b_kv=16, window=16)),
-    ],
+    "q_block,n_kv,s_q_eff,offset,shape,accurate_exp2",
+    _tiered(
+        [
+            # The diagonal mid-block, the query rows padded.
+            (0, 1, 50, 14, {}),
+            # Carried across key blocks to a last one cut partway.
+            (1, 3, 2 * _B, 37, {}),
+            # A narrower query block, on the row-group path.
+            (3, 2, 4 * 32 - 5, 5, dict(b_q=32)),
+            # A causal sliding window, its edge off the key blocks'.
+            (2, 3, 3 * _B - 20, 20, dict(window=_B)),
+            # 16-key blocks, a row one 16-lane vector.
+            (3, 6, 60, 30, dict(b_q=16, b_kv=16, window=16)),
+        ],
+        accurate_exp2=[False, True],
+    ),
 )
-@pytest.mark.parametrize("accurate_exp2", [False, True])
 def test_mha_round_starts_its_queries_mid_block(
     q_block, n_kv, s_q_eff, offset, shape, accurate_exp2
 ):
