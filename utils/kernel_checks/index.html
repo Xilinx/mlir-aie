@@ -813,6 +813,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       bank_pair_sharing: 'pairs of a core\'s buffers sharing a bank, mean per design',
       wall_s: 'wall time of the whole run, on a shared hosted runner',
       unrouted: 'routable designs the router failed to route, over both hop settings',
+      strict_misses: 'designs the router fails without allow-deadlock-prone on a hold cycle through shared receivers, though a routing without one exists',
       hop_ratio: 'switchbox hops over the hops of the routing the generator constructed',
       amsels_per_design: 'arbiter msels the router used, mean per design',
       ms_per_design: 'routing time of one design, mean, on a shared hosted runner',
@@ -827,7 +828,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       failed_properties: 'Failed properties', unsolved: 'Unplaced', illegal: 'Illegal', avoidable_crossings: 'Avoidable crossings',
       bank_pair_sharing: 'Bank sharing', wall_s: 'Wall time', unrouted: 'Unrouted', hop_ratio: 'Hops ÷ constructed',
       amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
-      survived_corruptions: 'Missed corruptions',
+      survived_corruptions: 'Missed corruptions', strict_misses: 'Strict misses',
     };
     // Where the kernel checks and the component checks publish, beside this
     // page's directory (dashboard/).
@@ -842,7 +843,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       performance: { title: 'Performance', about: 'MobileNet compiled, run and verified on an NPU2: time per image, streaming and compile time.',
                      metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s'] },
       routing: { title: 'Routing', about: 'The packet router against its model on npu1, npu2 and xcvc1902: legal routes, their cost, and mutation testing.',
-                 metrics: ['failed_properties', 'unrouted', 'illegal', 'failed_mutations', 'survived_corruptions', 'hop_ratio', 'amsels_per_design', 'ms_per_design'] },
+                 metrics: ['failed_properties', 'unrouted', 'strict_misses', 'illegal', 'failed_mutations', 'survived_corruptions', 'hop_ratio', 'amsels_per_design', 'ms_per_design'] },
       placement: { title: 'Placement', about: 'The SA placer: every seed placed, the placements\' cost, CPU time and memory. The buffer allocator against its model.',
                    metrics: ['failed_seeds', 'final_cost_mean', 'final_cost_max', 'placement_cost', 'cpu_ms_mean', 'cpu_ms_max', 'peak_rss_mb_max',
                              'failed_properties', 'unsolved', 'illegal', 'avoidable_crossings', 'bank_pair_sharing', 'wall_s'] },
