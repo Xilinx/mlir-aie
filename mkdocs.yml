@@ -112,7 +112,7 @@ extra:
       link: https://discord.gg/UbXzGdXsR5
       name: Join us on the ROCm Discord (#ROCm-NPU)
     - icon: fontawesome/solid/paper-plane
-      link: mailto:aup@amd.com
+      link: https://www.amd.com/en/corporate/university-program.html
       name: AMD University Program
 
 plugins:
