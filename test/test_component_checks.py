@@ -279,7 +279,6 @@ def test_the_mobilenet_fixture_is_still_valid_and_unplaced(aie_opt):
 def test_a_mobilenet_run_reports_its_times_per_image(hw):
     assert hw.parse_run(MOBILENET_B16_OUTPUT, 0, 16) == {
         "passed": True,
-        "launch_us": 1303.7,
         "us_per_image": 81.48,
         "us_per_image_range": "median 83.98, MAD 1.43, p95 86.31",
         "e2e_us_per_image": 89.47,
@@ -327,8 +326,7 @@ def test_only_passing_runs_chart_their_times(hw):
         for seed, batch, out in [
             (3, 1, MOBILENET_OUTPUT),
             (3, 16, MOBILENET_B16_OUTPUT),
-            # A wrong answer at batch 1 leaves seed 2 with nothing to
-            # stream against.
+            # A wrong answer charts no time.
             (2, 1, MOBILENET_OUTPUT.replace("PASS!", "FAIL!")),
             (2, 16, MOBILENET_B16_OUTPUT),
         ]
@@ -392,7 +390,6 @@ def test_only_passing_runs_chart_their_times(hw):
         "mobilenet/seed=3/batch=1/effort=default/us_per_image": 384.4,
         "mobilenet/seed=3/batch=1/effort=default/e2e_us_per_image": 480.9,
         "mobilenet/seed=3/batch=16/effort=default/us_per_image": 81.48,
-        "mobilenet/seed=3/batch=16/effort=default/streaming_us": 61.29,
         "mobilenet/seed=3/batch=16/effort=default/e2e_us_per_image": 89.47,
         "mobilenet/seed=2/batch=16/effort=default/us_per_image": 81.48,
         "mobilenet/seed=2/batch=16/effort=default/e2e_us_per_image": 89.47,
@@ -401,10 +398,6 @@ def test_only_passing_runs_chart_their_times(hw):
     assert (
         ranges["mobilenet/seed=3/effort=default/placement_cost"]
         == "placement 0123456789ab"
-    )
-    assert (
-        ranges["mobilenet/seed=3/batch=16/effort=default/streaming_us"]
-        == "from b1 384.4 and b16 1303.7"
     )
     assert (
         ranges["mobilenet/seed=3/batch=16/effort=default/us_per_image"]

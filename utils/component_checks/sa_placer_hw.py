@@ -22,12 +22,10 @@ objects and their precompiled headers kept), which is what an edit to the
 design, not its kernels, costs. Both record wall time and the largest
 process's peak RSS. Per batch it records, per image, the minimum NPU time of
 a launch and of the host's end-to-end call; the run builds its own copy of
-the design through the JIT path, from the warm caches, unmeasured.
-From a seed's batch 1 and batch N it records the streaming time: what one
-more image in a launch costs, (T(N) - T(1)) / (N - 1), with the launch's
-fixed cost taken out. Per seed, per effort, it records the placement:
-aiecc's placed tiles as a digest, and its SA cost, from replaying the
-placement with aie-opt on the design's MLIR (aiecc does not report it).
+the design through the JIT path, from the warm caches, unmeasured. Per seed,
+per effort, it records the placement: aiecc's placed tiles as a digest, and
+its SA cost, from replaying the placement with aie-opt on the design's MLIR
+(aiecc does not report it).
 
 Writes rows and a meta file in the kernel checks' format
 (utils/kernel_checks/publish.py), with the device's power mode, the
@@ -140,7 +138,6 @@ def parse_run(out: str, returncode: int, batch: int) -> dict:
         "passed": returncode == 0 and _PASS_RE.search(out) is not None and bool(npu),
         # min, not avg: a single busy neighbor call inflates the mean far
         # more than it moves the min.
-        "launch_us": float(npu.group("min")) if npu else None,
         "us_per_image": per_image[0] if per_image else None,
         "us_per_image_range": per_image[1] if per_image else None,
         "e2e_us_per_image": e2e[0] if e2e else None,
@@ -269,11 +266,6 @@ def place_seed(
     return out
 
 
-def streaming_us(one: dict, many: dict) -> float:
-    """Return what one more image in a launch costs, from runs at batch 1 and N."""
-    return round((many["launch_us"] - one["launch_us"]) / (many["batch"] - 1), 2)
-
-
 def aggregate(
     runs: list[dict], compiles: list[dict], placements: list[dict]
 ) -> list[dict]:
@@ -294,14 +286,7 @@ def aggregate(
         out += compile_rows(f"mobilenet/seed={c['seed']}/effort={c['effort_label']}", c)
     # A failed run's times (say, a run that printed timing but produced the
     # wrong answer) are not a measurement of the design, so only passing runs
-    # contribute a time point; the failure shows up in the count. Keyed by
-    # effort too: streaming_us must compare within the same effort, since
-    # different efforts are expected to place (and so time) differently.
-    one = {
-        (r["seed"], r["effort_label"]): r
-        for r in runs
-        if r["batch"] == 1 and r["passed"] and r["launch_us"]
-    }
+    # contribute a time point; the failure shows up in the count.
     for r in runs:
         case = (
             f"mobilenet/seed={r['seed']}/batch={r['batch']}"
@@ -317,18 +302,6 @@ def aggregate(
                     r["us_per_image_range"],
                 )
             )
-            key = (r["seed"], r["effort_label"])
-            if r["batch"] > 1 and key in one:
-                b1 = one[key]
-                out.append(
-                    row(
-                        case,
-                        "streaming_us",
-                        streaming_us(b1, r),
-                        "us",
-                        f"from b1 {b1['launch_us']:g} and b{r['batch']} {r['launch_us']:g}",
-                    )
-                )
             if r["e2e_us_per_image"] is not None:
                 out.append(
                     row(
@@ -363,7 +336,7 @@ def print_table(runs: list[dict], compiles: list[dict], placements: list[dict]) 
         )
     print(
         f"{'seed':>4} {'batch':>5} {'effort':>7}  {'pass':>4}  {'us/image':>9}  "
-        f"{'streaming':>9}  {'e2e/image':>9}"
+        f"{'e2e/image':>9}"
     )
     for r in runs:
         case = (
@@ -373,10 +346,9 @@ def print_table(runs: list[dict], compiles: list[dict], placements: list[dict]) 
         print(
             f"{r['seed']:>4} {r['batch']:>5} {r['effort_label']:>7}  "
             f"{'yes' if r['passed'] else 'NO':>4}  "
-            f"{cell(case, 'us_per_image'):>9}  {cell(case, 'streaming_us'):>9}  "
-            f"{cell(case, 'e2e_us_per_image'):>9}"
+            f"{cell(case, 'us_per_image'):>9}  {cell(case, 'e2e_us_per_image'):>9}"
         )
-        if not r["passed"] and r["launch_us"] is None:
+        if not r["passed"] and r["us_per_image"] is None:
             print("no 'NPU time (avg/min/max us)' line in this batch's output")
     for p in placements:
         print(
@@ -428,7 +400,7 @@ def main(argv=None) -> int:
         nargs="+",
         default=[1, 2, 4, 8, 16, 32, 64],
         help="images per launch to run each seed at (default: every power of "
-        "two from 1 to 64; the streaming time needs 1)",
+        "two from 1 to 64)",
     )
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--iters", type=int, default=20)

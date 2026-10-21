@@ -58,7 +58,8 @@ import sa_placer  # noqa: E402
 import sa_placer_hw  # noqa: E402
 import yolo26n_hw  # noqa: E402
 
-# Per hardware seed: its batch 1 launch and streaming time in us, and its cost.
+# Per hardware seed: its batch 1 launch and each further image's time in us,
+# and its cost.
 HW_SEEDS = {3: (316.0, 65.0, 290), 2: (309.0, 65.0, 295), 7: (313.0, 72.0, 295)}
 # A cold and a warm compile's aiecc profiles, for the stage times.
 STAGE_PROFILES = (
@@ -334,7 +335,6 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
                         "batch": batch,
                         "effort_label": effort_label,
                         "passed": True,
-                        "launch_us": round(launch, 1),
                         "us_per_image": round(per, 2),
                         "us_per_image_range": f"median {per * 1.02:.2f}, MAD {per * 0.005:.2f}, p95 {per * 1.08:.2f}",
                         "e2e_us_per_image": round(e2e, 2),
