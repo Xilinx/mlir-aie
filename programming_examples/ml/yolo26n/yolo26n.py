@@ -31,6 +31,8 @@ from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
 from yolo_params import DATA_DIR, WEIGHTS_DIR, Params, synthetic_params
 from yolo_spec import (
+    IMAGE_SIZE,
+    MAX_DETECTIONS,
     Add,
     Attention,
     Concat,
@@ -52,9 +54,9 @@ SEGMENTS = (
     (90, 143),
     (143, 168),
 )
-IMAGE = Tensor("images", 3, 640, 640)
-IMAGE_WORDS = 640 * 640 * 3 // 4
-DETECTION_WORDS = 6 * 300
+IMAGE = Tensor("images", 3, IMAGE_SIZE, IMAGE_SIZE)
+IMAGE_WORDS = IMAGE_SIZE * IMAGE_SIZE * 3 // 4
+DETECTION_WORDS = 6 * MAX_DETECTIONS
 
 
 class Plan:
@@ -181,7 +183,9 @@ def yolo26n(
                             batch * plan.words,
                             i * plan.words + plan.offset[tensor.name],
                         )
-                    return det, batch * DETECTION_WORDS, i * DETECTION_WORDS
+                    if tensor.name == network.ops[-1].dst.name:
+                        return det, batch * DETECTION_WORDS, i * DETECTION_WORDS
+                    raise ValueError(f"no host buffer holds {tensor.name}")
 
                 design.transfer(handles, locate)
 
@@ -274,7 +278,10 @@ def main() -> None:
     if args.synthetic is not None:
         rng = np.random.default_rng(args.synthetic)
         images = [
-            (f"random{i}", rng.integers(0, 256, (640, 640, 3), dtype=np.uint8))
+            (
+                f"random{i}",
+                rng.integers(0, 256, (IMAGE_SIZE, IMAGE_SIZE, 3), dtype=np.uint8),
+            )
             for i in range(args.n)
         ]
     else:
@@ -303,14 +310,16 @@ def main() -> None:
         yolo26n(
             iron.tensor(pixels.view(np.int32)), scratch, detections, weights, **kwargs
         )
-        found = detections.numpy().reshape(args.batch, 300, 6)
+        found = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
         for (name, image), mine in zip(group, found):
             want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
             if start == 0:
                 first.append(want)
             bad = int((mine != want).sum())
             passed += bad == 0
-            print(f"image {name}: {'PASS' if bad == 0 else 'FAIL'} ({bad}/1800 differ)")
+            print(
+                f"image {name}: {'PASS' if bad == 0 else 'FAIL'} ({bad}/{DETECTION_WORDS} differ)"
+            )
             if session is not None:
                 matched += np.array_equal(
                     mine, onnx_detections(session, image).view(np.int32)
@@ -334,7 +343,7 @@ def main() -> None:
             samples.append(time.perf_counter() - start)
         us = min(samples) * 1e6 / args.batch
         print(f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {args.batch}")
-        timed = detections.numpy().reshape(args.batch, 300, 6)
+        timed = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
         same = all(np.array_equal(t, w) for t, w in zip(timed, first))
         print(f"timed dispatch: {'PASS' if same else 'FAIL'}")
         failed |= not same

@@ -28,7 +28,7 @@ from aie.iron.device import NPU2
 from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
 from yolo_params import DATA_DIR, Params, synthetic_params
-from yolo_spec import Network, Tensor
+from yolo_spec import IMAGE_SIZE, Network, Tensor
 
 
 def to_rows(tensor: Tensor, values: np.ndarray) -> np.ndarray:
@@ -150,7 +150,7 @@ def main() -> None:
         image = letterbox(args.image)
     else:
         image = np.random.default_rng(args.synthetic or 0).integers(
-            0, 256, (640, 640, 3), dtype=np.uint8
+            0, 256, (IMAGE_SIZE, IMAGE_SIZE, 3), dtype=np.uint8
         )
     reference = Oracle(params, network).run(image)
     reference["images"] = image
@@ -159,7 +159,7 @@ def main() -> None:
     drained = args.outputs or ops[-1].dst.name
     # Build once on the host to learn the run's inputs, in the order the design fills them.
     tensors = {op.dst.name: op.dst for op in network.ops} | {
-        "images": Tensor("images", 3, 640, 640)
+        "images": Tensor("images", 3, IMAGE_SIZE, IMAGE_SIZE)
     }
     plan = SegmentDesign(network, params, ops, [tensors[n] for n in drained.split(",")])
     packed_in = np.concatenate(
