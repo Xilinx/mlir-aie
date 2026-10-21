@@ -65,7 +65,7 @@ Import as `from aie.iron.algorithms import transform_parallel` (etc.).
 ### Kernel signatures worth checking before you wire one up
 
 The `ExternalFunction` a factory returns carries a concrete `arg_types` list, and a mismatch
-fails at MLIR verification with an argument-count error rather than at runtime. Two that
+fails at MLIR verification with an argument-count error rather than at runtime. Three that
 surprise people:
 
 - **`kernels.scale`** is `(in_tile, out_tile, factor, n)` where `factor` is a **1-element
@@ -73,9 +73,14 @@ surprise people:
   small `depth=1` ObjectFifo or a `Buffer` — the upside is the factor becomes settable per
   launch without a rebuild.
 - **`kernels.add` / `kernels.mul`** on bf16 are bare `(in..., out)` with no trailing
-  size, which is why they need `pass_size_to_kernel=False`. The int8 `add` instead
-  ends with three `int32` shifts, `(a, b, out, a_shift, b_shift, out_shift)`. `kernels.passthrough` *does* take a
-  trailing size and wants the default `True`.
+  size, which is why they need `pass_size_to_kernel=False`. `kernels.passthrough` *does*
+  take a trailing size and wants the default `True`.
+- **The int8 `kernels.add`** ends with three `int32` shifts,
+  `(a, b, out, a_shift, b_shift, out_shift)`. `transform_binary` and
+  `transform_parallel_binary` take no `*params`, so they can't call it: build the
+  `ObjectFifo`/`Worker`/`Runtime` design by hand ([`patterns.md`](patterns.md)) and pass the
+  shifts as Python ints in the core body, `add_k(a, b, c, 0, 0, 0)`. All-zero shifts give a
+  plain saturating int8 add.
 
 When in doubt, ask the kernel. `arg_types` is a **method**, not a property — call it:
 
