@@ -118,7 +118,7 @@ def real_model():
 def test_real_weights_track_the_model_and_the_oracle(size, real_model):
     text, kl_limit = PROMPTS[size]
     prompt = [128000] + real_model["enc"].encode(text)
-    out, _, _ = real_model["decoder"].generate(prompt, GENERATED, (0.0, 0, 0))
+    out = real_model["decoder"].generate(prompt, GENERATED, (0.0, 0, 0)).tokens
     layers = [Layer.real(L, DATA_DIR, 128) for L in range(N_LAYERS)]
     oracle = teacher_forced_logits(
         layers, real_model["lm"], real_model["rope"], prompt + out[:-1]

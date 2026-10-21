@@ -5,6 +5,13 @@
 """Prompt in, text out: Llama 3.2 1B on the NPU (aie2_decode.py), prefill and
 decode both on the device, with time to first token and decode tokens/s.
 
+Each of --repeats requests runs from the prompt's text: the time to first
+token starts before tokenization and ends when the first generated token is
+read back, split into the prefill dispatches' start-to-wait time and the
+host's rest. The request with the median time to first token is reported,
+with the fastest, and the median decode rate; every request must generate
+the same tokens. The weights are already on the device, as on a server.
+
 The prompt's tokens run token by token through the decode, each input from
 its own embed row, which the device gathers; the token after the last one is
 the first generated, and generation goes on from there.
@@ -17,6 +24,7 @@ Run (compiles the design, or reuses its JIT cache entry):
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -40,6 +48,13 @@ def main():
     p.add_argument("--data-dir", default=str(Path(__file__).parent / "data"))
     p.add_argument("--elf", help="a prebuilt full ELF of this build")
     p.add_argument(
+        "--repeats",
+        type=int,
+        default=5,
+        help="requests timed; the one with the median time to first token is "
+        "reported and checked",
+    )
+    p.add_argument(
         "--check",
         action="store_true",
         help="replay the device's tokens through the oracle of its arithmetic and "
@@ -49,10 +64,11 @@ def main():
     opts = p.parse_args()
     if opts.check and opts.sample_temp > 0:
         p.error("--check scores greedy decoding")
+    if opts.repeats < 1:
+        p.error("--repeats must be at least 1")
     data_dir = Path(opts.data_dir)
 
     enc = load_tokenizer(data_dir / "tokenizer.model")
-    prompt = [BOS] + enc.encode(opts.prompt)
     model = load_model(data_dir)
     layers = [Layer.real(L, data_dir, opts.t) for L in range(N_LAYERS)]
     decoder = Decoder(
@@ -64,15 +80,31 @@ def main():
     )
     sample = (opts.sample_temp, opts.sample_topk, opts.sample_seed)
     # Moves the weights to the device, as a server does before its first prompt.
+    prompt = [BOS] + enc.encode(opts.prompt)
     decoder.generate(prompt, 2, sample)
-    out, ttft, tps = decoder.generate(prompt, opts.max_new, sample, STOP)
+    runs = []
+    for _ in range(opts.repeats):
+        started = time.perf_counter()
+        prompt = [BOS] + enc.encode(opts.prompt)
+        runs.append(decoder.generate(prompt, opts.max_new, sample, STOP, started))
+    runs.sort(key=lambda g: g.ttft_s)
+    gen = runs[len(runs) // 2]
+    out = gen.tokens
+    rates = [g.decode_tok_s for g in runs if g.decode_tok_s is not None]
 
     print(f"{opts.prompt}{enc.decode(out)}")
     print(
-        f"prompt {len(prompt)} tokens, generated {len(out)}: "
-        f"TTFT {ttft * 1e3:.1f} ms ({len(prompt) / ttft:.1f} prompt tok/s), "
-        + (f"decode {tps:.2f} tok/s" if tps is not None else "decode n/a")
+        f"prompt {len(prompt)} tokens, generated {len(out)}, median of "
+        f"{len(runs)}: TTFT {gen.ttft_s * 1e3:.1f} ms (min "
+        f"{runs[0].ttft_s * 1e3:.1f}; NPU dispatch "
+        f"{gen.prefill_dispatch_s * 1e3:.1f}, host "
+        f"{(gen.ttft_s - gen.prefill_dispatch_s) * 1e3:.1f}), "
+        + (f"decode {np.median(rates):.2f} tok/s" if rates else "decode n/a")
     )
+    differ = sum(g.tokens != out for g in runs)
+    if differ:
+        print(f"{differ}/{len(runs)} requests generated other tokens")
+        return 1
     if not opts.check:
         return 0
     logits = forward_full(model, np.array(prompt + out[:-1]))

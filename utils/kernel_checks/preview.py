@@ -402,19 +402,21 @@ def _compile_night(rng: random.Random, compile_s: float) -> dict:
 def _llama_night(rng: random.Random) -> tuple[list, dict]:
     """One synthetic llama decode nightly, read through the check's own parsers."""
     n = llama_chain_hw.N_LAYERS
-    ms = 47.6 * rng.uniform(0.98, 1.03)
-    ttft = 286.0 * rng.uniform(0.98, 1.03)
+    drift = rng.uniform(0.98, 1.03)
+    ttft = 125.9 * rng.uniform(0.98, 1.03)
     ran = "".join(f"  token {i} (pos {64 + i}): PASS\n" for i in range(4))
     ran += "chain_persist_grow_mh: 4/4 tokens PASS\n"
-    ran += (
-        f"decode at {llama_chain_hw.DISPATCH_RATE_AT}: per-dispatch "
-        f"n={llama_chain_hw.N_ITERS} min={4 * ms:.2f} median={4 * ms + 0.5:.2f} "
-        f"mad=0.32 ms, 4 tokens/dispatch: {ms:.2f} ms/token "
-        f"({1000 / ms:.2f} tok/s)\n"
-    )
+    for at in (llama_chain_hw.DISPATCH_RATE_AT, *llama_chain_hw.CONTEXTS):
+        ms = (45.1 + 0.0033 * at) * drift
+        ran += (
+            f"decode at {at}: per-dispatch n={llama_chain_hw.N_ITERS} "
+            f"min={4 * ms:.2f} median={4 * ms + 0.5:.2f} mad=0.32 ms, "
+            f"4 tokens/dispatch: {ms:.2f} ms/token ({1000 / ms:.2f} tok/s)\n"
+        )
     generated = (
-        f"prompt 6 tokens, generated 32: TTFT {ttft:.1f} ms "
-        f"({6000 / ttft:.1f} prompt tok/s), decode {970 / ms:.2f} tok/s\n"
+        "prompt 6 tokens, generated 32, median of 5: "
+        f"TTFT {ttft:.1f} ms (min {ttft - 2:.1f}; NPU dispatch {ttft - 12:.1f}, "
+        f"host 12.0), decode {970 / 45.1 / drift:.2f} tok/s\n"
         "check: 29/32 tokens are numpy_llama_ref's argmax\n"
         "oracle: 32/32 generated tokens pass\n"
     )
@@ -428,6 +430,8 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
         "n_layers": n,
         "pt": llama_chain_hw.P_MAX,
+        "t": llama_chain_hw.T,
+        "contexts": [llama_chain_hw.DISPATCH_RATE_AT, *llama_chain_hw.CONTEXTS],
         "measurement_sane": True,
         "detail": [
             {

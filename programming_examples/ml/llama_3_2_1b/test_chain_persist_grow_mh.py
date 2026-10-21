@@ -14,9 +14,15 @@ every record's seed the oracle's embed seed of that token, the last token's
 final residual in the stage the oracle's, and the whole KV cache the
 oracle's.
 
+With --contexts, one dispatch runs at each of several positions over the
+same random prefix, each checked (and with --time, timed): one build at a
+large --t times every context, attention reading only the live prefix.
+
 Run (compiles the design, or reuses its JIT cache entry):
   python test_chain_persist_grow_mh.py --synthetic-weights
   taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --time
+  python test_chain_persist_grow_mh.py --n-layers 16 --t 131072 \
+      --contexts 1024 32768 131068 --time
 """
 
 from __future__ import annotations
@@ -32,7 +38,7 @@ import aie.iron as iron
 import numpy as np
 from aie2_decode import M_MAX, REC_BYTES, RQ, RROW
 from gen_llama_data import quant_int8_perchan_absmax
-from llama_config import HEAD_D, N_HEADS_KV, VOCAB, D
+from llama_config import HEAD_D, N_HEADS_KV, N_LAYERS, VOCAB, D
 from llama_decode import Decoder, DecodeShape, tokens_of
 from llama_oracle import (
     Layer,
@@ -175,14 +181,16 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sampler, rng,
     return fails, hidden, rng
 
 
-def check_kv(shape, layers, kv, changed, positions):
-    """Print whether the device's KV cache holds the oracle's rows at `positions`.
+def check_kv(shape, layers, kv_before, kv_idx, kv_val, positions):
+    """Print whether a dispatch left the oracle's rows at `positions` in the
+    KV cache and changed nothing else.
 
     Args:
         shape: The build.
         layers: The oracle's layers, after it appended those rows.
-        kv: The device's KV cache words after the dispatch.
-        changed: The indices of the words the dispatch changed.
+        kv_before: The device's KV cache words before the dispatch.
+        kv_idx: The sorted indices of the words the dispatch changed.
+        kv_val: Their new values.
         positions: The rows the dispatch appended.
 
     Returns:
@@ -194,8 +202,12 @@ def check_kv(shape, layers, kv, changed, positions):
     rows = np.concatenate(
         [shape.kv_row_words(layer, positions).ravel() for layer in layers]
     )
-    wrong = int(np.count_nonzero(kv[want] != rows))
-    wrong += int(np.count_nonzero(~np.isin(changed, want)))
+    got = kv_before[want]
+    at = np.minimum(np.searchsorted(kv_idx, want), max(len(kv_idx) - 1, 0))
+    hit = (kv_idx[at] == want) if len(kv_idx) else np.zeros(len(want), bool)
+    got[hit] = kv_val[at[hit]]
+    wrong = int(np.count_nonzero(got != rows))
+    wrong += int(np.count_nonzero(~np.isin(kv_idx, want)))
     print(f"  KV cache: {'PASS' if not wrong else f'{wrong} words FAIL'}")
     return int(wrong != 0)
 
@@ -224,7 +236,11 @@ def check_final(shape, stage, hidden, row):
 def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument(
-        "--n-layers", type=int, default=2, help="decoder layers (16: the model)"
+        "--n-layers",
+        type=int,
+        choices=range(1, N_LAYERS + 1),
+        default=2,
+        help="decoder layers (16: the model)",
     )
     p.add_argument("--t", type=int, default=128, help="KV cache rows")
     p.add_argument(
@@ -233,6 +249,7 @@ def main(argv=None):
     p.add_argument(
         "--p-max",
         type=int,
+        choices=range(1, 5),
         default=inspect.signature(DecodeShape).parameters["p_max"].default,
         help="tokens a dispatch can generate",
     )
@@ -331,9 +348,17 @@ def main(argv=None):
         "left must be byte-identical",
     )
     p.add_argument(
+        "--contexts",
+        type=int,
+        nargs="+",
+        help="instead, run one dispatch at each of these positions, each from "
+        "the same random KV prefix, checking each (and with --time, timing it)",
+    )
+    p.add_argument(
         "--save-run",
-        help="run the dispatches and save what the device left to this .npz, "
-        "without the oracle (which takes about 30 min a token at 128k)",
+        help="run the dispatches (and with --contexts --time, time them) and "
+        "save what the device left to this .npz, without the oracle (which "
+        "takes about 100 s a token at 128k)",
     )
     p.add_argument(
         "--from-run",
@@ -395,15 +420,22 @@ def main(argv=None):
     schedule, plans = schedule_of(opts.batch)
     passes = schedule[0][1]
     n_tok = sum(len(b) or n for _, n, b, _ in schedule)
+    sweep = [(at, opts.passes or shape.passes_for(at)) for at in opts.contexts or ()]
     if p0 < 0 or p0 + n_tok > shape.t:
         p.error(f"{n_tok} tokens from position {p0} do not fit in T={shape.t}")
-    if (n_disp > 1) + (opts.repeats > 1) + opts.split > 1:
-        p.error("--dispatches, --repeats and --split are separate modes")
+    for at, n in sweep:
+        if at < 0 or at + n > shape.t:
+            p.error(f"{n} tokens from position {at} do not fit in T={shape.t}")
+    if (n_disp > 1) + (opts.repeats > 1) + opts.split + bool(sweep) > 1:
+        p.error("--dispatches, --repeats, --split and --contexts are separate modes")
+    if sweep and opts.prompt_tokens:
+        p.error("--contexts generates from each position, without a prompt")
     if (opts.save_run or opts.from_run or opts.prompt_tokens) and (
-        opts.time or opts.split or opts.repeats > 1
+        (opts.time and not sweep) or opts.split or opts.repeats > 1
     ):
         p.error(
-            "--save-run, --from-run and --prompt-tokens are for runs of --dispatches"
+            "--save-run, --from-run and --prompt-tokens are for runs of "
+            "--dispatches or --contexts"
         )
     if opts.vs_batch and (opts.save_run or opts.from_run or not opts.prompt_tokens):
         p.error("--vs-batch is for a --prompt-tokens run on the NPU")
@@ -415,12 +447,13 @@ def main(argv=None):
             seed=fseed,
             synthetic=opts.synthetic_weights,
             schedule=schedule,
+            contexts=sweep,
+            time=opts.time and bool(sweep),
             sample=sample,
             prompt_tokens=opts.prompt_tokens,
         )
     )
 
-    assert VOCAB == VOCAB and D == D
     if opts.synthetic_weights:
         print(f"building synthetic embed/final_norm (seed {fseed}) ...", flush=True)
         embed_i8, embed_sc, gamma = synthetic_lm_weights(fseed)
@@ -430,7 +463,9 @@ def main(argv=None):
         gamma = _load_bf16(DATA_DIR, "final_norm", (D,))
     lm = (embed_i8, embed_sc, gamma)
 
-    residual0, layers = build_fixtures(shape, fseed, p0)
+    residual0, layers = build_fixtures(
+        shape, fseed, max(at for at, _ in sweep) if sweep else p0
+    )
     rope = rope_table(shape.t, HEAD_D)
     kv0 = shape.pack_kv(layers)
     stage0 = shape.pack_stage(layers, gamma, residual0, opts.sample_seed)
@@ -442,8 +477,8 @@ def main(argv=None):
         decoder = Decoder(shape, layers, lm, rope, opts.elf)
     print(
         f"chain_persist_grow_mh shape.n_layers={shape.n_layers} "
-        f"passes={[len(b) or n for _, n, b, _ in schedule]}"
-        f" P0={p0} KSET={shape.kset}"
+        f"passes={[n for _, n in sweep] or [len(b) or n for _, n, b, _ in schedule]}"
+        f" P0={[at for at, _ in sweep] if sweep else p0} KSET={shape.kset}"
         f"  temp={sample[0]} topk={sample[1]} seed={sample[2]}  fixture_seed={fseed}"
         f"  dispatches={n_disp} repeats={opts.repeats}",
         flush=True,
@@ -452,10 +487,6 @@ def main(argv=None):
     # The KV tensor is created once per run of dispatches and stays on the
     # device, so a generation loop's dispatches carry the cache with no host
     # copy.
-    def dispatch(stage_t, kv_t, params):
-        assert decoder is not None
-        return decoder.dispatch(kv_t, stage_t, params)[0]
-
     def run_schedule(schedule):
         """Run a schedule's dispatches back to back on one KV and stage tensor.
 
@@ -463,6 +494,7 @@ def main(argv=None):
             Per dispatch, (its records, the stage it left, the KV words it
             changed, their values).
         """
+        assert decoder is not None
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
         kv_prev = kv0
@@ -470,9 +502,9 @@ def main(argv=None):
         for d, (pos, passes, batch, ends) in enumerate(schedule):
             if d:
                 time.sleep(opts.idle_s)
-            records = dispatch(
-                stage_t,
+            records, _ = decoder.dispatch(
                 kv_t,
+                stage_t,
                 shape.params(pos, passes, sampler, batch, batch_ends_prompt=ends),
             )
             kv_t.to("cpu")
@@ -488,19 +520,98 @@ def main(argv=None):
     # equal the oracle's.
     dev_tokens = []
     tok_fails = carry_fails = hidden_fails = vs_fails = 0
-    if opts.split:
+    if sweep:
+        # Per context, the device's records, stage, changed KV words and
+        # times; then the checks, which --save-run and --from-run split off.
+        names = ("records", "stage", "kv_idx", "kv_val", "times")
+        if opts.from_run:
+            saved = np.load(opts.from_run)
+            if str(saved["config"]) != config:
+                p.error(f"{opts.from_run} was run as {saved['config']}, not {config}")
+            runs = [tuple(saved[f"{k}{i}"] for k in names) for i in range(len(sweep))]
+        else:
+            assert decoder is not None
+            runs = []
+            for at, n in sweep:
+                params = shape.params(at, n, sampler)
+                kv_t = iron.tensor(kv0, dtype=np.int32)
+                stage_t = iron.tensor(stage0, dtype=np.int8)
+                records, _ = decoder.dispatch(kv_t, stage_t, params)
+                kv_t.to("cpu")
+                stage_t.to("cpu")
+                kv_idx = np.flatnonzero(kv_t.numpy() != kv0)
+                run = (records, stage_t.numpy().copy(), kv_idx, kv_t.numpy()[kv_idx])
+                times = np.zeros(0)
+                if opts.time:
+                    out_t = iron.zeros([shape.p_max * REC_BYTES], dtype=np.int8)
+                    times = time_dispatches(
+                        decoder.session,
+                        [decoder.w_t, kv_t, decoder.lmw_t, out_t, stage_t],
+                        params,
+                        opts,
+                    )
+                runs.append((*run, times))
+                del kv_t
+            if opts.save_run:
+                np.savez(
+                    opts.save_run,
+                    config=config,
+                    **{
+                        f"{k}{i}": v
+                        for i, run in enumerate(runs)
+                        for k, v in zip(names, run)
+                    },
+                )
+                print(f"saved the device's run to {opts.save_run}")
+                return 0
+        for (at, n), (records, stage, kv_idx, kv_val, times) in zip(sweep, runs):
+            print(f"context {at}: tokens {tokens_of(records, n)}", flush=True)
+            kept = [
+                tuple(
+                    x[:, at : at + n].copy()
+                    for x in (c.kcache, c.vcache, c.k_slot, c.v_slot)
+                )
+                for c in layers
+            ]
+            fails, hidden, rng = replay(
+                shape,
+                records,
+                n,
+                residual0,
+                layers,
+                at,
+                rope,
+                lm,
+                sampler,
+                rng0,
+                [(None, t) for t in range(n)],
+            )
+            wrong = check_kv(shape, layers, kv0, kv_idx, kv_val, np.arange(at, at + n))
+            wrong += check_rng(shape, stage, rng)
+            hidden_wrong = check_final(shape, stage, hidden, 0)
+            for c, rows in zip(layers, kept):
+                for x, row in zip((c.kcache, c.vcache, c.k_slot, c.v_slot), rows):
+                    x[:, at : at + n] = row
+            dev_tokens += tokens_of(records, n)
+            tok_fails += fails
+            carry_fails += wrong
+            hidden_fails += hidden_wrong
+            if len(times) and not (fails or wrong or hidden_wrong):
+                print_decode_time(at, n, times)
+    elif opts.split:
         # One dispatch of `passes` tokens, then the same tokens one per
         # dispatch: a token slot that does not run moves nothing.
+        assert decoder is not None
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
-        whole = dispatch(stage_t, kv_t, shape.params(p0, passes, sampler))
+        whole, _ = decoder.dispatch(kv_t, stage_t, shape.params(p0, passes, sampler))
         kv_t.to("cpu")
         stage_t.to("cpu")
         kv_whole, stage_whole = kv_t.numpy().copy(), stage_t.numpy().copy()
         kv_t = iron.tensor(kv0, dtype=np.int32)
         stage_t = iron.tensor(stage0, dtype=np.int8)
         recs = [
-            dispatch(stage_t, kv_t, shape.params(p0 + t, 1, sampler))
+            decoder.dispatch(kv_t, stage_t, shape.params(p0 + t, 1, sampler))[0]
             for t in range(passes)
         ]
         kv_t.to("cpu")
@@ -536,19 +647,17 @@ def main(argv=None):
         )
         hidden_fails += check_final(shape, stage_whole, hidden, 0)
         carry_fails += check_rng(shape, stage_whole, rng)
+        kv_idx = np.flatnonzero(kv_whole != kv0)
         carry_fails += check_kv(
-            shape,
-            layers,
-            kv_whole,
-            np.flatnonzero(kv_whole != kv0),
-            np.arange(p0, p0 + passes),
+            shape, layers, kv0, kv_idx, kv_whole[kv_idx], np.arange(p0, p0 + passes)
         )
     elif opts.repeats > 1:
+        assert decoder is not None
         first = None
         for r in range(opts.repeats):
-            records = dispatch(
-                iron.tensor(stage0, dtype=np.int8),
+            records, _ = decoder.dispatch(
                 iron.tensor(kv0, dtype=np.int32),
+                iron.tensor(stage0, dtype=np.int8),
                 shape.params(p0, passes, sampler),
             )
             toks = tokens_of(records, passes)
@@ -635,10 +744,10 @@ def main(argv=None):
             )
             tok_fails += fails
             carry_fails += check_rng(shape, stage, rng)
-            kv_dev[kv_idx] = kv_val
             carry_fails += check_kv(
-                shape, layers, kv_dev, kv_idx, np.arange(pos, pos + len(plan))
+                shape, layers, kv_dev, kv_idx, kv_val, np.arange(pos, pos + len(plan))
             )
+            kv_dev[kv_idx] = kv_val
             # A batch's rows are rows of its one pass; a pass's token is row 0.
             hidden_fails += check_final(
                 shape, stage, hidden, len(schedule[d][2]) - 1 if schedule[d][2] else 0
@@ -730,7 +839,7 @@ def main(argv=None):
         )
     if tok_fails or carry_fails or hidden_fails or vs_fails:
         return 1
-    if opts.time:
+    if opts.time and not sweep:
         assert decoder is not None
         times = time_dispatches(
             decoder.session,
