@@ -11,10 +11,9 @@ neck, the Detect head and its top-k postprocess. The device is checked bit
 for bit against an integer numpy oracle, and the oracle against ONNX Runtime
 on the quantized model.
 
-The integer recipe follows PR #3142, a fine-tuned yolo26n-cls at 512 by
-@hunhoffe, and ports the decisions validated there to the detection model:
-AMD Quark XINT8 with power-of-two scales, accumulators seeded with the bias,
-`conv_even` requantization, and a per-conv int8 SiLU table.
+The integer recipe is AMD Quark XINT8 with power-of-two scales, accumulators
+seeded with the bias, `conv_even` requantization, and a per-conv int8 SiLU
+table.
 
 ## Weights
 

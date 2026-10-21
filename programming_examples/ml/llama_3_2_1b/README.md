@@ -12,15 +12,10 @@ and the token→embedding feedback. The device is bit-exact to its numpy oracle
 (`llama_oracle.py`); Accuracy scores that arithmetic against the bf16 Hugging
 Face model.
 
-This example started from PR #3161, @hunhoffe's Llama 3.2 1B bring-up, whose
-kernels, recipe and multi-head attention layer it carries forward into one
-compiled design.
-
-> Status: on NPU2 (Strix), decode runs at 44.8 ms/token (22.3 tok/s) at
-> position 64 and 475 ms/token (2.1 tok/s) at 128k, every token checked
-> against the oracle. Prefill runs on the device in batches of up to 4 prompt
-> tokens (`generate.py`: prompt in, text out): a 6-token prompt's first token
-> takes 124.6 ms.
+> Status: on NPU2 (Strix), decode and prefill run on the device, prefill in
+> batches of up to 4 prompt tokens (`generate.py`: prompt in, text out), every
+> token checked against the oracle. Current timings are on the
+> [dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
 
 ---
 
@@ -122,86 +117,37 @@ prompt into batches (`DecodeShape.batches`).
   oracle reproduces it exactly: attention's and the sampler's exp is
   `exp_nonpos`, the inverse square root a Quake seed and two Newton steps, and
   reciprocals round as IEEE division.
-- **The norm's input and the o projection's quantization are now as close to
-  the recipe as the design gets:** RMSNorm reads the fp32 residual directly
-  (no int8 requant on the way in), and the attention output is quantized once
-  for the o projection, not per head then again on the concatenated row. The
-  device's remaining gap to the recipe is the quantized weights and
-  activations everywhere else, which both recipe and device share.
+- **Norm input and attention output:** RMSNorm reads the fp32 residual
+  directly, and the attention output is quantized once, for the o projection.
 
 ---
 
 ## 2. Performance
 
-Measured on Strix (`test_chain_persist_grow_mh.py --save-run`/`--from-run`,
-so the oracle check and the timing are separate runs), `taskset -c 2-23`,
-fastest of 20 after 10 warm-ups, one 128k-row-KV-cache build timed at each
-context:
-
-| Context (position of the first token) | per-token | tok/s |
-|---|---|---|
-| **64** | **44.83 ms** | **22.31** |
-| 1024 | 51.14 ms | 19.55 |
-| 2048 | 52.27 ms | 19.13 |
-| 4096 | 60.39 ms | 16.56 |
-| 8192 | 73.58 ms | 13.59 |
-| 16384 | 101.13 ms | 9.89 |
-| 32768 | 153.23 ms | 6.53 |
-| 65536 | 260.48 ms | 3.84 |
-| 131068 | 475.27 ms | 2.10 |
-
-The RMSNorm and attention-output fixes (below) were measured at 64 and 128k
-only, interleaved before/after each other with the exactness check run
-offline so it can't skew the timing; they removed a quantize-dequantize step
-each, so the rows in between are carried from the pre-fix sweep and are not
-expected to move.
+Per-token decode time at each context, time to first token by prompt
+length, and the generation rate are measured every night on Strix and
+charted on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/)
+(`utils/component_checks/llama_chain_hw.py`; section 4 has the commands).
 
 **What bounds it.** The layers' weights stream over the array's eight lanes
-(52.3 GB/s, the box's 8-lane peak, measured on the standalone array design
-(`9a050ea84b8`) before it was wired into the chain: a different Strix box
-(xcoradaie211), `taskset 2-4`, min of 10 after 5 warm-ups; not re-measured
-on this box or through the integrated chain), the lm_head's 262 MB over one
-lane (about 19 ms a token), and
-attention adds about 3.3 ms per 1k tokens of context. That is up from about
-2.5 ms/1k measured just before the Oct-20 restructure (#3947), whose
-score-to-probability step moved from an int8-quantized exp lookup table to
-the oracle's exact polynomial (`vec_exp_nonpos`, called 16 times a 64-row
-block): the per-context cost of the bit-exactness the checks above need,
-not reverted.
+and the tied 262 MB lm_head over one, every token. Attention grows with the
+live context: each token reads every live KV block, and its
+score-to-probability step is the oracle's exact polynomial
+(`vec_exp_nonpos`), so the device stays bit-exact.
 
 **Tokens per dispatch.** amdxdna times a dispatch out after about 5 s. The host
 picks each dispatch's token count from its first position
 (`DecodeShape.passes_for` in `llama_decode.py`): as many of the 4 as fit a 4 s
 budget by a cost model (19 ms of lm_head a token, plus per layer 1.80 ms and
 0.163 ms per 1k rows of context). At 16 layers that is 4 tokens all the way to
-128k, where a dispatch measures 1.91 s.
-The array's activations and outputs pass through a DDR `stage` buffer
-between it and the cores around it (see `aie2_decode.py`). For comparison,
-FastFlowLM v0.9.30 reports 64.5 tok/s at 1k and 13.6 tok/s at 128k for this
-model on a Ryzen AI 7 350 (Krackan)
-([benchmarks](https://fastflowlm.com/docs/benchmarks/llama3_results/)).
+128k. The array's activations and outputs pass through a DDR `stage` buffer
+between it and the cores around it (see `aie2_decode.py`).
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
-> **TTFT** (time to first token). `generate.py` at N=16, from before
-> tokenization to the first generated token, the median of 5 requests on a
-> 6-token prompt: TTFT 124.6 ms (119.4 ms of prefill dispatches, 5.2 ms on the
-> host), then 22.1 tok/s.
-
-By prompt length (`generate.py --prompt-tokens`, median of 5), prefill runs
-one dispatch of up to 4 tokens at a time, each a full N=16-layer pass, so
-TTFT scales with the number of dispatches rather than with one big batched
-op:
-
-| Prompt length | TTFT |
-|---|---|
-| 512 | 8.16 s |
-| 1024 | 17.08 s |
-| 2048 | 37.05 s |
-
-For comparison, FastFlowLM reports 2136 tok/s prefill at 2k
-([benchmarks](https://fastflowlm.com/docs/benchmarks/llama3_results/)), about
-960 ms for a 2048-token prompt; larger prefill batches (What's next) are the
-lever to close this gap, not a change to TTFT's measurement.
+> **TTFT** (time to first token). Prefill runs one dispatch of up to 4 prompt
+> tokens at a time, each a full 16-layer pass, so TTFT scales with the number
+> of dispatches rather than with one big batched op; larger prefill batches
+> (What's next) are the lever.
 
 ---
 
@@ -212,21 +158,15 @@ decode test checks every token, KV row, sampler state and final residual
 against it, and a greedy token must be the oracle's argmax. So scoring the
 oracle against the bf16 Hugging Face model scores the device. The INT8 recipe
 (`numpy_llama_ref.py`) is shown beside it for scale: the recipe's gap to bf16
-is the quantization's own cost, and the device now tracks the recipe closely
-(RMSNorm and the attention output no longer add their own quantization
-steps). The reference is the true Llama 3.2 1B **bf16** checkpoint, loaded
+is the quantization's own cost. The reference is the true Llama 3.2 1B **bf16** checkpoint, loaded
 from the safetensors (no torch or transformers).
 
 ### KL and top-1 against bf16
 
-On running prose (`accuracy_vs_hf.py`'s default sample, 47 positions):
-
-| Metric | device | recipe |
-|---|---|---|
-| next-token top-1 agreement | 87.2 % | 89.4 % |
-| argmax in bf16's top 5 | 100 % | 100 % |
-| mean KL(bf16 ‖ model) | 0.0182 | 0.0159 |
-| perplexity ratio (model / bf16) | 0.975× | 0.987× |
+On running prose (`accuracy_vs_hf.py`'s default sample), the nightly scores
+the device's arithmetic against bf16 (next-token top-1 agreement and mean
+KL(bf16 ‖ model)) and charts both on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
+`accuracy_vs_hf.py --model recipe` scores the INT8 recipe the same way.
 
 ### Next-token greedy agreement on 20 hard prompts (N=16)
 
@@ -396,11 +336,12 @@ One compiled design serves decode and batched prefill, with the per-call
 values (passes, a batch's rows, position, live context, the sampler's
 settings) as ScratchpadParameters. Next:
 
-- **The lm_head over more lanes** (it streams over one, about 19 ms a token),
+- **The lm_head over more lanes** (it streams over one),
   and the glue fused into the GEMV array's epilogues.
 - **Larger prefill batches**: the mma tile has 8 activation slots and the
   design fills 4, its per-row parameters (`pg{m}`, `gat{m}`) sharing the
-  32-parameter budget with the passes'. This is most of TTFT's gap to
-  FastFlowLM above: one dispatch per 4 prompt tokens means a 2048-token
-  prompt pays 512 dispatches' worth of per-dispatch overhead.
-- **Long-context attention**: at 128k it takes about 90 % of a token's time.
+  32-parameter budget with the passes'. One dispatch per 4 prompt tokens
+  means a 2048-token prompt pays 512 dispatches' worth of per-dispatch
+  overhead.
+- **Long-context attention**, which dominates a token's time at long
+  context.
