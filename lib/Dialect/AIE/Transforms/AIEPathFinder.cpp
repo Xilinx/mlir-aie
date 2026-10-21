@@ -1042,6 +1042,10 @@ struct Pathfinder::RouteState {
   // The flows that met a tree this iteration, by its flow, and how often the
   // routing check faulted a meeting of each pair.
   std::set<std::pair<int, int>> met;
+  // The source whose tree met another's by each slave port this iteration, by
+  // the tree it met: a tree from another source meeting it there would only
+  // share the first one's way in, not meet.
+  std::map<std::pair<int, int>, PathEndPoint> meetingPorts;
   std::map<std::pair<int, int>, int> meetFaults;
   // Joined pairs the routing check faulted along with hops neither joined,
   // which were left to the penalties on those hops once.
@@ -1839,7 +1843,9 @@ void Pathfinder::TreeBuilder::meet(int owner) {
       if (node == pf.nodeIds.end())
         continue;
       int in = stateId(node->second, In);
-      if (in == at || t.count(in))
+      auto taken = st.meetingPorts.find({owner, in});
+      if (in == at || t.count(in) ||
+          (taken != st.meetingPorts.end() && !(taken->second == part.src)))
         continue;
       Meeting m{in, {}, 0, k};
       for (int s : next)
@@ -1872,6 +1878,7 @@ void Pathfinder::TreeBuilder::meet(int owner) {
   if (!best || !trace(best->in))
     return;
   st.unmet.erase({flow, owner});
+  st.meetingPorts.try_emplace({owner, best->in}, part.src);
   st.met.insert({flow, owner});
   int hops = treeHops[llvm::find(tree, best->in) - tree.begin()] + 1;
   auto add = [&](int s, int from, const Edge &e, int depth) {
@@ -2689,6 +2696,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       hops.clear();
     st.unmet.clear();
     st.met.clear();
+    st.meetingPorts.clear();
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
