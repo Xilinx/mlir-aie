@@ -928,12 +928,13 @@ def log_f32(tile_size: int = 1024) -> ExternalFunction:
             np.float32,
         ],
         compile_flags=[f"-DLOG_ELEMS={tile_size}"]
-        # log_f32.cc stages tiles of whole 256-element blocks, whose passes need
-        # eight stages to pipeline; under that cap Peano miscompiled one-trip
-        # passes, so other tiles keep the nested loop and the default cap.
+        # log_f32.cc stages AIE2P tiles of whole 256-element blocks, whose
+        # passes need eight stages to pipeline; under that cap Peano
+        # miscompiled one-trip passes, so other tiles keep the nested loop and
+        # the default cap.
         + (
             ["-mllvm", "--aie-pipeliner-max-stagecount=8"]
-            if tile_size % 256 == 0
+            if tile_size % 256 == 0 and _detect_arch() == "aie2p"
             else []
         ),
         contract=KernelContract(
