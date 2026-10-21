@@ -58,7 +58,7 @@ F32 = np.dtype[np.float32]
 I32 = np.dtype[np.int32]
 
 # The key block and the head, which mha.cc is compiled for. A round's query
-# block is these 64 rows or a narrower multiple of 16.
+# block is these 64 rows or a narrower multiple of 8.
 _B = 64
 
 

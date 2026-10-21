@@ -206,15 +206,15 @@ class Case:
 
 
 # Data cases every kernel of a kind should survive. Random data finds nothing
-# a vectorized tail, a saturating add or a NaN path gets wrong. The policy
-# is derived from each contract by `data_policy`: integer kernels get the
-# extremes (inside `input_limit`); float kernels get subnormal inputs only
-# when the contract says what the core does with them (`subnormals`) and
-# NaN / inf only when it declares they propagate (`nonfinite`); widening a
-# kernel's data is therefore a contract change, not a table edit. Matmul
-# operands skip NaN (the reference accumulates them into every output) and
-# bfp16ebs8 operands skip "max" too (3e38 products overflow the float
-# reference; what the core's bfp16 store makes of an inf is unknown).
+# a vectorized tail, a saturating add or a NaN path gets wrong. `data_policy`
+# picks them from each contract's input dtype: integer kernels get the
+# extremes (inside `input_limit`), float kernels FLOAT_BASE, and a kernel
+# with a `sample` only random data. Subnormal, NaN and inf inputs are a
+# claim about one kernel's behaviour, so a case names them in its own
+# `data_cases` (kernel_cases.IEEE_FLOAT) where that claim is exercised.
+# Matmul operands skip NaN (the reference accumulates them into every
+# output) and bfp16ebs8 operands skip "max" too (3e38 products overflow the
+# float reference; what the core's bfp16 store makes of an inf is unknown).
 INT_DATA = ("random", "zeros", "max", "min", "alternating")
 FLOAT_BASE = ("random", "zeros", "ones", "large", "alternating")
 MATRIX_DATA = ("random", "zeros", "ones", "alternating", "max")

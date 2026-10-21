@@ -8,8 +8,7 @@
 // Gated DeltaNet's recurrence for one value head over a block of rows.
 //
 // The state is kept as three bf16 limbs (f32_split.h), and each f32 product is
-// summed from exact limb products and rounded once, as the scalar f32 product
-// is. The per-row scalars (norms, decay, beta) are computed for every row at
+// summed from limb products, within 1 ulp of the f32 product (f32_split.h). The per-row scalars (norms, decay, beta) are computed for every row at
 // once, a row per lane; the state's columns are independent, so each
 // 16-column block then runs a row's whole update on its own.
 
