@@ -9,6 +9,9 @@
     python yolo26n.py --images DIR --n 8 --time   # and time it
     python yolo26n.py --n 8 --batch 8 --time      # eight images per dispatch
 
+With real images, the device's detections are also scored against the
+images' YOLO labels (``--labels``) as mAP@0.5.
+
 The network runs as a sequence of segments, each a device configuration of
 its own in one full ELF, handing tensors on through a DDR scratch buffer.
 Every image's detections are compared with the oracle bit for bit; with
@@ -27,6 +30,7 @@ import numpy as np
 from aie.iron import CompileTime, DeviceConfiguration, In, InOut, Out, Program, Runtime
 from aie.iron.device import NPU2
 from aie.utils.benchmark import print_benchmark, run_iters
+from coco_map import Labels, MeanAP50
 from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
 from yolo_params import DATA_DIR, WEIGHTS_DIR, Params, synthetic_params
@@ -237,6 +241,12 @@ def main() -> None:
     parser.add_argument(
         "--images", type=Path, default=WEIGHTS_DIR / "coco128" / "images" / "train2017"
     )
+    parser.add_argument(
+        "--labels",
+        type=Path,
+        help="YOLO label files for --images (default: its labels/ sibling, "
+        "images/train2017 -> labels/train2017); scored as mAP@0.5 when present",
+    )
     parser.add_argument("--n", type=int, default=4, help="images to run")
     parser.add_argument(
         "--batch", type=int, default=1, help="images per dispatch (divides --n)"
@@ -302,6 +312,7 @@ def main() -> None:
             (
                 f"random{i}",
                 rng.integers(0, 256, (IMAGE_SIZE, IMAGE_SIZE, 3), dtype=np.uint8),
+                None,
             )
             for i in range(args.n)
         ]
@@ -309,7 +320,23 @@ def main() -> None:
         # Optional: only real images need OpenCV; a weight-free run goes without.
         from letterbox import letterbox
 
-        images = [(p.name, letterbox(p)) for p in paths]
+        labels = args.labels or args.images.parent.parent / "labels" / args.images.name
+        images = []
+        for path in paths:
+            image, fit = letterbox(path)
+            truth = (
+                Labels.read(
+                    labels / f"{path.stem}.txt",
+                    fit.height,
+                    fit.width,
+                    fit.ratio,
+                    fit.left,
+                    fit.top,
+                )
+                if labels.is_dir()
+                else None
+            )
+            images.append((path.name, image, truth))
     oracle = Oracle(params, network)
     scratch = iron.zeros(args.batch * plan.words, dtype=np.int32)
     detections = iron.zeros(args.batch * DETECTION_WORDS, dtype=np.int32)
@@ -323,14 +350,15 @@ def main() -> None:
 
     passed = matched = 0
     first: list[np.ndarray] = []
+    scored = MeanAP50()
     for start in range(0, len(images), args.batch):
         group = images[start : start + args.batch]
-        pixels = np.concatenate([image.reshape(-1) for _, image in group])
+        pixels = np.concatenate([image.reshape(-1) for _, image, _ in group])
         yolo26n(
             iron.tensor(pixels.view(np.int32)), scratch, detections, weights, **kwargs
         )
         found = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
-        for (name, image), mine in zip(group, found):
+        for (name, image, truth), mine in zip(group, found):
             want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
             if start == 0:
                 first.append(want)
@@ -343,14 +371,21 @@ def main() -> None:
                 matched += np.array_equal(
                     mine, onnx_detections(session, image).view(np.int32)
                 )
+            if truth is not None:
+                scored.add(mine.view(np.float32), truth)
     print(f"yolo26n: {passed}/{len(images)} images PASS")
     if session is not None:
         print(f"ort: {matched}/{len(images)} images match onnxruntime")
+    if scored.images:
+        print(
+            f"map50: {scored.value():.4f} over {scored.images} images "
+            f"({scored.objects} labelled objects)"
+        )
     failed = passed != len(images)
 
     if args.time:
         pixels = np.concatenate(
-            [image.reshape(-1) for _, image in images[: args.batch]]
+            [image.reshape(-1) for _, image, _ in images[: args.batch]]
         )
         tensor = iron.tensor(pixels.view(np.int32))
         bench = run_iters(

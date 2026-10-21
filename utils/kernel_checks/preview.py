@@ -512,6 +512,10 @@ def _yolo_night(rng: random.Random) -> tuple[list, dict]:
             f"median {us * 1.02:.1f} us, MAD {us * 0.01:.1f} us\n"
         )
     correctness = yolo26n_hw.parse_correctness(ran, 0)
+    map50 = 0.586 * rng.uniform(0.99, 1.01)
+    timing |= yolo26n_hw.parse_map50(
+        f"map50: {map50:.4f} over {len(images)} images (58 labelled objects)\n"
+    )
     artifacts = {"elf_bytes": 2_621_440}
     compiled = _compile_night(rng, 27.9, 6.0, YOLO_STAGE_PROFILES)
     meta = {
