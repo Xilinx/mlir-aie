@@ -306,6 +306,17 @@ if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
     LIBRARY_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
     RUNTIME_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
   )
+  # A multi-config generator (Windows) ignores the bare properties above and
+  # appends its own $<CONFIG> subdirectory unless every configuration's is
+  # set too; CMAKE_CONFIGURATION_TYPES is empty on a single-config generator,
+  # so this is a no-op there.
+  foreach(_cfg ${CMAKE_CONFIGURATION_TYPES})
+    string(TOUPPER "${_cfg}" _cfg_upper)
+    set_target_properties(_parameter_scratchpad PROPERTIES
+      LIBRARY_OUTPUT_DIRECTORY_${_cfg_upper} "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+      RUNTIME_OUTPUT_DIRECTORY_${_cfg_upper} "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+    )
+  endforeach()
   add_dependencies(AIEPythonModules _parameter_scratchpad)
   install(TARGETS _parameter_scratchpad
     LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
