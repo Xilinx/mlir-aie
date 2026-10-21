@@ -282,7 +282,7 @@ commandParameters(ModuleOp moduleOp) {
   DenseMap<Operation *, llvm::SetVector<StringRef>> uses;
   DenseMap<Operation *, SmallVector<RuntimeSequenceOp>> callees;
   DenseSet<Operation *> called;
-  DenseMap<Operation *, NamedOpTable> names;
+  NamedOpTableCollection names;
   moduleOp.walk([&](RuntimeSequenceOp seq) {
     seq.walk([&](Operation *op) {
       for (StringRef attr :
