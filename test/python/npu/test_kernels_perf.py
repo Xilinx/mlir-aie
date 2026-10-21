@@ -258,7 +258,9 @@ def _cycles_span(case: Case, traced: kd.CallCycles) -> str:
     if case.fn().contract.even_calls:
         parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
     else:
-        parts = [f"median of calls of unequal work; min {min(k)} max {max(k)} n={len(k)}"]
+        parts = [
+            f"median of calls of unequal work; min {min(k)} max {max(k)} n={len(k)}"
+        ]
     parts += [f"init[{i}] min {min(v)}" for i, v in traced.initializers.items() if v]
     return "; ".join(parts)
 

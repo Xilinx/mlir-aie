@@ -55,14 +55,6 @@ from typing import get_origin, get_type_hints
 
 from aie.iron.kernel import ExternalFunction
 
-from ._common import (
-    BUILDS,
-    Build,
-    KernelContract,
-    Param,
-    TensorLayout,
-    Trace,
-)
 from . import (
     activation,
     conv,
@@ -74,6 +66,14 @@ from . import (
     vision,
 )
 from . import zero as _zero_module  # the factory `zero` takes the name
+from ._common import (
+    BUILDS,
+    Build,
+    KernelContract,
+    Param,
+    TensorLayout,
+    Trace,
+)
 from .activation import (
     bf16_exp,
     bf16_exp_lut_ref,

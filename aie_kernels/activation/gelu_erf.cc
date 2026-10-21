@@ -90,15 +90,13 @@ static inline __attribute__((always_inline)) bf_t gelu_erf_32(bf_t x) {
   const bf_t sq_hi = sq.to_vector<bfloat16>();
   const bf_t sq_lo = aie::msc(sq, sq_hi, one).to_vector<bfloat16>();
   const bf_t l2e0 = bf16_splat<32>(0x3f39);
-  const bf_t l2e1 =
-      bf16_splat<32>(int16_t(0xbaac));
+  const bf_t l2e1 = bf16_splat<32>(int16_t(0xbaac));
   const bf_t l2e2 = bf16_splat<32>(0x366d);
   acc_t q = aie::msc(aie::msc(acc(kP[0]), sq_hi, l2e0), sq_hi, l2e1);
   q = aie::msc(aie::msc(aie::msc(q, sq_lo, l2e0), sq_hi, l2e2), sq_lo, l2e1);
 
-  const HiLo c6 = {
-      bf16_splat<32>(int16_t(0xbcc3)),
-      bf16_splat<32>(int16_t(0xb86f))};
+  const HiLo c6 = {bf16_splat<32>(int16_t(0xbcc3)),
+                   bf16_splat<32>(int16_t(0xb86f))};
   acc_t p = mac3(acc(kP[5]), c6, t);
   AIE_LOOP_UNROLL_FULL
   for (int i = 4; i >= 1; i--)

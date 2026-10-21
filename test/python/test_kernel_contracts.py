@@ -76,7 +76,9 @@ CASES = {
 }
 assert len(CASES) == len(NPU2_CASES), "two device cases map to one host id"
 CASE_DEVICES = {
-    _case_id(case): {t.device for t in ARCH_TRAITS.values() if case.supported_on(t.device)}
+    _case_id(case): {
+        t.device for t in ARCH_TRAITS.values() if case.supported_on(t.device)
+    }
     for case in NPU2_CASES
 }
 # A check of the contract alone sees the factory and its arguments, so it
