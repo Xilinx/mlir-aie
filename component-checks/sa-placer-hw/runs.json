@@ -417,6 +417,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "39558331119",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39558331119",
+   "date": "2026-10-21T06:54:08+00:00",
+   "commit": {
+    "id": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "message": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
+    "timestamp": "2026-10-20T13:56:37Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "7f36a183bf",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "8ee515753dca",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 49,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
