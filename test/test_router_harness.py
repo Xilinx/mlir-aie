@@ -202,6 +202,22 @@ def test_an_unknown_variant_name_fails_instead_of_running_nothing(
     assert not (tmp_path / "work").exists()
 
 
+def test_a_case_not_on_npu2_is_not_retargeted(router_hw, hw_case, tmp_path, capsys):
+    args = argparse.Namespace(
+        case=hw_case,
+        variant=[],
+        device="npu1",
+        runs=20,
+        process_timeout_s=120,
+        work=tmp_path / "work",
+        verdicts=None,
+        peano="unused",
+    )
+    assert router_hw.run_case(args) != 0
+    assert "cannot retarget to npu1" in capsys.readouterr().err
+    assert not (tmp_path / "work").exists()
+
+
 def test_a_nonpositive_runs_count_is_rejected(router_hw, hw_case):
     result = subprocess.run(
         [

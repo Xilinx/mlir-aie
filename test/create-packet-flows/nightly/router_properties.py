@@ -5170,23 +5170,22 @@ def witness_problem(d, an, text):
     to exactly the requested flows; else what fails."""
     # With nothing left to route, the router only adds the wires find-flows
     # follows.
-    wired = subprocess.run(
-        [aie_opt_path(), "--aie-create-pathfinder-flows", "-"],
-        input=text,
-        capture_output=True,
-        text=True,
-    )
+    wired = aie_opt(text, strict=True, timeout=120)
     if wired.returncode:
         return "C++ verifier: " + first_error(wired.stderr)[:120]
     problems, stats = verify(d, an, text, hops_on=False)
     if problems or stats.get("shared_receiver_cycle") is not None:
         return "verify: " + (problems[0][:80] if problems else "shared-receiver cycle")
-    lifted = subprocess.run(
-        [aie_opt_path(), "--aie-find-flows=keep-partial-flows=true", "-"],
-        input=wired.stdout,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        lifted = subprocess.run(
+            [aie_opt_path(), "--aie-find-flows=keep-partial-flows=true", "-"],
+            input=wired.stdout,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        return "find-flows: timeout after 120s"
     if lifted.returncode:
         return "find-flows: " + first_error(lifted.stderr)[:120]
     got = load_design(lifted.stdout)

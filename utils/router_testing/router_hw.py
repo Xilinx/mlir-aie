@@ -221,6 +221,14 @@ def run_case(args) -> int:
         return 2
     variants = [v for v in all_variants if not args.variant or v.name in args.variant]
     if args.device != "npu2":
+        fixed = [v.name for v in variants if "aie.device(npu2)" not in v.design]
+        if fixed:
+            print(
+                f"{case.name}: {', '.join(fixed)} not on aie.device(npu2), "
+                f"cannot retarget to {args.device}",
+                file=sys.stderr,
+            )
+            return 2
         target = f"aie.device({args.device})"
         variants = [
             dataclasses.replace(
