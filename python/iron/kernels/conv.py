@@ -24,10 +24,10 @@ from ._common import (
     Param,
     Trace,
     _conv_act_dtype_info,
-    _detect_arch,
     _kernel_source,
     _make_extern,
     _tuned_arch,
+    _vector_args,
     dtypes,
 )
 from .core import conv_even
@@ -57,12 +57,6 @@ def _vector_loads(*indices):
 def _vector_32b(*indices):
     """``alignments`` for arguments the tuned build accesses 32 bytes at a time."""
     return tuple((i, 32) for i in indices) if _tuned_arch() != "portable" else ()
-
-
-def _vector_args(*indices):
-    """``alignments`` for arguments every build, portable too, loads as whole vectors."""
-    align = {"aie2": 32, "aie2p": 64}.get(_detect_arch())
-    return tuple((i, align) for i in indices) if align else ()
 
 
 def _requant(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.uint8):
@@ -1811,7 +1805,14 @@ def _bn_conv2dk3_dw_bias(input_width, channels, table, stride, rounding):
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, *((Param,) * len(extra)), Out, *((Param,) * 8)),
-            alignments=_vector_32b(0, 1, 2, 4 + len(extra), *[5] * table) + ((4, 32),),
+            # Rows of 8k pixels go 8 pixels (64 bytes) a vector, others 4.
+            alignments=(
+                _vector_args(0, 1, 2, 4 + len(extra))
+                if input_width % 8 == 0
+                else tuple((i, 32) for i in (0, 1, 2, 4 + len(extra)))
+            )
+            + _vector_32b(*[5] * table)
+            + ((4, 32),),
             reference=reference,
             acc_dtype=np.int32,
             reduction=9,
