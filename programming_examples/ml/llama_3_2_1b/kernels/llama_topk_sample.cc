@@ -242,14 +242,8 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
   __builtin_memcpy(record + kD, &set_scale[winner], 4);
 }
 
-// Packed-output finalize: identical sampling, but writes the winner's embed
-// row AND the token id into ONE buffer out[kD + 12]:
-//   [0..kD)        int8 embed row
-//   [kD..kD+4)     fp32 embed_sc
-//   [kD+4..kD+8)   int32 token id
-//   [kD+8..kD+12)  pad
-// The seed feeds back as the next layer-0 input and the token rides along for
-// the host to read.
+// llama_topk_finalize with both outputs in one buffer, out[kD + 12]:
+//   [0..kD) int8 row | [kD..kD+4) f32 scale | [kD+4..kD+8) i32 id | pad
 void llama_topk_finalize_packed(float *restrict set_logit,
                                 int32_t *restrict set_gidx,
                                 float *restrict set_scale,
