@@ -68,7 +68,7 @@ extern "C" void magnitude_f32(float *restrict x, float *restrict out,
 
     // 1 / sqrt(p): the bit-trick estimate, 3.4e-2 off, then a Newton step to
     // about 4e-3. p = 0 gives a finite estimate, and s = 0.
-    // The low bit cleared first: downshift can round in the caller's mode.
+    // Low bit cleared first; see log_exponent_mask in log_f32.cc.
     auto bits = aie::bit_and(p.to_vector<float>().cast_to<int32_t>(),
                              aie::broadcast<int32_t, f32_lanes>(-2));
     auto y0_bits = aie::sub(aie::broadcast<int32_t, f32_lanes>(0x5f3759df),
