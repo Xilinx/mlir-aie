@@ -12,6 +12,7 @@ import re
 import stat
 import subprocess
 import sys
+import threading
 import time
 import weakref
 from collections import OrderedDict
@@ -64,14 +65,19 @@ logger = logging.getLogger(__name__)
 class _KernelRun:
     """The one `pyxrt.run` a loaded kernel is dispatched through.
 
-    A fresh `pyxrt.run` reconfigures a full ELF's device on its first start
-    (about 3 ms for MobileNet, 70 us for a pass-through design); a run rebound
-    with `set_arg`, even to other buffers, does not.
+    A fresh `pyxrt.run` reconfigures a full ELF's device on its first start;
+    a run rebound with `set_arg`, even to other buffers, does not. Every
+    handle of the kernel shares the run, so `dispatch` holds a lock from the
+    first `set_arg` to the end of the wait, and threads dispatching one kernel
+    take turns. The run keeps the last dispatch's buffers bound, holding
+    their device memory, until the kernel's next dispatch or until the run is
+    dropped with its handle.
     """
 
     def __init__(self, kernel):
         self.kernel = kernel
         self.run = None
+        self.lock = threading.Lock()
 
     def dispatch(self, args) -> "pyxrt.ert_cmd_state":
         """Bind `args` and run the kernel to completion.
@@ -84,20 +90,21 @@ class _KernelRun:
             The run's final command state. A run that does not complete, or
             raises, is dropped so the next dispatch starts a fresh one.
         """
-        if self.run is None:
-            self.run = pyxrt.run(self.kernel)
-        try:
-            for i, arg in enumerate(args):
-                if arg is not None:
-                    self.run.set_arg(i, arg)
-            self.run.start()
-            state = self.run.wait()
-        except BaseException:
-            self.run = None
-            raise
-        if state != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            self.run = None
-        return state
+        with self.lock:
+            if self.run is None:
+                self.run = pyxrt.run(self.kernel)
+            try:
+                for i, arg in enumerate(args):
+                    if arg is not None:
+                        self.run.set_arg(i, arg)
+                self.run.start()
+                state = self.run.wait()
+            except BaseException:
+                self.run = None
+                raise
+            if state != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+                self.run = None
+            return state
 
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
