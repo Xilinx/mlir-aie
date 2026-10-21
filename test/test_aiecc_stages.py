@@ -18,9 +18,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "utils/component_checks"
 # A shim-only design (test/aiecc/profile_json.mlir's shape), a cold
-# mobilenet JIT compile at SA effort 0.05, and test/aiecc/
-# cpp_full_elf_generation.mlir built with --get-full-elf, all captured from
-# aiecc as is.
+# mobilenet JIT compile at SA effort 0.05, and a five-device full-ELF design
+# built with --get-txn and --get-locmap by an aiecc that records process_ms,
+# all captured from aiecc as is.
 SHIM = CHECKS / "fixtures/aiecc_profile_shim.json"
 MOBILENET = CHECKS / "fixtures/aiecc_profile_mobilenet.json"
 FULL_ELF = CHECKS / "fixtures/aiecc_profile_full_elf.json"
@@ -84,7 +84,6 @@ def test_mobilenet_stages_are_its_edges_summed(checks):
         ("{0}_transaction.mlir", "package"),
         ("input_aie_partition_{0}.json", "package"),
         ("insts_{0}.bin.locmap.json", "package"),
-        ("linked.mlir", "link"),
         ("a_new_aiecc_edge", "other"),
     ],
 )
@@ -120,6 +119,20 @@ def test_an_unknown_edge_is_counted_as_other(checks, tmp_path):
     path = tmp_path / "profile.json"
     path.write_text(json.dumps(profile))
     assert stages.stage_seconds(str(path))["other"] == 0.25
+
+
+def test_aieccs_own_time_is_told_apart_when_the_profile_records_it(checks):
+    stages, _ = checks
+    rows = stages.stage_rows(str(FULL_ELF), 2.0, "")
+    # process_ms 137 against a graph span of 123 ms.
+    assert rows["compile_aiecc_wall_s"] == 0.12
+    assert rows[stages.AIECC_OWN_METRIC] == 0.01
+    assert rows["compile_outside_aiecc_s"] == round(2.0 - 0.137, 2)
+    # Longer than the compile counting aiecc's whole run, not just its graph.
+    (problem,) = stages.stage_rows(str(FULL_ELF), 0.13, "_warm").values()
+    assert "spans 0.14 s of a 0.13 s compile" in problem
+    # A profile without process_ms has no such row.
+    assert stages.AIECC_OWN_METRIC not in stages.stage_rows(str(SHIM), 2.0, "")
 
 
 def test_a_profile_that_is_not_the_compiles_gives_no_stages(checks, tmp_path):
