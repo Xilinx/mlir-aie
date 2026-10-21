@@ -352,6 +352,7 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
             )
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
+        "provenance": "dispatch dynamic",
         "efforts": sa_placer_hw.EFFORTS,
         "measurement_sane": True,
         "compiles": compiles,

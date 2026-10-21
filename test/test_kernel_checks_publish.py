@@ -673,7 +673,7 @@ def test_every_file_carries_the_schema_and_a_newer_one_is_refused(publish, tmp_p
         ("sa_placer/hw_fail_count", "mobilenet/failed_seeds"),
         (
             "sa_placer/hw_seed7_latency_us",
-            "mobilenet/seed=7/batch=1/effort=full/us_per_image",
+            "mobilenet/seed=7/batch=1/us_per_image",
         ),
         ("sa_placer/mean_wall_time_ms", None),
         ("sa_placer/max_peak_rss_mb", None),
@@ -719,16 +719,16 @@ def test_a_component_check_migrates_and_keeps_its_redirect(publish, tmp_path):
     assert record["target"] == "sa-placer-hw" and record["pmode"] is None
     assert record["rows"] == {
         "mobilenet": {"failed_seeds": {"value": 0, "unit": "seeds"}},
-        "mobilenet/seed=3/batch=1/effort=full": {
-            "us_per_image": {"value": 295.7, "unit": "us"}
-        },
+        "mobilenet/seed=3/batch=1": {"us_per_image": {"value": 295.7, "unit": "us"}},
     }
+    assert record["provenance"]["dispatch"] == "static"
     index = json.loads((out / "runs.json").read_text())
     assert index["metrics"] == ["failed_seeds", "us_per_image"]
 
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
-        "provenance": "commit 0123456789 | peano 22.0.0+0006955e | pmode turbo",
+        "provenance": "commit 0123456789 | peano 22.0.0+0006955e | pmode turbo"
+        " | dispatch dynamic",
         "efforts": {"default": 0.05, "full": 1.0},
         "measurement_sane": True,
         "detail": [
@@ -805,7 +805,8 @@ def hardware_record(run_id, date, effort=None, **extra):
         "commit": {},
         "date": date,
         "pmode": "turbo",
-        "provenance": {},
+        "device": "Strix",
+        "provenance": {"dispatch": "dynamic"} if effort else {},
         "sane": True,
         "published": True,
         "n_rows": 3,
@@ -815,10 +816,15 @@ def hardware_record(run_id, date, effort=None, **extra):
         "rows": {
             "mobilenet": {"failed_seeds": {"value": 1, "unit": "seeds"}},
             f"mobilenet/seed=3{suffix}": {
-                "placement_cost": {"value": 300, "unit": "cost"}
+                "placement_cost": {"value": 300, "unit": "cost"},
+                **({"compile_s": {"value": 27.1, "unit": "s"}} if effort else {}),
             },
-            f"mobilenet/seed=3/batch=16{suffix}": {
-                "us_per_image": {"value": 81.5, "unit": "us"}
+            **{
+                f"mobilenet/seed=3/batch={b}{suffix}": {
+                    "us_per_image": {"value": us, "unit": "us"},
+                    **({} if effort else {"compile_s": {"value": s, "unit": "s"}}),
+                }
+                for b, us, s in ((1, 292.1, 28.0), (16, 81.5, 27.7))
             },
         },
         "detail": [
@@ -834,14 +840,14 @@ def hardware_record(run_id, date, effort=None, **extra):
     }
 
 
-def test_a_hardware_run_from_before_the_effort_sweep_becomes_full_effort(
+def test_a_static_hardware_run_keeps_its_times_and_gives_full_effort_its_compile(
     publish, tmp_path
 ):
     out = tmp_path / "sa-placer-hw"
     (out / "runs").mkdir(parents=True)
     old = hardware_record("old", "2026-10-16T06:52:54+00:00")
     new = hardware_record(
-        "new", "2026-10-18T06:52:54+00:00", "default", event="workflow_dispatch"
+        "new", "2026-10-18T06:52:54+00:00", "full", event="workflow_dispatch"
     )
     (out / "runs/old.json").write_text(json.dumps(old))
     current = json.dumps(new, indent=2)
@@ -850,27 +856,37 @@ def test_a_hardware_run_from_before_the_effort_sweep_becomes_full_effort(
     publish.rebuild(out, now)
 
     upgraded = json.loads((out / "runs/old.json").read_text())
-    assert list(upgraded["rows"]) == [
-        "mobilenet",
-        "mobilenet/seed=3/effort=full",
-        "mobilenet/seed=3/batch=16/effort=full",
-    ]
+    assert upgraded["provenance"] == {"dispatch": "static"}
+    # The placement and the one compile a seed takes now continue at full
+    # effort; the static design's per-batch times keep their own ids.
+    assert upgraded["rows"] == {
+        "mobilenet": {"failed_seeds": {"value": 1, "unit": "seeds"}},
+        "mobilenet/seed=3/effort=full": {
+            "placement_cost": {"value": 300, "unit": "cost"},
+            "compile_s": {"value": 28.0, "unit": "s"},
+        },
+        "mobilenet/seed=3/batch=1": {"us_per_image": {"value": 292.1, "unit": "us"}},
+        "mobilenet/seed=3/batch=16": {"us_per_image": {"value": 81.5, "unit": "us"}},
+    }
     assert upgraded["failed"] == ["mobilenet/seed=7/batch=64/effort=full"]
     assert upgraded["detail"][0]["effort_label"] == "full"
     assert (out / "runs/new.json").read_text() == current
-    # The old run is the newest nightly, so the baseline carries its new ids.
     latest = json.loads((out / "latest.json").read_text())
     assert latest["id"] == "old"
-    assert "mobilenet/seed=3/batch=16/effort=full" in latest["rows"]
     per_image = json.loads((out / "history/us_per_image.json").read_text())
     assert per_image["series"] == {
-        "mobilenet/seed=3/batch=16/effort=default": {"values": [None, 81.5]},
-        "mobilenet/seed=3/batch=16/effort=full": {"values": [81.5, None]},
+        "mobilenet/seed=3/batch=1": {"values": [292.1, None]},
+        "mobilenet/seed=3/batch=1/effort=full": {"values": [None, 292.1]},
+        "mobilenet/seed=3/batch=16": {"values": [81.5, None]},
+        "mobilenet/seed=3/batch=16/effort=full": {"values": [None, 81.5]},
     }
-    cost = json.loads((out / "history/placement_cost.json").read_text())
-    assert sorted(cost["series"]) == [
-        "mobilenet/seed=3/effort=default",
-        "mobilenet/seed=3/effort=full",
+    compile_s = json.loads((out / "history/compile_s.json").read_text())
+    assert compile_s["series"] == {
+        "mobilenet/seed=3/effort=full": {"values": [28.0, 27.1]}
+    }
+    assert [r["provenance"]["dispatch"] for r in compile_s["runs"]] == [
+        "static",
+        "dynamic",
     ]
 
     before = {p.name: p.read_text() for p in out.rglob("*.json")}

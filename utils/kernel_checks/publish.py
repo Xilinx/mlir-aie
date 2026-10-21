@@ -44,9 +44,9 @@ results, pooled, that were not. ``builds`` maps each timed case to its kernel's
 ``ExternalFunction.recipe_key``, so a design that calls the same kernel finds
 its row. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
-removed), upgrades any run record still using older case ids (an
-``sa-placer-hw`` record from before the SA effort sweep becomes
-``effort=full``), rebuilds ``runs.json``, ``latest.json`` and the history from
+removed), upgrades any older run record (``upgrade``: a static
+``sa-placer-hw`` record's cases), rebuilds ``runs.json``, ``latest.json`` and
+the history from
 the run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
 ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
 also deletes the records of every run measured in ``MODE``, for retiring a
@@ -118,6 +118,7 @@ HISTORY_PROVENANCE = (
     "kernels",
     "device",
     "fixtures",
+    "dispatch",
 )
 # The component checks' rows from before they were published here, renamed to
 # what they are called now. Their other rows (wall time and RSS over the one
@@ -128,12 +129,13 @@ LEGACY_ROWS = (
     (r"sa_placer/hw_fail_count", "mobilenet/failed_seeds"),
     (
         r"sa_placer/hw_seed(\d+)_latency_us",
-        r"mobilenet/seed=\1/batch=1/effort=full/us_per_image",
+        r"mobilenet/seed=\1/batch=1/us_per_image",
     ),
 )
-# An sa-placer-hw case from before the check swept the SA effort. Every one of
-# those runs placed at effort 1.0, the page's "full".
-PRE_EFFORT_CASE = re.compile(r"^(mobilenet/seed=\d+(?:/batch=\d+)?)$")
+# An sa-placer-hw case from before the check swept the SA effort and compiled
+# a static design per batch. Every one of those runs placed at effort 1.0, the
+# page's "full".
+STATIC_CASE = re.compile(r"mobilenet/seed=(?P<seed>\d+)(?:/batch=(?P<batch>\d+))?")
 # The part a runtime's device name means, first match wins. XRT names the
 # same NPU differently across drivers ("RyzenAI-npu1", "NPU Phoenix"); the
 # raw name stays in the record as ``device_raw``.
@@ -351,25 +353,48 @@ def _current_name(name: str) -> str | None:
 def upgrade(record: dict) -> bool:
     """Bring an older run record up to the current case ids; return whether it changed.
 
-    An ``sa-placer-hw`` record from before the check swept the SA effort names
-    its cases ``mobilenet/seed=S[/batch=B]`` and its runs carry no
-    ``effort_label``; they become ``.../effort=full``. Other records, and
-    records already current, are left as they are.
+    An ``sa-placer-hw`` record from before the check swept the SA effort and
+    compiled one ``--dynamic`` design for every batch has no ``dispatch`` in
+    its provenance; it gets ``dispatch static``. Its placement cost
+    (``mobilenet/seed=S``) and failures become ``.../effort=full``, and its
+    batch 1 compile time becomes ``mobilenet/seed=S/effort=full``'s, the one
+    compile a seed takes now. Its other per-batch compile times go, and its
+    per-batch times stay under their own ids (``mobilenet/seed=S/batch=B``):
+    a static design's times are not the dynamic one's. Its runs get
+    ``effort_label`` ``full``.
+
+    Other records, and records already current, are left as they are.
     """
-    if record.get("target") != "sa-placer-hw":
-        return False
     before = json.dumps(record, sort_keys=True)
-    if "rows" in record:
-        record["rows"] = {
-            PRE_EFFORT_CASE.sub(r"\1/effort=full", case): cells
-            for case, cells in record["rows"].items()
-        }
-    if "failed" in record:
+    target = record.get("target")
+    provenance = record.get("provenance") or {}
+    rows = record.get("rows", {})
+    if target == "sa-placer-hw" and "dispatch" not in provenance:
+        record["provenance"] = {**provenance, "dispatch": "static"}
+        upgraded: dict[str, dict] = {}
+        for case, cells in rows.items():
+            static = STATIC_CASE.fullmatch(case)
+            if not static:
+                upgraded[case] = cells
+                continue
+            seed = f"mobilenet/seed={static['seed']}/effort=full"
+            if static["batch"] is None:
+                upgraded.setdefault(seed, {}).update(cells)
+                continue
+            cells = dict(cells)
+            compiled = cells.pop("compile_s", None)
+            if compiled and static["batch"] == "1":
+                upgraded.setdefault(seed, {})["compile_s"] = compiled
+            if cells:
+                upgraded[case] = cells
+        if "rows" in record:
+            record["rows"] = upgraded
         record["failed"] = [
-            PRE_EFFORT_CASE.sub(r"\1/effort=full", case) for case in record["failed"]
+            f"{case}/effort=full" if STATIC_CASE.fullmatch(case) else case
+            for case in record.get("failed", [])
         ]
-    for run in record.get("detail", []):
-        run.setdefault("effort_label", "full")
+        for run in record.get("detail", []):
+            run.setdefault("effort_label", "full")
     return json.dumps(record, sort_keys=True) != before
 
 
