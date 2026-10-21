@@ -77,6 +77,7 @@
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/xxhash.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <future>
 #include <iostream>
@@ -2657,6 +2658,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 //===----------------------------------------------------------------------===//
 
 int main(int argc, char **argv) {
+  std::chrono::steady_clock::time_point processStart =
+      std::chrono::steady_clock::now();
 
   //--------------------------------------------------------------------------//
   // Context setup
@@ -2994,8 +2997,8 @@ int main(int argc, char **argv) {
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile,
-                 enableRepeaterScripts && !disableRepeaterScripts,
-                 profileJson});
+                 enableRepeaterScripts && !disableRepeaterScripts, profileJson,
+                 processStart});
   // --cut stops the build at the cut point: only the prefix up to the cut
   // edges is produced (as work-dir intermediates) and snapshotted by
   // --checkpoint; the requested final artifacts are NOT built here (the

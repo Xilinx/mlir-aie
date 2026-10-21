@@ -242,6 +242,8 @@ struct Engine {
     // No edge owns its input: the on-failure reproducer reads intermediates.
     bool keepInputs = false;
     std::string profileJson; // also write the summary here, as JSON
+    // aiecc's main() entry; the JSON summary's process_ms counts from it.
+    std::chrono::steady_clock::time_point processStart;
     bool timesEdges() const { return profile || !profileJson.empty(); }
   };
 
@@ -890,9 +892,14 @@ struct Engine {
                    << opts.profileJson << "': " << ec.message() << "\n";
       return mlir::failure();
     }
+    int64_t processMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - opts.processStart)
+            .count();
     os << llvm::formatv("{0:2}", llvm::json::Value(llvm::json::Object{
                                      {"version", 1},
                                      {"wall_ms", wallMs},
+                                     {"process_ms", processMs},
                                      {"edges", std::move(edges)}}))
        << "\n";
     return mlir::success();
