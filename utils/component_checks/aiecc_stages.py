@@ -82,7 +82,7 @@ _RULES = [
     ("place", r"placed\.mlir"),
     ("route", r"input_physical\.mlir"),
     ("kernels", r"awaitLinkFiles"),
-    ("link", r"deviceCacheLookup|preBakedCores|placedCoreCompile"),
+    ("link", r"deviceCacheLookup|preBakedCores|placedCoreCompile|linked\.mlir"),
     (
         "link",
         r"(probeElfs|elfs|preBakedElfs)_\{0\}\.elf|(probeScripts|ldScripts)_\{0\}\.ld\.script"
@@ -100,12 +100,15 @@ _RULES = [
         r"(input|default_stack_size|traced|input_with_symbols|input_with_addresses)\.mlir"
         r"|(perCore|lowered|perDevice|npu_seq|ctrlpkt_lowered|ctrlpkt_expanded_seq)_\{0\}\.mlir"
         r"|perCore(StackSpace|Arches|IRLinkFiles)_\{0\}\.txt|npu_[a-z_]+\.mlir|ctrlpkt_[a-z_]+\.mlir"
-        r"|perDeviceMatching|perSeqMatching|sequencePlacement",
+        r"|perDeviceMatching|perSeqMatching|sequencePlacement"
+        r"|perDevice(NPULowered|Compile)(_\{0\}\.mlir|Matching)|perDeviceArches_\{0\}\.txt"
+        r"|(noC|c)trlPktSeqs|fullElfCtrlpktNonEmpty",
     ),
     (
         "package",
-        r"cdo_\{0\}|.*\.(bif|pdi|xclbin|bin|elf|cpp|h)|(memTopology|kernels|partition|input_aie_partition_parsed"
-        r"|merged_partition|ctrlpkt_extbuf)_\{0\}\.json|full_elf.*",
+        r"cdo_\{0\}|.*\.(bif|pdi|xclbin|bin|elf|cpp|h)|(memTopology|kernels|partition|input_aie_partition"
+        r"|input_aie_partition_parsed|merged_partition|ctrlpkt_extbuf)_\{0\}\.json|full_elf.*"
+        r"|\{0\}_transaction\.mlir|.*\.bin\.locmap\.json",
     ),
 ]
 _COMPILED = [(stage, re.compile(pattern)) for stage, pattern in _RULES]
