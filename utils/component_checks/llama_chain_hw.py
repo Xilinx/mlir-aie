@@ -1,33 +1,35 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-r"""Build + run the Llama 3.2 1B persistent-decode capstone on NPU2.
+r"""Build and run the Llama 3.2 1B decode on NPU2.
 
-Does the full N=16 persistent, growing-KV decode loop still build, verify
-(device token == numpy-fixture argmax, the oracle
-test_chain_persist_grow_mh.py uses), and run at the expected throughput on
-real hardware. Shells out to the existing
-test_chain_persist_grow_mh.py CLI (no new Python API), compiling once with the
-design's own CLI (aie2_decode.py) and then invoking the test script
-with that full ELF for both the correctness run and the ``--time`` run. One
+Does the full N=16 persistent, growing-KV decode still build, match its
+numpy oracle and run at the expected rate on real hardware. Compiles once
+with the design's own CLI (aie2_decode.py), then runs that full ELF through
+test_chain_persist_grow_mh.py (every token, KV row and final residual
+against the oracle, then ``--time``) and generate.py ``--check`` (a prompt
+in, tokens out, each generated token the oracle's greedy pick). Every run
+must exit 0, and generate.py's ``oracle:`` line must pass every token. One
 run, no seed sweep: the design pins its SA placer seed (aie2_decode.build's
 aiecc flags).
 
 Needs the real Llama 3.2 1B checkpoint where amd/IRON's examples keep it,
 ``$IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/`` (default ``/srv``; see
-gen_llama_data.WEIGHTS_DIR), or ``--weights``/``--tokenizer``: the test loads
-the real embed table + final_norm
-gamma even for a pure timing run (the transformer layers themselves use a
-random fixture; only the embed/lm_head weights are real). Generates
-``data/`` once if not already there.
+gen_llama_data.WEIGHTS_DIR), or ``--weights``/``--tokenizer``, unless
+``data/`` already holds the INT8 weights and the tokenizer: the decode test
+loads the real embed table and final_norm gamma even for its timing (its
+transformer layers are a random fixture), and generate.py loads every
+layer. Generates ``data/`` once if it isn't complete, and refuses to measure
+when that fails.
 
 Writes rows and a meta file in the kernel checks' format
 (utils/kernel_checks/publish.py), with the device's power mode and the
 toolchain; ``--pmode`` refuses to measure in any other mode. Exits 1 when
-the run fails or the check refuses, after writing both. Reproduced, from
+any run fails or the check refuses, after writing both. Reproduced, from
 programming_examples/ml/llama_3_2_1b, with
 
     python3 test_chain_persist_grow_mh.py --n-layers 16 --time
+    python3 generate.py --prompt "The capital of France is" --check
 """
 
 import argparse
@@ -52,8 +54,10 @@ from aiecc_stages import (
 
 N_LAYERS = 16
 P_MAX = 4
-N_ITERS = 3
-N_WARMUP = 1
+N_ITERS = 20
+N_WARMUP = 10
+# The position of the timed dispatch's first token.
+DISPATCH_RATE_AT = 64
 
 _LLAMA_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "programming_examples", "ml", "llama_3_2_1b"
@@ -65,19 +69,30 @@ _TOKEN_LINE_RE = re.compile(
 _SUMMARY_RE = re.compile(
     r"^chain_persist_grow_mh: (\d+)/(\d+) tokens PASS", re.MULTILINE
 )
-_PER_TOKEN_RE = re.compile(r"per-token:\s+([\d.]+) ms\s+\(([\d.]+) tok/s\)")
-_RATIO_RE = re.compile(r"ratio:\s+([\d.]+)x\s+->\s+(\S+)")
+_DECODE_RE = re.compile(
+    r"^decode at (\d+): per-dispatch n=(\d+) min=([\d.]+) median=([\d.]+) "
+    r"mad=([\d.]+) ms, (\d+) tokens/dispatch: ([\d.]+) ms/token \(([\d.]+) tok/s\)",
+    re.MULTILINE,
+)
 _GENERATE_RE = re.compile(
-    r"TTFT ([\d.]+) ms \(([\d.]+) prompt tok/s\), decode ([\d.]+) tok/s"
+    r"TTFT ([\d.]+) ms \(([\d.]+) prompt tok/s\), decode (?:([\d.]+) tok/s|n/a)"
 )
 _CHECK_RE = re.compile(r"check: (\d+)/(\d+) tokens")
+_ORACLE_RE = re.compile(r"^oracle: (\d+)/(\d+) generated tokens pass", re.MULTILINE)
 # generate.py's prompt and length, the same every night.
 GENERATE_PROMPT = "The capital of France is"
 GENERATE_NEW = 32
 _ELF = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}.elf"
 _PROJ_DIR = f"build/chain_persist_grow_N{N_LAYERS}_PT{P_MAX}.prj"
 _PROFILE = os.path.join(_PROJ_DIR, PROFILE_NAME)
-_CORE_RE = re.compile(r"\baie\.core\(")
+# What generate.py and the decode test read from data/.
+DATA_FILES = (
+    "embed.i8.bin",
+    "embed.scales.f32.bin",
+    "final_norm.bf16.bin",
+    "tokenizer.model",
+    *(f"layer_{L:02d}/wd.scales.f32.bin" for L in range(N_LAYERS)),
+)
 
 # The design's CompileTime values, which the test script takes too.
 _SHAPE_ARGS = [f"--p-max={P_MAX}", "--kset=8", f"--n-layers={N_LAYERS}", "--t=128"]
@@ -87,11 +102,18 @@ def _run(cmd: list[str], env: dict) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=_LLAMA_DIR, env=env, capture_output=True, text=True)
 
 
+def missing_data() -> list[str]:
+    """Return the files in data/ the runs read that it lacks."""
+    return [
+        f for f in DATA_FILES if not os.path.exists(os.path.join(_LLAMA_DIR, "data", f))
+    ]
+
+
 def ensure_data(
     weights: str | None, tokenizer: str | None, env: dict
 ) -> subprocess.CompletedProcess | None:
-    """Generate data/ once, if this checkout doesn't already have it."""
-    if os.path.exists(os.path.join(_LLAMA_DIR, "data", "embed.i8.bin")):
+    """Generate data/ once, if this checkout doesn't already have all of it."""
+    if not missing_data():
         return None
     args = [sys.executable, "gen_llama_data.py"]
     if weights:
@@ -182,6 +204,8 @@ def run_timed(env: dict) -> subprocess.CompletedProcess:
             *_SHAPE_ARGS,
             "--elf",
             _ELF,
+            "--start-pos",
+            str(DISPATCH_RATE_AT),
             "--time",
             "--n-iters",
             str(N_ITERS),
@@ -209,13 +233,34 @@ def run_generate(env: dict) -> subprocess.CompletedProcess:
     )
 
 
-def parse_generate(out: str) -> dict:
+def parse_generate(out: str, returncode: int) -> dict:
+    """Return generate.py --check's numbers and whether its oracle gate passed.
+
+    Args:
+        out: Its output.
+        returncode: Its exit status.
+
+    Returns:
+        TTFT, the prompt and decode rates (None when its run printed none:
+        a stop as the first token leaves no decode rate), its agreement with
+        numpy_llama_ref, the oracle's count of passing generated tokens, and
+        `generate_passed`: it exited 0 and the oracle passed every one of at
+        least one generated token.
+    """
     timing = _GENERATE_RE.search(out)
     check = _CHECK_RE.search(out)
+    oracle = _ORACLE_RE.search(out)
+    oracle_passed = int(oracle.group(1)) if oracle else 0
+    oracle_total = int(oracle.group(2)) if oracle else 0
     return {
+        "generate_passed": returncode == 0 and 0 < oracle_passed == oracle_total,
+        "oracle_passed": oracle_passed,
+        "oracle_total": oracle_total,
         "ttft_ms": float(timing.group(1)) if timing else None,
         "prompt_tok_s": float(timing.group(2)) if timing else None,
-        "decode_tok_s": float(timing.group(3)) if timing else None,
+        "decode_tok_s": (
+            float(timing.group(3)) if timing and timing.group(3) else None
+        ),
         "greedy_agree": int(check.group(1)) if check else None,
         "greedy_total": int(check.group(2)) if check else None,
     }
@@ -229,43 +274,65 @@ def parse_correctness(out: str, returncode: int) -> dict:
     )
     total_n = int(summary.group(2)) if summary else len(tokens)
     return {
-        "passed": returncode == 0 and bool(summary) and passed_n == total_n,
+        "passed": returncode == 0 and bool(summary) and 0 < passed_n == total_n,
         "tokens_passed": passed_n,
         "tokens_total": total_n,
     }
 
 
 def artifact_stats() -> dict:
-    """Sizes/counts of the files this build actually produced.
+    """Sizes of the files this build actually produced.
 
     The per-core ELFs are linked into the PDI and not kept on disk, so the
-    PDI's size stands in for them, and the placed MLIR gives the core count.
+    PDI's size stands in for them.
     """
     paths = {
         "elf_bytes": os.path.join(_LLAMA_DIR, _ELF),
         "pdi_bytes": os.path.join(_LLAMA_DIR, _PROJ_DIR, "main.pdi"),
     }
-    out: dict = {
+    return {
         k: os.path.getsize(p) if os.path.exists(p) else None for k, p in paths.items()
     }
-    placed = os.path.join(_LLAMA_DIR, _PROJ_DIR, "input_with_addresses.mlir")
-    if os.path.exists(placed):
-        with open(placed) as f:
-            out["n_cores"] = len(_CORE_RE.findall(f.read()))
-    else:
-        out["n_cores"] = None
-    return out
 
 
-def parse_timing(out: str) -> dict:
-    per_token = _PER_TOKEN_RE.search(out)
-    ratio = _RATIO_RE.search(out)
+def parse_timing(out: str, returncode: int) -> dict:
+    """Return the timed dispatches' statistics by position, none unless it exited 0.
+
+    Returns:
+        Per position of a dispatch's first token: its iterations, fastest,
+        median and median absolute deviation (ms), tokens per dispatch, and
+        the fastest per token (ms) and its rate (tok/s).
+    """
+    if returncode != 0:
+        return {}
     return {
-        "ms_per_token": float(per_token.group(1)) if per_token else None,
-        "tok_s": float(per_token.group(2)) if per_token else None,
-        "ratio": float(ratio.group(1)) if ratio else None,
-        "bound": ratio.group(2) if ratio else None,
+        int(m[0]): {
+            "n_iters": int(m[1]),
+            "min_ms": float(m[2]),
+            "median_ms": float(m[3]),
+            "mad_ms": float(m[4]),
+            "tokens_per_dispatch": int(m[5]),
+            "ms_per_token": float(m[6]),
+            "tok_s": float(m[7]),
+        }
+        for m in _DECODE_RE.findall(out)
     }
+
+
+def timing_sane(timing: dict) -> bool:
+    """Return whether the timed dispatches' numbers are ones a working clock gives.
+
+    Args:
+        timing: parse_timing's.
+
+    Returns:
+        True when every timed position ran every requested iteration, with
+        positive times, the fastest no slower than the median.
+    """
+    return all(
+        t["n_iters"] == N_ITERS and 0 < t["min_ms"] <= t["median_ms"]
+        for t in timing.values()
+    )
 
 
 def aggregate(
@@ -285,20 +352,19 @@ def aggregate(
             f"of {correctness['tokens_total']}",
         )
     ]
-    if timing["tok_s"] is not None:
-        out.append(row(case, "tok_s", timing["tok_s"], "tok/s"))
-    if timing["ms_per_token"] is not None:
-        out.append(row(case, "ms_per_token", timing["ms_per_token"], "ms"))
-    if timing["ratio"] is not None:
-        out.append(row(case, "dma_floor_ratio", timing["ratio"], "x", timing["bound"]))
+    if DISPATCH_RATE_AT in timing:
+        t = timing[DISPATCH_RATE_AT]
+        note = f"fastest of {t['n_iters']}, {t['tokens_per_dispatch']} tokens/dispatch"
+        out.append(row(case, "ms_per_token", t["ms_per_token"], "ms", note))
+        out.append(row(case, "tok_s", t["tok_s"], "tok/s", note))
     for metric, unit in (
         ("ttft_ms", "ms"),
         ("prompt_tok_s", "tok/s"),
         ("decode_tok_s", "tok/s"),
     ):
-        if generated.get(metric) is not None:
+        if generated["generate_passed"] and generated[metric] is not None:
             out.append(row(case, metric, generated[metric], unit))
-    if generated.get("greedy_agree") is not None:
+    if generated["generate_passed"] and generated["greedy_agree"] is not None:
         out.append(
             row(
                 case,
@@ -311,7 +377,6 @@ def aggregate(
     for metric, unit in (
         ("elf_bytes", "bytes"),
         ("pdi_bytes", "bytes"),
-        ("n_cores", "cores"),
     ):
         if artifacts.get(metric) is not None:
             out.append(row(case, metric, artifacts[metric], unit))
@@ -333,6 +398,7 @@ def main(argv=None) -> int:
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
 
+    # Deferred so that the tests can import this module's parsers without an NPU runtime.
     from aie.utils.benchmark import preflight, provenance
 
     pre = preflight()
@@ -352,14 +418,31 @@ def main(argv=None) -> int:
 
     env = dict(os.environ)
     gen = ensure_data(args.weights, args.tokenizer, env)
+    log = (gen.stdout + gen.stderr) if gen else ""
+    if gen is not None and gen.returncode != 0:
+        print(log)
+        reason = (gen.stderr.strip().splitlines() or [""])[-1]
+        return refuse(
+            f"gen_llama_data.py exited {gen.returncode}: {reason}",
+            meta,
+            args.out,
+            args.meta,
+        )
+    if missing_data():
+        return refuse(
+            f"data/ lacks {', '.join(missing_data())} after gen_llama_data.py",
+            meta,
+            args.out,
+            args.meta,
+        )
     compiled = compile_cold_warm(env)
     built = compiled["built"]
     correctness = parse_correctness("", 1)
-    timing = parse_timing("")
-    generated = parse_generate("")
+    timing: dict = {}
+    generated = parse_generate("", 1)
     artifacts: dict = {}
-    log = (gen.stdout + gen.stderr) if gen else ""
     log += compiled["log"]
+    timed_ok = True
 
     if built.returncode == 0:
         artifacts = artifact_stats()
@@ -368,27 +451,31 @@ def main(argv=None) -> int:
         log += ran.stdout + ran.stderr
         if correctness["passed"]:
             timed = run_timed(env)
-            timing = parse_timing(timed.stdout + timed.stderr)
+            timing = parse_timing(timed.stdout + timed.stderr, timed.returncode)
+            timed_ok = DISPATCH_RATE_AT in timing
             log += timed.stdout + timed.stderr
             gen_ran = run_generate(env)
-            generated = parse_generate(gen_ran.stdout + gen_ran.stderr)
+            generated = parse_generate(
+                gen_ran.stdout + gen_ran.stderr, gen_ran.returncode
+            )
             log += gen_ran.stdout + gen_ran.stderr
 
     print(log)
     case = f"llama/persist_grow/N={N_LAYERS}"
-    failed = [] if correctness["passed"] else [case]
+    passed = correctness["passed"] and timed_ok and generated["generate_passed"]
+    failed = [] if passed else [case]
 
     write(args.out, aggregate(correctness, timing, generated, artifacts, compiled))
     write(
         args.meta,
         {
             **meta,
-            "measurement_sane": True,
+            "measurement_sane": timing_sane(timing),
             "detail": [
                 {
                     "case": case,
                     **correctness,
-                    **timing,
+                    "timing": {str(at): t for at, t in timing.items()},
                     **generated,
                     **artifacts,
                     **{k: v for k, v in compiled.items() if k not in ("built", "log")},

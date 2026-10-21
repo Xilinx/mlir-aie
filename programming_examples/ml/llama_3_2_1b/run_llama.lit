@@ -5,8 +5,8 @@
 // tier: up to 4 tokens per dispatch, on-chip lm_head, sampler and feedback,
 // growing KV. Every token, its record's seed, the last token's final residual
 // and the whole KV cache match the numpy oracle, from an empty cache, across
-// dispatches with the NPU idle between them, for a split dispatch, sampled,
-// and for a prompt in batches. --synthetic-weights swaps the embedding table
+// dispatches with the NPU idle between them, into the cache's last rows, for
+// a split dispatch, sampled, and for a prompt in batches. --synthetic-weights swaps the embedding table
 // for a seeded one with the same layout. The real weights at 16 layers are the
 // extensive tier and the nightly component check.
 //

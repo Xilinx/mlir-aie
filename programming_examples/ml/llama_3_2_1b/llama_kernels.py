@@ -11,46 +11,19 @@ shape is a different recipe, which the JIT compiles and caches as its own
 object.
 """
 
-import hashlib
-import os
 from pathlib import Path
 
 from aie.iron.kernel import ExternalFunction
-from aie.iron.kernels.tables import exp_lut_header, silu_lut_header
-from aie.utils.compile import NPU_CACHE_HOME
-from llama_config import EXP_QUANT_SCALE, SAMPLE_EXP_LOW
 
 KERNELS_DIR = Path(__file__).parent / "kernels"
-
-
-def generated_include_dir(headers: dict[str, str]) -> str:
-    """Write `headers` (file name -> text) into a directory named by their content.
-
-    Args:
-        headers: The generated headers a kernel includes.
-
-    Returns:
-        The directory, for an ExternalFunction's `include_dirs`.
-    """
-    digest = hashlib.sha256(repr(sorted(headers.items())).encode()).hexdigest()[:16]
-    out = NPU_CACHE_HOME / "llama_3_2_1b" / "include" / digest
-    out.mkdir(parents=True, exist_ok=True)
-    for name, text in headers.items():
-        path = out / name
-        if not path.exists():
-            staged = path.with_name(f".{name}.{os.getpid()}")
-            staged.write_text(text)
-            staged.replace(path)
-    return str(out)
 
 
 class KernelSource:
     """One kernels/*.cc translation unit and the flags it is compiled with."""
 
-    def __init__(self, source: str, compile_flags: list[str], include_dirs=()):
+    def __init__(self, source: str, compile_flags: list[str]):
         self.source = source
         self.compile_flags = compile_flags
-        self.include_dirs = list(include_dirs)
 
     def bind(self, symbol: str, arg_types: list) -> ExternalFunction:
         """Declare entry point `symbol` of this unit with `arg_types`."""
@@ -60,7 +33,6 @@ class KernelSource:
             source_file=str(KERNELS_DIR / self.source),
             arg_types=arg_types,
             compile_flags=self.compile_flags,
-            include_dirs=self.include_dirs,
         )
 
 
@@ -71,11 +43,14 @@ def rmsnorm(*, cols=2048):
     )
 
 
-def silu_mul(*, cols=8192, gate_scale=0.05):
+def silu_mul(*, cols=8192, chunk=1024):
     return KernelSource(
         "llama_silu_mul_int8.cc",
-        ["-ffp-contract=off", f"-DLLAMA_SILU_MUL_COLS={cols}"],
-        [generated_include_dir({"silu_lut.h": silu_lut_header(gate_scale)})],
+        [
+            "-ffp-contract=off",
+            f"-DLLAMA_SILU_MUL_COLS={cols}",
+            f"-DLLAMA_SILU_CHUNK={chunk}",
+        ],
     )
 
 
@@ -128,10 +103,5 @@ def topk_sample(*, dim=2048, kset=8):
             f"-DLLAMA_TOPK_D={dim}",
             "-DLLAMA_TOPK_NTILE=4",
             f"-DLLAMA_TOPK_KSET={kset}",
-        ],
-        [
-            generated_include_dir(
-                {"exp_lut.h": exp_lut_header(EXP_QUANT_SCALE, SAMPLE_EXP_LOW)}
-            )
         ],
     )

@@ -83,11 +83,11 @@ from llama_config import (
     CS_BYTES,
     HD,
     HEAD_D,
+    KV_TB,
     N_HEADS_KV,
     N_TILE,
     QCHUNK_BYTES,
     REP,
-    SILU_GATE_SCALE,
     SVCHUNK_BYTES,
     SVFULL_BYTES,
     VOCAB,
@@ -105,7 +105,6 @@ assert LM_N_TILES % LM_SLOTS_PER_TASK == 0
 
 # Rows as llama_attn_block.cc lays them out, ordered [layer][half][block]
 # [head], so one (layer, half)'s live prefix is one linear transfer.
-KV_TB = 64
 KV_ROW_WORDS = (2 * HEAD_D + 8) // 4
 KV_HEAD_BLOCK_WORDS = KV_TB * KV_ROW_WORDS
 KV_BLOCK_WORDS = (N_HEADS_KV // 2) * KV_HEAD_BLOCK_WORDS
@@ -160,12 +159,14 @@ M_MAX = 4
 # slot's residual is normed by gamma_in, the d slot's by gamma_post). A
 # residual row is what its norm reads, [int8 x | scale | pad] (RQ bytes),
 # then x in fp32, which the unit (o, down) adds to; then the array outputs of one
-# layer's qkv (per row), gate and up (four row chunks) units (8 cores x
+# layer's qkv (per row), gate and up (four row chunks each) units (8 cores x
 # OUT_BYTES each); then the final residuals' slot, with the final norm's
 # gamma; then a slot for outputs nothing reads; then the sampler's state.
 SLOTS = ("qkv", "o", "gu", "d")
 OUT_REGION = N_CORES * OUT_BYTES
-OUTS = {"qkv": M_MAX, "g": 1, "u": HD // N_CORES // 256}
+OUTS = {"qkv": M_MAX, "g": HD // N_CORES // 256, "u": HD // N_CORES // 256}
+# The SiLU core takes a row's up, then its gate, in chunks of SILU_CHUNK.
+SILU_CHUNK = 1024
 ROW = HACT_BYTES
 RQ = D + 64
 RROW = RQ + 4 * D
@@ -280,7 +281,6 @@ def build(
     N_LAYERS: CompileTime[int] = 2,
     T: CompileTime[int] = 128,
     KSET: CompileTime[int] = 8,
-    SILU_GATE_SCALE: CompileTime[float] = SILU_GATE_SCALE,
 ):
     stage_at = StageLayout(N_LAYERS)
     slots, outs, final_slot = stage_at.slots, stage_at.outs, stage_at.final
@@ -305,7 +305,6 @@ def build(
     t_sv = _i8(SVCHUNK_BYTES)
     t_sv_half = _i8(NH * SVCHUNK_BYTES)
     t_state = _i8(ATTN_STATE_BYTES)
-    t_hd8 = _i8(HD + 8)
     t_wlm = _i8(WLM_SLOT)
     t_rec = _i8(REC_BYTES)
 
@@ -396,7 +395,6 @@ def build(
     k_final = KA.bind(
         "llama_gemv_array_residual_add", [t_lo, _i8(4 * RESID_BLOCK), t_res]
     )
-    gate_inv = 1.0 / SILU_GATE_SCALE
     u_chunks = OUTS["u"]
 
     def w_array(
@@ -414,7 +412,6 @@ def build(
         ks,
         ka,
         kf,
-        ki,
         kfs,
         kc,
         kr,
@@ -448,25 +445,20 @@ def build(
                 # lane, landing at fp32 offsets 0, 256 and 320 of each row's
                 # 384 in scratch.
                 spread()
-                mma_rows(
-                    "q", tile, c_w, part, scratch, k_mma_s, gate_inv, 0, m, 384, 48
-                )
+                mma_rows("q", tile, c_w, part, scratch, k_mma_s, 0, m, 384, 48)
                 for r in range_(mi):
                     o = c_out.acquire(1)
                     kc(scratch, cs, o, _i32(r))
                     c_out.release(1)
                 spread()
-                mma_rows("o", tile, c_w, part, scratch, k_mma_s, gate_inv, 0, m, 256)
+                mma_rows("o", tile, c_w, part, scratch, k_mma_s, 0, m, 256)
                 resid()
-                spread()
-                o = c_out.acquire(1)
-                mma_rows("g", tile, c_w, part, o, k_mma, gate_inv, 0, m, HD // N_CORES)
-                c_out.release(1)
-                spread()
-                for _ in range_(u_chunks):
-                    o = c_out.acquire(1)
-                    mma_rows("u", tile, c_w, part, o, k_mma, gate_inv, 0, m, 256, 32)
-                    c_out.release(1)
+                for proj in "gu":
+                    spread()
+                    for _ in range_(u_chunks):
+                        o = c_out.acquire(1)
+                        mma_rows(proj, tile, c_w, part, o, k_mma, 0, m, 256, 32)
+                        c_out.release(1)
                 mma_down(tile, c_w, part, scratch, k_mma_s, spread_chunk, m)
                 resid()
 
@@ -635,7 +627,7 @@ def build(
     # of the pass's rows (the batch's queries) together; whoever holds the
     # last block, the rows' own, first sets the batch's new rows into it.
     # The second merges the first's state, then its own, per row
-    # (llama_oracle.attn_block_attention with interleaved=True).
+    # (llama_oracle.attention_blocks).
     def w_attn(
         c_rc,
         c_kvb,
@@ -769,26 +761,30 @@ def build(
         ),
     ]
 
-    # up requant + SiLU, a row each
-    # A row's up (fp32) then gate (int8), one object on one shim channel.
-    t_gu = _i8(4 * HD + HD)
-    of_gu = ObjectFifo(t_gu, depth=1, name="gu")
+    # SiLU(gate) * up in fp32, a row each: the row's gate, then its up, in
+    # SILU_CHUNK chunks on one shim channel.
+    t_chunk = _i8(4 * SILU_CHUNK)
+    of_gu = ObjectFifo(t_chunk, depth=2, name="gu")
     of_sf = ObjectFifo(_i8(HACT_BYTES), depth=1, name="sf")
-    KS = llama_kernels.silu_mul(gate_scale=SILU_GATE_SCALE)
-    k_uprequant = KS.bind("llama_up_requant", [t_gu, t_hd8])
-    k_silu = KS.bind("llama_silu_mul_int8_selfcal", [t_gu, t_hd8, _i8(HACT_BYTES)])
+    KS = llama_kernels.silu_mul(chunk=SILU_CHUNK)
+    t_h = _f32(HD)
+    k_gate = KS.bind("llama_silu_gate", [t_chunk, t_h, np.int32])
+    k_up = KS.bind("llama_silu_up", [t_chunk, t_h, np.int32])
+    k_quant = KS.bind("llama_silu_quant", [t_h, _i8(HACT_BYTES)])
 
-    def w_silu(c_gu, c_out, uf, n, m0p, kq, ks):
+    def w_silu(c_gu, c_out, h, n, m0p, k_g, k_u, k_q):
         rows = total_rows(n.read(), m0p.read())
         for _ in range_(index_cast(index(), muli(rows, _const_i32(N_LAYERS)))):
-            gu = c_gu.acquire(1)
-            kq(gu, uf)
+            for kernel in (k_g, k_u):
+                for i in range_(HD // SILU_CHUNK):
+                    x = c_gu.acquire(1)
+                    kernel(x, h, _i32(i))
+                    c_gu.release(1)
             o = c_out.acquire(1)
-            ks(gu, uf, o)
+            k_q(h, o)
             for i in range_(HD + 8, HACT_BYTES):
                 o[i] = 0
             c_out.release(1)
-            c_gu.release(1)
 
     workers.append(
         Worker(
@@ -796,11 +792,12 @@ def build(
             [
                 of_gu.cons(),
                 of_sf.prod(),
-                Buffer(t_hd8, name="uf"),
+                Buffer(t_h, name="silu_h"),
                 p_passes,
                 p_m0,
-                k_uprequant,
-                k_silu,
+                k_gate,
+                k_up,
+                k_quant,
             ],
             wait_for_parameters=True,
         )
@@ -1158,33 +1155,34 @@ def build(
                 )
                 for r in rows:
                     norm(gate_of[r], d_at, r, gu_at + r * ROW)
-                step(*outs_drain(on, "g", 0), *acts(on, gu_at))
+                # A row's gate goes to the SiLU core as soon as it is out,
+                # so its SiLU runs while the array computes up.
+                silu_in = {
+                    (r, proj): fill(
+                        gate_of[r],
+                        gu,
+                        tap(
+                            outs[proj] + r * 1024,
+                            [1, N_CORES, OUTS[proj], 1024],
+                            [0, OUT_BYTES, OUT_REGION, 1],
+                        ),
+                    )
+                    for r in rows
+                    for proj in "gu"
+                }
+                step(
+                    *(t for k in range(OUTS["g"]) for t in outs_drain(on, "g", k)),
+                    *acts(on, gu_at),
+                )
                 step(
                     *(t for k in range(OUTS["u"]) for t in outs_drain(on, "u", k)),
                     *acts(on, gu_at),
+                    silu_in[0, "g"],
                 )
                 for r in rows:
                     step(
-                        fill(
-                            gate_of[r],
-                            gu,
-                            tap(
-                                outs["u"] + r * 1024,
-                                [1, N_CORES, OUTS["u"], 1024],
-                                [0, OUT_BYTES, OUT_REGION, 1],
-                            ),
-                        ),
-                        fill(
-                            gate_of[r],
-                            gu,
-                            gather_tap(
-                                stage_total,
-                                outs["g"] + r * (HD // N_CORES),
-                                N_CORES,
-                                OUT_BYTES,
-                                HD // N_CORES,
-                            ),
-                        ),
+                        silu_in[r, "u"],
+                        *([silu_in[r + 1, "g"]] if r + 1 < len(rows) else []),
                         drain(
                             gate_of[r],
                             sf,

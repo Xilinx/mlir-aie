@@ -164,9 +164,9 @@ def main():
     p.add_argument("--out-dir", type=Path, default=Path(__file__).parent / "data")
     args = p.parse_args(sys.argv[1:])
 
-    if not args.weights.exists():
-        print(f"ERROR: weights not found at {args.weights}", file=sys.stderr)
-        sys.exit(1)
+    for path in (args.weights, args.tokenizer):
+        if not path.exists():
+            p.error(f"{path} is missing")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -197,27 +197,27 @@ def main():
     for L in range(N_LAYERS):
         layer_dir = args.out_dir / f"layer_{L:02d}"
         layer_dir.mkdir(parents=True, exist_ok=True)
-        p = f"model.layers.{L}."
+        prefix = f"model.layers.{L}."
 
-        gamma_in = reader.load_bf16(p + "input_layernorm.weight")
-        gamma_post = reader.load_bf16(p + "post_attention_layernorm.weight")
+        gamma_in = reader.load_bf16(prefix + "input_layernorm.weight")
+        gamma_post = reader.load_bf16(prefix + "post_attention_layernorm.weight")
         dump_bf16(layer_dir, "gamma_in", gamma_in, expected_shape=(D,))
         dump_bf16(layer_dir, "gamma_post", gamma_post, expected_shape=(D,))
 
         # Attention projections
-        wq = reader.load_f32(p + "self_attn.q_proj.weight")
-        wk = reader.load_f32(p + "self_attn.k_proj.weight")
-        wv = reader.load_f32(p + "self_attn.v_proj.weight")
-        wo = reader.load_f32(p + "self_attn.o_proj.weight")
+        wq = reader.load_f32(prefix + "self_attn.q_proj.weight")
+        wk = reader.load_f32(prefix + "self_attn.k_proj.weight")
+        wv = reader.load_f32(prefix + "self_attn.v_proj.weight")
+        wo = reader.load_f32(prefix + "self_attn.o_proj.weight")
         dump_quantized(layer_dir, "wq", wq, expected_shape=(Q_DIM, D))
         dump_quantized(layer_dir, "wk", wk, expected_shape=(KV_DIM, D))
         dump_quantized(layer_dir, "wv", wv, expected_shape=(KV_DIM, D))
         dump_quantized(layer_dir, "wo", wo, expected_shape=(D, Q_DIM))
 
         # FFN projections (SwiGLU)
-        wg = reader.load_f32(p + "mlp.gate_proj.weight")
-        wu = reader.load_f32(p + "mlp.up_proj.weight")
-        wd = reader.load_f32(p + "mlp.down_proj.weight")
+        wg = reader.load_f32(prefix + "mlp.gate_proj.weight")
+        wu = reader.load_f32(prefix + "mlp.up_proj.weight")
+        wd = reader.load_f32(prefix + "mlp.down_proj.weight")
         dump_quantized(layer_dir, "wg", wg, expected_shape=(HD, D))
         dump_quantized(layer_dir, "wu", wu, expected_shape=(HD, D))
         dump_quantized(layer_dir, "wd", wd, expected_shape=(D, HD))
@@ -228,11 +228,8 @@ def main():
                 print(f"  layer {L:02d} {k}: {f.stat().st_size} bytes")
 
     # --- Tokenizer (copy in for convenience) ---
-    if args.tokenizer.exists():
-        shutil.copy(args.tokenizer, args.out_dir / args.tokenizer.name)
-        print(f"  copied tokenizer: {args.out_dir / args.tokenizer.name}")
-    else:
-        print(f"WARN: tokenizer not found at {args.tokenizer}; skipping copy")
+    shutil.copy(args.tokenizer, args.out_dir / args.tokenizer.name)
+    print(f"  copied tokenizer: {args.out_dir / args.tokenizer.name}")
 
     print(f"done. output: {args.out_dir}/")
 

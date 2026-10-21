@@ -30,7 +30,7 @@ from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
 )
 from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.iron.controlflow import range_
-from llama_config import HD, D
+from llama_config import HD, PROJECTIONS, D
 
 N_CORES = 8
 CORE_TILES = [(c, r) for c in (0, 1, 6, 7) for r in (2, 3)]
@@ -53,11 +53,16 @@ def sample_param_values(temperature, top_k, kset):
         `SAMPLE_PARAMS`' values by name, as `read_sample_params` reads them.
 
     Raises:
-        ValueError: top_k is not 0 (the whole set) or 1..kset.
+        ValueError: top_k is not 0 (the whole set) or 1..kset, or the
+            temperature is positive but not a normal float32 below 2^126,
+            the domain of the sampler's reciprocal.
     """
     if not 0 <= top_k <= kset:
         raise ValueError(f"top_k must be 0 (the whole set) or 1..{kset}, got {top_k}")
-    t = int(np.float32(temperature).view(np.uint32))
+    temperature = np.float32(temperature)
+    if not (temperature <= 0 or np.finfo(np.float32).tiny <= temperature < 2.0**126):
+        raise ValueError(f"temperature {temperature} is not a sampler temperature")
+    t = int(temperature.view(np.uint32))
     return dict(samp0=t & ((1 << 30) - 1), samp1=(t >> 30) | int(top_k) << 2)
 
 
@@ -69,15 +74,6 @@ def read_sample_params(params, words):
     params[1] = shrui(w1, constant(i32(), 2))
 
 
-PROJECTIONS = {
-    "q": (D, D, "f32"),
-    "k": (D, 512, "f32"),
-    "v": (D, 512, "f32"),
-    "o": (D, D, "f32"),
-    "g": (D, HD, "i8"),
-    "u": (D, HD, "f32"),
-    "d": (HD, D, "f32"),
-}
 LAYER = "qkvogud"
 COMB_BYTES = 1056
 RESID_BLOCK = 256 * 4 + 64
@@ -95,7 +91,7 @@ MMA_ACT_BYTES = 8 * D + 64
 def lane_slots(order):
     """MMA_SLOTs one core's lane holds for a layer: per projection, each row
     group of eight takes one slot per 1024 columns."""
-    return sum(PROJECTIONS[p][1] // N_CORES * PROJECTIONS[p][0] // 8192 for p in order)
+    return sum(PROJECTIONS[p][0] // N_CORES * PROJECTIONS[p][1] // 8192 for p in order)
 
 
 def mma_rows(
@@ -105,7 +101,6 @@ def mma_rows(
     part,
     out,
     kernels,
-    gate_inv,
     row0=0,
     m_count=1,
     ostride=0,
@@ -113,7 +108,7 @@ def mma_rows(
 ):
     """In a core body: the core's rows of a 2048-column projection for the
     activations in the tile's first m_count slots: activation m's row n at
-    out[m * ostride + row0 + n] (fp32, or int8 for gate).
+    out[m * ostride + row0 + n] (fp32).
 
     Args:
         proj: The projection's letter.
@@ -121,24 +116,19 @@ def mma_rows(
         c_w: Its weight lane's consumer.
         part: Its int32 partial sums.
         out: Where the rows go.
-        kernels: The bound (llama_mma_acc, llama_mma_f32, llama_mma_i8).
-        gate_inv: The gate's 1 / out_scale.
+        kernels: The bound (llama_mma_acc, llama_mma_f32).
         row0: The first row's index in out.
         m_count: Activations (an MLIR i32 value or an int).
         ostride: Elements between two activations' rows in out.
         groups: Row groups of eight to run (default: all the core's).
     """
-    k_acc, k_f, k_i = kernels
-    for g in range_(groups or PROJECTIONS[proj][1] // N_CORES // 8):
+    k_acc, k_f = kernels
+    for g in range_(groups or PROJECTIONS[proj][0] // N_CORES // 8):
         w = c_w.acquire(1)
         k_acc(tile, w, part, 0, 0, 1)
         c_w.release(1)
         w = c_w.acquire(1)
-        at = _i32(g) * 8 + row0
-        if PROJECTIONS[proj][2] == "i8":
-            k_i(tile, w, part, out, 0, 1, ostride, at, m_count, gate_inv)
-        else:
-            k_f(tile, w, part, out, 0, 1, ostride, at, m_count)
+        k_f(tile, w, part, out, 0, 1, ostride, _i32(g) * 8 + row0, m_count)
         c_w.release(1)
 
 
@@ -152,13 +142,13 @@ def mma_down(tile, c_w, part, out, kernels, spread_chunk, m_count=1):
         c_w: Its weight lane's consumer.
         part: Its int32 partial sums, eight per row.
         out: Where the rows go.
-        kernels: The bound (llama_mma_acc, llama_mma_f32, llama_mma_i8).
+        kernels: The bound (llama_mma_acc, llama_mma_f32).
         spread_chunk: Called with a chunk's index (an MLIR i32 value or an
             int) to spread that chunk's activations into the tile.
         m_count: Activations (an MLIR i32 value or an int).
     """
-    k_acc, k_f, _ = kernels
-    groups = PROJECTIONS["d"][1] // N_CORES // 8
+    k_acc, k_f = kernels
+    groups = PROJECTIONS["d"][0] // N_CORES // 8
     for chunk in range_(DOWN_CHUNKS - 1):
         ci = _i32(chunk)
         spread_chunk(ci)
@@ -190,30 +180,25 @@ def mma_kernels(t_act, t_slot, t_out, t_scratch):
         t_scratch: A second fp32 output buffer's type.
 
     Returns:
-        (llama_mma_spread, (llama_mma_acc, llama_mma_f32, llama_mma_i8) for
-        t_out, the same with llama_mma_f32_to for t_scratch, the tile's type,
-        the partials' type).
+        (llama_mma_spread, (llama_mma_acc, llama_mma_f32) for t_out, the same
+        with llama_mma_f32_to for t_scratch, the tile's type, the partials'
+        type).
     """
     km = llama_kernels.gemv_mma()
     t_tile = _i8(MMA_ACT_BYTES)
     t_part = _i32a(8 * DOWN_ROWS_PER_CORE)
     k_acc = km.bind("llama_mma_acc", [t_tile, t_slot, t_part] + [np.int32] * 3)
-    k_i = km.bind(
-        "llama_mma_i8", [t_tile, t_slot, t_part, t_out] + [np.int32] * 5 + [np.float32]
-    )
     return (
         km.bind("llama_mma_spread", [t_act, t_tile] + [np.int32] * 5),
         (
             k_acc,
             km.bind("llama_mma_f32", [t_tile, t_slot, t_part, t_out] + [np.int32] * 5),
-            k_i,
         ),
         (
             k_acc,
             km.bind(
                 "llama_mma_f32_to", [t_tile, t_slot, t_part, t_scratch] + [np.int32] * 5
             ),
-            k_i,
         ),
         t_tile,
         t_part,

@@ -404,21 +404,24 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
     n = llama_chain_hw.N_LAYERS
     ms = 47.6 * rng.uniform(0.98, 1.03)
     ttft = 286.0 * rng.uniform(0.98, 1.03)
-    ran = "".join(f"token {i}: PASS\n" for i in range(4))
+    ran = "".join(f"  token {i} (pos {64 + i}): PASS\n" for i in range(4))
     ran += "chain_persist_grow_mh: 4/4 tokens PASS\n"
-    timed = (
-        f"per-token: {ms:.2f} ms ({1000 / ms:.2f} tok/s)\n"
-        "ratio:        1.84x  -> compute-bound\n"
+    ran += (
+        f"decode at {llama_chain_hw.DISPATCH_RATE_AT}: per-dispatch "
+        f"n={llama_chain_hw.N_ITERS} min={4 * ms:.2f} median={4 * ms + 0.5:.2f} "
+        f"mad=0.32 ms, 4 tokens/dispatch: {ms:.2f} ms/token "
+        f"({1000 / ms:.2f} tok/s)\n"
     )
     generated = (
         f"prompt 6 tokens, generated 32: TTFT {ttft:.1f} ms "
         f"({6000 / ttft:.1f} prompt tok/s), decode {970 / ms:.2f} tok/s\n"
-        "check: 22/32 tokens are numpy_llama_ref's argmax\n"
+        "check: 29/32 tokens are numpy_llama_ref's argmax\n"
+        "oracle: 32/32 generated tokens pass\n"
     )
     correctness = llama_chain_hw.parse_correctness(ran, 0)
-    timing = llama_chain_hw.parse_timing(timed)
-    gen = llama_chain_hw.parse_generate(generated)
-    artifacts = {"elf_bytes": 1_843_200, "pdi_bytes": 412_160, "n_cores": 32}
+    timing = llama_chain_hw.parse_timing(ran, 0)
+    gen = llama_chain_hw.parse_generate(generated, 0)
+    artifacts = {"elf_bytes": 1_843_200, "pdi_bytes": 412_160}
     compiled = _compile_night(rng, 19.8)
     case = f"llama/persist_grow/N={n}"
     meta = {
@@ -427,7 +430,14 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
         "pt": llama_chain_hw.P_MAX,
         "measurement_sane": True,
         "detail": [
-            {"case": case, **correctness, **timing, **gen, **artifacts, **compiled}
+            {
+                "case": case,
+                **correctness,
+                "timing": {str(at): t for at, t in timing.items()},
+                **gen,
+                **artifacts,
+                **compiled,
+            }
         ],
         "failed": [],
         "exitstatus": 0,

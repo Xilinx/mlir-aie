@@ -15,7 +15,6 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-#include "exp_lut.h"
 #include "llama_vec_fp.h"
 
 #ifndef LLAMA_TOPK_D
@@ -31,26 +30,9 @@
 static constexpr int kD = LLAMA_TOPK_D;
 static constexpr int kNTile = LLAMA_TOPK_NTILE;
 static constexpr int kKset = LLAMA_TOPK_KSET;
-static constexpr float kInvExpQuantScale = 1.0f / LLAMA_EXP_QUANT_SCALE;
 static constexpr int kVec = 64;
 // A residual row: [int8 x | scale | pad], then x in fp32 here.
 static constexpr int kFpAt = kD + 64;
-
-static inline int32_t quant_shifted(float shifted) {
-  float v = shifted * kInvExpQuantScale;
-  int32_t q = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
-  if (q > 0)
-    q = 0;
-  if (q < LLAMA_EXP_LUT_LOW)
-    q = LLAMA_EXP_LUT_LOW;
-  return q;
-}
-
-static inline float lookup_exp(int32_t q) {
-  uint32_t raw = llama_exp_lut_raw[q - LLAMA_EXP_LUT_LOW];
-  float v = __builtin_bit_cast(float, raw);
-  return v;
-}
 
 // xoshiro128++, as llama_oracle draws it.
 struct Xoshiro128 {
@@ -175,6 +157,18 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
       if (z > max_z)
         max_z = z;
     }
+    // Each member's weight e^(z - max_z), 16 at a time.
+    alignas(64) float e[(kKset + 15) / 16 * 16] = {};
+    for (int i = 0; i < len; i++)
+      e[i] = set_logit[i] * inv_temp - max_z;
+    const ::aie::saturation_mode prev_sat =
+        ::aie::swap_saturation(::aie::saturation_mode::saturate);
+    const ::aie::rounding_mode prev_rnd =
+        ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+    for (int i = 0; i < len; i += 16)
+      ::aie::store_v(e + i, vec_exp_nonpos(::aie::load_v<16>(e + i)));
+    ::aie::set_rounding(prev_rnd);
+    ::aie::set_saturation(prev_sat);
 
     // sum_exp AND the inverse-CDF walk must both traverse the survivors in
     // ascending global-index order: fp32 add is not associative, so the
@@ -193,8 +187,7 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
         }
       }
       prev_g = sg;
-      int32_t q = quant_shifted(set_logit[si] * inv_temp - max_z);
-      sum_exp += lookup_exp(q);
+      sum_exp += e[si];
     }
 
     Xoshiro128 g;
@@ -218,8 +211,7 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
         }
       }
       prev_g = sg;
-      int32_t q = quant_shifted(set_logit[si] * inv_temp - max_z);
-      cum += lookup_exp(q);
+      cum += e[si];
       if (cum > u) {
         winner = si;
         break;
