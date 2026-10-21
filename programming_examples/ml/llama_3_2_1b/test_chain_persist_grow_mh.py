@@ -16,7 +16,7 @@ oracle's.
 
 Run (compiles the design, or reuses its JIT cache entry):
   python test_chain_persist_grow_mh.py --synthetic-weights
-  python test_chain_persist_grow_mh.py --n-layers 16 --time
+  taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --time
 """
 
 from __future__ import annotations
@@ -30,16 +30,7 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie2_decode import (
-    KV_BLOCK_WORDS,
-    LMW_GAMMA_BYTES,
-    M_MAX,
-    REC_BYTES,
-    RQ,
-    RROW,
-    WLM_TOTAL,
-    wblob_layout,
-)
+from aie2_decode import M_MAX, REC_BYTES, RQ, RROW
 from gen_llama_data import quant_int8_perchan_absmax
 from llama_config import HEAD_D, N_HEADS_KV, VOCAB, D
 from llama_decode import Decoder, DecodeShape, tokens_of
@@ -98,40 +89,31 @@ def build_fixtures(shape, seed, filled):
     return (x_i8, res_scale, x_fp), layers
 
 
-DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s
+def time_dispatches(session, buffers, params, opts):
+    """Time a dispatch the run has checked, `opts.n_iters` times after
+    `opts.n_warmup` untimed ones (the NPU ramps for about 10 calls after a
+    load).
 
-
-def time_decode(shape, session, buffers, params, opts):
-    """Print per-token device time and the DMA floor, after main has checked
-    the same dispatch against the oracle (bytes/token counts the live KV
-    prefix the first token reads)."""
-    passes = params["passes"]
-    print(
-        f"timing: warmup x{opts.n_warmup}, time x{opts.n_iters}  ({passes} tokens/dispatch)",
-        flush=True,
-    )
+    Returns:
+        The dispatches' times in ms, host start to completion.
+    """
     for _ in range(opts.n_warmup):
         session(buffers, **params)
-    times_ms = [session(buffers, **params) for _ in range(opts.n_iters)]
-    arr = np.array(times_ms)
-    disp_med = float(np.median(arr))
-    per_token_ms = disp_med / passes
-    kv_read = 2 * shape.n_layers * params["kvb0"] * KV_BLOCK_WORDS * 4
-    bytes_per_token = (
-        wblob_layout(shape.n_layers, shape.t)[1] + LMW_GAMMA_BYTES + WLM_TOTAL + kv_read
-    )
-    dma_floor_ms = bytes_per_token / (DDR_BW_GBPS * 1e9) * 1e3
-    ratio = per_token_ms / dma_floor_ms
-    verdict = "DMA-bound" if ratio < 1.5 else "compute-bound"
+    return np.array([session(buffers, **params) for _ in range(opts.n_iters)])
+
+
+def print_decode_time(position, passes, times):
+    """Print a timed dispatch's statistic: the fastest dispatch and the median
+    absolute deviation, and the fastest per token."""
+    fastest = float(times.min())
+    median = float(np.median(times))
+    mad = float(np.median(np.abs(times - median)))
     print(
-        f"per-dispatch: n={opts.n_iters} median={disp_med:.2f} ms "
-        f"min={arr.min():.2f} max={arr.max():.2f} std={arr.std():.2f}"
+        f"decode at {position}: per-dispatch n={len(times)} min={fastest:.2f} "
+        f"median={median:.2f} mad={mad:.2f} ms, {passes} tokens/dispatch: "
+        f"{fastest / passes:.2f} ms/token ({1000.0 * passes / fastest:.2f} tok/s)",
+        flush=True,
     )
-    print(f"per-token:    {per_token_ms:.2f} ms  ({1000.0/per_token_ms:.2f} tok/s)")
-    print(
-        f"bytes/token:  {bytes_per_token/1e6:.1f} MB  DMA floor {dma_floor_ms:.2f} ms"
-    )
-    print(f"ratio:        {ratio:.2f}x  -> {verdict}")
 
 
 def replay(shape, records, passes, residual, layers, p0, rope, lm, sampler, rng, plan):
@@ -277,9 +259,14 @@ def main(argv=None):
     )
     p.add_argument("--sample-seed", type=int, default=0, help="the sampler's seed")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--time", action="store_true", help="measure per-token device time")
-    p.add_argument("--n-iters", type=int, default=1)
-    p.add_argument("--n-warmup", type=int, default=0)
+    p.add_argument(
+        "--time",
+        action="store_true",
+        help="time each checked dispatch: its fastest and median absolute "
+        "deviation over --n-iters, after --n-warmup",
+    )
+    p.add_argument("--n-iters", type=int, default=20)
+    p.add_argument("--n-warmup", type=int, default=10)
     p.add_argument(
         "--synthetic-weights",
         action="store_true",
@@ -749,8 +736,7 @@ def main(argv=None):
         return 1
     if opts.time:
         assert decoder is not None
-        time_decode(
-            shape,
+        times = time_dispatches(
             decoder.session,
             [
                 decoder.w_t,
@@ -762,6 +748,7 @@ def main(argv=None):
             shape.params(p0, passes, sampler),
             opts,
         )
+        print_decode_time(p0, passes, times)
     return 0
 
 

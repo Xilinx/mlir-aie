@@ -56,6 +56,8 @@ N_LAYERS = 16
 P_MAX = 4
 N_ITERS = 20
 N_WARMUP = 10
+# The position of the timed dispatch's first token.
+DISPATCH_RATE_AT = 64
 
 _LLAMA_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "programming_examples", "ml", "llama_3_2_1b"
@@ -67,9 +69,11 @@ _TOKEN_LINE_RE = re.compile(
 _SUMMARY_RE = re.compile(
     r"^chain_persist_grow_mh: (\d+)/(\d+) tokens PASS", re.MULTILINE
 )
-_PER_TOKEN_RE = re.compile(r"per-token:\s+([\d.]+) ms\s+\(([\d.]+) tok/s\)")
-_DISPATCH_RE = re.compile(r"per-dispatch: n=(\d+) median=([\d.]+) ms min=([\d.]+)")
-_RATIO_RE = re.compile(r"ratio:\s+([\d.]+)x\s+->\s+(\S+)")
+_DECODE_RE = re.compile(
+    r"^decode at (\d+): per-dispatch n=(\d+) min=([\d.]+) median=([\d.]+) "
+    r"mad=([\d.]+) ms, (\d+) tokens/dispatch: ([\d.]+) ms/token \(([\d.]+) tok/s\)",
+    re.MULTILINE,
+)
 _GENERATE_RE = re.compile(
     r"TTFT ([\d.]+) ms \(([\d.]+) prompt tok/s\), decode (?:([\d.]+) tok/s|n/a)"
 )
@@ -202,6 +206,8 @@ def run_timed(env: dict) -> subprocess.CompletedProcess:
             *_SHAPE_ARGS,
             "--elf",
             _ELF,
+            "--start-pos",
+            str(DISPATCH_RATE_AT),
             "--time",
             "--n-iters",
             str(N_ITERS),
@@ -292,38 +298,42 @@ def artifact_stats() -> dict:
 
 
 def parse_timing(out: str, returncode: int) -> dict:
-    """Return the timed decode's numbers, none unless it exited 0."""
-    per_token = _PER_TOKEN_RE.search(out) if returncode == 0 else None
-    dispatch = _DISPATCH_RE.search(out) if returncode == 0 else None
-    ratio = _RATIO_RE.search(out) if returncode == 0 else None
+    """Return the timed dispatches' statistics by position, none unless it exited 0.
+
+    Returns:
+        Per position of a dispatch's first token: its iterations, fastest,
+        median and median absolute deviation (ms), tokens per dispatch, and
+        the fastest per token (ms) and its rate (tok/s).
+    """
+    if returncode != 0:
+        return {}
     return {
-        "ms_per_token": float(per_token.group(1)) if per_token else None,
-        "tok_s": float(per_token.group(2)) if per_token else None,
-        "n_iters": int(dispatch.group(1)) if dispatch else None,
-        "median_ms": float(dispatch.group(2)) if dispatch else None,
-        "min_ms": float(dispatch.group(3)) if dispatch else None,
-        "ratio": float(ratio.group(1)) if ratio else None,
-        "bound": ratio.group(2) if ratio else None,
+        int(m[0]): {
+            "n_iters": int(m[1]),
+            "min_ms": float(m[2]),
+            "median_ms": float(m[3]),
+            "mad_ms": float(m[4]),
+            "tokens_per_dispatch": int(m[5]),
+            "ms_per_token": float(m[6]),
+            "tok_s": float(m[7]),
+        }
+        for m in _DECODE_RE.findall(out)
     }
 
 
 def timing_sane(timing: dict) -> bool:
-    """Return whether the timed decode's numbers are ones a working clock gives.
+    """Return whether the timed dispatches' numbers are ones a working clock gives.
 
     Args:
         timing: parse_timing's.
 
     Returns:
-        True when nothing was timed, or when every requested iteration was
-        timed, with positive times, the minimum no more than the median.
+        True when every timed position ran every requested iteration, with
+        positive times, the fastest no slower than the median.
     """
-    if timing["ms_per_token"] is None:
-        return True
-    return (
-        timing["n_iters"] == N_ITERS
-        and timing["min_ms"] is not None
-        and 0 < timing["min_ms"] <= timing["median_ms"]
-        and timing["ms_per_token"] > 0
+    return all(
+        t["n_iters"] == N_ITERS and 0 < t["min_ms"] <= t["median_ms"]
+        for t in timing.values()
     )
 
 
@@ -344,12 +354,11 @@ def aggregate(
             f"of {correctness['tokens_total']}",
         )
     ]
-    if timing["tok_s"] is not None:
-        out.append(row(case, "tok_s", timing["tok_s"], "tok/s"))
-    if timing["ms_per_token"] is not None:
-        out.append(row(case, "ms_per_token", timing["ms_per_token"], "ms"))
-    if timing["ratio"] is not None:
-        out.append(row(case, "dma_floor_ratio", timing["ratio"], "x", timing["bound"]))
+    if DISPATCH_RATE_AT in timing:
+        t = timing[DISPATCH_RATE_AT]
+        note = f"fastest of {t['n_iters']}, {t['tokens_per_dispatch']} tokens/dispatch"
+        out.append(row(case, "ms_per_token", t["ms_per_token"], "ms", note))
+        out.append(row(case, "tok_s", t["tok_s"], "tok/s", note))
     for metric, unit in (
         ("ttft_ms", "ms"),
         ("prompt_tok_s", "tok/s"),
@@ -431,7 +440,7 @@ def main(argv=None) -> int:
     compiled = compile_cold_warm(env)
     built = compiled["built"]
     correctness = parse_correctness("", 1)
-    timing = parse_timing("", 1)
+    timing: dict = {}
     generated = parse_generate("", 1)
     artifacts: dict = {}
     log += compiled["log"]
@@ -445,7 +454,7 @@ def main(argv=None) -> int:
         if correctness["passed"]:
             timed = run_timed(env)
             timing = parse_timing(timed.stdout + timed.stderr, timed.returncode)
-            timed_ok = timed.returncode == 0 and timing["ms_per_token"] is not None
+            timed_ok = DISPATCH_RATE_AT in timing
             log += timed.stdout + timed.stderr
             gen_ran = run_generate(env)
             generated = parse_generate(
@@ -468,7 +477,7 @@ def main(argv=None) -> int:
                 {
                     "case": case,
                     **correctness,
-                    **timing,
+                    "timing": {str(at): t for at, t in timing.items()},
                     **generated,
                     **artifacts,
                     **{k: v for k, v in compiled.items() if k not in ("built", "log")},

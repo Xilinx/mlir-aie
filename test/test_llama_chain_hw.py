@@ -67,10 +67,22 @@ def test_a_decode_that_checked_no_token_fails(llama):
 
 def test_the_timed_decode_publishes_its_statistic(llama):
     timing = llama.parse_timing(output("timed_pass"), 0)
-    assert timing["ms_per_token"] > 0
-    assert timing["tok_s"] == pytest.approx(1000 / timing["ms_per_token"], rel=1e-3)
-    assert timing["n_iters"] == llama.N_ITERS
+    assert list(timing) == [llama.DISPATCH_RATE_AT]
+    t = timing[llama.DISPATCH_RATE_AT]
+    assert t["min_ms"] == pytest.approx(t["ms_per_token"] * t["tokens_per_dispatch"], rel=1e-3)
+    assert t["tok_s"] == pytest.approx(1000 / t["ms_per_token"], rel=1e-3)
+    assert t["n_iters"] == llama.N_ITERS
     assert llama.timing_sane(timing)
+    rows = llama.aggregate(
+        llama.parse_correctness(output("decode_pass"), 0),
+        timing,
+        llama.parse_generate("", 1),
+        {},
+        {},
+    )
+    names = {r["name"].rsplit("/", 1)[1]: r for r in rows}
+    assert names["ms_per_token"]["value"] == t["ms_per_token"]
+    assert "dma_floor_ratio" not in names
 
 
 @pytest.mark.parametrize(
@@ -78,7 +90,7 @@ def test_the_timed_decode_publishes_its_statistic(llama):
 )
 def test_a_timed_decode_that_failed_publishes_no_timing(llama, name, returncode):
     timing = llama.parse_timing(output(name), returncode)
-    assert set(timing.values()) == {None}
+    assert timing == {}
     assert llama.timing_sane(timing)
 
 
