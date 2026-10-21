@@ -13,10 +13,6 @@
 
 #include "llama_gemv_array.h"
 
-#ifndef LLAMA_GEMV_ARRAY_KSET
-#define LLAMA_GEMV_ARRAY_KSET 8
-#endif
-
 // Residual units (o, down): each core owns 256 of the 2048 rows and emits a
 // kResidBlock-byte block [proj fp32 x256 | pad], 64-byte aligned for the
 // vector stores.

@@ -128,7 +128,7 @@ def mma_rows(
         k_acc(tile, w, part, 0, 0, 1)
         c_w.release(1)
         w = c_w.acquire(1)
-        k_f(tile, w, part, out, 0, 1, ostride, _i32(g) * 8 + row0, m_count)
+        k_f(tile, w, part, out, 0, 1, ostride, index_cast(i32(), g) * 8 + row0, m_count)
         c_w.release(1)
 
 
@@ -150,23 +150,33 @@ def mma_down(tile, c_w, part, out, kernels, spread_chunk, m_count=1):
     k_acc, k_f = kernels
     groups = PROJECTIONS["d"][0] // N_CORES // 8
     for chunk in range_(DOWN_CHUNKS - 1):
-        ci = _i32(chunk)
+        ci = index_cast(i32(), chunk)
         spread_chunk(ci)
         first = extui(i32(), cmpi(CmpIPredicate.eq, ci, constant(i32(), 0)))
         for g in range_(groups):
             w = c_w.acquire(1)
-            k_acc(tile, w, part, _i32(g), 0, first)
+            k_acc(tile, w, part, index_cast(i32(), g), 0, first)
             c_w.release(1)
             w = c_w.acquire(1)
-            k_acc(tile, w, part, _i32(g), 1, 0)
+            k_acc(tile, w, part, index_cast(i32(), g), 1, 0)
             c_w.release(1)
     spread_chunk(DOWN_CHUNKS - 1)
     for g in range_(groups):
         w = c_w.acquire(1)
-        k_acc(tile, w, part, _i32(g), 0, 0)
+        k_acc(tile, w, part, index_cast(i32(), g), 0, 0)
         c_w.release(1)
         w = c_w.acquire(1)
-        k_f(tile, w, part, out, _i32(g), 1, DOWN_ROWS_PER_CORE, _i32(g) * 8, m_count)
+        k_f(
+            tile,
+            w,
+            part,
+            out,
+            index_cast(i32(), g),
+            1,
+            DOWN_ROWS_PER_CORE,
+            index_cast(i32(), g) * 8,
+            m_count,
+        )
         c_w.release(1)
 
 
@@ -185,8 +195,8 @@ def mma_kernels(t_act, t_slot, t_out, t_scratch):
         type).
     """
     km = llama_kernels.gemv_mma()
-    t_tile = _i8(MMA_ACT_BYTES)
-    t_part = _i32a(8 * DOWN_ROWS_PER_CORE)
+    t_tile = np.ndarray[(MMA_ACT_BYTES,), np.dtype[np.int8]]
+    t_part = np.ndarray[(8 * DOWN_ROWS_PER_CORE,), np.dtype[np.int32]]
     k_acc = km.bind("llama_mma_acc", [t_tile, t_slot, t_part] + [np.int32] * 3)
     return (
         km.bind("llama_mma_spread", [t_act, t_tile] + [np.int32] * 5),
@@ -203,15 +213,3 @@ def mma_kernels(t_act, t_slot, t_out, t_scratch):
         t_tile,
         t_part,
     )
-
-
-def _i8(n):
-    return np.ndarray[(int(n),), np.dtype[np.int8]]
-
-
-def _i32a(n):
-    return np.ndarray[(int(n),), np.dtype[np.int32]]
-
-
-def _i32(idx):
-    return index_cast(i32(), idx)

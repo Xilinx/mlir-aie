@@ -13,7 +13,6 @@ matches exactly. This is the quality reference the device is scored against.
 
 from __future__ import annotations
 
-import argparse
 import base64
 from dataclasses import dataclass
 from pathlib import Path
@@ -353,56 +352,3 @@ def forward_full(model: ModelW, token_ids: np.ndarray) -> np.ndarray:
     for L, W in enumerate(model.layers):
         x, kc[L], vc[L] = forward_layer_int8(x, W, kc[L], vc[L], position=0)
     return lm_head_logits(model, x)
-
-
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--data-dir", type=Path, default=Path(__file__).parent / "data")
-    p.add_argument(
-        "--layer", type=int, default=0, help="single layer to test (default 0)"
-    )
-    p.add_argument("--M", type=int, default=4)
-    p.add_argument("--seed", type=int, default=0)
-    p.add_argument(
-        "--full",
-        action="store_true",
-        help="run full N-layer + lm_head instead of one layer",
-    )
-    args = p.parse_args()
-
-    print(f"loading INT8 weights from {args.data_dir}/ ...")
-    model = load_model(args.data_dir)
-    print(f"  embed: {model.embed_i8.shape} (scales {model.embed_sc.shape})")
-    print(f"  final_norm: {model.final_norm.shape}")
-    print(f"  layers: {len(model.layers)}")
-    L0 = model.layers[0]
-    print(f"  layer 00 wq: {L0.wq_i8.shape} scales {L0.wq_sc.shape}")
-    print(f"  layer 00 wd: {L0.wd_i8.shape} scales {L0.wd_sc.shape}")
-
-    rng = np.random.default_rng(args.seed)
-
-    if args.full:
-        # Run on the first few token ids as a sanity check (no tokenizer needed).
-        token_ids = np.array([1, 2, 3, 4][: args.M], dtype=np.int64)
-        print(f"\nrunning full forward on token_ids={token_ids.tolist()}")
-        logits = forward_full(model, token_ids)
-        print(f"  logits shape: {logits.shape}")
-        last = logits[-1]
-        top5 = np.argsort(last)[-5:][::-1]
-        print(f"  top-5 token ids at last pos: {top5.tolist()}")
-        print(f"  top-5 logit values: {last[top5].tolist()}")
-    else:
-        x_in = rng.standard_normal((args.M, D)).astype(np.float32)
-        print(f"\nrunning ONE layer ({args.layer}) on random (M={args.M}, D={D}) input")
-        W = model.layers[args.layer]
-        kc = np.zeros((0, KV_DIM), dtype=np.float32)
-        vc = np.zeros((0, KV_DIM), dtype=np.float32)
-        out, _, _ = forward_layer_int8(x_in, W, kc, vc, position=0)
-        print(
-            f"  out shape: {out.shape}  norm: {np.linalg.norm(out):.3f}  "
-            f"max|abs|: {np.abs(out).max():.3f}"
-        )
-
-
-if __name__ == "__main__":
-    main()
