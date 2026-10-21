@@ -2738,6 +2738,10 @@ assert.ok(drawn.svg.some(p => p.includes('>Nightly run (weekly past 90 days)<'))
 assert.ok(drawn.svg.some(p => p.includes('<title>2 Oct, 06:30 UTC\\nabcdef1 same revision\\nbatch 16: ') && p.includes('href="https://github.com/Xilinx/mlir-aie/commit/abcdef123456"')));
 assert.ok(canvas.hidden);
 assert.equal(outer.children[0].className, 'note svg-legend');
+// A log axis with nothing on it (every stage 0 s) draws an empty chart.
+const empty = svgChart(canvas, { data: { labels: ['1 Oct'], datasets: [{ label: 'kernels', data: [0] }] },
+                                 options: { scales: { y: { type: 'logarithmic' } } } });
+assert.ok(empty.svg.length < 20);
 // Chart.js loaded: lineChart uses it.
 assert.ok(lineChart(canvas, { data: { labels: [], datasets: [] }, options: { scales: {} } }) instanceof Chart);
 """)

@@ -3246,7 +3246,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const titleOf = axis => { const t = (config.options.scales[axis] || {}).title; return t && t.display ? t.text : ''; };
       const vals = datasets.flatMap(d => d.data).filter(shown);
       const f = log ? Math.log10 : (v => v);
-      let lo = vals.length ? Math.min(...vals) : 0, hi = vals.length ? Math.max(...vals) : 1;
+      // Nothing to draw (every value zero on a log axis, say): an empty axis, not an endless one.
+      let lo = vals.length ? Math.min(...vals) : log ? 1 : 0, hi = vals.length ? Math.max(...vals) : log ? 10 : 1;
       if (lo === hi) { lo = log ? lo / 1.1 : lo - 1; hi = log ? hi * 1.1 : hi + 1; }
       // A little room above and below the lines.
       const span = f(hi) - f(lo), flo = f(lo) - span * 0.06, fhi = f(hi) + span * 0.06;
