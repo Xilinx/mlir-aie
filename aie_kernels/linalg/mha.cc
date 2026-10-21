@@ -89,10 +89,11 @@ broadcast_by_row(const float *s) {
 // Row-major variants needed by matmul_PV.  Because there is no separate link
 // step, all kernel symbols must be defined in this single translation unit.
 
-// Expanded along n only: mm_aie2p.h's 2x2 expansion keeps four 64-float
-// accumulators plus two A and two B tiles live, which does not fit the
-// registers. The mac order per output tile, and so the result, is the same.
-// The product is (M, K) by (K, N).
+// The product is (M, K) by (K, N). AIE2P's native bf16 macs take the shared
+// (half, column block) 2x2 tile. The other builds expand along n only:
+// mm_aie2p.h's 2x2 expansion keeps four 64-float accumulators plus two A and
+// two B tiles live, which does not fit the registers. The mac order per
+// output tile, and so the result, is the same.
 template <typename C, unsigned M, unsigned K, unsigned N>
 static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
   ::aie::rounding_mode saved_rounding =

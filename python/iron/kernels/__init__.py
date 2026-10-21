@@ -6,7 +6,7 @@
 """Factory functions for AIE kernel ExternalFunctions.
 
 Submodules:
-- `eltwise` — passthrough, scale, add, mul, relu, clamp, magnitude_f32
+- `eltwise` — passthrough, scale, add, add_sized, mul, mul_sized, mul_add, relu, clamp, magnitude_f32
 - `datamovement` — affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine, maxpool2d
@@ -25,15 +25,19 @@ Submodules:
   implementation (AIE2P): prefill attention, the q4nx LM head and the decode
   layer's cores, each with its object's entry points as attributes. Not
   intended for other models.
-- `linalg` — mm, mv, cascade_mm, mm_bfp (a ``MatrixKernel``: ``.mac_dims``
-  and ``.stream_dims`` read the blocking and DMA transforms off the
-  contract's operand layouts), attention_i8 (int8 attention for YOLO26n's PSA)
+- `linalg` — mm, mv, cascade_mm, cascade_mm_put, mm_bfp, mm_bfp_shuffle (a
+  ``MatrixKernel``: ``.mac_dims`` and ``.stream_dims`` read the blocking and
+  DMA transforms off the contract's operand layouts), mha, mha_softmax and
+  prefill_fv (flash attention's pieces), attention_i8 (int8 attention for
+  YOLO26n's PSA)
+- `fused` — fused_mm (one bf16 GEMM tile with an f32 reduction and a fused
+  activation epilogue)
 - `mm(...).zero` and `mv(...).zero` construct companion zero-fill kernels;
   `mm.mac_dims(...)`, `cascade_mm.mac_dims(...)` and `mha.mac_dims(...)` query
   micro-kernel geometry without constructing a kernel.
 - `zero` — independent zero-fill kernel
 - `tables` — exp_lut, silu_lut and the C headers that compile them into a kernel
-- `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
+- `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, dwconv1d, dwconv1d_channels_first, dwconv1d_channels_last, bn_*
 
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
 ``.contract``: the role of each argument (``In``, ``Out``, ``InOut``,
@@ -59,6 +63,17 @@ from ._common import (
     TensorLayout,
     Trace,
 )
+from . import (
+    activation,
+    conv,
+    datamovement,
+    eltwise,
+    flm_gemma4,
+    linalg,
+    reduce,
+    vision,
+)
+from . import zero as _zero_module  # the factory `zero` takes the name
 from .activation import (
     bf16_exp,
     bf16_exp_lut_ref,
@@ -339,7 +354,22 @@ from .vision import (
 )
 from .zero import zero
 
+# Each factory's keyword combinations beyond its defaults, by name, so the
+# registry and the host contract test enumerate them instead of restating them.
+DTYPES: dict[str, tuple[dict, ...]] = {
+    **activation.DTYPES,
+    **conv.DTYPES,
+    **datamovement.DTYPES,
+    **eltwise.DTYPES,
+    **flm_gemma4.DTYPES,
+    **linalg.DTYPES,
+    **reduce.DTYPES,
+    **vision.DTYPES,
+    **_zero_module.DTYPES,
+}
+
 __all__ = [
+    "DTYPES",
     "BUILDS",
     "Build",
     "KernelContract",

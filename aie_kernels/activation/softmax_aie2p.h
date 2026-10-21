@@ -25,12 +25,9 @@ using namespace aie;
 static inline aie::accum<accfloat, SM_VEC_LEN>
 scale_log2e(aie::vector<bfloat16, SM_VEC_LEN> x) {
 #ifdef EXP2_BF16_ACCURATE
-  auto limb = [](int16_t bits) {
-    return aie::broadcast<int16_t, SM_VEC_LEN>(bits).cast_to<bfloat16>();
-  };
-  aie::accum<accfloat, SM_VEC_LEN> t = aie::mul(x, limb(0x36ec));
-  t = aie::mac(t, x, limb(0xbb2c));
-  return aie::mac(t, x, limb(0x3fb9));
+  aie::accum<accfloat, SM_VEC_LEN> t = aie::mul(x, bf16_splat<SM_VEC_LEN>(0x36ec));
+  t = aie::mac(t, x, bf16_splat<SM_VEC_LEN>(0xbb2c));
+  return aie::mac(t, x, bf16_splat<SM_VEC_LEN>(0x3fb9));
 #else
   return aie::mul(x, aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e));
 #endif
@@ -269,13 +266,10 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
   auto splat = [](float c) {
     return Acc(aie::broadcast<float, SM_VEC_LEN>(c));
   };
-  auto limb = [](int16_t bits) {
-    return aie::broadcast<int16_t, SM_VEC_LEN>(bits).cast_to<bfloat16>();
-  };
   auto bits = [](uint32_t b) {
     return aie::broadcast<uint32_t, SM_VEC_LEN>(b);
   };
-  const Limbs<SM_VEC_LEN> log2e_limbs{limb(0x3fb9), limb(0xbb2c), limb(0x36ec)};
+  const Limbs<SM_VEC_LEN> log2e_limbs{bf16_splat<SM_VEC_LEN>(0x3fb9), bf16_splat<SM_VEC_LEN>(0xbb2c), bf16_splat<SM_VEC_LEN>(0x36ec)};
   constexpr float cap = SOFTMAX_SOFT_CAP;
   // cap * tanh(|s| / cap) * log2(e) = k0 (2r - 1), r = 1 / (1 + 2^a) with
   // a = -|s| * 2 log2(e) / cap <= 0; 2^a flushing to 0 saturates it at k0.
@@ -329,7 +323,7 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
       // r = 1 / d, d in [1, 2]: a quadratic within 2%, then two Newton steps
       // r -= r (d r - 1), the first from r in bf16.
       const Limbs<SM_VEC_LEN> dl = bf16_limbs(d);
-      const auto q = aie::mac(splat(-1.4515766f), dl.hi, limb(0x3ea5))
+      const auto q = aie::mac(splat(-1.4515766f), dl.hi, bf16_splat<SM_VEC_LEN>(0x3ea5))
                          .to_vector<bfloat16>();
       const auto r0 =
           aie::mac(splat(2.1190739f), q, dl.hi).to_vector<bfloat16>();

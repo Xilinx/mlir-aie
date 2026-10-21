@@ -202,7 +202,7 @@ def _builds():
         f = getattr(kernels, name)
         seen = set()
         for combo in [_first_kwargs(name)] + [
-            dict(c) for c in getattr(f, "dtypes", ())
+            dict(c) for c in kernels.DTYPES.get(name, ())
         ]:
             try:
                 ef = f(**combo)
@@ -1633,6 +1633,13 @@ def test_error_report_measures_a_lut_build_against_the_function(use_lut):
     assert (entry["max_ulp"] > 0) == use_lut
 
 
+@pytest.mark.parametrize("shifts", [(24, 0, 0), (0, -1, 0), (0, 0, -1), (0, 0, 32)])
+def test_int8_add_refuses_shifts_the_kernel_does_not_take(shifts):
+    x = np.zeros(32, np.int8)
+    with pytest.raises(ValueError, match=r"must be in \[0, (23|31)\]"):
+        kernels.add(tile_size=32, dtype=np.int8).contract.reference(x, x, *shifts)
+
+
 def test_input_limit_is_bounded_by_the_accumulator_only():
     # conv2dk1 requantizes by >> 12: bounding its inputs by the uint8 output
     # would leave every random output at 0 or 1. The accumulator is the only
@@ -2135,7 +2142,7 @@ def test_input_limit_keeps_the_reference_inside_the_accumulator():
 
 
 def _combo_id(v) -> str:
-    """One `.dtypes` entry value as a test id: a dtype name, else its value."""
+    """One `kernels.DTYPES` entry value as a test id: a dtype name, else its value."""
     if bfp.is_bfp(v):
         return "bfp16ebs8"
     return np.dtype(v).name if isinstance(v, type) else str(v)
@@ -2143,8 +2150,7 @@ def _combo_id(v) -> str:
 
 def _factories_with_dtypes():
     for name in kernels.factories():
-        f = getattr(kernels, name)
-        for combo in vars(f).get("dtypes", ()):
+        for combo in kernels.DTYPES.get(name, ()):
             yield pytest.param(
                 name,
                 combo,

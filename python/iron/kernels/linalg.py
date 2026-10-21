@@ -29,10 +29,12 @@ from ._common import (
     _detect_arch,
     _kernel_source,
     _make_extern,
-    dtypes,
 )
 from .core import conv_even
 from .zero import zero
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 _CASCADE_COMBOS = {
     (np.int16, np.int16): "i16_i16",
@@ -535,9 +537,11 @@ class _MhaFactory:
         return _MM_MAC_DIMS["aie2p"][key]
 
 
-@dtypes(
+DTYPES["mm"] = tuple(
     tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
 )
+
+
 def mm(
     dim_m: int = 64,
     dim_k: int = 64,
@@ -716,7 +720,7 @@ def mm(
 mm.mac_dims = _MatMulFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
 
 
-@dtypes(
+DTYPES["mv"] = tuple(
     (
         {"input_dtype": np.int16, "output_dtype": np.int32},
         # dim_k: the bf16 kernel accumulates VEC_SIZE (64) elements at a
@@ -724,6 +728,8 @@ mm.mac_dims = _MatMulFactory.mac_dims  # pyright: ignore[reportFunctionMemberAcc
         {"input_dtype": bfloat16, "output_dtype": bfloat16, "dim_k": 256},
     )
 )
+
+
 def mv(
     dim_m: int = 32,
     dim_k: int = 32,
@@ -959,7 +965,9 @@ def mv_bf16_ref(m, row_offset, a, b):
 _BFP_MAC_DIMS = (8, 8, 8)  # the bfp16ebs8 mmul is 8x8x8
 
 
-@dtypes(({"mixed": False}, {"mixed": True}))
+DTYPES["mm_bfp"] = tuple(({"mixed": False}, {"mixed": True}))
+
+
 def mm_bfp(
     dim_m: int = 64, dim_k: int = 64, dim_n: int = 64, mixed: bool = False
 ) -> MatrixKernel:

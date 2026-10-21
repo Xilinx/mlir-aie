@@ -8,8 +8,7 @@
 // Gated DeltaNet's recurrence for one value head over a block of rows.
 //
 // The state is kept as three bf16 limbs (f32_split.h), and each f32 product is
-// summed from exact limb products and rounded once, as the scalar f32 product
-// is. The per-row scalars (norms, decay, beta) are computed for every row at
+// summed from limb products, within 1 ulp of the f32 product (f32_split.h). The per-row scalars (norms, decay, beta) are computed for every row at
 // once, a row per lane; the state's columns are independent, so each
 // 16-column block then runs a row's whole update on its own.
 
@@ -139,7 +138,9 @@ constexpr float rsqrt_newton(float x) {
 
 // rsqrt_newton per lane, its operations in the same order.
 inline __attribute__((always_inline)) acc_t<W> rsqrt_f32(acc_t<W> x) {
-  const auto xi = x.to_vector<float>().cast_to<int32_t>();
+  // The low bit cleared first: downshift can round in the caller's mode.
+  const auto xi = aie::bit_and(x.to_vector<float>().cast_to<int32_t>(),
+                               aie::broadcast<int32_t, W>(-2));
   acc_t<W> y(
       aie::sub(aie::broadcast<int32_t, W>(0x5f3759df), aie::downshift(xi, 1))
           .cast_to<float>());

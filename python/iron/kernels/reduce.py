@@ -22,8 +22,10 @@ from ._common import (
     _make_extern,
     _min_dma_aligned_elems,
     _require_vector_alignment,
-    dtypes,
 )
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 # The unspecialized pairwise max can share an object across dtypes.
 # Size-specialized reductions use separate, symbol-prefixed objects.
@@ -143,7 +145,9 @@ def _reduce_kernel(
     )
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+DTYPES["reduce_add"] = tuple(({"dtype": np.int32}, {"dtype": bfloat16}))
+
+
 def reduce_add(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -166,7 +170,9 @@ def reduce_add(
     return _reduce_kernel("add", tile_size, dtype, vectorized)
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+DTYPES["reduce_min"] = tuple(({"dtype": np.int32}, {"dtype": bfloat16}))
+
+
 def reduce_min(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -186,7 +192,11 @@ def reduce_min(
     return _reduce_kernel("min", tile_size, dtype, vectorized)
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}, {"dtype": np.float32}))
+DTYPES["reduce_max"] = tuple(
+    ({"dtype": np.int32}, {"dtype": bfloat16}, {"dtype": np.float32})
+)
+
+
 def reduce_max(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -236,7 +246,9 @@ def reduce_max(
     )
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+DTYPES["compute_max"] = tuple(({"dtype": np.int32}, {"dtype": bfloat16}))
+
+
 def compute_max(dtype: type = np.int32) -> ExternalFunction:
     """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max].
 
@@ -313,7 +325,9 @@ def argmax_ref(x, index_offset: int = 0):
     return np.concatenate([value, (index + index_offset).astype(np.int32)], axis=-1)
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+DTYPES["argmax"] = tuple(({"dtype": np.int32}, {"dtype": bfloat16}))
+
+
 def argmax(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:

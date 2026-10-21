@@ -28,10 +28,11 @@ from ._common import (
     _make_extern,
     _tuned_arch,
     _vector_args,
-    dtypes,
 )
 from .core import conv_even
 from .linalg import _zero_output
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
 
 
 def _i32s(n: int) -> list:
@@ -552,7 +553,9 @@ def dwconv1d_channels_last_ref(
     return out
 
 
-@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+DTYPES["conv2dk1"] = tuple(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+
+
 def conv2dk1(
     input_width: int = 32,
     input_channels: int = 64,
@@ -600,7 +603,7 @@ def conv2dk1(
     )
 
 
-@dtypes(
+DTYPES["conv2dk3"] = tuple(
     (
         {"act_dtype": np.int8},
         {"act_dtype": np.uint8},
@@ -610,6 +613,8 @@ def conv2dk1(
         {"bias": True, "table": True, "stride": 2, "rounding": "conv_even"},
     )
 )
+
+
 def conv2dk3(
     input_width: int = 32,
     input_channels: int = 64,
@@ -860,7 +865,9 @@ def _conv2dk3_bias(
     )
 
 
-@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+DTYPES["conv2dk1_skip"] = tuple(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+
+
 def conv2dk1_skip(
     input_width: int = 32,
     input_channels: int = 64,
@@ -918,7 +925,7 @@ def conv2dk1_skip(
     )
 
 
-@dtypes(
+DTYPES["conv2dk1_i8"] = tuple(
     (
         {},
         {"rounding": "conv_even"},
@@ -926,6 +933,8 @@ def conv2dk1_skip(
         {"bias": True, "table": True, "rounding": "conv_even"},
     )
 )
+
+
 def conv2dk1_i8(
     input_width: int = 32,
     input_channels: int = 64,
@@ -1081,7 +1090,9 @@ def conv2dk14(
     )
 
 
-@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+DTYPES["conv2dk1_skip_init"] = tuple(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+
+
 def conv2dk1_skip_init(
     input_width: int = 32,
     input_channels: int = 64,
@@ -1566,7 +1577,9 @@ def bn_conv2dk1_i8(
     )
 
 
-@dtypes(({"skip_dtype": np.uint8}, {"skip_dtype": np.int8}))
+DTYPES["bn_conv2dk1_skip"] = tuple(({"skip_dtype": np.uint8}, {"skip_dtype": np.int8}))
+
+
 def bn_conv2dk1_skip(
     input_width: int = 32,
     input_channels: int = 64,
@@ -1623,7 +1636,7 @@ def bn_conv2dk1_skip(
     )
 
 
-@dtypes(
+DTYPES["bn_conv2dk3_dw"] = tuple(
     (
         {"stride": 1},
         {"stride": 2},
@@ -1631,6 +1644,8 @@ def bn_conv2dk1_skip(
         {"bias": True, "table": True},
     )
 )
+
+
 def bn_conv2dk3_dw(
     input_width: int = 32,
     input_channels: int = 64,

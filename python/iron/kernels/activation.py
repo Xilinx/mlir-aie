@@ -30,9 +30,11 @@ from ._common import (
     _require_fixed_tile_size,
     _require_vector_alignment,
     _tuned_arch,
-    dtypes,
 )
 from .core import conv_even
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 _LUT_FIXED_TILE = 1024
 _RUNTIME_VECTOR_WIDTH = 32
@@ -418,7 +420,9 @@ _SOFTMAX_F32_REL = 4 * 2.0**-8 + 2 * 1e-5 + 2.0**-20
 _SOFT_CAP_ERR = 1e-5 / 2 + 2.0**-20
 
 
-@dtypes(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
+DTYPES["softmax"] = tuple(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
+
+
 def softmax(
     tile_size: int = 1024,
     accurate_exp2: bool = False,
@@ -928,12 +932,13 @@ def log_f32(tile_size: int = 1024) -> ExternalFunction:
             np.float32,
         ],
         compile_flags=[f"-DLOG_ELEMS={tile_size}"]
-        # log_f32.cc stages tiles of whole 256-element blocks, whose passes need
-        # eight stages to pipeline; under that cap Peano miscompiled one-trip
-        # passes, so other tiles keep the nested loop and the default cap.
+        # log_f32.cc stages AIE2P tiles of whole 256-element blocks, whose
+        # passes need eight stages to pipeline; under that cap Peano
+        # miscompiled one-trip passes, so other tiles keep the nested loop and
+        # the default cap.
         + (
             ["-mllvm", "--aie-pipeliner-max-stagecount=8"]
-            if tile_size % 256 == 0
+            if tile_size % 256 == 0 and _detect_arch() == "aie2p"
             else []
         ),
         contract=KernelContract(
