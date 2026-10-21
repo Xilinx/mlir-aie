@@ -1,17 +1,44 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// The decode (aie2_decode.py) at 2 layers on NPU2, test_llama.py's default
-// tier: up to 4 tokens per dispatch, on-chip lm_head, sampler and feedback,
-// growing KV. Every token, its record's seed, the last token's final residual
-// and the whole KV cache match the numpy oracle, from an empty cache, across
-// dispatches with the NPU idle between them, into the cache's last rows, for
-// a split dispatch, sampled, and for a prompt in batches. --synthetic-weights
-// swaps the embedding table and the layers' own weights for seeded ones in
-// the same layout; one case (skipped where data/ is missing) runs the above
-// on the model's real layer 0 and 1 instead. 16 real layers are the
-// extensive tier and the nightly component check.
+// The decode (aie2_decode.py) at 2 layers on NPU2: up to 4 tokens per
+// dispatch, on-chip lm_head, sampler and feedback, growing KV. Every token,
+// its record's seed, the last token's final residual and the whole KV cache
+// match the numpy oracle, from an empty cache, across dispatches with the NPU
+// idle between them, into the cache's last rows, for a split dispatch,
+// sampled, and for a prompt in batches. --synthetic-weights swaps the
+// embedding table and the layers' own weights for seeded ones in the same
+// layout. 16 real layers are the nightly component check.
 //
 // REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings, xrt_python_ctrl_scratchpad_bo
 //
-// RUN: %run_on_npu2% %pytest %S/test_llama.py -m "not extensive"
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 0 | FileCheck --check-prefix=EMPTY %s
+// EMPTY: KV cache: PASS
+// EMPTY: chain_persist_grow_mh: 4/4 tokens PASS
+//
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 62 --dispatches 2 --idle-s 6 | FileCheck --check-prefix=CARRY %s
+// CARRY: KV cache: PASS
+// CARRY: chain_persist_grow_mh: 8/8 tokens PASS
+// CARRY: carry across 2 dispatches: PASS
+//
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 124 | FileCheck --check-prefix=END %s
+// END: KV cache: PASS
+// END: chain_persist_grow_mh: 4/4 tokens PASS
+//
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 62 --passes 3 --split | FileCheck --check-prefix=SPLIT %s
+// SPLIT: KV cache: PASS
+// SPLIT: chain_persist_grow_mh: 3/3 tokens PASS
+// SPLIT: 3 tokens vs 3 x 1: PASS
+//
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 5 --sample-temp 0.7 --sample-topk 4 --sample-seed 1234 --dispatches 2 | FileCheck --check-prefix=SAMPLED %s
+// SAMPLED: sampler state: PASS
+// SAMPLED: sampler state: PASS
+// SAMPLED: chain_persist_grow_mh: 8/8 tokens PASS
+// SAMPLED: carry across 2 dispatches: PASS
+// SAMPLED: sampled draws: 8/8 distinct states PASS
+//
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 60 --prompt-tokens 7 --vs-batch 1 | FileCheck --check-prefix=PROMPT %s
+// PROMPT: KV cache: PASS
+// PROMPT: chain_persist_grow_mh: 5/5 tokens PASS
+// PROMPT: carry across 3 dispatches: PASS
+// PROMPT: prompt in batches of 4 vs 1: PASS

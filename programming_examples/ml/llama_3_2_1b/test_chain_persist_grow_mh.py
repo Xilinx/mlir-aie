@@ -142,13 +142,14 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sampler, rng,
 
     Returns:
         (failed tokens, the last token's final residual, the xoshiro state
-        the dispatch leaves).
+        the dispatch leaves, the state after each sampled draw).
     """
     embed_i8, embed_sc, gamma = lm
     temperature, top_k = sampler
     fails = 0
     hidden = None
     cur = residual
+    draws = []
     dev_toks = tokens_of(records, passes)
     for t, (prompt, rec_at) in enumerate(plan):
         if prompt is not None:
@@ -163,6 +164,8 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sampler, rng,
         )
         ok = dev_tok == ref
         tag = f"sampled, state {int(rng[0]):08x}" if temperature > 0 else "greedy"
+        if temperature > 0:
+            draws.append(tuple(int(w) for w in rng))
         cur = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
         rec = records[rec_at * REC_BYTES : (rec_at + 1) * REC_BYTES]
         seed_ok = np.array_equal(rec[:D], embed_i8[dev_tok]) and rec[
@@ -177,7 +180,7 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sampler, rng,
             f"dev={dev_tok} ref={ref}  [{tag}]",
             flush=True,
         )
-    return fails, hidden, rng
+    return fails, hidden, rng, draws
 
 
 def check_kv(shape, layers, kv_before, kv_idx, kv_val, positions):
@@ -516,6 +519,7 @@ def main(argv=None):
     # seed each dispatch left; after each, the device's whole KV cache must
     # equal the oracle's.
     dev_tokens = []
+    draws = []
     tok_fails = carry_fails = hidden_fails = vs_fails = 0
     if sweep:
         # Per context, the device's records, stage, changed KV words and
@@ -570,7 +574,7 @@ def main(argv=None):
                 )
                 for c in layers
             ]
-            fails, hidden, rng = replay(
+            fails, hidden, rng, _ = replay(
                 shape,
                 records,
                 n,
@@ -629,7 +633,7 @@ def main(argv=None):
             )
             carry_fails += not same
         dev_tokens = tokens_of(whole, passes)
-        tok_fails, hidden, rng = replay(
+        tok_fails, hidden, rng, _ = replay(
             shape,
             whole,
             passes,
@@ -668,7 +672,7 @@ def main(argv=None):
             if not same:
                 print(f"repeat {r} differs from repeat 0", file=sys.stderr)
                 return 1
-        tok_fails, _, _ = replay(
+        tok_fails, _, _, _ = replay(
             shape,
             first,
             passes,
@@ -726,7 +730,7 @@ def main(argv=None):
             dev_tokens += toks
             if len(schedule) > 1:
                 print(f"dispatch {d} (pos {pos}): tokens {toks}", flush=True)
-            fails, hidden, rng = replay(
+            fails, hidden, rng, drawn = replay(
                 shape,
                 toks_out,
                 passes,
@@ -740,6 +744,7 @@ def main(argv=None):
                 plans[d],
             )
             tok_fails += fails
+            draws += drawn
             carry_fails += check_rng(shape, stage, rng)
             carry_fails += check_kv(
                 shape, layers, kv_dev, kv_idx, kv_val, np.arange(pos, pos + len(plan))
@@ -829,7 +834,13 @@ def main(argv=None):
             f"prompt in batches of {opts.batch} vs {opts.vs_batch}: "
             f"{'PASS' if not vs_fails else 'FAIL'}"
         )
-    if tok_fails or carry_fails or hidden_fails or vs_fails:
+    reused = len(draws) - len(set(draws))
+    if draws:
+        print(
+            f"sampled draws: {len(set(draws))}/{len(draws)} distinct states "
+            f"{'PASS' if not reused else 'FAIL'}"
+        )
+    if tok_fails or carry_fails or hidden_fails or vs_fails or reused:
         return 1
     if opts.time and not sweep:
         assert decoder is not None

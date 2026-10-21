@@ -55,16 +55,6 @@ config.substitutions.append(
     )
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
-config.substitutions.append(
-    (
-        "%pytest",
-        f"{LitConfigHelper._quote_lit_arg(config.python_executable)} "
-        + LitConfigHelper._quote_lit_arg(
-            os.path.join(config.aie_src_root, "utils", "run_pytest.py")
-        )
-        + " -rA --maxfail=1",
-    )
-)
 
 # Not using run_on_board anymore, need more specific per-platform commands
 config.substitutions.append(("%run_on_board", "echo"))

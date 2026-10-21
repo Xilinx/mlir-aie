@@ -9,8 +9,8 @@ whole per-token decode on the AI Engine array for 1 to 4 tokens, chosen per
 dispatch, or a batch of up to 4 prompt tokens together: all 16 transformer
 layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
 and the token→embedding feedback. The device is bit-exact to its numpy oracle
-(`llama_oracle.py`), and against the bf16 Hugging Face model that arithmetic
-agrees on 84–92 % of next tokens at a mean KL of 0.024–0.049 (see Accuracy).
+(`llama_oracle.py`); Accuracy scores that arithmetic against the bf16 Hugging
+Face model.
 
 This example started from PR #3161, @hunhoffe's Llama 3.2 1B bring-up, whose
 kernels, recipe and multi-head attention layer it carries forward into one
@@ -219,15 +219,6 @@ from the safetensors (no torch or transformers).
 
 ### KL and top-1 against bf16
 
-`test_llama.py -m extensive`'s three prompts (the opening of *King Lear*,
-teacher-forced), mean KL(bf16 ‖ model) of the next-token distributions:
-
-| Prompt | tokens | device KL | device top-1 | recipe KL | recipe top-1 |
-|---|---|---|---|---|---|
-| small | 25 | 0.0492 | 84.0 % | 0.0409 | 88.0 % |
-| medium | 61 | 0.0311 | 90.2 % | 0.0301 | 88.5 % |
-| large | 105 | 0.0242 | 92.4 % | 0.0228 | 91.4 % |
-
 On running prose (`accuracy_vs_hf.py`'s default sample, 47 positions):
 
 | Metric | device | recipe |
@@ -297,17 +288,11 @@ with `@iron.jit` to a full ELF (cached under `NPU_CACHE_HOME`, so a rerun
 reuses it), or runs a prebuilt one (`--elf`, from
 `python aie2_decode.py ... --full-elf-path X`, which the same JIT key reuses).
 
-`test_llama.py` is the pytest over it. Its default tier (what lit runs) is
-the decode test's cases at 2 layers on synthetic weights. `-m extensive`
-needs data/ and the bf16 safetensors: at 16 layers, on a small, a medium and
-a large prompt (25, 61 and 105 tokens), the oracle's next-token distribution
-must stay within a mean KL of the bf16 model's, and every token the device
-generates must be the oracle's argmax.
-
-```bash
-python -m pytest test_llama.py -m "not extensive"
-IRON_EXAMPLE_WEIGHTS_DIR=/path/to/models python -m pytest test_llama.py -m extensive
-```
+`run_llama.lit` runs the decode test's cases at 2 layers on synthetic
+weights (`--synthetic-weights`): from an empty cache, across dispatches,
+into the cache's last rows, split, sampled, and a prompt in batches. The
+nightly component check runs all 16 real layers and scores the oracle
+against bf16 (`accuracy_vs_hf.py`).
 
 > **Pass `--n-layers 16`** to the decode test for any accuracy or timing run:
 > it defaults to 2 layers (a fast bring-up check), whose numbers mean nothing

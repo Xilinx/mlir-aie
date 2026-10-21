@@ -17,7 +17,7 @@ that one full ELF through:
   tokenization, split into the prefill dispatches and the host's rest;
 - generate.py --prompt-tokens, no --check: the same TTFT split, 5 requests
   each, at PROMPT_LENGTHS (batched prefill's own exactness is already
-  covered by the --contexts sweep's and test_llama's batched cases; this
+  covered by the --contexts sweep's and run_llama.lit's batched cases; this
   only times it, at prompt lengths long enough to need many batches);
 - accuracy_vs_hf.py: the device's arithmetic (llama_oracle) against the
   true bf16 checkpoint, teacher-forced on a small fixed prompt (mean KL,
