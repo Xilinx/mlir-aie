@@ -583,7 +583,7 @@ class CompilableDesign:
             Per design, the compiled design, the xclbin carrying its kernel (its
             chain's last) and the kernel's name.
         """
-        digest = hashlib.sha1(name.encode()).hexdigest()[:6]
+        digest = hashlib.sha256(name.encode()).hexdigest()[:6]
         named = len(designs) > 1
         built, images = [], []
         for index, design in enumerate(designs):
