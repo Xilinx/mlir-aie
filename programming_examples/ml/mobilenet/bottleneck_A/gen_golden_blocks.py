@@ -186,27 +186,6 @@ def _calibrate(model, expand_to_channels: int) -> None:
     calibrate(calibration_loader(transform), model)
 
 
-def shift_of(combined: torch.Tensor, what: str) -> int:
-    """The integer shift a combined scale, ``-log2`` of a scale ratio, stands for.
-
-    Args:
-        combined: The ``-log2`` of a ratio of power-of-two scales.
-        what: The layer it shifts, for the error.
-
-    Returns:
-        ``combined`` rounded to the nearest integer.
-
-    Raises:
-        ValueError: If ``combined`` is not an integer to within float error,
-            so no shift implements the ratio.
-    """
-    value = combined.item()
-    shift = round(value)
-    if abs(value - shift) > 1e-6:
-        raise ValueError(f"{what}: combined scale {value} is not an integer shift")
-    return shift
-
-
 def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
     """Run the brevitas model and write ``spec``'s fixtures into ``data/``.
 
@@ -254,14 +233,20 @@ def generate_bottleneck_fixtures(spec: BottleneckSpec) -> None:
     w2 = model.bn_quant_conv2.weight_quant.scale()
     w3 = model.bn_quant_conv3.weight_quant.scale()
     shifts = {
-        "conv1x1_1": shift_of(-torch.log2(init_scale * w1 / relu_1), "conv1x1_1"),
-        "conv3x3": shift_of(-torch.log2(relu_1 * w2 / relu_2), "conv3x3"),
-        "conv1x1_2": shift_of(-torch.log2(relu_2 * w3 / post_conv3_scale), "conv1x1_2"),
+        "conv1x1_1": mb_utils.shift_of(
+            -torch.log2(init_scale * w1 / relu_1), "conv1x1_1"
+        ),
+        "conv3x3": mb_utils.shift_of(-torch.log2(relu_1 * w2 / relu_2), "conv3x3"),
+        "conv1x1_2": mb_utils.shift_of(
+            -torch.log2(relu_2 * w3 / post_conv3_scale), "conv1x1_2"
+        ),
         "skip_add": 0,
     }
     if spec.has_skip:
         skip_scale = model.bn_add.act_quant.scale()
-        shifts["skip_add"] = shift_of(-torch.log2(init_scale / skip_scale), "skip_add")
+        shifts["skip_add"] = mb_utils.shift_of(
+            -torch.log2(init_scale / skip_scale), "skip_add"
+        )
     print(f"{spec.name} shifts: {shifts}")
 
     scales = (
