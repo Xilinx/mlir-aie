@@ -176,9 +176,12 @@ assert.ok(trendOf('sa-placer-hw').every(t => !/per image/.test(t.axis) || t.axis
 assert.ok(['us_per_image_b1', 'dispatch_us_per_image_b1'].every(m => COMPONENT_METRICS[m].includes('the fastest of its timed calls')));
 assert.ok(trendOf('yolo26n-hw').every(t => !/per image/.test(t.axis) || t.axis.includes('fastest')));
 assert.ok(!/the median of/.test(COMPONENT_METRICS.us_per_image_b1 + trendOf('yolo26n-hw')[0].about));
-// Llama's timed run takes the median dispatch.
-assert.ok(COMPONENT_METRICS.tok_s.includes('median 4-token dispatch'));
-assert.ok(trendOf('llama-chain-hw')[1].axis.includes('median dispatch'));
+// Llama's timed run takes the fastest of 20 dispatches; generate.py's decode the median of 5 requests.
+assert.ok(COMPONENT_METRICS.tok_s.includes('fastest 4-token dispatch of 20'));
+assert.ok(COMPONENT_METRICS.ms_per_token.includes('fastest 4-token dispatch of 20'));
+assert.ok(COMPONENT_METRICS.decode_tok_s.includes('the median of its 5 requests'));
+assert.ok(trendOf('llama-chain-hw')[1].axis.includes('fastest of 20 dispatches'));
+assert.ok(!/median dispatch|dispatch: median/.test(trendOf('llama-chain-hw').map(t => t.axis + ' ' + (t.about || '')).join(' ')));
 // A host-observed dispatch is never called NPU time; NPU time is the dispatch less its baseline.
 assert.ok(!/NPU time/.test(COMPONENT_METRICS.us_per_image + COMPONENT_METRICS.ms_per_token + COMPONENT_METRICS.dispatch_us_per_image_b1));
 assert.ok(COMPONENT_METRICS.npu_us_per_image.includes("less the same run's empty-dispatch baseline"));
@@ -486,7 +489,7 @@ const lines = config.data.datasets.filter(d => !d.band);
 assert.deepEqual(lines.map(d => [d.label, d.data.map(v => Math.round(v * 100) / 100)]),
   [['1k context', [19.23, 17.48]], ['8k context', [14.29, 12.99]], ['128k context', [2.56, 2.33]]]);
 assert.equal(config.options.scales.y.type, 'logarithmic');
-assert.equal(config.options.scales.y.title.text, 'Decode tokens per second (median dispatch) · ↑ better');
+assert.equal(config.options.scales.y.title.text, 'Decode tokens per second (fastest of 20 dispatches) · ↑ better');
 // The time per token on hover.
 assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[2], dataIndex: 1, raw: 1000 / 429 }),
              '128k context: 2.33 tok/s, dispatch / token 429 ms');
