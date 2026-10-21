@@ -125,6 +125,19 @@ def test_size_records_the_bytes_the_tested_entry_links():
         assert sizes[np.int32] != sizes[bfloat16]
 
 
+def test_cycles_row_is_the_median_call_when_calls_do_unequal_work():
+    case = Case("resample_quantize", calls=4, scalars=(4032, 912, 11, 4))
+    traced = kd.CallCycles(kernel=(100, 5000, 7000, 9000))
+    rows = []
+    _record(lambda *row: rows.append(row), case, {"cycles": traced})
+    assert rows[0][1:] == (
+        "cycles",
+        "cycles",
+        6000,
+        "median of calls of unequal work; min 100 max 9000 n=4",
+    )
+
+
 def test_raw_words_compare_bits_not_values():
     a = np.array([0.0, 1.0, np.nan], dtype=np.float32)
     b = np.array([-0.0, 1.0, np.nan], dtype=np.float32)
@@ -148,6 +161,7 @@ if __name__ == "__main__":
     test_cycle_efficiency_is_independent_of_call_count()
     test_cycles_row_is_the_kernel_min_with_its_spread_beside_it()
     test_size_records_the_bytes_the_tested_entry_links()
+    test_cycles_row_is_the_median_call_when_calls_do_unequal_work()
     test_raw_words_compare_bits_not_values()
     test_matrix_series_keep_tile_geometry_and_call_count()
     print("PASS!")

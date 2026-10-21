@@ -246,10 +246,19 @@ def _kernel_object_size(design, fn) -> int | None:
     return reached.linked_bytes
 
 
-def _cycles_span(traced: kd.CallCycles) -> str:
-    """The kernel's spread, and any initializer's, beside its min."""
+def _cycles(case: Case, traced: kd.CallCycles) -> int:
+    """The cheapest call, or for calls of unequal work, the median call."""
     k = traced.kernel
-    parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    return min(k) if case.fn().contract.even_calls else int(np.median(k))
+
+
+def _cycles_span(case: Case, traced: kd.CallCycles) -> str:
+    """The kernel's spread, and any initializer's, beside its row's value."""
+    k = traced.kernel
+    if case.fn().contract.even_calls:
+        parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    else:
+        parts = [f"median of calls of unequal work; min {min(k)} max {max(k)} n={len(k)}"]
     parts += [f"init[{i}] min {min(v)}" for i, v in traced.initializers.items() if v]
     return "; ".join(parts)
 
@@ -294,10 +303,8 @@ def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     if meta is not None:
         meta.setdefault("cases", {})[case.name] = _detail(case, m)
     if (traced := m.get("cycles")) is not None:
-        # The min: every call does the same work, so anything above it is
-        # the core waiting (a stall, a refresh), not the kernel.
-        cycles = min(traced.kernel)
-        record(case.name, "cycles", "cycles", cycles, _cycles_span(traced))
+        cycles = _cycles(case, traced)
+        record(case.name, "cycles", "cycles", cycles, _cycles_span(case, traced))
         if ops := case.work():
             record(
                 case.name,
