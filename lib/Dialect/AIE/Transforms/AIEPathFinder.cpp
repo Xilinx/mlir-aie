@@ -941,6 +941,9 @@ struct Pathfinder::RouteState {
   std::vector<llvm::BitVector> conflicting;
   std::set<std::pair<PathEndPoint, PathEndPoint>> apartSources;
   std::set<std::pair<PathEndPoint, PathEndPoint>> togetherSources;
+  // Sources a tree had to meet this iteration but whose other ids conflict
+  // with it (see TreeBuilder::meet), which route together from then on.
+  std::set<std::pair<PathEndPoint, PathEndPoint>> meetBlocked;
   // The packet ids each flow carries, in all and to each destination.
   std::vector<std::set<int>> flowIds;
   std::vector<SmallVector<int, 4>> sameId;
@@ -997,6 +1000,7 @@ struct Pathfinder::RouteState {
   std::vector<SmallVector<int, 4>> overlaySets;
   bool mayLeave(ArrayRef<int> masters, int next) const;
   bool reorder(int later, int earlier, bool again = false);
+  void splitOwnIds(const std::pair<PathEndPoint, PathEndPoint> &pair);
 };
 
 Pathfinder::RouteState::RouteState(const Pathfinder &pf)
@@ -1060,6 +1064,30 @@ bool Pathfinder::RouteState::reorder(int later, int earlier, bool again) {
   group.erase(llvm::find(group, later));
   group.insert(llvm::find(group, earlier), later);
   return true;
+}
+
+// Trees with an id in common join where they meet, so the ids a source sends
+// that the other does not route apart as a part of their own.
+void Pathfinder::RouteState::splitOwnIds(
+    const std::pair<PathEndPoint, PathEndPoint> &pair) {
+  for (auto [src, other] : {pair, std::pair{pair.second, pair.first}}) {
+    auto srcParts = partsOf.find(src);
+    auto otherParts = partsOf.find(other);
+    if (srcParts == partsOf.end() || otherParts == partsOf.end())
+      continue;
+    std::set<int> otherIds;
+    for (int k : otherParts->second)
+      otherIds.insert(flowIds[k].begin(), flowIds[k].end());
+    for (int k : SmallVector<int, 2>(srcParts->second)) {
+      std::set<int> own;
+      for (int id : flowIds[k])
+        if (!otherIds.count(id))
+          own.insert(id);
+      if (!parts[k].isPriorityFlow && !own.empty() &&
+          own.size() < flowIds[k].size())
+        splitPart(k, own);
+    }
+  }
 }
 
 // Whether a tree whose packets leave a switchbox by `masters` from one slave
@@ -1448,6 +1476,9 @@ struct Pathfinder::TreeBuilder {
   // The destinations the flow still has to reach that each other source's
   // tree reaches with the ids they share, less the trees it may not join.
   llvm::MapVector<int, SmallVector<int, 4>> sharedDsts;
+  // The destinations it shares with trees it could meet but for the other
+  // ids those trees carry.
+  llvm::MapVector<int, SmallVector<int, 4>> blockedDsts;
   llvm::DenseSet<int> disagree, foreign;
   // The destinations the flow reaches where it meets another tree.
   SmallVector<int, 4> met;
@@ -1552,17 +1583,22 @@ void Pathfinder::TreeBuilder::findJoins() {
       // packets it takes there. A prioritized flow's tree is pinned, so it
       // joins only trees pinned with it. A destination of the other flow alone
       // keeps the flow off the hops toward it, as no join there is joinable.
-      bool agree =
+      bool canJoin =
           (!isPending(dst) || common == shared(st.idsTo(flow, dst), other)) &&
-          !(pf.constraints.conflict &&
-            pf.constraints.conflict(part.src, common, o.src,
-                                    st.flowIds[other])) &&
           !st.noJoin.count({flow, other}) &&
           (!part.isPriorityFlow || st.parts[other].isPriorityFlow);
+      bool agree = canJoin && !(pf.constraints.conflict &&
+                                pf.constraints.conflict(part.src, common, o.src,
+                                                        st.flowIds[other]));
       if (!agree)
         disagree.insert(other);
       else if (isPending(dst))
         sharedDsts[other].push_back(dst);
+      // Only the conflict kept it from joining, and only the ids it shares
+      // with the tree are left to conflict if those leave apart.
+      if (canJoin && !agree && isPending(dst) &&
+          !pf.constraints.conflict(part.src, common, o.src, common))
+        blockedDsts[other].push_back(dst);
       for (auto it = st.treeOf[other].find(dst); it != st.treeOf[other].end();
            it = st.treeOf[other].find(it->second.first)) {
         int up = it->second.first;
@@ -1629,6 +1665,11 @@ void Pathfinder::TreeBuilder::meet() {
   auto mustMeet = [&](int other) {
     return spans(flow, sharedDsts[other]) && spans(other, sharedDsts[other]);
   };
+  // A tree it has to meet but for the other ids it carries leaves those ids to
+  // a part of their own, which findPaths splits off once the iteration ends.
+  for (const auto &[other, dsts] : blockedDsts)
+    if (spans(flow, dsts) && spans(other, dsts))
+      st.meetBlocked.insert({part.src, st.parts[other].src});
   SmallVector<int, 4> owners;
   for (int other : llvm::make_first_range(sharedDsts))
     if (!disagree.count(other) && mustMeet(other))
@@ -2097,8 +2138,18 @@ void Pathfinder::TreeBuilder::claim() {
   if (toSelf) {
     switchSettings[part.src.coords].srcs.push_back(part.src.port);
     switchSettings[part.src.coords].dsts.push_back(part.src.port);
-    if (part.packetId)
+    if (part.packetId) {
       st.routing.packetTrees[part.src].push_back({part.src, part.src, false});
+      // On the tree too, so a tree that has to meet this one finds the port.
+      int srcId = pf.nodeIds.at(part.src);
+      for (const Edge &e : ArrayRef<Edge>(pf.adjacency[srcId])
+                               .take_front(pf.wireEdgesBegin[srcId]))
+        if (e.dst == srcId) {
+          st.treeOf[flow].try_emplace(dstState(part.src), tree.front(), e);
+          st.treeDsts[flow].push_back(dstState(part.src));
+          break;
+        }
+    }
   }
   const std::optional<int> &packetId = part.packetId;
   int packetGroupId = part.packetGroupId;
@@ -2342,28 +2393,6 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     }
   }
   crowdedTiles.insert(faults.crowded.begin(), faults.crowded.end());
-  // Trees with an id in common join where they meet, so the ids a source
-  // sends that the other does not route apart as a part of their own.
-  auto splitOwnIds = [&](const std::pair<PathEndPoint, PathEndPoint> &pair) {
-    for (auto [src, other] : {pair, std::pair{pair.second, pair.first}}) {
-      auto srcParts = st.partsOf.find(src);
-      auto otherParts = st.partsOf.find(other);
-      if (srcParts == st.partsOf.end() || otherParts == st.partsOf.end())
-        continue;
-      std::set<int> otherIds;
-      for (int k : otherParts->second)
-        otherIds.insert(st.flowIds[k].begin(), st.flowIds[k].end());
-      for (int k : SmallVector<int, 2>(srcParts->second)) {
-        std::set<int> own;
-        for (int id : st.flowIds[k])
-          if (!otherIds.count(id))
-            own.insert(id);
-        if (!st.parts[k].isPriorityFlow && !own.empty() &&
-            own.size() < st.flowIds[k].size())
-          st.splitPart(k, own);
-      }
-    }
-  };
   bool related = false;
   for (const auto &pair : faults.apart) {
     if (!st.apartSources.insert(pair).second)
@@ -2376,7 +2405,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
                << describeTilePort(pair.second.coords, pair.second.port)
                << "\n");
     if (splitShared)
-      splitOwnIds(pair);
+      st.splitOwnIds(pair);
   }
   for (const auto &pair : faults.together) {
     if (!st.togetherSources.insert(pair).second)
@@ -2388,7 +2417,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
                << " and "
                << describeTilePort(pair.second.coords, pair.second.port)
                << "\n");
-    splitOwnIds(pair);
+    st.splitOwnIds(pair);
   }
   if (related) {
     illegalEdges++;
@@ -2583,6 +2612,23 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       steered |= st.trunked.insert({earlier, later}).second;
       if (steered)
         illegalEdges++;
+    }
+    bool split = false;
+    for (const auto &pair : st.meetBlocked)
+      if (st.togetherSources.insert(pair).second) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Route together to meet: "
+                   << describeTilePort(pair.first.coords, pair.first.port)
+                   << " and "
+                   << describeTilePort(pair.second.coords, pair.second.port)
+                   << "\n");
+        st.splitOwnIds(pair);
+        split = true;
+      }
+    st.meetBlocked.clear();
+    if (split) {
+      st.relateParts();
+      illegalEdges++;
     }
 
     for (auto &[_, sb] : graph) {
