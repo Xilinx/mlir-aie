@@ -30,16 +30,24 @@ public:
   /// static.
   mlir::LogicalResult read(llvm::ArrayRef<ObjectFifoCoreEndpointOp> ends,
                            std::string &reason);
+  /// The same, before split: `names` are objectFIFOs `core` acquires from
+  /// (`coreDrains`) or into.
+  mlir::LogicalResult read(CoreOp core, llvm::ArrayRef<mlir::StringAttr> names,
+                           bool coreDrains, std::string &reason);
 
   /// Indices into `ends`, one per object the channel moves in a period of the
   /// core's steady state.
   llvm::ArrayRef<unsigned> turns() const { return order; }
 
   /// Whether a channel moving objects in `turns()` order forever, through
-  /// pools of `depths`, never has itself and the core both waiting.
-  bool keepsUp(llvm::ArrayRef<int64_t> depths) const;
+  /// pools of `depths`, never has itself and the core both waiting. Settles
+  /// `turns()` on the shortest such order cut from the period's.
+  bool keepsUp(llvm::ArrayRef<int64_t> depths);
 
 private:
+  bool keepsUp(llvm::ArrayRef<unsigned> order,
+               llvm::ArrayRef<int64_t> depths) const;
+
   struct Event {
     unsigned end;
     int64_t count;

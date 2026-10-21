@@ -3023,7 +3023,9 @@ def AIE_ObjectFifoDmaEndpointOp
 
     /// Descriptors in one pass over the pool: one per object and selected
     /// segment; on a contiguous pool, one per output of a draining walk over
-    /// the stream, and one stepping through the objects for the filling end.
+    /// the stream, and otherwise one stepping through the objects, or one
+    /// per turn of the unrolled chain of turns, each stepping over the
+    /// others' objects.
     int64_t getNumDescriptors();
     /// Whether this end drains a contiguous pool by a walk over its stream.
     bool walksStream();

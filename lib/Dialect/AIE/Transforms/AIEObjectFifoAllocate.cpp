@@ -20,8 +20,11 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/Debug.h"
 
 #include <set>
+
+#define DEBUG_TYPE "aie-objectfifo-allocate"
 
 using namespace mlir;
 using namespace xilinx;
@@ -1027,19 +1030,30 @@ struct AIEObjectFifoAllocatePass
 
     for (auto endpoint : pending) {
       DMAChannelDir dir = endpoint.getRouteDirection();
-      int channel =
-          isProgramOwned(endpoint)
-              ? chooseChannel(channels, endpoint, demand,
-                              reachesAdjacentTile(endpoint))
-              : channels.getDMAChannelIndex(tileOf(endpoint), dir,
-                                            reachesAdjacentTile(endpoint),
-                                            endpoint.getOperation());
+      TileLike tile = tileOf(endpoint);
+      bool adjacent = reachesAdjacentTile(endpoint);
+      // An objectFIFO end takes the first free channel, unless that channel's
+      // BD ids have too few left for it: then the one with the most left.
+      bool roomy = true;
+      auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+      std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (dma && col && row) {
+        int limit = DMAChannelAnalysis::getDMAChannelLimit(tile, dir, adjacent);
+        for (int free = 0; free < limit; ++free) {
+          if (!channels.isChannelFree(tile, dir, free))
+            continue;
+          roomy = bdRoom(tile, *col, *row, free, demand) >= dma.getNumBDs();
+          break;
+        }
+      }
+      int channel = isProgramOwned(endpoint) || !roomy
+                        ? chooseChannel(channels, endpoint, demand, adjacent)
+                        : channels.getDMAChannelIndex(tile, dir, adjacent,
+                                                      endpoint.getOperation());
       if (channel < 0) {
         channelFailure = endpoint;
         if (!diagnose)
           return failure();
-        TileLike tile = tileOf(endpoint);
-        bool adjacent = reachesAdjacentTile(endpoint);
         int capacity =
             DMAChannelAnalysis::getDMAChannelLimit(tile, dir, adjacent);
         auto diag =
@@ -1118,6 +1132,77 @@ struct AIEObjectFifoAllocatePass
     return false;
   }
 
+  /// A MemTile whose endpoints need more buffer descriptors than it has
+  /// walks its deepest plain pools with one descriptor a side instead, their
+  /// objects side by side in one buffer and counted by one lock pair: the
+  /// deepest first, until its descriptors fit.
+  /// Whether one iterating descriptor a side could walk `pool`: a plain mem
+  /// tile pool of one segment, deeper than one object and no deeper than a
+  /// lock counts, whose ends neither dispatch nor take turns, but those in
+  /// `regrouped`, whose turns are being chosen again.
+  bool canWalkWhole(ObjectFifoPoolOp pool,
+                    ArrayRef<ObjectFifoDmaEndpointOp> regrouped = {}) {
+    const AIETargetModel &target = device.getTargetModel();
+    TileLike tile =
+        pool ? dyn_cast<TileLike>(pool.getTile().getDefiningOp()) : TileLike();
+    return tile && tile.isMemTile() && !pool.getContiguous() &&
+           pool.getSegmentOps().size() == 1 && !pool.getRepeatCount() &&
+           !pool.getBuffers() && pool.getDepth() > 1 &&
+           pool.getDepth() <= static_cast<int>(target.getMaxLockValue()) &&
+           llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
+                        [&](ObjectFifoDmaEndpointOp end) {
+                          return end.getPoolOp() != pool ||
+                                 (!end.getDispatch() &&
+                                  (!end.getTurns() ||
+                                   llvm::is_contained(regrouped, end)));
+                        });
+  }
+
+  void walkDeepPoolsWhole() {
+    const AIETargetModel &target = device.getTargetModel();
+    llvm::MapVector<Value, SmallVector<ObjectFifoDmaEndpointOp>> byTile;
+    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
+      if (dma.getTileLike() && dma.getTileLike().isMemTile())
+        byTile[dma.getTile()].push_back(dma);
+    for (SmallVector<ObjectFifoDmaEndpointOp> &ends :
+         llvm::make_second_range(byTile)) {
+      // A mem tile's BD ids are split between its even and odd channels, and
+      // channels go to ends in an order of their own, each to the half with
+      // room. That cannot fail while every end fits beside all the others in
+      // either half: the ends' BDs and the largest of them within the BDs
+      // plus one.
+      TileLike tileLike = ends.front().getTileLike();
+      std::optional<int> col = tileLike.tryGetCol(), row = tileLike.tryGetRow();
+      int64_t numBDs = target.getNumBDs(AIETileType::MemTile);
+      bool halved =
+          col && row && target.getNumBDsForChannel(*col, *row, 0) < numBDs;
+      auto fits = [&] {
+        int64_t bds = 0, largest = 0;
+        for (ObjectFifoDmaEndpointOp end : ends) {
+          bds += end.getNumBDs();
+          largest = std::max(largest, end.getNumBDs());
+        }
+        return halved ? bds + largest <= numBDs + 1 : bds <= numBDs;
+      };
+      SmallVector<ObjectFifoPoolOp> pools;
+      for (ObjectFifoDmaEndpointOp end : ends) {
+        ObjectFifoPoolOp pool = end.getPoolOp();
+        if (!llvm::is_contained(pools, pool) && canWalkWhole(pool))
+          pools.push_back(pool);
+      }
+      llvm::stable_sort(pools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+        if (a.getDepth() != b.getDepth())
+          return a.getDepth() > b.getDepth();
+        return structuralRank.lookup(a) < structuralRank.lookup(b);
+      });
+      for (ObjectFifoPoolOp pool : pools) {
+        if (fits())
+          break;
+        pool.setContiguous(true);
+      }
+    }
+  }
+
   /// The other end of the one route naming `endpoint`, when that route is a
   /// circuit between two objectFIFO DMA endpoints.
   ObjectFifoDmaEndpointOp circuitPeer(ObjectFifoDmaEndpointOp endpoint) {
@@ -1158,7 +1243,30 @@ struct AIEObjectFifoAllocatePass
   static bool canTakeTurns(ObjectFifoDmaEndpointOp endpoint) {
     return endpoint && !endpoint.getChannelIndex() && !endpoint.getDispatch() &&
            !endpoint.getPacketAttr() && !endpoint.getIterCount() &&
-           endpoint.getRepeat() == 1 && !endpoint.getPoolOp().getContiguous();
+           endpoint.getRepeat() == 1 && !endpoint.walksStream();
+  }
+
+  /// Whether a chain moving `turns` over `ends` can walk each contiguous pool
+  /// with one descriptor per turn of its unrolled passes, each stepping over
+  /// the others' objects: they must divide the pool's objects.
+  static bool contiguousWalkersFit(ArrayRef<ObjectFifoDmaEndpointOp> ends,
+                                   ArrayRef<unsigned> turns) {
+    SmallVector<std::pair<int64_t, int64_t>> counts;
+    for (auto [i, constEnd] : llvm::enumerate(ends)) {
+      ObjectFifoDmaEndpointOp end = constEnd;
+      counts.push_back({llvm::count(turns, i), end.getPoolOp().getContiguous()
+                                                   ? 0
+                                                   : end.getNumDescriptors()});
+    }
+    int64_t passes = turnPasses(counts);
+    for (auto [i, constEnd] : llvm::enumerate(ends)) {
+      ObjectFifoDmaEndpointOp end = constEnd;
+      if (end.getPoolOp().getContiguous() &&
+          (end.walksStream() ||
+           end.getPoolOp().getDepth() % (counts[i].first * passes)))
+        return false;
+    }
+    return true;
   }
 
   /// Gives `ends` one channel, the k-th object belonging to `ends[order[k]]`.
@@ -1192,6 +1300,17 @@ struct AIEObjectFifoAllocatePass
     llvm::stable_sort(candidates, [&](Operation *a, Operation *b) {
       return structuralRank.lookup(a) < structuralRank.lookup(b);
     });
+    LLVM_DEBUG({
+      llvm::dbgs() << "turns on " << exhausted->getLoc() << ": "
+                   << candidates.size() << " candidate ends\n";
+      for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
+        if (sameTile(dma.getTile(), exhausted->getResult(0)) &&
+            dma.getRouteDirection() == dir)
+          llvm::dbgs() << "  " << dma.getSymName() << ": core end "
+                       << bool(coreEndOf(dma)) << ", takes turns "
+                       << canTakeTurns(dma) << ", peer takes turns "
+                       << canTakeTurns(circuitPeer(dma)) << "\n";
+    });
     auto groupOf = [](ObjectFifoDmaEndpointOp end) {
       SmallVector<ObjectFifoDmaEndpointOp> group = turnEndpoints(end);
       return group.empty() ? SmallVector<ObjectFifoDmaEndpointOp>{end} : group;
@@ -1215,12 +1334,74 @@ struct AIEObjectFifoAllocatePass
                      llvm::any_of(turnEndpoints(peer), [&](auto other) {
                        return !llvm::is_contained(peers, other);
                      });
-            }))
+            })) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "  " << a.getSymName() << " + " << b.getSymName()
+                     << ": senders on different tiles\n");
           continue;
+        }
         CoreTurns turns;
         std::string reason;
-        if (failed(turns.read(cores, reason)) || !turns.keepsUp(depths))
+        if (succeeded(turns.read(cores, reason)) && !turns.keepsUp(depths))
+          reason = "would stall";
+        // Beside a pool walked whole, the others' descriptors must come round
+        // each pass, which walking them whole as well lines up.
+        // A pool whose other end already takes turns may be walked whole too,
+        // where those turns still line up.
+        SmallVector<ObjectFifoPoolOp> walked;
+        if (reason.empty() && !contiguousWalkersFit(peers, turns.turns()))
+          for (ObjectFifoDmaEndpointOp peer : peers) {
+            ObjectFifoPoolOp pool = peer.getPoolOp();
+            SmallVector<ObjectFifoDmaEndpointOp> others;
+            for (auto end : device.getOps<ObjectFifoDmaEndpointOp>())
+              if (end.getPoolOp() == pool && end.getTurns() &&
+                  !llvm::is_contained(peers, end))
+                others.push_back(end);
+            SmallVector<ObjectFifoDmaEndpointOp> ignored(peers);
+            llvm::append_range(ignored, others);
+            if (!canWalkWhole(pool, ignored)) {
+              LLVM_DEBUG(llvm::dbgs() << "  " << pool.getSymName()
+                                      << " cannot be walked whole\n");
+              continue;
+            }
+            pool.setContiguous(true);
+            bool linedUp =
+                llvm::all_of(others, [&](ObjectFifoDmaEndpointOp end) {
+                  SmallVector<ObjectFifoDmaEndpointOp> ends =
+                      turnEndpoints(end);
+                  SmallVector<unsigned> order;
+                  for (auto name :
+                       end.getTurnsAttr().getAsRange<FlatSymbolRefAttr>())
+                    order.push_back(
+                        llvm::find_if(ends,
+                                      [&](ObjectFifoDmaEndpointOp e) {
+                                        return e.getSymNameAttr() ==
+                                               name.getAttr();
+                                      }) -
+                        ends.begin());
+                  return contiguousWalkersFit(ends, order);
+                });
+            LLVM_DEBUG(
+                llvm::dbgs()
+                << "  " << pool.getSymName() << " walked whole"
+                << (linedUp ? "" : ", but its other turns would not line up")
+                << "\n");
+            if (linedUp)
+              walked.push_back(pool);
+            else
+              pool.setContiguous(false);
+          }
+        if (reason.empty() && (!contiguousWalkersFit(group, turns.turns()) ||
+                               !contiguousWalkersFit(peers, turns.turns()))) {
+          reason = "a contiguous pool's objects do not divide among its turns";
+          for (ObjectFifoPoolOp pool : walked)
+            pool.setContiguous(false);
+        }
+        if (!reason.empty()) {
+          LLVM_DEBUG(llvm::dbgs() << "  " << a.getSymName() << " + "
+                                  << b.getSymName() << ": " << reason << "\n");
           continue;
+        }
         takeTurns(group, turns.turns());
         takeTurns(peers, turns.turns());
         return true;
@@ -1844,6 +2025,7 @@ struct AIEObjectFifoAllocatePass
       return signalPassFailure();
     collectChannelPrograms();
     rankStructurally();
+    walkDeepPoolsWhole();
 
     // Preserve successful largest-first allocations, including their locality
     // repairs. Only try demand ordering when that search fails.

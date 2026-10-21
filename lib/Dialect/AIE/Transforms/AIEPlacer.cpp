@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
@@ -198,6 +199,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
   addChannelRequirementsFromFlows(flows, pktFlows, routes, channelRequirements);
+  countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
   buildRuntimeBdProfiles(device, objectFifos);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
@@ -868,6 +870,51 @@ SequentialPlacer::buildChannelRequirements(
   }
 
   return channelRequirements;
+}
+
+void SequentialPlacer::countTurns(
+    DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos,
+    llvm::DenseMap<Operation *, std::pair<int, int>> &requirements) {
+  for (CoreOp core : device.getOps<CoreOp>()) {
+    auto tile = dyn_cast_or_null<LogicalTileOp>(core.getTile().getDefiningOp());
+    if (!tile || !requirements.count(tile))
+      continue;
+    auto &[in, out] = requirements[tile];
+    for (bool coreDrains : {true, false}) {
+      int &need = coreDrains ? in : out;
+      int budget = coreDrains ? tile.getNumDestConnections(WireBundle::DMA)
+                              : tile.getNumSourceConnections(WireBundle::DMA);
+      if (need <= budget)
+        continue;
+      llvm::MapVector<Operation *, SmallVector<ObjectFifoCreateOp>> byTile;
+      for (ObjectFifoCreateOp fifo : objectFifos) {
+        auto consumers = fifo.getConsumerTiles();
+        if (consumers.size() != 1)
+          continue;
+        Value mine = coreDrains ? consumers[0] : fifo.getProducerTile();
+        Value other = coreDrains ? fifo.getProducerTile() : consumers[0];
+        auto peer = dyn_cast_or_null<LogicalTileOp>(other.getDefiningOp());
+        if (mine == tile.getResult() && peer &&
+            peer.getTileType() == AIETileType::MemTile)
+          byTile[peer].push_back(fifo);
+      }
+      for (auto &[peer, fifos] : byTile) {
+        if (fifos.size() < 2 || need <= budget)
+          continue;
+        SmallVector<StringAttr> names;
+        SmallVector<int64_t> depths;
+        for (ObjectFifoCreateOp fifo : fifos) {
+          names.push_back(fifo.getSymNameAttr());
+          depths.push_back(fifo.size(coreDrains ? 1 : 0));
+        }
+        CoreTurns turns;
+        std::string reason;
+        if (succeeded(turns.read(core, names, coreDrains, reason)) &&
+            turns.keepsUp(depths))
+          need -= static_cast<int>(fifos.size()) - 1;
+      }
+    }
+  }
 }
 
 // Walk view-like aliasing memref ops back to the underlying BufferOp.

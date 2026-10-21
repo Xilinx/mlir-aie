@@ -129,10 +129,16 @@ struct AIEObjectFifoLowerDMAsPass
       int64_t first = 0;
       if (auto zeros = pool.getZeroObjects())
         first = (*zeros)[0] * object;
-      return {{buffer, first + segment.getOffset(), segment.getSize(), dims,
-               BDPadLayoutArrayAttr(), take, give, 0, std::nullopt,
-               std::nullopt,
-               BDIterationAttr::get(context, pool.getDepth(), object, 0)}};
+      int64_t walkers = endpoint.getNumDescriptors();
+      SmallVector<Descriptor> descriptors;
+      for (int64_t j = 0; j < walkers; j++)
+        descriptors.push_back(
+            {buffer, first + j * object + segment.getOffset(),
+             segment.getSize(), dims, BDPadLayoutArrayAttr(), take, give, j,
+             std::nullopt, std::nullopt,
+             BDIterationAttr::get(context, pool.getDepth() / walkers,
+                                  walkers * object, 0)});
+      return descriptors;
     }
 
     StreamWindow window;

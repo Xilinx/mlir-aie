@@ -1116,8 +1116,20 @@ int64_t ObjectFifoDmaEndpointOp::getNumDescriptors() {
   if (!pool)
     return 0;
   if (pool.getContiguous()) {
-    if (!walksStream())
-      return 1;
+    // Taking k turns a pass, k descriptors walk the objects, each k apart.
+    if (!walksStream()) {
+      SmallVector<ObjectFifoDmaEndpointOp> ends = turnEndpoints(*this);
+      if (ends.empty())
+        return 1;
+      ArrayRef<Attribute> turns = getTurnsAttr().getValue();
+      SmallVector<std::pair<int64_t, int64_t>> counts;
+      for (ObjectFifoDmaEndpointOp end : ends)
+        counts.push_back(
+            {llvm::count(turns, FlatSymbolRefAttr::get(end.getSymNameAttr())),
+             end.getPoolOp().getContiguous() ? 0 : end.getNumDescriptors()});
+      return llvm::count(turns, FlatSymbolRefAttr::get(getSymNameAttr())) *
+             turnPasses(counts);
+    }
     StreamWindow window;
     return succeeded(getStreamWindow(window)) ? window.outputs : 0;
   }
@@ -1175,6 +1187,14 @@ xilinx::AIE::turnEndpoints(ObjectFifoDmaEndpointOp endpoint) {
   return ends;
 }
 
+int64_t xilinx::AIE::turnPasses(ArrayRef<std::pair<int64_t, int64_t>> ends) {
+  int64_t passes = 1;
+  for (auto [appearances, count] : ends)
+    if (count > 0)
+      passes = std::lcm(passes, count / std::gcd(count, appearances));
+  return passes;
+}
+
 int64_t ObjectFifoDmaEndpointOp::getNumBDs() {
   SmallVector<ObjectFifoDmaEndpointOp> ends = turnEndpoints(*this);
   if (ends.empty())
@@ -1182,16 +1202,13 @@ int64_t ObjectFifoDmaEndpointOp::getNumBDs() {
            getDispatchPasses();
   if (ends.front() != *this)
     return 0;
-  // Unrolled until every endpoint is back at its first descriptor.
   ArrayRef<Attribute> turns = getTurnsAttr().getValue();
-  int64_t periods = 1;
-  for (ObjectFifoDmaEndpointOp end : ends) {
-    int64_t appearances =
-        llvm::count(turns, FlatSymbolRefAttr::get(end.getSymNameAttr()));
-    int64_t count = std::max<int64_t>(end.getNumDescriptors(), 1);
-    periods = std::lcm(periods, count / std::gcd(count, appearances));
-  }
-  return periods * static_cast<int64_t>(turns.size());
+  SmallVector<std::pair<int64_t, int64_t>> counts;
+  for (ObjectFifoDmaEndpointOp end : ends)
+    counts.push_back(
+        {llvm::count(turns, FlatSymbolRefAttr::get(end.getSymNameAttr())),
+         end.getPoolOp().getContiguous() ? 0 : end.getNumDescriptors()});
+  return turnPasses(counts) * static_cast<int64_t>(turns.size());
 }
 
 DMAChannelDir ObjectFifoDmaEndpointOp::getRouteDirection() {
@@ -1263,6 +1280,11 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
         return emitOpError("takes turns with ")
                << end.getSymNameAttr()
                << ", which is not on this tile and channel with the same turns";
+    if (pool.getContiguous() && !walksStream() &&
+        pool.getDepth() % getNumDescriptors())
+      return emitOpError("walks a contiguous pool of ")
+             << pool.getDepth() << " objects in " << getNumDescriptors()
+             << " turns a pass, which do not divide them";
   }
 
   std::optional<ArrayAttr> segmentNames = getSegments();

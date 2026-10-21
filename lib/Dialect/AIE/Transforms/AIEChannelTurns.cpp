@@ -10,8 +10,12 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Debug.h"
 
 #include <map>
+#include <set>
+
+#define DEBUG_TYPE "aie-channel-turns"
 
 using namespace mlir;
 using namespace xilinx;
@@ -28,11 +32,9 @@ LogicalResult CoreTurns::read(ArrayRef<ObjectFifoCoreEndpointOp> ends,
                               std::string &reason) {
   assert(!ends.empty() && "turns between no endpoints");
   ObjectFifoCoreEndpointOp first = ends.front();
-  coreDrains = first.drains();
-  this->ends = ends.size();
   Value tile = first.getTile();
   if (llvm::any_of(ends, [&](ObjectFifoCoreEndpointOp end) {
-        return end.drains() != coreDrains || end.getTile() != tile;
+        return end.drains() != first.drains() || end.getTile() != tile;
       })) {
     reason = "the endpoints are not all one core's, one way";
     return failure();
@@ -45,17 +47,33 @@ LogicalResult CoreTurns::read(ArrayRef<ObjectFifoCoreEndpointOp> ends,
     reason = "no core works through them";
     return failure();
   }
+  SmallVector<StringAttr> names;
+  for (ObjectFifoCoreEndpointOp end : ends)
+    names.push_back(end.getSymNameAttr());
+  return read(core, names, first.drains(), reason);
+}
 
+LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
+                              bool coreDrains, std::string &reason) {
+  this->coreDrains = coreDrains;
+  ends = names.size();
   DenseMap<StringAttr, unsigned> index;
-  for (auto [i, end] : llvm::enumerate(ends))
-    index[ObjectFifoCoreEndpointOp(end).getSymNameAttr()] = i;
+  for (auto [i, name] : llvm::enumerate(names))
+    index[name] = i;
+  // An objectFIFO's acquires name its port; an endpoint's are one way.
+  ObjectFifoPort port =
+      coreDrains ? ObjectFifoPort::Consume : ObjectFifoPort::Produce;
   auto endOf = [&](Operation *op) -> std::optional<unsigned> {
     FlatSymbolRefAttr name;
-    if (auto acquire = dyn_cast<ObjectFifoAcquireOp>(op))
+    std::optional<ObjectFifoPort> used;
+    if (auto acquire = dyn_cast<ObjectFifoAcquireOp>(op)) {
       name = acquire.getObjFifoNameAttr();
-    else if (auto release = dyn_cast<ObjectFifoReleaseOp>(op))
+      used = acquire.getPort();
+    } else if (auto release = dyn_cast<ObjectFifoReleaseOp>(op)) {
       name = release.getObjFifoNameAttr();
-    if (!name)
+      used = release.getPort();
+    }
+    if (!name || (used && *used != port))
       return std::nullopt;
     auto it = index.find(name.getAttr());
     if (it == index.end())
@@ -129,14 +147,26 @@ LogicalResult CoreTurns::read(ArrayRef<ObjectFifoCoreEndpointOp> ends,
     }
     return success();
   };
-  if (failed(unroll(loop->getRegion(0).front())))
-    return failure();
+  // The loop's own body: an scf.while's condition region holds no uses.
+  for (Region *region : cast<LoopLikeOpInterface>(loop).getLoopRegions())
+    for (Block &block : *region)
+      if (failed(unroll(block)))
+        return failure();
+  LLVM_DEBUG({
+    llvm::dbgs() << "period of " << names.size() << " ends in "
+                 << loop->getName() << " at " << loop->getLoc() << ": "
+                 << period.size() << " events:";
+    for (const Event &event : period)
+      llvm::dbgs() << " " << (event.acquire ? "a" : "r") << event.end << "x"
+                   << event.count;
+    llvm::dbgs() << "\n";
+  });
 
   // Objects the channel moves in a period: those each acquire takes beyond the
   // ones held, where the channel fills; those released, where it drains. The
   // first periods may differ while the core builds up what it holds, so the
   // order is that of the first period starting from a state seen before.
-  SmallVector<int64_t> held(ends.size(), 0);
+  SmallVector<int64_t> held(ends, 0);
   std::map<SmallVector<int64_t>, int> seen;
   for (int round = 0; round < maxPeriods; round++) {
     order.clear();
@@ -169,8 +199,42 @@ LogicalResult CoreTurns::read(ArrayRef<ObjectFifoCoreEndpointOp> ends,
   return failure();
 }
 
-bool CoreTurns::keepsUp(ArrayRef<int64_t> depths) const {
+bool CoreTurns::keepsUp(ArrayRef<int64_t> depths) {
   assert(depths.size() == ends && "one depth per endpoint");
+  // The shortest run of the period's order, in the same proportions, that the
+  // channel can repeat, as a loop's steps do; the core's first and last steps
+  // may move them in another order, which the pools' depths then absorb.
+  SmallVector<int64_t> counts(ends, 0);
+  for (unsigned end : order)
+    counts[end]++;
+  for (size_t length = 1; length < order.size(); length++) {
+    if (order.size() % length)
+      continue;
+    size_t repeats = order.size() / length;
+    if (llvm::any_of(counts, [&](int64_t c) { return c % repeats; }))
+      continue;
+    std::set<SmallVector<unsigned>> tried;
+    for (size_t start = 0; start + length <= order.size(); start++) {
+      SmallVector<unsigned> run(order.begin() + start,
+                                order.begin() + start + length);
+      SmallVector<int64_t> runCounts(ends, 0);
+      for (unsigned end : run)
+        runCounts[end]++;
+      bool proportional = true;
+      for (size_t i = 0; i < ends; i++)
+        proportional &=
+            runCounts[i] * static_cast<int64_t>(repeats) == counts[i];
+      if (!proportional || !tried.insert(run).second || !keepsUp(run, depths))
+        continue;
+      order = run;
+      return true;
+    }
+  }
+  return keepsUp(order, depths);
+}
+
+bool CoreTurns::keepsUp(ArrayRef<unsigned> order,
+                        ArrayRef<int64_t> depths) const {
   // Objects ready for the core (full where it drains, free where it fills)
   // and for the channel (the other kind); the core holds what it acquired.
   SmallVector<int64_t> forCore(ends, 0), forChannel(ends, 0), held(ends, 0);

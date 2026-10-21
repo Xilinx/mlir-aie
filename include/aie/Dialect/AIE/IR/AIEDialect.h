@@ -430,6 +430,11 @@ namespace xilinx::AIE {
 llvm::SmallVector<ObjectFifoDmaEndpointOp>
 turnEndpoints(ObjectFifoDmaEndpointOp end);
 
+// Passes a chain of turns is unrolled for, given each end's turns a pass and
+// descriptors: until every end is back at its first descriptor. An end on a
+// contiguous pool, given 0 descriptors, takes as many as its turns need.
+int64_t turnPasses(llvm::ArrayRef<std::pair<int64_t, int64_t>> ends);
+
 // Whether packets leave `master` of `tile` with their header: not into a DMA,
 // nor down the shim's South to one, unless `keep` says.
 bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep);
