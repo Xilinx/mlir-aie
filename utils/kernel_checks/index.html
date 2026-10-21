@@ -266,8 +266,8 @@
     .glance-card header .ratio { margin-left: auto; font-size: 12.5px; color: var(--muted); }
     .glance-card header .why { font-size: 12.5px; }
     .glance-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
-    a.glance-metric { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px 4px; color: var(--ink); border-left: 1px solid var(--rule); min-width: 0; }
-    a.glance-metric:nth-child(4n+1) { border-left: 0; padding-left: 0; }
+    .glance-metric { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px 4px; color: var(--ink); border-left: 1px solid var(--rule); min-width: 0; }
+    .glance-metric:nth-child(4n+1) { border-left: 0; padding-left: 0; }
     a.glance-metric:hover { background: var(--paper); text-decoration: none; }
     .glance-label { font-size: 12px; font-weight: 600; color: var(--muted); }
     .glance-row { display: grid; grid-template-columns: minmax(34px, max-content) 1fr; align-items: baseline; gap: 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -500,7 +500,7 @@
       /* Only prose: hiding a column would slide the NPU group headers. */
       #kernels .summary.wide { display: none; }
       .glance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      a.glance-metric:nth-child(2n+1) { border-left: 0; padding-left: 0; }
+      .glance-metric:nth-child(2n+1) { border-left: 0; padding-left: 0; }
       .stage-row { grid-template-columns: 40px minmax(0, 1fr); }
       .stage-row .total, .stage-row .spark { grid-column: 2; }
       .stage-seg .lbl { display: none; }
@@ -1006,7 +1006,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         about: 'the cold compile\'s time in each aiecc stage and outside aiecc; the stages overlap, so they can add up past its wall time',
         lines: [...['place', 'lower', 'kernels', 'codegen', 'link', 'outside_aiecc'].map(k => [COMPILE_STAGES.find(s => s[0] === k)[1], [`compile_${k}_s`]]),
                 ['route, package and other', ['compile_route_s', 'compile_package_s', 'compile_other_s']]] },
+      { id: 'elf_bytes', name: 'Compiled size', axis: 'Size of what the compile wrote (one compile)', log: true,
+        about: 'the size of each file the cold compile wrote: a PDI reloads at about 1.4 GB/s, so growth costs load time',
+        lines: [['full ELF', ['elf_bytes']], ['device image', ['pdi_bytes']], ['xclbin', ['xclbin_bytes']], ['instructions', ['instr_bytes']]] },
     ];
+    // The metrics a trend tab charts.
+    const tabMetrics = t => t.batches ? [t.id] : t.lines.flatMap(([, ms]) => ms);
     // A band is one nightly check's latest record in one section: `id` is
     // its directory under component-checks/, which two bands may share. A
     // failed id ("<fixture>/seed<N>" in the sweep,
@@ -2005,7 +2010,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const card = el('article', { className: 'glance-card' }, header, grid);
       card.sparks = new Map();
       for (const { metric, text, href, title, lanes } of cells) {
-        const cell = el('a', { className: 'glance-metric', href, title }, el('span', { className: 'glance-label' }, text));
+        const cell = el(href ? 'a' : 'div', { className: 'glance-metric', ...(href ? { href } : {}), title }, el('span', { className: 'glance-label' }, text));
         for (const lane of lanes) {
           const values = lane.m ? glanceValues(lane.m, lane.metric, lane.current) : lane.missing || el('span', { className: 'faint' }, '—');
           if (lane.bad) values.className += ' worse';
@@ -2859,11 +2864,20 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return collect(files.map(readable).filter(Boolean).map(h => ({ ...h, target: check.id })));
     }
 
+    // Whether `view` charts `metric`'s trend: a Performance band's tab, or a
+    // Placement or Routing Trends chart.
+    function hasTrend(metric, view) {
+      if (view === 'performance') return BANDS.some(b => b.section === view && (b.trend || []).some(t => tabMetrics(t).includes(metric)));
+      return Boolean(SECTIONS[view]) && SECTIONS[view].metrics.includes(metric);
+    }
+
     // A component metric's cell on a card: its trends one click away, in
-    // `view`; by default the first section that charts the metric, since
-    // Routing and Placement both chart the model-based tests' counts.
-    const componentCell = (metric, text, lanes, view = sectionOfMetric(metric)) => ({ metric, text, lanes, href: hashFor({ view, metric }),
-      title: `${COMPONENT_METRICS[metric] || ''}\nClick for its trends.` });
+    // `view`, by default the first section that charts the metric (Routing
+    // and Placement both chart the model-based tests' counts); a metric with
+    // no trend is no link.
+    const componentCell = (metric, text, lanes, view = sectionOfMetric(metric)) => hasTrend(metric, view)
+      ? { metric, text, lanes, href: hashFor({ view, metric }), title: `${COMPONENT_METRICS[metric] || ''}\nClick for its trends.` }
+      : { metric, text, lanes, title: COMPONENT_METRICS[metric] || '' };
 
     // A card's compile: per compile (cold, warm) a bar of the time each stage
     // took, on one seconds axis for both, the whole compile's wall clock
@@ -3135,7 +3149,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // part draws a line per part; provenance changes are marked. A Chart.js
     // config.
     function trendConfig(data, tab) {
-      const metrics = tab.batches ? [tab.id] : tab.lines.flatMap(([, ms]) => ms);
+      const metrics = tabMetrics(tab);
       const mine = seedMeans(data).series.filter(s => metrics.includes(s.metric));
       const effort = chartedEffort(mine.map(s => s.kase));
       const charted = mine.filter(s => !/\/effort=\w+$/.test(s.kase) || s.kase.endsWith(`/effort=${effort}`));
@@ -3317,7 +3331,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // drawn once it is on screen and redrawn when the tab changes. `want` is
     // a metric a link names; its tab opens first.
     function trendBox(data, tabs, want) {
-      const shown = tabs.filter(t => (t.batches ? [t.id] : t.lines.flatMap(([, ms]) => ms)).some(m => data.series.some(s => s.metric === m)));
+      const shown = tabs.filter(t => tabMetrics(t).some(m => data.series.some(s => s.metric === m)));
       if (!shown.length) return el('p', { className: 'dim' }, 'No history published yet.');
       const named = id => shown.find(t => t.id === id);
       let tab = shown.find(t => t.id === want || (t.lines || []).some(([, ms]) => ms.includes(want))) || shown[0], drawn = null;
@@ -3326,7 +3340,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const canvas = el('canvas', { ariaLabel: 'over recent nightlies' });
       const box = el('div', { className: 'chart trend' }, el('div', { className: 'trend-head' }, seg), about, el('div', { className: 'canvas' }, canvas));
       const say = t => {
-        const kases = data.series.filter(s => (t.batches ? [t.id] : t.lines.flatMap(([, ms]) => ms)).includes(s.metric)).map(s => s.kase);
+        const kases = data.series.filter(s => tabMetrics(t).includes(s.metric)).map(s => s.kase);
         const seeded = kases.some(k => /\/seed=\d+/.test(k));
         const lines = t.batches ? 'A line for the smallest and the largest batch, each the mean' : t.id.startsWith('compile_') ? 'A single compile serves every batch: the mean' : 'The mean';
         const seeds = seeded ? ` ${lines} over the seeds at ${chartedEffort(kases)} effort; the shading runs from the fastest seed to the slowest.` : '';
@@ -3742,6 +3756,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         el('p', {}, 'How to add one is under “How to add a check here” below.'));
     }
 
+    // A link named a metric: open the section's Trends toggle, if it has
+    // one, and bring the chart into view.
+    function revealTrend(section, target) {
+      const more = $(`${section}-more`);
+      if (more) more.open = true;
+      target.scrollIntoView({ block: 'start' });
+    }
+
     // One section's bands and the trends of its metrics.
     async function showSection(section) {
       const token = ++componentToken;
@@ -3753,10 +3775,15 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const mine = loaded.filter(l => l.check.section === section);
       const bands = mine.map(l => componentBand(l.check, l.index, l.latest, now, l.previous));
       $(`${section}-bands`).replaceChildren(...(bands.length ? bands : [noChecks(section)]));
+      const want = readHash().metric;
+      // The first band whose trend charts a linked metric is the one shown.
+      const owner = want ? mine.findIndex(l => (l.check.trend || []).some(t => tabMetrics(t).includes(want))) : -1;
       mine.forEach((l, i) => checkHistories(l).then(data => {
         if (token !== componentToken) return;
         fillSparks(bands[i].cards, data);
-        if (bands[i].trend) bands[i].trend.replaceChildren(trendBox(data, l.check.trend, readHash().metric));
+        if (!bands[i].trend) return;
+        bands[i].trend.replaceChildren(trendBox(data, l.check.trend, want));
+        if (i === owner) revealTrend(section, bands[i].trend);
       }));
       const listed = new Set(mine.flatMap(l => (readable(l.index) && l.index.metrics) || []));
       const metrics = SECTIONS[section].metrics.filter(m => !listed.size || listed.has(m));
@@ -3764,7 +3791,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (!$(`${section}-trends`)) return [];
       $(`${section}-trends`).hidden = !mine.length || !metrics.length;
       if (!mine.length || !metrics.length) return [];
-      const want = readHash().metric;
+      if (metrics.includes(want)) revealTrend(section, $(`${section}-trends`));
       const pick = async metric => {
         sectionMetric[section] = metric;
         history.replaceState(null, '', hashFor({ view: section, metric }));

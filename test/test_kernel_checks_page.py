@@ -39,6 +39,7 @@ class El {
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(type, f) { this.on[type] = f; }
   querySelectorAll() { return []; }
+  scrollIntoView() { this.scrolled = true; }
   get text() {
     return (this.textContent || '') +
       this.children.map(c => typeof c === 'string' ? c : c.text).join('');
@@ -350,6 +351,64 @@ const night = nightOf('npu2', null, db, cat2);
 assert.equal(verdictOf(night, Date.parse('2026-10-03T07:00:00Z')).headline, '1 case less accurate vs 2 Oct.');
 const item = attentionFor(night, Date.parse('2026-10-03T07:00:00Z')).find(i => i.level === 'bad');
 assert.ok(item.body[0].startsWith('1 case got less accurate past its threshold vs 2 Oct:'));
+""")
+
+
+def test_a_metric_cell_links_only_to_a_trend_that_exists(page):
+    page(COMPONENT_RUNS + LLAMA_NIGHTS + YOLO_NIGHTS + """
+// Every metric a card shows links to its trend when one charts it, and is
+// no link otherwise.
+for (const m of Object.keys(COMPONENT_METRICS)) {
+  const cell = componentCell(m, label(m), []);
+  assert.equal(Boolean(cell.href), hasTrend(m, sectionOfMetric(m)), m);
+  if (!cell.href) assert.ok(!cell.title.includes('Click'), m);
+}
+const card = componentBand(llama, llamaIndex, llamaAfter, NOW, llamaBefore).cards[0];
+const cells = card.children[1].children;
+const cellOf = text => cells.find(c => c.children[0].text === text);
+// The DMA floor and the verified count have no trend: words, not a link.
+assert.deepEqual(['Over the DMA floor', 'Tokens verified'].map(t => [cellOf(t).tag, cellOf(t).href]), [['div', undefined], ['div', undefined]]);
+// Sizes stay as trends: the link opens the Compiled size tab.
+assert.equal(cellOf('Compiled sizes').href, '#view=performance&metric=elf_bytes');
+const data = collect(historiesOf('llama-chain-hw', [llamaBefore, llamaAfter]));
+const box = trendBox(data, llama.trend, 'elf_bytes');
+assert.equal(box.metric(), 'elf_bytes');
+const sizes = trendConfig(data, COMPILE_TABS.find(t => t.id === 'elf_bytes'));
+assert.deepEqual(sizes.data.datasets.filter(d => !d.band).map(d => d.label), ['full ELF', 'device image']);
+assert.equal(sizes.options.scales.y.type, 'logarithmic');
+// The decode rate opens the tab that draws it.
+assert.equal(trendBox(data, llama.trend, 'decode_tok_s').metric(), 'tok_s');
+// A link that names a metric opens Placement's Trends toggle and scrolls to it.
+revealTrend('placement', $('placement-trends'));
+assert.equal($('placement-more').open, true);
+assert.ok($('placement-trends').scrolled);
+// Performance has no toggle: its band's trend is scrolled to.
+const slot = document.createElement('div');
+revealTrend('performance', slot);
+assert.ok(slot.scrolled);
+""")
+
+
+def test_a_link_to_a_performance_metric_lands_on_its_trend(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+const files = {
+  'sa-placer-hw/runs.json': { ...hwIndex, metrics: ['us_per_image', 'e2e_us_per_image'] },
+  'sa-placer-hw/latest.json': hwAfter,
+  'sa-placer-hw/runs/6.json': hwBefore,
+  ...Object.fromEntries(historiesOf('sa-placer-hw', [hwBefore, hwAfter]).map(h => [`sa-placer-hw/history/${h.metric}.json`, h])),
+};
+global.fetch = async url => {
+  const file = files[url.replace('../component-checks/', '')];
+  return { ok: Boolean(file), status: file ? 200 : 404, json: async () => file };
+};
+location.hash = '#view=performance&metric=e2e_us_per_image';
+(async () => {
+  await showSection('performance');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const [band] = $('performance-bands').children;
+  assert.equal(band.trend.children[0].metric(), 'e2e_us_per_image');
+  assert.ok(band.trend.scrolled);
+})().catch(e => { console.error(e); process.exit(1); });
 """)
 
 
@@ -1672,7 +1731,7 @@ const llamaData = collect(historiesOf('llama-chain-hw', [llamaBefore, { ...llama
 // A tab with no history is left out; generate's rate is a second line beside the timed decode's.
 const box = trendBox(llamaData, llama.trend, '');
 assert.deepEqual(box.children[0].children[0].children.map(b => b.textContent),
-                 ['Tokens / s', 'Dispatch / token', 'Compile time', 'Compile memory', 'Compile stages']);
+                 ['Tokens / s', 'Dispatch / token', 'Compile time', 'Compile memory', 'Compile stages', 'Compiled size']);
 const rate = trendConfig(llamaData, llama.trend[0]);
 assert.deepEqual(rate.data.datasets.map(d => [d.label, d.data]), [['decode (generate.py)', [null, 4.2]], ['dispatch rate', [4.7, 4.37]]]);
 // One line needs no legend; two do.
