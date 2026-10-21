@@ -5,19 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows="allow-deadlock-prone=true" %s 2>&1 >/dev/null | FileCheck %s
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false allow-deadlock-prone=true" %s 2>&1 >/dev/null | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
 
-// CHECK-NOT: error
-// CHECK:     warning: Packet flows into receivers they share can deadlock
-// CHECK-NOT: error
+// NOERR-NOT: {{warning|error}}
 
-// Ten circuit flows and packets 3 and 13 cross from row 3 to row 2, which has
-// twelve channels. The tree from (2, 2) DMA:1 takes id 28 north by one master
-// port to meet the tree from (2, 1) DMA:3 and branches back down at (2, 3),
-// a thirteenth. No packet stream crosses the link left overused, but packets
-// cross its boundary, so the router relaxes how it routes them; it routes once
-// the trees stop meeting. The hazard warning is the design's own.
+// Ten circuit flows and packets 3 and 13 fill the twelve channels from row 3
+// to row 2. The id 28 trees from (2, 1) DMA:3 and (2, 2) DMA:1 share two
+// receivers, so they meet; (2, 2) DMA:1's id 14 conflicts with (2, 1) DMA:3,
+// so it leaves as a part of its own and the trees meet at (2, 1), below the
+// boundary. Trunking id 28 north to meet and coming back down takes a
+// thirteenth channel.
 // Reduced from router_mutation.py npu1 seed 207460330 (port-cap).
 
 module {

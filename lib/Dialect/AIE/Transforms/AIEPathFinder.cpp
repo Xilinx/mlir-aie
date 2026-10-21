@@ -2623,6 +2623,12 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                    << describeTilePort(pair.second.coords, pair.second.port)
                    << "\n");
         st.splitOwnIds(pair);
+        // Trunks steered them to where they could not meet; split, they can.
+        for (int a : st.partsOf.at(pair.first))
+          for (int b : st.partsOf.at(pair.second)) {
+            st.trunked.erase({a, b});
+            st.trunked.erase({b, a});
+          }
         split = true;
       }
     st.meetBlocked.clear();
