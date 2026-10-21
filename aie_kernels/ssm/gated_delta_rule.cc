@@ -46,6 +46,9 @@ constexpr bool Vec = AIE_ARCH_AIE2P || Dk > 2;
 // Where a row scalar's second set starts (b after a, k's norm after q's):
 // with at most 16 rows, both sets share one vector.
 constexpr int RS = Vec && R <= L ? L : RP;
+// v starts 2 R Dk bf16 into the block; its rows load in place only from a
+// 32-byte boundary.
+constexpr bool V_IN_PLACE = Vec && Dv == P && (2 * R * Dk) % 16 == 0;
 template <unsigned N>
 using acc_t = aie::accum<accfloat, N>;
 template <unsigned N>
@@ -323,9 +326,10 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
       continue;
     }
     const bfloat16 *kt = k + t * Dk, *qt = q + t * Dk;
-    // v's row in place when it fills whole vectors, else padded with zeros.
+    // v's row in place when it fills whole aligned vectors, else copied and
+    // padded with zeros.
     const bfloat16 *vr = v_row;
-    if constexpr (Vec && Dv == P)
+    if constexpr (V_IN_PLACE)
       vr = v + t * Dv;
     else
       for (int j = 0; j < Dv; j++)

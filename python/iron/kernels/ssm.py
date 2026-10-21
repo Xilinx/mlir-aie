@@ -322,14 +322,24 @@ def gated_delta_rule(
         rows: Rows of a block.
         key_dim: The q and k width.
         value_dim: The v width, or a slice of it: the state's columns are
-            independent.
+            independent. ``rows * value_dim`` is even, so the block and y
+            are whole 4-byte words, as a DMA moves them.
         blocks: Blocks to a head.
 
     Returns:
         The kernel.
+
+    Raises:
+        ValueError: A dimension is not a positive integer, or
+            ``rows * value_dim`` is odd.
     """
     geometry = dict(rows=rows, key_dim=key_dim, value_dim=value_dim, blocks=blocks)
     _positive("gated_delta_rule", **geometry)
+    if rows * value_dim % 2:
+        raise ValueError(
+            f"gated_delta_rule: rows * value_dim ({rows} * {value_dim}) must be "
+            "even, so the block and y are whole 4-byte words"
+        )
     return _make_extern(
         "gated_delta_rule",
         _kernel_source("ssm/gated_delta_rule.cc"),

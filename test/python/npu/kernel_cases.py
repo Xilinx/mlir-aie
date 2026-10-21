@@ -586,6 +586,14 @@ CASES: list[Case] = [
         scalars=(3,),
         tag="edge-odd-dims",
     ),
+    # v 272 bytes into the block, off the 32-byte line its in-place loads need.
+    check(
+        "gated_delta_rule",
+        dict(rows=4, key_dim=17, value_dim=16, blocks=2),
+        calls=4,
+        scalars=(4,),
+        tag="edge-unaligned-v",
+    ),
     # EmbeddingGemma 2's image budget: 42x57 patches in 10 blocks, padded.
     Case("patch_positions", {}, calls=10, scalars=(10, 672, 912), smoke=True),
     Case("patch_positions", dict(cores=8), calls=8, scalars=(8, 480, 1056)),

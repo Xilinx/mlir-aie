@@ -333,10 +333,16 @@ def experts(
         top_k: Experts each row chooses.
         rows: Rows of a weight tile. A shim BD repeats a dimension at most 64
             times, so at Qwen3 shapes it is 32 or more.
-        cols: Columns of a weight tile.
+        cols: Columns of a weight tile, a multiple of 16.
 
     Returns:
         The kernel.
+
+    Raises:
+        ValueError: A dimension is not a positive integer, a tile does not
+            divide the weights, ``cols`` is not a multiple of 16 (the
+            kernel's vector width; ``hidden`` is then too, so the ids after
+            x are word aligned), or ``top_k`` exceeds ``num_experts``.
     """
     geometry = dict(
         hidden=hidden,
@@ -352,11 +358,10 @@ def experts(
             "experts: rows must divide 2 * width and hidden, and cols must "
             "divide hidden and width"
         )
-    if hidden % 2 or top_k > num_experts:
-        raise ValueError(
-            "experts: hidden must be even, so the ids are word aligned, and "
-            "top_k at most num_experts"
-        )
+    if cols % 16:
+        raise ValueError(f"experts: cols ({cols}) must be a multiple of 16")
+    if top_k > num_experts:
+        raise ValueError("experts: top_k must be at most num_experts")
     return _make_extern(
         "experts",
         _kernel_source("moe/experts.cc"),
