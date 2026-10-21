@@ -1,0 +1,3 @@
+chain_persist_grow_mh: 4/4 tokens PASS  (on-chip feedback + GROWING KV + per-position rope)
+per-dispatch: n=20 median=190.37 ms min=188.99 max=191.48 std=0.75
+per-token:    47.59 ms  (21.01 tok/s)

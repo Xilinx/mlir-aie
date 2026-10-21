@@ -72,7 +72,7 @@ def main():
     print(
         f"prompt {len(prompt)} tokens, generated {len(out)}: "
         f"TTFT {ttft * 1e3:.1f} ms ({len(prompt) / ttft:.1f} prompt tok/s), "
-        f"decode {tps:.2f} tok/s"
+        + (f"decode {tps:.2f} tok/s" if tps is not None else "decode n/a")
     )
     if not opts.check:
         return 0

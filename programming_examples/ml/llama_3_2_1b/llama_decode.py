@@ -412,7 +412,8 @@ class Decoder:
 
         Returns:
             (the generated token ids, seconds to the first one, generated
-            tokens per second after it).
+            tokens per second after it, or None when the first one stopped
+            the generation).
 
         Raises:
             ValueError: The prompt and max_new do not fit the KV cache.
@@ -464,5 +465,5 @@ class Decoder:
                     break
             pos += n
         done = time.perf_counter()
-        tps = (len(out) - 1) / (done - first_at) if len(out) > 1 else 0.0
+        tps = (len(out) - 1) / (done - first_at) if len(out) > 1 else None
         return out, first_at - start, tps

@@ -1,0 +1,4 @@
+The capital of France is Paris. It is the most visited city in the world. It is also the most expensive city in the world. Paris is a city of art, culture,
+prompt 6 tokens, generated 32: TTFT 125.9 ms (47.7 prompt tok/s), decode 20.77 tok/s
+check: 29/32 tokens are numpy_llama_ref's argmax
+oracle: 32/32 generated tokens pass
