@@ -19,27 +19,22 @@ AMD Quark XINT8 with power-of-two scales, accumulators seeded with the bias,
 ## Weights
 
 The checkpoint is AGPL-3.0, so nothing derived from it is kept in the
-repository. `export_yolo26n.py` fetches `yolo26n.pt`, exports it to ONNX and
-quantizes it into `$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n` (default `/srv/yolo26n`),
-calibrating on coco128, which it also downloads there; both downloads are
-checked against sha256 digests pinned in the script. `gen_yolo_data.py`
-extracts the integer parameters into `data/yolo26n_params.npz`. Exporting
-needs the extras in `requirements.txt` (ultralytics and amd-quark) and
-extracting needs onnx and onnxruntime, pinned exactly since the extracted
-tables are ONNX Runtime's own outputs. Running on real images needs opencv-python, and onnxruntime
-to compare with the ONNX graph too.
+repository. `make export` downloads `yolo26n.pt` and the coco128 images,
+checks both against sha256 digests pinned in `export_yolo26n.py`, exports
+the model to ONNX and quantizes it, calibrating on coco128. Everything goes
+to `$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n`, so point that variable at a
+directory you can write to (unset, it is `/srv`). `make data` then extracts
+the integer parameters into `data/yolo26n_params.npz`.
 
 The lit tests need no checkpoint: `--synthetic SEED` swaps in seeded weights
 with the same layout, and random images.
 
 ## Quick start
 
-amd-quark needs Python 3.11 to 3.13. Install torch from the CPU index first,
-so ultralytics does not pull in CUDA:
-
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements.txt
+pip install -r ../../../python/requirements_ml.txt  # torch (CPU), onnx, onnxruntime, opencv
+pip install -r requirements.txt     # export only: ultralytics, amd-quark (Python 3.11-3.13)
+export IRON_EXAMPLE_WEIGHTS_DIR=$HOME/models
 make export                 # checkpoint, FP32 and XINT8 ONNX, coco128
 make data                   # data/yolo26n_params.npz
 make verify_oracle N=128    # numpy oracle vs ONNX Runtime, tensor by tensor (see Accuracy)
