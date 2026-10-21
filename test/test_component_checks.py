@@ -57,26 +57,6 @@ ort: 8/8 images match onnxruntime
 """
 YOLO_TIMED_OUTPUT = YOLO_OUTPUT + "per-image: 78365.1 us (12.76 fps) at batch 1\n"
 YOLO_BATCHED_OUTPUT = YOLO_OUTPUT + "per-image: 12727.7 us (78.57 fps) at batch 8\n"
-# What test_chain_persist_grow_mh.py --n-layers 2 --time prints on an npu2
-# over the real weights: the checked dispatch, then its timing.
-LLAMA_OUTPUT = """\
-chain_persist_grow_mh shape.n_layers=2 passes=[4] P0=64 KSET=8  temp=0.0 topk=0 seed=0  fixture_seed=0  dispatches=1 repeats=1
-  token 0 (pos 64): PASS  dev=100566 ref=100566  [exact]
-  token 1 (pos 65): PASS  dev=41500 ref=41500  [exact]
-  token 2 (pos 66): PASS  dev=13933 ref=13933  [exact]
-  token 3 (pos 67): PASS  dev=35926 ref=35926  [exact]
-  KV cache: PASS
-  final hidden: PASS
-
-chain_persist_grow_mh: 4/4 tokens PASS  (on-chip feedback + GROWING KV + per-position rope)
-"""
-LLAMA_TIMED_OUTPUT = LLAMA_OUTPUT + """\
-timing: warmup x2, time x4  (4 tokens/dispatch)
-per-dispatch: n=4 median=94.17 ms min=93.25 max=94.22 std=0.41
-per-token:    23.54 ms  (42.48 tok/s)
-bytes/token:  388.6 MB  DMA floor 3.24 ms
-ratio:        7.27x  -> compute-bound
-"""
 
 
 def load(name):
@@ -105,11 +85,6 @@ def hw():
 @pytest.fixture(scope="module")
 def yolo():
     return load("yolo26n_hw")
-
-
-@pytest.fixture(scope="module")
-def llama():
-    return load("llama_chain_hw")
 
 
 def sweep(tmp_path, *args):
@@ -532,49 +507,6 @@ def test_timed_yolo26n_runs_report_each_batch(yolo):
         (ROOT / "utils/kernel_checks/thresholds.json").read_text(encoding="utf-8")
     )
     assert {r["name"].rsplit("/", 1)[1] for r in rows} <= thresholds.keys()
-
-
-def test_a_llama_run_whose_tokens_all_match_passes(llama):
-    assert llama.parse_correctness(LLAMA_TIMED_OUTPUT, 0) == {
-        "passed": True,
-        "tokens_passed": 4,
-        "tokens_total": 4,
-    }
-    assert llama.parse_timing(LLAMA_TIMED_OUTPUT) == {
-        "ms_per_token": 23.54,
-        "tok_s": 42.48,
-        "ratio": 7.27,
-        "bound": "compute-bound",
-    }
-
-
-def test_a_llama_token_that_differs_fails_the_run(llama):
-    out = LLAMA_OUTPUT.replace(
-        "token 3 (pos 67): PASS  dev=35926", "token 3 (pos 67): FAIL  dev=35927"
-    ).replace("4/4 tokens PASS", "3/4 tokens PASS")
-    got = llama.parse_correctness(out, 1)
-    assert not got["passed"]
-    assert (got["tokens_passed"], got["tokens_total"]) == (3, 4)
-
-
-@pytest.mark.parametrize(
-    "out, returncode",
-    [
-        # A run that stops before its summary counts its token lines.
-        (LLAMA_OUTPUT.split("\nchain_persist_grow_mh:")[0], 0),
-        (LLAMA_OUTPUT, 1),
-        ("", 0),
-    ],
-    ids=["no-summary", "nonzero-exit", "no-output"],
-)
-def test_a_llama_run_without_a_clean_summary_fails(llama, out, returncode):
-    got = llama.parse_correctness(out, returncode)
-    assert not got["passed"]
-    assert got["tokens_passed"] == out.count(": PASS  dev=")
-
-
-def test_an_untimed_llama_run_has_no_timing(llama):
-    assert set(llama.parse_timing(LLAMA_OUTPUT).values()) == {None}
 
 
 def test_the_hardware_check_places_at_the_designs_own_default_effort(hw):

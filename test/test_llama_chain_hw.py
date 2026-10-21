@@ -65,11 +65,20 @@ def test_a_decode_that_checked_no_token_fails(llama):
     assert not got["passed"]
 
 
+def test_a_decode_that_stopped_before_its_summary_fails(llama):
+    out = output("decode_pass").split("\nchain_persist_grow_mh:")[0]
+    got = llama.parse_correctness(out, 0)
+    assert (got["tokens_passed"], got["tokens_total"]) == (4, 4)
+    assert not got["passed"]
+
+
 def test_the_timed_decode_publishes_its_statistic(llama):
     timing = llama.parse_timing(output("timed_pass"), 0)
     assert list(timing) == [llama.DISPATCH_RATE_AT]
     t = timing[llama.DISPATCH_RATE_AT]
-    assert t["min_ms"] == pytest.approx(t["ms_per_token"] * t["tokens_per_dispatch"], rel=1e-3)
+    assert t["min_ms"] == pytest.approx(
+        t["ms_per_token"] * t["tokens_per_dispatch"], rel=1e-3
+    )
     assert t["tok_s"] == pytest.approx(1000 / t["ms_per_token"], rel=1e-3)
     assert t["n_iters"] == llama.N_ITERS
     assert llama.timing_sane(timing)
@@ -120,8 +129,11 @@ def test_generate_rows_publish_only_after_its_oracle_passed(llama):
     failed = llama.aggregate(
         correctness, timing, llama.parse_generate(output("generate_pass"), 1), {}, {}
     )
-    names = {r["name"].rsplit("/", 1)[1] for r in passed}
-    assert {"ttft_ms", "decode_tok_s", "greedy_agree"} <= names
+    names = {r["name"].rsplit("/", 1)[1]: r for r in passed}
+    assert names["ttft_ms"]["value"] == 125.9
+    assert names["decode_tok_s"]["value"] == 20.77
+    assert names["greedy_agree"]["value"] == 29
+    assert names["greedy_agree"]["range"].startswith("of 32")
     assert not {"ttft_ms", "decode_tok_s", "greedy_agree"} & {
         r["name"].rsplit("/", 1)[1] for r in failed
     }
