@@ -795,12 +795,12 @@ def judge(e, expect, hops_on, seed):
     # With allow-deadlock-prone the first routing with only that hold cycle
     # stands; without it the router tries further, and has to succeed where
     # a routing without the cycle exists.
-    if (
-        rp.shared_receiver_warning(p.stderr) is not None
-        and rp.aie_opt(e.emit(), hops_on, timeout=120, strict=True).returncode
-        and rp.strict_witness(e, rp.Analysis(e)) is not None
-    ):
-        return "strict-miss", "fails without allow-deadlock-prone, needlessly"
+    if rp.shared_receiver_warning(p.stderr) is not None:
+        s = rp.aie_opt(e.emit(), hops_on, timeout=120, strict=True)
+        if s.returncode < 0:
+            return "crash", f"strict: {rp.first_error(s.stderr)[:300]}"
+        if s.returncode and rp.strict_witness(e, rp.Analysis(e)) is not None:
+            return "strict-miss", "fails without allow-deadlock-prone, needlessly"
     return "ok", f"routed ({expect})"
 
 
