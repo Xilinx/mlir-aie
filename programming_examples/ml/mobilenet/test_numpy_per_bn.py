@@ -11,11 +11,11 @@ Usage:
 
 The fixtures use their OWN scales (bottleneck_A's scale_factors_per_bn.json
 and each chain's scale_factors.json). This proves every kernel
-arithmetic matches brevitas; the only remaining gap on the full mobilenet
-network (max=2 vs golden) comes from blocks that don't have standalone
-fixtures: init / bn0 / post_l1 / post_l2.
+arithmetic matches brevitas; mobilenet_numpy's docstring explains the full
+network's gap to its golden (max 3, in post_l1's average pool).
 """
 
+import dataclasses
 import json
 import os
 import shutil
@@ -101,6 +101,35 @@ def main():
             )
             ok = _check(f"{name} (per-bn)", out, gold)
             all_ok &= ok
+
+    # ------------------------------------------------------------------
+    # bottleneck_A: bn0 → bn9 chain, against a golden generated without
+    # bn5's residual (the device and the other checks keep it).
+    # ------------------------------------------------------------------
+    print("\n=== bottleneck_A (bn0 -> bn9 chain) ===")
+    with open(A_DATA + "scale_factors_fused.json") as f:
+        fused_sf = json.load(f)
+    x = _hwc(
+        np.loadtxt(A_DATA + "before_ifm_mem_fmt_1x1.txt", delimiter=",", dtype=np.int64)
+        .astype(np.uint8),
+        16,
+        112,
+        112,
+    )
+    for name in ("bn0", "bn1", "bn2", "bn3", "bn4", "bn5", "bn6", "bn7", "bn8", "bn9"):
+        blk = nsblock(name)
+        if name == "bn5":
+            blk = dataclasses.replace(blk, skip=False)
+        x = _run_block(blk, x, fused_sf, A_DATA)
+    gold = _hwc(
+        np.loadtxt(A_DATA + "golden_output.txt", delimiter=",", dtype=np.int64)
+        .astype(np.uint8)
+        .view(np.int8),
+        80,
+        14,
+        14,
+    )
+    all_ok &= _check("bn0->bn9 chain, bn5 unskipped", x, gold)
 
     # ------------------------------------------------------------------
     # bottleneck_B: bn10 → bn11 → bn12 chain

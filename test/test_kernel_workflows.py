@@ -319,7 +319,7 @@ def evaluate(expression, context):
     text = expression.strip()
     if text.startswith("${{"):
         text = text[3:-2]
-    text = text.replace("!cancelled()", "True")
+    text = text.replace("!cancelled()", "True").replace("always()", "True")
     text = re.sub(
         r"\b(github|inputs|env)\.(\w+)", lambda m: repr(context[m.group(0)]), text
     )
@@ -349,6 +349,9 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
     assert publishes == (
         event != "pull_request" and ref == "refs/heads/main" and not seeds
     )
+    # Even after the hardware job times out, which GitHub reports as
+    # cancelled: its checks' failed placeholders publish.
+    assert jobs["publish"]["if"].startswith("${{ always() &&")
     designs = [
         step
         for step in jobs["hw-checks"]["steps"]

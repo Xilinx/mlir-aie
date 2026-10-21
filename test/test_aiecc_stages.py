@@ -7,6 +7,8 @@
 import importlib
 import json
 import os
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -84,11 +86,66 @@ def test_an_unknown_edge_is_counted_as_other(checks, tmp_path):
     assert stages.stage_seconds(str(path))["other"] == 0.25
 
 
-def test_no_profile_means_no_stages(checks, tmp_path):
+def test_a_profile_that_is_not_the_compiles_gives_no_stages(checks, tmp_path):
     stages, _ = checks
     missing = str(tmp_path / "missing.json")
-    assert stages.stage_seconds(missing) is None
-    assert stages.stage_rows(missing, 60.5, "") == {}
+    with pytest.raises(stages.ProfileError, match="no profile"):
+        stages.stage_seconds(missing)
+    assert stages.stage_rows(missing, 60.5, "_warm") == {
+        "profile_problem_warm": f"no profile at {missing}"
+    }
+    newer = tmp_path / "newer.json"
+    newer.write_text(json.dumps(dict(json.loads(SHIM.read_text()), version=2)))
+    assert stages.stage_rows(str(newer), 60.5, "") == {
+        "profile_problem": f"{newer} is version 2, this reads 1"
+    }
+    # aiecc runs inside the timed compile: a profile longer than the whole
+    # compile is another compile's.
+    (problem,) = stages.stage_rows(str(MOBILENET), 12.0, "").values()
+    assert problem.endswith("spans 17.42 s of a 12.00 s compile: not this compile's")
+    # A failed compile has no stages, and nothing to explain.
+    assert stages.stage_rows(missing, None, "") == {}
+
+
+def test_a_command_is_echoed_as_it_runs_and_measured(checks, capfd):
+    stages, _ = checks
+    measured = stages.run_measured(
+        [sys.executable, "-c", "import sys; print('one'); sys.exit(3)"],
+        None,
+        None,
+        60,
+    )
+    assert measured.process.returncode == 3 and measured.process.stdout == "one\n"
+    assert capfd.readouterr().out == "one\n"
+    assert measured.seconds > 0 and measured.peak_rss_mib > 0 and measured.cpu_s > 0
+
+
+def test_a_command_past_its_timeout_is_killed_with_its_children(checks, capfd):
+    stages, _ = checks
+    start = time.perf_counter()
+    measured = stages.run_measured(
+        ["sh", "-c", "echo started; sleep 60 & sleep 60"], None, None, 1
+    )
+    assert time.perf_counter() - start < 30
+    assert measured.process.returncode == stages.TIMED_OUT
+    lines = measured.process.stdout.splitlines()
+    assert lines[0] == "started" and lines[-1].endswith("timed out after 1 s")
+    assert capfd.readouterr().out.splitlines() == lines
+
+
+def test_a_warm_compile_keeps_only_the_kernel_objects_and_headers(checks, tmp_path):
+    stages, _ = checks
+    cache = tmp_path / "cache"
+    for name in ("objects", "pch", "builds", "devices", "final.prj", "0123abcd"):
+        (cache / name).mkdir(parents=True)
+        (cache / name / "kept").write_text("")
+    (cache / "final.xclbin").write_text("")
+    elsewhere = tmp_path / "design.elf"
+    elsewhere.write_text("")
+    stages.clear_for_warm(str(cache), [str(elsewhere), str(tmp_path / "absent")])
+    assert sorted(p.name for p in cache.iterdir()) == ["objects", "pch"]
+    assert (cache / "objects/kept").exists() and (cache / "pch/kept").exists()
+    assert not elsewhere.exists()
 
 
 def test_llama_publishes_each_stage_cold_and_warm(checks):

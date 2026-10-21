@@ -17,7 +17,16 @@ import aie.iron as iron
 import numpy as np
 import pyxrt
 from aie.dialects._aie_enum_gen import AIETileType
-from aie.iron import CompileTime, Flow, Program, Runtime
+from aie.iron import (
+    CompileTime,
+    ExternalFunction,
+    Flow,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+)
+from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.utils import DefaultNPURuntime
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
@@ -25,6 +34,7 @@ from aie.utils.npukernel import NPUKernel
 
 N = 1024
 SLICE = 256
+TILE = 64
 
 
 def copy_slice(*, index: CompileTime[int]):
@@ -41,6 +51,30 @@ def copy_slice(*, index: CompileTime[int]):
     rt = Runtime(seq, [in_ty, out_ty])
     rt.add_flow(link)
     return Program(iron.get_current_device(), rt).resolve_program()
+
+
+def add_bias(*, func: CompileTime[object]):
+    ty = np.ndarray[(N,), np.dtype[np.int32]]
+    tile = np.ndarray[(TILE,), np.dtype[np.int32]]
+    of_in = ObjectFifo(tile, name="in")
+    of_out = ObjectFifo(tile, name="out")
+
+    def core(of_in, of_out, fn):
+        for _ in range_(N // TILE):
+            a = of_in.acquire(1)
+            b = of_out.acquire(1)
+            fn(a, b)
+            of_in.release(1)
+            of_out.release(1)
+
+    worker = Worker(core, fn_args=[of_in.cons(), of_out.prod(), func])
+
+    def seq(A, C, feed, drain):
+        feed.fill(A)
+        drain.drain(C, wait=True)
+
+    rt = Runtime(seq, [ty, ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 class TwoPerXclbin(CompilableDesign):
@@ -80,3 +114,36 @@ def test_a_chain_of_one_keeps_the_default_kernel():
         [CompilableDesign(copy_slice, compile_kwargs={"index": 1})], "one"
     )
     assert kernel == "MLIR_AIE" and design.aiecc_flags == ()
+
+
+def test_an_image_rebuilt_in_place_rebuilds_the_image_chained_onto_it(tmp_path):
+    header = tmp_path / "bias.h"
+    tile = np.ndarray[(TILE,), np.dtype[np.int32]]
+    host = np.random.default_rng(6).integers(-1000, 1000, N, dtype=np.int32)
+    for bias in (1, 2):
+        header.write_text(f"#define BIAS {bias}\n")
+        func = ExternalFunction(
+            "add_bias",
+            source_string=(
+                '#include "bias.h"\n'
+                'extern "C" void add_bias(int *a, int *b) {\n'
+                f"  for (int i = 0; i < {TILE}; i++) b[i] = a[i] + BIAS;\n"
+                "}\n"
+            ),
+            arg_types=[tile, tile],
+            include_dirs=[str(tmp_path)],
+        )
+        designs = [
+            CompilableDesign(add_bias, compile_kwargs={"func": func}),
+            CompilableDesign(copy_slice, compile_kwargs={"index": 0}),
+        ]
+        (design, image, kernel), _ = TwoPerXclbin.chain(designs, "bias")
+        a = iron.tensor(host, dtype=np.int32, device="npu")
+        c = iron.zeros(N, dtype=np.int32, device="npu")
+        entry = design.get_cache_entry()
+        assert entry is not None
+        DefaultNPURuntime.load_and_run(
+            NPUKernel(image, entry.insts, kernel_name=kernel), [a, c]
+        )
+        c.to("cpu")
+        np.testing.assert_array_equal(c.numpy(), host + bias)
