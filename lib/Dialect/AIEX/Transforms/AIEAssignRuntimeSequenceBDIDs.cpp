@@ -115,6 +115,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   // The BD ids each device's static DMAs take, by tile. Generators restart
   // at every PDI load, so this is read once per tile per load.
+  //
+  // Known limitation: after a load_pdi of another device, this and
+  // loopingStartsOf read that sibling device's DMA programs, which races with
+  // the sibling's own nested pipeline (aie-dma-to-npu adds globals to its
+  // block) once devices run in parallel. The MLIR aiecc builds against runs
+  // them one at a time today. Splitting the nest does not help, since the pass
+  // manager merges adjacent device nests; a parallel build needs these
+  // summaries computed at module scope before the nest.
   llvm::DenseMap<Operation *,
                  llvm::DenseMap<AIE::TileID, SmallVector<uint32_t>>>
       staticBdIds;
