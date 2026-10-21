@@ -74,7 +74,7 @@ python -m aie.utils.compile.remarks --target aie2p --cases test/python/npu/kerne
 - `--cases` compiles exactly the builds the cases run, named by case
   (4c8c4d91ff4); it first prints `cases: N builds for M cases ...`, and a
   case missing from M is a finding. Without it remarks builds only factory
-  defaults and `.dtypes`, which missed every stride-2 and sized `-D` build
+  defaults and `kernels.DTYPES`, which missed every stride-2 and sized `-D` build
   of the conv kernels. For a shape no case has, use
   `--build FACTORY:KEY=VALUE,...` (repeatable; 3dfa82d81af).
 - Read the contract's `trace=`. Only `Trace.whole_call()` gets a cycles row.
