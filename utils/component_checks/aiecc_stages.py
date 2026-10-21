@@ -59,6 +59,11 @@ STAGE_METRICS = (
 )
 # aiecc's own time outside its graph, from a profile with process_ms.
 AIECC_OWN_METRIC = "compile_aiecc_outside_graph_s"
+# The wall time of compiling the external kernel objects, from the JIT's
+# kernel profile: the "kernels" stage shows only what aiecc waited of it.
+KERNEL_OBJECTS_METRIC = "compile_kernel_objects_s"
+# How many of the slowest kernel objects a compile's detail names.
+SLOWEST_KERNELS = 5
 # A cold then warm compile's rows, as every check names them.
 COMPILE_METRICS = (
     "compile_s",
@@ -69,6 +74,8 @@ COMPILE_METRICS = (
     *(f"{m}_warm" for m in STAGE_METRICS),
     AIECC_OWN_METRIC,
     f"{AIECC_OWN_METRIC}_warm",
+    KERNEL_OBJECTS_METRIC,
+    f"{KERNEL_OBJECTS_METRIC}_warm",
 )
 # xrt-smi's power modes, and "any" to accept whichever is set.
 PMODES = ("any", "default", "powersaver", "balanced", "performance", "turbo")
@@ -197,6 +204,44 @@ def stage_rows(profile_path: str, compile_s: float | None, suffix: str) -> dict:
     if "process_s" in stages:
         seconds[AIECC_OWN_METRIC] = stages["process_s"] - stages["wall_s"]
     return {f"{k}{suffix}": round(v, 2) for k, v in seconds.items()}
+
+
+def kernel_rows(profile_path: str, compile_s: float | None, suffix: str) -> dict:
+    """Return one compile's kernel-object compile time and what took it.
+
+    Args:
+        profile_path: the JIT's kernel profile for the compile
+            (``aie.utils.compile.utils.KERNEL_PROFILE_NAME``, beside aiecc's).
+        compile_s: the whole compile's wall time, or None if it failed.
+        suffix: ``""`` for a cold compile, ``"_warm"`` for a warm one.
+
+    Returns:
+        ``{KERNEL_OBJECTS_METRIC + suffix: wall seconds, "kernel_objects" +
+        suffix: {jobs, compiled, cached, slowest}}``, ``slowest`` naming the
+        ``SLOWEST_KERNELS`` objects that took longest; empty when the compile
+        failed, and ``{"kernel_profile_problem" + suffix: why}`` without a
+        profile.
+    """
+    if compile_s is None:
+        return {}
+    if not os.path.exists(profile_path):
+        print(f"no kernel compile time{suffix}: no profile at {profile_path}")
+        return {f"kernel_profile_problem{suffix}": f"no profile at {profile_path}"}
+    with open(profile_path) as f:
+        profile = json.load(f)
+    kernels = sorted(profile["kernels"], key=lambda k: -k["seconds"])
+    return {
+        f"{KERNEL_OBJECTS_METRIC}{suffix}": round(profile["wall_s"], 2),
+        f"kernel_objects{suffix}": {
+            "jobs": profile["jobs"],
+            "compiled": sum(not k["cached"] for k in kernels),
+            "cached": sum(k["cached"] for k in kernels),
+            "slowest": [
+                {"object": k["object"], "seconds": round(k["seconds"], 2)}
+                for k in kernels[:SLOWEST_KERNELS]
+            ],
+        },
+    }
 
 
 class Measured(NamedTuple):

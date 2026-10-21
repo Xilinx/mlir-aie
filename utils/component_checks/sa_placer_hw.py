@@ -18,8 +18,8 @@ compile-only mode) and every batch runs from it. It compiles twice in the
 same fresh NPU_CACHE_HOME: cold (every cache empty, same as any first-time
 compile), then warm, after aiecc_stages.clear_for_warm (only the kernel
 objects and their precompiled headers kept), which is what an edit to the
-design, not its kernels, costs. Both record wall time and the largest
-process's peak RSS. Per batch it records, per image, the fastest launch's
+design, not its kernels, costs. Both record wall time, the largest
+process's peak RSS, aiecc's stages and the kernel objects' compile time. Per batch it records, per image, the fastest launch's
 dispatch time, the NPU time (the dispatch less the same run's empty-dispatch
 baseline), the host overhead around it and the host's whole end-to-end call
 (parse_run); the run builds its own copy of the design through the JIT path,
@@ -53,12 +53,13 @@ import sys
 import tempfile
 
 from aie.utils.benchmark import preflight, provenance
-from aie.utils.compile.utils import AIECC_PROFILE_NAME
+from aie.utils.compile.utils import AIECC_PROFILE_NAME, KERNEL_PROFILE_NAME
 from aiecc_stages import (
     add_pmode_argument,
     clear_for_warm,
     compile_rows,
     compile_stats,
+    kernel_rows,
     refuse,
     row,
     run_measured,
@@ -198,9 +199,9 @@ def compile_cold_warm(
     ]
     cold = run_measured(cmd, _ML_DIR, env, timeout)
     profile = os.path.join(cache_dir, "final.prj", AIECC_PROFILE_NAME)
-    stages_cold = stage_rows(
-        profile, cold.seconds if cold.process.returncode == 0 else None, ""
-    )
+    kernels = os.path.join(cache_dir, "final.prj", KERNEL_PROFILE_NAME)
+    cold_s = cold.seconds if cold.process.returncode == 0 else None
+    stages_cold = stage_rows(profile, cold_s, "") | kernel_rows(kernels, cold_s, "")
     placed = sorted(glob.glob(os.path.join(cache_dir, "devices", "*", "placed.mlir")))
     placement = None
     if placed:
@@ -208,8 +209,9 @@ def compile_cold_warm(
             placement = placement_of(f.read())
     clear_for_warm(cache_dir)
     warm = run_measured(cmd, _ML_DIR, env, timeout)
-    stages_warm = stage_rows(
-        profile, warm.seconds if warm.process.returncode == 0 else None, "_warm"
+    warm_s = warm.seconds if warm.process.returncode == 0 else None
+    stages_warm = stage_rows(profile, warm_s, "_warm") | kernel_rows(
+        kernels, warm_s, "_warm"
     )
     return {
         **stages_cold,
