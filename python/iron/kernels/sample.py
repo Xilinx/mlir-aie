@@ -101,7 +101,9 @@ def select_streams(slice_size: int, chunk: int) -> int:
     return 1 if chunk == slice_size else SELECT_PASSES
 
 
-def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction:
+def sample_select(
+    *, slice_size=32064, chunk=5344, k_max=64, valid=None
+) -> ExternalFunction:
     """One column's half of sampling: its slice's summary, for ``sample_combine``.
 
     ``sample_select(x, row, state, summary)`` takes ``chunk`` bf16 logits per
@@ -111,9 +113,18 @@ def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction
     ``state`` is ``SELECT_STATE_WORDS`` int32 of worker-local memory, zero
     before the first call; the last call of a position leaves it ready for the
     next. ``summary`` is ``summary_words(slice_size, k_max)`` int32.
+    ``valid`` (default ``slice_size``) is how many of the slice's logits are
+    tokens'; the rest pad it to whole words, and the kernel writes them -inf
+    in ``x`` so none is drawn.
     """
     _check_slice("sample_select", slice_size, k_max)
     _positive("sample_select", chunk=chunk)
+    valid = slice_size if valid is None else valid
+    if not k_max <= valid <= slice_size:
+        raise ValueError(
+            f"sample_select: valid ({valid}) must be from k_max ({k_max}) to "
+            f"slice_size ({slice_size})"
+        )
     if slice_size % chunk:
         raise ValueError("sample_select: chunk must divide slice_size")
     if chunk % 2:
@@ -132,10 +143,11 @@ def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction
             f"-DSAMPLE_SLICE={slice_size}",
             f"-DSAMPLE_CHUNK={chunk}",
             f"-DSAMPLE_K_MAX={k_max}",
+            f"-DSAMPLE_VALID={valid}",
         ],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            roles=(In, In, InOut, InOut),
+            roles=(In if valid == slice_size else InOut, In, InOut, InOut),
         ),
     )
 

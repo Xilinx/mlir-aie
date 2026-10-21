@@ -56,6 +56,11 @@ IEEE_FLOAT = (
     "subnormal",
 )
 
+# Matrix data without "max": 3e38 operands sum to inf, and what an epilogue's
+# activation (tanh's AIE2 LUT takes a bounded domain) or a bf16 product
+# emulated in bfp16 makes of inf is left open, as for bfp16ebs8 operands.
+FINITE_MATRIX = ("random", "zeros", "ones", "alternating")
+
 
 def check(factory: str, kwargs: dict | None = None, calls: int = 4, **opts) -> Case:
     """A case the device tests check and the performance run does not time."""
@@ -135,6 +140,18 @@ CASES: list[Case] = [
         tag="keys-wider",
         smoke=True,
     ),
+    # Finer probability steps than YOLO's: quotients past 128 saturate at 127.
+    *(
+        check(
+            "attention_i8",
+            calls=2,
+            scalars=(91, 6, 8, prob_shift, out_shift),
+            tag=f"prob-shift-{prob_shift}",
+        )
+        for prob_shift, out_shift in ((8, 8), (10, 10), (30, 14))
+    ),
+    # An out_shift of 3 saturates about a third of the outputs.
+    check("attention_i8", calls=2, scalars=(91, 6, 8, 7, 3), tag="out-shift-clip"),
     # YOLO26n's SPPF pool: a 20-pixel row (4 at a time) and a 64-pixel one.
     Case("maxpool2d", dict(input_width=20, channels=128), calls=4, smoke=True),
     check("maxpool2d", dict(input_width=64, channels=16), calls=4, tag="width-64"),
@@ -576,6 +593,14 @@ CASES: list[Case] = [
         scalars=(3,),
         tag="edge-odd-dims",
     ),
+    # v 272 bytes into the block, off the 32-byte line its in-place loads need.
+    check(
+        "gated_delta_rule",
+        dict(rows=4, key_dim=17, value_dim=16, blocks=2),
+        calls=4,
+        scalars=(4,),
+        tag="edge-unaligned-v",
+    ),
     # EmbeddingGemma 2's image budget: 42x57 patches in 10 blocks, padded.
     Case("patch_positions", {}, calls=10, scalars=(10, 672, 912), smoke=True),
     Case("patch_positions", dict(cores=8), calls=8, scalars=(8, 480, 1056)),
@@ -645,8 +670,7 @@ CASES: list[Case] = [
         check(
             "fused_mm",
             dict(dim_k=48, epilogue=mode),
-            # Keep tanh's AIE2 LUT input in its representable domain.
-            data_cases=("random", "zeros", "ones", "alternating"),
+            data_cases=FINITE_MATRIX,
         )
         for mode in ("gelu", "silu", "sigmoid")
     ],
@@ -654,7 +678,7 @@ CASES: list[Case] = [
     check(
         "fused_mm",
         dict(dim_k=48, epilogue="silu", clamp=(-0.125, 0.75)),
-        data_cases=("random", "zeros", "ones", "alternating"),
+        data_cases=FINITE_MATRIX,
     ),
     # The core's power-up rounding, and the gelu of FastFlowLM's shipped mm
     # overlay, which rounds after each step.
@@ -662,7 +686,7 @@ CASES: list[Case] = [
     check(
         "fused_mm",
         dict(dim_k=48, epilogue="gelu", rounding="floor", gelu="bf16_steps"),
-        data_cases=("random", "zeros", "ones", "alternating"),
+        data_cases=FINITE_MATRIX,
     ),
     # Prepacked bfp16ebs8 B. The first is amd/IRON's aie2p flm GEMM tile
     # (M64, MA32, N64, CT_K128, 8x8x8, OUT_CHUNK 512), so its k step and
@@ -695,7 +719,7 @@ CASES: list[Case] = [
             bfp16_b=True,
         ),
         devices=("npu2",),
-        data_cases=("random", "zeros", "ones", "alternating"),
+        data_cases=FINITE_MATRIX,
     ),
     # The same tile as IRON builds it to match the shipped overlay: every
     # mode compiled in, floor rounding, and the overlay's gelu.
@@ -715,7 +739,7 @@ CASES: list[Case] = [
             bfp16_b=True,
         ),
         devices=("npu2",),
-        data_cases=("random", "zeros", "ones", "alternating"),
+        data_cases=FINITE_MATRIX,
         smoke=True,
     ),
     # IRON's other aie2p flm tile, picked when K is a single 512 slice
@@ -826,7 +850,7 @@ CASES: list[Case] = [
             ),
             calls=4,
             devices=("npu1", "npu2"),
-            data_cases=("random", "zeros", "ones", "alternating"),
+            data_cases=FINITE_MATRIX,
         )
         for mode in ("silu", "gelu")
     ],
@@ -864,7 +888,7 @@ CASES: list[Case] = [
                 **epilogue,
             ),
             devices=devices,
-            data_cases=("random", "zeros", "ones", "alternating"),
+            data_cases=FINITE_MATRIX,
         )
         for shape, epilogue, devices in (
             (
@@ -931,7 +955,7 @@ CASES: list[Case] = [
             emulate_bf16_mmul_with_bfp16=True,
         ),
         devices=("npu2",),
-        data_cases=("random", "zeros", "ones", "alternating"),
+        data_cases=FINITE_MATRIX,
     ),
     # Row-major B on the same emulated macs.
     check(
@@ -2577,7 +2601,7 @@ CASES: list[Case] = [
         ),
         calls=16,
         tag="llama-prefill",
-        data_cases=("random", "zeros", "ones", "alternating"),
+        data_cases=FINITE_MATRIX,
     ),
     # prefill LM head GEMM, B column-major
     Case(
@@ -2593,7 +2617,7 @@ CASES: list[Case] = [
         ),
         calls=16,
         tag="llama-prefill-lm-head",
-        data_cases=("random", "zeros", "ones", "alternating"),
+        data_cases=FINITE_MATRIX,
     ),
     # ffn gate activation
     Case("silu", dict(tile_size=4096), calls=16, tag="llama-prefill"),

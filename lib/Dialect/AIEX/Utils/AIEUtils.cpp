@@ -270,17 +270,16 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
     llvm::raw_string_ostream ts(typeStr);
     p.getType().print(ts);
     ts.flush();
-    // --aie-lower-scratchpad-parameters assigns kind and state_table_idx to
-    // every ScratchpadParameterOp unconditionally (defaulting unused
-    // parameters to Core), so by the time this dump runs both are set.
     auto kind = p.getKind();
-    auto stateTableIdx = p.getStateTableIdx();
-    assert(kind && stateTableIdx &&
-           "expected --aie-lower-scratchpad-parameters to have assigned "
-           "kind/state_table_idx to every parameter");
+    assert(kind && "expected --aie-lower-scratchpad-parameters to have "
+                   "assigned every parameter a kind");
     StringRef kindStr = AIEX::stringifyScratchpadParameterKind(*kind);
-    os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
-       << typeStr << " " << kindStr;
+    os << p.getSymName() << " ";
+    if (std::optional<uint8_t> stateTableIdx = p.getStateTableIdx())
+      os << static_cast<unsigned>(*stateTableIdx);
+    else
+      os << "-";
+    os << " " << typeStr << " " << kindStr;
     auto minValue = p.getMinValue();
     auto maxValue = p.getMaxValue();
     if (minValue && maxValue)

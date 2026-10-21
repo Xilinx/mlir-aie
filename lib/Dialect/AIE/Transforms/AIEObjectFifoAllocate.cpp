@@ -1391,8 +1391,9 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// Everything but a DMA program, which resolveStart checks, that sends on a
-  /// shared source must state one of its flows' headers.
+  /// Each runtime task or transfer that sends on a shared source must state
+  /// one of its flows' headers; a DMA program's start is resolveStart's, and
+  /// other users send nothing.
   LogicalResult checkSharedSourceUsers(RouteEndpointOp endpoint,
                                        ArrayRef<int> ids) {
     auto uses = SymbolTable::getSymbolUses(endpoint, device);
@@ -1400,8 +1401,6 @@ struct AIEObjectFifoAllocatePass
       return success();
     for (const SymbolTable::SymbolUse &use : *uses) {
       Operation *user = use.getUser();
-      if (isa<RouteOp, DMAStartOp, AIEX::NpuDmaWaitOp>(user))
-        continue;
       if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(user)) {
         SmallVector<DMABDOp> bds;
         task.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
@@ -1419,12 +1418,13 @@ struct AIEObjectFifoAllocatePass
           return failure();
         continue;
       }
-      if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user)) {
-        std::optional<PacketInfoAttr> packet = memcpy.getPacket();
-        if (packet && llvm::is_contained(ids, packet->getPktId()))
-          continue;
-      }
-      return user->emitOpError("sends on @")
+      auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user);
+      if (!memcpy)
+        continue;
+      std::optional<PacketInfoAttr> packet = memcpy.getPacket();
+      if (packet && llvm::is_contained(ids, packet->getPktId()))
+        continue;
+      return memcpy.emitOpError("sends on @")
              << endpoint.getSymName()
              << ", a source several packet routes share, which has no one "
                 "header to stamp; it needs a packet header of its own, one of "

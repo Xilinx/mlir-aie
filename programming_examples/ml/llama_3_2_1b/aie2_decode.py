@@ -162,7 +162,7 @@ M_MAX = 4
 # then x in fp32, which the unit (o, down) adds to; then the array outputs of one
 # layer's qkv (per row), gate and up (four row chunks) units (8 cores x
 # OUT_BYTES each); then the final residuals' slot, with the final norm's
-# gamma; then a slot for outputs nothing reads.
+# gamma; then a slot for outputs nothing reads; then the sampler's state.
 SLOTS = ("qkv", "o", "gu", "d")
 OUT_REGION = N_CORES * OUT_BYTES
 OUTS = {"qkv": M_MAX, "g": 1, "u": HD // N_CORES // 256}
@@ -178,31 +178,37 @@ ARRAY_ACT_BYTES = M_MAX * D + M_MAX * 16
 assert ARRAY_ACT_BYTES == M_MAX * ACT_BYTES
 
 
-def stage_layout(n_layers):
-    """Byte offsets in the `stage` buffer.
+class StageLayout:
+    """Byte offsets in the `stage` buffer of an `n_layers` build.
 
-    Args:
-        `n_layers`: Layers.
-
-    Returns:
-        (slot offset by (layer, name), out offset by name, final residual
-        offset, discard offset, total bytes).
+    Attributes:
+        slots: Each (layer, name)'s slot offset.
+        outs: Each array output's offset by name.
+        final: The final residuals' slot.
+        discard: A slot for outputs nothing reads.
+        rng: The sampler's xoshiro state (its first 16 bytes) in a residual
+            row's room, which the lm_head core takes at a dispatch's start
+            and leaves at its end.
+        total: Bytes.
     """
-    slots = {}
-    at = 0
-    for layer in range(n_layers):
-        for name in SLOTS:
-            slots[layer, name] = at
-            at += SLOT_STRIDE
-    outs = {}
-    for name, regions in OUTS.items():
-        outs[name] = at
-        at += regions * OUT_REGION
-    final = at
-    at += SLOT_STRIDE
-    discard = at
-    at += SLOT_STRIDE
-    return slots, outs, final, discard, at
+
+    def __init__(self, n_layers):
+        self.slots = {}
+        at = 0
+        for layer in range(n_layers):
+            for name in SLOTS:
+                self.slots[layer, name] = at
+                at += SLOT_STRIDE
+        self.outs = {}
+        for name, regions in OUTS.items():
+            self.outs[name] = at
+            at += regions * OUT_REGION
+        self.final = at
+        at += SLOT_STRIDE
+        self.discard = at
+        at += SLOT_STRIDE
+        self.rng = at
+        self.total = at + RROW
 
 
 def wblob_layout(n_layers, t):
@@ -276,7 +282,9 @@ def build(
     KSET: CompileTime[int] = 8,
     SILU_GATE_SCALE: CompileTime[float] = SILU_GATE_SCALE,
 ):
-    slots, outs, final_slot, discard, stage_total = stage_layout(N_LAYERS)
+    stage_at = StageLayout(N_LAYERS)
+    slots, outs, final_slot = stage_at.slots, stage_at.outs, stage_at.final
+    discard, stage_total = stage_at.discard, stage_at.total
     off_lanes, off_rope, w_total = wblob_layout(N_LAYERS, T)
     kv_total = kv_words(T, N_LAYERS)
     kv_region = kv_blocks(T) * KV_BLOCK_WORDS
@@ -810,12 +818,16 @@ def build(
         + [np.int32],
     )
     KTS = llama_kernels.topk_sample(kset=KSET)
+    t_lm_params = _i32a(6)
     k_embed = KTS.bind("llama_embed_seed", [t_wlm, t_res, np.int32])
     k_sample = KTS.bind(
         "llama_topk_finalize_packed",
-        [_f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1), _i32a(3), t_rec],
+        [_f32(KSET), _i32a(KSET), _f32(KSET), _i8(KSET * D), _i32a(1), t_lm_params]
+        + [t_rec],
     )
     k_seed = KTS.bind("llama_seed_from_record", [t_rec, t_res])
+    k_rng_take = KTS.bind("llama_rng_take", [t_wlm, t_lm_params])
+    k_rng_put = KTS.bind("llama_rng_put", [t_lm_params, t_res])
 
     def w_lm(
         c_h,
@@ -835,9 +847,14 @@ def build(
         kf,
         ke,
         ks,
+        k_take,
+        k_put,
         *sample,
     ):
         read_sample_params(pr, sample)
+        w = c_w.acquire(1)
+        k_take(w, pr)
+        c_w.release(1)
         bits = rows.read()
         m0 = m0p.read()
         for tok in range_(index_cast(index(), n.read())):
@@ -886,6 +903,9 @@ def build(
                 c_rec.release(1)
             with else_(lm_on):
                 c_h.release(1)
+        s = c_seed.acquire(1)
+        k_put(pr, s)
+        c_seed.release(1)
 
     workers.append(
         Worker(
@@ -902,7 +922,7 @@ def build(
                 Buffer(
                     _i32a(1), initial_value=np.zeros(1, np.int32), name="lm_set_len"
                 ),
-                Buffer(_i32a(3), name="lm_params"),
+                Buffer(t_lm_params, name="lm_params"),
                 p_passes,
                 p_m0,
                 p_rows,
@@ -910,6 +930,8 @@ def build(
                 k_sample,
                 k_embed,
                 k_seed,
+                k_rng_take,
+                k_rng_put,
                 *p_sample,
             ],
             wait_for_parameters=True,
@@ -1010,6 +1032,7 @@ def build(
             )
 
         seed_at = resid_row(slots[0, "o"], 0)
+        step(fill(p_on[0], wlm, linear_tap(stage_total, stage_at.rng, WLM_SLOT)))
         for tok in range(P_MAX):
             on = p_on[tok]
             # Pass 0 runs M_MAX rows, row r > 0 gated by pg{r}; the others one.
@@ -1221,6 +1244,7 @@ def build(
             for j in range(max(0, n_tasks - 2), n_tasks):
                 lm_tgs[j].finish()
             out_tg.finish()
+        step(drain(p_on[0], seed, linear_tap(stage_total, stage_at.rng, RROW)))
 
     rt = Runtime(
         sequence,

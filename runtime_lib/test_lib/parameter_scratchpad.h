@@ -17,7 +17,8 @@
 // A module of several commands, runtime sequences no `aiex.run` calls, gives
 // each its own scratchpad, in which parameters of different commands may
 // share a slot: construct each command's with its `device:sequence` name, and
-// write it with that command's parameters (`names()`) only.
+// write it with that command's parameters (`names()`) only. With no name, the
+// module must have one command.
 //
 //===----------------------------------------------------------------------===//
 
@@ -54,7 +55,8 @@ class ParameterScratchpad {
 public:
 #if TEST_UTILS_USE_XRT
   /// Construct from an XRT run handle (C++ usage), for the parameters of
-  /// `command` (`device:sequence`), or of the whole module when it is empty.
+  /// `command` (`device:sequence`), or of the module's one command when it
+  /// is empty.
   ParameterScratchpad(xrt::run &run, const std::string &paramsPath,
                       const std::string &command = "") {
     parseParams(paramsPath);
@@ -107,6 +109,10 @@ public:
   /// gave it, which keeps its transfers within their buffers; a repeat
   /// parameter's, at most its task's repeat count.
   void writeBits(const std::string &name, uint32_t bits) {
+    if (unslotted.count(name))
+      throw std::runtime_error("ParameterScratchpad: no command reads "
+                               "parameter '" +
+                               name + "', so it has no slot");
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
       throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
@@ -185,13 +191,17 @@ public:
   }
 #endif
 
-  /// The parameters this scratchpad holds: its command's, or all.
+  /// The parameters this scratchpad holds: its command's.
   std::vector<std::string> names() const {
     return std::vector<std::string>(members.begin(), members.end());
   }
 
   /// Read back a parameter's current encoded value (for debugging).
   uint32_t read(const std::string &name) const {
+    if (unslotted.count(name))
+      throw std::runtime_error("ParameterScratchpad: no command reads "
+                               "parameter '" +
+                               name + "', so it has no slot");
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
       throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
@@ -207,6 +217,7 @@ private:
   uint32_t *boMap = nullptr;
   size_t scratchpadSizeBytes = 0;
   std::unordered_map<std::string, uint8_t> paramMap;
+  std::unordered_set<std::string> unslotted;    // params no command reads
   std::unordered_set<std::string> coreParams;   // params with kind="core"
   std::unordered_set<std::string> repeatParams; // params with kind="repeat"
   std::unordered_map<std::string, std::pair<int32_t, int32_t>> ranges;
@@ -218,17 +229,30 @@ private:
   std::vector<JointBound> jointBounds;
   // Each command's parameters, by `device:sequence`.
   std::unordered_map<std::string, std::unordered_set<std::string>> commands;
+  std::vector<std::string> commandNames; // in params.txt order
   std::string command;
   std::unordered_set<std::string> members;
 
   void selectCommand(const std::string &name, const std::string &path) {
     command = name;
     if (name.empty()) {
-      for (const auto &entry : paramMap)
-        members.insert(entry.first);
-      return;
+      if (commandNames.empty())
+        throw std::runtime_error("ParameterScratchpad: '" + path +
+                                 "' lists no command to hold parameters for");
+      if (commandNames.size() > 1) {
+        std::string available;
+        for (const std::string &entry : commandNames)
+          available += (available.empty() ? "" : ", ") + entry;
+        throw std::runtime_error(
+            "ParameterScratchpad: '" + path + "' lists " +
+            std::to_string(commandNames.size()) +
+            " commands, whose parameters may share slots: name the one this "
+            "scratchpad is for, of " +
+            available);
+      }
+      command = commandNames.front();
     }
-    auto it = commands.find(name);
+    auto it = commands.find(command);
     if (it == commands.end())
       throw std::runtime_error("ParameterScratchpad: '" + path +
                                "' has no command '" + name + "'");
@@ -258,8 +282,9 @@ private:
     //   <num_commands>
     //   <device>:<sequence> <num_read> <name> ...
     //   ...
-    // where kind is "core", "addr" or "repeat", and <min> <max> is "- -" for a
-    // parameter with no range. A joint bound requires
+    // where <state_table_idx> is "-" for a parameter no command reads, kind
+    // is "core", "addr" or "repeat", and <min> <max> is "- -" for a parameter
+    // with no range. A joint bound requires
     // offset + length_step * length <= max.
     unsigned numParams = 0, numSlots = 0;
     file >> numParams >> numSlots;
@@ -270,21 +295,32 @@ private:
     scratchpadSizeBytes = numSlots * 4;
 
     for (unsigned i = 0; i < numParams; i++) {
-      std::string name, type, kind, min, max;
-      unsigned idx;
-      file >> name >> idx >> type >> kind >> min >> max;
+      std::string name, slot, type, kind, min, max;
+      file >> name >> slot >> type >> kind >> min >> max;
       if (!file)
         throw std::runtime_error("ParameterScratchpad: malformed entry " +
                                  std::to_string(i) + " in '" + path + "'");
-      if (idx >= numSlots)
-        throw std::runtime_error("ParameterScratchpad: state_table_idx " +
-                                 std::to_string(idx) + " for '" + name +
-                                 "' is past the " + std::to_string(numSlots) +
-                                 " slots of '" + path + "'");
-      if (paramMap.count(name))
+      if (paramMap.count(name) || unslotted.count(name))
         throw std::runtime_error(
             "ParameterScratchpad: duplicate parameter name '" + name + "'");
-      paramMap[name] = static_cast<uint8_t>(idx);
+      if (slot == "-") {
+        unslotted.insert(name);
+      } else {
+        unsigned long idx = 0;
+        try {
+          idx = std::stoul(slot);
+        } catch (const std::logic_error &) {
+          throw std::runtime_error("ParameterScratchpad: malformed slot '" +
+                                   slot + "' for parameter '" + name +
+                                   "' in '" + path + "'");
+        }
+        if (idx >= numSlots)
+          throw std::runtime_error("ParameterScratchpad: state_table_idx " +
+                                   std::to_string(idx) + " for '" + name +
+                                   "' is past the " + std::to_string(numSlots) +
+                                   " slots of '" + path + "'");
+        paramMap[name] = static_cast<uint8_t>(idx);
+      }
       if (kind != "core" && kind != "addr" && kind != "repeat") {
         throw std::runtime_error("ParameterScratchpad: invalid kind '" + kind +
                                  "' for parameter '" + name + "'");
@@ -333,6 +369,7 @@ private:
       std::string name;
       unsigned numRead = 0;
       file >> name >> numRead;
+      commandNames.push_back(name);
       std::unordered_set<std::string> &reads = commands[name];
       for (unsigned j = 0; j < numRead; j++) {
         std::string param;

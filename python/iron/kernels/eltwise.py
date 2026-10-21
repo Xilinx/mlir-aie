@@ -22,9 +22,11 @@ from ._common import (
     _make_extern,
     _require_fixed_tile_size,
     _require_vector_alignment,
-    dtypes,
 )
 from .core import conv_even
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 _ELTWISE_FIXED_TILE = 1024
 
@@ -58,7 +60,18 @@ def add_i8_ref(a, b, a_shift, b_shift, out_shift):
     """Numpy reference for [`add`][iron.kernels.eltwise.add] on int8.
 
     ``sat_i8(round_half_even(((a << a_shift) + (b << b_shift)) / 2**out_shift))``.
+
+    Raises:
+        ValueError: A shift is outside what the kernel takes: ``a_shift`` and
+            ``b_shift`` in [0, 23], so a shifted int8 fits the int32
+            accumulator, and ``out_shift`` in [0, 31].
     """
+    if not (0 <= int(a_shift) <= 23 and 0 <= int(b_shift) <= 23):
+        raise ValueError(
+            f"add: a_shift ({a_shift}) and b_shift ({b_shift}) must be in [0, 23]"
+        )
+    if not 0 <= int(out_shift) <= 31:
+        raise ValueError(f"add: out_shift ({out_shift}) must be in [0, 31]")
     total = (np.asarray(a, np.int64) << int(a_shift)) + (
         np.asarray(b, np.int64) << int(b_shift)
     )
@@ -155,7 +168,9 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
     )
 
 
-@dtypes(({"dtype": np.int16}, {"dtype": np.int32}))
+DTYPES["scale"] = tuple(({"dtype": np.int16}, {"dtype": np.int32}))
+
+
 def scale(
     tile_size: int = 1024,
     dtype: type = np.int32,
@@ -206,7 +221,9 @@ def scale(
     )
 
 
-@dtypes(({"dtype": bfloat16}, {"dtype": np.int8, "tile_size": 1024}))
+DTYPES["add"] = tuple(({"dtype": bfloat16}, {"dtype": np.int8, "tile_size": 1024}))
+
+
 def add(
     tile_size: int = 1024, dtype: type = bfloat16, vectorized: bool = True
 ) -> ExternalFunction:
@@ -215,7 +232,10 @@ def add(
     The int8 kernel is ONNX QLinearAdd with power-of-two scales: it takes
     ``a_shift``, ``b_shift`` and ``out_shift`` after the output tile, shifts
     each operand up by its shift onto a common scale, and the sum down by
-    ``out_shift``, rounding half to even and saturating.
+    ``out_shift``, rounding half to even and saturating. ``a_shift`` and
+    ``b_shift`` are in [0, 23], so a shifted int8 fits the int32
+    accumulator, and ``out_shift`` in [0, 31]: an output scale finer than
+    both inputs' (a negative ``out_shift``) is not supported.
 
     Args:
         tile_size: Elements per tile: 1024 for bf16 (hard-coded in C++); a
@@ -496,13 +516,13 @@ def _magnitude_f32_bound(x, power=1):
 _MAGNITUDE_F32_TOLERANCE = Tolerance.bounded(
     _magnitude_f32_bound,
     note="one float32 ulp from correctly rounded; npu2 measured 1 ulp "
-    "(1.23 ulp from the exact hypot) on 13% of 261,504 results",
+    "(1.23 ulp from the exact hypot) on 13% of 261,504 results; npu1: unmeasured",
 )
 
 _POWER_F32_TOLERANCE = Tolerance.bounded(
     partial(_magnitude_f32_bound, power=2),
     note="one float32 ulp from correctly rounded; npu2 measured 1.18 ulps "
-    "from the exact power over 6,144,000 spectrum bins",
+    "from the exact power over 6,144,000 spectrum bins; npu1: unmeasured",
 )
 
 

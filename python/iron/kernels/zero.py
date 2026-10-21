@@ -21,8 +21,10 @@ from ._common import (
     _arch_traits,
     _kernel_source,
     _make_extern,
-    dtypes,
 )
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 _TYPES = {
     np.int8: "int8_t",
@@ -36,7 +38,11 @@ _TYPES = {
 }
 
 
-@dtypes(tuple({"dtype": dtype} for dtype in _TYPES) + ({"dtype": v8bfp16ebs8},))
+DTYPES["zero"] = tuple(
+    tuple({"dtype": dtype} for dtype in _TYPES) + ({"dtype": v8bfp16ebs8},)
+)
+
+
 def zero(
     tile_size: int | tuple[int, ...] = 1024,
     dtype: type | np.dtype = np.int32,

@@ -120,16 +120,23 @@ on each submodule's `__doc__`:
 
 | Submodule | What's in it |
 |-----------|--------------|
-| [`kernels.eltwise`](../python/iron/kernels/eltwise.py)       | element-wise: passthrough, scale, add, mul, mul_add, relu |
-| [`kernels.reduce`](../python/iron/kernels/reduce.py)         | reductions: reduce_add, reduce_min, reduce_max, compute_max |
-| [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, tanh, sigmoid, gelu, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec |
-| [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: axpy, convert_copy, expand, transpose |
+| [`kernels.eltwise`](../python/iron/kernels/eltwise.py) | element-wise: passthrough, scale, add (bf16, or int8 on power-of-two scales), mul, mul_add, relu, clamp, magnitude_f32 |
+| [`kernels.reduce`](../python/iron/kernels/reduce.py) | reductions: reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine, maxpool2d |
+| [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, tanh, sigmoid, gelu, gelu_erf, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec, log_f32, log10_clamp_f32 |
+| [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose |
 | [`kernels.zero`](../python/iron/kernels/zero.py) | target-vectorized zero fill, including partial vectors and packed BFP blocks |
+| [`kernels.core`](../python/iron/kernels/core.py) | set_rounding: the core's rounding-mode register, named by a contract's `setup` |
 | [`kernels.quant`](../python/iron/kernels/quant.py) | q4nx dequantization to GEMM-ordered bfp16ebs8 (AIE2P), with byte-exact verification |
-| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm, mv, cascade_mm, mm_bfp, mm_bfp_shuffle, mha |
-| [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
+| [`kernels.linalg`](../python/iron/kernels/linalg.py) | linear algebra: mm, mv, cascade_mm, mm_bfp, mm_bfp_shuffle, mha, attention_i8 (int8 attention for YOLO26n's PSA) |
+| [`kernels.fused`](../python/iron/kernels/fused.py) | fused_mm: one tile's fused GEMM init, reduction and drain |
+| [`kernels.conv`](../python/iron/kernels/conv.py) | convolutions: conv2dk1/3/14, conv2dk1_i8, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
+| [`kernels.norm`](../python/iron/kernels/norm.py) | normalization: rms_norm, rms_norm_eps, layer_norm, layer_norm_eps |
 | [`kernels.transformer`](../python/iron/kernels/transformer.py) | transformer blocks: rms_norm, layer_norm (bf16, f32, affine + cast), rope, mm_activation_epilogue |
-| [`kernels.vision`](../python/iron/kernels/vision.py)         | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted |
+| [`kernels.sample`](../python/iron/kernels/sample.py) | exact top-k next-token sampling split across columns: sample_select, sample_combine |
+| [`kernels.moe`](../python/iron/kernels/moe.py) | mixture of experts: router_top_k, experts |
+| [`kernels.ssm`](../python/iron/kernels/ssm.py) | state space models: selective_scan (Mamba2), gated_delta_rule (Gated DeltaNet) |
+| [`kernels.flm_gemma4`](../python/iron/kernels/flm_gemma4.py) | FastFlowLM's Gemma 4 cores (prefill attention, the q4nx LM head, the decode layer); not general building blocks |
+| [`kernels.vision`](../python/iron/kernels/vision.py) | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted, resample_peak, resample_quantize, resize |
 
 The submodule files are the authoritative catalog — each function has
 a complete docstring covering its kwargs, dtype constraints, and the
@@ -166,7 +173,7 @@ fn.contract.ops_per_call # 1024
 mm = kernels.mm(input_dtype=np.int16, output_dtype=np.int32)
 mm.contract.acc_dtype    # numpy.int64: accauto is acc64 for int16
 mm.contract.reduction    # 64: products summed per output per call (dim_k)
-kernels.mm.dtypes        # every (input_dtype, output_dtype) the factory supports
+kernels.DTYPES["mm"]     # every dtype combination the factory builds, as kwargs
 ```
 
 Some kernels compute differently by build: `gelu` reads a LUT on AIE2 and
@@ -275,8 +282,8 @@ it does with NaN or subnormal inputs are *not* declared. The numpy
 clips, a denormal-flushing one flushes -- and `tolerance` is the slack
 allowed against it. Declaring the same fact in two places let the two
 drift.
-- `.dtypes` on the factory: the dtype combinations it builds. The host
-  contract test builds every entry.
+- `kernels.DTYPES["<factory>"]`: the dtype combinations a factory builds,
+  as kwargs dicts. The host contract test builds every entry.
 
 ## Standing in for a hand-built kernel
 
@@ -364,7 +371,8 @@ A new factory is complete when one line each in two places covers it:
    to the number of meaningful output elements. Say what the kernel
    accumulates in (`acc_dtype`, `reduction`), and model overflow and
    rounding in the reference from the C++ rather than from a guess.
-   A factory with more than one dtype lists them in a `.dtypes` table.
+   A factory with more than one dtype lists them in `DTYPES["<factory>"]`
+   above its definition.
    Bind fixed parameters explicitly with `parameter_bindings`, publish nontrivial
    storage with `layouts`, and initialize `InOut` tiles with `initializers`.
    Declare what the kernel's trace markers measure with `trace=`:
@@ -508,7 +516,7 @@ Nightly results, and how the nightly runs and publishes these checks, are on the
 ### Static checks
 
 `aie.utils.compile.remarks` compiles every factory build (defaults plus
-each `.dtypes` entry) exactly as the JIT does, with Peano's
+each `kernels.DTYPES` entry) exactly as the JIT does, with Peano's
 optimization-record flags, and turns the records into per-kernel series:
 each loop's II and whether it is a zero-overhead loop, program memory,
 missing-bank loads and dropped `#pragma`s. It then reads the object: the
@@ -522,7 +530,7 @@ aiecc's measured stack also counts. aiecc sizes the core's stack from its own
 measurement of the linked core, so the row is for comparing builds. Each build
 prints its entry symbol and source file, and `--meta` names its object (kept
 with `--keep DIR`). The record shapes and the regression rules are documented on the module
-([API](../api/kernels.md#static-checks)). These checks run on demand; there
+([API](../docs/api/kernels.md#static-checks)). These checks run on demand; there
 is no static-check CI workflow. When invoked in GitHub Actions, the tool
 emits a warning annotation for a dropped pragma and an error annotation
 for a kernel that fails to compile. With

@@ -24,14 +24,15 @@ from ._common import (
     Param,
     Trace,
     _conv_act_dtype_info,
-    _detect_arch,
     _kernel_source,
     _make_extern,
     _tuned_arch,
-    dtypes,
+    _vector_args,
 )
 from .core import conv_even
 from .linalg import _zero_output
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
 
 
 def _i32s(n: int) -> list:
@@ -57,12 +58,6 @@ def _vector_loads(*indices):
 def _vector_32b(*indices):
     """``alignments`` for arguments the tuned build accesses 32 bytes at a time."""
     return tuple((i, 32) for i in indices) if _tuned_arch() != "portable" else ()
-
-
-def _vector_args(*indices):
-    """``alignments`` for arguments every build, portable too, loads as whole vectors."""
-    align = {"aie2": 32, "aie2p": 64}.get(_detect_arch())
-    return tuple((i, align) for i in indices) if align else ()
 
 
 def _requant(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.uint8):
@@ -118,13 +113,12 @@ def conv2dk1_i8_ref(x, weights, input_width, input_channels, output_channels, sc
     """Numpy reference for [`conv2dk1_i8`][iron.kernels.conv.conv2dk1_i8]: 1x1 conv to ``int8``.
 
     The layouts of [`conv2dk1_ref`][iron.kernels.conv.conv2dk1_ref] with an
-    ``int8`` output and no ReLU:
-    ``out = sat_i8((sum_ic x * w + 2**(scale-1)) >> scale)``. Exact for the
-    scalar path of ``conv2dk1_i8.cc``.
+    ``int8`` output and no ReLU: ``out = sat_i8(round(sum_ic x * w /
+    2**scale))``, rounding half away from zero (``symmetric_inf``).
     """
     W, IC, OC = int(input_width), int(input_channels), int(output_channels)
     acc, lead = _conv1x1_acc(x, weights, W, IC, OC)
-    return _requant(acc, scale, -128, 127, np.int8).reshape(*lead, W * OC)
+    return _requant_bias(acc, scale, "symmetric_inf").reshape(*lead, W * OC)
 
 
 def conv2dk1_i8_bias_ref(
@@ -530,7 +524,8 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
                 2**-8,
                 0.0,
                 note="one bf16 ulp from the single narrowing store; the f32 "
-                "5-term sum contributes 5 * 2**-24. Verified on npu2",
+                "5-term sum contributes 5 * 2**-24. Verified on npu2; npu1: "
+                "unmeasured",
             ),
             ops_per_call=2 * _TAPS * channels,
         ),
@@ -558,7 +553,9 @@ def dwconv1d_channels_last_ref(
     return out
 
 
-@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+DTYPES["conv2dk1"] = tuple(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+
+
 def conv2dk1(
     input_width: int = 32,
     input_channels: int = 64,
@@ -606,7 +603,7 @@ def conv2dk1(
     )
 
 
-@dtypes(
+DTYPES["conv2dk3"] = tuple(
     (
         {"act_dtype": np.int8},
         {"act_dtype": np.uint8},
@@ -616,6 +613,8 @@ def conv2dk1(
         {"bias": True, "table": True, "stride": 2, "rounding": "conv_even"},
     )
 )
+
+
 def conv2dk3(
     input_width: int = 32,
     input_channels: int = 64,
@@ -630,7 +629,8 @@ def conv2dk3(
     """3x3 convolution kernel.
 
     With ``bias`` it is ONNX QLinearConv's arithmetic on ``int8``
-    activations: an ``int32`` per output channel, in accumulator units, seeds
+    activations for a power-of-two per-tensor output scale and zero
+    zero-points: an ``int32`` per output channel, in accumulator units, seeds
     the sum, the output is ``int8``, the stride may be 2 and the width any
     multiple of 4 (8 at stride 2). ``table`` then maps each result through a
     256-entry ``int8`` table indexed by ``value + 128``.
@@ -805,7 +805,10 @@ def _conv2dk3_bias(
     if stride not in (1, 2):
         raise ValueError(f"conv2dk3: stride must be 1 or 2, got {stride}")
     if rounding not in ("symmetric_inf", "conv_even"):
-        raise ValueError(f"conv2dk3: rounding {rounding!r} needs no bias")
+        raise ValueError(
+            "conv2dk3: with bias, rounding must be 'symmetric_inf' or "
+            f"'conv_even', got {rounding!r}"
+        )
     if input_width % (4 * stride):
         raise ValueError(
             f"conv2dk3: input_width {input_width} must be a multiple of {4 * stride}"
@@ -862,7 +865,9 @@ def _conv2dk3_bias(
     )
 
 
-@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+DTYPES["conv2dk1_skip"] = tuple(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+
+
 def conv2dk1_skip(
     input_width: int = 32,
     input_channels: int = 64,
@@ -920,7 +925,7 @@ def conv2dk1_skip(
     )
 
 
-@dtypes(
+DTYPES["conv2dk1_i8"] = tuple(
     (
         {},
         {"rounding": "conv_even"},
@@ -928,17 +933,20 @@ def conv2dk1_skip(
         {"bias": True, "table": True, "rounding": "conv_even"},
     )
 )
+
+
 def conv2dk1_i8(
     input_width: int = 32,
     input_channels: int = 64,
     output_channels: int = 64,
     bias: bool = False,
     table: bool = False,
-    rounding: str = "symmetric_inf",
+    rounding: str | None = None,
 ) -> ExternalFunction:
     """1x1 convolution kernel with int8 activations/weights/output.
 
-    With ``bias`` it is ONNX QLinearConv's arithmetic: an int32 per output
+    With ``bias`` it is ONNX QLinearConv's arithmetic for a power-of-two
+    per-tensor output scale and zero zero-points: an int32 per output
     channel, in accumulator units, seeds the sum before the shift. ``table``
     then maps each int8 result through a 256-entry int8 table indexed by
     ``value + 128`` (any element-wise activation, such as a quantized SiLU).
@@ -952,6 +960,8 @@ def conv2dk1_i8(
         table: Take a 256-entry ``int8`` table after the bias. Needs ``bias``.
         rounding: How the shift rounds: ``"symmetric_inf"`` (half away from
             zero) or ``"conv_even"`` (half to even, as ONNX QuantizeLinear).
+            By default ``"conv_even"`` with ``bias``, ``"symmetric_inf"``
+            without.
 
     Returns:
         ExternalFunction configured for the conv2dk1_i8 kernel.
@@ -960,6 +970,7 @@ def conv2dk1_i8(
         ValueError: On an unknown ``rounding``, ``table`` without ``bias``,
             or a width the variant cannot tile.
     """
+    rounding = rounding or ("conv_even" if bias else "symmetric_inf")
     if rounding not in ("symmetric_inf", "conv_even"):
         raise ValueError(f"conv2dk1_i8: unknown rounding {rounding!r}")
     if table and not bias:
@@ -993,17 +1004,9 @@ def conv2dk1_i8(
         alignments = (
             _vector_args(0, 1) + ((2, 32),) + _vector_32b(*[3] * table) + out_align
         )
-    elif rounding == "conv_even":
-        reference = conv2dk1_i8_even_ref
-        tolerance = Tolerance.exact(note="the reference models the rounding mode")
-        alignments = ()
     else:
-        reference = conv2dk1_i8_ref
-        # Its vector path ends in a symmetric_inf srs the reference does not
-        # model, measured at 2 of 98304 values, each one LSB out.
-        tolerance = Tolerance.lsb(
-            1, note="vector path srs rounding; measured within one LSB"
-        )
+        reference = conv2dk1_i8_even_ref if rounding == "conv_even" else conv2dk1_i8_ref
+        tolerance = Tolerance.exact(note="the reference models the rounding mode")
         alignments = ()
     return _make_extern(
         name,
@@ -1087,7 +1090,9 @@ def conv2dk14(
     )
 
 
-@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+DTYPES["conv2dk1_skip_init"] = tuple(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
+
+
 def conv2dk1_skip_init(
     input_width: int = 32,
     input_channels: int = 64,
@@ -1427,11 +1432,12 @@ def bn_fc_relu_ui16_ic_chunk_ref(
 
     Call ``k`` of ``weights`` (``(calls, n)``, one ``[OC/8][ICc][8]`` chunk
     each) adds input channels ``[k * ICc, (k + 1) * ICc)`` of each of the
-    first ``images`` images in ``x`` to their running sums, and stores
-    ``sat_u8(round_even(sum, scale))`` as ``uint16``.
+    first ``images`` images in ``x`` (at most ``max_images``) to their
+    running sums, and stores ``sat_u8(round_even(sum, scale))`` as
+    ``uint16``.
     """
     IC, ICc, OCc = input_channels, chunk_input_channels, chunk_output_channels
-    n = int(images)
+    n = min(int(images), max_images)
     w = np.asarray(weights, dtype=np.int8).astype(np.int64)
     calls = w.shape[0]
     w = w.reshape(calls, OCc // 8, ICc, 8).transpose(0, 2, 1, 3)
@@ -1446,7 +1452,8 @@ def bn_fc_relu_ui16_ic_chunk_ref(
 
 
 _BN_EXACT = Tolerance.exact(
-    note="round-half-even integer reference of the scalar source; bit-exact on npu1"
+    note="round-half-even integer reference of the scalar source; bit-exact on "
+    "npu1 and npu2"
 )
 
 
@@ -1570,7 +1577,9 @@ def bn_conv2dk1_i8(
     )
 
 
-@dtypes(({"skip_dtype": np.uint8}, {"skip_dtype": np.int8}))
+DTYPES["bn_conv2dk1_skip"] = tuple(({"skip_dtype": np.uint8}, {"skip_dtype": np.int8}))
+
+
 def bn_conv2dk1_skip(
     input_width: int = 32,
     input_channels: int = 64,
@@ -1627,7 +1636,7 @@ def bn_conv2dk1_skip(
     )
 
 
-@dtypes(
+DTYPES["bn_conv2dk3_dw"] = tuple(
     (
         {"stride": 1},
         {"stride": 2},
@@ -1635,6 +1644,8 @@ def bn_conv2dk1_skip(
         {"bias": True, "table": True},
     )
 )
+
+
 def bn_conv2dk3_dw(
     input_width: int = 32,
     input_channels: int = 64,
@@ -1647,7 +1658,8 @@ def bn_conv2dk3_dw(
     """Bottleneck depthwise 3x3 conv + ReLU kernel (uint8 in/out).
 
     With ``bias`` it is instead ONNX QLinearConv's depthwise arithmetic on
-    ``int8``: an ``int32`` per channel, in accumulator units, seeds the sum,
+    ``int8`` for a power-of-two per-tensor output scale and zero
+    zero-points: an ``int32`` per channel, in accumulator units, seeds the sum,
     the output is ``int8`` with no ReLU, the stride is 1 and the width any
     multiple of 4. ``table`` then maps each result through a 256-entry
     ``int8`` table indexed by ``value + 128``.
@@ -1811,7 +1823,14 @@ def _bn_conv2dk3_dw_bias(input_width, channels, table, stride, rounding):
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, *((Param,) * len(extra)), Out, *((Param,) * 8)),
-            alignments=_vector_32b(0, 1, 2, 4 + len(extra), *[5] * table) + ((4, 32),),
+            # Rows of 8k pixels go 8 pixels (64 bytes) a vector, others 4.
+            alignments=(
+                _vector_args(0, 1, 2, 4 + len(extra))
+                if input_width % 8 == 0
+                else tuple((i, 32) for i in (0, 1, 2, 4 + len(extra)))
+            )
+            + _vector_32b(*[5] * table)
+            + ((4, 32),),
             reference=reference,
             acc_dtype=np.int32,
             reduction=9,
@@ -2169,15 +2188,23 @@ def bn_fc_relu_ui16_ic_chunk(
         input_channels: Input channels per image in ``input``.
         chunk_input_channels: Input channels per call.
         chunk_output_channels: Output channels per call.
-        max_images: Images the buffers hold; ``images`` may be fewer.
+        max_images: Images the buffers hold; ``images`` may be fewer, and
+            more run as ``max_images``.
 
     Returns:
         ExternalFunction for ``post_L2_fc_ui16_ic_chunk``.
 
     Raises:
         ValueError: When a channel count is not a multiple of the vector
-            width (32 inputs, 8 outputs) or ``max_images`` is below 1.
+            width (32 inputs, 8 outputs), ``chunk_input_channels`` does not
+            divide ``input_channels`` or ``max_images`` is below 1.
     """
+    if input_channels % chunk_input_channels:
+        raise ValueError(
+            f"bn_fc_relu_ui16_ic_chunk: chunk_input_channels "
+            f"({chunk_input_channels}) must divide input_channels "
+            f"({input_channels}), or the last chunk reads past each image"
+        )
     if (
         input_channels % 32
         or chunk_input_channels % 32
@@ -2214,11 +2241,8 @@ def bn_fc_relu_ui16_ic_chunk(
             roles=(Param, In, Out, Param, Param, Param),
             parameter_bindings=((3, 0),),
             call_index=3,
-            reference=lambda x, weights, images, scale: bn_fc_relu_ui16_ic_chunk_ref(
-                x,
-                weights,
-                images,
-                scale,
+            reference=partial(
+                bn_fc_relu_ui16_ic_chunk_ref,
                 input_channels=input_channels,
                 chunk_input_channels=chunk_input_channels,
                 chunk_output_channels=chunk_output_channels,
