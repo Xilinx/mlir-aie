@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
+from ..tensor_class import TensorRegion
 from . import HRXContext, HRXError, control_code_from_elf
 from .tensor import HRXTensor
 
@@ -265,9 +266,11 @@ class HRXHostRuntime(HostRuntime):
         """Validate/sync a run's args and return its HRX dispatch bindings.
 
         Drops callables (the ``@iron.jit`` trailing kernel ref), checks every
-        remaining arg is an ``HRXTensor``, pushes host-side inputs to the device
-        (a cheap ``flush_range`` clflush on the persistent mapping — no copy),
-        and returns both the kept tensors and the ``(buffer, size)`` bindings.
+        remaining arg is an ``HRXTensor`` or a `TensorRegion` of one, pushes
+        host-side inputs to the device (a cheap ``flush_range`` clflush on the
+        persistent mapping — no copy), and returns both the tensors behind the
+        args (a region's whole tensor) and the ``(buffer, offset, length)``
+        bindings.
 
         Sync cost note (review r3623783388): this layer does not know an arg's
         direction (input / output / in-out), so it is deliberately conservative
@@ -282,16 +285,24 @@ class HRXHostRuntime(HostRuntime):
         the same conservative trade-off the XRT runtime makes today.
         """
         kept = [a for a in args if not callable(a)]
-        if not all(isinstance(a, self._tensor_class) for a in kept):
+        owners = [a.tensor if isinstance(a, TensorRegion) else a for a in kept]
+        if not all(isinstance(owner, self._tensor_class) for owner in owners):
             raise HostRuntimeError(
                 f"The {self.__class__.__name__} can only take "
-                f"{self._tensor_class.__name__} as arguments, but got: {kept}"
+                f"{self._tensor_class.__name__} arguments, or regions of them, "
+                f"but got: {kept}"
             )
+        for owner in owners:
+            owner.to("npu")
+            owner._sync_to_device()
+        bindings = []
         for a in kept:
-            a.to("npu")
-            a._sync_to_device()
-        bindings = [(a.buffer_object(), a.nbytes_alloc()) for a in kept]
-        return kept, bindings
+            if isinstance(a, TensorRegion):
+                assert isinstance(a.tensor, HRXTensor)
+                bindings.append((a.tensor.buffer_object(), a.storage_offset, a.nbytes))
+            else:
+                bindings.append((a.buffer_object(), 0, a.nbytes_alloc()))
+        return owners, bindings
 
     def run(
         self,

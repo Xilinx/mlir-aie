@@ -20,6 +20,7 @@ import numpy as np
 import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
+from ..tensor_class import TensorRegion
 from .device import acquire_device, xrt_smi_path
 
 if TYPE_CHECKING:
@@ -322,12 +323,22 @@ class XRTHostRuntime(HostRuntime):
         self.check_device_consistency()
         # Filter out callable functions and check arg types
         args = [a for a in args if not callable(a)]
-        if not all([isinstance(a, self._tensor_class) for a in args]):
+        owners = [a.tensor if isinstance(a, TensorRegion) else a for a in args]
+        if not all(isinstance(owner, self._tensor_class) for owner in owners):
             raise HostRuntimeError(
-                f"The {self.__class__.__name__} can only take {self._tensor_class.__name__} as arguments, but got: {args}"
+                f"The {self.__class__.__name__} can only take {self._tensor_class.__name__} "
+                f"arguments, or regions of them, but got: {args}"
             )
-        [a.to("npu") for a in args]
-        buffers = [a.buffer_object() for a in args]
+        for owner in owners:
+            owner.to("npu")
+        buffers = [
+            (
+                a.tensor.storage.binding_handle(a.storage_offset, a.nbytes)
+                if isinstance(a, TensorRegion)
+                else a.buffer_object()
+            )
+            for a in args
+        ]
 
         if kernel_handle.is_full_elf:
             return self._run_full_elf(kernel_handle, buffers, fail_on_error)
