@@ -654,7 +654,8 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
           <dl id="key-metrics"></dl>
           <p>Cycles are the minimum over the traced calls of a kernel whose contract says <code>Trace.whole_call()</code>; their spread, and whether the trace
             buffer held every call, are in the row's range. Cycles and object size are the numbers the checks gate on; host time moves with the machine,
-            so it only counts past three times its run-to-run spread. A dashed line on a chart marks a change of Peano, host, runtime or driver between nights.</p>
+            so it only counts past three times its run-to-run spread, and only against a night on the same part. A dashed line on a chart marks a change of
+            Peano, part, host, runtime, driver, kernel sources or measurement between nights; nothing is compared across a change of measurement.</p>
           <h3>The views</h3>
           <p><b>Summary</b>: a verdict per NPU against the nightly before, whose date it names; what needs a look (failures, the cases that got slower
             or bigger last night, and any of the timing harness's own tests that failed); and every case whose cycles or object size moved past its
@@ -1204,7 +1205,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             const o = observations.get(ids[i]);
             if (!s.byMode.has(o.mode)) s.byMode.set(o.mode, []);
             const range = sv.ranges && sv.ranges[i];
-            s.byMode.get(o.mode).push({ id: o.id, date: o.date, manual: o.manual, device: o.device,
+            s.byMode.get(o.mode).push({ id: o.id, date: o.date, manual: o.manual, device: o.device, measurement: o.provenance.measurement,
                                         row: { value, unit: h.unit, ...(range ? { range } : {}) } });
           });
         }
@@ -1241,12 +1242,17 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return null;
     }
 
+    // Whether two points were measured the same way: a change of how cycles
+    // are taken (`measurement`) is marked, never compared across.
+    const sameMeasurement = (a, b) => !a.measurement || !b.measurement || a.measurement === b.measurement;
+
     // The point the last of `pts` is compared with: the one before it, on
     // the same part for a part-bound metric (a point with no part recorded
-    // matches any), or null.
+    // matches any), measured the same way, or null.
     function baselineOf(pts, metric) {
       const last = pts.at(-1);
       for (let i = pts.length - 2; i >= 0; i--) {
+        if (!sameMeasurement(pts[i], last)) return null;
         if (!partBound(metric) || !pts[i].device || !last.device || pts[i].device === last.device) return pts[i];
       }
       return null;
@@ -2111,7 +2117,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         if (s.npu !== npu || s.metric !== metric || (factory && s.factory !== factory)) continue;
         for (const p of s.byMode.get(EXPECTED_PMODE) || []) {
           const o = order.get(p.id) || {};
-          if (!runs.has(p.id)) runs.set(p.id, { id: p.id, date: p.date, commit: o.commit || {}, provenance: o.provenance || {}, device: p.device, values: new Map(), ranges: new Map() });
+          if (!runs.has(p.id)) runs.set(p.id, { id: p.id, date: p.date, commit: o.commit || {}, provenance: o.provenance || {}, device: p.device,
+                                                measurement: p.measurement, values: new Map(), ranges: new Map() });
           runs.get(p.id).values.set(s.kase, p.row.value);
           if (p.row.range) runs.get(p.id).ranges.set(s.kase, p.row.range);
         }
@@ -2136,7 +2143,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       for (const kase of new Set(runs.flatMap(r => [...r.values.keys()]))) {
         const measured = runs.filter(r => r.values.has(kase));
         const part = measured.length ? measured.at(-1).device : null;
-        const seen = measured.filter(r => !partBound(metric) || !r.device || !part || r.device === part);
+        const seen = measured.filter(r => (!partBound(metric) || !r.device || !part || r.device === part) && sameMeasurement(r, measured.at(-1)));
         // Last night's change is only a case's that ran last night.
         if (seen.length < 2 || (compare === 'last' && seen.at(-1) !== runs.at(-1))) continue;
         const before = compare === 'last' ? seen.at(-2) : seen[0];
@@ -2448,7 +2455,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         el('th', { className: 'num npu-start' }, `${n.npu} now`, el('span', { className: 'sub' }, per[i].length ? `cycles, ${shortDate(per[i].at(-1).date)}` : 'cycles')),
         el('th', { className: 'num' }, 'Then', el('span', { className: 'sub' }, per[i].length ? shortDate(per[i][0].date) : '—'))]));
       const rows = cases.map(kase => el('tr', {}, el('td', {}, caseTitle(kase)), ...nights.flatMap((n, i) => {
-        const runs = per[i].filter(r => r.values.has(kase));
+        const measured = per[i].filter(r => r.values.has(kase));
+        const runs = measured.filter(r => sameMeasurement(r, measured.at(-1) || r));
         const why = caseVerdict(n, kase);
         if (!runs.length) return [el('td', { colSpan: 2, className: `npu-start note ${why ? why.cls : ''}`, title: why ? why.title : '' }, why ? why.text : '—')];
         const last = runs.at(-1).values.get(kase), first = runs[0].values.get(kase);

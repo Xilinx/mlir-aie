@@ -426,6 +426,25 @@ assert.ok(nightTitle(stopped).endsWith('did not finish: published no numbers'));
 """)
 
 
+def test_a_change_of_measurement_is_marked_and_never_compared_across(page):
+    page(KERNELS + """
+// The 10-02 trace-decoder fix: measurement "1" before, "2" since.
+const night = (id, day, cycles, measurement) => ({ ...rec(id, Date.parse(`2026-10-0${day}T06:00:00Z`), 'turbo', {
+  'bn_conv2dk3/1792x8/int8/cycles': ['cycles', cycles] }), provenance: { measurement, peano: 'p' } });
+db = fromRecords({ npu2: [night('1', 1, 293058, '1'), night('2', 2, 301, '2'), night('3', 3, 305, '2')] });
+const conv = db.series[0];
+// Last night compares with the night before, on the same measurement.
+assert.equal(latestMove(conv, ['turbo']).since, Date.parse('2026-10-02T06:00:00Z'));
+// The window starts at the change: 301 -> 305, not 293058 -> 305.
+assert.deepEqual(windowChanges(db, 'npu2', 'cycles').map(x => [x.then, x.now]), [[301, 305]]);
+// A change of measurement alone is no comparison at all, and is marked.
+const two = fromRecords({ npu2: [night('1', 1, 293058, '1'), night('2', 2, 301, '2')] });
+assert.equal(latestMove(two.series[0], ['turbo']), null);
+assert.equal(movedSeries(two, 'npu2').improved.length, 0);
+assert.deepEqual(kernelTrendConfig(two, 'npu2', 'bn_conv2dk3', 'cycles').options.plugins.markers.at, [{ index: 1, label: 'measurement 2' }]);
+""")
+
+
 def test_static_dispatch_records_are_not_spliced_into_the_trend(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 // publish.py keeps an old static record's per-batch times under mobilenet/seed=S/batch=B.
