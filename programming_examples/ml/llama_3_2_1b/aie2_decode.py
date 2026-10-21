@@ -719,11 +719,11 @@ def build(
     )
     of_af = ObjectFifo(np.ndarray[(ACT_BYTES,), np.dtype[np.int8]], depth=1, name="af")
     k_svmerge = KG.bind(
-        "llama_sv_merge_selfcal",
+        "llama_sv_merge",
         [t_sv_half, t_sv_half, np.ndarray[(SVFULL_BYTES,), np.dtype[np.int8]]],
     )
     k_afconcat = KG.bind(
-        "llama_af_concat_selfcal2",
+        "llama_af_quant",
         [
             np.ndarray[(SVFULL_BYTES,), np.dtype[np.int8]],
             np.ndarray[(ACT_BYTES,), np.dtype[np.int8]],

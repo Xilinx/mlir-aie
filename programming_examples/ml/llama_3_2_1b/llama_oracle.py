@@ -284,8 +284,8 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
     `llama_attn_block` does, every block at once (`attend_block` per head and
     block); two cores per KV head take the even and the odd blocks, each
     folding its blocks in order, and the second merges the first's state,
-    then its own (`llama_attn_merge_pair_q`); each head's sv is then
-    requantized by its absmax.
+    then its own (`llama_attn_merge_pair_q`), which writes each head's sv in
+    fp32.
 
     Args:
         q_i8: int8 (N_HEADS_Q, HEAD_D).
@@ -298,7 +298,7 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
         tb: Rows per block.
 
     Returns:
-        (int8 (N_HEADS_Q, HEAD_D) output, fp32 (N_HEADS_Q,) sv_out_scales).
+        fp32 (N_HEADS_Q, HEAD_D): each Q head's attention output.
     """
     nb = -(-t // tb)
     kvh = np.arange(N_HEADS_Q) // REP
@@ -340,11 +340,7 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
             merged = fold(merged, *state)
     if merged is None:
         raise ValueError(f"t={t}: attention needs at least one cached row")
-    sv = merged[2]
-    absmax = np.maximum(np.abs(sv).max(axis=1), np.float32(1e-12)).astype(np.float32)
-    scales = (absmax * np.float32(1.0 / 127.0)).astype(np.float32)
-    out = round_to_i8(mul_rne(sv, (np.float32(1) / scales)[:, None]))
-    return out, scales
+    return merged[2]
 
 
 class Layer:
@@ -468,7 +464,7 @@ class Layer:
         q = rope_q(self.project("q", h1, act1), cos, sin).reshape(N_HEADS_Q, HEAD_D)
         q_scales = dyn_scale(q, axis=1)
         q_i8 = round_to_i8(mul_rne(q, (np.float32(1) / q_scales)[:, None]))
-        sv_i8, sv_scales = attention_blocks(
+        sv = attention_blocks(
             q_i8,
             q_scales,
             self.kcache,
@@ -479,11 +475,10 @@ class Layer:
             KV_TB,
         )
 
-        # The heads' outputs concatenated and requantized together
-        # (llama_af_concat_selfcal2), then o and the residual add.
-        o_act_scale = dyn_scale(sv_i8.astype(np.float32) * sv_scales[:, None])
-        o_inv = np.float32(1) / o_act_scale
-        af = requant(sv_i8.astype(np.float32), (sv_scales * o_inv)[:, None]).ravel()
+        # Every head's sv quantized once for o (llama_af_quant), then o and
+        # the residual add.
+        o_act_scale = dyn_scale(sv)
+        af = round_to_i8(mul_rne(sv, np.float32(1) / o_act_scale)).ravel()
         x1_fp = aie_add(x_fp, self.project("o", af, o_act_scale))
         h2, act2 = rmsnorm_f32(x1_fp, self.gamma_post)
 
