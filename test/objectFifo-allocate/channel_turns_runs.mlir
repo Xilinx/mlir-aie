@@ -98,3 +98,52 @@ module @two_walkers {
     }
   }
 }
+
+// -----
+
+// The core takes a and b in turn from pools of 7 and 6 objects. A chain over
+// them one object a descriptor would unroll to lcm(7, 6) passes, 84
+// descriptors, more than a mem tile channel has, so both pools are walked
+// whole, one descriptor a turn.
+
+// CHECK-LABEL: @unrolled_chain
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a_prod_dma(%{{.*}}) drains @a_in_cons_pool {{{.*}}turns = [@a_prod_dma, @b_prod_dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b_prod_dma(%{{.*}}) drains @b_in_cons_pool {{{.*}}turns = [@a_prod_dma, @b_prod_dma]}
+// CHECK-DAG: aie.objectfifo.pool @a_in_cons_pool(%{{.*}}) {buffers = [@a_in_cons_buff_0], contiguous, depth = 7
+// CHECK-DAG: aie.objectfifo.pool @b_in_cons_pool(%{{.*}}) {buffers = [@b_in_cons_buff_0], contiguous, depth = 6
+
+// CHAIN-LABEL: @unrolled_chain
+// CHAIN: aie.memtile_dma(%mem_tile_0_1)
+// CHAIN: aie.dma_start(MM2S
+// CHAIN: aie.dma_bd(%a_in_cons_buff_0 : memref<448xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 7, stride = 64, current = 0>}
+// CHAIN: aie.dma_bd(%b_in_cons_buff_0 : memref<384xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 6, stride = 64, current = 0>}
+// CHAIN: aie.next_bd ^bb
+module @unrolled_chain {
+  aie.device(npu2) {
+    %s = aie.tile(0, 0)
+    %s1 = aie.tile(1, 0)
+    %m = aie.tile(0, 1)
+    %t = aie.tile(0, 2)
+    aie.objectfifo @a_in(%s, {%m}, [2 : i32, 7 : i32]) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @a(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@a_in] -> [@a] ([] [])
+    aie.objectfifo @b_in(%s, {%m}, [2 : i32, 6 : i32]) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @b(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@b_in] -> [@b] ([] [])
+    aie.objectfifo @c(%s1, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.core(%t) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c42 = arith.constant 42 : index
+      scf.for %i = %c0 to %c42 step %c1 {
+        %x = aie.objectfifo.acquire @c(Consume, 1) : memref<64xi32>
+        %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<64xi32>
+        aie.objectfifo.release @a(Consume, 1)
+        %b0 = aie.objectfifo.acquire @b(Consume, 1) : memref<64xi32>
+        aie.objectfifo.release @b(Consume, 1)
+        aie.objectfifo.release @c(Consume, 1)
+      }
+      aie.end
+    }
+  }
+}

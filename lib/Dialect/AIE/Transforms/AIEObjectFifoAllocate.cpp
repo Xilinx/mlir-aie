@@ -1344,12 +1344,32 @@ struct AIEObjectFifoAllocatePass
         std::string reason;
         if (succeeded(turns.read(cores, reason)) && !turns.keepsUp(depths))
           reason = "would stall";
+        // Over plain pools the chain unrolls to whole passes over each; past
+        // the peers' channel BDs, walking them whole takes one a turn.
+        bool overflows = false;
+        if (reason.empty()) {
+          SmallVector<std::pair<int64_t, int64_t>> counts;
+          for (auto [i, constPeer] : llvm::enumerate(peers)) {
+            ObjectFifoDmaEndpointOp peer = constPeer;
+            counts.push_back({llvm::count(turns.turns(), i),
+                              peer.getPoolOp().getContiguous()
+                                  ? 0
+                                  : peer.getNumDescriptors()});
+          }
+          TileLike tile = peers.front().getTileLike();
+          std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+          overflows =
+              col && row &&
+              turnPasses(counts) * static_cast<int64_t>(turns.turns().size()) >
+                  device.getTargetModel().getNumBDsForChannel(*col, *row, 0);
+        }
         // Beside a pool walked whole, the others' descriptors must come round
         // each pass, which walking them whole as well lines up.
         // A pool whose other end already takes turns may be walked whole too,
         // where those turns still line up.
         SmallVector<ObjectFifoPoolOp> walked;
-        if (reason.empty() && !contiguousWalkersFit(peers, turns.turns()))
+        if (reason.empty() &&
+            (overflows || !contiguousWalkersFit(peers, turns.turns())))
           for (ObjectFifoDmaEndpointOp peer : peers) {
             ObjectFifoPoolOp pool = peer.getPoolOp();
             SmallVector<ObjectFifoDmaEndpointOp> others;
