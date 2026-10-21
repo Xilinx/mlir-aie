@@ -161,13 +161,15 @@ def main():
     if key == "chain:regular":
         with open(fix + CHAINS[opts.target][1]) as f:
             scales = json.load(f)
-        oracle = mobilenet_numpy.run(
-            chw.view(np.uint8).transpose(1, 2, 0),
-            fix,
-            scales,
-            start_at="bn0",
-            stop_after="bn9",
-            verbose=False,
+        oracle = np.asarray(
+            mobilenet_numpy.run(
+                chw.view(np.uint8).transpose(1, 2, 0),
+                fix,
+                scales,
+                start_at="bn0",
+                stop_after="bn9",
+                verbose=False,
+            )
         )
         references.insert(
             0,

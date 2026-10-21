@@ -446,14 +446,15 @@ def _yolo_night(rng: random.Random) -> tuple[list, dict]:
     ran += f"ort: {len(images)}/{len(images)} images match onnxruntime\n"
     one = 12700 * rng.uniform(0.98, 1.03)
     batched = 6150 * rng.uniform(0.98, 1.03)
-    timed = (
-        f"per-image: {one:.1f} us ({1e6 / one:.1f} fps) at batch 1\n"
-        f"per-image: {batched:.1f} us ({1e6 / batched:.1f} fps) "
-        f"at batch {yolo26n_hw.BATCH}\n"
+    timed = "".join(
+        f"per-image: {us:.1f} us ({1e6 / us:.1f} fps) at batch {b}, fastest of "
+        f"{yolo26n_hw.N_ITERS} after {yolo26n_hw.N_WARMUP} warmups; "
+        f"median {us * 1.02:.1f} us, MAD {us * 0.01:.1f} us\n"
+        for us, b in ((one, 1), (batched, yolo26n_hw.BATCH))
     )
     correctness = yolo26n_hw.parse_correctness(ran, 0)
     timing = yolo26n_hw.parse_timing(timed)
-    artifacts = {"elf_bytes": 2_621_440, "n_cores": 32}
+    artifacts = {"elf_bytes": 2_621_440}
     compiled = _compile_night(rng, 12.0)
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},

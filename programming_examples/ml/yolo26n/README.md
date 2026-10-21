@@ -21,29 +21,36 @@ AMD Quark XINT8 with power-of-two scales, accumulators seeded with the bias,
 The checkpoint is AGPL-3.0, so nothing derived from it is kept in the
 repository. `export_yolo26n.py` fetches `yolo26n.pt`, exports it to ONNX and
 quantizes it into `$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n` (default `/srv/yolo26n`),
-calibrating on coco128, which it also downloads there. `gen_yolo_data.py`
+calibrating on coco128, which it also downloads there; both downloads are
+checked against sha256 digests pinned in the script. `gen_yolo_data.py`
 extracts the integer parameters into `data/yolo26n_params.npz`. Exporting
 needs the extras in `requirements.txt` (ultralytics and amd-quark) and
-extracting needs onnx and onnxruntime. Running on real images needs
-opencv-python, and onnxruntime to compare with the ONNX graph too.
+extracting needs onnx and onnxruntime, pinned exactly since the extracted
+tables are ONNX Runtime's own outputs. Running on real images needs opencv-python, and onnxruntime
+to compare with the ONNX graph too.
 
 The lit tests need no checkpoint: `--synthetic SEED` swaps in seeded weights
 with the same layout, and random images.
 
 ## Quick start
 
+amd-quark needs Python 3.11 to 3.13. Install torch from the CPU index first,
+so ultralytics does not pull in CUDA:
+
 ```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 make export                 # checkpoint, FP32 and XINT8 ONNX, coco128
 make data                   # data/yolo26n_params.npz
-make verify_oracle N=128    # numpy oracle vs ONNX Runtime, tensor by tensor
+make verify_oracle N=128    # numpy oracle vs ONNX Runtime, tensor by tensor (see Accuracy)
 make run_blocks_synthetic   # one range of each block kind on the NPU, no checkpoint
 make run N=8                # the whole model on coco128 images
 ```
 
 `make run_block BLOCK=52:59` runs any range of `Network.yolo26n().ops` on
 the NPU against the oracle (`SYNTHETIC=7` for seeded weights, `OUTPUTS=a,b`
-to drain more than the last op's output).
+to drain more than the last op's output); `python bringup.py --span FIRST
+LAST` names the range by its first and last ops instead.
 
 ## Design
 
@@ -82,15 +89,34 @@ the same 128 images, so its number is optimistic.
 
 On the NPU, the whole model's detections match the oracle bit for bit on
 all 128 coco128 images, and ONNX Runtime's on 126. The oracle agrees with
-ONNX Runtime on those 126 in all 169 tensors. In the other 2, ONNX
-Runtime's float32 softmax rounds an attention probability (4 of 82 million)
-to the other side of a rounding boundary from exact arithmetic; neither
-changes a detection above 0.25 confidence.
+ONNX Runtime on those 126 in all 169 int8 tensors the spec names (the
+outputs of every operator but the float postprocess, and both attentions'
+values). In the other 2, the oracle's
+softmax and ONNX Runtime's float32 one round an attention probability (4 of
+82 million) to opposite sides of a rounding boundary; neither changes a
+detection above 0.25 confidence.
+
+`verify_oracle.py` settles each such probability with exact arithmetic
+(`SoftmaxArbiter`). An image passes when it is exact, or when ONNX Runtime
+is the one off at every differing probability and the oracle, run again
+with ONNX Runtime's probabilities, then matches it in every tensor. It
+exits 0 only when every image passes.
 
 ## Performance
 
-On Strix Halo (NPU2), one 640x640 image takes 12.7 ms (79 fps) at batch 1
-and 6.15 ms per image (163 fps) at batch 8 (`python yolo26n.py --n 8 --batch
-8 --time`), in four device configurations of one full ELF and 92 workers.
-A batch-1 dispatch configures every segment's workers again, at roughly
-60-110 us a worker, which a batch shares. Compiling takes about 12 s.
+On Strix (NPU2), one 640x640 image takes 11.3 ms (88.5 fps) at batch 1 and
+6.22 ms per image (161 fps) at batch 8:
+
+```bash
+python yolo26n.py --synthetic 7 --n 8 --time              # batch 1
+python yolo26n.py --synthetic 7 --n 8 --batch 8 --time    # batch 8
+```
+
+Each number is the fastest of 20 calls after 10 warm-up calls, the host's
+wall time of the whole `yolo26n(...)` call divided by the batch; the line
+also prints the median and its MAD (medians 11.5 ms and 6.37 ms here). The
+weights and images are synthetic, so no checkpoint is needed; real ones move
+the same data, but the postprocess's work depends on the scores, so their
+time can differ a little. The design runs as four device configurations of
+one full ELF. A batch-1 dispatch configures every segment's workers again,
+at roughly 60-110 us a worker, which a batch shares.

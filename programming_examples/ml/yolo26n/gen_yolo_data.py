@@ -53,6 +53,20 @@ from yolo_spec import (
 )
 
 
+def ort_session(model: str | bytes) -> ort.InferenceSession:
+    """An ONNX Runtime CPU session on `model`, a path or the serialized graph.
+
+    Every session that evaluates the model, here and in yolo26n.py and
+    verify_oracle.py, runs at one explicit graph optimization level:
+    ORT_ENABLE_ALL, ONNX Runtime's default, which the tables and the README's
+    results were made with. Another level runs other kernels for the QDQ
+    convs, so their rounding, and the tables, could change.
+    """
+    options = ort.SessionOptions()
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    return ort.InferenceSession(model, options, providers=["CPUExecutionProvider"])
+
+
 class QdqGraph:
     """A Quark QDQ graph, navigated through its Quantize/DequantizeLinear pairs."""
 
@@ -119,9 +133,7 @@ class QdqGraph:
             whole, part = Path(tmp) / "whole.onnx", Path(tmp) / "part.onnx"
             onnx.save(self.model, whole)
             extract_model(str(whole), str(part), list(inputs), [output])
-            session = ort.InferenceSession(
-                str(part), providers=["CPUExecutionProvider"]
-            )
+            session = ort_session(str(part))
             return np.asarray(session.run([output], inputs)[0])
 
     def shape(self, tensor: str) -> tuple[int, ...]:

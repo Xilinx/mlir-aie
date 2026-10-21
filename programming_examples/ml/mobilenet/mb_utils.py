@@ -47,3 +47,4 @@ def read_scale_factors(file_path):
 def write_scale_factors(file_path, scale_factors):
     with open(file_path, "w") as file:
         json.dump(scale_factors, file, indent=4)
+        file.write("\n")

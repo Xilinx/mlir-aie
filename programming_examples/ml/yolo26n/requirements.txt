@@ -7,8 +7,10 @@
 # opencv-python. export_yolo26n.py, which fetches the AGPL-3.0 checkpoint and
 # quantizes it, also needs ultralytics and amd-quark (Python 3.11 to 3.13).
 # Install torch from the CPU index first so ultralytics does not pull CUDA.
-onnx>=1.17
-onnxruntime>=1.20
+# onnx and onnxruntime are pinned: the extracted tables are ONNX Runtime's
+# own outputs. These are the newest amd-quark 0.13 accepts.
+onnx==1.22.0
+onnxruntime==1.28.0
 opencv-python>=4.10
 ultralytics==8.4.182
 amd-quark==0.13

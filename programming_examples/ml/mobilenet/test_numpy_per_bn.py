@@ -6,8 +6,8 @@
 already checked into bottleneck_A/B/C/data/.
 
 Usage:
-    python3 test_numpy_per_bn.py
-    # all 11 verified blocks should report 100.0% BIT-EXACT.
+    python3 -m mobilenet.test_numpy_per_bn    # from programming_examples/ml
+    # every check should report 100.0% BIT-EXACT.
 
 The fixtures use their OWN scales (bottleneck_A's scale_factors_per_bn.json
 and each chain's scale_factors.json). This proves every kernel
@@ -71,9 +71,7 @@ def main():
         in_shape, out_shape = SHAPES[name]
         H, W, IC = in_shape
         OH, OW, OC = out_shape
-        # Per-bn block reads bnN_chain.txt (NOT bnN_single.txt — _run_block expects the chain naming).
-        # We symlink in a temp dir... actually simpler: rename single -> chain at load.
-        # Workaround: create a small staging dir with `bnN_chain.txt` -> single.
+        # _run_block reads bnN_chain.txt, so stage bnN_single.txt under that name.
         with tempfile.TemporaryDirectory() as tmp:
             shutil.copy(
                 A_DATA + f"bn{name[2:]}_single.txt", tmp + f"/bn{name[2:]}_chain.txt"

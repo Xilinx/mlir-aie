@@ -275,9 +275,6 @@ def test_yolo26n_reads_the_newest_build_in_its_cache(checks, tmp_path):
     newest = yolo.newest_build(str(tmp_path))
     assert newest == str(tmp_path / "newer")
     (tmp_path / "newer" / "design.elf").write_bytes(b"\0" * 4096)
-    (tmp_path / "newer" / "input_with_addresses.mlir").write_text(
-        "%c = aie.core(%t0) {\n}\n%d = aie.core(%t1) {\n}\n"
-    )
-    assert yolo.artifact_stats(newest) == {"elf_bytes": 4096, "n_cores": 2}
+    assert yolo.artifact_stats(newest) == {"elf_bytes": 4096}
     assert yolo.artifact_stats(str(tmp_path / "older")) == {}
     assert yolo.artifact_stats(None) == {}
