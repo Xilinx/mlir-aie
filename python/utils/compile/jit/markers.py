@@ -293,7 +293,12 @@ class _DispatchParameter(PerCall):
     def __repr__(self) -> str:
         return f"DispatchTime({self.name!r}, {self.scalar_type.__name__})"
 
-    def _misuse(self, *args, **kwargs) -> NoReturn:
+    def refuse(self, *args, **kwargs) -> NoReturn:
+        """Raise the TypeError any generation-time use of this parameter gets.
+
+        Raises:
+            TypeError: Always.
+        """
         raise TypeError(
             f"DispatchTime parameter {self.name!r} has no generation-time value. "
             "+, -, *, // and % on it make an expression a tensor access pattern "
@@ -316,12 +321,12 @@ class _DispatchParameter(PerCall):
     # value. PerCall's integer arithmetic stays: None makes a NumPy scalar on
     # the left defer to the reflected operator, and a ufunc refuse.
     __array_ufunc__ = None
-    __bool__ = __int__ = __index__ = __float__ = __complex__ = __hash__ = _misuse
-    __array__ = __getattr__ = _misuse
-    __call__ = __iter__ = __len__ = __getitem__ = __contains__ = _misuse
-    __eq__ = __ne__ = __lt__ = __le__ = __gt__ = __ge__ = _misuse
-    __truediv__ = __rtruediv__ = __rfloordiv__ = _misuse
-    __rmod__ = __pow__ = __rpow__ = __divmod__ = __rdivmod__ = _misuse
-    __lshift__ = __rlshift__ = __rshift__ = __rrshift__ = _misuse
-    __and__ = __rand__ = __or__ = __ror__ = __xor__ = __rxor__ = _misuse
-    __pos__ = __abs__ = __invert__ = __round__ = _misuse
+    __bool__ = __int__ = __index__ = __float__ = __complex__ = __hash__ = refuse
+    __array__ = __getattr__ = refuse
+    __call__ = __iter__ = __len__ = __getitem__ = __contains__ = refuse
+    __eq__ = __ne__ = __lt__ = __le__ = __gt__ = __ge__ = refuse
+    __truediv__ = __rtruediv__ = __rfloordiv__ = refuse
+    __rmod__ = __pow__ = __rpow__ = __divmod__ = __rdivmod__ = refuse
+    __lshift__ = __rlshift__ = __rshift__ = __rrshift__ = refuse
+    __and__ = __rand__ = __or__ = __ror__ = __xor__ = __rxor__ = refuse
+    __pos__ = __abs__ = __invert__ = __round__ = refuse

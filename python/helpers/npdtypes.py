@@ -109,7 +109,7 @@ def np_ndarray_type_get_shape(
 
     for elem in shape if isinstance(shape, tuple) else (shape,):
         if isinstance(elem, _DispatchParameter):
-            elem._misuse()
+            elem.refuse()
         if isinstance(elem, Affine):
             raise TypeError(
                 f"a shape cannot hold {elem}, which is computed per call; use "

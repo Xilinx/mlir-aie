@@ -109,7 +109,7 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
             ]
         ):
             if isinstance(arg, _DispatchParameter):
-                arg._misuse()
+                arg.refuse()
             if isinstance(arg, Affine):
                 raise TypeError(
                     f"A Worker cannot take {arg}, which is computed per call; use "
