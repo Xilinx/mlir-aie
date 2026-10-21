@@ -47,8 +47,7 @@ llama_kv_row_quant(const int8_t *restrict kvfp_packed, int8_t *restrict k_out,
       reinterpret_cast<const bfloat16 *>(kvfp_packed + kHD * 8);
   const bfloat16 *sin = cos + kHD;
 
-  // 1) rope_k (half-split). Snapshot halves to locals so the in-place write
-  // can't alias (the rotate-half aliasing bug fixed in the numpy ref).
+  // Rope k (half-split) through locals, so the in-place write cannot alias.
   float k_rope[kHD];
   for (int i = 0; i < kHalf; i++) {
     float x1 = k_fp[i];
@@ -61,7 +60,7 @@ llama_kv_row_quant(const int8_t *restrict kvfp_packed, int8_t *restrict k_out,
     k_rope[kHalf + i] = x2 * c2 + x1 * s2;
   }
 
-  // 2) per-slot dynamic scale for K (absmax / 127, 1e-12 floor).
+  // K's scale: absmax / 127, floored at 1e-12.
   float k_absmax = 0.0f;
   for (int i = 0; i < kHD; i++) {
     float a = k_rope[i] >= 0.0f ? k_rope[i] : -k_rope[i];
@@ -73,7 +72,7 @@ llama_kv_row_quant(const int8_t *restrict kvfp_packed, int8_t *restrict k_out,
   float ks = k_absmax * (1.0f / 127.0f);
   float k_inv = llama_kv_row_recip(ks);
 
-  // 3) per-slot dynamic scale for V (no rope).
+  // V's scale, the same way.
   float v_absmax = 0.0f;
   for (int i = 0; i < kHD; i++) {
     float a = v_fp[i] >= 0.0f ? v_fp[i] : -v_fp[i];
@@ -85,7 +84,6 @@ llama_kv_row_quant(const int8_t *restrict kvfp_packed, int8_t *restrict k_out,
   float vs = v_absmax * (1.0f / 127.0f);
   float v_inv = llama_kv_row_recip(vs);
 
-  // 4) requant.
   for (int i = 0; i < kHD; i++) {
     k_out[i] = llama_kv_row_round(k_rope[i] * k_inv);
     v_out[i] = llama_kv_row_round(v_fp[i] * v_inv);

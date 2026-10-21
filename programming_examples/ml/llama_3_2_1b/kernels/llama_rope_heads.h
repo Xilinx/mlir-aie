@@ -65,7 +65,6 @@ static inline void llama_rope_heads(const int8_t *restrict x,
     ::aie::store_v(out + base + kHalf, vec_round_to_i8(o2));
   }
 
-  // Passthrough the per-head scale tail unchanged.
   copy_words<kTail>(out + kBody, x + kBody);
   aie::set_rounding(saved_rnd);
   aie::set_saturation(saved_sat);

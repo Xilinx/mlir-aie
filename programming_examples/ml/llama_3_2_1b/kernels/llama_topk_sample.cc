@@ -9,8 +9,7 @@
 // resident top-k of {logit, global index, embed_sc, embed ROW} -- the
 // winner's embedding is already resident when sampling finishes. Clean
 // top-k renorm (can't re-touch all V logits); numpy_topk_sample.py is
-// the oracle. top_k==0 unsupported (see README). Peano AIE2P: rotl via
-// concat-shift; no fp32 array live across loops.
+// the oracle.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
@@ -51,10 +50,11 @@ static inline float lookup_exp(int32_t q) {
   return v;
 }
 
-// --- xoshiro128++ (must match llama_sample.cc / numpy_topk_sample.py) ---
+// xoshiro128++, as numpy_sample.py draws it.
 struct Xoshiro128 {
   uint32_t s[4];
 };
+// A 64-bit concat-shift: Peano cannot legalize G_ROTL.
 static inline uint32_t rotl(uint32_t x, int k) {
   uint64_t y = ((uint64_t)x << 32) | (uint64_t)x;
   return (uint32_t)(y >> (32 - k));
@@ -239,10 +239,8 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
 //   [kD..kD+4)     fp32 per-token scale
 //   [kD+4..kD+8)   int32 token id
 //   [kD+8..kD+12)  pad
-// This keeps the chain's runtime arg count at 5 (DefaultNPURuntime.run_test
-// segfaults at ~6 tensor args -- the IRON-constraints memo). It is also the
-// natural persistent-loop shape: the seed feeds back as the next layer-0 input
-// and the token rides along for the host to read (or to drive embed-gather).
+// The seed feeds back as the next layer-0 input and the token rides along for
+// the host to read.
 void llama_topk_finalize_packed(float *restrict set_logit,
                                 int32_t *restrict set_gidx,
                                 float *restrict set_scale,

@@ -31,11 +31,11 @@ static constexpr int kHD = LLAMA_GQA_HEAD_DIM;
 static constexpr int kNHeadsQ = LLAMA_GQA_N_HEADS_Q;
 static constexpr int kNHeadsKV = LLAMA_GQA_N_HEADS_KV;
 static constexpr int kREP = kNHeadsQ / kNHeadsKV;
-static constexpr int kQD = kNHeadsQ * kHD;             // 2048
-static constexpr int kBodyChunk = kREP * kHD;          // 256
-static constexpr int kTailChunk = kREP * 8;            // 32
-static constexpr int kChunk = kBodyChunk + kTailChunk; // 288
-static constexpr int kHalfKV = kNHeadsKV / 2;          // 4
+static constexpr int kQD = kNHeadsQ * kHD;
+static constexpr int kBodyChunk = kREP * kHD;
+static constexpr int kTailChunk = kREP * 8;
+static constexpr int kChunk = kBodyChunk + kTailChunk;
+static constexpr int kHalfKV = kNHeadsKV / 2;
 
 // One 512-bit fp32 register; wider vectors made Peano spill to 3 KB frames.
 static constexpr int kVec = 16;
@@ -50,10 +50,10 @@ static inline float bits_to_float(int32_t bits) {
 // join packs 4 chunks per half. De-interleave them into [kQD bodies |
 // kNHeadsQ*4 scales] so af_concat reads both from one buffer. KV group g
 // holds Q heads [g*REP, g*REP + REP), so Q-head order is preserved.
-static constexpr int kSvBody = kREP * kHD; // 256 (one KV group's body)
-static constexpr int kSvTail = kREP * 4;   // 16  (one KV group's scales)
-static constexpr int kSvChunk = kSvBody + kSvTail; // 272
-static constexpr int kSvScalesOff = kQD;           // scales region start in out
+static constexpr int kSvBody = kREP * kHD;
+static constexpr int kSvTail = kREP * 4;
+static constexpr int kSvChunk = kSvBody + kSvTail;
+static constexpr int kSvScalesOff = kQD;
 
 extern "C" void llama_sv_merge_selfcal(int8_t *restrict in_lo,
                                        int8_t *restrict in_hi,
@@ -71,21 +71,21 @@ extern "C" void llama_sv_merge_selfcal(int8_t *restrict in_lo,
   event1();
 }
 
-static constexpr int kKfpHead = kHD * 4;     // 256 (64 fp32 for one head)
-static constexpr int kCsBytes = 2 * kHD * 2; // 256 (cos+sin bf16)
+static constexpr int kKfpHead = kHD * 4;
+static constexpr int kCsBytes = 2 * kHD * 2;
 
 // The attention's per-head chunks [q_chunk 288 B | row 136 B], the row being
 // the head's new K/V cache row, [k int8 | v int8 | k_scale f32 | v_scale f32]
 // (llama_kv_row.h).
-static constexpr int kRowBytes = 2 * kHD + 8;        // 136
-static constexpr int kRowChunk = kChunk + kRowBytes; // 424
+static constexpr int kRowBytes = 2 * kHD + 8;
+static constexpr int kRowChunk = kChunk + kRowBytes;
 
 // comb_rope_rows (the GEMV array decode): the array's per-KV-group chunks
 // [q body 256 B | q tail 32 B | k fp32 x64 | v fp32 x64 | cs 256 B]
 // (llama_gemv_array_qkv_comb_cs), all 8 groups in comb, to the attention's
 // [q roped 288 B | row 136 B] chunks, lo (groups 0-3) and hi (4-7), each
 // half followed by its 4 rows again, for the cache write-back.
-static constexpr int kArrayChunk = kChunk + 3 * kKfpHead; // 1056
+static constexpr int kArrayChunk = kChunk + 3 * kKfpHead;
 
 extern "C" void llama_comb_rope_rows(int8_t *restrict comb,
                                      int8_t *restrict out_lo,
