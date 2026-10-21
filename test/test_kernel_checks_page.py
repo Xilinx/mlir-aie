@@ -196,11 +196,13 @@ def test_the_mobilenet_repro_builds_what_the_nightly_builds(page):
         encoding="utf-8"
     )
     # The design's default effort is sa_placer_flags' own; full is 1.0.
-    common = (ROOT / "programming_examples/ml/mobilenet/bottleneck/_common.py").read_text(
-        encoding="utf-8"
-    )
+    common = (
+        ROOT / "programming_examples/ml/mobilenet/bottleneck/_common.py"
+    ).read_text(encoding="utf-8")
     efforts = {
-        "default": float(re.search(r"def sa_placer_flags\(.*effort=([\d.]+)", common)[1]),
+        "default": float(
+            re.search(r"def sa_placer_flags\(.*effort=([\d.]+)", common)[1]
+        ),
         "full": float(re.search(r'^\s+"full": ([\d.]+),$', producer, re.M)[1]),
     }
     run_seed = producer.split("def run_seed(", 1)[1].split("\ndef ", 1)[0]
@@ -630,13 +632,17 @@ def test_status_reads_without_color_and_text_meets_aa(page):
                 assert ratio >= 4.5, (fg, bg, theme[fg], theme[bg], ratio)
     # A failure carries a cross and a warning is hollow, in the strips and dots.
     assert ".night.bad::before { content: '\u2715'; }" in css
-    assert re.search(r"\.night\.warn \{ background: transparent; box-shadow: inset", css)
+    assert re.search(
+        r"\.night\.warn \{ background: transparent; box-shadow: inset", css
+    )
     assert ".ci-row.bad .dot::before" in css and ".k-row .k-bad .dot::before" in css
     # Headings nest: the overview has one, a section's blocks are h3s.
     assert '<h2 class="sr-only">Overview</h2>' in html
     assert "<h2>Needs a look</h2>" not in html and "<h3>Needs a look</h3>" in html
     # The theme button's accessible name is its visible text.
-    assert re.search(r'<button id="theme" type="button" title="[^"]+">Dark</button>', html)
+    assert re.search(
+        r'<button id="theme" type="button" title="[^"]+">Dark</button>', html
+    )
     page(COMPONENT_RUNS + HW_NIGHTS + """
 // Placement's lanes: full effort dashed, in the line and its chip.
 const card = componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore).cards[0];
@@ -670,7 +676,12 @@ def test_every_metric_the_checks_publish_has_a_label_and_a_description(page):
         # row(case, "metric", ...), ("metric", "unit") pairs, cells["metric"] and
         # *_COUNTS entries.
         published |= set(re.findall(r'row\(\s*[^,()]+,\s*"([a-z][a-z0-9_]*)"', text))
-        published |= set(re.findall(r'\(\s*"([a-z][a-z0-9_]*)",\s*"(?:bytes|cores|ms|s|us|tok/s|fps)"\s*\)', text))
+        published |= set(
+            re.findall(
+                r'\(\s*"([a-z][a-z0-9_]*)",\s*"(?:bytes|cores|ms|s|us|tok/s|fps)"\s*\)',
+                text,
+            )
+        )
         published |= set(re.findall(r'cells\["([a-z][a-z0-9_]*)"\] = \(', text))
         for block in re.findall(r"^TIMED = \(([^)]*)\)", text, re.MULTILINE):
             published |= set(re.findall(r'"([a-z][a-z0-9_]*)"', block))
@@ -684,8 +695,17 @@ def test_every_metric_the_checks_publish_has_a_label_and_a_description(page):
     published |= {"us_per_image_b1", "us_per_image_b8", "fps_b1", "fps_b8"}
     # n_cores is dropped (the author's call): the page shows the layout as words.
     published -= {"n_cores"}
-    assert {"max_ulp_float32", "not_correctly_rounded_bfloat16", "compile_s", "unrouted", "tok_s", "placement_cost",
-            "failed_mutations", "npu_us_per_image", "host_overhead_us_per_image"} <= published
+    assert {
+        "max_ulp_float32",
+        "not_correctly_rounded_bfloat16",
+        "compile_s",
+        "unrouted",
+        "tok_s",
+        "placement_cost",
+        "failed_mutations",
+        "npu_us_per_image",
+        "host_overhead_us_per_image",
+    } <= published
     page(f"""
 const published = {json.dumps(sorted(published))};
 for (const m of [...published, ...ALL_METRICS]) {{

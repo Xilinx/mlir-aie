@@ -24,10 +24,10 @@ from aie2_decode import (
     STAGE_RESID,
     WLM_SLOT,
     WLM_TOTAL,
+    StageLayout,
     build,
     kv_blocks,
     kv_words,
-    stage_layout,
     wblob_layout,
 )
 from aie2_gemv_array import (
@@ -39,6 +39,7 @@ from aie2_gemv_array import (
 )
 from llama_config import CS_BYTES, HEAD_D, N_HEADS_KV, N_TILE, VOCAB, D
 from llama_npu import DispatchSession
+from llama_oracle import xoshiro_seed
 from ml_dtypes import bfloat16
 
 # The decode's time a token at position p, fit to the README's N=16
@@ -155,9 +156,9 @@ class DecodeShape:
         self.t = t
         self.kset = kset
         self.p_max = p_max
-        slots, _, final, _, self.stage_bytes = stage_layout(n_layers)
-        self.seed_at = slots[0, "o"] + STAGE_RESID
-        self.final_at = final + STAGE_RESID
+        self.stage = StageLayout(n_layers)
+        self.seed_at = self.stage.slots[0, "o"] + STAGE_RESID
+        self.final_at = self.stage.final + STAGE_RESID
         self.kv_words = kv_words(t, n_layers)
 
     @property
@@ -165,14 +166,14 @@ class DecodeShape:
         """aie2_decode.build's CompileTime values."""
         return dict(P_MAX=self.p_max, N_LAYERS=self.n_layers, T=self.t, KSET=self.kset)
 
-    def params(self, t0, passes, sample, batch=(), batch_ends_prompt=True):
+    def params(self, t0, passes, sampler, batch=(), batch_ends_prompt=True):
         """The design's ScratchpadParameters for one dispatch.
 
         Args:
             t0: The position of the dispatch's first token.
             passes: The passes it runs, 1..p_max, one token each, except
                 that a batch is the only pass.
-            sample: The sampler's (temperature, top_k, seed).
+            sampler: The sampler's (temperature, top_k).
             batch: Prompt tokens, up to M_MAX within one KV block, that the
                 first pass runs together as its rows; without any, the first
                 pass inputs the previous token's sample.
@@ -198,13 +199,13 @@ class DecodeShape:
             raise ValueError(f"a batch of {len(batch)} from {t0} is not one block's")
         if len(batch) > 1 and passes != 1:
             raise ValueError("a batch of several tokens is its dispatch's only pass")
-        temperature, top_k, seed = sample
+        temperature, top_k = sampler
         params = {
             "passes": passes,
             "m0": max(len(batch), 1),
             "t0": t0,
             "cs_off": t0 * CS_BYTES,
-            **sample_param_values(temperature, top_k, seed, self.kset),
+            **sample_param_values(temperature, top_k, self.kset),
         }
         rows = 0
         for m in range(M_MAX):
@@ -286,7 +287,7 @@ class DecodeShape:
         w[off_rope : off_rope + self.t * CS_BYTES] = rope.view(np.int8).ravel()
         return w
 
-    def pack_stage(self, layers, final_gamma, seed):
+    def pack_stage(self, layers, final_gamma, seed, rng_seed):
         """The stage buffer at the start of a generation.
 
         Args:
@@ -294,18 +295,19 @@ class DecodeShape:
             final_gamma: The final norm's bf16 gamma.
             seed: The first token's layer-0 residual (int8[D], f32 scale,
                 fp32[D]), if it is not a prompt token.
+            rng_seed: The sampler's 32-bit seed for the generation.
 
         Returns:
-            int8, stage_layout(n_layers)'s: each norm's gamma after the
-            residual it norms, and the first token's seed.
+            int8, StageLayout's: each norm's gamma after the residual it
+            norms, the first token's seed and the sampler's xoshiro state.
         """
-        slots, _, final, _, total = stage_layout(self.n_layers)
-        st = np.zeros(total, np.int8)
+        slots = self.stage.slots
+        st = np.zeros(self.stage.total, np.int8)
         gammas = [(slots[L, "o"], layer["gamma_in"]) for L, layer in enumerate(layers)]
         gammas += [
             (slots[L, "d"], layer["gamma_post"]) for L, layer in enumerate(layers)
         ]
-        gammas.append((final, final_gamma))
+        gammas.append((self.stage.final, final_gamma))
         for at, g in gammas:
             at += STAGE_RESID + M_MAX * RROW
             st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
@@ -316,7 +318,17 @@ class DecodeShape:
         )
         fp_at = self.seed_at + RQ
         st[fp_at : fp_at + 4 * D] = np.asarray(x_fp, np.float32).view(np.int8)
+        st[self.stage.rng : self.stage.rng + 16] = np.array(
+            xoshiro_seed(rng_seed), np.uint32
+        ).view(np.int8)
         return st
+
+    def rng_state(self, stage):
+        """The sampler's xoshiro state in a stage buffer, as 4 uint32."""
+        return [
+            np.uint32(w)
+            for w in stage[self.stage.rng : self.stage.rng + 16].view(np.uint32)
+        ]
 
     def pack_kv(self, layers):
         """A KV cache holding the layers' caches.
@@ -365,9 +377,8 @@ class Decoder:
         self.session = DispatchSession(build, elf, **shape.compile_kwargs)
         self.w_t = iron.tensor(shape.pack_wblob(layers, rope), dtype=np.int8)
         self.lmw_t = iron.tensor(pack_lmw(*lm), dtype=np.int8)
-        self._stage0 = shape.pack_stage(
-            layers, lm[2], (np.zeros(D, np.int8), 0.0, np.zeros(D, np.float32))
-        )
+        self.layers = layers
+        self.final_gamma = lm[2]
 
     def dispatch(self, kv_t, stage_t, params):
         """Run one dispatch on a KV cache and stage.
@@ -395,7 +406,8 @@ class Decoder:
         Args:
             prompt: The prompt's token ids.
             max_new: Tokens to generate at most.
-            sample: The sampler's (temperature, top_k, seed).
+            sample: The sampler's (temperature, top_k, seed), seeded once
+                for the generation.
             stop: Token ids that end the generation (kept).
 
         Returns:
@@ -410,8 +422,18 @@ class Decoder:
                 f"{len(prompt)} prompt tokens and {max_new} more do not fit "
                 f"in t={self.shape.t}"
             )
+        temperature, top_k, rng_seed = sample
+        sampler = (temperature, top_k)
         kv_t = iron.tensor(np.zeros(self.shape.kv_words, np.int32), dtype=np.int32)
-        stage_t = iron.tensor(self._stage0, dtype=np.int8)
+        stage_t = iron.tensor(
+            self.shape.pack_stage(
+                self.layers,
+                self.final_gamma,
+                (np.zeros(D, np.int8), 0.0, np.zeros(D, np.float32)),
+                rng_seed,
+            ),
+            dtype=np.int8,
+        )
         start = time.perf_counter()
         pos = 0
         out = []
@@ -423,7 +445,7 @@ class Decoder:
                 self.shape.params(
                     pos,
                     1,
-                    sample,
+                    sampler,
                     prompt[pos : pos + n],
                     batch_ends_prompt=i == len(sizes) - 1,
                 ),
@@ -435,7 +457,9 @@ class Decoder:
         end = len(prompt) + max_new - 1
         while pos < end and out[-1] not in stop:
             n = min(self.shape.passes_for(pos), end - pos)
-            records, _ = self.dispatch(kv_t, stage_t, self.shape.params(pos, n, sample))
+            records, _ = self.dispatch(
+                kv_t, stage_t, self.shape.params(pos, n, sampler)
+            )
             for tok in tokens_of(records, n):
                 out.append(tok)
                 if tok in stop:

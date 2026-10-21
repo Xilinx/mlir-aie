@@ -22,10 +22,14 @@ from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import AIE_API_PREFIX_FLAGS, compile_cxx_core_function
 
 _COMPILE = """
-import sys
+import argparse
 from aie.utils.compile.utils import compile_cxx_core_function
-source, output, *args = sys.argv[1:]
-compile_cxx_core_function(source, "aie2p", output, compile_args=args)
+parser = argparse.ArgumentParser()
+parser.add_argument("--source", required=True)
+parser.add_argument("--output", required=True)
+parser.add_argument("--compile-arg", action="append", default=[])
+args = parser.parse_args()
+compile_cxx_core_function(args.source, "aie2p", args.output, compile_args=args.compile_arg)
 """
 
 _KERNEL = """
@@ -61,7 +65,14 @@ def _compile(
         env["PEANO_INSTALL_DIR"] = str(peano)
     env.update(environ or {})
     ret = subprocess.run(
-        [sys.executable, "-c", _COMPILE, str(src), str(out), *args],
+        [
+            sys.executable,
+            "-c",
+            _COMPILE,
+            f"--source={src}",
+            f"--output={out}",
+            *(f"--compile-arg={arg}" for arg in args),
+        ],
         cwd=work,
         env=env,
         capture_output=True,
@@ -179,11 +190,15 @@ def test_concurrent_compiles_build_one_pch(tmp_path):
 
 
 _COMPILE_CONCURRENTLY = """
-import sys
+import argparse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from aie.utils.compile.utils import compile_cxx_core_function
-work, n = Path(sys.argv[1]), int(sys.argv[2])
+parser = argparse.ArgumentParser()
+parser.add_argument("--work", type=Path, required=True)
+parser.add_argument("--threads", type=int, required=True)
+args = parser.parse_args()
+work, n = args.work, args.threads
 
 def compile_one(i):
     compile_cxx_core_function(
@@ -229,7 +244,13 @@ def test_concurrent_compiles_preprocess_the_bare_command_once(tmp_path):
         PEANO_INSTALL_DIR=str(peano),
     )
     ret = subprocess.run(
-        [sys.executable, "-c", _COMPILE_CONCURRENTLY, str(work), str(n)],
+        [
+            sys.executable,
+            "-c",
+            _COMPILE_CONCURRENTLY,
+            f"--work={work}",
+            f"--threads={n}",
+        ],
         cwd=work,
         env=env,
         capture_output=True,
@@ -243,13 +264,15 @@ def test_concurrent_compiles_preprocess_the_bare_command_once(tmp_path):
 
 
 _PREPROCESS_TWICE = """
-import sys
+import argparse
 from pathlib import Path
 from aie.utils.compile.utils import (
     _HEADER_DIRECTIVES, _PCH_OUTPUT, _PCH_SOURCE, _preprocessed,
     cxx_core_compile_command,
 )
-header = Path(sys.argv[1])
+parser = argparse.ArgumentParser()
+parser.add_argument("--header", type=Path, required=True)
+header = parser.parse_args().header
 cmd = cxx_core_compile_command(
     _PCH_SOURCE, "aie2p", _PCH_OUTPUT, compile_args=["-include", str(header)]
 )
@@ -275,7 +298,7 @@ def test_header_edited_without_changing_the_output_is_scanned_again(tmp_path):
     header.write_text("#define MARKED 1\n")
     env = dict(os.environ, NPU_CACHE_HOME=str(tmp_path / "cache"))
     ret = subprocess.run(
-        [sys.executable, "-c", _PREPROCESS_TWICE, str(header)],
+        [sys.executable, "-c", _PREPROCESS_TWICE, f"--header={header}"],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -317,10 +340,14 @@ def test_compile_does_not_wait_out_a_stuck_pch_build(tmp_path):
 
 
 _COMPILE_AROUND_A_NEW_HEADER = """
-import sys
+import argparse
 from pathlib import Path
 from aie.utils.compile.utils import compile_cxx_core_function
-source, before, after, shadow = sys.argv[1:]
+parser = argparse.ArgumentParser()
+for flag in ("--source", "--before", "--after", "--shadow"):
+    parser.add_argument(flag, required=True)
+cli = parser.parse_args()
+source, before, after, shadow = cli.source, cli.before, cli.after, cli.shadow
 args = ["-I", shadow]
 compile_cxx_core_function(source, "aie2p", before, compile_args=args)
 Path(shadow, "stdint.h").write_text("#define SHADOWED 1\\n#include_next <stdint.h>\\n")
@@ -354,10 +381,10 @@ def test_header_created_in_an_include_dir_reaches_the_next_compile(tmp_path):
             sys.executable,
             "-c",
             _COMPILE_AROUND_A_NEW_HEADER,
-            str(source),
-            str(work / "before.o"),
-            str(work / "after.o"),
-            str(shadow),
+            f"--source={source}",
+            f"--before={work / 'before.o'}",
+            f"--after={work / 'after.o'}",
+            f"--shadow={shadow}",
         ],
         cwd=work,
         env=env,

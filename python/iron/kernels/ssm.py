@@ -21,6 +21,7 @@ from ._common import (
     Trace,
     _kernel_source,
     _make_extern,
+    _vector_args,
 )
 from .sample import _positive
 
@@ -215,6 +216,15 @@ def selective_scan(
             f"-DSCAN_BLOCKS={blocks}",
         ],
         contract=KernelContract(
+            # B and C load 32 bf16s a vector where state is whole 32s and
+            # start on a 64-byte line (rows * head_dim whole 32s), x 16.
+            alignments=(
+                _vector_args(0)
+                if state % 32 == 0 and rows * head_dim % 32 == 0
+                else ((0, 32),)
+            )
+            + _vector_args(2)
+            + ((3, 32),),
             trace=Trace.whole_call(),
             roles=(In, In, Out, Out, Param, Param),
             parameter_bindings=((5, 0),),
@@ -312,14 +322,24 @@ def gated_delta_rule(
         rows: Rows of a block.
         key_dim: The q and k width.
         value_dim: The v width, or a slice of it: the state's columns are
-            independent.
+            independent. ``rows * value_dim`` is even, so the block and y
+            are whole 4-byte words, as a DMA moves them.
         blocks: Blocks to a head.
 
     Returns:
         The kernel.
+
+    Raises:
+        ValueError: A dimension is not a positive integer, or
+            ``rows * value_dim`` is odd.
     """
     geometry = dict(rows=rows, key_dim=key_dim, value_dim=value_dim, blocks=blocks)
     _positive("gated_delta_rule", **geometry)
+    if rows * value_dim % 2:
+        raise ValueError(
+            f"gated_delta_rule: rows * value_dim ({rows} * {value_dim}) must be "
+            "even, so the block and y are whole 4-byte words"
+        )
     return _make_extern(
         "gated_delta_rule",
         _kernel_source("ssm/gated_delta_rule.cc"),
@@ -339,6 +359,8 @@ def gated_delta_rule(
             f"-DGDR_BLOCKS={blocks}",
         ],
         contract=KernelContract(
+            # q, k and v rows load 16 bf16s a vector in place, y stores them.
+            alignments=((0, 32),) + _vector_args(2) + ((3, 32),),
             trace=Trace.whole_call(),
             roles=(In, In, Out, Out, Param, Param),
             parameter_bindings=((5, 0),),
@@ -355,7 +377,8 @@ def gated_delta_rule(
                 ),
                 note="npu2, against the float32 reference over five seeds: final "
                 "within 9.4e-7 of its range at key_dim 2, 5.1e-7 at the default; y "
-                "one bf16 ulp off in 1 of 10240, as the scalar kernel's",
+                "one bf16 ulp off in 1 of 10240, as the scalar kernel's; npu1: "
+                "unmeasured",
             ),
         ),
     )

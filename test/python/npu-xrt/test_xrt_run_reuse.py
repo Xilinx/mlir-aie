@@ -15,6 +15,9 @@ alternating, per-call instruction streams, and a context rebuilt after the
 runtime drops its cache, on both the xclbin and the full-ELF path.
 """
 
+import sys
+import threading
+
 import numpy as np
 import pytest
 
@@ -42,11 +45,9 @@ MAX_CHUNKS = 8
 
 @pytest.fixture
 def runtime():
-    rt = CachedXRTRuntime()
-    old = aie.utils.DefaultNPURuntime
-    aie.utils.DefaultNPURuntime = rt
+    rt = aie.utils.DefaultNPURuntime
+    assert isinstance(rt, CachedXRTRuntime)
     yield rt
-    aie.utils.DefaultNPURuntime = old
     rt.cleanup()
 
 
@@ -136,10 +137,9 @@ def test_loads_of_one_kernel_share_a_run(runtime):
     design = _design(4, True)
     a = iron.tensor(np.arange(N, dtype=np.int32), dtype=np.int32)
     b = iron.zeros((N,), dtype=np.int32)
-    design(a, b)
-    kernel = design._kernel_cache[next(iter(design._kernel_cache))]
-    first, second = runtime.load(kernel), runtime.load(kernel)
-    assert first.kernel_run is second.kernel_run
+    first, _ = design(a, b)
+    second, _ = design(a, b)
+    assert first is not second and first.kernel_run is second.kernel_run
     run = first.kernel_run.run
     assert run is not None
     design(a, b)
@@ -177,12 +177,48 @@ def test_run_dropped_after_a_failed_dispatch(runtime, full_elf):
     x = np.arange(N, dtype=np.int32)
     a = iron.tensor(x, dtype=np.int32)
     b = iron.zeros((N,), dtype=np.int32)
-    design(a, b)
-    kernel = design._kernel_cache[next(iter(design._kernel_cache))]
-    handle = runtime.load(kernel)
+    handle, _ = design(a, b)
     with pytest.raises(TypeError):
         handle.kernel_run.dispatch([object()])
     assert handle.kernel_run.run is None
     b = iron.zeros((N,), dtype=np.int32)
     design(a, b)
     np.testing.assert_array_equal(b.numpy(), x + 6)
+
+
+@pytest.mark.parametrize("full_elf", [False, True], ids=["xclbin", "elf"])
+def test_two_threads_dispatching_one_kernel_each_get_their_own_result(
+    runtime, full_elf
+):
+    design = _design(13, full_elf)
+    warm = iron.tensor(np.arange(N, dtype=np.int32), dtype=np.int32)
+    design(warm, iron.zeros((N,), dtype=np.int32))
+    results, errors = [], []
+
+    def dispatch(seed):
+        try:
+            rng = np.random.default_rng(seed)
+            for _ in range(40):
+                x = rng.integers(-(2**20), 2**20, size=N, dtype=np.int32)
+                b = iron.zeros((N,), dtype=np.int32)
+                design(iron.tensor(x, dtype=np.int32), b)
+                results.append((x, b.numpy()))
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=dispatch, args=(seed,)) for seed in (1, 2)]
+    # Switching threads every few bytecodes lands a switch between one call's
+    # set_arg and its start, where the other thread can rebind the run.
+    interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        sys.setswitchinterval(interval)
+    assert not errors, errors
+    assert len(results) == 80
+    for x, got in results:
+        np.testing.assert_array_equal(got, x + 13)

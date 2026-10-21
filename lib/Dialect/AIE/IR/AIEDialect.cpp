@@ -1649,19 +1649,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
                    cast<AIEObjectFifoType>(objectFifoType).getElementType())
                    .getElementType()));
   };
-  // What a fifo's producer sends for `elements`: padding widens each
-  // dimension it streams, as the DMA lowering's paddedSize does.
-  auto sentElements = [](ObjectFifoCreateOp fifo, int64_t elements) {
-    std::optional<ArrayRef<BDPadLayoutAttr>> pads = fifo.getPadDimensions();
-    ArrayRef<BDDimLayoutAttr> dims = fifo.getDimensionsToStream();
-    if (!pads || pads->empty() || dims.empty())
-      return elements;
-    int64_t padded = 1;
-    for (auto [dim, pad] : llvm::zip(dims, *pads))
-      padded *=
-          dim.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
-    return padded;
-  };
   auto checkSlot = [&](StringRef role, ObjectFifoCreateOp participant,
                        int64_t object, ObjectFifoCreateOp shared,
                        int64_t slotBytes, ArrayAttr offsets) -> LogicalResult {
@@ -1705,7 +1692,10 @@ LogicalResult ObjectFifoLinkOp::verify() {
               ? bytesOf(fifoIn.getConsumerElemTypeOrDefault(),
                         elementsOf(fifoIn.getConsumerElemTypeOrDefault()))
               : bytesOf(fifoIn.getElemType(),
-                        sentElements(fifoIn, elementsOf(fifoIn.getElemType())));
+                        paddedSize(fifoIn.getDimensionsToStream(),
+                                   fifoIn.getPadDimensions().value_or(
+                                       ArrayRef<BDPadLayoutAttr>{}),
+                                   elementsOf(fifoIn.getElemType())));
       if (failed(checkSlot("input", fifoIn, object, fifoOut,
                            bytesOf(fifoOut.getElemType(), slot),
                            getSrcOffsets())))
@@ -1748,7 +1738,11 @@ LogicalResult ObjectFifoLinkOp::verify() {
               "output", fifoOut,
               bytesOf(fifoOut.getElemType(), elementsOf(fifoOut.getElemType())),
               fifoIn,
-              bytesOf(fifoIn.getElemType(), sentElements(fifoOut, slot)),
+              bytesOf(fifoIn.getElemType(),
+                      paddedSize(fifoOut.getDimensionsToStream(),
+                                 fifoOut.getPadDimensions().value_or(
+                                     ArrayRef<BDPadLayoutAttr>{}),
+                                 slot)),
               getDstOffsets())))
         return failure();
     }
@@ -4124,6 +4118,17 @@ LogicalResult DMABDOp::verifyTransferInBounds() {
 // A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
 // scan when the innermost stride is 1 and each outer stride equals the product
 // of all inner sizes.  Used by both DMABDOp verification and canonicalization.
+int64_t xilinx::AIE::paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
+                                llvm::ArrayRef<BDPadLayoutAttr> pads,
+                                int64_t fallback) {
+  if (dims.empty() || pads.empty())
+    return fallback;
+  int64_t size = 1;
+  for (auto [dim, pad] : llvm::zip(dims, pads))
+    size *= dim.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
+  return size;
+}
+
 bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   if (dims.empty())
     return true; // no ND layout = trivially contiguous

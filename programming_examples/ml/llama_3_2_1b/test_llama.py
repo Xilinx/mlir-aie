@@ -39,9 +39,9 @@ CASES = {
     ),
     "sampled": (
         ["--start-pos", "5", "--sample-temp", "0.7", "--sample-topk", "4"]
-        + ["--sample-seed", "1234"],
-        4,
-        [],
+        + ["--sample-seed", "1234", "--dispatches", "2"],
+        8,
+        ["carry across 2 dispatches: PASS"],
     ),
     "prompt": (
         ["--start-pos", "60", "--prompt-tokens", "7", "--vs-batch", "1"],
@@ -61,7 +61,10 @@ def test_decode_matches_the_oracle(case, capsys):
     for line in lines:
         assert line in out
     if case == "sampled":
-        assert len(re.findall(r"PASS .*\[sampled\]", out)) == tokens
+        states = re.findall(r"PASS .*\[sampled, state ([0-9a-f]{8})\]", out)
+        assert len(states) == tokens
+        assert len(set(states)) == tokens, "a draw reused the sampler's state"
+        assert out.count("sampler state: PASS") == 2
 
 
 DATA_DIR = chain.DATA_DIR
