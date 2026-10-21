@@ -299,11 +299,11 @@ def compile_stats(cold: Measured, warm: Measured) -> dict:
     }
 
 
-def row(case: str, metric: str, value, unit: str, range: str | None = None) -> dict:
-    """Return one perf.json row, ``case/metric``, with an optional range note."""
+def row(case: str, metric: str, value, unit: str, spread: str | None = None) -> dict:
+    """Return one perf.json row, ``case/metric``, with an optional ``range`` note."""
     out = {"name": f"{case}/{metric}", "unit": unit, "value": value}
-    if range is not None:
-        out["range"] = range
+    if spread is not None:
+        out["range"] = spread
     return out
 
 
