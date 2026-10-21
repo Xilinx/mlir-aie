@@ -237,6 +237,15 @@ the bit-exact host reference.
     options:
       show_root_heading: false
 
+## Lookup tables
+
+A kernel that reads a table compiles it in from a generated header; its numpy
+reference reads the same entries.
+
+::: iron.kernels.tables
+    options:
+      show_root_heading: false
+
 ## Mixture of experts
 
 `router_top_k` turns one `sample_select` summary into a router's `top_k`

@@ -32,6 +32,7 @@ Submodules:
   `mm.mac_dims(...)`, `cascade_mm.mac_dims(...)` and `mha.mac_dims(...)` query
   micro-kernel geometry without constructing a kernel.
 - `zero` — independent zero-fill kernel
+- `tables` — exp_lut, silu_lut and the C headers that compile them into a kernel
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
