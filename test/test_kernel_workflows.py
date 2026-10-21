@@ -366,6 +366,16 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
         assert required == ("turbo" if publishes else "any")
 
 
+def test_the_hardware_checks_install_nothing_mid_run():
+    steps = component_steps("hw-checks")
+    for step in steps:
+        if step.get("name") != "Setup virtual environment / prerequisites":
+            assert "pip install" not in step.get("run", ""), step["name"]
+    requirements = (WORKFLOWS.parents[1] / "python/requirements_ml.txt").read_text()
+    assert "\ntiktoken==" in requirements
+    assert "--extras" in steps[1]["run"]
+
+
 MODEL_INPUTS = (
     "allocator_seeds",
     "allocator_bankres_seeds",
