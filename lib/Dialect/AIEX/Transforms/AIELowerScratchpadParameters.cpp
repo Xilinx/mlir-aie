@@ -22,10 +22,11 @@
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <array>
 #include <numeric>
 
 using namespace mlir;
@@ -314,6 +315,109 @@ commandParameters(ModuleOp moduleOp) {
   });
   return commands;
 }
+
+/// Gives parameters state-table slots such that two a command reads together
+/// differ: a colouring of the graph whose cliques are the commands. The search
+/// is exact, so whether a module fits does not depend on the order its
+/// parameters are declared in. It goes in DSatur order (next the parameter
+/// whose conflicts hold the most distinct slots, then the most conflicts,
+/// then the first declared), lowest slot first, so its first descent is the
+/// DSatur greedy colouring, and it backtracks only when that does not fit.
+class SlotColoring {
+public:
+  enum class Result { Found, Infeasible, GaveUp };
+
+  explicit SlotColoring(unsigned numParams)
+      : conflicts(numParams), slots(numParams), wanted(numParams, false),
+        neighbourSlots(numParams), saturation(numParams, 0) {}
+
+  void addConflict(unsigned a, unsigned b) {
+    if (a == b || llvm::is_contained(conflicts[a], b))
+      return;
+    conflicts[a].push_back(b);
+    conflicts[b].push_back(a);
+  }
+
+  void want(unsigned param) { wanted[param] = true; }
+
+  void pin(unsigned param, unsigned slot) {
+    wanted[param] = false;
+    assign(param, slot);
+    maxSlot = std::max<int>(maxSlot, slot);
+  }
+
+  Result solve(unsigned stepLimit) {
+    steps = stepLimit;
+    return search();
+  }
+
+  std::optional<unsigned> slot(unsigned param) const { return slots[param]; }
+
+  /// The parameter the first descent found no slot for, after a failed solve.
+  unsigned stuck() const { return *firstStuck; }
+
+private:
+  SmallVector<SmallVector<unsigned>> conflicts;
+  SmallVector<std::optional<unsigned>> slots;
+  SmallVector<bool> wanted;
+  // How many conflicts hold each slot, and how many slots that is.
+  SmallVector<std::array<unsigned, kMaxStateTableEntries>> neighbourSlots;
+  SmallVector<unsigned> saturation;
+  int maxSlot = -1;
+  unsigned steps = 0;
+  std::optional<unsigned> firstStuck;
+
+  void assign(unsigned param, unsigned slot) {
+    slots[param] = slot;
+    for (unsigned other : conflicts[param])
+      if (neighbourSlots[other][slot]++ == 0)
+        saturation[other]++;
+  }
+
+  void unassign(unsigned param) {
+    unsigned slot = *slots[param];
+    slots[param].reset();
+    for (unsigned other : conflicts[param])
+      if (--neighbourSlots[other][slot] == 0)
+        saturation[other]--;
+  }
+
+  Result search() {
+    std::optional<unsigned> next;
+    for (unsigned p = 0; p < slots.size(); p++) {
+      if (!wanted[p] || slots[p])
+        continue;
+      if (!next || saturation[p] > saturation[*next] ||
+          (saturation[p] == saturation[*next] &&
+           conflicts[p].size() > conflicts[*next].size()))
+        next = p;
+    }
+    if (!next)
+      return Result::Found;
+    // Every slot above the highest held is alike, so only the first is tried.
+    unsigned limit = std::min<unsigned>(maxSlot + 2, kMaxStateTableEntries);
+    for (unsigned s = 0; s < limit; s++) {
+      if (neighbourSlots[*next][s] != 0)
+        continue;
+      if (firstStuck && steps-- == 0)
+        return Result::GaveUp;
+      int previousMax = maxSlot;
+      maxSlot = std::max<int>(maxSlot, s);
+      assign(*next, s);
+      Result result = search();
+      if (result != Result::Infeasible)
+        return result;
+      unassign(*next);
+      maxSlot = previousMax;
+    }
+    if (!firstStuck)
+      firstStuck = *next;
+    return Result::Infeasible;
+  }
+};
+
+// Slots the search tries after its first dead end before giving up.
+constexpr unsigned kMaxSlotSearchSteps = 1 << 17;
 
 struct AIELowerScratchpadParametersPass
     : public xilinx::AIEX::impl::AIELowerScratchpadParametersBase<
@@ -699,73 +803,75 @@ struct AIELowerScratchpadParametersPass
                              : ScratchpadParameterKind::Core));
     }
 
-    // Step 3: assign state-table slots in walk order, each the lowest no
-    // parameter of a command reading it holds. A command has a scratchpad of
-    // its own, so parameters no one command reads together share a slot; one
-    // no command reads takes a slot of its own. A module of one command gets
-    // 0..N-1. A parameter that has a slot, from a previous run, keeps it.
-    DenseMap<StringRef, SmallVector<unsigned>> readers;
-    for (auto [k, entry] : llvm::enumerate(commands))
-      for (StringRef name : entry.second)
-        readers[name].push_back(k);
-    // The slots each command's parameters hold, those every parameter holds,
-    // and those of parameters no command reads, which no other may share.
-    SmallVector<llvm::SmallBitVector> held(commands.size());
-    llvm::SmallBitVector anyHeld, unread;
-    unsigned numSlots = 0;
-    auto hold = [](llvm::SmallBitVector &bits, unsigned slot) {
-      if (bits.size() <= slot)
-        bits.resize(slot + 1);
-      bits.set(slot);
-    };
-    for (ScratchpadParameterOp p : allParams) {
-      std::optional<uint8_t> slot = p.getStateTableIdx();
-      if (!slot)
-        continue;
-      SmallVector<unsigned> mine = readers.lookup(p.getSymName());
-      for (unsigned k : mine) {
-        if (*slot < held[k].size() && held[k].test(*slot)) {
-          p.emitError("parameter '")
-              << p.getSymName() << "' and another parameter command '"
-              << scratchpadCommandName(commands.begin()[k].first)
+    // Step 3: colour the slots, keeping those a previous run assigned.
+    DenseMap<StringRef, unsigned> paramIndex;
+    for (auto [i, p] : llvm::enumerate(allParams))
+      paramIndex[p.getSymName()] = i;
+    SlotColoring coloring(allParams.size());
+    DenseMap<unsigned, SmallVector<RuntimeSequenceOp>> readers;
+    for (auto &[seq, reads] : commands) {
+      SmallVector<unsigned> read;
+      for (StringRef name : reads)
+        if (auto it = paramIndex.find(name); it != paramIndex.end())
+          read.push_back(it->second);
+      DenseMap<unsigned, unsigned> pinnedBy;
+      for (auto [i, a] : llvm::enumerate(read)) {
+        readers[a].push_back(seq);
+        coloring.want(a);
+        for (unsigned b : llvm::drop_begin(read, i + 1))
+          coloring.addConflict(a, b);
+        std::optional<uint8_t> slot = allParams[a].getStateTableIdx();
+        if (!slot)
+          continue;
+        auto [it, inserted] = pinnedBy.try_emplace(*slot, a);
+        if (!inserted) {
+          allParams[a].emitError("parameter '")
+              << allParams[a].getSymName() << "' and another parameter "
+              << "command '" << scratchpadCommandName(seq)
               << "' reads both have state-table entry " << *slot;
           return signalPassFailure();
         }
-        hold(held[k], *slot);
       }
-      hold(anyHeld, *slot);
-      if (mine.empty())
-        hold(unread, *slot);
-      numSlots = std::max(numSlots, *slot + 1u);
     }
-    for (ScratchpadParameterOp p : allParams) {
-      if (p.getStateTableIdx())
+    for (auto [i, p] : llvm::enumerate(allParams)) {
+      std::optional<uint8_t> slot = p.getStateTableIdx();
+      if (!slot)
         continue;
-      SmallVector<unsigned> mine = readers.lookup(p.getSymName());
-      llvm::SmallBitVector taken = mine.empty() ? anyHeld : unread;
-      for (unsigned k : mine) {
-        if (taken.size() < held[k].size())
-          taken.resize(held[k].size());
-        taken |= held[k];
-      }
-      unsigned slot = 0;
-      while (slot < taken.size() && taken.test(slot))
-        slot++;
-      if (slot >= kMaxStateTableEntries) {
+      if (*slot >= kMaxStateTableEntries) {
         p.emitError("parameter '")
-            << p.getSymName() << "' finds no free state-table entry among "
-            << kMaxStateTableEntries
-            << ": the commands reading it hold every one";
+            << p.getSymName() << "' has state-table entry " << *slot
+            << ", past the " << kMaxStateTableEntries << " there are";
         return signalPassFailure();
       }
-      for (unsigned k : mine)
-        hold(held[k], slot);
-      hold(anyHeld, slot);
-      if (mine.empty())
-        hold(unread, slot);
-      numSlots = std::max(numSlots, slot + 1);
+      coloring.pin(i, *slot);
+    }
+    SlotColoring::Result colored = coloring.solve(kMaxSlotSearchSteps);
+    if (colored != SlotColoring::Result::Found) {
+      ScratchpadParameterOp p = allParams[coloring.stuck()];
+      InFlightDiagnostic diag = p.emitError("parameter '")
+                                << p.getSymName()
+                                << "' finds no free state-table entry among "
+                                << kMaxStateTableEntries << ": ";
+      if (colored == SlotColoring::Result::Infeasible)
+        diag << "no assignment gives the parameters each command reads "
+                "distinct entries";
+      else
+        diag << "a search of " << kMaxSlotSearchSteps
+             << " steps found no assignment that gives the parameters each "
+                "command reads distinct entries";
+      for (RuntimeSequenceOp seq : readers.lookup(coloring.stuck()))
+        diag.attachNote(seq.getLoc())
+            << "read by command '" << scratchpadCommandName(seq) << "'";
+      return signalPassFailure();
+    }
+    unsigned numSlots = 0;
+    for (auto [i, p] : llvm::enumerate(allParams)) {
+      std::optional<unsigned> slot = coloring.slot(i);
+      if (!slot)
+        continue;
+      numSlots = std::max(numSlots, *slot + 1);
       p.setStateTableIdxAttr(builder.getIntegerAttr(
-          builder.getIntegerType(8, /*isSigned=*/false), slot));
+          builder.getIntegerType(8, /*isSigned=*/false), *slot));
     }
     for (auto &[seq, reads] : commands) {
       SmallVector<Attribute> refs;
@@ -796,11 +902,18 @@ struct AIELowerScratchpadParametersPass
         err.attachNote(paramOp.getLoc()) << "Parameter declared here.";
         return failure();
       }
-      uint8_t stateIdx =
-          static_cast<uint8_t>(paramOp.getStateTableIdx().value());
-      op->setAttr(idxAttrName,
-                  builder.getIntegerAttr(
-                      builder.getIntegerType(8, /*isSigned=*/false), stateIdx));
+      std::optional<uint8_t> stateIdx = paramOp.getStateTableIdx();
+      if (!stateIdx) {
+        op->emitOpError() << attrName << " '" << ref.getValue()
+                          << "' has no state-table entry: no command, a "
+                             "runtime sequence no aiex.run calls, reaches "
+                             "this op";
+        return failure();
+      }
+      op->setAttr(
+          idxAttrName,
+          builder.getIntegerAttr(builder.getIntegerType(8, /*isSigned=*/false),
+                                 *stateIdx));
       op->removeAttr(attrName);
       return paramOp;
     };
@@ -963,9 +1076,10 @@ struct AIELowerScratchpadParametersPass
         }
         auto paramOp =
             moduleOp.lookupSymbol<ScratchpadParameterOp>(readOp.getParameter());
-        uint8_t stateIdx =
-            static_cast<uint8_t>(paramOp.getStateTableIdx().value());
-        paramEntries.push_back({stateIdx, bufRef});
+        // No command reaches a core whose parameter has no slot, so no sync
+        // writes it.
+        if (std::optional<uint8_t> stateIdx = paramOp.getStateTableIdx())
+          paramEntries.push_back({*stateIdx, bufRef});
       });
 
       // Emit lock + use_lock preambles in cores, then insert a marker
