@@ -314,6 +314,21 @@ def test_the_sweep_takes_its_seed_count_from_the_environment(seeds, expected, tm
     assert args[args.index("--seeds") + 1] == expected
 
 
+def test_the_hardware_checks_find_the_runners_user_manager(tmp_path):
+    run = next(
+        step["run"]
+        for step in component_steps("hw-checks")
+        if step.get("name") == "Point systemd-run --user at the runner's user manager"
+    )
+    github_env = tmp_path / "github_env"
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        env={**os.environ, "GITHUB_ENV": str(github_env)},
+        check=True,
+    )
+    assert github_env.read_text() == f"XDG_RUNTIME_DIR=/run/user/{os.getuid()}\n"
+
+
 def evaluate(expression, context):
     """Evaluate the subset of GitHub's expression syntax the workflow uses."""
     text = expression.strip()

@@ -211,7 +211,9 @@ def compile_cold_warm(
         "--params",
         str(params),
     ]
-    cold = run_measured(compile_only, _YOLO_DIR, run_env, COMPILE_TIMEOUT)
+    cold = run_measured(
+        compile_only, _YOLO_DIR, run_env, COMPILE_TIMEOUT, tree_peak=True
+    )
     build = newest_build(cache_dir)
     stages_cold = stage_rows(
         os.path.join(build or cache_dir, AIECC_PROFILE_NAME),
@@ -220,7 +222,9 @@ def compile_cold_warm(
     )
 
     clear_for_warm(cache_dir)
-    warm = run_measured(compile_only, _YOLO_DIR, run_env, COMPILE_TIMEOUT)
+    warm = run_measured(
+        compile_only, _YOLO_DIR, run_env, COMPILE_TIMEOUT, tree_peak=True
+    )
     build = newest_build(cache_dir)
     stages_warm = stage_rows(
         os.path.join(build or cache_dir, AIECC_PROFILE_NAME),

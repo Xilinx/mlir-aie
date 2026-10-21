@@ -2780,10 +2780,12 @@ const compile = trendConfig(data, COMPILE_TABS[0]);
 assert.equal(compile.options.scales.y.type, 'linear');
 assert.equal(compile.options.scales.y.title.text, 'Compile time (s, one compile each) · ↓ better');
 assert.deepEqual(compile.data.datasets.filter(d => !d.band).map(d => d.label), ['cold', 'warm']);
-// Compile peak memory, MB, also on a plain axis.
+// Compile peak memory, MB, also on a plain axis. Records from before the whole
+// compile was measured keep their largest-process lines.
 const memory = trendConfig(data, COMPILE_TABS[1]);
 assert.equal(memory.options.scales.y.type, 'linear');
-assert.equal(memory.options.scales.y.title.text, 'Largest process peak (MiB, one compile each) · ↓ better');
+assert.equal(memory.options.scales.y.title.text, 'Peak memory (MiB, one compile each) · ↓ better');
+assert.deepEqual(memory.data.datasets.filter(d => !d.band).map(d => d.label), ['largest process, cold', 'largest process, warm']);
 // The box: a switch for the tab, drawn once on screen, redrawn on a switch.
 // A link to a warm metric opens the tab that draws it; a tab with no history is left out.
 const box = trendBox(data, hw.trend, 'compile_s_warm');

@@ -28,7 +28,9 @@ records ``process_ms`` (main() to the profile's writing) also gives its own
 time outside the graph: option parsing, building the graph, writing outputs.
 
 Every subprocess a check runs goes through ``run_measured``, which streams its
-output as it comes and kills it past a timeout, and every check writes
+output as it comes and kills it past a timeout, and, for a compile, measures
+its whole process tree's peak memory in a user systemd scope of its own.
+Every check writes
 ``write_unfinished``'s placeholder before its first device run, so a check
 stopped part way (a hang, a step timeout) still publishes as a failure.
 """
@@ -41,6 +43,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Iterable
@@ -67,8 +70,10 @@ SLOWEST_KERNELS = 5
 # A cold then warm compile's rows, as every check names them.
 COMPILE_METRICS = (
     "compile_s",
+    "compile_peak_mib",
     "compile_peak_rss_mb",
     "compile_s_warm",
+    "compile_peak_mib_warm",
     "compile_peak_rss_mb_warm",
     *STAGE_METRICS,
     *(f"{m}_warm" for m in STAGE_METRICS),
@@ -88,6 +93,12 @@ TIMED_OUT = 124
 # objects and the precompiled headers they were built with, the two caches an
 # edit to the design, not its kernels, leaves valid.
 WARM_KEEPS = ("objects", "pch")
+# A command in a transient user scope of its own, so its cgroup holds its whole
+# process tree and nothing else; --scope runs it in this environment and cwd.
+SCOPE = ("systemd-run", "--user", "--scope", "--quiet", "-p", "MemoryAccounting=yes")
+# Run from inside the scope: the cgroup's memory.peak, read before the scope
+# (and its cgroup) goes away with its last process.
+_SCOPE_PEAK = 'cat "/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.peak"'
 
 # First match wins; output names chosen on aiecc's command line (xclbin, pdi,
 # instructions) are matched by extension.
@@ -254,6 +265,36 @@ class Measured(NamedTuple):
     peak_rss_mib: float
     # User plus system CPU over its tree.
     cpu_s: float
+    # Its whole tree's peak memory (resident and page cache, as its cgroup's
+    # memory.peak counts it); None unless asked for and measurable.
+    tree_peak_mib: float | None = None
+    # Why tree_peak_mib was asked for and is None.
+    tree_peak_unavailable: str | None = None
+
+
+def scope_unavailable(env: dict | None) -> str | None:
+    """Return why a command can't run in a memory-accounted user scope, or None.
+
+    Args:
+        env: The environment the command would run in; ``systemd-run --user``
+            finds the user's manager through its XDG_RUNTIME_DIR.
+
+    Returns:
+        None when a probe in such a scope reads its cgroup's memory.peak,
+        else what stopped it.
+    """
+    if shutil.which("systemd-run", path=(env or os.environ).get("PATH")) is None:
+        return "systemd-run is not on PATH"
+    probe = subprocess.run(
+        [*SCOPE, "--", "sh", "-c", _SCOPE_PEAK],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0 or not probe.stdout.strip().isdigit():
+        said = (probe.stderr or probe.stdout).strip() or f"exit {probe.returncode}"
+        return f"{' '.join(SCOPE)}: {said}"
+    return None
 
 
 def run_measured(
@@ -262,6 +303,7 @@ def run_measured(
     env: dict | None,
     timeout: float,
     echo: bool = True,
+    tree_peak: bool = False,
 ) -> Measured:
     """Run ``cmd`` with a timeout, echoing its output as it comes.
 
@@ -273,7 +315,9 @@ def run_measured(
 
     Its peak RSS and CPU time are os.wait4's, so they are this command's:
     resource.getrusage(RUSAGE_CHILDREN) keeps a running max of RSS over every
-    child this process ever reaped.
+    child this process ever reaped. With ``tree_peak`` it runs in a user
+    systemd scope of its own, whose cgroup's memory.peak is the whole tree's
+    peak; where no such scope can be made, it runs as without and says why.
 
     Args:
         cmd: The command line.
@@ -281,13 +325,32 @@ def run_measured(
         env: Its environment; None for this process's.
         timeout: Seconds before it is killed.
         echo: Whether to echo its output.
+        tree_peak: Whether to measure its whole tree's peak memory.
 
     Returns:
-        The finished command and its wall seconds, peak RSS and CPU time.
+        The finished command and its wall seconds, peak RSS, CPU time and,
+        with ``tree_peak``, its tree's peak memory or why there is none.
     """
+    unavailable = scope_unavailable(env) if tree_peak else None
+    if unavailable:
+        print(f"no whole-tree peak memory: {unavailable}", flush=True)
+    peak_file = None
+    run = cmd
+    if tree_peak and not unavailable:
+        peak_file = tempfile.NamedTemporaryFile(prefix="tree-peak-", delete=False).name
+        run = [
+            *SCOPE,
+            "--",
+            "sh",
+            "-c",
+            f'f=$1; shift; "$@"; rc=$?; {_SCOPE_PEAK} > "$f"; exit $rc',
+            "sh",
+            peak_file,
+            *cmd,
+        ]
     start = time.perf_counter()
     proc = subprocess.Popen(
-        cmd,
+        run,
         cwd=cwd,
         env=env,
         stdout=subprocess.PIPE,
@@ -332,31 +395,54 @@ def run_measured(
         note = f"{' '.join(map(str, cmd))}: timed out after {timeout:g} s\n"
         lines.append(note)
         print(note, end="", flush=True)
+    tree_peak_mib = None
+    if peak_file is not None:
+        with open(peak_file) as f:
+            peak = f.read().strip()
+        os.remove(peak_file)
+        if peak.isdigit():
+            tree_peak_mib = int(peak) / 2**20
+        else:
+            unavailable = "the command ended before its scope's memory.peak was read"
+            print(f"no whole-tree peak memory: {unavailable}", flush=True)
     return Measured(
-        subprocess.CompletedProcess(proc.args, returncode, "".join(lines), ""),
+        subprocess.CompletedProcess(cmd, returncode, "".join(lines), ""),
         seconds,
         ru.ru_maxrss / 1024.0,
         ru.ru_utime + ru.ru_stime,
+        tree_peak_mib,
+        unavailable,
     )
 
 
 def compile_stats(cold: Measured, warm: Measured) -> dict:
-    """Return a cold and a warm compile's times and peak RSS, None where one failed.
+    """Return a cold and a warm compile's times and memory, None where one failed.
 
     Args:
-        cold: ``run_measured``'s result for the cold compile.
+        cold: ``run_measured``'s result for the cold compile, with ``tree_peak``.
         warm: Its result for the warm compile.
 
     Returns:
-        compile_s, compile_peak_rss_mb and their ``_warm`` twins.
+        compile_s, compile_peak_mib (the whole tree's peak, None where it
+        couldn't be measured), compile_peak_rss_mb (the largest process's)
+        and their ``_warm`` twins, and ``compile_peak_unavailable``: why a
+        compile that ran has no compile_peak_mib, else None.
     """
-    cold_ok, warm_ok = cold.process.returncode == 0, warm.process.returncode == 0
-    return {
-        "compile_s": round(cold.seconds, 1) if cold_ok else None,
-        "compile_peak_rss_mb": round(cold.peak_rss_mib, 1) if cold_ok else None,
-        "compile_s_warm": round(warm.seconds, 2) if warm_ok else None,
-        "compile_peak_rss_mb_warm": round(warm.peak_rss_mib, 1) if warm_ok else None,
-    }
+    stats: dict = {"compile_peak_unavailable": None}
+    for suffix, m in (("", cold), ("_warm", warm)):
+        ok = m.process.returncode == 0
+        stats[f"compile_s{suffix}"] = (
+            round(m.seconds, 2 if suffix else 1) if ok else None
+        )
+        stats[f"compile_peak_mib{suffix}"] = (
+            round(m.tree_peak_mib, 1) if ok and m.tree_peak_mib is not None else None
+        )
+        stats[f"compile_peak_rss_mb{suffix}"] = round(m.peak_rss_mib, 1) if ok else None
+        if ok and m.tree_peak_mib is None:
+            stats["compile_peak_unavailable"] = (
+                m.tree_peak_unavailable or "the compile ran without tree_peak"
+            )
+    return stats
 
 
 def row(case: str, metric: str, value, unit: str, spread: str | None = None) -> dict:
@@ -379,7 +465,7 @@ def compile_rows(case: str, stats: dict) -> list[dict]:
         The rows, in COMPILE_METRICS order.
     """
     return [
-        row(case, metric, stats[metric], "MiB" if "_rss_" in metric else "s")
+        row(case, metric, stats[metric], "MiB" if "_peak_" in metric else "s")
         for metric in COMPILE_METRICS
         if stats.get(metric) is not None
     ]

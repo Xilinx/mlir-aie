@@ -214,6 +214,53 @@ def test_a_command_past_its_timeout_is_killed_with_its_children(checks, capfd):
     assert capfd.readouterr().out.splitlines() == lines
 
 
+# Two children that each touch 128 MiB at once: the tree peaks at their sum,
+# its largest process at one.
+TWO_CHILDREN = [
+    sys.executable,
+    "-c",
+    "import subprocess, sys\n"
+    "hold = 'b = bytearray(128 << 20); b[::4096] = bytes(len(b[::4096])); "
+    "import time; time.sleep(1)'\n"
+    "kids = [subprocess.Popen([sys.executable, '-c', hold]) for _ in range(2)]\n"
+    "sys.exit(sum(k.wait() for k in kids))",
+]
+
+
+def test_a_compile_in_its_own_scope_reports_its_whole_trees_peak(checks):
+    stages, _ = checks
+    if (why := stages.scope_unavailable(None)) is not None:
+        pytest.skip(f"no memory-accounted user scope here: {why}")
+    measured = stages.run_measured(TWO_CHILDREN, None, None, 60, tree_peak=True)
+    assert measured.process.returncode == 0
+    assert measured.tree_peak_unavailable is None
+    assert 128 < measured.peak_rss_mib < 200
+    assert 256 < measured.tree_peak_mib < 400
+    stats = stages.compile_stats(measured, measured)
+    assert stats["compile_peak_mib"] == round(measured.tree_peak_mib, 1)
+    assert stats["compile_peak_unavailable"] is None
+    rows = {r["name"]: r for r in stages.compile_rows("c", stats)}
+    assert rows["c/compile_peak_mib"]["unit"] == "MiB"
+    assert rows["c/compile_peak_mib_warm"]["unit"] == "MiB"
+
+
+def test_without_a_user_manager_a_compile_has_no_peak_row_and_says_why(checks):
+    stages, _ = checks
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS")
+    }
+    measured = stages.run_measured(TWO_CHILDREN, None, env, 60, tree_peak=True)
+    # The command still runs, measured as without a scope.
+    assert measured.process.returncode == 0 and measured.peak_rss_mib > 128
+    assert measured.tree_peak_mib is None and measured.tree_peak_unavailable
+    stats = stages.compile_stats(measured, measured)
+    assert stats["compile_peak_unavailable"] == measured.tree_peak_unavailable
+    names = [r["name"] for r in stages.compile_rows("c", stats)]
+    assert "c/compile_peak_mib" not in names and "c/compile_peak_rss_mb" in names
+
+
 def test_a_warm_compile_keeps_only_the_kernel_objects_and_headers(checks, tmp_path):
     stages, _ = checks
     cache = tmp_path / "cache"
