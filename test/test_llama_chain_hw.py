@@ -160,8 +160,9 @@ def test_the_context_sweep_publishes_every_context(llama):
     assert names[f"{case}/tok_s"] == 21.17
     for at in llama.CONTEXTS:
         assert names[f"{case}/ctx={at}/ms_per_token"] == timing[at]["ms_per_token"]
-        assert names[f"{case}/ctx={at}/decode_tok_s"] == timing[at]["tok_s"]
-    assert names[f"{case}/ctx=131068/decode_tok_s"] == 2.09
+        assert names[f"{case}/ctx={at}/tok_s"] == timing[at]["tok_s"]
+        assert f"{case}/ctx={at}/decode_tok_s" not in names
+    assert names[f"{case}/ctx=131068/tok_s"] == 2.09
 
 
 def test_this_checkout_has_the_data_the_runs_read_or_names_what_it_lacks(llama):
