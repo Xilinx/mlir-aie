@@ -461,6 +461,7 @@ private:
   bool splitSharedIds();
   bool stopMeeting();
   bool rotateLeads();
+  bool meetAhead();
 
   // Flows to be routed
   std::vector<Flow> flows;
@@ -507,6 +508,9 @@ private:
   // Trees that share destinations no longer meet (see TreeBuilder::meet), so
   // what is left of their hazard is a hold cycle through those receivers.
   bool meetApart = false;
+  // Whether a flow meets another id's tree ahead of a same-id partner that
+  // has not routed yet (see meetAhead).
+  bool meetAheadOfPartners = false;
   // Whether a tree met another in any attempt, so stopping meeting can change
   // anything.
   bool treesMet = false;

@@ -532,6 +532,17 @@ bool Pathfinder::rotateLeads() {
   return !leads.empty();
 }
 
+// A flow with a same-id partner meets another id's tree only on the way to
+// destinations the partner does not reach, as the partner, routed first, has
+// to be met there. A partner routed later meets the flow's tree instead, so
+// in a cluster of two such pairs the first of each can meet the other's.
+bool Pathfinder::meetAhead() {
+  if (meetAheadOfPartners || !treesMet)
+    return false;
+  meetAheadOfPartners = true;
+  return true;
+}
+
 namespace {
 enum class RelaxStep {
   ShareChannels,
@@ -539,6 +550,7 @@ enum class RelaxStep {
   RouteIdsApart,
   SplitSharedIds,
   RotateLeads,
+  MeetAhead,
   StopMeeting
 };
 // Stopping meetings comes last, and runs the ladder once more: what it routes
@@ -548,8 +560,9 @@ constexpr RelaxStep relaxLadder[] = {
     RelaxStep::RouteIdsApart,   RelaxStep::ShareChannels,
     RelaxStep::CapCrowdedTiles, RelaxStep::SplitSharedIds,
     RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles,
-    RelaxStep::RotateLeads,     RelaxStep::StopMeeting};
-constexpr size_t rotateLeadsStep = std::size(relaxLadder) - 2;
+    RelaxStep::RotateLeads,     RelaxStep::MeetAhead,
+    RelaxStep::StopMeeting};
+constexpr size_t rotateLeadsStep = std::size(relaxLadder) - 3;
 } // namespace
 
 bool Pathfinder::relax() {
@@ -594,6 +607,12 @@ bool Pathfinder::relax() {
         --relaxStep;
         LLVM_DEBUG(llvm::dbgs()
                    << "Relax: route cluster member " << leadStep << " first\n");
+        return true;
+      }
+      break;
+    case RelaxStep::MeetAhead:
+      if (meetAhead()) {
+        LLVM_DEBUG(llvm::dbgs() << "Relax: meet ahead of same-id partners\n");
         return true;
       }
       break;
@@ -1678,14 +1697,18 @@ void Pathfinder::TreeBuilder::findJoins() {
   // A tree with other ids reaching two of the flow's destinations is met the
   // same way, the flow taking its hops below the meeting with its own ids.
   // Not for a destination a tree with one of its ids also reaches, which the
-  // flow has to meet on the way there instead.
+  // flow has to meet on the way there instead; after meetAhead, only a tree
+  // routed already, as one routed later meets the flow's tree and so this one.
   if (!part.packetId || part.isPriorityFlow)
     return;
   llvm::DenseSet<int> sameIdDsts;
-  for (int other : st.sameId[flow])
+  for (int other : st.sameId[flow]) {
+    if (pf.meetAheadOfPartners && st.treeDsts[other].empty())
+      continue;
     for (const PathEndPoint &dst : st.parts[other].dsts)
       if (!shared(st.idsTo(other, dstState(dst)), flow).empty())
         sameIdDsts.insert(dstState(dst));
+  }
   for (auto [other, o] : llvm::enumerate(st.parts)) {
     int k = other;
     if (k == flow || o.src == part.src || !o.packetId || o.isPriorityFlow ||
