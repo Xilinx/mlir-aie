@@ -398,6 +398,34 @@ assert.ok(slot.scrolled);
 """)
 
 
+def test_llama_decode_by_context_is_a_line_per_context(page):
+    page(COMPONENT_RUNS + LLAMA_NIGHTS + """
+// The context sweep: one compile, timed at each start position; a series per context.
+const swept = (id, date, night) => {
+  const r = llamaRecord(id, date, 4.37);
+  for (const [ctx, ...ms] of [[1024, 52, 57.2], [8192, 70, 77], [131072, 390, 429]]) {
+    r.rows[`${LLAMA}/ctx=${ctx}`] = { ms_per_token: { value: ms[night], unit: 'ms' }, decode_tok_s: { value: 1000 / ms[night], unit: 'tok/s' } };
+  }
+  return r;
+};
+const data = collect(historiesOf('llama-chain-hw', [swept('6', llamaBefore.date, 0), swept('7', llamaAfter.date, 1)]));
+const tab = llama.trend.find(t => t.id === 'decode_by_context');
+assert.equal(tab.name, 'Decode by context');
+const config = trendConfig(data, tab);
+assert.deepEqual(config.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
+  [['1k context', [52, 57.2]], ['8k context', [70, 77]], ['128k context', [390, 429]]]);
+assert.equal(config.options.scales.y.type, 'logarithmic');
+// The plain decode tab charts the timed run alone, not the sweep summed in.
+assert.deepEqual(trendConfig(data, llama.trend.find(t => t.id === 'ms_per_token')).data.datasets.filter(d => !d.band).map(d => d.data),
+  [[1000 / 4.37, 1000 / 4.37]]);
+assert.deepEqual(trendBox(data, llama.trend, '').children[0].children[0].children.map(b => b.textContent).slice(0, 3),
+  ['Tokens / s', 'Dispatch / token', 'Decode by context']);
+// The card and the summary stay on the timed run.
+const card = componentBand(llama, llamaIndex, swept('7', llamaAfter.date, 1), NOW, swept('6', llamaBefore.date, 0));
+assert.deepEqual(card.cards.map(c => c.kase), [LLAMA]);
+""")
+
+
 def test_a_link_to_a_performance_metric_lands_on_its_trend(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const files = {

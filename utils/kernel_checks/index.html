@@ -1021,8 +1021,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         about: 'the size of each file the cold compile wrote: a PDI reloads at about 1.4 GB/s, so growth costs load time',
         lines: [['full ELF', ['elf_bytes']], ['device image', ['pdi_bytes']], ['xclbin', ['xclbin_bytes']], ['instructions', ['instr_bytes']]] },
     ];
-    // The metrics a trend tab charts.
-    const tabMetrics = t => t.batches ? [t.id] : t.lines.flatMap(([, ms]) => ms);
+    // The metrics a trend tab charts: a `per` tab one metric, a line per
+    // value of a case key (batch, context), any other its `lines`.
+    const tabMetrics = t => t.per ? [t.metric || t.id] : t.lines.flatMap(([, ms]) => ms);
+    // A case's value of a key ("ctx" of "llama/.../ctx=4096"), or null.
+    const caseKey = (kase, key) => { const m = new RegExp(`/${key}=(\\d+)(/|$)`).exec(kase); return m ? Number(m[1]) : null; };
     // A band is one nightly check's latest record in one section: `id` is
     // its directory under component-checks/, which two bands may share. A
     // failed id ("<fixture>/seed<N>" in the sweep,
@@ -1047,8 +1050,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       { id: 'sa-placer-hw', section: 'performance', title: 'MobileNet on NPU2', short: 'MobileNet', ...HW_RUNS, passed: 'Every run passed.',
         about: 'mobilenet placed with seeds 3, 2 and 7, then compiled once and run and verified on an NPU2 at batch 1, 2, 4, 8, 16, 32 and 64, at both the design\'s real default effort and a full-effort baseline -- one card per seed per effort, so a runtime difference between them would show up here, not just in placement cost.',
         cards: seedCards, charts: () => [], summary: hardwareSummary,
-        trend: [{ id: 'us_per_image', axis: 'Dispatch time per image (µs, fastest of 20)', batches: true },
-                { id: 'e2e_us_per_image', axis: 'End-to-end time per image (µs, fastest of 20)', batches: true }, ...COMPILE_TABS] },
+        trend: [{ id: 'us_per_image', axis: 'Dispatch time per image (µs, fastest of 20)', per: 'batch' },
+                { id: 'e2e_us_per_image', axis: 'End-to-end time per image (µs, fastest of 20)', per: 'batch' }, ...COMPILE_TABS] },
       { id: 'llama-chain-hw', section: 'performance', title: 'Llama 3.2 1B decode on NPU2', short: 'Llama 3.2 1B', failure: 'run',
         passed: 'Every decoded token matched the oracle.',
         about: 'the 16-layer persistent decode loop, growing its KV cache on chip and sampling 4 tokens per dispatch, compiled cold and then warm, '
@@ -1063,6 +1066,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                   lines: [['decode (generate.py)', ['decode_tok_s']], ['dispatch rate', ['tok_s']]],
                   about: 'tokens per second as generate.py decodes them, end to end, and the dispatch rate of the timed run\'s median dispatch, which leaves out the host work between dispatches' },
                 { id: 'ms_per_token', axis: 'Dispatch time per token (ms, median of 3)', lines: [['', ['ms_per_token']]] },
+                { id: 'decode_by_context', metric: 'ms_per_token', per: 'ctx', name: 'Decode by context', log: true,
+                  axis: 'Dispatch time per token (ms, median of 3)',
+                  about: 'the dispatch time per token with the KV cache filled to each context length, all from the one compile for the longest' },
                 { id: 'ttft_ms', axis: 'Time to first token (ms, one run)', lines: [['', ['ttft_ms']]] }, ...COMPILE_TABS] },
       { id: 'yolo26n-hw', section: 'performance', title: 'YOLO26n detection on NPU2', short: 'YOLO26n', failure: 'run',
         passed: 'Every image matched the oracle.',
@@ -3156,9 +3162,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return `${c.id.slice(0, 7)}${msg ? ` ${msg.length > 72 ? `${msg.slice(0, 71)}…` : msg}` : ''}`;
     }
 
-    // One trend tab's chart. A tab with `batches` draws its one metric at
-    // the smallest and the largest batch (1 and 64 nightly), each in its
-    // batch's card color; any other draws each of its `lines`, a [name, metrics]
+    // One trend tab's chart. A tab `per` batch draws its one metric at the
+    // smallest and the largest batch (1 and 64 nightly), each in its batch's
+    // card color; one per context, a line per context length; any other
+    // draws each of its `lines` (cases without a context), a [name, metrics]
     // pair, as the sum of those metrics, in the color of its place in
     // `lines`. Per-seed series chart as the mean over the seeds at the
     // design's real default effort (so the chart tracks what ships; the
@@ -3171,13 +3178,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const metrics = tabMetrics(tab);
       const mine = seedMeans(data).series.filter(s => metrics.includes(s.metric));
       const effort = chartedEffort(mine.map(s => s.kase));
-      const charted = mine.filter(s => !/\/effort=\w+$/.test(s.kase) || s.kase.endsWith(`/effort=${effort}`));
+      const charted = mine.filter(s => (!/\/effort=\w+$/.test(s.kase) || s.kase.endsWith(`/effort=${effort}`))
+        && (tab.per ? caseKey(s.kase, tab.per) !== null : caseKey(s.kase, 'ctx') === null));
       const sorted = charted.sort((a, b) => a.kase.localeCompare(b.kase, 'en', { numeric: true }));
-      const lines = tab.batches
+      const lines = tab.per
         ? sorted.map((s, color) => {
-          const batch = /\/batch=(\d+)\//.exec(s.kase);
-          return { name: batch ? `batch ${batch[1]}` : 'every batch', color, parts: [s] };
-        }).filter((_, i) => i === 0 || i === sorted.length - 1)
+          const n = caseKey(s.kase, tab.per);
+          return { name: tab.per === 'batch' ? `batch ${n}` : `${n % 1024 ? n : `${n / 1024}k`} context`, color, parts: [s] };
+        }).filter((_, i) => tab.per !== 'batch' || i === 0 || i === sorted.length - 1)
         : tab.lines.map(([name, ms], color) => ({ name, color, parts: charted.filter(s => ms.includes(s.metric)) })).filter(l => l.parts.length);
       const parts = lines.flatMap(l => l.parts);
       const mode = parts.some(s => s.byMode.has(EXPECTED_PMODE)) ? EXPECTED_PMODE
@@ -3190,7 +3198,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const unit = parts.length ? parts[0].unit : 'us';
       // A log axis where the lines sit decades apart (batch 1 to 64, the
       // compile's stages), so each line's moves read the same size there.
-      const log = (tab.batches && unit === 'us') || Boolean(tab.log);
+      const log = (tab.per === 'batch' && unit === 'us') || Boolean(tab.log);
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
       const devices = chartParts(runs, unit);
       const markers = markersFor(runs.map(p => observed.get(p.id) || {}));
@@ -3351,7 +3359,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // drawn once it is on screen and redrawn when the tab changes. `want` is
     // a metric a link names; its tab opens first.
     function trendBox(data, tabs, want) {
-      const shown = tabs.filter(t => tabMetrics(t).some(m => data.series.some(s => s.metric === m)));
+      const shown = tabs.filter(t => tabMetrics(t).some(m => data.series.some(s => s.metric === m && (!t.per || caseKey(s.kase, t.per) !== null))));
       if (!shown.length) return el('p', { className: 'dim' }, 'No history published yet.');
       const named = id => shown.find(t => t.id === id);
       let tab = shown.find(t => t.id === want || (t.lines || []).some(([, ms]) => ms.includes(want))) || shown[0], drawn = null;
@@ -3362,7 +3370,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const say = t => {
         const kases = data.series.filter(s => tabMetrics(t).includes(s.metric)).map(s => s.kase);
         const seeded = kases.some(k => /\/seed=\d+/.test(k));
-        const lines = t.batches ? 'A line for the smallest and the largest batch, each the mean' : t.id.startsWith('compile_') ? 'A single compile serves every batch: the mean' : 'The mean';
+        const lines = t.per === 'batch' ? 'A line for the smallest and the largest batch, each the mean' : t.id.startsWith('compile_') ? 'A single compile serves every batch: the mean' : 'The mean';
         const seeds = seeded ? ` ${lines} over the seeds at ${chartedEffort(kases)} effort; the shading runs from the fastest seed to the slowest.` : '';
         about.textContent = `${t.name || label(t.id)}: ${t.about || COMPONENT_METRICS[t.id]}.${seeds}`;
       };
