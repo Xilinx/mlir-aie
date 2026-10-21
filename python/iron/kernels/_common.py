@@ -9,7 +9,7 @@ import hashlib
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
+from typing import Callable, TypeVar, get_args, get_origin, overload
 
 import numpy as np
 from aie.helpers.npdtypes import (
@@ -553,23 +553,6 @@ def _dtype_to_bit_width(dtype, *, factory_name: str) -> int:
             "Use np.uint8, np.int16, or np.int32."
         )
     return bit_width
-
-
-def dtypes(table: Iterable[dict]):
-    """Declare the keyword combinations a factory builds, as ``factory.dtypes``.
-
-    The registry and the host contract test enumerate the table instead of
-    restating it.
-    """
-
-    def decorate(factory):
-        # A function attribute: pyright models functions as having a fixed
-        # attribute set, so the one assignment is annotated rather than each
-        # of the ~20 factories that carry a table.
-        factory.dtypes = tuple(table)  # pyright: ignore[reportFunctionMemberAccess]
-        return factory
-
-    return decorate
 
 
 def _conv_act_dtype_info(

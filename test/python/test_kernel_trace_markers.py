@@ -13,7 +13,7 @@ call, so a kernel whose markers sit in a sibling function, around an inner
 loop, or behind an early return charts the wrong number or none. Each build
 is compiled to -O2 IR with the library's own flags and its entry symbol
 classified by ``remarks.trace_markers``; the result must equal the declared
-``Trace``. The builds are every factory at its defaults and ``.dtypes``
+``Trace``. The builds are every factory at its defaults and ``kernels.DTYPES``
 entries, the initializers they declare, and each device case whose entry
 symbol those do not already cover. A case that changes only the code inside
 an already-checked symbol (a tile-size define) is not compiled again.

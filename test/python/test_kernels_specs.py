@@ -1604,11 +1604,13 @@ def test_matrix_factory_preserves_discovery_metadata(factory):
     assert issubclass(inspect.signature(factory).return_annotation, MatrixKernel)
     assert inspect.signature(factory).parameters["dim_m"].default == 64
     if factory is kernels.mm:
-        assert len(factory.dtypes) == 7
-        assert {"input_dtype": np.int16, "output_dtype": np.int16} in factory.dtypes
+        assert len(kernels.DTYPES["mm"]) == 7
+        assert {"input_dtype": np.int16, "output_dtype": np.int16} in kernels.DTYPES[
+            "mm"
+        ]
 
 
-@pytest.mark.parametrize("kwargs", kernels.mm.dtypes)
+@pytest.mark.parametrize("kwargs", kernels.DTYPES["mm"])
 @pytest.mark.parametrize("vectorized", [False, True])
 @pytest.mark.parametrize("emulate", [False, True])
 def test_mm_geometry_matches_contract_for_every_variant(

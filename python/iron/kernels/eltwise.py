@@ -22,9 +22,11 @@ from ._common import (
     _make_extern,
     _require_fixed_tile_size,
     _require_vector_alignment,
-    dtypes,
 )
 from .core import conv_even
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 _ELTWISE_FIXED_TILE = 1024
 
@@ -166,7 +168,9 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
     )
 
 
-@dtypes(({"dtype": np.int16}, {"dtype": np.int32}))
+DTYPES["scale"] = tuple(({"dtype": np.int16}, {"dtype": np.int32}))
+
+
 def scale(
     tile_size: int = 1024,
     dtype: type = np.int32,
@@ -217,7 +221,9 @@ def scale(
     )
 
 
-@dtypes(({"dtype": bfloat16}, {"dtype": np.int8, "tile_size": 1024}))
+DTYPES["add"] = tuple(({"dtype": bfloat16}, {"dtype": np.int8, "tile_size": 1024}))
+
+
 def add(
     tile_size: int = 1024, dtype: type = bfloat16, vectorized: bool = True
 ) -> ExternalFunction:

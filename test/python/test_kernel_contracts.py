@@ -202,7 +202,7 @@ def _builds():
         f = getattr(kernels, name)
         seen = set()
         for combo in [_first_kwargs(name)] + [
-            dict(c) for c in getattr(f, "dtypes", ())
+            dict(c) for c in kernels.DTYPES.get(name, ())
         ]:
             try:
                 ef = f(**combo)
@@ -2142,7 +2142,7 @@ def test_input_limit_keeps_the_reference_inside_the_accumulator():
 
 
 def _combo_id(v) -> str:
-    """One `.dtypes` entry value as a test id: a dtype name, else its value."""
+    """One `kernels.DTYPES` entry value as a test id: a dtype name, else its value."""
     if bfp.is_bfp(v):
         return "bfp16ebs8"
     return np.dtype(v).name if isinstance(v, type) else str(v)
@@ -2150,8 +2150,7 @@ def _combo_id(v) -> str:
 
 def _factories_with_dtypes():
     for name in kernels.factories():
-        f = getattr(kernels, name)
-        for combo in vars(f).get("dtypes", ()):
+        for combo in kernels.DTYPES.get(name, ()):
             yield pytest.param(
                 name,
                 combo,

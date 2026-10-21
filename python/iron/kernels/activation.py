@@ -30,9 +30,11 @@ from ._common import (
     _require_fixed_tile_size,
     _require_vector_alignment,
     _tuned_arch,
-    dtypes,
 )
 from .core import conv_even
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 _LUT_FIXED_TILE = 1024
 _RUNTIME_VECTOR_WIDTH = 32
@@ -418,7 +420,9 @@ _SOFTMAX_F32_REL = 4 * 2.0**-8 + 2 * 1e-5 + 2.0**-20
 _SOFT_CAP_ERR = 1e-5 / 2 + 2.0**-20
 
 
-@dtypes(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
+DTYPES["softmax"] = tuple(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
+
+
 def softmax(
     tile_size: int = 1024,
     accurate_exp2: bool = False,

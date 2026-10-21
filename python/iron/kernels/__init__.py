@@ -63,6 +63,17 @@ from ._common import (
     TensorLayout,
     Trace,
 )
+from . import (
+    activation,
+    conv,
+    datamovement,
+    eltwise,
+    flm_gemma4,
+    linalg,
+    reduce,
+    vision,
+)
+from . import zero as _zero_module  # the factory `zero` takes the name
 from .activation import (
     bf16_exp,
     bf16_exp_lut_ref,
@@ -343,7 +354,22 @@ from .vision import (
 )
 from .zero import zero
 
+# Each factory's keyword combinations beyond its defaults, by name, so the
+# registry and the host contract test enumerate them instead of restating them.
+DTYPES: dict[str, tuple[dict, ...]] = {
+    **activation.DTYPES,
+    **conv.DTYPES,
+    **datamovement.DTYPES,
+    **eltwise.DTYPES,
+    **flm_gemma4.DTYPES,
+    **linalg.DTYPES,
+    **reduce.DTYPES,
+    **vision.DTYPES,
+    **_zero_module.DTYPES,
+}
+
 __all__ = [
+    "DTYPES",
     "BUILDS",
     "Build",
     "KernelContract",
