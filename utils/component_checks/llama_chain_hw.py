@@ -45,12 +45,12 @@ import argparse
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 
 from aiecc_stages import (
     PROFILE_NAME,
+    Measured,
     add_pmode_argument,
     compile_rows,
     compile_stats,
@@ -59,6 +59,7 @@ from aiecc_stages import (
     run_measured,
     stage_rows,
     write,
+    write_unfinished,
 )
 
 N_LAYERS = 16
@@ -70,6 +71,10 @@ DISPATCH_RATE_AT = 64
 CONTEXTS = (1024, 2048, 4096, 8192, 16384, 32768, 65536, 131068)
 N_ITERS = 20
 N_WARMUP = 10
+DATA_TIMEOUT = 1800
+COMPILE_TIMEOUT = 1800
+DECODE_TIMEOUT = 2400
+GENERATE_TIMEOUT = 900
 
 _LLAMA_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "programming_examples", "ml", "llama_3_2_1b"
@@ -120,7 +125,7 @@ def missing_data() -> list[str]:
 
 def ensure_data(
     weights: str | None, tokenizer: str | None, env: dict
-) -> subprocess.CompletedProcess | None:
+) -> Measured | None:
     """Generate data/ once, if this checkout doesn't already have all of it."""
     if not missing_data():
         return None
@@ -129,7 +134,7 @@ def ensure_data(
         args += ["--weights", weights]
     if tokenizer:
         args += ["--tokenizer", tokenizer]
-    return subprocess.run(args, cwd=_LLAMA_DIR, env=env, capture_output=True, text=True)
+    return run_measured(args, _LLAMA_DIR, env, DATA_TIMEOUT)
 
 
 def _clean_build_outputs() -> None:
@@ -146,55 +151,51 @@ def _clean_build_outputs() -> None:
         shutil.rmtree(proj)
 
 
-def compile_cold_warm(env: dict) -> dict:
-    """Compile twice into one fresh NPU_CACHE_HOME: cold, then warm.
+def compile_cold_warm(env: dict, cache_dir: str) -> dict:
+    """Compile twice into the fresh NPU_CACHE_HOME ``cache_dir``: cold, then warm.
 
     Cold: every cache empty, same as any first-time compile. Warm: only the
     cold compile's kernel objects (NPU_CACHE_HOME/objects) are kept -- the
     whole-build and per-device caches and the outputs are cleared first, so
     the warm compile reruns the full pipeline, which is what an edit to the
-    design (not its kernels) costs.
+    design (not its kernels) costs. The warm compile's build stays in
+    ``cache_dir`` for the runs.
     """
-    cache_dir = tempfile.mkdtemp(prefix="component-checks-llama-chain-")
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
     profile = os.path.join(_LLAMA_DIR, _PROFILE)
-    try:
-        os.makedirs(os.path.join(_LLAMA_DIR, "build"), exist_ok=True)
-        build = [
-            sys.executable,
-            "aie2_decode.py",
-            *_SHAPE_ARGS,
-            "--full-elf-path",
-            _ELF,
-        ]
-        _clean_build_outputs()
-        cold = run_measured(build, _LLAMA_DIR, run_env)
-        stages_cold = stage_rows(
-            profile, cold[1] if cold[0].returncode == 0 else None, ""
-        )
+    os.makedirs(os.path.join(_LLAMA_DIR, "build"), exist_ok=True)
+    build = [
+        sys.executable,
+        "aie2_decode.py",
+        *_SHAPE_ARGS,
+        "--full-elf-path",
+        _ELF,
+    ]
+    _clean_build_outputs()
+    cold = run_measured(build, _LLAMA_DIR, run_env, COMPILE_TIMEOUT)
+    stages_cold = stage_rows(
+        profile, cold.seconds if cold.process.returncode == 0 else None, ""
+    )
 
-        _clean_build_outputs()
-        for layer in ("builds", "devices"):
-            shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
-        warm = run_measured(build, _LLAMA_DIR, run_env)
-        stages_warm = stage_rows(
-            profile, warm[1] if warm[0].returncode == 0 else None, "_warm"
-        )
-    finally:
-        shutil.rmtree(cache_dir, ignore_errors=True)
+    _clean_build_outputs()
+    for layer in ("builds", "devices"):
+        shutil.rmtree(os.path.join(cache_dir, layer), ignore_errors=True)
+    warm = run_measured(build, _LLAMA_DIR, run_env, COMPILE_TIMEOUT)
+    stages_warm = stage_rows(
+        profile, warm.seconds if warm.process.returncode == 0 else None, "_warm"
+    )
 
     return {
         **stages_cold,
         **stages_warm,
-        "built": warm[0] if warm[0].returncode == 0 else cold[0],
+        "built": warm.process if warm.process.returncode == 0 else cold.process,
         **compile_stats(cold, warm),
-        "log": cold[0].stdout + warm[0].stdout,
     }
 
 
-def run_decode(env: dict) -> subprocess.CompletedProcess:
+def run_decode(env: dict) -> Measured:
     """Run the checked and timed dispatches at DISPATCH_RATE_AT and CONTEXTS."""
-    return subprocess.run(
+    return run_measured(
         [
             sys.executable,
             "test_chain_persist_grow_mh.py",
@@ -209,15 +210,15 @@ def run_decode(env: dict) -> subprocess.CompletedProcess:
             "--n-warmup",
             str(N_WARMUP),
         ],
-        cwd=_LLAMA_DIR,
-        env=env,
-        capture_output=True,
-        text=True,
+        _LLAMA_DIR,
+        env,
+        DECODE_TIMEOUT,
     )
 
 
-def run_generate(env: dict) -> subprocess.CompletedProcess:
-    return subprocess.run(
+def run_generate(env: dict) -> Measured:
+    """Run generate.py --check on GENERATE_PROMPT."""
+    return run_measured(
         [
             sys.executable,
             "generate.py",
@@ -230,10 +231,9 @@ def run_generate(env: dict) -> subprocess.CompletedProcess:
             str(GENERATE_NEW),
             "--check",
         ],
-        cwd=_LLAMA_DIR,
-        env=env,
-        capture_output=True,
-        text=True,
+        _LLAMA_DIR,
+        env,
+        GENERATE_TIMEOUT,
     )
 
 
@@ -435,14 +435,14 @@ def main(argv=None) -> int:
             args.meta,
         )
 
+    case = f"llama/persist_grow/N={N_LAYERS}"
+    write_unfinished(meta, case, args.out, args.meta)
     env = dict(os.environ)
     gen = ensure_data(args.weights, args.tokenizer, env)
-    log = (gen.stdout + gen.stderr) if gen else ""
-    if gen is not None and gen.returncode != 0:
-        print(log)
-        reason = (gen.stderr.strip().splitlines() or [""])[-1]
+    if gen is not None and gen.process.returncode != 0:
+        reason = (gen.process.stdout.strip().splitlines() or [""])[-1]
         return refuse(
-            f"gen_llama_data.py exited {gen.returncode}: {reason}",
+            f"gen_llama_data.py exited {gen.process.returncode}: {reason}",
             meta,
             args.out,
             args.meta,
@@ -454,29 +454,25 @@ def main(argv=None) -> int:
             args.out,
             args.meta,
         )
-    compiled = compile_cold_warm(env)
-    built = compiled["built"]
+    cache_dir = tempfile.mkdtemp(prefix="component-checks-llama-chain-")
+    run_env = dict(env, NPU_CACHE_HOME=cache_dir)
     correctness = parse_correctness("", 1)
     timing: dict = {}
     generated = parse_generate("", 1)
     artifacts: dict = {}
-    log += compiled["log"]
+    try:
+        compiled = compile_cold_warm(env, cache_dir)
+        if compiled["built"].returncode == 0:
+            artifacts = artifact_stats()
+            ran = run_decode(run_env).process
+            correctness = parse_correctness(ran.stdout, ran.returncode)
+            timing = parse_timing(ran.stdout, ran.returncode)
+            if correctness["passed"]:
+                gen_ran = run_generate(run_env).process
+                generated = parse_generate(gen_ran.stdout, gen_ran.returncode)
+    finally:
+        shutil.rmtree(cache_dir, ignore_errors=True)
 
-    if built.returncode == 0:
-        artifacts = artifact_stats()
-        ran = run_decode(env)
-        correctness = parse_correctness(ran.stdout + ran.stderr, ran.returncode)
-        timing = parse_timing(ran.stdout + ran.stderr, ran.returncode)
-        log += ran.stdout + ran.stderr
-        if correctness["passed"]:
-            gen_ran = run_generate(env)
-            generated = parse_generate(
-                gen_ran.stdout + gen_ran.stderr, gen_ran.returncode
-            )
-            log += gen_ran.stdout + gen_ran.stderr
-
-    print(log)
-    case = f"llama/persist_grow/N={N_LAYERS}"
     timed = set(timing) == {DISPATCH_RATE_AT, *CONTEXTS}
     passed = correctness["passed"] and timed and generated["generate_passed"]
     failed = [] if passed else [case]
@@ -494,7 +490,7 @@ def main(argv=None) -> int:
                     "timing": {str(at): t for at, t in timing.items()},
                     **generated,
                     **artifacts,
-                    **{k: v for k, v in compiled.items() if k not in ("built", "log")},
+                    **{k: v for k, v in compiled.items() if k != "built"},
                 }
             ],
             "failed": failed,
