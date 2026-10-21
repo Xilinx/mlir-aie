@@ -1460,6 +1460,46 @@ CASES: list[Case] = [
         calls=4,
         scalars=(80, 64, 80, 12),
     ),
+    # One streamed chunk of YOLO26n's heaviest 1x1, 256 -> 256 at the P5/P4
+    # widths: all input channels, 8 output channels a call.
+    *[
+        Case(
+            "conv2dk1_i8",
+            dict(
+                input_width=w,
+                input_channels=256,
+                output_channels=8,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+            ),
+            calls=4,
+            scalars=(w, 256, 8, 14),
+            tag="chunk-8",
+        )
+        for w in (20, 40)
+    ],
+    # The same chunk in input-channel slices, one a call, the sums kept in
+    # the core between them.
+    *[
+        Case(
+            "conv2dk1_i8",
+            dict(
+                input_width=w,
+                input_channels=256,
+                output_channels=8,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+                input_slice=s,
+            ),
+            calls=256 // s,
+            scalars=(w, 256, 8, 14),
+            tag="chunk-8",
+        )
+        for w in (20, 40)
+        for s in (64, 128)
+    ],
     # One copy of the table: the LUT read takes both halves from it.
     check(
         "conv2dk1_i8",
@@ -1675,6 +1715,46 @@ CASES: list[Case] = [
             tag=f"bias-width-{w}",
         )
         for w, oc in ((8, 64), (16, 64), (80, 32))
+    ],
+    # One streamed chunk of YOLO26n's heaviest 3x3, 128 -> 128 at the P5/P4
+    # widths: all input channels, 8 output channels a call.
+    *[
+        Case(
+            "conv2dk3",
+            dict(
+                input_width=w,
+                input_channels=128,
+                output_channels=8,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+            ),
+            calls=4,
+            scalars=(w, 128, 8, 3, 3, 1, 16, 0),
+            tag="chunk-8",
+        )
+        for w in (20, 40)
+    ],
+    # The same chunk in input-channel slices, one a call, the sums kept in
+    # the core between them.
+    *[
+        Case(
+            "conv2dk3",
+            dict(
+                input_width=w,
+                input_channels=128,
+                output_channels=8,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+                input_slice=s,
+            ),
+            calls=128 // s,
+            scalars=(w, 128, 8, 3, 3, 1, 16),
+            tag="chunk-8",
+        )
+        for w in (20, 40)
+        for s in (32, 64)
     ],
     check(
         "conv2dk3",

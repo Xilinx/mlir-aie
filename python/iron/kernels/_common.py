@@ -192,6 +192,11 @@ class KernelContract:
             call's index, 0 first, for a kernel whose state carries from one
             call to the next and restarts at 0. The reference sees every
             call at once, in order. ``None``: the bound value holds.
+        out_last: Whether only the last of the calls writes the one ``Out``,
+            the earlier ones building up state the core keeps (with
+            ``call_index``), as a reduction split across calls does. The
+            builder hands every call the same output tile and drains it
+            once, and the reference returns that one tile.
         trace: The ``Trace`` shape of the kernel's markers. Every
             library factory declares one; ``None`` (undeclared) is only for
             ad-hoc kernels, and ``cycles_per_call`` refuses it.
@@ -223,6 +228,7 @@ class KernelContract:
     initializers: tuple[tuple[int, Callable], ...] = ()
     out_offset: tuple[int, int] | None = None
     call_index: int | None = None
+    out_last: bool = False
     trace: Trace | None = None
     uses_lut: bool = False
     alignments: tuple[tuple[int, int], ...] = ()
@@ -272,6 +278,15 @@ class KernelContract:
         ):
             raise ValueError(
                 "call_index needs a bound Param that out_offset does not set"
+            )
+        if self.out_last and (
+            self.call_index is None
+            or self.out_offset is not None
+            or self.roles.count(Out) != 1
+            or InOut in self.roles
+        ):
+            raise ValueError(
+                "out_last needs call_index, exactly one Out and no out_offset"
             )
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")

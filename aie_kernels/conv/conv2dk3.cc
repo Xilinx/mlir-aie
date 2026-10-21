@@ -1559,16 +1559,19 @@ void conv2dk3_ui8_vector(
 // NO output-channel groups share each input vector, for rows too narrow to
 // give NB blocks: their weights sit (input_channels / 8) * 9 * 64 bytes apart
 // and their outputs ow * 8 bytes apart.
-template <int M, int Stride, int NB, int NO, bool Left, bool Right>
+// IC input channels a call, the sums carried in `sums` ([oc/8][ow][8] int32):
+// see conv2dk1_i8_bias_block.
+template <int M, int Stride, int NB, int NO, bool Left, bool Right, int IC,
+          bool FromAcc, bool ToAcc>
 static inline __attribute__((always_inline)) void conv2dk3_i8_bias_blocks(
     const int8_t *line0, const int8_t *line1, const int8_t *line2,
     const int8_t *__restrict wts_oc, const aie::accum<acc32, M * 8> *seeded,
-    int8_t *__restrict output, const int x0, const int row_start,
-    const int row_end, const int scale) {
+    int32_t *__restrict sums, int8_t *__restrict output, const int x0,
+    const int row_start, const int row_end, const int scale) {
   constexpr int ow = CONV_INPUT_WIDTH / Stride;
-  constexpr int wstride = (CONV_INPUT_CHANNELS / 8) * 9 * 64;
+  constexpr int wstride = (IC / 8) * 9 * 64;
   constexpr int iw = CONV_INPUT_WIDTH;
-  constexpr int input_channels = CONV_INPUT_CHANNELS;
+  constexpr int input_channels = IC;
   constexpr int V = M * 8;
   using MMUL = aie::mmul<M, 8, 8, int8, int8>;
   const aie::vector<int8, V> zeros = aie::zeros<int8, V>();
@@ -1577,8 +1580,15 @@ static inline __attribute__((always_inline)) void conv2dk3_i8_bias_blocks(
   AIE_LOOP_UNROLL_FULL
   for (int o = 0; o < NO; o++)
     AIE_LOOP_UNROLL_FULL
-  for (int b = 0; b < NB; b++)
-    acc[o][b] = seeded[o];
+  for (int b = 0; b < NB; b++) {
+    if constexpr (FromAcc) {
+      aie::accum<acc32, V> carried;
+      carried.from_vector(aie::load_v<V>(sums + o * ow * 8 + b * V), 0);
+      acc[o][b] = carried;
+    } else {
+      acc[o][b] = seeded[o];
+    }
+  }
   for (int r = row_start; r < row_end; r++) {
     const int8_t *line = r == 0 ? line0 : (r == 1 ? line1 : line2);
     const int8_t *__restrict w = wts_oc + r * 3 * 64;
@@ -1651,22 +1661,26 @@ static inline __attribute__((always_inline)) void conv2dk3_i8_bias_blocks(
   AIE_LOOP_UNROLL_FULL
   for (int o = 0; o < NO; o++)
     AIE_LOOP_UNROLL_FULL
-  for (int b = 0; b < NB; b++)
-    aie::store_v(output + o * ow * 8 + b * V,
-                 acc[o][b].template to_vector<int8>(scale));
+  for (int b = 0; b < NB; b++) {
+    if constexpr (ToAcc)
+      aie::store_v(sums + o * ow * 8 + b * V,
+                   acc[o][b].template to_vector<int32>(0));
+    else
+      aie::store_v(output + o * ow * 8 + b * V,
+                   acc[o][b].template to_vector<int8>(scale));
+  }
 }
 
-template <int M, int Stride, bool Table>
-static void conv2dk3_i8_bias_vector(const int8_t *line0, const int8_t *line1,
-                                    const int8_t *line2,
-                                    const int8_t *__restrict wts,
-                                    const int32_t *__restrict bias,
-                                    const int8_t *__restrict table,
-                                    int8_t *__restrict output,
-                                    const int32_t check, const int scale) {
+template <int M, int Stride, bool Table, int IC = CONV_INPUT_CHANNELS,
+          bool FromAcc = false, bool ToAcc = false>
+static void conv2dk3_i8_bias_vector(
+    const int8_t *line0, const int8_t *line1, const int8_t *line2,
+    const int8_t *__restrict wts, const int32_t *__restrict bias,
+    const int8_t *__restrict table, int32_t *__restrict sums,
+    int8_t *__restrict output, const int32_t check, const int scale) {
   constexpr int iw = CONV_INPUT_WIDTH;
   constexpr int ow = iw / Stride;
-  constexpr int input_channels = CONV_INPUT_CHANNELS;
+  constexpr int input_channels = IC;
   constexpr int output_channels = CONV_OUTPUT_CHANNELS;
   constexpr int V = M * 8;
   // A row of fewer than CONV2DK3_BLOCKS blocks is one run, and spends the
@@ -1692,25 +1706,29 @@ static void conv2dk3_i8_bias_vector(const int8_t *line0, const int8_t *line1,
 
   for (int oc = 0; oc < output_channels / 8; oc += NO) {
     aie::accum<acc32, V> seeded[NO];
-    AIE_LOOP_UNROLL_FULL
-    for (int o = 0; o < NO; o++) {
-      aie::vector<int32, V> seed;
+    if constexpr (!FromAcc) {
       AIE_LOOP_UNROLL_FULL
-      for (int p = 0; p < M; p++)
-        seed.insert(p, aie::load_v<8>(bias + (oc + o) * 8));
-      seeded[o].from_vector(seed, 0);
+      for (int o = 0; o < NO; o++) {
+        aie::vector<int32, V> seed;
+        AIE_LOOP_UNROLL_FULL
+        for (int p = 0; p < M; p++)
+          seed.insert(p, aie::load_v<8>(bias + (oc + o) * 8));
+        seeded[o].from_vector(seed, 0);
+      }
     }
     const int8_t *wts_oc = wts + oc * (input_channels / 8) * 9 * 64;
     int8_t *out = output + oc * ow * 8;
+    constexpr bool carries = FromAcc || ToAcc;
 
     // The row is `groups` runs of NB blocks, then the leftover blocks; the
     // first and last run touch the borders.
     auto run = [&](auto left, auto right, auto nb, int at) {
-      conv2dk3_i8_bias_blocks<M, Stride, decltype(nb)::value,
-                              decltype(nb)::value == NB ? NO : 1,
-                              decltype(left)::value, decltype(right)::value>(
-          line0, line1, line2, wts_oc, seeded, out + at * V, at * M, row_start,
-          row_end, scale);
+      conv2dk3_i8_bias_blocks<
+          M, Stride, decltype(nb)::value, decltype(nb)::value == NB ? NO : 1,
+          decltype(left)::value, decltype(right)::value, IC, FromAcc, ToAcc>(
+          line0, line1, line2, wts_oc, seeded,
+          carries ? sums + oc * ow * 8 + at * V : nullptr, out + at * V, at * M,
+          row_start, row_end, scale);
     };
     using T = std::true_type;
     using F = std::false_type;
@@ -1729,15 +1747,75 @@ static void conv2dk3_i8_bias_vector(const int8_t *line0, const int8_t *line1,
         run(F{}, T{}, G{}, (groups - 1) * NB);
     }
   }
-  if constexpr (Table)
+  if constexpr (Table && !ToAcc)
     map_table_i8<output_channels * ow>(output, table);
   event1();
 }
 #define CONV2DK3_M ((CONV_INPUT_WIDTH / CONV_STRIDE) % 8 == 0 ? 8 : 4)
 
+#ifdef CONV_TABLE
+#define CONV2DK3_TABLE true
+#else
+#define CONV2DK3_TABLE false
+#endif
+
+#ifdef CONV_IC_SLICE
+// One slice of CONV_IC_SLICE input channels a call: see
+// conv2dk1_i8_bias_block.
+template <bool FromAcc, bool ToAcc>
+static void conv2dk3_i8_bias_slice(int8_t *line0, int8_t *line1, int8_t *line2,
+                                   int8_t *wts, int32_t *bias, int8_t *table,
+                                   int32_t *sums, int8_t *output,
+                                   const int32_t check, const int scale) {
+  conv2dk3_i8_bias_vector<CONV2DK3_M, CONV_STRIDE, CONV2DK3_TABLE,
+                          CONV_IC_SLICE, FromAcc, ToAcc>(
+      line0, line1, line2, wts, bias, table, sums, output, check, scale);
+}
+
+static void conv2dk3_i8_bias_slices(int8_t *line0, int8_t *line1, int8_t *line2,
+                                    int8_t *wts, int32_t *bias, int8_t *table,
+                                    int32_t *sums, int8_t *output,
+                                    const int32_t check, const int scale,
+                                    const int slice) {
+  constexpr int slices = CONV_INPUT_CHANNELS / CONV_IC_SLICE;
+  static_assert(slices > 1 && CONV_INPUT_CHANNELS % CONV_IC_SLICE == 0,
+                "CONV_IC_SLICE divides the input channels at least twice");
+  if (slice == 0)
+    conv2dk3_i8_bias_slice<false, true>(line0, line1, line2, wts, bias, table,
+                                        sums, output, check, scale);
+  else if (slice == slices - 1)
+    conv2dk3_i8_bias_slice<true, false>(line0, line1, line2, wts, bias, table,
+                                        sums, output, check, scale);
+  else
+    conv2dk3_i8_bias_slice<true, true>(line0, line1, line2, wts, bias, table,
+                                       sums, output, check, scale);
+}
+#endif
+
 extern "C" {
 
-#ifdef CONV_TABLE
+#if defined(CONV_IC_SLICE) && defined(CONV_TABLE)
+void CONV2DK3_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
+                     int32_t *bias, int8_t *table, int32_t *sums,
+                     int8_t *output, const int32_t input_width,
+                     const int32_t input_channels,
+                     const int32_t output_channels, const int32_t kernel_width,
+                     const int32_t kernel_height, const int32_t check,
+                     const int scale, const int slice) {
+  conv2dk3_i8_bias_slices(line0, line1, line2, wts, bias, table, sums, output,
+                          check, scale, slice);
+}
+#elif defined(CONV_IC_SLICE)
+void CONV2DK3_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
+                     int32_t *bias, int32_t *sums, int8_t *output,
+                     const int32_t input_width, const int32_t input_channels,
+                     const int32_t output_channels, const int32_t kernel_width,
+                     const int32_t kernel_height, const int32_t check,
+                     const int scale, const int slice) {
+  conv2dk3_i8_bias_slices(line0, line1, line2, wts, bias, nullptr, sums, output,
+                          check, scale, slice);
+}
+#elif defined(CONV_TABLE)
 void CONV2DK3_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
                      int32_t *bias, int8_t *table, int8_t *output,
                      const int32_t input_width, const int32_t input_channels,
@@ -1745,7 +1823,7 @@ void CONV2DK3_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
                      const int32_t kernel_height, const int32_t check,
                      const int scale, const int channel_offset) {
   conv2dk3_i8_bias_vector<CONV2DK3_M, CONV_STRIDE, true>(
-      line0, line1, line2, wts, bias, table, output, check, scale);
+      line0, line1, line2, wts, bias, table, nullptr, output, check, scale);
 }
 #else
 void CONV2DK3_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
@@ -1755,7 +1833,7 @@ void CONV2DK3_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
                      const int32_t kernel_height, const int32_t check,
                      const int scale, const int channel_offset) {
   conv2dk3_i8_bias_vector<CONV2DK3_M, CONV_STRIDE, false>(
-      line0, line1, line2, wts, bias, nullptr, output, check, scale);
+      line0, line1, line2, wts, bias, nullptr, nullptr, output, check, scale);
 }
 #endif
 

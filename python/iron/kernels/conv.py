@@ -178,6 +178,70 @@ def conv2dk1_i8_bias_table_ref(
     return np.asarray(table, dtype=np.int8)[out.astype(np.int64) + 128]
 
 
+def conv2dk1_i8_bias_slices_ref(
+    x,
+    weights,
+    bias,
+    input_width,
+    input_channels,
+    output_channels,
+    scale,
+    *,
+    rounding,
+    input_slice,
+):
+    """[`conv2dk1_i8_bias_ref`][iron.kernels.conv.conv2dk1_i8_bias_ref] summed over input-channel slices.
+
+    Call ``s`` reads its own row of the ``input_slice`` channels
+    ``[s * input_slice, (s + 1) * input_slice)`` through ``weights``
+    (``[OC/8][input_slice/8][ic8][oc8]``); the sums of the calls, seeded
+    with ``bias``, give the one output tile.
+    The kernel writes it on slice ``input_channels // input_slice - 1``, so
+    a run makes that many calls.
+    """
+    del input_channels
+    W, OC = int(input_width), int(output_channels)
+    x = np.asarray(x)
+    acc = 0
+    for row in x:
+        acc = acc + _conv1x1_acc(row.ravel(), weights, W, input_slice, OC)[0]
+    acc = acc + np.asarray(bias, dtype=np.int64).reshape(OC // 8, 1, 8)
+    if rounding == "conv_even":
+        out = _requant_even(acc, scale, -128, 127, np.int8)
+    else:
+        half = (1 << (int(scale) - 1)) if int(scale) > 0 else 0
+        out = np.clip(np.sign(acc) * ((np.abs(acc) + half) >> int(scale)), -128, 127)
+    return out.astype(np.int8).reshape(1, W * OC)
+
+
+def conv2dk1_i8_bias_table_slices_ref(
+    x,
+    weights,
+    bias,
+    table,
+    input_width,
+    input_channels,
+    output_channels,
+    scale,
+    *,
+    rounding,
+    input_slice,
+):
+    """[`conv2dk1_i8_bias_slices_ref`][iron.kernels.conv.conv2dk1_i8_bias_slices_ref], then ``table[out + 128]``."""
+    out = conv2dk1_i8_bias_slices_ref(
+        x,
+        weights,
+        bias,
+        input_width,
+        input_channels,
+        output_channels,
+        scale,
+        rounding=rounding,
+        input_slice=input_slice,
+    )
+    return np.asarray(table, dtype=np.int8)[out.astype(np.int64) + 128]
+
+
 def conv2dk1_skip_ref(
     x0,
     x1,
@@ -634,6 +698,7 @@ def conv2dk3(
     stride: int = 1,
     rounding: str = "positive_inf",
     table_copies: int = 2,
+    input_slice: int | None = None,
 ) -> ExternalFunction:
     """3x3 convolution kernel.
 
@@ -663,6 +728,14 @@ def conv2dk3(
         table_copies: With ``table``, how many copies of the table the
             kernel keeps in data memory: 2 (two banks, the LUT read fetches
             both halves at once) or 1 (1 KB less, the reads serialize).
+        input_slice: With ``bias``, the input channels one call takes, so a
+            streamed weight chunk holds ``9 * input_slice * output_channels``
+            bytes. A call's lines are then that slice's own rows. The kernel
+            takes an ``int32`` sums buffer, one per output, before the output,
+            and its slice in the last scalar:
+            slice 0 starts from the bias, the last ends in the output, and
+            the others carry the sums. ``None`` takes every input channel in
+            one call.
 
     Returns:
         ExternalFunction configured for the conv2dk3 kernel.
@@ -683,9 +756,10 @@ def conv2dk3(
             stride,
             rounding,
             table_copies,
+            input_slice,
         )
-    if table or stride != 1 or rounding != "positive_inf":
-        raise ValueError("conv2dk3: table, stride and rounding need bias")
+    if table or stride != 1 or rounding != "positive_inf" or input_slice:
+        raise ValueError("conv2dk3: table, stride, rounding and input_slice need bias")
     if input_width != 32:
         # Every compiled variant of the vector kernel (aie2, aie2p, and the
         # portable branch) hard-codes a 32-pixel row inside conv2dk3.cc and
@@ -813,6 +887,100 @@ def conv2dk3_bias_table_ref(
     return np.asarray(table, dtype=np.int8)[out.astype(np.int64) + 128]
 
 
+def conv2dk3_bias_slices_ref(
+    line0,
+    line1,
+    line2,
+    weights,
+    bias,
+    input_width,
+    input_channels,
+    output_channels,
+    kernel_width,
+    kernel_height,
+    check,
+    scale,
+    *,
+    stride,
+    rounding,
+    input_slice,
+):
+    """[`conv2dk3_bias_ref`][iron.kernels.conv.conv2dk3_bias_ref] summed over input-channel slices.
+
+    Call ``s`` reads its own lines of the ``input_slice`` channels
+    ``[s * input_slice, (s + 1) * input_slice)`` through ``weights``
+    (``[OC/8][input_slice/8][3][3][ic8][oc8]``); the sums of the calls,
+    seeded with ``bias``, give the one output tile. The kernel writes it on
+    slice ``input_channels // input_slice - 1``, so a run makes that many
+    calls.
+    """
+    del kernel_height, input_channels
+    OC = int(output_channels)
+    Wo = int(input_width) // stride
+    lines = [np.asarray(line) for line in (line0, line1, line2)]
+    acc = 0
+    for s in range(len(lines[0])):
+        sums = _conv3x3_acc(
+            [line[s].ravel() for line in lines],
+            weights,
+            input_width,
+            input_slice,
+            output_channels,
+            kernel_width,
+            check,
+            0,
+            stride,
+        )[0]
+        acc = acc + sums
+    acc = acc + np.asarray(bias, dtype=np.int64).reshape(OC // 8, 1, 8)
+    if rounding == "conv_even":
+        out = _requant_even(acc, scale, -128, 127, np.int8)
+    else:
+        half = (1 << (int(scale) - 1)) if int(scale) > 0 else 0
+        out = np.clip(np.sign(acc) * ((np.abs(acc) + half) >> int(scale)), -128, 127)
+    return out.astype(np.int8).reshape(1, Wo * OC)
+
+
+def conv2dk3_bias_table_slices_ref(
+    line0,
+    line1,
+    line2,
+    weights,
+    bias,
+    table,
+    input_width,
+    input_channels,
+    output_channels,
+    kernel_width,
+    kernel_height,
+    check,
+    scale,
+    *,
+    stride,
+    rounding,
+    input_slice,
+):
+    """[`conv2dk3_bias_slices_ref`][iron.kernels.conv.conv2dk3_bias_slices_ref], then ``table[out + 128]``."""
+    out = conv2dk3_bias_slices_ref(
+        line0,
+        line1,
+        line2,
+        weights,
+        bias,
+        input_width,
+        input_channels,
+        output_channels,
+        kernel_width,
+        kernel_height,
+        check,
+        scale,
+        stride=stride,
+        rounding=rounding,
+        input_slice=input_slice,
+    )
+    return np.asarray(table, dtype=np.int8)[out.astype(np.int64) + 128]
+
+
 def _conv2dk3_bias(
     input_width,
     input_channels,
@@ -822,6 +990,7 @@ def _conv2dk3_bias(
     stride,
     rounding,
     table_copies,
+    input_slice=None,
 ) -> ExternalFunction:
     """[`conv2dk3`][iron.kernels.conv.conv2dk3]'s ``bias`` variant."""
     if act_dtype != np.int8:
@@ -834,8 +1003,16 @@ def _conv2dk3_bias(
         raise ValueError(
             f"conv2dk3: input_width {input_width} must be a multiple of {4 * stride}"
         )
+    if input_slice is not None and (
+        input_slice % 8 or input_channels % input_slice or input_slice == input_channels
+    ):
+        raise ValueError(
+            f"conv2dk3: input_slice {input_slice} must be a multiple of 8 that "
+            f"splits the {input_channels} input channels at least twice"
+        )
     name = "conv2dk3_i8_bias" + "_table" * table + "_s2" * (stride == 2)
     name += "_even" * (rounding == "conv_even")
+    name += f"_slice{input_slice}" * (input_slice is not None)
     flags = [
         "-DINT8_ACT",
         "-DCONV_BIAS",
@@ -846,21 +1023,42 @@ def _conv2dk3_bias(
     ]
     flags += _table_flags(table, table_copies)
     flags += ["-DCONV_ROUND_EVEN"] * (rounding == "conv_even")
-    line_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
-    wt_ty = np.ndarray[(9 * input_channels * output_channels,), np.dtype[np.int8]]
+    flags += [f"-DCONV_IC_SLICE={input_slice}"] * (input_slice is not None)
+    call_channels = input_slice or input_channels
+    line_ty = np.ndarray[(input_width * call_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[(9 * call_channels * output_channels,), np.dtype[np.int8]]
+    out_width = input_width // stride
     extra = [np.ndarray[(output_channels,), np.dtype[np.int32]]]
     extra += [np.ndarray[(256,), np.dtype[np.int8]]] * table
-    out_width = input_width // stride
+    sums = [np.ndarray[(out_width * output_channels,), np.dtype[np.int32]]]
+    sums *= input_slice is not None
     out_ty = np.ndarray[(out_width * output_channels,), np.dtype[np.int8]]
-    reference = partial(
-        conv2dk3_bias_table_ref if table else conv2dk3_bias_ref,
-        stride=stride,
-        rounding=rounding,
-    )
+    out_index = 4 + len(extra) + len(sums)
+    if input_slice is None:
+        reference = partial(
+            conv2dk3_bias_table_ref if table else conv2dk3_bias_ref,
+            stride=stride,
+            rounding=rounding,
+        )
+        bindings, call_index = (), None
+    else:
+        reference = partial(
+            conv2dk3_bias_table_slices_ref if table else conv2dk3_bias_slices_ref,
+            stride=stride,
+            rounding=rounding,
+            input_slice=input_slice,
+        )
+        # Each call takes one slice into sums the core keeps, the last ending
+        # in the output tile.
+        call_index = out_index + 8
+        bindings = (
+            (out_index - 1, np.zeros(out_width * output_channels, np.int32)),
+            (call_index, 0),
+        )
     return _make_extern(
         name,
         _kernel_source("conv/conv2dk3.cc"),
-        [line_ty, line_ty, line_ty, wt_ty, *extra, out_ty, *_i32s(8)],
+        [line_ty, line_ty, line_ty, wt_ty, *extra, *sums, out_ty, *_i32s(8)],
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         include_dirs=[*_include_dirs(), _runtime_lib_include()],
@@ -869,18 +1067,26 @@ def _conv2dk3_bias(
             # time, so its output only needs 32-byte alignment.
             alignments=_vector_args(0, 1, 2, 3)
             + ((4, 32),)
-            + (
-                ((4 + len(extra), 32),)
-                if out_width % 8
-                else _vector_args(4 + len(extra))
-            ),
+            + _vector_args(*range(4 + len(extra), out_index))
+            + (((out_index, 32),) if out_width % 8 else _vector_args(out_index)),
             trace=Trace.whole_call(),
-            roles=(In, In, In, Param, *((Param,) * len(extra)), Out, *((Param,) * 8)),
+            roles=(
+                In,
+                In,
+                In,
+                Param,
+                *((Param,) * (len(extra) + len(sums))),
+                Out,
+                *((Param,) * 8),
+            ),
             reference=reference,
             acc_dtype=np.int32,
             reduction=9 * input_channels,
             tolerance=Tolerance.exact(note="the reference models the rounding mode"),
-            ops_per_call=2 * 9 * out_width * input_channels * output_channels,
+            ops_per_call=2 * 9 * out_width * call_channels * output_channels,
+            parameter_bindings=bindings,
+            call_index=call_index,
+            out_last=input_slice is not None,
         ),
     )
 
@@ -959,6 +1165,7 @@ def conv2dk1_i8(
     table: bool = False,
     rounding: str = "symmetric_inf",
     table_copies: int = 2,
+    input_slice: int | None = None,
 ) -> ExternalFunction:
     """1x1 convolution kernel with int8 activations/weights/output.
 
@@ -979,35 +1186,76 @@ def conv2dk1_i8(
         table_copies: With ``table``, how many copies of the table the
             kernel keeps in data memory: 2 (two banks, the LUT read fetches
             both halves at once) or 1 (1 KB less, the reads serialize).
+        input_slice: With ``bias``, the input channels one call takes, so a
+            streamed weight chunk holds ``input_slice * output_channels``
+            bytes. A call's input is then that slice's own row, so a concat's
+            parts can be passed apart. The kernel takes an ``int32`` sums
+            buffer, one per output, before the output, and its slice in the
+            last scalar:
+            slice 0 starts from the bias, the last ends in the output, and
+            the others carry the sums. ``None`` takes every input channel in
+            one call.
 
     Returns:
         ExternalFunction configured for the conv2dk1_i8 kernel.
 
     Raises:
-        ValueError: On an unknown ``rounding``, ``table`` without ``bias``,
+        ValueError: On an unknown ``rounding``, ``table`` or ``input_slice``
+            without ``bias``, a slice that does not split the input channels,
             or a width the variant cannot tile.
     """
     if rounding not in ("symmetric_inf", "conv_even"):
         raise ValueError(f"conv2dk1_i8: unknown rounding {rounding!r}")
-    if table and not bias:
-        raise ValueError("conv2dk1_i8: table needs bias")
+    if (table or input_slice) and not bias:
+        raise ValueError("conv2dk1_i8: table and input_slice need bias")
     if input_width % (4 if bias else 32):
         raise ValueError(
             f"conv2dk1_i8: input_width {input_width} must be a multiple of "
             f"{4 if bias else 32}"
         )
+    if input_slice is not None and (
+        input_slice % 8 or input_channels % input_slice or input_slice == input_channels
+    ):
+        raise ValueError(
+            f"conv2dk1_i8: input_slice {input_slice} must be a multiple of 8 "
+            f"that splits the {input_channels} input channels at least twice"
+        )
     name = "conv2dk1_i8" + "_bias" * bias + "_table" * table
     name += "_even" * (rounding == "conv_even")
+    name += f"_slice{input_slice}" * (input_slice is not None)
     flags = ["-DINT8_ACT", f"-DCONV2DK1_I8_SYMBOL={name}"]
     flags += ["-DCONV_BIAS"] * bias + _table_flags(table, table_copies)
     flags += ["-DCONV_ROUND_EVEN"] * (rounding == "conv_even")
-    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
-    wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
+    flags += [f"-DCONV_IC_SLICE={input_slice}"] * (input_slice is not None)
+    call_channels = input_slice or input_channels
+    in_ty = np.ndarray[(input_width * call_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[(call_channels * output_channels,), np.dtype[np.int8]]
     bias_ty = np.ndarray[(output_channels,), np.dtype[np.int32]]
     table_ty = np.ndarray[(256,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
-    extra = [bias_ty] * bias + [table_ty] * table
-    if bias:
+    sums_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int32]]
+    extra = [bias_ty] * bias + [table_ty] * table + [sums_ty] * bool(input_slice)
+    out_index = 2 + len(extra)
+    bindings, call_index = (), None
+    if input_slice:
+        reference = partial(
+            conv2dk1_i8_bias_table_slices_ref if table else conv2dk1_i8_bias_slices_ref,
+            rounding=rounding,
+            input_slice=input_slice,
+        )
+        tolerance = Tolerance.exact(note="the reference models the rounding mode")
+        # Each call takes one slice into sums the core keeps, the last ending
+        # in the output tile.
+        call_index = out_index + 5
+        bindings = (
+            (out_index - 1, np.zeros(input_width * output_channels, np.int32)),
+            (call_index, 0),
+        )
+        out_align = ((out_index, 32),) if input_width % 8 else _vector_args(out_index)
+        alignments = (
+            _vector_args(0, 1) + ((2, 32),) + _vector_args(out_index - 1) + out_align
+        )
+    elif bias:
         reference = partial(
             conv2dk1_i8_bias_table_ref if table else conv2dk1_i8_bias_ref,
             rounding=rounding,
@@ -1033,7 +1281,7 @@ def conv2dk1_i8(
     return _make_extern(
         name,
         _kernel_source("conv/conv2dk1_i8.cc"),
-        [in_ty, wt_ty, *extra, out_ty, *_i32s(4)],
+        [in_ty, wt_ty, *extra, out_ty, *_i32s(4 + bool(input_slice))],
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         include_dirs=[*_include_dirs(), _runtime_lib_include()],
@@ -1044,17 +1292,17 @@ def conv2dk1_i8(
                 Param,
                 *((Param,) * len(extra)),
                 Out,
-                Param,
-                Param,
-                Param,
-                Param,
+                *((Param,) * (4 + bool(input_slice))),
             ),
             reference=reference,
             acc_dtype=np.int32,
             reduction=input_channels,
             tolerance=tolerance,
             alignments=alignments,
-            ops_per_call=2 * input_width * input_channels * output_channels,
+            ops_per_call=2 * input_width * call_channels * output_channels,
+            parameter_bindings=bindings,
+            call_index=call_index,
+            out_last=bool(input_slice),
         ),
     )
 
