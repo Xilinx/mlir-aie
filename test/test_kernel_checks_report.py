@@ -304,6 +304,17 @@ def test_host_time_is_compared_only_on_the_same_part(read_leg, report):
     )
 
 
+@pytest.mark.parametrize(
+    "before, after, listed", [(0.13, 0.2, False), (1.0, 1.6, True)]
+)
+def test_a_compile_time_must_also_move_its_floor(read_leg, before, after, listed):
+    leg = read_leg(
+        {"mobilenet/compile_place_s": ("s", after)},
+        _record({"mobilenet/compile_place_s": ("s", before)}),
+    )
+    assert bool(leg.other) is listed
+
+
 def test_a_test_that_passed_on_a_retry_is_listed(read_leg, report):
     retried = '<properties><property name="reruns" value="1" /></properties>'
     leg = read_leg(

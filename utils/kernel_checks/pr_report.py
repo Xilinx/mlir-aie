@@ -51,6 +51,8 @@ OTHER = {
 DEFAULT_THRESHOLD = 0.10  # a metric thresholds.json does not name
 # A change must also exceed this many MADs, per metric (npu_us).
 MAD = {m: s["mad"] for m, s in THRESHOLDS.items() if s.get("mad")}
+# A change must also be at least this much, in the metric's unit.
+ABS = {m: s["abs"] for m, s in THRESHOLDS.items() if s.get("abs")}
 # The same on every part of an NPU generation: compared even across parts.
 ACROSS_PARTS = {m for m, s in THRESHOLDS.items() if s.get("across_parts")}
 SCHEMA = 1  # the newest publish.py record format this reads
@@ -265,11 +267,12 @@ def _mad(cell: dict) -> float | None:
 def moved(metric: str, threshold: float, before: dict, after: dict) -> bool:
     """Whether a change from ``before`` to ``after`` counts for ``metric``.
 
-    At least ``threshold`` of the old value, and for a metric with a MAD
-    factor, more than that many of the larger of the two rows' MADs too.
+    At least ``threshold`` of the old value and the metric's ``abs`` floor,
+    and for a metric with a MAD factor, more than that many of the larger of
+    the two rows' MADs too.
     """
     change = abs(after["value"] - before["value"])
-    if change < threshold * abs(before["value"]):
+    if change < threshold * abs(before["value"]) or change < ABS.get(metric, 0):
         return False
     factor = MAD.get(metric)
     if factor:
@@ -344,6 +347,8 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
             continue
         change = Change(case, metric, row["unit"], old["value"], row["value"])
         if metric in GATED:
+            if abs(change.after - change.before) < ABS.get(metric, 0):
+                continue
             if change.ratio >= GATED[metric]:
                 result.regressed.append(change)
             elif change.ratio <= -GATED[metric]:
