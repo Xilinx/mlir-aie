@@ -458,18 +458,6 @@ assert.deepEqual(kernelTrendConfig(two, 'npu2', 'bn_conv2dk3', 'cycles').options
 """)
 
 
-def test_static_dispatch_records_are_not_spliced_into_the_trend(page):
-    page(COMPONENT_RUNS + HW_NIGHTS + """
-// publish.py keeps an old static record's per-batch times under mobilenet/seed=S/batch=B.
-const old = { ...hwBefore, id: '5', date: '2026-09-30T06:30:00Z', provenance: { dispatch: 'static' },
-  rows: { 'mobilenet/seed=3/batch=1': { us_per_image: { value: 500, unit: 'us' } }, 'mobilenet/seed=3/batch=16': { us_per_image: { value: 150, unit: 'us' } } } };
-const data = collect(historiesOf('sa-placer-hw', [old, hwBefore, hwAfter]));
-const trend = trendConfig(data, hw.trend.find(t => t.id === 'us_per_image'));
-assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
-  [['batch 1', [295.7, 295.7]], ['batch 16', [98.5, 101.95]]]);
-""")
-
-
 def test_llama_decode_by_context_is_a_line_per_context(page):
     page(COMPONENT_RUNS + LLAMA_NIGHTS + """
 // The context sweep: one compile, timed at each start position; a series per context.
@@ -2451,6 +2439,31 @@ assert.equal(summary, " Seed 3's NPU time is 248.7 µs per image at batch 1, 117
 // The trend chart draws the full-effort lines.
 const trend = trendConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend.find(t => t.id === 'us_per_image'));
 assert.deepEqual(trend.data.datasets.filter(d => !d.band).map(d => d.label), ['batch 1', 'batch 16']);
+""")
+
+
+def test_a_static_design_s_history_charts_as_its_own_line(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+// A night from before the effort sweep: a static design per batch, its
+// times still keyed by seed and batch (publish.py's upgrade keeps them so).
+const staticRows = { mobilenet: { failed_seeds: { value: 0, unit: 'seeds' } } };
+for (const [seed, batch, us] of [[3, 1, 300], [7, 1, 310], [3, 16, 100], [7, 16, 104]]) {
+  staticRows[`mobilenet/seed=${seed}/batch=${batch}`] = { us_per_image: { value: us, unit: 'us' } };
+}
+const old = { ...hwBefore, id: '5', date: '2026-09-30T06:30:00Z', rows: staticRows, detail: [] };
+const read = collect(historiesOf('sa-placer-hw', [old, hwBefore, hwAfter]));
+const statics = seedMeans(read).series.filter(s => s.kase.endsWith('/dispatch=static'));
+assert.deepEqual(statics.map(s => [s.kase, s.byMode.get('turbo').map(p => p.row.value)]).sort(),
+                 [['mobilenet/batch=1/dispatch=static', [305]], ['mobilenet/batch=16/dispatch=static', [102]]]);
+// Beside the current design's lines, never joined to them.
+const trend = trendConfig(read, hw.trend.find(t => t.id === 'us_per_image'));
+const lines = trend.data.datasets.filter(d => !d.band);
+assert.deepEqual(lines.map(d => [d.label, d.data]), [
+  ['batch 1, static design', [305, null, null]], ['batch 1', [null, 295.7, 295.7]],
+  ['batch 16, static design', [102, null, null]], ['batch 16', [null, 98.5, 101.95]]]);
+// Only the static history: its lines alone, and the note names no effort.
+const onlyOld = trendConfig(collect(historiesOf('sa-placer-hw', [old])), hw.trend.find(t => t.id === 'us_per_image'));
+assert.deepEqual(onlyOld.data.datasets.filter(d => !d.band).map(d => d.label), ['batch 1, static design', 'batch 16, static design']);
 """)
 
 

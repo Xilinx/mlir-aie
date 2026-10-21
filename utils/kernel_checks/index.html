@@ -3144,16 +3144,20 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // too, not just batch: a default-effort run and a full-effort run are
     // expected to differ, so averaging them together would hide that.
     // A per-seed-per-effort series (a compile, which serves every batch)
-    // means over the seeds the same way, as `<factory>/effort=E`. Series
-    // that are not per seed pass through.
+    // means over the seeds the same way, as `<factory>/effort=E`. A
+    // per-batch time from before the effort sweep, a static design compiled
+    // for its batch (`<factory>/seed=S/batch=B`), means over its seeds as
+    // `<factory>/batch=B/dispatch=static`: another design, so its own line.
+    // Series that are not per seed pass through.
     function seedMeans(db) {
       const groups = new Map(), rest = [];
       for (const s of db.series) {
         const m = /^(.*)\/seed=\d+(\/batch=\d+)?\/effort=(\w+)$/.exec(s.kase);
-        if (!m) { rest.push(s); continue; }
-        const kase = `${m[1]}${m[2] || ''}/effort=${m[3]}`;
+        const fixed = m ? null : /^(.*)\/seed=\d+(\/batch=\d+)$/.exec(s.kase);
+        if (!m && !fixed) { rest.push(s); continue; }
+        const kase = m ? `${m[1]}${m[2] || ''}/effort=${m[3]}` : `${fixed[1]}${fixed[2]}/dispatch=static`;
         const key = `${s.npu}|${kase}|${s.metric}`;
-        if (!groups.has(key)) groups.set(key, { key, npu: s.npu, kase, factory: m[1].split('/')[0], metric: s.metric, unit: s.unit, parts: [] });
+        if (!groups.has(key)) groups.set(key, { key, npu: s.npu, kase, factory: (m || fixed)[1].split('/')[0], metric: s.metric, unit: s.unit, parts: [] });
         groups.get(key).parts.push(s);
       }
       const series = [...groups.values()].map(g => {
@@ -3203,18 +3207,25 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function trendConfig(data, tab) {
       const metrics = tabMetrics(tab);
       const mine = seedMeans(data).series.filter(s => metrics.includes(s.metric));
-      const effort = chartedEffort(mine.map(s => s.kase));
-      // A series still keyed by seed has no effort: a static-dispatch record's
-      // per-batch time, not the design the nightly runs now.
+      const effort = chartedEffort(mine.filter(s => !s.kase.endsWith('/dispatch=static')).map(s => s.kase));
+      // A static design's per-batch time charts beside the current design's,
+      // never joined to it; a series still keyed by seed is neither.
       const charted = mine.filter(s => !/\/seed=\d+/.test(s.kase) && (!/\/effort=\w+$/.test(s.kase) || s.kase.endsWith(`/effort=${effort}`))
         && (tab.per ? caseKey(s.kase, tab.per) !== null : caseKey(s.kase, 'ctx') === null));
       const sorted = charted.sort((a, b) => a.kase.localeCompare(b.kase, 'en', { numeric: true }));
-      const lines = tab.per
-        ? sorted.map((s, color) => {
-          const n = caseKey(s.kase, tab.per);
-          return { name: tab.per === 'batch' ? `batch ${n}` : `${n % 1024 ? n : `${n / 1024}k`} context`, color, parts: [s] };
-        }).filter((_, i) => tab.per !== 'batch' || i === 0 || i === sorted.length - 1)
-        : tab.lines.map(([name, ms], color) => ({ name, color, parts: charted.filter(s => ms.includes(s.metric)) })).filter(l => l.parts.length);
+      const batches = [...new Set(sorted.map(s => caseKey(s.kase, 'batch')))].filter(n => n !== null).sort((a, b) => a - b);
+      const ends = [batches[0], batches.at(-1)];
+      const lines = tab.per === 'batch'
+        ? sorted.filter(s => ends.includes(caseKey(s.kase, 'batch'))).map(s => {
+          const n = caseKey(s.kase, 'batch');
+          return { name: s.kase.endsWith('/dispatch=static') ? `batch ${n}, static design` : `batch ${n}`, color: batches.indexOf(n), parts: [s] };
+        })
+        : tab.per
+          ? sorted.map((s, color) => {
+            const n = caseKey(s.kase, tab.per);
+            return { name: `${n % 1024 ? n : `${n / 1024}k`} context`, color, parts: [s] };
+          })
+          : tab.lines.map(([name, ms], color) => ({ name, color, parts: charted.filter(s => ms.includes(s.metric)) })).filter(l => l.parts.length);
       const parts = lines.flatMap(l => l.parts);
       const mode = parts.some(s => s.byMode.has(EXPECTED_PMODE)) ? EXPECTED_PMODE
         : parts.length ? [...parts[0].byMode.keys()][0] : EXPECTED_PMODE;
@@ -3406,7 +3417,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const kases = data.series.filter(s => tabMetrics(t).includes(s.metric)).map(s => s.kase);
         const seeded = kases.some(k => /\/seed=\d+/.test(k));
         const lines = t.per === 'batch' ? 'A line for the smallest and the largest batch, each the mean' : t.id.startsWith('compile_') ? 'A single compile serves every batch: the mean' : 'The mean';
-        const seeds = seeded ? ` ${lines} over the seeds at ${chartedEffort(kases)} effort; the shading runs from the fastest seed to the slowest.` : '';
+        const efforts = kases.filter(k => /\/effort=\w+$/.test(k));
+        const over = efforts.length ? ` over the seeds at ${chartedEffort(efforts)} effort` : ' over the seeds';
+        const fixed = t.per === 'batch' && kases.some(k => /\/seed=\d+\/batch=\d+$/.test(k))
+          ? '; a static design compiled for its batch, as the nightly ran before the effort sweep, is its own line' : '';
+        const seeds = seeded ? ` ${lines}${over}${fixed}; the shading runs from the fastest seed to the slowest.` : '';
         about.textContent = `${t.name || label(t.id)}: ${t.about || COMPONENT_METRICS[t.id]}.${seeds}`;
       };
       const draw = id => {
