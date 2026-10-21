@@ -445,9 +445,15 @@ const data = collect(historiesOf('llama-chain-hw', [swept('6', llamaBefore.date,
 const tab = llama.trend.find(t => t.id === 'decode_by_context');
 assert.equal(tab.name, 'Decode by context');
 const config = trendConfig(data, tab);
-assert.deepEqual(config.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
-  [['1k context', [52, 57.2]], ['8k context', [70, 77]], ['128k context', [390, 429]]]);
+// Decode tokens per second, higher is better, as mlir-air and FastFlowLM tabulate it.
+const lines = config.data.datasets.filter(d => !d.band);
+assert.deepEqual(lines.map(d => [d.label, d.data.map(v => Math.round(v * 100) / 100)]),
+  [['1k context', [19.23, 17.48]], ['8k context', [14.29, 12.99]], ['128k context', [2.56, 2.33]]]);
 assert.equal(config.options.scales.y.type, 'logarithmic');
+assert.equal(config.options.scales.y.title.text, 'Decode tokens per second (median dispatch) · ↑ better');
+// The time per token on hover.
+assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[2], dataIndex: 1, raw: 1000 / 429 }),
+             '128k context: 2.33 tok/s, dispatch / token 429 ms');
 // The plain decode tab charts the timed run alone, not the sweep summed in.
 assert.deepEqual(trendConfig(data, llama.trend.find(t => t.id === 'ms_per_token')).data.datasets.filter(d => !d.band).map(d => d.data),
   [[1000 / 4.37, 1000 / 4.37]]);

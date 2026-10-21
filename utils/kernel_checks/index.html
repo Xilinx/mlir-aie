@@ -1031,9 +1031,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                   lines: [['decode (generate.py)', ['decode_tok_s']], ['dispatch rate', ['tok_s']]],
                   about: 'tokens per second as generate.py decodes them, end to end, and the dispatch rate of the timed run\'s median dispatch, which leaves out the host work between dispatches' },
                 { id: 'ms_per_token', axis: 'Dispatch time per token (ms, median dispatch)', lines: [['', ['ms_per_token']]] },
-                { id: 'decode_by_context', metric: 'ms_per_token', per: 'ctx', name: 'Decode by context', log: true,
-                  axis: 'Dispatch time per token (ms, median dispatch)',
-                  about: 'the dispatch time per token with the KV cache filled to each context length, all from the one compile for the longest' },
+                { id: 'decode_by_context', metric: 'decode_tok_s', beside: 'ms_per_token', per: 'ctx', name: 'Decode by context', log: true,
+                  axis: 'Decode tokens per second (median dispatch)',
+                  about: 'the decode rate with the KV cache filled to each context length, all from the one compile for the longest; hover for the time per token' },
                 { id: 'ttft_ms', axis: 'Time to first token (ms, one run)', lines: [['', ['ttft_ms']]] }, ...COMPILE_TABS] },
       { id: 'yolo26n-hw', section: 'performance', title: 'YOLO26n detection on npu2', short: 'YOLO26n', failure: 'run',
         passed: 'Every image matched the oracle.',
@@ -3182,12 +3182,16 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           if (log) values.forEach((v, i) => { if (v !== null && v <= 0) values[i] = null; });
           datasets.push(...band(values, rows, color));
           datasets.push({ label: part ? [line.name, partName(part)].filter(Boolean).join(' · ') : line.name, data: values, rows,
+                          kase: line.parts.length === 1 ? line.parts[0].kase : null,
                           borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: j ? [5, 4] : [],
                           pointRadius: runs.map(p => p.manual ? 4 : 2.5), pointStyle: runs.map(p => p.manual ? 'rectRot' : 'circle'),
                           tension: 0, spanGaps: true });
         });
       }
       const tick = v => formatNumber(v, unit);
+      // A tab's `beside` metric, of the same case and run, for the tooltip.
+      const beside = new Map(tab.beside ? seedMeans(data).series.filter(s => s.metric === tab.beside)
+        .map(s => [s.kase, new Map((s.byMode.get(mode) || []).map(p => [p.id, p.row]))]) : []);
       const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
       const years = spansYears(runs.map(p => p.date));
       return { type: 'line', data: { labels: runs.map(p => shortDate(p.date, years)), datasets, commits, runs }, options: {
@@ -3215,7 +3219,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
               const row = item.dataset.rows[item.dataIndex];
               const m = /^seeds ([\d.]+) to ([\d.]+)/.exec((row && row.range) || '');
               const name = item.dataset.label || tab.name || label(tab.id);
-              return `${name}: ${tick(item.raw)}${m ? ` (seeds ${tick(Number(m[1]))} to ${tick(Number(m[2]))})` : ''}`;
+              const also = beside.has(item.dataset.kase) && beside.get(item.dataset.kase).get(runs[item.dataIndex].id);
+              return `${name}: ${tick(item.raw)}${m ? ` (seeds ${tick(Number(m[1]))} to ${tick(Number(m[2]))})` : ''}`
+                + (also ? `, ${inSentence(tab.beside)} ${formatNumber(also.value, also.unit)}` : '');
             },
           } },
         },
