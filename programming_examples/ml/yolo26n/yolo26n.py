@@ -317,11 +317,9 @@ def main() -> None:
     session = None
     if args.synthetic is None and args.onnx.exists():
         # Optional: ONNX Runtime only serves the comparison with the ONNX graph.
-        import onnxruntime as ort  # pyright: ignore[reportMissingImports]
+        from gen_yolo_data import ort_session
 
-        session = ort.InferenceSession(
-            str(args.onnx), providers=["CPUExecutionProvider"]
-        )
+        session = ort_session(str(args.onnx))
 
     passed = matched = 0
     first: list[np.ndarray] = []

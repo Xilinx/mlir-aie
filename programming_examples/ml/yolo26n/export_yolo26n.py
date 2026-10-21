@@ -13,6 +13,9 @@ AGPL-3.0. Produces:
     yolo26n_xint8.onnx  AMD Quark XINT8: int8, power-of-two scales, zero points 0
     coco128/            the calibration images
 
+The checkpoint and coco128 are checked against pinned sha256 digests before
+use; until a digest is pinned, the script stops and prints the file's.
+
 Quantization choices, each measured on coco128 (mAP50-95, FP32 0.474):
 - The end-to-end postprocess after the Detect convs stays float. Quantizing
   its final concat puts boxes, scores and class ids on one int8 scale.
@@ -21,6 +24,8 @@ Quantization choices, each measured on coco128 (mAP50-95, FP32 0.474):
 """
 
 import argparse
+import hashlib
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -42,9 +47,35 @@ from ultralytics.utils.downloads import (  # pyright: ignore[reportMissingImport
 )
 from yolo_params import WEIGHTS_DIR
 
+CHECKPOINT_URL = (
+    "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt"
+)
 COCO128_URL = (
     "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128.zip"
 )
+# Pin each from a download you have checked; None stops the export.
+CHECKPOINT_SHA256: str | None = None
+COCO128_SHA256: str | None = None
+
+
+def check_sha256(path: Path, pinned: str | None) -> None:
+    """Refuse a downloaded file whose sha256 is not the pinned one.
+
+    Args:
+        path: The file.
+        pinned: Its expected sha256, or None while none is pinned.
+
+    Raises:
+        SystemExit: If no digest is pinned yet, or the file's differs.
+    """
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if pinned is None:
+        raise SystemExit(
+            f"{path.name}'s sha256 is not pinned yet; it is {digest}. Check the "
+            "file, pin that digest in export_yolo26n.py and run again."
+        )
+    if digest != pinned:
+        raise SystemExit(f"{path} has sha256 {digest}, not the pinned {pinned}")
 
 
 class CalibrationImages(CalibrationDataReader):
@@ -87,7 +118,11 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     fp32 = out / "yolo26n.onnx"
     if not fp32.exists():
-        exported = YOLO(str(out / "yolo26n.pt")).export(
+        checkpoint = out / "yolo26n.pt"
+        if not checkpoint.exists():
+            safe_download(CHECKPOINT_URL, file=checkpoint)
+        check_sha256(checkpoint, CHECKPOINT_SHA256)
+        exported = YOLO(str(checkpoint)).export(
             format="onnx",
             imgsz=IMAGE_SIZE,
             opset=17,
@@ -99,7 +134,12 @@ def main() -> None:
 
     images = out / "coco128" / "images" / "train2017"
     if not images.is_dir():
-        safe_download(COCO128_URL, dir=out, unzip=True, delete=True)
+        archive = out / "coco128.zip"
+        safe_download(COCO128_URL, file=archive, unzip=False)
+        check_sha256(archive, COCO128_SHA256)
+        with zipfile.ZipFile(archive) as z:
+            z.extractall(out)
+        archive.unlink()
     paths = sorted(images.glob("*.jpg"))[: args.n_calib]
 
     config = QConfig(

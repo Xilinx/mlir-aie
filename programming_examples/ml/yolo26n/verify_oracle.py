@@ -27,8 +27,7 @@ from pathlib import Path
 
 import numpy as np
 import onnx  # pyright: ignore[reportMissingImports]
-import onnxruntime as ort  # pyright: ignore[reportMissingImports]
-from gen_yolo_data import QdqGraph
+from gen_yolo_data import QdqGraph, ort_session
 from letterbox import letterbox
 from yolo26n_numpy import Oracle, SoftmaxArbiter
 from yolo_params import DATA_DIR, WEIGHTS_DIR, Params
@@ -82,9 +81,7 @@ def main() -> None:
     model = graph.model
     for onnx_name in [*names.values(), *(n for pair in softmax.values() for n in pair)]:
         model.graph.output.append(onnx.helper.make_empty_tensor_value_info(onnx_name))
-    session = ort.InferenceSession(
-        model.SerializeToString(), providers=["CPUExecutionProvider"]
-    )
+    session = ort_session(model.SerializeToString())
     outputs = [o.name for o in session.get_outputs()]
 
     outcomes: Counter[str] = Counter()

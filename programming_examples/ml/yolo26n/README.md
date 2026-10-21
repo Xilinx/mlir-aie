@@ -21,11 +21,13 @@ AMD Quark XINT8 with power-of-two scales, accumulators seeded with the bias,
 The checkpoint is AGPL-3.0, so nothing derived from it is kept in the
 repository. `export_yolo26n.py` fetches `yolo26n.pt`, exports it to ONNX and
 quantizes it into `$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n` (default `/srv/yolo26n`),
-calibrating on coco128, which it also downloads there. `gen_yolo_data.py`
+calibrating on coco128, which it also downloads there; both downloads are
+checked against sha256 digests pinned in the script. `gen_yolo_data.py`
 extracts the integer parameters into `data/yolo26n_params.npz`. Exporting
 needs the extras in `requirements.txt` (ultralytics and amd-quark) and
-extracting needs onnx and onnxruntime. Running on real images needs
-opencv-python, and onnxruntime to compare with the ONNX graph too.
+extracting needs onnx and onnxruntime, pinned exactly since the extracted
+tables are ONNX Runtime's own outputs. Running on real images needs opencv-python, and onnxruntime
+to compare with the ONNX graph too.
 
 The lit tests need no checkpoint: `--synthetic SEED` swaps in seeded weights
 with the same layout, and random images.
