@@ -72,6 +72,9 @@ from . import algorithms, kernels
 from .buffer import Buffer
 from .configuration import DeviceConfiguration
 from .dataflow import (
+    BufferPool,
+    BufferPoolHandle,
+    PoolSegment,
     Acquire,
     Bd,
     BdIteration,
@@ -98,6 +101,9 @@ from .scratchpad_parameter import ScratchpadParameter
 from .worker import Worker, WorkerRuntimeBarrier
 
 __all__ = [
+    "BufferPool",
+    "BufferPoolHandle",
+    "PoolSegment",
     # Core design abstractions
     "Buffer",
     "DeviceConfiguration",

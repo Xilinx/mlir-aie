@@ -15,8 +15,12 @@ Lower-level (explicit routing + DMA programs; peers of the above):
 [`Acquire`][iron.Acquire], [`Release`][iron.Release],
 [`DmaEndpoint`][iron.DmaEndpoint], [`FlowEndpoint`][iron.FlowEndpoint],
 [`TileDmaTask`][iron.TileDmaTask]
+
+One end managed, the other written by hand:
+[`BufferPool`][iron.BufferPool], [`PoolSegment`][iron.PoolSegment]
 """
 
+from .bufferpool import BufferPool, BufferPoolHandle, PoolSegment
 from .cascadeflow import CascadeFlow
 from .flow import Flow, FlowEndpoint, PacketDest, PacketFlow
 from .objectfifo import (
@@ -37,6 +41,9 @@ from .tile_dma import (
 )
 
 __all__ = [
+    "BufferPool",
+    "BufferPoolHandle",
+    "PoolSegment",
     "ObjectFifo",
     "ObjectFifoHandle",
     "ObjectFifoLink",
