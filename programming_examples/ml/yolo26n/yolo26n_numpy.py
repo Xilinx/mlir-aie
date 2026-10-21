@@ -12,13 +12,18 @@ int8 activations as `(C, H, W)` int64 arrays and the detections as float32
 Requantization rounds half to even and saturates to int8, as ONNX
 QuantizeLinear does; with power-of-two scales that is exact integer
 arithmetic. The attention softmax is integer too: a Q26 exp table and an
-exactly rounded division, which agrees with ONNX Runtime's float32 softmax
-except where its result sits within float error of a rounding boundary. The
+exactly rounded division. Where it and ONNX Runtime's float32 softmax
+disagree, `SoftmaxArbiter` computes the probability exactly to say which is
+off (verify_oracle.py). The
 postprocess runs in float32 on dequantized int8 values, as the ONNX graph
 does, and is exact.
 """
 
 from __future__ import annotations
+
+import math
+from decimal import Decimal, localcontext
+from fractions import Fraction
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
@@ -67,12 +72,102 @@ def topk(values: np.ndarray, k: int) -> np.ndarray:
     return np.lexsort((np.arange(values.size), -values))[:k]
 
 
+class SoftmaxArbiter:
+    """Decides an int8 attention probability exactly, to say who is off when two softmaxes disagree.
+
+    Each `exp` is a correctly rounded `digits`-digit decimal, summed and
+    divided as a `Fraction`, so the result is exact unless the true value
+    lies within that error of a rounding boundary, which `exact` reports.
+
+    Args:
+        score_scale: The log2 scale of the int8 scores.
+        prob_scale: The log2 scale of the int8 probabilities.
+        digits: The decimal digits each exponential is rounded to.
+    """
+
+    def __init__(self, score_scale: int, prob_scale: int, digits: int = 60) -> None:
+        self.score_scale = score_scale
+        self.prob_scale = prob_scale
+        self.digits = digits
+
+    def exact(self, scores: np.ndarray, index: int) -> int | None:
+        """The correctly rounded int8 probability of `scores[index]` in its softmax row.
+
+        Args:
+            scores: One row of int8 attention scores, at `2**score_scale`.
+            index: The element whose probability to round.
+
+        Returns:
+            The probability on the `2**prob_scale` grid, rounded half to even
+            and saturated to 127 as QuantizeLinear does, or None when the
+            exponentials' error straddles a rounding boundary.
+        """
+        gaps = [int(g) for g in scores.max() - scores]
+        step = Fraction(2) ** self.score_scale
+        with localcontext() as ctx:
+            ctx.prec = self.digits
+            terms = [Fraction((-Decimal(g * step.numerator) / step.denominator).exp()) for g in gaps]
+        value = terms[index] / sum(terms) / Fraction(2) ** self.prob_scale
+        rounded = math.floor(value)
+        excess = value - rounded - Fraction(1, 2)
+        # Each exp is within half a unit in its last place, so the ratio is
+        # within 10**(1 - digits) relatively; four times that is the margin.
+        error = value * 4 * Fraction(1, 10 ** (self.digits - 1)) if any(gaps) else 0
+        if error and abs(excess) <= error:
+            return None
+        if excess > 0 or excess == 0 and rounded % 2:
+            rounded += 1
+        return min(rounded, 127)
+
+    def verdict(self, scores: np.ndarray, index: int, oracle: int, ort: int) -> str:
+        """Who is off at one probability where the oracle and ONNX Runtime differ.
+
+        Args:
+            scores: The element's row of int8 attention scores.
+            index: The element.
+            oracle: The oracle's int8 probability.
+            ort: ONNX Runtime's.
+
+        Returns:
+            "ORT off-boundary" when the oracle's is the exact one, "oracle
+            wrong" when ONNX Runtime's is, "both wrong" when neither is, and
+            "undecidable" when the exact value is too near a boundary to say.
+        """
+        exact = self.exact(scores, index)
+        if exact is None:
+            return "undecidable"
+        if exact == oracle:
+            return "ORT off-boundary"
+        return "oracle wrong" if exact == ort else "both wrong"
+
+
 class Oracle:
     def __init__(self, params: Params, network: Network | None = None) -> None:
         self.params = params
         self.network = network or Network.yolo26n()
 
-    def run(self, image: np.ndarray) -> dict[str, np.ndarray]:
+    def run(
+        self,
+        image: np.ndarray,
+        probabilities: dict[str, np.ndarray] | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Every tensor of the network on one image, by name.
+
+        Each attention also leaves its int8 scores and probabilities,
+        `(heads, HW, HW)`, under `<op name>/scores` and `<op name>/probs`.
+
+        Args:
+            image: A letterboxed `(640, 640, 3)` uint8 RGB image.
+            probabilities: Attention probabilities to use in place of the
+                computed ones, by attention op name, to follow another
+                softmax's rounding downstream.
+
+        Returns:
+            The tensors by name.
+
+        Raises:
+            ValueError: If `image` has another shape or dtype.
+        """
         if image.shape != (640, 640, 3) or image.dtype != np.uint8:
             raise ValueError(
                 f"expected a (640, 640, 3) uint8 image, got {image.shape} {image.dtype}"
@@ -122,12 +217,17 @@ class Oracle:
                 case Upsample():
                     t[op.dst.name] = t[op.src.name].repeat(2, axis=1).repeat(2, axis=2)
                 case Attention():
-                    self.attention(op, t)
+                    self.attention(op, t, (probabilities or {}).get(op.name))
                 case DetectPost():
                     t[op.dst.name] = self.detect(op, t)
         return t
 
-    def attention(self, op: Attention, t: dict[str, np.ndarray]) -> None:
+    def attention(
+        self,
+        op: Attention,
+        t: dict[str, np.ndarray],
+        probabilities: np.ndarray | None,
+    ) -> None:
         p = self.params
         s_qkv = p.scale(op.qkv.name)
         c, h, w = op.qkv.shape
@@ -153,6 +253,10 @@ class Oracle:
         quotient, remainder = np.divmod(2 * numerator, 2 * total)
         round_up = (remainder > total) | ((remainder == total) & (quotient % 2 == 1))
         probs = np.minimum(quotient + round_up, 127)
+        t[f"{op.name}/scores"] = scores
+        t[f"{op.name}/probs"] = probs
+        if probabilities is not None:
+            probs = probabilities.reshape(probs.shape).astype(np.int64)
         out = requantize(
             np.einsum("hdj,hij->hdi", v, probs), p.scale(op.dst.name) - s_qkv - s_p
         )

@@ -10,10 +10,12 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "utils/component_checks"
+YOLO = ROOT / "programming_examples/ml/yolo26n"
 
 # What yolo26n.py --synthetic 7 --n 8 --time printed on a Strix npu2, at
 # batch 1 and at batch 8.
@@ -50,9 +52,20 @@ def yolo():
     return module
 
 
+@pytest.fixture(scope="module")
+def arbiter_class():
+    sys.path.insert(0, str(YOLO))
+    try:
+        module = importlib.import_module("yolo26n_numpy")
+    finally:
+        sys.path.remove(str(YOLO))
+    return module.SoftmaxArbiter
+
+
 def test_a_run_that_matches_every_image_passes(yolo):
     assert yolo.parse_correctness(YOLO_TIMED_OUTPUT + ORT_LINE, 0) == {
         "passed": True,
+        "ort_passed": True,
         "images_passed": 8,
         "images_total": 8,
         "ort_matches": 8,
@@ -86,11 +99,119 @@ def test_a_run_without_a_clean_summary_fails(yolo, out, returncode):
     assert got["images_passed"] == out.count(": PASS (")
 
 
-def test_a_run_without_onnxruntime_has_no_ort_row(yolo):
+def test_a_run_without_onnxruntime_fails_and_has_no_ort_row(yolo):
     got = yolo.parse_correctness(YOLO_TIMED_OUTPUT, 0)
-    assert got["passed"] and got["ort_matches"] is None
+    assert not got["passed"] and not got["ort_passed"]
+    assert got["ort_matches"] is None
     rows = yolo.aggregate(got, {}, {}, {})
     assert [r["name"] for r in rows] == ["yolo26n/640/images_passed"]
+
+
+@pytest.mark.parametrize(
+    "matches, known, passed",
+    [(8, 0, True), (7, 0, False), (6, 2, True), (5, 2, False)],
+)
+def test_onnxruntime_below_the_known_count_fails_the_run(yolo, matches, known, passed):
+    out = YOLO_TIMED_OUTPUT + f"ort: {matches}/8 images match onnxruntime\n"
+    got = yolo.parse_correctness(out, 0, known)
+    assert (got["passed"], got["ort_passed"], got["ort_matches"]) == (
+        passed,
+        passed,
+        matches,
+    )
+    ort = yolo.aggregate(got, {}, {}, {})[1]
+    assert (ort["name"], ort["value"], ort["range"]) == (
+        "yolo26n/640/ort_matches",
+        matches,
+        "of 8",
+    )
+
+
+def test_the_parameters_key_follows_the_model_extractor_and_packages(yolo, tmp_path):
+    model = tmp_path / "yolo26n_xint8.onnx"
+    model.write_bytes(b"model")
+    sources = []
+    for name in yolo.EXTRACTOR_SOURCES:
+        (tmp_path / name).write_text(f"# {name}\n")
+        sources.append(tmp_path / name)
+    packages = {"onnx": "1.17.0", "onnxruntime": "1.20.1"}
+    key = yolo.params_key(model, sources, packages)
+    assert len(key) == 64
+    assert yolo.params_key(model, sources, dict(packages)) == key
+    keys = {key}
+    model.write_bytes(b"modem")
+    keys.add(yolo.params_key(model, sources, packages))
+    model.write_bytes(b"model")
+    sources[1].write_text("# edited\n")
+    keys.add(yolo.params_key(model, sources, packages))
+    sources[1].write_text(f"# {sources[1].name}\n")
+    keys.add(yolo.params_key(model, sources, {**packages, "onnxruntime": "1.21.0"}))
+    # The same bytes under another file's name are another extractor.
+    sources[0].write_text(f"# {sources[1].name}\n")
+    sources[1].write_text(f"# {yolo.EXTRACTOR_SOURCES[0]}\n")
+    keys.add(yolo.params_key(model, sources, packages))
+    assert len(keys) == 5
+
+
+def test_every_extractor_source_is_in_the_example(yolo):
+    assert all((YOLO / name).is_file() for name in yolo.EXTRACTOR_SOURCES)
+
+
+@pytest.mark.parametrize(
+    "scores, index, expected",
+    [
+        # 128 / 4 = 32 exactly.
+        ([5, 5, 5, 5], 0, 32),
+        # 128 / 3 = 42.67.
+        ([-7, -7, -7], 2, 43),
+        # 128 / 256 = 0.5, a tie, rounds to even.
+        ([0] * 256, 0, 0),
+        # 128 / 1 saturates to int8.
+        ([3], 0, 127),
+        # 128 / (1 + e^-1) = 93.58 and 128 e^-1 / (1 + e^-1) = 34.42.
+        ([0, -8], 0, 94),
+        ([0, -8], 1, 34),
+    ],
+)
+def test_the_arbiter_rounds_the_exact_probability(
+    arbiter_class, scores, index, expected
+):
+    arbiter = arbiter_class(score_scale=-3, prob_scale=-7)
+    assert arbiter.exact(np.array(scores), index) == expected
+
+
+def test_the_arbiter_agrees_with_float64_away_from_a_boundary(arbiter_class):
+    arbiter = arbiter_class(score_scale=-3, prob_scale=-7)
+    rng = np.random.default_rng(3)
+    checked = 0
+    for _ in range(20):
+        scores = rng.integers(-128, 128, 64)
+        e = np.exp((scores - scores.max()) * 2.0**-3)
+        grid = e / e.sum() * 128
+        for j in np.nonzero(np.abs(grid - np.floor(grid) - 0.5) > 1e-6)[0]:
+            assert arbiter.exact(scores, int(j)) == min(int(np.rint(grid[j])), 127)
+            checked += 1
+    assert checked > 1000
+
+
+@pytest.mark.parametrize(
+    "oracle, ort, verdict",
+    [
+        (94, 93, "ORT off-boundary"),
+        (93, 94, "oracle wrong"),
+        (95, 93, "both wrong"),
+    ],
+)
+def test_the_arbiter_says_who_is_off(arbiter_class, oracle, ort, verdict):
+    arbiter = arbiter_class(score_scale=-3, prob_scale=-7)
+    assert arbiter.verdict(np.array([0, -8]), 0, oracle, ort) == verdict
+
+
+def test_the_arbiter_will_not_decide_inside_its_error(arbiter_class):
+    # 93.58 is 0.08 above the boundary; three digits leave an error of about 3.7.
+    arbiter = arbiter_class(score_scale=-3, prob_scale=-7, digits=3)
+    assert arbiter.exact(np.array([0, -8]), 0) is None
+    assert arbiter.verdict(np.array([0, -8]), 0, 94, 93) == "undecidable"
 
 
 def test_timed_runs_report_the_fastest_call_with_its_spread(yolo):
@@ -151,7 +272,7 @@ def test_a_run_of_the_earlier_format_publishes_no_time(yolo):
 
 
 def test_a_passing_run_timed_in_full_is_sane(yolo):
-    correctness = yolo.parse_correctness(YOLO_BATCHED_OUTPUT, 0)
+    correctness = yolo.parse_correctness(YOLO_BATCHED_OUTPUT + ORT_LINE, 0)
     timing = yolo.parse_timing(YOLO_TIMED_OUTPUT) | yolo.parse_timing(
         YOLO_BATCHED_OUTPUT
     )
@@ -176,7 +297,7 @@ def test_a_run_whose_numbers_cannot_stand_is_not_sane(yolo, edit, returncode):
     batched = YOLO_BATCHED_OUTPUT.replace(*edit)
     if edit[0].startswith("random3"):
         batched = batched.replace("8/8 images PASS", "7/8 images PASS")
-    correctness = yolo.parse_correctness(batched, returncode)
+    correctness = yolo.parse_correctness(batched + ORT_LINE, returncode)
     timing = yolo.parse_timing(YOLO_TIMED_OUTPUT) | yolo.parse_timing(batched)
     assert not yolo.measurement_sane(correctness, timing, [1, 8])
 

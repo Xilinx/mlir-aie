@@ -36,7 +36,7 @@ with the same layout, and random images.
 pip install -r requirements.txt
 make export                 # checkpoint, FP32 and XINT8 ONNX, coco128
 make data                   # data/yolo26n_params.npz
-make verify_oracle N=128    # numpy oracle vs ONNX Runtime, tensor by tensor
+make verify_oracle N=128    # numpy oracle vs ONNX Runtime, tensor by tensor (see Accuracy)
 make run_blocks_synthetic   # one range of each block kind on the NPU, no checkpoint
 make run N=8                # the whole model on coco128 images
 ```
@@ -82,10 +82,16 @@ the same 128 images, so its number is optimistic.
 
 On the NPU, the whole model's detections match the oracle bit for bit on
 all 128 coco128 images, and ONNX Runtime's on 126. The oracle agrees with
-ONNX Runtime on those 126 in all 169 tensors. In the other 2, ONNX
-Runtime's float32 softmax rounds an attention probability (4 of 82 million)
-to the other side of a rounding boundary from exact arithmetic; neither
-changes a detection above 0.25 confidence.
+ONNX Runtime on those 126 in all 169 tensors. In the other 2, the oracle's
+softmax and ONNX Runtime's float32 one round an attention probability (4 of
+82 million) to opposite sides of a rounding boundary; neither changes a
+detection above 0.25 confidence.
+
+`verify_oracle.py` settles each such probability with exact arithmetic
+(`SoftmaxArbiter`). An image passes when it is exact, or when ONNX Runtime
+is the one off at every differing probability and the oracle, run again
+with ONNX Runtime's probabilities, then matches it in every tensor. It
+exits 0 only when every image passes.
 
 ## Performance
 

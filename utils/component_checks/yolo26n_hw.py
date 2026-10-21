@@ -4,7 +4,8 @@
 r"""Build + run the YOLO26n 640x640 detector on NPU2 over real COCO images.
 
 The whole detector end to end: does it still build, does every image's
-detection match the numpy oracle (and, as information, onnxruntime), and how
+detection match the numpy oracle and onnxruntime (all but ``--ort-mismatches``
+images, the ones known to land off a softmax rounding boundary), and how
 long one image takes at batch 1 and at batch 8: the fastest of ``N_ITERS``
 calls after ``N_WARMUP``, host wall time of the whole ``yolo26n(...)`` call,
 with the median and MAD beside it. Shells out to the example's
@@ -17,7 +18,8 @@ timing kept only when every image matched in both.
 Needs the quantized model and the COCO128 images where amd/IRON's examples
 keep them, ``$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/`` (default ``/srv``), or
 ``--weights-dir``: ``yolo26n_xint8.onnx`` and ``coco128/images/train2017``.
-Generates ``data/`` once if not already there.
+Extracts the parameters from the model into ``--params-cache``, under a name
+keyed by the sha256 of the model and the extractor, unless already there.
 
 Writes rows and a meta file in the kernel checks' format
 (utils/kernel_checks/publish.py), with the device's power mode and the
@@ -30,12 +32,14 @@ programming_examples/ml/yolo26n, with
 
 import argparse
 import glob
+import hashlib
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from importlib.metadata import version
 from pathlib import Path
 
 from aiecc_stages import (
@@ -58,7 +62,10 @@ BATCH = 8
 _YOLO_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "programming_examples", "ml", "yolo26n"
 )
-_PARAMS = os.path.join(_YOLO_DIR, "data", "yolo26n_params.npz")
+# What gen_yolo_data.py's output depends on besides the ONNX: its extractor
+# and the spec it binds, and the packages that read and evaluate the graph.
+EXTRACTOR_SOURCES = ("gen_yolo_data.py", "yolo_params.py", "yolo_spec.py")
+EXTRACTOR_PACKAGES = ("onnx", "onnxruntime")
 
 _IMAGE_LINE_RE = re.compile(
     r"^image (.+): (PASS|FAIL) \((\d+)/(\d+) differ\)$", re.MULTILINE
@@ -77,11 +84,68 @@ def _run(cmd: list[str], env: dict) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=_YOLO_DIR, env=env, capture_output=True, text=True)
 
 
-def ensure_data(onnx: Path, env: dict) -> subprocess.CompletedProcess | None:
-    """Generate data/ once, if this checkout doesn't already have it."""
-    if os.path.exists(_PARAMS):
-        return None
-    return _run([sys.executable, "gen_yolo_data.py", "--onnx", str(onnx)], env)
+def params_key(onnx: Path, sources: list[Path], packages: dict[str, str]) -> str:
+    """The sha256 that names the parameters extracted from ``onnx``.
+
+    Args:
+        onnx: The quantized model.
+        sources: The extractor's source files.
+        packages: The extractor's packages, name to version.
+
+    Returns:
+        The hex digest of the model, each source (by name and contents) and
+        each package version, so a change to any of them names a new file.
+    """
+    digest = hashlib.sha256()
+    for name, data in [
+        ("model", onnx.read_bytes()),
+        *((s.name, s.read_bytes()) for s in sources),
+        *((p, v.encode()) for p, v in sorted(packages.items())),
+    ]:
+        digest.update(f"{name}\0{len(data)}\0".encode())
+        digest.update(data)
+    return digest.hexdigest()
+
+
+def ensure_params(
+    onnx: Path, cache: Path, env: dict
+) -> tuple[Path, subprocess.CompletedProcess | None]:
+    """The parameter file for ``onnx``, generated into ``cache`` unless already there.
+
+    Args:
+        onnx: The quantized model.
+        cache: The directory the keyed parameter files live in.
+        env: gen_yolo_data.py's environment.
+
+    Returns:
+        The file, named by ``params_key``, and gen_yolo_data.py's run, or
+        None when the file was already there.
+    """
+    key = params_key(
+        onnx,
+        [Path(_YOLO_DIR) / name for name in EXTRACTOR_SOURCES],
+        {name: version(name) for name in EXTRACTOR_PACKAGES},
+    )
+    path = cache / f"yolo26n_params-{key}.npz"
+    if path.exists():
+        return path, None
+    cache.mkdir(parents=True, exist_ok=True)
+    # Renamed into place, so a failed or concurrent run never leaves a partial file.
+    partial = cache / f"yolo26n_params-{key}.{os.getpid()}.npz"
+    gen = _run(
+        [
+            sys.executable,
+            "gen_yolo_data.py",
+            "--onnx",
+            str(onnx),
+            "--out",
+            str(partial),
+        ],
+        env,
+    )
+    if gen.returncode == 0:
+        os.replace(partial, path)
+    return path, gen
 
 
 def newest_build(cache_dir: str) -> str | None:
@@ -100,7 +164,9 @@ def newest_build(cache_dir: str) -> str | None:
     return os.path.dirname(max(profiles, key=os.path.getmtime))
 
 
-def compile_cold_warm(images: Path, onnx: Path, env: dict, cache_dir: str) -> dict:
+def compile_cold_warm(
+    images: Path, onnx: Path, params: Path, env: dict, cache_dir: str
+) -> dict:
     """Compile twice into the fresh NPU_CACHE_HOME ``cache_dir``: cold, then warm.
 
     Cold: every cache empty, same as any first-time compile. Warm: only the
@@ -117,6 +183,8 @@ def compile_cold_warm(images: Path, onnx: Path, env: dict, cache_dir: str) -> di
         str(images),
         "--onnx",
         str(onnx),
+        "--params",
+        str(params),
     ]
     cold = run_measured(compile_only, _YOLO_DIR, run_env)
     build = newest_build(cache_dir)
@@ -148,7 +216,7 @@ def compile_cold_warm(images: Path, onnx: Path, env: dict, cache_dir: str) -> di
 
 
 def run_timed(
-    images: Path, onnx: Path, n_images: int, batch: int, env: dict
+    images: Path, onnx: Path, params: Path, n_images: int, batch: int, env: dict
 ) -> subprocess.CompletedProcess:
     return _run(
         [
@@ -158,6 +226,8 @@ def run_timed(
             str(images),
             "--onnx",
             str(onnx),
+            "--params",
+            str(params),
             "--n",
             str(n_images),
             "--batch",
@@ -172,17 +242,23 @@ def run_timed(
     )
 
 
-def parse_correctness(out: str, returncode: int) -> dict:
+def parse_correctness(out: str, returncode: int, ort_mismatches: int = 0) -> dict:
     """Read a yolo26n.py run: how many images matched the oracle and onnxruntime.
 
     Args:
         out: the run's stdout and stderr.
         returncode: its exit code.
+        ort_mismatches: how many of the run's images are known to differ from
+            onnxruntime, where its float32 softmax rounds off a boundary
+            (verify_oracle.py attributes each).
 
     Returns:
-        ``passed`` (every image matched, by the run's own summary line),
-        ``images_passed``, ``images_total``, ``ort_matches`` (None when the
-        run printed no onnxruntime line) and ``failed_images``, by name.
+        ``passed`` (every image matched the oracle, by the run's own summary
+        line, and ``ort_passed``), ``ort_passed`` (onnxruntime matched all
+        but ``ort_mismatches`` images; False when the run printed no
+        onnxruntime line), ``images_passed``, ``images_total``,
+        ``ort_matches`` (None without that line) and ``failed_images``, by
+        name.
     """
     images = _IMAGE_LINE_RE.findall(out)
     summary = _SUMMARY_RE.search(out)
@@ -193,14 +269,18 @@ def parse_correctness(out: str, returncode: int) -> dict:
         else sum(1 for _, verdict, _, _ in images if verdict == "PASS")
     )
     total_n = int(summary.group(2)) if summary else len(images)
+    ort_matches = int(ort.group(1)) if ort else None
+    ort_passed = ort_matches is not None and ort_matches >= total_n - ort_mismatches
     return {
         "passed": returncode == 0
         and bool(summary)
         and total_n > 0
-        and passed_n == total_n,
+        and passed_n == total_n
+        and ort_passed,
+        "ort_passed": ort_passed,
         "images_passed": passed_n,
         "images_total": total_n,
-        "ort_matches": int(ort.group(1)) if ort else None,
+        "ort_matches": ort_matches,
         "failed_images": [name for name, verdict, _, _ in images if verdict == "FAIL"],
     }
 
@@ -319,12 +399,31 @@ def main(argv=None) -> int:
         default=8,
         help="COCO images to run, a multiple of 8 (default: 8)",
     )
+    parser.add_argument(
+        "--ort-mismatches",
+        type=int,
+        default=0,
+        help="of those, how many are known to differ from onnxruntime where its "
+        "float32 softmax rounds off a boundary, as verify_oracle.py attributes "
+        "them; fewer matches fail the check (default: 0)",
+    )
+    parser.add_argument(
+        "--params-cache",
+        type=Path,
+        default=Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+        / "mlir-aie"
+        / "yolo26n",
+        help="where the parameters extracted from the ONNX are kept, named by the "
+        "sha256 of the model and the extractor (default: ~/.cache/mlir-aie/yolo26n)",
+    )
     add_pmode_argument(parser)
     parser.add_argument("--out", required=True, help="perf.json to write")
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
     if args.n_images < BATCH or args.n_images % BATCH:
         parser.error(f"--n-images {args.n_images} is not a positive multiple of {BATCH}")
+    if not 0 <= args.ort_mismatches <= args.n_images:
+        parser.error(f"--ort-mismatches {args.ort_mismatches} is not in 0..--n-images")
 
     # Deferred so that the tests can import this module's parsers without an NPU runtime.
     from aie.utils.benchmark import preflight, provenance
@@ -337,6 +436,7 @@ def main(argv=None) -> int:
         "provenance": provenance(device=pre.device, pmode=pre.pmode),
         "weights_dir": str(args.weights_dir),
         "n_images": args.n_images,
+        "ort_mismatches": args.ort_mismatches,
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
         return refuse(
@@ -352,7 +452,8 @@ def main(argv=None) -> int:
         )
 
     env = dict(os.environ)
-    gen = ensure_data(onnx, env)
+    params, gen = ensure_params(onnx, args.params_cache, env)
+    meta["params"] = str(params)
     if gen is not None and gen.returncode != 0:
         print(gen.stdout + gen.stderr)
         return refuse(
@@ -360,23 +461,29 @@ def main(argv=None) -> int:
         )
     cache_dir = tempfile.mkdtemp(prefix="component-checks-yolo26n-")
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
-    correctness = parse_correctness("", 1)
+    correctness = parse_correctness("", 1, args.ort_mismatches)
     timing = parse_timing("")
     artifacts: dict = {}
     log = (gen.stdout + gen.stderr) if gen else ""
     try:
-        compiled = compile_cold_warm(images, onnx, env, cache_dir)
+        compiled = compile_cold_warm(images, onnx, params, env, cache_dir)
         log += compiled["log"]
         if compiled["built"].returncode == 0:
             artifacts = artifact_stats(compiled["build_dir"])
-            ran = run_timed(images, onnx, args.n_images, 1, run_env)
-            correctness = parse_correctness(ran.stdout + ran.stderr, ran.returncode)
+            ran = run_timed(images, onnx, params, args.n_images, 1, run_env)
+            correctness = parse_correctness(
+                ran.stdout + ran.stderr, ran.returncode, args.ort_mismatches
+            )
             log += ran.stdout + ran.stderr
             if correctness["passed"]:
-                batched = run_timed(images, onnx, args.n_images, BATCH, run_env)
+                batched = run_timed(
+                    images, onnx, params, args.n_images, BATCH, run_env
+                )
                 log += batched.stdout + batched.stderr
                 in_batches = parse_correctness(
-                    batched.stdout + batched.stderr, batched.returncode
+                    batched.stdout + batched.stderr,
+                    batched.returncode,
+                    args.ort_mismatches,
                 )
                 if in_batches["passed"]:
                     timing = parse_timing(ran.stdout + ran.stderr) | parse_timing(
