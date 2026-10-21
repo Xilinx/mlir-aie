@@ -195,6 +195,10 @@ class KernelContract:
             call's index, 0 first, for a kernel whose state carries from one
             call to the next and restarts at 0. The reference sees every
             call at once, in order. ``None``: the bound value holds.
+        even_calls: Whether every call does the same work. Timing then
+            reports the cheapest call, the rest being the core waiting;
+            calls of unequal work (each its own chunk of a resample) report
+            the median call.
         trace: The ``Trace`` shape of the kernel's markers. Every
             library factory declares one; ``None`` (undeclared) is only for
             ad-hoc kernels, and ``cycles_per_call`` refuses it.
@@ -227,6 +231,7 @@ class KernelContract:
     initializers: tuple[tuple[int, Callable], ...] = ()
     out_offset: tuple[int, int] | None = None
     call_index: int | None = None
+    even_calls: bool = True
     trace: Trace | None = None
     uses_lut: bool = False
     alignments: tuple[tuple[int, int], ...] = ()

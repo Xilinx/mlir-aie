@@ -409,6 +409,7 @@ def resample_quantize(
             roles=(In, Out, Param, Param, Param, Param, Param),
             parameter_bindings=((5, 0),),
             call_index=5,
+            even_calls=False,
             sample=_resample_peaks,
             reference=lambda peak, in_size, out_size, core, chunks: (
                 resample_quantize_ref(
