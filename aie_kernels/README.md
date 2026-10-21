@@ -42,9 +42,9 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 ## conv
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
-| [conv2dk1_i8.cc](./conv/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D; with a bias, ONNX QLinearConv (an `int32` bias per output channel, then optionally a 256-entry `int8` table from [table_i8.h](./common/table_i8.h)) | `int8_t` |
+| [conv2dk1_i8.cc](./conv/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D; with a bias, ONNX QLinearConv for a power-of-two per-tensor scale and zero zero-points (an `int32` bias per output channel, then optionally a 256-entry `int8` table from [table_i8.h](./common/table_i8.h)) | `int8_t` |
 | [conv2dk1.cc](./conv/conv2dk1.cc) | AIE API | 1x1 Conv2D with fused ReLU | `int8_t`, `uint8_t` |
-| [conv2dk3.cc](./conv/conv2dk3.cc) | AIE API | 3x3 Conv2D with fused ReLU; with a bias, ONNX QLinearConv to `int8` at stride 1 or 2, optionally through the `int8` table of [table_i8.h](./common/table_i8.h) | `int8_t`, `uint8_t` |
+| [conv2dk3.cc](./conv/conv2dk3.cc) | AIE API | 3x3 Conv2D with fused ReLU; with a bias, ONNX QLinearConv (power-of-two per-tensor scale, zero zero-points) to `int8` at stride 1 or 2, optionally through the `int8` table of [table_i8.h](./common/table_i8.h) | `int8_t`, `uint8_t` |
 | [conv2dk1_skip.cc](./conv/conv2dk1_skip.cc) | AIE API| 1x1 Conv2D with fused skip addition | `int8_t`, `uint8_t` |
 | [conv2dk1_skip_init.cc](./conv/conv2dk1_skip_init.cc) | AIE API | 1x1 Conv2D with fused 1x1 Conv2D skip addition | `int8_t`, `uint8_t` |
 | [conv2dk14.cc](./conv/conv2dk14.cc) | AIE API | 1x14 / 14x1 Conv2D | `int8_t` |

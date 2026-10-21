@@ -118,13 +118,12 @@ def conv2dk1_i8_ref(x, weights, input_width, input_channels, output_channels, sc
     """Numpy reference for [`conv2dk1_i8`][iron.kernels.conv.conv2dk1_i8]: 1x1 conv to ``int8``.
 
     The layouts of [`conv2dk1_ref`][iron.kernels.conv.conv2dk1_ref] with an
-    ``int8`` output and no ReLU:
-    ``out = sat_i8((sum_ic x * w + 2**(scale-1)) >> scale)``. Exact for the
-    scalar path of ``conv2dk1_i8.cc``.
+    ``int8`` output and no ReLU: ``out = sat_i8(round(sum_ic x * w /
+    2**scale))``, rounding half away from zero (``symmetric_inf``).
     """
     W, IC, OC = int(input_width), int(input_channels), int(output_channels)
     acc, lead = _conv1x1_acc(x, weights, W, IC, OC)
-    return _requant(acc, scale, -128, 127, np.int8).reshape(*lead, W * OC)
+    return _requant_bias(acc, scale, "symmetric_inf").reshape(*lead, W * OC)
 
 
 def conv2dk1_i8_bias_ref(
@@ -630,7 +629,8 @@ def conv2dk3(
     """3x3 convolution kernel.
 
     With ``bias`` it is ONNX QLinearConv's arithmetic on ``int8``
-    activations: an ``int32`` per output channel, in accumulator units, seeds
+    activations for a power-of-two per-tensor output scale and zero
+    zero-points: an ``int32`` per output channel, in accumulator units, seeds
     the sum, the output is ``int8``, the stride may be 2 and the width any
     multiple of 4 (8 at stride 2). ``table`` then maps each result through a
     256-entry ``int8`` table indexed by ``value + 128``.
@@ -805,7 +805,10 @@ def _conv2dk3_bias(
     if stride not in (1, 2):
         raise ValueError(f"conv2dk3: stride must be 1 or 2, got {stride}")
     if rounding not in ("symmetric_inf", "conv_even"):
-        raise ValueError(f"conv2dk3: rounding {rounding!r} needs no bias")
+        raise ValueError(
+            "conv2dk3: with bias, rounding must be 'symmetric_inf' or "
+            f"'conv_even', got {rounding!r}"
+        )
     if input_width % (4 * stride):
         raise ValueError(
             f"conv2dk3: input_width {input_width} must be a multiple of {4 * stride}"
@@ -934,11 +937,12 @@ def conv2dk1_i8(
     output_channels: int = 64,
     bias: bool = False,
     table: bool = False,
-    rounding: str = "symmetric_inf",
+    rounding: str | None = None,
 ) -> ExternalFunction:
     """1x1 convolution kernel with int8 activations/weights/output.
 
-    With ``bias`` it is ONNX QLinearConv's arithmetic: an int32 per output
+    With ``bias`` it is ONNX QLinearConv's arithmetic for a power-of-two
+    per-tensor output scale and zero zero-points: an int32 per output
     channel, in accumulator units, seeds the sum before the shift. ``table``
     then maps each int8 result through a 256-entry int8 table indexed by
     ``value + 128`` (any element-wise activation, such as a quantized SiLU).
@@ -952,6 +956,8 @@ def conv2dk1_i8(
         table: Take a 256-entry ``int8`` table after the bias. Needs ``bias``.
         rounding: How the shift rounds: ``"symmetric_inf"`` (half away from
             zero) or ``"conv_even"`` (half to even, as ONNX QuantizeLinear).
+            By default ``"conv_even"`` with ``bias``, ``"symmetric_inf"``
+            without.
 
     Returns:
         ExternalFunction configured for the conv2dk1_i8 kernel.
@@ -960,6 +966,7 @@ def conv2dk1_i8(
         ValueError: On an unknown ``rounding``, ``table`` without ``bias``,
             or a width the variant cannot tile.
     """
+    rounding = rounding or ("conv_even" if bias else "symmetric_inf")
     if rounding not in ("symmetric_inf", "conv_even"):
         raise ValueError(f"conv2dk1_i8: unknown rounding {rounding!r}")
     if table and not bias:
@@ -993,17 +1000,9 @@ def conv2dk1_i8(
         alignments = (
             _vector_args(0, 1) + ((2, 32),) + _vector_32b(*[3] * table) + out_align
         )
-    elif rounding == "conv_even":
-        reference = conv2dk1_i8_even_ref
-        tolerance = Tolerance.exact(note="the reference models the rounding mode")
-        alignments = ()
     else:
-        reference = conv2dk1_i8_ref
-        # Its vector path ends in a symmetric_inf srs the reference does not
-        # model, measured at 2 of 98304 values, each one LSB out.
-        tolerance = Tolerance.lsb(
-            1, note="vector path srs rounding; measured within one LSB"
-        )
+        reference = conv2dk1_i8_even_ref if rounding == "conv_even" else conv2dk1_i8_ref
+        tolerance = Tolerance.exact(note="the reference models the rounding mode")
         alignments = ()
     return _make_extern(
         name,
@@ -1647,7 +1646,8 @@ def bn_conv2dk3_dw(
     """Bottleneck depthwise 3x3 conv + ReLU kernel (uint8 in/out).
 
     With ``bias`` it is instead ONNX QLinearConv's depthwise arithmetic on
-    ``int8``: an ``int32`` per channel, in accumulator units, seeds the sum,
+    ``int8`` for a power-of-two per-tensor output scale and zero
+    zero-points: an ``int32`` per channel, in accumulator units, seeds the sum,
     the output is ``int8`` with no ReLU, the stride is 1 and the width any
     multiple of 4. ``table`` then maps each result through a 256-entry
     ``int8`` table indexed by ``value + 128``.
