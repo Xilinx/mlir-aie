@@ -1417,9 +1417,9 @@ namespace {
 struct WaitEdge {
   size_t to;
   std::optional<HoldCycle::Step> step;
-  // Where the trees a link wait is between merged above the link: the
-  // switchbox and the arbiter that granted them the link in turn.
-  std::optional<std::pair<TileID, int>> merged = std::nullopt;
+  // For a link wait, each switchbox and arbiter above the link that granted
+  // both trees it in turn.
+  SmallVector<std::pair<TileID, int>, 4> orders = {};
 };
 // The graph holdCycle searches, built as it is walked. Node `entry` leads to
 // every root.
@@ -1554,22 +1554,36 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
       passing[trees[t].hops[h].first].push_back({t, h});
     }
 
-  // The arbiter both trees took to leave the switchbox above a hop they share
-  // where they came into it apart.
+  // The arbiters that granted two trees a hop they share in one order: the
+  // one both took to leave the switchbox above it where they came into it
+  // apart, and each they took on the way down from there together that
+  // neither takes at another hop, so grants each packet once.
   using Grant = std::pair<TileID, int>;
-  auto mergedAt = [&](size_t a, int ha, size_t b,
-                      int hb) -> std::optional<Grant> {
+  auto orderedBy = [&](size_t a, int ha, size_t b, int hb) {
+    SmallVector<Grant, 4> grants;
+    auto once = [&](size_t t, const Grant &g) {
+      return llvm::count_if(llvm::seq<size_t>(0, trees[t].hops.size()),
+                            [&](size_t h) {
+                              return trees[t].hops[h].first == g.first &&
+                                     trees[t].arbiter[h] == g.second;
+                            }) == 1;
+    };
     for (;;) {
       int pa = trees[a].parent[ha], pb = trees[b].parent[hb];
       if (pa < 0 || pb < 0)
-        return std::nullopt;
-      if (trees[a].hops[pa] != trees[b].hops[pb]) {
-        std::optional<int> arbiter = trees[a].arbiter[pa];
-        if (trees[a].hops[pa].first != trees[b].hops[pb].first || !arbiter ||
-            arbiter != trees[b].arbiter[pb])
-          return std::nullopt;
-        return Grant{trees[a].hops[pa].first, *arbiter};
+        return grants;
+      std::optional<int> arbiter = trees[a].arbiter[pa];
+      bool shared = trees[a].hops[pa] == trees[b].hops[pb];
+      if (trees[a].hops[pa].first == trees[b].hops[pb].first && arbiter &&
+          arbiter == trees[b].arbiter[pb]) {
+        Grant g{trees[a].hops[pa].first, *arbiter};
+        if (!shared)
+          grants.insert(grants.begin(), g);
+        else if (once(a, g) && once(b, g))
+          grants.push_back(g);
       }
+      if (!shared)
+        return grants;
       ha = pa;
       hb = pb;
     }
@@ -1603,7 +1617,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
               {pastNode(t, ht),
                HoldCycle::Step{HoldCycle::Wait::Link, waiting, sharer, sharer,
                                tile, input, input, -1, sameId},
-               mergedAt(node.tree, node.index, t, ht)});
+               orderedBy(node.tree, node.index, t, ht)});
         std::optional<int> arbiter = trees[t].arbiter[ht];
         if (!arbiter)
           continue;
@@ -1684,9 +1698,9 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
 
   // A counted wait within one component lies on a closed walk. No state has two
   // trees holding one arbiter (see HoldCycle), so a walk that needs that is no
-  // deadlock. Nor is one where each packet is behind the next on links below
-  // one arbiter they merged at, which granted them those links in one order, so
-  // a walk from a link wait below one must also wait otherwise. The search
+  // deadlock. Nor is one where each packet is behind the next on links one
+  // arbiter granted them all in one order, so a walk from a link wait must,
+  // for each arbiter that ordered that link, also wait otherwise. The search
   // fixes or rules out a holder per arbiter until the shortest walk left
   // agrees. Each clash splits it in two, so past maxWalkSearches it keeps the
   // first walk, which at worst steers the router off a routing that cannot
@@ -1706,18 +1720,27 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
     return it->second.fixed ? *it->second.fixed == holder
                             : !llvm::is_contained(it->second.excluded, holder);
   };
+  // Arbiters past these that ordered a link go untracked, which at worst steers
+  // the router off a routing that cannot deadlock.
+  constexpr size_t maxOrders = 8;
   auto closeWalk =
       [&](size_t x, const Edge &e,
           const Constraints &c) -> std::optional<SmallVector<const Edge *>> {
     if (!allowed(e, c))
       return std::nullopt;
-    // A state is a node and whether the walk there has waited other than on
-    // a link below e's merge.
-    auto ordered = [&](const Edge &edge) {
-      return !edge.step || edge.merged == e.merged;
+    // A state is a node and, per arbiter that ordered e's link, whether the
+    // walk there has waited other than on a link it ordered too.
+    size_t k = std::min<size_t>(e.orders.size(), maxOrders);
+    auto unordered = [&](const Edge &edge) {
+      size_t mask = 0;
+      for (size_t i = 0; i < k; i++)
+        if (edge.step && !llvm::is_contained(edge.orders, e.orders[i]))
+          mask |= size_t(1) << i;
+      return mask;
     };
-    auto state = [](size_t node, bool waited) { return 2 * node + waited; };
-    size_t start = state(e.to, !e.merged), end = state(x, true);
+    size_t all = (size_t(1) << k) - 1;
+    auto state = [&](size_t node, size_t mask) { return (node << k) | mask; };
+    size_t start = state(e.to, 0), end = state(x, all);
     DenseMap<size_t, std::pair<size_t, const Edge *>> via;
     via[start] = {start, nullptr};
     std::deque<size_t> worklist{start};
@@ -1726,8 +1749,8 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
         return std::nullopt;
       size_t n = worklist.front();
       worklist.pop_front();
-      for (const Edge &next : successors(n / 2)) {
-        size_t to = state(next.to, n % 2 || !ordered(next));
+      for (const Edge &next : successors(n >> k)) {
+        size_t to = state(next.to, (n & all) | unordered(next));
         if (component[next.to] == component[x] && allowed(next, c) &&
             via.try_emplace(to, n, &next).second)
           worklist.push_back(to);

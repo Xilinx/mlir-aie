@@ -77,11 +77,12 @@ PARAMS = dict(
     max_bd_steps=1024,
     # stepBudget in planArbiters and unroutableArbiters, budget in
     # runOnPacketFlow's hold-cycle search: AIECreatePathFindFlows.cpp;
-    # maxWalkSearches in StreamConflicts::holdCycle
+    # maxWalkSearches, maxOrders in StreamConflicts::holdCycle
     plan_budget=100000,
     clique_budget=100000,
     hold_budget=256,
     walk_searches=1024,
+    link_orders=8,
     # Designs per tier and per aie-opt run.
     routable=170,
     unroutable=40,
@@ -2227,22 +2228,42 @@ class Analysis:
                 entering[hop].append((t, h))
                 passing[hop[0]].append((t, h))
 
-        # The arbiter both trees took to leave the switchbox above a hop they
-        # share where they came into it apart.
-        def merged_at(a, ha, b, hb):
+        # The arbiters that granted two trees a hop they share in one order:
+        # the one both took to leave the switchbox above it where they came
+        # into it apart, and each they took on the way down from there
+        # together that neither takes at another hop, so grants each packet
+        # once.
+        def ordered_by(a, ha, b, hb):
+            def once(t, grant):
+                tree = trees[t]
+                return (
+                    sum(
+                        1
+                        for h, hop in enumerate(tree["hops"])
+                        if hop[0] == grant[0] and tree["arbiter"][h] == grant[1]
+                    )
+                    == 1
+                )
+
+            grants = []
             while True:
                 pa, pb = trees[a]["parent"][ha], trees[b]["parent"][hb]
                 if pa < 0 or pb < 0:
-                    return None
-                if trees[a]["hops"][pa] != trees[b]["hops"][pb]:
-                    arbiter = trees[a]["arbiter"][pa]
-                    if (
-                        trees[a]["hops"][pa][0] != trees[b]["hops"][pb][0]
-                        or arbiter is None
-                        or arbiter != trees[b]["arbiter"][pb]
-                    ):
-                        return None
-                    return (trees[a]["hops"][pa][0], arbiter)
+                    return tuple(grants)
+                arbiter = trees[a]["arbiter"][pa]
+                shared = trees[a]["hops"][pa] == trees[b]["hops"][pb]
+                if (
+                    trees[a]["hops"][pa][0] == trees[b]["hops"][pb][0]
+                    and arbiter is not None
+                    and arbiter == trees[b]["arbiter"][pb]
+                ):
+                    grant = (trees[a]["hops"][pa][0], arbiter)
+                    if not shared:
+                        grants.insert(0, grant)
+                    elif once(a, grant) and once(b, grant):
+                        grants.append(grant)
+                if not shared:
+                    return tuple(grants)
                 ha, hb = pa, pb
 
         cache = {}
@@ -2276,7 +2297,7 @@ class Analysis:
                                     -1,
                                     same_id,
                                 ),
-                                merged_at(t0, index, t, ht),
+                                ordered_by(t0, index, t, ht),
                             )
                         )
                     arbiter = trees[t]["arbiter"][ht]
@@ -2311,7 +2332,7 @@ class Analysis:
                                     arbiter,
                                     is_forced,
                                 ),
-                                None,
+                                (),
                             )
                         )
             elif kind == "recv":
@@ -2329,7 +2350,7 @@ class Analysis:
                                 (
                                     anywhere_node(g),
                                     ("drain", s, s, m, None, None, None, -1, False),
-                                    None,
+                                    (),
                                 )
                             )
                             break
@@ -2342,9 +2363,9 @@ class Analysis:
                         h = u["parent"][h]
                 for h in range(len(u["hops"])):
                     if h not in behind:
-                        out.append((u["base"] + h, None, None))
+                        out.append((u["base"] + h, None, ()))
                 for m in range(len(u["members"])):
-                    out.append((receiver_node(t0, m), None, None))
+                    out.append((receiver_node(t0, m), None, ()))
             cache[n] = out
             return out
 
@@ -2413,19 +2434,27 @@ class Analysis:
 
         # A packet holds its arbiter until its tail passes, so no state has two
         # trees holding one arbiter. Nor is a walk where each packet is behind
-        # the next on links below one arbiter they merged at, which granted
-        # them those links in one order, a deadlock, so a walk from a link wait
-        # below one must also wait otherwise.
+        # the next on links one arbiter granted them all in one order a
+        # deadlock, so a walk from a link wait must, for each arbiter that
+        # ordered that link, also wait otherwise. Arbiters past
+        # PARAMS["link_orders"] go untracked, which at worst finds a cycle no
+        # routing has.
         def close_walk(x, e, fixed, excluded):
             if not allowed(e, fixed, excluded):
                 return None
 
-            # A state is a node and whether the walk there has waited other
-            # than on a link below e's merge.
-            def ordered(edge):
-                return edge[1] is None or edge[2] == e[2]
+            # A state is a node and, per arbiter that ordered e's link,
+            # whether the walk there has waited other than on a link it
+            # ordered too.
+            orders = e[2][: PARAMS["link_orders"]]
+            full = (1 << len(orders)) - 1
 
-            start, end = (e[0], e[2] is None), (x, True)
+            def unordered(edge):
+                if edge[1] is None:
+                    return 0
+                return sum(1 << i for i, g in enumerate(orders) if g not in edge[2])
+
+            start, end = (e[0], 0), (x, full)
             via = {start: (start, None)}
             work = deque([start])
             while end not in via:
@@ -2433,7 +2462,7 @@ class Analysis:
                     return None
                 n = work.popleft()
                 for nxt in successors(n[0]):
-                    to = (nxt[0], n[1] or not ordered(nxt))
+                    to = (nxt[0], n[1] | unordered(nxt))
                     if (
                         comp[nxt[0]] == comp[x]
                         and allowed(nxt, fixed, excluded)
