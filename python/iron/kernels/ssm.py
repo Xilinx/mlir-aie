@@ -21,6 +21,7 @@ from ._common import (
     Trace,
     _kernel_source,
     _make_extern,
+    _vector_args,
 )
 from .sample import _positive
 
@@ -215,6 +216,15 @@ def selective_scan(
             f"-DSCAN_BLOCKS={blocks}",
         ],
         contract=KernelContract(
+            # B and C load 32 bf16s a vector where state is whole 32s and
+            # start on a 64-byte line (rows * head_dim whole 32s), x 16.
+            alignments=(
+                _vector_args(0)
+                if state % 32 == 0 and rows * head_dim % 32 == 0
+                else ((0, 32),)
+            )
+            + _vector_args(2)
+            + ((3, 32),),
             trace=Trace.whole_call(),
             roles=(In, In, Out, Out, Param, Param),
             parameter_bindings=((5, 0),),
@@ -339,6 +349,8 @@ def gated_delta_rule(
             f"-DGDR_BLOCKS={blocks}",
         ],
         contract=KernelContract(
+            # q, k and v rows load 16 bf16s a vector in place, y stores them.
+            alignments=((0, 32),) + _vector_args(2) + ((3, 32),),
             trace=Trace.whole_call(),
             roles=(In, In, Out, Out, Param, Param),
             parameter_bindings=((5, 0),),

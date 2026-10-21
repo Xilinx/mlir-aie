@@ -33,6 +33,7 @@ from ._common import (
     _detect_arch,
     _kernel_source,
     _make_extern,
+    _vector_args,
 )
 from .sample import (
     SUMMARY_HEADER,
@@ -375,6 +376,10 @@ def experts(
             f"-DEXPERTS_TILE_COLS={cols}",
         ],
         contract=KernelContract(
+            # A tile row, and x beside it, load 32 bf16s a vector where cols
+            # is whole 32s, else 16; y stores 32 where hidden is whole 32s.
+            alignments=(_vector_args(0, 1) if cols % 32 == 0 else ((0, 32), (1, 32)))
+            + (_vector_args(2) if hidden % 32 == 0 else ((2, 32),)),
             trace=Trace.whole_call(),
             roles=(In, In, Out, Param),
             parameter_bindings=((3, 0),),
