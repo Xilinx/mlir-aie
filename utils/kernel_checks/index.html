@@ -2598,13 +2598,16 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return [...at].map(([index, label]) => ({ index, label }));
     }
 
-    // A y axis that shows a threshold-sized move and hides noise: at least
-    // ±5% of the middle, whatever the spread of the values.
-    function yRange(datasets) {
+    // A y axis that shows a threshold-sized move of `metric` and hides
+    // noise: padded by at least 1.25 times its threshold (a percentage of the
+    // middle, or its absolute floor), whatever the spread of the values, so
+    // a 1% move of a ratio near 1 still reads.
+    function yRange(datasets, metric) {
       const all = datasets.flatMap(d => d.data).filter(v => v !== null && v !== undefined);
       if (!all.length) return {};
       const lo = Math.min(...all), hi = Math.max(...all), mid = (lo + hi) / 2;
-      const pad = Math.max((hi - lo) * 0.12, Math.abs(mid) * 0.05, 1);
+      const floor = (THRESHOLDS[metric] || {}).abs || 0;
+      const pad = Math.max((hi - lo) * 0.12, Math.abs(mid) * threshold(metric) * 1.25, floor * 1.25) || Math.abs(mid) * 0.05 || 1;
       return { min: Math.max(0, lo - pad), max: hi + pad };
     }
 
@@ -2647,7 +2650,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (split) for (const d of datasets) if (d.npu === npus[1]) d.yAxisID = 'y1';
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
       // Split axes take their NPU's color; the left one also says what is charted.
-      const axis = (sets, npu, extra) => ({ ...yRange(sets), title: { display: false }, ...extra,
+      const axis = (sets, npu, extra) => ({ ...yRange(sets, g.metric), title: { display: false }, ...extra,
         ticks: { color: split ? npuColor(npu) : fg, maxTicksLimit: 4, font: { size: 11 }, callback: v => formatNumber(v, g.unit) } });
       const markers = nightMarkers(data, npus, index);
       const first = i => [...nights[i].byNpu.values()][0];
@@ -3611,21 +3614,23 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return [...new Set(detail.map(d => d.fixture))].map(fixture => {
         const mine = detail.filter(d => d.fixture === fixture).sort((a, b) => a.seed - b.seed);
         const before = new Map(((previous && previous.detail) || []).filter(d => d.fixture === fixture && d.passed).map(d => [d.seed, d.final_cost]));
-        return bandChart(`Seeds: ${fixture}`, 'final cost per seed; ticks the nightly before', canvas => {
+        return bandChart(`Seeds: ${fixture}`, 'final cost per seed, a dot each on an axis zoomed to them; ticks the nightly before', canvas => {
           const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
           const costs = mine.map(d => d.passed && d.final_cost !== null ? d.final_cost : null);
           const old = mine.map(d => before.has(d.seed) ? before.get(d.seed) : null);
-          const range = yRange([{ data: costs }, { data: old }]);
+          const range = yRange([{ data: costs }, { data: old }], 'final_cost_max');
           const floor = range.min === undefined ? 0 : range.min;
+          // Dots, not bars: a bar's length would read from the zoomed axis's floor.
           const datasets = [
-            { type: 'bar', label: 'final cost', data: costs, backgroundColor: cssVar('--series-1', '#1f6fb8'), order: 2 },
+            { type: 'line', label: 'final cost', data: costs, showLine: false, pointStyle: 'circle', pointRadius: 4,
+              backgroundColor: cssVar('--series-1', '#1f6fb8'), borderColor: cssVar('--series-1', '#1f6fb8'), order: 2 },
             { type: 'line', label: 'the nightly before', data: old, showLine: false, pointStyle: 'line', pointRadius: 8,
               borderColor: cssVar('--faint', '#8a93a3'), borderWidth: 2, order: 1 },
             { type: 'line', label: 'failed', data: mine.map(d => d.passed ? null : floor), showLine: false, pointStyle: 'crossRot',
               pointRadius: 6, borderColor: cssVar('--bad', '#c62f3c'), borderWidth: 2, order: 0 },
           ];
           return new Chart(canvas, {
-            type: 'bar',
+            type: 'line',
             data: { labels: mine.map(d => String(d.seed)), datasets },
             options: {
               animation: false, responsive: true, maintainAspectRatio: false,

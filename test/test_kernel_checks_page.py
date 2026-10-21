@@ -412,6 +412,25 @@ location.hash = '#view=performance&metric=e2e_us_per_image';
 """)
 
 
+def test_an_axis_shows_a_threshold_sized_move_of_its_metric(page):
+    page("""
+// A ratio near 1 with a 1% threshold: the axis hugs it, so a 1% move reads.
+const hops = yRange([{ data: [1.02, 1.05] }], 'hop_ratio');
+assert.ok(hops.min > 0.99 && hops.max < 1.07, JSON.stringify(hops));
+assert.ok(hops.max - hops.min >= 1.035 * 0.01 * 2.5);
+// Bank sharing, 0.31 to 0.33: not 0 to 1.33.
+const sharing = yRange([{ data: [0.31, 0.33] }], 'bank_pair_sharing');
+assert.ok(sharing.min > 0.28 && sharing.max < 0.36, JSON.stringify(sharing));
+// A flat series still spans its threshold: npu_us at 100, 10%.
+const flat = yRange([{ data: [100, 100] }], 'npu_us');
+assert.deepEqual(flat, { min: 87.5, max: 112.5 });
+// An abs-only metric pads by its floor; all zeros still draw an axis.
+THRESHOLDS.max_ulp = { abs: 1 };
+assert.deepEqual(yRange([{ data: [0, 0] }], 'max_ulp'), { min: 0, max: 1.25 });
+assert.deepEqual(yRange([{ data: [0, 0] }], 'cycles'), { min: 0, max: 1 });
+""")
+
+
 def test_narrow_screens_hide_no_kernels_table_column():
     # Each NPU's header spans its columns; hiding one slides the headers.
     css = (
@@ -1318,8 +1337,11 @@ assert.equal(cost.text, 'SA final costmean103.3 +3.3%worst110 +10.0%');
 assert.deepEqual(all(cost, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg worse strong', 'chg worse strong']);
 assert.equal(all(grid.children[2], n => /^chg /.test(n.className || ''))[0].className, 'chg flat');
 assert.equal(cost.href, '#view=placement&metric=final_cost_mean');
-// The Seeds chart: a bar per seed, the nightly before as ticks, seed 4 a ✕.
+// The Seeds chart: a dot per seed on a zoomed axis (no bars measured from its floor),
+// the nightly before as ticks, seed 4 a ✕.
 const [bars, ticks, crosses] = chart.data.datasets;
+assert.ok(chart.data.datasets.every(d => d.type !== 'bar' && d.showLine === false));
+assert.equal(chart.type, 'line');
 assert.deepEqual(chart.data.labels, ['1', '2', '3', '4']);
 assert.deepEqual(bars.data, [100, 110, 100, null]);
 assert.deepEqual(ticks.data, [100, 100, 100, 100]);
