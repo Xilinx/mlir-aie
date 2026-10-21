@@ -78,6 +78,7 @@ my_design(a, b)              # compile + run + sync back
 | The implicit-MLIR-context error you just hit | [Implicit MLIR context](./implicit_mlir_context.md) |
 | Setting-by-setting configuration (cache dir, tensor backend, log level) | [Configuration options](./iron_configuration.md) |
 | What happens between `@iron.jit` and the NPU running | [Compilation stages](./compilation_stages.md) |
+| A routing error, or how flows become switch settings | [Routing](./routing.md) |
 | Ready-made compute kernels (matmul, conv, eltwise, vision) | [Kernel library](./kernels_library.md) |
 | Every control op you can put in a runtime sequence | [AIEX dialect reference](../AIEXDialect.md) |
 
@@ -93,7 +94,7 @@ my_design(a, b)              # compile + run + sync back
 
 ## JIT compile + cache
 
-`@iron.jit` caches compiled artifacts by `(MLIR bytecode + compile-time kwargs)`. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.
+`@iron.jit` caches compiled artifacts by the design's Python sources (the generator, the modules it reaches, and mlir-aie's own) and its compile-time kwargs. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.
 
 * Cache directory: `${NPU_CACHE_HOME:-~/.npu/cache}`. Set `NPU_CACHE_HOME=/tmp/iron_cache` (or anywhere) to override.
 * To force a clean build, `rm -rf "$NPU_CACHE_HOME"` (or the per-design `build/` directory the Makefile writes to).
@@ -136,14 +137,14 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 | [**Worker**](../docs/api/iron.md#iron.worker.Worker) | The IRON object describing the code that runs on one compute tile. Prefer "Worker" over "process" or "task". |
 | [**ObjectFifo**](../docs/api/iron.md#iron.dataflow.objectfifo.ObjectFifo) | The synchronized streaming-data primitive between two endpoints (host↔tile or tile↔tile). Producers and consumers `acquire` / `release` its elements. Reserve "channel" for AXI stream channels. |
 | [**ObjectFifoHandle**](../docs/api/iron.md#iron.dataflow.objectfifo.ObjectFifoHandle) | A producer or consumer handle to an ObjectFifo, obtained via `of.prod()` / `of.cons()`. Worker core functions call `acquire` / `release` on it. |
-| [**Runtime**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The host-side description of `fill` / `drain` operations, defined by the body passed to `Runtime(seq, inputs, fn_args)`. Workers are passed to `Program(workers=...)` rather than started from the body. Distinct from "host code" (the C++/Python testbench that calls the design). |
+| [**Runtime**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The host-side description of `fill` / `drain` operations, defined by the body passed to `Runtime(seq, fn_args)`. Workers are passed to `Program(workers=...)`. Distinct from "host code" (the C++/Python testbench that calls the design). |
 | [**Program**](../docs/api/iron.md#iron.program.Program) | The top-level container that binds a device and a Runtime and resolves the design to MLIR. |
-| [**Buffer**](../docs/api/iron.md#iron.buffer.Buffer) | A named memory region on a tile, accessible by both Workers and the Runtime (often used for runtime parameters). |
+| [**Buffer**](../docs/api/iron.md#iron.buffer.Buffer) | A named memory region on a tile, used for Worker-local scratch storage or runtime parameters. Prefer it over a self-connected ObjectFifo when sequential kernel calls in one Worker share an intermediate result; use ObjectFifos when producer/consumer synchronization is needed. |
 | [**Kernel**](../docs/api/iron.md#iron.kernel.Kernel) / [**ExternalFunction**](../docs/api/iron.md#iron.kernel.ExternalFunction) | Wrappers for AIE core functions: `Kernel` for a pre-compiled object file, `ExternalFunction` for C/C++ source compiled at JIT time. |
 | [**TensorAccessPattern (TAP)**](../docs/api/taplib.md) | A description of how a tensor is sliced and streamed to/from the NPU across multiple DMA transfers. Passed as `tap=` to `fifo.fill()` / `fifo.drain()`. |
 | [**Flow**](../docs/api/iron.md#iron.dataflow.flow.Flow) / [**PacketFlow**](../docs/api/iron.md#iron.dataflow.flow.PacketFlow) | Lower-level explicit-routing primitives: `Flow` for circuit-switched routes, `PacketFlow` for packet-switched routes with caller-controlled packet IDs. |
 | [**TileDma**](../docs/api/iron.md#iron.dataflow.tile_dma.TileDma) | A lower-level explicit per-tile DMA program, used when the ObjectFifo abstraction hides too much. |
-| [**Runtime sequence**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The sequence body passed to `Runtime(seq, inputs, fn_args)` in which `fill` / `drain` operations are declared. |
+| [**Runtime sequence**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The sequence body passed to `Runtime(seq, fn_args)` in which `fill` / `drain` operations are declared. |
 
 ### Compilation
 

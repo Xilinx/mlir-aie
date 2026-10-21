@@ -1,0 +1,29 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// Runtime-n loop whose input tasks are 2-BD next_bd chains drawn from the
+// dynamic BD pool. One xclbin serves any n; the generated C++ TXN builder
+// emits the instruction stream for the n it is called with.
+//
+// RUN: mkdir -p %t.prj
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.gen.h \
+// RUN:   --output-dir=%t.prj \
+// RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj aie_arch.mlir
+//
+// RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
+// RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \
+// RUN:   -I%S/../../../include %xrt_flags %host_link_flags %test_utils_flags
+//
+// n=1 runs only the chain outside the loop, n=2 adds one inside it, and n=8
+// recycles the pool's ids across iterations.
+// RUN: %run_on_npu1% %t.exe 1
+// RUN: %run_on_npu2% %t.exe 1
+// RUN: %run_on_npu1% %t.exe 2
+// RUN: %run_on_npu2% %t.exe 2
+// RUN: %run_on_npu1% %t.exe 8
+// RUN: %run_on_npu2% %t.exe 8

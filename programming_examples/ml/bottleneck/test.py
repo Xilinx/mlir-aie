@@ -4,9 +4,8 @@
 #
 """ResNet-style int8 bottleneck (3 convs + skip add) host test.
 
-``aie_kernels/aie2p/`` holds no port of ``conv2dk1``, ``conv2dk3`` or
-``conv2dk1_skip``. On npu2 the build therefore compiles the ``aie2/`` sources
-with the aie2p target.
+The ``conv2dk1``, ``conv2dk3`` and ``conv2dk1_skip`` kernels under
+``aie_kernels/conv/`` build for both aie2 and aie2p.
 """
 
 import argparse

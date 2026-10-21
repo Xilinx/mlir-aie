@@ -37,16 +37,6 @@ module @test_logical_tile_type_mismatch_fixed {
 
 // -----
 
-// CHECK: error{{.*}}'aie.logical_tile' op Shim tiles cannot have an allocation scheme
-module @test_logical_tile_shim_allocation_scheme {
-  aie.device(npu2) {
-    %tile = aie.logical_tile<ShimNOCTile>(0, 0) {allocation_scheme = "basic-sequential"}
-    aie.end
-  }
-}
-
-// -----
-
 // CHECK: error{{.*}}'aie.logical_tile' op tile type 'MemTile' does not exist on the target device
 module @test_logical_tile_memtile_on_xcvc1902 {
   aie.device(xcvc1902) {

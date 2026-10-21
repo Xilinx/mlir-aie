@@ -7,7 +7,7 @@
 # 32-bit CONSTANT_PAD_VALUE stream word by replicating it across the word for
 # sub-32-bit element types, passed through for 32-bit, and rejected beyond that.
 
-from aie.helpers.util import pack_pad_value
+from aie.helpers.npdtypes import pack_pad_value
 
 # 1-byte elements: replicated 4x across the word.
 assert pack_pad_value(0, 1) == 0

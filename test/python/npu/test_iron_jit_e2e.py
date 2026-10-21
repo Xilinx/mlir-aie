@@ -20,7 +20,9 @@ Coverage:
 - Cache invalidation: different compile_kwargs produce different cached kernels
 - Correct output for each configuration
 - CompileTime[T] param missing → TypeError before any NPU interaction
-- TraceConfig passed to a design that never calls enable_trace → HostRuntimeError
+- Runtime tensor counts, including implicit trace buffers, match the compiled ABI
+- The runtime's device is bound before a call's cache lookup and as_mlir()'s
+  generation, and a cached kernel missing an artifact is rebuilt
 """
 
 from pathlib import Path
@@ -29,6 +31,7 @@ import numpy as np
 import pytest
 
 import aie.iron as iron
+import aie.utils as aie_utils
 from aie.iron import (
     CompileTime,
     In,
@@ -42,6 +45,7 @@ from aie.iron import (
     compileconfig,
 )
 from aie.iron.controlflow import range_
+from aie.utils.hostruntime import set_current_device
 
 # A real two-device design (one aie.device per PDI), used to exercise the
 # multi-PDI accessors against genuine aiecc output rather than fabricated files.
@@ -208,6 +212,46 @@ def test_compile_on_demand_second_call_hits_cache(input_array, N):
     np.testing.assert_array_equal(out2.numpy(), expected)
 
 
+@pytest.mark.parametrize("trace_size", [0, 65536])
+def test_variadic_tensor_count_checked_before_dispatch(N, trace_size, tmp_path):
+    from aie.iron.algorithms import transform_binary
+    from aie.utils.trace.config import TraceConfig
+
+    trace_config = (
+        TraceConfig(trace_size=trace_size, trace_file=str(tmp_path / "trace.txt"))
+        if trace_size
+        else None
+    )
+
+    @iron.jit(trace_config=trace_config)
+    def add(
+        *tensors: In,
+        N: CompileTime[int],
+        trace_size: CompileTime[int] = 0,
+    ):
+        tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
+        return transform_binary(
+            lambda a, b: a + b,
+            tensor_ty,
+            tile_size=16,
+            trace_size=trace_size,
+        )
+
+    a = iron.arange(N, dtype=np.int32)
+    b = iron.arange(N, dtype=np.int32)
+    out = iron.zeros(N, dtype=np.int32, device="npu")
+    for count in [2, 4, 3, 2, 4, 3]:
+        tensors = [a, b, out, out][:count]
+        if count == 3:
+            add(*tensors, N=N)
+            np.testing.assert_array_equal(out.numpy(), a.numpy() + b.numpy())
+        else:
+            with pytest.raises(
+                RuntimeError, match=f"expects 3 tensor argument.*received {count}"
+            ):
+                add(*tensors, N=N)
+
+
 # ---------------------------------------------------------------------------
 # 5. Cache isolation: different compile_kwargs produce separate artifacts
 # ---------------------------------------------------------------------------
@@ -283,11 +327,10 @@ def test_use_cache_false_recompiles_but_output_correct(input_array, N):
 
 def test_trace_config_without_enable_trace_raises(input_array, N):
     """Passing a TraceConfig to a design that never calls enable_trace must
-    raise HostRuntimeError. The guard in the runtime catches the mismatch:
+    raise before dispatch. The compiled-signature validation catches the mismatch:
     the xclbin declares only the data BOs but the host would append a trace
     buffer, which would segfault in XRT argument setup."""
     from aie.utils.trace.config import TraceConfig
-    from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
     trace_cfg = TraceConfig(trace_size=65536)
 
@@ -303,7 +346,7 @@ def test_trace_config_without_enable_trace_raises(input_array, N):
         return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
     out = iron.zeros(N, dtype=np.int32, device="npu")
-    with pytest.raises(HostRuntimeError, match="host buffer argument"):
+    with pytest.raises(RuntimeError, match="expects 1 tensor argument.*received 2"):
         add_traced(input_array, out, N=N, add_value=9, trace_config=trace_cfg)
 
 
@@ -365,3 +408,103 @@ def test_get_pdi_paths_multi_device(tmp_path):
     assert pdi2.exists()
     assert pdi2.name == "design2.pdi"
     assert design2.get_pdi_path(device_name="design2") == pdi2
+
+
+# ---------------------------------------------------------------------------
+# Device binding and the in-process kernel cache
+# ---------------------------------------------------------------------------
+
+
+def test_call_binds_runtime_device_before_in_process_cache(input_array, N):
+    """A call with no bound device binds the runtime's before its cache lookup."""
+    seen = []
+
+    @iron.jit(N=N, add_value=4)
+    def add_four(
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
+    ):
+        seen.append(type(aie_utils.get_current_device(probe_runtime=False)).__name__)
+        return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
+
+    runtime_device = type(aie_utils.DefaultNPURuntime.device()).__name__
+    output = iron.zeros(N, dtype=np.int32, device="npu")
+    set_current_device(None)
+    try:
+        add_four(input_array, output)
+    finally:
+        set_current_device(None)
+
+    output.to("cpu")
+    np.testing.assert_array_equal(output.numpy(), input_array.numpy() + 4)
+    assert seen == [runtime_device]
+    key = next(iter(add_four._kernel_cache))
+    assert key[-1][0] == "device"
+    assert "__iron_device__" not in key[1]
+
+
+@pytest.mark.parametrize(
+    "artifact",
+    [lambda kernel: kernel.xclbin_path, lambda kernel: kernel.insts_path],
+    ids=["xclbin", "insts"],
+)
+def test_call_rebuilds_removed_cached_artifacts(input_array, N, artifact):
+    """A cached kernel whose xclbin or instructions were removed is rebuilt."""
+
+    @iron.jit(N=N, add_value=9)
+    def add_nine(
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
+    ):
+        return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
+
+    expected = input_array.numpy() + 9
+    first = iron.zeros(N, dtype=np.int32, device="npu")
+    add_nine(input_array, first)
+    first.to("cpu")
+    np.testing.assert_array_equal(first.numpy(), expected)
+    built = next(iter(add_nine._kernel_cache.values()))
+    Path(artifact(built)).unlink()
+
+    second = iron.zeros(N, dtype=np.int32, device="npu")
+    add_nine(input_array, second)
+    second.to("cpu")
+    np.testing.assert_array_equal(second.numpy(), expected)
+    rebuilt = next(iter(add_nine._kernel_cache.values()))
+    assert rebuilt is not built
+    assert Path(artifact(rebuilt)).exists()
+
+
+def test_as_mlir_binds_runtime_device_before_generation(N):
+    """Inspection follows the same device binding invariant as __call__."""
+    seen = []
+
+    @iron.jit(N=N, add_value=1)
+    def add_one(
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
+    ):
+        seen.append(type(aie_utils.get_current_device(probe_runtime=False)).__name__)
+        return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
+
+    runtime_device = type(aie_utils.DefaultNPURuntime.device()).__name__
+    set_current_device(None)
+    try:
+        mlir_text = add_one.as_mlir()
+    finally:
+        set_current_device(None)
+
+    assert seen == [runtime_device]
+    assert "aie.device" in mlir_text
+    keys = list(add_one.compilable._generated_cache)
+    assert len(keys) == 1
+    assert runtime_device in keys[0][2]

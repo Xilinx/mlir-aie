@@ -1,0 +1,115 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Run x86 container
+description: Run commands in an x86_64 Linux container on an x86_64 runner.
+
+inputs:
+  image:
+    description: Container image to run.
+    required: true
+  github-token:
+    description: GitHub token with permission to pull the container image.
+    required: true
+  mac-address:
+    description: MAC address to assign to the container.
+    required: true
+  env:
+    description: Newline-separated KEY=VALUE assignments for the container.
+    required: false
+  run:
+    description: Bash commands to run in the container.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Run container
+      shell: bash
+      env:
+        CONTAINER_ENV: ${{ inputs.env }}
+        CONTAINER_IMAGE: ${{ inputs.image }}
+        CONTAINER_MAC_ADDRESS: ${{ inputs.mac-address }}
+        CONTAINER_RUN: ${{ inputs.run }}
+        GHCR_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+
+        if [[ "$(uname -m)" != "x86_64" ]]; then
+          echo "::error::run_x86_container requires an x86_64 runner" >&2
+          exit 1
+        fi
+
+        printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+        docker pull --platform linux/amd64 "$CONTAINER_IMAGE"
+
+        image_arch=$(docker image inspect --format '{{.Architecture}}' "$CONTAINER_IMAGE")
+        if [[ "$image_arch" != "amd64" ]]; then
+          echo "::error::expected an amd64 image, got $image_arch" >&2
+          exit 1
+        fi
+
+        command_file="$RUNNER_TEMP/run-x86-container.sh"
+        printf '#!/bin/bash\nset -eu\n%s\n' "$CONTAINER_RUN" > "$command_file"
+        chmod +x "$command_file"
+
+        file_command_args=()
+        for file_command in GITHUB_OUTPUT GITHUB_ENV GITHUB_PATH GITHUB_STEP_SUMMARY GITHUB_STATE; do
+          file_command_path=${!file_command:-}
+          if [[ -n "$file_command_path" ]]; then
+            file_command_args+=(--env "$file_command")
+            file_command_args+=(--volume "$file_command_path:$file_command_path")
+          fi
+        done
+
+        docker_args=(
+          --platform linux/amd64
+          --workdir "$GITHUB_WORKSPACE"
+          --rm
+          --tty
+          --mac-address "$CONTAINER_MAC_ADDRESS"
+          --env DEBIAN_FRONTEND=noninteractive
+          --env CI
+          --env GITHUB_ACTION
+          --env GITHUB_ACTION_PATH
+          --env GITHUB_ACTIONS
+          --env GITHUB_ACTOR
+          --env GITHUB_API_URL
+          --env GITHUB_BASE_REF
+          --env GITHUB_ENV
+          --env GITHUB_EVENT_NAME
+          --env GITHUB_EVENT_PATH
+          --env GITHUB_GRAPHQL_URL
+          --env GITHUB_HEAD_REF
+          --env GITHUB_JOB
+          --env GITHUB_REF
+          --env GITHUB_REPOSITORY
+          --env GITHUB_RUN_ID
+          --env GITHUB_RUN_NUMBER
+          --env GITHUB_SERVER_URL
+          --env GITHUB_SHA
+          --env GITHUB_WORKFLOW
+          --env GITHUB_WORKSPACE
+          --env RUNNER_OS
+          --env RUNNER_TEMP
+          --env RUNNER_TOOL_CACHE
+          --env RUNNER_WORKSPACE
+          --volume /var/run/docker.sock:/var/run/docker.sock
+          --volume "$(dirname "$GITHUB_EVENT_PATH"):$(dirname "$GITHUB_EVENT_PATH")"
+          --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE"
+          --volume "$command_file:/run-x86-container.sh:ro"
+        )
+        docker_args+=("${file_command_args[@]}")
+
+        while IFS= read -r assignment; do
+          [[ -z "$assignment" ]] && continue
+          if [[ ! "$assignment" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+            echo "::error::invalid container environment assignment: $assignment" >&2
+            exit 1
+          fi
+          key=${assignment%%=*}
+          export "$assignment"
+          docker_args+=(--env "$key")
+        done <<< "$CONTAINER_ENV"
+
+        docker run "${docker_args[@]}" "$CONTAINER_IMAGE" /run-x86-container.sh

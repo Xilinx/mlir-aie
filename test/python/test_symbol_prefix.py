@@ -8,7 +8,7 @@
 """Unit tests for ExternalFunction symbol_prefix parameter."""
 
 import pytest
-from aie.iron.kernel import ExternalFunction
+from aie.iron.kernel import ExternalFunction, Kernel, ObjectFile
 
 
 @pytest.fixture(autouse=True)
@@ -75,3 +75,24 @@ def test_original_name_stored_when_prefix_set():
 def test_original_name_stored_when_no_prefix():
     ef = _make_ef("mm")
     assert ef._original_name == "mm"
+
+
+def test_external_function_exposes_shared_object_file():
+    ef = _make_ef("mm", symbol_prefix="op_a")
+    assert ef.object_file.object_file_name == ef.object_file_name
+    assert ef.object_file.symbol_prefix == "op_a"
+
+
+def test_object_file_bind_applies_symbol_prefix():
+    obj = ObjectFile("shared_mm.o", symbol_prefix="op_a")
+    zero = obj.bind("zero_i16")
+    assert isinstance(zero, Kernel)
+    assert zero._name == "op_a_zero_i16"
+    assert zero.object_file is obj
+    assert zero.object_file_name == "shared_mm.o"
+
+
+def test_object_file_bind_inherits_link_mode():
+    obj = ObjectFile("kernel.ll", link_with_mode="merge")
+    merged = obj.bind("inlined")
+    assert merged.link_with_mode == "merge"

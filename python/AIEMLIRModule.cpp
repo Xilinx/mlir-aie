@@ -68,6 +68,14 @@ NB_MODULE(_aie, m) {
           "Get an instance of BlockFloat type with the specified subtype.",
           "self"_a, "subtype"_a, "ctx"_a = nb::none());
 
+  m.def(
+      "type_size_in_bits",
+      [](MlirType type) { return aieTypeGetSizeInBits(type); },
+      "Size of a type in bits under the default data layout, or 0 when the "
+      "type does not describe one. A block floating-point type reports the "
+      "bits one block occupies, not the bits of one value.",
+      "type"_a);
+
   auto stealCStr = [](MlirStringRef mlirString) {
     if (!mlirString.data || mlirString.length == 0)
       throw std::runtime_error("couldn't translate");
@@ -177,6 +185,21 @@ NB_MODULE(_aie, m) {
 
   m.def("get_target_model",
         [](uint32_t d) -> PyAieTargetModel { return aieGetTargetModel(d); });
+
+  m.def(
+      "dma_bd_fits",
+      [](uint32_t device, int col, int row, MlirType elementType,
+         int64_t offset, const std::vector<int64_t> &sizes,
+         const std::vector<int64_t> &strides, int64_t len) {
+        if (sizes.size() != 4 || strides.size() != 4)
+          throw nb::value_error("dma_bd_fits takes four sizes and strides");
+        return aieDmaBdFits(device, col, row, elementType, offset, sizes.data(),
+                            strides.data(), len);
+      },
+      "device"_a, "col"_a, "row"_a, "element_type"_a, "offset"_a, "sizes"_a,
+      "strides"_a, "len"_a,
+      "Whether one DMA buffer descriptor of a tile holds an access pattern: "
+      "four sizes and strides, outermost first, and the descriptor's length.");
 
   nb::class_<PyAieTargetModel>(m, "AIETargetModel")
       .def(
@@ -300,6 +323,10 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self) {
              return aieTargetModelGetLocalMemorySize(self.get());
            })
+      .def("get_default_core_stack_size",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetDefaultCoreStackSize(self.get());
+           })
       .def("get_num_locks",
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetNumLocks(self.get(), col, row);
@@ -308,6 +335,34 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetNumBDs(self.get(), col, row);
            })
+      .def("get_max_lock_value",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetMaxLockValue(self.get());
+           })
+      .def("get_max_repeat_count",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetMaxRepeatCount(self.get());
+           })
+      .def("get_dma_task_queue_depth",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetDmaTaskQueueDepth(self.get());
+           })
+      .def("get_dma_bd_wrap_bits",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetDmaBdWrapBits(self.get(), col, row);
+           })
+      .def("get_dma_bd_step_bits",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetDmaBdStepBits(self.get(), col, row);
+           })
+      .def("get_dma_bd_iter_bits",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetDmaBdIterBits(self.get(), col, row);
+           })
+      .def("get_address_gen_granularity",
+           [](PyAieTargetModel &self) {
+             return aieGetTargetModelAddressGenGranularity(self.get());
+           })
       .def("get_num_mem_tile_rows",
            [](PyAieTargetModel &self) {
              return aieTargetModelGetNumMemTileRows(self.get());
@@ -315,6 +370,10 @@ NB_MODULE(_aie, m) {
       .def("get_mem_tile_size",
            [](PyAieTargetModel &self) {
              return aieTargetModelGetMemTileSize(self.get());
+           })
+      .def("get_num_banks",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetNumBanks(self.get(), col, row);
            })
       .def("get_num_dest_switchbox_connections",
            [](PyAieTargetModel &self, int col, int row, uint32_t bundle) {

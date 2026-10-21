@@ -6,7 +6,7 @@
 """Section-4b trace example — ``@iron.jit`` (vector * scalar).
 
 Same vector*scalar design as section-3/4a; this version exposes a
-``trace_size`` parameter and calls ``prog.enable_trace(trace_size,
+``trace_config`` parameter and calls ``prog.enable_trace(trace_config.trace_size,
 workers=[my_worker])`` to capture core-tile trace events into a DDR
 buffer.  See README.md for a walk-through of the customizable
 ``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
@@ -47,6 +47,7 @@ from aie.utils.hostruntime.argparse import (
     add_trace_arg,
 )
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.trace import TraceConfig
 from aie.utils.verify import assert_pass
 
 tensor_size = 4096
@@ -65,7 +66,7 @@ def vector_scalar_mul(
     f_in: In,
     c_out: Out,
     *,
-    trace_size: CompileTime[int] = 0,
+    trace_config: CompileTime[TraceConfig | None] = None,
 ):
     scale_fn = ExternalFunction(
         "vector_scalar_mul_aie_scalar",
@@ -109,8 +110,8 @@ def vector_scalar_mul(
     )
 
     prog = Program(iron.get_current_device(), rt, workers=[my_worker])
-    if trace_size > 0:
-        prog.enable_trace(trace_size, workers=[my_worker])
+    if trace_config is not None:
+        prog.enable_trace(trace_config.trace_size, workers=[my_worker])
     return prog.resolve_program()
 
 
@@ -120,10 +121,14 @@ def _make_inputs():
     return a_in, f_in
 
 
+def _trace_config(opts):
+    return TraceConfig(trace_size=opts.trace_size) if opts.trace_size > 0 else None
+
+
 def _run_and_verify(opts):
     a_in, f_in = _make_inputs()
     c_out = iron.zeros(tensor_size, dtype=np.int32, device="npu")
-    vector_scalar_mul(a_in, f_in, c_out, trace_size=opts.trace_size)
+    vector_scalar_mul(a_in, f_in, c_out, trace_config=_trace_config(opts))
     assert_pass(
         c_out.numpy(),
         a_in.numpy() * f_in.numpy()[0],
@@ -139,7 +144,7 @@ def main():
     run_design_cli(
         vector_scalar_mul,
         opts,
-        compile_kwargs=lambda o: dict(trace_size=o.trace_size),
+        compile_kwargs=lambda o: dict(trace_config=_trace_config(o)),
         run_and_verify=_run_and_verify,
         device=lambda o: device_from_args(o, n_cols=1),
     )

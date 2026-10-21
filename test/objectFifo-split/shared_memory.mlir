@@ -5,7 +5,8 @@
 
 // Tiles that share memory need no stream: both cores attach directly to a
 // single pool, and the port on each access becomes redundant once the endpoint
-// it names carries the role.
+// it names carries the role. The pool holds as many objects as the deeper end
+// states, so the consumer of @of1 can hold all three it acquires.
 
 module @shared_memory {
   aie.device(xcve2302) {
@@ -13,16 +14,21 @@ module @shared_memory {
     %tile13 = aie.tile(1, 3)
 
     aie.objectfifo @of0 (%tile12, {%tile13}, 4 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of1 (%tile12, {%tile13}, [2 : i32, 3 : i32]) : !aie.objectfifo<memref<16xi32>>
 
     %core12 = aie.core(%tile12) {
       %elem = aie.objectfifo.acquire @of0 (Produce, 1) : memref<16xi32>
       aie.objectfifo.release @of0 (Produce, 1)
+      %elem1 = aie.objectfifo.acquire @of1 (Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @of1 (Produce, 1)
       aie.end
     }
 
     %core13 = aie.core(%tile13) {
       %elem = aie.objectfifo.acquire @of0 (Consume, 1) : memref<16xi32>
       aie.objectfifo.release @of0 (Consume, 1)
+      %a, %b, %c = aie.objectfifo.acquire @of1 (Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
+      aie.objectfifo.release @of1 (Consume, 1)
       aie.end
     }
   }
@@ -35,6 +41,7 @@ module @shared_memory {
 // CHECK: aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
 // CHECK:   aie.objectfifo.core_endpoint @of0_prod(%[[T12]]) fills @of0_pool
 // CHECK:   aie.objectfifo.core_endpoint @of0_cons(%[[T13]]) drains @of0_pool
+// CHECK:   aie.objectfifo.pool @of1_pool(%[[T12]]) {depth = 3 : i32, fifoName = "of1"} : memref<16xi32>
 // CHECK-NOT: aie.objectfifo.dma_endpoint
 // CHECK-NOT: aie.route
 // CHECK:   aie.core(%[[T12]])

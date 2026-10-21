@@ -29,3 +29,8 @@ target_link_libraries(${currentTarget} PUBLIC
 )
 
 target_link_test_utils(${currentTarget})
+
+# Build the design and register the NPU run. Both default to the AIE_DEVICE
+# cache variable set in common.cmake; -DAIE_DEVICE=npu2 targets Strix.
+add_aie_design(TARGET ${currentTarget} PY matrix_scalar_add.py)
+add_aie_run_test(NAME ${currentTarget} EXE ${currentTarget})

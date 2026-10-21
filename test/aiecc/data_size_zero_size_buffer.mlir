@@ -9,7 +9,7 @@
 // ldscript `data` region: its length stays the full 64512 bytes (0xFC00) above
 // the 1024-byte stack, matching the allocator's largestFreeRun().
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | aie-translate --aie-generate-ldscript --tilecol=0 --tilerow=2 | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s | aie-translate --aie-generate-ldscript --tilecol=0 --tilerow=2 | FileCheck %s
 
 // CHECK: data (!RX) : ORIGIN = {{.*}}, LENGTH = 0xFC00
 

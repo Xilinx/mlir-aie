@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
-from aie.helpers.taplib import TensorTiler2D
-from util import construct_test
+from aie.helpers.taplib import TensorAccessPattern
+from util import construct_test, grid_steps, accesses
 
 # RUN: %python %s | FileCheck %s
 
@@ -12,10 +11,13 @@ from util import construct_test
 # CHECK-LABEL: square_tiler_col_major_tensor_tile_grouping_rectangular_col_major_groups
 @construct_test
 def square_tiler_col_major_tensor_tile_grouping_rectangular_col_major_groups():
-    tiler = TensorTiler2D.group_tiler(
-        (16, 16), (4, 4), (2, 1), tile_group_col_major=True, iter_col_major=True
+    tiler = grid_steps(
+        TensorAccessPattern.full((16, 16)).tile((4, 4)),
+        (2, 1),
+        order="col",
+        group_order="col",
     )
-    access_order, access_count = tiler.accesses()
+    access_order, access_count = accesses(tiler)
     reference_access = np.array(
         # fmt: off
         [

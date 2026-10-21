@@ -15,7 +15,7 @@ The design body is a single `aie.iron.algorithms.reduce(reduce_add_vector, in_ty
 
 1. `vector_reduce_add.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.reduce`.  Supports standalone (`python3 vector_reduce_add.py`) and compile-only (`--xclbin-path` / `--insts-path`, used by the `Makefile`) modes.
 
-1. `reduce_add.cc`: A C++ implementation of a vectorized `add` reduction for AIE cores. The kernel uses the AIE API, documented [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html).  Source: [here](../../../aie_kernels/aie2/reduce_add.cc).
+1. `reduce_add.cc`: A C++ implementation of a vectorized `add` reduction for AIE cores. The kernel uses the AIE API, documented [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html).  Source: [here](../../../aie_kernels/reduce/reduce_add.cc).
 
 1. `test.cpp`: C++ testbench. Loads the compiled XCLBIN, supplies input, runs on the NPU, and verifies the result.
 

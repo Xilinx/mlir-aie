@@ -94,20 +94,16 @@ def AIEVec_FMAElemOp :
   }];
 }
 
-
-def AIEVec_MulElemOp:
-  AIEVec_Op<"mul_elem", [	 
-    Pure,
-    SameTypeOperands,
-    SameOperandsShape,
-    SameOperandsAndResultShape,
-    isOperandResultTypePairValidForAIE2MulElem<"lhs", "rhs", "result">
-  ]>,	  
-  Arguments<(ins
-    VectorOfLengthAndType<[16, 32], [I8, I16, I32, BF16, F32]>:$lhs, 
-    VectorOfLengthAndType<[16, 32], [I8, I16, I32, BF16, F32]>:$rhs)>,
-  Results<(outs
-    VectorOfLengthAndType<[16, 32], [I32, I64, F32]>:$result)> {
+def AIEVec_MulElemOp
+    : AIEVec_Op<"mul_elem", [Pure, SameTypeOperands, SameOperandsShape,
+                             SameOperandsAndResultShape,
+                             isOperandResultTypePairValidForAIE2MulElem<
+                                 "lhs", "rhs", "result">]>,
+      Arguments<(ins VectorOfLengthAndType<[16, 32, 64], [I8, I16, I32, BF16,
+                                                          F32]>:$lhs,
+          VectorOfLengthAndType<[16, 32, 64], [I8, I16, I32, BF16, F32]>:$rhs)>,
+      Results<(
+          outs VectorOfLengthAndType<[16, 32, 64], [I32, I64, F32]>:$result)> {
   let summary = "AIE2 vector element-wise multiply";
   let description = [{
     AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
@@ -118,6 +114,8 @@ def AIEVec_MulElemOp:
       :------------------:|:------------------:|:-----------------:
         `vector<32xi8>`    | `vector<32xi8>`    | `vector<32xi32>`
         `vector<32xi16>`   | `vector<32xi16>`   | `vector<32xi32>`
+        `vector<32xbf16>`  | `vector<32xbf16>`  | `vector<32xf32>` (AIE2P)
+        `vector<64xbf16>`  | `vector<64xbf16>`  | `vector<64xf32>` (AIE2P)
         `vector<16xi32>`   | `vector<16xi32>`   | `vector<16xi64>`
         `vector<16xbf16>`  | `vector<16xbf16>`  | `vector<16xf32>`
         `vector<16xf32>`   | `vector<16xf32>`   | `vector<16xf32>`'

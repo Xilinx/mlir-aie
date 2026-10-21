@@ -30,7 +30,7 @@ This design consists of the following:
   hit the cache instead of paying `aiecc` time on first invocation.
 * The MMUL kernel itself comes from the IRON kernel library
   ([`aie.iron.kernels.mm`](../../../python/iron/kernels/linalg.py)), which
-  wraps [`aie_kernels/aie2/mm.cc`](../../../aie_kernels/aie2/mm.cc) — no
+  wraps [`aie_kernels/linalg/mm.cc`](../../../aie_kernels/linalg/mm.cc) — no
   per-example C++ file is needed.
 * `run.lit`: lit test that runs the design on different NPU devices.
 
@@ -50,7 +50,7 @@ a single vector register of the AI Engine. The AI Engine provides dedicated
 fused multiply-add instructions, called `VMAC`, that are capable of multiplying
 one of these smallest sub-tiles in each clock cycle. We call this smallest tile
 size the intrinsic size, and the hardware dictates which tile sizes are
-available. The available sizes for different architectures are documented 
+available. The available sizes for different architectures are documented
 [here](https://xilinx.github.io/aie_api/group__group__mmul.html).
 
 ## Data Movement and Matrix Tiling
@@ -60,22 +60,23 @@ the level, the farther away from the AI Engine compute core the memory is, i.e.
 L3 is DRAM memory shared with the CPU, L2 is the memory on memory tiles and
 L1 is compute core memory. The ObjectFifos that move data are named accordingly
 by which matrix they move (`A`, `B` or `C`), followed by their source and
-destination memories. For example, the ObjectFifo `fifo_A_L3L2` moves `A` from 
+destination memories. For example, the ObjectFifo `fifo_A_L3L2` moves `A` from
 DRAM into the memory tile.
 
 ### L3 &rightarrow; L2: Larger Tiles
 
 ```
-a_taps = TensorTiler2D.group_tiler((M, K), (m, k), (1, K // k), pattern_repeat=(N // n))
-b_tap = TensorTiler2D.group_tiler((K, N), (k, n), (K // k, N // n), tile_group_col_major=True)[0]
-c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
+a_tiles = TensorAccessPattern.full((M, K)).tile((m, k))
+# All of B, walked one column of k*n tiles at a time.
+b_tap = TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
+c_tiles = TensorAccessPattern.full((M, N)).tile((m, n))
 
 def sequence(A, B, C, a_prod, b_prod, c_cons):
     for tile_row in range(M // m):
         task_group = TaskGroup()
-        a_prod.fill(A, tap=a_taps[tile_row], group=task_group)
+        a_prod.fill(A, tap=a_tiles[tile_row].repeat(N // n), group=task_group)
         b_prod.fill(B, tap=b_tap, group=task_group)
-        c_cons.drain(C, tap=c_taps[tile_row], group=task_group, wait=True)
+        c_cons.drain(C, tap=c_tiles[tile_row], group=task_group, wait=True)
         task_group.finish()
 
 rt = Runtime(
@@ -88,25 +89,25 @@ Program(dev, rt, workers=[worker]).resolve_program()
 
 As `A` and `B` are moved in from DRAM, our design splits these matrices up into
 smaller tiles. The DMAs are programmed to iterate over tiles of `A` in
-row-major order, whereas we iterate over `B` in column-major order. Streaming 
-the entire first row of tiles of `A` and entire first column of tiles of `B` 
+row-major order, whereas we iterate over `B` in column-major order. Streaming
+the entire first row of tiles of `A` and entire first column of tiles of `B`
 allows the cores to fully compute the first complete output tile in the
 top-left of `C`:
 
 ![A, B and C matrices are tiled from 512x512 to 64x64. First row of tiles of A and first column of tiles of C is accessed, to produce one output tile in the top-left of C.](./diagrams/matmul_l3l2_1.svg)
 
-Once an entire row of `A` and an entire column of `B` have been streamed in, 
+Once an entire row of `A` and an entire column of `B` have been streamed in,
 we move onto the next column of tiles of `B`, while repeating the same row of
 tiles of `A`. This allows the cores to compute the next output tile of C. In
-our implementation above, we achieve the repeat of `A` using the 
-`pattern_repeat` attribute, whereas the B tensor access pattern specifies to
-tile the entire B matrix without repeats.  Note that the local buffer holding 
+our implementation above, we achieve the repeat of `A` using the
+`.repeat(N // n)` step, whereas the B tensor access pattern specifies to
+tile the entire B matrix without repeats.  Note that the local buffer holding
 output C on the compute cores is zero-initialized in each such iteration.
 
 ![To produce the next output tile, the same row of tiles of A is repeated, and the next column of tiles of B is accessed.](./diagrams/matmul_l3l2_2.svg)
 
 After repeating the first row of tiles of `A` for each column of tiles in B
-(i.e., `N / n` times), we move on to the next row of `A`. In our 
+(i.e., `N / n` times), we move on to the next row of `A`. In our
 implementation, this step corresponds to moving on to the next iteration of
 the `for tile_row in range(M // m)` loop in the `sequence` body. We use the same
 tensor access pattern for `A`, except that the transfer will start from an
@@ -119,28 +120,23 @@ across columns of `B` to produce the next row of output tiles in `C`:
 ### L2 &rightarrow; L1: Intrinsic Tiles
 
 ```
-tap_A_L2L1 = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]
+tap_A_L2L1 = TensorAccessPattern.full((m, k)).tile((r, s))
 fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
-    dims_to_stream=tap_A_L2L1.transformation_dims, 
+    to_stream=tap_A_L2L1,
     name="A_L2L1"
 )
 ```
 ```
-tap_B_L2L1 = TensorTiler2D.group_tiler((k, n), (s, t), (k // s, n // t))[0]
+tap_B_L2L1 = TensorAccessPattern.full((k, n)).tile((s, t))
 fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
-    dims_to_stream=tap_B_L2L1.transformation_dims, 
+    to_stream=tap_B_L2L1,
     name="B_L2L1"
 )
 ```
 ```
-tap_C_L1L2 = TensorAccessPattern(
-    tensor_dims=(m, n),
-    offset=0,
-    sizes=[m // r, r, n // t, t],
-    strides=[r * n, t, r * t, 1]
-)
+tap_C_L1L2 = TensorAccessPattern.full((m, n)).tile((r, t)).inverse()
 fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-    dims_to_stream=tap_C_L1L2.transformation_dims, 
+    to_stream=tap_C_L1L2,
     name="C_L2L3"
 )
 ```
@@ -148,7 +144,7 @@ fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
 The above tensor access patterns tile the input matrices into the smallest
 tiles used in our design -- the intrinsic-sized tiles. The computation kernel
 expects data to be tiled into these small vector-sized dimensions. The
-tensor access pattern for the output C then undoes this tiling to produce a 
+tensor access pattern for the output C then undoes this tiling to produce a
 regular row-major tile as the output moves out of the computation core.
 Note that all of these tiles are arranged in row-major order.
 
@@ -157,7 +153,7 @@ Note that all of these tiles are arranged in row-major order.
 The exact `r`, `s`, `t` values depend on the kernel chosen for the
 `(input_dtype, output_dtype)` pair. The example uses `kernels.mm()` with
 `(int16, int16)`, which selects a `4x4x4` MMUL (see
-`aie_kernels/aie2/mm.cc` for the per-dtype sizes).
+`aie_kernels/linalg/mm_aie2.h` and `mm_aie2p.h` for the per-dtype sizes).
 
 ## Ryzen™ AI Usage
 

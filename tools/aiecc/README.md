@@ -48,6 +48,49 @@ You can override these output file names with `--npu-insts-name`,
 `--xclbin-name`, and `--full-elf-name`. You can filter which devices and 
 runtime sequences are compiled with `--device-name` and `--sequence-name`. 
 
+### Parameterized C++ transaction builders
+
+```bash
+aiecc --get-npu-cpp design.mlir
+# -> npu_<device>_<seq>.cpp (one standalone C++17 builder per selected sequence)
+```
+
+C++ builders and static instructions share runtime-sequence materialization,
+reconfiguration expansion, DMA lowering, PDI-ID assignment, and device/sequence
+filtering. This includes `aiex.configure`/`aiex.run`, `--expand-load-pdis`, and
+`--load-pdi-to-ctrl-pkt`; C++ output does not require a static instruction binary.
+
+Designs containing cores to compile require the core toolchain even when only
+transaction builders or instructions are requested: buffer placement follows
+core compilation so it can reserve space for the core's static data. Designs
+without cores remain compiler-free; the generated C++ itself needs only a host
+compiler.
+
+Include the generated file in a C++17 host program with MLIR-AIE's `include`
+directory on the compiler's include path. Call
+`generate_txn_<device>_<seq>(...)` with the runtime sequence's scalar arguments
+in declaration order. Memref arguments are not C++ parameters: transactions
+reference their host-buffer argument indices for runtime address patching.
+The result is `std::optional<std::vector<uint32_t>>` containing unpatched
+transaction words, or `std::nullopt` if a dynamic DMA field fails validation.
+For reconfiguration, the host must also provide referenced PDIs and
+control-packet data according to its runtime's ABI.
+
+- `--npu-cpp-name`: output filename; `{0}` expands to the device/sequence key.
+  Select one sequence when using a fixed filename.
+- `--npu-cpp-emit-dispatch-shim`: add `dispatch_abi` and `dispatch_generate` C
+  entry points for shared-library loading (off by default).
+- `--get=npu_lowered.mlir`: also save the final runtime-sequence IR.
+
+Builders default to the instruction-buffer DDR-patch ABI (`--get-npu-insts`),
+or the unfolded ABI when combined with `--get-full-elf`.
+`--fold-ddr-addr-offset=true|false` overrides the builder's choice; full-ELF
+instructions always remain unfolded.
+
+Full ELF still requires static instructions. Executing a parameterized builder
+requires a host runtime that can submit and patch its generated transactions;
+generating C++ alone does not add dynamic full-ELF support.
+
 ### Limiting parallel compilation
 
 `aiecc` compiles independent parts of a design, including its cores, in
@@ -65,6 +108,84 @@ AIECC_JOBS=1 ninja check-aie
 An explicit `-j` or `--nthreads` takes precedence over `AIECC_JOBS`, which in
 turn takes precedence over the default. The environment variable accepts the
 same non-negative integer values as `-j`, including `0` for auto-detection.
+
+`-j` also sizes the thread pool MLIR runs the per-device pass pipelines on, and
+`-j 1` keeps them on one thread. With the pinned MLIR wheel, which is built
+without MLIR threading, those pipelines run on one thread either way.
+
+### Reusing compiled devices: `--device-cache`
+
+`--device-cache=<dir>` keeps what compiling each `aie.device`'s cores produced
+(its buffer placement and linked core ELFs) in `<dir>`, and a later build whose
+device is unchanged reuses them instead of compiling its cores again:
+
+```bash
+aiecc --get-full-elf --device-cache=$HOME/.cache/aiecc design.mlir
+```
+
+A device is reused only when its routed IR, the module's other top-level ops,
+the contents of every file its cores link, the command line and the `aiecc`
+and Peano binaries all match, so changing one device in a multi-device design
+recompiles just that device. Outputs are byte-identical to a build without the
+cache. `-v` reports each device's `hit`, `miss` and `store`.
+
+The cache is Peano-only, and a build that emits something from inside a
+core's compilation (`--get-core-elfs`, `--get-locmap`, `--dump-intermediates`)
+bypasses it. Concurrent builds can share a directory. Nothing is ever evicted;
+delete the directory to reclaim space.
+
+### Cores that run one program: `--no-share-core-objects`
+
+Cores that run the same program over their own buffers and locks are compiled
+once: the first such core's module runs `opt` and `llc` under positional
+symbol names, and every core links that object with the names renamed back to
+its own. The core ELFs are byte-identical to compiling each core on its own.
+`--no-share-core-objects` compiles each core separately, should the sharing
+ever need to be ruled out.
+
+### Arguments for `opt` and `llc`: `-Xopt` and `-Xllc`
+
+`-Xopt <arg>` and `-Xllc <arg>` pass `<arg>` to the Peano `opt` and `llc` that
+compile each core's program, as clang's `-Xclang` does: one argument per
+occurrence, never split at commas, after the arguments `aiecc` passes itself,
+so an option that `aiecc` sets takes the value given here. They reach the
+cores' programs, including kernels merged into them
+(`link_with_mode = "merge"`); a kernel compiled to an object takes its flags
+from its own clang command line (`-mllvm`).
+
+```bash
+# Rule out opt passes, or bisect them, in the cores' programs
+aiecc --get-pdi -Xopt -opt-disable=licm,loop-unroll-full design.mlir
+aiecc --get-pdi -v -Xopt -opt-bisect-limit=40 design.mlir
+# A backend option
+aiecc --get-pdi -Xllc=--enable-aie-zol-without-minitercount=false design.mlir
+```
+
+With `--xchesscc` they are an error: Chess compiles the cores.
+
+### Building the link files meanwhile: `--await-link-files`
+
+With `--await-link-files`, `aiecc` lowers the design but reads no file a core
+links (`link_with`, `link_files`) until a line arrives on its standard input,
+so a caller can build those objects while `aiecc` works. Standard input closing
+before that line fails the build. The IRON JIT uses this to compile a design's
+kernels while `aiecc` lowers it.
+
+### Core memory placement and validation
+
+`aiecc` checks stack and ordinary static-data requirements after linking.
+Explicit bank annotations are also checked by default, for both Peano and
+Chess; `--no-check-bank-placement` disables that check.
+
+The separate, opt-in `--check-lut-banks` verifies LUT table-pair separation.
+It requires Peano-readable LLVM IR in object-linked kernels, or optimized
+core IR for merge-mode kernels; Chess compilation/linking is unsupported.
+Neither check replaces the allocator's stack/buffer overlap checks or the
+linker's region limits.
+
+See [Core Data Memory](https://github.com/Xilinx/mlir-aie/blob/main/programming_guide/core_data_memory.md) for
+`data_size`, `stack_bank`/`stack_address`, portable `AIE_BANK_A`–`AIE_BANK_D`
+annotations, IR-retention options and verification limitations.
 
 ### Seeing what the compiler will do / dry-running: `--emit-dot`
 
@@ -170,6 +291,13 @@ reuses the checkpointed intermediates instead of recomputing them:
 aiecc --cut=physical_with_elfs.mlir --checkpoint=cp design.mlir
 aiecc --resume=cp/manifest.json --get=cdo_{0}   # only the CDO, from the checkpoint
 ```
+
+### Finding the pass that broke the IR: `--verify-each`
+
+`aiecc` verifies the IR each pass pipeline produces, rather than after every
+pass as `aie-opt` does; on a large design the per-pass verification costs more
+than the passes. If a pipeline produces invalid IR, rerun with `--verify-each`
+to verify after every pass and learn which one it was.
 
 ---
 

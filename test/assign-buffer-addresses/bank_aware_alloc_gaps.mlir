@@ -10,7 +10,7 @@
 // stack, a 32-byte load/store bus, and a 64-byte alignment for any buffer large
 // enough to hold a full-width vector (see getRequiredAlignBits).
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // The hole is [1040, 1216), whose first free byte is misaligned. The candidate
 // start rounds up to 1088 *before* the fit test, so the buffer uses the hole.

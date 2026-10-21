@@ -7,6 +7,7 @@
 // This file implements AIE vector op printing, pasing, and verification.
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
@@ -727,6 +728,11 @@ static LogicalResult verifyMulFMAElemOp(T op) {
 }
 
 LogicalResult aievec::MulElemOp::verify() {
+  if (getVectorLaneSize(cast<VectorType>(getLhs().getType())) == 64 &&
+      (!getElementTypeOrSelf(getLhs().getType()).isBF16() ||
+       !getElementTypeOrSelf(getResult().getType()).isF32()))
+    return emitError("64 lanes are supported only for bf16 operands with an "
+                     "f32 result");
   return verifyMulFMAElemOp<aievec::MulElemOp>(*this);
 }
 

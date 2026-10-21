@@ -14,10 +14,14 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LogicalResult.h"
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -65,12 +69,44 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::StringRef deviceName = "");
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &, llvm::StringRef);
+// The TXN encoding of each device an aiex.npu.write_config writes. Shared by
+// the translations of one module's sequences, folded or not, it encodes each
+// written device once: a configuration's writes patch no DDR address. Safe to
+// share across threads.
+class NpuConfigCache {
+public:
+  struct Config {
+    std::vector<uint32_t> words;
+    uint32_t count = 0;
+    // At offsets from the first word.
+    std::vector<TxnLocEntry> locmap;
+  };
+
+  // `device`'s configuration, encoded by `encode` the first time it is asked
+  // for; nullptr if that failed.
+  const Config *
+  getOrEncode(mlir::Operation *device,
+              llvm::function_ref<mlir::LogicalResult(Config &)> encode);
+
+private:
+  std::mutex mutex;
+  llvm::DenseMap<mlir::Operation *, std::unique_ptr<Config>> configs;
+};
+
 mlir::LogicalResult AIETranslateNpuToBinary(
     mlir::ModuleOp, std::vector<uint32_t> &, llvm::StringRef deviceName = "",
     llvm::StringRef sequenceName = "",
-    std::vector<TxnLocEntry> *locmap = nullptr, bool foldDDRAddrOffset = true);
+    std::vector<TxnLocEntry> *locmap = nullptr, bool foldDDRAddrOffset = true,
+    NpuConfigCache *configs = nullptr);
+/// \brief Emit a C++ builder that reconstructs the TXN stream at runtime.
+/// \param foldDDRAddrOffset apply firmware DDR folding; see
+/// aie/Runtime/TxnEncoding.h for the runtime-specific address convention.
+/// \param emitDispatchShim also emit the extern "C" dispatch_abi() /
+/// dispatch_generate() entry points the JIT dispatch bridge loads via ctypes.
 mlir::LogicalResult AIETranslateNpuToCpp(mlir::ModuleOp module,
-                                         llvm::raw_ostream &output);
+                                         llvm::raw_ostream &output,
+                                         bool foldDDRAddrOffset = true,
+                                         bool emitDispatchShim = false);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
@@ -81,10 +117,12 @@ AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &,
                                     llvm::StringRef deviceName = "",
                                     llvm::StringRef sequenceName = "",
                                     std::vector<TxnLocEntry> *locmap = nullptr);
-mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
-                                           llvm::raw_ostream &output,
-                                           int tileCol, int tileRow,
-                                           llvm::StringRef deviceName = "");
+// `resolveLinkFile`, when given, rewrites each `link_files` entry before it
+// becomes an INPUT() directive.
+mlir::LogicalResult AIETranslateToLdScript(
+    mlir::ModuleOp module, llvm::raw_ostream &output, int tileCol, int tileRow,
+    llvm::StringRef deviceName = "", bool probe = false,
+    llvm::function_ref<std::string(llvm::StringRef)> resolveLinkFile = nullptr);
 mlir::LogicalResult AIETranslateToBCF(mlir::ModuleOp module,
                                       llvm::raw_ostream &output, int tileCol,
                                       int tileRow,

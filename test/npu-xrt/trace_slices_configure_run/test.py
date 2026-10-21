@@ -18,10 +18,10 @@ give every aiex.run its own slice of a single trace argument. Each run emits the
 number of events its runtime parameter names, so the count in a slice identifies
 the run that filled it.
 
-The design is compiled from a pre-written .mlir file because IRON builds one
-device with one runtime sequence, and this needs three devices with five.
+The design uses three IRON Configurations with five runtime sequences.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -33,6 +33,7 @@ from aie.utils.trace import (
     get_trace_slices,
     parse_trace_slices,
 )
+from aie_design import build_design
 
 HERE = Path(__file__).parent
 
@@ -66,7 +67,7 @@ def main():
 
     trace_config = TraceConfig(trace_size=len(RUNS) * SLICE_BYTES)
     design = iron.jit(
-        HERE / "aie.mlir",
+        build_design,
         full_elf=True,
         trace_config=trace_config,
         object_files=[str(Path.cwd() / "kernel.o")],
@@ -121,6 +122,22 @@ def main():
             errors.append(f"{device}/{sequence} slice holds {mine} events, want {rtp}")
         if theirs:
             errors.append(f"{device} slice holds {theirs} {other}")
+
+    # trace_to_json writes each slice to its own file, named for its place in
+    # the buffer and the run that filled it.
+    json_path = Path.cwd() / "trace.json"
+    written = trace_config.trace_to_json(
+        trace_config.physical_mlir_path, str(json_path)
+    )
+    want_files = [
+        str(json_path.with_name(f"trace_{i}_{device}_{sequence}.json"))
+        for i, (device, sequence, _) in enumerate(RUNS)
+    ]
+    if written != want_files:
+        errors.append(f"trace_to_json wrote {written}, want {want_files}")
+    for path, (_, events) in zip(written, parsed):
+        if json.loads(Path(path).read_text()) != events:
+            errors.append(f"{path} does not hold its slice's events")
 
     for message in errors:
         print(f"ERROR: {message}")

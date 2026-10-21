@@ -19,10 +19,10 @@ Programmatic:
     # intermediates["bn3"] is the (H,W,C) tensor after bn3.
 
 Kernel sources (translated into numpy below):
-    aie_kernels/aie2/bottleneck/bn_conv2dk1_relu.cc  (1x1 + ReLU, 1x1 + avgpool)
-    aie_kernels/aie2/bottleneck/bn_conv2dk1_skip.cc  (1x1 + skip add)
-    aie_kernels/aie2/bottleneck/bn_conv2dk3_dw.cc    (DW 3x3, ui8 -> ui8)
-    aie_kernels/aie2/bottleneck/bn_conv2dk3.cc       (init: 3x3 stride-2)
+    aie_kernels/conv/bn_conv2dk1_relu.cc  (1x1 + ReLU, 1x1 + avgpool)
+    aie_kernels/conv/bn_conv2dk1_skip.cc  (1x1 + skip add)
+    aie_kernels/conv/bn_conv2dk3_dw.cc    (DW 3x3, ui8 -> ui8)
+    aie_kernels/conv/bn_conv2dk3.cc       (init: 3x3 stride-2)
 
 STATUS — reference outputs to compare against:
 
@@ -129,7 +129,7 @@ def _decode_dw3x3(flat_i8, channels):
 def _load_input_image(data_dir, in_h, in_w, in_c):
     """Read before_ifm_mem_fmt_1x1.txt as (H, W, C) int8.
 
-    File holds quantized int8 in (C, H, W) order per test_mobilenet.py.
+    File holds quantized int8 in (C, H, W) order.
     """
     path = os.path.join(data_dir, "before_ifm_mem_fmt_1x1.txt")
     raw = np.loadtxt(path, delimiter=",", dtype=np.int8)

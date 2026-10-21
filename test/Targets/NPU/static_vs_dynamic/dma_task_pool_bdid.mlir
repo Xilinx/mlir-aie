@@ -53,9 +53,9 @@ module {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @of_in (%tile_0_0, MM2S, 0)
-    aie.runtime_sequence @pool_static(%in: memref<1024xi32>) {
+    aie.runtime_sequence @pool_static(%in: memref<8192xi32>) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%in : memref<1024xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1])
+        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1])
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)
