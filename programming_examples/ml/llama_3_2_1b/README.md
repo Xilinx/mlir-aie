@@ -10,14 +10,14 @@ dispatch, or a batch of up to 4 prompt tokens together: all 16 transformer
 layers, attention with a growing KV cache, the tied 262 MB lm_head, the sampler,
 and the token→embedding feedback. The device is bit-exact to its numpy oracle
 (`llama_oracle.py`), and against the bf16 Hugging Face model that arithmetic
-agrees on 88–92 % of next tokens at a mean KL of 0.041–0.071 (see Accuracy).
+agrees on 84–92 % of next tokens at a mean KL of 0.024–0.049 (see Accuracy).
 
 This example started from PR #3161, @hunhoffe's Llama 3.2 1B bring-up, whose
 kernels, recipe and multi-head attention layer it carries forward into one
 compiled design.
 
-> Status: on NPU2 (Strix), decode runs at 47.2 ms/token (21.2 tok/s) at
-> position 64 and 478 ms/token (2.1 tok/s) at 128k, every token checked
+> Status: on NPU2 (Strix), decode runs at 44.8 ms/token (22.3 tok/s) at
+> position 64 and 475 ms/token (2.1 tok/s) at 128k, every token checked
 > against the oracle. Prefill runs on the device in batches of up to 4 prompt
 > tokens (`generate.py`: prompt in, text out): a 6-token prompt's first token
 > takes 124.6 ms.
@@ -122,24 +122,25 @@ prompt into batches (`DecodeShape.batches`).
   oracle reproduces it exactly: attention's and the sampler's exp is
   `exp_nonpos`, the inverse square root a Quake seed and two Newton steps, and
   reciprocals round as IEEE division.
-- **Where the device departs from the recipe:** each RMSNorm reads the residual
-  requantized to int8 rather than in fp32, and the attention output is
-  quantized twice (per head, then for the o projection). These are the main
-  part of the device's gap to the recipe in the KL table below.
+- **The norm's input and the o projection's quantization are now as close to
+  the recipe as the design gets:** RMSNorm reads the fp32 residual directly
+  (no int8 requant on the way in), and the attention output is quantized once
+  for the o projection, not per head then again on the concatenated row. The
+  device's remaining gap to the recipe is the quantized weights and
+  activations everywhere else, which both recipe and device share.
 
 ---
 
 ## 2. Performance
 
-Measured on NPU2 (Strix) by the nightly's own run
-(`utils/component_checks/llama_chain_hw.py`, under `taskset -c 2-23`): one
-build at a 128k-row KV cache, then at each context one 4-token dispatch,
-checked against the oracle (every token, KV row, sampler state and final
-residual), then timed as the fastest of 20 after 10 warm-ups:
+Measured on Strix (`test_chain_persist_grow_mh.py --save-run`/`--from-run`,
+so the oracle check and the timing are separate runs), `taskset -c 2-23`,
+fastest of 20 after 10 warm-ups, one 128k-row-KV-cache build timed at each
+context:
 
 | Context (position of the first token) | per-token | tok/s |
 |---|---|---|
-| **64** | **47.23 ms** | **21.17** |
+| **64** | **44.83 ms** | **22.31** |
 | 1024 | 51.14 ms | 19.55 |
 | 2048 | 52.27 ms | 19.13 |
 | 4096 | 60.39 ms | 16.56 |
@@ -147,7 +148,13 @@ residual), then timed as the fastest of 20 after 10 warm-ups:
 | 16384 | 101.13 ms | 9.89 |
 | 32768 | 153.23 ms | 6.53 |
 | 65536 | 260.48 ms | 3.84 |
-| 131068 | 478.29 ms | 2.09 |
+| 131068 | 475.27 ms | 2.10 |
+
+The RMSNorm and attention-output fixes (below) were measured at 64 and 128k
+only, interleaved before/after each other with the exactness check run
+offline so it can't skew the timing; they removed a quantize-dequantize step
+each, so the rows in between are carried from the pre-fix sweep and are not
+expected to move.
 
 **What bounds it.** The layers' weights stream over the array's eight lanes
 (about 52 GB/s), the lm_head's 262 MB over one lane (about 19 ms a token), and
@@ -179,10 +186,11 @@ The device is **bit-exact to its numpy oracle** (`llama_oracle.py`): the
 decode test checks every token, KV row, sampler state and final residual
 against it, and a greedy token must be the oracle's argmax. So scoring the
 oracle against the bf16 Hugging Face model scores the device. The INT8 recipe
-(`numpy_llama_ref.py`) is shown beside it for scale; teacher-forced on "The
-capital of France is", the device picks the recipe's argmax on 28 of 32
-generated tokens. The reference is the true Llama 3.2 1B **bf16** checkpoint,
-loaded from the safetensors (no torch or transformers).
+(`numpy_llama_ref.py`) is shown beside it for scale: the recipe's gap to bf16
+is the quantization's own cost, and the device now tracks the recipe closely
+(RMSNorm and the attention output no longer add their own quantization
+steps). The reference is the true Llama 3.2 1B **bf16** checkpoint, loaded
+from the safetensors (no torch or transformers).
 
 ### KL and top-1 against bf16
 
@@ -191,23 +199,23 @@ teacher-forced), mean KL(bf16 ‖ model) of the next-token distributions:
 
 | Prompt | tokens | device KL | device top-1 | recipe KL | recipe top-1 |
 |---|---|---|---|---|---|
-| small | 25 | 0.0713 | 92.0 % | 0.0409 | 88.0 % |
-| medium | 61 | 0.0473 | 91.8 % | 0.0301 | 88.5 % |
-| large | 105 | 0.0409 | 87.6 % | 0.0228 | 91.4 % |
+| small | 25 | 0.0492 | 84.0 % | 0.0409 | 88.0 % |
+| medium | 61 | 0.0311 | 90.2 % | 0.0301 | 88.5 % |
+| large | 105 | 0.0242 | 92.4 % | 0.0228 | 91.4 % |
 
 On running prose (`accuracy_vs_hf.py`'s default sample, 47 positions):
 
 | Metric | device | recipe |
 |---|---|---|
-| next-token top-1 agreement | 89.4 % | 89.4 % |
+| next-token top-1 agreement | 87.2 % | 89.4 % |
 | argmax in bf16's top 5 | 100 % | 100 % |
-| mean KL(bf16 ‖ model) | 0.0272 | 0.0159 |
-| perplexity ratio (model / bf16) | 1.015× | 0.987× |
+| mean KL(bf16 ‖ model) | 0.0182 | 0.0159 |
+| perplexity ratio (model / bf16) | 0.975× | 0.987× |
 
 ### Next-token greedy agreement on 20 hard prompts (N=16)
 
 `bench_quality_mh.py --path numpy --bf16-ref` (the device's arithmetic,
-prefilling each prompt as the device does), **18/20 = 90 %** against bf16:
+prefilling each prompt as the device does), **20/20 = 100 %** against bf16:
 
 | Prompt | bf16 | device |
 |---|---|---|
@@ -220,7 +228,7 @@ prefilling each prompt as the device does), **18/20 = 90 %** against bf16:
 | The chemical symbol for water is | ` H` | ` H` |
 | The first president of the United States was | ` George` | ` George` |
 | The opposite of black is | ` white` | ` white` |
-| The number of legs on a spider is | `:\n` | `\n` ✗ |
+| The number of legs on a spider is | `:\n` | `:\n` |
 | Two plus two equals | ` four` | ` four` |
 | The sun rises in the | ` east` | ` east` |
 | Romeo and Juliet was written by | ` William` | ` William` |
@@ -229,7 +237,7 @@ prefilling each prompt as the device does), **18/20 = 90 %** against bf16:
 | The boiling point of water in Celsius is | ` ` | ` ` |
 | The smallest prime number is | ` ` | ` ` |
 | Shakespeare wrote in the | ` ` | ` ` |
-| The currency of Japan is the | ` Japanese` | ` Yen` ✗ |
+| The currency of Japan is the | ` Japanese` | ` Japanese` |
 | The Great Wall is in | ` the` | ` the` |
 
 ---

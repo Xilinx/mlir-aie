@@ -160,8 +160,8 @@ M_MAX = 4
 # activation rows of ROW bytes (room for down's), then at STAGE_RESID M_MAX
 # residual rows of RROW bytes, then the gamma of that residual's norm (the o
 # slot's residual is normed by gamma_in, the d slot's by gamma_post). A
-# residual row is what its norm reads, [int8 x | scale | pad] (RQ bytes),
-# then x in fp32, which the unit (o, down) adds to; then the array outputs of one
+# residual row is x in fp32, which its norm reads and the unit (o, down) adds
+# to; then the array outputs of one
 # layer's qkv (per row), gate and up (four row chunks each) units (8 cores x
 # OUT_BYTES each); then the final residuals' slot, with the final norm's
 # gamma; then a slot for outputs nothing reads; then the sampler's state.
@@ -171,11 +171,10 @@ OUTS = {"qkv": M_MAX, "g": HD // N_CORES // 256, "u": HD // N_CORES // 256}
 # The SiLU core takes a row's up, then its gate, in chunks of SILU_CHUNK.
 SILU_CHUNK = 1024
 ROW = HACT_BYTES
-RQ = D + 64
-RROW = RQ + 4 * D
+RROW = 4 * D
 STAGE_RESID = M_MAX * ROW
-GAMMA_AT = RQ  # gamma's offset in a norm input [x int8[D + 8] | pad | gamma]
-NORM_IN_BYTES = GAMMA_AT + 2 * D
+# A norm's input object: the fp32 residual row, then the norm's gamma.
+NORM_IN_BYTES = RROW + 2 * D
 SLOT_STRIDE = STAGE_RESID + M_MAX * RROW + 2 * D
 # The array's input object: M_MAX rows' 2048 columns, then their scales.
 ARRAY_ACT_BYTES = M_MAX * D + M_MAX * 16
@@ -190,9 +189,11 @@ class StageLayout:
         outs: Each array output's offset by name.
         final: The final residuals' slot.
         discard: A slot for outputs nothing reads.
-        rng: The sampler's xoshiro state (its first 16 bytes) in a residual
-            row's room, which the lm_head core takes at a dispatch's start
-            and leaves at its end.
+        rng: The sampler's xoshiro state (its first 16 bytes): the lm_head
+            core takes WLM_SLOT bytes from here at a dispatch's start (the
+            seed's embed-fetch slot, which carries the state in its head),
+            and the sampler leaves a residual row (RROW bytes) here at its
+            end, the next dispatch's seed.
         total: Bytes.
     """
 
@@ -212,7 +213,7 @@ class StageLayout:
         self.discard = at
         at += SLOT_STRIDE
         self.rng = at
-        self.total = at + RROW
+        self.total = at + max(RROW, WLM_SLOT)
 
 
 def wblob_layout(n_layers, t):
@@ -515,9 +516,7 @@ def build(
     t_norm_in = np.ndarray[(NORM_IN_BYTES,), np.dtype[np.int8]]
     of_x = ObjectFifo(t_norm_in, depth=1, name="x")
     of_h = ObjectFifo(t_vec, depth=1, name="h")
-    k_rms = llama_kernels.rmsnorm().bind(
-        "llama_rmsnorm_int8_dyn_acttail_packed", [t_norm_in, t_vec]
-    )
+    k_rms = llama_kernels.rmsnorm().bind("llama_rmsnorm_f32_packed", [t_norm_in, t_vec])
 
     def w_rms(c_x, c_h, n, m0p, k):
         passes, m0 = n.read(), m0p.read()
@@ -720,11 +719,11 @@ def build(
     )
     of_af = ObjectFifo(np.ndarray[(ACT_BYTES,), np.dtype[np.int8]], depth=1, name="af")
     k_svmerge = KG.bind(
-        "llama_sv_merge_selfcal",
+        "llama_sv_merge",
         [t_sv_half, t_sv_half, np.ndarray[(SVFULL_BYTES,), np.dtype[np.int8]]],
     )
     k_afconcat = KG.bind(
-        "llama_af_concat_selfcal2",
+        "llama_af_quant",
         [
             np.ndarray[(SVFULL_BYTES,), np.dtype[np.int8]],
             np.ndarray[(ACT_BYTES,), np.dtype[np.int8]],
@@ -1041,7 +1040,7 @@ def build(
             """Slot slot_at's residual row r through the norm with the slot's
             gamma, to h_at."""
             step(
-                fill(on, x, linear_tap(stage_total, resid_row(slot_at, r), RQ)),
+                fill(on, x, linear_tap(stage_total, resid_row(slot_at, r), RROW)),
                 fill(on, x, linear_tap(stage_total, resid_row(slot_at, M_MAX), 2 * D)),
                 drain(on, h, linear_tap(stage_total, h_at, ACT_BYTES)),
             )
@@ -1060,7 +1059,7 @@ def build(
                 fill(
                     gates[r],
                     rin,
-                    linear_tap(stage_total, resid_row(slot_at, r) + RQ, 4 * D),
+                    linear_tap(stage_total, resid_row(slot_at, r), RROW),
                 )
                 for r in rows
             )

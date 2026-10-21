@@ -156,38 +156,46 @@ def dyn_scale(fp, axis=None):
     return (absmax.astype(np.float32) * np.float32(1.0 / 127.0)).astype(np.float32)
 
 
-def rmsnorm_int8(x_i8, gamma_bf16, act_scale_in, eps=1e-5):
-    """RMSNorm of an int8 row, requantized to int8, as llama_rmsnorm_int8_dyn_acttail.
+def sum_sq_f32(x):
+    """sum(x^2) in fp32 as llama_rmsnorm_int8.cc's vec_sum_sq_f32 adds it.
+
+    Each of 16 lanes sums its squares in order (lane l takes x[l::16]), then
+    the lanes are added in order 0..15.
 
     Args:
-        x_i8: int8 (D,).
+        x: fp32 (D,), D a multiple of 16.
+
+    Returns:
+        The fp32 sum.
+    """
+    lanes = np.asarray(x, np.float32).reshape(-1, 16)
+    acc = np.zeros(16, np.float32)
+    for row in lanes:
+        acc = aie_add(acc, mul_rne(row, row))
+    total = acc[0]
+    for lane in acc[1:]:
+        total = aie_add(total, lane)
+    return np.float32(total)
+
+
+def rmsnorm_f32(x_fp, gamma_bf16, eps=1e-5):
+    """RMSNorm of the fp32 residual, requantized to int8, as llama_rmsnorm_f32_packed.
+
+    Args:
+        x_fp: fp32 (D,).
         gamma_bf16: bf16 (D,).
-        act_scale_in: `x_i8`'s fp32 scale.
         eps: The norm's epsilon.
 
     Returns:
         (int8 (D,), its fp32 scale).
     """
-    sum_sq_i32 = int((x_i8.astype(np.int32) ** 2).sum())
-    var = np.float32(
-        np.float32(sum_sq_i32)
-        * np.float32(act_scale_in)
-        * np.float32(act_scale_in)
-        / np.float32(len(x_i8))
-    )
+    x_f = np.asarray(x_fp, np.float32)
+    var = np.float32(sum_sq_f32(x_f) * np.float32(1.0 / len(x_f)))
     inv_rms = sw_invsqrt(aie_add(var, np.float32(eps)))
-    pre = np.float32(np.float32(act_scale_in) * np.float32(inv_rms))
-
     g_f = gamma_bf16.astype(np.float32)
-    x_f = x_i8.astype(np.float32)
-    y_f = (x_f * pre * g_f).astype(np.float32)
-    scale_dyn = dyn_scale(y_f)
-    inv_dyn = np.float32(1) / np.float32(scale_dyn)
-    combined = np.float32(pre * inv_dyn)
-
-    # The kernel recomputes the product rather than keep it between passes.
-    out_f = (x_f * combined * g_f).astype(np.float32)
-    return round_to_i8(out_f), scale_dyn
+    scale_dyn = dyn_scale(mul_rne(mul_rne(x_f, inv_rms), g_f))
+    combined = np.float32(inv_rms * (np.float32(1) / np.float32(scale_dyn)))
+    return round_to_i8(mul_rne(mul_rne(x_f, combined), g_f)), scale_dyn
 
 
 def rope_q(q_fp, cos_bf, sin_bf):
@@ -276,8 +284,8 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
     `llama_attn_block` does, every block at once (`attend_block` per head and
     block); two cores per KV head take the even and the odd blocks, each
     folding its blocks in order, and the second merges the first's state,
-    then its own (`llama_attn_merge_pair_q`); each head's sv is then
-    requantized by its absmax.
+    then its own (`llama_attn_merge_pair_q`), which writes each head's sv in
+    fp32.
 
     Args:
         q_i8: int8 (N_HEADS_Q, HEAD_D).
@@ -290,7 +298,7 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
         tb: Rows per block.
 
     Returns:
-        (int8 (N_HEADS_Q, HEAD_D) output, fp32 (N_HEADS_Q,) sv_out_scales).
+        fp32 (N_HEADS_Q, HEAD_D): each Q head's attention output.
     """
     nb = -(-t // tb)
     kvh = np.arange(N_HEADS_Q) // REP
@@ -332,11 +340,7 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
             merged = fold(merged, *state)
     if merged is None:
         raise ValueError(f"t={t}: attention needs at least one cached row")
-    sv = merged[2]
-    absmax = np.maximum(np.abs(sv).max(axis=1), np.float32(1e-12)).astype(np.float32)
-    scales = (absmax * np.float32(1.0 / 127.0)).astype(np.float32)
-    out = round_to_i8(mul_rne(sv, (np.float32(1) / scales)[:, None]))
-    return out, scales
+    return merged[2]
 
 
 class Layer:
@@ -424,18 +428,17 @@ class Layer:
         """The layer for one token at `position`, appending its KV row.
 
         Args:
-            x: The residual entering it, (int8 (D,), its fp32 scale, fp32
-                (D,)): the int8 form the norm reads and the fp32 form the
-                adds use, as the decode's stage rows hold them.
+            x: The fp32 (D,) residual entering it, which the norm reads and
+                the adds add to, as the decode's stage rows hold it.
             position: The token's position; it attends rows 0..position.
             cos: bf16 (HEAD_D,), RoPE's cos at `position`.
             sin: bf16 (HEAD_D,), its sin.
 
         Returns:
-            The residual leaving it, in `x`'s form.
+            The fp32 residual leaving it.
         """
-        x_i8, res_scale, x_fp = x
-        h1, act1 = rmsnorm_int8(np.asarray(x_i8, np.int8), self.gamma_in, res_scale)
+        x_fp = np.asarray(x, np.float32)
+        h1, act1 = rmsnorm_f32(x_fp, self.gamma_in)
 
         # K roped in fp32 (llama_kv_row.h), then K and V per head to int8,
         # appended at `position`.
@@ -461,7 +464,7 @@ class Layer:
         q = rope_q(self.project("q", h1, act1), cos, sin).reshape(N_HEADS_Q, HEAD_D)
         q_scales = dyn_scale(q, axis=1)
         q_i8 = round_to_i8(mul_rne(q, (np.float32(1) / q_scales)[:, None]))
-        sv_i8, sv_scales = attention_blocks(
+        sv = attention_blocks(
             q_i8,
             q_scales,
             self.kcache,
@@ -472,24 +475,18 @@ class Layer:
             KV_TB,
         )
 
-        # The heads' outputs concatenated and requantized together
-        # (llama_af_concat_selfcal2), then o and the residual add.
-        o_act_scale = dyn_scale(sv_i8.astype(np.float32) * sv_scales[:, None])
-        o_inv = np.float32(1) / o_act_scale
-        af = requant(sv_i8.astype(np.float32), (sv_scales * o_inv)[:, None]).ravel()
+        # Every head's sv quantized once for o (llama_af_quant), then o and
+        # the residual add.
+        o_act_scale = dyn_scale(sv)
+        af = round_to_i8(mul_rne(sv, np.float32(1) / o_act_scale)).ravel()
         x1_fp = aie_add(x_fp, self.project("o", af, o_act_scale))
-        x1_scale = dyn_scale(x1_fp)
-        h2, act2 = rmsnorm_int8(
-            requant(x1_fp, np.float32(1) / x1_scale), self.gamma_post, x1_scale
-        )
+        h2, act2 = rmsnorm_f32(x1_fp, self.gamma_post)
 
         # SiLU(gate) * up in fp32, requantized for down, then the residual add.
         sf_fp = silu_mul(self.project("g", h2, act2), self.project("u", h2, act2))
         silu_scale = dyn_scale(sf_fp)
         sf = round_to_i8(mul_rne(sf_fp, np.float32(1) / silu_scale))
-        xo_fp = aie_add(x1_fp, self.project("d", sf, silu_scale))
-        xo_scale = dyn_scale(xo_fp)
-        return requant(xo_fp, np.float32(1) / xo_scale), xo_scale, xo_fp
+        return aie_add(x1_fp, self.project("d", sf, silu_scale))
 
 
 def chain_forward_logits(residual, layers, position, rope, lm):
@@ -498,21 +495,21 @@ def chain_forward_logits(residual, layers, position, rope, lm):
     Appends the token's KV row to each layer's cache.
 
     Args:
-        residual: The layer-0 residual, (int8 (D,), fp32 scale, fp32 (D,)).
+        residual: The fp32 (D,) layer-0 residual.
         layers: The layers.
         position: The token's position.
         rope: bf16 (t, 2 * HEAD_D), numpy_llama_ref.rope_table.
         lm: (embed_i8, embed_sc, final norm gamma).
 
     Returns:
-        (fp32 logits over the vocab, the final residual in `residual`'s form).
+        (fp32 logits over the vocab, the fp32 final residual).
     """
     embed_i8, embed_sc, gamma = lm
     cos, sin = rope[position, :HEAD_D], rope[position, HEAD_D:]
     x = residual
     for layer in layers:
         x = layer.forward(x, position, cos, sin)
-    normed_i8, norm_scale = rmsnorm_int8(x[0], gamma, x[1])
+    normed_i8, norm_scale = rmsnorm_f32(x, gamma)
     acc = embed_i8.astype(np.int64) @ normed_i8.astype(np.int64)
     logits = (
         acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(np.float32)
@@ -652,20 +649,10 @@ def embed_seed_ref(row_i8, embed_sc):
         embed_sc: Its scale.
 
     Returns:
-        (int8[D], f32 scale, fp32[D]): the row requantized for the first norm,
-        and the row itself, row * embed_sc, for the residual adds.
+        fp32 (D,): the row, row * embed_sc, which the first norm reads and the
+        residual adds add to.
     """
-    amax = max(int(np.max(np.abs(row_i8.astype(np.int32)))), 1)
-    inv = np.float32(np.float32(1) / np.float32(amax)) * np.float32(127)
-    xin = np.empty(D, np.int8)
-    for i in range(D):
-        v = np.float32(np.float32(row_i8[i]) * inv)
-        r = np.floor(v + 0.5) if v >= 0 else np.ceil(v - 0.5)
-        xin[i] = np.int8(np.clip(r, -128, 127))
-    scale = np.float32(
-        np.float32(amax) * np.float32(embed_sc) * np.float32(1.0 / 127.0)
-    )
-    return xin, scale, row_i8.astype(np.float32) * np.float32(embed_sc)
+    return mul_rne(row_i8.astype(np.float32), np.float32(embed_sc))
 
 
 def teacher_forced_logits(layers, lm, rope, tokens):

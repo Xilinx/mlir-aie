@@ -119,39 +119,11 @@ static void fold_part(int8_t *acc_state, int8_t *part) {
             w[kREP + h]);
 }
 
-// Requantizes each Q head's sv in state with its own scale: out = kREP*kHD
-// int8, then kREP f32 sv_out_scales.
-static void requant_selfcal(int8_t *state, int8_t *out) {
-  // Each head's scale max(absmax, 1e-12) * (1/127) and its reciprocal at
-  // once; max(absmax, 1e-12f) is an integer max of the non-negative bits.
-  alignas(64) int32_t absmax[kLanes] = {};
-#pragma clang loop unroll(disable)
-  for (int i = 0; i < kREP * kSlices; i++) {
-    const float *sv =
-        head_record(state, i / kSlices) + 16 + i % kSlices * kLanes;
-    int32_t mag = ::aie::reduce_max(
-        ::aie::bit_and(int32(0x7fffffff),
-                       ::aie::load_v<kLanes>(sv).template cast_to<int32>()));
-    if (mag > absmax[i / kSlices])
-      absmax[i / kSlices] = mag;
-  }
-  ::aie::vector<float, kLanes> scale =
-      vec_mul_rne(::aie::max(::aie::load_v<kLanes>(absmax),
-                             __builtin_bit_cast(int32_t, 1e-12f))
-                      .template cast_to<float>(),
-                  ::aie::broadcast<float, kLanes>(1.0f / 127.0f));
-  alignas(64) float scale_a[kLanes];
-  alignas(64) float inv_a[kLanes];
-  ::aie::store_v(scale_a, scale);
-  ::aie::store_v(inv_a, vec_recip(scale));
-  __builtin_memcpy(out + kREP * kHD, scale_a, kREP * 4);
-#pragma clang loop unroll(disable)
-  for (int i = 0; i < kREP * kSlices; i++)
-    ::aie::store_v(out + i * kLanes,
-                   vec_round_to_i8(vec_mul_rne(
-                       ::aie::load_v<kLanes>(head_record(state, i / kSlices) +
-                                             16 + i % kSlices * kLanes),
-                       ::aie::broadcast<float, kLanes>(inv_a[i / kSlices]))));
+// Each Q head's sv in state, fp32, to out: kREP*kHD floats, head by head.
+static void copy_sv(int8_t *state, int8_t *out) {
+  for (int h = 0; h < kREP; h++)
+    copy_words<kHD * 4>(out + h * kHD * 4,
+                        reinterpret_cast<int8_t *>(head_record(state, h) + 16));
 }
 
 extern "C" {
@@ -489,34 +461,28 @@ void llama_attn_put_q(int8_t *restrict states, int8_t *restrict part,
 }
 
 // Folds two cores' states, the first core's first, in place into the first
-// non-empty one, then requantizes each Q head's sv with its own scale: out is
-// kREP*kHD int8, then kREP f32 sv_out_scales.
-void llama_attn_merge_pair_selfcal(int8_t *restrict state0,
-                                   int8_t *restrict state1,
-                                   int8_t *restrict out) {
+// non-empty one, then writes each Q head's sv: out is kREP*kHD fp32, which
+// the o projection's input quantizes once with the other heads'. The second
+// core's state for query r is at states + r * kStateBytes.
+void llama_attn_merge_pair_q(int8_t *restrict state0, int8_t *restrict states,
+                             int8_t *restrict out, int32_t r) {
   event0();
   const ::aie::saturation_mode prev_sat =
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 
+  int8_t *state1 = states + r * kStateBytes;
   int32_t count0, count1;
   __builtin_memcpy(&count0, state0, 4);
   __builtin_memcpy(&count1, state1, 4);
   if (count0 > 0 && count1 > 0)
     fold_part(state0, state1);
-  requant_selfcal(count0 > 0 ? state0 : state1, out);
+  copy_sv(count0 > 0 ? state0 : state1, out);
 
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   event1();
-}
-
-// llama_attn_merge_pair_selfcal for query r: the first core's state, then
-// the second's at states + r * kStateBytes.
-void llama_attn_merge_pair_q(int8_t *restrict state0, int8_t *restrict states,
-                             int8_t *restrict out, int32_t r) {
-  llama_attn_merge_pair_selfcal(state0, states + r * kStateBytes, out);
 }
 
 } // extern "C"

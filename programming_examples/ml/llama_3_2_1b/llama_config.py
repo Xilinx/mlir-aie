@@ -29,10 +29,10 @@ PROJECTIONS = {
 
 # A KV group's Q chunk: [REP * HEAD_D int8 | REP * 8 B of scales].
 QCHUNK_BYTES = REP * HEAD_D + REP * 8
-# A KV group's attention output: [REP * HEAD_D int8 | REP fp32 sv_out_scales].
-SVCHUNK_BYTES = REP * HEAD_D + REP * 4
-# Every Q head's attention output: [N_HEADS_Q * HEAD_D int8 | N_HEADS_Q fp32].
-SVFULL_BYTES = N_HEADS_Q * HEAD_D + N_HEADS_Q * 4
+# A KV group's attention output: its REP Q heads' sv, REP * HEAD_D fp32.
+SVCHUNK_BYTES = REP * HEAD_D * 4
+# Every Q head's attention output, N_HEADS_Q * HEAD_D fp32.
+SVFULL_BYTES = N_HEADS_Q * HEAD_D * 4
 CS_BYTES = HEAD_D * 2 * 2
 # KV cache rows a block holds: attention reads and folds the cache a block
 # at a time.
