@@ -48,6 +48,20 @@ You can override these output file names with `--npu-insts-name`,
 `--xclbin-name`, and `--full-elf-name`. You can filter which devices and 
 runtime sequences are compiled with `--device-name` and `--sequence-name`. 
 
+### Compiling one device: `--device-name`
+
+`--device-name=NAME` compiles only the `aie.device` called `NAME` (devices
+named `empty_*` are always kept). For every output but the full ELF that is
+all it compiles. A full ELF has to carry the PDI of every device its
+sequences load or configure, so with `--get-full-elf` the filter also keeps
+each device reached from `NAME` through `aiex.configure` and
+`aiex.npu.load_pdi`, transitively:
+
+```bash
+aiecc --get-full-elf --device-name=main design.mlir   # main and the devices it loads
+aiecc --get-pdi --pdi-name=design.pdi --device-name=main design.mlir   # main only
+```
+
 ### Parameterized C++ transaction builders
 
 ```bash
@@ -207,6 +221,26 @@ graph accordingly, so this is the fastest way to understand what a given
 invocation will actually do. The command above produces this graph:
 
 ![NPU-instruction flow graph](docs/npu_insts_flow.svg)
+
+### Timing a build: `--profile` and `--profile-json`
+
+`--profile` prints, at the end of the run, each edge's time and the
+resident memory after it, with the peak. `--profile-json=PATH` writes the
+same summary to `PATH` as JSON, with or without `--profile`:
+
+```json
+{
+  "version": 1,
+  "wall_ms": 7412,
+  "edges": [
+    {"name": "...", "ms": 120, "start_ms": 0, "end_ms": 120,
+     "rss_after_mib": 312.5, "peak_mib": 340.1}
+  ]
+}
+```
+
+`rss_after_mib` and `peak_mib` are `null` where the platform does not report
+them. A path that cannot be written fails the build.
 
 ### Stopping and restarting a build: `--checkpoint` and `--resume`
 
