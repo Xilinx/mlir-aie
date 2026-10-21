@@ -9,7 +9,7 @@ embed seed feeding the next through the stage, and appends each token's KV row
 to the DDR cache the next tokens attend. The layers are a seeded random fixture
 with a random KV prefix of t0 rows; the lm_head is the real embed table (or
 a seeded synthetic one). The oracle follows the device's tokens: every token
-must be the oracle's (greedy: its argmax or a near-tie; sampled: its draw),
+must be the oracle's (greedy: its argmax; sampled: its draw),
 every record's seed the oracle's embed seed of that token, the last token's
 final residual in the stage the oracle's, and the whole KV cache the
 oracle's.
@@ -39,7 +39,6 @@ from llama_oracle import (
     chain_forward_logits,
     dyn_scale,
     embed_seed_ref,
-    greedy_verdict,
     requant,
     topk_sample_reference,
     xoshiro_seed,
@@ -154,14 +153,11 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sampler, rng,
             print(f"  token {t} (pos {p0+t}): prompt, no sample", flush=True)
             continue
         dev_tok = dev_toks[rec_at]
-        if temperature > 0:
-            ref, rng = topk_sample_reference(
-                logits, temperature, top_k, rng, k_set=shape.kset
-            )
-            ok = dev_tok == ref
-            tag = f"sampled, state {int(rng[0]):08x}"
-        else:
-            ok, ref, tag = greedy_verdict(logits, dev_tok)
+        ref, rng = topk_sample_reference(
+            logits, temperature, top_k, rng, k_set=shape.kset
+        )
+        ok = dev_tok == ref
+        tag = f"sampled, state {int(rng[0]):08x}" if temperature > 0 else "greedy"
         cur = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
         rec = records[rec_at * REC_BYTES : (rec_at + 1) * REC_BYTES]
         seed_ok = np.array_equal(rec[:D], embed_i8[dev_tok]) and rec[

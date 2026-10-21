@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 from llama_config import HEAD_D, N_LAYERS
 from llama_decode import Decoder, DecodeShape
-from llama_oracle import Layer, greedy_verdict, teacher_forced_logits
+from llama_oracle import Layer, teacher_forced_logits
 from numpy_llama_ref import forward_full, load_model, load_tokenizer, rope_table
 
 BOS = 128000
@@ -43,7 +43,7 @@ def main():
         "--check",
         action="store_true",
         help="replay the device's tokens through the oracle of its arithmetic and "
-        "fail unless each is its greedy pick (or a near-tie); also report "
+        "fail unless each is its greedy pick; also report "
         "agreement with numpy_llama_ref's argmax (the INT8 recipe, not bit-exact)",
     )
     opts = p.parse_args()
@@ -91,12 +91,10 @@ def main():
     )
     fails = 0
     for pos in range(len(prompt) - 1, len(tokens) - 1):
-        ok, oracle_tok, tag = greedy_verdict(oracle[pos], tokens[pos + 1])
-        if not ok:
-            print(
-                f"  position {pos + 1}: {tokens[pos + 1]}, oracle {oracle_tok} [{tag}]"
-            )
-        fails += not ok
+        oracle_tok = int(np.argmax(oracle[pos]))
+        if tokens[pos + 1] != oracle_tok:
+            print(f"  position {pos + 1}: {tokens[pos + 1]}, oracle {oracle_tok}")
+            fails += 1
     print(f"oracle: {len(out) - fails}/{len(out)} generated tokens pass")
     return 1 if fails else 0
 

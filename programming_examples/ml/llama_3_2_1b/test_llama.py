@@ -20,7 +20,7 @@ from accuracy_vs_hf import RefModel, ref_forward_logits
 from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
 from llama_config import HEAD_D, N_LAYERS
 from llama_decode import Decoder, DecodeShape
-from llama_oracle import Layer, greedy_verdict, teacher_forced_logits
+from llama_oracle import Layer, teacher_forced_logits
 from numpy_llama_ref import load_model, load_tokenizer, rope_table
 
 SYNTHETIC = ["--synthetic-weights"]
@@ -133,10 +133,5 @@ def test_real_weights_track_the_model_and_the_oracle(size, real_model):
     kl = float(np.mean(np.sum(p * (np.log(np.maximum(p, 1e-300)) - q_log), axis=1)))
     print(f"{size}: {len(prompt)} tokens, mean KL(bf16 || oracle) = {kl:.4f}")
 
-    tokens = prompt + out
-    verdicts = [
-        greedy_verdict(oracle[pos], tokens[pos + 1])
-        for pos in range(len(prompt) - 1, len(tokens) - 1)
-    ]
-    assert all(ok for ok, _, _ in verdicts), verdicts
+    assert out == [int(t) for t in np.argmax(oracle[len(prompt) - 1 :], axis=1)]
     assert kl <= kl_limit, f"{size}: mean KL {kl:.4f} over {kl_limit}"
