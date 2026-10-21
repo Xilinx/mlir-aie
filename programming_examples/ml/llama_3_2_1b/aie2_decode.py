@@ -761,21 +761,21 @@ def build(
         ),
     ]
 
-    # SiLU(gate) * up in fp32, a row each: the row's up, then its gate, in
+    # SiLU(gate) * up in fp32, a row each: the row's gate, then its up, in
     # SILU_CHUNK chunks on one shim channel.
     t_chunk = _i8(4 * SILU_CHUNK)
     of_gu = ObjectFifo(t_chunk, depth=2, name="gu")
     of_sf = ObjectFifo(_i8(HACT_BYTES), depth=1, name="sf")
     KS = llama_kernels.silu_mul(chunk=SILU_CHUNK)
     t_h = _f32(HD)
-    k_take_up = KS.bind("llama_silu_take_up", [t_chunk, t_h, np.int32])
     k_gate = KS.bind("llama_silu_gate", [t_chunk, t_h, np.int32])
+    k_up = KS.bind("llama_silu_up", [t_chunk, t_h, np.int32])
     k_quant = KS.bind("llama_silu_quant", [t_h, _i8(HACT_BYTES)])
 
-    def w_silu(c_gu, c_out, h, n, m0p, k_up, k_g, k_q):
+    def w_silu(c_gu, c_out, h, n, m0p, k_g, k_u, k_q):
         rows = total_rows(n.read(), m0p.read())
         for _ in range_(index_cast(index(), muli(rows, _const_i32(N_LAYERS)))):
-            for kernel in (k_up, k_g):
+            for kernel in (k_g, k_u):
                 for i in range_(HD // SILU_CHUNK):
                     x = c_gu.acquire(1)
                     kernel(x, h, _i32(i))
@@ -795,8 +795,8 @@ def build(
                 Buffer(t_h, name="silu_h"),
                 p_passes,
                 p_m0,
-                k_take_up,
                 k_gate,
+                k_up,
                 k_quant,
             ],
             wait_for_parameters=True,
@@ -1155,25 +1155,34 @@ def build(
                 )
                 for r in rows:
                     norm(gate_of[r], d_at, r, gu_at + r * ROW)
-                for proj in "gu":
-                    step(
-                        *(t for k in range(OUTS[proj]) for t in outs_drain(on, proj, k)),
-                        *acts(on, gu_at),
+                # A row's gate goes to the SiLU core as soon as it is out,
+                # so its SiLU runs while the array computes up.
+                silu_in = {
+                    (r, proj): fill(
+                        gate_of[r],
+                        gu,
+                        tap(
+                            outs[proj] + r * 1024,
+                            [1, N_CORES, OUTS[proj], 1024],
+                            [0, OUT_BYTES, OUT_REGION, 1],
+                        ),
                     )
+                    for r in rows
+                    for proj in "gu"
+                }
+                step(
+                    *(t for k in range(OUTS["g"]) for t in outs_drain(on, "g", k)),
+                    *acts(on, gu_at),
+                )
+                step(
+                    *(t for k in range(OUTS["u"]) for t in outs_drain(on, "u", k)),
+                    *acts(on, gu_at),
+                    silu_in[0, "g"],
+                )
                 for r in rows:
                     step(
-                        *(
-                            fill(
-                                gate_of[r],
-                                gu,
-                                tap(
-                                    outs[proj] + r * 1024,
-                                    [1, N_CORES, OUTS[proj], 1024],
-                                    [0, OUT_BYTES, OUT_REGION, 1],
-                                ),
-                            )
-                            for proj in "ug"
-                        ),
+                        silu_in[r, "u"],
+                        *([silu_in[r + 1, "g"]] if r + 1 < len(rows) else []),
                         drain(
                             gate_of[r],
                             sf,

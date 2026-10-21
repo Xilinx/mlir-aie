@@ -11,8 +11,9 @@
 //   h = silu(g) * u
 //   out = round(h * 127 / max|h|), with the scale max|h| / 127 after it
 //
-// A row arrives as kCols / kChunk chunks of up, then as many of gate; up is
-// kept in h, and each gate chunk turns its part of h into the product.
+// A row arrives as kCols / kChunk chunks of gate, then as many of up: each
+// gate chunk leaves its SiLU in h, and each up chunk turns its part of h
+// into the product.
 // llama_oracle.silu_mul mirrors it: products round once (vec_mul_rne), sums
 // are vadd.f, and 1 / (1 + e) is a Newton reciprocal from a linear guess.
 //===----------------------------------------------------------------------===//
@@ -51,14 +52,7 @@ recip_unit(::aie::vector<float, kLanes> d) {
 
 extern "C" {
 
-// Up's chunk `chunk` of a row into h.
-void llama_silu_take_up(float *restrict up, float *restrict h, int32_t chunk) {
-  float *dst = h + chunk * kChunk;
-  for (int c = 0; c < kChunk / kLanes; c++)
-    ::aie::store_v(dst + c * kLanes, ::aie::load_v<kLanes>(up + c * kLanes));
-}
-
-// h = SiLU(gate) * h over the row's chunk `chunk`.
+// h = SiLU(gate) over the row's chunk `chunk`.
 void llama_silu_gate(float *restrict gate, float *restrict h, int32_t chunk) {
   event0();
   const ::aie::saturation_mode prev_sat =
@@ -76,13 +70,23 @@ void llama_silu_gate(float *restrict gate, float *restrict h, int32_t chunk) {
     ::aie::vector<float, kLanes> r =
         recip_unit(::aie::add(::aie::broadcast<float, kLanes>(1.0f), e));
     ::aie::vector<float, kLanes> s = ::aie::select(r, vec_mul_rne(e, r), neg);
-    ::aie::store_v(
-        hc + c * kLanes,
-        vec_mul_rne(vec_mul_rne(g, s), ::aie::load_v<kLanes>(hc + c * kLanes)));
+    ::aie::store_v(hc + c * kLanes, vec_mul_rne(g, s));
   }
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   event1();
+}
+
+// h = h * up over the row's chunk `chunk`.
+void llama_silu_up(float *restrict up, float *restrict h, int32_t chunk) {
+  const ::aie::rounding_mode prev_rnd =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+  float *hc = h + chunk * kChunk;
+  for (int c = 0; c < kChunk / kLanes; c++)
+    ::aie::store_v(hc + c * kLanes,
+                   vec_mul_rne(::aie::load_v<kLanes>(hc + c * kLanes),
+                               ::aie::load_v<kLanes>(up + c * kLanes)));
+  ::aie::set_rounding(prev_rnd);
 }
 
 // out = h requantized to int8 by its absmax, out[kCols..kCols + 4) its scale
