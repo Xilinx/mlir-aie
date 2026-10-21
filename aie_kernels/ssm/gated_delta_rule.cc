@@ -139,7 +139,9 @@ constexpr float rsqrt_newton(float x) {
 
 // rsqrt_newton per lane, its operations in the same order.
 inline __attribute__((always_inline)) acc_t<W> rsqrt_f32(acc_t<W> x) {
-  const auto xi = x.to_vector<float>().cast_to<int32_t>();
+  // The low bit cleared first: downshift can round in the caller's mode.
+  const auto xi = aie::bit_and(x.to_vector<float>().cast_to<int32_t>(),
+                               aie::broadcast<int32_t, W>(-2));
   acc_t<W> y(
       aie::sub(aie::broadcast<int32_t, W>(0x5f3759df), aie::downshift(xi, 1))
           .cast_to<float>());
