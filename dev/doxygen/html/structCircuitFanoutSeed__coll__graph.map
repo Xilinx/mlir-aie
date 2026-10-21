@@ -1,0 +1,9 @@
+<map id="CircuitFanoutSeed" name="CircuitFanoutSeed">
+<area shape="rect" id="Node000001" title=" " alt="" coords="82,123,221,148"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,13,103,38"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="76,47,143,120,139,124,72,50"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="127,13,175,38"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="154,52,154,122,149,122,149,52"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="199,5,378,45"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="260,57,206,101,171,125,168,120,203,97,256,52"/>
+</map>
