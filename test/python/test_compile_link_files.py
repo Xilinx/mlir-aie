@@ -166,15 +166,18 @@ def test_kernels_build_with_the_designs_include_paths(tmp_path):
     assert (tmp_path / "out" / "design.elf").stat().st_size > 0
 
 
-def test_device_builds_kernels_while_aiecc_lowers(tmp_path, caplog):
-    source = tmp_path / "fill_seven.cc"
-    source.write_text(
+@pytest.mark.parametrize("given", ["source_file", "source_string"])
+def test_device_builds_kernels_while_aiecc_lowers(tmp_path, caplog, given):
+    code = (
         'extern "C" void fill_seven(int *out) {\n'
         f"  for (int i = 0; i < {TILE}; i++) out[i] = 7;\n"
         "}\n"
     )
+    source = tmp_path / "fill_seven.cc"
+    source.write_text(code)
+    sources = {"source_file": str(source), "source_string": code}
     kernel = ExternalFunction(
-        "fill_seven", source_file=str(source), arg_types=[tile_ty]
+        "fill_seven", arg_types=[tile_ty], **{given: sources[given]}
     )
     text = str(fill(kernel))
 

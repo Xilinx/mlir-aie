@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
+from ..tensor_class import TensorRegion
 from ._bindings import HSA_SIGNAL_CONDITION_EQ, HSA_WAIT_STATE_BLOCKED, lib
 from .context import HSAContext
 from .tensor import HSATensor
@@ -212,12 +213,21 @@ class HSAHostRuntime(HostRuntime):
 
     @staticmethod
     def _arg_pairs(kept):
-        """(device_va, logical byte size) per tensor, in dispatch order.
+        """(device_va, logical byte size) per tensor or region, in dispatch order.
 
         The logical ``nbytes`` (not the granule-rounded allocation size) is what
         the kernarg block must carry, matching ROCR's dispatch.cc.
         """
-        return [(t.buffer_object(), t.nbytes) for t in kept]
+        pairs = []
+        for t in kept:
+            if isinstance(t, TensorRegion):
+                assert isinstance(t.tensor, HSATensor)
+                va = t.tensor.buffer_object()
+                assert va is not None
+                pairs.append((va + t.storage_offset, t.nbytes))
+            else:
+                pairs.append((t.buffer_object(), t.nbytes))
+        return pairs
 
     def _release_dispatch(self, failed, overflows):
         """Release what a completed dispatch owns; leak what a failed one may still.
@@ -248,10 +258,12 @@ class HSAHostRuntime(HostRuntime):
 
     def _validate_args(self, args):
         kept = [a for a in args if not callable(a)]
-        if not all(isinstance(a, self._tensor_class) for a in kept):
+        owners = [a.tensor if isinstance(a, TensorRegion) else a for a in kept]
+        if not all(isinstance(owner, self._tensor_class) for owner in owners):
             raise HostRuntimeError(
                 f"The {self.__class__.__name__} can only take "
-                f"{self._tensor_class.__name__} as arguments, but got: {kept}"
+                f"{self._tensor_class.__name__} arguments, or regions of them, "
+                f"but got: {kept}"
             )
         return kept
 
@@ -267,7 +279,8 @@ class HSAHostRuntime(HostRuntime):
         sequence succeed on XRT/HRX and fail here.
         """
         for t in tensors:
-            t.device = "npu"
+            owner = t.tensor if isinstance(t, TensorRegion) else t
+            owner.device = "npu"
 
     def run(
         self,

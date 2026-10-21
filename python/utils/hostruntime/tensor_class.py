@@ -119,6 +119,43 @@ class _WriteBorrow:
         return False
 
 
+class TensorRegion:
+    """A region of a tensor's storage, bound as a kernel argument.
+
+    Unlike a `NpuTensor.subview`, a region may start and end inside a
+    coherence granule. That is safe because a region is never synchronized on
+    its own: a runtime binds a buffer at the region's first byte and reconciles
+    `tensor`, the tensor the region was carved from, as a whole. So a region has
+    no host data. Read what a kernel wrote through `tensor`, or through an
+    aligned `subview` of it.
+
+    Made by `NpuTensor.region`.
+
+    Attributes:
+        tensor (NpuTensor): The tensor this region was carved from. Held, so the
+            storage outlives the region.
+        storage_offset (int): Where the region starts in the allocation, in
+            bytes, measured like `NpuTensor.storage_offset`.
+        shape (tuple[int, ...]): Logical shape, in elements of ``dtype``.
+        dtype (np.dtype): Element type.
+        nbytes (int): Size of the region in bytes.
+    """
+
+    def __init__(self, tensor: "NpuTensor", storage_offset: int, shape, dtype):
+        self.tensor = tensor
+        self.storage_offset = storage_offset
+        self.shape = tuple(shape)
+        self.dtype = np.dtype(dtype)
+        self.nbytes = math.prod(self.shape) * self.dtype.itemsize
+
+    def __repr__(self):
+        return (
+            f"TensorRegion(storage_offset={self.storage_offset}, "
+            f"shape={self.shape}, dtype={self.dtype}, "
+            f"tensor={type(self.tensor).__name__})"
+        )
+
+
 class NpuTensor(ABC):
     """A host-mapped, device-resident buffer of fixed shape and dtype.
 
@@ -579,30 +616,14 @@ class NpuTensor(ABC):
             raise NotImplementedError(
                 f"{type(self).__name__} does not support subview()"
             )
-        view_dtype = np.dtype(dtype) if dtype is not None else np.dtype(self.dtype)
-        shape = _as_shape(shape)
-        try:
-            offset = operator.index(offset)
-        except TypeError:
-            raise TypeError(
-                f"subview() offset must be an integer number of bytes, got "
-                f"{offset!r}."
-            ) from None
-        offset_bytes = offset
-        # math.prod over validated ints: np.prod would accumulate in int64 and
-        # wrap silently, which defeats the bounds check below rather than
-        # tripping it.
-        nbytes = math.prod(shape) * view_dtype.itemsize
-        if offset_bytes < 0 or offset_bytes + nbytes > self.nbytes:
-            raise ValueError(
-                f"subview(offset={offset}, shape={shape}, dtype={view_dtype}) "
-                f"is out of bounds for a buffer of {self.nbytes} bytes"
-            )
+        offset_bytes, shape, view_dtype, nbytes = self._checked_region(
+            "subview", offset, shape, dtype
+        )
         granule = self._resolve_coherence_granule()
         ends_at_parent_end = offset_bytes + nbytes == self.nbytes
         if offset_bytes % granule or (nbytes % granule and not ends_at_parent_end):
             raise ValueError(
-                f"subview(offset={offset}, shape={tuple(shape)}, dtype={view_dtype}) "
+                f"subview(offset={offset_bytes}, shape={tuple(shape)}, dtype={view_dtype}) "
                 f"spans bytes [{offset_bytes}, {offset_bytes + nbytes}) of this "
                 f"buffer, which is not aligned to the {granule}-byte coherence "
                 f"granule. Host and device are reconciled a cache line at a time, "
@@ -612,6 +633,79 @@ class NpuTensor(ABC):
                 f"buffer ends) is a multiple of {granule} bytes long."
             )
         return self._subview(offset_bytes, tuple(shape), view_dtype)
+
+    def region(self, offset, shape, dtype=None):
+        """Return a region of this tensor's storage to bind as a kernel argument.
+
+        For an argument that starts or ends inside a coherence granule, which
+        `subview` refuses. The region has no host data of its own and is never
+        synchronized on its own: see `TensorRegion`.
+
+        Args:
+            offset: Start of the region, in bytes from the start of this
+                tensor's own region.
+            shape: Logical shape of the region.
+            dtype (np.dtype, optional): dtype to interpret the region as.
+                Defaults to this tensor's dtype.
+
+        Returns:
+            TensorRegion: The region, which holds this tensor.
+
+        Raises:
+            TypeError: If ``offset`` is not an integer.
+            ValueError: If the region falls outside this tensor, or does not
+                start on a 4-byte boundary of the allocation.
+        """
+        offset_bytes, shape, region_dtype, _ = self._checked_region(
+            "region", offset, shape, dtype
+        )
+        storage_offset = self.storage_offset + offset_bytes
+        # Shim DMA buffer descriptors address host memory in 32-bit words.
+        if storage_offset % 4:
+            raise ValueError(
+                f"region(offset={offset}, shape={shape}, dtype={region_dtype}) "
+                f"starts at byte {storage_offset} of its allocation, which is not "
+                f"a multiple of 4. The NPU's DMA addresses host memory in 32-bit "
+                f"words."
+            )
+        return TensorRegion(self, storage_offset, shape, region_dtype)
+
+    def _checked_region(self, method, offset, shape, dtype):
+        """Validate the arguments of `subview` or `region`.
+
+        Args:
+            method (str): The calling method's name, for the error messages.
+            offset: As given to the caller.
+            shape: As given to the caller.
+            dtype: As given to the caller.
+
+        Returns:
+            tuple: ``(offset, shape, dtype, nbytes)``, with ``offset`` an int,
+            ``shape`` a tuple of ints and ``dtype`` an ``np.dtype``.
+
+        Raises:
+            TypeError: If ``offset`` is not an integer.
+            ValueError: If the region falls outside this tensor.
+        """
+        view_dtype = np.dtype(dtype) if dtype is not None else np.dtype(self.dtype)
+        shape = _as_shape(shape)
+        try:
+            offset = operator.index(offset)
+        except TypeError:
+            raise TypeError(
+                f"{method}() offset must be an integer number of bytes, got "
+                f"{offset!r}."
+            ) from None
+        # math.prod over validated ints: np.prod would accumulate in int64 and
+        # wrap silently, which defeats the bounds check below rather than
+        # tripping it.
+        nbytes = math.prod(shape) * view_dtype.itemsize
+        if offset < 0 or offset + nbytes > self.nbytes:
+            raise ValueError(
+                f"{method}(offset={offset}, shape={shape}, dtype={view_dtype}) "
+                f"is out of bounds for a buffer of {self.nbytes} bytes"
+            )
+        return offset, shape, view_dtype, nbytes
 
     @abstractmethod
     def _sync_to_device(self):

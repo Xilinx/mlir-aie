@@ -1200,7 +1200,11 @@ def compile_mlir_module(
         # left over from an earlier, unrelated design in the same process is
         # neither built nor checked against this design's arch.
         kernels = _select_declared_kernels(
-            [f for f in ExternalFunction._instances if f.source_file],
+            [
+                f
+                for f in ExternalFunction._instances
+                if f.source_file or f.source_string
+            ],
             _declared_objects(mlir_module),
         )
         if kernels:

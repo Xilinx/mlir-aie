@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence
 import numpy as np
 from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
-from aie.utils.hostruntime.tensor_class import NpuTensor
+from aie.utils.hostruntime.tensor_class import NpuTensor, TensorRegion
 from aie.utils.trace.parse import DEFAULT_KERNEL
 
 if TYPE_CHECKING:
@@ -228,7 +228,7 @@ class CallableDesign:
             if n != self.compilable.variadic_tensor_param
         ]
         for name, tensor in zip(named, tensor_args):
-            if isinstance(tensor, (NpuTensor, np.ndarray)):
+            if isinstance(tensor, (NpuTensor, TensorRegion, np.ndarray)):
                 call_compile_kwargs[name] = np.ndarray[
                     tuple(tensor.shape), np.dtype[np.dtype(tensor.dtype).type]
                 ]
