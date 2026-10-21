@@ -54,9 +54,9 @@
   <title>mlir-aie maintainer dashboard</title>
   <style>
     :root {
-      --paper: #f6f7f9; --surface: #ffffff; --ink: #1c2230; --muted: #5b6475; --faint: #8a93a3; --rule: #dde1e7;
+      --paper: #f6f7f9; --surface: #ffffff; --ink: #1c2230; --muted: #5b6475; --faint: #68717f; --rule: #dde1e7;
       --link: #3446c4; --focus: #3446c4;
-      --ok: #0e8a6d; --ok-soft: #d6efe7; --bad: #c62f3a; --bad-soft: #fbe3e5; --warn: #b26b00; --warn-soft: #fcefd6;
+      --ok: #0a7259; --ok-soft: #d6efe7; --bad: #bf2c37; --bad-soft: #fbe3e5; --warn: #9a5c00; --warn-soft: #fcefd6;
       --none: #c7ccd5; --none-soft: #eceef2;
       --npu1: #1f6fb8; --npu2: #9a3fc4; --grid: rgba(28, 34, 48, 0.08); --band: 0.16;
       --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6;
@@ -65,7 +65,7 @@
     }
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
-        --paper: #14171d; --surface: #1b1f27; --ink: #e6e9ef; --muted: #a2aab8; --faint: #6f7887; --rule: #2c323d;
+        --paper: #14171d; --surface: #1b1f27; --ink: #e6e9ef; --muted: #a2aab8; --faint: #8790a0; --rule: #2c323d;
         --link: #8c9bff; --focus: #8c9bff;
         --ok: #3cc49a; --ok-soft: #173a31; --bad: #ff6b74; --bad-soft: #4a1d23; --warn: #f0a93b; --warn-soft: #43321a;
         --none: #4a515e; --none-soft: #232832;
@@ -75,7 +75,7 @@
       }
     }
     :root[data-theme="dark"] {
-      --paper: #14171d; --surface: #1b1f27; --ink: #e6e9ef; --muted: #a2aab8; --faint: #6f7887; --rule: #2c323d;
+      --paper: #14171d; --surface: #1b1f27; --ink: #e6e9ef; --muted: #a2aab8; --faint: #8790a0; --rule: #2c323d;
       --link: #8c9bff; --focus: #8c9bff;
       --ok: #3cc49a; --ok-soft: #173a31; --bad: #ff6b74; --bad-soft: #4a1d23; --warn: #f0a93b; --warn-soft: #43321a;
       --none: #4a515e; --none-soft: #232832;
@@ -114,7 +114,8 @@
     #status { font-size: 13px; color: var(--muted); padding: 10px 0 0; }
     .block { margin-top: 36px; }
     .block-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 12px; }
-    .block-head h2 { font-size: 18px; }
+    .block-head h3 { font-size: 18px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .block-head p { margin: 0; color: var(--muted); font-size: 13px; }
 
     /* Verdicts: one band per NPU. The colored rule is the night's verdict. */
@@ -141,8 +142,10 @@
     .nights .label { font-size: 12px; color: var(--muted); margin-right: 6px; }
     .night { display: block; width: 9px; height: 20px; border-radius: 2px; background: var(--none); }
     .night.ok { background: var(--ok); }
-    .night.warn { background: var(--warn); }
-    .night.bad { background: var(--bad); }
+    /* Not color alone: a warning is hollow, a failure carries a cross. */
+    .night.warn { background: transparent; box-shadow: inset 0 0 0 2px var(--warn); }
+    .night.bad { background: var(--bad); color: #fff; font-size: 8px; font-weight: 700; line-height: 20px; text-align: center; overflow: hidden; }
+    .night.bad::before { content: '✕'; }
     .night.other { background: var(--none-soft); border: 1px solid var(--none); }
     .night.latest { outline: 2px solid var(--ink); outline-offset: 1px; }
     .night.manual { height: 11px; opacity: 0.55; }
@@ -284,6 +287,7 @@
     .glance-row .npu.n-series-5 { --lane: var(--series-5); }
     .glance-row .npu.n-series-6 { --lane: var(--series-6); }
     .glance-row .npu.n-series-7 { --lane: var(--series-7); }
+    .glance-row .npu.dashed::before { background: transparent; border: 1.5px dashed var(--lane); }
     .glance-row .vals { overflow-wrap: anywhere; }
     .glance-row .before { color: var(--faint); }
     .glance-row .after { font-weight: 650; }
@@ -306,7 +310,7 @@
            font-size: 11px; font-weight: 600; line-height: 18px; white-space: nowrap; overflow: hidden; }
     .stage-seg .lbl { padding: 0 4px; }
     .stage-seg::after { content: ''; position: absolute; inset: -3px -3px; }
-    .stage-seg:hover, .stage-seg:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; z-index: 1; }
+    .stage-seg:hover { outline: 2px solid var(--ink); outline-offset: 1px; z-index: 1; }
     .st-place { --seg: var(--stage-place); --seg-ink: var(--stage-place-ink); }
     .st-route { --seg: var(--stage-route); --seg-ink: var(--stage-route-ink); }
     .st-lower { --seg: var(--stage-lower); --seg-ink: var(--stage-lower-ink); }
@@ -403,8 +407,9 @@
     ul.ci-problems { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
     ul.ci-problems li { display: grid; grid-template-columns: 10px 1fr; gap: 8px; align-items: baseline; font-size: 14px; }
     ul.ci-problems .dot { width: 9px; height: 9px; border-radius: 50%; align-self: center; background: var(--none); }
-    ul.ci-problems li.bad .dot { background: var(--bad); }
-    ul.ci-problems li.warn .dot { background: var(--warn); }
+    ul.ci-problems li.bad .dot, .ci-row.bad .dot, .k-row .k-bad .dot { background: transparent; border-radius: 0; color: var(--bad); font-size: 11px; font-weight: 800; line-height: 9px; text-align: center; }
+    ul.ci-problems li.bad .dot::before, .ci-row.bad .dot::before, .k-row .k-bad .dot::before { content: '✕'; }
+    ul.ci-problems li.warn .dot, .ci-row.warn .dot, .k-row .k-warn .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--warn); }
     ul.ci-problems b { margin-right: 6px; }
     .ci-healthy { margin: 12px 0 0; font-size: 13.5px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
     .ci-healthy::before { content: ''; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); align-self: center; }
@@ -431,14 +436,13 @@
     .ci-row:first-child { border-top: 0; }
     .ci-row .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--none); }
     .ci-row.ok .dot { background: var(--ok); }
-    .ci-row.warn .dot { background: var(--warn); }
-    .ci-row.bad .dot { background: var(--bad); }
     .ci-row .wf-name { font-weight: 600; color: var(--ink); }
     .ci-row .t-state { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ci-row.bad .t-state { color: var(--bad); }
     .ci-row.warn .t-state { color: var(--warn); }
     .ci-row .nights { gap: 2px; }
     .ci-row .night { width: 7px; height: 16px; }
+    .ci-row .night.bad { font-size: 7px; line-height: 16px; }
     .ci-pick { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
     @media (max-width: 700px) {
       .ci-row { grid-template-columns: 10px minmax(0, 1fr) auto; gap: 2px 10px; }
@@ -471,9 +475,7 @@
     .k-row .k-npu .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--none); flex: none; }
     .k-row .k-ok .dot, .k-row .k-better .dot, .k-row .k-untimed .dot { background: var(--ok); }
     .k-row .k-bad { color: var(--bad); font-weight: 600; }
-    .k-row .k-bad .dot { background: var(--bad); }
     .k-row .k-warn { color: var(--warn); font-weight: 600; }
-    .k-row .k-warn .dot { background: var(--warn); }
     .k-row .k-absent .dot { background: transparent; border: 1px dashed var(--none); }
     .k-row .spark { display: block; height: 28px; }
     .k-row .spark svg { height: 28px; }
@@ -525,11 +527,12 @@
     <div class="links">
       <a href="https://github.com/Xilinx/mlir-aie">Repository</a>
       <a href="https://xilinx.github.io/mlir-aie/">Docs</a>
-      <button id="theme" type="button" aria-label="switch between light and dark theme">Dark</button>
+      <button id="theme" type="button" title="switch between light and dark theme">Dark</button>
     </div>
   </div></header>
   <main>
     <section id="overview">
+      <h2 class="sr-only">Overview</h2>
       <p class="overview-intro">How each area did on its latest run. Open one for what went wrong and how to reproduce it.</p>
       <div id="overview-tiles"></div>
       <details class="howto">
@@ -629,12 +632,12 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
         <div id="verdicts"></div>
 
         <section id="attention" class="block" hidden>
-          <div class="block-head"><h2>Needs a look</h2></div>
+          <div class="block-head"><h3>Needs a look</h3></div>
           <ul id="attention-list"></ul>
         </section>
 
         <section class="block">
-          <div class="block-head"><h2>Changed over recent nightlies</h2><span id="window-compare" class="seg" role="group" aria-label="compare with"></span></div>
+          <div class="block-head"><h3>Changed over recent nightlies</h3><span id="window-compare" class="seg" role="group" aria-label="compare with"></span></div>
           <p class="note" id="window-about"></p>
           <div id="window-changes"><p class="dim">Reading the history…</p></div>
         </section>
@@ -656,11 +659,11 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
       <section id="kernel" hidden>
         <div id="kernel-head"></div>
         <section class="block">
-          <div class="block-head"><h2>Over recent nightlies</h2><span id="kernel-npu" class="seg" role="group" aria-label="NPU"></span></div>
+          <div class="block-head"><h3>Over recent nightlies</h3><span id="kernel-npu" class="seg" role="group" aria-label="NPU"></span></div>
           <div id="kernel-trend"></div>
         </section>
         <section class="block">
-          <div class="block-head"><h2>Cases</h2></div>
+          <div class="block-head"><h3>Cases</h3></div>
           <div id="kernel-cases"></div>
         </section>
       </section>
@@ -1713,7 +1716,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const cls = `night ${nightLevel(r)}${isManual(r) ? ' manual' : ''}${String(r.id) === String(night.run.id) ? ' latest' : ''}`;
         const title = `${isManual(r) ? 'Started by hand, not compared\n' : ''}${nightTitle(r)}`;
         strip.append(r.url ? link(r.url, '', { className: cls, title, ariaLabel: title })
-          : el('span', { className: cls, title }));
+          : el('span', { className: cls, title, role: 'img', ariaLabel: title }));
       });
       return runs.length ? strip : '';
     }
@@ -2024,7 +2027,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           const values = lane.m ? glanceValues(lane.m, lane.metric, lane.current) : lane.missing || el('span', { className: 'faint' }, '—');
           if (lane.bad) values.className += ' worse';
           cell.append(lane.name
-            ? el('span', { className: 'glance-row' }, el('span', { className: `npu n-${lane.color}` }, lane.name), values)
+            ? el('span', { className: 'glance-row' }, el('span', { className: `npu n-${lane.color}${lane.dashed ? ' dashed' : ''}` }, lane.name), values)
             : el('span', { className: 'glance-row solo' }, values));
         }
         grid.append(cell);
@@ -2259,12 +2262,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       let metric = metrics.includes(want) ? want : metrics[0], drawn = null;
       const seg = el('span', { className: 'seg', role: 'group', ariaLabel: 'measure' });
       const note = el('p', { className: 'note' });
-      const canvas = el('canvas', { ariaLabel: aria });
+      const canvas = el('canvas', { role: 'img', ariaLabel: aria });
       const box = el('div', { className: 'chart trend' }, el('div', { className: 'trend-head' }, seg), note, el('div', { className: 'canvas' }, canvas));
       const draw = m => {
         metric = m;
         segment(seg, metrics, m, draw);
         note.textContent = about(m);
+        canvas.ariaLabel = `${aria}: ${AXIS_OF[m] || label(m)}`;
         if (drawn) drawn.destroy();
         drawn = lineChart(canvas, configOf(m));
         componentCharts.push(drawn);
@@ -2788,7 +2792,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         }
         div.append(el('h3', {}, caseName(g.kase, null), chips));
         const holder = el('div', { className: 'canvas' });
-        const canvas = el('canvas', { ariaLabel: `${label(g.metric)} of ${g.kase} over recent nights` });
+        const canvas = el('canvas', { role: 'img', ariaLabel: `${AXIS_OF[g.metric] || label(g.metric)} of ${g.kase}, over recent nights` });
         holder.append(canvas);
         div.append(holder);
         div.group = g;
@@ -2921,7 +2925,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           const v = c.stages[i];
           if (!v) continue;
           track.append(el('span', {
-            className: `stage-seg st-${key}`, tabIndex: 0, style: `width: max(1px, calc(${at(v)} - 2px))`,
+            className: `stage-seg st-${key}`, style: `width: max(1px, calc(${at(v)} - 2px))`,
             title: `${name}, ${c.name} compile: ${seconds(v)}, ${(100 * v / sums[n]).toFixed(1)}% of its time per stage\n${about}`,
           }, key !== 'outside_aiecc' && 100 * v / scale >= name.length * 0.7 + 2 ? el('span', { className: 'lbl' }, name) : null));
         }
@@ -2998,12 +3002,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const costs = pairs.map(pair => {
         const c = cases.get(kase(pair));
         return { name: name(pair), color: color(pair), key: `${target}|${kase(pair)}|placement_cost`, metric: 'placement_cost',
-                 m: c && c.metrics.get('placement_cost'), current: c && c.current };
+                 m: c && c.metrics.get('placement_cost'), current: c && c.current, dashed: pair[1] === 'full' };
       });
       const compileTimes = pairs.map(pair => {
         const c = cases.get(kase(pair));
         return { name: name(pair), color: color(pair), key: `${target}|${kase(pair)}|compile_s`, metric: 'compile_s',
-                 m: c && c.metrics.get('compile_s'), current: c && c.current };
+                 m: c && c.metrics.get('compile_s'), current: c && c.current, dashed: pair[1] === 'full' };
       });
       const placed = pairs.map(pair => {
         const [seed, effort] = pair;
@@ -3352,7 +3356,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       let tab = shown.find(t => t.id === want || (t.lines || []).some(([, ms]) => ms.includes(want))) || shown[0], drawn = null;
       const seg = el('span', { className: 'seg', role: 'group', ariaLabel: 'measure' });
       const about = el('p', { className: 'note' });
-      const canvas = el('canvas', { ariaLabel: 'over recent nightlies' });
+      const canvas = el('canvas', { role: 'img', ariaLabel: 'over recent nightlies' });
       const box = el('div', { className: 'chart trend' }, el('div', { className: 'trend-head' }, seg), about, el('div', { className: 'canvas' }, canvas));
       const say = t => {
         const kases = data.series.filter(s => tabMetrics(t).includes(s.metric)).map(s => s.kase);
@@ -3365,6 +3369,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         tab = named(id);
         segment(seg, shown.map(t => t.id), id, draw, v => named(v).name || label(v));
         say(tab);
+        canvas.ariaLabel = `${tab.name || label(tab.id)}, ${tab.axis}, over recent nightlies`;
         if (drawn) drawn.destroy();
         drawn = lineChart(canvas, trendConfig(data, tab));
         componentCharts.push(drawn);
@@ -3607,7 +3612,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // A chart box in a band, drawn once it scrolls into view.
     function bandChart(title, about, drawOn) {
-      const canvas = el('canvas', { ariaLabel: `${title}: ${about}` });
+      const canvas = el('canvas', { role: 'img', ariaLabel: `${title}: ${about}` });
       const box = el('div', { className: 'chart' }, el('h3', {}, title, el('span', { className: 'note' }, about)),
         el('div', { className: 'canvas' }, canvas));
       const seen = new IntersectionObserver(entries => {
@@ -4083,7 +4088,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         if (latencyChart) latencyChart.destroy();
         latencyChart = null;
         if (!c) { $('ci-latency').replaceChildren(el('p', { className: 'dim' }, 'Nothing published yet.')); return; }
-        const canvas = el('canvas', { ariaLabel: `${c.title}: run time and wait to start, run by run` });
+        const canvas = el('canvas', { role: 'img', ariaLabel: `${c.title}: run time and wait to start in minutes, run by run` });
         const holder = el('div', { className: 'canvas' }, canvas);
         $('ci-latency').replaceChildren(el('div', { className: 'chart trend' }, holder));
         latencyChart = lineChart(canvas, latencyConfig(c.runs, c.axis));

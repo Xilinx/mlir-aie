@@ -505,6 +505,67 @@ assert.ok(canvas.hidden);
 """)
 
 
+def _contrast(fg, bg):
+    def luminance(color):
+        rgb = [int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+        lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+    hi, lo = sorted([luminance(fg), luminance(bg)], reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_status_reads_without_color_and_text_meets_aa(page):
+    html = PAGE.read_text(encoding="utf-8")
+    css = html.split("<style>", 1)[1].split("</style>", 1)[0]
+    themes = [
+        dict(re.findall(r"--([\w-]+): (#[0-9a-f]{6})", block))
+        for block in (
+            css.split(":root {", 1)[1].split("}", 1)[0],
+            css.split(':root[data-theme="dark"] {', 1)[1].split("}", 1)[0],
+        )
+    ]
+    # Secondary and status text on every background it sits on: WCAG AA.
+    for theme in themes:
+        for fg, bgs in [
+            ("faint", ["paper", "surface"]),
+            ("warn", ["surface", "paper", "warn-soft"]),
+            ("ok", ["surface", "ok-soft"]),
+            ("bad", ["surface", "bad-soft"]),
+        ]:
+            for bg in bgs:
+                ratio = _contrast(theme[fg], theme[bg])
+                assert ratio >= 4.5, (fg, bg, theme[fg], theme[bg], ratio)
+    # A failure carries a cross and a warning is hollow, in the strips and dots.
+    assert ".night.bad::before { content: '\u2715'; }" in css
+    assert re.search(r"\.night\.warn \{ background: transparent; box-shadow: inset", css)
+    assert ".ci-row.bad .dot::before" in css and ".k-row .k-bad .dot::before" in css
+    # Headings nest: the overview has one, a section's blocks are h3s.
+    assert '<h2 class="sr-only">Overview</h2>' in html
+    assert "<h2>Needs a look</h2>" not in html and "<h3>Needs a look</h3>" in html
+    # The theme button's accessible name is its visible text.
+    assert re.search(r'<button id="theme" type="button" title="[^"]+">Dark</button>', html)
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+// Placement's lanes: full effort dashed, in the line and its chip.
+const card = componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore).cards[0];
+assert.deepEqual(card.sparks.get('placement_cost').lines.map(([, key, dashed]) => [key.split('|')[1], Boolean(dashed)]), [
+  ['mobilenet/seed=3/effort=default', false], ['mobilenet/seed=3/effort=full', true],
+  ['mobilenet/seed=7/effort=default', false], ['mobilenet/seed=7/effort=full', true]]);
+const chips = all(card.children[1].children[0], n => /^npu /.test(n.className || '')).map(n => n.className);
+assert.deepEqual(chips, ['npu n-series-1', 'npu n-series-1 dashed', 'npu n-series-2', 'npu n-series-2 dashed']);
+// A chart is an image named by what it charts and in which unit.
+const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
+const box = trendBox(data, hw.trend, 'us_per_image');
+const canvas = all(box, n => n.tag === 'canvas')[0];
+assert.equal(canvas.role, 'img');
+assert.equal(canvas.ariaLabel, 'Dispatch / image, Dispatch time per image (µs, fastest of 20), over recent nightlies');
+// A run with no link still names itself.
+const strip = nightStrip({ runs: [{ id: '1', date: '2026-10-01T06:30:00Z', pmode: 'turbo', published: true }], run: { id: '1' } });
+assert.equal(strip.children[1].role, 'img');
+assert.ok(strip.children[1].ariaLabel.startsWith('1 Oct, 06:30 UTC'));
+""")
+
+
 def test_narrow_screens_hide_no_kernels_table_column():
     # Each NPU's header spans its columns; hiding one slides the headers.
     css = (
@@ -1630,9 +1691,9 @@ assert.equal(segs(cold)[3].style, 'width: max(1px, calc(76.533% - 2px))');
 assert.equal(segs(warm)[0].style, 'width: max(1px, calc(3.525% - 2px))');
 // Named in place only where the name fits; the textured time outside aiecc
 // only in the key, since a label on the hatch would not read. Every segment
-// can be hovered and focused.
+// can be hovered; none is a tab stop, since the key below tables every value.
 assert.deepEqual(segs(cold).map(n => n.text), ['', '', '', 'waiting on kernels', '', '', '', '']);
-assert.ok(segs(cold).every(n => n.tabIndex === 0));
+assert.ok(segs(cold).every(n => n.tabIndex === undefined));
 assert.equal(segs(cold)[0].title, 'place, cold compile: 1.09 s, 5.3% of its time per stage\\n' +
   'tile placement: aie-place-tiles, which runs the SA placer at its seed and effort');
 assert.equal(segs(cold)[1].title.split('\\n')[0], 'route, cold compile: 0.03 s, 0.1% of its time per stage');
