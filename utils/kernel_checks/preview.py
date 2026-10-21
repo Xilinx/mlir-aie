@@ -315,7 +315,7 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
     """One synthetic hardware nightly at each SA effort: its rows and meta."""
     runs, compiles, placements = [], [], []
     for seed, (one, streaming, cost) in HW_SEEDS.items():
-        for effort_label in sa_placer_hw._EFFORTS:
+        for effort_label in sa_placer_hw.EFFORTS:
             digest = hashlib.sha256(f"{seed}/{effort_label}".encode()).hexdigest()[:12]
             compiles.append(
                 {
@@ -352,6 +352,7 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
             )
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
+        "efforts": sa_placer_hw.EFFORTS,
         "measurement_sane": True,
         "compiles": compiles,
         "placements": placements,

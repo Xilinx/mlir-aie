@@ -10,10 +10,9 @@ handful of seeds. Shells out to the existing aie2_mobilenet_iron.py CLI
 from programming_examples/ml, one fresh NPU_CACHE_HOME per seed and effort
 so they don't share a JIT cache (test/python/npu's isolation convention).
 
-Each seed runs at both of _EFFORTS (the design's real default, and full
-effort as a placement-quality baseline -- see
-mobilenet.bottleneck._common.sa_placer_flags, which the default must keep
-matching). The batch is a dispatch-time parameter, so
+Each seed runs at both of ``EFFORTS``: the design's real default, read from
+mobilenet.bottleneck._common.sa_placer_flags' own signature, and full effort
+as a placement-quality baseline. The batch is a dispatch-time parameter, so
 per seed and effort the design compiles once (the CLI's ``--dynamic``
 compile-only mode) and every batch runs from it. It compiles twice in the
 same fresh NPU_CACHE_HOME: cold (every cache empty, same as any first-time
@@ -43,6 +42,7 @@ effort is reproduced, from programming_examples/ml, with
 import argparse
 import glob
 import hashlib
+import inspect
 import os
 import re
 import shutil
@@ -50,6 +50,7 @@ import subprocess
 import sys
 import tempfile
 
+from aie.utils.benchmark import preflight, provenance
 from aie.utils.compile.utils import AIECC_PROFILE_NAME
 from aiecc_stages import (
     add_pmode_argument,
@@ -64,6 +65,12 @@ from aiecc_stages import (
     write_unfinished,
 )
 
+_ML_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "programming_examples", "ml"
+)
+sys.path.insert(0, _ML_DIR)
+from mobilenet.bottleneck._common import sa_placer_flags  # noqa: E402
+
 _PASS_RE = re.compile(r"^PASS!$", re.MULTILINE)
 _BATCH_RE = re.compile(r"^batch=(\d+)$", re.MULTILINE)
 _TIME_RE = (
@@ -74,16 +81,11 @@ _NPU_TIME_RE = re.compile(r"NPU time" + _TIME_RE)
 _E2E_TIME_RE = re.compile(r"End-to-end" + _TIME_RE)
 _COST_RE = re.compile(r"\(S\)\s+(\d+)\s+sa-final-cost")
 _TILE_RE = re.compile(r"aie\.tile\(\d+, \d+\)")
-# "default" must keep matching mobilenet.bottleneck._common.sa_placer_flags'
-# own default -- not imported from there since this check otherwise only
-# shells out to the CLI (see the module docstring); a change to either is a
-# prompt to check the other.
-_EFFORTS = {"default": 0.05, "full": 1.0}
+EFFORTS = {
+    "default": inspect.signature(sa_placer_flags).parameters["effort"].default,
+    "full": 1.0,
+}
 _MOBILENET = [sys.executable, "-m", "mobilenet.aie2_mobilenet_iron"]
-
-_ML_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "programming_examples", "ml"
-)
 
 
 def placement_of(mlir: str) -> str | None:
@@ -200,7 +202,7 @@ def run_seed(
 ) -> tuple[dict, list[dict]]:
     """Compile mobilenet once for one SA seed and effort, and run every batch."""
     cache_dir = tempfile.mkdtemp(prefix=f"component-checks-sa{seed}-{effort_label}-")
-    flags = ["--sa-seed", str(seed), "--sa-effort", str(_EFFORTS[effort_label])]
+    flags = ["--sa-seed", str(seed), "--sa-effort", str(EFFORTS[effort_label])]
     try:
         compiled = compile_cold_warm(flags, batches, cache_dir, compile_timeout)
         ran = run_measured(
@@ -249,7 +251,7 @@ def place_seed(
     out = []
     for c in compiles:
         replayed, cost = replay_placement(
-            aie_opt, design, c["seed"], _EFFORTS[c["effort_label"]], timeout
+            aie_opt, design, c["seed"], EFFORTS[c["effort_label"]], timeout
         )
         first = c["placement"] or replayed
         out.append(
@@ -429,15 +431,13 @@ def main(argv=None) -> int:
     if not args.aie_opt:
         parser.error("no aie-opt on PATH; pass --aie-opt")
 
-    from aie.utils.benchmark import preflight, provenance
-
     pre = preflight()
     meta = {
         "preflight": dict(vars(pre)),
         "provenance": provenance(
             device=pre.device, pmode=pre.pmode, dispatch="dynamic"
         ),
-        "efforts": _EFFORTS,
+        "efforts": EFFORTS,
         "iters": args.iters,
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
@@ -456,7 +456,7 @@ def main(argv=None) -> int:
         runs, compiles, placements = [], [], []
         for seed in args.seeds:
             mine = []
-            for effort_label in _EFFORTS:
+            for effort_label in EFFORTS:
                 compiled, seed_runs = run_seed(
                     seed,
                     effort_label,

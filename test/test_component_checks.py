@@ -575,6 +575,12 @@ def test_an_untimed_llama_run_has_no_timing(llama):
     assert set(llama.parse_timing(LLAMA_OUTPUT).values()) == {None}
 
 
+def test_the_hardware_check_places_at_the_designs_own_default_effort(hw):
+    # The flags the design compiles with when nothing overrides them.
+    assert f"--sa-effort={hw.EFFORTS['default']}" in hw.sa_placer_flags()
+    assert hw.EFFORTS["full"] == 1.0
+
+
 @pytest.mark.parametrize("batches", ["0", "-3", "two"])
 def test_the_hardware_check_refuses_a_batch_that_is_not_positive(batches, tmp_path):
     result = subprocess.run(

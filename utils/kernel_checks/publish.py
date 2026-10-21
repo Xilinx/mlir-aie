@@ -317,7 +317,7 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
             for case, d in cases.items()
             if case in record["rows"] and "build" in d
         }
-    for key in ("correctness_error", "refused", "reason", "detail"):
+    for key in ("correctness_error", "refused", "reason", "efforts", "detail"):
         if key in meta:
             record[key] = meta[key]
     if catalogue:
