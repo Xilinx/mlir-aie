@@ -274,6 +274,9 @@ class XRTKernelHandle(KernelHandle):
         self.kernel_run = kernel_run if kernel_run is not None else _KernelRun(kernel)
 
     def empty_dispatch_ns(self) -> int | None:
+        # An invalidated handle has no context left, e.g. after Phoenix's post-trace drain.
+        if self.kernel_run is None:
+            return None
         return self.kernel_run.empty_dispatch_ns()
 
 
