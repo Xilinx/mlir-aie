@@ -2582,6 +2582,30 @@ assert.ok(!loadCi.toString().includes('history.json'));
 """)
 
 
+def test_ci_health_reads_the_outcome_ci_health_judged(page):
+    page(CI_RUNS + """
+// ci_health.py judges a run on main from its jobs: outcome, waited, took.
+const judged = (id, h, outcome, waited, took) => ({ ...run(id, h, 'completed', outcome === 'passed' ? 'success' : 'failure'),
+  updated_at: at(h - 1), outcome, waited, took });
+let v = criticalVerdict(crit({ latest_main: judged(30, 3, 'timed_out', 7, 30) }), NOW);
+assert.deepEqual([v.level, v.notes[0]], ['bad', 'its latest run on main timed out']);
+v = criticalVerdict(crit({ latest_main: judged(30, 3, 'runner_lost', 1, 15) }), NOW);
+assert.deepEqual([v.level, v.notes[0]], ['warn', 'its latest run on main lost its runner: the machine, not the tests']);
+v = criticalVerdict(crit({ latest_main: judged(30, 3, 'no_runner', 0, 0) }), NOW);
+assert.deepEqual([v.level, v.notes[0]], ['warn', 'no runner took its latest run on main']);
+// Cancelled by hand or by a newer run: not a problem.
+assert.equal(criticalVerdict(crit({ latest_main: { ...judged(30, 3, 'cancelled', 0, 5), conclusion: 'cancelled' } }), NOW).level, 'ok');
+// A leg that lost its runner says so, not "failed".
+const legs = ciLegs([{ ...job('Kernel checks (aie2p-8col)', 6, 'completed', 'failure'), outcome: 'runner_lost', runner: 'aie9' }], NOW);
+assert.deepEqual(legs.map(l => [l.level, l.text]), [['warn', 'runner lost']]);
+// The chart: the real runner wait and the run without it; timed out red, runner lost amber.
+const config = latencyConfig([judged(3, 2, 'runner_lost', 12, 10), judged(2, 26, 'timed_out', 7.3, 30), judged(1, 50, 'passed', 0.5, 43.5)], 'Run on main');
+assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['Run time', [43.5, 30, 10]], ['Wait to start', [0.5, 7.3, 12]]]);
+assert.deepEqual(config.data.datasets[0].pointBackgroundColor,
+                 [cssVar('--series-1', '#5b6475'), cssVar('--bad', '#bf2c37'), cssVar('--warn', '#9a5c00')]);
+""")
+
+
 def test_ci_health_reads_at_a_glance(page):
     page(CI_RUNS + """
 // All clear: one sentence, the counts beside it, how fresh.

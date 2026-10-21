@@ -572,8 +572,10 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
             of its runs, or one pull-request or merge-queue commit in ten needing a re-run to pass, also wants a look.</p>
           <p><b>Nightly and scheduled jobs</b> are judged on their latest scheduled run on main, and are late when it started more than one and a half
             of their periods ago (36 hours for a nightly). A job still queued after six hours almost always means no runner with its labels is online.</p>
-          <p><b>Run time</b> charts one workflow's finished runs, oldest first: how long each took, from its start to its last update, and how long it
-            waited to start. A failed run's point is red; hover a point for its commit, click it for the run.</p>
+          <p><b>Run time</b> charts one workflow's finished runs, oldest first: how long each took from its first job's start, and how long its
+            slowest job waited for a runner. A failed or timed-out run's point is red, one that lost its runner or found none amber; hover a
+            point for its commit, click it for the run. A run on main that timed out counts as failed; one whose runner was lost, or never
+            came, is the machines' and counts neither way.</p>
           <p><b>Merging</b>: the pull requests merged in the last two weeks and how long each was open, drafts included; and those open now.</p>
           <p>To list another workflow, add it to
             <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/ci_workflows.json"><code>utils/kernel_checks/ci_workflows.json</code></a>.</p>
@@ -3830,7 +3832,19 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // One run's or job's state: {level, text}, level one of ok, bad, warn,
     // running and none.
+    // A run or job on main as ci_health.py judged it from its jobs: a job
+    // past its timeout is a failure; a lost runner, or none, is the
+    // machines', not the tests'; a cancel by hand or by a newer run is
+    // neither.
+    const OUTCOME_LEVELS = {
+      passed: { level: 'ok', text: 'passed' }, failed: { level: 'bad', text: 'failed' }, timed_out: { level: 'bad', text: 'timed out' },
+      runner_lost: { level: 'warn', text: 'runner lost' }, no_runner: { level: 'warn', text: 'no runner' },
+      cancelled: { level: 'none', text: 'cancelled' },
+    };
+    const failedOutcome = r => r.outcome ? ['failed', 'timed_out'].includes(r.outcome) : FAILED_CONCLUSIONS.includes(r.conclusion);
+
     function ciRunLevel(r, now) {
+      if (r.outcome && OUTCOME_LEVELS[r.outcome]) return OUTCOME_LEVELS[r.outcome];
       if (r.status !== 'completed') {
         const queued = ['queued', 'waiting', 'pending', 'requested'].includes(r.status);
         if (queued && now - startOf(r) > CI_QUEUED_TOO_LONG_MS) return { level: 'warn', text: `waiting for a runner for ${ago(startOf(r), now)}` };
@@ -3978,11 +3992,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       let level = 'ok';
       const latest = w.latest_main && w.latest_main.status === 'completed' ? w.latest_main : null;
       // The jobs that failed in it, by their own names.
-      const failedJobs = (w.latest_main_jobs || []).filter(j => FAILED_CONCLUSIONS.includes(j.conclusion)).map(j => jobName(j.name, w.title));
-      if (latest && FAILED_CONCLUSIONS.includes(latest.conclusion)) {
+      const failedJobs = (w.latest_main_jobs || []).filter(failedOutcome).map(j => jobName(j.name, w.title));
+      if (latest && failedOutcome(latest)) {
         level = 'bad';
-        notes.push(`its latest run on main failed${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}`);
-      } else if (latest && latest.conclusion === 'cancelled') {
+        notes.push(`its latest run on main ${latest.outcome === 'timed_out' ? 'timed out' : 'failed'}${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}`);
+      } else if (latest && ['runner_lost', 'no_runner'].includes(latest.outcome)) {
+        level = 'warn';
+        notes.push(latest.outcome === 'runner_lost' ? 'its latest run on main lost its runner: the machine, not the tests' : 'no runner took its latest run on main');
+      } else if (latest && !latest.outcome && latest.conclusion === 'cancelled') {
         // A job past timeout-minutes, or one no runner picked up, ends cancelled.
         level = 'warn';
         notes.push('its latest run on main was cancelled: it timed out, or no runner took it');
@@ -4025,8 +4042,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     // How long a run took, and waited to start, in minutes.
-    const runMinutes = r => (Date.parse(r.updated_at) - Date.parse(r.run_started_at)) / 60000;
-    const waitMinutes = r => (Date.parse(r.run_started_at) - Date.parse(r.created_at)) / 60000;
+    // ci_health.py's `took` (first job's start to the run's end) and
+    // `waited` (the slowest job's wait for a runner); a run's own
+    // timestamps where a record predates them.
+    const runMinutes = r => r.took ?? (Date.parse(r.updated_at) - Date.parse(r.run_started_at)) / 60000;
+    const waitMinutes = r => r.waited ?? (Date.parse(r.run_started_at) - Date.parse(r.created_at)) / 60000;
 
     // One workflow's runs as a chart: how long each took and how long it
     // waited to start, oldest first, a failed run's point red. Hover names
@@ -4036,9 +4056,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
       const bad = cssVar('--bad', '#bf2c37');
       const warn = cssVar('--warn', '#9a5c00');
-      // A failed run's point is red; a cancelled one (timed out, or never
-      // picked up) amber: neither is an ordinary slow run.
-      const marked = runs.map(r => FAILED_CONCLUSIONS.includes(r.conclusion) ? bad : r.conclusion === 'cancelled' ? warn : null);
+      // A failed or timed-out run's point is red; one whose runner was lost
+      // or never came amber (in an older record, any cancelled run).
+      const marked = runs.map(r => failedOutcome(r) ? bad
+        : (r.outcome ? ['runner_lost', 'no_runner'].includes(r.outcome) : r.conclusion === 'cancelled') ? warn : null);
       const line = (label, data, i) => {
         const color = cssVar(`--series-${i}`, '#5b6475');
         return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, tension: 0, spanGaps: true,
