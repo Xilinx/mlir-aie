@@ -122,10 +122,10 @@ _RULES = [
     (
         "lower",
         r"(input|default_stack_size|traced|input_with_symbols|input_with_addresses)\.mlir"
-        r"|(perCore|lowered|perDevice|npu_seq|ctrlpkt_lowered|ctrlpkt_expanded_seq)_\{0\}\.mlir"
+        r"|(perCore|lowered|perDevice|npu_seq|npu_seq_full_elf|ctrlpkt_lowered|ctrlpkt_expanded_seq)_\{0\}\.mlir"
         r"|perCore(StackSpace|Arches|IRLinkFiles)_\{0\}\.txt|npu_[a-z_]+\.mlir|ctrlpkt_[a-z_]+\.mlir"
-        r"|perDeviceMatching|perSeqMatching|sequencePlacement"
-        r"|perDevice(NPULowered|Compile)(_\{0\}\.mlir|Matching)|perDeviceArches_\{0\}\.txt"
+        r"|perDeviceMatching|perSeq(FullElf)?Matching|sequencePlacement"
+        r"|perDevice(NPULowered|NPULoweredFullElf|Compile)(_\{0\}\.mlir|Matching)|perDeviceArches_\{0\}\.txt"
         r"|(noC|c)trlPktSeqs|fullElfCtrlpktNonEmpty",
     ),
     (
