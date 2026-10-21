@@ -20,6 +20,8 @@ import collections
 import json
 import os
 import shutil
+import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -640,6 +642,28 @@ def test_build_and_cases_are_exclusive(tmp_path):
                 f"--cases={KERNEL_CASES}",
             ]
         )
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_run_without_keep_leaves_no_build_directory(tmp_path):
+    scratch = tmp_path / "tmp"
+    scratch.mkdir()
+    meta = tmp_path / "meta.json"
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "aie.utils.compile.remarks",
+            "--target=aie2p",
+            f"--out={tmp_path / 'rows.json'}",
+            f"--meta={meta}",
+            "--build=scale",
+        ],
+        env={**os.environ, "TMPDIR": str(scratch)},
+        check=True,
+    )
+    assert not list(scratch.glob("aie-static-*"))
+    assert "object" not in json.loads(meta.read_text())["kernels"]["scale"]
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
