@@ -1,21 +1,21 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "39364666031",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39364666031",
- "date": "2026-10-20T03:30:37+00:00",
+ "id": "39538998268",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39538998268",
+ "date": "2026-10-21T03:30:58+00:00",
  "commit": {
-  "id": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/1a647f100e50c3f526d5e3c97eaba1327558e0f8",
-  "message": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile the cores (#3933)",
-  "timestamp": "2026-10-20T01:03:35Z"
+  "id": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/7f36a183bf70b36e6ec4228887ff2be59c58585a",
+  "message": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
+  "timestamp": "2026-10-20T13:56:37Z"
  },
  "event": "schedule",
  "pmode": null,
  "device": null,
  "device_raw": null,
  "provenance": {
-  "commit": "1a647f100e"
+  "commit": "7f36a183bf"
  },
  "sane": true,
  "published": true,
@@ -46,7 +46,7 @@
     "unit": "pairs"
    },
    "wall_s": {
-    "value": 234.1,
+    "value": 242.1,
     "unit": "s"
    }
   }

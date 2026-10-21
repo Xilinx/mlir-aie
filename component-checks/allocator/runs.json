@@ -139,6 +139,32 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "39538998268",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39538998268",
+   "date": "2026-10-21T03:30:58+00:00",
+   "commit": {
+    "id": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "message": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
+    "timestamp": "2026-10-20T13:56:37Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "7f36a183bf"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
