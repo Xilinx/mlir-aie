@@ -1498,8 +1498,9 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 //*****************************************************************************
 // depthwise conv2d 3x3 - vector, with a bias and table, see conv2dk1_i8.cc
 //
-// Weights [C/8][3][3][c8]. The output row for line1, 4 pixels x 8 channels
-// per elementwise mac; the borders shift in zeros.
+// Weights [C/8][3][3][c8]. The output row for line1, 8 pixels a block where
+// the width is a multiple of 8, else 4, each tap a diagonal mmul; the borders
+// shift in zeros.
 //*****************************************************************************
 
 // NB neighbouring blocks of M pixels from x0, for one group of 8 channels:

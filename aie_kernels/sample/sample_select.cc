@@ -26,6 +26,13 @@ static_assert(SAMPLE_SLICE % SAMPLE_CHUNK == 0,
 static_assert(SAMPLE_SLICE >= SAMPLE_K_MAX,
               "a slice holds at least k logits, so tau exists");
 
+// The slice's logits that are tokens'; the rest pad it to whole words.
+#ifndef SAMPLE_VALID
+#define SAMPLE_VALID SAMPLE_SLICE
+#endif
+static_assert(SAMPLE_VALID >= SAMPLE_K_MAX && SAMPLE_VALID <= SAMPLE_SLICE,
+              "the valid logits hold at least k and fit the slice");
+
 #define SAMPLE_SELECT_STATE_WORDS 272
 #define SAMPLE_SELECT_PASSES 2
 
@@ -243,10 +250,15 @@ extern "C" {
 // x: SAMPLE_CHUNK bf16 logits; row: the draw row; state: this column's
 // state; summary: SAMPLE_SUMMARY_WORDS, the same buffer for all of a
 // position's calls.
-void sample_select(const uint16_t *x, const int32_t *row, int32_t *state,
+void sample_select(uint16_t *x, const int32_t *row, int32_t *state,
                    int32_t *summary) {
   event0();
   select_state *s = (select_state *)state;
+  // Padding is no token's: -inf, which no draw takes.
+  if (SAMPLE_VALID < SAMPLE_SLICE)
+    for (int32_t i = SAMPLE_VALID - s->pos; i < SAMPLE_CHUNK; ++i)
+      if (i >= 0)
+        x[i] = 0xff80;
   do {
     if (s->phase == 0 && s->pos == 0)
       begin(s, row, summary);

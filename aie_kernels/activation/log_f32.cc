@@ -20,6 +20,11 @@
 #define LOG_STAGED (!AIE_ARCH_AIE2 && LOG_ELEMS % 256 == 0)
 #endif
 
+// The exponent field of bits - bits(sqrt(1/2)), its mantissa cleared: aie's
+// downshift lowers through srs, which can round in the caller's mode, and
+// with the low 23 bits zero there is nothing to round.
+static constexpr int32_t log_exponent_mask = (int32_t)0xff800000;
+
 // One Horner step of q: split q into limbs and return q f + c.
 static inline __attribute__((always_inline)) f32_acc log_step(
     f32_acc q, bf16_vec fh, bf16_vec fm, bf16_vec fl, float c, bf16_vec one) {
@@ -55,7 +60,10 @@ log_prep(const float *__restrict x, float offset, bfloat16 *__restrict ef,
                     .to_vector<float>()
                     .cast_to<int32_t>();
     auto e = aie::downshift(
-        aie::sub(bits, aie::broadcast<int32_t, f32_lanes>(0x3f3504f3)), 23);
+        aie::bit_and(
+            aie::sub(bits, aie::broadcast<int32_t, f32_lanes>(0x3f3504f3)),
+            aie::broadcast<int32_t, f32_lanes>(log_exponent_mask)),
+        23);
     auto m = aie::sub(bits, aie::upshift(e, 23)).cast_to<float>();
     auto e_magic = aie::add(e, aie::broadcast<int32_t, f32_lanes>(0x4b400000));
     aie::store_v(ef + i,
@@ -159,9 +167,12 @@ extern "C" void log_f32_bf16(float *restrict x, bfloat16 *restrict y, int32_t n,
     auto bits = aie::add(f32_acc(aie::load_v<f32_lanes>(x + i)), offset)
                     .to_vector<float>()
                     .cast_to<int32_t>();
-    // z = 2^e m with m in [sqrt(1/2), sqrt(2)); downshift floors in any mode.
+    // z = 2^e m with m in [sqrt(1/2), sqrt(2)).
     auto e = aie::downshift(
-        aie::sub(bits, aie::broadcast<int32_t, f32_lanes>(0x3f3504f3)), 23);
+        aie::bit_and(
+            aie::sub(bits, aie::broadcast<int32_t, f32_lanes>(0x3f3504f3)),
+            aie::broadcast<int32_t, f32_lanes>(log_exponent_mask)),
+        23);
     auto m = aie::sub(bits, aie::upshift(e, 23)).cast_to<float>();
     // e as a float: 1.5 * 2^23 + e has e in its low mantissa bits.
     auto e_magic = aie::add(e, aie::broadcast<int32_t, f32_lanes>(0x4b400000));
@@ -208,7 +219,10 @@ log10_f32(f32_vec z, const Limbs<f32_lanes> &inv_ln10, bf16_vec one) {
   const bf16_vec ln2_lo = bf16_splat(0x35c0);
   auto bits = z.cast_to<int32_t>();
   auto e = aie::downshift(
-      aie::sub(bits, aie::broadcast<int32_t, f32_lanes>(0x3f3504f3)), 23);
+      aie::bit_and(
+          aie::sub(bits, aie::broadcast<int32_t, f32_lanes>(0x3f3504f3)),
+          aie::broadcast<int32_t, f32_lanes>(log_exponent_mask)),
+      23);
   auto m = aie::sub(bits, aie::upshift(e, 23)).cast_to<float>();
   auto e_magic = aie::add(e, aie::broadcast<int32_t, f32_lanes>(0x4b400000));
   bf16_vec ef = aie::add(f32_acc(e_magic.cast_to<float>()), -12582912.0f)

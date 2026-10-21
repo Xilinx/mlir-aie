@@ -109,7 +109,10 @@ The first call:
    that raises on use, and a variadic `*tensors: In` gets an empty tuple: the
    generator decides how many tensors the design takes from its
    `CompileTime[T]` parameters.
-3. Calls the generator with those operands and the `compile_kwargs`.
+3. Calls the generator with those operands, the `compile_kwargs` and,
+   for each `DispatchTime[T]` parameter the call leaves unbound, a
+   `PerCall` placeholder that the design forwards once through
+   `Runtime(seq, fn_args=[...])` to a runtime-sequence argument.
 4. Captures the resulting `Module` (either the generator's return
    value, or `ctx.module` if it returned `None` — "placed" vs
    "unplaced" generator style).
@@ -459,12 +462,12 @@ new value; the cache key includes the resolved value, not the source
 default.
 
 A generator whose tensor count follows from its compile-time parameters
-declares them as one variadic list, `def design(*tensors: In, *, N:
+declares them as one variadic list, `def design(*tensors: In, N:
 CompileTime[int])`: every positional argument of a call is a tensor of
 that list, in the order the lowered `aie.runtime_sequence` takes them, and
 the runtime checks the count against the compiled design. Only a tensor
 parameter may be variadic; the generator body cannot read the list (it is
-empty at generation) any more than it can read a named placeholder.
+empty at generation); named operands carry only shape and dtype.
 
 ## Related reading
 

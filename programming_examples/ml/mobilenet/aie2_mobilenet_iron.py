@@ -436,7 +436,11 @@ def _run_and_verify(design, opts):
         verdict = compare(
             actual[:post_L2_OutC].astype(np.int32),
             golden_image.astype(np.int32),
-            Tolerance.lsb(9, note="should be 1; #3009"),
+            Tolerance.lsb(
+                3,
+                note="measured max 3 (959/1280 exact): the golden's average "
+                "pool keeps one more fractional bit than the kernel's",
+            ),
         )
         print(f"max_difference: {verdict.max_abs_err:g}")
         if not verdict.ok:

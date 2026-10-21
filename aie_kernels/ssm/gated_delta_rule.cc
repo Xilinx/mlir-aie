@@ -8,10 +8,10 @@
 // Gated DeltaNet's recurrence for one value head over a block of rows.
 //
 // The state is kept as three bf16 limbs (f32_split.h), and each f32 product is
-// summed from exact limb products and rounded once, as the scalar f32 product
-// is. The per-row scalars (norms, decay, beta) are computed for every row at
-// once, a row per lane; the state's columns are independent, so each
-// 16-column block then runs a row's whole update on its own.
+// summed from limb products, within 1 ulp of the f32 product (f32_split.h). The
+// per-row scalars (norms, decay, beta) are computed for every row at once, a
+// row per lane; the state's columns are independent, so each 16-column block
+// then runs a row's whole update on its own.
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
@@ -46,6 +46,9 @@ constexpr bool Vec = AIE_ARCH_AIE2P || Dk > 2;
 // Where a row scalar's second set starts (b after a, k's norm after q's):
 // with at most 16 rows, both sets share one vector.
 constexpr int RS = Vec && R <= L ? L : RP;
+// v starts 2 R Dk bf16 into the block; its rows load in place only from a
+// 32-byte boundary.
+constexpr bool V_IN_PLACE = Vec && Dv == P && (2 * R * Dk) % 16 == 0;
 template <unsigned N>
 using acc_t = aie::accum<accfloat, N>;
 template <unsigned N>
@@ -136,7 +139,9 @@ constexpr float rsqrt_newton(float x) {
 
 // rsqrt_newton per lane, its operations in the same order.
 inline __attribute__((always_inline)) acc_t<W> rsqrt_f32(acc_t<W> x) {
-  const auto xi = x.to_vector<float>().cast_to<int32_t>();
+  // Why the bit_and: log_exponent_mask in activation/log_f32.cc.
+  const auto xi = aie::bit_and(x.to_vector<float>().cast_to<int32_t>(),
+                               aie::broadcast<int32_t, W>(-2));
   acc_t<W> y(
       aie::sub(aie::broadcast<int32_t, W>(0x5f3759df), aie::downshift(xi, 1))
           .cast_to<float>());
@@ -284,10 +289,16 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
                  rsqrt_f32(aie::add(acc_t<W>(aie::load_v<W>(sq + t0)), eps))
                      .to_vector<float>());
   }
-  constexpr float q_root = rsqrt_newton((float)Dk);
-  // AIE2 keeps the base kernel's run-time form: folding it changes AIE2's
-  // code at key_dim 2, which no npu1 run has checked.
-  const Limbs<W> q_scale = limbs<W>(Vec ? q_root : rsqrt_newton((float)Dk));
+  // 1 / sqrt(key_dim) rounded once: two more Newton steps in double, at
+  // compile time, then one rounding to float.
+  constexpr float q_root = [] {
+    const double x = Dk;
+    double y = rsqrt_newton((float)Dk);
+    for (int n = 0; n < 2; n++)
+      y = y * (1.5 - 0.5 * x * y * y);
+    return (float)y;
+  }();
+  const Limbs<W> q_scale = limbs<W>(q_root);
   for (int t0 = 0; t0 < RP; t0 += W) {
     aie::store_v(qn + t0,
                  mul_limbs(limbs<W>(sq + t0), q_scale).to_vector<float>());
@@ -323,9 +334,10 @@ extern "C" void gated_delta_rule(bfloat16 *restrict block, float *restrict head,
       continue;
     }
     const bfloat16 *kt = k + t * Dk, *qt = q + t * Dk;
-    // v's row in place when it fills whole vectors, else padded with zeros.
+    // v's row in place when it fills whole aligned vectors, else copied and
+    // padded with zeros.
     const bfloat16 *vr = v_row;
-    if constexpr (Vec && Dv == P)
+    if constexpr (V_IN_PLACE)
       vr = v + t * Dv;
     else
       for (int j = 0; j < Dv; j++)

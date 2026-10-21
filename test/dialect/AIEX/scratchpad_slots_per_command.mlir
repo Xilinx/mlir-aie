@@ -16,13 +16,14 @@
 // RUN: aie-opt --aie-lower-scratchpad-parameters=output-params-file=%t.params %s | FileCheck %s
 // RUN: FileCheck %s --check-prefix=PARAMS < %t.params
 
-// @a only `first` reads and @b only `second`: both take slot 0. `second`'s
-// core parameter @c takes 1, and @shared, which both commands read, 2.
+// @shared, which both commands read, conflicts with the most parameters and
+// takes slot 0. @a only `first` reads and @b only `second`: both take slot 1.
+// `second`'s core parameter @c takes 2.
 
-// CHECK: aiex.scratchpad_parameter @a : i32 {{.*}}state_table_idx = 0 : ui8}
-// CHECK: aiex.scratchpad_parameter @b : i32 {{.*}}state_table_idx = 0 : ui8}
-// CHECK: aiex.scratchpad_parameter @c : i32 {{.*}}state_table_idx = 1 : ui8}
-// CHECK: aiex.scratchpad_parameter @shared : i32 {{.*}}state_table_idx = 2 : ui8}
+// CHECK: aiex.scratchpad_parameter @a : i32 {{.*}}state_table_idx = 1 : ui8}
+// CHECK: aiex.scratchpad_parameter @b : i32 {{.*}}state_table_idx = 1 : ui8}
+// CHECK: aiex.scratchpad_parameter @c : i32 {{.*}}state_table_idx = 2 : ui8}
+// CHECK: aiex.scratchpad_parameter @shared : i32 {{.*}}state_table_idx = 0 : ui8}
 // CHECK: aie.runtime_sequence @seq_a
 // CHECK: aiex.npu.create_scratchpad {size = 12 : ui32}
 // CHECK: aie.runtime_sequence @first
@@ -31,10 +32,10 @@
 // CHECK-SAME: scratchpad_parameters = [@b, @c, @shared]
 
 // PARAMS:      {{^}}4 3{{$}}
-// PARAMS-NEXT: {{^}}a 0 i32 addr 0 960{{$}}
-// PARAMS-NEXT: {{^}}b 0 i32 addr 0 960{{$}}
-// PARAMS-NEXT: {{^}}c 1 i32 core - -{{$}}
-// PARAMS-NEXT: {{^}}shared 2 i32 addr 0 960{{$}}
+// PARAMS-NEXT: {{^}}a 1 i32 addr 0 960{{$}}
+// PARAMS-NEXT: {{^}}b 1 i32 addr 0 960{{$}}
+// PARAMS-NEXT: {{^}}c 2 i32 core - -{{$}}
+// PARAMS-NEXT: {{^}}shared 0 i32 addr 0 960{{$}}
 // PARAMS-NEXT: {{^}}0{{$}}
 // PARAMS-NEXT: {{^}}2{{$}}
 // PARAMS-NEXT: {{^}}main:first 2 a shared{{$}}

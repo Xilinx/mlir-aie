@@ -6,6 +6,7 @@
 
 #include "../aie_arch.h"
 #include "../aie_kernel_utils.h"
+#include "f32_split.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -22,9 +23,6 @@ static inline __attribute__((always_inline)) Exp2F32
 exp2_f32_32(aie::vector<float, 32> x) {
   using acc_t = aie::accum<accfloat, 32>;
   using bf_t = aie::vector<bfloat16, 32>;
-  auto bf = [](int16_t bits) {
-    return aie::broadcast<int16_t, 32>(bits).cast_to<bfloat16>();
-  };
   auto acc = [](float c) { return acc_t(aie::broadcast<float, 32>(c)); };
   auto bits = [](float v) {
     return aie::broadcast<float, 32>(v).cast_to<int32_t>();
@@ -44,13 +42,13 @@ exp2_f32_32(aie::vector<float, 32> x) {
   // accumulator, where k is exact in bf16.
   const auto magic = aie::broadcast<float, 32>(12582912.0f);
   const aie::vector<float, 32> xm = aie::add(x, magic);
-  const bf_t one = bf(0x3f80);
+  const bf_t one = bf16_splat(0x3f80);
   const bf_t k = acc_t(aie::sub(xm, magic)).to_vector<bfloat16>();
   const acc_t f = aie::msc(acc_t(x), k, one);
   const bf_t f_hi = f.to_vector<bfloat16>();
   const bf_t f_lo = aie::msc(f, f_hi, one).to_vector<bfloat16>();
 
-  acc_t p = aie::mac(acc(0.0559063815f), f_hi, bf(0x3c1d));
+  acc_t p = aie::mac(acc(0.0559063815f), f_hi, bf16_splat(0x3c1d));
   auto step = [&](float c) {
     const bf_t hi = p.to_vector<bfloat16>();
     const bf_t lo = aie::msc(p, hi, one).to_vector<bfloat16>();
@@ -121,14 +119,11 @@ static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
 static inline aie::vector<bfloat16, 32> exp2_bf16_32(aie::vector<float, 32> x) {
   using acc_t = aie::accum<accfloat, 32>;
   using bf_t = aie::vector<bfloat16, 32>;
-  auto bf = [](int16_t bits) {
-    return aie::broadcast<int16_t, 32>(bits).cast_to<bfloat16>();
-  };
   const Exp2F32 e = exp2_f32_32(x);
   bf_t r = acc_t(e.bits.cast_to<float>()).to_vector<bfloat16>();
   r = aie::select(r, aie::zeros<bfloat16, 32>(), e.below);
-  r = aie::select(r, bf(0x7f80), e.overflow);
-  return aie::select(r, bf(0x7fc0), e.is_nan);
+  r = aie::select(r, bf16_splat(0x7f80), e.overflow);
+  return aie::select(r, bf16_splat(0x7fc0), e.is_nan);
 }
 
 template <unsigned N>

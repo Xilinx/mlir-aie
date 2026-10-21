@@ -9,7 +9,8 @@ component check still in github-action-benchmark's format as its nightly's
 next publish will, and serves it as the nightlies publish it (the page at ``dashboard/``, a redirect
 at ``kernel-checks/``), except that the page itself is read from this
 working tree on every request: edit ``utils/kernel_checks/index.html``,
-reload the browser.
+reload the browser. It reads synthetic nights through the checks' own code,
+so it runs where mlir_aie imports (``source utils/env_setup.sh``).
 
     python3 utils/kernel_checks/preview.py                 # real data
     python3 utils/kernel_checks/preview.py --fetch         # git fetch it first
@@ -57,7 +58,8 @@ import sa_placer  # noqa: E402
 import sa_placer_hw  # noqa: E402
 import yolo26n_hw  # noqa: E402
 
-# Per hardware seed: its batch 1 launch and streaming time in us, and its cost.
+# Per hardware seed: its batch 1 launch and each further image's time in us,
+# and its cost.
 HW_SEEDS = {3: (316.0, 65.0, 290), 2: (309.0, 65.0, 295), 7: (313.0, 72.0, 295)}
 # A cold and a warm compile's aiecc profiles, for the stage times.
 STAGE_PROFILES = (
@@ -313,7 +315,7 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
     """One synthetic hardware nightly at each SA effort: its rows and meta."""
     runs, compiles, placements = [], [], []
     for seed, (one, streaming, cost) in HW_SEEDS.items():
-        for effort_label in sa_placer_hw._EFFORTS:
+        for effort_label in sa_placer_hw.EFFORTS:
             digest = hashlib.sha256(f"{seed}/{effort_label}".encode()).hexdigest()[:12]
             compiles.append(
                 {
@@ -333,7 +335,6 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
                         "batch": batch,
                         "effort_label": effort_label,
                         "passed": True,
-                        "launch_us": round(launch, 1),
                         "us_per_image": round(per, 2),
                         "us_per_image_range": f"median {per * 1.02:.2f}, MAD {per * 0.005:.2f}, p95 {per * 1.08:.2f}",
                         "e2e_us_per_image": round(e2e, 2),
@@ -351,6 +352,8 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
             )
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
+        "provenance": "dispatch dynamic",
+        "efforts": sa_placer_hw.EFFORTS,
         "measurement_sane": True,
         "compiles": compiles,
         "placements": placements,
@@ -372,7 +375,8 @@ def _sweep_night(rng: random.Random) -> tuple[list, dict]:
             "final_cost": base + costs.randint(0, base // 20),
             "cpu_ms": cpu_ms * rng.uniform(0.9, 1.15),
             "peak_rss_mb": rss + rng.uniform(0, 1),
-            "stderr": "",
+            "timed_out": False,
+            "output": "",
         }
         for fixture, (base, cpu_ms, rss) in zip(
             sa_placer.FIXTURES, ((12, 780, 63), (290, 25000, 67))

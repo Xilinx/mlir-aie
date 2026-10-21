@@ -29,7 +29,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 |-|-|-|-|
 | [leaky_relu.cc](./activation/leaky_relu.cc) | AIE API | Leaky ReLU activation | `bfloat16` |
 | [gelu.cc](./activation/gelu.cc) | AIE API | GELU activation (tanh approx). The per-arch headers differ in tuning: the AIE2P one is MAC-fused with an `s*beta` precompute and post-RA pipelining | `bfloat16` |
-| [gelu_erf.cc](./activation/gelu_erf.cc) | AIE API | Exact GELU, `x * Phi(x)` (erfc in f32 limbs, rounded once): correctly rounded wherever GELU is a normal bf16, subnormal results flushed to 0 | `bfloat16` |
+| [gelu_erf.cc](./activation/gelu_erf.cc) | AIE API | Exact GELU, `x * Phi(x)` (erfc in f32 limbs, rounded once): correctly rounded wherever GELU is a normal bf16 (measured on npu2; npu1 unmeasured), subnormal results flushed to 0 | `bfloat16` |
 | [silu.cc](./activation/silu.cc) | AIE API | SiLU / Swish activation (tanh path from `activations.h`) | `bfloat16` |
 | [swiglu.cc](./activation/swiglu.cc) | AIE API | SwiGLU gated activation (tanh path from `activations.h`) | `bfloat16` |
 | [tanh.cc](./activation/tanh.cc) | AIE API | Tanh activation (tanh path from `activations.h`: native on AIE2P, LUT on AIE2) | `bfloat16` |
@@ -42,9 +42,9 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 ## conv
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
-| [conv2dk1_i8.cc](./conv/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D; with a bias, ONNX QLinearConv (an `int32` bias per output channel, then optionally a 256-entry `int8` table from [table_i8.h](./common/table_i8.h)) | `int8_t` |
+| [conv2dk1_i8.cc](./conv/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D; with a bias, ONNX QLinearConv for a power-of-two per-tensor scale and zero zero-points (an `int32` bias per output channel, then optionally a 256-entry `int8` table from [table_i8.h](./common/table_i8.h)) | `int8_t` |
 | [conv2dk1.cc](./conv/conv2dk1.cc) | AIE API | 1x1 Conv2D with fused ReLU | `int8_t`, `uint8_t` |
-| [conv2dk3.cc](./conv/conv2dk3.cc) | AIE API | 3x3 Conv2D with fused ReLU; with a bias, ONNX QLinearConv to `int8` at stride 1 or 2, optionally through the `int8` table of [table_i8.h](./common/table_i8.h) | `int8_t`, `uint8_t` |
+| [conv2dk3.cc](./conv/conv2dk3.cc) | AIE API | 3x3 Conv2D with fused ReLU; with a bias, ONNX QLinearConv (power-of-two per-tensor scale, zero zero-points) to `int8` at stride 1 or 2, optionally through the `int8` table of [table_i8.h](./common/table_i8.h) | `int8_t`, `uint8_t` |
 | [conv2dk1_skip.cc](./conv/conv2dk1_skip.cc) | AIE API| 1x1 Conv2D with fused skip addition | `int8_t`, `uint8_t` |
 | [conv2dk1_skip_init.cc](./conv/conv2dk1_skip_init.cc) | AIE API | 1x1 Conv2D with fused 1x1 Conv2D skip addition | `int8_t`, `uint8_t` |
 | [conv2dk14.cc](./conv/conv2dk14.cc) | AIE API | 1x14 / 14x1 Conv2D | `int8_t` |
@@ -117,7 +117,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [mm_bfp_mixed.cc](./linalg/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul (AIE2P only) | `bfp16` |
 | [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV); `-DA_COL_MAJ` reads A column-major with partial sums carried across calls, bit-identical to row-major | `bfloat16` |
 | [mv_i16.cc](./linalg/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
-| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query and key blocks a multiple of 16 rows and a head dimension a multiple of 8; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16`, running state and O `float32` |
+| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 8 rows, key blocks a multiple of 16 and a head dimension a multiple of 8; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16`, running state and O `float32` |
 | [attention_i8.cc](./linalg/attention_i8.cc) | AIE API | One head of int8 attention over a 2-D map (YOLO26n's PSA), a row of queries a call: power-of-two scales, an integer softmax from a 256-entry exp table, rounding half to even | `int8_t`, table `int32_t` |
 | [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
 

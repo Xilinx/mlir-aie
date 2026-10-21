@@ -926,8 +926,8 @@ def main():
             out = self.bn5_quant_conv2(out)
             out = self.bn5_quant_relu2(out)
             out = self.bn5_quant_conv3(out)
-            # out = self.bn4_add(out)
-            # out = out+out_q
+            out = self.bn4_add(out)
+            out = out + out_q
             out = self.bn5_add(out)
 
             # # bn6
@@ -1214,10 +1214,10 @@ def main():
         block_5_relu_1 * block_5_weight_scale2 / block_5_relu_2
     )
     block_5_combined_scale3 = -torch.log2(
-        block_5_relu_2 * block_5_weight_scale3 / block_5_skip_add
+        block_5_relu_2 * block_5_weight_scale3 / block_5_inp_scale1
     )
     block_5_combined_scale_skip = -torch.log2(
-        block_5_skip_add / block_5_skip_add
+        block_5_inp_scale1 / block_5_skip_add
     )  # After addition | clip -128-->127
 
     print("********************bn5*******************************")

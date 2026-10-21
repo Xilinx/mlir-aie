@@ -29,10 +29,12 @@ from ._common import (
     _detect_arch,
     _kernel_source,
     _make_extern,
-    dtypes,
 )
 from .core import conv_even
 from .zero import zero
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 _CASCADE_COMBOS = {
     (np.int16, np.int16): "i16_i16",
@@ -535,9 +537,11 @@ class _MhaFactory:
         return _MM_MAC_DIMS["aie2p"][key]
 
 
-@dtypes(
+DTYPES["mm"] = tuple(
     tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
 )
+
+
 def mm(
     dim_m: int = 64,
     dim_k: int = 64,
@@ -716,7 +720,7 @@ def mm(
 mm.mac_dims = _MatMulFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
 
 
-@dtypes(
+DTYPES["mv"] = tuple(
     (
         {"input_dtype": np.int16, "output_dtype": np.int32},
         # dim_k: the bf16 kernel accumulates VEC_SIZE (64) elements at a
@@ -724,6 +728,8 @@ mm.mac_dims = _MatMulFactory.mac_dims  # pyright: ignore[reportFunctionMemberAcc
         {"input_dtype": bfloat16, "output_dtype": bfloat16, "dim_k": 256},
     )
 )
+
+
 def mv(
     dim_m: int = 32,
     dim_k: int = 32,
@@ -959,7 +965,9 @@ def mv_bf16_ref(m, row_offset, a, b):
 _BFP_MAC_DIMS = (8, 8, 8)  # the bfp16ebs8 mmul is 8x8x8
 
 
-@dtypes(({"mixed": False}, {"mixed": True}))
+DTYPES["mm_bfp"] = tuple(({"mixed": False}, {"mixed": True}))
+
+
 def mm_bfp(
     dim_m: int = 64, dim_k: int = 64, dim_n: int = 64, mixed: bool = False
 ) -> MatrixKernel:
@@ -1150,7 +1158,16 @@ def attention_i8_ref(
     Every requantization rounds half to even and saturates; each probability
     is ``2**prob_shift * e / sum(e)`` rounded exactly, ``e`` the exp table at
     the score's distance below the row's maximum.
+
+    Raises:
+        ValueError: ``q_mul`` is not an int8 or ``prob_shift`` is not in
+            [0, 30], which the kernel does not take.
     """
+    if not -128 <= int(q_mul) <= 127 or not 0 <= int(prob_shift) <= 30:
+        raise ValueError(
+            f"attention_i8: q_mul ({q_mul}) must be an int8 and prob_shift "
+            f"({prob_shift}) in [0, 30]"
+        )
     N, KD, HD, W = int(seq_len), int(key_dim), int(head_dim), int(width)
     q = np.asarray(q_row, np.int64)
     lead = q.shape[:-1]
@@ -1215,8 +1232,9 @@ def attention_i8(
     ``[seq_len/8][key_dim][8]``, the values ``[head_dim/8][seq_len][8]``, the
     256-entry int32 exp table (non-increasing, as an exp table is, and each
     entry from 0 to below ``2**29``), the output row, then
-    ``q_mul, q_shift, score_shift, prob_shift, out_shift`` (``prob_shift`` at
-    most 30).
+    ``q_mul, q_shift, score_shift, prob_shift, out_shift``: ``q_mul`` an
+    int8, which the kernel multiplies int8 queries by, and ``prob_shift``
+    from 0 to 30.
     ``fn.load_kv(k_row, v_row, kt, v, row)`` stores one row of the map's keys
     and values in those layouts.
 
@@ -1820,7 +1838,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
                             ),
                             note="f32 summation order over lk exact bf16 products, "
                             "in the kernel and the reference; measured worst 0.12 "
-                            "of it on npu1",
+                            "of it on npu1; npu2: unmeasured",
                         )
                         if build.tuned != "aie2p"
                         else Tolerance.relative(

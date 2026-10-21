@@ -15,8 +15,8 @@ from typing import ClassVar
 
 import numpy as np
 import pytest
-from aie.utils.compile.jit.declaration import Declaration
 from aie.utils.compile.jit.markers import In, InOut, Out
+from aie.utils.compile.jit.operator import Operator
 from aie.utils.compile.jit.params import (
     Select,
     param,
@@ -26,13 +26,7 @@ from aie.utils.compile.jit.params import (
 )
 
 
-class Base:
-    trace = None
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls.declaration = Declaration.of_class(cls, Base)
-
+class Base(Operator, library=True):
     def inputs(self):
         pass
 

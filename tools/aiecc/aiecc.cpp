@@ -77,6 +77,7 @@
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/xxhash.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <future>
 #include <iostream>
@@ -875,11 +876,13 @@ static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
 // (and built) so a `--checkpoint` can capture them as its cut points. Edges
 // that must run but write nothing are appended to `checkEdges`. A non-null
 // `cache` is --device-cache, which the graph uses only when this build's
-// outputs allow it.
+// outputs allow it. `keptDevices` are the devices --device-name keeps, or
+// empty to keep all.
 static std::vector<EdgeBase *>
 buildMainGraph(mlir::MLIRContext &context, Graph &g,
                std::vector<EdgeBase *> &cutEdges,
-               std::vector<EdgeBase *> &checkEdges, DeviceCache *cache) {
+               std::vector<EdgeBase *> &checkEdges, DeviceCache *cache,
+               llvm::StringSet<> keptDevices) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -891,7 +894,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   using xilinx::AIE::TileOp;
   using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
 
-  const std::string &devFilter = deviceName.getValue();
   std::string inputFile = getInputFilename();
 
   std::string workDirStr = getWorkDir();
@@ -925,25 +927,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     };
   };
 
-  // --device-name keeps the named device; a full ELF also carries the PDIs of
-  // the devices it reaches. The first module a filter sees answers for every
-  // stage, since each stage keeps the sequences' device references.
-  auto reached =
-      std::make_shared<std::pair<std::once_flag, llvm::StringSet<>>>();
-  auto matchesDeviceFilter = [devFilter, reached,
-                              fullElf = generateFullElf](DeviceOp d) {
+  auto matchesDeviceFilter = [keptDevices =
+                                  std::move(keptDevices)](DeviceOp d) {
     // Empty reset devices synthesized by --expand-load-pdis must always be
     // included, regardless of --device-name.
-    if (devFilter.empty() || d.getSymName().starts_with("empty_") ||
-        d.getSymName() == devFilter)
-      return true;
-    auto module = d->getParentOfType<mlir::ModuleOp>();
-    if (!fullElf || !module)
-      return false;
-    std::call_once(reached->first, [&] {
-      reached->second = devicesReachedFrom(module, devFilter);
-    });
-    return reached->second.contains(d.getSymName());
+    return keptDevices.empty() || d.getSymName().starts_with("empty_") ||
+           keptDevices.contains(d.getSymName());
   };
 
   // Split a whole-module edge into one item per DeviceOp (keyed by bare device
@@ -2669,6 +2658,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 //===----------------------------------------------------------------------===//
 
 int main(int argc, char **argv) {
+  std::chrono::steady_clock::time_point processStart =
+      std::chrono::steady_clock::now();
 
   //--------------------------------------------------------------------------//
   // Context setup
@@ -2917,8 +2908,23 @@ int main(int argc, char **argv) {
                         DeviceCache::configurationKey(*effArgvStore, tools),
                         verbose);
   }
+  // --device-name keeps the named device, and a full ELF also the devices
+  // whose PDIs it carries. Later stages lower away the sequences' load_pdi and
+  // configure references, so those come from the input.
+  llvm::StringSet<> keptDevices;
+  if (!deviceName.empty()) {
+    keptDevices.insert(deviceName);
+    if (generateFullElf && !emitDot && !getInputFilename().empty()) {
+      mlir::OwningOpRef<mlir::ModuleOp> input =
+          parseModuleFromFile(getInputFilename(), &context);
+      if (!input)
+        return 1;
+      keptDevices = devicesReachedFrom(*input, deviceName);
+    }
+  }
   std::vector<EdgeBase *> outputs = buildMainGraph(
-      context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr);
+      context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr,
+      std::move(keptDevices));
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file
@@ -2991,8 +2997,8 @@ int main(int argc, char **argv) {
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile,
-                 enableRepeaterScripts && !disableRepeaterScripts,
-                 profileJson});
+                 enableRepeaterScripts && !disableRepeaterScripts, profileJson,
+                 processStart});
   // --cut stops the build at the cut point: only the prefix up to the cut
   // edges is produced (as work-dir intermediates) and snapshotted by
   // --checkpoint; the requested final artifacts are NOT built here (the

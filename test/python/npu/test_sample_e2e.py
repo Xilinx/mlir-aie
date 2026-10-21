@@ -57,11 +57,13 @@ def sample_positions(
     k_max: CompileTime[int] = 64,
     positions: CompileTime[int] = 1,
     last: CompileTime[int] = 0,
+    padded: CompileTime[int] = 0,
 ):
     """``positions`` draws, one row of ``vocab`` logits and one draw row each.
 
     The last of the ``cores`` columns takes ``last`` logits when it is set,
     the others the rest evenly; every column takes ``vocab // cores`` when not.
+    The row's last ``padded`` logits are no token's.
     """
     slice_size = (vocab - last) // (cores - 1) if last else vocab // cores
     sizes = [slice_size] * (cores - 1) + [last or slice_size]
@@ -127,7 +129,12 @@ def sample_positions(
                     of_x.cons(),
                     of_draw.cons(),
                     of_summary[c].prod(),
-                    sample.sample_select(slice_size=sizes[c], chunk=chunk, k_max=k_max),
+                    sample.sample_select(
+                        slice_size=sizes[c],
+                        chunk=chunk,
+                        k_max=k_max,
+                        valid=sizes[c] - (padded if c == cores - 1 else 0),
+                    ),
                     state,
                     streams * sizes[c] // chunk,
                 ],
@@ -304,6 +311,47 @@ def test_device_draws_match_sample_ref(vocab, cores, chunk, k_max, last):
         k_max=k_max,
         positions=positions,
         last=last,
+    )
+    np.testing.assert_array_equal(token.numpy(), expected)
+    np.testing.assert_array_equal(record.numpy(), expected)
+
+
+@pytest.mark.parametrize(
+    "vocab,cores,chunk,padded",
+    [
+        # One chunk per slice, its last logit padding.
+        (2048, 2, 1024, 1),
+        # Padding across a chunk's vector body and scalar tail, in the last
+        # of a stream's chunks.
+        (2060, 2, 206, 39),
+    ],
+)
+def test_padding_is_never_drawn(vocab, cores, chunk, padded):
+    """A row's last ``padded`` logits pad it to whole words: each holds a
+    value above every token's, and no draw, greedy or not, takes one.
+    """
+    k_max = 8
+    tokens = vocab - padded
+    logits, draws, expected = _rows(tokens, cores, k_max, seed=vocab + padded)
+    # _rows sizes its slices for the tokens alone; these runs split the
+    # padded row instead, which every row shape above still holds.
+    pad = np.full((len(expected), padded), 100.0, dtype=bfloat16)
+    logits = np.concatenate([logits, pad], axis=1)
+    positions = len(expected)
+    streams = sample.select_streams(vocab // cores, chunk)
+    token = iron.full((positions,), -1, dtype=np.int32)
+    record = iron.full((positions,), -1, dtype=np.int32)
+    sample_positions(
+        iron.tensor(np.repeat(logits, streams, axis=0).reshape(-1), dtype=bfloat16),
+        iron.tensor(draws.reshape(-1), dtype=np.int32),
+        token,
+        record,
+        vocab=vocab,
+        cores=cores,
+        chunk=chunk,
+        k_max=k_max,
+        positions=positions,
+        padded=padded,
     )
     np.testing.assert_array_equal(token.numpy(), expected)
     np.testing.assert_array_equal(record.numpy(), expected)
