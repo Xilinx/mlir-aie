@@ -40,6 +40,11 @@ op = Scale(M=1024)          # Scale(M=1024, factor=1.0, tile=None)
 done = op.resolved(device)  # Scale(M=1024, factor=1.0, tile=16)
 ```
 
+`replace` returns a copy with the parameters it names changed. A parameter
+the caller never gave, computed by a `derive` or a function default, is
+computed again from the new values; one the caller gave, a `derive` one
+included, keeps its value (pass `None` to compute it again).
+
 `In`, `Out` and `InOut` take the same arguments: the host `dims` (integers,
 `param()`s and `Select`s), then `dtype`, `obj_shape` (what one ObjectFifo
 element holds), `per` (the `param()` the stream is split over), `depth`,
