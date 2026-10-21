@@ -7,6 +7,8 @@
 import importlib
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -15,10 +17,14 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "utils/component_checks"
-# A shim-only design (test/aiecc/profile_json.mlir's shape) and a cold
-# mobilenet JIT compile at SA effort 0.05, both captured from aiecc as is.
+# A shim-only design (test/aiecc/profile_json.mlir's shape), a cold
+# mobilenet JIT compile at SA effort 0.05, and test/aiecc/
+# cpp_full_elf_generation.mlir built with --get-full-elf, all captured from
+# aiecc as is.
 SHIM = CHECKS / "fixtures/aiecc_profile_shim.json"
 MOBILENET = CHECKS / "fixtures/aiecc_profile_mobilenet.json"
+FULL_ELF = CHECKS / "fixtures/aiecc_profile_full_elf.json"
+AIECC = shutil.which("aiecc")
 
 
 @pytest.fixture
@@ -29,7 +35,9 @@ def checks(monkeypatch):
     )
 
 
-@pytest.mark.parametrize("fixture", [SHIM, MOBILENET], ids=["shim", "mobilenet"])
+@pytest.mark.parametrize(
+    "fixture", [SHIM, MOBILENET, FULL_ELF], ids=["shim", "mobilenet", "full-elf"]
+)
 def test_every_captured_edge_has_a_stage(checks, fixture):
     stages, _ = checks
     edges = json.loads(fixture.read_text())["edges"]
@@ -67,12 +75,40 @@ def test_mobilenet_stages_are_its_edges_summed(checks):
         ("elfs_{0}.elf", "link"),
         ("instructions.elf", "package"),
         ("kernels_{0}.json", "package"),
+        # Edges a full-ELF, multi-device, transaction or locmap build adds.
+        ("perDeviceNPULowered_{0}.mlir", "lower"),
+        ("perDeviceCompile_{0}.mlir", "lower"),
+        ("perDeviceCompileMatching", "lower"),
+        ("perDeviceArches_{0}.txt", "lower"),
+        ("ctrlPktSeqs", "lower"),
+        ("{0}_transaction.mlir", "package"),
+        ("input_aie_partition_{0}.json", "package"),
+        ("insts_{0}.bin.locmap.json", "package"),
+        ("linked.mlir", "link"),
         ("a_new_aiecc_edge", "other"),
     ],
 )
 def test_output_names_aiecc_was_given_are_matched_by_kind(checks, edge, stage):
     stages, _ = checks
     assert stages.stage_of(edge) == stage
+
+
+@pytest.mark.skipif(AIECC is None, reason="no aiecc on PATH")
+def test_the_aiecc_built_here_names_only_known_edges(checks, tmp_path):
+    stages, _ = checks
+    profile = tmp_path / "profile.json"
+    subprocess.run(
+        [AIECC, "--get-npu-insts", "--no-progress", f"--profile-json={profile}"]
+        + [f"--output-dir={tmp_path}", f"--tmpdir={tmp_path / 'work'}"]
+        + [str(ROOT / "test/aiecc/profile_json.mlir")],
+        check=True,
+        capture_output=True,
+    )
+    got = json.loads(profile.read_text())
+    assert got["version"] == stages.PROFILE_VERSION
+    assert [
+        e["name"] for e in got["edges"] if stages.stage_of(e["name"]) == "other"
+    ] == []
 
 
 def test_an_unknown_edge_is_counted_as_other(checks, tmp_path):

@@ -13,8 +13,15 @@ no browser asks GitHub itself.
   (pushes and the nightly alike) and, when it has ``legs``, that run's
   jobs; and over the last ``WINDOW_DAYS`` days how often it passed on main,
   on pull requests and in the merge queue, how many commits needed a re-run
-  to pass (flaky), how long a run took and waited to start; and its
-  finished runs on main, for a chart of how long each took and waited.
+  to pass (flaky), how long a run on main took and waited for a runner; and
+  every finished run on main in the window, for a chart of how long each
+  took and waited.
+  A run on main is judged by its jobs (``outcome``): a job that ran past
+  its timeout fails it, though GitHub calls the run cancelled; a runner
+  that was lost or never came is infrastructure, not a test failure; and a
+  run cancelled by hand or by a newer one counts neither way. Its wait is
+  its slowest job's, from the job's creation to its start, and its time
+  from its first job's start to its end.
 * **Merge time**: the pull requests merged in the window, how long each was
   open, and how many are open now and for how long.
 * **The other scheduled jobs** (``workflows``): each one's recent scheduled
@@ -24,10 +31,12 @@ no browser asks GitHub itself.
 
 It also keeps ``history.json``: one point a day of the critical workflows'
 and merge time's figures, so the page can chart them. Pass the published
-one with ``--history``; today's point is replaced as the day goes on.
+one with ``--history``; today's point is replaced as the day goes on. Pass
+the published ``status.json`` with ``--previous``, so a run on main judged
+before is not asked about again.
 
     GITHUB_TOKEN=... python3 utils/kernel_checks/ci_health.py --out ci-health \
-        [--history published/history.json]
+        [--history published/history.json] [--previous published/status.json]
 
 Only what the page reads is kept. Whatever GitHub will not answer is
 recorded with its error; the rest still publishes.
@@ -53,12 +62,21 @@ WINDOW_DAYS = 14
 HISTORY_DAYS = 180
 # Pages of 100 runs read per critical workflow; the window rarely needs more.
 RUN_PAGES = 10
-# Finished runs on main kept per critical workflow, for its latency chart.
-MAIN_RUNS_KEPT = 40
 # Pages of 100 pull requests read, newest updated first.
 PULL_PAGES = 5
 # A conclusion that counts against a pass rate; cancelled and skipped do not.
 FAILED = ("failure", "timed_out", "startup_failure")
+# A run on main's outcome, from its jobs. The first two count against its
+# pass rate, the next two are the runners', and a cancel counts neither way.
+OUTCOMES = ("failed", "timed_out", "runner_lost", "no_runner", "cancelled")
+# What a job's annotations say when the job was stopped rather than failed,
+# first match wins.
+STOPPED = (
+    ("exceeded the maximum execution time", "timed_out"),
+    ("lost communication with the server", "runner_lost"),
+    ("was canceled by", "cancelled"),
+    ("higher priority waiting request", "cancelled"),
+)
 
 RUN_FIELDS = {
     "id": "id",
@@ -79,7 +97,11 @@ JOB_FIELDS = {
     "conclusion": "conclusion",
     "created_at": "created_at",
     "started_at": "started_at",
+    "runner": "runner_name",
 }
+# What publishing keeps of a run on main beyond RUN_FIELDS, judged from its
+# jobs once it finished.
+JUDGED = ("outcome", "waited", "took")
 
 
 def load_workflows(path: Path = WORKFLOWS) -> dict:
@@ -94,11 +116,11 @@ class ApiError(Exception):
     pass
 
 
-def github(token: str, timeout: float = 30):
+def github(token: str, timeout: float = 30, api: str = API):
     """Return a function that GETs one API path as JSON, with the token if any."""
 
     def get(path: str):
-        req = urllib.request.Request(f"{API}{path}")
+        req = urllib.request.Request(f"{api}{path}")
         req.add_header("Accept", "application/vnd.github+json")
         req.add_header("X-GitHub-Api-Version", "2022-11-28")
         if token:
@@ -150,6 +172,96 @@ def pass_rate(runs):
     }
 
 
+def main_rate(judged):
+    """Count judged runs on main by outcome; rate passed over passed and failed.
+
+    Returns:
+        ``{passed, failed, timed_out, runner_lost, no_runner, cancelled,
+        rate}``: a run past its timeout fails, a runner's loss and a cancel
+        count neither way.
+    """
+    counts = {"passed": sum(r["outcome"] == "passed" for r in judged)}
+    counts.update({o: sum(r["outcome"] == o for r in judged) for o in OUTCOMES})
+    tried = counts["passed"] + counts["failed"] + counts["timed_out"]
+    counts["rate"] = rounded(counts["passed"] / tried, 3) if tried else None
+    return counts
+
+
+def job_outcome(get, repo: str, job: dict) -> str:
+    """Return what became of a finished job: passed, or one of OUTCOMES.
+
+    A job that did not pass is told apart by its check run's annotations
+    (one more request: a timeout, a lost runner, a cancel by hand or by a
+    newer run), then by having no steps and no runner (it never found
+    one), and otherwise by its conclusion.
+    """
+    if job.get("conclusion") in ("success", "skipped", "neutral"):
+        return "passed"
+    notes = " ".join(
+        a.get("message") or ""
+        for a in get(f"/repos/{repo}/check-runs/{job['id']}/annotations")
+    )
+    for text, outcome in STOPPED:
+        if text in notes:
+            return outcome
+    if not job.get("steps") and not job.get("runner_name"):
+        return "no_runner"
+    if job.get("conclusion") == "cancelled":
+        return "cancelled"
+    return "timed_out" if job.get("conclusion") == "timed_out" else "failed"
+
+
+def judge(get, repo: str, run: dict) -> dict:
+    """Return a finished run on main's ``JUDGED`` fields, from its jobs.
+
+    Its outcome is passed, or the first of OUTCOMES any of its jobs had (a
+    run that did not pass with no job to say why is cancelled if GitHub
+    says so and failed otherwise); its wait the longest any job waited for
+    a runner, and its time from its first job's start to its end, in
+    minutes.
+    """
+    jobs = get(f"/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100").get(
+        "jobs", []
+    )
+    if run.get("conclusion") == "success":
+        outcome = "passed"
+    else:
+        outcomes = {job_outcome(get, repo, j) for j in jobs}
+        unexplained = "cancelled" if run.get("conclusion") == "cancelled" else "failed"
+        outcome = next((o for o in OUTCOMES if o in outcomes), unexplained)
+        if outcome == "cancelled" and run.get("conclusion") in FAILED:
+            outcome = "failed"
+    started = [j["started_at"] for j in jobs if j.get("started_at")]
+    return {
+        "outcome": outcome,
+        "waited": rounded(
+            max(
+                (minutes(j.get("created_at"), j.get("started_at")) or 0 for j in jobs),
+                default=None,
+            )
+        ),
+        "took": (
+            rounded(minutes(min(started), run.get("updated_at"))) if started else None
+        ),
+    }
+
+
+def jobs_of(get, repo: str, run_id) -> list:
+    """Return a run's jobs, each finished one with its ``outcome``."""
+    got = get(f"/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
+    return [
+        {
+            **pick(j, JOB_FIELDS),
+            **(
+                {"outcome": job_outcome(get, repo, j)}
+                if j.get("status") == "completed"
+                else {}
+            ),
+        }
+        for j in got.get("jobs", [])
+    ]
+
+
 # ----------------------------------------------------------------------
 # The scheduled workflows
 # ----------------------------------------------------------------------
@@ -171,11 +283,7 @@ def scheduled(get, repo: str, workflows: list) -> list:
             entry["runs"] = [pick(r, RUN_FIELDS) for r in runs.get("workflow_runs", [])]
             entry["jobs"] = None
             if wf.get("legs") and entry["runs"]:
-                jobs = get(
-                    f"/repos/{repo}/actions/runs/{entry['runs'][0]['id']}/jobs"
-                    "?per_page=100"
-                )
-                entry["jobs"] = [pick(j, JOB_FIELDS) for j in jobs.get("jobs", [])]
+                entry["jobs"] = jobs_of(get, repo, entry["runs"][0]["id"])
         except ApiError as e:
             entry.update(runs=None, jobs=None, error=str(e))
         out.append(entry)
@@ -228,8 +336,15 @@ def flaky(runs: list) -> dict:
     return {"commits": n, "flaky": shaky, "rate": rounded(shaky / n, 3) if n else None}
 
 
-def critical(get, repo: str, workflows: list, now: datetime.datetime) -> list:
-    """Per critical workflow, its figures over the window."""
+def critical(
+    get, repo: str, workflows: list, now: datetime.datetime, judged: dict
+) -> list:
+    """Per critical workflow, its figures over the window.
+
+    ``judged`` maps a run id to its ``JUDGED`` fields from an earlier
+    publish, with its ``updated_at``; a run that has not changed since is
+    not asked about again.
+    """
     since = now - datetime.timedelta(days=WINDOW_DAYS)
     out = []
     for wf in workflows:
@@ -245,13 +360,15 @@ def critical(get, repo: str, workflows: list, now: datetime.datetime) -> list:
             ]
             prs = [r for r in done if r.get("event") == "pull_request"]
             queue = [r for r in done if r.get("event") == "merge_group"]
-            passed = [r for r in done if r.get("conclusion") == "success"]
-            took = [
-                minutes(r.get("run_started_at"), r.get("updated_at")) for r in passed
-            ]
-            waited = [
-                minutes(r.get("created_at"), r.get("run_started_at")) for r in done
-            ]
+            main_runs = []
+            for r in on_main:
+                seen = judged.get(r["id"])
+                if not seen or seen.get("updated_at") != r.get("updated_at"):
+                    seen = judge(get, repo, r)
+                main_runs.append(
+                    {**pick(r, RUN_FIELDS), **{k: seen[k] for k in JUDGED}}
+                )
+            took = [r["took"] for r in main_runs if r["outcome"] == "passed"]
             latest_main = on_main[0] if on_main else None
             # Its latest run on main may still be going: judged by the newest
             # one that is, which the page compares with `every` for lateness.
@@ -266,23 +383,22 @@ def critical(get, repo: str, workflows: list, now: datetime.datetime) -> list:
             )
             main_jobs = None
             if wf.get("legs") and latest_main:
-                got = get(
-                    f"/repos/{repo}/actions/runs/{latest_main['id']}/jobs?per_page=100"
-                ).get("jobs", [])
-                main_jobs = [pick(j, JOB_FIELDS) for j in got]
+                main_jobs = jobs_of(get, repo, latest_main["id"])
             entry.update(
                 runs=len(runs),
-                main=pass_rate(on_main),
-                latest_main=pick(latest_main, RUN_FIELDS) if latest_main else None,
+                main=main_rate(main_runs),
+                latest_main=main_runs[0] if main_runs else None,
                 newest_main=pick(newest_main, RUN_FIELDS) if newest_main else None,
                 latest_main_jobs=main_jobs,
-                main_runs=[pick(r, RUN_FIELDS) for r in on_main[:MAIN_RUNS_KEPT]],
+                main_runs=main_runs,
                 pull_requests=pass_rate(prs),
                 merge_queue=pass_rate(queue),
                 flaky=flaky(runs),
                 minutes_median=rounded(percentile(took, 0.5)),
                 minutes_p90=rounded(percentile(took, 0.9)),
-                queued_median=rounded(percentile(waited, 0.5)),
+                queued_median=rounded(
+                    percentile([r["waited"] for r in main_runs], 0.5)
+                ),
             )
         except ApiError as e:
             entry["error"] = str(e)
@@ -377,8 +493,20 @@ def update_history(old, point: dict, now: datetime.datetime) -> dict:
     return {"schema": SCHEMA, "window_days": WINDOW_DAYS, "points": points}
 
 
-def collect(get, repo: str, config: dict, now: datetime.datetime) -> dict:
-    """Build the status file's contents."""
+def collect(
+    get, repo: str, config: dict, now: datetime.datetime, previous=None
+) -> dict:
+    """Build the status file's contents.
+
+    ``previous`` is the last published status, whose judged runs on main
+    are kept rather than asked about again.
+    """
+    judged = {
+        r["id"]: r
+        for w in (previous or {}).get("critical", [])
+        for r in w.get("main_runs") or []
+        if all(k in r for k in JUDGED)
+    }
     return {
         "schema": SCHEMA,
         "generated_at": now.astimezone(datetime.timezone.utc).isoformat(
@@ -386,7 +514,7 @@ def collect(get, repo: str, config: dict, now: datetime.datetime) -> dict:
         ),
         "repo": repo,
         "window_days": WINDOW_DAYS,
-        "critical": critical(get, repo, config.get("critical", []), now),
+        "critical": critical(get, repo, config.get("critical", []), now, judged),
         "merge_time": merge_time(get, repo, now),
         "workflows": scheduled(get, repo, config.get("workflows", [])),
     }
@@ -404,17 +532,25 @@ def main(argv=None, now: datetime.datetime | None = None) -> int:
         "--history", type=Path, help="the published history.json, if any"
     )
     parser.add_argument(
+        "--previous", type=Path, help="the published status.json, if any"
+    )
+    parser.add_argument("--api", default=API, help="the GitHub API to ask")
+    parser.add_argument(
         "--repo", default=os.environ.get("GITHUB_REPOSITORY", "Xilinx/mlir-aie")
     )
     parser.add_argument("--workflows", type=Path, default=WORKFLOWS)
     args = parser.parse_args(argv)
 
     now = now or datetime.datetime.now(datetime.timezone.utc)
+    previous = None
+    if args.previous and args.previous.is_file() and args.previous.stat().st_size:
+        previous = json.loads(args.previous.read_text(encoding="utf-8"))
     status = collect(
-        github(os.environ.get("GITHUB_TOKEN", "")),
+        github(os.environ.get("GITHUB_TOKEN", ""), api=args.api),
         args.repo,
         load_workflows(args.workflows),
         now,
+        previous,
     )
     old = None
     if args.history and args.history.is_file() and args.history.stat().st_size:

@@ -13,7 +13,8 @@ clock", so its row could not be reproduced.
 
 Writes ``<fixture>/<metric>`` rows and a meta file in the kernel checks'
 format (utils/kernel_checks/publish.py), the meta with each seed's results
-as ``detail``, and exits 1 when any seed failed, after writing both. A seed that runs past ``--timeout`` fails. Before the first
+as ``detail`` and the CPU it ran on, and exits 1 when any seed failed, after
+writing both. A seed that runs past ``--timeout`` fails. Before the first
 seed it writes a placeholder that fails the sweep, so a sweep stopped part way
 still publishes as a failure.
 nightlyComponentChecks.yml runs this nightly and publishes the results; a
@@ -33,7 +34,7 @@ import statistics
 import subprocess
 import sys
 
-from aiecc_stages import TIMED_OUT, row, run_measured, write_unfinished
+from aiecc_stages import TIMED_OUT, cpu_model, row, run_measured, write_unfinished
 
 _COST_RE = re.compile(r"\(S\)\s+(\d+)\s+sa-final-cost")
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -111,7 +112,7 @@ def aggregate(rows: list[dict]) -> list[dict]:
                 case,
                 "peak_rss_mb_max",
                 round(max(r["peak_rss_mb"] for r in mine), 1),
-                "MB",
+                "MiB",
             ),
         ]
         if costs:
@@ -137,8 +138,10 @@ def commit() -> str:
 
 
 def provenance(fixtures: list[str]) -> str:
-    """The commit and the fixtures, as the kernel checks' provenance line."""
-    return f"commit {commit()} | fixtures {fixtures_digest(fixtures)}"
+    """Return the commit, the fixtures and the CPU as a provenance line."""
+    return (
+        f"commit {commit()} | fixtures {fixtures_digest(fixtures)} | cpu {cpu_model()}"
+    )
 
 
 def meta(rows: list[dict], fixtures: list[str], seeds: int, effort: float) -> dict:

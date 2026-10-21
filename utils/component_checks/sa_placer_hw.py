@@ -10,10 +10,9 @@ handful of seeds. Shells out to the existing aie2_mobilenet_iron.py CLI
 from programming_examples/ml, one fresh NPU_CACHE_HOME per seed and effort
 so they don't share a JIT cache (test/python/npu's isolation convention).
 
-Each seed runs at both of _EFFORTS (the design's real default, and full
-effort as a placement-quality baseline -- see
-mobilenet.bottleneck._common.sa_placer_flags, which the default must keep
-matching). The batch is a dispatch-time parameter, so
+Each seed runs at both of ``EFFORTS``: the design's real default, read from
+mobilenet.bottleneck._common.sa_placer_flags' own signature, and full effort
+as a placement-quality baseline. The batch is a dispatch-time parameter, so
 per seed and effort the design compiles once (the CLI's ``--dynamic``
 compile-only mode) and every batch runs from it. It compiles twice in the
 same fresh NPU_CACHE_HOME: cold (every cache empty, same as any first-time
@@ -22,12 +21,10 @@ objects and their precompiled headers kept), which is what an edit to the
 design, not its kernels, costs. Both record wall time and the largest
 process's peak RSS. Per batch it records, per image, the minimum NPU time of
 a launch and of the host's end-to-end call; the run builds its own copy of
-the design through the JIT path, from the warm caches, unmeasured.
-From a seed's batch 1 and batch N it records the streaming time: what one
-more image in a launch costs, (T(N) - T(1)) / (N - 1), with the launch's
-fixed cost taken out. Per seed, per effort, it records the placement:
-aiecc's placed tiles as a digest, and its SA cost, from replaying the
-placement with aie-opt on the design's MLIR (aiecc does not report it).
+the design through the JIT path, from the warm caches, unmeasured. Per seed,
+per effort, it records the placement: aiecc's placed tiles as a digest, and
+its SA cost, from replaying the placement with aie-opt on the design's MLIR
+(aiecc does not report it).
 
 Writes rows and a meta file in the kernel checks' format
 (utils/kernel_checks/publish.py), with the device's power mode, the
@@ -45,6 +42,7 @@ effort is reproduced, from programming_examples/ml, with
 import argparse
 import glob
 import hashlib
+import inspect
 import os
 import re
 import shutil
@@ -52,6 +50,7 @@ import subprocess
 import sys
 import tempfile
 
+from aie.utils.benchmark import preflight, provenance
 from aie.utils.compile.utils import AIECC_PROFILE_NAME
 from aiecc_stages import (
     add_pmode_argument,
@@ -66,6 +65,12 @@ from aiecc_stages import (
     write_unfinished,
 )
 
+_ML_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "programming_examples", "ml"
+)
+sys.path.insert(0, _ML_DIR)
+from mobilenet.bottleneck._common import sa_placer_flags  # noqa: E402
+
 _PASS_RE = re.compile(r"^PASS!$", re.MULTILINE)
 _BATCH_RE = re.compile(r"^batch=(\d+)$", re.MULTILINE)
 _TIME_RE = (
@@ -76,16 +81,11 @@ _NPU_TIME_RE = re.compile(r"NPU time" + _TIME_RE)
 _E2E_TIME_RE = re.compile(r"End-to-end" + _TIME_RE)
 _COST_RE = re.compile(r"\(S\)\s+(\d+)\s+sa-final-cost")
 _TILE_RE = re.compile(r"aie\.tile\(\d+, \d+\)")
-# "default" must keep matching mobilenet.bottleneck._common.sa_placer_flags'
-# own default -- not imported from there since this check otherwise only
-# shells out to the CLI (see the module docstring); a change to either is a
-# prompt to check the other.
-_EFFORTS = {"default": 0.05, "full": 1.0}
+EFFORTS = {
+    "default": inspect.signature(sa_placer_flags).parameters["effort"].default,
+    "full": 1.0,
+}
 _MOBILENET = [sys.executable, "-m", "mobilenet.aie2_mobilenet_iron"]
-
-_ML_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "programming_examples", "ml"
-)
 
 
 def placement_of(mlir: str) -> str | None:
@@ -140,7 +140,6 @@ def parse_run(out: str, returncode: int, batch: int) -> dict:
         "passed": returncode == 0 and _PASS_RE.search(out) is not None and bool(npu),
         # min, not avg: a single busy neighbor call inflates the mean far
         # more than it moves the min.
-        "launch_us": float(npu.group("min")) if npu else None,
         "us_per_image": per_image[0] if per_image else None,
         "us_per_image_range": per_image[1] if per_image else None,
         "e2e_us_per_image": e2e[0] if e2e else None,
@@ -203,7 +202,7 @@ def run_seed(
 ) -> tuple[dict, list[dict]]:
     """Compile mobilenet once for one SA seed and effort, and run every batch."""
     cache_dir = tempfile.mkdtemp(prefix=f"component-checks-sa{seed}-{effort_label}-")
-    flags = ["--sa-seed", str(seed), "--sa-effort", str(_EFFORTS[effort_label])]
+    flags = ["--sa-seed", str(seed), "--sa-effort", str(EFFORTS[effort_label])]
     try:
         compiled = compile_cold_warm(flags, batches, cache_dir, compile_timeout)
         ran = run_measured(
@@ -252,7 +251,7 @@ def place_seed(
     out = []
     for c in compiles:
         replayed, cost = replay_placement(
-            aie_opt, design, c["seed"], _EFFORTS[c["effort_label"]], timeout
+            aie_opt, design, c["seed"], EFFORTS[c["effort_label"]], timeout
         )
         first = c["placement"] or replayed
         out.append(
@@ -267,11 +266,6 @@ def place_seed(
             }
         )
     return out
-
-
-def streaming_us(one: dict, many: dict) -> float:
-    """Return what one more image in a launch costs, from runs at batch 1 and N."""
-    return round((many["launch_us"] - one["launch_us"]) / (many["batch"] - 1), 2)
 
 
 def aggregate(
@@ -294,14 +288,7 @@ def aggregate(
         out += compile_rows(f"mobilenet/seed={c['seed']}/effort={c['effort_label']}", c)
     # A failed run's times (say, a run that printed timing but produced the
     # wrong answer) are not a measurement of the design, so only passing runs
-    # contribute a time point; the failure shows up in the count. Keyed by
-    # effort too: streaming_us must compare within the same effort, since
-    # different efforts are expected to place (and so time) differently.
-    one = {
-        (r["seed"], r["effort_label"]): r
-        for r in runs
-        if r["batch"] == 1 and r["passed"] and r["launch_us"]
-    }
+    # contribute a time point; the failure shows up in the count.
     for r in runs:
         case = (
             f"mobilenet/seed={r['seed']}/batch={r['batch']}"
@@ -317,18 +304,6 @@ def aggregate(
                     r["us_per_image_range"],
                 )
             )
-            key = (r["seed"], r["effort_label"])
-            if r["batch"] > 1 and key in one:
-                b1 = one[key]
-                out.append(
-                    row(
-                        case,
-                        "streaming_us",
-                        streaming_us(b1, r),
-                        "us",
-                        f"from b1 {b1['launch_us']:g} and b{r['batch']} {r['launch_us']:g}",
-                    )
-                )
             if r["e2e_us_per_image"] is not None:
                 out.append(
                     row(
@@ -363,7 +338,7 @@ def print_table(runs: list[dict], compiles: list[dict], placements: list[dict]) 
         )
     print(
         f"{'seed':>4} {'batch':>5} {'effort':>7}  {'pass':>4}  {'us/image':>9}  "
-        f"{'streaming':>9}  {'e2e/image':>9}"
+        f"{'e2e/image':>9}"
     )
     for r in runs:
         case = (
@@ -373,10 +348,9 @@ def print_table(runs: list[dict], compiles: list[dict], placements: list[dict]) 
         print(
             f"{r['seed']:>4} {r['batch']:>5} {r['effort_label']:>7}  "
             f"{'yes' if r['passed'] else 'NO':>4}  "
-            f"{cell(case, 'us_per_image'):>9}  {cell(case, 'streaming_us'):>9}  "
-            f"{cell(case, 'e2e_us_per_image'):>9}"
+            f"{cell(case, 'us_per_image'):>9}  {cell(case, 'e2e_us_per_image'):>9}"
         )
-        if not r["passed"] and r["launch_us"] is None:
+        if not r["passed"] and r["us_per_image"] is None:
             print("no 'NPU time (avg/min/max us)' line in this batch's output")
     for p in placements:
         print(
@@ -428,7 +402,7 @@ def main(argv=None) -> int:
         nargs="+",
         default=[1, 2, 4, 8, 16, 32, 64],
         help="images per launch to run each seed at (default: every power of "
-        "two from 1 to 64; the streaming time needs 1)",
+        "two from 1 to 64)",
     )
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--iters", type=int, default=20)
@@ -457,15 +431,13 @@ def main(argv=None) -> int:
     if not args.aie_opt:
         parser.error("no aie-opt on PATH; pass --aie-opt")
 
-    from aie.utils.benchmark import preflight, provenance
-
     pre = preflight()
     meta = {
         "preflight": dict(vars(pre)),
         "provenance": provenance(
             device=pre.device, pmode=pre.pmode, dispatch="dynamic"
         ),
-        "efforts": _EFFORTS,
+        "efforts": EFFORTS,
         "iters": args.iters,
     }
     if args.pmode != "any" and pre.pmode != args.pmode:
@@ -484,7 +456,7 @@ def main(argv=None) -> int:
         runs, compiles, placements = [], [], []
         for seed in args.seeds:
             mine = []
-            for effort_label in _EFFORTS:
+            for effort_label in EFFORTS:
                 compiled, seed_runs = run_seed(
                     seed,
                     effort_label,
