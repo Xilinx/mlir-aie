@@ -89,13 +89,15 @@ class KernelObjectCache:
     def fetch(self, func, kernel_dir, target_arch, include_dirs, embed_bitcode) -> bool:
         """Copy ``func``'s object into ``kernel_dir``, compiling it on a miss.
 
-        Returns False, touching nothing, for a kernel the cache does not hold
-        (see ``accepts``).
+        Returns:
+            Whether it compiled the object: False on a hit, and, touching
+            nothing, for a kernel the cache does not hold (see ``accepts``).
         """
         if not self.accepts(func):
             return False
         entry = self.root / _key(func, target_arch, include_dirs, embed_bitcode)
         obj = entry / func.object_file_name
+        compiled = False
         with file_lock(entry / ".lock", timeout_seconds=self.lock_timeout_seconds):
             if obj.is_file() and _manifest.is_valid(entry):
                 logger.debug("Kernel object cache hit for %s (%s)", obj.name, entry)
@@ -103,7 +105,7 @@ class KernelObjectCache:
                 logger.debug("Kernel object cache miss for %s (%s)", obj.name, entry)
                 _cleanup_failed_compilation(entry)
                 try:
-                    _compile_external_kernel(
+                    compiled = _compile_external_kernel(
                         func, str(entry), target_arch, include_dirs, embed_bitcode
                     )
                     _manifest.record(entry, [func], [], digests=self.digests)
@@ -114,4 +116,4 @@ class KernelObjectCache:
             for artifact in (obj, entry / f"{obj.name}.d", *stamps):
                 if artifact.is_file():
                     _copy_source(os.path.join(kernel_dir, artifact.name), str(artifact))
-        return True
+        return compiled
