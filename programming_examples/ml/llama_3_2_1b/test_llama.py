@@ -83,12 +83,12 @@ LEAR = (
     "weighed, that curiosity in neither can make choice\n"
     "of either's moiety.\nKENT"
 ).split("\n")
-# Measured mean KL 0.087 / 0.065 / 0.054 (the INT8 recipe's 0.041 / 0.030 /
+# Measured mean KL 0.049 / 0.031 / 0.024 (the INT8 recipe's 0.041 / 0.030 /
 # 0.023); the limits leave about 15%.
 PROMPTS = {
-    "small": ("\n".join(LEAR[:3]), 0.10),
-    "medium": ("\n".join(LEAR[:7]), 0.075),
-    "large": ("\n".join(LEAR[:12]), 0.065),
+    "small": ("\n".join(LEAR[:3]), 0.057),
+    "medium": ("\n".join(LEAR[:7]), 0.036),
+    "large": ("\n".join(LEAR[:12]), 0.028),
 }
 
 
