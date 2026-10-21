@@ -33,6 +33,7 @@ import hashlib
 import inspect
 import json
 import logging
+import math
 import operator
 import os
 import sys
@@ -1548,10 +1549,11 @@ class CompilableDesign:
             if expected == 0:
                 continue
             try:
-                # tensor.dtype rather than asarray(tensor): a device tensor
-                # would sync itself back to the host just to be measured.
+                # dtype and shape rather than asarray(tensor): a device tensor
+                # would sync itself back to the host just to be measured, and a
+                # TensorRegion has no host data to convert.
                 itemsize = np.dtype(tensor.dtype).itemsize
-                actual = int(np.size(tensor)) * itemsize * 8
+                actual = math.prod(tensor.shape) * itemsize * 8
             except (TypeError, ValueError, AttributeError):
                 # Non-array-like tensor argument (e.g. a scalar passed by mistake);
                 # skip rather than raise so the kernel call surfaces the real
