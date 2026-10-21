@@ -502,11 +502,26 @@ def _run_block(blk, x, sf, data_dir):
 # ---------------------------------------------------------------------------
 # Driver — walk NETWORK end to end
 # ---------------------------------------------------------------------------
-def run(input_i8, weights_dir, scales, return_intermediates=False, stop_after=None):
+def run(
+    input_i8,
+    weights_dir,
+    scales,
+    return_intermediates=False,
+    stop_after=None,
+    verbose=True,
+):
     """Run mobilenet end-to-end.
 
-    Implemented through bn12. bn13/bn14 (cascade) and post_l1/post_l2 land in
-    follow-up.
+    Args:
+        input_i8: The (H, W, C) int8 input image.
+        weights_dir: The directory of the ``*_chain.txt`` weight files.
+        scales: scale_factors_final.json's contents.
+        return_intermediates: Also return each block's output by name.
+        stop_after: A block name to stop after, or None for the whole network.
+        verbose: Print each block's output shape and range.
+
+    Returns:
+        The final (1, 1, 1280) uint16 output, and the intermediates if asked.
     """
     x = input_i8
     intermediates = {}
@@ -525,18 +540,20 @@ def run(input_i8, weights_dir, scales, return_intermediates=False, stop_after=No
                 full_w = np.concatenate(chunks)
                 x = post_l2_fc(x, full_w, scales["POST"][sf_key], in_c_padded=1280)
             intermediates[blk.name] = x.copy()
-            print(
-                f"  {blk.name:8s} -> shape={x.shape}, dtype={x.dtype}, "
-                f"min={x.min()}, max={x.max()}, sum_abs={np.abs(x.astype(np.int64)).sum()}"
-            )
+            if verbose:
+                print(
+                    f"  {blk.name:8s} -> shape={x.shape}, dtype={x.dtype}, "
+                    f"min={x.min()}, max={x.max()}, sum_abs={np.abs(x.astype(np.int64)).sum()}"
+                )
             continue
         else:
             x = _run_block(blk, x, scales, weights_dir)
         intermediates[blk.name] = x.copy()
-        print(
-            f"  {blk.name:8s} -> shape={x.shape}, dtype={x.dtype}, "
-            f"min={x.min()}, max={x.max()}, sum_abs={np.abs(x.astype(np.int64)).sum()}"
-        )
+        if verbose:
+            print(
+                f"  {blk.name:8s} -> shape={x.shape}, dtype={x.dtype}, "
+                f"min={x.min()}, max={x.max()}, sum_abs={np.abs(x.astype(np.int64)).sum()}"
+            )
         if stop_after == blk.name:
             break
     return (x, intermediates) if return_intermediates else x

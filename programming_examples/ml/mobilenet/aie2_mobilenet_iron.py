@@ -57,7 +57,7 @@ from aie.utils.trace import TraceConfig
 from aie.utils.trace.events import CoreEvent
 from aie.utils.verify import Tolerance, compare
 
-from . import mb_utils
+from . import mb_utils, mobilenet_numpy
 from .bottleneck._common import sa_placer_flags
 from .bottleneck.cascade import cascade_bottlenecks
 from .bottleneck.init import init_conv
@@ -372,8 +372,25 @@ def _run_and_verify(design, opts):
     ).astype(np.int8)
     batches = opts.dynamic or [opts.batch]
     capacity = max(batches)
+    # Each image of a batch differs, so an image answered with another's output fails.
+    images = [np.roll(chw, (3 * k, 5 * k), axis=(1, 2)) for k in range(capacity)]
+    goldens = np.concatenate(
+        [
+            np.asarray(
+                mobilenet_numpy.run(im.transpose(1, 2, 0), data_dir, sf, verbose=False)
+            )
+            .reshape(post_L2_OutC)
+            .astype(np.int32)
+            for im in images
+        ]
+    )
     inp = iron.tensor(
-        np.tile(ds.reorder_mat(chw, "YCXC8", "CYX").flatten().view(np.int32), capacity),
+        np.concatenate(
+            [
+                ds.reorder_mat(im, "YCXC8", "CYX").flatten().view(np.int32)
+                for im in images
+            ]
+        ),
         dtype=np.int32,
     )
     scratch = iron.zeros((post_L2_OutC * 2 // 4 * 2,), dtype=np.int32)
@@ -415,15 +432,22 @@ def _run_and_verify(design, opts):
                 for o in out.numpy().view(np.uint16).reshape(capacity, -1)[:n]
             ]
         )
+        print_benchmark(bench)
         verdict = compare(
-            actual.astype(np.int32),
-            np.tile(golden_image, n).astype(np.int32),
+            actual[:post_L2_OutC].astype(np.int32),
+            golden_image.astype(np.int32),
             Tolerance.lsb(9, note="should be 1; #3009"),
         )
-        print_benchmark(bench)
         print(f"max_difference: {verdict.max_abs_err:g}")
         if not verdict.ok:
-            sys.exit(f"FAIL: {verdict.detail}")
+            sys.exit(f"FAIL: image 0 against the brevitas golden: {verdict.detail}")
+        verdict = compare(
+            actual.astype(np.int32),
+            goldens[: n * post_L2_OutC],
+            Tolerance.exact(note="mobilenet_numpy mirrors the kernels' arithmetic"),
+        )
+        if not verdict.ok:
+            sys.exit(f"FAIL: {n} images against mobilenet_numpy: {verdict.detail}")
         print("PASS!")
 
 
