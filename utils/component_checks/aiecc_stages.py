@@ -24,14 +24,23 @@ The JIT writes one beside every build it runs aiecc for. Stages:
 
 Edges run in parallel, so a stage's time (its edges' summed time) can add up,
 over the stages, to more than ``wall_s``.
+
+Every subprocess a check runs goes through ``run_measured``, which streams its
+output as it comes and kills it past a timeout, and every check writes
+``write_unfinished``'s placeholder before its first device run, so a check
+stopped part way (a hang, a step timeout) still publishes as a failure.
 """
 
 import argparse
 import json
 import os
 import re
+import signal
 import subprocess
+import sys
+import threading
 import time
+from typing import NamedTuple
 
 STAGES = ("place", "route", "lower", "kernels", "codegen", "link", "package", "other")
 # What the JIT names the file, in each build's ``<xclbin stem>.prj`` dir.
@@ -55,6 +64,9 @@ COMPILE_METRICS = (
 )
 # xrt-smi's power modes, and "any" to accept whichever is set.
 PMODES = ("any", "default", "powersaver", "balanced", "performance", "turbo")
+# What a command killed for running past its timeout exits with, as coreutils'
+# timeout(1) does.
+TIMED_OUT = 124
 
 # First match wins; output names chosen on aiecc's command line (xclbin, pdi,
 # instructions) are matched by extension.
@@ -141,24 +153,46 @@ def stage_rows(profile_path: str, compile_s: float | None, suffix: str) -> dict:
     return {f"{k}{suffix}": round(v, 2) for k, v in seconds.items()}
 
 
-def run_measured(
-    cmd: list[str], cwd: str, env: dict
-) -> tuple[subprocess.CompletedProcess, float, float]:
-    """Run ``cmd`` and return it with its wall seconds and its own peak RSS.
+class Measured(NamedTuple):
+    """A finished command and what running it took."""
 
-    Uses os.wait4, not resource.getrusage(RUSAGE_CHILDREN), which is a
-    running max over every reaped child, so the peak is this run's. stdout
-    and stderr are merged, as two blocking reads of separate pipes can
-    deadlock once either fills.
+    # Its merged stdout and stderr in ``stdout``.
+    process: subprocess.CompletedProcess
+    seconds: float
+    # The largest single process of its tree, not their sum.
+    peak_rss_mib: float
+    # User plus system CPU over its tree.
+    cpu_s: float
+
+
+def run_measured(
+    cmd: list[str],
+    cwd: str | None,
+    env: dict | None,
+    timeout: float,
+    echo: bool = True,
+) -> Measured:
+    """Run ``cmd`` with a timeout, echoing its output as it comes.
+
+    stdout and stderr are merged into one pipe, read as the command writes
+    it and, with ``echo``, written to this process's stdout line by line, so
+    a check's log shows how far a command got even if the check is killed.
+    Past ``timeout`` the command's whole process group is killed, its status
+    is ``TIMED_OUT`` and its output ends with a line saying so.
+
+    Its peak RSS and CPU time are os.wait4's, so they are this command's:
+    resource.getrusage(RUSAGE_CHILDREN) keeps a running max of RSS over every
+    child this process ever reaped.
 
     Args:
         cmd: The command line.
-        cwd: Where to run it.
-        env: Its environment.
+        cwd: Where to run it; None for here.
+        env: Its environment; None for this process's.
+        timeout: Seconds before it is killed.
+        echo: Whether to echo its output.
 
     Returns:
-        (the finished process, its output in ``stdout``; wall seconds; peak
-        RSS in MB).
+        The finished command and its wall seconds, peak RSS and CPU time.
     """
     start = time.perf_counter()
     proc = subprocess.Popen(
@@ -168,20 +202,54 @@ def run_measured(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        start_new_session=True,
     )
-    out = proc.stdout.read() if proc.stdout else ""
+    lines: list[str] = []
+
+    def drain():
+        for line in proc.stdout:
+            lines.append(line)
+            if echo:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+
+    fired = threading.Event()
+
+    def kill():
+        fired.set()
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
+    killer = threading.Timer(timeout, kill)
+    killer.start()
     _, status, ru = os.wait4(proc.pid, 0)
     seconds = time.perf_counter() - start
-    done = subprocess.CompletedProcess(
-        proc.args, os.waitstatus_to_exitcode(status), out, ""
+    killer.cancel()
+    returncode = os.waitstatus_to_exitcode(status)
+    timed_out = fired.is_set() and returncode == -signal.SIGKILL
+    reader.join(10)
+    if reader.is_alive():
+        # A child it left behind still holds the pipe open.
+        kill()
+        reader.join()
+    if timed_out:
+        returncode = TIMED_OUT
+        note = f"{' '.join(map(str, cmd))}: timed out after {timeout:g} s\n"
+        lines.append(note)
+        print(note, end="", flush=True)
+    return Measured(
+        subprocess.CompletedProcess(proc.args, returncode, "".join(lines), ""),
+        seconds,
+        ru.ru_maxrss / 1024.0,
+        ru.ru_utime + ru.ru_stime,
     )
-    return done, seconds, ru.ru_maxrss / 1024.0
 
 
-def compile_stats(
-    cold: tuple[subprocess.CompletedProcess, float, float],
-    warm: tuple[subprocess.CompletedProcess, float, float],
-) -> dict:
+def compile_stats(cold: Measured, warm: Measured) -> dict:
     """Return a cold and a warm compile's times and peak RSS, None where one failed.
 
     Args:
@@ -191,13 +259,12 @@ def compile_stats(
     Returns:
         compile_s, compile_peak_rss_mb and their ``_warm`` twins.
     """
-    (cold_run, cold_s, cold_rss), (warm_run, warm_s, warm_rss) = cold, warm
-    cold_ok, warm_ok = cold_run.returncode == 0, warm_run.returncode == 0
+    cold_ok, warm_ok = cold.process.returncode == 0, warm.process.returncode == 0
     return {
-        "compile_s": round(cold_s, 1) if cold_ok else None,
-        "compile_peak_rss_mb": round(cold_rss, 1) if cold_ok else None,
-        "compile_s_warm": round(warm_s, 2) if warm_ok else None,
-        "compile_peak_rss_mb_warm": round(warm_rss, 1) if warm_ok else None,
+        "compile_s": round(cold.seconds, 1) if cold_ok else None,
+        "compile_peak_rss_mb": round(cold.peak_rss_mib, 1) if cold_ok else None,
+        "compile_s_warm": round(warm.seconds, 2) if warm_ok else None,
+        "compile_peak_rss_mb_warm": round(warm.peak_rss_mib, 1) if warm_ok else None,
     }
 
 
@@ -231,6 +298,26 @@ def write(path: str, data) -> None:
     """Write ``data`` to ``path`` as JSON."""
     with open(path, "w") as f:
         json.dump(data, f, indent=1)
+
+
+def write_unfinished(meta: dict, case: str, out_path: str, meta_path: str) -> None:
+    """Record ``case`` as failed, for the check's results to overwrite.
+
+    Written before a check's first device run: if the check never finishes
+    (a hang, a step timeout), its record publishes as a failure that says
+    so, not as a night with no run.
+
+    Args:
+        meta: The run's meta so far.
+        case: The case to fail.
+        out_path: The perf.json to write, empty.
+        meta_path: The meta.json to write.
+    """
+    write(out_path, [])
+    write(
+        meta_path,
+        {**meta, "failed": [case], "exitstatus": 1, "reason": "did not finish"},
+    )
 
 
 def add_pmode_argument(parser: argparse.ArgumentParser) -> None:

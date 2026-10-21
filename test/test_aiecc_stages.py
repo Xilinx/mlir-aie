@@ -7,6 +7,8 @@
 import importlib
 import json
 import os
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -89,6 +91,32 @@ def test_no_profile_means_no_stages(checks, tmp_path):
     missing = str(tmp_path / "missing.json")
     assert stages.stage_seconds(missing) is None
     assert stages.stage_rows(missing, 60.5, "") == {}
+
+
+def test_a_command_is_echoed_as_it_runs_and_measured(checks, capfd):
+    stages, _ = checks
+    measured = stages.run_measured(
+        [sys.executable, "-c", "import sys; print('one'); sys.exit(3)"],
+        None,
+        None,
+        60,
+    )
+    assert measured.process.returncode == 3 and measured.process.stdout == "one\n"
+    assert capfd.readouterr().out == "one\n"
+    assert measured.seconds > 0 and measured.peak_rss_mib > 0 and measured.cpu_s > 0
+
+
+def test_a_command_past_its_timeout_is_killed_with_its_children(checks, capfd):
+    stages, _ = checks
+    start = time.perf_counter()
+    measured = stages.run_measured(
+        ["sh", "-c", "echo started; sleep 60 & sleep 60"], None, None, 1
+    )
+    assert time.perf_counter() - start < 30
+    assert measured.process.returncode == stages.TIMED_OUT
+    lines = measured.process.stdout.splitlines()
+    assert lines[0] == "started" and lines[-1].endswith("timed out after 1 s")
+    assert capfd.readouterr().out.splitlines() == lines
 
 
 def test_llama_publishes_each_stage_cold_and_warm(checks):
