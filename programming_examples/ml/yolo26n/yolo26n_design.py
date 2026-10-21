@@ -1778,22 +1778,38 @@ class SegmentDesign:
         """The end-to-end postprocess on one worker, from per-anchor records the host sends twice.
 
         The first pass finds each anchor's best class score and picks the
-        300 best anchors; the second gathers those anchors' class logits and
-        box distances; the worker then picks the 300 best (anchor, class)
-        scores and writes their boxes, scores and classes. See
-        kernels/yolo_detect.cc.
+        `op.dst.height` (300) best anchors; the second gathers those anchors'
+        class logits and box distances; the worker then picks as many best
+        (anchor, class) scores and writes their boxes, scores and classes.
+        The model's sizes reach kernels/yolo_detect.cc as -D flags.
+
+        Raises:
+            NotImplementedError: If the Detect levels are not three square
+                grids, each half as wide at twice the power-of-two stride.
         """
         p = self.params
+        classes = op.scores[0].channels
+        keep = op.dst.height
+        grid = op.scores[0].width
+        if (
+            [(t.channels, t.height, t.width) for t in op.scores]
+            != [(classes, grid >> i, grid >> i) for i in range(3)]
+            or [t.shape[1:] for t in op.boxes] != [t.shape[1:] for t in op.scores]
+            or list(op.strides) != [op.strides[0] << i for i in range(3)]
+            or op.strides[0] & (op.strides[0] - 1)
+        ):
+            raise NotImplementedError(
+                f"{op.name}: the kernel takes three square levels, each half as "
+                "wide at twice the power-of-two stride"
+            )
+        # One rank per entry of each level's int8 sigmoid table.
+        ranks = 256 * len(op.scores)
         tables = p.of(op.name, "sigmoid").astype(np.float32)
         values = np.unique(tables)
         rank = np.searchsorted(values, tables).astype(np.int16)
-        if values.size > 768:
-            raise ValueError(
-                f"{op.name}: {values.size} distinct scores, the kernel ranks 768"
-            )
         chunk = 20
         anchors = sum(t.height * t.width for t in op.scores)
-        records = ObjectFifo(row(chunk * 80), name="detect_classes")
+        records = ObjectFifo(row(chunk * classes), name="detect_classes")
         boxes = ObjectFifo(row(chunk * 8), name="detect_boxes")
         # Made here, the Detect outputs go to DDR first, and the records come
         # back once they all have, after the run's own inputs (step 0).
@@ -1821,18 +1837,25 @@ class SegmentDesign:
         for level in rank:
             for m in np.nonzero(level != np.maximum.accumulate(level))[0]:
                 reach = max(reach, int(m - np.nonzero(level[:m] > level[m])[0].min()))
-        flags = [f"-DYOLO_DETECT_CHUNK={chunk}", f"-DYOLO_DETECT_REACH={reach}"]
+        flags = [
+            f"-DYOLO_DETECT_CHUNK={chunk}",
+            f"-DYOLO_DETECT_REACH={reach}",
+            f"-DYOLO_DETECT_CLASSES={classes}",
+            f"-DYOLO_DETECT_KEEP={keep}",
+            f"-DYOLO_DETECT_GRID={grid}",
+            f"-DYOLO_DETECT_LOG2_STRIDE={op.strides[0].bit_length() - 1}",
+        ]
         best_t = np.ndarray[(anchors,), np.dtype[np.int16]]
-        ranks_t = np.ndarray[(2 * 768,), np.dtype[np.int16]]
-        words_t = np.ndarray[(768,), np.dtype[np.int32]]
+        ranks_t = np.ndarray[(2 * ranks,), np.dtype[np.int16]]
+        words_t = np.ndarray[(ranks,), np.dtype[np.int32]]
         k_max = self.function(
             "yolo_detect_max",
             "yolo_detect.cc",
-            [row(chunk * 80), ranks_t, best_t, np.int32],
+            [row(chunk * classes), ranks_t, best_t, np.int32],
             flags,
         )
         bind = k_max.object_file.bind
-        keep_t = np.ndarray[(300,), np.dtype[np.int16]]
+        keep_t = np.ndarray[(keep,), np.dtype[np.int16]]
         count_t = np.ndarray[(4,), np.dtype[np.int32]]
         # A chunk's picked bits are read as a word, past the last byte.
         picked_t = np.ndarray[(anchors // 8 + 4,), np.dtype[np.uint8]]
@@ -1843,19 +1866,20 @@ class SegmentDesign:
         k_gather = bind(
             "yolo_detect_gather",
             [
-                row(chunk * 80),
+                row(chunk * classes),
                 row(chunk * 8),
                 picked_t,
                 keep_t,
-                row(300 * 80),
-                row(300 * 4),
+                row(keep * classes),
+                row(keep * 4),
                 count_t,
                 np.int32,
             ],
         )
         k_finish = bind(
             "yolo_detect_finish",
-            [row(300 * 80), row(300 * 4), keep_t, ranks_t, words_t, words_t, keep_t]
+            [row(keep * classes), row(keep * 4), keep_t, ranks_t, words_t, words_t]
+            + [keep_t]
             + [
                 np.ndarray[(6 * op.dst.height,), np.dtype[np.int32]],
                 np.int32,
@@ -1864,12 +1888,12 @@ class SegmentDesign:
             ],
         )
         shifts = [p.scale(t.name) for t in op.boxes]
-        bits = np.zeros(768, np.int32)
+        bits = np.zeros(ranks, np.int32)
         bits[: tables.size] = tables.view(np.int32).reshape(-1)
         # Each level's ranks, then its peaks: the highest rank of any logit up to each.
-        rank_table = np.zeros(2 * 768, np.int16)
+        rank_table = np.zeros(2 * ranks, np.int16)
         rank_table[: rank.size] = rank.reshape(-1)
-        rank_table[768 : 768 + rank.size] = np.maximum.accumulate(
+        rank_table[ranks : ranks + rank.size] = np.maximum.accumulate(
             rank, axis=-1
         ).reshape(-1)
         n = anchors // chunk
@@ -1901,8 +1925,8 @@ class SegmentDesign:
             Buffer(picked_t),
             Buffer(keep_t),
             Buffer(count_t),
-            Buffer(row(300 * 80)),
-            Buffer(row(300 * 4)),
+            Buffer(row(keep * classes)),
+            Buffer(row(keep * 4)),
             Buffer(initial_value=bits),
             Buffer(keep_t),
         ]
