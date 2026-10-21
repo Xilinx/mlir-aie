@@ -86,13 +86,15 @@ from llama_config import (
     KV_TB,
     N_HEADS_KV,
     N_TILE,
-    N_LAYERS as MODEL_LAYERS,
     QCHUNK_BYTES,
     REP,
     SVCHUNK_BYTES,
     SVFULL_BYTES,
     VOCAB,
     D,
+)
+from llama_config import (
+    N_LAYERS as MODEL_LAYERS,
 )
 
 # The lm_head's weights: per 4-row tile a prefix, the rows and per-row
