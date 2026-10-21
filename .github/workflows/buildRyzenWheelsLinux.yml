@@ -38,7 +38,7 @@ jobs:
   build-linux-npu-wheel:
     name: Build and upload mlir_aie wheel (Linux 3.12 RTTI ON)
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       id-token: write
@@ -241,7 +241,7 @@ jobs:
   build-linux-wheels:
     name: Build and upload mlir_aie wheels (Linux)
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       id-token: write
@@ -461,7 +461,7 @@ jobs:
     # Verify the 3.12 / RTTI-ON wheel built from THIS run installs via
     # env_install.sh/env_setup.sh and can compile + run basic examples on NPU
     # hardware.
-    # The wheel itself is built on ubuntu-latest by build-linux-npu-wheel;
+    # The wheel itself is built on ubuntu-24.04 by build-linux-npu-wheel;
     # only this test job uses the self-hosted NPU runners. This runs whenever
     # the reusable workflow is called, including scheduled, dispatch, and tag
     # publish runs.
