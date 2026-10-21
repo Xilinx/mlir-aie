@@ -74,6 +74,10 @@ CASES = {
     for case in NPU2_CASES
 }
 assert len(CASES) == len(NPU2_CASES), "two device cases map to one host id"
+CASE_DEVICES = {
+    _case_id(case): {t.device for t in ARCH_TRAITS.values() if case.supported_on(t.device)}
+    for case in NPU2_CASES
+}
 # A check of the contract alone sees the factory and its arguments, so it
 # runs once for the cases that differ only in calls, scalars or tag.
 FACTORY_CASES = list(
@@ -267,6 +271,14 @@ def test_tolerance_is_declared_with_its_evidence(case_id):
         assert (
             tol.note
         ), f"{case_id}: tolerance needs a note saying where the number comes from"
+        # A note that cites a device's measurement names every device the
+        # build runs on, if only as unmeasured.
+        device = ARCH_TRAITS[build.arch].device
+        if re.search(r"\bnpu[12]\b", tol.note) and device in CASE_DEVICES[case_id]:
+            assert re.search(rf"\b{device}\b", tol.note), (
+                f"{case_id}: the note for {build} cites a device but not "
+                f"{device}, which the case runs on: {tol.note!r}"
+            )
 
 
 @pytest.mark.parametrize("case_id", list(CASES))

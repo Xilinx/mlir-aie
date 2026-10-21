@@ -7,7 +7,7 @@
 //
 // Exact GELU, x * Phi(x); gelu.cc takes the tanh approximation. The float64
 // GELU correctly rounded to bf16 wherever that is normal (every finite bf16
-// input, on aie2 and aie2p); subnormals flush to 0.
+// input, measured on npu2; npu1 unmeasured); subnormals flush to 0.
 //
 // With a = |x|, z = a / sqrt 2 and t = 1 / (1 + z / 2), erfc(z) = t exp(-z^2 +
 // P(t)) as in Numerical Recipes' erfcc, with P refit as a degree-6 minimax.

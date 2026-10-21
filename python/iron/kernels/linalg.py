@@ -1830,7 +1830,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
                             ),
                             note="f32 summation order over lk exact bf16 products, "
                             "in the kernel and the reference; measured worst 0.12 "
-                            "of it on npu1",
+                            "of it on npu1; npu2: unmeasured",
                         )
                         if build.tuned != "aie2p"
                         else Tolerance.relative(

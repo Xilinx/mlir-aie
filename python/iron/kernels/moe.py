@@ -395,7 +395,8 @@ def experts(
                 ulps=1,
                 range_frac=1e-5,
                 note="npu2: bit for bit on random rows, duplicated ids included; "
-                "sums that cancel (edge-all-chosen) land 1 ulp off in 24 of 18432",
+                "sums that cancel (edge-all-chosen) land 1 ulp off in 24 of 18432; "
+                "npu1: unmeasured",
             ),
         ),
     )

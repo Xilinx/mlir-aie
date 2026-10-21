@@ -377,7 +377,8 @@ def gated_delta_rule(
                 ),
                 note="npu2, against the float32 reference over five seeds: final "
                 "within 9.4e-7 of its range at key_dim 2, 5.1e-7 at the default; y "
-                "one bf16 ulp off in 1 of 10240, as the scalar kernel's",
+                "one bf16 ulp off in 1 of 10240, as the scalar kernel's; npu1: "
+                "unmeasured",
             ),
         ),
     )
