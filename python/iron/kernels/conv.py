@@ -625,7 +625,7 @@ def conv2dk3(
     bias: bool = False,
     table: bool = False,
     stride: int = 1,
-    rounding: str = "positive_inf",
+    rounding: str | None = None,
 ) -> ExternalFunction:
     """3x3 convolution kernel.
 
@@ -651,7 +651,8 @@ def conv2dk3(
         stride: 1, or 2 with ``bias``.
         rounding: How the shift rounds: ``"positive_inf"`` (the uint8 kernel),
             or with ``bias`` ``"symmetric_inf"`` or ``"conv_even"`` (half to
-            even, as ONNX QuantizeLinear).
+            even, as ONNX QuantizeLinear). By default ``"conv_even"`` with
+            ``bias``, ``"positive_inf"`` without.
 
     Returns:
         ExternalFunction configured for the conv2dk3 kernel.
@@ -670,9 +671,9 @@ def conv2dk3(
             act_dtype,
             table,
             stride,
-            rounding,
+            rounding or "conv_even",
         )
-    if table or stride != 1 or rounding != "positive_inf":
+    if table or stride != 1 or rounding not in (None, "positive_inf"):
         raise ValueError("conv2dk3: table, stride and rounding need bias")
     if input_width != 32:
         # Every compiled variant of the vector kernel (aie2, aie2p, and the

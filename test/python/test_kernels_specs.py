@@ -739,7 +739,7 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(stride=2), "need bias"),
             (dict(bias=True, act_dtype=np.uint8, rounding="conv_even"), "act_dtype"),
             (dict(bias=True, stride=3, rounding="conv_even"), "stride"),
-            (dict(bias=True), "needs no bias"),
+            (dict(bias=True, rounding="positive_inf"), "needs no bias"),
             (
                 dict(bias=True, input_width=36, stride=2, rounding="conv_even"),
                 "multiple of 8",
