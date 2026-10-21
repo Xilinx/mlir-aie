@@ -151,7 +151,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=6,
         expected_name="maxpool2d_5x5_i8",
         invalid_kwargs=[
-            (dict(kernel=3), "5x5"),
             (dict(input_width=18), "width of 4k"),
         ],
     ),

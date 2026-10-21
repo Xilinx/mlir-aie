@@ -476,9 +476,7 @@ def maxpool2d_ref(line0, line1, line2, line3, line4, input_width, channels):
     return out.astype(np.int8).reshape(*lead, C * W)
 
 
-def maxpool2d(
-    input_width: int = 20, channels: int = 128, kernel: int = 5
-) -> ExternalFunction:
+def maxpool2d(input_width: int = 20, channels: int = 128) -> ExternalFunction:
     """5x5, stride-1 max pool of one int8 row, padded with -inf (YOLO's SPPF).
 
     Takes the five ``[C/8][W][8]`` rows around the output row, then the
@@ -488,17 +486,13 @@ def maxpool2d(
     Args:
         input_width: Pixels per row, a multiple of 4.
         channels: Channels, a multiple of 8.
-        kernel: The window; 5.
 
     Returns:
         ExternalFunction for maxpool2d_5x5_i8.
 
     Raises:
-        ValueError: On another window, or a width or channel count the
-            kernel cannot tile.
+        ValueError: On a width or channel count the kernel cannot tile.
     """
-    if kernel != 5:
-        raise ValueError(f"maxpool2d(): only a 5x5 window is built, got {kernel}")
     if input_width % 4 or channels % 8 or input_width < 4:
         raise ValueError(
             f"maxpool2d(): needs a width of 4k and channels of 8k, got "
