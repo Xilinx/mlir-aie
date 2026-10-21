@@ -256,7 +256,7 @@ def test_timed_runs_report_the_fastest_call_with_its_spread(yolo):
         ("yolo26n/640/fps_b8", "fps", 165.39, None),
         ("yolo26n/640/elf_bytes", "bytes", 1_234_567, None),
         ("yolo26n/640/compile_s", "s", 95.1, None),
-        ("yolo26n/640/compile_peak_rss_mb", "MB", 3100.0, None),
+        ("yolo26n/640/compile_peak_rss_mb", "MiB", 3100.0, None),
     ]
     # Every metric the check publishes has a threshold the page and the PR
     # report share.

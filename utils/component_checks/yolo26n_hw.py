@@ -36,15 +36,16 @@ import hashlib
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 from importlib.metadata import version
 from pathlib import Path
 
+from aie.utils.compile.utils import AIECC_PROFILE_NAME
 from aiecc_stages import (
-    PROFILE_NAME,
+    Measured,
     add_pmode_argument,
+    clear_for_warm,
     compile_rows,
     compile_stats,
     refuse,
@@ -52,12 +53,18 @@ from aiecc_stages import (
     run_measured,
     stage_rows,
     write,
+    write_unfinished,
 )
 
 CASE = "yolo26n/640"
 N_ITERS = 20
 N_WARMUP = 10
 BATCH = 8
+# Seconds each command may take before the check kills it and fails: the
+# parameter extraction, one compile, and one checked and timed run.
+EXTRACT_TIMEOUT = 1800
+COMPILE_TIMEOUT = 1800
+RUN_TIMEOUT = 900
 
 _YOLO_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "programming_examples", "ml", "yolo26n"
@@ -78,10 +85,6 @@ _PER_IMAGE_RE = re.compile(
     r"median (?P<median>[\d.]+) us, MAD (?P<mad>[\d.]+) us$",
     re.MULTILINE,
 )
-
-
-def _run(cmd: list[str], env: dict) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=_YOLO_DIR, env=env, capture_output=True, text=True)
 
 
 def params_key(onnx: Path, sources: list[Path], packages: dict[str, str]) -> str:
@@ -107,9 +110,7 @@ def params_key(onnx: Path, sources: list[Path], packages: dict[str, str]) -> str
     return digest.hexdigest()
 
 
-def ensure_params(
-    onnx: Path, cache: Path, env: dict
-) -> tuple[Path, subprocess.CompletedProcess | None]:
+def ensure_params(onnx: Path, cache: Path, env: dict) -> tuple[Path, Measured | None]:
     """The parameter file for ``onnx``, generated into ``cache`` unless already there.
 
     Args:
@@ -132,7 +133,7 @@ def ensure_params(
     cache.mkdir(parents=True, exist_ok=True)
     # Renamed into place, so a failed or concurrent run never leaves a partial file.
     partial = cache / f"yolo26n_params-{key}.{os.getpid()}.npz"
-    gen = _run(
+    gen = run_measured(
         [
             sys.executable,
             "gen_yolo_data.py",
@@ -141,9 +142,11 @@ def ensure_params(
             "--out",
             str(partial),
         ],
+        _YOLO_DIR,
         env,
+        EXTRACT_TIMEOUT,
     )
-    if gen.returncode == 0:
+    if gen.process.returncode == 0:
         os.replace(partial, path)
     return path, gen
 
@@ -158,7 +161,7 @@ def newest_build(cache_dir: str) -> str | None:
         The directory holding the newest ``aiecc_profile.json``, or None when
         no build wrote one.
     """
-    profiles = glob.glob(os.path.join(cache_dir, "*", PROFILE_NAME))
+    profiles = glob.glob(os.path.join(cache_dir, "*", AIECC_PROFILE_NAME))
     if not profiles:
         return None
     return os.path.dirname(max(profiles, key=os.path.getmtime))
@@ -169,10 +172,10 @@ def compile_cold_warm(
 ) -> dict:
     """Compile twice into the fresh NPU_CACHE_HOME ``cache_dir``: cold, then warm.
 
-    Cold: every cache empty, same as any first-time compile. Warm: only the
-    cold compile's kernel objects (``objects/``) are kept, so the warm
-    compile reruns the full pipeline, which is what an edit to the design
-    (not its kernels) costs.
+    Cold: every cache empty, same as any first-time compile. Warm: only
+    what ``clear_for_warm`` keeps (the kernel objects and precompiled
+    headers), so the warm compile reruns the full pipeline, which is what an
+    edit to the design (not its kernels) costs.
     """
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
     compile_only = [
@@ -186,39 +189,37 @@ def compile_cold_warm(
         "--params",
         str(params),
     ]
-    cold = run_measured(compile_only, _YOLO_DIR, run_env)
+    cold = run_measured(compile_only, _YOLO_DIR, run_env, COMPILE_TIMEOUT)
     build = newest_build(cache_dir)
     stages_cold = stage_rows(
-        os.path.join(build or cache_dir, PROFILE_NAME),
-        cold[1] if cold[0].returncode == 0 else None,
+        os.path.join(build or cache_dir, AIECC_PROFILE_NAME),
+        cold.seconds if cold.process.returncode == 0 else None,
         "",
     )
 
-    for entry in os.listdir(cache_dir):
-        if entry != "objects":
-            shutil.rmtree(os.path.join(cache_dir, entry), ignore_errors=True)
-    warm = run_measured(compile_only, _YOLO_DIR, run_env)
+    clear_for_warm(cache_dir)
+    warm = run_measured(compile_only, _YOLO_DIR, run_env, COMPILE_TIMEOUT)
     build = newest_build(cache_dir)
     stages_warm = stage_rows(
-        os.path.join(build or cache_dir, PROFILE_NAME),
-        warm[1] if warm[0].returncode == 0 else None,
+        os.path.join(build or cache_dir, AIECC_PROFILE_NAME),
+        warm.seconds if warm.process.returncode == 0 else None,
         "_warm",
     )
 
     return {
         **stages_cold,
         **stages_warm,
-        "built": warm[0] if warm[0].returncode == 0 else cold[0],
+        "built": warm.process if warm.process.returncode == 0 else cold.process,
         "build_dir": build,
         **compile_stats(cold, warm),
-        "log": cold[0].stdout + warm[0].stdout,
     }
 
 
 def run_timed(
     images: Path, onnx: Path, params: Path, n_images: int, batch: int, env: dict
-) -> subprocess.CompletedProcess:
-    return _run(
+) -> Measured:
+    """Run yolo26n.py over ``n_images`` at ``batch``, checking every image, then timing it."""
+    return run_measured(
         [
             sys.executable,
             "yolo26n.py",
@@ -238,7 +239,9 @@ def run_timed(
             "--n-warmup",
             str(N_WARMUP),
         ],
+        _YOLO_DIR,
         env,
+        RUN_TIMEOUT,
     )
 
 
@@ -451,50 +454,44 @@ def main(argv=None) -> int:
             f"{missing} is missing; see --weights-dir", meta, args.out, args.meta
         )
 
+    write_unfinished(meta, CASE, args.out, args.meta)
     env = dict(os.environ)
     params, gen = ensure_params(onnx, args.params_cache, env)
     meta["params"] = str(params)
-    if gen is not None and gen.returncode != 0:
-        print(gen.stdout + gen.stderr)
+    if gen is not None and gen.process.returncode != 0:
         return refuse(
-            f"gen_yolo_data.py exited {gen.returncode}", meta, args.out, args.meta
+            f"gen_yolo_data.py exited {gen.process.returncode}",
+            meta,
+            args.out,
+            args.meta,
         )
     cache_dir = tempfile.mkdtemp(prefix="component-checks-yolo26n-")
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
     correctness = parse_correctness("", 1, args.ort_mismatches)
     timing = parse_timing("")
     artifacts: dict = {}
-    log = (gen.stdout + gen.stderr) if gen else ""
     try:
         compiled = compile_cold_warm(images, onnx, params, env, cache_dir)
-        log += compiled["log"]
         if compiled["built"].returncode == 0:
             artifacts = artifact_stats(compiled["build_dir"])
-            ran = run_timed(images, onnx, params, args.n_images, 1, run_env)
+            ran = run_timed(images, onnx, params, args.n_images, 1, run_env).process
             correctness = parse_correctness(
-                ran.stdout + ran.stderr, ran.returncode, args.ort_mismatches
+                ran.stdout, ran.returncode, args.ort_mismatches
             )
-            log += ran.stdout + ran.stderr
             if correctness["passed"]:
                 batched = run_timed(
                     images, onnx, params, args.n_images, BATCH, run_env
-                )
-                log += batched.stdout + batched.stderr
+                ).process
                 in_batches = parse_correctness(
-                    batched.stdout + batched.stderr,
-                    batched.returncode,
-                    args.ort_mismatches,
+                    batched.stdout, batched.returncode, args.ort_mismatches
                 )
                 if in_batches["passed"]:
-                    timing = parse_timing(ran.stdout + ran.stderr) | parse_timing(
-                        batched.stdout + batched.stderr
-                    )
+                    timing = parse_timing(ran.stdout) | parse_timing(batched.stdout)
                 else:
                     correctness = in_batches
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
 
-    print(log)
     failed = [] if correctness["passed"] else [CASE]
 
     write(args.out, aggregate(correctness, timing, artifacts, compiled))
@@ -512,7 +509,7 @@ def main(argv=None) -> int:
                     **{
                         k: v
                         for k, v in compiled.items()
-                        if k not in ("built", "build_dir", "log")
+                        if k not in ("built", "build_dir")
                     },
                 }
             ],
