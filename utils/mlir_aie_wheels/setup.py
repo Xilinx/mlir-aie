@@ -549,7 +549,6 @@ setup(
     ),
     long_description_content_type="text/markdown",
     author="AMD Inc.",
-    author_email="joseph.melber@amd.com",
     url="https://github.com/Xilinx/mlir-aie",
     license="Apache-2.0 WITH LLVM-exception",
     license_files=["LICENSE"],
