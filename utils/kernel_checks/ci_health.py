@@ -183,8 +183,7 @@ def main_rate(judged):
     counts = {"passed": sum(r["outcome"] == "passed" for r in judged)}
     counts.update({o: sum(r["outcome"] == o for r in judged) for o in OUTCOMES})
     tried = counts["passed"] + counts["failed"] + counts["timed_out"]
-    counts["rate"] = rounded(counts["passed"] / tried, 3) if tried else None
-    return counts
+    return {**counts, "rate": rounded(counts["passed"] / tried, 3) if tried else None}
 
 
 def job_outcome(get, repo: str, job: dict) -> str:

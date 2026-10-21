@@ -54,8 +54,12 @@ COCO128_URL = (
     "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128.zip"
 )
 # Pin each from a download you have checked; None stops the export.
-CHECKPOINT_SHA256: str | None = None
-COCO128_SHA256: str | None = None
+CHECKPOINT_SHA256: str | None = (
+    "9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef"
+)
+COCO128_SHA256: str | None = (
+    "61e5e3028863d8ffc3b81d6a514603954889f0edd5e4b44c4ce60b2da99aeb8e"
+)
 
 
 def check_sha256(path: Path, pinned: str | None) -> None:

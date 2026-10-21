@@ -330,6 +330,8 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
             state = fold(state, m[:, b], s[:, b], acc[:, b])
         if state is not None:
             merged = fold(merged, *state)
+    if merged is None:
+        raise ValueError(f"t={t}: attention needs at least one cached row")
     sv = merged[2]
     absmax = np.maximum(np.abs(sv).max(axis=1), np.float32(1e-12)).astype(np.float32)
     scales = (absmax * np.float32(1.0 / 127.0)).astype(np.float32)
@@ -406,11 +408,11 @@ class Layer:
             base = rng.standard_normal((rows, k)).astype(np.float32) * 0.05
             row_scale = rng.uniform(0.1, 1.0, size=rows).astype(np.float32)
             weights[p] = quant_int8_perchan_absmax(base * row_scale[:, None])
-        gammas = [
+        gamma_in, gamma_post = (
             (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(bfloat16)
             for _ in range(2)
-        ]
-        return cls(weights, *gammas, t)
+        )
+        return cls(weights, gamma_in, gamma_post, t)
 
     def project(self, p, act_i8, act_scale):
         """Projection `p` of an int8 activation, dequantized to fp32."""
