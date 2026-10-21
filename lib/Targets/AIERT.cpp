@@ -1043,7 +1043,14 @@ LogicalResult xilinx::AIE::AIERTControl::addCoreEnable(DeviceOp &targetOp) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
     if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
-      TxnLocBracket bracket(*this, tileOp.getCoreOp().getLoc());
+      CoreOp coreOp = tileOp.getCoreOp();
+      TxnLocBracket bracket(*this, coreOp.getLoc());
+      // A core reaching its own tile's registers goes through the processor
+      // bus, which starts disabled: an access made before this stalls the
+      // core. Only the cores that ask for it pay for it.
+      if (coreOp->hasAttr(kProcessorBusAttrName))
+        TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreProcessorBusEnable,
+                                &aiert->devInst, tileLoc);
       TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &aiert->devInst,
                               tileLoc);
     }

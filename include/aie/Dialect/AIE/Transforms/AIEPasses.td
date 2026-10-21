@@ -208,6 +208,25 @@ def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "mlir::ModuleOp"> {
   let constructor = "xilinx::AIE::createAIECanonicalizeDevicePass()";
 }
 
+def AIECoreDMARearm
+    : Pass<"aie-lower-core-dma-rearm", "xilinx::AIE::DeviceOp"> {
+  let summary = "Lower aie.dma_rearm onto the stores that arm a DMA channel";
+  let description = [{
+    Replace each `aie.dma_rearm` with the register writes that arm its
+    channel, as stores the core makes to its own tile over the processor bus.
+
+    The writes come from aie-rt: the arming runs inside a transaction and the
+    transaction is read back, so this pass carries no copy of the register
+    map. An arming that writes outside the core's own tile, or that takes
+    anything other than plain writes, is an error rather than a store the
+    core cannot make.
+  }];
+  let constructor = "xilinx::AIE::createAIECoreDMARearmPass()";
+  let dependentDialects = ["mlir::func::FuncDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::LLVM::LLVMDialect"];
+}
+
 def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
   let summary = "Lowering operations in AIE cores' regions to Standard";
   let description = [{
