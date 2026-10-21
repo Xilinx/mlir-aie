@@ -1224,7 +1224,7 @@ static void conv2dk1_ui16_partial_acc_scalar(
 // The sums carry across calls in fc_acc and restart at chunk 0; every call
 // stores the requantized running sum, so the last chunk's store is the result.
 static_assert(FC_INPUT_CHANNELS % 32 == 0 && FC_CHUNK_IC % 32 == 0 &&
-              FC_CHUNK_OC % 8 == 0);
+              FC_CHUNK_OC % 8 == 0 && FC_INPUT_CHANNELS % FC_CHUNK_IC == 0);
 alignas(32) static int32_t fc_acc[FC_MAX_IMAGES * FC_CHUNK_OC];
 
 static void fc_ic_chunk_scalar(const uint16_t *input, const int8_t *kernels,
@@ -2315,15 +2315,17 @@ void post_L2_fc_ui16_ic_chunk(uint16_t *input, int8_t *kernels,
                               uint16_t *output, const int32_t chunk,
                               const int32_t images, const int32_t scale) {
   event0();
+  // fc_acc holds FC_MAX_IMAGES images' sums.
+  const int32_t held = images < FC_MAX_IMAGES ? images : FC_MAX_IMAGES;
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if ((((uintptr_t)input | (uintptr_t)kernels) & (FC_ALIGN - 1)) == 0 &&
       ((uintptr_t)output & 15) == 0) {
-    fc_ic_chunk_vector(input, kernels, output, chunk, images, scale);
+    fc_ic_chunk_vector(input, kernels, output, chunk, held, scale);
     event1();
     return;
   }
 #endif
-  fc_ic_chunk_scalar(input, kernels, output, chunk, images, scale);
+  fc_ic_chunk_scalar(input, kernels, output, chunk, held, scale);
   event1();
 }
 #endif

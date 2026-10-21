@@ -5,12 +5,14 @@
 
 """Exercise the page's real data, chart and table code under node, without a browser."""
 
+import importlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -31,11 +33,20 @@ def page():
     setup = """
 const assert = require('node:assert/strict');
 // Disable the automatic data fetch and capture the Chart.js configuration.
-global.fetch = async () => ({ ok: false });
+global.fetch = async () => ({ ok: false, status: 404 });
 // Just enough DOM for the page to build its cards and tables.
 class El {
   constructor(tag) { this.tag = tag; this.children = []; this.on = {}; this.hidden = false; }
-  append(...nodes) { this.children.push(...nodes); }
+  append(...nodes) {
+    for (const n of nodes) if (n instanceof El) n.parentNode = this;
+    this.children.push(...nodes);
+  }
+  insertBefore(node, before) {
+    const at = this.children.indexOf(before);
+    this.children.splice(at < 0 ? this.children.length : at, 0, node);
+    node.parentNode = this;
+  }
+  remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(c => c !== this); }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(type, f) { this.on[type] = f; }
   querySelectorAll() { return []; }
@@ -190,7 +201,16 @@ def test_the_mobilenet_repro_builds_what_the_nightly_builds(page):
     producer = (ROOT / "utils/component_checks/sa_placer_hw.py").read_text(
         encoding="utf-8"
     )
-    efforts = json.loads(re.search(r"^_EFFORTS = (\{.*\})$", producer, re.M)[1])
+    # The design's default effort is sa_placer_flags' own; full is 1.0.
+    common = (
+        ROOT / "programming_examples/ml/mobilenet/bottleneck/_common.py"
+    ).read_text(encoding="utf-8")
+    efforts = {
+        "default": float(
+            re.search(r"def sa_placer_flags\(.*effort=([\d.]+)", common)[1]
+        ),
+        "full": float(re.search(r'^\s+"full": ([\d.]+),$', producer, re.M)[1]),
+    }
     run_seed = producer.split("def run_seed(", 1)[1].split("\ndef ", 1)[0]
     flags = sorted(set(re.findall(r'"(-{1,2}[a-z][\w-]*)"', run_seed)))
     html = PAGE.read_text(encoding="utf-8")
@@ -251,13 +271,13 @@ assert.deepEqual(movedSeries(data, 'llama-chain-hw').regressed.map(x => x.series
 const rate = trendConfig(data, llama.trend[0]);
 const lines = rate.data.datasets.filter(d => !d.band);
 assert.deepEqual(lines.map(d => [d.label, d.data, d.borderDash.length > 0]), [
-  ['dispatch rate · Strix', [4.7, null, 4.37], false], ['dispatch rate · Krackan 1', [null, 4, null], true]]);
+  ['dispatch rate · Strix', [4.7, null, 4.37], false], ['dispatch rate · Krackan', [null, 4, null], true]]);
 assert.deepEqual(rate.plugins, [MARKERS]);
 assert.deepEqual(rate.options.plugins.markers.at.map(m => m.label), ['device NPU Krackan 1, kernels k2', 'device NPU Strix, kernels k3']);
 assert.deepEqual(rate.options.plugins.tooltip.callbacks.title([{ dataIndex: 1 }]), ['2 Oct, 06:30 UTC', 'changed: device NPU Krackan 1, kernels k2']);
 // Compile time moves with the part's host too.
 assert.deepEqual(trendConfig(data, COMPILE_TABS[0]).data.datasets.filter(d => !d.band).map(d => d.label),
-                 ['cold · Strix', 'cold · Krackan 1', 'warm · Strix', 'warm · Krackan 1']);
+                 ['cold · Strix', 'cold · Krackan', 'warm · Strix', 'warm · Krackan']);
 // Sparklines of a time follow the latest night's part.
 const card = componentBand(llama, { target: 'llama-chain-hw', runs: swaps.map(n => night(n.id, n.date, 'turbo', { device: n.device, provenance: n.provenance })) },
                            swaps[2], NOW, swaps[1]);
@@ -276,7 +296,7 @@ const k = (id, day, us, device, kernels) => ({ ...rec(id, Date.parse(`2026-10-0$
   'softmax/1024/bfloat16/npu_us': ['us', us], 'softmax/1024/bfloat16/cycles': ['cycles', 1000] }), provenance: { device, kernels } });
 db = fromRecords({ npu2: [k('1', 1, 80, 'NPU Strix', 'a'), k('2', 2, 77, 'NPU Krackan 1', 'a'), k('3', 3, 81, 'NPU Strix', 'b')] });
 const us = kernelTrendConfig(db, 'npu2', 'softmax', 'npu_us');
-assert.deepEqual(us.data.datasets.map(d => d.label), ['1024/bfloat16 · Strix', '1024/bfloat16 · Krackan 1']);
+assert.deepEqual(us.data.datasets.map(d => d.label), ['1024/bfloat16 · Strix', '1024/bfloat16 · Krackan']);
 assert.deepEqual(us.plugins, [MARKERS]);
 assert.deepEqual(us.options.plugins.markers.at.map(m => m.index), [1, 2]);
 const cycles = kernelTrendConfig(db, 'npu2', 'softmax', 'cycles');
@@ -349,6 +369,10 @@ assert.equal(formatChange(moved.regressed[0].change, 5, 'ulp'), '+5 ulp');
 // Gated, they read in the verdict as their own kind of move.
 const night = nightOf('npu2', null, db, cat2);
 assert.equal(verdictOf(night, Date.parse('2026-10-03T07:00:00Z')).headline, '1 case less accurate vs 2 Oct.');
+// Cycles lead the sentence, whatever order the moves came in.
+const mixed = { ...night, moved: { regressed: [
+  { series: { metric: 'kernel_object_bytes', kase: 'a/1' } }, { series: { metric: 'cycles', kase: 'b/1' } }], improved: [] } };
+assert.equal(verdictOf(mixed, Date.parse('2026-10-03T07:00:00Z')).headline, '1 case slower, 1 bigger vs 2 Oct.');
 const item = attentionFor(night, Date.parse('2026-10-03T07:00:00Z')).find(i => i.level === 'bad');
 assert.ok(item.body[0].startsWith('1 case got less accurate past its threshold vs 2 Oct:'));
 """)
@@ -386,6 +410,34 @@ assert.ok($('placement-trends').scrolled);
 const slot = document.createElement('div');
 revealTrend('performance', slot);
 assert.ok(slot.scrolled);
+""")
+
+
+def test_llama_decode_by_context_is_a_line_per_context(page):
+    page(COMPONENT_RUNS + LLAMA_NIGHTS + """
+// The context sweep: one compile, timed at each start position; a series per context.
+const swept = (id, date, night) => {
+  const r = llamaRecord(id, date, 4.37);
+  for (const [ctx, ...ms] of [[1024, 52, 57.2], [8192, 70, 77], [131072, 390, 429]]) {
+    r.rows[`${LLAMA}/ctx=${ctx}`] = { ms_per_token: { value: ms[night], unit: 'ms' }, decode_tok_s: { value: 1000 / ms[night], unit: 'tok/s' } };
+  }
+  return r;
+};
+const data = collect(historiesOf('llama-chain-hw', [swept('6', llamaBefore.date, 0), swept('7', llamaAfter.date, 1)]));
+const tab = llama.trend.find(t => t.id === 'decode_by_context');
+assert.equal(tab.name, 'Decode by context');
+const config = trendConfig(data, tab);
+assert.deepEqual(config.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
+  [['1k context', [52, 57.2]], ['8k context', [70, 77]], ['128k context', [390, 429]]]);
+assert.equal(config.options.scales.y.type, 'logarithmic');
+// The plain decode tab charts the timed run alone, not the sweep summed in.
+assert.deepEqual(trendConfig(data, llama.trend.find(t => t.id === 'ms_per_token')).data.datasets.filter(d => !d.band).map(d => d.data),
+  [[1000 / 4.37, 1000 / 4.37]]);
+assert.deepEqual(trendBox(data, llama.trend, '').children[0].children[0].children.map(b => b.textContent).slice(0, 3),
+  ['Tokens / s', 'Dispatch / token', 'Decode by context']);
+// The card and the summary stay on the timed run.
+const card = componentBand(llama, llamaIndex, swept('7', llamaAfter.date, 1), NOW, swept('6', llamaBefore.date, 0));
+assert.deepEqual(card.cards.map(c => c.kase), [LLAMA]);
 """)
 
 
@@ -431,13 +483,188 @@ assert.deepEqual(yRange([{ data: [0, 0] }], 'cycles'), { min: 0, max: 1 });
 """)
 
 
-def test_narrow_screens_hide_no_kernels_table_column():
-    # Each NPU's header spans its columns; hiding one slides the headers.
-    css = (
-        PAGE.read_text(encoding="utf-8").split("<style>", 1)[1].split("</style>", 1)[0]
+def test_an_unreadable_file_is_not_taken_for_an_unpublished_one(page):
+    page(RUNS + COMPONENT_RUNS + """
+const answers = {
+  'missing.json': { ok: false, status: 404 },
+  'busy.json': { ok: false, status: 503 },
+  'broken.json': { ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected token'); } },
+  'good.json': { ok: true, status: 200, json: async () => ({ schema: 1, runs: [] }) },
+};
+global.fetch = async url => {
+  if (url === 'offline.json') throw new TypeError('Failed to fetch');
+  return answers[url];
+};
+(async () => {
+  assert.equal(await fetchJson('missing.json'), null);
+  assert.deepEqual(await fetchJson('good.json'), { schema: 1, runs: [] });
+  const [busy, broken, offline] = await Promise.all(['busy.json', 'broken.json', 'offline.json'].map(fetchJson));
+  assert.deepEqual([busy.reason, broken.reason, offline.reason], ['HTTP 503', 'not valid JSON', 'the request failed']);
+  // An unread file is never data, nor "a newer version".
+  assert.equal(readable(busy), null);
+  const unread = new Unread('../kernel-checks/npu2/runs.json', 'HTTP 503');
+  const run = latestRun('npu2', unread, null, null);
+  assert.equal(run.newer, false);
+  // The kernels' verdict: could not read, reload; not "no results published".
+  const verdict = verdictOf({ npu: 'npu2', run, counts: catalogueCounts(null), moved: null, latest: { cases: new Map() } }, 0);
+  assert.deepEqual([verdict.level, verdict.headline], ['bad', 'Could not read kernel-checks/npu2/runs.json (HTTP 503): reload the page.']);
+  assert.equal(verdictOf({ npu: 'npu2', run: latestRun('npu2', null, null, null), counts: catalogueCounts(null), moved: null, latest: { cases: new Map() } }, 0).headline,
+               'No results published yet.');
+  // A component band.
+  const band = componentBand(hw, new Unread('../component-checks/sa-placer-hw/runs.json', 'the request failed'), null, NOW);
+  assert.equal(band.className, 'verdict bad');
+  assert.equal(one(band, n => n.className === 'headline').text, 'Could not read component-checks/sa-placer-hw/runs.json (the request failed): reload the page.');
+  // CI health.
+  const ci = { status: null, unread: new Unread('../ci-health/status.json', 'HTTP 502'), newer: false, results: [], critical: [], merge: null };
+  assert.equal(ciStatus(ci, NOW).text, 'Could not read ci-health/status.json (HTTP 502): reload the page.');
+  assert.equal(ciVerdictBand(ci, NOW).className, 'verdict bad');
+  const [tile] = overviewTiles(null, [], NOW, ci);
+  assert.deepEqual([tile.level, tile.children[1].text], ['bad', 'Needs a look']);
+})().catch(e => { console.error(e); process.exit(1); });
+""")
+
+
+def test_without_chartjs_every_chart_is_drawn_as_svg(page):
+    page(COMPONENT_RUNS + SWEEP_NIGHTS + """
+global.Chart = undefined;
+// The sweep's Seeds chart: dots, the nightly before as ticks, no lines between seeds.
+const card = componentBand(sweep, sweepIndex, after, NOW, before);
+const seeds = all(card, n => n.className === 'chart')[0];
+const svg = all(seeds, n => n.className === 'svg-chart')[0];
+assert.ok(svg.innerHTML.startsWith('<svg'));
+assert.ok(!svg.innerHTML.includes('<polyline'));
+// Three seeds placed, four the night before, one failed.
+assert.equal((svg.innerHTML.match(/<circle/g) || []).length, 3 + 4 + 1);
+// A Placement or Routing trend chart (draw).
+const data = collect(historiesOf('sa-placer', [before, after]));
+const holder = document.createElement('div');
+const canvas = document.createElement('canvas');
+holder.append(canvas);
+document.createElement('div').append(holder);
+const drawn = draw(canvas, chartGroups(data.series).find(g => g.metric === 'final_cost_max'), ['unknown'], data);
+assert.ok(drawn.svg.some(p => p.startsWith('<polyline')));
+assert.deepEqual(drawn.legend, ['sa-placer']);
+assert.ok(canvas.hidden);
+""")
+
+
+def _contrast(fg, bg):
+    def luminance(color):
+        rgb = [int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+        lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+    hi, lo = sorted([luminance(fg), luminance(bg)], reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_status_reads_without_color_and_text_meets_aa(page):
+    html = PAGE.read_text(encoding="utf-8")
+    css = html.split("<style>", 1)[1].split("</style>", 1)[0]
+    themes = [
+        dict(re.findall(r"--([\w-]+): (#[0-9a-f]{6})", block))
+        for block in (
+            css.split(":root {", 1)[1].split("}", 1)[0],
+            css.split(':root[data-theme="dark"] {', 1)[1].split("}", 1)[0],
+        )
+    ]
+    # Secondary and status text on every background it sits on: WCAG AA.
+    for theme in themes:
+        for fg, bgs in [
+            ("faint", ["paper", "surface"]),
+            ("warn", ["surface", "paper", "warn-soft"]),
+            ("ok", ["surface", "ok-soft"]),
+            ("bad", ["surface", "bad-soft"]),
+        ]:
+            for bg in bgs:
+                ratio = _contrast(theme[fg], theme[bg])
+                assert ratio >= 4.5, (fg, bg, theme[fg], theme[bg], ratio)
+    # A failure carries a cross and a warning is hollow, in the strips and dots.
+    assert ".night.bad::before { content: '\u2715'; }" in css
+    assert re.search(
+        r"\.night\.warn \{ background: transparent; box-shadow: inset", css
     )
-    rules = re.findall(r"#kernels[^{]*\{[^}]*display:\s*none", css)
-    assert all(".summary" in r for r in rules), rules
+    assert ".ci-row.bad .dot::before" in css and ".k-row .k-bad .dot::before" in css
+    # Headings nest: the overview has one, a section's blocks are h3s.
+    assert '<h2 class="sr-only">Overview</h2>' in html
+    assert "<h2>Needs a look</h2>" not in html and "<h3>Needs a look</h3>" in html
+    # The theme button's accessible name is its visible text.
+    assert re.search(
+        r'<button id="theme" type="button" title="[^"]+">Dark</button>', html
+    )
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+// Placement's lanes: full effort dashed, in the line and its chip.
+const card = componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore).cards[0];
+assert.deepEqual(card.sparks.get('placement_cost').lines.map(([, key, dashed]) => [key.split('|')[1], Boolean(dashed)]), [
+  ['mobilenet/seed=3/effort=default', false], ['mobilenet/seed=3/effort=full', true],
+  ['mobilenet/seed=7/effort=default', false], ['mobilenet/seed=7/effort=full', true]]);
+const chips = all(card.children[1].children[0], n => /^npu /.test(n.className || '')).map(n => n.className);
+assert.deepEqual(chips, ['npu n-series-1', 'npu n-series-1 dashed', 'npu n-series-2', 'npu n-series-2 dashed']);
+// A chart is an image named by what it charts and in which unit.
+const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
+const box = trendBox(data, hw.trend, 'us_per_image');
+const canvas = all(box, n => n.tag === 'canvas')[0];
+assert.equal(canvas.role, 'img');
+assert.equal(canvas.ariaLabel, 'Dispatch / image, Dispatch time per image (µs, fastest of 20), over recent nightlies');
+// A run with no link still names itself.
+const strip = nightStrip({ runs: [{ id: '1', date: '2026-10-01T06:30:00Z', pmode: 'turbo', published: true }], run: { id: '1' } });
+assert.equal(strip.children[1].role, 'img');
+assert.ok(strip.children[1].ariaLabel.startsWith('1 Oct, 06:30 UTC'));
+""")
+
+
+def test_every_metric_the_checks_publish_has_a_label_and_a_description(page):
+    sys.path.insert(0, str(ROOT / "utils/component_checks"))
+    try:
+        stages = importlib.import_module("aiecc_stages")
+    finally:
+        sys.path.remove(str(ROOT / "utils/component_checks"))
+    published = set(stages.COMPILE_METRICS)
+    for source in (ROOT / "utils/component_checks").glob("*.py"):
+        text = source.read_text(encoding="utf-8")
+        # row(case, "metric", ...), ("metric", "unit") pairs, cells["metric"] and
+        # *_COUNTS entries.
+        published |= set(re.findall(r'row\(\s*[^,()]+,\s*"([a-z][a-z0-9_]*)"', text))
+        published |= set(
+            re.findall(
+                r'\(\s*"([a-z][a-z0-9_]*)",\s*"(?:bytes|cores|ms|s|us|tok/s|fps)"\s*\)',
+                text,
+            )
+        )
+        published |= set(re.findall(r'cells\["([a-z][a-z0-9_]*)"\] = \(', text))
+        for block in re.findall(r"_COUNTS = \{([^}]*)\}", text):
+            published |= set(re.findall(r'"([a-z][a-z0-9_]*)":', block))
+    publish = (ROOT / "utils/kernel_checks/publish.py").read_text(encoding="utf-8")
+    published |= set(re.findall(r'"([a-z][a-z0-9_]*)": \{"value"', publish))
+    # The timing checks' per-batch YOLO rows, named by the batch they ran.
+    published |= {"us_per_image_b1", "us_per_image_b8", "fps_b1", "fps_b8"}
+    # n_cores is dropped (the author's call): the page shows the layout as words.
+    published -= {"n_cores"}
+    assert {
+        "max_ulp",
+        "compile_s",
+        "unrouted",
+        "tok_s",
+        "placement_cost",
+        "failed_mutations",
+    } <= published
+    page(f"""
+const published = {json.dumps(sorted(published))};
+for (const m of [...published, ...ALL_METRICS]) {{
+  assert.ok(m in LABELS, `${{m}} has no label`);
+  assert.ok(m in METRICS || m in COMPONENT_METRICS, `${{m}} has no description`);
+}}
+// A chart's tooltip formats its value as its ticks do.
+db = fromRecords({{ npu1: [rec('1', 1, 'turbo', {{ 'a/1/i8/npu_us': ['us', 80.25] }}), rec('2', 2, 'turbo', {{ 'a/1/i8/npu_us': ['us', 81] }})] }});
+draw(el0, groupOf(db), ['turbo'], db);
+const tick = chart.options.scales.y.ticks.callback(81);
+assert.equal(chart.options.plugins.tooltip.callbacks.label({{ dataset: chart.data.datasets[0], dataIndex: 1, raw: 81 }}), `npu1: ${{tick}}`);
+// Information only: never worse or better.
+THRESHOLDS.ort_matches = {{ ...THRESHOLDS.ort_matches, neutral: true }};
+assert.equal(changeClass(8, 6, 'ort_matches'), '');
+// The removed helpers stay removed.
+assert.equal(typeof latestChange, 'undefined');
+""")
 
 
 def test_repeated_commits_stay_separate_runs(page):
@@ -447,8 +674,8 @@ assert.equal(new Set(db.order.map(p => p.id)).size, 7);
 assert.deepEqual(db.order.filter(o => o.npu === 'npu1').map(o => o.run), ['t1', 'p1', 't2', 't25', 'p25', 't3']);
 assert.deepEqual(s.byMode.get('turbo').map(p => p.row.value), [100, 110, 121]);
 assert.equal(s.factory, 'softmax');
-assert.equal(latestChange(s, ['turbo']), 0.1);
-assert.equal(latestChange(s, ['turbo', 'performance']), 0.1);
+assert.equal(latestMove(s, ['turbo']).change, 0.1);
+assert.equal(latestMove(s, ['turbo', 'performance']).change, 0.1);
 """)
 
 
@@ -564,7 +791,7 @@ db = fromRecords({ npu1: [rec('1', 100000, 'turbo', sm(100)), rec('2', 200000, '
 draw(el0, groupOf(db), ['performance', 'turbo'], db);
 assert.equal(chart.data.datasets.length, 1);
 assert.deepEqual(chart.data.datasets[0].data, [100, 110]);
-assert.equal(latestChange(db.series[0], ['performance']), null);
+assert.equal(latestMove(db.series[0], ['performance']), null);
 """)
 
 
@@ -888,7 +1115,7 @@ assert.deepEqual(items.map(li => [li.className, li.children[0].text]),
   [['bad', 'npu1'], ['bad', 'npu1'], ['bad', 'npu2'], ['warn', 'npu1']]);
 assert.ok(items[0].text.includes('failed correctness'));
 assert.equal(items[0].children[1].children[1].children[0].children[0].title, 'mm/64/i8');
-assert.equal(items[2].children[1].text, 'No results have been published.');
+assert.equal(items[2].children[1].text, 'No results published yet.');
 
 // A regression is named in Needs a look with how far it moved; its kernel a click away.
 const worse = items[1];
@@ -1398,9 +1625,10 @@ const hwIndex = { target: 'sa-placer-hw', runs: [night('6', hwBefore.date, 'turb
 def test_a_passing_check_says_so_and_how_to_run_it(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
-assert.equal(card.className, 'verdict ok');
+// Every run passed, but seed 3's batch 16 got slower: a warning, not "all passing".
+assert.equal(card.className, 'verdict warn');
 assert.equal(one(card, n => n.className === 'headline').text,
-             "Every run passed. Seed 3 streams at 92.2 µs per image; one image's dispatch takes 295.7 µs.");
+             "Every run passed, but 1 measure got worse vs 1 Oct. Seed 3 streams at 92.2 µs per image; one image's dispatch takes 295.7 µs.");
 const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open);
 // Shown: the verdict, what moved, and the trend chart's slot. Behind
@@ -1415,6 +1643,7 @@ assert.equal(card.trend.className, 'trend-slot');
 // A quiet night: "nothing moved" is detail too.
 const quiet = componentBand(hw, hwIndex, hwRecord('7', hwAfter.date, 98), NOW, hwBefore);
 assert.deepEqual(quiet.children.map(c => c.className), ['verdict-top', 'headline', 'trend-slot', 'band-more']);
+assert.equal(quiet.className, 'verdict ok');
 assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 0.05 --dynamic 1 16 -w 20 -i 20'));
 assert.ok(card.text.includes('turbo mode'));
 // Nothing published yet.
@@ -1428,7 +1657,7 @@ def test_hardware_seed_cards_show_each_batch_against_the_nightly_before(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(one(card, n => n.className === 'moves').text,
-             'Since 1 Oct:seed 3, batch 16, default effort streaming +8.7%seed 3, batch 16, default effort dispatch / image +7.0%');
+             'Since 1 Oct:seed 3, batch 16, default effort dispatch / image +7.0%');
 assert.deepEqual(card.cards.map(c => c.kase), ['mobilenet/seed=3/effort=default', 'mobilenet/seed=3/effort=full', 'mobilenet/seed=7/effort=default', 'mobilenet/seed=7/effort=full']);
 const [header, grid] = card.cards[0].children;
 assert.equal(header.children[0].text, "seed 3the design's default");
@@ -1556,9 +1785,9 @@ assert.equal(segs(cold)[3].style, 'width: max(1px, calc(76.533% - 2px))');
 assert.equal(segs(warm)[0].style, 'width: max(1px, calc(3.525% - 2px))');
 // Named in place only where the name fits; the textured time outside aiecc
 // only in the key, since a label on the hatch would not read. Every segment
-// can be hovered and focused.
+// can be hovered; none is a tab stop, since the key below tables every value.
 assert.deepEqual(segs(cold).map(n => n.text), ['', '', '', 'waiting on kernels', '', '', '', '']);
-assert.ok(segs(cold).every(n => n.tabIndex === 0));
+assert.ok(segs(cold).every(n => n.tabIndex === undefined));
 assert.equal(segs(cold)[0].title, 'place, cold compile: 1.09 s, 5.3% of its time per stage\\n' +
   'tile placement: aie-place-tiles, which runs the SA placer at its seed and effort');
 assert.equal(segs(cold)[1].title.split('\\n')[0], 'route, cold compile: 0.03 s, 0.1% of its time per stage');
@@ -1596,7 +1825,7 @@ def test_the_llama_card_reads_decode_rate_higher_as_better(page):
 assert.equal(llama.section, 'performance');
 const card = componentBand(llama, llamaIndex, llamaAfter, NOW, llamaBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every decoded token matched the oracle. 16 layers: a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
+             'Every decoded token matched the oracle, but 1 measure got worse vs 1 Oct. 16 layers: a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
 // generate.py's end-to-end decode rate leads when the night has it; the dispatch rate follows.
 assert.equal(llamaSummary({ [LLAMA]: { ...llamaAfter.rows[LLAMA], decode_tok_s: { value: 4.2, unit: 'tok/s' } } }),
              ' 16 layers decode at 4.2 tok/s end to end; a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
@@ -1604,9 +1833,10 @@ assert.equal(llamaSummary({ [LLAMA]: { ...llamaAfter.rows[LLAMA], decode_tok_s: 
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:persist_grow, N 16 dispatch rate −7.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [LLAMA]);
 const [header, grid] = card.cards[0].children;
-assert.equal(header.text, '16 layerspersistent decode, 4 tokens per dispatchcompute-bound');
+// The layout is words on the card, not a metric.
+assert.equal(header.text, '16 layerspersistent decode, 4 tokens per dispatchevery layer on one shared 8-core GEMV arraycompute-bound');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['Decode tokens / s', 'Dispatch rate', 'Dispatch / token', 'Over the DMA floor',
-  'Tokens verified', 'Compiled sizes', 'Cores']);
+  'Tokens verified', 'Compiled sizes']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);
 // Down is worse for tokens per second, up is worse for time per token.
 assert.deepEqual(chip(grid.children[1]), ['chg worse']);
@@ -1684,14 +1914,14 @@ def test_the_yolo26n_card_shows_each_batch_and_what_it_verified(page):
 assert.equal(yolo.section, 'performance');
 const card = componentBand(yolo, yoloIndex, yoloAfter, NOW, yoloBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every image matched the oracle. End to end, one image takes 5,400 µs (185.19 fps) at batch 1, 3,000 µs at batch 8.');
+             'Every image matched the oracle, but 1 measure got worse vs 1 Oct. End to end, one image takes 5,400 µs (185.19 fps) at batch 1, 3,000 µs at batch 8.');
 // The frame rate repeats the time per image and is not listed twice.
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n end-to-end / image (b1) +8.0%');
 assert.deepEqual(card.cards.map(c => c.kase), [YOLO]);
 const [header, grid] = card.cards[0].children;
-assert.equal(header.text, '640 × 6408 COCO imagesb8 ÷ b1 per image 0.56×');
+assert.equal(header.text, '640 × 6408 COCO imagesfour device configurations in one full ELF, run one after anotherb8 ÷ b1 per image 0.56×');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['End-to-end / image', 'Images / s', 'Images verified', 'Match onnxruntime',
-  'Compiled size', 'Cores']);
+  'Compiled size']);
 const chip = cell => all(cell, n => /^chg /.test(n.className || '')).map(n => n.className);
 // A lane per batch; up is worse for time per image, down for images per second.
 assert.equal(grid.children[0].text, 'End-to-end / imageb15,400 µs +8.0%b83,000 µs 0.0%');
@@ -1731,7 +1961,7 @@ const index = { target: 'yolo26n-hw', runs: [night('6', yoloBefore.date, 'turbo'
   night('7', yoloAfter.date, 'turbo', { failed: [YOLO] })] };
 const card = componentBand(yolo, index, failedAt, NOW, yoloBefore);
 assert.equal(card.className, 'verdict bad');
-assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: the 640x640 detector.');
+assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: the 640×640 detector.');
 const verified = card.cards[0].children[1].children[2];
 assert.equal(verified.children[1].children[0].className, 'vals worse');
 const repro = one(card, n => n.className === 'repro');
@@ -2040,17 +2270,18 @@ assert.deepEqual(tiles.map(t => t.children[0].text), ['CI health', 'Kernels', 'P
 const [ciTile, kernels, perf, routing, placement] = tiles;
 // GitHub not asked yet.
 assert.equal(ciTile.children[1].text, 'Loading…');
-assert.equal(perf.level, 'ok');
-assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['All passing', 'Every run passed.']);
+// A slower night is a warning on the overview too, not "All passing".
+assert.equal(perf.level, 'warn');
+assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['Warnings', 'MobileNet: Every run passed, but 1 measure got worse vs 1 Oct.']);
 // The whole of each line is in the row's tooltip.
-assert.ok(perf.title.includes('MobileNet: Every run passed.'));
+assert.ok(perf.title.includes('MobileNet: Every run passed, but 1 measure got worse vs 1 Oct.'));
 // A check that has not published yet: says so instead of a verdict.
 assert.equal(routing.level, 'none');
 assert.equal(routing.children[1].text, 'No results yet');
 // Two days without a run: late and red, the line says so first.
 const late = overviewTiles(null, loaded, NOW + 2 * 86400 * 1000);
 assert.equal(late[2].level, 'bad');
-assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed.');
+assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed, but 1 measure got worse vs 1 Oct.');
 assert.equal(late[1].children[1].text, 'Loading…');
 // The band says it above its verdict.
 const lateBand = componentBand(hw, hwIndex, hwAfter, NOW + 2 * 86400 * 1000, hwBefore);
@@ -2249,7 +2480,7 @@ const config = latencyConfig(runs, 'Run on main');
 assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['Run time', [84, 80, 90]], ['Wait to start', [2, 1, 5]]]);
 // A failed run's point is red and larger.
 assert.deepEqual(config.data.datasets[0].pointRadius, [2.5, 2.5, 4]);
-assert.equal(config.data.datasets[0].pointBackgroundColor[2], cssVar('--bad', '#c62f3a'));
+assert.equal(config.data.datasets[0].pointBackgroundColor[2], cssVar('--bad', '#bf2c37'));
 // Labelled axes; hover names the commit, a click opens the run.
 assert.equal(config.options.scales.y.title.text, 'Minutes');
 assert.equal(config.options.scales.x.title.text, 'Run on main');
@@ -2308,6 +2539,38 @@ const fine = ciLines(loadedOf(status()), NOW);
 assert.deepEqual(fine[0], { level: 'ok', who: 'All workflows', text: '1 of 1 merge-gating test healthy; 1 of 1 other scheduled job passed their last run.' });
 // Nothing published: says so rather than "no results".
 assert.equal(overviewTiles(null, [], NOW, loadedOf(null))[0].children[1].text, 'Not published yet');
+""")
+
+
+def test_ci_health_does_not_read_a_timeout_or_a_stale_file_as_passing(page):
+    page(CI_RUNS + """
+// A job past its timeout ends the run "cancelled": a warning, not a pass.
+let v = criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'cancelled') }), NOW);
+assert.deepEqual([v.level, v.notes], ['warn', ['its latest run on main was cancelled: it timed out, or no runner took it']]);
+assert.equal(criticalTile(crit({ latest_main: run(30, 3, 'completed', 'cancelled') }), NOW).text,
+             'Its latest run on main was cancelled: it timed out, or no runner took it');
+// A dead runner: the newest run on main has sat queued for a day.
+v = criticalVerdict(crit({ newest_main: run(31, 26, 'queued', null) }), NOW);
+assert.deepEqual([v.level, v.notes.at(-1)], ['warn', 'its newest run on main is waiting for a runner for 1 day 2 h']);
+// "Failed on main" counts from the run's end, not its start.
+const ended = { ...run(30, 3, 'completed', 'failure'), updated_at: at(1) };
+assert.equal(criticalTile(crit({ latest_main: ended }), NOW).text, 'Failed on main 1 h ago');
+// The run-time chart: a failed run red, a cancelled one amber.
+const done = (id, h, conclusion) => ({ ...run(id, h, 'completed', conclusion), updated_at: at(h - 1) });
+const config = latencyConfig([done(3, 2, 'cancelled'), done(2, 26, 'failure'), done(1, 50, 'success')], 'Run on main');
+assert.deepEqual(config.data.datasets[0].pointBackgroundColor,
+                 [cssVar('--series-1', '#5b6475'), cssVar('--bad', '#bf2c37'), cssVar('--warn', '#9a5c00')]);
+// Stale data: a gap is judged as of the publisher's last answer (plus the
+// staleness limit), not the reader's clock. Published at NOW - 0.5 h, read 14 h later:
+const fresh = status({ workflows: [{ ...nightly, runs: [run(1, 26, 'completed', 'success')], jobs: [] }] });
+assert.equal(ciNow(loadedOf(fresh), NOW + 14 * H), NOW + 12.5 * H);
+const row = nightlyRow(loadedOf(fresh).results[0], ciNow(loadedOf(fresh), NOW + 14 * H));
+assert.equal(row.children[2].text, 'No run for 1 day 15 h');
+// A late job whose last run is still going says so in a sentence.
+v = ciVerdict(nightly, [run(1, 40, 'in_progress', null)], [], NOW);
+assert.equal(v.headline, 'No scheduled run for 1 day 16 h. Its last is still running.');
+// history.json is not fetched: the page never charted it.
+assert.ok(!loadCi.toString().includes('history.json'));
 """)
 
 
@@ -2381,7 +2644,8 @@ assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[1],
              'batch 16: 102 µs (seeds 99 µs to 104.9 µs)');
 // Both axes say what they are, the y axis with its unit.
 assert.equal(config.options.scales.y.title.text, 'Dispatch time per image (µs, fastest of 20) · ↓ better');
-assert.equal(config.options.scales.x.title.text, 'Nightly run');
+// Runs older than 90 days are thinned to weekly: the axis says so.
+assert.equal(config.options.scales.x.title.text, 'Nightly run (weekly past 90 days)');
 // Hover names the run's commit; a click opens it.
 const tips = config.options.plugins.tooltip.callbacks;
 assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
@@ -2437,7 +2701,7 @@ assert.equal(drawn.svg.filter(p => p.startsWith('<polyline')).length, 2);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polygon')).length, 2);
 // The axis titles, as the Chart.js chart has them.
 assert.ok(drawn.svg.some(p => p.includes('rotate(-90)') && p.includes('Dispatch time per image (µs, fastest of 20) · ↓ better')));
-assert.ok(drawn.svg.some(p => p.includes('>Nightly run<')));
+assert.ok(drawn.svg.some(p => p.includes('>Nightly run (weekly past 90 days)<')));
 // Each point: hover text with the commit, and a link to it.
 assert.ok(drawn.svg.some(p => p.includes('<title>2 Oct, 06:30 UTC\\nabcdef1 same revision\\nbatch 16: ') && p.includes('href="https://github.com/Xilinx/mlir-aie/commit/abcdef123456"')));
 assert.ok(canvas.hidden);

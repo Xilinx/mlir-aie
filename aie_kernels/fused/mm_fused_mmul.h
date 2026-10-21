@@ -67,6 +67,9 @@ __aie_inline void mm_bf16_2x2_aie2p(const bfloat16 *__restrict pA,
                                     C *__restrict pC) {
   using MMUL = aie::mmul<4, s, t, bfloat16, bfloat16, accauto>;
   static_assert(r == 4 || r == 8);
+  static_assert(colB % 2 == 0, "the tile takes column blocks in pairs");
+  static_assert(r == 8 || rowA % 2 == 0,
+                "at r = 4 the tile takes row blocks in pairs");
   constexpr unsigned sizeA = r * s;
   constexpr unsigned sizeB = s * t;
   constexpr unsigned sizeC = r * t;

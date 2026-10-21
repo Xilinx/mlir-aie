@@ -71,17 +71,6 @@ static inline uint32_t xoshiro_next(Xoshiro128 &g) {
   g.s[3] = rotl(g.s[3], 11);
   return result;
 }
-static inline void xoshiro_seed(Xoshiro128 &g, uint32_t seed) {
-  uint64_t x = ((uint64_t)seed) * 0x9E3779B97F4A7C15ULL + 1ULL;
-  for (int i = 0; i < 4; i++) {
-    x ^= x >> 30;
-    x *= 0xBF58476D1CE4E5B9ULL;
-    x ^= x >> 27;
-    x *= 0x94D049BB133111EBULL;
-    x ^= x >> 31;
-    g.s[i] = (uint32_t)(x ^ (x >> 32));
-  }
-}
 static inline float xoshiro_uniform(Xoshiro128 &g) {
   uint32_t r = xoshiro_next(g);
   return (float)(r >> 8) * (1.0f / 16777216.0f);
@@ -135,7 +124,8 @@ static void residual_seed(const int8_t *restrict row, float embed_sc,
 extern "C" {
 
 // Finalize: sample over the resident set -> token id + next-token embed seed.
-//   params : [temperature bits f32 | top_k i32 | seed u32]
+//   params : [temperature bits f32 | top_k i32 | xoshiro state u32[4]]; a
+//            sampled pick draws from the state and advances it in place.
 // Sampling draws from the set's best top_k members (by logit, then lower
 // gidx); top_k 0, or past the set, means the whole set (hosts reject values
 // past KSET). Greedy (temperature <= 0) is the argmax whatever top_k is.
@@ -149,7 +139,6 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
   float temperature;
   uint32_t tbits = params[0];
   __builtin_memcpy(&temperature, &tbits, 4);
-  const uint32_t seed_rng = params[2];
 
   int winner;
   if (temperature <= 0.0f) {
@@ -209,8 +198,11 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
     }
 
     Xoshiro128 g;
-    xoshiro_seed(g, seed_rng);
+    for (int i = 0; i < 4; i++)
+      g.s[i] = params[2 + i];
     float u = xoshiro_uniform(g) * sum_exp;
+    for (int i = 0; i < 4; i++)
+      params[2 + i] = g.s[i];
 
     float cum = 0.0f;
     winner = -1;
@@ -257,6 +249,18 @@ void llama_topk_finalize_packed(float *restrict set_logit,
   __builtin_memcpy(out + kD + 4, &token, 4);
   int32_t zero = 0;
   __builtin_memcpy(out + kD + 8, &zero, 4);
+}
+
+// The generation's xoshiro state, carried in the stage between dispatches:
+// from the head of a slot into params[2..6) at a dispatch's start, and back
+// into a row at its end.
+void llama_rng_take(int8_t *restrict slot, uint32_t *restrict params) {
+  copy_words<16>(params + 2, slot);
+}
+
+void llama_rng_put(uint32_t *restrict params, int8_t *restrict row) {
+  copy_words<16>(row, params + 2);
+  zero_words<kFpAt + 4 * kD - 16>(row + 16);
 }
 
 // The next token's layer-0 residual row from a packed record.

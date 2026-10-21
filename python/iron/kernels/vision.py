@@ -28,8 +28,9 @@ from ._common import (
     _require_vector_alignment,
     _runtime_lib_include,
     _tuned_arch,
-    dtypes,
 )
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
 
 
 def _color_convert_kernel(
@@ -104,7 +105,11 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
     )
 
 
-@dtypes(({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32}))
+DTYPES["threshold"] = tuple(
+    ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
+)
+
+
 def threshold(
     line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
@@ -143,7 +148,11 @@ def threshold(
     )
 
 
-@dtypes(({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32}))
+DTYPES["bitwise_or"] = tuple(
+    ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
+)
+
+
 def bitwise_or(
     line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
@@ -151,7 +160,11 @@ def bitwise_or(
     return _bitwise_kernel("OR", line_width, dtype, use_chess=use_chess)
 
 
-@dtypes(({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32}))
+DTYPES["bitwise_and"] = tuple(
+    ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
+)
+
+
 def bitwise_and(
     line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
@@ -238,7 +251,9 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
     )
 
 
-@dtypes(({"dtype": np.uint8}, {"dtype": np.int16}))
+DTYPES["add_weighted"] = tuple(({"dtype": np.uint8}, {"dtype": np.int16}))
+
+
 def add_weighted(
     line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
@@ -409,6 +424,7 @@ def resample_quantize(
             roles=(In, Out, Param, Param, Param, Param, Param),
             parameter_bindings=((5, 0),),
             call_index=5,
+            even_calls=False,
             sample=_resample_peaks,
             reference=lambda peak, in_size, out_size, core, chunks: (
                 resample_quantize_ref(

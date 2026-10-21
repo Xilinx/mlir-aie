@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from aie.helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
 from aie.iron.device import NPU1Col1, NPU2Col4
-from aie.utils import hostruntime
+from aie.utils import get_current_device
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.compile.jit.operator import Operator, Unresolvable
 from aie.utils.compile.jit.params import param, per_call, tunable
@@ -362,7 +362,7 @@ def test_a_resolved_copy_is_checked_against_its_tunables():
 
 class OnDevice(Scale):
     def compatible(self):
-        assert hostruntime._CURRENT_DEVICE is DEV
+        assert get_current_device(probe_runtime=False) is DEV
 
 
 def test_a_resolved_copy_is_checked_with_its_device_current():

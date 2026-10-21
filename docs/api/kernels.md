@@ -100,8 +100,8 @@ Every factory the generic builder can build carries a `KernelContract` on the
 returned `ExternalFunction` (`fn.contract`). The field-by-field account is in
 [Kernel Library](../programming_guide/kernels_library.md#what-a-signature-cannot-say);
 the reference below is generated from the dataclass, so it cannot drift from
-it. Multi-dtype factories publish the combinations they support as
-`factory.dtypes`, and each factory's submodule defines its references as
+it. Multi-dtype factories publish the combinations they support in
+`kernels.DTYPES["<factory>"]`, and each factory's submodule defines its references as
 `*_ref` functions (`eltwise.add_ref`, `eltwise.add_i8_ref`,
 `reduce.reduce_max_ref`, ...), so host code never reimplements the math.
 
@@ -233,15 +233,6 @@ k, and one `sample_combine` core draws from those summaries. `sample_ref` is
 the bit-exact host reference.
 
 ::: iron.kernels.sample
-    options:
-      show_root_heading: false
-
-## Lookup tables
-
-A kernel that reads a table compiles it in from a generated header; its numpy
-reference reads the same entries.
-
-::: iron.kernels.tables
     options:
       show_root_heading: false
 

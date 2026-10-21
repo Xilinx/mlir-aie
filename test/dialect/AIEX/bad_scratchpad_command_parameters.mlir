@@ -7,7 +7,10 @@
 //
 // A command's scratchpad parameters each take one of the command processor's
 // 32 state-table entries, so one command reading 33 is refused. Two
-// parameters one command reads may not keep the same entry from before.
+// parameters one command reads may not keep the same entry from before, nor
+// one keep an entry past the 32. Three commands reading 22 each, @a with @b,
+// @b with @c and @a with @c, need 33 distinct entries between them, which no
+// assignment has.
 //
 //===----------------------------------------------------------------------===//
 
@@ -102,6 +105,146 @@ module {
     aie.core(%t02) {
       %a = aiex.read_scratchpad_parameter @a : i32
       %b = aiex.read_scratchpad_parameter @b : i32
+      aie.end
+    }
+    aie.runtime_sequence @seq(%arg0 : memref<16xi32>) {
+    }
+  }
+}
+
+// -----
+
+// ERR: error: parameter 'c10' finds no free state-table entry among 32: no assignment gives the parameters each command reads distinct entries
+// ERR: note: read by command 'main:bc'
+// ERR: note: read by command 'main:ac'
+module {
+  aiex.scratchpad_parameter @a0 : i32
+  aiex.scratchpad_parameter @a1 : i32
+  aiex.scratchpad_parameter @a2 : i32
+  aiex.scratchpad_parameter @a3 : i32
+  aiex.scratchpad_parameter @a4 : i32
+  aiex.scratchpad_parameter @a5 : i32
+  aiex.scratchpad_parameter @a6 : i32
+  aiex.scratchpad_parameter @a7 : i32
+  aiex.scratchpad_parameter @a8 : i32
+  aiex.scratchpad_parameter @a9 : i32
+  aiex.scratchpad_parameter @a10 : i32
+  aiex.scratchpad_parameter @b0 : i32
+  aiex.scratchpad_parameter @b1 : i32
+  aiex.scratchpad_parameter @b2 : i32
+  aiex.scratchpad_parameter @b3 : i32
+  aiex.scratchpad_parameter @b4 : i32
+  aiex.scratchpad_parameter @b5 : i32
+  aiex.scratchpad_parameter @b6 : i32
+  aiex.scratchpad_parameter @b7 : i32
+  aiex.scratchpad_parameter @b8 : i32
+  aiex.scratchpad_parameter @b9 : i32
+  aiex.scratchpad_parameter @b10 : i32
+  aiex.scratchpad_parameter @c0 : i32
+  aiex.scratchpad_parameter @c1 : i32
+  aiex.scratchpad_parameter @c2 : i32
+  aiex.scratchpad_parameter @c3 : i32
+  aiex.scratchpad_parameter @c4 : i32
+  aiex.scratchpad_parameter @c5 : i32
+  aiex.scratchpad_parameter @c6 : i32
+  aiex.scratchpad_parameter @c7 : i32
+  aiex.scratchpad_parameter @c8 : i32
+  aiex.scratchpad_parameter @c9 : i32
+  aiex.scratchpad_parameter @c10 : i32
+  aie.device(npu2) @a {
+    %t = aie.tile(0, 2)
+    aie.core(%t) {
+      %a0 = aiex.read_scratchpad_parameter @a0 : i32
+      %a1 = aiex.read_scratchpad_parameter @a1 : i32
+      %a2 = aiex.read_scratchpad_parameter @a2 : i32
+      %a3 = aiex.read_scratchpad_parameter @a3 : i32
+      %a4 = aiex.read_scratchpad_parameter @a4 : i32
+      %a5 = aiex.read_scratchpad_parameter @a5 : i32
+      %a6 = aiex.read_scratchpad_parameter @a6 : i32
+      %a7 = aiex.read_scratchpad_parameter @a7 : i32
+      %a8 = aiex.read_scratchpad_parameter @a8 : i32
+      %a9 = aiex.read_scratchpad_parameter @a9 : i32
+      %a10 = aiex.read_scratchpad_parameter @a10 : i32
+      aie.end
+    }
+    aie.runtime_sequence @seq_a(%arg0 : memref<16xi32>) {
+    }
+  }
+  aie.device(npu2) @b {
+    %t = aie.tile(0, 2)
+    aie.core(%t) {
+      %b0 = aiex.read_scratchpad_parameter @b0 : i32
+      %b1 = aiex.read_scratchpad_parameter @b1 : i32
+      %b2 = aiex.read_scratchpad_parameter @b2 : i32
+      %b3 = aiex.read_scratchpad_parameter @b3 : i32
+      %b4 = aiex.read_scratchpad_parameter @b4 : i32
+      %b5 = aiex.read_scratchpad_parameter @b5 : i32
+      %b6 = aiex.read_scratchpad_parameter @b6 : i32
+      %b7 = aiex.read_scratchpad_parameter @b7 : i32
+      %b8 = aiex.read_scratchpad_parameter @b8 : i32
+      %b9 = aiex.read_scratchpad_parameter @b9 : i32
+      %b10 = aiex.read_scratchpad_parameter @b10 : i32
+      aie.end
+    }
+    aie.runtime_sequence @seq_b(%arg0 : memref<16xi32>) {
+    }
+  }
+  aie.device(npu2) @c {
+    %t = aie.tile(0, 2)
+    aie.core(%t) {
+      %c0 = aiex.read_scratchpad_parameter @c0 : i32
+      %c1 = aiex.read_scratchpad_parameter @c1 : i32
+      %c2 = aiex.read_scratchpad_parameter @c2 : i32
+      %c3 = aiex.read_scratchpad_parameter @c3 : i32
+      %c4 = aiex.read_scratchpad_parameter @c4 : i32
+      %c5 = aiex.read_scratchpad_parameter @c5 : i32
+      %c6 = aiex.read_scratchpad_parameter @c6 : i32
+      %c7 = aiex.read_scratchpad_parameter @c7 : i32
+      %c8 = aiex.read_scratchpad_parameter @c8 : i32
+      %c9 = aiex.read_scratchpad_parameter @c9 : i32
+      %c10 = aiex.read_scratchpad_parameter @c10 : i32
+      aie.end
+    }
+    aie.runtime_sequence @seq_c(%arg0 : memref<16xi32>) {
+    }
+  }
+  aie.device(npu2) @main {
+    aie.runtime_sequence @ab(%arg0 : memref<16xi32>) {
+      aiex.configure @a {
+        aiex.run @seq_a(%arg0) : (memref<16xi32>)
+      }
+      aiex.configure @b {
+        aiex.run @seq_b(%arg0) : (memref<16xi32>)
+      }
+    }
+    aie.runtime_sequence @bc(%arg0 : memref<16xi32>) {
+      aiex.configure @b {
+        aiex.run @seq_b(%arg0) : (memref<16xi32>)
+      }
+      aiex.configure @c {
+        aiex.run @seq_c(%arg0) : (memref<16xi32>)
+      }
+    }
+    aie.runtime_sequence @ac(%arg0 : memref<16xi32>) {
+      aiex.configure @a {
+        aiex.run @seq_a(%arg0) : (memref<16xi32>)
+      }
+      aiex.configure @c {
+        aiex.run @seq_c(%arg0) : (memref<16xi32>)
+      }
+    }
+  }
+}
+
+// -----
+
+// ERR: error: parameter 'a' has state-table entry 40, past the 32 there are
+module {
+  aiex.scratchpad_parameter @a : i32 {state_table_idx = 40 : ui8}
+  aie.device(npu2) @main {
+    %t02 = aie.tile(0, 2)
+    aie.core(%t02) {
+      %a = aiex.read_scratchpad_parameter @a : i32
       aie.end
     }
     aie.runtime_sequence @seq(%arg0 : memref<16xi32>) {

@@ -109,6 +109,10 @@ public:
   /// gave it, which keeps its transfers within their buffers; a repeat
   /// parameter's, at most its task's repeat count.
   void writeBits(const std::string &name, uint32_t bits) {
+    if (unslotted.count(name))
+      throw std::runtime_error("ParameterScratchpad: no command reads "
+                               "parameter '" +
+                               name + "', so it has no slot");
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
       throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
@@ -194,6 +198,10 @@ public:
 
   /// Read back a parameter's current encoded value (for debugging).
   uint32_t read(const std::string &name) const {
+    if (unslotted.count(name))
+      throw std::runtime_error("ParameterScratchpad: no command reads "
+                               "parameter '" +
+                               name + "', so it has no slot");
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
       throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
@@ -209,6 +217,7 @@ private:
   uint32_t *boMap = nullptr;
   size_t scratchpadSizeBytes = 0;
   std::unordered_map<std::string, uint8_t> paramMap;
+  std::unordered_set<std::string> unslotted;    // params no command reads
   std::unordered_set<std::string> coreParams;   // params with kind="core"
   std::unordered_set<std::string> repeatParams; // params with kind="repeat"
   std::unordered_map<std::string, std::pair<int32_t, int32_t>> ranges;
@@ -273,8 +282,9 @@ private:
     //   <num_commands>
     //   <device>:<sequence> <num_read> <name> ...
     //   ...
-    // where kind is "core", "addr" or "repeat", and <min> <max> is "- -" for a
-    // parameter with no range. A joint bound requires
+    // where <state_table_idx> is "-" for a parameter no command reads, kind
+    // is "core", "addr" or "repeat", and <min> <max> is "- -" for a parameter
+    // with no range. A joint bound requires
     // offset + length_step * length <= max.
     unsigned numParams = 0, numSlots = 0;
     file >> numParams >> numSlots;
@@ -285,21 +295,32 @@ private:
     scratchpadSizeBytes = numSlots * 4;
 
     for (unsigned i = 0; i < numParams; i++) {
-      std::string name, type, kind, min, max;
-      unsigned idx;
-      file >> name >> idx >> type >> kind >> min >> max;
+      std::string name, slot, type, kind, min, max;
+      file >> name >> slot >> type >> kind >> min >> max;
       if (!file)
         throw std::runtime_error("ParameterScratchpad: malformed entry " +
                                  std::to_string(i) + " in '" + path + "'");
-      if (idx >= numSlots)
-        throw std::runtime_error("ParameterScratchpad: state_table_idx " +
-                                 std::to_string(idx) + " for '" + name +
-                                 "' is past the " + std::to_string(numSlots) +
-                                 " slots of '" + path + "'");
-      if (paramMap.count(name))
+      if (paramMap.count(name) || unslotted.count(name))
         throw std::runtime_error(
             "ParameterScratchpad: duplicate parameter name '" + name + "'");
-      paramMap[name] = static_cast<uint8_t>(idx);
+      if (slot == "-") {
+        unslotted.insert(name);
+      } else {
+        unsigned long idx = 0;
+        try {
+          idx = std::stoul(slot);
+        } catch (const std::logic_error &) {
+          throw std::runtime_error("ParameterScratchpad: malformed slot '" +
+                                   slot + "' for parameter '" + name +
+                                   "' in '" + path + "'");
+        }
+        if (idx >= numSlots)
+          throw std::runtime_error("ParameterScratchpad: state_table_idx " +
+                                   std::to_string(idx) + " for '" + name +
+                                   "' is past the " + std::to_string(numSlots) +
+                                   " slots of '" + path + "'");
+        paramMap[name] = static_cast<uint8_t>(idx);
+      }
       if (kind != "core" && kind != "addr" && kind != "repeat") {
         throw std::runtime_error("ParameterScratchpad: invalid kind '" + kind +
                                  "' for parameter '" + name + "'");

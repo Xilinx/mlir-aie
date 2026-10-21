@@ -56,7 +56,7 @@ struct RuntimeCallGraphCyclicityAnalysis {
     // A cycle exists if we encounter a sequence already on the current path
     llvm::DenseSet<AIE::RuntimeSequenceOp> callStack;
     llvm::DenseSet<AIE::RuntimeSequenceOp> visited;
-    llvm::DenseMap<Operation *, AIE::NamedOpTable> calleeNames;
+    AIE::NamedOpTableCollection calleeNames;
 
     std::function<bool(AIE::RuntimeSequenceOp)> hasCycle =
         [&](AIE::RuntimeSequenceOp seq) -> bool {
@@ -364,7 +364,7 @@ static LogicalResult inlineReferencedSymbolDefinitions(
     llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
     AIE::DeviceOp callerDevice,
     llvm::DenseMap<Operation *, Operation *> &clonedDefs,
-    llvm::DenseMap<Operation *, AIE::NamedOpTable> &calleeNames,
+    AIE::NamedOpTableCollection &calleeNames,
     mlir::OpBuilder::InsertPoint &clonedDefOpsInsertionPoint,
     llvm::SetVector<SymbolRefAttr> &allSymbolNames) {
   for (NamedAttribute namedAttr : op->getAttrs()) {
@@ -385,9 +385,8 @@ static LogicalResult inlineReferencedSymbolDefinitions(
       Operation *calleeTable = SymbolTable::getNearestSymbolTable(lookupFrom);
       if (calleeTable && calleeTable != callerDevice &&
           oldSymbolRef.getNestedReferences().empty()) {
-        symbolDefOp =
-            calleeNames.try_emplace(calleeTable, calleeTable)
-                .first->second.lookup(oldSymbolRef.getRootReference());
+        symbolDefOp = calleeNames.getTable(calleeTable)
+                          .lookup(oldSymbolRef.getRootReference());
       } else {
         symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
@@ -450,14 +449,14 @@ struct InlineRuntimeCallsPattern : RewritePattern {
   mlir::OpBuilder::InsertPoint &symbolDefInsertPoint;
   llvm::SetVector<SymbolRefAttr> &allSymbolNames;
   llvm::DenseMap<Operation *, Operation *> &clonedDefs;
-  llvm::DenseMap<Operation *, AIE::NamedOpTable> &calleeNames;
+  AIE::NamedOpTableCollection &calleeNames;
 
   InlineRuntimeCallsPattern(
       MLIRContext *ctx, mlir::OpBuilder::InsertPoint &ssaDefInsertPoint,
       mlir::OpBuilder::InsertPoint &symbolDefInsertPoint,
       llvm::SetVector<SymbolRefAttr> &allSymbolNames,
       llvm::DenseMap<Operation *, Operation *> &clonedDefs,
-      llvm::DenseMap<Operation *, AIE::NamedOpTable> &calleeNames)
+      AIE::NamedOpTableCollection &calleeNames)
       : RewritePattern(RunOp::getOperationName(), PatternBenefit(1), ctx),
         ssaDefInsertPoint(ssaDefInsertPoint),
         symbolDefInsertPoint(symbolDefInsertPoint),
@@ -589,14 +588,12 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 /// Placing this validation in RunOp::verify() is unsafe: MLIR's pass manager
 /// may invoke op verifiers concurrently on sibling DeviceOps, causing a data
 /// race on the referenced device's symbol table.
-static LogicalResult verifyRunOpsInConfigureOp(
-    ConfigureOp configureOp, AIE::DeviceOp referencedDev,
-    llvm::DenseMap<Operation *, AIE::NamedOpTable> &referencedDevNames) {
+static LogicalResult
+verifyRunOpsInConfigureOp(ConfigureOp configureOp, AIE::DeviceOp referencedDev,
+                          AIE::NamedOpTableCollection &referencedDevNames) {
   if (configureOp.getBody().empty())
     return success();
-  AIE::NamedOpTable &devNames =
-      referencedDevNames.try_emplace(referencedDev, referencedDev)
-          .first->second;
+  AIE::NamedOpTable &devNames = referencedDevNames.getTable(referencedDev);
   for (RunOp runOp : configureOp.getBody().front().getOps<RunOp>()) {
     auto seqName = runOp.getRuntimeSequenceSymbol();
     Operation *maybeSeq =
@@ -676,7 +673,7 @@ struct AIEMaterializeRuntimeSequencesPass
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
-    llvm::DenseMap<Operation *, AIE::NamedOpTable> referencedDevNames;
+    AIE::NamedOpTableCollection referencedDevNames;
 
     // Process each device in the module
     for (AIE::DeviceOp deviceOp : moduleOp.getOps<AIE::DeviceOp>()) {
@@ -756,7 +753,7 @@ struct AIEMaterializeRuntimeSequencesPass
 
       RewritePatternSet patterns_0(ctx);
       llvm::DenseMap<Operation *, Operation *> clonedDefs;
-      llvm::DenseMap<Operation *, AIE::NamedOpTable> calleeNames;
+      AIE::NamedOpTableCollection calleeNames;
       patterns_0.insert<InlineRuntimeCallsPattern>(
           ctx, ssaDefInsertPoint, symbolDefInsertPoint, allSymbolNames,
           clonedDefs, calleeNames);

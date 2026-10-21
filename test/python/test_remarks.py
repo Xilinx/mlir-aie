@@ -270,13 +270,15 @@ def test_trip_counts_are_the_constant_backedge_counts_plus_one():
 # --------------------------------------------------------------------------
 
 
-def _section(index, name, alloc=True, info=0):
+def _section(index, name, alloc=True, info=0, size=0, kind="SHT_PROGBITS"):
     flags = [{"Name": "SHF_ALLOC"}, {"Name": "SHF_EXECINSTR"}] if alloc else []
     return {
         "Section": {
             "Index": index,
             "Name": {"Name": name},
+            "Type": {"Name": kind},
             "Flags": {"Flags": flags},
+            "Size": size,
             "Info": info,
         }
     }
@@ -331,6 +333,18 @@ def test_the_entry_reaches_its_callees_and_their_runtime_calls():
     reached = parse_readobj(READOBJ, "k")
     assert reached.functions == {"k", "helper"}
     assert reached.undefined == ["__divsf3"]
+
+
+def test_linked_bytes_count_only_what_the_entry_reaches():
+    sections = [dict(s) for s in READOBJ["Sections"]]
+    sizes = {1: 96, 2: 32, 3: 4384, 6: 37724}
+    for i, size in sizes.items():
+        sections[i] = _section(
+            i, sections[i]["Section"]["Name"]["Name"], alloc=i != 6, size=size
+        )
+    doc = dict(READOBJ, Sections=sections)
+    # k and helper; not the sibling entry point or the debug section.
+    assert parse_readobj(doc, "k").linked_bytes == 96 + 32
 
 
 def _frames(**sizes):

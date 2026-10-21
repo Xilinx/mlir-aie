@@ -46,6 +46,7 @@ from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
+from aie.utils.compile.readobj import linked
 from aie.utils.compile.remarks import current_kernel_sources
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
@@ -231,17 +232,35 @@ def _grow_trace_size(trace_size: int, *, seen: int, expected: int) -> int:
 
 
 def _kernel_object_size(design, fn) -> int | None:
-    """Return only the tested kernel's object size, excluding harness objects."""
+    """Return the bytes of code and initialized data the tested entry point links.
+
+    What the entry reaches in its object (``readobj.linked``): not the
+    object's sibling entry points, symbol tables, or the bitcode
+    ``--check-lut-banks`` embeds.
+    """
     if Path(fn.object_file_name).suffix != ".o":
         return None
-    entry = design.compilable.get_cache_entry()
-    return (entry.directory / fn.object_file_name).stat().st_size
+    obj = design.compilable.get_cache_entry().directory / fn.object_file_name
+    reached = linked(obj, fn.name)
+    assert fn.name in reached.functions, f"{obj} does not define {fn.name}"
+    return reached.linked_bytes
 
 
-def _cycles_span(traced: kd.CallCycles) -> str:
-    """The kernel's spread, and any initializer's, beside its min."""
+def _cycles(case: Case, traced: kd.CallCycles) -> int:
+    """The cheapest call, or for calls of unequal work, the median call."""
     k = traced.kernel
-    parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    return min(k) if case.fn().contract.even_calls else int(np.median(k))
+
+
+def _cycles_span(case: Case, traced: kd.CallCycles) -> str:
+    """The kernel's spread, and any initializer's, beside its row's value."""
+    k = traced.kernel
+    if case.fn().contract.even_calls:
+        parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    else:
+        parts = [
+            f"median of calls of unequal work; min {min(k)} max {max(k)} n={len(k)}"
+        ]
     parts += [f"init[{i}] min {min(v)}" for i, v in traced.initializers.items() if v]
     return "; ".join(parts)
 
@@ -286,10 +305,8 @@ def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     if meta is not None:
         meta.setdefault("cases", {})[case.name] = _detail(case, m)
     if (traced := m.get("cycles")) is not None:
-        # The min: every call does the same work, so anything above it is
-        # the core waiting (a stall, a refresh), not the kernel.
-        cycles = min(traced.kernel)
-        record(case.name, "cycles", "cycles", cycles, _cycles_span(traced))
+        cycles = _cycles(case, traced)
+        record(case.name, "cycles", "cycles", cycles, _cycles_span(case, traced))
         if ops := case.work():
             record(
                 case.name,

@@ -168,6 +168,22 @@ private:
   llvm::DenseMap<mlir::StringAttr, mlir::Operation *> ops;
 };
 
+// The NamedOpTables of several symbol tables, each indexed on first use, as
+// mlir::SymbolTableCollection is for symbols.
+class NamedOpTableCollection {
+public:
+  NamedOpTable &getTable(mlir::Operation *symbolTableOp) {
+    return tables.try_emplace(symbolTableOp, symbolTableOp).first->second;
+  }
+  template <typename OpTy>
+  OpTy lookupIn(mlir::Operation *symbolTableOp, mlir::StringAttr name) {
+    return getTable(symbolTableOp).lookup<OpTy>(name);
+  }
+
+private:
+  llvm::DenseMap<mlir::Operation *, NamedOpTable> tables;
+};
+
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 
@@ -404,6 +420,11 @@ void collectBuffers(
 // canonicalization to allow natural ND forms on shim tiles that will be
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
+
+// The elements a BD streaming `dims` with `pads` sends, each dimension widened
+// by its padding; `fallback` unless it has both.
+int64_t paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
+                   llvm::ArrayRef<BDPadLayoutAttr> pads, int64_t fallback);
 
 // The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
 // dimensions (outermost first) and its length in elements: none when it

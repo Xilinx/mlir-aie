@@ -135,7 +135,6 @@ on each submodule's `__doc__`:
 | [`kernels.sample`](../python/iron/kernels/sample.py) | exact top-k next-token sampling split across columns: sample_select, sample_combine |
 | [`kernels.moe`](../python/iron/kernels/moe.py) | mixture of experts: router_top_k, experts |
 | [`kernels.ssm`](../python/iron/kernels/ssm.py) | state space models: selective_scan (Mamba2), gated_delta_rule (Gated DeltaNet) |
-| [`kernels.tables`](../python/iron/kernels/tables.py) | lookup tables a kernel compiles in: exp_lut, silu_lut and their C headers |
 | [`kernels.flm_gemma4`](../python/iron/kernels/flm_gemma4.py) | FastFlowLM's Gemma 4 cores (prefill attention, the q4nx LM head, the decode layer); not general building blocks |
 | [`kernels.vision`](../python/iron/kernels/vision.py) | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted, resample_peak, resample_quantize, resize |
 
@@ -174,7 +173,7 @@ fn.contract.ops_per_call # 1024
 mm = kernels.mm(input_dtype=np.int16, output_dtype=np.int32)
 mm.contract.acc_dtype    # numpy.int64: accauto is acc64 for int16
 mm.contract.reduction    # 64: products summed per output per call (dim_k)
-kernels.mm.dtypes        # every (input_dtype, output_dtype) the factory supports
+kernels.DTYPES["mm"]     # every dtype combination the factory builds, as kwargs
 ```
 
 Some kernels compute differently by build: `gelu` reads a LUT on AIE2 and
@@ -283,8 +282,8 @@ it does with NaN or subnormal inputs are *not* declared. The numpy
 clips, a denormal-flushing one flushes -- and `tolerance` is the slack
 allowed against it. Declaring the same fact in two places let the two
 drift.
-- `.dtypes` on the factory: the dtype combinations it builds. The host
-  contract test builds every entry.
+- `kernels.DTYPES["<factory>"]`: the dtype combinations a factory builds,
+  as kwargs dicts. The host contract test builds every entry.
 
 ## Standing in for a hand-built kernel
 
@@ -372,7 +371,8 @@ A new factory is complete when one line each in two places covers it:
    to the number of meaningful output elements. Say what the kernel
    accumulates in (`acc_dtype`, `reduction`), and model overflow and
    rounding in the reference from the C++ rather than from a guess.
-   A factory with more than one dtype lists them in a `.dtypes` table.
+   A factory with more than one dtype lists them in `DTYPES["<factory>"]`
+   above its definition.
    Bind fixed parameters explicitly with `parameter_bindings`, publish nontrivial
    storage with `layouts`, and initialize `InOut` tiles with `initializers`.
    Declare what the kernel's trace markers measure with `trace=`:
@@ -516,7 +516,7 @@ Nightly results, and how the nightly runs and publishes these checks, are on the
 ### Static checks
 
 `aie.utils.compile.remarks` compiles every factory build (defaults plus
-each `.dtypes` entry) exactly as the JIT does, with Peano's
+each `kernels.DTYPES` entry) exactly as the JIT does, with Peano's
 optimization-record flags, and turns the records into per-kernel series:
 each loop's II and whether it is a zero-overhead loop, program memory,
 missing-bank loads and dropped `#pragma`s. It then reads the object: the

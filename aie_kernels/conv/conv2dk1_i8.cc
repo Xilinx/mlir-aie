@@ -276,7 +276,8 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 // conv2d 1x1 - vector, with a bias
 // act: int8, wts: int8, bias: int32 per output channel, out: int8
 //
-// ONNX QLinearConv: the bias, in accumulator units, seeds the accumulator,
+// ONNX QLinearConv for a power-of-two per-tensor output scale and zero
+// zero-points: the bias, in accumulator units, seeds the accumulator,
 // and an optional 256-entry table maps each int8 result (a quantized SiLU).
 //*****************************************************************************
 template <int NumAcc, int M>

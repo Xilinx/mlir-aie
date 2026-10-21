@@ -13,12 +13,7 @@ from typing import TYPE_CHECKING, Annotated, get_args, get_origin
 
 import numpy as np
 import pytest
-from aie.utils.compile.jit._introspect import (
-    _dispatch_param_type,
-    _is_compile_param,
-    _is_tensor_param,
-    declare,
-)
+from aie.utils.compile.jit._introspect import declare
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 
 if TYPE_CHECKING:
@@ -51,8 +46,8 @@ def test_compile_type_arg_preserved():
 
 def test_bare_compile_has_annotated_origin():
     # Unlike a bespoke Generic[T], a bare (unsubscripted) Annotated[T, ...]
-    # alias already carries an Annotated origin -- this is why
-    # _is_compile_param(CompileTime) below is still True.
+    # alias already carries an Annotated origin -- this is why a bare
+    # CompileTime below still declares a parameter.
     assert get_origin(CompileTime) is Annotated
 
 
@@ -79,126 +74,59 @@ def test_dispatch_is_not_compile():
     assert DispatchTime[int] != CompileTime[int]
 
 
+def declared_as(annotation) -> str:
+    """What ``declare`` makes of one parameter annotated ``annotation``."""
+
+    def generator(x):
+        pass
+
+    if annotation is not inspect.Parameter.empty:
+        generator.__annotations__ = {"x": annotation}
+    d = declare(generator)
+    if "x" in d.params:
+        return "compile"
+    if [m.name for m in d.operands] == ["x"]:
+        return "tensor"
+    if [m.name for m in d.per_calls] == ["x"]:
+        return f"dispatch {d.per_calls[0].dtype!r}"
+    assert d.scalars == ("x",)
+    return "scalar"
+
+
 @pytest.mark.parametrize(
-    "annotation,predicate",
+    "annotation, kind",
     [
-        (CompileTime[int], _is_compile_param),
-        (DispatchTime[int], lambda a: _dispatch_param_type(a) is not None),
+        (CompileTime[int], "compile"),
+        (CompileTime[str], "compile"),
+        (CompileTime, "compile"),
+        (In, "tensor"),
+        (Out, "tensor"),
+        (InOut, "tensor"),
+        (DispatchTime[int], f"dispatch {int!r}"),
+        (DispatchTime[np.int32], f"dispatch {np.int32!r}"),
+        (int, "scalar"),
+        (float, "scalar"),
+        (str, "scalar"),
+        (None, "scalar"),
+        (inspect.Parameter.empty, "scalar"),
     ],
 )
-def test_parameter_metadata_uses_value_not_identity(annotation, predicate):
+def test_declare_sorts_a_parameter_by_its_annotation(annotation, kind):
+    assert declared_as(annotation) == kind
+
+
+def test_a_bare_dispatch_marker_declares_a_per_call_value():
+    assert declared_as(DispatchTime).startswith("dispatch ")
+
+
+@pytest.mark.parametrize(
+    "annotation, kind",
+    [(CompileTime[int], "compile"), (DispatchTime[int], f"dispatch {int!r}")],
+)
+def test_parameter_metadata_uses_value_not_identity(annotation, kind):
     metadata = json.loads(json.dumps(get_args(annotation)[1]))
-    assert predicate(Annotated[int, metadata])
+    assert declared_as(Annotated[int, metadata]) == kind
     assert "0x" not in repr(annotation)
-
-
-# ---------------------------------------------------------------------------
-# _is_compile_param
-# ---------------------------------------------------------------------------
-
-
-def test_is_compile_param_with_int():
-    assert _is_compile_param(CompileTime[int]) is True
-
-
-def test_is_compile_param_with_str():
-    assert _is_compile_param(CompileTime[str]) is True
-
-
-def test_is_compile_param_bare():
-    assert _is_compile_param(CompileTime) is True
-
-
-def test_is_compile_param_rejects_in():
-    assert _is_compile_param(In) is False
-
-
-def test_is_compile_param_rejects_out():
-    assert _is_compile_param(Out) is False
-
-
-def test_is_compile_param_rejects_inout():
-    assert _is_compile_param(InOut) is False
-
-
-def test_is_compile_param_rejects_dispatch():
-    assert _is_compile_param(DispatchTime[int]) is False
-    assert _is_compile_param(DispatchTime) is False
-
-
-def test_is_compile_param_rejects_builtin_types():
-    assert _is_compile_param(int) is False
-    assert _is_compile_param(float) is False
-    assert _is_compile_param(str) is False
-
-
-def test_is_compile_param_rejects_none():
-    assert _is_compile_param(None) is False
-
-
-def test_is_compile_param_rejects_empty():
-    assert _is_compile_param(inspect.Parameter.empty) is False
-
-
-# ---------------------------------------------------------------------------
-# _dispatch_param_type
-# ---------------------------------------------------------------------------
-
-
-def test_dispatch_param_type_extracts_int():
-    assert _dispatch_param_type(DispatchTime[int]) is int
-
-
-def test_dispatch_param_type_extracts_numpy_dtype():
-    assert _dispatch_param_type(DispatchTime[np.int32]) is np.int32
-
-
-def test_dispatch_param_type_none_for_non_dispatch():
-    assert _dispatch_param_type(DispatchTime) is not None
-    for annotation in (CompileTime[int], CompileTime, In, Out, InOut, int, str, None):
-        assert _dispatch_param_type(annotation) is None
-    assert _dispatch_param_type(inspect.Parameter.empty) is None
-
-
-# ---------------------------------------------------------------------------
-# _is_tensor_param
-# ---------------------------------------------------------------------------
-
-
-def test_is_tensor_param_in():
-    assert _is_tensor_param(In) is True
-
-
-def test_is_tensor_param_out():
-    assert _is_tensor_param(Out) is True
-
-
-def test_is_tensor_param_inout():
-    assert _is_tensor_param(InOut) is True
-
-
-def test_is_tensor_param_rejects_compile():
-    assert _is_tensor_param(CompileTime[int]) is False
-    assert _is_tensor_param(CompileTime) is False
-
-
-def test_is_tensor_param_rejects_dispatch():
-    assert _is_tensor_param(DispatchTime[int]) is False
-    assert _is_tensor_param(DispatchTime) is False
-
-
-def test_is_tensor_param_rejects_scalars():
-    assert _is_tensor_param(int) is False
-    assert _is_tensor_param(float) is False
-    assert _is_tensor_param(str) is False
-
-
-def test_is_tensor_param_rejects_none():
-    assert _is_tensor_param(None) is False
-
-
-def test_is_tensor_param_rejects_empty():
-    assert _is_tensor_param(inspect.Parameter.empty) is False
 
 
 # ---------------------------------------------------------------------------

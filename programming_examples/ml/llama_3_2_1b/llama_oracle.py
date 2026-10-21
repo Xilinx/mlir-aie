@@ -1174,14 +1174,16 @@ def topk_sample_reference(
     logits_f32: np.ndarray,
     temperature: float,
     top_k: int,
-    seed: int,
+    state: list,
     k_set: int = 64,
     lut: np.ndarray | None = None,
-) -> int:
-    """Return the sampled global token id. k_set is the resident-set capacity
-    (the kernel's kKset); sampling draws from the set's best top_k members (by
-    logit, then lower id), and top_k 0 means the whole set. Greedy
-    (temperature <= 0) is the argmax whatever top_k is.
+) -> tuple[int, list]:
+    """The sampled global token id, and the generation's xoshiro state after it.
+
+    k_set is the resident-set capacity (the kernel's kKset); sampling draws
+    one uniform from `state` over the set's best top_k members (by logit, then
+    lower id), and top_k 0 means the whole set. Greedy (temperature <= 0) is
+    the argmax whatever top_k is, and leaves `state` as it was.
 
     Raises:
         ValueError: top_k is outside 0..k_set.
@@ -1196,7 +1198,7 @@ def topk_sample_reference(
     if temperature <= 0.0:
         wv = max(logits[g] for g in set_idx)
         winners = [g for g in set_idx if logits[g] == wv]
-        return int(min(winners))
+        return int(min(winners)), state
 
     if lut is None:
         lut = exp_lut(EXP_QUANT_SCALE, SAMPLE_EXP_LOW).astype(np.float32)
@@ -1214,8 +1216,7 @@ def topk_sample_reference(
         q = sample_quant_shifted(np.array([z - max_z], dtype=np.float32))[0]
         sum_exp = np.float32(sum_exp + sample_lookup_exp(np.array([q]), lut)[0])
 
-    s = xoshiro_seed(int(seed) & 0xFFFFFFFF)
-    u_unit, s = xoshiro_uniform(s)
+    u_unit, state = xoshiro_uniform(list(state))
     u = np.float32(u_unit * sum_exp)
 
     c = np.float32(0.0)
@@ -1226,7 +1227,7 @@ def topk_sample_reference(
         if c > u:
             pick = gi
             break
-    return int(pick)
+    return int(pick), state
 
 
 # A greedy token other than the oracle's still passes as a near-tie, judged

@@ -176,6 +176,37 @@ aie.device(npu2) {
 
 // -----
 
+// A mem tile's channel 5 queues: S2MM 5 of tile (0, 1) is at 0x1A062C =
+// 1705516, with MM2S 0's control after it (0x1A0630), and MM2S 5 at 0x1A065C
+// = 1705564, with DMA_S2MM_Status_0 after it (0x1A0660). Odd channels own BDs
+// 24-47: S2MM 5's head is BD 24 (0x1A0300 = 1704704) and MM2S 5's BD 28
+// (0x1A0380 = 1704832).
+
+// CHECK-LABEL: aie.runtime_sequence @memtile_channel5
+// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 1704704 : ui32}
+// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 1704832 : ui32}
+// CHECK: aiex.npu.update_from_scratchpad {address = 1705516 : ui32, func_arg = 24 : ui32, state_table_idx = 0 : ui8}
+// CHECK: aiex.npu.update_from_scratchpad {address = 1705564 : ui32, func_arg = 28 : ui32, state_table_idx = 0 : ui8}
+aiex.scratchpad_parameter @runs : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 1)
+  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.runtime_sequence @memtile_channel5(%arg0 : memref<1024xi32>) {
+    %in = aiex.dma_configure_task(%t, S2MM, 5) {
+      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      aie.end
+    } {repeat_count = 15 : i32}
+    %out = aiex.dma_configure_task(%t, MM2S, 5) {
+      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      aie.end
+    } {repeat_count = 15 : i32}
+    aiex.dma_start_task(%in) {repeat_parameter = @runs}
+    aiex.dma_start_task(%out) {repeat_parameter = @runs}
+  }
+}
+
+// -----
+
 // A token-issuing task through a shim allocation, repeating one tile (no
 // iteration): the token bit joins the update's func_arg, after the controller
 // id the token needs is set as for any push. The S2MM task holds BD 0, so the
