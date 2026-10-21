@@ -509,15 +509,6 @@ CASES: list[Case] = [
         )
         for phase, rows, blocks, valid in (("prefill", 32, 2, 32), ("decode", 2, 4, 1))
     ],
-    # One valid row a call, as in decode, over Mamba2's 128-wide state, as
-    # IRON's SelectiveScan slices it (two rows keep the block 4-byte whole).
-    check(
-        "selective_scan",
-        dict(rows=2, state=128, blocks=4),
-        calls=8,
-        scalars=(1,),
-        tag="one-row-state128",
-    ),
     # An odd row count leaves B and C 32 bytes off the 64-byte line the
     # 32-lane state loads need: IRON's decode block is one row.
     *(
@@ -538,6 +529,7 @@ CASES: list[Case] = [
         calls=4,
         scalars=(1,),
         tag="iron-decode-one-row",
+        smoke=True,
     ),
     # Two rows of the smallest state each kernel takes, and more valid rows
     # than the block holds.
@@ -2720,6 +2712,7 @@ CASES += [
             ),
             calls=4,
             tag=f"iron-{phase}-d{d}",
+            smoke=(phase, d) == ("decode", 64),
         )
         for b_q, phase in ((64, "prefill"), (16, "decode"), (8, "decode8"))
         for d in (64, 128)

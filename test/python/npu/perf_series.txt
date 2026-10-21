@@ -138,6 +138,7 @@ bn_fc_relu_ui16_ic_chunk/10240x1/int8_uint16/chunk_input_channels=1280/chunk_out
 bn_fc_relu_ui16_ic_chunk/10240x3/int8_uint16/fc1
 bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16
 bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16/arg0@16
+bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16/arg0@16/scale-0-scalar
 bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16/max_images=4/images
 clamp/1024x16/bfloat16
 clamp/1024x256/bfloat16
@@ -749,7 +750,6 @@ gated_delta_rule/8768x4/bfloat16_float32+bfloat16/blocks=2/key_dim=128/rows=32/i
 selective_scan/1296x4/bfloat16_float32+bfloat16/blocks=2/none-valid
 selective_scan/1296x4/bfloat16_float32+bfloat16/blocks=2/partial
 selective_scan/1296x6/bfloat16_float32+bfloat16/blocks=2
-selective_scan/546x8/bfloat16_float32+bfloat16/blocks=4/rows=2/state=128/one-row-state128
 selective_scan/98x6/bfloat16_float32+bfloat16/blocks=3/head_dim=16/rows=2/state=16/edge-tiny-valid17
 selective_scan/98x6/bfloat16_float32+bfloat16/blocks=3/head_dim=16/rows=2/state=16/edge-tiny-valid2
 selective_scan/546x8/bfloat16_float32+bfloat16/blocks=4/rows=2/state=128/iron-decode
