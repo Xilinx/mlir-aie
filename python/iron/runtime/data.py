@@ -23,13 +23,13 @@ from ...helpers.npdtypes import (
 from ...helpers.taplib import TensorAccessPattern
 
 if TYPE_CHECKING:
-    from ...utils.compile.jit.markers import _Operand
+    from ...utils.compile.jit.markers import In, InOut, Out
 
 
 class RuntimeData:
     """A handle to I/O data in the Runtime."""
 
-    def __init__(self, arr_type: "type[np.ndarray] | _Operand"):
+    def __init__(self, arr_type: "type[np.ndarray] | In | Out | InOut"):
         """Construct a handle to a Runtime buffer.
 
         Args:
