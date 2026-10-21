@@ -261,10 +261,8 @@ struct AIEInsertTraceFlowsPass
           return ta.getCol() < tb.getCol();
         return ta.getRow() < tb.getRow();
       });
-      // Hand out ids from clPacketIdStart upward, skipping any value a
-      // user pinned explicitly so auto and explicit traces never alias, and
-      // any value the rest of the device already holds: a packet flow, or a
-      // route or objectfifo that pinned its header.
+      // From clPacketIdStart up, past ids user traces pinned and ids the
+      // device holds (PacketIdSpace).
       PacketIdSpace held(device);
       int next = clPacketIdStart;
       for (auto trace : autoIdTraces) {

@@ -855,9 +855,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       mergeSources[timeLink].push_back(source);
       continue;
     }
-    // The fifo's packet request rides on the route as written; allocation
-    // assigns the id unless the fifo pinned one. A dispatch tells its turns
-    // apart by header, so each of its routes carries one.
+    // A dispatch tells its turns apart by header, so each of its routes
+    // carries one.
     PacketInfoAttr header = fifo.packetHeader();
     if (timeLink && timeLink.isDispatch()) {
       dispatchTurns[timeLink][fifo] = destinations.front();
