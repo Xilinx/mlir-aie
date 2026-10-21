@@ -369,7 +369,7 @@ def aggregate(
         elif at in CONTEXTS:
             ctx = f"{case}/ctx={at}"
             out.append(row(ctx, "ms_per_token", t["ms_per_token"], "ms", note))
-            out.append(row(ctx, "decode_tok_s", t["tok_s"], "tok/s", note))
+            out.append(row(ctx, "tok_s", t["tok_s"], "tok/s", note))
     for metric, unit in (
         ("ttft_ms", "ms"),
         ("ttft_min_ms", "ms"),

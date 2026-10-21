@@ -476,7 +476,7 @@ def test_llama_decode_by_context_is_a_line_per_context(page):
 const swept = (id, date, night) => {
   const r = llamaRecord(id, date, 4.37);
   for (const [ctx, ...ms] of [[1024, 52, 57.2], [8192, 70, 77], [131072, 390, 429]]) {
-    r.rows[`${LLAMA}/ctx=${ctx}`] = { ms_per_token: { value: ms[night], unit: 'ms' }, decode_tok_s: { value: 1000 / ms[night], unit: 'tok/s' } };
+    r.rows[`${LLAMA}/ctx=${ctx}`] = { ms_per_token: { value: ms[night], unit: 'ms' }, tok_s: { value: 1000 / ms[night], unit: 'tok/s' } };
   }
   return r;
 };
@@ -484,12 +484,12 @@ const data = collect(historiesOf('llama-chain-hw', [swept('6', llamaBefore.date,
 const tab = llama.trend.find(t => t.id === 'decode_by_context');
 assert.equal(tab.name, 'Decode by context');
 const config = trendConfig(data, tab);
-// Decode tokens per second, higher is better, as mlir-air and FastFlowLM tabulate it.
+// The dispatch rate per context, higher is better, as mlir-air and FastFlowLM tabulate decode.
 const lines = config.data.datasets.filter(d => !d.band);
 assert.deepEqual(lines.map(d => [d.label, d.data.map(v => Math.round(v * 100) / 100)]),
   [['1k context', [19.23, 17.48]], ['8k context', [14.29, 12.99]], ['128k context', [2.56, 2.33]]]);
 assert.equal(config.options.scales.y.type, 'logarithmic');
-assert.equal(config.options.scales.y.title.text, 'Decode tokens per second (fastest of 20 dispatches) · ↑ better');
+assert.equal(config.options.scales.y.title.text, 'Dispatch rate, tokens per second (fastest of 20 dispatches) · ↑ better');
 // The time per token on hover.
 assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[2], dataIndex: 1, raw: 1000 / 429 }),
              '128k context: 2.33 tok/s, dispatch / token 429 ms');
