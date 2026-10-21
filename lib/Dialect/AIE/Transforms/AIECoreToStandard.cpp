@@ -639,11 +639,11 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
             //    matching ::aie::set_rounding(aie::rounding_mode::conv_even)
             //    used in external C++ matmul kernels.
             //  - positive_inf (9) for integer SRS (shift-round-saturate on
-            //    integer data, e.g., i32→i8).
-            //  - conv_even (12) for float-only SRS too: it lowers
-            //    arith.truncf, which rounds to nearest even; floor would
-            //    bias every f32→bf16 conversion downward.
-            int roundingMode = hasBF16Matmul ? 12 : hasIntegerSRS ? 9 : 12;
+            //    integer data, e.g., i32→i8), unless the core has a bf16
+            //    matmul.
+            //  - conv_even (12) for float-only SRS (f32→bf16), matching the
+            //    round-to-nearest-even semantics of arith.truncf.
+            int roundingMode = hasIntegerSRS && !hasBF16Matmul ? 9 : 12;
             auto cRndIdx = arith::ConstantOp::create(
                 rewriter, loc, rewriter.getI32IntegerAttr(rndRegIdx));
             auto cRoundingMode = arith::ConstantOp::create(
