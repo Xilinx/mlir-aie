@@ -1686,10 +1686,11 @@ static inline __attribute__((always_inline)) void conv2dk3_i8_bias_blocks(
 // pipeline.) Each line's last vector carries over as the next block's left
 // neighbour, zero before the first.
 template <int IC, int NO>
-static inline __attribute__((always_inline)) void conv2dk3_i8_bias_row_s2(
-    const int8_t *line0, const int8_t *line1, const int8_t *line2,
-    const int8_t *__restrict wts_oc, const aie::accum<acc32, 64> *seeded,
-    int8_t *__restrict output, const int scale) {
+static inline __attribute__((always_inline)) void
+conv2dk3_i8_bias_row_s2(const int8_t *line0, const int8_t *line1,
+                        const int8_t *line2, const int8_t *__restrict wts_oc,
+                        const aie::accum<acc32, 64> *seeded,
+                        int8_t *__restrict output, const int scale) {
   constexpr int iw = CONV_INPUT_WIDTH;
   constexpr int ow = iw / 2;
   constexpr int groups = IC / 8;
@@ -1777,9 +1778,8 @@ static void conv2dk3_i8_bias_vector(
                 !ToAcc) {
     // A stride-2 row never meets the bottom border; the top one takes the
     // block path below.
-    constexpr int R = ocg % CONV2DK3_ROW_GROUPS == 0
-                          ? CONV2DK3_ROW_GROUPS
-                          : (ocg % 2 == 0 ? 2 : 1);
+    constexpr int R = ocg % CONV2DK3_ROW_GROUPS == 0 ? CONV2DK3_ROW_GROUPS
+                                                     : (ocg % 2 == 0 ? 2 : 1);
     if (check != top) {
       for (int oc = 0; oc < ocg; oc += R) {
         aie::accum<acc32, 64> seeded[R];
@@ -1791,9 +1791,9 @@ static void conv2dk3_i8_bias_vector(
             seed.insert(p, aie::load_v<8>(bias + (oc + o) * 8));
           seeded[o].from_vector(seed, 0);
         }
-        conv2dk3_i8_bias_row_s2<IC, R>(
-            line0, line1, line2, wts + oc * (input_channels / 8) * 9 * 64,
-            seeded, output + oc * ow * 8, scale);
+        conv2dk3_i8_bias_row_s2<IC, R>(line0, line1, line2,
+                                       wts + oc * (input_channels / 8) * 9 * 64,
+                                       seeded, output + oc * ow * 8, scale);
       }
       if constexpr (Table)
         map_table_i8<output_channels * ow>(output, table);
