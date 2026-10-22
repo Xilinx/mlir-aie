@@ -114,9 +114,13 @@ extern "C" void llama_af_quant(int8_t *restrict sv, int8_t *restrict af_out) {
                  int32(0x7fffffff),
                  ::aie::load_v<kVec>(x + c * kVec).template cast_to<int32>()));
   float absmax = bits_to_float(::aie::reduce_max(mag));
-  if (absmax < 1e-12f)
+  // absmax is always a magnitude (sign bit clear, from the bit_and with
+  // 0x7fffffff above), so its bit pattern orders the same as its value: an
+  // unsigned int compare avoids __ltsf2.
+  if ((uint32_t)__builtin_bit_cast(int32_t, absmax) <
+      (uint32_t)__builtin_bit_cast(int32_t, 1e-12f))
     absmax = 1e-12f;
-  float o_act_scale = absmax * (1.0f / 127.0f);
+  float o_act_scale = scalar_mul_rne(absmax, 1.0f / 127.0f);
   ::aie::vector<float, kVec> inv_v =
       ::aie::broadcast<float, kVec>(recip_rne(o_act_scale));
   for (int c = 0; c < kQD / kVec; c++)
