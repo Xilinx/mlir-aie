@@ -48,6 +48,20 @@ You can override these output file names with `--npu-insts-name`,
 `--xclbin-name`, and `--full-elf-name`. You can filter which devices and
 runtime sequences are compiled with `--device-name` and `--sequence-name`.
 
+### Compiling one device: `--device-name`
+
+`--device-name=NAME` compiles only the `aie.device` called `NAME` (devices
+named `empty_*` are always kept). For every output but the full ELF that is
+all it compiles. A full ELF has to carry the PDI of every device its
+sequences load or configure, so with `--get-full-elf` the filter also keeps
+each device reached from `NAME` through `aiex.configure` and
+`aiex.npu.load_pdi`, transitively:
+
+```bash
+aiecc --get-full-elf --device-name=main design.mlir   # main and the devices it loads
+aiecc --get-pdi --pdi-name=design.pdi --device-name=main design.mlir   # main only
+```
+
 ### Full-ELF entries of a reconfiguring design
 
 Each runtime sequence is a full-ELF entry named `<device>:<sequence>`, e.g.
@@ -169,6 +183,26 @@ its own. The core ELFs are byte-identical to compiling each core on its own.
 `--no-share-core-objects` compiles each core separately, should the sharing
 ever need to be ruled out.
 
+### Arguments for `opt` and `llc`: `-Xopt` and `-Xllc`
+
+`-Xopt <arg>` and `-Xllc <arg>` pass `<arg>` to the Peano `opt` and `llc` that
+compile each core's program, as clang's `-Xclang` does: one argument per
+occurrence, never split at commas, after the arguments `aiecc` passes itself,
+so an option that `aiecc` sets takes the value given here. They reach the
+cores' programs, including kernels merged into them
+(`link_with_mode = "merge"`); a kernel compiled to an object takes its flags
+from its own clang command line (`-mllvm`).
+
+```bash
+# Rule out opt passes, or bisect them, in the cores' programs
+aiecc --get-pdi -Xopt -opt-disable=licm,loop-unroll-full design.mlir
+aiecc --get-pdi -v -Xopt -opt-bisect-limit=40 design.mlir
+# A backend option
+aiecc --get-pdi -Xllc=--enable-aie-zol-without-minitercount=false design.mlir
+```
+
+With `--xchesscc` they are an error: Chess compiles the cores.
+
 ### Building the link files meanwhile: `--await-link-files`
 
 With `--await-link-files`, `aiecc` lowers the design but reads no file a core
@@ -213,6 +247,33 @@ graph accordingly, so this is the fastest way to understand what a given
 invocation will actually do. The command above produces this graph:
 
 ![NPU-instruction flow graph](docs/npu_insts_flow.svg)
+
+### Timing a build: `--profile` and `--profile-json`
+
+`--profile` prints, at the end of the run, each edge's time, the change in
+resident memory since the edge before it (dRSS) and the peak resident memory
+so far. `--profile-json=PATH` writes the same summary to `PATH` as JSON, with
+or without `--profile`:
+
+```json
+{
+  "version": 1,
+  "wall_ms": 7412,
+  "process_ms": 7690,
+  "edges": [
+    {"name": "...", "ms": 120, "start_ms": 0, "end_ms": 120,
+     "rss_after_mib": 312.5, "peak_mib": 340.1}
+  ]
+}
+```
+
+`wall_ms` runs from the graph's start to its last edge's end, and each edge's
+`start_ms` and `end_ms` count from the graph's start. `process_ms` counts from
+aiecc's `main()` to the writing of this file, so `process_ms - wall_ms` is the
+time aiecc spends outside the graph: reading its options, building the graph
+and writing the outputs. `rss_after_mib` is the resident memory after the
+edge; it and `peak_mib` are `null` where the platform does not report them. A
+path that cannot be written fails the build.
 
 ### Stopping and restarting a build: `--checkpoint` and `--resume`
 

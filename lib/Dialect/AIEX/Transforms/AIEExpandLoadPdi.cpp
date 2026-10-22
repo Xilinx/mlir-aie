@@ -564,7 +564,7 @@ struct AIEExpandLoadPdiPass
       auto init = AIE::RuntimeSequenceOp::create(
           builder, device.getLoc(),
           builder.getStringAttr(initEntrySequenceName), BoolAttr{},
-          AIE::TraceBufferAttr{}, ArrayAttr{});
+          AIE::TraceBufferAttr{}, ArrayAttr{}, ArrayAttr{});
       builder.setInsertionPointToStart(&init.getBody().emplaceBlock());
       AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
           module, device.getDevice(), 0, device.getLoc());

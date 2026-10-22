@@ -134,7 +134,6 @@ def post_l1(act_in, sf, *, data_dir):
             post_L2_InC,  # outC_padd=1280 (next layer's input width)
             post_sf,
         ],
-        stack_size=2048,
     )
 
     return [w_post_l1], act_out_post_avgpool_shim

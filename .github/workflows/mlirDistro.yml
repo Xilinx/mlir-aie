@@ -80,7 +80,7 @@ jobs:
 
     name: Get latest LLVM commit
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     outputs:
       LLVM_PROJECT_COMMIT: ${{ steps.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }}
@@ -482,7 +482,7 @@ jobs:
 
     needs: smoke_test_wheels
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false

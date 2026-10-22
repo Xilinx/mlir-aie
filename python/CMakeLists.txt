@@ -41,6 +41,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/__init__.py
     utils/_log_setup.py
     utils/accuracy.py
+    utils/aie_fp32.py
     utils/benchmark.py
     utils/bfp.py
     utils/config.py
@@ -96,6 +97,9 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/compile/jit/markers.py
     utils/compile/jit/context.py
     utils/compile/jit/compileconfig.py
+    utils/compile/jit/declaration.py
+    utils/compile/jit/operator.py
+    utils/compile/jit/params.py
     utils/callabledesign.py
     utils/jit.py
     utils/trace/__init__.py
@@ -270,45 +274,56 @@ add_custom_command(
 ################################################################################
 # ParameterScratchpad pybind11 module (uses a raw buffer)
 ################################################################################
-if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  find_package(pybind11 CONFIG QUIET)
-  if(NOT pybind11_FOUND)
-    execute_process(
-      COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
-      RESULT_VARIABLE _pybind11_cmakedir_result
-      OUTPUT_VARIABLE _pybind11_cmakedir
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      ERROR_QUIET
-    )
-    if(NOT _pybind11_cmakedir_result EQUAL 0)
-      message(FATAL_ERROR
-        "AIE_ENABLE_XRT_PYTHON_BINDINGS requires pybind11 in ${Python3_EXECUTABLE}."
-      )
-    endif()
-    find_package(pybind11 CONFIG REQUIRED
-      PATHS "${_pybind11_cmakedir}"
-      NO_DEFAULT_PATH
+# XRT-free (TEST_UTILS_USE_XRT=0), and the host runtime imports it on every
+# platform, so it is built whether or not the XRT Python bindings are.
+find_package(pybind11 CONFIG QUIET)
+if(NOT pybind11_FOUND)
+  execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
+    RESULT_VARIABLE _pybind11_cmakedir_result
+    OUTPUT_VARIABLE _pybind11_cmakedir
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(NOT _pybind11_cmakedir_result EQUAL 0)
+    message(FATAL_ERROR
+      "The _parameter_scratchpad module requires pybind11 in ${Python3_EXECUTABLE}."
     )
   endif()
-
-  pybind11_add_module(_parameter_scratchpad
-    ${CMAKE_CURRENT_SOURCE_DIR}/ParameterScratchpadModule.cpp
-  )
-  target_compile_definitions(_parameter_scratchpad PRIVATE TEST_UTILS_USE_XRT=0)
-  target_include_directories(_parameter_scratchpad PRIVATE
-    ${AIE_SOURCE_DIR}/runtime_lib/test_lib
-  )
-  set_target_properties(_parameter_scratchpad PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
-    RUNTIME_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
-  )
-  add_dependencies(AIEPythonModules _parameter_scratchpad)
-  install(TARGETS _parameter_scratchpad
-    LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
-    RUNTIME DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
-    COMPONENT aie-python
+  find_package(pybind11 CONFIG REQUIRED
+    PATHS "${_pybind11_cmakedir}"
+    NO_DEFAULT_PATH
   )
 endif()
+
+pybind11_add_module(_parameter_scratchpad
+  ${CMAKE_CURRENT_SOURCE_DIR}/ParameterScratchpadModule.cpp
+)
+target_compile_definitions(_parameter_scratchpad PRIVATE TEST_UTILS_USE_XRT=0)
+target_include_directories(_parameter_scratchpad PRIVATE
+  ${AIE_SOURCE_DIR}/runtime_lib/test_lib
+)
+set_target_properties(_parameter_scratchpad PROPERTIES
+  LIBRARY_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+  RUNTIME_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+)
+# A multi-config generator (Windows) ignores the bare properties above and
+# appends its own $<CONFIG> subdirectory unless every configuration's is
+# set too; CMAKE_CONFIGURATION_TYPES is empty on a single-config generator,
+# so this is a no-op there.
+foreach(_cfg ${CMAKE_CONFIGURATION_TYPES})
+  string(TOUPPER "${_cfg}" _cfg_upper)
+  set_target_properties(_parameter_scratchpad PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY_${_cfg_upper} "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+    RUNTIME_OUTPUT_DIRECTORY_${_cfg_upper} "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+  )
+endforeach()
+add_dependencies(AIEPythonModules _parameter_scratchpad)
+install(TARGETS _parameter_scratchpad
+  LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+  RUNTIME DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+  COMPONENT aie-python
+)
 
 target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
 

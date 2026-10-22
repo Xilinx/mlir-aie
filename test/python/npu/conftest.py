@@ -350,7 +350,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Print the ``--report-error`` stats and the ``--baseline-sources`` comparison.
 
     Each baseline arm shows its min..max over n calls (cycles) or iterations
-    (npu_us), so "the candidate's max is below the base's min" reads off one
+    (dispatch_us, npu_us), so "the candidate's max is below the base's min" reads off one
     line, and its error against the reference (``cases.error_report``)
     below the words.
     """
@@ -392,11 +392,11 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         for b, a in zip(base, cur):
             tr.write_line(f"  error[{b['output']}] {_accuracy_line(b)}")
             tr.write_line(f"  {'':>8} -> {_accuracy_line(a)}")
-        for metric in ("cycles", "npu_us"):
+        for metric in ("cycles", "dispatch_us", "npu_us"):
             if not any(c[f"{metric}_range"]):
                 continue
             base, cur = c[f"{metric}_range"]
-            tr.write_line(f"  {metric:<7} {span(base):>26} -> {span(cur)}")
+            tr.write_line(f"  {metric:<11} {span(base):>26} -> {span(cur)}")
 
 
 def _device_generation() -> str | None:

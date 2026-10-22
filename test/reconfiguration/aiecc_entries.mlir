@@ -22,6 +22,8 @@
 // WHOLE:          "instance": [
 // WHOLE-NOT:      "id"
 // WHOLE:          "id": "sequence"
+// WHOLE-NOT:      "id"
+// WHOLE:          "id": "aiecc_empty"
 // WHOLE-NEXT:   }
 // WHOLE-NEXT:   ],
 // WHOLE-NEXT:   "name": "main"
@@ -31,6 +33,8 @@
 // INIT:           "id": "reconfig_init"
 // INIT-NOT:       "id"
 // INIT:           "id": "sequence"
+// INIT-NOT:       "id"
+// INIT:           "id": "aiecc_empty"
 // INIT-NEXT:    }
 // INIT-NEXT:    ],
 // INIT-NEXT:    "name": "main"
@@ -40,6 +44,8 @@
 // SELECT:         "id": "reconfig_init"
 // SELECT-NOT:     "id"
 // SELECT:         "id": "sequence"
+// SELECT-NOT:     "id"
+// SELECT:         "id": "aiecc_empty"
 // SELECT-NEXT:  }
 // SELECT-NEXT:  ],
 // SELECT-NEXT:  "name": "main"

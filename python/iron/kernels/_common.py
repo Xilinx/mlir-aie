@@ -9,7 +9,7 @@ import hashlib
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
+from typing import Callable, TypeVar, get_args, get_origin, overload
 
 import numpy as np
 from aie.helpers.npdtypes import (
@@ -34,6 +34,11 @@ class Param:
 
 
 _ROLES = (In, Out, InOut, Param)
+
+_STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
+# The scalar MoE and SSM kernels stay rolled: unrolled, they overflow aie2's
+# 16 KB program memory.
+_STRICT_FP_ROLLED = [*_STRICT_FP, "-fno-unroll-loops"]
 
 
 def _is_tensor_type(arg_type):
@@ -155,6 +160,9 @@ class KernelContract:
             each arch. ``reference`` and ``tolerance`` are then ``None``, and
             ``for_build`` picks the row of the build that produced an output,
             once that is known.
+        true_function: The function the kernel approximates, for error
+            reports, where the reference (or a build's row) models the kernel
+            instead, as a LUT build's does. ``None``: the reference is it.
         ops_per_call: Arithmetic operations per call; ``None`` means one
             per output element.
         out_valid: Meaningful leading elements of a DMA-padded output tile;
@@ -187,6 +195,10 @@ class KernelContract:
             call's index, 0 first, for a kernel whose state carries from one
             call to the next and restarts at 0. The reference sees every
             call at once, in order. ``None``: the bound value holds.
+        even_calls: Whether every call does the same work. Timing then
+            reports the cheapest call, the rest being the core waiting;
+            calls of unequal work (each its own chunk of a resample) report
+            the median call.
         trace: The ``Trace`` shape of the kernel's markers. Every
             library factory declares one; ``None`` (undeclared) is only for
             ad-hoc kernels, and ``cycles_per_call`` refuses it.
@@ -206,6 +218,7 @@ class KernelContract:
     roles: tuple[type, ...]
     reference: Callable[..., np.ndarray | tuple[np.ndarray, ...]] | None = None
     tolerance: Tolerance | None = None
+    true_function: Callable[..., np.ndarray | tuple[np.ndarray, ...]] | None = None
     ops_per_call: int | None = None
     out_valid: int | None = None
     sample: Callable[..., list] | None = None
@@ -218,6 +231,7 @@ class KernelContract:
     initializers: tuple[tuple[int, Callable], ...] = ()
     out_offset: tuple[int, int] | None = None
     call_index: int | None = None
+    even_calls: bool = True
     trace: Trace | None = None
     uses_lut: bool = False
     alignments: tuple[tuple[int, int], ...] = ()
@@ -458,6 +472,12 @@ def _arch_traits() -> ArchTraits:
     return ARCH_TRAITS[_detect_arch()]
 
 
+def _vector_args(*indices):
+    """``alignments`` for arguments every build, portable too, loads as whole vectors."""
+    align = {"aie2": 32, "aie2p": 64}.get(_detect_arch())
+    return tuple((i, align) for i in indices) if align else ()
+
+
 def _tuned_arch() -> str:
     """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
@@ -533,23 +553,6 @@ def _dtype_to_bit_width(dtype, *, factory_name: str) -> int:
             "Use np.uint8, np.int16, or np.int32."
         )
     return bit_width
-
-
-def dtypes(table: Iterable[dict]):
-    """Declare the keyword combinations a factory builds, as ``factory.dtypes``.
-
-    The registry and the host contract test enumerate the table instead of
-    restating it.
-    """
-
-    def decorate(factory):
-        # A function attribute: pyright models functions as having a fixed
-        # attribute set, so the one assignment is annotated rather than each
-        # of the ~20 factories that carry a table.
-        factory.dtypes = tuple(table)  # pyright: ignore[reportFunctionMemberAccess]
-        return factory
-
-    return decorate
 
 
 def _conv_act_dtype_info(
@@ -701,9 +704,7 @@ def _make_extern(
     declaration. Different parameterizations get distinct
     ``object_file_name``s — the latter is auto-suffixed with a short
     digest of the identity so per-parameterization .o files don't
-    overwrite each other on disk.  The default ``<name>.o`` is preserved
-    when ``compile_flags`` is empty AND ``use_chess`` is False (no
-    parameterization to disambiguate).
+    overwrite each other on disk.
 
     ``use_chess`` selects the Chess (xchesscc) compiler instead of Peano
     for this kernel's .o build.  See
@@ -730,6 +731,7 @@ def _make_extern(
     identity = (
         func_name,
         str(source_path),
+        tuple(include_dirs or ()),
         arg_keys,
         flags_tuple,
         use_chess,
@@ -752,15 +754,12 @@ def _make_extern(
         # suffix, and (below) no symbol prefix, so every binding of that
         # translation unit resolves to the one KernelObject.
         digest = None
-    elif flags_tuple or arg_keys or str(source_path):
+    else:
         # 8 hex chars of sha256 — short enough not to bloat MLIR strings,
         # wide enough that the chance of two distinct identities colliding
         # is vanishingly small (~2^-32).
         digest = hashlib.sha256(repr(identity).encode()).hexdigest()[:8]
         object_file_name = f"{func_name}_{digest}{'.ll' if inline else '.o'}"
-    else:
-        digest = None
-        object_file_name = None  # ExternalFunction default → ``<name>.o``
 
     # Prefix the SYMBOL name with the digest whenever this is a parameterized
     # kernel.  Two helper calls with different parameterizations compile two
@@ -780,8 +779,8 @@ def _make_extern(
     # copy.  ``digest`` is a pure function of ``identity``, so prefixing every
     # parameterized variant unconditionally keeps the symbol and the
     # suffix-form ``f"{func_name}_{digest}.o"`` filename identical across builds.
-    # When ``digest`` is None (unparameterized default-name kernel, or an
-    # explicit ``object_file_name``) this leaves the symbol unprefixed.
+    # An explicit ``object_file_name`` leaves ``digest`` None and the symbol
+    # unprefixed.
     #
     # Chess exception: the symbol prefix is applied post-compile via
     # ``llvm-objcopy --redefine-sym`` (see compile_external_kernel), which only

@@ -77,31 +77,6 @@ def test_ryzen_windows_smoke_tests_are_per_wheel():
     assert jobs["smoke-test-wheels-npu-windows"]["needs"] == "build-windows-npu-wheel"
 
 
-def test_baseline_cache_key_is_unique_per_attempt_and_restorable():
-    publish = workflow("publishKernelResults.yml")["jobs"]["publish"]["steps"]
-    report = workflow("nightlyKernelChecks.yml")["jobs"]["report"]["steps"]
-    saved = [
-        step["with"]
-        for step in publish
-        if step.get("uses", "").startswith("actions/cache/save@")
-    ]
-    restored = [
-        step["with"]
-        for step in report
-        if step.get("uses", "").startswith("actions/cache/restore@")
-    ]
-    assert saved and restored
-    for save in saved:
-        assert "${{ github.run_id }}" in save["key"]
-        assert "${{ github.run_attempt }}" in save["key"]
-        assert any(
-            save["key"].startswith(prefix) and save["path"] == restore["path"]
-            for restore in restored
-            for prefix in restore["restore-keys"].splitlines()
-            if prefix
-        )
-
-
 @pytest.mark.parametrize("only", ["", "softmax", "softmax and not large", "$(false)"])
 def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path):
     steps = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
@@ -254,20 +229,33 @@ def test_only_turbo_mode_is_published_and_the_other_npu_still_is(pmode, tmp_path
     assert (tmp_path / "results/npu2/meta.json").exists()
 
 
-def test_report_uses_restored_baseline_and_updates_summary(tmp_path):
+def test_report_reads_the_published_baseline_and_updates_summary(tmp_path):
+    """The report job's steps, in a checkout whose origin has a gh-pages
+    branch holding npu2's latest record and none for npu1."""
     steps = workflow("nightlyKernelChecks.yml")["jobs"]["report"]["steps"]
-    results = tmp_path / "results/npu2"
+    pages = tmp_path / "pages"
+    (pages / "kernel-checks/npu2").mkdir(parents=True)
+    baseline = {
+        "id": "baseline-run",
+        "pmode": "performance",
+        "commit": {"id": "abcdef0123", "url": "https://example.com/abcdef0"},
+        "rows": {"synthetic/1/i8": {"cycles": {"unit": "cycles", "value": 100}}},
+    }
+    (pages / "kernel-checks/npu2/latest.json").write_text(json.dumps(baseline))
+    git(pages, "init", "-q", "-b", "gh-pages")
+    git(pages, "add", "-A")
+    git(pages, "commit", "-q", "-m", "pages")
+
+    checkout = tmp_path / "checkout"
+    results = checkout / "results/npu2"
     results.mkdir(parents=True)
     write_meta(results / "meta.json", "performance")
     (results / "perf.json").write_text(
         json.dumps([{"name": "synthetic/1/i8/cycles", "unit": "cycles", "value": 150}])
     )
-    baseline = {
-        "id": "baseline-run",
-        "pmode": "performance",
-        "rows": {"synthetic/1/i8": {"cycles": {"unit": "cycles", "value": 100}}},
-    }
-    (tmp_path / "utils").symlink_to(WORKFLOWS.parents[1] / "utils")
+    (checkout / "utils").symlink_to(WORKFLOWS.parents[1] / "utils")
+    git(checkout, "init", "-q")
+    git(checkout, "remote", "add", "origin", pages.as_uri())
     summary = tmp_path / "summary.md"
     env = {
         **os.environ,
@@ -275,23 +263,27 @@ def test_report_uses_restored_baseline_and_updates_summary(tmp_path):
         "GITHUB_SERVER_URL": "https://github.com",
         "GITHUB_REPOSITORY": "example/synthetic",
         "GITHUB_RUN_ID": "7",
+        "COMMIT": "fedcba9876",
     }
+    ran = []
     for step in steps:
-        if step.get("uses", "").startswith("actions/cache/restore@"):
-            if "npu2-" in step["with"]["key"]:
-                (tmp_path / "baseline").mkdir()
-                (tmp_path / "baseline/latest.json").write_text(json.dumps(baseline))
-        elif "run" in step and "gh api" not in step["run"]:
-            subprocess.run(
+        if "run" in step and "gh api" not in step["run"]:
+            result = subprocess.run(
                 [BASH, "-eo", "pipefail", "-c", step["run"]],
-                cwd=tmp_path,
+                cwd=checkout,
                 env=env,
                 check=True,
+                capture_output=True,
+                text=True,
             )
+            ran.append(result.stdout)
+    assert "::warning::no gh-pages:kernel-checks/npu1/latest.json" in "".join(ran)
+    assert not (checkout / "baselines/npu1").exists()
     text = summary.read_text()
-    assert text == (tmp_path / "report.md").read_text()
+    assert text == (checkout / "report.md").read_text()
     assert "1 regressed" in text
-    assert "synthetic/1/i8" in text
+    assert "| [abcdef0](https://example.com/abcdef0) |" in text
+    assert "compare/abcdef0123...fedcba9876" in text
     assert "https://github.com/example/synthetic/actions/runs/7" in text
 
 
@@ -322,12 +314,31 @@ def test_the_sweep_takes_its_seed_count_from_the_environment(seeds, expected, tm
     assert args[args.index("--seeds") + 1] == expected
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the step runs on the Linux bench runner; Windows has no uid",
+)
+def test_the_hardware_checks_find_the_runners_user_manager(tmp_path):
+    run = next(
+        step["run"]
+        for step in component_steps("hw-checks")
+        if step.get("name") == "Point systemd-run --user at the runner's user manager"
+    )
+    github_env = tmp_path / "github_env"
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        env={**os.environ, "GITHUB_ENV": str(github_env)},
+        check=True,
+    )
+    assert github_env.read_text() == f"XDG_RUNTIME_DIR=/run/user/{os.getuid()}\n"
+
+
 def evaluate(expression, context):
     """Evaluate the subset of GitHub's expression syntax the workflow uses."""
     text = expression.strip()
     if text.startswith("${{"):
         text = text[3:-2]
-    text = text.replace("!cancelled()", "True")
+    text = text.replace("!cancelled()", "True").replace("always()", "True")
     text = re.sub(
         r"\b(github|inputs|env)\.(\w+)", lambda m: repr(context[m.group(0)]), text
     )
@@ -357,16 +368,31 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
     assert publishes == (
         event != "pull_request" and ref == "refs/heads/main" and not seeds
     )
-    step = next(
+    # Even after the hardware job times out, which GitHub reports as
+    # cancelled: its checks' failed placeholders publish.
+    assert jobs["publish"]["if"].startswith("${{ always() &&")
+    designs = [
         step
-        for step in jobs["hw-check"]["steps"]
-        if step.get("name") == "Run mobilenet at each seed and batch"
-    )
-    if not evaluate(jobs["hw-check"]["if"], context):
+        for step in jobs["hw-checks"]["steps"]
+        if "REQUIRED_PMODE" in step.get("env", {})
+    ]
+    assert [step["id"] for step in designs] == ["mobilenet", "llama", "yolo26n"]
+    if not evaluate(jobs["hw-checks"]["if"], context):
         assert event == "pull_request"
         return
-    required = evaluate(step["env"]["REQUIRED_PMODE"], context)
-    assert required == ("turbo" if publishes else "any")
+    for step in designs:
+        required = evaluate(step["env"]["REQUIRED_PMODE"], context)
+        assert required == ("turbo" if publishes else "any")
+
+
+def test_the_hardware_checks_install_nothing_mid_run():
+    steps = component_steps("hw-checks")
+    for step in steps:
+        if step.get("name") != "Setup virtual environment / prerequisites":
+            assert "pip install" not in step.get("run", ""), step["name"]
+    requirements = (WORKFLOWS.parents[1] / "python/requirements_ml.txt").read_text()
+    assert "\ntiktoken==" in requirements
+    assert "--extras" in steps[1]["run"]
 
 
 MODEL_INPUTS = (
@@ -700,6 +726,7 @@ def test_ci_health_publishes_its_files_and_the_page(tmp_path):
     assert job["permissions"] == {
         "contents": "write",
         "actions": "read",
+        "checks": "read",
         "pull-requests": "read",
     }
     run = next(step["run"] for step in job["steps"] if step.get("name") == "Publish")
@@ -755,3 +782,23 @@ def test_ci_health_publishes_its_files_and_the_page(tmp_path):
         capture_output=True,
     )
     assert git(repo, "rev-list", "--count", "gh-pages").strip() == "2"
+
+    # The next publish reads the published files back: the history to extend
+    # and the status whose judged runs on main need not be asked about again.
+    read = next(
+        step["run"]
+        for step in job["steps"]
+        if step.get("name") == "Read the workflows' runs and the pull requests"
+    )
+    result = subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", 'python3() { printf "%s\\n" "$@"; }\n' + read],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    args = result.stdout.splitlines()
+    assert args[args.index("--previous") + 1] == f"{temp}/status.json"
+    assert (temp / "status.json").read_text() == '{"schema": 1}'
+    assert args[args.index("--history") + 1] == f"{temp}/history.json"

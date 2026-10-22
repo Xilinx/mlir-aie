@@ -33,6 +33,13 @@ class Linked:
     # ``.stack_sizes`` section; None without one, or on recursion. Runtime
     # routines are outside the object and not counted.
     stack: int | None = None
+    # Bytes of the object's static data (.data, .rodata, .bss and the like),
+    # all of which coexists whatever the entry reaches.
+    data: int = 0
+    # Bytes of the code and initialized data the entry reaches: what the core
+    # links of this object, without its sibling entry points, symbol tables or
+    # embedded bitcode.
+    linked_bytes: int = 0
 
 
 def linked(obj: Path, entry: str) -> Linked:
@@ -56,10 +63,14 @@ def linked(obj: Path, entry: str) -> Linked:
 
 def parse_readobj(doc: dict, entry: str) -> Linked:
     """``linked`` on the parsed ``llvm-readobj --elf-output-style=JSON`` document."""
-    alloc = {}
+    alloc, data, stored = {}, 0, {}
     for s in doc["Sections"]:
         s = s["Section"]
-        alloc[s["Index"]] = any(f["Name"] == "SHF_ALLOC" for f in s["Flags"]["Flags"])
+        flags = {f["Name"] for f in s["Flags"]["Flags"]}
+        alloc[s["Index"]] = "SHF_ALLOC" in flags
+        stored[s["Index"]] = 0 if s["Type"]["Name"] == "SHT_NOBITS" else s["Size"]
+        if "SHF_ALLOC" in flags and "SHF_EXECINSTR" not in flags:
+            data += s["Size"]
     symbols = [s["Symbol"] for s in doc["Symbols"]]
     # A symbol names its section by index; an undefined one names index 0.
     home = [s["Section"]["Value"] or None for s in symbols]
@@ -122,4 +133,6 @@ def parse_readobj(doc: dict, entry: str) -> Linked:
         functions={n for sec in seen for n in functions.get(sec, ())},
         undefined=sorted({u for sec in seen for u in calls.get(sec, ())}),
         stack=deepest(roots[0]) if frames and roots else None,
+        data=data,
+        linked_bytes=sum(stored[sec] for sec in seen),
     )

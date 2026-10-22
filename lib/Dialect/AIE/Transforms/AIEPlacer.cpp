@@ -78,6 +78,8 @@ Placer::CollectedOps Placer::collectOperations(DeviceOp device) {
             [&](auto of) { ops.objectFifos.push_back(of); })
         .Case<ObjectFifoLinkOp>(
             [&](auto link) { ops.objectFifoLinks.push_back(link); })
+        .Case<ObjectFifoAllocateOp>(
+            [&](auto alloc) { ops.objectFifoAllocates.push_back(alloc); })
         .Case<CascadeFlowOp>([&](auto cf) { ops.cascadeFlows.push_back(cf); })
         .Case<FlowOp>([&](auto f) { ops.flows.push_back(f); })
         .Case<PacketFlowOp>([&](auto pf) { ops.pktFlows.push_back(pf); })
@@ -187,7 +189,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto &routes = collected.routes;
 
   // Phase 2a: Build placement constraints
-  auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
+  auto bufferAdjacency =
+      buildBufferAdjacency(logicalTiles, collected.objectFifoAllocates);
   auto computePeerAdjacency = buildComputePeerAdjacency(objectFifos);
 
   // Phase 2b: Build channel requirements from ObjectFifo and Flow connectivity,
@@ -330,6 +333,33 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     return ctx.neighborDemand(a.getOperation()) >
            ctx.neighborDemand(b.getOperation());
   });
+
+  // An unpinned tile sharing L1 with another unpinned tile is placed right
+  // after it, while that tile's neighbors are still free.
+  auto unpinned = [](LogicalTileOp lt) {
+    return !lt.tryGetCol() && !lt.tryGetRow();
+  };
+  SmallVector<LogicalTileOp> sequenced;
+  llvm::DenseSet<Operation *> queued;
+  for (auto start : orderedTiles) {
+    if (!queued.insert(start.getOperation()).second)
+      continue;
+    size_t next = sequenced.size();
+    sequenced.push_back(start);
+    for (; next < sequenced.size(); ++next) {
+      LogicalTileOp lt = sequenced[next];
+      if (!unpinned(lt))
+        continue;
+      forEachPeer(lt.getOperation(), bufferAdjacency,
+                  [&](TileLike peer, bool /*thisIsFirst*/) {
+                    auto peerLt = dyn_cast<LogicalTileOp>(peer.getOperation());
+                    if (peerLt && unpinned(peerLt) &&
+                        queued.insert(peerLt.getOperation()).second)
+                      sequenced.push_back(peerLt);
+                  });
+    }
+  }
+  orderedTiles = std::move(sequenced);
 
   for (auto logicalTile : orderedTiles) {
     // Place fully constrained tiles at their specified coordinates
@@ -645,6 +675,31 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
     });
   }
 
+  // A candidate that leaves no free core tile for one of this LTO's
+  // unplaced shared-L1 peers is tried only in the second pass. Each peer
+  // claims its own tile; claiming greedily is exact when the peers share one
+  // candidate set, as one owner's consumers do.
+  auto leavesPeerRoom = [&](TileID candidate) {
+    llvm::DenseSet<TileID> claimed;
+    bool room = true;
+    forEachPeer(logicalTile.getOperation(), inputs.bufferAdjacency,
+                [&](TileLike peer, bool thisIsFirst) {
+                  if (!room || resolvePeerPosition(peer, this->result))
+                    return;
+                  // thisIsFirst: this tile is the consumer, peer the owner.
+                  auto free =
+                      llvm::find_if(availability.compTiles, [&](TileID t) {
+                        return t != candidate && !claimed.contains(t) &&
+                               (thisIsFirst ? inputs.bufferPred(candidate, t)
+                                            : inputs.bufferPred(t, candidate));
+                      });
+                  room = free != availability.compTiles.end();
+                  if (room)
+                    claimed.insert(*free);
+                });
+    return room;
+  };
+
   // Two passes: first prefer candidates that aren't reserved for an
   // unrelated demand-bearing LTO's peers; fall back to reserved
   // candidates only if nothing else fits.
@@ -655,7 +710,8 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       if (row && candidate.row != *row)
         continue;
       if (!allowReserved &&
-          inputs.isReservedForOther(logicalTile.getOperation(), candidate))
+          (inputs.isReservedForOther(logicalTile.getOperation(), candidate) ||
+           !leavesPeerRoom(candidate)))
         continue;
       result.sawConstraintMatch = true;
       if (!satisfiesAdjacency(logicalTile, candidate, inputs.bufferAdjacency,
@@ -724,21 +780,27 @@ SequentialPlacer::buildChannelRequirements(
     fifoNameToOp[ofOp.getSymName()] = ofOp;
   }
 
-  // For each fifo involved in a link, track which side IS the link tile so we
-  // don't double-count it: the subsequent link loop credits the link tile with
-  // (#sources input + #dests output) and we'd otherwise count the same channels
-  // again in the per-fifo loop below. A linked source fifo terminates at the
-  // link tile on its CONSUMER side; a linked dest fifo originates from the
-  // link tile on its PRODUCER side.
-  llvm::DenseSet<llvm::StringRef> linkedAsSource;
+  // A link's tile is the one producing its dest fifos (each fifo has one
+  // producer). The link loop below credits it with (#sources input + #dests
+  // output), so the per-fifo loop skips that tile's side of each linked fifo,
+  // and only that tile's: a linked source fifo can have other consumers, such
+  // as a shim that also drains it, and those still need their own channels.
+  llvm::DenseMap<Operation *, Operation *> linkTileOf;
+  llvm::StringMap<Operation *> linkTileOfSource;
   llvm::DenseSet<llvm::StringRef> linkedAsDest;
   for (auto linkOp : objectFifoLinks) {
+    Operation *linkTileOp = nullptr;
+    for (auto dstFifoAttr : linkOp.getFifoOuts())
+      if (auto sym = dyn_cast<FlatSymbolRefAttr>(dstFifoAttr)) {
+        linkedAsDest.insert(sym.getValue());
+        auto it = fifoNameToOp.find(sym.getValue());
+        if (!linkTileOp && it != fifoNameToOp.end())
+          linkTileOp = it->second.getProducerTile().getDefiningOp();
+      }
+    linkTileOf[linkOp.getOperation()] = linkTileOp;
     for (auto srcFifoAttr : linkOp.getFifoIns())
       if (auto sym = dyn_cast<FlatSymbolRefAttr>(srcFifoAttr))
-        linkedAsSource.insert(sym.getValue());
-    for (auto dstFifoAttr : linkOp.getFifoOuts())
-      if (auto sym = dyn_cast<FlatSymbolRefAttr>(dstFifoAttr))
-        linkedAsDest.insert(sym.getValue());
+        linkTileOfSource[sym.getValue()] = linkTileOp;
   }
 
   // Count channels for every ObjectFifo, omitting only the link-tile side of
@@ -746,7 +808,7 @@ SequentialPlacer::buildChannelRequirements(
   // produces a linked source fifo consumes an MM2S channel; a core that
   // consumes a linked dest fifo consumes an S2MM channel.
   for (auto ofOp : objectFifos) {
-    bool skipConsumerSide = linkedAsSource.count(ofOp.getSymName());
+    Operation *linkConsumer = linkTileOfSource.lookup(ofOp.getSymName());
     bool skipProducerSide = linkedAsDest.count(ofOp.getSymName());
 
     Value producerTile = ofOp.getProducerTile();
@@ -769,7 +831,7 @@ SequentialPlacer::buildChannelRequirements(
 
       // This consumer needs a DMA channel (unless it's the link tile, which
       // the link loop credits separately).
-      if (consumerOp && !skipConsumerSide)
+      if (consumerOp && consumerOp != linkConsumer)
         channelRequirements[consumerOp].first++; // input++
 
       producerNeedsDMA = true;
@@ -785,30 +847,7 @@ SequentialPlacer::buildChannelRequirements(
   // Link tiles need channels for all sources and destinations
   for (auto linkOp : objectFifoLinks) {
 
-    // Find the tile that fifos are linked on
-    Operation *linkTileOp = nullptr;
-
-    // Get link tile from first source fifo's consumer
-    for (auto srcFifoAttr : linkOp.getFifoIns()) {
-      auto sym = dyn_cast<FlatSymbolRefAttr>(srcFifoAttr);
-      if (!sym)
-        continue;
-      auto srcFifoName = sym.getValue();
-      auto it = fifoNameToOp.find(srcFifoName);
-      if (it == fifoNameToOp.end())
-        continue;
-
-      auto srcFifo = it->second;
-      for (Value consumerTile : srcFifo.getConsumerTiles()) {
-        if (auto *consumerOp = consumerTile.getDefiningOp()) {
-          linkTileOp = consumerOp;
-          break;
-        }
-      }
-      if (linkTileOp)
-        break;
-    }
-
+    Operation *linkTileOp = linkTileOf.lookup(linkOp.getOperation());
     if (!linkTileOp)
       continue;
 
@@ -854,9 +893,34 @@ resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
   return std::nullopt;
 }
 
-Placer::Adjacency
-SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
+Placer::Adjacency SequentialPlacer::buildBufferAdjacency(
+    ArrayRef<LogicalTileOp> logicalTiles,
+    ArrayRef<ObjectFifoAllocateOp> allocates) {
   Adjacency adjacency;
+  // One edge per (user, owner) pair: a duplicate would book a second free
+  // tile for the same peer in leavesPeerRoom.
+  llvm::DenseSet<std::pair<Operation *, Operation *>> seen;
+  auto addOnce = [&](TileLike user, TileLike owner) {
+    if (seen.insert({user.getOperation(), owner.getOperation()}).second)
+      adjacency.addEdge(user, owner);
+  };
+  // An allocated fifo's objects live in the delegate's memory, which each of
+  // its ends then reaches as it would a buffer the delegate owns.
+  for (auto alloc : allocates) {
+    auto delegate =
+        dyn_cast_or_null<TileLike>(alloc.getDelegateTile().getDefiningOp());
+    ObjectFifoCreateOp fifo = alloc.getObjectFifo();
+    if (!delegate || !fifo || delegate.getTileType() != AIETileType::CoreTile)
+      continue;
+    SmallVector<Value> ends{fifo.getProducerTile()};
+    llvm::append_range(ends, fifo.getConsumerTiles());
+    for (Value end : ends) {
+      auto tile = dyn_cast_or_null<TileLike>(end.getDefiningOp());
+      if (tile && tile.getTileType() == AIETileType::CoreTile &&
+          tile.getOperation() != delegate.getOperation())
+        addOnce(tile, delegate);
+    }
+  }
   for (auto consumer : logicalTiles) {
     if (consumer.getTileType() != AIETileType::CoreTile)
       continue;
@@ -869,20 +933,14 @@ SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
     if (!core)
       continue;
 
-    llvm::SmallDenseSet<Operation *, 4> seenOwners;
     core.getBody().walk([&](Operation *op) {
       for (Value operand : op->getOperands()) {
         BufferOp buf = traceToBuffer(operand);
         if (!buf)
           continue;
         auto owner = dyn_cast_or_null<TileLike>(buf.getTile().getDefiningOp());
-        if (!owner)
-          continue;
-        if (owner.getOperation() == consumer.getOperation())
-          continue;
-        if (!seenOwners.insert(owner.getOperation()).second)
-          continue;
-        adjacency.addEdge(TileLike(consumer), owner);
+        if (owner && owner.getOperation() != consumer.getOperation())
+          addOnce(TileLike(consumer), owner);
       }
     });
   }
@@ -1220,12 +1278,14 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     });
   }
 
-  // The verifier lets an endpoint appear in only one route.
+  // Packet routes may share an endpoint, which holds one channel however many
+  // routes name it.
+  llvm::DenseSet<Operation *> countedEndpoints;
   for (auto route : routes) {
     auto count = [&](FlatSymbolRefAttr name, bool isOutput) {
       auto endpoint =
           SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(route, name);
-      if (endpoint)
+      if (endpoint && countedEndpoints.insert(endpoint).second)
         incIfDMA(endpoint.getTile().getDefiningOp(), endpoint.getRouteBundle(),
                  endpoint.getRouteChannel(), isOutput);
     };

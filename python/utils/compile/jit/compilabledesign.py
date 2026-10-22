@@ -33,6 +33,7 @@ import hashlib
 import inspect
 import json
 import logging
+import math
 import operator
 import os
 import sys
@@ -44,7 +45,18 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping, get_origin
 
 import numpy as np
+from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
+    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+    DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
+    ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
+from aie.helpers.npdtypes import np_ndarray_type_of
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    IntegerAttr,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
 )
@@ -75,11 +87,7 @@ from ._hash import (
     _compute_recipe_hash,
     _device_identity_key,
 )
-from ._introspect import (
-    _dispatch_param_type,
-    _introspect_generator,
-    _is_tensor_param,
-)
+from ._introspect import declare
 from ._object_cache import KernelObjectCache
 from ._serialization import _decode_kwarg, _encode_kwarg, _TensorPlaceholder
 from .context import compile_context
@@ -145,6 +153,7 @@ class CacheEntry:
     xclbin: Path | None
     insts: Path | None
     elf: Path | None
+    full_elf_kernel: str | None
     pdis: tuple[Path, ...]
     params: Path | None
     lowered_mlir: Path | None
@@ -177,6 +186,8 @@ class _GeneratedDesign:
     entry: str | None
     configuration_count: int
     reconfiguration: tuple[tuple[str, bool], ...]
+    devices: tuple
+    scratchpad_parameters: bool
 
     @classmethod
     def from_module(
@@ -196,15 +207,26 @@ class _GeneratedDesign:
                 for name in _RECONFIGURATION_OPTIONS
                 if f"iron.{name}" in attributes
             ),
+            devices=tuple(
+                AIEDevice(IntegerAttr(op.attributes["device"]).value)
+                for op in module.body.operations
+                if isinstance(op, DeviceOp)
+            ),
+            scratchpad_parameters=any(
+                isinstance(op, ScratchpadParameterOp) for op in module.body.operations
+            ),
         )
 
     @property
     def aiecc_options(self) -> list[str]:
-        """The aiecc flags the program's own attributes ask for."""
-        return [
+        """The aiecc flags the program's own attributes and declarations ask for."""
+        options = [
             f"--{name.replace('_', '-')}={str(value).lower()}"
             for name, value in self.reconfiguration
         ]
+        if self.scratchpad_parameters:
+            options.append("--get-scratchpad-parameters")
+        return options
 
     @property
     def requires_full_elf(self) -> bool:
@@ -212,6 +234,18 @@ class _GeneratedDesign:
         return self.configuration_count > 1 or any(
             value for name, value in self.reconfiguration if name in _FULL_ELF_OPTIONS
         )
+
+    @property
+    def entry_stream_options(self) -> list[str]:
+        """The aiecc flags that keep only the entry's instruction stream.
+
+        An xclbin dispatch runs one stream, so a configuration holding several
+        runtimes compiles just its entry's; a full ELF carries them all.
+        """
+        if self.entry is None:
+            return []
+        device, sequence = self.entry.split(":")
+        return [f"--device-name={device}", f"--sequence-name={sequence}"]
 
 
 class CompilableDesign:
@@ -294,18 +328,23 @@ class CompilableDesign:
         self._kernel_dir: Path | None = None
         self._generated_cache: dict[tuple, _GeneratedDesign] = {}
 
-        # Introspect generator signature to split param categories.  Cache
-        # hints+sig on self so split_runtime_args / _generate_uncached reuse the
-        # same memoised intro instead of re-running typing.get_type_hints
-        # and inspect.signature on every call.
+        # The generator's declaration, memoised, which split_runtime_args and
+        # _generate_uncached read again.
         if callable(mlir_generator):
-            self._hints, self._sig, (cp, tp, dp, sp) = _introspect_generator(
-                mlir_generator
-            )
+            self.declaration = declare(mlir_generator)
+            sig = self.declaration.signature
+            assert sig is not None
+            cp = list(self.declaration.params)
+            tp = [m.name for m in self.declaration.operands]
+            self._dispatch_types = dp_types = {
+                m.name: m.dtype for m in self.declaration.per_calls
+            }
+            dp = list(dp_types)
+            sp = self.declaration.scalars
             non_keyword_dispatch = [
                 name
                 for name in dp
-                if self._sig.parameters[name].kind is not inspect.Parameter.KEYWORD_ONLY
+                if sig.parameters[name].kind is not inspect.Parameter.KEYWORD_ONLY
             ]
             if non_keyword_dispatch:
                 raise TypeError(
@@ -325,7 +364,7 @@ class CompilableDesign:
             # handed an empty tuple at generation).
             variadic = [
                 name
-                for name, p in self._sig.parameters.items()
+                for name, p in sig.parameters.items()
                 if p.kind is inspect.Parameter.VAR_POSITIONAL
             ]
             self.variadic_tensor_param = variadic[0] if variadic else None
@@ -342,10 +381,7 @@ class CompilableDesign:
             self.scalar_params = list(sp)
             normalized_kwargs = dict(self.compile_kwargs)
             for name in dp:
-                declared = _dispatch_param_type(
-                    self._hints.get(name, self._sig.parameters[name].annotation)
-                )
-                assert declared is not None
+                declared = dp_types[name]
                 dispatch_scalar_c_type(declared)
                 if name in self.bound_dispatch_params:
                     try:
@@ -365,19 +401,19 @@ class CompilableDesign:
                             f"range for {declared.__name__} [{lower}, {upper}]."
                         )
                     normalized_kwargs[name] = value
+            for name in self.tensor_params:
+                if name in normalized_kwargs:
+                    normalized_kwargs[name] = np_ndarray_type_of(
+                        normalized_kwargs[name]
+                    )
             self.compile_kwargs = MappingProxyType(normalized_kwargs)
             # The wrapped T of each DispatchTime[T], in declaration order, so
             # the build can check the generated C parameters against what was
             # declared instead of trusting the count alone.
-            self.dispatch_param_types = [
-                _dispatch_param_type(
-                    self._hints.get(name, self._sig.parameters[name].annotation)
-                )
-                for name in self.dispatch_params
-            ]
+            self.dispatch_param_types = [dp_types[n] for n in self.dispatch_params]
         else:
-            self._hints = {}
-            self._sig = None
+            self.declaration = None
+            self._dispatch_types = {}
             self.compile_params = []
             self.tensor_params = []
             self.variadic_tensor_param = None
@@ -548,6 +584,62 @@ class CompilableDesign:
             compile_kwargs=compile_kwargs,
             **config,
         )
+
+    # amdxdna's MAX_NUM_CUS: the kernels one hardware context configures.
+    XCLBIN_KERNELS = 32
+
+    @classmethod
+    def chain(
+        cls, designs: "list[CompilableDesign]", name: str
+    ) -> "list[tuple[CompilableDesign, Path, str]]":
+        """Compile ``designs`` into xclbins that each add a design's kernel to the last.
+
+        Each xclbin after the first of a chain is built with
+        ``--xclbin-input`` naming the one before, and a chain holds
+        ``XCLBIN_KERNELS`` kernels. With more than one design, each kernel is
+        named for a short hash of ``name`` and its index, under xclbinutil's
+        64-character limit; one design alone keeps the default name.
+
+        Args:
+            designs: The designs, in kernel order.
+            name: What the kernel names hash.
+
+        Returns:
+            Per design, the compiled design, the xclbin carrying its kernel (its
+            chain's last) and the kernel's name.
+        """
+        digest = hashlib.sha256(name.encode()).hexdigest()[:6]
+        named = len(designs) > 1
+        built, images = [], []
+        for index, design in enumerate(designs):
+            label = f"f{digest}_op{index}" if named else "MLIR_AIE"
+            flags = (
+                [
+                    f"--xclbin-kernel-name={label}",
+                    f"--xclbin-instance-name={label}",
+                    f"--xclbin-kernel-id=0x{0x901 + index:x}",
+                ]
+                if named
+                else []
+            )
+            sources = design.source_files
+            if index % cls.XCLBIN_KERNELS:
+                flags.append(f"--xclbin-input={images[-1]}")
+                # Its content keys this design, so an image rebuilt in place
+                # rebuilds every image chained onto it.
+                sources = (*sources, images[-1])
+            design = design.specialize(
+                aiecc_flags=[*design.aiecc_flags, *flags], source_files=sources
+            )
+            xclbin, _ = design.compile()
+            assert xclbin is not None
+            images.append(Path(xclbin).resolve())
+            built.append((design, label))
+        size = cls.XCLBIN_KERNELS
+        return [
+            (design, images[min(index // size * size + size, len(built)) - 1], label)
+            for index, (design, label) in enumerate(built)
+        ]
 
     def compile(
         self,
@@ -852,7 +944,10 @@ class CompilableDesign:
                 use_chess = self._resolve_use_chess(external_kernels)
                 digests: dict[str, str] = {}
 
-                compiler_options = list(self.aiecc_flags)
+                compiler_options = [
+                    *self.aiecc_flags,
+                    *generated.entry_stream_options,
+                ]
                 if has_dispatch:
                     compiler_options.append("--get=npu_lowered.mlir")
                 compile_mlir_module(
@@ -1047,8 +1142,14 @@ class CompilableDesign:
         Returns:
             ``(elf_path, None)``.
         """
+        # aie.iron imports this module.
+        from aie.iron.device import NamedDevice
+
         try:
             generated = self._generated_for(full_elf=True)
+            for kind in generated.devices:
+                if not NamedDevice.of(kind).can_dispatch_full_elf:
+                    raise ValueError(f"{kind.name} does not dispatch a full ELF.")
             external_kernels = generated.external_kernels
             use_chess = self._resolve_use_chess(external_kernels)
             digests: dict[str, str] = {}
@@ -1189,7 +1290,12 @@ class CompilableDesign:
                     insts_path=inst_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
-                    options=[*self.aiecc_flags, *check] or None,
+                    options=[
+                        *self.aiecc_flags,
+                        *generated.entry_stream_options,
+                        *check,
+                    ]
+                    or None,
                     device_cache_dir=self._device_cache_dir(),
                     # The stream addresses the buffers where the image's build
                     # placed them, and that placement reserves each bank's
@@ -1360,7 +1466,7 @@ class CompilableDesign:
 
         One accessor for the whole entry, whether it sits in the JIT cache
         (``<NPU_CACHE_HOME>/<hash>/``) or beside caller-supplied outputs
-        (``<stem>.prj/``): the image (xclbin or full ELF) and its
+        (``<stem>.prj/``): the image (xclbin, or full ELF and its kernel name), its
         instructions, the PDIs, the kernel objects, the manifest, and the
         two graph outputs aiecc writes into the work directory when asked
         for them -- ``params.txt`` (``--get-scratchpad-parameters``) and
@@ -1381,6 +1487,7 @@ class CompilableDesign:
             xclbin=present(self._xclbin_path),
             insts=present(self._inst_path),
             elf=present(self._elf_path),
+            full_elf_kernel=self._full_elf_kernel_name,
             pdis=tuple(self.get_pdi_paths()),
             params=present(directory / "params.txt"),
             lowered_mlir=present(directory / "input_with_addresses.mlir"),
@@ -1476,9 +1583,9 @@ class CompilableDesign:
                 "use specialize() to create a design with different constants."
             )
 
-        # Reuse the cached intro from __init__ — same generator, same hints/sig.
-        hints = self._hints
-        sig = self._sig
+        assert self.declaration is not None
+        sig = self.declaration.signature
+        tensors = set(self.tensor_params)
         assert sig is not None
         params = [
             (name, p)
@@ -1498,7 +1605,6 @@ class CompilableDesign:
 
         pos_iter = iter(runtime_args)
         for name, param in params:
-            ann = hints.get(name, param.annotation)
             if param.kind is inspect.Parameter.VAR_POSITIONAL:
                 # The variadic tensor list takes every positional left over.
                 tensor_args.extend(a for a in pos_iter if not isinstance(a, Kernel))
@@ -1518,12 +1624,12 @@ class CompilableDesign:
             if value is not inspect.Parameter.empty:
                 if name in scalar_kwargs:
                     raise TypeError(f"Multiple values for argument {name!r}.")
-                if _is_tensor_param(ann):
+                if name in tensors:
                     tensor_args.append(value)
                 else:
                     scalar_kwargs[name] = value
                 continue
-            if _is_tensor_param(ann):
+            if name in tensors:
                 if name in scalar_kwargs:
                     tensor_args.append(scalar_kwargs.pop(name))
             elif (
@@ -1612,10 +1718,11 @@ class CompilableDesign:
             if expected == 0:
                 continue
             try:
-                # tensor.dtype rather than asarray(tensor): a device tensor
-                # would sync itself back to the host just to be measured.
+                # dtype and shape rather than asarray(tensor): a device tensor
+                # would sync itself back to the host just to be measured, and a
+                # TensorRegion has no host data to convert.
                 itemsize = np.dtype(tensor.dtype).itemsize
-                actual = int(np.size(tensor)) * itemsize * 8
+                actual = math.prod(tensor.shape) * itemsize * 8
             except (TypeError, ValueError, AttributeError):
                 # Non-array-like tensor argument (e.g. a scalar passed by mistake);
                 # skip rather than raise so the kernel call surfaces the real
@@ -1951,7 +2058,8 @@ class CompilableDesign:
                 f"  Valid CompileTime[T] params are: {self.compile_params}."
             )
 
-        sig = self._sig
+        assert self.declaration is not None
+        sig = self.declaration.signature
         assert sig is not None
         compile_only_params = {
             name: p.replace(kind=inspect.Parameter.KEYWORD_ONLY)
@@ -1997,11 +2105,14 @@ class CompilableDesign:
             **self.compile_kwargs,
         }
         for name in self.bound_dispatch_params:
-            declared = _dispatch_param_type(
-                self._hints.get(name, sig.parameters[name].annotation)
+            _gen_call_kwargs[name] = self._dispatch_types[name](
+                self.compile_kwargs[name]
             )
-            assert declared is not None
-            _gen_call_kwargs[name] = declared(self.compile_kwargs[name])
+        for operand in self.declaration.operands:
+            if get_origin(tensor := _gen_call_kwargs[operand.name]) is np.ndarray:
+                _gen_call_kwargs[operand.name] = type(operand).for_tensor(
+                    operand.name, tensor
+                )
 
         # The generation's kernels register here, not in the process-wide
         # registry another thread's manual compile reads. ExternalFunction

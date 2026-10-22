@@ -16,9 +16,10 @@ import numpy as np
 import pytest
 from ml_dtypes import bfloat16
 
-from aie.iron import kernels
+from aie.iron import In, Out, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.algorithms._transform import transform, transform_parallel
+from aie.iron.kernel import ExternalFunction
 from aie.iron.device import NPU1Col1
 from aie.utils import config
 from aie.utils.hostruntime import set_current_device
@@ -46,14 +47,13 @@ def test_transform_parallel_leaves_the_stack_to_aiecc(npu1_device, num_channels)
         np.ndarray[(4096,), np.dtype[bfloat16]],
         tile_size=1024,
         num_channels=num_channels,
-        pass_size_to_kernel=False,
     )
     assert "stack_size" not in str(module)
 
 
 def test_transform_leaves_the_stack_to_aiecc(npu1_device):
     module = transform(
-        kernels.gelu_sized(tile_size=1024),
+        kernels.gelu(tile_size=1024),
         np.ndarray[(4096,), np.dtype[bfloat16]],
         tile_size=1024,
     )
@@ -81,6 +81,38 @@ def test_kernel_design_budgets_the_kernel_frames(npu2_device):
     fn = kernels.fused_mm(**tile)
     params = fn.param_values(kd.sample_inputs(fn, calls=4))
     mlir = str(kd.design(kernels.fused_mm, calls=4, params=params, **tile).as_mlir())
+    depths = re.findall(r"aie\.objectfifo @out0\([^)]*?(\d+) : i32\)", mlir)
+    assert depths == ["1"]
+
+
+TABLE_WORDS, TILE_WORDS = 5000, 3000
+TABLE = np.zeros(TABLE_WORDS, np.int32)
+TABLE[:3] = (1, 2, 3)
+
+
+def table_add():
+    """A tile plus a 20 KB constant table: 24 KB of tiles each way."""
+    tile = np.ndarray[(TILE_WORDS,), np.dtype[np.int32]]
+    return ExternalFunction(
+        "table_add",
+        source_string=f"""#include <stdint.h>
+static const int32_t table[{TABLE_WORDS}] = {{1, 2, 3}};
+extern "C" void table_add(const int32_t *in, int32_t *out) {{
+  for (int i = 0; i < {TILE_WORDS}; i++)
+    out[i] = in[i] + table[in[i] & 4095];
+}}""",
+        arg_types=[tile, tile],
+        contract=kernels.KernelContract(
+            roles=(In, Out), reference=lambda x: x + TABLE[x & 4095]
+        ),
+    )
+
+
+@needs_peano
+def test_kernel_design_budgets_the_kernels_static_data(npu2_device):
+    # Two sets of tiles fit beside the stack (49 KB of 64), not beside the
+    # table as well (69 KB): one set does (45 KB).
+    mlir = str(kd.design(table_add).as_mlir())
     depths = re.findall(r"aie\.objectfifo @out0\([^)]*?(\d+) : i32\)", mlir)
     assert depths == ["1"]
 

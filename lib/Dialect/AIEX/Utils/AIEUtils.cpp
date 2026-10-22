@@ -251,27 +251,35 @@ LogicalResult AIEX::emitUpdateBdLengthFromParameter(
   return success();
 }
 
+std::string AIEX::scratchpadCommandName(AIE::RuntimeSequenceOp seq) {
+  auto device = seq->getParentOfType<AIE::DeviceOp>();
+  return (device.getSymName() + ":" + seq.getSymName()).str();
+}
+
 void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
   SmallVector<AIEX::ScratchpadParameterOp> allParams;
   moduleOp.walk([&](AIEX::ScratchpadParameterOp p) { allParams.push_back(p); });
 
-  os << allParams.size() << "\n";
+  unsigned numSlots = 0;
+  for (auto p : allParams)
+    if (auto idx = p.getStateTableIdx())
+      numSlots = std::max(numSlots, static_cast<unsigned>(*idx) + 1);
+  os << allParams.size() << " " << numSlots << "\n";
   for (auto p : allParams) {
     std::string typeStr;
     llvm::raw_string_ostream ts(typeStr);
     p.getType().print(ts);
     ts.flush();
-    // --aie-lower-scratchpad-parameters assigns kind and state_table_idx to
-    // every ScratchpadParameterOp unconditionally (defaulting unused
-    // parameters to Core), so by the time this dump runs both are set.
     auto kind = p.getKind();
-    auto stateTableIdx = p.getStateTableIdx();
-    assert(kind && stateTableIdx &&
-           "expected --aie-lower-scratchpad-parameters to have assigned "
-           "kind/state_table_idx to every parameter");
+    assert(kind && "expected --aie-lower-scratchpad-parameters to have "
+                   "assigned every parameter a kind");
     StringRef kindStr = AIEX::stringifyScratchpadParameterKind(*kind);
-    os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
-       << typeStr << " " << kindStr;
+    os << p.getSymName() << " ";
+    if (std::optional<uint8_t> stateTableIdx = p.getStateTableIdx())
+      os << static_cast<unsigned>(*stateTableIdx);
+    else
+      os << "-";
+    os << " " << typeStr << " " << kindStr;
     auto minValue = p.getMinValue();
     auto maxValue = p.getMaxValue();
     if (minValue && maxValue)
@@ -291,6 +299,20 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
   for (auto [length, bound] : jointBounds)
     os << length << " " << bound.getOffset().getValue() << " "
        << bound.getLengthStep() << " " << bound.getMax() << "\n";
+
+  SmallVector<AIE::RuntimeSequenceOp> commands;
+  moduleOp.walk([&](AIE::RuntimeSequenceOp seq) {
+    if (seq.getScratchpadParametersAttr())
+      commands.push_back(seq);
+  });
+  os << commands.size() << "\n";
+  for (AIE::RuntimeSequenceOp seq : commands) {
+    ArrayAttr reads = seq.getScratchpadParametersAttr();
+    os << scratchpadCommandName(seq) << " " << reads.size();
+    for (auto ref : reads.getAsRange<FlatSymbolRefAttr>())
+      os << " " << ref.getValue();
+    os << "\n";
+  }
 }
 
 bool AIEX::getReachableConfigures(

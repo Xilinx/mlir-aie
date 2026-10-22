@@ -41,13 +41,15 @@ from ._common import (
     _make_extern,
     _portable_flags,
     _runtime_lib_include,
-    dtypes,
 )
 from .activation import _bf16_ulp, _vtanh_error
 from .linalg import _ZeroInitializedKernel
 from .quant import _bf16_floor
 
 _BF16, _F32 = np.dtype[bfloat16], np.dtype[np.float32]
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
+
 # An RTP buffer: int32 words the host writes.
 _RTP_WORD = np.dtype[np.int32]
 _K = TypeVar("_K", bound=ExternalFunction)
@@ -58,9 +60,9 @@ class _PrefillKernel(ExternalFunction):
     attn_round_begin: Kernel
     attn_blocks: Kernel
     attn_block_begin: Kernel
-    attn_qk_step: Kernel
+    attn_qk_chunk: Kernel
     attn_block_mid: Kernel
-    attn_fv_step: Kernel
+    attn_fv_chunk: Kernel
     attn_block_end: Kernel
     attn_finalize: Kernel
     attn_epilogue: ExternalFunction
@@ -92,13 +94,11 @@ def _on_object(base, symbol, arg_types, contract) -> ExternalFunction:
     )
 
 
-def _prefill(
-    name, dh, lq, chunk, reference, in_prod_lock, in_cons_lock
-) -> ExternalFunction:
+def _prefill(name, dh, lq, chunk, reference) -> ExternalFunction:
     """One ``flm_gemma4/prefill.cc`` build, its epilogue bound to ``chunk``.
 
     A core holds ``lq`` query rows of two cores' q object and folds in ``lq``
-    key rows a step, 128 a block.
+    key rows a chunk, 128 a block.
     """
     if not _arch_traits().bfp16:
         raise NotImplementedError(f"{name}() is only available on aie2p.")
@@ -117,8 +117,6 @@ def _prefill(
             # The bf16 mmul lowers onto two bfp16-emulated macs on AIE2P.
             "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
             f"-DFLM_GEMMA4_PREFILL_HEAD_DIM={dh}",
-            f"-DFLM_GEMMA4_PREFILL_IN_PROD_LOCK={int(in_prod_lock)}",
-            f"-DFLM_GEMMA4_PREFILL_IN_CONS_LOCK={int(in_cons_lock)}",
         ],
         contract=KernelContract(
             trace=Trace.whole_call(),
@@ -142,11 +140,11 @@ def _prefill(
     blocks = [L, L, np.int32, L] if dh == 256 else [L, np.int32, L]
     fn.attn_blocks = bind("attn_blocks", blocks)
     fn.attn_block_begin = bind("attn_block_begin", [m, row_bf16])
-    fn.attn_qk_step = bind("attn_qk_step", [s, q, kv, kv, m, L, L] + [np.int32] * 5)
+    fn.attn_qk_chunk = bind("attn_qk_chunk", [s, q, kv, m, L, L] + [np.int32] * 5)
     fn.attn_block_mid = bind(
         "attn_block_mid", [s, m, row_bf16, row_bf16, row_f32, row_f32, y]
     )
-    fn.attn_fv_step = bind("attn_fv_step", [y, s, kv, kv, np.int32])
+    fn.attn_fv_chunk = bind("attn_fv_chunk", [y, s, kv, np.int32])
     fn.attn_block_end = bind("attn_block_end", [row_bf16, row_bf16])
     fn.attn_finalize = bind("attn_finalize", [row_f32, row_bf16])
     return fn
@@ -156,19 +154,17 @@ def _prefill(
 _ATTN_PREFILL_LQ, _ATTN_PREFILL_DH = 8, 512
 
 
-def flm_gemma4_attn_prefill(
-    *, in_prod_lock: int = 2, in_cons_lock: int = 3
-) -> ExternalFunction:
+def flm_gemma4_attn_prefill() -> ExternalFunction:
     """Causal flash-attention prefill at a head dim of 512, from ``flm_gemma4/prefill.cc``.
 
     [`linalg.prefill_fv`][iron.kernels.linalg.prefill_fv]'s algorithm with
     FastFlowLM's numerics and synchronization: the softmax scales by log2(e)
-    alone, the epilogue multiplies by a bf16 ``1 / l``, and k and v arrive in
-    a ping-pong pair that the core's own locks guard.
+    alone, and the epilogue multiplies by a bf16 ``1 / l``.
 
     One core holds 8 query rows of a 128-row round and folds the keys in one
-    8-row step at a time, with one entry point per step of the caller's
-    round, block and step loops. The returned kernel is ``attn_epilogue``,
+    8-row chunk at a time, with one entry point per step of the caller's
+    round, block and chunk loops. The design acquires each k and v chunk and
+    passes it in; no entry point takes a lock. The returned kernel is ``attn_epilogue``,
     which writes one 64-element chunk of ``o = y / l``; its chunk index is
     bound to 0. The entry points, all attributes of the kernel:
 
@@ -176,18 +172,12 @@ def flm_gemma4_attn_prefill(
     - ``attn_blocks(L_begin, i, n_out)``: key blocks in round ``i``
     - ``attn_round_begin(prev_m, new_m, c, l, y)``
     - ``attn_block_begin(m, prev_m)``
-    - ``attn_qk_step(s, q, k_ping, k_pong, m, L_begin, window_size, row, col, i, block, j)``
+    - ``attn_qk_chunk(s, q, k, m, L_begin, window_size, row, col, i, block, j)``
     - ``attn_block_mid(s, m, new_m, prev_m, c, l, y)``
-    - ``attn_fv_step(y, s, v_ping, v_pong, j)``
+    - ``attn_fv_chunk(y, s, v, j)``
     - ``attn_block_end(prev_m, new_m)``
     - ``attn_finalize(l, l_bf16)``
     - ``attn_epilogue(o, l_bf16, y, chunk)``
-
-    The design must declare the k/v locks and fill the pair with a tile DMA.
-
-    Args:
-        in_prod_lock: Core lock the k/v DMA acquires to fill a buffer.
-        in_cons_lock: Core lock the steps acquire to read one.
     """
     return _prefill(
         "flm_gemma4_attn_prefill",
@@ -195,8 +185,6 @@ def flm_gemma4_attn_prefill(
         _ATTN_PREFILL_LQ,
         0,
         flm_gemma4_attn_prefill_ref,
-        in_prod_lock,
-        in_cons_lock,
     )
 
 
@@ -206,9 +194,7 @@ def flm_gemma4_attn_prefill(
 _SWA_PREFILL_LQ, _SWA_PREFILL_DH, _SWA_PREFILL_CHUNK = 16, 256, 33
 
 
-def flm_gemma4_swa_prefill(
-    *, in_prod_lock: int = 2, in_cons_lock: int = 3
-) -> ExternalFunction:
+def flm_gemma4_swa_prefill() -> ExternalFunction:
     """Sliding-window causal flash-attention prefill at a head dim of 256, from ``flm_gemma4/prefill.cc``.
 
     The sliding-window build of [`flm_gemma4_attn_prefill`][iron.kernels.flm_gemma4.flm_gemma4_attn_prefill]:
@@ -218,10 +204,6 @@ def flm_gemma4_swa_prefill(
     ``attn_blocks(L_begin, window_size, i, n_out)`` also reading the window.
     The returned kernel is ``attn_epilogue``, bound to chunk 33: rows 8 to 15,
     columns 64 to 127 of the (16, 256) ``y``.
-
-    Args:
-        in_prod_lock: Core lock the k/v DMA acquires to fill a buffer.
-        in_cons_lock: Core lock the steps acquire to read one.
     """
     return _prefill(
         "flm_gemma4_swa_prefill",
@@ -229,12 +211,12 @@ def flm_gemma4_swa_prefill(
         _SWA_PREFILL_LQ,
         _SWA_PREFILL_CHUNK,
         flm_gemma4_swa_prefill_ref,
-        in_prod_lock,
-        in_cons_lock,
     )
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_block_begin"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_block_begin(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_block_begin`` of the prefill kernels: row ``j`` of ``m`` is ``prev_m[j]``."""
     return _prefill_sibling(
@@ -259,7 +241,9 @@ def flm_gemma4_prefill_block_begin_ref(prev_m):
     return np.repeat(prev_m, prev_m.shape[-1], axis=-1)
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_block_end"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_block_end(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_block_end`` of the prefill kernels: ``prev_m = new_m``."""
     return _prefill_sibling(
@@ -306,7 +290,9 @@ def _prefill_rounds_sample(rng, calls):
     return [_rtp_words(rng, begin), _rtp_words(rng, end)]
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_rounds"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_rounds(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_rounds`` of the prefill kernels: the rounds between ``L_begin`` and ``L_end``."""
     return _prefill_sibling(
@@ -358,7 +344,9 @@ def _prefill_blocks_sample(rng, calls, *, window):
     return buffers
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_blocks"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_blocks(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_blocks`` of the prefill kernels: the key blocks round ``i`` folds in.
 
@@ -383,7 +371,9 @@ def flm_gemma4_prefill_blocks(*, head_dim: int = 512) -> ExternalFunction:
     )
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_finalize"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_finalize(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_finalize`` of the prefill kernels: ``inv_l = bf16(1 / l)`` per query row.
 
@@ -429,8 +419,8 @@ def _prefill_finalize_sample(rng, calls, *, lq):
     return [rng.uniform(1.0, 300.0, (calls, lq)).astype(np.float32)]
 
 
-# The prefill arithmetic behind attn_qk_step's and attn_fv_step's locks and
-# attn_block_mid's state, built from flm_gemma4/prefill_core.cc.
+# The prefill arithmetic of attn_qk_chunk, attn_fv_chunk and attn_block_mid's
+# state, built from flm_gemma4/prefill_core.cc.
 
 # FastFlowLM's softmax scale: log2(e) in bf16, with no 1 / sqrt(head_dim).
 _LOG2E_BF16 = float(bfloat16(np.log2(np.e)))
@@ -525,7 +515,9 @@ def flm_gemma4_prefill_round_begin_ref(*, head_dim=512):
     )
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_round_begin"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_round_begin(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_round_begin`` of the prefill kernels, its five outputs packed as bytes.
 
@@ -599,14 +591,16 @@ def _prefill_qk_sample(rng, calls, *, head_dim):
     ]
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_qk_core"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_qk_core(*, head_dim: int = 512) -> ExternalFunction:
-    """``attn_qk_step``'s arithmetic for one key chunk, without its k lock.
+    """``attn_qk_chunk``'s arithmetic.
 
     ``attn_qk_core(q, k, m, inner_k, inner_q, inner_k_current, out)``:
     ``s = q @ k.T`` through the bfp16-emulated mmul, masked, and ``m``
     folded with it, into ``out = s | m``. The three positions are
-    ``apply_mask_and_get_max``'s, which attn_qk_step derives from its RTPs.
+    ``apply_mask_and_get_max``'s, which attn_qk_chunk derives from its RTPs.
     q and k arrive in the mmul's 8x8 tiles, k's tiles in column-major order.
     """
     lq = lk = _prefill_lq(head_dim)
@@ -668,9 +662,11 @@ def _prefill_fv_sample(rng, calls, *, head_dim):
     return [y, sv.astype(bfloat16)]
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_fv_core"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_fv_core(*, head_dim: int = 512) -> ExternalFunction:
-    """``attn_fv_step``'s arithmetic for one key chunk, without its v lock.
+    """``attn_fv_chunk``'s arithmetic.
 
     ``attn_fv_core(y, sv, y_out)``: ``y_out = y + s @ v`` through
     ``flm_attn_fv``'s bfp16-emulated mmul, with ``sv = s | v``. y and s are in
@@ -706,7 +702,7 @@ def _prefill_block_mid_math(in_bf16, in_f32, head_dim):
     lq = lk = _prefill_lq(head_dim)
     b = np.asarray(in_bf16, np.float64).reshape(-1, lq * 128 + lq * lk + lq)
     f = np.asarray(in_f32, np.float64).reshape(-1, lq * head_dim + lq)
-    # s arrives as attn_qk_step stores it: (chunk, query row, lane).
+    # s arrives as attn_qk_chunk stores it: (chunk, query row, lane).
     s = b[:, : lq * 128].reshape(-1, 128 // lk, lq, lk).transpose(0, 2, 1, 3)
     s = s.reshape(-1, lq, 128)
     new_m = b[:, lq * 128 : lq * 128 + lq * lk].reshape(-1, lq, lk).max(axis=2)
@@ -783,7 +779,7 @@ def _prefill_block_mid_bound(in_bf16, in_f32, *, head_dim):
 
 
 def _prefill_block_mid_sample(rng, calls, *, head_dim):
-    """State as attn_qk_step leaves it, on grids that make the kernel's bf16 differences exact.
+    """State as attn_qk_chunk leaves it, on grids that keep its bf16 differences exact.
 
     Scores are multiples of 1/8 in [-12, 12], so every ``s - new_m`` is a
     bf16. The last chunk masks the keys past each row's own, as the causal
@@ -809,7 +805,9 @@ def _prefill_block_mid_sample(rng, calls, *, head_dim):
     ]
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_block_mid_core"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_block_mid_core(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_block_mid`` of the prefill kernels, its state passed in and out.
 
@@ -1032,7 +1030,9 @@ def _wrapper(base: ExternalFunction, source: str, symbol, arg_types, contract):
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_glu"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_glu(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -1133,7 +1133,9 @@ def _glu_core_sample(rng, calls, *, n):
     return [np.concatenate([up, gate], axis=1).astype(bfloat16)]
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_glu_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_glu_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
@@ -1272,7 +1274,8 @@ def flm_gemma4_decode_attn_kv(
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 1.
         **locks: Core lock ids overriding the defaults ``v_prod_lock=2``,
             ``v_cons_lock=3``, ``o_prod_lock=0``, ``o_cons_lock=1`` and
-            ``l_cons_lock=8`` (a lock of the qk core, on the tile below).
+            ``l_cons_lock=8``, which the runtime sequence sets after it
+            writes the RTPs.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_kv", geometry, 1)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1454,7 +1457,8 @@ def flm_gemma4_decode_attn_kv_kvh2(
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 2.
         **locks: Core lock ids overriding the defaults ``v_prod_lock=2``,
             ``v_cons_lock=3``, ``o_prod_lock=0``, ``o_cons_lock=1`` and
-            ``l_cons_lock=8`` (a lock of the qk core, on the tile below).
+            ``l_cons_lock=8``, which the runtime sequence sets after it
+            writes the RTPs.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_kv_kvh2", geometry, 2)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1511,12 +1515,14 @@ def flm_gemma4_attn_kv_kvh2_core_ref(sv, ly, kv_head, *, dh=512):
     return _attn_kv_round_ref(sv, ly, int(kv_head), dh=dh, impl="kvh2")
 
 
-@dtypes(
+DTYPES["flm_gemma4_decode_attn_qk"] = tuple(
     [
         {"sliding_window": True},
         {"sliding_window": True, "geometry": FLM_GEMMA4_E4B_DECODE},
     ]
 )
+
+
 def flm_gemma4_decode_attn_qk(
     *,
     sliding_window: bool = False,
@@ -1529,8 +1535,8 @@ def flm_gemma4_decode_attn_qk(
     it multiplies the query heads into each round's 16 key rows, masks the
     keys past the sequence length, keeps the running row maximum ``m`` and
     hands the kv core the exponentiated scores with their corrections. The
-    returned kernel is ``attn_qk_begin``, which sets ``m`` to -inf and
-    releases the kv core; per round the Worker calls ``attn_qk_round``.
+    returned kernel is ``attn_qk_begin``, which sets ``m`` to -inf; per round
+    the Worker calls ``attn_qk_round``.
     The global build serves one KV head (E2B), the sliding-window build both.
 
     Args:
@@ -1538,7 +1544,7 @@ def flm_gemma4_decode_attn_qk(
         geometry: The model the kernel builds for; without ``sliding_window``
             ``num_kv_heads`` must be 1.
         **locks: Core lock ids overriding the defaults ``k_prod_lock=2``,
-            ``k_cons_lock=3`` and ``l_cons_lock=8``.
+            ``k_cons_lock=3``.
     """
     if not sliding_window:
         _decode_kv_heads("flm_gemma4_decode_attn_qk", geometry, 1)
@@ -1549,7 +1555,7 @@ def flm_gemma4_decode_attn_qk(
         "attn_qk_begin",
         [t["m"]],
         (Out,),
-        dict(k_prod_lock=2, k_cons_lock=3, l_cons_lock=8),
+        dict(k_prod_lock=2, k_cons_lock=3),
         locks,
         geometry,
         flags=(f"-DFLM_GEMMA4_DECODE_ATTN_QK_SWA={int(sliding_window)}",),
@@ -1575,7 +1581,7 @@ def flm_gemma4_decode_attn_qk_kvh2(
     Args:
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 2.
         **locks: Core lock ids overriding the defaults ``k_prod_lock=2``,
-            ``k_cons_lock=3`` and ``l_prod_lock=8``.
+            ``k_cons_lock=3``.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_qk_kvh2", geometry, 2)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1584,7 +1590,7 @@ def flm_gemma4_decode_attn_qk_kvh2(
         "attn_qk_begin",
         [t["m"]],
         (Out,),
-        dict(k_prod_lock=2, k_cons_lock=3, l_prod_lock=8),
+        dict(k_prod_lock=2, k_cons_lock=3),
         locks,
         geometry,
         cls=_AttnQkKvh2Kernel,
@@ -1735,12 +1741,14 @@ def _attn_qk_core_types(geometry, dh, kv_heads):
     return [qm, k, s, t["c"], np.int32, np.int32]
 
 
-@dtypes(
+DTYPES["flm_gemma4_attn_qk_core"] = tuple(
     [
         {"sliding_window": True},
         {"sliding_window": True, "geometry": FLM_GEMMA4_E4B_DECODE},
     ]
 )
+
+
 def flm_gemma4_attn_qk_core(
     *,
     sliding_window: bool = False,
@@ -1789,7 +1797,9 @@ def flm_gemma4_attn_qk_kvh2_core_ref(qm, k, iter, L0):
     return flm_gemma4_attn_qk_core_ref(qm, k, iter, L0)
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_swa_attn_kv"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_swa_attn_kv(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -1804,7 +1814,8 @@ def flm_gemma4_decode_swa_attn_kv(
         geometry: The model the kernel builds for.
         **locks: Core lock ids overriding the defaults ``v_prod_lock=2``,
             ``v_cons_lock=3``, ``o_prod_lock=0``, ``o_cons_lock=1`` and
-            ``l_cons_lock=8`` (a lock of the qk core, on the tile below).
+            ``l_cons_lock=8``, which the runtime sequence sets after it
+            writes the RTPs.
     """
     t = _decode_attn_types(
         geometry, geometry.swa_dh, geometry.num_kv_heads * geometry.swa_dh
@@ -1828,7 +1839,9 @@ def flm_gemma4_decode_swa_attn_kv(
     return fn
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_swa_attn_kv_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_swa_attn_kv_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
@@ -1860,13 +1873,15 @@ def flm_gemma4_swa_attn_kv_core_ref(sv, ly, *, dh=256, kv_heads=1):
     return _attn_kv_round_ref(sv, ly, dh=dh, impl=impl)
 
 
-@dtypes(
+DTYPES["flm_gemma4_decode_rope"] = tuple(
     [
         {"geometry": FLM_GEMMA4_E4B_DECODE},
         {"sliding_window": True},
         {"sliding_window": True, "geometry": FLM_GEMMA4_E4B_DECODE},
     ]
 )
+
+
 def flm_gemma4_decode_rope(
     *,
     sliding_window: bool = False,
@@ -1978,7 +1993,9 @@ def _rope_core_sample(rng, calls, *, dh):
     return [x.astype(bfloat16), rope_w.astype(bfloat16)]
 
 
-@dtypes(_ROPE_CORE_VARIANTS)
+DTYPES["flm_gemma4_rope_core"] = tuple(_ROPE_CORE_VARIANTS)
+
+
 def flm_gemma4_rope_core(
     *,
     sliding_window: bool = False,
@@ -1988,8 +2005,6 @@ def flm_gemma4_rope_core(
 
     ``rope_head_core(x, rope_w, y)``: ``x`` is a q head then a k head,
     ``rope_w`` the base kernel's ``[cos | sin | q weight | k weight]``.
-    The kernel normalizes ``x`` in place; the write lands in the core's input
-    element, which the next DMA fill overwrites.
     """
     base = flm_gemma4_decode_rope(sliding_window=sliding_window, geometry=geometry)
     dh = geometry.swa_dh if sliding_window else geometry.dh
@@ -2036,7 +2051,9 @@ def _v_norm_core_sample(rng, calls, *, dh):
     return [x.astype(bfloat16)]
 
 
-@dtypes(_ROPE_CORE_VARIANTS)
+DTYPES["flm_gemma4_v_norm_core"] = tuple(_ROPE_CORE_VARIANTS)
+
+
 def flm_gemma4_v_norm_core(
     *,
     sliding_window: bool = False,
@@ -2068,7 +2085,9 @@ def flm_gemma4_v_norm_core(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_rms_residual"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_rms_residual(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -2150,7 +2169,9 @@ def _rms_residual_core_bound(x, w, residual):
     return norm + (1.5 * 2.0**-7 + 2.0**-12) * s + 2 * 2.0**-126
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_rms_residual_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_rms_residual_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
@@ -2185,7 +2206,67 @@ def flm_gemma4_rms_residual_core(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+_PACKET_HEADER = 16
+
+
+def flm_gemma4_rms_norm_core_ref(x, w):
+    """Numpy reference for [`flm_gemma4_rms_norm_core`][iron.kernels.flm_gemma4.flm_gemma4_rms_norm_core].
+
+    16 zeros, then ``x * w / sqrt(mean(x^2) + 1e-6)`` rounded to bf16.
+    """
+    n = _rms_residual_core_terms(x, w, 0)[0]
+    header = np.zeros((len(n), _PACKET_HEADER))
+    return np.concatenate([header, n], axis=1).astype(np.float32).astype(bfloat16)
+
+
+def _rms_norm_core_bound(x, w):
+    n = np.abs(_rms_residual_core_terms(x, w, 0)[0])
+    bound = (1.5 * 2.0**-7 + _RMS_SCALE_REL) * n + _BF16_TINY
+    return np.concatenate([np.full((len(n), _PACKET_HEADER), _BF16_TINY), bound], 1)
+
+
+DTYPES["flm_gemma4_rms_norm_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
+def flm_gemma4_rms_norm_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """``rms_norm`` of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual] into its packet layout.
+
+    ``rms_norm_core(x, w, y)``: ``x`` and ``w`` are ``model_dim`` bf16, ``y``
+    is ``model_dim + 16``, a zeroed 16-element packet header then
+    ``rms_norm(x) * w``: the row starts 32 bytes into a 64-byte-aligned
+    buffer, as the QKV and up/gate projections' input does.
+    """
+    base = flm_gemma4_decode_rms_residual(geometry=geometry)
+    d = geometry.model_dim
+    row = np.ndarray[(d,), _BF16]
+    return _wrapper(
+        base,
+        "decode_rms_residual_core.cc",
+        "rms_norm_core",
+        [row, row, np.ndarray[(d + _PACKET_HEADER,), _BF16]],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out),
+            reference=flm_gemma4_rms_norm_core_ref,
+            tolerance=Tolerance.bounded(
+                _rms_norm_core_bound,
+                note="bf16 ulp <= 2**-7 |v|. The kernel floors the normalized "
+                "value to bf16 (1 ulp, plus the fast inverse sqrt's and the "
+                "float32 sum of squares' error, under 2**-12) and the "
+                "reference rounds it to nearest (1/2 ulp). The header is "
+                "exact. Each flush of a subnormal adds the smallest normal",
+            ),
+            # Per element: square-add and two multiplies.
+            ops_per_call=4 * d,
+        ),
+    )
+
+
+DTYPES["flm_gemma4_decode_proj_main"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_proj_main(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -2211,7 +2292,7 @@ def flm_gemma4_decode_proj_main(
             ``y_prod_ping_lock=4``, ``y_prod_pong_lock=5``,
             ``rtp_available_lock=6``, ``y_cons_ping_lock=7`` and
             ``y_cons_pong_lock=8``. When ``send_x_output`` is 0 the four
-            ``y`` locks are the tile below's.
+            ``y`` locks are those of the neighbour whose memory holds ``y``.
     """
     bf16 = np.dtype[bfloat16]
     y_ty = np.ndarray[(2 * _DECODE_Q4NX_ROWS + 16,), bf16]
@@ -2249,7 +2330,9 @@ def flm_gemma4_decode_proj_main(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_per_layer_up"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_per_layer_up(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -2321,7 +2404,9 @@ def _bf16_proj_core_sample(rng, calls):
     return [w, x]
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_bf16_proj_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_bf16_proj_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
@@ -2357,7 +2442,11 @@ def flm_gemma4_bf16_proj_core(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_proj_layer_embedding"] = tuple(
+    [{"geometry": FLM_GEMMA4_E4B_DECODE}]
+)
+
+
 def flm_gemma4_decode_proj_layer_embedding(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -2415,14 +2504,18 @@ def flm_gemma4_decode_proj_layer_embedding(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_gate_layer_embedding"] = tuple(
+    [{"geometry": FLM_GEMMA4_E4B_DECODE}]
+)
+
+
 def flm_gemma4_decode_gate_layer_embedding(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
     """Build the per-layer-input gate, from ``flm_gemma4/decode_gate_layer_embedding.cc``.
 
     ``gate_layer_embedding(x, proj_w_ping, proj_w_pong, y)``: copies the
-    layer output ``x`` (``model_dim`` bf16, a buffer of the tile to the left)
+    layer output ``x`` (``model_dim`` bf16, a buffer of a neighbouring tile)
     into ``y``, projects it to ``pli_d`` with bf16 weight blocks (32 by 256
     each) streamed through the ``proj_w`` ping-pong pair, and applies the
     activation into ``y + model_dim``. ``y`` is ``model_dim + pli_d`` bf16.
@@ -2435,8 +2528,8 @@ def flm_gemma4_decode_gate_layer_embedding(
         **locks: Core lock ids overriding the defaults ``x_prod_lock=0``,
             ``x_cons_lock=1``, ``proj_w_prod_lock=2``, ``proj_w_cons_lock=3``,
             ``y_prod_lock=4``, ``y_cons_lock=5``, ``final_x_prod_lock=7`` and
-            ``final_x_cons_lock=8`` (the last two locks of the tile to the
-            left).
+            ``final_x_cons_lock=8`` (the last two locks of the tile that
+            holds ``x``).
     """
     bf16 = np.dtype[bfloat16]
     d = geometry.model_dim
@@ -2485,7 +2578,9 @@ def _pli_gelu_core_sample(rng, calls, *, n):
     return [rng.uniform(-6.0, 6.0, (calls, n)).astype(bfloat16)]
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_pli_gelu_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_pli_gelu_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:

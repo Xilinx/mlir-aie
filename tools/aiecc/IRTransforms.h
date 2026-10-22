@@ -135,6 +135,34 @@ inline void assignDevicePdiIds(mlir::ModuleOp module) {
   }
 }
 
+// The runtime sequence a full ELF carries on each device with a runtime
+// sequence. It does nothing, so the host times a dispatch of it as the fixed
+// cost of every dispatch on the ELF's hardware context.
+constexpr llvm::StringLiteral kEmptySequenceName = "aiecc_empty";
+
+// Append an empty `kEmptySequenceName` runtime sequence, after the others, to
+// every DeviceOp that has a runtime sequence. Fails on a device that already
+// holds a symbol of that name.
+inline mlir::LogicalResult addEmptySequences(mlir::ModuleOp module) {
+  for (auto d : module.getOps<xilinx::AIE::DeviceOp>()) {
+    if (d.getOps<xilinx::AIE::RuntimeSequenceOp>().empty()) {
+      continue;
+    }
+    if (mlir::SymbolTable::lookupSymbolIn(d, kEmptySequenceName)) {
+      return d.emitOpError()
+             << "holds a symbol named '" << kEmptySequenceName
+             << "', the empty runtime sequence aiecc adds to a full ELF";
+    }
+    auto b = mlir::OpBuilder::atBlockTerminator(&d.getBodyRegion().front());
+    auto seq = xilinx::AIE::RuntimeSequenceOp::create(
+        b, d.getLoc(), kEmptySequenceName, /*emit_parameter_sync_preamble=*/{},
+        /*trace_buffer=*/{}, /*trace_slices=*/{},
+        /*scratchpad_parameters=*/{});
+    seq.getBody().emplaceBlock();
+  }
+  return mlir::success();
+}
+
 // Propagate each device's `aiecc.pdi_id` onto every load_pdi referencing it.
 inline void assignLoadPdiIds(mlir::ModuleOp module) {
   module.walk([&](xilinx::AIEX::NpuLoadPdiOp lp) {

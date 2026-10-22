@@ -971,9 +971,9 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
     while (device.lookupSymbol(seq_name))
       seq_name = "configure" + std::to_string(id++);
     StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-    auto seq =
-        AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name, BoolAttr{},
-                                       AIE::TraceBufferAttr{}, ArrayAttr{});
+    auto seq = AIE::RuntimeSequenceOp::create(
+        builder, loc, seq_sym_name, BoolAttr{}, AIE::TraceBufferAttr{},
+        ArrayAttr{}, ArrayAttr{});
     seq.getBody().push_back(new Block);
     builder.setInsertionPointToStart(&seq.getBody().front());
   } else {

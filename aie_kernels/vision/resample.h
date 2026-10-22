@@ -35,8 +35,57 @@ namespace {
 constexpr int HEADER = 4;
 constexpr int WMAX = 2 * (WORDS - HEADER - 2);
 
+// Comparisons, conversions and power-of-two scalings below work on the bit
+// pattern: exact for the finite doubles these kernels make, and no libcall.
+constexpr uint64_t SIGN = 1ull << 63;
+constexpr uint64_t FRAC = (1ull << 52) - 1;
+
+uint64_t bits(double x) { return __builtin_bit_cast(uint64_t, x); }
+double from_bits(uint64_t u) { return __builtin_bit_cast(double, u); }
+bool is_zero(double x) { return (bits(x) << 1) == 0; }
+
+// Orders finite doubles as < does, with -0 equal to +0.
+int64_t key(double x) {
+  uint64_t u = bits(x);
+  int64_t m = (int64_t)(u & ~SIGN);
+  return u & SIGN ? -m : m;
+}
+
+double to_double(int32_t n) {
+  if (n == 0)
+    return 0.0;
+  uint32_t u = n < 0 ? 0u - (uint32_t)n : (uint32_t)n;
+  int e = 31 - __builtin_clz(u);
+  uint64_t sign = n < 0 ? SIGN : 0;
+  return from_bits(sign | (uint64_t)(e + 1023) << 52 |
+                   (((uint64_t)u << (52 - e)) & FRAC));
+}
+
+// (int)x, truncating toward zero, saturated to int32.
+int32_t to_int(double x) {
+  uint64_t u = bits(x);
+  int e = (int)((u >> 52) & 0x7ff) - 1023;
+  if (e < 0)
+    return 0;
+  if (e > 30)
+    return u & SIGN ? INT32_MIN : INT32_MAX;
+  int32_t r = (int32_t)(((u & FRAC) | (1ull << 52)) >> (52 - e));
+  return u & SIGN ? -r : r;
+}
+
+// x * 2^p for 0 <= p < 31: a normal x moves only its exponent.
+double scale2(double x, int p) {
+  uint64_t u = bits(x);
+  uint64_t ef = (u >> 52) & 0x7ff;
+  if ((u << 1) == 0)
+    return x;
+  if (ef == 0 || ef + p >= 0x7ff)
+    return x * (double)(1 << p);
+  return from_bits(u + ((uint64_t)p << 52));
+}
+
 struct Axis {
-  double scale, support, invscale;
+  double scale, support, invscale, step_from;
   int in, out, window, slot, per;
   bool ok;
 };
@@ -49,11 +98,16 @@ Axis axis(int32_t in, int32_t out, int32_t chunks) {
     return a;
   a.scale = (double)in / (double)out;
   a.support = a.scale >= 1.0 ? 2.0 * a.scale : 2.0;
+  // A wider window fits no chunk; stop before its width overflows an int.
+  if (a.support > WMAX)
+    return a;
   int s = (int)a.support;
   if ((double)s < a.support)
     s++;
   a.window = s * 2 + 1;
   a.invscale = a.scale >= 1.0 ? 1.0 / a.scale : 1.0;
+  // 2 ceil(support) + 4, at or above 2 support + 4, without a soft multiply.
+  a.step_from = to_double(2 * s + 4);
   a.slot = 2 + (a.window + 1) / 2;
   a.per = (WORDS - HEADER) / a.slot;
   if (PER)
@@ -64,10 +118,11 @@ Axis axis(int32_t in, int32_t out, int32_t chunks) {
 
 double filter(double x) {
   const double A = -0.5;
-  x = __builtin_fabs(x);
-  if (x < 1.0)
+  uint64_t u = bits(x) & ~SIGN;
+  x = from_bits(u);
+  if (u < bits(1.0))
     return ((A + 2) * x - (A + 3)) * x * x + 1;
-  if (x < 2.0)
+  if (u < bits(2.0))
     return ((A * x - 5 * A) * x + 8 * A) * x - 4 * A;
   return 0.0;
 }
@@ -76,10 +131,10 @@ double w[WMAX];
 
 // Output i's unnormalized weights in w; returns their sequential sum.
 double taps(const Axis &a, int i, int &xmin, int &xsize) {
-  double center = a.scale * (i + 0.5);
-  int lo = (int)(center - a.support + 0.5);
+  double center = a.scale * (to_double(i) + 0.5);
+  int lo = to_int(center - a.support + 0.5);
   xmin = lo > 0 ? lo : 0;
-  int hi = (int)(center + a.support + 0.5);
+  int hi = to_int(center + a.support + 0.5);
   if (hi > a.in)
     hi = a.in;
   xsize = hi - xmin;
@@ -87,9 +142,17 @@ double taps(const Axis &a, int i, int &xmin, int &xsize) {
     xsize = 0;
   if (xsize > a.window)
     xsize = a.window;
+  // Every tap n is within support + 1 of center. From step_from up to 2^51
+  // each n - center + 0.5 is a multiple of ulp(center) below 2^E, so it and
+  // its two roundings are exact, and a tap's offset is the last one plus 1.
+  bool step = key(center) >= key(a.step_from) && key(center) < key(0x1p51);
+  bool unit = bits(a.invscale) == bits(1.0);
   double total = 0.0;
+  double t = to_double(xmin) - center + 0.5;
   for (int j = 0; j < xsize; j++) {
-    w[j] = filter(((double)(j + xmin) - center + 0.5) * a.invscale);
+    if (j > 0)
+      t = step ? t + 1.0 : to_double(j + xmin) - center + 0.5;
+    w[j] = filter(unit ? t : t * a.invscale);
     total += w[j];
   }
   return total;

@@ -696,7 +696,8 @@ static void k1_cas_get(const TI *in, const int8_t *wts, TO *out,
                        const S *...side) {
   const aie::saturation_mode sat =
       aie::swap_saturation(aie::saturation_mode::saturate);
-  aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::rounding_mode rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
   aie::accum<acc32, 32> lo, hi;
   k1_cas_conv(in, wts, row, ic_blocks, lo, hi);
   aie::vector<int32, 8> c[K1_CAS_PIXELS];
@@ -715,6 +716,7 @@ static void k1_cas_get(const TI *in, const int8_t *wts, TO *out,
   AIE_LOOP_UNROLL_FULL
   for (int i = 2; i < 8; i++)
     o[6 + i] = b[i];
+  aie::set_rounding(rnd);
   aie::set_saturation(sat);
 }
 

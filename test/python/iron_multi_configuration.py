@@ -164,12 +164,12 @@ with compile_context(_iron_full_elf=True):
     assert "aiex.npu.load_pdi" not in explicit_module
 
     def load_sequence():
-        npu_load_pdi(device_ref="target")
+        npu_load_pdi(device_ref="main")
 
     load_runtime = Runtime(load_sequence, [], name="load")
     load_module = str(Program(NPU2Col1(), load_runtime).resolve_program().operation)
     assert load_module.count("aiex.npu.load_pdi") == 1
-    assert "device_ref = @target" in load_module
+    assert "device_ref = @main" in load_module
 
     disabled_runtime = Runtime(
         empty_sequence, [], name="disabled", implicit_configure=False

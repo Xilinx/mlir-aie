@@ -60,6 +60,29 @@ bf16_limbs(aie::accum<accfloat, N> x) {
   return l;
 }
 
+// x * c from three-limb x and c: six of the nine limb products, smallest
+// first. The three dropped (mid lo, lo mid, lo lo) reach about 2^-24 of the
+// product, so about 4% of products land 1 ulp off the correctly rounded one
+// (numpy model of conv_even accumulation, 1e6 random pairs). That holds in
+// conv_even rounding only; the core's default floor misrounded 42% (4.1 ulp).
+template <unsigned N>
+static inline __attribute__((always_inline)) aie::accum<accfloat, N>
+mul_limbs(const Limbs<N> &x, const Limbs<N> &c) {
+  aie::accum<accfloat, N> acc = aie::mul(x.lo, c.hi);
+  acc = aie::mac(acc, x.mid, c.mid);
+  acc = aie::mac(acc, x.hi, c.lo);
+  acc = aie::mac(acc, x.mid, c.hi);
+  acc = aie::mac(acc, x.hi, c.mid);
+  return aie::mac(acc, x.hi, c.hi);
+}
+
+// x * v for three-limb x and a bf16 v, which one limb holds exactly.
+template <unsigned N>
+static inline __attribute__((always_inline)) aie::accum<accfloat, N>
+mul_limbs(const Limbs<N> &x, aie::vector<bfloat16, N> v) {
+  return aie::mac(aie::mac(aie::mul(x.lo, v), x.mid, v), x.hi, v);
+}
+
 // acc + x * c from three-limb x and c, largest products first.
 template <unsigned N>
 static inline __attribute__((always_inline)) aie::accum<accfloat, N>

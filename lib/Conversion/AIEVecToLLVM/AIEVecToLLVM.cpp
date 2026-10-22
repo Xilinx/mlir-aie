@@ -5373,6 +5373,36 @@ class ShuffleOpConversion
   }
 };
 
+// aievec.shuffle on AIE2P: the mode numbers are AIE2's, the intrinsic is
+// AIE2P's.
+class ShuffleOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::ShuffleOp> {
+  using ConvertOpToLLVMPattern<aievec::ShuffleOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::ShuffleOp shuffleOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = shuffleOp.getLoc();
+    auto i32ty = rewriter.getI32Type();
+    auto v16xi32ty = VectorType::get({16}, i32ty);
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
+    if (!rhs)
+      rhs = lhs;
+    auto mode = LLVM::ConstantOp::create(
+        rewriter, loc, i32ty, static_cast<int32_t>(shuffleOp.getMode()));
+    Value v = xllvm::VectorShuffleAIE2pIntrOp::create(
+                  rewriter, loc, v16xi32ty,
+                  forceCastOperandsToSignature(rewriter, loc, {lhs, rhs, mode},
+                                               {v16xi32ty, v16xi32ty, i32ty}))
+                  .getResult();
+    rewriter.replaceOp(shuffleOp,
+                       forceCastValueToType(rewriter, loc, v,
+                                            shuffleOp.getResult().getType()));
+    return success();
+  }
+};
+
 // Convert aievec.inv to xllvm.intr.aie2p.inv intrinsic for AIE2P
 // Scalar f32: direct conversion to xllvm.intr.aie2p.inv
 // Vector f32: unroll into scalar xllvm.intr.aie2p.inv operations
@@ -5910,6 +5940,8 @@ public:
 
 void populateAIEVecToLLVMAIE2pConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
+  // Takes precedence over the common pattern, which emits the AIE2 intrinsic.
+  patterns.add<ShuffleOpAIE2pConversion>(converter, /*benefit=*/2);
   // Patterns specific to AIE2p backend
   patterns.add<AddElemOpAIE2pConversion, SubElemOpAIE2pConversion>(converter);
   patterns.add<NegOpAIE2pConversion>(converter);

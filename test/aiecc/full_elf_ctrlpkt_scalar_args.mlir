@@ -15,7 +15,7 @@
 
 // RUN: rm -rf %t.prj
 // RUN: aiecc --get-full-elf --load-pdi-to-ctrl-pkt --dump-intermediates --tmpdir=%t.prj %s
-// RUN: FileCheck %s --check-prefix=SEQ < %t.prj/npu_seq_main_sequence.mlir
+// RUN: FileCheck %s --check-prefix=SEQ < %t.prj/npu_seq_full_elf_main_sequence.mlir
 // RUN: FileCheck %s --check-prefix=PATCH < %t.prj/full_elf_main_sequence.patch_info.json
 // RUN: FileCheck %s --check-prefix=ARGS < %t.prj/full_elf_config.json
 

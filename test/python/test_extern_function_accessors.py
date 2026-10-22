@@ -65,6 +65,65 @@ def test_accessors_return_copies(tmp_path):
     assert ef.compile_flags == ["-O3"]
 
 
+def test_a_kernel_made_unregistered_joins_no_build():
+    before = set(ExternalFunction._instances)
+    with ExternalFunction.unregistered():
+        probe = ExternalFunction(
+            "probe",
+            source_string="void probe(int* p){}",
+            arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
+        )
+    assert probe not in ExternalFunction._instances
+    assert ExternalFunction._instances == before
+
+
+def test_a_recipe_key_names_the_build_not_where_it_happens(tmp_path):
+    def built(where, flags=("-DN=16",), prefix=None, source="void k(int*){}", n=16):
+        src = tmp_path / where / "k.cc"
+        src.parent.mkdir(exist_ok=True)
+        src.write_text(source)
+        return ExternalFunction(
+            "k",
+            source_file=str(src),
+            arg_types=[np.ndarray[(n,), np.dtype[np.int32]]],
+            include_dirs=[str(tmp_path / where)],
+            compile_flags=list(flags),
+            symbol_prefix=prefix,
+        ).recipe_key
+
+    here = built("a")
+    assert here.startswith("k-")
+    assert here == built("b", prefix="d1g3st")
+    assert here != built("c", flags=("-DN=32",))
+    assert here != built("d", n=32)
+    assert here != built("e", source="void k(int* p){ *p = 0; }")
+
+    # Two include trees under no known root are two builds.
+    assert built("f", flags=(f"-I{tmp_path / 'x' / 'inc'}",)) != built(
+        "g", flags=(f"-I{tmp_path / 'y' / 'inc'}",)
+    )
+
+
+def test_a_recipe_key_names_the_kernel_sources_by_their_root(tmp_path, monkeypatch):
+    def installed(where, lut="gelu.cc"):
+        checkout = tmp_path / where
+        monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(checkout))
+        lib = checkout / "aie_runtime_lib"
+        return ExternalFunction(
+            "k",
+            source_string="void k(int* p){}",
+            arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
+            compile_flags=[
+                f"-I{lib / 'AIE2P'}",
+                f"-isystem {lib / 'AIE2P'}",
+                f'-DAIE_LUT_KERNEL_SOURCE="{lib / lut}"',
+            ],
+        ).recipe_key
+
+    assert installed("f") == installed("g")
+    assert installed("f") != installed("h", lut="silu.cc")
+
+
 # ---------------------------------------------------------------------------
 # cxx_core_compile_command
 # ---------------------------------------------------------------------------

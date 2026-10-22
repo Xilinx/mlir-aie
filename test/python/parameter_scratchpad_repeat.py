@@ -1,7 +1,6 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# REQUIRES: xrt_python_bindings
 # RUN: %python %s %t.params | FileCheck %s
 
 # A repeat parameter end to end, without a device: the lowered instruction

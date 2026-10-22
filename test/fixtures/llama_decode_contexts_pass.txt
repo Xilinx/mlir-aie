@@ -1,0 +1,84 @@
+chain_persist_grow_mh shape.n_layers=16 passes=[4, 4, 4, 4, 4, 4, 4, 4, 4] P0=[64, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131068] KSET=8  temp=0.0 topk=0 seed=0  fixture_seed=0  dispatches=1 repeats=1
+context 64: tokens [56727, 45449, 15230, 11311]
+  token 0 (pos 64): PASS  dev=56727 ref=56727  [greedy]
+  token 1 (pos 65): PASS  dev=45449 ref=45449  [greedy]
+  token 2 (pos 66): PASS  dev=15230 ref=15230  [greedy]
+  token 3 (pos 67): PASS  dev=11311 ref=11311  [greedy]
+  KV cache: PASS
+  sampler state: PASS
+  final hidden: PASS
+decode at 64: per-dispatch n=20 min=188.93 median=197.25 mad=1.26 ms, 4 tokens/dispatch: 47.23 ms/token (21.17 tok/s)
+context 1024: tokens [23303, 25991, 120766, 67814]
+  token 0 (pos 1024): PASS  dev=23303 ref=23303  [greedy]
+  token 1 (pos 1025): PASS  dev=25991 ref=25991  [greedy]
+  token 2 (pos 1026): PASS  dev=120766 ref=120766  [greedy]
+  token 3 (pos 1027): PASS  dev=67814 ref=67814  [greedy]
+  KV cache: PASS
+  sampler state: PASS
+  final hidden: PASS
+decode at 1024: per-dispatch n=20 min=204.56 median=206.88 mad=1.87 ms, 4 tokens/dispatch: 51.14 ms/token (19.55 tok/s)
+context 2048: tokens [23303, 4991, 83391, 5202]
+  token 0 (pos 2048): PASS  dev=23303 ref=23303  [greedy]
+  token 1 (pos 2049): PASS  dev=4991 ref=4991  [greedy]
+  token 2 (pos 2050): PASS  dev=83391 ref=83391  [greedy]
+  token 3 (pos 2051): PASS  dev=5202 ref=5202  [greedy]
+  KV cache: PASS
+  sampler state: PASS
+  final hidden: PASS
+decode at 2048: per-dispatch n=20 min=209.10 median=219.29 mad=2.47 ms, 4 tokens/dispatch: 52.27 ms/token (19.13 tok/s)
+context 4096: tokens [23303, 1143, 85999, 114878]
+  token 0 (pos 4096): PASS  dev=23303 ref=23303  [greedy]
+  token 1 (pos 4097): PASS  dev=1143 ref=1143  [greedy]
+  token 2 (pos 4098): PASS  dev=85999 ref=85999  [greedy]
+  token 3 (pos 4099): PASS  dev=114878 ref=114878  [greedy]
+  KV cache: PASS
+  sampler state: PASS
+  final hidden: PASS
+decode at 4096: per-dispatch n=20 min=241.55 median=245.12 mad=1.66 ms, 4 tokens/dispatch: 60.39 ms/token (16.56 tok/s)
+context 8192: tokens [23303, 31627, 87503, 27949]
+  token 0 (pos 8192): PASS  dev=23303 ref=23303  [greedy]
+  token 1 (pos 8193): PASS  dev=31627 ref=31627  [greedy]
+  token 2 (pos 8194): PASS  dev=87503 ref=87503  [greedy]
+  token 3 (pos 8195): PASS  dev=27949 ref=27949  [greedy]
+  KV cache: PASS
+  sampler state: PASS
+  final hidden: PASS
+decode at 8192: per-dispatch n=20 min=294.30 median=303.23 mad=1.66 ms, 4 tokens/dispatch: 73.58 ms/token (13.59 tok/s)
+context 16384: tokens [50867, 86582, 109093, 24027]
+  token 0 (pos 16384): PASS  dev=50867 ref=50867  [greedy]
+  token 1 (pos 16385): PASS  dev=86582 ref=86582  [greedy]
+  token 2 (pos 16386): PASS  dev=109093 ref=109093  [greedy]
+  token 3 (pos 16387): PASS  dev=24027 ref=24027  [greedy]
+  KV cache: PASS
+  sampler state: PASS
+  final hidden: PASS
+decode at 16384: per-dispatch n=20 min=404.51 median=407.93 mad=0.91 ms, 4 tokens/dispatch: 101.13 ms/token (9.89 tok/s)
+context 32768: tokens [50867, 50810, 92240, 93533]
+  token 0 (pos 32768): PASS  dev=50867 ref=50867  [greedy]
+  token 1 (pos 32769): PASS  dev=50810 ref=50810  [greedy]
+  token 2 (pos 32770): PASS  dev=92240 ref=92240  [greedy]
+  token 3 (pos 32771): PASS  dev=93533 ref=93533  [greedy]
+  KV cache: PASS
+  sampler state: PASS
+  final hidden: PASS
+decode at 32768: per-dispatch n=20 min=612.93 median=623.38 mad=0.74 ms, 4 tokens/dispatch: 153.23 ms/token (6.53 tok/s)
+context 65536: tokens [50867, 752, 42320, 11767]
+  token 0 (pos 65536): PASS  dev=50867 ref=50867  [greedy]
+  token 1 (pos 65537): PASS  dev=752 ref=752  [greedy]
+  token 2 (pos 65538): PASS  dev=42320 ref=42320  [greedy]
+  token 3 (pos 65539): PASS  dev=11767 ref=11767  [greedy]
+  KV cache: PASS
+  sampler state: PASS
+  final hidden: PASS
+decode at 65536: per-dispatch n=20 min=1041.92 median=1047.40 mad=5.19 ms, 4 tokens/dispatch: 260.48 ms/token (3.84 tok/s)
+context 131068: tokens [50867, 20449, 63085, 125798]
+  token 0 (pos 131068): PASS  dev=50867 ref=50867  [greedy]
+  token 1 (pos 131069): PASS  dev=20449 ref=20449  [greedy]
+  token 2 (pos 131070): PASS  dev=63085 ref=63085  [greedy]
+  token 3 (pos 131071): PASS  dev=125798 ref=125798  [greedy]
+  KV cache: PASS
+  sampler state: PASS
+  final hidden: PASS
+decode at 131068: per-dispatch n=20 min=1913.14 median=1916.77 mad=1.56 ms, 4 tokens/dispatch: 478.29 ms/token (2.09 tok/s)
+
+chain_persist_grow_mh: 36/36 tokens PASS  (on-chip feedback + GROWING KV + per-position rope)

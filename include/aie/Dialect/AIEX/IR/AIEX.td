@@ -187,7 +187,7 @@ carries values from host memory through the command processor into the array.
 | `aiex.npu.rtp_write` | Write `value` at `index` into an `aie.buffer` used to hold runtime parameters. | a buffer used for runtime parameters | `aiex.npu.rtp_write(@rtp_buf, 0, %val) : i32` |
 | `aiex.npu.create_scratchpad` | Allocate a control-code scratchpad of `size` bytes on the host and copy it into the command processor's memory. Values are read from it by `update_from_scratchpad`. | NPU command processor | `aiex.npu.create_scratchpad {size = 128 : ui32}` |
 | `aiex.npu.update_from_scratchpad` | Compute a value from a scratchpad `StateTable` entry (`mul` / `incr` / `decr` by `func_arg`) and add it to an 8-byte location at a resolved address. Always additive; writes both registers of the pair. | resolved address (shim BD address pairs) | `aiex.npu.update_from_scratchpad<incr> {state_table_idx = 0 : ui8, address = 0 : ui32}` |
-| `aiex.dma_start_task {repeat_parameter = @foo}` | Start a task with the repeat count the host writes to `@foo` for each run (at most the task's own repeat count); see `aiex.dma_start_task`. | shim NOC tile channel (AIE2, AIE2P) | `aiex.dma_start_task(%t) {repeat_parameter = @runs}` |
+| `aiex.dma_start_task {repeat_parameter = @foo}` | Start a task with the repeat count the host writes to `@foo` for each run (at most the task's own repeat count); see `aiex.dma_start_task`. | shim NOC or mem tile channel (AIE2, AIE2P) | `aiex.dma_start_task(%t) {repeat_parameter = @runs}` |
 | `aiex.scratchpad_parameter` | Declare a named scratchpad runtime parameter. Declared at **module scope** (outside `aie.device`), not inside the sequence; shared by all PDIs in the module. | module scope (declaration) | `aiex.scratchpad_parameter @foo : i32` |
 | `aiex.read_scratchpad_parameter` | Read a declared scratchpad parameter on a core. Used inside an `aie.core`, not inside the sequence. | core scope (read site) | `%v = aiex.read_scratchpad_parameter @foo : i32` |
 | `aiex.sync_scratchpad_parameters_from_host` | Marker in the sequence for where the host-to-core scratchpad parameter sync should be materialized (expands to create_scratchpad + per-parameter writes + lock releases). | in-sequence marker | `aiex.sync_scratchpad_parameters_from_host` |
@@ -544,7 +544,9 @@ def AIE_RunOp : AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
 
   let extraClassDeclaration = [{
     AIE::DeviceOp getCalleeDeviceOp();
-    AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp();
+    // `tables`, if given, indexes each referenced device once across calls.
+    AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp(
+        ::xilinx::AIE::NamedOpTableCollection *tables = nullptr);
   }];
 
   let summary = "Execute a runtime sequence";
@@ -851,12 +853,15 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
     bits of the word it writes, so 'bd_id' must be a constant multiple of 4;
     the runtime-sequence BD allocator gives such an id to the head of a task
     started with a repeat parameter. It also writes back the register after
-    the queue with the value it reads. After MM2S 0's queue and the two S2MM
-    queues that is a channel's control register, which nothing else writes.
-    After MM2S 1's queue it is `DMA_S2MM_Status_0`, whose sticky error bits
-    (16 to 18: AXI decode error, AXI slave error, task queue overflow) are
-    write-1-to-clear: a push on MM2S 1 clears any S2MM 0 error of its tile
-    that is pending. The data moved is unaffected.
+    the queue with the value it reads. On a shim tile, after MM2S 0's queue
+    and the two S2MM queues, and on a mem tile after every queue but MM2S
+    5's, that is the next channel's control register, which nothing else
+    writes. After a shim's MM2S 1 queue or a mem tile's MM2S 5 queue it is
+    `DMA_S2MM_Status_0`, whose sticky error bits are write-1-to-clear: on a
+    shim, bits 16 to 18 (AXI decode error, AXI slave error, task queue
+    overflow); on a mem tile, the task queue overflow at bit 18 among others.
+    Such a push clears any pending S2MM 0 error of its tile; the data moved
+    is unaffected.
   }];
 }
 
@@ -1292,7 +1297,9 @@ def AIE_NpuWriteBdOp : AIEX_Op<"npu.writebd", []> {
 }
 
 // NPU Load PDI operation
-def AIE_NpuLoadPdiOp : AIEX_Op<"npu.load_pdi", []> {
+def AIE_NpuLoadPdiOp
+    : AIEX_Op<
+          "npu.load_pdi", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "load pdi operator";
   let arguments = (ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
       DefaultValuedOptionalAttr<I32Attr, "0">:$id,
@@ -1401,7 +1408,8 @@ def AIE_DMAConfigureTaskOp
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<ConfinedAttr<I32Attr, [IntNonNegative]>,
+                                "0">:$repeat_count,
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
@@ -1472,6 +1480,17 @@ def AIE_DMAConfigureTaskForOp
     one the endpoint's route gives it. A shim endpoint with a `fifoName` is
     instead renamed to the `aie.shim_dma_allocation` allocation records for it.
 
+    Before the objectFIFO lowering, `alloc` may also name an `aie.objectfifo`
+    with a shim end. Its far ends then move whole objects through buffer
+    descriptors sized by the object, or by the segments of a link's pool, so
+    the verifier requires the runtime sequence's static total through the
+    fifo to stop at a descriptor boundary of every far end. Several tasks may
+    share an object. The check defers wherever that total isn't static: a
+    runtime extent or repeat, a looped, branched or forwarded task, a
+    `dma_memcpy_nd` or BD chain through the same fifo, or a
+    `dma_channel_reset_for` of it. It is not a liveness check, and it doesn't
+    cover buffer reuse or repeated dispatch.
+
     Example:
     ```
       aie.route_endpoint @b_in(%memtile) DMA
@@ -1488,7 +1507,8 @@ def AIE_DMAConfigureTaskForOp
 
   let arguments = (ins SymbolRefAttr:$alloc,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<ConfinedAttr<I32Attr, [IntNonNegative]>,
+                                "0">:$repeat_count,
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val);
 
   let regions = (region AnyRegion:$body);
@@ -1556,8 +1576,9 @@ def AIE_DMAStartTaskOp
     `--aie-lower-scratchpad-parameters` rewrites `repeat_parameter` to
     `repeat_state_table_idx`, and the push becomes an
     `aiex.npu.update_from_scratchpad` of the channel's task queue register
-    (see `aiex.npu.push_queue`). On shim MM2S 1 that update also clears the
-    tile's pending S2MM 0 sticky error bits.
+    (see `aiex.npu.push_queue`), on a shim NOC or a mem tile. On shim MM2S 1
+    and mem tile MM2S 5 that update also clears the tile's pending S2MM 0
+    sticky error bits.
 
     Example:
     ```mlir
@@ -1989,7 +2010,9 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
     `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op, or as a DMA length via the `length_parameter` attribute and nothing else).
-    Indices are unique across the entire module.
+    Each runtime sequence no `aiex.run` calls is a command with a scratchpad of its own, so
+    only the parameters one command reads have distinct indices; a parameter no command reads
+    gets none, and one that already has an index keeps it.
     For a parameter used as a DMA offset or length, the pass also sets `min_value` and `max_value`:
     the range of values that keeps every such transfer within its buffer, judging each transfer
     with any other parameter it uses at 0. The host library rejects a value outside the range.
@@ -2049,6 +2072,43 @@ def AIEX_ReadScratchpadParameterOp : AIEX_Op<"read_scratchpad_parameter", []> {
       OptionalAttr<FlatSymbolRefAttr>:$buffer);
   let results = (outs AnyType:$result);
   let assemblyFormat = [{ $parameter `:` type($result) attr-dict }];
+  let hasVerifier = 1;
+}
+
+def AIEX_WaitScratchpadParametersOp
+    : AIEX_Op<"wait_scratchpad_parameters", []> {
+  let summary = "Wait on an AIE core for this dispatch's scratchpad parameters";
+  let description = [{
+    Blocks the core until the runtime sequence of the current dispatch has
+    written its scratchpad parameters, so the `aiex.read_scratchpad_parameter`
+    ops after it read this dispatch's values rather than a previous one's. A
+    core without it acquires once, at the top of its body, which a persistent
+    worker passes only on its first dispatch; such a worker waits at the top
+    of each iteration that begins a dispatch.
+
+    `--aie-lower-scratchpad-parameters` gives the core a lock initialized to 0
+    and turns each wait into an acquire of it. Each dispatch's sync writes the
+    parameters, then sets (not increments) the lock to 1.
+
+    Each read of a core that waits must come after a wait, and the core must
+    keep its sync preamble. A read in a loop needs a wait inside the outermost
+    loop around it, since a wait before that loop passes only once. Read
+    right after the wait: a later dispatch may rewrite the values while the
+    core is still working.
+
+    Example:
+    ```mlir
+    aie.core(%tile) {
+      scf.for %i = %c0 to %cmax step %c1 {
+        aiex.wait_scratchpad_parameters
+        %n = aiex.read_scratchpad_parameter @n : i32
+        ...
+      }
+      aie.end
+    }
+    ```
+  }];
+  let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
 }
 

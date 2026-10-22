@@ -88,6 +88,11 @@ def expected():
     return values
 
 
+# A new context's lookups: the sequence, the empty sequence the host times
+# dispatches with, then the init entry.
+NEW_CONTEXT = ["main:sequence", "main:aiecc_empty", "main:reconfig_init"]
+
+
 @pytest.fixture
 def looked_up(monkeypatch):
     """The names the host runtime looks up with pyxrt.ext.kernel.
@@ -112,7 +117,7 @@ def test_init_entry_runs_on_each_new_context(looked_up):
         reconfigure_add(data)
         data.to("cpu")
         np.testing.assert_array_equal(data.numpy(), expected())
-    assert looked_up == ["main:sequence", "main:reconfig_init"]
+    assert looked_up == NEW_CONTEXT
 
     # A new context, as after an IOCTL EINVAL, runs main:reconfig_init again.
     DefaultNPURuntime.cleanup()
@@ -120,7 +125,7 @@ def test_init_entry_runs_on_each_new_context(looked_up):
     reconfigure_add(data)
     data.to("cpu")
     np.testing.assert_array_equal(data.numpy(), expected())
-    assert looked_up == ["main:sequence", "main:reconfig_init"] * 2
+    assert looked_up == NEW_CONTEXT * 2
 
 
 class FailedRun:
@@ -142,10 +147,10 @@ def test_failed_init_entry_evicts_the_context(looked_up, monkeypatch):
     monkeypatch.setattr(pyxrt, "run", fail_once)
     with pytest.raises(HostRuntimeError, match="main:reconfig_init"):
         reconfigure_add(iron.arange(8, dtype=np.int32, device="npu"))
-    assert looked_up == ["main:sequence", "main:reconfig_init"]
+    assert looked_up == NEW_CONTEXT
 
     data = iron.arange(8, dtype=np.int32, device="npu")
     reconfigure_add(data)
     data.to("cpu")
     np.testing.assert_array_equal(data.numpy(), expected())
-    assert looked_up == ["main:sequence", "main:reconfig_init"] * 2
+    assert looked_up == NEW_CONTEXT * 2

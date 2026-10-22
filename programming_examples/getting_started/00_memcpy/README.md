@@ -20,8 +20,9 @@ This design consists of the following:
   how data is routed between them, and the per-core program. The design uses
   the IRON `@iron.jit` decorator to compile to an NPU binary on first call.
   The host driver warms up the JIT cache, runs a 5-iteration benchmark via
-  `aie.utils.benchmark.run_iters`, reports NPU and end-to-end latency, and
-  computes effective bandwidth from the NPU time (the honest number for a
+  `aie.utils.benchmark.run_iters`, reports dispatch, NPU and end-to-end
+  latency, and computes effective bandwidth from the NPU time, the dispatch
+  less an empty dispatch's overhead (the honest number for a
   memory-bandwidth microbenchmark).
 * `run.lit`: lit tests that run the design on different NPU devices.
 

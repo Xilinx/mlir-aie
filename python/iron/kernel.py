@@ -7,6 +7,9 @@
 
 import hashlib
 import logging
+import re
+import tempfile
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, get_origin
@@ -17,10 +20,15 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
 from ..helpers.dialects.func import call
-from ..helpers.npdtypes import is_block_float
+from ..helpers.npdtypes import is_block_float, np_ndarray_type_of
 from ..helpers.sourceloc import SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
-from ..utils.compile.jit.context import get_compile_arg
+from ..utils import config
+from ..utils.compile import NPU_CACHE_HOME, compile_external_kernel
+from ..utils.compile.jit._object_cache import KernelObjectCache
+from ..utils.compile.jit.compilabledesign import COMPILE_LOCK_TIMEOUT_SECONDS
+from ..utils.compile.jit.context import compile_context, get_compile_arg
+from ..utils.compile.readobj import Linked, linked
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -140,6 +148,30 @@ def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
             op = op.parent
             if op is None:
                 raise ValueError("Kernels must be used inside a symbol table.")
+
+
+_PATH_FLAG = re.compile(r'((?:-I|-isystem|-iquote)\s*|-D[^=]+=)?("?)(.*?)("?)')
+
+
+def _install_relative_flag(flag: str, roots: dict[str, Path]) -> str:
+    """Return ``flag`` with a path under one of ``roots`` named relative to that root.
+
+    With the runtime library at ``/opt/x/aie_runtime_lib``,
+    ``-I/opt/x/aie_runtime_lib/AIE2P`` is ``-I{aie_runtime_lib}/AIE2P`` in
+    every installation. A path under no root is kept whole, so two include
+    trees elsewhere stay told apart.
+    """
+    match = _PATH_FLAG.fullmatch(flag)
+    if match is None:
+        return flag
+    prefix, open_quote, value, close_quote = match.groups()
+    path = Path(value)
+    if path.is_absolute():
+        for label, root in roots.items():
+            if path.is_relative_to(root):
+                value = f"{{{label}}}/{path.relative_to(root).as_posix()}"
+                break
+    return f"{prefix or ''}{open_quote}{value}{close_quote}"
 
 
 @dataclass(frozen=True)
@@ -416,7 +448,7 @@ class Kernel(Resolvable):
         # The declaration as written (numpy shapes and dtypes). Resolving the
         # kernel builds MLIR types from it without disturbing it, so this stays
         # readable before and after a build.
-        self._arg_types = list(arg_types) if arg_types is not None else []
+        self._arg_types = [np_ndarray_type_of(t) for t in arg_types or ()]
 
     @property
     def name(self) -> str:
@@ -571,6 +603,18 @@ class ExternalFunction(Kernel):
     """
 
     _instances: set = set()  # Registry of all live ExternalFunction instances.
+
+    @staticmethod
+    def unregistered() -> AbstractContextManager[dict]:
+        """Return a context whose new kernels no build compiles.
+
+        A kernel made only to be read, for its ``frame_bytes`` or its
+        contract, otherwise joins the registry a build in progress compiles.
+
+        Returns:
+            The context manager.
+        """
+        return compile_context(_iron_kernel_registry=set())
 
     @classmethod
     def _register_object(cls, kernel: Kernel) -> None:
@@ -1126,6 +1170,81 @@ class ExternalFunction(Kernel):
         """True when this kernel's object is built with xchesscc, not Peano."""
         return self._use_chess
 
+    def frame_bytes(
+        self,
+        target_arch: str,
+        object_cache: KernelObjectCache | None = None,
+        entry: str | None = None,
+    ) -> int:
+        """Return the core data memory this kernel takes beyond its arguments.
+
+        Args:
+            target_arch: ``"aie2"`` or ``"aie2p"``.
+            object_cache: The store it compiles through, so the design's build
+                reuses the object; the one under ``NPU_CACHE_HOME`` when None.
+            entry: A bound ``Kernel``'s symbol in this object to take the stack below.
+
+        Returns:
+            Its object's static data plus its stack, or plus a declared
+            ``stack_size_override`` for its own entry; 0 for what ``measure``
+            cannot read.
+        """
+        found = self.measure(
+            target_arch,
+            object_cache
+            or KernelObjectCache(
+                NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS
+            ),
+            entry=entry,
+        )
+        data = found.data if found else 0
+        if self.stack_size_override is not None and entry is None:
+            return data + self.stack_size_override
+        return data + ((found.stack if found else None) or 0)
+
+    def measure(
+        self,
+        target_arch: str,
+        object_cache: KernelObjectCache | None = None,
+        embed_bitcode: bool = False,
+        entry: str | None = None,
+    ) -> Linked | None:
+        """Compile this kernel and read its object from its entry.
+
+        Args:
+            target_arch: ``"aie2"`` or ``"aie2p"``.
+            object_cache: The design's ``KernelObjectCache``; None compiles
+                in a scratch directory.
+            embed_bitcode: Keep the object's LLVM IR, as the design's build
+                does for ``--check-lut-banks``.
+            entry: A bound ``Kernel``'s symbol in this object to read from.
+
+        Returns:
+            Its ``Linked``; None for a kernel aiecc cannot measure either: a
+            Chess or merge-mode kernel, or any kernel when no Peano is
+            installed.
+
+        Raises:
+            ValueError: Its factory built it for another architecture (see
+                ``check_target_arch``).
+        """
+        self.check_target_arch(target_arch)
+        try:
+            config.peano_cxx_path()
+        except RuntimeError:
+            return None
+        if self.use_chess or self.link_with_mode is not None:
+            return None
+        with tempfile.TemporaryDirectory() as tmp:
+            compile_external_kernel(
+                self,
+                tmp,
+                target_arch,
+                embed_bitcode=embed_bitcode,
+                object_cache=object_cache,
+            )
+            return linked(Path(tmp) / self.object_file_name, entry or self.name)
+
     def __call__(self, *args, **kwargs):
         """Call with argument count and type validation before emitting MLIR.
 
@@ -1222,6 +1341,39 @@ class ExternalFunction(Kernel):
         parts.extend([str(self._source_file), self._recipe.source_digest])
         self._cached_digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
         return self._cached_digest
+
+    @property
+    def recipe_key(self) -> str:
+        """The same string on any machine that builds this kernel from the same recipe.
+
+        It covers the symbol, the source's name and content, the argument
+        types, the compile flags and the toolchain choice (chess, inline),
+        but not the headers the source includes, where any of them live, or
+        the symbol prefix, which a design adds. A path in a flag under the
+        kernel sources, the runtime library or the installed headers counts
+        relative to that root, so ``-I`` and ``-DAIE_LUT_KERNEL_SOURCE="..."``
+        flags name no installation; any other path counts whole. The nightly
+        kernel timings carry it, so a design that calls a kernel can find that
+        kernel's timed row.
+        """
+        # aie_kernels sits inside the installed headers, so it is tried first.
+        roots = {
+            "aie_kernels": Path(config.aie_kernels_dir()),
+            "aie_runtime_lib": Path(config.aie_runtime_lib_dir()),
+            "include": Path(config.cxx_header_path()),
+        }
+        source = self._source_file
+        parts = [
+            self._original_name,
+            Path(source).name if source else "",
+            self._recipe.source_digest,
+            str(self._arg_types),
+            str([_install_relative_flag(f, roots) for f in self._compile_flags]),
+            f"chess={self._use_chess}",
+            f"inline={self._inline}",
+        ]
+        digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:12]
+        return f"{self._original_name}-{digest}"
 
     def __hash__(self) -> int:
         """Content-based hash for use as a dict/set key and in cache signatures."""

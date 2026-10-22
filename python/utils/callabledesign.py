@@ -31,13 +31,14 @@ from __future__ import annotations
 
 import inspect as _inspect
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
 from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
-from aie.utils.hostruntime.tensor_class import NpuTensor
+from aie.utils.hostruntime.tensor_class import NpuTensor, TensorRegion
 from aie.utils.trace.parse import DEFAULT_KERNEL
 
 if TYPE_CHECKING:
@@ -130,6 +131,16 @@ class CallableDesign:
             )
 
         self.trace_config = trace_config
+        if callable(self.compilable.mlir_generator):
+            declaration = self.compilable.declaration
+            assert declaration is not None and declaration.signature is not None
+            signature = declaration.signature
+            if "parameters" in signature.parameters:
+                raise TypeError(
+                    f"{self.compilable.generator_name!r} names a parameter "
+                    "'parameters', which a call takes for its ScratchpadParameter "
+                    "values; name it otherwise"
+                )
 
         # Pre-build the named wrapper object used as the cache-key identity for
         # Path-based generators.  Creating it once here avoids allocating a new
@@ -217,7 +228,7 @@ class CallableDesign:
             if n != self.compilable.variadic_tensor_param
         ]
         for name, tensor in zip(named, tensor_args):
-            if isinstance(tensor, (NpuTensor, np.ndarray)):
+            if isinstance(tensor, (NpuTensor, TensorRegion, np.ndarray)):
                 call_compile_kwargs[name] = np.ndarray[
                     tuple(tensor.shape), np.dtype[np.dtype(tensor.dtype).type]
                 ]
@@ -256,12 +267,14 @@ class CallableDesign:
                 compilable._elf_path is not None
                 and compilable._full_elf_kernel_name is not None
             )
+            entry = compilable.get_cache_entry()
             kernel = NPUKernel(
                 elf_path=compilable._elf_path,
                 kernel_name=compilable._full_elf_kernel_name,
                 init_entry=compilable._full_elf_init_entry,
                 trace_config=trace_config,
                 num_host_bos=num_host_bos,
+                params_path=entry.params if entry is not None else None,
             )
         else:
             kernel = NPUKernel(
@@ -288,11 +301,23 @@ class CallableDesign:
         Args:
             *runtime_args: Runtime tensor and/or scalar positional arguments.
             **runtime_kwargs: Mix of call-time ``CompileTime[T]`` params and
-                runtime scalar kernel arguments.
+                runtime scalar kernel arguments, and ``parameters``: the
+                design's ScratchpadParameter values for this call, a mapping
+                by name, written to the run's ctrl scratchpad before it
+                starts (the design compiles to a full ELF, ``full_elf=True``).
 
         Returns:
             The result of ``NPUKernel.__call__``.
+
+        Raises:
+            TypeError: ``parameters`` is not a mapping.
         """
+        parameters = runtime_kwargs.pop("parameters", None)
+        if parameters is not None and not isinstance(parameters, Mapping):
+            raise TypeError(
+                f"parameters must map ScratchpadParameter names to values, not "
+                f"{type(parameters).__name__}"
+            )
         # --- Split call-time CompileTime[T] params from runtime scalar kwargs ---
         # trace_config is handled specially: if annotated as CompileTime[object] on
         # the generator, it flows through the normal CompileTime[T] classification so
@@ -434,7 +459,7 @@ class CallableDesign:
         )
 
         try:
-            return kernel(*tensor_args, **remaining_scalars)
+            return kernel(*tensor_args, parameters=parameters, **remaining_scalars)
         except RuntimeError as exc:
             # IOCTL EINVAL → stale XRT hw_context. Match libxrt's "err=-22"
             # or xrt::error's "XRT...Invalid argument"; bare "Invalid argument"
@@ -467,7 +492,7 @@ class CallableDesign:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
             if use_kernel_cache:
                 self._kernel_cache[cache_key] = kernel
-            return kernel(*tensor_args, **remaining_scalars)
+            return kernel(*tensor_args, parameters=parameters, **remaining_scalars)
 
     def specialize(self, **overrides) -> "CallableDesign":
         """Return a new ``CallableDesign`` with overrides applied.
@@ -593,8 +618,8 @@ class CallableDesign:
         """Return the resolved MLIR text for this kernel without compiling.
 
         Accepts the same arguments as ``__call__``. Tensor contents are not
-        read, only their types; a tensor argument may be ``None`` when the
-        generator does not need its type. ``DispatchTime[T]`` scalar values
+        read, only their shapes and dtypes; a tensor argument may be ``None``
+        when the generator does not need its operand. ``DispatchTime[T]`` scalar values
         are still used during generation.
 
         Returns:

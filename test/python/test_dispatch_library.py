@@ -4,6 +4,7 @@
 # RUN: %pytest %s
 """Compiler-only integration tests using real MLIR and the host C++ compiler."""
 
+import json
 import os
 import shutil
 import time
@@ -26,7 +27,11 @@ from aie.utils.compile.jit._dispatch_compile import (
 )
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In
-from aie.utils.compile.utils import _run_aiecc
+from aie.utils.compile.utils import (
+    KERNEL_PROFILE_NAME,
+    _run_aiecc,
+    compile_external_kernels,
+)
 
 
 @pytest.mark.skipif(shutil.which("xclbinutil") is None, reason="xclbinutil")
@@ -82,6 +87,19 @@ def test_reordered_parameters_reach_generated_instructions(
         np.testing.assert_array_equal(
             patches[:, 10], [expected["bar"], expected["baz"]]
         )
+
+
+def test_the_bridge_build_time_joins_the_kernel_profile(tmp_path, npu2_device):
+    design = CompilableDesign(_patch_bar_then_baz)
+    _generate_cpp(tmp_path, str(design.generate_mlir()), fold=False)
+    compile_external_kernels([], tmp_path, "aie2p")
+    kernels = json.loads((tmp_path / KERNEL_PROFILE_NAME).read_text())
+    compile_dispatch_bridge(
+        tmp_path, design.dispatch_params, design.dispatch_param_types
+    )
+    profile = json.loads((tmp_path / KERNEL_PROFILE_NAME).read_text())
+    assert profile.pop("dispatch_bridge_s") > 0
+    assert profile == kernels
 
 
 @pytest.mark.parametrize("compile_kwargs", [{}, {"bound": 8}])

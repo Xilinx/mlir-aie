@@ -409,7 +409,7 @@ LogicalResult TxnEncoder::encodeConfig(DeviceOp configured, bool teardown,
   builder.setInsertionPointToStart(holder.getBody());
   auto seq = RuntimeSequenceOp::create(
       builder, device.getLoc(), builder.getStringAttr("configure"), BoolAttr{},
-      TraceBufferAttr{}, ArrayAttr{});
+      TraceBufferAttr{}, ArrayAttr{}, ArrayAttr{});
   Block *body = new Block;
   seq.getBody().push_back(body);
   builder.setInsertionPointToStart(body);

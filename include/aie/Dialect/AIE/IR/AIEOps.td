@@ -2213,8 +2213,14 @@ def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
     `packet` routes the connection as an `aie.packet_flow` instead, sharing the
     stream with every other packet flow rather than reserving a circuit for it.
     `packet_id` pins the header the source stamps; without it allocation picks
-    an id no other flow is using. Circuit- and packet-switched routes coexist in
-    one device.
+    an id no other flow is using. `keep_pkt_header` keeps each packet's header
+    at the destinations, as on `aie.packet_flow`. Circuit- and packet-switched
+    routes coexist in one device.
+
+    Packet routes that name the same endpoint, all as source or all as
+    destination, share its one channel: several sources merge into one
+    receiving channel, or one channel sends several ids. A shared source's BDs
+    state each packet's header themselves, so its routes pin `packet_id`.
 
     Example:
     ```
@@ -2225,7 +2231,8 @@ def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
 
   let arguments = (ins FlatSymbolRefAttr:$source,
       FlatSymbolRefArrayAttr:$destinations, UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id,
+      UnitAttr:$keep_pkt_header);
 
   let assemblyFormat = [{
     `from` $source `to` $destinations attr-dict
@@ -2618,6 +2625,12 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     bool isJoin() { return getFifoIns().size() > 1; }
     bool isDistribute() { return getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
+    // The fifo whose declared object type sizes the pool on the shared tile.
+    ObjectFifoCreateOp getPoolOwner();
+    // The pool's (offset, size) segments in the owner's elements: one per
+    // participant on a join's or distribute's many side, else the whole
+    // object.
+    llvm::SmallVector<std::pair<int64_t, int64_t>> getPoolSegments();
     std::optional<int> getRepeatCount();
     std::vector<int> getJoinTransferLengths();
     std::vector<int> getDistributeTransferLengths();
@@ -3026,7 +3039,11 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [AIESymbol, NoTerminator,
       OptionalAttr<TraceBufferAttr>:$trace_buffer,
       // If this runtime sequence produces multiple traces, `trace_slices`
       // states which slice of the trace buffer corresponds to which trace.
-      OptionalAttr<TraceSliceArrayAttr>:$trace_slices);
+      OptionalAttr<TraceSliceArrayAttr>:$trace_slices,
+      // Set by `--aie-lower-scratchpad-parameters` on a sequence no `aiex.run`
+      // calls, a command of its own with its own scratchpad: the parameters
+      // its run reads, whose state-table slots are distinct.
+      OptionalAttr<FlatSymbolRefArrayAttr>:$scratchpad_parameters);
   let regions = (region AnyRegion:$body);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;

@@ -5,7 +5,7 @@ name: Publish CI health
 
 # Records CI health for the maintainer dashboard (utils/kernel_checks/ci_health.py,
 # the workflows in utils/kernel_checks/ci_workflows.json): the critical test
-# workflows' pass rates, flakiness, durations and slowest jobs over the last
+# workflows' pass rates, flakiness, durations and runner waits over the last
 # two weeks; how long pull requests take to merge; and the scheduled
 # workflows' recent runs on main. Writes gh-pages:ci-health/status.json and
 # history.json (a point a day), and the dashboard page beside them; the page
@@ -24,11 +24,12 @@ permissions:
 jobs:
   publish:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write   # the gh-pages branch
       actions: read     # the workflows' runs and jobs
+      checks: read      # a job's annotations: why it stopped
       pull-requests: read  # how long pull requests took to merge
     # The lock every gh-pages writer takes; a run queues behind the others
     # rather than racing them on the branch.
@@ -49,8 +50,10 @@ jobs:
         run: |
           git show gh-pages:ci-health/history.json > "$RUNNER_TEMP/history.json" 2>/dev/null ||
             echo "no published history yet"
+          git show gh-pages:ci-health/status.json > "$RUNNER_TEMP/status.json" 2>/dev/null ||
+            echo "no published status yet"
           python3 utils/kernel_checks/ci_health.py --out "$RUNNER_TEMP/ci-health" \
-            --history "$RUNNER_TEMP/history.json"
+            --history "$RUNNER_TEMP/history.json" --previous "$RUNNER_TEMP/status.json"
 
       # The page is installed too, so the CI health tab is current whichever
       # publisher ran last.
