@@ -332,6 +332,54 @@ conv2dk1_i8_bias_block(const int8_t *__restrict input,
   }
 }
 
+// One output-channel group along a whole row, for IC <= 64 and a row of 8k
+// pixels: its weights stay in registers, so the pixel loop pipelines over the
+// row instead of an IC / 8 trip per block. Layouts as conv2dk1_i8_bias_block.
+template <int IC, bool FromAcc, bool ToAcc>
+static inline __attribute__((always_inline)) void
+conv2dk1_i8_bias_row(const int8_t *__restrict input,
+                     const int8_t *__restrict kernels,
+                     aie::vector<int32, 8> bias, int32_t *__restrict sums,
+                     int8_t *__restrict output, const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int groups = IC / 8;
+  using MMUL = aie::mmul<8, 8, 8, int8, int8>;
+  aie::vector<int8, 64> w[groups];
+  AIE_LOOP_UNROLL_FULL
+  for (int ic = 0; ic < groups; ic++)
+    w[ic] = aie::load_v<64>(kernels + ic * 64);
+  aie::vector<int32, 64> seed;
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < 8; p++)
+    seed.insert(p, bias);
+  aie::accum<acc32, 64> seeded;
+  seeded.from_vector(seed, 0);
+
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(iw / 8)
+  for (int x = 0; x < iw / 8; x++) {
+    MMUL acc;
+    if constexpr (FromAcc) {
+      aie::accum<acc32, 64> carried;
+      carried.from_vector(aie::load_v<64>(sums), 0);
+      acc = carried;
+    } else {
+      acc = seeded;
+    }
+    AIE_LOOP_UNROLL_FULL
+    for (int ic = 0; ic < groups; ic++)
+      acc.mac(aie::load_v<64>(input + ic * iw * 8), w[ic]);
+    if constexpr (ToAcc)
+      aie::store_v(sums, acc.template to_vector<int32>(0));
+    else
+      aie::store_v(output, acc.template to_vector<int8>(scale));
+    input += 64;
+    output += 64;
+    if constexpr (FromAcc || ToAcc)
+      sums += 64;
+  }
+}
+
 template <bool Table, int IC = CONV_INPUT_CHANNELS, bool FromAcc = false,
           bool ToAcc = false>
 static void
@@ -363,6 +411,11 @@ conv2dk1_i8_bias_vector(int8_t *__restrict input, int8_t *__restrict kernels,
     if constexpr (!FromAcc)
       b = aie::load_v<8>(bias + oc * 8);
     int8_t *out = output + oc * iw * 8;
+    if constexpr (M == 8 && input_channels <= 64) {
+      conv2dk1_i8_bias_row<IC, FromAcc, ToAcc>(
+          input, w, b, carries ? sums + oc * iw * 8 : nullptr, out, scale);
+      continue;
+    }
     for (int x = 0; x < blocks; x++) {
       const int at = x * NUM_ACC * M * 8;
       conv2dk1_i8_bias_block<NUM_ACC, M, IC, FromAcc, ToAcc>(

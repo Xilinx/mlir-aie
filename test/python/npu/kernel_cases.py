@@ -1460,6 +1460,36 @@ CASES: list[Case] = [
         calls=4,
         scalars=(80, 64, 80, 12),
     ),
+    # YOLO26n's model.2 cv2, a 1x1 over a 48-channel concat at width 160:
+    # whole, and in two 24-channel slices.
+    Case(
+        "conv2dk1_i8",
+        dict(
+            input_width=160,
+            input_channels=48,
+            output_channels=64,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(160, 48, 64, 12),
+    ),
+    check(
+        "conv2dk1_i8",
+        dict(
+            input_width=160,
+            input_channels=48,
+            output_channels=8,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+            input_slice=24,
+        ),
+        calls=2,
+        scalars=(160, 48, 8, 12),
+        tag="slices-24",
+    ),
     # One streamed chunk of YOLO26n's heaviest 1x1, 256 -> 256 at the P5/P4
     # widths: all input channels, 8 output channels a call.
     *[
