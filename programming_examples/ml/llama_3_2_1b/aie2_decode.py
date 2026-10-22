@@ -181,6 +181,10 @@ SLOT_STRIDE = STAGE_RESID + M_MAX * RROW + 2 * D
 # The array's input object: M_MAX rows' 2048 columns, then their scales.
 ARRAY_ACT_BYTES = M_MAX * D + M_MAX * 16
 assert ARRAY_ACT_BYTES == M_MAX * ACT_BYTES
+# Each weight lane is staged in its column's memtile (its two lanes fill the
+# 512 KB), so DDR streams on while the array waits on the glue cores.
+WM_SLOTS = 4
+WM_DEPTH = 7
 
 
 class StageLayout:
@@ -326,7 +330,23 @@ def build(
 
     # the array
     of_act = ObjectFifo(t_act, depth=1, name="act")
-    of_w = [ObjectFifo(t_slot, depth=2, name=f"w{c}") for c in range(N_CORES)]
+    # A memtile object waits until it is full, so objects tile a pass's lane.
+    pass_slots = N_LAYERS * (1 + lane_slots(LAYER))
+    wm_slots = max(k for k in range(1, WM_SLOTS + 1) if pass_slots % k == 0)
+    of_wm = [
+        ObjectFifo(
+            np.ndarray[(wm_slots * MMA_SLOT,), np.dtype[np.int8]],
+            depth=WM_DEPTH,
+            name=f"wm{c}",
+        )
+        for c in range(N_CORES)
+    ]
+    of_w = [
+        of_wm[c]
+        .cons()
+        .forward(tile=Tile(CORE_TILES[c][0], 1), obj_type=t_slot, depth=2, name=f"w{c}")
+        for c in range(N_CORES)
+    ]
     of_outlo = ObjectFifo(
         np.ndarray[(4 * OUT_BYTES,), np.dtype[np.int8]], depth=1, name="outlo"
     )
@@ -1003,7 +1023,7 @@ def build(
 
     eps = [
         of_act.prod(),
-        *[f.prod() for f in of_w],
+        *[f.prod() for f in of_wm],
         of_outlo.cons(),
         of_outhi.cons(),
         of_res.cons(),
@@ -1083,6 +1103,31 @@ def build(
                 ),
             )
 
+        def lanes(tok, L):
+            """Layer L's weight lanes for pass tok: per core a header slot
+            of the pass's RoPE rows (the rows' positions are consecutive),
+            then its weights."""
+            tg = TaskGroup()
+            for c in range(N_CORES):
+                w[c].fill(
+                    wblob,
+                    tap=linear_tap(w_total, off_rope + tok * CS_BYTES, MMA_SLOT),
+                    offset_parameter=p_cs_off,
+                    length_parameter=p_on[tok],
+                    group=tg,
+                    wait=True,
+                )
+                w[c].fill(
+                    wblob,
+                    tap=linear_tap(
+                        w_total, off_lanes + (L * N_CORES + c) * LANE_BYTES, LANE_BYTES
+                    ),
+                    length_parameter=p_on[tok],
+                    group=tg,
+                    wait=True,
+                )
+            return tg
+
         seed_at = resid_row(slots[0, "o"], 0)
         step(fill(p_on[0], wlm, linear_tap(stage_total, stage_at.rng, WLM_SLOT)))
         for tok in range(P_MAX):
@@ -1108,37 +1153,16 @@ def build(
                             linear_tap(stage_total, seed_at + r * RROW, RROW),
                         ),
                     )
+            w_tgs = [lanes(tok, 0)]
             for L in range(N_LAYERS):
                 o_at = slots[L, "o"]
                 d_at = slots[L, "d"]
                 gu_at = slots[L, "gu"]
                 qkv_at = slots[L, "qkv"]
+                if L + 1 < N_LAYERS:
+                    w_tgs.append(lanes(tok, L + 1))
                 for r in rows:
                     norm(gate_of[r], o_at, r, qkv_at + r * ROW)
-
-                # Each core's weight lane: a header slot of the pass's RoPE
-                # rows (the rows' positions are consecutive), then its weights.
-                w_tg = TaskGroup()
-                for c in range(N_CORES):
-                    w[c].fill(
-                        wblob,
-                        tap=linear_tap(w_total, off_rope + tok * CS_BYTES, MMA_SLOT),
-                        offset_parameter=p_cs_off,
-                        length_parameter=on,
-                        group=w_tg,
-                        wait=True,
-                    )
-                    w[c].fill(
-                        wblob,
-                        tap=linear_tap(
-                            w_total,
-                            off_lanes + (L * N_CORES + c) * LANE_BYTES,
-                            LANE_BYTES,
-                        ),
-                        length_parameter=on,
-                        group=w_tg,
-                        wait=True,
-                    )
                 step(
                     *(t for r in rows for t in outs_drain(gate_of[r], "qkv", r)),
                     *acts(on, qkv_at),
@@ -1255,7 +1279,7 @@ def build(
                     ),
                     *(t for c in range(HD // D) for t in acts(on, d_at, c * D, HD)),
                 )
-                w_tg.finish()
+                w_tgs[L].finish()
 
             for r in rows:
                 norm(gate_of[r], final_slot, r, discard)
