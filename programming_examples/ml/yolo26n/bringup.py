@@ -52,6 +52,35 @@ def from_rows(tensor: Tensor, rows: np.ndarray) -> np.ndarray:
     )[: tensor.channels]
 
 
+class Layout:
+    """Where a run's host transfers sit: each image's inputs then the shared weights in one buffer, each image's outputs and staged rows in another."""
+
+    def __init__(self, design: SegmentDesign, batch: int) -> None:
+        self.offsets, at = {}, 0
+        for tensor in design.inputs:
+            self.offsets[tensor.name] = at
+            at += design.host_bytes(tensor) // 4
+        self.image_in = at
+        # The weights the run's cores read from DDR (SegmentDesign.weights), once.
+        at *= batch
+        self.weights_at = at
+        for tensor, packed in design.loads:
+            self.offsets[tensor.name] = at
+            at += packed.size // 4
+        self.total_in = at
+        self.outputs_at, at = {}, 0
+        for tensor in design.outputs:
+            self.outputs_at[tensor.name] = at
+            at += design.host_bytes(tensor) // 4
+        # Rows the run reads back from DDR (SegmentDesign.staged), after its outputs.
+        for _, tensor in design.staged:
+            self.outputs_at[tensor.name] = at
+            at += tensor.row_bytes * tensor.height // 4
+        self.image_out = at
+        self.total_out = at * batch
+        self.weights = {tensor.name for tensor, _ in design.loads}
+
+
 @iron.jit(aiecc_flags=["--placer=sa_placer", "--sa-seed=1", "--sa-effort=3"])
 def segment(
     inputs: In,
@@ -62,8 +91,10 @@ def segment(
     params_path: CompileTime[str],
     params_digest: CompileTime[str],
     drained: CompileTime[str],
+    batch: CompileTime[int] = 1,
+    ahead: CompileTime[int] = 3,
 ):
-    """The run `ops[first:last]` of yolo26n, inputs packed into `inputs`, outputs into `outputs`."""
+    """The run `ops[first:last]` of yolo26n over `batch` images, inputs packed into `inputs`, outputs into `outputs`."""
     del params_digest  # keys the compile cache on the parameter file's contents
     network = Network.yolo26n()
     tensors = {op.dst.name: op.dst for op in network.ops}
@@ -73,34 +104,30 @@ def segment(
         network.ops[first:last],
         [tensors[n] for n in drained.split(",")],
     )
-    offsets, at = {}, 0
-    for tensor in design.inputs:
-        offsets[tensor.name] = at
-        at += design.host_bytes(tensor) // 4
-    # The weights the run's cores read from DDR (SegmentDesign.weights).
-    for tensor, packed in design.loads:
-        offsets[tensor.name] = at
-        at += packed.size // 4
-    total_in = at
-    outputs_at, at = {}, 0
-    for tensor in design.outputs:
-        outputs_at[tensor.name] = at
-        at += design.host_bytes(tensor) // 4
-    # Rows the run reads back from DDR (SegmentDesign.staged), after its outputs.
-    for _, tensor in design.staged:
-        outputs_at[tensor.name] = at
-        at += tensor.row_bytes * tensor.height // 4
-    total_out = at
-    in_ty = np.ndarray[(total_in,), np.dtype[np.int32]]
-    out_ty = np.ndarray[(total_out,), np.dtype[np.int32]]
+    layout = Layout(design, batch)
+    in_ty = np.ndarray[(layout.total_in,), np.dtype[np.int32]]
+    out_ty = np.ndarray[(layout.total_out,), np.dtype[np.int32]]
 
     def sequence(inp, out, *handles):
-        def locate(tensor):
-            if tensor.name in outputs_at:
-                return out, total_out, outputs_at[tensor.name]
-            return inp, total_in, offsets[tensor.name]
+        def locate_for(i):
+            def locate(tensor):
+                if tensor.name in layout.outputs_at:
+                    return (
+                        out,
+                        layout.total_out,
+                        i * layout.image_out + layout.outputs_at[tensor.name],
+                    )
+                if tensor.name in layout.weights:
+                    return inp, layout.total_in, layout.offsets[tensor.name]
+                return (
+                    inp,
+                    layout.total_in,
+                    i * layout.image_in + layout.offsets[tensor.name],
+                )
 
-        design.transfer(handles, [locate], ahead=1)
+            return locate
+
+        design.transfer(handles, [locate_for(i) for i in range(batch)], ahead)
 
     handles = design.handles()
     rt = Runtime(sequence, [in_ty, out_ty, *handles])
@@ -135,7 +162,21 @@ def main() -> None:
     parser.add_argument("--time", action="store_true", help="also time the dispatch")
     parser.add_argument("--n-iters", type=int, default=5)
     parser.add_argument("--n-warmup", type=int, default=2)
+    parser.add_argument(
+        "--batch",
+        type=int,
+        default=1,
+        help="images per dispatch, pipelined as yolo26n.py runs them",
+    )
+    parser.add_argument(
+        "--ahead", type=int, default=3, help="images' fills issued ahead of a wait"
+    )
+    parser.add_argument(
+        "--compile-only", action="store_true", help="build the ELF and stop"
+    )
     args = parser.parse_args()
+    if args.batch < 1:
+        parser.error(f"--batch {args.batch} is not positive")
 
     first, stop = (int(v) for v in args.ops.split(":"))
     network = Network.yolo26n()
@@ -147,20 +188,17 @@ def main() -> None:
     else:
         params_path = args.params or DATA_DIR / "yolo26n_params.npz"
     params = Params.load(params_path)
-    if args.image is not None:
-        # Optional: only a real image needs OpenCV.
-        from letterbox import letterbox
-
-        image = letterbox(args.image)
-    else:
-        image = np.random.default_rng(args.synthetic or 0).integers(
-            0, 256, (640, 640, 3), dtype=np.uint8
-        )
-    reference = Oracle(params, network).run(image)
-    reference["images"] = image
-
     ops = network.ops[first:stop]
     drained = args.outputs or ops[-1].dst.name
+    kwargs = dict(
+        first=first,
+        last=stop,
+        params_path=str(params_path),
+        params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
+        drained=drained,
+        batch=args.batch,
+        ahead=args.ahead,
+    )
     # Build once on the host to learn the run's inputs, in the order the design fills them.
     tensors = {op.dst.name: op.dst for op in network.ops} | {
         "images": Tensor("images", 3, 640, 640)
@@ -168,45 +206,66 @@ def main() -> None:
     plan = SegmentDesign.planned(
         network, params, ops, [tensors[n] for n in drained.split(",")]
     )
+    layout = Layout(plan, args.batch)
+    if args.compile_only:
+        iron.set_current_device(NPU2())
+        segment.specialize(
+            inputs=np.ndarray[(layout.total_in,), np.dtype[np.int32]],
+            outputs=np.ndarray[(layout.total_out,), np.dtype[np.int32]],
+            **kwargs,
+        ).compile()
+        return
+
+    if args.image is not None:
+        # Optional: only a real image needs OpenCV.
+        from letterbox import letterbox
+
+        images = [letterbox(args.image)] * args.batch
+    else:
+        rng = np.random.default_rng(args.synthetic or 0)
+        images = [
+            rng.integers(0, 256, (640, 640, 3), dtype=np.uint8)
+            for _ in range(args.batch)
+        ]
+    oracle = Oracle(params, network)
+    references = []
+    for image in images:
+        reference = oracle.run(image)
+        reference["images"] = image
+        references.append(reference)
     packed_in = np.concatenate(
         [
             (
-                image.reshape(-1).view(np.int8)
+                reference["images"].reshape(-1).view(np.int8)
                 if t.name == "images"
                 else to_rows(t, reference[t.name])
             )
+            for reference in references
             for t in plan.inputs
         ]
         + [packed for _, packed in plan.loads]
     )
-    sizes = [plan.host_bytes(t) for t in plan.outputs]
-    staged = sum(t.row_bytes * t.height for _, t in plan.staged)
     inputs = iron.tensor(packed_in.view(np.int32))
-    outputs = iron.zeros((sum(sizes) + staged) // 4, dtype=np.int32)
-    kwargs = dict(
-        first=first,
-        last=stop,
-        params_path=str(params_path),
-        params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
-        drained=drained,
-    )
+    outputs = iron.zeros(layout.total_out, dtype=np.int32)
     segment(inputs, outputs, **kwargs)
     got = outputs.numpy().view(np.int8)
     failed = False
-    at = 0
-    for tensor, size in zip(plan.outputs, sizes):
-        want = reference[tensor.name]
-        if want.dtype == np.float32:
-            mine = got[at : at + size].view(np.int32).reshape(want.shape)
-            want = want.view(np.int32)
-        else:
-            mine = from_rows(tensor, got[at : at + size]).astype(np.int64)
-        bad = int((mine != want).sum())
-        print(
-            f"{tensor.name}: {'PASS' if bad == 0 else 'FAIL'} ({bad}/{want.size} differ)"
-        )
-        failed |= bad != 0
-        at += size
+    for i, reference in enumerate(references):
+        for tensor in plan.outputs:
+            at = 4 * (i * layout.image_out + layout.outputs_at[tensor.name])
+            size = plan.host_bytes(tensor)
+            want = reference[tensor.name]
+            if want.dtype == np.float32:
+                mine = got[at : at + size].view(np.int32).reshape(want.shape)
+                want = want.view(np.int32)
+            else:
+                mine = from_rows(tensor, got[at : at + size]).astype(np.int64)
+            bad = int((mine != want).sum())
+            print(
+                f"image {i} {tensor.name}: {'PASS' if bad == 0 else 'FAIL'} "
+                f"({bad}/{want.size} differ)"
+            )
+            failed |= bad != 0
 
     if args.time:
         for _ in range(args.n_warmup):
@@ -216,8 +275,8 @@ def main() -> None:
             start = time.perf_counter()
             segment(inputs, outputs, **kwargs)
             samples.append(time.perf_counter() - start)
-        us = statistics.median(samples) * 1e6
-        print(f"ops {first}:{stop}: {us:.1f} us")
+        us = statistics.median(samples) * 1e6 / args.batch
+        print(f"ops {first}:{stop}: {us:.1f} us per image at batch {args.batch}")
     sys.exit(1 if failed else 0)
 
 
