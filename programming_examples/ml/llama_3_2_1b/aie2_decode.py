@@ -60,7 +60,7 @@ from aie.iron import (
     Worker,
     jit,
 )
-from aie.iron.controlflow import else_, if_, range_
+from aie.iron.controlflow import if_, range_
 from aie.iron.device import NPU2, Tile
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -98,13 +98,15 @@ from llama_config import (
 )
 
 # The lm_head's weights: per 4-row tile a prefix, the rows and per-row
-# scales and biases; one shim task streams LM_SLOTS_PER_TASK of them (at
-# most 1023, a BD dimension's limit, dividing LM_N_TILES).
+# scales and biases. Two shim lanes stream them, the first half of the tiles
+# on lane A and the second on lane B, a task LM_SLOTS_PER_TASK of them (at
+# most 1023, a BD dimension's limit, dividing LM_LANE_TILES).
 LM_N_TILES = VOCAB // N_TILE
+LM_LANE_TILES = LM_N_TILES // 2
 WLM_SLOT = 64 + N_TILE * D + N_TILE * 4 + N_TILE * 4
 WLM_TOTAL = LM_N_TILES * WLM_SLOT
 LM_SLOTS_PER_TASK = 1002
-assert LM_N_TILES % LM_SLOTS_PER_TASK == 0
+assert LM_LANE_TILES % LM_SLOTS_PER_TASK == 0
 
 # Rows as llama_attn_block.cc lays them out, ordered [layer][half][block]
 # [head], so one (layer, half)'s live prefix is one linear transfer.
@@ -845,16 +847,18 @@ def build(
         )
     )
 
-    # lm_head + sampler: of a pass's last row's final norm output; the norm
-    # core's other outputs pass by.
+    # lm_head + sampler, on a pass's last row's final norm output, which
+    # rides the head of lane A (the norm drains it to `discard`).
     of_wlm = ObjectFifo(t_wlm, depth=2, name="wlm")
+    of_wlm_b = ObjectFifo(t_wlm, depth=2, name="wlm_b")
     of_rec = ObjectFifo(t_rec, depth=1, name="rec")
     of_seed = ObjectFifo(t_res, depth=1, name="seed")
     KL = llama_kernels.lmhead(kset=KSET)
     k_insert = KL.bind(
         "llama_lmhead_topk_insert",
         [
-            t_vec,
+            t_rec,
+            t_wlm,
             t_wlm,
             np.ndarray[(KSET,), np.dtype[np.float32]],
             np.ndarray[(KSET,), np.dtype[np.int32]],
@@ -862,8 +866,9 @@ def build(
             np.ndarray[(KSET * D,), np.dtype[np.int8]],
             np.ndarray[(1,), np.dtype[np.int32]],
         ]
-        + [np.int32],
+        + [np.int32] * 2,
     )
+    k_take_act = KL.bind("llama_lmhead_take_act", [t_wlm, t_rec])
     KTS = llama_kernels.topk_sample(kset=KSET)
     t_lm_params = np.ndarray[(6,), np.dtype[np.int32]]
     k_embed = KTS.bind("llama_embed_seed", [t_wlm, t_res, np.int32])
@@ -884,8 +889,8 @@ def build(
     k_rng_put = KTS.bind("llama_rng_put", [t_lm_params, t_res])
 
     def w_lm(
-        c_h,
         c_w,
+        c_wb,
         c_rec,
         c_seed,
         sl,
@@ -898,6 +903,7 @@ def build(
         m0p,
         rows,
         ki,
+        ka,
         kf,
         ke,
         ks,
@@ -945,23 +951,26 @@ def build(
                     )
                     c_seed.release(1)
                     c_w.release(1)
-            skip = addi(muli(m, constant(i32(), 2 * N_LAYERS + 1)), constant(i32(), -1))
-            for _ in range_(index_cast(index(), skip)):
-                c_h.acquire(1)
-                c_h.release(1)
-            a = c_h.acquire(1)
             lm_bit = cmpi(
                 CmpIPredicate.ne,
                 andi(shrui(bits, addi(ti, constant(i32(), 12))), constant(i32(), 1)),
                 constant(i32(), 0),
             )
-            with if_(lm_bit) as lm_on:
-                for t in range_(LM_N_TILES):
-                    w = c_w.acquire(1)
-                    ki(a, w, sl, sg, ss, sr, slen, index_cast(i32(), t))
-                    c_w.release(1)
-                c_h.release(1)
+            # The record's buffer holds the norm output until the sampler
+            # overwrites it with the record.
+            with if_(lm_bit):
                 o = c_rec.acquire(1)
+                w = c_w.acquire(1)
+                ka(w, o)
+                c_w.release(1)
+                for t in range_(LM_LANE_TILES):
+                    wa = c_w.acquire(1)
+                    wb = c_wb.acquire(1)
+                    t_a = index_cast(i32(), t)
+                    t_b = addi(t_a, constant(i32(), LM_LANE_TILES))
+                    ki(o, wa, wb, sl, sg, ss, sr, slen, t_a, t_b)
+                    c_wb.release(1)
+                    c_w.release(1)
                 kf(sl, sg, ss, sr, slen, pr, o)
                 for i in range_(D + 12, REC_BYTES):
                     o[i] = 0
@@ -969,8 +978,6 @@ def build(
                 ks(o, s)
                 c_seed.release(1)
                 c_rec.release(1)
-            with else_(lm_on):
-                c_h.release(1)
         s = c_seed.acquire(1)
         k_put(pr, s)
         c_seed.release(1)
@@ -979,8 +986,8 @@ def build(
         Worker(
             w_lm,
             [
-                of_h.cons(),
                 of_wlm.cons(),
+                of_wlm_b.cons(),
                 of_rec.prod(),
                 of_seed.prod(),
                 Buffer(np.ndarray[(KSET,), np.dtype[np.float32]], name="lm_set_logit"),
@@ -997,6 +1004,7 @@ def build(
                 p_m0,
                 p_rows,
                 k_insert,
+                k_take_act,
                 k_sample,
                 k_embed,
                 k_seed,
@@ -1023,6 +1031,7 @@ def build(
         of_gu.prod(),
         of_sf.cons(),
         of_wlm.prod(),
+        of_wlm_b.prod(),
         of_rec.cons(),
         of_seed.cons(),
     ]
@@ -1037,7 +1046,7 @@ def build(
         kvb = [next(it), next(it)]
         kvrow = [next(it), next(it)]
         af, gu, sf = next(it), next(it), next(it)
-        wlm, rec_c, seed = next(it), next(it), next(it)
+        wlm, wlm_b, rec_c, seed = next(it), next(it), next(it), next(it)
 
         def step(*transfers):
             """Issue (gate, fn, kwargs) transfers, each `gate` passes of its
@@ -1266,6 +1275,12 @@ def build(
             for r in rows:
                 norm(gate_of[r], final_slot, r, discard)
             out_tg = TaskGroup()
+            wlm.fill(
+                stage,
+                tap=linear_tap(stage_total, discard, WLM_SLOT),
+                length_parameter=p_lm[tok],
+                group=out_tg,
+            )
             rec_c.drain(
                 rec,
                 tap=linear_tap(rec_total, tok * REC_BYTES, REC_BYTES),
@@ -1280,22 +1295,24 @@ def build(
                 group=out_tg,
                 wait=True,
             )
-            n_tasks = LM_N_TILES // LM_SLOTS_PER_TASK
+            n_tasks = LM_LANE_TILES // LM_SLOTS_PER_TASK
             lm_tgs = [TaskGroup() for _ in range(n_tasks)]
             for j in range(n_tasks):
-                wlm.fill(
-                    lmw,
-                    tap=gather_tap(
-                        lmw_total,
-                        LMW_GAMMA_BYTES + j * LM_SLOTS_PER_TASK * WLM_SLOT,
-                        LM_SLOTS_PER_TASK,
-                        WLM_SLOT,
-                        WLM_SLOT,
-                    ),
-                    length_parameter=p_lm[tok],
-                    group=lm_tgs[j],
-                    wait=True,
-                )
+                for lane, tile0 in ((wlm, 0), (wlm_b, LM_LANE_TILES)):
+                    lane.fill(
+                        lmw,
+                        tap=gather_tap(
+                            lmw_total,
+                            LMW_GAMMA_BYTES
+                            + (tile0 + j * LM_SLOTS_PER_TASK) * WLM_SLOT,
+                            LM_SLOTS_PER_TASK,
+                            WLM_SLOT,
+                            WLM_SLOT,
+                        ),
+                        length_parameter=p_lm[tok],
+                        group=lm_tgs[j],
+                        wait=True,
+                    )
                 if j >= 2:
                     lm_tgs[j - 2].finish()
             for j in range(max(0, n_tasks - 2), n_tasks):

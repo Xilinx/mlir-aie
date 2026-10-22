@@ -37,7 +37,7 @@ around it.
                     │   lm_head + top-k insert ─ sample ─► token, embed seed ─┐         │
                     │   ▲                                                      │         │
                     │   └────────── next token's seed, through the stage ──────┘         │
- DDR: weights ─────►│ 8 lanes into the GEMV array's 8 cores; the lm_head on one lane    │
+ DDR: weights ─────►│ 8 lanes into the GEMV array's 8 cores; the lm_head on two lanes   │
  DDR: KV cache ◄───►│ each token's live blocks in, its new row out                      │
  host: records ◄────│ P packed [seed | scale | token]                                   │
                     └───────────────────────────────────────────────────────────────────┘
@@ -58,7 +58,8 @@ Key design pieces:
   stream it twice (once for logits, once to fetch the sampled token's embedding),
   the sampler keeps a **resident top-k set** of `{logit, index, embed_sc, embed
   row}` as the table flows by **once**, then emits both the token id and the
-  next-token embedding seed. No second pass, one shim channel. Its temperature,
+  next-token embedding seed. No second pass: the table streams once, over two
+  shim lanes into the one core, a slot of each per call. Its temperature,
   top-k and seed are set per dispatch; its xoshiro state carries across tokens
   in the stage buffer.
 
@@ -130,7 +131,7 @@ charted on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/)
 (`utils/component_checks/llama_chain_hw.py`; section 4 has the commands).
 
 **What bounds it.** The layers' weights stream over the array's eight lanes
-and the tied 262 MB lm_head over one, every token. Attention grows with the
+and the tied 262 MB lm_head over two, every token. Attention grows with the
 live context: each token reads every live KV block, and its
 score-to-probability step is the oracle's exact polynomial
 (`vec_exp_nonpos`), so the device stays bit-exact.
@@ -138,7 +139,7 @@ score-to-probability step is the oracle's exact polynomial
 **Tokens per dispatch.** amdxdna times a dispatch out after about 5 s. The host
 picks each dispatch's token count from its first position
 (`DecodeShape.passes_for` in `llama_decode.py`): as many of the 4 as fit a 4 s
-budget by a cost model (19 ms of lm_head a token, plus per layer 1.80 ms and
+budget by a cost model (10.7 ms of lm_head a token, plus per layer 1.80 ms and
 0.163 ms per 1k rows of context). At 16 layers that is 4 tokens all the way to
 128k. The array's activations and outputs pass through a DDR `stage` buffer
 between it and the cores around it (see `aie2_decode.py`).
@@ -336,7 +337,7 @@ One compiled design serves decode and batched prefill, with the per-call
 values (passes, a batch's rows, position, live context, the sampler's
 settings) as ScratchpadParameters. Next:
 
-- **The lm_head over more lanes** (it streams over one),
+- **The lm_head over more lanes** (it streams over two),
   and the glue fused into the GEMV array's epilogues.
 - **Larger prefill batches**: the mma tile has 8 activation slots and the
   design fills 4, its per-row parameters (`pg{m}`, `gat{m}`) sharing the

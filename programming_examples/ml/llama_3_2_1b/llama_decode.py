@@ -46,7 +46,7 @@ from ml_dtypes import bfloat16
 # The decode's time a token at position p, fit to the README's N=16
 # measurements: the lm_head, then per layer its weights and its attention
 # over p rows. amdxdna times a dispatch out after about 5 s.
-LM_HEAD_MS = 19.0
+LM_HEAD_MS = 10.7
 LAYER_MS = 1.80
 LAYER_MS_PER_ROW = 0.000163
 DISPATCH_BUDGET_MS = 4000.0
