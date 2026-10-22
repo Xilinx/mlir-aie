@@ -10,8 +10,9 @@ and down (whose outputs a glue core adds to the fp32 residual), gate and up.
 The other work runs on glue cores: one RMSNorm core (both norms of every
 layer, then the final norm), the RoPE + KV-row core, eight attention cores
 over the DDR KV cache (two a KV head, block by block), the
-sv merge and af concat cores, the up-requant + SiLU core, and the lm_head +
-sampler core.
+sv merge and af concat cores, the up-requant + SiLU core, and the sampler
+core. After the last layer the array runs the lm_head too, each core over an
+eighth of the table, and the sampler core merges the cores' top sets.
 
 The array's activations and outputs are staged through DDR: a glue core
 drains the activation for a unit into its slot in the `stage` buffer, and
@@ -41,6 +42,7 @@ from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
     cmpi,
     constant,
     divsi,
+    extui,
     index_cast,
     muli,
     remsi,
@@ -99,16 +101,19 @@ from llama_config import (
 
 # The lm_head's weights: per 4-row tile the rows, then a weight slot's
 # trailer of 8 biases and 8 scales (the rows', then 0 and 1), so a tile is an
-# MMA_SLOT. Two shim lanes stream them, the first half of the tiles
-# on lane A and the second on lane B, a task LM_SLOTS_PER_TASK of them (at
-# most 1023, a BD dimension's limit, dividing LM_LANE_TILES).
+# MMA_SLOT. The GEMV array's weight lanes stream them, an eighth of the
+# tiles to each core, in BD dimensions of LM_SLOTS_PER_TASK (at most 1023)
+# tiles.
 LM_N_TILES = VOCAB // N_TILE
-LM_LANE_TILES = LM_N_TILES // 2
+LM_CORE_TILES = LM_N_TILES // N_CORES
 WLM_SLOT = N_TILE * D + 8 * 4 + 8 * 4
 assert WLM_SLOT == MMA_SLOT
 WLM_TOTAL = LM_N_TILES * WLM_SLOT
 LM_SLOTS_PER_TASK = 1002
-assert LM_LANE_TILES % LM_SLOTS_PER_TASK == 0
+assert LM_CORE_TILES % LM_SLOTS_PER_TASK == 0
+# A GEMV core's lm_head set: 2 candidate slots of 4 rows (out objects 0-3)
+# and their meta (out object 4).
+LM_OUTS = 5
 
 # Rows as llama_attn_block.cc lays them out, ordered [layer][half][block]
 # [head], so one (layer, half)'s live prefix is one linear transfer.
@@ -276,6 +281,7 @@ def build(
     T: CompileTime[int] = 128,
     KSET: CompileTime[int] = 8,
 ):
+    assert KSET <= 8, "a GEMV core keeps the top 8 of its share (llama_mma_lm_topk)"
     stage_at = StageLayout(N_LAYERS)
     slots, outs, final_slot = stage_at.slots, stage_at.outs, stage_at.final
     discard, stage_total = stage_at.discard, stage_at.total
@@ -336,7 +342,11 @@ def build(
     of_act = ObjectFifo(t_act, depth=1, name="act")
     # A memtile object waits until it is full, so objects tile a pass's lane.
     pass_slots = N_LAYERS * (1 + lane_slots(LAYER))
-    wm_slots = max(k for k in range(1, WM_SLOTS + 1) if pass_slots % k == 0)
+    wm_slots = max(
+        k
+        for k in range(1, WM_SLOTS + 1)
+        if pass_slots % k == 0 and LM_CORE_TILES % k == 0
+    )
     of_wm = [
         ObjectFifo(
             np.ndarray[(wm_slots * MMA_SLOT,), np.dtype[np.int8]],
@@ -405,6 +415,11 @@ def build(
         [t_scratch, np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]], np.int32],
     )
     k_final = KA.bind("llama_gemv_array_residual_add", [t_half, t_half, t_res, t_res])
+    KM = llama_kernels.gemv_mma()
+    k_lm = KM.bind(
+        "llama_mma_lm_topk", [t_act, t_slot, t_tile, t_part, np.int32, np.int32]
+    )
+    k_lm_out = KM.bind("llama_mma_lm_out", [t_tile, t_part, t_out, np.int32])
     u_chunks = OUTS["u"]
 
     def w_array(
@@ -418,6 +433,7 @@ def build(
         core,
         n,
         m0p,
+        rows,
         ks,
         ka,
         kf,
@@ -425,8 +441,11 @@ def build(
         kc,
         kr,
         kt,
+        kl,
+        klo,
     ):
         m0 = m0p.read()
+        bits = rows.read()
         for tok in range_(index_cast(index(), n.read())):
             m = select(
                 cmpi(CmpIPredicate.eq, index_cast(i32(), tok), constant(i32(), 0)),
@@ -475,6 +494,36 @@ def build(
                 mma_down(tile, c_w, part, scratch, k_mma_s, spread_chunk, m)
                 resid()
 
+            # The lm_head over the core's eighth of the table, on the final
+            # norm's output; tile and part hold the core's set.
+            lm_bit = cmpi(
+                CmpIPredicate.ne,
+                andi(
+                    shrui(bits, addi(index_cast(i32(), tok), constant(i32(), 12))),
+                    constant(i32(), 1),
+                ),
+                constant(i32(), 0),
+            )
+            with if_(lm_bit):
+                a = c_act.acquire(1)
+                for t in range_(LM_CORE_TILES):
+                    w = c_w.acquire(1)
+                    ti = index_cast(i32(), t)
+                    kl(
+                        a,
+                        w,
+                        tile,
+                        part,
+                        addi(ti, constant(i32(), core * LM_CORE_TILES)),
+                        extui(i32(), cmpi(CmpIPredicate.eq, ti, constant(i32(), 0))),
+                    )
+                    c_w.release(1)
+                c_act.release(1)
+                for j in range_(LM_OUTS):
+                    o = c_out.acquire(1)
+                    klo(tile, part, o, index_cast(i32(), j))
+                    c_out.release(1)
+
     workers = [
         Worker(
             w_array,
@@ -489,12 +538,15 @@ def build(
                 c,
                 p_passes,
                 p_m0,
+                p_rows,
                 k_spread,
                 *k_mma,
                 k_mma_s[1],
                 k_comb,
                 k_resid,
                 k_take_cs,
+                k_lm,
+                k_lm_out,
             ],
             tile=Tile(*CORE_TILES[c]),
             wait_for_parameters=True,
@@ -866,18 +918,14 @@ def build(
         )
     )
 
-    # lm_head + sampler, on a pass's last row's final norm output, which
-    # rides the head of lane A (the norm drains it to `discard`).
+    # lm_head + sampler: the GEMV cores' sets, merged, of a pass's last row.
     of_wlm = ObjectFifo(t_wlm, depth=2, name="wlm")
-    of_wlm_b = ObjectFifo(t_wlm, depth=2, name="wlm_b")
     of_rec = ObjectFifo(t_rec, depth=1, name="rec")
     of_seed = ObjectFifo(t_res, depth=1, name="seed")
     KL = llama_kernels.lmhead(kset=KSET)
-    k_insert = KL.bind(
-        "llama_lmhead_topk_insert",
+    k_merge = KL.bind(
+        "llama_lmhead_merge",
         [
-            t_rec,
-            t_wlm,
             t_wlm,
             np.ndarray[(KSET,), np.dtype[np.float32]],
             np.ndarray[(KSET,), np.dtype[np.int32]],
@@ -887,7 +935,6 @@ def build(
         ]
         + [np.int32] * 2,
     )
-    k_take_act = KL.bind("llama_lmhead_take_act", [t_wlm, t_rec])
     KTS = llama_kernels.topk_sample(kset=KSET)
     t_lm_params = np.ndarray[(6,), np.dtype[np.int32]]
     k_embed = KTS.bind("llama_embed_seed", [t_wlm, t_res, np.int32])
@@ -909,7 +956,6 @@ def build(
 
     def w_lm(
         c_w,
-        c_wb,
         c_rec,
         c_seed,
         sl,
@@ -922,7 +968,6 @@ def build(
         m0p,
         rows,
         ki,
-        ka,
         kf,
         ke,
         ks,
@@ -975,21 +1020,23 @@ def build(
                 andi(shrui(bits, addi(ti, constant(i32(), 12))), constant(i32(), 1)),
                 constant(i32(), 0),
             )
-            # The record's buffer holds the norm output until the sampler
-            # overwrites it with the record.
+            # Candidate slot s is half s % 2 of core s // 2's set.
             with if_(lm_bit):
-                o = c_rec.acquire(1)
-                w = c_w.acquire(1)
-                ka(w, o)
-                c_w.release(1)
-                for t in range_(LM_LANE_TILES):
-                    wa = c_w.acquire(1)
-                    wb = c_wb.acquire(1)
-                    t_a = index_cast(i32(), t)
-                    t_b = addi(t_a, constant(i32(), LM_LANE_TILES))
-                    ki(o, wa, wb, sl, sg, ss, sr, slen, t_a, t_b)
-                    c_wb.release(1)
+                for t in range_(2 * N_CORES):
+                    w = c_w.acquire(1)
+                    ti = index_cast(i32(), t)
+                    ki(
+                        w,
+                        sl,
+                        sg,
+                        ss,
+                        sr,
+                        slen,
+                        andi(ti, constant(i32(), 1)),
+                        extui(i32(), cmpi(CmpIPredicate.eq, ti, constant(i32(), 0))),
+                    )
                     c_w.release(1)
+                o = c_rec.acquire(1)
                 kf(sl, sg, ss, sr, slen, pr, o)
                 for i in range_(D + 12, REC_BYTES):
                     o[i] = 0
@@ -1006,7 +1053,6 @@ def build(
             w_lm,
             [
                 of_wlm.cons(),
-                of_wlm_b.cons(),
                 of_rec.prod(),
                 of_seed.prod(),
                 Buffer(np.ndarray[(KSET,), np.dtype[np.float32]], name="lm_set_logit"),
@@ -1022,8 +1068,7 @@ def build(
                 p_passes,
                 p_m0,
                 p_rows,
-                k_insert,
-                k_take_act,
+                k_merge,
                 k_sample,
                 k_embed,
                 k_seed,
@@ -1050,7 +1095,6 @@ def build(
         of_gu.prod(),
         of_sf.cons(),
         of_wlm.prod(),
-        of_wlm_b.prod(),
         of_rec.cons(),
         of_seed.cons(),
     ]
@@ -1065,7 +1109,7 @@ def build(
         kvb = [next(it), next(it)]
         kvrow = [next(it), next(it)]
         af, gu, sf = next(it), next(it), next(it)
-        wlm, wlm_b, rec_c, seed = next(it), next(it), next(it), next(it)
+        wlm, rec_c, seed = next(it), next(it), next(it)
 
         def step(*transfers):
             """Issue (gate, fn, kwargs) transfers, each `gate` passes of its
@@ -1142,6 +1186,28 @@ def build(
                 )
             return tg
 
+        def lm_lanes(tok, tasks):
+            """Tasks `tasks` of pass tok's lm_head on each core's lane, its
+            eighth of the table in LM_SLOTS_PER_TASK tiles a task."""
+            tg = TaskGroup()
+            for c in range(N_CORES):
+                for j in tasks:
+                    w[c].fill(
+                        lmw,
+                        tap=gather_tap(
+                            lmw_total,
+                            LMW_GAMMA_BYTES
+                            + (c * LM_CORE_TILES + j * LM_SLOTS_PER_TASK) * WLM_SLOT,
+                            LM_SLOTS_PER_TASK,
+                            WLM_SLOT,
+                            WLM_SLOT,
+                        ),
+                        length_parameter=p_lm[tok],
+                        group=tg,
+                        wait=True,
+                    )
+            return tg
+
         seed_at = resid_row(slots[0, "o"], 0)
         step(fill(p_on[0], wlm, linear_tap(stage_total, stage_at.rng, WLM_SLOT)))
         for tok in range(P_MAX):
@@ -1175,6 +1241,10 @@ def build(
                 qkv_at = slots[L, "qkv"]
                 if L + 1 < N_LAYERS:
                     w_tgs.append(lanes(tok, L + 1))
+                else:
+                    # Half the lm_head's tasks while the layer's two are
+                    # queued: a channel queues 4.
+                    w_tgs.append(lm_lanes(tok, range(2)))
                 for r in rows:
                     norm(gate_of[r], o_at, r, qkv_at + r * ROW)
                 step(
@@ -1294,16 +1364,51 @@ def build(
                     *(t for c in range(HD // D) for t in acts(on, d_at, c * D, HD)),
                 )
                 w_tgs[L].finish()
+            w_tgs.append(lm_lanes(tok, range(2, LM_CORE_TILES // LM_SLOTS_PER_TASK)))
 
             for r in rows:
                 norm(gate_of[r], final_slot, r, discard)
-            out_tg = TaskGroup()
-            wlm.fill(
-                stage,
-                tap=linear_tap(stage_total, discard, WLM_SLOT),
-                length_parameter=p_lm[tok],
-                group=out_tg,
+            # The array's sets to the stage (out object j of core c at region
+            # j, offset c * OUT_BYTES), then to the lm_head core, a candidate
+            # slot each: half h's rows (objects 2h and 2h + 1), then its meta.
+            lm_on = p_lm[tok]
+            lm_at = outs["g"]
+            step(
+                *acts(lm_on, discard),
+                *(t for j in range(3) for t in outs_drain(lm_on, "g", j)),
             )
+            step(*(t for j in range(3, LM_OUTS) for t in outs_drain(lm_on, "g", j)))
+            w_tgs[N_LAYERS].finish()
+            w_tgs[N_LAYERS + 1].finish()
+            for c in range(N_CORES):
+                cand_tg = TaskGroup()
+                for half in range(2):
+                    wlm.fill(
+                        stage,
+                        tap=gather_tap(
+                            stage_total,
+                            lm_at + 2 * half * OUT_REGION + c * OUT_BYTES,
+                            2,
+                            OUT_REGION,
+                            OUT_BYTES,
+                        ),
+                        length_parameter=lm_on,
+                        group=cand_tg,
+                        wait=True,
+                    )
+                    wlm.fill(
+                        stage,
+                        tap=linear_tap(
+                            stage_total,
+                            lm_at + 4 * OUT_REGION + c * OUT_BYTES + 64 * half,
+                            64,
+                        ),
+                        length_parameter=lm_on,
+                        group=cand_tg,
+                        wait=True,
+                    )
+                cand_tg.finish()
+            out_tg = TaskGroup()
             rec_c.drain(
                 rec,
                 tap=linear_tap(rec_total, tok * REC_BYTES, REC_BYTES),
@@ -1318,28 +1423,6 @@ def build(
                 group=out_tg,
                 wait=True,
             )
-            n_tasks = LM_LANE_TILES // LM_SLOTS_PER_TASK
-            lm_tgs = [TaskGroup() for _ in range(n_tasks)]
-            for j in range(n_tasks):
-                for lane, tile0 in ((wlm, 0), (wlm_b, LM_LANE_TILES)):
-                    lane.fill(
-                        lmw,
-                        tap=gather_tap(
-                            lmw_total,
-                            LMW_GAMMA_BYTES
-                            + (tile0 + j * LM_SLOTS_PER_TASK) * WLM_SLOT,
-                            LM_SLOTS_PER_TASK,
-                            WLM_SLOT,
-                            WLM_SLOT,
-                        ),
-                        length_parameter=p_lm[tok],
-                        group=lm_tgs[j],
-                        wait=True,
-                    )
-                if j >= 2:
-                    lm_tgs[j - 2].finish()
-            for j in range(max(0, n_tasks - 2), n_tasks):
-                lm_tgs[j].finish()
             out_tg.finish()
         step(drain(p_on[0], seed, linear_tap(stage_total, stage_at.rng, RROW)))
 

@@ -193,3 +193,135 @@ void llama_mma_f32_to(int8_t *restrict act, int8_t *restrict w,
                       int32_t m_count) __attribute__((alias("llama_mma_f32")));
 
 } // extern "C"
+
+// The lm_head on the array. A table slot is 4 rows of the tied embed table,
+// row-major (kLmRows x 2048), then 8 biases and 8 w_scales as a weight slot's
+// trailer (rows 4-7: bias 0, scale 1). Each core keeps the top kLmKset of its
+// share of the vocabulary by (logit, lower gidx), with their embed rows (in
+// the idle mma tile) and their meta (in the idle partials), the lm_head core's
+// candidate layout: per 4 entries 16 words, their logits, gidx and scales,
+// then the set's length.
+#ifndef LLAMA_LM_KSET
+#define LLAMA_LM_KSET 8
+#endif
+static constexpr int kLmKset = LLAMA_LM_KSET;
+static constexpr int kLmRows = 4;
+static constexpr int kD = 2048;
+static_assert(kLmKset == 8, "the set is the mma tile's 8 rows, 2 meta blocks");
+
+static inline int32_t lm_key(float f) {
+  int32_t b = __builtin_bit_cast(int32_t, f);
+  if (b == INT32_MIN)
+    b = 0;
+  return b ^ ((b >> 31) & 0x7fffffff);
+}
+
+extern "C" {
+
+// The logits of table slot `tile_idx` against act's first activation (a
+// decode activation object: row 0's 2048 columns, its scale at 4 * 2048),
+// inserted into the core's set. Tile 0 of the core's share resets the set.
+void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
+                       int8_t *restrict rows, int32_t *restrict meta,
+                       int32_t tile_idx, int32_t first) {
+  event0();
+  if (first)
+    meta[12] = 0;
+
+  aie::accum<acc32, 64> acc0, acc1, acc2, acc3;
+  acc0.from_vector(aie::zeros<int32, 64>());
+  acc1.from_vector(aie::zeros<int32, 64>());
+  acc2.from_vector(aie::zeros<int32, 64>());
+  acc3.from_vector(aie::zeros<int32, 64>());
+  const int8_t *__restrict w0 = w;
+  const int8_t *__restrict w1 = w + kD;
+  const int8_t *__restrict w2 = w + 2 * kD;
+  const int8_t *__restrict w3 = w + 3 * kD;
+  const int8_t *__restrict x = act;
+#pragma clang loop unroll_count(2)
+  for (int g = 0; g < kD / 64; g++) {
+    aie::vector<int8, 64> x_v = aie::load_v<64>(x);
+    acc0 = aie::mac(acc0, aie::load_v<64>(w0), x_v);
+    acc1 = aie::mac(acc1, aie::load_v<64>(w1), x_v);
+    acc2 = aie::mac(acc2, aie::load_v<64>(w2), x_v);
+    acc3 = aie::mac(acc3, aie::load_v<64>(w3), x_v);
+    x += 64;
+    w0 += 64;
+    w1 += 64;
+    w2 += 64;
+    w3 += 64;
+  }
+  ::aie::vector<int32, 32> sums = ::aie::zeros<int32, 32>();
+  sums.set(aie::reduce_add(acc0.template to_vector<int32>()), 0);
+  sums.set(aie::reduce_add(acc1.template to_vector<int32>()), 1);
+  sums.set(aie::reduce_add(acc2.template to_vector<int32>()), 2);
+  sums.set(aie::reduce_add(acc3.template to_vector<int32>()), 3);
+
+  alignas(16) float act_scales[4] = {
+      *reinterpret_cast<const float *>(act + 4 * kD), 1.0f, 1.0f, 1.0f};
+  alignas(32) float logits[8];
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
+  half_epilogue(sums, act_scales, w, reinterpret_cast<int8_t *>(logits), 0, 0,
+                0, 1);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
+
+  const float *w_scales = reinterpret_cast<const float *>(w + kTrailer + 32);
+  int len = meta[12];
+  int32_t min_key = 0, min_gidx = 0;
+  int mi = 0;
+  bool rescan = true;
+  for (int n = 0; n < kLmRows; n++) {
+    const int32_t gidx = tile_idx * kLmRows + n;
+    const int32_t key = lm_key(logits[n]);
+    int slot;
+    if (len < kLmKset) {
+      slot = len++;
+    } else {
+      if (rescan) {
+        mi = 0;
+        min_key = lm_key(__builtin_bit_cast(float, meta[0]));
+        min_gidx = meta[4];
+        for (int i = 1; i < kLmKset; i++) {
+          const int at = 16 * (i / 4) + i % 4;
+          int32_t k = lm_key(__builtin_bit_cast(float, meta[at]));
+          if (k < min_key || (k == min_key && meta[at + 4] > min_gidx)) {
+            min_key = k;
+            min_gidx = meta[at + 4];
+            mi = i;
+          }
+        }
+        rescan = false;
+      }
+      if (key < min_key || (key == min_key && gidx > min_gidx))
+        continue;
+      slot = mi;
+      rescan = true;
+    }
+    const int at = 16 * (slot / 4) + slot % 4;
+    meta[at] = __builtin_bit_cast(int32_t, logits[n]);
+    meta[at + 4] = gidx;
+    meta[at + 8] = __builtin_bit_cast(int32_t, w_scales[n]);
+    for (int c = 0; c < kD / 64; c++)
+      ::aie::store_v(rows + slot * kD + c * 64,
+                     ::aie::load_v<64>(w + n * kD + c * 64));
+  }
+  meta[12] = len;
+  meta[28] = len;
+  event1();
+}
+
+// Part j of the core's set for the lm_head core: j < 4 its rows 2j and
+// 2j + 1, j = 4 its meta (the first 4096 bytes of the partials).
+void llama_mma_lm_out(int8_t *restrict rows, int32_t *restrict meta,
+                      int8_t *restrict out, int32_t j) {
+  const int8_t *src =
+      j < 4 ? rows + 2 * j * kD : reinterpret_cast<const int8_t *>(meta);
+  for (int c = 0; c < 2 * kD / 64; c++)
+    ::aie::store_v(out + c * 64, ::aie::load_v<64>(src + c * 64));
+}
+
+} // extern "C"
