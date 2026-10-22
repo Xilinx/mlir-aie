@@ -33,13 +33,15 @@ static_assert(YOLO_INPUT_WIDTH % 64 == 0, "rows go 64 pixels at a time");
 
 extern "C" {
 
-void yolo_input_quant(const uint8_t *__restrict rgb, int8_t *__restrict out) {
+// The row is quantized in place: the input is the image's alone.
+void yolo_input_quant(uint8_t *__restrict rgb, int8_t *__restrict out) {
   event0();
   ::aie::set_rounding(aie::rounding_mode::positive_inf);
   ::aie::set_saturation(aie::saturation_mode::saturate);
   constexpr int quads = YOLO_INPUT_WIDTH / 4;
-  alignas(64) int8_t q[YOLO_INPUT_WIDTH * 3];
+  int8_t *q = reinterpret_cast<int8_t *>(rgb);
   AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(YOLO_INPUT_WIDTH * 3 / 32)
   for (int i = 0; i < YOLO_INPUT_WIDTH * 3; i += 32)
     aie::store_v(q + i,
                  aie::mul(aie::load_v<32>(rgb + i), (int8_t)YOLO_INPUT_MUL)

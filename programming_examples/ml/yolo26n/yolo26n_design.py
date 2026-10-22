@@ -1021,6 +1021,19 @@ class SegmentDesign:
         # A row another worker sends that is read only as it arrives is read
         # in place, in the fifo's own element.
         direct = {name for name in external if need[name] == 1 and rate[name] == 1}
+        # So is a faster stream that one operator of its rate reads row for
+        # row: each row taken as the operator computes from it.
+        per_row = {
+            name
+            for name in external
+            if need[name] == rate[name] > 1 and len(readers[name]) == 1
+            for op, part, reach, stride, _ in readers[name]
+            if reach == 0
+            and stride == 1
+            and not part.upsample
+            and rate[op.dst.name] == rate[name]
+        }
+        direct |= per_row
         # Operators of one delay next to each other in the run's order: each
         # such stretch computes under one guard, so a row read in place must
         # be read within one stretch of its own delay.
@@ -1101,34 +1114,25 @@ class SegmentDesign:
             op.name: parts
             for op, ((parts, *_),) in ((o, i) for o, i in steps if isinstance(o, Conv))
         }
-        assembled = {
+        concats = {
             name
             for name, parts in parts_of.items()
             if len(parts) > 1 or parts[0].upsample
         }
-        # A 1x1 conv over a concat reads each part where it waits, 8 output
-        # channels at a time (see conv2dk1_i8_bias_slices_ref): no row
-        # assembled from the parts.
-        sliced: dict[str, int] = {}
-        for name in assembled:
+        # Where its row does not fit assembled, a 1x1 conv over a concat
+        # reads each part where it waits, 8 output channels at a time (see
+        # conv2dk1_i8_bias_slices_ref), at a call and a table map per chunk.
+        concat_slices: dict[str, int] = {}
+        for name in concats:
             op = conv_of[name]
             width = math.gcd(
                 *(part.size // part.source.width for part in parts_of[name])
             )
             if op.kernel == 1 and width % 8 == 0 and width < op.src.channels8:
-                sliced[name] = width
-        assembled -= sliced.keys()
+                concat_slices[name] = width
         upsampled = {
             name: [part for part in parts_of[name] if part.upsample]
             for name in parts_of
-        }
-        per_channel = {
-            op.name: (
-                sliced[op.name] + 4
-                if op.name in sliced
-                else weights_of[op.name].nbytes // op.dst.channels8 + 4
-            )
-            for op in convs
         }
 
         # Outputs leaving by DMA past a core's two channels take turns on one,
@@ -1140,11 +1144,6 @@ class SegmentDesign:
             latest = max(delay[name] for name in sent)
             for name in sent:
                 ahead[name] = (latest - delay[name]) * rate[name]
-
-        # The input kernel quantizes a whole row on its stack.
-        stack = (
-            IMAGE_ROW_BYTES if any(isinstance(op, InputQuant) for op in group) else 0
-        )
 
         def plan(
             buffered: int, level: int
@@ -1168,7 +1167,6 @@ class SegmentDesign:
             spare = (
                 L1_BYTES
                 - L1_RESERVE
-                - stack
                 - sum(rows * kept[name] for name, rows in rings.items())
                 - sum(
                     self.l1_rows(tensors[name], depths[name], 1)
@@ -1209,7 +1207,14 @@ class SegmentDesign:
                 streamed[op.name] = 8
                 spare += held[op.name] - 256 * op.act
                 ic = op.src.channels8
-                if level > 1 and op.name not in slice_of and (ic // level) % 8 == 0:
+                # A slice call reads its lines from where they wait, which an
+                # assembled row's parts do not line up with.
+                if (
+                    level > 1
+                    and op.name not in slice_of
+                    and op.name not in assembled
+                    and (ic // level) % 8 == 0
+                ):
                     slice_of[op.name] = ic // level
                     spare -= 4 * op.dst.width * 8
             spare -= stream_bytes(streamed)
@@ -1226,18 +1231,40 @@ class SegmentDesign:
                         break
             return streamed, spare, slice_of
 
-        # Outputs double-buffered where that fits, else one row at a time: a
-        # row drains in a few thousand cycles of the tens of thousands it takes.
-        # Then thinner slices of the streamed weights, each costing cycles.
-        buffered, planned = next(
+        # Concats' rows assembled where that fits. Then outputs double-buffered
+        # where that fits, else one row at a time: a row drains in a few
+        # thousand cycles of the tens of thousands it takes. Then thinner
+        # slices of the streamed weights, each costing cycles.
+        for sliced in ({}, concat_slices):
+            assembled = concats - sliced.keys()
+            per_channel = {
+                op.name: (
+                    sliced[op.name] + 4
+                    if op.name in sliced
+                    else weights_of[op.name].nbytes // op.dst.channels8 + 4
+                )
+                for op in convs
+            }
+            fits = {}
+            for level in (1, 2, 4):
+                fits = {b: got for b in (2, 1) if (got := plan(b, level)) is not None}
+                if fits:
+                    break
+            if fits:
+                break
+        # Two copies of the tables before double-buffered outputs: a table
+        # map is most of a SiLU conv's cycles and reads its two halves from
+        # two copies at once, while an output row drains long before the
+        # step that makes the next is done.
+        buffered = next(
             (
-                (b, got)
-                for level in (1, 2, 4)
+                b
                 for b in (2, 1)
-                if (got := plan(b, level)) is not None
+                if b in fits and fits[b][1] >= TABLE_COPY_BYTES * max(tables - 1, 1)
             ),
-            (1, None),
+            max(fits, default=1),
         )
+        planned = fits.get(buffered)
         if planned is None:
             raise ValueError(
                 f"{group[0].name}: no chunks of its weights fit beside its rows"
@@ -1754,6 +1781,7 @@ class SegmentDesign:
                         name
                         for name in external
                         if name in direct
+                        and name not in per_row
                         and delay[name] == d
                         and readers[name][0][0].name in names
                     ]
@@ -1764,6 +1792,7 @@ class SegmentDesign:
                         for op, inputs in stretch:
                             name = op.dst.name
                             m = rate[name]
+                            rows = [n for n in per_row if readers[n][0][0] is op]
                             for j in range(m):
                                 y = s * m + (j - m * d)
                                 handle = (
@@ -1771,7 +1800,12 @@ class SegmentDesign:
                                 )
                                 o = handle.acquire(1) if handle is not None else None
                                 target = slot(name, y) if name in rings else o
+                                for n in rows:
+                                    arrived[n] = values[at[("in", n)]].acquire(1)
                                 compute(op, inputs, y, target)
+                                for n in rows:
+                                    values[at[("in", n)]].release(1)
+                                    del arrived[n]
                                 if handle is None:
                                     continue
                                 copy = ("copy", tensors[name].row_bytes, False)
