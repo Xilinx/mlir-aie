@@ -5,18 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Packet-flow labels include the matching arbitration rule and packet metadata.
+// Packet-flow labels include the matching arbitration rule and packet
+// metadata. Only the rule that claims the arriving packet is annotated: the
+// flow carries 2, which rule 1 claims and rule 0 does not.
 
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot %s | FileCheck %s
 
-// CHECK: arbitration_0 {{.*}} label="r0 pkt=3/31 -> A1.M0 header priority ctrl-overlay"
-// CHECK-SAME: tooltip="rule 0: packet ID & 31 = 3, arbiter 1, msel 0, keep packet header: yes, priority route: yes, control overlay: yes"
+// CHECK: arbitration_0 {{.*}} label="r1 pkt=2/30 -> A1.M1 header ctrl-overlay"
+// CHECK-SAME: tooltip="rule 1: packet ID & 30 = 2, arbiter 1, msel 1, keep packet header: yes, priority route: no, control overlay: yes"
 // CHECK-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0"
-// CHECK: arbitration_1 {{.*}} label="r1 pkt=2/30 -> A1.M1 header ctrl-overlay"
-// CHECK-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0"
-// CHECK-NOT: arbitration_2
-// CHECK: p_0_2_5_0 -> p_0_3_3_0
+// CHECK-NOT: arbitration_1
+// The port a packet crosses is named for that packet, so two flows sharing
+// one port stay apart.
+// CHECK: p_0_2_5_0_k2 -> p_0_3_3_0_k2
 // CHECK-SAME: F0 pkt=2/30 header priority
 
 module {

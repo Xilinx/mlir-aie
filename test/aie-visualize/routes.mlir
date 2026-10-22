@@ -26,9 +26,11 @@
 // ALL-SAME: class="buffer detail-buffers flow src-0 dst-0"
 // ALL: buffer_1 {{.*}} label="dest"
 // ALL-NOT: memref
-// Two packet flows leaving the same buffer share an origin, so the hop they
-// share names each of them once.
-// ALL-DAG: p_0_2_5_0 -> p_0_3_3_0 [color="#d73027", class="route detail-packet-ids detail-vias flow src-0 dst-0"
+// Two packet flows leave the same buffer and cross the same hop. The hop is
+// named for the packet crossing it, so each is a place of its own and each
+// is named once.
+// ALL-DAG: p_0_2_5_0_k3 -> p_0_3_3_0_k3 {{.*}} label=<<FONT COLOR="#d73027">F0 pkt=3/31</FONT>>
+// ALL-DAG: p_0_2_5_0_k4 -> p_0_3_3_0_k4 {{.*}} label=<<FONT COLOR="#d73027">F0 pkt=4/31</FONT>>
 // ALL-DAG: p_0_3_1_0_m -> p_0_3_1_1_s {{.*}} label=<<FONT COLOR="#984ea3">F3 pkt=6/31</FONT>>
 // ALL-DAG: p_0_4_0_0 -> p_0_4_3_2
 // ALL-DAG: p_0_4_3_2 -> p_0_3_5_2 {{.*}} label=<<FONT COLOR="#1a9850">F2</FONT>>
@@ -37,16 +39,16 @@
 // ALL-DAG: p_0_3_1_0_s -> buffer_1 {{.*}}class="buffer-link{{.*}}];
 // ALL-NOT: p_0_2_0_0
 
-// VIAS: p_0_2_5_0 [shape=point, width=0.09, {{.*}} xlabel="N0"
+// VIAS: p_0_2_5_0_k3 [shape=point, width=0.09, {{.*}} xlabel="N0"
 // VIAS-SAME: class="port detail-vias
-// VIAS: p_0_3_3_0 [shape=point, width=0.09, {{.*}} xlabel="S0"
+// VIAS: p_0_3_3_0_k3 [shape=point, width=0.09, {{.*}} xlabel="S0"
 // VIAS: arbitration_0 {{.*}} label="r0 pkt=3/31 -> A2.M0 header"
 // VIAS-SAME: tooltip="rule 0: packet ID & 31 = 3, arbiter 2, msel 0, keep packet header: yes, priority route: no, control overlay: no"
 // VIAS-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0"
 // VIAS: arbitration_1 {{.*}} label="r1 pkt=4/31 -> A2.M1 header"
 // VIAS-SAME: tooltip="rule 1: packet ID & 31 = 4, arbiter 2, msel 1, keep packet header: yes, priority route: no, control overlay: no"
 // VIAS-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0"
-// VIAS: p_0_2_1_0_m -> p_0_2_5_0
+// VIAS: p_0_2_1_0_m -> p_0_2_5_0_k3
 // VIAS-NOT: arrowhead=none
 
 // TOPOLOGY: graph [layout=neato, overlap=true, splines=curved

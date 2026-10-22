@@ -51,10 +51,14 @@ struct PortNode {
   AIE::WireBundle bundle;
   int channel;
   std::optional<AIE::DMAChannelDir> dmaDirection;
+  /// Which packet crosses a switchbox port. Two packet flows sharing one
+  /// port are not the same place to a reader following either of them, and
+  /// keeping them apart lets each contract on its own.
+  std::optional<unsigned> packet;
 
   auto asTuple() const {
     return std::make_tuple(col, row, static_cast<int>(bundle), channel,
-                           dmaDirection);
+                           dmaDirection, packet);
   }
   bool operator<(const PortNode &other) const {
     return asTuple() < other.asTuple();
@@ -456,6 +460,9 @@ static FailureOr<std::vector<FlowRoute>> collectRoutes(AIE::DeviceOp device) {
     if (failed(appendVias(packetFlow, route.points)))
       return failure();
     route.points.push_back(*dest);
+    for (PortNode &point : route.points)
+      if (point.bundle != AIE::WireBundle::DMA)
+        point.packet = route.packetID;
     routes.push_back(std::move(route));
   }
   return routes;
@@ -981,6 +988,52 @@ static StringRef roleFill(const Palette &palette, unsigned id) {
   return palette.roles[id % palette.roles.size()];
 }
 
+/// Which packets cross each switchbox port, keyed by the port itself rather
+/// than by one of its per-packet variants.
+static std::map<PortNode, std::set<unsigned>>
+collectPortPackets(ArrayRef<FlowRoute> routes) {
+  std::map<PortNode, std::set<unsigned>> packets;
+  for (const FlowRoute &route : routes)
+    for (const PortNode &point : route.points) {
+      if (!point.packet)
+        continue;
+      PortNode base = point;
+      base.packet = std::nullopt;
+      packets[base].insert(*point.packet);
+    }
+  return packets;
+}
+
+/// The ends of a merge a rule claims, one pair per packet. A switchbox port
+/// is split per packet and a DMA channel is not, so the packet is read from
+/// whichever end states one.
+static std::vector<std::pair<PortNode, PortNode>>
+claimedSegments(const std::map<PortNode, std::set<unsigned>> &portPackets,
+                const Segment &segment, unsigned mask, unsigned value) {
+  std::set<unsigned> candidates;
+  for (const PortNode *end : {&segment.source, &segment.dest}) {
+    auto found = portPackets.find(*end);
+    if (found != portPackets.end())
+      candidates.insert(found->second.begin(), found->second.end());
+  }
+  if (candidates.empty())
+    return {{segment.source, segment.dest}};
+
+  std::vector<std::pair<PortNode, PortNode>> claimed;
+  for (unsigned packet : candidates) {
+    if ((packet & mask) != value)
+      continue;
+    PortNode source = segment.source;
+    PortNode dest = segment.dest;
+    if (source.bundle != AIE::WireBundle::DMA)
+      source.packet = packet;
+    if (dest.bundle != AIE::WireBundle::DMA)
+      dest.packet = packet;
+    claimed.push_back({source, dest});
+  }
+  return claimed;
+}
+
 static std::string portNodeID(const PortNode &port) {
   std::string id = "p_" + std::to_string(port.col) + "_" +
                    std::to_string(port.row) + "_" +
@@ -988,6 +1041,8 @@ static std::string portNodeID(const PortNode &port) {
                    std::to_string(port.channel);
   if (port.dmaDirection)
     id += *port.dmaDirection == AIE::DMAChannelDir::MM2S ? "_m" : "_s";
+  if (port.packet)
+    id += "_k" + std::to_string(*port.packet);
   return id;
 }
 
@@ -1049,6 +1104,8 @@ static SemanticGraph buildSemanticGraph(
     const std::set<Operation *> &buffersFeedingDMA,
     const std::set<Operation *> &buffersFedByDMA) {
   SemanticGraph graph;
+  std::map<PortNode, std::set<unsigned>> portPackets =
+      collectPortPackets(routes);
   auto addPort = [&](const PortNode &port) {
     std::string id = portNodeID(port);
     graph.addNode(id,
@@ -1085,13 +1142,16 @@ static SemanticGraph buildSemanticGraph(
   // rather than lifting it. Reading it here is what keeps a flow arriving at
   // such a port from looking as though it stops there.
   for (const ArbitrationRule &rule : arbitrationRules) {
-    std::string sourceID = portNodeID(rule.segment.source);
-    std::string destID = portNodeID(rule.segment.dest);
-    if (sourceID == destID)
-      continue;
-    if (!graph.hasIncoming(sourceID))
-      continue;
-    graph.addEdge(addPort(rule.segment.source), addPort(rule.segment.dest));
+    for (const auto &[ingress, egress] :
+         claimedSegments(portPackets, rule.segment, rule.mask, rule.value)) {
+      std::string sourceID = portNodeID(ingress);
+      std::string destID = portNodeID(egress);
+      if (sourceID == destID)
+        continue;
+      if (!graph.hasIncoming(sourceID))
+        continue;
+      graph.addEdge(addPort(ingress), addPort(egress));
+    }
   }
 
   std::map<Operation *, unsigned> bufferIDs;
@@ -1332,10 +1392,14 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     }
   }
   // A merge inside a switchbox reaches ports that no flow names.
-  for (const ArbitrationRule &rule : arbitrationRules) {
-    ports.insert(rule.segment.source);
-    ports.insert(rule.segment.dest);
-  }
+  std::map<PortNode, std::set<unsigned>> portPackets =
+      collectPortPackets(*routes);
+  for (const ArbitrationRule &rule : arbitrationRules)
+    for (const auto &[ingress, egress] :
+         claimedSegments(portPackets, rule.segment, rule.mask, rule.value)) {
+      ports.insert(ingress);
+      ports.insert(egress);
+    }
 
   const AIE::AIETargetModel &model = device.getTargetModel();
   std::set<std::pair<int, int>> designTiles;
@@ -1852,8 +1916,13 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     unsigned annotationID = 0;
     std::map<Segment, unsigned> segmentAnnotationCounts;
     for (const ArbitrationRule &rule : arbitrationRules) {
-      auto edge = topologyEdges.find(
-          {portNodeID(rule.segment.source), portNodeID(rule.segment.dest)});
+      auto edge = topologyEdges.end();
+      for (const auto &[ingress, egress] :
+           claimedSegments(portPackets, rule.segment, rule.mask, rule.value)) {
+        edge = topologyEdges.find({portNodeID(ingress), portNodeID(egress)});
+        if (edge != topologyEdges.end())
+          break;
+      }
       if (edge == topologyEdges.end())
         continue;
       bool usedByAnyRoute = false;
