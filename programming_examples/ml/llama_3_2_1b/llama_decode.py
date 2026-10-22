@@ -48,7 +48,7 @@ from ml_dtypes import bfloat16
 # over p rows. amdxdna times a dispatch out after about 5 s.
 LM_HEAD_MS = 4.7
 LAYER_MS = 1.16
-LAYER_MS_PER_ROW = 0.000200
+LAYER_MS_PER_ROW = 0.000097
 DISPATCH_BUDGET_MS = 4000.0
 
 
