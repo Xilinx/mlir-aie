@@ -189,6 +189,7 @@ def test_prefill_passes_and_publishes_ttft_at_its_prompt_length(llama):
     assert got["ttft_min_ms"] == 8135.6
     assert got["ttft_npu_dispatch_ms"] == 8024.6
     assert got["ttft_host_ms"] == 133.9
+    assert got["prompt_tokens"] == 513
 
 
 def test_prefill_fails_on_its_exit_status(llama):
@@ -210,6 +211,8 @@ def test_the_prefill_sweep_publishes_a_row_per_prompt_length(llama):
     assert names["ttft_min_ms"]["value"] == 8135.6
     assert names["ttft_ms"]["range"] == "median of 5"
     assert names["ttft_min_ms"]["range"] == "fastest of 5"
+    assert names["prefill_tok_s"]["value"] == 62.9
+    assert names["prefill_tok_s"]["unit"] == "tok/s"
     assert f"{case}/prompt=512/ttft_ms" in {r["name"] for r in rows}
     # A failed length publishes nothing for it.
     failed_rows = llama.aggregate(

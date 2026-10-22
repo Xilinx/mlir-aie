@@ -105,6 +105,7 @@ _GENERATE_RE = re.compile(
     r"median of (\d+): TTFT ([\d.]+) ms \(min ([\d.]+); NPU dispatch ([\d.]+), "
     r"host ([\d.]+)\), decode (?:([\d.]+) tok/s|n/a)"
 )
+_PROMPT_RE = re.compile(r"^prompt (\d+) tokens, generated", re.MULTILINE)
 _CHECK_RE = re.compile(r"check: (\d+)/(\d+) tokens")
 _ORACLE_RE = re.compile(r"^oracle: (\d+)/(\d+) generated tokens pass", re.MULTILINE)
 # generate.py's prompt and length, the same every night.
@@ -295,11 +296,13 @@ def parse_prefill(out: str, returncode: int) -> dict:
     Returns:
         `prefill_passed`: it exited 0 (every repeat generated the same
         token; generate.py's own gate, no oracle here); the TTFT split, as
-        `parse_generate`'s.
+        `parse_generate`'s; and `prompt_tokens`, the prompt's length with BOS.
     """
     timing = _GENERATE_RE.search(out)
+    prompt = _PROMPT_RE.search(out)
     return {
-        "prefill_passed": returncode == 0 and bool(timing),
+        "prefill_passed": returncode == 0 and bool(timing) and bool(prompt),
+        "prompt_tokens": int(prompt.group(1)) if prompt else None,
         "ttft_runs": int(timing.group(1)) if timing else None,
         "ttft_ms": float(timing.group(2)) if timing else None,
         "ttft_min_ms": float(timing.group(3)) if timing else None,
@@ -506,6 +509,15 @@ def aggregate(
             out.append(
                 row(prompt, metric, p[metric], unit, f"{stat} of {p['ttft_runs']}")
             )
+        out.append(
+            row(
+                prompt,
+                "prefill_tok_s",
+                round(p["prompt_tokens"] / (p["ttft_ms"] / 1e3), 1),
+                "tok/s",
+                f"prompt tokens over the median of {p['ttft_runs']} TTFTs",
+            )
+        )
     if accuracy.get("accuracy_passed"):
         note = f"{ACCURACY_MAX_TOKENS} tokens, teacher-forced"
         out.append(row(case, "kl_bf16", accuracy["kl_bf16"], "nats", note))
