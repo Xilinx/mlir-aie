@@ -144,8 +144,8 @@ score-to-probability step is the oracle's exact polynomial
 **Tokens per dispatch.** amdxdna times a dispatch out after about 5 s. The host
 picks each dispatch's token count from its first position
 (`DecodeShape.passes_for` in `llama_decode.py`): as many of the 4 as fit a 4 s
-budget by a cost model (4.7 ms of lm_head a token, plus per layer 1.80 ms and
-0.163 ms per 1k rows of context). At 16 layers that is 4 tokens all the way to
+budget by a cost model (4.7 ms of lm_head a token, plus per layer 1.16 ms and
+0.200 ms per 1k rows of context). At 16 layers that is 4 tokens all the way to
 128k. The array's activations and outputs pass through a DDR `stage` buffer
 between it and the cores around it (see `aie2_decode.py`).
 
