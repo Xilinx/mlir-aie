@@ -77,20 +77,23 @@ extern "C" void llama_comb_rope_rows(int8_t *restrict comb,
                                      int8_t *restrict out_lo,
                                      int8_t *restrict out_hi) {
   event0();
+  const ::aie::saturation_mode prev_sat =
+      ::aie::swap_saturation(::aie::saturation_mode::saturate);
+  const ::aie::rounding_mode prev_rnd =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   for (int g = 0; g < kNHeadsKV; g++) {
     int8_t *base = (g < kHalfKV) ? out_lo : out_hi;
     int local = (g < kHalfKV) ? g : (g - kHalfKV);
     int8_t *dst = base + local * kRowChunk;
     const int8_t *src = comb + g * kArrayChunk;
-    const int8_t *kvfp = src + kChunk;
     copy_words<kChunk>(dst, src);
-    int8_t *row = dst + kChunk;
-    float ks, vs;
-    llama_kv_row_quant<kHD>(kvfp, row, row + kHD, &ks, &vs);
-    __builtin_memcpy(row + 2 * kHD, &ks, 4);
-    __builtin_memcpy(row + 2 * kHD + 4, &vs, 4);
+    alignas(64) int8_t row[kRowBytes];
+    llama_kv_row_quant<kHD>(src + kChunk, row);
+    copy_words<kRowBytes>(dst + kChunk, row);
     copy_words<kRowBytes>(base + kHalfKV * kRowChunk + local * kRowBytes, row);
   }
+  ::aie::set_rounding(prev_rnd);
+  ::aie::set_saturation(prev_sat);
   event1();
 }
 

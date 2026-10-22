@@ -5,81 +5,102 @@
 //
 // One token's K/V cache row from its fp32 k and v: rope_k, then K and V each
 // quantized to int8 with its own absmax / 127 scale (llama_oracle's append).
+// Needs rounding_mode::conv_even and saturation_mode::saturate (set by the
+// caller).
 //===----------------------------------------------------------------------===//
 
 #ifndef LLAMA_KV_ROW_H
 #define LLAMA_KV_ROW_H
 
+#include <aie_api/aie.hpp>
 #include <stdint.h>
 
 #include "llama_vec_fp.h"
 
-static inline int8_t llama_kv_row_round(float v) {
-  int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
-  if (r > 127)
-    r = 127;
-  if (r < -128)
-    r = -128;
-  return (int8_t)r;
-}
-
-// kvfp_packed is [k fp32[kHD] | v fp32[kHD] | cos bf16[kHD] | sin bf16[kHD]];
-// writes kHD int8 to each of k_out and v_out, and the two scales.
+// kvfp_packed is [k fp32[kHD] | v fp32[kHD] | cos bf16[kHD] | sin bf16[kHD]]
+// at a 32-byte boundary, so each 16-lane value is two 8-lane loads. row, at a
+// 64-byte boundary, gets [k int8[kHD] | v int8[kHD] | k_scale | v_scale].
 template <int kHD>
-static inline void
-llama_kv_row_quant(const int8_t *restrict kvfp_packed, int8_t *restrict k_out,
-                   int8_t *restrict v_out, float *restrict k_scale,
-                   float *restrict v_scale) {
+static inline void llama_kv_row_quant(const int8_t *restrict kvfp_packed,
+                                      int8_t *restrict row) {
+  constexpr int kV = 16;
   constexpr int kHalf = kHD / 2;
+  static_assert(kHalf % kV == 0);
   const float *k_fp = reinterpret_cast<const float *>(kvfp_packed);
-  const float *v_fp = reinterpret_cast<const float *>(kvfp_packed + kHD * 4);
-  const bfloat16 *cos =
-      reinterpret_cast<const bfloat16 *>(kvfp_packed + kHD * 8);
-  const bfloat16 *sin = cos + kHD;
+  const float *v_fp = k_fp + kHD;
+  const int16_t *cs_bits =
+      reinterpret_cast<const int16_t *>(kvfp_packed + kHD * 8);
 
-  // Rope k (half-split) through locals, so the in-place write cannot alias.
-  float k_rope[kHD];
-  for (int i = 0; i < kHalf; i++) {
-    float x1 = k_fp[i];
-    float x2 = k_fp[kHalf + i];
-    float c1 = (float)cos[i];
-    float s1 = (float)sin[i];
-    float c2 = (float)cos[kHalf + i];
-    float s2 = (float)sin[kHalf + i];
-    k_rope[i] = x1 * c1 - x2 * s1;
-    k_rope[kHalf + i] = x2 * c2 + x1 * s2;
+  // bf16 to fp32 is the bf16 bits over a zero low half.
+  alignas(64) float cs[2 * kHD];
+  for (int c = 0; c < kHD / kV; c++) {
+    auto [lo, hi] = ::aie::interleave_zip(
+        ::aie::zeros<int16, 2 * kV>(),
+        ::aie::concat(::aie::load_v<kV>(cs_bits + c * 2 * kV),
+                      ::aie::load_v<kV>(cs_bits + c * 2 * kV + kV)),
+        1);
+    ::aie::store_v(cs + c * 2 * kV, lo.template cast_to<float>());
+    ::aie::store_v(cs + c * 2 * kV + kV, hi.template cast_to<float>());
   }
 
-  // K's scale: absmax / 127, floored at 1e-12.
-  float k_absmax = 0.0f;
-  for (int i = 0; i < kHD; i++) {
-    float a = k_rope[i] >= 0.0f ? k_rope[i] : -k_rope[i];
-    if (a > k_absmax)
-      k_absmax = a;
+  alignas(64) float k_rope[kHD];
+  for (int j = 0; j < kHalf; j += kV) {
+    ::aie::vector<float, kV> x1 = ::aie::concat(::aie::load_v<8>(k_fp + j),
+                                                ::aie::load_v<8>(k_fp + j + 8));
+    ::aie::vector<float, kV> x2 =
+        ::aie::concat(::aie::load_v<8>(k_fp + kHalf + j),
+                      ::aie::load_v<8>(k_fp + kHalf + j + 8));
+    ::aie::store_v(
+        k_rope + j,
+        ::aie::sub(vec_mul_rne(x1, ::aie::load_v<kV>(cs + j)),
+                   vec_mul_rne(x2, ::aie::load_v<kV>(cs + kHD + j))));
+    ::aie::store_v(
+        k_rope + kHalf + j,
+        ::aie::add(vec_mul_rne(x2, ::aie::load_v<kV>(cs + kHalf + j)),
+                   vec_mul_rne(x1, ::aie::load_v<kV>(cs + kHD + kHalf + j))));
   }
-  if (k_absmax < 1e-12f)
-    k_absmax = 1e-12f;
-  float ks = k_absmax * (1.0f / 127.0f);
-  float k_inv = recip_rne(ks);
 
-  // V's scale, the same way.
-  float v_absmax = 0.0f;
-  for (int i = 0; i < kHD; i++) {
-    float a = v_fp[i] >= 0.0f ? v_fp[i] : -v_fp[i];
-    if (a > v_absmax)
-      v_absmax = a;
+  // A non-NaN float's |v| bits order as an int32, so each absmax is an
+  // integer max, and max(absmax, 1e-12f) one more.
+  ::aie::vector<int32, kV> k_mag = ::aie::zeros<int32, kV>();
+  ::aie::vector<int32, kV> v_mag = ::aie::zeros<int32, kV>();
+  for (int c = 0; c < kHD / kV; c++) {
+    k_mag = ::aie::max(
+        k_mag,
+        ::aie::bit_and(
+            int32(0x7fffffff),
+            ::aie::load_v<kV>(k_rope + c * kV).template cast_to<int32>()));
+    v_mag = ::aie::max(
+        v_mag, ::aie::bit_and(int32(0x7fffffff),
+                              ::aie::concat(::aie::load_v<8>(v_fp + c * kV),
+                                            ::aie::load_v<8>(v_fp + c * kV + 8))
+                                  .template cast_to<int32>()));
   }
-  if (v_absmax < 1e-12f)
-    v_absmax = 1e-12f;
-  float vs = v_absmax * (1.0f / 127.0f);
-  float v_inv = recip_rne(vs);
+  ::aie::vector<int32, 8> absmax = ::aie::zeros<int32, 8>();
+  absmax.set(::aie::reduce_max(k_mag), 0);
+  absmax.set(::aie::reduce_max(v_mag), 1);
+  ::aie::vector<float, 8> scale = vec_mul_rne(
+      ::aie::max(absmax, int32(0x2b8cbccc)).template cast_to<float>(),
+      ::aie::broadcast<float, 8>(1.0f / 127.0f));
+  float ks = scale.get(0);
+  float vs = scale.get(1);
+  ::aie::vector<float, kV> k_inv = ::aie::broadcast<float, kV>(recip_rne(ks));
+  ::aie::vector<float, kV> v_inv = ::aie::broadcast<float, kV>(recip_rne(vs));
 
-  for (int i = 0; i < kHD; i++) {
-    k_out[i] = llama_kv_row_round(k_rope[i] * k_inv);
-    v_out[i] = llama_kv_row_round(v_fp[i] * v_inv);
+  for (int c = 0; c < kHD / kV; c++) {
+    ::aie::store_v(row + c * kV,
+                   vec_round_to_i8(
+                       vec_mul_rne(::aie::load_v<kV>(k_rope + c * kV), k_inv)));
+    ::aie::store_v(row + kHD + c * kV,
+                   vec_round_to_i8(vec_mul_rne(
+                       ::aie::concat(::aie::load_v<8>(v_fp + c * kV),
+                                     ::aie::load_v<8>(v_fp + c * kV + 8)),
+                       v_inv)));
   }
-  *k_scale = ks;
-  *v_scale = vs;
+  reinterpret_cast<llama_word *>(row + 2 * kHD)[0] =
+      __builtin_bit_cast(int32_t, ks);
+  reinterpret_cast<llama_word *>(row + 2 * kHD)[1] =
+      __builtin_bit_cast(int32_t, vs);
 }
 
 #endif // LLAMA_KV_ROW_H
