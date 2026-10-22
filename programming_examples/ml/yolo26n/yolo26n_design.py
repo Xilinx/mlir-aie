@@ -1293,6 +1293,7 @@ class SegmentDesign:
             arg(("ring", name), Buffer(row(rows * kept[name])))
         copies = 2 if spare >= TABLE_COPY_BYTES * max(tables - 1, 1) else 1
         calls = {}
+        kernel_of = {}
         # Per streamed conv: its chunks, each chunk's weight bytes, its channels.
         streams: dict[str, tuple[int, int, int]] = {}
         # Per streamed conv: its chunks, each its weights and then its bias.
@@ -1491,28 +1492,62 @@ class SegmentDesign:
                 case _:
                     raise NotImplementedError(op.name)
             arg(("kernel", op.name), k)
+            kernel_of[op.name] = k
             for i, c in enumerate(consts):
                 arg(("const", op.name, i), c)
             calls[op.name] = (len(consts), scalars)
 
         streams_sliced = {name for name in sliced if name in streamed}
-        # Every streamed conv's chunks come down one stream, each padded to the
-        # largest, the same ones every step: a step drains the chunks of rows
-        # it does not compute. A memtile holds one step's chunks where they
-        # fit and sends them over and over; otherwise DDR sends them once a
-        # step.
+        # Every streamed conv's chunks come down one stream in objects the
+        # size of the largest chunk, the same ones every step: a step drains
+        # the objects of rows it does not compute. An object holds as many of
+        # a conv's chunks as fit, so a small chunk does not travel padded to
+        # the largest. A sliced conv's object holds whole slices of one
+        # output-channel group or whole groups, each chunk where its kernel's
+        # weights and bias need to be aligned. A memtile holds one step's
+        # objects where they fit and sends them over and over; otherwise DDR
+        # sends them once a step.
+        size = max((chunks.shape[1] for chunks in pieces.values()), default=0)
+        packs: dict[str, int] = {}
+        pitches: dict[str, int] = {}
+        for name, chunks in pieces.items():
+            count, piece = chunks.shape
+            # A call's rows come first: a 3x3 conv's three, a 1x1's one.
+            weights_at = conv_of[name].kernel
+            align = max(
+                (
+                    a
+                    for i, a in kernel_of[name].contract.alignments
+                    if i in (weights_at, weights_at + 1)
+                ),
+                default=4,
+            )
+            pitches[name] = -(-piece // align) * align
+            lines = (
+                conv_of[name].src.channels8 // sliced[name]
+                if name in streams_sliced
+                else count
+            )
+            packs[name] = max(
+                g
+                for g in range(1, count + 1)
+                if (g - 1) * pitches[name] + piece <= size
+                and count % g == 0
+                and (lines % g == 0 or g % lines == 0)
+            )
         if pieces:
-            size = max(chunks.shape[1] for chunks in pieces.values())
             each = [
-                chunk
+                (op.name, pieces[op.name][o : o + packs[op.name]])
                 for op, _ in steps
                 if op.name in pieces
                 for _ in range(rate[op.dst.name])
-                for chunk in pieces[op.name]
+                for o in range(0, len(pieces[op.name]), packs[op.name])
             ]
             sequence = np.zeros((len(each), size), np.int8)
-            for i, chunk in enumerate(each):
-                sequence[i, : chunk.size] = chunk
+            for i, (name, chunks) in enumerate(each):
+                for j, chunk in enumerate(chunks):
+                    at_chunk = j * pitches[name]
+                    sequence[i, at_chunk : at_chunk + chunk.size] = chunk
             sequence = sequence.reshape(-1)
             name = f"weights{self.weight_streams}"
             self.weight_streams += 1
@@ -1575,17 +1610,20 @@ class SegmentDesign:
                     return
                 chunks, per, chunk = streams[op.name]
                 size = op.dst.width * chunk
+                piece = pitches[op.name]
+                g = packs[op.name]
                 wts = values[at[("weights",)]]
-                for c in range_(chunks):
+                for o in range_(chunks // g):
                     wc = wts.acquire(1)
-                    k(
-                        *rows,
-                        view(wc, 0, per),
-                        view(wc, per, chunk, np.int32),
-                        *consts,
-                        view(target, c * size, size),
-                        *scalars,
-                    )
+                    for j in range_(g) if g > 1 else [0]:
+                        k(
+                            *rows,
+                            view(wc, j * piece, per),
+                            view(wc, j * piece + per, chunk, np.int32),
+                            *consts,
+                            view(target, (o * g + j) * size, size),
+                            *scalars,
+                        )
                     wts.release(1)
 
             def compute(op, inputs, y, target):
@@ -1645,35 +1683,52 @@ class SegmentDesign:
                         )
                         size_out = op.dst.width * 8
                         block = op.kernel**2 * width_in * 8
+                        piece = pitches.get(op.name, 0)
+                        # An object holds `g` slices of one group of 8 output
+                        # channels, or `h` whole groups.
+                        g = packs.get(op.name, 1)
+                        h = max(g // len(lines), 1)
                         # Rolled over the output channels: a call per chunk of
                         # 8 and slice is too much program to unroll.
-                        for c in range_(op.dst.channels8 // 8):
-                            for i, x in enumerate(lines):
-                                if wts is None:
-                                    w = view(
-                                        consts[0],
-                                        c * (len(lines) * block) + i * block,
-                                        block,
+                        for o in range_(op.dst.channels8 // 8 // h):
+                            if wts is not None and h > 1:
+                                wc = wts.acquire(1)
+                            for hh in range_(h) if h > 1 else [0]:
+                                c = o * h + hh
+                                for i, x in enumerate(lines):
+                                    if wts is None:
+                                        w = view(
+                                            consts[0],
+                                            c * (len(lines) * block) + i * block,
+                                            block,
+                                        )
+                                        b = view(consts[1], c * 32, 8, np.int32)
+                                        rest = consts[2:]
+                                    else:
+                                        if h == 1 and i % g == 0:
+                                            wc = wts.acquire(1)
+                                        at_piece = (
+                                            (hh * len(lines) + i) * piece
+                                            if h > 1
+                                            else (i % g) * piece
+                                        )
+                                        w = view(wc, at_piece, block)
+                                        b = view(wc, at_piece + block, 8, np.int32)
+                                        rest = consts
+                                    k(
+                                        *x,
+                                        w,
+                                        b,
+                                        *rest,
+                                        sums,
+                                        view(target, c * size_out, size_out),
+                                        *tail,
+                                        i,
                                     )
-                                    b = view(consts[1], c * 32, 8, np.int32)
-                                    rest = consts[2:]
-                                else:
-                                    wc = wts.acquire(1)
-                                    w = view(wc, 0, block)
-                                    b = view(wc, block, 8, np.int32)
-                                    rest = consts
-                                k(
-                                    *x,
-                                    w,
-                                    b,
-                                    *rest,
-                                    sums,
-                                    view(target, c * size_out, size_out),
-                                    *tail,
-                                    i,
-                                )
-                                if wts is not None:
-                                    wts.release(1)
+                                    if wts is not None and h == 1 and i % g == g - 1:
+                                        wts.release(1)
+                            if wts is not None and h > 1:
+                                wts.release(1)
                     case Conv() if op.kernel == 3 and len(inputs[0][0]) > 1:
                         ((parts, _, stride, height_in),) = inputs
                         above, below, check = borders(y, height_in, y, op.dst.height, 1)
@@ -1823,7 +1878,7 @@ class SegmentDesign:
                             values[at[("in", name)]].release(1)
                             del arrived[name]
                     drained = sum(
-                        rate[op.dst.name] * len(pieces[op.name])
+                        rate[op.dst.name] * len(pieces[op.name]) // packs[op.name]
                         for op, _ in stretch
                         if op.name in pieces
                     )
