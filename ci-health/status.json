@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-22T13:00:51+00:00",
+ "generated_at": "2026-10-22T18:56:15+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 393,
+   "runs": 377,
    "main": {
     "passed": 12,
     "failed": 0,
@@ -302,19 +302,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 94,
-    "failed": 56,
-    "rate": 0.627
+    "passed": 90,
+    "failed": 52,
+    "rate": 0.634
    },
    "merge_queue": {
     "passed": 48,
-    "failed": 9,
-    "rate": 0.842
+    "failed": 4,
+    "rate": 0.923
    },
    "flaky": {
-    "commits": 379,
+    "commits": 363,
     "flaky": 21,
-    "rate": 0.055
+    "rate": 0.058
    },
    "minutes_median": 43.2,
    "minutes_p90": 59.5,
@@ -326,7 +326,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 393,
+   "runs": 377,
    "main": {
     "passed": 12,
     "failed": 1,
@@ -588,19 +588,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 103,
-    "failed": 67,
-    "rate": 0.606
+    "passed": 98,
+    "failed": 64,
+    "rate": 0.605
    },
    "merge_queue": {
-    "passed": 55,
+    "passed": 50,
     "failed": 4,
-    "rate": 0.932
+    "rate": 0.926
    },
    "flaky": {
-    "commits": 379,
+    "commits": 363,
     "flaky": 19,
-    "rate": 0.05
+    "rate": 0.052
    },
    "minutes_median": 46.7,
    "minutes_p90": 59.6,
@@ -612,45 +612,90 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 442,
+   "runs": 427,
    "main": {
-    "passed": 61,
+    "passed": 62,
     "failed": 2,
     "timed_out": 0,
     "runner_lost": 0,
     "no_runner": 0,
     "cancelled": 0,
-    "rate": 0.968
+    "rate": 0.969
    },
    "latest_main": {
-    "id": 39701551268,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551268",
+    "id": 39800689646,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39800689646",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-22T00:44:59Z",
-    "run_started_at": "2026-10-22T00:44:59Z",
-    "updated_at": "2026-10-22T01:07:05Z",
-    "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
-    "title": "IRON model prep (#3941)",
+    "created_at": "2026-10-22T15:00:08Z",
+    "run_started_at": "2026-10-22T15:00:08Z",
+    "updated_at": "2026-10-22T15:11:23Z",
+    "head_sha": "7d0c9bd4774ba5fa2fc961fa23923025ed337f9b",
+    "title": "build(deps): bump https://github.com/psf/black from 26.5.1 to 26.10.1\u2026",
     "attempt": 1,
     "outcome": "passed",
-    "waited": 0.4,
-    "took": 21.8
+    "waited": 0.3,
+    "took": 10.9
    },
    "newest_main": {
-    "id": 39701551268,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551268",
+    "id": 39800689646,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39800689646",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-22T00:44:59Z",
-    "run_started_at": "2026-10-22T00:44:59Z",
-    "updated_at": "2026-10-22T01:07:05Z",
-    "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
-    "title": "IRON model prep (#3941)",
+    "created_at": "2026-10-22T15:00:08Z",
+    "run_started_at": "2026-10-22T15:00:08Z",
+    "updated_at": "2026-10-22T15:11:23Z",
+    "head_sha": "7d0c9bd4774ba5fa2fc961fa23923025ed337f9b",
+    "title": "build(deps): bump https://github.com/psf/black from 26.5.1 to 26.10.1\u2026",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 39800689646,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39800689646",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T15:00:08Z",
+     "run_started_at": "2026-10-22T15:00:08Z",
+     "updated_at": "2026-10-22T15:11:23Z",
+     "head_sha": "7d0c9bd4774ba5fa2fc961fa23923025ed337f9b",
+     "title": "build(deps): bump https://github.com/psf/black from 26.5.1 to 26.10.1\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 10.9
+    },
+    {
+     "id": 39795312714,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39795312714",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T14:23:55Z",
+     "run_started_at": "2026-10-22T14:23:55Z",
+     "updated_at": "2026-10-22T15:43:58Z",
+     "head_sha": "239d4a614824c2942e7e83d321df4c75655946d4",
+     "title": "build(deps): bump https://github.com/pre-commit/mirrors-clang-format \u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 79.7
+    },
+    {
+     "id": 39793590228,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39793590228",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T14:11:44Z",
+     "run_started_at": "2026-10-22T14:11:44Z",
+     "updated_at": "2026-10-22T14:44:03Z",
+     "head_sha": "c4157d1c02ee0221390bcab39f52b57860011c24",
+     "title": "build(deps): bump the mkdocs group in /docs with 2 updates (#3958)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 31.9
+    },
     {
      "id": 39701551268,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551268",
@@ -1565,56 +1610,26 @@
      "outcome": "passed",
      "waited": 0.6,
      "took": 8.2
-    },
-    {
-     "id": 37825354313,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37825354313",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T18:34:36Z",
-     "run_started_at": "2026-10-08T18:34:36Z",
-     "updated_at": "2026-10-08T18:43:55Z",
-     "head_sha": "2fa5927da839319d81550bb20090a087135f12ef",
-     "title": "[utils] Cut CachedXRTRuntime's per-dispatch host cost (#3892)",
-     "attempt": 1,
-     "outcome": "passed",
-     "waited": 0.5,
-     "took": 8.8
-    },
-    {
-     "id": 37822032028,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37822032028",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T18:08:55Z",
-     "run_started_at": "2026-10-08T18:08:55Z",
-     "updated_at": "2026-10-08T18:22:19Z",
-     "head_sha": "597144199a7cd04edb01f65c354ad9ab38462d52",
-     "title": "Maintainer dashboard (#3883)",
-     "attempt": 1,
-     "outcome": "passed",
-     "waited": 0.5,
-     "took": 12.9
     }
    ],
    "pull_requests": {
-    "passed": 210,
-    "failed": 35,
-    "rate": 0.857
+    "passed": 205,
+    "failed": 31,
+    "rate": 0.869
    },
    "merge_queue": {
-    "passed": 58,
+    "passed": 53,
     "failed": 1,
-    "rate": 0.983
+    "rate": 0.981
    },
    "flaky": {
-    "commits": 379,
+    "commits": 363,
     "flaky": 30,
-    "rate": 0.079
+    "rate": 0.083
    },
    "minutes_median": 8.9,
-   "minutes_p90": 23.9,
-   "queued_median": 0.5
+   "minutes_p90": 24.0,
+   "queued_median": 0.4
   },
   {
    "file": "buildAndTestPythons.yml",
@@ -1622,9 +1637,9 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 442,
+   "runs": 427,
    "main": {
-    "passed": 63,
+    "passed": 64,
     "failed": 0,
     "timed_out": 0,
     "runner_lost": 0,
@@ -1633,34 +1648,79 @@
     "rate": 1.0
    },
    "latest_main": {
-    "id": 39701551357,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551357",
+    "id": 39800689233,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39800689233",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-22T00:44:59Z",
-    "run_started_at": "2026-10-22T00:44:59Z",
-    "updated_at": "2026-10-22T01:02:48Z",
-    "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
-    "title": "IRON model prep (#3941)",
+    "created_at": "2026-10-22T15:00:08Z",
+    "run_started_at": "2026-10-22T15:00:08Z",
+    "updated_at": "2026-10-22T15:12:13Z",
+    "head_sha": "7d0c9bd4774ba5fa2fc961fa23923025ed337f9b",
+    "title": "build(deps): bump https://github.com/psf/black from 26.5.1 to 26.10.1\u2026",
     "attempt": 1,
     "outcome": "passed",
     "waited": 0.3,
-    "took": 17.5
+    "took": 11.8
    },
    "newest_main": {
-    "id": 39701551357,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551357",
+    "id": 39800689233,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39800689233",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-22T00:44:59Z",
-    "run_started_at": "2026-10-22T00:44:59Z",
-    "updated_at": "2026-10-22T01:02:48Z",
-    "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
-    "title": "IRON model prep (#3941)",
+    "created_at": "2026-10-22T15:00:08Z",
+    "run_started_at": "2026-10-22T15:00:08Z",
+    "updated_at": "2026-10-22T15:12:13Z",
+    "head_sha": "7d0c9bd4774ba5fa2fc961fa23923025ed337f9b",
+    "title": "build(deps): bump https://github.com/psf/black from 26.5.1 to 26.10.1\u2026",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 39800689233,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39800689233",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T15:00:08Z",
+     "run_started_at": "2026-10-22T15:00:08Z",
+     "updated_at": "2026-10-22T15:12:13Z",
+     "head_sha": "7d0c9bd4774ba5fa2fc961fa23923025ed337f9b",
+     "title": "build(deps): bump https://github.com/psf/black from 26.5.1 to 26.10.1\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 11.8
+    },
+    {
+     "id": 39795312564,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39795312564",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T14:23:55Z",
+     "run_started_at": "2026-10-22T14:23:55Z",
+     "updated_at": "2026-10-22T14:56:57Z",
+     "head_sha": "239d4a614824c2942e7e83d321df4c75655946d4",
+     "title": "build(deps): bump https://github.com/pre-commit/mirrors-clang-format \u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 32.7
+    },
+    {
+     "id": 39793590094,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39793590094",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T14:11:44Z",
+     "run_started_at": "2026-10-22T14:11:44Z",
+     "updated_at": "2026-10-22T14:42:22Z",
+     "head_sha": "c4157d1c02ee0221390bcab39f52b57860011c24",
+     "title": "build(deps): bump the mkdocs group in /docs with 2 updates (#3958)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 30.3
+    },
     {
      "id": 39701551357,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551357",
@@ -2575,56 +2635,26 @@
      "outcome": "passed",
      "waited": 0.6,
      "took": 8.3
-    },
-    {
-     "id": 37825354230,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37825354230",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T18:34:36Z",
-     "run_started_at": "2026-10-08T18:34:36Z",
-     "updated_at": "2026-10-08T18:43:11Z",
-     "head_sha": "2fa5927da839319d81550bb20090a087135f12ef",
-     "title": "[utils] Cut CachedXRTRuntime's per-dispatch host cost (#3892)",
-     "attempt": 1,
-     "outcome": "passed",
-     "waited": 0.6,
-     "took": 8.1
-    },
-    {
-     "id": 37822032147,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37822032147",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T18:08:55Z",
-     "run_started_at": "2026-10-08T18:08:55Z",
-     "updated_at": "2026-10-08T18:19:50Z",
-     "head_sha": "597144199a7cd04edb01f65c354ad9ab38462d52",
-     "title": "Maintainer dashboard (#3883)",
-     "attempt": 1,
-     "outcome": "passed",
-     "waited": 0.5,
-     "took": 10.4
     }
    ],
    "pull_requests": {
-    "passed": 211,
-    "failed": 37,
-    "rate": 0.851
+    "passed": 206,
+    "failed": 33,
+    "rate": 0.862
    },
    "merge_queue": {
-    "passed": 59,
+    "passed": 54,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 379,
+    "commits": 363,
     "flaky": 29,
-    "rate": 0.077
+    "rate": 0.08
    },
-   "minutes_median": 8.4,
-   "minutes_p90": 19.5,
-   "queued_median": 0.5
+   "minutes_median": 8.5,
+   "minutes_p90": 20.1,
+   "queued_median": 0.4
   },
   {
    "file": "lintAndFormat.yml",
@@ -2632,7 +2662,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 393,
+   "runs": 377,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -2883,19 +2913,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 184,
-    "failed": 92,
-    "rate": 0.667
+    "passed": 177,
+    "failed": 89,
+    "rate": 0.665
    },
    "merge_queue": {
-    "passed": 59,
+    "passed": 54,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 379,
+    "commits": 363,
     "flaky": 30,
-    "rate": 0.079
+    "rate": 0.083
    },
    "minutes_median": 2.8,
    "minutes_p90": 3.0,
@@ -2903,10 +2933,10 @@
   }
  ],
  "merge_time": {
-  "merged": 52,
-  "hours_median": 24.7,
+  "merged": 53,
+  "hours_median": 23.5,
   "hours_p90": 615.4,
-  "open": 73,
+  "open": 70,
   "open_drafts": 24,
   "open_over_30_days": 48
  },
@@ -3928,6 +3958,18 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 39812909215,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39812909215",
+     "status": "in_progress",
+     "conclusion": null,
+     "created_at": "2026-10-22T16:18:30Z",
+     "run_started_at": "2026-10-22T16:18:30Z",
+     "updated_at": "2026-10-22T16:19:22Z",
+     "head_sha": "7d0c9bd4774ba5fa2fc961fa23923025ed337f9b",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 39778111716,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39778111716",
      "status": "completed",
@@ -4055,18 +4097,6 @@
      "created_at": "2026-10-20T20:16:33Z",
      "run_started_at": "2026-10-20T20:16:33Z",
      "updated_at": "2026-10-21T00:31:53Z",
-     "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 39456190655,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39456190655",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-20T16:17:56Z",
-     "run_started_at": "2026-10-20T16:17:56Z",
-     "updated_at": "2026-10-20T20:45:23Z",
      "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
      "title": "MLIR Distro",
      "attempt": 1
