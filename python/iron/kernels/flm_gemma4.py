@@ -1038,41 +1038,34 @@ def flm_gemma4_decode_glu(
 ) -> ExternalFunction:
     """Build the decode layer's gated linear unit, from ``flm_gemma4/decode_glu.cc``.
 
-    ``glu(y, x_ping, x_pong, y_ping, y_pong, skip)``: waits on the RTP lock,
-    then, unless ``skip[0]`` is set, turns ``2 * intermediate_size`` gate and
-    up values, arriving ``glu_slice`` at a time in the ``x`` ping-pong pair,
-    into ``intermediate_size`` activations in the core-local ``y`` (twice that
-    with ``double_wide_mlp``), and sends them out ``glu_slice // 2`` at a time
-    through the ``y`` pair once per down-projection repeat. ``skip`` is an
-    int32 RTP buffer of 16 words.
+    Two entry points, with the design owning the loops and every lock.
+    ``glu_chunk(hid, x, i)`` turns one ``glu_slice`` of gate and up values
+    into ``glu_slice // 2`` activations at slice ``i`` of the core-local
+    ``hid``, which holds ``intermediate_size`` of them (twice that with
+    ``double_wide_mlp``). ``glu_emit(y_out, hid, j)`` copies slice ``j`` back
+    out for the down projection.
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults ``x_prod_lock=0``,
-            ``x_cons_lock=1``, ``y_prod_lock=2``, ``y_cons_lock=3`` and
-            ``y_cons_lock=3``.
+        **locks: No lock arguments are accepted.
     """
     bf16 = np.dtype[bfloat16]
     hid = geometry.intermediate_size * (2 if geometry.double_wide_mlp else 1)
+    hid_ty = np.ndarray[(hid,), bf16]
     x_ty = np.ndarray[(geometry.glu_slice,), bf16]
     y_ty = np.ndarray[(geometry.glu_slice // 2,), bf16]
-    return _decode_kernel(
+    fn = _decode_kernel(
         "glu",
-        "glu",
-        [
-            np.ndarray[(hid,), bf16],
-            x_ty,
-            x_ty,
-            y_ty,
-            y_ty,
-            np.ndarray[(16,), np.dtype[np.int32]],
-        ],
-        (Out, In, In, Out, Out, Param),
-        dict(x_prod_lock=0, x_cons_lock=1, y_prod_lock=2, y_cons_lock=3),
+        "glu_chunk",
+        [hid_ty, x_ty, np.int32],
+        (InOut, In, Param),
+        {},
         locks,
         geometry,
         lut=True,
     )
+    fn.glu_emit = fn.object_file.bind("glu_emit", [y_ty, hid_ty, np.int32])
+    return fn
 
 
 # getGeluBf16 reads one line, slope and offset, per 1/8-wide segment of
@@ -1179,14 +1172,6 @@ _DECODE_Q4NX_BLOCK_BYTES = _DECODE_Q4NX_ROWS * _DECODE_Q4NX_COLS * 5 // 8
 _DECODE_BF16_BLOCK = 32 * 256
 _DECODE_RTP = np.ndarray[(16,), np.dtype[np.int32]]
 _DECODE_KV_LOCKS = {}
-_DECODE_ROPE_LOCKS = dict(
-    qkv_prod_lock=0,
-    qkv_cons_lock=1,
-    k_prod_lock=4,
-    k_cons_lock=5,
-    v_prod_lock=6,
-    v_cons_lock=7,
-)
 
 
 def _decode_kv_heads(
@@ -1849,47 +1834,42 @@ def flm_gemma4_decode_rope(
 ) -> ExternalFunction:
     """Build a layer's q/k norm and rotary embedding, from ``flm_gemma4/decode_rope.cc``.
 
-    ``rope(q, k, v, qkv_ping, qkv_pong, rope_w, skip_kv)``: takes the q, k
-    and v projections one head (``dh`` bf16) at a time through the
-    ``qkv`` ping-pong pair, RMS-normalizes each q and k head in place against
-    its weight and rotates it into ``q`` or ``k``, and RMS-normalizes each v
-    head into ``v``. Unless ``skip_kv[0]`` is set, when the layer reuses
-    another layer's KV cache, it hands ``k`` and ``v`` on. ``q`` is
-    ``q_heads_padded * dh`` bf16, ``k`` and ``v`` ``num_kv_heads * dh``,
-    ``rope_w`` the cos and sin halves then, with ``qk_norm``, the q and k
-    norm weights (``3 * dh``), and ``skip_kv`` an int32 RTP buffer of 16
-    words. ``dh`` is the geometry's ``swa_dh`` with ``sliding_window``, else
-    its ``dh``.
+    Three entry points, one head (``dh`` bf16) each, with the design owning
+    the head loops and every lock. ``rope_q(q, qkv, rope_w, i)`` and
+    ``rope_k(k, qkv, rope_w, i)`` RMS-normalize ``qkv`` in place against the
+    head's weight and rotate it into slot ``i``; ``rope_v(v, qkv, i)``
+    RMS-normalizes it into slot ``i``. ``q`` is ``q_heads_padded * dh`` bf16,
+    ``k`` and ``v`` ``num_kv_heads * dh``, and ``rope_w`` the cos and sin
+    halves then, with ``qk_norm``, the q and k norm weights (``3 * dh``).
+    ``dh`` is the geometry's ``swa_dh`` with ``sliding_window``, else its
+    ``dh``.
 
     Args:
         sliding_window: Build for the sliding-window layers' head dim.
         geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults ``qkv_prod_lock=0``,
-            ``qkv_cons_lock=1``, ``k_prod_lock=4``, ``k_cons_lock=5``,
-            ``v_prod_lock=6`` and ``v_cons_lock=7``.
+        **locks: No lock arguments are accepted.
     """
     dh = geometry.swa_dh if sliding_window else geometry.dh
     bf16 = np.dtype[bfloat16]
     kv = geometry.num_kv_heads * dh
     qkv_ty = np.ndarray[(dh,), bf16]
-    return _decode_kernel(
+    q_ty = np.ndarray[(_decode_q_heads_padded(geometry) * dh,), bf16]
+    kv_ty = np.ndarray[(kv,), bf16]
+    rope_ty = np.ndarray[(dh * (3 if geometry.qk_norm else 1),), bf16]
+    fn = _decode_kernel(
         "rope",
-        "rope",
-        [
-            np.ndarray[(_decode_q_heads_padded(geometry) * dh,), bf16],
-            np.ndarray[(kv,), bf16],
-            np.ndarray[(kv,), bf16],
-            qkv_ty,
-            qkv_ty,
-            np.ndarray[(dh * (3 if geometry.qk_norm else 1),), bf16],
-            _DECODE_RTP,
-        ],
-        (Out, Out, Out, InOut, InOut, In, Param),
-        _DECODE_ROPE_LOCKS,
+        "rope_q",
+        [q_ty, qkv_ty, rope_ty, np.int32],
+        (Out, InOut, In, Param),
+        {},
         locks,
         geometry,
         flags=(f"-DFLM_GEMMA4_DECODE_ROPE_SWA={int(sliding_window)}",),
     )
+    bind = fn.object_file.bind
+    fn.rope_k = bind("rope_k", [kv_ty, qkv_ty, rope_ty, np.int32])
+    fn.rope_v = bind("rope_v", [kv_ty, qkv_ty, np.int32])
+    return fn
 
 
 _ROPE_CORE_VARIANTS = [

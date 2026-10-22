@@ -58,58 +58,31 @@ void _rotate_t(bf16 *restrict q, bf16 *restrict qkv, bf16 *restrict rope_w,
   apply_rope_t<Dh>(q, qkv, cos_val, sin_val);
 }
 
-/// The kernel body. Dq/Dk/Dv are the total q/k/v widths; Dh the head dim.
-template <int Dh, int Dq, int Dk, int Dv>
-void rope_body(bf16 *restrict q, bf16 *restrict k, bf16 *restrict v,
-               bf16 *restrict qkv_ping, bf16 *restrict qkv_pong,
-               bf16 *restrict rope_w, int *SKIP_KV) {
-  constexpr int qkv_prod_lock = FLM_GEMMA4_DECODE_ROPE_QKV_PROD_LOCK;
-  constexpr int qkv_cons_lock = FLM_GEMMA4_DECODE_ROPE_QKV_CONS_LOCK;
-  constexpr int k_prod_lock = FLM_GEMMA4_DECODE_ROPE_K_PROD_LOCK;
-  constexpr int k_cons_lock = FLM_GEMMA4_DECODE_ROPE_K_CONS_LOCK;
-  constexpr int v_prod_lock = FLM_GEMMA4_DECODE_ROPE_V_PROD_LOCK;
-  constexpr int v_cons_lock = FLM_GEMMA4_DECODE_ROPE_V_CONS_LOCK;
-  static PingPong qkv_pingpong;
-
-  for (int i = 0; i < Dq / Dh; i++) {
-    bf16 *qkv_using = qkv_pingpong.acquire(qkv_ping, qkv_pong, qkv_cons_lock);
-    _rotate_t<Dh>(q + i * Dh, qkv_using, rope_w, rope_w + Dh);
-    _lock_release_p(qkv_using, qkv_prod_lock);
-  }
-
-  if (SKIP_KV[0] == 0) {
-    _lock_acquire_p(k, k_prod_lock, 1);
-    for (int i = 0; i < Dk / Dh; i++) {
-      bf16 *qkv_using = qkv_pingpong.acquire(qkv_ping, qkv_pong, qkv_cons_lock);
-      _rotate_t<Dh>(k + i * Dh, qkv_using, rope_w, rope_w + Dh + Dh);
-      _lock_release_p(qkv_using, qkv_prod_lock);
-    }
-    _lock_release_p(k, k_cons_lock, 1);
-
-    _lock_acquire_p(v, v_prod_lock, 1);
-    for (int i = 0; i < Dv / Dh; i++) {
-      bf16 *qkv_using = qkv_pingpong.acquire(qkv_ping, qkv_pong, qkv_cons_lock);
-      rms_norm_unweighted<Dh>(v + i * Dh, qkv_using);
-      _lock_release_p(qkv_using, qkv_prod_lock);
-    }
-    _lock_release_p(v, v_cons_lock, 1);
-  }
-}
-
 #ifndef FLM_GEMMA4_DECODE_ROPE_SWA
 #define FLM_GEMMA4_DECODE_ROPE_SWA 0
 #endif
 
+#if FLM_GEMMA4_DECODE_ROPE_SWA
+constexpr int ROPE_DH = SWA_DH;
+#else
+constexpr int ROPE_DH = DH;
+#endif
+
 extern "C" {
 
-void rope(bf16 *restrict q, bf16 *restrict k, bf16 *restrict v,
-          bf16 *restrict qkv_ping, bf16 *restrict qkv_pong,
-          bf16 *restrict rope_w, int *SKIP_KV) {
-#if FLM_GEMMA4_DECODE_ROPE_SWA
-  rope_body<SWA_DH, SWA_DQ, SWA_DK, SWA_DV>(q, k, v, qkv_ping, qkv_pong, rope_w,
-                                            SKIP_KV);
-#else
-  rope_body<DH, DQ, DK, DV>(q, k, v, qkv_ping, qkv_pong, rope_w, SKIP_KV);
-#endif
+// One head per call, into slot i of the output. rope_w is [cos | sin | q norm
+// weight | k norm weight]; each entry point normalizes qkv in place first.
+void rope_q(bf16 *restrict q, bf16 *restrict qkv, bf16 *restrict rope_w,
+            int i) {
+  _rotate_t<ROPE_DH>(q + i * ROPE_DH, qkv, rope_w, rope_w + ROPE_DH);
+}
+
+void rope_k(bf16 *restrict k, bf16 *restrict qkv, bf16 *restrict rope_w,
+            int i) {
+  _rotate_t<ROPE_DH>(k + i * ROPE_DH, qkv, rope_w, rope_w + 2 * ROPE_DH);
+}
+
+void rope_v(bf16 *restrict v, bf16 *restrict qkv, int i) {
+  rms_norm_unweighted<ROPE_DH>(v + i * ROPE_DH, qkv);
 }
 }
