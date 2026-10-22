@@ -174,11 +174,15 @@ static inline void q_requant_heads(const float *restrict q_fp,
                                    int8_t *restrict body,
                                    int8_t *restrict tail) {
   constexpr int kV = 16;
-  constexpr int kPadded = (kHeads + kV - 1) / kV * kV;
-  // q_scale holds each head's absmax until the scales are computed in place.
-  alignas(64) float q_scale[kPadded];
-  alignas(64) float q_inv[kPadded];
-  for (int h = kHeads; h < kPadded; h++)
+  // One group covers every head in one vec_recip call; vec_recip's per-lane
+  // recip_rne is scalar, so padding the group to kV would spend most of its
+  // cost on unused lanes. kGroup stays at 8 (not kHeads) below 8 heads: AIE2P
+  // doesn't legalize a 128-bit (4-lane) integer bit_and/bit_or.
+  constexpr int kGroup = kHeads < 8 ? 8 : kHeads;
+  static_assert(kGroup <= kV);
+  alignas(64) float q_scale[kGroup];
+  alignas(64) float q_inv[kGroup];
+  for (int h = kHeads; h < kGroup; h++)
     q_scale[h] = 0.0f;
   for (int h = 0; h < kHeads; h++) {
     const float *src = q_fp + h * kHD;
@@ -192,17 +196,15 @@ static inline void q_requant_heads(const float *restrict q_fp,
   }
   // Every head's scale and reciprocal at once. max(absmax, 1e-12f) is an
   // integer max of the non-negative bits.
-  for (int g = 0; g < kPadded / kV; g++) {
-    ::aie::vector<float, kV> absmax =
-        ::aie::max(
-            ::aie::load_v<kV>(q_scale + g * kV).template cast_to<int32>(),
-            int32(0x2b8cbccc))
-            .template cast_to<float>();
-    ::aie::vector<float, kV> scale =
-        vec_mul_rne(absmax, ::aie::broadcast<float, kV>(1.0f / 127.0f));
-    ::aie::store_v(q_scale + g * kV, scale);
-    ::aie::store_v(q_inv + g * kV, vec_recip(scale));
-  }
+  ::aie::vector<float, kGroup> absmax =
+      ::aie::max(
+          ::aie::load_v<kGroup>(q_scale).template cast_to<int32>(),
+          int32(0x2b8cbccc))
+          .template cast_to<float>();
+  ::aie::vector<float, kGroup> scale =
+      vec_mul_rne(absmax, ::aie::broadcast<float, kGroup>(1.0f / 127.0f));
+  ::aie::store_v(q_scale, scale);
+  ::aie::store_v(q_inv, vec_recip(scale));
   for (int h = 0; h < kHeads; h++) {
     const float *src = q_fp + h * kHD;
     int8_t *dst = body + h * kHD;
