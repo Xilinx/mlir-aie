@@ -181,10 +181,12 @@ SLOT_STRIDE = STAGE_RESID + M_MAX * RROW + 2 * D
 # The array's input object: M_MAX rows' 2048 columns, then their scales.
 ARRAY_ACT_BYTES = M_MAX * D + M_MAX * 16
 assert ARRAY_ACT_BYTES == M_MAX * ACT_BYTES
-# Each weight lane is staged in its column's memtile (its two lanes fill the
-# 512 KB), so DDR streams on while the array waits on the glue cores.
-WM_SLOTS = 4
-WM_DEPTH = 7
+# Each weight lane is staged in a memtile of its own (WM_COLS), so DDR streams
+# on while the array waits on the glue cores. The other memtile links are
+# pinned beside them: unpinned, the SA placer pairs two lanes in one memtile.
+WM_SLOTS = 8
+WM_DEPTH = 6
+WM_COLS = (0, 2, 1, 3, 6, 4, 7, 5)
 
 
 class StageLayout:
@@ -344,7 +346,7 @@ def build(
     of_w = [
         of_wm[c]
         .cons()
-        .forward(tile=Tile(CORE_TILES[c][0], 1), obj_type=t_slot, depth=2, name=f"w{c}")
+        .forward(tile=Tile(WM_COLS[c], 1), obj_type=t_slot, depth=2, name=f"w{c}")
         for c in range(N_CORES)
     ]
     of_outlo = ObjectFifo(
@@ -355,9 +357,15 @@ def build(
     )
     out_offsets = [i * OUT_BYTES for i in range(4)]
     out_eps = of_outlo.prod().join(
-        out_offsets, obj_types=[t_out] * 4, names=[f"out{c}" for c in range(4)]
+        out_offsets,
+        obj_types=[t_out] * 4,
+        names=[f"out{c}" for c in range(4)],
+        tile=Tile(0, 1),
     ) + of_outhi.prod().join(
-        out_offsets, obj_types=[t_out] * 4, names=[f"out{c}" for c in range(4, 8)]
+        out_offsets,
+        obj_types=[t_out] * 4,
+        names=[f"out{c}" for c in range(4, 8)],
+        tile=Tile(7, 1),
     )
     # The residual core's inputs: cores 0-3's blocks, cores 4-7's blocks, and
     # from the norm core the fp32 residual they add to.
@@ -372,6 +380,7 @@ def build(
             blk_offsets,
             obj_types=[np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]]] * 4,
             names=[f"rblk{4 * half + c}" for c in range(4)],
+            tile=Tile((1, 6)[half], 1),
         )
     ]
     # A batch's rows are all normed before the residual core takes the first
@@ -585,6 +594,7 @@ def build(
             offsets=[i * ROW_CHUNK for i in range(NH)] + [NH * ROW_CHUNK],
             obj_types=[t_rc] * NH + [t_rows],
             names=[f"rc_{half * NH + i}" for i in range(NH)] + [f"kvrows_{half}"],
+            tile=Tile((4, 2)[half], 1),
         )
         for half in range(2)
     ]
@@ -631,6 +641,7 @@ def build(
             obj_types=[t_kvhb] * NH,
             depths=[2] * NH,
             names=[f"kvb_{half * NH + i}" for i in range(NH)],
+            tile=Tile((5, 3)[half], 1),
         )
     ]
     of_svc = [ObjectFifo(t_sv_half, depth=1, name=f"svhalf_{h}") for h in range(2)]
@@ -643,6 +654,7 @@ def build(
             offsets=[i * SVCHUNK_BYTES for i in range(NH)],
             obj_types=[t_sv] * NH,
             names=[f"svchunk_{half * NH + i}" for i in range(NH)],
+            tile=Tile((5, 3)[half], 1),
         )
     ]
     KT = llama_kernels.attn_block(tb=KV_TB)

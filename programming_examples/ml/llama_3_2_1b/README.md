@@ -51,8 +51,8 @@ Key design pieces:
   residual), gate and up.
   The layers' weights stream over eight shim lanes, one per core, on
   `aie::mmul<8, 8, 8>` (`kernels/llama_gemv_mma.cc`): a prefill batch's up to 4
-  activations share one pass of the weights. Each lane is staged in its
-  column's memtile and issued a layer ahead, so DDR keeps streaming while the
+  activations share one pass of the weights. Each lane is staged in a
+  memtile of its own and issued a layer ahead, so DDR keeps streaming while the
   array waits on the cores around it.
 
 - **One-stream sampler + embed gather** (`kernels/llama_topk_sample.cc`). The
