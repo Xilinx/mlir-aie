@@ -55,18 +55,35 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
   const aie::rounding_mode saved_rnd =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
 
-  int32_t sums[kNTile];
-  for (int n = 0; n < kNTile; n++) {
-    aie::accum<acc32, kVec> acc;
-    acc.from_vector(aie::zeros<int32, kVec>());
-    const int8_t *__restrict w_row = weights + n * kK;
-    for (int g = 0; g < kGroups; g++) {
-      aie::vector<int8, kVec> w_v = aie::load_v<kVec>(w_row + g * kVec);
-      aie::vector<int8, kVec> x_v = aie::load_v<kVec>(act + g * kVec);
-      acc = aie::mac(acc, w_v, x_v);
-    }
-    sums[n] = aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+  static_assert(kNTile == 4);
+  aie::accum<acc32, kVec> acc0, acc1, acc2, acc3;
+  acc0.from_vector(aie::zeros<int32, kVec>());
+  acc1.from_vector(aie::zeros<int32, kVec>());
+  acc2.from_vector(aie::zeros<int32, kVec>());
+  acc3.from_vector(aie::zeros<int32, kVec>());
+  const int8_t *__restrict w0 = weights;
+  const int8_t *__restrict w1 = weights + kK;
+  const int8_t *__restrict w2 = weights + 2 * kK;
+  const int8_t *__restrict w3 = weights + 3 * kK;
+  const int8_t *__restrict x = act;
+#pragma clang loop unroll_count(2)
+  for (int g = 0; g < kGroups; g++) {
+    aie::vector<int8, kVec> x_v = aie::load_v<kVec>(x);
+    acc0 = aie::mac(acc0, aie::load_v<kVec>(w0), x_v);
+    acc1 = aie::mac(acc1, aie::load_v<kVec>(w1), x_v);
+    acc2 = aie::mac(acc2, aie::load_v<kVec>(w2), x_v);
+    acc3 = aie::mac(acc3, aie::load_v<kVec>(w3), x_v);
+    x += kVec;
+    w0 += kVec;
+    w1 += kVec;
+    w2 += kVec;
+    w3 += kVec;
   }
+  int32_t sums[kNTile] = {
+      aie::reduce_add(acc0.template to_vector<int32>()) + bias[0],
+      aie::reduce_add(acc1.template to_vector<int32>()) + bias[1],
+      aie::reduce_add(acc2.template to_vector<int32>()) + bias[2],
+      aie::reduce_add(acc3.template to_vector<int32>()) + bias[3]};
 
   float logits[kNTile];
   if (vec_epilogue_exact<80, 174, kNTile>(sums, act_scale, w_scales)) {
