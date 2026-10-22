@@ -290,10 +290,8 @@ private:
                        std::pair<int, int> required);
   void recordShimEnds(TileID tile, mlir::Operation *logicalTile);
 
-  // A core short of DMA channels takes the fifos one mem tile sends it on
-  // one channel when it needs their objects in a fixed order, as objectFIFO
-  // allocation will have them take turns (CoreTurns); the same for the fifos
-  // it sends one mem tile. Counts each such group once in `requirements`.
+  // Counts once in `requirements` each group of fifos between a core and one
+  // mem tile that allocation's planTurnSharing will put on one channel.
   void countTurns(
       DeviceOp device, llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
       llvm::DenseMap<mlir::Operation *, std::pair<int, int>> &requirements);

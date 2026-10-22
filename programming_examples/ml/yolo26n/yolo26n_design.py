@@ -1536,15 +1536,9 @@ class SegmentDesign:
             calls[op.name] = (len(consts), scalars)
 
         streams_sliced = {name for name in sliced if name in streamed}
-        # Every streamed conv's chunks come down one stream in objects the
-        # size of the largest chunk, the same ones every step: a step drains
-        # the objects of rows it does not compute. An object holds as many of
-        # a conv's chunks as fit, so a small chunk does not travel padded to
-        # the largest. A sliced conv's object holds whole slices of one
-        # output-channel group or whole groups, each chunk where its kernel's
-        # weights and bias need to be aligned. A memtile holds one step's
-        # objects where they fit and sends them over and over; otherwise DDR
-        # sends them once a step.
+        # Packed as many chunks to a largest-chunk-sized slot as fit, each at
+        # its kernel's alignment: padded one to a slot, small chunks tripled
+        # the weight traffic.
         size = max((chunks.shape[1] for chunks in pieces.values()), default=0)
         packs: dict[str, int] = {}
         pitches: dict[str, int] = {}
