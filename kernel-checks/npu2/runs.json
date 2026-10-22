@@ -4,7 +4,13 @@
  "metrics": [
   "cycles",
   "cycles_per_kop",
+  "dispatch_overhead_us",
+  "dispatch_us",
   "kernel_object_bytes",
+  "max_ulp_bfloat16",
+  "max_ulp_float32",
+  "not_correctly_rounded_bfloat16",
+  "not_correctly_rounded_float32",
   "npu_us"
  ],
  "runs": [
@@ -32,7 +38,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "1"
    },
    "sane": true,
    "published": true,
@@ -77,7 +84,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "1"
    },
    "sane": true,
    "published": true,
@@ -124,7 +132,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "1"
    },
    "sane": true,
    "published": true,
@@ -169,7 +178,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "1"
    },
    "sane": true,
    "published": true,
@@ -214,7 +224,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -260,7 +271,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -308,7 +320,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -347,7 +360,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -581,7 +596,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -824,7 +841,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -1106,7 +1125,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1170,7 +1190,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1234,7 +1255,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1298,7 +1320,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1362,7 +1385,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1408,7 +1432,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1454,7 +1479,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1500,7 +1526,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1546,7 +1573,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1592,7 +1620,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1638,7 +1667,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1684,7 +1714,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -1703,6 +1734,53 @@
    "kernels": {
     "offered": 130,
     "checked": 114
+   }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "39733084488",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39733084488",
+   "date": "2026-10-22T06:18:03+00:00",
+   "commit": {
+    "id": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "message": "IRON model prep (#3941)",
+    "timestamp": "2026-10-22T00:00:24Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Strix",
+   "device_raw": "NPU Strix",
+   "provenance": {
+    "commit": "843e9c3ec9",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.26.0_20261008",
+    "xrt": "2.26.0",
+    "host": "aie9",
+    "device": "NPU Strix",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2507,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 879,
+    "failed": 0,
+    "timed": 422,
+    "timing_failed": 0,
+    "untimed": 457,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 136,
+    "checked": 121
    }
   }
  ]

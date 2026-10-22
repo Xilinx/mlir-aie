@@ -13,7 +13,9 @@
  "pmode": null,
  "device": null,
  "device_raw": null,
- "provenance": {},
+ "provenance": {
+  "measurement": "2"
+ },
  "sane": null,
  "published": false,
  "n_rows": 0,

@@ -4,7 +4,13 @@
  "metrics": [
   "cycles",
   "cycles_per_kop",
+  "dispatch_overhead_us",
+  "dispatch_us",
   "kernel_object_bytes",
+  "max_ulp_bfloat16",
+  "max_ulp_float32",
+  "not_correctly_rounded_bfloat16",
+  "not_correctly_rounded_float32",
   "npu_us"
  ],
  "runs": [
@@ -23,7 +29,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "1"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -192,7 +200,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "1"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -370,7 +380,8 @@
     "xrt": "2.25.0",
     "host": "aie2",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "1"
    },
    "sane": true,
    "published": true,
@@ -406,7 +417,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "1"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -575,7 +588,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -767,7 +782,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -959,7 +976,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -1152,7 +1171,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -1345,7 +1366,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -1538,7 +1561,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -1732,7 +1757,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -1932,7 +1959,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -2132,7 +2161,9 @@
    "pmode": null,
    "device": null,
    "device_raw": null,
-   "provenance": {},
+   "provenance": {
+    "measurement": "2"
+   },
    "sane": null,
    "published": false,
    "n_rows": 0,
@@ -2371,7 +2402,8 @@
     "xrt": "2.25.0",
     "host": "aie1",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2417,7 +2449,8 @@
     "xrt": "2.25.0",
     "host": "aie2",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2463,7 +2496,8 @@
     "xrt": "2.25.0",
     "host": "aie2",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2509,7 +2543,8 @@
     "xrt": "2.25.0",
     "host": "aie1",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2555,7 +2590,8 @@
     "xrt": "2.25.0",
     "host": "aie2",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2601,7 +2637,8 @@
     "xrt": "2.25.0",
     "host": "aie2",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2647,7 +2684,8 @@
     "xrt": "2.25.0",
     "host": "aie2",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2693,7 +2731,8 @@
     "xrt": "2.25.0",
     "host": "aie2",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2739,7 +2778,8 @@
     "xrt": "2.25.0",
     "host": "aie1",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2785,7 +2825,8 @@
     "xrt": "2.25.0",
     "host": "aie1",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2831,7 +2872,8 @@
     "xrt": "2.25.0",
     "host": "aie2",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2877,7 +2919,8 @@
     "xrt": "2.25.0",
     "host": "aie1",
     "device": "RyzenAI-npu1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "measurement": "2"
    },
    "sane": true,
    "published": true,
@@ -2896,6 +2939,53 @@
    "kernels": {
     "offered": 90,
     "checked": 86
+   }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "39733084488",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39733084488",
+   "date": "2026-10-22T06:18:03+00:00",
+   "commit": {
+    "id": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "message": "IRON model prep (#3941)",
+    "timestamp": "2026-10-22T00:00:24Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "843e9c3ec9",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie2",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 1955,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 720,
+    "failed": 0,
+    "timed": 329,
+    "timing_failed": 0,
+    "untimed": 391,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 95,
+    "checked": 92
    }
   }
  ]

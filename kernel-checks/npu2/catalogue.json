@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
- "date": "2026-10-21T06:41:56.926754+00:00",
+ "commit": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+ "date": "2026-10-22T09:05:16.926806+00:00",
  "swept": true,
  "kernels": [
   {
@@ -71,11 +71,12 @@
    "builds": [
     "passthrough"
    ],
-   "passed": 10,
+   "passed": 11,
    "failed": [],
    "timed": 5,
    "timing_failed": [],
    "untimed": [
+    "passthrough/1280x4/int8",
     "passthrough/128x4/int16/edge-tiny",
     "passthrough/16x4/int32/edge-one-vector",
     "passthrough/256x4/uint8/edge-tiny",
@@ -111,18 +112,21 @@
   {
    "factory": "add",
    "family": "eltwise",
-   "summary": "Element-wise bf16 addition (tile_size must be 1024, hard-coded in C++).",
+   "summary": "Element-wise addition: bf16, or int8 on power-of-two scales.",
    "sources": [
     "eltwise/add.cc"
    ],
    "builds": [
-    "add"
+    "add",
+    "add/dtype=int8/tile_size=1024"
    ],
-   "passed": 2,
+   "passed": 4,
    "failed": [],
-   "timed": 2,
+   "timed": 3,
    "timing_failed": [],
-   "untimed": [],
+   "untimed": [
+    "add/64x4/int8/no-down-shift"
+   ],
    "flaky": []
   },
   {
@@ -155,11 +159,14 @@
    "builds": [
     "mul"
    ],
-   "passed": 2,
+   "passed": 4,
    "failed": [],
    "timed": 2,
    "timing_failed": [],
-   "untimed": [],
+   "untimed": [
+    "mul/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-False]",
+    "mul/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-True]"
+   ],
    "flaky": []
   },
   {
@@ -285,13 +292,85 @@
    "builds": [
     "router_top_k"
    ],
-   "passed": 0,
+   "passed": 3,
    "failed": [],
-   "timed": 0,
+   "timed": 1,
    "timing_failed": [],
-   "untimed": [],
-   "flaky": [],
-   "reason": "no case in test/python/npu/kernel_cases.py"
+   "untimed": [
+    "router_top_k/19x16/int32_int32+bfloat16/slice_size=70/top_k=4/bitmap-tail",
+    "router_top_k/42x16/int32_int32+bfloat16/slice_size=64/top_k=16/k16"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "experts",
+   "family": "moe",
+   "summary": "Mixture of experts' feed-forward, a row at a time, from two input streams.",
+   "sources": [
+    "moe/experts.cc"
+   ],
+   "builds": [
+    "experts"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "experts/36x18/bfloat16/cols=16/hidden=32/num_experts=2/rows=32/top_k=1/width=16/edge-one-tile",
+    "experts/80x288/bfloat16/top_k=4/edge-all-chosen"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "selective_scan",
+   "family": "ssm",
+   "summary": "Mamba2's state space recurrence for one head, a block of rows a call.",
+   "sources": [
+    "ssm/selective_scan.cc"
+   ],
+   "builds": [
+    "selective_scan"
+   ],
+   "passed": 12,
+   "failed": [],
+   "timed": 4,
+   "timing_failed": [],
+   "untimed": [
+    "selective_scan/1296x4/bfloat16_float32+bfloat16/blocks=2/none-valid",
+    "selective_scan/1296x4/bfloat16_float32+bfloat16/blocks=2/partial",
+    "selective_scan/146x4/bfloat16_float32+bfloat16/blocks=2/rows=1/state=64/odd-rows1-state64",
+    "selective_scan/274x4/bfloat16_float32+bfloat16/blocks=2/rows=1/state=128/odd-rows1-state128",
+    "selective_scan/436x4/bfloat16_float32+bfloat16/blocks=2/rows=3/state=64/odd-rows3-state64",
+    "selective_scan/82x4/bfloat16_float32+bfloat16/blocks=2/rows=1/state=32/odd-rows1-state32",
+    "selective_scan/98x6/bfloat16_float32+bfloat16/blocks=3/head_dim=16/rows=2/state=16/edge-tiny-valid17",
+    "selective_scan/98x6/bfloat16_float32+bfloat16/blocks=3/head_dim=16/rows=2/state=16/edge-tiny-valid2"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "gated_delta_rule",
+   "family": "ssm",
+   "summary": "Gated DeltaNet's recurrence for one value head, a block of rows a call.",
+   "sources": [
+    "ssm/gated_delta_rule.cc"
+   ],
+   "builds": [
+    "gated_delta_rule"
+   ],
+   "passed": 9,
+   "failed": [],
+   "timed": 3,
+   "timing_failed": [],
+   "untimed": [
+    "gated_delta_rule/1312x4/bfloat16_float32+bfloat16/blocks=2/none-valid",
+    "gated_delta_rule/1312x4/bfloat16_float32+bfloat16/blocks=2/partial",
+    "gated_delta_rule/16x6/bfloat16_float32+bfloat16/blocks=3/key_dim=2/rows=2/value_dim=2/edge-tiny-valid17",
+    "gated_delta_rule/16x6/bfloat16_float32+bfloat16/blocks=3/key_dim=2/rows=2/value_dim=2/edge-tiny-valid2",
+    "gated_delta_rule/208x4/bfloat16_float32+bfloat16/blocks=2/key_dim=17/rows=4/value_dim=16/edge-unaligned-v",
+    "gated_delta_rule/224x4/bfloat16_float32+bfloat16/blocks=2/key_dim=17/rows=4/value_dim=20/edge-odd-dims"
+   ],
+   "flaky": []
   },
   {
    "factory": "layer_norm",
@@ -564,7 +643,7 @@
   {
    "factory": "flm_gemma4_prefill_qk_core",
    "family": "flm_gemma4",
-   "summary": "attn_qk_step's arithmetic for one key chunk, without its k lock.",
+   "summary": "attn_qk_chunk's arithmetic.",
    "sources": [
     "flm_gemma4/prefill_core.cc"
    ],
@@ -582,7 +661,7 @@
   {
    "factory": "flm_gemma4_prefill_fv_core",
    "family": "flm_gemma4",
-   "summary": "attn_fv_step's arithmetic for one key chunk, without its v lock.",
+   "summary": "attn_fv_chunk's arithmetic.",
    "sources": [
     "flm_gemma4/prefill_core.cc"
    ],
@@ -989,6 +1068,26 @@
    "flaky": []
   },
   {
+   "factory": "flm_gemma4_rms_norm_core",
+   "family": "flm_gemma4",
+   "summary": "rms_norm of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual] into its packet layout.",
+   "sources": [
+    "flm_gemma4/decode_rms_residual_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_rms_norm_core",
+    "flm_gemma4_rms_norm_core/geometry=gemma4_e4b"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_rms_norm_core/2560x4/bfloat16/geometry=gemma4_e4b"
+   ],
+   "flaky": []
+  },
+  {
    "factory": "flm_gemma4_decode_proj_main",
    "family": "flm_gemma4",
    "summary": "One of the decode layer's 16 q4nx projection cores, from flm_gemma4/decode_proj_main.cc.",
@@ -1147,21 +1246,28 @@
   {
    "factory": "reduce_max",
    "family": "reduce",
-   "summary": "Reduction kernel: finds the maximum element of a tile (int32 or bfloat16).",
+   "summary": "Reduction kernel: finds the maximum element of a tile (int32, bfloat16 or float32).",
    "sources": [
     "reduce/reduce_max.cc"
    ],
    "builds": [
     "reduce_max",
-    "reduce_max/dtype=bfloat16"
+    "reduce_max/dtype=bfloat16",
+    "reduce_max/dtype=float32"
    ],
-   "passed": 6,
+   "passed": 13,
    "failed": [],
-   "timed": 4,
+   "timed": 5,
    "timing_failed": [],
    "untimed": [
+    "reduce_max/16x4/float32/edge-one-vector",
     "reduce_max/16x4/int32/edge-one-vector",
-    "reduce_max/32x4/bfloat16/edge-one-vector"
+    "reduce_max/32x4/bfloat16/edge-one-vector",
+    "reduce_max/64x4/bfloat16/vectorized=False/all-neg-inf",
+    "reduce_max/64x4/bfloat16/vectorized=True/all-neg-inf",
+    "reduce_max/64x4/float32/vectorized=False/all-neg-inf",
+    "reduce_max/64x4/float32/vectorized=True/all-neg-inf",
+    "reduce_max/96x4/float32/whisper-peaks"
    ],
    "flaky": []
   },
@@ -1226,38 +1332,40 @@
    "flaky": []
   },
   {
-   "factory": "relu",
-   "family": "eltwise",
-   "summary": "Element-wise bf16 ReLU (tile_size must be 1024, hard-coded in C++).",
+   "factory": "maxpool2d",
+   "family": "reduce",
+   "summary": "5x5, stride-1 max pool of one int8 row, padded with -inf (YOLO's SPPF).",
    "sources": [
-    "eltwise/relu.cc"
+    "reduce/maxpool2d.cc"
    ],
    "builds": [
-    "relu"
-   ],
-   "passed": 2,
-   "failed": [],
-   "timed": 2,
-   "timing_failed": [],
-   "untimed": [],
-   "flaky": []
-  },
-  {
-   "factory": "relu_sized",
-   "family": "eltwise",
-   "summary": "Element-wise bf16 ReLU, with a compiled-in element count.",
-   "sources": [
-    "eltwise/relu.cc"
-   ],
-   "builds": [
-    "relu_sized"
+    "maxpool2d"
    ],
    "passed": 2,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
    "untimed": [
-    "relu_sized/32x4/bfloat16/edge-tiny"
+    "maxpool2d/1024x4/int8/channels=16/input_width=64/width-64"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "relu",
+   "family": "eltwise",
+   "summary": "Element-wise bf16 ReLU, with a compiled-in element count.",
+   "sources": [
+    "eltwise/relu.cc"
+   ],
+   "builds": [
+    "relu"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "relu/32x4/bfloat16/edge-tiny"
    ],
    "flaky": []
   },
@@ -1285,19 +1393,20 @@
   {
    "factory": "magnitude_f32",
    "family": "eltwise",
-   "summary": "sqrt(re^2 + im^2) of complex float32, float32-accurate.",
+   "summary": "sqrt(re^2 + im^2) of complex float32, or its square, float32-accurate.",
    "sources": [
     "eltwise/magnitude_f32.cc"
    ],
    "builds": [
     "magnitude_f32"
    ],
-   "passed": 3,
+   "passed": 5,
    "failed": [],
-   "timed": 2,
+   "timed": 3,
    "timing_failed": [],
    "untimed": [
-    "magnitude_f32/64x4/float32/edge-one-vector"
+    "magnitude_f32/64x4/float32/edge-one-vector",
+    "magnitude_f32/64x4/float32/power=2/edge-one-vector"
    ],
    "flaky": []
   },
@@ -1487,7 +1596,7 @@
    "builds": [
     "resample_peak"
    ],
-   "passed": 7,
+   "passed": 8,
    "failed": [],
    "timed": 3,
    "timing_failed": [],
@@ -1495,7 +1604,8 @@
     "resample_peak/2x2/int32/idle-core",
     "resample_peak/2x2/int32/slots=22/slots-past-fit",
     "resample_peak/2x2/int32/too-few-chunks",
-    "resample_peak/2x2/int32/upsample"
+    "resample_peak/2x2/int32/upsample",
+    "resample_peak/2x2/int32/upsample-left-edge"
    ],
    "flaky": []
   },
@@ -1575,79 +1685,65 @@
   {
    "factory": "gelu",
    "family": "activation",
-   "summary": "GELU activation kernel (tanh approximation) for bf16 tiles.",
+   "summary": "GELU (tanh approximation) for bf16 tiles, with a compiled-in element count.",
    "sources": [
     "activation/gelu.cc"
    ],
    "builds": [
     "gelu"
    ],
-   "passed": 3,
+   "passed": 7,
    "failed": [],
    "timed": 3,
    "timing_failed": [],
-   "untimed": [],
+   "untimed": [
+    "gelu/160x4/bfloat16/unroll-tail",
+    "gelu/160x4/bfloat16/use_lut=True/lut-unroll-tail",
+    "gelu/32x4/bfloat16/edge-tiny",
+    "gelu/96x4/bfloat16/short-trip"
+   ],
    "flaky": []
   },
   {
-   "factory": "gelu_sized",
+   "factory": "gelu_erf",
    "family": "activation",
-   "summary": "GELU (tanh approx) for bf16 tiles, with a compiled-in element count.",
+   "summary": "Exact GELU, x * Phi(x), for bf16 tiles; (in, out, size).",
    "sources": [
-    "activation/gelu.cc"
+    "activation/gelu_erf.cc"
    ],
    "builds": [
-    "gelu_sized"
+    "gelu_erf"
    ],
-   "passed": 5,
+   "passed": 4,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
    "untimed": [
-    "gelu_sized/160x4/bfloat16/unroll-tail",
-    "gelu_sized/160x4/bfloat16/use_lut=True/lut-unroll-tail",
-    "gelu_sized/32x4/bfloat16/edge-tiny",
-    "gelu_sized/96x4/bfloat16/short-trip"
+    "gelu_erf/1024x64/bfloat16/all-bf16",
+    "gelu_erf/32x4/bfloat16/edge-one-vector",
+    "gelu_erf/96x4/bfloat16/unroll-tail"
    ],
    "flaky": []
   },
   {
    "factory": "silu",
    "family": "activation",
-   "summary": "SiLU (Swish) activation kernel for bf16 tiles (must be 1024).",
+   "summary": "SiLU (Swish) for bf16 tiles, with a compiled-in element count.",
    "sources": [
     "activation/silu.cc"
    ],
    "builds": [
     "silu"
    ],
-   "passed": 3,
+   "passed": 10,
    "failed": [],
-   "timed": 3,
-   "timing_failed": [],
-   "untimed": [],
-   "flaky": []
-  },
-  {
-   "factory": "silu_sized",
-   "family": "activation",
-   "summary": "SiLU (Swish) for bf16 tiles, with a compiled-in element count.",
-   "sources": [
-    "activation/silu.cc"
-   ],
-   "builds": [
-    "silu_sized"
-   ],
-   "passed": 8,
-   "failed": [],
-   "timed": 3,
+   "timed": 6,
    "timing_failed": [],
    "untimed": [
-    "silu_sized/1024x16/bfloat16",
-    "silu_sized/160x4/bfloat16/unroll-tail",
-    "silu_sized/160x4/bfloat16/use_lut=True/lut-unroll-tail",
-    "silu_sized/32x4/bfloat16/edge-tiny",
-    "silu_sized/96x4/bfloat16/short-trip"
+    "silu/160x4/bfloat16/unroll-tail",
+    "silu/160x4/bfloat16/use_lut=True/lut-unroll-tail",
+    "silu/32x4/bfloat16/edge-tiny",
+    "silu/96x4/bfloat16/short-trip"
    ],
    "flaky": []
   },
@@ -1722,6 +1818,25 @@
     "log_f32/1024x4/float32_bfloat16/mel-floor",
     "log_f32/128x4/float32_bfloat16/mel-row",
     "log_f32/32x4/float32_bfloat16/edge-one-vector"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "log10_clamp_f32",
+   "family": "activation",
+   "summary": "Whisper's log-mel features from mel energies, rounded once to bf16.",
+   "sources": [
+    "activation/log_f32.cc"
+   ],
+   "builds": [
+    "log10_clamp_f32"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "log10_clamp_f32/32x4/float32_bfloat16/edge-one-vector"
    ],
    "flaky": []
   },
@@ -1977,11 +2092,32 @@
    "builds": [
     "rms_norm_eps"
    ],
-   "passed": 1,
+   "passed": 3,
+   "failed": [],
+   "timed": 3,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
+  },
+  {
+   "factory": "layer_norm_eps",
+   "family": "norm",
+   "summary": "Layer-norm a bf16 row (gamma=1, beta=0); design passes (in, out, cols, epsilon).",
+   "sources": [
+    "norm/layer_norm.cc"
+   ],
+   "builds": [
+    "layer_norm_eps"
+   ],
+   "passed": 4,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
-   "untimed": [],
+   "untimed": [
+    "layer_norm_eps/16x16/bfloat16/cols=16/edge-one-half",
+    "layer_norm_eps/208x16/bfloat16/cols=208/row-tail",
+    "layer_norm_eps/256x16/bfloat16/cols=256/edge-pipelined"
+   ],
    "flaky": []
   },
   {
@@ -2000,12 +2136,13 @@
     "mm/input_dtype=bfloat16/output_dtype=bfloat16",
     "mm/input_dtype=bfloat16/output_dtype=float32"
    ],
-   "passed": 32,
+   "passed": 163,
    "failed": [],
-   "timed": 7,
+   "timed": 137,
    "timing_failed": [],
    "untimed": [
     "mm/16x1008x16x4/int8_int32",
+    "mm/16x512x16x4/bfloat16/long-k",
     "mm/16x512x32x4/int8_int32",
     "mm/16x512x32x4/int8_int32/b_col_maj=True",
     "mm/16x512x32x4/int8_int32/c_col_maj=True",
@@ -2043,11 +2180,13 @@
    "builds": [
     "fused_mm"
    ],
-   "passed": 27,
+   "passed": 35,
    "failed": [],
-   "timed": 9,
+   "timed": 12,
    "timing_failed": [],
    "untimed": [
+    "fused_mm/16x512x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/mmul_shape=(8, 8, 8)/out_chunk=128/long-k",
+    "fused_mm/16x512x16x4/bfloat16/band_m=16/chunk_k=64/out_chunk=128/long-k",
     "fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/emulate_bf16_mmul_with_bfp16=True/out_chunk=256",
     "fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/mmul_shape=(8, 8, 8)/out_chunk=256",
     "fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=32/chunk_k=128/clamp=(-0.125, 0.75)/emulate_bf16_mmul_with_bfp16=True/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor",
@@ -2063,9 +2202,12 @@
     "fused_mm/32x48x16x4/bfloat16/rounding=floor",
     "fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/clamp=(-0.125, 0.75)/epilogue=silu/mmul_shape=(8, 8, 8)/out_chunk=256",
     "fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/emulate_bf16_mmul_with_bfp16=True/out_chunk=256",
+    "fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/epilogue=gelu/mmul_shape=(4, 8, 8)/out_chunk=256",
     "fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/mmul_shape=(8, 8, 8)/out_chunk=256",
     "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor",
-    "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512"
+    "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512",
+    "fused_mm/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-False]",
+    "fused_mm/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-True]"
    ],
    "flaky": []
   },
@@ -2079,9 +2221,9 @@
    "builds": [
     "mha"
    ],
-   "passed": 4,
+   "passed": 18,
    "failed": [],
-   "timed": 3,
+   "timed": 17,
    "timing_failed": [],
    "untimed": [
     "mha/16x256x64x4/bfloat16/pv=True"
@@ -2098,19 +2240,49 @@
    "builds": [
     "mha_softmax"
    ],
-   "passed": 11,
+   "passed": 20,
    "failed": [],
-   "timed": 3,
+   "timed": 5,
    "timing_failed": [],
    "untimed": [
     "mha_softmax/2048x4/bfloat16_bfloat16+float32/half-block-diagonal",
     "mha_softmax/256x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate-diagonal-padded",
     "mha_softmax/256x4/bfloat16_bfloat16+float32/diagonal-padded",
+    "mha_softmax/256x4/bfloat16_bfloat16+float32/offset-diagonal-padded",
     "mha_softmax/4096x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate-diagonal-padded",
     "mha_softmax/4096x4/bfloat16_bfloat16+float32/causal=False/bidirectional-padded",
+    "mha_softmax/4096x4/bfloat16_bfloat16+float32/causal=False/window=64/offset-window",
     "mha_softmax/4096x4/bfloat16_bfloat16+float32/causal=False/window=64/window",
     "mha_softmax/4096x4/bfloat16_bfloat16+float32/diagonal-padded",
+    "mha_softmax/4096x4/bfloat16_bfloat16+float32/offset-diagonal-padded",
+    "mha_softmax/4096x4/bfloat16_bfloat16+float32/packed=True/window=50/packed-window",
+    "mha_softmax/4096x4/bfloat16_bfloat16+float32/window=21/window-dead-rows",
+    "mha_softmax/512x4/bfloat16_bfloat16+float32/accurate_exp2=True/decode8-padded",
+    "mha_softmax/512x4/bfloat16_bfloat16+float32/accurate_exp2=True/decode8-tail",
     "mha_softmax/512x4/bfloat16_bfloat16+float32/causal=False/window=32/window-padded"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "attention_i8",
+   "family": "linalg",
+   "summary": "One head of int8 attention over a 2-D map, one row of queries per call.",
+   "sources": [
+    "linalg/attention_i8.cc"
+   ],
+   "builds": [
+    "attention_i8"
+   ],
+   "passed": 6,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "attention_i8/1024x2/int8/head_dim=32/key_dim=64/seq_len=256/width=16/keys-wider",
+    "attention_i8/640x2/int8/out-shift-clip",
+    "attention_i8/640x2/int8/prob-shift-10",
+    "attention_i8/640x2/int8/prob-shift-30",
+    "attention_i8/640x2/int8/prob-shift-8"
    ],
    "flaky": []
   },
@@ -2184,9 +2356,9 @@
     "mv",
     "mv/dim_k=256/input_dtype=bfloat16/output_dtype=bfloat16"
    ],
-   "passed": 15,
+   "passed": 16,
    "failed": [],
-   "timed": 6,
+   "timed": 7,
    "timing_failed": [],
    "untimed": [
     "mv/10x512x4/bfloat16/vec_size=64/edge-mac-loop",
@@ -2312,12 +2484,14 @@
     "conv2dk1",
     "conv2dk1/act_dtype=uint8"
    ],
-   "passed": 3,
+   "passed": 5,
    "failed": [],
    "timed": 2,
    "timing_failed": [],
    "untimed": [
-    "conv2dk1/4096x8/int8_uint8/input_width=64/two-blocks"
+    "conv2dk1/4096x8/int8_uint8/input_width=64/two-blocks",
+    "conv2dk1/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-False]",
+    "conv2dk1/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-True]"
    ],
    "flaky": []
   },
@@ -2330,19 +2504,29 @@
    ],
    "builds": [
     "conv2dk3",
-    "conv2dk3/act_dtype=uint8"
+    "conv2dk3/act_dtype=uint8",
+    "conv2dk3/bias=True/rounding=conv_even",
+    "conv2dk3/bias=True/rounding=conv_even/table=True",
+    "conv2dk3/bias=True/rounding=conv_even/stride=2",
+    "conv2dk3/bias=True/rounding=conv_even/stride=2/table=True"
    ],
-   "passed": 8,
+   "passed": 19,
    "failed": [],
-   "timed": 2,
+   "timed": 7,
    "timing_failed": [],
    "untimed": [
+    "conv2dk3/1280x4/int8/bias=True/input_channels=32/input_width=40/output_channels=32/rounding=conv_even/stride=2/table=True/bias-s2-width-40",
+    "conv2dk3/2048x4/int8/bias=True/rounding=conv_even/bias-bottom-row",
+    "conv2dk3/2048x4/int8/bias=True/rounding=conv_even/bias-top-row",
+    "conv2dk3/2048x8/int8/bias=True/rounding=symmetric_inf/bias-symmetric-inf",
     "conv2dk3/2048x8/int8_uint8/bottom-row",
     "conv2dk3/2048x8/int8_uint8/output_channels=32/weight_output_channels=64/channel-offset",
     "conv2dk3/2048x8/int8_uint8/top-row",
     "conv2dk3/2048x8/uint8/bottom-row",
     "conv2dk3/2048x8/uint8/output_channels=32/weight_output_channels=64/channel-offset",
-    "conv2dk3/2048x8/uint8/top-row"
+    "conv2dk3/2048x8/uint8/top-row",
+    "conv2dk3/320x4/int8/bias=True/input_channels=16/input_width=20/output_channels=16/rounding=conv_even/bias-width-20",
+    "conv2dk3/4096x4/int8/bias=True/input_width=64/rounding=conv_even/stride=2/bias-s2-top-row"
    ],
    "flaky": []
   },
@@ -2433,14 +2617,22 @@
     "conv/conv2dk1_i8.cc"
    ],
    "builds": [
-    "conv2dk1_i8"
+    "conv2dk1_i8",
+    "conv2dk1_i8/rounding=conv_even",
+    "conv2dk1_i8/bias=True/rounding=conv_even",
+    "conv2dk1_i8/bias=True/rounding=conv_even/table=True"
    ],
-   "passed": 2,
+   "passed": 10,
    "failed": [],
-   "timed": 1,
+   "timed": 4,
    "timing_failed": [],
    "untimed": [
-    "conv2dk1_i8/4096x8/int8/input_width=64/two-blocks"
+    "conv2dk1_i8/2048x8/int8/bias=True/rounding=symmetric_inf/bias-symmetric-inf",
+    "conv2dk1_i8/2048x8/int8/rounding=conv_even/conv-even",
+    "conv2dk1_i8/320x4/int8/bias=True/input_channels=16/input_width=20/output_channels=16/rounding=conv_even/width-20",
+    "conv2dk1_i8/320x4/int8/bias=True/input_channels=16/input_width=20/output_channels=8/rounding=conv_even/table=True/table-tail",
+    "conv2dk1_i8/4096x8/int8/input_width=64/two-blocks",
+    "conv2dk1_i8/5120x4/int8/bias=True/input_width=80/rounding=conv_even/width-80"
    ],
    "flaky": []
   },
@@ -2583,11 +2775,14 @@
     "conv/bn_conv2dk3_dw.cc"
    ],
    "builds": [
-    "bn_conv2dk3_dw"
+    "bn_conv2dk3_dw",
+    "bn_conv2dk3_dw/stride=2",
+    "bn_conv2dk3_dw/bias=True",
+    "bn_conv2dk3_dw/bias=True/table=True"
    ],
-   "passed": 39,
+   "passed": 45,
    "failed": [],
-   "timed": 8,
+   "timed": 10,
    "timing_failed": [],
    "untimed": [
     "bn_conv2dk3_dw/1024x8/uint8/input_channels=32/input_width=32/output_channels=32/top-row",
@@ -2601,9 +2796,13 @@
     "bn_conv2dk3_dw/200x8/uint8/input_channels=40/input_width=5/output_channels=40/top-row",
     "bn_conv2dk3_dw/224x8/uint8/input_channels=8/input_width=28/output_channels=8/stride=2/middle-row",
     "bn_conv2dk3_dw/240x8/uint8/input_channels=40/input_width=6/output_channels=40/bottom-row",
+    "bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128/rounding=symmetric_inf/bias-symmetric-inf",
     "bn_conv2dk3_dw/256x8/uint8/input_channels=32/input_width=8/output_channels=32/middle-row",
     "bn_conv2dk3_dw/288x8/uint8/input_channels=16/input_width=18/output_channels=16/stride=2/top-row",
     "bn_conv2dk3_dw/288x8/uint8/input_channels=24/input_width=12/output_channels=24/middle-row",
+    "bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-bottom-row",
+    "bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-table",
+    "bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-top-row",
     "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120/arg3@32",
     "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120/bottom-row",
     "bn_conv2dk3_dw/384x8/uint8/input_channels=8/input_width=48/output_channels=8/bottom-row",
@@ -2646,24 +2845,24 @@
    "flaky": []
   },
   {
-   "factory": "bn_fc_relu_ui16_pad",
+   "factory": "bn_fc_relu_ui16_ic_chunk",
    "family": "conv",
-   "summary": "Fully-connected layer (1x1 conv on (1,1,C)) + ReLU, uint16 in/out, with padding.",
+   "summary": "Fully-connected layer + ReLU over one input-channel chunk, uint16 in and out.",
    "sources": [
     "conv/bn_conv2dk1_relu.cc"
    ],
    "builds": [
-    "bn_fc_relu_ui16_pad"
+    "bn_fc_relu_ui16_ic_chunk"
    ],
    "passed": 6,
    "failed": [],
    "timed": 2,
    "timing_failed": [],
    "untimed": [
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16/two-blocks",
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/arg1@16",
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail",
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short"
+    "bn_fc_relu_ui16_ic_chunk/10240x1/int8_uint16/chunk_input_channels=1280/chunk_output_channels=8/one-chunk",
+    "bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16/arg0@16",
+    "bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16/arg0@16/scale-0-scalar",
+    "bn_fc_relu_ui16_ic_chunk/10240x4/int8_uint16/max_images=4/images"
    ],
    "flaky": []
   },
