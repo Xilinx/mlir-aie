@@ -27,6 +27,12 @@ on:
         description: 'seeds to sweep in the CPU-only check (default 20); any other count never publishes'
         required: false
         default: ''
+      runner:
+        description: 'bench runner: auto (the primary, or the backup when it is down), primary or backup'
+        required: false
+        type: choice
+        options: [auto, primary, backup]
+        default: auto
   schedule:
     - cron: '30 6 * * *'          # after the kernel checks' 6:00 run
   pull_request:
@@ -122,10 +128,22 @@ jobs:
         if: always()
         run: rm -rf "$PIP_CACHE_DIR"
 
+  # The npu2 nightly-primary bench runner, or its backup when it is down
+  # (pickBenchRunner.yml): the kernel checks' own choice, made again.
+  runners:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/pickBenchRunner.yml
+    with:
+      runner_types: aie2p-8col
+      role: ${{ inputs.runner || 'auto' }}
+
   hw-checks:
     name: Design checks on hardware (mobilenet, llama, yolo26n; npu2)
-    if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, bench, aie2p-8col]
+    needs: runners
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)['aie2p-8col'] }}
     # Every design in one job: one build and one preflight, then each design
     # as its own step with its own timeout, results and artifact, so a failure
     # or hang in one still lets the others run and publish. Shares the kernel

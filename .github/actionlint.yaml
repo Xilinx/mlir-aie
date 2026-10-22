@@ -10,6 +10,8 @@ self-hosted-runner:
     - aie2p-8col     # NPU2, 8 columns
     - bench          # runners reserved for timing
     - devlab-dispatch
+    - nightly-backup   # the bench runner a nightly falls back to (pickBenchRunner.yml)
+    - nightly-primary  # the bench runner a nightly runs on while it is up
     - npu2
     - ryzenai
     - strix-halo
