@@ -57,7 +57,7 @@ def test_a_buffer_pinned_to_a_bank_lands_inside_it(device):
     "device, full_elf", [(NPU1, False), (NPU1Col1, False), (NPU2, True)]
 )
 def test_full_elf_dispatch(device, full_elf):
-    assert device().dispatches_full_elf is full_elf
+    assert device().can_dispatch_full_elf is full_elf
 
 
 class _EqualsEverything:

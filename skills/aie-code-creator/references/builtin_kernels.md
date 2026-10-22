@@ -24,13 +24,15 @@ maintaining a slower copy of a kernel that already exists.
 |----------|-----------|-------|
 | copy / passthrough | `kernels.passthrough(tile_size, dtype)` | `dtype` ∈ `uint8`, `int16`, `int32` |
 | multiply by a scalar | `kernels.scale(tile_size, dtype, vectorized=True)` | `dtype` ∈ `int16`, `int32`; see signature note below |
-| element-wise `a+b` / `a*b` | `kernels.add(...)` / `kernels.mul(...)` | **bf16 only**, `tile_size` fixed at 1024 |
+| element-wise `a+b` / `a*b` | `kernels.add(...)` / `kernels.mul(...)` | bf16, `tile_size` fixed at 1024; `add` also takes `dtype=np.int8` (ONNX QLinearAdd on power-of-two scales, `tile_size` a multiple of 32) |
 | ReLU | `kernels.relu(tile_size)` | bf16, `tile_size` a multiple of 32 |
-| softmax / gelu / silu / swiglu / exp | `kernels.softmax`, `.gelu`, `.silu`, `.swiglu`, `.bf16_exp` | bf16, LUT-based |
+| softmax | `kernels.softmax(tile_size)` | bf16 or float32 in, bf16 out; `tile_size` a multiple of 32, trailing size |
+| gelu / silu | `kernels.gelu(tile_size)`, `.silu(tile_size)`, `.gelu_erf(tile_size)` | bf16, any whole-vector `tile_size` (multiple of 16 on AIE2, 32 on AIE2P), trailing size; AIE2P's `vtanh` unless `use_lut=True`; `gelu_erf` is exact GELU, `tile_size` a multiple of 32 |
+| swiglu / exp | `kernels.swiglu`, `.bf16_exp` | bf16, `tile_size` fixed at 1024, LUT-based |
 | sum / min / max over a tile | `kernels.reduce_add`, `.reduce_min`, `.reduce_max` | |
 | running max | `kernels.compute_max(dtype)` | |
 | matrix multiply `C += A*B` | `kernels.mm(dim_m, dim_k, dim_n, input_dtype, output_dtype)` | see MMUL geometry below |
-| matrix–vector `c += A*b` | `kernels.mv(dim_m, dim_k, ...)` | int16 in → int32 out only |
+| matrix–vector `c += A*b` | `kernels.mv(dim_m, dim_k, input_dtype, output_dtype)` | int16 in → int32 out, or bf16 → bf16 |
 | cascade-accumulated matmul | `kernels.cascade_mm(...)` | pairs with `CascadeFlow` |
 | conv2d 1×1 / 3×3 / skip / batchnorm | `kernels.conv2dk1`, `.conv2dk3`, `.conv2dk1_skip`, `.bn_*` | |
 | RGBA↔gray/hue, threshold, filter2d, bitwise | `kernels.rgba2gray`, `.threshold`, `.filter2d`, … | vision ops |
@@ -63,16 +65,22 @@ Import as `from aie.iron.algorithms import transform_parallel` (etc.).
 ### Kernel signatures worth checking before you wire one up
 
 The `ExternalFunction` a factory returns carries a concrete `arg_types` list, and a mismatch
-fails at MLIR verification with an argument-count error rather than at runtime. Two that
+fails at MLIR verification with an argument-count error rather than at runtime. Three that
 surprise people:
 
 - **`kernels.scale`** is `(in_tile, out_tile, factor, n)` where `factor` is a **1-element
   buffer** (`np.ndarray[(1,), np.dtype[np.int32]]`), not a plain Python scalar. Feed it from a
   small `depth=1` ObjectFifo or a `Buffer` — the upside is the factor becomes settable per
   launch without a rebuild.
-- **`kernels.add` / `kernels.mul`** are bare `(in..., out)` with no trailing
-  size, which is why they need `pass_size_to_kernel=False`. `kernels.passthrough` *does* take a
-  trailing size and wants the default `True`.
+- **`kernels.add` / `kernels.mul`** on bf16 are bare `(in..., out)` with no trailing
+  size, which is why they need `pass_size_to_kernel=False`. `kernels.passthrough` *does*
+  take a trailing size and wants the default `True`.
+- **The int8 `kernels.add`** ends with three `int32` shifts,
+  `(a, b, out, a_shift, b_shift, out_shift)`. `transform_binary` and
+  `transform_parallel_binary` take no `*params`, so they can't call it: build the
+  `ObjectFifo`/`Worker`/`Runtime` design by hand ([`patterns.md`](patterns.md)) and pass the
+  shifts as Python ints in the core body, `add_k(a, b, c, 0, 0, 0)`. All-zero shifts give a
+  plain saturating int8 add.
 
 When in doubt, ask the kernel. `arg_types` is a **method**, not a property — call it:
 
@@ -82,8 +90,8 @@ When in doubt, ask the kernel. `arg_types` is a **method**, not a property — c
 ```
 
 Unsupported dtypes fail loudly at construction rather than producing a wrong kernel, e.g.
-`kernels.add(tile_size=1024, dtype=np.int8)` raises
-`ValueError: add() dtype must be bfloat16 ... Only the bf16 variant is available in the
+`kernels.mul(tile_size=1024, dtype=np.int8)` raises
+`ValueError: mul() dtype must be bfloat16 ... Only the bf16 variant is available in the
 installed aie_kernels`. That's your signal to hand-write the kernel.
 
 Two template arguments trip people up:
@@ -103,6 +111,8 @@ directly in the function signature, rather than closing over module-level consta
 
 ```python
 import numpy as np
+from ml_dtypes import bfloat16
+
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_parallel
@@ -219,8 +229,8 @@ produces silently wrong output, not an error.
 
 Write your own kernel (and your own topology) when:
 
-- the dtype or tile size you need isn't in the supported set above — e.g. `kernels.add` is
-  bf16-only with a fixed 1024 tile, so an int8 add needs a hand-written kernel;
+- the dtype or tile size you need isn't in the supported set above, e.g. `kernels.mul` is
+  bf16-only with a fixed 1024 tile;
 - the op fuses several stages that the library exposes only separately, and the intermediate
   would otherwise round-trip through L1 for no reason;
 - the access pattern is a stencil/sliding window or anything where the "one tile in, one tile

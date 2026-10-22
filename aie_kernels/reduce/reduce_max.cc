@@ -11,6 +11,7 @@
 #include <type_traits>
 
 #include "../aie_kernel_utils.h"
+#include "reduce_identity.h"
 #include <aie_api/aie.hpp>
 
 #ifndef REDUCE_MAX_ELEMS
@@ -22,7 +23,7 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
   constexpr int32_t VECTOR_SIZE = V::size();
-  V tiny = aie::broadcast<T>(std::numeric_limits<T>::lowest());
+  V tiny = aie::broadcast<T>(max_identity<T>());
   V running_max = tiny;
 
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
@@ -68,7 +69,7 @@ template <typename T>
 void _reduce_max_scalar(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
-  T running_max = std::numeric_limits<T>::lowest();
+  T running_max = max_identity<T>();
   for (int32_t i = 0; i < REDUCE_MAX_ELEMS; i++) {
     if (in[i] > running_max)
       running_max = in[i];

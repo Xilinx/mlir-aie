@@ -217,6 +217,7 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
             setup=conv_even,
             roles=(In, Out, Param, Param),
             parameter_bindings=((2, tile_size),),
+            true_function=mm_activation_epilogue_ref,
             per_build=tuple(
                 (
                     (build, mm_activation_epilogue_lut_ref, _EPILOGUE_LUT_TOLERANCE)

@@ -692,7 +692,7 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
                 [&](TileLike peer, bool thisIsFirst) {
                   if (!room || resolvePeerPosition(peer, this->result))
                     return;
-                  // edge.first is the consumer, edge.second the owner.
+                  // thisIsFirst: this tile is the consumer, peer the owner.
                   auto free =
                       llvm::find_if(availability.compTiles, [&](TileID t) {
                         return t != candidate && !claimed.contains(t) &&

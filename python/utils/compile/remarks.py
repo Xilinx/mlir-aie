@@ -15,7 +15,7 @@
         --build cascade_mm:dim_m=16,dim_k=24,dim_n=32 --build cascade_mm
 
 CPU-only. Every factory in ``aie.iron.kernels`` (at its defaults and for each
-entry of its ``.dtypes`` table) is compiled exactly as the JIT compiles it
+entry of its ``kernels.DTYPES`` table) is compiled exactly as the JIT compiles it
 (``aie.utils.compile.utils.cxx_core_compile_command``), plus the
 optimization-record flags below, and the records become per-kernel series
 for benchmark-action: a Peano bump that changes a loop's schedule shows up
@@ -812,7 +812,7 @@ def kernel_builds():
     """Yield ``(name, ExternalFunction)`` for every factory build the library offers.
 
     Each exported factory at its defaults, plus one build per entry of its
-    ``.dtypes`` table; a factory that refuses the current device
+    ``kernels.DTYPES`` table; a factory that refuses the current device
     (``NotImplementedError``) is skipped. Remarks depend on source and flags,
     not on the shape a test runs, so this is the whole surface.
     """
@@ -820,7 +820,7 @@ def kernel_builds():
 
     for name in kernels.factories():
         f = getattr(kernels, name)
-        combos = [{}] + [dict(c) for c in getattr(f, "dtypes", ()) if c]
+        combos = [{}] + [dict(c) for c in kernels.DTYPES.get(name, ()) if c]
         seen: set[str] = set()
         for combo in combos:
             try:

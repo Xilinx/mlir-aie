@@ -313,3 +313,21 @@ module @shared_source_bd_chain_without_header {
     }
   }
 }
+
+// -----
+
+module @shared_source_bd_chain_unresolved {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @host to [@b] {packet = #aie.packet_info<pkt_id = 2>}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      // expected-error @+1 {{symbol does not reference valid BD chain}}
+      %t = aiex.dma_start_bd_chain_for @missing(%arg0) : (memref<64xi32>) for @host
+    }
+  }
+}

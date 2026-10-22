@@ -6,6 +6,7 @@
 
     python bringup.py --ops 0:11                 # the stem and model.2's C3k2
     python bringup.py --ops 0:11 --synthetic 7   # the same on seeded synthetic weights
+    python bringup.py --span images /model.2/cv2/conv/Conv   # the same, by op names
 
 A run starts and ends on the boundaries of the fused runs (`FUSED`), as the
 whole network is built from them.
@@ -18,20 +19,20 @@ compared with the oracle bit for bit. Prints one PASS/FAIL line per output.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
-import statistics
 import sys
-import time
 from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
 from aie.iron import CompileTime, In, Out, Program, Runtime
 from aie.iron.device import NPU2
+from aie.utils.benchmark import print_benchmark, run_iters
 from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
 from yolo_params import DATA_DIR, Params, synthetic_params
-from yolo_spec import Network, Tensor
+from yolo_spec import IMAGE_SIZE, Network, Tensor
 
 
 def to_rows(tensor: Tensor, values: np.ndarray) -> np.ndarray:
@@ -50,6 +51,44 @@ def from_rows(tensor: Tensor, rows: np.ndarray) -> np.ndarray:
     return grouped.transpose(1, 3, 0, 2).reshape(
         tensor.channels8, tensor.height, tensor.width
     )[: tensor.channels]
+
+
+def check(
+    plan: SegmentDesign,
+    layout: Layout,
+    references: list[dict[str, np.ndarray]],
+    words: np.ndarray,
+) -> bool:
+    """Compare each image's drained tensors with the oracle, printing a PASS/FAIL line for each.
+
+    Args:
+        plan: The run's design, built on the host.
+        layout: Where each image's outputs sit in the output buffer.
+        references: Per image, the oracle's tensors by name.
+        words: The output buffer as the NPU wrote it.
+
+    Returns:
+        Whether every drained tensor of every image matched bit for bit.
+    """
+    got = words.view(np.int8)
+    passed = True
+    for i, reference in enumerate(references):
+        for tensor in plan.outputs:
+            at = 4 * (i * layout.image_out + layout.outputs_at[tensor.name])
+            size = plan.host_bytes(tensor)
+            want = reference[tensor.name]
+            if want.dtype == np.float32:
+                mine = got[at : at + size].view(np.int32).reshape(want.shape)
+                want = want.view(np.int32)
+            else:
+                mine = from_rows(tensor, got[at : at + size]).astype(np.int64)
+            bad = int((mine != want).sum())
+            print(
+                f"image {i} {tensor.name}: {'PASS' if bad == 0 else 'FAIL'} "
+                f"({bad}/{want.size} differ)"
+            )
+            passed &= bad == 0
+    return passed
 
 
 class Layout:
@@ -138,8 +177,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument(
-        "--ops", required=True, help="FIRST:STOP indexes into Network.yolo26n().ops"
+    run = parser.add_mutually_exclusive_group(required=True)
+    run.add_argument("--ops", help="FIRST:STOP indexes into Network.yolo26n().ops")
+    run.add_argument(
+        "--span",
+        nargs=2,
+        metavar=("FIRST", "LAST"),
+        help="the names of the run's first and last ops",
     )
     parser.add_argument(
         "--params",
@@ -159,9 +203,14 @@ def main() -> None:
     parser.add_argument(
         "--outputs", help="comma-separated tensors to drain (default: the last op's)"
     )
-    parser.add_argument("--time", action="store_true", help="also time the dispatch")
-    parser.add_argument("--n-iters", type=int, default=5)
-    parser.add_argument("--n-warmup", type=int, default=2)
+    parser.add_argument(
+        "--time",
+        action="store_true",
+        help="also time the dispatch, report the fastest call and check its output",
+    )
+    parser.add_argument("--n-iters", type=int, default=20, help="timed calls (>= 1)")
+    # The NPU takes about ten calls after a load to reach its steady latency.
+    parser.add_argument("--n-warmup", type=int, default=10, help="untimed calls first")
     parser.add_argument(
         "--batch",
         type=int,
@@ -177,9 +226,14 @@ def main() -> None:
     args = parser.parse_args()
     if args.batch < 1:
         parser.error(f"--batch {args.batch} is not positive")
+    if args.n_iters < 1 or args.n_warmup < 0:
+        parser.error("--n-iters must be at least 1 and --n-warmup at least 0")
 
-    first, stop = (int(v) for v in args.ops.split(":"))
     network = Network.yolo26n()
+    if args.span:
+        first, stop = network.span(*args.span)
+    else:
+        first, stop = (int(v) for v in args.ops.split(":"))
     if args.synthetic is not None:
         params_path = synthetic_params(
             args.synthetic,
@@ -203,7 +257,7 @@ def main() -> None:
     # fills them, and its weights as the NPU2 kernels it compiles for load them.
     iron.set_current_device(NPU2())
     tensors = {op.dst.name: op.dst for op in network.ops} | {
-        "images": Tensor("images", 3, 640, 640)
+        "images": Tensor("images", 3, IMAGE_SIZE, IMAGE_SIZE)
     }
     plan = SegmentDesign.planned(
         network, params, ops, [tensors[n] for n in drained.split(",")]
@@ -221,11 +275,11 @@ def main() -> None:
         # Optional: only a real image needs OpenCV.
         from letterbox import letterbox
 
-        images = [letterbox(args.image)] * args.batch
+        images = [letterbox(args.image)[0]] * args.batch
     else:
         rng = np.random.default_rng(args.synthetic or 0)
         images = [
-            rng.integers(0, 256, (640, 640, 3), dtype=np.uint8)
+            rng.integers(0, 256, (IMAGE_SIZE, IMAGE_SIZE, 3), dtype=np.uint8)
             for _ in range(args.batch)
         ]
     oracle = Oracle(params, network)
@@ -249,36 +303,27 @@ def main() -> None:
     inputs = iron.tensor(packed_in.view(np.int32))
     outputs = iron.zeros(layout.total_out, dtype=np.int32)
     segment(inputs, outputs, **kwargs)
-    got = outputs.numpy().view(np.int8)
-    failed = False
-    for i, reference in enumerate(references):
-        for tensor in plan.outputs:
-            at = 4 * (i * layout.image_out + layout.outputs_at[tensor.name])
-            size = plan.host_bytes(tensor)
-            want = reference[tensor.name]
-            if want.dtype == np.float32:
-                mine = got[at : at + size].view(np.int32).reshape(want.shape)
-                want = want.view(np.int32)
-            else:
-                mine = from_rows(tensor, got[at : at + size]).astype(np.int64)
-            bad = int((mine != want).sum())
-            print(
-                f"image {i} {tensor.name}: {'PASS' if bad == 0 else 'FAIL'} "
-                f"({bad}/{want.size} differ)"
-            )
-            failed |= bad != 0
+    passed = check(plan, layout, references, outputs.numpy())
 
     if args.time:
-        for _ in range(args.n_warmup):
-            segment(inputs, outputs, **kwargs)
-        samples = []
-        for _ in range(args.n_iters):
-            start = time.perf_counter()
-            segment(inputs, outputs, **kwargs)
-            samples.append(time.perf_counter() - start)
-        us = statistics.median(samples) * 1e6 / args.batch
-        print(f"ops {first}:{stop}: {us:.1f} us per image at batch {args.batch}")
-    sys.exit(1 if failed else 0)
+        bench = run_iters(
+            functools.partial(segment, **kwargs),
+            inputs,
+            outputs,
+            warmup=args.n_warmup,
+            iters=args.n_iters,
+        )
+        print_benchmark(bench)
+        e2e = bench.e2e
+        print(
+            f"ops {first}:{stop}: {e2e.min_us / args.batch:.1f} us per image at "
+            f"batch {args.batch}, fastest of {e2e.n} after {args.n_warmup} warmups; "
+            f"median {e2e.median_us / args.batch:.1f} us, "
+            f"MAD {e2e.mad_us / args.batch:.1f} us"
+        )
+        print("timed dispatch:")
+        passed &= check(plan, layout, references, outputs.numpy())
+    sys.exit(0 if passed else 1)
 
 
 if __name__ == "__main__":

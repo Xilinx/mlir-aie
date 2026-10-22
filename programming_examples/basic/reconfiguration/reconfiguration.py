@@ -25,6 +25,7 @@ from aie.iron import (
 )
 from aie.iron.device import NPU2, Tile
 from aie.utils.benchmark import run_iters
+from aie.utils.hostruntime.hostruntime import KernelResult
 
 NPU2_COLUMNS = 8
 NPU2_CORE_ROWS = 4
@@ -36,9 +37,13 @@ MODES = (
 )
 
 
-class CombinedKernelResult:
+class CombinedKernelResult(KernelResult):
     def __init__(self, *results):
-        self.npu_time = sum(result[1].npu_time for result in results)
+        super().__init__(sum(result[1].npu_time for result in results))
+        self.results = results
+
+    def is_success(self) -> bool:
+        return all(result[1].is_success() for result in self.results)
 
 
 def padding_flows(cols, rows, switchboxes):
@@ -245,8 +250,8 @@ def main():
         output.numpy(), np.arange(args.cols * args.rows, dtype=np.int32)
     )
 
-    stats = benchmark.npu if benchmark.npu is not None else benchmark.e2e
-    scope = "npu" if benchmark.npu is not None else "e2e"
+    stats = benchmark.dispatch if benchmark.dispatch is not None else benchmark.e2e
+    scope = "dispatch" if benchmark.dispatch is not None else "e2e"
     if args.csv:
         writer = csv.writer(sys.stdout)
         for iteration, runtime_us in enumerate(stats.samples_us):

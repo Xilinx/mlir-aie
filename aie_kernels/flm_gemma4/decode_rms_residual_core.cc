@@ -14,3 +14,13 @@ extern "C" void rms_residual_core(bf16 *restrict x, bf16 *restrict w,
   rms_norm_add<MODEL_DIM>(y, x, w, residual);
   event1();
 }
+
+// y is rms_residual's: a 16-element packet header, here zeros, then
+// rms_norm(x, w).
+extern "C" void rms_norm_core(bf16 *restrict x, bf16 *restrict w,
+                              bf16 *restrict y) {
+  event0();
+  aie::store_v(y, aie::zeros<bfloat16, 16>());
+  rms_norm<MODEL_DIM>(y + 16, x, w);
+  event1();
+}

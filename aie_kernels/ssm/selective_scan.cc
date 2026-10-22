@@ -8,8 +8,8 @@
 // Mamba2's state space recurrence for one head over a block of rows: each
 // row's step and decay 32 rows to a vector, then each state row
 // vectorized along the state dimension. Neither core has an f32 vector
-// multiply, so each f32 product is summed from exact bf16 limb products
-// (f32_split.h) and rounded once, as the scalar f32 product is.
+// multiply, so each f32 product is summed from bf16 limb products, within 1
+// ulp of the f32 product (f32_split.h).
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>

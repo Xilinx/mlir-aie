@@ -19,7 +19,8 @@ import aie.iron as iron
 import numpy as np
 import pytest
 from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
-from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron.algorithms._transform import transform
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.callabledesign import CallableDesign
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
@@ -27,6 +28,7 @@ from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, 
 from aie.utils.jit import _JIT_CONFIG_KEYS, jit
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.parse import DEFAULT_KERNEL
+from ml_dtypes import bfloat16
 
 # ---------------------------------------------------------------------------
 # CallableDesign construction
@@ -646,4 +648,45 @@ def test_an_operand_goes_wherever_its_tensor_type_goes(npu2_device):
         return _copy_program(a.ndarray_type, b.ndarray_type)
 
     tensors = (np.zeros(64, np.int32), np.zeros(64, np.int32))
+    assert by_operand.as_mlir(*tensors) == by_type.as_mlir(*tensors)
+
+
+def _kernel_program(src_ty, dst_ty):
+    copy_all = Kernel("copy_all", "copy_all.o", [src_ty, dst_ty])
+    scratch = Buffer(src_ty, name="scratch")
+    of_in, of_out = ObjectFifo(src_ty), ObjectFifo(dst_ty)
+
+    def core(of_in, of_out, scratch, kernel):
+        kernel(of_in.acquire(1), scratch)
+        kernel(scratch, of_out.acquire(1))
+        of_in.release(1)
+        of_out.release(1)
+
+    def seq(src, dst, producer, consumer):
+        producer.fill(src)
+        consumer.drain(dst, wait=True)
+
+    worker = Worker(core, [of_in.cons(), of_out.prod(), scratch, copy_all])
+    rt = Runtime(seq, [src_ty, dst_ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        _kernel_program,
+        lambda a, b: transform(kernels.gelu(tile_size=1024), a, tile_size=1024),
+    ],
+    ids=["buffer-and-kernel", "transform"],
+)
+def test_an_operand_builds_what_its_tensor_type_builds(npu2_device, build):
+    @jit
+    def by_operand(a: In, b: Out):
+        return build(a, b)
+
+    @jit
+    def by_type(a: In, b: Out):
+        return build(a.ndarray_type, b.ndarray_type)
+
+    tensors = (np.zeros(4096, bfloat16), np.zeros(4096, bfloat16))
     assert by_operand.as_mlir(*tensors) == by_type.as_mlir(*tensors)

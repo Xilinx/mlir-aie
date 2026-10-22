@@ -310,6 +310,12 @@ def sequence(a_in, c_out, in_h, out_h):
     out_h.drain(c_out, wait=True)
 ```
 
+From the host, an `@iron.jit(full_elf=True)` design takes the values per call, by name:
+`design(a, c, parameters={"seq_len": np.int32(128)})`. A design that declares no
+`ScratchpadParameter` refuses `parameters=`, and a generator may not name one of its own
+parameters `parameters`. `test/python/npu-xrt/scratchpad_params/test.py` runs both this and
+the lower-level pyxrt + `ParameterScratchpad` form.
+
 Reach for `Buffer(..., use_write_rtp=True)` + `WorkerRuntimeBarrier` for the common case (matches most existing examples); use `ScratchpadParameter` when you specifically want to avoid a dedicated RTP buffer/lock.
 
 Note that `ScratchpadParameter`s depend on the full-ELF flow (`aiecc --get-full-elf`) and are not available on the Phoenix/Hawk Point architectures.

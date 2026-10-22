@@ -926,8 +926,8 @@ def main():
             out = self.bn5_quant_conv2(out)
             out = self.bn5_quant_relu2(out)
             out = self.bn5_quant_conv3(out)
-            # out = self.bn4_add(out)
-            # out = out+out_q
+            out = self.bn4_add(out)
+            out = out + out_q
             out = self.bn5_add(out)
 
             # # bn6
@@ -1092,18 +1092,30 @@ def main():
     print("combined_scale after conv1x1:", block_0_combined_scale3.item())
     print("combined_scale after skip add:", block_0_combined_scale_skip.item())
     print("********************BN0*******************************")
-    scale_factors["BN0"]["conv3x3"] = int(block_0_combined_scale2.item())
-    scale_factors["BN0"]["conv1x1_2"] = int(block_0_combined_scale3.item())
-    scale_factors["BN0"]["skip_add"] = int(block_0_combined_scale_skip.item())
+    scale_factors["BN0"]["conv3x3"] = mb_utils.shift_of(
+        block_0_combined_scale2, "BN0 conv3x3"
+    )
+    scale_factors["BN0"]["conv1x1_2"] = mb_utils.shift_of(
+        block_0_combined_scale3, "BN0 conv1x1_2"
+    )
+    scale_factors["BN0"]["skip_add"] = mb_utils.shift_of(
+        block_0_combined_scale_skip, "BN0 skip_add"
+    )
 
     print("********************BN1*******************************")
     print("combined_scale after conv1x1:", block_1_combined_scale1.item())
     print("combined_scale after conv3x3:", block_1_combined_scale2.item())
     print("combined_scale after conv1x1:", block_1_combined_scale3.item())
     print("********************BN1*******************************")
-    scale_factors["BN1"]["conv1x1_1"] = int(block_1_combined_scale1.item())
-    scale_factors["BN1"]["conv3x3"] = int(block_1_combined_scale2.item())
-    scale_factors["BN1"]["conv1x1_2"] = int(block_1_combined_scale3.item())
+    scale_factors["BN1"]["conv1x1_1"] = mb_utils.shift_of(
+        block_1_combined_scale1, "BN1 conv1x1_1"
+    )
+    scale_factors["BN1"]["conv3x3"] = mb_utils.shift_of(
+        block_1_combined_scale2, "BN1 conv3x3"
+    )
+    scale_factors["BN1"]["conv1x1_2"] = mb_utils.shift_of(
+        block_1_combined_scale3, "BN1 conv1x1_2"
+    )
     scale_factors["BN1"]["skip_add"] = 0
 
     block_2_inp_scale1 = block_1_final_scale
@@ -1134,10 +1146,18 @@ def main():
     print("combined_scale after conv1x1:", block_2_combined_scale3.item())
     print("combined_scale after skip add:", block_2_combined_scale_skip.item())
     print("********************BN2*******************************")
-    scale_factors["BN2"]["conv1x1_1"] = int(block_2_combined_scale1.item())
-    scale_factors["BN2"]["conv3x3"] = int(block_2_combined_scale2.item())
-    scale_factors["BN2"]["conv1x1_2"] = int(block_2_combined_scale3.item())
-    scale_factors["BN2"]["skip_add"] = int(block_2_combined_scale_skip.item())
+    scale_factors["BN2"]["conv1x1_1"] = mb_utils.shift_of(
+        block_2_combined_scale1, "BN2 conv1x1_1"
+    )
+    scale_factors["BN2"]["conv3x3"] = mb_utils.shift_of(
+        block_2_combined_scale2, "BN2 conv3x3"
+    )
+    scale_factors["BN2"]["conv1x1_2"] = mb_utils.shift_of(
+        block_2_combined_scale3, "BN2 conv1x1_2"
+    )
+    scale_factors["BN2"]["skip_add"] = mb_utils.shift_of(
+        block_2_combined_scale_skip, "BN2 skip_add"
+    )
 
     init_scale = block_2_skip_add
     block_3_relu_1 = quant_model.bn3_quant_relu1.act_quant.scale()
@@ -1162,9 +1182,15 @@ def main():
     print("combined_scale after conv3x3:", block_3_combined_scale2.item())
     print("combined_scale after conv1x1:", block_3_combined_scale3.item())
     print("********************bn3*******************************")
-    scale_factors["BN3"]["conv1x1_1"] = int(block_3_combined_scale1.item())
-    scale_factors["BN3"]["conv3x3"] = int(block_3_combined_scale2.item())
-    scale_factors["BN3"]["conv1x1_2"] = int(block_3_combined_scale3.item())
+    scale_factors["BN3"]["conv1x1_1"] = mb_utils.shift_of(
+        block_3_combined_scale1, "BN3 conv1x1_1"
+    )
+    scale_factors["BN3"]["conv3x3"] = mb_utils.shift_of(
+        block_3_combined_scale2, "BN3 conv3x3"
+    )
+    scale_factors["BN3"]["conv1x1_2"] = mb_utils.shift_of(
+        block_3_combined_scale3, "BN3 conv1x1_2"
+    )
     scale_factors["BN3"]["skip_add"] = 0
 
     block_4_inp_scale1 = block_3_final_scale
@@ -1194,10 +1220,18 @@ def main():
     print("combined_scale after conv1x1:", block_4_combined_scale3.item())
     print("combined_scale after skip add:", block_4_combined_scale_skip.item())
     print("********************bn4*******************************")
-    scale_factors["BN4"]["conv1x1_1"] = int(block_4_combined_scale1.item())
-    scale_factors["BN4"]["conv3x3"] = int(block_4_combined_scale2.item())
-    scale_factors["BN4"]["conv1x1_2"] = int(block_4_combined_scale3.item())
-    scale_factors["BN4"]["skip_add"] = int(block_4_combined_scale_skip.item())
+    scale_factors["BN4"]["conv1x1_1"] = mb_utils.shift_of(
+        block_4_combined_scale1, "BN4 conv1x1_1"
+    )
+    scale_factors["BN4"]["conv3x3"] = mb_utils.shift_of(
+        block_4_combined_scale2, "BN4 conv3x3"
+    )
+    scale_factors["BN4"]["conv1x1_2"] = mb_utils.shift_of(
+        block_4_combined_scale3, "BN4 conv1x1_2"
+    )
+    scale_factors["BN4"]["skip_add"] = mb_utils.shift_of(
+        block_4_combined_scale_skip, "BN4 skip_add"
+    )
 
     block_5_inp_scale1 = block_4_skip_add
     block_5_relu_1 = quant_model.bn5_quant_relu1.act_quant.scale()
@@ -1214,10 +1248,10 @@ def main():
         block_5_relu_1 * block_5_weight_scale2 / block_5_relu_2
     )
     block_5_combined_scale3 = -torch.log2(
-        block_5_relu_2 * block_5_weight_scale3 / block_5_skip_add
+        block_5_relu_2 * block_5_weight_scale3 / block_5_inp_scale1
     )
     block_5_combined_scale_skip = -torch.log2(
-        block_5_skip_add / block_5_skip_add
+        block_5_inp_scale1 / block_5_skip_add
     )  # After addition | clip -128-->127
 
     print("********************bn5*******************************")
@@ -1226,10 +1260,18 @@ def main():
     print("combined_scale after conv1x1:", block_5_combined_scale3.item())
     print("combined_scale after skip add:", block_5_combined_scale_skip.item())
     print("********************bn5*******************************")
-    scale_factors["BN5"]["conv1x1_1"] = int(block_5_combined_scale1.item())
-    scale_factors["BN5"]["conv3x3"] = int(block_5_combined_scale2.item())
-    scale_factors["BN5"]["conv1x1_2"] = int(block_5_combined_scale3.item())
-    scale_factors["BN5"]["skip_add"] = int(block_5_combined_scale_skip.item())
+    scale_factors["BN5"]["conv1x1_1"] = mb_utils.shift_of(
+        block_5_combined_scale1, "BN5 conv1x1_1"
+    )
+    scale_factors["BN5"]["conv3x3"] = mb_utils.shift_of(
+        block_5_combined_scale2, "BN5 conv3x3"
+    )
+    scale_factors["BN5"]["conv1x1_2"] = mb_utils.shift_of(
+        block_5_combined_scale3, "BN5 conv1x1_2"
+    )
+    scale_factors["BN5"]["skip_add"] = mb_utils.shift_of(
+        block_5_combined_scale_skip, "BN5 skip_add"
+    )
 
     block_6_relu_1 = quant_model.bn6_quant_relu1.act_quant.scale()
     block_6_relu_2 = quant_model.bn6_quant_relu2.act_quant.scale()
@@ -1253,9 +1295,15 @@ def main():
     print("combined_scale after conv3x3:", block_6_combined_scale2.item())
     print("combined_scale after conv1x1:", block_6_combined_scale3.item())
     print("********************BN6*******************************")
-    scale_factors["BN6"]["conv1x1_1"] = int(block_6_combined_scale1.item())
-    scale_factors["BN6"]["conv3x3"] = int(block_6_combined_scale2.item())
-    scale_factors["BN6"]["conv1x1_2"] = int(block_6_combined_scale3.item())
+    scale_factors["BN6"]["conv1x1_1"] = mb_utils.shift_of(
+        block_6_combined_scale1, "BN6 conv1x1_1"
+    )
+    scale_factors["BN6"]["conv3x3"] = mb_utils.shift_of(
+        block_6_combined_scale2, "BN6 conv3x3"
+    )
+    scale_factors["BN6"]["conv1x1_2"] = mb_utils.shift_of(
+        block_6_combined_scale3, "BN6 conv1x1_2"
+    )
     scale_factors["BN6"]["skip_add"] = 0
 
     block_7_inp_scale1 = block_6_final_scale
@@ -1286,10 +1334,18 @@ def main():
     print("combined_scale after conv1x1:", block_7_combined_scale3.item())
     print("combined_scale after skip add:", block_7_combined_scale_skip.item())
     print("********************BN7*******************************")
-    scale_factors["BN7"]["conv1x1_1"] = int(block_7_combined_scale1.item())
-    scale_factors["BN7"]["conv3x3"] = int(block_7_combined_scale2.item())
-    scale_factors["BN7"]["conv1x1_2"] = int(block_7_combined_scale3.item())
-    scale_factors["BN7"]["skip_add"] = int(block_7_combined_scale_skip.item())
+    scale_factors["BN7"]["conv1x1_1"] = mb_utils.shift_of(
+        block_7_combined_scale1, "BN7 conv1x1_1"
+    )
+    scale_factors["BN7"]["conv3x3"] = mb_utils.shift_of(
+        block_7_combined_scale2, "BN7 conv3x3"
+    )
+    scale_factors["BN7"]["conv1x1_2"] = mb_utils.shift_of(
+        block_7_combined_scale3, "BN7 conv1x1_2"
+    )
+    scale_factors["BN7"]["skip_add"] = mb_utils.shift_of(
+        block_7_combined_scale_skip, "BN7 skip_add"
+    )
 
     block_8_inp_scale1 = block_7_skip_add
     block_8_inp_scale1 = block_7_skip_add
@@ -1319,10 +1375,18 @@ def main():
     print("combined_scale after conv1x1:", block_8_combined_scale3.item())
     print("combined_scale after skip add:", block_8_combined_scale_skip.item())
     print("********************BN8*******************************")
-    scale_factors["BN8"]["conv1x1_1"] = int(block_8_combined_scale1.item())
-    scale_factors["BN8"]["conv3x3"] = int(block_8_combined_scale2.item())
-    scale_factors["BN8"]["conv1x1_2"] = int(block_8_combined_scale3.item())
-    scale_factors["BN8"]["skip_add"] = int(block_8_combined_scale_skip.item())
+    scale_factors["BN8"]["conv1x1_1"] = mb_utils.shift_of(
+        block_8_combined_scale1, "BN8 conv1x1_1"
+    )
+    scale_factors["BN8"]["conv3x3"] = mb_utils.shift_of(
+        block_8_combined_scale2, "BN8 conv3x3"
+    )
+    scale_factors["BN8"]["conv1x1_2"] = mb_utils.shift_of(
+        block_8_combined_scale3, "BN8 conv1x1_2"
+    )
+    scale_factors["BN8"]["skip_add"] = mb_utils.shift_of(
+        block_8_combined_scale_skip, "BN8 skip_add"
+    )
 
     block_9_inp_scale1 = block_8_skip_add
     block_9_relu_1 = quant_model.bn9_quant_relu1.act_quant.scale()
@@ -1350,10 +1414,18 @@ def main():
     print("combined_scale after conv1x1:", block_9_combined_scale3.item())
     print("combined_scale after skip add:", block_9_combined_scale_skip.item())
     print("********************BN9*******************************")
-    scale_factors["BN9"]["conv1x1_1"] = int(block_9_combined_scale1.item())
-    scale_factors["BN9"]["conv3x3"] = int(block_9_combined_scale2.item())
-    scale_factors["BN9"]["conv1x1_2"] = int(block_9_combined_scale3.item())
-    scale_factors["BN9"]["skip_add"] = int(block_9_combined_scale_skip.item())
+    scale_factors["BN9"]["conv1x1_1"] = mb_utils.shift_of(
+        block_9_combined_scale1, "BN9 conv1x1_1"
+    )
+    scale_factors["BN9"]["conv3x3"] = mb_utils.shift_of(
+        block_9_combined_scale2, "BN9 conv3x3"
+    )
+    scale_factors["BN9"]["conv1x1_2"] = mb_utils.shift_of(
+        block_9_combined_scale3, "BN9 conv1x1_2"
+    )
+    scale_factors["BN9"]["skip_add"] = mb_utils.shift_of(
+        block_9_combined_scale_skip, "BN9 skip_add"
+    )
 
     # print("combined_scale after conv1x1:", ( block_0_relu_2 * block_0_weight_scale3).item())
     # Write the updated scale factors back to the file

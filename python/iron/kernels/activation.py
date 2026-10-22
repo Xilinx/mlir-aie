@@ -30,9 +30,11 @@ from ._common import (
     _require_fixed_tile_size,
     _require_vector_alignment,
     _tuned_arch,
-    dtypes,
 )
 from .core import conv_even
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 _LUT_FIXED_TILE = 1024
 _RUNTIME_VECTOR_WIDTH = 32
@@ -123,7 +125,8 @@ _TANH_LUT_OFFSET = (
 _LUT_MODEL_TOLERANCE = Tolerance.bf16_ulps(
     1,
     note="exact model of getTanhBf16; measured bit-exact on npu2 over 4096 "
-    "values, one ulp left for the accfloat->bf16 store's rounding mode",
+    "values, one ulp left for the accfloat->bf16 store's rounding mode; npu1: "
+    "unmeasured",
 )
 
 # vtanh has no published spec, so a model reverse-engineered from the device
@@ -156,7 +159,7 @@ _EXP_POLY_TOLERANCE = Tolerance.relative(
     0.005,
     1e-38,
     note="AIE2P range-reduced polynomial, measured on npu2; aie2 uses the "
-    "LUT and is judged against bf16_exp_lut_ref instead",
+    "LUT and is judged against bf16_exp_lut_ref instead, npu1 unmeasured here",
 )
 _EXP_LUT_TOLERANCE = Tolerance.bf16_ulps(
     1,
@@ -250,7 +253,7 @@ def _log_f32_bound(x, offset=0.0):
 _LOG_F32_TOLERANCE = Tolerance.bounded(
     _log_f32_bound,
     note="correctly rounded except within 2^-21 (relative) of a bf16 tie; "
-    "1 of 849,792 results on npu2 needed that slack",
+    "1 of 849,792 results on npu2 needed that slack; npu1: unmeasured",
 )
 
 
@@ -319,6 +322,7 @@ def _unary_lut_contract(
         parameter_bindings=((2, count),) if count else (),
         reference=None if per_build else ref,
         tolerance=None if per_build else tolerance,
+        true_function=ref if per_build else None,
         per_build=tuple(per_build),
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
         setup=setup,
@@ -416,7 +420,9 @@ _SOFTMAX_F32_REL = 4 * 2.0**-8 + 2 * 1e-5 + 2.0**-20
 _SOFT_CAP_ERR = 1e-5 / 2 + 2.0**-20
 
 
-@dtypes(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
+DTYPES["softmax"] = tuple(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
+
+
 def softmax(
     tile_size: int = 1024,
     accurate_exp2: bool = False,
@@ -519,7 +525,8 @@ def softmax(
                     0.04,
                     0.1 / tile_size,
                     note="AIE2P exp instruction through the softmax "
-                    "normalisation, measured on npu2 at 2.94e-2 relative; "
+                    "normalisation, measured on npu2 at 2.94e-2 relative "
+                    "(npu1: unmeasured); "
                     "atol = 0.1 / tile_size so an unwritten (all-zero) tile "
                     "fails, since every softmax output is below a generic "
                     "absolute floor",
@@ -704,9 +711,10 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
 _GELU_ERF_ROUNDED = Tolerance.bf16_ulps(
     0,
     atol=2.0**-126,
-    note="npu1 and npu2, every finite bf16 input: correctly rounded wherever "
-    "GELU is a normal bf16 (0 of 48853 misrounded); atol admits the subnormal "
-    "results the core flushes to 0",
+    note="npu2, every finite bf16 input: correctly rounded wherever GELU is a "
+    "normal bf16 (0 of 48853 misrounded); npu1: unmeasured, and its limbs() "
+    "split is the one f32_split.h says AIE2's accumulator can round wrong; "
+    "atol admits the subnormal results the core flushes to 0",
 )
 
 
@@ -783,6 +791,7 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, In, Out),
+            true_function=swiglu_ref,
             per_build=tuple(
                 (
                     (build, swiglu_table_ref, _LUT_MODEL_TOLERANCE)
@@ -923,12 +932,13 @@ def log_f32(tile_size: int = 1024) -> ExternalFunction:
             np.float32,
         ],
         compile_flags=[f"-DLOG_ELEMS={tile_size}"]
-        # log_f32.cc stages tiles of whole 256-element blocks, whose passes need
-        # eight stages to pipeline; under that cap Peano miscompiled one-trip
-        # passes, so other tiles keep the nested loop and the default cap.
+        # log_f32.cc stages AIE2P tiles of whole 256-element blocks, whose
+        # passes need eight stages to pipeline; under that cap Peano
+        # miscompiled one-trip passes, so other tiles keep the nested loop and
+        # the default cap.
         + (
             ["-mllvm", "--aie-pipeliner-max-stagecount=8"]
-            if tile_size % 256 == 0
+            if tile_size % 256 == 0 and _detect_arch() == "aie2p"
             else []
         ),
         contract=KernelContract(
@@ -1518,7 +1528,7 @@ def _log10_clamp_f32_bound(
 _LOG10_CLAMP_F32_TOLERANCE = Tolerance.bounded(
     _log10_clamp_f32_bound,
     note="WhisperFeatureExtractor's float32 steps, rounded once; a near tie "
-    "may round either way: 323 of 8,388,608 results on npu2",
+    "may round either way: 323 of 8,388,608 results on npu2; npu1: unmeasured",
 )
 
 

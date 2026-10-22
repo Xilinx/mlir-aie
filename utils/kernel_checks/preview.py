@@ -9,7 +9,8 @@ component check still in github-action-benchmark's format as its nightly's
 next publish will, and serves it as the nightlies publish it (the page at ``dashboard/``, a redirect
 at ``kernel-checks/``), except that the page itself is read from this
 working tree on every request: edit ``utils/kernel_checks/index.html``,
-reload the browser.
+reload the browser. It reads synthetic nights through the checks' own code,
+so it runs where mlir_aie imports (``source utils/env_setup.sh``).
 
     python3 utils/kernel_checks/preview.py                 # real data
     python3 utils/kernel_checks/preview.py --fetch         # git fetch it first
@@ -57,20 +58,27 @@ import sa_placer  # noqa: E402
 import sa_placer_hw  # noqa: E402
 import yolo26n_hw  # noqa: E402
 
-# Per hardware seed: its batch 1 launch and streaming time in us, and its cost.
+# Per hardware seed: its batch 1 launch and each further image's time in us,
+# and its cost.
 HW_SEEDS = {3: (316.0, 65.0, 290), 2: (309.0, 65.0, 295), 7: (313.0, 72.0, 295)}
 # A cold and a warm compile's aiecc profiles, for the stage times.
 STAGE_PROFILES = (
-    ROOT / "utils/component_checks/fixtures/aiecc_profile_mobilenet.json",
-    ROOT / "utils/component_checks/fixtures/aiecc_profile_shim.json",
+    ROOT / "test/fixtures/aiecc_profile_mobilenet.json",
+    ROOT / "test/fixtures/aiecc_profile_shim.json",
+)
+# YOLO26n's own, from a cold then warm compile of yolo26n.py --synthetic 7 on
+# Strix: 27.89 s and 6.01 s.
+YOLO_STAGE_PROFILES = (
+    ROOT / "test/fixtures/aiecc_profile_yolo26n_cold.json",
+    ROOT / "test/fixtures/aiecc_profile_yolo26n_warm.json",
 )
 HW_DETAIL = (
     "seed",
     "batch",
     "effort_label",
     "passed",
-    "us_per_image",
-    "e2e_us_per_image",
+    *sa_placer_hw.TIMED,
+    "dispatch_overhead_us",
     "placement",
 )
 
@@ -313,7 +321,7 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
     """One synthetic hardware nightly at each SA effort: its rows and meta."""
     runs, compiles, placements = [], [], []
     for seed, (one, streaming, cost) in HW_SEEDS.items():
-        for effort_label in sa_placer_hw._EFFORTS:
+        for effort_label in sa_placer_hw.EFFORTS:
             digest = hashlib.sha256(f"{seed}/{effort_label}".encode()).hexdigest()[:12]
             compiles.append(
                 {
@@ -326,18 +334,24 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
             )
             for batch in (1, 4, 16, 64):
                 launch = (one + streaming * (batch - 1)) * rng.uniform(0.99, 1.02)
-                per, e2e = launch / batch, (launch + 75) / batch
+                overhead = 47 * rng.uniform(0.99, 1.02)
+                printed = "".join(
+                    f"{label:<18}(avg/min/max us): {t * 1.01:.1f} / {t:.1f} / "
+                    f"{t * 1.1:.1f}   [median {t * 1.02:.1f}, MAD {t * 0.005:.1f}, "
+                    f"p95 {t * 1.08:.1f}]\n"
+                    for label, t in (
+                        ("Dispatch", launch),
+                        ("Dispatch overhead", overhead),
+                        ("NPU", launch - overhead),
+                        ("End-to-end", launch + 75),
+                    )
+                )
                 runs.append(
                     {
                         "seed": seed,
                         "batch": batch,
                         "effort_label": effort_label,
-                        "passed": True,
-                        "launch_us": round(launch, 1),
-                        "us_per_image": round(per, 2),
-                        "us_per_image_range": f"median {per * 1.02:.2f}, MAD {per * 0.005:.2f}, p95 {per * 1.08:.2f}",
-                        "e2e_us_per_image": round(e2e, 2),
-                        "e2e_range": f"median {e2e * 1.05:.2f}, MAD {e2e * 0.01:.2f}, p95 {e2e * 1.15:.2f}",
+                        **sa_placer_hw.parse_run(printed + "PASS!\n", 0, batch),
                         "placement": digest,
                     }
                 )
@@ -351,6 +365,8 @@ def _hw_night(rng: random.Random) -> tuple[list, dict]:
             )
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
+        "provenance": "dispatch dynamic",
+        "efforts": sa_placer_hw.EFFORTS,
         "measurement_sane": True,
         "compiles": compiles,
         "placements": placements,
@@ -372,7 +388,8 @@ def _sweep_night(rng: random.Random) -> tuple[list, dict]:
             "final_cost": base + costs.randint(0, base // 20),
             "cpu_ms": cpu_ms * rng.uniform(0.9, 1.15),
             "peak_rss_mb": rss + rng.uniform(0, 1),
-            "stderr": "",
+            "timed_out": False,
+            "output": "",
         }
         for fixture, (base, cpu_ms, rss) in zip(
             sa_placer.FIXTURES, ((12, 780, 63), (290, 25000, 67))
@@ -382,54 +399,103 @@ def _sweep_night(rng: random.Random) -> tuple[list, dict]:
     return sa_placer.aggregate(rows), sa_placer.meta(rows, sa_placer.FIXTURES, 20, 1.0)
 
 
-def _compile_night(rng: random.Random, compile_s: float) -> dict:
-    """Return a cold and a warm compile's times, staged as the captured profiles were."""
-    cold, warm = compile_s * rng.uniform(0.97, 1.05), 0.5 * rng.uniform(0.97, 1.03)
+def _compile_night(
+    rng: random.Random, cold_s: float, warm_s: float, profiles: tuple[Path, Path]
+) -> dict:
+    """Return a cold and a warm compile's times and memory, staged as ``profiles`` were.
+
+    Args:
+        rng: The night's random source.
+        cold_s: The cold compile's typical wall time.
+        warm_s: The warm compile's.
+        profiles: The cold and the warm compile's captured aiecc profiles;
+            each must span less than its compile.
+
+    Returns:
+        compile_stats' rows and stage_rows' for both compiles.
+    """
+    cold, warm = cold_s * rng.uniform(0.97, 1.05), warm_s * rng.uniform(0.97, 1.03)
+    rss, rss_warm = rng.uniform(2000, 2200), rng.uniform(1700, 1900)
     return {
         "compile_s": round(cold, 1),
-        "compile_peak_rss_mb": round(rng.uniform(2000, 2200), 1),
+        "compile_peak_mib": round(2 * rss, 1),
+        "compile_peak_rss_mb": round(rss, 1),
         "compile_s_warm": round(warm, 1),
-        "compile_peak_rss_mb_warm": round(rng.uniform(1700, 1900), 1),
-        **aiecc_stages.stage_rows(str(STAGE_PROFILES[0]), cold, ""),
-        **aiecc_stages.stage_rows(str(STAGE_PROFILES[1]), warm, "_warm"),
+        "compile_peak_mib_warm": round(1.2 * rss_warm, 1),
+        "compile_peak_rss_mb_warm": round(rss_warm, 1),
+        **aiecc_stages.stage_rows(str(profiles[0]), cold, ""),
+        **aiecc_stages.stage_rows(str(profiles[1]), warm, "_warm"),
     }
 
 
 def _llama_night(rng: random.Random) -> tuple[list, dict]:
     """One synthetic llama decode nightly, read through the check's own parsers."""
     n = llama_chain_hw.N_LAYERS
-    ms = 47.6 * rng.uniform(0.98, 1.03)
-    ttft = 286.0 * rng.uniform(0.98, 1.03)
-    ran = "".join(f"token {i}: PASS\n" for i in range(4))
+    drift = rng.uniform(0.98, 1.03)
+    ttft = 125.9 * rng.uniform(0.98, 1.03)
+    ran = "".join(f"  token {i} (pos {64 + i}): PASS\n" for i in range(4))
     ran += "chain_persist_grow_mh: 4/4 tokens PASS\n"
-    timed = (
-        f"per-token: {ms:.2f} ms ({1000 / ms:.2f} tok/s)\n"
-        "ratio:        1.84x  -> compute-bound\n"
-    )
+    for at in (llama_chain_hw.DISPATCH_RATE_AT, *llama_chain_hw.CONTEXTS):
+        ms = (45.1 + 0.0033 * at) * drift
+        ran += (
+            f"decode at {at}: per-dispatch n={llama_chain_hw.N_ITERS} "
+            f"min={4 * ms:.2f} median={4 * ms + 0.5:.2f} mad=0.32 ms, "
+            f"4 tokens/dispatch: {ms:.2f} ms/token ({1000 / ms:.2f} tok/s)\n"
+        )
     generated = (
-        f"prompt 6 tokens, generated 32: TTFT {ttft:.1f} ms "
-        f"({6000 / ttft:.1f} prompt tok/s), decode {970 / ms:.2f} tok/s\n"
-        "check: 22/32 tokens are numpy_llama_ref's argmax\n"
+        "prompt 6 tokens, generated 32, median of 5: "
+        f"TTFT {ttft:.1f} ms (min {ttft - 2:.1f}; NPU dispatch {ttft - 12:.1f}, "
+        f"host 12.0), decode {970 / 45.1 / drift:.2f} tok/s\n"
+        "check: 29/32 tokens are numpy_llama_ref's argmax\n"
+        "oracle: 32/32 generated tokens pass\n"
     )
     correctness = llama_chain_hw.parse_correctness(ran, 0)
-    timing = llama_chain_hw.parse_timing(timed)
-    gen = llama_chain_hw.parse_generate(generated)
-    artifacts = {"elf_bytes": 1_843_200, "pdi_bytes": 412_160, "n_cores": 32}
-    compiled = _compile_night(rng, 19.8)
+    timing = llama_chain_hw.parse_timing(ran, 0)
+    gen = llama_chain_hw.parse_generate(generated, 0)
+    prefill = {}
+    for length in llama_chain_hw.PROMPT_LENGTHS:
+        pre_ttft = (15.6 * length + 180) * drift
+        pre = (
+            f"prompt {length + 1} tokens, generated 1, median of 5: TTFT "
+            f"{pre_ttft:.1f} ms (min {pre_ttft - 20:.1f}; NPU dispatch "
+            f"{pre_ttft - 30:.1f}, host 30.0), decode n/a\n"
+        )
+        prefill[length] = llama_chain_hw.parse_prefill(pre, 0)
+    accuracy_out = (
+        f"next-token top-1 agreement: {91.7 * rng.uniform(0.99, 1.01):.1f}%  (22/24)\n"
+        f"mean KL(bf16 || int8)     : {0.0250 * rng.uniform(0.95, 1.05):.4f}\n"
+    )
+    accuracy = llama_chain_hw.parse_accuracy_bf16(accuracy_out, 0)
+    artifacts = {"elf_bytes": 1_843_200, "pdi_bytes": 412_160}
+    compiled = _compile_night(rng, 19.8, 0.5, STAGE_PROFILES)
     case = f"llama/persist_grow/N={n}"
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
         "n_layers": n,
         "pt": llama_chain_hw.P_MAX,
+        "t": llama_chain_hw.T,
+        "contexts": [llama_chain_hw.DISPATCH_RATE_AT, *llama_chain_hw.CONTEXTS],
+        "prompt_lengths": list(llama_chain_hw.PROMPT_LENGTHS),
         "measurement_sane": True,
         "detail": [
-            {"case": case, **correctness, **timing, **gen, **artifacts, **compiled}
+            {
+                "case": case,
+                **correctness,
+                "timing": {str(at): t for at, t in timing.items()},
+                **gen,
+                "prefill": {str(length): p for length, p in prefill.items()},
+                **accuracy,
+                **artifacts,
+                **compiled,
+            }
         ],
         "failed": [],
         "exitstatus": 0,
     }
     return (
-        llama_chain_hw.aggregate(correctness, timing, gen, artifacts, compiled),
+        llama_chain_hw.aggregate(
+            correctness, timing, gen, prefill, accuracy, artifacts, compiled
+        ),
         meta,
     )
 
@@ -442,15 +508,35 @@ def _yolo_night(rng: random.Random) -> tuple[list, dict]:
     ran += f"ort: {len(images)}/{len(images)} images match onnxruntime\n"
     one = 12700 * rng.uniform(0.98, 1.03)
     batched = 6150 * rng.uniform(0.98, 1.03)
-    timed = (
-        f"per-image: {one:.1f} us ({1e6 / one:.1f} fps) at batch 1\n"
-        f"per-image: {batched:.1f} us ({1e6 / batched:.1f} fps) "
-        f"at batch {yolo26n_hw.BATCH}\n"
-    )
+    # One run per batch, as the check makes them: the dispatch ~157 us under
+    # the call and the empty dispatch ~88 us, as on Strix.
+    timing = {}
+    for us, b in ((one, 1), (batched, yolo26n_hw.BATCH)):
+        call, dispatch = us * b, us * b - 157 * rng.uniform(0.95, 1.05)
+        empty = 88 * rng.uniform(0.95, 1.05)
+        timing |= yolo26n_hw.parse_timing(
+            "".join(
+                f"{label:<18}(avg/min/max us): {t * 1.01:.1f} / {t:.1f} / "
+                f"{t * 1.1:.1f}   [median {t * 1.02:.1f}, MAD {t * 0.005:.1f}, "
+                f"p95 {t * 1.08:.1f}]\n"
+                for label, t in (
+                    ("Dispatch", dispatch),
+                    ("Dispatch overhead", empty),
+                    ("NPU", dispatch - empty),
+                    ("End-to-end", call),
+                )
+            )
+            + f"per-image: {us:.1f} us ({1e6 / us:.1f} fps) at batch {b}, fastest of "
+            f"{yolo26n_hw.N_ITERS} after {yolo26n_hw.N_WARMUP} warmups; "
+            f"median {us * 1.02:.1f} us, MAD {us * 0.01:.1f} us\n"
+        )
     correctness = yolo26n_hw.parse_correctness(ran, 0)
-    timing = yolo26n_hw.parse_timing(timed)
-    artifacts = {"elf_bytes": 2_621_440, "n_cores": 32}
-    compiled = _compile_night(rng, 12.0)
+    map50 = 0.586 * rng.uniform(0.99, 1.01)
+    timing |= yolo26n_hw.parse_map50(
+        f"map50: {map50:.4f} over {len(images)} images (58 labelled objects)\n"
+    )
+    artifacts = {"elf_bytes": 2_621_440}
+    compiled = _compile_night(rng, 27.9, 6.0, YOLO_STAGE_PROFILES)
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
         "measurement_sane": True,

@@ -17,7 +17,7 @@ import pytest
 import pyxrt
 
 import aie.iron as iron
-from aie.utils.hostruntime.xrtruntime.hostruntime import XRTHostRuntime
+from aie.utils.hostruntime.xrtruntime.device import acquire_device
 from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
     ParameterScratchpad,
 )
@@ -26,7 +26,7 @@ VALUES = (1, 5, 2, 9, 7, 3, 1 << 20, 0)
 
 
 def test_each_dispatch_reads_its_own_value():
-    device = XRTHostRuntime()._device
+    device = acquire_device()
     context = pyxrt.hw_context(device, pyxrt.elf("aie.elf"))
     kernel = pyxrt.ext.kernel(context, "test:sequence")
     out = iron.tensor((2,), dtype=np.int32, device="cpu")

@@ -43,19 +43,6 @@ struct Descriptor {
   BDIterationAttr iteration = nullptr;
 };
 
-int64_t paddedSize(BDDimLayoutArrayAttr dimensions,
-                   BDPadLayoutArrayAttr padding, int64_t fallback) {
-  if (!dimensions || dimensions.empty() || !padding || padding.empty()) {
-    return fallback;
-  }
-  int64_t size = 1;
-  for (auto [dimension, pad] : llvm::zip(dimensions, padding)) {
-    size *=
-        dimension.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
-  }
-  return size;
-}
-
 Block *findEndOpBlock(Region &region) {
   Block *endBlock = nullptr;
   for (Block &block : region) {

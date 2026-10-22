@@ -8,7 +8,6 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "llama_vec_fp.h"
 
@@ -27,7 +26,7 @@ static inline int32_t logit_key(float f) {
 // layout and kKset must match. The set is unsorted, ordered by logit, then by
 // lower gidx: append until full, then replace the lowest member when a higher
 // one arrives, which leaves the vocabulary's top kKset under that order
-// whatever the insertion order (numpy_topk_sample.topk_set_reference).
+// whatever the insertion order (llama_oracle.topk_set_reference).
 template <int kKset>
 static inline void
 lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
@@ -51,8 +50,10 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
   const float *w_scales =
       reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
 
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
 
   int32_t sums[kNTile];
   for (int n = 0; n < kNTile; n++) {
@@ -93,8 +94,11 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
       int32_t k = logit_key(logits[n]);
       best = k > best ? k : best;
     }
-    if (best < set_min)
+    if (best < set_min) {
+      aie::set_rounding(saved_rnd);
+      aie::set_saturation(saved_sat);
       return;
+    }
   }
   bool rescan = true;
   int mi = 0;
@@ -134,6 +138,8 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
       set_row[slot * kK + d] = w_row[d];
   }
   *set_len = len;
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
 }
 
 #ifndef LLAMA_LMHEAD_KSET

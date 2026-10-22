@@ -30,14 +30,18 @@
 #endif
 
 static_assert(YOLO_INPUT_WIDTH % 64 == 0, "rows go 64 pixels at a time");
+static_assert(YOLO_INPUT_MUL >= 1 && YOLO_INPUT_MUL <= 127,
+              "the multiplier is an int8 lane");
 
 extern "C" {
 
 // The row is quantized in place: the input is the image's alone.
 void yolo_input_quant(uint8_t *__restrict rgb, int8_t *__restrict out) {
   event0();
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
-  ::aie::set_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::positive_inf);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
   constexpr int quads = YOLO_INPUT_WIDTH / 4;
   int8_t *q = reinterpret_cast<int8_t *>(rgb);
   {
@@ -102,6 +106,8 @@ void yolo_input_quant(uint8_t *__restrict rgb, int8_t *__restrict out) {
     }
     dst += 128;
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 

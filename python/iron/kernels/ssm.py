@@ -9,6 +9,7 @@ from functools import partial
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.accuracy import round_to
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -20,8 +21,8 @@ from ._common import (
     Trace,
     _kernel_source,
     _make_extern,
+    _vector_args,
 )
-from .core import conv_even
 from .sample import _positive
 
 
@@ -79,16 +80,72 @@ def selective_scan_ref(
     return final, y.astype(bfloat16).reshape(calls, -1)
 
 
-def _state_bound(reference, *args, **geometry):
-    """1e-6 of the state's range for ``final``; one bf16 ulp of its row's largest for ``y``."""
+def _selective_scan_bound(
+    block, head, valid, *, rows: int, head_dim: int, state: int, blocks: int
+):
+    """Bound on selective_scan's error against its float32 reference.
+
+    The recurrence runs in float64 for the exact state and y, and alongside
+    them each state element's magnitude ``m`` (the recurrence on absolute
+    values) and ``e``, how far a float32 pipeline's state may sit from the
+    exact one. Each row adds to ``e``, in units of 2^-24 relative: 8 of the
+    decayed state (exp_f32, the limb product) plus 24 for each unit of
+    ``|step * A|`` (softplus's and the product's error, through the
+    exponent), 24 of the input term (softplus, two limb products) and 1 of
+    the sum. ``final`` may be ``2 e`` off: the kernel's error and the
+    reference's. y's float32 sum may be off by ``gap``: ``e @ |C|`` plus
+    ``state + 2`` units of ``m @ |C| + |D x|``, the products and a sum in
+    any order. y rounds once to bf16, so the kernel's and the reference's
+    agree unless the exact y lies within ``gap`` of a rounding midpoint;
+    there they may be the two bf16 around it.
+    """
+    u = 2.0**-24
+    head = np.asarray(head, np.float64).reshape(-1, 3 + head_dim * state)
+    calls = len(head)
+    block = np.asarray(block, np.float64).reshape(calls, -1)
+    x = block[:, : rows * head_dim].reshape(calls, rows, head_dim)
+    end = rows * (head_dim + 2 * state)
+    bc = block[:, rows * head_dim : end].reshape(calls, rows, 2, state)
+    dt = block[:, end : end + rows]
+    final = np.zeros((calls, head_dim * state))
+    y = np.zeros((calls, rows, head_dim))
+    gap = np.zeros_like(y)
+    for first in range(0, calls, blocks):
+        s = head[first, 3:].reshape(head_dim, state).copy()
+        m, e = np.abs(s), np.zeros_like(s)
+        for c in range(first, min(first + blocks, calls)):
+            dt_bias, A, D = head[c, :3]
+            for t in range(min(int(valid), rows)):
+                B, C = bc[c, t]
+                step = np.logaddexp(0.0, dt[c, t] + dt_bias)
+                decay = np.exp(step * A)
+                gain = np.outer(step * x[c, t], B)
+                kept = decay * m
+                s = decay * s + gain
+                m = kept + np.abs(gain)
+                e = decay * e + u * (
+                    (8 + 24 * abs(step * A)) * kept + 24 * np.abs(gain) + m
+                )
+                dx = D * x[c, t]
+                y[c, t] = s @ C + dx
+                gap[c, t] = e @ np.abs(C) + (state + 2) * u * (
+                    m @ np.abs(C) + np.abs(dx)
+                )
+            final[c] = 2 * e.reshape(-1)
+    y_bound = round_to(y + gap, bfloat16) - round_to(y - gap, bfloat16)
+    return final, y_bound.reshape(calls, -1)
+
+
+def _state_bound(reference, *args, final_frac, y_ulps, **geometry):
+    """Bound ``final`` by ``final_frac`` of its range, ``y`` by ``y_ulps`` bf16 ulps."""
     final, y = reference(*args, **geometry)
     span = np.abs(final).max(axis=1, keepdims=True)
     y = np.abs(y.astype(np.float32)).reshape(len(y), geometry["rows"], -1)
     top = y.max(axis=2, keepdims=True)
     _, k = np.frexp(top)
-    ulp = np.where(top > 0, np.ldexp(np.float32(1), k - 8), 0)
+    ulp = np.where(top > 0, np.ldexp(np.float32(y_ulps), k - 8), 0)
     ulp = np.broadcast_to(ulp, y.shape).reshape(len(y), -1)
-    return np.broadcast_to(1e-6 * span, final.shape), ulp.astype(np.float32)
+    return np.broadcast_to(final_frac * span, final.shape), ulp.astype(np.float32)
 
 
 def selective_scan(
@@ -111,8 +168,17 @@ def selective_scan(
     zero ``y``. The state stays in the core between blocks, and ``final``
     is it after this one. The caller gathers head ``h``'s x and dt and
     group ``h // (heads // groups)``'s B and C into ``block``, so each
-    group's B and C stream ``heads // groups`` times. ``head_dim`` may be a
-    slice of the head's: the rows of state are independent.
+    group's B and C stream ``heads // groups`` times.
+
+    Args:
+        rows: Rows of a block.
+        head_dim: The head's x width, or a slice of it: the rows of state
+            are independent. A multiple of 16.
+        state: The state size, a multiple of 16.
+        blocks: Blocks to a head.
+
+    Returns:
+        The kernel.
 
     Raises:
         ValueError: A dimension is not a positive integer, or ``head_dim`` or
@@ -152,6 +218,15 @@ def selective_scan(
             f"-DSCAN_BLOCKS={blocks}",
         ],
         contract=KernelContract(
+            # B and C load 32 bf16s a vector where state is whole 32s and
+            # start on a 64-byte line (rows * head_dim whole 32s), x 16.
+            alignments=(
+                _vector_args(0)
+                if state % 32 == 0 and rows * head_dim % 32 == 0
+                else ((0, 32),)
+            )
+            + _vector_args(2)
+            + ((3, 32),),
             trace=Trace.whole_call(),
             roles=(In, In, Out, Out, Param, Param),
             parameter_bindings=((5, 0),),
@@ -159,9 +234,10 @@ def selective_scan(
             reference=partial(selective_scan_ref, **geometry),
             sample=partial(selective_scan_sample, **geometry),
             tolerance=Tolerance.bounded(
-                partial(_state_bound, selective_scan_ref, **geometry),
-                note="npu2: y bit for bit, final within 3.7e-7 of its range "
-                "over three seeds",
+                partial(_selective_scan_bound, **geometry),
+                note="derived: y exact but at a near tie, final within the "
+                "float32 recurrence's error bound; npu2: within it on every "
+                "case over three seeds; npu1: unmeasured",
             ),
         ),
     )
@@ -242,11 +318,30 @@ def gated_delta_rule(
     from ``valid`` on leave the state alone and write zero ``y``. The state
     stays in the core between blocks, and ``final`` is it after this one.
     The caller gathers key head ``h // (v_heads // k_heads)``'s q and k and
-    value head ``h``'s v, a and b into ``block``. ``value_dim`` may be a
-    slice of the head's: the state's columns are independent.
+    value head ``h``'s v, a and b into ``block``.
+
+    Args:
+        rows: Rows of a block.
+        key_dim: The q and k width.
+        value_dim: The v width, or a slice of it: the state's columns are
+            independent. ``rows * value_dim`` is even, so the block and y
+            are whole 4-byte words, as a DMA moves them.
+        blocks: Blocks to a head.
+
+    Returns:
+        The kernel.
+
+    Raises:
+        ValueError: A dimension is not a positive integer, or
+            ``rows * value_dim`` is odd.
     """
     geometry = dict(rows=rows, key_dim=key_dim, value_dim=value_dim, blocks=blocks)
     _positive("gated_delta_rule", **geometry)
+    if rows * value_dim % 2:
+        raise ValueError(
+            f"gated_delta_rule: rows * value_dim ({rows} * {value_dim}) must be "
+            "even, so the block and y are whole 4-byte words"
+        )
     return _make_extern(
         "gated_delta_rule",
         _kernel_source("ssm/gated_delta_rule.cc"),
@@ -266,18 +361,26 @@ def gated_delta_rule(
             f"-DGDR_BLOCKS={blocks}",
         ],
         contract=KernelContract(
+            # q, k and v rows load 16 bf16s a vector in place, y stores them.
+            alignments=((0, 32),) + _vector_args(2) + ((3, 32),),
             trace=Trace.whole_call(),
             roles=(In, In, Out, Out, Param, Param),
             parameter_bindings=((5, 0),),
             call_index=5,
             reference=partial(gated_delta_rule_ref, **geometry),
             sample=partial(gated_delta_rule_sample, **geometry),
-            setup=conv_even,
             tolerance=Tolerance.bounded(
-                partial(_state_bound, gated_delta_rule_ref, **geometry),
-                note="npu2, against a float64 recurrence: final within 2.9e-7 "
-                "of its range (the scalar kernel's 2.6e-7), y one bf16 ulp off "
-                "in 1 of 10240, as the scalar kernel's",
+                partial(
+                    _state_bound,
+                    gated_delta_rule_ref,
+                    final_frac=1e-6,
+                    y_ulps=1,
+                    **geometry,
+                ),
+                note="npu2, against the float32 reference over five seeds: final "
+                "within 9.4e-7 of its range at key_dim 2, 5.1e-7 at the default; y "
+                "one bf16 ulp off in 1 of 10240, as the scalar kernel's; npu1: "
+                "unmeasured",
             ),
         ),
     )

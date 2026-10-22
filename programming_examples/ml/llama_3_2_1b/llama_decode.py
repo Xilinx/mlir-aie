@@ -8,37 +8,39 @@ ScratchpadParameters, and a session that prefills and generates."""
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 
 import aie.iron as iron
 import numpy as np
 from aie2_decode import (
     KV_BLOCK_WORDS,
     KV_ROW_WORDS,
-    KV_TB,
     LANE_BYTES,
     LMW_GAMMA_BYTES,
     M_MAX,
     REC_BYTES,
     RROW,
     STAGE_RESID,
-    VOCAB,
     WLM_SLOT,
     WLM_TOTAL,
+    StageLayout,
     build,
     kv_blocks,
     kv_words,
-    stage_layout,
     wblob_layout,
 )
-from aie2_gemv_array import (
-    LAYER,
-    MMA_SLOT,
-    N_CORES,
+from aie2_gemv_array import LAYER, MMA_SLOT, N_CORES, sample_param_values
+from llama_config import (
+    CS_BYTES,
+    KV_TB,
+    N_HEADS_KV,
+    N_TILE,
     PROJECTIONS,
-    sample_param_values,
+    VOCAB,
+    D,
 )
-from llama_config import CS_BYTES, HEAD_D, N_HEADS_KV, N_TILE, D
 from llama_npu import DispatchSession
+from llama_oracle import xoshiro_seed
 from ml_dtypes import bfloat16
 
 # The decode's time a token at position p, fit to the README's N=16
@@ -81,11 +83,11 @@ def pack_lane_mma(layer_w, order, core):
     its row groups of eight rows, each as two `MMA_SLOT` slots, one per half
     of 2048 columns (down: per 2048-column chunk, chunk-major), with weight
     W[n][8kt + i] of a slot's half at kt*64 + i*8 + n, then the eight rows'
-    int32 biases and fp32 scales."""
+    int32 biases (zero) and fp32 scales."""
     parts = []
     for p in order:
-        k, rows, _ = PROJECTIONS[p]
-        w, bias, sc = layer_w[p]
+        rows, k = PROJECTIONS[p]
+        w, sc = layer_w[p]
         rc = rows // N_CORES
         lo = core * rc
         groups = rc // 8
@@ -94,9 +96,6 @@ def pack_lane_mma(layer_w, order, core):
         tiles = blk.transpose(2, 0, 3, 4, 5, 1).reshape(chunks, groups, 2, D * 4)
         slots = np.zeros((chunks, groups, 2, MMA_SLOT), np.int8)
         slots[..., : D * 4] = tiles
-        slots[..., D * 4 : D * 4 + 32] = (
-            bias[lo : lo + rc].reshape(1, groups, 1, 8).view(np.int8)
-        )
         slots[..., D * 4 + 32 : D * 4 + 64] = (
             sc[lo : lo + rc].reshape(1, groups, 1, 8).view(np.int8)
         )
@@ -127,31 +126,6 @@ def pack_lmw(embed_i8, embed_sc, gamma):
     return blob
 
 
-def embed_seed_ref(row_i8, embed_sc):
-    """A token's embed seed, as llama_topk_sample.cc's embed_seed makes it.
-
-    Args:
-        row_i8: The token's int8 embed row.
-        embed_sc: Its scale.
-
-    Returns:
-        (int8[D], f32 scale).
-    """
-    amax = int(np.max(np.abs(row_i8.astype(np.int32))))
-    if amax < 1:
-        amax = 1
-    inv = (np.float32(127.0) / np.float32(amax)).astype(np.float32)
-    xin = np.empty(D, np.int8)
-    for i in range(D):
-        v = np.float32(np.float32(row_i8[i]) * inv)
-        r = np.floor(v + 0.5) if v >= 0 else np.ceil(v - 0.5)
-        xin[i] = np.int8(np.clip(r, -128, 127))
-    scale = np.float32(
-        np.float32(amax) * np.float32(embed_sc) * np.float32(1.0 / 127.0)
-    )
-    return xin, scale
-
-
 def tokens_of(records, passes):
     """The token ids of a dispatch's first `passes` records."""
     return [
@@ -180,9 +154,9 @@ class DecodeShape:
         self.t = t
         self.kset = kset
         self.p_max = p_max
-        slots, _, final, _, self.stage_bytes = stage_layout(n_layers)
-        self.seed_at = slots[0, "o"] + STAGE_RESID
-        self.final_at = final + STAGE_RESID
+        self.stage = StageLayout(n_layers)
+        self.seed_at = self.stage.slots[0, "o"] + STAGE_RESID
+        self.final_at = self.stage.final + STAGE_RESID
         self.kv_words = kv_words(t, n_layers)
 
     @property
@@ -190,14 +164,14 @@ class DecodeShape:
         """aie2_decode.build's CompileTime values."""
         return dict(P_MAX=self.p_max, N_LAYERS=self.n_layers, T=self.t, KSET=self.kset)
 
-    def params(self, t0, passes, sample, batch=(), batch_ends_prompt=True):
+    def params(self, t0, passes, sampler, batch=(), batch_ends_prompt=True):
         """The design's ScratchpadParameters for one dispatch.
 
         Args:
             t0: The position of the dispatch's first token.
             passes: The passes it runs, 1..p_max, one token each, except
                 that a batch is the only pass.
-            sample: The sampler's (temperature, top_k, seed).
+            sampler: The sampler's (temperature, top_k).
             batch: Prompt tokens, up to M_MAX within one KV block, that the
                 first pass runs together as its rows; without any, the first
                 pass inputs the previous token's sample.
@@ -223,13 +197,13 @@ class DecodeShape:
             raise ValueError(f"a batch of {len(batch)} from {t0} is not one block's")
         if len(batch) > 1 and passes != 1:
             raise ValueError("a batch of several tokens is its dispatch's only pass")
-        temperature, top_k, seed = sample
+        temperature, top_k = sampler
         params = {
             "passes": passes,
             "m0": max(len(batch), 1),
             "t0": t0,
             "cs_off": t0 * CS_BYTES,
-            **sample_param_values(temperature, top_k, seed, self.kset),
+            **sample_param_values(temperature, top_k, self.kset),
         }
         rows = 0
         for m in range(M_MAX):
@@ -288,7 +262,7 @@ class DecodeShape:
         """The weight blob: each layer's eight weight lanes, then the RoPE table.
 
         Args:
-            layers: The layers' weights (numpy_layer_mh's dicts).
+            layers: The llama_oracle.Layers.
             rope: bf16 (t, 2 * HEAD_D), numpy_llama_ref.rope_table.
 
         Returns:
@@ -297,78 +271,121 @@ class DecodeShape:
         off_lanes, off_rope, total = wblob_layout(self.n_layers, self.t)
         w = np.zeros(total, np.int8)
         for L, layer in enumerate(layers):
-            weights = {
-                p: (
-                    layer[f"w{p}_i8"],
-                    layer.get(f"b{p}", np.zeros(layer[f"w{p}_i8"].shape[0], np.int32)),
-                    layer[f"w{p}_sc"],
-                )
-                for p in LAYER
-            }
             for c in range(N_CORES):
                 at = off_lanes + (L * N_CORES + c) * LANE_BYTES
-                w[at : at + LANE_BYTES] = pack_lane_mma(weights, LAYER, c)
+                w[at : at + LANE_BYTES] = pack_lane_mma(layer.weights, LAYER, c)
         w[off_rope : off_rope + self.t * CS_BYTES] = rope.view(np.int8).ravel()
         return w
 
-    def pack_stage(self, layers, final_gamma, x_i8, res_scale):
+    def pack_stage(self, layers, final_gamma, seed, rng_seed):
         """The stage buffer at the start of a generation.
 
         Args:
-            layers: The layers' norms (gamma_in, gamma_post).
+            layers: The llama_oracle.Layers, for their norms' gammas.
             final_gamma: The final norm's bf16 gamma.
-            x_i8: The first token's seed, int8[D], if it is not a prompt token.
-            res_scale: Its scale.
+            seed: The first token's fp32 (D,) layer-0 residual, if it is not
+                a prompt token.
+            rng_seed: The sampler's 32-bit seed for the generation.
 
         Returns:
-            int8, stage_layout(n_layers)'s: each norm's gamma after the
-            residual it norms, and the first token's seed.
+            int8, StageLayout's: each norm's gamma after the residual it
+            norms, the first token's seed and the sampler's xoshiro state.
         """
-        slots, _, final, _, total = stage_layout(self.n_layers)
-        st = np.zeros(total, np.int8)
-        gammas = [(slots[L, "o"], layer["gamma_in"]) for L, layer in enumerate(layers)]
-        gammas += [
-            (slots[L, "d"], layer["gamma_post"]) for L, layer in enumerate(layers)
-        ]
-        gammas.append((final, final_gamma))
+        slots = self.stage.slots
+        st = np.zeros(self.stage.total, np.int8)
+        gammas = [(slots[L, "o"], layer.gamma_in) for L, layer in enumerate(layers)]
+        gammas += [(slots[L, "d"], layer.gamma_post) for L, layer in enumerate(layers)]
+        gammas.append((self.stage.final, final_gamma))
         for at, g in gammas:
             at += STAGE_RESID + M_MAX * RROW
             st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
-        st[self.seed_at : self.seed_at + D] = x_i8
-        st[self.seed_at + D : self.seed_at + D + 4] = np.frombuffer(
-            np.float32(res_scale).tobytes(), np.int8
+        st[self.seed_at : self.seed_at + RROW] = np.asarray(seed, np.float32).view(
+            np.int8
         )
+        st[self.stage.rng : self.stage.rng + 16] = np.array(
+            xoshiro_seed(rng_seed), np.uint32
+        ).view(np.int8)
         return st
+
+    def rng_state(self, stage):
+        """The sampler's xoshiro state in a stage buffer, as 4 uint32."""
+        return [
+            np.uint32(w)
+            for w in stage[self.stage.rng : self.stage.rng + 16].view(np.uint32)
+        ]
+
+    def kv_row_words(self, layer, positions):
+        """A layer's cache rows at `positions`, as KV words.
+
+        Args:
+            layer: A llama_oracle.Layer.
+            positions: Rows of its cache.
+
+        Returns:
+            int32 (N_HEADS_KV, len(positions), KV_ROW_WORDS): per head and
+            row, [k int8 | v int8 | k scale | v scale].
+        """
+        rows = np.concatenate(
+            [
+                layer.kcache[:, positions],
+                layer.vcache[:, positions],
+                layer.k_slot[:, positions, None].view(np.int8),
+                layer.v_slot[:, positions, None].view(np.int8),
+            ],
+            axis=2,
+        )
+        return np.ascontiguousarray(rows).view(np.int32)
+
+    def kv_word_index(self, L, positions):
+        """Where layer L's rows at `positions` sit in the KV cache.
+
+        Returns:
+            int64 (N_HEADS_KV, len(positions), KV_ROW_WORDS) word indices,
+            matching kv_row_words.
+        """
+        p = np.asarray(positions)
+        h = np.arange(N_HEADS_KV)[:, None]
+        row = (
+            ((L * 2 + h // (N_HEADS_KV // 2)) * kv_blocks(self.t) + p // KV_TB)
+            * (N_HEADS_KV // 2)
+            + h % (N_HEADS_KV // 2)
+        ) * KV_TB + p % KV_TB
+        return (row * KV_ROW_WORDS)[..., None] + np.arange(KV_ROW_WORDS)
 
     def pack_kv(self, layers):
         """A KV cache holding the layers' caches.
 
         Args:
-            layers: Per layer, t-row kcaches/vcaches and k/v slot scales.
+            layers: The llama_oracle.Layers.
 
         Returns:
             int32 (kv_words,), block-major as the design reads it.
         """
-        nb = kv_blocks(self.t)
-        rows = np.zeros(
-            (self.n_layers, N_HEADS_KV, nb * KV_TB, KV_ROW_WORDS * 4), np.int8
-        )
-        t = self.t
+        kv = np.zeros(self.kv_words, np.int32)
+        positions = np.arange(self.t)
         for L, layer in enumerate(layers):
-            for h in range(N_HEADS_KV):
-                rows[L, h, :t, :HEAD_D] = layer["kcaches"][h].reshape(t, HEAD_D)
-                rows[L, h, :t, HEAD_D : 2 * HEAD_D] = layer["vcaches"][h].reshape(
-                    t, HEAD_D
-                )
-                for i, name in enumerate(("k_scales_slot", "v_scales_slot")):
-                    at = 2 * HEAD_D + 4 * i
-                    rows[L, h, :t, at : at + 4] = (
-                        layer[name][h].astype(np.float32).view(np.int8).reshape(t, 4)
-                    )
-        blocks = rows.reshape(self.n_layers, 2, N_HEADS_KV // 2, nb, KV_TB, -1)
-        packed = np.ascontiguousarray(blocks.transpose(0, 1, 3, 2, 4, 5))
-        assert packed.size == self.kv_words * 4
-        return packed.view(np.int32).ravel()
+            kv[self.kv_word_index(L, positions)] = self.kv_row_words(layer, positions)
+        return kv
+
+
+@dataclass
+class Generation:
+    """A generation's tokens and times.
+
+    Attributes:
+        tokens: The generated token ids.
+        ttft_s: Seconds from the request's start to the first generated
+            token's readback.
+        prefill_dispatch_s: Of those, the prefill dispatches' start-to-wait
+            time, summed.
+        decode_tok_s: Generated tokens per second after the first, or None
+            when the first one stopped the generation.
+    """
+
+    tokens: list[int]
+    ttft_s: float
+    prefill_dispatch_s: float
+    decode_tok_s: float | None
 
 
 class Decoder:
@@ -376,7 +393,7 @@ class Decoder:
 
     Args:
         shape: The build.
-        layers: The layers' weights and norms (numpy_layer_mh's dicts).
+        layers: The llama_oracle.Layers.
         lm: (embed_i8, embed_sc, final norm gamma).
         rope: bf16 (shape.t, 2 * HEAD_D), numpy_llama_ref.rope_table.
         elf: A prebuilt full ELF of `shape`'s build, or None for the JIT's.
@@ -387,7 +404,9 @@ class Decoder:
         self.session = DispatchSession(build, elf, **shape.compile_kwargs)
         self.w_t = iron.tensor(shape.pack_wblob(layers, rope), dtype=np.int8)
         self.lmw_t = iron.tensor(pack_lmw(*lm), dtype=np.int8)
-        self._stage0 = shape.pack_stage(layers, lm[2], np.zeros(D, np.int8), 0.0)
+        self.kv_t = None
+        self.layers = layers
+        self.final_gamma = lm[2]
 
     def dispatch(self, kv_t, stage_t, params):
         """Run one dispatch on a KV cache and stage.
@@ -405,22 +424,24 @@ class Decoder:
         out_t.to("cpu")
         return out_t.numpy().copy(), ms
 
-    def generate(self, prompt, max_new, sample, stop=()):
-        """Prefill `prompt` from an empty KV cache, then generate.
+    def generate(self, prompt, max_new, sample, stop=(), started=None):
+        """Prefill `prompt` into the session's KV cache, then generate.
 
-        The prompt runs in batches (shape.batches), the last one's sample
-        being the first generated token; then each dispatch runs
-        shape.passes_for's many tokens.
+        The first call allocates the KV cache. The prompt runs in batches
+        (shape.batches), the last one's sample being the first generated
+        token; then each dispatch runs shape.passes_for's many tokens.
 
         Args:
             prompt: The prompt's token ids.
             max_new: Tokens to generate at most.
-            sample: The sampler's (temperature, top_k, seed).
+            sample: The sampler's (temperature, top_k, seed), seeded once
+                for the generation.
             stop: Token ids that end the generation (kept).
+            started: The request's start (time.perf_counter), as early as
+                its tokenization; None starts it here.
 
         Returns:
-            (the generated token ids, seconds to the first one, generated
-            tokens per second after it).
+            The Generation.
 
         Raises:
             ValueError: The prompt and max_new do not fit the KV cache.
@@ -430,24 +451,41 @@ class Decoder:
                 f"{len(prompt)} prompt tokens and {max_new} more do not fit "
                 f"in t={self.shape.t}"
             )
-        kv_t = iron.tensor(np.zeros(self.shape.kv_words, np.int32), dtype=np.int32)
-        stage_t = iron.tensor(self._stage0, dtype=np.int8)
-        start = time.perf_counter()
+        start = time.perf_counter() if started is None else started
+        # A generation reads only the KV rows it wrote, so a stale cache
+        # needs no clearing between requests.
+        if self.kv_t is None:
+            self.kv_t = iron.tensor(
+                np.zeros(self.shape.kv_words, np.int32), dtype=np.int32
+            )
+        temperature, top_k, rng_seed = sample
+        sampler = (temperature, top_k)
+        stage_t = iron.tensor(
+            self.shape.pack_stage(
+                self.layers,
+                self.final_gamma,
+                np.zeros(D, np.float32),
+                rng_seed,
+            ),
+            dtype=np.int8,
+        )
         pos = 0
         out = []
+        prefill_ms = 0.0
         sizes = self.shape.batches(0, len(prompt))
         for i, n in enumerate(sizes):
-            records, _ = self.dispatch(
-                kv_t,
+            records, ms = self.dispatch(
+                self.kv_t,
                 stage_t,
                 self.shape.params(
                     pos,
                     1,
-                    sample,
+                    sampler,
                     prompt[pos : pos + n],
                     batch_ends_prompt=i == len(sizes) - 1,
                 ),
             )
+            prefill_ms += ms
             pos += n
             out = tokens_of(records, 1)[:max_new]
         first_at = time.perf_counter()
@@ -455,12 +493,18 @@ class Decoder:
         end = len(prompt) + max_new - 1
         while pos < end and out[-1] not in stop:
             n = min(self.shape.passes_for(pos), end - pos)
-            records, _ = self.dispatch(kv_t, stage_t, self.shape.params(pos, n, sample))
+            records, _ = self.dispatch(
+                self.kv_t, stage_t, self.shape.params(pos, n, sampler)
+            )
             for tok in tokens_of(records, n):
                 out.append(tok)
                 if tok in stop:
                     break
             pos += n
         done = time.perf_counter()
-        tps = (len(out) - 1) / (done - first_at) if len(out) > 1 else 0.0
-        return out, first_at - start, tps
+        return Generation(
+            out,
+            first_at - start,
+            prefill_ms / 1e3,
+            (len(out) - 1) / (done - first_at) if len(out) > 1 else None,
+        )

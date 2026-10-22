@@ -13,7 +13,25 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
+
+// Word loops for copies a __builtin_memcpy would make a call to libc's memcpy
+// (Peano passes -fno-builtin-memcpy), which carries no .stack_sizes. Both
+// pointers are 4-byte aligned.
+using llama_word = int32_t __attribute__((may_alias));
+
+template <int kBytes>
+static inline void copy_words(void *restrict dst, const void *restrict src) {
+  static_assert(kBytes % 4 == 0);
+  for (int i = 0; i < kBytes / 4; ++i)
+    ((llama_word *)dst)[i] = ((const llama_word *)src)[i];
+}
+
+template <int kBytes>
+static inline void zero_words(void *restrict dst) {
+  static_assert(kBytes % 4 == 0);
+  for (int i = 0; i < kBytes / 4; ++i)
+    ((llama_word *)dst)[i] = 0;
+}
 
 // Lane-wise a * b rounded to nearest-even, as the scalar soft-float `*` is.
 // aie::mul on fp32 vectors is an emulation that is one ulp off on up to ~1.5%
@@ -79,36 +97,78 @@ vec_round_to_i8(::aie::vector<float, kN> v) {
   return acc.template to_vector<int8>(0);
 }
 
-// x_fp = resid_i8 * resid_scale + proj, 16 lanes at a time: the multiply
-// and the add round separately, as the scalar form does, whose `+` is vadd.f.
-static inline ::aie::vector<float, 16>
-vec_residual_sum(const int8_t *restrict resid, const float *restrict proj,
-                 ::aie::vector<float, 16> resid_scale_v) {
-  return ::aie::add(
-      vec_mul_rne(::aie::to_float<float>(::aie::load_v<16>(resid)),
-                  resid_scale_v),
-      ::aie::load_v<16>(proj));
+// 1 / a rounded to nearest even, as IEEE division rounds it (checked against
+// it for every positive normal a below 2^126, the domain it needs), by
+// restoring division of the mantissa: __divsf3 overflows the decode cores'
+// program memory.
+static inline float recip_rne(float a) {
+  const uint32_t bits = __builtin_bit_cast(uint32_t, a);
+  const uint32_t e = bits >> 23;
+  const uint32_t m = (bits & 0x7fffffu) | 0x800000u;
+  uint32_t rem = 1u << 24, q = 0;
+  for (int i = 0; i < 24; i++) {
+    q <<= 1;
+    if (rem >= m) {
+      rem -= m;
+      q |= 1;
+    }
+    rem <<= 1;
+  }
+  if (q == 1u << 23 && rem == 0)
+    return __builtin_bit_cast(float, (254u - e) << 23);
+  if (rem > m || (rem == m && (q & 1)))
+    q++;
+  return __builtin_bit_cast(float, ((253u - e) << 23) + (q - (1u << 23)));
 }
 
-// A reciprocal on kN lanes from a bit-trick seed and Newton steps, which
-// aie_fp.sw_recip mirrors; the kernels' scalar sw_recip takes the same steps,
-// with these soft-float products as vec_mul_rne and `-` as the same vsub.f.
 template <unsigned kN>
-static inline ::aie::vector<float, kN>
-vec_sw_recip(::aie::vector<float, kN> a) {
-  ::aie::vector<float, kN> two = ::aie::broadcast<float, kN>(2.0f);
-  ::aie::vector<float, kN> x =
-      ::aie::sub(::aie::broadcast<int32, kN>(0x7EF477D5),
-                 a.template cast_to<int32>())
-          .template cast_to<float>();
-  for (int i = 0; i < 4; i++)
-    x = vec_mul_rne(x, ::aie::sub(two, vec_mul_rne(a, x)));
-  return x;
+static inline ::aie::vector<float, kN> vec_recip(::aie::vector<float, kN> a) {
+  alignas(64) float lanes[kN];
+  ::aie::store_v(lanes, a);
+  for (unsigned i = 0; i < kN; i++)
+    lanes[i] = recip_rne(lanes[i]);
+  return ::aie::load_v<kN>(lanes);
+}
+
+// e^x for x <= 0 on 16 lanes, as llama_oracle.exp_nonpos: with
+// t = x * log2(e) (vec_mul_rne), k = trunc(t) and f = t - k in (-1, 0],
+// e = 2^k * 2^f where 2^f = 2^-g, g = -f rounded to Q23 by the vadd.f that
+// forms 1 - f, is a degree-6 Q29 polynomial in Horner form whose products
+// round half to even (acc64 srs). 0 below t = -125. float2fix gives floor(t)
+// or ceil(t); trunc(t) for t <= 0 is the ceiling, so a negative n below t
+// (compared as sign-magnitude bits) is bumped by one.
+__attribute__((noinline)) static ::aie::vector<float, 16>
+vec_exp_nonpos(::aie::vector<float, 16> x) {
+  static constexpr int32_t kC[] = {-684167,   5142538,    -29791239,
+                                   128969442, -372130494, 536870912};
+  ::aie::vector<float, 16> t =
+      vec_mul_rne(x, ::aie::broadcast<float, 16>(1.442695022f));
+  ::aie::vector<int32, 16> tb = t.template cast_to<int32>();
+  ::aie::vector<int32, 16> n = ::aie::to_fixed<int32>(t, 0);
+  ::aie::vector<int32, 16> nb =
+      ::aie::to_float<float>(n, 0).template cast_to<int32>();
+  ::aie::vector<int32, 16> k = ::aie::select(
+      n, ::aie::add(n, int32(1)), ::aie::gt(nb, tb) & ::aie::lt(nb, int32(0)));
+  ::aie::vector<float, 16> f = ::aie::sub(t, ::aie::to_float<float>(k, 0));
+  ::aie::vector<int32, 16> g =
+      ::aie::sub(::aie::sub(::aie::broadcast<float, 16>(1.0f), f)
+                     .template cast_to<int32>(),
+                 int32(0x3f800000));
+  ::aie::vector<int32, 16> p = ::aie::broadcast<int32, 16>(58465);
+  for (int i = 0; i < 6; i++)
+    p = ::aie::add(::aie::mul(p, g).template to_vector<int32>(23), kC[i]);
+  return ::aie::select(
+             ::aie::add(::aie::to_float<float>(p, 29).template cast_to<int32>(),
+                        ::aie::upshift(k, 23)),
+             ::aie::zeros<int32, 16>(),
+             ::aie::lt(tb, int32(0)) &
+                 ::aie::gt(tb, __builtin_bit_cast(int32_t, -125.0f)))
+      .template cast_to<float>();
 }
 
 // Per-head requant of kHeads heads of kHD fp32 values:
 // each head's scale is max(absmax, 1e-12) * (1/127), its body int8
-// round(q * sw_recip(scale)); tail[h*8..+4] gets the scale, [+4..+8] zero.
+// round(q * (1 / scale)); tail[h*8..+4] gets the scale, [+4..+8] zero.
 template <int kHeads, int kHD>
 static inline void q_requant_heads(const float *restrict q_fp,
                                    int8_t *restrict body,
@@ -141,7 +201,7 @@ static inline void q_requant_heads(const float *restrict q_fp,
     ::aie::vector<float, kV> scale =
         vec_mul_rne(absmax, ::aie::broadcast<float, kV>(1.0f / 127.0f));
     ::aie::store_v(q_scale + g * kV, scale);
-    ::aie::store_v(q_inv + g * kV, vec_sw_recip(scale));
+    ::aie::store_v(q_inv + g * kV, vec_recip(scale));
   }
   for (int h = 0; h < kHeads; h++) {
     const float *src = q_fp + h * kHD;
@@ -151,9 +211,9 @@ static inline void q_requant_heads(const float *restrict q_fp,
       ::aie::store_v(dst + c * kV,
                      vec_round_to_i8(vec_mul_rne(
                          ::aie::load_v<kV>(src + c * kV), q_inv_v)));
-    memcpy(tail + h * 8 + 0, &q_scale[h], 4);
+    __builtin_memcpy(tail + h * 8 + 0, &q_scale[h], 4);
     int32_t zero = 0;
-    memcpy(tail + h * 8 + 4, &zero, 4);
+    __builtin_memcpy(tail + h * 8 + 4, &zero, 4);
   }
 }
 

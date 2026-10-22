@@ -27,11 +27,9 @@ programming_examples/ml for the options.
 import argparse
 import os
 import sys
-from typing import get_origin
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
@@ -59,7 +57,7 @@ from aie.utils.trace import TraceConfig
 from aie.utils.trace.events import CoreEvent
 from aie.utils.verify import Tolerance, compare
 
-from . import mb_utils
+from . import mb_utils, mobilenet_numpy
 from .bottleneck._common import sa_placer_flags
 from .bottleneck.cascade import cascade_bottlenecks
 from .bottleneck.init import init_conv
@@ -135,15 +133,15 @@ def mobilenet_iron(
         in_ty = np.ndarray[(capacity * in_sz_i32,), np.dtype[np.int32]]
         out_ty = np.ndarray[(capacity * out_sz_i32,), np.dtype[np.int32]]
     else:
-        if get_origin(inp) is not np.ndarray or get_origin(out) is not np.ndarray:
+        if not isinstance(inp, In) or not isinstance(out, Out):
             raise ValueError(
                 "a dispatch-time batch sizes its host buffers from the input "
                 "and output tensor types; call the design with tensors or "
                 "specialize inp and out"
             )
-        in_ty, out_ty = inp, out
-        (in_elems,) = np_ndarray_type_get_shape(in_ty)
-        (out_elems,) = np_ndarray_type_get_shape(out_ty)
+        in_ty, out_ty = inp.ndarray_type, out.ndarray_type
+        (in_elems,) = inp.shape
+        (out_elems,) = out.shape
         capacity = in_elems // in_sz_i32
         if capacity < 1 or in_elems != capacity * in_sz_i32:
             raise ValueError(
@@ -296,9 +294,10 @@ def mobilenet_iron(
     if trace_config:
         # Trace packet ids are 5 bits, so 31 tiles at most; the last FC split
         # runs the same work as its three siblings.
+        untraced = l2_workers[-1]
         prog.enable_trace(
             trace_config.trace_size,
-            workers=all_workers[:-1],
+            workers=[w for w in all_workers if w is not untraced],
             coretile_events=[
                 CoreEvent.ACTIVE,
                 CoreEvent.LOCK_STALL,
@@ -351,8 +350,8 @@ def _make_argparser():
     p.add_argument(
         "--sa-effort",
         type=float,
-        help="SA placer search budget scale (default: 1.0; lower trades "
-        "placement cost for compile time)",
+        help="SA placer search budget scale (default: 0.05; 1.0 is the full "
+        "schedule, which compiles slower for a placement no faster on the NPU)",
     )
     # The NPU takes 6-13 launches after load to reach its steady latency.
     add_benchmark_args(p, default_warmup=20, default_iters=5)
@@ -374,8 +373,25 @@ def _run_and_verify(design, opts):
     ).astype(np.int8)
     batches = opts.dynamic or [opts.batch]
     capacity = max(batches)
+    # Each image of a batch differs, so an image answered with another's output fails.
+    images = [np.roll(chw, (3 * k, 5 * k), axis=(1, 2)) for k in range(capacity)]
+    goldens = np.concatenate(
+        [
+            np.asarray(
+                mobilenet_numpy.run(im.transpose(1, 2, 0), data_dir, sf, verbose=False)
+            )
+            .reshape(post_L2_OutC)
+            .astype(np.int32)
+            for im in images
+        ]
+    )
     inp = iron.tensor(
-        np.tile(ds.reorder_mat(chw, "YCXC8", "CYX").flatten().view(np.int32), capacity),
+        np.concatenate(
+            [
+                ds.reorder_mat(im, "YCXC8", "CYX").flatten().view(np.int32)
+                for im in images
+            ]
+        ),
         dtype=np.int32,
     )
     scratch = iron.zeros((post_L2_OutC * 2 // 4 * 2,), dtype=np.int32)
@@ -417,15 +433,26 @@ def _run_and_verify(design, opts):
                 for o in out.numpy().view(np.uint16).reshape(capacity, -1)[:n]
             ]
         )
-        verdict = compare(
-            actual.astype(np.int32),
-            np.tile(golden_image, n).astype(np.int32),
-            Tolerance.lsb(9, note="should be 1; #3009"),
-        )
         print_benchmark(bench)
+        verdict = compare(
+            actual[:post_L2_OutC].astype(np.int32),
+            golden_image.astype(np.int32),
+            Tolerance.lsb(
+                3,
+                note="measured max 3 (959/1280 exact): the golden's average "
+                "pool keeps one more fractional bit than the kernel's",
+            ),
+        )
         print(f"max_difference: {verdict.max_abs_err:g}")
         if not verdict.ok:
-            sys.exit(f"FAIL: {verdict.detail}")
+            sys.exit(f"FAIL: image 0 against the brevitas golden: {verdict.detail}")
+        verdict = compare(
+            actual.astype(np.int32),
+            goldens[: n * post_L2_OutC],
+            Tolerance.exact(note="mobilenet_numpy mirrors the kernels' arithmetic"),
+        )
+        if not verdict.ok:
+            sys.exit(f"FAIL: {n} images against mobilenet_numpy: {verdict.detail}")
         print("PASS!")
 
 

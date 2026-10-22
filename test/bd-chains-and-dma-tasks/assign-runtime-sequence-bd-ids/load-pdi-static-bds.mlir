@@ -49,7 +49,7 @@ module {
     %tile_0_1 = aie.tile(0, 1)
     %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
     %mem = aie.memtile_dma(%tile_0_1) {
-      %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
+      %0 = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256) {bd_id = 1 : i32, next_bd_id = 2 : i32}
       aie.next_bd ^bd1
@@ -65,7 +65,7 @@ module {
     %tile_0_1 = aie.tile(0, 1)
     %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
     %mem = aie.memtile_dma(%tile_0_1) {
-      %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
+      %0 = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256) {bd_id = 1 : i32, next_bd_id = 1 : i32}
       aie.next_bd ^bd0

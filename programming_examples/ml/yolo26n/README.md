@@ -11,21 +11,19 @@ neck, the Detect head and its top-k postprocess. The device is checked bit
 for bit against an integer numpy oracle, and the oracle against ONNX Runtime
 on the quantized model.
 
-The integer recipe follows PR #3142, a fine-tuned yolo26n-cls at 512 by
-@hunhoffe, and ports the decisions validated there to the detection model:
-AMD Quark XINT8 with power-of-two scales, accumulators seeded with the bias,
-`conv_even` requantization, and a per-conv int8 SiLU table.
+The integer recipe is AMD Quark XINT8 with power-of-two scales, accumulators
+seeded with the bias, `conv_even` requantization, and a per-conv int8 SiLU
+table.
 
 ## Weights
 
 The checkpoint is AGPL-3.0, so nothing derived from it is kept in the
-repository. `export_yolo26n.py` fetches `yolo26n.pt`, exports it to ONNX and
-quantizes it into `$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n` (default `/srv/yolo26n`),
-calibrating on coco128, which it also downloads there. `gen_yolo_data.py`
-extracts the integer parameters into `data/yolo26n_params.npz`. Exporting
-needs the extras in `requirements.txt` (ultralytics and amd-quark) and
-extracting needs onnx and onnxruntime. Running on real images needs
-opencv-python, and onnxruntime to compare with the ONNX graph too.
+repository. `make export` downloads `yolo26n.pt` and the coco128 images,
+checks both against sha256 digests pinned in `export_yolo26n.py`, exports
+the model to ONNX and quantizes it, calibrating on coco128. Everything goes
+to `$IRON_EXAMPLE_WEIGHTS_DIR/yolo26n`, so point that variable at a
+directory you can write to (unset, it is `/srv`). `make data` then extracts
+the integer parameters into `data/yolo26n_params.npz`.
 
 The lit tests need no checkpoint: `--synthetic SEED` swaps in seeded weights
 with the same layout, and random images.
@@ -33,10 +31,13 @@ with the same layout, and random images.
 ## Quick start
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt    # onnx, onnxruntime, opencv
+pip install -r ../../../python/requirements_ml.txt  # torch, CPU build (export only)
+pip install -r requirements_export.txt  # ultralytics, amd-quark (Python 3.11-3.13)
+export IRON_EXAMPLE_WEIGHTS_DIR=$HOME/models
 make export                 # checkpoint, FP32 and XINT8 ONNX, coco128
 make data                   # data/yolo26n_params.npz
-make verify_oracle N=128    # numpy oracle vs ONNX Runtime, tensor by tensor
+make verify_oracle N=128    # numpy oracle vs ONNX Runtime, tensor by tensor (see Accuracy)
 make run_blocks_synthetic   # one range of each block kind on the NPU, no checkpoint
 make run N=8                # the whole model on coco128 images
 ```
@@ -44,7 +45,8 @@ make run N=8                # the whole model on coco128 images
 `make run_block BLOCK=57:73` runs a range of `Network.yolo26n().ops` that
 starts and ends on fused-run boundaries on the NPU against the oracle
 (`SYNTHETIC=7` for seeded weights, `OUTPUTS=a,b` to drain more than the last
-op's output).
+op's output); `python bringup.py --span FIRST LAST` names the range by its
+first and last ops instead, and `--batch N` pipelines N images through it.
 
 ## Design
 
@@ -78,15 +80,24 @@ op's output).
 
 ## Accuracy
 
-mAP50-95 on coco128: FP32 0.474, XINT8 0.443. The XINT8 model is calibrated
-on the same 128 images, so its number is optimistic.
+mAP50-95 on coco128, measured when the model was exported and not recomputed
+by this example: FP32 0.474, XINT8 0.443. The XINT8 model is calibrated on
+the same 128 images, so its number is optimistic.
 
 On the NPU, the whole model's detections match the oracle bit for bit on
 all 128 coco128 images, and ONNX Runtime's on 126. The oracle agrees with
-ONNX Runtime on those 126 in all 169 tensors. In the other 2, ONNX
-Runtime's float32 softmax rounds an attention probability (4 of 82 million)
-to the other side of a rounding boundary from exact arithmetic; neither
-changes a detection above 0.25 confidence.
+ONNX Runtime on those 126 in all 169 int8 tensors the spec names (the
+outputs of every operator but the float postprocess, and both attentions'
+values). In the other 2, the oracle's
+softmax and ONNX Runtime's float32 one round an attention probability (4 of
+82 million) to opposite sides of a rounding boundary; neither changes a
+detection above 0.25 confidence.
+
+`verify_oracle.py` settles each such probability with exact arithmetic
+(`SoftmaxArbiter`). An image passes when it is exact, or when ONNX Runtime
+is the one off at every differing probability and the oracle, run again
+with ONNX Runtime's probabilities, then matches it in every tensor. It
+exits 0 only when every image passes.
 
 ## Performance
 

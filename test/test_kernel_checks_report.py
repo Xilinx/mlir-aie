@@ -14,15 +14,23 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "utils/kernel_checks/pr_report.py"
-META = {"preflight": {"npu": "npu2", "pmode": "performance"}, "failed": []}
+META = {
+    "preflight": {"npu": "npu2", "pmode": "performance", "device": "NPU Strix"},
+    "failed": [],
+}
 
 
 @pytest.fixture(scope="module")
 def report():
-    spec = importlib.util.spec_from_file_location("pr_report", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    # pr_report imports publish, its neighbour, as it does when run.
+    sys.path.insert(0, str(SCRIPT.parent))
+    try:
+        spec = importlib.util.spec_from_file_location("pr_report", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
     return module
 
 
@@ -45,6 +53,7 @@ def _record(values, **overrides):
     return {
         "id": "baseline-run",
         "pmode": "performance",
+        "device": "Strix",
         "rows": rows,
         **overrides,
     }
@@ -101,6 +110,28 @@ def test_comparison_classifies_changes_and_coverage(read_leg):
     assert [(c.metric, c.before, c.after) for c in leg.other] == [("npu_us", 100, 150)]
     assert leg.unmeasured == ["gone/1/i8"]
     assert leg.new == ["fresh/1/i8"]
+
+
+def test_a_baseline_from_before_the_split_compares_as_dispatch_time(read_leg):
+    # A nightly published before dispatch_us: its npu_us was the dispatch.
+    nightly = _record(
+        {"add/1024x16/bfloat16/npu_us": ("us", (76.77, "± 0.5; min 70 max 90 n=50"))},
+        target="npu2",
+        date="2026-10-21T06:17:58+00:00",
+    )
+    current = {
+        "add/1024x16/bfloat16/dispatch_us": (
+            "us",
+            (100.0, "± 0.5; min 95 max 110 n=50"),
+        ),
+        "add/1024x16/bfloat16/dispatch_overhead_us": ("us", (44.8, "± 0.4")),
+        "add/1024x16/bfloat16/npu_us": ("us", (55.2, "± 0.5; min 50 max 65 n=50")),
+    }
+    leg = read_leg(current, nightly)
+    assert [(c.metric, c.before, c.after) for c in leg.other] == [
+        ("dispatch_us", 76.77, 100.0)
+    ]
+    assert not leg.regressed and not leg.improved
 
 
 def test_failures_combine_sweep_and_timing_without_counting_skips(read_leg):
@@ -229,7 +260,7 @@ def test_baseline_requires_matching_known_power_modes(
     read_leg, current_mode, baseline_mode, compared
 ):
     baseline = _record({"synthetic/1/i8/cycles": ("cycles", 100)})
-    preflight = {}
+    preflight = {"device": "NPU Strix"}
     if current_mode is not None:
         preflight["pmode"] = current_mode
     if baseline_mode is None:
@@ -267,7 +298,74 @@ def test_a_refused_run_reports_one_reason_not_a_failure_per_case(read_leg, repor
     comment = report.render([leg])
     assert "all passed, not compared with a nightly, npu2 not timed" in comment
     assert "Not compared with a nightly on main; the table says why." in comment
-    assert f"| npu2 | ? | not timed: {refusal} | 1 | 0 | \u2014 |" in comment
+    assert f"| npu2 | ? | ? | not timed: {refusal} | 1 | 0 | \u2014 |" in comment
+
+
+def test_host_time_is_compared_only_on_the_same_part(read_leg, report):
+    values = {
+        "synthetic/1/i8/cycles": ("cycles", 150),
+        "synthetic/1/i8/npu_us": ("us", 200.0),
+    }
+    baseline = _record(
+        {
+            "synthetic/1/i8/cycles": ("cycles", 100),
+            "synthetic/1/i8/npu_us": ("us", 100.0),
+        }
+    )
+    same = read_leg(values, baseline)
+    assert [c.metric for c in same.regressed + same.other] == ["cycles", "npu_us"]
+    assert same.other_part == 0
+
+    other = read_leg(values, dict(baseline, device="Krackan"))
+    assert [c.metric for c in other.regressed] == ["cycles"]
+    assert other.other == [] and other.other_part == 1
+    comment = report.render([other])
+    assert "| npu2 | Strix (nightly: Krackan) |" in comment
+    assert "this run is on Strix, the nightly on Krackan, so 1 host-timed rows" in (
+        comment
+    )
+
+
+@pytest.mark.parametrize(
+    "before, after, listed", [(0.13, 0.2, False), (1.0, 1.6, True)]
+)
+def test_a_compile_time_must_also_move_its_floor(read_leg, before, after, listed):
+    leg = read_leg(
+        {"mobilenet/compile_place_s": ("s", after)},
+        _record({"mobilenet/compile_place_s": ("s", before)}),
+    )
+    assert bool(leg.other) is listed
+
+
+@pytest.mark.parametrize(
+    "metric, unit, before, after, where",
+    [
+        # Gated on any rise of a whole ulp, from zero too.
+        ("max_ulp_bfloat16", "ulp", 0, 1, "regressed"),
+        ("max_ulp_bfloat16", "ulp", 5, 4, "improved"),
+        ("not_correctly_rounded_float32", "%", 1.0, 1.05, None),
+        # A count that takes abs 1 is judged from zero; one thresholds.json
+        # doesn't name is not.
+        ("failed_seeds", "seeds", 0, 2, "other"),
+        ("an_unnamed_count", "seeds", 0, 2, None),
+        # Shown, never judged.
+        ("ort_matches", "images", 8, 6, None),
+    ],
+)
+def test_each_metric_is_judged_by_its_own_rule(
+    read_leg, report, metric, unit, before, after, where
+):
+    leg = read_leg(
+        {f"c/1/i8/{metric}": (unit, after)},
+        _record({f"c/1/i8/{metric}": (unit, before)}),
+    )
+    moved = {
+        name: [c.metric for c in getattr(leg, name)]
+        for name in ("regressed", "improved", "other")
+    }
+    assert moved == {name: [metric] if name == where else [] for name in moved}
+    if where and not before:
+        assert f"+{after} {unit}" in report.render([leg])
 
 
 def test_a_test_that_passed_on_a_retry_is_listed(read_leg, report):

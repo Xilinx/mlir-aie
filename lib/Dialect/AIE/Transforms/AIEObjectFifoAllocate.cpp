@@ -1576,8 +1576,7 @@ struct AIEObjectFifoAllocatePass
   }
 
   /// A packet-switched flow shares the stream with others, so every buffer
-  /// descriptor the source emits has to carry the packet header. A source that
-  /// several flows share has no one header; its BDs state their own.
+  /// descriptor the source emits has to carry the packet header.
   /// One packet flow carries every source of the route: each stamps the same
   /// header, and their packets share the destination channels.
   LogicalResult lowerPacketFlow(RouteOp flow, ArrayRef<RouteEndpoint> sources,
@@ -1813,9 +1812,9 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// Tasks and BD chains on a shared source are checked BD by BD (programs
-  /// are, in resolveStart); a dma_memcpy_nd must name a header of its own,
-  /// and nothing else may send on one.
+  /// Each runtime task or transfer that sends on a shared source must state
+  /// one of its flows' headers; a DMA program's start is resolveStart's, and
+  /// other users send nothing.
   LogicalResult checkSharedSourceUsers(RouteEndpointOp endpoint,
                                        ArrayRef<int> ids) {
     auto uses = SymbolTable::getSymbolUses(endpoint, device);
@@ -1823,8 +1822,6 @@ struct AIEObjectFifoAllocatePass
       return success();
     for (const SymbolTable::SymbolUse &use : *uses) {
       Operation *user = use.getUser();
-      if (isa<RouteOp, DMAStartOp, AIEX::NpuDmaWaitOp>(user))
-        continue;
       if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(user)) {
         SmallVector<DMABDOp> bds;
         task.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
@@ -1833,20 +1830,22 @@ struct AIEObjectFifoAllocatePass
         continue;
       }
       if (auto start = dyn_cast<AIEX::DMAStartBdChainForOp>(user)) {
-        if (auto chain = device.lookupSymbol<BDChainOp>(start.getSymbol())) {
-          SmallVector<DMABDOp> bds;
-          chain.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
-          if (failed(checkHeaders(endpoint, ids, bds)))
-            return failure();
-          continue;
-        }
+        auto chain = device.lookupSymbol<BDChainOp>(start.getSymbol());
+        if (!chain)
+          return start.emitOpError("symbol does not reference valid BD chain");
+        SmallVector<DMABDOp> bds;
+        chain.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
+        if (failed(checkHeaders(endpoint, ids, bds)))
+          return failure();
+        continue;
       }
-      if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user)) {
-        std::optional<PacketInfoAttr> packet = memcpy.getPacket();
-        if (packet && llvm::is_contained(ids, packet->getPktId()))
-          continue;
-      }
-      return user->emitOpError("sends on @")
+      auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user);
+      if (!memcpy)
+        continue;
+      std::optional<PacketInfoAttr> packet = memcpy.getPacket();
+      if (packet && llvm::is_contained(ids, packet->getPktId()))
+        continue;
+      return memcpy.emitOpError("sends on @")
              << endpoint.getSymName()
              << ", a source several packet routes share, which has no one "
                 "header to stamp; it needs a packet header of its own, one of "
@@ -1890,8 +1889,6 @@ struct AIEObjectFifoAllocatePass
         if (std::optional<PacketInfoAttr> packet = flow.getPacket();
             packet && packet->isAssigned())
           ids.push_back(packet->assignedId());
-      // A shared source has no one header to stamp, so whatever sends on it
-      // states each BD's header itself.
       bool shared = flows.size() > 1;
       if (shared && failed(checkSharedSourceUsers(endpoint, ids)))
         return failure();

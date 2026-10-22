@@ -1224,7 +1224,7 @@ static void conv2dk1_ui16_partial_acc_scalar(
 // The sums carry across calls in fc_acc and restart at chunk 0; every call
 // stores the requantized running sum, so the last chunk's store is the result.
 static_assert(FC_INPUT_CHANNELS % 32 == 0 && FC_CHUNK_IC % 32 == 0 &&
-              FC_CHUNK_OC % 8 == 0);
+              FC_CHUNK_OC % 8 == 0 && FC_INPUT_CHANNELS % FC_CHUNK_IC == 0);
 alignas(32) static int32_t fc_acc[FC_MAX_IMAGES * FC_CHUNK_OC];
 
 static void fc_ic_chunk_scalar(const uint16_t *input, const int8_t *kernels,
@@ -1239,8 +1239,12 @@ static void fc_ic_chunk_scalar(const uint16_t *input, const int8_t *kernels,
         sum += x[ic] * w[ic * 8];
       int32_t *acc = fc_acc + n * FC_CHUNK_OC + oc;
       *acc = chunk == 0 ? sum : *acc + sum;
+      // Scale 0 saturates without a shift, as the vector path's srs does.
       int32_t srs =
-          (*acc + (1 << (scale - 1)) - 1 + ((*acc >> scale) & 1)) >> scale;
+          scale == 0
+              ? *acc
+              : (*acc + (1 << (scale - 1)) - 1 + ((*acc >> scale) & 1)) >>
+                    scale;
       output[n * FC_CHUNK_OC + oc] = srs > UMAX ? UMAX : srs < 0 ? 0 : srs;
     }
   }
@@ -1726,8 +1730,10 @@ static void k1_vector(const int8_t *input, const int8_t *kernels,
                       const int32_t input_channels,
                       const int32_t output_channels, const int scale) {
   event0();
-  aie::set_saturation(aie::saturation_mode::saturate);
-  aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
 #if defined(K1_WIDTH)
   k1_relu_rows<K1_ALIGNED, K1_P, K1_FIXED>(
       input, kernels, output, K1_WIDTH, input_channels, output_channels, scale);
@@ -1738,6 +1744,8 @@ static void k1_vector(const int8_t *input, const int8_t *kernels,
   k1_relu_chunked<4>(input, kernels, output, input_width, input_channels,
                      output_channels, scale);
 #endif
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 
@@ -1757,9 +1765,10 @@ k1_pool_avg(const aie::vector<int32, 16> res) {
   aie::accum<acc64, 16> m;
   m.from_vector(res, 16);
   m = aie::mac(m, res, aie::broadcast<int16, 16>(-22737));
-  aie::set_rounding(aie::rounding_mode::floor);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::floor);
   const aie::vector<int32, 16> q = m.template to_vector<int32>(21);
-  aie::set_rounding(aie::rounding_mode::conv_even);
+  aie::set_rounding(saved_rnd);
   const aie::vector<int32, 16> r = aie::sub(
       res,
       aie::mul(q, aie::broadcast<int16, 16>(49)).template to_vector<int32>(0));
@@ -1786,8 +1795,10 @@ k1_xy_pool_vector(const int8_t *input, const int8_t *kernels, uint16_t *output,
                   int32_t weight_index) {
   alignas(64) uint8_t row[K1_POOL_MAX_WIDTH * 8];
   zero_vectorized<uint8_t, K1_POOL_MAX_WIDTH * 8, 1, false>(row);
-  aie::set_saturation(aie::saturation_mode::saturate);
-  aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
   const int32_t oc_tile = output_channels / output_split;
   const int32_t oc_offset = oc_tile / 8 * weight_index;
   const bool aligned = input_width % 4 == 0 && ((uintptr_t)input & 31) == 0;
@@ -1826,6 +1837,8 @@ k1_xy_pool_vector(const int8_t *input, const int8_t *kernels, uint16_t *output,
   }
   zero_vectorized(output + output_channels,
                   output_channels_padd - output_channels);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
 }
 
 #if AIE_TUNED_AIE2P
@@ -1896,8 +1909,10 @@ k1_xy_pool_narrow(const int8_t *input, const int8_t *kernels, uint16_t *output,
                   const int y_index, int32_t output_split,
                   int32_t weight_index) {
   constexpr int G = 5;
-  aie::set_saturation(aie::saturation_mode::saturate);
-  aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
   const int32_t blocks = output_channels / output_split / 8;
   const int32_t row = input_width * 8;
   const int32_t ic_blocks = input_channels / 8;
@@ -1917,6 +1932,8 @@ k1_xy_pool_narrow(const int8_t *input, const int8_t *kernels, uint16_t *output,
                      ic_blocks, scale, keep, prior, last);
   zero_vectorized(output + output_channels,
                   output_channels_padd - output_channels);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
 }
 #endif
 
@@ -1995,8 +2012,10 @@ static void fc_ic_chunk_vector(const uint16_t *__restrict input,
                                const int8_t *__restrict kernels,
                                uint16_t *__restrict output, const int32_t chunk,
                                const int32_t images, const int scale) {
-  aie::set_saturation(aie::saturation_mode::saturate);
-  aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
   for (int n = 0; n < images; n++) {
     const uint16_t *x = input + n * FC_INPUT_CHANNELS + chunk * FC_CHUNK_IC;
     for (int g = 0; g < FC_CHUNK_OC / 8; g++) {
@@ -2011,6 +2030,8 @@ static void fc_ic_chunk_vector(const uint16_t *__restrict input,
                    a.template to_vector<uint8>(scale).unpack().extract<8>(0));
     }
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
 }
 #endif
 
@@ -2294,15 +2315,17 @@ void post_L2_fc_ui16_ic_chunk(uint16_t *input, int8_t *kernels,
                               uint16_t *output, const int32_t chunk,
                               const int32_t images, const int32_t scale) {
   event0();
+  // fc_acc holds FC_MAX_IMAGES images' sums.
+  const int32_t held = images < FC_MAX_IMAGES ? images : FC_MAX_IMAGES;
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if ((((uintptr_t)input | (uintptr_t)kernels) & (FC_ALIGN - 1)) == 0 &&
       ((uintptr_t)output & 15) == 0) {
-    fc_ic_chunk_vector(input, kernels, output, chunk, images, scale);
+    fc_ic_chunk_vector(input, kernels, output, chunk, held, scale);
     event1();
     return;
   }
 #endif
-  fc_ic_chunk_scalar(input, kernels, output, chunk, images, scale);
+  fc_ic_chunk_scalar(input, kernels, output, chunk, held, scale);
   event1();
 }
 #endif

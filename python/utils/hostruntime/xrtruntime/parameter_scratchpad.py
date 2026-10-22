@@ -22,6 +22,11 @@ params.write("seq_len", 42)
 params.sync()
 run.start()
 ```
+
+A module of several commands (runtime sequences no ``aiex.run`` calls) gives
+each its own scratchpad, in which parameters of different commands may share
+a slot: make each command's with its ``device:sequence`` name and write it
+with that command's parameters (``names``) only.
 """
 
 import ctypes
@@ -53,7 +58,7 @@ def _to_bytes(value) -> bytes:
         return value.to_bytes(4, "little", signed=value < 0)
     if isinstance(value, float):
         return struct.pack("<f", value)
-    if hasattr(value, "tobytes"):
+    if isinstance(value, (np.generic, np.ndarray)):
         return value.tobytes()
     raise TypeError(f"unsupported parameter type: {type(value)}")
 
@@ -61,11 +66,34 @@ def _to_bytes(value) -> bytes:
 class ParameterScratchpad:
     """Write named runtime parameters to the NPU scratchpad buffer."""
 
-    def __init__(self, run, params_path: str | Path):
+    def __init__(
+        self,
+        run,
+        params_path: str | Path,
+        command: str = "",
+        device: "pyxrt.device | None" = None,
+    ):
+        """Map ``run``'s ctrl scratchpad for ``command``'s parameters.
+
+        Args:
+            run: The ``pyxrt.run`` whose ctrl scratchpad this writes.
+            params_path: The lowering's ``params.txt``.
+            command: The ``device:sequence`` ``run`` runs, whose parameters
+                this holds; empty for all of the module's.
+            device: The device ``run``'s hardware context is on, which
+                ``alias`` allocates on; the process's (``acquire_device``)
+                when None.
+        """
         self._bo = run.get_ctrl_scratchpad_bo()
         self._mv = self._bo.map()
-        self._impl = _ParameterScratchpadImpl(self._mv, str(params_path))
+        self._impl = _ParameterScratchpadImpl(self._mv, str(params_path), command)
+        self._device = device if device is not None else acquire_device()
         self._alias = None
+
+    @property
+    def names(self) -> frozenset[str]:
+        """The parameters this scratchpad holds: its command's, or all."""
+        return frozenset(self._impl.names())
 
     def write(self, name: str, value) -> None:
         """Write a parameter value to the scratchpad.
@@ -79,6 +107,7 @@ class ParameterScratchpad:
             ValueError: `name` is a DMA offset or length parameter and `value`
                 is outside the range that keeps its transfers within their
                 buffers.
+            RuntimeError: `name` is not one of ``names``.
         """
         self._impl.write_bytes(name, _to_bytes(value))
 
@@ -123,7 +152,7 @@ class ParameterScratchpad:
         if self._alias is None:
             pointer = np.frombuffer(self._mv, dtype=np.uint8).ctypes.data
             self._alias = pyxrt.ext.bo(
-                acquire_device(),
+                self._device,
                 _pointer_capsule(pointer, None, None),
                 self._mv.nbytes,
             )

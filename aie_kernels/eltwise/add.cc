@@ -145,8 +145,10 @@ void eltwise_vadd_i8(const int8_t *__restrict a, const int8_t *__restrict b,
   constexpr int lanes = 32;
   static_assert(N % lanes == 0, "the int8 add takes whole 32-lane vectors");
   event0();
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
   // Pointer increments: indexed addresses kept the loop from pipelining.
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(N / lanes)
@@ -161,6 +163,8 @@ void eltwise_vadd_i8(const int8_t *__restrict a, const int8_t *__restrict b,
     b += lanes;
     c += lanes;
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif

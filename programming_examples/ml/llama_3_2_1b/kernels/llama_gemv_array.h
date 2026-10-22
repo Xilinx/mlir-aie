@@ -15,7 +15,4 @@
 
 #include "llama_vec_fp.h"
 
-static constexpr int32_t I8_MAX = 127;
-static constexpr int32_t I8_MIN = -128;
-
 #endif // LLAMA_GEMV_ARRAY_H

@@ -8,6 +8,11 @@ of mem tiles), implemented in the high-level IRON Python API. The full network
 runs depth-first across the array — `init → bn0..bn14 → avgpool → FC1 → FC2` —
 keeping intermediate activations on-chip.
 
+The weights are a seeded random initialization (`gen_golden.py`,
+`torch.manual_seed(0)`), quantized with brevitas, not a trained checkpoint.
+Accuracy here therefore means bit-exactness against the integer reference,
+not ImageNet top-1.
+
 <p align="center">
  <picture>
   <source media="(prefers-color-scheme: light)" srcset="./mobilenet_dataflow.png">
@@ -44,23 +49,46 @@ python3 -m mobilenet.test_e2e chain cascade               # bn13 -> bn14
 
 Each command compiles the design with `@iron.jit` (cached under
 `NPU_CACHE_HOME`), times the launches with `aie.utils.benchmark` and checks the
-last output with `aie.utils.verify` against the brevitas golden. Per
-Xilinx/mlir-aie issue #3009 the full network currently differs from brevitas by
-up to 9 (atol=9). `MLIR_AIE_KERNEL_SOURCES=<tree>` builds the kernels from
-another source tree, for an A/B of kernel changes on the same design.
+last output with `aie.utils.verify`. The full network checks every image of
+the batch bit-exact against `mobilenet_numpy`; each image is the input rolled
+by a different offset, so an image answered with another's output fails. It
+also checks image 0 against the brevitas golden, which differs by at most 3
+(959 of 1280 outputs exact): the golden carries one more fractional bit
+through post_l1's average pool than the kernel does (`mobilenet_numpy.py`
+explains). `MLIR_AIE_KERNEL_SOURCES=<tree>` builds the kernels from another
+source tree, for an A/B of kernel changes on the same design.
+
+## Performance
+
+On Strix (NPU2), one launch of the full network takes, at each batch of one
+`--dynamic` compile:
+
+| Batch | Per launch | Per image |
+|---|---|---|
+| 1 | 306 us | 306 us |
+| 4 | 519 us | 130 us |
+| 16 | 1386 us | 87 us |
+| 64 | 4815 us | 75 us |
+
+```bash
+python3 -m mobilenet.aie2_mobilenet_iron --dynamic 1 4 16 64 -w 20 -i 20
+```
+
+Each is the fastest of 20 launches after 20 warm-up launches, NPU time: the
+host's clock around the dispatch's submit and completion, without the Python
+call around it (`aie.utils.benchmark` prints both, with the median and MAD).
 
 ## Lit-driven verification
 
 | Lit test | Hardware? | What it covers |
 |---|---|---|
-| [`run_mobilenet.lit`](run_mobilenet.lit) | yes | Full mobilenet end-to-end, three launches (atol=9 per #3009) |
-| [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone (atol=0), pipeline (bn10..12) + cascade (bn13..14) chains (atol=0), plus the regular bn0..bn9 chain (atol=14, matches the original perf-benchmark tolerance — see #3009) |
+| [`run_mobilenet.lit`](run_mobilenet.lit) | yes | Full mobilenet end-to-end, three launches: bit-exact against `mobilenet_numpy`, within 3 of brevitas |
+| [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone (atol=0), pipeline (bn10..12) + cascade (bn13..14) chains (atol=0), plus the regular bn0..bn9 chain, bit-exact against both `mobilenet_numpy` and its brevitas golden |
 | [`run_numpy_per_bn.lit`](run_numpy_per_bn.lit) | no | numpy reference vs brevitas — every kernel arithmetic verified bit-exact |
 
 The bit-exact per-block / per-chain results prove the IRON wrapper + AIE
-kernel object files are correct on hardware; the residual gap on the full
-network comes from cross-block effects in `init` / `bn0` / `post_l1` / `post_l2`
-(blocks without a standalone brevitas fixture).
+kernel object files are correct on hardware; the gap on the full network is
+post_l1's average-pool rounding, explained in `mobilenet_numpy.py`.
 
 ## Regenerating brevitas fixtures
 
@@ -70,13 +98,16 @@ NOT IRON-specific. To regenerate them:
 
 ```bash
 pip install -r requirements_gen_golden.txt    # PyTorch + brevitas + onnx
-python3 gen_golden.py                          # writes data/scale_factors_final.json
+cd ..                                          # programming_examples/ml
+python3 -m mobilenet.gen_golden                # writes data/scale_factors_final.json
                                                # + data/{bn*,init,post,FC*}_chain.txt
                                                # + data/golden_output.txt
                                                # + data/before_ifm_mem_fmt_1x1.txt
-cd .. && for g in bottleneck_A.gen_golden bottleneck_A.gen_golden_bn{1,2,3,6,7,8} \
-                  bottleneck_B.gen_golden bottleneck_C.gen_golden; do
+for g in bottleneck_A.gen_golden bottleneck_B.gen_golden bottleneck_C.gen_golden; do
   python3 -m mobilenet.$g
+done
+for b in bn1 bn2 bn3 bn6 bn7 bn8; do
+  python3 -m mobilenet.bottleneck_A.gen_golden_blocks --block $b
 done
 ```
 

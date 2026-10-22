@@ -158,27 +158,31 @@ public:
     return llvm::dyn_cast_if_present<OpTy>(lookup(name));
   }
 
+  // "<prefix><n>" for the first n from `counter` up that no op in the table
+  // has. `counter` moves past n, so names drawn from one counter differ
+  // although the table does not record them.
+  std::string uniqueName(llvm::StringRef prefix, unsigned &counter) const;
+
 private:
+  mlir::MLIRContext *context;
   llvm::DenseMap<mlir::StringAttr, mlir::Operation *> ops;
 };
 
-// Generate a symbol name guaranteed to be unique within the symbol table of
-// `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
-// counter is advanced past the chosen value so repeated calls with the same
-// counter remain efficient and produce distinct names. The returned name is
-// not inserted into the symbol table; the caller is responsible for creating
-// a symbol with that name before the next call (otherwise the same name will
-// be returned again).
-std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
-                                     llvm::StringRef prefix, unsigned &counter);
+// The NamedOpTables of several symbol tables, each indexed on first use, as
+// mlir::SymbolTableCollection is for symbols.
+class NamedOpTableCollection {
+public:
+  NamedOpTable &getTable(mlir::Operation *symbolTableOp) {
+    return tables.try_emplace(symbolTableOp, symbolTableOp).first->second;
+  }
+  template <typename OpTy>
+  OpTy lookupIn(mlir::Operation *symbolTableOp, mlir::StringAttr name) {
+    return getTable(symbolTableOp).lookup<OpTy>(name);
+  }
 
-/// Same, against a symbol table the caller builds once. The `Operation *` form
-/// probes with `SymbolTable::lookupSymbolIn`, which scans every top-level op
-/// per probe, so naming N operations costs O(N * ops). `counter` is monotonic,
-/// so a snapshot answers every probe: only symbols that already existed can
-/// collide.
-std::string generateUniqueSymbolName(mlir::SymbolTable &symbolTable,
-                                     llvm::StringRef prefix, unsigned &counter);
+private:
+  llvm::DenseMap<mlir::Operation *, NamedOpTable> tables;
+};
 
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
@@ -458,6 +462,11 @@ void collectBuffers(
 // canonicalization to allow natural ND forms on shim tiles that will be
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
+
+// The elements a BD streaming `dims` with `pads` sends, each dimension widened
+// by its padding; `fallback` unless it has both.
+int64_t paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
+                   llvm::ArrayRef<BDPadLayoutAttr> pads, int64_t fallback);
 
 // The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
 // dimensions (outermost first) and its length in elements: none when it

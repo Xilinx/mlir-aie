@@ -55,9 +55,6 @@ from .taskgroup import TaskGroup
 
 if TYPE_CHECKING:
     from ..configuration import DeviceConfiguration
-
-    # tile_dma imports the runtime package, which imports this module.
-    from ..dataflow.tile_dma import DmaEndpoint
     from ..device import Device
 
 logger = logging.getLogger(__name__)
@@ -92,6 +89,11 @@ class ActiveSequence:
         self._used_default = False
         self._used_explicit = False
 
+    @property
+    def runtime(self) -> "Runtime":
+        """The Runtime whose sequence body is running."""
+        return self._runtime
+
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
         """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
         self._runtime._fifos[handle] = None
@@ -109,20 +111,6 @@ class ActiveSequence:
             if self._device is not None:
                 self._device.resolve_tile(resolvable.tile)
             resolvable.resolve()
-
-    def static_channel(self, endpoint: DmaEndpoint) -> bool:
-        """Return whether the device's TileDma programs may run ``endpoint``'s channel.
-
-        Args:
-            endpoint: The `DmaEndpoint` a dispatch-time task would run on.
-
-        Returns:
-            What the configuration's, or else this Runtime's, `static_channel`
-            says.
-        """
-        configuration = self._runtime.configuration
-        resources = self._runtime if configuration is None else configuration
-        return resources.static_channel(endpoint)
 
     def register_task_group(self, tg: TaskGroup) -> None:
         self._open_task_groups.append(tg)

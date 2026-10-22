@@ -198,7 +198,8 @@ jobs:
           fi
           MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py \
             test/python/npu/test_kernels_e2e.py \
-            test/python/npu/test_kernel_cascade_conv.py -m "extensive or kernel_check" -v \
+            test/python/npu/test_kernel_cascade_conv.py \
+            test/python/npu/test_mha_e2e.py -m "extensive or kernel_check" -v \
             --junitxml=correctness.xml --report-error error.json \
             --seeds "${SEEDS:-3}" ${SEEDS:+--reruns 0} 2>&1 | tee correctness.log
 

@@ -22,8 +22,10 @@ from ._common import (
     _make_extern,
     _min_dma_aligned_elems,
     _require_vector_alignment,
-    dtypes,
 )
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 # The unspecialized pairwise max can share an object across dtypes.
 # Size-specialized reductions use separate, symbol-prefixed objects.
@@ -143,7 +145,9 @@ def _reduce_kernel(
     )
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+DTYPES["reduce_add"] = tuple(({"dtype": np.int32}, {"dtype": bfloat16}))
+
+
 def reduce_add(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -166,7 +170,9 @@ def reduce_add(
     return _reduce_kernel("add", tile_size, dtype, vectorized)
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+DTYPES["reduce_min"] = tuple(({"dtype": np.int32}, {"dtype": bfloat16}))
+
+
 def reduce_min(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -186,7 +192,11 @@ def reduce_min(
     return _reduce_kernel("min", tile_size, dtype, vectorized)
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}, {"dtype": np.float32}))
+DTYPES["reduce_max"] = tuple(
+    ({"dtype": np.int32}, {"dtype": bfloat16}, {"dtype": np.float32})
+)
+
+
 def reduce_max(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -236,7 +246,9 @@ def reduce_max(
     )
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+DTYPES["compute_max"] = tuple(({"dtype": np.int32}, {"dtype": bfloat16}))
+
+
 def compute_max(dtype: type = np.int32) -> ExternalFunction:
     """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max].
 
@@ -313,7 +325,9 @@ def argmax_ref(x, index_offset: int = 0):
     return np.concatenate([value, (index + index_offset).astype(np.int32)], axis=-1)
 
 
-@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+DTYPES["argmax"] = tuple(({"dtype": np.int32}, {"dtype": bfloat16}))
+
+
 def argmax(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -476,9 +490,7 @@ def maxpool2d_ref(line0, line1, line2, line3, line4, input_width, channels):
     return out.astype(np.int8).reshape(*lead, C * W)
 
 
-def maxpool2d(
-    input_width: int = 20, channels: int = 128, kernel: int = 5
-) -> ExternalFunction:
+def maxpool2d(input_width: int = 20, channels: int = 128) -> ExternalFunction:
     """5x5, stride-1 max pool of one int8 row, padded with -inf (YOLO's SPPF).
 
     Takes the five ``[C/8][W][8]`` rows around the output row, then the
@@ -488,17 +500,13 @@ def maxpool2d(
     Args:
         input_width: Pixels per row, a multiple of 4.
         channels: Channels, a multiple of 8.
-        kernel: The window; 5.
 
     Returns:
         ExternalFunction for maxpool2d_5x5_i8.
 
     Raises:
-        ValueError: On another window, or a width or channel count the
-            kernel cannot tile.
+        ValueError: On a width or channel count the kernel cannot tile.
     """
-    if kernel != 5:
-        raise ValueError(f"maxpool2d(): only a 5x5 window is built, got {kernel}")
     if input_width % 4 or channels % 8 or input_width < 4:
         raise ValueError(
             f"maxpool2d(): needs a width of 4k and channels of 8k, got "

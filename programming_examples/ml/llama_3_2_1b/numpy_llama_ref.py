@@ -2,46 +2,35 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Phase 6c.5a: pure-numpy INT8 forward pass for Llama 3.2 1B.
+"""The int8 recipe in numpy: Llama 3.2 1B's forward pass on gen_llama_data.py's
+weights, with per-channel int8 weights, per-token int8 activations, int32
+accumulation and fp32 dequant, silu, softmax and rmsnorm.
 
-Loads the .bin files produced by gen_llama_data.py, runs a decoder
-layer (or the full N-layer + lm_head + sample stack) with:
-  - per-channel symmetric INT8 weights
-  - per-token INT8 activations (one fp32 scale per row; for decode
-    M=1 it's one scalar per dispatch)
-  - INT32 GEMM accumulate + fp32 dequant + fp32 silu/softmax/rmsnorm
-    invsqrt, re-quantized to INT8 between ops.
-
-This is the numpy ORACLE for the kernel refactor (6c.5b): every kernel
-the NPU runs has to match what this script computes, bit-for-bit on
-INT8 inputs that came from the same .bin files.
-
-It's also the QUALITY reference for the BF16 PyTorch baseline (6c.5a
-Track 2): compare layer outputs cos-sim.
-
-Single forward pass only; no decode loop.
+The device follows this recipe but not bit for bit (its reciprocal square
+root, softmax exp and adder differ); llama_oracle.py is the oracle it
+matches exactly. This is the quality reference the device is scored against.
 """
 
 from __future__ import annotations
 
-import argparse
 import base64
 from dataclasses import dataclass
 from pathlib import Path
 
 import ml_dtypes
 import numpy as np
+from llama_config import (
+    HD,
+    HEAD_D,
+    KV_DIM,
+    N_HEADS_KV,
+    N_HEADS_Q,
+    N_LAYERS,
+    Q_DIM,
+    VOCAB,
+    D,
+)
 
-# --- Llama 3.2 1B spec ---
-VOCAB_SIZE = 128_256
-EMB_DIM = 2_048
-N_LAYERS = 16
-N_HEADS = 32
-N_KV_GROUPS = 8
-HEAD_DIM = EMB_DIM // N_HEADS
-HIDDEN_DIM = 8_192
-Q_DIM = N_HEADS * HEAD_DIM
-KV_DIM = N_KV_GROUPS * HEAD_DIM
 ROPE_BASE = 500_000.0
 # config.json's rope_scaling (rope_type "llama3").
 ROPE_FACTOR = 32.0
@@ -51,9 +40,6 @@ ROPE_ORIGINAL_CONTEXT = 8192
 RMS_EPS = 1e-5
 
 
-# ---------------------------------------------------------------------------
-# Loading: pull .bin files into numpy arrays of the right shape.
-# ---------------------------------------------------------------------------
 @dataclass
 class LayerW:
     gamma_in: np.ndarray  # (D,) bf16
@@ -102,22 +88,22 @@ def _load_bf16(data_dir: Path, stem: str, shape: tuple[int, ...]) -> np.ndarray:
 
 
 def load_model(data_dir: Path) -> ModelW:
-    embed_i8, embed_sc = _load_qw(data_dir, "embed", (VOCAB_SIZE, EMB_DIM))
-    final_norm = _load_bf16(data_dir, "final_norm", (EMB_DIM,))
+    embed_i8, embed_sc = _load_qw(data_dir, "embed", (VOCAB, D))
+    final_norm = _load_bf16(data_dir, "final_norm", (D,))
     layers = []
     for L in range(N_LAYERS):
         ld = data_dir / f"layer_{L:02d}"
-        wq_i8, wq_sc = _load_qw(ld, "wq", (Q_DIM, EMB_DIM))
-        wk_i8, wk_sc = _load_qw(ld, "wk", (KV_DIM, EMB_DIM))
-        wv_i8, wv_sc = _load_qw(ld, "wv", (KV_DIM, EMB_DIM))
-        wo_i8, wo_sc = _load_qw(ld, "wo", (EMB_DIM, Q_DIM))
-        wg_i8, wg_sc = _load_qw(ld, "wg", (HIDDEN_DIM, EMB_DIM))
-        wu_i8, wu_sc = _load_qw(ld, "wu", (HIDDEN_DIM, EMB_DIM))
-        wd_i8, wd_sc = _load_qw(ld, "wd", (EMB_DIM, HIDDEN_DIM))
+        wq_i8, wq_sc = _load_qw(ld, "wq", (Q_DIM, D))
+        wk_i8, wk_sc = _load_qw(ld, "wk", (KV_DIM, D))
+        wv_i8, wv_sc = _load_qw(ld, "wv", (KV_DIM, D))
+        wo_i8, wo_sc = _load_qw(ld, "wo", (D, Q_DIM))
+        wg_i8, wg_sc = _load_qw(ld, "wg", (HD, D))
+        wu_i8, wu_sc = _load_qw(ld, "wu", (HD, D))
+        wd_i8, wd_sc = _load_qw(ld, "wd", (D, HD))
         layers.append(
             LayerW(
-                gamma_in=_load_bf16(ld, "gamma_in", (EMB_DIM,)),
-                gamma_post=_load_bf16(ld, "gamma_post", (EMB_DIM,)),
+                gamma_in=_load_bf16(ld, "gamma_in", (D,)),
+                gamma_post=_load_bf16(ld, "gamma_post", (D,)),
                 wq_i8=wq_i8,
                 wq_sc=wq_sc,
                 wk_i8=wk_i8,
@@ -163,9 +149,6 @@ def load_tokenizer(tokenizer_path: Path):
     )
 
 
-# ---------------------------------------------------------------------------
-# INT8 ops (per-token activation scale, per-channel weight scale).
-# ---------------------------------------------------------------------------
 def quant_act_per_token(x_f32: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Per-row symmetric INT8 quantization. x_f32 is (M, D); returns
     (q_i8, scale_f32) where scale has shape (M,)."""
@@ -178,8 +161,8 @@ def quant_act_per_token(x_f32: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def linear_int8(x_f32: np.ndarray, w_i8: np.ndarray, w_sc: np.ndarray) -> np.ndarray:
     """y = x @ W.T with per-token x quant and per-row w scale, return fp32.
 
-    Mirrors what 6c.5b's NPU GEMM kernel will do: quant x per-token,
-    int32 accumulate, fp32 dequant with x_scale * w_sc[n] per output.
+    Quantizes x per token, accumulates in int32 and dequantizes with
+    x_scale * w_sc[n] per output.
     """
     if x_f32.ndim == 1:
         x_f32 = x_f32[None, :]  # (1, D) for uniform handling
@@ -276,18 +259,19 @@ def attention_full_gqa(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarra
     """
     M = q.shape[0]
     Mc = k.shape[0]
-    q = q.reshape(M, N_HEADS, HEAD_DIM)
-    k = k.reshape(Mc, N_KV_GROUPS, HEAD_DIM)
-    v = v.reshape(Mc, N_KV_GROUPS, HEAD_DIM)
-    scale = 1.0 / np.sqrt(HEAD_DIM)
-    out = np.zeros((M, N_HEADS, HEAD_DIM), dtype=np.float32)
-    rep = N_HEADS // N_KV_GROUPS  # 4
-    for h in range(N_HEADS):
+    q = q.reshape(M, N_HEADS_Q, HEAD_D)
+    k = k.reshape(Mc, N_HEADS_KV, HEAD_D)
+    v = v.reshape(Mc, N_HEADS_KV, HEAD_D)
+    scale = 1.0 / np.sqrt(HEAD_D)
+    out = np.zeros((M, N_HEADS_Q, HEAD_D), dtype=np.float32)
+    rep = N_HEADS_Q // N_HEADS_KV  # 4
+    for h in range(N_HEADS_Q):
         kvh = h // rep
         s = (q[:, h, :] @ k[:, kvh, :].T) * scale  # (M, Mc)
-        # Causal: only attend to positions <= my position; for decode M=1
-        # against an already-prefilled cache, just no mask (cache already
-        # truncated to the right length by caller).
+        # Query row i sits at position Mc - M + i and sees keys up to it.
+        s = np.where(
+            np.arange(Mc)[None, :] > np.arange(Mc - M, Mc)[:, None], -np.inf, s
+        )
         s_max = s.max(axis=-1, keepdims=True)
         e = np.exp(s - s_max)
         p = (e / e.sum(axis=-1, keepdims=True)).astype(np.float32)
@@ -295,9 +279,6 @@ def attention_full_gqa(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarra
     return out.reshape(M, Q_DIM)
 
 
-# ---------------------------------------------------------------------------
-# One decoder layer, INT8 dataflow.
-# ---------------------------------------------------------------------------
 def forward_layer_int8(
     x_f32: np.ndarray,
     W: LayerW,
@@ -319,9 +300,9 @@ def forward_layer_int8(
     k = linear_int8(h, W.wk_i8, W.wk_sc)
     v = linear_int8(h, W.wv_i8, W.wv_sc)
     pos = np.arange(position, position + M)
-    cos, sin = rope_cos_sin(pos, HEAD_DIM)
-    q = apply_rope(q.reshape(M, N_HEADS, HEAD_DIM), cos, sin).reshape(M, Q_DIM)
-    k = apply_rope(k.reshape(M, N_KV_GROUPS, HEAD_DIM), cos, sin).reshape(M, KV_DIM)
+    cos, sin = rope_cos_sin(pos, HEAD_D)
+    q = apply_rope(q.reshape(M, N_HEADS_Q, HEAD_D), cos, sin).reshape(M, Q_DIM)
+    k = apply_rope(k.reshape(M, N_HEADS_KV, HEAD_D), cos, sin).reshape(M, KV_DIM)
 
     # Append this step's K/V to caches (caches may be empty pre-prefill).
     if k_cache.size == 0:
@@ -371,61 +352,3 @@ def forward_full(model: ModelW, token_ids: np.ndarray) -> np.ndarray:
     for L, W in enumerate(model.layers):
         x, kc[L], vc[L] = forward_layer_int8(x, W, kc[L], vc[L], position=0)
     return lm_head_logits(model, x)
-
-
-# ---------------------------------------------------------------------------
-# CLI sanity: load weights, run one forward pass, report shape + a stat.
-# ---------------------------------------------------------------------------
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--data-dir", type=Path, default=Path(__file__).parent / "data")
-    p.add_argument(
-        "--layer", type=int, default=0, help="single layer to test (default 0)"
-    )
-    p.add_argument("--M", type=int, default=4)
-    p.add_argument("--seed", type=int, default=0)
-    p.add_argument(
-        "--full",
-        action="store_true",
-        help="run full N-layer + lm_head instead of one layer",
-    )
-    args = p.parse_args()
-
-    print(f"loading INT8 weights from {args.data_dir}/ ...")
-    model = load_model(args.data_dir)
-    print(f"  embed: {model.embed_i8.shape} (scales {model.embed_sc.shape})")
-    print(f"  final_norm: {model.final_norm.shape}")
-    print(f"  layers: {len(model.layers)}")
-    L0 = model.layers[0]
-    print(f"  layer 00 wq: {L0.wq_i8.shape} scales {L0.wq_sc.shape}")
-    print(f"  layer 00 wd: {L0.wd_i8.shape} scales {L0.wd_sc.shape}")
-
-    rng = np.random.default_rng(args.seed)
-
-    if args.full:
-        # Run on the first few token ids as a sanity check (no tokenizer needed).
-        token_ids = np.array([1, 2, 3, 4][: args.M], dtype=np.int64)
-        print(f"\nrunning full forward on token_ids={token_ids.tolist()}")
-        logits = forward_full(model, token_ids)
-        print(f"  logits shape: {logits.shape}")
-        last = logits[-1]
-        top5 = np.argsort(last)[-5:][::-1]
-        print(f"  top-5 token ids at last pos: {top5.tolist()}")
-        print(f"  top-5 logit values: {last[top5].tolist()}")
-    else:
-        x_in = rng.standard_normal((args.M, EMB_DIM)).astype(np.float32)
-        print(
-            f"\nrunning ONE layer ({args.layer}) on random (M={args.M}, D={EMB_DIM}) input"
-        )
-        W = model.layers[args.layer]
-        kc = np.zeros((0, KV_DIM), dtype=np.float32)
-        vc = np.zeros((0, KV_DIM), dtype=np.float32)
-        out, _, _ = forward_layer_int8(x_in, W, kc, vc, position=0)
-        print(
-            f"  out shape: {out.shape}  norm: {np.linalg.norm(out):.3f}  "
-            f"max|abs|: {np.abs(out).max():.3f}"
-        )
-
-
-if __name__ == "__main__":
-    main()

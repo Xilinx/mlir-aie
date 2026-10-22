@@ -6,6 +6,7 @@
 
 import math
 import re
+from typing import ClassVar
 
 import numpy as np
 
@@ -36,6 +37,8 @@ class Device(Resolvable):
     objects. A DeviceConfiguration reconstructs this descriptor before it emits
     an ``aie.device``, so the descriptor does not own one configuration's IR.
     """
+
+    _bd_context: ClassVar[ir.Context | None] = None
 
     def __init__(self, device: AIEDevice) -> None:
         self._device = device
@@ -80,7 +83,7 @@ class Device(Resolvable):
         return AIEArch(self._tm.get_target_arch())
 
     @property
-    def dispatches_full_elf(self) -> bool:
+    def can_dispatch_full_elf(self) -> bool:
         """Whether a full ELF (PDIs and control code in one ELF) dispatches here: on AIE2p."""
         # XRT sends an ELF with .pdi sections as a preemptible command, which
         # amdxdna accepts only where the part supports preemption: not on npu1.
@@ -224,7 +227,11 @@ class Device(Resolvable):
             strides = [0] * pad + list(tap.strides)
         if len(sizes) > 4:
             return False
-        with ir.Context(), ir.Location.unknown():
+        # A fresh context costs ~4 ms, and resolving a design calls this thousands of times.
+        context = Device._bd_context
+        if context is None:
+            context = Device._bd_context = ir.Context()
+        with context, ir.Location.unknown():
             return dma_bd_fits(
                 self._device.value,
                 col,
@@ -331,6 +338,12 @@ class NamedDevice(Device):
 
     def __init__(self) -> None:
         super().__init__(device=self.aie_device)
+
+    @staticmethod
+    def of(kind: AIEDevice) -> "NamedDevice":
+        """Return the named device of ``kind``, e.g. ``NPU2()`` for ``AIEDevice.npu2``."""
+        (named,) = (c for c in NamedDevice.__subclasses__() if c.aie_device == kind)
+        return named()
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}()"

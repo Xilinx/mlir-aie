@@ -7,12 +7,11 @@
 // kTB-row blocks, a row being [k int8[kHD] | v int8[kHD] | k_scale | v_scale].
 // Each block is attended as a whole cache would be, then folded into a
 // running (max, sum, normalized sv) state; products round once as the scalar
-// `*` does and sums are vadd.f, so numpy_attn_block.py mirrors it exactly.
+// `*` does and sums are vadd.f, so llama_oracle.py mirrors it exactly.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <string.h>
 
 #include "llama_vec_fp.h"
 
@@ -54,42 +53,6 @@ static inline float *head_record(int8_t *state, int h) {
   return reinterpret_cast<float *>(state + kStateHeader + h * kHeadStride);
 }
 
-// e^x for x <= 0 on kLanes lanes, as numpy_attn_block.exp_nonpos: with
-// t = x * log2(e) (vec_mul_rne), k = trunc(t) and f = t - k in (-1, 0],
-// e = 2^k * 2^f where 2^f = 2^-g, g = -f rounded to Q23 by the vadd.f that
-// forms 1 - f, is a degree-6 Q29 polynomial in Horner form whose products
-// round half to even (acc64 srs). 0 below t = -125. float2fix gives floor(t)
-// or ceil(t); trunc(t) for t <= 0 is the ceiling, so a negative n below t
-// (compared as sign-magnitude bits) is bumped by one.
-__attribute__((noinline)) static ::aie::vector<float, kLanes>
-vec_exp_nonpos(::aie::vector<float, kLanes> x) {
-  static constexpr int32_t kC[] = {-684167,   5142538,    -29791239,
-                                   128969442, -372130494, 536870912};
-  ::aie::vector<float, kLanes> t =
-      vec_mul_rne(x, ::aie::broadcast<float, kLanes>(1.442695022f));
-  ::aie::vector<int32, kLanes> tb = t.template cast_to<int32>();
-  ::aie::vector<int32, kLanes> n = ::aie::to_fixed<int32>(t, 0);
-  ::aie::vector<int32, kLanes> nb =
-      ::aie::to_float<float>(n, 0).template cast_to<int32>();
-  ::aie::vector<int32, kLanes> k = ::aie::select(
-      n, ::aie::add(n, int32(1)), ::aie::gt(nb, tb) & ::aie::lt(nb, int32(0)));
-  ::aie::vector<float, kLanes> f = ::aie::sub(t, ::aie::to_float<float>(k, 0));
-  ::aie::vector<int32, kLanes> g =
-      ::aie::sub(::aie::sub(::aie::broadcast<float, kLanes>(1.0f), f)
-                     .template cast_to<int32>(),
-                 int32(0x3f800000));
-  ::aie::vector<int32, kLanes> p = ::aie::broadcast<int32, kLanes>(58465);
-  for (int i = 0; i < 6; i++)
-    p = ::aie::add(::aie::mul(p, g).template to_vector<int32>(23), kC[i]);
-  return ::aie::select(
-             ::aie::add(::aie::to_float<float>(p, 29).template cast_to<int32>(),
-                        ::aie::upshift(k, 23)),
-             ::aie::zeros<int32, kLanes>(),
-             ::aie::lt(tb, int32(0)) &
-                 ::aie::gt(tb, __builtin_bit_cast(int32_t, -125.0f)))
-      .template cast_to<float>();
-}
-
 // Folds every head's block max and sum (m_b[h], s_b[h]) into its record:
 // with M = max(m, m_b), a = s e^(m-M) and b = s_b e^(m_b-M), the record gets
 // (M, a + b) and w the weights a/(a+b) (w[h]) and b/(a+b) (w[kREP + h]) of
@@ -115,7 +78,7 @@ static void fold_weights(int8_t *state, const float *m_b, const float *s_b,
       ::aie::load_v<kLanes>(x + kLanes), vec_exp_nonpos(::aie::sub(m, big)));
   ::aie::vector<float, kLanes> den =
       ::aie::add(ab, ::aie::shuffle_down(ab, kREP));
-  ::aie::vector<float, kLanes> inv = vec_sw_recip(den);
+  ::aie::vector<float, kLanes> inv = vec_recip(den);
   ::aie::store_v(w, vec_mul_rne(ab, ::aie::select(::aie::shuffle_up(inv, kREP),
                                                   inv, low)));
   ::aie::store_v(x, big);
@@ -156,45 +119,17 @@ static void fold_part(int8_t *acc_state, int8_t *part) {
             w[kREP + h]);
 }
 
-// Requantizes each Q head's sv in state with its own scale: out = kREP*kHD
-// int8, then kREP f32 sv_out_scales.
-static void requant_selfcal(int8_t *state, int8_t *out) {
-  // Each head's scale max(absmax, 1e-12) * (1/127) and its reciprocal at
-  // once; max(absmax, 1e-12f) is an integer max of the non-negative bits.
-  alignas(64) int32_t absmax[kLanes] = {};
-#pragma clang loop unroll(disable)
-  for (int i = 0; i < kREP * kSlices; i++) {
-    const float *sv =
-        head_record(state, i / kSlices) + 16 + i % kSlices * kLanes;
-    int32_t mag = ::aie::reduce_max(
-        ::aie::bit_and(int32(0x7fffffff),
-                       ::aie::load_v<kLanes>(sv).template cast_to<int32>()));
-    if (mag > absmax[i / kSlices])
-      absmax[i / kSlices] = mag;
-  }
-  ::aie::vector<float, kLanes> scale =
-      vec_mul_rne(::aie::max(::aie::load_v<kLanes>(absmax),
-                             __builtin_bit_cast(int32_t, 1e-12f))
-                      .template cast_to<float>(),
-                  ::aie::broadcast<float, kLanes>(1.0f / 127.0f));
-  alignas(64) float scale_a[kLanes];
-  alignas(64) float inv_a[kLanes];
-  ::aie::store_v(scale_a, scale);
-  ::aie::store_v(inv_a, vec_sw_recip(scale));
-  memcpy(out + kREP * kHD, scale_a, kREP * 4);
-#pragma clang loop unroll(disable)
-  for (int i = 0; i < kREP * kSlices; i++)
-    ::aie::store_v(out + i * kLanes,
-                   vec_round_to_i8(vec_mul_rne(
-                       ::aie::load_v<kLanes>(head_record(state, i / kSlices) +
-                                             16 + i % kSlices * kLanes),
-                       ::aie::broadcast<float, kLanes>(inv_a[i / kSlices]))));
+// Each Q head's sv in state, fp32, to out: kREP*kHD floats, head by head.
+static void copy_sv(int8_t *state, int8_t *out) {
+  for (int h = 0; h < kREP; h++)
+    copy_words<kHD * 4>(out + h * kHD * 4,
+                        reinterpret_cast<int8_t *>(head_record(state, h) + 16));
 }
 
 extern "C" {
 
 void llama_attn_state_init(int8_t *restrict state) {
-  memset(state, 0, kStateBytes);
+  zero_words<kStateBytes>(state);
 }
 
 // Attends q_chunk's kREP heads (kREP*kHD int8, then per head [q_scale f32 |
@@ -348,7 +283,7 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     }
   }
   alignas(64) float inv_a[kLanes];
-  ::aie::store_v(inv_a, vec_sw_recip(sum_v));
+  ::aie::store_v(inv_a, vec_recip(sum_v));
   ::aie::store_v(lanes + kLanes, sum_v);
   alignas(64) float w[kLanes];
   if (count == 0) {
@@ -502,7 +437,7 @@ static constexpr int kChunkStride = (kChunkBytes + 63) / 64 * 64;
 // Query r of a batch: its chunk into the core's chunks, its state fresh.
 void llama_attn_take_q(int8_t *restrict chunk, int8_t *restrict chunks,
                        int8_t *restrict states, int32_t r) {
-  memcpy(chunks + r * kChunkStride, chunk, kChunkBytes);
+  copy_words<kChunkBytes>(chunks + r * kChunkStride, chunk);
   llama_attn_state_init(states + r * kStateBytes);
 }
 
@@ -514,46 +449,40 @@ void llama_attn_block_q(int8_t *restrict chunks, int32_t *restrict block_i32,
                         int8_t *restrict states, int32_t row0, int32_t r) {
   int8_t *chunk = chunks + r * kChunkStride;
   if (row0 >= 0)
-    memcpy(block_i32 + (row0 + r) * (kRowBytes / 4), chunk + kQChunkBytes,
-           kRowBytes);
+    copy_words<kRowBytes>(block_i32 + (row0 + r) * (kRowBytes / 4),
+                          chunk + kQChunkBytes);
   llama_attn_block(chunk, block_i32, states + r * kStateBytes,
                    row0 >= 0 ? row0 + r + 1 : kTB);
 }
 
 void llama_attn_put_q(int8_t *restrict states, int8_t *restrict part,
                       int32_t r) {
-  memcpy(part, states + r * kStateBytes, kStateBytes);
+  copy_words<kStateBytes>(part, states + r * kStateBytes);
 }
 
 // Folds two cores' states, the first core's first, in place into the first
-// non-empty one, then requantizes each Q head's sv with its own scale: out is
-// kREP*kHD int8, then kREP f32 sv_out_scales.
-void llama_attn_merge_pair_selfcal(int8_t *restrict state0,
-                                   int8_t *restrict state1,
-                                   int8_t *restrict out) {
+// non-empty one, then writes each Q head's sv: out is kREP*kHD fp32, which
+// the o projection's input quantizes once with the other heads'. The second
+// core's state for query r is at states + r * kStateBytes.
+void llama_attn_merge_pair_q(int8_t *restrict state0, int8_t *restrict states,
+                             int8_t *restrict out, int32_t r) {
   event0();
   const ::aie::saturation_mode prev_sat =
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 
+  int8_t *state1 = states + r * kStateBytes;
   int32_t count0, count1;
-  memcpy(&count0, state0, 4);
-  memcpy(&count1, state1, 4);
+  __builtin_memcpy(&count0, state0, 4);
+  __builtin_memcpy(&count1, state1, 4);
   if (count0 > 0 && count1 > 0)
     fold_part(state0, state1);
-  requant_selfcal(count0 > 0 ? state0 : state1, out);
+  copy_sv(count0 > 0 ? state0 : state1, out);
 
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   event1();
-}
-
-// llama_attn_merge_pair_selfcal for query r: the first core's state, then
-// the second's at states + r * kStateBytes.
-void llama_attn_merge_pair_q(int8_t *restrict state0, int8_t *restrict states,
-                             int8_t *restrict out, int32_t r) {
-  llama_attn_merge_pair_selfcal(state0, states + r * kStateBytes, out);
 }
 
 } // extern "C"

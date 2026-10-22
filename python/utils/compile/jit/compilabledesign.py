@@ -33,6 +33,7 @@ import hashlib
 import inspect
 import json
 import logging
+import math
 import operator
 import os
 import sys
@@ -44,13 +45,9 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping, get_origin
 
 import numpy as np
-from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
-    AIEArch,
-)
 from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
-    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
     ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
@@ -579,11 +576,15 @@ class CompilableDesign:
         named for a short hash of ``name`` and its index, under xclbinutil's
         64-character limit; one design alone keeps the default name.
 
+        Args:
+            designs: The designs, in kernel order.
+            name: What the kernel names hash.
+
         Returns:
             Per design, the compiled design, the xclbin carrying its kernel (its
             chain's last) and the kernel's name.
         """
-        digest = hashlib.sha1(name.encode()).hexdigest()[:6]
+        digest = hashlib.sha256(name.encode()).hexdigest()[:6]
         named = len(designs) > 1
         built, images = [], []
         for index, design in enumerate(designs):
@@ -597,9 +598,15 @@ class CompilableDesign:
                 if named
                 else []
             )
+            sources = design.source_files
             if index % cls.XCLBIN_KERNELS:
                 flags.append(f"--xclbin-input={images[-1]}")
-            design = design.specialize(aiecc_flags=[*design.aiecc_flags, *flags])
+                # Its content keys this design, so an image rebuilt in place
+                # rebuilds every image chained onto it.
+                sources = (*sources, images[-1])
+            design = design.specialize(
+                aiecc_flags=[*design.aiecc_flags, *flags], source_files=sources
+            )
             xclbin, _ = design.compile()
             assert xclbin is not None
             images.append(Path(xclbin).resolve())
@@ -1107,12 +1114,13 @@ class CompilableDesign:
         Returns:
             ``(elf_path, None)``.
         """
+        # aie.iron imports this module.
+        from aie.iron.device import NamedDevice
+
         try:
             generated = self._generated_for(full_elf=True)
-            # As Device.dispatches_full_elf: amdxdna takes a full ELF only
-            # where the part preempts, which is AIE2p.
             for kind in generated.devices:
-                if AIEArch(get_target_model(kind).get_target_arch()) != AIEArch.AIE2p:
+                if not NamedDevice.of(kind).can_dispatch_full_elf:
                     raise ValueError(f"{kind.name} does not dispatch a full ELF.")
             external_kernels = generated.external_kernels
             use_chess = self._resolve_use_chess(external_kernels)
@@ -1667,10 +1675,11 @@ class CompilableDesign:
             if expected == 0:
                 continue
             try:
-                # tensor.dtype rather than asarray(tensor): a device tensor
-                # would sync itself back to the host just to be measured.
+                # dtype and shape rather than asarray(tensor): a device tensor
+                # would sync itself back to the host just to be measured, and a
+                # TensorRegion has no host data to convert.
                 itemsize = np.dtype(tensor.dtype).itemsize
-                actual = int(np.size(tensor)) * itemsize * 8
+                actual = math.prod(tensor.shape) * itemsize * 8
             except (TypeError, ValueError, AttributeError):
                 # Non-array-like tensor argument (e.g. a scalar passed by mistake);
                 # skip rather than raise so the kernel call surfaces the real

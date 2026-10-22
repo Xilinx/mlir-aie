@@ -61,14 +61,14 @@ double to_double(int32_t n) {
                    (((uint64_t)u << (52 - e)) & FRAC));
 }
 
-// (int)x, truncating toward zero.
+// (int)x, truncating toward zero, saturated to int32.
 int32_t to_int(double x) {
   uint64_t u = bits(x);
   int e = (int)((u >> 52) & 0x7ff) - 1023;
   if (e < 0)
     return 0;
   if (e > 30)
-    return (int32_t)x;
+    return u & SIGN ? INT32_MIN : INT32_MAX;
   int32_t r = (int32_t)(((u & FRAC) | (1ull << 52)) >> (52 - e));
   return u & SIGN ? -r : r;
 }
@@ -98,6 +98,9 @@ Axis axis(int32_t in, int32_t out, int32_t chunks) {
     return a;
   a.scale = (double)in / (double)out;
   a.support = a.scale >= 1.0 ? 2.0 * a.scale : 2.0;
+  // A wider window fits no chunk; stop before its width overflows an int.
+  if (a.support > WMAX)
+    return a;
   int s = (int)a.support;
   if ((double)s < a.support)
     s++;

@@ -41,13 +41,15 @@ from ._common import (
     _make_extern,
     _portable_flags,
     _runtime_lib_include,
-    dtypes,
 )
 from .activation import _bf16_ulp, _vtanh_error
 from .linalg import _ZeroInitializedKernel
 from .quant import _bf16_floor
 
 _BF16, _F32 = np.dtype[bfloat16], np.dtype[np.float32]
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
+
 # An RTP buffer: int32 words the host writes.
 _RTP_WORD = np.dtype[np.int32]
 _K = TypeVar("_K", bound=ExternalFunction)
@@ -212,7 +214,9 @@ def flm_gemma4_swa_prefill() -> ExternalFunction:
     )
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_block_begin"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_block_begin(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_block_begin`` of the prefill kernels: row ``j`` of ``m`` is ``prev_m[j]``."""
     return _prefill_sibling(
@@ -237,7 +241,9 @@ def flm_gemma4_prefill_block_begin_ref(prev_m):
     return np.repeat(prev_m, prev_m.shape[-1], axis=-1)
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_block_end"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_block_end(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_block_end`` of the prefill kernels: ``prev_m = new_m``."""
     return _prefill_sibling(
@@ -284,7 +290,9 @@ def _prefill_rounds_sample(rng, calls):
     return [_rtp_words(rng, begin), _rtp_words(rng, end)]
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_rounds"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_rounds(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_rounds`` of the prefill kernels: the rounds between ``L_begin`` and ``L_end``."""
     return _prefill_sibling(
@@ -336,7 +344,9 @@ def _prefill_blocks_sample(rng, calls, *, window):
     return buffers
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_blocks"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_blocks(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_blocks`` of the prefill kernels: the key blocks round ``i`` folds in.
 
@@ -361,7 +371,9 @@ def flm_gemma4_prefill_blocks(*, head_dim: int = 512) -> ExternalFunction:
     )
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_finalize"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_finalize(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_finalize`` of the prefill kernels: ``inv_l = bf16(1 / l)`` per query row.
 
@@ -503,7 +515,9 @@ def flm_gemma4_prefill_round_begin_ref(*, head_dim=512):
     )
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_round_begin"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_round_begin(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_round_begin`` of the prefill kernels, its five outputs packed as bytes.
 
@@ -577,7 +591,9 @@ def _prefill_qk_sample(rng, calls, *, head_dim):
     ]
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_qk_core"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_qk_core(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_qk_chunk``'s arithmetic.
 
@@ -646,7 +662,9 @@ def _prefill_fv_sample(rng, calls, *, head_dim):
     return [y, sv.astype(bfloat16)]
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_fv_core"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_fv_core(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_fv_chunk``'s arithmetic.
 
@@ -787,7 +805,9 @@ def _prefill_block_mid_sample(rng, calls, *, head_dim):
     ]
 
 
-@dtypes([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_block_mid_core"] = tuple([{"head_dim": 256}])
+
+
 def flm_gemma4_prefill_block_mid_core(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_block_mid`` of the prefill kernels, its state passed in and out.
 
@@ -1010,7 +1030,9 @@ def _wrapper(base: ExternalFunction, source: str, symbol, arg_types, contract):
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_glu"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_glu(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -1111,7 +1133,9 @@ def _glu_core_sample(rng, calls, *, n):
     return [np.concatenate([up, gate], axis=1).astype(bfloat16)]
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_glu_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_glu_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
@@ -1491,12 +1515,14 @@ def flm_gemma4_attn_kv_kvh2_core_ref(sv, ly, kv_head, *, dh=512):
     return _attn_kv_round_ref(sv, ly, int(kv_head), dh=dh, impl="kvh2")
 
 
-@dtypes(
+DTYPES["flm_gemma4_decode_attn_qk"] = tuple(
     [
         {"sliding_window": True},
         {"sliding_window": True, "geometry": FLM_GEMMA4_E4B_DECODE},
     ]
 )
+
+
 def flm_gemma4_decode_attn_qk(
     *,
     sliding_window: bool = False,
@@ -1715,12 +1741,14 @@ def _attn_qk_core_types(geometry, dh, kv_heads):
     return [qm, k, s, t["c"], np.int32, np.int32]
 
 
-@dtypes(
+DTYPES["flm_gemma4_attn_qk_core"] = tuple(
     [
         {"sliding_window": True},
         {"sliding_window": True, "geometry": FLM_GEMMA4_E4B_DECODE},
     ]
 )
+
+
 def flm_gemma4_attn_qk_core(
     *,
     sliding_window: bool = False,
@@ -1769,7 +1797,9 @@ def flm_gemma4_attn_qk_kvh2_core_ref(qm, k, iter, L0):
     return flm_gemma4_attn_qk_core_ref(qm, k, iter, L0)
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_swa_attn_kv"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_swa_attn_kv(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -1809,7 +1839,9 @@ def flm_gemma4_decode_swa_attn_kv(
     return fn
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_swa_attn_kv_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_swa_attn_kv_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
@@ -1841,13 +1873,15 @@ def flm_gemma4_swa_attn_kv_core_ref(sv, ly, *, dh=256, kv_heads=1):
     return _attn_kv_round_ref(sv, ly, dh=dh, impl=impl)
 
 
-@dtypes(
+DTYPES["flm_gemma4_decode_rope"] = tuple(
     [
         {"geometry": FLM_GEMMA4_E4B_DECODE},
         {"sliding_window": True},
         {"sliding_window": True, "geometry": FLM_GEMMA4_E4B_DECODE},
     ]
 )
+
+
 def flm_gemma4_decode_rope(
     *,
     sliding_window: bool = False,
@@ -1959,7 +1993,9 @@ def _rope_core_sample(rng, calls, *, dh):
     return [x.astype(bfloat16), rope_w.astype(bfloat16)]
 
 
-@dtypes(_ROPE_CORE_VARIANTS)
+DTYPES["flm_gemma4_rope_core"] = tuple(_ROPE_CORE_VARIANTS)
+
+
 def flm_gemma4_rope_core(
     *,
     sliding_window: bool = False,
@@ -2015,7 +2051,9 @@ def _v_norm_core_sample(rng, calls, *, dh):
     return [x.astype(bfloat16)]
 
 
-@dtypes(_ROPE_CORE_VARIANTS)
+DTYPES["flm_gemma4_v_norm_core"] = tuple(_ROPE_CORE_VARIANTS)
+
+
 def flm_gemma4_v_norm_core(
     *,
     sliding_window: bool = False,
@@ -2047,7 +2085,9 @@ def flm_gemma4_v_norm_core(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_rms_residual"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_rms_residual(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -2129,7 +2169,9 @@ def _rms_residual_core_bound(x, w, residual):
     return norm + (1.5 * 2.0**-7 + 2.0**-12) * s + 2 * 2.0**-126
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_rms_residual_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_rms_residual_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
@@ -2164,7 +2206,67 @@ def flm_gemma4_rms_residual_core(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+_PACKET_HEADER = 16
+
+
+def flm_gemma4_rms_norm_core_ref(x, w):
+    """Numpy reference for [`flm_gemma4_rms_norm_core`][iron.kernels.flm_gemma4.flm_gemma4_rms_norm_core].
+
+    16 zeros, then ``x * w / sqrt(mean(x^2) + 1e-6)`` rounded to bf16.
+    """
+    n = _rms_residual_core_terms(x, w, 0)[0]
+    header = np.zeros((len(n), _PACKET_HEADER))
+    return np.concatenate([header, n], axis=1).astype(np.float32).astype(bfloat16)
+
+
+def _rms_norm_core_bound(x, w):
+    n = np.abs(_rms_residual_core_terms(x, w, 0)[0])
+    bound = (1.5 * 2.0**-7 + _RMS_SCALE_REL) * n + _BF16_TINY
+    return np.concatenate([np.full((len(n), _PACKET_HEADER), _BF16_TINY), bound], 1)
+
+
+DTYPES["flm_gemma4_rms_norm_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
+def flm_gemma4_rms_norm_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """``rms_norm`` of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual] into its packet layout.
+
+    ``rms_norm_core(x, w, y)``: ``x`` and ``w`` are ``model_dim`` bf16, ``y``
+    is ``model_dim + 16``, a zeroed 16-element packet header then
+    ``rms_norm(x) * w``: the row starts 32 bytes into a 64-byte-aligned
+    buffer, as the QKV and up/gate projections' input does.
+    """
+    base = flm_gemma4_decode_rms_residual(geometry=geometry)
+    d = geometry.model_dim
+    row = np.ndarray[(d,), _BF16]
+    return _wrapper(
+        base,
+        "decode_rms_residual_core.cc",
+        "rms_norm_core",
+        [row, row, np.ndarray[(d + _PACKET_HEADER,), _BF16]],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out),
+            reference=flm_gemma4_rms_norm_core_ref,
+            tolerance=Tolerance.bounded(
+                _rms_norm_core_bound,
+                note="bf16 ulp <= 2**-7 |v|. The kernel floors the normalized "
+                "value to bf16 (1 ulp, plus the fast inverse sqrt's and the "
+                "float32 sum of squares' error, under 2**-12) and the "
+                "reference rounds it to nearest (1/2 ulp). The header is "
+                "exact. Each flush of a subnormal adds the smallest normal",
+            ),
+            # Per element: square-add and two multiplies.
+            ops_per_call=4 * d,
+        ),
+    )
+
+
+DTYPES["flm_gemma4_decode_proj_main"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_proj_main(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -2228,7 +2330,9 @@ def flm_gemma4_decode_proj_main(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_per_layer_up"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_decode_per_layer_up(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -2300,7 +2404,9 @@ def _bf16_proj_core_sample(rng, calls):
     return [w, x]
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_bf16_proj_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_bf16_proj_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
@@ -2336,7 +2442,11 @@ def flm_gemma4_bf16_proj_core(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_proj_layer_embedding"] = tuple(
+    [{"geometry": FLM_GEMMA4_E4B_DECODE}]
+)
+
+
 def flm_gemma4_decode_proj_layer_embedding(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -2394,7 +2504,11 @@ def flm_gemma4_decode_proj_layer_embedding(
     )
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_decode_gate_layer_embedding"] = tuple(
+    [{"geometry": FLM_GEMMA4_E4B_DECODE}]
+)
+
+
 def flm_gemma4_decode_gate_layer_embedding(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -2464,7 +2578,9 @@ def _pli_gelu_core_sample(rng, calls, *, n):
     return [rng.uniform(-6.0, 6.0, (calls, n)).astype(bfloat16)]
 
 
-@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+DTYPES["flm_gemma4_pli_gelu_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+
+
 def flm_gemma4_pli_gelu_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:

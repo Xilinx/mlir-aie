@@ -13,7 +13,9 @@ name: Nightly Component Checks
 # Runs nightly from main, and on PRs that touch the placer or these checks
 # (the sweep only). The nightly and an unfiltered dispatch on main publish to
 # component-checks/<check>/ for the maintainer dashboard. A publishing run
-# times only in $PERF_PMODE; a failed check still publishes what it measured.
+# times only in $PERF_PMODE; a failed check still publishes what it measured,
+# and one stopped part way (a hang, a timeout) the failed placeholder it
+# wrote before starting.
 
 permissions:
   contents: read
@@ -49,6 +51,9 @@ defaults:
 env:
   DEBIAN_FRONTEND: noninteractive
   PERF_PMODE: turbo
+  # Each check echoes its commands' output as it comes, so a log shows how far
+  # a run that never finished got.
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   seed-sweep:
@@ -141,16 +146,32 @@ jobs:
           submodules: "true"
 
       - name: Setup virtual environment / prerequisites
-        run: source ./utils/env_install.sh aie-venv --dev --extras
+        run: |
+          source ./utils/env_install.sh aie-venv --dev --extras
+          python3 -m pip install -r programming_examples/ml/yolo26n/requirements.txt
+
+      # Each compile runs in a systemd-run --user scope whose memory.peak is
+      # its whole tree's; the runner's lingering user manager is found here.
+      - name: Point systemd-run --user at the runner's user manager
+        run: echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: component-checks-hw
+          max-size: 1G
 
       - name: Build from source
         run: |
           sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          ccache --set-config=compiler_check=content
+          ccache --set-config=sloppiness=locale,time_macros
           source aie-venv/bin/activate
           export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) \
             -DXRT_ROOT=/opt/xilinx/xrt -DAIE_ENABLE_PYTHON_PASSES=OFF \
-            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON"
+            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
           ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
 
       - name: NPU preflight and power mode
@@ -212,8 +233,6 @@ jobs:
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
-          # generate.py tokenizes its prompt.
-          pip install tiktoken==0.14.0
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME" results/llama-chain-hw
           python utils/component_checks/llama_chain_hw.py --pmode "$REQUIRED_PMODE" \
             --out results/llama-chain-hw/perf.json --meta results/llama-chain-hw/meta.json \
@@ -294,8 +313,10 @@ jobs:
 
   publish:
     needs: [seed-sweep, hw-checks]
-    # Publish whichever check produced results, even if the other failed.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.seeds }}
+    # Publish whichever check produced results, even if the other failed or
+    # its job timed out (GitHub reports a job timeout as cancelled): a check
+    # that never finished publishes its failed placeholder.
+    if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.seeds }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write

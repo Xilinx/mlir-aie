@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import weakref
 from collections.abc import Callable
 from pathlib import Path
@@ -40,6 +41,7 @@ _SYMBOL_PREFIX_STAMP_VERSION = 3
 
 
 AIECC_PROFILE_NAME = "aiecc_profile.json"
+KERNEL_PROFILE_NAME = "kernel_profile.json"
 
 SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
 SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
@@ -1198,7 +1200,11 @@ def compile_mlir_module(
         # left over from an earlier, unrelated design in the same process is
         # neither built nor checked against this design's arch.
         kernels = _select_declared_kernels(
-            [f for f in ExternalFunction._instances if f.source_file],
+            [
+                f
+                for f in ExternalFunction._instances
+                if f.source_file or f.source_string
+            ],
             _declared_objects(mlir_module),
         )
         if kernels:
@@ -1606,13 +1612,35 @@ def compile_external_kernels(
     ``object_cache`` (a ``KernelObjectCache``) shares compiled objects across
     work directories; see ``compile_external_kernel``.
 
+    Each kernel object's compile time is written to ``KERNEL_PROFILE_NAME`` in
+    ``kernel_dir``, beside aiecc's profile: ``{"wall_s": s, "jobs": n,
+    "kernels": [{"object": "x.o", "symbols": [...], "seconds": s,
+    "cached": bool}, ...]}``. ``seconds`` is the time spent producing the
+    object, compile or copy, and ``cached`` says no compiler ran for it (it
+    was already in ``kernel_dir`` or came from ``object_cache``). A design
+    with a dispatch library adds ``"dispatch_bridge_s"``, its host compile
+    (see ``compile_dispatch_bridge``).
+
     Raises:
         ValueError: When a library kernel was built for another architecture
             (see ``ExternalFunction.check_target_arch``).
     """
+    start = time.perf_counter()
     funcs = list(funcs)
     for f in funcs:
         f.check_target_arch(target_arch)
+    profile: dict[str, dict] = {}
+    for f in funcs:
+        entry = profile.setdefault(
+            f.object_file_name,
+            {
+                "object": f.object_file_name,
+                "symbols": [],
+                "seconds": 0.0,
+                "cached": True,
+            },
+        )
+        entry["symbols"].append(f._name)
     pending = []
     for f in funcs:
         # A checked compile can be replacing an already-owned object to add IR.
@@ -1620,8 +1648,15 @@ def compile_external_kernels(
         with _lock_compile_paths([os.path.join(kernel_dir, f.object_file_name)]):
             if not _compiled_into(f, kernel_dir, embed_bitcode):
                 pending.append(f)
-    if not pending:
-        return
+
+    def compile_one(f):
+        began = time.perf_counter()
+        compiled = compile_external_kernel(
+            f, kernel_dir, target_arch, include_dirs, embed_bitcode, object_cache
+        )
+        entry = profile[f.object_file_name]
+        entry["seconds"] += time.perf_counter() - began
+        entry["cached"] = entry["cached"] and not compiled
 
     outputs: dict[str, list] = {}
     for f in pending:
@@ -1639,48 +1674,45 @@ def compile_external_kernels(
     # Every compile in a batch shares one cwd (kernel_dir), and xchesscc keeps
     # per-invocation state there, so the Chess path runs serially.
     if any(getattr(f, "_use_chess", False) for f in pending):
-        for f in pending:
-            compile_external_kernel(
-                f, kernel_dir, target_arch, include_dirs, embed_bitcode, object_cache
-            )
-        return
-
-    groups = _kernel_compile_groups(
-        pending,
-        in_place=lambda f: object_cache is None or not object_cache.accepts(f),
-    )
-
+        groups = [pending]
+    else:
+        groups = _kernel_compile_groups(
+            pending,
+            in_place=lambda f: object_cache is None or not object_cache.accepts(f),
+        )
     try:
         jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
     except ValueError:
         jobs = 0
     if jobs <= 0:
         jobs = os.cpu_count() or 1
-    jobs = min(jobs, len(groups))
+    jobs = max(1, min(jobs, len(groups)))
 
     if jobs == 1:
         for group in groups:
             for f in group:
-                compile_external_kernel(
-                    f,
-                    kernel_dir,
-                    target_arch,
-                    include_dirs,
-                    embed_bitcode,
-                    object_cache,
-                )
-        return
+                compile_one(f)
+    else:
 
-    def _run(group):
-        for f in group:
-            compile_external_kernel(
-                f, kernel_dir, target_arch, include_dirs, embed_bitcode, object_cache
-            )
+        def _run(group):
+            for f in group:
+                compile_one(f)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-        # list() re-raises the first failure, after the others have finished --
-        # a compile error must not be swallowed by a sibling that succeeded.
-        list(pool.map(_run, groups))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            # list() re-raises the first failure, after the others have finished --
+            # a compile error must not be swallowed by a sibling that succeeded.
+            list(pool.map(_run, groups))
+
+    with open(os.path.join(kernel_dir, KERNEL_PROFILE_NAME), "w") as out:
+        json.dump(
+            {
+                "wall_s": time.perf_counter() - start,
+                "jobs": jobs,
+                "kernels": list(profile.values()),
+            },
+            out,
+            indent=1,
+        )
 
 
 def _kernel_compile_groups(funcs, in_place=lambda f: True):
@@ -1750,7 +1782,7 @@ def compile_external_kernel(
     include_dirs=None,
     embed_bitcode=False,
     object_cache=None,
-):
+) -> bool:
     """Compile an ExternalFunction to an object file in the kernel directory.
 
     The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
@@ -1778,6 +1810,9 @@ def compile_external_kernel(
         embed_bitcode: Preserve Peano kernel LLVM IR for ``--check-lut-banks``.
         object_cache: Optional ``KernelObjectCache`` that shares the compiled
             object across work directories.
+
+    Returns:
+        Whether a compiler ran: False when an existing object served.
     """
     if embed_bitcode and getattr(func, "_use_chess", False):
         raise ValueError("--check-lut-banks requires Peano kernels, not Chess")
@@ -1794,13 +1829,15 @@ def compile_external_kernel(
         paths.append(kernel_dir)
     with _lock_compile_paths(paths):
         if _compiled_into(func, kernel_dir, embed_bitcode):
-            return
+            return False
         owner = getattr(func, "object_file", None)
         try:
             if cache is not None:
-                cache.fetch(func, kernel_dir, target_arch, include_dirs, embed_bitcode)
+                compiled = cache.fetch(
+                    func, kernel_dir, target_arch, include_dirs, embed_bitcode
+                )
             else:
-                _compile_external_kernel(
+                compiled = _compile_external_kernel(
                     func, kernel_dir, target_arch, include_dirs, embed_bitcode
                 )
         except BaseException:
@@ -1822,6 +1859,7 @@ def compile_external_kernel(
             func._compiled = True
             func._compiled_dir = os.path.abspath(kernel_dir)
             func._compiled_embed_bitcode = embed_bitcode
+    return compiled
 
 
 def _compile_external_kernel(
@@ -1830,7 +1868,7 @@ def _compile_external_kernel(
     target_arch,
     include_dirs=None,
     embed_bitcode=False,
-):
+) -> bool:
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
     # ``define`` carries the un-prefixed _original_name. Object mode reconciles
@@ -1863,7 +1901,7 @@ def _compile_external_kernel(
             or _object_has_bitcode(output_file)
         )
     ):
-        return
+        return False
 
     # Invalidate before any writes, so a failed compile, rename, or stamp write
     # cannot leave a cache entry that a later invocation trusts.
@@ -1945,6 +1983,7 @@ def _compile_external_kernel(
                 f"define '{func._original_name}' (found {sorted(defined)})"
             )
         _write_symbol_prefix_stamp(output_file, prefix)
+    return True
 
 
 def _is_dispatch_library_name(name: str) -> bool:

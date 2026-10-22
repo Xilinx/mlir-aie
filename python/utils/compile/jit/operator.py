@@ -13,10 +13,11 @@ is read into a ``Declaration`` as its body finishes.
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from dataclasses import MISSING
 from enum import Enum
-from types import FunctionType
-from typing import Any, ClassVar
+from types import FunctionType, MappingProxyType
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if sys.version_info >= (3, 11):
     from typing import Self, dataclass_transform
@@ -28,7 +29,11 @@ from aie.helpers.npdtypes import is_block_float
 
 from ...hostruntime import set_current_device
 from .declaration import Declaration
-from .params import Member, param, tunable
+from .params import param, tunable
+
+if TYPE_CHECKING:
+    # aie.iron imports this module.
+    from aie.iron.device import Device
 
 
 def _key_value(value: Any) -> Any:
@@ -37,10 +42,18 @@ def _key_value(value: Any) -> Any:
     An Enum is its value, so renaming a member moves no key; a NumPy scalar
     type is its dtype and a NumPy integer its int, so ``np.float32`` and
     ``np.dtype(np.float32)``, or ``np.int64(64)`` and ``64``, share a key. A
-    block-float type, which NumPy has no dtype for, is its class.
+    block-float type, which NumPy has no dtype for, is its class. A tuple or
+    list is the tuple of its items' keys. A bool and a float are tagged,
+    since ``True == 1`` and ``-0.0 == 0.0`` while their designs differ.
     """
     if isinstance(value, Enum):
-        return value.value
+        return _key_value(value.value)
+    if isinstance(value, (bool, np.bool_)):
+        return ("bool", bool(value))
+    if isinstance(value, (float, np.floating)):
+        return ("float", float(value).hex())
+    if isinstance(value, (tuple, list)):
+        return tuple(_key_value(v) for v in value)
     if (
         isinstance(value, type)
         and issubclass(value, np.generic)
@@ -77,7 +90,7 @@ class Operator:
             cls._library = cls
             return
         library_cls = cls._library or Operator
-        cls.declaration = Declaration.of_class(cls, library_cls)
+        cls.declaration = Declaration._of_class(cls, library_cls)
         if cls.reference_only:
             kernel = [
                 n
@@ -104,6 +117,7 @@ class Operator:
         if missing:
             raise TypeError(f"{type(self).__name__}() needs {missing}")
         self.trace = trace
+        self._given = frozenset(n for n, v in given.items() if v is not None)
         self._set(given)
 
     def _set(self, given: dict[str, Any]) -> None:
@@ -114,7 +128,8 @@ class Operator:
         given ``derive`` parameter must equal what it computes.
 
         Raises:
-            TypeError: An ``Enum``-domain tunable holds another type.
+            TypeError: An ``Enum``-domain tunable holds another type, or a
+                value no key can hash.
             ValueError: A computed parameter is None, or a given ``derive``
                 one disagrees.
         """
@@ -150,6 +165,13 @@ class Operator:
                 raise TypeError(
                     f"{type(self).__name__}: {n} ({value!r}) must be a {domain.__name__}"
                 )
+        for n in params:
+            try:
+                hash(_key_value(vars(self)[n]))
+            except TypeError:
+                raise TypeError(
+                    f"{type(self).__name__}: {n} ({vars(self)[n]!r}) is unhashable, so no key can hold it"
+                ) from None
         for n in computed:
             p = params[n]
             if (
@@ -164,12 +186,16 @@ class Operator:
         self._bind()
 
     def _bind(self) -> None:
-        """Bind each present member to this operator."""
         self._bound = {
             m.name: m.of(self)
             for m in self.declaration.members
             if m.when is None or vars(self)[m.when.name]
         }
+
+    @property
+    def bound(self) -> Mapping[str, Any]:
+        """What each present member reads as on this operator."""
+        return MappingProxyType(self._bound)
 
     def validate(self) -> None:
         """Check the parameters on their own; raise ``ValueError``. Runs at construction."""
@@ -180,15 +206,21 @@ class Operator:
         Runs on the copy ``resolved`` returns.
         """
 
-    def resolve(self, dev) -> Self:
+    def resolve(self, dev: Device) -> Self:
         """Return a copy with every tunable filled for ``dev``.
+
+        Args:
+            dev: The device the tunables are chosen for.
+
+        Returns:
+            The resolved copy.
 
         Raises:
             Unresolvable: No legal value exists on ``dev``.
         """
         return self.replace()
 
-    def resolved(self, dev) -> Self:
+    def resolved(self, dev: Device) -> Self:
         """Return this operator resolved for ``dev``, which is current while it resolves and is checked.
 
         One already resolved for ``dev`` is itself. One that came from an
@@ -227,20 +259,29 @@ class Operator:
     def replace(self, **changes: Any) -> Self:
         """Return a copy with ``changes``, which may name any parameter.
 
-        A ``derive`` parameter not in ``changes`` is computed again; every
-        other keeps its value, so pass a function-default one again when you
-        change what it reads. The copy is not resolved, but its keys keep
-        naming the device its tunables were resolved for, and a copy of a
-        resolved operator resolves for another device from the unresolved
-        one, with ``changes`` applied, as the original does.
+        A parameter not in ``changes`` that a ``derive`` or a function default
+        computed is computed again; one a caller gave, a ``derive`` one
+        included, keeps its value (give it None to compute it again). The
+        copy is not resolved, but its keys keep naming the device its
+        tunables were resolved for, and a copy of a resolved operator
+        resolves for another device from the unresolved one, with
+        ``changes`` applied, as the original does.
         """
         params = self.declaration.params
         unknown = [n for n in changes if n not in params]
         if unknown:
             raise TypeError(f"{type(self).__name__} has no parameter {unknown}")
-        kept = {n: vars(self)[n] for n, p in params.items() if p.derive is None}
+        kept = {
+            n: vars(self)[n]
+            for n, p in params.items()
+            if n in self._given
+            or (p.derive is None and not isinstance(p.default, FunctionType))
+        }
         new = object.__new__(type(self))
         new.trace = self.trace
+        new._given = self._given.difference(changes) | {
+            n for n, v in changes.items() if v is not None
+        }
         new._set(kept | changes)
         new._resolved_for = self._resolved_for
         if self._unresolved is not self:
@@ -258,15 +299,15 @@ class Operator:
         """Return this operator as its cores see it: the key's parameters and the members."""
         view = object.__new__(type(self))
         vars(view).update(
-            {n: vars(self)[n] for n in self.declaration.key},
-            # Bound to the view, a member's dims read through it, so a
-            # parameter outside the key raises there too.
-            _bound={
-                name: m.of(view) if isinstance(m, Member) else m
-                for name, m in self._bound.items()
-            },
-            trace=self.trace,
+            {n: vars(self)[n] for n in self.declaration.key}, trace=self.trace
         )
+        # Bound to the view, a member's dims read through it, so a parameter
+        # outside the key raises there too.
+        view._bound = {
+            m.name: m.of(view)
+            for m in self.declaration.members
+            if m.name in self._bound
+        }
         return view
 
     def array_key(self) -> tuple:

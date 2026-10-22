@@ -38,7 +38,7 @@ from ..scratchpad_parameter import ScratchpadParameter
 from .endpoint import ObjectFifoEndpoint
 
 if TYPE_CHECKING:
-    from ...utils.compile.jit.markers import _Operand
+    from ...utils.compile.jit.markers import In, InOut, Out
 
 
 def _object_walk(
@@ -107,7 +107,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
 
     def __init__(
         self,
-        obj_type: type[np.ndarray] | _Operand,
+        obj_type: type[np.ndarray] | In | Out | InOut,
         *,
         depth: int | None = 2,
         name: str | None = None,
@@ -120,12 +120,12 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         delegate_tile: Tile | None = None,
         transport: Transport | str | None = None,
         init_values: list[np.ndarray] | None = None,
-        consumer_obj_type: type[np.ndarray] | _Operand | None = None,
+        consumer_obj_type: type[np.ndarray] | In | Out | InOut | None = None,
     ):
         """Construct an ObjectFifo.
 
         Args:
-            obj_type (type[np.ndarray] | _Operand): The type of each buffer in the
+            obj_type (type[np.ndarray] | In | Out | InOut): The type of each buffer in the
                 ObjectFifo, or a generator's tensor operand.
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is

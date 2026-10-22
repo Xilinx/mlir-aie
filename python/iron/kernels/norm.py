@@ -164,7 +164,15 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
 def layer_norm_eps(
     tile_size: int = 1024, *, cols: int | None = None
 ) -> ExternalFunction:
-    """Layer-norm a bf16 row (gamma=1, beta=0); design passes ``(in, out, cols, epsilon)``."""
+    """Layer-norm a bf16 row (gamma=1, beta=0); design passes ``(in, out, cols, epsilon)``.
+
+    Args:
+        tile_size: The row length, a positive multiple of 16.
+        cols: An alias for ``tile_size``.
+
+    Returns:
+        The kernel.
+    """
     return _norm("layer_norm_eps", tile_size, cols, eps=True, layer=True, multiple=16)
 
 

@@ -138,16 +138,27 @@ class Affine:
             raise TypeError(f"{self} is not linear in {self.value.name}")
         return self
 
-    def clamp(self, lo: int | None = None, hi: int | None = None) -> Affine:
-        """Return this expression held to ``[lo, hi]`` too, a bound of None none."""
+    def clamp(self, lo: int | None = None, hi: int | None = None) -> Affine | int:
+        """Return this expression held to ``[lo, hi]`` too, a bound of None none.
+
+        Held to a range it never reaches, it is that range's nearer bound.
+
+        Raises:
+            TypeError: The expression wraps.
+            ValueError: ``lo`` exceeds ``hi``.
+        """
         if self.mod is not None:
             raise TypeError(f"no expression clamps ({self}) after it wraps")
+        if lo is not None and hi is not None and lo > hi:
+            raise ValueError(f"{self} held to [{lo}, {hi}] holds no value")
+        if lo is not None and self.hi is not None and self.hi < lo:
+            return lo
+        if hi is not None and self.lo is not None and self.lo > hi:
+            return hi
         if lo is None or self.lo is not None and self.lo > lo:
             lo = self.lo
         if hi is None or self.hi is not None and self.hi < hi:
             hi = self.hi
-        if lo is not None and hi is not None and lo > hi:
-            raise ValueError(f"{self} held to [{lo}, {hi}] holds no value")
         return dataclasses.replace(self, lo=lo, hi=hi)
 
     def _reclamped(self, op, bound, flip: bool = False) -> Affine:
@@ -211,8 +222,10 @@ class Affine:
             if isinstance(d, bool) or not isinstance(d, (int, np.integer))
             else int(d)
         )
-        if self.mod is not None or self.clamped and (c is None or c <= 0):
+        if self.mod is not None or self.clamped and not c:
             raise TypeError(f"no expression for ({self}) // {d}")
+        if c is not None and c < 0:
+            return (-self) // -c
         if self.clamped:
             # A positive divisor keeps the bounds' order.
             return self._reclamped(lambda e: e // c, lambda b: b // c)
@@ -225,8 +238,6 @@ class Affine:
             raise TypeError(f"no expression for ({self}) // ({d})")
         if c is None:
             return NotImplemented
-        if c < 0:
-            return (-self) // -c
         if c == 0 or c & (c - 1):
             raise TypeError(f"no expression for a floor division by {c}")
         if self.mul != 1:

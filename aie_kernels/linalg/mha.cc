@@ -14,6 +14,7 @@
 // mm_aie2p.h provides matmul_bf16_bf16 and matmul_scalar_bf16_bf16.
 #include "../aie_kernel_utils.h"
 #include "../common/zero.h"
+#include "../fused/mm_fused_mmul.h"
 #include "mm_aie2p.h"
 
 #include <aie_api/aie.hpp>
@@ -88,10 +89,11 @@ broadcast_by_row(const float *s) {
 // Row-major variants needed by matmul_PV.  Because there is no separate link
 // step, all kernel symbols must be defined in this single translation unit.
 
-// Expanded along n only: mm_aie2p.h's 2x2 expansion keeps four 64-float
-// accumulators plus two A and two B tiles live, which does not fit the
-// registers. The mac order per output tile, and so the result, is the same.
-// The product is (M, K) by (K, N).
+// The product is (M, K) by (K, N). AIE2P's native bf16 macs take the shared
+// (half, column block) 2x2 tile. The other builds expand along n only:
+// mm_aie2p.h's 2x2 expansion keeps four 64-float accumulators plus two A and
+// two B tiles live, which does not fit the registers. The mac order per
+// output tile, and so the result, is the same.
 template <typename C, unsigned M, unsigned K, unsigned N>
 static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
   ::aie::rounding_mode saved_rounding =
@@ -104,49 +106,7 @@ static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
   using MMUL = aie::mmul<r, s, t, bfloat16, bfloat16, accauto>;
 
 #if AIE_ARCH_AIE2P && !defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16)
-  // AIE2P emulates mmul<8, 8, 8> as two mmul<4, 8, 8> on a tile's contiguous
-  // 4-row halves, its accumulator two registers wide. Running those halves
-  // directly as a 2x2 tile of (half, column block) keeps four one-register
-  // accumulators, as fused_mm's bf16 form does: the same macs in the same k
-  // order.
-  using Half = aie::mmul<4, s, t, bfloat16, bfloat16, accauto>;
-  for (unsigned z = 0; z < rowA; z++) {
-    C *__restrict pC1 = c_out + (z * colB) * MMUL::size_C;
-    for (unsigned j = 0; j < colB; j += 2) {
-      const bfloat16 *__restrict pA0 = a_in + (z * colA) * MMUL::size_A;
-      const bfloat16 *__restrict pA1 = pA0 + Half::size_A;
-      const bfloat16 *__restrict pB1 = b_in + j * MMUL::size_B;
-      const bfloat16 *__restrict pB2 = pB1 + MMUL::size_B;
-      C *__restrict pC2 = pC1 + MMUL::size_C;
-
-      Half C00(aie::load_v<Half::size_C>(pC1));
-      Half C10(aie::load_v<Half::size_C>(pC1 + Half::size_C));
-      Half C01(aie::load_v<Half::size_C>(pC2));
-      Half C11(aie::load_v<Half::size_C>(pC2 + Half::size_C));
-
-      for (unsigned i = 0; i < colA; ++i) {
-        aie::vector<bfloat16, Half::size_A> A0 = aie::load_v<Half::size_A>(pA0);
-        pA0 += MMUL::size_A;
-        aie::vector<bfloat16, Half::size_A> A1 = aie::load_v<Half::size_A>(pA1);
-        pA1 += MMUL::size_A;
-        aie::vector<bfloat16, Half::size_B> B0 = aie::load_v<Half::size_B>(pB1);
-        pB1 += MMUL::size_B * colB;
-        aie::vector<bfloat16, Half::size_B> B1 = aie::load_v<Half::size_B>(pB2);
-        pB2 += MMUL::size_B * colB;
-
-        C00.mac(A0, B0);
-        C01.mac(A0, B1);
-        C10.mac(A1, B0);
-        C11.mac(A1, B1);
-      }
-
-      aie::store_v(pC1, C00.template to_vector<C>());
-      aie::store_v(pC1 + Half::size_C, C10.template to_vector<C>());
-      aie::store_v(pC2, C01.template to_vector<C>());
-      aie::store_v(pC2 + Half::size_C, C11.template to_vector<C>());
-      pC1 += 2 * MMUL::size_C;
-    }
-  }
+  mm_bf16_2x2_aie2p<rowA, colA, colB, r, s, t, false, true>(a_in, b_in, c_out);
 #else
   for (unsigned z = 0; z < rowA; z++) {
     C *__restrict pC1 = c_out + (z * colB) * MMUL::size_C;
@@ -226,25 +186,31 @@ static void scale_blocked_rows(const float *O, bfloat16 *out,
 }
 
 // Scales O's rows in place by the running max's correction, exact in bf16, so
-// only O is split. Eight rows whose max held have factors of exactly 1.
+// only O is split. A row whose max held, a factor of exactly 1, keeps its O:
+// through the limbs, an O just below a power of two can lose its last bit.
 static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
   using Acc64 = aie::accum<accfloat, VECTOR_LENGTH>;
   const auto ones = aie::broadcast<float, 8>(1.0f);
   for (int32_t l = 0; l < rows / 8; l++) {
     if (aie::equal(aie::load_v<8>(alpha + l * 8), ones))
       continue;
+    const Acc64 factors = broadcast_by_row(alpha + l * 8);
     const aie::vector<bfloat16, VECTOR_LENGTH> s =
-        broadcast_by_row(alpha + l * 8).template to_vector<bfloat16>();
+        factors.template to_vector<bfloat16>();
+    const auto held = aie::eq(factors.template to_vector<float>(),
+                              aie::broadcast<float, VECTOR_LENGTH>(1.0f));
     float *__restrict row = O + l * 8 * DIM_K;
     AIE_LOOP_UNROLL(4)
     for (int32_t j = 0; j < DIM_K / 8; j++) {
+      const aie::vector<float, VECTOR_LENGTH> o =
+          aie::load_v<VECTOR_LENGTH>(row);
       Acc64 o_acc;
-      o_acc.from_vector(aie::load_v<VECTOR_LENGTH>(row));
+      o_acc.from_vector(o);
       const Limbs<VECTOR_LENGTH> ol = bf16_limbs(o_acc);
       Acc64 acc = aie::mul(ol.hi, s);
       acc = aie::mac(acc, ol.mid, s);
       acc = aie::mac(acc, ol.lo, s);
-      aie::store_v(row, acc.template to_vector<float>());
+      aie::store_v(row, aie::select(acc.template to_vector<float>(), o, held));
       row += VECTOR_LENGTH;
     }
   }
@@ -611,10 +577,10 @@ static inline void advance_state_w(float *scale_buffer, int32_t B_q,
                  cur.template to_vector<bfloat16>(), s);
 #endif
     const auto max_diff_exp = exp2_bf16(diff.template to_vector<float>());
+    const VecW factor =
+        aie::accum<accfloat, W>(max_diff_exp).template to_vector<float>();
 
-    aie::store_v(
-        scale_buffer + 3 * B_q + i,
-        aie::accum<accfloat, W>(max_diff_exp).template to_vector<float>());
+    aie::store_v(scale_buffer + 3 * B_q + i, factor);
     aie::accum<accfloat, W> l_prev;
     l_prev.from_vector(l_i_minus_1);
     const Limbs<W> ll = bf16_limbs(l_prev);
@@ -623,7 +589,15 @@ static inline void advance_state_w(float *scale_buffer, int32_t B_q,
     l_i = aie::mac(l_i, ll.hi, max_diff_exp);
     l_i = aie::mac(l_i, ll.mid, max_diff_exp);
     l_i = aie::mac(l_i, ll.lo, max_diff_exp);
-    aie::store_v(scale_buffer + 2 * B_q + i, l_i.template to_vector<float>());
+    // A row whose max held adds its block's sum to l once, as O keeps its
+    // rows: a key block that keeps none of a row's keys then leaves it as it
+    // was, wherever the row's query block starts.
+    const aie::accum<accfloat, W> l_held =
+        aie::add(aie::accum<accfloat, W>(accum_exp_val), l_i_minus_1);
+    aie::store_v(scale_buffer + 2 * B_q + i,
+                 aie::select(l_i.template to_vector<float>(),
+                             l_held.template to_vector<float>(),
+                             aie::eq(factor, aie::broadcast<float, W>(1.0f))));
     aie::store_v(scale_buffer + i, m_i);
   }
 }

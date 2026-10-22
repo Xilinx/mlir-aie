@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Full mobilenet on the NPU2: @iron.jit compile, three launches on one hardware
-// context, last output checked against golden_output.txt (atol=9, #3009).
+// context, last output checked bit-exact against mobilenet_numpy and within
+// the measured 3 of golden_output.txt.
 //
 // No --sa-effort override: the design's own default (0.05, chosen for
 // compile speed -- see sa_placer_flags) is already fast enough for a lit

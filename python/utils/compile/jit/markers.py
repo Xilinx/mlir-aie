@@ -64,10 +64,9 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 from ....helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
-from ....helpers.taplib._per_call import PerCall
+from ....helpers.taplib import PerCall
 from ... import bfp
-from .params import Member, _text, resolve
-from .params import Param as _Param
+from .params import Member, OperatorParam, _text, resolve
 
 T = TypeVar("T")
 
@@ -99,27 +98,7 @@ class _Operand(Member):
     """A tensor declared in an operator's class body.
 
     On an instance, ``op.a`` is the operand the operator bound (`of`).
-
-    Args:
-        dims: The host shape: integers, ``param()``s and ``Select``s. A
-            ``param()`` that is None on an instance is a dimension the shape
-            leaves out there.
-        dtype: The element type, or a ``param()`` holding it.
-        obj_shape: What one ObjectFifo element holds. With one the tensor
-            streams into the array; without one a hand-written sequence
-            moves it.
-        per: The ``param()`` (or several, multiplied) the stream is split
-            over, one ObjectFifo each.
-        depth: The ObjectFifo depth.
-        replicate: Every ``per=`` lane gets the whole tensor, not a share.
-        when: A bool ``param()``; the tensor exists only where it is true.
-        like: An input whose dims these are; a caller gives this tensor the
-            shape that input has on the call, so ``Out(like=x)`` of a flat
-            ``x`` is ``(rows, cols)`` where ``x`` is.
-
-    Raises:
-        TypeError: ``replicate`` without ``per``, or both ``dims`` and
-            ``like``.
+    ``In`` documents the arguments.
     """
 
     fills = drains = False
@@ -132,7 +111,7 @@ class _Operand(Member):
         per: Any = None,
         depth: int = 2,
         replicate: bool = False,
-        when: _Param | None = None,
+        when: OperatorParam | None = None,
         like: _Operand | None = None,
     ):
         if replicate and per is None:
@@ -169,7 +148,9 @@ class _Operand(Member):
     @property
     def dtype(self):
         dtype = self.declared_dtype
-        return getattr(self.op, dtype.name) if isinstance(dtype, _Param) else dtype
+        return (
+            getattr(self.op, dtype.name) if isinstance(dtype, OperatorParam) else dtype
+        )
 
     @property
     def elements(self) -> int:
@@ -225,19 +206,49 @@ class _Operand(Member):
 
 
 class In(_Operand):
-    """Runtime input tensor (host → NPU, DMA each call)."""
+    """Runtime input tensor (host → NPU, DMA each call).
+
+    ``Out`` and ``InOut`` take the same arguments.
+
+    Args:
+        dims: The host shape: integers, ``param()``s and ``Select``s. A
+            ``param()`` that is None on an instance is a dimension the shape
+            leaves out there.
+        dtype: The element type, or a ``param()`` holding it.
+        obj_shape: What one ObjectFifo element holds. With one the tensor
+            streams into the array; without one a hand-written sequence
+            moves it.
+        per: The ``param()`` (or several, multiplied) the stream is split
+            over, one ObjectFifo each.
+        depth: The ObjectFifo depth.
+        replicate: Every ``per=`` lane gets the whole tensor, not a share.
+        when: A bool ``param()``; the tensor exists only where it is true.
+        like: An input whose dims these are; a caller gives this tensor the
+            shape that input has on the call, so ``Out(like=x)`` of a flat
+            ``x`` is ``(rows, cols)`` where ``x`` is.
+
+    Raises:
+        TypeError: ``replicate`` without ``per``, or both ``dims`` and
+            ``like``.
+    """
 
     fills = True
 
 
 class Out(_Operand):
-    """Runtime output tensor (NPU → host, DMA each call)."""
+    """Runtime output tensor (NPU → host, DMA each call).
+
+    Takes the arguments ``In`` documents.
+    """
 
     drains = True
 
 
 class InOut(_Operand):
-    """Runtime bidirectional tensor (DMA in both directions each call)."""
+    """Runtime bidirectional tensor (DMA in both directions each call).
+
+    Takes the arguments ``In`` documents.
+    """
 
     fills = drains = True
 
@@ -292,7 +303,12 @@ class _DispatchParameter(PerCall):
     def __repr__(self) -> str:
         return f"DispatchTime({self.name!r}, {self.scalar_type.__name__})"
 
-    def _misuse(self, *args, **kwargs) -> NoReturn:
+    def refuse(self, *args, **kwargs) -> NoReturn:
+        """Raise the TypeError any generation-time use of this parameter gets.
+
+        Raises:
+            TypeError: Always.
+        """
         raise TypeError(
             f"DispatchTime parameter {self.name!r} has no generation-time value. "
             "+, -, *, // and % on it make an expression a tensor access pattern "
@@ -315,12 +331,12 @@ class _DispatchParameter(PerCall):
     # value. PerCall's integer arithmetic stays: None makes a NumPy scalar on
     # the left defer to the reflected operator, and a ufunc refuse.
     __array_ufunc__ = None
-    __bool__ = __int__ = __index__ = __float__ = __complex__ = __hash__ = _misuse
-    __array__ = __getattr__ = _misuse
-    __call__ = __iter__ = __len__ = __getitem__ = __contains__ = _misuse
-    __eq__ = __ne__ = __lt__ = __le__ = __gt__ = __ge__ = _misuse
-    __truediv__ = __rtruediv__ = __rfloordiv__ = _misuse
-    __rmod__ = __pow__ = __rpow__ = __divmod__ = __rdivmod__ = _misuse
-    __lshift__ = __rlshift__ = __rshift__ = __rrshift__ = _misuse
-    __and__ = __rand__ = __or__ = __ror__ = __xor__ = __rxor__ = _misuse
-    __pos__ = __abs__ = __invert__ = __round__ = _misuse
+    __bool__ = __int__ = __index__ = __float__ = __complex__ = __hash__ = refuse
+    __array__ = __getattr__ = refuse
+    __call__ = __iter__ = __len__ = __getitem__ = __contains__ = refuse
+    __eq__ = __ne__ = __lt__ = __le__ = __gt__ = __ge__ = refuse
+    __truediv__ = __rtruediv__ = __rfloordiv__ = refuse
+    __rmod__ = __pow__ = __rpow__ = __divmod__ = __rdivmod__ = refuse
+    __lshift__ = __rlshift__ = __rshift__ = __rrshift__ = refuse
+    __and__ = __rand__ = __or__ = __ror__ = __xor__ = __rxor__ = refuse
+    __pos__ = __abs__ = __invert__ = __round__ = refuse

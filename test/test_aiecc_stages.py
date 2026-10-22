@@ -7,16 +7,28 @@
 import importlib
 import json
 import os
+import shutil
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "utils/component_checks"
-# A shim-only design (test/aiecc/profile_json.mlir's shape) and a cold
-# mobilenet JIT compile at SA effort 0.05, both captured from aiecc as is.
-SHIM = CHECKS / "fixtures/aiecc_profile_shim.json"
-MOBILENET = CHECKS / "fixtures/aiecc_profile_mobilenet.json"
+# A shim-only design (test/aiecc/profile_json.mlir's shape), a cold
+# mobilenet JIT compile at SA effort 0.05, and a five-device full-ELF design
+# built with --get-txn and --get-locmap by an aiecc that records process_ms,
+# all captured from aiecc as is.
+SHIM = ROOT / "test/fixtures/aiecc_profile_shim.json"
+MOBILENET = ROOT / "test/fixtures/aiecc_profile_mobilenet.json"
+FULL_ELF = ROOT / "test/fixtures/aiecc_profile_full_elf.json"
+AIECC = shutil.which("aiecc")
+POSIX_MEASURE = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="run_measured waits with os.wait4 and kills a process group, which are POSIX-only",
+)
 
 
 @pytest.fixture
@@ -27,7 +39,9 @@ def checks(monkeypatch):
     )
 
 
-@pytest.mark.parametrize("fixture", [SHIM, MOBILENET], ids=["shim", "mobilenet"])
+@pytest.mark.parametrize(
+    "fixture", [SHIM, MOBILENET, FULL_ELF], ids=["shim", "mobilenet", "full-elf"]
+)
 def test_every_captured_edge_has_a_stage(checks, fixture):
     stages, _ = checks
     edges = json.loads(fixture.read_text())["edges"]
@@ -65,12 +79,43 @@ def test_mobilenet_stages_are_its_edges_summed(checks):
         ("elfs_{0}.elf", "link"),
         ("instructions.elf", "package"),
         ("kernels_{0}.json", "package"),
+        # Edges a full-ELF, multi-device, transaction or locmap build adds.
+        ("perDeviceNPULowered_{0}.mlir", "lower"),
+        ("perDeviceCompile_{0}.mlir", "lower"),
+        ("npu_seq_full_elf_{0}.mlir", "lower"),
+        ("perSeqFullElfMatching", "lower"),
+        ("perDeviceNPULoweredFullElf_{0}.mlir", "lower"),
+        ("perDeviceNPULoweredFullElfMatching", "lower"),
+        ("perDeviceCompileMatching", "lower"),
+        ("perDeviceArches_{0}.txt", "lower"),
+        ("ctrlPktSeqs", "lower"),
+        ("{0}_transaction.mlir", "package"),
+        ("input_aie_partition_{0}.json", "package"),
+        ("insts_{0}.bin.locmap.json", "package"),
         ("a_new_aiecc_edge", "other"),
     ],
 )
 def test_output_names_aiecc_was_given_are_matched_by_kind(checks, edge, stage):
     stages, _ = checks
     assert stages.stage_of(edge) == stage
+
+
+@pytest.mark.skipif(AIECC is None, reason="no aiecc on PATH")
+def test_the_aiecc_built_here_names_only_known_edges(checks, tmp_path):
+    stages, _ = checks
+    profile = tmp_path / "profile.json"
+    subprocess.run(
+        [AIECC, "--get-npu-insts", "--no-progress", f"--profile-json={profile}"]
+        + [f"--output-dir={tmp_path}", f"--tmpdir={tmp_path / 'work'}"]
+        + [str(ROOT / "test/aiecc/profile_json.mlir")],
+        check=True,
+        capture_output=True,
+    )
+    got = json.loads(profile.read_text())
+    assert got["version"] == stages.PROFILE_VERSION
+    assert [
+        e["name"] for e in got["edges"] if stages.stage_of(e["name"]) == "other"
+    ] == []
 
 
 def test_an_unknown_edge_is_counted_as_other(checks, tmp_path):
@@ -84,11 +129,163 @@ def test_an_unknown_edge_is_counted_as_other(checks, tmp_path):
     assert stages.stage_seconds(str(path))["other"] == 0.25
 
 
-def test_no_profile_means_no_stages(checks, tmp_path):
+def test_aieccs_own_time_is_told_apart_when_the_profile_records_it(checks):
+    stages, _ = checks
+    rows = stages.stage_rows(str(FULL_ELF), 2.0, "")
+    # process_ms 137 against a graph span of 123 ms.
+    assert rows["compile_aiecc_wall_s"] == 0.12
+    assert rows[stages.AIECC_OWN_METRIC] == 0.01
+    assert rows["compile_outside_aiecc_s"] == round(2.0 - 0.137, 2)
+    # Longer than the compile counting aiecc's whole run, not just its graph.
+    (problem,) = stages.stage_rows(str(FULL_ELF), 0.13, "_warm").values()
+    assert "spans 0.14 s of a 0.13 s compile" in problem
+    # A profile without process_ms has no such row.
+    assert stages.AIECC_OWN_METRIC not in stages.stage_rows(str(SHIM), 2.0, "")
+
+
+def test_the_kernel_objects_compile_time_comes_from_the_jits_profile(checks, tmp_path):
+    stages, _ = checks
+    profile = tmp_path / "kernel_profile.json"
+    kernels = [
+        {"object": f"k{i}.o", "symbols": [f"k{i}"], "seconds": s, "cached": c}
+        for i, (s, c) in enumerate(
+            [(8.55, False), (0.01, True), (3.2, False), (1.0, False), (5.0, False)]
+            + [(0.4, False), (2.0, False)]
+        )
+    ]
+    profile.write_text(json.dumps({"wall_s": 16.823, "jobs": 8, "kernels": kernels}))
+    rows = stages.kernel_rows(str(profile), 43.0, "")
+    assert rows[stages.KERNEL_OBJECTS_METRIC] == 16.82
+    detail = rows["kernel_objects"]
+    assert (detail["jobs"], detail["compiled"], detail["cached"]) == (8, 6, 1)
+    assert [k["object"] for k in detail["slowest"]] == [
+        "k0.o",
+        "k4.o",
+        "k2.o",
+        "k6.o",
+        "k3.o",
+    ]
+    assert stages.kernel_rows(str(profile), None, "") == {}
+    missing = str(tmp_path / "missing.json")
+    assert stages.kernel_rows(missing, 1.0, "_warm") == {
+        "kernel_profile_problem_warm": f"no profile at {missing}"
+    }
+    # A compile's rows carry it beside the stages.
+    rows = stages.compile_rows("c", {"compile_s": 43.0, **rows})
+    assert {r["name"]: r["value"] for r in rows}["c/compile_kernel_objects_s"] == 16.82
+
+
+def test_a_profile_that_is_not_the_compiles_gives_no_stages(checks, tmp_path):
     stages, _ = checks
     missing = str(tmp_path / "missing.json")
-    assert stages.stage_seconds(missing) is None
-    assert stages.stage_rows(missing, 60.5, "") == {}
+    with pytest.raises(stages.ProfileError, match="no profile"):
+        stages.stage_seconds(missing)
+    assert stages.stage_rows(missing, 60.5, "_warm") == {
+        "profile_problem_warm": f"no profile at {missing}"
+    }
+    newer = tmp_path / "newer.json"
+    newer.write_text(json.dumps(dict(json.loads(SHIM.read_text()), version=2)))
+    assert stages.stage_rows(str(newer), 60.5, "") == {
+        "profile_problem": f"{newer} is version 2, this reads 1"
+    }
+    # aiecc runs inside the timed compile: a profile longer than the whole
+    # compile is another compile's.
+    (problem,) = stages.stage_rows(str(MOBILENET), 12.0, "").values()
+    assert problem.endswith("spans 17.42 s of a 12.00 s compile: not this compile's")
+    # A failed compile has no stages, and nothing to explain.
+    assert stages.stage_rows(missing, None, "") == {}
+
+
+@POSIX_MEASURE
+def test_a_command_is_echoed_as_it_runs_and_measured(checks, capfd):
+    stages, _ = checks
+    measured = stages.run_measured(
+        [sys.executable, "-c", "import sys; print('one'); sys.exit(3)"],
+        None,
+        None,
+        60,
+    )
+    assert measured.process.returncode == 3 and measured.process.stdout == "one\n"
+    assert capfd.readouterr().out == "one\n"
+    assert measured.seconds > 0 and measured.peak_rss_mib > 0 and measured.cpu_s > 0
+
+
+@POSIX_MEASURE
+def test_a_command_past_its_timeout_is_killed_with_its_children(checks, capfd):
+    stages, _ = checks
+    start = time.perf_counter()
+    measured = stages.run_measured(
+        ["sh", "-c", "echo started; sleep 60 & sleep 60"], None, None, 1
+    )
+    assert time.perf_counter() - start < 30
+    assert measured.process.returncode == stages.TIMED_OUT
+    lines = measured.process.stdout.splitlines()
+    assert lines[0] == "started" and lines[-1].endswith("timed out after 1 s")
+    assert capfd.readouterr().out.splitlines() == lines
+
+
+# Two children that each touch 128 MiB at once: the tree peaks at their sum,
+# its largest process at one.
+TWO_CHILDREN = [
+    sys.executable,
+    "-c",
+    "import subprocess, sys\n"
+    "hold = 'b = bytearray(128 << 20); b[::4096] = bytes(len(b[::4096])); "
+    "import time; time.sleep(1)'\n"
+    "kids = [subprocess.Popen([sys.executable, '-c', hold]) for _ in range(2)]\n"
+    "sys.exit(sum(k.wait() for k in kids))",
+]
+
+
+@POSIX_MEASURE
+def test_a_compile_in_its_own_scope_reports_its_whole_trees_peak(checks):
+    stages, _ = checks
+    if (why := stages.scope_unavailable(None)) is not None:
+        pytest.skip(f"no memory-accounted user scope here: {why}")
+    measured = stages.run_measured(TWO_CHILDREN, None, None, 60, tree_peak=True)
+    assert measured.process.returncode == 0
+    assert measured.tree_peak_unavailable is None
+    assert 128 < measured.peak_rss_mib < 200
+    assert 256 < measured.tree_peak_mib < 400
+    stats = stages.compile_stats(measured, measured)
+    assert stats["compile_peak_mib"] == round(measured.tree_peak_mib, 1)
+    assert stats["compile_peak_unavailable"] is None
+    rows = {r["name"]: r for r in stages.compile_rows("c", stats)}
+    assert rows["c/compile_peak_mib"]["unit"] == "MiB"
+    assert rows["c/compile_peak_mib_warm"]["unit"] == "MiB"
+
+
+@POSIX_MEASURE
+def test_without_a_user_manager_a_compile_has_no_peak_row_and_says_why(checks):
+    stages, _ = checks
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS")
+    }
+    measured = stages.run_measured(TWO_CHILDREN, None, env, 60, tree_peak=True)
+    # The command still runs, measured as without a scope.
+    assert measured.process.returncode == 0 and measured.peak_rss_mib > 128
+    assert measured.tree_peak_mib is None and measured.tree_peak_unavailable
+    stats = stages.compile_stats(measured, measured)
+    assert stats["compile_peak_unavailable"] == measured.tree_peak_unavailable
+    names = [r["name"] for r in stages.compile_rows("c", stats)]
+    assert "c/compile_peak_mib" not in names and "c/compile_peak_rss_mb" in names
+
+
+def test_a_warm_compile_keeps_only_the_kernel_objects_and_headers(checks, tmp_path):
+    stages, _ = checks
+    cache = tmp_path / "cache"
+    for name in ("objects", "pch", "builds", "devices", "final.prj", "0123abcd"):
+        (cache / name).mkdir(parents=True)
+        (cache / name / "kept").write_text("")
+    (cache / "final.xclbin").write_text("")
+    elsewhere = tmp_path / "design.elf"
+    elsewhere.write_text("")
+    stages.clear_for_warm(str(cache), [str(elsewhere), str(tmp_path / "absent")])
+    assert sorted(p.name for p in cache.iterdir()) == ["objects", "pch"]
+    assert (cache / "objects/kept").exists() and (cache / "pch/kept").exists()
+    assert not elsewhere.exists()
 
 
 def test_llama_publishes_each_stage_cold_and_warm(checks):
@@ -101,9 +298,11 @@ def test_llama_publishes_each_stage_cold_and_warm(checks):
     }
     assert stages.stage_rows(str(MOBILENET), None, "") == {}
     rows = llama.aggregate(
-        {"tokens_passed": 4, "tokens_total": 4},
-        llama.parse_timing(""),
-        llama.parse_generate(""),
+        llama.parse_correctness("", 1),
+        llama.parse_timing("", 1),
+        llama.parse_generate("", 1),
+        {},
+        {},
         {},
         compiled,
     )
@@ -114,29 +313,6 @@ def test_llama_publishes_each_stage_cold_and_warm(checks):
     assert by_name["compile_outside_aiecc_s"]["value"] == 2.38
     assert by_name["compile_place_s_warm"]["unit"] == "s"
     assert {f"{m}_warm" for m in stages.STAGE_METRICS} <= by_name.keys()
-
-
-def test_llama_publishes_generate_rows(checks):
-    _, llama = checks
-    out = (
-        "The capital of France is Paris, which is the most visited city\n"
-        "prompt 6 tokens, generated 32: TTFT 286.0 ms (21.0 prompt tok/s), "
-        "decode 20.97 tok/s\n"
-        "check: 22/32 tokens are numpy_llama_ref's argmax\n"
-    )
-    rows = llama.aggregate(
-        {"tokens_passed": 4, "tokens_total": 4},
-        llama.parse_timing(""),
-        llama.parse_generate(out),
-        {},
-        {},
-    )
-    by_name = {r["name"].rsplit("/", 1)[1]: r for r in rows}
-    assert by_name["ttft_ms"]["value"] == 286.0
-    assert by_name["prompt_tok_s"]["value"] == 21.0
-    assert by_name["decode_tok_s"]["value"] == 20.97
-    assert by_name["greedy_agree"]["value"] == 22
-    assert by_name["greedy_agree"]["range"].startswith("of 32")
 
 
 def test_yolo26n_publishes_each_stage_cold_and_warm(checks):
@@ -182,9 +358,6 @@ def test_yolo26n_reads_the_newest_build_in_its_cache(checks, tmp_path):
     newest = yolo.newest_build(str(tmp_path))
     assert newest == str(tmp_path / "newer")
     (tmp_path / "newer" / "design.elf").write_bytes(b"\0" * 4096)
-    (tmp_path / "newer" / "input_with_addresses.mlir").write_text(
-        "%c = aie.core(%t0) {\n}\n%d = aie.core(%t1) {\n}\n"
-    )
-    assert yolo.artifact_stats(newest) == {"elf_bytes": 4096, "n_cores": 2}
+    assert yolo.artifact_stats(newest) == {"elf_bytes": 4096}
     assert yolo.artifact_stats(str(tmp_path / "older")) == {}
     assert yolo.artifact_stats(None) == {}

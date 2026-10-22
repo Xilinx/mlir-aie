@@ -9,13 +9,14 @@
 
 from __future__ import annotations
 
+import functools
 from enum import Enum
 from typing import ClassVar
 
 import numpy as np
 import pytest
-from aie.utils.compile.jit.declaration import Declaration
 from aie.utils.compile.jit.markers import In, InOut, Out
+from aie.utils.compile.jit.operator import Operator
 from aie.utils.compile.jit.params import (
     Select,
     param,
@@ -25,13 +26,7 @@ from aie.utils.compile.jit.params import (
 )
 
 
-class Base:
-    trace = None
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls.declaration = Declaration.of_class(cls, Base)
-
+class Base(Operator, library=True):
     def inputs(self):
         pass
 
@@ -108,6 +103,15 @@ def test_a_declaration_prints_what_it_declared():
             "  key:      (dtype, scale, tile, cores, placement, width)",
         ]
     )
+
+
+def test_a_declaration_names_a_partial_domain_by_its_function():
+    class Partial(Base):
+        M: int = param()
+        cores: int = tunable(default=1, domain=functools.partial(widths))
+        c = Out(M)
+
+    assert "cores in widths" in repr(Partial.declaration)
 
 
 def declare(body: dict, annotations: dict | None = None, base: type = Base):

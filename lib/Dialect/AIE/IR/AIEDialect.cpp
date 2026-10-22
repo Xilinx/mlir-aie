@@ -168,7 +168,8 @@ Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
   return nullptr;
 }
 
-xilinx::AIE::NamedOpTable::NamedOpTable(Operation *symbolTableOp) {
+xilinx::AIE::NamedOpTable::NamedOpTable(Operation *symbolTableOp)
+    : context(symbolTableOp->getContext()) {
   if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
       symbolTableOp->getRegion(0).empty()) {
     return;
@@ -196,21 +197,12 @@ Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringRef name) {
   return lookupNamedOp(from, StringAttr::get(from->getContext(), name));
 }
 
-std::string xilinx::AIE::generateUniqueSymbolName(
-    mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
+std::string xilinx::AIE::NamedOpTable::uniqueName(llvm::StringRef prefix,
+                                                  unsigned &counter) const {
   std::string name;
   do {
     name = (prefix + llvm::Twine(counter++)).str();
-  } while (lookupNamedOpIn(symbolTableOp, llvm::StringRef(name)));
-  return name;
-}
-
-std::string xilinx::AIE::generateUniqueSymbolName(
-    mlir::SymbolTable &symbolTable, llvm::StringRef prefix, unsigned &counter) {
-  std::string name;
-  do {
-    name = (prefix + llvm::Twine(counter++)).str();
-  } while (symbolTable.lookup(name));
+  } while (ops.count(StringAttr::get(context, name)));
   return name;
 }
 
@@ -1401,7 +1393,6 @@ LogicalResult RouteEndpointOp::verify() {
       return emitOpError("drives one channel, which a circuit flow owns, but "
                          "it is named ")
              << sharers.size() << " times";
-    // A shared source's BDs state each header, so they must tell them apart.
     llvm::SmallDenseSet<int> ids;
     for (RouteOp flow : sources) {
       std::optional<uint16_t> id = flow.getPacketAttr().getPktId();
@@ -2023,10 +2014,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
                        "a shim tile has no memory for");
 
   // A join or distribute slot must hold a whole number of its participant's
-  // objects; otherwise an object straddles two shared objects and the DMA
-  // stalls. A whole-multiple slot can still hang if the producer sends fewer
-  // objects per shared object than the slot holds, but that depends on the
-  // core's loop, which the verifier can't see: this catches non-multiples only.
+  // objects, or one straddles two shared objects and the DMA stalls.
   auto elementsOf = [](Type objectFifoType) {
     return cast<MemRefType>(
                cast<AIEObjectFifoType>(objectFifoType).getElementType())
@@ -2041,23 +2029,13 @@ LogicalResult ObjectFifoLinkOp::verify() {
                    cast<AIEObjectFifoType>(objectFifoType).getElementType())
                    .getElementType()));
   };
-  // What a fifo's producer sends for `elements`: padding widens each
-  // dimension it streams, as the DMA lowering's paddedSize does.
-  auto sentElements = [](ObjectFifoCreateOp fifo, int64_t elements) {
-    std::optional<ArrayRef<BDPadLayoutAttr>> pads = fifo.getPadDimensions();
-    ArrayRef<BDDimLayoutAttr> dims = fifo.getDimensionsToStream();
-    if (!pads || pads->empty() || dims.empty())
-      return elements;
-    int64_t padded = 1;
-    for (auto [dim, pad] : llvm::zip(dims, *pads))
-      padded *=
-          dim.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
-    return padded;
-  };
   auto checkSlot = [&](StringRef role, ObjectFifoCreateOp participant,
                        int64_t object, ObjectFifoCreateOp shared,
                        int64_t slotBytes, ArrayAttr offsets) -> LogicalResult {
-    if (slotBytes <= 0 || slotBytes % object == 0)
+    if (object <= 0)
+      return emitOpError() << role << " @" << participant.name().getValue()
+                           << " has empty objects";
+    if (slotBytes % object == 0)
       return success();
     std::string offsetText;
     llvm::raw_string_ostream os(offsetText);
@@ -2087,8 +2065,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
                << idx << " would transfer " << len << " elements";
 
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    // A slot that comes out empty or negative (offsets not ascending) is sized
-    // from its participant by the lowering, so it cannot mismatch.
     for (auto [fifoIn, slot] :
          llvm::zip(getInputObjectFifos(), getJoinTransferLengths())) {
       int64_t object =
@@ -2096,7 +2072,10 @@ LogicalResult ObjectFifoLinkOp::verify() {
               ? bytesOf(fifoIn.getConsumerElemTypeOrDefault(),
                         elementsOf(fifoIn.getConsumerElemTypeOrDefault()))
               : bytesOf(fifoIn.getElemType(),
-                        sentElements(fifoIn, elementsOf(fifoIn.getElemType())));
+                        paddedSize(fifoIn.getDimensionsToStream(),
+                                   fifoIn.getPadDimensions().value_or(
+                                       ArrayRef<BDPadLayoutAttr>{}),
+                                   elementsOf(fifoIn.getElemType())));
       if (failed(checkSlot("input", fifoIn, object, fifoOut,
                            bytesOf(fifoOut.getElemType(), slot),
                            getSrcOffsets())))
@@ -2139,9 +2118,11 @@ LogicalResult ObjectFifoLinkOp::verify() {
               "output", fifoOut,
               bytesOf(fifoOut.getElemType(), elementsOf(fifoOut.getElemType())),
               fifoIn,
-              slot > 0
-                  ? bytesOf(fifoIn.getElemType(), sentElements(fifoOut, slot))
-                  : 0,
+              bytesOf(fifoIn.getElemType(),
+                      paddedSize(fifoOut.getDimensionsToStream(),
+                                 fifoOut.getPadDimensions().value_or(
+                                     ArrayRef<BDPadLayoutAttr>{}),
+                                 slot)),
               getDstOffsets())))
         return failure();
     }
@@ -4624,6 +4605,17 @@ LogicalResult DMABDOp::verifyTransferInBounds() {
 // A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
 // scan when the innermost stride is 1 and each outer stride equals the product
 // of all inner sizes.  Used by both DMABDOp verification and canonicalization.
+int64_t xilinx::AIE::paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
+                                llvm::ArrayRef<BDPadLayoutAttr> pads,
+                                int64_t fallback) {
+  if (dims.empty() || pads.empty())
+    return fallback;
+  int64_t size = 1;
+  for (auto [dim, pad] : llvm::zip(dims, pads))
+    size *= dim.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
+  return size;
+}
+
 bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   if (dims.empty())
     return true; // no ND layout = trivially contiguous

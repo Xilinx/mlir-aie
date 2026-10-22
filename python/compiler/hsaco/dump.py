@@ -140,7 +140,7 @@ def read_sections_from_hsaco(path):
     ``hsaco.format.ARCHES`` order.
 
     Raises:
-        ValueError: If the hsaco carries no aie2/aie2p section at all.
+        ValueError: If the hsaco carries no aie2/aie2p/aie4 section at all.
     """
     with open(path, "rb") as f:
         elf = ElfFile(f.read())
@@ -158,7 +158,7 @@ def main(argv=None):
     """Print a summary of every arch section in an hsaco."""
     ap = argparse.ArgumentParser(
         prog="aie-hsaco-dump",
-        description="Parse and validate the aie2/aie2p sections of an hsaco.",
+        description="Parse and validate the aie2/aie2p/aie4 sections of an hsaco.",
     )
     ap.add_argument("--hsaco", required=True)
     args = ap.parse_args(argv)

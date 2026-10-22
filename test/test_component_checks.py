@@ -17,44 +17,34 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "utils/component_checks"
 SMALL = ROOT / "test/place-tiles/sa_placer/test_sa_effort.mlir"
+MOBILENET = CHECKS / "fixtures/mobilenet.mlir"
+PUBLISH = ROOT / "utils/kernel_checks/publish.py"
 AIE_OPT = shutil.which("aie-opt")
 POSIX_SWEEP = pytest.mark.skipif(
     sys.platform == "win32",
     reason="sa_placer.py measures each seed with os.wait4, which is POSIX-only",
 )
 
-# What aie2_mobilenet_iron.py printed on an npu2, verbatim, at batch 1 and 16.
+# What aie2_mobilenet_iron.py printed on an npu2 at batch 1 and 16, in
+# print_benchmark's dispatch/NPU split: the Dispatch and End-to-end lines are
+# a run's own, the empty-dispatch baseline is Strix's (~47 us) and NPU the
+# dispatch less it.
 MOBILENET_OUTPUT = """\
-NPU time     (avg/min/max us): 399.9 / 384.4 / 420.2   [median 399.6, MAD 13.3, p95 416.1]
-End-to-end   (avg/min/max us): 499.7 / 480.9 / 533.8   [median 498.4, MAD 13.2, p95 519.2]
+Dispatch          (avg/min/max us): 399.9 / 384.4 / 420.2   [median 399.6, MAD 13.3, p95 416.1]
+Dispatch overhead (avg/min/max us): 47.3 / 46.5 / 49.0   [median 47.1, MAD 0.4, p95 48.2]
+NPU               (avg/min/max us): 352.8 / 337.3 / 373.1   [median 352.5, MAD 13.2, p95 368.9]
+End-to-end        (avg/min/max us): 499.7 / 480.9 / 533.8   [median 498.4, MAD 13.2, p95 519.2]
 max_difference: 2
 PASS!
 """
 MOBILENET_B16_OUTPUT = """\
-NPU time     (avg/min/max us): 1343.6 / 1303.7 / 1475.0   [median 1343.7, MAD 22.9, p95 1380.9]
-End-to-end   (avg/min/max us): 1681.5 / 1431.5 / 2075.9   [median 1737.1, MAD 220.9, p95 1985.1]
+Dispatch          (avg/min/max us): 1343.6 / 1303.7 / 1475.0   [median 1343.7, MAD 22.9, p95 1380.9]
+Dispatch overhead (avg/min/max us): 47.4 / 46.6 / 49.3   [median 47.2, MAD 0.5, p95 48.4]
+NPU               (avg/min/max us): 1296.2 / 1256.9 / 1427.7   [median 1296.5, MAD 22.8, p95 1333.4]
+End-to-end        (avg/min/max us): 1681.5 / 1431.5 / 2075.9   [median 1737.1, MAD 220.9, p95 1985.1]
 max_difference: 2
 PASS!
 """
-
-
-# What yolo26n.py prints on an npu2 over 8 COCO128 images: a line per image,
-# a summary, the onnxruntime agreement and, with --time, one image's time at
-# the run's batch.
-YOLO_OUTPUT = """\
-image 000000000009.jpg: PASS (0/1800 differ)
-image 000000000025.jpg: PASS (0/1800 differ)
-image 000000000030.jpg: PASS (0/1800 differ)
-image 000000000034.jpg: PASS (0/1800 differ)
-image 000000000036.jpg: PASS (0/1800 differ)
-image 000000000042.jpg: PASS (0/1800 differ)
-image 000000000049.jpg: PASS (0/1800 differ)
-image 000000000061.jpg: PASS (0/1800 differ)
-yolo26n: 8/8 images PASS
-ort: 8/8 images match onnxruntime
-"""
-YOLO_TIMED_OUTPUT = YOLO_OUTPUT + "per-image: 78365.1 us (12.76 fps) at batch 1\n"
-YOLO_BATCHED_OUTPUT = YOLO_OUTPUT + "per-image: 12727.7 us (78.57 fps) at batch 8\n"
 
 
 def load(name):
@@ -78,11 +68,6 @@ def aie_opt():
 @pytest.fixture(scope="module")
 def hw():
     return load("sa_placer_hw")
-
-
-@pytest.fixture(scope="module")
-def yolo():
-    return load("yolo26n_hw")
 
 
 def sweep(tmp_path, *args):
@@ -168,6 +153,59 @@ def test_a_seed_that_does_not_place_fails_the_sweep(aie_opt, tmp_path):
     assert "custom op 'this' is unknown" in result.stdout
 
 
+@POSIX_SWEEP
+def test_a_seed_past_its_timeout_fails_and_publishes_as_a_failure(aie_opt, tmp_path):
+    result, rows, meta = sweep(
+        tmp_path,
+        "--aie-opt",
+        aie_opt,
+        "--seeds",
+        1,
+        "--fixture",
+        MOBILENET,
+        "--timeout",
+        0.01,
+    )
+    assert result.returncode == 1
+    assert meta["failed"] == ["mobilenet/seed1"] and meta["exitstatus"] == 1
+    assert [(d["passed"], d["timed_out"]) for d in meta["detail"]] == [(False, True)]
+    assert "timed out after 0.01 s" in result.stdout
+    record = publish_results(tmp_path, "sa-placer")
+    assert record["failed"] == ["mobilenet/seed1"] and record["exitstatus"] == 1
+    # The CPU it ran on stands in for the part host time is kept apart by.
+    assert record["device"] == record["provenance"]["cpu"] != "unknown"
+
+
+@POSIX_SWEEP
+def test_a_sweep_stopped_part_way_publishes_as_unfinished(aie_opt, tmp_path):
+    stages = load("aiecc_stages")
+    stopped = stages.run_measured(
+        [sys.executable, CHECKS / "sa_placer.py", "--aie-opt", aie_opt]
+        + ["--seeds", "1000", "--fixture", MOBILENET]
+        + ["--out", tmp_path / "perf.json", "--meta", tmp_path / "meta.json"],
+        None,
+        None,
+        5,
+        echo=False,
+    )
+    assert stopped.process.returncode == stages.TIMED_OUT
+    record = publish_results(tmp_path, "sa-placer")
+    assert record["failed"] == ["seed sweep"] and record["reason"] == "did not finish"
+    assert record["exitstatus"] == 1 and not record["published"]
+    assert record["provenance"]["fixtures"]
+
+
+def publish_results(results, target):
+    out = results / "published"
+    subprocess.run(
+        [sys.executable, PUBLISH, "perf", "--target", target, "--results", results]
+        + ["--run-id", "1", "--out", out, "--commit", "0123456789"],
+        check=True,
+        capture_output=True,
+    )
+    return json.loads((out / "runs/1.json").read_text())
+
+
 def test_the_fixture_digest_follows_the_fixtures_content(tmp_path):
     sa_placer = load("sa_placer")
     copy = tmp_path / SMALL.name
@@ -201,11 +239,17 @@ def test_the_mobilenet_fixture_is_still_valid_and_unplaced(aie_opt):
 def test_a_mobilenet_run_reports_its_times_per_image(hw):
     assert hw.parse_run(MOBILENET_B16_OUTPUT, 0, 16) == {
         "passed": True,
-        "launch_us": 1303.7,
+        "dispatch_overhead_us": 46.6,
+        # The dispatch, as the "NPU time" line printed it before the split.
         "us_per_image": 81.48,
         "us_per_image_range": "median 83.98, MAD 1.43, p95 86.31",
+        "npu_us_per_image": 78.56,
+        "npu_us_per_image_range": "median 81.03, MAD 1.43, p95 83.34",
+        # The fastest end-to-end call less the fastest dispatch.
+        "host_overhead_us_per_image": 7.99,
+        "host_overhead_us_per_image_range": "median 24.59, MAD 15.24, p95 37.76",
         "e2e_us_per_image": 89.47,
-        "e2e_range": "median 108.57, MAD 13.81, p95 124.07",
+        "e2e_us_per_image_range": "median 108.57, MAD 13.81, p95 124.07",
     }
 
 
@@ -214,7 +258,7 @@ def test_a_mobilenet_run_reports_its_times_per_image(hw):
     [
         (MOBILENET_OUTPUT, 1),
         (MOBILENET_OUTPUT.replace("PASS!", "FAIL!"), 0),
-        (MOBILENET_OUTPUT.replace("NPU time ", "NPU wall time "), 0),
+        (MOBILENET_OUTPUT.replace("Dispatch    ", "Dispatched  "), 0),
     ],
 )
 def test_a_mobilenet_run_fails_without_a_pass_or_a_latency(hw, out, returncode):
@@ -249,8 +293,7 @@ def test_only_passing_runs_chart_their_times(hw):
         for seed, batch, out in [
             (3, 1, MOBILENET_OUTPUT),
             (3, 16, MOBILENET_B16_OUTPUT),
-            # A wrong answer at batch 1 leaves seed 2 with nothing to
-            # stream against.
+            # A wrong answer charts no time.
             (2, 1, MOBILENET_OUTPUT.replace("PASS!", "FAIL!")),
             (2, 16, MOBILENET_B16_OUTPUT),
         ]
@@ -312,21 +355,22 @@ def test_only_passing_runs_chart_their_times(hw):
         "mobilenet/seed=2/effort=default/compile_s_warm": 6.2,
         "mobilenet/seed=2/effort=default/compile_peak_rss_mb_warm": 1800.0,
         "mobilenet/seed=3/batch=1/effort=default/us_per_image": 384.4,
+        "mobilenet/seed=3/batch=1/effort=default/npu_us_per_image": 337.3,
+        "mobilenet/seed=3/batch=1/effort=default/host_overhead_us_per_image": 96.5,
         "mobilenet/seed=3/batch=1/effort=default/e2e_us_per_image": 480.9,
         "mobilenet/seed=3/batch=16/effort=default/us_per_image": 81.48,
-        "mobilenet/seed=3/batch=16/effort=default/streaming_us": 61.29,
+        "mobilenet/seed=3/batch=16/effort=default/npu_us_per_image": 78.56,
+        "mobilenet/seed=3/batch=16/effort=default/host_overhead_us_per_image": 7.99,
         "mobilenet/seed=3/batch=16/effort=default/e2e_us_per_image": 89.47,
         "mobilenet/seed=2/batch=16/effort=default/us_per_image": 81.48,
+        "mobilenet/seed=2/batch=16/effort=default/npu_us_per_image": 78.56,
+        "mobilenet/seed=2/batch=16/effort=default/host_overhead_us_per_image": 7.99,
         "mobilenet/seed=2/batch=16/effort=default/e2e_us_per_image": 89.47,
     }
     ranges = {r["name"]: r.get("range") for r in rows}
     assert (
         ranges["mobilenet/seed=3/effort=default/placement_cost"]
         == "placement 0123456789ab"
-    )
-    assert (
-        ranges["mobilenet/seed=3/batch=16/effort=default/streaming_us"]
-        == "from b1 384.4 and b16 1303.7"
     )
     assert (
         ranges["mobilenet/seed=3/batch=16/effort=default/us_per_image"]
@@ -336,8 +380,8 @@ def test_only_passing_runs_chart_their_times(hw):
 
 def test_each_compile_charts_its_stages_cold_and_warm(hw):
     stages = load("aiecc_stages")
-    cold = str(CHECKS / "fixtures/aiecc_profile_mobilenet.json")
-    warm = str(CHECKS / "fixtures/aiecc_profile_shim.json")
+    cold = str(ROOT / "test/fixtures/aiecc_profile_mobilenet.json")
+    warm = str(ROOT / "test/fixtures/aiecc_profile_shim.json")
     compiles = [
         {
             "seed": 3,
@@ -367,98 +411,10 @@ def test_each_compile_charts_its_stages_cold_and_warm(hw):
     assert {r["unit"] for r in timed} == {"s"}
 
 
-def test_a_yolo26n_run_that_matches_every_image_passes(yolo):
-    assert yolo.parse_correctness(YOLO_OUTPUT, 0) == {
-        "passed": True,
-        "images_passed": 8,
-        "images_total": 8,
-        "ort_matches": 8,
-        "failed_images": [],
-    }
-
-
-def test_a_yolo26n_image_that_differs_fails_the_run_by_name(yolo):
-    out = YOLO_OUTPUT.replace(
-        "000000000025.jpg: PASS (0/1800 differ)",
-        "000000000025.jpg: FAIL (7/1800 differ)",
-    ).replace("8/8 images PASS", "7/8 images PASS")
-    got = yolo.parse_correctness(out, 1)
-    assert not got["passed"]
-    assert (got["images_passed"], got["images_total"]) == (7, 8)
-    assert got["failed_images"] == ["000000000025.jpg"]
-
-
-@pytest.mark.parametrize(
-    "out, returncode",
-    [
-        # A run that stops before its summary counts its image lines.
-        (YOLO_OUTPUT.split("yolo26n:")[0], 0),
-        (YOLO_OUTPUT, 1),
-        ("", 0),
-    ],
-    ids=["no-summary", "nonzero-exit", "no-output"],
-)
-def test_a_yolo26n_run_without_a_clean_summary_fails(yolo, out, returncode):
-    got = yolo.parse_correctness(out, returncode)
-    assert not got["passed"]
-    assert got["images_passed"] == out.count(": PASS (")
-
-
-def test_onnxruntime_disagreeing_does_not_fail_a_yolo26n_run(yolo):
-    out = YOLO_OUTPUT.replace("ort: 8/8", "ort: 6/8")
-    got = yolo.parse_correctness(out, 0)
-    assert got["passed"] and got["ort_matches"] == 6
-    ort = yolo.aggregate(got, {}, {}, {})[1]
-    assert (ort["name"], ort["value"], ort["range"]) == (
-        "yolo26n/640/ort_matches",
-        6,
-        "of 8",
-    )
-
-
-def test_a_yolo26n_run_without_onnxruntime_has_no_ort_row(yolo):
-    out = YOLO_OUTPUT.replace("ort: 8/8 images match onnxruntime\n", "")
-    got = yolo.parse_correctness(out, 0)
-    assert got["passed"] and got["ort_matches"] is None
-    rows = yolo.aggregate(got, {}, {}, {})
-    assert [r["name"] for r in rows] == ["yolo26n/640/images_passed"]
-
-
-def test_timed_yolo26n_runs_report_each_batch(yolo):
-    assert yolo.parse_timing(YOLO_OUTPUT) == {}
-    timing = yolo.parse_timing(YOLO_TIMED_OUTPUT) | yolo.parse_timing(
-        YOLO_BATCHED_OUTPUT
-    )
-    assert timing == {
-        "us_per_image_b1": 78365.1,
-        "fps_b1": 12.76,
-        "us_per_image_b8": 12727.7,
-        "fps_b8": 78.57,
-    }
-    rows = yolo.aggregate(
-        yolo.parse_correctness(YOLO_TIMED_OUTPUT, 0),
-        timing,
-        {"elf_bytes": 1_234_567, "n_cores": 32},
-        {"compile_s": 95.1, "compile_peak_rss_mb": 3100.0},
-    )
-    assert [(r["name"], r["unit"], r["value"], r.get("range")) for r in rows] == [
-        ("yolo26n/640/images_passed", "images", 8, "of 8"),
-        ("yolo26n/640/ort_matches", "images", 8, "of 8"),
-        ("yolo26n/640/us_per_image_b1", "us", 78365.1, None),
-        ("yolo26n/640/fps_b1", "fps", 12.76, None),
-        ("yolo26n/640/us_per_image_b8", "us", 12727.7, None),
-        ("yolo26n/640/fps_b8", "fps", 78.57, None),
-        ("yolo26n/640/elf_bytes", "bytes", 1_234_567, None),
-        ("yolo26n/640/n_cores", "cores", 32, None),
-        ("yolo26n/640/compile_s", "s", 95.1, None),
-        ("yolo26n/640/compile_peak_rss_mb", "MB", 3100.0, None),
-    ]
-    # Every metric the check publishes has a threshold the page and the PR
-    # report share.
-    thresholds = json.loads(
-        (ROOT / "utils/kernel_checks/thresholds.json").read_text(encoding="utf-8")
-    )
-    assert {r["name"].rsplit("/", 1)[1] for r in rows} <= thresholds.keys()
+def test_the_hardware_check_places_at_the_designs_own_default_effort(hw):
+    # The flags the design compiles with when nothing overrides them.
+    assert f"--sa-effort={hw.EFFORTS['default']}" in hw.sa_placer_flags()
+    assert hw.EFFORTS["full"] == 1.0
 
 
 @pytest.mark.parametrize("batches", ["0", "-3", "two"])
@@ -486,7 +442,7 @@ def test_a_replayed_placement_matches_placing_the_design(hw, aie_opt):
     ).stdout
     digest = hw.placement_of(placed)
     assert digest and len(digest) == 12
-    assert hw.replay_placement(aie_opt, str(SMALL), 1, 1.0) == (digest, 12)
+    assert hw.replay_placement(aie_opt, str(SMALL), 1, 1.0, 60) == (digest, 12)
     assert hw.placement_of(SMALL.read_text()) is None
 
     compiles = [
@@ -496,7 +452,7 @@ def test_a_replayed_placement_matches_placing_the_design(hw, aie_opt):
         # A compile whose placement was not read takes the replay's.
         {"seed": 1, "effort_label": "full", "placement": None},
     ]
-    placed = hw.place_seed(compiles, aie_opt, str(SMALL))
+    placed = hw.place_seed(compiles, aie_opt, str(SMALL), 60)
     assert placed[0] == {
         "seed": 1,
         "effort_label": "full",
@@ -658,7 +614,7 @@ def test_the_allocator_report_is_one_case_named_by_its_failed_properties(tmp_pat
         "allocator/unsolved": (2, "designs"),
         "allocator/illegal": (0, "designs"),
         "allocator/avoidable_crossings": (1, "crossings"),
-        "allocator/bank_pair_sharing": (0.25, "pairs"),
+        "allocator/bank_pair_sharing": (0.25, "fraction"),
         "allocator/wall_s": (103.0, "s"),
     }
     # A crash before the report: a failure, and no rows to chart.
@@ -670,4 +626,6 @@ def test_the_allocator_report_is_one_case_named_by_its_failed_properties(tmp_pat
 def test_a_placement_that_fails_to_replay_has_no_cost(hw, aie_opt, tmp_path):
     bad = tmp_path / "bad.mlir"
     bad.write_text("not MLIR\n")
-    assert hw.replay_placement(aie_opt, str(bad), 1, 1.0) == (None, None)
+    assert hw.replay_placement(aie_opt, str(bad), 1, 1.0, 60) == (None, None)
+    # Nor does one that runs past its timeout.
+    assert hw.replay_placement(aie_opt, str(MOBILENET), 3, 1.0, 0.01) == (None, None)

@@ -88,8 +88,14 @@ void rms_norm(bf16 *y, const bf16 *x, const bf16 *w) {
     const bf16_vec x1 = aie::load_v<f32_lanes>(x + f32_lanes);
     const bf16_vec w0 = aie::load_v<f32_lanes>(w);
     const bf16_vec w1 = aie::load_v<f32_lanes>(w + f32_lanes);
-    aie::store_v(y, weighted_norm(x0, w0, s));
-    aie::store_v(y + f32_lanes, weighted_norm(x1, w1, s));
+    const bf16_vec n0 = weighted_norm(x0, w0, s);
+    const bf16_vec n1 = weighted_norm(x1, w1, s);
+    // 32-byte stores: rms_residual's y follows a 16-element packet header,
+    // where a 64-byte store would be truncated onto the header.
+    aie::store_v(y, n0.extract<16>(0));
+    aie::store_v(y + 16, n0.extract<16>(1));
+    aie::store_v(y + 32, n1.extract<16>(0));
+    aie::store_v(y + 48, n1.extract<16>(1));
     x += 2 * f32_lanes;
     y += 2 * f32_lanes;
     w += 2 * f32_lanes;

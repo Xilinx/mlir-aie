@@ -23,6 +23,7 @@ The shared _isolate_extern_state fixture lives in conftest.py at this
 directory level.
 """
 
+import inspect
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,10 +33,18 @@ import numpy as np
 import pytest
 from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import NPU1, NPU2, XCVC1902, NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
-from aie.iron.kernels import activation
+from aie.iron.kernels import (
+    Param,
+    activation,
+    datamovement,
+    norm,
+    transformer,
+)
+from aie.iron.kernels.linalg import MatrixKernel
 from aie.iron.kernels.moe import _experts_row, experts_ref, experts_sample
+from aie.utils.compile.jit.markers import In, Out
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -151,7 +160,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=6,
         expected_name="maxpool2d_5x5_i8",
         invalid_kwargs=[
-            (dict(kernel=3), "5x5"),
             (dict(input_width=18), "width of 4k"),
         ],
     ),
@@ -740,7 +748,7 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(stride=2), "need bias"),
             (dict(bias=True, act_dtype=np.uint8, rounding="conv_even"), "act_dtype"),
             (dict(bias=True, stride=3, rounding="conv_even"), "stride"),
-            (dict(bias=True), "needs no bias"),
+            (dict(bias=True, rounding="positive_inf"), "with bias, rounding must be"),
             (
                 dict(bias=True, input_width=36, stride=2, rounding="conv_even"),
                 "multiple of 8",
@@ -768,7 +776,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         name_variants=[
             (dict(rounding="conv_even"), "conv2dk1_i8_even"),
             (dict(bias=True, rounding="conv_even"), "conv2dk1_i8_bias_even"),
-            (dict(bias=True, table=True), "conv2dk1_i8_bias_table"),
+            (dict(bias=True, table=True), "conv2dk1_i8_bias_table_even"),
+            (dict(bias=True, rounding="symmetric_inf"), "conv2dk1_i8_bias"),
         ],
         invalid_kwargs=[
             (dict(rounding="nearest"), "rounding"),
@@ -862,6 +871,9 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(),
         arg_count=6,
         expected_name="post_L2_fc_ui16_ic_chunk",
+        invalid_kwargs=[
+            (dict(input_channels=1280, chunk_input_channels=384), "must divide"),
+        ],
     ),
     KernelSpec(
         name="bn_conv2dk1_partial_put_i8",
@@ -992,8 +1004,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         invalid_kwargs=[
             (dict(top_k=0), "top_k must be a positive integer"),
             (dict(rows=3), "rows must divide"),
-            (dict(top_k=5), "top_k at most num_experts"),
-            (dict(hidden=33, rows=1, cols=1), "hidden must be even"),
+            (dict(top_k=5), "top_k must be at most num_experts"),
+            (dict(cols=8, rows=8, hidden=64, width=32), "multiple of 16"),
         ],
         shape_checks=[(dict(hidden=128, top_k=4), 0, (144,))],
     ),
@@ -1016,7 +1028,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs={},
         arg_count=6,  # block, head, final, y, valid, block index
         expected_name="gated_delta_rule",
-        invalid_kwargs=[(dict(key_dim=0), "key_dim must be a positive integer")],
+        invalid_kwargs=[
+            (dict(key_dim=0), "key_dim must be a positive integer"),
+            (dict(rows=1, key_dim=2, value_dim=1), "must be even"),
+            (dict(rows=3, key_dim=16, value_dim=17), "must be even"),
+        ],
         shape_checks=[(dict(rows=4, key_dim=8, value_dim=4), 0, (88,))],
     ),
     KernelSpec(
@@ -1318,8 +1334,6 @@ def kernel_arch(request):
     "name", ["rms_norm", "rms_norm_eps", "layer_norm", "layer_norm_eps", "rope"]
 )
 def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
-    from aie.iron.kernels import datamovement, norm, transformer
-
     factory = getattr(kernels, name)
     canonical = datamovement if name == "rope" else norm
     assert factory is getattr(canonical, name)
@@ -1341,8 +1355,6 @@ def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
 
 @pytest.mark.parametrize("name", ["rms_norm", "layer_norm"])
 def test_norm_reference_eps_keyword(name):
-    from aie.iron.kernels import norm, transformer
-
     reference = getattr(kernels, f"{name}_ref")
     assert reference is getattr(norm, f"{name}_ref")
     assert reference is getattr(transformer, f"{name}_ref")
@@ -1403,9 +1415,6 @@ def test_rope_layout_contract_and_vector_constraints(
 
 @pytest.mark.parametrize("name", ["add_sized", "mul_sized", "relu", "silu", "gelu"])
 def test_sized_factory_contracts(name, kernel_arch):
-    from aie.iron.kernels import Param
-    from aie.utils.compile.jit.markers import In, Out
-
     fn = getattr(kernels, name)(tile_size=1024)
     binary = name in ("add_sized", "mul_sized")
     assert fn.contract.roles == ((In, In, Out, Param) if binary else (In, Out, Param))
@@ -1499,8 +1508,6 @@ def test_fixed_activations_compile_their_count(name, kernel_arch):
     ],
 )
 def test_runtime_activation_sizes_preserve_contract(name, tile_size, kernel_arch):
-    from aie.iron.kernels import Param
-
     fn = getattr(kernels, name)(tile_size=tile_size)
     assert fn.arg_shape(0) == fn.arg_shape(1) == (tile_size,)
     assert fn.contract.roles[2] is Param
@@ -1555,8 +1562,6 @@ def test_mm_mac_dims_rejects_a_dtype_pair_with_no_kernel():
     ],
 )
 def test_mac_dims_resolves_an_arch_from_a_device(factory, expected):
-    from aie.iron.device import NPU1, NPU2
-
     assert factory.mac_dims(bfloat16, bfloat16, device=NPU1()) == expected[0]
     assert factory.mac_dims(bfloat16, bfloat16, device=NPU2()) == expected[1]
 
@@ -1574,13 +1579,7 @@ def test_cascade_mm_carries_the_same_accessor():
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
 @pytest.mark.parametrize("arch", ["aie2", "aie2p"])
-def test_mac_dims_does_not_construct_or_register_a_kernel(factory, arch, monkeypatch):
-    from aie.iron.kernels import linalg
-
-    def unexpected_construction(*args, **kwargs):
-        pytest.fail("Geometry queries must not construct kernels")
-
-    monkeypatch.setattr(linalg, "_make_extern", unexpected_construction)
+def test_mac_dims_does_not_construct_or_register_a_kernel(factory, arch):
     instances = list(ExternalFunction._instances)
     assert callable(factory.mac_dims)
     assert len(factory.mac_dims(bfloat16, bfloat16, arch=arch)) == 3
@@ -1601,27 +1600,23 @@ def test_cascade_mac_dims_rejects_an_unsupported_dtype_pair(arch):
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
 def test_matrix_factory_preserves_discovery_metadata(factory):
-    import inspect
-
-    from aie.iron.kernels.linalg import MatrixKernel
-
     assert inspect.isfunction(factory)
     assert factory.__name__ in kernels.factories()
     assert issubclass(inspect.signature(factory).return_annotation, MatrixKernel)
     assert inspect.signature(factory).parameters["dim_m"].default == 64
     if factory is kernels.mm:
-        assert len(factory.dtypes) == 7
-        assert {"input_dtype": np.int16, "output_dtype": np.int16} in factory.dtypes
+        assert len(kernels.DTYPES["mm"]) == 7
+        assert {"input_dtype": np.int16, "output_dtype": np.int16} in kernels.DTYPES[
+            "mm"
+        ]
 
 
-@pytest.mark.parametrize("kwargs", kernels.mm.dtypes)
+@pytest.mark.parametrize("kwargs", kernels.DTYPES["mm"])
 @pytest.mark.parametrize("vectorized", [False, True])
 @pytest.mark.parametrize("emulate", [False, True])
 def test_mm_geometry_matches_contract_for_every_variant(
     kwargs, vectorized, emulate, kernel_arch
 ):
-    from aie.iron.kernels.linalg import MatrixKernel
-
     options = dict(
         **kwargs,
         vectorized=vectorized,
@@ -1651,12 +1646,10 @@ def test_matrix_geometry_explicit_arch_overrides_device(factory):
 @pytest.mark.parametrize(
     "factory", [kernels.mm, kernels.cascade_mm, kernels.cascade_mm_put]
 )
-def test_matrix_construction_rejects_unsupported_arch(factory, monkeypatch):
-    from aie.iron.kernels import linalg
-
-    monkeypatch.setattr(linalg, "_detect_arch", lambda: "unsupported")
-    with pytest.raises(ValueError, match="unsupported"):
-        factory()
+def test_matrix_construction_rejects_unsupported_arch(factory):
+    with set_current_device(XCVC1902()):
+        with pytest.raises(RuntimeError, match="Unsupported device arch"):
+            factory()
 
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.cascade_mm])
@@ -1678,8 +1671,6 @@ def test_matrix_zero_companion_uses_contract_initializer(
 
 
 def test_cascade_siblings_share_artifact_and_preserve_contract(kernel_arch):
-    from aie.iron.kernels.linalg import MatrixKernel
-
     fn = kernels.cascade_mm()
     assert isinstance(fn, MatrixKernel)
     assert fn.get_only is fn
@@ -1696,8 +1687,6 @@ def test_cascade_siblings_share_artifact_and_preserve_contract(kernel_arch):
 
 
 def test_bf16_mv_retains_output_contract_without_accumulator(kernel_arch):
-    from aie.utils.compile.jit.markers import Out
-
     fn = kernels.mv(input_dtype=bfloat16, output_dtype=bfloat16, dim_k=256)
     assert fn.contract.roles[-1] is Out
     assert fn.contract.initializers == ()

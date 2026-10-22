@@ -9,7 +9,7 @@ import hashlib
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
+from typing import Callable, TypeVar, get_args, get_origin, overload
 
 import numpy as np
 from aie.helpers.npdtypes import (
@@ -160,6 +160,9 @@ class KernelContract:
             each arch. ``reference`` and ``tolerance`` are then ``None``, and
             ``for_build`` picks the row of the build that produced an output,
             once that is known.
+        true_function: The function the kernel approximates, for error
+            reports, where the reference (or a build's row) models the kernel
+            instead, as a LUT build's does. ``None``: the reference is it.
         ops_per_call: Arithmetic operations per call; ``None`` means one
             per output element.
         out_valid: Meaningful leading elements of a DMA-padded output tile;
@@ -197,6 +200,10 @@ class KernelContract:
             ``call_index``), as a reduction split across calls does. The
             builder hands every call the same output tile and drains it
             once, and the reference returns that one tile.
+        even_calls: Whether every call does the same work. Timing then
+            reports the cheapest call, the rest being the core waiting;
+            calls of unequal work (each its own chunk of a resample) report
+            the median call.
         trace: The ``Trace`` shape of the kernel's markers. Every
             library factory declares one; ``None`` (undeclared) is only for
             ad-hoc kernels, and ``cycles_per_call`` refuses it.
@@ -216,6 +223,7 @@ class KernelContract:
     roles: tuple[type, ...]
     reference: Callable[..., np.ndarray | tuple[np.ndarray, ...]] | None = None
     tolerance: Tolerance | None = None
+    true_function: Callable[..., np.ndarray | tuple[np.ndarray, ...]] | None = None
     ops_per_call: int | None = None
     out_valid: int | None = None
     sample: Callable[..., list] | None = None
@@ -229,6 +237,7 @@ class KernelContract:
     out_offset: tuple[int, int] | None = None
     call_index: int | None = None
     out_last: bool = False
+    even_calls: bool = True
     trace: Trace | None = None
     uses_lut: bool = False
     alignments: tuple[tuple[int, int], ...] = ()
@@ -478,6 +487,12 @@ def _arch_traits() -> ArchTraits:
     return ARCH_TRAITS[_detect_arch()]
 
 
+def _vector_args(*indices):
+    """``alignments`` for arguments every build, portable too, loads as whole vectors."""
+    align = {"aie2": 32, "aie2p": 64}.get(_detect_arch())
+    return tuple((i, align) for i in indices) if align else ()
+
+
 def _tuned_arch() -> str:
     """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
@@ -553,23 +568,6 @@ def _dtype_to_bit_width(dtype, *, factory_name: str) -> int:
             "Use np.uint8, np.int16, or np.int32."
         )
     return bit_width
-
-
-def dtypes(table: Iterable[dict]):
-    """Declare the keyword combinations a factory builds, as ``factory.dtypes``.
-
-    The registry and the host contract test enumerate the table instead of
-    restating it.
-    """
-
-    def decorate(factory):
-        # A function attribute: pyright models functions as having a fixed
-        # attribute set, so the one assignment is annotated rather than each
-        # of the ~20 factories that carry a table.
-        factory.dtypes = tuple(table)  # pyright: ignore[reportFunctionMemberAccess]
-        return factory
-
-    return decorate
 
 
 def _conv_act_dtype_info(

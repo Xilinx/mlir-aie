@@ -108,6 +108,8 @@ def test_a_clamp_is_carried_through_sums_products_and_floors():
         start + 5: lambda v: max(v - 3, 0) + 5,
         start * -2: lambda v: -2 * max(v - 3, 0),
         (p + 1).clamp(hi=9) // 4: lambda v: min(v + 1, 9) // 4,
+        (p + 1).clamp(hi=9) // -4: lambda v: min(v + 1, 9) // -4,
+        ceildiv((p + 1).clamp(hi=512), 64): lambda v: ceildiv(min(v + 1, 512), 64),
         (p - 3).clamp(lo=0).clamp(lo=-5, hi=6): lambda v: min(max(v - 3, 0), 6),
     }
     for e, want in cases.items():
@@ -119,6 +121,9 @@ def test_a_clamp_is_carried_through_sums_products_and_floors():
             bad()
     with pytest.raises(ValueError, match="holds no value"):
         (p + 0).clamp(lo=5, hi=2)
+    assert (p + 1).clamp(hi=3).clamp(lo=5) == 5
+    assert (p - 1).clamp(lo=10).clamp(hi=4) == 4
+    assert (p - 1).clamp(lo=10).clamp(lo=-2, hi=4) == 4
 
 
 def test_an_expression_divides_by_the_raw_per_call_value_it_is_a_multiple_of():

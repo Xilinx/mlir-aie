@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import functools
 import inspect
-import logging
+import re
 import typing
 from dataclasses import MISSING
 from types import FunctionType
@@ -21,12 +21,12 @@ from typing import Annotated, Callable, get_args, get_origin
 
 from .declaration import Declaration
 from .markers import In, InOut, Out
-from .params import Member, Param, PerCallMember, param
-
-logger = logging.getLogger(__name__)
+from .params import Member, OperatorParam, PerCallMember, param
 
 # Annotation origins that represent runtime tensor directions.
 _TENSOR_ANNOTATIONS = (In, Out, InOut)
+
+_MARKER_NAME = re.compile(r"\b(?:In|Out|InOut|CompileTime|DispatchTime)\b")
 
 
 def _tagged_type(annotation, tag):
@@ -53,21 +53,6 @@ def _tagged_type(annotation, tag):
     return None
 
 
-def _is_compile_param(annotation) -> bool:
-    """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
-    return _tagged_type(annotation, "aie.compile_time") is not None
-
-
-def _is_tensor_param(annotation) -> bool:
-    """Return True if *annotation* is ``In``, ``Out``, or ``InOut``."""
-    return annotation in _TENSOR_ANNOTATIONS
-
-
-def _dispatch_param_type(annotation):
-    """Return the wrapped ``T`` of a ``DispatchTime[T]``, else ``None``."""
-    return _tagged_type(annotation, "aie.dispatch_time")
-
-
 @functools.lru_cache(maxsize=None)
 def declare(generator: Callable) -> Declaration:
     """Return the declaration a generator's signature makes.
@@ -78,22 +63,36 @@ def declare(generator: Callable) -> Declaration:
     Memoised: ``typing.get_type_hints`` and ``inspect.signature`` together
     cost ~40us, and the JIT hot path asks per call.
     """
+    sig = inspect.signature(generator)
     try:
         # include_extras=True: without it, get_type_hints strips Annotated
         # metadata and CompileTime[T] becomes indistinguishable from T.
         hints = typing.get_type_hints(generator, include_extras=True)
-    except Exception as exc:
-        logger.debug("get_type_hints failed for %r: %s", generator, exc)
+    except Exception:
+        # One unresolvable annotation (e.g. a TYPE_CHECKING-only import) must
+        # not demote the others to scalars, so resolve each on its own.
         hints = {}
+        namespace = generator.__globals__ if isinstance(generator, FunctionType) else {}
+        for name, p in sig.parameters.items():
+            if not isinstance(p.annotation, str):
+                continue
+            try:
+                hints[name] = eval(p.annotation, namespace)
+            except Exception as exc:
+                if _MARKER_NAME.search(p.annotation):
+                    raise TypeError(
+                        f"Parameter {name!r} of {generator!r}: annotation "
+                        f"{p.annotation!r} names an iron marker but does not "
+                        f"resolve ({type(exc).__name__}: {exc})"
+                    ) from exc
 
-    sig = inspect.signature(generator)
     sig = sig.replace(
         parameters=[
             p.replace(annotation=hints.get(n, p.annotation))
             for n, p in sig.parameters.items()
         ]
     )
-    params: dict[str, Param] = {}
+    params: dict[str, OperatorParam] = {}
     members: list[Member] = []
     scalars: list[str] = []
     for name, p in sig.parameters.items():
@@ -101,7 +100,7 @@ def declare(generator: Callable) -> Declaration:
         if ann is inspect.Parameter.empty:
             scalars.append(name)
             continue
-        if _is_compile_param(ann):
+        if _tagged_type(ann, "aie.compile_time") is not None:
             default = MISSING if p.default is p.empty else p.default
             # A function default is the value, so the record computes it as
             # itself; so is a list, dict or set, which param() would reject as
@@ -113,15 +112,15 @@ def declare(generator: Callable) -> Declaration:
                     else default
                 )
             )
-        elif _is_tensor_param(ann):
+        elif ann in _TENSOR_ANNOTATIONS:
             member = ann()
-        elif (dtype := _dispatch_param_type(ann)) is not None:
+        elif (dtype := _tagged_type(ann, "aie.dispatch_time")) is not None:
             member = PerCallMember(dtype, None, None)
         else:
             scalars.append(name)
             continue
         member.__set_name__(None, name)
-        if isinstance(member, Param):
+        if isinstance(member, OperatorParam):
             params[name] = member
         else:
             members.append(member)

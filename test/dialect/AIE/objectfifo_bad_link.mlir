@@ -255,3 +255,19 @@ aie.device(xcve2302) {
    aie.objectfifo @of_out2 (%tile11, {%tile23}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
    aie.objectfifo.link [ @of_in ] -> [ @of_out1, @of_out2 ] ([] [12, 0])
 }
+
+// -----
+
+// CHECK: 'aie.objectfifo.link' op input @of_in1 has empty objects
+
+aie.device(npu2) {
+   %tile00 = aie.tile(0, 0)
+   %tile01 = aie.tile(0, 1)
+   %tile02 = aie.tile(0, 2)
+   %tile03 = aie.tile(0, 3)
+
+   aie.objectfifo @of_in1 (%tile02, {%tile01}, 2 : i32) : !aie.objectfifo<memref<0xi32>>
+   aie.objectfifo @of_in2 (%tile03, {%tile01}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+   aie.objectfifo @of_out (%tile01, {%tile00}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+   aie.objectfifo.link [ @of_in1, @of_in2 ] -> [ @of_out ] ([0, 16] [])
+}

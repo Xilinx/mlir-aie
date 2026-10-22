@@ -12,9 +12,10 @@ as.
 
 from __future__ import annotations
 
+import functools
 import inspect
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import MISSING
 from enum import Enum
 from types import FunctionType
@@ -23,12 +24,12 @@ from typing import Any, ClassVar, get_args, get_origin
 import numpy as np
 
 from .markers import _Operand
-from .params import Member, Param, PerCallMember, Select, _text
+from .params import Member, OperatorParam, PerCallMember, Select, _text
 
 
 def _foreign(d, owner: type) -> bool:
     """Return whether ``d`` is neither an integer nor a parameter of ``owner``."""
-    if isinstance(d, Param):
+    if isinstance(d, OperatorParam):
         return d.owner is None or not issubclass(owner, d.owner)
     return isinstance(d, bool) or not isinstance(d, (int, np.integer))
 
@@ -37,7 +38,7 @@ def _names(dims) -> set[str]:
     """Return the parameters ``dims`` name, through ``Select``."""
     out: set[str] = set()
     for d in dims:
-        if isinstance(d, Param):
+        if isinstance(d, OperatorParam):
             out.add(d.name)
         elif isinstance(d, Select):
             out |= _names((d.flag, *d.when_true, *d.when_false))
@@ -76,7 +77,7 @@ class Declaration:
     def __init__(
         self,
         name: str,
-        params: dict[str, Param],
+        params: dict[str, OperatorParam],
         members: tuple[Member, ...],
         nullable: frozenset[str] = frozenset(),
         scalars: tuple[str, ...] = (),
@@ -93,7 +94,7 @@ class Declaration:
         for m in self.operands:
             if m.streamed:
                 named |= _names(m.obj_dims) | _names(m.per or ())
-                if isinstance(m.declared_dtype, Param):
+                if isinstance(m.declared_dtype, OperatorParam):
                     named.add(m.declared_dtype.name)
                 if m.when is not None:
                     named.add(m.when.name)
@@ -108,7 +109,7 @@ class Declaration:
         return tuple(m for m in self.members if isinstance(m, PerCallMember))
 
     @staticmethod
-    def of_class(owner: type, library: type) -> Declaration:
+    def _of_class(owner: type, library: type) -> Declaration:
         """Return what class ``owner``'s body, just run, declares.
 
         Args:
@@ -129,31 +130,31 @@ class Declaration:
                     f"{owner.__name__}.{name}: members are declared without an "
                     f"annotation; annotating one makes it a constructor argument"
                 )
-            if (isinstance(value, (Param, Member))) and any(
+            if (isinstance(value, (OperatorParam, Member))) and any(
                 name in vars(b) or name in inspect.get_annotations(b)
                 for b in library.__mro__
             ):
                 raise TypeError(
                     f"{owner.__name__}.{name} hides {library.__name__}.{name}, which the library reads; name it otherwise"
                 )
-            if isinstance(value, Param) and name not in hints:
+            if isinstance(value, OperatorParam) and name not in hints:
                 raise TypeError(
                     f"{owner.__name__}.{name}: annotate the parameter with its type, `{name}: int = {value!r}`"
                 )
         for name, hint in hints.items():
             if (
-                not isinstance(vars(owner).get(name), Param)
+                not isinstance(vars(owner).get(name), OperatorParam)
                 and hint is not ClassVar
                 and get_origin(hint) is not ClassVar
             ):
                 raise TypeError(
                     f"{owner.__name__}.{name}: an annotated attribute is a param(), a tunable() or a ClassVar"
                 )
-        params: dict[str, Param] = {}
+        params: dict[str, OperatorParam] = {}
         nullable: set[str] = set()
         for klass in reversed(owner.__mro__):
             for name, value in vars(klass).items():
-                if isinstance(value, Param):
+                if isinstance(value, OperatorParam):
                     params[name] = value
             base = vars(klass).get("declaration")
             if klass is not owner and isinstance(base, Declaration):
@@ -163,14 +164,23 @@ class Declaration:
             if (
                 inherited is not None
                 and inherited.owner is not owner
-                and not isinstance(value, (Param, property, classmethod, staticmethod))
-                and not callable(value)
+                and not isinstance(
+                    value,
+                    (
+                        OperatorParam,
+                        property,
+                        classmethod,
+                        staticmethod,
+                        FunctionType,
+                        type,
+                    ),
+                )
             ):
                 raise TypeError(
                     f"{owner.__name__}.{name} = {value!r} does not override the inherited "
                     f"parameter: redeclare it, `{name}: int = tunable(default={value!r}, init=False)`"
                 )
-        own = {n for n in hints if isinstance(vars(owner).get(n), Param)}
+        own = {n for n in hints if isinstance(vars(owner).get(n), OperatorParam)}
         nullable = (nullable - own) | {
             n for n in own if type(None) in get_args(hints[n])
         }
@@ -199,7 +209,7 @@ class Declaration:
         where = f"{owner.__name__}.{m.name}"
         if isinstance(m, PerCallMember):
             if m.bounds is not None and (
-                not isinstance(m.bounds, Param)
+                not isinstance(m.bounds, OperatorParam)
                 or _foreign(m.bounds, owner)
                 or m.bounds.tunable
             ):
@@ -222,19 +232,23 @@ class Declaration:
                 raise TypeError(
                     f"{where}: dimension {leaf!r} is not a param() of {owner.__name__} or an integer; declare an expression as a param()"
                 )
-            if isinstance(leaf, Param) and leaf.tunable:
+            if isinstance(leaf, OperatorParam) and leaf.tunable:
                 raise TypeError(
                     f"{where}: dimension {leaf.name} is a tunable(); a host shape may not depend on tuning"
                 )
         optional = [
-            d.name for d in m.dims if isinstance(d, Param) and d.name in nullable
+            d.name
+            for d in m.dims
+            if isinstance(d, OperatorParam) and d.name in nullable
         ]
         if len(optional) > 1:
             raise TypeError(
                 f"{where}: at most one T | None dimension {optional}, since the rank tells whether it is present"
             )
         if m.when is not None and (
-            not isinstance(m.when, Param) or _foreign(m.when, owner) or m.when.tunable
+            not isinstance(m.when, OperatorParam)
+            or _foreign(m.when, owner)
+            or m.when.tunable
         ):
             raise TypeError(
                 f"{where}: when={m.when!r} must be a param(), the flag the operand exists under"
@@ -245,7 +259,7 @@ class Declaration:
                     f"{where}: obj_shape dimension {d!r} is not a param(), a tunable() or an integer"
                 )
         for ref in m.per or ():
-            if not isinstance(ref, Param) or _foreign(ref, owner):
+            if not isinstance(ref, OperatorParam) or _foreign(ref, owner):
                 raise TypeError(f"{where}: per={ref!r} must be a param() or tunable()")
 
     def __repr__(self) -> str:
@@ -269,7 +283,12 @@ class Declaration:
         ]
         return "\n".join(lines)
 
-    def infer(self, inputs: Mapping[str, Any], outputs=(), **kwargs) -> dict[str, Any]:
+    def infer(
+        self,
+        inputs: Mapping[str, Any],
+        outputs: Sequence[Any] = (),
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         """Return the parameters the operands' shapes give.
 
         Each declared dimension is a ``param()`` or a literal, so this is a
@@ -343,7 +362,7 @@ class Declaration:
             )
         bound: dict[str, Any] = dict(given)
         # Each dimension an operand's shape gives: (param, value, where).
-        found: list[tuple[Param, int | None, str]] = []
+        found: list[tuple[OperatorParam, int | None, str]] = []
         for m, shape in [(m, inputs[m.name]) for m in ins] + list(zip(outs, outputs)):
             shape = tuple(int(s) for s in shape)
             dims = list(m.dims)
@@ -351,7 +370,7 @@ class Declaration:
                 (
                     i
                     for i, d in enumerate(dims)
-                    if isinstance(d, Param) and d.name in self.nullable
+                    if isinstance(d, OperatorParam) and d.name in self.nullable
                 ),
                 None,
             )
@@ -388,7 +407,7 @@ class Declaration:
                     f"{self.name}: operand {m.name} has rank {len(shape)} {shape}, declared rank {len(dims)} {m!r}"
                 )
             for i, (d, n) in enumerate(zip(dims, shape)):
-                if isinstance(d, Param):
+                if isinstance(d, OperatorParam):
                     found.append((d, n, f"{m.name}.shape[{i}]"))
                 elif int(d) != n:
                     raise ValueError(
@@ -413,7 +432,7 @@ class Declaration:
         return bound
 
 
-def _tunable(p: Param) -> str:
+def _tunable(p: OperatorParam) -> str:
     """Return a tunable and its domain in a few words."""
     domain = p.domain
     if domain is None:
@@ -423,7 +442,8 @@ def _tunable(p: Param) -> str:
     elif isinstance(domain, tuple):
         text = "{" + ", ".join(map(repr, domain)) + "}"
     else:
-        text = "f(op, dev)" if domain.__name__ == "<lambda>" else domain.__name__
+        func = domain.func if isinstance(domain, functools.partial) else domain
+        text = "f(op, dev)" if func.__name__ == "<lambda>" else func.__name__
     return f"{p.name} in {text}"
 
 

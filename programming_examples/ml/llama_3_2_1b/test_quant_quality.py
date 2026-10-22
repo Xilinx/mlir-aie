@@ -2,17 +2,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Phase 6c.5a Track 2: PTQ quality validation.
+"""PTQ quality validation.
 
 Loads BF16 Llama 3.2 1B from safetensors, also loads our quantized INT8
 .bin files (from gen_llama_data.py). Runs BOTH paths on the same input
 and reports cosine similarity per layer + max-abs delta normalized.
 
-This is the QUALITY check on the quantization scheme — not a
-correctness check on any NPU code. Failing here means the quant scheme
-needs tuning before we touch kernels.
-
-Pass criteria (per cautious-eureka quality findings):
+It checks the quantization scheme, not any NPU code. Pass criteria:
   - per-layer cos-sim >= 0.99   (per-token activation should clear this)
   - end-to-end token-overlap >= 4/5 in top-5 at last position
 """
@@ -27,17 +23,8 @@ from pathlib import Path
 import numpy as np
 
 # Reuse the safetensors reader from the extractor.
-from gen_llama_data import (
-    EMB_DIM,
-    HEAD_DIM,
-    KV_DIM,
-    N_HEADS,
-    N_KV_GROUPS,
-    N_LAYERS,
-    Q_DIM,
-    WEIGHTS_DIR,
-    SafetensorsReader,
-)
+from gen_llama_data import WEIGHTS_DIR, SafetensorsReader
+from llama_config import HEAD_D, KV_DIM, N_HEADS_KV, N_HEADS_Q, N_LAYERS, Q_DIM, D
 
 # Reuse the INT8 numpy ref.
 from numpy_llama_ref import (
@@ -53,10 +40,6 @@ from numpy_llama_ref import (
 )
 
 
-# ---------------------------------------------------------------------------
-# BF16 (fp32-compute) reference — same math as numpy_llama_ref but with
-# direct fp32 weights from safetensors (no quantization).
-# ---------------------------------------------------------------------------
 def _load_w_f32(reader: SafetensorsReader, name: str) -> np.ndarray:
     return reader.load_f32(name)
 
@@ -90,9 +73,9 @@ def forward_layer_fp32(
     k = (h @ wk.T).astype(np.float32)
     v = (h @ wv.T).astype(np.float32)
     pos = np.arange(position, position + M)
-    cos, sin = rope_cos_sin(pos, HEAD_DIM)
-    q = apply_rope(q.reshape(M, N_HEADS, HEAD_DIM), cos, sin).reshape(M, Q_DIM)
-    k = apply_rope(k.reshape(M, N_KV_GROUPS, HEAD_DIM), cos, sin).reshape(M, KV_DIM)
+    cos, sin = rope_cos_sin(pos, HEAD_D)
+    q = apply_rope(q.reshape(M, N_HEADS_Q, HEAD_D), cos, sin).reshape(M, Q_DIM)
+    k = apply_rope(k.reshape(M, N_HEADS_KV, HEAD_D), cos, sin).reshape(M, KV_DIM)
 
     if k_cache.size == 0:
         k_full = k
@@ -116,7 +99,6 @@ def forward_layer_fp32(
     return x_f32, k_full, v_full
 
 
-# ---------------------------------------------------------------------------
 def cos_sim(a: np.ndarray, b: np.ndarray) -> float:
     a, b = a.ravel().astype(np.float64), b.ravel().astype(np.float64)
     return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
@@ -162,7 +144,7 @@ def main():
     rng = np.random.default_rng(opts.seed)
     # Realistic Gaussian residual stream as input (RMSNorm makes the
     # layer scale-invariant on input, so unit-Gaussian is fair).
-    x0 = rng.standard_normal((opts.M, EMB_DIM)).astype(np.float32)
+    x0 = rng.standard_normal((opts.M, D)).astype(np.float32)
 
     # Per-layer A/B: feed IDENTICAL x_in into both paths and cos-sim outputs.
     print(f"\n--- Per-layer quality (M={opts.M}) ---")

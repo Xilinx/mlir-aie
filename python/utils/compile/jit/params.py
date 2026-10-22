@@ -15,7 +15,9 @@ captures ``M`` itself and ``GEMM.M`` names the parameter. On an instance,
 from __future__ import annotations
 
 import copy
+import functools
 import sys
+import types
 from dataclasses import MISSING, dataclass
 from enum import Enum
 from typing import Any, Callable, overload
@@ -28,7 +30,7 @@ else:
 import numpy as np
 
 
-class Param:
+class OperatorParam:
     """What ``param()`` and ``tunable()`` return: a parameter of its class.
 
     Attributes:
@@ -98,8 +100,12 @@ def param(
         repr: It is in the operator's repr and device symbols.
         init: It is a constructor argument.
 
+    Returns:
+        The ``OperatorParam`` the class body binds to the parameter's name.
+
     Raises:
-        TypeError: Both `default` and `derive` are given.
+        TypeError: Both `default` and `derive` are given, or `default` is a
+            list, dict or set, which every instance would share.
     """
     if default is not MISSING and derive is not None:
         raise TypeError("param(default=, derive=): give one, not both")
@@ -107,7 +113,7 @@ def param(
         raise TypeError(
             f"param(default={default!r}) would be shared by every instance; give default=lambda op: {default!r}"
         )
-    return Param(
+    return OperatorParam(
         default=default,
         derive=derive,
         array=array,
@@ -141,6 +147,9 @@ def tunable(
         repr: It is in the operator's repr and device symbols.
         init: It is a constructor argument.
 
+    Returns:
+        The ``OperatorParam`` the class body binds to the parameter's name.
+
     Raises:
         TypeError: `domain` is none of those.
     """
@@ -148,13 +157,13 @@ def tunable(
         domain is None
         or isinstance(domain, tuple)
         or (isinstance(domain, type) and issubclass(domain, Enum))
-        or (callable(domain) and not isinstance(domain, type))
+        or isinstance(domain, (types.FunctionType, functools.partial))
     ):
         raise TypeError(
             f"tunable(domain={domain!r}): give a tuple, an Enum or a function "
             f"(op, dev, start) -> tuple"
         )
-    return Param(
+    return OperatorParam(
         default=default,
         derive=None,
         array=True,
@@ -173,7 +182,7 @@ class Member:
 
     name: str = ""
     owner: type | None = None
-    when: Param | None = None
+    when: OperatorParam | None = None
 
     def __set_name__(self, owner: type | None, name: str) -> None:
         self.name = name
@@ -194,17 +203,15 @@ class Member:
     def __get__(self, op, owner=None):
         if op is None:
             return self
-        try:
-            return op._bound[self.name]
-        except (AttributeError, KeyError):
-            if self.when is not None and not getattr(op, self.when.name):
-                raise AttributeError(
-                    f"{type(op).__name__}.{self.name} is declared when="
-                    f"{self.when.name}, which is False on this instance"
-                ) from None
+        bound = vars(op).get("_bound", {})
+        if self.name in bound:
+            return bound[self.name]
+        if self.when is not None and not getattr(op, self.when.name):
             raise AttributeError(
-                f"{type(op).__name__}.{self.name} is not bound yet"
-            ) from None
+                f"{type(op).__name__}.{self.name} is declared when="
+                f"{self.when.name}, which is False on this instance"
+            )
+        raise AttributeError(f"{type(op).__name__}.{self.name} is not bound yet")
 
 
 class PerCallMember(Member):
@@ -228,7 +235,7 @@ def per_call(
     dtype: Any = np.int32,
     *,
     derive: Callable[[Any], Any] | None = None,
-    bounds: Param | None = None,
+    bounds: OperatorParam | None = None,
 ) -> Any:
     """Declare a value the cores read that may change every call without a rebuild.
 
@@ -241,6 +248,9 @@ def per_call(
         derive: A function of the operator computing it once per build.
         bounds: A ``param()`` this value bounds per call: ``valid =
             per_call(bounds=M)``.
+
+    Returns:
+        The ``PerCallMember`` the class body binds to the value's name.
 
     Raises:
         TypeError: `dtype` is not an integer type, or both `derive` and
@@ -263,7 +273,7 @@ class Select:
     ``Select(b_col_maj, (N, K), (K, N))``.
     """
 
-    flag: Param
+    flag: OperatorParam
     when_true: tuple
     when_false: tuple
 
@@ -282,6 +292,13 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
 
     A parameter annotated ``T | None`` that is None on ``op`` is left out.
 
+    Args:
+        dims: Integers, parameters and ``Select``s.
+        op: The operator whose parameters they read.
+
+    Returns:
+        The integer dimensions.
+
     Raises:
         ValueError: Any other dimension is None: an unresolved tunable, or a
             parameter nothing set.
@@ -290,7 +307,7 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
     for d in dims:
         if isinstance(d, Select):
             out.extend(resolve(d.branch(op), op))
-        elif not isinstance(d, Param):
+        elif not isinstance(d, OperatorParam):
             out.append(int(d))
         elif (value := getattr(op, d.name)) is not None:
             out.append(int(value))
@@ -312,7 +329,7 @@ def _text(d) -> str:
             map(_text, d.when_false)
         )
         return f"Select({d.flag.name}, ({true}), ({false}))"
-    return d.name if isinstance(d, Param) else repr(d)
+    return d.name if isinstance(d, OperatorParam) else repr(d)
 
 
 def widths(op, dev, start: int) -> tuple[int, ...]:
@@ -320,6 +337,14 @@ def widths(op, dev, start: int) -> tuple[int, ...]:
 
     They are ``start`` and every power of two up to ``dev``'s columns, widest
     first: ``tunable(domain=widths)``.
+
+    Args:
+        op: The operator, unused: a domain function's first argument.
+        dev: The device whose columns bound the widths.
+        start: The tunable's default, always included.
+
+    Returns:
+        The widths, widest first.
     """
     powers = {1 << i for i in range(dev.cols.bit_length())}
     return tuple(sorted({start, *powers}, reverse=True))
@@ -334,9 +359,18 @@ def divisors(
 ) -> tuple[int, ...]:
     """Return ``start`` times each power of two that fits, largest first.
 
-    Each divides `of`, is a multiple of `step`, is at most `cap` and is at
-    most `span` octaves from ``start``. A domain function returns it:
+    A domain function returns it:
     ``tunable(domain=lambda op, dev, t: divisors(t, of=op.K, step=64))``.
+
+    Args:
+        start: The tunable's default.
+        of: What each value divides.
+        step: What each value is a multiple of.
+        cap: The largest value, if any.
+        span: The most octaves a value may be from ``start``, if bounded.
+
+    Returns:
+        The values, largest first.
     """
     found = [start]
     value, octave = start * 2, 1

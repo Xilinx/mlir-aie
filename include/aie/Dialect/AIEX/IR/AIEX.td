@@ -544,13 +544,9 @@ def AIE_RunOp : AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
 
   let extraClassDeclaration = [{
     AIE::DeviceOp getCalleeDeviceOp();
-    AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp();
-    // Same, against a cache of each referenced device's NamedOpTable the
-    // caller builds once: a device named by many aiex.run ops (e.g. a callee
-    // reused across model layers) would otherwise have its symbol table
-    // rescanned per call.
+    // `tables`, if given, indexes each referenced device once across calls.
     AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp(
-        ::llvm::DenseMap<::mlir::Operation *, ::xilinx::AIE::NamedOpTable> &cache);
+        ::xilinx::AIE::NamedOpTableCollection *tables = nullptr);
   }];
 
   let summary = "Execute a runtime sequence";
@@ -862,11 +858,11 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
     and the two S2MM queues, and on a mem tile after every queue but MM2S
     5's, that is the next channel's control register, which nothing else
     writes. After a shim's MM2S 1 queue or a mem tile's MM2S 5 queue it is
-    `DMA_S2MM_Status_0`, whose sticky error bits (on a shim 16 to 18: AXI
-    decode error, AXI slave error, task queue overflow; on a mem tile the
-    task queue overflow, 18, among them) are write-1-to-clear: such a push
-    clears any S2MM 0 error of its tile that is pending. The data moved is
-    unaffected.
+    `DMA_S2MM_Status_0`, whose sticky error bits are write-1-to-clear: on a
+    shim, bits 16 to 18 (AXI decode error, AXI slave error, task queue
+    overflow); on a mem tile, the task queue overflow at bit 18 among others.
+    Such a push clears any pending S2MM 0 error of its tile; the data moved
+    is unaffected.
   }];
 }
 
@@ -1986,7 +1982,9 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
     `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op, or as a DMA length via the `length_parameter` attribute and nothing else).
-    Indices are unique across the entire module.
+    Each runtime sequence no `aiex.run` calls is a command with a scratchpad of its own, so
+    only the parameters one command reads have distinct indices; a parameter no command reads
+    gets none, and one that already has an index keeps it.
     For a parameter used as a DMA offset or length, the pass also sets `min_value` and `max_value`:
     the range of values that keeps every such transfer within its buffer, judging each transfer
     with any other parameter it uses at 0. The host library rejects a value outside the range.
@@ -2055,28 +2053,20 @@ def AIEX_WaitScratchpadParametersOp
   let description = [{
     Blocks the core until the runtime sequence of the current dispatch has
     written its scratchpad parameters, so the `aiex.read_scratchpad_parameter`
-    ops after it read this dispatch's values rather than a previous one's.
+    ops after it read this dispatch's values rather than a previous one's. A
+    core without it acquires once, at the top of its body, which a persistent
+    worker passes only on its first dispatch; such a worker waits at the top
+    of each iteration that begins a dispatch.
 
-    Without it, `--aie-lower-scratchpad-parameters` acquires the core's
-    parameter-sync lock once, at the top of the core body. A core whose body
-    is a loop that runs once per dispatch (a persistent worker) passes that
-    point only on its first dispatch, so on later dispatches it can read the
-    parameters before the host has rewritten them. Place this op at the top of
-    each iteration that begins a dispatch instead.
+    `--aie-lower-scratchpad-parameters` gives the core a lock initialized to 0
+    and turns each wait into an acquire of it. Each dispatch's sync writes the
+    parameters, then sets (not increments) the lock to 1.
 
-    Protocol, per core: the pass gives the core one parameter-sync lock,
-    initialized to 0, and replaces each `aiex.wait_scratchpad_parameters` with
-    an acquire of that lock (`aie.use_lock(AcquireGreaterEqual, 1)`: wait
-    until it is at least 1, then decrement). Each runtime sequence's
-    `aiex.sync_scratchpad_parameters_from_host` writes every core-kind
-    parameter and then sets the lock to 1. A dispatch therefore releases
-    exactly one wait, after its values are in place; a core that is still busy
-    with the previous dispatch passes its next wait as soon as it reaches it,
-    since the lock is set, not incremented, and a dispatch whose core never
-    waits leaves the lock at 1 for the next. A core containing this op gets no
-    top-of-body acquire, and each of its reads must come after a wait.
-    Read each parameter right after the wait it belongs to: a later dispatch's
-    sync may rewrite the values while the core is still working.
+    Each read of a core that waits must come after a wait, and the core must
+    keep its sync preamble. A read in a loop needs a wait inside the outermost
+    loop around it, since a wait before that loop passes only once. Read
+    right after the wait: a later dispatch may rewrite the values while the
+    core is still working.
 
     Example:
     ```mlir

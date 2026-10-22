@@ -19,11 +19,15 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dominance.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <array>
 #include <numeric>
 
 using namespace mlir;
@@ -221,11 +225,12 @@ static std::optional<int64_t> getMaxLengthSteps(AIE::DMABDOp op) {
 
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
 /// should be emitted into this sequence. Reads the explicit attribute if
-/// present; otherwise defaults to true iff the parent device uses any
-/// scratchpad parameter, from a core, a DMA BD or a task start, and the
-/// runtime sequence does
-/// not already contain a `aiex.sync_scratchpad_parameters_from_host` marker.
-static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
+/// present; otherwise defaults to true iff the runtime sequence does not
+/// already contain a `aiex.sync_scratchpad_parameters_from_host` marker and
+/// either a core of the device waits on a sync lock (`coresWait`) or the device
+/// uses a scratchpad parameter from a core, a DMA BD or a task start.
+static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp,
+                                            bool coresWait) {
   if (auto attr = seqOp.getEmitParameterSyncPreambleAttr()) {
     return attr.getValue();
   }
@@ -233,6 +238,9 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
   seqOp.walk([&](SyncScratchpadParametersFromHostOp) { hasManualSync = true; });
   if (hasManualSync) {
     return false;
+  }
+  if (coresWait) {
+    return true;
   }
   auto device = seqOp->getParentOfType<DeviceOp>();
   if (!device) {
@@ -243,7 +251,7 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
     if (found) {
       return;
     }
-    if (llvm::isa<ReadScratchpadParameterOp, WaitScratchpadParametersOp>(op) ||
+    if (llvm::isa<ReadScratchpadParameterOp>(op) ||
         op->hasAttr("offset_parameter") ||
         op->hasAttr("offset_state_table_idx") ||
         op->hasAttr("length_parameter") ||
@@ -256,6 +264,164 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
   return found;
 }
 
+// The command processor's state table: one entry per parameter a command reads.
+constexpr unsigned kMaxStateTableEntries = 32;
+
+/// The parameters each runtime sequence no `aiex.run` calls reads, in walk
+/// order: those its transfers and task starts use, directly or through the
+/// sequences it runs, and the core parameters of every device it reaches.
+/// Each such sequence is a command, which a host runs with a scratchpad of
+/// its own. The `scratchpad_parameters` of a command a previous run lowered
+/// come first, since that run dropped the uses they were found from.
+static llvm::MapVector<RuntimeSequenceOp, llvm::SetVector<StringRef>>
+commandParameters(ModuleOp moduleOp) {
+  DenseMap<Operation *, llvm::SetVector<StringRef>> coreReads;
+  moduleOp.walk([&](ReadScratchpadParameterOp op) {
+    coreReads[op->getParentOfType<DeviceOp>()].insert(op.getParameter());
+  });
+  DenseMap<Operation *, llvm::SetVector<StringRef>> uses;
+  DenseMap<Operation *, SmallVector<RuntimeSequenceOp>> callees;
+  DenseSet<Operation *> called;
+  NamedOpTableCollection names;
+  moduleOp.walk([&](RuntimeSequenceOp seq) {
+    seq.walk([&](Operation *op) {
+      for (StringRef attr :
+           {"offset_parameter", "length_parameter", "repeat_parameter"})
+        if (auto ref = op->getAttrOfType<FlatSymbolRefAttr>(attr))
+          uses[seq].insert(ref.getValue());
+      if (auto run = dyn_cast<RunOp>(op))
+        if (RuntimeSequenceOp callee = run.getCalleeRuntimeSequenceOp(&names)) {
+          callees[seq].push_back(callee);
+          called.insert(callee);
+        }
+    });
+  });
+  llvm::MapVector<RuntimeSequenceOp, llvm::SetVector<StringRef>> commands;
+  moduleOp.walk([&](RuntimeSequenceOp seq) {
+    if (called.contains(seq))
+      return;
+    llvm::SetVector<StringRef> &reads = commands[seq];
+    if (ArrayAttr lowered = seq.getScratchpadParametersAttr())
+      for (auto ref : lowered.getAsRange<FlatSymbolRefAttr>())
+        reads.insert(ref.getValue());
+    // In call order: a sequence, then those it runs.
+    llvm::SetVector<RuntimeSequenceOp> reached;
+    reached.insert(seq);
+    for (unsigned i = 0; i < reached.size(); i++) {
+      RuntimeSequenceOp at = reached[i];
+      reads.insert_range(uses.lookup(at));
+      reads.insert_range(coreReads.lookup(at->getParentOfType<DeviceOp>()));
+      reached.insert_range(callees.lookup(at));
+    }
+  });
+  return commands;
+}
+
+/// Gives parameters state-table slots such that two a command reads together
+/// differ: a colouring of the graph whose cliques are the commands. The search
+/// is exact, so whether a module fits does not depend on the order its
+/// parameters are declared in. It goes in DSatur order (next the parameter
+/// whose conflicts hold the most distinct slots, then the most conflicts,
+/// then the first declared), lowest slot first, so its first descent is the
+/// DSatur greedy colouring, and it backtracks only when that does not fit.
+class SlotColoring {
+public:
+  enum class Result { Found, Infeasible, GaveUp };
+
+  explicit SlotColoring(unsigned numParams)
+      : conflicts(numParams), slots(numParams), wanted(numParams, false),
+        neighbourSlots(numParams), saturation(numParams, 0) {}
+
+  void addConflict(unsigned a, unsigned b) {
+    if (a == b || llvm::is_contained(conflicts[a], b))
+      return;
+    conflicts[a].push_back(b);
+    conflicts[b].push_back(a);
+  }
+
+  void want(unsigned param) { wanted[param] = true; }
+
+  void pin(unsigned param, unsigned slot) {
+    wanted[param] = false;
+    assign(param, slot);
+    maxSlot = std::max<int>(maxSlot, slot);
+  }
+
+  Result solve(unsigned stepLimit) {
+    steps = stepLimit;
+    return search();
+  }
+
+  std::optional<unsigned> slot(unsigned param) const { return slots[param]; }
+
+  /// The parameter the first descent found no slot for, after a failed solve.
+  unsigned stuck() const { return firstStuck; }
+
+private:
+  SmallVector<SmallVector<unsigned>> conflicts;
+  SmallVector<std::optional<unsigned>> slots;
+  SmallVector<bool> wanted;
+  // How many conflicts hold each slot, and how many slots that is.
+  SmallVector<std::array<unsigned, kMaxStateTableEntries>> neighbourSlots;
+  SmallVector<unsigned> saturation;
+  int maxSlot = -1;
+  unsigned steps = 0;
+  bool deadEnd = false;
+  unsigned firstStuck = 0;
+
+  void assign(unsigned param, unsigned slot) {
+    slots[param] = slot;
+    for (unsigned other : conflicts[param])
+      if (neighbourSlots[other][slot]++ == 0)
+        saturation[other]++;
+  }
+
+  void unassign(unsigned param, unsigned slot) {
+    slots[param].reset();
+    for (unsigned other : conflicts[param])
+      if (--neighbourSlots[other][slot] == 0)
+        saturation[other]--;
+  }
+
+  Result search() {
+    std::optional<unsigned> next;
+    for (unsigned p = 0; p < slots.size(); p++) {
+      if (!wanted[p] || slots[p])
+        continue;
+      if (!next || saturation[p] > saturation[*next] ||
+          (saturation[p] == saturation[*next] &&
+           conflicts[p].size() > conflicts[*next].size()))
+        next = p;
+    }
+    if (!next)
+      return Result::Found;
+    // Every slot above the highest held is alike, so only the first is tried.
+    unsigned limit = std::min<unsigned>(maxSlot + 2, kMaxStateTableEntries);
+    for (unsigned s = 0; s < limit; s++) {
+      if (neighbourSlots[*next][s] != 0)
+        continue;
+      if (deadEnd && steps-- == 0)
+        return Result::GaveUp;
+      int previousMax = maxSlot;
+      maxSlot = std::max<int>(maxSlot, s);
+      assign(*next, s);
+      Result result = search();
+      if (result != Result::Infeasible)
+        return result;
+      unassign(*next, s);
+      maxSlot = previousMax;
+    }
+    if (!deadEnd) {
+      deadEnd = true;
+      firstStuck = *next;
+    }
+    return Result::Infeasible;
+  }
+};
+
+// Slots the search tries after its first dead end before giving up.
+constexpr unsigned kMaxSlotSearchSteps = 1 << 17;
+
 struct AIELowerScratchpadParametersPass
     : public xilinx::AIEX::impl::AIELowerScratchpadParametersBase<
           AIELowerScratchpadParametersPass> {
@@ -267,6 +433,7 @@ struct AIELowerScratchpadParametersPass
   void allocateBuffers(DeviceOp device, OpBuilder &builder) {
     MLIRContext *ctx = device.getContext();
     unsigned uniquingCounter = 0;
+    AIE::NamedOpTable names(device);
 
     DenseMap<std::pair<StringRef, Operation *>, BufferOp> seen;
 
@@ -296,8 +463,7 @@ struct AIELowerScratchpadParametersPass
           ("__param_" + paramName + "_" + std::to_string(tile.getCol()) + "_" +
            std::to_string(tile.getRow()) + "_")
               .str();
-      std::string bufName =
-          AIE::generateUniqueSymbolName(device, prefix, uniquingCounter);
+      std::string bufName = names.uniqueName(prefix, uniquingCounter);
       auto buf =
           BufferOp::create(builder, readOp.getLoc(), bufType, tile,
                            builder.getStringAttr(bufName), /*address=*/nullptr,
@@ -349,12 +515,18 @@ struct AIELowerScratchpadParametersPass
   // acquire it: in place of each aiex.wait_scratchpad_parameters if the core
   // has any, else once at the top of the core body. Appends the lock values
   // created (one per qualifying core, in walk order) to `syncLocks`. Fails if
-  // a core with waits reads a parameter no wait comes before.
+  // a core with waits reads a parameter no wait dominates, or no wait inside
+  // the outermost loop around the read, or if a core without the preamble
+  // waits.
   LogicalResult emitCorePreambles(DeviceOp device, OpBuilder &builder,
                                   SmallVector<Value> &syncLocks) {
     WalkResult result = device.walk([&](CoreOp coreOp) {
       if (!shouldEmitParameterSyncPreamble(coreOp)) {
-        return WalkResult::advance();
+        return coreOp.walk([](WaitScratchpadParametersOp wait) {
+          wait.emitOpError("waits in a core with emit_parameter_sync_preamble "
+                           "= false, which gets no lock to wait on");
+          return WalkResult::interrupt();
+        });
       }
 
       SmallVector<WaitScratchpadParametersOp> waits;
@@ -362,14 +534,32 @@ struct AIELowerScratchpadParametersPass
       if (!waits.empty()) {
         DominanceInfo dominance(coreOp);
         WalkResult unordered = coreOp.walk([&](ReadScratchpadParameterOp read) {
-          if (llvm::any_of(waits, [&](WaitScratchpadParametersOp wait) {
-                return dominance.properlyDominates(wait, read);
-              }))
-            return WalkResult::advance();
-          read.emitOpError("reads @")
-              << read.getParameter()
-              << " where no aiex.wait_scratchpad_parameters of its core "
-                 "comes first, so it may read a previous dispatch's value";
+          // A loop serving several dispatches is the outermost one around the
+          // read; a wait outside it passes once, on the first.
+          Operation *outerLoop = nullptr;
+          for (Operation *op = read->getParentOp(); op != coreOp;
+               op = op->getParentOp())
+            if (isa<LoopLikeOpInterface>(op))
+              outerLoop = op;
+          bool dominated = false;
+          for (WaitScratchpadParametersOp wait : waits) {
+            if (!dominance.properlyDominates(wait, read))
+              continue;
+            dominated = true;
+            if (!outerLoop || outerLoop->isProperAncestor(wait))
+              return WalkResult::advance();
+          }
+          if (dominated)
+            read.emitOpError("reads @")
+                << read.getParameter()
+                << " in a loop with no aiex.wait_scratchpad_parameters "
+                   "inside it before the read, so after the loop's first "
+                   "iteration it may read a previous dispatch's value";
+          else
+            read.emitOpError("reads @")
+                << read.getParameter()
+                << " where no aiex.wait_scratchpad_parameters of its core "
+                   "dominates it, so it may read a previous dispatch's value";
           return WalkResult::interrupt();
         });
         if (unordered.wasInterrupted())
@@ -407,9 +597,10 @@ struct AIELowerScratchpadParametersPass
   // ()==true, insert a marker SyncScratchpadParametersFromHostOp after the
   // last top-level load_pdi of the sequence body, or at its start if there is
   // none.
-  LogicalResult emitSequencePreambles(DeviceOp device, OpBuilder &builder) {
+  LogicalResult emitSequencePreambles(DeviceOp device, OpBuilder &builder,
+                                      bool coresWait) {
     WalkResult result = device.walk([&](RuntimeSequenceOp seqOp) {
-      if (!shouldEmitParameterSyncPreamble(seqOp)) {
+      if (!shouldEmitParameterSyncPreamble(seqOp, coresWait)) {
         return WalkResult::advance();
       }
 
@@ -545,19 +736,24 @@ struct AIELowerScratchpadParametersPass
         solver.reset();
     }
 
-    // Step 1: collect every parameter in the module.
+    // Step 1: collect every parameter in the module, and the ones each
+    // command reads.
     SmallVector<ScratchpadParameterOp> allParams;
     moduleOp.walk([&](ScratchpadParameterOp p) { allParams.push_back(p); });
-
-    if (allParams.size() > 32) {
+    llvm::MapVector<RuntimeSequenceOp, llvm::SetVector<StringRef>> commands =
+        commandParameters(moduleOp);
+    for (auto &[seq, reads] : commands) {
+      if (reads.size() <= kMaxStateTableEntries)
+        continue;
       InFlightDiagnostic diag =
-          moduleOp.emitError("Module declares ")
-          << allParams.size()
-          << " parameters but the scratchpad supports at most 32. The "
-             "scratchpad is a single hardware resource shared by all PDIs "
-             "loaded by a runtime sequence.";
-      for (auto p : allParams)
-        diag.attachNote(p.getLoc()) << "parameter '" << p.getSymName() << "'";
+          seq.emitError("runtime sequence '")
+          << scratchpadCommandName(seq) << "' reads " << reads.size()
+          << " parameters but its scratchpad holds at most "
+          << kMaxStateTableEntries
+          << ": each parameter a command reads takes one of the command "
+             "processor's state-table entries";
+      for (StringRef name : reads)
+        diag.attachNote(seq.getLoc()) << "parameter '" << name << "'";
       return signalPassFailure();
     }
 
@@ -629,10 +825,81 @@ struct AIELowerScratchpadParametersPass
                              : ScratchpadParameterKind::Core));
     }
 
-    // Step 3: assign global state_table_idx in walk order, 0..N-1.
+    // Step 3: colour the slots, keeping those a previous run assigned.
+    DenseMap<StringRef, unsigned> paramIndex;
+    for (auto [i, p] : llvm::enumerate(allParams))
+      paramIndex[p.getSymName()] = i;
+    SlotColoring coloring(allParams.size());
+    DenseMap<unsigned, SmallVector<RuntimeSequenceOp>> readers;
+    for (auto &[seq, reads] : commands) {
+      SmallVector<unsigned> read;
+      for (StringRef name : reads)
+        if (auto it = paramIndex.find(name); it != paramIndex.end())
+          read.push_back(it->second);
+      DenseMap<unsigned, unsigned> pinnedBy;
+      for (auto [i, a] : llvm::enumerate(read)) {
+        readers[a].push_back(seq);
+        coloring.want(a);
+        for (unsigned b : llvm::drop_begin(read, i + 1))
+          coloring.addConflict(a, b);
+        std::optional<uint8_t> slot = allParams[a].getStateTableIdx();
+        if (!slot)
+          continue;
+        auto [it, inserted] = pinnedBy.try_emplace(*slot, a);
+        if (!inserted) {
+          allParams[a].emitError("parameter '")
+              << allParams[a].getSymName() << "' and another parameter "
+              << "command '" << scratchpadCommandName(seq)
+              << "' reads both have state-table entry " << *slot;
+          return signalPassFailure();
+        }
+      }
+    }
     for (auto [i, p] : llvm::enumerate(allParams)) {
+      std::optional<uint8_t> slot = p.getStateTableIdx();
+      if (!slot)
+        continue;
+      if (*slot >= kMaxStateTableEntries) {
+        p.emitError("parameter '")
+            << p.getSymName() << "' has state-table entry " << *slot
+            << ", past the " << kMaxStateTableEntries << " there are";
+        return signalPassFailure();
+      }
+      coloring.pin(i, *slot);
+    }
+    SlotColoring::Result colored = coloring.solve(kMaxSlotSearchSteps);
+    if (colored != SlotColoring::Result::Found) {
+      ScratchpadParameterOp p = allParams[coloring.stuck()];
+      InFlightDiagnostic diag = p.emitError("parameter '")
+                                << p.getSymName()
+                                << "' finds no free state-table entry among "
+                                << kMaxStateTableEntries << ": ";
+      if (colored == SlotColoring::Result::Infeasible)
+        diag << "no assignment gives the parameters each command reads "
+                "distinct entries";
+      else
+        diag << "a search of " << kMaxSlotSearchSteps
+             << " steps found no assignment that gives the parameters each "
+                "command reads distinct entries";
+      for (RuntimeSequenceOp seq : readers.lookup(coloring.stuck()))
+        diag.attachNote(seq.getLoc())
+            << "read by command '" << scratchpadCommandName(seq) << "'";
+      return signalPassFailure();
+    }
+    unsigned numSlots = 0;
+    for (auto [i, p] : llvm::enumerate(allParams)) {
+      std::optional<unsigned> slot = coloring.slot(i);
+      if (!slot)
+        continue;
+      numSlots = std::max(numSlots, *slot + 1);
       p.setStateTableIdxAttr(builder.getIntegerAttr(
-          builder.getIntegerType(8, /*isSigned=*/false), i));
+          builder.getIntegerType(8, /*isSigned=*/false), *slot));
+    }
+    for (auto &[seq, reads] : commands) {
+      SmallVector<Attribute> refs;
+      for (StringRef name : reads)
+        refs.push_back(FlatSymbolRefAttr::get(&getContext(), name));
+      seq.setScratchpadParametersAttr(builder.getArrayAttr(refs));
     }
 
     // Step 3b: rewrite DMA `offset_parameter` / `length_parameter` symbol
@@ -657,11 +924,18 @@ struct AIELowerScratchpadParametersPass
         err.attachNote(paramOp.getLoc()) << "Parameter declared here.";
         return failure();
       }
-      uint8_t stateIdx =
-          static_cast<uint8_t>(paramOp.getStateTableIdx().value());
-      op->setAttr(idxAttrName,
-                  builder.getIntegerAttr(
-                      builder.getIntegerType(8, /*isSigned=*/false), stateIdx));
+      std::optional<uint8_t> stateIdx = paramOp.getStateTableIdx();
+      if (!stateIdx) {
+        op->emitOpError() << attrName << " '" << ref.getValue()
+                          << "' has no state-table entry: no command, a "
+                             "runtime sequence no aiex.run calls, reaches "
+                             "this op";
+        return failure();
+      }
+      op->setAttr(
+          idxAttrName,
+          builder.getIntegerAttr(builder.getIntegerType(8, /*isSigned=*/false),
+                                 *stateIdx));
       op->removeAttr(attrName);
       return paramOp;
     };
@@ -824,9 +1098,10 @@ struct AIELowerScratchpadParametersPass
         }
         auto paramOp =
             moduleOp.lookupSymbol<ScratchpadParameterOp>(readOp.getParameter());
-        uint8_t stateIdx =
-            static_cast<uint8_t>(paramOp.getStateTableIdx().value());
-        paramEntries.push_back({stateIdx, bufRef});
+        // No command reaches a core whose parameter has no slot, so no sync
+        // writes it.
+        if (std::optional<uint8_t> stateIdx = paramOp.getStateTableIdx())
+          paramEntries.push_back({*stateIdx, bufRef});
       });
 
       // Emit lock + use_lock preambles in cores, then insert a marker
@@ -837,9 +1112,9 @@ struct AIELowerScratchpadParametersPass
       // parameter info.
       SmallVector<Value> syncLocks;
       if (failed(emitCorePreambles(d, builder, syncLocks)) ||
-          failed(emitSequencePreambles(d, builder)))
+          failed(emitSequencePreambles(d, builder, !syncLocks.empty())))
         return signalPassFailure();
-      uint32_t scratchpadSize = static_cast<uint32_t>(allParams.size() * 4);
+      uint32_t scratchpadSize = numSlots * 4;
       lowerSyncParametersOps(d, scratchpadSize, paramEntries, syncLocks);
 
       lowerReadParameters(d, builder);

@@ -62,6 +62,9 @@ f32 reduction and an optional activation and clamp fused into the drain.
 
 ## Activation functions
 
+`gelu_erf` is GELU as defined, `x * Phi(x)` ([Hendrycks and Gimpel](https://arxiv.org/abs/1606.08415)), its erfc in the form of Numerical Recipes' `erfcc` (Press et al., 2nd ed., §6.2) with a refit polynomial.
+`log10_clamp_f32` takes log-mel features as Hugging Face's [`WhisperFeatureExtractor`](https://github.com/huggingface/transformers/blob/main/src/transformers/models/whisper/feature_extraction_whisper.py) does.
+
 ::: iron.kernels.activation
     options:
       show_root_heading: false
@@ -97,10 +100,10 @@ Every factory the generic builder can build carries a `KernelContract` on the
 returned `ExternalFunction` (`fn.contract`). The field-by-field account is in
 [Kernel Library](../programming_guide/kernels_library.md#what-a-signature-cannot-say);
 the reference below is generated from the dataclass, so it cannot drift from
-it. Multi-dtype factories publish the combinations they support as
-`factory.dtypes`, and the factories above export their references as `*_ref`
-functions (`add_ref`, `reduce_max_ref`, `mm_ref`, ...), so host code never
-reimplements the math.
+it. Multi-dtype factories publish the combinations they support in
+`kernels.DTYPES["<factory>"]`, and each factory's submodule defines its references as
+`*_ref` functions (`eltwise.add_ref`, `eltwise.add_i8_ref`,
+`reduce.reduce_max_ref`, ...), so host code never reimplements the math.
 
 ::: iron.kernels._common
     options:
@@ -124,7 +127,6 @@ the add-a-kernel procedure and the test tiers built on it.
 
 Import the builder with `from aie.iron.algorithms import kernel_design as kd`
 and call `kd.design(...)`, or import `design` directly from `aie.iron.algorithms`.
-The former `aie.utils.kernel_harness` module has been removed.
 
 ::: iron.algorithms.kernel_design
     options:
@@ -251,6 +253,10 @@ core, from the row and one stream of weight tiles.
 `selective_scan` runs Mamba2's recurrence for one head over a block of rows,
 and `gated_delta_rule` Gated DeltaNet's for one value head, each with its
 float32 state carried from call to call.
+
+- Mamba2: [Dao and Gu](https://arxiv.org/abs/2405.21060); the reference is `selective_state_update` in [state-spaces/mamba](https://github.com/state-spaces/mamba/blob/main/mamba_ssm/ops/triton/selective_state_update.py), less its optional `silu(z)` gate.
+- Gated DeltaNet: [Yang, Kautz and Hatamizadeh](https://arxiv.org/abs/2412.06464), on DeltaNet ([Yang et al.](https://arxiv.org/abs/2406.06484)); the references are fla-org's [`fused_recurrent_gated_delta_rule`](https://github.com/fla-org/flash-linear-attention/blob/main/fla/ops/gated_delta_rule/fused_recurrent.py) and Hugging Face's [Qwen3-Next](https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3_next/modeling_qwen3_next.py).
+- Their exponentials, and `router_top_k`'s, reduce by ln 2 in two parts (Cody and Waite, *Software Manual for the Elementary Functions*, 1980).
 
 ::: iron.kernels.ssm
     options:

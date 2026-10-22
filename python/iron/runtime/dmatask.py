@@ -150,7 +150,7 @@ def emit_shim_transfer(
         Task: A handle to the transfer.
     """
     active = active_sequence()
-    rt = active._runtime
+    rt = active.runtime
 
     if not isinstance(rt_data, RuntimeData):
         raise ValueError(f"Expected a RuntimeData source/dest, got {rt_data}")

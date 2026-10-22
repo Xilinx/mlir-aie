@@ -7,12 +7,13 @@
 //
 // A core with aiex.wait_scratchpad_parameters acquires its parameter-sync lock
 // where each wait is, inside its loop, and not once at the top of its body;
-// the runtime sequence still writes the parameters and sets that lock. A core
-// without a wait keeps the top-of-body acquire.
+// the runtime sequence still writes the parameters and sets that lock. A read
+// in a loop nested in the waiting one is in order. A core without a wait keeps
+// the top-of-body acquire.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-lower-scratchpad-parameters %s | FileCheck %s
+// RUN: aie-opt --aie-lower-scratchpad-parameters %s | FileCheck %s --implicit-check-not=aiex.wait_scratchpad_parameters
 
 // CHECK-DAG: %[[T02:.*]] = aie.tile(0, 2)
 // CHECK-DAG: %[[T03:.*]] = aie.tile(0, 3)
@@ -24,7 +25,8 @@
 // CHECK: scf.for
 // CHECK-NEXT: %[[ONE:.*]] = arith.constant 1 : i32
 // CHECK-NEXT: aie.use_lock(%[[L02]], AcquireGreaterEqual, %[[ONE]])
-// CHECK-NOT: aiex.wait_scratchpad_parameters
+// CHECK: memref.load
+// CHECK: scf.for
 // CHECK: memref.load
 // CHECK: aie.end
 
@@ -49,6 +51,9 @@ module {
       scf.for %i = %c0 to %cmax step %c1 {
         aiex.wait_scratchpad_parameters
         %v = aiex.read_scratchpad_parameter @n : i32
+        scf.for %j = %c0 to %c1 step %c1 {
+          %w = aiex.read_scratchpad_parameter @n : i32
+        }
       }
       aie.end
     }

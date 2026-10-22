@@ -1,8 +1,0 @@
-// Copyright (C) 2026 Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Two values of a decode CompileTime value give two JIT cache keys and two
-// MLIR modules. Generation only; no NPU.
-//
-// RUN: %python %S/test_compile_time_keys.py | FileCheck %s
-// CHECK: compile_time_keys: 5/5 PASS

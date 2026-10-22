@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Phase 6c.5a: BF16 -> per-channel-INT8 weight extractor for Llama 3.2 1B.
+"""BF16 -> per-channel-INT8 weight extractor for Llama 3.2 1B.
 
 Loads model.safetensors (146 BF16 tensors, 2.4 GB; from WEIGHTS_DIR, or pass
 --weights) and dumps INT8 weights + fp32 per-output-channel
@@ -12,16 +12,14 @@ Per-channel symmetric absmax quant for every (out, in) linear weight:
   scale[n] = max(|W[n, :]|) / 127     # fp32, one per output channel
   w_i8[n,k] = round(W[n,k] / scale[n]).clip(-127, 127)
 
-Per-tensor INT8 conversion for embed_tokens (treated as a (V, D) linear
-serving both embedding lookup AND lm_head; Llama 3.2 1B has tied embeddings).
+The same per-row INT8 for embed_tokens (a (V, D) linear serving both the
+embedding lookup and the lm_head; Llama 3.2 1B has tied embeddings).
 
 Layernorm gamma vectors stay as bf16 (tiny, no quant benefit).
 
 Output layout:
   data/embed.i8.bin              (V*D int8, row-major (V, D))
   data/embed.scales.f32.bin      (V fp32; one scale per vocab entry)
-  data/lm_head.i8.bin            (same bytes as embed.i8 — symlinked)
-  data/lm_head.scales.f32.bin    (same bytes as embed.scales)
   data/final_norm.bf16.bin       (D bf16)
   data/layer_{L:02d}/gamma_in.bf16.bin           (D bf16)
                     /gamma_post.bf16.bin         (D bf16)
@@ -49,21 +47,18 @@ from pathlib import Path
 
 import ml_dtypes
 import numpy as np
+from llama_config import (
+    HD,
+    KV_DIM,
+    N_LAYERS,
+    Q_DIM,
+    VOCAB,
+    D,
+)
 
-# --- Llama 3.2 1B spec (mirrors cautious-eureka/npu2/llama_spec.py) ---
 # The gated checkpoint's directory, as amd/IRON's examples find it
 # (iron/lm/testing.py): model.safetensors and tokenizer.model.
 WEIGHTS_DIR = Path(os.environ.get("IRON_EXAMPLE_WEIGHTS_DIR", "/srv")) / "llama3.2-1b"
-
-VOCAB_SIZE = 128_256
-EMB_DIM = 2_048
-N_LAYERS = 16
-N_HEADS = 32
-N_KV_GROUPS = 8
-HEAD_DIM = EMB_DIM // N_HEADS  # 64
-HIDDEN_DIM = 8_192
-Q_DIM = N_HEADS * HEAD_DIM  # 2048
-KV_DIM = N_KV_GROUPS * HEAD_DIM  # 512
 
 
 _ST_DTYPE = {
@@ -117,8 +112,6 @@ def quant_int8_perchan_absmax(w_f32: np.ndarray) -> tuple[np.ndarray, np.ndarray
     HF Linear weight shape is (out_dim, in_dim). One scale per output row.
     Returns (q_i8, scale_f32) where scale_f32 has shape (out_dim,) and
     q_i8 has the same shape as the input.
-
-    Recipe verbatim from cautious-eureka/npu2/measure_weight_compressibility.py.
     """
     assert w_f32.ndim == 2, f"expected 2D weight, got {w_f32.shape}"
     absmax = np.maximum(np.abs(w_f32).max(axis=1, keepdims=True), 1e-12)
@@ -169,9 +162,9 @@ def main():
     p.add_argument("--out-dir", type=Path, default=Path(__file__).parent / "data")
     args = p.parse_args(sys.argv[1:])
 
-    if not args.weights.exists():
-        print(f"ERROR: weights not found at {args.weights}", file=sys.stderr)
-        sys.exit(1)
+    for path in (args.weights, args.tokenizer):
+        if not path.exists():
+            p.error(f"{path} is missing")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -183,51 +176,40 @@ def main():
     # --- Embedding (also serves as lm_head; tied in Llama 3.2 1B) ---
     embed_f32 = reader.load_f32("model.embed_tokens.weight")
     print(f"  embed_tokens: shape={embed_f32.shape} dtype=fp32")
-    dump_quantized(
-        args.out_dir, "embed", embed_f32, expected_shape=(VOCAB_SIZE, EMB_DIM)
-    )
-
-    # tied -> lm_head shares the same bytes. Use a symlink to avoid duplicating
-    # the ~125 MB blob.
-    for suffix in ("i8.bin", "scales.f32.bin"):
-        src = args.out_dir / f"embed.{suffix}"
-        dst = args.out_dir / f"lm_head.{suffix}"
-        if dst.exists() or dst.is_symlink():
-            dst.unlink()
-        dst.symlink_to(src.name)  # relative symlink within data/
+    dump_quantized(args.out_dir, "embed", embed_f32, expected_shape=(VOCAB, D))
 
     # --- Final RMSNorm gamma (bf16, no quant) ---
     final_norm_bf16 = reader.load_bf16("model.norm.weight")
-    dump_bf16(args.out_dir, "final_norm", final_norm_bf16, expected_shape=(EMB_DIM,))
+    dump_bf16(args.out_dir, "final_norm", final_norm_bf16, expected_shape=(D,))
 
     # --- Per-layer weights ---
     for L in range(N_LAYERS):
         layer_dir = args.out_dir / f"layer_{L:02d}"
         layer_dir.mkdir(parents=True, exist_ok=True)
-        p = f"model.layers.{L}."
+        prefix = f"model.layers.{L}."
 
-        gamma_in = reader.load_bf16(p + "input_layernorm.weight")
-        gamma_post = reader.load_bf16(p + "post_attention_layernorm.weight")
-        dump_bf16(layer_dir, "gamma_in", gamma_in, expected_shape=(EMB_DIM,))
-        dump_bf16(layer_dir, "gamma_post", gamma_post, expected_shape=(EMB_DIM,))
+        gamma_in = reader.load_bf16(prefix + "input_layernorm.weight")
+        gamma_post = reader.load_bf16(prefix + "post_attention_layernorm.weight")
+        dump_bf16(layer_dir, "gamma_in", gamma_in, expected_shape=(D,))
+        dump_bf16(layer_dir, "gamma_post", gamma_post, expected_shape=(D,))
 
         # Attention projections
-        wq = reader.load_f32(p + "self_attn.q_proj.weight")
-        wk = reader.load_f32(p + "self_attn.k_proj.weight")
-        wv = reader.load_f32(p + "self_attn.v_proj.weight")
-        wo = reader.load_f32(p + "self_attn.o_proj.weight")
-        dump_quantized(layer_dir, "wq", wq, expected_shape=(Q_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wk", wk, expected_shape=(KV_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wv", wv, expected_shape=(KV_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wo", wo, expected_shape=(EMB_DIM, Q_DIM))
+        wq = reader.load_f32(prefix + "self_attn.q_proj.weight")
+        wk = reader.load_f32(prefix + "self_attn.k_proj.weight")
+        wv = reader.load_f32(prefix + "self_attn.v_proj.weight")
+        wo = reader.load_f32(prefix + "self_attn.o_proj.weight")
+        dump_quantized(layer_dir, "wq", wq, expected_shape=(Q_DIM, D))
+        dump_quantized(layer_dir, "wk", wk, expected_shape=(KV_DIM, D))
+        dump_quantized(layer_dir, "wv", wv, expected_shape=(KV_DIM, D))
+        dump_quantized(layer_dir, "wo", wo, expected_shape=(D, Q_DIM))
 
         # FFN projections (SwiGLU)
-        wg = reader.load_f32(p + "mlp.gate_proj.weight")
-        wu = reader.load_f32(p + "mlp.up_proj.weight")
-        wd = reader.load_f32(p + "mlp.down_proj.weight")
-        dump_quantized(layer_dir, "wg", wg, expected_shape=(HIDDEN_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wu", wu, expected_shape=(HIDDEN_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wd", wd, expected_shape=(EMB_DIM, HIDDEN_DIM))
+        wg = reader.load_f32(prefix + "mlp.gate_proj.weight")
+        wu = reader.load_f32(prefix + "mlp.up_proj.weight")
+        wd = reader.load_f32(prefix + "mlp.down_proj.weight")
+        dump_quantized(layer_dir, "wg", wg, expected_shape=(HD, D))
+        dump_quantized(layer_dir, "wu", wu, expected_shape=(HD, D))
+        dump_quantized(layer_dir, "wd", wd, expected_shape=(D, HD))
 
         if L == 0 or L == N_LAYERS - 1:
             for k in ("wq", "wk", "wv", "wo", "wg", "wu", "wd"):
@@ -235,11 +217,8 @@ def main():
                 print(f"  layer {L:02d} {k}: {f.stat().st_size} bytes")
 
     # --- Tokenizer (copy in for convenience) ---
-    if args.tokenizer.exists():
-        shutil.copy(args.tokenizer, args.out_dir / args.tokenizer.name)
-        print(f"  copied tokenizer: {args.out_dir / args.tokenizer.name}")
-    else:
-        print(f"WARN: tokenizer not found at {args.tokenizer}; skipping copy")
+    shutil.copy(args.tokenizer, args.out_dir / args.tokenizer.name)
+    print(f"  copied tokenizer: {args.out_dir / args.tokenizer.name}")
 
     print(f"done. output: {args.out_dir}/")
 

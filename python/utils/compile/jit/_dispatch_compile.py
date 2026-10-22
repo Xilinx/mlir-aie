@@ -16,8 +16,10 @@ cannot replace a mapped generation or pin a staging DLL on Windows.
 from __future__ import annotations
 
 import functools
+import json
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import get_args
 
@@ -34,7 +36,11 @@ from aie.ir import (  # pyright: ignore[reportMissingImports]
     WalkResult,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils import config
-from aie.utils.compile.utils import SHARED_LIB_SUFFIX, host_shared_lib_cmd
+from aie.utils.compile.utils import (
+    KERNEL_PROFILE_NAME,
+    SHARED_LIB_SUFFIX,
+    host_shared_lib_cmd,
+)
 
 from . import _manifest
 
@@ -145,7 +151,12 @@ def compile_dispatch_bridge(
     dispatch_params: list[str],
     dispatch_param_types: list,
 ) -> Path:
-    """Build an immutable dispatch library under the kernel-directory lock."""
+    """Build an immutable dispatch library under the kernel-directory lock.
+
+    The build's seconds are added to ``KERNEL_PROFILE_NAME`` in `kernel_dir`
+    as ``"dispatch_bridge_s"``.
+    """
+    start = time.perf_counter()
     lowered_mlir = kernel_dir / "npu_lowered.mlir"
     gen_cpp = kernel_dir / "dispatch_gen.cpp"
     for path in (lowered_mlir, gen_cpp):
@@ -184,4 +195,8 @@ def compile_dispatch_bridge(
         )
         if not published.exists():
             staging.replace(published)
-        return published
+    profile_path = kernel_dir / KERNEL_PROFILE_NAME
+    profile = json.loads(profile_path.read_text()) if profile_path.exists() else {}
+    profile["dispatch_bridge_s"] = time.perf_counter() - start
+    profile_path.write_text(json.dumps(profile, indent=1))
+    return published
