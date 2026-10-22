@@ -1,21 +1,22 @@
 {
  "schema": 1,
  "target": "router",
- "id": "39538998268",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39538998268",
- "date": "2026-10-21T03:30:58+00:00",
+ "id": "39717254104",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39717254104",
+ "date": "2026-10-22T03:30:53+00:00",
  "commit": {
-  "id": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/7f36a183bf70b36e6ec4228887ff2be59c58585a",
-  "message": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
-  "timestamp": "2026-10-20T13:56:37Z"
+  "id": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+  "message": "IRON model prep (#3941)",
+  "timestamp": "2026-10-22T00:00:24Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": null,
+ "device": "AMD EPYC 9V45 96-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "7f36a183bf"
+  "commit": "843e9c3ec9",
+  "cpu": "AMD EPYC 9V45 96-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -38,15 +39,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0148,
+    "value": 1.0151,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 14.674,
+    "value": 15.043,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 15.97,
+    "value": 12.89,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -72,15 +73,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0126,
+    "value": 1.0147,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 14.784,
+    "value": 15.191,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 19.69,
+    "value": 20.18,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -106,15 +107,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0125,
+    "value": 1.0096,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 18.698,
+    "value": 19.05,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 224.33,
+    "value": 208.79,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -127,6 +128,7 @@
    }
   }
  },
+ "builds": {},
  "detail": [
   {
    "run": "lit",
@@ -136,75 +138,75 @@
   {
    "device": "npu1",
    "run": "properties",
-   "first_seed": 207470000,
+   "first_seed": 207480000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu1",
    "run": "hops-on",
-   "first_seed": 207470000,
+   "first_seed": 207480000,
    "seeds": 400,
-   "killed": 1912,
+   "killed": 1858,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu1",
    "run": "hops-off",
-   "first_seed": 207470000,
+   "first_seed": 207480000,
    "seeds": 400,
-   "killed": 1906,
+   "killed": 1849,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "properties",
-   "first_seed": 207470000,
+   "first_seed": 207480000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu2",
    "run": "hops-on",
-   "first_seed": 207470000,
+   "first_seed": 207480000,
    "seeds": 400,
-   "killed": 1873,
+   "killed": 1888,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "hops-off",
-   "first_seed": 207470000,
+   "first_seed": 207480000,
    "seeds": 400,
-   "killed": 1867,
+   "killed": 1880,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "properties",
-   "first_seed": 207470000,
+   "first_seed": 207480000,
    "seeds": 500,
    "failed": []
   },
   {
    "device": "xcvc1902",
    "run": "hops-on",
-   "first_seed": 207470000,
+   "first_seed": 207480000,
    "seeds": 100,
-   "killed": 412,
+   "killed": 396,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "hops-off",
-   "first_seed": 207470000,
+   "first_seed": 207480000,
    "seeds": 100,
-   "killed": 412,
+   "killed": 397,
    "survived": 0,
    "failures": 0
   }

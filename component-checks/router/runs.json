@@ -170,6 +170,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "39717254104",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39717254104",
+   "date": "2026-10-22T03:30:53+00:00",
+   "commit": {
+    "id": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "message": "IRON model prep (#3941)",
+    "timestamp": "2026-10-22T00:00:24Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "843e9c3ec9",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

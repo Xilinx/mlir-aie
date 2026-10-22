@@ -1,21 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "39538998268",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39538998268",
- "date": "2026-10-21T03:30:58+00:00",
+ "id": "39717254104",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39717254104",
+ "date": "2026-10-22T03:30:53+00:00",
  "commit": {
-  "id": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/7f36a183bf70b36e6ec4228887ff2be59c58585a",
-  "message": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
-  "timestamp": "2026-10-20T13:56:37Z"
+  "id": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+  "message": "IRON model prep (#3941)",
+  "timestamp": "2026-10-22T00:00:24Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": null,
+ "device": "AMD EPYC 9V45 96-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "7f36a183bf"
+  "commit": "843e9c3ec9",
+  "cpu": "AMD EPYC 9V45 96-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -43,14 +44,15 @@
    },
    "bank_pair_sharing": {
     "value": 0.2434,
-    "unit": "pairs"
+    "unit": "fraction"
    },
    "wall_s": {
-    "value": 242.1,
+    "value": 223.9,
     "unit": "s"
    }
   }
  },
+ "builds": {},
  "detail": [
   {
    "name": "metric-validation",
