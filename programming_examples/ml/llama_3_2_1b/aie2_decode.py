@@ -17,9 +17,9 @@ The array's activations and outputs are staged through DDR: a glue core
 drains the activation for a unit into its slot in the `stage` buffer, and
 the array fills it from there; a slot of a residual unit (o, down) also
 holds the residual at `STAGE_RESID`, drained there by the core that last
-wrote it: the int8 form the norm reads, then the fp32 form the residual core
-adds the unit's output to; right after the rows the RMSNorm gamma of that
-residual's norm, so the norm fills both at once. The array's gate,
+wrote it, in fp32: the norm reads it and passes it on to the residual core,
+which adds the unit's output to it; right after the rows the RMSNorm gamma of
+that residual's norm, so the norm fills both at once. The array's gate,
 up and qkv outputs go to `stage` too, where the SiLU and RoPE cores fill
 from. Each layer the RoPE row of the token's position rides the head of
 every weight lane. `stage` persists across dispatches: the sampled token's
@@ -340,25 +340,24 @@ def build(
     ) + of_outhi.prod().join(
         out_offsets, obj_types=[t_out] * 4, names=[f"out{c}" for c in range(4, 8)]
     )
-    # The residual core's two inputs: cores 0-3's blocks then the fp32
-    # residual they add to (from stage), and cores 4-7's blocks.
-    t_lo = np.ndarray[(4 * RESID_BLOCK + 4 * D,), np.dtype[np.int8]]
-    of_rlo = ObjectFifo(t_lo, depth=1, name="rlo")
-    of_rhi = ObjectFifo(
-        np.ndarray[(4 * RESID_BLOCK,), np.dtype[np.int8]], depth=1, name="rhi"
-    )
+    # The residual core's inputs: cores 0-3's blocks, cores 4-7's blocks, and
+    # from the norm core the fp32 residual they add to.
+    t_half = np.ndarray[(4 * RESID_BLOCK,), np.dtype[np.int8]]
+    of_rlo = ObjectFifo(t_half, depth=1, name="rlo")
+    of_rhi = ObjectFifo(t_half, depth=1, name="rhi")
     blk_offsets = [i * RESID_BLOCK for i in range(4)]
-    lo_eps = of_rlo.prod().join(
-        blk_offsets + [4 * RESID_BLOCK],
-        obj_types=[np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]]] * 4
-        + [np.ndarray[(4 * D,), np.dtype[np.int8]]],
-        names=[f"rblk{c}" for c in range(4)] + ["rin"],
-    )
-    blk_eps = lo_eps[:4] + of_rhi.prod().join(
-        blk_offsets,
-        obj_types=[np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]]] * 4,
-        names=[f"rblk{c}" for c in range(4, 8)],
-    )
+    blk_eps = [
+        ep
+        for half, of in enumerate((of_rlo, of_rhi))
+        for ep in of.prod().join(
+            blk_offsets,
+            obj_types=[np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]]] * 4,
+            names=[f"rblk{4 * half + c}" for c in range(4)],
+        )
+    ]
+    # A batch's rows are all normed before the residual core takes the first
+    # one's residual.
+    of_rin = ObjectFifo(t_res, depth=M_MAX, name="rin")
     of_res = ObjectFifo(t_res, depth=1, name="res")
 
     KA = llama_kernels.gemv_array()
@@ -383,10 +382,7 @@ def build(
         "llama_gemv_array_proj_block",
         [t_scratch, np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]], np.int32],
     )
-    k_final = KA.bind(
-        "llama_gemv_array_residual_add",
-        [t_lo, np.ndarray[(4 * RESID_BLOCK,), np.dtype[np.int8]], t_res],
-    )
+    k_final = KA.bind("llama_gemv_array_residual_add", [t_half, t_half, t_res, t_res])
     u_chunks = OUTS["u"]
 
     def w_array(
@@ -488,15 +484,17 @@ def build(
         for c in range(N_CORES)
     ]
 
-    def w_resid(c_lo, c_hi, c_res, n, m0p, k):
+    def w_resid(c_lo, c_hi, c_rin, c_res, n, m0p, k):
         passes, m0 = n.read(), m0p.read()
         rows = addi(m0, addi(passes, constant(i32(), -1)))
         for _ in range_(index_cast(index(), muli(rows, constant(i32(), 2 * N_LAYERS)))):
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
+            x = c_rin.acquire(1)
             r = c_res.acquire(1)
-            k(lo, hi, r)
+            k(lo, hi, x, r)
             c_res.release(1)
+            c_rin.release(1)
             c_hi.release(1)
             c_lo.release(1)
 
@@ -506,6 +504,7 @@ def build(
             [
                 of_rlo.cons(),
                 of_rhi.cons(),
+                of_rin.cons(),
                 of_res.prod(),
                 p_passes,
                 p_m0,
@@ -519,26 +518,50 @@ def build(
     t_norm_in = np.ndarray[(NORM_IN_BYTES,), np.dtype[np.int8]]
     of_x = ObjectFifo(t_norm_in, depth=1, name="x")
     of_h = ObjectFifo(t_vec, depth=1, name="h")
-    k_rms = llama_kernels.rmsnorm().bind("llama_rmsnorm_f32_packed", [t_norm_in, t_vec])
+    KR = llama_kernels.rmsnorm()
+    k_rms = KR.bind("llama_rmsnorm_f32_packed", [t_norm_in, t_vec])
+    k_rms_fwd = KR.bind("llama_rmsnorm_f32_packed_fwd", [t_norm_in, t_vec, t_res])
 
-    def w_rms(c_x, c_h, n, m0p, k):
-        passes, m0 = n.read(), m0p.read()
-        rows = addi(m0, addi(passes, constant(i32(), -1)))
-        for _ in range_(
-            index_cast(index(), muli(rows, constant(i32(), 2 * N_LAYERS + 1)))
-        ):
-            x = c_x.acquire(1)
-            h = c_h.acquire(1)
-            k(x, h)
-            for i in range_(D + 8, ACT_BYTES):
-                h[i] = 0
-            c_h.release(1)
-            c_x.release(1)
+    # A row's norms: one before each of the layers' two residual units, which
+    # takes the norm's residual on, then the final norm.
+    def w_rms(c_x, c_h, c_rin, n, m0p, k, k_fwd):
+        m0 = m0p.read()
+        for tok in range_(index_cast(index(), n.read())):
+            m = select(
+                cmpi(CmpIPredicate.eq, index_cast(i32(), tok), constant(i32(), 0)),
+                m0,
+                constant(i32(), 1),
+            )
+            for count, fwd in (
+                (muli(m, constant(i32(), 2 * N_LAYERS)), True),
+                (m, False),
+            ):
+                for _ in range_(index_cast(index(), count)):
+                    x = c_x.acquire(1)
+                    h = c_h.acquire(1)
+                    if fwd:
+                        r = c_rin.acquire(1)
+                        k_fwd(x, h, r)
+                        c_rin.release(1)
+                    else:
+                        k(x, h)
+                    for i in range_(D + 8, ACT_BYTES):
+                        h[i] = 0
+                    c_h.release(1)
+                    c_x.release(1)
 
     workers.append(
         Worker(
             w_rms,
-            [of_x.cons(), of_h.prod(), p_passes, p_m0, k_rms],
+            [
+                of_x.cons(),
+                of_h.prod(),
+                of_rin.prod(),
+                p_passes,
+                p_m0,
+                k_rms,
+                k_rms_fwd,
+            ],
             wait_for_parameters=True,
         )
     )
@@ -990,7 +1013,6 @@ def build(
         *[f.prod() for f in of_w],
         of_outlo.cons(),
         of_outhi.cons(),
-        lo_eps[4].prod(),
         of_res.cons(),
         of_x.prod(),
         of_h.cons(),
@@ -1009,7 +1031,7 @@ def build(
         it = iter(e)
         act = next(it)
         w = [next(it) for _ in range(N_CORES)]
-        outlo, outhi, rin, res = next(it), next(it), next(it), next(it)
+        outlo, outhi, res = next(it), next(it), next(it)
         x, h = next(it), next(it)
         comb = next(it)
         kvb = [next(it), next(it)]
@@ -1054,17 +1076,6 @@ def build(
             return (
                 fill(on, act, tap(slot_at + k_at, [1, 1, M_MAX, D], [0, 0, ROW, 1])),
                 fill(on, act, tap(slot_at + k, [1, 1, M_MAX, 16], [0, 0, ROW, 1])),
-            )
-
-        def resids(rows, gates, slot_at):
-            """Each row's fp32 residual in slot_at, for the residual core."""
-            return tuple(
-                fill(
-                    gates[r],
-                    rin,
-                    linear_tap(stage_total, resid_row(slot_at, r), RROW),
-                )
-                for r in rows
             )
 
         def outs_drain(on, name, region):
@@ -1201,7 +1212,6 @@ def build(
                         for r in rows
                     ),
                     *acts(on, o_at),
-                    *resids(rows, gate_of, o_at),
                 )
                 for r in rows:
                     norm(gate_of[r], d_at, r, gu_at + r * ROW)
@@ -1250,7 +1260,6 @@ def build(
                         for r in rows
                     ),
                     *(t for c in range(HD // D) for t in acts(on, d_at, c * D, HD)),
-                    *resids(rows, gate_of, d_at),
                 )
                 w_tg.finish()
 

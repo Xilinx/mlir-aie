@@ -132,4 +132,13 @@ void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
   event1();
 }
 
+// llama_rmsnorm_f32_packed, then x on to row: the residual the residual core
+// adds the unit's output to.
+void llama_rmsnorm_f32_packed_fwd(int8_t *restrict xg, int8_t *restrict y,
+                                  int8_t *restrict row) {
+  llama_rmsnorm_f32_packed(xg, y);
+  for (int c = 0; c < 4 * LLAMA_RMSNORM_COLS / 64; c++)
+    ::aie::store_v(row + c * 64, ::aie::load_v<64>(xg + c * 64));
+}
+
 } // extern "C"

@@ -79,15 +79,16 @@ void llama_gemv_array_proj_block(int8_t *restrict fp, int8_t *restrict blk,
   copy_words<kResidRows * 4>(blk, fp + row * kResidRows * 4);
 }
 
-// The glue core's residual add over the joined blocks (lo: cores 0-3, then
-// the fp32[2048] residual; hi: cores 4-7): out = resid + proj in fp32, the
+// The glue core's residual add over the joined blocks (lo: cores 0-3; hi:
+// cores 4-7) and the fp32[2048] residual: out = resid + proj in fp32, the
 // next norm's input and the next unit's residual.
 void llama_gemv_array_residual_add(int8_t *restrict lo, int8_t *restrict hi,
+                                   int8_t *restrict resid,
                                    int8_t *restrict out) {
   event0();
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-  const float *r = reinterpret_cast<const float *>(lo + 4 * kResidBlock);
+  const float *r = reinterpret_cast<const float *>(resid);
   float *x = reinterpret_cast<float *>(out);
   for (int c = 0; c < 8; c++) {
     const float *proj = reinterpret_cast<const float *>((c < 4 ? lo : hi) +
