@@ -1671,6 +1671,77 @@ static inline __attribute__((always_inline)) void conv2dk3_i8_bias_blocks(
   }
 }
 
+#if __AIE_ARCH__ >= 21
+// Output-channel groups a pass of the row path: their weights stay in
+// registers, which more groups or input channels spill to the stack (5 KB
+// at 16 input channels and 4 groups).
+#ifndef CONV2DK3_ROW_GROUPS
+#define CONV2DK3_ROW_GROUPS 2
+#endif
+
+// Stride 2 with 8 input channels, below the top border: one software-
+// pipelined loop along the row, 8 output pixels and NO output-channel
+// groups at a time, with every row and tap unrolled inside it.
+// (conv2dk3_i8_bias_blocks' loop runs one trip a row there, too few to
+// pipeline.) Each line's last vector carries over as the next block's left
+// neighbour, zero before the first.
+template <int IC, int NO>
+static inline __attribute__((always_inline)) void conv2dk3_i8_bias_row_s2(
+    const int8_t *line0, const int8_t *line1, const int8_t *line2,
+    const int8_t *__restrict wts_oc, const aie::accum<acc32, 64> *seeded,
+    int8_t *__restrict output, const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int ow = iw / 2;
+  constexpr int groups = IC / 8;
+  constexpr int wstride = groups * 9 * 64;
+  using MMUL = aie::mmul<8, 8, 8, int8, int8>;
+  const int8_t *lines[3] = {line0, line1, line2};
+  aie::vector<int8, 64> before[3][groups];
+  AIE_LOOP_UNROLL_FULL
+  for (int r = 0; r < 3; r++)
+    AIE_LOOP_UNROLL_FULL
+  for (int g = 0; g < groups; g++)
+    before[r][g] = aie::zeros<int8, 64>();
+  // A build at a width this path never takes still parses it.
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(ow >= 8 ? ow / 8 : 1)
+  for (int x = 0; x < ow / 8; x++) {
+    MMUL acc[NO];
+    AIE_LOOP_UNROLL_FULL
+    for (int o = 0; o < NO; o++)
+      acc[o] = seeded[o];
+    AIE_LOOP_UNROLL_FULL
+    for (int r = 0; r < 3; r++)
+      AIE_LOOP_UNROLL_FULL
+    for (int g = 0; g < groups; g++) {
+      const int8_t *row = lines[r] + g * iw * 8;
+      const aie::vector<int8, 64> lo = aie::load_v<64>(row);
+      const aie::vector<int8, 64> hi = aie::load_v<64>(row + 64);
+      const aie::vector<int8, 128> pair = aie::concat(lo, hi);
+      const aie::vector<int8, 64> even = aie::filter_even(pair, 8);
+      const aie::vector<int8, 64> odd = aie::filter_odd(pair, 8);
+      const aie::vector<int8, 64> left =
+          aie::shuffle_down_fill(before[r][g], odd, 56);
+      before[r][g] = hi;
+      const int8_t *w = wts_oc + g * 9 * 64 + r * 3 * 64;
+      AIE_LOOP_UNROLL_FULL
+      for (int o = 0; o < NO; o++) {
+        acc[o].mac(left, aie::load_v<64>(w + o * wstride));
+        acc[o].mac(even, aie::load_v<64>(w + o * wstride + 64));
+        acc[o].mac(odd, aie::load_v<64>(w + o * wstride + 128));
+      }
+    }
+    AIE_LOOP_UNROLL_FULL
+    for (int o = 0; o < NO; o++)
+      aie::store_v(output + o * ow * 8, acc[o].template to_vector<int8>(scale));
+    AIE_LOOP_UNROLL_FULL
+    for (int r = 0; r < 3; r++)
+      lines[r] += 128;
+    output += 64;
+  }
+}
+#endif
+
 template <int M, int Stride, bool Table, int IC = CONV_INPUT_CHANNELS,
           bool FromAcc = false, bool ToAcc = false>
 static void conv2dk3_i8_bias_vector(
@@ -1700,6 +1771,37 @@ static void conv2dk3_i8_bias_vector(
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(CONV2DK3_ROUNDING);
+
+#if __AIE_ARCH__ >= 21
+  if constexpr (Stride == 2 && M == 8 && input_channels == 8 && !FromAcc &&
+                !ToAcc) {
+    // A stride-2 row never meets the bottom border; the top one takes the
+    // block path below.
+    constexpr int R = ocg % CONV2DK3_ROW_GROUPS == 0
+                          ? CONV2DK3_ROW_GROUPS
+                          : (ocg % 2 == 0 ? 2 : 1);
+    if (check != top) {
+      for (int oc = 0; oc < ocg; oc += R) {
+        aie::accum<acc32, 64> seeded[R];
+        AIE_LOOP_UNROLL_FULL
+        for (int o = 0; o < R; o++) {
+          aie::vector<int32, 64> seed;
+          AIE_LOOP_UNROLL_FULL
+          for (int p = 0; p < 8; p++)
+            seed.insert(p, aie::load_v<8>(bias + (oc + o) * 8));
+          seeded[o].from_vector(seed, 0);
+        }
+        conv2dk3_i8_bias_row_s2<IC, R>(
+            line0, line1, line2, wts + oc * (input_channels / 8) * 9 * 64,
+            seeded, output + oc * ow * 8, scale);
+      }
+      if constexpr (Table)
+        map_table_i8<output_channels * ow>(output, table);
+      event1();
+      return;
+    }
+  }
+#endif
 
   const int row_start = check == top ? 1 : 0;
   const int row_end = check == bottom ? 2 : 3;

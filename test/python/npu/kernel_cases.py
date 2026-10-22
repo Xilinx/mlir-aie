@@ -1724,6 +1724,26 @@ CASES: list[Case] = [
         calls=4,
         scalars=(320, 16, 32, 3, 3, 1, 13, 0),
     ),
+    # The stem convs' first row, at the top border: the block path, beside
+    # the row path the rows below take.
+    *[
+        check(
+            "conv2dk3",
+            dict(
+                input_width=w,
+                input_channels=ic,
+                output_channels=oc,
+                bias=True,
+                table=True,
+                stride=2,
+                rounding="conv_even",
+            ),
+            calls=4,
+            scalars=(w, ic, oc, 3, 3, 0, 12, 0),
+            tag="s2-top-row",
+        )
+        for w, ic, oc in ((640, 8, 16), (320, 16, 32))
+    ],
     # Rows of fewer than four blocks run as one run and share each input load
     # across 4 (8 px), 2 (16 px) or 1 (24 px) output-channel groups; with 3
     # groups, 8 px falls back to one. 80 px is two runs of four and a run of
