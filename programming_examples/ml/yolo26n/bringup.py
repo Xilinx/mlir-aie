@@ -199,7 +199,9 @@ def main() -> None:
         batch=args.batch,
         ahead=args.ahead,
     )
-    # Build once on the host to learn the run's inputs, in the order the design fills them.
+    # Build once on the host to learn the run's inputs, in the order the design
+    # fills them, and its weights as the NPU2 kernels it compiles for load them.
+    iron.set_current_device(NPU2())
     tensors = {op.dst.name: op.dst for op in network.ops} | {
         "images": Tensor("images", 3, 640, 640)
     }
@@ -208,7 +210,6 @@ def main() -> None:
     )
     layout = Layout(plan, args.batch)
     if args.compile_only:
-        iron.set_current_device(NPU2())
         segment.specialize(
             inputs=np.ndarray[(layout.total_in,), np.dtype[np.int32]],
             outputs=np.ndarray[(layout.total_out,), np.dtype[np.int32]],
