@@ -326,10 +326,7 @@ def build(
 
     # the array
     of_act = ObjectFifo(t_act, depth=1, name="act")
-    # depth=1: a temporary throughput trade, not the final answer -- see the
-    # commit message ("llama: drop the GEMV-array weight fifo's double
-    # buffering to fit core data memory").
-    of_w = [ObjectFifo(t_slot, depth=1, name=f"w{c}") for c in range(N_CORES)]
+    of_w = [ObjectFifo(t_slot, depth=2, name=f"w{c}") for c in range(N_CORES)]
     of_outlo = ObjectFifo(
         np.ndarray[(4 * OUT_BYTES,), np.dtype[np.int8]], depth=1, name="outlo"
     )
@@ -367,18 +364,10 @@ def build(
     k_spread, k_mma, k_mma_s, t_tile, t_part = mma_kernels(
         t_act, t_slot, t_out, t_scratch
     )
-    k_take_cs = KA.bind(
-        "llama_gemv_array_take_cs",
-        [t_slot, np.ndarray[(M_MAX * CS_BYTES,), np.dtype[np.int8]], np.int32],
-    )
+    # cs lives in part's groups 16-19; only mma_down writes them, after qkv_comb_cs.
+    k_take_cs = KA.bind("llama_gemv_array_take_cs", [t_slot, t_part, np.int32])
     k_comb = KA.bind(
-        "llama_gemv_array_qkv_comb_cs",
-        [
-            t_scratch,
-            np.ndarray[(M_MAX * CS_BYTES,), np.dtype[np.int8]],
-            t_out,
-            np.int32,
-        ],
+        "llama_gemv_array_qkv_comb_cs", [t_scratch, t_part, t_out, np.int32]
     )
     k_resid = KA.bind(
         "llama_gemv_array_proj_block",
@@ -393,7 +382,6 @@ def build(
         c_out,
         c_blk,
         scratch,
-        cs,
         part,
         tile,
         core,
@@ -417,7 +405,7 @@ def build(
             mi = index_cast(index(), m)
             for _ in range_(N_LAYERS):
                 hdr = c_w.acquire(1)
-                kt(hdr, cs, m)
+                kt(hdr, part, m)
                 c_w.release(1)
 
                 def spread():
@@ -442,7 +430,7 @@ def build(
                 mma_rows("q", tile, c_w, part, scratch, k_mma_s, 0, m, 384, 48)
                 for r in range_(mi):
                     o = c_out.acquire(1)
-                    kc(scratch, cs, o, index_cast(i32(), r))
+                    kc(scratch, part, o, index_cast(i32(), r))
                     c_out.release(1)
                 spread()
                 mma_rows("o", tile, c_w, part, scratch, k_mma_s, 0, m, 256)
@@ -465,9 +453,6 @@ def build(
                 out_eps[c].prod(),
                 blk_eps[c].prod(),
                 Buffer(t_scratch, name=f"scratch{c}"),
-                Buffer(
-                    np.ndarray[(M_MAX * CS_BYTES,), np.dtype[np.int8]], name=f"cs{c}"
-                ),
                 Buffer(t_part, name=f"part{c}"),
                 Buffer(t_tile, name=f"tile{c}"),
                 c,

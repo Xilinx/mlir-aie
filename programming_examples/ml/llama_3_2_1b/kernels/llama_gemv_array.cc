@@ -21,17 +21,22 @@ static constexpr int kResidBlock = kResidRows * 4 + 64;
 
 extern "C" {
 
+// part's groups 16-19: only mma_down writes them, after the layer's last
+// qkv_comb_cs.
+static constexpr int kCsInPart = 4096;
+
 // The fused qkv combine for activation `row` of fp ([row][q 256 | k 64 | v
 // 64] fp32), with its position's RoPE cos/sin, which ride the head of the
 // core's weight lane each layer (cs: 256 B a position, bf16 cos[64] then
-// sin[64]), in the cs region: the core's 4 Q heads roped in fp32 as
-// llama_kv_row.h ropes k, then requantized per head; then k and v in fp32
-// and the cos/sin for the KV row's rope.
-void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
+// sin[64]), in the cs region of `part`: the core's 4 Q heads roped in fp32
+// as llama_kv_row.h ropes k, then requantized per head; then k and v in
+// fp32 and the cos/sin for the KV row's rope.
+void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int32_t *restrict part,
                                   int8_t *restrict out, int32_t row) {
   event0();
   constexpr int kHD = 64;
   constexpr int kHalf = kHD / 2;
+  int8_t *cs = reinterpret_cast<int8_t *>(part) + kCsInPart;
   const float *q = reinterpret_cast<const float *>(fp + row * 384 * 4);
   const uint16_t *cs_bits = reinterpret_cast<const uint16_t *>(cs + row * 256);
   alignas(64) float cs_f[2 * kHD];
@@ -65,9 +70,11 @@ void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int8_t *restrict cs,
 }
 
 // The first `rows` positions' RoPE cos/sin (256 B each) from the head of the
-// core's weight lane into cs, before the lane is released.
-void llama_gemv_array_take_cs(int8_t *restrict lane, int8_t *restrict cs,
+// core's weight lane into cs (part's upper 1024 B), before the lane is
+// released.
+void llama_gemv_array_take_cs(int8_t *restrict lane, int32_t *restrict part,
                               int32_t rows) {
+  int8_t *cs = reinterpret_cast<int8_t *>(part) + kCsInPart;
   for (int32_t r = 0; r < rows; r++)
     copy_words<256>(cs + r * 256, lane + r * 256);
 }
