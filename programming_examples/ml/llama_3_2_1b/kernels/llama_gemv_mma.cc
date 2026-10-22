@@ -42,19 +42,17 @@ __attribute__((noinline)) static void half_sums(const int8_t *restrict act,
   }
 }
 
-// The f32 epilogue on activations 4h..4h+3's 32 sums (lane (m - 4h)*8 + n),
-// bias added, written to out[m*ostride + row0 + n] for the first m_count
-// activations: the GEMV epilogue's arithmetic per element, on all 32 lanes
-// at once where the GEMV's guards hold for every lane (see
+// The f32 epilogue on activations 4h..4h+3's 32 sums (lane (m - 4h)*8 + n,
+// act_scales[m - 4h]), bias added, written to out[m*ostride + row0 + n] for
+// the first m_count activations: the GEMV epilogue's arithmetic per element,
+// on all 32 lanes at once where the GEMV's guards hold for every lane (see
 // vec_epilogue_exact), else its scalar code per element.
 __attribute__((noinline)) static void
-half_epilogue(::aie::vector<int32, 32> sums, const int8_t *restrict act,
+half_epilogue(::aie::vector<int32, 32> sums, const float *restrict act_scales,
               const int8_t *restrict w, int8_t *restrict out, int h,
               int32_t ostride, int32_t row0, int32_t m_count) {
   const int32_t *bias = reinterpret_cast<const int32_t *>(w + kTrailer);
   const float *w_scales = reinterpret_cast<const float *>(w + kTrailer + 32);
-  const float *act_scales =
-      reinterpret_cast<const float *>(act + kScalesOff) + 4 * h;
   const int m_end = m_count - 4 * h < 4 ? m_count - 4 * h : 4;
   const uint32_t kLo = 80, kHi = 174;
   bool ok = true;
@@ -90,12 +88,14 @@ half_epilogue(::aie::vector<int32, 32> sums, const int8_t *restrict act,
         // without pulling in __mulsf3/__muldi3 for a path only the rare
         // overflow case reaches. 8 lanes: the narrowest AIE2P legalizes an
         // integer bit_and/bit_or at (see q_requant_heads).
-        ::aie::vector<float, 8> sv = vec_mul_rne(
-            ::aie::broadcast<float, 8>((float)sums.get(lane)),
-            ::aie::broadcast<float, 8>(act_scales[m]));
-        out_val = vec_mul_rne(sv, ::aie::broadcast<float, 8>(w_scales[n])).get(0);
+        ::aie::vector<float, 8> sv =
+            vec_mul_rne(::aie::broadcast<float, 8>((float)sums.get(lane)),
+                        ::aie::broadcast<float, 8>(act_scales[m]));
+        out_val =
+            vec_mul_rne(sv, ::aie::broadcast<float, 8>(w_scales[n])).get(0);
       }
-      reinterpret_cast<float *>(out)[(4 * h + m) * ostride + row0 + n] = out_val;
+      reinterpret_cast<float *>(out)[(4 * h + m) * ostride + row0 + n] =
+          out_val;
     }
 }
 
@@ -110,11 +110,12 @@ static inline void epilogue(const int8_t *restrict act,
       ::aie::swap_saturation(aie::saturation_mode::saturate);
   const aie::rounding_mode saved_rnd =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
-  half_epilogue(::aie::load_v<32>(sums), act, w, out, 0, ostride, row0,
+  const float *act_scales = reinterpret_cast<const float *>(act + kScalesOff);
+  half_epilogue(::aie::load_v<32>(sums), act_scales, w, out, 0, ostride, row0,
                 m_count);
   if (m_count > 4)
-    half_epilogue(::aie::load_v<32>(sums + 32), act, w, out, 1, ostride, row0,
-                  m_count);
+    half_epilogue(::aie::load_v<32>(sums + 32), act_scales + 4, w, out, 1,
+                  ostride, row0, m_count);
   aie::set_rounding(saved_rnd);
   aie::set_saturation(saved_sat);
 }
