@@ -107,6 +107,8 @@ function initializeViewer(svg) {
   let drag = null;
   let suppressClick = false;
   let hoveredFlows = [];
+  let highlightIncoming = true;
+  let highlightOutgoing = true;
   const selectedFlows = new Set();
   const listeners = [];
   const listen = (target, event, handler, options) => {
@@ -115,7 +117,13 @@ function initializeViewer(svg) {
   };
   const setViewBox = () => svg.setAttribute("viewBox", viewBox.join(" "));
   const flowClasses = element =>
-    [...element.classList].filter(name => /^flow-\d+$/.test(name));
+    [...element.classList].filter(name => /^src-\d+$/.test(name));
+  // Hovering puts one of two questions: what shares this origin, and what
+  // shares this destination. The checkboxes choose which are asked.
+  const matchKeys = element =>
+    [...element.classList].filter(name =>
+      (highlightIncoming && /^src-\d+$/.test(name)) ||
+      (highlightOutgoing && /^dst-\d+$/.test(name)));
   const renderHighlight = () => {
     const names = [...new Set([...selectedFlows, ...hoveredFlows])];
     const flows = svg.querySelectorAll("g.flow");
@@ -149,6 +157,21 @@ function initializeViewer(svg) {
     renderHighlight();
   };
 
+  const directionSettings = [
+    ["incoming", "Incoming", value => { highlightIncoming = value; }],
+    ["outgoing", "Outgoing", value => { highlightOutgoing = value; }],
+  ];
+  directionSettings.forEach(([name, label, apply]) => {
+    const row = document.createElement("label");
+    row.className = "setting-row";
+    row.innerHTML = `<input type="checkbox" checked><span>${label}</span>`;
+    listen(row.querySelector("input"), "change", event => {
+      apply(event.target.checked);
+      renderHighlight();
+    });
+    configList.appendChild(row);
+  });
+
   const detailSettings = [
     ["buffers", "Buffers"],
     ["calls", "Calls"],
@@ -169,7 +192,7 @@ function initializeViewer(svg) {
   configList.hidden = !configList.children.length;
 
   const flowNames = [...new Set([...svg.querySelectorAll("g.flow")].flatMap(flowClasses))]
-    .sort((first, second) => Number(first.slice(5)) - Number(second.slice(5)));
+    .sort((first, second) => Number(first.slice(4)) - Number(second.slice(4)));
   flowNames.forEach(name => {
     const row = document.createElement("label");
     row.className = "flow-row";
@@ -177,7 +200,7 @@ function initializeViewer(svg) {
     const route = svg.querySelector(`g.route.${name} path`);
     const color = route?.getAttribute("stroke") || "#777777";
     row.style.setProperty("--flow-color", color.split(":")[0]);
-    row.innerHTML = `<input type="checkbox"><span class="flow-swatch"></span><span>Flow ${name.slice(5)}</span>`;
+    row.innerHTML = `<input type="checkbox"><span class="flow-swatch"></span><span>Flow ${name.slice(4)}</span>`;
     listen(row.querySelector("input"), "change", () => toggleFlows([name]));
     listen(row, "pointerenter", () => { hoveredFlows = [name]; renderHighlight(); });
     listen(row, "pointerleave", () => { hoveredFlows = []; renderHighlight(); });
@@ -186,7 +209,7 @@ function initializeViewer(svg) {
   listen(svg, "pointerover", event => {
     const element = event.target.closest("g.flow");
     if (!element) return;
-    hoveredFlows = flowClasses(element);
+    hoveredFlows = matchKeys(element);
     renderHighlight();
   });
   listen(svg, "pointerout", event => {

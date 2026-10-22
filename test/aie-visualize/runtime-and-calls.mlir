@@ -13,29 +13,30 @@
 // RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
 
 // ALL: tile_0_0 {{.*}} height=2.150000
-// ALL: p_0_0_1_0_m {{.*}} label="MM2S0"{{.*}} class="port flow flow-0"
-// ALL: p_0_0_1_1_s {{.*}} label="S2MM1"{{.*}} class="port flow flow-1"
+// ALL: p_0_0_1_0_m {{.*}} label="MM2S0"{{.*}} class="port flow src-3 dst-3"
+// ALL: p_0_0_1_1_s {{.*}} label="S2MM1"{{.*}} class="port flow src-3 dst-3"
 // ALL: buffer_0 {{.*}} label="core_buffer"
-// ALL: runtime_arg_0 {{.*}} label="%direct_input"{{.*}} class="runtime-argument flow flow-0 flow-4"
-// ALL: runtime_arg_1 {{.*}} label="%allocated_input"{{.*}} class="runtime-argument flow flow-0"
-// ALL: runtime_arg_2 {{.*}} label="%endpoint_input"{{.*}} class="runtime-argument flow flow-0"
-// ALL: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow flow-1"
+// An argument the host writes is an origin, and one it reads is a fate.
+// ALL: runtime_arg_0 {{.*}} label="%direct_input"{{.*}} class="runtime-argument flow src-5 dst-5"
+// ALL: runtime_arg_1 {{.*}} label="%allocated_input"{{.*}} class="runtime-argument flow src-6 dst-3"
+// ALL: runtime_arg_2 {{.*}} label="%endpoint_input"{{.*}} class="runtime-argument flow src-4 dst-3"
+// ALL: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow src-3 dst-3"
 // ALL: call_0 {{.*}} label="kernel"
-// ALL-SAME: class="call detail-calls flow flow-2"
+// ALL-SAME: class="call detail-calls flow src-2 dst-0"
 // ALL: call_1 {{.*}} label="view_kernel"
-// ALL-SAME: class="call detail-calls flow flow-2 flow-3"
-// ALL-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow flow-0"
-// ALL-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow flow-4"
+// ALL-SAME: class="call detail-calls flow src-1 dst-2"
+// One argument feeding two shims keeps its origin on both links.
+// ALL-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-5 dst-3"
+// ALL-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow src-5 dst-4"
 // ALL-DAG: runtime_arg_1 -> p_0_0_1_0_m
 // ALL-DAG: runtime_arg_2 -> p_0_0_1_0_m
 // A route endpoint states no direction, so the argument reaches both.
-// ALL-DAG: p_0_0_1_0_s -> runtime_arg_2
-// ALL-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="runtime-link flow flow-1"
+// ALL-DAG: p_0_0_1_0_s -> runtime_arg_2 {{.*}}class="runtime-link flow src-4 dst-3"
+// ALL-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="runtime-link flow src-3 dst-3"
 // A kernel that writes a buffer is what feeds the flow leaving it.
-// ALL-DAG: call_0 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow flow-2"
-// ALL-DAG: call_1 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow flow-2"
-// ALL-DAG: call_1 -> buffer_1 {{.*}}class="call-link detail-calls detail-buffers flow flow-3"
-// ALL-DAG: class="route flow flow-0"
+// ALL-DAG: call_0 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow src-2 dst-0"
+// ALL-DAG: call_1 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow src-1 dst-0"
+// ALL-DAG: call_1 -> buffer_1 {{.*}}class="call-link detail-calls detail-buffers flow src-1 dst-1"
 // ALL-NOT: runtime_arg_4
 // ALL-NOT: runtime_task_
 
@@ -44,31 +45,28 @@
 // SKIP-NOT: runtime_arg_
 // SKIP-NOT: runtime_task_
 
-// TOPOLOGY: p_0_0_1_0_m {{.*}}label="MM2S0"{{.*}}class="port flow flow-0"
-// TOPOLOGY: buffer_0 {{.*}}label="core_buffer"{{.*}}class="buffer detail-buffers flow flow-2"
-// TOPOLOGY: runtime_arg_0 {{.*}} label="%direct_input"{{.*}} class="runtime-argument flow flow-0 flow-4"
-// TOPOLOGY: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow flow-1"
-// TOPOLOGY: call_0 {{.*}} label="kernel"{{.*}} class="call detail-calls flow flow-2"
-// TOPOLOGY: call_1 {{.*}} label="view_kernel"{{.*}} class="call detail-calls flow flow-2 flow-3"
+// TOPOLOGY: p_0_0_1_0_m {{.*}}label="MM2S0"{{.*}}class="port flow src-4 dst-3"
+// TOPOLOGY: buffer_0 {{.*}}label="core_buffer"{{.*}}class="buffer detail-buffers flow src-0 dst-0"
+// TOPOLOGY: runtime_arg_0 {{.*}} label="%direct_input"{{.*}} class="runtime-argument flow src-6 dst-6"
+// TOPOLOGY: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow src-4 dst-3"
+// TOPOLOGY: call_0 {{.*}} label="kernel"{{.*}} class="call detail-calls flow src-2 dst-0"
+// TOPOLOGY: call_1 {{.*}} label="view_kernel"{{.*}} class="call detail-calls flow src-3 dst-2"
 // A kernel writing a buffer is what feeds the flow that leaves it.
-// TOPOLOGY-DAG: call_0 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow flow-2"
-// TOPOLOGY-DAG: call_1 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow flow-2"
+// TOPOLOGY-DAG: call_0 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow src-2 dst-0"
+// TOPOLOGY-DAG: call_1 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow src-3 dst-0"
 // A DMA channel stands between a buffer and the tile it leaves for.
-// TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}class="buffer-link detail-buffers flow flow-2"
-// TOPOLOGY-DAG: p_0_2_1_0_m -> tile_0_3 {{.*}}class="route detail-packet-ids flow flow-2"{{.*}}label=<<FONT COLOR="#1a9850">F2</FONT>>
-// TOPOLOGY-DAG: call_1 -> p_0_2_1_1_m {{.*}}class="call-link detail-calls detail-buffers flow flow-3"
-// TOPOLOGY-DAG: p_0_2_1_1_m -> tile_0_4 {{.*}}class="route detail-packet-ids flow flow-3"
-// TOPOLOGY-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow flow-0"
-// TOPOLOGY-DAG: runtime_arg_1 -> p_0_0_1_0_m {{.*}}class="runtime-link flow flow-0"
-// TOPOLOGY-DAG: runtime_arg_2 -> p_0_0_1_0_m {{.*}}class="runtime-link flow flow-0"
-// TOPOLOGY-DAG: p_0_0_1_0_m -> p_0_2_0_0 {{.*}}class="route detail-packet-ids flow flow-0"{{.*}}label=<<FONT COLOR="#d73027">F0</FONT>>
-// TOPOLOGY-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow flow-4"
-// TOPOLOGY-DAG: p_1_0_1_0_m -> tile_1_2 {{.*}}class="route detail-packet-ids flow flow-4"
-// TOPOLOGY-DAG: p_0_2_0_0 -> p_0_0_1_1_s {{.*}}class="route detail-packet-ids flow flow-1"
-// TOPOLOGY-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="runtime-link flow flow-1"
-// A flow whose source states nothing beyond a core port is anchored to the
-// tile it leaves, rather than starting out of nowhere.
-// TOPOLOGY-DAG: tile_0_2 -> p_0_2_0_0 {{.*}}class="route flow flow-1"
+// TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}class="buffer-link detail-buffers flow src-0 dst-0"
+// TOPOLOGY-DAG: p_0_2_1_0_m -> tile_0_3 {{.*}}class="route detail-packet-ids flow src-0 dst-0"
+// TOPOLOGY-DAG: call_1 -> p_0_2_1_1_m {{.*}}class="call-link detail-calls detail-buffers flow src-3 dst-4"
+// TOPOLOGY-DAG: p_0_2_1_1_m -> tile_0_4 {{.*}}class="route detail-packet-ids flow src-3 dst-4"
+// Three arguments feed the same shim channel, and each keeps its own origin.
+// TOPOLOGY-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-6 dst-3"
+// TOPOLOGY-DAG: runtime_arg_1 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-7 dst-3"
+// TOPOLOGY-DAG: runtime_arg_2 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-5 dst-3"
+// TOPOLOGY-DAG: p_0_0_1_0_m -> p_0_0_1_1_s {{.*}}class="route detail-packet-ids flow src-4 dst-3"
+// TOPOLOGY-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow src-6 dst-5"
+// TOPOLOGY-DAG: p_1_0_1_0_m -> tile_1_2 {{.*}}class="route detail-packet-ids flow src-6 dst-5"
+// TOPOLOGY-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="runtime-link flow src-4 dst-3"
 // TOPOLOGY-NOT: topology_junction_
 
 module {

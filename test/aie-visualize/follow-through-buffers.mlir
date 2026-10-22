@@ -5,71 +5,56 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Flow grouping crosses serial buffers but retains buffer fan-out and join nodes.
+// Provenance follows a stream through a buffer: what a buffer drains carries
+// the origins that filled it, and a buffer two streams fill reports both.
 
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=ALL
-// RUN: aie-visualize --emit-dot --only-flow=0 %s | FileCheck %s --check-prefix=GROUP
-// RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=OTHER
-// RUN: aie-visualize --emit-dot --only-flow=2 %s | FileCheck %s --check-prefix=FANOUT
-// RUN: aie-visualize --emit-dot --only-flow=3 %s | FileCheck %s --check-prefix=JOIN
-// RUN: aie-visualize --emit-dot --no-follow-buffers --only-flow=8 %s | FileCheck %s --check-prefix=UNGROUPED
+// RUN: aie-visualize --emit-dot --only-flow=0 %s | FileCheck %s --check-prefix=BRIDGE
+// RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=FANOUT
 // RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
 
-// ALL-DAG: p_0_2_1_0_m -> p_0_2_5_0 [color="#d73027"
-// ALL-DAG: p_0_2_5_0 -> p_0_3_3_0 {{.*}} label=<<FONT COLOR="#d73027">F0</FONT>>
-// ALL-DAG: p_0_3_1_0_m -> p_0_3_5_1 [color="#d73027"
-// ALL-DAG: p_0_3_1_1_m -> p_0_3_3_3 [color="#d73027"
-// ALL-DAG: p_0_3_5_1 -> p_0_4_3_1 {{.*}} label=<<FONT COLOR="#d73027">F0</FONT>>
-// ALL-DAG: p_0_3_5_2 -> p_0_3_1_1_s [color="#d73027"
-// ALL-DAG: p_0_4_1_1_m -> p_0_4_5_0 [color="#4575b4"
-// ALL-DAG: p_0_4_5_0 -> p_0_5_3_0 {{.*}} label=<<FONT COLOR="#4575b4">F1</FONT>>
+// ALL-DAG: p_0_2_1_0_m -> p_0_2_5_0
+// ALL-DAG: p_0_2_5_0 -> p_0_3_3_0
+// ALL-DAG: p_0_3_1_0_m -> p_0_3_5_1
+// ALL-DAG: p_0_3_1_1_m -> p_0_3_3_3
+// ALL-DAG: p_0_3_5_1 -> p_0_4_3_1
+// ALL-DAG: p_0_3_5_2 -> p_0_3_1_1_s
+// ALL-DAG: p_0_4_1_1_m -> p_0_4_5_0
+// ALL-DAG: p_0_4_5_0 -> p_0_5_3_0
 
-// GROUP: p_0_3_1_0_s [shape=box, fixedsize=true,{{.*}} label="S2MM0"
-// GROUP: p_0_3_1_0_m [shape=box, fixedsize=true,{{.*}} label="MM2S0"
-// GROUP: label="bridge"
-// GROUP-NOT: memref
-// GROUP-DAG: p_0_2_1_0_m -> p_0_2_5_0
-// GROUP-DAG: p_0_3_1_0_m -> p_0_3_5_1
-// GROUP-DAG: p_0_3_1_1_m -> p_0_3_3_3
-// GROUP-DAG: p_0_3_5_2 -> p_0_3_1_1_s
-// GROUP-DAG: p_0_3_1_0_s -> buffer_0 {{.*}}class="buffer-link{{.*}}];
-// GROUP-DAG: buffer_0 -> p_0_3_1_0_m {{.*}}class="buffer-link{{.*}}];
-// GROUP-DAG: p_0_3_1_1_s -> buffer_0 {{.*}}class="buffer-link{{.*}}];
-// GROUP-DAG: buffer_0 -> p_0_3_1_1_m {{.*}}class="buffer-link{{.*}}];
-// GROUP-NOT: p_0_4_0_1
-
-// OTHER-NOT: label="bridge"
-// OTHER: p_0_4_1_1_m -> p_0_4_5_0
-// OTHER: p_0_4_5_0 -> p_0_5_3_0 {{.*}} label=<<FONT COLOR="#4575b4">F1</FONT>>
+// Both channels the bridge feeds carry the origins that filled it, and differ
+// only in where they end up.
+// BRIDGE: label="bridge"
+// BRIDGE-DAG: buffer_0 -> p_0_3_1_0_m {{.*}}class="buffer-link detail-buffers flow src-0 dst-4"
+// BRIDGE-DAG: buffer_0 -> p_0_3_1_1_m {{.*}}class="buffer-link detail-buffers flow src-0 dst-3"
+// BRIDGE-NOT: label="fanout"
 
 // FANOUT: label="fanout"
-// FANOUT-DAG: buffer_1 -> p_0_5_1_0_m {{.*}}class="buffer-link{{.*}}];
-// FANOUT-DAG: buffer_1 -> p_0_5_1_1_m {{.*}}class="buffer-link{{.*}}];
+// FANOUT-DAG: buffer_1 -> p_0_5_1_0_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-2"
+// FANOUT-DAG: buffer_1 -> p_0_5_1_1_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-0"
+// FANOUT-NOT: label="bridge"
 
-// JOIN: label="join"
-// JOIN-DAG: p_0_2_1_0_s -> buffer_2 {{.*}}class="buffer-link{{.*}}];
-// JOIN-DAG: p_0_2_1_1_s -> buffer_2 {{.*}}class="buffer-link{{.*}}];
-
-// UNGROUPED: F8
-
-// TOPOLOGY-DAG: buffer_0 {{.*}}label="bridge"{{.*}}class="buffer detail-buffers flow flow-0"
-// TOPOLOGY-DAG: buffer_1 {{.*}}label="fanout"{{.*}}class="buffer detail-buffers flow flow-2"
-// TOPOLOGY-DAG: buffer_2 {{.*}}label="join"{{.*}}class="buffer detail-buffers flow flow-3"
+// TOPOLOGY-DAG: buffer_0 {{.*}}label="bridge"{{.*}}class="buffer detail-buffers flow src-0 dst-0"
+// TOPOLOGY-DAG: buffer_1 {{.*}}label="fanout"{{.*}}class="buffer detail-buffers flow src-1 dst-1"
+// TOPOLOGY-DAG: buffer_2 {{.*}}label="join"{{.*}}class="buffer detail-buffers flow src-2 dst-2"
+// Two streams fill the join buffer, and each link states its own origin.
+// TOPOLOGY-DAG: p_0_2_1_0_s -> buffer_2 {{.*}}flow src-1 dst-2"
+// TOPOLOGY-DAG: p_0_2_1_1_s -> buffer_2 {{.*}}flow src-5 dst-2"
+// Arriving at a tile anchor is a different unknown from leaving it, so
+// provenance does not pass through one.
+// TOPOLOGY-DAG: p_0_4_1_0_s -> tile_0_4 {{.*}}flow src-0 dst-4"
+// TOPOLOGY-DAG: tile_0_4 -> p_0_4_1_1_m {{.*}}flow src-5 dst-2"
 // Contracting ports removes the switchbox hops a flow passes through, not
-// the DMA channel it leaves or arrives on, so a buffer reaches a switchbox
-// by way of its channel.
-// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_0_m {{.*}}class="buffer-link detail-buffers flow flow-2"
-// TOPOLOGY-DAG: p_0_5_1_0_m -> p_0_3_0_0 {{.*}}class="route detail-packet-ids flow flow-2"
-// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_1_m {{.*}}class="buffer-link detail-buffers flow flow-2"
-// TOPOLOGY-DAG: p_0_5_1_1_m -> p_0_4_0_0 {{.*}}class="route detail-packet-ids flow flow-2"
-// TOPOLOGY-DAG: p_0_3_0_0 -> p_0_2_1_0_s {{.*}}flow-3
-// TOPOLOGY-DAG: p_0_2_1_0_s -> buffer_2 {{.*}}class="buffer-link detail-buffers{{.*}}flow-3
-// TOPOLOGY-DAG: p_0_5_0_0 -> p_0_2_1_1_s {{.*}}flow-3
-// TOPOLOGY-DAG: p_0_2_1_1_s -> buffer_2 {{.*}}class="buffer-link detail-buffers{{.*}}flow-3
+// the DMA channel it leaves or arrives on, so a buffer reaches the channel
+// that drains it and the chain continues from there.
+// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_0_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-2"
+// TOPOLOGY-DAG: p_0_5_1_0_m -> p_0_2_1_0_s {{.*}}class="route detail-packet-ids flow src-1 dst-2"
+// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_1_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-0"
+// TOPOLOGY-DAG: p_0_5_1_1_m -> p_0_3_1_1_s {{.*}}class="route detail-packet-ids flow src-1 dst-0"
+// TOPOLOGY-NOT: topology_junction_
 // TOPOLOGY-NOT: tile_0_5 -> buffer_1
 // TOPOLOGY-NOT: buffer_2 -> tile_0_2
-// TOPOLOGY-NOT: topology_junction_
 // TOPOLOGY-NOT: tile_0_2 -> tile_0_2
 // TOPOLOGY-NOT: tile_0_3 -> tile_0_3
 // TOPOLOGY-NOT: tile_0_4 -> tile_0_4

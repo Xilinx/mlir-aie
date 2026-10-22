@@ -118,7 +118,6 @@ struct RuntimeArgumentInfo {
   unsigned id;
   std::string name;
   std::vector<DMAChannelKey> channels;
-  std::set<unsigned> flowGroups;
 };
 
 struct CallInfo {
@@ -128,11 +127,6 @@ struct CallInfo {
   unsigned tileIndex;
   std::string callee;
   std::vector<AIE::BufferOp> buffers;
-};
-
-struct FlowGroups {
-  std::vector<unsigned> routeGroups;
-  unsigned count;
 };
 
 enum class SemanticNodeKind {
@@ -166,14 +160,12 @@ struct EdgeKey {
 /// What an edge carries. Contraction unions these, so an edge that stands
 /// for a chain says everything the chain said.
 struct EdgeAttributes {
-  /// The flows using this edge, and the routes they took.
-  std::set<unsigned> groups;
+  /// The routes that took this edge.
   std::set<unsigned> routes;
   /// How many equivalent paths this edge stands for.
   unsigned count = 1;
 
   void absorb(const EdgeAttributes &other) {
-    groups.insert(other.groups.begin(), other.groups.end());
     routes.insert(other.routes.begin(), other.routes.end());
   }
 };
@@ -190,25 +182,20 @@ struct SemanticGraph {
   }
 
   void addEdge(StringRef source, StringRef dest,
-               std::optional<unsigned> group = std::nullopt,
                std::optional<unsigned> route = std::nullopt) {
     EdgeAttributes &attributes = edges[{source.str(), dest.str()}];
-    if (group)
-      attributes.groups.insert(*group);
     if (route)
       attributes.routes.insert(*route);
   }
 
-  bool hasIncoming(StringRef node, unsigned group) const {
-    return llvm::any_of(edges, [&](const auto &entry) {
-      return entry.first.dest == node && entry.second.groups.count(group);
-    });
+  bool hasIncoming(StringRef node) const {
+    return llvm::any_of(
+        edges, [&](const auto &entry) { return entry.first.dest == node; });
   }
 
-  bool hasOutgoing(StringRef node, unsigned group) const {
-    return llvm::any_of(edges, [&](const auto &entry) {
-      return entry.first.source == node && entry.second.groups.count(group);
-    });
+  bool hasOutgoing(StringRef node) const {
+    return llvm::any_of(
+        edges, [&](const auto &entry) { return entry.first.source == node; });
   }
 
   /// Splices out every node of a hidden kind that only passes things through:
@@ -262,6 +249,106 @@ struct SemanticGraph {
     return result;
   }
 };
+
+/// Where what crosses an edge came from, and where it can end up. An origin
+/// is a node nothing feeds; a fate is a node that feeds nothing. Both are
+/// read off the edges alone, so it makes no difference whether an edge came
+/// from a switchbox hop, a buffer access or a kernel call.
+struct Provenance {
+  /// Node to the interned set of origins reaching it, and of fates it reaches.
+  std::map<std::string, unsigned> sourceGroup;
+  std::map<std::string, unsigned> destGroup;
+  /// Members of each interned set, in node-ID order.
+  std::vector<std::vector<std::string>> sourceSets;
+  std::vector<std::vector<std::string>> destSets;
+};
+
+/// Accumulates boundary nodes along the edges until nothing changes. Splicing
+/// a node that only passes things through cannot change what reaches an edge,
+/// so this answers the same before and after contraction.
+static std::map<std::string, std::set<std::string>>
+accumulateBoundary(const SemanticGraph &graph, const SemanticEdges &edges,
+                   bool forward) {
+  std::map<std::string, std::vector<std::string>> feeders;
+  std::set<std::string> fed, feeding, nodes;
+  for (const auto &[key, attributes] : edges) {
+    const std::string &from = forward ? key.source : key.dest;
+    const std::string &to = forward ? key.dest : key.source;
+    feeders[to].push_back(from);
+    fed.insert(to);
+    feeding.insert(from);
+    nodes.insert(from);
+    nodes.insert(to);
+  }
+
+  // A tile anchors a flow the IR does not say the source or destination of,
+  // which makes it two different unknowns sharing a name. Letting provenance
+  // pass through one would say that everything arriving at a tile feeds
+  // everything leaving it.
+  auto anchors = [&](const std::string &node) {
+    auto found = graph.nodes.find(node);
+    return found != graph.nodes.end() &&
+           found->second.kind == SemanticNodeKind::Tile;
+  };
+
+  std::map<std::string, std::set<std::string>> reach;
+  for (const std::string &node : nodes)
+    if (feeding.count(node) && (anchors(node) || !fed.count(node)))
+      reach[node] = {node};
+
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (const std::string &node : nodes) {
+      if (!fed.count(node) || anchors(node))
+        continue;
+      std::set<std::string> merged;
+      for (const std::string &from : feeders[node]) {
+        auto found = reach.find(from);
+        if (found != reach.end())
+          merged.insert(found->second.begin(), found->second.end());
+      }
+      std::set<std::string> &current = reach[node];
+      if (merged != current) {
+        current = std::move(merged);
+        changed = true;
+      }
+    }
+  }
+  return reach;
+}
+
+static Provenance computeProvenance(const SemanticGraph &graph,
+                                    const SemanticEdges &edges) {
+  std::map<std::string, std::set<std::string>> origins =
+      accumulateBoundary(graph, edges, /*forward=*/true);
+  std::map<std::string, std::set<std::string>> fates =
+      accumulateBoundary(graph, edges, /*forward=*/false);
+
+  Provenance provenance;
+  // Interning on the sorted members keeps IDs stable across runs.
+  auto intern = [](const std::set<std::string> &members,
+                   std::vector<std::vector<std::string>> &sets,
+                   std::map<std::vector<std::string>, unsigned> &ids) {
+    std::vector<std::string> key(members.begin(), members.end());
+    auto [entry, inserted] = ids.try_emplace(key, sets.size());
+    if (inserted)
+      sets.push_back(std::move(key));
+    return entry->second;
+  };
+  std::map<std::vector<std::string>, unsigned> sourceIDs, destIDs;
+  for (const auto &[id, node] : graph.nodes) {
+    auto origin = origins.find(id);
+    auto fate = fates.find(id);
+    provenance.sourceGroup[id] = intern(
+        origin == origins.end() ? std::set<std::string>{} : origin->second,
+        provenance.sourceSets, sourceIDs);
+    provenance.destGroup[id] =
+        intern(fate == fates.end() ? std::set<std::string>{} : fate->second,
+               provenance.destSets, destIDs);
+  }
+  return provenance;
+}
 
 static FailureOr<PortNode>
 getPortNode(mlir::Value tile, AIE::WireBundle bundle, int channel,
@@ -518,40 +605,6 @@ static DMAChannelBytes collectDMAChannelBytes(AIE::DeviceOp device) {
     }
   }
   return channels;
-}
-
-/// Bytes each flow group moves per iteration, measured at the group's sources.
-/// Counting the sources alone avoids double counting a broadcast, whose one
-/// source feeds several destinations. Groups whose sources are core ports
-/// rather than DMA channels fall back to their destinations, and a group with
-/// no DMA endpoint at all stays at zero.
-static std::vector<uint64_t>
-collectFlowGroupBytes(ArrayRef<FlowRoute> routes, const FlowGroups &groups,
-                      const DMAChannelBytes &channelBytes) {
-  std::vector<std::set<DMAChannelKey>> sources(groups.count);
-  std::vector<std::set<DMAChannelKey>> destinations(groups.count);
-  for (const FlowRoute &route : routes) {
-    unsigned group = groups.routeGroups[route.id];
-    const PortNode &source = route.points.front();
-    if (source.bundle == AIE::WireBundle::DMA)
-      sources[group].insert(
-          {source.col, source.row, AIE::DMAChannelDir::MM2S, source.channel});
-    const PortNode &dest = route.points.back();
-    if (dest.bundle == AIE::WireBundle::DMA)
-      destinations[group].insert(
-          {dest.col, dest.row, AIE::DMAChannelDir::S2MM, dest.channel});
-  }
-  std::vector<uint64_t> bytes(groups.count, 0);
-  for (unsigned group = 0; group < groups.count; ++group) {
-    const std::set<DMAChannelKey> &endpoints =
-        sources[group].empty() ? destinations[group] : sources[group];
-    for (const DMAChannelKey &channel : endpoints) {
-      auto found = channelBytes.find(channel);
-      if (found != channelBytes.end())
-        bytes[group] += found->second;
-    }
-  }
-  return bytes;
 }
 
 /// Maps bytes to stroke width on a log scale spanning the design's own range.
@@ -928,84 +981,6 @@ static StringRef roleFill(const Palette &palette, unsigned id) {
   return palette.roles[id % palette.roles.size()];
 }
 
-static FlowGroups collectFlowGroups(ArrayRef<FlowRoute> routes,
-                                    const DMAChannelBuffers &channelBuffers,
-                                    bool noFollowBuffers) {
-  FlowGroups groups;
-  groups.routeGroups.resize(routes.size());
-  if (noFollowBuffers) {
-    std::iota(groups.routeGroups.begin(), groups.routeGroups.end(), 0);
-    groups.count = routes.size();
-    return groups;
-  }
-
-  std::vector<unsigned> parents(routes.size());
-  std::iota(parents.begin(), parents.end(), 0);
-  auto findRoot = [&](unsigned route) {
-    while (parents[route] != route) {
-      parents[route] = parents[parents[route]];
-      route = parents[route];
-    }
-    return route;
-  };
-  auto merge = [&](unsigned first, unsigned second) {
-    unsigned firstRoot = findRoot(first);
-    unsigned secondRoot = findRoot(second);
-    if (firstRoot != secondRoot)
-      parents[secondRoot] = firstRoot;
-  };
-
-  using EndpointKey =
-      std::tuple<PortNode, std::optional<int>, std::optional<int>>;
-  std::map<Operation *, std::vector<unsigned>> bufferRoutes;
-  std::map<EndpointKey, std::vector<unsigned>> endpointRoutes;
-  for (const FlowRoute &route : routes) {
-    const PortNode &source = route.points.front();
-    if (source.bundle != AIE::WireBundle::DMA &&
-        source.bundle != AIE::WireBundle::Core)
-      endpointRoutes[{source, route.packetID, route.packetMask}].push_back(
-          route.id);
-    if (source.bundle == AIE::WireBundle::DMA) {
-      DMAChannelKey key{source.col, source.row, AIE::DMAChannelDir::MM2S,
-                        source.channel};
-      auto channels = channelBuffers.find(key);
-      if (channels != channelBuffers.end())
-        for (AIE::BufferOp buffer : channels->second)
-          bufferRoutes[buffer].push_back(route.id);
-    }
-    const PortNode &dest = route.points.back();
-    if (dest.bundle != AIE::WireBundle::DMA &&
-        dest.bundle != AIE::WireBundle::Core)
-      endpointRoutes[{dest, route.packetID, route.packetMask}].push_back(
-          route.id);
-    if (dest.bundle == AIE::WireBundle::DMA) {
-      DMAChannelKey key{dest.col, dest.row, AIE::DMAChannelDir::S2MM,
-                        dest.channel};
-      auto channels = channelBuffers.find(key);
-      if (channels != channelBuffers.end())
-        for (AIE::BufferOp buffer : channels->second)
-          bufferRoutes[buffer].push_back(route.id);
-    }
-  }
-  for (const auto &[buffer, routes] : bufferRoutes) {
-    for (unsigned route : ArrayRef(routes).drop_front())
-      merge(routes.front(), route);
-  }
-  for (const auto &[endpoint, routes] : endpointRoutes) {
-    for (unsigned route : ArrayRef(routes).drop_front())
-      merge(routes.front(), route);
-  }
-
-  std::map<unsigned, unsigned> groupIDs;
-  for (const FlowRoute &route : routes) {
-    unsigned root = findRoot(route.id);
-    auto [group, inserted] = groupIDs.try_emplace(root, groupIDs.size());
-    groups.routeGroups[route.id] = group->second;
-  }
-  groups.count = groupIDs.size();
-  return groups;
-}
-
 static std::string portNodeID(const PortNode &port) {
   std::string id = "p_" + std::to_string(port.col) + "_" +
                    std::to_string(port.row) + "_" +
@@ -1038,20 +1013,42 @@ static std::string tileNodeID(int col, int row) {
   return "tile_" + std::to_string(col) + "_" + std::to_string(row);
 }
 
+/// Bytes each interned boundary set moves per iteration, measured at the DMA
+/// channels carrying it. An origin is rarely a channel itself -- it is the
+/// runtime argument or kernel upstream of one -- so the volume is read off
+/// the channels that share its provenance.
+static void boundarySetBytes(const Provenance &provenance,
+                             const DMAChannelBytes &channelBytes,
+                             std::vector<uint64_t> &sourceBytes,
+                             std::vector<uint64_t> &destBytes) {
+  sourceBytes.assign(provenance.sourceSets.size(), 0);
+  destBytes.assign(provenance.destSets.size(), 0);
+  for (const auto &[key, bytes] : channelBytes) {
+    auto [col, row, direction, channel] = key;
+    PortNode port{col, row, AIE::WireBundle::DMA, channel, direction};
+    std::string id = portNodeID(port);
+    if (direction == AIE::DMAChannelDir::MM2S) {
+      auto group = provenance.sourceGroup.find(id);
+      if (group != provenance.sourceGroup.end() &&
+          !provenance.sourceSets[group->second].empty())
+        sourceBytes[group->second] += bytes;
+      continue;
+    }
+    auto group = provenance.destGroup.find(id);
+    if (group != provenance.destGroup.end() &&
+        !provenance.destSets[group->second].empty())
+      destBytes[group->second] += bytes;
+  }
+}
+
 static SemanticGraph buildSemanticGraph(
-    ArrayRef<FlowRoute> routes, const FlowGroups &groups,
-    ArrayRef<ArbitrationRule> arbitrationRules,
+    ArrayRef<FlowRoute> routes, ArrayRef<ArbitrationRule> arbitrationRules,
     const DMAChannelBuffers &channelBuffers,
-    const std::map<DMAChannelKey, std::set<unsigned>> &channelFlowGroups,
-    ArrayRef<BufferInfo> buffers,
+    const std::set<DMAChannelKey> &activeChannels, ArrayRef<BufferInfo> buffers,
     ArrayRef<RuntimeArgumentInfo> runtimeArguments, ArrayRef<CallInfo> calls,
-    const std::map<Operation *, std::set<unsigned>> &bufferSourceFlowGroups,
-    const std::map<Operation *, std::set<unsigned>> &bufferDestFlowGroups,
-    const std::set<unsigned> &visibleGroups) {
+    const std::set<Operation *> &buffersFeedingDMA,
+    const std::set<Operation *> &buffersFedByDMA) {
   SemanticGraph graph;
-  auto isVisible = [&](unsigned group) {
-    return visibleGroups.empty() || visibleGroups.count(group);
-  };
   auto addPort = [&](const PortNode &port) {
     std::string id = portNodeID(port);
     graph.addNode(id,
@@ -1070,15 +1067,12 @@ static SemanticGraph buildSemanticGraph(
   // keeps ports then has them to draw, and one that contracts them removes
   // them here rather than never collecting them.
   for (const FlowRoute &route : routes) {
-    unsigned group = groups.routeGroups[route.id];
-    if (!isVisible(group))
-      continue;
     for (auto pair : llvm::zip_equal(ArrayRef(route.points).drop_back(),
                                      ArrayRef(route.points).drop_front())) {
       const auto &[source, dest] = pair;
       if (source == dest)
         continue;
-      graph.addEdge(addPort(source), addPort(dest), group, route.id);
+      graph.addEdge(addPort(source), addPort(dest), route.id);
     }
     addPort(route.points.front());
     addPort(route.points.back());
@@ -1095,13 +1089,9 @@ static SemanticGraph buildSemanticGraph(
     std::string destID = portNodeID(rule.segment.dest);
     if (sourceID == destID)
       continue;
-    std::set<unsigned> arriving;
-    for (const auto &[key, attributes] : graph.edges)
-      if (key.dest == sourceID)
-        arriving.insert(attributes.groups.begin(), attributes.groups.end());
-    for (unsigned group : arriving)
-      graph.addEdge(addPort(rule.segment.source), addPort(rule.segment.dest),
-                    group);
+    if (!graph.hasIncoming(sourceID))
+      continue;
+    graph.addEdge(addPort(rule.segment.source), addPort(rule.segment.dest));
   }
 
   std::map<Operation *, unsigned> bufferIDs;
@@ -1112,21 +1102,15 @@ static SemanticGraph buildSemanticGraph(
     addTile(buffer.col, buffer.row);
   }
   for (const auto &[key, channelBufferList] : channelBuffers) {
+    if (!activeChannels.count(key))
+      continue;
     auto [col, row, direction, channel] = key;
     PortNode port{col, row, AIE::WireBundle::DMA, channel, direction};
     std::string portID = addPort(port);
-    auto flowGroups = channelFlowGroups.find(key);
-    if (flowGroups == channelFlowGroups.end())
-      continue;
     for (AIE::BufferOp buffer : channelBufferList) {
       std::string bufferID = bufferNodeID(bufferIDs.at(buffer));
-      std::string source =
-          direction == AIE::DMAChannelDir::MM2S ? bufferID : portID;
-      std::string dest =
-          direction == AIE::DMAChannelDir::MM2S ? portID : bufferID;
-      for (unsigned group : flowGroups->second)
-        if (isVisible(group))
-          graph.addEdge(source, dest, group);
+      bool draining = direction == AIE::DMAChannelDir::MM2S;
+      graph.addEdge(draining ? bufferID : portID, draining ? portID : bufferID);
     }
   }
 
@@ -1141,14 +1125,7 @@ static SemanticGraph buildSemanticGraph(
           direction == AIE::DMAChannelDir::MM2S ? argumentID : portID;
       std::string dest =
           direction == AIE::DMAChannelDir::MM2S ? portID : argumentID;
-      auto flowGroups = channelFlowGroups.find(key);
-      if (flowGroups == channelFlowGroups.end() || flowGroups->second.empty()) {
-        graph.addEdge(source, dest);
-        continue;
-      }
-      for (unsigned group : flowGroups->second)
-        if (isVisible(group))
-          graph.addEdge(source, dest, group);
+      graph.addEdge(source, dest);
     }
   }
 
@@ -1159,50 +1136,22 @@ static SemanticGraph buildSemanticGraph(
     addTile(call.col, call.row);
     for (AIE::BufferOp buffer : call.buffers) {
       std::string bufferID = bufferNodeID(bufferIDs.at(buffer));
-      auto sourceGroups = bufferSourceFlowGroups.find(buffer);
-      if (sourceGroups != bufferSourceFlowGroups.end()) {
-        for (unsigned group : sourceGroups->second) {
-          if (!isVisible(group))
-            continue;
-          graph.addEdge(callID, bufferID, group);
-        }
-      }
-      auto destGroups = bufferDestFlowGroups.find(buffer);
-      if (destGroups != bufferDestFlowGroups.end()) {
-        for (unsigned group : destGroups->second) {
-          if (!isVisible(group))
-            continue;
-          graph.addEdge(bufferID, callID, group);
-        }
-      }
+      if (buffersFeedingDMA.count(buffer))
+        graph.addEdge(callID, bufferID);
+      if (buffersFedByDMA.count(buffer))
+        graph.addEdge(bufferID, callID);
     }
   }
 
   for (const FlowRoute &route : routes) {
-    unsigned group = groups.routeGroups[route.id];
-    if (!isVisible(group))
-      continue;
     const PortNode &source = route.points.front();
     const PortNode &dest = route.points.back();
     std::string sourceID = portNodeID(source);
     std::string destID = portNodeID(dest);
-    if (!graph.hasIncoming(sourceID, group))
-      graph.addEdge(addTile(source.col, source.row), sourceID, group);
-    if (!graph.hasOutgoing(destID, group))
-      graph.addEdge(destID, addTile(dest.col, dest.row), group);
-  }
-
-  // Asking for one flow is asking what it touches; the rest of the design
-  // would answer a question nobody put.
-  if (!visibleGroups.empty()) {
-    std::set<std::string> joined;
-    for (const auto &[key, attributes] : graph.edges) {
-      joined.insert(key.source);
-      joined.insert(key.dest);
-    }
-    for (auto entry = graph.nodes.begin(); entry != graph.nodes.end();)
-      entry = joined.count(entry->first) ? std::next(entry)
-                                         : graph.nodes.erase(entry);
+    if (!graph.hasIncoming(sourceID))
+      graph.addEdge(addTile(source.col, source.row), sourceID);
+    if (!graph.hasOutgoing(destID))
+      graph.addEdge(destID, addTile(dest.col, dest.row));
   }
   return graph;
 }
@@ -1252,13 +1201,25 @@ static std::pair<double, double> portPosition(const PortNode &port,
   }
 }
 
-static std::string flowClasses(const std::set<unsigned> &groups,
-                               StringRef kind) {
+/// Which origins reach a node or edge and which fates it reaches, as the
+/// interned IDs the viewer matches on. An edge takes its origins from the end
+/// it leaves and its fates from the end it arrives at, so a fan-out shares an
+/// origin while its branches differ in where they end up.
+struct Boundary {
+  unsigned source = 0;
+  unsigned dest = 0;
+  bool hasSource = false;
+  bool hasDest = false;
+};
+
+static std::string flowClasses(StringRef kind, const Boundary &boundary) {
   std::string classes = kind.str();
-  if (!groups.empty())
+  if (boundary.hasSource || boundary.hasDest)
     classes += " flow";
-  for (unsigned group : groups)
-    classes += " flow-" + std::to_string(group);
+  if (boundary.hasSource)
+    classes += " src-" + std::to_string(boundary.source);
+  if (boundary.hasDest)
+    classes += " dst-" + std::to_string(boundary.dest);
   return classes;
 }
 
@@ -1303,10 +1264,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   std::vector<RuntimeBufferUse> runtimeBufferUses =
       collectRuntimeBufferUses(device, runtimeSequence);
   std::vector<CallInfo> calls = collectCalls(device);
-  FlowGroups groups =
-      collectFlowGroups(*routes, channelBuffers, options.noFollowBuffers);
-  std::vector<uint64_t> groupBytes =
-      collectFlowGroupBytes(*routes, groups, collectDMAChannelBytes(device));
+  DMAChannelBytes channelBytes = collectDMAChannelBytes(device);
   const Palette &palette = paletteFor(options.colors);
   std::unique_ptr<ArrowRenderer> arrows =
       options.arrows == AIE::ArrowStyle::Channel
@@ -1316,27 +1274,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   double widest = options.maxEdgeWidth;
   if (std::optional<double> room = arrows->widestLine())
     widest = std::min(widest, *room);
-  EdgeWeightScale weightScale =
-      options.weighEdges
-          ? EdgeWeightScale::build(groupBytes, options.minEdgeWidth, widest)
-          : EdgeWeightScale();
 
   std::set<unsigned> only(options.onlyFlows.begin(), options.onlyFlows.end());
-  auto validateIDs = [&](const std::set<unsigned> &ids,
-                         StringRef option) -> LogicalResult {
-    for (unsigned id : ids) {
-      if (id >= groups.count) {
-        device.emitOpError() << option << " references unknown flow " << id
-                             << "; valid IDs are 0 through "
-                             << (groups.count == 0 ? 0 : groups.count - 1);
-        return failure();
-      }
-    }
-    return success();
-  };
-  if (failed(validateIDs(only, "--only-flow")))
-    return failure();
-  auto isVisible = [&](unsigned id) { return only.empty() || only.count(id); };
 
   std::set<SemanticNodeKind> contractKinds;
   for (StringRef kind : options.contractedNodeKinds) {
@@ -1370,34 +1309,26 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                   "aie-find-flows with emit-vias=true, or contract ports";
 
   std::set<PortNode> ports;
-  std::map<DMAChannelKey, std::set<unsigned>> channelFlowGroups;
-  std::map<Operation *, std::set<unsigned>> bufferFlowGroups;
-  std::map<Operation *, std::set<unsigned>> bufferSourceFlowGroups;
-  std::map<Operation *, std::set<unsigned>> bufferDestFlowGroups;
+  std::set<DMAChannelKey> activeChannels;
+  std::set<Operation *> buffersFeedingDMA;
+  std::set<Operation *> buffersFedByDMA;
   for (const FlowRoute &route : *routes) {
-    unsigned groupID = groups.routeGroups[route.id];
-    if (!isVisible(groupID))
-      continue;
     ports.insert(route.points.begin(), route.points.end());
     const PortNode &source = route.points.front();
     if (source.bundle == AIE::WireBundle::DMA) {
       DMAChannelKey key{source.col, source.row, AIE::DMAChannelDir::MM2S,
                         source.channel};
-      channelFlowGroups[key].insert(groupID);
-      for (AIE::BufferOp buffer : channelBuffers[key]) {
-        bufferFlowGroups[buffer].insert(groupID);
-        bufferSourceFlowGroups[buffer].insert(groupID);
-      }
+      activeChannels.insert(key);
+      for (AIE::BufferOp buffer : channelBuffers[key])
+        buffersFeedingDMA.insert(buffer);
     }
     const PortNode &dest = route.points.back();
     if (dest.bundle == AIE::WireBundle::DMA) {
       DMAChannelKey key{dest.col, dest.row, AIE::DMAChannelDir::S2MM,
                         dest.channel};
-      channelFlowGroups[key].insert(groupID);
-      for (AIE::BufferOp buffer : channelBuffers[key]) {
-        bufferFlowGroups[buffer].insert(groupID);
-        bufferDestFlowGroups[buffer].insert(groupID);
-      }
+      activeChannels.insert(key);
+      for (AIE::BufferOp buffer : channelBuffers[key])
+        buffersFedByDMA.insert(buffer);
     }
   }
   // A merge inside a switchbox reaches ports that no flow names.
@@ -1414,34 +1345,17 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   std::map<std::pair<int, int>, unsigned> localCounts;
   std::map<Operation *, unsigned> bufferLocalIndices;
   std::map<unsigned, unsigned> callLocalIndices;
-  std::map<unsigned, std::set<unsigned>> callFlowGroups;
-  for (const CallInfo &call : calls) {
-    for (AIE::BufferOp buffer : call.buffers)
-      callFlowGroups[call.id].insert(bufferFlowGroups[buffer].begin(),
-                                     bufferFlowGroups[buffer].end());
-    if (!only.empty() && !callFlowGroups[call.id].count(*only.begin()))
-      continue;
-    callLocalIndices[call.id] = localCounts[{call.col, call.row}]++;
-  }
 
   std::vector<RuntimeArgumentInfo> runtimeArguments;
   std::map<unsigned, unsigned> argumentIDs;
   for (const RuntimeBufferUse &use : runtimeBufferUses) {
-    std::set<unsigned> flowGroups;
-    auto channelGroups = channelFlowGroups.find(use.channel);
-    if (channelGroups != channelFlowGroups.end())
-      flowGroups = channelGroups->second;
-    if (!only.empty() && !flowGroups.count(*only.begin()))
-      continue;
     auto [entry, inserted] =
         argumentIDs.try_emplace(use.argumentIndex, runtimeArguments.size());
     if (inserted)
-      runtimeArguments.push_back(
-          {use.argumentIndex, use.argument, {}, flowGroups});
+      runtimeArguments.push_back({use.argumentIndex, use.argument, {}});
     RuntimeArgumentInfo &argument = runtimeArguments[entry->second];
     if (!llvm::is_contained(argument.channels, use.channel))
       argument.channels.push_back(use.channel);
-    argument.flowGroups.insert(flowGroups.begin(), flowGroups.end());
   }
   llvm::sort(runtimeArguments, [](const RuntimeArgumentInfo &left,
                                   const RuntimeArgumentInfo &right) {
@@ -1449,18 +1363,74 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   });
   // One graph describes the design; a view is a choice of what to contract
   // out of it. Drawing every hop is contracting nothing.
-  SemanticGraph semanticGraph =
-      buildSemanticGraph(*routes, groups, arbitrationRules, channelBuffers,
-                         channelFlowGroups, *buffers, runtimeArguments, calls,
-                         bufferSourceFlowGroups, bufferDestFlowGroups, only);
+  SemanticGraph semanticGraph = buildSemanticGraph(
+      *routes, arbitrationRules, channelBuffers, activeChannels, *buffers,
+      runtimeArguments, calls, buffersFeedingDMA, buffersFedByDMA);
   SemanticEdges topologyEdges = semanticGraph.contract(contractKinds);
+  Provenance provenance = computeProvenance(semanticGraph, topologyEdges);
+
+  for (unsigned id : only) {
+    if (id < provenance.sourceSets.size())
+      continue;
+    device.emitOpError() << "--only-flow references unknown flow " << id
+                         << "; valid IDs are 0 through "
+                         << (provenance.sourceSets.empty()
+                                 ? 0
+                                 : provenance.sourceSets.size() - 1);
+    return failure();
+  }
+  // Asking for one flow is asking what it carries; the rest of the design
+  // would answer a question nobody put.
+  if (!only.empty())
+    for (auto entry = topologyEdges.begin(); entry != topologyEdges.end();)
+      entry = only.count(provenance.sourceGroup.at(entry->first.source))
+                  ? std::next(entry)
+                  : topologyEdges.erase(entry);
+
+  auto boundaryOfNode = [&](const std::string &id) {
+    Boundary boundary;
+    auto source = provenance.sourceGroup.find(id);
+    if (source != provenance.sourceGroup.end()) {
+      boundary.source = source->second;
+      boundary.hasSource = !provenance.sourceSets[boundary.source].empty();
+    }
+    auto dest = provenance.destGroup.find(id);
+    if (dest != provenance.destGroup.end()) {
+      boundary.dest = dest->second;
+      boundary.hasDest = !provenance.destSets[boundary.dest].empty();
+    }
+    return boundary;
+  };
+  auto boundaryOfEdge = [&](const EdgeKey &key) {
+    Boundary leaving = boundaryOfNode(key.source);
+    Boundary arriving = boundaryOfNode(key.dest);
+    return Boundary{leaving.source, arriving.dest, leaving.hasSource,
+                    arriving.hasDest};
+  };
+
+  std::vector<uint64_t> sourceBytes, destBytes;
+  boundarySetBytes(provenance, channelBytes, sourceBytes, destBytes);
+  // An origin that states no volume -- a kernel rather than a buffer
+  // descriptor -- leaves the question to where the data ends up.
+  auto edgeBytes = [&](const Boundary &boundary) {
+    uint64_t bytes = boundary.hasSource ? sourceBytes[boundary.source] : 0;
+    if (bytes == 0 && boundary.hasDest)
+      bytes = destBytes[boundary.dest];
+    return bytes;
+  };
+  EdgeWeightScale weightScale =
+      options.weighEdges
+          ? EdgeWeightScale::build(sourceBytes, options.minEdgeWidth, widest)
+          : EdgeWeightScale();
+
   // Contraction removes a node by splicing it out of the edges it joined, so
   // what is left to draw is what still has an edge -- and what never had one,
   // which nothing could splice out. A buffer no flow reaches, or a kernel
   // reading none, is still on the tile.
   std::set<std::string> topologyNodes;
-  for (const auto &[id, node] : semanticGraph.nodes)
-    topologyNodes.insert(id);
+  if (only.empty())
+    for (const auto &[id, node] : semanticGraph.nodes)
+      topologyNodes.insert(id);
   for (const auto &[key, attributes] : semanticGraph.edges) {
     topologyNodes.erase(key.source);
     topologyNodes.erase(key.dest);
@@ -1475,14 +1445,14 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     std::pair<int, int> coordinate{buffer.col, buffer.row};
     bufferLocalIndices[buffer.op] = localCounts[coordinate]++;
   }
+  for (const CallInfo &call : calls) {
+    if (!topologyNodes.count(callNodeID(call.id)))
+      continue;
+    callLocalIndices[call.id] = localCounts[{call.col, call.row}]++;
+  }
 
-  std::map<std::string, std::set<unsigned>> nodeGroups;
   std::map<std::string, unsigned> indegree, outdegree;
   for (const auto &[key, attributes] : topologyEdges) {
-    nodeGroups[key.source].insert(attributes.groups.begin(),
-                                  attributes.groups.end());
-    nodeGroups[key.dest].insert(attributes.groups.begin(),
-                                attributes.groups.end());
     ++outdegree[key.source];
     ++indegree[key.dest];
   }
@@ -1707,13 +1677,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                 0.17};
   }
 
-  auto edgeBytes = [&](const std::set<unsigned> &edgeGroups) {
-    uint64_t bytes = 0;
-    for (unsigned group : edgeGroups)
-      bytes += group < groupBytes.size() ? groupBytes[group] : 0;
-    return bytes;
-  };
-
   SmallVector<ArrowRequest> arrowRequests;
   std::map<EdgeKey, unsigned> edgeArrows;
   for (const auto &[key, attributes] : topologyEdges) {
@@ -1722,10 +1685,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     if (from == ends.end() || to == ends.end())
       continue;
     unsigned id = arrowRequests.size();
-    arrowRequests.push_back(
-        {id, from->second, to->second,
-         attributes.groups.empty() ? 0 : *attributes.groups.begin(),
-         weightScale.width(edgeBytes(attributes.groups))});
+    Boundary boundary = boundaryOfEdge(key);
+    arrowRequests.push_back({id, from->second, to->second, boundary.source,
+                             weightScale.width(edgeBytes(boundary))});
     edgeArrows[key] = id;
   }
 
@@ -1871,7 +1833,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     if (port.bundle == AIE::WireBundle::DMA) {
       output << " [shape=box, fixedsize=true, width=0.82, height=0.18, pos=\""
              << layout.pos(x, y) << "\", label=\"" << shortPortName(port)
-             << "\", class=\"" << flowClasses(nodeGroups[id], "port")
+             << "\", class=\"" << flowClasses("port", boundaryOfNode(id))
              << "\", fontsize=7, style=filled, fillcolor=\"" << palette.boxFill
              << "\", fontcolor=\"" << palette.tileText << "\", "
              << "color=\"" << palette.boxEdge << "\"];\n";
@@ -1881,7 +1843,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << "\", color=\"" << palette.boxEdge << "\", xlabel=\""
              << shortPortName(port) << "\", fontsize=7, fontcolor=\""
              << palette.tileText << "\", class=\""
-             << flowClasses(nodeGroups[id], kind) << "\"];\n";
+             << flowClasses(kind, boundaryOfNode(id)) << "\"];\n";
     }
   }
   // What a switchbox does with a packet can only be anchored where the
@@ -1894,7 +1856,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
           {portNodeID(rule.segment.source), portNodeID(rule.segment.dest)});
       if (edge == topologyEdges.end())
         continue;
-      std::set<unsigned> matchingGroups;
+      bool usedByAnyRoute = false;
       for (unsigned routeID : edge->second.routes) {
         const FlowRoute &route = (*routes)[routeID];
         if (!route.packetID)
@@ -1920,9 +1882,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
             break;
         }
         if (usesRule)
-          matchingGroups.insert(groups.routeGroups[route.id]);
+          usedByAnyRoute = true;
       }
-      if (matchingGroups.empty())
+      if (!usedByAnyRoute)
         continue;
       auto [sourceX, sourceY] = portPoint(rule.segment.source);
       auto [destX, destY] = portPoint(rule.segment.dest);
@@ -1956,8 +1918,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << ", priority route: " << (rule.priorityRoute ? "yes" : "no")
              << ", control overlay: " << (rule.controlOverlay ? "yes" : "no")
              << "\", class=\""
-             << flowClasses(matchingGroups,
-                            "arbitration detail-arbitration detail-vias")
+             << flowClasses("arbitration detail-arbitration detail-vias",
+                            boundaryOfEdge(edge->first))
              << "\", fontsize=6, style=filled, fillcolor=\"" << palette.ruleFill
              << "\", color=\"" << palette.ruleEdge << "\", fontcolor=\""
              << palette.ruleText << "\"];\n";
@@ -1973,7 +1935,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << dotCoordinate(localNodeWidth) << ", height=0.34, pos=\""
            << layout.pos(x, y) << "\", label=\""
            << bufferLabel(buffer.op, buffer.id) << "\", class=\""
-           << flowClasses(nodeGroups[id], "buffer detail-buffers")
+           << flowClasses("buffer detail-buffers", boundaryOfNode(id))
            << "\", fontsize=8, style=filled, fillcolor=\"" << palette.boxFill
            << "\", fontcolor=\"" << palette.tileText << "\", "
            << "color=\"" << palette.boxEdge << "\"];\n";
@@ -1987,7 +1949,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << dotCoordinate(localNodeWidth) << ", height=0.3, pos=\""
            << layout.pos(x, y) << "\", label=\"%"
            << escapeDotLabel(argument.name) << "\", class=\""
-           << flowClasses(nodeGroups[id], "runtime-argument")
+           << flowClasses("runtime-argument", boundaryOfNode(id))
            << "\", fontsize=8, style=\"rounded,filled\", fillcolor=\""
            << palette.argumentFill << "\", color=\"" << palette.argumentEdge
            << "\", fontcolor=\"" << palette.tileText << "\"];\n";
@@ -2001,18 +1963,19 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     output << "  " << id << " [shape=box, fixedsize=true, width="
            << dotCoordinate(localNodeWidth) << ", height=0.3, pos=\""
            << layout.pos(x, y) << "\", label=\"" << escapeDotLabel(call.callee)
-           << "\", class=\"" << flowClasses(nodeGroups[id], "call detail-calls")
+           << "\", class=\""
+           << flowClasses("call detail-calls", boundaryOfNode(id))
            << "\", fontsize=8, style=\"rounded,filled\", fillcolor=\""
            << palette.callFill << "\", color=\"" << palette.callEdge
            << "\", fontcolor=\"" << palette.tileText << "\"];\n";
   }
 
-  auto writeWeight = [&](const std::set<unsigned> &edgeGroups) {
+  auto writeWeight = [&](const Boundary &boundary) {
     if (!weightScale.enabled) {
       output << R"(, penwidth="2.4")";
       return;
     }
-    uint64_t bytes = edgeBytes(edgeGroups);
+    uint64_t bytes = edgeBytes(boundary);
     output << ", penwidth=\"" << llvm::format("%.2f", weightScale.width(bytes))
            << '"';
     // A flow with no buffer descriptor at either end states no volume. Saying
@@ -2022,21 +1985,18 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     else
       output << ", tooltip=\"" << formatBytes(bytes) << " per iteration\"";
   };
-  auto writeColors = [&](const std::set<unsigned> &edgeGroups) {
-    if (edgeGroups.empty()) {
+  auto writeColors = [&](const Boundary &boundary) {
+    if (!boundary.hasSource) {
       output << palette.quietEdge;
       return;
     }
-    for (auto [index, group] : llvm::enumerate(edgeGroups)) {
-      if (index)
-        output << ':';
-      output << flowColor(palette, group);
-    }
+    output << flowColor(palette, boundary.source);
   };
-  auto writeLabel = [&](const FlowRoute &route) {
-    unsigned groupID = groups.routeGroups[route.id];
-    output << "<FONT COLOR=\"" << flowColor(palette, groupID) << "\">F"
-           << groupID;
+  auto writeLabel = [&](const FlowRoute &route, const Boundary &boundary) {
+    output << "<FONT COLOR=\""
+           << (boundary.hasSource ? flowColor(palette, boundary.source)
+                                  : palette.quietEdge)
+           << "\">F" << boundary.source;
     if (route.packetID) {
       output << " pkt=" << *route.packetID;
       if (route.packetMask)
@@ -2055,9 +2015,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   // nothing more.
   std::map<EdgeKey, std::set<unsigned>> labeledEdges;
   for (const FlowRoute &route : *routes) {
-    unsigned group = groups.routeGroups[route.id];
-    if (!isVisible(group))
-      continue;
     std::vector<const EdgeKey *> carrying;
     std::vector<const EdgeKey *> crossing;
     for (const auto &[key, attributes] : topologyEdges) {
@@ -2076,11 +2033,11 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     const EdgeKey *chosen = candidates[candidates.size() / 2];
     for (const EdgeKey *key : candidates) {
       unsigned leaving = llvm::count_if(topologyEdges, [&](const auto &entry) {
-        return entry.second.groups.count(group) &&
+        return entry.second.routes.count(route.id) &&
                entry.first.source == key->dest;
       });
       unsigned arriving = llvm::count_if(topologyEdges, [&](const auto &entry) {
-        return entry.second.groups.count(group) &&
+        return entry.second.routes.count(route.id) &&
                entry.first.dest == key->source;
       });
       if (leaving > 1 || arriving > 1) {
@@ -2098,8 +2055,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     emissionOrder.push_back(&key);
   if (weightScale.enabled)
     llvm::stable_sort(emissionOrder, [&](const EdgeKey *a, const EdgeKey *b) {
-      return edgeBytes(topologyEdges.at(*a).groups) <
-             edgeBytes(topologyEdges.at(*b).groups);
+      return edgeBytes(boundaryOfEdge(*a)) < edgeBytes(boundaryOfEdge(*b));
     });
 
   for (const EdgeKey *key : emissionOrder) {
@@ -2125,10 +2081,11 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     if (isVia(key->dest))
       kind += " detail-vias";
 
+    Boundary boundary = boundaryOfEdge(*key);
     output << "  " << key->source << " -> " << key->dest << " [color=\"";
-    writeColors(attributes.groups);
-    output << "\", class=\"" << flowClasses(attributes.groups, kind) << '"';
-    writeWeight(attributes.groups);
+    writeColors(boundary);
+    output << "\", class=\"" << flowClasses(kind, boundary) << '"';
+    writeWeight(boundary);
     auto arrow = edgeArrows.find(*key);
     if (arrow != edgeArrows.end())
       writeArrowGeometry(arrow->second,
@@ -2137,15 +2094,14 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     // One name per distinct packet treatment: routes that say the same thing
     // say it once, however many of them a contracted edge stands for.
     std::vector<const FlowRoute *> labelRoutes;
-    std::set<std::tuple<unsigned, std::optional<unsigned>,
-                        std::optional<unsigned>, std::optional<bool>, bool>>
+    std::set<std::tuple<std::optional<unsigned>, std::optional<unsigned>,
+                        std::optional<bool>, bool>>
         seen;
     if (labeled != labeledEdges.end())
       for (unsigned routeID : labeled->second) {
         const FlowRoute &route = (*routes)[routeID];
-        if (seen.insert({groups.routeGroups[route.id], route.packetID,
-                         route.packetMask, route.keepsPacketHeader,
-                         route.priorityRoute})
+        if (seen.insert({route.packetID, route.packetMask,
+                         route.keepsPacketHeader, route.priorityRoute})
                 .second)
           labelRoutes.push_back(&route);
       }
@@ -2155,7 +2111,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       for (auto [index, route] : llvm::enumerate(labelRoutes)) {
         if (index)
           output << "<BR/>";
-        writeLabel(*route);
+        writeLabel(*route, boundary);
       }
       if (!labelRoutes.empty() && writeCount)
         output << "<BR/>";

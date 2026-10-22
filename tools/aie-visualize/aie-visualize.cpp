@@ -63,9 +63,6 @@ static cl::list<std::string> contractedNodeKinds(
     cl::desc("Contract semantic node kinds: tile, port, dma, buffer, "
              "runtime-argument, call"),
     cl::value_desc("kind"), cl::CommaSeparated, cl::ZeroOrMore);
-static cl::opt<bool> noFollowBuffers(
-    "no-follow-buffers",
-    cl::desc("Do not group flows through buffers or shared endpoints"));
 static cl::opt<std::string>
     deviceName("device", cl::desc("Select an aie.device by symbol name"),
                cl::value_desc("symbol"));
@@ -189,7 +186,6 @@ int main(int argc, char *argv[]) {
   options.onlyFlows.assign(onlyFlows.begin(), onlyFlows.end());
   options.contractedNodeKinds.assign(contractedNodeKinds.begin(),
                                      contractedNodeKinds.end());
-  options.noFollowBuffers = noFollowBuffers;
   options.weighEdges = weighEdges;
   options.minEdgeWidth = minEdgeWidth;
   options.maxEdgeWidth = maxEdgeWidth;

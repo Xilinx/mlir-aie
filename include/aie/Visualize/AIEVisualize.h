@@ -53,8 +53,6 @@ struct VisualizeOptions {
   /// Node kinds to contract out of the graph: tile, port, dma, buffer,
   /// runtime-argument, call. Contracting nothing draws every hop.
   std::vector<std::string> contractedNodeKinds;
-  /// Keep flows that share a buffer or an endpoint in separate groups.
-  bool noFollowBuffers = false;
 
   /// How arrows are drawn between tiles.
   ArrowStyle arrows = ArrowStyle::Straight;

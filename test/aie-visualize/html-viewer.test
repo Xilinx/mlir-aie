@@ -23,16 +23,21 @@
 // CHECK: <button id="open" type="button">Open SVG</button>
 // CHECK: <aside aria-label="Visualization controls">
 // CHECK: const selectedFlows = new Set()
+// CHECK: /^src-\d+$/.test(name)
+// CHECK: /^dst-\d+$/.test(name)
 // CHECK: const stack = (kind, matched)
 // CHECK: stack("node", true)
 // CHECK: stack("edge", false)
 // CHECK: stack("edge", true)
+// CHECK: const directionSettings = [
+// CHECK: ["incoming", "Incoming"
+// CHECK: ["outgoing", "Outgoing"
 // CHECK: const detailSettings = [
 // CHECK: ["buffers", "Buffers"]
 // CHECK: ["arbitration", "Arbitration"]
 // CHECK: svg.classList.toggle(`hide-detail-${name}`
 // CHECK: row.innerHTML = `<input type="checkbox"
-// CHECK: hoveredFlows = flowClasses(element)
+// CHECK: hoveredFlows = matchKeys(element)
 // CHECK: if (!drag.moved && drag.flows.length) toggleFlows(drag.flows)
 // CHECK: listen(viewport, "click"
 // CHECK: fetch(url, {cache: "no-store"})
