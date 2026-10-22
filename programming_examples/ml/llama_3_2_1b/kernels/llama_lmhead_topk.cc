@@ -11,7 +11,10 @@
 
 #include "llama_vec_fp.h"
 
-static constexpr int kK = 2048, kNTile = 4, kPrefix = 64, kVec = 64;
+// A table slot: kNTile rows, then a weight slot's trailer of 8 int32 biases
+// and 8 fp32 scales, the first kNTile of each the rows'.
+static constexpr int kK = 2048, kNTile = 4, kVec = 64;
+static constexpr int kBiasOff = kNTile * kK, kScaleOff = kBiasOff + 32;
 
 // A signed key ordered as IEEE orders non-NaN floats, with -0 tying +0.
 static inline int32_t logit_key(float f) {
@@ -24,19 +27,17 @@ static inline int32_t logit_key(float f) {
 // A weight slot's kNTile int32 sums against act, its biases added.
 static inline void tile_sums(const int8_t *restrict act,
                              const int8_t *restrict w_tile, int32_t *sums) {
-  const int8_t *weights = w_tile + kPrefix;
-  const int32_t *bias =
-      reinterpret_cast<const int32_t *>(weights + kNTile * kK);
+  const int32_t *bias = reinterpret_cast<const int32_t *>(w_tile + kBiasOff);
   static_assert(kNTile == 4);
   aie::accum<acc32, kVec> acc0, acc1, acc2, acc3;
   acc0.from_vector(aie::zeros<int32, kVec>());
   acc1.from_vector(aie::zeros<int32, kVec>());
   acc2.from_vector(aie::zeros<int32, kVec>());
   acc3.from_vector(aie::zeros<int32, kVec>());
-  const int8_t *__restrict w0 = weights;
-  const int8_t *__restrict w1 = weights + kK;
-  const int8_t *__restrict w2 = weights + 2 * kK;
-  const int8_t *__restrict w3 = weights + 3 * kK;
+  const int8_t *__restrict w0 = w_tile;
+  const int8_t *__restrict w1 = w_tile + kK;
+  const int8_t *__restrict w2 = w_tile + 2 * kK;
+  const int8_t *__restrict w3 = w_tile + 3 * kK;
   const int8_t *__restrict x = act;
 #pragma clang loop unroll_count(2)
   for (int g = 0; g < kK / kVec; g++) {
@@ -86,8 +87,8 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_a,
   float w_scales[kRows];
   for (int s = 0; s < 2; s++)
     for (int n = 0; n < kNTile; n++)
-      w_scales[s * kNTile + n] = reinterpret_cast<const float *>(
-          tiles[s] + kPrefix + kNTile * kK + kNTile * 4)[n];
+      w_scales[s * kNTile + n] =
+          reinterpret_cast<const float *>(tiles[s] + kScaleOff)[n];
 
   const aie::saturation_mode saved_sat =
       ::aie::swap_saturation(aie::saturation_mode::saturate);
@@ -161,7 +162,7 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_a,
       slot = mi;
       rescan = true;
     }
-    const int8_t *__restrict w_row = tiles[s] + kPrefix + r * kK;
+    const int8_t *__restrict w_row = tiles[s] + r * kK;
     set_logit[slot] = logits[n];
     set_gidx[slot] = gidx;
     set_scale[slot] = w_scales[n];

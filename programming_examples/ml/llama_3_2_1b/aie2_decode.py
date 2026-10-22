@@ -97,13 +97,15 @@ from llama_config import (
     N_LAYERS as MODEL_LAYERS,
 )
 
-# The lm_head's weights: per 4-row tile a prefix, the rows and per-row
-# scales and biases. Two shim lanes stream them, the first half of the tiles
+# The lm_head's weights: per 4-row tile the rows, then a weight slot's
+# trailer of 8 biases and 8 scales (the rows', then 0 and 1), so a tile is an
+# MMA_SLOT. Two shim lanes stream them, the first half of the tiles
 # on lane A and the second on lane B, a task LM_SLOTS_PER_TASK of them (at
 # most 1023, a BD dimension's limit, dividing LM_LANE_TILES).
 LM_N_TILES = VOCAB // N_TILE
 LM_LANE_TILES = LM_N_TILES // 2
-WLM_SLOT = 64 + N_TILE * D + N_TILE * 4 + N_TILE * 4
+WLM_SLOT = N_TILE * D + 8 * 4 + 8 * 4
+assert WLM_SLOT == MMA_SLOT
 WLM_TOTAL = LM_N_TILES * WLM_SLOT
 LM_SLOTS_PER_TASK = 1002
 assert LM_LANE_TILES % LM_SLOTS_PER_TASK == 0

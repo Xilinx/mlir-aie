@@ -231,16 +231,13 @@ void llama_seed_from_record(int8_t *restrict record, int8_t *restrict seed) {
   residual_seed(record, embed_sc, seed);
 }
 
-// The embed seed of row `row` of one lm_head weight slot, [64 B prefix |
-// kNTile int8 rows | kNTile i32 bias | kNTile f32 embed_sc]: a prompt
-// token's layer-0 input.
+// The embed seed of row `row` of one lm_head weight slot, [kNTile int8 rows
+// | 8 i32 bias | 8 f32 embed_sc]: a prompt token's layer-0 input.
 void llama_embed_seed(int8_t *restrict slot, int8_t *restrict seed,
                       int32_t row) {
-  constexpr int kPrefix = 64;
   float embed_sc;
-  __builtin_memcpy(&embed_sc,
-                   slot + kPrefix + kNTile * kD + kNTile * 4 + row * 4, 4);
-  residual_seed(slot + kPrefix + row * kD, embed_sc, seed);
+  __builtin_memcpy(&embed_sc, slot + kNTile * kD + 32 + row * 4, 4);
+  residual_seed(slot + row * kD, embed_sc, seed);
 }
 
 } // extern "C"

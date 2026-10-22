@@ -52,32 +52,6 @@ LAYER_MS_PER_ROW = 0.000163
 DISPATCH_BUDGET_MS = 4000.0
 
 
-def pack_perchan_slots(w_i8, w_scales, bias_i32, n_tile, prefix_bytes: bytes = b""):
-    """Per-tile slots [prefix_bytes | n_tile * K int8 | n_tile int32 bias |
-    n_tile fp32 w_scales], the prefix repeated in every slot."""
-    N, K = w_i8.shape
-    n_tiles = N // n_tile
-    pre = len(prefix_bytes)
-    slot = pre + n_tile * K + n_tile * 4 + n_tile * 4
-    blob = np.zeros(n_tiles * slot, dtype=np.int8)
-    pre_arr = np.frombuffer(prefix_bytes, dtype=np.int8)
-    for t in range(n_tiles):
-        base = t * slot
-        off = base
-        if pre:
-            blob[off : off + pre] = pre_arr
-            off += pre
-        rows = w_i8[t * n_tile : (t + 1) * n_tile].flatten()
-        bs = bias_i32[t * n_tile : (t + 1) * n_tile].view(np.int8).flatten()
-        ws = w_scales[t * n_tile : (t + 1) * n_tile].view(np.int8).flatten()
-        blob[off : off + rows.size] = rows
-        off += rows.size
-        blob[off : off + bs.size] = bs
-        off += bs.size
-        blob[off : off + ws.size] = ws
-    return blob
-
-
 def pack_lane_mma(layer_w, order, core):
     """One core's weight lane for kernels/llama_gemv_mma.cc: per projection,
     its row groups of eight rows, each as two `MMA_SLOT` slots, one per half
@@ -104,7 +78,9 @@ def pack_lane_mma(layer_w, order, core):
 
 
 def pack_lmw(embed_i8, embed_sc, gamma):
-    """The lm_head blob: the final norm's gamma, then the embed table's slots.
+    """The lm_head blob: the final norm's gamma, then the embed table's slots
+    (aie2_decode.WLM_SLOT): per 4 rows the rows, 8 zero biases and 8 scales,
+    the rows' then 1.
 
     Args:
         embed_i8: int8 (VOCAB, D), the tied embed table.
@@ -114,10 +90,12 @@ def pack_lmw(embed_i8, embed_sc, gamma):
     Returns:
         int8, LMW_GAMMA_BYTES + WLM_TOTAL.
     """
-    bias = np.zeros(VOCAB, np.int32)
-    wpacked = pack_perchan_slots(
-        embed_i8, embed_sc.astype(np.float32), bias, N_TILE, prefix_bytes=b"\x00" * 64
-    )
+    slots = np.zeros((VOCAB // N_TILE, WLM_SLOT), np.int8)
+    slots[:, : N_TILE * D] = embed_i8.reshape(-1, N_TILE * D)
+    scales = np.ones((VOCAB // N_TILE, 8), np.float32)
+    scales[:, :N_TILE] = embed_sc.astype(np.float32).reshape(-1, N_TILE)
+    slots[:, N_TILE * D + 32 :] = scales.view(np.int8)
+    wpacked = slots.reshape(-1)
     assert wpacked.size == WLM_TOTAL, (wpacked.size, WLM_TOTAL)
     gbytes = np.frombuffer(np.asarray(gamma, bfloat16).tobytes(), dtype=np.int8)
     blob = np.zeros(LMW_GAMMA_BYTES + WLM_TOTAL, dtype=np.int8)
