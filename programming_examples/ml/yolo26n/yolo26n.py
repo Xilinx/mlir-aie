@@ -71,8 +71,9 @@ def yolo26n(
     batch: CompileTime[int],
     params_path: CompileTime[str],
     params_digest: CompileTime[str],
+    ahead: CompileTime[int] = 3,
 ):
-    """The network's workers, and a sequence running the `batch` images in turn."""
+    """The network's workers, and a sequence running the `batch` images in turn, `ahead` images' fills ahead."""
     del params_digest  # keys the compile cache on the parameter file's contents
     plan = Plan(Network.yolo26n(), Params.load(Path(params_path)))
     design = plan.design
@@ -98,25 +99,7 @@ def yolo26n(
 
             return locate
 
-        locates = [locate_for(i) for i in range(batch)]
-        # Image i's fill (its weights and pixels) is issued before image
-        # i - 1's tail (its network's completion and its postprocess passes)
-        # is awaited; and image i - 1's detections are drained only once
-        # image i's tail has itself been issued. The two images before and
-        # after each wait run on chip alongside it.
-        pending = design.transfer_fill(handles, locates[0])
-        detections = None
-        for i in range(1, batch):
-            next_pending = design.transfer_fill(handles, locates[i])
-            tail = design.transfer_tail(pending, locates[i - 1])
-            if detections is not None:
-                detections.finish()
-            detections = tail
-            pending = next_pending
-        tail = design.transfer_tail(pending, locates[batch - 1])
-        if detections is not None:
-            detections.finish()
-        tail.finish()
+        design.transfer(handles, [locate_for(i) for i in range(batch)], ahead)
 
     rt = Runtime(
         sequence, [image_ty, scratch_ty, det_ty, weights_ty, *design.handles()]
@@ -154,6 +137,9 @@ def main() -> None:
     parser.add_argument("--n-iters", type=int, default=5)
     parser.add_argument("--n-warmup", type=int, default=2)
     parser.add_argument(
+        "--ahead", type=int, default=3, help="images' fills issued ahead of a wait"
+    )
+    parser.add_argument(
         "--compile-only", action="store_true", help="build the ELF and stop"
     )
     args = parser.parse_args()
@@ -178,6 +164,7 @@ def main() -> None:
         batch=args.batch,
         params_path=str(params_path),
         params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
+        ahead=args.ahead,
     )
     if args.compile_only:
         yolo26n.specialize(

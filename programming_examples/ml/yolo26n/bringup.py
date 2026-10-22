@@ -100,7 +100,7 @@ def segment(
                 return out, total_out, outputs_at[tensor.name]
             return inp, total_in, offsets[tensor.name]
 
-        design.transfer(handles, locate)
+        design.transfer(handles, [locate], ahead=1)
 
     handles = design.handles()
     rt = Runtime(sequence, [in_ty, out_ty, *handles])

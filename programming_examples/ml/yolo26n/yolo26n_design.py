@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import itertools
 import math
+from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from operator import attrgetter
 from pathlib import Path
 
 import numpy as np
@@ -150,7 +152,8 @@ class Fill:
     row `chunk` pixels at a time, each 8-channel group of those pixels in
     turn: the per-anchor records the Detect postprocess reads. `repeat`
     sends the whole tensor `chunk` times, as a conv's weights go once an
-    output row. A step's transfers finish before the next step's start.
+    output row. Transfers are issued in step order, so one fifo's go in
+    that order; none waits for an earlier step's to finish.
     """
 
     fifo: ObjectFifo
@@ -180,17 +183,10 @@ class Fill:
 
 @dataclass
 class Pending:
-    """State `transfer_fill` hands `transfer_tail`: fill steps still to run.
-
-    `staging` is the open staged-drains group, or `None` once awaited;
-    `staged` names the staged tensors; `steps` the fill steps still to come;
-    `drains` the output-drains group the last step's fills join.
-    """
+    """An image `transfer_fill` has issued: its fifo handles, its open staged drains, and the group its output drains and fills join."""
 
     filled: dict[ObjectFifo, ObjectFifoHandle]
     staging: TaskGroup | None
-    staged: set[str]
-    steps: list[int]
     drains: TaskGroup
 
 
@@ -395,14 +391,11 @@ class SegmentDesign:
     def transfer_fill(
         self, handles: Sequence, locate: Callable[[Tensor], tuple]
     ) -> Pending:
-        """This image's drains and its first fill step, the rest left for `transfer_tail`.
+        """Issue one image's drains and every fill that reads no staged rows; await nothing.
 
-        `handles` and `locate` are as `transfer`'s. Issues the staged and the
-        output drains (not awaited here) and the first fill step (awaited,
-        unless it is also the only one), so its DMA traffic can run while an
-        earlier image's `transfer_tail` is still awaited: the two interleave
-        in a batch's runtime sequence, one image's fill alongside the one
-        before it's tail.
+        `handles` and `locate` are as `transfer`'s. The fills join the
+        output drains' group, freed once those drains are awaited: by then
+        the network has read every filled row.
         """
         filled = dict(zip(self.in_fifos, handles))
         drains = TaskGroup()
@@ -422,7 +415,6 @@ class SegmentDesign:
                 wait=True,
                 group=staging,
             )
-        staged = {tensor.name for _, tensor in self.staged}
         for tensor, handle in zip(self.outputs, handles[len(self.in_fifos) :]):
             buffer, total, offset = locate(tensor)
             size = self.host_bytes(tensor) // 4
@@ -432,64 +424,66 @@ class SegmentDesign:
                 wait=True,
                 group=drains,
             )
-        steps = sorted({f.step for f in self.fills})
-        step, rest = steps[0], steps[1:]
-        if staging is not None and any(
-            f.tensor.name in staged for f in self.fills if f.step == step
-        ):
-            staging.finish()
-            staging = None
-        fills = drains if not rest else TaskGroup()
-        for fill in (f for f in self.fills if f.step == step):
-            buffer, total, offset = locate(fill.tensor)
-            filled[fill.fifo].fill(
-                buffer, fill.tap(total, offset), wait=bool(rest), group=fills
-            )
-        if rest:
-            fills.finish()
-        return Pending(filled, staging, staged, rest, drains)
+        staged = {tensor.name for _, tensor in self.staged}
+        for fill in sorted(self.fills, key=attrgetter("step")):
+            if fill.tensor.name not in staged:
+                buffer, total, offset = locate(fill.tensor)
+                filled[fill.fifo].fill(buffer, fill.tap(total, offset), group=drains)
+        return Pending(filled, staging, drains)
 
     def transfer_tail(
-        self, pending: Pending, locate: Callable[[Tensor], tuple]
+        self,
+        pending: Pending,
+        locate: Callable[[Tensor], tuple],
+        previous: TaskGroup | None,
     ) -> TaskGroup:
-        """This image's fill steps after the first, from `transfer_fill`'s state.
+        """Await one image's staged drains and the image before's outputs, then issue the fills reading the staged rows back.
 
-        Every step but the last finishes before the next starts, and a step
-        that reads a staged tensor starts once every staged drain is done.
-        The last step's fills join the output drains, left unfinished: the
-        caller decides when to finish that group, so this image's tail can
-        pipeline against the next image's `transfer_fill`.
+        Returns the image's output-drains group, left unfinished. The image
+        before's postprocess is done long before this image's staged drains
+        are, and awaiting it first frees its records' BDs before this
+        image's take more.
         """
-        filled, staging, staged, steps, drains = (
-            pending.filled,
-            pending.staging,
-            pending.staged,
-            pending.steps,
-            pending.drains,
-        )
-        for step in steps:
-            if staging is not None and any(
-                f.tensor.name in staged for f in self.fills if f.step == step
-            ):
-                staging.finish()
-                staging = None
-            fills = drains if step == steps[-1] else TaskGroup()
-            for fill in (f for f in self.fills if f.step == step):
+        if pending.staging is not None:
+            pending.staging.finish()
+        if previous is not None:
+            previous.finish()
+        staged = {tensor.name for _, tensor in self.staged}
+        for fill in sorted(self.fills, key=attrgetter("step")):
+            if fill.tensor.name in staged:
                 buffer, total, offset = locate(fill.tensor)
-                filled[fill.fifo].fill(
-                    buffer, fill.tap(total, offset), wait=step != steps[-1], group=fills
+                pending.filled[fill.fifo].fill(
+                    buffer, fill.tap(total, offset), group=pending.drains
                 )
-            if step != steps[-1]:
-                fills.finish()
-        return drains
+        return pending.drains
 
-    def transfer(self, handles: Sequence, locate: Callable[[Tensor], tuple]) -> None:
-        """One image's host transfers, inside its runtime sequence, start to finish.
+    def transfer(
+        self,
+        handles: Sequence,
+        locates: Sequence[Callable[[Tensor], tuple]],
+        ahead: int,
+    ) -> None:
+        """A batch's host transfers, inside its runtime sequence, image after image.
 
-        See `transfer_fill` and `transfer_tail`, run back to back with no
-        other image's transfers between them.
+        Args:
+            handles: The runtime sequence's arguments for `handles()`.
+            locates: Per image, where each tensor it reads or writes sits in
+                the host buffers: `(buffer, total int32 words, word offset)`.
+            ahead: How many images' fills are issued before an image's
+                staged drains are awaited, so the network starts on those
+                images while it waits.
+
+        An image's outputs are awaited once the next image's staged drains
+        are, so its postprocess runs alongside the next image's network.
         """
-        self.transfer_tail(self.transfer_fill(handles, locate), locate).finish()
+        pending = deque(self.transfer_fill(handles, at) for at in locates[:ahead])
+        outputs = None
+        for i, locate in enumerate(locates):
+            if i + ahead < len(locates):
+                pending.append(self.transfer_fill(handles, locates[i + ahead]))
+            outputs = self.transfer_tail(pending.popleft(), locate, outputs)
+        if outputs is not None:
+            outputs.finish()
 
     def host_bytes(self, tensor: Tensor) -> int:
         """How many bytes `tensor` takes in a host buffer."""
