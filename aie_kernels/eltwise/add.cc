@@ -147,14 +147,19 @@ void eltwise_vadd_i8(const int8_t *__restrict a, const int8_t *__restrict b,
   event0();
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
+  // Pointer increments: indexed addresses kept the loop from pipelining.
   AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(N / lanes)
   for (int i = 0; i < N / lanes; i++) {
     aie::accum<acc32, lanes> sum;
-    sum.from_vector(aie::load_v<lanes>(a + i * lanes), a_shift);
+    sum.from_vector(aie::load_v<lanes>(a), a_shift);
     aie::accum<acc32, lanes> rhs;
-    rhs.from_vector(aie::load_v<lanes>(b + i * lanes), b_shift);
+    rhs.from_vector(aie::load_v<lanes>(b), b_shift);
     sum = aie::add(sum, rhs.template to_vector<int32>(0));
-    aie::store_v(c + i * lanes, sum.template to_vector<int8>(out_shift));
+    aie::store_v(c, sum.template to_vector<int8>(out_shift));
+    a += lanes;
+    b += lanes;
+    c += lanes;
   }
   event1();
 }
