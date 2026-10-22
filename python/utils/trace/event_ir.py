@@ -823,8 +823,9 @@ def fix_raw_trace_data(raw_trace_file, src_trace_file):
     with open(raw_trace_file, "rt") as in_file:
         first_line = in_file.readline()
         if first_line[:2] != "0x":
-            sed_cmd = "sed 's/^/0x/g' " + raw_trace_file + " > " + src_trace_file
-            subprocess.call([sed_cmd], shell=True)
+            in_file.seek(0)
+            with open(src_trace_file, "wt") as out_file:
+                out_file.writelines("0x" + line for line in in_file)
         else:
             shutil.copy(raw_trace_file, src_trace_file)
 

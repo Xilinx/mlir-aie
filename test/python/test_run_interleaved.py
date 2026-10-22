@@ -68,7 +68,7 @@ def test_a_group_past_the_cutoff_stops_once_settled():
 
 def test_a_group_stops_together_by_its_slowest():
     a_fast, a_slow, b = run_interleaved(
-        [partial(work, N), partial(work, 4 * N), partial(work, 2 * N)],
+        [partial(work, N), partial(work, 8 * N), partial(work, 2 * N)],
         rounds=5,
         calls=3,
         settle=2,

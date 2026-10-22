@@ -167,7 +167,8 @@ Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
   return nullptr;
 }
 
-xilinx::AIE::NamedOpTable::NamedOpTable(Operation *symbolTableOp) {
+xilinx::AIE::NamedOpTable::NamedOpTable(Operation *symbolTableOp)
+    : context(symbolTableOp->getContext()) {
   if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
       symbolTableOp->getRegion(0).empty()) {
     return;
@@ -195,12 +196,12 @@ Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringRef name) {
   return lookupNamedOp(from, StringAttr::get(from->getContext(), name));
 }
 
-std::string xilinx::AIE::generateUniqueSymbolName(
-    mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
+std::string xilinx::AIE::NamedOpTable::uniqueName(llvm::StringRef prefix,
+                                                  unsigned &counter) const {
   std::string name;
   do {
     name = (prefix + llvm::Twine(counter++)).str();
-  } while (lookupNamedOpIn(symbolTableOp, llvm::StringRef(name)));
+  } while (ops.count(StringAttr::get(context, name)));
   return name;
 }
 
@@ -1084,22 +1085,48 @@ LogicalResult RouteEndpointOp::verify() {
   if (!tile) {
     return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   }
-  // getRouteDirection() reads this end's direction off the flow naming it, so a
-  // second mention would leave it ambiguous, including both ends of one flow.
+  // getRouteDirection() reads this end's direction off the flows naming it, so
+  // they must all name it on the same side. Packet flows can share the channel;
+  // a circuit owns it.
   StringRef name = getSymName();
-  int flows = 0;
+  SmallVector<RouteOp> sources, dests;
   for (auto flow : (*this)->getParentOfType<DeviceOp>().getOps<RouteOp>()) {
-    if (flow.getSource() == name) {
-      flows++;
-    }
-    flows += llvm::count_if(
-        flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
-        [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; });
+    if (flow.getSource() == name)
+      sources.push_back(flow);
+    for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      if (dest.getValue() == name) {
+        if (!dests.empty() && dests.back() == flow)
+          return emitOpError("is named twice by one flow");
+        dests.push_back(flow);
+      }
   }
-  if (flows > 1) {
-    return emitOpError("drives one channel, so at most one flow may name it, "
-                       "but it is named ")
-           << flows << " times";
+  if (!sources.empty() && !dests.empty()) {
+    return emitOpError("is named as both a source and a destination, so its "
+                       "direction is ambiguous");
+  }
+  ArrayRef<RouteOp> sharers = sources.empty() ? dests : sources;
+  if (sharers.size() > 1) {
+    if (llvm::any_of(sharers, [](RouteOp flow) { return !flow.getPacket(); }))
+      return emitOpError("drives one channel, which a circuit flow owns, but "
+                         "it is named ")
+             << sharers.size() << " times";
+    llvm::SmallDenseSet<int> ids;
+    for (RouteOp flow : sources) {
+      auto id = flow.getPacketId();
+      if (!id)
+        return emitOpError("sends several packet flows, so each must pin its "
+                           "packet_id for the BDs to state it");
+      if (!ids.insert(*id).second)
+        return emitOpError("sends several packet flows, two of which pin the "
+                           "same packet_id ")
+               << static_cast<int>(*id) << "; each needs its own";
+    }
+    // The port keeps or drops every header it receives.
+    if (llvm::any_of(dests, [&](RouteOp flow) {
+          return flow.getKeepPktHeader() != dests[0].getKeepPktHeader();
+        }))
+      return emitOpError("receives several packet flows, so they must agree "
+                         "on keep_pkt_header");
   }
   switch (getBundle()) {
   case WireBundle::DMA:
@@ -1127,8 +1154,9 @@ LogicalResult RouteOp::verify() {
     return emitOpError("expects at least one destination");
   }
 
-  if (getPacketId() && !getPacket()) {
-    return emitOpError("packet_id is only meaningful on a packet flow");
+  if ((getPacketId() || getKeepPktHeader()) && !getPacket()) {
+    return emitOpError(
+        "packet_id and keep_pkt_header are only meaningful on a packet flow");
   }
 
   auto device = (*this)->getParentOfType<DeviceOp>();
@@ -1605,6 +1633,42 @@ LogicalResult ObjectFifoLinkOp::verify() {
                        "semaphore locks, which this device lacks");
   }
 
+  // A join or distribute slot must hold a whole number of its participant's
+  // objects, or one straddles two shared objects and the DMA stalls.
+  auto elementsOf = [](Type objectFifoType) {
+    return cast<MemRefType>(
+               cast<AIEObjectFifoType>(objectFifoType).getElementType())
+        .getNumElements();
+  };
+  // The data layout sizes block-float elements too, which have no bit width.
+  DataLayout dataLayout = DataLayout::closest(getOperation());
+  auto bytesOf = [&](Type objectFifoType, int64_t elements) {
+    return elements *
+           static_cast<int64_t>(dataLayout.getTypeSize(
+               cast<MemRefType>(
+                   cast<AIEObjectFifoType>(objectFifoType).getElementType())
+                   .getElementType()));
+  };
+  auto checkSlot = [&](StringRef role, ObjectFifoCreateOp participant,
+                       int64_t object, ObjectFifoCreateOp shared,
+                       int64_t slotBytes, ArrayAttr offsets) -> LogicalResult {
+    if (object <= 0)
+      return emitOpError() << role << " @" << participant.name().getValue()
+                           << " has empty objects";
+    if (slotBytes % object == 0)
+      return success();
+    std::string offsetText;
+    llvm::raw_string_ostream os(offsetText);
+    llvm::interleaveComma(offsets, os, [&](Attribute offset) {
+      os << *getConstantIntValue(offset);
+    });
+    return emitOpError() << role << " @" << participant.name().getValue()
+                         << " has " << object << " B objects, but its "
+                         << slotBytes << " B slot in @"
+                         << shared.name().getValue() << " from offsets ["
+                         << offsetText << "] is not a whole number of them";
+  };
+
   if (isJoin()) {
     if (getFifoIns().size() != getSrcOffsets().size())
       return emitOpError("number of provided src offsets must be equal "
@@ -1613,7 +1677,30 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
+    // Each input's transfer runs to the next input's offset, so the offsets
+    // must increase; otherwise the lengths come out wrong and the link hangs.
+    for (auto [idx, len] : llvm::enumerate(getJoinTransferLengths()))
+      if (len <= 0)
+        return emitOpError("src offsets must increase: input objectFifo ")
+               << idx << " would transfer " << len << " elements";
+
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
+    for (auto [fifoIn, slot] :
+         llvm::zip(getInputObjectFifos(), getJoinTransferLengths())) {
+      int64_t object =
+          fifoIn.getConsumerElemType()
+              ? bytesOf(fifoIn.getConsumerElemTypeOrDefault(),
+                        elementsOf(fifoIn.getConsumerElemTypeOrDefault()))
+              : bytesOf(fifoIn.getElemType(),
+                        paddedSize(fifoIn.getDimensionsToStream(),
+                                   fifoIn.getPadDimensions().value_or(
+                                       ArrayRef<BDPadLayoutAttr>{}),
+                                   elementsOf(fifoIn.getElemType())));
+      if (failed(checkSlot("input", fifoIn, object, fifoOut,
+                           bytesOf(fifoOut.getElemType(), slot),
+                           getSrcOffsets())))
+        return failure();
+    }
     if (!fifoOut.getDimensionsToStream().empty()) {
       int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
       int64_t minInputBufferSize = -1;
@@ -1638,7 +1725,27 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getSrcOffsets().empty())
       return emitOpError("src offsets should be empty for distribute");
 
+    for (auto [idx, len] : llvm::enumerate(getDistributeTransferLengths()))
+      if (len <= 0)
+        return emitOpError("dst offsets must increase: output objectFifo ")
+               << idx << " would transfer " << len << " elements";
+
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
+    for (auto [fifoOut, slot] :
+         llvm::zip(getOutputObjectFifos(), getDistributeTransferLengths())) {
+      // The memtile sends the slot, padded if the output pads.
+      if (failed(checkSlot(
+              "output", fifoOut,
+              bytesOf(fifoOut.getElemType(), elementsOf(fifoOut.getElemType())),
+              fifoIn,
+              bytesOf(fifoIn.getElemType(),
+                      paddedSize(fifoOut.getDimensionsToStream(),
+                                 fifoOut.getPadDimensions().value_or(
+                                     ArrayRef<BDPadLayoutAttr>{}),
+                                 slot)),
+              getDstOffsets())))
+        return failure();
+    }
     if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
       int64_t maxIdx =
           getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
@@ -4011,6 +4118,17 @@ LogicalResult DMABDOp::verifyTransferInBounds() {
 // A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
 // scan when the innermost stride is 1 and each outer stride equals the product
 // of all inner sizes.  Used by both DMABDOp verification and canonicalization.
+int64_t xilinx::AIE::paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
+                                llvm::ArrayRef<BDPadLayoutAttr> pads,
+                                int64_t fallback) {
+  if (dims.empty() || pads.empty())
+    return fallback;
+  int64_t size = 1;
+  for (auto [dim, pad] : llvm::zip(dims, pads))
+    size *= dim.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
+  return size;
+}
+
 bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   if (dims.empty())
     return true; // no ND layout = trivially contiguous

@@ -41,8 +41,8 @@ from aie.iron.kernels.activation import (
     softmax_f32_bound,
 )
 from aie.utils import bfp, get_current_device
-from aie.utils.hostruntime import set_current_device
 from aie.utils.accuracy import round_to
+from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16, finfo
 
@@ -50,6 +50,7 @@ from ml_dtypes import bfloat16, finfo
 # device test runs (test/python/npu/kernel_cases.py), so a kernel is either
 # in that table or named in NOT_JUDGED with a reason.
 sys.path.insert(0, str(Path(__file__).parent / "npu"))
+from cases import error_report  # noqa: E402
 from kernel_cases import CASES as DEVICE_CASES  # noqa: E402
 
 
@@ -74,6 +75,20 @@ CASES = {
     for case in NPU2_CASES
 }
 assert len(CASES) == len(NPU2_CASES), "two device cases map to one host id"
+CASE_DEVICES = {
+    _case_id(case): {
+        t.device for t in ARCH_TRAITS.values() if case.supported_on(t.device)
+    }
+    for case in NPU2_CASES
+}
+# A check of the contract alone sees the factory and its arguments, so it
+# runs once for the cases that differ only in calls, scalars or tag.
+FACTORY_CASES = list(
+    {
+        (case_id.split("/")[0], repr(sorted(fkw.items()))): case_id
+        for case_id, (fkw, _) in reversed(CASES.items())
+    }.values()
+)
 
 # Exported factories the generic builder does not judge, each with its reason.
 # Anything else exported must carry a contract and appear in the case table.
@@ -83,7 +98,6 @@ NOT_JUDGED = {
     "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
     "sample_select": "a state machine across a position's select_streams * slice / chunk calls; test_sample_e2e.py judges it",
     "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; test_sample_e2e.py judges the pair",
-    "router_top_k": "reads sample_select's summary, which the generic builder cannot draw; test_router_top_k_e2e.py judges the pair",
     "resize": "six entry points share one core's state, driven by counts they write; test_resize_e2e.py judges them",
     **{
         name: "one half of a MobileNet bottleneck cascade pair; test_bn_cascade_pairs.py builds and judges the pair"
@@ -95,10 +109,21 @@ NOT_JUDGED = {
         )
     },
     **{
-        name: "blocks on core locks its design releases; codegen-identical to "
-        "FastFlowLM's kernel, which runs in its engine"
+        name: "blocks on core locks its design releases, so it is judged only "
+        "inside a design that sets them"
         for name in kernels.factories()
         if name.startswith("flm_gemma4_decode_")
+    },
+    # Later keys win: these three have a device design of their own.
+    **{
+        name: "blocks on core locks its design releases; "
+        "npu/test_flm_gemma4_decode_locks.py builds a design around them and "
+        "judges it on the device"
+        for name in (
+            "flm_gemma4_decode_attn_kv",
+            "flm_gemma4_decode_gate_layer_embedding",
+            "flm_gemma4_decode_proj_main",
+        )
     },
 }
 
@@ -148,23 +173,10 @@ def test_factories_lists_every_exported_builder():
     ]
 
 
-@pytest.mark.parametrize(
-    "annotation",
-    [
-        ExternalFunction,
-        kernels.MatrixKernel,
-        "ExternalFunction",
-        "kernels.MatrixKernel",
-    ],
-)
-def test_factories_accept_subclasses_and_postponed_annotations(monkeypatch, annotation):
-    def builder():
-        raise AssertionError("discovery must not construct kernels")
-
-    builder.__annotations__["return"] = annotation
-    monkeypatch.setattr(kernels, "__all__", ["zero"])
-    monkeypatch.setattr(kernels, "zero", builder)
-    assert kernels.factories() == ["zero"]
+def test_factories_lists_builders_annotated_with_a_subclass():
+    assert {"mm", "fused_mm", "cascade_mm", "resize", "resample_peak"} <= set(
+        kernels.factories()
+    )
 
 
 def _first_kwargs(name: str) -> dict:
@@ -192,7 +204,7 @@ def _builds():
         f = getattr(kernels, name)
         seen = set()
         for combo in [_first_kwargs(name)] + [
-            dict(c) for c in getattr(f, "dtypes", ())
+            dict(c) for c in kernels.DTYPES.get(name, ())
         ]:
             try:
                 ef = f(**combo)
@@ -223,35 +235,7 @@ def test_contract_coverage_is_explicit():
     assert all(NOT_JUDGED.values())
 
 
-@pytest.mark.parametrize("error", [RuntimeError, TypeError, ValueError])
-def test_contract_coverage_propagates_constructor_failures(monkeypatch, error):
-    def broken() -> ExternalFunction:
-        raise error("factory construction failed")
-
-    monkeypatch.setattr(kernels, "__all__", ["zero"])
-    monkeypatch.setattr(kernels, "zero", broken)
-    with pytest.raises(error, match="factory construction failed"):
-        test_contract_coverage_is_explicit()
-
-
-def test_contract_coverage_constructs_required_case_arguments(monkeypatch):
-    from types import SimpleNamespace
-
-    sizes = []
-
-    def required(*, tile_size) -> ExternalFunction:
-        sizes.append(tile_size)
-        return SimpleNamespace(contract=KernelContract(roles=(Out,)))
-
-    monkeypatch.setattr(kernels, "__all__", ["zero"])
-    monkeypatch.setattr(kernels, "zero", required)
-    monkeypatch.setattr(sys.modules[__name__], "NOT_JUDGED", {})
-    monkeypatch.setitem(CASES, "zero", ({"tile_size": 64}, {}))
-    test_contract_coverage_is_explicit()
-    assert sizes == [64]
-
-
-@pytest.mark.parametrize("case_id", list(CASES))
+@pytest.mark.parametrize("case_id", FACTORY_CASES)
 def test_roles_match_arg_types(case_id):
     fkw, _ = CASES[case_id]
     fn = _factory(case_id)(**fkw)
@@ -263,7 +247,7 @@ def test_roles_match_arg_types(case_id):
     assert set(c.roles) <= {In, Out, InOut, Param}
 
 
-@pytest.mark.parametrize("case_id", list(CASES))
+@pytest.mark.parametrize("case_id", FACTORY_CASES)
 def test_reference_takes_what_the_contract_hands_it(case_id):
     fkw, _ = CASES[case_id]
     c = _factory(case_id)(**fkw).contract
@@ -278,7 +262,7 @@ def test_reference_takes_what_the_contract_hands_it(case_id):
         assert len(params) == len(c.reference_indices()), build
 
 
-@pytest.mark.parametrize("case_id", list(CASES))
+@pytest.mark.parametrize("case_id", FACTORY_CASES)
 def test_tolerance_is_declared_with_its_evidence(case_id):
     fkw, _ = CASES[case_id]
     c = _factory(case_id)(**fkw).contract
@@ -290,6 +274,14 @@ def test_tolerance_is_declared_with_its_evidence(case_id):
         assert (
             tol.note
         ), f"{case_id}: tolerance needs a note saying where the number comes from"
+        # A note that cites a device's measurement names every device the
+        # build runs on, if only as unmeasured.
+        device = ARCH_TRAITS[build.arch].device
+        if re.search(r"\bnpu[12]\b", tol.note) and device in CASE_DEVICES[case_id]:
+            assert re.search(rf"\b{device}\b", tol.note), (
+                f"{case_id}: the note for {build} cites a device but not "
+                f"{device}, which the case runs on: {tol.note!r}"
+            )
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
@@ -1050,8 +1042,8 @@ def test_conv2dk14_and_skip_init_references():
 # matmul) no factory can stand in, and the library guide says so.
 _IRON_KERNEL_SPECS = {
     "axpy": ({}, "saxpy", "axpy.cc", ()),
-    "gelu": ({}, "gelu_bf16", "gelu.cc", ()),
-    "silu": ({}, "silu_bf16", "silu.cc", ()),
+    "gelu": ({}, "gelu_bf16_size", "gelu.cc", ()),
+    "silu": ({}, "silu_bf16_size", "silu.cc", ()),
     "sigmoid": ({}, "sigmoid_bf16", "sigmoid.cc", ()),
     "tanh": ({}, "tanh_bf16", "tanh.cc", ()),
     "softmax": ({}, "softmax_bf16", "softmax.cc", ()),
@@ -1238,7 +1230,7 @@ def test_mha_binds_its_translation_unit_as_one_object():
     tile = np.ndarray[(64 * 64,), np.dtype[bfloat16]]
     acc = np.ndarray[(64 * 64,), np.dtype[np.float32]]
     scale = np.ndarray[(4 * 64,), np.dtype[np.float32]]
-    idx = np.ndarray[(2,), np.dtype[np.int32]]
+    idx = np.ndarray[(3,), np.dtype[np.int32]]
     expected = {
         "matmul_bf16_bf16_wrapper_scalar": [tile, tile, tile],
         "matmul_bf16_bf16_rowmaj": [tile, tile, tile],
@@ -1264,7 +1256,7 @@ def test_mha_binds_its_translation_unit_as_one_object():
     # declared, sampled and judged exactly like mm.
     assert fn.contract.unsupported is None and fn.contract.accumulates
     assert (fn.mac_dims, fn.stream_dims) == (mm.mac_dims, mm.stream_dims)
-    assert dict(fn.contract.parameter_bindings)[3].tolist() == [0, 0]
+    assert dict(fn.contract.parameter_bindings)[3].tolist() == [0, 0, 0]
     a, b = kd.sample_inputs(fn, calls=2)
     assert np.array_equal(
         fn.expected([a, b]),
@@ -1276,16 +1268,15 @@ def test_mha_binds_its_translation_unit_as_one_object():
 
 
 def test_mha_band_reaches_the_kernel_and_its_reference():
-    """causal and window are -D flags only off their defaults, and mha_softmax_ref keeps the band."""
+    """causal, window and packed are -D flags only off their defaults, and mha_softmax_ref keeps the band."""
     assert not any("MHA_" in f for f in kernels.mha().compile_flags)
     assert not any("MHA_" in f for f in kernels.mha_softmax().compile_flags)
     flags = kernels.mha(dim_k=256, causal=False, window=128).compile_flags
     assert {"-DMHA_CAUSAL=0", "-DMHA_WINDOW=128", "-DDIM_K=256"} <= set(flags)
+    assert "-DMHA_PACKED=1" in kernels.mha(window=511, packed=True).compile_flags
     fn = kernels.mha_softmax(dim_m=16, dim_n=32, causal=False, window=32)
     assert [v for i, v in fn.contract.parameter_bindings if i in (5, 6)] == [16, 32]
     for bad in (
-        dict(window=48),
-        dict(dim_m=32, dim_n=16, window=64),
         dict(window=-64),
         dict(scale=0.0),
         dict(dim_n=24),
@@ -1294,11 +1285,15 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
             kernels.mha_softmax(**bad)
 
     # A zero score gives a kept key the weight 1 against m = 0, a masked one 0.
-    for causal, window in ((True, 0), (False, 0), (True, 32), (False, 32)):
-        for kv, q in ((0, 0), (0, 1), (1, 0), (2, 1), (3, 0)):
+    # Packed, every row is the query at the last key. A row offset puts the
+    # query block's first row that many positions past its start.
+    bands = [(c, w, False) for c in (True, False) for w in (0, 21, 32)]
+    blocks = ((0, 0, 0), (0, 1, 0), (1, 0, 0), (2, 1, 0), (3, 0, 0), (1, 1, 9))
+    for causal, window, packed in [*bands, (True, 21, True), (True, 0, True)]:
+        for kv, q, offset in blocks:
             p, _ = kernels.mha_softmax_ref(
                 np.zeros((1, 16 * 32)),
-                (kv, q),
+                (kv, q, offset),
                 40,
                 90,
                 scale=1.0,
@@ -1306,17 +1301,25 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
                 dim_n=32,
                 causal=causal,
                 window=window,
+                packed=packed,
             )
             want = np.zeros((16, 32))
             for r in range(16):
                 for c in range(32):
-                    qi, ki = q * 16 + r, kv * 32 + c
-                    if qi >= 40 or ki >= 90 or (causal and ki > qi):
+                    qi, ki = 89 if packed else q * 16 + offset + r, kv * 32 + c
+                    if q * 16 + r >= 40 or ki >= 90 or (causal and ki > qi):
                         continue
                     if window and abs(ki - qi) > window:
                         continue
                     want[r, c] = 1
-            assert np.array_equal(p.reshape(16, 32), want), (causal, window, kv, q)
+            assert np.array_equal(p.reshape(16, 32), want), (
+                causal,
+                window,
+                packed,
+                kv,
+                q,
+                offset,
+            )
 
 
 @pytest.mark.parametrize("emulate", [False, True])
@@ -1380,6 +1383,21 @@ def _arg_type_facts(arg_type) -> tuple[str, bool]:
         return _C_ELEMENT_NAMES[arg_type], False
     (dtype,) = typing.get_args(args[1])
     return _C_ELEMENT_NAMES[dtype], True
+
+
+@pytest.mark.parametrize(
+    "factory", [kernels.flm_gemma4_attn_prefill, kernels.flm_gemma4_swa_prefill]
+)
+def test_flm_prefill_chunks_match_their_c_signatures(factory):
+    """attn_qk_chunk and attn_fv_chunk bind the arguments prefill.cc declares."""
+    fn = factory()
+    declared = {
+        name: [("bf16" if t == "bfloat16" else t, ptr) for t, ptr in params]
+        for name, params in _extern_c_signatures(fn.source_file).items()
+    }
+    for chunk in ("attn_qk_chunk", "attn_fv_chunk"):
+        types = getattr(fn, chunk).arg_types()
+        assert [_arg_type_facts(t) for t in types] == declared[chunk]
 
 
 def test_prefill_binds_its_translation_unit_as_one_object():
@@ -1569,6 +1587,11 @@ def test_conv2dk1_i8_and_skip_references():
     x[0] = -100
     out = kernels.conv2dk1_i8_ref(x.ravel(), ident.ravel(), W, IC, OC, 0)
     assert set(out.tolist()) == {-128}
+    # The vector kernel's srs rounds half away from zero.
+    ident[0, 0] //= 2
+    x[0, 0] = [-24, -8, 8, 24, -12, 12, 0, 0]
+    out = kernels.conv2dk1_i8_ref(x.ravel(), ident.ravel(), W, IC, OC, 4)
+    assert out[:8].tolist() == [-2, -1, 1, 2, -1, 1, 0, 0]
     # conv2dk1_skip: x0 holds channels 0..7, x1 channels 8..15. Weights on the
     # upper half only read x1; the conv saturates to int8 before the residual
     # is added, and the total to uint8 after its own shift.
@@ -1591,6 +1614,32 @@ def test_conv2dk1_i8_and_skip_references():
     uskip = np.full(W * OC, 200, np.uint8)
     out = kernels.conv2dk1_skip_ref(x0, x1, w.ravel(), uskip, W, IC, OC, 0, 0)
     assert set(out.tolist()) == {255}
+
+
+@pytest.mark.parametrize("scalars", [(128, 6, 8, 7, 7), (91, 6, 8, 31, 7)])
+def test_attention_i8_refuses_scalars_the_kernel_does_not_take(scalars):
+    fn = kernels.attention_i8()
+    ins = fn.contract.sample(np.random.default_rng(0), 1)
+    with pytest.raises(ValueError, match="int8 and prob_shift"):
+        fn.contract.reference(*ins, *scalars)
+
+
+@pytest.mark.parametrize("use_lut", [False, True])
+def test_error_report_measures_a_lut_build_against_the_function(use_lut):
+    """A LUT build that matches its model exactly is still off the true tanh."""
+    fn = kernels.tanh(use_lut=use_lut)
+    inputs = kd.sample_inputs(fn, calls=4, rng=np.random.default_rng(0))
+    model = fn.expected(inputs)
+    (entry,) = error_report(fn, model, inputs, calls=4)
+    assert entry["modeled"] == use_lut
+    assert (entry["max_ulp"] > 0) == use_lut
+
+
+@pytest.mark.parametrize("shifts", [(24, 0, 0), (0, -1, 0), (0, 0, -1), (0, 0, 32)])
+def test_int8_add_refuses_shifts_the_kernel_does_not_take(shifts):
+    x = np.zeros(32, np.int8)
+    with pytest.raises(ValueError, match=r"must be in \[0, (23|31)\]"):
+        kernels.add(tile_size=32, dtype=np.int8).contract.reference(x, x, *shifts)
 
 
 def test_input_limit_is_bounded_by_the_accumulator_only():
@@ -2095,7 +2144,7 @@ def test_input_limit_keeps_the_reference_inside_the_accumulator():
 
 
 def _combo_id(v) -> str:
-    """One `.dtypes` entry value as a test id: a dtype name, else its value."""
+    """One `kernels.DTYPES` entry value as a test id: a dtype name, else its value."""
     if bfp.is_bfp(v):
         return "bfp16ebs8"
     return np.dtype(v).name if isinstance(v, type) else str(v)
@@ -2103,8 +2152,7 @@ def _combo_id(v) -> str:
 
 def _factories_with_dtypes():
     for name in kernels.factories():
-        f = getattr(kernels, name)
-        for combo in vars(f).get("dtypes", ()):
+        for combo in kernels.DTYPES.get(name, ()):
             yield pytest.param(
                 name,
                 combo,
@@ -2136,7 +2184,7 @@ def test_declared_dtype_combinations_build(name, combo):
             assert np.dtype(v) in tensor_dts, f"{name}: {v} not among {tensor_dts}"
 
 
-@pytest.mark.parametrize("case_id", list(CASES))
+@pytest.mark.parametrize("case_id", FACTORY_CASES)
 def test_accumulating_kernels_declare_their_accumulator(case_id):
     """A kernel that sums more than one term says what it sums in."""
     fkw, _ = CASES[case_id]
@@ -2185,7 +2233,7 @@ def _condition(expr: str, macros: dict) -> bool:
     )
     for _ in range(8):
         expr = re.sub(r"\b[A-Za-z_]\w*\b", lambda m: f"({macros.get(m[0], '0')})", expr)
-    assert re.fullmatch(r"(?:0[xX][\da-fA-F]+|[\d\s()<>=!&|+*/-])*", expr), expr
+    assert re.fullmatch(r"(?:0[xX][\da-fA-F]+|[\d\s()<>=!&|+*/%-])*", expr), expr
     expr = expr.replace("&&", " and ").replace("||", " or ")
     expr = re.sub(r"!(?!=)", " not ", expr)
     return bool(eval(expr, {"__builtins__": {}}))

@@ -30,9 +30,11 @@ from ._common import (
     _require_fixed_tile_size,
     _require_vector_alignment,
     _tuned_arch,
-    dtypes,
 )
 from .core import conv_even
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 _LUT_FIXED_TILE = 1024
 _RUNTIME_VECTOR_WIDTH = 32
@@ -123,7 +125,8 @@ _TANH_LUT_OFFSET = (
 _LUT_MODEL_TOLERANCE = Tolerance.bf16_ulps(
     1,
     note="exact model of getTanhBf16; measured bit-exact on npu2 over 4096 "
-    "values, one ulp left for the accfloat->bf16 store's rounding mode",
+    "values, one ulp left for the accfloat->bf16 store's rounding mode; npu1: "
+    "unmeasured",
 )
 
 # vtanh has no published spec, so a model reverse-engineered from the device
@@ -156,7 +159,7 @@ _EXP_POLY_TOLERANCE = Tolerance.relative(
     0.005,
     1e-38,
     note="AIE2P range-reduced polynomial, measured on npu2; aie2 uses the "
-    "LUT and is judged against bf16_exp_lut_ref instead",
+    "LUT and is judged against bf16_exp_lut_ref instead, npu1 unmeasured here",
 )
 _EXP_LUT_TOLERANCE = Tolerance.bf16_ulps(
     1,
@@ -250,7 +253,7 @@ def _log_f32_bound(x, offset=0.0):
 _LOG_F32_TOLERANCE = Tolerance.bounded(
     _log_f32_bound,
     note="correctly rounded except within 2^-21 (relative) of a bf16 tie; "
-    "1 of 849,792 results on npu2 needed that slack",
+    "1 of 849,792 results on npu2 needed that slack; npu1: unmeasured",
 )
 
 
@@ -319,6 +322,7 @@ def _unary_lut_contract(
         parameter_bindings=((2, count),) if count else (),
         reference=None if per_build else ref,
         tolerance=None if per_build else tolerance,
+        true_function=ref if per_build else None,
         per_build=tuple(per_build),
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
         setup=setup,
@@ -382,6 +386,7 @@ def _bf16_lut_factory(
     arg_arity: int,
     contract: KernelContract | None = None,
     use_lut_tanh: bool = False,
+    compile_flags: list[str] | None = None,
 ) -> ExternalFunction:
     """Build a LUT-backed bf16 kernel whose arg list is N copies of the same tile type."""
     _require_fixed_tile_size(factory_name, tile_size, _LUT_FIXED_TILE)
@@ -390,11 +395,7 @@ def _bf16_lut_factory(
         func_name,
         kernel_filename,
         [tile_ty] * arg_arity,
-        compile_flags=(
-            [f"-D{factory_name.upper()}_ELEMS={tile_size}"]
-            if factory_name in ("gelu", "silu", "swiglu")
-            else None
-        ),
+        compile_flags=compile_flags,
         contract=contract,
         use_lut_tanh=use_lut_tanh,
     )
@@ -419,7 +420,9 @@ _SOFTMAX_F32_REL = 4 * 2.0**-8 + 2 * 1e-5 + 2.0**-20
 _SOFT_CAP_ERR = 1e-5 / 2 + 2.0**-20
 
 
-@dtypes(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
+DTYPES["softmax"] = tuple(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
+
+
 def softmax(
     tile_size: int = 1024,
     accurate_exp2: bool = False,
@@ -522,7 +525,8 @@ def softmax(
                     0.04,
                     0.1 / tile_size,
                     note="AIE2P exp instruction through the softmax "
-                    "normalisation, measured on npu2 at 2.94e-2 relative; "
+                    "normalisation, measured on npu2 at 2.94e-2 relative "
+                    "(npu1: unmeasured); "
                     "atol = 0.1 / tile_size so an unwritten (all-zero) tile "
                     "fails, since every softmax output is below a generic "
                     "absolute floor",
@@ -671,10 +675,13 @@ def _softmax_f32_banded(
 
 
 def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """GELU activation kernel (tanh approximation) for bf16 tiles.
+    """GELU (tanh approximation) for bf16 tiles, with a compiled-in element count.
+
+    The ABI keeps ``(in, out, size)``. Positive whole vectors only: multiples
+    of 16 on aie2 or 32 on aie2p.
 
     Args:
-        tile_size: Elements per call (must be 1024).
+        tile_size: Elements per call.
         use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
             vtanh instruction, which returns its argument up to 0.5, and be
             judged against an exact model of the kernel,
@@ -682,92 +689,7 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             aie2, which always takes the LUT and is judged against
             [`gelu_aie2_lut_ref`][iron.kernels.activation.gelu_aie2_lut_ref].
     """
-    return _bf16_lut_factory(
-        "gelu",
-        "gelu_bf16",
-        "gelu.cc",
-        tile_size,
-        arg_arity=2,
-        contract=_unary_lut_contract(
-            gelu_ref,
-            count=False,
-            tolerance=_GELU_VTANH_TOLERANCE,
-            use_lut=use_lut,
-            elementwise=gelu_lut_ref,
-            branch_models={"aie2": gelu_aie2_lut_ref},
-        ),
-        use_lut_tanh=use_lut,
-    )
-
-
-def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """SiLU (Swish) activation kernel for bf16 tiles (must be 1024).
-
-    Args:
-        tile_size: Elements per call (must be 1024).
-        use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
-            vtanh instruction, which makes this 7.5x closer to the true
-            function and judged against an exact model of it. Moot on aie2.
-    """
-    return _bf16_lut_factory(
-        "silu",
-        "silu_bf16",
-        "silu.cc",
-        tile_size,
-        arg_arity=2,
-        contract=_unary_lut_contract(
-            silu_ref,
-            count=False,
-            use_lut=use_lut,
-            elementwise=silu_table_ref,
-            tolerance=_vtanh_family_tolerance("silu"),
-        ),
-        use_lut_tanh=use_lut,
-    )
-
-
-def silu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
-
-    Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
-    keeps the ``(in, out, size)`` ABI. Positive whole vectors are required
-    (16 on aie2, 32 on aie2p).
-
-    Args:
-        tile_size: Elements per call.
-        use_lut: As for [`silu`][iron.kernels.activation.silu].
-    """
-    width = _arch_traits().bf16_lanes
-    _require_vector_alignment("silu_sized", tile_size, width)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "silu_bf16_size",
-        "silu.cc",
-        [tile_ty, tile_ty, np.int32],
-        compile_flags=[f"-DSILU_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(
-            silu_ref,
-            count=tile_size,
-            use_lut=use_lut,
-            elementwise=silu_table_ref,
-            tolerance=_vtanh_family_tolerance("silu"),
-        ),
-        use_lut_tanh=use_lut,
-    )
-
-
-def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """GELU (tanh approx) for bf16 tiles, with a compiled-in element count.
-
-    Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
-    keeps the ``(in, out, size)`` ABI. Positive whole vectors only: multiples
-    of 16 on aie2 or 32 on aie2p.
-
-    Args:
-        tile_size: Elements per call.
-        use_lut: As for [`gelu`][iron.kernels.activation.gelu].
-    """
-    _require_vector_alignment("gelu_sized", tile_size, _arch_traits().bf16_lanes)
+    _require_vector_alignment("gelu", tile_size, _arch_traits().bf16_lanes)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "gelu_bf16_size",
@@ -786,6 +708,73 @@ def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction
     )
 
 
+_GELU_ERF_ROUNDED = Tolerance.bf16_ulps(
+    0,
+    atol=2.0**-126,
+    note="npu2, every finite bf16 input: correctly rounded wherever GELU is a "
+    "normal bf16 (0 of 48853 misrounded); npu1: unmeasured, and its limbs() "
+    "split is the one f32_split.h says AIE2's accumulator can round wrong; "
+    "atol admits the subnormal results the core flushes to 0",
+)
+
+
+def gelu_erf(tile_size: int = 1024) -> ExternalFunction:
+    """Exact GELU, ``x * Phi(x)``, for bf16 tiles; ``(in, out, size)``.
+
+    [`gelu`][iron.kernels.activation.gelu] takes the tanh approximation, which
+    rounds differently on 405 finite bf16 inputs, 280 below -3. This one
+    evaluates erfc in f32 and rounds once.
+
+    Args:
+        tile_size: Elements per call, a positive multiple of 32.
+    """
+    _require_vector_alignment("gelu_erf", tile_size, 32)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "gelu_erf_bf16_size",
+        _kernel_source("activation/gelu_erf.cc"),
+        [tile_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=gelu_erf_ref,
+            tolerance=_GELU_ERF_ROUNDED,
+            acc_dtype=np.float32,
+        ),
+    )
+
+
+def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
+    """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
+
+    The ABI keeps ``(in, out, size)``. Positive whole vectors only: multiples
+    of 16 on aie2 or 32 on aie2p.
+
+    Args:
+        tile_size: Elements per call.
+        use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
+            vtanh instruction, which makes this 7.5x closer to the true
+            function and judged against an exact model of it. Moot on aie2.
+    """
+    _require_vector_alignment("silu", tile_size, _arch_traits().bf16_lanes)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "silu_bf16_size",
+        "silu.cc",
+        [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DSILU_ELEMS={tile_size}"],
+        contract=_unary_lut_contract(
+            silu_ref,
+            count=tile_size,
+            use_lut=use_lut,
+            elementwise=silu_table_ref,
+            tolerance=_vtanh_family_tolerance("silu"),
+        ),
+        use_lut_tanh=use_lut,
+    )
+
+
 def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """SwiGLU gated activation kernel for bf16 tiles (must be 1024).
 
@@ -797,10 +786,12 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
         "swiglu.cc",
         tile_size,
         arg_arity=4,
+        compile_flags=[f"-DSWIGLU_ELEMS={tile_size}"],
         contract=KernelContract(
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, In, Out),
+            true_function=swiglu_ref,
             per_build=tuple(
                 (
                     (build, swiglu_table_ref, _LUT_MODEL_TOLERANCE)
@@ -940,7 +931,16 @@ def log_f32(tile_size: int = 1024) -> ExternalFunction:
             np.int32,
             np.float32,
         ],
-        compile_flags=[f"-DLOG_ELEMS={tile_size}"],
+        compile_flags=[f"-DLOG_ELEMS={tile_size}"]
+        # log_f32.cc stages AIE2P tiles of whole 256-element blocks, whose
+        # passes need eight stages to pipeline; under that cap Peano
+        # miscompiled one-trip passes, so other tiles keep the nested loop and
+        # the default cap.
+        + (
+            ["-mllvm", "--aie-pipeliner-max-stagecount=8"]
+            if tile_size % 256 == 0 and _detect_arch() == "aie2p"
+            else []
+        ),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Out, Param, Param),
@@ -948,6 +948,58 @@ def log_f32(tile_size: int = 1024) -> ExternalFunction:
             reference=log_f32_ref,
             sample=lambda rng, calls: log_f32_sample(rng, calls, tile_size=tile_size),
             tolerance=_LOG_F32_TOLERANCE,
+            ops_per_call=tile_size,
+        ),
+    )
+
+
+def log10_clamp_f32(tile_size: int = 1024) -> ExternalFunction:
+    """Whisper's log-mel features from mel energies, rounded once to bf16.
+
+    Takes ``(x, peak, y, size, mel_floor, decades, shift, scale)``:
+    ``tile_size`` float32 energies and the clip's largest, one float32, in,
+    and ``tile_size`` bf16 out, ``(max(log10(max(x, mel_floor)),
+    log10(max(peak, mel_floor)) - decades) + shift) * scale``, each step in
+    float32 as WhisperFeatureExtractor takes it (its ``mel_floor`` 1e-10,
+    ``decades`` 8, ``shift`` 4 and ``scale`` 1/4). The log is
+    ``log_f32``'s, kept in float32, times ``1 / ln 10`` on bf16 limbs.
+
+    The source sets ``conv_even`` itself and restores the core's mode on
+    exit, and builds for aie2 and aie2p.
+
+    Args:
+        tile_size: Float32 elements per call, a positive multiple of 32.
+
+    Returns:
+        ExternalFunction for ``log10_clamp_f32_bf16``.
+
+    Raises:
+        ValueError: When ``tile_size`` is not a positive multiple of 32.
+    """
+    _require_vector_alignment("log10_clamp_f32", tile_size, 32)
+    return _make_extern(
+        "log10_clamp_f32_bf16",
+        _kernel_source("activation/log_f32.cc"),
+        [
+            np.ndarray[(tile_size,), np.dtype[np.float32]],
+            np.ndarray[(1,), np.dtype[np.float32]],
+            np.ndarray[(tile_size,), np.dtype[bfloat16]],
+            np.int32,
+            np.float32,
+            np.float32,
+            np.float32,
+            np.float32,
+        ],
+        compile_flags=[f"-DLOG_ELEMS={tile_size}", "-DLOG10_CLAMP"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out, Param, Param, Param, Param, Param),
+            parameter_bindings=((3, tile_size),),
+            reference=log10_clamp_f32_ref,
+            sample=lambda rng, calls: log10_clamp_f32_sample(
+                rng, calls, tile_size=tile_size
+            ),
+            tolerance=_LOG10_CLAMP_F32_TOLERANCE,
             ops_per_call=tile_size,
         ),
     )
@@ -1111,6 +1163,19 @@ def gelu_ref(x):
     with np.errstate(over="ignore"):
         inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
     return (0.5 * xf * (1.0 + np.tanh(inner))).astype(x.dtype)
+
+
+_erfc = np.frompyfunc(math.erfc, 1, 1)
+
+
+def gelu_erf_ref(x):
+    """Numpy reference for [`gelu_erf`][iron.kernels.activation.gelu_erf]: ``x * Phi(x)``.
+
+    ``0.5 x erfc(-x / sqrt 2)`` in float64, rounded once.
+    """
+    xf = _no_neg_inf(_f64(x))
+    erfc = np.asarray(_erfc(-xf / math.sqrt(2.0)), dtype=np.float64)
+    return _rounded(0.5 * xf * erfc, x)
 
 
 def gelu_lut_ref(x):
@@ -1416,6 +1481,66 @@ def log_f32_sample(rng, calls: int, *, tile_size: int) -> list:
     ).view(np.float32)
     x[: edges.size] = edges[: x.size]
     return [x.reshape(calls, tile_size)]
+
+
+def _log10_clamped(x, peak, mel_floor, decades):
+    """Each clamped log10 of ``log10_clamp_f32``, in float32 and in float64.
+
+    The float32 one is as WhisperFeatureExtractor takes it.
+    """
+    lo = np.float32(mel_floor)
+    top = np.log10(np.maximum(np.asarray(peak, np.float32)[..., :1], lo))
+    log = np.log10(np.maximum(np.asarray(x, np.float32), lo).astype(np.float64))
+    clamped32 = np.maximum(
+        log.astype(np.float32), top.astype(np.float32) - np.float32(decades)
+    )
+    return clamped32, np.maximum(log, top - decades)
+
+
+def log10_clamp_f32_ref(x, peak, mel_floor=1e-10, decades=8.0, shift=4.0, scale=0.25):
+    """Numpy reference for [`log10_clamp_f32`][iron.kernels.activation.log10_clamp_f32].
+
+    WhisperFeatureExtractor's float32 steps after its log10, each log
+    correctly rounded, the result rounded once to bf16.
+    """
+    v, _ = _log10_clamped(x, peak, mel_floor, decades)
+    return ((v + np.float32(shift)) * np.float32(scale)).astype(bfloat16)
+
+
+def _log10_clamp_f32_bound(
+    x, peak, mel_floor=1e-10, decades=8.0, shift=4.0, scale=0.25
+):
+    """Bound on log10_clamp_f32's error against its reference.
+
+    Zero, except where the exact result is within ``gap`` of a bf16 rounding
+    midpoint: there one bf16 ulp plus ``gap``, 16 float32 ulps of the clamped
+    log and the shift, how far the kernel's float32 steps and the
+    reference's may lie apart (most where ``log + shift`` cancels).
+    """
+    _, v = _log10_clamped(x, peak, mel_floor, decades)
+    t = (v + shift) * scale
+    b = t.astype(bfloat16).astype(np.float64)
+    ulp = _bf16_ulp(b)
+    gap = 2.0**-20 * (np.abs(v) + abs(shift)) * abs(scale)
+    return np.where(np.abs(np.abs(t - b) - ulp / 2) <= gap, ulp + gap, 0.0)
+
+
+_LOG10_CLAMP_F32_TOLERANCE = Tolerance.bounded(
+    _log10_clamp_f32_bound,
+    note="WhisperFeatureExtractor's float32 steps, rounded once; a near tie "
+    "may round either way: 323 of 8,388,608 results on npu2; npu1: unmeasured",
+)
+
+
+def log10_clamp_f32_sample(rng, calls: int, *, tile_size: int) -> list:
+    """Mel energies over seventeen decades and each call's largest as its peak.
+
+    An eighth of the energies are zero, as a padded clip's silent frames are.
+    """
+    n = calls * tile_size
+    x = 10.0 ** rng.uniform(-14, 3, n) * (rng.uniform(size=n) >= 0.125)
+    x = x.astype(np.float32).reshape(calls, tile_size)
+    return [x, x.max(axis=-1, keepdims=True)]
 
 
 def _softmax_rows(f, addend: bool, masked: bool, **kw) -> Callable:

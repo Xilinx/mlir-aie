@@ -14,6 +14,36 @@
 #define MAGNITUDE_ELEMS n
 #endif
 
+#ifdef MAGNITUDE_POWER
+// re^2 + im^2 of complex float32 held as [re | im], n of each: the limb
+// products magnitude_f32 sums, smallest first, with the mid-lo ones its
+// square root does not need.
+extern "C" void power_f32(float *restrict x, float *restrict out, int32_t n) {
+  event0();
+  aie::rounding_mode saved = aie::swap_rounding(aie::rounding_mode::conv_even);
+  const bf16_vec one = bf16_splat(0x3f80);
+  AIE_PREPARE_FOR_PIPELINING
+  for (int i = 0; i < MAGNITUDE_ELEMS; i += f32_lanes) {
+    bf16_vec re_hi, re_mid, re_lo, im_hi, im_mid, im_lo;
+    split3(f32_acc(aie::load_v<f32_lanes>(x + i)), re_hi, re_mid, re_lo, one);
+    split3(f32_acc(aie::load_v<f32_lanes>(x + MAGNITUDE_ELEMS + i)), im_hi,
+           im_mid, im_lo, one);
+    f32_acc p = aie::mul(re_mid, re_lo);
+    p = aie::mac(p, re_mid, re_lo);
+    p = aie::mac(aie::mac(p, im_mid, im_lo), im_mid, im_lo);
+    p = aie::mac(p, re_mid, re_mid);
+    p = aie::mac(p, im_mid, im_mid);
+    p = aie::mac(aie::mac(p, re_hi, re_lo), re_hi, re_lo);
+    p = aie::mac(aie::mac(p, im_hi, im_lo), im_hi, im_lo);
+    p = aie::mac(aie::mac(p, re_hi, re_mid), re_hi, re_mid);
+    p = aie::mac(aie::mac(p, im_hi, im_mid), im_hi, im_mid);
+    p = aie::mac(aie::mac(p, re_hi, re_hi), im_hi, im_hi);
+    aie::store_v(out + i, p.to_vector<float>());
+  }
+  aie::set_rounding(saved);
+  event1();
+}
+#else
 // sqrt(re^2 + im^2) of complex float32 held as [re | im], n of each.
 // Multiplies as f32_split.h does.
 extern "C" void magnitude_f32(float *restrict x, float *restrict out,
@@ -38,7 +68,9 @@ extern "C" void magnitude_f32(float *restrict x, float *restrict out,
 
     // 1 / sqrt(p): the bit-trick estimate, 3.4e-2 off, then a Newton step to
     // about 4e-3. p = 0 gives a finite estimate, and s = 0.
-    auto bits = p.to_vector<float>().cast_to<int32_t>();
+    // Why the bit_and: log_exponent_mask in activation/log_f32.cc.
+    auto bits = aie::bit_and(p.to_vector<float>().cast_to<int32_t>(),
+                             aie::broadcast<int32_t, f32_lanes>(-2));
     auto y0_bits = aie::sub(aie::broadcast<int32_t, f32_lanes>(0x5f3759df),
                             aie::downshift(bits, 1));
     bf16_vec y0 = f32_acc(y0_bits.cast_to<float>()).to_vector<bfloat16>();
@@ -74,3 +106,4 @@ extern "C" void magnitude_f32(float *restrict x, float *restrict out,
   aie::set_rounding(saved);
   event1();
 }
+#endif

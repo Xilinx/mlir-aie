@@ -31,13 +31,14 @@ import json
 import sys
 from pathlib import Path
 
+from aiecc_stages import cpu_model, row
 from sa_placer import commit
 
 ALLOCATOR_COUNTS = {
     "unsolved": "designs",
     "illegal": "designs",
     "avoidable_crossings": "crossings",
-    "bank_pair_sharing": "pairs",
+    "bank_pair_sharing": "fraction",
     "wall_s": "s",
 }
 LIT_FAILURES = {"FAIL", "XPASS", "UNRESOLVED", "TIMEOUT"}
@@ -48,10 +49,6 @@ ROUTER_COUNTS = {
     "amsels_per_design": "amsels",
     "ms_per_design": "ms",
 }
-
-
-def row(case: str, metric: str, value, unit: str) -> dict:
-    return {"name": f"{case}/{metric}", "unit": unit, "value": value}
 
 
 def allocator(reports: dict[str, dict | None]) -> tuple[list, list, list]:
@@ -177,7 +174,7 @@ def main(argv=None) -> int:
         json.dump(rows, f, indent=1)
     meta = {
         "preflight": {},
-        "provenance": f"commit {commit()}",
+        "provenance": f"commit {commit()} | cpu {cpu_model()}",
         "measurement_sane": True,
         "detail": detail,
         "failed": failed,

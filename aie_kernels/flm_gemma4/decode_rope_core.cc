@@ -15,8 +15,8 @@ constexpr int ROPE_CORE_DH = DH;
 
 extern "C" {
 
-// x is one q head then one k head; both are normalized in place, as in the
-// kernel. rope_w is [cos | sin | q norm weight | k norm weight].
+// x is one q head then one k head, read only. rope_w is
+// [cos | sin | q norm weight | k norm weight].
 void rope_head_core(bf16 *restrict x, bf16 *restrict rope_w, bf16 *restrict y) {
   constexpr int Dh = ROPE_CORE_DH;
   event0();

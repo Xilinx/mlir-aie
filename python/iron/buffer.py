@@ -15,12 +15,14 @@ from ..helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
+    np_ndarray_type_of,
 )
 from ..helpers.sourceloc import SourceSite
 from .device import Tile
 from .resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 
 if TYPE_CHECKING:
+    from ..utils.compile.jit.markers import In, InOut, Out
     from .worker import Worker
 
 
@@ -32,7 +34,7 @@ class Buffer(PerDeviceConfigurationResolvable):
 
     def __init__(
         self,
-        type: type[np.ndarray] | None = None,
+        type: "type[np.ndarray] | In | Out | InOut | None" = None,
         initial_value: np.ndarray | None = None,
         name: str | None = None,
         tile: Tile | None = None,
@@ -45,7 +47,8 @@ class Buffer(PerDeviceConfigurationResolvable):
         The buffer is accessible by both Workers and the Runtime.
 
         Args:
-            type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.
+            type (type[np.ndarray] | In | Out | InOut | None, optional): The type of the buffer,
+                or a generator's tensor operand. Defaults to None.
             initial_value (np.ndarray | None, optional): An initial value to set the buffer
                 to. Should be of same datatype and shape as the buffer. Defaults to None.
             name (str | None, optional): The name of the buffer. If none is given, the
@@ -94,7 +97,7 @@ class Buffer(PerDeviceConfigurationResolvable):
         self._initial_value = initial_value
         self._name = name
         self._op = None
-        self._arr_type = type
+        self._arr_type = np_ndarray_type_of(type)
         self._use_write_rtp = use_write_rtp
         self._address = address
         self._mem_bank = mem_bank

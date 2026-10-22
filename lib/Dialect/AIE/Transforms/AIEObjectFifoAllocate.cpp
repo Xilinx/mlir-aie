@@ -45,6 +45,9 @@ struct AIEObjectFifoAllocatePass
   /// Flows already lowered. A route endpoint reads its direction off the
   /// flow naming it, so these outlive the walk that replaces them.
   SmallVector<Operation *> loweredFlows;
+  /// The flows each route endpoint is the source of, by its symbol name,
+  /// gathered before any flow is lowered.
+  DenseMap<StringAttr, SmallVector<RouteOp>> sourcedFlows;
   DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -883,7 +886,6 @@ struct AIEObjectFifoAllocatePass
   // the pass before the search rather than surfacing inside it.
   LogicalResult checkStreamPorts() {
     DMAChannelAnalysis channels(device);
-    // The endpoint verifier lets one route at most name each endpoint.
     DenseSet<Operation *> packetEndpoints;
     for (auto flow : device.getOps<RouteOp>()) {
       if (!flow.getPacket() && !clPacketSwObjectFifos)
@@ -1160,13 +1162,14 @@ struct AIEObjectFifoAllocatePass
 
     auto info =
         PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
-    source.setRoutePacket(info);
+    if (sourcedFlows.at(flow.getSourceAttr().getAttr()).size() == 1)
+      source.setRoutePacket(info);
 
     builder.setInsertionPoint(flow);
     auto packetFlow = PacketFlowOp::create(
         builder, flow.getLoc(),
-        builder.getIntegerAttr(builder.getI8Type(), packetID), nullptr,
-        nullptr);
+        builder.getIntegerAttr(builder.getI8Type(), packetID),
+        flow.getKeepPktHeader() ? builder.getBoolAttr(true) : nullptr, nullptr);
     OpBuilder::InsertionGuard g(builder);
     Block &ports = packetFlow.getRegion().emplaceBlock();
     builder.setInsertionPointToStart(&ports);
@@ -1202,6 +1205,8 @@ struct AIEObjectFifoAllocatePass
     llvm::SmallDenseSet<int> taken = takenPacketIDs();
     int nextFree = 0;
     SmallVector<RouteOp> flows(device.getOps<RouteOp>());
+    for (RouteOp flow : flows)
+      sourcedFlows[flow.getSourceAttr().getAttr()].push_back(flow);
     llvm::stable_sort(flows, [&](RouteOp a, RouteOp b) {
       return structuralRank.lookup(a) < structuralRank.lookup(b);
     });
@@ -1337,6 +1342,7 @@ struct AIEObjectFifoAllocatePass
 
   /// Give each dma_start naming an endpoint the channel it was assigned.
   LogicalResult resolveStart(DMAStartOp start, RouteEndpointOp endpoint,
+                             ArrayRef<RouteOp> flows, ArrayRef<int> ids,
                              int channel) {
     DMAChannelDir dir = endpoint.getRouteDirection();
     if (start.getChannelDir() != dir)
@@ -1344,13 +1350,87 @@ struct AIEObjectFifoAllocatePass
              << stringifyDMAChannelDir(start.getChannelDir()) << " on "
              << start.getEndpoint() << ", but its route makes it "
              << stringifyDMAChannelDir(dir);
-    // Only a runtime task's BDs are given the packet header.
-    if (endpoint.getPacket())
+    // Only a runtime task's BDs are given the packet header, so a DMA
+    // program can state it only when every flow it sources pins its id.
+    bool packet = !flows.empty() &&
+                  (RouteOp(flows.front()).getPacket() || clPacketSwObjectFifos);
+    if (packet &&
+        llvm::any_of(flows, [](RouteOp flow) { return !flow.getPacketId(); }))
       return start.emitOpError("names ")
              << start.getEndpoint()
-             << ", the source of a packet-switched route; a DMA program's "
-                "BDs would not carry its header";
+             << ", the source of a packet-switched route without a pinned "
+                "packet_id; pin packet_id on each route it sources and state "
+                "that header in each of the program's BDs";
+    if (packet) {
+      SmallVector<DMABDOp> bds;
+      for (Block *block : chainOf(start))
+        llvm::append_range(bds, block->getOps<DMABDOp>());
+      if (failed(checkHeaders(endpoint, ids, bds)))
+        return failure();
+    }
     start.setChannelAttr(builder.getI32IntegerAttr(channel));
+    return success();
+  }
+
+  /// A packet source that no one header is stamped on needs each of `bds` to
+  /// state the header of one of its flows, whose pinned ids are `ids`.
+  LogicalResult checkHeaders(RouteEndpointOp endpoint, ArrayRef<int> ids,
+                             ArrayRef<DMABDOp> bds) {
+    for (DMABDOp bd : bds) {
+      std::optional<int> id;
+      if (auto packet = bd.getPacket())
+        id = packet->getPktId();
+      else if (auto ops = bd->getBlock()->getOps<DMABDPACKETOp>(); !ops.empty())
+        id = (*ops.begin()).getPacketId();
+      if (id && llvm::is_contained(ids, *id))
+        continue;
+      return bd.emitOpError("sends on @")
+             << endpoint.getSymName()
+             << " without the packet header of one of its flows, ids " << ids;
+    }
+    return success();
+  }
+
+  /// Each runtime task or transfer that sends on a shared source must state
+  /// one of its flows' headers; a DMA program's start is resolveStart's, and
+  /// other users send nothing.
+  LogicalResult checkSharedSourceUsers(RouteEndpointOp endpoint,
+                                       ArrayRef<int> ids) {
+    auto uses = SymbolTable::getSymbolUses(endpoint, device);
+    if (!uses)
+      return success();
+    for (const SymbolTable::SymbolUse &use : *uses) {
+      Operation *user = use.getUser();
+      if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(user)) {
+        SmallVector<DMABDOp> bds;
+        task.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
+        if (failed(checkHeaders(endpoint, ids, bds)))
+          return failure();
+        continue;
+      }
+      if (auto start = dyn_cast<AIEX::DMAStartBdChainForOp>(user)) {
+        auto chain = device.lookupSymbol<BDChainOp>(start.getSymbol());
+        if (!chain)
+          return start.emitOpError("symbol does not reference valid BD chain");
+        SmallVector<DMABDOp> bds;
+        chain.getBody().walk([&](DMABDOp bd) { bds.push_back(bd); });
+        if (failed(checkHeaders(endpoint, ids, bds)))
+          return failure();
+        continue;
+      }
+      auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user);
+      if (!memcpy)
+        continue;
+      std::optional<PacketInfoAttr> packet = memcpy.getPacket();
+      if (packet && llvm::is_contained(ids, packet->getPktId()))
+        continue;
+      return memcpy.emitOpError("sends on @")
+             << endpoint.getSymName()
+             << ", a source several packet routes share, which has no one "
+                "header to stamp; it needs a packet header of its own, one of "
+                "ids "
+             << ids;
+    }
     return success();
   }
 
@@ -1379,12 +1459,23 @@ struct AIEObjectFifoAllocatePass
     for (auto endpoint : device.getOps<RouteEndpointOp>()) {
       auto starts = endpointStarts.lookup(endpoint);
       auto tasks = endpointTasks.lookup(endpoint);
+      auto sourced = sourcedFlows.find(endpoint.getSymNameAttr());
+      ArrayRef<RouteOp> flows;
+      if (sourced != sourcedFlows.end())
+        flows = sourced->second;
+      SmallVector<int> ids;
+      for (RouteOp flow : flows)
+        if (auto id = flow.getPacketId())
+          ids.push_back(*id);
+      bool shared = flows.size() > 1;
+      if (shared && failed(checkSharedSourceUsers(endpoint, ids)))
+        return failure();
       if (starts.empty() && tasks.empty())
         continue;
       std::optional<int> channel = endpoint.getRouteChannel();
       assert(channel && "assignChannels gives every routed endpoint one");
       for (DMAStartOp start : starts)
-        if (failed(resolveStart(start, endpoint, *channel)))
+        if (failed(resolveStart(start, endpoint, flows, ids, *channel)))
           return failure();
       if (endpoint.getTileLike().isShimTile() && endpoint.getFifoName())
         continue;
@@ -1502,10 +1593,12 @@ struct AIEObjectFifoAllocatePass
     filledPools.clear();
     rearmUsers.clear();
     loweredFlows.clear();
+    sourcedFlows.clear();
     localPools.clear();
     poolUsers.clear();
     lockUsers.clear();
     lockPlacements.clear();
+    spillTiles.clear();
 
     if (failed(collectFixedMemory()) || failed(checkStreamPorts()))
       return signalPassFailure();

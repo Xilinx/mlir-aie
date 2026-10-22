@@ -46,10 +46,14 @@ from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
+from aie.utils.compile.readobj import linked
 from aie.utils.compile.remarks import current_kernel_sources
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
 
+# Bump with any change to how a published metric is taken: publish.py and the
+# page compare a series only within one measurement.
+MEASUREMENT = "3"
 TRACE_SIZE = 16384
 # The add/256 case filled 16 KB after 91 intervals (180 B each) when every
 # default core event was traced; markers alone take about 5 B. Size for
@@ -231,29 +235,47 @@ def _grow_trace_size(trace_size: int, *, seen: int, expected: int) -> int:
 
 
 def _kernel_object_size(design, fn) -> int | None:
-    """Return only the tested kernel's object size, excluding harness objects."""
+    """Return the bytes of code and initialized data the tested entry point links.
+
+    What the entry reaches in its object (``readobj.linked``): not the
+    object's sibling entry points, symbol tables, or the bitcode
+    ``--check-lut-banks`` embeds.
+    """
     if Path(fn.object_file_name).suffix != ".o":
         return None
-    entry = design.compilable.get_cache_entry()
-    return (entry.directory / fn.object_file_name).stat().st_size
+    obj = design.compilable.get_cache_entry().directory / fn.object_file_name
+    reached = linked(obj, fn.name)
+    assert fn.name in reached.functions, f"{obj} does not define {fn.name}"
+    return reached.linked_bytes
 
 
-def _cycles_span(traced: kd.CallCycles) -> str:
-    """The kernel's spread, and any initializer's, beside its min."""
+def _cycles(case: Case, traced: kd.CallCycles) -> int:
+    """The cheapest call, or for calls of unequal work, the median call."""
     k = traced.kernel
-    parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    return min(k) if case.fn().contract.even_calls else int(np.median(k))
+
+
+def _cycles_span(case: Case, traced: kd.CallCycles) -> str:
+    """The kernel's spread, and any initializer's, beside its row's value."""
+    k = traced.kernel
+    if case.fn().contract.even_calls:
+        parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    else:
+        parts = [
+            f"median of calls of unequal work; min {min(k)} max {max(k)} n={len(k)}"
+        ]
     parts += [f"init[{i}] min {min(v)}" for i, v in traced.initializers.items() if v]
     return "; ".join(parts)
 
 
 def _detail(case: Case, m: dict) -> dict:
-    """Return the distribution behind each row, for ``--perf-meta``.
+    """Return the kernel's build key and the distribution behind each row, for ``--perf-meta``.
 
     A row keeps one value and a text ``range``; the numbers a reader needs to judge that value (how far the median and the
     slowest call sit above the min, how many calls the trace held) go here
     as fields.
     """
-    detail: dict = {}
+    detail: dict = {"build": case.fn().recipe_key}
     if (traced := m.get("cycles")) is not None:
         k = traced.kernel
         detail["cycles"] = {
@@ -265,8 +287,8 @@ def _detail(case: Case, m: dict) -> dict:
             "truncated": traced.truncated,
             "trace_size": m.get("trace_size"),
         }
-    if (wall := m.get("wall")) and (s := wall.npu):
-        detail["npu_us"] = {
+    for metric, s in _wall_stats(m).items():
+        detail[metric] = {
             "median": round(s.median_us, 2),
             "mad": round(s.mad_us, 2),
             "p95": round(s.p95_us, 2),
@@ -277,6 +299,32 @@ def _detail(case: Case, m: dict) -> dict:
     return detail
 
 
+def _wall_stats(m: dict) -> dict:
+    """Return the host-clock timings of a measurement, by metric name.
+
+    ``dispatch_us`` is submit to completion of each call, the dispatch's
+    fixed cost included; ``dispatch_overhead_us`` is that cost alone, an
+    empty dispatch on the same hardware context after each call; ``npu_us``
+    is each call's dispatch less the overhead's median. A runtime with no
+    empty dispatch for the kernel gives neither of the last two.
+
+    Args:
+        m: ``_measure``'s result.
+
+    Returns:
+        Each present timing's ``Stats``, in series-name order.
+    """
+    wall = m.get("wall")
+    if wall is None:
+        return {}
+    found = {
+        "dispatch_overhead_us": wall.dispatch_overhead,
+        "dispatch_us": wall.dispatch,
+        "npu_us": wall.npu,
+    }
+    return {metric: s for metric, s in found.items() if s is not None}
+
+
 def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     """Emit the rows one measurement contributes, in series-name order.
 
@@ -285,28 +333,21 @@ def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     """
     if meta is not None:
         meta.setdefault("cases", {})[case.name] = _detail(case, m)
+    rows = []
     if (traced := m.get("cycles")) is not None:
-        # The min: every call does the same work, so anything above it is
-        # the core waiting (a stall, a refresh), not the kernel.
-        cycles = min(traced.kernel)
-        record(case.name, "cycles", "cycles", cycles, _cycles_span(traced))
+        cycles = _cycles(case, traced)
+        rows.append(("cycles", "cycles", cycles, _cycles_span(case, traced)))
         if ops := case.work():
-            record(
-                case.name,
-                "cycles_per_kop",
-                "cycles/1k-ops",
-                round(1000.0 * cycles * case.kernel_calls() / ops, 3),
-            )
-    if (wall := m.get("wall")) and (s := wall.npu):
-        record(
-            case.name,
-            "npu_us",
-            "us",
-            round(s.median_us, 2),
-            f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}",
-        )
+            per_kop = round(1000.0 * cycles * case.kernel_calls() / ops, 3)
+            rows.append(("cycles_per_kop", "cycles/1k-ops", per_kop, None))
+    for metric, s in _wall_stats(m).items():
+        # The MAD leads the range text: the page and pr_report read it there.
+        span = f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}"
+        rows.append((metric, "us", round(s.median_us, 2), span))
     if (size := m.get("kernel_object_bytes")) is not None:
-        record(case.name, "kernel_object_bytes", "bytes", size)
+        rows.append(("kernel_object_bytes", "bytes", size, None))
+    for metric, unit, value, span in sorted(rows, key=lambda row: row[0]):
+        record(case.name, metric, unit, value, span)
 
 
 @pytest.fixture(scope="module")
@@ -336,7 +377,9 @@ def _preflight(request):
             "(set it with xrt-smi configure --pmode, or pass --pmode any)"
         )
     config._perf_meta["preflight"] = dict(vars(pre))
-    config._perf_meta["provenance"] = provenance(device=pre.device, pmode=pre.pmode)
+    config._perf_meta["provenance"] = provenance(
+        device=pre.device, pmode=pre.pmode, measurement=MEASUREMENT
+    )
     return pre
 
 
@@ -408,13 +451,15 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
     exactly. Both arms are judged by this tree's contract and only recorded
     here: the caller fails the current arm, and the baseline's miss can be a
     tolerance tightened along with the kernel. Returns the pair of each
-    arm's cycles and npu_us (min, and min, max and n), each arm's error
+    arm's cycles, dispatch_us and npu_us (min, and min, max and n), each arm's error
     against the reference (``cases.error_report``), the differing words and
     each arm's verdict. The baseline is timed only if ``current`` was.
     """
     timed = "wall" in current
     # The baseline's kernels share their object names with this tree's but
-    # not their sources; the registry would refuse them as a collision.
+    # not their sources; the registry would refuse either arm's as a collision
+    # with the other's.
+    saved = set(ExternalFunction._instances)
     ExternalFunction._instances.clear()
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("MLIR_AIE_KERNEL_SOURCES", tree)
@@ -424,6 +469,9 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
             )
         except AssertionError as e:
             raise AssertionError(f"baseline tree {tree}: {e}") from None
+        finally:
+            ExternalFunction._instances.clear()
+            ExternalFunction._instances.update(saved)
 
     def cycles(m):
         if "cycles" not in m:
@@ -431,21 +479,26 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
         k = m["cycles"].kernel
         return {"min": min(k), "max": max(k), "n": len(k)}
 
-    def npu_us(m):
-        if "wall" not in m or not (s := m["wall"].npu):
-            return None
-        return {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
-
     words = [
         _differing_words(a, b) for a, b in zip(base["outputs"], current["outputs"])
     ]
     cycles_range = [cycles(base), cycles(current)]
-    npu_us_range = [npu_us(base), npu_us(current)]
+    timed_ranges = {
+        metric: [
+            (s := _wall_stats(m).get(metric))
+            and {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
+            for m in (base, current)
+        ]
+        for metric in ("dispatch_us", "npu_us")
+    }
     return {
         "cycles": [r and r["min"] for r in cycles_range],
-        "npu_us_min": [r and r["min"] for r in npu_us_range],
+        **{
+            f"{metric}_min": [r and r["min"] for r in ranges]
+            for metric, ranges in timed_ranges.items()
+        },
         "cycles_range": cycles_range,
-        "npu_us_range": npu_us_range,
+        **{f"{metric}_range": ranges for metric, ranges in timed_ranges.items()},
         "differing_words": sum(words),
         "accuracy": [base["error"], current["error"]],
         "baseline_failed": base["failed"],

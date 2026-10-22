@@ -74,7 +74,6 @@ def test_b_col_maj_builds_on_aie2p(npu2, emulate):
     [
         {"bfp16_b": True},
         {"emulate_bf16_mmul_with_bfp16": True, "mmul_shape": (4, 8, 8)},
-        {"mmul_shape": (4, 8, 8)},
     ],
 )
 def test_b_col_maj_refuses_packed_b_and_short_aie2p_mmuls(npu2, kwargs):

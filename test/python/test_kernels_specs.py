@@ -23,6 +23,8 @@ The shared _isolate_extern_state fixture lives in conftest.py at this
 directory level.
 """
 
+import inspect
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -30,8 +32,19 @@ from typing import Callable
 import numpy as np
 import pytest
 from aie.iron import kernels
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.algorithms import kernel_design as kd
+from aie.iron.device import NPU1, NPU2, XCVC1902, NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
+from aie.iron.kernels import (
+    Param,
+    activation,
+    datamovement,
+    norm,
+    transformer,
+)
+from aie.iron.kernels.linalg import MatrixKernel
+from aie.iron.kernels.moe import _experts_row, experts_ref, experts_sample
+from aie.utils.compile.jit.markers import In, Out
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -125,9 +138,29 @@ KERNEL_SPECS: list[KernelSpec] = [
                 dict(tile_size=1024, dtype=bfloat16, vectorized=False),
                 "eltwise_add_bf16_scalar",
             ),
+            (dict(tile_size=64, dtype=np.int8), "eltwise_add_i8_vector"),
         ],
         invalid_kwargs=[
             (dict(tile_size=1024, dtype=np.float32), "dtype must be bfloat16"),
+            (dict(tile_size=48, dtype=np.int8), "multiple of 32"),
+        ],
+    ),
+    KernelSpec(
+        name="attention_i8",
+        factory=kernels.attention_i8,
+        kwargs=dict(),
+        arg_count=10,
+        expected_name="attention_i8",
+        invalid_kwargs=[(dict(width=18), "width of 4k")],
+    ),
+    KernelSpec(
+        name="maxpool2d",
+        factory=kernels.maxpool2d,
+        kwargs=dict(input_width=20, channels=128),
+        arg_count=6,
+        expected_name="maxpool2d_5x5_i8",
+        invalid_kwargs=[
+            (dict(input_width=18), "width of 4k"),
         ],
     ),
     KernelSpec(
@@ -166,13 +199,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="eltwise_mul_bf16_vector_size",
     ),
     KernelSpec(
-        name="relu_sized",
-        factory=kernels.relu_sized,
-        kwargs=dict(tile_size=1024),
-        arg_count=3,  # in, out, size
-        expected_name="relu_bf16_size",
-    ),
-    KernelSpec(
         name="clamp",
         factory=kernels.clamp,
         kwargs=dict(tile_size=1024),
@@ -186,7 +212,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=320),
         arg_count=3,  # [re | im] in, magnitudes out, size
         expected_name="magnitude_f32",
-        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        name_variants=[(dict(tile_size=256, power=2), "power_f32")],
+        invalid_kwargs=[
+            (dict(tile_size=48), "not a multiple of"),
+            (dict(tile_size=320, power=3), "power must be 1 or 2"),
+        ],
         shape_checks=[(dict(tile_size=64), 0, (128,)), (dict(tile_size=64), 1, (64,))],
     ),
     # ----- reduce -----
@@ -275,11 +305,16 @@ KERNEL_SPECS: list[KernelSpec] = [
                 "reduce_max_scalar_bfloat16",
             ),
             (dict(tile_size=1024, dtype=bfloat16), "reduce_max_vector_bfloat16"),
+            (dict(tile_size=4000, dtype=np.float32), "reduce_max_vector_float"),
+            (
+                dict(tile_size=96, dtype=np.float32, vectorized=False),
+                "reduce_max_scalar_float",
+            ),
         ],
         invalid_kwargs=[
             (
-                dict(tile_size=1024, dtype=np.float32),
-                "dtype must be np.int32 or bfloat16",
+                dict(tile_size=1024, dtype=np.float16),
+                "dtype must be np.int32, bfloat16 or np.float32",
             ),
         ],
         shape_checks=[
@@ -288,6 +323,7 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=2048, dtype=np.int32), 1, (1,)),
             # bfloat16: out must be padded to 2 elements (4 bytes) for DMA alignment.
             (dict(tile_size=1024, dtype=bfloat16), 1, (2,)),
+            (dict(tile_size=4000, dtype=np.float32), 1, (1,)),
         ],
     ),
     KernelSpec(
@@ -342,9 +378,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         name="relu",
         factory=kernels.relu,
         kwargs=dict(tile_size=1024),
-        arg_count=2,
-        expected_name="bf16_relu",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+        arg_count=3,  # in, out, size
+        expected_name="relu_bf16_size",
     ),
     KernelSpec(
         name="softmax",
@@ -359,35 +394,25 @@ KERNEL_SPECS: list[KernelSpec] = [
         name="gelu",
         factory=kernels.gelu,
         kwargs=dict(tile_size=1024),
-        arg_count=2,
-        expected_name="gelu_bf16",
+        arg_count=3,  # in, out, size
+        expected_name="gelu_bf16_size",
         lut_source="gelu.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="gelu_erf",
+        factory=kernels.gelu_erf,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="gelu_erf_bf16_size",
+        invalid_kwargs=[(dict(tile_size=48), "32-element vector step")],
     ),
     KernelSpec(
         name="silu",
         factory=kernels.silu,
         kwargs=dict(tile_size=1024),
-        arg_count=2,
-        expected_name="silu_bf16",
-        lut_source="silu.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
-    ),
-    KernelSpec(
-        name="silu_sized",
-        factory=kernels.silu_sized,
-        kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="silu_bf16_size",
         lut_source="silu.cc",
-    ),
-    KernelSpec(
-        name="gelu_sized",
-        factory=kernels.gelu_sized,
-        kwargs=dict(tile_size=1024),
-        arg_count=3,  # in, out, size
-        expected_name="gelu_bf16_size",
-        lut_source="gelu.cc",
     ),
     KernelSpec(
         name="swiglu",
@@ -473,6 +498,16 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="log_f32_bf16",
         invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
         shape_checks=[(dict(tile_size=128), 1, (128,))],
+    ),
+    KernelSpec(
+        name="log10_clamp_f32",
+        factory=kernels.log10_clamp_f32,
+        kwargs=dict(tile_size=1600),
+        # f32 in, peak in, bf16 out, size, mel_floor, decades, shift, scale
+        arg_count=8,
+        expected_name="log10_clamp_f32_bf16",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        shape_checks=[(dict(tile_size=128), 1, (1,)), (dict(tile_size=128), 2, (128,))],
     ),
     # ----- vision -----
     KernelSpec(
@@ -702,8 +737,23 @@ KERNEL_SPECS: list[KernelSpec] = [
         name_variants=[
             (dict(act_dtype=np.int8), "conv2dk3_i8"),
             (dict(act_dtype=np.uint8), "conv2dk3_ui8"),
+            (dict(bias=True, rounding="conv_even"), "conv2dk3_i8_bias_even"),
+            (
+                dict(bias=True, table=True, stride=2, rounding="conv_even"),
+                "conv2dk3_i8_bias_table_s2_even",
+            ),
         ],
-        invalid_kwargs=[(dict(act_dtype=np.float32), "act_dtype")],
+        invalid_kwargs=[
+            (dict(act_dtype=np.float32), "act_dtype"),
+            (dict(stride=2), "need bias"),
+            (dict(bias=True, act_dtype=np.uint8, rounding="conv_even"), "act_dtype"),
+            (dict(bias=True, stride=3, rounding="conv_even"), "stride"),
+            (dict(bias=True, rounding="positive_inf"), "with bias, rounding must be"),
+            (
+                dict(bias=True, input_width=36, stride=2, rounding="conv_even"),
+                "multiple of 8",
+            ),
+        ],
     ),
     KernelSpec(
         name="conv2dk1_skip",
@@ -723,6 +773,18 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(),
         arg_count=7,
         expected_name="conv2dk1_i8",
+        name_variants=[
+            (dict(rounding="conv_even"), "conv2dk1_i8_even"),
+            (dict(bias=True, rounding="conv_even"), "conv2dk1_i8_bias_even"),
+            (dict(bias=True, table=True), "conv2dk1_i8_bias_table_even"),
+            (dict(bias=True, rounding="symmetric_inf"), "conv2dk1_i8_bias"),
+        ],
+        invalid_kwargs=[
+            (dict(rounding="nearest"), "rounding"),
+            (dict(table=True), "needs bias"),
+            (dict(input_width=20), "multiple of 32"),
+            (dict(input_width=18, bias=True), "multiple of 4"),
+        ],
     ),
     KernelSpec(
         name="conv2dk14",
@@ -785,8 +847,15 @@ KERNEL_SPECS: list[KernelSpec] = [
         name_variants=[
             (dict(stride=1), "conv2dk3_dw_stride1_relu_ui8_ui8"),
             (dict(stride=2), "conv2dk3_dw_stride2_relu_ui8_ui8"),
+            (dict(stride=1, bias=True), "conv2dk3_dw_i8_bias_even"),
+            (dict(stride=1, bias=True, table=True), "conv2dk3_dw_i8_bias_table_even"),
         ],
-        invalid_kwargs=[(dict(stride=3), "stride")],
+        invalid_kwargs=[
+            (dict(stride=3), "stride"),
+            (dict(stride=2, bias=True), "stride 1"),
+            (dict(stride=1, table=True), "needs bias"),
+            (dict(stride=1, bias=True, input_width=30), "multiple of 4"),
+        ],
     ),
     KernelSpec(
         name="bn_conv2dk1_relu_xy_pool_padded",
@@ -796,11 +865,14 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
     ),
     KernelSpec(
-        name="bn_fc_relu_ui16_pad",
-        factory=kernels.bn_fc_relu_ui16_pad,
+        name="bn_fc_relu_ui16_ic_chunk",
+        factory=kernels.bn_fc_relu_ui16_ic_chunk,
         kwargs=dict(),
-        arg_count=8,
-        expected_name="post_L2_conv2dk1_relu_i16_ui16_pad",
+        arg_count=6,
+        expected_name="post_L2_fc_ui16_ic_chunk",
+        invalid_kwargs=[
+            (dict(input_channels=1280, chunk_input_channels=384), "must divide"),
+        ],
     ),
     KernelSpec(
         name="bn_conv2dk1_partial_put_i8",
@@ -923,6 +995,46 @@ KERNEL_SPECS: list[KernelSpec] = [
         shape_checks=[(dict(_MERGE, block=32), 1, (32,))],
     ),
     KernelSpec(
+        name="experts",
+        factory=kernels.experts,
+        kwargs={},
+        arg_count=4,  # row, weight tile, y, step
+        expected_name="experts",
+        invalid_kwargs=[
+            (dict(top_k=0), "top_k must be a positive integer"),
+            (dict(rows=3), "rows must divide"),
+            (dict(top_k=5), "top_k must be at most num_experts"),
+            (dict(cols=8, rows=8, hidden=64, width=32), "multiple of 16"),
+        ],
+        shape_checks=[(dict(hidden=128, top_k=4), 0, (144,))],
+    ),
+    KernelSpec(
+        name="selective_scan",
+        factory=kernels.selective_scan,
+        kwargs={},
+        arg_count=6,  # block, head, final, y, valid, block index
+        expected_name="selective_scan",
+        invalid_kwargs=[
+            (dict(state=0), "state must be a positive integer"),
+            (dict(head_dim=8), "multiples of 16"),
+            (dict(state=24), "multiples of 16"),
+        ],
+        shape_checks=[(dict(rows=4, head_dim=16, state=16), 0, (196,))],
+    ),
+    KernelSpec(
+        name="gated_delta_rule",
+        factory=kernels.gated_delta_rule,
+        kwargs={},
+        arg_count=6,  # block, head, final, y, valid, block index
+        expected_name="gated_delta_rule",
+        invalid_kwargs=[
+            (dict(key_dim=0), "key_dim must be a positive integer"),
+            (dict(rows=1, key_dim=2, value_dim=1), "must be even"),
+            (dict(rows=3, key_dim=16, value_dim=17), "must be even"),
+        ],
+        shape_checks=[(dict(rows=4, key_dim=8, value_dim=4), 0, (88,))],
+    ),
+    KernelSpec(
         name="patch_positions",
         factory=kernels.patch_positions,
         kwargs={},
@@ -985,6 +1097,13 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, cols
         expected_name="layer_norm",
+    ),
+    KernelSpec(
+        name="layer_norm_eps",
+        factory=kernels.layer_norm_eps,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, out, cols, epsilon
+        expected_name="layer_norm_eps",
     ),
 ]
 
@@ -1210,14 +1329,14 @@ def kernel_arch(request):
         yield request.param
 
 
-@pytest.mark.parametrize("name", ["rms_norm", "rms_norm_eps", "layer_norm", "rope"])
+@pytest.mark.parametrize(
+    "name", ["rms_norm", "rms_norm_eps", "layer_norm", "layer_norm_eps", "rope"]
+)
 def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
-    from aie.iron.kernels import datamovement, norm, transformer
-
     factory = getattr(kernels, name)
     canonical = datamovement if name == "rope" else norm
     assert factory is getattr(canonical, name)
-    if name != "rms_norm_eps":
+    if not name.endswith("_eps"):
         assert factory is getattr(transformer, name)
     assert factory().arg_shape(0) == (1024,)
     fn = factory(tile_size=2048)
@@ -1235,8 +1354,6 @@ def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
 
 @pytest.mark.parametrize("name", ["rms_norm", "layer_norm"])
 def test_norm_reference_eps_keyword(name):
-    from aie.iron.kernels import norm, transformer
-
     reference = getattr(kernels, f"{name}_ref")
     assert reference is getattr(norm, f"{name}_ref")
     assert reference is getattr(transformer, f"{name}_ref")
@@ -1263,6 +1380,13 @@ def test_norm_tail_and_vector_constraints(kernel_arch):
         assert kernels.layer_norm(cols=cols).arg_shape(0) == (cols,)
     with pytest.raises(ValueError, match="multiple of 16"):
         kernels.layer_norm(cols=17)
+    with pytest.raises(ValueError, match="multiple of 16"):
+        kernels.layer_norm_eps(cols=17)
+    rows = np.arange(2 * 208, dtype=np.float32).reshape(2, 208).astype(bfloat16)
+    np.testing.assert_array_equal(
+        kernels.layer_norm_eps(cols=208).contract_for().reference(rows, 0.5),
+        kernels.layer_norm_ref(rows, eps=0.5),
+    )
 
 
 @pytest.mark.parametrize("two_halves", [False, True])
@@ -1288,21 +1412,16 @@ def test_rope_layout_contract_and_vector_constraints(
     np.testing.assert_array_equal(fn.contract.reference(x, lut), expected)
 
 
-@pytest.mark.parametrize(
-    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
-)
+@pytest.mark.parametrize("name", ["add_sized", "mul_sized", "relu", "silu", "gelu"])
 def test_sized_factory_contracts(name, kernel_arch):
-    from aie.iron.kernels import Param
-    from aie.utils.compile.jit.markers import In, Out
-
     fn = getattr(kernels, name)(tile_size=1024)
     binary = name in ("add_sized", "mul_sized")
     assert fn.contract.roles == ((In, In, Out, Param) if binary else (In, Out, Param))
     assert fn.contract.parameter_bindings == ((3 if binary else 2, 1024),)
     assert fn.contract_for().tolerance.note
     inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
-    reference_name = name.replace("_sized", "_ref")
-    if name == "silu_sized" and kernel_arch == "aie2":
+    reference_name = name.removesuffix("_sized") + "_ref"
+    if name == "silu" and kernel_arch == "aie2":
         reference_name = "silu_table_ref"
     expected = getattr(kernels, reference_name)(*inputs)
     np.testing.assert_array_equal(fn.contract_for().reference(*inputs), expected)
@@ -1315,15 +1434,13 @@ def test_sized_factory_contracts(name, kernel_arch):
             getattr(kernels, name)(tile_size=1025)
 
 
-@pytest.mark.parametrize(
-    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
-)
+@pytest.mark.parametrize("name", ["add_sized", "mul_sized", "relu", "silu", "gelu"])
 def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
     factory = getattr(kernels, name)
     width = (
         1
         if name in ("add_sized", "mul_sized")
-        else 32 if name == "relu_sized" or kernel_arch == "aie2p" else 16
+        else 32 if name == "relu" or kernel_arch == "aie2p" else 16
     )
     macro = name.removesuffix("_sized").upper() + "_ELEMS"
     tiny = factory(tile_size=width)
@@ -1335,10 +1452,38 @@ def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
     assert tiny._symbol_prefix != other._symbol_prefix
 
 
-def test_relu_sized_requires_whole_vectors(kernel_arch):
-    assert kernels.relu_sized(tile_size=32).arg_shape(0) == (32,)
+def test_gelu_erf_ports_and_reference(kernel_arch):
+
+    assert kernels.gelu_erf is activation.gelu_erf
+    fn = kernels.gelu_erf(tile_size=64)
+    assert fn.arg_shape(0) == (64,)
+    assert Path(fn._source_file).name == "gelu_erf.cc"
+    assert fn.built_for_arch == kernel_arch
+    x = np.array([-5, -3, -1, 0, 1, 3], dtype=bfloat16)
+    expected = [v * (1 + math.erf(v / math.sqrt(2))) / 2 for v in x.astype(float)]
+    np.testing.assert_array_equal(
+        fn.contract_for().reference(x), np.array(expected).astype(bfloat16)
+    )
+
+
+def test_gelu_erf_refuses_a_tile_with_a_tail():
+    with pytest.raises(ValueError, match="gelu_erf"):
+        kernels.gelu_erf(tile_size=48)
+
+
+def test_gelu_erf_device_case_fails_a_tanh_gelu(kernel_arch):
+    fn = kernels.gelu_erf()
+    for seed in range(1000, 1004):  # the device test's random seeds
+        (x,) = kd.sample_inputs(fn, calls=16, rng=np.random.default_rng(seed))
+        ref = fn.expected([x])
+        assert fn.judge(ref.ravel(), ref, calls=16)
+        assert not fn.judge(kernels.gelu_ref(x).ravel(), ref, calls=16)
+
+
+def test_relu_requires_whole_vectors(kernel_arch):
+    assert kernels.relu(tile_size=32).arg_shape(0) == (32,)
     with pytest.raises(ValueError, match="32-element vector step"):
-        kernels.relu_sized(tile_size=2049)
+        kernels.relu(tile_size=2049)
 
 
 @pytest.mark.parametrize(
@@ -1362,8 +1507,6 @@ def test_fixed_activations_compile_their_count(name, kernel_arch):
     ],
 )
 def test_runtime_activation_sizes_preserve_contract(name, tile_size, kernel_arch):
-    from aie.iron.kernels import Param
-
     fn = getattr(kernels, name)(tile_size=tile_size)
     assert fn.arg_shape(0) == fn.arg_shape(1) == (tile_size,)
     assert fn.contract.roles[2] is Param
@@ -1418,8 +1561,6 @@ def test_mm_mac_dims_rejects_a_dtype_pair_with_no_kernel():
     ],
 )
 def test_mac_dims_resolves_an_arch_from_a_device(factory, expected):
-    from aie.iron.device import NPU1, NPU2
-
     assert factory.mac_dims(bfloat16, bfloat16, device=NPU1()) == expected[0]
     assert factory.mac_dims(bfloat16, bfloat16, device=NPU2()) == expected[1]
 
@@ -1437,13 +1578,7 @@ def test_cascade_mm_carries_the_same_accessor():
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
 @pytest.mark.parametrize("arch", ["aie2", "aie2p"])
-def test_mac_dims_does_not_construct_or_register_a_kernel(factory, arch, monkeypatch):
-    from aie.iron.kernels import linalg
-
-    def unexpected_construction(*args, **kwargs):
-        pytest.fail("Geometry queries must not construct kernels")
-
-    monkeypatch.setattr(linalg, "_make_extern", unexpected_construction)
+def test_mac_dims_does_not_construct_or_register_a_kernel(factory, arch):
     instances = list(ExternalFunction._instances)
     assert callable(factory.mac_dims)
     assert len(factory.mac_dims(bfloat16, bfloat16, arch=arch)) == 3
@@ -1464,27 +1599,23 @@ def test_cascade_mac_dims_rejects_an_unsupported_dtype_pair(arch):
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
 def test_matrix_factory_preserves_discovery_metadata(factory):
-    import inspect
-
-    from aie.iron.kernels.linalg import MatrixKernel
-
     assert inspect.isfunction(factory)
     assert factory.__name__ in kernels.factories()
     assert issubclass(inspect.signature(factory).return_annotation, MatrixKernel)
     assert inspect.signature(factory).parameters["dim_m"].default == 64
     if factory is kernels.mm:
-        assert len(factory.dtypes) == 7
-        assert {"input_dtype": np.int16, "output_dtype": np.int16} in factory.dtypes
+        assert len(kernels.DTYPES["mm"]) == 7
+        assert {"input_dtype": np.int16, "output_dtype": np.int16} in kernels.DTYPES[
+            "mm"
+        ]
 
 
-@pytest.mark.parametrize("kwargs", kernels.mm.dtypes)
+@pytest.mark.parametrize("kwargs", kernels.DTYPES["mm"])
 @pytest.mark.parametrize("vectorized", [False, True])
 @pytest.mark.parametrize("emulate", [False, True])
 def test_mm_geometry_matches_contract_for_every_variant(
     kwargs, vectorized, emulate, kernel_arch
 ):
-    from aie.iron.kernels.linalg import MatrixKernel
-
     options = dict(
         **kwargs,
         vectorized=vectorized,
@@ -1514,12 +1645,10 @@ def test_matrix_geometry_explicit_arch_overrides_device(factory):
 @pytest.mark.parametrize(
     "factory", [kernels.mm, kernels.cascade_mm, kernels.cascade_mm_put]
 )
-def test_matrix_construction_rejects_unsupported_arch(factory, monkeypatch):
-    from aie.iron.kernels import linalg
-
-    monkeypatch.setattr(linalg, "_detect_arch", lambda: "unsupported")
-    with pytest.raises(ValueError, match="unsupported"):
-        factory()
+def test_matrix_construction_rejects_unsupported_arch(factory):
+    with set_current_device(XCVC1902()):
+        with pytest.raises(RuntimeError, match="Unsupported device arch"):
+            factory()
 
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.cascade_mm])
@@ -1541,8 +1670,6 @@ def test_matrix_zero_companion_uses_contract_initializer(
 
 
 def test_cascade_siblings_share_artifact_and_preserve_contract(kernel_arch):
-    from aie.iron.kernels.linalg import MatrixKernel
-
     fn = kernels.cascade_mm()
     assert isinstance(fn, MatrixKernel)
     assert fn.get_only is fn
@@ -1559,9 +1686,57 @@ def test_cascade_siblings_share_artifact_and_preserve_contract(kernel_arch):
 
 
 def test_bf16_mv_retains_output_contract_without_accumulator(kernel_arch):
-    from aie.utils.compile.jit.markers import Out
-
     fn = kernels.mv(input_dtype=bfloat16, output_dtype=bfloat16, dim_k=256)
     assert fn.contract.roles[-1] is Out
     assert fn.contract.initializers == ()
     assert not hasattr(fn, "zero")
+
+
+def test_experts_duplicated_id_sums_its_weights():
+
+    c = kernels.experts().contract
+    _, tile = c.sample(np.random.default_rng(0), 96)
+    x = np.random.default_rng(1).standard_normal(64) * 0.5
+
+    def run(ids, weights):
+        row = _experts_row(x, np.array(weights, np.float32), ids)
+        return c.reference(np.tile(row, (96, 1)), tile)
+
+    np.testing.assert_array_equal(
+        run([1, 1], [0.25, 0, 0.5, 0]), run([1, 0], [0.75, 0, 0, 0])
+    )
+
+
+def test_experts_ref_is_the_dense_mixture_of_experts():
+    # Several column blocks in both matrices, so a walk in another block order
+    # assembles other weights.
+    geometry = dict(hidden=64, width=32, num_experts=3, top_k=2, rows=8, cols=16)
+    H, I, E, K, T, C = geometry.values()
+    gate_up_blocks = [(r, c) for r in range(0, 2 * I, T) for c in range(0, H, C)]
+    down_blocks = [(r, c) for r in range(0, H, T) for c in range(0, I, C)]
+    row_steps = E * (len(gate_up_blocks) + len(down_blocks))
+    rows, tiles = experts_sample(np.random.default_rng(3), 3 * row_steps, **geometry)
+    y = experts_ref(rows, tiles, **geometry).astype(np.float64)
+    tiles = np.asarray(tiles, np.float64).reshape(3, -1, T, C)
+    for n in range(3):
+        stream = iter(tiles[n])
+        gate_up = np.zeros((E, 2 * I, H))
+        down = np.zeros((E, H, I))
+        for e in range(E):
+            for r, c in gate_up_blocks:
+                gate_up[e, r : r + T, c : c + C] = next(stream)
+            for r, c in down_blocks:
+                down[e, r : r + T, c : c + C] = next(stream)
+        row = rows[n * row_steps]
+        x = row[:H].astype(np.float64)
+        weights = row[H : H + 2 * K : 2].astype(np.float64)
+        ids = np.ascontiguousarray(row[H + 2 * K :]).view(np.int32)
+        g, u = np.split(np.einsum("eih,h->ei", gate_up, x), 2, axis=1)
+        h = g / (1 + np.exp(-g)) * u
+        want = np.einsum("j,jhi,ji->h", weights, down[ids], h[ids])
+        np.testing.assert_allclose(
+            y[(n + 1) * row_steps - 1],
+            want,
+            rtol=2**-8,
+            atol=1e-5 * np.abs(want).max(),
+        )

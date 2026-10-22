@@ -13,16 +13,21 @@ keeps it as one comment. Standard library only, so it runs on any runner.
 ``results/<npu>/`` holds a leg's artifact (meta.json, perf.json,
 correctness.xml); ``baselines/<npu>/latest.json`` is the record publish.py
 wrote to gh-pages for the last nightly that published rows. The thresholds are ``thresholds.json``'s, shared with the page.
+The report names the part each side ran on; when they differ, only the
+metrics thresholds.json marks ``across_parts`` are compared.
 """
 
 import argparse
 import json
+import math
 import re
 import sys
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from publish import device_part, upgrade
 
 MARKER = "<!-- kernel-checks-report -->"
 PAGE = "https://xilinx.github.io/mlir-aie/dashboard/#view=night"
@@ -35,18 +40,16 @@ THRESHOLDS = {
     if not metric.startswith("_")
 }
 # Stable run to run, so a move is the compiler's: the regressions that count.
-GATED = {m: s["pct"] / 100 for m, s in THRESHOLDS.items() if s.get("gated")}
-# Derived from another metric, so it would repeat that metric's rows.
-DERIVED = {m for m, s in THRESHOLDS.items() if s.get("derived")}
-# Everything else (host timing moves with the machine) is listed past this.
-OTHER = {
-    m: s["pct"] / 100
-    for m, s in THRESHOLDS.items()
-    if m not in GATED and m not in DERIVED
-}
-DEFAULT_THRESHOLD = 0.10  # a metric thresholds.json does not name
-# A change must also exceed this many MADs, per metric (npu_us).
+GATED = {m for m, s in THRESHOLDS.items() if s.get("gated")}
+# Derived from another metric, so it would repeat that metric's rows; or
+# shown but never judged.
+UNJUDGED = {m for m, s in THRESHOLDS.items() if s.get("derived") or s.get("neutral")}
+# A metric thresholds.json does not name.
+DEFAULT_THRESHOLD = {"pct": 10}
+# A change must also exceed this many MADs, per metric (the host-timed ones).
 MAD = {m: s["mad"] for m, s in THRESHOLDS.items() if s.get("mad")}
+# The same on every part of an NPU generation: compared even across parts.
+ACROSS_PARTS = {m for m, s in THRESHOLDS.items() if s.get("across_parts")}
 SCHEMA = 1  # the newest publish.py record format this reads
 MAX_ROWS = 50
 
@@ -74,7 +77,17 @@ class Change:
 
     @property
     def ratio(self) -> float:
+        """The change over the old value; from zero, infinite its way."""
+        if not self.before:
+            return math.copysign(math.inf, self.after - self.before)
         return (self.after - self.before) / self.before
+
+    @property
+    def text(self) -> str:
+        """The change in percent, or from zero in the metric's unit."""
+        if not self.before:
+            return f"{self.after - self.before:+g} {self.unit}".rstrip()
+        return f"{100 * self.ratio:+.1f}%"
 
 
 @dataclass
@@ -83,6 +96,11 @@ class Leg:
     measured: bool
     peano: str = ""
     baseline_peano: str = ""
+    # The part this run and the nightly ran on ("Strix", "Krackan").
+    part: str = ""
+    baseline_part: str = ""
+    # Rows not compared because the parts differ.
+    other_part: int = 0
     baseline_commit: dict | None = None
     # Why there is no comparison, when there is none.
     uncompared: str = ""
@@ -234,13 +252,17 @@ def baseline(path: Path, run_id: str = "") -> dict | None:
 
     None without rows, in a newer format than this reads, or from this very
     run: a re-run of a nightly's report reads the record its own publish job
-    already wrote, and a run compared with itself shows nothing.
+    already wrote, and a run compared with itself shows nothing. An older
+    record is brought up to the current rows as publish.py's ``upgrade``
+    brings it on its next publish, so a renamed metric is compared under its
+    current name.
     """
     if not path.exists():
         return None
     record = json.loads(path.read_text())
     if record.get("schema", 1) > SCHEMA:
         return None
+    upgrade(record)
     if run_id and str(record.get("id", "")) == str(run_id):
         return None
     return record if record.get("rows") else None
@@ -251,14 +273,21 @@ def _mad(cell: dict) -> float | None:
     return float(match[1]) if match else None
 
 
-def moved(metric: str, threshold: float, before: dict, after: dict) -> bool:
+def moved(metric: str, before: dict, after: dict) -> bool:
     """Whether a change from ``before`` to ``after`` counts for ``metric``.
 
-    At least ``threshold`` of the old value, and for a metric with a MAD
-    factor, more than that many of the larger of the two rows' MADs too.
+    By its thresholds.json entry: at least ``pct`` percent of the old value
+    (from a zero one, only ``abs`` decides, and without it nothing counts),
+    at least ``abs`` in the metric's unit, and for a metric with a MAD
+    factor, more than that many of the larger of the two rows' MADs.
     """
+    spec = THRESHOLDS.get(metric, DEFAULT_THRESHOLD)
     change = abs(after["value"] - before["value"])
-    if change < threshold * abs(before["value"]):
+    if not change or change < spec.get("abs", 0):
+        return False
+    if not before["value"]:
+        return "abs" in spec
+    if change < spec.get("pct", 0) / 100 * abs(before["value"]):
         return False
     factor = MAD.get(metric)
     if factor:
@@ -266,6 +295,17 @@ def moved(metric: str, threshold: float, before: dict, after: dict) -> bool:
         if spread and change <= factor * max(spread):
             return False
     return True
+
+
+def rule(metric: str) -> str:
+    """Say what change counts for ``metric``: "15% and 0.5 s", "1 ulp"."""
+    spec = THRESHOLDS.get(metric, DEFAULT_THRESHOLD)
+    parts = [f"{spec['pct']:g}%"] if "pct" in spec else []
+    if "abs" in spec:
+        parts.append(f"{spec['abs']:g} in its unit")
+    if "mad" in spec:
+        parts.append(f"{spec['mad']:g}\u00d7 its MAD")
+    return " and ".join(parts)
 
 
 def _split(name: str) -> tuple[str, str]:
@@ -292,6 +332,7 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     result.runs = int(meta.get("runs_per_case") or 0)
     failing = {f.case for f in result.failures}
     result.peano = _peano(rows, meta.get("provenance", ""))
+    result.part = device_part((meta.get("preflight") or {}).get("device")) or ""
     measured = {_split(row["name"])[0] for row in rows}
     result.cases = len(measured | swept)
 
@@ -315,6 +356,8 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
         return result
     result.baseline_commit = record.get("commit") or None
     result.baseline_peano = record.get("provenance", {}).get("peano", "")
+    result.baseline_part = record.get("device") or ""
+    same_part = bool(result.part) and result.part == result.baseline_part
     before = {
         f"{case}/{metric}": cell
         for case, cells in record["rows"].items()
@@ -323,16 +366,23 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     for row in rows:
         case, metric = _split(row["name"])
         old = before.get(row["name"])
-        if metric in DERIVED or not old or not old["value"]:
+        if metric in UNJUDGED or not old:
+            continue
+        if not same_part and metric not in ACROSS_PARTS:
+            result.other_part += 1
+            continue
+        if not moved(metric, old, row):
             continue
         change = Change(case, metric, row["unit"], old["value"], row["value"])
-        if metric in GATED:
-            if change.ratio >= GATED[metric]:
-                result.regressed.append(change)
-            elif change.ratio <= -GATED[metric]:
-                result.improved.append(change)
-        elif moved(metric, OTHER.get(metric, DEFAULT_THRESHOLD), old, row):
+        worse = (change.after > change.before) != bool(
+            THRESHOLDS.get(metric, {}).get("higher_is_better")
+        )
+        if metric not in GATED:
             result.other.append(change)
+        elif worse:
+            result.regressed.append(change)
+        else:
+            result.improved.append(change)
     for changes in (result.regressed, result.other):
         changes.sort(key=lambda c: -c.ratio)
     result.improved.sort(key=lambda c: c.ratio)
@@ -370,7 +420,7 @@ def _changes(legs: list[Leg], attr: str) -> list[list[str]]:
             c.metric,
             _value(c.before, c.unit),
             _value(c.after, c.unit),
-            f"{100 * c.ratio:+.1f}%",
+            c.text,
         ]
         for leg in legs
         for c in getattr(leg, attr)
@@ -416,12 +466,12 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
         title += f", {' and '.join(refused)} not timed"
     if retried := sum(len(leg.flaky) for leg in legs):
         title += f", {retried} passed on a retry"
-    gated = " or ".join(f"`{m}` {100 * t:g}%" for m, t in GATED.items())
+    gated = " or ".join(f"`{m}` {rule(m)}" for m in sorted(GATED))
     links = [f"[run]({run_url})"] if run_url else []
     links.append(f"[nightly history]({PAGE})")
     lead = (
         f"Compared with the last nightly on main. Regressed: {gated} or more "
-        "worse. Both are stable run to run, so a move is the compiler's. "
+        "worse. Each is stable run to run, so a move is the compiler's. "
         if compared
         else "Not compared with a nightly on main; the table says why. "
     )
@@ -453,12 +503,24 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
     for leg in legs:
         if not leg.measured and not leg.failures and not leg.cases:
             summary.append(
-                [leg.npu, leg.peano or "?", "\u2014", "no results", "", "", ""]
+                [
+                    leg.npu,
+                    leg.part or "?",
+                    leg.peano or "?",
+                    "\u2014",
+                    "no results",
+                    "",
+                    "",
+                    "",
+                ]
             )
             continue
         peano = leg.peano or "?"
         if leg.baseline_peano and leg.baseline_peano != leg.peano:
             peano += f" (nightly: {leg.baseline_peano})"
+        part = leg.part or "?"
+        if leg.baseline_part and leg.baseline_part != leg.part:
+            part += f" (nightly: {leg.baseline_part})"
         nightly = leg.baseline_commit
         if nightly and nightly.get("id"):
             base = f"[{nightly['id'][:7]}]({nightly.get('url', '')})"
@@ -467,6 +529,7 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
         summary.append(
             [
                 leg.npu,
+                part,
                 peano,
                 base,
                 str(leg.cases),
@@ -476,9 +539,26 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
             ]
         )
     out += _table(
-        ["NPU", "Peano", "Nightly", "Cases", "Failing", "Regressed", "Improved"],
+        [
+            "NPU",
+            "Part",
+            "Peano",
+            "Nightly",
+            "Cases",
+            "Failing",
+            "Regressed",
+            "Improved",
+        ],
         summary,
     )
+    for leg in legs:
+        if leg.other_part:
+            out += [
+                "",
+                f"{leg.npu}: this run is on {leg.part or 'an unknown part'}, the "
+                f"nightly on {leg.baseline_part or 'an unknown part'}, so "
+                f"{leg.other_part} host-timed rows (`dispatch_us`, `npu_us`) are not compared.",
+            ]
 
     rows = [
         [
@@ -515,15 +595,10 @@ def render(legs: list[Leg], run_url: str = "", commit: str = "") -> str:
         # Only the metrics listed: thresholds.json names the component
         # checks' too.
         listed = {row[2] for row in rows}
-        thresholds = ", ".join(
-            f"`{m}` {100 * t:g}%"
-            + (f" and {MAD[m]:g}\u00d7 its MAD" if m in MAD else "")
-            for m, t in OTHER.items()
-            if m in listed
-        )
+        thresholds = ", ".join(f"`{m}` {rule(m)}" for m in sorted(listed))
         note = (
-            f"Listed past {thresholds}. `npu_us` is timed on the host and "
-            "moves with the machine; the byte counts do not."
+            f"Listed past {thresholds}. `dispatch_us` and `npu_us` are timed "
+            "on the host and move with the machine; the byte counts do not."
         )
         out += [""] + _details(
             f"Other metrics that moved ({len(rows)})",
