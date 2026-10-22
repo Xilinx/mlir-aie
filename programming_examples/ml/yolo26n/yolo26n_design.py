@@ -685,6 +685,10 @@ class SegmentDesign:
         rows: a stage's rows go on to every branch at once, so a reader taking
         them early must leave the chain before the rows a later one waits for.
         """
+        # A reader waiting for most of a map is still reading it while the
+        # next image's rows arrive: a quarter map more keeps them coming.
+        if 4 * rows >= 3 * tensor.height:
+            rows += tensor.height // 4
         self.hold_rows.setdefault(tensor.name, set()).add(rows)
         stages = self.stages.setdefault(tensor.name, [])
         if not stages:
