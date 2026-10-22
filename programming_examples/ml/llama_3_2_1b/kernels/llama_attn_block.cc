@@ -78,7 +78,15 @@ static void fold_weights(int8_t *state, const float *m_b, const float *s_b,
       ::aie::load_v<kLanes>(x + kLanes), vec_exp_nonpos(::aie::sub(m, big)));
   ::aie::vector<float, kLanes> den =
       ::aie::add(ab, ::aie::shuffle_down(ab, kREP));
-  ::aie::vector<float, kLanes> inv = vec_recip(den);
+  // w only ever reads inv[0, kREP): w[h] = ab[h] * inv[h], and w[kREP + h] =
+  // ab[kREP + h] * shuffle_up(inv, kREP)[kREP + h] = ab[kREP + h] * inv[h].
+  // vec_recip's recip_rne is scalar per lane, so the other 16 - 8 lanes of a
+  // width-16 recip would be pure waste; narrow to 8 (the smallest width
+  // AIE2P legalizes an integer bit_and/bit_or at) instead.
+  static_assert(2 * kREP <= 8, "both sides of every head in one 8-lane group");
+  ::aie::vector<float, 8> inv8 = vec_recip(den.template extract<8>(0));
+  ::aie::vector<float, kLanes> inv =
+      ::aie::concat(inv8, ::aie::zeros<float, 8>());
   ::aie::store_v(w, vec_mul_rne(ab, ::aie::select(::aie::shuffle_up(inv, kREP),
                                                   inv, low)));
   ::aie::store_v(x, big);
