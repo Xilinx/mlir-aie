@@ -178,6 +178,22 @@ class Fill:
         return TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1])
 
 
+@dataclass
+class Pending:
+    """State `transfer_fill` hands `transfer_tail`: fill steps still to run.
+
+    `staging` is the open staged-drains group, or `None` once awaited;
+    `staged` names the staged tensors; `steps` the fill steps still to come;
+    `drains` the output-drains group the last step's fills join.
+    """
+
+    filled: dict[ObjectFifo, ObjectFifoHandle]
+    staging: TaskGroup | None
+    staged: set[str]
+    steps: list[int]
+    drains: TaskGroup
+
+
 def stream_bytes_of(tensor: Tensor) -> int:
     """The bytes of a row of `tensor`'s stream: the image comes as RGB pixels."""
     return IMAGE_ROW_BYTES if tensor.name == "images" else tensor.row_bytes
@@ -376,15 +392,17 @@ class SegmentDesign:
             + [drain for drain, _ in self.staged]
         )
 
-    def transfer(self, handles: Sequence, locate: Callable[[Tensor], tuple]) -> None:
-        """The run's host transfers, inside its runtime sequence.
+    def transfer_fill(
+        self, handles: Sequence, locate: Callable[[Tensor], tuple]
+    ) -> Pending:
+        """This image's drains and its first fill step, the rest left for `transfer_tail`.
 
-        `handles` are `handles()`' as the sequence received them; `locate`
-        gives each tensor's host buffer, its size in int32 words and the
-        tensor's word offset in it. Drains are issued first, each staged
-        tensor's and then each output's; then each fill step's transfers,
-        every step but the last finishing before the next starts, and a step
-        that reads a staged tensor starting once every staged drain is done.
+        `handles` and `locate` are as `transfer`'s. Issues the staged and the
+        output drains (not awaited here) and the first fill step (awaited,
+        unless it is also the only one), so its DMA traffic can run while an
+        earlier image's `transfer_tail` is still awaited: the two interleave
+        in a batch's runtime sequence, one image's fill alongside the one
+        before it's tail.
         """
         filled = dict(zip(self.in_fifos, handles))
         drains = TaskGroup()
@@ -415,14 +433,47 @@ class SegmentDesign:
                 group=drains,
             )
         steps = sorted({f.step for f in self.fills})
-        fills = None
+        step, rest = steps[0], steps[1:]
+        if staging is not None and any(
+            f.tensor.name in staged for f in self.fills if f.step == step
+        ):
+            staging.finish()
+            staging = None
+        fills = drains if not rest else TaskGroup()
+        for fill in (f for f in self.fills if f.step == step):
+            buffer, total, offset = locate(fill.tensor)
+            filled[fill.fifo].fill(
+                buffer, fill.tap(total, offset), wait=bool(rest), group=fills
+            )
+        if rest:
+            fills.finish()
+        return Pending(filled, staging, staged, rest, drains)
+
+    def transfer_tail(
+        self, pending: Pending, locate: Callable[[Tensor], tuple]
+    ) -> TaskGroup:
+        """This image's fill steps after the first, from `transfer_fill`'s state.
+
+        Every step but the last finishes before the next starts, and a step
+        that reads a staged tensor starts once every staged drain is done.
+        The last step's fills join the output drains, left unfinished: the
+        caller decides when to finish that group, so this image's tail can
+        pipeline against the next image's `transfer_fill`.
+        """
+        filled, staging, staged, steps, drains = (
+            pending.filled,
+            pending.staging,
+            pending.staged,
+            pending.steps,
+            pending.drains,
+        )
         for step in steps:
             if staging is not None and any(
                 f.tensor.name in staged for f in self.fills if f.step == step
             ):
                 staging.finish()
                 staging = None
-            fills = TaskGroup()
+            fills = drains if step == steps[-1] else TaskGroup()
             for fill in (f for f in self.fills if f.step == step):
                 buffer, total, offset = locate(fill.tensor)
                 filled[fill.fifo].fill(
@@ -430,9 +481,15 @@ class SegmentDesign:
                 )
             if step != steps[-1]:
                 fills.finish()
-        drains.finish()
-        if fills is not None:
-            fills.finish()
+        return drains
+
+    def transfer(self, handles: Sequence, locate: Callable[[Tensor], tuple]) -> None:
+        """One image's host transfers, inside its runtime sequence, start to finish.
+
+        See `transfer_fill` and `transfer_tail`, run back to back with no
+        other image's transfers between them.
+        """
+        self.transfer_tail(self.transfer_fill(handles, locate), locate).finish()
 
     def host_bytes(self, tensor: Tensor) -> int:
         """How many bytes `tensor` takes in a host buffer."""

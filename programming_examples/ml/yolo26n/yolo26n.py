@@ -82,9 +82,8 @@ def yolo26n(
     weights_ty = np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]]
 
     def sequence(img, scr, det, wts, *handles):
-        for i in range(batch):
-
-            def locate(tensor, i=i):
+        def locate_for(i):
+            def locate(tensor):
                 if tensor.name == "images":
                     return img, batch * IMAGE_WORDS, i * IMAGE_WORDS
                 if tensor.name in plan.weight_offset:
@@ -97,7 +96,27 @@ def yolo26n(
                     )
                 return det, batch * DETECTION_WORDS, i * DETECTION_WORDS
 
-            design.transfer(handles, locate)
+            return locate
+
+        locates = [locate_for(i) for i in range(batch)]
+        # Image i's fill (its weights and pixels) is issued before image
+        # i - 1's tail (its network's completion and its postprocess passes)
+        # is awaited; and image i - 1's detections are drained only once
+        # image i's tail has itself been issued. The two images before and
+        # after each wait run on chip alongside it.
+        pending = design.transfer_fill(handles, locates[0])
+        detections = None
+        for i in range(1, batch):
+            next_pending = design.transfer_fill(handles, locates[i])
+            tail = design.transfer_tail(pending, locates[i - 1])
+            if detections is not None:
+                detections.finish()
+            detections = tail
+            pending = next_pending
+        tail = design.transfer_tail(pending, locates[batch - 1])
+        if detections is not None:
+            detections.finish()
+        tail.finish()
 
     rt = Runtime(
         sequence, [image_ty, scratch_ty, det_ty, weights_ty, *design.handles()]
