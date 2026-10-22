@@ -98,9 +98,12 @@ void llama_silu_quant(float *restrict h, int8_t *restrict out) {
             int32(0x7fffffff),
             ::aie::load_v<kLanes>(h + c * kLanes).template cast_to<int32>()));
   float absmax = __builtin_bit_cast(float, ::aie::reduce_max(mag));
-  if (absmax < 1e-12f)
+  // absmax is always a magnitude (sign bit clear), so its bit pattern orders
+  // the same as its value: an unsigned int compare avoids __ltsf2.
+  if ((uint32_t)__builtin_bit_cast(int32_t, absmax) <
+      (uint32_t)__builtin_bit_cast(int32_t, 1e-12f))
     absmax = 1e-12f;
-  float out_scale = absmax * (1.0f / 127.0f);
+  float out_scale = scalar_mul_rne(absmax, 1.0f / 127.0f);
   ::aie::vector<float, kLanes> inv_v =
       ::aie::broadcast<float, kLanes>(recip_rne(out_scale));
   for (int c = 0; c < kCols / kLanes; c++)
