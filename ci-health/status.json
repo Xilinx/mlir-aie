@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-21T18:55:58+00:00",
+ "generated_at": "2026-10-22T01:10:09+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,11 +10,15 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 416,
+   "runs": 404,
    "main": {
     "passed": 11,
     "failed": 0,
-    "rate": 1.0
+    "timed_out": 2,
+    "runner_lost": 0,
+    "no_runner": 0,
+    "cancelled": 0,
+    "rate": 0.846
    },
    "latest_main": {
     "id": 39523432643,
@@ -26,17 +30,20 @@
     "updated_at": "2026-10-21T01:55:34Z",
     "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
     "title": "Build and Test with AIE tools on Ryzen AI",
-    "attempt": 1
+    "attempt": 1,
+    "outcome": "passed",
+    "waited": 45.4,
+    "took": 67.7
    },
    "newest_main": {
-    "id": 39523432643,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39523432643",
-    "status": "completed",
-    "conclusion": "success",
-    "created_at": "2026-10-21T00:47:27Z",
-    "run_started_at": "2026-10-21T00:47:27Z",
-    "updated_at": "2026-10-21T01:55:34Z",
-    "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "id": 39701809383,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701809383",
+    "status": "in_progress",
+    "conclusion": null,
+    "created_at": "2026-10-22T00:47:31Z",
+    "run_started_at": "2026-10-22T00:47:31Z",
+    "updated_at": "2026-10-22T00:47:55Z",
+    "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
     "title": "Build and Test with AIE tools on Ryzen AI",
     "attempt": 1
    },
@@ -47,7 +54,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T00:47:27Z",
-     "started_at": "2026-10-21T00:47:51Z"
+     "started_at": "2026-10-21T00:47:51Z",
+     "runner": "GitHub Actions 1009132115",
+     "outcome": "passed"
     },
     {
      "name": "Run Tests and Examples on Ryzen AI (Built from Source) (aie2p-8col)",
@@ -55,7 +64,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T00:47:28Z",
-     "started_at": "2026-10-21T01:10:56Z"
+     "started_at": "2026-10-21T01:10:56Z",
+     "runner": "aie6",
+     "outcome": "passed"
     },
     {
      "name": "Run Tests and Examples on Ryzen AI (Built from Source) (aie2-4col)",
@@ -63,7 +74,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T00:47:28Z",
-     "started_at": "2026-10-21T00:47:50Z"
+     "started_at": "2026-10-21T00:47:50Z",
+     "runner": "aie10",
+     "outcome": "passed"
     },
     {
      "name": "Pure HRX Build and Run (XRT-free packaging + libhrx dispatch)",
@@ -71,7 +84,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T00:47:28Z",
-     "started_at": "2026-10-21T01:32:54Z"
+     "started_at": "2026-10-21T01:32:54Z",
+     "runner": "aie9",
+     "outcome": "passed"
     }
    ],
    "main_runs": [
@@ -85,7 +100,10 @@
      "updated_at": "2026-10-21T01:55:34Z",
      "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 45.4,
+     "took": 67.7
     },
     {
      "id": 39349794704,
@@ -97,7 +115,10 @@
      "updated_at": "2026-10-20T01:45:43Z",
      "head_sha": "3d612cc4c135d6915112ba4235c61568dc9a1a7c",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 12.0,
+     "took": 57.2
     },
     {
      "id": 39182673457,
@@ -109,7 +130,10 @@
      "updated_at": "2026-10-19T01:31:46Z",
      "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "timed_out",
+     "waited": 0.3,
+     "took": 39.6
     },
     {
      "id": 39084375223,
@@ -121,7 +145,10 @@
      "updated_at": "2026-10-18T01:33:05Z",
      "head_sha": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 40.4
     },
     {
      "id": 38987940853,
@@ -133,7 +160,10 @@
      "updated_at": "2026-10-17T01:29:27Z",
      "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 42.2
     },
     {
      "id": 38831385965,
@@ -145,7 +175,10 @@
      "updated_at": "2026-10-16T01:20:26Z",
      "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 33.5
     },
     {
      "id": 38661915758,
@@ -157,7 +190,10 @@
      "updated_at": "2026-10-15T02:08:36Z",
      "head_sha": "134df7ad6a4351e614aefbbf720a6b7f317f1e4a",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "timed_out",
+     "waited": 52.2,
+     "took": 81.8
     },
     {
      "id": 38492081761,
@@ -169,7 +205,10 @@
      "updated_at": "2026-10-14T01:39:04Z",
      "head_sha": "e4553dd6877afe6310653e1b53c5d0cd59f2f2fc",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 51.7
     },
     {
      "id": 38329920403,
@@ -181,7 +220,10 @@
      "updated_at": "2026-10-13T01:48:09Z",
      "head_sha": "e04ad858a0a9e3dfece25089044ae6a44e262683",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 48.6
     },
     {
      "id": 38190410498,
@@ -193,7 +235,10 @@
      "updated_at": "2026-10-12T01:50:01Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.2,
+     "took": 46.1
     },
     {
      "id": 38100445968,
@@ -205,7 +250,10 @@
      "updated_at": "2026-10-11T01:45:31Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 43.2
     },
     {
      "id": 38011151506,
@@ -217,7 +265,10 @@
      "updated_at": "2026-10-10T01:56:08Z",
      "head_sha": "2623c901ecd4408a456a4895572cf4647c762078",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 22.8,
+     "took": 59.5
     },
     {
      "id": 37867442318,
@@ -229,39 +280,30 @@
      "updated_at": "2026-10-09T01:35:45Z",
      "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
      "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
-    },
-    {
-     "id": 37710345982,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37710345982",
-     "status": "completed",
-     "conclusion": "cancelled",
-     "created_at": "2026-10-08T00:56:17Z",
-     "run_started_at": "2026-10-08T00:56:17Z",
-     "updated_at": "2026-10-08T04:26:44Z",
-     "head_sha": "ad7c3fc8d09507c6b5a19469edb7d329591fcb56",
-     "title": "Build and Test with AIE tools on Ryzen AI",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 37.1
     }
    ],
    "pull_requests": {
-    "passed": 92,
-    "failed": 61,
-    "rate": 0.601
+    "passed": 90,
+    "failed": 60,
+    "rate": 0.6
    },
    "merge_queue": {
-    "passed": 46,
+    "passed": 49,
     "failed": 10,
-    "rate": 0.821
+    "rate": 0.831
    },
    "flaky": {
-    "commits": 398,
-    "flaky": 26,
-    "rate": 0.065
+    "commits": 389,
+    "flaky": 23,
+    "rate": 0.059
    },
-   "minutes_median": 52.2,
-   "minutes_p90": 114.2,
-   "queued_median": 0.0
+   "minutes_median": 46.1,
+   "minutes_p90": 59.5,
+   "queued_median": 0.5
   },
   {
    "file": "buildAndTestRyzenAIWindows.yml",
@@ -269,11 +311,15 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 416,
+   "runs": 404,
    "main": {
-    "passed": 12,
-    "failed": 2,
-    "rate": 0.857
+    "passed": 11,
+    "failed": 1,
+    "timed_out": 0,
+    "runner_lost": 1,
+    "no_runner": 0,
+    "cancelled": 0,
+    "rate": 0.917
    },
    "latest_main": {
     "id": 39521059294,
@@ -285,17 +331,20 @@
     "updated_at": "2026-10-21T01:11:13Z",
     "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
     "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-    "attempt": 1
+    "attempt": 1,
+    "outcome": "passed",
+    "waited": 0.7,
+    "took": 46.7
    },
    "newest_main": {
-    "id": 39521059294,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39521059294",
-    "status": "completed",
-    "conclusion": "success",
-    "created_at": "2026-10-21T00:23:49Z",
-    "run_started_at": "2026-10-21T00:23:49Z",
-    "updated_at": "2026-10-21T01:11:13Z",
-    "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "id": 39699512584,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39699512584",
+    "status": "in_progress",
+    "conclusion": null,
+    "created_at": "2026-10-22T00:24:39Z",
+    "run_started_at": "2026-10-22T00:24:39Z",
+    "updated_at": "2026-10-22T00:26:09Z",
+    "head_sha": "1357531343bbab13e6e678f7fec2a12ab7d3dfbe",
     "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
     "attempt": 1
    },
@@ -306,7 +355,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T00:23:49Z",
-     "started_at": "2026-10-21T00:24:29Z"
+     "started_at": "2026-10-21T00:24:29Z",
+     "runner": "ephemeral-devlab-x2-la03-s02-d05-118964720032",
+     "outcome": "passed"
     }
    ],
    "main_runs": [
@@ -320,7 +371,10 @@
      "updated_at": "2026-10-21T01:11:13Z",
      "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.7,
+     "took": 46.7
     },
     {
      "id": 39347508062,
@@ -332,7 +386,10 @@
      "updated_at": "2026-10-20T01:16:08Z",
      "head_sha": "3d612cc4c135d6915112ba4235c61568dc9a1a7c",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.7,
+     "took": 50.4
     },
     {
      "id": 39180803694,
@@ -344,7 +401,10 @@
      "updated_at": "2026-10-19T01:13:04Z",
      "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 45.8
     },
     {
      "id": 39082812307,
@@ -356,7 +416,10 @@
      "updated_at": "2026-10-18T01:12:52Z",
      "head_sha": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 45.0
     },
     {
      "id": 38986207537,
@@ -368,7 +431,10 @@
      "updated_at": "2026-10-17T01:11:49Z",
      "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 1.7,
+     "took": 45.8
     },
     {
      "id": 38829198174,
@@ -380,7 +446,10 @@
      "updated_at": "2026-10-16T01:23:23Z",
      "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 15.7,
+     "took": 44.4
     },
     {
      "id": 38659783412,
@@ -392,7 +461,10 @@
      "updated_at": "2026-10-15T01:27:40Z",
      "head_sha": "c04e91618986e22f40a4d395a00be4e4e01c5bbc",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 19.1,
+     "took": 44.8
     },
     {
      "id": 38489959889,
@@ -404,7 +476,10 @@
      "updated_at": "2026-10-14T00:39:45Z",
      "head_sha": "e04ad858a0a9e3dfece25089044ae6a44e262683",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "runner_lost",
+     "waited": 0.6,
+     "took": 15.0
     },
     {
      "id": 38327608634,
@@ -416,7 +491,10 @@
      "updated_at": "2026-10-13T01:30:32Z",
      "head_sha": "b46f871fed10bb01af1a77c6e71e03348152c87e",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.7,
+     "took": 59.0
     },
     {
      "id": 38188410833,
@@ -428,7 +506,10 @@
      "updated_at": "2026-10-12T02:56:08Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 77.1,
+     "took": 66.3
     },
     {
      "id": 38098733209,
@@ -440,7 +521,10 @@
      "updated_at": "2026-10-11T00:43:14Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "failed",
+     "waited": 0.7,
+     "took": 10.8
     },
     {
      "id": 38009248930,
@@ -452,7 +536,10 @@
      "updated_at": "2026-10-10T01:29:32Z",
      "head_sha": "faa691d927993d48527e4fd3ee9b22985ae964d3",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.7,
+     "took": 59.6
     },
     {
      "id": 37865085331,
@@ -464,39 +551,30 @@
      "updated_at": "2026-10-09T01:57:47Z",
      "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
      "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
-    },
-    {
-     "id": 37707924108,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37707924108",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T00:28:10Z",
-     "run_started_at": "2026-10-08T00:28:10Z",
-     "updated_at": "2026-10-08T01:47:28Z",
-     "head_sha": "ad7c3fc8d09507c6b5a19469edb7d329591fcb56",
-     "title": "Build and Test with AIE tools on Ryzen AI (Windows)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 28.7,
+     "took": 59.0
     }
    ],
    "pull_requests": {
-    "passed": 109,
-    "failed": 69,
-    "rate": 0.612
+    "passed": 103,
+    "failed": 68,
+    "rate": 0.602
    },
    "merge_queue": {
-    "passed": 55,
-    "failed": 3,
-    "rate": 0.948
+    "passed": 57,
+    "failed": 4,
+    "rate": 0.934
    },
    "flaky": {
-    "commits": 398,
-    "flaky": 21,
-    "rate": 0.053
+    "commits": 389,
+    "flaky": 19,
+    "rate": 0.049
    },
-   "minutes_median": 62.0,
-   "minutes_p90": 98.5,
-   "queued_median": 0.0
+   "minutes_median": 46.7,
+   "minutes_p90": 59.6,
+   "queued_median": 0.7
   },
   {
    "file": "buildAndTestMulti.yml",
@@ -504,38 +582,135 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 464,
+   "runs": 456,
    "main": {
-    "passed": 60,
+    "passed": 64,
     "failed": 2,
-    "rate": 0.968
+    "timed_out": 0,
+    "runner_lost": 0,
+    "no_runner": 0,
+    "cancelled": 0,
+    "rate": 0.97
    },
    "latest_main": {
-    "id": 39641569196,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569196",
+    "id": 39701551268,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551268",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T17:11:30Z",
-    "run_started_at": "2026-10-21T17:11:30Z",
-    "updated_at": "2026-10-21T17:35:33Z",
-    "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
-    "title": "[hsaco] Add aie4 as a supported arch (#3938)",
-    "attempt": 1
+    "created_at": "2026-10-22T00:44:59Z",
+    "run_started_at": "2026-10-22T00:44:59Z",
+    "updated_at": "2026-10-22T01:07:05Z",
+    "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "title": "IRON model prep (#3941)",
+    "attempt": 1,
+    "outcome": "passed",
+    "waited": 0.4,
+    "took": 21.8
    },
    "newest_main": {
-    "id": 39641569196,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569196",
+    "id": 39701551268,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551268",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T17:11:30Z",
-    "run_started_at": "2026-10-21T17:11:30Z",
-    "updated_at": "2026-10-21T17:35:33Z",
-    "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
-    "title": "[hsaco] Add aie4 as a supported arch (#3938)",
+    "created_at": "2026-10-22T00:44:59Z",
+    "run_started_at": "2026-10-22T00:44:59Z",
+    "updated_at": "2026-10-22T01:07:05Z",
+    "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "title": "IRON model prep (#3941)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 39701551268,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551268",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:44:59Z",
+     "run_started_at": "2026-10-22T00:44:59Z",
+     "updated_at": "2026-10-22T01:07:05Z",
+     "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+     "title": "IRON model prep (#3941)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 21.8
+    },
+    {
+     "id": 39700758741,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39700758741",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:37:04Z",
+     "run_started_at": "2026-10-22T00:37:04Z",
+     "updated_at": "2026-10-22T00:55:22Z",
+     "head_sha": "1357531343bbab13e6e678f7fec2a12ab7d3dfbe",
+     "title": "Compile across platforms",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 17.9
+    },
+    {
+     "id": 39698780761,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39698780761",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:17:14Z",
+     "run_started_at": "2026-10-22T00:17:14Z",
+     "updated_at": "2026-10-22T00:41:36Z",
+     "head_sha": "1357531343bbab13e6e678f7fec2a12ab7d3dfbe",
+     "title": "[AIE] Round to nearest even for float-only SRS (#3954)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 23.9
+    },
+    {
+     "id": 39677837349,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39677837349",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T21:19:26Z",
+     "run_started_at": "2026-10-21T21:19:26Z",
+     "updated_at": "2026-10-21T21:28:53Z",
+     "head_sha": "984eb362164846d920766c2873317fcca8ed4314",
+     "title": "hostruntime: NpuTensor.region binds a kernel argument mid cache line \u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.9
+    },
+    {
+     "id": 39671724350,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39671724350",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T20:36:11Z",
+     "run_started_at": "2026-10-21T20:36:11Z",
+     "updated_at": "2026-10-21T20:45:02Z",
+     "head_sha": "b7ad585d4630469315a093f039e6d87ff9ef12c4",
+     "title": "compile_mlir_module(device=): build source_string kernels too (#3952)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 8.6
+    },
+    {
+     "id": 39667390916,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39667390916",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T20:06:17Z",
+     "run_started_at": "2026-10-21T20:06:17Z",
+     "updated_at": "2026-10-21T20:15:25Z",
+     "head_sha": "f7ea0ab49545aea12071111960cb7d807e01d04e",
+     "title": "[docs] Keep unchanged Doxygen pages byte-identical across deploys (#3\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 8.8
+    },
     {
      "id": 39641569196,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569196",
@@ -546,7 +721,10 @@
      "updated_at": "2026-10-21T17:35:33Z",
      "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
      "title": "[hsaco] Add aie4 as a supported arch (#3938)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 23.6
     },
     {
      "id": 39579544946,
@@ -558,7 +736,10 @@
      "updated_at": "2026-10-21T10:10:47Z",
      "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
      "title": "Remove AMD email addresses (#3944)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 24.1
     },
     {
      "id": 39522321100,
@@ -570,7 +751,10 @@
      "updated_at": "2026-10-21T01:00:44Z",
      "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "failed",
+     "waited": 0.3,
+     "took": 24.1
     },
     {
      "id": 39440969970,
@@ -582,7 +766,10 @@
      "updated_at": "2026-10-20T15:01:40Z",
      "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
      "title": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 23.6
     },
     {
      "id": 39362945440,
@@ -594,7 +781,10 @@
      "updated_at": "2026-10-20T03:20:27Z",
      "head_sha": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
      "title": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile t\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.9
     },
     {
      "id": 39352604184,
@@ -606,7 +796,10 @@
      "updated_at": "2026-10-20T01:29:17Z",
      "head_sha": "d46220ef7b6bf13407473a30894c28529004265d",
      "title": "Update Peano version (#3939)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 11.4
     },
     {
      "id": 39348744804,
@@ -618,7 +811,10 @@
      "updated_at": "2026-10-20T00:45:29Z",
      "head_sha": "3d612cc4c135d6915112ba4235c61568dc9a1a7c",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 7.5
     },
     {
      "id": 39335472162,
@@ -630,7 +826,10 @@
      "updated_at": "2026-10-19T22:39:59Z",
      "head_sha": "3d612cc4c135d6915112ba4235c61568dc9a1a7c",
      "title": "Kernel checks: compare Peano PRs with the nightly again, and tidy the\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 8.9
     },
     {
      "id": 39329297666,
@@ -642,7 +841,10 @@
      "updated_at": "2026-10-19T22:04:23Z",
      "head_sha": "f9db2460b8e1c24976240b2cce547ab07b5ff32a",
      "title": "[AIEX] Reject objectFIFO transfers that end mid-object (#3931)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 23.9
     },
     {
      "id": 39181814631,
@@ -654,7 +856,10 @@
      "updated_at": "2026-10-19T01:04:39Z",
      "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 24.1
     },
     {
      "id": 39146192777,
@@ -666,7 +871,10 @@
      "updated_at": "2026-10-18T17:06:04Z",
      "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
      "title": "[programming_examples] transposes: add dyn, a runtime-shape strategy \u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 23.8
     },
     {
      "id": 39083623062,
@@ -678,7 +886,10 @@
      "updated_at": "2026-10-18T00:48:25Z",
      "head_sha": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 7.7
     },
     {
      "id": 39076160709,
@@ -690,7 +901,10 @@
      "updated_at": "2026-10-17T22:52:08Z",
      "head_sha": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
      "title": "[AIEVec] AIE2P: lower aievec.shuffle with the AIE2P intrinsic, and re\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 9.2
     },
     {
      "id": 39069215822,
@@ -702,7 +916,10 @@
      "updated_at": "2026-10-17T21:26:10Z",
      "head_sha": "2004ef30580c580f0d272c419ab879fc6d7d6f7f",
      "title": "[AIE] Narrow core loops bounded by values read from buffers (#3930)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 23.7
     },
     {
      "id": 38987143865,
@@ -714,7 +931,10 @@
      "updated_at": "2026-10-17T00:44:23Z",
      "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "failed",
+     "waited": 0.5,
+     "took": 7.5
     },
     {
      "id": 38961504647,
@@ -726,7 +946,10 @@
      "updated_at": "2026-10-16T20:44:41Z",
      "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
      "title": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 23.8
     },
     {
      "id": 38830350454,
@@ -738,7 +961,10 @@
      "updated_at": "2026-10-16T00:44:01Z",
      "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 7.8
     },
     {
      "id": 38805020293,
@@ -750,7 +976,10 @@
      "updated_at": "2026-10-15T21:13:34Z",
      "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
      "title": "IRON/mlir-aie Infrastructure Deduplication for iron-next (#3921)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 23.8
     },
     {
      "id": 38802983462,
@@ -762,7 +991,10 @@
      "updated_at": "2026-10-15T21:01:33Z",
      "head_sha": "4b38657d777b63ea40fe7d0ea0e00e7ea48353f6",
      "title": "Router reliability: fix what the model-based nightly found, and run i\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 27.0
     },
     {
      "id": 38678032055,
@@ -774,7 +1006,10 @@
      "updated_at": "2026-10-15T03:59:56Z",
      "head_sha": "e7048fadf1975db3190accac9e7153f59a5e45b1",
      "title": "Rotate objectFifo objects instead of selecting buffers by index (#3896)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 12.6
     },
     {
      "id": 38665248502,
@@ -786,7 +1021,10 @@
      "updated_at": "2026-10-15T01:30:57Z",
      "head_sha": "ad3955677d3aaade64aeaec691e87c1302e12b09",
      "title": "[AIEVec] Lower math.erf on AIE2P; accept f32 tanh/exp and scalar tanh\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.5
     },
     {
      "id": 38660995152,
@@ -798,7 +1036,10 @@
      "updated_at": "2026-10-15T00:48:53Z",
      "head_sha": "134df7ad6a4351e614aefbbf720a6b7f317f1e4a",
      "title": "[iron] Emit forever Worker loops as scf.while(true) (#3888)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 12.0
     },
     {
      "id": 38660879735,
@@ -810,7 +1051,10 @@
      "updated_at": "2026-10-15T00:42:56Z",
      "head_sha": "c04e91618986e22f40a4d395a00be4e4e01c5bbc",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 7.2
     },
     {
      "id": 38657565209,
@@ -822,7 +1066,10 @@
      "updated_at": "2026-10-15T00:10:09Z",
      "head_sha": "c04e91618986e22f40a4d395a00be4e4e01c5bbc",
      "title": "Make the SAXPY example a single file with source_string (#3920)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.4
     },
     {
      "id": 38641131340,
@@ -834,7 +1081,10 @@
      "updated_at": "2026-10-14T21:58:08Z",
      "head_sha": "f129ac2fbad07942ee1f537097aa018dcb78befd",
      "title": "[aiecc] Cut compile time and peak memory on large fused designs (#3918)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 24.5
     },
     {
      "id": 38526975519,
@@ -846,7 +1096,10 @@
      "updated_at": "2026-10-14T07:22:25Z",
      "head_sha": "da4c734455938810c290e05f0b398bdfd29558fb",
      "title": "[cmake] Cover the last two generated headers with aie-headers [LOW] (\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.1
     },
     {
      "id": 38523859640,
@@ -858,7 +1111,10 @@
      "updated_at": "2026-10-14T06:52:23Z",
      "head_sha": "da0398dc072e4e3f563eeee5c92827ff907e24df",
      "title": "[python] Reuse a precompiled header for the injected AIE intrinsics [\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.7
     },
     {
      "id": 38519686731,
@@ -870,7 +1126,10 @@
      "updated_at": "2026-10-14T06:08:43Z",
      "head_sha": "dff8d6a8437ff219950482d934406ac368251cf6",
      "title": "Update Peano version (#3915)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 8.2
     },
     {
      "id": 38500996685,
@@ -882,7 +1141,10 @@
      "updated_at": "2026-10-14T02:35:16Z",
      "head_sha": "8dd485292eed18309770d11a768470fd497bf4da",
      "title": "Write forever core loops with the standard forever bound (#3894)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.7
     },
     {
      "id": 38492016985,
@@ -894,7 +1156,10 @@
      "updated_at": "2026-10-14T01:10:32Z",
      "head_sha": "e4553dd6877afe6310653e1b53c5d0cd59f2f2fc",
      "title": "Per-call DMA repeat counts on a full ELF, kernel contracts per build,\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 24.0
     },
     {
      "id": 38491003132,
@@ -906,7 +1171,10 @@
      "updated_at": "2026-10-14T00:58:35Z",
      "head_sha": "e04ad858a0a9e3dfece25089044ae6a44e262683",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 23.1
     },
     {
      "id": 38329099392,
@@ -918,7 +1186,10 @@
      "updated_at": "2026-10-13T00:58:08Z",
      "head_sha": "e04ad858a0a9e3dfece25089044ae6a44e262683",
      "title": "build(deps): bump torch in /python (#3900)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.8
     },
     {
      "id": 38328788833,
@@ -930,7 +1201,10 @@
      "updated_at": "2026-10-13T00:53:12Z",
      "head_sha": "b46f871fed10bb01af1a77c6e71e03348152c87e",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 7.5
     },
     {
      "id": 38327434657,
@@ -942,7 +1216,10 @@
      "updated_at": "2026-10-13T00:37:41Z",
      "head_sha": "b46f871fed10bb01af1a77c6e71e03348152c87e",
      "title": "build(deps): bump https://github.com/pre-commit/mirrors-clang-format \u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.5
     },
     {
      "id": 38321143802,
@@ -954,7 +1231,10 @@
      "updated_at": "2026-10-12T23:24:06Z",
      "head_sha": "6e53e4f4e35cf953bd9d658d13e7818ee1c3d1ec",
      "title": "Drop CRT stack size workaround for Phoenix (#3772)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.4
     },
     {
      "id": 38319067621,
@@ -966,7 +1246,10 @@
      "updated_at": "2026-10-12T23:00:31Z",
      "head_sha": "57b1824a8f293345fd82500d87892fd4cbb7e451",
      "title": "Split Ryzen AI wheel smoke tests by OS and wheel (#3856)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.1
     },
     {
      "id": 38287543055,
@@ -978,7 +1261,10 @@
      "updated_at": "2026-10-12T18:05:14Z",
      "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
      "title": "Add a reconfiguration programming example and benchmark (#3395)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.5
     },
     {
      "id": 38279644347,
@@ -990,7 +1276,10 @@
      "updated_at": "2026-10-12T17:08:46Z",
      "head_sha": "7040e7cffa58ef4f5d8c359ad48bda4e3c22923b",
      "title": "Add route pinning to `aie.flow` with `via` (#3421)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 22.7
     },
     {
      "id": 38189429798,
@@ -1002,7 +1291,10 @@
      "updated_at": "2026-10-12T01:11:21Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.2,
+     "took": 22.5
     },
     {
      "id": 38099618754,
@@ -1014,27 +1306,330 @@
      "updated_at": "2026-10-11T00:55:00Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Compile across platforms",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.2,
+     "took": 7.3
+    },
+    {
+     "id": 38096872445,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38096872445",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T23:59:13Z",
+     "run_started_at": "2026-10-10T23:59:13Z",
+     "updated_at": "2026-10-11T00:23:05Z",
+     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+     "title": "[AIEX] Support the iteration attribute in dma_configure_task [MED] (#\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.2,
+     "took": 23.6
+    },
+    {
+     "id": 38019652094,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38019652094",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T03:10:53Z",
+     "run_started_at": "2026-10-10T03:10:53Z",
+     "updated_at": "2026-10-10T03:19:24Z",
+     "head_sha": "58484c8cfbadbd81e6e0a892c2d94517e615a22d",
+     "title": "[kernels] Retire Peano workarounds the 94b320c0 pin fixes (#3911)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.1
+    },
+    {
+     "id": 38017088045,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38017088045",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T02:28:26Z",
+     "run_started_at": "2026-10-10T02:28:26Z",
+     "updated_at": "2026-10-10T02:37:39Z",
+     "head_sha": "5bbd7520badf2e318a811a55a7cf14a8044d0154",
+     "title": "ci: remove binfmt-dependent container action (#3913)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.8,
+     "took": 8.4
+    },
+    {
+     "id": 38010252474,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38010252474",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T00:43:15Z",
+     "run_started_at": "2026-10-10T00:43:15Z",
+     "updated_at": "2026-10-10T00:51:01Z",
+     "head_sha": "2623c901ecd4408a456a4895572cf4647c762078",
+     "title": "Compile across platforms",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 7.4
+    },
+    {
+     "id": 38009276596,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38009276596",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T00:29:36Z",
+     "run_started_at": "2026-10-10T00:29:36Z",
+     "updated_at": "2026-10-10T00:38:20Z",
+     "head_sha": "2623c901ecd4408a456a4895572cf4647c762078",
+     "title": "Make multiple device configurations expressible in high-level IRON (#\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.2
+    },
+    {
+     "id": 38006457907,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38006457907",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T23:51:41Z",
+     "run_started_at": "2026-10-09T23:51:41Z",
+     "updated_at": "2026-10-09T23:59:54Z",
+     "head_sha": "faa691d927993d48527e4fd3ee9b22985ae964d3",
+     "title": "build(deps): bump https://github.com/astral-sh/ruff-pre-commit from v\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 7.8
+    },
+    {
+     "id": 37993166742,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37993166742",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T21:23:33Z",
+     "run_started_at": "2026-10-09T21:23:33Z",
+     "updated_at": "2026-10-09T21:32:18Z",
+     "head_sha": "30893f413c746b2b696b8f0d6f7c64f56d133324",
+     "title": "build(deps): bump notebook in /python (#3901)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.2
+    },
+    {
+     "id": 37988983765,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37988983765",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T20:44:23Z",
+     "run_started_at": "2026-10-09T20:44:23Z",
+     "updated_at": "2026-10-09T20:52:49Z",
+     "head_sha": "fd891974c2dad2a1df6a86531a3d24d2ecefecfa",
+     "title": "npu1 (AIE2) kernel tuning, in-bounds tail stores, and more timed case\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.0
+    },
+    {
+     "id": 37954690379,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37954690379",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T15:50:21Z",
+     "run_started_at": "2026-10-09T15:50:21Z",
+     "updated_at": "2026-10-09T15:59:11Z",
+     "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
+     "title": "Fix allocator and router nightly build install paths (#3907)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.4
+    },
+    {
+     "id": 37879681840,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37879681840",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T03:31:38Z",
+     "run_started_at": "2026-10-09T03:31:38Z",
+     "updated_at": "2026-10-09T03:40:42Z",
+     "head_sha": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
+     "title": "build(deps): bump the github-actions-minor-patch group across 1 direc\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.5
+    },
+    {
+     "id": 37877659581,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37877659581",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T03:05:31Z",
+     "run_started_at": "2026-10-09T03:05:31Z",
+     "updated_at": "2026-10-09T03:24:15Z",
+     "head_sha": "3eea85e6eac7fc9122c9dc283b4f7f711c52786e",
+     "title": "Size core stacks from aiecc's measurement, plus kernel and AIE2 fixes\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 18.4
+    },
+    {
+     "id": 37874843521,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37874843521",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T02:29:52Z",
+     "run_started_at": "2026-10-09T02:29:52Z",
+     "updated_at": "2026-10-09T02:39:47Z",
+     "head_sha": "d404d452c759e2c3c85445dbfdc1e6b67ec33312",
+     "title": "[AIEVec] bf16-emulation: round only multiply inputs, keep sums in f32\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 9.4
+    },
+    {
+     "id": 37873920468,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37873920468",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T02:18:09Z",
+     "run_started_at": "2026-10-09T02:18:09Z",
+     "updated_at": "2026-10-09T02:31:16Z",
+     "head_sha": "943b1718da69e2f9db1861147e4e92ec5c611bb8",
+     "title": "[AIE] Narrow core loops and index math to i32 where provably safe (#3\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 12.6
+    },
+    {
+     "id": 37866322280,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37866322280",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T00:44:45Z",
+     "run_started_at": "2026-10-09T00:44:45Z",
+     "updated_at": "2026-10-09T01:05:08Z",
+     "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
+     "title": "Compile across platforms",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 19.9
+    },
+    {
+     "id": 37836220938,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37836220938",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T20:00:42Z",
+     "run_started_at": "2026-10-08T20:00:42Z",
+     "updated_at": "2026-10-08T20:09:26Z",
+     "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
+     "title": "[CI] Increase Retries and Stop on First Failure (#3904)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.2
+    },
+    {
+     "id": 37825354313,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37825354313",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T18:34:36Z",
+     "run_started_at": "2026-10-08T18:34:36Z",
+     "updated_at": "2026-10-08T18:43:55Z",
+     "head_sha": "2fa5927da839319d81550bb20090a087135f12ef",
+     "title": "[utils] Cut CachedXRTRuntime's per-dispatch host cost (#3892)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.8
+    },
+    {
+     "id": 37822032028,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37822032028",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T18:08:55Z",
+     "run_started_at": "2026-10-08T18:08:55Z",
+     "updated_at": "2026-10-08T18:22:19Z",
+     "head_sha": "597144199a7cd04edb01f65c354ad9ab38462d52",
+     "title": "Maintainer dashboard (#3883)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 12.9
+    },
+    {
+     "id": 37749518579,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37749518579",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T08:23:30Z",
+     "run_started_at": "2026-10-08T08:23:30Z",
+     "updated_at": "2026-10-08T08:33:33Z",
+     "head_sha": "369f6613c342b6d5387a9d0c15347a92d058364f",
+     "title": "[aiecc] List only the PDIs a kernel loads in the full-ELF config (#3893)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 9.4
+    },
+    {
+     "id": 37733680841,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37733680841",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T05:41:57Z",
+     "run_started_at": "2026-10-08T05:41:57Z",
+     "updated_at": "2026-10-08T06:03:45Z",
+     "head_sha": "4476461cfdc26f34d208b69794d7f9fdd6bdf49f",
+     "title": "Test `scf.while` core bodies against the object fifo lowering (#3889)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.7,
+     "took": 21.1
+    },
+    {
+     "id": 37714578860,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37714578860",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T01:46:21Z",
+     "run_started_at": "2026-10-08T01:46:21Z",
+     "updated_at": "2026-10-08T01:55:45Z",
+     "head_sha": "3ceebff581f0f62c99969684e6611ce7acbd47c7",
+     "title": "[aie_kernels] Zero a matmul tile's K tail past a per-call bound (#3890)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.8,
+     "took": 8.6
     }
    ],
    "pull_requests": {
-    "passed": 220,
-    "failed": 39,
-    "rate": 0.849
+    "passed": 216,
+    "failed": 36,
+    "rate": 0.857
    },
    "merge_queue": {
-    "passed": 56,
+    "passed": 60,
     "failed": 1,
-    "rate": 0.982
+    "rate": 0.984
    },
    "flaky": {
-    "commits": 400,
-    "flaky": 31,
+    "commits": 389,
+    "flaky": 30,
     "rate": 0.077
    },
-   "minutes_median": 9.9,
-   "minutes_p90": 24.1,
-   "queued_median": 0.0
+   "minutes_median": 8.9,
+   "minutes_p90": 23.9,
+   "queued_median": 0.5
   },
   {
    "file": "buildAndTestPythons.yml",
@@ -1042,38 +1637,135 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 464,
+   "runs": 456,
    "main": {
-    "passed": 62,
+    "passed": 66,
     "failed": 0,
+    "timed_out": 0,
+    "runner_lost": 0,
+    "no_runner": 0,
+    "cancelled": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 39641569223,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569223",
+    "id": 39701551357,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551357",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T17:11:30Z",
-    "run_started_at": "2026-10-21T17:11:30Z",
-    "updated_at": "2026-10-21T17:32:08Z",
-    "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
-    "title": "[hsaco] Add aie4 as a supported arch (#3938)",
-    "attempt": 1
+    "created_at": "2026-10-22T00:44:59Z",
+    "run_started_at": "2026-10-22T00:44:59Z",
+    "updated_at": "2026-10-22T01:02:48Z",
+    "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "title": "IRON model prep (#3941)",
+    "attempt": 1,
+    "outcome": "passed",
+    "waited": 0.3,
+    "took": 17.5
    },
    "newest_main": {
-    "id": 39641569223,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569223",
+    "id": 39701551357,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551357",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T17:11:30Z",
-    "run_started_at": "2026-10-21T17:11:30Z",
-    "updated_at": "2026-10-21T17:32:08Z",
-    "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
-    "title": "[hsaco] Add aie4 as a supported arch (#3938)",
+    "created_at": "2026-10-22T00:44:59Z",
+    "run_started_at": "2026-10-22T00:44:59Z",
+    "updated_at": "2026-10-22T01:02:48Z",
+    "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "title": "IRON model prep (#3941)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 39701551357,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701551357",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:44:59Z",
+     "run_started_at": "2026-10-22T00:44:59Z",
+     "updated_at": "2026-10-22T01:02:48Z",
+     "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+     "title": "IRON model prep (#3941)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 17.5
+    },
+    {
+     "id": 39698780751,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39698780751",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:17:14Z",
+     "run_started_at": "2026-10-22T00:17:14Z",
+     "updated_at": "2026-10-22T00:36:15Z",
+     "head_sha": "1357531343bbab13e6e678f7fec2a12ab7d3dfbe",
+     "title": "[AIE] Round to nearest even for float-only SRS (#3954)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 18.5
+    },
+    {
+     "id": 39697958026,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39697958026",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:09:24Z",
+     "run_started_at": "2026-10-22T00:09:24Z",
+     "updated_at": "2026-10-22T00:29:56Z",
+     "head_sha": "984eb362164846d920766c2873317fcca8ed4314",
+     "title": "Build and Test across Python versions",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 20.2
+    },
+    {
+     "id": 39677837453,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39677837453",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T21:19:26Z",
+     "run_started_at": "2026-10-21T21:19:26Z",
+     "updated_at": "2026-10-21T21:28:14Z",
+     "head_sha": "984eb362164846d920766c2873317fcca8ed4314",
+     "title": "hostruntime: NpuTensor.region binds a kernel argument mid cache line \u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.2
+    },
+    {
+     "id": 39671724449,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39671724449",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T20:36:11Z",
+     "run_started_at": "2026-10-21T20:36:11Z",
+     "updated_at": "2026-10-21T20:44:55Z",
+     "head_sha": "b7ad585d4630469315a093f039e6d87ff9ef12c4",
+     "title": "compile_mlir_module(device=): build source_string kernels too (#3952)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 8.4
+    },
+    {
+     "id": 39667390772,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39667390772",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T20:06:17Z",
+     "run_started_at": "2026-10-21T20:06:17Z",
+     "updated_at": "2026-10-21T20:14:50Z",
+     "head_sha": "f7ea0ab49545aea12071111960cb7d807e01d04e",
+     "title": "[docs] Keep unchanged Doxygen pages byte-identical across deploys (#3\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.2
+    },
     {
      "id": 39641569223,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39641569223",
@@ -1084,7 +1776,10 @@
      "updated_at": "2026-10-21T17:32:08Z",
      "head_sha": "fe682a1f76d8a60fcc85b4bdb453cfd3a844b2fb",
      "title": "[hsaco] Add aie4 as a supported arch (#3938)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 20.2
     },
     {
      "id": 39579544908,
@@ -1096,7 +1791,10 @@
      "updated_at": "2026-10-21T10:05:33Z",
      "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
      "title": "Remove AMD email addresses (#3944)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 18.9
     },
     {
      "id": 39519638712,
@@ -1108,7 +1806,10 @@
      "updated_at": "2026-10-21T00:30:27Z",
      "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 20.1
     },
     {
      "id": 39440969780,
@@ -1120,7 +1821,10 @@
      "updated_at": "2026-10-20T14:58:05Z",
      "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
      "title": "[CI] Pin the GitHub-hosted Linux jobs to ubuntu-24.04 (#3945)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 20.0
     },
     {
      "id": 39362945514,
@@ -1132,7 +1836,10 @@
      "updated_at": "2026-10-20T03:20:25Z",
      "head_sha": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
      "title": "[aiecc] -Xopt and -Xllc: arguments for the opt and llc that compile t\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.9
     },
     {
      "id": 39352604171,
@@ -1144,7 +1851,10 @@
      "updated_at": "2026-10-20T01:26:38Z",
      "head_sha": "d46220ef7b6bf13407473a30894c28529004265d",
      "title": "Update Peano version (#3939)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.7
     },
     {
      "id": 39346071349,
@@ -1156,7 +1866,10 @@
      "updated_at": "2026-10-20T00:18:37Z",
      "head_sha": "3d612cc4c135d6915112ba4235c61568dc9a1a7c",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 7.7
     },
     {
      "id": 39335472215,
@@ -1168,7 +1881,10 @@
      "updated_at": "2026-10-19T22:39:15Z",
      "head_sha": "3d612cc4c135d6915112ba4235c61568dc9a1a7c",
      "title": "Kernel checks: compare Peano PRs with the nightly again, and tidy the\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 8.2
     },
     {
      "id": 39329297617,
@@ -1180,7 +1896,10 @@
      "updated_at": "2026-10-19T22:00:02Z",
      "head_sha": "f9db2460b8e1c24976240b2cce547ab07b5ff32a",
      "title": "[AIEX] Reject objectFIFO transfers that end mid-object (#3931)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 19.5
     },
     {
      "id": 39179635468,
@@ -1192,7 +1911,10 @@
      "updated_at": "2026-10-19T00:29:53Z",
      "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 18.2
     },
     {
      "id": 39146192736,
@@ -1204,7 +1926,10 @@
      "updated_at": "2026-10-18T17:00:21Z",
      "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
      "title": "[programming_examples] transposes: add dyn, a runtime-shape strategy \u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 18.1
     },
     {
      "id": 39081832790,
@@ -1216,7 +1941,10 @@
      "updated_at": "2026-10-18T00:18:51Z",
      "head_sha": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 7.2
     },
     {
      "id": 39076160724,
@@ -1228,7 +1956,10 @@
      "updated_at": "2026-10-17T22:51:26Z",
      "head_sha": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
      "title": "[AIEVec] AIE2P: lower aievec.shuffle with the AIE2P intrinsic, and re\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.5
     },
     {
      "id": 39069215805,
@@ -1240,7 +1971,10 @@
      "updated_at": "2026-10-17T21:21:10Z",
      "head_sha": "2004ef30580c580f0d272c419ab879fc6d7d6f7f",
      "title": "[AIE] Narrow core loops bounded by values read from buffers (#3930)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 18.7
     },
     {
      "id": 38985069158,
@@ -1252,7 +1986,10 @@
      "updated_at": "2026-10-17T00:17:18Z",
      "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 7.0
     },
     {
      "id": 38961504726,
@@ -1264,7 +2001,10 @@
      "updated_at": "2026-10-16T20:39:03Z",
      "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
      "title": "IRON follow-ups: q4nx_unpack, quiet aiecc remarks, CompletionCores in\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 18.1
     },
     {
      "id": 38827864036,
@@ -1276,7 +2016,10 @@
      "updated_at": "2026-10-16T00:18:55Z",
      "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.7,
+     "took": 8.7
     },
     {
      "id": 38805020152,
@@ -1288,7 +2031,10 @@
      "updated_at": "2026-10-15T21:05:46Z",
      "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
      "title": "IRON/mlir-aie Infrastructure Deduplication for iron-next (#3921)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 16.0
     },
     {
      "id": 38802983482,
@@ -1300,7 +2046,10 @@
      "updated_at": "2026-10-15T20:42:37Z",
      "head_sha": "4b38657d777b63ea40fe7d0ea0e00e7ea48353f6",
      "title": "Router reliability: fix what the model-based nightly found, and run i\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.0
     },
     {
      "id": 38678032033,
@@ -1312,7 +2061,10 @@
      "updated_at": "2026-10-15T03:57:29Z",
      "head_sha": "e7048fadf1975db3190accac9e7153f59a5e45b1",
      "title": "Rotate objectFifo objects instead of selecting buffers by index (#3896)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 10.2
     },
     {
      "id": 38665248550,
@@ -1324,7 +2076,10 @@
      "updated_at": "2026-10-15T01:30:23Z",
      "head_sha": "ad3955677d3aaade64aeaec691e87c1302e12b09",
      "title": "[AIEVec] Lower math.erf on AIE2P; accept f32 tanh/exp and scalar tanh\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 7.9
     },
     {
      "id": 38660995037,
@@ -1336,7 +2091,10 @@
      "updated_at": "2026-10-15T00:47:51Z",
      "head_sha": "134df7ad6a4351e614aefbbf720a6b7f317f1e4a",
      "title": "[iron] Emit forever Worker loops as scf.while(true) (#3888)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 10.9
     },
     {
      "id": 38658449610,
@@ -1348,7 +2106,10 @@
      "updated_at": "2026-10-15T00:17:26Z",
      "head_sha": "c04e91618986e22f40a4d395a00be4e4e01c5bbc",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 6.9
     },
     {
      "id": 38657565188,
@@ -1360,7 +2121,10 @@
      "updated_at": "2026-10-15T00:09:57Z",
      "head_sha": "c04e91618986e22f40a4d395a00be4e4e01c5bbc",
      "title": "Make the SAXPY example a single file with source_string (#3920)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 8.2
     },
     {
      "id": 38641131406,
@@ -1372,7 +2136,10 @@
      "updated_at": "2026-10-14T21:51:17Z",
      "head_sha": "f129ac2fbad07942ee1f537097aa018dcb78befd",
      "title": "[aiecc] Cut compile time and peak memory on large fused designs (#3918)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 17.6
     },
     {
      "id": 38526975549,
@@ -1384,7 +2151,10 @@
      "updated_at": "2026-10-14T07:22:07Z",
      "head_sha": "da4c734455938810c290e05f0b398bdfd29558fb",
      "title": "[cmake] Cover the last two generated headers with aie-headers [LOW] (\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 7.8
     },
     {
      "id": 38523859548,
@@ -1396,7 +2166,10 @@
      "updated_at": "2026-10-14T06:51:20Z",
      "head_sha": "da0398dc072e4e3f563eeee5c92827ff907e24df",
      "title": "[python] Reuse a precompiled header for the injected AIE intrinsics [\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 7.6
     },
     {
      "id": 38519686741,
@@ -1408,7 +2181,10 @@
      "updated_at": "2026-10-14T06:08:36Z",
      "head_sha": "dff8d6a8437ff219950482d934406ac368251cf6",
      "title": "Update Peano version (#3915)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 8.1
     },
     {
      "id": 38500996533,
@@ -1420,7 +2196,10 @@
      "updated_at": "2026-10-14T02:34:24Z",
      "head_sha": "8dd485292eed18309770d11a768470fd497bf4da",
      "title": "Write forever core loops with the standard forever bound (#3894)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 7.8
     },
     {
      "id": 38492017031,
@@ -1432,7 +2211,10 @@
      "updated_at": "2026-10-14T01:03:57Z",
      "head_sha": "e4553dd6877afe6310653e1b53c5d0cd59f2f2fc",
      "title": "Per-call DMA repeat counts on a full ELF, kernel contracts per build,\u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 17.4
     },
     {
      "id": 38488615211,
@@ -1444,7 +2226,10 @@
      "updated_at": "2026-10-14T00:45:03Z",
      "head_sha": "e04ad858a0a9e3dfece25089044ae6a44e262683",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 34.2
     },
     {
      "id": 38329099361,
@@ -1456,7 +2241,10 @@
      "updated_at": "2026-10-13T00:57:06Z",
      "head_sha": "e04ad858a0a9e3dfece25089044ae6a44e262683",
      "title": "build(deps): bump torch in /python (#3900)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 7.7
     },
     {
      "id": 38327434677,
@@ -1468,7 +2256,10 @@
      "updated_at": "2026-10-13T00:36:59Z",
      "head_sha": "b46f871fed10bb01af1a77c6e71e03348152c87e",
      "title": "build(deps): bump https://github.com/pre-commit/mirrors-clang-format \u2026",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 7.8
     },
     {
      "id": 38326095327,
@@ -1480,7 +2271,10 @@
      "updated_at": "2026-10-13T00:19:46Z",
      "head_sha": "6e53e4f4e35cf953bd9d658d13e7818ee1c3d1ec",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 6.8
     },
     {
      "id": 38321143793,
@@ -1492,7 +2286,10 @@
      "updated_at": "2026-10-12T23:23:40Z",
      "head_sha": "6e53e4f4e35cf953bd9d658d13e7818ee1c3d1ec",
      "title": "Drop CRT stack size workaround for Phoenix (#3772)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 7.9
     },
     {
      "id": 38319067502,
@@ -1504,7 +2301,10 @@
      "updated_at": "2026-10-12T23:00:20Z",
      "head_sha": "57b1824a8f293345fd82500d87892fd4cbb7e451",
      "title": "Split Ryzen AI wheel smoke tests by OS and wheel (#3856)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 8.0
     },
     {
      "id": 38287543145,
@@ -1516,7 +2316,10 @@
      "updated_at": "2026-10-12T18:04:52Z",
      "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
      "title": "Add a reconfiguration programming example and benchmark (#3395)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 8.1
     },
     {
      "id": 38279644250,
@@ -1528,7 +2331,10 @@
      "updated_at": "2026-10-12T17:07:37Z",
      "head_sha": "7040e7cffa58ef4f5d8c359ad48bda4e3c22923b",
      "title": "Add route pinning to `aie.flow` with `via` (#3421)",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 21.6
     },
     {
      "id": 38187192170,
@@ -1540,7 +2346,10 @@
      "updated_at": "2026-10-12T00:31:40Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.2,
+     "took": 17.8
     },
     {
      "id": 38097684875,
@@ -1552,27 +2361,330 @@
      "updated_at": "2026-10-11T00:30:27Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Build and Test across Python versions",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.2,
+     "took": 16.9
+    },
+    {
+     "id": 38096872414,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38096872414",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T23:59:13Z",
+     "run_started_at": "2026-10-10T23:59:13Z",
+     "updated_at": "2026-10-11T00:17:11Z",
+     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+     "title": "[AIEX] Support the iteration attribute in dma_configure_task [MED] (#\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.2,
+     "took": 17.7
+    },
+    {
+     "id": 38019652071,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38019652071",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T03:10:53Z",
+     "run_started_at": "2026-10-10T03:10:53Z",
+     "updated_at": "2026-10-10T03:19:10Z",
+     "head_sha": "58484c8cfbadbd81e6e0a892c2d94517e615a22d",
+     "title": "[kernels] Retire Peano workarounds the 94b320c0 pin fixes (#3911)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 7.9
+    },
+    {
+     "id": 38017088063,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38017088063",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T02:28:26Z",
+     "run_started_at": "2026-10-10T02:28:26Z",
+     "updated_at": "2026-10-10T02:37:09Z",
+     "head_sha": "5bbd7520badf2e318a811a55a7cf14a8044d0154",
+     "title": "ci: remove binfmt-dependent container action (#3913)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.8,
+     "took": 7.9
+    },
+    {
+     "id": 38009276624,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38009276624",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T00:29:36Z",
+     "run_started_at": "2026-10-10T00:29:36Z",
+     "updated_at": "2026-10-10T00:37:51Z",
+     "head_sha": "2623c901ecd4408a456a4895572cf4647c762078",
+     "title": "Make multiple device configurations expressible in high-level IRON (#\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 7.7
+    },
+    {
+     "id": 38007991632,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38007991632",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T00:11:52Z",
+     "run_started_at": "2026-10-10T00:11:52Z",
+     "updated_at": "2026-10-10T00:19:13Z",
+     "head_sha": "faa691d927993d48527e4fd3ee9b22985ae964d3",
+     "title": "Build and Test across Python versions",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 6.9
+    },
+    {
+     "id": 38006457862,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38006457862",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T23:51:41Z",
+     "run_started_at": "2026-10-09T23:51:41Z",
+     "updated_at": "2026-10-09T23:59:57Z",
+     "head_sha": "faa691d927993d48527e4fd3ee9b22985ae964d3",
+     "title": "build(deps): bump https://github.com/astral-sh/ruff-pre-commit from v\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 7.8
+    },
+    {
+     "id": 37993166942,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37993166942",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T21:23:33Z",
+     "run_started_at": "2026-10-09T21:23:33Z",
+     "updated_at": "2026-10-09T21:31:56Z",
+     "head_sha": "30893f413c746b2b696b8f0d6f7c64f56d133324",
+     "title": "build(deps): bump notebook in /python (#3901)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 7.9
+    },
+    {
+     "id": 37988983858,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37988983858",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T20:44:23Z",
+     "run_started_at": "2026-10-09T20:44:23Z",
+     "updated_at": "2026-10-09T20:52:32Z",
+     "head_sha": "fd891974c2dad2a1df6a86531a3d24d2ecefecfa",
+     "title": "npu1 (AIE2) kernel tuning, in-bounds tail stores, and more timed case\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 7.7
+    },
+    {
+     "id": 37954690365,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37954690365",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T15:50:21Z",
+     "run_started_at": "2026-10-09T15:50:21Z",
+     "updated_at": "2026-10-09T15:58:28Z",
+     "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
+     "title": "Fix allocator and router nightly build install paths (#3907)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 7.7
+    },
+    {
+     "id": 37879681882,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37879681882",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T03:31:38Z",
+     "run_started_at": "2026-10-09T03:31:38Z",
+     "updated_at": "2026-10-09T03:40:20Z",
+     "head_sha": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
+     "title": "build(deps): bump the github-actions-minor-patch group across 1 direc\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.1
+    },
+    {
+     "id": 37877659678,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37877659678",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T03:05:31Z",
+     "run_started_at": "2026-10-09T03:05:31Z",
+     "updated_at": "2026-10-09T03:20:46Z",
+     "head_sha": "3eea85e6eac7fc9122c9dc283b4f7f711c52786e",
+     "title": "Size core stacks from aiecc's measurement, plus kernel and AIE2 fixes\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 14.8
+    },
+    {
+     "id": 37874843523,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37874843523",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T02:29:52Z",
+     "run_started_at": "2026-10-09T02:29:52Z",
+     "updated_at": "2026-10-09T02:39:34Z",
+     "head_sha": "d404d452c759e2c3c85445dbfdc1e6b67ec33312",
+     "title": "[AIEVec] bf16-emulation: round only multiply inputs, keep sums in f32\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 9.2
+    },
+    {
+     "id": 37873920548,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37873920548",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T02:18:09Z",
+     "run_started_at": "2026-10-09T02:18:09Z",
+     "updated_at": "2026-10-09T02:29:31Z",
+     "head_sha": "943b1718da69e2f9db1861147e4e92ec5c611bb8",
+     "title": "[AIE] Narrow core loops and index math to i32 where provably safe (#3\u2026",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 10.8
+    },
+    {
+     "id": 37863571430,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37863571430",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T00:12:24Z",
+     "run_started_at": "2026-10-09T00:12:24Z",
+     "updated_at": "2026-10-09T00:30:07Z",
+     "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
+     "title": "Build and Test across Python versions",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 17.1
+    },
+    {
+     "id": 37836220862,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37836220862",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T20:00:42Z",
+     "run_started_at": "2026-10-08T20:00:42Z",
+     "updated_at": "2026-10-08T20:09:35Z",
+     "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
+     "title": "[CI] Increase Retries and Stop on First Failure (#3904)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.3
+    },
+    {
+     "id": 37825354230,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37825354230",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T18:34:36Z",
+     "run_started_at": "2026-10-08T18:34:36Z",
+     "updated_at": "2026-10-08T18:43:11Z",
+     "head_sha": "2fa5927da839319d81550bb20090a087135f12ef",
+     "title": "[utils] Cut CachedXRTRuntime's per-dispatch host cost (#3892)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.1
+    },
+    {
+     "id": 37822032147,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37822032147",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T18:08:55Z",
+     "run_started_at": "2026-10-08T18:08:55Z",
+     "updated_at": "2026-10-08T18:19:50Z",
+     "head_sha": "597144199a7cd04edb01f65c354ad9ab38462d52",
+     "title": "Maintainer dashboard (#3883)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 10.4
+    },
+    {
+     "id": 37749518633,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37749518633",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T08:23:30Z",
+     "run_started_at": "2026-10-08T08:23:30Z",
+     "updated_at": "2026-10-08T08:32:25Z",
+     "head_sha": "369f6613c342b6d5387a9d0c15347a92d058364f",
+     "title": "[aiecc] List only the PDIs a kernel loads in the full-ELF config (#3893)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 8.3
+    },
+    {
+     "id": 37733680805,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37733680805",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T05:41:57Z",
+     "run_started_at": "2026-10-08T05:41:57Z",
+     "updated_at": "2026-10-08T05:58:11Z",
+     "head_sha": "4476461cfdc26f34d208b69794d7f9fdd6bdf49f",
+     "title": "Test `scf.while` core bodies against the object fifo lowering (#3889)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.7,
+     "took": 15.6
+    },
+    {
+     "id": 37714578744,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37714578744",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-08T01:46:21Z",
+     "run_started_at": "2026-10-08T01:46:21Z",
+     "updated_at": "2026-10-08T01:54:56Z",
+     "head_sha": "3ceebff581f0f62c99969684e6611ce7acbd47c7",
+     "title": "[aie_kernels] Zero a matmul tile's K tail past a per-call bound (#3890)",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.8,
+     "took": 7.8
     }
    ],
    "pull_requests": {
-    "passed": 225,
-    "failed": 43,
-    "rate": 0.84
+    "passed": 217,
+    "failed": 38,
+    "rate": 0.851
    },
    "merge_queue": {
-    "passed": 58,
+    "passed": 61,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 400,
-    "flaky": 31,
-    "rate": 0.077
+    "commits": 389,
+    "flaky": 29,
+    "rate": 0.075
    },
-   "minutes_median": 9.4,
-   "minutes_p90": 18.9,
-   "queued_median": 0.0
+   "minutes_median": 8.3,
+   "minutes_p90": 19.5,
+   "queued_median": 0.5
   },
   {
    "file": "lintAndFormat.yml",
@@ -1580,38 +2692,60 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 417,
+   "runs": 404,
    "main": {
     "passed": 14,
     "failed": 0,
+    "timed_out": 0,
+    "runner_lost": 0,
+    "no_runner": 0,
+    "cancelled": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 39519637408,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39519637408",
+    "id": 39697960710,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39697960710",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T00:10:00Z",
-    "run_started_at": "2026-10-21T00:10:00Z",
-    "updated_at": "2026-10-21T00:12:49Z",
-    "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "created_at": "2026-10-22T00:09:26Z",
+    "run_started_at": "2026-10-22T00:09:26Z",
+    "updated_at": "2026-10-22T00:12:25Z",
+    "head_sha": "984eb362164846d920766c2873317fcca8ed4314",
     "title": "Lint and Format",
-    "attempt": 1
+    "attempt": 1,
+    "outcome": "passed",
+    "waited": 0.5,
+    "took": 3.0
    },
    "newest_main": {
-    "id": 39519637408,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39519637408",
+    "id": 39697960710,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39697960710",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-21T00:10:00Z",
-    "run_started_at": "2026-10-21T00:10:00Z",
-    "updated_at": "2026-10-21T00:12:49Z",
-    "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+    "created_at": "2026-10-22T00:09:26Z",
+    "run_started_at": "2026-10-22T00:09:26Z",
+    "updated_at": "2026-10-22T00:12:25Z",
+    "head_sha": "984eb362164846d920766c2873317fcca8ed4314",
     "title": "Lint and Format",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 39697960710,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39697960710",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:09:26Z",
+     "run_started_at": "2026-10-22T00:09:26Z",
+     "updated_at": "2026-10-22T00:12:25Z",
+     "head_sha": "984eb362164846d920766c2873317fcca8ed4314",
+     "title": "Lint and Format",
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 3.0
+    },
     {
      "id": 39519637408,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39519637408",
@@ -1622,7 +2756,10 @@
      "updated_at": "2026-10-21T00:12:49Z",
      "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 2.8
     },
     {
      "id": 39346076691,
@@ -1634,7 +2771,10 @@
      "updated_at": "2026-10-20T00:13:37Z",
      "head_sha": "3d612cc4c135d6915112ba4235c61568dc9a1a7c",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 2.9
     },
     {
      "id": 39179641920,
@@ -1646,7 +2786,10 @@
      "updated_at": "2026-10-19T00:14:19Z",
      "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 3.0
     },
     {
      "id": 39081827914,
@@ -1658,7 +2801,10 @@
      "updated_at": "2026-10-18T00:13:28Z",
      "head_sha": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.2,
+     "took": 2.2
     },
     {
      "id": 38985069247,
@@ -1670,7 +2816,10 @@
      "updated_at": "2026-10-17T00:12:45Z",
      "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 2.9
     },
     {
      "id": 38827861079,
@@ -1682,7 +2831,10 @@
      "updated_at": "2026-10-16T00:12:37Z",
      "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.7,
+     "took": 3.1
     },
     {
      "id": 38658459040,
@@ -1694,7 +2846,10 @@
      "updated_at": "2026-10-15T00:13:04Z",
      "head_sha": "c04e91618986e22f40a4d395a00be4e4e01c5bbc",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.4,
+     "took": 2.9
     },
     {
      "id": 38488599913,
@@ -1706,7 +2861,10 @@
      "updated_at": "2026-10-14T00:12:57Z",
      "head_sha": "e04ad858a0a9e3dfece25089044ae6a44e262683",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 2.7
     },
     {
      "id": 38326088778,
@@ -1718,7 +2876,10 @@
      "updated_at": "2026-10-13T00:15:13Z",
      "head_sha": "6e53e4f4e35cf953bd9d658d13e7818ee1c3d1ec",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.5,
+     "took": 2.8
     },
     {
      "id": 38187177953,
@@ -1730,7 +2891,10 @@
      "updated_at": "2026-10-12T00:16:08Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 2.8
     },
     {
      "id": 38097678376,
@@ -1742,7 +2906,10 @@
      "updated_at": "2026-10-11T00:15:51Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.3,
+     "took": 2.6
     },
     {
      "id": 38007984076,
@@ -1754,7 +2921,10 @@
      "updated_at": "2026-10-10T00:14:49Z",
      "head_sha": "faa691d927993d48527e4fd3ee9b22985ae964d3",
      "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 3.0
     },
     {
      "id": 37863568858,
@@ -1766,46 +2936,37 @@
      "updated_at": "2026-10-09T00:14:55Z",
      "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
      "title": "Lint and Format",
-     "attempt": 1
-    },
-    {
-     "id": 37706389985,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37706389985",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T00:11:01Z",
-     "run_started_at": "2026-10-08T00:11:01Z",
-     "updated_at": "2026-10-08T00:14:18Z",
-     "head_sha": "ad7c3fc8d09507c6b5a19469edb7d329591fcb56",
-     "title": "Lint and Format",
-     "attempt": 1
+     "attempt": 1,
+     "outcome": "passed",
+     "waited": 0.6,
+     "took": 2.5
     }
    ],
    "pull_requests": {
-    "passed": 197,
-    "failed": 101,
-    "rate": 0.661
+    "passed": 187,
+    "failed": 97,
+    "rate": 0.658
    },
    "merge_queue": {
-    "passed": 58,
+    "passed": 61,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 400,
-    "flaky": 32,
-    "rate": 0.08
+    "commits": 389,
+    "flaky": 30,
+    "rate": 0.077
    },
-   "minutes_median": 4.1,
-   "minutes_p90": 7.3,
-   "queued_median": 0.0
+   "minutes_median": 2.8,
+   "minutes_p90": 3.0,
+   "queued_median": 0.3
   }
  ],
  "merge_time": {
-  "merged": 51,
-  "hours_median": 25.5,
+  "merged": 55,
+  "hours_median": 23.5,
   "hours_p90": 615.4,
-  "open": 72,
+  "open": 66,
   "open_drafts": 24,
   "open_over_30_days": 48
  },
@@ -1969,7 +3130,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T06:17:59Z",
-     "started_at": "2026-10-21T06:18:20Z"
+     "started_at": "2026-10-21T06:18:20Z",
+     "runner": "aie1",
+     "outcome": "passed"
     },
     {
      "name": "Kernel checks (aie2p-8col)",
@@ -1977,7 +3140,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T06:17:59Z",
-     "started_at": "2026-10-21T06:18:19Z"
+     "started_at": "2026-10-21T06:18:19Z",
+     "runner": "aie8",
+     "outcome": "passed"
     },
     {
      "name": "report",
@@ -1985,7 +3150,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T06:42:01Z",
-     "started_at": "2026-10-21T06:42:26Z"
+     "started_at": "2026-10-21T06:42:26Z",
+     "runner": "GitHub Actions 1009147165",
+     "outcome": "passed"
     },
     {
      "name": "publish / publish",
@@ -1993,7 +3160,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T06:42:41Z",
-     "started_at": "2026-10-21T06:43:05Z"
+     "started_at": "2026-10-21T06:43:05Z",
+     "runner": "GitHub Actions 1009147181",
+     "outcome": "passed"
     }
    ]
   },
@@ -2156,7 +3325,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T06:54:08Z",
-     "started_at": "2026-10-21T06:54:50Z"
+     "started_at": "2026-10-21T06:54:50Z",
+     "runner": "GitHub Actions 1009147591",
+     "outcome": "passed"
     },
     {
      "name": "SA placer hardware check (mobilenet, npu2)",
@@ -2164,7 +3335,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T06:54:08Z",
-     "started_at": "2026-10-21T06:54:50Z"
+     "started_at": "2026-10-21T06:54:50Z",
+     "runner": "aie8",
+     "outcome": "passed"
     },
     {
      "name": "publish",
@@ -2172,7 +3345,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T07:15:18Z",
-     "started_at": "2026-10-21T07:15:48Z"
+     "started_at": "2026-10-21T07:15:48Z",
+     "runner": "GitHub Actions 1009148429",
+     "outcome": "passed"
     }
    ]
   },
@@ -2335,7 +3510,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:30:58Z",
-     "started_at": "2026-10-21T03:31:29Z"
+     "started_at": "2026-10-21T03:31:29Z",
+     "runner": "GitHub Actions 1009139365",
+     "outcome": "passed"
     },
     {
      "name": "Router properties, xcvc1902",
@@ -2343,7 +3520,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:42:44Z",
-     "started_at": "2026-10-21T03:43:14Z"
+     "started_at": "2026-10-21T03:43:14Z",
+     "runner": "GitHub Actions 1009140134",
+     "outcome": "passed"
     },
     {
      "name": "Router hops-on, npu1",
@@ -2351,7 +3530,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:42:44Z",
-     "started_at": "2026-10-21T03:43:13Z"
+     "started_at": "2026-10-21T03:43:13Z",
+     "runner": "GitHub Actions 1009140132",
+     "outcome": "passed"
     },
     {
      "name": "Router properties, npu1",
@@ -2359,7 +3540,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:42:44Z",
-     "started_at": "2026-10-21T03:43:13Z"
+     "started_at": "2026-10-21T03:43:13Z",
+     "runner": "GitHub Actions 1009140133",
+     "outcome": "passed"
     },
     {
      "name": "Router hops-on, npu2",
@@ -2367,7 +3550,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:42:44Z",
-     "started_at": "2026-10-21T03:43:14Z"
+     "started_at": "2026-10-21T03:43:14Z",
+     "runner": "GitHub Actions 1009140137",
+     "outcome": "passed"
     },
     {
      "name": "Router hops-off, xcvc1902",
@@ -2375,7 +3560,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:42:44Z",
-     "started_at": "2026-10-21T03:43:14Z"
+     "started_at": "2026-10-21T03:43:14Z",
+     "runner": "GitHub Actions 1009140135",
+     "outcome": "passed"
     },
     {
      "name": "Router hops-off, npu1",
@@ -2383,7 +3570,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:42:44Z",
-     "started_at": "2026-10-21T03:43:13Z"
+     "started_at": "2026-10-21T03:43:13Z",
+     "runner": "GitHub Actions 1009140136",
+     "outcome": "passed"
     },
     {
      "name": "Router hops-off, npu2",
@@ -2391,7 +3580,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:42:44Z",
-     "started_at": "2026-10-21T03:43:14Z"
+     "started_at": "2026-10-21T03:43:14Z",
+     "runner": "GitHub Actions 1009140139",
+     "outcome": "passed"
     },
     {
      "name": "Router hops-on, xcvc1902",
@@ -2399,7 +3590,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:42:44Z",
-     "started_at": "2026-10-21T03:43:13Z"
+     "started_at": "2026-10-21T03:43:13Z",
+     "runner": "GitHub Actions 1009140138",
+     "outcome": "passed"
     },
     {
      "name": "Router properties, npu2",
@@ -2407,7 +3600,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:42:44Z",
-     "started_at": "2026-10-21T03:43:14Z"
+     "started_at": "2026-10-21T03:43:14Z",
+     "runner": "GitHub Actions 1009140140",
+     "outcome": "passed"
     },
     {
      "name": "Collect results",
@@ -2415,7 +3610,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:57:34Z",
-     "started_at": "2026-10-21T03:57:54Z"
+     "started_at": "2026-10-21T03:57:54Z",
+     "runner": "GitHub Actions 1009141243",
+     "outcome": "passed"
     },
     {
      "name": "publish",
@@ -2423,7 +3620,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T03:58:07Z",
-     "started_at": "2026-10-21T03:58:26Z"
+     "started_at": "2026-10-21T03:58:26Z",
+     "runner": "GitHub Actions 1009141245",
+     "outcome": "passed"
     }
    ]
   },
@@ -2586,7 +3785,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142225",
+     "outcome": "passed"
     },
     {
      "name": "Build Windows wheels / Build and upload mlir_aie wheel (Windows 3.13 RTTI ON)",
@@ -2594,7 +3795,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142233",
+     "outcome": "passed"
     },
     {
      "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.12, OFF)",
@@ -2602,7 +3805,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142234",
+     "outcome": "passed"
     },
     {
      "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.14, ON)",
@@ -2610,7 +3815,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142226",
+     "outcome": "passed"
     },
     {
      "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.13, OFF)",
@@ -2618,7 +3825,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142235",
+     "outcome": "passed"
     },
     {
      "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.14, OFF)",
@@ -2626,7 +3835,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142227",
+     "outcome": "passed"
     },
     {
      "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.11, ON)",
@@ -2634,7 +3845,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142236",
+     "outcome": "passed"
     },
     {
      "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.12, ON)",
@@ -2642,7 +3855,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142238",
+     "outcome": "passed"
     },
     {
      "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.13, OFF)",
@@ -2650,7 +3865,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142228",
+     "outcome": "passed"
     },
     {
      "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.14, ON)",
@@ -2658,7 +3875,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:32Z"
+     "started_at": "2026-10-21T04:17:32Z",
+     "runner": "GitHub Actions 1009142239",
+     "outcome": "passed"
     },
     {
      "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.12, OFF)",
@@ -2666,7 +3885,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142229",
+     "outcome": "passed"
     },
     {
      "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.14, OFF)",
@@ -2674,7 +3895,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142237",
+     "outcome": "passed"
     },
     {
      "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.11, ON)",
@@ -2682,7 +3905,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142230",
+     "outcome": "passed"
     },
     {
      "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.13, ON)",
@@ -2690,7 +3915,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142231",
+     "outcome": "passed"
     },
     {
      "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.11, OFF)",
@@ -2698,7 +3925,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142232",
+     "outcome": "passed"
     },
     {
      "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.11, OFF)",
@@ -2706,7 +3935,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:17:06Z",
-     "started_at": "2026-10-21T04:17:31Z"
+     "started_at": "2026-10-21T04:17:31Z",
+     "runner": "GitHub Actions 1009142240",
+     "outcome": "passed"
     },
     {
      "name": "Build Linux wheels / Smoke-Test Wheel on Ryzen AI (aie2p-8col, npu2)",
@@ -2714,7 +3945,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:43:35Z",
-     "started_at": "2026-10-21T04:44:06Z"
+     "started_at": "2026-10-21T04:44:06Z",
+     "runner": "aie8",
+     "outcome": "passed"
     },
     {
      "name": "Build Linux wheels / Smoke-Test Wheel on Ryzen AI (aie2-4col, npu1)",
@@ -2722,7 +3955,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:43:35Z",
-     "started_at": "2026-10-21T04:44:06Z"
+     "started_at": "2026-10-21T04:44:06Z",
+     "runner": "aie2",
+     "outcome": "passed"
     },
     {
      "name": "Build Windows wheels / Smoke-Test Wheel on Ryzen AI (Windows)",
@@ -2730,7 +3965,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:49:22Z",
-     "started_at": "2026-10-21T04:50:03Z"
+     "started_at": "2026-10-21T04:50:03Z",
+     "runner": "ephemeral-devlab-x2-la03-s05-d01-119044600418",
+     "outcome": "passed"
     },
     {
      "name": "Publish wheels",
@@ -2738,7 +3975,9 @@
      "status": "completed",
      "conclusion": "success",
      "created_at": "2026-10-21T04:52:17Z",
-     "started_at": "2026-10-21T04:52:40Z"
+     "started_at": "2026-10-21T04:52:40Z",
+     "runner": "GitHub Actions 1009143579",
+     "outcome": "passed"
     }
    ]
   },
@@ -2749,13 +3988,37 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 39701249931,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39701249931",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:42:03Z",
+     "run_started_at": "2026-10-22T00:42:03Z",
+     "updated_at": "2026-10-22T01:07:03Z",
+     "head_sha": "1357531343bbab13e6e678f7fec2a12ab7d3dfbe",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 39668645914,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39668645914",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T20:14:58Z",
+     "run_started_at": "2026-10-21T20:14:58Z",
+     "updated_at": "2026-10-22T00:34:39Z",
+     "head_sha": "f7ea0ab49545aea12071111960cb7d807e01d04e",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 39633241554,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39633241554",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-21T16:16:12Z",
      "run_started_at": "2026-10-21T16:16:12Z",
-     "updated_at": "2026-10-21T16:17:03Z",
+     "updated_at": "2026-10-21T20:42:11Z",
      "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
      "title": "MLIR Distro",
      "attempt": 1
@@ -2865,30 +4128,6 @@
      "run_started_at": "2026-10-20T04:17:56Z",
      "updated_at": "2026-10-20T09:00:26Z",
      "head_sha": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 39349241509,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39349241509",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-20T00:42:36Z",
-     "run_started_at": "2026-10-20T00:42:36Z",
-     "updated_at": "2026-10-20T04:33:58Z",
-     "head_sha": "3d612cc4c135d6915112ba4235c61568dc9a1a7c",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 39317931919,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39317931919",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-19T20:16:27Z",
-     "run_started_at": "2026-10-19T20:16:27Z",
-     "updated_at": "2026-10-20T00:53:19Z",
-     "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
      "title": "MLIR Distro",
      "attempt": 1
     }
@@ -3055,6 +4294,18 @@
    "why": "the Docker build against Ryzen AI Software",
    "runs": [
     {
+     "id": 39697961720,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39697961720",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:09:27Z",
+     "run_started_at": "2026-10-22T00:09:27Z",
+     "updated_at": "2026-10-22T01:07:06Z",
+     "head_sha": "984eb362164846d920766c2873317fcca8ed4314",
+     "title": "Build and Test with Ryzen AI Sofware",
+     "attempt": 1
+    },
+    {
      "id": 39519634123,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39519634123",
      "status": "completed",
@@ -3185,18 +4436,6 @@
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Build and Test with Ryzen AI Sofware",
      "attempt": 1
-    },
-    {
-     "id": 38007979476,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38007979476",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-10T00:11:43Z",
-     "run_started_at": "2026-10-10T00:11:43Z",
-     "updated_at": "2026-10-10T01:18:51Z",
-     "head_sha": "faa691d927993d48527e4fd3ee9b22985ae964d3",
-     "title": "Build and Test with Ryzen AI Sofware",
-     "attempt": 1
     }
    ],
    "jobs": null
@@ -3207,6 +4446,18 @@
    "every": 24,
    "why": "the coverage report, as an artifact",
    "runs": [
+    {
+     "id": 39697565728,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39697565728",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T00:05:41Z",
+     "run_started_at": "2026-10-22T00:05:41Z",
+     "updated_at": "2026-10-22T00:47:38Z",
+     "head_sha": "984eb362164846d920766c2873317fcca8ed4314",
+     "title": "Code Coverage",
+     "attempt": 1
+    },
     {
      "id": 39519236353,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39519236353",
@@ -3336,18 +4587,6 @@
      "run_started_at": "2026-10-11T00:07:36Z",
      "updated_at": "2026-10-11T00:52:45Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
-     "title": "Code Coverage",
-     "attempt": 1
-    },
-    {
-     "id": 38007586863,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38007586863",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-10T00:06:29Z",
-     "run_started_at": "2026-10-10T00:06:29Z",
-     "updated_at": "2026-10-10T00:50:22Z",
-     "head_sha": "faa691d927993d48527e4fd3ee9b22985ae964d3",
      "title": "Code Coverage",
      "attempt": 1
     }
