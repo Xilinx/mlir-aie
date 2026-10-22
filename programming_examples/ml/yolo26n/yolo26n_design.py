@@ -1850,7 +1850,11 @@ class SegmentDesign:
                         for op, inputs in stretch:
                             name = op.dst.name
                             m = rate[name]
-                            rows = [n for n in per_row if readers[n][0][0] is op]
+                            rows = [
+                                n
+                                for n in external
+                                if n in per_row and readers[n][0][0] is op
+                            ]
                             for j in range(m):
                                 y = s * m + (j - m * d)
                                 handle = (
