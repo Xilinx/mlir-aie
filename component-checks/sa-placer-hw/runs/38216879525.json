@@ -23,7 +23,8 @@
   "xrt": "2.25.0",
   "host": "aie8",
   "device": "NPU Krackan 1",
-  "pmode": "turbo"
+  "pmode": "turbo",
+  "dispatch": "static"
  },
  "sane": true,
  "published": true,
@@ -38,25 +39,37 @@
     "unit": "seeds"
    }
   },
-  "mobilenet/seed=3": {
+  "mobilenet/seed=3/effort=full": {
    "placement_cost": {
     "value": 293,
     "unit": "cost",
     "range": "placement b71aac1b8820"
+   },
+   "compile_s": {
+    "value": 60.3,
+    "unit": "s"
    }
   },
-  "mobilenet/seed=2": {
+  "mobilenet/seed=2/effort=full": {
    "placement_cost": {
     "value": 295,
     "unit": "cost",
     "range": "placement 36c2b91a501f"
+   },
+   "compile_s": {
+    "value": 60.5,
+    "unit": "s"
    }
   },
-  "mobilenet/seed=7": {
+  "mobilenet/seed=7/effort=full": {
    "placement_cost": {
     "value": 292,
     "unit": "cost",
     "range": "placement 07a89ab8a4ee"
+   },
+   "compile_s": {
+    "value": 59.9,
+    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=1": {
@@ -69,10 +82,6 @@
     "value": 356.4,
     "unit": "us",
     "range": "median 357.50, MAD 0.50, p95 359.70"
-   },
-   "compile_s": {
-    "value": 60.3,
-    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=4": {
@@ -90,10 +99,6 @@
     "value": 137.75,
     "unit": "us",
     "range": "median 142.05, MAD 0.33, p95 142.43"
-   },
-   "compile_s": {
-    "value": 59.2,
-    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=16": {
@@ -111,10 +116,6 @@
     "value": 90.66,
     "unit": "us",
     "range": "median 104.16, MAD 0.50, p95 105.61"
-   },
-   "compile_s": {
-    "value": 59.2,
-    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=64": {
@@ -132,10 +133,6 @@
     "value": 79.46,
     "unit": "us",
     "range": "median 82.73, MAD 0.89, p95 87.92"
-   },
-   "compile_s": {
-    "value": 57.8,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=1": {
@@ -148,10 +145,6 @@
     "value": 358.6,
     "unit": "us",
     "range": "median 362.30, MAD 1.90, p95 392.00"
-   },
-   "compile_s": {
-    "value": 60.5,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=4": {
@@ -169,10 +162,6 @@
     "value": 139.38,
     "unit": "us",
     "range": "median 139.85, MAD 0.35, p95 144.60"
-   },
-   "compile_s": {
-    "value": 59.3,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=16": {
@@ -190,10 +179,6 @@
     "value": 83.89,
     "unit": "us",
     "range": "median 84.29, MAD 0.09, p95 86.16"
-   },
-   "compile_s": {
-    "value": 59.8,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=64": {
@@ -211,10 +196,6 @@
     "value": 74.63,
     "unit": "us",
     "range": "median 74.75, MAD 0.07, p95 74.98"
-   },
-   "compile_s": {
-    "value": 59.8,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=1": {
@@ -227,10 +208,6 @@
     "value": 350.4,
     "unit": "us",
     "range": "median 361.40, MAD 1.10, p95 363.00"
-   },
-   "compile_s": {
-    "value": 59.9,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=4": {
@@ -248,10 +225,6 @@
     "value": 139.1,
     "unit": "us",
     "range": "median 142.53, MAD 1.02, p95 143.57"
-   },
-   "compile_s": {
-    "value": 58.5,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=16": {
@@ -269,10 +242,6 @@
     "value": 84.14,
     "unit": "us",
     "range": "median 89.17, MAD 4.89, p95 104.31"
-   },
-   "compile_s": {
-    "value": 58.7,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=64": {
@@ -290,10 +259,6 @@
     "value": 79.9,
     "unit": "us",
     "range": "median 82.83, MAD 0.19, p95 84.53"
-   },
-   "compile_s": {
-    "value": 58.8,
-    "unit": "s"
    }
   }
  },
@@ -305,7 +270,8 @@
    "us_per_image": 296.2,
    "e2e_us_per_image": 356.4,
    "compile_s": 60.3,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 3,
@@ -314,7 +280,8 @@
    "us_per_image": 122.97,
    "e2e_us_per_image": 137.75,
    "compile_s": 59.2,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 3,
@@ -323,7 +290,8 @@
    "us_per_image": 82.49,
    "e2e_us_per_image": 90.66,
    "compile_s": 59.2,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 3,
@@ -332,7 +300,8 @@
    "us_per_image": 72.4,
    "e2e_us_per_image": 79.46,
    "compile_s": 57.8,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -341,7 +310,8 @@
    "us_per_image": 300.7,
    "e2e_us_per_image": 358.6,
    "compile_s": 60.5,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -350,7 +320,8 @@
    "us_per_image": 121.92,
    "e2e_us_per_image": 139.38,
    "compile_s": 59.3,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -359,7 +330,8 @@
    "us_per_image": 79.57,
    "e2e_us_per_image": 83.89,
    "compile_s": 59.8,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -368,7 +340,8 @@
    "us_per_image": 69.57,
    "e2e_us_per_image": 74.63,
    "compile_s": 59.8,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -377,7 +350,8 @@
    "us_per_image": 289.8,
    "e2e_us_per_image": 350.4,
    "compile_s": 59.9,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -386,7 +360,8 @@
    "us_per_image": 123.75,
    "e2e_us_per_image": 139.1,
    "compile_s": 58.5,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -395,7 +370,8 @@
    "us_per_image": 80.28,
    "e2e_us_per_image": 84.14,
    "compile_s": 58.7,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -404,7 +380,8 @@
    "us_per_image": 72.94,
    "e2e_us_per_image": 79.9,
    "compile_s": 58.8,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   }
  ]
 }

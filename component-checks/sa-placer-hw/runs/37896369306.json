@@ -23,7 +23,8 @@
   "xrt": "2.25.0",
   "host": "aie8",
   "device": "NPU Krackan 1",
-  "pmode": "turbo"
+  "pmode": "turbo",
+  "dispatch": "static"
  },
  "sane": true,
  "published": true,
@@ -38,25 +39,37 @@
     "unit": "seeds"
    }
   },
-  "mobilenet/seed=3": {
+  "mobilenet/seed=3/effort=full": {
    "placement_cost": {
     "value": 293,
     "unit": "cost",
     "range": "placement b71aac1b8820"
+   },
+   "compile_s": {
+    "value": 59.3,
+    "unit": "s"
    }
   },
-  "mobilenet/seed=2": {
+  "mobilenet/seed=2/effort=full": {
    "placement_cost": {
     "value": 295,
     "unit": "cost",
     "range": "placement 36c2b91a501f"
+   },
+   "compile_s": {
+    "value": 59.4,
+    "unit": "s"
    }
   },
-  "mobilenet/seed=7": {
+  "mobilenet/seed=7/effort=full": {
    "placement_cost": {
     "value": 292,
     "unit": "cost",
     "range": "placement 07a89ab8a4ee"
+   },
+   "compile_s": {
+    "value": 59.1,
+    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=1": {
@@ -69,10 +82,6 @@
     "value": 390.8,
     "unit": "us",
     "range": "median 401.80, MAD 1.80, p95 405.40"
-   },
-   "compile_s": {
-    "value": 59.3,
-    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=4": {
@@ -90,10 +99,6 @@
     "value": 149.68,
     "unit": "us",
     "range": "median 151.43, MAD 0.35, p95 152.05"
-   },
-   "compile_s": {
-    "value": 58.6,
-    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=16": {
@@ -111,10 +116,6 @@
     "value": 88.75,
     "unit": "us",
     "range": "median 110.95, MAD 2.33, p95 115.16"
-   },
-   "compile_s": {
-    "value": 59.3,
-    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=64": {
@@ -132,10 +133,6 @@
     "value": 83.73,
     "unit": "us",
     "range": "median 85.29, MAD 0.89, p95 89.98"
-   },
-   "compile_s": {
-    "value": 58.9,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=1": {
@@ -148,10 +145,6 @@
     "value": 386.4,
     "unit": "us",
     "range": "median 395.90, MAD 1.00, p95 398.00"
-   },
-   "compile_s": {
-    "value": 59.4,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=4": {
@@ -169,10 +162,6 @@
     "value": 146.78,
     "unit": "us",
     "range": "median 148.75, MAD 1.10, p95 150.50"
-   },
-   "compile_s": {
-    "value": 58.7,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=16": {
@@ -190,10 +179,6 @@
     "value": 85.76,
     "unit": "us",
     "range": "median 86.18, MAD 0.09, p95 87.81"
-   },
-   "compile_s": {
-    "value": 58.0,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=64": {
@@ -211,10 +196,6 @@
     "value": 82.37,
     "unit": "us",
     "range": "median 84.88, MAD 0.93, p95 90.11"
-   },
-   "compile_s": {
-    "value": 59.9,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=1": {
@@ -227,10 +208,6 @@
     "value": 399.1,
     "unit": "us",
     "range": "median 401.80, MAD 0.80, p95 404.50"
-   },
-   "compile_s": {
-    "value": 59.1,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=4": {
@@ -248,10 +225,6 @@
     "value": 147.4,
     "unit": "us",
     "range": "median 148.12, MAD 0.55, p95 150.40"
-   },
-   "compile_s": {
-    "value": 58.2,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=16": {
@@ -269,10 +242,6 @@
     "value": 103.24,
     "unit": "us",
     "range": "median 112.31, MAD 0.72, p95 113.46"
-   },
-   "compile_s": {
-    "value": 58.5,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=64": {
@@ -290,10 +259,6 @@
     "value": 76.8,
     "unit": "us",
     "range": "median 85.11, MAD 1.35, p95 90.43"
-   },
-   "compile_s": {
-    "value": 58.1,
-    "unit": "s"
    }
   }
  },
@@ -305,7 +270,8 @@
    "us_per_image": 290.6,
    "e2e_us_per_image": 390.8,
    "compile_s": 59.3,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 3,
@@ -314,7 +280,8 @@
    "us_per_image": 125.17,
    "e2e_us_per_image": 149.68,
    "compile_s": 58.6,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 3,
@@ -323,7 +290,8 @@
    "us_per_image": 80.62,
    "e2e_us_per_image": 88.75,
    "compile_s": 59.3,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 3,
@@ -332,7 +300,8 @@
    "us_per_image": 72.24,
    "e2e_us_per_image": 83.73,
    "compile_s": 58.9,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -341,7 +310,8 @@
    "us_per_image": 287.8,
    "e2e_us_per_image": 386.4,
    "compile_s": 59.4,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -350,7 +320,8 @@
    "us_per_image": 123.25,
    "e2e_us_per_image": 146.78,
    "compile_s": 58.7,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -359,7 +330,8 @@
    "us_per_image": 79.09,
    "e2e_us_per_image": 85.76,
    "compile_s": 58.0,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -368,7 +340,8 @@
    "us_per_image": 71.62,
    "e2e_us_per_image": 82.37,
    "compile_s": 59.9,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -377,7 +350,8 @@
    "us_per_image": 301.9,
    "e2e_us_per_image": 399.1,
    "compile_s": 59.1,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -386,7 +360,8 @@
    "us_per_image": 123.6,
    "e2e_us_per_image": 147.4,
    "compile_s": 58.2,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -395,7 +370,8 @@
    "us_per_image": 81.83,
    "e2e_us_per_image": 103.24,
    "compile_s": 58.5,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -404,7 +380,8 @@
    "us_per_image": 69.79,
    "e2e_us_per_image": 76.8,
    "compile_s": 58.1,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   }
  ]
 }

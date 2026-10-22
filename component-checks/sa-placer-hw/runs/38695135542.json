@@ -23,7 +23,8 @@
   "xrt": "2.25.0",
   "host": "aie8",
   "device": "NPU Krackan 1",
-  "pmode": "turbo"
+  "pmode": "turbo",
+  "dispatch": "static"
  },
  "sane": true,
  "published": true,
@@ -38,25 +39,37 @@
     "unit": "seeds"
    }
   },
-  "mobilenet/seed=3": {
+  "mobilenet/seed=3/effort=full": {
    "placement_cost": {
     "value": 293,
     "unit": "cost",
     "range": "placement b71aac1b8820"
+   },
+   "compile_s": {
+    "value": 30.1,
+    "unit": "s"
    }
   },
-  "mobilenet/seed=2": {
+  "mobilenet/seed=2/effort=full": {
    "placement_cost": {
     "value": 295,
     "unit": "cost",
     "range": "placement 36c2b91a501f"
+   },
+   "compile_s": {
+    "value": 30.8,
+    "unit": "s"
    }
   },
-  "mobilenet/seed=7": {
+  "mobilenet/seed=7/effort=full": {
    "placement_cost": {
     "value": 292,
     "unit": "cost",
     "range": "placement 07a89ab8a4ee"
+   },
+   "compile_s": {
+    "value": 28.2,
+    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=1": {
@@ -69,10 +82,6 @@
     "value": 354.8,
     "unit": "us",
     "range": "median 360.20, MAD 0.90, p95 365.20"
-   },
-   "compile_s": {
-    "value": 30.1,
-    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=4": {
@@ -90,10 +99,6 @@
     "value": 138.45,
     "unit": "us",
     "range": "median 142.88, MAD 0.55, p95 144.18"
-   },
-   "compile_s": {
-    "value": 28.5,
-    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=16": {
@@ -111,10 +116,6 @@
     "value": 84.52,
     "unit": "us",
     "range": "median 90.62, MAD 4.67, p95 107.06"
-   },
-   "compile_s": {
-    "value": 28.6,
-    "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=64": {
@@ -132,10 +133,6 @@
     "value": 81.42,
     "unit": "us",
     "range": "median 82.40, MAD 0.62, p95 87.91"
-   },
-   "compile_s": {
-    "value": 28.6,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=1": {
@@ -148,10 +145,6 @@
     "value": 350.9,
     "unit": "us",
     "range": "median 357.50, MAD 0.70, p95 359.20"
-   },
-   "compile_s": {
-    "value": 30.8,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=4": {
@@ -169,10 +162,6 @@
     "value": 138.57,
     "unit": "us",
     "range": "median 141.55, MAD 0.57, p95 142.35"
-   },
-   "compile_s": {
-    "value": 29.7,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=16": {
@@ -190,10 +179,6 @@
     "value": 103.03,
     "unit": "us",
     "range": "median 103.61, MAD 0.17, p95 103.90"
-   },
-   "compile_s": {
-    "value": 30.3,
-    "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=64": {
@@ -211,10 +196,6 @@
     "value": 78.57,
     "unit": "us",
     "range": "median 82.44, MAD 0.50, p95 89.83"
-   },
-   "compile_s": {
-    "value": 29.7,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=1": {
@@ -227,10 +208,6 @@
     "value": 360.9,
     "unit": "us",
     "range": "median 365.90, MAD 1.50, p95 369.60"
-   },
-   "compile_s": {
-    "value": 28.2,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=4": {
@@ -248,10 +225,6 @@
     "value": 139.43,
     "unit": "us",
     "range": "median 141.95, MAD 0.50, p95 142.50"
-   },
-   "compile_s": {
-    "value": 29.8,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=16": {
@@ -269,10 +242,6 @@
     "value": 83.09,
     "unit": "us",
     "range": "median 83.72, MAD 0.14, p95 88.04"
-   },
-   "compile_s": {
-    "value": 28.6,
-    "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=64": {
@@ -290,10 +259,6 @@
     "value": 79.13,
     "unit": "us",
     "range": "median 82.44, MAD 0.63, p95 87.62"
-   },
-   "compile_s": {
-    "value": 29.4,
-    "unit": "s"
    }
   }
  },
@@ -305,7 +270,8 @@
    "us_per_image": 293.3,
    "e2e_us_per_image": 354.8,
    "compile_s": 30.1,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 3,
@@ -314,7 +280,8 @@
    "us_per_image": 123.22,
    "e2e_us_per_image": 138.45,
    "compile_s": 28.5,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 3,
@@ -323,7 +290,8 @@
    "us_per_image": 80.26,
    "e2e_us_per_image": 84.52,
    "compile_s": 28.6,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 3,
@@ -332,7 +300,8 @@
    "us_per_image": 72.16,
    "e2e_us_per_image": 81.42,
    "compile_s": 28.6,
-   "placement": "b71aac1b8820"
+   "placement": "b71aac1b8820",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -341,7 +310,8 @@
    "us_per_image": 291.1,
    "e2e_us_per_image": 350.9,
    "compile_s": 30.8,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -350,7 +320,8 @@
    "us_per_image": 122.45,
    "e2e_us_per_image": 138.57,
    "compile_s": 29.7,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -359,7 +330,8 @@
    "us_per_image": 82.97,
    "e2e_us_per_image": 103.03,
    "compile_s": 30.3,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 2,
@@ -368,7 +340,8 @@
    "us_per_image": 72.36,
    "e2e_us_per_image": 78.57,
    "compile_s": 29.7,
-   "placement": "36c2b91a501f"
+   "placement": "36c2b91a501f",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -377,7 +350,8 @@
    "us_per_image": 301.6,
    "e2e_us_per_image": 360.9,
    "compile_s": 28.2,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -386,7 +360,8 @@
    "us_per_image": 123.85,
    "e2e_us_per_image": 139.43,
    "compile_s": 29.8,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -395,7 +370,8 @@
    "us_per_image": 78.97,
    "e2e_us_per_image": 83.09,
    "compile_s": 28.6,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   },
   {
    "seed": 7,
@@ -404,7 +380,8 @@
    "us_per_image": 72.13,
    "e2e_us_per_image": 79.13,
    "compile_s": 29.4,
-   "placement": "07a89ab8a4ee"
+   "placement": "07a89ab8a4ee",
+   "effort_label": "full"
   }
  ]
 }

@@ -2,9 +2,38 @@
  "schema": 1,
  "target": "sa-placer-hw",
  "metrics": [
+  "compile_aiecc_outside_graph_s",
+  "compile_aiecc_outside_graph_s_warm",
+  "compile_aiecc_wall_s",
+  "compile_aiecc_wall_s_warm",
+  "compile_codegen_s",
+  "compile_codegen_s_warm",
+  "compile_kernel_objects_s",
+  "compile_kernel_objects_s_warm",
+  "compile_kernels_s",
+  "compile_kernels_s_warm",
+  "compile_link_s",
+  "compile_link_s_warm",
+  "compile_lower_s",
+  "compile_lower_s_warm",
+  "compile_other_s",
+  "compile_other_s_warm",
+  "compile_outside_aiecc_s",
+  "compile_outside_aiecc_s_warm",
+  "compile_package_s",
+  "compile_package_s_warm",
+  "compile_peak_rss_mb",
+  "compile_peak_rss_mb_warm",
+  "compile_place_s",
+  "compile_place_s_warm",
+  "compile_route_s",
+  "compile_route_s_warm",
   "compile_s",
+  "compile_s_warm",
   "e2e_us_per_image",
   "failed_seeds",
+  "host_overhead_us_per_image",
+  "npu_us_per_image",
   "placement_cost",
   "streaming_us",
   "us_per_image"
@@ -35,7 +64,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -69,7 +99,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -103,7 +134,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -137,7 +169,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -171,7 +204,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -205,7 +239,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -239,7 +274,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -273,7 +309,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -307,7 +344,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -341,7 +379,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -375,7 +414,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -409,7 +449,8 @@
     "xrt": "2.26.0",
     "host": "aie9",
     "device": "NPU Strix",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -443,7 +484,8 @@
     "xrt": "2.25.0",
     "host": "aie8",
     "device": "NPU Krackan 1",
-    "pmode": "turbo"
+    "pmode": "turbo",
+    "dispatch": "static"
    },
    "sane": true,
    "published": true,
@@ -451,6 +493,46 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "39736834711",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39736834711",
+   "date": "2026-10-22T06:53:47+00:00",
+   "commit": {
+    "id": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "message": "IRON model prep (#3941)",
+    "timestamp": "2026-10-22T00:00:24Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "843e9c3ec9",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "dispatch": "dynamic"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 343,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "efforts": {
+    "default": 0.05,
+    "full": 1.0
+   },
+   "iters": 20
   }
  ]
 }

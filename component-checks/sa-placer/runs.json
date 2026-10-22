@@ -360,6 +360,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "39736834711",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39736834711",
+   "date": "2026-10-22T06:53:47+00:00",
+   "commit": {
+    "id": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "message": "IRON model prep (#3941)",
+    "timestamp": "2026-10-22T00:00:24Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "843e9c3ec9",
+    "fixtures": "3aa7139253a0",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

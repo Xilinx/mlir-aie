@@ -1,0 +1,42 @@
+{
+ "schema": 1,
+ "target": "yolo26n-hw",
+ "metrics": [],
+ "runs": [
+  {
+   "schema": 1,
+   "target": "yolo26n-hw",
+   "id": "39736834711",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39736834711",
+   "date": "2026-10-22T06:53:47+00:00",
+   "commit": {
+    "id": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+    "message": "IRON model prep (#3941)",
+    "timestamp": "2026-10-22T00:00:24Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "843e9c3ec9",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": null,
+   "published": false,
+   "n_rows": 0,
+   "exitstatus": 1,
+   "failed": [],
+   "truncated": [],
+   "refused": "/srv/yolo26n/yolo26n_xint8.onnx is missing; see --weights-dir"
+  }
+ ]
+}
