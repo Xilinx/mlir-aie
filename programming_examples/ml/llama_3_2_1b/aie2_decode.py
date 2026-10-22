@@ -324,7 +324,10 @@ def build(
 
     # the array
     of_act = ObjectFifo(t_act, depth=1, name="act")
-    of_w = [ObjectFifo(t_slot, depth=2, name=f"w{c}") for c in range(N_CORES)]
+    # depth=1: a temporary throughput trade, not the final answer -- see the
+    # commit message ("llama: drop the GEMV-array weight fifo's double
+    # buffering to fit core data memory").
+    of_w = [ObjectFifo(t_slot, depth=1, name=f"w{c}") for c in range(N_CORES)]
     of_outlo = ObjectFifo(
         np.ndarray[(4 * OUT_BYTES,), np.dtype[np.int8]], depth=1, name="outlo"
     )
