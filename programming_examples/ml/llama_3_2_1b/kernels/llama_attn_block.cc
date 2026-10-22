@@ -30,7 +30,6 @@ static constexpr int kTB = LLAMA_ATTN_TB;
 static constexpr int kREP = LLAMA_ATTN_REP;
 static constexpr int kLanes = 16;
 static constexpr int kSlices = kHD / kLanes;
-static constexpr float kInvSqrtHD = 0.125f;
 
 static constexpr int kRowBytes = 2 * kHD + 8;
 static constexpr int kVOff = kHD;
@@ -43,7 +42,7 @@ static constexpr int kStateHeader = 64;
 static constexpr int kHeadStride = 64 + 4 * kHD;
 static constexpr int kStateBytes = kStateHeader + kREP * kHeadStride;
 
-static_assert(kHD == 64, "kInvSqrtHD is hardcoded for head_dim=64");
+static_assert(kHD == 64, "scores scale by 1/sqrt(hd) = 2^-3");
 static_assert(kTB % kLanes == 0, "block rows must be a multiple of 16");
 
 alignas(64) static const int32_t kLaneIndex[kLanes] = {
@@ -51,6 +50,35 @@ alignas(64) static const int32_t kLaneIndex[kLanes] = {
 
 static inline float *head_record(int8_t *state, int h) {
   return reinterpret_cast<float *>(state + kStateHeader + h * kHeadStride);
+}
+
+// recip_rne lane-wise: the same restoring division of the significand, on
+// 16 lanes at once.
+__attribute__((noinline)) static ::aie::vector<float, kLanes>
+vec_recip_rne(::aie::vector<float, kLanes> a) {
+  ::aie::vector<int32, kLanes> bits = a.template cast_to<int32>();
+  ::aie::vector<int32, kLanes> e = ::aie::downshift(bits, 23);
+  ::aie::vector<int32, kLanes> m =
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bits));
+  ::aie::vector<int32, kLanes> rem = ::aie::broadcast<int32, kLanes>(1 << 24);
+  ::aie::vector<int32, kLanes> q = ::aie::zeros<int32, kLanes>();
+  for (int i = 0; i < 24; i++) {
+    auto ge = ::aie::ge(rem, m);
+    q = ::aie::add(::aie::add(q, q),
+                   ::aie::select(::aie::zeros<int32, kLanes>(),
+                                 ::aie::broadcast<int32, kLanes>(1), ge));
+    rem = ::aie::select(rem, ::aie::sub(rem, m), ge);
+    rem = ::aie::add(rem, rem);
+  }
+  auto exact = ::aie::eq(q, int32(1 << 23)) & ::aie::eq(rem, int32(0));
+  auto up =
+      ::aie::gt(rem, m) |
+      (::aie::eq(rem, m) & ::aie::gt(::aie::bit_and(int32(1), q), int32(0)));
+  q = ::aie::select(q, ::aie::add(q, int32(1)), up);
+  return ::aie::select(::aie::add(::aie::upshift(::aie::sub(int32(253), e), 23),
+                                  ::aie::sub(q, int32(1 << 23))),
+                       ::aie::upshift(::aie::sub(int32(254), e), 23), exact)
+      .template cast_to<float>();
 }
 
 // Folds every head's block max and sum (m_b[h], s_b[h]) into its record:
@@ -74,19 +102,16 @@ static void fold_weights(int8_t *state, const float *m_b, const float *s_b,
   ::aie::vector<float, kLanes> big =
       ::aie::max(m, ::aie::select(::aie::shuffle_up(m, kREP),
                                   ::aie::shuffle_down(m, kREP), low));
-  ::aie::vector<float, kLanes> ab = vec_mul_rne(
-      ::aie::load_v<kLanes>(x + kLanes), vec_exp_nonpos(::aie::sub(m, big)));
+  ::aie::vector<float, kLanes> ab =
+      vec_mul_rne(::aie::load_v<kLanes>(x + kLanes),
+                  vec_exp_nonpos(::aie::concat(::aie::sub(m, big),
+                                               ::aie::zeros<float, kLanes>()))
+                      .template extract<kLanes>(0));
   ::aie::vector<float, kLanes> den =
       ::aie::add(ab, ::aie::shuffle_down(ab, kREP));
-  // w only ever reads inv[0, kREP): w[h] = ab[h] * inv[h], and w[kREP + h] =
+  // w only reads inv[0, kREP): w[h] = ab[h] * inv[h], and w[kREP + h] =
   // ab[kREP + h] * shuffle_up(inv, kREP)[kREP + h] = ab[kREP + h] * inv[h].
-  // vec_recip's recip_rne is scalar per lane, so the other 16 - 8 lanes of a
-  // width-16 recip would be pure waste; narrow to 8 (the smallest width
-  // AIE2P legalizes an integer bit_and/bit_or at) instead.
-  static_assert(2 * kREP <= 8, "both sides of every head in one 8-lane group");
-  ::aie::vector<float, 8> inv8 = vec_recip(den.template extract<8>(0));
-  ::aie::vector<float, kLanes> inv =
-      ::aie::concat(inv8, ::aie::zeros<float, 8>());
+  ::aie::vector<float, kLanes> inv = vec_recip_rne(den);
   ::aie::store_v(w, vec_mul_rne(ab, ::aie::select(::aie::shuffle_up(inv, kREP),
                                                   inv, low)));
   ::aie::store_v(x, big);
@@ -356,8 +381,6 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
   // n_rows read as -1e30 so they never win the max and get e = 0; then
   // e = e^(score - max).
   alignas(64) float lanes[2 * kLanes] = {};
-  ::aie::vector<float, kLanes> isq_v =
-      ::aie::broadcast<float, kLanes>(kInvSqrtHD);
   ::aie::vector<float, kLanes> floor_v =
       ::aie::broadcast<float, kLanes>(-1e30f);
   for (int h = 0; h < kREP; h++) {
@@ -365,10 +388,18 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     ::aie::vector<float, kLanes> q_v = ::aie::broadcast<float, kLanes>(q_scale);
     ::aie::vector<float, kLanes> max_v = floor_v;
     for (int g = 0; g < groups; g++) {
+      ::aie::vector<int32, kLanes> x =
+          vec_mul_rne(q_v, ::aie::load_v<kLanes>(kslot + g * kLanes)
+                               .template cast_to<float>())
+              .template cast_to<int32>();
+      // vec_mul_rne(x, 1/sqrt(hd)) for every x: its exponent less 3, or a
+      // signed zero below FLT_MIN.
       ::aie::vector<float, kLanes> qk =
-          vec_mul_rne(vec_mul_rne(q_v, ::aie::load_v<kLanes>(kslot + g * kLanes)
-                                           .template cast_to<float>()),
-                      isq_v);
+          ::aie::select(
+              ::aie::bit_and(int32(0x80000000), x),
+              ::aie::sub(x, int32(3 << 23)),
+              ::aie::gt(::aie::bit_and(int32(0x7f800000), x), int32(3 << 23)))
+              .template cast_to<float>();
       ::aie::vector<float, kLanes> s = vec_mul_rne(
           ::aie::to_float<float>(
               ::aie::load_v<kLanes>(dots + h * kTB + g * kLanes), 0),
@@ -382,14 +413,16 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     }
     float m_b = ::aie::reduce_max(max_v);
     lanes[h] = m_b;
-    ::aie::vector<float, kLanes> m_v = ::aie::broadcast<float, kLanes>(m_b);
-    for (int g = 0; g < groups; g++)
-      ::aie::store_v(
-          expq + h * kTB + g * kLanes,
-          vec_exp_nonpos(::aie::sub(::aie::load_v<kLanes>(scores + g * kLanes)
-                                        .template cast_to<float>(),
-                                    m_v))
-              .template cast_to<int32>());
+    // Two groups a call; a group past `groups` is never read.
+    ::aie::vector<float, 2 * kLanes> m_v =
+        ::aie::broadcast<float, 2 * kLanes>(m_b);
+    for (int g = 0; g < groups; g += 2)
+      ::aie::store_v(expq + h * kTB + g * kLanes,
+                     vec_exp_nonpos(::aie::sub(::aie::load_v<2 * kLanes>(
+                                                   scores + g * kLanes)
+                                                   .template cast_to<float>(),
+                                               m_v))
+                         .template cast_to<int32>());
   }
 
   // The sums run in row order with a head per lane, on 16-row groups
@@ -414,7 +447,7 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     }
   }
   alignas(64) float inv_a[kLanes];
-  ::aie::store_v(inv_a, vec_recip(sum_v));
+  ::aie::store_v(inv_a, vec_recip_rne(sum_v));
   ::aie::store_v(lanes + kLanes, sum_v);
   alignas(64) float w[kLanes];
   if (count == 0) {

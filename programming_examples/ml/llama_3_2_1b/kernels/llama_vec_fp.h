@@ -140,37 +140,38 @@ static inline ::aie::vector<float, kN> vec_recip(::aie::vector<float, kN> a) {
   return ::aie::load_v<kN>(lanes);
 }
 
-// e^x for x <= 0 on 16 lanes, as llama_oracle.exp_nonpos: with
+// e^x for x <= 0 lane-wise, as llama_oracle.exp_nonpos: with
 // t = x * log2(e) (vec_mul_rne), k = trunc(t) and f = t - k in (-1, 0],
 // e = 2^k * 2^f where 2^f = 2^-g, g = -f rounded to Q23 by the vadd.f that
 // forms 1 - f, is a degree-6 Q29 polynomial in Horner form whose products
 // round half to even (acc64 srs). 0 below t = -125. float2fix gives floor(t)
 // or ceil(t); trunc(t) for t <= 0 is the ceiling, so a negative n below t
 // (compared as sign-magnitude bits) is bumped by one.
-__attribute__((noinline)) static ::aie::vector<float, 16>
-vec_exp_nonpos(::aie::vector<float, 16> x) {
+template <unsigned kN = 16>
+__attribute__((noinline)) static ::aie::vector<float, kN>
+vec_exp_nonpos(::aie::vector<float, kN> x) {
   static constexpr int32_t kC[] = {-684167,   5142538,    -29791239,
                                    128969442, -372130494, 536870912};
-  ::aie::vector<float, 16> t =
-      vec_mul_rne(x, ::aie::broadcast<float, 16>(1.442695022f));
-  ::aie::vector<int32, 16> tb = t.template cast_to<int32>();
-  ::aie::vector<int32, 16> n = ::aie::to_fixed<int32>(t, 0);
-  ::aie::vector<int32, 16> nb =
+  ::aie::vector<float, kN> t =
+      vec_mul_rne(x, ::aie::broadcast<float, kN>(1.442695022f));
+  ::aie::vector<int32, kN> tb = t.template cast_to<int32>();
+  ::aie::vector<int32, kN> n = ::aie::to_fixed<int32>(t, 0);
+  ::aie::vector<int32, kN> nb =
       ::aie::to_float<float>(n, 0).template cast_to<int32>();
-  ::aie::vector<int32, 16> k = ::aie::select(
+  ::aie::vector<int32, kN> k = ::aie::select(
       n, ::aie::add(n, int32(1)), ::aie::gt(nb, tb) & ::aie::lt(nb, int32(0)));
-  ::aie::vector<float, 16> f = ::aie::sub(t, ::aie::to_float<float>(k, 0));
-  ::aie::vector<int32, 16> g =
-      ::aie::sub(::aie::sub(::aie::broadcast<float, 16>(1.0f), f)
+  ::aie::vector<float, kN> f = ::aie::sub(t, ::aie::to_float<float>(k, 0));
+  ::aie::vector<int32, kN> g =
+      ::aie::sub(::aie::sub(::aie::broadcast<float, kN>(1.0f), f)
                      .template cast_to<int32>(),
                  int32(0x3f800000));
-  ::aie::vector<int32, 16> p = ::aie::broadcast<int32, 16>(58465);
+  ::aie::vector<int32, kN> p = ::aie::broadcast<int32, kN>(58465);
   for (int i = 0; i < 6; i++)
     p = ::aie::add(::aie::mul(p, g).template to_vector<int32>(23), kC[i]);
   return ::aie::select(
              ::aie::add(::aie::to_float<float>(p, 29).template cast_to<int32>(),
                         ::aie::upshift(k, 23)),
-             ::aie::zeros<int32, 16>(),
+             ::aie::zeros<int32, kN>(),
              ::aie::lt(tb, int32(0)) &
                  ::aie::gt(tb, __builtin_bit_cast(int32_t, -125.0f)))
       .template cast_to<float>();
