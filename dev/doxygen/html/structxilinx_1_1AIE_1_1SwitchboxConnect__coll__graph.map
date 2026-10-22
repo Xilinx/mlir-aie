@@ -1,0 +1,15 @@
+<map id="xilinx::AIE::SwitchboxConnect" name="xilinx::AIE::SwitchboxConnect">
+<area shape="rect" id="Node000001" title=" " alt="" coords="401,180,616,205"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,244,60"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="259,51,319,67,378,90,414,111,447,135,496,178,493,182,444,139,411,115,376,95,318,72,257,56"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="65,84,184,109"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="198,108,245,118,378,151,467,177,465,182,377,157,243,123,197,113"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="45,133,204,188"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="218,166,401,181,401,186,217,171"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="72,212,177,237"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="191,217,401,199,401,204,191,222"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="28,262,221,302"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="234,261,377,230,469,203,470,208,378,235,235,266"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="84,328,165,353"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="178,335,273,321,326,307,376,289,412,270,444,246,493,204,496,208,448,250,414,274,378,294,327,313,274,326,179,340"/>
+</map>
