@@ -644,6 +644,17 @@ class SegmentDesign:
         shared memory, so its channels are left to the held rows and its
         weights.
         """
+        # An image row lands by phase, word k of every 4 pixels together (see
+        # yolo_input.cc); the DMA writing L1 scatters it, as DDR reads that
+        # gather it go a word at a time.
+        quads = IMAGE_ROW_BYTES // 12
+        from_stream = (
+            TensorAccessPattern(
+                (IMAGE_ROW_BYTES,), 0, [1, quads, 3, 4], [0, 4, 4 * quads, 1]
+            )
+            if tensor.name == "images"
+            else None
+        )
         if self.l1_rows(tensor, depth, window) == depth:
             if hub is not None and tensor.name not in self.local:
                 # Rows the host fills come through the hub too: a shim shares
@@ -654,10 +665,10 @@ class SegmentDesign:
                     .forward(tile=hub, depth=2, name=f"fill{self.holds}")
                 )
                 self.holds += 1
-                return fill.cons(depth=depth)
+                return fill.cons(depth=depth, from_stream=from_stream)
             if hub is not None:
                 return self.private(tensor).cons(depth=depth)
-            return self.reader(tensor).cons(depth=depth)
+            return self.reader(tensor).cons(depth=depth, from_stream=from_stream)
         stage = self.held(tensor, depth - window, hub)
         # A stage another worker or the chain's next stage reads would
         # broadcast, which takes no turns: a worker with a hub takes its own
