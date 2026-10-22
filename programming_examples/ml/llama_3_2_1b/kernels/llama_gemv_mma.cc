@@ -81,9 +81,21 @@ half_epilogue(::aie::vector<int32, 32> sums, const int8_t *restrict act,
   for (int m = 0; m < m_end; m++)
     for (int n = 0; n < 8; n++) {
       const int lane = m * 8 + n;
-      reinterpret_cast<float *>(out)[(4 * h + m) * ostride + row0 + n] =
-          ok ? fp.get(lane)
-             : (float)sums.get(lane) * act_scales[m] * w_scales[n];
+      float out_val;
+      if (ok) {
+        out_val = fp.get(lane);
+      } else {
+        // The target has no scalar float multiplier (only the int->float
+        // cast above is unavoidable there): vec_mul_rne keeps this exact
+        // without pulling in __mulsf3/__muldi3 for a path only the rare
+        // overflow case reaches. 8 lanes: the narrowest AIE2P legalizes an
+        // integer bit_and/bit_or at (see q_requant_heads).
+        ::aie::vector<float, 8> sv = vec_mul_rne(
+            ::aie::broadcast<float, 8>((float)sums.get(lane)),
+            ::aie::broadcast<float, 8>(act_scales[m]));
+        out_val = vec_mul_rne(sv, ::aie::broadcast<float, 8>(w_scales[n])).get(0);
+      }
+      reinterpret_cast<float *>(out)[(4 * h + m) * ostride + row0 + n] = out_val;
     }
 }
 
