@@ -2971,6 +2971,8 @@
       
         
       
+        
+      
     
     
     
@@ -3087,6 +3089,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -4077,7 +4107,7 @@ requirements; the short hashes cite the mlir-aie commits that measured them
 <li><code>--cases</code> compiles exactly the builds the cases run, named by case
   (4c8c4d91ff4); it first prints <code>cases: N builds for M cases ...</code>, and a
   case missing from M is a finding. Without it remarks builds only factory
-  defaults and <code>.dtypes</code>, which missed every stride-2 and sized <code>-D</code> build
+  defaults and <code>kernels.DTYPES</code>, which missed every stride-2 and sized <code>-D</code> build
   of the conv kernels. For a shape no case has, use
   <code>--build FACTORY:KEY=VALUE,...</code> (repeatable; 3dfa82d81af).</li>
 <li>Read the contract's <code>trace=</code>. Only <code>Trace.whole_call()</code> gets a cycles row.
@@ -4368,10 +4398,12 @@ to you.</p>
 <ul>
 <li>Each case runs from this tree, then from <code>$BASE</code>, with the same inputs.
   The summary prints <code>cycles base -&gt; cur</code> and each arm's <code>min..max n=</code> for
-  cycles and <code>npu_us</code>, <code>same</code> or <code>N differ</code> raw output words, and each
-  arm's error vs the reference (3b507540694, 8f749a06d52). <code>--perf-meta</code>
-  holds the same under <code>baseline.cases.&lt;case&gt;</code> (<code>cycles_range</code>,
-  <code>npu_us_range</code>, <code>accuracy</code> as [base, cur]).</li>
+  cycles, <code>dispatch_us</code> and <code>npu_us</code>, <code>same</code> or <code>N differ</code> raw output
+  words, and each arm's error vs the reference (3b507540694, 8f749a06d52).
+  <code>--perf-meta</code> holds the same under <code>baseline.cases.&lt;case&gt;</code>
+  (<code>cycles_range</code>, <code>dispatch_us_range</code>, <code>npu_us_range</code>, <code>accuracy</code> as
+  [base, cur]). <code>dispatch_us</code> is submit to completion; <code>npu_us</code> is that less
+  the median of an empty dispatch on the same hardware context.</li>
 <li><strong>Time every case of the kernel</strong>, not the one you targeted. Every case
   is one command, and a change often wins one shape and loses another: 8
   pixels per mmul won six bn 1x1 shapes and lost relu 28/40/120 2236 →
@@ -4503,7 +4535,8 @@ or the test fails with <code>N of M calls traced</code> (53f84828939); intervals
   cycles; if production is dispatch-bound too, hand off to
   <code>aie-dataflow-opt</code>.</li>
 <li>Wall clock, only when the kernel can't be traced: quote the pinned
-  <strong>min</strong> (<code>npu_us_min</code>), never the mean (it showed 7.5% between
+  <strong>min</strong> (<code>npu_us_min</code>, or <code>dispatch_us_min</code> where the runtime has no
+  empty dispatch), never the mean (it showed 7.5% between
   byte-identical builds). For the per-call cost, difference two cases that
   differ only in <code>calls</code>: <code>(t20 − t4) / 16</code>.</li>
 <li>Ablation prices a region: replace it with a cheap wrong computation and

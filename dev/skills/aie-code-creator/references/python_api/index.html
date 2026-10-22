@@ -2725,6 +2725,8 @@
       
         
       
+        
+      
     
     
     
@@ -2841,6 +2843,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -3959,6 +3989,11 @@ which leaves the choice to the <code>--aie-place-tiles</code> pass. Passing a no
 <a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">)</span>
 <a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
+<p>From the host, an <code>@iron.jit(full_elf=True)</code> design takes the values per call, by name:
+<code>design(a, c, parameters={"seq_len": np.int32(128)})</code>. A design that declares no
+<code>ScratchpadParameter</code> refuses <code>parameters=</code>, and a generator may not name one of its own
+parameters <code>parameters</code>. <code>test/python/npu-xrt/scratchpad_params/test.py</code> runs both this and
+the lower-level pyxrt + <code>ParameterScratchpad</code> form.</p>
 <p>Reach for <code>Buffer(..., use_write_rtp=True)</code> + <code>WorkerRuntimeBarrier</code> for the common case (matches most existing examples); use <code>ScratchpadParameter</code> when you specifically want to avoid a dedicated RTP buffer/lock.</p>
 <p>Note that <code>ScratchpadParameter</code>s depend on the full-ELF flow (<code>aiecc --get-full-elf</code>) and are not available on the Phoenix/Hawk Point architectures.</p>
 <h2 id="program--finalize-the-design">Program — finalize the design<a class="headerlink" href="#program--finalize-the-design" title="Permanent link">&para;</a></h2>
@@ -3991,6 +4026,10 @@ multi-device modules, not for placement.</p>
 <a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="c1"># First call compiles to xclbin, caches; subsequent calls reuse it.</span>
 <a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="n">my_design</span><span class="p">(</span><span class="n">input_array</span><span class="p">,</span> <span class="n">output_array</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
 </code></pre></div>
+<p>The generator never sees tensor data: <code>input_t</code> is an <code>In</code> with the call's
+<code>shape</code> and <code>dtype</code> (<code>input_t.shape</code>, <code>input_t.dtype</code>, <code>input_t.ndarray_type</code>),
+and any API that takes a tensor type (<code>Runtime</code> fn_args, <code>ObjectFifo</code>,
+<code>np_ndarray_type_get_shape</code>, the <code>iron.algorithms</code> helpers) takes it as is.</p>
 <p><code>use_cache</code> defaults to <code>True</code>, so <code>@iron.jit</code> bare is the normal form — pass
 <code>use_cache=False</code> only to force a rebuild. Other config keys: <code>source_files</code>,
 <code>object_files</code>, <code>compile_flags</code>, <code>include_paths</code>, <code>aiecc_flags</code>, <code>trace_config</code>, <code>full_elf</code>. Any other

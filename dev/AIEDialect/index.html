@@ -2736,6 +2736,8 @@
       
         
       
+        
+      
     
     
     
@@ -2855,6 +2857,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -13446,8 +13476,13 @@ corresponding <code>aie.flow</code>, and consumes this op.</p>
 <p><code>packet</code> routes the connection as an <code>aie.packet_flow</code> instead, sharing the
 stream with every other packet flow rather than reserving a circuit for it.
 <code>packet_id</code> pins the header the source stamps; without it allocation picks
-an id no other flow is using. Circuit- and packet-switched routes coexist in
-one device.</p>
+an id no other flow is using. <code>keep_pkt_header</code> keeps each packet's header
+at the destinations, as on <code>aie.packet_flow</code>. Circuit- and packet-switched
+routes coexist in one device.</p>
+<p>Packet routes that name the same endpoint, all as source or all as
+destination, share its one channel: several sources merge into one
+receiving channel, or one channel sends several ids. A shared source's BDs
+state each packet's header themselves, so its routes pin <code>packet_id</code>.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-86-1" name="__codelineno-86-1" href="#__codelineno-86-1"></a>  aie.route from @src to [@dst0, @dst1]
 <a id="__codelineno-86-2" name="__codelineno-86-2" href="#__codelineno-86-2"></a>  aie.route from @src to [@dst] {packet, packet_id = 3 : i8}
@@ -13460,6 +13495,7 @@ one device.</p>
 <tr><td><code>destinations</code></td><td>::mlir::ArrayAttr</td><td>flat symbol ref array attribute</td></tr>
 <tr><td><code>packet</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
 <tr><td><code>packet_id</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>keep_pkt_header</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
 </table>
 
 <h3 id="aieroute_endpoint-xilinxaierouteendpointop"><code>aie.route_endpoint</code> (::xilinx::AIE::RouteEndpointOp)<a class="headerlink" href="#aieroute_endpoint-xilinxaierouteendpointop" title="Permanent link">&para;</a></h3>
@@ -13603,6 +13639,7 @@ The input arguments are arguments passed in from the host at kernel invocation t
     The passes and the Python trace parser both read it.
   {{% /markdown %}}</details></td></tr>
 <tr><td><code>trace_slices</code></td><td>::mlir::ArrayAttr</td><td>array of trace buffer slices</td></tr>
+<tr><td><code>scratchpad_parameters</code></td><td>::mlir::ArrayAttr</td><td>flat symbol ref array attribute</td></tr>
 </table>
 
 <h3 id="aieshim_dma-xilinxaieshimdmaop"><code>aie.shim_dma</code> (::xilinx::AIE::ShimDMAOp)<a class="headerlink" href="#aieshim_dma-xilinxaieshimdmaop" title="Permanent link">&para;</a></h3>

@@ -3020,6 +3020,8 @@
       
         
       
+        
+      
     
     
     
@@ -3136,6 +3138,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -4137,7 +4167,7 @@
 </tr>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/test/python/npu/test_kernels_perf.py"><code>test/python/npu/test_kernels_perf.py</code></a></td>
-<td>How fast is it? Checks correctness first, then records traced core <code>cycles</code> per call, wall-clock <code>npu_us</code>, compile time and binary sizes.</td>
+<td>How fast is it? Checks correctness first, then records traced core <code>cycles</code> per call, wall-clock <code>dispatch_us</code> and <code>npu_us</code> (the dispatch less an empty one), compile time and binary sizes.</td>
 </tr>
 <tr>
 <td><code>python -m aie.utils.compile.remarks</code></td>
@@ -4171,7 +4201,7 @@
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span>-k<span class="w"> </span><span class="s2">&quot;[add/1024x16/bfloat16]&quot;</span><span class="w"> </span>--perf-out<span class="w"> </span>after.json<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span>--baseline-sources<span class="w"> </span>/tmp/before<span class="w"> </span>--perf-meta<span class="w"> </span>meta.json
 </code></pre></div>
-<p><code>--baseline-sources</code> measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and <code>meta.json</code> give both arms' <code>cycles</code> and minimum <code>npu_us</code>, and how many raw output words differ. The rows in <code>after.json</code> are the checkout's. Set <code>MLIR_AIE_KERNEL_SOURCES</code> for the checkout too. Without it, the tools compile the installed copy of <code>aie_kernels/</code>, so the "after" arm quietly measures whatever kernel was last installed. The brackets in <code>-k</code> match the whole case ID; without them, <code>mul_add/1024x16/bfloat16</code> would match too. <code>--pmode &lt;mode&gt;</code> makes the run refuse to start unless the device is in that power mode (the nightly uses <code>turbo</code>); it checks the mode and does not set it.</p>
+<p><code>--baseline-sources</code> measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and <code>meta.json</code> give both arms' <code>cycles</code> and minimum <code>dispatch_us</code> and <code>npu_us</code>, and how many raw output words differ. The rows in <code>after.json</code> are the checkout's. Set <code>MLIR_AIE_KERNEL_SOURCES</code> for the checkout too. Without it, the tools compile the installed copy of <code>aie_kernels/</code>, so the "after" arm quietly measures whatever kernel was last installed. The brackets in <code>-k</code> match the whole case ID; without them, <code>mul_add/1024x16/bfloat16</code> would match too. <code>--pmode &lt;mode&gt;</code> makes the run refuse to start unless the device is in that power mode (the nightly uses <code>turbo</code>); it checks the mode and does not set it.</p>
 <p>Each row in the JSON is <code>&lt;case&gt;/&lt;metric&gt;</code>:</p>
 <table>
 <thead>
@@ -4193,7 +4223,7 @@
 <td>146.484</td>
 </tr>
 <tr>
-<td><code>add/1024x16/bfloat16/npu_us</code></td>
+<td><code>add/1024x16/bfloat16/dispatch_us</code></td>
 <td>85.16</td>
 <td>90.53</td>
 </tr>
@@ -4321,7 +4351,7 @@
 </tr>
 </tbody>
 </table>
-<p>Per kernel, <code>pm_bytes</code> is program memory, <code>pass_failed</code> lists <code>#pragma clang loop</code> or <code>AIE_*</code> hints the compiler could not apply, and <code>schedule_notes</code> holds the scheduler's messages. "Unable to find schedule" means the modulo scheduler gave up; the loop may still have been packed by the post-pass scheduler, so read <code>ii</code> and <code>ns</code> too. The tool builds each factory at its defaults and at each entry of its <code>.dtypes</code> table, not at every case's parameters.</p>
+<p>Per kernel, <code>pm_bytes</code> is program memory, <code>pass_failed</code> lists <code>#pragma clang loop</code> or <code>AIE_*</code> hints the compiler could not apply, and <code>schedule_notes</code> holds the scheduler's messages. "Unable to find schedule" means the modulo scheduler gave up; the loop may still have been packed by the post-pass scheduler, so read <code>ii</code> and <code>ns</code> too. The tool builds each factory at its defaults and at each entry of its <code>kernels.DTYPES</code> table, not at every case's parameters.</p>
 <p><strong>Library calls and stack.</strong> Scalar code that looks harmless can compile to a function call. The tool also reads each kernel object. Its <code>libcalls</code> row counts the runtime-library routines that the entry symbol reaches, and the build prints their names (<code>calls the runtime library: __divsf3 __mulsf3</code>). A healthy kernel has none. <a href="#peano-and-aie2p-traps">Peano and AIE2P traps</a> lists the calls to look for. For an object outside the library, <code>$PEANO_INSTALL_DIR/bin/llvm-nm -u &lt;kernel&gt;.o</code> lists the same symbols, next to any other kernels it calls. The <code>kernel_stack_bytes</code> row is the deepest chain of stack frames from the entry symbol, not counting the library routines' own frames or the core's <code>main</code>, so the core needs more than it says. aiecc measures the whole linked core and reserves that.</p>
 <p><strong>The object.</strong> When a number moves unexpectedly, look before you explain. In the loop body, count the <code>vlda</code>/<code>vldb</code>/<code>vmac</code>/<code>vst</code> operations and any <code>[sp, #...]</code> accesses (spills to the stack). Size code per function, not per object: <code>llvm-size -A</code> and the <code>.text.&lt;entry&gt;</code> section. A <code>static</code> helper that is inlined into its <code>extern "C"</code> entry point can also be emitted on its own; it counts in the object, and the linker then drops it.</p>
 <h2 id="levers-that-measured-faster"><u>Levers that measured faster</u><a class="headerlink" href="#levers-that-measured-faster" title="Permanent link">&para;</a></h2>
@@ -4511,7 +4541,7 @@
 <a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="p">}</span>
 </code></pre></div>
     <details markdown="1"><summary>Show answer</summary>
-    390 and 150 cycles; II 12 and II 18, both with <code>NS=1</code>. The wall-clock <code>npu_us</code> does not move beyond noise, because the core is busy for about 1.5% of the device time.
+    390 and 150 cycles; II 12 and II 18, both with <code>NS=1</code>. The wall-clock <code>dispatch_us</code> does not move beyond noise, because the core is busy for about 1.5% of the device time.
     </details></p>
 </li>
 <li>

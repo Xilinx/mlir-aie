@@ -2736,6 +2736,8 @@
       
         
       
+        
+      
     
     
     
@@ -2855,6 +2857,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -5390,6 +5420,17 @@
         
       </ul>
     </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aiexwait_scratchpad_parameters-xilinxaiexwaitscratchpadparametersop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        aiex.wait_scratchpad_parameters (::xilinx::AIEX::WaitScratchpadParametersOp)
+      
+    </span>
+  </a>
   
 </li>
         
@@ -8980,6 +9021,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#aiexwait_scratchpad_parameters-xilinxaiexwaitscratchpadparametersop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        aiex.wait_scratchpad_parameters (::xilinx::AIEX::WaitScratchpadParametersOp)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -10327,7 +10379,7 @@ carries values from host memory through the command processor into the array.</p
 <tr>
 <td><code>aiex.dma_start_task {repeat_parameter = @foo}</code></td>
 <td>Start a task with the repeat count the host writes to <code>@foo</code> for each run (at most the task's own repeat count); see <code>aiex.dma_start_task</code>.</td>
-<td>shim NOC tile channel (AIE2, AIE2P)</td>
+<td>shim NOC or mem tile channel (AIE2, AIE2P)</td>
 <td><code>aiex.dma_start_task(%t) {repeat_parameter = @runs}</code></td>
 </tr>
 <tr>
@@ -10706,6 +10758,7 @@ and <a href="../programming_guide/section-3/">Section 3 - My First Program</a>.<
 <li><a href="#attributes_52">Attributes:</a></li>
 </ul>
 </li>
+<li><a href="#aiexwait_scratchpad_parameters-xilinxaiexwaitscratchpadparametersop">aiex.wait_scratchpad_parameters (::xilinx::AIEX::WaitScratchpadParametersOp)</a></li>
 </ul>
 </li>
 <li><a href="#attributes_53">Attributes</a><ul>
@@ -11868,8 +11921,9 @@ the task's buffer descriptor steps through stops after <code>@n + 1</code> runs.
 <code>--aie-lower-scratchpad-parameters</code> rewrites <code>repeat_parameter</code> to
 <code>repeat_state_table_idx</code>, and the push becomes an
 <code>aiex.npu.update_from_scratchpad</code> of the channel's task queue register
-(see <code>aiex.npu.push_queue</code>). On shim MM2S 1 that update also clears the
-tile's pending S2MM 0 sticky error bits.</p>
+(see <code>aiex.npu.push_queue</code>), on a shim NOC or a mem tile. On shim MM2S 1
+and mem tile MM2S 5 that update also clears the tile's pending S2MM 0
+sticky error bits.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a>aiex.scratchpad_parameter @runs : i32
 <a id="__codelineno-56-2" name="__codelineno-56-2" href="#__codelineno-56-2"></a>...
@@ -12381,6 +12435,7 @@ runtime by the driver or host program.</p>
 <p>The firmware optimizes out repeated <code>load_pdi</code> operations if they refer to the same PDI.
 To force a reload / device reset, intersperse a <code>load_pdi</code> to a different PDI between same-device reloads.
 The easiest workaround is to create an empty <code>aie.device(npu2) @empty {}</code> and load that before the main device load.</p>
+<p>Interfaces: <code>SymbolUserOpInterface</code></p>
 <h4 id="attributes_37">Attributes:<a class="headerlink" href="#attributes_37" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
@@ -12522,12 +12577,15 @@ the entry to <code>bd_id | issue_token &lt;&lt; 31</code>. That update clears th
 bits of the word it writes, so 'bd_id' must be a constant multiple of 4;
 the runtime-sequence BD allocator gives such an id to the head of a task
 started with a repeat parameter. It also writes back the register after
-the queue with the value it reads. After MM2S 0's queue and the two S2MM
-queues that is a channel's control register, which nothing else writes.
-After MM2S 1's queue it is <code>DMA_S2MM_Status_0</code>, whose sticky error bits
-(16 to 18: AXI decode error, AXI slave error, task queue overflow) are
-write-1-to-clear: a push on MM2S 1 clears any S2MM 0 error of its tile
-that is pending. The data moved is unaffected.</p>
+the queue with the value it reads. On a shim tile, after MM2S 0's queue
+and the two S2MM queues, and on a mem tile after every queue but MM2S
+5's, that is the next channel's control register, which nothing else
+writes. After a shim's MM2S 1 queue or a mem tile's MM2S 5 queue it is
+<code>DMA_S2MM_Status_0</code>, whose sticky error bits are write-1-to-clear: on a
+shim, bits 16 to 18 (AXI decode error, AXI slave error, task queue
+overflow); on a mem tile, the task queue overflow at bit 18 among others.
+Such a push clears any pending S2MM 0 error of its tile; the data moved
+is unaffected.</p>
 <h4 id="attributes_41">Attributes:<a class="headerlink" href="#attributes_41" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
@@ -12923,7 +12981,9 @@ its length.</p>
 <p>Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
 The <code>--aie-lower-scratchpad-parameters</code> pass assigns the <code>state_table_idx</code> and the <code>kind</code> attribute (derived from the parameter's usage:
 <code>core</code> if read by a core via <code>aiex.read_scratchpad_parameter</code>, <code>addr</code> if used as a DMA offset via the <code>offset_parameter</code> attribute on a DMA op, or as a DMA length via the <code>length_parameter</code> attribute and nothing else).
-Indices are unique across the entire module.
+Each runtime sequence no <code>aiex.run</code> calls is a command with a scratchpad of its own, so
+only the parameters one command reads have distinct indices; a parameter no command reads
+gets none, and one that already has an index keeps it.
 For a parameter used as a DMA offset or length, the pass also sets <code>min_value</code> and <code>max_value</code>:
 the range of values that keeps every such transfer within its buffer, judging each transfer
 with any other parameter it uses at 0. The host library rejects a value outside the range.
@@ -13064,20 +13124,49 @@ Similar to UseLockOp, this operation can be understood as "blocking" op.</p>
 <tr><td><code>action</code></td><td>xilinx::AIE::LockActionAttr</td><td>lock acquire/release</td></tr>
 </table>
 
+<h3 id="aiexwait_scratchpad_parameters-xilinxaiexwaitscratchpadparametersop"><code>aiex.wait_scratchpad_parameters</code> (::xilinx::AIEX::WaitScratchpadParametersOp)<a class="headerlink" href="#aiexwait_scratchpad_parameters-xilinxaiexwaitscratchpadparametersop" title="Permanent link">&para;</a></h3>
+<p><em>Wait on an AIE core for this dispatch's scratchpad parameters</em></p>
+<p>Syntax:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-95-1" name="__codelineno-95-1" href="#__codelineno-95-1"></a>operation ::= `aiex.wait_scratchpad_parameters` attr-dict
+</code></pre></div>
+<p>Blocks the core until the runtime sequence of the current dispatch has
+written its scratchpad parameters, so the <code>aiex.read_scratchpad_parameter</code>
+ops after it read this dispatch's values rather than a previous one's. A
+core without it acquires once, at the top of its body, which a persistent
+worker passes only on its first dispatch; such a worker waits at the top
+of each iteration that begins a dispatch.</p>
+<p><code>--aie-lower-scratchpad-parameters</code> gives the core a lock initialized to 0
+and turns each wait into an acquire of it. Each dispatch's sync writes the
+parameters, then sets (not increments) the lock to 1.</p>
+<p>Each read of a core that waits must come after a wait, and the core must
+keep its sync preamble. A read in a loop needs a wait inside the outermost
+loop around it, since a wait before that loop passes only once. Read
+right after the wait: a later dispatch may rewrite the values while the
+core is still working.</p>
+<p>Example:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-96-1" name="__codelineno-96-1" href="#__codelineno-96-1"></a>aie.core(%tile) {
+<a id="__codelineno-96-2" name="__codelineno-96-2" href="#__codelineno-96-2"></a>  scf.for %i = %c0 to %cmax step %c1 {
+<a id="__codelineno-96-3" name="__codelineno-96-3" href="#__codelineno-96-3"></a>    aiex.wait_scratchpad_parameters
+<a id="__codelineno-96-4" name="__codelineno-96-4" href="#__codelineno-96-4"></a>    %n = aiex.read_scratchpad_parameter @n : i32
+<a id="__codelineno-96-5" name="__codelineno-96-5" href="#__codelineno-96-5"></a>    ...
+<a id="__codelineno-96-6" name="__codelineno-96-6" href="#__codelineno-96-6"></a>  }
+<a id="__codelineno-96-7" name="__codelineno-96-7" href="#__codelineno-96-7"></a>  aie.end
+<a id="__codelineno-96-8" name="__codelineno-96-8" href="#__codelineno-96-8"></a>}
+</code></pre></div></p>
 <h2 id="attributes_53">Attributes<a class="headerlink" href="#attributes_53" title="Permanent link">&para;</a></h2>
 <h3 id="jointboundattr">JointBoundAttr<a class="headerlink" href="#jointboundattr" title="Permanent link">&para;</a></h3>
 <p><em>Bound on an offset and a length parameter one transfer uses</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-95-1" name="__codelineno-95-1" href="#__codelineno-95-1"></a>#aiex.joint_bound&lt;
-<a id="__codelineno-95-2" name="__codelineno-95-2" href="#__codelineno-95-2"></a>  ::mlir::FlatSymbolRefAttr,   # offset
-<a id="__codelineno-95-3" name="__codelineno-95-3" href="#__codelineno-95-3"></a>  int64_t,   # length_step
-<a id="__codelineno-95-4" name="__codelineno-95-4" href="#__codelineno-95-4"></a>  int64_t   # max
-<a id="__codelineno-95-5" name="__codelineno-95-5" href="#__codelineno-95-5"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-97-1" name="__codelineno-97-1" href="#__codelineno-97-1"></a>#aiex.joint_bound&lt;
+<a id="__codelineno-97-2" name="__codelineno-97-2" href="#__codelineno-97-2"></a>  ::mlir::FlatSymbolRefAttr,   # offset
+<a id="__codelineno-97-3" name="__codelineno-97-3" href="#__codelineno-97-3"></a>  int64_t,   # length_step
+<a id="__codelineno-97-4" name="__codelineno-97-4" href="#__codelineno-97-4"></a>  int64_t   # max
+<a id="__codelineno-97-5" name="__codelineno-97-5" href="#__codelineno-97-5"></a>&gt;
 </code></pre></div>
 <p>Held in the <code>joint_bounds</code> of a length parameter <code>n</code>: a transfer that also
 uses the parameter <code>offset</code> as its offset stays within its buffer while
 <code>offset + length_step * n &lt;= max</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-96-1" name="__codelineno-96-1" href="#__codelineno-96-1"></a>#aiex.joint_bound&lt;offset = @off, length_step = 64, max = 3976&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-98-1" name="__codelineno-98-1" href="#__codelineno-98-1"></a>#aiex.joint_bound&lt;offset = @off, length_step = 64, max = 3976&gt;
 </code></pre></div>
 <h4 id="parameters">Parameters:<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h4>
 <table>
@@ -13110,9 +13199,9 @@ uses the parameter <code>offset</code> as its offset stays within its buffer whi
 <h3 id="blockfloattype">BlockFloatType<a class="headerlink" href="#blockfloattype" title="Permanent link">&para;</a></h3>
 <p><em>AIEX type representing a block floating point type.</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-97-1" name="__codelineno-97-1" href="#__codelineno-97-1"></a>!aiex.bfp&lt;
-<a id="__codelineno-97-2" name="__codelineno-97-2" href="#__codelineno-97-2"></a>  ::llvm::StringRef   # block_type
-<a id="__codelineno-97-3" name="__codelineno-97-3" href="#__codelineno-97-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-99-1" name="__codelineno-99-1" href="#__codelineno-99-1"></a>!aiex.bfp&lt;
+<a id="__codelineno-99-2" name="__codelineno-99-2" href="#__codelineno-99-2"></a>  ::llvm::StringRef   # block_type
+<a id="__codelineno-99-3" name="__codelineno-99-3" href="#__codelineno-99-3"></a>&gt;
 </code></pre></div>
 <p>This is a type representing a block floating point.
 It is meant to eventually be lowered into a standard type further down the pipeline.

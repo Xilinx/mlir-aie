@@ -3005,6 +3005,8 @@
       
         
       
+        
+      
     
     
     
@@ -3121,6 +3123,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -4181,10 +4211,17 @@ even across many <code>.compile()</code> / <code>__call__</code> / <code>.as_mli
 The first call:</p>
 <ol>
 <li>Opens a fresh MLIR <code>Context</code> and <code>Location</code> via <code>mlir_mod_ctx()</code>.</li>
-<li>Builds tensor placeholders for the <code>In</code>/<code>Out</code>/<code>InOut</code> parameters (a
-   variadic <code>*tensors: In</code> gets an empty tuple: the generator decides how
-   many tensors the design takes from its <code>CompileTime[T]</code> parameters).</li>
-<li>Calls the generator with <code>(**placeholders, **compile_kwargs)</code>.</li>
+<li>Gives each <code>In</code>/<code>Out</code>/<code>InOut</code> parameter its operand: an <code>In</code>/<code>Out</code>/
+   <code>InOut</code> with the shape and dtype of the bound tensor type (<code>a.shape</code>,
+   <code>a.dtype</code>, <code>a.ndarray_type</code>), which every API taking a tensor type
+   accepts in its place. A parameter with no type bound gets a placeholder
+   that raises on use, and a variadic <code>*tensors: In</code> gets an empty tuple: the
+   generator decides how many tensors the design takes from its
+   <code>CompileTime[T]</code> parameters.</li>
+<li>Calls the generator with those operands, the <code>compile_kwargs</code> and,
+   for each <code>DispatchTime[T]</code> parameter the call leaves unbound, a
+   <code>PerCall</code> placeholder that the design forwards once through
+   <code>Runtime(seq, fn_args=[...])</code> to a runtime-sequence argument.</li>
 <li>Captures the resulting <code>Module</code> (either the generator's return
    value, or <code>ctx.module</code> if it returned <code>None</code> — "placed" vs
    "unplaced" generator style).</li>
@@ -4635,12 +4672,12 @@ baked in:</p>
 new value; the cache key includes the resolved value, not the source
 default.</p>
 <p>A generator whose tensor count follows from its compile-time parameters
-declares them as one variadic list, <code>def design(*tensors: In, *, N:
+declares them as one variadic list, <code>def design(*tensors: In, N:
 CompileTime[int])</code>: every positional argument of a call is a tensor of
 that list, in the order the lowered <code>aie.runtime_sequence</code> takes them, and
 the runtime checks the count against the compiled design. Only a tensor
 parameter may be variadic; the generator body cannot read the list (it is
-empty at generation) any more than it can read a named placeholder.</p>
+empty at generation); named operands carry only shape and dtype.</p>
 <h2 id="related-reading">Related reading<a class="headerlink" href="#related-reading" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="https://github.com/Xilinx/mlir-aie/blob/main/tools/aiecc/README.md"><code>aiecc</code> compiler driver</a>

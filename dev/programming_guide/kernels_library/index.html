@@ -2977,6 +2977,8 @@
       
         
       
+        
+      
     
     
     
@@ -3093,6 +3095,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -4124,11 +4154,6 @@ across multiple workers can share one weight tape between them:</p>
 <td>per-call weight tape chunk</td>
 <td>from full <code>input_channels * output_channels</code> tile (for cascade / output-split streaming)</td>
 </tr>
-<tr>
-<td><code>kernels.bn_fc_relu_ui16_pad(weight_chunk_count=)</code></td>
-<td>same as above for FC</td>
-<td>(used by the MobileNet V3 classifier head)</td>
-</tr>
 </tbody>
 </table>
 <p>Default behavior is unchanged — leave the kwarg unset and the
@@ -4146,23 +4171,27 @@ on each submodule's <code>__doc__</code>:</p>
 <tbody>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/eltwise.py"><code>kernels.eltwise</code></a></td>
-<td>element-wise: passthrough, scale, add, mul, mul_add, relu</td>
+<td>element-wise: passthrough, scale, add (bf16, or int8 on power-of-two scales), mul, mul_add, relu, clamp, magnitude_f32</td>
 </tr>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/reduce.py"><code>kernels.reduce</code></a></td>
-<td>reductions: reduce_add, reduce_min, reduce_max, compute_max</td>
+<td>reductions: reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine, maxpool2d</td>
 </tr>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/activation.py"><code>kernels.activation</code></a></td>
-<td>activations: softmax, tanh, sigmoid, gelu, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec</td>
+<td>activations: softmax, tanh, sigmoid, gelu, gelu_erf, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec, log_f32, log10_clamp_f32</td>
 </tr>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/datamovement.py"><code>kernels.datamovement</code></a></td>
-<td>data movement and conversion: axpy, convert_copy, expand, transpose</td>
+<td>data movement and conversion: affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose</td>
 </tr>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/zero.py"><code>kernels.zero</code></a></td>
 <td>target-vectorized zero fill, including partial vectors and packed BFP blocks</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/core.py"><code>kernels.core</code></a></td>
+<td>set_rounding: the core's rounding-mode register, named by a contract's <code>setup</code></td>
 </tr>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/quant.py"><code>kernels.quant</code></a></td>
@@ -4170,19 +4199,43 @@ on each submodule's <code>__doc__</code>:</p>
 </tr>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/linalg.py"><code>kernels.linalg</code></a></td>
-<td>linear algebra: mm, mv, cascade_mm, mm_bfp, mm_bfp_shuffle, mha</td>
+<td>linear algebra: mm, mv, cascade_mm, mm_bfp, mm_bfp_shuffle, mha, attention_i8 (int8 attention for YOLO26n's PSA)</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/fused.py"><code>kernels.fused</code></a></td>
+<td>fused_mm: one tile's fused GEMM init, reduction and drain</td>
 </tr>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/conv.py"><code>kernels.conv</code></a></td>
-<td>convolutions: conv2dk1/3/14, conv2dk1_skip(<em>init), dwconv1d, bn</em>* bottleneck variants for MobileNet/ResNet</td>
+<td>convolutions: conv2dk1/3/14, conv2dk1_i8, conv2dk1_skip(<em>init), dwconv1d, bn</em>* bottleneck variants for MobileNet/ResNet</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/norm.py"><code>kernels.norm</code></a></td>
+<td>normalization: rms_norm, rms_norm_eps, layer_norm, layer_norm_eps</td>
 </tr>
 <tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/transformer.py"><code>kernels.transformer</code></a></td>
 <td>transformer blocks: rms_norm, layer_norm (bf16, f32, affine + cast), rope, mm_activation_epilogue</td>
 </tr>
 <tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/sample.py"><code>kernels.sample</code></a></td>
+<td>exact top-k next-token sampling split across columns: sample_select, sample_combine</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/moe.py"><code>kernels.moe</code></a></td>
+<td>mixture of experts: router_top_k, experts</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/ssm.py"><code>kernels.ssm</code></a></td>
+<td>state space models: selective_scan (Mamba2), gated_delta_rule (Gated DeltaNet)</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/flm_gemma4.py"><code>kernels.flm_gemma4</code></a></td>
+<td>FastFlowLM's Gemma 4 cores (prefill attention, the q4nx LM head, the decode layer); not general building blocks</td>
+</tr>
+<tr>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/kernels/vision.py"><code>kernels.vision</code></a></td>
-<td>vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted</td>
+<td>vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted, resample_peak, resample_quantize, resize</td>
 </tr>
 </tbody>
 </table>
@@ -4215,7 +4268,7 @@ to use is often faster than chasing through the docstring.</p>
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">mm</span> <span class="o">=</span> <span class="n">kernels</span><span class="o">.</span><span class="n">mm</span><span class="p">(</span><span class="n">input_dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">,</span> <span class="n">output_dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">mm</span><span class="o">.</span><span class="n">contract</span><span class="o">.</span><span class="n">acc_dtype</span>    <span class="c1"># numpy.int64: accauto is acc64 for int16</span>
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">mm</span><span class="o">.</span><span class="n">contract</span><span class="o">.</span><span class="n">reduction</span>    <span class="c1"># 64: products summed per output per call (dim_k)</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="n">kernels</span><span class="o">.</span><span class="n">mm</span><span class="o">.</span><span class="n">dtypes</span>        <span class="c1"># every (input_dtype, output_dtype) the factory supports</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="n">kernels</span><span class="o">.</span><span class="n">DTYPES</span><span class="p">[</span><span class="s2">&quot;mm&quot;</span><span class="p">]</span>     <span class="c1"># every dtype combination the factory builds, as kwargs</span>
 </code></pre></div>
 <p>Some kernels compute differently by build: <code>gelu</code> reads a LUT on AIE2 and
 uses AIE2P's tanh instruction, and <code>rms_norm</code> holds a bound measured on each
@@ -4310,8 +4363,8 @@ it does with NaN or subnormal inputs are <em>not</em> declared. The numpy
 clips, a denormal-flushing one flushes -- and <code>tolerance</code> is the slack
 allowed against it. Declaring the same fact in two places let the two
 drift.
-- <code>.dtypes</code> on the factory: the dtype combinations it builds. The host
-  contract test builds every entry.</p>
+- <code>kernels.DTYPES["&lt;factory&gt;"]</code>: the dtype combinations a factory builds,
+  as kwargs dicts. The host contract test builds every entry.</p>
 <h2 id="standing-in-for-a-hand-built-kernel">Standing in for a hand-built kernel<a class="headerlink" href="#standing-in-for-a-hand-built-kernel" title="Permanent link">&para;</a></h2>
 <p>Code that builds a kernel by hand needs the exported <strong>symbol</strong>, the
 <strong>source file</strong> and the <strong>compile flags</strong> to line up. Every factory
@@ -4389,7 +4442,8 @@ above picks it up.</p>
    to the number of meaningful output elements. Say what the kernel
    accumulates in (<code>acc_dtype</code>, <code>reduction</code>), and model overflow and
    rounding in the reference from the C++ rather than from a guess.
-   A factory with more than one dtype lists them in a <code>.dtypes</code> table.
+   A factory with more than one dtype lists them in <code>DTYPES["&lt;factory&gt;"]</code>
+   above its definition.
    Bind fixed parameters explicitly with <code>parameter_bindings</code>, publish nontrivial
    storage with <code>layouts</code>, and initialize <code>InOut</code> tiles with <code>initializers</code>.
    Declare what the kernel's trace markers measure with <code>trace=</code>:
@@ -4538,7 +4592,12 @@ check prevents publication for the whole run. Each passing case records:</p>
 <ul>
 <li><code>cycles</code>: minimum kernel-call cycles for <code>Trace.whole_call()</code> contracts,
   excluding initializers; <code>cycles_per_kop</code> normalizes by work.</li>
-<li><code>npu_us</code>: median host-runtime timing, with median absolute deviation (MAD).</li>
+<li><code>dispatch_us</code>: median host time from submit to completion of a run, with
+  its median absolute deviation (MAD); the dispatch's fixed cost is in it.</li>
+<li><code>dispatch_overhead_us</code>: the same for an empty run on the same hardware
+  context, the fixed cost alone.</li>
+<li><code>npu_us</code>: each run's dispatch less the empty run's median, the time the NPU
+  spent on the kernel's calls.</li>
 <li><code>kernel_object_bytes</code>: the tested kernel's compiled <code>.o</code> size, excluding
   harness, initializer, instruction and runtime-container files. Inline-only
   kernels have no object-size row. This starts a new series rather than
@@ -4554,7 +4613,7 @@ mode.</p>
 <a href="https://xilinx.github.io/mlir-aie/dashboard/#view=night">maintainer dashboard</a>.</p>
 <h3 id="static-checks">Static checks<a class="headerlink" href="#static-checks" title="Permanent link">&para;</a></h3>
 <p><code>aie.utils.compile.remarks</code> compiles every factory build (defaults plus
-each <code>.dtypes</code> entry) exactly as the JIT does, with Peano's
+each <code>kernels.DTYPES</code> entry) exactly as the JIT does, with Peano's
 optimization-record flags, and turns the records into per-kernel series:
 each loop's II and whether it is a zero-overhead loop, program memory,
 missing-bank loads and dropped <code>#pragma</code>s. It then reads the object: the

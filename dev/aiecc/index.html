@@ -2736,6 +2736,8 @@
       
         
       
+        
+      
     
     
     
@@ -2855,6 +2857,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -3355,6 +3385,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#compiling-one-device---device-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compiling one device: --device-name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#parameterized-c-transaction-builders" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3436,6 +3477,17 @@
     <span class="md-ellipsis">
       
         Seeing what the compiler will do / dry-running: --emit-dot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timing-a-build---profile-and---profile-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timing a build: --profile and --profile-json
       
     </span>
   </a>
@@ -3805,6 +3857,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#compiling-one-device---device-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compiling one device: --device-name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#parameterized-c-transaction-builders" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3886,6 +3949,17 @@
     <span class="md-ellipsis">
       
         Seeing what the compiler will do / dry-running: --emit-dot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timing-a-build---profile-and---profile-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timing a build: --profile and --profile-json
       
     </span>
   </a>
@@ -4080,7 +4154,7 @@
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// 
+//
 //===----------------------------------------------------------===//-->
 
 <h1 id="aiecc-the-mlir-aie-compiler-driver"><code>aiecc</code>: the MLIR-AIE compiler driver<a class="headerlink" href="#aiecc-the-mlir-aie-compiler-driver" title="Permanent link">&para;</a></h1>
@@ -4106,12 +4180,22 @@ per-runtime-sequence NPU instruction binary to the device:</p>
 bundled into a single loadable ELF instead of an xclbin plus loose binaries:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>aiecc<span class="w"> </span>--get-full-elf<span class="w"> </span>design.mlir<span class="w">   </span><span class="c1"># -&gt; aie.elf</span>
 </code></pre></div>
-<p>You can override these output file names with <code>--npu-insts-name</code>, 
-<code>--xclbin-name</code>, and <code>--full-elf-name</code>. You can filter which devices and 
-runtime sequences are compiled with <code>--device-name</code> and <code>--sequence-name</code>. </p>
+<p>You can override these output file names with <code>--npu-insts-name</code>,
+<code>--xclbin-name</code>, and <code>--full-elf-name</code>. You can filter which devices and
+runtime sequences are compiled with <code>--device-name</code> and <code>--sequence-name</code>.</p>
+<h3 id="compiling-one-device---device-name">Compiling one device: <code>--device-name</code><a class="headerlink" href="#compiling-one-device---device-name" title="Permanent link">&para;</a></h3>
+<p><code>--device-name=NAME</code> compiles only the <code>aie.device</code> called <code>NAME</code> (devices
+named <code>empty_*</code> are always kept). For every output but the full ELF that is
+all it compiles. A full ELF has to carry the PDI of every device its
+sequences load or configure, so with <code>--get-full-elf</code> the filter also keeps
+each device reached from <code>NAME</code> through <code>aiex.configure</code> and
+<code>aiex.npu.load_pdi</code>, transitively:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aiecc<span class="w"> </span>--get-full-elf<span class="w"> </span>--device-name<span class="o">=</span>main<span class="w"> </span>design.mlir<span class="w">   </span><span class="c1"># main and the devices it loads</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>aiecc<span class="w"> </span>--get-pdi<span class="w"> </span>--pdi-name<span class="o">=</span>design.pdi<span class="w"> </span>--device-name<span class="o">=</span>main<span class="w"> </span>design.mlir<span class="w">   </span><span class="c1"># main only</span>
+</code></pre></div>
 <h3 id="parameterized-c-transaction-builders">Parameterized C++ transaction builders<a class="headerlink" href="#parameterized-c-transaction-builders" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aiecc<span class="w"> </span>--get-npu-cpp<span class="w"> </span>design.mlir
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># -&gt; npu_&lt;device&gt;_&lt;seq&gt;.cpp (one standalone C++17 builder per selected sequence)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>aiecc<span class="w"> </span>--get-npu-cpp<span class="w"> </span>design.mlir
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># -&gt; npu_&lt;device&gt;_&lt;seq&gt;.cpp (one standalone C++17 builder per selected sequence)</span>
 </code></pre></div>
 <p>C++ builders and static instructions share runtime-sequence materialization,
 reconfiguration expansion, DMA lowering, PDI-ID assignment, and device/sequence
@@ -4152,7 +4236,7 @@ compilation sequentially; <code>-j 0</code> uses the machine's hardware concurre
 is the default.</p>
 <p>To apply a limit to every <code>aiecc</code> invocation without changing each caller, set
 the <code>AIECC_JOBS</code> environment variable:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nv">AIECC_JOBS</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>ninja<span class="w"> </span>check-aie
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">AIECC_JOBS</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>ninja<span class="w"> </span>check-aie
 </code></pre></div>
 <p>An explicit <code>-j</code> or <code>--nthreads</code> takes precedence over <code>AIECC_JOBS</code>, which in
 turn takes precedence over the default. The environment variable accepts the
@@ -4164,7 +4248,7 @@ without MLIR threading, those pipelines run on one thread either way.</p>
 <p><code>--device-cache=&lt;dir&gt;</code> keeps what compiling each <code>aie.device</code>'s cores produced
 (its buffer placement and linked core ELFs) in <code>&lt;dir&gt;</code>, and a later build whose
 device is unchanged reuses them instead of compiling its cores again:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>aiecc<span class="w"> </span>--get-full-elf<span class="w"> </span>--device-cache<span class="o">=</span><span class="nv">$HOME</span>/.cache/aiecc<span class="w"> </span>design.mlir
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>aiecc<span class="w"> </span>--get-full-elf<span class="w"> </span>--device-cache<span class="o">=</span><span class="nv">$HOME</span>/.cache/aiecc<span class="w"> </span>design.mlir
 </code></pre></div>
 <p>A device is reused only when its routed IR, the module's other top-level ops,
 the contents of every file its cores link, the command line and the <code>aiecc</code>
@@ -4190,11 +4274,11 @@ so an option that <code>aiecc</code> sets takes the value given here. They reach
 cores' programs, including kernels merged into them
 (<code>link_with_mode = "merge"</code>); a kernel compiled to an object takes its flags
 from its own clang command line (<code>-mllvm</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Rule out opt passes, or bisect them, in the cores&#39; programs</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>aiecc<span class="w"> </span>--get-pdi<span class="w"> </span>-Xopt<span class="w"> </span>-opt-disable<span class="o">=</span>licm,loop-unroll-full<span class="w"> </span>design.mlir
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>aiecc<span class="w"> </span>--get-pdi<span class="w"> </span>-v<span class="w"> </span>-Xopt<span class="w"> </span>-opt-bisect-limit<span class="o">=</span><span class="m">40</span><span class="w"> </span>design.mlir
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># A backend option</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>aiecc<span class="w"> </span>--get-pdi<span class="w"> </span>-Xllc<span class="o">=</span>--enable-aie-zol-without-minitercount<span class="o">=</span><span class="nb">false</span><span class="w"> </span>design.mlir
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Rule out opt passes, or bisect them, in the cores&#39; programs</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>aiecc<span class="w"> </span>--get-pdi<span class="w"> </span>-Xopt<span class="w"> </span>-opt-disable<span class="o">=</span>licm,loop-unroll-full<span class="w"> </span>design.mlir
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>aiecc<span class="w"> </span>--get-pdi<span class="w"> </span>-v<span class="w"> </span>-Xopt<span class="w"> </span>-opt-bisect-limit<span class="o">=</span><span class="m">40</span><span class="w"> </span>design.mlir
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># A backend option</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>aiecc<span class="w"> </span>--get-pdi<span class="w"> </span>-Xllc<span class="o">=</span>--enable-aie-zol-without-minitercount<span class="o">=</span><span class="nb">false</span><span class="w"> </span>design.mlir
 </code></pre></div>
 <p>With <code>--xchesscc</code> they are an error: Chess compiles the cores.</p>
 <h3 id="building-the-link-files-meanwhile---await-link-files">Building the link files meanwhile: <code>--await-link-files</code><a class="headerlink" href="#building-the-link-files-meanwhile---await-link-files" title="Permanent link">&para;</a></h3>
@@ -4217,12 +4301,12 @@ linker's region limits.</p>
 annotations, IR-retention options and verification limitations.</p>
 <h3 id="seeing-what-the-compiler-will-do--dry-running---emit-dot">Seeing what the compiler will do / dry-running: <code>--emit-dot</code><a class="headerlink" href="#seeing-what-the-compiler-will-do--dry-running---emit-dot" title="Permanent link">&para;</a></h3>
 <p>The compiler builds its execution plan from the flags you pass.
-Adding <code>--emit-dot</code> prints that plan (as a GraphViz graph) for exactly the 
+Adding <code>--emit-dot</code> prints that plan (as a GraphViz graph) for exactly the
 requested outputs and options and exits without compiling anything. You omit
 the input file when you pass <code>--emit-dot</code>, as no compilation actually takes
-place. For example, this shows the plan for the NPU-instruction flow and 
+place. For example, this shows the plan for the NPU-instruction flow and
 renders it to an image:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--emit-dot<span class="w"> </span><span class="p">|</span><span class="w"> </span>dot<span class="w"> </span>-Tpng<span class="w"> </span>-o<span class="w"> </span>flow.png
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--emit-dot<span class="w"> </span><span class="p">|</span><span class="w"> </span>dot<span class="w"> </span>-Tpng<span class="w"> </span>-o<span class="w"> </span>flow.png
 </code></pre></div>
 <p>Each box is a compilation step labelled by the artifact it produces, arrows show
 dependencies between steps, and the outputs you requested are highlighted.
@@ -4230,6 +4314,28 @@ Changing the output flags (for instance to <code>--get-full-elf</code>) changes 
 graph accordingly, so this is the fastest way to understand what a given
 invocation will actually do. The command above produces this graph:</p>
 <p><img alt="NPU-instruction flow graph" src="docs/npu_insts_flow.svg" /></p>
+<h3 id="timing-a-build---profile-and---profile-json">Timing a build: <code>--profile</code> and <code>--profile-json</code><a class="headerlink" href="#timing-a-build---profile-and---profile-json" title="Permanent link">&para;</a></h3>
+<p><code>--profile</code> prints, at the end of the run, each edge's time, the change in
+resident memory since the edge before it (dRSS) and the peak resident memory
+so far. <code>--profile-json=PATH</code> writes the same summary to <code>PATH</code> as JSON, with
+or without <code>--profile</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">&quot;wall_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">7412</span><span class="p">,</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">&quot;process_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">7690</span><span class="p">,</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span><span class="nt">&quot;edges&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="p">{</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">120</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;start_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;end_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">120</span><span class="p">,</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">     </span><span class="nt">&quot;rss_after_mib&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">312.5</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;peak_mib&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">340.1</span><span class="p">}</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">  </span><span class="p">]</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>wall_ms</code> runs from the graph's start to its last edge's end, and each edge's
+<code>start_ms</code> and <code>end_ms</code> count from the graph's start. <code>process_ms</code> counts from
+aiecc's <code>main()</code> to the writing of this file, so <code>process_ms - wall_ms</code> is the
+time aiecc spends outside the graph: reading its options, building the graph
+and writing the outputs. <code>rss_after_mib</code> is the resident memory after the
+edge; it and <code>peak_mib</code> are <code>null</code> where the platform does not report them. A
+path that cannot be written fails the build.</p>
 <h3 id="stopping-and-restarting-a-build---checkpoint-and---resume">Stopping and restarting a build: <code>--checkpoint</code> and <code>--resume</code><a class="headerlink" href="#stopping-and-restarting-a-build---checkpoint-and---resume" title="Permanent link">&para;</a></h3>
 <p>Sometimes you want to interrupt compilation partway through, look at or modify
 an intermediate result, and then continue from that point rather than starting
@@ -4237,7 +4343,7 @@ over. <code>--checkpoint</code> and <code>--resume</code> let you do exactly tha
 <p>First, compile up to some intermediate stage and save the result. Here we stop
 at the routed physical IR (<code>--cut</code>, described below, selects where to cut) and
 write the checkpoint into the directory <code>cp</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>aiecc<span class="w"> </span>--cut<span class="o">=</span>input_physical.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span>design.mlir
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>aiecc<span class="w"> </span>--cut<span class="o">=</span>input_physical.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span>design.mlir
 </code></pre></div>
 <p><code>--cut</code> stops the build at the named edge — nothing downstream of it runs, so no
 final artifacts are produced — and snapshots that frontier. It requires
@@ -4249,7 +4355,7 @@ build. When you are ready, resume from the checkpoint and ask for the artifact
 you want (<code>--get</code>, described below). The saved frontier is read back from disk
 (IR frontiers are re-parsed from their <code>.mlir</code> text), the stages before the
 checkpoint are skipped entirely, and only what comes after runs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>aiecc<span class="w"> </span>--resume<span class="o">=</span>cp/manifest.json
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>aiecc<span class="w"> </span>--resume<span class="o">=</span>cp/manifest.json
 </code></pre></div>
 <p>The resume invocation rebuilds the graph from the flags recorded in the
 checkpoint manifest, so it inherits the original device, toolchain and lowering
@@ -4268,11 +4374,11 @@ are saved to disk, darker), and the steps a <code>--resume</code> runs afterward
 across the dashed red <em>cut</em> arrows. Each edge runs at most once across the pair:
 the prefix and frontier during <code>--checkpoint</code>, the downstream steps during
 <code>--resume</code> (which reloads the frontier from disk rather than rebuilding it).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--cut<span class="o">=</span>input_physical.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">      </span>--emit-dot<span class="w"> </span><span class="p">|</span><span class="w"> </span>dot<span class="w"> </span>-Tsvg<span class="w"> </span>-o<span class="w"> </span>cut.svg
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--cut<span class="o">=</span>input_physical.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">      </span>--emit-dot<span class="w"> </span><span class="p">|</span><span class="w"> </span>dot<span class="w"> </span>-Tsvg<span class="w"> </span>-o<span class="w"> </span>cut.svg
 </code></pre></div>
 <p><img alt="NPU-instruction flow with a checkpoint cut" src="docs/npu_insts_cut.svg" /></p>
-<p>If an error occurs during compilation, <code>aiecc</code> will dump a checkpoint 
+<p>If an error occurs during compilation, <code>aiecc</code> will dump a checkpoint
 capturing the state up to the first failing edge. This allows you to submit
 a checkpoint as a reproducer, or investigate the issue yourself using the
 exact inputs the failing step saw.</p>
@@ -4281,15 +4387,15 @@ exact inputs the failing step saw.</p>
 intermediates that don't have their own <code>--get-&lt;name&gt;</code> shorthand (such as the
 per-core objects or the routed IR). Run with <code>--emit-dot</code> to see the available
 names; passing an unrecognized name prints the full list.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>aiecc<span class="w"> </span>--get<span class="o">=</span>objects_<span class="o">{</span><span class="m">0</span><span class="o">}</span>.o<span class="w"> </span>design.mlir<span class="w">           </span><span class="c1"># just the per-core objects</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>aiecc<span class="w"> </span>--get<span class="o">=</span>input_physical.mlir<span class="w"> </span>design.mlir<span class="w">     </span><span class="c1"># just the routed IR</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>aiecc<span class="w"> </span>--get<span class="o">=</span>objects_<span class="o">{</span><span class="m">0</span><span class="o">}</span>.o<span class="w"> </span>design.mlir<span class="w">           </span><span class="c1"># just the per-core objects</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>aiecc<span class="w"> </span>--get<span class="o">=</span>input_physical.mlir<span class="w"> </span>design.mlir<span class="w">     </span><span class="c1"># just the routed IR</span>
 </code></pre></div>
 <p><code>--get</code> and <code>--resume</code> work well together when you want just one final artifact
 without redoing the whole build. First checkpoint all the intermediates up to
 some stage, then resume and ask only for the one output you want; the compiler
 reuses the checkpointed intermediates instead of recomputing them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>aiecc<span class="w"> </span>--cut<span class="o">=</span>physical_with_elfs.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span>design.mlir
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>aiecc<span class="w"> </span>--resume<span class="o">=</span>cp/manifest.json<span class="w"> </span>--get<span class="o">=</span>cdo_<span class="o">{</span><span class="m">0</span><span class="o">}</span><span class="w">   </span><span class="c1"># only the CDO, from the checkpoint</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>aiecc<span class="w"> </span>--cut<span class="o">=</span>physical_with_elfs.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span>design.mlir
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>aiecc<span class="w"> </span>--resume<span class="o">=</span>cp/manifest.json<span class="w"> </span>--get<span class="o">=</span>cdo_<span class="o">{</span><span class="m">0</span><span class="o">}</span><span class="w">   </span><span class="c1"># only the CDO, from the checkpoint</span>
 </code></pre></div>
 <h3 id="finding-the-pass-that-broke-the-ir---verify-each">Finding the pass that broke the IR: <code>--verify-each</code><a class="headerlink" href="#finding-the-pass-that-broke-the-ir---verify-each" title="Permanent link">&para;</a></h3>
 <p><code>aiecc</code> verifies the IR each pass pipeline produces, rather than after every
@@ -4299,21 +4405,21 @@ to verify after every pass and learn which one it was.</p>
 <hr />
 <h2 id="developer-guide">Developer guide<a class="headerlink" href="#developer-guide" title="Permanent link">&para;</a></h2>
 <p><code>aiecc</code> captures the build steps required for each requested output artifact
-as a static graph: every kind of intermediate is a <code>Node</code>, every 
+as a static graph: every kind of intermediate is a <code>Node</code>, every
 transformation an edge, and the engine runs only the edges needed for the
 artifacts you asked for.</p>
 <h3 id="edge-node-item--and-keys">Edge, Node, Item — and keys<a class="headerlink" href="#edge-node-item--and-keys" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong><code>Item&lt;T&gt;</code></strong> — one typed intermediate or output artifact; a payload of type 
+<li><strong><code>Item&lt;T&gt;</code></strong> — one typed intermediate or output artifact; a payload of type
   <code>T</code> (e.g., JSON, IR module, vector of bytes) plus a <code>key</code>, which uniquely
-  identifies the payload among its peers. Items are materialized to disk 
-  lazily, i.e., only when a downstream edge needs them on disk. Payload types 
+  identifies the payload among its peers. Items are materialized to disk
+  lazily, i.e., only when a downstream edge needs them on disk. Payload types
   and their disk serializers live in <code>Items.h</code>.</li>
-<li><strong><code>Node&lt;T&gt;</code></strong> — the collection of all <code>Item&lt;T&gt;</code> artifacts produced by one 
+<li><strong><code>Node&lt;T&gt;</code></strong> — the collection of all <code>Item&lt;T&gt;</code> artifacts produced by one
   edge; for many edges this wraps a single item (e.g. <code>aie.elf</code>), but for
   some it contains many (e.g. the per-AIE-core <code>.o</code> files).</li>
-<li><strong><code>Edge</code></strong> — a transformation from input node(s) to an output node, 
-  performing some action (a lambda, a <code>PassPipeline</code>, or a <code>ShellCommand</code>). 
+<li><strong><code>Edge</code></strong> — a transformation from input node(s) to an output node,
+  performing some action (a lambda, a <code>PassPipeline</code>, or a <code>ShellCommand</code>).
   Edges may change the cardinality of the input/output nodes, e.g. split or
   join, or apply a transform to each item (map) -- see below.</li>
 </ul>
@@ -4329,9 +4435,9 @@ file written must flow through the graph and the <code>Item</code> abstraction.<
 read inputs or write outputs out-of-band.</p>
 <h4 id="why-this-matters">Why this matters<a class="headerlink" href="#why-this-matters" title="Permanent link">&para;</a></h4>
 <ul>
-<li><strong>The graph is declared unconditionally.</strong> No guards around edge construction 
-  — every edge always exists. The engine prunes backward from the requested 
-  outputs, so unrequested work never runs. <code>--emit-dot</code>, <code>--checkpoint</code>, and 
+<li><strong>The graph is declared unconditionally.</strong> No guards around edge construction
+  — every edge always exists. The engine prunes backward from the requested
+  outputs, so unrequested work never runs. <code>--emit-dot</code>, <code>--checkpoint</code>, and
   <code>--resume</code> rely on this static shape.</li>
 <li><strong><code>Item</code> owns materialization.</strong> An <code>Item&lt;T&gt;</code> holds a typed payload and only
   writes it to disk when a <em>downstream</em> edge asks for its path via <code>asFile()</code>.
@@ -4371,23 +4477,23 @@ node and produces a singleton <code>Node&lt;File&gt;</code>.</p>
 <p>A worked slice of the real driver — split a module per core (scatter), compile
 each core in parallel, then link each core against its object plus its script
 (gather over multiple keyed nodes):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1">// Scatter: one item per aie.core, keyed by &quot;&lt;device&gt;_core_&lt;col&gt;_&lt;row&gt;&quot;.</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">cores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">physical</span><span class="p">.</span><span class="n">split</span><span class="o">&lt;</span><span class="n">OpInModule</span><span class="o">&lt;</span><span class="n">CoreOp</span><span class="o">&gt;&gt;</span><span class="p">(</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="s">&quot;perCore_{0}.mlir&quot;</span><span class="p">,</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="n">SplitIRAction</span><span class="o">&lt;</span><span class="n">CoreOp</span><span class="o">&gt;</span><span class="p">([](</span><span class="n">CoreOp</span><span class="w"> </span><span class="n">c</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">coreKey</span><span class="p">(</span><span class="n">c</span><span class="p">);</span><span class="w"> </span><span class="p">}));</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="c1">// Element-wise maps: each core gets its own object and ld script. The .o edge</span>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="c1">// shells out to a tool, so it is thread-safe and runs under -j.</span>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">objects</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cores</span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">ModRef</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;lowered_{0}.mlir&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">lowerCore</span><span class="p">)</span>
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">                     </span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">File</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;objects_{0}.o&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ShellCommand</span><span class="p">{</span><span class="s">&quot;llc&quot;</span><span class="p">}</span><span class="w"> </span><span class="cm">/*...*/</span><span class="p">)</span>
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">                     </span><span class="p">.</span><span class="n">threadSafe</span><span class="p">();</span>
-<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">scripts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cores</span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;ld_{0}.script&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">emitLdScript</span><span class="p">);</span>
-<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>
-<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="c1">// Gather: zip the object and script nodes by key, link per core.</span>
-<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">elfs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">bundle</span><span class="p">(</span><span class="n">objects</span><span class="p">.</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="n">scripts</span><span class="p">.</span><span class="n">out</span><span class="p">)</span>
-<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="w">    </span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">File</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;elfs_{0}.elf&quot;</span><span class="p">,</span>
-<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="w">               </span><span class="n">ShellCommand</span><span class="p">{</span><span class="s">&quot;clang&quot;</span><span class="p">}.</span><span class="n">input</span><span class="p">().</span><span class="n">input</span><span class="p">(</span><span class="s">&quot;-Wl,-T,&quot;</span><span class="p">).</span><span class="n">output</span><span class="p">(</span><span class="s">&quot;-o&quot;</span><span class="p">))</span>
-<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="w">    </span><span class="p">.</span><span class="n">threadSafe</span><span class="p">();</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1">// Scatter: one item per aie.core, keyed by &quot;&lt;device&gt;_core_&lt;col&gt;_&lt;row&gt;&quot;.</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">cores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">physical</span><span class="p">.</span><span class="n">split</span><span class="o">&lt;</span><span class="n">OpInModule</span><span class="o">&lt;</span><span class="n">CoreOp</span><span class="o">&gt;&gt;</span><span class="p">(</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="s">&quot;perCore_{0}.mlir&quot;</span><span class="p">,</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="n">SplitIRAction</span><span class="o">&lt;</span><span class="n">CoreOp</span><span class="o">&gt;</span><span class="p">([](</span><span class="n">CoreOp</span><span class="w"> </span><span class="n">c</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">coreKey</span><span class="p">(</span><span class="n">c</span><span class="p">);</span><span class="w"> </span><span class="p">}));</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="c1">// Element-wise maps: each core gets its own object and ld script. The .o edge</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="c1">// shells out to a tool, so it is thread-safe and runs under -j.</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">objects</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cores</span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">ModRef</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;lowered_{0}.mlir&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">lowerCore</span><span class="p">)</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">                     </span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">File</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;objects_{0}.o&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ShellCommand</span><span class="p">{</span><span class="s">&quot;llc&quot;</span><span class="p">}</span><span class="w"> </span><span class="cm">/*...*/</span><span class="p">)</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">                     </span><span class="p">.</span><span class="n">threadSafe</span><span class="p">();</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">scripts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cores</span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;ld_{0}.script&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">emitLdScript</span><span class="p">);</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="c1">// Gather: zip the object and script nodes by key, link per core.</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">elfs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">bundle</span><span class="p">(</span><span class="n">objects</span><span class="p">.</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="n">scripts</span><span class="p">.</span><span class="n">out</span><span class="p">)</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="w">    </span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">File</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;elfs_{0}.elf&quot;</span><span class="p">,</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="w">               </span><span class="n">ShellCommand</span><span class="p">{</span><span class="s">&quot;clang&quot;</span><span class="p">}.</span><span class="n">input</span><span class="p">().</span><span class="n">input</span><span class="p">(</span><span class="s">&quot;-Wl,-T,&quot;</span><span class="p">).</span><span class="n">output</span><span class="p">(</span><span class="s">&quot;-o&quot;</span><span class="p">))</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="w">    </span><span class="p">.</span><span class="n">threadSafe</span><span class="p">();</span>
 </code></pre></div>
 <p>Each core flows independently from <code>cores</code> through to <code>elfs</code>; nothing hits disk
 unless a downstream consumer (or a requested output) calls <code>asFile()</code>. Add a new

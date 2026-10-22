@@ -2725,6 +2725,8 @@
       
         
       
+        
+      
     
     
     
@@ -2841,6 +2843,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -3869,7 +3899,7 @@ on every early-return path).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># BAD — kernels.add is (in0, in1, out); the template appends a trailing size arg</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">transform_parallel_binary</span><span class="p">(</span><span class="n">kernels</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">tile_size</span><span class="o">=</span><span class="mi">1024</span><span class="p">),</span> <span class="n">tensor_ty</span><span class="p">,</span> <span class="n">tile_size</span><span class="o">=</span><span class="mi">1024</span><span class="p">)</span>
 </code></pre></div>
-<p><code>pass_size_to_kernel</code> defaults to <code>True</code>, appending <code>tile_size</code> as a trailing <code>int</code> to every kernel call. That's right for <code>(in, out, n)</code> kernels like <code>kernels.passthrough</code>, and wrong for bare <code>(in, out)</code> kernels like <code>kernels.add</code>/<code>kernels.mul</code>/<code>kernels.relu</code>.</p>
+<p><code>pass_size_to_kernel</code> defaults to <code>True</code>, appending <code>tile_size</code> as a trailing <code>int</code> to every kernel call. That's right for <code>(in, out, n)</code> kernels like <code>kernels.passthrough</code>, and wrong for bare <code>(in, out)</code> kernels like <code>kernels.add</code>/<code>kernels.mul</code>.</p>
 <p><strong>Fix</strong>: set <code>pass_size_to_kernel=False</code> for bare-signature kernels. The failure surfaces as an MLIR verification error about argument count — annoying to read, but it does fail loudly rather than computing garbage.</p>
 <hr />
 <h2 id="-hand-writing-a-kernel-that-aieironkernels-already-ships">❌ Hand-writing a kernel that <code>aie.iron.kernels</code> already ships<a class="headerlink" href="#-hand-writing-a-kernel-that-aieironkernels-already-ships" title="Permanent link">&para;</a></h2>

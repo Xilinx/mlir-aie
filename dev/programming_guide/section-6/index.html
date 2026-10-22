@@ -2825,6 +2825,8 @@
       
         
       
+        
+      
     
     
     
@@ -2941,6 +2943,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -3752,8 +3782,24 @@
 <td>ui8</td>
 <td>ResNet with offloaded conv2_x layers. The implementation features depth-first implementation of multiple bottleneck blocks across multiple NPU columns.</td>
 </tr>
+<tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/mobilenet">MobileNet V3</a></td>
+<td>ui8 / i8</td>
+<td>End-to-end MobileNet V3 inference, depth-first across the 4x8 array of the Strix NPU2. The weights are a seeded random init (untrained), so accuracy here means every image of the batch bit-exact against <code>mobilenet_numpy</code>, within 3 of the brevitas golden.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/yolo26n">YOLO26n</a></td>
+<td>int8</td>
+<td>Stock Ultralytics YOLO26n object detection at 640x640, the whole graph on the NPU2, from a uint8 image to the (300, 6) detections.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/llama_3_2_1b">Llama 3.2 1B</a></td>
+<td>int8</td>
+<td>Llama 3.2 1B decode and prompt on the NPU2, all 16 layers, with on-chip token feedback and a growing KV cache.</td>
+</tr>
 </tbody>
 </table>
+<p>The MobileNet V3, YOLO26n and Llama 3.2 1B designs are measured every night; their current latency and throughput are on the <a href="https://xilinx.github.io/mlir-aie/dashboard/">dashboard</a>.</p>
 <h2 id="exercises">Exercises<a class="headerlink" href="#exercises" title="Permanent link">&para;</a></h2>
 <ol>
 <li>In <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/bottleneck">bottleneck</a> design, how many different types of fused computations do you observe?

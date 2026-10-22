@@ -2725,6 +2725,8 @@
       
         
       
+        
+      
     
     
     
@@ -2841,6 +2843,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -3642,17 +3672,27 @@ maintaining a slower copy of a kernel that already exists.</p>
 <tr>
 <td>element-wise <code>a+b</code> / <code>a*b</code></td>
 <td><code>kernels.add(...)</code> / <code>kernels.mul(...)</code></td>
-<td><strong>bf16 only</strong>, <code>tile_size</code> fixed at 1024</td>
+<td>bf16, <code>tile_size</code> fixed at 1024; <code>add</code> also takes <code>dtype=np.int8</code> (ONNX QLinearAdd on power-of-two scales, <code>tile_size</code> a multiple of 32)</td>
 </tr>
 <tr>
 <td>ReLU</td>
-<td><code>kernels.relu(tile_size=1024)</code></td>
-<td>bf16</td>
+<td><code>kernels.relu(tile_size)</code></td>
+<td>bf16, <code>tile_size</code> a multiple of 32</td>
 </tr>
 <tr>
-<td>softmax / gelu / silu / swiglu / exp</td>
-<td><code>kernels.softmax</code>, <code>.gelu</code>, <code>.silu</code>, <code>.swiglu</code>, <code>.bf16_exp</code></td>
-<td>bf16, LUT-based</td>
+<td>softmax</td>
+<td><code>kernels.softmax(tile_size)</code></td>
+<td>bf16 or float32 in, bf16 out; <code>tile_size</code> a multiple of 32, trailing size</td>
+</tr>
+<tr>
+<td>gelu / silu</td>
+<td><code>kernels.gelu(tile_size)</code>, <code>.silu(tile_size)</code>, <code>.gelu_erf(tile_size)</code></td>
+<td>bf16, any whole-vector <code>tile_size</code> (multiple of 16 on AIE2, 32 on AIE2P), trailing size; AIE2P's <code>vtanh</code> unless <code>use_lut=True</code>; <code>gelu_erf</code> is exact GELU, <code>tile_size</code> a multiple of 32</td>
+</tr>
+<tr>
+<td>swiglu / exp</td>
+<td><code>kernels.swiglu</code>, <code>.bf16_exp</code></td>
+<td>bf16, <code>tile_size</code> fixed at 1024, LUT-based</td>
 </tr>
 <tr>
 <td>sum / min / max over a tile</td>
@@ -3671,8 +3711,8 @@ maintaining a slower copy of a kernel that already exists.</p>
 </tr>
 <tr>
 <td>matrix–vector <code>c += A*b</code></td>
-<td><code>kernels.mv(dim_m, dim_k, ...)</code></td>
-<td>int16 in → int32 out only</td>
+<td><code>kernels.mv(dim_m, dim_k, input_dtype, output_dtype)</code></td>
+<td>int16 in → int32 out, or bf16 → bf16</td>
 </tr>
 <tr>
 <td>cascade-accumulated matmul</td>
@@ -3741,24 +3781,30 @@ and <code>Runtime</code> sequence for you. All of them are designed to be the en
 <p>Import as <code>from aie.iron.algorithms import transform_parallel</code> (etc.).</p>
 <h3 id="kernel-signatures-worth-checking-before-you-wire-one-up">Kernel signatures worth checking before you wire one up<a class="headerlink" href="#kernel-signatures-worth-checking-before-you-wire-one-up" title="Permanent link">&para;</a></h3>
 <p>The <code>ExternalFunction</code> a factory returns carries a concrete <code>arg_types</code> list, and a mismatch
-fails at MLIR verification with an argument-count error rather than at runtime. Two that
+fails at MLIR verification with an argument-count error rather than at runtime. Three that
 surprise people:</p>
 <ul>
 <li><strong><code>kernels.scale</code></strong> is <code>(in_tile, out_tile, factor, n)</code> where <code>factor</code> is a <strong>1-element
   buffer</strong> (<code>np.ndarray[(1,), np.dtype[np.int32]]</code>), not a plain Python scalar. Feed it from a
   small <code>depth=1</code> ObjectFifo or a <code>Buffer</code> — the upside is the factor becomes settable per
   launch without a rebuild.</li>
-<li><strong><code>kernels.add</code> / <code>kernels.mul</code> / <code>kernels.relu</code></strong> are bare <code>(in..., out)</code> with no trailing
-  size, which is why they need <code>pass_size_to_kernel=False</code>. <code>kernels.passthrough</code> <em>does</em> take a
-  trailing size and wants the default <code>True</code>.</li>
+<li><strong><code>kernels.add</code> / <code>kernels.mul</code></strong> on bf16 are bare <code>(in..., out)</code> with no trailing
+  size, which is why they need <code>pass_size_to_kernel=False</code>. <code>kernels.passthrough</code> <em>does</em>
+  take a trailing size and wants the default <code>True</code>.</li>
+<li><strong>The int8 <code>kernels.add</code></strong> ends with three <code>int32</code> shifts,
+  <code>(a, b, out, a_shift, b_shift, out_shift)</code>. <code>transform_binary</code> and
+  <code>transform_parallel_binary</code> take no <code>*params</code>, so they can't call it: build the
+  <code>ObjectFifo</code>/<code>Worker</code>/<code>Runtime</code> design by hand (<a href="../patterns/"><code>patterns.md</code></a>) and pass the
+  shifts as Python ints in the core body, <code>add_k(a, b, c, 0, 0, 0)</code>. All-zero shifts give a
+  plain saturating int8 add.</li>
 </ul>
 <p>When in doubt, ask the kernel. <code>arg_types</code> is a <strong>method</strong>, not a property — call it:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="o">&gt;&gt;&gt;</span> <span class="n">kernels</span><span class="o">.</span><span class="n">scale</span><span class="p">(</span><span class="mi">1024</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span><span class="o">.</span><span class="n">arg_types</span><span class="p">()</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="p">[</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">1024</span><span class="p">,),</span> <span class="n">int32</span><span class="p">],</span> <span class="n">ndarray</span><span class="p">[(</span><span class="mi">1024</span><span class="p">,),</span> <span class="n">int32</span><span class="p">],</span> <span class="n">ndarray</span><span class="p">[(</span><span class="mi">1</span><span class="p">,),</span> <span class="n">int32</span><span class="p">],</span> <span class="n">numpy</span><span class="o">.</span><span class="n">int32</span><span class="p">]</span>
 </code></pre></div>
 <p>Unsupported dtypes fail loudly at construction rather than producing a wrong kernel, e.g.
-<code>kernels.add(tile_size=1024, dtype=np.int8)</code> raises
-<code>ValueError: add() dtype must be bfloat16 ... Only the bf16 variant is available in the
+<code>kernels.mul(tile_size=1024, dtype=np.int8)</code> raises
+<code>ValueError: mul() dtype must be bfloat16 ... Only the bf16 variant is available in the
 installed aie_kernels</code>. That's your signal to hand-write the kernel.</p>
 <p>Two template arguments trip people up:</p>
 <ul>
@@ -3774,24 +3820,25 @@ installed aie_kernels</code>. That's your signal to hand-write the kernel.</p>
 <p>Modern designs declare their host-visible tensors and their compile-time specialization
 directly in the function signature, rather than closing over module-level constants:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="n">CompileTime</span><span class="p">,</span> <span class="n">In</span><span class="p">,</span> <span class="n">Out</span><span class="p">,</span> <span class="n">kernels</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.algorithms</span><span class="w"> </span><span class="kn">import</span> <span class="n">transform_parallel</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_relu</span><span class="p">(</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">a_in</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span>                                  <span class="c1"># host → NPU tensor argument</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">c_out</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span>                                <span class="c1"># NPU → host tensor argument</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">size</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">65536</span><span class="p">,</span>            <span class="c1"># baked into the compiled design</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">tile</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="p">):</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="k">return</span> <span class="n">transform_parallel</span><span class="p">(</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>        <span class="n">kernels</span><span class="o">.</span><span class="n">relu</span><span class="p">(</span><span class="n">tile_size</span><span class="o">=</span><span class="n">tile</span><span class="p">),</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>        <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">size</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">bfloat16</span><span class="p">]],</span>
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>        <span class="n">tile_size</span><span class="o">=</span><span class="n">tile</span><span class="p">,</span>
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>        <span class="n">pass_size_to_kernel</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    <span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">ml_dtypes</span><span class="w"> </span><span class="kn">import</span> <span class="n">bfloat16</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="n">CompileTime</span><span class="p">,</span> <span class="n">In</span><span class="p">,</span> <span class="n">Out</span><span class="p">,</span> <span class="n">kernels</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.algorithms</span><span class="w"> </span><span class="kn">import</span> <span class="n">transform_parallel</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_relu</span><span class="p">(</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">a_in</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span>                                  <span class="c1"># host → NPU tensor argument</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">c_out</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span>                                <span class="c1"># NPU → host tensor argument</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">size</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">65536</span><span class="p">,</span>            <span class="c1"># baked into the compiled design</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">tile</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="p">):</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="k">return</span> <span class="n">transform_parallel</span><span class="p">(</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>        <span class="n">kernels</span><span class="o">.</span><span class="n">relu</span><span class="p">(</span><span class="n">tile_size</span><span class="o">=</span><span class="n">tile</span><span class="p">),</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>        <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">size</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">bfloat16</span><span class="p">]],</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>        <span class="n">tile_size</span><span class="o">=</span><span class="n">tile</span><span class="p">,</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="p">)</span>
 </code></pre></div>
 <ul>
 <li><code>In</code> / <code>Out</code> / <code>InOut</code> annotate the <strong>tensor</strong> parameters. They tell the JIT which
@@ -3878,8 +3925,8 @@ produces silently wrong output, not an error.</p>
 <h2 id="when-to-stop-using-the-library">When to stop using the library<a class="headerlink" href="#when-to-stop-using-the-library" title="Permanent link">&para;</a></h2>
 <p>Write your own kernel (and your own topology) when:</p>
 <ul>
-<li>the dtype or tile size you need isn't in the supported set above — e.g. <code>kernels.add</code> is
-  bf16-only with a fixed 1024 tile, so an int8 add needs a hand-written kernel;</li>
+<li>the dtype or tile size you need isn't in the supported set above, e.g. <code>kernels.mul</code> is
+  bf16-only with a fixed 1024 tile;</li>
 <li>the op fuses several stages that the library exposes only separately, and the intermediate
   would otherwise round-trip through L1 for no reason;</li>
 <li>the access pattern is a stencil/sliding window or anything where the "one tile in, one tile

@@ -2849,6 +2849,8 @@
       
         
       
+        
+      
     
     
     
@@ -2965,6 +2967,34 @@
     
   
     Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/operators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and declarations
   
 
     
@@ -3775,7 +3805,7 @@
 <hr />
 <p>We begin by first looking at timers for measuring application performance and what that tells us. The performance of an accelerated AI Engine application involves a number of components on the software stack, from invoking the application at the OS level, to passing control on to the kernel drivers, moving and dispatching work to the AIE array, running the accelerated application on AIE cores, and finally returning the data to the application for next-step processing. The most straightforward way to capture the performance of this entire stack of communication and processing is with an application timer, also known as the "wall clock" time. This gives us the upper bounds for how long an AIE accelerated application takes but adds to it the OS and kernel driver overhead. This is something that can be minimized when running multiple iterations of an accelerated program or running a sufficiently compute intensive application. Let's take a look at how we add the "wall clock" timer to an example program.</p>
 <h2 id="the-compact-form-ironjit--run_iters">The Compact Form: <code>@iron.jit</code> + <code>run_iters</code><a class="headerlink" href="#the-compact-form-ironjit--run_iters" title="Permanent link">&para;</a></h2>
-<p>In a <code>@iron.jit</code>-decorated design, calling the design at the host side is what runs the kernel.  The IRON helper <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/benchmark.py"><code>aie.utils.benchmark.run_iters</code></a> wraps that call site in a <code>warmup + iters</code> loop, captures NPU-side time (from the kernel result) and end-to-end host time, and returns a <code>BenchmarkResult</code>.  The pair is exactly what the explicit chrono-loop in <code>test.cpp</code> does — in one line:</p>
+<p>In a <code>@iron.jit</code>-decorated design, calling the design at the host side is what runs the kernel.  The IRON helper <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/benchmark.py"><code>aie.utils.benchmark.run_iters</code></a> wraps that call site in a <code>warmup + iters</code> loop and returns a <code>BenchmarkResult</code> of four timings, all on the host's clock: the dispatch (submit to completion, from the kernel result, which is what the explicit chrono-loop in <code>test.cpp</code> times), the dispatch overhead (an empty dispatch on the same hardware context after each timed call), the NPU's time (each dispatch less the overhead's median) and the end-to-end Python call. In one line:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.utils.benchmark</span><span class="w"> </span><span class="kn">import</span> <span class="n">print_benchmark</span><span class="p">,</span> <span class="n">run_iters</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">bench</span> <span class="o">=</span> <span class="n">run_iters</span><span class="p">(</span>
@@ -3784,7 +3814,7 @@
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">print_benchmark</span><span class="p">(</span><span class="n">bench</span><span class="p">)</span>
 </code></pre></div>
-<p><a href="vector_scalar_mul.py">vector_scalar_mul.py</a> uses this directly; running <code>make run</code> (or <code>python3 vector_scalar_mul.py --iters 10 --warmup 4</code>) prints the canonical <code>avg/min/max us</code> pair for both NPU and end-to-end timings.</p>
+<p><a href="vector_scalar_mul.py">vector_scalar_mul.py</a> uses this directly; running <code>make run</code> (or <code>python3 vector_scalar_mul.py --iters 10 --warmup 4</code>) prints one <code>avg/min/max us</code> line per timing.</p>
 <p>To compare designs, time them against each other with <code>run_interleaved</code>: each round runs every callable in turn and keeps its median call, so a drift in the host or the NPU lands on all of them alike. With <code>completion_cores=True</code> the timing thread is held on the cores the NPU's completions interrupt, and either way a figure whose calls waited for a CPU is refused rather than reported:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
