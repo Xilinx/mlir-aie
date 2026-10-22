@@ -183,12 +183,12 @@ void llama_mma_f32(int8_t *restrict act, int8_t *restrict w,
 }
 
 // llama_mma_f32 under a second symbol, which a design binds to a second
-// output buffer type (one symbol takes one signature).
+// output buffer type (one symbol takes one signature): a true linker alias,
+// so the two symbols share one compiled body instead of a call (which would
+// add a stack frame on top of llama_mma_f32's own) or a duplicate copy.
 void llama_mma_f32_to(int8_t *restrict act, int8_t *restrict w,
                       int32_t *restrict part, int8_t *restrict out, int32_t g,
                       int32_t half, int32_t ostride, int32_t row0,
-                      int32_t m_count) {
-  llama_mma_f32(act, w, part, out, g, half, ostride, row0, m_count);
-}
+                      int32_t m_count) __attribute__((alias("llama_mma_f32")));
 
 } // extern "C"
