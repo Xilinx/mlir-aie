@@ -1348,12 +1348,41 @@ def AIE_NpuWriteConfigOp
     sequence's first `load_pdi`, that is its last one: the host runs the
     sequence again on each dispatch. An empty device may hold runtime sequences
     with no ops, such as the `@configure` that `convert-aie-to-transaction`
-    adds.
+    adds. A `write_teardown` may stand in for the reset, and a skipped reset is
+    fine if every configuration since that PDI was loaded is torn down.
 
     Example:
     ```
       aiex.npu.load_pdi {device_ref = @empty_0}
       aiex.npu.write_config @dev
+    ```
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$device_ref);
+  let assemblyFormat = [{ $device_ref attr-dict }];
+  let hasVerifier = 1;
+}
+
+def AIE_NpuWriteTeardownOp
+    : AIEX_Op<"npu.write_teardown", [HasParent<"AIE::RuntimeSequenceOp">,
+                                     DeclareOpInterfaceMethods<
+                                         SymbolUserOpInterface>]> {
+  let summary = "Undo the configuration a write_config wrote";
+  let description = [{
+    Disables the stream-switch circuits, packet ports and cores the
+    configuration of `device_ref` enabled and resets its DMA channels, so the
+    next `aiex.npu.write_config` needs no reset. A shim DMA channel has no
+    reset (aie-rt's `xaie_dma.c`), so `device_ref` must not start one itself.
+
+    It must follow the `aiex.npu.write_config` of `device_ref`, with no
+    `load_pdi` between, and is translated and inlined as that op is.
+
+    Example:
+    ```
+      aiex.npu.load_pdi {device_ref = @empty_0}
+      aiex.npu.write_config @a
+      aiex.npu.write_teardown @a
+      aiex.npu.write_config @b
+      aiex.npu.write_teardown @b
     ```
   }];
   let arguments = (ins FlatSymbolRefAttr:$device_ref);

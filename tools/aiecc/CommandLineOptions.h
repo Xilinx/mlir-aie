@@ -175,6 +175,18 @@ inline cl::opt<bool> loadPdiToCtrlPkt(
              "the device configuration as control packets (requires a control "
              "overlay; implies --generate-ctrl-pkt-overlay; mutually exclusive "
              "with --expand-load-pdis)"));
+inline cl::opt<bool> reconfigTeardown(
+    "reconfig-teardown",
+    cl::desc("Undo each configuration once it is done, in place of the reset "
+             "before the next one; only the first configuration of a runtime "
+             "sequence keeps its reset (requires full-ELF output and "
+             "--expand-load-pdis)"));
+inline cl::opt<bool> reconfigInitEntry(
+    "reconfig-init-entry",
+    cl::desc(
+        "Move the one reset to an argument-free <device>:reconfig_init entry, "
+        "which the host runs once per hardware context before the other "
+        "entries (requires --reconfig-teardown)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -627,12 +639,31 @@ inline bool wantAiesim = false;
 inline bool doUnified = false;
 // Compile the host program (selected by --get-host).
 inline bool doCompileHost = false;
+// Whether the full ELF is among the outputs, by --get-full-elf or its edge.
+inline bool wantFullElf = false;
+
+// Resolve `option` to itself AND `met`. Asking for it explicitly when `met`
+// does not hold is an error; an option that is on by default turns off.
+inline bool resolveDependentOption(cl::opt<bool> &option, bool met,
+                                   llvm::StringRef requirement) {
+  if (!option || met)
+    return true;
+  if (option.getNumOccurrences()) {
+    llvm::errs() << "aiecc: --" << option.ArgStr << " requires " << requirement
+                 << "\n";
+    return false;
+  }
+  option = false;
+  return true;
+}
 
 // Resolve inter-option coupling and populate the resolved-option globals above.
+// `resuming` exempts the output-dependent requirements, since a --resume may
+// select other outputs than the build it continues.
 //
 // Returns false (after a diagnostic) if the requested combination is
 // impossible.
-inline bool resolveOptions() {
+inline bool resolveOptions(bool resuming = false) {
   // Each Chess flag implies the other, so that a bare --xchesscc does not hand
   // Chess-compiled objects to Peano's linker. State both to mix the two.
   if (xchesscc && !xbridge.getNumOccurrences())
@@ -649,7 +680,48 @@ inline bool resolveOptions() {
 
   doUnified = unified && !noUnified;
   doCompileHost = generateHost;
-  return true;
+
+  // --expand-load-pdis reconfigures via PDI swaps and routes the config branch
+  // through the NPU-lowered module; control-packet generation currently
+  // assumes it runs on the *pre*-NPU-lowering module. The two are incompatible
+  // as implemented.
+  if (expandLoadPdis && generateCtrlpkt) {
+    llvm::errs() << "aiecc: --expand-load-pdis and --get-ctrlpkt are "
+                    "mutually exclusive\n";
+    return false;
+  }
+
+  // --expand-load-pdis and --load-pdi-to-ctrl-pkt are two different reconfigure
+  // strategies for the same `load_pdi` ops (explicit write sequences vs.
+  // streamed control packets); at most one may apply.
+  if (expandLoadPdis && loadPdiToCtrlPkt) {
+    llvm::errs() << "aiecc: --expand-load-pdis and --load-pdi-to-ctrl-pkt are "
+                    "mutually exclusive\n";
+    return false;
+  }
+
+  // Disambiguate the full-ELF control packet flow and the standalone
+  // artifact flows.
+  if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
+    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
+                    "together also requires --load-pdi-to-ctrl-pkt\n";
+    return false;
+  }
+
+  wantFullElf = generateFullElf ||
+                llvm::is_contained(getOutputs, fullElfName.getValue()) ||
+                llvm::is_contained(cutOutputs, fullElfName.getValue());
+  bool fullElf = wantFullElf || resuming;
+  // The teardown disables every route a configuration sets, including the
+  // control packet routes --generate-ctrl-pkt-overlay adds to it.
+  return resolveDependentOption(reconfigTeardown, fullElf, "full-ELF output") &&
+         resolveDependentOption(reconfigTeardown, expandLoadPdis,
+                                "--expand-load-pdis") &&
+         resolveDependentOption(
+             reconfigTeardown, !ctrlPktOverlay,
+             "that --generate-ctrl-pkt-overlay is not set") &&
+         resolveDependentOption(reconfigInitEntry, reconfigTeardown,
+                                "--reconfig-teardown");
 }
 
 //===----------------------------------------------------------------------===//

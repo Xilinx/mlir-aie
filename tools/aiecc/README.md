@@ -62,6 +62,32 @@ aiecc --get-full-elf --device-name=main design.mlir   # main and the devices it 
 aiecc --get-pdi --pdi-name=design.pdi --device-name=main design.mlir   # main only
 ```
 
+### Full-ELF entries of a reconfiguring design
+
+Each runtime sequence is a full-ELF entry named `<device>:<sequence>`, e.g.
+`main:sequence` for a sequence that runs its configurations with
+`aiex.configure`. Two options cut the resets between its configurations; each
+requires a full ELF:
+
+- `--reconfig-teardown` (with `--expand-load-pdis`): before the next load, or
+  at the sequence's end, each configuration's `aiex.npu.write_teardown`
+  disables the stream-switch circuits and packet ports it set, disables its
+  cores and resets the memtile and core-tile DMA channels it started. A
+  sequence then keeps only its first reset. A device that starts a shim DMA
+  channel itself is refused, since shim channels have no reset.
+- `--reconfig-init-entry` (with `--reconfig-teardown`): the reset moves into an
+  argument-free `<device>:reconfig_init` entry. The host runs it once on each new
+  hardware context, before any other entry; IRON's host runtime does so itself.
+
+For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
+
+| Options              | Entries                               |
+|----------------------|---------------------------------------|
+| none, or teardown    | `main:sequence`                       |
+| teardown, init entry | `main:reconfig_init`, `main:sequence` |
+
+`--sequence-name` always keeps the `reconfig_init` entry.
+
 ### Parameterized C++ transaction builders
 
 ```bash

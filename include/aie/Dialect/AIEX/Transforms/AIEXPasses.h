@@ -93,6 +93,9 @@ createAIELowerScratchpadParametersPass(
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 
+/// Name of the runtime sequence aie-expand-load-pdi{init-entry} adds.
+inline constexpr llvm::StringLiteral initEntrySequenceName = "reconfig_init";
+
 } // namespace xilinx::AIEX
 
 #endif // AIEX_PASSES_H

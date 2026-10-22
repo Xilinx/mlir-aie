@@ -92,6 +92,10 @@ mlir::Value createConstantI32(mlir::OpBuilder &builder, mlir::Location loc,
 mlir::Value createConstantArgPlus(mlir::OpBuilder &builder, mlir::Location loc,
                                   uint64_t value);
 
+// The first `aie.dma_start` or `aie.dma` in one of `device`'s shim DMAs, which
+// starts a channel teardown cannot stop, or null.
+mlir::Operation *findShimDmaStart(AIE::DeviceOp device);
+
 } // namespace AIEX
 } // namespace xilinx
 
