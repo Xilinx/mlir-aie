@@ -70,6 +70,16 @@ static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
       .template cast_to<float>();
 }
 
+// a * b rounded to nearest even, as the scalar soft-float `*` is -- the
+// scalar form of vec_mul_rne, for callers with one pair of floats rather than
+// a vector. The target has no scalar float multiplier (`*` on two floats is
+// __mulsf3), so this avoids that libcall via the same bit-exact machinery.
+// 8 lanes: the narrowest width AIE2P legalizes an integer bit_and/bit_or at.
+__attribute__((noinline)) static float scalar_mul_rne(float a, float b) {
+  return vec_mul_rne(::aie::broadcast<float, 8>(a), ::aie::broadcast<float, 8>(b))
+      .get(0);
+}
+
 // Lane-wise round_to_i8 -- (int32)(v + (v >= 0 ? 0.5 : -0.5)) clamped to
 // int8 -- bit-identical to the scalar form, whose `+` is the same vadd.f.
 // float2fix gives floor(t) or ceil(t), not always the nearest; it rounded

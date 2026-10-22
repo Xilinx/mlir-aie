@@ -31,8 +31,10 @@ static inline float sw_invsqrt(float a) {
   int32_t bits = __builtin_bit_cast(int32_t, a);
   bits = (int32_t)0x5f3759df - (bits >> 1);
   float x = __builtin_bit_cast(float, bits);
-  x = x * (1.5f - 0.5f * a * x * x);
-  x = x * (1.5f - 0.5f * a * x * x);
+  x = scalar_mul_rne(
+      x, 1.5f - scalar_mul_rne(scalar_mul_rne(scalar_mul_rne(0.5f, a), x), x));
+  x = scalar_mul_rne(
+      x, 1.5f - scalar_mul_rne(scalar_mul_rne(scalar_mul_rne(0.5f, a), x), x));
   return x;
 }
 
@@ -107,15 +109,18 @@ void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
   const float *x = reinterpret_cast<const float *>(xg);
   const bfloat16 *gamma = reinterpret_cast<const bfloat16 *>(xg + 4 * kCols);
 
-  float var = vec_sum_sq_f32(x, kCols) * (1.0f / kCols);
+  float var = scalar_mul_rne(vec_sum_sq_f32(x, kCols), 1.0f / kCols);
   float inv_rms = sw_invsqrt(var + kEps);
 
   float absmax =
       vec_absmax(x, gamma, ::aie::broadcast<float, kLanes>(inv_rms), kCols);
-  if (absmax < 1e-12f)
+  // absmax is always a magnitude (sign bit clear), so its bit pattern orders
+  // the same as its value: an unsigned int compare avoids __ltsf2.
+  if ((uint32_t)__builtin_bit_cast(int32_t, absmax) <
+      (uint32_t)__builtin_bit_cast(int32_t, 1e-12f))
     absmax = 1e-12f;
-  float scale_dyn = absmax * (1.0f / 127.0f);
-  float combined = inv_rms * recip_rne(scale_dyn);
+  float scale_dyn = scalar_mul_rne(absmax, 1.0f / 127.0f);
+  float combined = scalar_mul_rne(inv_rms, recip_rne(scale_dyn));
   vec_requant(x, gamma, y, ::aie::broadcast<float, kLanes>(combined), kCols);
 
   __builtin_memcpy(y + kCols, &scale_dyn, 4);
