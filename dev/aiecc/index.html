@@ -3396,6 +3396,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#full-elf-entries-of-a-reconfiguring-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full-ELF entries of a reconfiguring design
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#parameterized-c-transaction-builders" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3868,6 +3879,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#full-elf-entries-of-a-reconfiguring-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full-ELF entries of a reconfiguring design
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#parameterized-c-transaction-builders" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4193,6 +4215,42 @@ each device reached from <code>NAME</code> through <code>aiex.configure</code> a
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aiecc<span class="w"> </span>--get-full-elf<span class="w"> </span>--device-name<span class="o">=</span>main<span class="w"> </span>design.mlir<span class="w">   </span><span class="c1"># main and the devices it loads</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>aiecc<span class="w"> </span>--get-pdi<span class="w"> </span>--pdi-name<span class="o">=</span>design.pdi<span class="w"> </span>--device-name<span class="o">=</span>main<span class="w"> </span>design.mlir<span class="w">   </span><span class="c1"># main only</span>
 </code></pre></div>
+<h3 id="full-elf-entries-of-a-reconfiguring-design">Full-ELF entries of a reconfiguring design<a class="headerlink" href="#full-elf-entries-of-a-reconfiguring-design" title="Permanent link">&para;</a></h3>
+<p>Each runtime sequence is a full-ELF entry named <code>&lt;device&gt;:&lt;sequence&gt;</code>, e.g.
+<code>main:sequence</code> for a sequence that runs its configurations with
+<code>aiex.configure</code>. Two options cut the resets between its configurations; each
+requires a full ELF:</p>
+<ul>
+<li><code>--reconfig-teardown</code> (with <code>--expand-load-pdis</code>): before the next load, or
+  at the sequence's end, each configuration's <code>aiex.npu.write_teardown</code>
+  disables the stream-switch circuits and packet ports it set, disables its
+  cores and resets the memtile and core-tile DMA channels it started. A
+  sequence then keeps only its first reset. A device that starts a shim DMA
+  channel itself is refused, since shim channels have no reset.</li>
+<li><code>--reconfig-init-entry</code> (with <code>--reconfig-teardown</code>): the reset moves into an
+  argument-free <code>&lt;device&gt;:reconfig_init</code> entry. The host runs it once on each new
+  hardware context, before any other entry; IRON's host runtime does so itself.</li>
+</ul>
+<p>For the two configurations of <code>test/npu-xrt/reconfigure_loadpdi/aie.mlir</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Options</th>
+<th>Entries</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>none, or teardown</td>
+<td><code>main:sequence</code></td>
+</tr>
+<tr>
+<td>teardown, init entry</td>
+<td><code>main:reconfig_init</code>, <code>main:sequence</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>--sequence-name</code> always keeps the <code>reconfig_init</code> entry.</p>
 <h3 id="parameterized-c-transaction-builders">Parameterized C++ transaction builders<a class="headerlink" href="#parameterized-c-transaction-builders" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>aiecc<span class="w"> </span>--get-npu-cpp<span class="w"> </span>design.mlir
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># -&gt; npu_&lt;device&gt;_&lt;seq&gt;.cpp (one standalone C++17 builder per selected sequence)</span>
