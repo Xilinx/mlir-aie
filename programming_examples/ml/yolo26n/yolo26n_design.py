@@ -719,17 +719,22 @@ class SegmentDesign:
         return fit[0]
 
     def hold(
-        self, source: ObjectFifo, rows: int, row_bytes: int, hub: Tile | None = None
+        self,
+        source: ObjectFifo,
+        rows: int,
+        row_bytes: int,
+        hub: Tile | None = None,
+        stage_bytes: int = MEMTILE_HOLD_BYTES,
     ) -> ObjectFifo:
         """`source`'s rows of `row_bytes` held in memtiles, `rows` of them at once.
 
         A chain of memtile forwards, each holding at most MEMTILE_HOLD_ROWS
-        (a lock's count) and MEMTILE_HOLD_BYTES: a pool deeper than its
+        (a lock's count) and `stage_bytes`: a pool deeper than its
         memtile's descriptors allow is walked whole by one descriptor a side.
         The last sends from memtile `hub`, where given.
         """
         fifo = source
-        most = min(MEMTILE_HOLD_ROWS, max(1, MEMTILE_HOLD_BYTES // row_bytes))
+        most = min(MEMTILE_HOLD_ROWS, max(1, stage_bytes // row_bytes))
         while rows > 0:
             take = min(rows, most)
             rows -= take
@@ -1995,8 +2000,15 @@ class SegmentDesign:
             Worker(
                 together,
                 [
-                    # One of each a time: the stores fill the tile.
-                    self.reader(qkv).cons(depth=1),
+                    # One of each a time: the stores fill the tile. The next
+                    # image's rows wait in memtiles while this one's answers
+                    # are made, in half-map stages the memtiles have room for.
+                    self.hold(
+                        self.reader(qkv),
+                        height,
+                        qkv.row_bytes,
+                        stage_bytes=height // 2 * qkv.row_bytes,
+                    ).cons(depth=1),
                     queries.cons(depth=1),
                     self.fifo(add.dst).prod(depth=2),
                     k,
