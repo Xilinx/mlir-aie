@@ -16,7 +16,6 @@ part with other users of the NPU.
 """
 
 import argparse
-import fcntl
 import sys
 import time
 from pathlib import Path
@@ -100,7 +99,6 @@ def main():
         choices=[p.name for p in PREFILL_PROJS],
         default=[p.name for p in PREFILL_PROJS],
     )
-    ap.add_argument("--lock", type=Path, help="flock this file around NPU work")
     opts = ap.parse_args()
 
     rng = np.random.default_rng(opts.seed)
@@ -137,33 +135,24 @@ def main():
     build_gemms.specialize(full_elf=True, **kwargs).compile()
     out_layer = sum(GemmArray.out_words(p) for p in projs)
 
-    lock = open(opts.lock, "w") if opts.lock else None
-    if lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-    try:
-        session = DispatchSession(build_gemms, **kwargs)
-        out_t = iron.tensor(
-            np.full(n * out_layer, np.nan, np.float32), dtype=np.float32
-        )
-        tensors = [
-            iron.tensor(wblob.view(np.int32), dtype=np.int32),
-            iron.tensor(pack_trailers(wblob, n).view(np.int32).ravel(), dtype=np.int32),
-            iron.tensor(act.view(np.int32).ravel(), dtype=np.int32),
-            out_t,
-        ]
-        first_ms = session(tensors)
+    session = DispatchSession(build_gemms, **kwargs)
+    out_t = iron.tensor(np.full(n * out_layer, np.nan, np.float32), dtype=np.float32)
+    tensors = [
+        iron.tensor(wblob.view(np.int32), dtype=np.int32),
+        iron.tensor(pack_trailers(wblob, n).view(np.int32).ravel(), dtype=np.int32),
+        iron.tensor(act.view(np.int32).ravel(), dtype=np.int32),
+        out_t,
+    ]
+    first_ms = session(tensors)
+    out_t.to("cpu")
+    runs = [out_t.numpy().copy()]
+    times = []
+    if opts.iters:
+        for _ in range(opts.warmup):
+            session(tensors)
+        times = [session(tensors) for _ in range(opts.iters)]
         out_t.to("cpu")
-        runs = [out_t.numpy().copy()]
-        times = []
-        if opts.iters:
-            for _ in range(opts.warmup):
-                session(tensors)
-            times = [session(tensors) for _ in range(opts.iters)]
-            out_t.to("cpu")
-            runs.append(out_t.numpy().copy())
-    finally:
-        if lock:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+        runs.append(out_t.numpy().copy())
 
     print(f"first dispatch: {first_ms:.3f} ms")
     exact = True
