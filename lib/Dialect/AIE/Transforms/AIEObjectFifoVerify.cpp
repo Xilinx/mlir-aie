@@ -401,6 +401,46 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
+  /// An out-of-order sender names the buffer each object lands in, and one BD
+  /// carries one such name, so the ends have to hold the same buffers in the
+  /// same order. Naming a slice of a larger buffer would need the sender split
+  /// into one descriptor per slice, which nothing does yet.
+  LogicalResult verifyOutOfOrderPools(DeviceOp device) {
+    auto lookup = [&](FlatSymbolRefAttr name) {
+      return dyn_cast_or_null<ObjectFifoDmaEndpointOp>(
+          SymbolTable::lookupNearestSymbolFrom(device, name.getAttr()));
+    };
+    auto objectBytes = [](ObjectFifoPoolOp pool) -> int64_t {
+      auto type = dyn_cast<MemRefType>(pool.getElemType());
+      if (!type)
+        return 0;
+      return (type.getNumElements() * type.getElementTypeBitWidth() + 7) / 8;
+    };
+    for (auto flow : device.getOps<RouteOp>()) {
+      ObjectFifoDmaEndpointOp src = lookup(flow.getSourceAttr());
+      if (!src || !src.getOutOfOrder())
+        continue;
+      for (auto destName :
+           flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+        ObjectFifoDmaEndpointOp dst = lookup(destName);
+        if (!dst)
+          continue;
+        ObjectFifoPoolOp from = src.getPoolOp(), to = dst.getPoolOp();
+        if (!from || !to)
+          continue;
+        if (src.getNumDescriptors() != dst.getNumDescriptors() ||
+            objectBytes(from) != objectBytes(to))
+          return src.emitOpError("sends out of order from ")
+                 << src.getNumDescriptors() << " buffers of "
+                 << objectBytes(from) << " bytes into "
+                 << dst.getNumDescriptors() << " of " << objectBytes(to)
+                 << "; an out-of-order fifo needs the same buffers at both "
+                    "ends, because one descriptor names one whole buffer";
+      }
+    }
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -440,7 +480,8 @@ struct AIEObjectFifoVerifyPass
     if (failed(verifyFlows(device, symbolTables)) ||
         failed(verifyFanIn(device, symbolTables)) ||
         failed(verifyOverRelease(device)) ||
-        failed(verifyTransferBudgets(device))) {
+        failed(verifyTransferBudgets(device)) ||
+        failed(verifyOutOfOrderPools(device))) {
       return signalPassFailure();
     }
   }

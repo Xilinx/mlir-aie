@@ -57,6 +57,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   dpm.addPass(createAIEAssignLockIDsPass());
   dpm.addPass(createAIEReserveRuntimeBDIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
+  dpm.addPass(createAIELowerCoreIssuedConfigurationPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(createAIEBroadcastPacketPass());
   dpm.addPass(createAIELowerMulticastPass());

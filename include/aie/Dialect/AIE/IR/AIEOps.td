@@ -1242,6 +1242,14 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // Sender-side id stamped into the packet header. Selects which receive
       // BD (by bd id) an out-of-order S2MM channel places this data into.
       OptionalAttr<AIEI32Attr>:$out_of_order_id,
+      // Names this descriptor, so that another one can refer to it before
+      // aie-assign-bd-ids has given either an id. That pass resolves the
+      // references below and drops both attributes.
+      OptionalAttr<AIEI32Attr>:$bd_tag,
+      // The $bd_tag of the descriptor at the far end that an out-of-order
+      // object lands in. Becomes $out_of_order_id once that descriptor has
+      // an id, which it does not when this one is built.
+      OptionalAttr<AIEI32Attr>:$out_of_order_tag,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
       // AxCACHE is shim-NOC-only, like burst_length. It is left unset (rather
       // than DefaultValuedOptionalAttr, whose value must be a TableGen literal)
@@ -2011,18 +2019,28 @@ def AIE_EventOp : AIE_Op<"event", []> {
   }];
 }
 
-def AIE_DmaRearmOp : AIE_Op<"dma_rearm", [HasParent<"CoreOp">]> {
-  let summary = "Arm a DMA channel of this core's own tile for more objects";
+def AIE_DmaPushQueueOp : AIE_Op<"dma_push_queue", [HasAncestor<"CoreOp">]> {
+  let summary = "Push a task onto a DMA task queue of this core's own tile";
   let description = [{
     Push `bd_id` onto the task queue of `channel` in `direction`, on the tile
-    whose core runs this op, so a channel that has taken the objects it was
-    armed for goes on taking them.
+    whose core runs this op. The channel runs that descriptor `repeat_count`
+    + 1 times, as `aie.dma_start` does with the same count.
 
     A channel that walks a BD chain needs none of this: its last descriptor
     names the first and it comes round on its own. One receiving out of order
     has no chain to come round -- each object names the descriptor that takes
-    it -- so it stops after `repeat_count` + 1 of them, and only an arming
-    carries it further.
+    it -- so it stops after the objects it was pushed for, and only another
+    push carries it further.
+
+    The queue holds `getDmaTaskQueueDepth()` tasks. A push onto a full queue
+    is discarded and sets the channel's sticky overflow bit, so whoever waits
+    on that transfer waits forever. `aie.dma_poll_for_queue_space` waits for
+    room ahead of a push.
+
+    A core that pushes for a channel it also feeds can deadlock: it blocks on
+    a lock the channel would release, and the channel waits for the push the
+    core would make. Keeping sender and receiver at the same rate is the
+    user's part.
 
     The core writes its own tile's registers over the processor bus, which the
     configuration enables for a tile holding one of these. An access made
@@ -2036,6 +2054,30 @@ def AIE_DmaRearmOp : AIE_Op<"dma_rearm", [HasParent<"CoreOp">]> {
   let results = (outs);
   let assemblyFormat = [{
     `(` $direction `:` $channel `)` `bd_id` $bd_id attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_DmaPollForQueueSpaceOp
+    : AIE_Op<"dma_poll_for_queue_space", [HasAncestor<"CoreOp">]> {
+  let summary = "Wait until a DMA task queue of this core's own tile has room";
+  let description = [{
+    Read the task queue size of `channel` in `direction`, on the tile whose
+    core runs this op, until it is below the depth the queue holds. A push
+    made after this returns reaches the queue rather than being discarded.
+
+    The core spins on the status register for as long as the queue stays
+    full, so it does no other work meanwhile.
+
+    The core reads its own tile's registers over the processor bus, which the
+    configuration enables for a tile holding one of these. An access made
+    while that bus is disabled stalls the core.
+  }];
+  let arguments = (ins DMAChannelDir:$direction,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel);
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $direction `:` $channel `)` attr-dict
   }];
   let hasVerifier = 1;
 }
@@ -2896,7 +2938,11 @@ def AIE_ObjectFifoPoolOp
       UnitAttr:$contiguous,
       // On a contiguous pool, `[before, after]` objects of zeros around the
       // `depth` objects in its buffer, which no endpoint fills.
-      OptionalAttr<DenseI32ArrayAttr>:$zeroObjects);
+      OptionalAttr<DenseI32ArrayAttr>:$zeroObjects,
+      // The $bd_tag each of this pool's buffers is served by, in slot order.
+      // Both ends of an out-of-order fifo carry the receiving end's tags: the
+      // receiver defines them, the sender refers to them.
+      OptionalAttr<DenseI32ArrayAttr>:$out_of_order_tags);
 
   let regions = (region SizedRegion<1>:$segments);
 
@@ -3055,11 +3101,7 @@ def AIE_ObjectFifoDmaEndpointOp
       // See aie.objectfifo's out_of_order. A draining endpoint puts its
       // channel in out-of-order mode; a filling one names each object's
       // buffer in the header it sends.
-      UnitAttr:$out_of_order,
-      // The bd id of this pool's first buffer. Fifos sharing a channel take
-      // disjoint runs of ids, and a sender names a buffer by its id, so both
-      // ends of a fifo carry the same base.
-      OptionalAttr<AIEI32Attr>:$bd_id_base);
+      UnitAttr:$out_of_order);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict

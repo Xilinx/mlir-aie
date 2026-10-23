@@ -14,8 +14,9 @@
 // its own, so a pool costs no ids out of the 5-bit routing space.
 //
 // Taking the order out of the channel takes the chain that would carry it
-// round with it, so the channel is armed for a count of objects instead, and
-// iter_count is how the fifo says what that count is.
+// round with it, so the channel is armed for a count of objects instead. A
+// fifo with an iter_count receives that many passes and no more. One without
+// runs on, and is armed for as many objects as one arming holds.
 
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-objectfifo-split --aie-objectfifo-allocate --aie-objectfifo-lower-cores --aie-objectfifo-lower-dmas --aie-assign-lock-ids --aie-assign-buffer-addresses --aie-assign-bd-ids %s | FileCheck %s
 
@@ -75,21 +76,22 @@ module @needs_packet {
 
 // -----
 
-// A fifo that never says how many objects it receives cannot be armed: it
-// would take one pass through its pool and stop.
-module @needs_iter_count {
+// A fifo that says nothing about how many objects it receives goes on
+// receiving them, so its channel is armed for as many as one arming holds.
+// CHECK-LABEL: @runs_on
+// CHECK:       aie.dma_start(S2MM, 0, {{.*}}, repeat_count = 255) {out_of_order}
+module @runs_on {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_5 = aie.tile(0, 5)
-    // expected-error@+1 {{set iter_count to the number of passes the fifo receives}}
     aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, out_of_order} : !aie.objectfifo<memref<16xi32>>
   }
 }
 
 // -----
 
-// One arming only goes so far: past what the queue's repeat count holds, the
-// channel has to be armed again, which this lowering has no way to do.
+// One arming only goes so far: a fifo that names more passes than it holds
+// asks for a count the queue cannot take.
 module @beyond_one_arming {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)

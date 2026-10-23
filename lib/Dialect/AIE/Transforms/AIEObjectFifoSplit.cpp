@@ -239,7 +239,8 @@ struct AIEObjectFifoSplitPass
         disableSynchronization || from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr(),
-        /*contiguous=*/false, /*zeroObjects=*/nullptr);
+        /*contiguous=*/false, /*zeroObjects=*/nullptr,
+        /*out_of_order_tags=*/DenseI32ArrayAttr());
     createSegments(pool, loc, extents);
     return pool;
   }
@@ -298,8 +299,7 @@ struct AIEObjectFifoSplitPass
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()), /*dispatch=*/ArrayAttr(),
         /*dispatchPackets=*/ArrayAttr(), /*turns=*/ArrayAttr(),
-        from.getOutOfOrder() ? builder.getUnitAttr() : UnitAttr(),
-        /*bd_id_base=*/IntegerAttr());
+        from.getOutOfOrder() ? builder.getUnitAttr() : UnitAttr());
   }
 
   /// An end with no pool behind it: a shim whose transfers the runtime issues,
@@ -344,7 +344,8 @@ struct AIEObjectFifoSplitPass
         fifo.getDisableSynchronization(),
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr(), /*contiguous=*/false,
-        /*zeroObjects=*/nullptr);
+        /*zeroObjects=*/nullptr,
+        /*out_of_order_tags=*/DenseI32ArrayAttr());
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }
