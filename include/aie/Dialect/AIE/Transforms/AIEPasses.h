@@ -138,7 +138,7 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 /// Adds the passes of `aie-objectFifo-stateful-transform` to `pm`, which
 /// anchors on DeviceOp.
 void addObjectFifoLoweringPasses(mlir::OpPassManager &pm, bool packetSwitched,
-                                 bool skipVerify);
+                                 bool skipVerify, bool checkQueueSpace = true);
 
 /// Register `aie-objectFifo-stateful-transform` as a pipeline over the passes
 /// that lower `aie.objectfifo`.

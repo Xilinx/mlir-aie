@@ -1,0 +1,15 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// An out-of-order channel takes the objects its queue was pushed for and
+// stops, so the receiving core pushes again as it goes. The design in test.py
+// moves more objects than one push covers, so without those pushes the core
+// waits forever on an object the channel never takes.
+//
+// REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings
+//
+// RUN: %run_on_npu2% %python %S/test.py
+//
+// The wait for room on the queue is what costs; the run reports its time
+// either way.
+// RUN: %run_on_npu2% env CHECK_QUEUE_SPACE=0 %python %S/test.py

@@ -64,10 +64,13 @@ pushWrites(DmaPushQueueOp op, int col, int row,
   if (failed(ctl.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
     return op.emitOpError("could not start aie-rt to collect its writes");
   ctl.startTransaction();
-  if (failed(ctl.pushToBdQueueAndEnable(*op.getOperation(), col, row,
-                                        op.getChannel(), op.getDirection(),
-                                        op.getBdId(), op.getRepeatCount(),
-                                        /*padValue=*/0, op.getOutOfOrder())))
+  // Only the task queue. Rewriting the channel's control register while the
+  // channel runs loses the state it keeps between packets, and the channel
+  // this pushes onto is already configured and running.
+  if (failed(ctl.pushToBdQueueAndEnable(
+          *op.getOperation(), col, row, op.getChannel(), op.getDirection(),
+          op.getBdId(), op.getRepeatCount(), /*padValue=*/0,
+          op.getOutOfOrder(), /*configureChannel=*/false)))
     return failure();
 
   std::vector<uint8_t> txn = ctl.exportSerializedTransaction();
