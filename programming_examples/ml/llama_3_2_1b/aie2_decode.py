@@ -21,9 +21,9 @@ import argparse
 import llama_kernels
 import numpy as np
 from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
-    AIEDevice,
-    WireBundle,
-    get_target_model,
+    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
+    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
     CmpIPredicate,
