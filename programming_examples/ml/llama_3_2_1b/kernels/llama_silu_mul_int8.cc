@@ -119,10 +119,9 @@ void llama_silu_quant(float *restrict h, int8_t *restrict out) {
   for (int c = 0; c < kCols / kLanes; c++)
     ::aie::store_v(
         out + c * kLanes,
-        vec_requant_i8(
-            ::aie::load_v<kLanes>(reinterpret_cast<const int32_t *>(h) +
-                                  c * kLanes),
-            inv));
+        vec_requant_i8(::aie::load_v<kLanes>(
+                           reinterpret_cast<const int32_t *>(h) + c * kLanes),
+                       inv));
   __builtin_memcpy(out + kCols, &out_scale, 4);
   int32_t zero = 0;
   __builtin_memcpy(out + kCols + 4, &zero, 4);
