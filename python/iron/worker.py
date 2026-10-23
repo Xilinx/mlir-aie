@@ -366,6 +366,25 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
         self.initial_value = initial_value
         self.worker_locks = []
 
+    def _get_worker_lock(self) -> ir.Value:
+        op = ir.InsertionPoint.current.block.owner.operation
+        while op is not None:
+            if op.name == "aie.core":
+                core_tile = op.operands[0].owner.operation
+                for worker_lock in self.worker_locks:
+                    lock_tile = worker_lock.owner.operation.operands[0].owner.operation
+                    # Value equality emits arith.cmpi; compare defining operations.
+                    if lock_tile == core_tile:
+                        return worker_lock
+                break
+            if op.name in ("aie.device", "builtin.module"):
+                break
+            op = op.parent
+        raise ValueError(
+            "No lock is registered for this barrier on the current core's tile; "
+            "pass the barrier in this Worker's fn_args."
+        )
+
     def wait_for_value(self, value: int, *, greater_equal: bool = False):
         """Wait for the barrier to be set to `value`.
 
@@ -378,15 +397,8 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
             value (int): The value to wait for.
             greater_equal (bool): Use a consuming greater-than-or-equal lock wait.
         """
-        # Here this is assuming that the we are currently placing the last added lock
-        # And therefore that wait_for_value operations are placed just after their corresponding Worker...
-        # This is a pretty bad assumption, think about an alternative way to solve this
-        if len(self.worker_locks) == 0:
-            raise ValueError(
-                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
-            )
         action = LockAction.AcquireGreaterEqual if greater_equal else LockAction.Acquire
-        use_lock(self.worker_locks[-1], action, value=value)
+        use_lock(self._get_worker_lock(), action, value=value)
 
     def set(self, value: int):
         """Set the barrier to ``value`` from within a runtime sequence body.
@@ -407,11 +419,7 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
         Args:
             value (int): The value to add.
         """
-        if len(self.worker_locks) == 0:
-            raise ValueError(
-                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
-            )
-        use_lock(self.worker_locks[-1], LockAction.Release, value=value)
+        use_lock(self._get_worker_lock(), LockAction.Release, value=value)
 
 
 class _BarrierSetOp(Resolvable):
