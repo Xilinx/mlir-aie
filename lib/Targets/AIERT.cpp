@@ -597,12 +597,13 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
 
 LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
     Operation &op, int col, int row, int chNum, const DMAChannelDir &channelDir,
-    int bdId, int repeatCount, uint32_t padValue, bool outOfOrder) {
+    int bdId, int repeatCount, uint32_t padValue, bool outOfOrder,
+    bool configureChannel) {
   TxnLocBracket bracket(*this, op.getLoc());
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto tileLoc = XAie_TileLoc(col, row);
-  if (padValue != 0 && direction == DMA_MM2S &&
+  if (configureChannel && padValue != 0 && direction == DMA_MM2S &&
       targetModel.isMemTile(col, row)) {
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaSetPadValue, &aiert->devInst, tileLoc,
                             static_cast<uint8_t>(chNum), padValue);
@@ -611,14 +612,16 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
   if (outOfOrder) {
-    XAie_DmaChannelDesc dmaChannelDesc;
-    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelDescInit, &aiert->devInst,
-                            &dmaChannelDesc, tileLoc);
-    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnOutofOrder, &dmaChannelDesc,
-                            static_cast<uint8_t>(XAIE_ENABLE));
-    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaWriteChannel, &aiert->devInst,
-                            &dmaChannelDesc, tileLoc,
-                            static_cast<uint8_t>(chNum), direction);
+    if (configureChannel) {
+      XAie_DmaChannelDesc dmaChannelDesc;
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelDescInit, &aiert->devInst,
+                              &dmaChannelDesc, tileLoc);
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnOutofOrder, &dmaChannelDesc,
+                              static_cast<uint8_t>(XAIE_ENABLE));
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaWriteChannel, &aiert->devInst,
+                              &dmaChannelDesc, tileLoc,
+                              static_cast<uint8_t>(chNum), direction);
+    }
     // StartBd=0 (ignored) and skip the BD/channel validity check.
     // Disable TCT because the bd lookup id aliases the token bits.
     XAie_DmaDeclareQueueConfig(startQueueCfg, /*StartBd=*/0, repeatCount,
@@ -633,8 +636,9 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
                             tileLoc, chNum, direction, bdId, repeatCount,
                             enTokenIssue);
   }
-  TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &aiert->devInst, tileLoc,
-                          chNum, direction);
+  if (configureChannel)
+    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &aiert->devInst, tileLoc,
+                            chNum, direction);
   return success();
 };
 
@@ -1043,7 +1047,14 @@ LogicalResult xilinx::AIE::AIERTControl::addCoreEnable(DeviceOp &targetOp) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
     if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
-      TxnLocBracket bracket(*this, tileOp.getCoreOp().getLoc());
+      CoreOp coreOp = tileOp.getCoreOp();
+      TxnLocBracket bracket(*this, coreOp.getLoc());
+      // A core reaching its own tile's registers goes through the processor
+      // bus, which starts disabled: an access made before this stalls the
+      // core. Only the cores that ask for it pay for it.
+      if (coreOp->hasAttr(kProcessorBusAttrName))
+        TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreProcessorBusEnable,
+                                &aiert->devInst, tileLoc);
       TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &aiert->devInst,
                               tileLoc);
     }

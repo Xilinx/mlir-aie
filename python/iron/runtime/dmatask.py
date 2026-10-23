@@ -29,6 +29,7 @@ class DMATask(RuntimeTask):
         length_parameter: str | None = None,
         length_unit: int | None = None,
         repeat_parameter: str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Construct a RuntimeTask that will resolve to a DMA Operation.
 
@@ -59,6 +60,10 @@ class DMATask(RuntimeTask):
                 downstream packet-switched routing (e.g. an
                 [`ObjectFifo`][iron.ObjectFifo] built with ``packet=True`` or
                 an explicit [`PacketFlow`][iron.PacketFlow]). Defaults to None.
+            out_of_order_id (int | None, optional): Buffer descriptor id the
+                receiving out-of-order channel takes this transfer with. The
+                header carries it, which is how that channel tells apart the
+                fifos sharing it. Defaults to None.
         """
         self._alloc = alloc
         self._rt_data = rt_data
@@ -67,6 +72,7 @@ class DMATask(RuntimeTask):
         self._offset_parameter = offset_parameter
         self._length_parameter = length_parameter
         self._length_unit = length_unit
+        self._out_of_order_id = out_of_order_id
         self._repeat_parameter = repeat_parameter
         self._packet = packet
         self._task = None
@@ -107,6 +113,7 @@ class DMATask(RuntimeTask):
             length_parameter=self._length_parameter,
             length_unit=self._length_unit,
             packet=self._packet,  # pyright: ignore[reportArgumentType]
+            out_of_order_id=self._out_of_order_id,
         )
         dma_start_task(self._task, repeat_parameter=self._repeat_parameter)
 
@@ -123,6 +130,7 @@ def emit_shim_transfer(
     length_parameter: ScratchpadParameter | str | None = None,
     length_unit: int | None = None,
     repeat_parameter: ScratchpadParameter | str | None = None,
+    out_of_order_id: int | None = None,
 ) -> Task:
     """Emit one shim DMA transfer on the ``alloc`` channel, inside the active sequence.
 
@@ -178,6 +186,7 @@ def emit_shim_transfer(
         length_parameter=rt.register_parameter(length_parameter),
         length_unit=length_unit,
         repeat_parameter=rt.register_parameter(repeat_parameter),
+        out_of_order_id=out_of_order_id,
     )
     if managed:
         active.emit_transfer(task, group)

@@ -206,6 +206,59 @@ def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "mlir::ModuleOp"> {
   let constructor = "xilinx::AIE::createAIECanonicalizeDevicePass()";
 }
 
+def AIELowerCoreIssuedConfiguration
+    : Pass<"aie-lower-core-issued-configuration", "xilinx::AIE::DeviceOp"> {
+  let summary = "Lower the configuration a core makes onto its own stores";
+  let description = [{
+    Replace each `aie.dma_push_queue` with the register writes that push a
+    task onto its channel's queue, and each `aie.dma_poll_for_queue_space`
+    with the loop that reads that queue's size, as accesses the core makes to
+    its own tile over the processor bus.
+
+    The writes come from aie-rt: the push runs inside a transaction and the
+    transaction is read back, so this pass carries no copy of the register
+    map. A push that writes outside the core's own tile, or that takes
+    anything other than plain writes, is an error rather than a store the
+    core cannot make.
+
+    The lowerings of `aiex.dma_configure_task` and `aiex.dma_start_task` onto
+    a core belong here too, once a core issues those.
+  }];
+  let constructor = "xilinx::AIE::createAIELowerCoreIssuedConfigurationPass()";
+  let dependentDialects = ["mlir::func::FuncDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::scf::SCFDialect",
+                           "mlir::LLVM::LLVMDialect"];
+}
+
+def AIEObjectFifoInsertCoreQueuePushes
+    : Pass<"aie-objectfifo-insert-core-queue-pushes",
+           "xilinx::AIE::DeviceOp"> {
+  let summary = "Push onto an out-of-order channel's queue as its core goes";
+  let description = [{
+    An out-of-order S2MM channel takes the objects its queue was pushed for
+    and then stops: it walks no chain that would carry it round. A fifo that
+    names no iter_count receives objects without end, so its channel has to
+    be pushed again as it goes.
+
+    This counts, per channel, the objects the core takes out of the fifos
+    that channel fills, and emits one `aie.dma_push_queue` for every run of
+    objects an arming holds. One push covers 256 objects, so the count the
+    core carries costs far less than a push per object would.
+
+    A core that pushes for its own receiving channel can deadlock against a
+    sender running at another rate; see `aie.dma_push_queue`.
+  }];
+  let options = [Option<
+      "checkQueueSpace", "check-queue-space", "bool", /*default=*/"true",
+      "Wait for room on the task queue before each push.">];
+  let constructor =
+      "xilinx::AIE::createAIEObjectFifoInsertCoreQueuePushesPass()";
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::scf::SCFDialect"];
+}
+
 def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
   let summary = "Lowering operations in AIE cores' regions to Standard";
   let description = [{

@@ -28,12 +28,26 @@ from ..utils.compile.jit.context import get_compile_arg
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.flow import PacketFlow
 from .dataflow.objectfifo import ObjectFifoLink
+from .dataflow.objectfifopool import ObjectFifoPoolHandle
 from .device import Device, NamedDevice
 from .kernel import Kernel
 from .resolvable import DeviceResources, PerDeviceConfiguration, Resolvable
 from .runtime import Runtime
 from .runtime._context import active_configuration, active_configuration_scope
 from .scratchpad_parameter import ScratchpadParameter
+
+
+def _pool_symbols(pool):
+    """Yield the name of every symbol an ObjectFifoPool refers to."""
+    for buffer in pool.buffers or []:
+        yield buffer.name
+    for segment in pool.segments:
+        yield segment.name
+        yield from (
+            lock.name
+            for lock in (segment.produce_lock, segment.consume_lock)
+            if lock is not None
+        )
 
 
 class DeviceConfiguration(DeviceResources):
@@ -296,7 +310,12 @@ class DeviceConfiguration(DeviceResources):
     # explicit name may be claimed once, and unnamed ones take fresh names.
     def _name_unnamed(self) -> None:
         fifos = [h._object_fifo for runtime in self._runtimes for h in runtime.fifos]
-        fifos += [h._object_fifo for worker in self._workers for h in worker.fifos]
+        fifos += [
+            h._object_fifo
+            for worker in self._workers
+            for h in worker.fifos
+            if not isinstance(h, ObjectFifoPoolHandle)
+        ]
         fifos = list(dict.fromkeys(fifos))
         for fifo in fifos:
             for handle in [fifo._prod, *fifo._cons]:
@@ -315,6 +334,13 @@ class DeviceConfiguration(DeviceResources):
             if buffer._use_write_rtp
         ]
         rtps = list(dict.fromkeys(rtps))
+        pools = [
+            handle.pool
+            for worker in self._workers
+            for handle in worker.fifos
+            if isinstance(handle, ObjectFifoPoolHandle)
+        ]
+        pools = list(dict.fromkeys(pools))
         named = [(fifo.name, "ObjectFifo") for fifo in fifos if fifo.name is not None]
         named += [(b._name, "Buffer") for b in rtps if b._name is not None]
         claimed = {}
@@ -332,6 +358,8 @@ class DeviceConfiguration(DeviceResources):
             claimed[name] = kind
         taken = set(claimed)
         taken.update(flow.name for flow in self._flows if flow.name is not None)
+        for pool in pools:
+            taken.update(name for name in _pool_symbols(pool) if name is not None)
 
         def fresh(prefix):
             name = next(
@@ -342,12 +370,35 @@ class DeviceConfiguration(DeviceResources):
             taken.add(name)
             return name
 
+        def claim(preferred):
+            if preferred in taken:
+                return fresh(f"{preferred}_")
+            taken.add(preferred)
+            return preferred
+
         for fifo in fifos:
             if fifo.name is None:
                 fifo.name = fresh("of")
         for buffer in rtps:
             if buffer._name is None:
                 buffer._name = fresh("rtp")
+        for pool in pools:
+            if pool.name is None:
+                pool.name = fresh("pool")
+        # A pool refers to its buffers and locks by symbol, so each one it
+        # names needs a name. Match what --aie-objectfifo-allocate would call
+        # the ones it makes itself.
+        for pool in pools:
+            for index, buffer in enumerate(pool.buffers or []):
+                if buffer.name is None:
+                    buffer._name = claim(f"{pool.name}_buff_{index}")
+            for index, segment in enumerate(pool.segments):
+                for lock, role in (
+                    (segment.produce_lock, "prod"),
+                    (segment.consume_lock, "cons"),
+                ):
+                    if lock is not None and lock.name is None:
+                        lock._name = claim(f"{pool.name}_{role}_lock_{index}")
         for flow in self._flows:
             if flow.name is None:
                 flow._name = fresh(
@@ -394,11 +445,19 @@ class DeviceConfiguration(DeviceResources):
         @device(current_device.resolve(), sym_name=device_name, loc=loc)
         def device_body():
             all_fifos = set()
+            all_pools = set()
             for runtime in self._runtimes:
                 all_fifos.update(runtime.fifos)
             for worker in self._workers:
-                all_fifos.update(worker.fifos)
+                for handle in worker.fifos:
+                    # A pool handle states one end only, so it has no fifo graph
+                    # to walk and no delegate tile to follow.
+                    if isinstance(handle, ObjectFifoPoolHandle):
+                        all_pools.add(handle)
+                    else:
+                        all_fifos.add(handle)
             all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
+            all_pools = sorted(all_pools, key=lambda obj: obj.name or "")
 
             all_tiles = []
             for worker in self._workers:
@@ -417,6 +476,9 @@ class DeviceConfiguration(DeviceResources):
                 delegate = handle._object_fifo._delegate_tile
                 if delegate is not None:
                     all_tiles.append(delegate)
+            for handle in all_pools:
+                self._claim(handle.pool, owners)
+                all_tiles.extend(handle.tiles())
             for flow in self._flows:
                 self._claim(flow, owners)
                 all_tiles.extend(flow.all_tiles())
@@ -435,6 +497,8 @@ class DeviceConfiguration(DeviceResources):
                 current_device.resolve_tile(tile)
 
             for handle in all_fifos:
+                handle.resolve()
+            for handle in all_pools:
                 handle.resolve()
             for lock in self._locks:
                 lock.resolve()

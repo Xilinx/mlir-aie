@@ -34,6 +34,8 @@ struct Descriptor {
   FlatSymbolRefAttr releaseLock;
   /// Index of the buffer's own binary lock, where the device uses those.
   int64_t binaryLock;
+  /// The buffer's place in the pool, which an out-of-order sender names.
+  int64_t slot;
 };
 
 Block *findEndOpBlock(Region &region) {
@@ -114,7 +116,7 @@ struct AIEObjectFifoLowerDMAsPass
                     : segment.getProduceLockAttr(),
              drains ? segment.getProduceLockAttr()
                     : segment.getConsumeLockAttr(),
-             static_cast<int64_t>(index)});
+             static_cast<int64_t>(index), static_cast<int64_t>(index)});
       }
     }
     return descriptors;
@@ -153,17 +155,35 @@ struct AIEObjectFifoLowerDMAsPass
                             packet->getPktId());
     }
 
+    DMABDOp bd;
     if (descriptor.dimensions && drains && descriptor.padding) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      paddedSize(descriptor.dimensions, descriptor.padding,
-                                 descriptor.size),
-                      descriptor.dimensions, descriptor.padding);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           paddedSize(descriptor.dimensions, descriptor.padding,
+                                      descriptor.size),
+                           descriptor.dimensions, descriptor.padding);
     } else if (descriptor.dimensions) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size, descriptor.dimensions);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           descriptor.size, descriptor.dimensions);
     } else {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           descriptor.size);
+    }
+    // The receiving channel walks no chain of its own, so the sender says
+    // which buffer each object lands in. The receiver's descriptor for that
+    // buffer carries the matching bd_id.
+    // The receiving end takes its bd ids from aie-assign-bd-ids like any other
+    // chain, and names each descriptor so the sender can refer to it. The
+    // sender carries that name until the same pass turns it into the id.
+    if (endpoint.getOutOfOrder()) {
+      if (auto tags = pool.getOutOfOrderTags()) {
+        assert(descriptor.slot < static_cast<int64_t>(tags->size()) &&
+               "the allocator names every descriptor of an out-of-order pool");
+        int32_t tag = (*tags)[descriptor.slot];
+        if (endpoint.getRouteDirection() == DMAChannelDir::MM2S)
+          bd.setOutOfOrderTag(tag);
+        else
+          bd.setBdTag(tag);
+      }
     }
 
     if (releaseLock) {
@@ -204,6 +224,30 @@ struct AIEObjectFifoLowerDMAsPass
         iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
     int64_t copies = repeatInHardware ? 1 : repeat;
 
+    // An out-of-order channel takes the pool's order out of its descriptors,
+    // and with it the chain that would carry the channel round again: it
+    // accepts the number of objects its queue was armed for and then stops.
+    // An iter_count says the fifo receives that many passes and no more. With
+    // none, the fifo runs on, so arm for as many objects as one arming holds
+    // and leave aie-objectfifo-insert-core-queue-pushes to arm it again.
+    if (endpoint.getOutOfOrder() &&
+        endpoint.getRouteDirection() == DMAChannelDir::S2MM) {
+      uint32_t maxRepeat = device.getTargetModel().getMaxRepeatCount();
+      if (!iterCount)
+        taskCount = static_cast<int>(maxRepeat);
+      else {
+        int64_t objects =
+            static_cast<int64_t>(descriptors.size()) * copies * *iterCount;
+        if (objects - 1 > static_cast<int64_t>(maxRepeat))
+          return endpoint.emitOpError("receives ")
+                 << objects
+                 << " objects out of order, but a channel arms for at most "
+                 << (maxRepeat + 1) << "; drop iter_count to have its core arm "
+                 << "it again as it goes";
+        taskCount = objects - 1;
+      }
+    }
+
     DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
     Block *endBlock = findEndOpBlock(program.getDmaBody());
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
@@ -213,7 +257,9 @@ struct AIEObjectFifoLowerDMAsPass
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, loc, endpoint.getRouteDirection(), channel,
                        taskCount, endpoint.getPadValue(),
-                       /*out_of_order=*/false, bdBlock, endBlock);
+                       endpoint.getOutOfOrder() &&
+                           endpoint.getRouteDirection() == DMAChannelDir::S2MM,
+                       bdBlock, endBlock);
     if (lastDmaBlock) {
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
     }

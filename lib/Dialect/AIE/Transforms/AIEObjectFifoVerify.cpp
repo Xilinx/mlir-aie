@@ -32,18 +32,26 @@ struct AIEObjectFifoVerifyPass
           AIEObjectFifoVerifyPass> {
 
   /// Every segment needs an actor at each end, so that what one writes another
-  /// reads. A segment may go unfilled when the pool's objects start full.
+  /// reads. A segment may go unfilled when the pool's objects start full, and
+  /// may name no endpoint at an end its `manualFill` or `manualDrain` hands to
+  /// a DMA program the author writes.
   LogicalResult verifyActors(ObjectFifoPoolOp pool,
                              ArrayRef<SegmentActors> actors) {
     bool external = llvm::any_of(pool.getBufferOps(), [](BufferLike buffer) {
       return isa<ExternalBufferOp>(buffer.getOperation());
     });
+    std::vector<ObjectFifoSegmentOp> segmentOps = pool.getSegmentOps();
     for (auto [index, segment] : llvm::enumerate(actors)) {
-      if (segment.fillers.size() > 1) {
+      ObjectFifoSegmentOp segmentOp = segmentOps[index];
+      bool manualFill = segmentOp.getManualFill();
+      bool manualDrain = segmentOp.getManualDrain();
+      if (segment.fillers.size() > 1 ||
+          (manualFill && !segment.fillers.empty())) {
         return pool.emitOpError("segment ")
                << index << " is filled by more than one endpoint";
       }
-      if (segment.drainers.size() > 1) {
+      if (segment.drainers.size() > 1 ||
+          (manualDrain && !segment.drainers.empty())) {
         return pool.emitOpError("segment ")
                << index << " is drained by more than one endpoint";
       }
@@ -51,10 +59,11 @@ struct AIEObjectFifoVerifyPass
       // this device does not program.
       bool hostDrains = external && !segment.fillers.empty();
       bool hostFills = external && !segment.drainers.empty();
-      if (segment.drainers.empty() && !hostDrains) {
+      if (segment.drainers.empty() && !hostDrains && !manualDrain) {
         return pool.emitOpError("segment ") << index << " has no drainer";
       }
-      if (segment.fillers.empty() && !pool.getInitValues() && !hostFills) {
+      if (segment.fillers.empty() && !pool.getInitValues() && !hostFills &&
+          !manualFill) {
         return pool.emitOpError("segment ") << index << " has no filler";
       }
     }
@@ -143,6 +152,46 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
+  /// An out-of-order sender names the buffer each object lands in, and one BD
+  /// carries one such name, so the ends have to hold the same buffers in the
+  /// same order. Naming a slice of a larger buffer would need the sender split
+  /// into one descriptor per slice, which nothing does yet.
+  LogicalResult verifyOutOfOrderPools(DeviceOp device) {
+    auto lookup = [&](FlatSymbolRefAttr name) {
+      return dyn_cast_or_null<ObjectFifoDmaEndpointOp>(
+          SymbolTable::lookupNearestSymbolFrom(device, name.getAttr()));
+    };
+    auto objectBytes = [](ObjectFifoPoolOp pool) -> int64_t {
+      auto type = dyn_cast<MemRefType>(pool.getElemType());
+      if (!type)
+        return 0;
+      return (type.getNumElements() * type.getElementTypeBitWidth() + 7) / 8;
+    };
+    for (auto flow : device.getOps<RouteOp>()) {
+      ObjectFifoDmaEndpointOp src = lookup(flow.getSourceAttr());
+      if (!src || !src.getOutOfOrder())
+        continue;
+      for (auto destName :
+           flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+        ObjectFifoDmaEndpointOp dst = lookup(destName);
+        if (!dst)
+          continue;
+        ObjectFifoPoolOp from = src.getPoolOp(), to = dst.getPoolOp();
+        if (!from || !to)
+          continue;
+        if (src.getNumDescriptors() != dst.getNumDescriptors() ||
+            objectBytes(from) != objectBytes(to))
+          return src.emitOpError("sends out of order from ")
+                 << src.getNumDescriptors() << " buffers of "
+                 << objectBytes(from) << " bytes into "
+                 << dst.getNumDescriptors() << " of " << objectBytes(to)
+                 << "; an out-of-order fifo needs the same buffers at both "
+                    "ends, because one descriptor names one whole buffer";
+      }
+    }
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -178,7 +227,8 @@ struct AIEObjectFifoVerifyPass
       }
     }
 
-    if (failed(verifyFlows(device)) || failed(verifyOverRelease(device))) {
+    if (failed(verifyFlows(device)) || failed(verifyOverRelease(device)) ||
+        failed(verifyOutOfOrderPools(device))) {
       return signalPassFailure();
     }
   }

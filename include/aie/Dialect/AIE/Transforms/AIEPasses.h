@@ -71,6 +71,13 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECoreToStandardPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECoreToStandardPass(const AIECoreToStandardOptions &options);
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIELowerCoreIssuedConfigurationPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoInsertCoreQueuePushesPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoInsertCoreQueuePushesPass(
+    const AIEObjectFifoInsertCoreQueuePushesOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEFindFlowsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIESplitFlowViasPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELocalizeLocksPass();

@@ -26,6 +26,11 @@ struct ObjectFifoLoweringOptions
       *this, "skip-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR."),
       llvm::cl::init(false)};
+  Option<bool> checkQueueSpace{
+      *this, "check-queue-space",
+      llvm::cl::desc("Wait for room on the task queue before each push a core "
+                     "makes onto an out-of-order channel."),
+      llvm::cl::init(true)};
 };
 } // namespace
 
@@ -39,6 +44,13 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
           pm.addPass(createAIEObjectFifoVerifyPass());
         }
         pm.addPass(createAIEObjectFifoAllocatePass(options.packetSwitched));
+        // The pushes name the channels the allocation above assigns, and
+        // they go where the releases are, which the core lowering below
+        // turns into locks.
+        AIEObjectFifoInsertCoreQueuePushesOptions pushOptions;
+        pushOptions.checkQueueSpace = options.checkQueueSpace;
+        pm.addPass(
+            createAIEObjectFifoInsertCoreQueuePushesPass(pushOptions));
         pm.addPass(createAIEObjectFifoLowerDMAsPass());
         pm.addPass(createAIEObjectFifoLowerCoresPass());
         pm.addPass(createAIEObjectFifoErasePoolsPass());

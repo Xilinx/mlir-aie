@@ -548,6 +548,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
     return emitOpError("packet_id is only meaningful on a packet objectfifo");
   }
 
+  if (getOutOfOrder() && !getPacket()) {
+    return emitOpError("out_of_order names each object's buffer in the packet "
+                       "header, so it needs a packet objectfifo");
+  }
+
   // Helper to get tile interface from Value
   auto getTileLikeFromValue = [](Value v) -> TileLike {
     return llvm::dyn_cast<TileLike>(v.getDefiningOp());
@@ -3251,6 +3256,49 @@ LogicalResult PacketFlowOp::verify() {
 // CoreOp
 //===----------------------------------------------------------------------===//
 
+/// The channels a core's own tile has in `direction`.
+static uint32_t channelsOfOwnTile(CoreOp core, DMAChannelDir direction,
+                                  const AIETargetModel &targetModel) {
+  TileOp tile = core.getTileOp();
+  int col = tile.getCol(), row = tile.getRow();
+  if (direction == DMAChannelDir::MM2S)
+    return targetModel.getNumSourceSwitchboxConnections(col, row,
+                                                        WireBundle::DMA);
+  return targetModel.getNumDestSwitchboxConnections(col, row, WireBundle::DMA);
+}
+
+LogicalResult DmaPushQueueOp::verify() {
+  auto core = (*this)->getParentOfType<CoreOp>();
+  TileOp tile = core.getTileOp();
+  const AIETargetModel &targetModel = getTargetModel(*this);
+  uint32_t channels = channelsOfOwnTile(core, getDirection(), targetModel);
+  if (getChannel() >= static_cast<int32_t>(channels))
+    return emitOpError("pushes onto ")
+           << stringifyDMAChannelDir(getDirection()) << " channel "
+           << getChannel() << ", but tile (" << tile.getCol() << ", "
+           << tile.getRow() << ") has " << channels;
+  uint32_t maxRepeat = targetModel.getMaxRepeatCount();
+  if (getRepeatCount() < 0 ||
+      static_cast<uint32_t>(getRepeatCount()) > maxRepeat)
+    return emitOpError("repeat_count must be in [0, ") << maxRepeat << "]";
+  return success();
+}
+
+LogicalResult DmaPollForQueueSpaceOp::verify() {
+  auto core = (*this)->getParentOfType<CoreOp>();
+  TileOp tile = core.getTileOp();
+  const AIETargetModel &targetModel = getTargetModel(*this);
+  uint32_t channels = channelsOfOwnTile(core, getDirection(), targetModel);
+  if (getChannel() >= static_cast<int32_t>(channels))
+    return emitOpError("waits on ")
+           << stringifyDMAChannelDir(getDirection()) << " channel "
+           << getChannel() << ", but tile (" << tile.getCol() << ", "
+           << tile.getRow() << ") has " << channels;
+  if (targetModel.getDmaTaskQueueDepth() == 0)
+    return emitOpError("waits on a task queue, which this device has none of");
+  return success();
+}
+
 LogicalResult CoreOp::verify() {
   if (getBody().empty())
     return emitOpError("should have non-empty body");
@@ -3960,6 +4008,8 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
         /*out_of_order_id=*/nullptr,
+        /*bd_tag=*/nullptr,
+        /*out_of_order_tag=*/nullptr,
         /*burst_length=*/nullptr,
         /*axcache=*/nullptr,
         /*iteration=*/nullptr,

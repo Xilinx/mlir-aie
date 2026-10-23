@@ -115,6 +115,11 @@ class Buffer(PerDeviceConfigurationResolvable):
         """The tile this buffer is on."""
         return self._tile
 
+    @property
+    def name(self) -> str | None:
+        """The buffer's symbol, which another op refers to it by."""
+        return self._name
+
     def place(self, tile: Tile) -> Tile:
         """Put this buffer on ``tile`` unless it already has one.
 

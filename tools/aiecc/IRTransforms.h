@@ -1410,7 +1410,8 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     mlir::MLIRContext *ctx, mlir::ModuleOp mod, bool dynamicObjFifos,
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
-    bool skipObjectFifoVerify = false, bool assignAddresses = true) {
+    bool skipObjectFifoVerify = false, bool assignAddresses = true,
+    bool checkQueueSpace = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1463,8 +1464,8 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   if (mlir::failed(mlir::parsePassPipeline(
           llvm::formatv(
               "aie-objectFifo-stateful-transform{{packet-sw-objFifos={0} "
-              "skip-verify={1}}",
-              packetSwObjFifos, skipObjectFifoVerify)
+              "skip-verify={1} check-queue-space={2}}",
+              packetSwObjFifos, skipObjectFifoVerify, checkQueueSpace)
               .str(),
           dpm))) {
     return nullptr;
@@ -1486,6 +1487,10 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   dpm.addPass(createAIEAssignLockIDsPass());
   dpm.addPass(X::createAIEReserveRuntimeBDIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
+  // A push names a bd id, so this follows the assignment above. It marks the
+  // cores it rewrites aie.processor_bus, which the configuration reads to
+  // enable the bus those cores configure over.
+  dpm.addPass(createAIELowerCoreIssuedConfigurationPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());
   dpm.addPass(X::createAIELowerMulticastPass());
