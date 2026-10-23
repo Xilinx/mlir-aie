@@ -74,11 +74,9 @@ def pack_rows(x, scales, row_bytes):
 
 
 def rows_of(out, p):
-    """A projection's output ([half][tile][part][core][row][64]) as its
+    """A projection's output ([row][core][tile * 64 + column]) as its
     letters' [row][column] blocks."""
-    t = out.reshape(2, p.tiles, M // 8, 4, 8, TILE_COLS)
-    # [row][core][tile * 64 + n]: each core's run of its letters' rows.
-    per_core = t.transpose(2, 4, 0, 3, 1, 5).reshape(M, N_CORES, p.tiles * TILE_COLS)
+    per_core = out.reshape(M, N_CORES, p.tiles * TILE_COLS)
     blocks, at = {}, 0
     for letter in p.name:
         n = PROJECTIONS[letter][0] // N_CORES

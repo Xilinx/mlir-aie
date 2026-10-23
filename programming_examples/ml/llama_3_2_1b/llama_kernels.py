@@ -95,6 +95,10 @@ def gemm_mma():
     return KernelSource("llama_gemm_mma.cc", ["-ffp-contract=off"])
 
 
+def prefill_glue():
+    return KernelSource("llama_prefill_glue.cc", ["-ffp-contract=off"])
+
+
 def gqa_glue():
     return KernelSource(
         "llama_gqa_glue.cc",

@@ -24,8 +24,8 @@ output columns on aie::mmul (kernels/llama_gemm_mma.cc), K in chunks of
   cores, from a table `pack_trailers` copies out of the blob, each core
   keeping its own.
 - Output: fp32, 8 rows by 64 columns at a time, four cores' joined in a
-  memtile ([tile][8-row part][core][row][64 columns] per half of the
-  array), one linear run per half and projection.
+  memtile, written row-major (each core's columns in turn), one transfer
+  per tile and half of the array.
 """
 
 import argparse
@@ -308,11 +308,11 @@ class GemmArray:
 
     @staticmethod
     def out_words(p):
-        """A projection's output, fp32 words: two halves of the array."""
-        return 2 * p.tiles * M * 4 * TILE_COLS
+        """A projection's output, fp32 words."""
+        return p.tiles * N_CORES * TILE_COLS * M
 
-    def transfers(self, fifos, p, w, table, act, out):
-        """Issue projection p's transfers in a runtime sequence.
+    def fill(self, fifos, p, w, table, act):
+        """Issue projection p's fills in a runtime sequence.
 
         Args:
             fifos: The sequence's handles for `fifos`.
@@ -321,12 +321,11 @@ class GemmArray:
             table: (the trailer table, int32 words; its words; p's layer).
             act: (the activations, int32 words; its words; byte offset of
                 p's rows).
-            out: (the outputs, fp32; its words; word offset of p's).
 
         Returns:
-            (TaskGroup of the fills, TaskGroup of the drains).
+            The fills' TaskGroup.
         """
-        a_in, w_in, joins = fifos[0], fifos[1 : 1 + N_CORES], fifos[1 + N_CORES :]
+        a_in, w_in = fifos[0], fifos[1 : 1 + N_CORES]
         fills = TaskGroup()
         w_buf, w_words, w_layer = w
         k_parts = p.k // D
@@ -372,22 +371,61 @@ class GemmArray:
             group=fills,
             wait=True,
         )
+        return fills
+
+    def drain(self, fifos, p, out, tiles):
+        """Issue the drains of output tiles `tiles` of projection p.
+
+        Args:
+            fifos: The sequence's handles for `fifos`.
+            p: The projection.
+            out: (the outputs, fp32 or int32 words; its words; word offset
+                of p's row 0; words between rows). A row holds each core's
+                columns in turn, its tiles' 64 at a time.
+            tiles: The tiles.
+
+        Returns:
+            The drains' TaskGroup.
+        """
+        joins = fifos[1 + N_CORES :]
+        out_buf, out_words, out_at, row_words = out
+        rc = p.tiles * TILE_COLS
         drains = TaskGroup()
-        out_buf, out_words, out_at = out
-        half = self.out_words(p) // 2
-        for j in range(2):
-            joins[j].drain(
-                out_buf,
-                tap=TensorAccessPattern(
-                    tensor_dims=[out_words],
-                    offset=out_at + j * half,
-                    sizes=[1, 1, half // 512, 512],
-                    strides=[0, 0, 512, 1],
-                ),
-                group=drains,
-                wait=True,
-            )
-        return fills, drains
+        for t in tiles:
+            for j in range(2):
+                joins[j].drain(
+                    out_buf,
+                    tap=TensorAccessPattern(
+                        tensor_dims=[out_words],
+                        offset=out_at + j * 4 * rc + t * TILE_COLS,
+                        sizes=[M // OUT_ROWS, 4, OUT_ROWS, TILE_COLS],
+                        strides=[OUT_ROWS * row_words, rc, row_words, 1],
+                    ),
+                    group=drains,
+                    wait=True,
+                )
+        return drains
+
+    def run(self, fifos, projs, fill_args, outs, batch=4):
+        """Issue a run of projections' transfers, each one's fills before
+        the previous one's last drains, so the weights keep streaming.
+
+        Args:
+            fifos: The sequence's handles for `fifos`.
+            projs: The projections, in the cores' order.
+            fill_args: Per projection, fill's (w, table, act).
+            outs: Per projection, drain's out.
+            batch: Tiles a group of drains takes (a shim tile has 16 BDs).
+        """
+        fills = [self.fill(fifos, projs[0], *fill_args[0])]
+        for k, p in enumerate(projs):
+            starts = range(0, p.tiles, batch)
+            for b in starts:
+                if b == starts[-1] and k + 1 < len(projs):
+                    fills.append(self.fill(fifos, projs[k + 1], *fill_args[k + 1]))
+                tiles = range(b, min(b + batch, p.tiles))
+                self.drain(fifos, p, outs[k], tiles).finish()
+            fills[k].finish()
 
 
 @jit
@@ -417,30 +455,20 @@ def build_gemms(
     out_words = N_LAYERS * out_layer
 
     def sequence(wblob, table, act, out, *fifos):
-        # A projection's drains go out before the next one's fills, which
-        # wait on the cores the drains free.
-        pending = []
+        fill_args, outs = [], []
         for L in range(N_LAYERS):
             at = L * out_layer
             for p in projs:
-                pending.append(
-                    array.transfers(
-                        fifos,
-                        p,
+                fill_args.append(
+                    (
                         (wblob, w_total // 4, L),
                         (table, W_LAYERS * TABLE_LAYER // 4, L),
                         (act, act_words, L * act_bytes + act_at[p.name]),
-                        (out, out_words, at),
                     )
                 )
+                outs.append((out, out_words, at, p.tiles * N_CORES * TILE_COLS))
                 at += GemmArray.out_words(p)
-                if len(pending) > 1:
-                    fills, drains = pending.pop(0)
-                    drains.finish()
-                    fills.finish()
-        fills, drains = pending.pop(0)
-        drains.finish()
-        fills.finish()
+        array.run(fifos, projs * N_LAYERS, fill_args, outs)
 
     rt = Runtime(
         sequence,
