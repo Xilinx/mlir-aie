@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --split-input-file --aie-objectfifo-split %s | FileCheck %s --check-prefix=POOL
-// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s --check-prefix=DMA
+// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s --check-prefix=DMA
 
 // Input replication and output replication are separate stages. The join's
 // shared pool must retain the output repeat, not either producer's repeat.
@@ -38,6 +38,16 @@ module @join_independent {
     aie.objectfifo @b(%b, {%link}, 1 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out(%link, {%out}, 1 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<32xi32>>
     aie.objectfifo.link [@a, @b] -> [@out] ([0, 16] [])
+    %ca = aie.core(%a) {
+      %ea = aie.objectfifo.acquire @a(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @a(Produce, 1)
+      aie.end
+    }
+    %cb = aie.core(%b) {
+      %eb = aie.objectfifo.acquire @b(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @b(Produce, 1)
+      aie.end
+    }
   }
 }
 
@@ -68,5 +78,20 @@ module @distribute_independent {
     aie.objectfifo @a(%link, {%a}, 1 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b(%link, {%b}, 1 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@in] -> [@a, @b] ([] [0, 16])
+    %ci = aie.core(%in) {
+      %ei = aie.objectfifo.acquire @in(Produce, 1) : memref<32xi32>
+      aie.objectfifo.release @in(Produce, 1)
+      aie.end
+    }
+    %ca = aie.core(%a) {
+      %ea = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @a(Consume, 1)
+      aie.end
+    }
+    %cb = aie.core(%b) {
+      %eb = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @b(Consume, 1)
+      aie.end
+    }
   }
 }

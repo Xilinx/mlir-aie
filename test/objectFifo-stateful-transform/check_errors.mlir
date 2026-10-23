@@ -52,20 +52,3 @@ module {
     aie.objectfifo @of(%prod, {%cons}, 2 : i32) : !aie.objectfifo<memref<64xi16>>
   }
 }
-
-// -----
-
-// Parallel join inputs must have the same effective repeat count.
-module {
-  aie.device(xcve2302) {
-    %tile12 = aie.tile(1, 2)
-    %tile23 = aie.tile(2, 3)
-    %tile11 = aie.tile(1, 1)
-    %tile10 = aie.tile(1, 0)
-    aie.objectfifo @of0(%tile12, {%tile11}, 2 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of1(%tile23, {%tile11}, 2 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of2(%tile11, {%tile10}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    // expected-error@+1 {{join inputs must have equal effective repeat counts: @of0 has 2, @of1 has 3}}
-    aie.objectfifo.link [@of0, @of1] -> [@of2] ([0, 16] [])
-  }
-}

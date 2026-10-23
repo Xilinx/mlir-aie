@@ -1762,26 +1762,24 @@ LogicalResult ObjectFifoLinkOp::verify() {
                << std::to_string(minOutputBufferSize) << ".";
       }
     }
-
   } else {
     if (!getSrcOffsets().empty() && !getDstOffsets().empty())
       return emitOpError("all offsets should be empty if there is no "
                          "join or distribute");
   }
 
-  // Parallel inputs of a join, or outputs of a distribute, must advance
-  // together. Repeats on opposite sides belong to separate DMA stages and
-  // compose independently; an absent repeat_count means one transfer.
-  if (isJoin() || isDistribute()) {
-    auto fifos = isJoin() ? getInputObjectFifos() : getOutputObjectFifos();
-    ObjectFifoCreateOp first = fifos.front();
-    int repeat = first.getRepeatCount().value_or(1);
-    for (ObjectFifoCreateOp fifo : llvm::drop_begin(fifos)) {
+  // Distribute outputs drain one shared pool with a single repeat count.
+  // Join inputs repeat at independent producer pools.
+  if (isDistribute()) {
+    auto fifos = getOutputObjectFifos();
+    for (size_t i = 1; i < fifos.size(); ++i) {
+      ObjectFifoCreateOp first = fifos[0], fifo = fifos[i];
+      int repeat = first.getRepeatCount().value_or(1);
       int otherRepeat = fifo.getRepeatCount().value_or(1);
       if (repeat != otherRepeat)
         return emitOpError()
-               << (isJoin() ? "join inputs" : "distribute outputs")
-               << " must have equal effective repeat counts: @"
+               << "distribute outputs must have equal effective repeat counts: "
+                  "@"
                << first.name().getValue() << " has " << repeat
                << (first.getRepeatCount() ? "" : " (default)") << ", @"
                << fifo.name().getValue() << " has " << otherRepeat

@@ -7,8 +7,8 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics %s
 
-// Join inputs must advance together, independently of the output's repeat.
-module @join_mismatched {
+// Join inputs replicate independently at their producers.
+module @join_unequal {
   aie.device(npu1) {
     %a = aie.tile(1, 2)
     %b = aie.tile(3, 3)
@@ -17,14 +17,13 @@ module @join_mismatched {
     aie.objectfifo @a(%a, {%link}, 1 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b(%b, {%link}, 1 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out(%link, {%out}, 1 : i32) : !aie.objectfifo<memref<32xi32>>
-    // expected-error@+1 {{join inputs must have equal effective repeat counts: @a has 2, @b has 3}}
     aie.objectfifo.link [@a, @b] -> [@out] ([0, 16] [])
   }
 }
 
 // -----
 
-module @join_default_mismatch {
+module @join_explicit_and_default {
   aie.device(npu1) {
     %a = aie.tile(1, 2)
     %b = aie.tile(3, 3)
@@ -33,14 +32,13 @@ module @join_default_mismatch {
     aie.objectfifo @a(%a, {%link}, 1 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b(%b, {%link}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out(%link, {%out}, 1 : i32) : !aie.objectfifo<memref<32xi32>>
-    // expected-error@+1 {{join inputs must have equal effective repeat counts: @a has 3, @b has 1 (default)}}
     aie.objectfifo.link [@a, @b] -> [@out] ([0, 16] [])
   }
 }
 
 // -----
 
-module @join_default_first_mismatch {
+module @join_default_and_explicit {
   aie.device(npu1) {
     %a = aie.tile(1, 2)
     %b = aie.tile(3, 3)
@@ -49,7 +47,6 @@ module @join_default_first_mismatch {
     aie.objectfifo @a(%a, {%link}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b(%b, {%link}, 1 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out(%link, {%out}, 1 : i32) : !aie.objectfifo<memref<32xi32>>
-    // expected-error@+1 {{join inputs must have equal effective repeat counts: @a has 1 (default), @b has 3}}
     aie.objectfifo.link [@a, @b] -> [@out] ([0, 16] [])
   }
 }
