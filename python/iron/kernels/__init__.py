@@ -11,7 +11,7 @@ Submodules:
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine, maxpool2d
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize,
-  levels, grid_decode
+  levels, grid_decode, resize_linear
 - `activation` — softmax, gelu, gelu_erf, silu, swiglu, bf16_exp, exp2f_vec, log_f32, log10_clamp_f32, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm, layer_norm_eps
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
@@ -346,6 +346,8 @@ from .vision import (
     resample_quantize,
     resample_quantize_ref,
     resize,
+    resize_linear,
+    resize_linear_ref,
     resize_ref,
     rgba2gray,
     rgba2gray_ref,
@@ -527,6 +529,8 @@ __all__ = [
     "levels_ref",
     "grid_decode",
     "grid_decode_ref",
+    "resize_linear",
+    "resize_linear_ref",
     "softmax",
     "gelu",
     "gelu_erf",
