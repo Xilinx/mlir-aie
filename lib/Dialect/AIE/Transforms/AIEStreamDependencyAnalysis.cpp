@@ -971,7 +971,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
              push.getDirection(),
              static_cast<int>(push.getChannel())}};
       if (isa<AIEX::NpuWrite32Op, AIEX::NpuMaskWrite32Op, AIEX::NpuBlockWriteOp,
-              AIEX::NpuWriteConfigOp>(op))
+              AIEX::NpuWriteConfigOp, AIEX::NpuWriteTeardownOp>(op))
         return SmallVector<TileDMAChannel>{};
       return std::nullopt;
     };

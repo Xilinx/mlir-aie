@@ -28,6 +28,7 @@ class NPUKernel:
         elf_path=None,
         dispatch_params: list[str] | None = None,
         dispatch_lib_path=None,
+        init_entry: bool = False,
         params_path=None,
     ):
         """Initialize the NPUKernel.
@@ -66,6 +67,8 @@ class NPUKernel:
                 compiled dispatch bridge (``dispatch.so``) for a
                 DispatchTime[T] design. Required (non-None) whenever
                 ``dispatch_params`` is non-empty.
+            init_entry (bool, optional): Whether the full ELF has the entry
+                aiecc's ``--reconfig-init-entry`` builds. Defaults to False.
             params_path (str | Path | None, optional): The lowering's
                 ``params.txt`` for a full ELF whose design declares
                 ScratchpadParameters, which a call's ``parameters`` are
@@ -81,6 +84,7 @@ class NPUKernel:
         self._dispatch_params = list(dispatch_params) if dispatch_params else []
         self._dispatch_lib_path = dispatch_lib_path
         self._dispatch_bridge = None
+        self._init_entry = init_entry
         self._params_path = params_path
 
     @property
@@ -118,6 +122,17 @@ class NPUKernel:
             str | Path | None: The full-ELF path.
         """
         return self._elf_path
+
+    @property
+    def init_kernel_name(self) -> str | None:
+        """Get the full ELF's init entry, or ``None``.
+
+        Returns:
+            str | None: The ``"<device>:reconfig_init"`` entry.
+        """
+        if not self._init_entry:
+            return None
+        return f"{self.kernel_name.partition(':')[0]}:reconfig_init"
 
     @property
     def params_path(self):

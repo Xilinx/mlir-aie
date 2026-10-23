@@ -23,6 +23,7 @@ from types import CodeType
 
 import numpy as np
 import pytest
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
 from aie.iron import DeviceConfiguration, Program, Runtime, kernels
 from aie.iron.algorithms import _pipeline
@@ -2374,6 +2375,171 @@ def test_scratchpad_parameters_ask_for_their_params_file(tmp_path):
     assert design._generated_for(full_elf=True).aiecc_options == [
         "--get-scratchpad-parameters"
     ]
+
+
+def test_program_reconfiguration_options_reach_aiecc(tmp_path):
+    runtime = Runtime(lambda: None, [])
+    with mlir_mod_ctx():
+        module = Program.compose(
+            [DeviceConfiguration(NPU2Col1(), runtimes=[runtime])],
+            entry=runtime,
+            reconfig_teardown=True,
+            reconfig_init_entry=False,
+        ).resolve_program()
+        mlir_path = tmp_path / "design.mlir"
+        mlir_path.write_text(str(module))
+    design = CompilableDesign(mlir_path)
+
+    assert design._generated_for(full_elf=True).aiecc_options == [
+        "--reconfig-teardown=true",
+        "--reconfig-init-entry=false",
+    ]
+
+
+def test_single_configuration_program_reconfiguration_options():
+    with mlir_mod_ctx():
+        module = Program(
+            NPU2Col1(),
+            Runtime(lambda: None, []),
+            reconfig_teardown=False,
+            reconfig_init_entry=True,
+        ).resolve_program()
+        attributes = module.operation.attributes
+        assert attributes["iron.reconfig_teardown"].value is False
+        assert attributes["iron.reconfig_init_entry"].value is True
+
+
+@pytest.mark.parametrize(
+    "attribute,inferred",
+    [
+        (None, False),
+        ("iron.reconfig_teardown = false", False),
+        ("iron.expand_load_pdis = true", False),
+        ("iron.reconfig_teardown = true", True),
+        ("iron.reconfig_init_entry = true", True),
+    ],
+)
+def test_reconfiguration_option_implies_full_elf(tmp_path, attribute, inferred):
+    mlir_path = tmp_path / "design.mlir"
+    attributes = "" if attribute is None else f" attributes {{{attribute}}}"
+    mlir_path.write_text(f"module{attributes} {{}}")
+    design = CompilableDesign(mlir_path)
+
+    assert design._infer_full_elf() is inferred
+    assert design.full_elf is inferred
+
+
+def test_reconfiguration_option_rejects_standard_paths_before_aiecc(
+    tmp_path, monkeypatch
+):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module attributes {iron.reconfig_teardown = true} {}")
+    monkeypatch.setattr(
+        compilabledesign_module,
+        "compile_mlir_module",
+        lambda **kwargs: pytest.fail("aiecc ran"),
+    )
+    design = CompilableDesign(mlir_path)
+
+    with pytest.raises(ValueError, match="requires full-ELF compilation"):
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin",
+            inst_path=tmp_path / "insts.bin",
+        )
+
+
+def _write_full_elf_config(directory: Path, main_instances: list[str]) -> None:
+    (directory / "full_elf_config.json").write_text(
+        json.dumps(
+            {
+                "xrt-kernels": [
+                    {"name": "main", "instance": [{"id": i} for i in main_instances]}
+                ]
+            }
+        )
+    )
+
+
+def _compile_full_elf(tmp_path, monkeypatch, instances, aiecc_flags=(), attributes=""):
+    """Compile with aiecc faked to write a full ELF whose main device holds `instances`."""
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        f"module attributes {{{attributes}}} {{}}" if attributes else "module {}"
+    )
+
+    def fake_compile_mlir_module(**kwargs):
+        Path(kwargs["full_elf_path"]).touch()
+        _write_full_elf_config(kwargs["work_dir"], instances)
+
+    monkeypatch.setattr(
+        compilabledesign_module,
+        "compile_external_kernels",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
+    )
+    monkeypatch.setattr(
+        compilabledesign_module._manifest, "record", lambda *args, **kwargs: None
+    )
+    design = CompilableDesign(mlir_path, aiecc_flags=list(aiecc_flags))
+    design.compile(full_elf_path=tmp_path / "design.elf")
+    return design
+
+
+@pytest.mark.parametrize(
+    "aiecc_flags,attributes,init",
+    [
+        ([], "", False),
+        (["-reconfig-init-entry=1"], "", True),
+        # The Program's option follows aiecc_flags, so it wins.
+        (["--reconfig-init-entry"], "iron.reconfig_init_entry = false", False),
+    ],
+)
+def test_full_elf_init_entry_resolves_last_option(
+    tmp_path, monkeypatch, npu2_device, aiecc_flags, attributes, init
+):
+    design = _compile_full_elf(
+        tmp_path, monkeypatch, ["reconfig_init", "sequence"], aiecc_flags, attributes
+    )
+
+    assert design._full_elf_kernel_name == (
+        "main:sequence" if init else "main:reconfig_init"
+    )
+    assert design._full_elf_init_entry == init
+
+
+def test_full_elf_init_entry_recorded_only_if_built(tmp_path, monkeypatch, npu2_device):
+    # aiecc adds no init entry to a device without a load_pdi to expand.
+    design = _compile_full_elf(
+        tmp_path, monkeypatch, ["sequence"], ["--reconfig-init-entry"]
+    )
+
+    assert design._full_elf_kernel_name == "main:sequence"
+    assert design._full_elf_init_entry is False
+
+
+def test_full_elf_kernel_name_skips_init_entry(tmp_path):
+    _write_full_elf_config(tmp_path, ["reconfig_init", "sequence"])
+
+    parse = CompilableDesign._parse_full_elf_kernel_name
+    assert parse(tmp_path, init_entry=True) == "main:sequence"
+    # A sequence a design names reconfig_init is an entry like any other.
+    assert parse(tmp_path) == "main:reconfig_init"
+
+
+def test_full_elf_init_entry_round_trips_through_manifest(tmp_path):
+    manifest = compilabledesign_module._manifest
+    manifest.record(
+        tmp_path,
+        [],
+        [],
+        full_elf_kernel="main:sequence",
+        full_elf_init_entry=True,
+    )
+    assert manifest.resolve_full_elf_init_entry(tmp_path) is True
+    manifest.record(tmp_path, [], [], full_elf_kernel="main:sequence")
+    assert manifest.resolve_full_elf_init_entry(tmp_path) is False
 
 
 def test_full_elf_kernel_name_selects_explicit_entry(tmp_path):

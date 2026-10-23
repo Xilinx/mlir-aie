@@ -527,6 +527,9 @@ class XRTHostRuntime(HostRuntime):
         elf = pyxrt.elf(str(elf_path))
         context = pyxrt.hw_context(self._device, elf)
         kernel = pyxrt.ext.kernel(context, kernel_name)
+        self._run_init_entry(
+            context, getattr(npu_kernel, "init_kernel_name", None), kernel_name
+        )
 
         return XRTKernelHandle(
             kernel,
@@ -543,6 +546,25 @@ class XRTHostRuntime(HostRuntime):
                 empty=_full_elf_empty_run(context, kernel_name),
             ),
         )
+
+    def _run_init_entry(self, context, init_name: str | None, kernel_name: str) -> None:
+        """Run the init entry ``init_name``, if any, on a new hardware context.
+
+        Args:
+            context: The hardware context, just created from the full ELF.
+            init_name: ``NPUKernel.init_kernel_name``.
+            kernel_name: The ``"<device>:<sequence>"`` kernel being loaded.
+
+        Raises:
+            HostRuntimeError: If the init entry does not complete.
+        """
+        if init_name is None or init_name == kernel_name:
+            return
+        run = pyxrt.run(pyxrt.ext.kernel(context, init_name))
+        run.start()
+        r = run.wait()
+        if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            raise HostRuntimeError(f"{init_name} returned {r}")
 
     def run(
         self,
@@ -1066,6 +1088,17 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict_insts()
         gc.collect()
 
+    def _run_init_entry(self, context, init_name: str | None, kernel_name: str) -> None:
+        """Evict the context if its init entry fails, as the array state is unknown."""
+        try:
+            super()._run_init_entry(context, init_name, kernel_name)
+        except Exception:
+            for key, entry in list(self._context_cache.items()):
+                if entry["context"] is context:
+                    del self._context_cache[key]
+                    self._cleanup_entry(entry)
+            raise
+
     def _load_full_elf_cached(
         self, npu_kernel, retry: bool = True
     ) -> CachedXRTKernelHandle:
@@ -1073,14 +1106,16 @@ class CachedXRTRuntime(XRTHostRuntime):
 
         Full ELFs carry their own PDIs + control code, so the context is built
         from ``pyxrt.elf`` (no xclbin, no instruction BO cache).  Context reuse
-        follows the same LRU + Phoenix-drain policy as the xclbin path.
+        follows the same LRU + Phoenix-drain policy as the xclbin path.  A new
+        context first runs the kernel's init entry, if it has one.
         """
         elf_path = Path(npu_kernel.elf_path)
         kernel_name = npu_kernel.kernel_name
         context_key = self._file_key(elf_path, "full ELF")
 
         try:
-            if context_key in self._context_cache:
+            new_context = context_key not in self._context_cache
+            if not new_context:
                 entry = self._context_cache[context_key]
                 self._context_cache.move_to_end(context_key)
                 context = entry["context"]
@@ -1132,6 +1167,10 @@ class CachedXRTRuntime(XRTHostRuntime):
                     empty=_full_elf_empty_run(context, kernel_name),
                 )
             kernel = entry["kernels"][kernel_name]
+            if new_context:
+                self._run_init_entry(
+                    context, getattr(npu_kernel, "init_kernel_name", None), kernel_name
+                )
 
             kernel_handle = CachedXRTKernelHandle(
                 kernel,

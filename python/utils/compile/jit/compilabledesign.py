@@ -68,6 +68,7 @@ from aie.utils.compile import (
 )
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import (
+    _aiecc_bool_option,
     _check_lut_banks_enabled,
     _cleanup_failed_compilation,
     _copy_object_files,
@@ -101,9 +102,20 @@ COMPILE_LOCK_TIMEOUT_SECONDS = 1800
 _GENERATION_LOCK = threading.RLock()
 
 _MULTI_CONFIGURATION_OUTPUTS = (
-    "A multi-configuration Program requires full-ELF compilation and does not "
-    "produce xclbin, instruction, wrapped-ELF, or standalone-PDI outputs."
+    "A Program with more than one configuration, teardown or an init entry "
+    "requires full-ELF compilation and does not produce xclbin, instruction, "
+    "wrapped-ELF, or standalone-PDI outputs."
 )
+
+# The Program options forwarded to aiecc. Each is an ``iron.<name>`` module
+# attribute, passed as ``--<name with dashes>=true|false``.
+_RECONFIGURATION_OPTIONS = (
+    "expand_load_pdis",
+    "reconfig_teardown",
+    "reconfig_init_entry",
+)
+# The options aiecc accepts only for a full ELF.
+_FULL_ELF_OPTIONS = ("reconfig_teardown", "reconfig_init_entry")
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +185,7 @@ class _GeneratedDesign:
     external_kernels: list
     entry: str | None
     configuration_count: int
-    expand_load_pdis: bool | None
+    reconfiguration: tuple[tuple[str, bool], ...]
     devices: tuple
     scratchpad_parameters: bool
 
@@ -185,13 +197,16 @@ class _GeneratedDesign:
         attributes = module.operation.attributes
         entry = attributes.get("iron.entry")
         count = attributes.get("iron.configuration_count")
-        expand = attributes.get("iron.expand_load_pdis")
         return cls(
             mlir_text=mlir_text,
             external_kernels=external_kernels,
             entry=entry.value if entry is not None else None,
             configuration_count=count.value if count is not None else 1,
-            expand_load_pdis=expand.value if expand is not None else None,
+            reconfiguration=tuple(
+                (name, attributes[f"iron.{name}"].value)
+                for name in _RECONFIGURATION_OPTIONS
+                if f"iron.{name}" in attributes
+            ),
             devices=tuple(
                 AIEDevice(IntegerAttr(op.attributes["device"]).value)
                 for op in module.body.operations
@@ -205,12 +220,20 @@ class _GeneratedDesign:
     @property
     def aiecc_options(self) -> list[str]:
         """The aiecc flags the program's own attributes and declarations ask for."""
-        options = []
-        if self.expand_load_pdis is not None:
-            options.append(f"--expand-load-pdis={str(self.expand_load_pdis).lower()}")
+        options = [
+            f"--{name.replace('_', '-')}={str(value).lower()}"
+            for name, value in self.reconfiguration
+        ]
         if self.scratchpad_parameters:
             options.append("--get-scratchpad-parameters")
         return options
+
+    @property
+    def requires_full_elf(self) -> bool:
+        """Whether aiecc must build the program as a full ELF."""
+        return self.configuration_count > 1 or any(
+            value for name, value in self.reconfiguration if name in _FULL_ELF_OPTIONS
+        )
 
     @property
     def entry_stream_options(self) -> list[str]:
@@ -301,6 +324,7 @@ class CompilableDesign:
         # Full-ELF artifacts (set after compile() when full_elf is active).
         self._elf_path: Path | None = None
         self._full_elf_kernel_name: str | None = None
+        self._full_elf_init_entry = False
         self._kernel_dir: Path | None = None
         self._generated_cache: dict[tuple, _GeneratedDesign] = {}
 
@@ -1019,7 +1043,7 @@ class CompilableDesign:
     def _infer_full_elf(self) -> bool:
         if self.full_elf:
             return False
-        if self._generated_for(full_elf=False).configuration_count <= 1:
+        if not self._generated_for(full_elf=False).requires_full_elf:
             return False
         self.full_elf = True
         self._inferred_full_elf = True
@@ -1030,8 +1054,8 @@ class CompilableDesign:
 
         With ``full_elf_path`` the ELF is written there, and rebuilt only when
         out of date; otherwise it lands in ``<NPU_CACHE_HOME>/<hash>/design.elf``.
-        Sets `_elf_path` and `_full_elf_kernel_name` and returns
-        ``(elf_path, None)`` (there is no separate insts artifact).
+        Sets `_elf_path`, `_full_elf_kernel_name` and `_full_elf_init_entry`
+        and returns ``(elf_path, None)`` (there is no separate insts artifact).
         """
         if not isinstance(self.mlir_generator, Path):
             self._bind_generation_device()
@@ -1058,7 +1082,12 @@ class CompilableDesign:
                     kernel_name = _manifest.resolve_full_elf_kernel(kernel_dir)
                     if kernel_name is not None:
                         self._record_artifacts(
-                            kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
+                            kernel_dir,
+                            elf=elf_path,
+                            full_elf_kernel_name=kernel_name,
+                            full_elf_init_entry=_manifest.resolve_full_elf_init_entry(
+                                kernel_dir
+                            ),
                         )
                         return elf_path, None
 
@@ -1097,7 +1126,10 @@ class CompilableDesign:
             "Full-ELF cache hit for '%s' in %s", self.generator_name, kernel_dir
         )
         self._record_artifacts(
-            kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
+            kernel_dir,
+            elf=elf_path,
+            full_elf_kernel_name=kernel_name,
+            full_elf_init_entry=_manifest.resolve_full_elf_init_entry(kernel_dir),
         )
         return True
 
@@ -1150,13 +1182,21 @@ class CompilableDesign:
                     f"{elf_path}"
                 )
 
-            kernel_name = self._parse_full_elf_kernel_name(kernel_dir, generated.entry)
+            # Resolve the option as aiecc does; the last occurrence wins.
+            init = _aiecc_bool_option(aiecc_options, "reconfig-init-entry")
+            kernel_name = self._parse_full_elf_kernel_name(
+                kernel_dir, generated.entry, init_entry=init
+            )
+            init_entry = init and self._parse_full_elf_init_entry(
+                kernel_dir, kernel_name
+            )
             _manifest.record(
                 kernel_dir,
                 external_kernels,
                 self.source_files,
                 used_chess=use_chess,
                 full_elf_kernel=kernel_name,
+                full_elf_init_entry=init_entry,
                 digests=digests,
             )
             if build_key is not None:
@@ -1168,7 +1208,10 @@ class CompilableDesign:
             raise
 
         self._record_artifacts(
-            kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
+            kernel_dir,
+            elf=elf_path,
+            full_elf_kernel_name=kernel_name,
+            full_elf_init_entry=init_entry,
         )
         return elf_path, None
 
@@ -1244,7 +1287,7 @@ class CompilableDesign:
 
             try:
                 generated = self._generated_for(full_elf=False)
-                if generated.configuration_count > 1:
+                if generated.requires_full_elf:
                     raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
                 external_kernels = generated.external_kernels
                 use_chess = self._resolve_use_chess(external_kernels)
@@ -1306,6 +1349,7 @@ class CompilableDesign:
         elf: Path | None = None,
         dispatch_library: Path | None = None,
         full_elf_kernel_name: str | None = None,
+        full_elf_init_entry: bool = False,
     ) -> None:
         self._kernel_dir = kernel_dir
         self._xclbin_path = xclbin
@@ -1313,6 +1357,7 @@ class CompilableDesign:
         self._elf_path = elf
         self._dispatch_lib_path = dispatch_library
         self._full_elf_kernel_name = full_elf_kernel_name
+        self._full_elf_init_entry = full_elf_init_entry
         vars(self).pop("expected_tensor_sizes", None)
 
     @functools.cached_property
@@ -1385,8 +1430,20 @@ class CompilableDesign:
         return chess_uses == {True}
 
     @staticmethod
+    def _parse_full_elf_init_entry(kernel_dir: Path, kernel_name: str) -> bool:
+        """Return whether the ELF has a ``reconfig_init`` entry for ``kernel_name``'s device."""
+        name = f"{kernel_name.partition(':')[0]}:reconfig_init"
+        config = json.loads((kernel_dir / "full_elf_config.json").read_text())
+        names = (
+            f"{kernel['name']}:{instance['id']}"
+            for kernel in config["xrt-kernels"]
+            for instance in kernel["instance"]
+        )
+        return name in names
+
+    @staticmethod
     def _parse_full_elf_kernel_name(
-        kernel_dir: Path, expected: str | None = None
+        kernel_dir: Path, expected: str | None = None, init_entry: bool = False
     ) -> str:
         """Return the ``"<device>:<sequence>"`` XRT kernel name for the full ELF.
 
@@ -1394,7 +1451,8 @@ class CompilableDesign:
         runtime-sequence symbol name (e.g. ``main:sequence``). Both are read from
         ``full_elf_config.json``, the config aiecc assembles the ELF from, so the
         name is one the ELF actually holds. The build records it in the cache
-        manifest, so a cache hit needs no MLIR.
+        manifest, so a cache hit needs no MLIR. With ``init_entry``, picking the
+        first sequence skips the ``reconfig_init`` entry aiecc added.
         """
         config_path = kernel_dir / "full_elf_config.json"
         config = json.loads(config_path.read_text())
@@ -1403,6 +1461,12 @@ class CompilableDesign:
             for instance in kernel["instance"]:
                 name = f"{kernel['name']}:{instance['id']}"
                 available.append(name)
+                if (
+                    expected is None
+                    and init_entry
+                    and instance["id"] == "reconfig_init"
+                ):
+                    continue
                 if expected is None or name == expected:
                     return name
         if expected is not None:
