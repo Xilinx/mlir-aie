@@ -52,11 +52,12 @@ read_runs(const int8_t *base, const int8_t *base_b, aie::vector<int8, 32> index,
           aie::vector<int32, 16> first = aie::zeros<int32, 16>(),
           aie::vector<int32, 16> second = aie::zeros<int32, 16>()) {
   // 4 bytes of offset an entry.
-  const aie::vector<int32, 32> wide = index.unpack().unpack();
-  const aie::vector<int32, 16> lanes0 =
-      aie::add(aie::upshift(wide.template extract<16>(0), 2), first);
-  const aie::vector<int32, 16> lanes1 =
-      aie::add(aie::upshift(wide.template extract<16>(1), 2), second);
+  aie::accum<acc64, 32> scaled;
+  scaled.from_vector(index, 2);
+  const aie::vector<int32, 16> lanes0 = aie::add(
+      scaled.template extract<16>(0).template to_vector<int32>(0), first);
+  const aie::vector<int32, 16> lanes1 = aie::add(
+      scaled.template extract<16>(1).template to_vector<int32>(0), second);
   v64int8 r0, r1, r2, r3;
   load_lut_2x_int8(base, base_b, lanes0, r0, r1);
   load_lut_2x_int8(base, base_b, lanes1, r2, r3);
