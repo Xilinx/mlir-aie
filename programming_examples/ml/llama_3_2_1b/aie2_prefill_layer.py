@@ -641,10 +641,10 @@ def build_prefill(
                 gr_out[1].drain(st, tap=gr_y(out, False), group=tg, wait=True)
             tg.finish()
 
-        def layer_phases(l, layer, x_in, x_out):
-            """Dispatch layer l (the blob's layer `layer`) from rows x_in to
+        def layer_phases(i, layer, x_in, x_out):
+            """Dispatch layer i (the blob's layer `layer`) from rows x_in to
             x_out."""
-            gr_phase(x_in, gr_y(stage.gamma(l, 0), True), stage.words("a_qkv"), True)
+            gr_phase(x_in, gr_y(stage.gamma(i, 0), True), stage.words("a_qkv"), True)
             gemms(["qkv"], layer)
 
             tg = TaskGroup()
@@ -738,7 +738,7 @@ def build_prefill(
             gr_phase(x_in, gr_y(stage.words("out_o"), False), stage.words("x1"), False)
             gr_phase(
                 stage.words("x1"),
-                gr_y(stage.gamma(l, 1), True),
+                gr_y(stage.gamma(i, 1), True),
                 stage.words("a_gu"),
                 True,
             )
@@ -793,8 +793,8 @@ def build_prefill(
         gr_out[1].drain(st, tap=gr_y(stage.words("xa"), False), group=tg, wait=True)
         tg.finish()
         x = (stage.words("xa"), stage.words("xb"))
-        for l in range(N_LAYERS):
-            layer_phases(l, LAYER + l, x[l % 2], x[(l + 1) % 2])
+        for i in range(N_LAYERS):
+            layer_phases(i, LAYER + i, x[i % 2], x[(i + 1) % 2])
 
     rt = Runtime(
         sequence,
