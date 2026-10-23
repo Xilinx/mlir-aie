@@ -177,9 +177,9 @@ __attribute__((noinline)) static void block_sv(const int8_t *v,
       ::aie::accum<acc64, 32> acc = c[j].to_accum();
       ::aie::vector<float, 32> f = ::aie::add(
           ::aie::to_float<float>(acc.template to_vector<int32>(21), 0),
-          ::aie::to_float<float>(::aie::bit_and(int32(0x1fffff),
-                                                acc.template to_vector<int32>(0)),
-                                 21));
+          ::aie::to_float<float>(
+              ::aie::bit_and(int32(0x1fffff), acc.template to_vector<int32>(0)),
+              21));
       ::aie::vector<int32, 32> fb = f.template cast_to<int32>();
       ::aie::vector<int32, 32> field =
           ::aie::downshift(::aie::bit_and(int32(0x7f800000), fb), 23);
