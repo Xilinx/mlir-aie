@@ -1723,8 +1723,7 @@ class SegmentDesign:
                         # Rolled over the output channels: a call per chunk of
                         # 8 and slice is too much program to unroll.
                         for o in range_(op.dst.channels8 // 8 // h):
-                            if wts is not None and h > 1:
-                                wc = wts.acquire(1)
+                            wc = wts.acquire(1) if wts is not None and h > 1 else None
                             for hh in range_(h) if h > 1 else [0]:
                                 c = o * h + hh
                                 for i, x in enumerate(lines):
