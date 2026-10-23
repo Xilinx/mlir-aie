@@ -395,11 +395,11 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     ::aie::vector<int32, 32> b[2];
     ::aie::vector<int32, 32> top = ::aie::zeros<int32, 32>();
     for (int j = 0; j < 2; j++) {
-      b[j] = vec_mul_rne(vec_mul_rne(::aie::load_v<32>(expq + h * kTB + 32 * j)
-                                         .template cast_to<float>(),
-                                     inv_v),
-                         ::aie::load_v<32>(vslot + 32 * j)
-                             .template cast_to<float>())
+      b[j] = vec_mul_rne(
+                 vec_mul_rne(::aie::load_v<32>(expq + h * kTB + 32 * j)
+                                 .template cast_to<float>(),
+                             inv_v),
+                 ::aie::load_v<32>(vslot + 32 * j).template cast_to<float>())
                  .template cast_to<int32>();
       b[j] = ::aie::select(
           ::aie::zeros<int32, 32>(), b[j],
