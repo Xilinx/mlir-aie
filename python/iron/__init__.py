@@ -72,9 +72,6 @@ from . import algorithms, kernels
 from .buffer import Buffer
 from .configuration import DeviceConfiguration
 from .dataflow import (
-    BufferPool,
-    BufferPoolHandle,
-    PoolSegment,
     Acquire,
     Bd,
     BdIteration,
@@ -84,8 +81,11 @@ from .dataflow import (
     Flow,
     FlowEndpoint,
     ObjectFifo,
+    ObjectFifoPool,
+    ObjectFifoPoolHandle,
     PacketDest,
     PacketFlow,
+    PoolSegment,
     Release,
     TileDma,
     TileDmaTask,
@@ -101,8 +101,8 @@ from .scratchpad_parameter import ScratchpadParameter
 from .worker import Worker, WorkerRuntimeBarrier
 
 __all__ = [
-    "BufferPool",
-    "BufferPoolHandle",
+    "ObjectFifoPool",
+    "ObjectFifoPoolHandle",
     "PoolSegment",
     # Core design abstractions
     "Buffer",

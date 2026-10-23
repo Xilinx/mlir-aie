@@ -19,6 +19,7 @@ from ..utils.compile.jit.context import get_compile_arg
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.flow import PacketFlow
 from .dataflow.objectfifo import ObjectFifoLink
+from .dataflow.objectfifopool import ObjectFifoPoolHandle
 from .device import Device
 from .kernel import Kernel
 from .resolvable import DeviceResources, PerDeviceConfiguration, Resolvable
@@ -192,7 +193,12 @@ class DeviceConfiguration(DeviceResources):
     # explicit name may be claimed once, and unnamed ones take fresh names.
     def _name_unnamed(self) -> None:
         fifos = [h._object_fifo for runtime in self._runtimes for h in runtime.fifos]
-        fifos += [h._object_fifo for worker in self._workers for h in worker.fifos]
+        fifos += [
+            h._object_fifo
+            for worker in self._workers
+            for h in worker.fifos
+            if not isinstance(h, ObjectFifoPoolHandle)
+        ]
         fifos = list(dict.fromkeys(fifos))
         for fifo in fifos:
             for handle in [fifo._prod, *fifo._cons]:
@@ -274,11 +280,19 @@ class DeviceConfiguration(DeviceResources):
         @device(current_device.resolve(), sym_name=device_name, loc=loc)
         def device_body():
             all_fifos = set()
+            all_pools = set()
             for runtime in self._runtimes:
                 all_fifos.update(runtime.fifos)
             for worker in self._workers:
-                all_fifos.update(worker.fifos)
+                for handle in worker.fifos:
+                    # A pool handle states one end only, so it has no fifo graph
+                    # to walk and no delegate tile to follow.
+                    if isinstance(handle, ObjectFifoPoolHandle):
+                        all_pools.add(handle)
+                    else:
+                        all_fifos.add(handle)
             all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
+            all_pools = sorted(all_pools, key=lambda obj: obj.name or "")
 
             all_tiles = []
             for worker in self._workers:
@@ -297,6 +311,9 @@ class DeviceConfiguration(DeviceResources):
                 delegate = handle._object_fifo._delegate_tile
                 if delegate is not None:
                     all_tiles.append(delegate)
+            for handle in all_pools:
+                self._claim(handle.pool, owners)
+                all_tiles.extend(handle.tiles())
             for flow in self._flows:
                 self._claim(flow, owners)
                 all_tiles.extend(flow.all_tiles())
@@ -315,6 +332,8 @@ class DeviceConfiguration(DeviceResources):
                 current_device.resolve_tile(tile)
 
             for handle in all_fifos:
+                handle.resolve()
+            for handle in all_pools:
                 handle.resolve()
             for lock in self._locks:
                 lock.resolve()
