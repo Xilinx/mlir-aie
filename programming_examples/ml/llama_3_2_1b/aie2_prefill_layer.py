@@ -341,6 +341,20 @@ def build_prefill(
     )
     of_gqch = [ObjectFifo(t_ch, name=f"gqch{k}") for k in range(GQ)]
     of_gqrw = [ObjectFifo(t_rw, name=f"gqrw{k}") for k in range(GQ)]
+    # Split per KV half in a memtile: one drain striding both halves would
+    # pass the shim BD's 2^20-word stride once T reaches 7744.
+    gq_halves = [
+        f
+        for k in range(GQ)
+        for f in of_gqrw[k]
+        .cons()
+        .split(
+            [0, NH * KV_ROW_WORDS],
+            obj_types=[np.ndarray[(NH * KV_ROW_WORDS,), np.dtype[np.int32]]] * 2,
+            names=[f"gqrw{k}_{half}" for half in range(2)],
+            tile=Tile((1, 6)[k], 1),
+        )
+    ]
     k_qkv = kp.bind("llama_prefill_qkv_row", [t_fp, t_cs, t_ch, t_rw])
 
     def gq_body(c_fp, c_cs, c_ch, c_rw, k):
@@ -536,7 +550,7 @@ def build_prefill(
         [of_grh.cons(), of_grx.cons()],
         [of_gq.prod(), of_gqcs.prod()],
         [f.cons() for f in of_gqch],
-        [f.cons() for f in of_gqrw],
+        [f.cons() for f in gq_halves],
         [of_gs.prod(), of_gso.cons()],
         [f.prod() for f in of_kv],
         [f.cons() for f in of_sv],
@@ -667,18 +681,19 @@ def build_prefill(
                     group=tg,
                     wait=True,
                 )
-                gq_rw[k].drain(
-                    kv,
-                    tap=tap(
-                        kv_total,
-                        layer * 2 * kv_region + k * GQ_ROWS * KV_ROW_WORDS,
-                        [GQ_ROWS, 2, NH, KV_ROW_WORDS],
-                        [KV_ROW_WORDS, kv_region, KV_HEAD_BLOCK_WORDS, 1],
-                    ),
-                    offset_parameter=p_kv,
-                    group=tg,
-                    wait=True,
-                )
+                for half in range(2):
+                    gq_rw[2 * k + half].drain(
+                        kv,
+                        tap=tap(
+                            kv_total,
+                            (layer * 2 + half) * kv_region + k * GQ_ROWS * KV_ROW_WORDS,
+                            [1, GQ_ROWS, NH, KV_ROW_WORDS],
+                            [0, KV_ROW_WORDS, KV_HEAD_BLOCK_WORDS, 1],
+                        ),
+                        offset_parameter=p_kv,
+                        group=tg,
+                        wait=True,
+                    )
             tg.finish()
 
             for s in range(M // SUB):
