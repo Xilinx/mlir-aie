@@ -15,6 +15,7 @@ consumer.
 
 from __future__ import annotations
 
+import math
 from typing import Sequence
 
 import numpy as np
@@ -191,7 +192,7 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
         self.name = name
         self._buffers = list(buffers) if buffers is not None else None
         if segments is None:
-            (elems,) = np_ndarray_type_get_shape(obj_type)
+            elems = math.prod(np_ndarray_type_get_shape(obj_type))
             segments = [
                 PoolSegment(
                     elems,
@@ -208,7 +209,7 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
 
     def _check_segments(self) -> None:
         """Check that the segments cover the object in increasing offset order."""
-        (elems,) = np_ndarray_type_get_shape(self._obj_type)
+        elems = math.prod(np_ndarray_type_get_shape(self._obj_type))
         at = 0
         for segment in self._segments:
             if segment.offset != at:
@@ -241,6 +242,41 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
     def segments(self) -> list[PoolSegment]:
         """The segments, in increasing offset order."""
         return list(self._segments)
+
+    @property
+    def handles(self) -> list["ObjectFifoPoolHandle"]:
+        """The handles taken on this pool."""
+        return list(self._handles)
+
+    def resources(self) -> list:
+        """Return the buffers and locks this pool refers to by symbol."""
+        locks = [
+            lock
+            for segment in self._segments
+            for lock in (segment.produce_lock, segment.consume_lock)
+            if lock is not None
+        ]
+        return [*(self._buffers or []), *locks]
+
+    def name_symbols(self, claim) -> None:
+        """Name every symbol this pool refers to that the design left unnamed.
+
+        Args:
+            claim: Takes a preferred name and returns one free of collisions.
+        """
+        for index, buffer in enumerate(self._buffers or []):
+            if buffer.name is None:
+                buffer._name = claim(f"{self.name}_buff_{index}")
+        for index, segment in enumerate(self._segments):
+            for lock, role in (
+                (segment.produce_lock, "prod"),
+                (segment.consume_lock, "cons"),
+            ):
+                if lock is not None and lock.name is None:
+                    lock._name = claim(f"{self.name}_{role}_lock_{index}")
+        for handle in self._handles:
+            if handle.name is None:
+                handle._name = claim(f"{self.name}_{handle.verb}")
 
     @property
     def op(self):
@@ -344,6 +380,11 @@ class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
         return self._name
 
     @property
+    def verb(self) -> str:
+        """What this handle does to the pool, as its symbol spells it."""
+        return "cons" if self._role == ObjectFifoRole.Drain else "prod"
+
+    @property
     def pool(self) -> ObjectFifoPool:
         """The pool this handle reaches."""
         return self._pool
@@ -372,11 +413,22 @@ class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
         return self._pool.tiles()
 
     def _memref_type(self):
-        """Return the type an acquire hands back: the run this handle's segments span."""
+        """Return the type an acquire hands back.
+
+        Mirrors ``ObjectFifoCoreEndpointOp::getAccessType()``: the object's own
+        type for the whole object, and the rank-reduced subview of the run this
+        handle's segments span for anything less. The offset has to survive,
+        since the core reads the objects in place.
+        """
+        elem = np_ndarray_type_to_memref_type(self._pool.obj_type)
         chosen = self._pool.segments if self._segments is None else list(self._segments)
-        elems = sum(segment.size for segment in chosen)
-        dtype = np_ndarray_type_to_memref_type(self._pool.obj_type).element_type
-        return ir.MemRefType.get([elems], dtype)
+        offset = chosen[0].offset
+        size = chosen[-1].offset + chosen[-1].size - offset
+        if offset == 0 and size == math.prod(elem.shape):
+            return elem
+        return ir.MemRefType.get(
+            [size], elem.element_type, ir.StridedLayoutAttr.get(offset, [1])
+        )
 
     def acquire(self, num_elem: int = 1):
         """Acquire ``num_elem`` objects, as an ObjectFifo handle does.
@@ -407,8 +459,14 @@ class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
             return
         self._pool.resolve(loc=loc, ip=ip)
         base = self._pool.name or "pool"
-        verb = "cons" if self._role == ObjectFifoRole.Drain else "prod"
-        self._name = self._name or f"{base}_{verb}"
+        if self._name is None:
+            # Several handles may take the same role on one pool, so the symbol
+            # carries the handle's index among them. A DeviceConfiguration names
+            # them before this, and only a pool resolved outside one lands here.
+            peers = [h for h in self._pool.handles if h.verb == self.verb]
+            index = peers.index(self)
+            suffix = "" if index == 0 else f"_{index}"
+            self._name = f"{base}_{self.verb}{suffix}"
         segments = self._pool._segment_names(self._segments)
         # The core that took this handle is the one that reaches the objects,
         # so the endpoint sits on its tile; the verifier rejects an endpoint

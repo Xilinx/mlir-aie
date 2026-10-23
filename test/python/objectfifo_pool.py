@@ -110,18 +110,56 @@ def fifo_handle_drives_the_same_body():
     )
 
 
+def two_workers_split_one_pool():
+    pool = ObjectFifoPool(
+        np.ndarray[(2 * ELEMS,), np.dtype[np.int32]],
+        tile=Tile(0, 2),
+        name="p",
+        segments=[
+            PoolSegment(ELEMS, offset=0, manual_fill=True),
+            PoolSegment(ELEMS, offset=ELEMS, manual_fill=True),
+        ],
+    )
+    low, high = pool.cons([pool.segments[0]]), pool.cons([pool.segments[1]])
+    workers = [
+        Worker(consume, fn_args=[low], tile=Tile(0, 2)),
+        Worker(consume, fn_args=[high], tile=Tile(0, 3)),
+    ]
+
+    rt = Runtime(lambda x: None, [obj_type])
+    module = Program(NPU2Col1(), rt, workers=workers).resolve_program()
+    # The configuration names the handles as it resolves them.
+    assert low.name != high.name, low.name
+    return print(module)
+
+
+def a_pool_holds_a_multidimensional_object():
+    tile = Tile(0, 2)
+    pool = ObjectFifoPool(
+        np.ndarray[(4, 8), np.dtype[np.int32]], tile=tile, name="m", manual_fill=True
+    )
+
+    def write_corner(handle):
+        handle.acquire(1)[0, 0] = 1
+        handle.release(1)
+
+    worker = Worker(write_corner, fn_args=[pool.cons()], tile=tile)
+    rt = Runtime(lambda x: None, [obj_type])
+    return print(Program(NPU2Col1(), rt, workers=[worker]).resolve_program())
+
+
 # The pool's buffer and locks take the names the compiler would have given
 # them, and the core endpoint names the pool rather than generating a second end.
 # CHECK: module {
 # CHECK:   aie.device(npu2_1col) {
+# CHECK-DAG: aie.buffer({{.*}}) {sym_name = "x_pool_buff_0"}
+# CHECK-DAG: aie.lock({{.*}}) {init = 1 : i32, sym_name = "x_pool_prod_lock_0"}
+# CHECK-DAG: aie.lock({{.*}}) {init = 0 : i32, sym_name = "x_pool_cons_lock_0"}
+
 # CHECK:     aie.objectfifo.pool @x_pool({{.*}}) {buffers = [@x_pool_buff_0], depth = 1 : i32}
 # CHECK:       aie.objectfifo.segment @x_pool_s0 {consumeLock = @x_pool_cons_lock_0,
 # CHECK-SAME:   manualFill, offset = 0 : i32, produceLock = @x_pool_prod_lock_0, size = 16 : i32}
 # CHECK:     aie.objectfifo.core_endpoint @x_pool_cons({{.*}}) drains @x_pool {segments = [@x_pool_s0]}
-
-# CHECK-DAG: aie.lock({{.*}}) {init = 1 : i32, sym_name = "x_pool_prod_lock_0"}
-# CHECK-DAG: aie.lock({{.*}}) {init = 0 : i32, sym_name = "x_pool_cons_lock_0"}
-# CHECK-DAG: aie.buffer({{.*}}) {sym_name = "x_pool_buff_0"}
 # CHECK:     aie.core({{.*}}) {
 # CHECK:       aie.objectfifo.acquire @x_pool_cons(1)
 # CHECK:       aie.objectfifo.release @x_pool_cons(1)
@@ -154,3 +192,19 @@ pool_handle_drives_a_worker()
 # CHECK:   }
 # CHECK: }
 fifo_handle_drives_the_same_body()
+
+# Each handle takes a symbol of its own, and a segment short of the whole
+# object acquires a subview that carries the segment's offset.
+# CHECK: aie.objectfifo.pool @p({{.*}})
+# CHECK-DAG: aie.objectfifo.core_endpoint @p_cons({{.*}}) drains @p {segments = [@p_s0]}
+# CHECK-DAG: aie.objectfifo.core_endpoint @p_cons_0({{.*}}) drains @p {segments = [@p_s1]}
+# CHECK-DAG: aie.objectfifo.acquire @p_cons(1) : memref<16xi32, strided<[1]>>
+# CHECK-DAG: aie.objectfifo.acquire @p_cons_0(1) : memref<16xi32, strided<[1], offset: 16>>
+two_workers_split_one_pool()
+
+# A whole-object acquire keeps the object's own type, so the core indexes a
+# multidimensional object as it was declared.
+# CHECK: aie.objectfifo.pool @m({{.*}}) {depth = 1 : i32} : memref<4x8xi32>
+# CHECK:   aie.objectfifo.segment @m_s0 {manualFill, offset = 0 : i32, size = 32 : i32}
+# CHECK: aie.objectfifo.acquire @m_cons(1) : memref<4x8xi32>
+a_pool_holds_a_multidimensional_object()

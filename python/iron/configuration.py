@@ -25,6 +25,7 @@ from ..helpers.dialects.func import FuncBase
 from ..helpers.util import mlir_type_to_np_dtype
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
+from .buffer import Buffer
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.flow import PacketFlow
 from .dataflow.objectfifo import ObjectFifoLink
@@ -38,7 +39,8 @@ from .scratchpad_parameter import ScratchpadParameter
 
 
 def _pool_symbols(pool):
-    """Yield the name of every symbol an ObjectFifoPool refers to."""
+    """Yield the name of every symbol an ObjectFifoPool and its handles claim."""
+    yield pool.name
     for buffer in pool.buffers or []:
         yield buffer.name
     for segment in pool.segments:
@@ -48,6 +50,8 @@ def _pool_symbols(pool):
             for lock in (segment.produce_lock, segment.consume_lock)
             if lock is not None
         )
+    for handle in pool.handles:
+        yield handle.name
 
 
 class DeviceConfiguration(DeviceResources):
@@ -385,20 +389,8 @@ class DeviceConfiguration(DeviceResources):
         for pool in pools:
             if pool.name is None:
                 pool.name = fresh("pool")
-        # A pool refers to its buffers and locks by symbol, so each one it
-        # names needs a name. Match what --aie-objectfifo-allocate would call
-        # the ones it makes itself.
         for pool in pools:
-            for index, buffer in enumerate(pool.buffers or []):
-                if buffer.name is None:
-                    buffer._name = claim(f"{pool.name}_buff_{index}")
-            for index, segment in enumerate(pool.segments):
-                for lock, role in (
-                    (segment.produce_lock, "prod"),
-                    (segment.consume_lock, "cons"),
-                ):
-                    if lock is not None and lock.name is None:
-                        lock._name = claim(f"{pool.name}_{role}_lock_{index}")
+            pool.name_symbols(claim)
         for flow in self._flows:
             if flow.name is None:
                 flow._name = fresh(
@@ -479,6 +471,11 @@ class DeviceConfiguration(DeviceResources):
             for handle in all_pools:
                 self._claim(handle.pool, owners)
                 all_tiles.extend(handle.tiles())
+                # The pool names these but does not own them, so nothing else
+                # would claim one a hand-written DMA program never mentions.
+                for resource in handle.pool.resources():
+                    self._claim(resource, owners)
+                    all_tiles.extend(resource.tiles())
             for flow in self._flows:
                 self._claim(flow, owners)
                 all_tiles.extend(flow.all_tiles())
@@ -499,6 +496,10 @@ class DeviceConfiguration(DeviceResources):
             for handle in all_fifos:
                 handle.resolve()
             for handle in all_pools:
+                for resource in handle.pool.resources():
+                    if isinstance(resource, Buffer):
+                        resource.place(handle.pool.tile)
+                    resource.resolve()
                 handle.resolve()
             for lock in self._locks:
                 lock.resolve()
