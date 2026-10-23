@@ -32,24 +32,18 @@ static inline void zero_words(void *restrict dst) {
     ((llama_word *)dst)[i] = 0;
 }
 
-// Lane-wise a * b rounded to nearest-even, as the scalar soft-float `*` is.
-// aie::mul on fp32 vectors is an emulation that is one ulp off on up to ~1.5%
-// of lanes, so the 24-bit significands are multiplied exactly into acc64 and
-// rounded once by srs. Needs rounding_mode::conv_even (set by the caller).
-// Overflow gives +-inf; zero or denormal operands and products below
-// FLT_MIN give +-0 where IEEE would keep a denormal.
+// vec_mul_rne with b given as its bits bi, exponent field eb and significand
+// with the implicit bit mb (vec_mul_rne's own split of b), for a b that
+// several products share.
 template <unsigned kN>
-static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
-                                                   ::aie::vector<float, kN> b) {
+static inline ::aie::vector<float, kN>
+vec_mul_rne_split(::aie::vector<float, kN> a, ::aie::vector<int32, kN> bi,
+                  ::aie::vector<int32, kN> eb, ::aie::vector<int32, kN> mb) {
   ::aie::vector<int32, kN> ai = a.template cast_to<int32>();
-  ::aie::vector<int32, kN> bi = b.template cast_to<int32>();
   ::aie::vector<int32, kN> ea =
       ::aie::bit_and(int32(0xff), ::aie::downshift(ai, 23));
-  ::aie::vector<int32, kN> eb =
-      ::aie::bit_and(int32(0xff), ::aie::downshift(bi, 23));
   ::aie::accum<acc64, kN> p = ::aie::mul(
-      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), ai)),
-      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bi)));
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), ai)), mb);
   // p is in [2^46, 2^48). A rounded p >> 23 reaching 2^24 means p >= 2^47,
   // or p rounds up to 2^47 where both shifts give the same float.
   ::aie::vector<int32, kN> lo = p.template to_vector<int32>(23);
@@ -67,6 +61,21 @@ static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
   return ::aie::bit_or(
              ::aie::bit_and(int32(0x80000000), ::aie::bit_xor(ai, bi)), mag)
       .template cast_to<float>();
+}
+
+// Lane-wise a * b rounded to nearest-even, as the scalar soft-float `*` is.
+// aie::mul on fp32 vectors is an emulation that is one ulp off on up to ~1.5%
+// of lanes, so the 24-bit significands are multiplied exactly into acc64 and
+// rounded once by srs. Needs rounding_mode::conv_even (set by the caller).
+// Overflow gives +-inf; zero or denormal operands and products below
+// FLT_MIN give +-0 where IEEE would keep a denormal.
+template <unsigned kN>
+static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
+                                                   ::aie::vector<float, kN> b) {
+  ::aie::vector<int32, kN> bi = b.template cast_to<int32>();
+  return vec_mul_rne_split(
+      a, bi, ::aie::bit_and(int32(0xff), ::aie::downshift(bi, 23)),
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bi)));
 }
 
 // a * b as vec_mul_rne rounds it: the scalar soft-float `*`'s product, but 0
