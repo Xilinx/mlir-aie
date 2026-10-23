@@ -2200,45 +2200,68 @@ def AIE_RouteEndpointOp
 def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
   let summary = "A stream connection between endpoints named by symbol";
   let description = [{
-    Connects a source endpoint to the destination endpoints it feeds, naming
-    each by symbol. Several destinations mean a broadcast: one source channel
-    feeding them all.
+    Connects the source endpoints to the destination endpoints they feed,
+    naming each by symbol. Several destinations mean a broadcast: one source
+    channel feeding them all. Several sources mean a fan-in: their packets
+    share one destination channel, which fills its objects in arrival order,
+    so a fan-in is packet-switched and every end moves one object of the same
+    size. An endpoint is named by one route unless packet routes share it, as
+    below.
 
     Any op implementing `RouteEndpoint` may be an end of a route:
     `aie.route_endpoint` and `aie.objectfifo.dma_endpoint`.
 
     `--aie-objectfifo-allocate` assigns a channel to each endpoint, emits the
-    corresponding `aie.flow`, and consumes this op.
+    corresponding `aie.flow` or `aie.packet_flow`, and consumes this op.
 
     `packet` routes the connection as an `aie.packet_flow` instead, sharing the
     stream with every other packet flow rather than reserving a circuit for it.
-    `packet_id` pins the header the source stamps; without it allocation picks
-    an id no other flow is using. `keep_pkt_header` keeps each packet's header
-    at the destinations, as on `aie.packet_flow`. Circuit- and packet-switched
-    routes coexist in one device.
+    It is the same `#aie.packet_info` the endpoints and buffer descriptors end
+    up carrying: with `pkt_id` set it pins the header the sources stamp, without
+    it `--aie-assign-packet-ids` picks an id no other flow is using.
+    `keep_pkt_header` keeps each packet's header at the destinations, as on
+    `aie.packet_flow`. Circuit- and packet-switched routes coexist in one
+    device.
 
     Packet routes that name the same endpoint, all as source or all as
-    destination, share its one channel: several sources merge into one
+    destination, share its one channel: several routes merge into one
     receiving channel, or one channel sends several ids. A shared source's BDs
-    state each packet's header themselves, so its routes pin `packet_id`.
+    state each packet's header themselves, so its routes pin `pkt_id`.
 
     Example:
     ```
       aie.route from @src to [@dst0, @dst1]
-      aie.route from @src to [@dst] {packet, packet_id = 3 : i8}
+      aie.route from @src to [@dst] {packet = #aie.packet_info<>}
+      aie.route from [@src0, @src1] to [@dst] {packet = #aie.packet_info<pkt_id = 3>}
     ```
   }];
 
-  let arguments = (ins FlatSymbolRefAttr:$source,
-      FlatSymbolRefArrayAttr:$destinations, UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id,
-      UnitAttr:$keep_pkt_header);
+  let arguments = (ins FlatSymbolRefArrayAttr:$sources,
+      FlatSymbolRefArrayAttr:$destinations,
+      OptionalAttr<PacketInfoAttr>:$packet, UnitAttr:$keep_pkt_header);
 
   let assemblyFormat = [{
-    `from` $source `to` $destinations attr-dict
+    `from` custom<RouteSources>($sources) `to` $destinations attr-dict
   }];
 
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    auto getSourceNames() {
+      return getSources().getAsValueRange<mlir::FlatSymbolRefAttr>();
+    }
+    auto getDestinationNames() {
+      return getDestinations().getAsValueRange<mlir::FlatSymbolRefAttr>();
+    }
+    bool namesAsSource(llvm::StringRef name) {
+      return llvm::is_contained(getSourceNames(), name);
+    }
+    bool namesAsDestination(llvm::StringRef name) {
+      return llvm::is_contained(getDestinationNames(), name);
+    }
+    /// Several sources share the destination channel.
+    bool isFanIn() { return getSources().size() > 1; }
+  }];
 }
 
 def AIE_ShimDMAAllocationOp
@@ -2411,6 +2434,12 @@ def AIE_ObjectFifoCreateOp
     architectural requirement. Hence, a stride of 4 always expresses 4 `i32`s,
     i.e. 16 bytes.
 
+    `dimensionsToStream` walks one object, except on the output of a 1:1
+    `aie.objectfifo.link` at a MemTile, where it may walk the whole stream of
+    input objects to cut overlapping windows; `padDimensions` on its outer
+    dimension then counts zero objects ahead of and behind the stream. See
+    `ObjectFifoLinkOp`.
+
     The following example shows an objectFifo which transposes a 16x16 matrix of
     `i32`s on the producer side using strides and sizes. No transformation is
     applied on the consumer side of `%tile13` (in this case the `fromStream`
@@ -2434,6 +2463,19 @@ def AIE_ObjectFifoCreateOp
     through all of its buffers. The total number of objects transferred is
     `iter_count * elemNumber * repeat_count`, which for `repeat_count == 1`
     simplifies to `iter_count * elemNumber`.
+
+    #### Transport and end ports
+
+    `transport` names the path the objects take (`#aie.transport`), and
+    `prod_port` and `cons_ports` name what drives each end (`#aie.end_port`):
+    a DMA channel, pinned or left to allocation, or a core stream port.
+
+    ```
+      aie.objectfifo @of5 (%tile12, { %tile33 }, 2 : i32)
+          {transport = #aie.transport<dma, packet = #aie.packet_info<>>,
+           prod_port = #aie.end_port<DMA : 1>}
+          : !aie.objectfifo<memref<16xi32>>
+    ```
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,
@@ -2446,37 +2488,26 @@ def AIE_ObjectFifoCreateOp
       OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
       BDDimLayoutArrayAttr:$dimensionsToStream,
       BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-      DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
+      // Which hardware path carries the objects. Absent means auto: the
+      // lowering uses shared memory when both ends reach one memory module and
+      // nothing else about the fifo forces DMAs.
+      OptionalAttr<ObjectFifoTransportAttr>:$transport,
       DefaultValuedAttr<BoolAttr, "false">:$plio,
       // disable_synchronization==true will skip lock generation for
       // objectfifo synchronous accesses
       DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
       // repeat_count==1 means "do it once"
       OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
-      // aie_stream==0 means enable aie stream port on producer tile
-      // aie_stream==1 means enable aie stream port on consumer tile
-      // aie_stream==2 means enable aie stream ports on producer and consumer
-      // tiles
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
-                                             IntMaxValue<2>]>>:$aie_stream,
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
-                                             IntMaxValue<1>]>>:$aie_stream_port,
-      // Pin the DMA channel for an endpoint instead of first-free assignment.
-      // prod_dma_channel pins the producer endpoint's channel;
-      // cons_dma_channels holds one entry per consumer (-1 = auto-assign that
-      // consumer).
-      OptionalAttr<ConfinedAttr<
-          AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
-      OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
+      // What drives each end: a DMA channel (pinned or left to allocation) or
+      // a core stream port. Absent means a DMA channel allocation picks;
+      // cons_ports holds one entry per consumer.
+      OptionalAttr<ObjectFifoEndPortAttr>:$prod_port,
+      OptionalAttr<ObjectFifoEndPortArrayAttr>:$cons_ports,
       InitValuesArrayAttr:$initValues,
       OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
       // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-      OptionalAttr<AIEI32Attr>:$iter_count,
-      // packet selects packet-switched routing. packet_id pins the header;
-      // allocation chooses an unused id when it is absent.
-      UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+      OptionalAttr<AIEI32Attr>:$iter_count);
 
   let assemblyFormat = [{
     $sym_name
@@ -2512,6 +2543,57 @@ def AIE_ObjectFifoCreateOp
     }
 
     AIE::BDDimLayoutArrayAttr getDimensionsFromStream(mlir::Value consumerTile);
+
+    /// The path this fifo asks for. An absent `transport` attribute is auto.
+    ObjectFifoTransportMode getTransportMode() {
+      if (ObjectFifoTransportAttr t = getTransportAttr())
+        return t.getMode();
+      return ObjectFifoTransportMode::Auto;
+    }
+
+    bool forcesDMA() {
+      return getTransportMode() == ObjectFifoTransportMode::DMA;
+    }
+
+    bool forcesSharedMemory() {
+      return getTransportMode() == ObjectFifoTransportMode::SharedMem;
+    }
+
+    /// What drives consumer `index`'s end, or null for a DMA channel
+    /// allocation picks.
+    ObjectFifoEndPortAttr getConsumerPort(unsigned index) {
+      if (mlir::ArrayAttr ports = getConsPortsAttr())
+        return llvm::cast<ObjectFifoEndPortAttr>(ports[index]);
+      return nullptr;
+    }
+
+    bool streamsFromProducer() {
+      ObjectFifoEndPortAttr port = getProdPortAttr();
+      return port && port.isCore();
+    }
+
+    bool streamsToConsumer(unsigned index) {
+      ObjectFifoEndPortAttr port = getConsumerPort(index);
+      return port && port.isCore();
+    }
+
+    /// Whether either end is wired to a core stream port.
+    bool usesStream() {
+      if (streamsFromProducer())
+        return true;
+      for (unsigned i = 0, e = getConsumerTiles().size(); i < e; ++i)
+        if (streamsToConsumer(i))
+          return true;
+      return false;
+    }
+
+    /// The packet header this fifo asks its route to carry, or null for a
+    /// circuit-switched connection.
+    PacketInfoAttr packetHeader() {
+      if (ObjectFifoTransportAttr t = getTransportAttr())
+        return t.getPacket();
+      return nullptr;
+    }
 
     /// Returns the consumer element type if set, otherwise the producer type.
     mlir::Type getConsumerElemTypeOrDefault() {
@@ -2605,11 +2687,46 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
 
     Join and distribute hand each participant its own slice of the shared object, so the link point must have a memory module
     to hold that object and the device must have counting locks to guard the slices independently.
+
+    A 1:1 link's output may walk the whole stream of input objects rather than one object, for example to cut overlapping
+    windows of rows. Its `toStream` dimensions then reach past one input object, the outer dimension enumerates the outputs
+    and steps whole input objects, and the inner dimensions are one output's transfer, as many elements as the output object.
+    At most one inner dimension steps by exactly one input object (the rows of a window); the others stay inside an object.
+    `padDimensions` may pad only the outer dimension, where `(before, after)` counts zero objects ahead of and behind the
+    stream, so walk coordinates start at the first of them. The link infers how many objects the stream holds:
+    `(outputs - 1) * advance + span - before - after`.
+    ```
+      aie.objectfifo @rows (%shim, { %mem }, 2) : !aie.objectfifo<memref<8xi32>>
+      aie.objectfifo @windows (%mem dimensionsToStream [<size = 4, stride = 8>, <size = 3, stride = 8>,
+                                                        <size = 8, stride = 1>], { %core }, 2)
+        {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 1, const_pad_after = 1>,
+                                                  <const_pad_before = 0, const_pad_after = 0>,
+                                                  <const_pad_before = 0, const_pad_after = 0>]>}
+        : !aie.objectfifo<memref<24xi32>>
+      aie.objectfifo.link [@rows] -> [@windows] ([] [])
+    ```
+    Here four rows of 8 become four windows of three rows each, a zero row above the first and below the last. The MemTile
+    link point holds all the stream's objects at once in one buffer (the fifos' depths do not apply), counted on one lock
+    pair, so the stream has at most as many objects as a lock counts, and each output is one descriptor on the MemTile
+    channel.
+
+    `mode = #aie.link_mode<time>` shares the objects in time instead: the participants take turns with whole objects. Several
+    inputs are a merge, one fan-in route into the link point's one filling channel, whose objects arrive in whatever order the
+    producers send them. Several outputs are a dispatch, the link point's one draining channel handing object k to output
+    k mod n. The turns are told apart by packet headers, so the shared side is packet-switched. Every participant carries
+    the same object type and offsets are not given.
+
+    ```
+      aie.objectfifo.link [@from_a, @from_b] -> [@x] ([] []) {mode = #aie.link_mode<time>}
+      aie.objectfifo.link [@y] -> [@to_a, @to_b] ([] []) {mode = #aie.link_mode<time>}
+    ```
   }];
 
   let arguments = (ins SymbolRefArrayAttr:$fifoIns,
       SymbolRefArrayAttr:$fifoOuts, I64ArrayAttr:$src_offsets,
-      I64ArrayAttr:$dst_offsets);
+      I64ArrayAttr:$dst_offsets,
+      DefaultValuedAttr<ObjectFifoLinkModeAttr,
+                        "::xilinx::AIE::ObjectFifoLinkMode::Space">:$mode);
 
   let hasCustomAssemblyFormat = 1;
 
@@ -2622,8 +2739,13 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let extraClassDeclaration = [{
     std::vector<ObjectFifoCreateOp> getInputObjectFifos();
     std::vector<ObjectFifoCreateOp> getOutputObjectFifos();
-    bool isJoin() { return getFifoIns().size() > 1; }
-    bool isDistribute() { return getFifoOuts().size() > 1; }
+    bool isTime() { return getMode() == ObjectFifoLinkMode::Time; }
+    bool isJoin() { return !isTime() && getFifoIns().size() > 1; }
+    bool isDistribute() { return !isTime() && getFifoOuts().size() > 1; }
+    /// Several inputs taking turns into one channel.
+    bool isMerge() { return isTime() && getFifoIns().size() > 1; }
+    /// One channel taking turns between several outputs.
+    bool isDispatch() { return isTime() && getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
     // The fifo whose declared object type sizes the pool on the shared tile.
     ObjectFifoCreateOp getPoolOwner();
@@ -2634,6 +2756,12 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     std::optional<int> getRepeatCount();
     std::vector<int> getJoinTransferLengths();
     std::vector<int> getDistributeTransferLengths();
+    // Whether the output walks the whole stream of input objects (a window),
+    // not one object: a 1:1 link whose output's dimensions walk `outputs`
+    // objects of the output's size, the outer dimension stepping outputs.
+    bool walksStream();
+    // The window a stream walk reads, in input objects.
+    mlir::LogicalResult getStreamWindow(StreamWindow &window);
   }];
 }
 
@@ -2715,7 +2843,13 @@ def AIE_ObjectFifoPoolOp
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
       // If lowered from a high-level ObjectFifo, the name of that fifo.
       // Used to group ops lowered by the same ObjectFifo.
-      OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);
+      OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues,
+      // The objects sit side by side in one buffer, which `buffers` names,
+      // so one descriptor can read across several of them.
+      UnitAttr:$contiguous,
+      // On a contiguous pool, `[before, after]` objects of zeros around the
+      // `depth` objects in its buffer, which no endpoint fills.
+      OptionalAttr<DenseI32ArrayAttr>:$zeroObjects);
 
   let regions = (region SizedRegion<1>:$segments);
 
@@ -2734,6 +2868,10 @@ def AIE_ObjectFifoPoolOp
 
     /// Size of one object in bytes, under the closest data layout.
     int64_t getObjectSizeInBytes();
+
+    /// Objects each buffer holds: one, or on a contiguous pool `depth` and
+    /// its zero objects.
+    int64_t getObjectsPerBuffer();
 
     /// One entry per way the object is divided, in increasing offset order.
     std::vector<ObjectFifoSegmentOp> getSegmentOps();
@@ -2824,9 +2962,29 @@ def AIE_ObjectFifoDmaEndpointOp
     follows its role. Leaving it out lets `--aie-objectfifo-allocate` pick one,
     and writing it down pins it.
 
+    A draining endpoint with `dispatch` takes turns between destinations: its
+    k-th object goes to `dispatch[k mod n]`. Each listed destination is reached
+    by one packet-switched `aie.route` from this endpoint, and every object
+    carries that route's header, so one channel feeds several consumers in a
+    fixed order. `--aie-objectfifo-allocate` records the headers in
+    `dispatchPackets`, one per entry of `dispatch`.
+
+    Endpoints with `turns` share one channel: its k-th object belongs to the
+    endpoint `turns[k mod n]`, and each endpoint keeps its own pool and locks.
+    Every endpoint named lists the same `turns`, on one tile, one way. The
+    order tells their objects apart, so a circuit route carries them, and the
+    endpoints at its other end take the same turns.
+    `--aie-objectfifo-allocate` shares channels this way when a tile has too
+    few, in the order the core working through the pools needs their objects.
+
     Example:
     ```
       aie.objectfifo.dma_endpoint @out(%tile) drains @pool {channelIndex = 0}
+      aie.objectfifo.dma_endpoint @hub(%mem) drains @y {dispatch = [@a_in, @b_in]}
+      aie.route from @hub to [@a_in] {packet = #aie.packet_info<>}
+      aie.route from @hub to [@b_in] {packet = #aie.packet_info<>}
+      aie.objectfifo.dma_endpoint @a_in(%core) fills @a {turns = [@a_in, @a_in, @b_in]}
+      aie.objectfifo.dma_endpoint @b_in(%core) fills @b {turns = [@a_in, @a_in, @b_in]}
     ```
   }];
 
@@ -2843,7 +3001,10 @@ def AIE_ObjectFifoDmaEndpointOp
       // in that many fewer cycles than the receiver opposite it.
       OptionalAttr<AIEI32Attr>:$iterCount, OptionalAttr<PacketInfoAttr>:$packet,
       // ObjectFifo name used by runtime records.
-      OptionalAttr<StrAttr>:$fifoName);
+      OptionalAttr<StrAttr>:$fifoName,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$dispatch,
+      OptionalAttr<PacketInfoArrayAttr>:$dispatchPackets,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$turns);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict
@@ -2861,17 +3022,28 @@ def AIE_ObjectFifoDmaEndpointOp
     std::vector<ObjectFifoSegmentOp> getSelectedSegments();
 
     /// Descriptors in one pass over the pool: one per object and selected
-    /// segment.
+    /// segment; on a contiguous pool, one per output of a draining walk over
+    /// the stream, and otherwise one stepping through the objects, or one
+    /// per turn of the unrolled chain of turns, each stepping over the
+    /// others' objects.
     int64_t getNumDescriptors();
+    /// Whether this end drains a contiguous pool by a walk over its stream.
+    bool walksStream();
+    /// The window a stream walk reads, in the pool's objects.
+    mlir::LogicalResult getStreamWindow(StreamWindow &window);
     /// Times the chain runs per pass: the pool's repeat count at the draining
     /// end, once at the filling end.
     int64_t getRepeat();
     /// Whether the channel's own repeat count replays the chain, which it can
     /// only for a single descriptor, rather than copies of it.
     bool repeatsInHardware();
+    /// Passes over the pool before a dispatching endpoint's turns line up
+    /// with its objects again: lcm(depth, turns) / depth, and 1 otherwise.
+    int64_t getDispatchPasses();
     /// Buffer descriptors `--aie-objectfifo-lower-dmas` emits for this
     /// endpoint: the pass's descriptors, copied per repeat unless the
-    /// repeat runs in hardware.
+    /// repeat runs in hardware, for every dispatch pass. The one chain of
+    /// endpoints taking turns is counted at the first one `turns` names.
     int64_t getNumBDs();
   }];
 }

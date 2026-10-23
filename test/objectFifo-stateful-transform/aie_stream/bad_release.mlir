@@ -12,7 +12,7 @@ module @bad_release {
     %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @of_stream (%tile12, {%tile33}, 2 : i32) {aie_stream = 1 : i32, aie_stream_port = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_stream (%tile12, {%tile33}, 2 : i32) {cons_ports = [#aie.end_port<Core : 0>]} : !aie.objectfifo<memref<16xi32>>
 
     %core33 = aie.core(%tile33) {
       // expected-error@+1 {{'aie.objectfifo.release' op cannot release from objectfifo stream port}}

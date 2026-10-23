@@ -1,4 +1,4 @@
-//===- via_DMA_test.mlir ---------------------------------------*- MLIR -*-===//
+//===- transport_dma_test.mlir ----------------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -7,7 +7,7 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
-// CHECK: module @viaDMA {
+// CHECK: module @dmaTransport {
 // CHECK:   aie.device(xcve2302) {
 // CHECK-DAG:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK-DAG:     %{{.*}}tile_1_3 = aie.tile(1, 3)
@@ -57,12 +57,12 @@
 // CHECK:   }
 // CHECK: }
 
-module @viaDMA {
+module @dmaTransport {
  aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
     %tile13 = aie.tile(1, 3)
 
     aie.objectfifo @of_shared (%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of_stream (%tile12, {%tile13}, 2 : i32) {via_DMA = true} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_stream (%tile12, {%tile13}, 2 : i32) {transport = #aie.transport<dma>} : !aie.objectfifo<memref<16xi32>>
  }
 }

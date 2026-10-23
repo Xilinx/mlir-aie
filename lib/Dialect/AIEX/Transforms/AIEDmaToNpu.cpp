@@ -206,7 +206,7 @@ public:
       if (shimTile->hasAttr("controller_id")) {
         AIE::PacketInfoAttr controller_id_attr =
             shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-        uint32_t data = controller_id_attr.getPktId() << 8;
+        uint32_t data = controller_id_attr.assignedId() << 8;
         uint32_t mask = 0x00001F00;
         NpuMaskWrite32Op::create(
             rewriter, op->getLoc(),
@@ -444,10 +444,11 @@ public:
     buffer_offset = IntegerAttr::get(i32ty, 0);
 
     // enable_packet
-    if (auto packetInfo = op.getPacket()) {
+    if (auto packetInfo =
+            op.getPacket() ? op.getPacket() : infoOp.getPacket()) {
       enable_packet = IntegerAttr::get(i32ty, 1);
       packet_type = IntegerAttr::get(i32ty, packetInfo->getPktType());
-      packet_id = IntegerAttr::get(i32ty, packetInfo->getPktId());
+      packet_id = IntegerAttr::get(i32ty, packetInfo->assignedId());
     }
 
     // out_of_order_id - stays 0; senders stamp it via aie.dma_bd,
@@ -690,10 +691,11 @@ public:
     auto column = IntegerAttr::get(i32ty, tileCol);
     auto row = IntegerAttr::get(i32ty, tileRow);
     BdTemplateFields fields;
-    if (auto packetInfo = op.getPacket()) {
+    if (auto packetInfo =
+            op.getPacket() ? op.getPacket() : infoOp.getPacket()) {
       fields.enable_packet = 1;
       fields.packet_type = packetInfo->getPktType();
-      fields.packet_id = packetInfo->getPktId();
+      fields.packet_id = packetInfo->assignedId();
     }
     auto issue_token = BoolAttr::get(ctx, op.getIssueToken());
     if (!isMM2S)

@@ -189,6 +189,8 @@ def _layout(c, i):
 def _out_tiles(fn, calls):
     """Output tiles a run drains: one per call, or one for all of them."""
     c = _contract(fn)
+    if c.out_last:
+        return 1
     if c.out_offset is None:
         return calls
     step = c.out_offset[1]
@@ -440,7 +442,7 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
         + shifts
         + ([setter] if setter else []),
         iterations=calls,
-        outputs_span_iterations=offset is not None,
+        outputs_span_iterations=offset is not None or c.out_last,
         prologue=(lambda constants: constants[-1]()) if setter else None,
         initialize=initialize if initializers or guarded else None,
         stack_size=stack_bytes,

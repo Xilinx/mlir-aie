@@ -1510,6 +1510,90 @@ CASES: list[Case] = [
         calls=4,
         scalars=(80, 64, 80, 12),
     ),
+    # YOLO26n's model.2 cv2, a 1x1 over a 48-channel concat at width 160:
+    # whole, and in two 24-channel slices.
+    Case(
+        "conv2dk1_i8",
+        dict(
+            input_width=160,
+            input_channels=48,
+            output_channels=64,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(160, 48, 64, 12),
+    ),
+    check(
+        "conv2dk1_i8",
+        dict(
+            input_width=160,
+            input_channels=48,
+            output_channels=8,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+            input_slice=24,
+        ),
+        calls=2,
+        scalars=(160, 48, 8, 12),
+        tag="slices-24",
+    ),
+    # One streamed chunk of YOLO26n's heaviest 1x1, 256 -> 256 at the P5/P4
+    # widths: all input channels, 8 output channels a call.
+    *[
+        Case(
+            "conv2dk1_i8",
+            dict(
+                input_width=w,
+                input_channels=256,
+                output_channels=8,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+            ),
+            calls=4,
+            scalars=(w, 256, 8, 14),
+            tag="chunk-8",
+        )
+        for w in (20, 40)
+    ],
+    # The same chunk in input-channel slices, one a call, the sums kept in
+    # the core between them.
+    *[
+        Case(
+            "conv2dk1_i8",
+            dict(
+                input_width=w,
+                input_channels=256,
+                output_channels=8,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+                input_slice=s,
+            ),
+            calls=256 // s,
+            scalars=(w, 256, 8, 14),
+            tag="chunk-8",
+        )
+        for w in (20, 40)
+        for s in (64, 128)
+    ],
+    # One copy of the table: the LUT read takes both halves from it.
+    check(
+        "conv2dk1_i8",
+        dict(
+            input_width=40,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+            table_copies=1,
+        ),
+        calls=4,
+        scalars=(40, 64, 64, 12),
+        tag="one-table-copy",
+    ),
     # conv2dk1_skip streams three tensors; the harness packs them into one
     # fifo when they share a type, i.e. input_channels == 2 * output_channels
     # with a uint8 residual. An int8 residual goes in a fifo of its own.
@@ -1696,6 +1780,144 @@ CASES: list[Case] = [
         ),
         calls=4,
         scalars=(320, 16, 32, 3, 3, 1, 13, 0),
+    ),
+    # The stem convs' first row, at the top border: the block path, beside
+    # the row path the rows below take.
+    *[
+        check(
+            "conv2dk3",
+            dict(
+                input_width=w,
+                input_channels=ic,
+                output_channels=oc,
+                bias=True,
+                table=True,
+                stride=2,
+                rounding="conv_even",
+            ),
+            calls=4,
+            scalars=(w, ic, oc, 3, 3, 0, 12, 0),
+            tag="s2-top-row",
+        )
+        for w, ic, oc in ((640, 8, 16), (320, 16, 32))
+    ],
+    # Rows of fewer than four blocks run as one run and share each input load
+    # across 4 (8 px), 2 (16 px) or 1 (24 px) output-channel groups; with 3
+    # groups, 8 px falls back to one. 80 px is two runs of four and a run of
+    # two, the first and last at the borders; it takes 32 output channels, as
+    # 64 leave the harness core no room for its rows beside the table copies.
+    *[
+        Case(
+            "conv2dk3",
+            dict(
+                input_width=w,
+                input_channels=64,
+                output_channels=oc,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+            ),
+            calls=4,
+            scalars=(w, 64, oc, 3, 3, 1, 15, 0),
+            tag=f"bias-width-{w}",
+        )
+        for w, oc in ((8, 64), (16, 64), (80, 32))
+    ],
+    # One streamed chunk of YOLO26n's heaviest 3x3, 128 -> 128 at the P5/P4
+    # widths: all input channels, 8 output channels a call.
+    *[
+        Case(
+            "conv2dk3",
+            dict(
+                input_width=w,
+                input_channels=128,
+                output_channels=8,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+            ),
+            calls=4,
+            scalars=(w, 128, 8, 3, 3, 1, 16, 0),
+            tag="chunk-8",
+        )
+        for w in (20, 40)
+    ],
+    # The same chunk in input-channel slices, one a call, the sums kept in
+    # the core between them.
+    *[
+        Case(
+            "conv2dk3",
+            dict(
+                input_width=w,
+                input_channels=128,
+                output_channels=8,
+                bias=True,
+                table=True,
+                rounding="conv_even",
+                input_slice=s,
+            ),
+            calls=128 // s,
+            scalars=(w, 128, 8, 3, 3, 1, 16),
+            tag="chunk-8",
+        )
+        for w in (20, 40)
+        for s in (32, 64)
+    ],
+    check(
+        "conv2dk3",
+        dict(
+            input_width=16,
+            input_channels=64,
+            output_channels=64,
+            bias=True,
+            table=True,
+            rounding="conv_even",
+            table_copies=1,
+        ),
+        calls=4,
+        scalars=(16, 64, 64, 3, 3, 1, 15, 0),
+        tag="one-table-copy",
+    ),
+    check(
+        "conv2dk3",
+        dict(
+            input_width=24,
+            input_channels=32,
+            output_channels=32,
+            bias=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(24, 32, 32, 3, 3, 0, 14, 0),
+        tag="bias-width-24-top-row",
+    ),
+    check(
+        "conv2dk3",
+        dict(
+            input_width=8,
+            input_channels=32,
+            output_channels=24,
+            bias=True,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(8, 32, 24, 3, 3, 2, 14, 0),
+        tag="bias-width-8-three-groups",
+    ),
+    check(
+        "conv2dk3",
+        dict(
+            input_width=32,
+            input_channels=32,
+            output_channels=32,
+            bias=True,
+            table=True,
+            stride=2,
+            rounding="conv_even",
+        ),
+        calls=4,
+        scalars=(32, 32, 32, 3, 3, 1, 14, 0),
+        tag="bias-s2-width-32",
     ),
     Case(
         "conv2dk3",
@@ -2009,6 +2231,65 @@ CASES: list[Case] = [
         ),
         calls=4,
         scalars=(80, 80, 80, 3, 3, 1, 7, 0),
+    ),
+    # The sliding paths: 56 px is seven words with no odd word left over;
+    # 20 px rows of 80 channels (P5's class branch) run in channel-block
+    # pairs, 12 px too with one word a block; 24 channels at 20 px have an
+    # odd block and take the mmul path.
+    check(
+        "bn_conv2dk3_dw",
+        dict(input_width=56, input_channels=16, output_channels=16, bias=True),
+        calls=4,
+        scalars=(56, 16, 16, 3, 3, 1, 7, 0),
+        tag="bias-width-56",
+    ),
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(
+                input_width=20,
+                input_channels=80,
+                output_channels=80,
+                bias=True,
+                table=True,
+            ),
+            calls=4,
+            scalars=(20, 80, 80, 3, 3, region, 7, 0),
+            tag=tag,
+        )
+        for region, tag in (
+            (0, "bias-pairs-top-row"),
+            (1, "bias-pairs"),
+            (2, "bias-pairs-bottom-row"),
+        )
+    ],
+    check(
+        "bn_conv2dk3_dw",
+        dict(
+            input_width=40,
+            input_channels=80,
+            output_channels=80,
+            bias=True,
+            table=True,
+            table_copies=1,
+        ),
+        calls=4,
+        scalars=(40, 80, 80, 3, 3, 1, 7, 0),
+        tag="one-table-copy",
+    ),
+    check(
+        "bn_conv2dk3_dw",
+        dict(input_width=12, input_channels=16, output_channels=16, bias=True),
+        calls=4,
+        scalars=(12, 16, 16, 3, 3, 1, 7, 0),
+        tag="bias-width-12",
+    ),
+    check(
+        "bn_conv2dk3_dw",
+        dict(input_width=20, input_channels=24, output_channels=24, bias=True),
+        calls=4,
+        scalars=(20, 24, 24, 3, 3, 1, 7, 0),
+        tag="bias-odd-block",
     ),
     Case(
         "bn_conv2dk3_dw",

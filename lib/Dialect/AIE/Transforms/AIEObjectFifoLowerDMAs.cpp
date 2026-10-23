@@ -32,8 +32,15 @@ struct Descriptor {
   BDPadLayoutArrayAttr padding;
   FlatSymbolRefAttr acquireLock;
   FlatSymbolRefAttr releaseLock;
-  /// Index of the buffer's own binary lock, where the device uses those.
-  int64_t binaryLock;
+  /// Which of the pool's objects this moves; also the index of the object's
+  /// own binary lock, where the device uses those.
+  int64_t object;
+  /// Lock units taken and given back, where they are not one object's.
+  std::optional<int64_t> acquireValue = std::nullopt;
+  std::optional<int64_t> releaseValue = std::nullopt;
+  /// How the address steps on each run of a descriptor that walks a
+  /// contiguous pool's objects in turn.
+  BDIterationAttr iteration = nullptr;
 };
 
 Block *findEndOpBlock(Region &region) {
@@ -87,10 +94,60 @@ struct AIEObjectFifoLowerDMAsPass
     return buffers;
   }
 
+  /// A contiguous pool's one buffer holds its objects side by side. Its
+  /// filling end steps through them with one descriptor; its draining end
+  /// walks the stream with one descriptor per output, each taking the objects
+  /// up to the newest it reads and giving back those no later one reads.
+  SmallVector<Descriptor>
+  contiguousDescriptors(ObjectFifoDmaEndpointOp endpoint, Value buffer,
+                        bool drains) {
+    ObjectFifoPoolOp pool = endpoint.getPoolOp();
+    ObjectFifoSegmentOp segment = endpoint.getSelectedSegments().front();
+    FlatSymbolRefAttr take =
+        drains ? segment.getConsumeLockAttr() : segment.getProduceLockAttr();
+    FlatSymbolRefAttr give =
+        drains ? segment.getProduceLockAttr() : segment.getConsumeLockAttr();
+    MLIRContext *context = builder.getContext();
+    if (!endpoint.walksStream()) {
+      BDDimLayoutArrayAttr dims;
+      if (auto all = endpoint.getDimensions(); all && !all->empty())
+        dims = (*all)[0];
+      int64_t object = pool.getObjectSize();
+      int64_t first = 0;
+      if (auto zeros = pool.getZeroObjects())
+        first = (*zeros)[0] * object;
+      int64_t walkers = endpoint.getNumDescriptors();
+      SmallVector<Descriptor> descriptors;
+      for (int64_t j = 0; j < walkers; j++)
+        descriptors.push_back(
+            {buffer, first + j * object + segment.getOffset(),
+             segment.getSize(), dims, BDPadLayoutArrayAttr(), take, give, j,
+             std::nullopt, std::nullopt,
+             BDIterationAttr::get(context, pool.getDepth() / walkers,
+                                  walkers * object, 0)});
+      return descriptors;
+    }
+
+    StreamWindow window;
+    if (failed(endpoint.getStreamWindow(window)))
+      return {};
+    BDDimLayoutArrayAttr dims =
+        BDDimLayoutArrayAttr::get(context, window.inner);
+    SmallVector<Descriptor> descriptors;
+    for (StreamWindowStep step : streamWindowSteps(window))
+      descriptors.push_back({buffer, step.first * window.objectSize,
+                             window.transfer(), dims, BDPadLayoutArrayAttr(),
+                             take, give, 0, step.acquire, step.release,
+                             nullptr});
+    return descriptors;
+  }
+
   /// Buffer-major, segment-minor: the DMA walks the objects in turn, and within
   /// each object the slices this endpoint is responsible for.
   SmallVector<Descriptor> descriptorsFor(ObjectFifoDmaEndpointOp endpoint,
                                          ArrayRef<Value> buffers, bool drains) {
+    if (endpoint.getPoolOp().getContiguous())
+      return contiguousDescriptors(endpoint, buffers.front(), drains);
     std::vector<ObjectFifoSegmentOp> segments = endpoint.getSelectedSegments();
     SmallVector<BDDimLayoutArrayAttr> dimensions;
     if (auto allDimensions = endpoint.getDimensions()) {
@@ -121,8 +178,8 @@ struct AIEObjectFifoLowerDMAsPass
   }
 
   void emitDescriptor(ObjectFifoDmaEndpointOp endpoint, ObjectFifoPoolOp pool,
-                      Descriptor &descriptor, Block *successor,
-                      bool binaryLocks, bool drains) {
+                      Descriptor &descriptor, PacketInfoAttr packet,
+                      Block *successor, bool binaryLocks, bool drains) {
     Location loc = endpoint.getLoc();
     int count = drains ? 1 : pool.getRepeatCount().value_or(1);
 
@@ -132,8 +189,8 @@ struct AIEObjectFifoLowerDMAsPass
     if (binaryLocks) {
       // A binary lock's value encodes which side owns the buffer.
       SmallVector<LockOp> locks = pool.getLockOps();
-      if (descriptor.binaryLock < (int64_t)locks.size()) {
-        acquireLock = releaseLock = locks[descriptor.binaryLock];
+      if (descriptor.object < (int64_t)locks.size()) {
+        acquireLock = releaseLock = locks[descriptor.object];
         acquireValue = drains ? 1 : 0;
         releaseValue = drains ? 0 : 1;
         action = LockAction::Acquire;
@@ -145,32 +202,104 @@ struct AIEObjectFifoLowerDMAsPass
           lookupNamedOp<LockOp>(device, descriptor.releaseLock.getAttr());
     }
 
+    if (descriptor.acquireValue)
+      acquireValue = *descriptor.acquireValue;
+    if (descriptor.releaseValue)
+      releaseValue = *descriptor.releaseValue;
     if (acquireLock) {
       UseLockOp::create(builder, loc, acquireLock, action, acquireValue);
     }
-    if (auto packet = endpoint.getPacket()) {
-      DMABDPACKETOp::create(builder, loc, packet->getPktType(),
-                            packet->getPktId());
+    if (packet) {
+      DMABDPACKETOp::create(builder, loc, packet.getPktType(),
+                            packet.assignedId());
     }
 
+    DMABDOp bd;
     if (descriptor.dimensions && drains && descriptor.padding) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      paddedSize(descriptor.dimensions, descriptor.padding,
-                                 descriptor.size),
-                      descriptor.dimensions, descriptor.padding);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           paddedSize(descriptor.dimensions, descriptor.padding,
+                                      descriptor.size),
+                           descriptor.dimensions, descriptor.padding);
     } else if (descriptor.dimensions) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size, descriptor.dimensions);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           descriptor.size, descriptor.dimensions);
     } else {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size);
+      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                           descriptor.size);
     }
+    if (descriptor.iteration && descriptor.iteration.getSize() > 1)
+      bd.setIterationAttr(descriptor.iteration);
 
     if (releaseLock) {
       UseLockOp::create(builder, loc, releaseLock, LockAction::Release,
                         releaseValue);
     }
     NextBDOp::create(builder, loc, successor);
+  }
+
+  /// A `dma_start` of `channel` on the endpoint's tile, chained after the
+  /// tile's others; returns the first BD's block and the program's end block.
+  std::pair<Block *, Block *> startChain(ObjectFifoDmaEndpointOp endpoint,
+                                         int channel, int taskCount) {
+    Location loc = endpoint.getLoc();
+    DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
+    Block *endBlock = findEndOpBlock(program.getDmaBody());
+    Block *lastDmaBlock = endBlock->getSinglePredecessor();
+    Block *dmaBlock = builder.createBlock(endBlock);
+    Block *bdBlock = builder.createBlock(endBlock);
+
+    builder.setInsertionPointToStart(dmaBlock);
+    DMAStartOp::create(builder, loc, endpoint.getRouteDirection(), channel,
+                       taskCount, endpoint.getPadValue(),
+                       /*out_of_order=*/false, bdBlock, endBlock);
+    if (lastDmaBlock) {
+      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+    }
+    return {bdBlock, endBlock};
+  }
+
+  /// Endpoints taking turns on one channel share one chain: the k-th BD moves
+  /// the next object of the endpoint `turns` names k-th, through its own pool.
+  LogicalResult lowerTurns(ObjectFifoDmaEndpointOp first, int channel) {
+    SmallVector<ObjectFifoDmaEndpointOp> ends = turnEndpoints(first);
+    SmallVector<SmallVector<Descriptor>> descriptors;
+    for (ObjectFifoDmaEndpointOp end : ends) {
+      descriptors.push_back(
+          descriptorsFor(end, buffersOf(end.getPoolOp()), end.drains()));
+      if (static_cast<int64_t>(descriptors.back().size()) !=
+              end.getNumDescriptors() ||
+          descriptors.back().empty())
+        return end.emitOpError("takes turns, but lowers to ")
+               << descriptors.back().size() << " descriptors per pass for "
+               << end.getNumDescriptors();
+    }
+    SmallVector<unsigned> turns;
+    for (auto name : first.getTurnsAttr().getAsRange<FlatSymbolRefAttr>())
+      turns.push_back(llvm::find_if(ends,
+                                    [&](ObjectFifoDmaEndpointOp end) {
+                                      return end.getSymNameAttr() ==
+                                             name.getAttr();
+                                    }) -
+                      ends.begin());
+
+    auto [bdBlock, endBlock] = startChain(first, channel, /*taskCount=*/0);
+    bool binaryLocks = !device.getTargetModel().hasProperty(
+        AIETargetModel::UsesSemaphoreLocks);
+    SmallVector<size_t> next(ends.size(), 0);
+    int64_t total = first.getNumBDs();
+    Block *current = bdBlock;
+    for (int64_t k = 0; k < total; k++) {
+      unsigned i = turns[k % turns.size()];
+      Block *successor =
+          k + 1 < total ? builder.createBlock(endBlock) : bdBlock;
+      builder.setInsertionPointToStart(current);
+      emitDescriptor(ends[i], ends[i].getPoolOp(), descriptors[i][next[i]],
+                     PacketInfoAttr(), successor, binaryLocks,
+                     ends[i].drains());
+      next[i] = (next[i] + 1) % descriptors[i].size();
+      current = successor;
+    }
+    return success();
   }
 
   LogicalResult lowerEndpoint(ObjectFifoDmaEndpointOp endpoint, int channel) {
@@ -200,47 +329,55 @@ struct AIEObjectFifoLowerDMAsPass
     std::optional<int32_t> iterCount = endpoint.getIterCount();
 
     bool repeatInHardware = endpoint.repeatsInHardware();
-    int taskCount =
-        iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
+    // A dispatching chain runs until its turns line up with the pool's
+    // objects again, so one run covers that many passes.
+    int64_t passes = endpoint.getDispatchPasses();
+    int taskCount = iterCount ? *iterCount / passes - 1
+                              : (repeatInHardware ? repeat - 1 : 0);
     int64_t copies = repeatInHardware ? 1 : repeat;
-
-    DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
-    Block *endBlock = findEndOpBlock(program.getDmaBody());
-    Block *lastDmaBlock = endBlock->getSinglePredecessor();
-    Block *dmaBlock = builder.createBlock(endBlock);
-    Block *bdBlock = builder.createBlock(endBlock);
-
-    builder.setInsertionPointToStart(dmaBlock);
-    DMAStartOp::create(builder, loc, endpoint.getRouteDirection(), channel,
-                       taskCount, endpoint.getPadValue(),
-                       /*out_of_order=*/false, bdBlock, endBlock);
-    if (lastDmaBlock) {
-      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+    SmallVector<PacketInfoAttr> turns;
+    if (std::optional<ArrayAttr> headers = endpoint.getDispatchPackets()) {
+      llvm::append_range(turns, headers->getAsRange<PacketInfoAttr>());
+    } else if (endpoint.getDispatch()) {
+      return endpoint.emitOpError(
+          "has no dispatchPackets; run --aie-objectfifo-allocate");
     }
+    // A contiguous pool's descriptor steps through every object, so it has no
+    // one object for a turn to follow.
+    if (!turns.empty() && pool.getContiguous())
+      return endpoint.emitOpError(
+          "dispatches from a contiguous pool, which has no per-object BDs");
+    int64_t depth = pool.getDepth();
 
+    auto [bdBlock, endBlock] = startChain(endpoint, channel, taskCount);
     bool binaryLocks = !device.getTargetModel().hasProperty(
         AIETargetModel::UsesSemaphoreLocks);
-    size_t total = descriptors.size() * copies;
+    size_t total = descriptors.size() * copies * passes;
     size_t emitted = 0;
     Block *current = bdBlock;
-    for (Descriptor &descriptor : descriptors) {
-      for (int64_t copy = 0; copy < copies; copy++) {
-        Block *successor;
-        if (emitted + 1 < total) {
-          successor = builder.createBlock(endBlock);
-        } else if (iterCount) {
-          // A bounded chain exits after its final iteration.
-          successor = builder.createBlock(endBlock);
-          builder.setInsertionPointToStart(successor);
-          EndOp::create(builder, loc);
-        } else {
-          successor = bdBlock;
+    for (int64_t pass = 0; pass < passes; pass++) {
+      for (Descriptor &descriptor : descriptors) {
+        PacketInfoAttr packet = endpoint.getPacketAttr();
+        if (!turns.empty())
+          packet = turns[(pass * depth + descriptor.object) % turns.size()];
+        for (int64_t copy = 0; copy < copies; copy++) {
+          Block *successor;
+          if (emitted + 1 < total) {
+            successor = builder.createBlock(endBlock);
+          } else if (iterCount) {
+            // A bounded chain exits after its final iteration.
+            successor = builder.createBlock(endBlock);
+            builder.setInsertionPointToStart(successor);
+            EndOp::create(builder, loc);
+          } else {
+            successor = bdBlock;
+          }
+          builder.setInsertionPointToStart(current);
+          emitDescriptor(endpoint, pool, descriptor, packet, successor,
+                         binaryLocks, drains);
+          current = successor;
+          emitted++;
         }
-        builder.setInsertionPointToStart(current);
-        emitDescriptor(endpoint, pool, descriptor, successor, binaryLocks,
-                       drains);
-        current = successor;
-        emitted++;
       }
     }
     return success();
@@ -272,10 +409,14 @@ struct AIEObjectFifoLowerDMAsPass
         endpoint.emitOpError("has no channel; run --aie-objectfifo-allocate");
         return signalPassFailure();
       }
-      if (failed(lowerEndpoint(endpoint, *channel)))
+      SmallVector<ObjectFifoDmaEndpointOp> turns = turnEndpoints(endpoint);
+      if (turns.empty() ? failed(lowerEndpoint(endpoint, *channel))
+                        : turns.front() == endpoint &&
+                              failed(lowerTurns(endpoint, *channel)))
         return signalPassFailure();
-      endpoint.erase();
     }
+    for (ObjectFifoDmaEndpointOp endpoint : endpoints)
+      endpoint.erase();
 
     // Nothing to program at the far end of these; the routes they asked for
     // have been drawn.

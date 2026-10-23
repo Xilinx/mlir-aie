@@ -27,8 +27,10 @@ from ._common import (
     Trace,
     _arch_traits,
     _detect_arch,
+    _include_dirs,
     _kernel_source,
     _make_extern,
+    _runtime_lib_include,
 )
 from .core import conv_even
 from .zero import zero
@@ -1271,6 +1273,7 @@ def attention_i8(
             f"-DATTN_HEAD_DIM={head_dim}",
             f"-DATTN_WIDTH={width}",
         ],
+        include_dirs=[*_include_dirs(), _runtime_lib_include()],
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Param, Param, Param, Out) + (Param,) * 5,

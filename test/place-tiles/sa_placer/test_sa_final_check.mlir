@@ -12,7 +12,7 @@
 // RUN: not aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=42' %s 2>&1 | FileCheck %s
 
 // (7, 2) has no core to its east or south, so the cascade cannot be placed.
-// CHECK: error: SA placer failed to find a legal placement (cascade penalty={{[1-9][0-9]*}}, delegate penalty=0)
+// CHECK: error: SA placer failed to find a legal placement (cascade and shared memory penalty={{[1-9][0-9]*}}, delegate penalty=0)
 module @cascade_unplaceable {
   aie.device(npu2) {
     %src = aie.logical_tile<CoreTile>(7, 2)

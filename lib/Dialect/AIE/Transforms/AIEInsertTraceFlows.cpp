@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
@@ -260,19 +261,22 @@ struct AIEInsertTraceFlowsPass
           return ta.getCol() < tb.getCol();
         return ta.getRow() < tb.getRow();
       });
-      // Hand out ids from clPacketIdStart upward, skipping any value a
-      // user pinned explicitly so auto and explicit traces never alias.
+      // From clPacketIdStart up, past ids user traces pinned and ids the
+      // device holds (PacketIdSpace).
+      PacketIdSpace held(device);
       int next = clPacketIdStart;
       for (auto trace : autoIdTraces) {
-        while (next <= kMaxPacketId && explicitIdOwner.count(next))
+        while (next <= kMaxPacketId &&
+               (explicitIdOwner.count(next) || held.isTaken(next)))
           ++next;
         if (next > kMaxPacketId) {
           device.emitError()
               << "trace overlay needs " << autoIdTraces.size()
               << " auto-allocated packet IDs starting at " << clPacketIdStart
               << " (with " << explicitIdOwner.size()
-              << " id(s) reserved by explicit aie.trace.packet ops), but the "
-                 "hardware packet-id field is 5 bits (max "
+              << " id(s) reserved by explicit aie.trace.packet ops, and any "
+                 "held by packet flows or pinned routes elsewhere in the "
+                 "device), but the hardware packet-id field is 5 bits (max "
               << kMaxPacketId
               << "); reduce the number of traced tiles, free up an explicit "
                  "id, or raise -packet-id-start only if you can spare the "
@@ -865,7 +869,7 @@ struct AIEInsertTraceFlowsPass
           llvm::report_fatal_error("Failed to lookup Controller_ID field in " +
                                    llvm::Twine(ctrlRegName));
         uint32_t ctrlIdValue =
-            targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.getPktId());
+            targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.assignedId());
         auto ctrlIdMask = targetModel.getFieldMask(*ctrlIdField);
         if (!ctrlIdMask)
           llvm::report_fatal_error(
@@ -1139,19 +1143,19 @@ private:
 
     // This pass runs before objectFifo lowering, so an objectFifo that ends
     // at a shim has no flow yet. Claim what its lowering will: every
-    // cons_dma_channels pin first, then the lowest free S2MM channel for
-    // each unpinned consumer.
+    // consumer pin first, then the lowest free S2MM channel for each
+    // unpinned consumer.
     SmallVector<TileOp> unpinned;
     device.walk([&](ObjectFifoCreateOp fifo) {
       if (fifo.getPlio())
         return;
-      auto pins = fifo.getConsDmaChannels();
       for (auto [i, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
         auto tile = dyn_cast_or_null<TileOp>(consumer.getDefiningOp());
         if (!tile || !tile.isShimTile())
           continue;
-        if (pins && i < pins->size() && (*pins)[i] >= 0)
-          used[tile.getCol()].insert((*pins)[i]);
+        ObjectFifoEndPortAttr port = fifo.getConsumerPort(i);
+        if (std::optional<int> pin = port ? port.channelIndex() : std::nullopt)
+          used[tile.getCol()].insert(*pin);
         else
           unpinned.push_back(tile);
       }

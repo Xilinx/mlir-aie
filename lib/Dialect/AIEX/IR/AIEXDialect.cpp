@@ -757,9 +757,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   // packet header
   if (auto packetInfo = getPacket()) {
+    if (failed(AIE::verifyAssignedPacket(*this, *packetInfo)))
+      return failure();
     if (packetInfo->getPktType() > 7)
       return emitOpError("Packet type field can only hold 3 bits.");
-    if (packetInfo->getPktId() > 31)
+    if (packetInfo->assignedId() > 31)
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
@@ -1343,6 +1345,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
   // dialect. The normal DMABDOp verify operation will skip over any BD inside
   // a DMAConfigureTaskOp
+  if (failed(AIE::verifyAssignedPacket(*this, getPacketAttr())))
+    return failure();
   LogicalResult result = success();
   bool taskHasPacket = getPacket().has_value();
   llvm::SmallVector<AIE::DMABDOp> bds;
@@ -1537,7 +1541,7 @@ struct BdChain {
 static LogicalResult
 verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                              AIE::ObjectFifoCreateOp fifo) {
-  if (fifo.getPadDimensions() || fifo.getAieStream())
+  if (fifo.getPadDimensions() || fifo.usesStream())
     return success();
   std::optional<int64_t> moved = staticBytesStreamed(task);
   if (!moved || *moved == 0)
