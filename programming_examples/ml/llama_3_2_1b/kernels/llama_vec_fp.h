@@ -3,8 +3,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Vector forms of the GEMV kernels' scalar fp32 epilogues, bit-identical to
-// the scalar soft-float code where the guards below hold. Needs
+// fp32 helpers bit-identical to llama_oracle's scalar arithmetic. Needs
 // rounding_mode::conv_even and saturation_mode::saturate (set by the caller).
 //===----------------------------------------------------------------------===//
 
@@ -227,41 +226,6 @@ static inline void q_requant_heads(const float *restrict q_fp,
     int32_t zero = 0;
     __builtin_memcpy(tail + h * 8 + 4, &zero, 4);
   }
-}
-
-// True when the vector epilogue equals the scalar soft-float one: every
-// |sum| < 2^23, since fx2flt misrounds odd sums below -(2^24 - 2^16), and the
-// exponent fields of act_scale, every w_scale and out_scale in [kLo, kHi],
-// chosen by the caller so that each product of its chain stays normal.
-template <int kLo, int kHi, int kNTile>
-static inline bool vec_epilogue_exact(const int32_t *sums, float act_scale,
-                                      const float *w_scales,
-                                      float out_scale = 1.0f) {
-  bool ok = true;
-  for (int n = 0; n < kNTile + 2; n++) {
-    float f = n < kNTile ? w_scales[n] : n == kNTile ? act_scale : out_scale;
-    ok &= (uint32_t)(((__builtin_bit_cast(int32_t, f) >> 23) & 0xff) - kLo) <=
-          kHi - kLo;
-  }
-  for (int n = 0; n < kNTile; n++)
-    ok &= (uint32_t)sums[n] + (1u << 23) - 1 < (1u << 24) - 1;
-  return ok;
-}
-
-// Lanes n < kNTile hold (float)sums[n] * a * w[n], in the scalar code's
-// order; the other lanes hold +0.
-template <int kNTile>
-static inline ::aie::vector<float, 16>
-vec_scaled_sums(const int32_t *sums, float a, const float *w) {
-  ::aie::vector<int32, 16> sum_v = ::aie::zeros<int32, 16>();
-  ::aie::vector<float, 16> w_v = ::aie::zeros<float, 16>();
-  for (int n = 0; n < kNTile; n++) {
-    sum_v.set(sums[n], n);
-    w_v.set(w[n], n);
-  }
-  return vec_mul_rne(vec_mul_rne(::aie::to_float<float>(sum_v, 0),
-                                 ::aie::broadcast<float, 16>(a)),
-                     w_v);
 }
 
 #endif // LLAMA_VEC_FP_H

@@ -3,8 +3,9 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// One token's K/V cache row from its fp32 k and v: rope_k, then K and V each
-// quantized to int8 with its own absmax / 127 scale (llama_oracle's append).
+// One token's K/V cache row from its fp32 k and v: k roped, then K and V
+// each quantized to int8 with its own absmax / 127 scale (llama_oracle's
+// append).
 // Needs rounding_mode::conv_even and saturation_mode::saturate (set by the
 // caller).
 //===----------------------------------------------------------------------===//

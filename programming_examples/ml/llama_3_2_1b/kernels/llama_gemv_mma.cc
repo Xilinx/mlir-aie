@@ -7,7 +7,7 @@
 // eight weight rows (B). Activations: a[m][8kt + i] at kt*64 + m*8 + i
 // (8 contiguous bytes, so a DMA can gather them), then 8 act_scales. Slot:
 // half of K for 8 rows, W[n][8kt + i] at kt*64 + i*8 + n, then 8 biases and
-// 8 w_scales. Sums and epilogue are the GEMV's, so rows are byte-identical.
+// 8 w_scales.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
@@ -43,10 +43,9 @@ __attribute__((noinline)) static void half_sums(const int8_t *restrict act,
 }
 
 // The f32 epilogue on activations 4h..4h+3's 32 sums (lane (m - 4h)*8 + n,
-// act_scales[m - 4h]), bias added, written to out[m*ostride + row0 + n] for
-// the first m_count activations: the GEMV epilogue's arithmetic per element,
-// on all 32 lanes at once where the GEMV's guards hold for every lane (see
-// vec_epilogue_exact), else its scalar code per element.
+// act_scales[m - 4h]), bias added, to out[m*ostride + row0 + n] for the
+// first m_count activations: on 32 lanes when every scale's exponent field
+// is in [kLo, kHi] and every sum is within +-2^23, else per element.
 __attribute__((noinline)) static void
 half_epilogue(::aie::vector<int32, 32> sums, const float *restrict act_scales,
               const int8_t *restrict w, int8_t *restrict out, int h,
@@ -181,10 +180,8 @@ void llama_mma_f32(int8_t *restrict act, int8_t *restrict w,
   event1();
 }
 
-// llama_mma_f32 under a second symbol, which a design binds to a second
-// output buffer type (one symbol takes one signature): a true linker alias,
-// so the two symbols share one compiled body instead of a call (which would
-// add a stack frame on top of llama_mma_f32's own) or a duplicate copy.
+// llama_mma_f32 under a second symbol for a second output type; an alias
+// shares the one body.
 void llama_mma_f32_to(int8_t *restrict act, int8_t *restrict w,
                       int32_t *restrict part, int8_t *restrict out, int32_t g,
                       int32_t half, int32_t ostride, int32_t row0,
@@ -196,9 +193,9 @@ void llama_mma_f32_to(int8_t *restrict act, int8_t *restrict w,
 // row-major (kLmRows x 2048), then 8 biases and 8 w_scales as a weight slot's
 // trailer (rows 4-7: bias 0, scale 1). Each core keeps the top kLmKset of its
 // share of the vocabulary by (logit, lower gidx), with their embed rows (in
-// the idle mma tile) and their meta (in the idle partials), the lm_head core's
-// candidate layout: per 4 entries 16 words, their logits, gidx and scales,
-// then the set's length.
+// the idle mma tile) and their meta (in the idle partials), the sampler core's
+// candidate layout: per 4 entries kMetaBlock words, their logits, gidx and
+// scales, then the set's length.
 #ifndef LLAMA_LM_KSET
 #define LLAMA_LM_KSET 8
 #endif
@@ -212,6 +209,8 @@ static constexpr int kLmKset = LLAMA_LM_KSET;
 static constexpr int kLmRows = 4;
 static constexpr int kD = 2048;
 static constexpr int kRowsPerOut = LLAMA_GEMV_OUT_BYTES / kD;
+static constexpr int kMetaBlock = 16;
+static constexpr int kMetaLen = 12;
 static_assert(kLmKset == 8, "the set is the mma tile's 8 rows, 2 meta blocks");
 static_assert(LLAMA_GEMV_OUT_BYTES % kD == 0 && kLmKset % kRowsPerOut == 0,
               "an out object holds whole rows of the set");
@@ -234,7 +233,7 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
                        int32_t tile_idx, int32_t first) {
   event0();
   if (first)
-    meta[12] = 0;
+    meta[kMetaLen] = 0;
 
   aie::accum<acc32, 64> acc0, acc1, acc2, acc3;
   acc0.from_vector(aie::zeros<int32, 64>());
@@ -279,7 +278,7 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
   aie::set_saturation(saved_sat);
 
   const float *w_scales = reinterpret_cast<const float *>(w + kTrailer + 32);
-  int len = meta[12];
+  int len = meta[kMetaLen];
   int32_t min_key = 0, min_gidx = 0;
   int mi = 0;
   bool rescan = true;
@@ -295,7 +294,7 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
         min_key = lm_key(__builtin_bit_cast(float, meta[0]));
         min_gidx = meta[4];
         for (int i = 1; i < kLmKset; i++) {
-          const int at = 16 * (i / 4) + i % 4;
+          const int at = kMetaBlock * (i / 4) + i % 4;
           int32_t k = lm_key(__builtin_bit_cast(float, meta[at]));
           if (k < min_key || (k == min_key && meta[at + 4] > min_gidx)) {
             min_key = k;
@@ -310,7 +309,7 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
       slot = mi;
       rescan = true;
     }
-    const int at = 16 * (slot / 4) + slot % 4;
+    const int at = kMetaBlock * (slot / 4) + slot % 4;
     meta[at] = __builtin_bit_cast(int32_t, logits[n]);
     meta[at + 4] = gidx;
     meta[at + 8] = __builtin_bit_cast(int32_t, w_scales[n]);
@@ -318,12 +317,12 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
       ::aie::store_v(rows + slot * kD + c * 64,
                      ::aie::load_v<64>(w + n * kD + c * 64));
   }
-  meta[12] = len;
-  meta[28] = len;
+  meta[kMetaLen] = len;
+  meta[kMetaBlock + kMetaLen] = len;
   event1();
 }
 
-// Out object j of the core's set for the lm_head core: below
+// Out object j of the core's set for the sampler core: below
 // kLmKset / kRowsPerOut its rows from kRowsPerOut * j, then its meta (the
 // partials' first LLAMA_GEMV_OUT_BYTES bytes).
 void llama_mma_lm_out(int8_t *restrict rows, int32_t *restrict meta,

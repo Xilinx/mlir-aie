@@ -66,7 +66,7 @@ static constexpr int kKfpHead = kHD * 4;
 static constexpr int kRowBytes = 2 * kHD + 8;
 static constexpr int kRowChunk = kChunk + kRowBytes;
 
-// comb_rope_rows (the GEMV array decode): the array's per-KV-group chunks
+// comb_rope_rows: the GEMV array's per-KV-group chunks
 // [roped q body 256 B | q tail 32 B | k fp32 x64 | v fp32 x64 | cs 256 B]
 // (llama_gemv_array_qkv_comb_cs), all 8 groups in comb, to the attention's
 // [q 288 B | row 136 B] chunks, lo (groups 0-3) and hi (4-7), each half

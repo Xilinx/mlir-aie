@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // What the GEMV array's kernels (llama_gemv_array.cc, llama_gemv_mma.cc)
-// share: the int8 bounds and the vector fp32 forms.
+// share: llama_vec_fp.h's fp32 helpers.
 //===----------------------------------------------------------------------===//
 
 #ifndef LLAMA_GEMV_ARRAY_H

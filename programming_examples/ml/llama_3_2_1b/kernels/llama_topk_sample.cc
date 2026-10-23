@@ -3,9 +3,9 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Samples the resident top-k set llama_lmhead_topk.cc builds (see there for
-// why it carries the embed row), and gathers the next token's embed seed
-// from the winner's row already in it. llama_oracle.py is the oracle.
+// Samples the top-k set llama_lmhead_topk.cc merges, then makes the next
+// token's embed seed from the winner's row, which the set carries.
+// llama_oracle.py is the oracle.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
@@ -26,7 +26,6 @@
 static constexpr int kD = LLAMA_TOPK_D;
 static constexpr int kNTile = LLAMA_TOPK_NTILE;
 static constexpr int kKset = LLAMA_TOPK_KSET;
-static constexpr int kVec = 64;
 
 // xoshiro128++, as llama_oracle draws it.
 struct Xoshiro128 {
@@ -53,8 +52,8 @@ static inline float xoshiro_uniform(Xoshiro128 &g) {
 }
 
 // A token's layer-0 residual row from its embed row (row, embed_sc): the row
-// in fp32, row * embed_sc, which the first norm reads and the residual adds
-// add to.
+// in fp32, row * embed_sc, which the first norm reads and the residual add
+// adds to.
 static void residual_seed(const int8_t *restrict row, float embed_sc,
                           int8_t *restrict seed) {
   const ::aie::saturation_mode prev_sat =
@@ -74,14 +73,12 @@ static void residual_seed(const int8_t *restrict row, float embed_sc,
 
 extern "C" {
 
-// Finalize: sample over the resident set -> token id + next-token embed seed.
-//   params : [temperature bits f32 | top_k i32 | xoshiro state u32[4]]; a
-//            sampled pick draws from the state and advances it in place.
-// Sampling draws from the set's best top_k members (by logit, then lower
-// gidx); top_k 0, or past the set, means the whole set (hosts reject values
-// past KSET). Greedy (temperature <= 0) is the argmax whatever top_k is.
-//   token  : out int32[1] (global token id)
-//   record : out int8[kD + 4] (the winner's embed row, then its embed_sc)
+// Samples the set: the token id, and the winner's embed row and scale.
+// params is [temperature bits | top_k | xoshiro state x4]; a sampled pick
+// advances the state in place. Sampling draws from the set's best top_k (by
+// logit, then lower gidx; 0 or past the set: all of it). Greedy
+// (temperature <= 0) is the argmax whatever top_k is. token gets the id,
+// record the winner's embed row, then its embed_sc.
 void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
                          float *restrict set_scale, int8_t *restrict set_row,
                          int32_t *restrict set_len, uint32_t *restrict params,
@@ -139,11 +136,8 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
     ::aie::set_rounding(prev_rnd);
     ::aie::set_saturation(prev_sat);
 
-    // sum_exp AND the inverse-CDF walk must both traverse the survivors in
-    // ascending global-index order: fp32 add is not associative, so the
-    // accumulation order must match the oracle (which sums in gidx order) or
-    // sum_exp differs by an ULP and the pick flips near a CDF boundary.
-    // selection over indices (len <= kKset is small, no extra storage).
+    // Sum and walk the survivors in ascending gidx, the oracle's order: fp32
+    // adds don't associate, and an ulp moves a pick near a CDF boundary.
     float sum_exp = 0.0f;
     int prev_g = -1;
     for (int step = 0; step < top_k; step++) {
@@ -170,7 +164,7 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
     winner = -1;
     prev_g = -1;
     for (int step = 0; step < top_k; step++) {
-      // next smallest gidx strictly greater than prev_g
+      // The next survivor by gidx.
       int si = -1;
       int32_t sg = 0;
       for (int i = 0; i < len; i++) {

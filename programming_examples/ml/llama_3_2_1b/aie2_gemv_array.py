@@ -35,6 +35,20 @@ from llama_config import HD, PROJECTIONS, D
 N_CORES = 8
 CORE_TILES = [(c, r) for c in (0, 1, 6, 7) for r in (2, 3)]
 OUT_BYTES = 4096
+LAYER = "qkvogud"
+# A row's fused qkv outputs in fp32: q 256, k 64, v 64.
+QKV_COLS = 384
+# A KV group's combined qkv chunk: q 288 B, k and v fp32, cs 256 B.
+COMB_BYTES = 1056
+# A core's 256 residual rows in fp32, then 64 B of padding.
+RESID_BLOCK = 256 * 4 + 64
+DOWN_CHUNKS = HD // D
+DOWN_ROWS_PER_CORE = D // N_CORES
+# kernels/llama_gemv_mma.cc's layouts: a slot is eight weight rows by half
+# of K=2048 columns, then their biases and scales; an activation object is
+# eight activations' 2048 columns in 8x8 tiles, then their act_scales.
+MMA_SLOT = 8 * 1024 + 64
+MMA_ACT_BYTES = 8 * D + 64
 # The scratchpad keeps 30 bits a word, so the sampler's 32-bit temperature
 # bits take one word for their low 30 bits, and a second holds their top two
 # bits and top_k.
@@ -45,9 +59,9 @@ def sample_param_values(temperature, top_k, kset):
     """The sampler's ScratchpadParameter values for one dispatch.
 
     Args:
-        temperature: float32; at or below 0 the sampler is greedy.
-        top_k: 0 (the whole set) or 1..kset.
-        kset: The resident set's size.
+        `temperature`: float32; at or below 0 the sampler is greedy.
+        `top_k`: 0 (the whole set) or 1..kset.
+        `kset`: The set's size.
 
     Returns:
         `SAMPLE_PARAMS`' values by name, as `read_sample_params` reads them.
@@ -67,30 +81,26 @@ def sample_param_values(temperature, top_k, kset):
 
 
 def read_sample_params(params, words):
-    """In a core body: the sampler's [temperature bits, top_k] into
-    params[0..1] from the `SAMPLE_PARAMS` words."""
+    """In a core body: the sampler's [temperature bits, top_k] into params.
+
+    Args:
+        `params`: The sampler core's parameter buffer; its words 0 and 1.
+        `words`: The `SAMPLE_PARAMS` ScratchpadParameters.
+    """
     w0, w1 = (p.read() for p in words)
     params[0] = ori(w0, shli(andi(w1, constant(i32(), 3)), constant(i32(), 30)))
     params[1] = shrui(w1, constant(i32(), 2))
 
 
-LAYER = "qkvogud"
-COMB_BYTES = 1056
-RESID_BLOCK = 256 * 4 + 64
-DOWN_CHUNKS = HD // D
-DOWN_ROWS_PER_CORE = D // N_CORES
-
-
-# kernels/llama_gemv_mma.cc's layouts: a slot is eight weight rows by half
-# of K=2048 columns, then their biases and scales; an activation object is
-# eight activations' 2048 columns in 8x8 tiles, then their act_scales.
-MMA_SLOT = 8 * 1024 + 64
-MMA_ACT_BYTES = 8 * D + 64
-
-
 def lane_slots(order):
-    """MMA_SLOTs one core's lane holds for a layer: per projection, each row
-    group of eight takes one slot per 1024 columns."""
+    """The MMA_SLOTs one core's lane holds for a layer.
+
+    Args:
+        `order`: The projections' letters, in the order the layer runs them.
+
+    Returns:
+        Per projection, one slot per row group of eight and 1024 columns.
+    """
     return sum(PROJECTIONS[p][0] // N_CORES * PROJECTIONS[p][1] // 8192 for p in order)
 
 
@@ -106,21 +116,22 @@ def mma_rows(
     ostride=0,
     groups=None,
 ):
-    """In a core body: the core's rows of a 2048-column projection for the
-    activations in the tile's first m_count slots: activation m's row n at
-    out[m * ostride + row0 + n] (fp32).
+    """In a core body: the core's rows of a 2048-column projection.
+
+    For the activations in the tile's first m_count slots: activation m's
+    row n at out[m * ostride + row0 + n] (fp32).
 
     Args:
-        proj: The projection's letter.
-        tile: The core's mma activation tile.
-        c_w: Its weight lane's consumer.
-        part: Its int32 partial sums.
-        out: Where the rows go.
-        kernels: The bound (llama_mma_acc, llama_mma_f32).
-        row0: The first row's index in out.
-        m_count: Activations (an MLIR i32 value or an int).
-        ostride: Elements between two activations' rows in out.
-        groups: Row groups of eight to run (default: all the core's).
+        `proj`: The projection's letter.
+        `tile`: The core's mma activation tile.
+        `c_w`: Its weight lane's consumer.
+        `part`: Its int32 partial sums.
+        `out`: Where the rows go.
+        `kernels`: The bound (llama_mma_acc, llama_mma_f32).
+        `row0`: The first row's index in out.
+        `m_count`: Activations (an MLIR i32 value or an int).
+        `ostride`: Elements between two activations' rows in out.
+        `groups`: Row groups of eight to run (default: all the core's).
     """
     k_acc, k_f = kernels
     for g in range_(groups or PROJECTIONS[proj][0] // N_CORES // 8):
@@ -133,19 +144,20 @@ def mma_rows(
 
 
 def mma_down(tile, c_w, part, out, kernels, spread_chunk, m_count=1):
-    """In a core body: the core's down rows (fp32, activation m's at
-    out[256 m + n]) through the tile in four 2048-column chunks; chunks 0-2
-    sum into the row groups' partials.
+    """In a core body: the core's down rows through the tile.
+
+    Activation m's row n goes to out[256 m + n] (fp32), in four 2048-column
+    chunks; chunks 0-2 sum into the row groups' partials.
 
     Args:
-        tile: The core's mma activation tile.
-        c_w: Its weight lane's consumer.
-        part: Its int32 partial sums, eight per row.
-        out: Where the rows go.
-        kernels: The bound (llama_mma_acc, llama_mma_f32).
-        spread_chunk: Called with a chunk's index (an MLIR i32 value or an
+        `tile`: The core's mma activation tile.
+        `c_w`: Its weight lane's consumer.
+        `part`: Its int32 partial sums, eight per row.
+        `out`: Where the rows go.
+        `kernels`: The bound (llama_mma_acc, llama_mma_f32).
+        `spread_chunk`: Called with a chunk's index (an MLIR i32 value or an
             int) to spread that chunk's activations into the tile.
-        m_count: Activations (an MLIR i32 value or an int).
+        `m_count`: Activations (an MLIR i32 value or an int).
     """
     k_acc, k_f = kernels
     groups = PROJECTIONS["d"][0] // N_CORES // 8
@@ -184,11 +196,11 @@ def mma_kernels(t_act, t_slot, t_out, t_scratch, m_max):
     """The mma kernel object's bound entry points for these object types.
 
     Args:
-        t_act: The activation objects' type, spread from.
-        t_slot: The weight slots' type.
-        t_out: The output objects' type.
-        t_scratch: A second fp32 output buffer's type.
-        m_max: The rows an activation object holds.
+        `t_act`: The activation objects' type, spread from.
+        `t_slot`: The weight slots' type.
+        `t_out`: The output objects' type.
+        `t_scratch`: A second fp32 output buffer's type.
+        `m_max`: The rows an activation object holds.
 
     Returns:
         (llama_mma_spread, (llama_mma_acc, llama_mma_f32) for t_out, the same

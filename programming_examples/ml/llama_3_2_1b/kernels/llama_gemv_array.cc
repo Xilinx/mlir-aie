@@ -4,8 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // The GEMV array cores' glue beside the projections (llama_gemv_mma.cc): the
-// fused qkv combine, the residual add's partials and their finalize, and the
-// lm_head's top-k set packing.
+// fused qkv combine, the RoPE row's take, and the residual add.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
@@ -18,6 +17,8 @@
 // vector stores.
 static constexpr int kResidRows = 256;
 static constexpr int kResidBlock = kResidRows * 4 + 64;
+// A row's fused qkv outputs in fp32 (aie2_gemv_array.QKV_COLS).
+static constexpr int kQkvCols = 384;
 
 #ifndef LLAMA_GEMV_M_MAX
 #define LLAMA_GEMV_M_MAX 4
@@ -44,7 +45,7 @@ void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int32_t *restrict part,
   constexpr int kHD = 64;
   constexpr int kHalf = kHD / 2;
   int8_t *cs = reinterpret_cast<int8_t *>(part) + kCsInPart;
-  const float *q = reinterpret_cast<const float *>(fp + row * 384 * 4);
+  const float *q = reinterpret_cast<const float *>(fp + row * kQkvCols * 4);
   const uint16_t *cs_bits =
       reinterpret_cast<const uint16_t *>(cs + row * kCsBytes);
   alignas(64) float cs_f[2 * kHD];

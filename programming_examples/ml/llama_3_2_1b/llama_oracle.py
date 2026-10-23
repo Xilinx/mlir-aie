@@ -6,9 +6,9 @@
 
 One Llama 3.2 1B GQA layer (32 Q heads, 8 KV heads, per-head and per-token
 dynamic scales) as the decode's kernels compute it, the block-wise attention
-of llama_attn_block.cc, the one-stream sampler of llama_topk_sample.cc
-(xoshiro128++, top-k renormalized over exactly the survivors), and a token
-through the layers and the lm_head. Scalar and
+of llama_attn_block.cc, the top-k merge and sampler of llama_lmhead_topk.cc
+and llama_topk_sample.cc (xoshiro128++, top-k renormalized over exactly the
+survivors), and a token through the layers and the lm_head. Scalar and
 vector fp32 adds go through aie.utils.aie_fp32's model of the AIE2P adder.
 numpy_llama_ref.py is the INT8 recipe, a different reference.
 """
@@ -133,8 +133,8 @@ def requant(fp, inv):
     """`round_to_i8(fp * inv)`, the product rounded once in fp32.
 
     Args:
-        fp: fp32 array.
-        inv: The fp32 reciprocal of its scale, broadcastable with `fp`.
+        `fp`: fp32 array.
+        `inv`: The fp32 reciprocal of its scale, broadcastable with `fp`.
 
     Returns:
         The int8 array.
@@ -146,8 +146,8 @@ def dyn_scale(fp, axis=None):
     """The kernels' per-token dynamic scale, max(absmax, 1e-12) * (1 / 127).
 
     Args:
-        fp: fp32 array.
-        axis: The axis to take the absmax over, or None for the whole array.
+        `fp`: fp32 array.
+        `axis`: The axis to take the absmax over, or None for the whole array.
 
     Returns:
         fp32: the scale, one per entry along the other axes.
@@ -163,7 +163,7 @@ def sum_sq_f32(x):
     the lanes are added in order 0..15.
 
     Args:
-        x: fp32 (D,), D a multiple of 16.
+        `x`: fp32 (D,), D a multiple of 16.
 
     Returns:
         The fp32 sum.
@@ -182,9 +182,9 @@ def rmsnorm_f32(x_fp, gamma_bf16, eps=1e-5):
     """RMSNorm of the fp32 residual, requantized to int8, as llama_rmsnorm_f32_packed.
 
     Args:
-        x_fp: fp32 (D,).
-        gamma_bf16: bf16 (D,).
-        eps: The norm's epsilon.
+        `x_fp`: fp32 (D,).
+        `gamma_bf16`: bf16 (D,).
+        `eps`: The norm's epsilon.
 
     Returns:
         (int8 (D,), its fp32 scale).
@@ -202,9 +202,9 @@ def rope_q(q_fp, cos_bf, sin_bf):
     """RoPE over fp32 Q heads, as llama_gemv_array_qkv_comb_cs.
 
     Args:
-        q_fp: fp32 (N_HEADS_Q * HEAD_D,).
-        cos_bf: bf16 (HEAD_D,), the position's cos.
-        sin_bf: bf16 (HEAD_D,), its sin.
+        `q_fp`: fp32 (N_HEADS_Q * HEAD_D,).
+        `cos_bf`: bf16 (HEAD_D,), the position's cos.
+        `sin_bf`: bf16 (HEAD_D,), its sin.
 
     Returns:
         fp32 (N_HEADS_Q * HEAD_D,), each pair rotated in fp32.
@@ -227,8 +227,8 @@ def silu_mul(gate, up):
     """SiLU(gate) * up in fp32, as llama_silu_gate then llama_silu_up.
 
     Args:
-        gate: fp32 (HD,).
-        up: fp32 (HD,).
+        `gate`: fp32 (HD,).
+        `up`: fp32 (HD,).
 
     Returns:
         fp32 (HD,).
@@ -288,14 +288,14 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
     fp32.
 
     Args:
-        q_i8: int8 (N_HEADS_Q, HEAD_D).
-        q_scales: fp32 (N_HEADS_Q,).
-        k_i8: int8 (N_HEADS_KV, rows, HEAD_D), rows >= t.
-        v_i8: int8 (N_HEADS_KV, rows, HEAD_D).
-        k_slot: fp32 (N_HEADS_KV, rows), the rows' K scales.
-        v_slot: fp32 (N_HEADS_KV, rows), their V scales.
-        t: The live rows.
-        tb: Rows per block.
+        `q_i8`: int8 (N_HEADS_Q, HEAD_D).
+        `q_scales`: fp32 (N_HEADS_Q,).
+        `k_i8`: int8 (N_HEADS_KV, rows, HEAD_D), rows >= t.
+        `v_i8`: int8 (N_HEADS_KV, rows, HEAD_D).
+        `k_slot`: fp32 (N_HEADS_KV, rows), the rows' K scales.
+        `v_slot`: fp32 (N_HEADS_KV, rows), their V scales.
+        `t`: The live rows.
+        `tb`: Rows per block.
 
     Returns:
         fp32 (N_HEADS_Q, HEAD_D): each Q head's attention output.
@@ -347,17 +347,17 @@ class Layer:
     """One decoder layer as the decode holds it: weights, norms and KV cache.
 
     Args:
-        weights: Per projection (PROJECTIONS' letters), its int8 weights
+        `weights`: Per projection (PROJECTIONS' letters), its int8 weights
             (rows, K) and their fp32 per-row scales.
-        gamma_in: bf16 (D,), the attention norm's gamma.
-        gamma_post: bf16 (D,), the FFN norm's gamma.
-        t: KV cache rows.
+        `gamma_in`: bf16 (D,), the attention norm's gamma.
+        `gamma_post`: bf16 (D,), the FFN norm's gamma.
+        `t`: KV cache rows.
 
     Attributes:
-        kcache: int8 (N_HEADS_KV, t, HEAD_D), each row a token's roped K.
-        vcache: int8 (N_HEADS_KV, t, HEAD_D).
-        k_slot: fp32 (N_HEADS_KV, t), each row's K scale.
-        v_slot: fp32 (N_HEADS_KV, t), each row's V scale.
+        `kcache`: int8 (N_HEADS_KV, t, HEAD_D), each row a token's roped K.
+        `vcache`: int8 (N_HEADS_KV, t, HEAD_D).
+        `k_slot`: fp32 (N_HEADS_KV, t), each row's K scale.
+        `v_slot`: fp32 (N_HEADS_KV, t), each row's V scale.
     """
 
     def __init__(self, weights, gamma_in, gamma_post, t):
@@ -374,9 +374,9 @@ class Layer:
         """Llama 3.2 1B's layer `index`, from gen_llama_data.py's `data_dir`.
 
         Args:
-            index: The layer.
-            data_dir: data/.
-            t: KV cache rows.
+            `index`: The layer.
+            `data_dir`: data/.
+            `t`: KV cache rows.
 
         Returns:
             The layer, its cache empty.
@@ -401,8 +401,8 @@ class Layer:
         """A seeded random layer at the model's shapes.
 
         Args:
-            rng: The numpy Generator.
-            t: KV cache rows.
+            `rng`: The numpy Generator.
+            `t`: KV cache rows.
 
         Returns:
             The layer, its cache empty.
@@ -428,11 +428,11 @@ class Layer:
         """The layer for one token at `position`, appending its KV row.
 
         Args:
-            x: The fp32 (D,) residual entering it, which the norm reads and
+            `x`: The fp32 (D,) residual entering it, which the norm reads and
                 the adds add to, as the decode's stage rows hold it.
-            position: The token's position; it attends rows 0..position.
-            cos: bf16 (HEAD_D,), RoPE's cos at `position`.
-            sin: bf16 (HEAD_D,), its sin.
+            `position`: The token's position; it attends rows 0..position.
+            `cos`: bf16 (HEAD_D,), RoPE's cos at `position`.
+            `sin`: bf16 (HEAD_D,), its sin.
 
         Returns:
             The fp32 residual leaving it.
@@ -495,11 +495,11 @@ def chain_forward_logits(residual, layers, position, rope, lm):
     Appends the token's KV row to each layer's cache.
 
     Args:
-        residual: The fp32 (D,) layer-0 residual.
-        layers: The layers.
-        position: The token's position.
-        rope: bf16 (t, 2 * HEAD_D), numpy_llama_ref.rope_table.
-        lm: (embed_i8, embed_sc, final norm gamma).
+        `residual`: The fp32 (D,) layer-0 residual.
+        `layers`: The layers.
+        `position`: The token's position.
+        `rope`: bf16 (t, 2 * HEAD_D), numpy_llama_ref.rope_table.
+        `lm`: (embed_i8, embed_sc, final norm gamma).
 
     Returns:
         (fp32 logits over the vocab, the fp32 final residual).
@@ -517,43 +517,36 @@ def chain_forward_logits(residual, layers, position, rope, lm):
     return logits, x
 
 
-def _u32(x):
-    return np.uint32(x & 0xFFFFFFFF)
-
-
-def _u64(x):
-    return np.uint64(x & 0xFFFFFFFFFFFFFFFF)
-
-
-def _rotl32(x: np.uint32, k: int) -> np.uint32:
-    x = _u32(x)
-    return _u32((int(x) << k) | (int(x) >> (32 - k)))
+def _rotl32(x, k):
+    x = int(x)
+    return ((x << k) | (x >> (32 - k))) & 0xFFFFFFFF
 
 
 def xoshiro_seed(seed: int) -> list:
     """splitmix64-style expansion of one uint32 seed into 4 uint32 state."""
-    x = _u64(int(seed) * 0x9E3779B97F4A7C15 + 1)
+    x = (int(seed) * 0x9E3779B97F4A7C15 + 1) & 0xFFFFFFFFFFFFFFFF
     s = []
     for _ in range(4):
-        x = _u64(int(x) ^ (int(x) >> 30))
-        x = _u64(int(x) * 0xBF58476D1CE4E5B9)
-        x = _u64(int(x) ^ (int(x) >> 27))
-        x = _u64(int(x) * 0x94D049BB133111EB)
-        x = _u64(int(x) ^ (int(x) >> 31))
-        s.append(_u32(int(x) ^ (int(x) >> 32)))
+        x ^= x >> 30
+        x = (x * 0xBF58476D1CE4E5B9) & 0xFFFFFFFFFFFFFFFF
+        x ^= x >> 27
+        x = (x * 0x94D049BB133111EB) & 0xFFFFFFFFFFFFFFFF
+        x ^= x >> 31
+        s.append(np.uint32((x ^ (x >> 32)) & 0xFFFFFFFF))
     return s
 
 
 def xoshiro_next(s: list) -> tuple:
-    result = _u32(int(_rotl32(_u32(int(s[0]) + int(s[3])), 7)) + int(s[0]))
-    t = _u32(int(s[1]) << 9)
-    s[2] = _u32(int(s[2]) ^ int(s[0]))
-    s[3] = _u32(int(s[3]) ^ int(s[1]))
-    s[1] = _u32(int(s[1]) ^ int(s[2]))
-    s[0] = _u32(int(s[0]) ^ int(s[3]))
-    s[2] = _u32(int(s[2]) ^ int(t))
-    s[3] = _rotl32(s[3], 11)
-    return result, s
+    s0, s1, s2, s3 = (int(w) for w in s)
+    result = (_rotl32((s0 + s3) & 0xFFFFFFFF, 7) + s0) & 0xFFFFFFFF
+    t = (s1 << 9) & 0xFFFFFFFF
+    s2 ^= s0
+    s3 ^= s1
+    s1 ^= s2
+    s0 ^= s3
+    s2 ^= t
+    s[:] = [np.uint32(w) for w in (s0, s1, s2, _rotl32(s3, 11))]
+    return np.uint32(result), s
 
 
 def xoshiro_uniform(s: list) -> tuple:
@@ -563,11 +556,18 @@ def xoshiro_uniform(s: list) -> tuple:
 
 
 def topk_set_reference(logits_f32: np.ndarray, k_set: int):
-    """Mirror llama_lmhead_topk_insert's set: an unsorted set of capacity
-    k_set streamed in index order, ordered by logit and then by lower index on
-    equal logits. The set is the k_set largest under that order, ties
-    included, whatever the streaming order. Returns the set's global indices
-    in slot order, as the kernel holds them."""
+    """The top-k set the device keeps.
+
+    The k_set largest logits, ordered by logit, then lower index, whatever
+    the order they arrive in.
+
+    Args:
+        `logits_f32`: fp32 logits over the vocabulary.
+        `k_set`: The set's capacity.
+
+    Returns:
+        The set's global indices.
+    """
     V = logits_f32.size
     set_idx: list[int] = []
     for g in range(V):
@@ -645,12 +645,12 @@ def embed_seed_ref(row_i8, embed_sc):
     """A token's layer-0 residual, as llama_topk_sample.cc's residual_seed makes it.
 
     Args:
-        row_i8: The token's int8 embed row.
-        embed_sc: Its scale.
+        `row_i8`: The token's int8 embed row.
+        `embed_sc`: Its scale.
 
     Returns:
         fp32 (D,): the row, row * embed_sc, which the first norm reads and the
-        residual adds add to.
+        residual add adds to.
     """
     return mul_rne(row_i8.astype(np.float32), np.float32(embed_sc))
 
@@ -662,10 +662,10 @@ def teacher_forced_logits(layers, lm, rope, tokens):
     for a prompt token; the layers' caches grow as the device's do.
 
     Args:
-        layers: The oracle's layers, their caches empty.
-        lm: (embed_i8, embed_sc, final_norm gamma).
-        rope: The RoPE table, a row per position.
-        tokens: The token ids, from position 0.
+        `layers`: The oracle's layers, their caches empty.
+        `lm`: (embed_i8, embed_sc, final_norm gamma).
+        `rope`: The RoPE table, a row per position.
+        `tokens`: The token ids, from position 0.
 
     Returns:
         fp32 logits, (len(tokens), vocab): row p predicts tokens[p + 1].

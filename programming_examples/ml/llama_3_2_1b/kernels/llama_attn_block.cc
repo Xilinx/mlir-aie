@@ -155,15 +155,12 @@ static void fold_part(int8_t *acc_state, int8_t *part) {
             w[kREP + h]);
 }
 
-// One head's sv over the first `rows` rows of v (each row's kHD int8 v, at
-// kRowBytes strides), in row order, to dst, for a block whose live nonzero
-// pv all have exponent fields from 24 to 238: sv_head_low's products without
-// its 2^64 offset, its to_float(n, 150 - e) written out in accumulators.
-// n = |v| * m is exact in acc64; its high and low 16 bits are each added in
-// acc32 to the bits of to_float's magic numbers for that shift, less which in
-// accfloat they are exact, and their one vadd.f is to_float's. Per row, m is
-// pv's significand and kh and kl the two magic numbers' high 16 bits,
-// doubled; v's sign is added to the product's bits, as aie::neg does.
+// One head's sv over the first `rows` rows of v (kHD int8 at kRowBytes
+// strides), in row order, to dst, when every live nonzero pv has exponent
+// field 24..238: |v| * m exact in acc64 (m: pv's significand), and
+// to_float(n, 150 - e) done in accumulators by adding its magic numbers'
+// bits (kh, kl: their high 16 bits, doubled) to n's halves in acc32, then
+// one vadd.f. v's sign is added to the product's bits, as aie::neg does.
 __attribute__((noinline)) static void sv_head(const int8_t *v, int rows,
                                               const int32_t *m,
                                               const uint16_t *kh,

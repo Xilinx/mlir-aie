@@ -3,7 +3,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// The lm_head's resident top-k set, merged from the GEMV array's per-core sets.
+// The lm_head's top-k set, merged from the GEMV array's per-core sets.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
@@ -23,9 +23,9 @@ static inline int32_t logit_key(float f) {
 // embed rows (llama_mma_lm_topk); a candidate slot is half of one core's set:
 // 4 rows, then 16-byte blocks of their logits, gidx and scales and the core
 // set's length. The union of the cores' sets holds the vocabulary's top
-// kKset, so inserting every candidate gives the set one pass over the table
-// would. The set is unsorted, ordered by logit, then by lower gidx: append
-// until full, then replace the lowest member when a higher one arrives,
+// kKset, so inserting every candidate gives the set that one pass over the
+// table would. The set is unsorted, ordered by logit, then by lower gidx:
+// append until full, then replace the lowest member when a higher one arrives,
 // which leaves the top kKset under that order whatever the insertion order
 // (llama_oracle.topk_set_reference). llama_topk_finalize samples it; its
 // layout and kKset must match.

@@ -68,9 +68,19 @@ class ModelW:
     layers: list[LayerW]
 
 
-def _load_qw(
+def load_qw(
     data_dir: Path, stem: str, shape: tuple[int, int]
 ) -> tuple[np.ndarray, np.ndarray]:
+    """An int8 tensor gen_llama_data.py wrote, with its per-row fp32 scales.
+
+    Args:
+        `data_dir`: The directory it is in.
+        `stem`: Its files' name before `.i8.bin` and `.scales.f32.bin`.
+        `shape`: The tensor's shape.
+
+    Returns:
+        (the int8 tensor, its scales).
+    """
     q = np.frombuffer(
         (data_dir / f"{stem}.i8.bin").read_bytes(), dtype=np.int8
     ).reshape(shape)
@@ -81,29 +91,39 @@ def _load_qw(
     return q, sc
 
 
-def _load_bf16(data_dir: Path, stem: str, shape: tuple[int, ...]) -> np.ndarray:
+def load_bf16(data_dir: Path, stem: str, shape: tuple[int, ...]) -> np.ndarray:
+    """A bf16 tensor gen_llama_data.py wrote.
+
+    Args:
+        `data_dir`: The directory it is in.
+        `stem`: Its file's name before `.bf16.bin`.
+        `shape`: Its shape.
+
+    Returns:
+        The bf16 tensor.
+    """
     return np.frombuffer(
         (data_dir / f"{stem}.bf16.bin").read_bytes(), dtype=ml_dtypes.bfloat16
     ).reshape(shape)
 
 
 def load_model(data_dir: Path) -> ModelW:
-    embed_i8, embed_sc = _load_qw(data_dir, "embed", (VOCAB, D))
-    final_norm = _load_bf16(data_dir, "final_norm", (D,))
+    embed_i8, embed_sc = load_qw(data_dir, "embed", (VOCAB, D))
+    final_norm = load_bf16(data_dir, "final_norm", (D,))
     layers = []
     for L in range(N_LAYERS):
         ld = data_dir / f"layer_{L:02d}"
-        wq_i8, wq_sc = _load_qw(ld, "wq", (Q_DIM, D))
-        wk_i8, wk_sc = _load_qw(ld, "wk", (KV_DIM, D))
-        wv_i8, wv_sc = _load_qw(ld, "wv", (KV_DIM, D))
-        wo_i8, wo_sc = _load_qw(ld, "wo", (D, Q_DIM))
-        wg_i8, wg_sc = _load_qw(ld, "wg", (HD, D))
-        wu_i8, wu_sc = _load_qw(ld, "wu", (HD, D))
-        wd_i8, wd_sc = _load_qw(ld, "wd", (D, HD))
+        wq_i8, wq_sc = load_qw(ld, "wq", (Q_DIM, D))
+        wk_i8, wk_sc = load_qw(ld, "wk", (KV_DIM, D))
+        wv_i8, wv_sc = load_qw(ld, "wv", (KV_DIM, D))
+        wo_i8, wo_sc = load_qw(ld, "wo", (D, Q_DIM))
+        wg_i8, wg_sc = load_qw(ld, "wg", (HD, D))
+        wu_i8, wu_sc = load_qw(ld, "wu", (HD, D))
+        wd_i8, wd_sc = load_qw(ld, "wd", (D, HD))
         layers.append(
             LayerW(
-                gamma_in=_load_bf16(ld, "gamma_in", (D,)),
-                gamma_post=_load_bf16(ld, "gamma_post", (D,)),
+                gamma_in=load_bf16(ld, "gamma_in", (D,)),
+                gamma_post=load_bf16(ld, "gamma_post", (D,)),
                 wq_i8=wq_i8,
                 wq_sc=wq_sc,
                 wk_i8=wk_i8,
@@ -198,7 +218,7 @@ def rope_inv_freq(head_dim: int) -> np.ndarray:
     """Llama 3's RoPE frequencies, with its rope_scaling, as HF computes them.
 
     Args:
-        head_dim: The head dimension.
+        `head_dim`: The head dimension.
 
     Returns:
         float32 (head_dim // 2,): each rotary pair's angle per position.
@@ -230,8 +250,8 @@ def rope_table(n_positions: int, head_dim: int) -> np.ndarray:
     """The device's RoPE table: per position, cos then sin, in bf16.
 
     Args:
-        n_positions: Rows, for positions 0 .. n_positions - 1.
-        head_dim: The head dimension.
+        `n_positions`: Rows, for positions 0 .. n_positions - 1.
+        `head_dim`: The head dimension.
 
     Returns:
         bf16 (n_positions, 2 * head_dim).

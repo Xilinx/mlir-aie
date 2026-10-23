@@ -48,7 +48,7 @@ from llama_oracle import (
     xoshiro_seed,
 )
 from ml_dtypes import bfloat16
-from numpy_llama_ref import _load_bf16, _load_qw, rope_table
+from numpy_llama_ref import load_bf16, load_qw, rope_table
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -127,16 +127,16 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sampler, rng,
     following the device's tokens.
 
     Args:
-        records: The dispatch's packed records.
-        passes: Its passes.
-        residual: The first token's layer-0 residual.
-        layers: The oracle's layers, their caches as the dispatch found them.
-        p0: The first token's position.
-        rope: The RoPE table.
-        lm: (embed_i8, embed_sc, final_norm gamma).
-        sampler: The sampler's (temperature, top_k).
-        rng: The generation's xoshiro state as the dispatch found it.
-        plan: Per token, (the prompt token it inputs, or None to input the
+        `records`: The dispatch's packed records.
+        `passes`: Its passes.
+        `residual`: The first token's layer-0 residual.
+        `layers`: The oracle's layers, their caches as the dispatch found them.
+        `p0`: The first token's position.
+        `rope`: The RoPE table.
+        `lm`: (embed_i8, embed_sc, final_norm gamma).
+        `sampler`: The sampler's (temperature, top_k).
+        `rng`: The generation's xoshiro state as the dispatch found it.
+        `plan`: Per token, (the prompt token it inputs, or None to input the
             previous token's sample (the first token: residual); the index of
             the record the lm_head and sampler left for it, or None).
 
@@ -188,12 +188,12 @@ def check_kv(shape, layers, kv_before, kv_idx, kv_val, positions):
     KV cache and changed nothing else.
 
     Args:
-        shape: The build.
-        layers: The oracle's layers, after it appended those rows.
-        kv_before: The device's KV cache words before the dispatch.
-        kv_idx: The sorted indices of the words the dispatch changed.
-        kv_val: Their new values.
-        positions: The rows the dispatch appended.
+        `shape`: The build.
+        `layers`: The oracle's layers, after it appended those rows.
+        `kv_before`: The device's KV cache words before the dispatch.
+        `kv_idx`: The sorted indices of the words the dispatch changed.
+        `kv_val`: Their new values.
+        `positions`: The rows the dispatch appended.
 
     Returns:
         1 if a row differs or the dispatch changed a word outside them, else 0.
@@ -460,8 +460,8 @@ def main(argv=None):
         embed_i8, embed_sc, gamma = synthetic_lm_weights(fseed)
     else:
         print(f"loading embed/final_norm from {DATA_DIR} ...", flush=True)
-        embed_i8, embed_sc = _load_qw(DATA_DIR, "embed", (VOCAB, D))
-        gamma = _load_bf16(DATA_DIR, "final_norm", (D,))
+        embed_i8, embed_sc = load_qw(DATA_DIR, "embed", (VOCAB, D))
+        gamma = load_bf16(DATA_DIR, "final_norm", (D,))
     lm = (embed_i8, embed_sc, gamma)
 
     residual0, layers = build_fixtures(
