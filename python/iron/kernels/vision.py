@@ -379,6 +379,88 @@ def levels(
     )
 
 
+def grid_decode(
+    width: int = 52,
+    channels: int = 144,
+    *,
+    obj_at: int = 16,
+    cls_at: int = 48,
+    classes: int = 80,
+) -> ExternalFunction:
+    """Decode a row of an anchor-free detector's prediction map into float32 boxes.
+
+    ``grid_decode(in, out, y, stride)`` reads ``width`` cells of
+    ``channels`` bf16, a cell's box ``(dx, dy, dw, dh)`` first, its
+    objectness at ``obj_at`` and ``classes`` scores from ``cls_at``, and
+    writes a row of ``5 + classes`` float32 for each: ``(dx + x) * stride``,
+    ``(dy + y) * stride``, ``exp(dw) * stride``, ``exp(dh) * stride``, then
+    the objectness and scores, as YOLOX's ``decode_outputs`` computes them
+    in float32 for grid cell ``(x, y)`` of a map of ``stride``, a power of
+    two. Each sum rounds once; the exponential is ``exp_f32``.
+
+    Args:
+        width: The cells of a row.
+        channels: The bf16 channels of a cell.
+        obj_at: The objectness's channel.
+        cls_at: The first class score's channel.
+        classes: The class scores of a cell.
+
+    Returns:
+        ExternalFunction for ``grid_decode``.
+
+    Raises:
+        ValueError: When a field lies past a cell's channels or inside its
+            box, or ``width`` or ``classes`` is below 1.
+    """
+    if width < 1 or classes < 1:
+        raise ValueError(
+            f"grid_decode() needs width >= 1 and classes >= 1, got {width} and {classes}."
+        )
+    if max(obj_at + 1, cls_at + classes) > channels or min(obj_at, cls_at) < 4:
+        raise ValueError(
+            f"grid_decode() needs objectness at {obj_at} and {classes} scores from "
+            f"{cls_at} inside {channels} channels, after the box."
+        )
+    return _make_extern(
+        "grid_decode",
+        _kernel_source("vision/grid_decode.cc"),
+        [
+            np.ndarray[(width * channels,), np.dtype[bfloat16]],
+            np.ndarray[(width * (5 + classes),), np.dtype[np.float32]],
+            np.int32,
+            np.int32,
+        ],
+        compile_flags=[
+            f"-DWIDTH={width}",
+            f"-DCHANNELS={channels}",
+            f"-DOBJ={obj_at}",
+            f"-DCLS={cls_at}",
+            f"-DCLASSES={classes}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param),
+            reference=lambda cells, y, stride: grid_decode_ref(
+                cells,
+                y,
+                stride,
+                width=width,
+                channels=channels,
+                obj_at=obj_at,
+                cls_at=cls_at,
+                classes=classes,
+            ),
+            acc_dtype=np.float32,
+            tolerance=Tolerance.relative(
+                1e-6,
+                note="exp_f32 is within 9.41 float32 ulps (5.6e-7) over every "
+                "input, numpy's exp within one; the sums round once, as the "
+                "reference's, and the stride and the copies are exact",
+            ),
+        ),
+    )
+
+
 def _check_resample(owner: str, words: int, cores: int, slots: int | None) -> None:
     if words < _RESAMPLE_HEADER + 5 or cores < 1 or (slots is not None and slots < 1):
         raise ValueError(
@@ -688,6 +770,33 @@ def rgba2hue_ref(rgba):
         ),
     )
     return (np.where(d == 0, 0, h) & 0xFF).astype(np.uint8)
+
+
+def grid_decode_ref(
+    cells,
+    y,
+    stride,
+    *,
+    width: int,
+    channels: int,
+    obj_at: int,
+    cls_at: int,
+    classes: int,
+):
+    """Numpy reference for [`grid_decode`][iron.kernels.vision.grid_decode].
+
+    YOLOX's ``decode_outputs`` in float32.
+    """
+    p = np.asarray(cells).astype(np.float32).reshape(-1, width, channels)
+    s = np.float32(stride)
+    out = np.empty((p.shape[0], width, 5 + classes), np.float32)
+    out[..., 0] = (p[..., 0] + np.arange(width, dtype=np.float32)) * s
+    out[..., 1] = (p[..., 1] + np.float32(y)) * s
+    with np.errstate(over="ignore"):
+        out[..., 2:4] = np.exp(p[..., 2:4]) * s
+    out[..., 4] = p[..., obj_at]
+    out[..., 5:] = p[..., cls_at : cls_at + classes]
+    return out.reshape(p.shape[0], width * (5 + classes))
 
 
 def levels_ref(

@@ -1337,6 +1337,11 @@ CASES: list[Case] = [
             ((58, 224, 4, 228, 4, 228), "row-after"),
         )
     ],
+    # grid_decode: YOLOX-Nano's three maps at 416, a row each call, past the
+    # last whole vector at 52 and 26 cells; the first row and a deep one.
+    Case("grid_decode", calls=4, scalars=(7, 8), smoke=True),
+    check("grid_decode", dict(width=26), scalars=(25, 16), tag="stride-16"),
+    check("grid_decode", dict(width=13), scalars=(0, 32), tag="stride-32"),
     Case("bitwise_or", calls=16, smoke=True),
     Case("bitwise_and", calls=16, smoke=True),
     check("bitwise_or", dict(line_width=64), tag="edge-one-vector"),
