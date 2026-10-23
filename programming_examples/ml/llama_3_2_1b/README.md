@@ -12,9 +12,9 @@ and the token→embedding feedback. The device is bit-exact to its numpy oracle
 (`llama_oracle.py`); Accuracy scores that arithmetic against the bf16 Hugging
 Face model.
 
-> Status: on NPU2 (Strix), decode and prefill run on the device, prefill in
-> batches of up to 4 prompt tokens (`generate.py`: prompt in, text out), every
-> token checked against the oracle. Current timings are on the
+> Status: on NPU2 (Strix), decode and prefill run on the device, prefill 64
+> prompt tokens a dispatch through all 16 layers (`generate.py`: prompt in,
+> text out), every token checked against the oracle. Current timings are on the
 > [dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
 
 ---
@@ -110,6 +110,19 @@ a row at a time. Only the prompt's last batch runs the lm_head and sampler
 (`lm{t}`), for its last row. The host's part is tokenization and splitting the
 prompt into batches (`DecodeShape.batches`).
 
+Longer prompts go through a prefill design of their own
+(`aie2_prefill_layer.py`, host side `llama_prefill.py`): one dispatch runs 64
+prompt rows, one KV block, through all 16 layers, its GEMM array
+(`aie2_prefill.py`) taking each projection's weights once for the 64 rows. A
+gather design first copies the prompt's lm_head slots into a `prompt` buffer,
+31 a dispatch, and the prefill makes each row's embed seed from its slot. The
+three designs share the weights, lm_head and KV cache buffers in one process,
+each in its own hardware context; a request switches contexts twice (gather to
+prefill, prefill to decode), about 2.4 ms each. The decode then runs the
+rest of the prompt, at least its last token, whose sample is the first
+generated token. A partial last block runs as a padded prefill pass when
+that beats the decode's batches for it (`Prefiller.plan`).
+
 ### INT8 recipe (W8A8-dynamic)
 
 - **Weights:** symmetric per-output-channel INT8 (`gen_llama_data.py`), streamed
@@ -152,10 +165,10 @@ budget by a cost model (4.7 ms of lm_head a token, plus per layer 1.16 ms and
 128k.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
-> **TTFT** (time to first token). Prefill runs one dispatch of up to 4 prompt
-> tokens at a time, each a full 16-layer pass, so TTFT scales with the number
-> of dispatches rather than with one big batched op; larger prefill batches
-> (What's next) are the lever.
+> **TTFT** (time to first token). A prefill pass runs 64 prompt tokens through
+> the 16 layers: about 10.3 ms a layer of weights and glue, plus 0.75 ms a
+> layer for each KV block its attention reads, so long prompts are bound by
+> attention, which runs the decode's per-query kernel.
 
 ---
 
@@ -269,6 +282,10 @@ python bench_quality.py --path numpy --bf16-ref
 # numpy_llama_ref
 python generate.py --prompt "The capital of France is" --max-new 32 --check
 
+# time to first token at 2048 prompt tokens, through the 64-row prefill
+# (--prefill decode runs the prompt through the decode alone, for comparison)
+python generate.py --prompt-tokens 2048 --t 2112 --max-new 8
+
 # prefill and predict each prompt on the NPU, vs bf16
 python bench_quality.py --bf16-ref
 ```
@@ -345,15 +362,13 @@ Constraints that shape the design:
 
 ## 7. What's next
 
-One compiled design serves decode and batched prefill, with the per-call
+One compiled design serves decode and a prompt's last tokens, with the per-call
 values (passes, a batch's rows, position, live context, the sampler's
 settings) as ScratchpadParameters. Next:
 
 - **Glue fused into the GEMV array's epilogues.**
-- **Larger prefill batches**: the mma tile has 8 activation slots and the
-  design fills 4, its per-row parameters (`pg{m}`, `gat{m}`) sharing the
-  32-parameter budget with the passes'. One dispatch per 4 prompt tokens
-  means a 2048-token prompt pays 512 dispatches' worth of per-dispatch
-  overhead.
+- **Prefill attention as a GEMM**: the 64-row prefill runs the decode's
+  per-query attention kernel, 0.75 ms a layer per KV block, which is most
+  of a long prompt's time to first token.
 - **Long-context attention**, which dominates a token's time at long
   context.

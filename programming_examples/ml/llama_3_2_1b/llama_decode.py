@@ -397,6 +397,7 @@ class Decoder:
         self.w_t = iron.tensor(shape.pack_wblob(layers, rope), dtype=np.int8)
         self.lmw_t = iron.tensor(pack_lmw(*lm), dtype=np.int8)
         self.kv_t = None
+        self.stage_t = None
         self.layers = layers
         self.final_gamma = lm[2]
 
@@ -416,12 +417,14 @@ class Decoder:
         out_t.to("cpu")
         return out_t.numpy().copy(), ms
 
-    def generate(self, prompt, max_new, sample, stop=(), started=None):
+    def generate(self, prompt, max_new, sample, stop=(), started=None, prefiller=None):
         """Prefill `prompt` into the session's KV cache, then generate.
 
-        The first call allocates the KV cache. The prompt runs in batches
+        The first call allocates the KV cache. The prefiller, if any, runs
+        the prompt's first positions; the rest run in batches
         (shape.batches), the last one's sample being the first generated
-        token; then each dispatch runs shape.passes_for's many tokens.
+        token; then each dispatch runs shape.passes_for's many tokens. The
+        generation's stage stays in stage_t.
 
         Args:
             `prompt`: The prompt's token ids.
@@ -431,6 +434,8 @@ class Decoder:
             `stop`: Token ids that end the generation (kept).
             `started`: The request's start (time.perf_counter), as early as
                 its tokenization; None starts it here.
+            prefiller: A llama_prefill.Prefiller of this build, or None to
+                run the whole prompt through the decode.
 
         Returns:
             The Generation.
@@ -461,10 +466,13 @@ class Decoder:
             ),
             dtype=np.int8,
         )
+        self.stage_t = stage_t
         pos = 0
         out = []
         prefill_ms = 0.0
-        sizes = self.shape.batches(0, len(prompt))
+        if prefiller is not None:
+            pos, prefill_ms = prefiller.run(self, prompt)
+        sizes = self.shape.batches(pos, len(prompt) - pos)
         for i, n in enumerate(sizes):
             records, ms = self.dispatch(
                 self.kv_t,
