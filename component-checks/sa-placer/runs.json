@@ -388,6 +388,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "39914290794",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39914290794",
+   "date": "2026-10-23T06:53:35+00:00",
+   "commit": {
+    "id": "1b56c5948379b21212f50d3a829584c1c3c83e76",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/1b56c5948379b21212f50d3a829584c1c3c83e76",
+    "message": "Llama 3.2 1B A8W8 decode minor improvements; dashboard clarity (#3963)",
+    "timestamp": "2026-10-23T04:07:48Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "1b56c59483",
+    "fixtures": "3aa7139253a0",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

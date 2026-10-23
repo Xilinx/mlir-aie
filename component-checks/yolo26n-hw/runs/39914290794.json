@@ -1,0 +1,36 @@
+{
+ "schema": 1,
+ "target": "yolo26n-hw",
+ "id": "39914290794",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39914290794",
+ "date": "2026-10-23T06:53:35+00:00",
+ "commit": {
+  "id": "1b56c5948379b21212f50d3a829584c1c3c83e76",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/1b56c5948379b21212f50d3a829584c1c3c83e76",
+  "message": "Llama 3.2 1B A8W8 decode minor improvements; dashboard clarity (#3963)",
+  "timestamp": "2026-10-23T04:07:48Z"
+ },
+ "event": "schedule",
+ "pmode": "turbo",
+ "device": "Krackan",
+ "device_raw": "NPU Krackan 1",
+ "provenance": {
+  "commit": "1b56c59483",
+  "peano": "22.0.0+4f5df13d",
+  "kernels": "804811e55156",
+  "runtime": "CachedXRTRuntime",
+  "xdna": "2.25.0_20260902",
+  "xrt": "2.25.0",
+  "host": "aie8",
+  "device": "NPU Krackan 1",
+  "pmode": "turbo"
+ },
+ "sane": null,
+ "published": false,
+ "n_rows": 0,
+ "exitstatus": 1,
+ "failed": [],
+ "truncated": [],
+ "rows": {},
+ "refused": "/srv/yolo26n/yolo26n_xint8.onnx is missing; see --weights-dir"
+}
