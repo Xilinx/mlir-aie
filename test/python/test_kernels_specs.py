@@ -654,6 +654,22 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         shape_checks=[(dict(chunk=64), 0, (64,)), (dict(words=100), 1, (100,))],
     ),
+    KernelSpec(
+        name="levels",
+        factory=kernels.levels,
+        kwargs=dict(in_bytes=1024, out_width=230),
+        arg_count=9,  # in, table, out, first, count, at, row, lo, hi
+        expected_name="levelsLine",
+        name_variants=[(dict(in_bytes=1248, out_width=416, bgr=True), "levelsLine")],
+        invalid_kwargs=[
+            (dict(in_bytes=1022, out_width=230), "multiple of 4"),
+            (dict(in_bytes=1024, out_width=0), "out_width >= 1"),
+        ],
+        shape_checks=[
+            (dict(in_bytes=1024, out_width=230), 0, (1024,)),
+            (dict(in_bytes=1024, out_width=230), 2, (920,)),
+        ],
+    ),
     # ----- linalg -----
     KernelSpec(
         name="mm",

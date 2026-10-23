@@ -32,6 +32,10 @@ from ._common import (
 
 DTYPES: dict[str, tuple[dict, ...]] = {}
 
+#: The bf16 entries of a ``levels`` table: three channels' 256, the four
+#: fill values, padded to whole 64-byte vectors.
+LEVELS_TABLE = 3 * 256 + 32
+
 
 def _color_convert_kernel(
     func_name: str,
@@ -301,6 +305,76 @@ def add_weighted(
                 note="measured bit-exact against the reference over every data case"
             ),
             ops_per_call=3 * line_width,
+        ),
+    )
+
+
+def levels(
+    in_bytes: int = 3 * 1920, out_width: int = 1920, *, bgr: bool = False
+) -> ExternalFunction:
+    """Map a row of uint8 RGB pixels through per-channel tables to bf16 pixels of four channels.
+
+    ``levelsLine(in, table, out, first, count, at, row, lo, hi)`` writes
+    ``count`` pixels of the row ``in``, from pixel ``first``, to the row
+    ``out`` from pixel ``at``, each channel's level looked up in its own 256
+    entries of ``table``; every other pixel of ``out`` is the four fill
+    values after them. Output row ``row`` places its run only for ``lo <=
+    row < hi``, so a design's core can take every row of an image whatever
+    rows a call places. A run past either row is cut at its end, and a
+    negative ``first`` or ``at`` writes the fill alone. The tables hold whatever a host maps a
+    level to, such as an image processor's rescale and normalization,
+    computed once and exactly; with ``bgr`` the first output channel reads
+    the input's blue.
+
+    Args:
+        in_bytes: The input row's bytes, three a pixel; a multiple of 4.
+        out_width: The output row's pixels.
+        bgr: Whether the output's channels are blue, green, red.
+
+    Returns:
+        ExternalFunction for ``levelsLine``.
+
+    Raises:
+        ValueError: When ``in_bytes`` is not a positive multiple of 4 or
+            ``out_width`` is below 1.
+    """
+    if in_bytes < 4 or in_bytes % 4:
+        raise ValueError(
+            f"levels() needs in_bytes a positive multiple of 4, got {in_bytes}."
+        )
+    if out_width < 1:
+        raise ValueError(f"levels() needs out_width >= 1, got {out_width}.")
+    return _make_extern(
+        "levelsLine",
+        _kernel_source("vision/levels.cc"),
+        [
+            np.ndarray[(in_bytes,), np.dtype[np.uint8]],
+            np.ndarray[(LEVELS_TABLE,), np.dtype[bfloat16]],
+            np.ndarray[(4 * out_width,), np.dtype[bfloat16]],
+        ]
+        + [np.int32] * 6,
+        compile_flags=[
+            f"-DIN_BYTES={in_bytes}",
+            f"-DOUT_WIDTH={out_width}",
+            f"-DBGR={int(bgr)}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out) + (Param,) * 6,
+            reference=lambda rows, table, first, count, at, row, lo, hi: levels_ref(
+                rows,
+                table,
+                first,
+                count,
+                at,
+                row,
+                lo,
+                hi,
+                out_width=out_width,
+                bgr=bgr,
+            ),
+            tolerance=Tolerance.exact(note="a table lookup"),
+            ops_per_call=0,
         ),
     )
 
@@ -614,6 +688,26 @@ def rgba2hue_ref(rgba):
         ),
     )
     return (np.where(d == 0, 0, h) & 0xFF).astype(np.uint8)
+
+
+def levels_ref(
+    rows, table, first, count, at, row, lo, hi, *, out_width: int, bgr: bool = False
+):
+    """Numpy reference for [`levels`][iron.kernels.vision.levels]. Exact."""
+    rows = np.asarray(rows, np.uint8)
+    table = np.asarray(table).astype(bfloat16)
+    first, count, at = int(first), int(count), int(at)
+    out = np.empty((rows.shape[0], out_width, 4), bfloat16)
+    out[:] = table[3 * 256 : 3 * 256 + 4]
+    if first < 0 or at < 0 or not int(lo) <= int(row) < int(hi):
+        count = 0
+    count = max(0, min(count, out_width - at, rows.shape[1] // 3 - first))
+    pixels = rows[:, 3 * first : 3 * (first + count)].reshape(rows.shape[0], count, 3)
+    if bgr:
+        pixels = pixels[..., ::-1]
+    for c in range(3):
+        out[:, at : at + count, c] = table[c * 256 + pixels[..., c].astype(np.int64)]
+    return out.reshape(rows.shape[0], 4 * out_width)
 
 
 def threshold_ref(x, thresh, maxval, ttype):

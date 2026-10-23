@@ -1311,6 +1311,32 @@ CASES: list[Case] = [
     check("threshold", calls=16, scalars=(100, 255, 2), tag="trunc"),
     check("threshold", calls=16, scalars=(100, 255, 4), tag="tozero-inv"),
     Case("threshold", dict(dtype=np.int16), calls=16, scalars=(100, 255, 1)),
+    # levels: ResNet-50's crop, 224 of a 341-pixel row at pixel 58, into a
+    # 230-pixel row at pixel 4; YOLOX's letterbox row, BGR, 312 pixels of a
+    # 416-pixel row, the rest fill; runs cut at either row's end, none, and
+    # a row outside the rows placed, on either side.
+    Case(
+        "levels",
+        dict(in_bytes=1024, out_width=230),
+        scalars=(58, 224, 4, 10, 4, 228),
+        smoke=True,
+    ),
+    check(
+        "levels",
+        dict(in_bytes=1248, out_width=416, bgr=True),
+        scalars=(0, 312, 0, 0, 0, 416),
+        tag="bgr",
+    ),
+    *[
+        check("levels", dict(in_bytes=1024, out_width=230), scalars=s, tag=tag)
+        for s, tag in (
+            ((300, 224, 4, 10, 4, 228), "past-input"),
+            ((0, 341, 4, 10, 4, 228), "past-output"),
+            ((0, 224, -1, 10, 4, 228), "fill-only"),
+            ((58, 224, 4, 3, 4, 228), "row-before"),
+            ((58, 224, 4, 228, 4, 228), "row-after"),
+        )
+    ],
     Case("bitwise_or", calls=16, smoke=True),
     Case("bitwise_and", calls=16, smoke=True),
     check("bitwise_or", dict(line_width=64), tag="edge-one-vector"),
