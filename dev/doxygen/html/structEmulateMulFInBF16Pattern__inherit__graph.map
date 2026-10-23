@@ -1,5 +1,0 @@
-<map id="EmulateMulFInBF16Pattern" name="EmulateMulFInBF16Pattern">
-<area shape="rect" id="Node000001" title="Pattern to emulate an f32 multiply with bf16 inputs." alt="" coords="5,93,204,119"/>
-<area shape="rect" id="Node000002" href="$classOpRewritePattern.html" title=" " alt="" coords="14,5,195,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="107,59,107,93,102,93,102,59"/>
-</map>
