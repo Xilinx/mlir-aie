@@ -418,11 +418,11 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
       ::aie::accum<acc64, 32> q = ::aie::mul(
           ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), b[j])),
           pow2);
-      ::aie::store_v(p + h * kTB + 32 * j,
-                     ::aie::select(q.template to_vector<int32>(24),
-                                   ::aie::zeros<int32, 32>(),
-                                   ::aie::gt(sh, int32(30)) |
-                                       ::aie::eq(e, int32(0))));
+      ::aie::store_v(
+          p + h * kTB + 32 * j,
+          ::aie::select(q.template to_vector<int32>(24),
+                        ::aie::zeros<int32, 32>(),
+                        ::aie::gt(sh, int32(30)) | ::aie::eq(e, int32(0))));
     }
   }
   // The mmul's A tiles: rows 2k, 2k + 1 of heads 0-3 at 8k.
