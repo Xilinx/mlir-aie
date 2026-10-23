@@ -13,6 +13,10 @@ inputs:
   EXTRA_KEY:
     description: ''
     required: false
+  SAVE_FROM_PULL_REQUESTS:
+    description: 'Save the cache from pull_request runs, for that PR''s later runs to restore'
+    required: false
+    default: 'true'
 
 outputs:
   HOST_CCACHE_DIR:
@@ -31,12 +35,9 @@ runs:
         key: ${{ inputs.MATRIX_OS }}-${{ inputs.MATRIX_ARCH }}-${{ inputs.EXTRA_KEY }}
         max-size: "1G"
         verbose: 2
-        # Restore always; save only on main. A cache written on
-        # refs/pull/N/merge or a merge queue's gh-readonly-queue/... ref is
-        # readable by that ref alone, so saving there spends the repo-wide 10 GB
-        # budget on entries nothing else can use, and evicts the refs/heads/main
-        # entries that every PR does restore from.
-        save: ${{ github.ref == 'refs/heads/main' }}
+        # Never save from the merge queue: a gh-readonly-queue/... ref is used by
+        # one run only, and nothing else can restore its cache.
+        save: ${{ github.event_name != 'merge_group' && (github.event_name != 'pull_request' || inputs.SAVE_FROM_PULL_REQUESTS == 'true') }}
 
     - name: Configure ccache dir on host ubuntu
       if: contains(inputs.MATRIX_OS, 'ubuntu')

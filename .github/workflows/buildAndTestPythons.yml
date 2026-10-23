@@ -104,8 +104,8 @@ jobs:
           # run, and only the newest is ever restored.
           key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ matrix.python_version }}
           max-size: 1G
-          # Restore always, save only on main -- see .github/actions/setup_ccache.
-          save: ${{ github.ref == 'refs/heads/main' }}
+          # Never save from the merge queue -- see .github/actions/setup_ccache.
+          save: ${{ github.event_name != 'merge_group' }}
 
       # ccache defaults to comparing the compiler by mtime. GitHub-hosted
       # runners reinstall the compiler every run with a fresh mtime, so every
