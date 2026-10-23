@@ -1486,6 +1486,10 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   dpm.addPass(createAIEAssignLockIDsPass());
   dpm.addPass(X::createAIEReserveRuntimeBDIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
+  // A push names a bd id, so this follows the assignment above. It marks the
+  // cores it rewrites aie.processor_bus, which the configuration reads to
+  // enable the bus those cores configure over.
+  dpm.addPass(createAIELowerCoreIssuedConfigurationPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());
   dpm.addPass(X::createAIELowerMulticastPass());

@@ -770,8 +770,8 @@ struct AIECoreToStandardPass
     target.addLegalDialect<math::MathDialect>();
     target.addLegalDialect<index::IndexDialect>();
     target.addLegalDialect<ptr::PtrDialect>();
-    // A core body may already hold LLVM ops: aie.dma_rearm lowers to the
-    // stores that arm a channel before the body is outlined.
+    // A core body may already hold LLVM ops: aie.dma_push_queue lowers to the
+    // stores that push a task before the body is outlined.
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp, UnrealizedConversionCastOp>();
 

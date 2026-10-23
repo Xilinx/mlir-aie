@@ -8,15 +8,11 @@
 // RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
 // RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
 //
-// The arming is lowered onto the stores the core makes to its own tile.
-// RUN: aie-opt --aie-lower-core-dma-rearm aie_arch.mlir -o armed.mlir
-// RUN: FileCheck %s --check-prefix=ARMED < armed.mlir
-// ARMED: func.func private @llvm.aie2{{p?}}.write.tm
-// ARMED: func.call @llvm.aie2{{p?}}.write.tm
-//
+// aiecc runs aie-lower-core-dma-rearm itself, so the arming reaches the core
+// without a separate aie-opt step.
 // RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.gen.h \
 // RUN:   --output-dir=%t.prj \
-// RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj armed.mlir
+// RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj aie_arch.mlir
 //
 // RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
 // RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \

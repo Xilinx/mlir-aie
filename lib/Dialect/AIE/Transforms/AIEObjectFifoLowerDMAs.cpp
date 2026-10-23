@@ -171,14 +171,19 @@ struct AIEObjectFifoLowerDMAsPass
     // The receiving channel walks no chain of its own, so the sender says
     // which buffer each object lands in. The receiver's descriptor for that
     // buffer carries the matching bd_id.
+    // The receiving end takes its bd ids from aie-assign-bd-ids like any other
+    // chain, and names each descriptor so the sender can refer to it. The
+    // sender carries that name until the same pass turns it into the id.
     if (endpoint.getOutOfOrder()) {
-      // Fifos sharing a channel take disjoint runs of bd ids, so a buffer is
-      // named by its id rather than its place in the pool.
-      int64_t id = endpoint.getBdIdBase().value_or(0) + descriptor.slot;
-      if (endpoint.getRouteDirection() == DMAChannelDir::MM2S)
-        bd.setOutOfOrderId(id);
-      else
-        bd.setBdId(id);
+      if (auto tags = pool.getOutOfOrderTags()) {
+        assert(descriptor.slot < static_cast<int64_t>(tags->size()) &&
+               "the allocator names every descriptor of an out-of-order pool");
+        int32_t tag = (*tags)[descriptor.slot];
+        if (endpoint.getRouteDirection() == DMAChannelDir::MM2S)
+          bd.setOutOfOrderTag(tag);
+        else
+          bd.setBdTag(tag);
+      }
     }
 
     if (releaseLock) {
@@ -222,24 +227,25 @@ struct AIEObjectFifoLowerDMAsPass
     // An out-of-order channel takes the pool's order out of its descriptors,
     // and with it the chain that would carry the channel round again: it
     // accepts the number of objects its queue was armed for and then stops.
-    // So the arming counts every object the fifo will receive, and a fifo
-    // with no count of its own has nothing to arm for.
+    // An iter_count says the fifo receives that many passes and no more. With
+    // none, the fifo runs on, so arm for as many objects as one arming holds
+    // and leave aie-objectfifo-insert-core-queue-pushes to arm it again.
     if (endpoint.getOutOfOrder() &&
         endpoint.getRouteDirection() == DMAChannelDir::S2MM) {
-      if (!iterCount)
-        return endpoint.emitOpError(
-            "receives out of order, so its channel accepts the objects it was "
-            "armed for and then stops; set iter_count to the number of passes "
-            "the fifo receives");
-      int64_t objects =
-          static_cast<int64_t>(descriptors.size()) * copies * *iterCount;
       uint32_t maxRepeat = device.getTargetModel().getMaxRepeatCount();
-      if (objects - 1 > static_cast<int64_t>(maxRepeat))
-        return endpoint.emitOpError("receives ")
-               << objects << " objects out of order, but a channel arms for at "
-               << "most " << (maxRepeat + 1) << " before it has to be armed "
-               << "again";
-      taskCount = objects - 1;
+      if (!iterCount)
+        taskCount = static_cast<int>(maxRepeat);
+      else {
+        int64_t objects =
+            static_cast<int64_t>(descriptors.size()) * copies * *iterCount;
+        if (objects - 1 > static_cast<int64_t>(maxRepeat))
+          return endpoint.emitOpError("receives ")
+                 << objects
+                 << " objects out of order, but a channel arms for at most "
+                 << (maxRepeat + 1) << "; drop iter_count to have its core arm "
+                 << "it again as it goes";
+        taskCount = objects - 1;
+      }
     }
 
     DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);

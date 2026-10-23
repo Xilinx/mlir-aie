@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 add_mlir_conversion_library(MLIRAIEToConfiguration
-  AIECoreDMARearm.cpp
+  AIELowerCoreIssuedConfiguration.cpp
   AIEToConfiguration.cpp
 
   ADDITIONAL_HEADER_DIRS

@@ -956,31 +956,6 @@ struct AIEObjectFifoAllocatePass
         bds = endpointBDs(endpoint.getOperation());
       demand[{*col, *row, channel}] += bds;
     };
-    // An out-of-order pool starts where the channel's earlier pools end, so
-    // the fifos sharing it take disjoint runs of bd ids. The sender names a
-    // buffer by its id, so the fifo's other end takes the same base.
-    auto noteBdIdBase =
-        [&](RouteEndpoint endpoint, int channel,
-            DenseMap<std::tuple<int, int, int>, int64_t> &demand) {
-          auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
-          if (!dma || !dma.getOutOfOrder() ||
-              endpoint.getRouteDirection() != DMAChannelDir::S2MM)
-            return;
-          TileLike tile = tileOf(endpoint);
-          auto col = tile.tryGetCol(), row = tile.tryGetRow();
-          if (!col || !row)
-            return;
-          int64_t base = demand.lookup({*col, *row, channel});
-          dma.setBdIdBase(base);
-          for (auto flow : device.getOps<RouteOp>())
-            for (auto destName :
-                 flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
-              if (lookupEndpoint(destName).getOperation() == dma.getOperation())
-                if (auto src = dyn_cast<ObjectFifoDmaEndpointOp>(
-                        lookupEndpoint(flow.getSourceAttr()).getOperation()))
-                  src.setBdIdBase(base);
-        };
-
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       std::optional<int> channel = endpoint.getRouteChannel();
@@ -1013,7 +988,6 @@ struct AIEObjectFifoAllocatePass
             noteChannelOwner(diag, owner, channel);
           return failure();
         }
-        noteBdIdBase(endpoint, *channel, demand);
         noteDemand(endpoint, *channel);
         continue;
       }
@@ -1757,6 +1731,42 @@ struct AIEObjectFifoAllocatePass
           it != channelAssignments.end())
         endpoint.setRouteChannel(it->second);
     warnOvercommittedBDs();
+
+    // An out-of-order sender stamps each object with the id of the receiving
+    // descriptor it lands in, and no descriptor has an id until
+    // aie-assign-bd-ids. Name them instead, while the routes that pair the two
+    // ends still exist, and let that pass turn the names into ids.
+    int32_t nextTag = 0;
+    for (auto flow : device.getOps<RouteOp>()) {
+      RouteEndpoint sender = lookupEndpoint(flow.getSourceAttr());
+      auto src =
+          sender ? dyn_cast<ObjectFifoDmaEndpointOp>(sender.getOperation())
+                 : nullptr;
+      if (!src || !src.getOutOfOrder())
+        continue;
+      for (auto destName :
+           flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+        RouteEndpoint receiver = lookupEndpoint(destName);
+        auto dst =
+            receiver ? dyn_cast<ObjectFifoDmaEndpointOp>(receiver.getOperation())
+                     : nullptr;
+        if (!dst)
+          continue;
+        ObjectFifoPoolOp from = src.getPoolOp(), to = dst.getPoolOp();
+        if (!from || !to)
+          continue;
+        SmallVector<int32_t> tags;
+        if (auto already = to.getOutOfOrderTags())
+          tags.assign(already->begin(), already->end());
+        else {
+          for (int64_t slot = 0; slot < dst.getNumDescriptors(); ++slot)
+            tags.push_back(nextTag++);
+          to.setOutOfOrderTagsAttr(
+              DenseI32ArrayAttr::get(to.getContext(), tags));
+        }
+        from.setOutOfOrderTagsAttr(DenseI32ArrayAttr::get(from.getContext(), tags));
+      }
+    }
 
     if (failed(bindRearmTargets())) {
       return signalPassFailure();
