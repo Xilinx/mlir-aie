@@ -677,6 +677,19 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(in_bytes=1024, out_width=230), 2, (920,)),
         ],
     ),
+    KernelSpec(
+        name="grid_decode",
+        factory=kernels.grid_decode,
+        kwargs={},
+        arg_count=4,  # cells, out, y, stride
+        expected_name="grid_decode",
+        invalid_kwargs=[
+            (dict(width=0), "width >= 1"),
+            (dict(channels=100), "inside 100 channels"),
+            (dict(obj_at=2), "after the box"),
+        ],
+        shape_checks=[(dict(), 0, (52 * 144,)), (dict(width=13), 1, (13 * 85,))],
+    ),
     # ----- linalg -----
     KernelSpec(
         name="mm",
