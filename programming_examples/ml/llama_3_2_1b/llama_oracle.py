@@ -236,12 +236,7 @@ def silu_mul(gate, up):
     g = np.asarray(gate, np.float32)
     neg = np.signbit(g)
     e = np.asarray(exp_nonpos(np.where(neg, g, aie_add(np.float32(0), -g))), np.float32)
-    d = aie_add(np.float32(1), e)
-    y = aie_add(
-        np.float32(24) / np.float32(17), -mul_rne(np.float32(8) / np.float32(17), d)
-    )
-    for _ in range(3):
-        y = aie_add(y, mul_rne(y, aie_add(np.float32(1), -mul_rne(d, y))))
+    y = np.float32(1) / aie_add(np.float32(1), e)
     s = np.where(neg, mul_rne(e, y), y)
     return mul_rne(mul_rne(g, s), np.asarray(up, np.float32))
 

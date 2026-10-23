@@ -132,9 +132,9 @@ that beats the decode's batches for it (`Prefiller.plan`).
 - **Residual stream in fp32:** each add is fp32, and each norm reads the
   residual requantized per token. An int8 residual would let BOS's massive
   activation (|x| ~ 146) crush the token's other channels.
-- **Gate, up and Q in fp32:** SiLU runs on the fp32 gate (`exp_nonpos` and a
-  Newton reciprocal) times the fp32 up, and Q is roped in fp32 before its
-  per-head quantization.
+- **Gate, up and Q in fp32:** SiLU runs on the fp32 gate (`exp_nonpos` and
+  1 / (1 + e)) times the fp32 up, and Q is roped in fp32 before its per-head
+  quantization.
 - **Glue in fp32:** rmsnorm, rope, softmax and silu, each written so the numpy
   oracle reproduces it exactly: attention's and the sampler's exp is
   `exp_nonpos`, the inverse square root a Quake seed and two Newton steps, and

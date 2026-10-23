@@ -27,18 +27,34 @@ static constexpr int kChunk = LLAMA_SILU_CHUNK;
 static_assert(kChunk % kLanes == 0 && kCols % kChunk == 0,
               "LLAMA_SILU_CHUNK must be a multiple of 32 dividing the columns");
 
-// 1 / d for d in [1, 2]: the guess 24/17 - 8/17 d, within 1/17, then three
-// steps y += y (1 - d y).
+// 1 / d rounded to nearest even for d in [1, 2]: three fixed-point Newton
+// steps (Q30) from 24/17 - 8/17 d come within one of the rounded significand
+// for every such d, which vec_recip_rne_bits then corrects.
 static inline ::aie::vector<float, kLanes>
 recip_unit(::aie::vector<float, kLanes> d) {
-  const ::aie::vector<float, kLanes> one =
-      ::aie::broadcast<float, kLanes>(1.0f);
-  ::aie::vector<float, kLanes> y =
-      ::aie::sub(::aie::broadcast<float, kLanes>(24.0f / 17.0f),
-                 vec_mul_rne(::aie::broadcast<float, kLanes>(8.0f / 17.0f), d));
-  for (int i = 0; i < 3; i++)
-    y = ::aie::add(y, vec_mul_rne(y, ::aie::sub(one, vec_mul_rne(d, y))));
-  return y;
+  const ::aie::vector<int32, kLanes> db = d.template cast_to<int32>();
+  const ::aie::vector<int32, kLanes> x = ::aie::select(
+      ::aie::upshift(
+          ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), db)),
+          6),
+      ::aie::broadcast<int32, kLanes>(1 << 30),
+      ::aie::eq(db, int32(0x40000000)));
+  ::aie::vector<int32, kLanes> y =
+      ::aie::sub(::aie::broadcast<int32, kLanes>(1515870810),
+                 ::aie::mul(x, ::aie::broadcast<int32, kLanes>(505290270))
+                     .template to_vector<int32>(29));
+  for (int i = 0; i < 3; i++) {
+    const ::aie::vector<int32, kLanes> t =
+        ::aie::mul(x, y).template to_vector<int32>(29);
+    // 2^31 - t, which is below 2^31, in wrapping int32 arithmetic.
+    y = ::aie::mul(y, ::aie::sub(::aie::broadcast<int32, kLanes>(INT32_MIN), t))
+            .template to_vector<int32>(30);
+  }
+  ::aie::accum<acc64, kLanes> ya;
+  ya.from_vector(y, 0);
+  return vec_recip_rne_bits(
+             db, ::aie::add(ya.template to_vector<int32>(6), int32(125 << 23)))
+      .template cast_to<float>();
 }
 
 extern "C" {
