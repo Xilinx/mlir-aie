@@ -51,17 +51,15 @@ using OverlayRules =
 /// flows to and from TileControl ports alone, and configures the design's
 /// other flows, prioritized or not, with the rest of it (#3837).
 static bool reloadConfigures(PacketFlowOp flow) {
-  auto control = [](auto end) {
-    return end.getBundle() == WireBundle::TileControl;
-  };
   return flow->getParentOfType<DeviceOp>().getHasCtrlPktOverlay() &&
-         llvm::none_of(flow.getPorts().getOps<PacketSourceOp>(), control) &&
-         llvm::none_of(flow.getPorts().getOps<PacketDestOp>(), control);
+         !touchesTileControl(flow);
 }
 
 /// What the prioritized flows take routed alone (see has_ctrl_pkt_overlay).
 struct PinnedOverlay {
   PacketTrees trees;
+  // The packet ids each tree carries.
+  std::map<PathEndPoint, std::set<int>> ids;
   OverlayRules rules;
 };
 
@@ -3046,6 +3044,7 @@ llvm::Expected<PacketPlan> AIEPathfinderPass::route(
   std::map<PathEndPoint, SmallVector<size_t, 4>> streamsFrom;
   PacketConstraints constraints;
   constraints.pinned = pinned.trees;
+  constraints.pinnedIds = pinned.ids;
   constraints.prioritize = prioritize;
   if (clRoutePacket && !d.getOps<PacketFlowOp>().empty()) {
     const AIETargetModel &targetModel = d.getTargetModel();
@@ -3155,6 +3154,23 @@ void AIEPathfinderPass::runOnOperation() {
   DeviceOp d = getOperation();
   if (failed(verifyDMAChannelsResolved(d)))
     return signalPassFailure();
+  // The ports the prioritized flows keep off when routed alone (see
+  // aie-control-overlay-avoid-data).
+  std::vector<std::pair<TileID, Port>> avoided;
+  AIEDialect::CtrlPktOverlayAvoidAttrHelper avoid(d.getContext());
+  if (ArrayAttr ports = avoid.getAttr(d)) {
+    avoid.removeAttr(d);
+    for (Attribute attr : ports) {
+      auto port = dyn_cast<SwitchPortAttr>(attr);
+      if (!port) {
+        d.emitOpError() << avoid.getName().getValue()
+                        << " must list #aie.switch_port attributes";
+        return signalPassFailure();
+      }
+      avoided.push_back({{port.getCol(), port.getRow()},
+                         {port.getBundle(), port.getChannel()}});
+    }
+  }
   OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
   if (clRoutePacket)
     unmuxShimDMAPacketPorts(d);
@@ -3231,12 +3247,20 @@ void AIEPathfinderPass::runOnOperation() {
   // The prioritized flows routed without the rest of the design. A reload
   // installs them as @ctrl_pkt_overlay first, so they keep that route;
   // otherwise they keep it, if they have one, where the other flows route
-  // around it.
+  // around it. A prioritized flow outside the control overlay is one of the
+  // rest.
+  auto routesAlone = [&](PacketFlowOp flow) {
+    return isPrioritized(flow) && !reloadConfigures(flow);
+  };
   bool pinned = false;
   PinnedOverlay overlay;
-  if (clRoutePacket && !prioritized.empty() &&
-      (!d.getOps<FlowOp>().empty() ||
-       !llvm::all_of(d.getOps<PacketFlowOp>(), isPrioritized))) {
+  bool othersToRoute = !d.getOps<FlowOp>().empty() ||
+                       !llvm::all_of(d.getOps<PacketFlowOp>(), routesAlone);
+  // With no other flows to route, this routing is the route-alone one, so it
+  // keeps off the avoided ports too.
+  if (!othersToRoute)
+    analyzer.avoidedPorts = avoided;
+  if (clRoutePacket && !prioritized.empty() && othersToRoute) {
     OwningOpRef<ModuleOp> scratch;
     // @ctrl_pkt_overlay holds the overlay's flows and the tiles alone, without
     // the design's own switchboxes. Otherwise the prioritized flows route
@@ -3245,7 +3269,7 @@ void AIEPathfinderPass::runOnOperation() {
     SmallVector<Operation *> others;
     for (Operation &op : alone.getBody()->without_terminator()) {
       auto flow = dyn_cast<PacketFlowOp>(op);
-      if (flow ? !isPrioritized(flow) || reloadConfigures(flow)
+      if (flow ? !routesAlone(flow)
                : isa<FlowOp>(op) || (reload && !isa<TileOp>(op)))
         others.push_back(&op);
     }
@@ -3253,7 +3277,15 @@ void AIEPathfinderPass::runOnOperation() {
       op->dropAllReferences();
     for (Operation *op : others)
       op->erase();
+    std::map<PathEndPoint, std::set<int>> aloneIds;
+    for (PacketFlowOp flow : alone.getOps<PacketFlowOp>())
+      for (auto src : flow.getPorts().getOps<PacketSourceOp>()) {
+        auto tile = cast<TileOp>(src.getTile().getDefiningOp());
+        aloneIds[{{tile.colIndex(), tile.rowIndex()}, src.port()}].insert(
+            flow.IDInt());
+      }
     DynamicTileAnalysis aloneAnalyzer;
+    aloneAnalyzer.avoidedPorts = avoided;
     StreamConflicts aloneConflicts(alone);
     llvm::Expected<PacketPlan> alonePlan =
         route(alone, aloneAnalyzer, aloneConflicts, {},
@@ -3278,8 +3310,8 @@ void AIEPathfinderPass::runOnOperation() {
       if (failed(runOnPacketFlow(alone, aloneBuilder, aloneAnalyzer,
                                  aloneConflicts, *alonePlan, /*warn=*/false)))
         return signalPassFailure();
-      overlay =
-          PinnedOverlay{aloneAnalyzer.routing.packetTrees, overlayRules(alone)};
+      overlay = PinnedOverlay{aloneAnalyzer.routing.packetTrees,
+                              std::move(aloneIds), overlayRules(alone)};
       pinned = true;
     }
   }

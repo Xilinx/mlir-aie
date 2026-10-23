@@ -174,19 +174,30 @@ inline cl::opt<bool> loadPdiToCtrlPkt(
     cl::desc("Rewrite `load_pdi { device_ref }` ops into DMA tasks that stream "
              "the device configuration as control packets (requires a control "
              "overlay; implies --generate-ctrl-pkt-overlay; mutually exclusive "
-             "with --expand-load-pdis)"));
+             "with --expand-load-pdis); the --ctrlpkt-* options adjust it and "
+             "require it"));
 inline cl::opt<bool> reconfigTeardown(
     "reconfig-teardown",
     cl::desc("Undo each configuration once it is done, in place of the reset "
-             "before the next one; only the first configuration of a runtime "
-             "sequence keeps its reset (requires full-ELF output and "
-             "--expand-load-pdis)"));
+             "or overlay load before the next one; only the first "
+             "configuration of a runtime sequence keeps it (requires full-ELF "
+             "output and --expand-load-pdis or --load-pdi-to-ctrl-pkt; "
+             "default: on with --load-pdi-to-ctrl-pkt)"));
 inline cl::opt<bool> reconfigInitEntry(
     "reconfig-init-entry",
-    cl::desc(
-        "Move the one reset to an argument-free <device>:reconfig_init entry, "
-        "which the host runs once per hardware context before the other "
-        "entries (requires --reconfig-teardown)"));
+    cl::desc("Move the one reset or overlay load to an argument-free "
+             "<device>:reconfig_init entry, which the host runs once per "
+             "hardware context before the other entries (requires "
+             "--reconfig-teardown)"));
+inline cl::opt<bool> ctrlpktAutoPacketize(
+    "ctrlpkt-auto-packetize",
+    cl::desc("Packet-switch an objectFIFO input where a column's inputs take "
+             "every shim MM2S channel, to share it with the control packets "
+             "(default: on)"));
+inline cl::opt<bool> ctrlpktAdaptivePin(
+    "ctrlpkt-adaptive-pin",
+    cl::desc("Route the control overlay around the switch ports the "
+             "configurations' data takes (default: off)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -712,16 +723,26 @@ inline bool resolveOptions(bool resuming = false) {
                 llvm::is_contained(getOutputs, fullElfName.getValue()) ||
                 llvm::is_contained(cutOutputs, fullElfName.getValue());
   bool fullElf = wantFullElf || resuming;
-  // The teardown disables every route a configuration sets, including the
-  // control packet routes --generate-ctrl-pkt-overlay adds to it.
+  if (!reconfigTeardown.getNumOccurrences())
+    reconfigTeardown = loadPdiToCtrlPkt && wantFullElf;
+  if (!ctrlpktAutoPacketize.getNumOccurrences())
+    ctrlpktAutoPacketize = loadPdiToCtrlPkt;
+  // Under --expand-load-pdis, the teardown disables every route a
+  // configuration sets, including the control packet routes
+  // --generate-ctrl-pkt-overlay adds to it.
   return resolveDependentOption(reconfigTeardown, fullElf, "full-ELF output") &&
-         resolveDependentOption(reconfigTeardown, expandLoadPdis,
-                                "--expand-load-pdis") &&
          resolveDependentOption(
-             reconfigTeardown, !ctrlPktOverlay,
+             reconfigTeardown, expandLoadPdis || loadPdiToCtrlPkt,
+             "--expand-load-pdis or --load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(
+             reconfigTeardown, !ctrlPktOverlay || loadPdiToCtrlPkt,
              "that --generate-ctrl-pkt-overlay is not set") &&
          resolveDependentOption(reconfigInitEntry, reconfigTeardown,
-                                "--reconfig-teardown");
+                                "--reconfig-teardown") &&
+         resolveDependentOption(ctrlpktAutoPacketize, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktAdaptivePin, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt");
 }
 
 //===----------------------------------------------------------------------===//

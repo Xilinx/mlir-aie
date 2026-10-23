@@ -82,7 +82,12 @@ Program.compose([explicit_config, generated_config], entry=explicit_runtime)
 assert generated_config.name == "device_1"
 assert generated_runtime.name == "sequence_1"
 
-for option in ("expand_load_pdis", "reconfig_teardown", "reconfig_init_entry"):
+for option in (
+    "expand_load_pdis",
+    "load_pdi_to_ctrl_pkt",
+    "reconfig_teardown",
+    "reconfig_init_entry",
+):
     for value in (None, False, True):
         option_runtime = Runtime(lambda: None, [])
         option_module = Program(

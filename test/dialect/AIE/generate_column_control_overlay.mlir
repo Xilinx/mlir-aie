@@ -202,16 +202,15 @@ aie.device(npu1_2col) {
 // CTRLPKT:   aie.packet_dest<%[[tile_0_2]], TileControl : 0>
 // CTRLPKT: }
 // CTRLPKT: aie.packet_flow(1) {
-// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 1>
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_3]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(%[[tile_0_0]], MM2S, 1)
 // CTRLPKT: aie.packet_flow(6) {
-// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 1>
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_4]], TileControl : 0>
 // CTRLPKT: }
 // CTRLPKT: aie.packet_flow(2) {
-// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 1>
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_5]], TileControl : 0>
 // CTRLPKT: }
 // CTRLPKT: aie.packet_flow(5) {
@@ -223,6 +222,12 @@ aie.device(npu1_2col) {
 // CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_1_1]], TileControl : 0>
 // CTRLPKT: }
+// Column 1 is covered to its top row too, through the same channel.
+// CTRLPKT: aie.packet_flow({{[0-9]+}}) {
+// CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_1_5:.*]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT-NOT: mm2s_chan1
 
 aie.device(npu1_2col) {
   %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
@@ -239,9 +244,8 @@ aie.device(npu1_2col) {
 
 // two occupied columns with a gap: flows between column 0 and column 2 route
 // through column 1's stream switches, so column 1's switchboxes get configured
-// by control packets and need a shim dma allocation of their own. Column 2
-// reaches row 5, which maps to the second shim channel, so column 1 has to
-// cover both channels and not just the one its own shim row maps to.
+// by control packets and need a shim dma allocation of their own. One channel
+// carries each column's control packets, to every row.
 
 // Only the control-packet path covers the gap. Without
 // route-shim-to-tile-ctrl the pass runs on every aiecc invocation for every
@@ -253,9 +257,9 @@ aie.device(npu1_2col) {
 // CTRLPKT-LABEL: module {
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0
-// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan1
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col2_mm2s_chan0
-// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col2_mm2s_chan1
+// CTRLPKT-DAG: aie.packet_dest<%tile_1_5, TileControl : 0>
+// CTRLPKT-NOT: mm2s_chan1
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)

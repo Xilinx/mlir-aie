@@ -634,6 +634,10 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
       [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
               /*default=*/"false",
               "Flag to enable aie.packetflow lowering from objectfifos.">,
+       Option<"clReserveControllerPacketIds", "reserve-controller-packet-ids",
+              "bool", /*default=*/"false",
+              "Reserve the tile controllers' packet IDs for a column "
+              "control overlay added afterwards.">,
   ];
 }
 
@@ -782,12 +786,60 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
   ];
 }
 
+def AIEAutoPacketizeShimInput
+    : Pass<"aie-auto-packetize-shim-input", "mlir::ModuleOp"> {
+  let summary = "Share a shim MM2S channel between data and control packets";
+  let description = [{
+    Gives control packets a shim MM2S channel in every column whose objectFIFO
+    inputs leave none free across the module's devices. The control channel is
+    the lowest one no device holds with circuit-switched data. In each device an
+    objectFIFO input already packet-switched there is pinned to it; otherwise
+    the input with the fewest consumers is made packet-switched and pinned to
+    it. The other inputs are pinned to the other channels. An input this pass
+    makes packet-switched that went straight to a compute tile is relayed by the
+    column's memory tile, so past the shim the data stays circuit-switched. Each
+    device gets the overlay's `ctrlpkt_*` shim DMA allocation for the channel,
+    marked `aie.is_ctrl_pkt_overlay`. Runs before objectFIFO lowering.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAutoPacketizeShimInputPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+  let options = [ListOption<"clControlChannels", "control-channels",
+                            "std::string",
+                            "<column>:<channel> entries overriding a column's "
+                            "control channel, as aiecc's retries do">,
+  ];
+}
+
+def AIEControlOverlayAvoidData
+    : Pass<"aie-control-overlay-avoid-data", "mlir::ModuleOp"> {
+  let summary = "Record the switch ports the configurations' data takes, for "
+                "the control overlay to avoid";
+  let description = [{
+    Routes each configuration's data without the control overlay and records the
+    switchbox output ports it takes, across all configurations, as
+    `aie.ctrl_pkt_overlay_avoid` on @ctrl_pkt_overlay and on each configuration.
+    aie-create-pathfinder-flows removes it and routes the overlay off those
+    ports where it can, the same way in every device. Runs before routing; does
+    nothing without @ctrl_pkt_overlay.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEControlOverlayAvoidDataPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+}
+
 def AIEGenerateColumnControlOverlay
     : Pass<"aie-generate-column-control-overlay", "mlir::ModuleOp"> {
   let summary = "Spawns streaming interconnect network for column control";
   let description = [{
     For each column of AIE tiles being employed in the design, spawn a network of control packet
     streaming interconnects which overlay on top of the design.
+
+    With route-shim-to-tile-ctrl, each covered column's control packets enter
+    through one shim MM2S DMA channel, the one of the column's
+    `aie.is_ctrl_pkt_overlay` allocation (aie-auto-packetize-shim-input
+    declares one), else the lowest one no device of the module moves data
+    through, and reach every row of the column.
   }];
 
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
@@ -809,6 +861,10 @@ def AIEGenerateColumnControlOverlay
               "Emit a standalone @ctrl_pkt_overlay device (and tag source "
               "devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When "
               "false, the pass applies the overlay in place only.">,
+       ListOption<"clCoverColumns", "cover-columns", "int",
+                  "With route-shim-to-tile-ctrl, also cover these columns. "
+                  "aiecc adds each column outside the occupied range that the "
+                  "design's routes need.">,
   ];
 }
 

@@ -38,6 +38,7 @@
 #include "Graph.h"
 #include "IRTransforms.h"
 #include "Items.h"
+#include "OverlayCoverage.h"
 #include "SidecarFiles.h"
 #include "Tools.h"
 #include "Utils.h"
@@ -1008,20 +1009,36 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Everything a core needs before it can be compiled: objectFifo lowering
   // (which creates buffers), lock and BD ids, and the core-body lowerings.
   // Buffer addresses are not among them; see the placement edge below.
-  auto &withSymbols = traced.map<ModRef>(
-      "input_with_symbols.mlir",
-      PassPipeline{
-          &context,
-          [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
-           ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
-           ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
-           skipVerify = skipObjectFifoVerify.getValue(),
-           opt = optLevel.getValue()](mlir::MLIRContext *ctx,
-                                      mlir::ModuleOp mod) {
-            return getInputWithAddressesPipeline(ctx, mod, dyn, pkt, ctrl, bf16,
-                                                 opt, ldpdi, skipVerify,
-                                                 /*assignAddresses=*/false);
-          }});
+  const bool ctrlOverlay =
+      ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue();
+  auto withSymbolsPipeline =
+      [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
+       ctrl = ctrlOverlay, ldpdi = loadPdiToCtrlPkt.getValue(),
+       bf16 = bf16Emulation.getValue(),
+       skipVerify = skipObjectFifoVerify.getValue(), opt = optLevel.getValue(),
+       autoPacketize = ctrlpktAutoPacketize.getValue()](
+          mlir::MLIRContext *ctx, mlir::ModuleOp mod,
+          llvm::ArrayRef<int> coverColumns,
+          const std::map<int, int> &controlChannels) {
+        return getInputWithAddressesPipeline(
+            ctx, mod, dyn, pkt, ctrl, bf16, opt, ldpdi, skipVerify,
+            /*assignAddresses=*/false, coverColumns, autoPacketize,
+            controlChannels);
+      };
+  auto routedCache = std::make_shared<RoutedCache>();
+  using ModEdge = EdgeWithTypedOutput<ModRef>;
+  auto &withSymbols =
+      ctrlOverlay
+          ? static_cast<ModEdge &>(traced.map<ModRef>(
+                "input_with_symbols.mlir",
+                OverlayCoverage{&context, withSymbolsPipeline, routedCache}))
+          : static_cast<ModEdge &>(traced.map<ModRef>(
+                "input_with_symbols.mlir",
+                PassPipeline{&context,
+                             [withSymbolsPipeline](mlir::MLIRContext *ctx,
+                                                   mlir::ModuleOp mod) {
+                               return withSymbolsPipeline(ctx, mod, {}, {});
+                             }}));
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withSymbols.map<std::string>(
@@ -1032,8 +1049,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return txt;
       });
 
-  auto &routed = withSymbols.map<ModRef>(
-      "input_physical.mlir", PassPipeline{getRoutingPipeline(&context)});
+  auto &routed =
+      ctrlOverlay
+          ? static_cast<ModEdge &>(withSymbols.map<ModRef>(
+                "input_physical.mlir", CachedRouting{&context, routedCache}))
+          : static_cast<ModEdge &>(withSymbols.map<ModRef>(
+                "input_physical.mlir",
+                PassPipeline{getRoutingPipeline(&context)}));
 
   // The device cache's key and every compile or link of a core read the files
   // the cores link; all of them are downstream of this view.
@@ -2794,6 +2816,14 @@ int main(int argc, char **argv) {
   if (!cli::resolveOptions(resume.active)) {
     return 1;
   }
+  // --reconfig-teardown's default under --load-pdi-to-ctrl-pkt depends on the
+  // outputs, which a resume may select differently, so a checkpoint records
+  // the resolved value.
+  if (!resume.active && cli::loadPdiToCtrlPkt &&
+      !cli::reconfigTeardown.getNumOccurrences())
+    graphArgv.insert(llvm::find(graphArgv, "--"),
+                     cli::reconfigTeardown ? "--reconfig-teardown=true"
+                                           : "--reconfig-teardown=false");
   verifyEachPass = verifyEach;
 
   if (checkLutBanks && (xchesscc || xbridge)) {

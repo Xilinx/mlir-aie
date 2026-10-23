@@ -567,6 +567,30 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
   return success();
 }
 
+// Scans back from the insertion point to the last PDI load, which reprograms
+// the array. A register missing from the map holds 0.
+static llvm::DenseMap<uint32_t, uint32_t>
+registersWrittenSinceLoad(OpBuilder &builder) {
+  llvm::DenseMap<uint32_t, uint32_t> registers;
+  Block *block = builder.getInsertionBlock();
+  if (!block)
+    return registers;
+  Block::iterator it = builder.getInsertionPoint();
+  while (it != block->begin()) {
+    Operation &op = *--it;
+    if (isa<AIEX::NpuLoadPdiOp>(op))
+      break;
+    auto packet = dyn_cast<AIEX::NpuControlPacketOp>(op);
+    std::optional<ArrayRef<int32_t>> data =
+        packet ? packet.getData() : std::nullopt;
+    if (!data)
+      continue;
+    for (auto [i, word] : llvm::enumerate(*data))
+      registers.try_emplace(packet.getAddress() + i * sizeof(int32_t), word);
+  }
+  return registers;
+}
+
 // Translate vector of TransactionBinaryOperation to a sequence of control
 // packet ops. Each emitted op gets the per-op `sourceLoc` from AIERT's
 // instruction-range bracketing if available; otherwise it falls back to
@@ -578,11 +602,17 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
 
   auto *ctx = builder.getContext();
 
+  // A control packet writes whole words, so a masked write becomes a write of
+  // the value the register would hold after it.
+  llvm::DenseMap<uint32_t, uint32_t> registers =
+      registersWrittenSinceLoad(builder);
+
   // create the control packet ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
     Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
+      registers[op.cmd.RegOff] = op.cmd.Value;
       AIEX::NpuControlPacketOp::create(
           builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
@@ -606,6 +636,8 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
         SmallVector<int32_t> splitData =
             SmallVector<int32_t>(blockWriteDataValues.begin() + i,
                                  blockWriteDataValues.begin() + last);
+        for (auto [j, word] : llvm::enumerate(splitData))
+          registers[currAddr + j * sizeof(int32_t)] = word;
         AIEX::NpuControlPacketOp::create(
             builder, loc, builder.getUI32IntegerAttr(currAddr), nullptr,
             /*opcode*/ builder.getI32IntegerAttr(0),
@@ -615,66 +647,19 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
       }
 
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
+      uint32_t &reg = registers[op.cmd.RegOff];
+      reg = (reg & ~op.cmd.Mask) | (op.cmd.Value & op.cmd.Mask);
+      int32_t value = reg;
       AIEX::NpuControlPacketOp::create(
           builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
           /*stream_id*/ builder.getI32IntegerAttr(0),
-          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
+          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(value)));
     } else {
       llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
       return failure();
     }
   }
-  return success();
-}
-
-// Perform bitwise or on consecutive control packets operating on the same
-// address, to resolve the lack of mask write in control packets.
-static LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
-  SmallVector<AIEX::NpuControlPacketOp> ctrlPktOps;
-  body->walk(
-      [&](AIEX::NpuControlPacketOp cpOp) { ctrlPktOps.push_back(cpOp); });
-  if (ctrlPktOps.empty())
-    return success();
-
-  SmallVector<Operation *> erased;
-  int addrBuffer = ctrlPktOps[0].getAddress();
-  AIEX::NpuControlPacketOp ctrlPktBuffer = ctrlPktOps[0];
-  for (size_t i = 1; i < ctrlPktOps.size(); i++) {
-    int currentAddrBuffer = ctrlPktOps[i].getAddress();
-    if (addrBuffer != currentAddrBuffer) {
-      addrBuffer = currentAddrBuffer;
-      ctrlPktBuffer = ctrlPktOps[i];
-      continue;
-    }
-    auto bufferedDataAttr = ctrlPktBuffer.getData();
-    auto currentDataAttr = ctrlPktOps[i].getData();
-    if (!bufferedDataAttr || !currentDataAttr) {
-      ctrlPktOps[i].emitError(
-          "cannot OR consecutive control packets on the same address: "
-          "control packet has no data payload");
-      return failure();
-    }
-    auto bufferedData = *bufferedDataAttr;
-    auto currentData = *currentDataAttr;
-    SmallVector<int> newData;
-    for (unsigned j = 0; j < std::max(bufferedData.size(), currentData.size());
-         j++) {
-      if (j < std::min(bufferedData.size(), currentData.size())) {
-        newData.push_back(bufferedData[j] | currentData[j]);
-        continue;
-      }
-      newData.push_back(j < bufferedData.size() ? bufferedData[j]
-                                                : currentData[j]);
-    }
-    ctrlPktBuffer.getProperties().data = DenseI32ArrayAttr::get(
-        ctrlPktBuffer->getContext(), ArrayRef<int>{newData});
-    erased.push_back(ctrlPktOps[i]);
-  }
-
-  for (auto *e : erased)
-    e->erase();
-
   return success();
 }
 
@@ -711,9 +696,6 @@ convertTransactionOpsToMLIR(OpBuilder builder,
       return failure();
   } else if (outputType == AIE::AIEToConfigurationOutputType::ControlPacket) {
     if (failed(emitControlPacketOps(builder, loc, operations, global_data)))
-      return failure();
-    // resolve mask writes; control packet doesn't natively support mask write.
-    if (failed(orConsecutiveWritesOnSameAddr(builder.getBlock())))
       return failure();
   } else {
     llvm_unreachable("bad output type");
@@ -839,7 +821,7 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
 LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device,
     AIEX::BlockwriteData &blockwriteData,
-    AIE::AIEToConfigurationOutputType outputType) {
+    AIE::AIEToConfigurationOutputType outputType, bool skipCtrlPktOverlay) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
   if (!targetModel.hasProperty(AIETargetModel::IsNPU))
@@ -849,7 +831,7 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
   if (failed(ctl.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
     return failure();
   ctl.startTransaction();
-  if (failed(ctl.teardownSwitches(device)) ||
+  if (failed(ctl.teardownSwitches(device, skipCtrlPktOverlay)) ||
       failed(ctl.disableCores(device)) || failed(ctl.resetDmaChannels(device)))
     return failure();
   return insertRecordedTransaction(ctl, builder, outputType, blockwriteData);

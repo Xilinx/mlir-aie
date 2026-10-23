@@ -69,15 +69,21 @@ Each runtime sequence is a full-ELF entry named `<device>:<sequence>`, e.g.
 `aiex.configure`. Two options cut the resets between its configurations; each
 requires a full ELF:
 
-- `--reconfig-teardown` (with `--expand-load-pdis`): before the next load, or
-  at the sequence's end, each configuration's `aiex.npu.write_teardown`
-  disables the stream-switch circuits and packet ports it set, disables its
-  cores and resets the memtile and core-tile DMA channels it started. A
-  sequence then keeps only its first reset. A device that starts a shim DMA
-  channel itself is refused, since shim channels have no reset.
+- `--reconfig-teardown` (with `--expand-load-pdis` or `--load-pdi-to-ctrl-pkt`):
+  before the next load, or at the sequence's end, each configuration disables
+  the stream-switch circuits and packet ports it set, disables its cores and
+  resets the memtile and core-tile DMA channels it started. A sequence then
+  keeps only its first reset or overlay load. A device that starts a shim DMA
+  channel itself is refused, since shim channels have no reset. Under
+  `--expand-load-pdis` the teardown is an `aiex.npu.write_teardown`. On by
+  default under `--load-pdi-to-ctrl-pkt`; under it, the teardown is sent as
+  control packets and leaves the control overlay in place.
 - `--reconfig-init-entry` (with `--reconfig-teardown`): the reset moves into an
-  argument-free `<device>:reconfig_init` entry. The host runs it once on each new
-  hardware context, before any other entry; IRON's host runtime does so itself.
+  argument-free `<device>:reconfig_init` entry; under `--load-pdi-to-ctrl-pkt` it
+  also installs the control overlay. The host runs it before the first entry on a
+  hardware context, and again whenever another context ran in between, since
+  that may have reset the array. IRON's host runtime does so itself; a host
+  that shares the NPU with another process runs it before each entry.
 
 For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 
@@ -87,6 +93,18 @@ For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 | teardown, init entry | `main:reconfig_init`, `main:sequence` |
 
 `--sequence-name` always keeps the `reconfig_init` entry.
+
+### Control packet reconfiguration
+
+`--load-pdi-to-ctrl-pkt` loads each configuration as control packets sent
+through the control overlay (`@ctrl_pkt_overlay`), which every configuration
+keeps on the same routes. Two options adjust it; each requires it:
+
+- `--ctrlpkt-auto-packetize` (on by default): where a column's objectFIFO
+  inputs take every shim MM2S channel, one input becomes packet-switched and
+  shares its channel with the control packets (`aie-auto-packetize-shim-input`).
+- `--ctrlpkt-adaptive-pin` (off by default): the overlay routes around the
+  switchbox ports the configurations' data takes. See [routing](../../programming_guide/routing.md#priority-routes-and-the-control-overlay).
 
 ### Parameterized C++ transaction builders
 

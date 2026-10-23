@@ -882,19 +882,24 @@ struct AIEObjectFifoAllocatePass
     }
   }
 
+  // The endpoints of the routes that switch packets.
+  DenseSet<Operation *> packetEndpoints() {
+    DenseSet<Operation *> endpoints;
+    for (auto flow : device.getOps<RouteOp>()) {
+      if (!flow.getPacket() && !clPacketSwObjectFifos)
+        continue;
+      endpoints.insert(lookupEndpoint(flow.getSourceAttr()).getOperation());
+      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+        endpoints.insert(lookupEndpoint(dest).getOperation());
+    }
+    return endpoints;
+  }
+
   // No allocation can move a stream port the design names, so a clash fails
   // the pass before the search rather than surfacing inside it.
   LogicalResult checkStreamPorts() {
     DMAChannelAnalysis channels(device);
-    DenseSet<Operation *> packetEndpoints;
-    for (auto flow : device.getOps<RouteOp>()) {
-      if (!flow.getPacket() && !clPacketSwObjectFifos)
-        continue;
-      packetEndpoints.insert(
-          lookupEndpoint(flow.getSourceAttr()).getOperation());
-      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
-        packetEndpoints.insert(lookupEndpoint(dest).getOperation());
-    }
+    DenseSet<Operation *> packetEndpoints = this->packetEndpoints();
     bool clash = false;
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       if (endpoint.getRouteBundle() != WireBundle::Core)
@@ -914,6 +919,7 @@ struct AIEObjectFifoAllocatePass
                                bool diagnose = true) {
     channelAssignments.clear();
     channelFailure = nullptr;
+    DenseSet<Operation *> packetEndpoints = this->packetEndpoints();
     SmallVector<RouteEndpoint> pending;
     // BDs per placed (col, row, channel) as channels are handed out, for
     // choosing among a tile's channels by the BD ids they can use.
@@ -949,8 +955,9 @@ struct AIEObjectFifoAllocatePass
                  << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
                  << " cannot access adjacent MemTile buffers or locks";
         }
-        if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel,
-                                          endpoint.getOperation()) < 0) {
+        if (channels.reservePinnedChannel(
+                tileOf(endpoint), dir, *channel, endpoint.getOperation(),
+                packetEndpoints.contains(endpoint.getOperation())) < 0) {
           if (!diagnose)
             return failure();
           auto diag = endpoint->emitOpError("pinned ");
@@ -1143,13 +1150,20 @@ struct AIEObjectFifoAllocatePass
   /// pass's analysis.
   ///
   /// Packet IDs already spoken for, by an existing packet flow or by a flow
-  /// that pinned one.
+  /// that pinned one, and with reserve-controller-packet-ids, the controller
+  /// IDs the column control overlay will route control packets on.
   llvm::SmallDenseSet<int> takenPacketIDs() {
     llvm::SmallDenseSet<int> taken;
     device.walk([&](PacketFlowOp flow) { taken.insert(flow.IDInt()); });
     for (auto flow : device.getOps<RouteOp>()) {
       if (auto pinned = flow.getPacketId()) {
         taken.insert(*pinned);
+      }
+    }
+    if (clReserveControllerPacketIds) {
+      for (auto [tile, id] :
+           device.getTargetModel().getTileToControllerIdMap(true)) {
+        taken.insert(id);
       }
     }
     return taken;
@@ -1713,8 +1727,10 @@ xilinx::AIE::createAIEObjectFifoAllocatePass() {
 }
 
 std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched) {
+xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched,
+                                             bool reserveControllerPacketIds) {
   AIEObjectFifoAllocateOptions options;
   options.clPacketSwObjectFifos = packetSwitched;
+  options.clReserveControllerPacketIds = reserveControllerPacketIds;
   return std::make_unique<AIEObjectFifoAllocatePass>(options);
 }
