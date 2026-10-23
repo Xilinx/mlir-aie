@@ -416,6 +416,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "40022852389",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40022852389",
+   "date": "2026-10-23T20:54:47+00:00",
+   "commit": {
+    "id": "5c8c9e9702a59830782fc394a2f23e14664e2a44",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/5c8c9e9702a59830782fc394a2f23e14664e2a44",
+    "message": "Build the dispatch DLL with MSVC flags for clang-cl and cl. (#3923)",
+    "timestamp": "2026-10-23T07:53:11Z"
+   },
+   "event": "workflow_dispatch",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "5c8c9e9702",
+    "fixtures": "3aa7139253a0",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

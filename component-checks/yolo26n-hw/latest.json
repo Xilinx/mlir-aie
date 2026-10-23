@@ -1,0 +1,292 @@
+{
+ "schema": 1,
+ "target": "yolo26n-hw",
+ "id": "40022852389",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40022852389",
+ "date": "2026-10-23T20:54:47+00:00",
+ "commit": {
+  "id": "5c8c9e9702a59830782fc394a2f23e14664e2a44",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/5c8c9e9702a59830782fc394a2f23e14664e2a44",
+  "message": "Build the dispatch DLL with MSVC flags for clang-cl and cl. (#3923)",
+  "timestamp": "2026-10-23T07:53:11Z"
+ },
+ "event": "workflow_dispatch",
+ "pmode": "turbo",
+ "device": "Krackan",
+ "device_raw": "NPU Krackan 1",
+ "provenance": {
+  "commit": "5c8c9e9702",
+  "peano": "22.0.0+4f5df13d",
+  "kernels": "804811e55156",
+  "runtime": "CachedXRTRuntime",
+  "xdna": "2.25.0_20260902",
+  "xrt": "2.25.0",
+  "host": "aie8",
+  "device": "NPU Krackan 1",
+  "pmode": "turbo"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 42,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "yolo26n/640": {
+   "images_passed": {
+    "value": 128,
+    "unit": "images",
+    "range": "of 128"
+   },
+   "ort_matches": {
+    "value": 124,
+    "unit": "images",
+    "range": "of 128"
+   },
+   "us_per_image_b1": {
+    "value": 12553.2,
+    "unit": "us",
+    "range": "fastest of 20; median 12803.6, MAD 101.4"
+   },
+   "fps_b1": {
+    "value": 79.66,
+    "unit": "fps"
+   },
+   "dispatch_us_per_image_b1": {
+    "value": 11877.8,
+    "unit": "us",
+    "range": "fastest of 20; median 12120.1, MAD 125.6"
+   },
+   "npu_us_per_image_b1": {
+    "value": 11671.4,
+    "unit": "us",
+    "range": "fastest of 20; median 11913.7, MAD 125.6"
+   },
+   "host_overhead_us_per_image_b1": {
+    "value": 675.4,
+    "unit": "us",
+    "range": "fastest of 20; median 683.5, MAD 227.0"
+   },
+   "us_per_image_b8": {
+    "value": 6473.5,
+    "unit": "us",
+    "range": "fastest of 20; median 6555.1, MAD 27.1"
+   },
+   "fps_b8": {
+    "value": 154.48,
+    "unit": "fps"
+   },
+   "dispatch_us_per_image_b8": {
+    "value": 6376.81,
+    "unit": "us",
+    "range": "fastest of 20; median 6422.3, MAD 22.0"
+   },
+   "npu_us_per_image_b8": {
+    "value": 6355.48,
+    "unit": "us",
+    "range": "fastest of 20; median 6401.0, MAD 22.0"
+   },
+   "host_overhead_us_per_image_b8": {
+    "value": 96.73,
+    "unit": "us",
+    "range": "fastest of 20; median 132.8, MAD 49.1"
+   },
+   "map50_coco128": {
+    "value": 0.5859,
+    "unit": "mAP",
+    "range": "929 labelled objects"
+   },
+   "elf_bytes": {
+    "value": 2939624,
+    "unit": "bytes"
+   },
+   "compile_s": {
+    "value": 32.3,
+    "unit": "s"
+   },
+   "compile_peak_mib": {
+    "value": 839.5,
+    "unit": "MiB"
+   },
+   "compile_peak_rss_mb": {
+    "value": 503.5,
+    "unit": "MiB"
+   },
+   "compile_s_warm": {
+    "value": 4.77,
+    "unit": "s"
+   },
+   "compile_peak_mib_warm": {
+    "value": 314.3,
+    "unit": "MiB"
+   },
+   "compile_peak_rss_mb_warm": {
+    "value": 279.1,
+    "unit": "MiB"
+   },
+   "compile_place_s": {
+    "value": 0.08,
+    "unit": "s"
+   },
+   "compile_route_s": {
+    "value": 0.8,
+    "unit": "s"
+   },
+   "compile_lower_s": {
+    "value": 1.16,
+    "unit": "s"
+   },
+   "compile_kernels_s": {
+    "value": 27.34,
+    "unit": "s"
+   },
+   "compile_codegen_s": {
+    "value": 0.49,
+    "unit": "s"
+   },
+   "compile_link_s": {
+    "value": 0.32,
+    "unit": "s"
+   },
+   "compile_package_s": {
+    "value": 0.02,
+    "unit": "s"
+   },
+   "compile_other_s": {
+    "value": 0.0,
+    "unit": "s"
+   },
+   "compile_aiecc_wall_s": {
+    "value": 30.06,
+    "unit": "s"
+   },
+   "compile_outside_aiecc_s": {
+    "value": 2.22,
+    "unit": "s"
+   },
+   "compile_place_s_warm": {
+    "value": 0.09,
+    "unit": "s"
+   },
+   "compile_route_s_warm": {
+    "value": 0.57,
+    "unit": "s"
+   },
+   "compile_lower_s_warm": {
+    "value": 1.1,
+    "unit": "s"
+   },
+   "compile_kernels_s_warm": {
+    "value": 0.0,
+    "unit": "s"
+   },
+   "compile_codegen_s_warm": {
+    "value": 0.52,
+    "unit": "s"
+   },
+   "compile_link_s_warm": {
+    "value": 0.33,
+    "unit": "s"
+   },
+   "compile_package_s_warm": {
+    "value": 0.02,
+    "unit": "s"
+   },
+   "compile_other_s_warm": {
+    "value": 0.0,
+    "unit": "s"
+   },
+   "compile_aiecc_wall_s_warm": {
+    "value": 2.48,
+    "unit": "s"
+   },
+   "compile_outside_aiecc_s_warm": {
+    "value": 2.25,
+    "unit": "s"
+   },
+   "compile_aiecc_outside_graph_s": {
+    "value": 0.04,
+    "unit": "s"
+   },
+   "compile_aiecc_outside_graph_s_warm": {
+    "value": 0.03,
+    "unit": "s"
+   }
+  }
+ },
+ "builds": {},
+ "detail": [
+  {
+   "case": "yolo26n/640",
+   "passed": true,
+   "ort_passed": true,
+   "images_passed": 128,
+   "images_total": 128,
+   "ort_matches": 124,
+   "failed_images": [],
+   "us_per_image_b1": 12553.2,
+   "fps_b1": 79.66,
+   "timed_calls_b1": 20,
+   "median_us_per_image_b1": 12803.6,
+   "mad_us_per_image_b1": 101.4,
+   "dispatch_overhead_us_b1": 149.0,
+   "dispatch_us_per_image_b1": 11877.8,
+   "median_dispatch_us_per_image_b1": 12120.1,
+   "mad_dispatch_us_per_image_b1": 125.6,
+   "npu_us_per_image_b1": 11671.4,
+   "median_npu_us_per_image_b1": 11913.7,
+   "mad_npu_us_per_image_b1": 125.6,
+   "host_overhead_us_per_image_b1": 675.4,
+   "median_host_overhead_us_per_image_b1": 683.5,
+   "mad_host_overhead_us_per_image_b1": 227.0,
+   "us_per_image_b8": 6473.5,
+   "fps_b8": 154.48,
+   "timed_calls_b8": 20,
+   "median_us_per_image_b8": 6555.1,
+   "mad_us_per_image_b8": 27.1,
+   "dispatch_overhead_us_b8": 149.2,
+   "dispatch_us_per_image_b8": 6376.81,
+   "median_dispatch_us_per_image_b8": 6422.32,
+   "mad_dispatch_us_per_image_b8": 22.01,
+   "npu_us_per_image_b8": 6355.48,
+   "median_npu_us_per_image_b8": 6400.99,
+   "mad_npu_us_per_image_b8": 22.01,
+   "host_overhead_us_per_image_b8": 96.73,
+   "median_host_overhead_us_per_image_b8": 132.82,
+   "mad_host_overhead_us_per_image_b8": 49.1,
+   "map50_coco128_disagrees": false,
+   "map50_coco128": 0.5859,
+   "map50_coco128_objects": 929,
+   "elf_bytes": 2939624,
+   "compile_place_s": 0.08,
+   "compile_route_s": 0.8,
+   "compile_lower_s": 1.16,
+   "compile_kernels_s": 27.34,
+   "compile_codegen_s": 0.49,
+   "compile_link_s": 0.32,
+   "compile_package_s": 0.02,
+   "compile_other_s": 0.0,
+   "compile_aiecc_wall_s": 30.06,
+   "compile_outside_aiecc_s": 2.22,
+   "compile_aiecc_outside_graph_s": 0.04,
+   "compile_place_s_warm": 0.09,
+   "compile_route_s_warm": 0.57,
+   "compile_lower_s_warm": 1.1,
+   "compile_kernels_s_warm": 0.0,
+   "compile_codegen_s_warm": 0.52,
+   "compile_link_s_warm": 0.33,
+   "compile_package_s_warm": 0.02,
+   "compile_other_s_warm": 0.0,
+   "compile_aiecc_wall_s_warm": 2.48,
+   "compile_outside_aiecc_s_warm": 2.25,
+   "compile_aiecc_outside_graph_s_warm": 0.03,
+   "compile_peak_unavailable": null,
+   "compile_s": 32.3,
+   "compile_peak_mib": 839.5,
+   "compile_peak_rss_mb": 503.5,
+   "compile_s_warm": 4.77,
+   "compile_peak_mib_warm": 314.3,
+   "compile_peak_rss_mb_warm": 279.1
+  }
+ ]
+}
