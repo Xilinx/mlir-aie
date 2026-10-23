@@ -22,10 +22,14 @@ from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import AIE_API_PREFIX_FLAGS, compile_cxx_core_function
 
 _COMPILE = """
-import sys
+import argparse
 from aie.utils.compile.utils import compile_cxx_core_function
-source, output, *args = sys.argv[1:]
-compile_cxx_core_function(source, "aie2p", output, compile_args=args)
+parser = argparse.ArgumentParser()
+parser.add_argument("--source", required=True)
+parser.add_argument("--output", required=True)
+parser.add_argument("--compile-arg", action="append", default=[])
+args = parser.parse_args()
+compile_cxx_core_function(args.source, "aie2p", args.output, compile_args=args.compile_arg)
 """
 
 _KERNEL = """
@@ -61,7 +65,14 @@ def _compile(
         env["PEANO_INSTALL_DIR"] = str(peano)
     env.update(environ or {})
     ret = subprocess.run(
-        [sys.executable, "-c", _COMPILE, str(src), str(out), *args],
+        [
+            sys.executable,
+            "-c",
+            _COMPILE,
+            f"--source={src}",
+            f"--output={out}",
+            *(f"--compile-arg={arg}" for arg in args),
+        ],
         cwd=work,
         env=env,
         capture_output=True,
@@ -178,6 +189,129 @@ def test_concurrent_compiles_build_one_pch(tmp_path):
     assert len(objects) == 1
 
 
+_COMPILE_CONCURRENTLY = """
+import argparse
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from aie.utils.compile.utils import compile_cxx_core_function
+parser = argparse.ArgumentParser()
+parser.add_argument("--work", type=Path, required=True)
+parser.add_argument("--threads", type=int, required=True)
+args = parser.parse_args()
+work, n = args.work, args.threads
+
+def compile_one(i):
+    compile_cxx_core_function(
+        str(work / f"k{i}.cc"), "aie2p", str(work / f"k{i}.o"),
+        compile_args=[f"-DVALUE={i}"],
+    )
+
+with ThreadPoolExecutor(n) as pool:
+    list(pool.map(compile_one, range(n)))
+"""
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the logging compiler is a shell script")
+def test_concurrent_compiles_preprocess_the_bare_command_once(tmp_path):
+    """Threads of one process that all need the bare command's preprocessed
+    headers run its preprocess once, not once each."""
+    real = Path(config.peano_install_dir())
+    peano = tmp_path / "peano"
+    (peano / "bin").mkdir(parents=True)
+    for entry in real.iterdir():
+        if entry.name != "bin":
+            (peano / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
+    for tool in (real / "bin").iterdir():
+        if tool.name != "clang++":
+            (peano / "bin" / tool.name).symlink_to(tool)
+    log = tmp_path / "preprocess.log"
+    wrapper = peano / "bin" / "clang++"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f'case " $* " in *" -E "*) echo "$*" >> "{log}";; esac\n'
+        f'exec "{real / "bin" / "clang++"}" "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    work = tmp_path / "work"
+    work.mkdir()
+    n = 8
+    for i in range(n):
+        (work / f"k{i}.cc").write_text(_KERNEL)
+    env = dict(
+        os.environ,
+        NPU_CACHE_HOME=str(tmp_path / "cache"),
+        AIE_KERNEL_PCH="1",
+        PEANO_INSTALL_DIR=str(peano),
+    )
+    ret = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _COMPILE_CONCURRENTLY,
+            f"--work={work}",
+            f"--threads={n}",
+        ],
+        cwd=work,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert ret.returncode == 0, ret.stderr
+    runs = log.read_text().splitlines()
+    assert len([r for r in runs if "-DVALUE=" not in r]) == 1
+    assert len([r for r in runs if "-DVALUE=" in r]) == n
+    assert len(_pchs(tmp_path / "cache")) == 1
+
+
+_PREPROCESS_TWICE = """
+import argparse
+from pathlib import Path
+from aie.utils.compile.utils import (
+    _HEADER_DIRECTIVES, _PCH_OUTPUT, _PCH_SOURCE, _preprocessed,
+    cxx_core_compile_command,
+)
+parser = argparse.ArgumentParser()
+parser.add_argument("--header", type=Path, required=True)
+header = parser.parse_args().header
+cmd = cxx_core_compile_command(
+    _PCH_SOURCE, "aie2p", _PCH_OUTPUT, compile_args=["-include", str(header)]
+)
+i = cmd.index("-MD")
+del cmd[i : i + 3]
+cmd[1:1] = ["-x", "c++-header"]
+digest, names = _preprocessed(tuple(cmd))
+scanned = len(_HEADER_DIRECTIVES)
+again = _preprocessed(tuple(cmd))
+rescanned = len(_HEADER_DIRECTIVES)
+header.write_text(header.read_text().replace("MARKED", "RENAMD"))
+renamed = _preprocessed(tuple(cmd))
+print(digest == again[0] == renamed[0], again == (digest, names))
+print("MARKED" in names, "RENAMD" in names, rescanned == scanned)
+print(len(_HEADER_DIRECTIVES) == scanned + 1, "MARKED" in renamed[1], "RENAMD" in renamed[1])
+"""
+
+
+def test_header_edited_without_changing_the_output_is_scanned_again(tmp_path):
+    """A header whose #define is renamed preprocesses to the same text, so the
+    scan is memoized on the header's own content, not on the output."""
+    header = tmp_path / "marked.h"
+    header.write_text("#define MARKED 1\n")
+    env = dict(os.environ, NPU_CACHE_HOME=str(tmp_path / "cache"))
+    ret = subprocess.run(
+        [sys.executable, "-c", _PREPROCESS_TWICE, f"--header={header}"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert ret.returncode == 0, ret.stderr
+    assert ret.stdout.split("\n")[:3] == [
+        "True True",
+        "True False True",
+        "True False True",
+    ]
+
+
 @pytest.mark.skipif(os.name == "nt", reason="creating a symlink needs privileges")
 def test_one_compiler_at_two_paths_shares_its_pch(tmp_path):
     cache = tmp_path / "cache"
@@ -206,10 +340,14 @@ def test_compile_does_not_wait_out_a_stuck_pch_build(tmp_path):
 
 
 _COMPILE_AROUND_A_NEW_HEADER = """
-import sys
+import argparse
 from pathlib import Path
 from aie.utils.compile.utils import compile_cxx_core_function
-source, before, after, shadow = sys.argv[1:]
+parser = argparse.ArgumentParser()
+for flag in ("--source", "--before", "--after", "--shadow"):
+    parser.add_argument(flag, required=True)
+cli = parser.parse_args()
+source, before, after, shadow = cli.source, cli.before, cli.after, cli.shadow
 args = ["-I", shadow]
 compile_cxx_core_function(source, "aie2p", before, compile_args=args)
 Path(shadow, "stdint.h").write_text("#define SHADOWED 1\\n#include_next <stdint.h>\\n")
@@ -243,10 +381,10 @@ def test_header_created_in_an_include_dir_reaches_the_next_compile(tmp_path):
             sys.executable,
             "-c",
             _COMPILE_AROUND_A_NEW_HEADER,
-            str(source),
-            str(work / "before.o"),
-            str(work / "after.o"),
-            str(shadow),
+            f"--source={source}",
+            f"--before={work / 'before.o'}",
+            f"--after={work / 'after.o'}",
+            f"--shadow={shadow}",
         ],
         cwd=work,
         env=env,

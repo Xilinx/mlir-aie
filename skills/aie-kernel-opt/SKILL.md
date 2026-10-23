@@ -74,7 +74,7 @@ python -m aie.utils.compile.remarks --target aie2p --cases test/python/npu/kerne
 - `--cases` compiles exactly the builds the cases run, named by case
   (4c8c4d91ff4); it first prints `cases: N builds for M cases ...`, and a
   case missing from M is a finding. Without it remarks builds only factory
-  defaults and `.dtypes`, which missed every stride-2 and sized `-D` build
+  defaults and `kernels.DTYPES`, which missed every stride-2 and sized `-D` build
   of the conv kernels. For a shape no case has, use
   `--build FACTORY:KEY=VALUE,...` (repeatable; 3dfa82d81af).
 - Read the contract's `trace=`. Only `Trace.whole_call()` gets a cycles row.
@@ -283,10 +283,12 @@ taskset -c $CPUS pytest test/python/npu/test_kernels_perf.py -m perf -k "$K" \
 
 - Each case runs from this tree, then from `$BASE`, with the same inputs.
   The summary prints `cycles base -> cur` and each arm's `min..max n=` for
-  cycles and `npu_us`, `same` or `N differ` raw output words, and each
-  arm's error vs the reference (3b507540694, 8f749a06d52). `--perf-meta`
-  holds the same under `baseline.cases.<case>` (`cycles_range`,
-  `npu_us_range`, `accuracy` as [base, cur]).
+  cycles, `dispatch_us` and `npu_us`, `same` or `N differ` raw output
+  words, and each arm's error vs the reference (3b507540694, 8f749a06d52).
+  `--perf-meta` holds the same under `baseline.cases.<case>`
+  (`cycles_range`, `dispatch_us_range`, `npu_us_range`, `accuracy` as
+  [base, cur]). `dispatch_us` is submit to completion; `npu_us` is that less
+  the median of an empty dispatch on the same hardware context.
 - **Time every case of the kernel**, not the one you targeted. Every case
   is one command, and a change often wins one shape and loses another: 8
   pixels per mmul won six bn 1x1 shapes and lost relu 28/40/120 2236 →
@@ -380,7 +382,8 @@ or the test fails with `N of M calls traced` (53f84828939); intervals over
   cycles; if production is dispatch-bound too, hand off to
   `aie-dataflow-opt`.
 - Wall clock, only when the kernel can't be traced: quote the pinned
-  **min** (`npu_us_min`), never the mean (it showed 7.5% between
+  **min** (`npu_us_min`, or `dispatch_us_min` where the runtime has no
+  empty dispatch), never the mean (it showed 7.5% between
   byte-identical builds). For the per-call cost, difference two cases that
   differ only in `calls`: `(t20 − t4) / 16`.
 - Ablation prices a region: replace it with a cheap wrong computation and

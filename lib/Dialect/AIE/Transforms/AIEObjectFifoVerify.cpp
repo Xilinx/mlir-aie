@@ -77,7 +77,8 @@ struct AIEObjectFifoVerifyPass
       if (count == 0) {
         return endpoint->emitOpError("is not connected by any flow");
       }
-      if (count > 1) {
+      // An aie.route_endpoint's own verifier says which flows may share it.
+      if (count > 1 && !isa<RouteEndpointOp>(endpoint.getOperation())) {
         return endpoint->emitOpError(
                    "drives one channel, so at most one flow may name it, but "
                    "it is named ")

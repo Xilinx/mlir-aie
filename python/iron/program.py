@@ -6,6 +6,8 @@
 
 import logging
 
+import numpy as np
+
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import TraceMode  # pyright: ignore[reportAttributeAccessIssue]
 from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
@@ -37,6 +39,8 @@ class Program:
         workers: "list | None" = None,
         *,
         expand_load_pdis: bool | None = None,
+        reconfig_teardown: bool | None = None,
+        reconfig_init_entry: bool | None = None,
     ):
         """Construct a Program with all design information needed to run the design on a device.
 
@@ -56,6 +60,10 @@ class Program:
             expand_load_pdis: The value passed to aiecc's
                 ``--expand-load-pdis`` option during full-ELF compilation.
                 ``None`` omits the option.
+            reconfig_teardown: The value passed to aiecc's
+                ``--reconfig-teardown`` option. ``None`` omits the option.
+            reconfig_init_entry: The value passed to aiecc's
+                ``--reconfig-init-entry`` option. ``None`` omits the option.
 
         Raises:
             ValueError: If ``device`` is None (no NPU device was selected/detected).
@@ -72,7 +80,11 @@ class Program:
         self._configurations = [configuration]
         self._entry = rt
         self._implicit_configuration = True
-        self._expand_load_pdis = expand_load_pdis
+        self._reconfiguration_options = {
+            "expand_load_pdis": expand_load_pdis,
+            "reconfig_teardown": reconfig_teardown,
+            "reconfig_init_entry": reconfig_init_entry,
+        }
         self._site = SourceSite.capture()
         self._assign_names()
 
@@ -83,12 +95,30 @@ class Program:
         *,
         entry: Runtime,
         expand_load_pdis: bool | None = None,
+        reconfig_teardown: bool | None = None,
+        reconfig_init_entry: bool | None = None,
     ) -> "Program":
+        """Compose configurations into one Program run from ``entry``.
+
+        Args:
+            configurations: The device configurations, each one ``aie.device``.
+            entry: The runtime that orchestrates one run.
+            expand_load_pdis: The value passed to aiecc's
+                ``--expand-load-pdis`` option. ``None`` omits the option.
+            reconfig_teardown: The value passed to aiecc's
+                ``--reconfig-teardown`` option. ``None`` omits the option.
+            reconfig_init_entry: The value passed to aiecc's
+                ``--reconfig-init-entry`` option. ``None`` omits the option.
+        """
         program = cls.__new__(cls)
         program._configurations = list(configurations)
         program._entry = entry
         program._implicit_configuration = False
-        program._expand_load_pdis = expand_load_pdis
+        program._reconfiguration_options = {
+            "expand_load_pdis": expand_load_pdis,
+            "reconfig_teardown": reconfig_teardown,
+            "reconfig_init_entry": reconfig_init_entry,
+        }
         program._site = SourceSite.capture()
         program._assign_names()
         program._validate_composition()
@@ -238,6 +268,10 @@ class Program:
                         self._register_scratchpad_parameter(
                             scratchpad_parameters, parameter
                         )
+                for parameter in configuration.scratchpad_parameters:
+                    self._register_scratchpad_parameter(
+                        scratchpad_parameters, parameter
+                    )
             for parameter in scratchpad_parameters.values():
                 parameter.resolve()
 
@@ -275,10 +309,11 @@ class Program:
                     )
                 )
 
-            if self._expand_load_pdis is not None:
-                ctx.module.operation.attributes["iron.expand_load_pdis"] = (
-                    ir.BoolAttr.get(self._expand_load_pdis)
-                )
+            for name, value in self._reconfiguration_options.items():
+                if value is not None:
+                    ctx.module.operation.attributes[f"iron.{name}"] = ir.BoolAttr.get(
+                        value
+                    )
 
             self._print_verify(ctx)
             return ctx.module
@@ -292,10 +327,17 @@ class Program:
         if declaration is None:
             parameters[parameter.name] = parameter
             return parameter
-        if declaration.dtype != parameter.dtype:
+        # numpy.intc and numpy.int32 are distinct classes on Windows.
+        if np.dtype(declaration.dtype) != np.dtype(parameter.dtype):
             raise ValueError(
                 f"ScratchpadParameter {parameter.name!r} has conflicting dtypes "
                 f"{declaration.dtype} and {parameter.dtype}."
+            )
+        if declaration.attributes != parameter.attributes:
+            raise ValueError(
+                f"ScratchpadParameter {parameter.name!r} is declared with "
+                f"attributes {declaration.attributes} and "
+                f"{parameter.attributes}."
             )
         if parameter is not declaration:
             parameter._resolved = True

@@ -19,13 +19,16 @@ the same operator implementations. They also let developers study one operation
 at a time. However, they require quick reconfiguration. Slow device-image
 replacement can make the layer-by-layer approach impractical.
 
-This example compares four ways to run or reconfigure one NPU2 device image:
+This example compares five ways to run or reconfigure one NPU2 device image:
 
 - `separate-dispatch`: compile xclbins and create one CPU-to-NPU dispatch for
   each device image.
 - `load-pdi`: use one full-ELF dispatch and load each device image as a PDI.
 - `expand-load-pdis`: use one full-ELF dispatch and expand each PDI into
   register writes at compile time.
+- `expand-load-pdis-teardown`: as `expand-load-pdis`, but each configuration
+  undoes its own register writes once it is done, in place of the reset before
+  the next one.
 - `control-packets`: use one full-ELF dispatch and expand each PDI into control
   packets at compile time.
 

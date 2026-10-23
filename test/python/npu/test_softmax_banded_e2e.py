@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+# RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
 # RUN: %run_on_npu2_hrx% %pytest %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
@@ -28,7 +29,6 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.kernels.activation import softmax_f32_bound, softmax_ref
-from aie.utils.compile.utils import resolve_target_arch
 
 _ROWS, _ROW_LEN = 16, 32
 
@@ -122,8 +122,6 @@ def _row_mask(window, period, row_offset, rows, row_len):
     ],
 )
 def test_softmax_rows_banded_matches_windowed_softmax(window, period, row_offset):
-    if resolve_target_arch(iron.get_current_device()) == "aie2":
-        pytest.skip("the batched entry points are AIE2P's")
     cap = 50.0
     rng = np.random.default_rng(20261014 + row_offset + period)
     x = rng.uniform(-80, 80, (_ROWS, _ROW_LEN)).astype(np.float32)

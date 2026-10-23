@@ -90,10 +90,18 @@ def skip_sf(blk, sf):
     return sf[sf_key(blk.name)][blk.skip_sf_key]
 
 
-def sa_placer_flags(seed=3, effort=1.0):
-    """aiecc flags that place the design with the SA placer. The default
-    sequential placer can't seat the cascade pairs next to each other.
+def sa_placer_flags(seed=3, effort=0.05):
+    """aiecc flags that place the design with the SA placer, which seats the
+    cascade pairs next to each other where the default placer cannot.
 
-    effort scales the SA search budget (1.0 = full default schedule); CI
-    passes a lower value to keep compile time down."""
+    Effort 0.05 compiles about a quarter faster than 1.0 with the same
+    output and NPU latency; utils/component_checks/sa_placer_hw.py tracks both.
+
+    Args:
+        seed: The SA placer's seed.
+        effort: Its search budget, 1.0 being the full default schedule.
+
+    Returns:
+        The aiecc flags.
+    """
     return ["--placer=sa_placer", f"--sa-seed={seed}", f"--sa-effort={effort}"]

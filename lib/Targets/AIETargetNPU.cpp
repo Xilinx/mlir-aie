@@ -366,8 +366,9 @@ struct TxnEncoder {
         foldDDRAddrOffset(foldDDRAddrOffset) {}
 
   void encode(Operation &o);
-  LogicalResult encodeConfig(DeviceOp configured,
+  LogicalResult encodeConfig(DeviceOp configured, bool teardown,
                              NpuConfigCache::Config &config);
+  void appendConfig(Operation *op, FlatSymbolRefAttr deviceRef, bool teardown);
 
   DeviceOp device;
   const AIETargetModel &tm;
@@ -389,10 +390,10 @@ struct TxnEncoder {
   LogicalResult result = success();
 };
 
-// Generates `configured`'s configuration ops as the expand-load-pdi pass
-// would inline them, in a scratch device of its own, and encodes them as a
-// sequence's own ops are.
-LogicalResult TxnEncoder::encodeConfig(DeviceOp configured,
+// Generates `configured`'s configuration ops, or with `teardown` its teardown
+// ops, as the expand-load-pdi pass would inline them, in a scratch device of
+// its own, and encodes them as a sequence's own ops are.
+LogicalResult TxnEncoder::encodeConfig(DeviceOp configured, bool teardown,
                                        NpuConfigCache::Config &config) {
   MLIRContext *ctx = device.getContext();
   ctx->getOrLoadDialect<arith::ArithDialect>();
@@ -408,12 +409,14 @@ LogicalResult TxnEncoder::encodeConfig(DeviceOp configured,
   builder.setInsertionPointToStart(holder.getBody());
   auto seq = RuntimeSequenceOp::create(
       builder, device.getLoc(), builder.getStringAttr("configure"), BoolAttr{},
-      TraceBufferAttr{}, ArrayAttr{});
+      TraceBufferAttr{}, ArrayAttr{}, ArrayAttr{});
   Block *body = new Block;
   seq.getBody().push_back(body);
   builder.setInsertionPointToStart(body);
-  BlockwriteData payloads(holder, "loadpdi_");
-  if (failed(generateAndInsertConfigOps(builder, configured, payloads)))
+  BlockwriteData payloads(holder, teardown ? "teardown_" : "loadpdi_");
+  if (teardown
+          ? failed(generateAndInsertTeardownOps(builder, configured, payloads))
+          : failed(generateAndInsertConfigOps(builder, configured, payloads)))
     return failure();
   // The locmap is kept whether or not this translation writes one: another
   // sharing the cache may.
@@ -423,6 +426,34 @@ LogicalResult TxnEncoder::encodeConfig(DeviceOp configured,
     encoder.encode(op);
   config.count = encoder.count;
   return encoder.result;
+}
+
+void TxnEncoder::appendConfig(Operation *op, FlatSymbolRefAttr deviceRef,
+                              bool teardown) {
+  auto configured = dyn_cast_or_null<DeviceOp>(
+      SymbolTable::lookupSymbolIn(device->getParentOp(), deviceRef));
+  const NpuConfigCache::Config *config =
+      configured
+          ? configs.getOrEncode(configured, teardown,
+                                [&](NpuConfigCache::Config &c) {
+                                  return encodeConfig(configured, teardown, c);
+                                })
+          : nullptr;
+  if (!config) {
+    op->emitOpError(teardown ? "cannot generate the teardown of "
+                             : "cannot generate the configuration of ")
+        << deviceRef;
+    result = failure();
+    return;
+  }
+  uint32_t base = static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
+  llvm::append_range(instructions, config->words);
+  count += config->count;
+  if (locmap)
+    for (TxnLocEntry entry : config->locmap) {
+      entry.byteOffset += base;
+      locmap->push_back(std::move(entry));
+    }
 }
 
 void TxnEncoder::encode(Operation &o) {
@@ -539,30 +570,10 @@ void TxnEncoder::encode(Operation &o) {
                      op->getName().getStringRef(), std::nullopt, op, tm);
       })
       .Case<NpuWriteConfigOp>([&](auto op) {
-        auto configured =
-            dyn_cast_or_null<DeviceOp>(SymbolTable::lookupSymbolIn(
-                device->getParentOp(), op.getDeviceRefAttr()));
-        const NpuConfigCache::Config *config =
-            configured
-                ? configs.getOrEncode(configured,
-                                      [&](NpuConfigCache::Config &c) {
-                                        return encodeConfig(configured, c);
-                                      })
-                : nullptr;
-        if (!config) {
-          op.emitOpError("cannot generate the configuration of ")
-              << op.getDeviceRefAttr();
-          result = failure();
-          return;
-        }
-        uint32_t base = byteOffset();
-        llvm::append_range(instructions, config->words);
-        count += config->count;
-        if (locmap)
-          for (TxnLocEntry entry : config->locmap) {
-            entry.byteOffset += base;
-            locmap->push_back(std::move(entry));
-          }
+        appendConfig(op, op.getDeviceRefAttr(), /*teardown=*/false);
+      })
+      .Case<NpuWriteTeardownOp>([&](auto op) {
+        appendConfig(op, op.getDeviceRefAttr(), /*teardown=*/true);
       })
       .Default([&](Operation *op) {
         // Pure values (constants, the operands above) need no encoding;
@@ -579,9 +590,10 @@ void TxnEncoder::encode(Operation &o) {
 } // namespace
 
 const NpuConfigCache::Config *xilinx::AIE::NpuConfigCache::getOrEncode(
-    Operation *device, llvm::function_ref<LogicalResult(Config &)> encode) {
+    Operation *device, bool teardown,
+    llvm::function_ref<LogicalResult(Config &)> encode) {
   std::lock_guard<std::mutex> lock(mutex);
-  auto [it, inserted] = configs.try_emplace(device);
+  auto [it, inserted] = configs[teardown].try_emplace(device);
   if (inserted) {
     auto config = std::make_unique<Config>();
     if (succeeded(encode(*config)))

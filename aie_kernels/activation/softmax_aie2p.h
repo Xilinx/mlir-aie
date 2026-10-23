@@ -25,55 +25,35 @@ using namespace aie;
 static inline aie::accum<accfloat, SM_VEC_LEN>
 scale_log2e(aie::vector<bfloat16, SM_VEC_LEN> x) {
 #ifdef EXP2_BF16_ACCURATE
-  auto limb = [](int16_t bits) {
-    return aie::broadcast<int16_t, SM_VEC_LEN>(bits).cast_to<bfloat16>();
-  };
-  aie::accum<accfloat, SM_VEC_LEN> t = aie::mul(x, limb(0x36ec));
-  t = aie::mac(t, x, limb(0xbb2c));
-  return aie::mac(t, x, limb(0x3fb9));
+  aie::accum<accfloat, SM_VEC_LEN> t =
+      aie::mul(x, bf16_splat<SM_VEC_LEN>(0x36ec));
+  t = aie::mac(t, x, bf16_splat<SM_VEC_LEN>(0xbb2c));
+  return aie::mac(t, x, bf16_splat<SM_VEC_LEN>(0x3fb9));
 #else
   return aie::mul(x, aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e));
 #endif
 }
 
-void softmax_simple_bf16(bfloat16 *restrict input_vector,
-                         bfloat16 *restrict output_vector,
-                         const int32_t vector_size) {
+// scale_log2e(x) - m, given neg_m = -m. The single bf16 product is exact in
+// f32, so one mac from neg_m rounds exactly as the product then the sum would.
+static inline aie::accum<accfloat, SM_VEC_LEN>
+exp2_arg(aie::vector<bfloat16, SM_VEC_LEN> x,
+         aie::accum<accfloat, SM_VEC_LEN> neg_m) {
+#ifdef EXP2_BF16_ACCURATE
+  return aie::add(scale_log2e(x), neg_m);
+#else
+  return aie::mac(neg_m, x, (bfloat16)log2e);
+#endif
+}
+
+static inline __attribute__((always_inline)) void
+softmax_simple_bf16(bfloat16 *restrict input_vector,
+                    bfloat16 *restrict output_vector,
+                    const int32_t vector_size) {
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
-
-  // VJUNG: We do 3 passes on the vector:
-  // 1. Find the max value scaled by log2e in the vector
-  // 2. Calculate the exponentials of the scaled values minus the maximum
-  // 3. Calculate the softmax by dividing each exponential by the sum of all
-  // exponentials Note: The multiplication by log2e is very sensitive, casting
-  // it to bf16 before exponentiation leads to wrong output.
-
-  auto it_log_in =
-      aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
-  auto it_log_out =
-      aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
-  auto it_exp_in =
-      aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
-  auto it_exp_out =
-      aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
-  auto it_scale =
-      aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
-  auto it_soft_out =
-      aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
-
-  aie::vector<bfloat16, SM_VEC_LEN> in_elems, exp_val, input_bf16, max_val_vec;
-  aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, exp_in_accum;
-
-  float accum_exp_val = 0;
-  bfloat16 col_sum_inv;
   const int elem_iters = (uint32_t)vector_size / SM_VEC_LEN;
 
-  exp_val_accum = aie::zeros<accfloat, SM_VEC_LEN>();
-
-  // First pass - Optimized: element-wise max + single final reduce_max
-  // Use vector max accumulation, then reduce once at the end.
-  //
   // Take the max of the raw input, not of the scaled value. Scaling by log2e
   // is monotonic, so the largest element is the same either way, and a bf16
   // max over bf16 inputs is exact -- rounding the scaled value to bf16 first
@@ -83,49 +63,79 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, SM_VEC_LEN> max_accum_vec =
       aie::broadcast<bfloat16, SM_VEC_LEN>(
           std::numeric_limits<bfloat16>::lowest());
-  AIE_LOOP_UNROLL(2)
-  AIE_LOOP_MIN_ITERATION_COUNT(1)
-  for (int i = 0; i < elem_iters; i++) {
-    max_accum_vec = aie::max(max_accum_vec, *it_log_in++);
-  }
-  max_val_vec =
-      aie::broadcast<bfloat16, SM_VEC_LEN>(aie::reduce_max(max_accum_vec));
+  const bfloat16 *__restrict in = input_vector;
+  VERSIONED_LOOP(
+      4, elem_iters,
+      [&]() {
+        max_accum_vec = aie::max(max_accum_vec, aie::load_v<SM_VEC_LEN>(in));
+        in += SM_VEC_LEN;
+      },
+      AIE_LOOP_UNROLL(2));
   // Scale the maximum through the same multiply its element takes below, so
   // the subtraction cancels exactly there. That is what the whole
   // formulation rests on: the largest exponent argument is exactly 0 and
   // every other one is negative, so exp2 <= 1, the sum is >= 1, and the
   // reciprocal of the sum cannot overflow.
-  aie::vector<float, SM_VEC_LEN> max_scaled =
-      scale_log2e(max_val_vec).to_vector<float>();
+  const aie::accum<accfloat, SM_VEC_LEN> neg_max =
+      aie::sub(aie::zeros<accfloat, SM_VEC_LEN>(),
+               scale_log2e(aie::broadcast<bfloat16, SM_VEC_LEN>(
+                               aie::reduce_max(max_accum_vec)))
+                   .to_vector<float>());
 
-  // Second pass
+  // The default exp2 is one instruction, so the last pass recomputes the
+  // exponentials from the input. Reading them back from the output instead
+  // orders each store before the next load, which holds that loop to one
+  // vector per load-to-store latency. The accurate exp2 costs far more than
+  // that, so it stores them once and scales them in place.
+#ifdef EXP2_BF16_ACCURATE
+  constexpr bool recompute = false;
+#else
+  constexpr bool recompute = true;
+#endif
+  aie::accum<accfloat, SM_VEC_LEN> exp_sum = aie::zeros<accfloat, SM_VEC_LEN>();
+  in = input_vector;
+  bfloat16 *__restrict out = output_vector;
+  auto exp_pass = [&]() {
+    auto arg = exp2_arg(aie::load_v<SM_VEC_LEN>(in), neg_max);
+    auto e = exp2_bf16(arg.to_vector<float>());
+#if AIE_TUNED_AIE2 && defined(EXP2_BF16_ACCURATE)
+    exp_sum = aie::add(exp_sum, e);
+#else
+    exp_sum = aie::mac(exp_sum, e, (bfloat16)1.0f);
+#endif
+    if constexpr (!recompute)
+      aie::store_v(out, e);
+    in += SM_VEC_LEN;
+    out += SM_VEC_LEN;
+  };
+  // AIE2 schedules the accurate pass at II 43 as one loop summing by add, and
+  // at II 55 versioned, summing by mac.
+#if AIE_TUNED_AIE2 && defined(EXP2_BF16_ACCURATE)
   AIE_LOOP_MIN_ITERATION_COUNT(1)
-  for (int i = 0; i < elem_iters; i++) {
+  for (int i = 0; i < elem_iters; i++)
+    exp_pass();
+#else
+  VERSIONED_LOOP(4, elem_iters, exp_pass);
+#endif
+  const bfloat16 sum_inv =
+      (bfloat16)aie::inv(aie::reduce_add(exp_sum.to_vector<float>()));
 
-    input_bf16 = *it_exp_in++;
-
-    exp_in_accum = aie::sub(scale_log2e(input_bf16), max_scaled);
-    exp_val = exp2_bf16(exp_in_accum.to_vector<float>());
-    exp_val_accum = add(exp_val_accum, exp_val);
-
-    *it_exp_out++ = exp_val;
-  }
-
-  // Final reduction after loop
-  aie::vector<float, SM_VEC_LEN> reduce = exp_val_accum.to_vector<float>();
-  accum_exp_val = aie::reduce_add(reduce);
-  col_sum_inv = (bfloat16)aie::inv(accum_exp_val);
-
-  AIE_LOOP_MIN_ITERATION_COUNT(1)
-  for (int c = 0; c < elem_iters; c++) {
-    in_elems = *it_scale++;
-    out_vals = aie::mul(in_elems, col_sum_inv);
-    *it_soft_out++ = out_vals.to_vector<bfloat16>();
-  }
+  using vec_t = aie::vector<bfloat16, SM_VEC_LEN>;
+  in = input_vector;
+  out = output_vector;
+  VERSIONED_LOOP(4, elem_iters, [&]() {
+    vec_t e;
+    if constexpr (recompute)
+      e = exp2_bf16(
+          exp2_arg(aie::load_v<SM_VEC_LEN>(in), neg_max).to_vector<float>());
+    else
+      e = aie::load_v<SM_VEC_LEN>(out);
+    aie::store_v(out, aie::mul(e, sum_inv).to_vector<bfloat16>());
+    in += SM_VEC_LEN;
+    out += SM_VEC_LEN;
+  });
 
   ::aie::set_rounding(saved_rounding);
-
-  return;
 }
 
 // Online (flash-attention) partial softmax over one key-block row.  Unlike
@@ -257,13 +267,12 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
   auto splat = [](float c) {
     return Acc(aie::broadcast<float, SM_VEC_LEN>(c));
   };
-  auto limb = [](int16_t bits) {
-    return aie::broadcast<int16_t, SM_VEC_LEN>(bits).cast_to<bfloat16>();
-  };
   auto bits = [](uint32_t b) {
     return aie::broadcast<uint32_t, SM_VEC_LEN>(b);
   };
-  const Limbs<SM_VEC_LEN> log2e_limbs{limb(0x3fb9), limb(0xbb2c), limb(0x36ec)};
+  const Limbs<SM_VEC_LEN> log2e_limbs{bf16_splat<SM_VEC_LEN>(0x3fb9),
+                                      bf16_splat<SM_VEC_LEN>(0xbb2c),
+                                      bf16_splat<SM_VEC_LEN>(0x36ec)};
   constexpr float cap = SOFTMAX_SOFT_CAP;
   // cap * tanh(|s| / cap) * log2(e) = k0 (2r - 1), r = 1 / (1 + 2^a) with
   // a = -|s| * 2 log2(e) / cap <= 0; 2^a flushing to 0 saturates it at k0.
@@ -317,8 +326,9 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
       // r = 1 / d, d in [1, 2]: a quadratic within 2%, then two Newton steps
       // r -= r (d r - 1), the first from r in bf16.
       const Limbs<SM_VEC_LEN> dl = bf16_limbs(d);
-      const auto q = aie::mac(splat(-1.4515766f), dl.hi, limb(0x3ea5))
-                         .to_vector<bfloat16>();
+      const auto q =
+          aie::mac(splat(-1.4515766f), dl.hi, bf16_splat<SM_VEC_LEN>(0x3ea5))
+              .to_vector<bfloat16>();
       const auto r0 =
           aie::mac(splat(2.1190739f), q, dl.hi).to_vector<bfloat16>();
       Limbs<SM_VEC_LEN> e = bf16_limbs(aie::mac(

@@ -45,6 +45,7 @@ from aie.iron import (
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
 from aie.utils import tensor
+from aie.utils.benchmark import run_iters
 from aie.utils.trace import TraceConfig, parse_trace
 from aie.utils.trace.parse import DEFAULT_KERNEL
 
@@ -100,6 +101,18 @@ def test_full_elf_correct_output(input_array, add_value):
     add_const_full_elf(input_array, output, N=_N, add_value=add_value)
     output.to("cpu")
     np.testing.assert_array_equal(output.numpy(), input_array.numpy() + add_value)
+
+
+def test_full_elf_splits_its_dispatch_into_overhead_and_npu_time(input_array):
+    """A full ELF carries aiecc's empty sequence, which the benchmark dispatches."""
+    output = iron.zeros(_N, dtype=np.int32, device="npu")
+    design = add_const_full_elf.specialize(N=_N, add_value=2)
+    result = run_iters(design, input_array, output, warmup=3, iters=20)
+    output.to("cpu")
+    np.testing.assert_array_equal(output.numpy(), input_array.numpy() + 2)
+    assert result.dispatch is not None and result.npu is not None
+    assert result.dispatch_overhead is not None
+    assert result.dispatch_overhead.median_us < result.dispatch.median_us
 
 
 def test_full_elf_injects_load_pdi(input_array):

@@ -37,13 +37,64 @@ module @packet_source_program {
     aie.route_endpoint @catch(%core) DMA
     aie.route from @spray to [@catch] {packet}
     aie.memtile_dma(%mt) {
-      // expected-error @+1 {{names @spray, the source of a packet-switched route; a DMA program's BDs would not carry its header}}
+      // expected-error @+1 {{names @spray, the source of a packet-switched route without a pinned packet_id; pin packet_id on each route it sources and state that header in each of the program's BDs}}
       aie.dma_start(MM2S, @spray, ^bd0, ^end)
     ^bd0:
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:
       aie.end
+    }
+  }
+}
+
+// -----
+
+// A program sourcing packet flows with pinned ids states a header on each BD,
+// one of its flows'.
+module @packet_source_without_header {
+  aie.device(npu2) {
+    %mt = aie.tile(0, 1)
+    %core = aie.tile(0, 2)
+    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.route_endpoint @spray(%mt) DMA
+    aie.route_endpoint @catch(%core) DMA
+    aie.route from @spray to [@catch] {packet, packet_id = 3 : i8}
+    aie.memtile_dma(%mt) {
+      aie.dma_start(MM2S, @spray, ^bd0, ^end)
+    ^bd0:
+      aie.dma_bd(%b : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
+      aie.next_bd ^bd1
+    ^bd1:
+      // expected-error @+1 {{sends on @spray without the packet header of one of its flows, ids 3}}
+      aie.dma_bd(%b : memref<64xi32> offset = 32 len = 32)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A runtime task on a source several packet flows share gets no header stamped,
+// so each of its BDs states one of theirs.
+module @shared_source_task_without_header {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_configure_task_for @host {
+        // expected-error @+1 {{sends on @host without the packet header of one of its flows, ids 1, 2}}
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64)
+        aie.end
+      }
+      aiex.dma_start_task(%t)
     }
   }
 }
@@ -183,6 +234,100 @@ module @bds_overcommitted {
       aie.next_bd ^bd0
     ^end:
       aie.end
+    }
+  }
+}
+
+// -----
+
+// A shared source has no one header for the shim allocation to carry, so a
+// dma_memcpy_nd on it states one of its flows'.
+module @shared_source_memcpy_without_header {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      // expected-error @+1 {{sends on @host, a source several packet routes share, which has no one header to stamp; it needs a packet header of its own, one of ids 1, 2}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @host} : memref<64xi32>
+    }
+  }
+}
+
+// -----
+
+// An aie.dma_bd_packet states the header too, and must name one of the
+// source's flows.
+module @shared_source_bd_packet_wrong_id {
+  aie.device(npu2) {
+    %mt = aie.tile(0, 1)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
+    aie.route_endpoint @scatter(%mt) DMA
+    aie.route_endpoint @a_in(%a) DMA
+    aie.route_endpoint @b_in(%b) DMA
+    aie.route from @scatter to [@a_in] {packet, packet_id = 1 : i8}
+    aie.route from @scatter to [@b_in] {packet, packet_id = 2 : i8}
+    aie.memtile_dma(%mt) {
+      aie.dma_start(MM2S, @scatter, ^bd0, ^end)
+    ^bd0:
+      aie.dma_bd_packet(0, 3)
+      // expected-error @+1 {{sends on @scatter without the packet header of one of its flows, ids 1, 2}}
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Each BD of a chain started on a shared source states one of its flows'
+// headers.
+module @shared_source_bd_chain_without_header {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.bd_chain @chain(%buf: memref<64xi32>) {
+      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+      aie.next_bd ^b1
+    ^b1:
+      // expected-error @+1 {{sends on @host without the packet header of one of its flows, ids 1, 2}}
+      aie.dma_bd(%buf : memref<64xi32> offset = 32 len = 32)
+      aie.end
+    }
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %t = aiex.dma_start_bd_chain_for @chain(%arg0) : (memref<64xi32>) for @host
+      aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
+module @shared_source_bd_chain_unresolved {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %mt = aie.tile(0, 1)
+    aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      // expected-error @+1 {{symbol does not reference valid BD chain}}
+      %t = aiex.dma_start_bd_chain_for @missing(%arg0) : (memref<64xi32>) for @host
     }
   }
 }

@@ -241,6 +241,10 @@ struct Engine {
     bool profile = false; // print a per-edge execution-time summary at the end
     // No edge owns its input: the on-failure reproducer reads intermediates.
     bool keepInputs = false;
+    std::string profileJson; // also write the summary here, as JSON
+    // aiecc's main() entry; the JSON summary's process_ms counts from it.
+    std::chrono::steady_clock::time_point processStart;
+    bool timesEdges() const { return profile || !profileJson.empty(); }
   };
 
   Options opts;
@@ -316,7 +320,8 @@ struct Engine {
     std::mutex mtx;
     std::condition_variable cv;
     std::vector<Task> ready;
-    llvm::StringSet<> seenPaths; // duplicate-output-path guard
+    // Duplicate-output-path guard: each written path and the item key it holds.
+    llvm::StringMap<std::string> seenPaths;
     unsigned numEdges = 0;
     unsigned finishedEdges = 0;
     unsigned inFlight = 0;
@@ -391,11 +396,17 @@ struct Engine {
       for (const ItemBase *item : e->outputNode()->itemRefs()) {
         if (item->filePath.empty())
           continue;
-        if (!seenPaths.insert(item->filePath).second) {
+        auto [seen, fresh] = seenPaths.try_emplace(item->filePath, item->key);
+        if (!fresh) {
           auto log = endProgressLine();
           llvm::errs() << "aiecc: edge '" << displayName(e)
                        << "' produced duplicate output path '" << item->filePath
-                       << "'\n";
+                       << "'";
+          if (!item->key.empty() && item->key != seen->second)
+            llvm::errs() << " for items '" << seen->second << "' and '"
+                         << item->key
+                         << "'; its output name needs '{0}' to tell them apart";
+          llvm::errs() << "\n";
           return false;
         }
       }
@@ -621,7 +632,7 @@ struct Engine {
           ++finishedEdges;
           if (opts.verbose)
             logEdgeFinished(s);
-          if (opts.profile) {
+          if (opts.timesEdges()) {
             auto now = std::chrono::steady_clock::now();
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                           now - s.startTime)
@@ -851,6 +862,46 @@ struct Engine {
       llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  total\n",
                                     total, "", "", formatMiB(peak));
     }
+    if (!opts.profileJson.empty())
+      return writeProfileJson(edgeTimings);
+    return mlir::success();
+  }
+
+  mlir::LogicalResult
+  writeProfileJson(llvm::ArrayRef<Scheduler::EdgeCost> edgeTimings) const {
+    auto mib = [](uint64_t bytes) -> llvm::json::Value {
+      if (bytes == 0)
+        return nullptr;
+      return bytes / (1024.0 * 1024.0);
+    };
+    int64_t wallMs = 0;
+    llvm::json::Array edges;
+    for (const Scheduler::EdgeCost &e : edgeTimings) {
+      wallMs = std::max(wallMs, e.endMs);
+      edges.push_back(llvm::json::Object{{"name", e.name},
+                                         {"ms", e.ms},
+                                         {"start_ms", e.endMs - e.ms},
+                                         {"end_ms", e.endMs},
+                                         {"rss_after_mib", mib(e.rssAfter)},
+                                         {"peak_mib", mib(e.peakAfter)}});
+    }
+    std::error_code ec;
+    llvm::raw_fd_ostream os(opts.profileJson, ec, llvm::sys::fs::OF_Text);
+    if (ec) {
+      llvm::errs() << "aiecc: --profile-json: cannot write '"
+                   << opts.profileJson << "': " << ec.message() << "\n";
+      return mlir::failure();
+    }
+    int64_t processMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - opts.processStart)
+            .count();
+    os << llvm::formatv("{0:2}", llvm::json::Value(llvm::json::Object{
+                                     {"version", 1},
+                                     {"wall_ms", wallMs},
+                                     {"process_ms", processMs},
+                                     {"edges", std::move(edges)}}))
+       << "\n";
     return mlir::success();
   }
 };

@@ -13,7 +13,10 @@ clock", so its row could not be reproduced.
 
 Writes ``<fixture>/<metric>`` rows and a meta file in the kernel checks'
 format (utils/kernel_checks/publish.py), the meta with each seed's results
-as ``detail``, and exits 1 when any seed failed, after writing both.
+as ``detail`` and the CPU it ran on, and exits 1 when any seed failed, after
+writing both. A seed that runs past ``--timeout`` fails. Before the first
+seed it writes a placeholder that fails the sweep, so a sweep stopped part way
+still publishes as a failure.
 nightlyComponentChecks.yml runs this nightly and publishes the results; a
 regression is debuggable from the per-seed table this prints to stdout, and
 one seed is reproduced with
@@ -31,6 +34,8 @@ import statistics
 import subprocess
 import sys
 
+from aiecc_stages import TIMED_OUT, cpu_model, row, run_measured, write_unfinished
+
 _COST_RE = re.compile(r"\(S\)\s+(\d+)\s+sa-final-cost")
 _HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = [
@@ -41,36 +46,39 @@ FIXTURES = [
 ]
 
 
-def run_seed(aie_opt: str, fixture: str, seed: int, effort: float) -> dict:
+def run_seed(
+    aie_opt: str, fixture: str, seed: int, effort: float, timeout: float
+) -> dict:
     """Run one seed; return its pass/fail, CPU time, peak RSS, and cost.
 
-    Uses os.wait4 (not resource.getrusage(RUSAGE_CHILDREN), which is a
-    running max across every reaped child) so each seed's peak RSS is its
-    own, not a stale max carried over from an earlier, bigger seed. CPU time,
-    not wall time: a hosted runner shares its cores with other jobs.
+    The CPU time and peak RSS are the seed's own (aiecc_stages.run_measured).
+    CPU time, not wall time: a hosted runner shares its cores with other jobs.
     """
-    args = [
-        aie_opt,
-        f"--aie-place-tiles=placer=sa_placer sa-seed={seed} sa-effort={effort}",
-        "--mlir-pass-statistics",
-        fixture,
-        "-o",
-        "/dev/null",
-    ]
-    proc = subprocess.Popen(
-        args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+    measured = run_measured(
+        [
+            aie_opt,
+            f"--aie-place-tiles=placer=sa_placer sa-seed={seed} sa-effort={effort}",
+            "--mlir-pass-statistics",
+            fixture,
+            "-o",
+            "/dev/null",
+        ],
+        None,
+        None,
+        timeout,
+        echo=False,
     )
-    stderr = proc.stderr.read() if proc.stderr else ""
-    _, status, ru = os.wait4(proc.pid, 0)
-    cost_match = _COST_RE.search(stderr)
+    out = measured.process.stdout
+    cost_match = _COST_RE.search(out)
     return {
         "fixture": case_of(fixture),
         "seed": seed,
-        "passed": os.waitstatus_to_exitcode(status) == 0,
-        "cpu_ms": (ru.ru_utime + ru.ru_stime) * 1000.0,
-        "peak_rss_mb": ru.ru_maxrss / 1024.0,
+        "passed": measured.process.returncode == 0,
+        "timed_out": measured.process.returncode == TIMED_OUT,
+        "cpu_ms": measured.cpu_s * 1000.0,
+        "peak_rss_mb": measured.peak_rss_mib,
         "final_cost": int(cost_match.group(1)) if cost_match else None,
-        "stderr": stderr,
+        "output": out,
     }
 
 
@@ -96,19 +104,20 @@ def aggregate(rows: list[dict]) -> list[dict]:
         costs = [
             r["final_cost"] for r in mine if r["passed"] and r["final_cost"] is not None
         ]
-
-        def row(metric, value, unit):
-            return {"name": f"{case}/{metric}", "unit": unit, "value": value}
-
         out += [
-            row("failed_seeds", sum(not r["passed"] for r in mine), "seeds"),
-            row("cpu_ms_mean", round(statistics.mean(cpu_ms), 1), "ms"),
-            row("cpu_ms_max", round(max(cpu_ms), 1), "ms"),
-            row("peak_rss_mb_max", round(max(r["peak_rss_mb"] for r in mine), 1), "MB"),
+            row(case, "failed_seeds", sum(not r["passed"] for r in mine), "seeds"),
+            row(case, "cpu_ms_mean", round(statistics.mean(cpu_ms), 1), "ms"),
+            row(case, "cpu_ms_max", round(max(cpu_ms), 1), "ms"),
+            row(
+                case,
+                "peak_rss_mb_max",
+                round(max(r["peak_rss_mb"] for r in mine), 1),
+                "MiB",
+            ),
         ]
         if costs:
-            out.append(row("final_cost_mean", statistics.mean(costs), "cost"))
-            out.append(row("final_cost_max", max(costs), "cost"))
+            out.append(row(case, "final_cost_mean", statistics.mean(costs), "cost"))
+            out.append(row(case, "final_cost_max", max(costs), "cost"))
     return out
 
 
@@ -128,11 +137,18 @@ def commit() -> str:
     return sha[:10]
 
 
+def provenance(fixtures: list[str]) -> str:
+    """Return the commit, the fixtures and the CPU as a provenance line."""
+    return (
+        f"commit {commit()} | fixtures {fixtures_digest(fixtures)} | cpu {cpu_model()}"
+    )
+
+
 def meta(rows: list[dict], fixtures: list[str], seeds: int, effort: float) -> dict:
     failed = [f"{r['fixture']}/seed{r['seed']}" for r in rows if not r["passed"]]
     return {
         "preflight": {},
-        "provenance": f"commit {commit()} | fixtures {fixtures_digest(fixtures)}",
+        "provenance": provenance(fixtures),
         "measurement_sane": True,
         "seeds": seeds,
         "effort": effort,
@@ -141,6 +157,7 @@ def meta(rows: list[dict], fixtures: list[str], seeds: int, effort: float) -> di
                 "fixture": r["fixture"],
                 "seed": r["seed"],
                 "passed": r["passed"],
+                "timed_out": r["timed_out"],
                 "final_cost": r["final_cost"],
                 "cpu_ms": round(r["cpu_ms"], 1),
                 "peak_rss_mb": round(r["peak_rss_mb"], 1),
@@ -164,7 +181,7 @@ def print_table(rows: list[dict]) -> None:
             f"{r['cpu_ms']:>9.1f}  {r['peak_rss_mb']:>8.1f}  {cost:>8}"
         )
         if not r["passed"]:
-            print(f"        {r['stderr'].strip()}")
+            print(f"        {r['output'].strip()}")
 
 
 def _positive_int(text: str) -> int:
@@ -187,13 +204,25 @@ def main(argv=None) -> int:
         "--seeds", type=_positive_int, default=20, help="sweep seeds 1..N"
     )
     parser.add_argument("--effort", type=float, default=1.0)
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=600,
+        help="seconds before one seed's placement is killed and fails (default: 600)",
+    )
     parser.add_argument("--out", required=True, help="perf.json to write")
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
 
     fixtures = args.fixture or FIXTURES
+    write_unfinished(
+        {"preflight": {}, "provenance": provenance(fixtures)},
+        "seed sweep",
+        args.out,
+        args.meta,
+    )
     rows = [
-        run_seed(args.aie_opt, fixture, seed, args.effort)
+        run_seed(args.aie_opt, fixture, seed, args.effort, args.timeout)
         for fixture in fixtures
         for seed in range(1, args.seeds + 1)
     ]

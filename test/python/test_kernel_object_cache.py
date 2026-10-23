@@ -10,6 +10,7 @@ an object that was not rebuilt keeps its inode and mtime. No NPU is required.
 """
 
 import contextlib
+import json
 import os
 import shutil
 import subprocess
@@ -433,3 +434,37 @@ def test_one_source_compiled_per_architecture(tmp_path, source, cache):
     assert objects["aie2"] != objects["aie2p"]
     # Each design links the object built for its own target: ELF32 e_flags differ.
     assert objects["aie2"][36:40] != objects["aie2p"][36:40]
+
+
+def _kernel_profile(design):
+    return json.loads((design / compile_utils.KERNEL_PROFILE_NAME).read_text())
+
+
+def test_each_objects_compile_time_is_recorded_beside_the_build(
+    tmp_path, source, cache
+):
+    kernel = _kernel(source)
+    first, second = _design_dir(tmp_path, "a"), _design_dir(tmp_path, "b")
+    compile_utils.compile_external_kernels([kernel], first, "aie2p", object_cache=cache)
+    (compiled,) = _kernel_profile(first)["kernels"]
+    assert compiled["object"] == kernel.object_file_name
+    assert compiled["symbols"] == ["scale"]
+    assert compiled["seconds"] > 0 and compiled["cached"] is False
+
+    compile_utils.compile_external_kernels(
+        [kernel], second, "aie2p", object_cache=cache
+    )
+    (hit,) = _kernel_profile(second)["kernels"]
+    assert hit["cached"] is True and hit["seconds"] < compiled["seconds"]
+
+    compile_utils.compile_external_kernels([kernel], first, "aie2p", object_cache=cache)
+    profile = _kernel_profile(first)
+    assert profile["kernels"] == [{**compiled, "seconds": 0.0, "cached": True}]
+    assert profile["jobs"] == 1 and profile["wall_s"] >= 0
+
+
+def test_a_kernel_compiled_in_place_is_recorded_as_compiled(tmp_path, source):
+    design = _design_dir(tmp_path, "a")
+    compile_utils.compile_external_kernels([_kernel(source)], design, "aie2p")
+    (entry,) = _kernel_profile(design)["kernels"]
+    assert entry["cached"] is False and entry["seconds"] > 0

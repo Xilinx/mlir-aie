@@ -596,8 +596,10 @@ k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
                const int32_t input_channels, const int32_t output_channels,
                const int scale, const int skip_scale) {
   event0();
-  aie::set_saturation(aie::saturation_mode::saturate);
-  aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
 #if defined(K1_WIDTH)
   const aie::vector<int8, 64> ones = aie::broadcast<int8, 64>(1);
   const auto epi = [&](auto &acc, const aie::vector<TS, 64> &s) {
@@ -621,6 +623,8 @@ k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
   k1_skip_chunked<4>(input, kernels, output, skip, input_width, input_channels,
                      output_channels, scale, skip_scale);
 #endif
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P

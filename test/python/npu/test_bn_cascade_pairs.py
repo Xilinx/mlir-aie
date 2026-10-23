@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+# RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
 # REQUIRES: xrt_python_bindings
 
@@ -47,8 +48,6 @@ from aie.iron import (
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.iron.kernels.conv import _requant_even
-
-pytestmark = pytest.mark.supported_devices("npu2")
 
 _W = 7
 _INPUT_SPLIT = 2

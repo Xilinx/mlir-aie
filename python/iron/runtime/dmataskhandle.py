@@ -28,6 +28,8 @@ from ...dialects.aiex import (  # pyright: ignore[reportMissingImports]
     dma_start_task,
 )
 from ...ir import Value  # pyright: ignore[reportMissingImports]
+from ..scratchpad_parameter import ScratchpadParameter
+from ._context import active_sequence
 
 
 @dataclass
@@ -68,19 +70,28 @@ class Task:
         """Make this loop result stand for ``task``, which the loop body yielded."""
         self._lifetime = task._lifetime
 
-    def start(self, repeat_count: int | Value | None = None) -> "Task":
+    def start(
+        self,
+        repeat_count: int | Value | None = None,
+        repeat_parameter: ScratchpadParameter | str | None = None,
+    ) -> "Task":
         """Push this task onto its channel's queue (``dma_start_task``).
 
         Its buffer descriptors are written when the task is configured, so each
-        start costs one queue push. ``repeat_count`` replaces the task's
-        configured count for this start only; a runtime value must fit one
-        queue push.
+        start costs one queue push.
 
         A task carried through a ``range_`` ``iter_args`` entry can be started
         only if every value it can carry comes from the same configure (the
         loop yields it unchanged), since the push names one head buffer
         descriptor. A task reconfigured inside the loop is started where it is
         configured, before it is yielded; compilation otherwise fails.
+
+        Args:
+            repeat_count: Replaces the task's configured count for this start
+                only; a runtime value must fit one queue push.
+            repeat_parameter: A scratchpad parameter whose value, written per
+                run, is the count instead, at most the task's own; a full
+                ELF's shim and mem tile channels take one.
 
         Returns:
             This task.
@@ -95,7 +106,15 @@ class Task:
                 "may already describe another transfer. Free a task after its "
                 "last start."
             )
-        dma_start_task(self._handle, repeat_count=repeat_count)
+        dma_start_task(
+            self._handle,
+            repeat_count=repeat_count,
+            repeat_parameter=(
+                None
+                if repeat_parameter is None
+                else active_sequence().runtime.register_parameter(repeat_parameter)
+            ),
+        )
         return self
 
     def free(self) -> None:

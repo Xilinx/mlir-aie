@@ -65,7 +65,7 @@ class TaskGroup:
                     "TaskGroup() must be constructed within the function passed "
                     "to Runtime(seq_fn, fn_args)."
                 )
-            id = next(active._runtime._task_group_index)
+            id = next(active.runtime._task_group_index)
         self._group_id = id
         # Set once the group's transfers have been handed to a loop (as an
         # iter_arg or a yield); the object is then spent.

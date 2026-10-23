@@ -11,6 +11,7 @@
 #include <type_traits>
 
 #include "../aie_kernel_utils.h"
+#include "reduce_identity.h"
 #include <aie_api/aie.hpp>
 
 #ifndef REDUCE_MAX_ELEMS
@@ -22,7 +23,7 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
   constexpr int32_t VECTOR_SIZE = V::size();
-  V tiny = aie::broadcast<T>(std::numeric_limits<T>::lowest());
+  V tiny = aie::broadcast<T>(max_identity<T>());
   V running_max = tiny;
 
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
@@ -68,7 +69,7 @@ template <typename T>
 void _reduce_max_scalar(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
-  T running_max = std::numeric_limits<T>::lowest();
+  T running_max = max_identity<T>();
   for (int32_t i = 0; i < REDUCE_MAX_ELEMS; i++) {
     if (in[i] > running_max)
       running_max = in[i];
@@ -102,6 +103,14 @@ void reduce_max_scalar_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
 
 void compute_max_bfloat16(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
   _compute_max<bfloat16>(a_in, b_in, c_out);
+}
+
+void reduce_max_vector_float(float *a_in, float *c_out, int32_t input_size) {
+  _reduce_max_vector<float, aie::vector<float>>(a_in, c_out, input_size);
+}
+
+void reduce_max_scalar_float(float *a_in, float *c_out, int32_t input_size) {
+  _reduce_max_scalar<float>(a_in, c_out, input_size);
 }
 
 void reduce_max_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {

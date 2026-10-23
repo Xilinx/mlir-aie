@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu1_xrt% %pytest %s
-# RUN: %run_on_npu2_xrt% %pytest %s
-# RUN: %run_on_npu2_hrx% %pytest %s
+# RUN: %run_on_npu1_xrt% %pytest -m "not extensive" %s
+# RUN: %run_on_npu2_xrt% %pytest -m "not extensive" %s
+# RUN: %run_on_npu2_hrx% %pytest -m "not extensive" %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
 """Numeric gates for mha.cc's softmax entry points, alone and as one round.
 
@@ -27,6 +27,8 @@ Not covered: a key block that is all padding inside the causal region.
 ``partial_softmax`` returns early there and leaves the previous correction
 factor in ``scale_buffer``; that is existing kernel behaviour, not frozen here.
 """
+
+import itertools
 
 import ml_dtypes
 import numpy as np
@@ -56,8 +58,35 @@ F32 = np.dtype[np.float32]
 I32 = np.dtype[np.int32]
 
 # The key block and the head, which mha.cc is compiled for. A round's query
-# block is these 64 rows or a narrower multiple of 16.
+# block is these 64 rows or a narrower multiple of 8.
 _B = 64
+
+
+def _tiered(geometries, **variants):
+    """Each geometry crossed with every variant, one cross per geometry per PR.
+
+    Geometry i runs its i-th variant (cycling) in the default run; the rest
+    are marked extensive, for the nightly sweep, so every geometry and every
+    variant run on each PR and the whole product nightly.
+
+    Args:
+        geometries: Tuples of the test's geometry arguments.
+        **variants: Each flag's values, e.g. accurate_exp2=[False, True].
+
+    Returns:
+        pytest.param per (geometry, variant), the variant's values last.
+    """
+    combos = list(itertools.product(*variants.values()))
+    return [
+        pytest.param(
+            *geometry,
+            *combo,
+            marks=[] if j == i % len(combos) else [pytest.mark.extensive],
+        )
+        for i, geometry in enumerate(geometries)
+        for j, combo in enumerate(combos)
+    ]
+
 
 # log2(e) / sqrt(d) as the bf16 scalar the kernel takes.
 _INV_SCALE = float(bfloat16(np.log2(np.e) / np.sqrt(_B)))
@@ -81,7 +110,7 @@ _L_RTOL_ACCURATE = 2.0**-9
 
 
 def _unblock(flat: np.ndarray, rows: int = _B, cols: int = _B) -> np.ndarray:
-    """The 8x8-blocked O tile back to (rows, cols)."""
+    """Return the 8x8-blocked O tile as (rows, cols)."""
     return (
         flat.reshape(rows // 8, cols // 8, 8, 8)
         .transpose(0, 2, 1, 3)
@@ -98,15 +127,20 @@ def _keep(
     b_kv: int = _B,
     causal: bool = True,
     window: int = 0,
+    packed: bool = False,
+    offset: int = 0,
 ) -> np.ndarray:
     """Which (query, key) pairs of this block pair the band admits.
 
     The query at q keeps the keys from ``q - window`` to ``q`` when causal,
-    else to ``q + window``; a window of 0 is none.
+    else to ``q + window``; a window of 0 is none. Packed, every query is at
+    the last key. The query block's rows sit ``offset`` positions past its
+    start.
     """
     rows = q_block * b_q + np.arange(b_q)
     cols = kv_block * b_kv + np.arange(b_kv)
-    ahead = cols[None, :] - rows[:, None]
+    at = np.full(b_q, s_kv_eff - 1) if packed else rows + offset
+    ahead = cols[None, :] - at[:, None]
     keep = (rows[:, None] < s_q_eff) & (cols[None, :] < s_kv_eff)
     if causal or window:
         keep &= ahead <= (0 if causal else window)
@@ -167,7 +201,7 @@ def softmax_blocks(
     """
     tile_ty = np.ndarray[(_B * _B,), BF]
     scale_ty = np.ndarray[(4 * _B,), F32]
-    idx_ty = np.ndarray[(2,), I32]
+    idx_ty = np.ndarray[(3,), I32]
 
     mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
     obj = mha.object_file
@@ -181,9 +215,11 @@ def softmax_blocks(
     of_p = ObjectFifo(tile_ty, name="p", depth=2)
     of_scale = ObjectFifo(scale_ty, name="scale", depth=1)
 
-    # idx_buffer is (key block, query block).
+    # idx_buffer is (key block, query block, row offset).
     idx = [
-        Buffer(idx_ty, name=f"idx{n}", initial_value=np.array([kv, q_block], np.int32))
+        Buffer(
+            idx_ty, name=f"idx{n}", initial_value=np.array([kv, q_block, 0], np.int32)
+        )
         for n, kv in enumerate((kv_first, kv_second))
     ]
 
@@ -232,7 +268,7 @@ def rescale_tile(o_in: In, scale_in: In, o_out: Out):
     acc_ty = np.ndarray[(_B * _B,), F32]
     tile_ty = np.ndarray[(_B * _B,), BF]
     scale_ty = np.ndarray[(4 * _B,), F32]
-    idx_ty = np.ndarray[(2,), I32]
+    idx_ty = np.ndarray[(3,), I32]
 
     mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B)
     rescale = mha.object_file.bind(
@@ -244,7 +280,7 @@ def rescale_tile(o_in: In, scale_in: In, o_out: Out):
     of_o_out = ObjectFifo(tile_ty, name="o_out", depth=1)
 
     # rescale_O never reads its idx_buffer.
-    idx = Buffer(idx_ty, name="idx", initial_value=np.array([0, 0], np.int32))
+    idx = Buffer(idx_ty, name="idx", initial_value=np.array([0, 0, 0], np.int32))
 
     def core(of_o_in, of_scale, of_o_out, rescale, idx):
         rescale(of_o_in.acquire(1), of_o_out.acquire(1), of_scale.acquire(1), _B, idx)
@@ -290,16 +326,18 @@ def _softmax_case_data(q_block, kv_first, kv_second, s_q_eff, s_kv_eff):
 
 
 @pytest.mark.parametrize(
-    "q_block,kv_first,kv_second,s_q_eff,s_kv_eff",
-    [
-        (1, 0, 1, 128, 128),  # unmasked block, then the diagonal
-        (0, 0, 1, 64, 128),  # diagonal, then a block the kernel must skip
-        (1, 0, 1, 100, 100),  # query and key tails both mid-vector
-        (2, 1, 2, 192, 150),  # key tail alone
-        (1, 0, 1, 100, 70),  # short key tail under padded query rows
-    ],
+    "q_block,kv_first,kv_second,s_q_eff,s_kv_eff,accurate_exp2",
+    _tiered(
+        [
+            (1, 0, 1, 128, 128),  # unmasked block, then the diagonal
+            (0, 0, 1, 64, 128),  # diagonal, then a block the kernel must skip
+            (1, 0, 1, 100, 100),  # query and key tails both mid-vector
+            (2, 1, 2, 192, 150),  # key tail alone
+            (1, 0, 1, 100, 70),  # short key tail under padded query rows
+        ],
+        accurate_exp2=[False, True],
+    ),
 )
-@pytest.mark.parametrize("accurate_exp2", [False, True])
 def test_partial_softmax_matches_masked_attention(
     q_block, kv_first, kv_second, s_q_eff, s_kv_eff, accurate_exp2
 ):
@@ -323,10 +361,10 @@ def test_partial_softmax_matches_masked_attention(
     got_p = p_t.numpy().astype(np.float32).reshape(2, _B, _B)
     got_scale = scale_t.numpy()
 
-    m, l = np.full(_B, _LOWEST, np.float32), np.zeros(_B, np.float32)
+    m, sums = np.full(_B, _LOWEST, np.float32), np.zeros(_B, np.float32)
     ref_p = []
     for block_scores, keep in zip(scores, keeps):
-        p, m, l = _softmax_step(block_scores, keep, m, l)
+        p, m, sums = _softmax_step(block_scores, keep, m, sums)
         ref_p.append(p)
 
     # The exp2 envelope with an absolute floor for weights near zero; padded
@@ -358,14 +396,14 @@ def test_partial_softmax_matches_masked_attention(
     # with c an exp2 too, so it gets two weights' allowance (0.54% measured).
     got_l = got_scale[2 * _B : 3 * _B][live]
     if accurate_exp2:
-        verdict = compare(got_l, l[live], Tolerance.relative(_L_RTOL_ACCURATE))
+        verdict = compare(got_l, sums[live], Tolerance.relative(_L_RTOL_ACCURATE))
         assert verdict, verdict.detail
     elif aie2:
-        assert nearly_equal(got_l, l[live], rtol=2 * tol.rtol, atol=tol.atol).all()
+        assert nearly_equal(got_l, sums[live], rtol=2 * tol.rtol, atol=tol.atol).all()
     else:
-        l_ulp = 2**-7 * float(l[live].max())
+        l_ulp = 2**-7 * float(sums[live].max())
         np.testing.assert_allclose(
-            got_l, l[live], rtol=_RTOL_EXP2, atol=_ATOL_ULP * l_ulp
+            got_l, sums[live], rtol=_RTOL_EXP2, atol=_ATOL_ULP * l_ulp
         )
 
 
@@ -381,9 +419,9 @@ def test_rescale_o_divides_rows_by_their_sums(l_lo, l_hi):
     rng = np.random.default_rng(20260923 + int(l_hi))
     o_blocked = _dyadic(rng, (_B * _B,), 0.5).astype(np.float32)
     # Sums vary within each 8-row block, so a wrong-row broadcast shows.
-    l = np.exp2(rng.uniform(np.log2(l_lo), np.log2(l_hi), _B)).astype(np.float32)
+    sums = np.exp2(rng.uniform(np.log2(l_lo), np.log2(l_hi), _B)).astype(np.float32)
     scale = np.zeros(4 * _B, np.float32)
-    scale[2 * _B : 3 * _B] = l
+    scale[2 * _B : 3 * _B] = sums
 
     out_t = iron.zeros((_B * _B,), dtype=bfloat16)
     rescale_tile(
@@ -391,9 +429,203 @@ def test_rescale_o_divides_rows_by_their_sums(l_lo, l_hi):
     )  # fmt: skip
     got = _unblock(out_t.numpy()).astype(np.float32)
 
-    ref = _unblock(o_blocked) / l[:, None]
+    ref = _unblock(o_blocked) / sums[:, None]
     ulp = 2**-7 * float(np.abs(ref).max())
     np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
+
+
+@jit
+def softmax_from_state(
+    a_in: In,
+    scale_in: In,
+    scale_out: Out,
+    *,
+    kv_block: CompileTime[int] = 1,
+    offset: CompileTime[int] = 1,
+    accurate_exp2: CompileTime[bool] = False,
+):
+    """``partial_softmax`` over one key block, from a running state the host
+    gives, its state back. The query block's rows sit ``offset`` positions
+    past its start.
+    """
+    tile_ty = np.ndarray[(_B * _B,), BF]
+    scale_ty = np.ndarray[(4 * _B,), F32]
+    idx_ty = np.ndarray[(3,), I32]
+
+    obj = kernels.mha(
+        dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2
+    ).object_file
+    softmax = obj.bind(
+        "partial_softmax",
+        [tile_ty, tile_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)],
+    )
+    copy = kernels.passthrough(4 * _B, np.int32).object_file.bind(
+        "passThroughLine", [scale_ty, scale_ty, np.int32]
+    )
+
+    of_a = ObjectFifo(tile_ty, name="a", depth=1)
+    of_in = ObjectFifo(scale_ty, name="scale_in", depth=1)
+    of_out = ObjectFifo(scale_ty, name="scale_out", depth=1)
+    idx = Buffer(
+        idx_ty, name="idx", initial_value=np.array([kv_block, 0, offset], np.int32)
+    )
+
+    def core(of_a, of_in, of_out, softmax, copy, idx, p, scale):
+        copy(of_in.acquire(1), scale, 4 * _B)
+        of_in.release(1)
+        softmax(of_a.acquire(1), p, scale, idx, _INV_SCALE, _B, _B, _B, 2 * _B)
+        of_a.release(1)
+        copy(scale, of_out.acquire(1), 4 * _B)
+        of_out.release(1)
+
+    worker = Worker(
+        core,
+        fn_args=[
+            of_a.cons(),
+            of_in.cons(),
+            of_out.prod(),
+            softmax,
+            copy,
+            idx,
+            Buffer(tile_ty, name="p"),
+            Buffer(scale_ty, name="scale"),
+        ],
+    )
+
+    def sequence(a_h, in_h, out_h, a_fifo, in_fifo, out_fifo):
+        a_fifo.fill(a_h)
+        in_fifo.fill(in_h)
+        out_fifo.drain(out_h, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tile_ty, scale_ty, scale_ty, of_a.prod(), of_in.prod(), of_out.cons()],
+    )
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@jit
+def pv_from_state(o_in: In, scale_in: In, o_out: Out):
+    """``matmul_PV`` of a zero ``P`` onto an accumulator the host gives, after
+    the first key block, so it rescales by the factors in ``scale_in``.
+    """
+    tile_ty = np.ndarray[(_B * _B,), BF]
+    acc_ty = np.ndarray[(_B * _B,), F32]
+    scale_ty = np.ndarray[(4 * _B,), F32]
+    idx_ty = np.ndarray[(3,), I32]
+
+    pv = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B).object_file.bind(
+        "matmul_PV",
+        [tile_ty, tile_ty, acc_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
+    )
+    copy = kernels.passthrough(_B * _B, np.int32).object_file.bind(
+        "passThroughLine", [acc_ty, acc_ty, np.int32]
+    )
+
+    of_o_in = ObjectFifo(acc_ty, name="o_in", depth=1)
+    of_scale = ObjectFifo(scale_ty, name="scale", depth=1)
+    of_o_out = ObjectFifo(acc_ty, name="o_out", depth=1)
+    idx = Buffer(idx_ty, name="idx", initial_value=np.array([0, 0, 0], np.int32))
+    # P is zero, so V's values reach nothing: one zero tile is both, which
+    # fits the core's two input channels and its memory.
+    p = Buffer(tile_ty, name="p", initial_value=np.zeros(_B * _B, bfloat16))
+
+    def core(of_o_in, of_scale, of_o_out, pv, copy, idx, p, acc):
+        copy(of_o_in.acquire(1), acc, _B * _B)
+        of_o_in.release(1)
+        pv(p, p, acc, of_scale.acquire(1), _B, 1, idx, _B)
+        of_scale.release(1)
+        copy(acc, of_o_out.acquire(1), _B * _B)
+        of_o_out.release(1)
+
+    worker = Worker(
+        core,
+        fn_args=[
+            of_o_in.cons(),
+            of_scale.cons(),
+            of_o_out.prod(),
+            pv,
+            copy,
+            idx,
+            p,
+            Buffer(acc_ty, name="acc"),
+        ],
+    )
+
+    def sequence(o_h, scale_h, out_h, o_fifo, scale_fifo, out_fifo):
+        o_fifo.fill(o_h)
+        scale_fifo.fill(scale_h)
+        out_fifo.drain(out_h, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [acc_ty, scale_ty, acc_ty, of_o_in.prod(), of_scale.prod(), of_o_out.cons()],
+    )
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+# Running sums and outputs just below a power of two, odd in their last bit,
+# where a product through bf16 limbs rounds at the power's exponent; and some
+# that are not.
+_NEAR_POWERS = np.array(
+    [0x407FFFFF, 0x407FFF27, 0x3FFFFFFF, 0x3F7FFFFF, 0x427FFFFF, 0x40FFFFFD,
+     0x40400000, 0x40B00000],
+    np.uint32,
+).view(np.float32)  # fmt: skip
+
+
+@pytest.mark.parametrize("accurate_exp2", [False, True])
+def test_a_key_block_that_keeps_none_of_a_rows_keys_leaves_its_state(accurate_exp2):
+    """The query block starts one position past the key block's first key, so
+    only its last row keeps a key of it. Every other row's max holds and it
+    adds nothing to its sum, which comes back bit for bit: whether such a
+    block runs depends on where a call's queries start, and must not change
+    the result.
+    """
+    sums = np.resize(_NEAR_POWERS, _B)
+    scale = np.zeros(4 * _B, np.float32)
+    scale[2 * _B : 3 * _B] = sums
+
+    out_t = iron.zeros((4 * _B,), dtype=np.float32)
+    softmax_from_state(
+        iron.tensor(np.zeros(_B * _B, bfloat16), dtype=bfloat16),
+        iron.tensor(scale, dtype=np.float32),
+        out_t,
+        accurate_exp2=accurate_exp2,
+    )
+    got = out_t.numpy()
+
+    np.testing.assert_array_equal(got[:_B], 0)
+    np.testing.assert_array_equal(
+        got[2 * _B : 3 * _B - 1].view(np.uint32), sums[:-1].view(np.uint32)
+    )
+    # The last row keeps one key, whose score is its max: a weight of 1.
+    assert got[3 * _B - 1] == sums[-1] + np.float32(1)
+
+
+def test_a_factor_of_one_keeps_o():
+    """Rows whose max held keep their accumulator bit for bit, beside rows in
+    their group of eight that are halved.
+    """
+    rng = np.random.default_rng(20261020)
+    o = np.resize(_NEAR_POWERS, (_B, _B)) * rng.choice([-1, 1], (_B, _B))
+    o = o.astype(np.float32)
+    factors = np.resize(np.float32([1, 0.5, 1, 1, 0.5, 1, 1, 1]), _B)
+    scale = np.zeros(4 * _B, np.float32)
+    scale[3 * _B :] = factors
+    blocked = TensorAccessPattern.full((_B, _B)).tile((8, 8))
+
+    out_t = iron.zeros((_B * _B,), dtype=np.float32)
+    pv_from_state(
+        iron.tensor(blocked.gather(o), dtype=np.float32),
+        iron.tensor(scale, dtype=np.float32),
+        out_t,
+    )
+    got = _unblock(out_t.numpy())
+
+    held = factors == 1
+    np.testing.assert_array_equal(got[held].view(np.uint32), o[held].view(np.uint32))
+    np.testing.assert_allclose(got[~held], o[~held] / 2, rtol=2.0**-23, atol=0)
 
 
 @jit
@@ -411,8 +643,10 @@ def mha_round(
     d: CompileTime[int] = _B,
     causal: CompileTime[bool] = True,
     window: CompileTime[int] = 0,
+    packed: CompileTime[bool] = False,
     accurate_exp2: CompileTime[bool] = False,
     f32_scores: CompileTime[bool] = False,
+    offset: CompileTime[int] = 0,
 ):
     """One round of mha.cc's steps from the mask on, over two cores.
 
@@ -421,7 +655,8 @@ def mha_round(
     its running state with each ``P``, and the other accumulates ``P V``. P
     is reblocked through a memtile on its way to ``matmul_PV``. The query
     block is ``b_q`` rows against a ``b_kv``-row key block, over a head
-    dimension ``d``. With ``f32_scores`` the scores are float32.
+    dimension ``d``. With ``f32_scores`` the scores are float32. The query
+    block's first row is ``offset`` positions past its start.
     """
     s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
     p_ty = np.ndarray[(b_q * b_kv,), BF]
@@ -429,7 +664,7 @@ def mha_round(
     o_ty = np.ndarray[(b_q * d,), BF]
     acc_ty = np.ndarray[(b_q * d,), F32]
     scale_ty = np.ndarray[(4 * b_q,), F32]
-    idx_ty = np.ndarray[(2,), I32]
+    idx_ty = np.ndarray[(3,), I32]
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
 
     qkt = kernels.mha(
@@ -439,6 +674,7 @@ def mha_round(
         accurate_exp2=accurate_exp2,
         causal=causal,
         window=window,
+        packed=packed,
         f32_scores=f32_scores,
     )
     obj = qkt.object_file
@@ -472,7 +708,7 @@ def mha_round(
             Buffer(
                 idx_ty,
                 name=f"idx_{core}{k}",
-                initial_value=np.array([k, q_block], np.int32),
+                initial_value=np.array([k, q_block, offset], np.int32),
             )
             for k in range(n_kv)
         ]
@@ -565,25 +801,50 @@ def mha_round(
 
 
 def _round_case_data(
-    q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B, b_kv=_B, d=_B, causal=True, window=0
+    q_block,
+    n_kv,
+    s_q_eff,
+    s_kv_eff,
+    b_q=_B,
+    b_kv=_B,
+    d=_B,
+    causal=True,
+    window=0,
+    packed=False,
+    offset=0,
 ):
-    """Inputs for one round, as the mathematical operands and as device buffers."""
-    rng = np.random.default_rng(20260923 + 97 * q_block + n_kv + s_q_eff + s_kv_eff)
+    """Return one round's inputs, as the mathematical operands and as device buffers."""
+    rng = np.random.default_rng(
+        20260923 + 97 * q_block + n_kv + s_q_eff + s_kv_eff + 7 * offset
+    )
     q = _dyadic(rng, (b_q, d), 0.25, mag=2)
     k = _dyadic(rng, (n_kv * b_kv, d), 0.125, mag=2)
     v = _dyadic(rng, (n_kv * b_kv, d), 0.25, mag=2)
     # Aim each query at its diagonal key, in the last block, so the running max
     # rises late and matmul_PV must rescale what earlier blocks accumulated.
+    # Packed, row r is aimed r keys before the last.
     keep = np.concatenate(
         [
-            _keep(q_block, kv, s_q_eff, s_kv_eff, b_q, b_kv, causal, window)
+            _keep(
+                q_block,
+                kv,
+                s_q_eff,
+                s_kv_eff,
+                b_q,
+                b_kv,
+                causal,
+                window,
+                packed,
+                offset,
+            )
             for kv in range(n_kv)
         ],
         axis=1,
     )
     for row in range(b_q):
         if keep[row].any():
-            k[q_block * b_q + row] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
+            key = s_kv_eff - 1 - row if packed else q_block * b_q + offset + row
+            k[key] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
 
     scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(bfloat16)
     # Keys from s_kv_eff on do not exist; the device's V rows for them hold
@@ -652,22 +913,25 @@ def _check_round(
 
 
 @pytest.mark.parametrize(
-    "q_block,n_kv,s_q_eff,s_kv_eff,b_q",
-    [
-        (0, 1, _B, _B, _B),  # the pure diagonal
-        (1, 2, 2 * _B, 2 * _B, _B),  # a real correction carried between blocks
-        (1, 2, 100, 100, _B),  # query and key tails both mid-vector
-        (0, 1, 100, 40, _B),  # key tail cutting before the diagonal for most rows
-        (1, 3, 2 * _B, 3 * _B, _B),  # a block past the diagonal, which must drop
-        (1, 1, _B, _B, 32),  # a narrower query block, its diagonal mid-block
-        (3, 2, 4 * 32, 2 * _B, 32),  # carried across key blocks, then mid-block
-        (1, 2, 2 * 32, 2 * _B, 32),  # a key block past every row, which must drop
-        (3, 1, 4 * 16, _B, 16),  # the 16-row state walk
-        (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
-    ],
+    "q_block,n_kv,s_q_eff,s_kv_eff,b_q,accurate_exp2,f32_scores",
+    _tiered(
+        [
+            (0, 1, _B, _B, _B),  # the pure diagonal
+            (1, 2, 2 * _B, 2 * _B, _B),  # a real correction carried between blocks
+            (1, 2, 100, 100, _B),  # query and key tails both mid-vector
+            (0, 1, 100, 40, _B),  # key tail cutting before the diagonal for most rows
+            (1, 3, 2 * _B, 3 * _B, _B),  # a block past the diagonal, which must drop
+            (1, 1, _B, _B, 32),  # a narrower query block, its diagonal mid-block
+            (3, 2, 4 * 32, 2 * _B, 32),  # carried across key blocks, then mid-block
+            (1, 2, 2 * 32, 2 * _B, 32),  # a key block past every row, which must drop
+            (3, 1, 4 * 16, _B, 16),  # the 16-row state walk
+            (7, 1, 8 * 8, _B, 8),  # the 8-row block: one row group, 8-lane state
+            (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
+        ],
+        accurate_exp2=[False, True],
+        f32_scores=[False, True],
+    ),
 )
-@pytest.mark.parametrize("accurate_exp2", [False, True])
-@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
 def test_mha_round_matches_masked_attention(
     q_block, n_kv, s_q_eff, s_kv_eff, b_q, accurate_exp2, f32_scores
 ):
@@ -676,29 +940,69 @@ def test_mha_round_matches_masked_attention(
 
 # Self-attention, so every live row keeps a key of its own.
 @pytest.mark.parametrize(
-    "q_block,n_kv,s_eff,shape",
-    [
-        # Two query blocks to a key block, the diagonal mid-block, over d=256.
-        (5, 3, 90, dict(b_q=16, b_kv=32, d=256)),
-        # A window on both sides, cutting the first and last key blocks.
-        (2, 3, 90, dict(b_q=16, b_kv=32, d=256, causal=False, window=32)),
-        # Bidirectional: keys after the queries, the last block a key tail.
-        (1, 2, 100, dict(b_q=32, d=128, causal=False)),
-        # The row-group path's window: the first key block drops, the last
-        # is kept past the diagonal.
-        (2, 4, 4 * _B, dict(causal=False, window=_B)),
-        # A causal sliding window, as a sliding layer of a decoder runs.
-        (2, 3, 3 * _B, dict(window=_B)),
-        # 16-key blocks, a row one 16-lane vector.
-        (3, 6, 90, dict(b_q=16, b_kv=16, causal=False, window=16)),
-    ],
+    "q_block,n_kv,s_eff,shape,accurate_exp2,f32_scores",
+    _tiered(
+        [
+            # Two query blocks to a key block, the diagonal mid-block, over d=256.
+            (5, 3, 90, dict(b_q=16, b_kv=32, d=256)),
+            # A window on both sides, cutting the first and last key blocks.
+            (2, 3, 90, dict(b_q=16, b_kv=32, d=256, causal=False, window=32)),
+            # Bidirectional: keys after the queries, the last block a key tail.
+            (1, 2, 100, dict(b_q=32, d=128, causal=False)),
+            # The row-group path's window: the first key block drops, the last
+            # is kept past the diagonal.
+            (2, 4, 4 * _B, dict(causal=False, window=_B)),
+            # A causal sliding window, as a sliding layer of a decoder runs.
+            (2, 3, 3 * _B, dict(window=_B)),
+            # 16-key blocks, a row one 16-lane vector.
+            (3, 6, 90, dict(b_q=16, b_kv=16, causal=False, window=16)),
+            # Windows of no whole number of query blocks, as Gemma's 511: the last
+            # row keeps no key of a block the others keep, and none before it.
+            (2, 3, 3 * _B, dict(window=_B - 1)),
+            (5, 3, 90, dict(b_q=16, b_kv=32, d=256, window=21)),
+            # One decode step, a KV group's heads as the rows at the last key,
+            # the window dropping the first key block and cutting the second.
+            (0, 4, 200, dict(b_q=16, packed=True, window=100)),
+            (0, 4, 100, dict(b_q=16, b_kv=32, packed=True, window=50)),
+            # ...as an 8-row block, the last key block a tail.
+            (0, 3, 150, dict(b_q=8, packed=True)),
+        ],
+        accurate_exp2=[False, True],
+        f32_scores=[False, True],
+    ),
 )
-@pytest.mark.parametrize("accurate_exp2", [False, True])
-@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
 def test_mha_round_keeps_its_band(
     q_block, n_kv, s_eff, shape, accurate_exp2, f32_scores
 ):
     _check_round(q_block, n_kv, s_eff, s_eff, accurate_exp2, f32_scores, **shape)
+
+
+# Queries starting mid-block, as a prompt call from any position runs: the
+# last valid row is the last key's, each row offset positions past its block's.
+@pytest.mark.parametrize(
+    "q_block,n_kv,s_q_eff,offset,shape,accurate_exp2",
+    _tiered(
+        [
+            # The diagonal mid-block, the query rows padded.
+            (0, 1, 50, 14, {}),
+            # Carried across key blocks to a last one cut partway.
+            (1, 3, 2 * _B, 37, {}),
+            # A narrower query block, on the row-group path.
+            (3, 2, 4 * 32 - 5, 5, dict(b_q=32)),
+            # A causal sliding window, its edge off the key blocks'.
+            (2, 3, 3 * _B - 20, 20, dict(window=_B)),
+            # 16-key blocks, a row one 16-lane vector.
+            (3, 6, 60, 30, dict(b_q=16, b_kv=16, window=16)),
+        ],
+        accurate_exp2=[False, True],
+    ),
+)
+def test_mha_round_starts_its_queries_mid_block(
+    q_block, n_kv, s_q_eff, offset, shape, accurate_exp2
+):
+    _check_round(
+        q_block, n_kv, s_q_eff, s_q_eff + offset, accurate_exp2, offset=offset, **shape
+    )
 
 
 # A bf16 score whose product with _INV_SCALE, 45695, is 127 above its own bf16
@@ -833,7 +1137,7 @@ def mha_long_round(
     tile_ty = np.ndarray[(_B * _B,), BF]
     acc_ty = np.ndarray[(_B * _B,), F32]
     scale_ty = np.ndarray[(4 * _B,), F32]
-    idx_ty = np.ndarray[(2,), I32]
+    idx_ty = np.ndarray[(3,), I32]
     s_eff = n_kv * _B
 
     qkt = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
@@ -913,7 +1217,7 @@ def mha_long_round(
                 Buffer(
                     idx_ty,
                     name="idx_softmax",
-                    initial_value=np.array([0, n_kv - 1], np.int32),
+                    initial_value=np.array([0, n_kv - 1, 0], np.int32),
                 ),
             ],
         ),
@@ -930,7 +1234,7 @@ def mha_long_round(
                 Buffer(
                     idx_ty,
                     name="idx_pv",
-                    initial_value=np.array([0, n_kv - 1], np.int32),
+                    initial_value=np.array([0, n_kv - 1, 0], np.int32),
                 ),
             ],
         ),

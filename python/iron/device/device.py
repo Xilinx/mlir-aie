@@ -6,6 +6,7 @@
 
 import math
 import re
+from typing import ClassVar
 
 import numpy as np
 
@@ -22,7 +23,7 @@ from ...dialects.aie import (
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
-from ...dialects.aiex import _shim_dims
+from ...dialects.aiex import shim_dims
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.util import np_dtype_to_mlir_type
 from ..resolvable import Resolvable
@@ -37,6 +38,8 @@ class Device(Resolvable):
     an ``aie.device``, so the descriptor does not own one configuration's IR.
     """
 
+    _bd_context: ClassVar[ir.Context | None] = None
+
     def __init__(self, device: AIEDevice) -> None:
         self._device = device
         self._tm = get_target_model(device)
@@ -44,6 +47,16 @@ class Device(Resolvable):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(AIEDevice.{self._device.name})"
+
+    def __eq__(self, other: object) -> bool:
+        # Two descriptors of one AIEDevice are one device; _resolved_tiles is
+        # emission scratch.
+        if not isinstance(other, Device):
+            return NotImplemented
+        return other._device == self._device
+
+    def __hash__(self) -> int:
+        return hash(self._device)
 
     @property
     def name(self) -> str:
@@ -68,6 +81,13 @@ class Device(Resolvable):
     def arch(self) -> AIEArch:
         """AIE architecture of the device (AIE1, AIE2, or AIE2p)."""
         return AIEArch(self._tm.get_target_arch())
+
+    @property
+    def can_dispatch_full_elf(self) -> bool:
+        """Whether a full ELF (PDIs and control code in one ELF) dispatches here: on AIE2p."""
+        # XRT sends an ELF with .pdi sections as a preemptible command, which
+        # amdxdna accepts only where the part supports preemption: not on npu1.
+        return self.arch is AIEArch.AIE2p
 
     @property
     def core_memory_bytes(self) -> int:
@@ -199,7 +219,7 @@ class Device(Resolvable):
         if self._tm.is_shim_noc_or_pl_tile(col, row):
             if tap.padding is not None:
                 return False
-            offset, sizes, strides = _shim_dims(tap)
+            offset, sizes, strides = shim_dims(tap)
         else:
             pad = 4 - len(tap.sizes)
             offset = tap.offset
@@ -207,7 +227,11 @@ class Device(Resolvable):
             strides = [0] * pad + list(tap.strides)
         if len(sizes) > 4:
             return False
-        with ir.Context(), ir.Location.unknown():
+        # A fresh context costs ~4 ms, and resolving a design calls this thousands of times.
+        context = Device._bd_context
+        if context is None:
+            context = Device._bd_context = ir.Context()
+        with context, ir.Location.unknown():
             return dma_bd_fits(
                 self._device.value,
                 col,
@@ -314,6 +338,12 @@ class NamedDevice(Device):
 
     def __init__(self) -> None:
         super().__init__(device=self.aie_device)
+
+    @staticmethod
+    def of(kind: AIEDevice) -> "NamedDevice":
+        """Return the named device of ``kind``, e.g. ``NPU2()`` for ``AIEDevice.npu2``."""
+        (named,) = (c for c in NamedDevice.__subclasses__() if c.aie_device == kind)
+        return named()
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}()"

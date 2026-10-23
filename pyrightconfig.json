@@ -18,6 +18,7 @@
     "programming_examples/ml/dwconv1d",
     "programming_examples/ml/eltwise",
     "programming_examples/ml/eltwise_unary",
+    "programming_examples/ml/llama_3_2_1b",
     "programming_examples/ml/magika",
     "programming_examples/ml/mm_activation_epilogue",
     "programming_examples/ml/norm",
@@ -26,6 +27,7 @@
     "programming_examples/ml/scale_shift",
     "programming_examples/ml/softmax",
     "programming_examples/ml/swiglu",
+    "programming_examples/ml/yolo26n",
     "utils/kernel_checks"
   ],
   "exclude": [

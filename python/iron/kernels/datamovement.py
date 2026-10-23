@@ -25,10 +25,12 @@ from ._common import (
     _kernel_source,
     _make_extern,
     _require_vector_alignment,
-    dtypes,
 )
 from .core import conv_even
 from .norm import _row_size
+
+DTYPES: dict[str, tuple[dict, ...]] = {}
+
 
 # One bf16 ulp with a subnormal floor; see eltwise._BF16_ROUNDTRIP for how the
 # two numbers are derived.
@@ -366,8 +368,8 @@ def affine_cast(rows: int = 96, cols: int = 32) -> ExternalFunction:
                 atol=2.0**-126,
                 note="aie::mul emulates the float32 product in bf16 terms and "
                 "can land one float32 ulp off, which tips a bf16 tie: 3 of "
-                "1769472 outputs one ulp off on npu2. atol is the smallest "
-                "normal bf16, for the device's subnormal flush to zero",
+                "1769472 outputs one ulp off on npu2 (npu1: unmeasured). atol is "
+                "the smallest normal bf16, for the device's subnormal flush to zero",
             ),
             ops_per_call=2 * rows * cols,
         ),
@@ -840,7 +842,7 @@ def _transpose_strip(dim_m: int, subtile: int, bits: int) -> tuple[int, int]:
     return w, r
 
 
-@dtypes(
+DTYPES["transpose"] = tuple(
     (
         {"dtype": bfloat16},
         {"dtype": np.uint8},
@@ -848,6 +850,8 @@ def _transpose_strip(dim_m: int, subtile: int, bits: int) -> tuple[int, int]:
         {"dtype": np.uint32},
     )
 )
+
+
 def transpose(
     dim_m: int = 32, dim_n: int = 32, subtile: int = 4, dtype: type = bfloat16
 ) -> ExternalFunction:

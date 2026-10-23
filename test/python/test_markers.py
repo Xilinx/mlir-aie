@@ -9,17 +9,15 @@
 
 import inspect
 import json
-from typing import Annotated, get_args, get_origin
+from typing import TYPE_CHECKING, Annotated, get_args, get_origin
 
+import numpy as np
 import pytest
-from aie.utils.compile.jit._introspect import (
-    _dispatch_param_type,
-    _is_compile_param,
-    _is_dispatch_param,
-    _is_tensor_param,
-    split_params,
-)
+from aie.utils.compile.jit._introspect import declare
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # ---------------------------------------------------------------------------
 # CompileTime[T] — Annotated[T, ...] parameterisation
@@ -48,8 +46,8 @@ def test_compile_type_arg_preserved():
 
 def test_bare_compile_has_annotated_origin():
     # Unlike a bespoke Generic[T], a bare (unsubscripted) Annotated[T, ...]
-    # alias already carries an Annotated origin -- this is why
-    # _is_compile_param(CompileTime) below is still True.
+    # alias already carries an Annotated origin -- this is why a bare
+    # CompileTime below still declares a parameter.
     assert get_origin(CompileTime) is Annotated
 
 
@@ -76,173 +74,59 @@ def test_dispatch_is_not_compile():
     assert DispatchTime[int] != CompileTime[int]
 
 
+def declared_as(annotation) -> str:
+    """What ``declare`` makes of one parameter annotated ``annotation``."""
+
+    def generator(x):
+        pass
+
+    if annotation is not inspect.Parameter.empty:
+        generator.__annotations__ = {"x": annotation}
+    d = declare(generator)
+    if "x" in d.params:
+        return "compile"
+    if [m.name for m in d.operands] == ["x"]:
+        return "tensor"
+    if [m.name for m in d.per_calls] == ["x"]:
+        return f"dispatch {d.per_calls[0].dtype!r}"
+    assert d.scalars == ("x",)
+    return "scalar"
+
+
 @pytest.mark.parametrize(
-    "annotation,predicate",
-    [(CompileTime[int], _is_compile_param), (DispatchTime[int], _is_dispatch_param)],
+    "annotation, kind",
+    [
+        (CompileTime[int], "compile"),
+        (CompileTime[str], "compile"),
+        (CompileTime, "compile"),
+        (In, "tensor"),
+        (Out, "tensor"),
+        (InOut, "tensor"),
+        (DispatchTime[int], f"dispatch {int!r}"),
+        (DispatchTime[np.int32], f"dispatch {np.int32!r}"),
+        (int, "scalar"),
+        (float, "scalar"),
+        (str, "scalar"),
+        (None, "scalar"),
+        (inspect.Parameter.empty, "scalar"),
+    ],
 )
-def test_parameter_metadata_uses_value_not_identity(annotation, predicate):
+def test_declare_sorts_a_parameter_by_its_annotation(annotation, kind):
+    assert declared_as(annotation) == kind
+
+
+def test_a_bare_dispatch_marker_declares_a_per_call_value():
+    assert declared_as(DispatchTime).startswith("dispatch ")
+
+
+@pytest.mark.parametrize(
+    "annotation, kind",
+    [(CompileTime[int], "compile"), (DispatchTime[int], f"dispatch {int!r}")],
+)
+def test_parameter_metadata_uses_value_not_identity(annotation, kind):
     metadata = json.loads(json.dumps(get_args(annotation)[1]))
-    assert predicate(Annotated[int, metadata])
+    assert declared_as(Annotated[int, metadata]) == kind
     assert "0x" not in repr(annotation)
-
-
-# ---------------------------------------------------------------------------
-# _is_compile_param
-# ---------------------------------------------------------------------------
-
-
-def test_is_compile_param_with_int():
-    assert _is_compile_param(CompileTime[int]) is True
-
-
-def test_is_compile_param_with_str():
-    assert _is_compile_param(CompileTime[str]) is True
-
-
-def test_is_compile_param_bare():
-    assert _is_compile_param(CompileTime) is True
-
-
-def test_is_compile_param_rejects_in():
-    assert _is_compile_param(In) is False
-
-
-def test_is_compile_param_rejects_out():
-    assert _is_compile_param(Out) is False
-
-
-def test_is_compile_param_rejects_inout():
-    assert _is_compile_param(InOut) is False
-
-
-def test_is_compile_param_rejects_dispatch():
-    assert _is_compile_param(DispatchTime[int]) is False
-    assert _is_compile_param(DispatchTime) is False
-
-
-def test_is_compile_param_rejects_builtin_types():
-    assert _is_compile_param(int) is False
-    assert _is_compile_param(float) is False
-    assert _is_compile_param(str) is False
-
-
-def test_is_compile_param_rejects_none():
-    assert _is_compile_param(None) is False
-
-
-def test_is_compile_param_rejects_empty():
-    assert _is_compile_param(inspect.Parameter.empty) is False
-
-
-# ---------------------------------------------------------------------------
-# _is_dispatch_param
-# ---------------------------------------------------------------------------
-
-
-def test_is_dispatch_param_with_int():
-    assert _is_dispatch_param(DispatchTime[int]) is True
-
-
-def test_is_dispatch_param_with_str():
-    assert _is_dispatch_param(DispatchTime[str]) is True
-
-
-def test_is_dispatch_param_bare():
-    assert _is_dispatch_param(DispatchTime) is True
-
-
-def test_is_dispatch_param_rejects_in():
-    assert _is_dispatch_param(In) is False
-
-
-def test_is_dispatch_param_rejects_out():
-    assert _is_dispatch_param(Out) is False
-
-
-def test_is_dispatch_param_rejects_inout():
-    assert _is_dispatch_param(InOut) is False
-
-
-def test_is_dispatch_param_rejects_compile():
-    assert _is_dispatch_param(CompileTime[int]) is False
-    assert _is_dispatch_param(CompileTime) is False
-
-
-def test_is_dispatch_param_rejects_builtin_types():
-    assert _is_dispatch_param(int) is False
-    assert _is_dispatch_param(float) is False
-    assert _is_dispatch_param(str) is False
-
-
-def test_is_dispatch_param_rejects_none():
-    assert _is_dispatch_param(None) is False
-
-
-def test_is_dispatch_param_rejects_empty():
-    assert _is_dispatch_param(inspect.Parameter.empty) is False
-
-
-# ---------------------------------------------------------------------------
-# _dispatch_param_type
-# ---------------------------------------------------------------------------
-
-
-def test_dispatch_param_type_extracts_int():
-    assert _dispatch_param_type(DispatchTime[int]) is int
-
-
-def test_dispatch_param_type_extracts_numpy_dtype():
-    import numpy as np
-
-    assert _dispatch_param_type(DispatchTime[np.int32]) is np.int32
-
-
-def test_dispatch_param_type_none_for_non_dispatch():
-    assert _dispatch_param_type(CompileTime[int]) is None
-    assert _dispatch_param_type(In) is None
-    assert _dispatch_param_type(int) is None
-    assert _dispatch_param_type(None) is None
-
-
-# ---------------------------------------------------------------------------
-# _is_tensor_param
-# ---------------------------------------------------------------------------
-
-
-def test_is_tensor_param_in():
-    assert _is_tensor_param(In) is True
-
-
-def test_is_tensor_param_out():
-    assert _is_tensor_param(Out) is True
-
-
-def test_is_tensor_param_inout():
-    assert _is_tensor_param(InOut) is True
-
-
-def test_is_tensor_param_rejects_compile():
-    assert _is_tensor_param(CompileTime[int]) is False
-    assert _is_tensor_param(CompileTime) is False
-
-
-def test_is_tensor_param_rejects_dispatch():
-    assert _is_tensor_param(DispatchTime[int]) is False
-    assert _is_tensor_param(DispatchTime) is False
-
-
-def test_is_tensor_param_rejects_scalars():
-    assert _is_tensor_param(int) is False
-    assert _is_tensor_param(float) is False
-    assert _is_tensor_param(str) is False
-
-
-def test_is_tensor_param_rejects_none():
-    assert _is_tensor_param(None) is False
-
-
-def test_is_tensor_param_rejects_empty():
-    assert _is_tensor_param(inspect.Parameter.empty) is False
 
 
 # ---------------------------------------------------------------------------
@@ -269,175 +153,131 @@ def test_tensor_markers_are_not_dispatch():
 
 
 # ---------------------------------------------------------------------------
-# split_params — comprehensive signature introspection
+# declare() — a generator's parameters by kind, in signature order
 # ---------------------------------------------------------------------------
 
 
-def test_split_params_all_compile():
-    def f(*, M: CompileTime[int], K: CompileTime[int]):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["M", "K"]
-    assert tensor_params == []
-    assert dispatch_params == []
-    assert scalar_params == []
+def _compile_only(*, M: CompileTime[int], K: CompileTime[int]):
+    pass
 
 
-def test_split_params_all_tensor():
-    def f(a: In, b: Out, c: InOut):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == ["a", "b", "c"]
-    assert dispatch_params == []
-    assert scalar_params == []
+def _tensors_only(a: In, b: Out, c: InOut):
+    pass
 
 
-def test_split_params_all_dispatch():
-    def f(x: DispatchTime[int], y: DispatchTime[float]):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == []
-    assert dispatch_params == ["x", "y"]
-    assert scalar_params == []
+def _dispatch_only(x: DispatchTime[int], y: DispatchTime[float]):
+    pass
 
 
-def test_split_params_all_scalar_annotated():
-    def f(x: int, y: float, z: str):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == []
-    assert dispatch_params == []
-    assert scalar_params == ["x", "y", "z"]
+def _scalars_annotated(x: int, y: float, z: str):
+    pass
 
 
-def test_split_params_all_unannotated():
-    def f(x, y, z):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == []
-    assert dispatch_params == []
-    assert scalar_params == ["x", "y", "z"]
+def _scalars_unannotated(x, y, z):
+    pass
 
 
-def test_split_params_no_params():
-    def f():
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == []
-    assert tensor_params == []
-    assert dispatch_params == []
-    assert scalar_params == []
+def _no_params():
+    pass
 
 
-def test_split_params_mixed_all_three():
-    def f(a: In, b: Out, alpha: float, *, M: CompileTime[int], N: CompileTime[int]):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["M", "N"]
-    assert tensor_params == ["a", "b"]
-    assert dispatch_params == []
-    assert scalar_params == ["alpha"]
+def _three_kinds(
+    a: In, b: Out, alpha: float, *, M: CompileTime[int], N: CompileTime[int]
+):
+    pass
 
 
-def test_split_params_mixed_all_four():
-    def f(
-        a: In,
-        b: Out,
-        scale: DispatchTime[int],
-        alpha: float,
-        *,
-        M: CompileTime[int],
-        N: CompileTime[int],
-    ):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["M", "N"]
-    assert tensor_params == ["a", "b"]
-    assert dispatch_params == ["scale"]
-    assert scalar_params == ["alpha"]
+def _four_kinds(
+    a: In,
+    b: Out,
+    scale: DispatchTime[int],
+    alpha: float,
+    *,
+    M: CompileTime[int],
+    N: CompileTime[int],
+):
+    pass
 
 
-def test_split_params_inout_goes_in_tensor():
-    def f(x: InOut, *, M: CompileTime[int]):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert tensor_params == ["x"]
-    assert compile_params == ["M"]
-    assert dispatch_params == []
+def _tensors_out_of_order(c: Out, a: In, b: InOut):
+    pass
 
 
-def test_split_params_preserves_declaration_order_for_tensors():
-    """Tensor params must come out in the same order as the function signature."""
-
-    def f(c: Out, a: In, b: InOut):
-        pass
-
-    _, tensor_params, _, _ = split_params(f)
-    assert tensor_params == ["c", "a", "b"]
+def _compile_out_of_order(
+    *, N: CompileTime[int], M: CompileTime[int], K: CompileTime[int]
+):
+    pass
 
 
-def test_split_params_preserves_declaration_order_for_compile():
-    def f(*, N: CompileTime[int], M: CompileTime[int], K: CompileTime[int]):
-        pass
-
-    compile_params, _, _, _ = split_params(f)
-    assert compile_params == ["N", "M", "K"]
+def _dispatch_out_of_order(
+    z: DispatchTime[int], y: DispatchTime[int], x: DispatchTime[int]
+):
+    pass
 
 
-def test_split_params_preserves_declaration_order_for_dispatch():
-    def f(z: DispatchTime[int], y: DispatchTime[int], x: DispatchTime[int]):
-        pass
-
-    _, _, dispatch_params, _ = split_params(f)
-    assert dispatch_params == ["z", "y", "x"]
+def _compile_with_default(
+    a: In, *, M: CompileTime[int], dtype: CompileTime[type] = np.float32
+):
+    pass
 
 
-def test_split_params_compile_with_default():
-    """Parameters with defaults are still categorised correctly."""
-    import numpy as np
-
-    def f(a: In, *, M: CompileTime[int], dtype: CompileTime[type] = np.float32):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["M", "dtype"]
-    assert tensor_params == ["a"]
-    assert dispatch_params == []
-    assert scalar_params == []
+def _scalar_with_default(a: In, alpha: float = 1.0, *, N: CompileTime[int] = 512):
+    pass
 
 
-def test_split_params_scalar_with_default():
-    def f(a: In, alpha: float = 1.0, *, N: CompileTime[int] = 512):
-        pass
-
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["N"]
-    assert tensor_params == ["a"]
-    assert dispatch_params == []
-    assert scalar_params == ["alpha"]
+# DispatchTime[T] params are exempt from Guard 1-C's default-value ban.
+def _dispatch_with_default(
+    a: In, scale: DispatchTime[int] = 1, *, N: CompileTime[int] = 512
+):
+    pass
 
 
-def test_split_params_dispatch_with_default():
-    """DispatchTime[T] params are exempt from Guard 1-C's default-value ban."""
+@pytest.mark.parametrize(
+    "generator, compile_params, tensors, dispatch, scalars",
+    [
+        (_compile_only, ["M", "K"], [], [], []),
+        (_tensors_only, [], ["a", "b", "c"], [], []),
+        (_dispatch_only, [], [], ["x", "y"], []),
+        (_scalars_annotated, [], [], [], ["x", "y", "z"]),
+        (_scalars_unannotated, [], [], [], ["x", "y", "z"]),
+        (_no_params, [], [], [], []),
+        (_three_kinds, ["M", "N"], ["a", "b"], [], ["alpha"]),
+        (_four_kinds, ["M", "N"], ["a", "b"], ["scale"], ["alpha"]),
+        (_tensors_out_of_order, [], ["c", "a", "b"], [], []),
+        (_compile_out_of_order, ["N", "M", "K"], [], [], []),
+        (_dispatch_out_of_order, [], [], ["z", "y", "x"], []),
+        (_compile_with_default, ["M", "dtype"], ["a"], [], []),
+        (_scalar_with_default, ["N"], ["a"], [], ["alpha"]),
+        (_dispatch_with_default, ["N"], ["a"], ["scale"], []),
+    ],
+)
+def test_declare_sorts_a_generators_parameters(
+    generator, compile_params, tensors, dispatch, scalars
+):
+    d = declare(generator)
+    assert list(d.params) == compile_params
+    assert [m.name for m in d.operands] == tensors
+    assert [m.name for m in d.per_calls] == dispatch
+    assert list(d.scalars) == scalars
 
-    def f(a: In, scale: DispatchTime[int] = 1, *, N: CompileTime[int] = 512):
-        pass
 
-    compile_params, tensor_params, dispatch_params, scalar_params = split_params(f)
-    assert compile_params == ["N"]
-    assert tensor_params == ["a"]
-    assert dispatch_params == ["scale"]
-    assert scalar_params == []
+def _checker_only_scalar(
+    a: "In", b: "Out", *, M: "CompileTime[int]", cfg: "Sequence[int] | None" = None
+):
+    pass
+
+
+def _checker_only_marker(a: "In", *, M: "CompileTime[Sequence[int]]"):
+    pass
+
+
+def test_declare_keeps_markers_beside_a_checker_only_annotation():
+    d = declare(_checker_only_scalar)
+    assert list(d.params) == ["M"]
+    assert [m.name for m in d.operands] == ["a", "b"]
+    assert list(d.scalars) == ["cfg"]
+
+
+def test_declare_names_the_parameter_whose_marker_does_not_resolve():
+    with pytest.raises(TypeError, match="Parameter 'M'.*CompileTime\\[Sequence"):
+        declare(_checker_only_marker)

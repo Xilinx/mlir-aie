@@ -109,18 +109,23 @@ def test_sample_count_matches_iters():
     assert len(r.e2e.samples_us) == 4
 
 
-def test_npu_stats_are_none_without_npu_time():
-    assert run_iters(lambda: None, iters=2).npu is None
+def test_a_callable_without_a_kernel_result_is_timed_end_to_end_only():
+    r = run_iters(lambda: None, iters=2)
+    assert (r.dispatch, r.dispatch_overhead, r.npu) == (None, None, None)
 
 
-def test_npu_time_is_extracted_from_a_kernel_result_tuple():
-    class KernelResult:
-        npu_time = 1500  # ns
+def test_the_dispatch_is_a_kernel_results_npu_time():
+    pyxrt = pytest.importorskip("pyxrt")
+    # Imported here: it needs pyxrt, an optional dependency.
+    from aie.utils.hostruntime.xrtruntime.hostruntime import XRTKernelResult
 
-    r = run_iters(lambda: ("handle", KernelResult()), iters=3)
-    assert r.npu is not None
-    assert r.npu.median_us == 1.5  # 1500 ns → 1.5 us
-    assert r.npu.n == 3
+    done = pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED
+    r = run_iters(lambda: (None, XRTKernelResult(done, 1500)), iters=3)
+    assert r.dispatch is not None
+    assert r.dispatch.median_us == 1.5  # 1500 ns → 1.5 us
+    assert r.dispatch.n == 3
+    # Without a handle there is no empty dispatch to subtract.
+    assert r.dispatch_overhead is None and r.npu is None
 
 
 def test_arg_sets_rotate_across_iterations():
@@ -163,22 +168,26 @@ def test_invalid_iteration_counts_rejected(iters, warmup):
 # ---------------------------------------------------------------------------
 
 
-def test_print_benchmark_keeps_the_canonical_aligned_columns(capsys):
-    # programming_examples/getting_started/00_memcpy and basic/inline_kernel
-    # hand-roll the same two lines; the column alignment must match theirs.
-    e2e = Stats.from_samples([10.0, 20.0])
-    print_benchmark(BenchmarkResult(e2e=e2e, npu=Stats.from_samples([1.0, 2.0])))
-    out = capsys.readouterr().out
-    assert "NPU time     (avg/min/max us): " in out
-    assert "End-to-end   (avg/min/max us): " in out
+def test_print_benchmark_prints_each_timing_it_holds_in_aligned_columns(capsys):
+    one, two = Stats.from_samples([1.0, 2.0]), Stats.from_samples([10.0, 20.0])
+    print_benchmark(
+        BenchmarkResult(e2e=two, dispatch=two, dispatch_overhead=one, npu=one)
+    )
+    lines = capsys.readouterr().out.splitlines()
+    assert [line[:36] for line in lines] == [
+        "Dispatch          (avg/min/max us): ",
+        "Dispatch overhead (avg/min/max us): ",
+        "NPU               (avg/min/max us): ",
+        "End-to-end        (avg/min/max us): ",
+    ]
     # Robust stats are appended, not substituted for the canonical trio.
-    assert "median" in out and "MAD" in out and "p95" in out
+    assert all("median" in line and "MAD" in line and "p95" in line for line in lines)
 
 
-def test_print_benchmark_omits_the_npu_line_without_npu_time(capsys):
-    print_benchmark(BenchmarkResult(e2e=Stats.from_samples([1.0]), npu=None))
+def test_print_benchmark_omits_the_timings_it_does_not_hold(capsys):
+    print_benchmark(BenchmarkResult(e2e=Stats.from_samples([1.0])))
     out = capsys.readouterr().out
-    assert "NPU time" not in out
+    assert "Dispatch" not in out and "NPU" not in out
     assert "End-to-end" in out
 
 

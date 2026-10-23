@@ -19,10 +19,12 @@ from ..dialects.aie import (
 from ..dialects.aiex import (
     LockAction,  # pyright: ignore[reportAttributeAccessIssue]
     set_lock_value,
+    wait_scratchpad_parameters,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..helpers.dialects.scf import _for as range_
 from ..helpers.dialects.scf import forever_
 from ..helpers.sourceloc import SourceSite, traced_body
+from ..helpers.taplib import Affine
 from ..helpers.util import flatten_fn_args
 from ..utils.compile.jit.markers import _DispatchParameter
 from .buffer import Buffer
@@ -53,6 +55,7 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         trace: int | None = None,
         trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
+        wait_for_parameters: bool = False,
     ):
         """Construct a Worker.
 
@@ -80,9 +83,17 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
                 global ``--dynamic-objFifos`` flag. Note: the per-core attribute is only
                 honored when the global flag is ``false``; when global is ``true`` the
                 attribute is ignored. Defaults to None.
+            wait_for_parameters (bool, optional): If true, each iteration of the
+                Worker's loop first waits for the current dispatch's
+                ScratchpadParameter values (``aiex.wait_scratchpad_parameters``),
+                so the reads in ``core_fn`` see this dispatch's values. Set it when
+                one iteration of a ``while_true`` Worker is one dispatch; without
+                it the Worker waits only once, before its first iteration.
+                Requires a ScratchpadParameter in ``fn_args``. Defaults to False.
 
         Raises:
             ValueError: Parameters are validated.
+            TypeError: An argument is computed per call.
         """
         self._site = SourceSite.capture()
         for arg in flatten_fn_args(
@@ -98,7 +109,12 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
             ]
         ):
             if isinstance(arg, _DispatchParameter):
-                arg._misuse()
+                arg.refuse()
+            if isinstance(arg, Affine):
+                raise TypeError(
+                    f"A Worker cannot take {arg}, which is computed per call; use "
+                    "CompileTime or specialize"
+                )
         if tile is None:
             tile = AnyComputeTile
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
@@ -138,6 +154,15 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         self.stack_size = stack_size
         self.data_size = data_size
         self._dynamic_objfifo_lowering = dynamic_objfifo_lowering
+        if wait_for_parameters and not any(
+            isinstance(arg, ScratchpadParameter)
+            for arg in flatten_fn_args(fn_args or [])
+        ):
+            raise ValueError(
+                "Worker(wait_for_parameters=True) needs a ScratchpadParameter "
+                "in fn_args: there are no parameters to wait for."
+            )
+        self._wait_for_parameters = wait_for_parameters
         self.trace = trace
         self.trace_events = trace_events
 
@@ -323,6 +348,8 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
                 for setup in self._setup_kernels:
                     setup()
                 for _ in forever_() if self._while_true else range_(1):
+                    if self._wait_for_parameters:
+                        wait_scratchpad_parameters()
                     with traced_body(self.core_fn):
                         self.core_fn(*self.fn_args)
 

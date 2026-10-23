@@ -12,17 +12,20 @@ numbers are numpy's.
 
 ``run_iters`` times one callable; ``run_interleaved`` times several against
 each other, round by round, so a drift in the host or the NPU lands on all of
-them alike.
+them alike. ``wait_idle`` holds a measurement until no other process uses the
+NPU.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Hashable, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
@@ -34,6 +37,8 @@ from typing import Callable
 
 import numpy as np
 from aie.utils import config
+from aie.utils.hostruntime.hostruntime import KernelHandle, KernelResult
+from aie.utils.probe import xrt_smi_path
 
 
 @dataclass
@@ -94,24 +99,41 @@ class Stats:
 
 @dataclass
 class BenchmarkResult:
+    """One callable's timings, every one on the host's clock.
+
+    Attributes:
+        e2e: The whole Python call.
+        dispatch: Submit to completion of the call's dispatch, or None for a
+            callable that returns no ``KernelResult``.
+        dispatch_overhead: Submit to completion of a dispatch that does
+            nothing, on the same hardware context, one after each timed call;
+            or None where the runtime has no empty dispatch for the kernel
+            (``KernelHandle.empty_dispatch_ns``), as for an ELF module, or a
+            full ELF without aiecc's empty sequence.
+        npu: Each dispatch less the overhead's median: the time the NPU
+            spent on the call's work. None without both.
+    """
+
     e2e: Stats
-    npu: Stats | None  # None when the callable does not expose NPU time
+    dispatch: Stats | None = None
+    dispatch_overhead: Stats | None = None
+    npu: Stats | None = None
 
 
 def _stats(samples_us: list[float]) -> Stats:
     return Stats.from_samples(samples_us)
 
 
-def _extract_npu_time_ns(ret) -> int | None:
-    """Pull npu_time (ns) from a kernel callable's return value.
+def _kernel_call(ret) -> tuple[KernelHandle | None, KernelResult | None]:
+    """Split a kernel callable's return value into its handle and result.
 
-    Supports the ``(handle, KernelResult)`` tuple returned by
-    ``HostRuntime.load_and_run`` (and therefore by ``NPUKernel.__call__`` and
-    ``@iron.jit`` callables). Returns ``None`` if the shape doesn't match,
-    so the helper degrades to e2e-only timing for non-kernel callables.
+    ``HostRuntime.load_and_run``, and so ``NPUKernel.__call__`` and an
+    ``@iron.jit`` callable, return ``(handle, KernelResult)``; anything else
+    is a callable timed end to end only.
     """
-    candidate = ret[1] if isinstance(ret, tuple) and len(ret) >= 2 else ret
-    return getattr(candidate, "npu_time", None)
+    if isinstance(ret, tuple) and len(ret) == 2 and isinstance(ret[1], KernelResult):
+        return (ret[0] if isinstance(ret[0], KernelHandle) else None), ret[1]
+    return None, (ret if isinstance(ret, KernelResult) else None)
 
 
 def run_iters(
@@ -125,9 +147,10 @@ def run_iters(
     """Invoke ``fn`` ``warmup + iters`` times, reporting timings.
 
     End-to-end latency is measured around the Python call. If the return
-    value carries an ``npu_time`` (nanoseconds, captured by the runtime
-    around ``kernel.wait()``), it is reported separately so callers can see
-    the host-side overhead delta.
+    value carries a ``KernelResult``, its ``npu_time`` (the runtime's host
+    clock from submit to completion) is the call's dispatch time; with the
+    kernel's handle, an empty dispatch after each timed call measures the
+    overhead every dispatch carries, and the NPU's time is the difference.
 
     ``arg_sets``: an optional list of positional-argument tuples to
     rotate through, one per iteration, so consecutive runs do not hit the
@@ -145,7 +168,8 @@ def run_iters(
     rotation = arg_sets if arg_sets is not None else [args]
 
     e2e_samples: list[float] = []
-    npu_samples: list[float] = []
+    dispatch_samples: list[float] = []
+    overhead_samples: list[float] = []
     for i in range(warmup + iters):
         call_args = rotation[i % len(rotation)]
         start = time.perf_counter()
@@ -154,13 +178,23 @@ def run_iters(
         if i < warmup:
             continue
         e2e_samples.append(e2e_us)
-        npu_ns = _extract_npu_time_ns(ret)
-        if npu_ns is not None:
-            npu_samples.append(npu_ns / 1_000.0)
+        handle, result = _kernel_call(ret)
+        if result is not None:
+            dispatch_samples.append(result.npu_time / 1_000.0)
+        if handle is not None and (empty_ns := handle.empty_dispatch_ns()) is not None:
+            overhead_samples.append(empty_ns / 1_000.0)
 
+    dispatch = _stats(dispatch_samples) if dispatch_samples else None
+    overhead = _stats(overhead_samples) if overhead_samples else None
     return BenchmarkResult(
         e2e=_stats(e2e_samples),
-        npu=_stats(npu_samples) if npu_samples else None,
+        dispatch=dispatch,
+        dispatch_overhead=overhead,
+        npu=(
+            _stats([d - overhead.median_us for d in dispatch_samples])
+            if dispatch is not None and overhead is not None
+            else None
+        ),
     )
 
 
@@ -182,6 +216,93 @@ def cpu_wait_us() -> float | None:
         return int(Path("/proc/thread-self/schedstat").read_text().split()[1]) / 1e3
     except OSError:
         return None
+
+
+def other_npu_users(holding: bool = False) -> set[int]:
+    """Return the pids of the other processes holding a context on the NPU.
+
+    Read from ``xrt-smi examine -r aie-partitions``, which reports pids in the
+    host's namespace. On the host this process finds its own pid there; in a
+    container it cannot, and none of the reported pids is a process it sees.
+    That test reads ``/proc``, so it assumes ``/proc`` is not mounted with
+    ``hidepid``, which would hide other users' processes on the host too.
+
+    amdxdna reports only this user's contexts unless the caller has
+    CAP_SYS_ADMIN (the uapi's ``DRM_AMDXDNA_HW_CONTEXT_ALL`` query), so
+    another Linux user's job on the NPU is not seen.
+
+    Args:
+        holding: Whether this process holds a context. In a container, a lone
+            reported pid is then taken to be its own; several are all
+            returned.
+
+    Returns:
+        The other holders' pids, in the host's namespace.
+
+    Raises:
+        NotImplementedError: The host is not Linux; the test above needs
+            ``/proc``.
+        FileNotFoundError: This host has no ``xrt-smi``.
+        subprocess.CalledProcessError: ``xrt-smi`` failed.
+    """
+    if sys.platform != "linux":
+        raise NotImplementedError("NPU users are found through /proc, on Linux.")
+    with tempfile.TemporaryDirectory() as d:
+        report = Path(d) / "partitions.json"
+        subprocess.run(
+            [xrt_smi_path() or "xrt-smi", "examine", "-r", "aie-partitions"]
+            + ["-f", "JSON", "-o", str(report)],
+            capture_output=True,
+            check=True,
+        )
+        devices = json.loads(report.read_text())["devices"]
+    pids = {
+        int(context["pid"])
+        for device in devices
+        for partition in device["aie_partitions"].get("partitions", [])
+        for context in partition.get("hw_contexts", [])
+    }
+    if os.getpid() in pids:
+        return pids - {os.getpid()}
+    namespaced = not any(Path(f"/proc/{pid}").exists() for pid in pids)
+    if holding and namespaced and len(pids) == 1:
+        return set()
+    return pids
+
+
+# Seconds between looks at an NPU another process holds, and the most waited.
+IDLE_POLL = 5.0
+IDLE_WAIT = 1800.0
+
+
+def wait_idle(log: Callable[[str], None] = print, holding: bool = False) -> None:
+    """Return once no other process holds a context on the NPU (``other_npu_users``).
+
+    Args:
+        log: Where the wait is reported.
+        holding: Whether this process holds a context, as ``other_npu_users``
+            takes it.
+
+    Raises:
+        TimeoutError: Another has held one for ``IDLE_WAIT`` seconds. Two
+            processes measuring at once would each wait for the other.
+        NotImplementedError: The host is not Linux.
+        FileNotFoundError: This host has no ``xrt-smi``.
+        subprocess.CalledProcessError: ``xrt-smi`` failed.
+    """
+    held, told = other_npu_users(holding), set()
+    start = time.monotonic()
+    while held:
+        if held != told:
+            log(f"the NPU is in use by pid {sorted(held)}: waiting")
+            told = held
+        if time.monotonic() - start > IDLE_WAIT:
+            raise TimeoutError(
+                f"pid {sorted(held)} has held the NPU for {IDLE_WAIT:.0f} s; "
+                "measure once it is idle"
+            )
+        time.sleep(IDLE_POLL)
+        held = other_npu_users(holding)
 
 
 class CompletionCores(AbstractContextManager):
@@ -279,6 +400,8 @@ def run_interleaved(
     fastest_us: float = math.inf,
     completion_cores: bool = False,
     max_cpu_wait_us: float = CPU_WAIT_US,
+    idle: bool = False,
+    log: Callable[[str], None] = print,
 ) -> list[Stats]:
     """Time callables against each other in interleaved rounds.
 
@@ -307,11 +430,21 @@ def run_interleaved(
         max_cpu_wait_us: The most a callable's median call may wait for a CPU
             in its median round before the figures are refused; ``math.inf``
             accepts figures from a busy host.
+        idle: Time only while no other process holds the NPU: wait for it to
+            be idle first (`wait_idle`), and time a round again if another
+            holds it when the round ends. A use that starts and ends within
+            one round goes unseen, and one held but idle context stops the
+            measurement with `wait_idle`'s ``TimeoutError``. Only this
+            user's processes are seen, as `other_npu_users` says.
+        log: Where `idle` reports waiting or timing a round again.
 
     Returns:
         list[Stats]: Per callable, the statistics of its per-round medians.
 
     Raises:
+        TimeoutError: With `idle`, another process held the NPU for
+            ``IDLE_WAIT`` seconds, or used it during more than ``3 * rounds``
+            rounds; the message names its pids.
         RuntimeError: A callable's median call waited for a CPU past
             `max_cpu_wait_us` (`cpu_wait_us`) in its median round: the host was
             busy enough to hold the timing thread off its core, so the
@@ -331,8 +464,12 @@ def run_interleaved(
     medians: list[list[float]] = [[] for _ in fns]
     waited: list[list[float]] = [[] for _ in fns]
     live = set(range(len(fns)))
+    if idle:
+        wait_idle(log, holding=True)
+    r = retries = 0
     with CompletionCores(before) if completion_cores else nullcontext():
-        for r in range(1, rounds + 1):
+        while r < rounds:
+            timed = {}
             for i in sorted(live):
                 times, waits = [], []
                 for _ in range(calls):
@@ -343,10 +480,30 @@ def run_interleaved(
                     waited_after = cpu_wait_us()
                     if wait is not None and waited_after is not None:
                         waits.append(waited_after - wait)
-                    npu_ns = _extract_npu_time_ns(ret)
-                    times.append(elapsed_us if npu_ns is None else npu_ns / 1e3)
-                medians[i].append(float(np.median(times)))
-                waited[i].append(float(np.median(waits)) if waits else 0.0)
+                    _, result = _kernel_call(ret)
+                    times.append(
+                        elapsed_us if result is None else result.npu_time / 1e3
+                    )
+                timed[i] = (
+                    float(np.median(times)),
+                    float(np.median(waits)) if waits else 0.0,
+                )
+            if idle and (held := other_npu_users(holding=True)):
+                retries += 1
+                if retries > rounds * 3:
+                    raise TimeoutError(
+                        f"pid {sorted(held)} used the NPU during {retries} rounds; "
+                        "time with the NPU otherwise idle"
+                    )
+                log(
+                    f"    pid {sorted(held)} used the NPU during a round: timing it again"
+                )
+                wait_idle(log, holding=True)
+                continue
+            for i, (us, wait) in timed.items():
+                medians[i].append(us)
+                waited[i].append(wait)
+            r += 1
             if groups is None or r < settle:
                 continue
             slowest: dict[Hashable | None, float] = {}
@@ -365,18 +522,18 @@ def run_interleaved(
 
 
 def print_benchmark(result: BenchmarkResult) -> None:
-    """Print a BenchmarkResult in the canonical 'avg/min/max us' format."""
-    if result.npu is not None:
-        s = result.npu
-        print(
-            f"NPU time     (avg/min/max us): {s.avg_us:.1f} / {s.min_us:.1f} / {s.max_us:.1f}"
-            f"   [median {s.median_us:.1f}, MAD {s.mad_us:.1f}, p95 {s.p95_us:.1f}]"
-        )
-    s = result.e2e
-    print(
-        f"End-to-end   (avg/min/max us): {s.avg_us:.1f} / {s.min_us:.1f} / {s.max_us:.1f}"
-        f"   [median {s.median_us:.1f}, MAD {s.mad_us:.1f}, p95 {s.p95_us:.1f}]"
-    )
+    """Print a BenchmarkResult, one 'avg/min/max us' line per timing it holds."""
+    for label, s in (
+        ("Dispatch", result.dispatch),
+        ("Dispatch overhead", result.dispatch_overhead),
+        ("NPU", result.npu),
+        ("End-to-end", result.e2e),
+    ):
+        if s is not None:
+            print(
+                f"{label:<18}(avg/min/max us): {s.avg_us:.1f} / {s.min_us:.1f} / {s.max_us:.1f}"
+                f"   [median {s.median_us:.1f}, MAD {s.mad_us:.1f}, p95 {s.p95_us:.1f}]"
+            )
 
 
 def peano_version() -> str | None:
@@ -432,7 +589,7 @@ def provenance(**extra: str | None) -> str:
     (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),
     the selected runtime's provenance, the runner the job ran
     on (``RUNNER_NAME``, under GitHub Actions: nightly runs move between
-    hosts of a generation, and a host swap moves ``npu_us`` as a regression
+    hosts of a generation, and a host swap moves ``dispatch_us`` as a regression
     would), and any ``extra`` fields (``device="NPU Strix"``,
     ``pmode="performance"``) as ``key value`` pairs. A benchmark row records
     it so a number can be traced to a toolchain, the kernel sources and

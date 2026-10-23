@@ -82,16 +82,17 @@ Program.compose([explicit_config, generated_config], entry=explicit_runtime)
 assert generated_config.name == "device_1"
 assert generated_runtime.name == "sequence_1"
 
-for expand_load_pdis in (None, False, True):
-    option_runtime = Runtime(lambda: None, [])
-    option_module = Program(
-        NPU2Col1(), option_runtime, expand_load_pdis=expand_load_pdis
-    ).resolve_program()
-    option_attr = option_module.operation.attributes.get("iron.expand_load_pdis")
-    if expand_load_pdis is None:
-        assert option_attr is None
-    else:
-        assert option_attr.value == expand_load_pdis
+for option in ("expand_load_pdis", "reconfig_teardown", "reconfig_init_entry"):
+    for value in (None, False, True):
+        option_runtime = Runtime(lambda: None, [])
+        option_module = Program(
+            NPU2Col1(), option_runtime, **{option: value}
+        ).resolve_program()
+        option_attr = option_module.operation.attributes.get(f"iron.{option}")
+        if value is None:
+            assert option_attr is None
+        else:
+            assert option_attr.value == value
 
 flow_a = object()
 flow_b = object()
@@ -163,12 +164,12 @@ with compile_context(_iron_full_elf=True):
     assert "aiex.npu.load_pdi" not in explicit_module
 
     def load_sequence():
-        npu_load_pdi(device_ref="target")
+        npu_load_pdi(device_ref="main")
 
     load_runtime = Runtime(load_sequence, [], name="load")
     load_module = str(Program(NPU2Col1(), load_runtime).resolve_program().operation)
     assert load_module.count("aiex.npu.load_pdi") == 1
-    assert "device_ref = @target" in load_module
+    assert "device_ref = @main" in load_module
 
     disabled_runtime = Runtime(
         empty_sequence, [], name="disabled", implicit_configure=False

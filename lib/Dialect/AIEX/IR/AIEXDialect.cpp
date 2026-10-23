@@ -24,6 +24,7 @@
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/TypeSize.h"
@@ -802,9 +803,10 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
     if (arch != AIE::AIEArch::AIE2 && arch != AIE::AIEArch::AIE2p)
       return emitOpError("repeat_parameter is only supported on AIE2 and "
                          "AIE2P devices");
-    if (!targetModel.isShimNOCTile(getColumn(), getRow()))
+    if (!targetModel.isShimNOCTile(getColumn(), getRow()) &&
+        !targetModel.isMemTile(getColumn(), getRow()))
       return emitOpError("repeat_parameter is only supported on shim NOC "
-                         "tiles, got tile (")
+                         "and mem tiles, got tile (")
              << getColumn() << ", " << getRow() << ")";
     if (getConstantInt64Operand(getRepeatCount()) != uint64_t{0})
       return emitOpError("takes its repeat count from the scratchpad, so its "
@@ -1821,17 +1823,22 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (!lockIDOpt) {
     return success();
   }
+  // A logical tile with a coordinate still unpinned waits for the
+  // post-placement re-verify for its range and address checks, as
+  // UsesAreAccessible's do.
+  std::optional<int> col = lockOp.getTileLike().tryGetCol();
+  std::optional<int> row = lockOp.getTileLike().tryGetRow();
+  if (!col || !row)
+    return success();
 
-  auto col = lockOp.colIndex();
-  auto row = lockOp.rowIndex();
   uint32_t lockID = lockOp.getLockIDValue();
 
-  if (lockID >= targetModel.getNumLocks(col, row)) {
+  if (lockID >= targetModel.getNumLocks(*col, *row)) {
     return emitOpError("Lock ID out of range for given tile. Max ID: " +
-                       std::to_string(targetModel.getNumLocks(col, row) - 1));
+                       std::to_string(targetModel.getNumLocks(*col, *row) - 1));
   }
 
-  if (!targetModel.getLocalLockAddress(lockID, lockOp.getTileID())) {
+  if (!targetModel.getLocalLockAddress(lockID, AIE::TileID{*col, *row})) {
     return emitOpError("Invalid lock ID and tile combination when trying to "
                        "retrieve the local lock address.");
   }
@@ -2063,6 +2070,13 @@ LogicalResult AIEX::ReadScratchpadParameterOp::verify() {
   return success();
 }
 
+LogicalResult AIEX::WaitScratchpadParametersOp::verify() {
+  if (!(*this)->getParentOfType<AIE::CoreOp>()) {
+    return emitOpError("must be inside an aie.core");
+  }
+  return success();
+}
+
 LogicalResult AIEX::ConfigureOp::verify() {
   AIE::DeviceOp parentDev = getOperation()->getParentOfType<AIE::DeviceOp>();
   AIE::DeviceOp referencedDev = getReferencedDeviceOp();
@@ -2092,7 +2106,8 @@ AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
   return referencedDevice;
 }
 
-AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
+AIE::RuntimeSequenceOp
+AIEX::RunOp::getCalleeRuntimeSequenceOp(AIE::NamedOpTableCollection *tables) {
   AIEX::ConfigureOp configureOp =
       getOperation()->getParentOfType<AIEX::ConfigureOp>();
   if (!configureOp) {
@@ -2103,19 +2118,11 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
     return nullptr;
   }
 
-  Operation *maybeRuntimeSequence =
-      SymbolTable::lookupSymbolIn(referencedDevice, getRuntimeSequenceSymbol());
-
-  if (!maybeRuntimeSequence) {
-    return nullptr;
+  StringAttr name = getRuntimeSequenceSymbolAttr().getAttr();
+  if (!tables) {
+    return AIE::lookupNamedOpIn<AIE::RuntimeSequenceOp>(referencedDevice, name);
   }
-  AIE::RuntimeSequenceOp runtimeSequence =
-      llvm::dyn_cast<AIE::RuntimeSequenceOp>(maybeRuntimeSequence);
-  if (!runtimeSequence) {
-    return nullptr;
-  }
-
-  return runtimeSequence;
+  return tables->lookupIn<AIE::RuntimeSequenceOp>(referencedDevice, name);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2151,33 +2158,82 @@ LogicalResult AIEX::NpuLoadPdiOp::canonicalize(AIEX::NpuLoadPdiOp op,
 // NpuWriteConfigOp
 //===----------------------------------------------------------------------===//
 
-static AIEX::NpuLoadPdiOp precedingLoadPdi(Operation *op) {
+static bool writesConfig(Operation *op) {
+  return isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
+             AIEX::NpuWriteTeardownOp>(op);
+}
+
+// Visits the load_pdi, write_config and write_teardown ops before `op` in its
+// block, nearest first, then those after it from the block's end, as the host
+// runs the sequence again on each dispatch, then `op` itself. Returns the first
+// for which `visit` returns true.
+static Operation *findConfigOpBefore(Operation *op,
+                                     function_ref<bool(Operation *)> visit) {
   for (Operation *prev = op->getPrevNode(); prev; prev = prev->getPrevNode())
-    if (auto load = dyn_cast<AIEX::NpuLoadPdiOp>(prev))
-      return load;
-  return {};
+    if (writesConfig(prev) && visit(prev))
+      return prev;
+  for (Operation &next : llvm::reverse(*op->getBlock())) {
+    if (&next == op)
+      break;
+    if (writesConfig(&next) && visit(&next))
+      return &next;
+  }
+  return visit(op) ? op : nullptr;
+}
+
+// The load_pdi that resets the array for `op`, or the write_teardown that
+// leaves it so, or null.
+static Operation *precedingReset(Operation *op) {
+  return findConfigOpBefore(op, [&](Operation *prev) {
+    return prev != op &&
+           isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteTeardownOp>(prev);
+  });
+}
+
+static bool loadsSamePdi(AIEX::NpuLoadPdiOp a, AIEX::NpuLoadPdiOp b) {
+  return a.getDeviceRefAttr() == b.getDeviceRefAttr() &&
+         a.getId() == b.getId() && a.getSize() == b.getSize() &&
+         a.getAddress() == b.getAddress();
 }
 
 LogicalResult AIEX::NpuWriteConfigOp::verify() {
-  AIEX::NpuLoadPdiOp reset = precedingLoadPdi(*this);
-  if (!reset)
+  Operation *found = precedingReset(*this);
+  if (!found)
     return emitOpError("must follow the load_pdi that resets the array");
-  // The load the firmware ran before the reset; ahead of the sequence's first,
-  // that is its last, as the host runs the sequence again on each dispatch.
-  AIEX::NpuLoadPdiOp before = precedingLoadPdi(reset);
-  if (!before)
-    for (Operation &op : llvm::reverse(*reset->getBlock()))
-      if ((before = dyn_cast<AIEX::NpuLoadPdiOp>(op)))
-        break;
-  if (before.getDeviceRefAttr() == reset.getDeviceRefAttr() &&
-      before.getId() == reset.getId() && before.getSize() == reset.getSize() &&
-      before.getAddress() == reset.getAddress()) {
-    InFlightDiagnostic diag = emitOpError(
-        "follows a load_pdi the firmware skips, as it loads the PDI loaded "
-        "just before it, so the array is not reset");
-    diag.attachNote(before.getLoc()) << "the PDI is loaded here";
-    return diag;
-  }
+  auto reset = dyn_cast<AIEX::NpuLoadPdiOp>(found);
+  if (!reset)
+    return success();
+  // The firmware skips the load if it loaded the same PDI last. That leaves
+  // the array as a reset does only if every configuration since is torn down.
+  bool tornDown = true;
+  Operation *later = reset;
+  auto before =
+      cast<AIEX::NpuLoadPdiOp>(findConfigOpBefore(reset, [&](Operation *op) {
+        if (isa<AIEX::NpuWriteConfigOp>(op) &&
+            !isa<AIEX::NpuWriteTeardownOp>(later))
+          tornDown = false;
+        later = op;
+        return isa<AIEX::NpuLoadPdiOp>(op);
+      }));
+  if (!loadsSamePdi(before, reset) || tornDown)
+    return success();
+  InFlightDiagnostic diag = emitOpError(
+      "follows a load_pdi the firmware skips, as it loads the PDI loaded "
+      "just before it, so the array is not reset");
+  diag.attachNote(before.getLoc()) << "the PDI is loaded here";
+  return diag;
+}
+
+LogicalResult
+AIEX::NpuLoadPdiOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  FlatSymbolRefAttr ref = getDeviceRefAttr();
+  if (!ref)
+    return success();
+  auto device = (*this)->getParentOfType<AIE::DeviceOp>();
+  Operation *scope = device ? device->getParentOp()
+                            : SymbolTable::getNearestSymbolTable(*this);
+  if (!isa_and_present<AIE::DeviceOp>(symbolTable.lookupSymbolIn(scope, ref)))
+    return emitOpError() << ref << " is not a device";
   return success();
 }
 
@@ -2187,7 +2243,7 @@ AIEX::NpuWriteConfigOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   if (!isa_and_present<AIE::DeviceOp>(
           symbolTable.lookupSymbolIn(scope, getDeviceRefAttr())))
     return emitOpError() << getDeviceRefAttr() << " is not a device";
-  AIEX::NpuLoadPdiOp reset = precedingLoadPdi(*this);
+  auto reset = dyn_cast_or_null<AIEX::NpuLoadPdiOp>(precedingReset(*this));
   FlatSymbolRefAttr resetRef = reset ? reset.getDeviceRefAttr() : nullptr;
   auto empty = resetRef ? dyn_cast_or_null<AIE::DeviceOp>(
                               symbolTable.lookupSymbolIn(scope, resetRef))
@@ -2204,4 +2260,48 @@ AIEX::NpuWriteConfigOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     return emitOpError("must follow a load_pdi of an empty device, which "
                        "resets the array");
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuWriteTeardownOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuWriteTeardownOp::verify() {
+  Operation *prev = (*this)->getPrevNode();
+  while (prev && !writesConfig(prev))
+    prev = prev->getPrevNode();
+  auto config = dyn_cast_or_null<AIEX::NpuWriteConfigOp>(prev);
+  if (!config || config.getDeviceRefAttr() != getDeviceRefAttr())
+    return emitOpError("must follow the write_config of ")
+           << getDeviceRefAttr() << ", with no load_pdi between";
+  return success();
+}
+
+LogicalResult
+AIEX::NpuWriteTeardownOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
+  auto device = dyn_cast_or_null<AIE::DeviceOp>(
+      symbolTable.lookupSymbolIn(scope, getDeviceRefAttr()));
+  if (!device)
+    return emitOpError() << getDeviceRefAttr() << " is not a device";
+  Operation *shimStart = AIEX::findShimDmaStart(device);
+  if (!shimStart)
+    return success();
+  InFlightDiagnostic diag =
+      emitOpError() << getDeviceRefAttr()
+                    << " starts a shim DMA channel, which teardown cannot stop";
+  diag.attachNote(shimStart->getLoc()) << "started here";
+  return diag;
+}
+
+Operation *AIEX::findShimDmaStart(AIE::DeviceOp device) {
+  Operation *found = nullptr;
+  device.walk([&](Operation *op) {
+    if (!isa<AIE::DMAStartOp, AIE::DMAOp>(op) ||
+        !isa<AIE::ShimDMAOp>(op->getParentOp()))
+      return WalkResult::advance();
+    found = op;
+    return WalkResult::interrupt();
+  });
+  return found;
 }

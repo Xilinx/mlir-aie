@@ -18,6 +18,7 @@ import pytest
 
 from aie.iron import kernels
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.iron.kernels._common import _make_extern
 
 # ---------------------------------------------------------------------------
 # Memoization + collision protection (kernels.X helpers and ExternalFunction)
@@ -317,3 +318,21 @@ def test_kernels_mm_object_file_name_is_order_independent():
     reuses by name is identical regardless of registration order."""
     ef = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
     assert ef._object_file_name == f"matmul_i16_i16_{ef._symbol_prefix}.o"
+
+
+def test_extern_names_differ_by_source_dir(tmp_path):
+    """Same-content sources in two directories are two kernels, in one process.
+
+    Their local includes may resolve to different headers.
+    """
+    names = set()
+    for checkout in ("a", "b"):
+        source = tmp_path / checkout / "k.cc"
+        source.parent.mkdir()
+        source.write_text('extern "C" void k(int *x) {}')
+        ef = _make_extern("k", source, [np.ndarray[(4,), np.dtype[np.int32]]])
+        names.add((ef.object_file_name, ef._symbol_prefix))
+    assert len(names) == 2
+    # So are one source's builds against two include paths.
+    other = _make_extern("k", source, ef.arg_types(), include_dirs=[str(tmp_path)])
+    assert other._symbol_prefix != ef._symbol_prefix
