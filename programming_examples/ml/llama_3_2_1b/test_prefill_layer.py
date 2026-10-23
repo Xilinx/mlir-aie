@@ -2,16 +2,18 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""One layer's prefill of 64 rows (aie2_prefill_layer.py) on the NPU, bit
-for bit against llama_oracle.Layer.forward.
+"""The prefill of 64 rows through layers 0..n - 1 (aie2_prefill_layer.py) on
+the NPU, bit for bit against llama_oracle.Layer.forward.
 
-The prompt's tokens are seeded random ids, each row's input the embed seed
-the decode makes of the token. The oracle runs the positions before block j
-one at a time, which fills its KV cache; the device gets that cache and
-runs block j's 64 rows in one dispatch. Checked: the residual leaving the
-layer and block j's KV rows, every row bit for bit; and, to locate a
-mismatch, every stage the device leaves in `stage`, against the same steps
-taken one at a time (forward_steps, itself checked against Layer.forward).
+The prompt's tokens are seeded random ids; the device makes each row's
+embed seed from the token's lm_head slot (staged in `prompt` as the gather
+leaves it) and its id. The oracle runs the positions before block j one at
+a time, which fills its KV caches; the device gets those caches and runs
+block j's 64 rows in one dispatch. Checked: the residual leaving the last
+layer and block j's KV rows in every layer, every row bit for bit; and, to
+locate a mismatch, every stage of the last layer the device leaves in
+`stage`, against the same steps taken one at a time (forward_steps, itself
+checked against Layer.forward).
 
 The oracle runs before the NPU lock is taken; `--lock` serializes the device
 part with other users of the NPU.
@@ -27,11 +29,25 @@ from pathlib import Path
 import aie.iron as iron
 import numpy as np
 from aie.utils.aie_fp32 import aie_add
-from aie2_decode import ACT_BYTES, HACT_BYTES, KV_BLOCK_WORDS
+from aie2_decode import (
+    ACT_BYTES,
+    HACT_BYTES,
+    KV_BLOCK_WORDS,
+    LMW_GAMMA_BYTES,
+    WLM_SLOT,
+)
 from aie2_prefill import pack_trailers
-from aie2_prefill_layer import CHUNK_STRIDE, QKV_FP, PrefillStage, build_layer
-from llama_config import HD, HEAD_D, KV_TB, N_HEADS_KV, N_HEADS_Q, VOCAB, D
-from llama_decode import DecodeShape
+from aie2_prefill_layer import (
+    CHUNK_STRIDE,
+    QKV_FP,
+    SLOT_WORDS,
+    PrefillStage,
+    build_prefill,
+    ids_words,
+    prompt_words,
+)
+from llama_config import HD, HEAD_D, KV_TB, N_HEADS_KV, N_HEADS_Q, N_TILE, VOCAB, D
+from llama_decode import DecodeShape, pack_lmw
 from llama_npu import DispatchSession
 from llama_oracle import (
     Layer,
@@ -111,17 +127,18 @@ def forward_steps(layer, x, position, cos, sin):
     return out, s
 
 
-def stage_checks(st, want):
+def stage_checks(stage, st, want):
     """Each stage the device leaves in `stage` against forward_steps'.
 
     Args:
+        stage: The dispatch's PrefillStage.
         st: The stage buffer, int8.
         want: Per row, forward_steps' steps.
 
     Returns:
         [(stage name, rows that differ)].
     """
-    at = PrefillStage().at
+    at = stage.at
 
     def f32(name, cols):
         return st[at[name] : at[name] + len(want) * cols * 4].view(np.float32)
@@ -193,8 +210,9 @@ def stage_checks(st, want):
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="One prefill layer against Layer.forward")
+    ap = argparse.ArgumentParser(prog="Prefill layers against Layer.forward")
     ap.add_argument("--block", type=int, default=1, help="j: rows 64j .. 64j + 63")
+    ap.add_argument("--layers", type=int, default=1, help="layers 0 .. n - 1")
     ap.add_argument("--t", type=int, default=256, help="KV cache rows")
     ap.add_argument("--data", type=Path, default=Path(__file__).parent / "data")
     ap.add_argument("--synthetic-weights", action="store_true")
@@ -205,16 +223,17 @@ def main():
     opts = ap.parse_args()
 
     j = opts.block
+    n = opts.layers
     p0 = j * KV_TB
     if p0 + KV_TB > opts.t:
         raise ValueError(f"block {j} is past t={opts.t}")
     rng = np.random.default_rng(opts.seed)
     if opts.synthetic_weights:
-        layer = Layer.random(rng, opts.t)
+        layers = [Layer.random(rng, opts.t) for _ in range(n)]
         embed = rng.integers(-128, 128, (VOCAB, D), dtype=np.int8)
         embed_sc = rng.uniform(1e-3, 1e-2, VOCAB).astype(np.float32)
     else:
-        layer = Layer.real(0, opts.data, opts.t)
+        layers = [Layer.real(L, opts.data, opts.t) for L in range(n)]
         embed = np.memmap(opts.data / "embed.i8.bin", np.int8, "r", shape=(VOCAB, D))
         embed_sc = np.fromfile(opts.data / "embed.scales.f32.bin", np.float32)
     rope = rope_table(opts.t, HEAD_D)
@@ -225,53 +244,69 @@ def main():
 
     t0 = time.perf_counter()
     for p in range(p0):
-        layer.forward(seeds[p], p, rope[p, :HEAD_D], rope[p, HEAD_D:])
-    shape = DecodeShape(1, opts.t)
-    kv_before = shape.pack_kv([layer])
-    steps_layer = copy.deepcopy(layer)
+        x = seeds[p]
+        for layer in layers:
+            x = layer.forward(x, p, rope[p, :HEAD_D], rope[p, HEAD_D:])
+    shape = DecodeShape(n, opts.t)
+    kv_before = shape.pack_kv(layers)
+    steps_layer = copy.deepcopy(layers[-1])
     want, steps = [], []
     for i in range(KV_TB):
         p = p0 + i
         cos, sin = rope[p, :HEAD_D], rope[p, HEAD_D:]
-        want.append(layer.forward(seeds[p], p, cos, sin))
-        x_out, s = forward_steps(steps_layer, seeds[p], p, cos, sin)
+        x = seeds[p]
+        for layer in layers[:-1]:
+            x = layer.forward(x, p, cos, sin)
+        want.append(layers[-1].forward(x, p, cos, sin))
+        x_out, s = forward_steps(steps_layer, x, p, cos, sin)
         assert np.asarray(x_out).tobytes() == np.asarray(want[-1]).tobytes()
         steps.append(s)
     want = np.stack(want)
     rows = np.arange(p0, p0 + KV_TB)
-    kv_want = shape.kv_row_words(layer, rows)
-    kv_at = shape.kv_word_index(0, rows)
     print(
-        f"oracle: {p0} positions, then block {j}'s {KV_TB} rows, in "
+        f"oracle: {n} layers, {p0} positions, then block {j}'s {KV_TB} rows, in "
         f"{time.perf_counter() - t0:.1f} s"
     )
 
-    stage = PrefillStage()
+    stage = PrefillStage(n)
     st = np.zeros(stage.total, np.int8)
-    st[stage.at["x_in"] : stage.at["x_in"] + KV_TB * D * 4] = (
-        seeds[p0:].view(np.int8).ravel()
+    for L, layer in enumerate(layers):
+        for post, g in enumerate((layer.gamma_in, layer.gamma_post)):
+            at = stage.gamma(L, post) * 4
+            st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
+    lmw = pack_lmw(embed, embed_sc, np.zeros(D, np.float32))
+    prompt = np.zeros(prompt_words(opts.t) * 4, np.int8)
+    for p, tok in enumerate(tokens):
+        at = LMW_GAMMA_BYTES + tok // N_TILE * WLM_SLOT
+        prompt[p * WLM_SLOT : (p + 1) * WLM_SLOT] = lmw[at : at + WLM_SLOT]
+    del lmw
+    ids = np.zeros(ids_words(opts.t), np.int32)
+    ids[: tokens.size] = tokens
+    wblob = shape.pack_wblob(layers, rope)
+    params = dict(
+        nb=j + 1,
+        cs_off=p0 * 64,
+        kv_row=j * KV_BLOCK_WORDS,
+        prompt_off=p0 * SLOT_WORDS,
+        ids_off=p0,
     )
-    for name, g in (("gamma_in", layer.gamma_in), ("gamma_post", layer.gamma_post)):
-        st[stage.at[name] : stage.at[name] + 2 * D] = np.asarray(g, bfloat16).view(
-            np.int8
-        )
-    wblob = shape.pack_wblob([layer], rope)
-    params = dict(nb=j + 1, cs_off=p0 * 64, kv_row=j * KV_BLOCK_WORDS)
-    kwargs = dict(LAYER=0, W_LAYERS=1, T=opts.t)
-    build_layer.specialize(full_elf=True, **kwargs).compile()
+    kwargs = dict(N_LAYERS=n, LAYER=0, W_LAYERS=n, T=opts.t)
+    build_prefill.specialize(full_elf=True, **kwargs).compile()
 
     lock = open(opts.lock, "w") if opts.lock else None
     if lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
     try:
-        session = DispatchSession(build_layer, None, **kwargs)
+        session = DispatchSession(build_prefill, None, **kwargs)
         kv_t = iron.tensor(kv_before.copy(), dtype=np.int32)
         st_t = iron.tensor(st.view(np.int32).copy(), dtype=np.int32)
         tensors = [
             iron.tensor(wblob.view(np.int32), dtype=np.int32),
-            iron.tensor(pack_trailers(wblob, 1).view(np.int32).ravel(), dtype=np.int32),
+            iron.tensor(pack_trailers(wblob, n).view(np.int32).ravel(), dtype=np.int32),
             kv_t,
             st_t,
+            iron.tensor(prompt.view(np.int32), dtype=np.int32),
+            iron.tensor(ids, dtype=np.int32),
         ]
         first_ms = session(tensors, **params)
         kv_t.to("cpu")
@@ -288,19 +323,22 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_UN)
 
     print(f"first dispatch: {first_ms:.3f} ms")
-    for name, bad in stage_checks(st_got, steps):
+    for name, bad in stage_checks(stage, st_got, steps):
         print(
-            f"  {name}: {KV_TB - len(bad)}/{KV_TB} rows"
+            f"  layer {n - 1} {name}: {KV_TB - len(bad)}/{KV_TB} rows"
             + (f", rows {bad[:8]} differ" if bad else "")
         )
-    at = stage.at["x_out"]
+    at = stage.at[("xa", "xb")[n % 2]]
     x_out = st_got[at : at + KV_TB * D * 4].view(np.float32).reshape(KV_TB, D)
     out_ok = (x_out.view(np.uint32) == want.view(np.uint32)).all(axis=1)
-    kv_ok = (kv_got[kv_at] == kv_want).all(axis=(0, 2))
-    print(f"residual leaving the layer: {out_ok.sum()}/{KV_TB} rows bit-exact")
-    print(f"block {j}'s KV rows: {kv_ok.sum()}/{KV_TB} rows bit-exact")
+    kv_ok = np.ones(KV_TB, bool)
+    for L, layer in enumerate(layers):
+        kv_at = shape.kv_word_index(L, rows)
+        kv_ok &= (kv_got[kv_at] == shape.kv_row_words(layer, rows)).all(axis=(0, 2))
+    print(f"residual leaving layer {n - 1}: {out_ok.sum()}/{KV_TB} rows bit-exact")
+    print(f"block {j}'s KV rows, all layers: {kv_ok.sum()}/{KV_TB} rows bit-exact")
     exact = bool(out_ok.all() and kv_ok.all())
-    print(f"prefill layer, block {j}: {'PASS' if exact else 'FAIL'}")
+    print(f"prefill of {n} layers, block {j}: {'PASS' if exact else 'FAIL'}")
     if times:
         print(
             f"dispatch: min {min(times):.3f} ms, median {float(np.median(times)):.3f} ms"
