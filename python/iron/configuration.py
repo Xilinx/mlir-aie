@@ -37,6 +37,19 @@ from .runtime._context import active_configuration, active_configuration_scope
 from .scratchpad_parameter import ScratchpadParameter
 
 
+def _pool_symbols(pool):
+    """Yield the name of every symbol an ObjectFifoPool refers to."""
+    for buffer in pool.buffers or []:
+        yield buffer.name
+    for segment in pool.segments:
+        yield segment.name
+        yield from (
+            lock.name
+            for lock in (segment.produce_lock, segment.consume_lock)
+            if lock is not None
+        )
+
+
 class DeviceConfiguration(DeviceResources):
     """A device image and the runtime sequences that use it."""
 
@@ -321,6 +334,13 @@ class DeviceConfiguration(DeviceResources):
             if buffer._use_write_rtp
         ]
         rtps = list(dict.fromkeys(rtps))
+        pools = [
+            handle.pool
+            for worker in self._workers
+            for handle in worker.fifos
+            if isinstance(handle, ObjectFifoPoolHandle)
+        ]
+        pools = list(dict.fromkeys(pools))
         named = [(fifo.name, "ObjectFifo") for fifo in fifos if fifo.name is not None]
         named += [(b._name, "Buffer") for b in rtps if b._name is not None]
         claimed = {}
@@ -338,6 +358,8 @@ class DeviceConfiguration(DeviceResources):
             claimed[name] = kind
         taken = set(claimed)
         taken.update(flow.name for flow in self._flows if flow.name is not None)
+        for pool in pools:
+            taken.update(name for name in _pool_symbols(pool) if name is not None)
 
         def fresh(prefix):
             name = next(
@@ -348,12 +370,35 @@ class DeviceConfiguration(DeviceResources):
             taken.add(name)
             return name
 
+        def claim(preferred):
+            if preferred in taken:
+                return fresh(f"{preferred}_")
+            taken.add(preferred)
+            return preferred
+
         for fifo in fifos:
             if fifo.name is None:
                 fifo.name = fresh("of")
         for buffer in rtps:
             if buffer._name is None:
                 buffer._name = fresh("rtp")
+        for pool in pools:
+            if pool.name is None:
+                pool.name = fresh("pool")
+        # A pool refers to its buffers and locks by symbol, so each one it
+        # names needs a name. Match what --aie-objectfifo-allocate would call
+        # the ones it makes itself.
+        for pool in pools:
+            for index, buffer in enumerate(pool.buffers or []):
+                if buffer.name is None:
+                    buffer._name = claim(f"{pool.name}_buff_{index}")
+            for index, segment in enumerate(pool.segments):
+                for lock, role in (
+                    (segment.produce_lock, "prod"),
+                    (segment.consume_lock, "cons"),
+                ):
+                    if lock is not None and lock.name is None:
+                        lock._name = claim(f"{pool.name}_{role}_lock_{index}")
         for flow in self._flows:
             if flow.name is None:
                 flow._name = fresh(

@@ -43,8 +43,9 @@ def _named(thing, what: str) -> str:
     name = getattr(thing, "name", None)
     if not name:
         raise ValueError(
-            f"ObjectFifoPool names its {what} in the IR, so give {thing!r} a name= "
-            "when you construct it"
+            f"ObjectFifoPool names its {what} in the IR, so {thing!r} needs a "
+            "name. A DeviceConfiguration names one it reaches through a Worker; "
+            "otherwise pass name= when you construct it"
         )
     return name
 
@@ -126,11 +127,11 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
 
     Example:
         ```python
-        prod, cons = Lock(tile=t, init=1, name="x_prod"), Lock(tile=t, init=0, name="x_cons")
+        prod, cons = Lock(tile=t, init=1), Lock(tile=t, init=0)
         pool = ObjectFifoPool(
             np.ndarray[(256,), np.dtype[np.int32]],
             tile=t,
-            buffers=[Buffer(type=ty, name="x", tile=t)],
+            buffers=[Buffer(type=ty, tile=t)],
             segments=[PoolSegment(256, produce_lock=prod, consume_lock=cons, manual_fill=True)],
         )
         # The Worker takes pool.cons() and calls acquire(1) / release(1) on it.
@@ -160,8 +161,8 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
             depth (int, optional): Objects in the rotation. Defaults to 1.
             name (str | None, optional): The pool's symbol. Defaults to None.
             buffers (Sequence[Buffer] | None, optional): ``depth`` buffers to
-                use, each named. The compiler makes them when this is None.
-                Defaults to None.
+                use. The compiler makes them when this is None. Defaults to
+                None.
             segments (Sequence[PoolSegment] | None, optional): How the object
                 divides. Defaults to one segment spanning it.
             produce_lock (Lock | None, optional): The lone segment's produce
