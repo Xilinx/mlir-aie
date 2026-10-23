@@ -21,11 +21,11 @@
 #define LLAMA_SILU_CHUNK 1024
 #endif
 
-static constexpr int kLanes = 16;
+static constexpr int kLanes = 32;
 static constexpr int kCols = LLAMA_SILU_MUL_COLS;
 static constexpr int kChunk = LLAMA_SILU_CHUNK;
 static_assert(kChunk % kLanes == 0 && kCols % kChunk == 0,
-              "LLAMA_SILU_CHUNK must be a multiple of 16 dividing the columns");
+              "LLAMA_SILU_CHUNK must be a multiple of 32 dividing the columns");
 
 // 1 / d for d in [1, 2]: the guess 24/17 - 8/17 d, within 1/17, then three
 // steps y += y (1 - d y).
@@ -56,7 +56,7 @@ void llama_silu_gate(float *restrict gate, float *restrict h, int32_t chunk) {
     // -|g| as 0 - g where g is not negative: OR-ing in the sign bit folds
     // to a vector fneg that Peano cannot legalize on AIE2P.
     auto neg = ::aie::lt(g.template cast_to<int32>(), int32(0));
-    ::aie::vector<float, kLanes> e = vec_exp_nonpos(
+    ::aie::vector<float, kLanes> e = vec_exp_nonpos<kLanes>(
         ::aie::select(::aie::sub(::aie::zeros<float, kLanes>(), g), g, neg));
     ::aie::vector<float, kLanes> r =
         recip_unit(::aie::add(::aie::broadcast<float, kLanes>(1.0f), e));
@@ -98,12 +98,15 @@ void llama_silu_quant(float *restrict h, int8_t *restrict out) {
   const float absmax = __builtin_bit_cast(
       float, std::max(::aie::reduce_max(mag), kAbsmaxFloorBits));
   float out_scale = scalar_mul_rne(absmax, 1.0f / 127.0f);
-  ::aie::vector<float, kLanes> inv_v =
-      ::aie::broadcast<float, kLanes>(recip_rne(out_scale));
+  // |h| <= absmax, so |h * inv| stays near 127, as vec_requant_i8 needs.
+  const RequantFactor inv = requant_factor(recip_rne(out_scale));
   for (int c = 0; c < kCols / kLanes; c++)
-    ::aie::store_v(out + c * kLanes,
-                   vec_round_to_i8(vec_mul_rne(
-                       ::aie::load_v<kLanes>(h + c * kLanes), inv_v)));
+    ::aie::store_v(
+        out + c * kLanes,
+        vec_requant_i8(
+            ::aie::load_v<kLanes>(reinterpret_cast<const int32_t *>(h) +
+                                  c * kLanes),
+            inv));
   __builtin_memcpy(out + kCols, &out_scale, 4);
   int32_t zero = 0;
   __builtin_memcpy(out + kCols + 4, &zero, 4);
