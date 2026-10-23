@@ -1,4 +1,4 @@
-# bufferpool.py -*- Python -*-
+# objectfifopool.py -*- Python -*-
 #
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -7,7 +7,7 @@
 
 An [`ObjectFifo`][iron.ObjectFifo] states both ends of a transfer and generates
 the buffers, the locks and the DMA programs at each end. A
-[`BufferPool`][iron.BufferPool] states one end only. The other end belongs to a
+[`ObjectFifoPool`][iron.ObjectFifoPool] states one end only. The other end belongs to a
 DMA program the author writes, so a design keeps an ordered multi-BD
 [`TileDma`][iron.TileDma] and still lets its core read like any other fifo
 consumer.
@@ -19,7 +19,7 @@ from typing import Sequence
 
 import numpy as np
 
-from ... import ir  # pyright: ignore[reportMissingImports]
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     ObjectFifoRole,
 )
@@ -35,6 +35,7 @@ from ...helpers.sourceloc import SourceSite
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import Tile
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
+from .endpoint import ObjectFifoEndpoint
 
 
 def _named(thing, what: str) -> str:
@@ -42,14 +43,14 @@ def _named(thing, what: str) -> str:
     name = getattr(thing, "name", None)
     if not name:
         raise ValueError(
-            f"BufferPool names its {what} in the IR, so give {thing!r} a name= "
+            f"ObjectFifoPool names its {what} in the IR, so give {thing!r} a name= "
             "when you construct it"
         )
     return name
 
 
 class PoolSegment:
-    """One slice of a [`BufferPool`][iron.BufferPool]'s object, and its locks.
+    """One slice of an [`ObjectFifoPool`][iron.ObjectFifoPool]'s object, and its locks.
 
     Segments partition the object in increasing offset order and together
     cover it exactly. Each carries a produce and a consume lock, so several
@@ -120,13 +121,13 @@ class PoolSegment:
         )
 
 
-class BufferPool(PerDeviceConfigurationResolvable):
+class ObjectFifoPool(PerDeviceConfigurationResolvable):
     """A rotating set of buffers on one tile, and the locks that guard them.
 
     Example:
         ```python
         prod, cons = Lock(tile=t, init=1, name="x_prod"), Lock(tile=t, init=0, name="x_cons")
-        pool = BufferPool(
+        pool = ObjectFifoPool(
             np.ndarray[(256,), np.dtype[np.int32]],
             tile=t,
             buffers=[Buffer(type=ty, name="x", tile=t)],
@@ -151,7 +152,7 @@ class BufferPool(PerDeviceConfigurationResolvable):
         manual_fill: bool = False,
         manual_drain: bool = False,
     ):
-        """Construct a BufferPool.
+        """Construct an ObjectFifoPool.
 
         Args:
             obj_type (type[np.ndarray]): The type of one object.
@@ -176,10 +177,10 @@ class BufferPool(PerDeviceConfigurationResolvable):
             ValueError: Arguments are validated.
         """
         if depth < 1:
-            raise ValueError(f"BufferPool depth must be > 0, but got {depth}")
+            raise ValueError(f"ObjectFifoPool depth must be > 0, but got {depth}")
         if buffers is not None and len(buffers) != depth:
             raise ValueError(
-                f"BufferPool of depth {depth} takes {depth} buffers, "
+                f"ObjectFifoPool of depth {depth} takes {depth} buffers, "
                 f"got {len(buffers)}"
             )
         self._site = SourceSite.capture()
@@ -202,7 +203,7 @@ class BufferPool(PerDeviceConfigurationResolvable):
         self._segments = list(segments)
         self._check_segments()
         self._op = None
-        self._handles: list[BufferPoolHandle] = []
+        self._handles: list[ObjectFifoPoolHandle] = []
 
     def _check_segments(self) -> None:
         """Check that the segments cover the object in increasing offset order."""
@@ -211,13 +212,13 @@ class BufferPool(PerDeviceConfigurationResolvable):
         for segment in self._segments:
             if segment.offset != at:
                 raise ValueError(
-                    f"BufferPool segment at offset {segment.offset} leaves a "
+                    f"ObjectFifoPool segment at offset {segment.offset} leaves a "
                     f"gap or overlaps the one before it, which ends at {at}"
                 )
             at += segment.size
         if at != elems:
             raise ValueError(
-                f"BufferPool segments cover {at} of the object's {elems} elements"
+                f"ObjectFifoPool segments cover {at} of the object's {elems} elements"
             )
 
     @property
@@ -250,7 +251,7 @@ class BufferPool(PerDeviceConfigurationResolvable):
         return [self._tile]
 
     def _segment_names(self, segments: Sequence[PoolSegment] | None) -> list[str]:
-        """The symbols of ``segments``, defaulting to every one of the pool's."""
+        """Return the symbols of ``segments``, or every one of the pool's."""
         chosen = self._segments if segments is None else list(segments)
         for segment in chosen:
             if segment not in self._segments:
@@ -263,18 +264,18 @@ class BufferPool(PerDeviceConfigurationResolvable):
 
     def cons(
         self, segments: Sequence[PoolSegment] | None = None, name: str | None = None
-    ) -> "BufferPoolHandle":
+    ) -> "ObjectFifoPoolHandle":
         """Return a handle a Worker drains the pool through."""
         return self._handle(ObjectFifoRole.Drain, segments, name)
 
     def prod(
         self, segments: Sequence[PoolSegment] | None = None, name: str | None = None
-    ) -> "BufferPoolHandle":
+    ) -> "ObjectFifoPoolHandle":
         """Return a handle a Worker fills the pool through."""
         return self._handle(ObjectFifoRole.Fill, segments, name)
 
-    def _handle(self, role, segments, name) -> "BufferPoolHandle":
-        handle = BufferPoolHandle(self, role, segments, name)
+    def _handle(self, role, segments, name) -> "ObjectFifoPoolHandle":
+        handle = ObjectFifoPoolHandle(self, role, segments, name)
         self._handles.append(handle)
         return handle
 
@@ -286,7 +287,7 @@ class BufferPool(PerDeviceConfigurationResolvable):
         if self._op is not None:
             return
         if self._tile is None:
-            raise ValueError("Cannot resolve BufferPool until it has been placed.")
+            raise ValueError("Cannot resolve ObjectFifoPool until it has been placed.")
         base = self.name or "pool"
         buffers = (
             [_named(buffer, "buffer") for buffer in self._buffers]
@@ -309,28 +310,32 @@ class BufferPool(PerDeviceConfigurationResolvable):
 
     def __str__(self) -> str:
         return (
-            f"BufferPool({self._obj_type}, tile={self._tile}, "
+            f"ObjectFifoPool({self._obj_type}, tile={self._tile}, "
             f"depth={self._depth}, name={self.name!r}, "
             f"segments={len(self._segments)})"
         )
 
 
-class BufferPoolHandle(PerDeviceConfigurationResolvable):
-    """What a Worker acquires and releases a [`BufferPool`][iron.BufferPool]'s objects through.
+class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
+    """What a Worker acquires and releases an [`ObjectFifoPool`][iron.ObjectFifoPool]'s objects through.
 
-    Obtain one from [`BufferPool.cons()`][iron.dataflow.bufferpool.BufferPool.cons]
-    or [`BufferPool.prod()`][iron.dataflow.bufferpool.BufferPool.prod] and pass
-    it to a [`Worker`][iron.Worker] as a function argument, as for an
-    [`ObjectFifoHandle`][iron.dataflow.objectfifo.ObjectFifoHandle].
+    Obtain one from
+    [`ObjectFifoPool.cons()`][iron.dataflow.objectfifopool.ObjectFifoPool.cons]
+    or
+    [`ObjectFifoPool.prod()`][iron.dataflow.objectfifopool.ObjectFifoPool.prod]
+    and pass it to a [`Worker`][iron.Worker] as a function argument, as for an
+    [`ObjectFifoHandle`][iron.dataflow.objectfifo.ObjectFifoHandle]. A core
+    body takes either and cannot tell them apart.
     """
 
-    def __init__(self, pool: BufferPool, role, segments, name: str | None):
+    def __init__(self, pool: ObjectFifoPool, role, segments, name: str | None):
         self._site = SourceSite.capture()
         self._pool = pool
         self._role = role
         self._segments = segments
         self._name = name
         self._op = None
+        self._endpoint = None
 
     @property
     def name(self) -> str | None:
@@ -338,9 +343,23 @@ class BufferPoolHandle(PerDeviceConfigurationResolvable):
         return self._name
 
     @property
-    def pool(self) -> BufferPool:
+    def pool(self) -> ObjectFifoPool:
         """The pool this handle reaches."""
         return self._pool
+
+    @property
+    def endpoint(self) -> ObjectFifoEndpoint | None:
+        """The endpoint of this ObjectFifoPoolHandle."""
+        return self._endpoint
+
+    @endpoint.setter
+    def endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
+        if self._endpoint and self._endpoint != endpoint:
+            raise ValueError(
+                f"Endpoint already set for ObjectFifoPoolHandle {self._name}: "
+                f"Set to {self._endpoint}, trying to set to {endpoint}"
+            )
+        self._endpoint = endpoint
 
     @property
     def op(self):
@@ -352,7 +371,7 @@ class BufferPoolHandle(PerDeviceConfigurationResolvable):
         return self._pool.tiles()
 
     def _memref_type(self):
-        """The type an acquire hands back: the run this handle's segments span."""
+        """Return the type an acquire hands back: the run this handle's segments span."""
         chosen = self._pool.segments if self._segments is None else list(self._segments)
         elems = sum(segment.size for segment in chosen)
         dtype = np_ndarray_type_to_memref_type(self._pool.obj_type).element_type
@@ -390,9 +409,15 @@ class BufferPoolHandle(PerDeviceConfigurationResolvable):
         verb = "cons" if self._role == ObjectFifoRole.Drain else "prod"
         self._name = self._name or f"{base}_{verb}"
         segments = self._pool._segment_names(self._segments)
+        # The core that took this handle is the one that reaches the objects,
+        # so the endpoint sits on its tile; the verifier rejects an endpoint
+        # reached from anywhere else. An unplaced endpoint falls back to the
+        # pool's own tile.
+        tile = self._endpoint.tile if self._endpoint is not None else None
+        tile = tile or self._pool.tile
         self._op = objectfifo_core_endpoint(
             self._name,
-            self._pool.tile.op,
+            tile.op,
             self._role,
             base,
             segments=segments,
@@ -401,4 +426,7 @@ class BufferPoolHandle(PerDeviceConfigurationResolvable):
         )
 
     def __str__(self) -> str:
-        return f"BufferPoolHandle({self._pool}, role={self._role}, name={self._name!r})"
+        return (
+            f"ObjectFifoPoolHandle({self._pool}, role={self._role}, "
+            f"name={self._name!r})"
+        )

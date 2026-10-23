@@ -45,7 +45,8 @@ struct AIEObjectFifoVerifyPass
       ObjectFifoSegmentOp segmentOp = segmentOps[index];
       bool manualFill = segmentOp.getManualFill();
       bool manualDrain = segmentOp.getManualDrain();
-      if (segment.fillers.size() > 1 || (manualFill && !segment.fillers.empty())) {
+      if (segment.fillers.size() > 1 ||
+          (manualFill && !segment.fillers.empty())) {
         return pool.emitOpError("segment ")
                << index << " is filled by more than one endpoint";
       }
