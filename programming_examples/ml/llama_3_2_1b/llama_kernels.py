@@ -91,6 +91,10 @@ def gemv_mma(*, m_max, out_bytes):
     )
 
 
+def gemm_mma():
+    return KernelSource("llama_gemm_mma.cc", ["-ffp-contract=off"])
+
+
 def gqa_glue():
     return KernelSource(
         "llama_gqa_glue.cc",
