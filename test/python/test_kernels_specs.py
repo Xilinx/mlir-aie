@@ -683,6 +683,18 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         shape_checks=[(dict(), 0, (52 * 144,)), (dict(width=13), 1, (13 * 85,))],
     ),
+    KernelSpec(
+        name="resize_linear",
+        factory=kernels.resize_linear,
+        kwargs={},
+        arg_count=2,  # source row, counts
+        expected_name="resize_linear_take",
+        invalid_kwargs=[
+            (dict(in_bytes=6), "multiple of 4"),
+            (dict(out_bytes=32768), "multiple of 4 from 4 to 32764"),
+        ],
+        shape_checks=[(dict(in_bytes=1920), 0, (1920,))],
+    ),
     # ----- linalg -----
     KernelSpec(
         name="mm",

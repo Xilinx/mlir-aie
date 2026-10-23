@@ -461,6 +461,78 @@ def grid_decode(
     )
 
 
+def resize_linear(in_bytes: int = 3072, out_bytes: int = 1248) -> ExternalFunction:
+    """Resize a uint8 RGB image as OpenCV's INTER_LINEAR does, a row at a time.
+
+    Bit for bit OpenCV's fixed-point path on the CPU (resizeGeneric_ with
+    11-bit weights, as ``cv2.setUseOptimized(False)`` runs it): each source
+    row's horizontal pass exact in int32, each output row's vertical pass
+    OpenCV's 8-bit one, ``((b0 * (s0 >> 4)) >> 16) + ((b1 * (s1 >> 4)) >>
+    16) + 2 >> 2``, the same on every element. Four entry points
+    share one core's state, and a core runs:
+
+    ```text
+    resize_linear_setup(counts, rows, columns, out_rows, out_columns)
+    for each of counts[0] source rows:
+        resize_linear_take(row, counts)
+        for counts[1] output rows: resize_linear_emit(out)
+    resize_linear_finish(counts)
+    for counts[1] output rows: resize_linear_emit(out)
+    ```
+
+    An output row is ``out_bytes``, zeros past ``3 * out_columns``. Sizes
+    the kernel refuses (below 1, or past ``in_bytes`` or ``out_bytes``)
+    take every source row and emit ``out_rows`` rows of zeros, so a
+    design's streams stay in step; every call emits ``out_rows`` rows.
+    [`resize_linear_ref`][iron.kernels.vision.resize_linear_ref] is the
+    arithmetic.
+
+    Args:
+        in_bytes: A source row's bytes; a multiple of 4 up to 32764.
+        out_bytes: An output row's bytes; a multiple of 4 holding whole
+            pixels' worth up to 32764.
+
+    Returns:
+        ExternalFunction for ``resize_linear_take``, with
+        ``resize_linear_setup``, ``resize_linear_emit`` and
+        ``resize_linear_finish`` bound on its object.
+
+    Raises:
+        ValueError: When either row's bytes are not a multiple of 4 from 4
+            to 32764.
+    """
+    for name, n in (("in_bytes", in_bytes), ("out_bytes", out_bytes)):
+        if n % 4 or not 4 <= n <= 32764:
+            raise ValueError(
+                f"resize_linear() needs {name} a multiple of 4 from 4 to 32764, got {n}."
+            )
+    counts_ty = np.ndarray[(2,), np.dtype[np.int32]]
+    fn = _make_extern(
+        "resize_linear_take",
+        _kernel_source("vision/resize_linear.cc"),
+        [np.ndarray[(in_bytes,), np.dtype[np.uint8]], counts_ty],
+        compile_flags=[f"-DIN_BYTES={in_bytes}", f"-DOUT_BYTES={out_bytes}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out),
+            unsupported=(
+                "four entry points share one core's state, driven by counts "
+                "they write; test_resize_linear_e2e.py drives and judges them"
+            ),
+            ops_per_call=0,
+        ),
+    )
+    lib = fn.object_file
+    fn.resize_linear_setup = lib.bind(
+        "resize_linear_setup", [counts_ty] + [np.int32] * 4
+    )
+    fn.resize_linear_emit = lib.bind(
+        "resize_linear_emit", [np.ndarray[(out_bytes,), np.dtype[np.uint8]]]
+    )
+    fn.resize_linear_finish = lib.bind("resize_linear_finish", [counts_ty])
+    return fn
+
+
 def _check_resample(owner: str, words: int, cores: int, slots: int | None) -> None:
     if words < _RESAMPLE_HEADER + 5 or cores < 1 or (slots is not None and slots < 1):
         raise ValueError(
@@ -797,6 +869,51 @@ def grid_decode_ref(
     out[..., 4] = p[..., obj_at]
     out[..., 5:] = p[..., cls_at : cls_at + classes]
     return out.reshape(p.shape[0], width * (5 + classes))
+
+
+def resize_linear_ref(rows, columns, out_rows, out_columns, image, *, out_bytes: int):
+    """Numpy reference for [`resize_linear`][iron.kernels.vision.resize_linear].
+
+    ``image`` holds the source rows, ``3 * columns`` bytes of each used;
+    returns ``out_rows`` rows of ``out_bytes``. Exact.
+    """
+    image = np.asarray(image, np.uint8)
+    h, w, oh, ow = int(rows), int(columns), int(out_rows), int(out_columns)
+    out = np.zeros((max(oh, 0), out_bytes), np.uint8)
+    if min(h, w, oh, ow) < 1 or 3 * w > image.shape[1] or 3 * ow > out_bytes:
+        return out
+    coef = np.float32(2048)
+
+    def axis(n_in, n_out):
+        scale = 1.0 / (n_out / n_in)
+        f = ((np.arange(n_out) + 0.5) * scale - 0.5).astype(np.float32)
+        s = np.floor(f).astype(np.int64)
+        return s, (f - s.astype(np.float32)).astype(np.float32)
+
+    sx, fx = axis(w, ow)
+    under = sx < 0
+    fx[under], sx[under] = 0, 0
+    past = sx + 1 >= w
+    xmax = int(np.argmax(past)) if past.any() else ow
+    over = sx >= w - 1
+    fx[over], sx[over] = 0, w - 1
+    a0 = np.rint((np.float32(1) - fx) * coef).astype(np.int64)
+    a1 = np.rint(fx * coef).astype(np.int64)
+    src = image[:h, : 3 * w].reshape(h, w, 3).astype(np.int64)
+    nxt = np.minimum(sx + 1, w - 1)
+    inner = (np.arange(ow) < xmax)[None, :, None]
+    hor = np.where(
+        inner,
+        src[:, sx] * a0[None, :, None] + src[:, nxt] * a1[None, :, None],
+        src[:, sx] * 2048,
+    ).reshape(h, 3 * ow)
+    sy, fy = axis(h, oh)
+    b0 = np.rint((np.float32(1) - fy) * coef).astype(np.int64)[:, None]
+    b1 = np.rint(fy * coef).astype(np.int64)[:, None]
+    s0, s1 = hor[np.clip(sy, 0, h - 1)], hor[np.clip(sy + 1, 0, h - 1)]
+    resized = (((b0 * (s0 >> 4)) >> 16) + ((b1 * (s1 >> 4)) >> 16) + 2) >> 2
+    out[:, : 3 * ow] = resized
+    return out
 
 
 def levels_ref(
