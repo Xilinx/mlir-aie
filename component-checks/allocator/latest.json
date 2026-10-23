@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "39717254104",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39717254104",
- "date": "2026-10-22T03:30:53+00:00",
+ "id": "39895430127",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39895430127",
+ "date": "2026-10-23T03:30:58+00:00",
  "commit": {
-  "id": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/843e9c3ec99981032066027bf7c6f4d3769ec5f5",
-  "message": "IRON model prep (#3941)",
-  "timestamp": "2026-10-22T00:00:24Z"
+  "id": "983e2c3569187fe29e8afe05dc24f7436781eaab",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/983e2c3569187fe29e8afe05dc24f7436781eaab",
+  "message": "Add teardown and an init entry to full-ELF reconfiguration (#3934)",
+  "timestamp": "2026-10-22T20:29:40Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V45 96-Core Processor",
+ "device": "AMD EPYC 9V74 80-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "843e9c3ec9",
-  "cpu": "AMD EPYC 9V45 96-Core Processor"
+  "commit": "983e2c3569",
+  "cpu": "AMD EPYC 9V74 80-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 223.9,
+    "value": 219.9,
     "unit": "s"
    }
   }

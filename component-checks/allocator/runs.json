@@ -192,6 +192,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "39895430127",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39895430127",
+   "date": "2026-10-23T03:30:58+00:00",
+   "commit": {
+    "id": "983e2c3569187fe29e8afe05dc24f7436781eaab",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/983e2c3569187fe29e8afe05dc24f7436781eaab",
+    "message": "Add teardown and an init entry to full-ELF reconfiguration (#3934)",
+    "timestamp": "2026-10-22T20:29:40Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "983e2c3569",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
