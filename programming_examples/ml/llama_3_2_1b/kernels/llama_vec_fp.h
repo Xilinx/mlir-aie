@@ -32,6 +32,118 @@ static inline void zero_words(void *restrict dst) {
     ((llama_word *)dst)[i] = 0;
 }
 
+// 32 significands below 2^24 as the 16-bit planes (low halves, high halves)
+// that the target's 32-bit multiplies split their operands into.
+struct Sig24 {
+  v32uint16 lo;
+  v32int16 hi;
+};
+
+static inline Sig24 sig24_planes(::aie::vector<int32, 32> m) {
+  return {(v32uint16)::shuffle(m.extract<16>(0), m.extract<16>(1), 2),
+          (v32int16)::shuffle(m.extract<16>(0), m.extract<16>(1), 3)};
+}
+
+// The exact product of two significands given as planes (plus acc with kAdd):
+// the four 16-bit partial products as the 32-bit multiply sums them.
+template <bool kAdd>
+static inline v32acc64 sig24_mac(Sig24 a, Sig24 b, v32acc64 acc) {
+  v32acc64 p = ::mul_elem_32_conf(a.hi, 0, b.hi, 0, 0);
+  p = ::mac_elem_32_conf(a.hi, 0, b.lo, 0, p, 0, 1, 0, 0);
+  p = ::mac_elem_32_conf(a.lo, 0, b.hi, 0, p, 0, 0, 0, 0);
+  if constexpr (kAdd)
+    return ::addmac_elem_32_conf(a.lo, 0, b.lo, 0, p, acc, 0, 1, 0, 0, 0);
+  else
+    return ::mac_elem_32_conf(a.lo, 0, b.lo, 0, p, 0, 1, 0, 0);
+}
+
+// A significand's planes times bf16 significands (b: 8 bits, as int16
+// lanes), exactly, plus acc: two partial products.
+static inline v32acc64 sig24x8_mac(Sig24 a, v32int16 b, v32acc64 acc) {
+  v32acc64 p = ::mul_elem_32_conf(a.hi, 0, b, 0, 0);
+  return ::addmac_elem_32_conf(a.lo, 0, b, 0, p, acc, 0, 1, 0, 0, 0);
+}
+
+// The nonzero exponent fields of fp32 or bf16 lanes seen so far, as E << 7
+// (their high 16 bits masked to the exponent): lo_m1 is min - 1, so a zero's
+// wraps above every exponent.
+struct ExpRange {
+  ::aie::vector<uint16, 32> lo_m1;
+  ::aie::vector<int16, 32> hi;
+};
+
+static inline ExpRange exp_range_empty() {
+  return {::aie::broadcast<uint16, 32>(0xffff), ::aie::zeros<int16, 32>()};
+}
+
+static inline void exp_range_add(ExpRange &r, ::aie::vector<int16, 32> h) {
+  r.lo_m1 = ::aie::min(r.lo_m1, ::aie::sub(h.cast_to<uint16>(), uint16(1)));
+  r.hi = ::aie::max(r.hi, h);
+}
+
+// The least and greatest exponent field of an ExpRange; lo > hi if empty.
+static inline void exp_range_get(const ExpRange &r, int &lo, int &hi) {
+  lo = (int)(::aie::reduce_min(r.lo_m1) + 1u) >> 7;
+  hi = ::aie::reduce_max(r.hi) >> 7;
+}
+
+// 32 fp32 bit patterns as significand planes (implicit bit set) and their
+// E << 7 (the high plane's bitwise ops on its int32 view: 16-bit lanes don't
+// vectorize them).
+struct XPlanes {
+  Sig24 sig;
+  ::aie::vector<int16, 32> h;
+};
+
+static inline XPlanes x_planes(::aie::vector<int32, 32> bits) {
+  Sig24 s = sig24_planes(bits);
+  ::aie::vector<int32, 16> hv = ::aie::vector<int16, 32>(s.hi).cast_to<int32>();
+  s.hi = ::aie::bit_or(int32(0x00800080), ::aie::bit_and(int32(0x007f007f), hv))
+             .cast_to<int16>();
+  return {s, ::aie::bit_and(int32(0x7f807f80), hv).cast_to<int16>()};
+}
+
+// 32 bf16 lanes as a factor of x_bf16_mul: their significands (8 bits) as
+// int16 lanes, their sign and exponent bits in fp32 position less 126 << 23,
+// and their E << 7.
+struct Bf16Factor {
+  v32int16 sig;
+  ::aie::vector<int32, 32> e;
+  ::aie::vector<int16, 32> h;
+};
+
+static inline Bf16Factor bf16_factor(::aie::vector<int16, 32> g) {
+  const ::aie::vector<int32, 16> gw = g.cast_to<int32>();
+  auto [g_lo, g_hi] = ::aie::interleave_zip(::aie::zeros<int16, 32>(), g, 1);
+  return {
+      ::aie::bit_or(int32(0x00800080), ::aie::bit_and(int32(0x007f007f), gw))
+          .cast_to<int16>(),
+      ::aie::sub(::aie::bit_and(int32(0xff800000),
+                                ::aie::concat(g_lo.cast_to<int32>(),
+                                              g_hi.cast_to<int32>())),
+                 int32(126 << 23)),
+      ::aie::bit_and(int32(0x7f807f80), gw).cast_to<int16>()};
+}
+
+// vec_mul_rne(x, g) for x (planes of `xb`) and bf16 g where every product of
+// a nonzero x and g is normal (exponent fields in [2, 253] before rounding):
+// one exact product of significands rounded once by srs (by 7, or 8 where it
+// reaches 2^31), exponents and signs added as integers; lanes where x or g
+// has exponent field 0 (zero or denormal, which vec_mul_rne flushes) get +0.
+// init is -2^31 in every lane. Needs rounding_mode::conv_even.
+static inline ::aie::vector<int32, 32>
+x_bf16_mul(::aie::vector<int32, 32> xb, const XPlanes &x, const Bf16Factor &g,
+           const ::aie::accum<acc64, 32> &init) {
+  ::aie::accum<acc64, 32> p(sig24x8_mac(x.sig, g.sig, init));
+  ::aie::vector<int32, 32> lo = p.template to_vector<int32>(7);
+  ::aie::vector<int32, 32> hi = p.template to_vector<int32>(8);
+  ::aie::vector<int32, 32> v =
+      ::aie::add(::aie::add(::aie::bit_and(int32(0xff800000), xb), g.e),
+                 ::aie::select(lo, hi, ::aie::ge(lo, int32(0))));
+  return ::aie::select(v, ::aie::zeros<int32, 32>(),
+                       ::aie::eq(x.h, int16(0)) | ::aie::eq(g.h, int16(0)));
+}
+
 // vec_mul_rne with b given as its bits bi, exponent field eb and significand
 // with the implicit bit mb (vec_mul_rne's own split of b), for a b that
 // several products share.
@@ -115,6 +227,89 @@ vec_round_to_i8(::aie::vector<float, kN> v) {
   return acc.template to_vector<int8>(0);
 }
 
+// vec_round_to_i8 of 32 fp32 lanes (as bits), in integers. For |v| >= 0.5
+// the vadd.f of +-0.5 is exact (or rounds within an integer), so the result
+// is sign * floor(|v| + 0.5) = sign * floor((m * 2^(E - 124) + 2^25) / 2^26)
+// for v's significand m and exponent field E; below 0.5 it is 0, but for
+// 0x3effffff, whose vadd.f rounds up to 1. The power of two is a bf16's
+// integer (E clamped to 134: larger |v| saturate either way), and the floor
+// one srs: (2^26 k + 2^25 + j) / 2^26 for 0 <= j < 2^26 rounds half to even
+// to k, so sign * (m * 2^(E - 124) + 1) shifted by 26 is the result.
+// Needs rounding_mode::conv_even and saturation_mode::saturate.
+static inline ::aie::vector<int8, 32>
+vec_round_to_i8_bits(::aie::vector<int32, 32> vb) {
+  Sig24 m = sig24_planes(vb);
+  const ::aie::vector<int16, 32> hi = m.hi;
+  // See x_planes.
+  const ::aie::vector<int32, 16> hv = hi.cast_to<int32>();
+  m.hi = ::aie::bit_or(int32(0x00800080), ::aie::bit_and(int32(0x007f007f), hv))
+             .cast_to<int16>();
+  // bf16 2^(E - 124): exponent field E + 3.
+  const ::aie::vector<int16, 32> pw_bits = ::aie::add(
+      ::aie::min(::aie::bit_and(int32(0x7f807f80), hv).cast_to<int16>(),
+                 int16(134 << 7)),
+      int16(3 << 7));
+  const ::aie::vector<int16, 32> pw(::shuffle(
+      ::bfloat16_to_int(pw_bits.extract<16>(0).cast_to<bfloat16>(), 0),
+      ::bfloat16_to_int(pw_bits.extract<16>(1).cast_to<bfloat16>(), 0), 2));
+  const auto neg = ::aie::lt(hi, int16(0));
+  const ::aie::vector<int16, 32> spw = ::aie::select(pw, ::aie::neg(pw), neg);
+  const ::aie::vector<int16, 32> sgn = ::aie::select(int16(1), int16(-1), neg);
+  v32acc64 p = ::mul_elem_32_conf(m.hi, 0, spw, 1, 0);
+  p = ::mac_elem_32_conf(m.lo, 0, spw, 1, p, 0, 1, 0, 0);
+  p = ::mac_elem_32_conf(sgn, 1, ::aie::broadcast<int16, 32>(1), 1, p, 0, 0, 0,
+                         0);
+  const ::aie::vector<int8, 32> n =
+      ::aie::accum<acc64, 32>(p).template to_vector<int8>(26);
+  return ::aie::select(
+      n, sgn.template pack<int8>(),
+      ::aie::eq(::aie::bit_and(int32(0x7fffffff), vb), int32(0x3effffff)));
+}
+
+// A positive normal fp32 factor b as vec_requant_i8 takes it: its
+// significand planes, its sign and exponent bits less 126 << 23, and the
+// largest x exponent field whose product with b is below 0.25 (so rounds to
+// 0 whatever its exact value).
+struct RequantFactor {
+  Sig24 sig;
+  int32 e;
+  int32 x_small;
+};
+
+static inline RequantFactor requant_factor(float b) {
+  const int32_t bits = __builtin_bit_cast(int32_t, b);
+  return {
+      sig24_planes(::aie::broadcast<int32, 32>((bits & 0x7fffff) | 0x800000)),
+      (bits & 0x7f800000) - (126 << 23), (250 << 23) - (bits & 0x7f800000)};
+}
+
+// vec_round_to_i8(vec_mul_rne(x, b)) for 32 fp32 lanes (as bits) with
+// |x * b| < 2^15: lanes whose product is below 0.25 (x zero or denormal
+// among them) give 0, the others' products are normal, so one exact product
+// of significands rounded once by srs (by 23, or 24 where it reaches 2^47).
+// Needs rounding_mode::conv_even and saturation_mode::saturate.
+static inline ::aie::vector<int8, 32>
+vec_requant_i8(::aie::vector<int32, 32> xb, const RequantFactor &b) {
+  ::aie::accum<acc64, 32> init;
+  init.from_vector(::aie::broadcast<int32, 32>(-(1 << 23)), 24);
+  Sig24 x = sig24_planes(xb);
+  x.hi = ::aie::bit_or(
+             int32(0x00800080),
+             ::aie::bit_and(
+                 int32(0x007f007f),
+                 ::aie::vector<int16, 32>(x.hi).template cast_to<int32>()))
+             .template cast_to<int16>();
+  ::aie::accum<acc64, 32> p(sig24_mac<true>(x, b.sig, init));
+  ::aie::vector<int32, 32> lo = p.template to_vector<int32>(23);
+  ::aie::vector<int32, 32> hi = p.template to_vector<int32>(24);
+  ::aie::vector<int32, 32> v =
+      ::aie::add(::aie::add(::aie::bit_and(int32(0xff800000), xb), b.e),
+                 ::aie::select(lo, hi, ::aie::ge(lo, int32(0))));
+  return ::aie::select(
+      vec_round_to_i8_bits(v), ::aie::zeros<int8, 32>(),
+      ::aie::le(::aie::bit_and(int32(0x7f800000), xb), b.x_small));
+}
+
 // 1 / a rounded to nearest even, as IEEE division rounds it (checked against
 // it for every positive normal a below 2^126, the domain it needs), by
 // restoring division of the mantissa: __divsf3 overflows the decode cores'
@@ -137,6 +332,41 @@ static inline float recip_rne(float a) {
   if (rem > m || (rem == m && (q & 1)))
     q++;
   return __builtin_bit_cast(float, ((253u - e) << 23) + (q - (1u << 23)));
+}
+
+// recip_rne's bits for 32 lanes of positive normal s (as bits) with
+// exponent fields in [3, 251], given r0 (bits) within an ulp of 1 / s, as
+// aie::inv's are: 1 / s = (2^47 / m) * 2^(103 - E) for s's significand m and
+// exponent field E, and q = round(2^47 / m) is r0's significand (scaled to
+// 2^47 / m) or one off it: q0 - 1, q0 or q0 + 1 as 2 * (q0 * m - 2^47)
+// exceeds m, lies within [-m, m] or falls below -m (never equal: m divides no
+// 2^48 as an odd multiple). Needs rounding_mode::conv_even.
+static inline ::aie::vector<int32, 32>
+vec_recip_rne_bits(::aie::vector<int32, 32> sb, ::aie::vector<int32, 32> r0) {
+  const ::aie::vector<int32, 32> se = ::aie::bit_and(int32(0x7f800000), sb);
+  const ::aie::vector<int32, 32> r0m =
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), r0));
+  // r0 in the binade above 2^23 / m's means q0 = 2 * r0's significand.
+  const ::aie::vector<int32, 32> q0 = ::aie::select(
+      r0m, ::aie::add(r0m, r0m),
+      ::aie::eq(::aie::add(::aie::bit_and(int32(0x7f800000), r0), se),
+                int32(254 << 23)));
+  const ::aie::vector<int32, 32> m =
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), sb));
+  ::aie::accum<acc64, 32> init;
+  init.from_vector(::aie::broadcast<int32, 32>(-(1 << 23)), 24);
+  // q0 * m - 2^47, exactly (|.| < 2^25).
+  const ::aie::vector<int32, 32> d =
+      ::aie::accum<acc64, 32>(
+          sig24_mac<true>(sig24_planes(q0), sig24_planes(m), init))
+          .template to_vector<int32>(0);
+  const ::aie::vector<int32, 32> d2 = ::aie::add(d, d);
+  const ::aie::vector<int32, 32> q = ::aie::select(
+      ::aie::select(q0, ::aie::sub(q0, int32(1)), ::aie::gt(d2, m)),
+      ::aie::add(q0, int32(1)), ::aie::lt(d2, ::aie::neg(m)));
+  // The significand's implicit bit carries into the exponent field, which
+  // q = 2^24 (s a power of two) bumps once more.
+  return ::aie::add(::aie::sub(int32(252 << 23), se), q);
 }
 
 // recip_rne lane-wise: the same restoring division of the significand, on

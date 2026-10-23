@@ -48,7 +48,7 @@ __attribute__((noinline)) static bool gemm_out_rne(const int32_t *restrict rows,
                       ::aie::broadcast<float, 8>(sc[4 * q + 2]),
                       ::aie::broadcast<float, 8>(sc[4 * q + 3]))
             .template cast_to<int32>();
-    EpilogueSig am = epilogue_sig(a_bits);
+    Sig24 am = epilogue_sig(a_bits);
     ::aie::store_v(row_lo[q],
                    ::aie::vector<uint16, 32>(am.lo).template cast_to<int16>());
     ::aie::store_v(row_hi[q], ::aie::vector<int16, 32>(am.hi));
@@ -58,7 +58,7 @@ __attribute__((noinline)) static bool gemm_out_rne(const int32_t *restrict rows,
   for (int g = 0; g < 8; g++) {
     ::aie::vector<int32, 8> w8 = ::aie::load_v<8>(tr + g * kTrailerWords + 8);
     ::aie::vector<int32, 32> w_bits = ::aie::concat(w8, w8, w8, w8);
-    EpilogueSig wm = epilogue_sig(w_bits);
+    Sig24 wm = epilogue_sig(w_bits);
     ::aie::store_v(col_lo[g],
                    ::aie::vector<uint16, 32>(wm.lo).template cast_to<int16>());
     ::aie::store_v(col_hi[g], ::aie::vector<int16, 32>(wm.hi));

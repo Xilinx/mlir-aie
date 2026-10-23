@@ -50,21 +50,9 @@ static inline void rope_q_requant4(const float *restrict q,
 // takes.
 static constexpr uint32_t kEpilogueExpLo = 80, kEpilogueExpHi = 174;
 
-// 32 significands below 2^24 as the 16-bit planes (low halves, high halves)
-// that the target's 32-bit multiplies split their operands into.
-struct EpilogueSig {
-  v32uint16 lo;
-  v32int16 hi;
-};
-
-static inline EpilogueSig epilogue_planes(::aie::vector<int32, 32> m) {
-  return {(v32uint16)::shuffle(m.extract<16>(0), m.extract<16>(1), 2),
-          (v32int16)::shuffle(m.extract<16>(0), m.extract<16>(1), 3)};
-}
-
 // A scale's significand with its implicit bit, for epilogue_rne.
-static inline EpilogueSig epilogue_sig(::aie::vector<int32, 32> bits) {
-  return epilogue_planes(
+static inline Sig24 epilogue_sig(::aie::vector<int32, 32> bits) {
+  return sig24_planes(
       ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bits)));
 }
 
@@ -72,20 +60,6 @@ static inline EpilogueSig epilogue_sig(::aie::vector<int32, 32> bits) {
 static inline ::aie::vector<int32, 32>
 epilogue_exp(::aie::vector<int32, 32> bits, int32 bias) {
   return ::aie::sub(::aie::bit_and(int32(0xff800000), bits), int32(bias << 23));
-}
-
-// The exact product of two significands given as planes (plus acc with kAdd):
-// the four 16-bit partial products as the 32-bit multiply sums them.
-template <bool kAdd>
-static inline v32acc64 epilogue_mac(EpilogueSig a, EpilogueSig b,
-                                    v32acc64 acc) {
-  v32acc64 p = ::mul_elem_32_conf(a.hi, 0, b.hi, 0, 0);
-  p = ::mac_elem_32_conf(a.hi, 0, b.lo, 0, p, 0, 1, 0, 0);
-  p = ::mac_elem_32_conf(a.lo, 0, b.hi, 0, p, 0, 0, 0, 0);
-  if constexpr (kAdd)
-    return ::addmac_elem_32_conf(a.lo, 0, b.lo, 0, p, acc, 0, 1, 0, 0, 0);
-  else
-    return ::mac_elem_32_conf(a.lo, 0, b.lo, 0, p, 0, 1, 0, 0);
 }
 
 // epilogue_rne's state between its stages: the stage's exact product, the
@@ -96,13 +70,12 @@ struct EpilogueState {
   ::aie::mask<32> zero;
 };
 
-static inline EpilogueState epilogue_first(::aie::vector<int32, 32> s,
-                                           EpilogueSig am, uint32_t &wide_s) {
+static inline EpilogueState epilogue_first(::aie::vector<int32, 32> s, Sig24 am,
+                                           uint32_t &wide_s) {
   ::aie::vector<int32, 32> xs =
       ::aie::to_float<float>(s, 0).template cast_to<int32>();
-  EpilogueSig x = epilogue_planes(xs);
-  // The high plane's bitwise ops on its int32 view: 16-bit lanes don't
-  // vectorize them.
+  Sig24 x = sig24_planes(xs);
+  // See x_planes.
   ::aie::vector<int32, 16> x_hi =
       ::aie::vector<int16, 32>(x.hi).cast_to<int32>();
   ::aie::vector<int16, 32> h =
@@ -111,22 +84,21 @@ static inline EpilogueState epilogue_first(::aie::vector<int32, 32> s,
   x.hi =
       ::aie::bit_or(int32(0x00800080), ::aie::bit_and(int32(0x007f007f), x_hi))
           .cast_to<int16>();
-  return {::aie::accum<acc64, 32>(epilogue_mac<false>(x, am, v32acc64())),
+  return {::aie::accum<acc64, 32>(sig24_mac<false>(x, am, v32acc64())),
           ::aie::bit_and(int32(0xff800000), xs), ::aie::eq(h, int16(0))};
 }
 
-static inline EpilogueState epilogue_second(const EpilogueState &x,
-                                            EpilogueSig wm,
+static inline EpilogueState epilogue_second(const EpilogueState &x, Sig24 wm,
                                             ::aie::vector<int32, 32> ae,
                                             ::aie::vector<int32, 32> ae1,
                                             ::aie::vector<int32, 32> we) {
   ::aie::vector<int32, 32> lo = x.p.template to_vector<int32>(23);
   ::aie::vector<int32, 32> hi = x.p.template to_vector<int32>(24);
   auto wide = ::aie::ge(lo, int32(1 << 24));
-  EpilogueSig m = epilogue_planes(::aie::select(lo, hi, wide));
+  Sig24 m = sig24_planes(::aie::select(lo, hi, wide));
   ::aie::accum<acc64, 32> init;
   init.from_vector(::aie::broadcast<int32, 32>(-(1 << 23)), 24);
-  return {::aie::accum<acc64, 32>(epilogue_mac<true>(m, wm, init)),
+  return {::aie::accum<acc64, 32>(sig24_mac<true>(m, wm, init)),
           ::aie::add(::aie::add(x.e, ::aie::select(ae, ae1, wide)), we),
           x.zero};
 }
@@ -145,13 +117,13 @@ static inline ::aie::vector<float, 32> epilogue_third(const EpilogueState &x) {
 // the lanes with s in (-2^23, 2^23); sets bit j of `wide_s` for lane j
 // otherwise (float(s)'s exponent is at least 150 however it rounds). Every
 // product is then normal and no rounded significand reaches 2^24, so each is
-// one exact acc64 product of significands rounded once by srs: by 23 bits, or
-// 24 where the product reaches 2^47 (for the second, where the product less
-// 2^47 rounds to >= 0). Exponents and sign add as integers. am, wm:
+// rounded as in x_bf16_mul (see there): srs by 23, or 24 where the product
+// reaches 2^47 (for the second, where the product less 2^47 rounds to >= 0).
+// am, wm:
 // epilogue_sig of a, w; ae, ae1: epilogue_exp(a, 126), epilogue_exp(a, 125);
 // we: epilogue_exp(w, 127). Needs rounding_mode::conv_even.
 static inline ::aie::vector<float, 32>
-epilogue_rne(::aie::vector<int32, 32> s, EpilogueSig am, EpilogueSig wm,
+epilogue_rne(::aie::vector<int32, 32> s, Sig24 am, Sig24 wm,
              ::aie::vector<int32, 32> ae, ::aie::vector<int32, 32> ae1,
              ::aie::vector<int32, 32> we, uint32_t &wide_s) {
   return epilogue_third(
