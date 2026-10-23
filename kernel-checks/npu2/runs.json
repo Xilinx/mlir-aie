@@ -1782,6 +1782,53 @@
     "offered": 136,
     "checked": 121
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "39910668525",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39910668525",
+   "date": "2026-10-23T06:18:15+00:00",
+   "commit": {
+    "id": "1b56c5948379b21212f50d3a829584c1c3c83e76",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/1b56c5948379b21212f50d3a829584c1c3c83e76",
+    "message": "Llama 3.2 1B A8W8 decode minor improvements; dashboard clarity (#3963)",
+    "timestamp": "2026-10-23T04:07:48Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "1b56c59483",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2507,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 879,
+    "failed": 0,
+    "timed": 422,
+    "timing_failed": 0,
+    "untimed": 457,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 136,
+    "checked": 121
+   }
   }
  ]
 }
